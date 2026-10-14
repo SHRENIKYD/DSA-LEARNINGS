@@ -169,7 +169,7 @@ public class OldSwitch {
         var viaDefault = start < 0;
         if (viaDefault) start = 7;
         var printed = '', steps = [];
-        steps.push({ l: 1, v: { n: n }, out: '', narr: 'Evaluate <code>n</code> once: it is <b>' + n + '</b>. Java now <b>jumps</b> straight to the matching label (it does not test the labels one by one like an if-ladder — it uses a jump table).' });
+        steps.push({ l: 1, v: { n: n }, out: '', narr: 'Evaluate <code>n</code> once: it is <b>' + n + '</b>. Java now <b>jumps</b> straight to the matching label (it does not test the labels one by one like an if-ladder — javac builds a jump table or a sorted lookup).' });
         steps.push({ l: seq[start].line, cls: 'ok', v: { n: n }, out: '', narr: viaDefault ? 'No <code>case ' + n + '</code> exists, so execution jumps to <code>default:</code>.' : 'Jump to <code>case ' + n + ':</code>. A label is just an <b>entry point</b>, not a wall.' });
         for (var i = start + 1; i < seq.length; i++) {
           var x = seq[i];
@@ -1232,6 +1232,721 @@ class SafeMax {
         dry: { head: ['call', 'phase', 'method', 'rest', 'result'], rows: [['max(7)', '3 (varargs)', 'max(int, int...)', '{}', '7'], ['max(3, 9)', '1 (strict)', 'max(int, int)', '—', '9'], ['max(5, 1, 8, 2)', '3 (varargs)', 'max(int, int...)', '{1, 8, 2}', '8']] },
         complexity: `<p>O(k) time for k arguments, plus one array allocation of size k − 1 per varargs call; the two-argument overload allocates nothing.</p>`,
         followUps: ['Write a generic <code>&lt;T extends Comparable&lt;T&gt;&gt; T max(T first, T... rest)</code> — what warning appears and why?', 'Why does <code>Math.max</code> only take two arguments?']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 6 — 1D and 2D arrays
+     ====================================================================== */
+  topics.push({
+    title: '1D Arrays, 2D Arrays and Jagged Arrays',
+    analogy: `<p>A 1D array is a <b>row of numbered post-office boxes</b>: fixed number of boxes, numbered from 0, each holding one item of the same kind. You get to a box instantly by its number. A 2D array is a <b>building of floors</b>: the building has a list of floors, and each floor is its own row of boxes. In Java the floors do not even need to be the same length — a <b>jagged</b> array is a building where floor 0 has 3 boxes, floor 1 has 1 box and floor 2 has 4. And the variable holding an array is not the boxes themselves, it is the <b>street address</b> of the building — copy the address and two people can now visit the same boxes.</p>`,
+    explain: `<h4>1. Creating a 1D array</h4>
+<pre><code>int[] marks = new int[5];            // 5 boxes, all 0
+int[] primes = {2, 3, 5, 7};         // literal: size 4, filled
+String[] names = new String[3];      // 3 boxes, all null
+marks[0] = 90;                       // write
+int first = primes[0];               // read → 2
+int n = primes.length;               // 4  (a field, no brackets!)</code></pre>
+<p>Facts to know cold:</p>
+<ul><li>Size is <b>fixed</b> when created. Need to grow? Make a bigger array and copy (or use <code>ArrayList</code>).</li>
+<li>Indexes run <b>0 … length − 1</b>. Anything else throws <code>ArrayIndexOutOfBoundsException</code> at runtime.</li>
+<li>New arrays are filled with <b>default values</b>:</li></ul>
+${H.table(['Element type', 'Default'], [['<code>int</code>, <code>long</code>, <code>short</code>, <code>byte</code>', '0'], ['<code>double</code>, <code>float</code>', '0.0'], ['<code>boolean</code>', 'false'], ['<code>char</code>', '\'\\u0000\' (character code 0)'], ['any object (<code>String</code>, <code>Integer</code>, arrays…)', 'null']])}
+<h4>2. Arrays are objects — the variable holds a reference</h4>
+<pre><code>int[] a = {1, 2, 3};
+int[] b = a;          // b points to the SAME array (an alias)
+b[0] = 42;            // a[0] is now 42 too
+int[] c = a.clone();  // c is a NEW array with copied values
+c[1] = -1;            // a is not affected</code></pre>
+<p><code>a == b</code> compares <b>addresses</b>, not contents. To compare contents use <code>Arrays.equals(a, c)</code>. To print contents use <code>Arrays.toString(a)</code> — printing <code>a</code> directly gives something like <code>[I@1b6d3586</code> (type code + hash).</p>
+<h4>3. 2D arrays = arrays of arrays</h4>
+<pre><code>int[][] grid = new int[3][4];          // 3 rows, each an int[4]
+grid[1][2] = 7;                        // row 1, column 2
+int rows = grid.length;                // 3
+int cols = grid[0].length;             // 4
+int[][] m = {{1, 2, 3}, {4, 5, 6}};    // literal
+
+for (int r = 0; r &lt; grid.length; r++)          // row-major traversal
+    for (int c = 0; c &lt; grid[r].length; c++)
+        System.out.print(grid[r][c] + " ");</code></pre>
+<h4>4. Jagged arrays — rows of different lengths</h4>
+<pre><code>int[][] tri = new int[3][];   // 3 rows, each row is null for now
+tri[0] = new int[1];
+tri[1] = new int[2];
+tri[2] = new int[3];          // a triangle: perfect for Pascal's triangle</code></pre>
+<p>That is why the safe inner bound is always <code>grid[r].length</code>, not <code>grid[0].length</code>.</p>
+<h4>5. Everyday patterns</h4>
+${H.table(['Task', 'Pattern'], [['Sum / max / count', 'one loop with an accumulator'], ['Reverse in place', 'two indexes moving inward, swap'], ['Shift / rotate', 'reverse tricks or a copy (see Arrays topic)'], ['Neighbours in a grid', 'direction arrays <code>int[] dr = {-1, 1, 0, 0}, dc = {0, 0, -1, 1};</code> + bounds check'], ['Matrix transpose', '<code>t[c][r] = m[r][c]</code>']])}`,
+    clues: [
+      '"Given an array of N integers…" with N ≤ 10<sup>6</sup> → a primitive <code>int[]</code> (fast, compact) rather than a <code>List&lt;Integer&gt;</code>',
+      '"grid", "matrix", "board", "image", "m × n" → 2D array with <code>[row][col]</code> and direction arrays for neighbours',
+      '"rows can have different lengths", "triangle" → jagged array, use <code>grid[r].length</code>',
+      '"in place", "O(1) extra space" → modify the given array, do not allocate a copy',
+      '"Why did changing b also change a?" → aliasing: both variables reference the same array',
+      '"print the array" output looks like <code>[I@…</code> → you forgot <code>Arrays.toString</code>'
+    ],
+    code: [`
+import java.util.Arrays;
+
+public class ArraysBasics {
+    public static void main(String[] args) {
+        // ---- 1D ----
+        int[] a = new int[4];                 // [0, 0, 0, 0]
+        for (int i = 0; i < a.length; i++) a[i] = i * i;
+        System.out.println(Arrays.toString(a));          // [0, 1, 4, 9]
+
+        int[] alias = a;                      // same object
+        int[] copy = a.clone();               // new object, same values
+        alias[0] = 100;
+        System.out.println(a[0] + " " + copy[0]);        // 100 0
+        System.out.println((a == alias) + " " + (a == copy) + " " + Arrays.equals(alias, a)); // true false true
+
+        // ---- 2D (rectangular) ----
+        int[][] grid = new int[3][4];
+        for (int r = 0; r < grid.length; r++)
+            for (int c = 0; c < grid[r].length; c++)
+                grid[r][c] = r * 10 + c;
+        System.out.println(Arrays.deepToString(grid));   // [[0, 1, 2, 3], [10, 11, 12, 13], [20, 21, 22, 23]]
+
+        // ---- neighbours with direction arrays ----
+        int[] dr = {-1, 1, 0, 0}, dc = {0, 0, -1, 1};
+        int r0 = 0, c0 = 0, sum = 0;
+        for (int d = 0; d < 4; d++) {
+            int nr = r0 + dr[d], nc = c0 + dc[d];
+            if (nr < 0 || nr >= grid.length || nc < 0 || nc >= grid[nr].length) continue; // off the board
+            sum += grid[nr][nc];
+        }
+        System.out.println("neighbour sum of (0,0) = " + sum);  // 10 + 1 = 11
+
+        // ---- jagged ----
+        int[][] tri = new int[4][];
+        for (int r = 0; r < tri.length; r++) {
+            tri[r] = new int[r + 1];
+            Arrays.fill(tri[r], r + 1);
+        }
+        System.out.println(Arrays.deepToString(tri));    // [[1], [2, 2], [3, 3, 3], [4, 4, 4, 4]]
+    }
+}`],
+    codeTitle: ['1D, 2D, neighbours and jagged arrays'],
+    viz: [{
+      title: 'Alias vs clone: who sees the change?',
+      input: '1 2 3',
+      inputLabel: 'array values (2..6 integers)',
+      gen: function (input) {
+        var v = intsOf(input, 2, 6, -999, 999, 'Enter 2 to 6 integers separated by spaces, e.g. 1 2 3');
+        var A = v.slice(), C = null;
+        var code = 'int[] a = {' + v.join(', ') + '};\nint[] b = a;\nint[] c = a.clone();\nb[0] = 42;\nc[1] = -1;\nSystem.out.println(a[0] + " " + a[1] + " " + c[0]);';
+        function heap(hk, idx) {
+          var parts = [{ type: 'array', label: '@A — the array that a and b point to', values: A.slice(), hl: hk === 'A' ? one(idx, 'ok') : {}, showIdx: true }];
+          if (C) parts.push({ type: 'array', label: '@C — the clone', values: C.slice(), hl: hk === 'C' ? one(idx, 'ok') : {}, showIdx: true });
+          return parts;
+        }
+        var steps = [];
+        steps.push({ l: 1, v: { a: '→ @A' }, hv: { a: 'ok' }, extra: heap(null), narr: 'An array object is created on the heap (call it @A). The variable <code>a</code> only stores its <b>address</b>.' });
+        steps.push({ l: 2, v: { a: '→ @A', b: '→ @A' }, hv: { b: 'bad' }, extra: heap(null), narr: '<code>b = a</code> copies the <b>address</b>, not the boxes. Now a and b are two names for the <b>same</b> array (an alias). No new array was made.' });
+        C = A.slice();
+        steps.push({ l: 3, v: { a: '→ @A', b: '→ @A', c: '→ @C' }, hv: { c: 'ok' }, extra: heap(null), narr: '<code>a.clone()</code> makes a <b>new</b> array @C with the same values. For an int[] this is a full independent copy.' });
+        A[0] = 42;
+        steps.push({ l: 4, v: { a: '→ @A', b: '→ @A', c: '→ @C' }, extra: heap('A', 0), narr: '<code>b[0] = 42</code> writes into @A — so <code>a[0]</code> is now 42 as well. The clone @C still has ' + v[0] + '.' });
+        C[1] = -1;
+        steps.push({ l: 5, v: { a: '→ @A', b: '→ @A', c: '→ @C' }, extra: heap('C', 1), narr: '<code>c[1] = -1</code> changes only the clone. @A is untouched.' });
+        steps.push({ l: 6, cls: 'ok', v: { 'a[0]': A[0], 'a[1]': A[1], 'c[0]': C[0] }, out: A[0] + ' ' + A[1] + ' ' + C[0], extra: heap(null), narr: 'Result: a sees the change made through b (same object) but not the change made to c (different object). <code>a == b</code> is true, <code>a == c</code> is false, <code>Arrays.equals(a, c)</code> compares contents.' });
+        return codeFrames(code, steps);
+      }
+    }, {
+      title: 'Building a jagged 2D array row by row',
+      input: '3 1 4',
+      inputLabel: 'row lengths (1..5 numbers, each 1..6)',
+      gen: function (input) {
+        var L = intsOf(input, 1, 5, 1, 6, 'Enter 1 to 5 row lengths between 1 and 6, e.g. 3 1 4');
+        var R = L.length, W = Math.max.apply(null, L);
+        var code = 'int[][] g = new int[' + R + '][];\nfor (int r = 0; r < g.length; r++) {\n    g[r] = new int[len[r]];\n    for (int c = 0; c < g[r].length; c++)\n        g[r][c] = r * 10 + c;\n}';
+        var rows = [], refs = [];
+        for (var i = 0; i < R; i++) { rows.push(null); refs.push('null'); }
+        function gridP(hk) {
+          return { type: 'grid', label: 'the rows (· = no box exists)', rowHead: L.map(function (x, i) { return 'g[' + i + ']'; }), colHead: Array.apply(null, Array(W)).map(function (x, i) { return 'c=' + i; }),
+            rows: rows.map(function (r) { var o = []; for (var j = 0; j < W; j++) o.push(r && j < r.length ? r[j] : '·'); return o; }), hl: hk || {} };
+        }
+        function refP(hi) { return { type: 'array', label: 'g itself: an array of ' + R + ' references', values: refs.slice(), hl: hi === undefined ? {} : one(hi, 'ok'), showIdx: true }; }
+        var steps = [{ l: 1, v: { 'g.length': R }, narr: '<code>new int[' + R + '][]</code> creates only the <b>outer</b> array: ' + R + ' slots, each holding a reference that is still <b>null</b>. No rows exist yet — <code>g[0][0]</code> now would throw NullPointerException.', extra: [refP(), gridP()] }];
+        for (var r = 0; r < R; r++) {
+          rows[r] = []; for (var k = 0; k < L[r]; k++) rows[r].push(0);
+          refs[r] = '→ int[' + L[r] + ']';
+          steps.push({ l: 3, v: { r: r, 'len[r]': L[r] }, hv: { 'len[r]': 'ok' }, narr: 'Create row ' + r + ' with <b>' + L[r] + '</b> boxes (all 0) and store its reference in <code>g[' + r + ']</code>. Rows are separate objects, so their lengths can differ.', extra: [refP(r), gridP()] });
+          for (var c = 0; c < L[r]; c++) {
+            rows[r][c] = r * 10 + c;
+            if (c === L[r] - 1 || L[r] <= 2) {
+              var h = {}; for (var q = 0; q <= c; q++) h[r + ',' + q] = q === c ? 'cur' : 'ok';
+              steps.push({ l: 5, v: { r: r, c: c, 'g[r].length': L[r], 'g[r][c]': r * 10 + c }, hv: { 'g[r][c]': 'ok' }, narr: 'Fill row ' + r + ' up to c = ' + c + '. The inner loop stops at <code>g[r].length</code> = ' + L[r] + ' — using <code>g[0].length</code> here would ' + (L[r] < L[0] ? '<span class="c-r">overflow this shorter row</span>' : (L[r] > L[0] ? '<span class="c-r">miss the extra cells of this longer row</span>' : 'happen to work only because the lengths match')) + '.', extra: [refP(r), gridP(h)] });
+            }
+          }
+        }
+        var tot = L.reduce(function (s, x) { return s + x; }, 0);
+        steps.push({ l: 6, cls: 'ok', v: { rows: R, 'total boxes': tot }, hv: { 'total boxes': 'sel' }, narr: 'Done: ' + R + ' row objects + 1 outer array = ' + (R + 1) + ' separate objects holding ' + tot + ' ints. A rectangular <code>new int[' + R + '][' + W + ']</code> would hold ' + R * W + ' ints.', extra: [refP(), gridP()] });
+        return codeFrames(code, steps);
+      }
+    }],
+    examples: [
+      { title: 'Printing an array: the [I@… surprise', html: `<p>Arrays do not override <code>toString()</code>, so printing one shows its type code (<code>[I</code> = array of int) and a hash. Use <code>Arrays.toString</code> for 1D and <code>Arrays.deepToString</code> for 2D.</p>
+${H.table(['Code', 'Prints'], [['<code>System.out.println(a)</code>', H.c('r', '[I@6d06d69c') + ' (hash varies)'], ['<code>Arrays.toString(a)</code>', H.c('g', '[1, 2, 3]')], ['<code>Arrays.toString(grid)</code>', H.c('r', '[[I@…, [I@…]')], ['<code>Arrays.deepToString(grid)</code>', H.c('g', '[[1, 2], [3, 4]]')]])}`, code: `
+int[] a = {1, 2, 3};
+int[][] grid = {{1, 2}, {3, 4}};
+System.out.println(java.util.Arrays.toString(a));         // [1, 2, 3]
+System.out.println(java.util.Arrays.deepToString(grid));  // [[1, 2], [3, 4]]
+char[] word = {'h', 'i'};
+System.out.println(word);   // hi  <- special case: println(char[]) prints the characters` },
+      { title: 'clone() of a 2D array is SHALLOW', html: `<p><code>grid.clone()</code> copies the <b>outer</b> array of references only. Both grids share the same row objects, so changing <code>copy[0][0]</code> also changes <code>grid[0][0]</code>. For a deep copy, clone each row.</p>
+${H.table(['', 'outer array', 'row objects'], [['grid.clone()', 'new', H.c('r', 'shared')], ['row-by-row clone', 'new', H.c('g', 'new')]])}`, code: `
+int[][] grid = {{1, 2}, {3, 4}};
+int[][] shallow = grid.clone();
+shallow[0][0] = 99;
+System.out.println(grid[0][0]);                 // 99  (row shared!)
+
+int[][] deep = new int[grid.length][];
+for (int r = 0; r < grid.length; r++) deep[r] = grid[r].clone();
+deep[1][1] = -5;
+System.out.println(grid[1][1]);                 // 4   (independent)` },
+      { title: 'Array covariance and ArrayStoreException', html: `<p>Java lets a <code>String[]</code> be used where an <code>Object[]</code> is expected (arrays are <b>covariant</b>). The array still remembers it is really a <code>String[]</code>, so storing an Integer fails <b>at runtime</b> with <code>ArrayStoreException</code>. Generic lists (<code>List&lt;String&gt;</code>) catch this at compile time instead — one reason collections are preferred in APIs.</p>`, code: `
+Object[] objs = new String[2];      // compiles: String[] is-an Object[]
+objs[0] = "fine";
+try {
+    objs[1] = 42;                   // runtime check fails
+} catch (ArrayStoreException e) {
+    System.out.println("ArrayStoreException: " + e.getMessage());  // java.lang.Integer
+}` },
+      { title: 'Default values and the null row', html: `<p><code>new boolean[3]</code> is all false, <code>new String[2]</code> is all null, and <code>new int[2][]</code> has two <b>null rows</b>. Reading <code>g[0].length</code> before creating the row throws <code>NullPointerException</code>.</p>`, code: `
+boolean[] seen = new boolean[3];
+String[] names = new String[2];
+int[][] g = new int[2][];
+System.out.println(seen[1] + " " + names[0] + " " + g[0]);   // false null null
+g[0] = new int[]{5, 6};
+System.out.println(g[0].length);                              // 2` }
+    ],
+    deepDive: `<p><b>Memory layout.</b> A HotSpot array object has a header (mark word + class pointer, 12 bytes with compressed class pointers) plus a 4-byte <code>length</code>, then the elements packed contiguously: an <code>int[1000]</code> is about 4 016 bytes. An <code>Integer[1000]</code> is 1000 <b>references</b> (4 bytes each with compressed oops) pointing to 1000 separate Integer objects of 16 bytes each — roughly 5× the memory and much worse cache behaviour. That is why competitive programmers and performance-sensitive code prefer primitive arrays.</p>
+<p><b>2D arrays are not one block.</b> <code>new int[1000][1000]</code> is 1 outer array + 1000 separate row arrays. Rows are usually allocated near each other, but nothing guarantees it. Traversing <b>row by row</b> (<code>grid[r][c]</code> with c in the inner loop) walks memory sequentially and is cache-friendly; traversing column by column jumps between rows and can be several times slower for big grids. For maximum speed some code uses a flat <code>int[rows * cols]</code> with index <code>r * cols + c</code>.</p>
+<p><b>Bounds checks.</b> Every <code>a[i]</code> is checked against <code>length</code> — this is Java's memory safety (no buffer overflows like C). The JIT removes the check when it can prove <code>0 ≤ i &lt; length</code> for a whole loop (range-check elimination), so the safety is nearly free in simple loops.</p>
+<p><b>Limits.</b> Array length is an <code>int</code>, so the maximum is about 2<sup>31</sup> − 1 elements (in practice a few less, ~<code>Integer.MAX_VALUE − 8</code>, due to header space). A negative size throws <code>NegativeArraySizeException</code>. Allocation zeroes memory, so <code>new int[n]</code> is O(n), not O(1).</p>
+<p><b>Declaration quirks.</b> <code>int[] a, b;</code> declares two arrays; <code>int a[], b;</code> declares an array and an int; <code>int[] a, b[];</code> declares an int[] and an int[][]. Always write the brackets next to the type.</p>
+<p><b>Array vs ArrayList.</b> Arrays: fixed size, primitives allowed, fastest. <code>ArrayList</code>: grows automatically, objects only (boxing), richer API. Use arrays for known-size numeric work and grids; lists everywhere else (Collections module).</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI writes grid traversals, direction arrays and matrix helpers flawlessly most of the time, and can generate test matrices in seconds.</p>
+<p><b>Use AI as a partner:</b> <code>"Generate 5 tricky matrices for my rotate function: 1×1, 2×2, 3×3 with negatives, and a non-square one (should be rejected)"</code>, <code>"Is this copy deep or shallow? Draw the references."</code>, <code>"Rewrite this column-major loop to be cache-friendly."</code></p>
+<p><b>Where AI goes wrong:</b> using <code>grid[0].length</code> on jagged input, treating <code>clone()</code> of a 2D array as a deep copy, confusing <code>[r][c]</code> with <code>[x][y]</code> (x is the column!), and off-by-one bounds checks in neighbour loops.</p>
+<p><b>What you must still own:</b> the reference picture (alias vs copy, shallow vs deep), index arithmetic for rotations and transposes, and explaining memory/cost differences between <code>int[]</code> and <code>List&lt;Integer&gt;</code>.</p>`,
+    problems: [{
+      title: 'Rotate a Square Matrix 90° Clockwise In Place',
+      level: 'Medium', tags: ['2D array', 'in place', 'transpose'], companies: ['Amazon', 'Microsoft', 'Apple'],
+      statement: `<p>Given an n × n <code>int[][] m</code>, rotate it 90° clockwise <b>in place</b> (do not allocate another n × n matrix).</p>`,
+      constraints: `1 ≤ n ≤ 1000; values fit in int`,
+      example: `<p>${H.table(['before', 'after'], [['[1, 2, 3]<br>[4, 5, 6]<br>[7, 8, 9]', H.c('g', '[7, 4, 1]<br>[8, 5, 2]<br>[9, 6, 3]')]])} The first <b>column</b> read bottom-up (7, 4, 1) becomes the first <b>row</b>.</p>`,
+      brute: { why: `<p>Build a new matrix with <code>rot[c][n - 1 - r] = m[r][c]</code> and copy it back. Easy to get right, but it uses O(n²) extra memory — 4 MB for n = 1000 — and breaks the "in place" requirement.</p>`, code: `
+static void rotateWithCopy(int[][] m) {
+    int n = m.length;
+    int[][] rot = new int[n][n];
+    for (int r = 0; r < n; r++)
+        for (int c = 0; c < n; c++)
+            rot[c][n - 1 - r] = m[r][c];      // where does (r, c) land after rotation?
+    for (int r = 0; r < n; r++) m[r] = rot[r]; // reuse the new rows
+}` },
+      mcq: { q: 'Which two in-place steps rotate a square matrix 90° clockwise?', options: ['Reverse each row, then reverse the row order', 'Transpose, then reverse each row', 'Transpose, then reverse the row order', 'Reverse each column, then transpose twice'], answer: 1, explain: 'Transpose turns rows into columns; reversing each row then mirrors left↔right, which is exactly a clockwise quarter turn. (Transpose + reverse row order gives counter-clockwise.)' },
+      hints: [`<p>Hint 1: a rotation is two mirror flips. Which flips? Try it on paper with the 3 × 3 example.</p>`, `<p>Hint 2: transpose = swap <code>m[r][c]</code> with <code>m[c][r]</code> for <b>c &gt; r only</b> (swapping every pair twice undoes it). Then reverse each row with two pointers.</p>`, `<p>Hint 3: edge cases: n = 1 (nothing changes). Recipe: for r in 0..n-1, for c in r+1..n-1 swap(m[r][c], m[c][r]); then for each row, lo = 0, hi = n-1, swap while lo &lt; hi.</p>`],
+      solution: {
+        approach: `<p>Clockwise rotation = <b>transpose</b> (mirror over the main diagonal) followed by <b>reversing each row</b> (mirror left↔right). Both steps swap elements in place using one temp variable.</p>`,
+        code: `
+class RotateMatrix {
+    static void rotate(int[][] m) {
+        int n = m.length;
+        // 1) transpose: swap across the main diagonal (only the upper triangle, c > r)
+        for (int r = 0; r < n; r++) {
+            for (int c = r + 1; c < n; c++) {
+                int t = m[r][c];
+                m[r][c] = m[c][r];
+                m[c][r] = t;
+            }
+        }
+        // 2) reverse every row
+        for (int[] row : m) {                       // for-each gives the row REFERENCE, so swaps stick
+            for (int lo = 0, hi = n - 1; lo < hi; lo++, hi--) {
+                int t = row[lo]; row[lo] = row[hi]; row[hi] = t;
+            }
+        }
+    }
+    public static void main(String[] args) {
+        int[][] m = {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}};
+        rotate(m);
+        System.out.println(java.util.Arrays.deepToString(m));  // [[7, 4, 1], [8, 5, 2], [9, 6, 3]]
+    }
+}`,
+        alt: [{ lang: 'python', code: `def rotate(m):\n    n = len(m)\n    for r in range(n):\n        for c in range(r + 1, n):\n            m[r][c], m[c][r] = m[c][r], m[r][c]\n    for row in m:\n        row.reverse()\n\nm = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]\nrotate(m)\nprint(m)`, run: true }],
+        dry: { head: ['step', 'row 0', 'row 1', 'row 2'], rows: [['start', '1 2 3', '4 5 6', '7 8 9'], ['after transpose', '1 4 7', '2 5 8', '3 6 9'], ['reverse row 0', H.c('g', '7 4 1'), '2 5 8', '3 6 9'], ['reverse rows 1, 2', '7 4 1', H.c('g', '8 5 2'), H.c('g', '9 6 3')]] },
+        complexity: `<p>Time O(n²) — every cell is touched a constant number of times (optimal, since every cell moves). Extra space O(1).</p>`,
+        followUps: ['Rotate counter-clockwise (transpose + reverse the column order / row order).', 'Do it in one pass by rotating 4 cells at a time, layer by layer.', 'Rotate a non-square m × n matrix (needs a new n × m array — why?).']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 7 — The java.util.Arrays toolbox
+     ====================================================================== */
+  topics.push({
+    title: 'The java.util.Arrays Toolbox (sort, binarySearch, fill, copyOf, equals, asList…)',
+    analogy: `<p>Arrays are plain wooden shelves; <code>java.util.Arrays</code> is the <b>toolbox hanging next to them</b>. Instead of building your own sorter, label printer, photocopier or measuring tape every time, you grab the tested tool: <code>sort</code> (the sorter), <code>toString</code> (the label printer), <code>copyOf</code> (the photocopier), <code>equals</code> (compare two shelves box by box), <code>fill</code> (the paint roller), and <code>binarySearch</code> (the "guess the middle" game for a <b>sorted</b> shelf). The tools are static methods — you never create an <code>Arrays</code> object, you just call <code>Arrays.sort(shelf)</code>.</p>`,
+    explain: `<p>Import once with <code>import java.util.Arrays;</code>. Everything is a <b>static</b> method with versions for every primitive type and for objects.</p>
+${H.table(['Method', 'What it does', 'Example → result'], [
+  ['<code>toString(a)</code>', 'readable text of a 1D array', '<code>[3, 1, 2]</code>'],
+  ['<code>deepToString(g)</code>', 'readable text of nested arrays', '<code>[[1, 2], [3]]</code>'],
+  ['<code>sort(a)</code>', 'ascending, in place', '[3, 1, 2] → [1, 2, 3]'],
+  ['<code>sort(a, from, to)</code>', 'sort only indexes from..to−1', 'sort(a, 1, 3)'],
+  ['<code>sort(objs, comparator)</code>', 'custom order — <b>objects only</b>', 'sort(words, Comparator.reverseOrder())'],
+  ['<code>binarySearch(a, key)</code>', 'index of key in a <b>sorted</b> array; if absent: <code>−(insertionPoint) − 1</code>', 'binarySearch([1,3,5,7], 4) → −3'],
+  ['<code>fill(a, v)</code>', 'set every element to v', 'fill(dp, -1)'],
+  ['<code>copyOf(a, newLen)</code>', 'new array, truncated or padded with defaults', 'copyOf([1,2], 4) → [1, 2, 0, 0]'],
+  ['<code>copyOfRange(a, from, to)</code>', 'new array of a[from..to−1]', 'copyOfRange([5,6,7,8], 1, 3) → [6, 7]'],
+  ['<code>equals(a, b)</code> / <code>deepEquals</code>', 'same length and same elements?', 'true / false'],
+  ['<code>hashCode(a)</code>', 'content-based hash (a.hashCode() is identity-based)', 'useful for map keys'],
+  ['<code>asList(T...)</code>', 'fixed-size List view <b>backed by</b> the array', 'set() writes through, add() throws'],
+  ['<code>stream(a)</code>', 'IntStream / Stream over the array', 'stream(a).sum()'],
+  ['<code>setAll(a, i -&gt; …)</code>', 'fill using the index', 'setAll(a, i -&gt; i * i)'],
+  ['<code>mismatch(a, b)</code> (Java 9+)', 'first differing index or −1', 'mismatch([1,2,3],[1,9,3]) → 1'],
+  ['<code>System.arraycopy(src, sp, dst, dp, len)</code>', 'fast bulk copy into an existing array (not in Arrays, but a sibling tool)', 'shift elements']])}
+<h4>Five rules that save you in interviews</h4>
+<ol><li><b>binarySearch needs a sorted array.</b> On unsorted input the result is meaningless (no exception!). With duplicates it returns <i>some</i> matching index, not necessarily the first.</li>
+<li><b>The negative result is useful:</b> if <code>i &lt; 0</code>, the key would be inserted at <code>-(i + 1)</code>. Example: binarySearch([1, 3, 5, 7], 4) = −3 → insertion point 2.</li>
+<li><b>No comparator for primitives.</b> <code>Arrays.sort(intArray, Collections.reverseOrder())</code> does not compile. To sort an int[] descending: sort ascending then reverse, or use <code>Integer[]</code>.</li>
+<li><b>copyOf / copyOfRange / clone are shallow</b> for object and 2D arrays (they copy references).</li>
+<li><b>asList is a view, not a copy:</b> it cannot grow, and changes flow both ways. Wrap it — <code>new ArrayList&lt;&gt;(Arrays.asList(arr))</code> — when you need a normal list.</li></ol>`,
+    clues: [
+      '"sorted array" + "find / insert position / count less than x" → <code>Arrays.binarySearch</code> or your own lower-bound search',
+      '"anagram", "same elements in any order", "permutation" → sort copies + <code>Arrays.equals</code> (or counting)',
+      '"initialise the DP table with -1 / infinity" → <code>Arrays.fill</code> (row by row for 2D)',
+      '"sort by second column / by length / descending" → objects or <code>int[][]</code> with <code>Arrays.sort(arr, comparator)</code>',
+      '"subarray copy", "grow the array" → <code>Arrays.copyOfRange</code> / <code>Arrays.copyOf</code>',
+      '"Why does add() throw UnsupportedOperationException?" → the list came from <code>Arrays.asList</code> (or <code>List.of</code>)'
+    ],
+    code: [`
+import java.util.*;
+
+public class ArraysToolbox {
+    public static void main(String[] args) {
+        int[] a = {5, 3, 9, 1, 7};
+        Arrays.sort(a);                                        // [1, 3, 5, 7, 9]
+        System.out.println(Arrays.toString(a));
+
+        System.out.println(Arrays.binarySearch(a, 7));         // 3
+        int pos = Arrays.binarySearch(a, 4);                   // -3
+        System.out.println(pos + " -> insert at " + (-pos - 1)); // -3 -> insert at 2
+
+        int[] bigger = Arrays.copyOf(a, 7);                    // [1, 3, 5, 7, 9, 0, 0]
+        int[] middle = Arrays.copyOfRange(a, 1, 4);            // [3, 5, 7]
+        System.out.println(Arrays.toString(bigger) + " " + Arrays.toString(middle));
+
+        int[] dp = new int[5];
+        Arrays.fill(dp, -1);                                   // [-1, -1, -1, -1, -1]
+        int[] sq = new int[5];
+        Arrays.setAll(sq, i -> i * i);                         // [0, 1, 4, 9, 16]
+        System.out.println(Arrays.toString(dp) + " " + Arrays.toString(sq));
+
+        int[] x = {1, 2, 3}, y = {1, 2, 3};
+        System.out.println((x == y) + " " + Arrays.equals(x, y)); // false true
+        System.out.println(Arrays.mismatch(x, new int[]{1, 9, 3})); // 1
+
+        // descending order for primitives: sort, then reverse in place
+        int[] d = {4, 1, 3};
+        Arrays.sort(d);
+        for (int lo = 0, hi = d.length - 1; lo < hi; lo++, hi--) { int t = d[lo]; d[lo] = d[hi]; d[hi] = t; }
+        System.out.println(Arrays.toString(d));                // [4, 3, 1]
+
+        // descending for objects: a comparator works
+        Integer[] boxed = {4, 1, 3};
+        Arrays.sort(boxed, Collections.reverseOrder());        // [4, 3, 1]
+        System.out.println(Arrays.toString(boxed));
+
+        // sort intervals by start, then by end (2D int array with a comparator)
+        int[][] intervals = {{5, 6}, {1, 9}, {1, 3}};
+        Arrays.sort(intervals, (p, q) -> p[0] != q[0] ? Integer.compare(p[0], q[0]) : Integer.compare(p[1], q[1]));
+        System.out.println(Arrays.deepToString(intervals));    // [[1, 3], [1, 9], [5, 6]]
+
+        System.out.println(Arrays.stream(a).sum());            // 25
+    }
+}`],
+    codeTitle: ['A tour of the most-used Arrays methods'],
+    viz: [{
+      title: 'Arrays.binarySearch step by step (and the negative answer)',
+      input: '1 3 5 7 9 11 13 | 8',
+      inputLabel: 'sorted array | key',
+      gen: function (input) {
+        var s = String(input === undefined || input === null ? '' : input);
+        var bits = s.split('|');
+        if (bits.length !== 2) throw new Error('Format: sorted numbers | key   e.g. 1 3 5 7 9 | 6');
+        var a = intsOf(bits[0], 1, 16, -9999, 9999, 'Use 1 to 16 integers before the |, e.g. 1 3 5 7 9 | 6');
+        var key = intOf(bits[1], -9999, 9999, 'The key after | must be one integer');
+        for (var i = 1; i < a.length; i++) if (a[i] < a[i - 1]) throw new Error('binarySearch needs a SORTED array — Java would not complain, it would just return garbage. Please sort it first.');
+        var code = 'int lo = 0, hi = a.length - 1;\nwhile (lo <= hi) {\n    int mid = (lo + hi) >>> 1;\n    if (a[mid] < key) lo = mid + 1;\n    else if (a[mid] > key) hi = mid - 1;\n    else return mid;            // found\n}\nreturn -(lo + 1);               // not found';
+        var lo = 0, hi = a.length - 1, fr = [], step = 0;
+        function arrP(ptr, hl, range) { return { type: 'array', label: 'a (sorted), key = ' + key, values: a.slice(), ptr: ptr, hl: hl, range: range, showIdx: true }; }
+        fr = fr.concat(codeFrames(code, [{ l: 1, v: { key: key, lo: lo, hi: hi }, narr: 'Search space is the whole array: indexes ' + lo + '..' + hi + '. Each step will throw away half of it.', extra: [arrP(one(0, 'lo'), {}, [lo, hi])] }]));
+        while (lo <= hi) {
+          step++;
+          var mid = (lo + hi) >>> 1, ptr = {};
+          ptr[lo] = 'lo'; ptr[hi] = lo === hi ? ['lo', 'hi'] : 'hi'; if (mid !== lo && mid !== hi) ptr[mid] = 'mid'; else ptr[mid] = [].concat(ptr[mid], 'mid');
+          if (a[mid] === key) {
+            fr = fr.concat(codeFrames(code, [{ l: 6, cls: 'ok', v: { lo: lo, hi: hi, mid: mid, 'a[mid]': a[mid], steps: step }, hv: { mid: 'ok' }, out: 'returns ' + mid, narr: 'a[' + mid + '] = ' + a[mid] + ' equals the key → return <b>' + mid + '</b> after ' + step + ' step(s). A linear scan could need up to ' + a.length + '.', extra: [arrP(ptr, one(mid, 'sel'), [lo, hi])] }]));
+            return fr;
+          }
+          var less = a[mid] < key;
+          fr = fr.concat(codeFrames(code, [{ l: less ? 4 : 5, v: { lo: lo, hi: hi, mid: mid, 'a[mid]': a[mid], steps: step }, hv: { mid: 'cur' }, narr: 'mid = (' + lo + ' + ' + hi + ') &gt;&gt;&gt; 1 = ' + mid + '. a[mid] = ' + a[mid] + (less ? ' &lt; ' + key + ' → the key can only be to the <b>right</b>: lo = ' + (mid + 1) + '.' : ' &gt; ' + key + ' → the key can only be to the <b>left</b>: hi = ' + (mid - 1) + '.'), extra: [arrP(ptr, one(mid, 'cur'), [lo, hi])] }]));
+          if (less) lo = mid + 1; else hi = mid - 1;
+        }
+        var res = -(lo + 1), pp = {};
+        if (lo < a.length) pp[lo] = 'insert here'; else pp[a.length - 1] = 'insert after';
+        fr = fr.concat(codeFrames(code, [{ l: 8, cls: 'bad', v: { lo: lo, hi: hi, result: res }, hv: { result: 'sel' }, out: 'returns ' + res, narr: 'lo (' + lo + ') passed hi (' + hi + '): the key is not present. <code>lo</code> is exactly where it would be inserted to keep the array sorted, so Java returns −(' + lo + ' + 1) = <b>' + res + '</b>. Decode it with <code>-(res + 1)</code> = ' + lo + '. The "+1" makes sure a missing key never returns 0 (which would look like "found at index 0").', extra: [arrP(pp, {}, null)] }]));
+        return fr;
+      }
+    }, {
+      title: 'Arrays.asList is a window onto the array',
+      gen: function () {
+        var arr = ['a', 'b', 'c'];
+        var code = 'String[] arr = {"a", "b", "c"};\nList<String> view = Arrays.asList(arr);\nview.set(0, "z");\narr[2] = "q";\nview.add("d");            // throws!\nList<String> real = new ArrayList<>(view);\nreal.add("d");';
+        function P(listItems, arrHl, listHl, real) {
+          var p = [{ type: 'array', label: 'String[] arr (the real storage)', values: arr.slice(), hl: arrHl || {}, showIdx: true }, { type: 'array', label: 'view = Arrays.asList(arr) (same boxes!)', values: listItems || arr.slice(), hl: listHl || {}, showIdx: true }];
+          if (real) p.push({ type: 'array', label: 'real = new ArrayList<>(view) (own copy, can grow)', values: real, hl: one(real.length - 1, 'ok'), showIdx: true });
+          return p;
+        }
+        var steps = [];
+        steps.push({ l: [1, 2], extra: P(), narr: '<code>Arrays.asList(arr)</code> does <b>not</b> copy. It wraps the array in a fixed-size List — reading the list reads the array.' });
+        arr[0] = 'z';
+        steps.push({ l: 3, cls: 'ok', extra: P(null, one(0, 'ok'), one(0, 'ok')), narr: '<code>view.set(0, "z")</code> writes <b>through</b> to the array: arr[0] is now "z" too.' });
+        arr[2] = 'q';
+        steps.push({ l: 4, cls: 'ok', extra: P(null, one(2, 'ok'), one(2, 'ok')), narr: 'And the other way: <code>arr[2] = "q"</code> is instantly visible through the list.' });
+        steps.push({ l: 5, cls: 'bad', out: 'java.lang.UnsupportedOperationException', extra: P(null, {}, {}), narr: '<span class="c-r"><code>view.add("d")</code> throws UnsupportedOperationException</span> — an array cannot grow, so a view of it cannot either. Same for <code>remove</code>.' });
+        steps.push({ l: [6, 7], cls: 'ok', extra: P(null, {}, {}, arr.concat(['d'])), narr: 'Need a normal list? Copy it: <code>new ArrayList&lt;&gt;(view)</code> owns its own storage, can grow, and no longer affects the array. (<code>List.of(...)</code> is different again: fully immutable and rejects nulls.)' });
+        return codeFrames(code, steps);
+      }
+    }],
+    examples: [
+      { title: 'binarySearch on unsorted data or with duplicates', html: `<p>On <code>[5, 1, 4]</code> searching 5 returns <b>−4</b> ("not found") even though 5 is at index 0 — binary search assumes sorted order and quietly gives garbage. With duplicates <code>[2, 2, 2, 2]</code> searching 2 returns <b>some</b> index (here 1), not necessarily the first. For "first occurrence" or "count of x", write your own lower-bound loop (DSA Binary Search module).</p>`, code: `
+int[] unsorted = {5, 1, 4};
+System.out.println(java.util.Arrays.binarySearch(unsorted, 5));   // -4 (wrong! 5 is at index 0)
+int[] dup = {2, 2, 2, 2};
+System.out.println(java.util.Arrays.binarySearch(dup, 2));        // 1 (some match, not the first)` },
+      { title: 'The Arrays.fill 2D trap', html: `<p><code>Arrays.fill(grid, new int[3])</code> creates <b>one</b> row and stores the same reference in every slot — change one row and all rows change. Fill <b>each row</b> instead.</p>
+${H.table(['Code', 'Rows are…'], [['<code>Arrays.fill(g, new int[3])</code>', H.c('r', 'one shared object')], ['<code>for (int[] row : g) Arrays.fill(row, -1)</code>', H.c('g', 'separate, all -1')]])}`, code: `
+int[][] g = new int[3][];
+java.util.Arrays.fill(g, new int[3]);     // every slot -> the SAME row
+g[0][0] = 7;
+System.out.println(g[2][0]);              // 7  (surprise)
+
+int[][] dp = new int[3][3];
+for (int[] row : dp) java.util.Arrays.fill(row, -1);   // correct way
+dp[0][0] = 0;
+System.out.println(java.util.Arrays.deepToString(dp)); // [[0, -1, -1], [-1, -1, -1], [-1, -1, -1]]` },
+      { title: 'Sorting objects: stable and with comparators', html: `<p>For objects, <code>Arrays.sort</code> is <b>stable</b> (equal elements keep their original order). Sort words by length and words of the same length stay in input order — perfect for multi-key sorting done in passes.</p>`, code: `
+String[] words = {"pear", "fig", "apple", "kiwi", "date"};
+java.util.Arrays.sort(words, java.util.Comparator.comparingInt(String::length));
+System.out.println(java.util.Arrays.toString(words));  // [fig, pear, kiwi, date, apple] (stable for 4-letter words)
+java.util.Arrays.sort(words);                           // natural (alphabetical) order
+System.out.println(java.util.Arrays.toString(words));  // [apple, date, fig, kiwi, pear]` },
+      { title: 'System.arraycopy to shift elements (insert into a sorted array)', html: `<p>To insert 4 into the sorted prefix [1, 3, 5, 7] stored in a bigger array: find the insertion point with binarySearch, shift the tail one place right with <code>System.arraycopy</code> (it handles overlapping ranges correctly), then drop the value in.</p>`, code: `
+int[] a = {1, 3, 5, 7, 0};                  // 4 used slots + 1 spare
+int used = 4, key = 4;
+int idx = java.util.Arrays.binarySearch(a, 0, used, key);
+int ins = idx >= 0 ? idx : -(idx + 1);      // 2
+System.arraycopy(a, ins, a, ins + 1, used - ins);  // shift [5, 7] right
+a[ins] = key;
+System.out.println(java.util.Arrays.toString(a));  // [1, 3, 4, 5, 7]` }
+    ],
+    deepDive: `<p><b>Which algorithm does sort use?</b> For primitive arrays, <code>Arrays.sort</code> uses <b>Dual-Pivot Quicksort</b> (Yaroslavskiy, since Java 7) with insertion sort for tiny ranges; since JDK 14 it also falls back to heapsort when recursion gets too deep, so the worst case is O(n log n). It is <b>not stable</b> — irrelevant for primitives since equal ints are indistinguishable. For object arrays it uses <b>TimSort</b> (a merge-sort/insertion-sort hybrid from Python): <b>stable</b>, O(n log n) worst case, close to O(n) on nearly sorted data, but needs up to n/2 extra references of memory.</p>
+<p><b>parallelSort</b> splits big arrays (≥ 8 192 elements) across the common ForkJoinPool. It helps for millions of elements on multi-core machines, but competes with your other parallel work — measure before using it in a server.</p>
+<p><b>Comparator pitfalls.</b> Never write <code>(a, b) -&gt; a - b</code> for ints: it overflows when a and b have opposite signs and large magnitudes (e.g. <code>Integer.MIN_VALUE - 1</code>). Use <code>Integer.compare(a, b)</code>. TimSort may throw "Comparison method violates its general contract!" if your comparator is inconsistent.</p>
+<p><b>binarySearch's (lo + hi) &gt;&gt;&gt; 1.</b> The classic <code>(lo + hi) / 2</code> overflows when lo + hi &gt; 2<sup>31</sup> − 1 — a bug that lived in the JDK (and most textbooks) until 2006. The unsigned shift <code>&gt;&gt;&gt; 1</code> treats the overflowed sum as unsigned and gives the right midpoint.</p>
+<p><b>copyOf and arraycopy</b> are JVM intrinsics: they compile to highly optimised memory-move instructions, far faster than a hand-written loop for large arrays. <code>Arrays.equals</code> and <code>mismatch</code> are vectorised in modern JDKs.</p>
+<p><b>asList internals.</b> It returns <code>java.util.Arrays$ArrayList</code> (a private class, <i>not</i> <code>java.util.ArrayList</code>) that wraps your array directly; <code>set</code> is supported, structural changes are not. <code>List.of</code> returns an immutable list that rejects nulls and copies the data. Knowing these three (asList, List.of, new ArrayList) is a common interview probe.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI will happily reach for the right Arrays method — and also for streams like <code>Arrays.stream(a).boxed().sorted(Comparator.reverseOrder())</code> where a sort plus reverse is simpler and faster.</p>
+<p><b>Use AI as a partner:</b> <code>"Which Arrays methods allocate a new array and which work in place?"</code>, <code>"Replace my hand-written copy loops with Arrays/System.arraycopy where it is clearer"</code>, <code>"Write a comparator for int[] intervals by start then end without overflow."</code></p>
+<p><b>Where AI goes wrong:</b> calling binarySearch on unsorted data, using <code>a - b</code> comparators, trying <code>Arrays.sort(int[], Collections.reverseOrder())</code> (does not compile), and calling <code>add</code> on an <code>Arrays.asList</code> result.</p>
+<p><b>What you must still own:</b> knowing the cost of each call (sort is O(n log n), copyOf is O(n), asList is O(1) because it does not copy), the preconditions (sorted for binarySearch), and the shallow-copy semantics.</p>`,
+    problems: [{
+      title: 'Are Two Arrays Permutations of Each Other?',
+      level: 'Easy', tags: ['Arrays.sort', 'Arrays.equals', 'defensive copy'], companies: ['Amazon', 'Adobe'],
+      statement: `<p>Return true if int arrays <code>a</code> and <code>b</code> contain exactly the same values with the same counts (in any order). Do <b>not</b> modify the inputs.</p>`,
+      constraints: `0 ≤ length ≤ 10<sup>5</sup>; values fit in int`,
+      example: `<p>a = [3, 1, 2, 1], b = [1, 2, 1, 3] → ${H.c('g', 'true')}. a = [1, 1, 2], b = [1, 2, 2] → ${H.c('r', 'false')} (counts of 1 and 2 differ).</p>`,
+      brute: { why: `<p>For each element of a, scan b for an unused equal element and mark it used. Correct, but O(n²): 10<sup>10</sup> steps for n = 10<sup>5</sup>.</p>`, code: `
+static boolean isPermBrute(int[] a, int[] b) {
+    if (a.length != b.length) return false;
+    boolean[] used = new boolean[b.length];
+    for (int x : a) {
+        boolean matched = false;
+        for (int j = 0; j < b.length; j++) {
+            if (!used[j] && b[j] == x) { used[j] = true; matched = true; break; }
+        }
+        if (!matched) return false;
+    }
+    return true;
+}` },
+      mcq: { q: 'Why sort <b>copies</b> instead of the input arrays?', options: ['Arrays.sort cannot sort parameters', 'Sorting the inputs would silently change the caller\'s data (a side effect)', 'Copies sort faster', 'Arrays.equals needs copies'], answer: 1, explain: 'Arrays are passed by reference value, so sorting a parameter rearranges the caller\'s array. Callers rarely expect that.' },
+      hints: [`<p>Hint 1: if two arrays hold the same multiset of values, their <b>sorted</b> versions are identical.</p>`, `<p>Hint 2: <code>Arrays.copyOf</code> (or <code>clone</code>) → <code>Arrays.sort</code> both → <code>Arrays.equals</code>.</p>`, `<p>Hint 3: check lengths first (cheap early exit). Empty vs empty → true. Recipe: length check → copy → sort → equals.</p>`],
+      solution: {
+        approach: `<p>Different lengths → false immediately. Otherwise sort clones of both arrays and compare them element by element with <code>Arrays.equals</code>.</p>`,
+        code: `
+import java.util.Arrays;
+
+class Permutation {
+    static boolean isPermutation(int[] a, int[] b) {
+        if (a.length != b.length) return false;   // cheap early exit
+        int[] x = a.clone(), y = b.clone();       // protect the caller's arrays
+        Arrays.sort(x);
+        Arrays.sort(y);
+        return Arrays.equals(x, y);
+    }
+    public static void main(String[] args) {
+        System.out.println(isPermutation(new int[]{3, 1, 2, 1}, new int[]{1, 2, 1, 3})); // true
+        System.out.println(isPermutation(new int[]{1, 1, 2}, new int[]{1, 2, 2}));       // false
+        System.out.println(isPermutation(new int[]{}, new int[]{}));                     // true
+    }
+}`,
+        alt: [{ lang: 'python', code: `def is_permutation(a, b):\n    return len(a) == len(b) and sorted(a) == sorted(b)\n\nprint(is_permutation([3, 1, 2, 1], [1, 2, 1, 3]), is_permutation([1, 1, 2], [1, 2, 2]))`, run: true }],
+        dry: { head: ['step', 'x', 'y', 'result'], rows: [['clone', '[3, 1, 2, 1]', '[1, 2, 1, 3]', '—'], ['sort', '[1, 1, 2, 3]', '[1, 1, 2, 3]', '—'], ['equals', 'index by index', 'all match', H.c('g', 'true')]] },
+        complexity: `<p>Time O(n log n) for the two sorts; space O(n) for the copies. With a HashMap of counts (or a count array for small value ranges) it becomes O(n) time.</p>`,
+        followUps: ['Solve it in O(n) when values are in 0..1000 (count array).', 'Do the same for two Strings — "is t an anagram of s?"']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 8 — Everyday String methods
+     ====================================================================== */
+  topics.push({
+    title: 'String Basics: The Everyday Methods (and Their Traps)',
+    analogy: `<p>A Java <code>String</code> is a <b>printed train ticket</b>. You can read any character on it, measure it, look for a station name, or cut out a piece — but you can <b>never change the ink</b>. Every "change" (uppercase it, replace a word, trim spaces) makes the ticket office <b>print a brand-new ticket</b> and hand it to you; the old one is untouched. If you do not keep the new ticket (assign it to a variable), it is thrown away. Seats on the ticket are numbered from 0, and when you ask for "seats 2 to 5" you get 2, 3, 4 — the end number is where you <b>stop</b>, not included.</p>`,
+    explain: `<h4>1. Reading a String</h4>
+${H.arr(['h', 'e', 'l', 'l', 'o'], { label: 's = "hello"' })}
+${H.table(['Call', 'Result', 'Note'], [
+  ['<code>s.length()</code>', '5', 'a <b>method</b> (arrays use the <code>.length</code> field)'],
+  ['<code>s.charAt(1)</code>', "'e'", 'returns a <code>char</code>; index 5 → StringIndexOutOfBoundsException'],
+  ['<code>s.indexOf(\'l\')</code>', '2', 'first position; <b>−1</b> if absent'],
+  ['<code>s.lastIndexOf(\'l\')</code>', '3', 'last position'],
+  ['<code>s.indexOf("lo")</code>', '3', 'works with Strings too'],
+  ['<code>s.contains("ell")</code>', 'true', ''],
+  ['<code>s.startsWith("he")</code> / <code>endsWith("lo")</code>', 'true / true', ''],
+  ['<code>s.substring(1, 4)</code>', '"ell"', 'from index 1 up to <b>but not including</b> 4 → length 4 − 1 = 3'],
+  ['<code>s.substring(2)</code>', '"llo"', 'from 2 to the end'],
+  ['<code>s.isEmpty()</code> / <code>"  ".isBlank()</code>', 'false / true', 'isBlank (Java 11) ignores whitespace']])}
+<h4>2. "Changing" a String (always returns a NEW String)</h4>
+${H.table(['Call', 'Result'], [
+  ['<code>" Hi ".trim()</code> / <code>.strip()</code>', '"Hi" (strip is Unicode-aware, Java 11)'],
+  ['<code>"Hi".toUpperCase()</code> / <code>toLowerCase()</code>', '"HI" / "hi"'],
+  ['<code>"a-b-c".replace("-", "+")</code>', '"a+b+c" (literal text, all occurrences)'],
+  ['<code>"a1b22".replaceAll("[0-9]+", "#")</code>', '"a#b#" (<b>regex</b>)'],
+  ['<code>"ab".repeat(3)</code>', '"ababab" (Java 11)'],
+  ['<code>String.join("-", "a", "b", "c")</code>', '"a-b-c"'],
+  ['<code>"a,b,c".split(",")</code>', '["a", "b", "c"] (<b>regex</b> delimiter!)']])}
+<p>Because Strings are <b>immutable</b>, <code>s.toUpperCase();</code> on its own line does nothing useful — you must write <code>s = s.toUpperCase();</code>.</p>
+<h4>3. Comparing Strings</h4>
+<ul><li><code>a.equals(b)</code> — same characters? <b>Always use this</b> for content. <code>a == b</code> asks "same object?" and can be false for equal text (full story in the Strings Deep Dive module).</li>
+<li><code>a.equalsIgnoreCase(b)</code> — ignores case.</li>
+<li><code>a.compareTo(b)</code> — dictionary order: negative if a comes first, 0 if equal, positive if after. It returns the <b>difference of the first differing chars</b> (<code>"abc".compareTo("abd")</code> = −1), or the length difference if one is a prefix (<code>"apple".compareTo("app")</code> = 2). Uppercase letters sort <b>before</b> lowercase (<code>"B".compareTo("a")</code> = 66 − 97 = −31).</li></ul>
+<h4>4. Chars, numbers and Strings</h4>
+${H.table(['Expression', 'Result', 'Why'], [
+  ['<code>1 + 2 + "3"</code>', '"33"', 'left to right: 1 + 2 = 3 (int), then "3" + "3"'],
+  ['<code>"1" + 2 + 3</code>', '"123"', 'once a String appears, + means concatenate'],
+  ["<code>'a' + 'b'</code>", '195', 'char + char is int addition (97 + 98)'],
+  ["<code>\"\" + 'a' + 'b'</code>", '"ab"', 'start with a String to concatenate'],
+  ["<code>(char) ('a' + 2)</code>", "'c'", 'char arithmetic, cast back'],
+  ["<code>'7' - '0'</code>", '7', 'digit char → its numeric value'],
+  ['<code>Integer.parseInt("42")</code> / <code>String.valueOf(42)</code>', '42 / "42"', 'String ↔ number']])}
+<p>The <code>Character</code> class helps when walking a String: <code>isDigit</code>, <code>isLetter</code>, <code>isLetterOrDigit</code>, <code>isWhitespace</code>, <code>toLowerCase</code>. And <code>c - 'a'</code> turns a lowercase letter into 0..25 — the index into an <code>int[26]</code> frequency table.</p>
+<h4>5. Building Strings in a loop</h4>
+<p><code>result += piece</code> inside a loop creates a new String every round, copying everything so far: O(n²) for n pieces. Use a <code>StringBuilder</code> (<code>sb.append(piece)</code>, then <code>sb.toString()</code>) — covered in depth in the Strings Deep Dive module.</p>`,
+    clues: [
+      '"substring", "prefix", "suffix", "extract the part between …" → <code>indexOf</code> + <code>substring(begin, end)</code> with end exclusive',
+      '"ignore case", "case-insensitive" → <code>equalsIgnoreCase</code> or normalise once with <code>toLowerCase(Locale.ROOT)</code>',
+      '"words separated by one or more spaces", "leading/trailing spaces" → <code>strip()</code> + <code>split("\\\\s+")</code>',
+      '"count each letter", "only lowercase a–z" → <code>int[26]</code> with <code>c - \'a\'</code>',
+      '"split on . or |" → regex special characters, escape them: <code>split("\\\\.")</code>, or use <code>Pattern.quote</code>',
+      '"build the answer string character by character" → StringBuilder, not <code>+=</code>'
+    ],
+    code: [`
+import java.util.Arrays;
+
+public class StringBasics {
+    public static void main(String[] args) {
+        String s = "Hello, World";
+        System.out.println(s.length());                  // 12
+        System.out.println(s.charAt(7));                 // W
+        System.out.println(s.indexOf('o') + " " + s.lastIndexOf('o') + " " + s.indexOf('z')); // 4 8 -1
+        System.out.println(s.substring(7));              // World
+        System.out.println(s.substring(0, 5));           // Hello
+        int comma = s.indexOf(',');
+        System.out.println(s.substring(comma + 2));      // World  (text after ", ")
+
+        String shout = s.toUpperCase();                  // new String; s unchanged
+        System.out.println(shout + " / " + s);           // HELLO, WORLD / Hello, World
+
+        String messy = "   spaced   out   ";
+        System.out.println("[" + messy.strip() + "]");                    // [spaced   out]
+        System.out.println(Arrays.toString(messy.strip().split("\\\\s+"))); // [spaced, out]
+
+        System.out.println(String.join("|", "a", "b", "c") + " " + "ab".repeat(3)); // a|b|c ababab
+        System.out.println("x.y.z".split("\\\\.").length + " " + "x.y.z".split(".").length);  // 3 0  ('.' is regex "any char")
+
+        System.out.println("apple".equals("apple") + " " + "Apple".equalsIgnoreCase("APPLE")); // true true
+        System.out.println("abc".compareTo("abd") + " " + "apple".compareTo("app"));         // -1 2
+
+        // letter frequencies with an int[26]
+        int[] freq = new int[26];
+        for (char c : "banana".toCharArray()) freq[c - 'a']++;
+        System.out.println("a=" + freq[0] + " b=" + freq[1] + " n=" + freq['n' - 'a']);      // a=3 b=1 n=2
+
+        // digits of a String to an int sum
+        int digitSum = 0;
+        for (int i = 0; i < "4096".length(); i++) digitSum += "4096".charAt(i) - '0';
+        System.out.println(digitSum);                    // 19
+
+        System.out.println(1 + 2 + "3" + 1 + 2);         // 3312
+    }
+}`],
+    codeTitle: ['Everyday String methods with their results'],
+    viz: [{
+      title: 'String explorer: indexes, indexOf, substring and immutability',
+      input: 'hello world',
+      inputLabel: 'any text (1..24 characters)',
+      gen: function (input) {
+        var s = String(input === undefined || input === null ? '' : input);
+        if (s.length < 1 || s.length > 24 || /[\n\r"\\]/.test(s)) throw new Error('Type 1 to 24 characters (no quotes, backslashes or line breaks), e.g. hello world');
+        var n = s.length, cells = s.split('').map(function (ch) { return ch === ' ' ? '␣' : ch; });
+        var cnt = {}, best = s[0];
+        s.split('').forEach(function (ch) { if (ch !== ' ') { cnt[ch] = (cnt[ch] || 0) + 1; if (cnt[ch] > (cnt[best] || 0) || best === ' ') best = ch; } });
+        var c = best, fi = s.indexOf(c), li = s.lastIndexOf(c);
+        var b = Math.min(1, n - 1), e = Math.min(n, b + 3), sub = s.substring(b, e), up = s.toUpperCase();
+        var code = 'String s = "' + s + '";\nint n = s.length();\nchar last = s.charAt(n - 1);\nint i = s.indexOf(\'' + c + '\');\nint j = s.lastIndexOf(\'' + c + '\');\nString mid = s.substring(' + b + ', ' + e + ');\nint k = s.indexOf(\'#\');\ns.toUpperCase();\nString up = s.toUpperCase();';
+        function A(hl, ptr, range, lbl) { return { type: 'array', label: lbl || 's', values: cells.slice(), hl: hl || {}, ptr: ptr || {}, range: range, showIdx: true }; }
+        var steps = [];
+        steps.push({ l: 1, v: { s: '"' + s + '"' }, extra: [A()], narr: 'A String is a fixed sequence of chars numbered from <b>0</b>. Spaces are characters too (shown as ␣).' });
+        steps.push({ l: 2, v: { n: n }, hv: { n: 'ok' }, extra: [A({}, one(n - 1, 'n-1'))], narr: '<code>length()</code> = <b>' + n + '</b>, so valid indexes are 0..' + (n - 1) + '. <code>charAt(' + n + ')</code> would throw StringIndexOutOfBoundsException.' });
+        steps.push({ l: 3, v: { n: n, last: "'" + s[n - 1] + "'" }, hv: { last: 'ok' }, extra: [A(one(n - 1, 'ok'), one(n - 1, 'n-1'))], narr: 'The last character is at <b>n − 1</b> = ' + (n - 1) + ': <code>\'' + esc(s[n - 1]) + '\'</code>. Using <code>charAt(n)</code> is the classic off-by-one.' });
+        steps.push({ l: 4, v: { i: fi }, hv: { i: 'ok' }, extra: [A(one(fi, 'ok'), one(fi, 'i'))], narr: '<code>indexOf(\'' + esc(c) + '\')</code> scans left to right and stops at the <b>first</b> match: index <b>' + fi + '</b>.' });
+        steps.push({ l: 5, v: { i: fi, j: li }, hv: { j: 'ok' }, extra: [A((function () { var h = {}; h[fi] = 'ok'; h[li] = 'sel'; return h; })(), (function () { var p = {}; p[fi] = 'i'; p[li] = fi === li ? ['i', 'j'] : 'j'; return p; })())], narr: '<code>lastIndexOf(\'' + esc(c) + '\')</code> scans from the right: index <b>' + li + '</b>.' + (fi === li ? ' Same as indexOf — the char appears once.' : '') });
+        var rh = {}; for (var q = b; q < e; q++) rh[q] = 'win';
+        var pp = {}; pp[b] = 'begin'; if (e < n) pp[e] = 'end (excluded)';
+        steps.push({ l: 6, v: { mid: '"' + sub + '"', 'mid.length()': sub.length }, hv: { mid: 'ok' }, extra: [A(rh, pp)], narr: '<code>substring(' + b + ', ' + e + ')</code> copies indexes ' + b + '..' + (e - 1) + ' — the end index <b>' + e + '</b> is <b>excluded</b>. Length = end − begin = ' + (e - b) + '. Result: <code>"' + esc(sub) + '"</code>.' });
+        var k = s.indexOf('#');
+        steps.push({ l: 7, cls: k < 0 ? 'bad' : 'ok', v: { k: k }, hv: { k: k < 0 ? 'bad' : 'ok' }, extra: [A()], narr: k < 0 ? 'No <code>#</code> in the text → <code>indexOf</code> returns <b>−1</b>. Always check for −1 before using the result in <code>substring</code>, or you get an exception.' : '<code>#</code> found at ' + k + '.' });
+        steps.push({ l: 8, cls: 'bad', v: { s: '"' + s + '"' }, hv: { s: 'bad' }, extra: [A()], narr: '<code>s.toUpperCase();</code> builds a new String "' + esc(up) + '"… and throws it away because nothing stores it. <b>s is unchanged</b> — Strings are immutable.' });
+        steps.push({ l: 9, cls: 'ok', v: { s: '"' + s + '"', up: '"' + up + '"' }, hv: { up: 'ok' }, extra: [A(), { type: 'array', label: 'up (a different object)', values: up.split('').map(function (ch) { return ch === ' ' ? '␣' : ch; }), showIdx: false }], narr: 'Storing the result keeps the new String. Two separate objects now exist: the original and the uppercase copy.' });
+        return codeFrames(code, steps);
+      }
+    }, {
+      title: 'How split(",") really behaves',
+      input: 'a,b,,c,,',
+      inputLabel: 'text to split on commas (up to 30 chars)',
+      gen: function (input) {
+        var s = String(input === undefined || input === null ? '' : input);
+        if (s.length > 30 || /[\n\r"\\]/.test(s)) throw new Error('Up to 30 characters, no quotes/backslashes/line breaks, e.g. a,b,,c,,');
+        var code = 'String s = "' + s + '";\nString[] parts = s.split(",");\nSystem.out.println(parts.length);';
+        var raw = s.split(','), steps = [];
+        var cells = s.length ? s.split('').map(function (ch) { return ch === ' ' ? '␣' : ch; }) : ['(empty)'];
+        var commaHl = {}; s.split('').forEach(function (ch, i) { if (ch === ',') commaHl[i] = 'r'; });
+        var commaParts = {}; Object.keys(commaHl).forEach(function (k) { commaParts[k] = 'bad'; });
+        steps.push({ l: 1, v: { 's.length()': s.length }, extra: [{ type: 'array', label: 's (commas in red)', values: cells, hl: commaParts, showIdx: true }], narr: 'The delimiter <code>","</code> is actually a <b>regular expression</b>. A comma has no special meaning in regex, so it matches literal commas. (A dot <code>"."</code> would match <i>every</i> character!)' });
+        steps.push({ l: 2, v: { 'raw pieces': raw.length }, extra: [{ type: 'array', label: 'cut at every comma (before clean-up)', values: raw.map(function (x) { return x === '' ? '""' : x; }), hl: (function () { var h = {}; raw.forEach(function (x, i) { if (x === '') h[i] = 'cur'; }); return h; })(), showIdx: true }], narr: 'Step 1: cut at every comma. Two commas in a row (or a comma at either end) produce an <b>empty string</b> "" between them.' });
+        var res = raw.slice();
+        if (s === '') res = [''];
+        else { while (res.length && res[res.length - 1] === '') res.pop(); }
+        var removed = s === '' ? 0 : raw.length - res.length;
+        steps.push({ l: 2, cls: removed ? 'bad' : 'ok', v: { 'trailing empties removed': removed, 'parts.length': res.length }, hv: { 'trailing empties removed': removed ? 'bad' : '' }, extra: [{ type: 'array', label: 'parts (final)', values: res.length ? res.map(function (x) { return x === '' ? '""' : x; }) : ['(empty array)'], hl: (function () { var h = {}; res.forEach(function (x, i) { if (x === '') h[i] = 'cur'; }); return h; })(), showIdx: res.length > 0 }],
+          narr: s === '' ? 'Special case: splitting an <b>empty</b> String gives an array with <b>one</b> empty string <code>[""]</code>, not an empty array.' : 'Step 2: with the default limit (0), Java <b>removes trailing empty strings</b> — ' + removed + ' removed. Leading and middle empties are <b>kept</b>.' + (res.length === 0 ? ' Every piece was empty, so the result is an empty array.' : '') });
+        steps.push({ l: 3, cls: 'ok', v: { 'parts.length': res.length }, hv: { 'parts.length': 'sel' }, out: String(res.length), narr: 'Prints <b>' + res.length + '</b>. Want to keep trailing empties (e.g. CSV with blank last columns)? Use <code>s.split(",", -1)</code> → ' + (s === '' ? 1 : raw.length) + ' parts.' });
+        return codeFrames(code, steps);
+      }
+    }],
+    examples: [
+      { title: 'Predict the output: + with chars, ints and Strings', html: `<p>Java evaluates <code>+</code> left to right. Until a String shows up, chars and ints are <b>added as numbers</b>.</p>
+${H.table(['Expression', 'Step by step', 'Prints'], [["<code>'J' + 'a'</code>", '74 + 97', '171'], ["<code>\"\" + 'J' + 'a'</code>", '"J" then "Ja"', 'Ja'], ['<code>1 + 2 + "3" + 1 + 2</code>', '3 → "33" → "331" → "3312"', '3312'], ['<code>"Java".charAt(0) + "Java".charAt(1)</code>', "'J' + 'a' = 74 + 97", H.c('r', '171')]])}`, code: `
+System.out.println('J' + 'a');                              // 171
+System.out.println("" + 'J' + 'a');                         // Ja
+System.out.println(1 + 2 + "3" + 1 + 2);                    // 3312
+System.out.println("Java".charAt(0) + "Java".charAt(1));    // 171
+System.out.println("" + "Java".charAt(0) + "Java".charAt(1)); // Ja` },
+      { title: 'split surprises: regex characters and empty pieces', html: `<p><code>split</code> takes a <b>regex</b>. <code>"."</code> means "any character", so every char is a delimiter and all pieces are empty → trailing empties removed → length 0. <code>"|"</code> means "empty OR empty" and splits between every char. Escape with <code>"\\\\."</code> or <code>"\\\\|"</code>, or use <code>Pattern.quote(".")</code>.</p>
+${H.table(['Call', 'Result'], [['<code>"a.b".split(".")</code>', H.c('r', '[] (length 0)')], ['<code>"a.b".split("\\\\.")</code>', H.c('g', '[a, b]')], ['<code>",a,b".split(",")</code>', '["", a, b] — leading empty kept'], ['<code>"a,b,,".split(",")</code>', '[a, b] — trailing empties dropped'], ['<code>"a,b,,".split(",", -1)</code>', '[a, b, "", ""]'], ['<code>"a,b,c".split(",", 2)</code>', '[a, "b,c"] — at most 2 pieces']])}`, code: `
+System.out.println("a.b".split(".").length);                                 // 0
+System.out.println(java.util.Arrays.toString("a.b".split("\\\\.")));          // [a, b]
+System.out.println(java.util.Arrays.toString("a,b,,".split(",", -1)));       // [a, b, , ]
+System.out.println(java.util.Arrays.toString("a,b,c".split(",", 2)));        // [a, b,c]
+System.out.println(java.util.Arrays.toString("a.b".split(java.util.regex.Pattern.quote(".")))); // [a, b]` },
+      { title: 'Extract the domain from an email', html: `<p>Combine <code>indexOf</code>, <code>lastIndexOf</code> and <code>substring</code>, and <b>always check for −1</b>. For <code>"asha@mail.example.com"</code>: @ is at 4, so the domain is <code>substring(5)</code> = "mail.example.com", and the top-level domain is after the last dot.</p>`, code: `
+static String domain(String email) {
+    int at = email.indexOf('@');
+    if (at < 0 || at != email.lastIndexOf('@') || at == email.length() - 1)
+        throw new IllegalArgumentException("not a simple email: " + email);
+    return email.substring(at + 1);
+}
+static String tld(String email) {
+    String d = domain(email);
+    return d.substring(d.lastIndexOf('.') + 1);   // lastIndexOf = -1 -> substring(0) = whole domain
+}` },
+      { title: 'Case-insensitive compare the safe way', html: `<p><code>toLowerCase()</code> uses the JVM's default <b>locale</b>. On a Turkish machine <code>"TITLE".toLowerCase()</code> gives "tıtle" (dotless ı), so <code>.equals("title")</code> fails! Use <code>equalsIgnoreCase</code> for comparisons, or <code>toLowerCase(Locale.ROOT)</code> for machine-readable text like keywords, file extensions and HTTP headers.</p>`, code: `
+String ext = "PHOTO.JPG";
+boolean isJpg = ext.toLowerCase(java.util.Locale.ROOT).endsWith(".jpg");   // locale-proof
+boolean same = "TITLE".equalsIgnoreCase("title");
+System.out.println(isJpg + " " + same);   // true true` }
+    ],
+    deepDive: `<p><b>What is inside a String?</b> Since Java 9 (<b>compact strings</b>, JEP 254) a String holds a <code>byte[]</code> plus a <code>coder</code> flag: LATIN1 (1 byte per char) when every character fits in ISO-8859-1, otherwise UTF16 (2 bytes per char). English text uses half the memory it did in Java 8. The hash code is computed lazily and cached in a field, which is why Strings make fast HashMap keys.</p>
+<p><b>char is UTF-16, not "a character".</b> <code>length()</code> counts UTF-16 <b>code units</b>. Emoji and many rare scripts need two units (a surrogate pair): <code>"😀".length()</code> is 2, and <code>charAt(0)</code> returns half an emoji. Use <code>codePointCount</code>, <code>codePoints()</code> or <code>Character.toChars</code> when handling user-generated text; reversing a String char by char can corrupt emoji.</p>
+<p><b>substring copies (since 7u6).</b> Old Java shared the parent's <code>char[]</code>, so a tiny substring could keep a huge string alive (a memory leak). Modern Java copies, so <code>substring</code> is O(length of result).</p>
+<p><b>Concatenation under the hood.</b> Since Java 9, <code>a + b + c</code> compiles to an <code>invokedynamic</code> call to <code>StringConcatFactory</code>, which sizes the result once. But <code>s += x</code> in a loop still creates n intermediate Strings — O(n²) characters copied. A <code>StringBuilder</code> amortises growth to O(n).</p>
+<p><b>split performance.</b> <code>String.split</code> has a fast path for a single non-regex character (like <code>","</code>) that avoids the regex engine; otherwise it compiles a <code>Pattern</code> <b>every call</b>. In a hot loop, precompile: <code>private static final Pattern WS = Pattern.compile("\\\\s+");</code> and use <code>WS.split(line)</code>.</p>
+<p><b>trim vs strip.</b> <code>trim()</code> removes chars ≤ U+0020 (ASCII control + space); <code>strip()</code> removes all Unicode whitespace (e.g. U+2003 em space, U+3000 ideographic space). <code>isBlank()</code> uses the Unicode definition too. Prefer strip/isBlank in new code.</p>
+<p><b>Text blocks and formatting</b> (Java 15+): <code>"""…"""</code> for multi-line strings and <code>"%s scored %d".formatted(name, score)</code> — covered in Modern Java.</p>`,
+    aiEra: `<p><b>What AI changes:</b> string manipulation is where AI saves the most typing — parsing, formatting, and regexes come out instantly. It also means bugs hide in code that "looks right".</p>
+<p><b>Use AI as a partner:</b> <code>"Explain this regex piece by piece and give 5 strings it should and should not match"</code>, <code>"What does split return here for empty input, trailing commas and consecutive delimiters?"</code>, <code>"Make this string code Unicode/emoji-safe."</code></p>
+<p><b>Where AI goes wrong:</b> unescaped regex in <code>split(".")</code> or <code>split("|")</code>, assuming <code>split</code> keeps trailing empty fields, using <code>==</code> for String comparison, off-by-one <code>substring</code> ends, <code>toLowerCase()</code> without a locale, and <code>+=</code> in loops on big inputs.</p>
+<p><b>What you must still own:</b> exact semantics of indexOf/substring/split on edge cases (empty string, not found = −1, end exclusive), the immutability mental model, and the + evaluation order — all favourite predict-the-output material.</p>`,
+    problems: [{
+      title: 'Valid Palindrome (Ignore Case and Punctuation)',
+      level: 'Easy', tags: ['String', 'two pointers', 'Character methods'], companies: ['Meta', 'Microsoft', 'Amazon'],
+      statement: `<p>A phrase is a palindrome if, after converting letters to lowercase and removing every character that is not a letter or digit, it reads the same forwards and backwards. Return true if <code>s</code> is a palindrome. Use O(1) extra space.</p>`,
+      constraints: `1 ≤ s.length() ≤ 2·10<sup>5</sup>; printable ASCII`,
+      example: `<p>"Race, car" → cleaned "racecar" → ${H.c('g', 'true')}. "ab, A" → cleaned "aba" → ${H.c('g', 'true')} (the comma and space are ignored, "A" becomes "a"). "hello" → ${H.c('r', 'false')}.</p>`,
+      brute: { why: `<p>Build a cleaned copy with <code>+=</code> in a loop, then build its reverse the same way and compare. Correct, but every <code>+=</code> copies the whole string so far: O(n²) time for 2·10<sup>5</sup> characters (≈ 2·10<sup>10</sup> char copies), plus O(n) extra memory.</p>`, code: `
+static boolean isPalBrute(String s) {
+    String clean = "";
+    for (char c : s.toCharArray())
+        if (Character.isLetterOrDigit(c)) clean += Character.toLowerCase(c);   // O(n) copy each time
+    String rev = "";
+    for (int i = clean.length() - 1; i >= 0; i--) rev += clean.charAt(i);
+    return clean.equals(rev);
+}` },
+      mcq: { q: 'The left pointer sits on <code>\',\'</code>. What should the loop do?', options: ['Return false', 'Skip it: move the left pointer right without comparing', 'Compare it with the right character anyway', 'Restart from the beginning'], answer: 1, explain: 'Non-alphanumeric characters are ignored entirely, so a pointer that lands on one simply moves on.' },
+      hints: [`<p>Hint 1: you never need the cleaned string — compare characters from both ends of the <b>original</b> string, skipping junk.</p>`, `<p>Hint 2: two indexes <code>i = 0</code>, <code>j = n − 1</code>. Skip with <code>while (i &lt; j &amp;&amp; !Character.isLetterOrDigit(s.charAt(i))) i++;</code> and the same for j.</p>`, `<p>Hint 3: compare <code>Character.toLowerCase</code> of both; mismatch → false. Strings with no letters at all (",,") are palindromes. Recipe: skip, skip, compare, move both, repeat while i &lt; j.</p>`],
+      solution: {
+        approach: `<p>Two pointers walking inwards over the original string. Each pointer skips characters that are not letters/digits; the two current characters are compared case-insensitively. No new strings are built.</p>`,
+        code: `
+class Palindrome {
+    static boolean isPalindrome(String s) {
+        int i = 0, j = s.length() - 1;
+        while (i < j) {
+            while (i < j && !Character.isLetterOrDigit(s.charAt(i))) i++;   // skip junk on the left
+            while (i < j && !Character.isLetterOrDigit(s.charAt(j))) j--;   // skip junk on the right
+            if (Character.toLowerCase(s.charAt(i)) != Character.toLowerCase(s.charAt(j))) return false;
+            i++;
+            j--;
+        }
+        return true;
+    }
+    public static void main(String[] args) {
+        System.out.println(isPalindrome("Race, car"));                       // true
+        System.out.println(isPalindrome("A man, a plan, a canal: Panama")); // true
+        System.out.println(isPalindrome("hello"));                           // false
+        System.out.println(isPalindrome(",,"));                              // true
+    }
+}`,
+        alt: [{ lang: 'python', code: `def is_palindrome(s):\n    i, j = 0, len(s) - 1\n    while i < j:\n        while i < j and not s[i].isalnum(): i += 1\n        while i < j and not s[j].isalnum(): j -= 1\n        if s[i].lower() != s[j].lower():\n            return False\n        i, j = i + 1, j - 1\n    return True\n\nprint(is_palindrome("Race, car"), is_palindrome("hello"))`, run: true }],
+        dry: { head: ['i', 's[i]', 'j', 's[j]', 'action'], rows: [['0', 'R', '8', 'r', 'r == r ✓, move both'], ['1', 'a', '7', 'a', 'match, move both'], ['2', 'c', '6', 'c', 'match, move both'], ['3', 'e', '5', '␣', 'skip j → 4 (,) → skip → 3'], ['3', 'e', '3', 'e', 'i == j → loop ends → ' + H.c('g', 'true')]] },
+        complexity: `<p>O(n) time — each pointer moves at most n steps in total; O(1) extra space.</p>`,
+        followUps: ['Allow deleting at most one character (LeetCode "Valid Palindrome II").', 'Make it Unicode-correct using <code>codePointAt</code> and <code>Character.isLetterOrDigit(int)</code>.']
       }
     }]
   });

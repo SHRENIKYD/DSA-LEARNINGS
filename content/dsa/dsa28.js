@@ -2051,4 +2051,735 @@ class JavaToolkit {
       <p><b>Quiz yourself with AI:</b> <code>Ask me one pattern-recognition question at a time. Wait for my answer. Tell me if I'm right and what the giveaway clue was.</code> This is retrieval practice on demand.</p>
       <p><b>What you must still own:</b> the honest self-rating (AI cannot see that you peeked), the discipline to stop the night before, and the checklists in your head — on interview day there is no assistant to remind you to check for overflow.</p>`
   });
-registerModule({ id: 'dsa28', title: 'Interview Mastery', intro: `<p>xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</p>`, goals: ['aaaaaaaaaaaaa','bbbbbbbbbbbbbbbb','cccccccccccccccc'], prereqs: `ddddddddddddddddddddd`, hours: 10, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
+
+  // =====================================================================
+  // PRACTICE — a mixed, timed set: diagnose the pattern before you solve
+  // =====================================================================
+  practice.push({
+    title: 'Best Time to Buy and Sell Stock', level: 'Easy', tags: ['carry forward', 'running minimum', 'arrays'], companies: ['Amazon', 'Meta', 'Goldman Sachs'],
+    statement: `<p><b>Timed: 10 min.</b> <code>prices[i]</code> is a stock price on day i. Buy on one day and sell on a <b>later</b> day to maximise profit. Return the max profit, or 0 if no profit is possible.</p>`,
+    constraints: `1 ≤ N ≤ 10<sup>5</sup>, 0 ≤ prices[i] ≤ 10<sup>4</sup>`,
+    example: `${H.arr([7, 1, 5, 3, 6, 4], { hl: { 1: 'g', 4: 'g' } })}<p>Buy at ${H.c('g', '1')} (day 1), sell at ${H.c('g', '6')} (day 4) → profit <b>5</b>. Selling at 7 is not allowed: day 0 comes before the purchase.</p>`,
+    brute: { why: `<p>Every buy day × every later sell day: O(N<sup>2</sup>) = 5·10<sup>9</sup> at N = 10<sup>5</sup> → TLE. The waste: for each sell day we re-find the cheapest earlier price.</p>`, code: `int maxProfitBrute(int[] p) {
+    int best = 0;
+    for (int i = 0; i < p.length; i++)
+        for (int j = i + 1; j < p.length; j++)
+            best = Math.max(best, p[j] - p[i]);
+    return best;
+}` },
+    mcq: { q: 'Which single value do you need to carry forward while scanning left to right?', options: ['The minimum price seen so far', 'The maximum price seen so far', 'The sum of prices so far', 'The previous day price only'], answer: 0, explain: 'Selling today, the best buy is the cheapest earlier day — carry the running minimum (DSA 5, carry forward).' },
+    hints: [`<p>Hint 1: If you sell on day j, the best buy day is the cheapest day before j.</p>`, `<p>Hint 2: Keep <code>minSoFar</code> while scanning; profit today = price − minSoFar.</p>`, `<p>Hint 3: Initialise minSoFar = prices[0], best = 0 (never negative). Update best before or after min — both work because selling on the buy day gives 0.</p>`],
+    solution: {
+      approach: `<p><b>Clue:</b> "buy before sell" + one transaction → carry forward the running minimum. One pass.</p>`,
+      code: `class Solution {
+    public int maxProfit(int[] prices) {
+        int minSoFar = prices[0], best = 0;
+        for (int p : prices) {
+            minSoFar = Math.min(minSoFar, p);     // cheapest buy up to today
+            best = Math.max(best, p - minSoFar);  // sell today
+        }
+        return best;
+    }
+}`,
+      dry: { head: ['day', 'price', 'minSoFar', 'best'], rows: [['0', '7', '7', '0'], ['1', '1', '1', '0'], ['2', '5', '1', '4'], ['4', '6', '1', H.c('g', '5')]] },
+      complexity: `<p>Time O(N), space O(1).</p>`,
+      followUps: ['Unlimited transactions (sum every rise).', 'At most k transactions (state-machine DP, DSA 19).', 'With a cooldown day after selling.']
+    }
+  });
+
+  practice.push({
+    title: 'Contains Duplicate Within Distance K', level: 'Easy', tags: ['sliding window', 'hashset'], companies: ['Airbnb', 'Palantir'],
+    statement: `<p><b>Timed: 10 min.</b> Return true if there are two <b>different</b> indices i and j with <code>nums[i] == nums[j]</code> and <code>|i − j| ≤ k</code>.</p>`,
+    constraints: `1 ≤ N ≤ 10<sup>5</sup>, −10<sup>9</sup> ≤ nums[i] ≤ 10<sup>9</sup>, 0 ≤ k ≤ 10<sup>5</sup>`,
+    example: `${H.arr([1, 2, 3, 1], { hl: { 0: 'g', 3: 'g' } })}<p>k = 3 → <b>${H.c('g', 'true')}</b> (indices 0 and 3, distance 3). With [1,2,3,1,2,3] and k = 2 → <b>false</b>: equal values are always 3 apart.</p>`,
+    brute: { why: `<p>For each i check the next k elements: O(N·k) = 10<sup>10</sup> worst case. The waste: neighbouring windows share k−1 elements, but we re-check them all.</p>`, code: `boolean bruteNearby(int[] nums, int k) {
+    for (int i = 0; i < nums.length; i++)
+        for (int j = i + 1; j < nums.length && j - i <= k; j++)
+            if (nums[i] == nums[j]) return true;
+    return false;
+}` },
+    mcq: { q: 'Which pattern fits "two equal values at most k apart"?', options: ['A fixed-size sliding window kept in a HashSet', 'Sorting then two pointers', 'Binary search', 'Prefix sums'], answer: 0, explain: 'Only the last k values matter; keep them in a set, drop the one leaving the window. Sorting loses the index distances.' },
+    hints: [`<p>Hint 1: At index i, only nums[i−k .. i−1] can pair with nums[i].</p>`, `<p>Hint 2: Keep exactly those values in a HashSet; set.add returns false on a duplicate.</p>`, `<p>Hint 3: After adding nums[i], if the set size exceeds k, remove nums[i−k]. k = 0 → always false.</p>`],
+    solution: {
+      approach: `<p><b>Clue:</b> "within distance k" = fixed-size window; "equal value" = membership test → HashSet window (DSA 6 + DSA 8).</p>`,
+      code: `class Solution {
+    public boolean containsNearbyDuplicate(int[] nums, int k) {
+        Set<Integer> window = new HashSet<>();
+        for (int i = 0; i < nums.length; i++) {
+            if (!window.add(nums[i])) return true;   // already inside the last k values
+            if (window.size() > k) window.remove(nums[i - k]); // slide: drop the oldest
+        }
+        return false;
+    }
+}`,
+      complexity: `<p>Time O(N) average, space O(min(N, k)).</p>`,
+      followUps: ['Values within t of each other (|nums[i] − nums[j]| ≤ t): use TreeSet floor/ceiling or buckets of width t+1.']
+    }
+  });
+
+  practice.push({
+    title: 'Valid Parentheses', level: 'Easy', tags: ['stack', 'strings'], companies: ['Amazon', 'Bloomberg', 'Microsoft'],
+    statement: `<p><b>Timed: 10 min.</b> Given a string of <code>()[]{}</code>, return true if every opener is closed by the same type in the correct order.</p>`,
+    constraints: `1 ≤ N ≤ 10<sup>4</sup>, only the six bracket characters`,
+    example: `<p>"([]{})" → <b>${H.c('g', 'true')}</b>. "([)]" → <b>${H.c('r', 'false')}</b>: ")" arrives while "[" is the most recent unclosed opener.</p>`,
+    brute: { why: `<p>Repeatedly delete adjacent pairs "()", "[]", "{}" until nothing changes: up to N/2 passes of O(N) each → O(N<sup>2</sup>). The waste: rescanning the whole string after every deletion.</p>`, code: `boolean bruteValid(String s) {
+    String prev;
+    do {
+        prev = s;
+        s = s.replace("()", "").replace("[]", "").replace("{}", "");
+    } while (!s.equals(prev));
+    return s.isEmpty();
+}` },
+    mcq: { q: '"Each closer must match the most recent unmatched opener" describes which structure?', options: ['Stack (LIFO)', 'Queue (FIFO)', 'Heap', 'HashSet'], answer: 0, explain: '"Most recent" = last in, first out.' },
+    hints: [`<p>Hint 1: The closer always matches the latest unclosed opener.</p>`, `<p>Hint 2: Push openers; on a closer, the top must be its partner — pop it.</p>`, `<p>Hint 3: Fail if the stack is empty on a closer, or non-empty at the end. Quick reject: odd length.</p>`],
+    solution: {
+      approach: `<p><b>Clue:</b> nesting / "most recent" → stack (DSA 14). Pushing the <i>expected closer</i> makes the check a single comparison.</p>`,
+      code: `class Solution {
+    public boolean isValid(String s) {
+        if (s.length() % 2 == 1) return false;
+        Deque<Character> st = new ArrayDeque<>();
+        for (char c : s.toCharArray()) {
+            if (c == '(') st.push(')');          // push the closer we now expect
+            else if (c == '[') st.push(']');
+            else if (c == '{') st.push('}');
+            else if (st.isEmpty() || st.pop() != c) return false;
+        }
+        return st.isEmpty();
+    }
+}`,
+      complexity: `<p>Time O(N), space O(N).</p>`,
+      followUps: ['Minimum insertions to make it valid.', 'Longest valid parentheses substring (stack of indices or DP).']
+    }
+  });
+
+  practice.push({
+    title: 'Missing Number', level: 'Easy', tags: ['bit manipulation', 'xor', 'math'], companies: ['Microsoft', 'Apple'],
+    statement: `<p><b>Timed: 10 min.</b> An array holds N <b>distinct</b> numbers from the range 0..N (so exactly one is missing). Return the missing number using O(1) extra space.</p>`,
+    constraints: `1 ≤ N ≤ 10<sup>4</sup>, 0 ≤ nums[i] ≤ N, all distinct`,
+    example: `${H.arr([3, 0, 1])}<p>N = 3, range 0..3, the array lacks <b>${H.c('g', '2')}</b>.</p>`,
+    brute: { why: `<p>For each candidate 0..N, scan the array for it: O(N<sup>2</sup>). Or a HashSet: O(N) time but O(N) space, which breaks the O(1)-space requirement.</p>`, code: `int missingBrute(int[] nums) {
+    for (int c = 0; c <= nums.length; c++) {
+        boolean found = false;
+        for (int x : nums) if (x == c) { found = true; break; }
+        if (!found) return c;
+    }
+    return -1;
+}` },
+    mcq: { q: 'XOR of all indices 0..N and all array values leaves…', options: ['the missing number, because every present number cancels with its twin', '0 always', 'the largest value', 'the sum of the array'], answer: 0, explain: 'x ^ x = 0 and x ^ 0 = x (DSA 4). Every number except the missing one appears twice.' },
+    hints: [`<p>Hint 1: "Every value appears in two lists except one" is the XOR-cancellation signature.</p>`, `<p>Hint 2: XOR together i for i in 0..N and every nums[i].</p>`, `<p>Hint 3: Alternative: N(N+1)/2 − sum(nums) — fine here, but mention overflow for big N; XOR never overflows.</p>`],
+    solution: {
+      approach: `<p><b>Clue:</b> "exactly one missing/odd one out" + O(1) space → XOR cancellation (DSA 4).</p>`,
+      code: `class Solution {
+    public int missingNumber(int[] nums) {
+        int x = nums.length;                 // start with N (the index loop below stops at N-1)
+        for (int i = 0; i < nums.length; i++) x ^= i ^ nums[i];
+        return x;
+    }
+}`,
+      dry: { head: ['i', 'nums[i]', 'x after i ^ nums[i]'], rows: [['start', '—', '3'], ['0', '3', '3^0^3 = 0'], ['1', '0', '0^1^0 = 1'], ['2', '1', '1^2^1 = ' + H.c('g', '2')]] },
+      complexity: `<p>Time O(N), space O(1).</p>`,
+      followUps: ['Two numbers missing (split by a set bit of the XOR, like Single Number III).', 'Find the duplicate in 1..N with one repeat (Floyd cycle detection on indices).']
+    }
+  });
+
+  practice.push({
+    title: 'Top K Frequent Elements', level: 'Medium', tags: ['hashmap', 'bucket sort', 'heap'], companies: ['Amazon', 'Meta', 'Yelp'],
+    statement: `<p><b>Timed: 20 min.</b> Return the <code>k</code> most frequent elements of <code>nums</code> in any order. The answer is guaranteed unique. Beat O(N log N).</p>`,
+    constraints: `1 ≤ N ≤ 10<sup>5</sup>, −10<sup>4</sup> ≤ nums[i] ≤ 10<sup>4</sup>, 1 ≤ k ≤ number of distinct values`,
+    example: `<p>[1,1,1,2,2,3], k = 2 → <b>${H.c('g', '[1, 2]')}</b>: 1 appears 3 times, 2 twice, 3 once.</p>`,
+    brute: { why: `<p>Count, then sort all distinct values by frequency: O(N + U log U). Fine in practice, but the follow-up asks for better than O(N log N). The waste: we fully order values whose relative order we never need.</p>`, code: `int[] topKBrute(int[] nums, int k) {
+    Map<Integer, Integer> cnt = new HashMap<>();
+    for (int x : nums) cnt.merge(x, 1, Integer::sum);
+    List<Integer> keys = new ArrayList<>(cnt.keySet());
+    keys.sort((a, b) -> Integer.compare(cnt.get(b), cnt.get(a)));   // full sort: O(U log U)
+    int[] res = new int[k];
+    for (int i = 0; i < k; i++) res[i] = keys.get(i);
+    return res;
+}` },
+    mcq: { q: 'Frequencies lie in 1..N. Which trick gives O(N) total?', options: ['Bucket sort: bucket[f] = values with frequency f, read from high f down', 'Binary search on k', 'Two pointers on the sorted array', 'Union-Find'], answer: 0, explain: 'A bounded key range (1..N) allows counting/bucket sort in linear time.' },
+    hints: [`<p>Hint 1: First count frequencies with a HashMap.</p>`, `<p>Hint 2: Either keep a min-heap of size k keyed by frequency (O(U log k)) or bucket by frequency (O(N)).</p>`, `<p>Hint 3: Buckets: array of lists of size N+1. Walk f from N down to 1, collecting until you have k values.</p>`],
+    solution: {
+      approach: `<p><b>Clue:</b> "top k" → heap; "frequencies bounded by N" → bucket sort beats it. Mention both (trade-off: heap works for streams, buckets are linear for batches).</p>`,
+      code: `class Solution {
+    @SuppressWarnings("unchecked")
+    public int[] topKFrequent(int[] nums, int k) {
+        Map<Integer, Integer> cnt = new HashMap<>();
+        for (int x : nums) cnt.merge(x, 1, Integer::sum);
+        List<Integer>[] bucket = new List[nums.length + 1];   // bucket[f] = values seen f times
+        for (Map.Entry<Integer, Integer> e : cnt.entrySet()) {
+            int f = e.getValue();
+            if (bucket[f] == null) bucket[f] = new ArrayList<>();
+            bucket[f].add(e.getKey());
+        }
+        int[] res = new int[k];
+        int idx = 0;
+        for (int f = nums.length; f >= 1 && idx < k; f--) {
+            if (bucket[f] == null) continue;
+            for (int v : bucket[f]) { if (idx == k) break; res[idx++] = v; }
+        }
+        return res;
+    }
+}`,
+      alt: [{ lang: 'python', code: `from collections import Counter
+import heapq
+
+def top_k_frequent(nums, k):
+    cnt = Counter(nums)
+    return heapq.nlargest(k, cnt.keys(), key=cnt.get)   # heap version, O(U log k)
+
+print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))  # [1, 2]`, run: true }],
+      complexity: `<p>Time O(N), space O(N). Heap alternative: O(N + U log k) time, O(U + k) space.</p>`,
+      followUps: ['Stream of values: maintain top k as data arrives.', 'Top k frequent words with alphabetical tie-break.']
+    }
+  });
+
+  practice.push({
+    title: 'Number of Islands', level: 'Medium', tags: ['grid', 'bfs', 'dfs', 'flood fill'], companies: ['Amazon', 'Google', 'Microsoft'],
+    statement: `<p><b>Timed: 20 min.</b> A grid of '1' (land) and '0' (water). An island is land connected up/down/left/right. Count the islands.</p>`,
+    constraints: `1 ≤ R, C ≤ 300`,
+    example: `<p>["11000","11000","00100","00011"] → <b>${H.c('g', '3')}</b>: the top-left block, the single middle cell and the bottom-right pair.</p>`,
+    brute: { why: `<p>For every pair of land cells, test whether they are connected by a fresh search, then count classes: O((R·C)<sup>2</sup>) or worse. The waste: re-exploring the same island again and again.</p>`, code: `int bruteIslands(char[][] g) {
+    int R = g.length, C = g[0].length, n = R * C;
+    int[] label = new int[n];
+    Arrays.fill(label, -1);
+    int islands = 0;
+    for (int s = 0; s < n; s++) {
+        if (g[s / C][s % C] != '1' || label[s] != -1) continue;
+        islands++;
+        // naive: repeatedly sweep the grid, growing the label until nothing changes
+        label[s] = islands;
+        boolean changed = true;
+        while (changed) {
+            changed = false;
+            for (int c = 0; c < n; c++) {
+                if (label[c] != islands) continue;
+                int r = c / C, col = c % C;
+                int[][] nb = {{r + 1, col}, {r - 1, col}, {r, col + 1}, {r, col - 1}};
+                for (int[] p : nb) {
+                    if (p[0] < 0 || p[1] < 0 || p[0] >= R || p[1] >= C) continue;
+                    int id = p[0] * C + p[1];
+                    if (g[p[0]][p[1]] == '1' && label[id] == -1) { label[id] = islands; changed = true; }
+                }
+            }
+        }
+    }
+    return islands;
+}` },
+    mcq: { q: 'Each time the outer scan finds an unvisited land cell, what do you do?', options: ['Count +1 and flood-fill (BFS/DFS) its whole island, marking visited', 'Count +1 only', 'Sort the grid', 'Run Dijkstra'], answer: 0, explain: 'The flood fill guarantees each island is counted exactly once — the components pattern (DSA 20).' },
+    hints: [`<p>Hint 1: Islands are connected components of land cells.</p>`, `<p>Hint 2: Scan the grid; on unvisited land, increment the count and flood-fill to mark the whole island.</p>`, `<p>Hint 3: Use an explicit stack/queue — recursive DFS can be 90,000 deep on a 300×300 all-land grid. Mark cells when pushing.</p>`],
+    solution: {
+      approach: `<p><b>Clue:</b> "grid" + "connected" → flood fill counting components. Iterative BFS avoids stack overflow; Union-Find is an alternative (useful if land is added over time — Number of Islands II).</p>`,
+      code: `class Solution {
+    public int numIslands(char[][] grid) {
+        int R = grid.length, C = grid[0].length, count = 0;
+        int[] dr = {1, -1, 0, 0}, dc = {0, 0, 1, -1};
+        Deque<int[]> q = new ArrayDeque<>();
+        for (int r = 0; r < R; r++)
+            for (int c = 0; c < C; c++) {
+                if (grid[r][c] != '1') continue;
+                count++;                              // new island found
+                grid[r][c] = '0';                     // sink it as we enqueue (visited mark)
+                q.add(new int[]{r, c});
+                while (!q.isEmpty()) {
+                    int[] cur = q.poll();
+                    for (int d = 0; d < 4; d++) {
+                        int nr = cur[0] + dr[d], nc = cur[1] + dc[d];
+                        if (nr < 0 || nc < 0 || nr >= R || nc >= C || grid[nr][nc] != '1') continue;
+                        grid[nr][nc] = '0';
+                        q.add(new int[]{nr, nc});
+                    }
+                }
+            }
+        return count;
+    }
+}`,
+      complexity: `<p>Time O(R·C), space O(min(R, C)) to O(R·C) for the queue.</p>`,
+      followUps: ['Do not modify the input (separate visited array).', 'Land added one cell at a time; report the count after each (Union-Find).', 'Count distinct island shapes.']
+    }
+  });
+
+  practice.push({
+    title: 'Koko Eating Bananas', level: 'Medium', tags: ['binary search on answer'], companies: ['Airbnb', 'Google', 'Meta'],
+    statement: `<p><b>Timed: 20 min.</b> There are <code>piles</code> of bananas and <code>h</code> hours. Each hour Koko picks one pile and eats up to <code>s</code> bananas from it (if fewer remain, she finishes the pile and waits). Return the <b>minimum integer speed s</b> to finish within h hours.</p>`,
+    constraints: `1 ≤ N ≤ 10<sup>4</sup>, N ≤ h ≤ 10<sup>9</sup>, 1 ≤ piles[i] ≤ 10<sup>9</sup>`,
+    example: `<p>piles = [3,6,7,11], h = 8 → <b>${H.c('g', '4')}</b>: hours at s = 4 are 1+2+2+3 = 8 ✔; at s = 3 they are 1+2+3+4 = 10 ✘.</p>`,
+    brute: { why: `<p>Try s = 1, 2, 3, … until it works: up to 10<sup>9</sup> speeds × N piles → TLE. The waste: checking speeds one by one when "works" is monotone.</p>`, code: `int bruteSpeed(int[] piles, int h) {
+    for (int s = 1; ; s++) {
+        long hours = 0;
+        for (int p : piles) hours += (p + s - 1) / s;
+        if (hours <= h) return s;
+    }
+}` },
+    mcq: { q: 'What makes binary search valid here?', options: ['If speed s finishes in time, every speed above s also does', 'The piles are sorted', 'h is large', 'Speeds are integers'], answer: 0, explain: 'Monotone feasibility (NO…NO YES…YES) is the precondition for binary search on the answer (DSA 10).' },
+    hints: [`<p>Hint 1: "Minimum speed such that…" → guess a speed and check it.</p>`, `<p>Hint 2: Check = Σ ⌈pile / s⌉ ≤ h, computed in O(N) with integer ceil (p + s − 1) / s.</p>`, `<p>Hint 3: Search s in [1, max(piles)]. Use long for the hour total (10<sup>4</sup> piles × 10<sup>9</sup> hours overflows int).</p>`],
+    solution: {
+      approach: `<p><b>Clue:</b> "minimum X such that possible" + monotone → binary search on the answer with an O(N) greedy check.</p>`,
+      code: `class Solution {
+    public int minEatingSpeed(int[] piles, int h) {
+        int lo = 1, hi = 0;
+        for (int p : piles) hi = Math.max(hi, p);       // speed max(piles) always works
+        while (lo < hi) {
+            int mid = lo + (hi - lo) / 2;
+            if (hoursAt(piles, mid) <= h) hi = mid;     // fast enough: try slower
+            else lo = mid + 1;                          // too slow
+        }
+        return lo;
+    }
+    private long hoursAt(int[] piles, int s) {
+        long hours = 0;
+        for (int p : piles) hours += (p + (long) s - 1) / s;  // ceil without overflow
+        return hours;
+    }
+}`,
+      dry: { head: ['lo', 'hi', 'mid', 'hours', 'move'], rows: [['1', '11', '6', '1+1+2+2 = 6 ≤ 8', 'hi = 6'], ['1', '6', '3', '1+2+3+4 = 10', 'lo = 4'], ['4', '6', '5', '1+2+2+3 = 8 ≤ 8', 'hi = 5'], ['4', '5', '4', '1+2+2+3 = 8 ≤ 8', 'hi = 4'], ['4', '4', '—', 'stop', H.c('g', '4')]] },
+      complexity: `<p>Time O(N log max(piles)) ≈ 10<sup>4</sup> × 30. Space O(1).</p>`,
+      followUps: ['Minimum days to make m bouquets (same template).', 'Capacity to ship packages within D days.']
+    }
+  });
+
+  practice.push({
+    title: 'Daily Temperatures', level: 'Medium', tags: ['monotonic stack'], companies: ['Meta', 'Amazon', 'Uber'],
+    statement: `<p><b>Timed: 20 min.</b> For each day, return how many days you must wait for a <b>warmer</b> temperature; 0 if none.</p>`,
+    constraints: `1 ≤ N ≤ 10<sup>5</sup>, 30 ≤ temperatures[i] ≤ 100`,
+    example: `${H.arr([73, 74, 75, 71, 69, 72, 76, 73])}<p>→ <b>[1, 1, 4, 2, 1, 1, 0, 0]</b>. Day 2 (75) waits until day 6 (76): ${H.c('g', '4 days')}.</p>`,
+    brute: { why: `<p>For each day scan forward until warmer: O(N<sup>2</sup>) on a decreasing sequence = 5·10<sup>9</sup>. The waste: many days wait for the same future warm day, but each scans independently.</p>`, code: `int[] bruteTemps(int[] t) {
+    int[] ans = new int[t.length];
+    for (int i = 0; i < t.length; i++)
+        for (int j = i + 1; j < t.length; j++)
+            if (t[j] > t[i]) { ans[i] = j - i; break; }
+    return ans;
+}` },
+    mcq: { q: '"Days until a warmer temperature" is which classic?', options: ['Next greater element → monotonic decreasing stack of indices', 'Sliding window maximum', 'Binary search on the answer', 'Kadane'], answer: 0, explain: 'Every "next greater/smaller" question is a monotonic stack (DSA 14).' },
+    hints: [`<p>Hint 1: This is "next greater element", returning distances instead of values.</p>`, `<p>Hint 2: Keep a stack of indices whose answer is unknown; their temperatures are decreasing from bottom to top.</p>`, `<p>Hint 3: When t[i] is warmer than the top, pop it and set ans[top] = i − top. Repeat, then push i. Leftovers keep 0.</p>`],
+    solution: {
+      approach: `<p><b>Clue:</b> "wait until warmer" = next greater → monotonic stack, each index pushed and popped once.</p>`,
+      code: `class Solution {
+    public int[] dailyTemperatures(int[] t) {
+        int[] ans = new int[t.length];
+        Deque<Integer> st = new ArrayDeque<>();           // indices with decreasing temps
+        for (int i = 0; i < t.length; i++) {
+            while (!st.isEmpty() && t[st.peek()] < t[i]) {
+                int j = st.pop();
+                ans[j] = i - j;                           // i is j's first warmer day
+            }
+            st.push(i);
+        }
+        return ans;                                       // remaining indices stay 0
+    }
+}`,
+      complexity: `<p>Time O(N) amortised (each index pushed and popped at most once). Space O(N).</p>`,
+      followUps: ['Circular array (Next Greater Element II): loop 2N times with i % N.', 'Stock span (previous greater).']
+    }
+  });
+
+  practice.push({
+    title: 'Course Schedule II', level: 'Medium', tags: ['topological sort', 'graph', 'kahn'], companies: ['Amazon', 'Google', 'Uber'],
+    statement: `<p><b>Timed: 25 min.</b> There are <code>n</code> courses (0..n−1). <code>prerequisites[i] = [a, b]</code> means you must take b before a. Return any valid order to take all courses, or an empty array if impossible.</p>`,
+    constraints: `1 ≤ n ≤ 2000, 0 ≤ prerequisites.length ≤ n·(n−1), all pairs distinct`,
+    example: `<p>n = 4, [[1,0],[2,0],[3,1],[3,2]] → <b>${H.c('g', '[0, 1, 2, 3]')}</b> (or [0,2,1,3]). With [[1,0],[0,1]] → <b>${H.c('r', '[]')}</b>: a cycle.</p>`,
+    brute: { why: `<p>Try permutations and check each against all prerequisites: O(n!·E) — impossible beyond n ≈ 10. The waste: we ignore the structure (only courses with no remaining prerequisites can go next).</p>`, code: `int[] bruteOrder(int n, int[][] pre) {
+    // repeatedly scan for a course whose prerequisites are all taken: O(n * (n + E))
+    boolean[] taken = new boolean[n];
+    int[] order = new int[n];
+    for (int k = 0; k < n; k++) {
+        int pick = -1;
+        for (int c = 0; c < n && pick == -1; c++) {
+            if (taken[c]) continue;
+            boolean ok = true;
+            for (int[] p : pre) if (p[0] == c && !taken[p[1]]) { ok = false; break; }
+            if (ok) pick = c;
+        }
+        if (pick == -1) return new int[0];          // nothing available: cycle
+        taken[pick] = true; order[k] = pick;
+    }
+    return order;
+}` },
+    mcq: { q: 'In Kahn’s algorithm, how do you detect that no valid order exists?', options: ['Fewer than n courses get output — the rest are stuck in a cycle', 'The queue becomes empty at the start', 'A course has two prerequisites', 'The graph is disconnected'], answer: 0, explain: 'Nodes on a cycle never reach indegree 0, so they never leave the queue logic.' },
+    hints: [`<p>Hint 1: "b before a" is a directed edge b → a. You want a topological order.</p>`, `<p>Hint 2: Kahn: compute indegrees; queue all indegree-0 courses; pop, output, decrement neighbours, enqueue those reaching 0.</p>`, `<p>Hint 3: If the output has fewer than n courses, return an empty array. Disconnected courses are fine — they start with indegree 0.</p>`],
+    solution: {
+      approach: `<p><b>Clue:</b> "prerequisites", "order" → topological sort (DSA 20). Kahn’s BFS gives the order and cycle detection in one pass.</p>`,
+      code: `class Solution {
+    public int[] findOrder(int n, int[][] prerequisites) {
+        List<List<Integer>> adj = new ArrayList<>();
+        for (int i = 0; i < n; i++) adj.add(new ArrayList<>());
+        int[] indeg = new int[n];
+        for (int[] p : prerequisites) { adj.get(p[1]).add(p[0]); indeg[p[0]]++; } // edge b -> a
+        Deque<Integer> q = new ArrayDeque<>();
+        for (int i = 0; i < n; i++) if (indeg[i] == 0) q.add(i);
+        int[] order = new int[n];
+        int k = 0;
+        while (!q.isEmpty()) {
+            int c = q.poll();
+            order[k++] = c;
+            for (int nxt : adj.get(c)) if (--indeg[nxt] == 0) q.add(nxt);
+        }
+        return k == n ? order : new int[0];        // leftover nodes = cycle
+    }
+}`,
+      dry: { head: ['pop', 'order', 'indegree changes', 'queue'], rows: [['—', '[]', 'indeg = [0,1,1,2]', '[0]'], ['0', '[0]', '1→0, 2→0', '[1, 2]'], ['1', '[0,1]', '3→1', '[2]'], ['2', '[0,1,2]', '3→0', '[3]'], ['3', H.c('g', '[0,1,2,3]'), '—', '[]']] },
+      complexity: `<p>Time O(n + E), space O(n + E).</p>`,
+      followUps: ['Return the minimum number of semesters (BFS levels).', 'Lexicographically smallest order (priority queue instead of queue).', 'Alien Dictionary: build the edges yourself.']
+    }
+  });
+
+  practice.push({
+    title: 'Longest Repeating Character Replacement', level: 'Medium', tags: ['sliding window', 'frequency count'], companies: ['Google', 'Amazon'],
+    statement: `<p><b>Timed: 25 min.</b> Given an uppercase string <code>s</code> and an integer <code>k</code>, you may change at most k characters. Return the length of the longest substring that can be made of one repeated letter.</p>`,
+    constraints: `1 ≤ N ≤ 10<sup>5</sup>, 0 ≤ k ≤ N, uppercase English letters`,
+    example: `<p>s = "AABABBA", k = 1 → <b>${H.c('g', '4')}</b>: window "AABA" (indexes 0..3) needs one change (B→A) to become "AAAA". "BABB" (indexes 2..5) also works. No window of length 5 has 4 equal letters.</p>`,
+    brute: { why: `<p>Every substring: count letters, check length − maxCount ≤ k: O(26·N<sup>2</sup>) = 2.6·10<sup>11</sup>. The waste: neighbouring substrings share almost all their counts.</p>`, code: `int bruteReplace(String s, int k) {
+    int best = 0;
+    for (int i = 0; i < s.length(); i++) {
+        int[] cnt = new int[26];
+        int maxCnt = 0;
+        for (int j = i; j < s.length(); j++) {
+            maxCnt = Math.max(maxCnt, ++cnt[s.charAt(j) - 'A']);
+            if (j - i + 1 - maxCnt <= k) best = Math.max(best, j - i + 1);
+        }
+    }
+    return best;
+}` },
+    mcq: { q: 'A window is valid when…', options: ['window length − count of its most frequent letter ≤ k', 'it has at most k distinct letters', 'its length ≤ k', 'all letters are equal'], answer: 0, explain: 'Keep the majority letter, change the rest; the "rest" must be at most k.' },
+    hints: [`<p>Hint 1: "Longest substring" + a validity condition → variable sliding window.</p>`, `<p>Hint 2: Valid iff (right − left + 1) − maxCount ≤ k, where maxCount is the top letter count in the window.</p>`, `<p>Hint 3: When invalid, move left by one. You never need to decrease maxCount: the answer only grows when a bigger maxCount appears.</p>`],
+    solution: {
+      approach: `<p><b>Clue:</b> "longest substring" + "at most k changes" → sliding window with a 26-count array (DSA 6). The non-shrinking maxCount trick keeps it O(N).</p>`,
+      code: `class Solution {
+    public int characterReplacement(String s, int k) {
+        int[] cnt = new int[26];
+        int left = 0, maxCnt = 0, best = 0;
+        for (int right = 0; right < s.length(); right++) {
+            maxCnt = Math.max(maxCnt, ++cnt[s.charAt(right) - 'A']);
+            while (right - left + 1 - maxCnt > k) {   // too many letters to change
+                cnt[s.charAt(left) - 'A']--;
+                left++;
+            }
+            best = Math.max(best, right - left + 1);
+        }
+        return best;
+    }
+}`,
+      complexity: `<p>Time O(N), space O(26).</p>`,
+      followUps: ['Binary string version: Max Consecutive Ones III.', 'Why is a stale (too large) maxCount still safe? Prove it.']
+    }
+  });
+
+  practice.push({
+    title: 'Coin Change (Fewest Coins)', level: 'Medium', tags: ['dynamic programming', 'unbounded knapsack'], companies: ['Amazon', 'Microsoft', 'Goldman Sachs'],
+    statement: `<p><b>Timed: 25 min.</b> Given coin denominations (unlimited supply) and an amount, return the fewest coins that make the amount, or −1 if impossible.</p>`,
+    constraints: `1 ≤ coins.length ≤ 12, 1 ≤ coins[i] ≤ 2<sup>31</sup> − 1, 0 ≤ amount ≤ 10<sup>4</sup>`,
+    example: `<p>coins = [1, 3, 4], amount = 6 → <b>${H.c('g', '2')}</b> (3 + 3). Greedy would pick 4 + 1 + 1 = ${H.c('r', '3 coins')} — a trap from Topic 8.</p>`,
+    brute: { why: `<p>Recursively try every coin at every step: branching factor up to 12, depth up to 10<sup>4</sup> → exponential. The waste: "fewest coins for amount 5" is recomputed along countless paths.</p>`, code: `int bruteCoins(int[] coins, int amount) {
+    if (amount == 0) return 0;
+    int best = Integer.MAX_VALUE;
+    for (int c : coins) {
+        if (c > amount) continue;
+        int sub = bruteCoins(coins, amount - c);   // same sub-amounts solved again and again
+        if (sub != -1) best = Math.min(best, sub + 1);
+    }
+    return best == Integer.MAX_VALUE ? -1 : best;
+}` },
+    mcq: { q: 'What does dp[a] mean in the standard solution?', options: ['Fewest coins that sum exactly to a', 'Number of ways to make a', 'Largest coin used for a', 'Whether coin a exists'], answer: 0, explain: 'Then dp[a] = 1 + min over coins c ≤ a of dp[a − c] (DSA 18).' },
+    hints: [`<p>Hint 1: Greedy fails ({1,3,4}, 6). "Fewest" + choices at each step → DP.</p>`, `<p>Hint 2: dp[a] = min over coins c of dp[a − c] + 1, with dp[0] = 0.</p>`, `<p>Hint 3: Fill a from 1 to amount; use a sentinel "infinity" = amount + 1. Watch out: coins can be up to 2<sup>31</sup>−1, so check c ≤ a before subtracting.</p>`],
+    solution: {
+      approach: `<p><b>Clue:</b> "fewest coins", unlimited supply, amount ≤ 10<sup>4</sup> → 1D unbounded-knapsack DP, O(amount × coins) = 1.2·10<sup>5</sup>.</p>`,
+      code: `class Solution {
+    public int coinChange(int[] coins, int amount) {
+        int INF = amount + 1;                   // more coins than could ever be needed
+        int[] dp = new int[amount + 1];
+        Arrays.fill(dp, INF);
+        dp[0] = 0;                              // zero coins make amount 0
+        for (int a = 1; a <= amount; a++)
+            for (int c : coins)
+                if (c <= a && dp[a - c] + 1 < dp[a]) dp[a] = dp[a - c] + 1;
+        return dp[amount] >= INF ? -1 : dp[amount];
+    }
+}`,
+      dry: { head: ['a', '0', '1', '2', '3', '4', '5', '6'], rows: [['dp[a]', '0', '1', '2', '1', '1', '2', H.c('g', '2')], ['via', '—', '1', '1+1', '3', '4', '4+1', '3+3']] },
+      complexity: `<p>Time O(amount × coins), space O(amount).</p>`,
+      followUps: ['Count the number of ways (Coin Change II) — loop order matters!', 'Reconstruct the coins used.']
+    }
+  });
+
+  practice.push({
+    title: 'Sliding Window Maximum', level: 'Hard', tags: ['monotonic deque', 'sliding window'], companies: ['Amazon', 'Google', 'Citadel'],
+    statement: `<p><b>Timed: 30 min.</b> Return the maximum of every contiguous window of size <code>k</code> as the window slides from left to right.</p>`,
+    constraints: `1 ≤ N ≤ 10<sup>5</sup>, 1 ≤ k ≤ N, −10<sup>4</sup> ≤ nums[i] ≤ 10<sup>4</sup>`,
+    example: `${H.arr([1, 3, -1, -3, 5, 3, 6, 7])}<p>k = 3 → <b>[3, 3, 5, 5, 6, 7]</b>. Window [−1, −3, 5] has max ${H.c('g', '5')}.</p>`,
+    brute: { why: `<p>Scan each window: O(N·k) = 10<sup>10</sup> when k = N/2. A heap gives O(N log N) but needs lazy deletion. The waste: values that can never be a future max (a smaller value left of a bigger one) are kept and rescanned.</p>`, code: `int[] bruteWindowMax(int[] a, int k) {
+    int[] res = new int[a.length - k + 1];
+    for (int i = 0; i + k <= a.length; i++) {
+        int m = Integer.MIN_VALUE;
+        for (int j = i; j < i + k; j++) m = Math.max(m, a[j]);
+        res[i] = m;
+    }
+    return res;
+}` },
+    mcq: { q: 'Why may we discard a value that has a larger value to its right inside the window?', options: ['The larger one stays in the window longer and is bigger, so the smaller can never be a max again', 'To save memory only', 'Because the array is sorted', 'We may not discard it'], answer: 0, explain: 'Dominated elements are useless → keep a decreasing deque (DSA 14).' },
+    hints: [`<p>Hint 1: A value is useless once a bigger value appears after it.</p>`, `<p>Hint 2: Deque of indices with decreasing values: pop from the back while smaller than the new value; the front is the max.</p>`, `<p>Hint 3: Pop the front if its index ≤ i − k (left the window). Record the front once i ≥ k − 1.</p>`],
+    solution: {
+      approach: `<p><b>Clue:</b> "max of every window of size k" → monotonic deque, O(N) total.</p>`,
+      code: `class Solution {
+    public int[] maxSlidingWindow(int[] nums, int k) {
+        int n = nums.length;
+        int[] res = new int[n - k + 1];
+        Deque<Integer> dq = new ArrayDeque<>();              // indices, values decreasing
+        for (int i = 0; i < n; i++) {
+            if (!dq.isEmpty() && dq.peekFirst() <= i - k) dq.pollFirst();      // left the window
+            while (!dq.isEmpty() && nums[dq.peekLast()] <= nums[i]) dq.pollLast(); // dominated
+            dq.offerLast(i);
+            if (i >= k - 1) res[i - k + 1] = nums[dq.peekFirst()];             // front = max
+        }
+        return res;
+    }
+}`,
+      dry: { head: ['i', 'nums[i]', 'deque (values)', 'output'], rows: [['2', '−1', '[3, −1]', '3'], ['3', '−3', '[3, −1, −3]', '3'], ['4', '5', '[5] (3 expired, rest dominated)', '5'], ['6', '6', '[6]', '6'], ['7', '7', '[7]', H.c('g', '7')]] },
+      complexity: `<p>Time O(N) amortised, space O(k).</p>`,
+      followUps: ['Window minimum at the same time.', 'Shortest subarray with sum ≥ K (deque over prefix sums).', 'Constrained subsequence sum (deque-optimised DP).']
+    }
+  });
+
+  practice.push({
+    title: 'Merge K Sorted Lists', level: 'Hard', tags: ['heap', 'linked list', 'divide and conquer'], companies: ['Amazon', 'Google', 'Meta'],
+    statement: `<p><b>Timed: 30 min.</b> Merge <code>k</code> sorted linked lists into one sorted list and return its head.</p>`,
+    constraints: `0 ≤ k ≤ 10<sup>4</sup>, total nodes N ≤ 10<sup>4</sup>, −10<sup>4</sup> ≤ val ≤ 10<sup>4</sup>`,
+    example: `<p>[[1,4,5],[1,3,4],[2,6]] → <b>${H.c('g', '1→1→2→3→4→4→5→6')}</b>.</p>`,
+    brute: { why: `<p>Merge lists one by one into a growing result: list sizes add up to O(N·k) work. Or scan all k heads to find the minimum each step: O(N·k). The waste: re-finding the minimum among k heads from scratch every time.</p>`, code: `ListNode bruteMerge(ListNode[] lists) {
+    ListNode dummy = new ListNode(0), tail = dummy;
+    while (true) {
+        int best = -1;
+        for (int i = 0; i < lists.length; i++)          // O(k) scan for the smallest head
+            if (lists[i] != null && (best == -1 || lists[i].val < lists[best].val)) best = i;
+        if (best == -1) break;
+        tail.next = lists[best]; tail = tail.next;
+        lists[best] = lists[best].next;
+    }
+    return dummy.next;
+}` },
+    mcq: { q: 'Which structure finds the smallest of k heads in O(log k)?', options: ['Min-heap (PriorityQueue) of list nodes', 'Stack', 'HashMap', 'Sorted array rebuilt each step'], answer: 0, explain: '"Merge k sorted" is a heap signature (DSA 16): poll the smallest, push its successor.' },
+    hints: [`<p>Hint 1: At any moment the next output node is the smallest of the k current heads.</p>`, `<p>Hint 2: Keep those heads in a min-heap ordered by value.</p>`, `<p>Hint 3: Skip null lists. Use a dummy head. Comparator: Integer.compare(a.val, b.val).</p>`],
+    solution: {
+      approach: `<p><b>Clue:</b> "merge k sorted" → min-heap of heads. Alternative: pairwise divide-and-conquer merging, also O(N log k) with O(1) extra space (besides recursion).</p>`,
+      code: `class Solution {
+    public ListNode mergeKLists(ListNode[] lists) {
+        PriorityQueue<ListNode> pq = new PriorityQueue<>((a, b) -> Integer.compare(a.val, b.val));
+        for (ListNode head : lists) if (head != null) pq.offer(head);
+        ListNode dummy = new ListNode(0), tail = dummy;
+        while (!pq.isEmpty()) {
+            ListNode node = pq.poll();              // smallest current head
+            tail.next = node;
+            tail = node;
+            if (node.next != null) pq.offer(node.next); // its successor joins the race
+        }
+        return dummy.next;
+    }
+}`,
+      complexity: `<p>Time O(N log k), space O(k) for the heap.</p>`,
+      followUps: ['Merge k sorted arrays and find the smallest range covering one element of each.', 'External merge sort of files that do not fit in memory.']
+    }
+  });
+
+  practice.push({
+    title: 'Trapping Rain Water', level: 'Hard', tags: ['two pointers', 'prefix max', 'monotonic stack'], companies: ['Google', 'Amazon', 'Goldman Sachs'],
+    statement: `<p><b>Timed: 30 min.</b> Bars of width 1 have heights <code>height[i]</code>. How much rain water is trapped between them?</p>`,
+    constraints: `1 ≤ N ≤ 2·10<sup>4</sup>, 0 ≤ height[i] ≤ 10<sup>5</sup>`,
+    example: `${H.arr([0, 1, 0, 2, 1, 0, 1, 3, 2, 1, 2, 1])}<p>→ <b>${H.c('g', '6')}</b>. Above index 5 (height 0) the water level is min(2, 3) = 2, so 2 units sit there.</p>`,
+    brute: { why: `<p>For each bar, scan left for the tallest and right for the tallest: O(N<sup>2</sup>). The waste: the left max of i+1 is just max(left max of i, height[i]) — we keep recomputing it.</p>`, code: `int bruteTrap(int[] h) {
+    int water = 0;
+    for (int i = 0; i < h.length; i++) {
+        int lm = 0, rm = 0;
+        for (int j = 0; j <= i; j++) lm = Math.max(lm, h[j]);
+        for (int j = i; j < h.length; j++) rm = Math.max(rm, h[j]);
+        water += Math.min(lm, rm) - h[i];
+    }
+    return water;
+}` },
+    mcq: { q: 'With two pointers, why is it safe to settle the side with the smaller max?', options: ['Its water level is decided by its own max, because the other side is known to be at least as tall', 'Because it is closer to the edge', 'Because water flows left', 'It is not safe'], answer: 0, explain: 'If leftMax ≤ rightMax, water at left = leftMax − h[left]; nothing on the right can lower it.' },
+    hints: [`<p>Hint 1: Water above i = min(maxLeft(i), maxRight(i)) − height[i].</p>`, `<p>Hint 2: Precompute prefix max and suffix max arrays → O(N) time, O(N) space.</p>`, `<p>Hint 3: Two pointers for O(1) space: move the side whose running max is smaller and add its water.</p>`],
+    solution: {
+      approach: `<p><b>Clue:</b> per-position answer depends on max to the left and right → prefix/suffix max (DSA 5), compressed into two pointers (DSA 6).</p>`,
+      code: `class Solution {
+    public int trap(int[] h) {
+        int l = 0, r = h.length - 1, leftMax = 0, rightMax = 0, water = 0;
+        while (l < r) {
+            leftMax = Math.max(leftMax, h[l]);
+            rightMax = Math.max(rightMax, h[r]);
+            if (leftMax <= rightMax) water += leftMax - h[l++];   // left side is the bottleneck
+            else water += rightMax - h[r--];                       // right side is the bottleneck
+        }
+        return water;
+    }
+}`,
+      complexity: `<p>Time O(N), space O(1).</p>`,
+      followUps: ['2D version (Trapping Rain Water II): min-heap from the border inward.', 'Monotonic stack version that fills water layer by layer.']
+    }
+  });
+
+  practice.push({
+    title: 'Word Ladder', level: 'Hard', tags: ['bfs', 'implicit graph', 'strings'], companies: ['Amazon', 'Meta', 'LinkedIn'],
+    statement: `<p><b>Timed: 35 min.</b> Transform <code>beginWord</code> into <code>endWord</code> changing one letter at a time; every intermediate word must be in <code>wordList</code>. Return the number of words in the shortest sequence (including both ends), or 0.</p>`,
+    constraints: `1 ≤ word length ≤ 10, 1 ≤ wordList.length ≤ 5000, lowercase letters, all words the same length`,
+    example: `<p>hit → hot → dot → dog → cog with list [hot, dot, dog, lot, log, cog] → <b>${H.c('g', '5')}</b>.</p>`,
+    brute: { why: `<p>DFS over all transformation sequences, keeping the shortest: exponential paths. The waste: DFS explores long paths first and revisits words via different routes.</p>`, code: `int bruteLadder(String cur, String end, Set<String> dict, Set<String> onPath) {
+    if (cur.equals(end)) return 1;
+    int best = 0;
+    for (String w : dict) {
+        if (onPath.contains(w) || !oneApart(cur, w)) continue;
+        onPath.add(w);
+        int sub = bruteLadder(w, end, dict, onPath);   // explores every simple path: exponential
+        onPath.remove(w);
+        if (sub > 0 && (best == 0 || sub + 1 < best)) best = sub + 1;
+    }
+    return best;
+}
+boolean oneApart(String a, String b) {
+    int diff = 0;
+    for (int i = 0; i < a.length(); i++) if (a.charAt(i) != b.charAt(i)) diff++;
+    return diff == 1;
+}` },
+    mcq: { q: '"Shortest sequence of one-letter changes" is…', options: ['BFS on an implicit graph whose nodes are words', 'Dijkstra with weights = letter distance', 'DP over the word list order', 'Backtracking for all paths'], answer: 0, explain: 'All moves cost 1 → unweighted shortest path → BFS (DSA 20). The graph is never given; you generate neighbours.' },
+    hints: [`<p>Hint 1: Words are nodes, one-letter changes are edges, each costs 1.</p>`, `<p>Hint 2: BFS from beginWord. Generate neighbours by trying all 26 letters at each position (O(26·L) per word) and checking the dictionary set.</p>`, `<p>Hint 3: Remove words from the set when enqueued (visited). If endWord is not in the list, return 0 immediately.</p>`],
+    solution: {
+      approach: `<p><b>Clue:</b> "shortest transformation", unit moves → BFS on an implicit graph. Neighbour generation by letter substitution avoids comparing all word pairs (5000<sup>2</sup>). Bidirectional BFS is the senior follow-up.</p>`,
+      code: `class Solution {
+    public int ladderLength(String beginWord, String endWord, List<String> wordList) {
+        Set<String> dict = new HashSet<>(wordList);
+        if (!dict.contains(endWord)) return 0;
+        Deque<String> q = new ArrayDeque<>();
+        q.add(beginWord);
+        dict.remove(beginWord);
+        int steps = 1;                                   // words in the sequence so far
+        while (!q.isEmpty()) {
+            for (int size = q.size(); size > 0; size--) {
+                char[] w = q.poll().toCharArray();
+                for (int i = 0; i < w.length; i++) {
+                    char orig = w[i];
+                    for (char c = 'a'; c <= 'z'; c++) {
+                        if (c == orig) continue;
+                        w[i] = c;
+                        String next = new String(w);
+                        if (next.equals(endWord)) return steps + 1;
+                        if (dict.remove(next)) q.add(next);   // remove = mark visited
+                    }
+                    w[i] = orig;
+                }
+            }
+            steps++;
+        }
+        return 0;
+    }
+}`,
+      complexity: `<p>Time O(M · L · 26 · L) where M = word count, L = word length (building each candidate string costs L). Space O(M · L).</p>`,
+      followUps: ['Return all shortest sequences (Word Ladder II: BFS for distances, then DFS backtracking).', 'Bidirectional BFS: why does it cut the explored nodes so much?']
+    }
+  });
+
+  practice.push({
+    title: 'Count of Smaller Numbers After Self', level: 'Hard', tags: ['fenwick tree', 'coordinate compression', 'merge sort'], companies: ['Google', 'Amazon'],
+    statement: `<p><b>Timed: 40 min.</b> For each index i, return how many elements to its <b>right</b> are strictly smaller than nums[i].</p>`,
+    constraints: `1 ≤ N ≤ 10<sup>5</sup>, −10<sup>4</sup> ≤ nums[i] ≤ 10<sup>4</sup>`,
+    example: `${H.arr([5, 2, 6, 1])}<p>→ <b>${H.c('g', '[2, 1, 1, 0]')}</b>: right of 5 are 2 and 1 (two smaller); right of 2 is 1; right of 6 is 1; nothing right of 1.</p>`,
+    brute: { why: `<p>For each i scan everything to its right: O(N<sup>2</sup>) = 10<sup>10</sup>. The waste: we repeatedly count over the same suffix instead of maintaining counts as the suffix grows.</p>`, code: `List<Integer> bruteSmaller(int[] nums) {
+    List<Integer> res = new ArrayList<>();
+    for (int i = 0; i < nums.length; i++) {
+        int c = 0;
+        for (int j = i + 1; j < nums.length; j++) if (nums[j] < nums[i]) c++;
+        res.add(c);
+    }
+    return res;
+}` },
+    mcq: { q: 'Scanning from right to left, which operation do you need per element?', options: ['"How many seen values are &lt; x?" then "add x" — a prefix count query + point update (Fenwick tree)', 'Find the maximum seen so far', 'Check whether x was seen', 'Sort the seen values every time'], answer: 0, explain: 'Prefix count + point update on a value-indexed array is exactly what a Fenwick tree does in O(log N) (DSA 23).' },
+    hints: [`<p>Hint 1: Walk from right to left; the "seen" set is exactly the elements to the right.</p>`, `<p>Hint 2: Keep counts indexed by value; the answer for x is the count of values &lt; x — a prefix sum with updates → Fenwick tree.</p>`, `<p>Hint 3: Shift values by +10<sup>4</sup>+1 so indices are ≥ 1 (or coordinate-compress for large ranges). Query(x − 1) before update(x).</p>`],
+    solution: {
+      approach: `<p><b>Clue:</b> "count elements to the right that are smaller", N = 10<sup>5</sup> → O(N log N) with a Fenwick tree over values (or merge sort with index tracking — the inversion-count family, DSA 7).</p>`,
+      code: `class Solution {
+    private int[] bit;
+    public List<Integer> countSmaller(int[] nums) {
+        int OFFSET = 10001, SIZE = 20002;            // maps -10^4..10^4 to 1..20001
+        bit = new int[SIZE + 1];
+        Integer[] res = new Integer[nums.length];
+        for (int i = nums.length - 1; i >= 0; i--) {
+            int idx = nums[i] + OFFSET;
+            res[i] = query(idx - 1);                 // how many seen values are smaller
+            update(idx);                             // now nums[i] is "seen"
+        }
+        return Arrays.asList(res);
+    }
+    private void update(int i) { for (; i < bit.length; i += i & -i) bit[i]++; }
+    private int query(int i) { int s = 0; for (; i > 0; i -= i & -i) s += bit[i]; return s; }
+}`,
+      dry: { head: ['i (right→left)', 'nums[i]', 'seen before', 'smaller seen', 'res'], rows: [['3', '1', '{}', '0', '[_, _, _, 0]'], ['2', '6', '{1}', '1', '[_, _, 1, 0]'], ['1', '2', '{1, 6}', '1', '[_, 1, 1, 0]'], ['0', '5', '{1, 2, 6}', '2', H.c('g', '[2, 1, 1, 0]')]] },
+      complexity: `<p>Time O(N log V) with V = 20001 value slots; space O(V). With coordinate compression: O(N log N).</p>`,
+      followUps: ['Count of range sum (prefix sums + merge sort / BIT).', 'Reverse pairs: nums[i] &gt; 2·nums[j].', 'Values up to 10<sup>9</sup> — compress coordinates first.']
+    }
+  });
+
+  // =====================================================================
+  // QUIZ — mixed pattern recognition
+  // =====================================================================
+  quiz.push({ q: '"Given an array that may contain negative numbers, find the length of the longest subarray with sum exactly k." First technique?', options: ['Prefix sum + HashMap storing the FIRST index of each prefix', 'Sliding window', 'Two pointers after sorting', 'Monotonic stack'], answer: 0, explain: 'Negatives break windows; sorting destroys contiguity. Store first occurrence of each prefix sum to maximise length.' });
+  quiz.push({ q: 'Constraint says <code>N ≤ 18</code> and asks for the best way to visit all cities. Target complexity?', options: ['O(2<sup>N</sup> · N<sup>2</sup>) bitmask DP', 'O(N log N)', 'O(N!) is required', 'O(N<sup>3</sup>) Floyd-Warshall only'], answer: 0, explain: '2<sup>18</sup> · 18<sup>2</sup> ≈ 8.5·10<sup>7</sup> fits; 18! ≈ 6.4·10<sup>15</sup> does not. Small N + "visit all" = bitmask DP (DSA 24).' });
+  quiz.push({ q: '"Find the minimum largest distance between adjacent gas stations after adding k stations." Which phrase is the giveaway?', options: ['"minimum largest" — minimise the maximum → binary search on the answer', '"gas stations" → greedy', '"adjacent" → two pointers', '"add k" → heap is the only option'], answer: 0, explain: 'Minimise-the-maximum with a monotone feasibility check is the binary-search-on-answer signature.' });
+  quiz.push({ q: 'Which statement about the 10<sup>8</sup>-operations-per-second rule is most accurate?', options: ['It is a rough budget; constants, cache behaviour and language speed shift it', 'It is an exact law for every computer', 'It only applies to C++', 'It means O(N<sup>2</sup>) always passes for N = 10<sup>5</sup>'], answer: 0, explain: 'It is an estimate for planning. N = 10<sup>5</sup> squared is 10<sup>10</sup>, about 100 seconds.' });
+  quiz.push({ q: 'In the 8-step approach, when should you start writing real code?', options: ['After clarifying, examples, brute force, optimising and agreeing on the approach', 'Immediately, to save time', 'Only after the interviewer gives the solution', 'After writing all test cases in code'], answer: 0, explain: 'Coding before agreement is the most common process mistake; the thinking steps make the coding short.' });
+  quiz.push({ q: 'Your binary search hangs on input [1, 3] with target 2. Most likely bug?', options: ['<code>lo = mid</code> instead of <code>lo = mid + 1</code>', '<code>hi = mid</code>', 'Using <code>long</code>', 'The array is too small'], answer: 0, explain: 'With two elements mid == lo, so lo = mid makes no progress.' });
+  quiz.push({ q: 'BFS on a grid where moving into a cell costs either 0 or 1. Best algorithm?', options: ['0-1 BFS with a deque (push front for 0, back for 1)', 'Plain BFS with a queue', 'DFS', 'Floyd-Warshall'], answer: 0, explain: 'Plain BFS assumes equal weights. 0-1 BFS is Dijkstra specialised to weights 0/1, O(V + E) (DSA 21).' });
+  quiz.push({ q: 'Workload: 10<sup>5</sup> range-sum queries and 10<sup>5</sup> point updates on 10<sup>5</sup> numbers. Best fit?', options: ['Fenwick tree (O(log N) each)', 'Prefix sums rebuilt after each update', 'Naive loop per query', 'Sorting'], answer: 0, explain: 'Prefix sums make updates O(N) → 10<sup>10</sup> total. Fenwick: ~3.4·10<sup>6</sup>.' });
+  quiz.push({ q: 'Greedy coin change works for coins {1, 5, 10, 25} but not for {1, 3, 4}. What should you do before coding a greedy in an interview?', options: ['Try to break it with a small counterexample, or sketch an exchange argument', 'Trust it if it passes the sample', 'Always use DP instead of greedy', 'Sort coins descending, which fixes it'], answer: 0, explain: 'Greedy needs a proof; a one-minute counterexample hunt is the practical substitute.' });
+  quiz.push({ q: 'You compute <code>(lo + hi) / 2</code> with lo = hi = 2·10<sup>9</sup> in Java ints. What happens?', options: ['Overflow: the sum wraps negative and mid becomes negative', 'Java throws an ArithmeticException', 'It returns 2·10<sup>9</sup>', 'It promotes to long automatically'], answer: 0, explain: 'Java ints wrap silently. Use lo + (hi − lo) / 2.' });
+  quiz.push({ q: 'Why do interleaved (mixed) practice sets beat blocked sets for interview prep?', options: ['They train choosing the pattern, not just executing it', 'They are easier', 'They take less time', 'They avoid hard problems'], answer: 0, explain: 'Blocked practice reveals the pattern by the chapter title; interviews do not.' });
+  quiz.push({ q: '"Return the k closest points to the origin" with a stream of points. Which choice and why?', options: ['Max-heap of size k (evict the farthest) — O(N log k), works online', 'Sort all points every time', 'Quickselect — needs all data, not online', 'BFS from the origin'], answer: 0, explain: 'Quickselect is great offline, but a stream needs an online structure; the size-k heap keeps only the best k.' });
+  quiz.push({ q: 'The interviewer asks "Are you sure about that line?" What does it usually mean and what should you do?', options: ['There is probably a bug there — trace that line with a tiny input out loud', 'They are impressed — move on', 'They want you to rewrite everything', 'They want a different language'], answer: 0, explain: 'Treat it as a hint. Calm tracing beats defensiveness or random edits.' });
+  quiz.push({ q: '"List every valid combination of k numbers from 1..9 that sum to n." Pattern?', options: ['Backtracking (choose → explore → unchoose) with pruning', 'Dynamic programming counting ways', 'Sliding window', 'Union-Find'], answer: 0, explain: '"List every" requires generating the objects; counting DP would only give how many.' });
+  quiz.push({ q: 'You have one week left before interviews. Best use of time?', options: ['Mixed timed sets, redo error-log problems, mock interviews, sleep', 'Start learning max-flow and suffix automata', 'Read solutions to 200 new problems', 'Practise only your strongest pattern'], answer: 0, explain: 'The last week is for retrieval, weak-spot repair and realistic rehearsal, not new advanced topics.' });
+
+  // =====================================================================
+  // INTERVIEW Q&A — meta-questions about patterns, approach and trade-offs
+  // =====================================================================
+  interview.push({ q: 'You get a problem you have never seen. Walk me through your first five minutes.', level: 'B', a: `<p>I restate the problem in my own words and ask clarifying questions: input size and value ranges, duplicates, negatives, empty input, the exact output format. Then I work the given example by hand and make one edge-case example of my own. Next I state a brute force and its complexity, and compare it with the budget from the constraints — for N = 10<sup>5</sup>, O(N<sup>2</sup>) is about 10<sup>10</sup> steps, too slow. That tells me I need O(N log N) or better. Then I look for the repeated work in the brute force; it usually names the pattern.</p>`, followUps: ['What if the interviewer refuses to give constraints?', 'How long would you spend on the brute force?'] });
+  interview.push({ q: 'How do you decide between a sliding window and prefix sums with a hash map?', level: 'I', a: `<p>Both handle contiguous subarrays. A sliding window needs <b>monotonic behaviour</b>: adding an element makes the window "more" (larger sum, more distinct letters), and removing makes it "less", so you know which pointer to move. That holds for non-negative numbers and for "at most k distinct" style conditions. With <b>negative numbers</b> or an <b>exact-target</b> question ("sum equals k", "count subarrays"), the monotonic property fails, so I use prefix sums: sum(i..j) = pf[j] − pf[i−1], and a hash map of earlier prefix values finds matches in O(1).</p>`, followUps: ['Shortest subarray with sum ≥ k and negatives allowed?', 'Count subarrays with at most k odd numbers?'] });
+  interview.push({ q: 'How do you recognise "binary search on the answer" when the problem never mentions searching?', level: 'I', a: `<p>Three signs. First, the question asks for the minimum or maximum value of something ("smallest capacity", "minimum speed", "largest minimum distance"). Second, if I guess a candidate answer X, I can check feasibility quickly, usually with a greedy O(N) pass. Third, feasibility is <b>monotone</b>: if X works, every larger X works (or every smaller one). Then I binary search X over its valid range, e.g. [max(weights), sum(weights)], for O(N log range) total.</p>`, followUps: ['Prove monotonicity for Koko eating bananas.', 'What if feasibility is not monotone?'] });
+  interview.push({ q: 'Tell me how you would explain the trade-off between a heap and quickselect for the kth largest element.', level: 'I', a: `<p>A min-heap of size k scans once and keeps the k largest values: O(N log k) time, O(k) space, and it works on a <b>stream</b> because it never needs the whole array. Quickselect partitions like quicksort but recurses into one side: O(N) on average and O(1) extra space, but O(N<sup>2</sup>) in the worst case unless I randomise the pivot, and it needs all the data and reorders it. For a one-off batch with large N I would pick quickselect with a random pivot; for streaming or small k, the heap. Sorting is the simplest if N is small.</p>`, followUps: ['How does median-of-medians guarantee O(N)?', 'What if k is close to N?'] });
+  interview.push({ q: 'Your code fails a test and you have five minutes left. What do you do?', level: 'B', a: `<p>I stop editing and say I am going to trace. I shrink the failing input to the smallest case that still fails — often 1–3 elements — and walk the code with a state table, comparing each variable with what I intended. The first row where they differ is the bug. I check the usual suspects: loop bounds, initial values, pointer updates that do not make progress, overflow, and visited marking. I make one minimal fix, re-trace the failing case and one previously passing case, then state the complexity.</p>`, followUps: ['What if you cannot find the bug in time?', 'How do you avoid introducing a new bug with the fix?'] });
+  interview.push({ q: 'When is it acceptable to submit a brute-force solution?', level: 'B', a: `<p>When it is clearly better than nothing: in an online assessment where passing some test cases earns partial credit, or in a live round when time is nearly up and I cannot finish the optimal version. Even then, I state its complexity, explain why it is too slow for the full constraints, and describe the optimal approach in words. Starting with a correct brute force is also useful as a stepping stone and a mental test oracle. What I avoid is silently submitting brute force as if it were the final answer.</p>`, followUps: ['How do OAs score partial solutions?', 'How do you describe an optimal solution you did not code?'] });
+  interview.push({ q: 'BFS or DFS: how do you choose for a graph or grid problem?', level: 'I', a: `<p>If the question asks for the <b>shortest path or minimum steps</b> with equal edge costs, BFS, because it visits nodes in order of distance and the first visit is the shortest. Multiple simultaneous sources → multi-source BFS. For connectivity, counting components, cycle detection, topological order via finishing times, or exploring all paths, DFS is natural. On large grids I prefer iterative versions, because recursive DFS can overflow the stack around 10<sup>4</sup>–10<sup>5</sup> frames. With weighted edges neither works for shortest paths — I switch to Dijkstra or 0-1 BFS.</p>`, followUps: ['Why does BFS fail with weights?', 'Bidirectional BFS: when does it help?'] });
+  interview.push({ q: 'How do you know a problem is a DP problem, and how do you design the state?', level: 'A', a: `<p>Signals: a question about the number of ways, a min/max cost, or feasibility, built from a sequence of choices, and a brute-force recursion whose arguments repeat. To design the state, I write one sentence: "dp[i] is the best answer for the first i items" (adding dimensions such as remaining capacity or "holding a stock" when the future depends on them). The check is: does the rest of the problem depend on anything not stored in the state? If yes, add it. The transition comes from asking what the last choice was. Then base cases, fill order and where the answer lives.</p>`, followUps: ['When does greedy suffice instead of DP?', 'How do you reduce memory from O(N·M) to O(M)?'] });
+  interview.push({ q: 'You chose a greedy solution. The interviewer asks: "Why is it correct?"', level: 'A', a: `<p>I give an exchange argument. Take any optimal solution; if it differs from mine at the first choice, swap its choice for the greedy one and show the result is no worse — for interval scheduling, replacing the first chosen interval with the one that ends earliest leaves at least as much room for the rest. Repeating this turns any optimal solution into mine without losing quality, so mine is optimal. If I cannot build that argument, I try small counterexamples. If I find one, I switch to DP.</p>`, followUps: ['Show greedy failing on coin change {1, 3, 4}.', 'Why does sorting by end time work but by start time fail?'] });
+  interview.push({ q: 'How do you communicate while coding without slowing down?', level: 'B', a: `<p>I narrate intent, not keystrokes: "This loop builds the frequency map", "This helper checks whether a capacity is feasible", "Here I mark visited when enqueuing so nothing is added twice". I pause briefly at decisions such as bounds and initial values and say why. I name variables clearly so the code explains itself, and I split logic into small helpers. If I need to think silently, I say so: "Give me 30 seconds to work out the boundary". Then I summarise what I decided.</p>`, followUps: ['What if the interviewer is silent the whole time?', 'How do you handle being interrupted mid-thought?'] });
+  interview.push({ q: 'Design a revision plan for the last two weeks before a big-tech loop.', level: 'I', a: `<p>Week 1: one mixed timed set per day (2–3 problems from different patterns, 20–25 minutes per medium), redo every error-log problem from scratch, and type the main skeletons from memory. Week 2: two full mock interviews with someone watching or an AI interviewer, light daily sets, flash cards of clue → technique, and behavioural stories. Weak patterns get three spaced sessions, strong ones one. The last evening is light review, setup checks and a full night’s sleep. No new advanced topics in the final week.</p>`, followUps: ['How do you measure whether the plan is working?', 'How would you adapt it for a company that emphasises graphs?'] });
+  interview.push({ q: 'What changes when an interview allows AI coding assistants?', level: 'A', a: `<p>The grade shifts from typing to judgement. I still clarify, pick the pattern and state the complexity myself, because the assistant will happily produce a solution for a misunderstood problem. I use it to draft code quickly, then review it out loud against a checklist: boundaries, initial values, overflow, visited marking, recursion depth, and edge cases. I write a couple of targeted tests, including a tiny brute-force comparison if possible. Catching a subtle generated bug and explaining the fix is strong evidence of seniority; pasting output without review is a red flag.</p>`, followUps: ['Give an example of a subtle bug an assistant might introduce in BFS.', 'How do you show ownership of AI-generated code?'] });
+  interview.push({ q: 'The interviewer adds a twist: "Now the input is too large to fit in memory." How do you respond?', level: 'E', a: `<p>I identify what my algorithm actually needs to keep. For counting and top-k I can stream: hash counts per chunk, or a size-k heap; if the distinct keys do not fit, partition by hash into files and process each file separately, or use approximate structures (count-min sketch, HyperLogLog) if exact answers are not required. Sorting-based solutions become external merge sort: sort chunks that fit, then k-way merge with a heap. Graph problems need partitioning or a distributed framework. I state the I/O cost and what exactness I give up.</p>`, followUps: ['How does external merge sort use a heap?', 'When is an approximate answer acceptable?'] });
+  interview.push({ q: 'How do you keep calm and recover after a bad start in a round?', level: 'B', a: `<p>I treat the round as many small steps that are each graded, not as a single pass/fail. If I start badly — wrong pattern, a bug — I name it: "That approach does not handle negatives; let me step back." Then I return to the checklist: brute force, the waste, the next pattern. I slow my speech and write things down, because that lowers stress and helps the interviewer follow me. Recovering cleanly from a mistake is itself positive evidence. After the round I write two lines about it, then focus on the next round.</p>`, followUps: ['What do you do if you blank completely?', 'How do you ask for a hint without sounding lost?'] });
+
+  // Spread correct answers across positions (deterministic rotation) so the right option is not always first.
+  function rotateMcq(m, r) {
+    if (!m || !m.options) return;
+    var n = m.options.length, k = r % n;
+    if (!k) return;
+    m.options = m.options.slice(k).concat(m.options.slice(0, k));
+    m.answer = (m.answer - k + n) % n;
+  }
+  quiz.forEach(function (q, i) { rotateMcq(q, i * 2 + 1); });
+  practice.forEach(function (p, i) { rotateMcq(p.mcq, i + 2); });
+  topics.forEach(function (t, i) { (t.problems || []).forEach(function (p) { rotateMcq(p.mcq, i + 1); }); });
+
+  registerModule({
+    id: 'dsa28',
+    title: 'Interview Mastery: Pattern Recognition & Mock Rounds',
+    intro: `<p>This is the capstone of the DSA track. You already know the tools from DSA 1–27: windows and two pointers, hashing, binary search, stacks, trees, heaps, graphs, greedy, DP and the advanced structures. This module is about the step that decides real interviews: <b>picking the right tool, under time pressure, for a problem you have never seen — and explaining your choice out loud</b>.</p>
+      <p>You will build a <b>master clue → technique map</b>, learn to read constraints as a complexity budget, follow an 8-step routine for unseen problems, run <b>mixed timed problem sets</b>, replay full <b>mock interview walkthroughs</b>, debug calmly under pressure, communicate trade-offs like a senior engineer, avoid the classic mistakes, and finish with revision checklists for the last week. Every topic has a visualizer, worked examples, and an "AI era" section on how assistants change preparation and interviews in 2026.</p>`,
+    goals: [
+      'Diagnose the right pattern from the wording and constraints of an unseen problem within about 5 minutes, using the master clue → technique map',
+      'Turn any constraint line (N, value ranges, number of queries) into a target complexity and a shortlist of techniques',
+      'Run a full 45-minute mock round with the 8-step routine: clarify, examples, brute force, find the waste, optimise, walk through, code, test',
+      'Debug a failing solution systematically with the smallest failing input, a state table and the usual-suspects list',
+      'Explain trade-offs (time vs space, preprocessing vs queries, average vs worst case, simplicity vs optimality) with a clear, constraint-based choice',
+      'Solve a mixed set of 16 problems across 12+ patterns and build a personal error log and last-week revision plan'
+    ],
+    prereqs: `The whole DSA track, especially DSA 5–6 (prefix sums, two pointers, sliding window), DSA 8 (hashing), DSA 10 (binary search), DSA 14 (stacks/queues), DSA 15–16 (trees, heaps, tries), DSA 17–19 (greedy and DP) and DSA 20–21 (graphs). Advanced modules (DSA 22–27) help with the hardest follow-ups but are not required.`,
+    hours: 20,
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
+  });
+})();

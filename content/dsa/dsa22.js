@@ -2238,4 +2238,545 @@ print("max flow =", flow, "found in", phases, "phases")
       }
     }]
   });
+
+  // =====================================================================
+  // TOPIC 8 — Min cut (max-flow min-cut theorem) and how to use it
+  // =====================================================================
+  topics.push({
+    title: 'Minimum Cut: The Max-Flow Min-Cut Theorem & Modelling with Cuts',
+    analogy: `<p>An enemy wants to stop all supplies from a port (S) reaching a capital (T) by blowing up roads. Each road has a cost to destroy, equal to how much it can carry. The <b>cheapest set of roads</b> to destroy is a <b>minimum cut</b>.</p>
+      <p>Here is the magic: the cheapest demolition bill is <b>exactly equal</b> to the most supplies you could ever ship. The narrowest "waist" of the network decides both. Find the max flow, and the min cut falls out for free.</p>`,
+    explain: `<p>An <b>S-T cut</b> splits the nodes into two groups: the S-side (contains S) and the T-side (contains T). Its <b>capacity</b> is the sum of capacities of edges going <b>from the S-side to the T-side</b>. Edges going backwards (T-side → S-side) do <b>not</b> count.</p>
+      <p><b>Two facts:</b></p>
+      <ol>
+        <li><b>Any flow ≤ any cut.</b> Every unit going from S to T must cross from the S-side to the T-side at least once, so it uses some cut edge.</li>
+        <li><b>Max-flow min-cut theorem:</b> the maximum flow value <b>equals</b> the minimum cut capacity. When Ford-Fulkerson stops, the nodes still reachable from S in the residual graph form a cut whose edges are all full and whose backward edges are all empty — so flow = that cut, and by fact 1 both are optimal.</li>
+      </ol>
+      <p><b>How to find the min cut (3 lines after max flow):</b></p>
+      <ol>
+        <li>Run any max-flow algorithm.</li>
+        <li>BFS/DFS from S using only residual edges with room &gt; 0. Mark everything reached as the <b>S-side</b>.</li>
+        <li>Every <b>original</b> edge from a marked node to an unmarked node is a cut edge. Their capacities sum to the max flow.</li>
+      </ol>
+      ${H.table(['cut (S-side)', 'edges crossing S→T side', 'capacity'], [
+        ['{S}', 'S→A 3, S→B 2', '5'],
+        ['{S, A}', 'S→B 2, A→B 2, A→T 2', '6'],
+        ['{S, A, B}', 'A→T 2, B→T 3', '5'],
+        ['{S, B}', 'S→A 3, B→T 3', '6']
+      ])}
+      <p>For the network S→A:3, S→B:2, A→B:2, A→T:2, B→T:3 the minimum is <b>5</b> (two different min cuts tie), matching the max flow 5 from the previous topic.</p>
+      <p><b>Why this matters in interviews:</b> many "minimum cost to separate / choose / forbid" problems are secretly min cut. You build a network where <b>every finite cut corresponds to a valid choice</b> and its capacity equals the cost. Then max flow solves it.</p>`,
+    clues: [
+      '"<b>Minimum cost to disconnect</b> A from B", "cheapest set of links to remove" → min S-T cut.',
+      '"Minimum number of <b>nodes</b> to remove to separate" → split nodes (in → out, capacity 1), then min cut.',
+      '"Choose projects for <b>max profit</b>, but a project needs certain tools / prerequisites" → project selection: max closure = total positive profit − min cut.',
+      '"Label each pixel/item as A or B; cost for each label + penalty when neighbours differ" → graph-cut segmentation (min cut).',
+      '"Can team X still win the league?" (baseball elimination) → flow network; X is eliminated iff max flow &lt; total remaining games.',
+      'The answer equals a max flow, but the question asks "<b>which edges</b>" → residual BFS from S after max flow.'
+    ],
+    code: [`
+      class MinCut {
+          // Capacity-matrix version (n up to a few hundred). Returns the cut edges {u, v}.
+          static List<int[]> minCut(int[][] capacity, int s, int t) {
+              int n = capacity.length;
+              int[][] r = new int[n][];
+              for (int i = 0; i < n; i++) r[i] = capacity[i].clone();     // residual capacities
+              int[] parent = new int[n];
+              while (bfs(r, s, t, parent)) {                                // Edmonds-Karp
+                  int push = Integer.MAX_VALUE;
+                  for (int v = t; v != s; v = parent[v]) push = Math.min(push, r[parent[v]][v]);
+                  for (int v = t; v != s; v = parent[v]) { r[parent[v]][v] -= push; r[v][parent[v]] += push; }
+              }
+              bfs(r, s, -1, parent);                                        // who is still reachable?
+              List<int[]> cut = new ArrayList<>();
+              for (int u = 0; u < n; u++)
+                  for (int v = 0; v < n; v++)
+                      if (parent[u] != -1 && parent[v] == -1 && capacity[u][v] > 0) cut.add(new int[]{u, v});
+              return cut;
+          }
+
+          // BFS over residual edges. parent[v] == -1 means "not reached" (parent[s] = s).
+          static boolean bfs(int[][] r, int s, int t, int[] parent) {
+              Arrays.fill(parent, -1);
+              parent[s] = s;
+              Deque<Integer> q = new ArrayDeque<>();
+              q.add(s);
+              while (!q.isEmpty()) {
+                  int u = q.poll();
+                  for (int v = 0; v < r.length; v++)
+                      if (parent[v] == -1 && r[u][v] > 0) { parent[v] = u; q.add(v); }
+              }
+              return t >= 0 && parent[t] != -1;
+          }
+      }`, `
+      class ProjectSelection {
+          // profit[i] > 0: project earns money; profit[i] < 0: it is a cost (e.g. buying a tool).
+          // need[i] = list of items that must also be chosen if i is chosen.
+          // Answer = sum of positive profits - min cut.  (Uses the MinCut-style Edmonds-Karp on a matrix.)
+          static long maxProfit(long[] profit, int[][] need) {
+              int n = profit.length, s = n, t = n + 1;
+              long INF = Long.MAX_VALUE / 4, positive = 0;
+              long[][] r = new long[n + 2][n + 2];
+              for (int i = 0; i < n; i++) {
+                  if (profit[i] > 0) { r[s][i] = profit[i]; positive += profit[i]; }   // lose it if NOT chosen
+                  else r[i][t] = -profit[i];                                          // pay it if chosen
+                  for (int j : need[i]) r[i][j] = INF;                                // cannot cut a dependency
+              }
+              long flow = 0;
+              int[] parent = new int[n + 2];
+              while (true) {
+                  Arrays.fill(parent, -1);
+                  parent[s] = s;
+                  Deque<Integer> q = new ArrayDeque<>();
+                  q.add(s);
+                  while (!q.isEmpty() && parent[t] == -1) {
+                      int u = q.poll();
+                      for (int v = 0; v < n + 2; v++) if (parent[v] == -1 && r[u][v] > 0) { parent[v] = u; q.add(v); }
+                  }
+                  if (parent[t] == -1) break;
+                  long push = INF;
+                  for (int v = t; v != s; v = parent[v]) push = Math.min(push, r[parent[v]][v]);
+                  for (int v = t; v != s; v = parent[v]) { r[parent[v]][v] -= push; r[v][parent[v]] += push; }
+                  flow += push;
+              }
+              return positive - flow;
+          }
+      }`],
+    codeTitle: ['Max flow, then residual BFS → the cut edges (Java)', 'Min cut as a modelling tool: project selection / max-weight closure (Java)'],
+    viz: {
+      title: 'From max flow to min cut: run the flow, BFS the residual graph, read off the full edges',
+      input: 'S>A:16 S>C:13 C>A:4 A>B:12 B>C:9 C>D:14 D>B:7 B>T:20 D>T:4',
+      inputLabel: 'Edges "u>v:capacity" with source S and sink T (up to 9 nodes, 16 edges)',
+      gen: function (input) {
+        var P = parseFlow(input), N = buildNet(P.ids, P.edges), E = N.E, s = N.idx.S, t = N.idx.T;
+        var nodes = layered(P.ids, P.edges, 'S', 'T', 70), frames = [], total = 0, round = 0;
+        function G(hl, extra, label) {
+          var ehl = flowEhl(P.edges, E);
+          for (var k in extra) ehl[k] = extra[k];
+          return { type: 'graph', label: label, directed: true, height: 70, nodes: nodes, edges: flowEdges(P.edges, E), hl: hl || {}, ehl: ehl };
+        }
+        frames.push({ narr: '<b>Step 1: compute a maximum flow</b> (Edmonds-Karp here; any algorithm works). Labels are flow/capacity.', parts: [G({ S: 'sel', T: 'sel' }, {}, 'network'), { type: 'vars', vals: { 'total flow': 0 } }] });
+        while (round < 30) {
+          var via = P.ids.map(function () { return -1; }), seen = P.ids.map(function () { return false; }), q = [s];
+          seen[s] = true;
+          while (q.length && !seen[t]) { var v = q.shift(); N.g[v].forEach(function (id) { var w = E[id].v; if (!seen[w] && resid(E, id) > 0) { seen[w] = true; via[w] = id; q.push(w); } }); }
+          if (!seen[t]) break;
+          var path = [], b = Infinity, ex = {}, names = [];
+          for (var x = t; x !== s; x = E[via[x]].u) path.unshift(via[x]);
+          path.forEach(function (id) { b = Math.min(b, resid(E, id)); var o = P.edges[E[id].k]; ex[o[0] + '-' + o[1]] = (id & 1) ? 'sel' : 'cur'; });
+          names = ['S'].concat(path.map(function (id) { return P.ids[E[id].v]; }));
+          path.forEach(function (id) { push(E, id, b); });
+          total += b; round++;
+          frames.push({ narr: 'Augment #' + round + ': ' + names.join(' → ') + ', push <b>' + b + '</b>. Total = <b>' + total + '</b>.', parts: [G({}, ex, 'max flow in progress'), { type: 'vars', vals: { 'total flow': total } }] });
+        }
+        var side = P.ids.map(function () { return false; }), order = [s], hl = {};
+        side[s] = true; hl.S = 'ok';
+        frames.push({ narr: '<b>Step 2: max flow = ' + total + '.</b> Now BFS from S using only residual edges that still have room (forward edges not full, or backward edges that carry flow). Start with S on the S-side.', parts: [G(copy(hl), {}, 'residual BFS from S'), { type: 'set', label: 'S-side', items: ['S'] }] });
+        for (var i = 0; i < order.length; i++) {
+          var u = order[i];
+          N.g[u].forEach(function (id) {
+            var w = E[id].v;
+            if (!side[w] && resid(E, id) > 0) {
+              side[w] = true; order.push(w); hl[P.ids[w]] = 'ok';
+              var o = P.edges[E[id].k], back = (id & 1) === 1;
+              frames.push({ narr: 'Reach <b>' + P.ids[w] + '</b> from ' + P.ids[u] + ' — ' + (back ? 'via the <b>reverse</b> of ' + o[0] + '→' + o[1] + ' (it carries flow we could undo).' : 'edge ' + o[0] + '→' + o[1] + ' still has room ' + resid(E, id) + '.'), parts: [G(copy(hl), one(o[0] + '-' + o[1], 'cur'), 'residual BFS from S'), { type: 'set', label: 'S-side', items: order.map(function (z) { return P.ids[z]; }), hl: one(P.ids[w], 'ok') }] });
+            }
+          });
+        }
+        var cut = [], cap = 0, cutE = {}, fin = {};
+        P.ids.forEach(function (id, j) { fin[id] = side[j] ? 'ok' : 'bad'; });
+        P.edges.forEach(function (e) { if (side[N.idx[e[0]]] && !side[N.idx[e[1]]]) { cut.push([e[0] + '→' + e[1], e[2]]); cap += e[2]; cutE[e[0] + '-' + e[1]] = 'sel'; } });
+        frames.push({ narr: '<b>Step 3: the cut.</b> <span class="c-g">Green</span> = S-side, <span class="c-r">red</span> = T-side. The <span class="c-p">purple</span> edges cross from green to red — every one is <b>full</b>. Their capacities sum to <b>' + cap + '</b> = the max flow ' + total + '. ' + (cap === total ? 'Max-flow = min-cut ✔' : ''), parts: [G(fin, cutE, 'minimum cut'), { type: 'table', label: 'cut edges', columns: ['edge', 'capacity'], rows: cut.map(function (c) { return [c[0], String(c[1])]; }).concat([['<b>total</b>', '<b>' + cap + '</b>']]) }] });
+        var backs = [];
+        P.edges.forEach(function (e, k) { if (!side[N.idx[e[0]]] && side[N.idx[e[1]]]) backs.push(e[0] + '→' + e[1] + ' carries ' + E[2 * k].f); });
+        frames.push({ narr: 'Last check: edges going <b>backwards</b> (red → green) must carry <b>zero</b> flow, otherwise BFS could have used their reverse edge. ' + (backs.length ? 'Here: ' + backs.join(', ') + '.' : 'There are no such edges here.') + ' Both conditions together prove the flow is maximum and the cut is minimum.', parts: [G(fin, cutE, 'minimum cut'), { type: 'vars', vals: { 'max flow': total, 'min cut': cap } }] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Min vertex cut by node splitting', html: `<p>"Remove the fewest routers so A cannot reach B." Replace every router v (except A and B) by two nodes <code>v_in → v_out</code> with capacity <b>1</b>; every original link u→v becomes <code>u_out → v_in</code> with capacity <b>∞</b> (so cutting links is never cheaper). Now any finite cut must cut some <code>v_in → v_out</code> edges — i.e. remove routers — and max flow = minimum routers to remove.</p>` },
+      { title: 'Project selection in numbers', html: `<p>Projects P1 (+10), P2 (+7); tools T1 (−6), T2 (−9). P1 needs T1; P2 needs T1 and T2. Network: S→P1:10, S→P2:7, T1→T:6, T2→T:9, P1→T1:∞, P2→T1:∞, P2→T2:∞. Min cut = 13 (cut S→P2 = 7 and T1→T = 6). Profit = 17 − 13 = <b>4</b>: do P1 with T1 (10 − 6), skip P2 (7 − 6 − 9 &lt; 0 extra).</p>`, code: `long[] profit = {10, 7, -6, -9};          // P1, P2, T1, T2
+int[][] need = {{2}, {2, 3}, {}, {}};       // P1 needs T1; P2 needs T1 and T2
+// ProjectSelection.maxProfit(profit, need) == 4` },
+      { title: 'Several minimum cuts can exist', html: `<p>With S→A:3, S→B:2, A→B:2, A→T:2, B→T:3, both {S} and {S, A, B} have capacity 5. The residual BFS from S always returns the <b>smallest</b> S-side (the min cut closest to S). BFS backwards from T in the residual graph gives the min cut closest to T. Edges that appear in <b>every</b> min cut are the truly critical ones.</p>` },
+      { title: 'Global min cut (no fixed S and T)', html: `<p>"Fewest edges to disconnect the graph at all" has no S and T. Options: fix S and try all T (V − 1 max flows), <b>Stoer–Wagner</b> O(V·E + V² log V) deterministic, or <b>Karger</b>'s random edge contraction (repeat O(V² log V) times for high success probability). Interviews mostly ask about S-T cuts; know the names for the global version.</p>` }
+    ],
+    deepDive: `<p><b>Full proof of the theorem (the 3 equivalent statements):</b> for a flow f, these are equivalent: (1) f is maximum; (2) the residual graph has no S→T path; (3) some cut has capacity equal to |f|. (1 ⇒ 2): an augmenting path would increase f. (2 ⇒ 3): let X = nodes reachable from S in the residual graph. For every edge from X to outside, residual is 0 → it is full; for every edge from outside into X, its reverse residual is 0 → it carries 0. So the net flow across the cut equals its capacity. (3 ⇒ 1): no flow can exceed any cut. ∎</p>
+      <p><b>Max-flow min-cut is LP duality.</b> Max flow is a linear program; its dual assigns each node a 0/1 "side" and each edge a 0/1 "cut" variable — the min-cut LP — and it has integral optimal solutions. This is why so many combinatorial min-max theorems (König, Menger, Hall, Dilworth) are special cases of max-flow min-cut.</p>
+      <p><b>Modelling patterns with ∞ edges:</b> an edge of capacity ∞ from u to v says "if u is on the S-side then v must be on the S-side too" (otherwise the cut would be infinite). That one rule encodes dependencies (project selection), "must choose together" constraints, and closure problems. For binary labelling (image segmentation, Boykov–Kolmogorov), costs to label i as "foreground"/"background" become edges S→i and i→T, and smoothness penalties become edges between neighbouring pixels; this exactly minimises energies that are <b>submodular</b>.</p>
+      <p><b>Production notes:</b> graph cuts powered image segmentation and stereo vision for a decade (GrabCut in OpenCV is still a min-cut). Network reliability teams compute min cuts between data centres to know how many fibre cuts they can survive. Use <code>long</code> and a large finite INF (e.g. <code>Long.MAX_VALUE / 4</code>) so adding two INF edges does not overflow.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI can compute a min cut with networkx (<code>nx.minimum_cut</code>) in one line. What it cannot do reliably is <b>invent the right network</b> for an unusual "minimum cost to separate / choose" story, especially with ∞ dependency edges and node splitting.</p>
+      <p><b>Use AI as a partner:</b> state your model ("each project is a node, S→project with its profit, tool→T with its cost, project→tool with ∞") and ask the AI to find a counterexample where a valid choice does not correspond to a finite cut. Ask it to brute-force small instances (all 2<sup>n</sup> choices) and compare with your flow answer.</p>
+      <p><b>Where AI goes wrong:</b> counting backward edges in the cut capacity, reporting edges between "S-reachable in the original graph" instead of the <b>residual</b> graph, putting the ∞ dependency edge in the wrong direction, and overflowing with <code>Long.MAX_VALUE</code> as INF.</p>
+      <p><b>What you must still own:</b> the proof sketch (interviewers ask "how do you know it is optimal?"), the residual-BFS recipe, and the modelling patterns: node splitting, ∞ edges, super source/sink, and "profit = positives − min cut".</p>`,
+    problems: [{
+      title: 'Cheapest Roads to Block',
+      level: 'Medium', tags: ['min cut', 'max flow', 'residual graph'], companies: ['Google', 'Palantir', 'Microsoft'],
+      statement: `<p>A directed road network has <code>n</code> towns. <code>roads[i] = [u, v, cost]</code>: blocking road i costs <code>cost</code>. Find a set of roads with <b>minimum total cost</b> whose removal makes town <code>t</code> unreachable from town <code>s</code>. Return the road indices (any optimal set, sorted).</p>`,
+      constraints: `<p>2 ≤ n ≤ 500, 1 ≤ roads.length ≤ 5000, 1 ≤ cost ≤ 10<sup>6</sup>, s ≠ t, t reachable from s.</p>`,
+      example: `<p>n = 4, s = 0, t = 3, roads <code>[0,1,10] [0,2,10] [1,3,2] [2,3,3] [1,2,1]</code> → <b>${H.c('g', '[2, 3]')}</b> (cost 2 + 3 = 5).</p><p>Why: blocking the two cheap roads into town 3 costs 5. Blocking the roads out of 0 would cost 20. The max flow is also 5 — no cheaper cut can exist.</p>`,
+      brute: {
+        why: `<p>Try every subset of roads (2<sup>E</sup>), check with BFS whether t is still reachable, keep the cheapest that works. Fine for E ≤ 20, impossible for E = 5000. The waste: the exponential search ignores the structure that max flow exploits.</p>`,
+        code: `class Brute {
+    List<Integer> cheapestBlock(int n, int[][] roads, int s, int t) {
+        int m = roads.length;
+        long best = Long.MAX_VALUE;
+        int bestMask = 0;
+        for (int mask = 0; mask < (1 << m); mask++) {        // mask bit i = road i blocked
+            long cost = 0;
+            for (int i = 0; i < m; i++) if ((mask >> i & 1) == 1) cost += roads[i][2];
+            if (cost >= best) continue;
+            boolean[] seen = new boolean[n];
+            Deque<Integer> q = new ArrayDeque<>();
+            q.add(s);
+            seen[s] = true;
+            while (!q.isEmpty()) {
+                int u = q.poll();
+                for (int i = 0; i < m; i++)
+                    if ((mask >> i & 1) == 0 && roads[i][0] == u && !seen[roads[i][1]]) { seen[roads[i][1]] = true; q.add(roads[i][1]); }
+            }
+            if (!seen[t]) { best = cost; bestMask = mask; }
+        }
+        List<Integer> ans = new ArrayList<>();
+        for (int i = 0; i < m; i++) if ((bestMask >> i & 1) == 1) ans.add(i);
+        return ans;
+    }
+}`
+      },
+      mcq: { q: 'After max flow, which roads form the cut?', options: ['Roads from a node reachable from s in the RESIDUAL graph to a node that is not', 'All roads with flow &gt; 0', 'All saturated roads', 'Roads on the last augmenting path'], answer: 0, explain: 'Saturated roads can be inside one side; only those crossing from the residual-reachable set to the rest form the min cut.' },
+      hints: [
+        `<p>Hint 1: Treat blocking cost as capacity. Any blocking set is an S-T cut; the cheapest one equals the max flow.</p>`,
+        `<p>Hint 2: Run max flow (Edmonds-Karp is enough for 5000 edges), then BFS from s using edges with residual &gt; 0.</p>`,
+        `<p>Hint 3: Recipe — answer = indices i with reach[u_i] = true and reach[v_i] = false. Do not report every saturated road: some saturated roads lie entirely inside one side.</p>`
+      ],
+      solution: {
+        approach: `<p>Edmonds-Karp with paired edge ids (road i → ids 2i, 2i+1). After the flow, one BFS over residual edges marks the S-side; the crossing original roads are an optimal blocking set.</p>`,
+        code: `class Solution {
+    List<Integer> cheapestBlock(int n, int[][] roads, int s, int t) {
+        int m = roads.length;
+        int[] to = new int[2 * m];
+        long[] cap = new long[2 * m];
+        List<List<Integer>> g = new ArrayList<>();
+        for (int i = 0; i < n; i++) g.add(new ArrayList<>());
+        for (int i = 0; i < m; i++) {
+            to[2 * i] = roads[i][1];     cap[2 * i] = roads[i][2]; g.get(roads[i][0]).add(2 * i);
+            to[2 * i + 1] = roads[i][0]; cap[2 * i + 1] = 0;       g.get(roads[i][1]).add(2 * i + 1);
+        }
+        int[] via = new int[n];
+        while (bfs(g, to, cap, s, via) && via[t] != -1) {      // Edmonds-Karp rounds
+            long push = Long.MAX_VALUE;
+            for (int v = t; v != s; v = to[via[v] ^ 1]) push = Math.min(push, cap[via[v]]);
+            for (int v = t; v != s; v = to[via[v] ^ 1]) { cap[via[v]] -= push; cap[via[v] ^ 1] += push; }
+        }
+        bfs(g, to, cap, s, via);                              // final residual reachability
+        List<Integer> ans = new ArrayList<>();
+        for (int i = 0; i < m; i++)
+            if (via[roads[i][0]] != -1 && via[roads[i][1]] == -1) ans.add(i);
+        return ans;
+    }
+
+    // BFS over residual edges; via[v] = edge used to reach v, -1 = unreached, -2 = the source.
+    private boolean bfs(List<List<Integer>> g, int[] to, long[] cap, int s, int[] via) {
+        Arrays.fill(via, -1);
+        via[s] = -2;
+        Deque<Integer> q = new ArrayDeque<>();
+        q.add(s);
+        while (!q.isEmpty()) {
+            int v = q.poll();
+            for (int e : g.get(v)) if (cap[e] > 0 && via[to[e]] == -1) { via[to[e]] = e; q.add(to[e]); }
+        }
+        return true;
+    }
+}`,
+        dry: {
+          head: ['step', 'what happens', 'flow / reach'],
+          rows: [
+            ['1', 'BFS path 0→1→3, bottleneck min(10, 2)', 'flow 2'],
+            ['2', 'BFS path 0→2→3, bottleneck min(10, 3)', 'flow 5'],
+            ['3', 'BFS: 1→3 and 2→3 full, 2→1 has no flow to undo → 3 unreachable', 'max flow 5'],
+            ['4', 'residual BFS from 0: reach 1 (room 8), 2 (room 7)', 'S-side {0, 1, 2}'],
+            ['5', 'roads crossing to {3}: #2 (1→3, 2), #3 (2→3, 3)', H.c('g', '[2, 3], cost 5')]
+          ]
+        },
+        complexity: `<p>Edmonds-Karp O(V·E²) worst case, plus O(V + E) for the final BFS. Space O(V + E).</p>`,
+        followUps: ['Block towns instead of roads (node splitting).', 'Roads are two-way.', 'Which roads belong to <b>every</b> minimum cut?']
+      }
+    }]
+  });
+
+  // =====================================================================
+  // TOPIC 9 — Bipartite matching (Kuhn, flow view, Hopcroft-Karp, König)
+  // =====================================================================
+  topics.push({
+    title: 'Bipartite Matching: Kuhn\'s Augmenting Paths, Flow View, Hopcroft-Karp & König\'s Theorem',
+    analogy: `<p>A school dance: students on the left, dance partners on the right, and lines showing who is willing to dance with whom. You want as many pairs as possible. When a new student arrives and their favourite partner is taken, you do not give up — you politely ask the current partner's dancer "<b>could you switch to someone else you also like?</b>" That dancer may ask someone else in turn, a <b>chain of polite switches</b>. If the chain ends at a free partner, everyone shifts by one and the new student gets a partner.</p>
+      <p>That chain is an <b>augmenting path</b>, and repeating it is all Kuhn's algorithm does.</p>`,
+    explain: `<p>A graph is <b>bipartite</b> when its nodes split into a Left group and a Right group and every edge goes Left–Right. A <b>matching</b> is a set of edges with no shared endpoint (everyone dances with at most one partner). We want a <b>maximum matching</b>.</p>
+      <p><b>Augmenting path:</b> a path that starts at a <b>free</b> left node, ends at a <b>free</b> right node, and alternates <i>non-matching edge, matching edge, non-matching edge, …</i>. Flipping every edge on it (matched ↔ unmatched) grows the matching by exactly 1. <b>Berge's theorem:</b> a matching is maximum ⟺ no augmenting path exists.</p>
+      <p><b>Kuhn's algorithm</b> (a DFS version of Ford-Fulkerson specialised to matching):</p>
+      <ol>
+        <li>For each left node u: clear <code>visited</code>, call <code>try(u)</code>.</li>
+        <li><code>try(u)</code>: for each right neighbour r not yet visited in this round — mark it; if r is free <b>or</b> <code>try(owner of r)</code> succeeds (the owner moves elsewhere), give r to u and return true.</li>
+      </ol>
+      ${H.table(['step', 'who', 'what happens', 'matching'], [
+        ['1', 'A', '1 is free → A–1', '{A–1}'],
+        ['2', 'B', 'wants 1 (taken by A) → ask A: A takes 2', '{A–2, B–1}'],
+        ['3', 'C', 'wants 2 (A) → A wants 1 (B) → B has no other → fail; C takes 3', '{A–2, B–1, C–3}'],
+        ['4', 'D', 'wants 3 (C) → C wants 2 (A) → A wants 1 (B) → B stuck → fail', H.c('g', 'size 3 = maximum')]
+      ])}
+      <p>Edges here: A–1, A–2, B–1, C–2, C–3, D–3. Only 3 right nodes exist, so 3 is clearly the best.</p>
+      <p><b>The flow view:</b> add a source S with edges S→left (capacity 1), keep left→right edges (capacity 1), add right→T (capacity 1). Max flow = maximum matching, and Kuhn is exactly Ford-Fulkerson on this network. Running <b>Dinic</b> on it gives <b>Hopcroft-Karp</b>'s <b>O(E·√V)</b>; Kuhn is <b>O(V·E)</b>.</p>
+      <p><b>König's theorem</b> (bipartite only): <b>max matching = minimum vertex cover</b> (fewest nodes touching every edge). Consequences: maximum independent set = V − max matching; minimum path cover of a DAG = n − max matching in the "split" graph.</p>`,
+    clues: [
+      '"Assign <b>workers to jobs / students to seats / pilots to planes</b>, each used at most once, maximise the number assigned" → bipartite matching.',
+      '"Maximum number of <b>pairs</b>" where pairs must be compatible and the two sides are different kinds of things → matching.',
+      '"Fewest <b>rows and columns</b> (or lines) to cover all marked cells" → minimum vertex cover = max matching (König).',
+      '"Grid domino placement / pairing adjacent cells" → chessboard colouring makes it bipartite → matching.',
+      '"Minimum number of <b>paths/chains</b> to cover all nodes of a DAG" (each node on exactly one path) → n − max matching.',
+      '"Assign with <b>costs</b>, minimise total" → weighted matching: Hungarian algorithm O(n³) or min-cost flow — plain matching is not enough.'
+    ],
+    code: [`
+      class Kuhn {
+          private final List<List<Integer>> adj;   // adj[left] = right vertices it may pair with
+          private final int[] matchR;              // matchR[right] = left partner, or -1
+          private boolean[] visited;               // right vertices tried in the CURRENT attempt
+
+          Kuhn(int nRight, List<List<Integer>> adj) {
+              this.adj = adj;
+              matchR = new int[nRight];
+              Arrays.fill(matchR, -1);
+          }
+
+          // Find a partner for left vertex u, possibly by asking current owners to move.
+          private boolean tryKuhn(int u) {
+              for (int r : adj.get(u)) {
+                  if (visited[r]) continue;
+                  visited[r] = true;
+                  if (matchR[r] == -1 || tryKuhn(matchR[r])) {   // free, or its owner found another
+                      matchR[r] = u;
+                      return true;
+                  }
+              }
+              return false;
+          }
+
+          int maxMatching() {
+              int result = 0;
+              for (int u = 0; u < adj.size(); u++) {
+                  visited = new boolean[matchR.length];          // fresh for every left vertex
+                  if (tryKuhn(u)) result++;
+              }
+              return result;
+          }
+      }`, `
+      class HopcroftKarp {
+          private final int nL;
+          private final List<List<Integer>> adj;
+          private final int[] matchL, matchR, dist;
+          private static final int INF = Integer.MAX_VALUE;
+
+          HopcroftKarp(int nL, int nR, List<List<Integer>> adj) {
+              this.nL = nL;
+              this.adj = adj;
+              matchL = new int[nL];
+              matchR = new int[nR];
+              dist = new int[nL];
+              Arrays.fill(matchL, -1);
+              Arrays.fill(matchR, -1);
+          }
+
+          // BFS from ALL free left vertices at once: layers of the shortest augmenting paths.
+          private boolean bfs() {
+              Deque<Integer> q = new ArrayDeque<>();
+              for (int u = 0; u < nL; u++) {
+                  if (matchL[u] == -1) { dist[u] = 0; q.add(u); } else dist[u] = INF;
+              }
+              boolean foundFree = false;
+              while (!q.isEmpty()) {
+                  int u = q.poll();
+                  for (int r : adj.get(u)) {
+                      int w = matchR[r];
+                      if (w == -1) foundFree = true;                       // a path can end here
+                      else if (dist[w] == INF) { dist[w] = dist[u] + 1; q.add(w); }
+                  }
+              }
+              return foundFree;
+          }
+
+          // DFS only along the BFS layers; many vertex-disjoint paths per phase.
+          private boolean dfs(int u) {
+              for (int r : adj.get(u)) {
+                  int w = matchR[r];
+                  if (w == -1 || (dist[w] == dist[u] + 1 && dfs(w))) {
+                      matchL[u] = r;
+                      matchR[r] = u;
+                      return true;
+                  }
+              }
+              dist[u] = INF;                                               // dead end this phase
+              return false;
+          }
+
+          int maxMatching() {
+              int result = 0;
+              while (bfs())                                                // O(sqrt V) phases
+                  for (int u = 0; u < nL; u++)
+                      if (matchL[u] == -1 && dfs(u)) result++;
+              return result;
+          }
+      }`],
+    codeTitle: ['Kuhn\'s algorithm, O(V·E) — short and interview-friendly (Java)', 'Hopcroft-Karp, O(E·√V) — for 10^5 edges (Java)'],
+    viz: {
+      title: 'Kuhn live: chains of "can you move?" requests become augmenting paths',
+      input: 'A-1 A-2 B-1 C-2 C-3 D-3',
+      inputLabel: 'Edges "left-right" separated by spaces (up to 12 nodes, 20 edges); left names come first',
+      gen: function (input) {
+        var P = parseEdges(input, { example: 'A-1 A-2 B-1', maxN: 12, maxE: 20, noLoops: true });
+        var L = [], R = [], isL = {}, isR = {}, adj = {};
+        P.edges.forEach(function (e) {
+          if (!isL[e[0]]) { isL[e[0]] = true; L.push(e[0]); adj[e[0]] = []; }
+          if (!isR[e[1]]) { isR[e[1]] = true; R.push(e[1]); }
+          adj[e[0]].push(e[1]);
+        });
+        L.forEach(function (x) { if (isR[x]) throw new Error('"' + x + '" appears on both sides. Write every edge as left-right with different names, e.g. A-1.'); });
+        var H2 = 70, nodes = [];
+        L.forEach(function (id, i) { nodes.push({ id: id, label: id, x: 22, y: Math.round(H2 * (i + 1) / (L.length + 1) * 10) / 10 }); });
+        R.forEach(function (id, i) { nodes.push({ id: id, label: id, x: 78, y: Math.round(H2 * (i + 1) / (R.length + 1) * 10) / 10 }); });
+        var matchR = {}, matchL = {}, frames = [], size = 0;
+        function G(hl, extra, label) {
+          var ehl = {};
+          Object.keys(matchL).forEach(function (l) { ehl[l + '-' + matchL[l]] = 'sel'; });
+          for (var k in extra) ehl[k] = extra[k];
+          var tags = {};
+          L.forEach(function (l) { tags[l] = matchL[l] !== undefined ? '↔ ' + matchL[l] : 'free'; });
+          R.forEach(function (r) { tags[r] = matchR[r] !== undefined ? '↔ ' + matchR[r] : 'free'; });
+          return { type: 'graph', label: label, directed: false, height: H2, nodes: nodes, edges: P.edges.map(function (e) { return [e[0], e[1]]; }), hl: hl || {}, ehl: ehl, tags: tags };
+        }
+        function M() { return { type: 'map', label: 'current matching (left → right)', entries: L.filter(function (l) { return matchL[l] !== undefined; }).map(function (l) { return [l, matchL[l]]; }) }; }
+        frames.push({ narr: 'Left side: ' + L.join(', ') + '. Right side: ' + R.join(', ') + '. Lines = allowed pairs. <span class="c-p">Purple</span> lines will be the current matching. We give each left node a chance in turn.', parts: [G({}, {}, 'bipartite graph'), M()] });
+        L.forEach(function (start) {
+          var visited = {}, chain = [];
+          frames.push({ narr: '<b>New round for ' + start + '</b>: find it a partner. Clear the "visited" marks (each right node may be asked once per round).', parts: [G(one(start, 'cur'), {}, 'round for ' + start), M(), { type: 'set', label: 'visited right nodes this round', items: [] }] });
+          function tryK(u) {
+            for (var j = 0; j < adj[u].length; j++) {
+              var r = adj[u][j];
+              if (visited[r]) continue;
+              visited[r] = true;
+              var hl = {}, ex = {};
+              chain.forEach(function (c) { hl[c] = 'win'; });
+              hl[u] = 'cur'; hl[r] = matchR[r] === undefined ? 'ok' : 'bad';
+              ex[u + '-' + r] = 'cur';
+              frames.push({ narr: '<b>' + u + '</b> asks for <b>' + r + '</b>: ' + (matchR[r] === undefined ? '<span class="c-g">' + r + ' is free!</span>' : r + ' is taken by <b>' + matchR[r] + '</b> → ask ' + matchR[r] + ' whether it can move to another partner.'), parts: [G(hl, ex, 'round for ' + start), M(), { type: 'set', label: 'visited right nodes this round', items: Object.keys(visited) }] });
+              chain.push(u);
+              if (matchR[r] === undefined || tryK(matchR[r])) {
+                chain.pop();
+                matchR[r] = u; matchL[u] = r;
+                return true;
+              }
+              chain.pop();
+              frames.push({ narr: matchR[r] + ' could not move, so <b>' + r + '</b> stays with ' + matchR[r] + '. ' + u + ' tries its next option.', parts: [G(one(u, 'cur'), one(u + '-' + r, 'bad'), 'round for ' + start), M(), { type: 'set', label: 'visited right nodes this round', items: Object.keys(visited) }] });
+            }
+            return false;
+          }
+          var ok = tryK(start);
+          if (ok) size++;
+          frames.push({ narr: ok ? '<span class="c-g">Augmenting path found</span> — every switch in the chain happened at once. ' + start + ' now dances with <b>' + matchL[start] + '</b>. Matching size = <b>' + size + '</b>.' : '<span class="c-r">No augmenting path for ' + start + '</span>: every chain of switches hit a dead end. ' + start + ' stays free (and will never get a partner later either).', parts: [G(one(start, ok ? 'ok' : 'bad'), {}, 'after round ' + start), M(), { type: 'vars', vals: { 'matching size': size } }] });
+        });
+        frames.push({ narr: '<b>Maximum matching = ' + size + '</b>. By König\'s theorem this is also the size of the smallest set of nodes that touches every line (minimum vertex cover).', parts: [G({}, {}, 'final matching'), M(), { type: 'vars', vals: { 'max matching': size, 'min vertex cover': size, 'max independent set': L.length + R.length - size } }] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Why visited[] is per round', html: `<p>Inside one round, if right node r already failed to help, asking again cannot succeed (nothing changed) — and without the mark the DFS could loop forever (A asks 1, its owner B asks 2, its owner A asks 1, …). Between rounds the matching changes, so the marks must be cleared: forgetting to reset gives too-small answers.</p>` },
+      { title: 'König in action: cover the marked cells', html: `<p>Marked cells (0,0), (0,2), (1,1), (2,1). Rows are the left side, columns the right side, one edge per marked cell: r0–c0, r0–c2, r1–c1, r2–c1. Kuhn finds r0–c0 and r1–c1; r2 only likes c1, whose owner r1 has no other option → maximum matching = <b>2</b>. Minimum cover: <b>row 0 + column 1</b> touch all four cells → 2 lines. ${H.c('g', 'Matching = cover = 2, exactly as König promises.')}</p>` },
+      { title: 'Minimum path cover of a DAG', html: `<p>DAG 1→2, 2→3, 1→4. Split each node into out-copy (left) and in-copy (right); edge u→v becomes u_out–v_in. Max matching: 1–2, 2–3 (size 2). Paths = n − matching = 4 − 2 = <b>2</b>: 1→2→3 and 4. Each matched edge "glues" two nodes into the same path.</p>` },
+      { title: 'Flow model of matching', html: `<p>Build S→each left (cap 1), left→right edges (cap 1), each right→T (cap 1). The integer max flow picks a set of left→right edges with flow 1 — no left node can send 2 (its in-capacity is 1), no right node can receive 2 (its out-capacity is 1). So flow = matching. Change the S→left capacity to k and a worker can take k jobs — that is the main advantage of the flow view.</p>`, code: `// Flow model sizes for nL left and nR right vertices:
+int nL = 4, nR = 3;
+int nodes = nL + nR + 2;          // + source + sink
+int source = nL + nR, sink = nL + nR + 1;
+System.out.println(nodes + " nodes, source " + source + ", sink " + sink);` }
+    ],
+    deepDive: `<p><b>Why Kuhn is correct.</b> If a left vertex u finds no augmenting path in its round, then it never will later: later augmentations only change the matching along alternating paths, and one can show the set of vertices reachable from u by alternating paths does not gain a free right vertex. So processing each left vertex once suffices (Berge + this lemma). Complexity: each round is one DFS O(V + E) → <b>O(V·E)</b>. Heuristic speed-ups: start with a greedy matching, and randomise the order of left vertices.</p>
+      <p><b>Hopcroft-Karp</b> runs in phases like Dinic: BFS from all free left vertices builds layers, then DFS finds a maximal set of vertex-disjoint <b>shortest</b> augmenting paths. After √V phases the shortest augmenting path is longer than √V, which leaves at most √V more augmentations → <b>O(E·√V)</b>. For E = 10<sup>5</sup>, V = 10<sup>5</sup> that is about 3·10<sup>7</sup> steps.</p>
+      <p><b>König and the vertex cover recipe:</b> after a maximum matching, run alternating BFS/DFS from all free left vertices (non-matching edges L→R, matching edges R→L). Let Z be everything reached. Then <b>(L \\ Z) ∪ (R ∩ Z)</b> is a minimum vertex cover. Its complement is a maximum independent set.</p>
+      <p><b>Hall's marriage theorem:</b> a matching that saturates every left vertex exists iff every subset X of the left side has at least |X| neighbours. Useful for proofs ("show a perfect assignment always exists").</p>
+      <p><b>Beyond bipartite:</b> general graphs need <b>Edmonds' blossom algorithm</b> (odd cycles break the simple alternating search). Weighted bipartite matching uses the <b>Hungarian algorithm</b> (O(n³)) or <b>min-cost max-flow</b>; online assignment in ride-hailing and ad allocation uses these plus approximations. Stable matching (Gale–Shapley) is a different problem — preferences instead of compatibility, used in medical residency placement.</p>`,
+    aiEra: `<p><b>What AI changes:</b> asking for "maximum bipartite matching in Java" gives working Kuhn instantly, and SciPy offers <code>linear_sum_assignment</code> (Hungarian) and <code>maximum_bipartite_matching</code>. The hard part left for you is noticing the <b>bipartite structure</b> (rows vs columns, chessboard colours, time slots vs tasks, out-copies vs in-copies) and choosing plain matching vs weighted vs stable matching.</p>
+      <p><b>Use AI as a partner:</b> ask it to brute-force all matchings for tiny random graphs and compare with your Kuhn; ask for the König cover construction and verify that the cover really touches every edge.</p>
+      <p><b>Where AI goes wrong:</b> not resetting <code>visited</code> per round, resetting it inside the recursion (infinite recursion), using Kuhn on a non-bipartite graph (wrong answers on odd cycles), confusing "maximum matching" with "maximum-weight matching", and applying König to general graphs where it does not hold.</p>
+      <p><b>What you must still own:</b> the augmenting-path idea (it is the same idea as max flow, which interviewers love to connect), the reductions (vertex cover, path cover, independent set), and complexity choices between Kuhn, Hopcroft-Karp and Dinic.</p>`,
+    problems: [{
+      title: 'Maximum Bipartite Matching (Job Applicants)',
+      level: 'Medium', tags: ['bipartite matching', 'kuhn', 'augmenting path'], companies: ['Amazon', 'Google', 'Flipkart'],
+      statement: `<p>There are <code>M</code> applicants and <code>N</code> jobs. <code>G[i][j] = 1</code> if applicant i is interested in job j. Each job takes at most one applicant and each applicant takes at most one job. Return the maximum number of applicants who can get a job.</p>`,
+      constraints: `<p>1 ≤ M, N ≤ 100.</p>`,
+      example: `<p>G = <code>[[1,1,0],[1,0,0],[0,1,1],[0,0,1]]</code> → <b>${H.c('g', '3')}</b>.</p><p>Why: applicant 1 can only do job 0, so applicant 0 takes job 1, applicant 2 takes job 2. Applicant 3 also wants only job 2 — there are just 3 jobs, so 3 is the best possible.</p>`,
+      brute: {
+        why: `<p>Backtracking: for each applicant, either skip them or give them any free job they like. That explores up to (N + 1)<sup>M</sup> assignments — far too many for 100 × 100. The waste: assignments that differ only in irrelevant ways are explored again and again.</p>`,
+        code: `class Brute {
+    private int best = 0;
+
+    int maximumMatch(int[][] G) {
+        int n = G.length > 0 ? G[0].length : 0;
+        go(G, 0, new boolean[n], 0);
+        return best;
+    }
+
+    private void go(int[][] G, int i, boolean[] taken, int count) {
+        if (i == G.length) { best = Math.max(best, count); return; }
+        go(G, i + 1, taken, count);                      // applicant i gets nothing
+        for (int j = 0; j < taken.length; j++)
+            if (G[i][j] == 1 && !taken[j]) {
+                taken[j] = true;
+                go(G, i + 1, taken, count + 1);
+                taken[j] = false;
+            }
+    }
+}`
+      },
+      mcq: { q: 'Applicant C wants job 1, which applicant A holds. What does Kuhn do?', options: ['Recursively asks A to find another job it likes; if A succeeds, C takes job 1', 'Skips job 1 forever', 'Gives job 1 to C and leaves A unmatched', 'Restarts the whole matching'], answer: 0, explain: 'That recursive "can you move?" request is the search for an augmenting path. The matching never shrinks.' },
+      hints: [
+        `<p>Hint 1: Process applicants one by one. A new applicant may take a job that is held, if the holder can move to another job it likes.</p>`,
+        `<p>Hint 2: Write <code>tryAssign(a, seen)</code>: for each job j applicant a likes and not yet seen this round, mark it, and succeed if j is free or <code>tryAssign(owner[j], seen)</code> succeeds.</p>`,
+        `<p>Hint 3: Recipe — owner[] = −1; for each applicant: fresh seen[], if tryAssign succeeds, count++. Answer = count. O(M · M·N) with a matrix.</p>`
+      ],
+      solution: {
+        approach: `<p>Kuhn's augmenting-path algorithm on the adjacency matrix. Each successful call flips one alternating chain and grows the matching by one.</p>`,
+        code: `class Solution {
+    int maximumMatch(int[][] G) {
+        int m = G.length, n = m > 0 ? G[0].length : 0;
+        int[] owner = new int[n];                 // owner[j] = applicant holding job j, or -1
+        Arrays.fill(owner, -1);
+        int result = 0;
+        for (int a = 0; a < m; a++)
+            if (tryAssign(G, a, new boolean[n], owner)) result++;
+        return result;
+    }
+
+    private boolean tryAssign(int[][] G, int a, boolean[] seen, int[] owner) {
+        for (int j = 0; j < owner.length; j++) {
+            if (G[a][j] == 0 || seen[j]) continue;
+            seen[j] = true;
+            if (owner[j] == -1 || tryAssign(G, owner[j], seen, owner)) {
+                owner[j] = a;                     // a takes j (the old owner already moved)
+                return true;
+            }
+        }
+        return false;
+    }
+}`,
+        dry: {
+          head: ['applicant', 'search', 'owner[] after (jobs 0, 1, 2)', 'count'],
+          rows: [
+            ['0', 'job 0 free', '[0, −, −]', '1'],
+            ['1', 'job 0 held by 0 → 0 tries job 1 (free) → move', '[1, 0, −]', '2'],
+            ['2', 'job 1 held by 0 → 0 tries job 0 (held by 1, 1 has nothing else) → fail; job 2 free', '[1, 0, 2]', '3'],
+            ['3', 'job 2 held by 2 → 2 tries job 1 → 0 tries job 0 → 1 stuck → fail', '[1, 0, 2]', H.c('g', '<b>3</b>')]
+          ]
+        },
+        complexity: `<p>Each applicant's search visits each job at most once and scans its row: O(M · M · N) worst case with a matrix (O(V·E) with adjacency lists). Space O(N) plus recursion depth ≤ M.</p>`,
+        followUps: ['Each job can take up to c<sub>j</sub> applicants (use flow with capacities).', 'Applicants have salary demands — minimise total cost (Hungarian / min-cost flow).', 'Return the minimum set of applicants and jobs that "covers" every interest edge (König).']
+      }
+    }]
+  });
 registerModule({ id: 'dsa22', title: 'Advanced Graph Algorithms', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

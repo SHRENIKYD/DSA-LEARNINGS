@@ -1901,4 +1901,790 @@ print(sum(F[((1 << n) - 1) ^ x] for x in a))   # 17`, run: true, title: 'SOS + b
       }
     }]
   });
+
+  // =====================================================================
+  // PRACTICE — Easy
+  // =====================================================================
+  practice.push({
+    title: 'Count Numbers with Unique Digits',
+    level: 'Easy', tags: ['digit dp', 'combinatorics'], companies: ['Google', 'Amazon'],
+    statement: `<p>Given <code>n</code>, return how many integers <code>x</code> with <code>0 ≤ x &lt; 10<sup>n</sup></code> have all <b>distinct</b> digits.</p>`,
+    constraints: `0 ≤ n ≤ 8`,
+    example: `<p>n = 2 → Output <b>91</b>. There are 100 numbers 0..99; the 9 numbers ${H.c('r', '11, 22, …, 99')} repeat a digit. 100 − 9 = 91.</p>`,
+    brute: { why: `<p>Check all 10<sup>n</sup> numbers: 10<sup>8</sup> digit checks — slow but borderline. The waste: every number of length L with distinct digits is counted by the same simple product, but we test them one by one.</p>`, code: `
+      int bruteUnique(int n) {
+          int limit = 1;
+          for (int i = 0; i < n; i++) limit *= 10;
+          int count = 0;
+          for (int x = 0; x < limit; x++) {
+              boolean[] seen = new boolean[10];
+              boolean ok = true;
+              for (char c : Integer.toString(x).toCharArray()) {
+                  if (seen[c - '0']) { ok = false; break; }
+                  seen[c - '0'] = true;
+              }
+              if (ok) count++;
+          }
+          return count;
+      }` },
+    mcq: { q: 'How many 3-digit numbers (100..999) have distinct digits?', options: ['9 · 9 · 8 = 648', '9 · 10 · 10 = 900', '10 · 9 · 8 = 720', '9 · 8 · 7 = 504'], answer: 0, explain: 'First digit 1..9 (9 ways), second any of the other 9 digits (0 now allowed), third any of the remaining 8.' },
+    hints: [`<p><b>Aha:</b> this is the free (non-tight) part of a digit DP with a "used digits" state — and because the bound is 10<sup>n</sup>, every length is completely free.</p>`, `<p>Count by length L: 9 choices for the first digit (no leading zero), then 9, 8, 7, … for the next ones.</p>`, `<p>n = 0 → 1 (just 0). Total = 10 (all 1-digit numbers incl. 0) + Σ<sub>L=2..n</sub> 9·9·8·…·(11 − L). Lengths above 10 add nothing (only 10 digits exist).</p>`],
+    solution: {
+      approach: `<p>Sum over lengths of 9 × (9 × 8 × …) — the closed form of the free digit-DP states.</p>`,
+      code: `
+        class Solution {
+            public int countNumbersWithUniqueDigits(int n) {
+                if (n == 0) return 1;                     // only the number 0
+                int total = 10;                           // 0..9
+                int cur = 9;                              // first digit of a longer number: 1..9
+                for (int len = 2; len <= Math.min(n, 10); len++) {
+                    cur *= (11 - len);                    // 9, 8, 7, ... unused digits for the next slot
+                    total += cur;
+                }
+                return total;
+            }
+        }`,
+      dry: { head: ['len', 'count of that length', 'running total'], rows: [['1', '10 (incl. 0)', '10'], ['2', '9·9 = 81', '91'], ['3', '81·8 = 648', '739']] },
+      complexity: `<p>O(min(n, 10)) time, O(1) space.</p>`,
+      followUps: ['Count numbers in [0, N] (arbitrary N) with distinct digits → full digit DP with a 10-bit mask (practice "Numbers With Repeated Digits").']
+    }
+  });
+
+  practice.push({
+    title: 'Toss Strange Coins',
+    level: 'Easy', tags: ['probability dp', 'knapsack-style'], companies: ['Twitch', 'Jane Street'],
+    statement: `<p>You have <code>n</code> coins; coin <code>i</code> lands heads with probability <code>prob[i]</code>. Toss every coin once. Return the probability that <b>exactly</b> <code>target</code> coins show heads.</p>`,
+    constraints: `1 ≤ n ≤ 1000, 0 ≤ prob[i] ≤ 1, 0 ≤ target ≤ n. Answers within 10<sup>−5</sup> accepted.`,
+    example: `<p>prob = [0.5, 0.5, 0.5, 0.5, 0.5], target = 0 → <b>0.03125</b> = 0.5<sup>5</sup> (all tails). prob = [0.4], target = 1 → <b>0.4</b>.</p>`,
+    brute: { why: `<p>Enumerate all 2<sup>n</sup> head/tail outcomes and add the probabilities of those with exactly target heads. n = 1000 → 2<sup>1000</sup> outcomes. The waste: many outcomes share "first i coins, j heads so far" and have identical futures.</p>`, code: `
+      double bruteCoins(double[] prob, int target) {
+          int n = prob.length;
+          double total = 0;
+          for (int mask = 0; mask < (1 << n); mask++) {       // only feasible for n <= 20
+              if (Integer.bitCount(mask) != target) continue;
+              double p = 1;
+              for (int i = 0; i < n; i++) p *= ((mask >> i & 1) == 1) ? prob[i] : 1 - prob[i];
+              total += p;
+          }
+          return total;
+      }` },
+    mcq: { q: 'dp[j] = probability of j heads among the coins processed so far. Adding a coin with probability p, the new dp[j] is…', options: ['dp[j]·(1−p) + dp[j−1]·p', 'dp[j]·p + dp[j−1]·(1−p)', 'dp[j] + dp[j−1]', 'dp[j−1]·p'], answer: 0, explain: 'Either we already had j heads and this coin is tails (1 − p), or we had j − 1 heads and this coin is heads (p).' },
+    hints: [`<p><b>Aha:</b> process coins one by one; the only thing that matters is how many heads so far — a probability version of 0/1 knapsack.</p>`, `<p>dp[j] over j = 0..target, update j from high to low so each coin is used once (like 0/1 knapsack).</p>`, `<p>Recipe: dp[0] = 1. For each p: for j = target..1: dp[j] = dp[j]·(1−p) + dp[j−1]·p; then dp[0] *= (1−p). Return dp[target].</p>`],
+    solution: {
+      approach: `<p>Forward probability DP with a 1D rolling array, iterating j downward.</p>`,
+      code: `
+        class Solution {
+            public double probabilityOfHeads(double[] prob, int target) {
+                double[] dp = new double[target + 1];
+                dp[0] = 1.0;                                  // zero coins → zero heads with certainty
+                for (double p : prob) {
+                    for (int j = target; j >= 1; j--)         // high → low: use each coin once
+                        dp[j] = dp[j] * (1 - p) + dp[j - 1] * p;
+                    dp[0] *= (1 - p);
+                }
+                return dp[target];
+            }
+        }`,
+      complexity: `<p>O(n · target) time, O(target) space.</p>`,
+      followUps: ['Probability of <i>at least</i> target heads → sum the tail of dp.', 'Expected number of heads → linearity: Σ prob[i], no DP needed.']
+    }
+  });
+
+  practice.push({
+    title: 'Jump Game VI',
+    level: 'Easy', tags: ['dp', 'monotonic deque'], companies: ['Amazon', 'Google'],
+    statement: `<p>You start at index 0 of <code>nums</code> and must reach the last index. From index <code>i</code> you may jump to any index in <code>[i + 1, min(n − 1, i + k)]</code>. Your score is the sum of <code>nums</code> at every index you visit (including the first and last). Return the maximum score.</p>`,
+    constraints: `1 ≤ n, k ≤ 10<sup>5</sup>, −10<sup>4</sup> ≤ nums[i] ≤ 10<sup>4</sup>`,
+    example: `${H.arr([1, -1, -2, 4, -7, 3], { label: 'nums, k = 2', hl: { 0: 'g', 1: 'g', 3: 'g', 5: 'g' } })}<p>Output <b>7</b> = 1 + (−1) + 4 + 3. We must step on −1 (cannot jump 0 → 3 with k = 2), but we skip −2 and −7.</p>`,
+    brute: { why: `<p>dp[i] = nums[i] + max(dp[i−k..i−1]) scanned directly: O(n·k) = 10<sup>10</sup>. Waste: neighbouring windows share k − 1 values.</p>`, code: `
+      int bruteJump(int[] nums, int k) {
+          int n = nums.length;
+          int[] dp = new int[n];
+          dp[0] = nums[0];
+          for (int i = 1; i < n; i++) {
+              int best = Integer.MIN_VALUE;
+              for (int j = Math.max(0, i - k); j < i; j++) best = Math.max(best, dp[j]);
+              dp[i] = nums[i] + best;
+          }
+          return dp[n - 1];
+      }` },
+    mcq: { q: 'Why can we delete index j from the deque when dp[j] ≤ dp[i] and j &lt; i?', options: ['j expires sooner and is never better than i', 'j is out of the window already', 'Because dp values are always increasing', 'To keep the deque sorted by index'], answer: 0, explain: 'Every future window containing j also contains i, and dp[i] ≥ dp[j]. So j can never be the unique maximum again.' },
+    hints: [`<p><b>Aha:</b> dp[i] = nums[i] + (maximum dp in the previous k positions) — a sliding window maximum.</p>`, `<p>Monotonic deque of indices with decreasing dp values; the front is the window max.</p>`, `<p>Per i: pop front while front &lt; i − k; dp[i] = nums[i] + dp[front]; pop back while dp[back] ≤ dp[i]; push i. Answer dp[n−1].</p>`],
+    solution: {
+      approach: `<p>DP + monotonic deque, O(n).</p>`,
+      code: `
+        class Solution {
+            public int maxResult(int[] nums, int k) {
+                int n = nums.length;
+                int[] dp = new int[n];
+                ArrayDeque<Integer> dq = new ArrayDeque<>();
+                dp[0] = nums[0];
+                dq.addLast(0);
+                for (int i = 1; i < n; i++) {
+                    while (dq.peekFirst() < i - k) dq.pollFirst();                 // expired
+                    dp[i] = nums[i] + dp[dq.peekFirst()];                          // best in window
+                    while (!dq.isEmpty() && dp[dq.peekLast()] <= dp[i]) dq.pollLast(); // dominated
+                    dq.addLast(i);
+                }
+                return dp[n - 1];
+            }
+        }`,
+      dry: { head: ['i', 'nums[i]', 'window best', 'dp[i]'], rows: [['0', '1', '—', '1'], ['1', '−1', '1', '0'], ['2', '−2', '1', '−1'], ['3', '4', '0', '4'], ['4', '−7', '4', '−3'], ['5', '3', '4', '<span class="c-g">7</span>']] },
+      complexity: `<p>O(n) time, O(k) extra space.</p>`,
+      followUps: ['Return the path (store the argmax index per i).', 'Minimum cost instead of maximum score → deque with increasing values.']
+    }
+  });
+
+  practice.push({
+    title: 'Sum Over Submasks for Every Mask',
+    level: 'Easy', tags: ['sos dp', 'bitmask'], companies: ['Codeforces', 'Hudson River Trading'],
+    statement: `<p>You are given <code>n</code> and an array <code>A</code> of length <code>2<sup>n</sup></code>. For every mask <code>m</code>, compute <code>F[m] = Σ A[s]</code> over all <code>s</code> that are submasks of <code>m</code> (<code>s &amp; m == s</code>).</p>`,
+    constraints: `1 ≤ n ≤ 20, |A[i]| ≤ 10<sup>9</sup> (use long)`,
+    example: `<p>n = 2, A = [1, 2, 3, 4] → Output <b>[1, 3, 4, 10]</b>. F[01] = A[00] + A[01] = 3; F[10] = A[00] + A[10] = 4; F[11] = all four = 10.</p>`,
+    brute: { why: `<p>Test every (m, s) pair: 4<sup>n</sup> = 10<sup>12</sup> for n = 20. Even the 3<sup>n</sup> submask walk is 3.5·10<sup>9</sup>. Waste: F[m] and F[m without one bit] share almost all their terms.</p>`, code: `
+      long[] bruteSOS(long[] A, int n) {
+          int size = 1 << n;
+          long[] F = new long[size];
+          for (int m = 0; m < size; m++)
+              for (int s = 0; s < size; s++)
+                  if ((s & m) == s) F[m] += A[s];          // s is a submask of m
+          return F;
+      }` },
+    mcq: { q: 'Which loop order is correct for SOS DP?', options: ['for bit { for mask { … } }', 'for mask { for bit { … } }', 'Either order works', 'for mask descending only'], answer: 0, explain: 'Bits must be processed one full pass at a time (like prefix sums along each axis). Putting the bit loop inside counts some submasks several times.' },
+    hints: [`<p><b>Aha:</b> a mask is a corner of an n-dimensional cube; "submask" = "≤ in every coordinate". That's an n-D prefix sum.</p>`, `<p>Do a prefix sum along one axis at a time: for each bit, every mask with that bit adds the value of the mask without it.</p>`, `<p>Recipe: F = A copy; for bit in 0..n−1: for mask in 0..2<sup>n</sup>−1: if mask has bit: F[mask] += F[mask ^ (1 &lt;&lt; bit)]. Use long.</p>`],
+    solution: {
+      approach: `<p>Standard SOS DP, O(n·2<sup>n</sup>).</p>`,
+      code: `
+        class Solution {
+            public long[] sumOverSubmasks(long[] A, int n) {
+                long[] F = A.clone();
+                for (int bit = 0; bit < n; bit++)
+                    for (int mask = 0; mask < (1 << n); mask++)
+                        if ((mask & (1 << bit)) != 0) F[mask] += F[mask ^ (1 << bit)];
+                return F;
+            }
+        }`,
+      alt: [{ lang: 'python', code: `def sum_over_submasks(A, n):
+    F = A[:]
+    for bit in range(n):
+        for mask in range(1 << n):
+            if mask >> bit & 1:
+                F[mask] += F[mask ^ (1 << bit)]
+    return F
+
+print(sum_over_submasks([1, 2, 3, 4], 2))  # [1, 3, 4, 10]`, run: true }],
+      complexity: `<p>O(n · 2<sup>n</sup>) ≈ 2·10<sup>7</sup> for n = 20; O(2<sup>n</sup>) space.</p>`,
+      followUps: ['Supersets instead of subsets.', 'Recover A from F (Möbius inverse: same loops with −=).']
+    }
+  });
+
+  // =====================================================================
+  // PRACTICE — Medium
+  // =====================================================================
+  practice.push({
+    title: 'Partition to K Equal Sum Subsets',
+    level: 'Medium', tags: ['bitmask dp', 'backtracking'], companies: ['LinkedIn', 'Amazon', 'Meta'],
+    statement: `<p>Given an integer array <code>nums</code> and an integer <code>k</code>, return <code>true</code> if it can be divided into <code>k</code> non-empty subsets with equal sums.</p>`,
+    constraints: `1 ≤ k ≤ n ≤ 16, 1 ≤ nums[i] ≤ 10<sup>4</sup>`,
+    example: `<p>nums = [4, 3, 2, 3, 5, 2, 1], k = 4 → <b>true</b>: ${H.c('g', '(5), (1, 4), (2, 3), (2, 3)')} each sum to 5.</p>`,
+    brute: { why: `<p>Assign every number to one of k buckets: k<sup>n</sup> = 4<sup>16</sup> ≈ 4·10<sup>9</sup> in the worst case. Waste: the order in which buckets were filled doesn't matter, only <i>which</i> numbers are used.</p>`, code: `
+      boolean bruteK(int[] nums, int k) {
+          int sum = 0;
+          for (int x : nums) sum += x;
+          if (sum % k != 0) return false;
+          return place(nums, 0, new int[k], sum / k);
+      }
+      boolean place(int[] nums, int i, int[] bucket, int target) {
+          if (i == nums.length) {
+              for (int b : bucket) if (b != target) return false;
+              return true;
+          }
+          for (int b = 0; b < bucket.length; b++) {
+              if (bucket[b] + nums[i] > target) continue;
+              bucket[b] += nums[i];
+              if (place(nums, i + 1, bucket, target)) return true;
+              bucket[b] -= nums[i];
+          }
+          return false;
+      }` },
+    mcq: { q: 'Why is dp[mask] = (sum of mask) mod target enough as the state?', options: ['Full buckets are interchangeable; only the fill level of the current bucket matters', 'Because k ≤ 16', 'Because numbers are positive', 'It is not enough'], answer: 0, explain: 'Fill buckets one at a time. Completed buckets are all equal, so the only live information is which items are used (the mask) and how full the open bucket is — which is determined by the mask\'s sum mod target.' },
+    hints: [`<p><b>Aha:</b> fill buckets one after another. A used-set (mask) determines the total used; the current bucket's level is that total mod target.</p>`, `<p>dp[mask] = reachable? (store the level, −1 if unreachable). From a reachable mask add any unused number that still fits in the current bucket.</p>`, `<p>Pre-checks: sum % k ≠ 0 → false; any number &gt; target → false. Answer: dp[full] reachable. 2<sup>16</sup> · 16 ≈ 10<sup>6</sup> steps.</p>`],
+    solution: {
+      approach: `<p>Bitmask DP over used items, iterating masks in increasing order.</p>`,
+      code: `
+        class Solution {
+            public boolean canPartitionKSubsets(int[] nums, int k) {
+                int sum = 0;
+                for (int x : nums) sum += x;
+                if (sum % k != 0) return false;
+                int target = sum / k, n = nums.length;
+                int[] level = new int[1 << n];         // fill of the open bucket, -1 = unreachable
+                Arrays.fill(level, -1);
+                level[0] = 0;
+                for (int mask = 0; mask < (1 << n); mask++) {
+                    if (level[mask] == -1) continue;
+                    for (int i = 0; i < n; i++) {
+                        if ((mask >> i & 1) == 1) continue;              // already used
+                        if (level[mask] + nums[i] > target) continue;    // would overflow the bucket
+                        int next = mask | (1 << i);
+                        if (level[next] == -1) level[next] = (level[mask] + nums[i]) % target;
+                    }
+                }
+                return level[(1 << n) - 1] != -1;
+            }
+        }`,
+      complexity: `<p>O(2<sup>n</sup> · n) time, O(2<sup>n</sup>) space.</p>`,
+      followUps: ['Return the actual subsets (store parent masks).', 'Matchsticks to Square (LC 473) is k = 4.']
+    }
+  });
+
+  practice.push({
+    title: 'Numbers At Most N Given Digit Set',
+    level: 'Medium', tags: ['digit dp', 'math'], companies: ['Google', 'Amazon'],
+    statement: `<p>Given a sorted array of distinct digit strings <code>digits</code> (from '1' to '9'), you can write numbers using these digits as many times as you like. Return how many positive integers you can write that are <b>≤ n</b>.</p>`,
+    constraints: `1 ≤ digits.length ≤ 9, 1 ≤ n ≤ 10<sup>9</sup>`,
+    example: `<p>digits = ["1", "3", "5", "7"], n = 100 → <b>20</b>: 4 one-digit numbers + 16 two-digit numbers (11, 13, …, 77). No 3-digit number made of these digits is ≤ 100.</p>`,
+    brute: { why: `<p>Generate every number from the digit set by DFS until it exceeds n — up to D<sup>9</sup> ≈ 3.9·10<sup>8</sup> numbers for 9 digits. Waste: once a prefix is smaller than n's prefix, all completions are valid and can be counted with a power.</p>`, code: `
+      int bruteDigitSet(String[] digits, int n) {
+          return gen(digits, 0L, n);
+      }
+      int gen(String[] digits, long cur, int n) {
+          int count = 0;
+          for (String d : digits) {
+              long next = cur * 10 + (d.charAt(0) - '0');     // digits are 1..9, so next > cur
+              if (next <= n) count += 1 + gen(digits, next, n);
+          }
+          return count;
+      }` },
+    mcq: { q: 'n = 3245, digits {1, 2, 4}. The first digit 1 or 2 is chosen. How many completions of length 4?', options: ['3<sup>3</sup> each', '4<sup>3</sup> each', '3<sup>4</sup> each', 'Depends on n\'s remaining digits'], answer: 0, explain: '1 and 2 are smaller than 3, so we are free: each of the 3 remaining positions can be any of the 3 digits → 27 numbers each.' },
+    hints: [`<p><b>Aha:</b> numbers shorter than n are always fine: Σ D<sup>len</sup> for len &lt; L.</p>`, `<p>For length L, walk n's digits left to right (the tight path): a smaller allowed digit frees the rest (D<sup>remaining</sup>); an equal digit keeps you tight; if no equal digit exists, stop.</p>`, `<p>If you stay tight through all digits, n itself is writable → +1. Example n = 100: the first digit 1 equals → tight; second digit 0: no allowed digit ≤ 0 → stop.</p>`],
+    solution: {
+      approach: `<p>Digit DP collapsed to a single tight walk plus powers for the free branches.</p>`,
+      code: `
+        class Solution {
+            public int atMostNGivenDigitSet(String[] digits, int n) {
+                String s = String.valueOf(n);
+                int L = s.length(), D = digits.length, ans = 0;
+                for (int len = 1; len < L; len++) ans += pow(D, len);      // all shorter numbers
+                for (int i = 0; i < L; i++) {
+                    boolean canStayTight = false;
+                    for (String dg : digits) {
+                        char c = dg.charAt(0);
+                        if (c < s.charAt(i)) ans += pow(D, L - i - 1);     // smaller → rest is free
+                        else if (c == s.charAt(i)) canStayTight = true;
+                    }
+                    if (!canStayTight) return ans;                         // tight path dies here
+                }
+                return ans + 1;                                             // n itself
+            }
+            private int pow(int b, int e) { int r = 1; while (e-- > 0) r *= b; return r; }
+        }`,
+      dry: { head: ['step', 'detail', 'ans'], rows: [['shorter', 'len 1: 4, len 2: 16', '20'], ['i = 0 (digit 1)', 'no digit &lt; 1; "1" equals → stay tight', '20'], ['i = 1 (digit 0)', 'no digit ≤ 0 → stop', '<span class="c-g">20</span>']] },
+      complexity: `<p>O(L · D) where L ≤ 10.</p>`,
+      followUps: ['Digits may include 0 → leading-zero handling with a started flag.', 'Count in [L, R] → f(R) − f(L − 1).']
+    }
+  });
+
+  practice.push({
+    title: 'Soup Servings',
+    level: 'Medium', tags: ['probability dp', 'memoization', 'math'], companies: ['Google'],
+    statement: `<p>Two soups A and B start with <code>n</code> ml each. Each turn, one of four operations is chosen with probability 0.25: serve (100 A, 0 B), (75, 25), (50, 50), (25, 75). If a soup has less than requested, serve what remains. Stop when either soup is empty. Return P(A empties first) + ½·P(both empty at the same time).</p>`,
+    constraints: `0 ≤ n ≤ 10<sup>9</sup>. Answers within 10<sup>−5</sup> accepted.`,
+    example: `<p>n = 50 → <b>0.625</b>. The first two operations empty A first (prob 0.5 → counts 1 each), the third empties both at once (0.25 × ½), the fourth empties B first (0). 0.25 + 0.25 + 0.125 = 0.625.</p>`,
+    brute: { why: `<p>Plain recursion without memo branches 4 ways per turn: about 4<sup>n/25</sup> calls — explodes for n = 1000. And n = 10<sup>9</sup> would need 4·10<sup>7</sup> × 4·10<sup>7</sup> states even with memo. Waste: (a, b) states repeat; and for big n the answer converges to 1.</p>`, code: `
+      double bruteSoup(int a, int b) {                 // a, b in units of 25 ml
+          if (a <= 0 && b <= 0) return 0.5;
+          if (a <= 0) return 1.0;
+          if (b <= 0) return 0.0;
+          return 0.25 * (bruteSoup(a - 4, b) + bruteSoup(a - 3, b - 1)
+                       + bruteSoup(a - 2, b - 2) + bruteSoup(a - 1, b - 3));
+      }` },
+    mcq: { q: 'Why can we return 1.0 when n is large (≈ 4800+)?', options: ['A is served 2.5 units on average vs 1.5 for B, so A almost surely empties first and the answer is within 10<sup>−5</sup> of 1', 'Because the DP overflows', 'Because both soups always empty together', 'It is a LeetCode rule'], answer: 0, explain: 'The expected serving per turn is 62.5 ml of A vs 37.5 ml of B. As n grows, the probability mass shifts to "A first", and numerically it is within 10<sup>−5</sup> of 1 once n exceeds about 4800.' },
+    hints: [`<p><b>Aha:</b> divide by 25 (round up) so moves become (4,0), (3,1), (2,2), (1,3). State (a, b) with memo.</p>`, `<p>Base cases: both ≤ 0 → 0.5; only a ≤ 0 → 1; only b ≤ 0 → 0. Otherwise average the four children.</p>`, `<p>For n &gt; 4800 return 1.0 (measure the threshold by printing the DP for growing n). States ≤ 193 × 193.</p>`],
+    solution: {
+      approach: `<p>Probability DP (memoised recursion) on (A units, B units) plus a convergence cut-off.</p>`,
+      code: `
+        class Solution {
+            public double soupServings(int n) {
+                if (n > 4800) return 1.0;                  // converged within 1e-5
+                int m = (n + 24) / 25;                     // ceil(n / 25)
+                Double[][] memo = new Double[m + 1][m + 1];
+                return go(m, m, memo);
+            }
+            private double go(int a, int b, Double[][] memo) {
+                if (a <= 0 && b <= 0) return 0.5;
+                if (a <= 0) return 1.0;
+                if (b <= 0) return 0.0;
+                if (memo[a][b] != null) return memo[a][b];
+                double r = 0.25 * (go(a - 4, b, memo) + go(a - 3, b - 1, memo)
+                                 + go(a - 2, b - 2, memo) + go(a - 1, b - 3, memo));
+                memo[a][b] = r;
+                return r;
+            }
+        }`,
+      complexity: `<p>O(m²) with m ≤ 192 → ~37 000 states, each O(1).</p>`,
+      followUps: ['How would you choose the cut-off rigorously? (Increase n until the DP value exceeds 1 − 10<sup>−6</sup>.)', 'Return the exact probability as a fraction mod p.']
+    }
+  });
+
+  practice.push({
+    title: 'New 21 Game',
+    level: 'Medium', tags: ['probability dp', 'sliding window'], companies: ['Google', 'Amazon'],
+    statement: `<p>Alice starts with 0 points and draws while she has <b>fewer than</b> <code>k</code> points. Each draw adds a uniform random integer in <code>[1, maxPts]</code>. Return the probability that she finishes with <b>≤ n</b> points.</p>`,
+    constraints: `0 ≤ k ≤ n ≤ 10<sup>4</sup>, 1 ≤ maxPts ≤ 10<sup>4</sup>`,
+    example: `<p>n = 6, k = 1, maxPts = 10 → <b>0.6</b>: she draws once; 6 of the 10 outcomes are ≤ 6. n = 21, k = 17, maxPts = 10 → ≈ <b>0.73278</b>.</p>`,
+    brute: { why: `<p>dp[i] = (1/maxPts) · Σ dp[i − d] for d = 1..maxPts, only over i − d &lt; k: O(n · maxPts) = 10<sup>8</sup>. The waste: consecutive sums share maxPts − 1 terms.</p>`, code: `
+      double bruteNew21(int n, int k, int maxPts) {
+          if (k == 0) return 1.0;
+          double[] dp = new double[n + 1];
+          dp[0] = 1.0;
+          double ans = 0;
+          for (int i = 1; i <= n; i++) {
+              for (int d = 1; d <= maxPts; d++) {
+                  int from = i - d;
+                  if (from >= 0 && from < k) dp[i] += dp[from] / maxPts;   // only draw while < k
+              }
+              if (i >= k) ans += dp[i];
+          }
+          return ans;
+      }` },
+    mcq: { q: 'dp[i] = probability of ever having exactly i points. Which previous states contribute to dp[i]?', options: ['dp[j] for i − maxPts ≤ j ≤ i − 1 and j &lt; k', 'All dp[j] with j &lt; i', 'Only dp[i − 1]', 'dp[j] for j ≥ k'], answer: 0, explain: 'She reaches i from j by drawing i − j ∈ [1, maxPts], and she only draws when j &lt; k.' },
+    hints: [`<p><b>Aha:</b> dp[i] = windowSum / maxPts where windowSum = Σ dp[j] over the last maxPts j's that are still &lt; k.</p>`, `<p>Maintain the window sum: add dp[i] if i &lt; k (it can still draw), subtract dp[i − maxPts] when it leaves the window (if it was &lt; k).</p>`, `<p>Shortcut: k = 0 or n ≥ k − 1 + maxPts → answer 1.0. Answer = Σ dp[i] for k ≤ i ≤ n.</p>`],
+    solution: {
+      approach: `<p>Probability DP with a sliding window sum — the "DP with a data structure" idea where the structure is just a running sum.</p>`,
+      code: `
+        class Solution {
+            public double new21Game(int n, int k, int maxPts) {
+                if (k == 0 || n >= k - 1 + maxPts) return 1.0;   // she can never exceed n
+                double[] dp = new double[n + 1];
+                dp[0] = 1.0;
+                double windowSum = 1.0, ans = 0.0;
+                for (int i = 1; i <= n; i++) {
+                    dp[i] = windowSum / maxPts;
+                    if (i < k) windowSum += dp[i];                 // i can still draw
+                    else ans += dp[i];                             // i is a final score <= n
+                    if (i - maxPts >= 0 && i - maxPts < k) windowSum -= dp[i - maxPts];
+                }
+                return ans;
+            }
+        }`,
+      complexity: `<p>O(n) time, O(n) space.</p>`,
+      followUps: ['Expected final score.', 'Probability she ends with exactly n points.']
+    }
+  });
+
+  practice.push({
+    title: 'Minimum XOR Sum of Two Arrays',
+    level: 'Medium', tags: ['bitmask dp', 'assignment'], companies: ['Google', 'Amazon'],
+    statement: `<p>Given two arrays <code>nums1</code> and <code>nums2</code> of length <code>n</code>, rearrange <code>nums2</code> to minimise <code>Σ (nums1[i] XOR nums2[i])</code>. Return the minimum sum.</p>`,
+    constraints: `1 ≤ n ≤ 14, 0 ≤ nums[i] ≤ 10<sup>7</sup>`,
+    example: `<p>nums1 = [1, 0, 3], nums2 = [5, 3, 4] → <b>8</b>: rearrange nums2 to [5, 4, 3]: (1⊕5) + (0⊕4) + (3⊕3) = 4 + 4 + 0 = 8.</p>`,
+    brute: { why: `<p>Try all n! orders of nums2: 14! ≈ 8.7·10<sup>10</sup>. Waste: after matching the first i elements of nums1, only <i>which</i> nums2 elements are used matters.</p>`, code: `
+      int bestX;
+      int bruteXor(int[] a, int[] b) {
+          bestX = Integer.MAX_VALUE;
+          perm(a, b, 0, new boolean[b.length], 0);
+          return bestX;
+      }
+      void perm(int[] a, int[] b, int i, boolean[] used, int sum) {
+          if (i == a.length) { bestX = Math.min(bestX, sum); return; }
+          for (int j = 0; j < b.length; j++) {
+              if (used[j]) continue;
+              used[j] = true;
+              perm(a, b, i + 1, used, sum + (a[i] ^ b[j]));
+              used[j] = false;
+          }
+      }` },
+    mcq: { q: 'Which known problem is this in disguise?', options: ['Assignment problem with cost[i][j] = a[i] XOR b[j]', 'Travelling salesman', 'Knapsack', 'Longest common subsequence'], answer: 0, explain: 'Each nums1 index gets exactly one nums2 index — a perfect matching minimising total cost. Topic 1\'s dp[mask] with the popcount trick solves it in O(2<sup>n</sup>·n).' },
+    hints: [`<p><b>Aha:</b> it's the worker–job assignment problem from topic 1.</p>`, `<p>dp[mask] = min sum after pairing nums1[0..popcount(mask)−1] with the nums2 elements in mask.</p>`, `<p>Recipe: dp[0] = 0; for mask ascending: i = bitCount(mask); for j not in mask: relax dp[mask | 1&lt;&lt;j] with dp[mask] + (nums1[i] ^ nums2[j]). Answer dp[full].</p>`],
+    solution: {
+      approach: `<p>Assignment bitmask DP, O(2<sup>n</sup>·n) = 2.3·10<sup>5</sup> for n = 14.</p>`,
+      code: `
+        class Solution {
+            public int minimumXORSum(int[] nums1, int[] nums2) {
+                int n = nums1.length;
+                int[] dp = new int[1 << n];
+                Arrays.fill(dp, Integer.MAX_VALUE);
+                dp[0] = 0;
+                for (int mask = 0; mask < (1 << n); mask++) {
+                    if (dp[mask] == Integer.MAX_VALUE) continue;
+                    int i = Integer.bitCount(mask);            // next nums1 index to pair
+                    if (i == n) continue;
+                    for (int j = 0; j < n; j++) {
+                        if ((mask >> j & 1) == 1) continue;
+                        int nm = mask | (1 << j);
+                        dp[nm] = Math.min(dp[nm], dp[mask] + (nums1[i] ^ nums2[j]));
+                    }
+                }
+                return dp[(1 << n) - 1];
+            }
+        }`,
+      complexity: `<p>O(2<sup>n</sup> · n) time, O(2<sup>n</sup>) space.</p>`,
+      followUps: ['n = 1000 → Hungarian algorithm.', 'Maximise instead of minimise → flip min to max.']
+    }
+  });
+
+  // =====================================================================
+  // PRACTICE — Hard
+  // =====================================================================
+  practice.push({
+    title: 'Find the Shortest Superstring',
+    level: 'Hard', tags: ['bitmask dp', 'tsp', 'strings'], companies: ['Google', 'Amazon', 'Illumina'],
+    statement: `<p>Given an array of strings <code>words</code> (no word is a substring of another), return the <b>shortest</b> string that contains every word as a substring. If several exist, return any.</p>`,
+    constraints: `1 ≤ words.length ≤ 12, 1 ≤ words[i].length ≤ 20, lowercase letters, all distinct`,
+    example: `<p>words = ["catg", "ctaagt", "gcta", "ttca", "atgcatc"] → <b>"gctaagttcatgcatc"</b> (length 16). Overlaps: "gcta"+"ctaagt" share "cta", "ctaagt"+"ttca" share "t", "ttca"+"catg" share "ca", "catg"+"atgcatc" share "atg".</p>`,
+    brute: { why: `<p>Try all n! orders and glue each with maximum overlaps: 12! ≈ 4.8·10<sup>8</sup> orders × n work. Waste: the best way to glue a <i>set</i> of words ending with word j is reused by many orders — that's TSP structure.</p>`, code: `
+      String bestS;
+      String bruteSuperstring(String[] words) {
+          bestS = null;
+          permute(words, new boolean[words.length], -1, "", 0);
+          return bestS;
+      }
+      void permute(String[] w, boolean[] used, int last, String cur, int placed) {
+          if (placed == w.length) {
+              if (bestS == null || cur.length() < bestS.length()) bestS = cur;
+              return;
+          }
+          for (int j = 0; j < w.length; j++) {
+              if (used[j]) continue;
+              int o = 0;
+              if (last >= 0)
+                  for (int len = Math.min(cur.length(), w[j].length()); len > 0; len--)
+                      if (cur.endsWith(w[j].substring(0, len))) { o = len; break; }
+              used[j] = true;
+              permute(w, used, j, cur + w[j].substring(o), placed + 1);
+              used[j] = false;
+          }
+      }` },
+    mcq: { q: 'What plays the role of "distance" between word i and word j in the TSP view?', options: ['−overlap(i, j): the longer the overlap, the cheaper the step', 'The edit distance', 'The length of word j', 'The number of common letters'], answer: 0, explain: 'Appending j after i adds len(j) − overlap(i, j) characters. Minimising total length = maximising total overlap along a path (no return edge).' },
+    hints: [`<p><b>Aha:</b> precompute overlap[i][j] = longest suffix of words[i] that is a prefix of words[j]. Then pick an order (a path) maximising the sum of overlaps — TSP without returning home.</p>`, `<p>dp[mask][j] = max total overlap for a path visiting mask and ending at j. Store parent[mask][j] to rebuild the order.</p>`, `<p>Start states dp[1&lt;&lt;i][i] = 0 for every i (any start). After the DP, pick the best last word, walk parents back, glue words skipping their overlaps.</p>`],
+    solution: {
+      approach: `<p>Held-Karp on overlaps (maximise) + path reconstruction. O(2<sup>n</sup>·n<sup>2</sup>) ≈ 5.9·10<sup>5</sup> for n = 12.</p>`,
+      code: `
+        class Solution {
+            public String shortestSuperstring(String[] words) {
+                int n = words.length, full = 1 << n;
+                int[][] gain = new int[n][n];                 // overlap of words[i] followed by words[j]
+                for (int i = 0; i < n; i++)
+                    for (int j = 0; j < n; j++) if (i != j) {
+                        int m = Math.min(words[i].length(), words[j].length());
+                        for (int o = m; o >= 0; o--)
+                            if (words[i].endsWith(words[j].substring(0, o))) { gain[i][j] = o; break; }
+                    }
+                int[][] dp = new int[full][n], parent = new int[full][n];
+                for (int[] row : dp) Arrays.fill(row, -1);
+                for (int[] row : parent) Arrays.fill(row, -1);
+                for (int i = 0; i < n; i++) dp[1 << i][i] = 0;  // a path may start anywhere
+                for (int mask = 1; mask < full; mask++)
+                    for (int j = 0; j < n; j++) {
+                        if (dp[mask][j] < 0) continue;
+                        for (int k = 0; k < n; k++) {
+                            if ((mask & (1 << k)) != 0) continue;
+                            int nm = mask | (1 << k), v = dp[mask][j] + gain[j][k];
+                            if (v > dp[nm][k]) { dp[nm][k] = v; parent[nm][k] = j; }
+                        }
+                    }
+                int last = 0;
+                for (int j = 1; j < n; j++) if (dp[full - 1][j] > dp[full - 1][last]) last = j;
+                int[] order = new int[n];
+                int mask = full - 1;
+                for (int pos = n - 1; pos >= 0; pos--) {       // walk the parent pointers back
+                    order[pos] = last;
+                    int p = parent[mask][last];
+                    mask ^= 1 << last;
+                    last = p;
+                }
+                StringBuilder sb = new StringBuilder(words[order[0]]);
+                for (int t = 1; t < n; t++)
+                    sb.append(words[order[t]].substring(gain[order[t - 1]][order[t]]));
+                return sb.toString();
+            }
+        }`,
+      complexity: `<p>O(n<sup>2</sup>·L<sup>2</sup>) for overlaps + O(2<sup>n</sup>·n<sup>2</sup>) DP; O(2<sup>n</sup>·n) memory.</p>`,
+      followUps: ['Words may be substrings of others → first delete contained words.', 'n = 1000 (DNA assembly) → greedy merging (conjectured 2-approximation, proven within 3.5) or overlap graphs/de Bruijn graphs.']
+    }
+  });
+
+  practice.push({
+    title: 'Numbers With Repeated Digits',
+    level: 'Hard', tags: ['digit dp', 'bitmask'], companies: ['Google', 'Amazon'],
+    statement: `<p>Given <code>n</code>, return how many positive integers in <code>[1, n]</code> have <b>at least one repeated digit</b>.</p>`,
+    constraints: `1 ≤ n ≤ 10<sup>9</sup>`,
+    example: `<p>n = 20 → <b>1</b> (only ${H.c('r', '11')}). n = 100 → <b>10</b> (11, 22, …, 99 and 100). n = 1000 → <b>262</b>.</p>`,
+    brute: { why: `<p>Loop 1..n and check digits with a boolean[10]: 10<sup>9</sup> × ~10 operations — about 10 seconds+ in Java. Waste: digit states repeat massively.</p>`, code: `
+      int bruteRepeated(int n) {
+          int count = 0;
+          for (int x = 1; x <= n; x++) {
+              boolean[] seen = new boolean[10];
+              for (int t = x; t > 0; t /= 10) {
+                  if (seen[t % 10]) { count++; break; }
+                  seen[t % 10] = true;
+              }
+          }
+          return count;
+      }` },
+    mcq: { q: 'What extra state does this digit DP need compared with a "digit sum" DP?', options: ['A 10-bit mask of used digits, plus a started flag for leading zeros', 'Only the last digit', 'The digit sum mod 10', 'Nothing extra'], answer: 0, explain: 'Distinctness depends on which digits were already used (mask). Leading zeros must not mark 0 as used, so we track whether the number has started.' },
+    hints: [`<p><b>Aha:</b> complement counting: answer = n − (numbers in [1, n] with all distinct digits).</p>`, `<p>Digit DP state (pos, usedMask, tight, started). Skip a digit already in the mask once started. Memoise free and started states.</p>`, `<p>The DP counts 0 too (all-leading-zeros path) → subtract 1. Check: n = 20 → 20 distinct-digit numbers in [0, 20] minus 11 → 21 − 1 = 20 with 0 → distinct count in [1,20] = 19 → answer 1.</p>`],
+    solution: {
+      approach: `<p>Digit DP over distinct-digit numbers with a used-digit bitmask, then complement.</p>`,
+      code: `
+        class Solution {
+            char[] d; Integer[][] memo;
+
+            public int numDupDigitsAtMostN(int n) {
+                d = String.valueOf(n).toCharArray();
+                memo = new Integer[d.length][1 << 10];
+                int distinctInclZero = go(0, 0, true, false);  // counts 0..n with distinct digits
+                return n - (distinctInclZero - 1);              // remove the number 0
+            }
+
+            private int go(int pos, int mask, boolean tight, boolean started) {
+                if (pos == d.length) return 1;
+                if (!tight && started && memo[pos][mask] != null) return memo[pos][mask];
+                int limit = tight ? d[pos] - '0' : 9, res = 0;
+                for (int dig = 0; dig <= limit; dig++) {
+                    if (started || dig != 0) {
+                        if ((mask & (1 << dig)) != 0) continue;   // digit already used
+                        res += go(pos + 1, mask | (1 << dig), tight && dig == limit, true);
+                    } else {
+                        res += go(pos + 1, mask, tight && dig == limit, false); // still leading zeros
+                    }
+                }
+                if (!tight && started) memo[pos][mask] = res;
+                return res;
+            }
+        }`,
+      complexity: `<p>O(D · 2<sup>10</sup> · 10) ≈ 10<sup>5</sup> for D = 10 digits.</p>`,
+      followUps: ['Count Special Integers (LC 2376) is the complement directly.', 'Count numbers in [L, R] whose digits are all distinct and sorted.']
+    }
+  });
+
+  practice.push({
+    title: 'Longest Increasing Subsequence II (bounded jumps)',
+    level: 'Hard', tags: ['dp', 'segment tree', 'lis'], companies: ['Google', 'Amazon'],
+    statement: `<p>Find the length of the longest subsequence of <code>nums</code> that is <b>strictly increasing</b> and where every two adjacent chosen elements differ by <b>at most</b> <code>k</code>.</p>`,
+    constraints: `1 ≤ N ≤ 10<sup>5</sup>, 1 ≤ nums[i], k ≤ 10<sup>5</sup>`,
+    example: `<p>nums = [4, 2, 1, 4, 3, 4, 5, 8, 15], k = 3 → <b>5</b>: ${H.c('g', '1, 3, 4, 5, 8')} (gaps 2, 1, 1, 3). 15 can't follow 8 (gap 7 &gt; 3).</p>`,
+    brute: { why: `<p>O(N<sup>2</sup>) DP: dp[i] = 1 + max dp[j] over j &lt; i with nums[i] − k ≤ nums[j] &lt; nums[i]. 10<sup>10</sup> steps. Waste: the condition is a <b>value range</b> — a segment tree over values answers it in O(log V).</p>`, code: `
+      int bruteLis2(int[] nums, int k) {
+          int n = nums.length, best = 0;
+          int[] dp = new int[n];
+          for (int i = 0; i < n; i++) {
+              dp[i] = 1;
+              for (int j = 0; j < i; j++)
+                  if (nums[j] < nums[i] && nums[i] - nums[j] <= k) dp[i] = Math.max(dp[i], dp[j] + 1);
+              best = Math.max(best, dp[i]);
+          }
+          return best;
+      }` },
+    mcq: { q: 'Which range do we query for x = nums[i]?', options: ['values [x − k, x − 1]', 'values [x − k, x]', 'indices [i − k, i − 1]', 'values [1, x − 1]'], answer: 0, explain: 'The previous chosen value must be strictly smaller (≤ x − 1) and within k (≥ x − k). It is a range over <b>values</b>, not indices.' },
+    hints: [`<p><b>Aha:</b> index the DP by value: best[v] = longest valid subsequence ending with value v, processed left to right.</p>`, `<p>Need max(best[x−k .. x−1]) → segment tree with range max and point update (values only grow, but the range has a lower bound, so Fenwick-prefix-max isn't enough).</p>`, `<p>Recipe: for x in nums: q = rangeMax(max(1, x−k), x−1); cur = q + 1; update(x, cur); ans = max(ans, cur). Iterative bottom-up segment tree keeps it short.</p>`],
+    solution: {
+      approach: `<p>DP over values with an iterative segment tree for range max — "DP with data structures".</p>`,
+      code: `
+        class Solution {
+            public int lengthOfLIS(int[] nums, int k) {
+                int maxV = 0;
+                for (int x : nums) maxV = Math.max(maxV, x);
+                int size = 1;
+                while (size < maxV + 1) size <<= 1;
+                int[] tree = new int[2 * size];                  // leaves at [size, 2*size)
+                int best = 0;
+                for (int x : nums) {
+                    int lo = Math.max(1, x - k), hi = x - 1, got = 0;
+                    for (int l = lo + size, r = hi + size + 1; l < r; l >>= 1, r >>= 1) { // max on [lo, hi]
+                        if ((l & 1) == 1) got = Math.max(got, tree[l++]);
+                        if ((r & 1) == 1) got = Math.max(got, tree[--r]);
+                    }
+                    int cur = got + 1;
+                    best = Math.max(best, cur);
+                    int p = x + size;
+                    if (tree[p] < cur) {                              // point update, then fix parents
+                        tree[p] = cur;
+                        for (p >>= 1; p >= 1; p >>= 1) tree[p] = Math.max(tree[2 * p], tree[2 * p + 1]);
+                    }
+                }
+                return best;
+            }
+        }`,
+      complexity: `<p>O(N log V) time, O(V) space (V = max value).</p>`,
+      followUps: ['Values up to 10<sup>9</sup> → coordinate compression, then binary search the rank range.', 'Count the number of such longest subsequences → store (len, count) in nodes.']
+    }
+  });
+
+  practice.push({
+    title: 'Allocate Mailboxes',
+    level: 'Hard', tags: ['dp', 'divide and conquer optimization', 'median'], companies: ['Amazon', 'Google'],
+    statement: `<p>Houses stand on a street at positions <code>houses[i]</code>. Place <code>k</code> mailboxes anywhere on the street to minimise the total distance from every house to its nearest mailbox. Return that minimum.</p>`,
+    constraints: `1 ≤ k ≤ n ≤ 100 (LeetCode); the D&amp;C version scales to n ≈ 10<sup>4</sup>. Positions are distinct, ≤ 10<sup>4</sup>.`,
+    example: `<p>houses = [1, 4, 8, 10, 20], k = 3 → <b>5</b>: mailboxes at 3, 9, 20 → |1−3| + |4−3| + |8−9| + |10−9| + 0 = 2 + 1 + 1 + 1 + 0 = 5.</p>`,
+    brute: { why: `<p>Layered DP where each group cost is recomputed from scratch: O(k·n<sup>2</sup>) transitions × O(n) per cost = O(k·n<sup>3</sup>). Fine for n = 100, hopeless for 10<sup>4</sup>. Waste: group costs can be precomputed, and the best split is monotone.</p>`, code: `
+      int bruteMailboxes(int[] houses, int k) {
+          int[] h = houses.clone();
+          Arrays.sort(h);
+          int n = h.length;
+          long INF = Long.MAX_VALUE / 4;
+          long[][] dp = new long[k + 1][n + 1];
+          for (long[] row : dp) Arrays.fill(row, INF);
+          dp[0][0] = 0;
+          for (int t = 1; t <= k; t++)
+              for (int i = 1; i <= n; i++)
+                  for (int j = 0; j < i; j++) {
+                      if (dp[t - 1][j] >= INF) continue;
+                      int med = h[(j + i - 1) / 2];             // a mailbox at the median is optimal
+                      long s = 0;
+                      for (int q = j; q < i; q++) s += Math.abs(h[q] - med);
+                      dp[t][i] = Math.min(dp[t][i], dp[t - 1][j] + s);
+                  }
+          long best = INF;
+          for (int t = 1; t <= k; t++) best = Math.min(best, dp[t][n]);
+          return (int) best;
+      }` },
+    mcq: { q: 'Where should one mailbox go for a group of sorted houses?', options: ['At the median house', 'At the mean position', 'At the first house', 'Anywhere between the two ends'], answer: 0, explain: 'Sum of absolute distances is minimised at a median: moving away from it increases the distance to more than half of the houses.' },
+    hints: [`<p><b>Aha:</b> sort; each mailbox serves a contiguous block, placed at its median. cost[i][j] = cost[i+1][j−1] + h[j] − h[i] (peel off the two ends).</p>`, `<p>dp[t][i] = min<sub>j</sub> dp[t−1][j] + cost(j, i−1). The cost satisfies the quadrangle inequality → opt monotone → divide &amp; conquer per layer.</p>`, `<p>k ≥ n → 0. Recipe: precompute cost by length; layer 1 = cost(0, i−1); layers 2..k with compute(l, r, optL, optR) as in topic 6.</p>`],
+    solution: {
+      approach: `<p>Sorted houses, O(n²) cost table via the "peel the ends" recurrence, then D&amp;C optimisation per layer.</p>`,
+      code: `
+        class Solution {
+            long[][] cost; long[] prev, cur;
+
+            public int minDistance(int[] houses, int k) {
+                int[] h = houses.clone();
+                Arrays.sort(h);
+                int n = h.length;
+                k = Math.min(k, n);
+                cost = new long[n][n];                         // cost[i][j]: one mailbox for h[i..j]
+                for (int len = 2; len <= n; len++)
+                    for (int i = 0; i + len - 1 < n; i++) {
+                        int j = i + len - 1;
+                        cost[i][j] = (len > 2 ? cost[i + 1][j - 1] : 0) + h[j] - h[i];
+                    }
+                prev = new long[n + 1];
+                Arrays.fill(prev, Long.MAX_VALUE);
+                for (int i = 1; i <= n; i++) prev[i] = cost[0][i - 1];   // one mailbox
+                for (int layer = 2; layer <= k; layer++) {
+                    cur = new long[n + 1];
+                    Arrays.fill(cur, Long.MAX_VALUE);
+                    compute(layer, n, layer - 1, n - 1);
+                    prev = cur;
+                }
+                return (int) prev[n];
+            }
+
+            // fill cur[l..r]; best split for each lies in [optL, optR]
+            private void compute(int l, int r, int optL, int optR) {
+                if (l > r) return;
+                int mid = (l + r) >>> 1;
+                long best = Long.MAX_VALUE; int bestJ = optL;
+                for (int j = optL; j <= Math.min(mid - 1, optR); j++) {
+                    long v = prev[j] + cost[j][mid - 1];       // last mailbox serves h[j..mid-1]
+                    if (v < best) { best = v; bestJ = j; }
+                }
+                cur[mid] = best;
+                compute(l, mid - 1, optL, bestJ);
+                compute(mid + 1, r, bestJ, optR);
+            }
+        }`,
+      complexity: `<p>O(n² + k·n log n) time, O(n²) space for the cost table.</p>`,
+      followUps: ['Return the mailbox positions.', 'Weighted houses (several letters per house) → weighted median.', 'Large k → Knuth (O(n²)) or the Aliens trick.']
+    }
+  });
+
+  practice.push({
+    title: 'Kalila and Dimna in the Logging Industry',
+    level: 'Hard', tags: ['dp', 'convex hull trick', 'overflow'], companies: ['Codeforces', 'Jane Street'],
+    statement: `<p>There are <code>n</code> trees with heights <code>a[0] &lt; a[1] &lt; … &lt; a[n−1]</code> (a[0] = 1) and recharge costs <code>b[0] &gt; b[1] &gt; … &gt; b[n−1] = 0</code>. Cutting tree i completely costs <code>a[i]</code> uses of the saw; after each use you must recharge, paying <code>b[j]</code> where j is the <b>largest index of a tree already cut down</b>. Tree 0 is cut at the start for free. Minimise the total cost to cut tree n − 1 (after which recharging is free).</p>`,
+    constraints: `1 ≤ n ≤ 10<sup>5</sup>, 1 ≤ a[i] ≤ 10<sup>9</sup>, 0 ≤ b[i] ≤ 10<sup>9</sup>; answers up to ~10<sup>18</sup>`,
+    example: `<p>a = [1, 2, 3, 4, 5], b = [5, 4, 3, 2, 0] → <b>25</b>: cut tree 4 right after tree 0, paying b[0]·a[4] = 5 × 5 = 25. Any detour (e.g. 0 → 1 → 4: 5·2 + 4·5 = 30) costs more here. With a = [1, 2, 3, 10, 20, 30], b = [6, 5, 4, 3, 2, 0] the answer is <b>138</b>.</p>`,
+    brute: { why: `<p>dp[i] = min<sub>j&lt;i</sub> dp[j] + b[j]·a[i]: O(n<sup>2</sup>) = 10<sup>10</sup>. Waste: each j is a line with slope b[j] and intercept dp[j]; most lines are never the minimum.</p>`, code: `
+      long bruteKalila(long[] a, long[] b) {
+          int n = a.length;
+          long[] dp = new long[n];
+          for (int i = 1; i < n; i++) {
+              dp[i] = Long.MAX_VALUE;
+              for (int j = 0; j < i; j++) dp[i] = Math.min(dp[i], dp[j] + b[j] * a[i]);
+          }
+          return dp[n - 1];
+      }` },
+    mcq: { q: 'In dp[i] = min(dp[j] + b[j]·a[i]), which guarantees make the O(n) deque version valid?', options: ['b decreasing (slopes added in decreasing order) and a increasing (queries move right)', 'a and b both increasing', 'b[n−1] = 0 only', 'Nothing — CHT always works in O(n)'], answer: 0, explain: 'For min-CHT with a deque we need slopes inserted in decreasing order (b strictly decreasing) and monotone queries (a strictly increasing) so the front pointer only moves forward.' },
+    hints: [`<p><b>Aha:</b> once you cut tree n−1 everything is free, and the optimal plan is a chain 0 → j<sub>1</sub> → … → n−1. dp[i] = min<sub>j</sub> dp[j] + b[j]·a[i].</p>`, `<p>Line for j: y = b[j]·x + dp[j]; query at x = a[i]. Sorted slopes and queries → monotone CHT deque.</p>`, `<p>Overflow: intercepts ~10<sup>18</sup> × slope differences ~10<sup>9</sup> → 10<sup>27</sup>. Compare 128-bit products with Math.multiplyHigh (high 64 bits) + Long.compareUnsigned (low bits).</p>`],
+    solution: {
+      approach: `<p>Monotone convex hull trick; the "bad line" test compares two products exactly in 128 bits.</p>`,
+      code: `
+        class Solution {
+            // compare x1*y1 with x2*y2 exactly (signed 128-bit)
+            static int cmp128(long x1, long y1, long x2, long y2) {
+                long h1 = Math.multiplyHigh(x1, y1), h2 = Math.multiplyHigh(x2, y2);
+                if (h1 != h2) return Long.compare(h1, h2);
+                return Long.compareUnsigned(x1 * y1, x2 * y2);    // low 64 bits, unsigned
+            }
+
+            public long minCost(long[] a, long[] b) {
+                int n = a.length;
+                long[] M = new long[n], C = new long[n], dp = new long[n];
+                int head = 0, tail = 0;
+                M[tail] = b[0]; C[tail] = 0; tail++;              // line for tree 0
+                for (int i = 1; i < n; i++) {
+                    long x = a[i];
+                    while (tail - head >= 2 && M[head + 1] * x + C[head + 1] <= M[head] * x + C[head]) head++;
+                    dp[i] = M[head] * x + C[head];
+                    long m = b[i], c = dp[i];
+                    // drop line (tail-1) if x(l1, new) <= x(l1, l2)
+                    while (tail - head >= 2 && cmp128(c - C[tail - 2], M[tail - 2] - M[tail - 1],
+                                                       C[tail - 1] - C[tail - 2], M[tail - 2] - m) <= 0) tail--;
+                    M[tail] = m; C[tail] = c; tail++;
+                }
+                return dp[n - 1];
+            }
+        }`,
+      complexity: `<p>O(n) amortised time, O(n) space.</p>`,
+      followUps: ['Why is M·x + C itself safe from overflow? (b ≤ 10<sup>9</sup>, a ≤ 10<sup>9</sup> → 10<sup>18</sup>; plus dp ≤ ~10<sup>18</sup> — check the bound carefully or use Math.multiplyExact.)', 'Unsorted a → Li Chao tree over compressed a.']
+    }
+  });
+
+  practice.push({
+    title: 'Jzzhu and Numbers (count subsets with AND = 0)',
+    level: 'Hard', tags: ['sos dp', 'inclusion-exclusion', 'bitmask'], companies: ['Codeforces', 'Tower Research'],
+    statement: `<p>Given <code>n</code> integers, count the non-empty subsets (by index) whose bitwise AND equals 0. Return the count modulo 10<sup>9</sup> + 7.</p>`,
+    constraints: `1 ≤ n ≤ 10<sup>6</sup>, 0 ≤ a[i] ≤ 10<sup>6</sup> (&lt; 2<sup>20</sup>)`,
+    example: `<p>a = [0, 1, 2, 3] → <b>10</b>: all 8 subsets containing 0, plus {1, 2} and {1, 2, 3}. a = [2, 3, 3] → <b>0</b> (every element has bit 1 set).</p>`,
+    brute: { why: `<p>Enumerate 2<sup>n</sup> subsets — impossible for n = 10<sup>6</sup>. Waste: the AND only cares about bit patterns; with 2<sup>20</sup> possible masks we can count via supersets.</p>`, code: `
+      int bruteAndZero(int[] a) {                         // n <= 20 only
+          int n = a.length, count = 0;
+          for (int s = 1; s < (1 << n); s++) {
+              int and = -1;                                 // all ones
+              for (int i = 0; i < n; i++) if ((s >> i & 1) == 1) and &= a[i];
+              if (and == 0) count++;
+          }
+          return count;
+      }` },
+    mcq: { q: 'G[m] = how many elements are supersets of m. How many non-empty subsets have an AND that contains all bits of m?', options: ['2<sup>G[m]</sup> − 1', 'G[m]', 'G[m]²', '2<sup>n</sup> − G[m]'], answer: 0, explain: 'AND ⊇ m ⇔ every chosen element ⊇ m. Any non-empty subset of those G[m] elements works: 2<sup>G[m]</sup> − 1.' },
+    hints: [`<p><b>Aha:</b> "AND = 0" is hard to count directly, but "AND ⊇ m" is easy: 2<sup>G[m]</sup> − 1 with G = count of supersets of m.</p>`, `<p>Inclusion–exclusion: #(AND = 0) = Σ<sub>m</sub> (−1)<sup>popcount(m)</sup> (2<sup>G[m]</sup> − 1). Compute G with sum-over-supersets SOS DP.</p>`, `<p>Precompute powers of 2 mod p up to n. Keep results in [0, p) with +MOD before %. 20 bits × 2<sup>20</sup> ≈ 2·10<sup>7</sup> steps.</p>`],
+    solution: {
+      approach: `<p>Superset SOS DP for G, then inclusion–exclusion over all masks.</p>`,
+      code: `
+        class Solution {
+            public int countAndZero(int[] a) {
+                final int B = 20, MOD = 1_000_000_007, SZ = 1 << B;
+                int[] g = new int[SZ];
+                for (int x : a) g[x]++;
+                for (int bit = 0; bit < B; bit++)                     // sum over supersets
+                    for (int mask = 0; mask < SZ; mask++)
+                        if ((mask & (1 << bit)) == 0) g[mask] += g[mask | (1 << bit)];
+                long[] pow2 = new long[a.length + 1];
+                pow2[0] = 1;
+                for (int i = 1; i <= a.length; i++) pow2[i] = pow2[i - 1] * 2 % MOD;
+                long ans = 0;
+                for (int mask = 0; mask < SZ; mask++) {
+                    long ways = (pow2[g[mask]] - 1 + MOD) % MOD;      // subsets whose AND ⊇ mask
+                    if ((Integer.bitCount(mask) & 1) == 1) ans = (ans - ways + MOD) % MOD;
+                    else ans = (ans + ways) % MOD;
+                }
+                return (int) ans;
+            }
+        }`,
+      complexity: `<p>O(B·2<sup>B</sup> + n) time, O(2<sup>B</sup>) space, B = 20.</p>`,
+      followUps: ['Count subsets with OR = full mask (dual: sum over subsets).', 'Count subsets with AND exactly equal to X for every X (Möbius inversion of the 2<sup>G</sup> − 1 values).']
+    }
+  });
 registerModule({ id: 'dsa23', title: 'Advanced Dynamic Programming', intro: `<p>temp</p>`, goals: [], prereqs: `x`, hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

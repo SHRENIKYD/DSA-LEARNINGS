@@ -2587,4 +2587,393 @@ print(distinct_queries([3, 2, 3, 1, 2], [(0, 2), (1, 3), (2, 4), (0, 4)]))  # [2
     }]
   });
 
+  // =====================================================================
+  // TOPIC 7 — Choosing the right structure
+  // =====================================================================
+  topics.push({
+    title: 'Choosing the Right Range-Query Structure (Decision Guide)',
+    analogy: `<p>To move across town you can walk, cycle, drive, take a truck or book a train. Walking is perfect for 200 metres; a truck is silly for a sandwich and essential for a sofa; the train is fastest but only runs on a <b>fixed timetable</b> you must plan around.</p>
+      <p>Range-query structures are the same garage of vehicles: <b>prefix sums</b> (walking — trivial, but nothing may change), <b>Fenwick</b> (bicycle — light and quick, limited cargo), <b>segment tree</b> (car — goes anywhere), <b>lazy segment tree</b> (truck — carries range updates), <b>sparse table</b> (motorbike on an empty road — fastest, but only if the road never changes), <b>sqrt blocks</b> (a reliable van for odd-shaped loads) and <b>Mo's</b> (the train — only if you can plan all trips in advance). Picking the right one quickly is what interviewers actually grade.</p>`,
+    explain: `<p><b>Ask five questions, in this order.</b></p>
+      <ol>
+        <li><b>Can the answer for a range be built from the answers of two halves?</b> (sum, min, gcd, max-subarray struct → yes; number of distinct values, mode, "count values with frequency k" → no)</li>
+        <li><b>Are there updates?</b> None / point updates / range updates.</li>
+        <li><b>What is the operation like?</b> <i>Invertible</i> (sum, xor: you can "subtract" a prefix) or <i>idempotent</i> (min, max, gcd, and, or: overlap is harmless) or neither.</li>
+        <li><b>Online or offline?</b> Must each query be answered before the next one is read (or does it depend on the previous answer)? If not, you may sort queries.</li>
+        <li><b>What do the constraints allow?</b> N, Q → operation budget (≈ 10<sup>8</sup> simple steps per second in Java/C++), and memory (N log N ints for N = 10<sup>6</sup> is 80 MB).</li>
+      </ol>
+      ${H.table(['structure', 'build', 'query', 'update', 'memory', 'best for'], [
+        ['prefix sums', 'O(N)', H.c('g', 'O(1)'), H.c('r', 'O(N)'), 'N', 'static sum / xor / count'],
+        ['difference array', 'O(N)', 'O(N) once at the end', 'O(1) range add', 'N', 'many range adds, read the array once'],
+        ['sparse table', 'O(N log N)', H.c('g', 'O(1)'), H.c('r', 'none'), 'N log N', 'static min / max / gcd, LCA'],
+        ['Fenwick (BIT)', 'O(N)', 'O(log N)', 'O(log N)', 'N', 'dynamic sums, counts, inversions, k-th'],
+        ['segment tree', 'O(N)', 'O(log N)', 'O(log N)', '2N–4N', 'any associative op, custom nodes, descent'],
+        ['lazy segment tree', 'O(N)', 'O(log N)', 'O(log N) range', '8N', 'range add / assign + range query'],
+        ['sqrt decomposition', 'O(N)', 'O(√N)', 'O(1)–O(√N)', 'N', 'awkward queries with updates, quick to write'],
+        ['Mo\'s algorithm', '—', 'O((N+Q)√N) total', 'none (or N<sup>5/3</sup> variant)', 'N + Q', 'offline non-mergeable queries (distinct, pairs)']
+      ])}
+      <p><b>The quick decision path</b> (the visualizer below walks it for any combination):</p>
+      ${H.table(['situation', 'pick'], [
+        ['static + sum/xor', 'prefix sums'],
+        ['static + min/max/gcd, many queries', 'sparse table'],
+        ['point updates + sum/xor/count', 'Fenwick'],
+        ['point updates + min/max/gcd or custom merge', 'segment tree'],
+        ['range updates + range queries', 'lazy segment tree (or two Fenwicks for add + sum)'],
+        ['range updates, only final array needed', 'difference array'],
+        ['non-mergeable query, offline, static', 'Mo\'s algorithm (or a clever offline sweep + BIT)'],
+        ['non-mergeable query, online / with updates', 'sqrt decomposition (or persistent structures)']
+      ])}
+      <p><b>Do not forget the non-tree shortcuts</b>: sliding-window max of a <i>fixed</i> size → monotonic deque O(N); "count of x in [l, r]" → per-value position lists + binary search; "next greater index" → monotonic stack; values up to 10<sup>9</sup> → coordinate compression before any array-indexed structure.</p>`,
+    clues: [
+      '"The array never changes" → start from prefix sums / sparse table; a segment tree here is over-engineering.',
+      '"Update" + "sum" → Fenwick is the shortest; "update" + "min/max" → segment tree (BIT cannot undo a min).',
+      '"Add to a range" + "query a range" → lazy segment tree; "add to a range" + "query one element" → Fenwick on differences.',
+      '"<b>Distinct</b> / <b>frequency</b> / pairs in a range" → not mergeable → Mo\'s (offline) or sqrt (online), or position lists if it is about one value.',
+      '"Answer queries in the order given, each depends on the last answer" → online only: Mo\'s and offline sweeps are ruled out.',
+      'Constraints: Q ≤ 10<sup>3</sup> → brute force may already pass; Q ~ 10<sup>5</sup> → log or √; Q ~ 10<sup>6</sup>+ static → O(1) queries (prefix, sparse table).'
+    ],
+    code: [`
+      // Coordinate compression: map arbitrary values (up to 1e9, negatives) to ranks 1..K
+      // so they can index a Fenwick tree / segment tree / count array.
+      class Compressor {
+          private final int[] sortedUnique;
+
+          Compressor(int[] values) {
+              int[] s = values.clone();
+              Arrays.sort(s);
+              int k = 0;
+              for (int i = 0; i < s.length; i++) if (i == 0 || s[i] != s[i - 1]) s[k++] = s[i];
+              sortedUnique = Arrays.copyOf(s, k);
+          }
+
+          int size() { return sortedUnique.length; }
+
+          /** 1-based rank of a value that is present (binary search, O(log K)). */
+          int rank(int v) { return Arrays.binarySearch(sortedUnique, v) + 1; }
+
+          /** number of distinct values <= v (works for values that are NOT present too). */
+          int countLE(int v) {
+              int lo = 0, hi = sortedUnique.length;
+              while (lo < hi) { int mid = (lo + hi) >>> 1; if (sortedUnique[mid] <= v) lo = mid + 1; else hi = mid; }
+              return lo;
+          }
+
+          public static void main(String[] args) {
+              Compressor c = new Compressor(new int[]{1000000000, -5, 42, 42, 7});
+              System.out.println(c.size());          // 4 distinct values: -5, 7, 42, 1e9
+              System.out.println(c.rank(42));        // 3
+              System.out.println(c.countLE(10));     // 2 (-5 and 7)
+          }
+      }`, `
+      // Stress-testing harness: compare a fast structure against a brute force on random operations.
+      // Writing this takes 5 minutes and catches almost every off-by-one before the interviewer does.
+      class StressTest {
+          // structure under test: iterative min segment tree
+          static int n;
+          static int[] t;
+          static void build(int[] a) { n = a.length; t = new int[2 * n]; for (int i = 0; i < n; i++) t[n + i] = a[i]; for (int p = n - 1; p > 0; p--) t[p] = Math.min(t[2 * p], t[2 * p + 1]); }
+          static void set(int i, int v) { for (t[i += n] = v; i > 1; i >>= 1) t[i >> 1] = Math.min(t[i], t[i ^ 1]); }
+          static int query(int l, int r) {   // inclusive
+              int res = Integer.MAX_VALUE;
+              for (l += n, r += n + 1; l < r; l >>= 1, r >>= 1) {
+                  if ((l & 1) == 1) res = Math.min(res, t[l++]);
+                  if ((r & 1) == 1) res = Math.min(res, t[--r]);
+              }
+              return res;
+          }
+
+          public static void main(String[] args) {
+              Random rnd = new Random(42);
+              for (int round = 0; round < 200; round++) {
+                  int size = 1 + rnd.nextInt(20);                  // include tiny sizes like 1 and 2
+                  int[] a = new int[size];
+                  for (int i = 0; i < size; i++) a[i] = rnd.nextInt(21) - 10;
+                  build(a);
+                  for (int op = 0; op < 200; op++) {
+                      int l = rnd.nextInt(size), r = l + rnd.nextInt(size - l);
+                      if (rnd.nextBoolean()) { int v = rnd.nextInt(21) - 10; a[l] = v; set(l, v); }
+                      else {
+                          int brute = Integer.MAX_VALUE;
+                          for (int i = l; i <= r; i++) brute = Math.min(brute, a[i]);
+                          if (brute != query(l, r)) throw new AssertionError("mismatch at round " + round);
+                      }
+                  }
+              }
+              System.out.println("40 000 random operations: segment tree agrees with brute force");
+          }
+      }`, { lang: 'python', run: true, title: 'The decision guide as code (runnable)', code: `def choose(updates, query, online):
+    """updates: 'none' | 'point' | 'range'; query: 'sum','xor','min','max','gcd','distinct','mode'."""
+    mergeable = query not in ("distinct", "mode")
+    invertible = query in ("sum", "xor")
+    idempotent = query in ("min", "max", "gcd")
+    if not mergeable:
+        if not online and updates == "none":
+            return "Mo's algorithm (or an offline sweep + Fenwick)"
+        if not online and updates == "point":
+            return "Mo's algorithm with updates (B = N^(2/3))"
+        return "sqrt decomposition / persistent segment tree"
+    if updates == "none":
+        return "sparse table, O(1) query" if idempotent else "prefix sums, O(1) query"
+    if updates == "point":
+        return "Fenwick tree" if invertible else "segment tree"
+    return "lazy segment tree (two Fenwicks if add + sum)"
+
+
+cases = [
+    ("none", "sum", True), ("none", "min", True), ("point", "sum", True),
+    ("point", "max", True), ("range", "sum", True), ("none", "distinct", False),
+    ("point", "distinct", True),
+]
+for upd, q, online in cases:
+    mode = "online" if online else "offline"
+    print(f"{upd:>5} updates, {q:>8} query, {mode:>7} -> {choose(upd, q, online)}")` }],
+    codeTitle: ['Coordinate compression helper', 'Stress-test harness (do this before you trust any tree)', 'Decision guide in Python'],
+    viz: [{
+      title: 'Decision walk: which structure fits your problem?',
+      input: 'point | min | online',
+      inputLabel: 'updates (none/point/range) | query (sum/xor/min/max/gcd/distinct/mode) | online or offline',
+      gen: function (input) {
+        var p = splitBar(input, 3, 'updates | query | online/offline   e.g.  none | gcd | online');
+        var upd = p[0].toLowerCase(), qy = p[1].toLowerCase(), md = p[2].toLowerCase();
+        if (['none', 'point', 'range'].indexOf(upd) < 0) throw new Error('updates must be none, point or range.');
+        if (['sum', 'xor', 'min', 'max', 'gcd', 'distinct', 'mode'].indexOf(qy) < 0) throw new Error('query must be sum, xor, min, max, gcd, distinct or mode.');
+        if (['online', 'offline'].indexOf(md) < 0) throw new Error('third part must be online or offline.');
+        var nodes = [
+          { id: 'A', label: 'Mergeable from 2 halves?', x: 50, y: 6, shape: 'box' },
+          { id: 'B', label: 'Updates?', x: 26, y: 22, shape: 'box' },
+          { id: 'C', label: 'Offline OK?', x: 80, y: 22, shape: 'box' },
+          { id: 'D', label: 'Idempotent op?', x: 11, y: 40, shape: 'box' },
+          { id: 'E', label: 'Invertible op?', x: 37, y: 40, shape: 'box' },
+          { id: 'F', label: 'Lazy segment tree', x: 62, y: 40, shape: 'box' },
+          { id: 'H', label: 'Sqrt blocks', x: 90, y: 40, shape: 'box' },
+          { id: 'SP', label: 'Sparse table', x: 10, y: 60, shape: 'box' },
+          { id: 'FW', label: 'Fenwick tree', x: 36, y: 60, shape: 'box' },
+          { id: 'G', label: 'Mo\'s algorithm', x: 72, y: 60, shape: 'box' },
+          { id: 'PS', label: 'Prefix sums', x: 22, y: 76, shape: 'box' },
+          { id: 'ST', label: 'Segment tree', x: 48, y: 76, shape: 'box' }
+        ];
+        var edges = [['A', 'B', 'yes'], ['A', 'C', 'no'], ['B', 'D', 'none'], ['B', 'E', 'point'], ['B', 'F', 'range'], ['D', 'SP', 'yes'], ['D', 'PS', 'no'], ['E', 'FW', 'yes'], ['E', 'ST', 'no'], ['C', 'G', 'yes'], ['C', 'H', 'no']];
+        var mergeable = qy !== 'distinct' && qy !== 'mode', invertible = qy === 'sum' || qy === 'xor', idem = qy === 'min' || qy === 'max' || qy === 'gcd';
+        var steps = [];
+        steps.push({ node: 'A', why: '<b>Can the answer for [l, r] be combined from two halves?</b> ' + (mergeable ? qy + ' of two halves is just ' + qy + '(left, right) → <b>yes</b>.' : '"' + qy + '" of two halves is NOT simple: both halves may contain the same values → <b>no</b>.') });
+        var leaf, note;
+        if (mergeable) {
+          steps.push({ node: 'B', edge: 'A-B', why: '<b>What kind of updates?</b> You said: <b>' + upd + '</b>.' });
+          if (upd === 'none') {
+            steps.push({ node: 'D', edge: 'B-D', why: '<b>Static array.</b> Is ' + qy + ' idempotent (x ⊕ x = x, so overlapping windows are harmless)? ' + (idem ? '<b>Yes</b>.' : '<b>No</b> (' + qy + ' would double count an overlap) — but it is invertible, so prefix differences work.') });
+            leaf = idem ? 'SP' : 'PS'; steps.push({ node: leaf, edge: 'D-' + leaf, leaf: true });
+            note = idem ? 'Sparse table: O(N log N) build, <b>O(1)</b> per query, no updates.' : 'Prefix sums: O(N) build, <b>O(1)</b> per query as pre[r+1] − pre[l].';
+          } else if (upd === 'point') {
+            steps.push({ node: 'E', edge: 'B-E', why: '<b>Point updates.</b> Is ' + qy + ' invertible (can you "subtract" prefix(l−1) from prefix(r))? ' + (invertible ? '<b>Yes</b> → a Fenwick tree is enough.' : '<b>No</b>: you cannot un-take a ' + qy + ' → you need a real segment tree.') });
+            leaf = invertible ? 'FW' : 'ST'; steps.push({ node: leaf, edge: 'E-' + leaf, leaf: true });
+            note = invertible ? 'Fenwick tree: N + 1 memory, ~10 lines, O(log N) update and query.' : 'Segment tree: O(log N) update and query for any associative op (min, max, gcd, custom structs).';
+          } else {
+            leaf = 'F'; steps.push({ node: 'F', edge: 'B-F', leaf: true });
+            note = 'Lazy segment tree: O(log N) range update and range query.' + (qy === 'sum' ? ' For add + sum, two Fenwick trees are a shorter alternative.' : '') + (qy === 'gcd' ? ' Careful: gcd with range add needs the difference-array trick (gcd(a[l], d[l+1..r])).' : '');
+          }
+        } else {
+          steps.push({ node: 'C', edge: 'A-C', why: '<b>May we read all queries first and answer them in any order?</b> You said: <b>' + md + '</b>' + (upd !== 'none' ? ', with ' + upd + ' updates' : '') + '.' });
+          if (md === 'offline' && upd !== 'range') {
+            leaf = 'G'; steps.push({ node: 'G', edge: 'C-G', leaf: true });
+            note = upd === 'none' ? 'Mo\'s algorithm: O((N + Q)√N) with O(1) add/remove. (For distinct counts, an offline sweep by r + Fenwick is O((N + Q) log N).)' : 'Mo\'s algorithm <b>with updates</b>: add a time axis, block size N<sup>2/3</sup>, O(N<sup>5/3</sup>).';
+          } else {
+            leaf = 'H'; steps.push({ node: 'H', edge: 'C-H', leaf: true });
+            note = 'Online / heavy updates: sqrt decomposition with per-block frequency summaries, or a persistent segment tree for static online distinct counts.';
+          }
+        }
+        var frames = [], hl = {}, ehl = {};
+        frames.push({ narr: 'Your problem: <b>' + upd + '</b> updates, <b>' + qy + '</b> queries, <b>' + md + '</b>. We walk the decision tree from the top; each box is one question you should ask aloud in an interview.',
+          parts: [{ type: 'graph', directed: true, height: 84, nodes: nodes, edges: edges, hl: {}, ehl: {} }] });
+        steps.forEach(function (s) {
+          hl = copy(hl); ehl = copy(ehl);
+          for (var k in hl) hl[k] = 'done';
+          for (var e in ehl) ehl[e] = 'ok';
+          hl[s.node] = s.leaf ? 'sel' : 'cur';
+          if (s.edge) ehl[s.edge] = 'cur';
+          frames.push({ narr: s.leaf ? 'Recommendation: <b>' + nodes.filter(function (n) { return n.id === s.node; })[0].label + '</b>. ' + note : s.why,
+            parts: [{ type: 'graph', directed: true, height: 84, nodes: nodes, edges: edges, hl: hl, ehl: ehl }] });
+        });
+        var rows = [['prefix sums', 'O(1)', 'O(N)', 'static sum/xor'], ['sparse table', 'O(1)', '—', 'static min/max/gcd'], ['Fenwick', 'O(log N)', 'O(log N)', 'sum/xor/count'], ['segment tree', 'O(log N)', 'O(log N)', 'any associative'], ['lazy segment tree', 'O(log N)', 'O(log N) range', 'range updates'], ['sqrt blocks', 'O(√N)', 'O(√N)', 'awkward queries'], ['Mo\'s algorithm', 'O((N+Q)√N) total', '— (or N^5/3)', 'offline, non-mergeable']];
+        var pick = { PS: 0, SP: 1, FW: 2, ST: 3, F: 4, H: 5, G: 6 }[leaf];
+        frames.push({ narr: 'The whole menu side by side. Your pick is highlighted. In an interview, say the alternatives you rejected and <i>why</i> — that is half the grade.',
+          parts: [{ type: 'table', label: 'cheat sheet', columns: ['structure', 'query', 'update', 'use when'], rows: rows, hl: one(pick, 'sel') }] });
+        return frames;
+      }
+    }, {
+      title: 'Budget check: estimated operations for N and Q (10⁸ simple steps ≈ 1 second)',
+      input: '200000 200000',
+      inputLabel: 'N Q (each 1 .. 10 000 000)',
+      gen: function (input) {
+        var v = parseNums(input, '"N Q"', 2, 2, 1, 10000000), N = v[0], Q = v[1];
+        var lg = Math.max(1, Math.log2(N)), sq = Math.sqrt(N);
+        var list = [
+          ['brute', N * Q, 'scan every range: N·Q'],
+          ['prefix', N + Q, 'static sums only: N + Q'],
+          ['sparse', N * lg + 2 * Q, 'static min/max: N log N + 2Q'],
+          ['BIT', N + 2 * Q * lg, 'Fenwick: N + 2Q log N'],
+          ['segtree', 2 * N + 4 * Q * lg, 'segment tree: 2N + 4Q log N'],
+          ['lazy', 4 * N + 8 * Q * lg, 'lazy tree: ~2× a plain tree'],
+          ['sqrt', N + 3 * Q * sq, 'sqrt blocks: N + 3Q√N'],
+          ['Mo', Q * Math.log2(Math.max(2, Q)) + (N + Q) * sq, 'Mo: Q log Q + (N+Q)√N']
+        ];
+        function fmt(x) { if (x < 1000) return String(Math.round(x)); var e = Math.floor(Math.log10(x)); return (x / Math.pow(10, e)).toFixed(1) + 'e' + e; }
+        function cls(x) { return x <= 1e8 ? 'ok' : x <= 1e9 ? 'cur' : 'bad'; }
+        var frames = [], vals = [], texts = [], labels = [], hl = {};
+        frames.push({ narr: 'N = ' + N + ', Q = ' + Q + '. Rule of thumb: ~10<sup>8</sup> simple steps per second (Java/C++). Bars show <b>log₁₀(estimated steps)</b>; green ≤ 10<sup>8</sup>, amber ≤ 10<sup>9</sup>, red = too slow.',
+          parts: [{ type: 'vars', label: 'input', vals: { N: N, Q: Q, 'log2 N': Math.round(lg * 10) / 10, '√N': Math.round(sq) } }, { type: 'text', label: 'reminder', html: 'Constants are rough; the point is the <b>order of magnitude</b>, exactly like an interviewer\'s back-of-the-envelope check.' }] });
+        list.forEach(function (it, k) {
+          vals.push(Math.round(Math.log10(Math.max(1, it[1])) * 10) / 10); texts.push(fmt(it[1])); labels.push(it[0]); hl[k] = cls(it[1]);
+          frames.push({ narr: '<b>' + it[2] + '</b> ≈ ' + fmt(it[1]) + ' steps → ' + (it[1] <= 1e8 ? H.c('g', 'fits comfortably') : it[1] <= 1e9 ? H.c('y', 'borderline: needs tight code / 2–5 s limit') : H.c('r', 'too slow')) + '.',
+            parts: [{ type: 'bars', label: 'log₁₀(steps) — lower is better', values: vals.slice(), texts: texts.slice(), idxLabels: labels.slice(), hl: copy(hl) }] });
+        });
+        frames.push({ narr: 'Summary: with these limits, everything green is safe. Remember the structural limits too — prefix sums and sparse tables need a <b>static</b> array, Mo needs <b>offline</b> queries, and Fenwick needs an <b>invertible</b> operation.',
+          parts: [{ type: 'bars', label: 'log₁₀(steps)', values: vals, texts: texts, idxLabels: labels, hl: hl }] });
+        return frames;
+      }
+    }],
+    examples: [
+      {
+        title: 'Four problem statements, four different answers',
+        html: `${H.table(['statement', 'key words', 'pick', 'why not the others'], [
+            ['"Given prices, answer 10<sup>6</sup> queries: cheapest price between day l and day r."', 'static, min, huge Q', H.c('g', 'sparse table'), 'segment tree is O(log N) per query; prefix sums cannot do min'],
+            ['"Users update their score; report the sum of scores of users l..r."', 'point update, sum', H.c('g', 'Fenwick'), 'segment tree also works but is longer; prefix sums need O(N) per update'],
+            ['"Stock prices change; report the highest price in [l, r]."', 'point update, max', H.c('g', 'segment tree'), 'Fenwick cannot undo a max; sparse table cannot update'],
+            ['"Add bonus v to employees l..r many times, then print all salaries."', 'range add, read once', H.c('g', 'difference array'), 'lazy tree works but O(log N) per op is wasted when you read once']
+          ])}`
+      },
+      {
+        title: 'Range Frequency: no tree needed at all',
+        html: `<p>"How many times does value x occur in a[l..r]?" (online, static). For each value store the sorted list of its positions. Answer = number of positions in [l, r] = <code>upperBound(r) − lowerBound(l)</code> — two binary searches.</p>
+          ${H.arr([12, 33, 4, 56, 22, 2, 34, 33, 22, 12, 34, 56], { label: 'a', hl: { 1: 'y', 7: 'y' } })}
+          ${H.kv([['33', '[1, 7]'], ['22', '[4, 8]'], ['12', '[0, 9]']], { label: 'positions' })}
+          <p>count(33 in [0, 11]) = 2; count(22 in [5, 8]) = positions ≥ 5 and ≤ 8 → [8] → 1. O(log N) per query, O(N) memory. This is the guided problem below.</p>`
+      },
+      {
+        title: 'Same constraints, very different budgets',
+        html: `<p>N = Q = 2·10<sup>5</sup> (a very common limit):</p>
+          ${H.table(['approach', 'estimated steps', 'verdict'], [
+            ['scan each query', '4·10<sup>10</sup>', H.c('r', 'TLE')],
+            ['Fenwick', '≈ 7·10<sup>6</sup>', H.c('g', 'instant')],
+            ['segment tree', '≈ 1.4·10<sup>7</sup>', H.c('g', 'fast')],
+            ['sqrt blocks', '≈ 2.7·10<sup>8</sup>', H.c('y', 'OK with tight code')],
+            ['Mo\'s', '≈ 1.8·10<sup>8</sup>', H.c('y', 'OK if add/remove are O(1) array ops')]
+          ])}
+          <p>Use the second visualizer above to recompute these for your own constraints.</p>`
+      },
+      {
+        title: 'Memory budget at N = 10<sup>6</sup>',
+        html: `${H.table(['structure', 'cells', 'bytes (int / long)'], [
+            ['Fenwick', '10<sup>6</sup>', '4 MB / 8 MB'],
+            ['iterative segment tree', '2·10<sup>6</sup>', '8 MB / 16 MB'],
+            ['recursive segment tree', '4·10<sup>6</sup>', '16 MB / 32 MB'],
+            ['lazy segment tree', '8·10<sup>6</sup>', '32 MB / 64 MB'],
+            ['sparse table', '2·10<sup>7</sup>', H.c('r', '80 MB / 160 MB')]
+          ])}
+          <p>With a 256 MB limit the sparse table of longs is risky; a segment tree (or an O(N)-memory RMQ with blocks) is the safer choice even for static data.</p>`
+      }
+    ],
+    deepDive: `<p><b>Lower bounds you can quote.</b> For dynamic prefix sums (point update + prefix query) there is a proven Ω(log N / log log N) per-operation lower bound in the cell-probe model (Fredman–Saks), and Ω(log N) for the trade-off product (Pătraşcu–Demaine). So "O(1) update and O(1) query" for dynamic sums is impossible — Fenwick and segment trees are essentially optimal. For static RMQ, O(N) preprocessing with O(1) queries is achievable, so the sparse table's N log N is <i>not</i> optimal, only simple.</p>
+      <p><b>Offline tricks that replace heavy structures.</b> (1) <b>Sort queries by r</b> and sweep with a Fenwick tree (distinct values, "count of x ≤ value" by sorting values too). (2) <b>Sort events by value</b> and insert positions in increasing order of value, answering "count ≤ x in [l, r]" with a BIT over positions — O((N + Q) log N), no sqrt needed when offline. (3) <b>Divide and conquer over time</b> (CDQ) turns a dynamic problem into static sub-problems. (4) <b>Parallel binary search</b> for "first time a condition holds" over many queries.</p>
+      <p><b>Heavier artillery (know they exist).</b> Persistent segment trees (online k-th smallest in a range, online distinct counts), wavelet trees (k-th smallest / count ≤ x in O(log σ)), merge-sort trees (static "count ≤ x" in O(log² N)), segment trees of BITs or ordered sets (2D dynamic counting), Li Chao trees (min of lines at a point), and Segment Tree Beats (chmin/chmax). In interviews it is enough to name the right one and explain why the simpler ones fail.</p>
+      <p><b>Engineering view.</b> In real systems, the same choices show up as: precomputed prefix aggregates (immutable, rebuilt in batch), mutable counters with tree-structured aggregation, block-level summaries that let a scan skip blocks (columnar "zone maps"), and offline batch jobs that sort work to maximise locality — Mo's courier idea at data-centre scale. The interview question "which structure?" is really "what are your update pattern, query pattern and latency budget?".</p>
+      <p><b>A good spoken answer</b> has four parts: (1) restate the operations and constraints, (2) reject the brute force with a number, (3) name the structure and its complexity, (4) mention one alternative and the trade-off ("a sparse table would be O(1) per query but cannot handle the updates").</p>`,
+    aiEra: `<p><b>What AI changes:</b> writing any one of these structures is now cheap; <b>choosing</b> is the scarce skill. Assistants often default to the most powerful tool they know (lazy segment tree, persistent tree) even when prefix sums or a Fenwick would do, or they miss a decisive word like "static", "offline" or "online".</p>
+      <p><b>A good human–AI workflow:</b> (1) you extract the five decision facts (mergeable? updates? invertible/idempotent? online? limits?) from the statement; (2) you choose the structure and state the complexity; (3) let the assistant write the boilerplate; (4) you demand a brute-force stress test (like the Java harness above) and review the tricky lines yourself — identities, index bases, overflow.</p>
+      <p><b>Prompts that work:</b> <code>"List three data structures that solve this, with complexity and one reason each might fail on these constraints"</code>; <code>"Estimate the number of operations for N = Q = 2e5 for each"</code>. <b>What you must own:</b> the decision itself, the back-of-the-envelope budget, and the honest trade-off discussion — that is exactly what interviewers still score in 2026.</p>`,
+    problems: [{
+      title: 'Range Frequency Queries',
+      level: 'Medium',
+      tags: ['binary search', 'hash map', 'choosing a structure'],
+      companies: ['Google', 'Amazon', 'Microsoft'],
+      statement: `<p>Design <code>RangeFreqQuery</code>: the constructor receives an integer array <code>arr</code>; <code>query(left, right, value)</code> returns how many times <code>value</code> occurs in the subarray <code>arr[left..right]</code> (inclusive). Queries are answered online, one by one.</p>`,
+      constraints: `1 ≤ N ≤ 10<sup>5</sup>, 1 ≤ arr[i], value ≤ 10<sup>4</sup>, at most 10<sup>5</sup> calls to query.`,
+      example: `${H.arr([12, 33, 4, 56, 22, 2, 34, 33, 22, 12, 34, 56], { label: 'arr', hl: { 1: 'g', 7: 'g' } })}
+        <p>query(1, 2, 4) → ${H.c('g', '1')} (arr[1..2] = [33, 4]). query(0, 11, 33) → ${H.c('g', '2')} (positions 1 and 7).</p>`,
+      brute: {
+        why: `<p>Scan arr[left..right] and count: O(N) per query, 10<sup>5</sup> × 10<sup>5</sup> = 10<sup>10</sup>. A segment tree of hash maps would answer in O(log N) but needs O(N log N) map entries — heavy and slow. The waste in brute force: we look at every element, although only the positions of <i>one</i> value matter.</p>`,
+        code: `
+          class RangeFreqQueryBrute {
+              private final int[] a;
+              RangeFreqQueryBrute(int[] arr) { a = arr.clone(); }
+              int query(int left, int right, int value) {
+                  int c = 0;
+                  for (int i = left; i <= right; i++) if (a[i] == value) c++;
+                  return c;
+              }
+          }`
+      },
+      mcq: {
+        q: 'The array is static and each query asks about ONE value. What is the lightest correct structure?',
+        options: ['Lazy segment tree', 'For every value, the sorted list of its positions + binary search', 'Mo\'s algorithm', 'Sparse table of frequency maps'],
+        answer: 1,
+        explain: 'Only the positions of the queried value matter. Lists of positions total N entries, are sorted for free by building left to right, and two binary searches count those inside [left, right]. Mo\'s is offline-only; the others are heavy.'
+      },
+      hints: [
+        `<p><b>Aha:</b> count of value x in [l, r] = number of <i>positions of x</i> that lie in [l, r]. You don't need the other values at all.</p>`,
+        `<p>Build <code>Map&lt;Integer, List&lt;Integer&gt;&gt;</code> (or an array of lists since values ≤ 10<sup>4</sup>) by scanning left to right — each list is automatically sorted. Then answer with lowerBound(l) and upperBound(r).</p>`,
+        `<p>Edge cases: value never appears (empty list → 0), l = r, value at exactly l or r (inclusive bounds). Recipe: pos = lists[value] → return upperBound(pos, right) − lowerBound(pos, left).</p>`
+      ],
+      solution: {
+        approach: `<p>Per-value sorted position lists + two binary searches. Construction O(N), query O(log N), memory O(N). A good example of "choose the lightest structure": no tree is needed because the query focuses on a single value.</p>`,
+        code: `
+          class RangeFreqQuery {
+              private final Map<Integer, List<Integer>> positions = new HashMap<>();
+
+              public RangeFreqQuery(int[] arr) {
+                  for (int i = 0; i < arr.length; i++)
+                      positions.computeIfAbsent(arr[i], k -> new ArrayList<>()).add(i);  // added in increasing i → sorted
+              }
+
+              /** first index in list with list[idx] >= x */
+              private static int lowerBound(List<Integer> list, int x) {
+                  int lo = 0, hi = list.size();
+                  while (lo < hi) { int mid = (lo + hi) >>> 1; if (list.get(mid) < x) lo = mid + 1; else hi = mid; }
+                  return lo;
+              }
+
+              public int query(int left, int right, int value) {
+                  List<Integer> pos = positions.get(value);
+                  if (pos == null) return 0;
+                  return lowerBound(pos, right + 1) - lowerBound(pos, left);   // count of positions in [left, right]
+              }
+
+              public static void main(String[] args) {
+                  RangeFreqQuery r = new RangeFreqQuery(new int[]{12, 33, 4, 56, 22, 2, 34, 33, 22, 12, 34, 56});
+                  System.out.println(r.query(1, 2, 4));    // 1
+                  System.out.println(r.query(0, 11, 33));  // 2
+                  System.out.println(r.query(5, 8, 22));   // 1
+              }
+          }`,
+        alt: [{ lang: 'python', code: `from bisect import bisect_left, bisect_right
+from collections import defaultdict
+
+
+class RangeFreqQuery:
+    def __init__(self, arr):
+        self.pos = defaultdict(list)
+        for i, v in enumerate(arr):
+            self.pos[v].append(i)          # sorted automatically
+
+    def query(self, left, right, value):
+        p = self.pos.get(value, [])
+        return bisect_right(p, right) - bisect_left(p, left)
+
+
+r = RangeFreqQuery([12, 33, 4, 56, 22, 2, 34, 33, 22, 12, 34, 56])
+print(r.query(1, 2, 4), r.query(0, 11, 33), r.query(5, 8, 22))  # 1 2 1`, run: true }],
+        dry: {
+          head: ['call', 'positions list', 'lowerBound(left)', 'lowerBound(right + 1)', 'answer'],
+          rows: [
+            ['query(1, 2, 4)', '[2]', '0', '1', H.c('g', '1')],
+            ['query(0, 11, 33)', '[1, 7]', '0', '2', H.c('g', '2')],
+            ['query(5, 8, 22)', '[4, 8]', '1', '2', H.c('g', '1')],
+            ['query(0, 3, 99)', 'none', '—', '—', '0']
+          ]
+        },
+        complexity: `<p>Build O(N); each query O(log N); memory O(N).</p>`,
+        followUps: ['Add point updates arr[i] = v — what breaks, and what would you use (ordered sets per value / sqrt blocks)?', 'Instead of one value, count values in a <i>range</i> [x, y] inside [l, r] — wavelet tree or offline BIT.', 'Queries are given offline — is Mo\'s better here? (No: binary search is already O(log N).)']
+      }
+    }]
+  });
+
 registerModule({ id: 'dsa21', title: 'Range Query Data Structures', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

@@ -1683,4 +1683,710 @@ public:
       }
     }]
   });
+
+  // =====================================================================
+  // TOPIC 7 — Amortized analysis
+  // =====================================================================
+  topics.push({
+    title: 'Amortized Analysis: Dynamic Arrays, Binary Counters, Monotonic Stacks & Union-Find',
+    analogy: `<p>You run the dishwasher at home. Every day you drop in a few dishes — <b>cheap</b>, a few seconds. Once in a while the machine is full and you must run it and unload 60 dishes — <b>expensive</b>, twenty minutes. Is "putting away a dish" slow? No: spread the big unloading over the 60 dishes that caused it and each dish costs a few extra seconds. That spreading-out is <b>amortized cost</b>.</p>
+      <p>Another way to see it: a <b>piggy bank</b>. Every cheap step you pay a little <i>extra</i> coin into the bank. When the expensive step comes, the bank already holds enough coins to pay for it. If the bank never goes negative, your "price per step" is an honest upper bound on the average — for <b>every</b> possible sequence of operations, not just typical ones.</p>`,
+    explain: `<p><b>Amortized cost</b> = total cost of a worst-case <i>sequence</i> of M operations ÷ M. It is a <b>guarantee</b> (no probability involved), unlike "average case" (which assumes random inputs) or "expected" (which assumes random choices by the algorithm).</p>
+      <p><b>Example 1 — dynamic array (ArrayList / vector) with doubling.</b> Appending costs 1, except when the array is full: then allocate twice the space and copy everything (cost = size).</p>
+      ${H.table(['push #', '1', '2', '3', '4', '5', '6', '7', '8', '9'], [
+        ['capacity before', '1', '1', '2', '4', '4', '8', '8', '8', '8'],
+        ['copies', '0', '1', '2', '0', '4', '0', '0', '0', '8'],
+        ['cost (1 + copies)', '1', '2', '3', '1', '5', '1', '1', '1', '9']
+      ])}
+      <p>Copies over N pushes = 1 + 2 + 4 + … &lt; 2N (a geometric series). Total ≤ N + 2N = <b>3N</b> → <b>O(1) amortized per push</b>, even though one single push can cost O(N).</p>
+      <p><b>The three proof methods</b> (same answer, different bookkeeping):</p>
+      <ul>
+        <li><b>Aggregate:</b> add up the whole sequence's cost and divide (what we just did).</li>
+        <li><b>Accounting / banker's:</b> charge each push <b>3 coins</b>: 1 pays for writing it, 2 are saved on that element. When the array of size m doubles, the m/2 elements added since the last doubling hold m coins — exactly enough to copy all m elements.</li>
+        <li><b>Potential:</b> define Φ = 2·size − capacity (≥ 0 right after a doubling). Amortized cost = actual cost + ΔΦ. A normal push: 1 + 2 = 3. A doubling push at size m: (1 + m) + (2 − m) = 3. Always 3.</li>
+      </ul>
+      <p><b>Example 2 — binary counter.</b> Incrementing flips a run of trailing 1s to 0 and one 0 to 1. One increment can flip log N bits, but bit 0 flips every time, bit 1 every 2nd time, bit 2 every 4th… total flips over N increments &lt; N(1 + ½ + ¼ + …) = <b>2N</b> → O(1) amortized.</p>
+      <p><b>Example 3 — monotonic stack.</b> The inner <code>while (stack not empty &amp;&amp; top &lt; x) pop()</code> looks like it could make the loop O(N<sup>2</sup>). But each element is pushed once and popped at most once, so all the pops in the whole run total ≤ N → <b>O(N) overall</b>. Same argument for the two pointers of a sliding window, and for the hull stack in Topic 3.</p>
+      <p><b>Example 4 — union-find.</b> With union by rank + path compression, any sequence of M operations on N elements costs O(M · α(N)), where α (inverse Ackermann) is ≤ 4 for any N you will ever see. A single <code>find</code> can still walk a long path once — but it flattens that path, so the cost cannot repeat.</p>`,
+    clues: [
+      'A loop with an <b>inner while that pops / advances</b> something ("while stack top &lt; x pop") → count total pushes/pops: O(N) amortized, not O(N<sup>2</sup>).',
+      '"<b>Amortized O(1)</b>", "average cost per operation over a sequence" → aggregate / banker / potential argument expected.',
+      '"Design a data structure where operations are <b>usually cheap but occasionally rebuild</b>" (resize, rehash, compaction) → geometric growth + amortized proof.',
+      '"Queue using two stacks", "<b>min/max stack</b>", "stock span", "sliding window max" → each element moves a constant number of times.',
+      'Interviewer asks "<b>what is the worst case of a single call?</b>" right after you say O(1) → they are testing that you know amortized ≠ worst-case per operation.',
+      '"Union-Find is O(1)?" follow-up → O(α(N)) amortized with both optimisations; O(log N) with only one of them; no amortized bound if you need rollback.'
+    ],
+    code: [`
+      // A growable int array: amortized O(1) add/removeLast, memory always O(size).
+      class IntVector {
+          private int[] data = new int[1];
+          private int size = 0;
+
+          void add(int x) {
+              if (size == data.length) resize(2 * data.length);   // full: DOUBLE (geometric growth)
+              data[size++] = x;
+          }
+
+          int removeLast() {
+              if (size == 0) throw new NoSuchElementException();
+              int x = data[--size];
+              // Shrink only at 1/4 full, not 1/2: halving at 1/2 would let an add/remove
+              // pair at the boundary trigger a full copy every time (thrashing).
+              if (size > 0 && size == data.length / 4) resize(data.length / 2);
+              return x;
+          }
+
+          int get(int i) {
+              if (i < 0 || i >= size) throw new IndexOutOfBoundsException(i);
+              return data[i];
+          }
+
+          int size() { return size; }
+
+          private void resize(int cap) {
+              data = Arrays.copyOf(data, Math.max(1, cap));      // O(size) copy, rare
+          }
+      }`, `
+      // Binary counter: one increment may flip many bits, but N increments flip < 2N bits.
+      static int increment(int[] bits) {          // bits[0] = least significant bit
+          int flips = 0, i = 0;
+          while (i < bits.length && bits[i] == 1) { bits[i++] = 0; flips++; }   // trailing 1s -> 0
+          if (i < bits.length) { bits[i] = 1; flips++; }                          // first 0 -> 1
+          return flips;
+      }
+
+      // Union-Find with union by rank + path compression: O(alpha(N)) amortized per op.
+      static int[] parent, rank;
+      static int find(int x) {
+          while (parent[x] != x) {
+              parent[x] = parent[parent[x]];       // path halving (a form of compression)
+              x = parent[x];
+          }
+          return x;
+      }
+      static boolean union(int a, int b) {
+          int ra = find(a), rb = find(b);
+          if (ra == rb) return false;
+          if (rank[ra] < rank[rb]) { int t = ra; ra = rb; rb = t; }
+          parent[rb] = ra;                         // attach the shorter tree under the taller
+          if (rank[ra] == rank[rb]) rank[ra]++;
+          return true;
+      }`, `
+      // Monotonic stack: inner while looks quadratic, but every index is pushed once
+      // and popped at most once -> O(N) total. Returns next greater element (or -1).
+      static int[] nextGreater(int[] a) {
+          int n = a.length;
+          int[] ans = new int[n];
+          Arrays.fill(ans, -1);
+          Deque<Integer> st = new ArrayDeque<>();  // indices with decreasing values
+          for (int i = 0; i < n; i++) {
+              while (!st.isEmpty() && a[st.peek()] < a[i]) ans[st.pop()] = a[i];
+              st.push(i);
+          }
+          return ans;
+      }`],
+    codeTitle: ['Dynamic array with grow and shrink', 'Binary counter and union-find', 'Monotonic stack (amortized O(N))'],
+    viz: [{
+      title: 'Dynamic array: cheap pushes save coins that pay for the rare copy',
+      input: '17 | x2',
+      inputLabel: 'number of pushes (4..24) | growth: x2, x1.5 or +K (e.g. +3)',
+      gen: function (input) {
+        var parts = splitBar(input, 2, 'pushes | growth, e.g. "17 | x2" or "17 | +3"');
+        var n = Number(parts[0]), g = parts[1].replace(/\s/g, '');
+        if (!(n >= 4 && n <= 24 && Math.floor(n) === n)) throw new Error('Number of pushes must be 4 to 24.');
+        var mode, f;
+        if (/^x(2|1\.5)$/.test(g)) { mode = 'mul'; f = Number(g.slice(1)); }
+        else if (/^\+\d+$/.test(g) && Number(g.slice(1)) >= 1 && Number(g.slice(1)) <= 8) { mode = 'add'; f = Number(g.slice(1)); }
+        else throw new Error('Growth must be x2, x1.5 or +K with K from 1 to 8.');
+        var cap = 1, size = 0, total = 0, bank = 0, costs = [], frames = [];
+        function cells() { var c = []; for (var i = 0; i < cap; i++) c.push(i < size ? 'v' + i : '·'); return c; }
+        frames.push({ narr: 'Empty array, capacity 1. Every push is charged a flat <b>3 coins</b> (banker\'s method): 1 coin pays for writing the element, the rest go into the bank. Growth rule: <b>' + g + '</b>.',
+          parts: [{ type: 'array', label: 'memory (capacity ' + cap + ')', values: cells() }, { type: 'vars', vals: { size: 0, capacity: cap, 'total cost': 0, bank: 0 } }] });
+        for (var p = 1; p <= n; p++) {
+          var copies = 0, grew = false, oldCap = cap;
+          if (size === cap) { copies = size; grew = true; cap = mode === 'mul' ? Math.max(cap + 1, Math.floor(cap * f)) : cap + f; }
+          size++;
+          var cost = 1 + copies;
+          total += cost; bank += 3 - cost; costs.push(cost);
+          var hl = {}; hl[size - 1] = grew ? 'bad' : 'ok';
+          if (grew) for (var q = 0; q < size - 1; q++) hl[q] = 'cur';
+          var bhl = {}; bhl[costs.length - 1] = grew ? 'bad' : 'ok';
+          frames.push({ narr: 'Push #' + p + ': ' + (grew ? '<span class="c-r">array full</span> → allocate capacity ' + cap + ' (was ' + oldCap + ') and copy ' + copies + ' element(s); cost = 1 + ' + copies + ' = <b>' + cost + '</b>.' : 'room available → cost <b>1</b>.') + ' Total so far ' + total + ' for ' + p + ' pushes = <b>' + (Math.round(total / p * 100) / 100) + '</b> per push. Bank = ' + bank + (bank < 0 ? ' <span class="c-r">(negative! 3 coins per push are NOT enough for this growth rule)</span>' : '') + '.',
+            parts: [{ type: 'array', label: 'memory (capacity ' + cap + ')', values: cells(), hl: hl },
+              { type: 'bars', label: 'actual cost of each push', values: costs.slice(), hl: bhl, idxLabels: costs.map(function (_, i) { return '#' + (i + 1); }) },
+              { type: 'vars', vals: { size: size, capacity: cap, 'total cost': total, 'cost per push': Math.round(total / p * 100) / 100, bank: bank }, hl: { bank: bank < 0 ? 'bad' : 'ok' } }] });
+        }
+        frames.push({ narr: mode === 'mul' ? 'Geometric growth (' + g + '): copies form a geometric series, so the cost per push stays a <b>constant</b> no matter how many pushes (≤ 3 for doubling; a 1.5× rule needs about 4 coins per push, so the 3-coin bank may dip). That is amortized O(1).' : 'Additive growth (+' + f + '): the array copies every ' + f + ' pushes and each copy is bigger than the last → total cost grows like N<sup>2</sup>/' + (2 * f) + '. Cost per push keeps <b>rising</b> — amortized O(N). Always grow by a <b>factor</b>.',
+          parts: [{ type: 'bars', label: 'cost per push', values: costs.slice(), idxLabels: costs.map(function (_, i) { return '#' + (i + 1); }) }, { type: 'vars', vals: { pushes: n, 'total cost': total, 'cost per push': Math.round(total / n * 100) / 100 }, hl: { 'cost per push': mode === 'mul' ? 'ok' : 'bad' } }] });
+        return frames;
+      }
+    }, {
+      title: 'Binary counter: count every bit flip over N increments',
+      input: '16',
+      inputLabel: 'number of increments (4..40)',
+      gen: function (input) {
+        var n = Number(txt(input));
+        if (!(n >= 4 && n <= 40 && Math.floor(n) === n)) throw new Error('Type a whole number of increments from 4 to 40.');
+        var v = 0, total = 0, frames = [], per = [];
+        frames.push({ narr: 'A 6-bit counter starting at 0. An increment flips the trailing 1s to 0 and the next 0 to 1. Worst single increment flips many bits — but how many flips <b>in total</b>?',
+          parts: [{ type: 'bits', label: 'counter', value: 0, width: 6 }, { type: 'vars', vals: { increments: 0, 'total flips': 0 } }] });
+        for (var s = 1; s <= n; s++) {
+          var nv = (v + 1) & 63, changed = v ^ nv, flips = 0, hl = {};
+          for (var b = 0; b < 6; b++) if (changed & (1 << b)) { flips++; hl[b] = (nv >> b) & 1 ? 'ok' : 'bad'; }
+          total += flips; per.push(flips); v = nv;
+          frames.push({ narr: 'Increment #' + s + ': ' + flips + ' bit flip(s) (' + (flips > 1 ? (flips - 1) + ' trailing 1s became 0, then one 0 became 1' : 'just bit 0') + '). Total flips ' + total + ' &lt; 2 × ' + s + ' = ' + (2 * s) + '.',
+            parts: [{ type: 'bits', label: 'counter', value: v, width: 6, hl: hl },
+              { type: 'bars', label: 'flips per increment', values: per.slice(), idxLabels: per.map(function (_, i) { return '#' + (i + 1); }), hl: one(per.length - 1, flips > 2 ? 'bad' : 'ok') },
+              { type: 'vars', vals: { increments: s, 'total flips': total, '2·increments': 2 * s }, hl: { 'total flips': 'ok' } }] });
+        }
+        frames.push({ narr: 'Bit 0 flipped ' + n + ' times, bit 1 about ' + Math.floor(n / 2) + ', bit 2 about ' + Math.floor(n / 4) + ' … the sum is below 2N. Potential view: Φ = number of 1-bits; an increment that clears t ones costs t + 1 but lowers Φ by t − 1, so amortized cost = 2.',
+          parts: [{ type: 'vars', vals: { N: n, 'total flips': total, 'per increment': Math.round(total / n * 100) / 100 }, hl: { 'per increment': 'sel' } }] });
+        return frames;
+      }
+    }, {
+      title: 'Monotonic stack: every element is pushed once and popped at most once',
+      input: '2 1 5 3 4 1 6 2',
+      inputLabel: 'array (3 to 14 numbers)',
+      gen: function (input) {
+        var a = parseNums(input, 'array', 3, 14, -99, 99), n = a.length, st = [], ans = a.map(function () { return '?'; }), pushes = 0, pops = 0, frames = [];
+        frames.push({ narr: 'Next greater element with a stack. The inner <code>while</code> can pop many items in one step — is that O(N<sup>2</sup>)? Let us count total pushes and pops.',
+          parts: [{ type: 'array', label: 'a', values: a }, { type: 'stack', label: 'stack (indices)', items: [] }, { type: 'vars', vals: { pushes: 0, pops: 0 } }] });
+        for (var i = 0; i < n; i++) {
+          var popped = [];
+          while (st.length && a[st[st.length - 1]] < a[i]) { var t = st.pop(); ans[t] = a[i]; pops++; popped.push(t); }
+          st.push(i); pushes++;
+          var hl = {}; hl[i] = 'cur'; popped.forEach(function (t) { hl[t] = 'ok'; });
+          frames.push({ narr: 'i = ' + i + ', a[i] = ' + a[i] + ': ' + (popped.length ? 'pop ' + popped.length + ' smaller item(s) (indices ' + popped.join(', ') + ') — their next greater is ' + a[i] + '.' : 'nothing smaller on top.') + ' Push ' + i + '. Work this step = ' + (popped.length + 1) + ', but total pops can never exceed total pushes.',
+            parts: [{ type: 'array', label: 'a', values: a, hl: hl, ptr: one(i, 'i') },
+              { type: 'stack', label: 'stack (index:value)', items: st.map(function (x) { return x + ':' + a[x]; }), hl: one(st.length - 1, 'cur') },
+              { type: 'array', label: 'answer', values: ans.slice() },
+              { type: 'vars', vals: { pushes: pushes, pops: pops, 'pushes + pops': pushes + pops, '2N': 2 * n } }] });
+        }
+        st.forEach(function (x) { ans[x] = -1; });
+        frames.push({ narr: 'Leftovers have no greater element → −1. Total work = pushes + pops = ' + (pushes + pops) + ' ≤ 2N = ' + (2 * n) + '. <b>O(N)</b>, even though single steps varied.',
+          parts: [{ type: 'array', label: 'next greater', values: ans }, { type: 'vars', vals: { pushes: pushes, pops: pops, '2N': 2 * n }, hl: { pops: 'ok' } }] });
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'Growth by +10 is quadratic', html: `<p>Grow by 10 slots each time: copies happen at sizes 10, 20, 30, …, N, total ≈ 10 + 20 + … + N = N<sup>2</sup>/20. For N = 10<sup>6</sup> that is 5·10<sup>10</sup> copies — minutes instead of milliseconds. Any constant <b>factor</b> &gt; 1 (2, 1.5, even 1.1) gives O(1) amortized; any constant <b>addend</b> gives O(N).</p>
+        ${H.table(['growth rule', 'copies for N pushes', 'amortized push'], [['×2', '&lt; 2N', H.c('g', 'O(1)')], ['×1.5 (Java ArrayList)', '&lt; 3N', H.c('g', 'O(1)')], ['+10', '≈ N<sup>2</sup>/20', H.c('r', 'O(N)')]])}` },
+      { title: 'Shrinking at half is a trap (thrashing)', html: `<p>Capacity 8, size 8. Rule "halve when size ≤ capacity/2" + "double when full". Push → double to 16 (copy 8). Pop → size 8 = 16/2 → halve to 8 (copy 8). Push → full → double (copy 8)… every operation costs O(N). Shrinking at <b>¼ full</b> leaves a gap of N/4 cheap operations between any two resizes, restoring O(1) amortized.</p>` },
+      { title: 'Queue from two stacks', html: `<p>Push onto <code>in</code>. To pop, if <code>out</code> is empty move <b>everything</b> from <code>in</code> to <code>out</code> (reverses the order), then pop <code>out</code>. A single pop can cost O(N), but each element is moved from in to out at most once in its life → each element costs ≤ 4 stack operations total → O(1) amortized per queue operation.</p>`, code: `Deque<Integer> in = new ArrayDeque<>(), out = new ArrayDeque<>();
+for (int x = 1; x <= 3; x++) in.push(x);          // enqueue 1, 2, 3
+if (out.isEmpty()) while (!in.isEmpty()) out.push(in.pop());   // one O(N) transfer
+System.out.println(out.pop() + " " + out.pop()); // 1 2 (FIFO), next pops are O(1)` },
+      { title: 'Union-find: one slow find, then fast forever', html: `<p>A chain 1 → 2 → 3 → 4 → 5 (root 5). <code>find(1)</code> walks 4 links (slow) but path compression points 1, 2, 3 directly at 5. The next <code>find(1)</code> takes 1 step. The expensive walk "pays" for flattening, so the total over M operations is O(M α(N)).</p>
+        ${H.arr(['1→2', '2→3', '3→4', '4→5'], { label: 'before' })}${H.arr(['1→5', '2→5', '3→5', '4→5'], { label: 'after find(1)', hl: { 0: 'g', 1: 'g', 2: 'g' } })}` },
+      { title: 'Amortized vs expected vs worst case', html: `<p>Three different promises:</p>
+        ${H.table(['bound', 'promise', 'example'], [['worst case per op', 'every single call is fast', 'balanced BST insert O(log N)'], ['amortized', 'any sequence of M calls costs ≤ M·c', 'ArrayList.add, union-find'], ['expected', 'average over the algorithm\'s random choices', 'quickselect, skip list, hashing']])}
+        <p>A latency-sensitive system (trading, games at 60 fps, real-time audio) may reject an amortized structure because one call occasionally stalls.</p>` }
+    ],
+    deepDive: `<p><b>Potential method, formally.</b> Pick Φ(state) ≥ 0 with Φ(initial) = 0. Define amortized cost ĉ<sub>i</sub> = c<sub>i</sub> + Φ<sub>i</sub> − Φ<sub>i−1</sub>. Summing telescopes: ∑ĉ = ∑c + Φ<sub>final</sub> − Φ<sub>0</sub> ≥ ∑c. So bounding every ĉ<sub>i</sub> bounds the real total. For grow-and-shrink arrays use Φ = |2·size − capacity| (or a piecewise version) to cover both directions. Classic potential-method results: splay trees (Φ = ∑ log subtree sizes → O(log N) amortized), Fibonacci heaps (Φ = trees + 2·marked → O(1) amortized decrease-key, which gives Dijkstra O(E + V log V)), and union-find (Tarjan's α(N) proof; Tarjan also proved a matching lower bound for pointer machines).</p>
+      <p><b>Growth factor choice.</b> Java <code>ArrayList</code> grows by 1.5× (<code>old + (old &gt;&gt; 1)</code>), CPython lists by ~1.125× plus a constant, C++ libstdc++ <code>vector</code> by 2×, MSVC by 1.5×, Go slices by 2× until 256 elements then smoothly toward 1.25×. A factor below the golden ratio (≈1.618) lets freed blocks be reused by later allocations; a larger factor means fewer copies but more wasted memory (up to 50% at 2×).</p>
+      <p><b>De-amortization.</b> When single-operation latency matters, spread the rebuild: allocate the new array early and copy two old elements on every push (incremental resizing). Redis rehashes its dictionaries incrementally (a few buckets per operation, two tables live at once); Go maps grow incrementally during writes; real-time garbage collectors work in small slices. The total work is the same, but no single call stalls.</p>
+      <p><b>When amortized bounds break.</b> They assume a <b>single timeline</b>. With <b>persistence</b> or <b>rollback</b> (undo the last union, branch a data structure), an adversary can replay the expensive operation many times. That is why "DSU with rollback" (offline dynamic connectivity) uses union by rank <b>without</b> path compression: O(log N) worst case per find, and undo is O(1).</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI assistants correctly state "ArrayList add is amortized O(1)" but frequently conflate amortized, average-case and expected bounds, or call a monotonic-stack solution "O(N<sup>2</sup>) because of the nested loop". Code review — human or AI-assisted — needs someone who can make the counting argument in one sentence.</p>
+      <p><b>Use AI as a partner:</b> ask it to instrument your code with operation counters (pushes, pops, copies) and plot cost per operation for adversarial sequences — the fastest way to see amortization or catch thrashing. Ask it to propose a potential function and then check the algebra yourself.</p>
+      <p><b>Where AI goes wrong:</b> shrinking at ½ capacity, additive growth in hand-rolled buffers, claiming O(1) worst-case for <code>HashMap.put</code> (it is amortized and expected), and forgetting that union-find with path compression is incompatible with rollback.</p>
+      <p><b>What you must still own:</b> the "each element is pushed once and popped once" argument, the geometric-series bound, and the judgement of when a latency spike from an amortized structure is unacceptable.</p>`,
+    problems: [{
+      title: 'Design a Growable Array (ArrayList from scratch)', level: 'Medium', tags: ['amortized analysis', 'design', 'arrays'], companies: ['Microsoft', 'Bloomberg', 'Oracle'],
+      statement: `<p>Implement <code>GrowableArray</code> backed by a plain <code>int[]</code> with <code>add(x)</code> (append), <code>get(i)</code>, <code>set(i, x)</code>, <code>removeLast()</code> and <code>size()</code>. Requirements: <code>get</code>/<code>set</code> O(1) worst case; <code>add</code>/<code>removeLast</code> <b>amortized O(1)</b>; memory must stay <b>O(size)</b> even after many removals. Explain why your resize policy meets the bounds.</p>`,
+      constraints: `up to 10<sup>6</sup> operations in any order; values fit in int; removeLast on empty → throw`,
+      example: `<p>add 5, add 7, add 9 (capacity 1 → 2 → 4), get(1) = ${H.c('g', '7')}, removeLast() = ${H.c('g', '9')}, removeLast() = ${H.c('g', '7')} → size 1 = capacity 4 / 4 → shrink to 2. Total copies stay linear in the number of operations.</p>`,
+      brute: {
+        why: `<p>Grow the array by exactly <b>one</b> slot on every add (allocate size+1, copy all). Each add copies the whole array: 0 + 1 + 2 + … + (N−1) ≈ N<sup>2</sup>/2 copies → 5·10<sup>11</sup> for 10<sup>6</sup> adds. The waste: we keep paying for the same copies again and again instead of buying spare room in advance.</p>`,
+        code: `class GrowableArray {
+    private int[] data = new int[0];
+
+    void add(int x) {
+        int[] bigger = new int[data.length + 1];          // grow by ONE: O(N) every time
+        System.arraycopy(data, 0, bigger, 0, data.length);
+        bigger[data.length] = x;
+        data = bigger;
+    }
+
+    int removeLast() {
+        if (data.length == 0) throw new NoSuchElementException();
+        int x = data[data.length - 1];
+        data = Arrays.copyOf(data, data.length - 1);      // shrink by ONE: O(N) every time
+        return x;
+    }
+
+    int get(int i) { return data[i]; }
+    void set(int i, int x) { data[i] = x; }
+    int size() { return data.length; }
+}`
+      },
+      mcq: { q: 'You double when full. When should you halve the capacity during removals?', options: ['When size drops to capacity / 2', 'When size drops to capacity / 4', 'Never — memory is cheap', 'On every removal'], answer: 1, explain: 'Halving at ½ lets an add/remove pair at the boundary trigger a full copy every time. At ¼, after halving the array is half full, so at least capacity/4 cheap operations happen before the next resize.' },
+      hints: [
+        `<p>Hint 1: Separate <b>size</b> (elements used) from <b>capacity</b> (array length). Most adds just write into spare capacity.</p>`,
+        `<p>Hint 2: When full, allocate <b>2×</b> capacity and copy. Copies form 1 + 2 + 4 + … &lt; 2N, so adds are O(1) amortized (charge 3 coins per add).</p>`,
+        `<p>Hint 3: For removals, halve when size == capacity/4 (not /2), keep capacity ≥ 1, and bounds-check get/set against <b>size</b>, not capacity. Potential Φ = |2·size − capacity| proves both directions.</p>`
+      ],
+      solution: {
+        approach: `<p>Geometric growth (×2 when full) and lazy shrink (÷2 at a quarter full). Between any two resizes at least capacity/4 cheap operations happen, and each resize costs O(capacity), so the copying spreads to O(1) per operation. Memory ≤ 4·size + 1.</p>`,
+        code: `class GrowableArray {
+    private int[] data = new int[1];
+    private int size = 0;
+
+    void add(int x) {
+        if (size == data.length) resize(data.length * 2);       // geometric growth
+        data[size++] = x;
+    }
+
+    int removeLast() {
+        if (size == 0) throw new NoSuchElementException("empty");
+        int x = data[--size];
+        if (size > 0 && size == data.length / 4) resize(data.length / 2);  // lazy shrink
+        return x;
+    }
+
+    int get(int i) { check(i); return data[i]; }
+    void set(int i, int x) { check(i); data[i] = x; }
+    int size() { return size; }
+    int capacity() { return data.length; }
+
+    private void check(int i) {
+        if (i < 0 || i >= size) throw new IndexOutOfBoundsException("index " + i + ", size " + size);
+    }
+
+    private void resize(int cap) {
+        int[] next = new int[Math.max(1, cap)];
+        System.arraycopy(data, 0, next, 0, size);                // O(size), rare
+        data = next;
+    }
+}`,
+        alt: [{ lang: 'python', code: `class GrowableArray:
+    def __init__(self):
+        self.data, self.size = [0], 0
+
+    def _resize(self, cap):
+        new = [0] * max(1, cap)
+        new[:self.size] = self.data[:self.size]
+        self.data = new
+
+    def add(self, x):
+        if self.size == len(self.data):
+            self._resize(2 * len(self.data))
+        self.data[self.size] = x
+        self.size += 1
+
+    def remove_last(self):
+        if self.size == 0:
+            raise IndexError("empty")
+        self.size -= 1
+        x = self.data[self.size]
+        if self.size > 0 and self.size == len(self.data) // 4:
+            self._resize(len(self.data) // 2)
+        return x
+
+    def get(self, i):
+        if not 0 <= i < self.size:
+            raise IndexError(i)
+        return self.data[i]` }],
+        dry: { head: ['operation', 'size', 'capacity', 'copies', 'note'], rows: [
+          ['add 5', '1', '1', '0', 'fits'],
+          ['add 7', '2', '2', '1', 'full → double'],
+          ['add 9', '3', '4', '2', 'full → double'],
+          ['add 4', '4', '4', '0', 'fits'],
+          ['removeLast → 4', '3', '4', '0', '3 ≠ 4/4'],
+          ['removeLast → 9', '2', '4', '0', '2 ≠ 1'],
+          ['removeLast → 7', '1', '2', '1', '1 == 4/4 → halve'],
+          ['total', '—', '—', '4 copies / 7 ops', '<span class="c-g">linear</span>']
+        ] },
+        complexity: `<p>get/set <b>O(1)</b> worst case. add/removeLast <b>O(1) amortized</b> (a single call can be O(N) when it resizes). Space <b>O(size)</b>: capacity ≤ 4·size + 1 after any removal.</p>`,
+        followUps: ['Add insert(i, x) and remove(i): what is their cost and why?', 'Make add worst-case O(1) with incremental copying (two arrays live at once).', 'Why does Java pick 1.5× growth instead of 2×?']
+      }
+    }]
+  });
+
+  // =====================================================================
+  // TOPIC 8 — Skip lists
+  // =====================================================================
+  topics.push({
+    title: 'Skip Lists: Express Lanes over a Sorted Linked List',
+    analogy: `<p>A city metro has a <b>local line</b> that stops at every station and an <b>express line</b> that stops only at a few big ones. To reach a small station far away, you ride the express as far as you can <i>without overshooting</i>, then step down to the local line for the last few stops. Some cities add a <b>super-express</b> above that. You never ride every station, so the trip is short.</p>
+      <p>A <b>skip list</b> is that metro for a sorted linked list. And the clever part is how stations become "express": each one flips a coin. Heads → it also gets an express stop; heads again → a super-express stop too. No careful planning or rebalancing — luck alone makes the lanes well spread out on average.</p>`,
+    explain: `<p><b>The problem:</b> a sorted linked list can insert in O(1) once you are at the right spot, but <i>finding</i> the spot is O(N) — no random access, so no binary search.</p>
+      <p><b>The structure:</b> level 0 is the full sorted list. Each node also appears on level 1 with probability ½, on level 2 with probability ¼, and so on (keep flipping a coin until tails). A head sentinel sits at the left of every level.</p>
+      ${H.table(['level', 'nodes present (keys 3 7 9 12 19 21 25 26)', 'expected count'], [
+        ['L3', '· · · · · · 21 · ·', 'N/8'],
+        ['L2', '· · 9 · · · 21 · ·', 'N/4'],
+        ['L1', '3 · 9 · 19 · 21 · 26', 'N/2'],
+        ['L0', '3 7 9 12 19 21 25 26', 'N']
+      ])}
+      <p><b>Search(x):</b> start at the head on the top level. While the next node on this level is <b>&lt; x</b>, move right. Otherwise drop down one level. At level 0, the next node is x if x exists.</p>
+      <p><b>Worked search for 25</b> in the table above: L3: head → 21 (21 &lt; 25), next is null → down. L2: at 21, next null → down. L1: next is 26 (not &lt; 25) → down. L0: next is 25 → <b>found</b>. 5 moves instead of 7 on the plain list; with 10<sup>6</sup> keys it is ~40 moves instead of ~500 000.</p>
+      <p><b>Insert(x):</b> search as above, remembering in <code>update[level]</code> the last node visited on each level (the node after which x must be spliced). Flip coins for x's height h. For each level below h: <code>x.next[l] = update[l].next[l]; update[l].next[l] = x</code>. <b>Delete</b> is the same walk, then unlink x from every level it appears on.</p>
+      <p><b>Costs (expected):</b> height ≈ log<sub>2</sub>N, search / insert / delete <b>O(log N)</b>, space ≈ 2N pointers (N + N/2 + N/4 + …). Worst case O(N) exists but needs absurd coin luck. It also supports ordered operations a hash table cannot: floor/ceiling, range scans, and (with span counts) rank queries.</p>`,
+    clues: [
+      '"Design a <b>Skiplist</b> without built-in libraries" (LeetCode 1206) → multi-level linked list + coin flips + update[] array.',
+      '"Sorted set with <b>O(log N)</b> insert/delete/search, but <b>simpler than a red-black tree</b>" → skip list.',
+      '"<b>Concurrent</b> sorted map", "lock-free ordered structure" → skip list (Java <code>ConcurrentSkipListMap</code>).',
+      '"<b>Leaderboard / rank</b> of a player, range by score" → Redis sorted set = skip list + hash map (spans give the rank).',
+      'Answer must be "<b>expected</b> O(log N)" and "randomized" is allowed → skip list or treap rather than AVL/red-black.',
+      'LSM-tree <b>memtable</b>, in-memory index that is written heavily and scanned in order → skip list (LevelDB / RocksDB).'
+    ],
+    code: [`
+      // A complete skip list for ints (duplicates allowed), expected O(log N) per operation.
+      class SkipList {
+          private static final int MAX_LEVEL = 16;          // enough for ~2^16 = 65k elements at p = 1/2
+          private static final double P = 0.5;              // promotion probability
+
+          private static final class Node {
+              final int val;
+              final Node[] next;                            // next[l] = successor on level l
+              Node(int val, int height) { this.val = val; this.next = new Node[height]; }
+          }
+
+          private final Node head = new Node(Integer.MIN_VALUE, MAX_LEVEL); // sentinel on every level
+          private int levels = 1;                           // levels currently in use
+          private final Random rnd;
+
+          SkipList(long seed) { rnd = new Random(seed); }
+
+          private int randomHeight() {                      // 1 + number of consecutive heads
+              int h = 1;
+              while (h < MAX_LEVEL && rnd.nextDouble() < P) h++;
+              return h;
+          }
+
+          boolean contains(int x) {
+              Node cur = head;
+              for (int l = levels - 1; l >= 0; l--)         // top level down
+                  while (cur.next[l] != null && cur.next[l].val < x) cur = cur.next[l]; // ride right
+              cur = cur.next[0];
+              return cur != null && cur.val == x;
+          }
+
+          void insert(int x) {
+              Node[] update = new Node[MAX_LEVEL];
+              Node cur = head;
+              for (int l = levels - 1; l >= 0; l--) {
+                  while (cur.next[l] != null && cur.next[l].val < x) cur = cur.next[l];
+                  update[l] = cur;                          // x goes right after cur on level l
+              }
+              int h = randomHeight();
+              for (int l = levels; l < h; l++) update[l] = head;   // brand-new top levels start at head
+              levels = Math.max(levels, h);
+              Node node = new Node(x, h);
+              for (int l = 0; l < h; l++) {                 // splice into each of its levels
+                  node.next[l] = update[l].next[l];
+                  update[l].next[l] = node;
+              }
+          }
+
+          boolean remove(int x) {
+              Node[] update = new Node[MAX_LEVEL];
+              Node cur = head;
+              for (int l = levels - 1; l >= 0; l--) {
+                  while (cur.next[l] != null && cur.next[l].val < x) cur = cur.next[l];
+                  update[l] = cur;
+              }
+              Node target = cur.next[0];
+              if (target == null || target.val != x) return false;
+              for (int l = 0; l < target.next.length; l++)  // unlink from every level it is on
+                  if (update[l].next[l] == target) update[l].next[l] = target.next[l];
+              while (levels > 1 && head.next[levels - 1] == null) levels--;   // drop empty top levels
+              return true;
+          }
+
+          // Smallest key >= x, or null: an ordered query a HashMap cannot answer.
+          Integer ceiling(int x) {
+              Node cur = head;
+              for (int l = levels - 1; l >= 0; l--)
+                  while (cur.next[l] != null && cur.next[l].val < x) cur = cur.next[l];
+              return cur.next[0] == null ? null : cur.next[0].val;
+          }
+      }`, { lang: 'python', run: true, title: 'Measure search steps vs log2 N (Python, runnable)', code: `import random, math
+
+class SkipList:
+    MAX = 24
+
+    def __init__(self, p=0.5, seed=1):
+        self.p, self.rnd, self.levels = p, random.Random(seed), 1
+        self.head = [None, [None] * self.MAX]          # node = [value, next pointers]
+
+    def _height(self):
+        h = 1
+        while h < self.MAX and self.rnd.random() < self.p:
+            h += 1
+        return h
+
+    def insert(self, x):
+        update, cur = [self.head] * self.MAX, self.head
+        for l in range(self.levels - 1, -1, -1):
+            while cur[1][l] is not None and cur[1][l][0] < x:
+                cur = cur[1][l]
+            update[l] = cur
+        h = self._height()
+        self.levels = max(self.levels, h)
+        node = [x, [None] * h]
+        for l in range(h):
+            node[1][l], update[l][1][l] = update[l][1][l], node
+
+    def search_steps(self, x):
+        cur, steps = self.head, 0
+        for l in range(self.levels - 1, -1, -1):
+            while cur[1][l] is not None and cur[1][l][0] < x:
+                cur, steps = cur[1][l], steps + 1
+            steps += 1                                    # the drop-down
+        return steps
+
+for n in (1_000, 10_000, 100_000):
+    sl = SkipList(seed=7)
+    keys = list(range(n))
+    random.Random(3).shuffle(keys)
+    for k in keys:
+        sl.insert(k)
+    probe = random.Random(5).sample(range(n), 300)
+    avg = sum(sl.search_steps(k) for k in probe) / len(probe)
+    print(f"N={n:>7}  levels={sl.levels:>2}  avg steps={avg:6.1f}  log2 N={math.log2(n):5.1f}  (theory ~ 2*log2 N = {2*math.log2(n):5.1f})")` }],
+    codeTitle: ['Skip list with insert / contains / remove / ceiling (Java)', 'Empirical O(log N) check (Python, runnable)'],
+    viz: {
+      title: 'Build a skip list with coin flips, then search riding the express lanes',
+      input: '3 7 9 12 19 21 25 26 | 25 | 4',
+      inputLabel: 'keys (3 to 12 distinct numbers) | key to search | seed',
+      gen: function (input) {
+        var parts = splitBar(input, 3, 'keys | target | seed, e.g. "1 4 6 9 | 6 | 2"');
+        var raw = parseNums(parts[0], 'keys', 3, 12, -99, 99), target = Number(parts[1]), seed = Number(parts[2]);
+        if (!isFinite(target) || Math.floor(target) !== target) throw new Error('The search key must be a whole number.');
+        if (!isFinite(seed)) throw new Error('seed must be a number.');
+        var keys = [];
+        raw.forEach(function (k) { if (keys.indexOf(k) < 0) keys.push(k); });
+        var r = rng(seed), MAXL = 4, frames = [];
+        var heights = {}, inserted = [];
+        function grid(hl, label, extraTag) {
+          var cols = ['head'].concat(inserted.map(String)), rows = [], rowHead = [];
+          var top = 1; inserted.forEach(function (k) { top = Math.max(top, heights[k]); });
+          for (var l = MAXL - 1; l >= 0; l--) {
+            var row = [l < top ? 'H' : ''];
+            inserted.forEach(function (k) { row.push(heights[k] > l ? String(k) : (l < top ? '—' : '')); });
+            rows.push(row); rowHead.push('L' + l);
+          }
+          return { type: 'grid', label: label || 'skip list (— = express lane passes by)', colHead: cols, rowHead: rowHead, rows: rows, hl: hl || {} };
+        }
+        frames.push({ narr: 'We insert ' + keys.length + ' keys. Each new node flips a coin: <b>heads</b> → also appear one level higher, flip again; <b>tails</b> → stop. Max height ' + MAXL + ' for this demo. The list stays sorted on every level.',
+          parts: [{ type: 'array', label: 'keys to insert (in this order)', values: keys }] });
+        keys.forEach(function (k) {
+          var h = 1, flips = [];
+          while (h < MAXL) { var hd = r() < 0.5; flips.push(hd ? 'H' : 'T'); if (!hd) break; h++; }
+          if (h === MAXL && flips[flips.length - 1] === 'H') flips.push('(cap)');
+          heights[k] = h;
+          inserted.push(k); inserted.sort(function (a, b) { return a - b; });
+          var c = inserted.indexOf(k) + 1, hl = {};
+          for (var l = 0; l < h; l++) hl[(MAXL - 1 - l) + ',' + c] = 'ok';
+          frames.push({ narr: 'Insert <b>' + k + '</b>: coin flips ' + flips.join(' ') + ' → height <b>' + h + '</b> (levels 0..' + (h - 1) + '). It is spliced in after the last smaller node on each of those levels.',
+            parts: [grid(hl), { type: 'vars', vals: { key: k, flips: flips.join(' '), height: h } }] });
+        });
+        var cols = inserted.length;
+        var top = 1; inserted.forEach(function (k) { top = Math.max(top, heights[k]); });
+        var path = {}, l = top - 1, c = 0, steps = 0;
+        function keyAt(col) { return inserted[col - 1]; }
+        function nextOn(col, lev) { for (var q = col + 1; q <= cols; q++) if (heights[keyAt(q)] > lev) return q; return -1; }
+        frames.push({ narr: 'Now <b>search for ' + target + '</b>. Start at the head on the top used level L' + l + '. Rule: move right while the next key is &lt; ' + target + ', otherwise drop down.',
+          parts: [grid(one((MAXL - 1 - l) + ',0', 'cur'), 'search starts at head, level L' + l)] });
+        while (true) {
+          var nx = nextOn(c, l);
+          var hl = {}; Object.keys(path).forEach(function (kk) { hl[kk] = 'done'; });
+          var here = (MAXL - 1 - l) + ',' + c;
+          if (nx >= 0 && keyAt(nx) < target) {
+            path[here] = 1; c = nx; steps++;
+            hl[(MAXL - 1 - l) + ',' + c] = 'cur';
+            frames.push({ narr: 'Level L' + l + ': next key ' + keyAt(c) + ' &lt; ' + target + ' → <b>ride right</b> to ' + keyAt(c) + '. (Each express hop skips the nodes underneath.)',
+              parts: [grid(hl, 'searching for ' + target), { type: 'vars', vals: { level: l, at: keyAt(c), moves: steps } }] });
+          } else {
+            path[here] = 1;
+            hl[here] = 'cur';
+            if (nx >= 0) hl[(MAXL - 1 - l) + ',' + nx] = 'bad';
+            if (l === 0) {
+              var found = nx >= 0 && keyAt(nx) === target, plain = Math.min(cols, inserted.filter(function (q) { return q < target; }).length + 1);
+              if (nx >= 0) hl[(MAXL - 1) + ',' + nx] = found ? 'sel' : 'bad';
+              frames.push({ narr: 'Level L0: next key is ' + (nx >= 0 ? keyAt(nx) : 'null') + '. ' + (found ? '<span class="c-g">It equals ' + target + ' → FOUND</span>' : '<span class="c-r">' + target + ' is not in the list</span>' + (nx >= 0 ? ' (its ceiling is ' + keyAt(nx) + ')' : '')) + ' after ' + (steps + 1) + ' pointer steps; a plain sorted linked list needs ' + plain + '. ' + (cols < 20 ? 'With only ' + cols + ' keys the lanes help a little (or not at all on unlucky flips); with 10<sup>6</sup> keys it is ~40 steps versus up to 10<sup>6</sup>.' : ''),
+                parts: [grid(hl, 'search result'), { type: 'vars', vals: { 'skip list steps': steps + 1, 'plain list steps': plain, found: found ? 'yes' : 'no' }, hl: { found: found ? 'ok' : 'bad' } }] });
+              break;
+            }
+            frames.push({ narr: 'Level L' + l + ': next is ' + (nx >= 0 ? keyAt(nx) + ' (not &lt; ' + target + ')' : 'null') + ' → <b>drop down</b> to L' + (l - 1) + ' at the same node.',
+              parts: [grid(hl, 'searching for ' + target), { type: 'vars', vals: { level: l, at: c === 0 ? 'head' : keyAt(c), moves: steps } }] });
+            l--; steps++;
+          }
+        }
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Expected shape for 16 keys', html: `<p>With p = ½: about 16 nodes on L0, 8 on L1, 4 on L2, 2 on L3, 1 on L4 → total pointers ≈ 31 ≈ 2N. Height ≈ log<sub>2</sub>16 = 4. Each level halves the candidates, like binary search.</p>
+        ${H.table(['level', 'expected nodes'], [['L0', '16'], ['L1', '8'], ['L2', '4'], ['L3', '2'], ['L4', '1']])}` },
+      { title: 'Insert 20 into the example list', html: `<p>Walk: L3 head → stop (21 ≥ 20), update[3] = head. L2: head → 9 → stop (21 ≥ 20), update[2] = 9. L1: 9 → 19 → stop, update[1] = 19. L0: 19 → stop (21), update[0] = 19. Coin flips: H, T → height 2. Splice on L0 and L1 after 19. No other node changes — no rotations, no rebalancing.</p>` },
+      { title: 'Range query: all keys in [8, 20]', html: `<p>Find ceiling(8) with a normal search (lands on 9), then walk level 0 until a key exceeds 20: 9, 12, 19. Cost O(log N + K) for K results — the same as a balanced BST's in-order range scan, and something a hash table cannot do.</p>`, code: `// Java ships a production skip list: ConcurrentSkipListSet / ConcurrentSkipListMap.
+ConcurrentSkipListSet<Integer> s = new ConcurrentSkipListSet<>(List.of(3, 7, 9, 12, 19, 21, 25, 26));
+System.out.println(s.ceiling(8));                    // 9
+System.out.println(s.subSet(8, true, 20, true));     // [9, 12, 19]` },
+      { title: 'Why p = 1/4 in Redis', html: `<p>Expected search cost ≈ (log<sub>1/p</sub>N)/p. For p = ½: 2·log<sub>2</sub>N. For p = ¼: 4·log<sub>4</sub>N = 2·log<sub>2</sub>N — the <b>same</b> number of steps, but only 1/(1−p) = 1.33 pointers per node instead of 2. Redis uses p = ¼ and a max level of 32 for its sorted sets, trading nothing in speed for less memory.</p>` }
+    ],
+    deepDive: `<p><b>Analysis (Pugh, 1990).</b> Look at the search path <b>backwards</b>: from the target, climb up whenever the current node has a higher level (probability p), otherwise step left. Climbing log<sub>1/p</sub>N levels needs on average (log<sub>1/p</sub>N)/p steps, plus O(1/(1−p)) at the top. Height exceeds c·log N with probability at most N<sup>1−c</sup> — so O(log N) holds <b>with high probability</b>, not just in expectation. Space: expected N/(1−p) pointers.</p>
+      <p><b>Indexable skip lists.</b> Store on each forward pointer its <b>span</b> (how many level-0 nodes it jumps). Summing spans along the search path gives the <b>rank</b> of a key in O(log N), and you can find the k-th element by walking spans. That is how Redis implements <code>ZRANK</code> and <code>ZRANGE</code> on sorted sets (skip list for order + hash map for O(1) member lookup).</p>
+      <p><b>Concurrency.</b> Skip lists shine with many threads: an insert touches only a few local pointers, so it can be done with compare-and-swap, level by level from the bottom (a node is "in the set" once linked at level 0; higher links are just shortcuts). Java's <code>ConcurrentSkipListMap/Set</code> are lock-free skip lists — the standard library has no concurrent balanced tree because rotations touch too much shared state. LevelDB/RocksDB use a skip list as the <b>memtable</b>: writes are frequent, reads need sorted iteration for flushing to SSTables.</p>
+      <p><b>Trade-offs.</b> Versus red-black trees: simpler code, natural concurrency, easy range scans; but more memory per key, pointer chasing that is cache-unfriendly (B-trees win on disk and often in RAM), and probabilistic rather than guaranteed bounds. <b>Deterministic</b> variants (1-2-3 skip lists) bound the gaps but lose the simplicity. <b>Treaps</b> are the tree-shaped cousin: random priorities give expected O(log N) depth.</p>`,
+    aiEra: `<p><b>What AI changes:</b> assistants can produce a working LeetCode 1206 skip list on demand, so interviews lean on the <i>why</i>: why coin flips give O(log N), why <code>ConcurrentSkipListMap</code> exists but no concurrent TreeMap, what Redis gains from p = ¼, and how spans give ranks.</p>
+      <p><b>Use AI as a partner:</b> ask it to instrument a skip list to histogram node heights and search lengths for 10<sup>5</sup> keys, and compare with the theory (geometric heights, ~2 log<sub>2</sub>N steps). Ask for a property-based test comparing your skip list against <code>TreeSet</code> on random operation sequences — the classic way to catch splice bugs.</p>
+      <p><b>Where AI goes wrong:</b> forgetting to set <code>update[l] = head</code> for new top levels, unlinking a duplicate that is not the found node, never lowering the level count after deletions, and using an unseeded RNG that makes failing tests impossible to reproduce.</p>
+      <p><b>What you must still own:</b> the update[] mental model (the last node before x on every level), the expected-cost argument, and the engineering comparison with trees, B-trees and hash maps.</p>`,
+    problems: [{
+      title: 'Design Skiplist', level: 'Hard', tags: ['skip list', 'design', 'randomized', 'linked list'], companies: ['Google', 'Pure Storage', 'eBay'],
+      statement: `<p>Design a skip list without built-in ordered containers. Implement <code>Skiplist()</code>, <code>boolean search(int target)</code>, <code>void add(int num)</code> and <code>boolean erase(int num)</code> (erase one occurrence; return false if absent). <b>Duplicates may exist.</b> Each operation should run in expected O(log N). (LeetCode 1206.)</p>`,
+      constraints: `0 ≤ num, target ≤ 2·10<sup>4</sup>, at most 5·10<sup>4</sup> calls in total`,
+      example: `<p>add 1, add 2, add 3, search(0) → ${H.c('r', 'false')}, add 4, search(1) → ${H.c('g', 'true')}, erase(0) → ${H.c('r', 'false')}, erase(1) → ${H.c('g', 'true')}, search(1) → ${H.c('r', 'false')}.</p>`,
+      brute: {
+        why: `<p>Keep a sorted <code>ArrayList</code>: search with binary search in O(log N), but <code>add</code>/<code>erase</code> shift elements → <b>O(N)</b> each, so 5·10<sup>4</sup> operations can cost ~10<sup>9</sup> moves in the worst case. A plain sorted linked list fixes the shifting but makes the search O(N). The skip list gets both: linked-list splicing plus binary-search-like hops.</p>`,
+        code: `class Skiplist {
+    private final List<Integer> list = new ArrayList<>();   // always sorted
+
+    public boolean search(int target) {
+        return Collections.binarySearch(list, target) >= 0; // O(log N)
+    }
+
+    public void add(int num) {
+        int i = Collections.binarySearch(list, num);
+        if (i < 0) i = -i - 1;
+        list.add(i, num);                                    // O(N) shift
+    }
+
+    public boolean erase(int num) {
+        int i = Collections.binarySearch(list, num);
+        if (i < 0) return false;
+        list.remove(i);                                      // O(N) shift
+        return true;
+    }
+}`
+      },
+      mcq: { q: 'During add(num), what does update[l] store?', options: ['The node num itself on level l', 'The last node on level l whose value is &lt; num (num is spliced right after it)', 'The first node on level l whose value is ≥ num', 'The head of level l'], answer: 1, explain: 'The search drops a level exactly when the next value is ≥ num, so the current node is the predecessor on that level. New levels above the current top use the head as predecessor.' },
+      hints: [
+        `<p>Hint 1: Node = value + array of next pointers (one per level it lives on). A head sentinel has the maximum number of levels.</p>`,
+        `<p>Hint 2: All three operations start with the same walk: from the top level, move right while next.val &lt; x, then go down. Record the node where you went down on each level in update[].</p>`,
+        `<p>Hint 3: add: height = 1 + number of consecutive coin heads (cap at ~16); levels above the current top use head as predecessor; splice bottom-up. erase: target = update[0].next[0]; check its value; unlink on each level where update[l].next[l] == target; shrink the level count while the top is empty.</p>`
+      ],
+      solution: {
+        approach: `<p>Classic Pugh skip list with p = ½ and 16 levels (2<sup>16</sup> &gt; 5·10<sup>4</sup>). The shared "find predecessors" walk drives all operations. Duplicates work naturally because the walk stops before the first equal value; erase unlinks exactly the node it found by comparing references.</p>`,
+        code: `class Skiplist {
+    private static final int MAX_LEVEL = 16;
+    private static final double P = 0.5;
+
+    private static final class Node {
+        final int val;
+        final Node[] next;
+        Node(int val, int h) { this.val = val; this.next = new Node[h]; }
+    }
+
+    private final Node head = new Node(-1, MAX_LEVEL);
+    private int level = 1;
+    private final Random rnd = new Random();
+
+    public Skiplist() { }
+
+    private int randomLevel() {
+        int h = 1;
+        while (h < MAX_LEVEL && rnd.nextDouble() < P) h++;
+        return h;
+    }
+
+    // Fills update[l] with the last node < x on each level; returns the level-0 predecessor.
+    private Node findPredecessors(int x, Node[] update) {
+        Node cur = head;
+        for (int l = level - 1; l >= 0; l--) {
+            while (cur.next[l] != null && cur.next[l].val < x) cur = cur.next[l];
+            if (update != null) update[l] = cur;
+        }
+        return cur;
+    }
+
+    public boolean search(int target) {
+        Node cand = findPredecessors(target, null).next[0];
+        return cand != null && cand.val == target;
+    }
+
+    public void add(int num) {
+        Node[] update = new Node[MAX_LEVEL];
+        findPredecessors(num, update);
+        int h = randomLevel();
+        for (int l = level; l < h; l++) update[l] = head;     // new top levels
+        level = Math.max(level, h);
+        Node node = new Node(num, h);
+        for (int l = 0; l < h; l++) {
+            node.next[l] = update[l].next[l];
+            update[l].next[l] = node;
+        }
+    }
+
+    public boolean erase(int num) {
+        Node[] update = new Node[MAX_LEVEL];
+        Node target = findPredecessors(num, update).next[0];
+        if (target == null || target.val != num) return false;
+        for (int l = 0; l < target.next.length; l++)
+            if (update[l].next[l] == target) update[l].next[l] = target.next[l];
+        while (level > 1 && head.next[level - 1] == null) level--;
+        return true;
+    }
+}`,
+        alt: [{ lang: 'python', code: `import random
+
+class Node:
+    __slots__ = ("val", "nxt")
+    def __init__(self, val, h):
+        self.val, self.nxt = val, [None] * h
+
+class Skiplist:
+    MAX = 16
+
+    def __init__(self):
+        self.head, self.level = Node(-1, self.MAX), 1
+
+    def _preds(self, x):
+        update, cur = [self.head] * self.MAX, self.head
+        for l in range(self.level - 1, -1, -1):
+            while cur.nxt[l] and cur.nxt[l].val < x:
+                cur = cur.nxt[l]
+            update[l] = cur
+        return update
+
+    def search(self, target):
+        nxt = self._preds(target)[0].nxt[0]
+        return nxt is not None and nxt.val == target
+
+    def add(self, num):
+        update, h = self._preds(num), 1
+        while h < self.MAX and random.random() < 0.5:
+            h += 1
+        self.level = max(self.level, h)              # update[] already defaults to head
+        node = Node(num, h)
+        for l in range(h):
+            node.nxt[l], update[l].nxt[l] = update[l].nxt[l], node
+
+    def erase(self, num):
+        update = self._preds(num)
+        t = update[0].nxt[0]
+        if t is None or t.val != num:
+            return False
+        for l in range(len(t.nxt)):
+            if update[l].nxt[l] is t:
+                update[l].nxt[l] = t.nxt[l]
+        while self.level > 1 and self.head.nxt[self.level - 1] is None:
+            self.level -= 1
+        return True` }],
+        dry: { head: ['call', 'walk / coin flips', 'structure after (L1 / L0)', 'returns'], rows: [
+          ['add 1', 'flips H,T → height 2', 'L1: 1 · L0: 1', '—'],
+          ['add 2', 'flips T → height 1', 'L1: 1 · L0: 1 2', '—'],
+          ['add 3', 'flips H,T → height 2', 'L1: 1 3 · L0: 1 2 3', '—'],
+          ['search 0', 'L1: head, next 1 ≥ 0 → down; L0: next 1 ≠ 0', 'unchanged', '<span class="c-r">false</span>'],
+          ['add 4', 'flips T → height 1', 'L1: 1 3 · L0: 1 2 3 4', '—'],
+          ['search 1', 'L1: next 1 not &lt; 1 → down; L0: next is 1', 'unchanged', '<span class="c-g">true</span>'],
+          ['erase 1', 'update = [head, head]; unlink on L0 and L1', 'L1: 3 · L0: 2 3 4', '<span class="c-g">true</span>']
+        ] },
+        complexity: `<p>Expected <b>O(log N)</b> per operation (worst case O(N) with negligible probability). Expected space <b>O(N)</b> (≈ 2N next pointers at p = ½).</p>`,
+        followUps: ['Add rank(x) and kth(k) in O(log N) using span counts.', 'Make it thread-safe; why do skip lists suit lock-free designs better than red-black trees?', 'Choose p and MAX_LEVEL for 10<sup>9</sup> keys and justify the memory.']
+      }
+    }]
+  });
 registerModule({ id: 'dsa26', title: 'Geometry, Randomized & Amortized Analysis', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

@@ -2039,4 +2039,337 @@ def longest_common_substring(s, t):
       }
     }]
   });
+
+  // =====================================================================
+  // TOPIC 7 — Applications & choosing the right tool
+  // =====================================================================
+  topics.push({
+    title: 'Applications Playbook: Distinct Substrings, Longest Repeats & Picking the Right Tool',
+    analogy: `<p><b>A carpenter’s toolbox.</b> A hammer, a screwdriver and a saw can all “attach two boards”, but each is best for one job. Advanced string tools are the same: <b>Manacher</b> is the palindrome specialist, <b>Aho–Corasick</b> the many-keywords scanner, <b>hashing</b> the quick multi-purpose screwdriver (fast, but it can slip), <b>suffix array + LCP</b> the precise measuring kit, and the <b>suffix automaton</b> the power tool that works while the string is still being built.</p>
+      <p>Counting distinct substrings is like counting <b>distinct words in a dictionary built from all tails</b>: every new tail adds its length in new prefixes, minus the part it already shares with the tail right above it.</p>`,
+    explain: `<h4>1. Counting distinct substrings — three ways</h4>
+      <p>Every substring is a prefix of some suffix. In SA order, the suffix at rank r contributes its prefixes of length <b>lcp[r] + 1 … |suffix|</b> as brand-new substrings (shorter ones already appeared in the suffix above). So:</p>
+      <p><b>distinct = Σ (n − SA[r] − lcp[r]) = N(N+1)/2 − Σ lcp</b></p>
+      ${H.table(['rank', 'suffix', 'length', 'lcp', 'new = length − lcp', 'running'], [
+        ['0', 'a', '1', '0', '1', '1'], ['1', 'ana', '3', '1', '2', '3'], ['2', 'anana', '5', '3', '2', '5'],
+        ['3', 'banana', '6', '0', '6', '11'], ['4', 'na', '2', '0', '2', '13'], ['5', 'nana', '4', '2', '2', H.c('g', '<b>15</b>')]
+      ])}
+      ${H.table(['Method', 'Time', 'Notes'], [
+        ['Set of all substrings (strings)', 'O(N<sup>3</sup>)', 'N ≤ 300'],
+        ['Set of substring hashes, grouped by length', 'O(N<sup>2</sup>)', 'N ≤ 5000; needs double hashing'],
+        ['SA + LCP', 'O(N log N)', 'deterministic, low memory'],
+        ['Suffix automaton', 'O(N)', 'online: answer after every appended char']
+      ])}
+      <h4>2. Longest repeated substring — read the fine print</h4>
+      ${H.table(['Variant', 'Recipe'], [
+        ['Occurs ≥ 2 times, overlap allowed', 'max lcp (SA) · or max len(v) over SAM states with |endpos| ≥ 2'],
+        ['Occurs ≥ 2 times, <b>no overlap</b>', 'binary search L: in each maximal block of ranks with lcp ≥ L, check max(SA) − min(SA) ≥ L'],
+        ['Occurs ≥ k times', 'window of k consecutive ranks → min lcp inside; take the max'],
+        ['Maximise length × count', 'largest rectangle in the LCP histogram (monotonic stack)']
+      ])}
+      <h4>3. Picking the right tool from the question</h4>
+      ${H.table(['Question shape', 'Reach for', 'Cost'], [
+        ['one pattern, one text', 'KMP / Z-function (DSA 9)', 'O(N + M)'],
+        ['many patterns, one text (or a stream)', H.c('b', 'Aho–Corasick'), 'O(N + M·σ + matches)'],
+        ['one big text, many pattern queries', H.c('b', 'suffix array'), 'build O(N log N), query O(|P| log N)'],
+        ['palindromes (longest, count, queries)', H.c('b', 'Manacher'), 'O(N)'],
+        ['distinct substrings, repeats, common substrings', H.c('b', 'SA + LCP or SAM'), 'O(N log N) / O(N)'],
+        ['substring equality, quick to code, randomised OK', H.c('b', 'double hashing'), 'O(1) per comparison'],
+        ['text grows one char at a time, ask after each', H.c('b', 'suffix automaton'), 'amortised O(1) per char']
+      ])}
+      <p><b>Interview strategy:</b> say the simple solution first (hashing / O(N<sup>2</sup>)), state its limits (collisions, N), then upgrade to the deterministic structure if constraints demand it. Interviewers reward the <i>reasoning about trade-offs</i> more than a memorised template.</p>`,
+    clues: [
+      '"number of <b>distinct</b> substrings" → N(N+1)/2 − Σlcp (SA) or Σ len − len(link) (SAM); N ≤ 500 → set of hashes is fine.',
+      '"longest substring that appears <b>twice</b>" → check whether overlap is allowed — it changes the algorithm.',
+      '"distinct substrings of length exactly k" / "for every length" → SA + LCP + difference array over lengths.',
+      '"k-th lexicographically smallest substring" → walk SA ranks summing new-substring counts.',
+      'Constraint words: "N ≤ 10<sup>5</sup>" + "distinct"/"repeated" → no O(N<sup>2</sup>); "queries after each appended char" → SAM.',
+      '"deterministic answer required" / "hacks" → avoid single hashing; prefer SA/LCP or SAM.'
+    ],
+    code: [`
+      class SubstringStats {
+          static int[] buildSA(String s) {
+              int n = s.length();
+              Integer[] sa = new Integer[n];
+              int[] rank = new int[n], tmp = new int[n];
+              for (int i = 0; i < n; i++) { sa[i] = i; rank[i] = s.charAt(i); }
+              for (int k = 1; n > 1; k <<= 1) {
+                  final int K = k;
+                  final int[] r = rank;
+                  Comparator<Integer> c = (x, y) -> r[x] != r[y] ? Integer.compare(r[x], r[y])
+                          : Integer.compare(x + K < n ? r[x + K] : -1, y + K < n ? r[y + K] : -1);
+                  Arrays.sort(sa, c);
+                  tmp[sa[0]] = 0;
+                  for (int i = 1; i < n; i++) tmp[sa[i]] = tmp[sa[i - 1]] + (c.compare(sa[i - 1], sa[i]) < 0 ? 1 : 0);
+                  System.arraycopy(tmp, 0, rank, 0, n);
+                  if (rank[sa[n - 1]] == n - 1) break;
+              }
+              int[] res = new int[n];
+              for (int i = 0; i < n; i++) res[i] = sa[i];
+              return res;
+          }
+
+          static int[] kasai(String s, int[] sa) {
+              int n = s.length(), h = 0;
+              int[] rank = new int[n], lcp = new int[n];
+              for (int r = 0; r < n; r++) rank[sa[r]] = r;
+              for (int i = 0; i < n; i++) {
+                  if (rank[i] == 0) { h = 0; continue; }
+                  int j = sa[rank[i] - 1];
+                  while (i + h < n && j + h < n && s.charAt(i + h) == s.charAt(j + h)) h++;
+                  lcp[rank[i]] = h;
+                  if (h > 0) h--;
+              }
+              return lcp;
+          }
+
+          // distinct substrings of EVERY length L = 1..n in O(n) after SA + LCP
+          static long[] distinctByLength(String s) {
+              int n = s.length();
+              int[] sa = buildSA(s), lcp = kasai(s, sa);
+              long[] diff = new long[n + 2];
+              for (int r = 0; r < n; r++) {          // rank r adds lengths lcp[r]+1 .. n-sa[r]
+                  int from = lcp[r] + 1, to = n - sa[r];
+                  if (from <= to) { diff[from]++; diff[to + 1]--; }
+              }
+              long[] res = new long[n + 1];
+              long run = 0;
+              for (int L = 1; L <= n; L++) { run += diff[L]; res[L] = run; }
+              return res;
+          }
+
+          // longest substring that occurs at least twice WITHOUT overlapping (binary search on length)
+          static int longestNonOverlappingRepeat(String s) {
+              int n = s.length();
+              int[] sa = buildSA(s), lcp = kasai(s, sa);
+              int lo = 0, hi = n / 2;
+              while (lo < hi) {
+                  int mid = (lo + hi + 1) / 2;
+                  if (ok(sa, lcp, mid)) lo = mid; else hi = mid - 1;
+              }
+              return lo;
+          }
+
+          private static boolean ok(int[] sa, int[] lcp, int L) {
+              int mn = sa[0], mx = sa[0];
+              for (int r = 1; r < sa.length; r++) {
+                  if (lcp[r] >= L) { mn = Math.min(mn, sa[r]); mx = Math.max(mx, sa[r]); if (mx - mn >= L) return true; }
+                  else { mn = mx = sa[r]; }                       // start a new block
+              }
+              return false;
+          }
+
+          public static void main(String[] args) {
+              String s = "banana";
+              int[] sa = buildSA(s), lcp = kasai(s, sa);
+              long n = s.length(), sum = 0;
+              for (int v : lcp) sum += v;
+              System.out.println("distinct = " + (n * (n + 1) / 2 - sum));          // 15
+              System.out.println(Arrays.toString(distinctByLength(s)));            // [0, 3, 3, 3, 3, 2, 1]
+              System.out.println(longestNonOverlappingRepeat("banana"));           // 2 ("an" or "na")
+              System.out.println(longestNonOverlappingRepeat("aaaa"));             // 2 ("aa" at 0 and 2)
+          }
+      }`, { lang: 'python', run: true, title: 'Three ways to count distinct substrings (Python, runnable)', code: `
+import random
+
+def by_set(s):
+    return len({s[i:j] for i in range(len(s)) for j in range(i + 1, len(s) + 1)})
+
+def by_sa_lcp(s):
+    n = len(s)
+    sa = sorted(range(n), key=lambda i: s[i:])            # small inputs: plain sort is fine
+    lcp = [0] * n
+    for r in range(1, n):
+        a, b, h = sa[r - 1], sa[r], 0
+        while a + h < n and b + h < n and s[a + h] == s[b + h]:
+            h += 1
+        lcp[r] = h
+    return n * (n + 1) // 2 - sum(lcp)
+
+def by_sam(s):
+    length, link, nxt, last = [0], [-1], [{}], 0
+    for ch in s:
+        cur = len(length); length.append(length[last] + 1); link.append(-1); nxt.append({})
+        p = last
+        while p != -1 and ch not in nxt[p]:
+            nxt[p][ch] = cur; p = link[p]
+        if p == -1:
+            link[cur] = 0
+        else:
+            q = nxt[p][ch]
+            if length[p] + 1 == length[q]:
+                link[cur] = q
+            else:
+                cl = len(length); length.append(length[p] + 1); link.append(link[q]); nxt.append(dict(nxt[q]))
+                while p != -1 and nxt[p].get(ch) == q:
+                    nxt[p][ch] = cl; p = link[p]
+                link[q] = link[cur] = cl
+        last = cur
+    return sum(length[v] - length[link[v]] for v in range(1, len(length)))
+
+print("banana:", by_set("banana"), by_sa_lcp("banana"), by_sam("banana"))   # 15 15 15
+random.seed(7)
+for _ in range(300):                                                       # stress test all three agree
+    w = ''.join(random.choice('ab') for _ in range(random.randint(1, 12)))
+    assert by_set(w) == by_sa_lcp(w) == by_sam(w), w
+print("300 random tests: all three methods agree")
+` }],
+    codeTitle: ['Distinct by length + non-overlapping repeat (Java)', 'Set vs SA+LCP vs SAM with a stress test (Python, runnable)'],
+    viz: {
+      title: 'Counting distinct substrings row by row (SA + LCP)',
+      input: 'banana',
+      inputLabel: 'Lowercase word (max 12 letters)',
+      gen: function (input) {
+        var s = readWord(input, 'banana', 12, 'the word');
+        var n = s.length, sa = saJS(s), lcp = kasaiJS(s, sa), frames = [], run = 0, rows = [], r;
+        frames.push({ narr: 'All N(N+1)/2 = <b>' + (n * (n + 1) / 2) + '</b> (start, end) pairs of <b>' + H.esc(s) + '</b> — but some substrings repeat. Idea: walk suffixes in sorted order; each one only adds the prefixes it does <b>not</b> share with the suffix above (that shared part is its lcp).', parts: [
+          { type: 'table', label: 'suffix array + lcp', columns: ['rank', 'SA', 'suffix', 'lcp'], rows: sa.map(function (x, k) { return [k, x, s.slice(x), lcp[k]]; }) }
+        ] });
+        var bestL = 0, bestR = -1;
+        for (r = 0; r < n; r++) {
+          var len = n - sa[r], add = len - lcp[r];
+          run += add;
+          if (lcp[r] > bestL) { bestL = lcp[r]; bestR = r; }
+          var newOnes = [];
+          for (var L = lcp[r] + 1; L <= len && newOnes.length < 6; L++) newOnes.push(s.substr(sa[r], L));
+          rows.push([r, s.slice(sa[r]), len, lcp[r], add, run]);
+          var hl = {}; hl[r] = 'cur'; if (r > 0) hl[r - 1] = 'win';
+          frames.push({ narr: 'Rank ' + r + ': suffix <code>' + H.esc(s.slice(sa[r])) + '</code> has ' + len + ' prefixes; the first ' + lcp[r] + ' were already counted' + (r > 0 ? ' by <code>' + H.esc(s.slice(sa[r - 1])) + '</code> above' : '') + '. New: ' + len + ' − ' + lcp[r] + ' = <b>' + add + '</b> (' + newOnes.map(function (x) { return '<code>' + H.esc(x) + '</code>'; }).join(', ') + (len - lcp[r] > 6 ? ', …' : '') + '). Running total ' + run + '.', parts: [
+            { type: 'table', label: 'counting', columns: ['rank', 'suffix', 'length', 'lcp', 'new', 'running'], rows: rows.slice(), hl: hl },
+            { type: 'bars', label: 'new substrings per rank', values: rows.map(function (x) { return x[4]; }), hl: hlOne(r, 'cur') }
+          ] });
+        }
+        var diff = [], byLen = [], i;
+        for (i = 0; i <= n + 1; i++) diff.push(0);
+        for (r = 0; r < n; r++) { var from = lcp[r] + 1, to = n - sa[r]; if (from <= to) { diff[from]++; diff[to + 1]--; } }
+        var acc = 0;
+        for (i = 1; i <= n; i++) { acc += diff[i]; byLen.push(acc); }
+        var hlRep = {}; if (bestR > 0) { hlRep[bestR] = 'sel'; hlRep[bestR - 1] = 'sel'; }
+        frames.push({ narr: 'Total distinct substrings = <b>' + run + '</b> = ' + (n * (n + 1) / 2) + ' − Σlcp. Bonus from the same table: the largest lcp (' + bestL + ') gives the longest repeated substring <b>' + (bestL ? H.esc(s.substr(sa[bestR], bestL)) : '(none)') + '</b>, and a difference array over lengths gives the distinct count for every length.', parts: [
+          { type: 'table', label: 'final', columns: ['rank', 'suffix', 'length', 'lcp', 'new', 'running'], rows: rows.slice(), hl: hlRep },
+          { type: 'bars', label: 'distinct substrings of each length L = 1..' + n, values: byLen, idxLabels: byLen.map(function (_, j) { return 'L' + (j + 1); }) },
+          { type: 'vars', vals: { distinct: run, 'longest repeat': bestL ? s.substr(sa[bestR], bestL) : '—', 'Σ lcp': n * (n + 1) / 2 - run }, hl: { distinct: 'sel' } }
+        ] });
+        frames.push({ narr: 'Which tool when? A quick decision table to say out loud in an interview.', parts: [
+          { type: 'table', label: 'tool picker', columns: ['question', 'tool', 'time'], rows: [
+            ['one pattern in a text', 'KMP / Z', 'O(N+M)'],
+            ['many patterns in a text', 'Aho–Corasick', 'O(N+M·σ+Z)'],
+            ['many queries on one text', 'suffix array', 'O(|P| log N) each'],
+            ['palindromes', 'Manacher', 'O(N)'],
+            ['distinct / repeated / common', 'SA+LCP or SAM', 'O(N log N) / O(N)'],
+            ['fast substring equality', 'double hashing', 'O(1), randomised'],
+            ['online appends', 'suffix automaton', 'O(1) amortised']
+          ], hl: { 4: 'sel' } }
+        ] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: '"aaaa": only 4 distinct substrings', html: `<p>SA = [3, 2, 1, 0], lcp = [0, 1, 2, 3]. New per rank: 1 − 0, 2 − 1, 3 − 2, 4 − 3 = 1 each → <b>4</b> (a, aa, aaa, aaaa), while there are 10 (start, end) pairs. Highly repetitive strings are where counting by pairs goes most wrong.</p>` },
+      { title: 'Non-overlapping repeat in "aaaa"', html: `<p>Overlap allowed: <code>aaa</code> (at 0 and 1). No overlap: binary search L. L = 2: block of ranks with lcp ≥ 2 = {SA 2, 1, 0} → max − min = 2 ≥ 2 ✔. L = 3 would need two starts ≥ 3 apart in a length-4 string — impossible. Answer <b>2</b> (<code>aa</code> at 0 and 2).</p>` },
+      { title: 'k-th smallest distinct substring', html: `<p>“banana”, k = 4. Walk ranks: rank 0 adds {a} (1 total), rank 1 adds {an, ana} (3 total), rank 2 adds {anan, anana} → the 4th is <b>anan</b>: the (4 − 3) = 1st new prefix of <code>anana</code>, i.e. length lcp + 1 = 4.</p>` },
+      { title: 'Distinct substrings of every length', html: `<p>For “banana” the per-length counts are L1: 3 (a, b, n), L2: 3 (an, ba, na), L3: 3, L4: 3, L5: 2, L6: 1 → total 15. Each rank r contributes a contiguous range of lengths [lcp[r]+1, n − SA[r]], so a difference array gives all counts in O(N).</p>` }
+    ],
+    deepDive: `<p><b>Proof of the distinct-count formula.</b> Map each distinct substring w to the <i>first</i> suffix (in SA order) that has w as a prefix. That suffix at rank r has w as a prefix but the suffix at rank r − 1 does not (otherwise r would not be first), so |w| &gt; lcp[r]; conversely any prefix of rank r longer than lcp[r] is new. Hence rank r owns exactly (n − SA[r]) − lcp[r] substrings and the sum counts each distinct substring once.</p>
+      <p><b>Non-overlap needs extra care.</b> Max LCP ignores positions, so <code>aaaa</code> would report <code>aaa</code>. The monotone predicate “a non-overlapping repeat of length L exists” plus blocks of lcp ≥ L gives O(N log N). With a SAM you store firstpos and lastpos (max endpos via the link tree) per state; the best length in state v is min(len(v), lastpos − firstpos) if it exceeds len(link(v)).</p>
+      <p><b>Choosing under real constraints.</b> Memory: SA+LCP ≈ 8N bytes; SAM with 26-wide arrays ≈ 2N·26·4 = 208N bytes (≈ 200 MB for N = 10<sup>6</sup> in Java!) — use a flat array or hash maps. Determinism: hashing can be wrong with tiny probability; acceptable in most interviews if you say so and use double hashing. Speed: O(N log<sup>2</sup> N) SA with <code>Integer[]</code> boxing is ~1 s for N = 10<sup>6</sup> in Java; the counting-sort version is several times faster. Production systems that need these operations at scale (genomics, large corpus dedup) use SA-IS + compressed indexes (FM-index), not textbook code.</p>`,
+    aiEra: `<p><b>What AI changes:</b> deduplication and memorisation checks are now everyday ML-engineering tasks. Researchers use suffix arrays to find exact repeated spans in training corpora and to check whether a model’s output appears verbatim in its training data; plagiarism and code-clone detectors (e.g. MOSS) use k-gram hashing with winnowing; near-duplicate detection uses MinHash. Knowing when you need <b>exact</b> structure (SA/SAM) versus <b>approximate</b> fingerprints (MinHash, embeddings) is a real design skill.</p>
+      <p><b>Use AI as a partner:</b> give it the problem statement and ask <code>which of hashing, SA+LCP, SAM fits these constraints and why — list memory per character</code>, then check its numbers yourself. Ask for a three-way stress test like the Python snippet above whenever you implement any of these structures.</p>
+      <p><b>Where AI goes wrong:</b> answering the overlap-allowed version when the statement forbids overlap, using N(N+1)/2 in <code>int</code> (overflows at N ≈ 65,536), and proposing embeddings for an exact-match problem. <b>What you must still own:</b> reading the fine print (distinct vs occurrences, overlap vs not), translating constraints into a tool choice, and explaining the trade-off in two sentences.</p>`,
+    problems: [{
+      title: 'Number of Distinct Substrings in a String', level: 'Medium', tags: ['suffix array', 'lcp', 'suffix automaton', 'hashing'], companies: ['Google', 'Intuit'],
+      statement: `<p>Given a string <code>s</code>, return the number of <b>distinct</b> non-empty substrings of <code>s</code>. Follow-up: can you do it in O(N log N) or O(N)?</p>`,
+      constraints: `1 ≤ |s| ≤ 500 for the original (LeetCode 1698); solve for |s| ≤ 10<sup>5</sup> in the follow-up. Lowercase letters.`,
+      example: `<p>s = <code>"aabbaba"</code> → <b>21</b>. s = <code>"abcdefg"</code> → <b>28</b> (all 7·8/2 substrings are different).</p><p>s = <code>"banana"</code> → <b>15</b>: 21 pairs minus Σlcp = 6 repeats (${H.c('r', 'a ×2, an, ana, n, na')}).</p>`,
+      brute: { why: `<p>Insert every substring into a HashSet&lt;String&gt;: O(N<sup>2</sup>) substrings × O(N) to copy and hash → O(N<sup>3</sup>) time and O(N<sup>3</sup>) memory in the worst case. N = 500 is fine (≈ 2·10<sup>7</sup>), N = 10<sup>5</sup> is impossible.</p>`, code: `
+        class Brute {
+            int countDistinct(String s) {
+                Set<String> set = new HashSet<>();
+                for (int i = 0; i < s.length(); i++)
+                    for (int j = i + 1; j <= s.length(); j++)
+                        set.add(s.substring(i, j));
+                return set.size();
+            }
+        }` },
+      mcq: { q: 'With SA + LCP, how many NEW distinct substrings does the suffix at rank r contribute?', options: ['n − SA[r]', 'lcp[r]', '(n − SA[r]) − lcp[r]', '1'], answer: 2, explain: 'Its first lcp[r] prefixes were already counted by the suffix right above it; the remaining prefixes are new.' },
+      hints: [`<p>Every substring is a prefix of a suffix. If suffixes are sorted, a prefix that repeats must be shared with the <b>neighbour above</b>.</p>`, `<p>Build SA, then LCP with Kasai. Answer = Σ over ranks of (suffix length − lcp[r]) = N(N+1)/2 − Σ lcp.</p>`, `<p>Use <code>long</code> (N = 10<sup>5</sup> gives ≈ 5·10<sup>9</sup>). Alternative O(N): suffix automaton, Σ len(v) − len(link(v)). Check: <code>aaaa</code> → 4.</p>`],
+      solution: {
+        approach: `<p>SA + Kasai LCP: each sorted suffix contributes its prefixes longer than its LCP with the previous suffix. O(N log<sup>2</sup> N) with the comparator SA (or O(N log N) with counting sort); deterministic, ~8N bytes extra.</p>`,
+        code: `
+          class Solution {
+              public long countDistinct(String s) {
+                  int n = s.length();
+                  int[] sa = buildSA(s);
+                  int[] rank = new int[n];
+                  for (int r = 0; r < n; r++) rank[sa[r]] = r;
+                  long total = (long) n * (n + 1) / 2;
+                  int h = 0;
+                  for (int i = 0; i < n; i++) {                 // Kasai, subtracting lcp on the fly
+                      if (rank[i] == 0) { h = 0; continue; }
+                      int j = sa[rank[i] - 1];
+                      while (i + h < n && j + h < n && s.charAt(i + h) == s.charAt(j + h)) h++;
+                      total -= h;
+                      if (h > 0) h--;
+                  }
+                  return total;
+              }
+
+              private int[] buildSA(String s) {
+                  int n = s.length();
+                  Integer[] sa = new Integer[n];
+                  int[] rank = new int[n], tmp = new int[n];
+                  for (int i = 0; i < n; i++) { sa[i] = i; rank[i] = s.charAt(i); }
+                  for (int k = 1; n > 1; k <<= 1) {
+                      final int K = k;
+                      final int[] r = rank;
+                      Comparator<Integer> c = (x, y) -> r[x] != r[y] ? Integer.compare(r[x], r[y])
+                              : Integer.compare(x + K < n ? r[x + K] : -1, y + K < n ? r[y + K] : -1);
+                      Arrays.sort(sa, c);
+                      tmp[sa[0]] = 0;
+                      for (int i = 1; i < n; i++) tmp[sa[i]] = tmp[sa[i - 1]] + (c.compare(sa[i - 1], sa[i]) < 0 ? 1 : 0);
+                      System.arraycopy(tmp, 0, rank, 0, n);
+                      if (rank[sa[n - 1]] == n - 1) break;
+                  }
+                  int[] res = new int[n];
+                  for (int i = 0; i < n; i++) res[i] = sa[i];
+                  return res;
+              }
+          }`,
+        alt: [{ lang: 'python', code: `
+class Solution:
+    def countDistinct(self, s: str) -> int:
+        # O(N) suffix automaton: sum of len(v) - len(link(v))
+        length, link, nxt, last = [0], [-1], [{}], 0
+        for ch in s:
+            cur = len(length); length.append(length[last] + 1); link.append(-1); nxt.append({})
+            p = last
+            while p != -1 and ch not in nxt[p]:
+                nxt[p][ch] = cur; p = link[p]
+            if p == -1:
+                link[cur] = 0
+            else:
+                q = nxt[p][ch]
+                if length[p] + 1 == length[q]:
+                    link[cur] = q
+                else:
+                    cl = len(length); length.append(length[p] + 1); link.append(link[q]); nxt.append(dict(nxt[q]))
+                    while p != -1 and nxt[p].get(ch) == q:
+                        nxt[p][ch] = cl; p = link[p]
+                    link[q] = link[cur] = cl
+            last = cur
+        return sum(length[v] - length[link[v]] for v in range(1, len(length)))` }],
+        dry: { head: ['i (text order)', 'suffix', 'neighbour above', 'h (lcp)', 'total after subtracting'], rows: [
+          ['start', '', '', '', '21 = 6·7/2'],
+          ['0', 'banana', 'anana', '0', '21'],
+          ['1', 'anana', 'ana', '3', '18'],
+          ['2', 'nana', 'na', '2', '16'],
+          ['3', 'ana', 'a', '1', '15'],
+          ['4', 'na', 'banana', '0', '15'],
+          ['5', 'a', '— (rank 0)', '—', H.c('g', '<b>15</b>')]
+        ] },
+        complexity: `<p>O(N log<sup>2</sup> N) time, O(N) space (SA route); O(N·σ) memory and O(N) time with the suffix automaton.</p>`,
+        followUps: ['Count distinct substrings of length exactly k for all k (difference array).', 'Count distinct substrings that occur at least twice.', 'Answer the count after every appended character (SAM increments).']
+      }
+    }]
+  });
 registerModule({ id: 'dsa24', title: 'Advanced String Algorithms', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
