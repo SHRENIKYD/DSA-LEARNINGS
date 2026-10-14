@@ -866,4 +866,1170 @@ class RunningStats {
       }
     }]
   });
+
+  /* ======================================================================
+     TOPIC 4 — volatile: visibility vs atomicity
+     ====================================================================== */
+  function cpuGraph(hl, ehl, tags) {
+    return {
+      type: 'graph', label: 'Where the value of stop lives', directed: true, height: 62,
+      nodes: [
+        { id: 'C1', label: 'Core 1: main (writer)', x: 18, y: 8, shape: 'box' }, { id: 'C2', label: 'Core 2: worker (reader)', x: 82, y: 8, shape: 'box' },
+        { id: 'B1', label: 'store buffer / L1', x: 18, y: 30, shape: 'box' }, { id: 'B2', label: 'register / L1', x: 82, y: 30, shape: 'box' },
+        { id: 'M', label: 'main memory (L3 / RAM)', x: 50, y: 52, shape: 'box' }
+      ],
+      edges: [['C1', 'B1', 'write'], ['B1', 'M', 'flush'], ['M', 'B2', 'load'], ['B2', 'C2', 'read']],
+      hl: hl || {}, ehl: ehl || {}, tags: tags || {}
+    };
+  }
+  var VW = ['// main thread, ~1 second later', 'stop = true;'].join('\n');
+  var VR = ['while (!stop) {', '    work++;', '}', 'System.out.println("stopped");'].join('\n');
+
+  topics.push({
+    title: 'volatile: Visibility vs Atomicity (and Why a Loop Can Spin Forever)',
+    analogy: `<p>You and a colleague each keep a <b>photocopy</b> of the team schedule on your desk because walking to the notice board is slow. Your colleague updates the <b>board</b>: "Meeting cancelled". You keep reading your desk copy and walk into an empty room. That is a <b>visibility</b> bug: the update happened, you just never looked at the board again. Marking the schedule ${C('volatile')} is the rule <b>"always read the notice board, never your photocopy, and pin your changes to the board immediately"</b>. But note: it does not stop two people from scribbling on the board at the same time — that is <b>atomicity</b>, a different problem.</p>`,
+    explain: `<p><b>🟢 Three separate problems</b> hide behind "thread safety". Keep them apart in your head:</p>
+${H.table(['problem', 'question it answers', 'example bug'], [
+  ['<b>Visibility</b>', 'Will another thread <b>see</b> my write — ever? when?', 'worker loops forever on a stop flag'],
+  ['<b>Atomicity</b>', 'Can another thread see or interfere with a <b>half-done</b> compound action?', 'count++ loses updates'],
+  ['<b>Ordering</b>', 'Can my writes appear to other threads in a <b>different order</b> than I wrote them?', 'reader sees ready = true but data = 0']
+])}
+<p><b>Why visibility breaks.</b> Each core has registers, store buffers and caches; the JIT compiler is also allowed to keep a field in a register. If nothing tells them that a variable is shared, a thread can keep using its private copy indefinitely. The JIT can even rewrite ${C('while (!stop) work++;')} into ${C('if (!stop) while (true) work++;')} — "hoisting" the read out of the loop, which is perfectly legal for a non-volatile field.</p>
+<p><b>What ${C('volatile')} gives you:</b></p>
+<ul>
+<li>Every read goes to "the board" (fresh value), every write is published immediately — <b>visibility</b>.</li>
+<li>The JIT/CPU cannot reorder normal reads/writes around a volatile access in harmful ways; a volatile write <b>publishes everything written before it</b> to any thread that later reads that volatile and sees the value — <b>ordering</b> (the happens-before rule, next topic).</li>
+<li>Reads and writes of volatile ${C('long')}/${C('double')} are atomic (plain ones may tear into two 32-bit halves).</li>
+</ul>
+<p><b>What volatile does NOT give you:</b> atomic compound actions. ${C('volatile int count; count++;')} still loses updates — it is still LOAD, ADD, STORE.</p>
+${H.table(['tool', 'visibility', 'atomic single read/write', 'atomic count++ / check-then-act', 'can block?'], [
+  [C('volatile'), '<span class="c-g">yes</span>', '<span class="c-g">yes</span>', '<span class="c-r">no</span>', 'no'],
+  [C('synchronized'), '<span class="c-g">yes</span>', '<span class="c-g">yes</span>', '<span class="c-g">yes</span>', 'yes'],
+  [C('AtomicInteger') + ' (next module)', '<span class="c-g">yes</span>', '<span class="c-g">yes</span>', '<span class="c-g">single-variable ops only</span>', 'no (CAS)']
+])}
+<p><b>When volatile alone is enough</b> (memorise these three conditions): (1) writes do not depend on the current value, <b>or</b> only one thread ever writes; (2) the variable is not part of an invariant with other variables; (3) you do not need to hold a lock while reading it for another reason. Typical uses: <b>stop/shutdown flags</b>, <b>status</b> fields, a <b>"last updated at"</b> timestamp written by one thread, and <b>publishing a reference to an immutable object</b> (swap the whole config at once).</p>`,
+    clues: [
+      '"The worker thread <b>never stops</b> even though we set running = false" → missing volatile (visibility)',
+      '"Works in debug mode / with a println, hangs in production" → JIT hoisting a non-volatile read',
+      '"Is <b>volatile</b> enough to make count++ thread-safe?" → no: visibility ≠ atomicity',
+      '"<b>One writer, many readers</b> of a flag / config / status" → volatile is the right tool',
+      '"Reader sees a <b>half-updated</b> object" → publish an immutable object via one volatile reference',
+      '"64-bit long read looks garbled on a 32-bit JVM" → word tearing; volatile long is atomic'
+    ],
+    code: [`
+public class StopFlag {
+    // Remove "volatile" and this program may spin forever on a server JVM,
+    // because the JIT may hoist the read of 'running' out of the loop.
+    private static volatile boolean running = true;
+
+    public static void main(String[] args) throws InterruptedException {
+        Thread worker = new Thread(() -> {
+            long work = 0;
+            while (running) {          // volatile read: re-checked on every iteration
+                work++;
+            }
+            System.out.println("worker saw running=false after " + work + " iterations");
+        });
+        worker.start();
+        Thread.sleep(100);
+        running = false;               // volatile write: published immediately
+        worker.join();
+        System.out.println("main done");
+    }
+}`, `
+// volatile is NOT atomicity: this still loses updates.
+public class VolatileIsNotAtomic {
+    private static volatile int count = 0;
+
+    public static void main(String[] args) throws InterruptedException {
+        Runnable job = () -> { for (int i = 0; i < 100_000; i++) count++; };  // LOAD, ADD, STORE
+        Thread a = new Thread(job), b = new Thread(job);
+        a.start(); b.start(); a.join(); b.join();
+        System.out.println(count);     // usually < 200000
+    }
+}`],
+    codeTitle: ['volatile stop flag (the right use)', 'volatile count++ (the wrong use)'],
+    viz: [{
+      title: 'Plain vs volatile flag: where does the write go, and does the reader ever look?',
+      input: 'plain',
+      inputLabel: 'Type plain or volatile',
+      gen: function (input) {
+        var mode = clean(input).toLowerCase();
+        if (mode !== 'plain' && mode !== 'volatile') throw new Error('Type exactly: plain  or  volatile');
+        var decl = (mode === 'volatile' ? 'static volatile boolean stop = false;' : 'static boolean stop = false;   // plain field');
+        var names = ['main thread (writer)', 'worker thread (reader)'];
+        var base = function (s) { s.extra = [cpuGraph(s.g || {}, s.ge || {}, s.gt || {})].concat(s.more || []); return s; };
+        var steps = [
+          base({ v: { 'declaration': decl, 'stop in main memory': 'false' }, gt: { M: 'stop=false' }, narr: 'Field: <b>' + esc(decl) + '</b>. The worker spins in a loop until it sees stop == true. main will set it later.' }),
+          base({ b: 1, v: { 'stop in main memory': 'false', 'worker copy': 'false' }, g: { B2: 'cur' }, ge: { 'M-B2': 'cur' }, gt: { M: 'stop=false', B2: 'stop=false' }, narr: 'The worker reads stop (false) — it now has a copy close to its core.' })
+        ];
+        if (mode === 'plain') {
+          steps.push(base({ b: [1, 2], cb: 'bad', v: { 'stop in main memory': 'false', 'worker copy': 'false (in a register)' }, g: { C2: 'bad' }, gt: { M: 'stop=false', B2: 'stop=false' }, narr: 'After a few thousand iterations the JIT compiles the loop. Since <b>stop</b> is a plain field and nothing in the loop writes it or synchronizes, the JIT may legally assume it never changes and <b>hoist</b> the read out of the loop.', more: [{ type: 'code', label: 'What the JIT is allowed to turn the loop into', lang: 'java', code: 'if (!stop) {\n    while (true) { work++; }   // stop is never read again\n}', hl: { 2: 'bad' } }] }));
+          steps.push(base({ a: 2, ca: 'ok', b: [1, 2], cb: 'bad', v: { 'stop in main memory': 'false', 'main copy': 'true (store buffer)', 'worker copy': 'false' }, g: { B1: 'ok' }, ge: { 'C1-B1': 'ok' }, gt: { B1: 'stop=true', M: 'stop=false', B2: 'stop=false' }, narr: 'main sets <b>stop = true</b>. The write lands in Core 1\'s store buffer / cache first. Hardware will push it out soon…' }));
+          steps.push(base({ a: 2, ca: 'done', b: [1, 2], cb: 'bad', v: { 'stop in main memory': 'true', 'worker copy': 'false (never re-read)' }, hv: { 'worker copy': 'bad' }, g: { M: 'ok', C2: 'bad' }, ge: { 'B1-M': 'ok' }, gt: { M: 'stop=true', B2: 'stop=false' }, narr: '…and cache coherence eventually makes memory say true. <b>But the compiled loop never reads stop again.</b> The hardware is fine; the problem is the compiler had permission to not look.' }));
+          steps.push(base({ a: 2, ca: 'done', b: [1, 2], cb: 'bad', v: { result: 'worker may spin FOREVER' }, hv: { result: 'bad' }, g: { C2: 'bad' }, gt: { M: 'stop=true', B2: 'stop=false', C2: 'spinning' }, narr: '<span class="c-r">Possible outcome: the program never ends.</span> It is not guaranteed to hang either — that is what makes it nasty: it may work in your IDE (interpreted) and hang in production (JIT-compiled). Try the input <b>volatile</b>.' }));
+        } else {
+          steps.push(base({ b: [1, 2], cb: 'ok', v: { 'stop in main memory': 'false', 'worker copy': 're-read every iteration' }, g: { B2: 'cur' }, ge: { 'M-B2': 'cur' }, gt: { M: 'stop=false' }, narr: 'Because stop is <b>volatile</b>, the JIT must perform a real read on every iteration. Hoisting is forbidden. (On x86 a volatile read is just a normal load that cannot be cached in a register — almost free.)' }));
+          steps.push(base({ a: 2, ca: 'ok', b: [1, 2], v: { 'stop in main memory': 'true', 'worker copy': 'false (old)' }, hv: { 'stop in main memory': 'ok' }, g: { M: 'ok', B1: 'ok' }, ge: { 'C1-B1': 'ok', 'B1-M': 'ok' }, gt: { M: 'stop=true' }, narr: 'main writes <b>stop = true</b>. A volatile write is followed by a memory fence (on x86 a <code>lock</code>-prefixed instruction) that drains the store buffer, so the value becomes globally visible right away.' }));
+          steps.push(base({ a: 2, ca: 'done', b: 1, cb: 'ok', v: { 'stop in main memory': 'true', 'worker copy': 'true' }, hv: { 'worker copy': 'ok' }, g: { B2: 'ok', C2: 'ok' }, ge: { 'M-B2': 'ok', 'B2-C2': 'ok' }, gt: { M: 'stop=true', B2: 'stop=true' }, narr: 'On its next iteration the worker reads stop again and sees <b>true</b>. The loop condition fails.' }));
+          steps.push(base({ a: 2, ca: 'done', b: 4, cb: 'ok', v: { result: 'worker stops promptly' }, hv: { result: 'ok' }, gt: { M: 'stop=true', C2: 'exited' }, out: 'stopped', narr: '<span class="c-g">Guaranteed: the worker stops.</span> Bonus guarantee: anything main wrote <b>before</b> the volatile write is also visible to the worker after it reads true. That is the happens-before rule you will meet next.' }));
+        }
+        return twoThreads(VW, VR, steps, names);
+      }
+    }, {
+      title: 'volatile does not make count++ atomic',
+      gen: function () {
+        var A = ['// volatile int count;', 'int r = count;     // volatile LOAD (fresh)', 'r = r + 1;', 'count = r;         // volatile STORE (published)'].join('\n');
+        return twoThreads(A, A, [
+          { v: { count: 5 }, narr: '<b>volatile int count = 5</b>. Both threads call count++. Volatile guarantees each LOAD sees the latest value and each STORE is published at once.' },
+          { a: 2, v: { count: 5, 'A.r': 5 }, narr: 'A does a volatile LOAD: r = 5 (fresh — volatile did its job).' },
+          { a: 2, ca: 'done', b: 2, v: { count: 5, 'A.r': 5, 'B.r': 5 }, narr: 'B does a volatile LOAD: also 5. Also fresh! A has not stored yet, so 5 really is the latest value.' },
+          { a: [3, 4], ca: 'ok', b: 2, cb: 'done', v: { count: 6, 'A.r': 6, 'B.r': 5 }, hv: { count: 'ok' }, narr: 'A adds and stores 6. Published immediately to everyone…' },
+          { a: 4, ca: 'done', b: [3, 4], cb: 'bad', v: { count: 6, 'A.r': 6, 'B.r': 6 }, hv: { count: 'bad' }, narr: '…but B already holds its old register value 5 → stores 6. <span class="c-r">One increment lost.</span> Volatile made every single read and write correct; it cannot make the <b>three-step sequence</b> indivisible. Use synchronized or AtomicInteger.' }
+        ], ['Thread A: count++', 'Thread B: count++']);
+      }
+    }],
+    examples: [
+      { title: 'What can this print? Stop flag without volatile', html: `<p>Possible behaviours: prints "stopped" after ~1 s, <b>or never prints and never exits</b>. Both are allowed by the Java Memory Model. On HotSpot with the C2 compiler the hang is reproducible on most machines because of loop hoisting. Adding ${C('System.out.println(work)')} inside the loop usually "fixes" it — println synchronizes internally and calls code the JIT cannot see through, so it re-reads the field. That accidental fix is not a guarantee.</p>`, code: `
+class MaybeForever {
+    static boolean stop;                     // NOT volatile
+    public static void main(String[] args) throws InterruptedException {
+        Thread t = new Thread(() -> { long w = 0; while (!stop) w++; System.out.println("stopped"); });
+        t.setDaemon(true);                   // daemon so this demo can still exit if the loop never ends
+        t.start();
+        Thread.sleep(1000);
+        stop = true;
+        t.join(2000);                        // wait at most 2 s
+        System.out.println(t.isAlive() ? "worker still spinning (visibility bug)" : "worker stopped");
+    }
+}` },
+      { title: 'Independent observation: last heartbeat', html: `<p>One thread records "last time I heard from the server"; monitoring threads read it. Single writer, value does not depend on the old value, no invariant with other fields → <b>volatile is exactly right</b>, and cheaper than a lock. Note ${C('long')}: without volatile a 32-bit JVM could tear the 64-bit write.</p>`, code: `
+class Heartbeat {
+    private volatile long lastBeatNanos = System.nanoTime();   // single writer
+    void onBeat() { lastBeatNanos = System.nanoTime(); }        // writer thread only
+    boolean isAlive(long timeoutNanos) {                        // any thread
+        return System.nanoTime() - lastBeatNanos < timeoutNanos;
+    }
+}` },
+      { title: 'The "cheap read-write lock" pattern', html: `<p>Reads are far more common than writes? Make the field volatile for <b>lock-free reads</b>, and synchronize only the <b>writes</b> (because a write is a read-modify-write). Readers always see a fully updated value; writers never lose updates.</p>`, code: `
+class CheapCounter {
+    private volatile int value;                        // reads: just a volatile read
+    public int get() { return value; }
+    public synchronized int increment() { return ++value; }  // writes: under a lock
+}` },
+      { title: 'Volatile reference ≠ volatile contents', html: `<p>${C('volatile int[] arr')} makes the <b>reference</b> volatile. ${C('arr[3] = 7')} is a plain write to an element — not volatile, no visibility guarantee. Same for ${C('volatile List<...>')}: list.add() is not made safe. For volatile elements use ${C('AtomicIntegerArray')} or ${C('VarHandle')}; for collections use concurrent collections or publish an immutable copy.</p>` }
+    ],
+    deepDive: `<p><b>🟣 What volatile compiles to.</b> The JMM is specified abstractly, but HotSpot implements volatile with barriers: on x86 (TSO, which only allows store→load reordering) a volatile <b>read</b> is a plain ${C('mov')} that cannot be cached or reordered by the compiler, and a volatile <b>write</b> is a ${C('mov')} followed by a ${C('lock addl $0,(rsp)')} (a full StoreLoad fence, ~tens of cycles). On ARM64 (AWS Graviton, Apple Silicon) volatile uses ${C('ldar')} / ${C('stlr')} acquire/release instructions. So "volatile is free" is roughly true for reads and false for writes in a hot loop.</p>
+<p><b>Word tearing.</b> JLS 17.7: writes to non-volatile ${C('long')} and ${C('double')} may be split into two 32-bit writes, so a racing reader might see the high half of the new value and the low half of the old one. All 64-bit HotSpot JVMs write them atomically in practice, but only ${C('volatile')} (or a lock) makes it a guarantee.</p>
+<p><b>Finer control (Java 9+).</b> ${C('VarHandle')} exposes access modes weaker than volatile: <b>opaque</b> (no hoisting, eventually visible, no ordering), <b>acquire/release</b> (one-way ordering — enough for message passing and cheaper than full volatile on ARM), and volatile (sequentially consistent). Library authors use these; application code should stick to volatile, locks and ${C('java.util.concurrent')}.</p>
+<p><b>False sharing.</b> Two unrelated volatile fields written by different threads but sitting on the same 64-byte cache line force the line to ping-pong between cores. JDK internals use ${C('@jdk.internal.vm.annotation.Contended')} padding (e.g. in ${C('LongAdder')} cells). It is a performance issue, not a correctness one — measure with JMH before padding anything.</p>
+<p><b>Spin loops.</b> If you must busy-wait on a volatile, call ${C('Thread.onSpinWait()')} (Java 9) inside the loop — it emits a CPU hint (${C('PAUSE')} on x86) that saves power and helps the sibling hyper-thread. Prefer blocking (wait/notify, latches) for anything longer than microseconds.</p>`,
+    aiEra: `<p><b>🤖 What AI changes:</b> AI assistants know the "add volatile to the stop flag" fix and will usually get it right. They are also good at explaining JIT hoisting if you ask. <b>Use AI as a partner:</b> <code>For each shared field in this class, classify it as: needs visibility only, needs atomicity, or part of a multi-field invariant. Justify each.</code> That classification is exactly the reasoning interviewers want.</p>
+<p><b>Where AI goes wrong:</b> it reaches for volatile as a universal "make it thread-safe" keyword — on counters, on collections (${C('volatile Map')}), on fields that are part of a two-field invariant. It may also claim volatile "flushes the whole cache" (folk wisdom — the real guarantee is happens-before). <b>What you must still own:</b> the three-problem split (visibility / atomicity / ordering) and the three conditions under which volatile alone is sufficient. If you cannot state them, you cannot review AI-written concurrent code.</p>`,
+    problems: [{
+      title: 'Hot-Reloadable Config (Publish an Immutable Snapshot)',
+      level: 'Medium', tags: ['volatile', 'immutability', 'safe publication'], companies: ['Netflix', 'Microsoft', 'Razorpay'],
+      statement: `<p>A service has many request threads reading its config (${C('host, port, timeoutMs')}) on every request, and one admin thread that occasionally reloads it. Design ${C('ConfigHolder')} with ${C('get()')}, ${C('reload(host, port, timeoutMs)')} and ${C('bumpTimeout(extraMs)')}. Readers must <b>never</b> see a mix of old and new values (e.g. new host with old port), must see a reload promptly, and reads must not take a lock.</p>`,
+      constraints: `Reads: millions per second. Writes: rare. bumpTimeout may be called by several admin threads concurrently and must not lose updates.`,
+      example: `<p>Config is (localhost, 8080, 1000). Admin calls ${C('reload("db.internal", 5432, 2000)')}. A reader then calls ${C('get()')} and must see either the whole old config or the whole new one — ${H.c('r', 'never ("db.internal", 8080, ...)')}.</p>`,
+      brute: {
+        why: `<p>A mutable ${C('Config')} object whose three fields are set one after another: a reader can run between the setters and see a half-updated config. Without volatile/locks the reader may also never see the update. Putting ${C('synchronized')} on every getter would fix it but makes millions of reads contend on one lock.</p>`,
+        code: `
+class MutableConfigHolder {
+    private String host = "localhost";   // plain fields, updated one by one
+    private int port = 8080;
+    private int timeoutMs = 1000;
+    void reload(String h, int p, int t) {
+        host = h;                         // a reader here sees NEW host + OLD port
+        port = p;
+        timeoutMs = t;
+    }
+    String host() { return host; }
+    int port() { return port; }
+}`
+      },
+      mcq: { q: 'Readers do <code>Config c = holder.get();</code> then read <code>c.host()</code> and <code>c.port()</code>. Why can they never see a mixed config?', options: ['Because the reader reads the volatile field only once and Config is immutable, so c is one fully-built snapshot', 'Because volatile makes all fields of Config volatile', 'Because records are synchronized', 'They can; you still need a lock'], answer: 0, explain: 'One volatile read returns one reference. The object it points to was fully constructed before the volatile write published it (happens-before), and it can never change afterwards — so all of its fields belong to the same version.' },
+      hints: [
+        `<p>Hint 1: instead of changing three fields, build a <b>new immutable object</b> holding all three and swap <b>one reference</b>.</p>`,
+        `<p>Hint 2: a ${C('record Config(String host, int port, int timeoutMs)')} plus ${C('private volatile Config current')}. Reads = one volatile read, no lock.</p>`,
+        `<p>Hint 3: ${C('bumpTimeout')} reads the current config and writes a new one — a read-modify-write — so writers must be mutually exclusive: make the writer methods ${C('synchronized')} (or use ${C('AtomicReference.updateAndGet')}).</p>`
+      ],
+      solution: {
+        approach: `<p><b>Copy-on-write with a volatile reference.</b> The config is an immutable record. Writers build a complete new record and publish it with a single volatile write; readers do a single volatile read and then use that snapshot. Immutability gives consistency, volatile gives visibility and safe publication. Writers are synchronized among themselves because "read current, write modified" is a read-modify-write. This is the same idea as ${C('CopyOnWriteArrayList')} and many config libraries.</p>`,
+        code: `
+class ConfigHolder {
+    // Immutable snapshot: all fields final, can never be seen half-built once published
+    record Config(String host, int port, int timeoutMs) {}
+
+    private volatile Config current = new Config("localhost", 8080, 1000);
+
+    Config get() { return current; }                    // one volatile read, no lock
+
+    synchronized void reload(String host, int port, int timeoutMs) {
+        current = new Config(host, port, timeoutMs);    // build fully, then publish with ONE volatile write
+    }
+
+    synchronized void bumpTimeout(int extraMs) {        // read-modify-write → writers must be exclusive
+        Config c = current;
+        current = new Config(c.host(), c.port(), c.timeoutMs() + extraMs);
+    }
+
+    public static void main(String[] args) throws InterruptedException {
+        ConfigHolder h = new ConfigHolder();
+        Thread reader = new Thread(() -> {
+            Config seen = h.get();
+            while (seen.port() == 8080) {               // volatile read each time → sees the reload
+                Thread.onSpinWait();
+                seen = h.get();
+            }
+            System.out.println("reader saw " + seen);   // Config[host=db.internal, port=5432, timeoutMs=2000]
+        });
+        reader.start();
+        Thread.sleep(20);
+        h.reload("db.internal", 5432, 2000);
+        reader.join();
+        h.bumpTimeout(500);
+        System.out.println(h.get().timeoutMs());        // 2500
+    }
+}`,
+        dry: { head: ['time', 'admin thread', 'current (volatile)', 'reader does', 'reader sees'], rows: [
+          ['t0', '—', 'Config(localhost, 8080, 1000)', 'c = get()', 'whole old config'],
+          ['t1', 'builds new Config(db.internal, 5432, 2000) privately', 'still old', 'c = get()', 'whole old config'],
+          ['t2', 'current = new config (volatile write)', 'new', '—', '—'],
+          ['t3', '—', 'new', 'c = get()', '<span class="c-g">whole new config</span>'],
+          ['t4', 'bumpTimeout(500) under lock', 'Config(db.internal, 5432, 2500)', 'c = get()', 'whole newest config']
+        ] },
+        complexity: `<p>Reads O(1), lock-free (one volatile load). Writes O(size of config) to copy, serialized by a lock — fine because writes are rare. Memory: old snapshots are garbage-collected once no reader holds them.</p>`,
+        followUps: ['Replace the synchronized writers with AtomicReference.updateAndGet — what changes?', 'A reader reads get() twice in one request and gets two different versions. How do you prevent that?', 'How would you notify listeners on every reload without holding the lock during callbacks?']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 5 — The Java Memory Model & happens-before
+     ====================================================================== */
+  var LITMUS = {
+    SB: {
+      name: 'Store Buffering (Dekker)', init: { x: 0, y: 0 },
+      t1: [['w', 'x', 1], ['r', 'y', 'r1']], t2: [['w', 'y', 1], ['r', 'x', 'r2']],
+      why: 'Each core puts its write into its private <b>store buffer</b> and immediately reads the other variable from memory, where the other core\'s write has not arrived yet. Even x86 does this (it is the one reordering x86 allows: a later load passing an earlier store). The JIT may also simply swap the two independent statements.',
+      fix: 'Make <b>x and y volatile</b>. All volatile accesses form one total order consistent with each thread\'s program order, so whichever write comes first in that order is seen by the other thread\'s later read — (0, 0) becomes impossible.'
+    },
+    MP: {
+      name: 'Message Passing (data + ready flag)', init: { data: 0, ready: 0 },
+      t1: [['w', 'data', 42], ['w', 'ready', 1]], t2: [['r', 'ready', 'r1'], ['r', 'data', 'r2']],
+      why: 'Without volatile, the JIT or an ARM/POWER CPU may make <b>ready = 1</b> visible before <b>data = 42</b> (two independent stores), or the reader may read data before ready. The reader then sees the flag but stale data.',
+      fix: 'Make <b>ready volatile</b> (data can stay plain). The volatile write of ready publishes every earlier write of T1; a volatile read that sees ready == 1 is guaranteed to see data == 42. (r1, r2) = (1, 0) becomes impossible.'
+    }
+  };
+  function opText(op) { return op[0] === 'w' ? op[1] + ' = ' + op[2] + ';' : op[2] + ' = ' + op[1] + ';'; }
+  function runLitmus(L, order, p1, p2) {
+    var mem = {}, regs = {}, ia = 0, ib = 0, trace = [];
+    Object.keys(L.init).forEach(function (k) { mem[k] = L.init[k]; });
+    for (var i = 0; i < order.length; i++) {
+      var who = order[i], op = who === 'A' ? p1[ia++] : p2[ib++];
+      if (op[0] === 'w') mem[op[1]] = op[2]; else regs[op[2]] = mem[op[1]];
+      trace.push([String(i + 1), who === 'A' ? 'T1' : 'T2', opText(op) + (op[0] === 'r' ? '  → ' + regs[op[2]] : ''), Object.keys(mem).map(function (k) { return k + '=' + mem[k]; }).join(', ')]);
+    }
+    return { key: '(r1, r2) = (' + regs.r1 + ', ' + regs.r2 + ')', trace: trace };
+  }
+
+  topics.push({
+    title: 'The Java Memory Model: Reordering & the happens-before Rules',
+    analogy: `<p>Think of two friends texting from places with bad signal. You send "I bought the tickets" and then "meet at gate 3". Your friend might receive them <b>in the other order</b>, or get the second one first and the first one an hour later. Each phone keeps its own messages in order, but nobody promised the <b>other</b> person sees them in that order. The Java Memory Model is the contract that says exactly <b>which messages are guaranteed to arrive, and in what order</b>: if you send them through certain "registered post" channels (a lock, a volatile, start/join), the order and delivery are guaranteed. Those channels are the <b>happens-before</b> rules.</p>`,
+    explain: `<p><b>🟢 The plain idea.</b> To run fast, the compiler, the JIT and the CPU all <b>reorder and cache</b> memory operations. Inside one thread you can never tell (the "as-if-serial" rule: your own thread always sees its own program order). But <b>another</b> thread may observe your writes late, or in a different order. The <b>Java Memory Model (JMM)</b>, rewritten in Java 5 (JSR-133), defines when one thread is <b>guaranteed</b> to see another's writes. The central idea is the <b>happens-before</b> (HB) relation:</p>
+<blockquote>If action A <b>happens-before</b> action B, then everything A wrote is visible to B, and A appears to B as having happened earlier. If two conflicting accesses (one is a write) are <b>not</b> ordered by HB, you have a <b>data race</b> and almost anything (within the rules) can be observed.</blockquote>
+<p><b>The rules to memorise</b> (each creates an HB edge):</p>
+${H.table(['#', 'rule', 'edge'], [
+  ['1', '<b>Program order</b>', 'each action in a thread HB every later action in that same thread'],
+  ['2', '<b>Monitor lock</b>', 'an <b>unlock</b> of monitor M HB every later <b>lock</b> of M'],
+  ['3', '<b>Volatile</b>', 'a <b>write</b> to volatile v HB every later <b>read</b> of v (that sees it)'],
+  ['4', '<b>Thread start</b>', C('t.start()') + ' HB every action inside t'],
+  ['5', '<b>Thread termination</b>', 'every action in t HB another thread returning from ' + C('t.join()') + ' (or seeing ' + C('isAlive() == false') + ')'],
+  ['6', '<b>Interruption</b>', C('t.interrupt()') + ' HB t detecting the interrupt'],
+  ['7', '<b>Transitivity</b>', 'A HB B and B HB C ⇒ A HB C'],
+  ['+', '<b>final fields</b>', 'after a constructor finishes, other threads see correctly-initialized final fields (if ' + C('this') + ' did not escape)']
+])}
+<p><b>Transitivity is the superpower.</b> Writes to <i>plain</i> fields become visible if they are "carried" by a later HB edge: T1 writes ${C('data = 42')} (plain) and then ${C('ready = true')} (volatile); T2 reads ${C('ready')} and sees true, then reads ${C('data')}. Chain: data-write → (program order) → ready-write → (volatile rule) → ready-read → (program order) → data-read. So T2 must see 42.</p>
+<p><b>Safe publication</b> = making a newly built object visible to other threads together with its contents. The standard ways: initialise it in a <b>static initializer</b>; store it into a <b>volatile</b> field or ${C('AtomicReference')}; store it into a <b>final</b> field of a properly constructed object; store it into a field guarded by a <b>lock</b>; or put it into a <b>concurrent collection</b> (${C('ConcurrentHashMap')}, ${C('BlockingQueue')}). Everything else is a data race.</p>
+<p><b>Important:</b> happens-before is about <b>visibility guarantees</b>, not wall-clock time. "A happened earlier in real time" does <b>not</b> imply A happens-before B.</p>`,
+    clues: [
+      '"Explain the <b>Java Memory Model</b> / <b>happens-before</b>" → list the rules + transitivity + an example',
+      '"<b>Double-checked locking</b> — is it broken? how to fix?" → needs volatile (or holder idiom)',
+      '"Can this print <b>(0, 0)</b>?" → yes for plain fields (reordering / store buffers); no if all volatile',
+      '"Reader sees the <b>flag set but stale data</b>" → missing HB edge; make the flag volatile',
+      '"Works on my <b>x86</b> laptop, fails on <b>ARM</b> servers" → weaker hardware memory model exposes a data race',
+      '"Object seen with <b>default values</b> in some fields" → unsafe publication / this-escape in constructor'
+    ],
+    code: [`
+public class MessagePassing {
+    static int data = 0;                       // plain field
+    static volatile boolean ready = false;     // the "registered post" channel
+
+    public static void main(String[] args) throws InterruptedException {
+        Thread writer = new Thread(() -> {
+            data = 42;                         // (1) plain write
+            ready = true;                      // (2) volatile write: publishes (1) as well
+        });
+        Thread reader = new Thread(() -> {
+            while (!ready) Thread.onSpinWait(); // (3) volatile read that sees true
+            System.out.println(data);          // (4) guaranteed 42: 1 → 2 → 3 → 4 by transitivity
+        });
+        reader.start(); writer.start();
+        writer.join(); reader.join();
+    }
+}`, `
+final class Point {
+    private final int x, y;                    // final fields: safely visible after construction
+    Point(int x, int y) { this.x = x; this.y = y; }
+    int x() { return x; }
+    int y() { return y; }
+}
+
+class Publisher {
+    static Point shared;                       // NOT volatile: publishing via a data race
+    static void publish() { shared = new Point(1, 2); }
+    static void read() {
+        Point p = shared;
+        if (p != null) {
+            // Because x and y are final, a reader that sees p is guaranteed to see 1 and 2.
+            // If they were NOT final, it could legally see 0 for either field.
+            System.out.println(p.x() + "," + p.y());
+        }
+    }
+}`],
+    codeTitle: ['Message passing with a volatile flag', 'final-field guarantee (immutable objects survive racy publication)'],
+    viz: [{
+      title: 'Litmus test: enumerate every interleaving, then add reordering',
+      input: 'SB',
+      inputLabel: 'Type SB (store buffering) or MP (message passing)',
+      gen: function (input) {
+        var k = clean(input).toUpperCase();
+        var L = LITMUS[k];
+        if (!L) throw new Error('Type SB or MP');
+        var c1 = L.t1.map(opText).join('\n'), c2 = L.t2.map(opText).join('\n');
+        var orders = ['AABB', 'ABAB', 'ABBA', 'BAAB', 'BABA', 'BBAA'];
+        var frames = [], results = [], sc = {};
+        var initTxt = Object.keys(L.init).map(function (v) { return v + ' = 0'; }).join(', ');
+        frames.push({ narr: '<b>' + L.name + '.</b> Shared fields start as ' + initTxt + ' (plain, not volatile). r1 and r2 are local variables. First, assume the simple mental model: statements run <b>in program order</b>, interleaved in any way (called <b>sequential consistency</b>).', parts: [
+          { type: 'code', label: 'Thread T1', lang: 'java', code: c1 }, { type: 'code', label: 'Thread T2', lang: 'java', code: c2 },
+          { type: 'vars', label: 'Shared memory', vals: L.init }
+        ] });
+        orders.forEach(function (o, idx) {
+          var r = runLitmus(L, o, L.t1, L.t2);
+          var isNew = !sc[r.key]; sc[r.key] = true;
+          results.push(['#' + (idx + 1), o.replace(/A/g, '1').replace(/B/g, '2').split('').join(' '), r.key]);
+          frames.push({ narr: 'Interleaving #' + (idx + 1) + ': run order (thread numbers) <b>' + results[idx][1] + '</b> → ' + r.key + (isNew ? ' <span class="c-g">(new outcome)</span>' : ' (seen before)') + '.', parts: [
+            { type: 'table', label: 'Step by step', columns: ['step', 'thread', 'statement', 'memory after'], rows: r.trace },
+            { type: 'table', label: 'Outcomes so far (sequential consistency)', columns: ['#', 'order', 'result'], rows: results.slice(), hl: one(idx, isNew ? 'ok' : 'done') }
+          ] });
+        });
+        var scKeys = Object.keys(sc);
+        frames.push({ narr: 'Under sequential consistency only these outcomes exist: <b>' + scKeys.join(' · ') + '</b>. Many developers stop thinking here. The JMM does <b>not</b> promise sequential consistency for programs with data races.', parts: [
+          { type: 'set', label: 'Possible outcomes with NO reordering', items: scKeys },
+          { type: 'table', label: 'All 6 interleavings', columns: ['#', 'order', 'result'], rows: results }
+        ] });
+        var swap = function (p) { return [p[1], p[0]]; };
+        var variants = [[L.t1, L.t2, 'none'], [swap(L.t1), L.t2, 'T1 swapped'], [L.t1, swap(L.t2), 'T2 swapped'], [swap(L.t1), swap(L.t2), 'both swapped']];
+        var extra = null, all = {};
+        variants.forEach(function (vv) {
+          orders.forEach(function (o) {
+            var r = runLitmus(L, o, vv[0], vv[1]);
+            all[r.key] = true;
+            if (!sc[r.key] && !extra) extra = { r: r, how: vv[2], p1: vv[0], p2: vv[1] };
+          });
+        });
+        if (extra) {
+          frames.push({ narr: 'Now allow what compilers and CPUs really do: each thread\'s two statements touch <b>different</b> variables, so either may become visible first. One such execution (' + extra.how + '): ' + L.why, parts: [
+            { type: 'code', label: 'T1 as other threads may observe it', lang: 'java', code: extra.p1.map(opText).join('\n'), hl: extra.how.indexOf('T1') >= 0 || extra.how === 'both swapped' ? { 1: 'bad', 2: 'bad' } : {} },
+            { type: 'code', label: 'T2 as other threads may observe it', lang: 'java', code: extra.p2.map(opText).join('\n'), hl: extra.how.indexOf('T2') >= 0 || extra.how === 'both swapped' ? { 1: 'bad', 2: 'bad' } : {} },
+            { type: 'table', label: 'The surprising execution', columns: ['step', 'thread', 'statement', 'memory after'], rows: extra.r.trace },
+            { type: 'vars', label: 'Result', vals: { outcome: extra.r.key }, hl: { outcome: 'bad' } }
+          ] });
+        }
+        var allKeys = Object.keys(all);
+        frames.push({ narr: 'With reordering allowed, the possible outcomes are: <b>' + allKeys.join(' · ') + '</b>. The extra one' + (extra ? ' (' + extra.r.key + ')' : '') + ' is <span class="c-r">legal for this racy program</span> and really happens on real hardware.', parts: [
+          { type: 'set', label: 'Possible outcomes for the RACY program', items: allKeys, hl: extra ? one(extra.r.key, 'bad') : {} }
+        ] });
+        frames.push({ narr: '<b>The fix:</b> ' + L.fix + ' Programs with no data races get sequential consistency back for free — the <b>DRF-SC</b> guarantee.', parts: [
+          { type: 'set', label: 'Possible outcomes after the fix', items: scKeys, hl: (function () { var h = {}; scKeys.forEach(function (x) { h[x] = 'ok'; }); return h; })() },
+          note('Try the other litmus test: type <b>' + (k === 'SB' ? 'MP' : 'SB') + '</b>.', 'Next')
+        ] });
+        return frames;
+      }
+    }, {
+      title: 'Building the happens-before chain for a volatile flag',
+      gen: function () {
+        function g(ehl, hl, edges, tags) {
+          return { type: 'graph', label: 'Happens-before graph (po = program order, sw = synchronizes-with)', directed: true, height: 70,
+            nodes: [{ id: 'a1', label: 'T1: data = 42', x: 24, y: 10, shape: 'box' }, { id: 'a2', label: 'T1: ready = true (vW)', x: 24, y: 42, shape: 'box' },
+              { id: 'b1', label: 'T2: ready == true (vR)', x: 76, y: 42, shape: 'box' }, { id: 'b2', label: 'T2: print(data)', x: 76, y: 64, shape: 'box' }],
+            edges: edges, hl: hl || {}, ehl: ehl || {}, tags: tags || {} };
+        }
+        var po1 = ['a1', 'a2', 'po'], sw = ['a2', 'b1', 'sw'], po2 = ['b1', 'b2', 'po'], hb = ['a1', 'b2', 'hb'];
+        return [
+          { narr: 'Four actions. data is plain, ready is <b>volatile</b>. Question: when T2 prints data after seeing ready == true, must it print 42?', parts: [g({}, {}, [], {})] },
+          { narr: '<b>Program order</b> in T1: the write of data HB the volatile write of ready (same thread, earlier in code).', parts: [g({ 'a1-a2': 'ok' }, { a1: 'cur', a2: 'cur' }, [po1])] },
+          { narr: '<b>Volatile rule</b>: the volatile write of ready <b>synchronizes-with</b> the volatile read in T2 that sees true. This is the cross-thread edge.', parts: [g({ 'a2-b1': 'ok' }, { a2: 'cur', b1: 'cur' }, [po1, sw])] },
+          { narr: '<b>Program order</b> in T2: the read of ready HB the read of data.', parts: [g({ 'b1-b2': 'ok' }, { b1: 'cur', b2: 'cur' }, [po1, sw, po2])] },
+          { narr: '<b>Transitivity</b>: data = 42 HB print(data). So T2 is guaranteed to print <b>42</b>, even though data itself is not volatile.', parts: [g({ 'a1-b2': 'sel' }, { a1: 'ok', b2: 'ok' }, [po1, sw, po2, hb], { b2: 'prints 42' })] },
+          { narr: 'Remove <b>volatile</b> from ready and the sw edge disappears. With no path from data = 42 to print(data), the read of data is a <b>data race</b>: printing 0 is legal (and the loop waiting for ready may not even terminate).', parts: [g({ 'a2-b1': 'bad' }, { b2: 'bad' }, [po1, ['a2', 'b1', 'no sw!'], po2], { b2: '0 or 42' })] },
+          { narr: 'Other ways to get a cross-thread edge, all used daily without noticing.', parts: [{ type: 'table', label: 'Synchronizes-with sources', columns: ['release side', 'acquire side'], rows: [['unlock(M) / leaving synchronized', 'later lock(M)'], ['volatile write v', 'volatile read of v'], ['t.start()', 'first action in t'], ['last action in t', 't.join() returns'], ['queue.put(x) (BlockingQueue)', 'queue.take() returns x'], ['future completes', 'future.get() returns'], ['map.put(k, v) (ConcurrentHashMap)', 'map.get(k) returns v']] }] }
+        ];
+      }
+    }],
+    examples: [
+      { title: 'What can this print? (store buffering)', html: `<p>Plain ${C('x, y')}. T1: ${C('x = 1; r1 = y;')} T2: ${C('y = 1; r2 = x;')}. Possible results: (0,1), (1,0), (1,1) — <b>and (0,0)</b>. The last one is observed on real x86 machines millions of times per billion runs. With ${C('volatile int x, y')} the set shrinks to (0,1), (1,0), (1,1).</p>`, code: `
+class StoreBuffering {
+    static int x, y, r1, r2;                    // plain: (0,0) is a legal outcome
+    public static void main(String[] args) throws InterruptedException {
+        Thread t1 = new Thread(() -> { x = 1; r1 = y; });
+        Thread t2 = new Thread(() -> { y = 1; r2 = x; });
+        t1.start(); t2.start(); t1.join(); t2.join();   // join: we can safely read r1, r2 now
+        System.out.println("(" + r1 + ", " + r2 + ")");
+    }
+}` },
+      { title: '"this" escaping the constructor', html: `<p>Registering ${C('this')} as a listener (or starting a thread with it) inside the constructor lets another thread see the object <b>before</b> the constructor finished — even final fields lose their guarantee. Fix: a private constructor plus a static factory that registers after construction.</p>`, code: `
+class EventBus { final List<Object> listeners = new CopyOnWriteArrayList<>(); void register(Object l) { listeners.add(l); } }
+
+class SafeListener {
+    private final int threshold;
+    private SafeListener(int threshold) { this.threshold = threshold; }   // nothing escapes here
+    static SafeListener create(EventBus bus, int threshold) {
+        SafeListener l = new SafeListener(threshold);   // fully constructed first
+        bus.register(l);                                // then published via a thread-safe collection
+        return l;
+    }
+    int threshold() { return threshold; }
+}` },
+      { title: 'Piggybacking on a BlockingQueue', html: `<p>The producer fills a plain ${C('ArrayList')} and puts it on a ${C('BlockingQueue')}; the consumer takes it and reads the list — no volatile, no lock in your code, still correct. ${C('java.util.concurrent')} documents memory-consistency effects: actions before ${C('put')} HB actions after the matching ${C('take')}. The rule: after handing an object off, the producer must <b>never touch it again</b>.</p>`, code: `
+BlockingQueue<List<Integer>> q = new ArrayBlockingQueue<>(1);
+Thread producer = new Thread(() -> {
+    List<Integer> batch = new ArrayList<>(List.of(1, 2, 3));   // plain, unsynchronized list
+    try { q.put(batch); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+});
+producer.start();
+List<Integer> got = q.take();     // HB edge: sees [1, 2, 3] fully
+System.out.println(got);
+producer.join();` },
+      { title: 'Happens-before is not "happened earlier"', html: `<p>T1 writes plain ${C('x = 1')} at 10:00:00.000; T2 reads ${C('x')} at 10:00:05.000 (five seconds later by the wall clock). Without an HB edge, T2 may still read 0 — the JMM simply does not talk about time. Conversely, an HB edge says nothing about which thread "ran first" in real time; it only constrains what each read is allowed to return.</p>` }
+    ],
+    deepDive: `<p><b>🟣 DRF-SC: the one theorem to know.</b> If a program is <b>data-race-free</b> (every pair of conflicting accesses is ordered by happens-before) in all sequentially consistent executions, then all its executions appear sequentially consistent. So the practical rule is simple: <b>eliminate data races and you may reason with simple interleavings again.</b> Only lock-free library authors need to reason below that line.</p>
+<p><b>Why the JMM is weaker than SC.</b> Compilers do common-subexpression elimination, loop hoisting, dead-store elimination and instruction scheduling; CPUs have store buffers, invalidation queues and out-of-order execution. x86 is relatively strong (TSO: only a later load may overtake an earlier store), but ARM64 and POWER allow store-store and load-load reordering too. A race that "never happens" on an Intel laptop can appear immediately on Graviton or Apple Silicon — a real migration hazard in 2026 as fleets move to ARM.</p>
+<p><b>Double-checked locking history.</b> Pre-Java 5, DCL was broken even with volatile, because the old memory model allowed the reference write to be reordered before the constructor's field writes. JSR-133 (Java 5) strengthened volatile so that a volatile write publishes all prior writes; DCL with a <b>volatile</b> field is correct since then. Without volatile it is still broken: a reader may see a non-null reference to a partially constructed object. The <b>initialization-on-demand holder</b> idiom avoids the question entirely — class initialization is guarded by a JVM lock and gives HB for free, lazily.</p>
+<p><b>final-field semantics</b> add a "freeze" at the end of the constructor: any thread that obtains the reference after construction (even racily) sees the final fields and everything reachable through them as of the freeze — provided ${C('this')} did not escape. That is why immutable objects (${C('String')}, records with final fields, ${C('List.of')}) are safe to share without synchronization. Non-final fields have no such guarantee.</p>
+<p><b>Out-of-thin-air.</b> The JMM's causality rules forbid values appearing "from nowhere" (e.g. a racy program printing 42 when 42 is never written). These rules are notoriously subtle and are still an active research area; the practical takeaway is again DRF-SC. For finer-grained library work, Java 9's ${C('VarHandle')} memory modes (plain, opaque, acquire/release, volatile) map closely to the C++11 memory model.</p>`,
+    aiEra: `<p><b>🤖 What AI changes:</b> AI can draw HB graphs, explain the litmus tests and generate jcstress tests from a code snippet — great for learning and for reviewing lock-free code. <b>Use AI as a partner:</b> <code>For the read of field X on line 42, show me the happens-before path from every write of X, or tell me there is none.</code> If it cannot produce a path, you have probably found a data race.</p>
+<p><b>Where AI goes wrong:</b> confidently explaining memory visibility in terms of "flushing caches to main memory" (a hardware folk model that gets edge cases wrong), claiming x86 behaviour is what Java guarantees, writing DCL without volatile, or saying ${C('final')} makes a field's <i>referenced</i> mutable object thread-safe. <b>What you must still own:</b> the HB rules, transitivity, and safe publication idioms. In interviews, "it works because of happens-before via the volatile write" is the sentence that separates senior from mid-level answers.</p>`,
+    problems: [{
+      title: 'Fix Double-Checked Locking',
+      level: 'Medium', tags: ['happens-before', 'volatile', 'safe publication', 'singleton'], companies: ['Goldman Sachs', 'Oracle', 'JP Morgan', 'Amazon'],
+      statement: `<p>A lazily-created, expensive ${C('Registry')} singleton must be created at most once, be safely visible to all threads, and the fast path (instance already exists) must not take a lock. The current code uses double-checked locking without ${C('volatile')}. Explain the bug and fix it; then give a simpler lazy alternative.</p>`,
+      constraints: `Thousands of threads call getInstance() concurrently at startup; afterwards millions of calls per second. Construction may take 100 ms.`,
+      example: `<p>Threads A and B call ${C('getInstance()')} together. Correct: both get the <b>same</b> object, constructed exactly once, with all fields initialized (e.g. ${C('get("region")')} returns ${H.c('g', '"ap-south-1"')}, never null).</p>`,
+      brute: {
+        why: `<p>Without ${C('volatile')}, ${C('instance = new Registry()')} is allocation + constructor + reference write, and the JIT/CPU may make the <b>reference</b> visible before the constructor's writes. Thread B on the unsynchronized fast path sees ${C('instance != null')}, skips the lock, and uses a half-built object (empty map → NPE or wrong data). B never takes the lock, so there is no HB edge to save it. The "simplest" alternative — synchronizing the whole method — is correct but makes every call contend on one lock forever.</p>`,
+        code: `
+final class BrokenRegistry {
+    private static BrokenRegistry instance;           // NOT volatile → data race on the fast path
+    private final Map<String, String> entries = new HashMap<>();
+    private BrokenRegistry() { entries.put("region", "ap-south-1"); }
+    static BrokenRegistry getInstance() {
+        if (instance == null) {                        // racy read, no lock
+            synchronized (BrokenRegistry.class) {
+                if (instance == null) instance = new BrokenRegistry();   // may be published half-built
+            }
+        }
+        return instance;
+    }
+}`
+      },
+      mcq: { q: 'Why does adding <code>volatile</code> to <code>instance</code> fix double-checked locking?', options: ['It makes the constructor run atomically', 'The volatile write of instance happens-before any volatile read that sees it, so the reader also sees every write the constructor made', 'It forces all threads to take the lock', 'It prevents the constructor from being called twice'], answer: 1, explain: 'Construction writes → (program order) → volatile write of instance → (volatile rule) → reader\'s volatile read seeing non-null → reader\'s use of the fields. Transitivity guarantees a fully built object. Creating it once is already ensured by the lock + second check.' },
+      hints: [
+        `<p>Hint 1: there are two concerns: <b>create once</b> (the lock + second null-check handles that) and <b>publish safely</b> (the fast-path reader takes no lock — so who gives it an HB edge?).</p>`,
+        `<p>Hint 2: make the field ${C('volatile')}. Read it into a local variable so the fast path does only <b>one</b> volatile read.</p>`,
+        `<p>Hint 3: simpler lazy alternative: a private static nested ${C('Holder')} class with ${C('static final Registry INSTANCE = new Registry();')} — the JVM initializes it on first access, under its own class-init lock, with HB guarantees. (An ${C('enum')} singleton also works.)</p>`
+      ],
+      solution: {
+        approach: `<p><b>Volatile + local variable.</b> The first check reads the volatile once into ${C('local')}; if non-null, we are done with a single volatile load (cheap). Otherwise, take the class lock, re-check (another thread may have created it while we waited), construct, and publish with one volatile write. The constructor's writes happen-before the volatile write, which happens-before any read that sees it. For most code, prefer the <b>holder idiom</b> shown in the alternative: lazy, lock-free on the fast path, and impossible to get wrong.</p>`,
+        code: `
+final class Registry {
+    private static volatile Registry instance;          // volatile is the whole fix
+    private final Map<String, String> entries = new HashMap<>();
+
+    private Registry() {                                 // expensive setup
+        entries.put("region", "ap-south-1");
+        entries.put("tier", "gold");
+    }
+
+    static Registry getInstance() {
+        Registry local = instance;                       // ONE volatile read on the fast path
+        if (local == null) {
+            synchronized (Registry.class) {
+                local = instance;                        // re-check under the lock
+                if (local == null) {
+                    local = new Registry();              // build fully...
+                    instance = local;                    // ...then publish with one volatile write
+                }
+            }
+        }
+        return local;
+    }
+
+    String get(String key) { return entries.get(key); }
+
+    public static void main(String[] args) throws InterruptedException {
+        Registry[] seen = new Registry[2];
+        Thread a = new Thread(() -> seen[0] = getInstance());
+        Thread b = new Thread(() -> seen[1] = getInstance());
+        a.start(); b.start(); a.join(); b.join();
+        System.out.println((seen[0] == seen[1]) + " " + seen[0].get("region"));   // true ap-south-1
+    }
+}`,
+        alt: [{ lang: 'java', title: 'Holder idiom (preferred lazy singleton)', code: `
+final class LazyRegistry {
+    private final Map<String, String> entries = new HashMap<>();
+    private LazyRegistry() { entries.put("region", "ap-south-1"); }
+
+    private static final class Holder {                  // not loaded until getInstance() touches it
+        static final LazyRegistry INSTANCE = new LazyRegistry();   // JVM class-init lock gives HB + once-only
+    }
+
+    static LazyRegistry getInstance() { return Holder.INSTANCE; }
+    String get(String key) { return entries.get(key); }
+}` }],
+        dry: { head: ['time', 'Thread A', 'Thread B', 'instance', 'note'], rows: [
+          ['t1', 'local = instance → null', 'local = instance → null', 'null', 'both miss the fast path'],
+          ['t2', 'locks Registry.class, re-check null', 'BLOCKED on Registry.class', 'null', ''],
+          ['t3', 'construct, then volatile write', 'BLOCKED', '<span class="c-g">R1</span>', 'constructor writes HB the volatile write'],
+          ['t4', 'unlock, return R1', 'locks, re-check → R1 (not null)', 'R1', 'second check prevents a 2nd construction'],
+          ['t5', '—', 'returns R1', 'R1', 'later callers: one volatile read, no lock']
+        ] },
+        complexity: `<p>Fast path: one volatile read (on x86 ≈ a normal load). Slow path once: lock + construction. The holder idiom has the same costs with zero hand-written synchronization.</p>`,
+        followUps: ['Why read the volatile into a local variable instead of reading instance twice?', 'Why is the enum singleton also serialization- and reflection-safe?', 'What would break if the Registry had a public non-final mutable field?']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 6 — wait / notify / notifyAll: guarded blocks & producer-consumer
+     ====================================================================== */
+  var BUF_CODE = [
+    'synchronized void put(int x) throws InterruptedException {',
+    '    while (count == CAP) wait();     // full  → release lock & sleep',
+    '    buf.addLast(x); count++;',
+    '    notifyAll();                     // wake every waiter to re-check',
+    '}',
+    'synchronized int take() throws InterruptedException {',
+    '    while (count == 0) wait();       // empty → release lock & sleep',
+    '    int x = buf.removeFirst(); count--;',
+    '    notifyAll();',
+    '    return x;',
+    '}'
+  ].join('\n');
+
+  topics.push({
+    title: 'wait(), notify() & notifyAll(): Guarded Blocks and Producer-Consumer',
+    analogy: `<p>A tiny bakery counter fits only <b>2 trays</b>. The counter is the lock: one person at a time stands at it. A baker (producer) arrives with a tray but the counter is full — instead of standing there blocking everyone, the baker <b>steps into the waiting room</b> (${C('wait()')}) and leaves the counter free. A customer (consumer) takes a tray and shouts <b>"something changed!"</b> into the waiting room (${C('notifyAll()')}). Everyone in the waiting room gets up and <b>queues for the counter again</b>; when each one gets their turn, they <b>look again</b> ("is there space now?") because someone else may have filled the gap first. That "look again" is the famous <b>while loop</b>.</p>`,
+    explain: `<p><b>🟢 The plain idea.</b> Sometimes a thread must wait until some <b>condition</b> on shared state becomes true ("queue not empty", "stage == 2", "count == 0"). Spinning in a loop wastes CPU and — without volatile — may never see the change. Java's built-in solution is the <b>guarded block</b>, using three methods every object inherits from ${C('Object')}:</p>
+${H.table(['method', 'what it does'], [
+  [C('wait()'), 'must hold the object\'s lock. <b>Atomically releases the lock</b> and parks the thread in the object\'s <b>wait set</b> (state WAITING). On wake-up, it must <b>re-acquire</b> the lock before wait() returns.'],
+  [C('wait(ms)'), 'same, but gives up after ms milliseconds (TIMED_WAITING).'],
+  [C('notify()'), 'wakes <b>one arbitrary</b> thread from this object\'s wait set (must hold the lock).'],
+  [C('notifyAll()'), 'wakes <b>all</b> threads in the wait set; they then compete for the lock one by one.']
+])}
+<p><b>The one idiom to write from memory:</b></p>
+${P(`synchronized (lock) {
+    while (!condition) {      // WHILE, never if
+        lock.wait();
+    }
+    // condition is true AND we hold the lock: act on it
+}
+
+// the other side:
+synchronized (lock) {
+    changeStateSoConditionMayBeTrue();
+    lock.notifyAll();
+}`)}
+<p><b>Why ${C('while')} and not ${C('if')}?</b> Three reasons: (1) <b>spurious wake-ups</b> — the JVM is allowed to return from wait() for no reason; (2) <b>stolen condition</b> — between the notify and you re-acquiring the lock, another thread may have consumed the item; (3) with ${C('notifyAll')} you are woken even if your particular condition is still false.</p>
+<p><b>Rules that trip people up:</b></p>
+<ul>
+<li>Calling ${C('wait/notify')} without holding <b>that object's</b> monitor throws ${C('IllegalMonitorStateException')} — e.g. ${C('synchronized (a) { b.wait(); }')}.</li>
+<li>${C('notify')} does <b>not</b> release the lock; the woken thread proceeds only after the notifier exits its synchronized block.</li>
+<li>Notifications are <b>not remembered</b>: a notify with nobody waiting is lost. That is harmless <b>only</b> if waiters check a state variable before waiting (the while loop does that) — never wait "for a notify", always wait <b>for a condition</b>.</li>
+<li>${C('sleep()')} keeps the lock; ${C('wait()')} releases it.</li>
+</ul>
+<p><b>notify vs notifyAll:</b> use ${C('notifyAll')} by default. ${C('notify')} is safe only when (a) all waiters wait for the <b>same</b> condition, and (b) each notification lets <b>at most one</b> waiter proceed. A bounded buffer with producers and consumers waiting on the same object violates (a) — a notify can wake the wrong kind of thread and stall everybody (see the second visualizer).</p>`,
+    clues: [
+      '"Implement a <b>producer-consumer</b> / bounded buffer / blocking queue <b>without java.util.concurrent</b>" → wait/notifyAll',
+      '"Print in order / alternate threads / <b>FooBar</b> / <b>ZeroEvenOdd</b> / H2O" → shared state + guarded waits',
+      '"Why must wait() be called in a <b>loop</b>?" → spurious wake-ups + stolen condition',
+      '"Difference between <b>sleep()</b> and <b>wait()</b>?" → wait releases the monitor, needs it held, woken by notify',
+      '"<b>IllegalMonitorStateException</b>" → calling wait/notify without holding that object\'s lock',
+      '"notify vs notifyAll — which and why?" → notifyAll unless waiters are uniform and one-in-one-out',
+      '"Thread waits forever although the event happened" → lost notification: wait without checking state'
+    ],
+    code: [`
+public class BoundedBuffer {
+    private final Deque<Integer> buf = new ArrayDeque<>();   // guarded by "this"
+    private final int capacity;
+
+    public BoundedBuffer(int capacity) { this.capacity = capacity; }
+
+    public synchronized void put(int x) throws InterruptedException {
+        while (buf.size() == capacity) wait();   // full: release the lock and sleep
+        buf.addLast(x);
+        notifyAll();                             // state changed: let waiters re-check
+    }
+
+    public synchronized int take() throws InterruptedException {
+        while (buf.isEmpty()) wait();            // empty: release the lock and sleep
+        int x = buf.removeFirst();
+        notifyAll();
+        return x;
+    }
+
+    public static void main(String[] args) throws InterruptedException {
+        BoundedBuffer b = new BoundedBuffer(2);
+        Thread producer = new Thread(() -> {
+            try { for (int i = 1; i <= 5; i++) { b.put(i); System.out.println("put " + i); } }
+            catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        });
+        Thread consumer = new Thread(() -> {
+            try { for (int i = 1; i <= 5; i++) System.out.println("took " + b.take()); }
+            catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        });
+        producer.start(); consumer.start();
+        producer.join(); consumer.join();        // "took" lines always come out as 1, 2, 3, 4, 5
+    }
+}`, `
+// sleep vs wait, side by side
+class SleepVsWait {
+    private final Object lock = new Object();
+    private boolean ready;                       // guarded by lock
+
+    void sleeper() throws InterruptedException {
+        synchronized (lock) {
+            Thread.sleep(100);                   // keeps holding the lock: everyone else is BLOCKED
+        }
+    }
+
+    void waiter() throws InterruptedException {
+        synchronized (lock) {
+            while (!ready) lock.wait(100);       // releases the lock while waiting (TIMED_WAITING)
+        }
+    }
+
+    void signal() {
+        synchronized (lock) { ready = true; lock.notifyAll(); }
+    }
+}`],
+    codeTitle: ['Bounded buffer with wait/notifyAll', 'sleep() keeps the lock, wait() releases it'],
+    viz: [{
+      title: 'Bounded buffer (capacity 2): wait set, entry set and the while loop',
+      input: 'C P P P P C C C',
+      inputLabel: 'Threads arriving in order: P = producer put(), C = consumer take()',
+      gen: function (input) {
+        var toks = clean(input).toUpperCase().split(/[\s,]+/).filter(function (x) { return x; });
+        if (!toks.length || toks.length > 12 || toks.some(function (t) { return !/^[PC]\d{0,2}$/.test(t); })) throw new Error('Use 1–12 tokens like P C P (optionally numbered: P1 C2)');
+        var CAP = 2, buf = [], waitSet = [], entry = [], frames = [], item = 0, nP = 0, nC = 0, states = {}, order = [];
+        var th = toks.map(function (t) {
+          var kind = t[0], name = t.length > 1 ? t : (kind === 'P' ? 'P' + (++nP) : 'C' + (++nC));
+          return { kind: kind, name: name };
+        });
+        var names = {}; th.forEach(function (t) { if (names[t.name]) throw new Error('Duplicate thread name ' + t.name); names[t.name] = 1; });
+        function fr(line, cls, narr, hlBuf) {
+          frames.push({ narr: narr, parts: [
+            { type: 'code', label: 'BoundedBuffer methods (CAP = 2)', lang: 'java', code: BUF_CODE, hl: line ? lineHl(line, cls) : {} },
+            { type: 'queue', label: 'buf (count = ' + buf.length + ' / ' + CAP + ')', items: buf.slice(), frontLabel: 'take here', backLabel: 'put here', hl: hlBuf || {} },
+            { type: 'set', label: 'Wait set (WAITING — lock released)', items: waitSet.slice() },
+            { type: 'queue', label: 'Entry set (BLOCKED — woken, need the lock again)', items: entry.slice() },
+            { type: 'table', label: 'Thread states', columns: ['thread', 'state'], rows: order.map(function (n) { return [n, states[n]]; }), hl: (function () { var h = {}; order.forEach(function (n, i) { if (states[n] === 'WAITING') h[i] = 'win'; else if (states[n] === 'BLOCKED') h[i] = 'bad'; else if (states[n].indexOf('done') === 0) h[i] = 'done'; }); return h; })() }
+          ] });
+        }
+        function canGo(t) { return t.kind === 'P' ? buf.length < CAP : buf.length > 0; }
+        function act(t) {
+          var hb = {};
+          if (t.kind === 'P') { item++; buf.push(item); hb[buf.length - 1] = 'ok'; states[t.name] = 'done (put ' + item + ')'; fr(3, 'ok', '<b>' + t.name + '</b> puts item ' + item + '. count = ' + buf.length + '.', hb); }
+          else { var x = buf.shift(); states[t.name] = 'done (took ' + x + ')'; fr(8, 'ok', '<b>' + t.name + '</b> takes item ' + x + '. count = ' + buf.length + '.'); }
+          if (waitSet.length) {
+            waitSet.forEach(function (n) { entry.push(n); states[n] = 'BLOCKED'; });
+            waitSet = [];
+            fr(t.kind === 'P' ? 4 : 9, 'win', '<b>notifyAll()</b>: every thread in the wait set moves to the entry set (BLOCKED). They cannot run yet — ' + t.name + ' still holds the lock until it leaves the method.');
+          } else {
+            fr(t.kind === 'P' ? 4 : 9, 'done', '<b>notifyAll()</b> with an empty wait set does nothing (the notification is not remembered). ' + t.name + ' returns and releases the lock.');
+          }
+        }
+        function arrive(t) {
+          states[t.name] = 'RUNNABLE'; order.push(t.name);
+          var ln = t.kind === 'P' ? 1 : 6;
+          fr(ln, 'cur', '<b>' + t.name + '</b> arrives and calls ' + (t.kind === 'P' ? 'put()' : 'take()') + ': it acquires the lock (nobody else is inside).');
+          if (!canGo(t)) {
+            waitSet.push(t.name); states[t.name] = 'WAITING';
+            fr(t.kind === 'P' ? 2 : 7, 'bad', '<b>' + t.name + '</b> checks the guard: buffer is ' + (t.kind === 'P' ? 'FULL' : 'EMPTY') + ' → calls <b>wait()</b>: releases the lock and joins the wait set. It uses no CPU now.');
+            return;
+          }
+          fr(t.kind === 'P' ? 2 : 7, 'ok', '<b>' + t.name + '</b> checks the guard: ' + (t.kind === 'P' ? 'space available' : 'an item is available') + ', so no waiting needed.');
+          act(t);
+          drain();
+        }
+        function drain() {
+          while (entry.length) {
+            var n = entry.shift(), t = th.filter(function (x) { return x.name === n; })[0];
+            states[n] = 'RUNNABLE';
+            fr(t.kind === 'P' ? 2 : 7, 'cur', '<b>' + n + '</b> re-acquires the lock and returns from wait() — then the <b>while</b> loop re-checks the guard.');
+            if (!canGo(t)) {
+              waitSet.push(n); states[n] = 'WAITING';
+              fr(t.kind === 'P' ? 2 : 7, 'bad', 'Guard is still false for <b>' + n + '</b> (' + (t.kind === 'P' ? 'still full' : 'someone else took the item first') + '), so it waits again. <span class="c-y">With <code>if</code> instead of <code>while</code> it would have ' + (t.kind === 'P' ? 'overfilled the buffer' : 'removed from an empty buffer and crashed') + '.</span>');
+            } else {
+              act(t);
+            }
+          }
+        }
+        fr(null, '', 'A buffer with capacity 2. Threads arrive one at a time in the order you typed: <b>' + th.map(function (t) { return t.name; }).join(', ') + '</b>. Watch where each thread sits: inside (owner), wait set, or entry set.');
+        th.forEach(arrive);
+        var stuck = order.filter(function (n) { return states[n] === 'WAITING'; });
+        frames.push({ narr: stuck.length ? 'All arrivals processed. Still waiting: <b>' + stuck.join(', ') + '</b> — they would wake when a matching ' + (th.filter(function (t) { return t.name === stuck[0]; })[0].kind === 'P' ? 'consumer' : 'producer') + ' arrives. Nothing is lost: they will re-check the state.' : '<span class="c-g">All threads finished.</span> Every waiter was woken by notifyAll and re-checked its guard in the while loop.', parts: [
+          { type: 'queue', label: 'Final buffer', items: buf.slice() },
+          { type: 'table', label: 'Final thread states', columns: ['thread', 'state'], rows: order.map(function (n) { return [n, states[n]]; }) },
+          note('Try <b>C C P</b> (two consumers, one item: one of them must wait again) or <b>P P P P P</b> (producers pile up in the wait set).', 'Experiment')
+        ] });
+        return frames;
+      }
+    }, {
+      title: 'Why notify() can freeze a producer-consumer (capacity 1)',
+      gen: function () {
+        var rows = function (r) { return { type: 'table', label: 'Thread states', columns: ['thread', 'kind', 'state'], rows: r }; };
+        return [
+          { narr: 'Same buffer, but capacity <b>1</b> and the code uses <b>notify()</b> instead of notifyAll(). Two consumers C1, C2 arrive first: buffer empty, both wait.', parts: [{ type: 'queue', label: 'buf (cap 1)', items: [] }, { type: 'set', label: 'Wait set', items: ['C1', 'C2'] }, rows([['C1', 'consumer', 'WAITING'], ['C2', 'consumer', 'WAITING'], ['P1', 'producer', 'not started'], ['P2', 'producer', 'not started']])] },
+          { narr: 'P1 puts item 1 and calls <b>notify()</b>: the JVM picks one waiter — C1. Good so far.', parts: [{ type: 'queue', label: 'buf (cap 1)', items: [1], hl: { 0: 'ok' } }, { type: 'set', label: 'Wait set', items: ['C2'] }, rows([['C1', 'consumer', 'BLOCKED (woken)'], ['C2', 'consumer', 'WAITING'], ['P1', 'producer', 'done'], ['P2', 'producer', 'not started']])] },
+          { narr: 'Before C1 gets the lock, P2 arrives: buffer is full → P2 waits. The wait set now holds <b>one consumer and one producer</b> — mixed conditions on one object.', parts: [{ type: 'queue', label: 'buf (cap 1)', items: [1] }, { type: 'set', label: 'Wait set', items: ['C2', 'P2'], hl: { P2: 'cur' } }, rows([['C1', 'consumer', 'BLOCKED (woken)'], ['C2', 'consumer', 'WAITING'], ['P1', 'producer', 'done'], ['P2', 'producer', 'WAITING']])] },
+          { narr: 'C1 gets the lock, takes item 1 and calls <b>notify()</b>. The right thread to wake is P2 (there is space now). But notify picks <b>any</b> waiter… it picks <b>C2</b>.', parts: [{ type: 'queue', label: 'buf (cap 1)', items: [] }, { type: 'set', label: 'Wait set', items: ['P2'], hl: { P2: 'bad' } }, rows([['C1', 'consumer', 'done (took 1)'], ['C2', 'consumer', 'BLOCKED (woken — wrong one!)'], ['P1', 'producer', 'done'], ['P2', 'producer', 'WAITING']])] },
+          { narr: 'C2 re-checks its while loop: buffer empty → waits again. It does not notify anyone (it changed nothing).', parts: [{ type: 'queue', label: 'buf (cap 1)', items: [] }, { type: 'set', label: 'Wait set', items: ['C2', 'P2'], hl: { C2: 'bad', P2: 'bad' } }, rows([['C1', 'consumer', 'done'], ['C2', 'consumer', 'WAITING'], ['P1', 'producer', 'done'], ['P2', 'producer', 'WAITING']])] },
+          { narr: '<span class="c-r">Stuck:</span> P2 waits although there is space; C2 waits for an item only P2 could produce. Nobody is left to notify. The program hangs with an empty buffer. (Not a deadlock in the lock-cycle sense — a <b>lost wake-up</b>.)', parts: [{ type: 'queue', label: 'buf (cap 1)', items: [] }, { type: 'set', label: 'Wait set (forever)', items: ['C2', 'P2'], hl: { C2: 'bad', P2: 'bad' } }, note('Fix options: (1) use <b>notifyAll()</b> — P2 would also wake and succeed; (2) use separate conditions for "not full" and "not empty" with <b>ReentrantLock</b> + two <b>Condition</b> objects (that is how ArrayBlockingQueue works) so signal() always wakes the right kind of thread.', 'Fix')] }
+        ];
+      }
+    }],
+    examples: [
+      { title: 'IllegalMonitorStateException', html: `<p>${C('wait')}/${C('notify')} require holding the monitor of the object you call them on. Holding a <i>different</i> lock is not enough. This is checked at runtime, not compile time.</p>`, code: `
+Object a = new Object(), b = new Object();
+try {
+    synchronized (a) {
+        b.notify();                  // we hold a's monitor, not b's
+    }
+} catch (IllegalMonitorStateException e) {
+    System.out.println("caught: " + e.getClass().getSimpleName());
+}` },
+      { title: 'What can this print? if instead of while', html: `<p>Two consumers wait with ${C('if (queue.isEmpty()) wait();')}. A producer adds <b>one</b> item and calls ${C('notifyAll')}. Consumer 1 wakes, takes the item. Consumer 2 wakes next, does <b>not</b> re-check (it was an if), and calls ${C('removeFirst()')} on an empty deque → ${C('NoSuchElementException')}. Possible outputs: one "took 1" plus a crash in the other thread — or, if consumer 2 happened to wake first, the same crash in consumer 1. With ${C('while')}, the late consumer simply waits again.</p>` },
+      { title: 'Lost notification: waiting for a signal instead of a condition', html: `<p>If thread B calls ${C('lock.notify()')} <b>before</b> thread A reaches ${C('lock.wait()')}, and A waits unconditionally, A sleeps forever: notifications are not queued. The cure is always the same — keep a state variable (${C('boolean done')}) and wait only <b>while</b> it is false. Then order does not matter.</p>`, code: `
+class OneShotSignal {
+    private boolean fired;                         // the condition, guarded by this
+    synchronized void fire() { fired = true; notifyAll(); }
+    synchronized void await() throws InterruptedException {
+        while (!fired) wait();                     // if fire() already happened, we never wait
+    }
+}` },
+      { title: 'Ping-pong with one shared turn variable', html: `<p>Two threads alternate printing "ping" and "pong" 3 times. Each waits <b>while</b> it is not its turn, prints, flips the turn and calls ${C('notifyAll')}. Output is deterministic: ping pong ping pong ping pong.</p>`, code: `
+class PingPong {
+    private boolean pingTurn = true;               // guarded by this
+    synchronized void play(boolean isPing, int times) throws InterruptedException {
+        for (int i = 0; i < times; i++) {
+            while (pingTurn != isPing) wait();
+            System.out.println(isPing ? "ping" : "pong");
+            pingTurn = !pingTurn;
+            notifyAll();
+        }
+    }
+}` }
+    ],
+    deepDive: `<p><b>🟣 What wait() really does</b> (JLS 17.2): the thread must own the monitor; it records its recursion count, <b>fully releases</b> the monitor (even if held reentrantly several times), and is added to the wait set. It leaves the wait set on notify, notifyAll, interrupt, timeout, or a <b>spurious wake-up</b>. It then competes for the monitor like any other thread (it is BLOCKED in a thread dump at that point) and restores its recursion count before returning. If it was interrupted, ${C('wait')} throws ${C('InterruptedException')} and clears the interrupt flag. The JLS also guarantees that a notification is not lost if the chosen thread is concurrently interrupted — another waiter will be woken instead.</p>
+<p><b>Thundering herd.</b> ${C('notifyAll')} with 1,000 waiters wakes all of them; 999 re-acquire the lock one by one just to discover they must wait again — O(n) context switches per state change. This is why ${C('java.util.concurrent')} uses ${C('Condition')} objects (several wait sets per lock: "notFull", "notEmpty") and ${C('signal()')}: it wakes exactly one thread of the right kind. ${C('ArrayBlockingQueue')} is literally a bounded buffer with one ${C('ReentrantLock')} and two Conditions.</p>
+<p><b>Nested monitor lockout.</b> Calling ${C('inner.wait()')} while also holding an <b>outer</b> lock releases only the inner monitor. The thread that would notify you needs the outer lock first → it blocks forever. Never wait while holding more than one lock.</p>
+<p><b>Visibility comes free.</b> Because guarded blocks run inside ${C('synchronized')}, the state variables need no ${C('volatile')}: the notifier's unlock happens-before the waiter's re-lock. That is a frequent interview follow-up ("does the turn flag need to be volatile?" → no, it is always accessed under the same lock).</p>
+<p><b>In modern code</b> you rarely write wait/notify directly: use ${C('BlockingQueue')}, ${C('CountDownLatch')}, ${C('Semaphore')}, ${C('CompletableFuture')} (next module). But interviewers still ask for it because it proves you understand monitors, and the LeetCode concurrency set (1114–1117, 1195, 1226) is solvable with nothing else.</p>`,
+    aiEra: `<p><b>🤖 What AI changes:</b> the LeetCode concurrency problems and "bounded buffer with wait/notify" are thoroughly memorised by every assistant — producing the code is no longer impressive. What still matters is explaining <b>why</b> each line is there. <b>Use AI as a partner:</b> <code>Here is my wait/notify solution. Generate an adversarial schedule (thread order + spurious wake-ups) that breaks it, or argue why none exists.</code></p>
+<p><b>Where AI goes wrong:</b> ${C('if')} instead of ${C('while')} in less common variants, ${C('notify')} where waiters are heterogeneous, calling ${C('wait')} on the wrong object (e.g. ${C('this.wait()')} inside ${C('synchronized (lock)')}), swallowing ${C('InterruptedException')}, or mixing ${C('Thread.sleep')} polling with locks. It may also suggest wait/notify where a ${C('CountDownLatch')} or ${C('BlockingQueue')} is clearly better. <b>What you must still own:</b> the guarded-block idiom, the notify-vs-notifyAll rule, and recognising when to stop hand-rolling and use ${C('java.util.concurrent')}.</p>`,
+    problems: [{
+      title: 'Build a CountDownLatch from wait/notifyAll',
+      level: 'Medium', tags: ['wait/notify', 'guarded block', 'synchronizer'], companies: ['Microsoft', 'Adobe', 'Walmart'],
+      statement: `<p>Implement ${C('SimpleLatch(int count)')} with ${C('countDown()')}, ${C('await()')} and ${C('getCount()')}. ${C('await')} blocks until the count reaches zero (returns immediately if already zero); ${C('countDown')} decrements (never below zero) and releases <b>all</b> waiters when it hits zero. Use only ${C('synchronized')}, ${C('wait')} and ${C('notifyAll')}.</p>`,
+      constraints: `0 ≤ count ≤ 10<sup>6</sup>; any number of awaiting threads; countDown may be called more times than count (extra calls are no-ops). await must respond to interruption.`,
+      example: `<p>Latch(3). Main calls ${C('await()')} → WAITING. Workers W1, W2, W3 each call ${C('countDown()')} → 2, 1, ${H.c('g', '0 → main wakes')}. A thread that calls ${C('await()')} later returns immediately.</p>`,
+      brute: {
+        why: `<p>Busy-waiting on a plain ${C('int')}: ${C('while (count > 0) {}')}. Burns a full core per waiter, and since ${C('count')} is not volatile the JIT may hoist the read so the waiter <b>never</b> sees zero. ${C('count--')} from several workers is also a lost-update race, so the count may never reach zero at all.</p>`,
+        code: `
+class SpinLatch {
+    private int count;                               // plain, unsynchronized
+    SpinLatch(int count) { this.count = count; }
+    void countDown() { if (count > 0) count--; }     // check-then-act + read-modify-write race
+    void await() { while (count > 0) { } }           // may spin forever (hoisted read), wastes a core
+}`
+      },
+      mcq: { q: 'Inside <code>await()</code> the thread calls <code>wait()</code> while holding the latch\'s lock. How can workers call the synchronized <code>countDown()</code> at the same time?', options: ['They cannot — this deadlocks', 'wait() releases the latch\'s monitor while waiting and re-acquires it before returning', 'countDown does not need the lock', 'Java lets two threads own a monitor during wait()'], answer: 1, explain: 'wait() atomically releases the monitor and parks the thread; that is exactly what lets the notifier enter. When woken, the waiter must re-acquire the monitor before wait() returns.' },
+      hints: [
+        `<p>Hint 1: the condition waiters care about is ${C('count == 0')}. It is a single int guarded by the latch's own monitor.</p>`,
+        `<p>Hint 2: ${C('await')}: ${C('while (count > 0) wait();')}. ${C('countDown')}: if count &gt; 0, decrement; if it just became 0, ${C('notifyAll()')}.</p>`,
+        `<p>Hint 3: ${C('notifyAll')}, not ${C('notify')}: <b>every</b> waiter must be released, not one. A ${C('notify')} when count is still positive is wasted work — only notify on the 1 → 0 transition. Let InterruptedException propagate from await.</p>`
+      ],
+      solution: {
+        approach: `<p><b>Guarded block on one int.</b> All access to ${C('count')} is under the latch's monitor, so no volatile is needed. Waiters loop on the guard ${C('count > 0')} (protecting against spurious wake-ups). The thread that moves the count from 1 to 0 calls ${C('notifyAll')}, waking every waiter; each re-acquires the monitor, sees 0, and returns. Once at zero the latch stays open forever (no reset), matching ${C('java.util.concurrent.CountDownLatch')}.</p>`,
+        code: `
+class SimpleLatch {
+    private int count;                                  // guarded by "this"
+
+    SimpleLatch(int count) {
+        if (count < 0) throw new IllegalArgumentException("count < 0");
+        this.count = count;
+    }
+
+    synchronized void countDown() {
+        if (count > 0 && --count == 0) notifyAll();     // only the 1 → 0 transition opens the gate
+    }
+
+    synchronized void await() throws InterruptedException {
+        while (count > 0) wait();                       // while: spurious wake-ups are allowed
+    }
+
+    synchronized int getCount() { return count; }
+
+    public static void main(String[] args) throws InterruptedException {
+        SimpleLatch latch = new SimpleLatch(3);
+        for (int i = 1; i <= 3; i++) {
+            final int id = i;
+            new Thread(() -> {
+                System.out.println("worker " + id + " ready");
+                latch.countDown();
+            }).start();
+        }
+        latch.await();                                  // returns only after all three counted down
+        System.out.println("all workers ready, count=" + latch.getCount());   // always the last line
+    }
+}`,
+        dry: { head: ['event', 'thread', 'count before → after', 'action', 'main state'], rows: [
+          ['await()', 'main', '3', 'guard true → wait() (lock released)', 'WAITING'],
+          ['countDown()', 'W2', '3 → 2', 'not zero: no notify', 'WAITING'],
+          ['countDown()', 'W1', '2 → 1', 'not zero: no notify', 'WAITING'],
+          ['countDown()', 'W3', '1 → 0', '<span class="c-g">notifyAll()</span>', 'BLOCKED → RUNNABLE'],
+          ['wait() returns', 'main', '0', 'guard false → return', 'RUNNABLE']
+        ] },
+        complexity: `<p>countDown O(1); await O(1) apart from waiting; the final notifyAll wakes all W waiters, costing O(W) lock hand-offs once.</p>`,
+        followUps: ['Add await(long timeout, TimeUnit unit) returning boolean.', 'How would you make it reusable (a cyclic barrier)?', 'Why does the real CountDownLatch use AQS instead of a monitor?']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 7 — Deadlock, livelock, starvation
+     ====================================================================== */
+  topics.push({
+    title: 'Deadlock, Livelock & Starvation: Diagnose, Prevent, Recover',
+    analogy: `<p><b>Deadlock</b>: two cars meet on a one-lane bridge from opposite ends; each waits for the other to reverse; neither ever does — total silence. <b>Livelock</b>: two very polite people in a corridor both step left, then both step right, then both left… they are <b>busy moving</b> but nobody gets past. <b>Starvation</b>: at a busy bar, the bartender always serves whoever shouts loudest; the quiet customer is never served even though the bar is working fine for everyone else.</p>`,
+    explain: `<p><b>🟢 Three ways concurrent code stops making progress:</b></p>
+${H.table(['problem', 'threads are…', 'CPU', 'progress', 'thread dump shows'], [
+  ['<b class="c-r">Deadlock</b>', 'blocked forever, each waiting for a lock another holds', 'idle', 'none (for those threads)', 'BLOCKED + "Found one Java-level deadlock"'],
+  ['<b class="c-y">Livelock</b>', 'running, retrying, reacting to each other', 'busy', 'none', 'RUNNABLE, stacks keep changing'],
+  ['<b class="c-p">Starvation</b>', 'some get the resource repeatedly, one never does', 'busy', 'system yes, victim no', 'victim BLOCKED/WAITING a long time']
+])}
+<p><b>The four Coffman conditions</b> — a deadlock is possible only if <b>all four</b> hold. Break any one and deadlock is impossible:</p>
+${H.table(['condition', 'meaning', 'how to break it in Java'], [
+  ['Mutual exclusion', 'a lock is held by one thread at a time', 'use lock-free / immutable data where possible'],
+  ['Hold and wait', 'a thread holds one lock while waiting for another', 'acquire everything at once (one coarse lock), or release before acquiring'],
+  ['No preemption', 'nobody can take a lock away from its holder', C('tryLock(timeout)') + ': give up and release what you hold (ReentrantLock, next module)'],
+  ['Circular wait', 'T1 waits for T2 waits for … T1', '<b>global lock ordering</b> — always acquire locks in the same order (most common fix)']
+])}
+<p><b>The classic lock-ordering deadlock</b>: ${C('transfer(a, b)')} locks a then b; at the same moment ${C('transfer(b, a)')} locks b then a. Each holds one and waits for the other forever. The order looks fixed in the source code ("from then to") but depends on the <b>arguments</b> — a <b>dynamic</b> lock-order deadlock. Fix: order by something stable and unique (account id, ${C('System.identityHashCode')} with a tie-breaker lock).</p>
+<p><b>Other sources:</b> calling an <b>alien method</b> (listener, callback, overridable method) while holding a lock — it might take another lock in the opposite order. Rule: make <b>open calls</b> (call out with no lock held). Also <b>resource deadlocks</b>: a task in a single-thread executor that submits and waits for another task in the <b>same</b> executor waits forever (thread-starvation deadlock); JDBC connection pools of size N with N threads each needing two connections.</p>
+<p><b>Livelock</b> usually comes from symmetric retry logic: "if I can't get the second lock, release the first and retry immediately". If both threads do this in lockstep, they retry forever. Fix: <b>randomized back-off</b> (jitter) breaks the symmetry — the same trick Ethernet and distributed systems use.</p>
+<p><b>Starvation</b> comes from unfair scheduling: ${C('synchronized')} is not fair (barging allowed), a reader-preferring read-write lock can starve writers, a thread that holds a lock for a long time starves others, and thread priorities can (on some OSes) starve low-priority threads. Fixes: fair locks (${C('new ReentrantLock(true)')}), FIFO queues, shorter critical sections, writer preference.</p>`,
+    clues: [
+      '"Application <b>hangs</b>, CPU near 0%, threads BLOCKED" → deadlock; take a thread dump (jstack)',
+      '"<b>Bank transfer</b> between two accounts with two locks" → lock ordering by account id',
+      '"CPU at 100% but <b>no progress</b>, logs show endless retries" → livelock; add randomized back-off',
+      '"One thread <b>never gets</b> its turn" / writers never get the RW lock → starvation; fairness',
+      '"<b>Dining philosophers</b>" → break circular wait (ordering) or limit diners (semaphore)',
+      '"Name the <b>4 conditions</b> for deadlock" → Coffman: mutual exclusion, hold-and-wait, no preemption, circular wait',
+      '"How do you <b>detect</b> a deadlock in production?" → jstack / jcmd Thread.print / ThreadMXBean.findDeadlockedThreads / JFR'
+    ],
+    code: [`
+import java.lang.management.*;
+
+public class DeadlockDemo {
+    static final Object A = new Object(), B = new Object();
+
+    static void pause(long ms) {
+        try { Thread.sleep(ms); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+    }
+
+    public static void main(String[] args) throws InterruptedException {
+        Thread t1 = new Thread(() -> {
+            synchronized (A) {
+                pause(50);                                  // makes the bad interleaving near-certain
+                synchronized (B) { System.out.println("t1 got both"); }
+            }
+        }, "t1");
+        Thread t2 = new Thread(() -> {
+            synchronized (B) {                              // OPPOSITE order → circular wait
+                pause(50);
+                synchronized (A) { System.out.println("t2 got both"); }
+            }
+        }, "t2");
+        t1.setDaemon(true); t2.setDaemon(true);             // lets this demo exit although they are stuck
+        t1.start(); t2.start();
+        Thread.sleep(300);
+
+        ThreadMXBean mx = ManagementFactory.getThreadMXBean();
+        long[] ids = mx.findDeadlockedThreads();            // null when there is no deadlock
+        if (ids == null) { System.out.println("no deadlock this time (lucky timing)"); return; }
+        for (ThreadInfo info : mx.getThreadInfo(ids)) {
+            System.out.println(info.getThreadName() + " is " + info.getThreadState()
+                + ", waiting for " + info.getLockName() + " held by " + info.getLockOwnerName());
+        }
+    }
+}`, `
+// Livelock-safe retry with randomized back-off (uses tryLock from java.util.concurrent.locks)
+class PoliteMover {
+    static boolean moveBoth(ReentrantLock first, ReentrantLock second, Runnable action) throws InterruptedException {
+        while (true) {
+            if (first.tryLock()) {
+                try {
+                    if (second.tryLock()) {
+                        try { action.run(); return true; }
+                        finally { second.unlock(); }
+                    }
+                } finally {
+                    first.unlock();
+                }
+            }
+            // Without jitter, two threads can release and retry in perfect lockstep forever (livelock).
+            Thread.sleep(ThreadLocalRandom.current().nextInt(1, 10));
+        }
+    }
+}`],
+    codeTitle: ['Deadlock on purpose + detection with ThreadMXBean (exits on its own)', 'tryLock + random back-off avoids both deadlock and livelock'],
+    viz: [{
+      title: 'Wait-for graph: give each thread a lock order and see if they deadlock',
+      input: 'T1: A B; T2: B A',
+      inputLabel: 'Per thread, the locks it takes in order (e.g. T1: A B; T2: B C; T3: C A)',
+      gen: function (input) {
+        var specs = clean(input).split(';').map(function (s) { return s.trim(); }).filter(function (s) { return s; });
+        var hint = 'Format: T1: A B; T2: B A  (2–4 threads, 1–4 distinct single-letter locks each)';
+        if (specs.length < 2 || specs.length > 4) throw new Error(hint);
+        var threads = specs.map(function (s) {
+          var m = s.match(/^([A-Za-z0-9]{1,4})\s*:\s*(.+)$/);
+          if (!m) throw new Error(hint);
+          var locks = m[2].trim().toUpperCase().split(/[\s,]+/);
+          if (!locks.length || locks.length > 4 || locks.some(function (l) { return !/^[A-Z]$/.test(l); })) throw new Error(hint);
+          var seenL = {}; locks.forEach(function (l) { if (seenL[l]) throw new Error('A thread cannot list the same lock twice'); seenL[l] = 1; });
+          return { name: m[1], locks: locks, idx: 0, held: [], status: 'running', waitOn: null };
+        });
+        var tn = {}; threads.forEach(function (t) { if (tn[t.name]) throw new Error('Thread names must be different'); tn[t.name] = 1; });
+        var allLocks = [];
+        threads.forEach(function (t) { t.locks.forEach(function (l) { if (allLocks.indexOf(l) < 0) allLocks.push(l); }); });
+        allLocks.sort();
+        var holder = {}, frames = [];
+        function graph(cycleEdges, hlNodes) {
+          var H_ = 64, nodes = [], edges = [], ehl = {}, hl = {}, tags = {};
+          threads.forEach(function (t, i) { nodes.push({ id: 't' + i, label: t.name, x: 14, y: threads.length === 1 ? 32 : 8 + i * (H_ - 16) / (threads.length - 1) }); tags['t' + i] = t.status === 'waiting' ? 'waits ' + t.waitOn : t.status; });
+          allLocks.forEach(function (l, j) { nodes.push({ id: 'l' + l, label: 'lock ' + l, x: 76, y: allLocks.length === 1 ? 32 : 8 + j * (H_ - 16) / (allLocks.length - 1), shape: 'box' }); });
+          allLocks.forEach(function (l) { if (holder[l] !== undefined) { edges.push(['l' + l, 't' + holder[l], 'held by']); } });
+          threads.forEach(function (t, i) { if (t.status === 'waiting') edges.push(['t' + i, 'l' + t.waitOn, 'waits']); });
+          (cycleEdges || []).forEach(function (k) { ehl[k] = 'bad'; });
+          (hlNodes || []).forEach(function (k) { hl[k[0]] = k[1]; });
+          return { type: 'graph', label: 'Wait-for graph (lock → holder, thread → lock it waits for)', directed: true, height: H_, nodes: nodes, edges: edges, ehl: ehl, hl: hl, tags: tags };
+        }
+        function table() {
+          return { type: 'table', label: 'Threads', columns: ['thread', 'lock order', 'holds', 'status'], rows: threads.map(function (t) { return [t.name, t.locks.join(' → '), t.held.join(', ') || '—', t.status === 'waiting' ? 'BLOCKED on ' + t.waitOn : t.status]; }),
+            hl: (function () { var h = {}; threads.forEach(function (t, i) { h[i] = t.status === 'waiting' ? 'bad' : t.status === 'done' ? 'done' : ''; }); return h; })() };
+        }
+        function fr(narr, cyc, hlN) { frames.push({ narr: narr, parts: [graph(cyc, hlN), table()] }); }
+        fr('Each thread acquires its locks <b>in the listed order</b>, holds them all, does its work, then releases everything. The scheduler runs them round-robin, one lock attempt per turn — the most dangerous interleaving.');
+        var guard = 0;
+        while (guard++ < 40) {
+          threads.forEach(function (t, i) {
+            if (t.status === 'done') return;
+            if (t.idx === t.locks.length) {
+              t.held.forEach(function (l) { delete holder[l]; });
+              var rel = t.held.join(', '); t.held = []; t.status = 'done';
+              threads.forEach(function (o) { if (o.status === 'waiting' && holder[o.waitOn] === undefined) { o.status = 'running'; } });
+              fr('<b>' + t.name + '</b> holds all its locks, does its work and <b>releases ' + rel + '</b>. Any thread blocked on those locks can now try again.', [], [['t' + i, 'ok']]);
+              return;
+            }
+            var L = t.locks[t.idx];
+            if (holder[L] === undefined) {
+              holder[L] = i; t.held.push(L); t.idx++; t.status = 'running'; t.waitOn = null;
+              fr('<b>' + t.name + '</b> acquires <b>lock ' + L + '</b> (it was free).', [], [['t' + i, 'cur'], ['l' + L, 'ok']]);
+            } else if (t.status !== 'waiting' || t.waitOn !== L) {
+              t.status = 'waiting'; t.waitOn = L;
+              fr('<b>' + t.name + '</b> wants <b>lock ' + L + '</b>, but ' + threads[holder[L]].name + ' holds it → ' + t.name + ' is <b>BLOCKED</b>' + (t.held.length ? ' <i>while still holding ' + t.held.join(', ') + '</i> (hold-and-wait)' : '') + '.', [], [['t' + i, 'bad'], ['l' + L, 'cur']]);
+            }
+          });
+          var active = threads.filter(function (t) { return t.status !== 'done'; });
+          if (!active.length) break;
+          if (active.every(function (t) { return t.status === 'waiting'; })) {
+            // follow wait-for pointers from the first waiting thread to find the cycle
+            var start = threads.indexOf(active[0]), seenT = {}, path = [], cur = start;
+            while (seenT[cur] === undefined) { seenT[cur] = path.length; path.push(cur); cur = holder[threads[cur].waitOn]; }
+            var cyc = path.slice(seenT[cur]), cycEdges = [], hlN = [];
+            cyc.forEach(function (ti) { var l = threads[ti].waitOn; cycEdges.push('t' + ti + '-l' + l); cycEdges.push('l' + l + '-t' + holder[l]); hlN.push(['t' + ti, 'bad']); hlN.push(['l' + l, 'bad']); });
+            fr('<span class="c-r"><b>DEADLOCK.</b></span> Every remaining thread is blocked, and the red edges form a <b>cycle</b>: ' + cyc.map(function (ti) { return threads[ti].name + ' waits for ' + threads[ti].waitOn; }).join(' → ') + ' → back to the start. No one will ever release anything. All four Coffman conditions hold.', cycEdges, hlN);
+            frames.push({ narr: 'Fix: impose a <b>global order</b>. If every thread takes locks in alphabetical order (e.g. <b>' + threads.map(function (t) { return t.name + ': ' + t.locks.slice().sort().join(' '); }).join('; ') + '</b>), a cycle is impossible: a thread holding lock X only ever waits for a lock "greater" than X, and you cannot go "up" forever and come back. Try that input!', parts: [note('Ordering breaks <b>circular wait</b>. Alternatives: tryLock with timeout (breaks no-preemption), one coarse lock (breaks hold-and-wait).', 'How to break it')] });
+            return frames;
+          }
+        }
+        frames.push({ narr: '<span class="c-g">No deadlock:</span> every thread finished. With this lock order there is no way to form a cycle' + (threads.every(function (t) { return t.locks.join('') === t.locks.slice().sort().join(''); }) ? ' — all threads acquire locks in the same global (alphabetical) order.' : ' for this schedule (but check other orders before trusting it!).'), parts: [table(), note('Change one thread to take its locks in the reverse order to watch a deadlock form.', 'Experiment')] });
+        return frames;
+      }
+    }, {
+      title: 'Livelock: two polite threads in lockstep, then jitter',
+      gen: function () {
+        var cols = ['round', 'T1 (holds A, wants B)', 'T2 (holds B, wants A)', 'progress'];
+        var r = [];
+        var f = [];
+        function fr(narr, hl, extra) { f.push({ narr: narr, parts: [{ type: 'table', label: 'What each thread does', columns: cols, rows: r.slice(), hl: hl || {} }].concat(extra || []) }); }
+        r.push(['1', 'lock A ✓ · tryLock B ✗ · release A', 'lock B ✓ · tryLock A ✗ · release B', 'none']);
+        fr('Both use "tryLock the second lock; if it fails, release the first and retry". Round 1: each grabs its first lock at the same instant, fails on the second, politely releases.', { 0: 'bad' });
+        r.push(['2', 'lock A ✓ · tryLock B ✗ · release A', 'lock B ✓ · tryLock A ✗ · release B', 'none']);
+        fr('Round 2: they retry <b>immediately</b>, in the same rhythm, and collide again. No deadlock (nobody is BLOCKED, they release!), yet nobody progresses.', { 1: 'bad' });
+        r.push(['3…∞', 'same', 'same', 'none — CPU 100%']);
+        fr('<b>Livelock:</b> threads are RUNNABLE and busy, logs fill with retries, throughput is zero. Harder to spot than deadlock because a thread dump shows "healthy" running threads.', { 2: 'bad' }, [{ type: 'vars', label: 'Symptoms', vals: { CPU: '100%', 'thread states': 'RUNNABLE', progress: 0 }, hl: { progress: 'bad' } }]);
+        r.push(['4', 'back off 7 ms (random)', 'back off 2 ms (random)', '—']);
+        fr('Fix: after a failed attempt, sleep a <b>random</b> short time. The two threads now retry at different moments.', { 3: 'cur' });
+        r.push(['5', 'still sleeping', 'lock B ✓ · lock A ✓ · work · release', '<span class="c-g">T2 done</span>']);
+        fr('T2 wakes first and finds both locks free — it completes its work.', { 4: 'ok' });
+        r.push(['6', 'lock A ✓ · lock B ✓ · work · release', 'done', '<span class="c-g">T1 done</span>']);
+        fr('<span class="c-g">Both finish.</span> Randomized (often exponential) back-off breaks the symmetry — the same idea used by Ethernet collisions, Raft election timeouts and HTTP client retries with jitter.', { 5: 'ok' });
+        return f;
+      }
+    }],
+    examples: [
+      { title: 'What can this print? The two-lock demo', html: `<p>For the ${C('DeadlockDemo')} above without the sleeps, possible outcomes: "t1 got both" then "t2 got both"; the reverse; or <b>nothing at all</b> (deadlock). With the 50 ms sleeps, deadlock is almost certain. The program still exits only because the threads are daemons — with normal threads it would hang forever and ${C('jstack <pid>')} would print:</p>${P(`Found one Java-level deadlock:
+=============================
+"t1": waiting to lock monitor 0x... (object 0x...B, a java.lang.Object),
+  which is held by "t2"
+"t2": waiting to lock monitor 0x... (object 0x...A, a java.lang.Object),
+  which is held by "t1"`)}` },
+      { title: 'Alien method called under a lock', html: `<p>${C('notifyListeners()')} runs unknown code while holding ${C('this')}. If a listener calls back into another object that locks in the opposite order, you get a deadlock nobody can see by reading one class. Fix: copy the listener list under the lock, then call listeners <b>outside</b> it (an <b>open call</b>).</p>`, code: `
+class Thermostat {
+    private final List<Consumer<Integer>> listeners = new ArrayList<>();   // guarded by this
+    private int temp;
+
+    synchronized void addListener(Consumer<Integer> l) { listeners.add(l); }
+
+    void setTemp(int t) {
+        List<Consumer<Integer>> snapshot;
+        synchronized (this) {
+            temp = t;
+            snapshot = new ArrayList<>(listeners);   // copy under the lock
+        }
+        for (Consumer<Integer> l : snapshot) l.accept(t);   // open call: no lock held
+    }
+}` },
+      { title: 'Thread-starvation deadlock in a single-thread pool', html: `<p>A task running in a single-thread executor submits a second task to the <b>same</b> executor and waits for its result. The second task can never start (the only thread is busy waiting), so the first never finishes. No locks involved — a <b>resource</b> deadlock. Fix: never block on tasks in the same bounded pool; use a separate pool or compose asynchronously (CompletableFuture, next module). The code below uses a timeout so it does not hang.</p>`, code: `
+ExecutorService single = Executors.newSingleThreadExecutor();
+Future<String> outer = single.submit(() -> {
+    Future<String> inner = single.submit(() -> "inner result");   // queued behind us forever
+    try {
+        return inner.get(200, TimeUnit.MILLISECONDS);             // would block forever without a timeout
+    } catch (TimeoutException e) {
+        return "starvation deadlock detected (inner never ran)";
+    }
+});
+System.out.println(outer.get());
+single.shutdownNow();` },
+      { title: 'Starvation with an unfair lock, and the fair fix', html: `<p>A greedy thread re-acquires a lock in a tight loop. Because intrinsic locks allow <b>barging</b>, the greedy thread often wins again immediately and a waiting thread can wait a very long time. A fair ${C('ReentrantLock(true)')} grants the lock to the longest-waiting thread (FIFO), trading throughput for predictability.</p>`, code: `
+ReentrantLock fair = new ReentrantLock(true);   // FIFO hand-off, no barging
+Runnable greedy = () -> {
+    for (int i = 0; i < 1000; i++) {
+        fair.lock();
+        try { Thread.onSpinWait(); } finally { fair.unlock(); }
+    }
+};
+Thread g = new Thread(greedy);
+Thread polite = new Thread(() -> {
+    fair.lock();
+    try { System.out.println("polite thread got its turn"); } finally { fair.unlock(); }
+});
+g.start(); polite.start(); g.join(); polite.join();` }
+    ],
+    deepDive: `<p><b>🟣 Why ordering works (proof sketch).</b> Give every lock a rank. If threads only ever request a lock with a <b>higher</b> rank than every lock they hold, then along any wait-for chain T1 → T2 → … the rank of the requested lock strictly increases. A cycle would need it to come back to a lower rank — impossible. When objects have no natural key, order by ${C('System.identityHashCode')} and, for the rare tie, take an extra global "tie-breaker" lock first (the technique in <i>Java Concurrency in Practice</i>).</p>
+<p><b>Recovering.</b> Intrinsic-lock deadlocks are <b>unrecoverable</b> in Java: you cannot interrupt a thread out of a BLOCKED state, and there is no timeout on ${C('synchronized')}. The only cure is restarting the process. That is a strong reason to use ${C('ReentrantLock.tryLock(timeout)')} or ${C('lockInterruptibly()')} in code paths where ordering is hard to guarantee. Databases take the opposite approach: they run a wait-for-graph cycle detector and abort a victim transaction — exactly the graph in the visualizer.</p>
+<p><b>Detection in production.</b> ${C('jstack <pid>')} or ${C('jcmd <pid> Thread.print')} print deadlocks involving monitors <b>and</b> ${C('java.util.concurrent')} ownable synchronizers. ${C('ThreadMXBean.findDeadlockedThreads()')} does the same programmatically — some services run it on a watchdog thread and alert. JDK Flight Recorder records ${C('jdk.JavaMonitorBlocked')} events (contention hot spots). Note that deadlocks on ${C('wait/notify')} logic (lost wake-ups) and on external resources (DB rows, connection pools) are <b>invisible</b> to these tools — they just look like WAITING threads.</p>
+<p><b>Starvation in detail.</b> Fair locks have much lower throughput (every hand-off is a context switch; no barging), so most code accepts unfairness. Read-write locks need a policy: reader-preference starves writers under constant reads; writer-preference can starve readers. Thread priorities map to OS priorities only with special flags on Linux, so "raise the priority" is rarely a fix. With virtual threads (Java 21), a few long CPU-bound tasks can monopolise the carrier threads, starving thousands of virtual threads — keep CPU-heavy work on a bounded platform pool.</p>
+<p><b>Distributed echo.</b> The same three failures appear across services: two services each holding a DB row lock and calling the other (distributed deadlock, broken by timeouts), retry storms without jitter (livelock), and a hot tenant starving others (fair queuing, rate limits). Interviewers love candidates who connect these.</p>`,
+    aiEra: `<p><b>🤖 What AI changes:</b> paste a thread dump into an assistant and it will find the deadlock cycle and name the two code paths in seconds — genuinely useful at 3 a.m. It will also propose the standard lock-ordering fix. <b>Use AI as a partner:</b> <code>List every place in this module where a second lock is acquired while a first is held, with the order of acquisition. Flag any pair acquired in both orders.</code> — a static lock-order audit that is tedious by hand.</p>
+<p><b>Where AI goes wrong:</b> it "fixes" deadlocks by deleting a lock (introducing a race), adds ${C('tryLock')} retry loops <b>without</b> back-off (turning deadlock into livelock), orders locks by ${C('hashCode()')} (not unique, can change), or misses deadlocks that span an alien callback. It cannot see production timing, pool sizes or DB lock waits unless you show it. <b>What you must still own:</b> the Coffman conditions, a lock-ordering policy for your codebase, the habit of open calls, and reading a thread dump yourself to verify the AI's story.</p>`,
+    problems: [{
+      title: 'Deadlock-Free Money Transfer',
+      level: 'Medium', tags: ['deadlock', 'lock ordering', 'synchronized'], companies: ['Goldman Sachs', 'PayPal', 'Stripe', 'Morgan Stanley'],
+      statement: `<p>Implement ${C('static boolean transfer(Account from, Account to, long amount)')}. It must move money atomically (no thread ever sees money "in flight": the total across all accounts is constant whenever both locks are free), refuse overdrafts and non-positive amounts, and <b>never deadlock</b>, even when one thread calls ${C('transfer(a, b)')} while another calls ${C('transfer(b, a)')}. Each ${C('Account')} has a unique immutable ${C('long id')}.</p>`,
+      constraints: `Up to 10<sup>5</sup> accounts, 64 threads, arbitrary concurrent transfers in both directions. Transfer to self returns false.`,
+      example: `<p>A(id 1, 100) and B(id 2, 100). Thread X runs transfer(A→B, 1) 10,000 times; thread Y runs transfer(B→A, 1) 10,000 times. Program finishes, and ${H.c('g', 'A + B == 200')}.</p>`,
+      brute: {
+        why: `<p>Locking ${C('from')} then ${C('to')} looks fixed but depends on the arguments. X holds A and waits for B; Y holds B and waits for A → <b>circular wait</b>, both BLOCKED forever. Using one global lock for all transfers is deadlock-free but serializes the whole bank.</p>`,
+        code: `
+class NaiveBank {
+    static final class Account { final long id; long balance; Account(long id, long b) { this.id = id; balance = b; } }
+    static boolean transfer(Account from, Account to, long amount) {
+        synchronized (from) {            // X: locks A   |  Y: locks B
+            synchronized (to) {          // X: waits B   |  Y: waits A   → deadlock
+                if (from.balance < amount) return false;
+                from.balance -= amount;
+                to.balance += amount;
+                return true;
+            }
+        }
+    }
+}`
+      },
+      mcq: { q: 'Which Coffman condition does "always lock the smaller id first" break?', options: ['Mutual exclusion', 'Hold and wait', 'No preemption', 'Circular wait'], answer: 3, explain: 'Threads still hold one lock while waiting for another, and locks still cannot be taken away — but every thread requests locks in increasing id order, so a cycle of waits is impossible.' },
+      hints: [
+        `<p>Hint 1: the problem is not two locks, it is two locks taken in an <b>argument-dependent</b> order. Make the order depend on something global instead.</p>`,
+        `<p>Hint 2: compute ${C('first = from.id < to.id ? from : to')} and ${C('second')} the other; lock first, then second. Do the overdraft check inside both locks.</p>`,
+        `<p>Hint 3: edge cases — ${C('from == to')} (would lock the same monitor twice; reentrant, but the transfer is meaningless → return false); ${C('amount <= 0')} → false; readers of balance must also synchronize on the account.</p>`
+      ],
+      solution: {
+        approach: `<p><b>Global lock ordering by a unique, immutable key.</b> Every transfer locks the account with the smaller id first. Whatever pair of accounts and directions threads use, they all climb the same id ladder, so no cycle can form. Both locks are held during check + debit + credit, so the move is atomic and the bank total is invariant.</p>`,
+        code: `
+class Bank {
+    static final class Account {
+        final long id;                       // unique + immutable → safe global lock order
+        private long balance;                // guarded by this account's monitor
+        Account(long id, long balance) { this.id = id; this.balance = balance; }
+        synchronized long balance() { return balance; }
+    }
+
+    static boolean transfer(Account from, Account to, long amount) {
+        if (from == to || amount <= 0) return false;
+        Account first = from.id < to.id ? from : to;    // always lock the smaller id first
+        Account second = (first == from) ? to : from;
+        synchronized (first) {
+            synchronized (second) {
+                if (from.balance < amount) return false; // overdraft check inside both locks
+                from.balance -= amount;
+                to.balance += amount;
+                return true;
+            }
+        }
+    }
+
+    public static void main(String[] args) throws InterruptedException {
+        Account a = new Account(1, 100), b = new Account(2, 100);
+        Thread x = new Thread(() -> { for (int i = 0; i < 10_000; i++) transfer(a, b, 1); });
+        Thread y = new Thread(() -> { for (int i = 0; i < 10_000; i++) transfer(b, a, 1); });
+        x.start(); y.start(); x.join(); y.join();       // always finishes
+        System.out.println(a.balance() + b.balance()); // 200
+    }
+}`,
+        dry: { head: ['time', 'Thread X: transfer(A→B)', 'Thread Y: transfer(B→A)', 'locks held'], rows: [
+          ['t1', 'first = A (id 1) → lock A', 'first = A (id 1) → wants A: BLOCKED', 'A: X'],
+          ['t2', 'lock B, move 1, unlock B, unlock A', 'BLOCKED (holds nothing!)', 'A: X, B: X'],
+          ['t3', 'returns true', 'lock A, then lock B', 'A: Y, B: Y'],
+          ['t4', '—', 'move 1, unlock both, returns true', '—'],
+          ['end', '', '', '<span class="c-g">no cycle possible; total stays 200</span>']
+        ] },
+        complexity: `<p>O(1) per transfer. Two different pairs of accounts proceed in parallel; only transfers sharing an account contend. Without unique ids, order by ${C('System.identityHashCode')} with a global tie-breaker lock for equal hashes.</p>`,
+        followUps: ['Transfers involving 3+ accounts (a batch)? Sort all ids, lock in order.', 'Rewrite with ReentrantLock.tryLock(timeout) and random back-off.', 'How would a database implement the same transfer, and how does it detect deadlocks?']
+      }
+    }]
+  });
 registerModule({ id: 'java11', title: 'Concurrency I', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

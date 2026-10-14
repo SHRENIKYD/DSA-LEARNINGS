@@ -1280,4 +1280,210 @@ class MarkPhase {
     }]
   });
 
+  /* ======================================================================
+     TOPIC 6 — GC algorithms: Serial, Parallel, G1, ZGC (+ Shenandoah, Epsilon)
+     ====================================================================== */
+  topics.push({
+    title: 'GC Algorithms Compared: Serial, Parallel, G1, ZGC (and Shenandoah, Epsilon)',
+    analogy: `<p>Four ways to clean a busy restaurant. <b>Serial</b>: one cleaner, and all customers must leave while he cleans — fine for a tiny café. <b>Parallel</b>: a team of cleaners, customers still leave, but the cleaning is over faster — best when you only care about total meals served per day. <b>G1</b>: the floor is divided into tables; during short planned breaks the team cleans the <i>dirtiest</i> tables first and stops before the break runs over. <b>ZGC</b>: cleaners work <i>while customers eat</i>, moving plates around carefully; customers are interrupted only for a blink. You pay with more staff (CPU) and a bit more space.</p>`,
+    explain: `<p>All HotSpot collectors share the ideas from the previous topic (tracing, generations, copying/compaction). They differ in <b>how much work happens while your threads are stopped</b>, and how they split the heap.</p>
+${H.table(['Collector', 'Flag', 'Threads', 'Pauses', 'Best for'], [
+  ['<b>Serial</b>', C('-XX:+UseSerialGC'), '1 GC thread, all STW', 'young: short; full: long (∝ live set)', 'tiny heaps (&lt; ~100s of MB), 1-CPU containers, CLIs'],
+  ['<b>Parallel</b>', C('-XX:+UseParallelGC'), 'many GC threads, all STW', 'young: short; full: long but parallel', 'batch jobs, max <b>throughput</b>, pauses OK'],
+  ['<b>G1</b> (default since Java 9)', C('-XX:+UseG1GC'), 'parallel STW evacuation + concurrent marking', 'aims for a <b>target</b> (default 200 ms), typically 5–100 ms', 'general-purpose services, heaps 2–64 GB'],
+  ['<b>ZGC</b> (generational)', C('-XX:+UseZGC'), 'almost everything concurrent', H.c('g', 'sub-millisecond') + ', independent of heap size', 'latency-critical services, huge heaps (up to 16 TB)'],
+  ['<b>Shenandoah</b>', C('-XX:+UseShenandoahGC'), 'concurrent marking + concurrent compaction', 'low ms, independent of heap size', 'low-latency alternative (OpenJDK builds from Red Hat, Amazon…)'],
+  ['<b>Epsilon</b>', C('-XX:+UseEpsilonGC') + ' (experimental)', 'none', 'never collects — OOM when full', 'benchmarks, ultra-short jobs, GC-overhead experiments']
+])}
+<h4>How the JVM picks by default</h4>
+<p>On a "server-class" machine (≥ 2 CPUs and ≥ ~1.8 GB of memory visible — container limits count) the default is <b>G1</b>; otherwise <b>Serial</b>. That surprises people: a container limited to 1 CPU silently gets Serial GC.</p>
+<h4>G1 in five sentences</h4>
+<ol><li>The heap is cut into ~2048 equal <b>regions</b> (1–32 MB each); each region is dynamically Eden, Survivor, Old, Humongous or free.</li>
+<li><b>Young GCs</b> evacuate (copy) live objects out of all Eden/Survivor regions, in parallel, stop-the-world.</li>
+<li>When old occupancy crosses the (adaptive) <b>IHOP</b> threshold (starts at 45%), a <b>concurrent marking</b> cycle computes how much live data each old region has.</li>
+<li><b>Mixed GCs</b> then evacuate young regions plus the old regions with the most garbage — "<b>Garbage-First</b>" — choosing how many so the pause stays under ${C('-XX:MaxGCPauseMillis')}.</li>
+<li>Objects ≥ half a region are <b>humongous</b>: allocated directly in contiguous old regions. If evacuation cannot keep up, G1 falls back to a (parallel) <b>Full GC</b> — the thing to avoid.</li></ol>
+<h4>ZGC in four sentences</h4>
+<ol><li>Marking, relocation (moving objects) and reference fixing all run <b>concurrently</b> with your threads.</li>
+<li>It uses <b>coloured pointers</b> (metadata bits inside each 64-bit reference) and <b>load barriers</b>: every time your code loads a reference from the heap, a tiny check makes sure it points to the object's current location.</li>
+<li>Pauses only scan thread stacks/roots — <b>well under 1 ms</b>, whether the heap is 1 GB or 4 TB.</li>
+<li>Since JDK 21 it is <b>generational</b> (default mode from JDK 23; the old non-generational mode was removed in JDK 24), which cut its CPU and memory overhead a lot.</li></ol>
+<h4>History you should know for interviews</h4>
+<p><b>CMS</b> (Concurrent Mark Sweep) was the old low-pause collector: concurrent marking but no compaction, so it fragmented and eventually did long full GCs. Deprecated in Java 9, <b>removed in Java 14</b>. The default was Parallel in Java 8, G1 from Java 9.</p>`,
+    clues: [
+      '"Which GC would you choose for a trading / ad-bidding / p99-sensitive service?" → ZGC (or Shenandoah)',
+      '"Nightly batch job, only total runtime matters" → Parallel GC (throughput)',
+      '"Default GC? What does MaxGCPauseMillis do?" → G1 and its pause-time goal',
+      '"Heap of 200 GB" / "pauses must not grow with heap size" → ZGC',
+      '"Container with 1 CPU and 512 MB" → JVM picks Serial; often the right call',
+      '"Humongous allocation", "to-space exhausted", "mixed GC", "IHOP" → G1 internals'
+    ],
+    code: [{ lang: 'bash', title: 'Selecting and observing each collector', code: `java -XX:+UseSerialGC   -Xmx256m -Xlog:gc -jar cli.jar
+java -XX:+UseParallelGC -Xmx16g  -Xlog:gc -jar batch.jar
+java -XX:+UseG1GC -XX:MaxGCPauseMillis=100 -Xmx8g -Xlog:gc*:file=gc.log:time,uptime,level,tags -jar api.jar
+java -XX:+UseZGC        -Xmx32g  -Xlog:gc -jar latency-critical.jar      # generational by default on JDK 23+
+java -XX:+UseShenandoahGC -Xmx8g -Xlog:gc -jar app.jar                     # needs a build that includes it
+
+java -XX:+PrintFlagsFinal -version | grep -E "Use.*GC |MaxGCPauseMillis|G1HeapRegionSize"   # what did ergonomics pick?
+jcmd <pid> VM.flags                                                        # flags of a running JVM` }, `
+import java.lang.management.*;
+
+// Which collector is this JVM running, and how much time has it spent collecting?
+class WhichGc {
+    public static void main(String[] args) {
+        for (GarbageCollectorMXBean gc : ManagementFactory.getGarbageCollectorMXBeans()) {
+            // G1: "G1 Young Generation", "G1 Concurrent GC", "G1 Old Generation"
+            // ZGC: "ZGC Minor Cycles"/"ZGC Major Cycles" and pause beans; Parallel: "PS Scavenge", "PS MarkSweep"
+            System.out.printf("%-28s collections=%d time=%d ms%n", gc.getName(), gc.getCollectionCount(), gc.getCollectionTime());
+        }
+        System.out.println("JVM: " + System.getProperty("java.vm.name") + " " + Runtime.version());
+    }
+}`],
+    codeTitle: ['Flags', 'Detecting the collector at runtime'],
+    viz: [{
+      title: 'G1 regions: young GC, humongous objects, concurrent marking, mixed GC',
+      gen: function () {
+        var R = 4, Cn = 8;
+        function blank() { var g = []; for (var r = 0; r < R; r++) { var row = []; for (var c = 0; c < Cn; c++) row.push('·'); g.push(row); } return g; }
+        function put(g, list, val) { list.forEach(function (k) { var p = k.split(','); g[+p[0]][+p[1]] = val; }); }
+        function hl(list, cls) { var h = {}; list.forEach(function (k) { h[k] = cls; }); return h; }
+        function f(narr, g, h, vars) { return { narr: narr, parts: [{ type: 'grid', label: 'G1 heap: 32 regions (E=eden S=survivor O=old with live % H=humongous ·=free)', rowHead: ['0', '1', '2', '3'], colHead: ['0', '1', '2', '3', '4', '5', '6', '7'], rows: g.map(function (r) { return r.slice(); }), hl: h || {} }, { type: 'vars', label: 'G1 state', vals: vars }] }; }
+        var F = [], g = blank();
+        F.push(f('G1 divides the heap into equal <b>regions</b> (here 32; real heaps ~2048 regions of 1–32 MB). No fixed young/old boundary: any free region can become anything.', g, {}, { phase: 'idle', 'old occupancy': '0%', 'pause target': '200 ms' }));
+        var eden = ['0,0', '0,1', '0,2', '0,3', '0,4', '0,5'];
+        put(g, eden, 'E');
+        F.push(f('The application allocates into <b>Eden regions</b> (6 here). G1 sizes the young generation dynamically so that a young pause fits the pause target.', g, hl(eden, 'cur'), { phase: 'mutator running', 'eden regions': 6 }));
+        put(g, eden, '·'); put(g, ['1,0'], 'S'); put(g, ['2,0', '2,1'], 'O 90%');
+        F.push(f('<b>Young GC</b> (stop-the-world, parallel): live objects from all 6 Eden regions are <b>evacuated</b> (copied) into 1 Survivor region; old-enough ones go to Old regions. All 6 Eden regions become free at once. Pause ≈ 8 ms because only survivors are copied.', g, Object.assign(hl(['1,0'], 'ok'), hl(['2,0', '2,1'], 'sel')), { phase: 'young GC (STW)', pause: '8 ms', 'freed regions': 6 }));
+        var olds = ['2,0', '2,1', '2,2', '2,3', '2,4', '2,5', '2,6', '2,7', '3,0', '3,1'];
+        var lives = ['90%', '85%', '30%', '10%', '60%', '5%', '75%', '20%', '95%', '40%'];
+        olds.forEach(function (k, i) { put(g, [k], 'O ' + lives[i]); });
+        put(g, ['0,0', '0,1', '0,2', '0,3'], 'E'); put(g, ['1,0'], '·'); put(g, ['1,1'], 'S');
+        F.push(f('Many young GCs later, promoted objects have filled <b>10 Old regions</b>. The percentages are what each region\'s live data <i>will</i> turn out to be — G1 does not know them yet.', g, hl(olds, 'win'), { phase: 'mutator running', 'old occupancy': '10/32 regions = 31%' }));
+        put(g, ['3,3', '3,4', '3,5'], 'H');
+        F.push(f('<code>new byte[40 MB]</code> with 16 MB regions: anything ≥ half a region is <b>humongous</b>. It gets 3 <b>contiguous</b> regions directly in Old (never copied). Lots of humongous allocations fragment the heap and trigger early marking — a classic G1 tuning issue (fix: bigger <code>G1HeapRegionSize</code> or smaller objects).', g, hl(['3,3', '3,4', '3,5'], 'bad'), { phase: 'humongous allocation', 'old occupancy': '13/32 = 41%' }));
+        put(g, ['3,2'], 'O 50%');
+        F.push(f('Old occupancy crosses <b>IHOP</b> (InitiatingHeapOccupancyPercent, adaptive, starts at 45%) → G1 starts a <b>concurrent marking cycle</b>. The initial mark piggybacks on a young pause; then marking runs <i>alongside</i> the application using SATB write barriers.', g, hl(olds.concat(['3,2']), 'cur'), { phase: 'concurrent mark (app keeps running)', 'old occupancy': '14/32 = 44% + H' }));
+        F.push(f('<b>Remark</b> (short STW) finishes marking; <b>Cleanup</b> computes exact live bytes per region and immediately frees regions that are 100% garbage (and dead humongous objects). Now G1 knows each region\'s liveness.', g, Object.assign(hl(['2,3', '2,5'], 'ok'), hl(['2,0', '3,0'], 'bad')), { phase: 'remark + cleanup', 'most garbage': '2,5 (5% live), 2,3 (10%), 2,7 (20%)' }));
+        var cset = ['2,5', '2,3', '2,7', '2,2'];
+        F.push(f('<b>Mixed GC</b>: the collection set = all young regions + the old regions with the <b>most garbage first</b> (5%, 10%, 20%, 30% live). G1 predicts the copy cost per region and adds regions only while the predicted pause stays under the target. Regions above 85% live (G1MixedGCLiveThresholdPercent) are not worth copying.', g, Object.assign(hl(cset, 'sel'), hl(['0,0', '0,1', '0,2', '0,3', '1,1'], 'cur')), { phase: 'mixed GC (STW)', 'collection set': 'young + 4 old', 'predicted pause': '42 ms ≤ 200 ms' }));
+        put(g, cset, '·'); put(g, ['0,0', '0,1', '0,2', '0,3'], '·'); put(g, ['1,1'], '·'); put(g, ['1,2'], 'S'); put(g, ['1,3'], 'O 100%');
+        F.push(f('After the mixed GC: the 4 garbage-heavy old regions were compacted into <b>one</b> fully-live region (1,3); 4 + 5 regions freed. Several mixed GCs usually follow until the remaining candidates are not worth it. Old space was compacted <b>incrementally</b>, never with a long full GC.', g, Object.assign(hl(['1,3'], 'ok'), hl(['1,2'], 'ok')), { phase: 'mutator running', 'old occupancy': 'down ~25%' }));
+        F.push(f('Failure mode: if allocation outruns this (no free region to evacuate into → "to-space exhausted" / evacuation failure), G1 does a <b>Full GC</b>: stop-the-world mark-compact of the whole heap (parallel since JDK 10, still seconds on big heaps). Seeing <code>Pause Full</code> in the log is your signal to tune or fix allocation.', g, {}, { 'log line to fear': 'Pause Full (G1 Compaction Pause)' }));
+        return F;
+      }
+    }, {
+      title: 'Pause times vs heap size: which collector fits your SLO?',
+      input: 'heapGB=16 liveGB=6 cpus=8',
+      inputLabel: 'heapGB, liveGB (data still alive after GC), cpus',
+      gen: function (input) {
+        var o = kvParse(input, { heapGB: 16, liveGB: 6, cpus: 8 });
+        var heap = num(o.heapGB, 1, 4096, 'heapGB'), live = num(o.liveGB, 0, 4096, 'liveGB'), cpus = num(o.cpus, 1, 256, 'cpus');
+        if (live >= heap) throw new Error('liveGB must be smaller than heapGB (otherwise: OutOfMemoryError)');
+        // Illustrative order-of-magnitude model: ~1 s of single-threaded full-GC work per GB of live data.
+        var serial = Math.round(live * 1000), par = Math.round(live * 1000 / Math.max(1, cpus * 0.7));
+        var g1 = Math.min(200, Math.max(10, Math.round(20 + live * 4))), zgc = 0.5;
+        var names = ['Serial full', 'Parallel full', 'G1 typical', 'ZGC typical'], vals = [serial, par, g1, zgc];
+        function bars(n) { return { type: 'bars', label: 'Worst routine pause (ms, illustrative)', values: vals.slice(0, n), idxLabels: names.slice(0, n), texts: vals.slice(0, n).map(function (v) { return v >= 1000 ? (v / 1000).toFixed(1) + ' s' : v + ' ms'; }), hl: one(n - 1, 'cur') }; }
+        var F = [];
+        F.push({ narr: 'Heap ' + heap + ' GB with ' + live + ' GB live after GC, ' + cpus + ' CPUs. Rule of thumb used here (illustrative!): one thread needs ~1 s to mark/compact 1 GB of live objects. The <b>live set</b>, not the heap size, drives full-GC cost.', parts: [{ type: 'vars', label: 'Workload', vals: { heapGB: heap, liveGB: live, cpus: cpus, 'free headroom GB': heap - live } }] });
+        F.push({ narr: '<b>Serial</b>: one thread, application stopped. Young GCs are fine, but a full GC of ' + live + ' GB live ≈ <b>' + (serial / 1000).toFixed(1) + ' s</b> pause. Acceptable for a CLI, unacceptable for an API.', parts: [bars(1)] });
+        F.push({ narr: '<b>Parallel</b>: same stop-the-world model, ' + cpus + ' GC threads → full GC ≈ <b>' + (par >= 1000 ? (par / 1000).toFixed(1) + ' s' : par + ' ms') + '</b>. Highest throughput (least total CPU spent on GC, no barriers), so it wins for batch jobs.', parts: [bars(2)] });
+        F.push({ narr: '<b>G1</b>: incremental — it collects young + a few old regions per pause and does marking concurrently, aiming at <code>MaxGCPauseMillis</code>. Typical pauses here ≈ <b>' + g1 + ' ms</b>. Pays ~5–10% throughput for barriers and remembered sets.', parts: [bars(3)] });
+        F.push({ narr: '<b>ZGC</b>: marking and moving objects happen concurrently; pauses only touch roots → <b>&lt; 1 ms</b> regardless of ' + heap + ' GB heap. Costs: extra CPU for concurrent GC threads + load barriers, and it needs headroom: if allocation outruns the concurrent cycle, threads get <i>allocation stalls</i>.', parts: [bars(4)] });
+        F.push({ narr: 'Decision summary. Note full GCs are what the collector does in the <i>worst</i> case; a well-tuned G1 rarely does them, and ZGC has no traditional full GC at all.', parts: [{ type: 'table', label: 'Pick by goal', columns: ['Goal', 'Choose', 'Why'], rows: [['max throughput, pauses OK', 'Parallel', 'no concurrent overhead'], ['balanced default, heap ≤ ~64 GB', 'G1', 'predictable pauses, good throughput'], ['p99.9 latency, big heap', 'ZGC (gen.)', 'sub-ms pauses'], ['1 CPU / tiny heap', 'Serial', 'no thread coordination cost']], hl: live >= 16 ? { 2: 'sel' } : { 1: 'sel' } }] });
+        return F;
+      }
+    }, {
+      title: 'Why concurrent marking needs barriers: the lost-object problem',
+      gen: function () {
+        var nodes = [{ id: 'R', label: 'root', x: 10, y: 30, shape: 'box' }, { id: 'A', label: 'A', x: 38, y: 12 }, { id: 'B', label: 'B', x: 38, y: 48 }, { id: 'C', label: 'C', x: 75, y: 48 }];
+        function g(edges, hl, ehl) { return { type: 'graph', label: 'Black = scanned (sel), grey = in worklist (cur), white = not reached', directed: true, height: 60, nodes: nodes, edges: edges, hl: hl, ehl: ehl || {} }; }
+        return [
+          { narr: 'Concurrent marking in progress. <b>A</b> is already scanned (black). <b>B</b> is reached but not scanned (grey). <b>C</b> is reachable only through B (white).', parts: [g([['R', 'A'], ['R', 'B'], ['B', 'C']], { R: 'sel', A: 'sel', B: 'cur' })] },
+          { narr: 'The application (running at the same time) executes <code>A.f = C;</code> — a black object now points to a white one. The marker will never rescan A.', parts: [g([['R', 'A'], ['R', 'B'], ['B', 'C'], ['A', 'C']], { R: 'sel', A: 'sel', B: 'cur' }, { 'A-C': 'cur' })] },
+          { narr: 'Then it executes <code>B.g = null;</code> — the only grey path to C disappears. When the marker scans B it finds nothing. C stays white…', parts: [g([['R', 'A'], ['R', 'B'], ['A', 'C']], { R: 'sel', A: 'sel', B: 'sel' }, { 'A-C': 'cur' })] },
+          { narr: '…and would be <span class="c-r">freed while still reachable through A</span> → memory corruption. Both conditions were needed: black→white store AND removal of the last grey→white path.', parts: [g([['R', 'A'], ['R', 'B'], ['A', 'C']], { R: 'sel', A: 'sel', B: 'sel', C: 'bad' }, { 'A-C': 'bad' })] },
+          { narr: '<b>G1 / Shenandoah fix (SATB write barrier)</b>: before overwriting <code>B.g</code>, the barrier records the <i>old</i> value (C) in a queue; the marker treats it as live. "Snapshot-at-the-beginning": anything live when marking started survives this cycle.', parts: [g([['R', 'A'], ['R', 'B'], ['A', 'C']], { R: 'sel', A: 'sel', B: 'sel', C: 'ok' }, { 'A-C': 'ok' }), note('Write barrier (pseudo)', '<code>if (marking) satbQueue.add(B.g);  B.g = null;</code>')] },
+          { narr: '<b>ZGC fix (load barrier + coloured pointers)</b>: whenever the app <i>loads</i> a reference (e.g. reads C to store it in A), the barrier checks the pointer colour and marks/remaps it if needed. The app can never get hold of an unmarked or stale pointer. Both approaches cost a few instructions per access — the price of concurrent GC.', parts: [g([['R', 'A'], ['R', 'B'], ['A', 'C']], { R: 'sel', A: 'sel', B: 'sel', C: 'ok' }), note('Load barrier (pseudo)', '<code>ref = obj.field; if (ref.color != good) ref = slowPath(ref);</code>')] }
+        ];
+      }
+    }],
+    examples: [
+      { title: 'Ad-bidding service with a 50 ms budget', html: `<p>Each bid must answer within 50 ms; G1 young pauses of 30–80 ms at p99 eat the whole budget. Switching to <b>generational ZGC</b> with the same 24 GB heap drops max pauses below 1 ms. CPU use rises ~5–10% and the heap needs headroom (ZGC must finish a cycle before allocation fills the heap). Net: SLO met, two extra cores per node.</p>` },
+      { title: 'Nightly ETL: Parallel beats G1', html: `<p>A 3-hour batch job with a 40 GB heap doesn't care about pauses. Switching from G1 to Parallel removes write-barrier and remembered-set overhead and finishes ~8% faster. Throughput collectors are a legit choice — "lowest pause" is not "best".</p>` },
+      { title: 'G1 log lines decoded', html: `${H.table(['Log line', 'Meaning'], [[C('Pause Young (Normal) (G1 Evacuation Pause)'), 'regular young GC'], [C('Pause Young (Concurrent Start) (G1 Humongous Allocation)'), 'young GC that also starts marking, triggered by a humongous allocation'], [C('Concurrent Mark Cycle'), 'background marking (app keeps running)'], [C('Pause Remark') + ' / ' + C('Pause Cleanup'), 'short STW phases ending marking'], [C('Pause Young (Mixed)'), 'young + some old regions'], [C('To-space exhausted'), 'evacuation failure — no room to copy into'], [C('Pause Full (G1 Compaction Pause)'), H.c('r', 'the fallback you want to eliminate')]])}` },
+      { title: 'Small container, surprise collector', html: `<p>A pod limited to 1 CPU and 1 GiB: ${C('java -XX:+PrintFlagsFinal -version | grep Use')} shows ${C('UseSerialGC = true')}. For a small heap with one core that is actually efficient. If you need concurrent GC there, give the pod ≥ 2 CPUs (G1/ZGC need threads to run beside your code) rather than forcing G1 onto a single core.</p>` }
+    ],
+    deepDive: `<p><b>G1 pause prediction.</b> G1 keeps decaying averages of costs (copy cost per byte, remembered-set scanning per card, fixed overheads) and uses them to size the young generation and choose how many old regions go into each mixed collection set. ${C('MaxGCPauseMillis')} is a <i>goal</i>, not a guarantee; setting it very low (e.g. 10 ms) shrinks the young gen, increases GC frequency and promotion, and can reduce throughput sharply.</p>
+<p><b>Remembered sets and refinement.</b> Each region tracks which other regions point into it, so it can be evacuated without scanning the whole heap. Post-write barriers enqueue dirty cards; concurrent refinement threads update remembered sets. Workloads that write many cross-region references (big mutable graphs, caches) pay here — JDK 20+ reworked G1's remembered sets to cut their memory, and recent releases keep reducing barrier cost.</p>
+<p><b>ZGC internals.</b> Coloured pointers store metadata bits (marked, remapped…) in each reference; generational ZGC uses store barriers too, to track young→old relationships. Because the pointer itself carries metadata, ZGC cannot use compressed oops, so references are 8 bytes — some memory overhead versus G1 on heaps under 32 GB. Relocation uses forwarding tables per page; whichever thread (GC or app) touches a moved object first fixes the reference ("self-healing"). Allocation stalls happen when the app allocates faster than ZGC can reclaim — fix with more heap headroom or more concurrent GC threads (${C('-XX:ConcGCThreads')}).</p>
+<p><b>Shenandoah</b> also compacts concurrently, originally via Brooks forwarding pointers in every object, now via load-reference barriers. Its generational mode became experimental in JDK 24 and product in JDK 25. It is included in most OpenJDK distributions (but not Oracle's builds).</p>
+<p><b>Parallel's adaptive sizing</b> targets ${C('GCTimeRatio')} (default 99 → aim for ≤ 1% time in GC) and can shrink/grow generations automatically; ${C('-XX:-UseAdaptiveSizePolicy')} pins sizes when you want manual control.</p>
+<p><b>Throughput cost of barriers.</b> Serial/Parallel use only a cheap card-marking write barrier. G1 adds SATB pre-barriers and region-crossing post-barriers; ZGC adds load barriers. That is why the "fastest" collector for raw throughput is still Parallel, and why benchmark comparisons must measure the metric you care about (throughput, p99, footprint).</p>`,
+    aiEra: `<p><b>What AI changes:</b> given a GC log and an SLO, an assistant can draft a sensible comparison plan ("run 30 minutes each with G1 at 200 ms, G1 at 50 ms, generational ZGC; compare p99 latency, CPU, RSS") and parse the resulting logs into a table. That makes evidence-based collector choices much cheaper than they used to be.</p>
+<p><b>Where AI goes wrong:</b> its training data contains a decade of CMS tuning advice (${C('-XX:+UseConcMarkSweepGC')}, ${C('CMSInitiatingOccupancyFraction')}) which fails to start on JDK 14+; it may recommend ${C('-XX:+ZGenerational')} (needed only on JDK 21–22, obsolete later) or claim ZGC is "experimental" (production since JDK 15). It also tends to pick ZGC for everything, ignoring CPU cost and small-heap cases.</p>
+<p><b>What you still own:</b> knowing which metric matters for <i>your</i> service, reading the log well enough to see whether pauses are GC work or time-to-safepoint, and testing under production-like load. Treat AI flag suggestions as hypotheses to measure, not configurations to paste.</p>`,
+    problems: [{
+      title: 'G1 Collection-Set Picker (Garbage-First under a Pause Budget)',
+      level: 'Hard', tags: ['GC', 'greedy', 'G1', 'simulation'], companies: ['Oracle', 'Netflix', 'LinkedIn'],
+      statement: `<p>Model G1's mixed-GC choice. Each old region i has ${C('live[i]')} MB of live data (region size ${C('R')} MB). Copying costs ${C('c')} ms per live MB; the young part of the pause costs ${C('youngMs')}. Regions with live &gt; 85% of R are never candidates. Pick old regions in order of <b>most reclaimable space first</b> (ties: lower index), adding each only while ${C('youngMs + c × (sum of chosen live)')} ≤ ${C('targetMs')}; stop at the first candidate that does not fit (like G1, which stops adding once the budget is used). Return the chosen region indices and the predicted pause.</p>`,
+      constraints: `1 ≤ regions ≤ 10<sup>5</sup>, 0 ≤ live[i] ≤ R ≤ 512, 0 &lt; c ≤ 10, youngMs &lt; targetMs ≤ 1000.`,
+      example: `<p>R = 16, live = [15, 2, 8, 0, 5, 14], c = 2 ms/MB, youngMs = 10, targetMs = 40.</p>${H.table(['region', 'live MB', 'garbage MB', 'candidate?'], [['0', '15', '1', H.c('r', 'no (93.75% live)')], ['3', '0', '16', 'yes'], ['1', '2', '14', 'yes'], ['4', '5', '11', 'yes'], ['2', '8', '8', 'yes'], ['5', '14', '2', H.c('r', 'no (87.5%)')]])}<p>Order 3, 1, 4, 2. Costs: 10 → +0 = 10 → +4 = 14 → +10 = 24 → +16 = 40 ✓. Output ${H.c('g', '[3, 1, 4, 2], pause 40 ms')}.</p>`,
+      brute: { why: `<p>Try every subset of candidate regions and keep the one reclaiming the most space within budget (a knapsack). Exponential (2<sup>n</sup>) or pseudo-polynomial in budget — far too slow to run inside a GC pause, and G1 must decide in microseconds. The greedy "garbage-first" order is G1's practical heuristic.</p>`, code: `
+class CsetBrute {
+    // Exhaustive search over subsets: only feasible for n <= 20.
+    static long bestReclaim(int R, int[] live, double c, double youngMs, double targetMs) {
+        int n = live.length; long best = 0;
+        for (int mask = 0; mask < (1 << n); mask++) {
+            double cost = youngMs; long reclaim = 0; boolean ok = true;
+            for (int i = 0; i < n; i++) if ((mask >> i & 1) == 1) {
+                if (live[i] * 100 > 85 * R) { ok = false; break; }
+                cost += c * live[i]; reclaim += R - live[i];
+            }
+            if (ok && cost <= targetMs) best = Math.max(best, reclaim);
+        }
+        return best;
+    }
+}` },
+      mcq: { q: 'Why does G1 skip regions that are, say, 95% live?', options: ['Copying them costs a lot of pause time but frees almost nothing', 'They contain humongous objects', 'They are pinned by JNI', 'They belong to the young generation'], answer: 0, explain: 'Evacuation cost ∝ live bytes; benefit ∝ garbage bytes. A 95% live region is the worst ratio, so G1MixedGCLiveThresholdPercent (85) filters them out.' },
+      hints: [`<p>Hint 1: "Garbage-first" = sort candidates by reclaimable bytes (R − live) descending. Less live data also means cheaper copying — the same order is best on both axes.</p>`, `<p>Hint 2: Filter first (${C('live * 100 <= 85 * R')}, integer math avoids floating-point surprises), then sort indices with a comparator on (garbage desc, index asc).</p>`, `<p>Hint 3: Walk the sorted list keeping ${C('pause = youngMs')}; if ${C('pause + c*live[i] <= targetMs')} add it, else <b>stop</b>. Return the chosen list and the final pause.</p>`],
+      solution: {
+        approach: `<p>Filter out expensive regions, sort by garbage descending (stable by index), and greedily add while the predicted pause fits — exactly G1's per-region cost prediction loop, simplified to one cost coefficient. Because garbage = R − live, sorting by garbage is also sorting by copy cost ascending, so each step adds the cheapest remaining region.</p>`,
+        code: `
+class G1CsetPicker {
+    record Choice(List<Integer> regions, double pauseMs) {}
+
+    static Choice pick(int R, int[] live, double costPerMb, double youngMs, double targetMs) {
+        List<Integer> candidates = new ArrayList<>();
+        for (int i = 0; i < live.length; i++) {
+            if ((long) live[i] * 100 <= 85L * R) candidates.add(i);      // G1MixedGCLiveThresholdPercent = 85
+        }
+        candidates.sort(Comparator.<Integer>comparingInt(i -> R - live[i]).reversed()   // most garbage first
+                                  .thenComparingInt(i -> i));                          // stable tie-break
+        List<Integer> chosen = new ArrayList<>();
+        double pause = youngMs;                                           // young regions are always collected
+        for (int i : candidates) {
+            double next = pause + costPerMb * live[i];
+            if (next > targetMs) break;                                   // budget used up: stop
+            pause = next;
+            chosen.add(i);
+        }
+        return new Choice(chosen, pause);
+    }
+
+    public static void main(String[] args) {
+        Choice c = pick(16, new int[] { 15, 2, 8, 0, 5, 14 }, 2.0, 10.0, 40.0);
+        System.out.println(c.regions() + " pause=" + c.pauseMs() + " ms");   // [3, 1, 4, 2] pause=40.0 ms
+    }
+}`,
+        dry: { head: ['region (sorted)', 'live', 'cost add', 'pause after', 'decision'], rows: [
+          ['3', '0', '0', '10', H.c('g', 'take')], ['1', '2', '4', '14', H.c('g', 'take')], ['4', '5', '10', '24', H.c('g', 'take')], ['2', '8', '16', '40', H.c('g', 'take (= target)')], ['—', '—', '—', '40', 'no candidates left']
+        ] },
+        complexity: `<p>O(n log n) for sorting candidates, O(n) for the scan; O(n) extra memory. Real G1 pre-sorts candidates once after marking and then takes a prefix for each of several mixed GCs.</p>`,
+        followUps: ['Spread candidates over G1MixedGCCountTarget (8) mixed GCs — how many per pause minimum?', 'Model remembered-set scan cost per region in addition to copy cost', 'Why might G1 still include an expensive region (pinned, or to meet a minimum)?']
+      }
+    }]
+  });
+
 registerModule({ id: 'java13', title: 'JVM Internals & Performance', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

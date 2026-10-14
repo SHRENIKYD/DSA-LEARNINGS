@@ -1729,7 +1729,7 @@ static List<String> fetchAll(List<String> ids, ExecutorService ex) {
             { id: 'R', label: 'orTimeout+exceptionally: ' + st.R, x: 76, y: 54, shape: 'box', w: 30 }
           ], edges: [['U', 'C'], ['C', 'Q'], ['D', 'Q'], ['Q', 'R']], hl: hl || {}, ehl: ehl || {} };
         }
-        function fr(t, narr, hl, ehl) { frames.push({ narr: '<b>t = ' + t + ' ms</b> — ' + narr, parts: [g(hl, ehl), { type: 'vars', label: 'Stage states', vals: copyObj(st), hl: {} }] }); }
+        function fr(t, narr, hl, ehl) { frames.push({ narr: (typeof t === 'string' ? '<b>' + t + '</b>' : '<b>t = ' + t + ' ms</b>') + ' — ' + narr, parts: [g(hl, ehl), { type: 'vars', label: 'Stage states', vals: copyObj(st), hl: {} }] }); }
         fr(0, 'supplyAsync starts <b>fetchUser</b> and <b>fetchDiscount</b> at the same time on the IO pool. The cart call cannot start yet: it needs the user (thenCompose). main is free — it has only built a graph of callbacks.', { U: 'cur', D: 'cur' });
         var events = [];
         var uEnd = tu, cEnd = tu + tc, dEnd = td;
@@ -1758,7 +1758,7 @@ static List<String> fetchAll(List<String> ids, ExecutorService ex) {
           st.R = 'TIMEOUT → fallback';
           fr(to, '<b>orTimeout(' + to + ' ms)</b> fires first: the result future completes exceptionally with TimeoutException, and exceptionally turns it into the fallback. <span class="c-y">The slow calls are not cancelled</span> — they keep running in the pool; their results are simply ignored.', { R: 'bad' }, {});
         }
-        fr(Math.max(to, cEnd, dEnd), 'Lesson: build the graph once, let completions drive it. Try <b>fail=discount</b>, or <b>timeout=150</b>, or make <b>discount=500</b> to see the critical path change.', {});
+        fr('Summary', 'Lesson: build the graph once, let completions drive it. Try <b>fail=discount</b>, or <b>timeout=150</b>, or make <b>discount=500</b> to see the critical path change.', {});
         return frames;
       }
     },
@@ -1795,7 +1795,7 @@ System.out.println(first);` }
 <p><b>Which thread runs my callback?</b> Non-async stages run on the thread that completes the previous stage (could be a pool thread, an HTTP client's selector thread, or your main thread). If that callback blocks, you block that thread — in Netty-style event loops this is disastrous. Rule: blocking or heavy callbacks → ${C('*Async(fn, executor)')}.</p>
 <p><b>Common pool starvation:</b> ${C('commonPool')} has (cores − 1) threads. If you run blocking HTTP calls on it with ${C('supplyAsync(supplier)')}, a few slow calls occupy all threads, and unrelated parallel streams and CompletableFutures in the same JVM stall. Also, in containers with 1-2 CPUs the common pool can be just 1 thread (or, when parallelism is 1, it spawns a new thread per task). Always pass an executor for I/O.</p>
 <p><b>Cancellation:</b> ${C('cf.cancel(true)')} completes the future with CancellationException but does <b>not</b> interrupt the running task (the CF has no reference to the thread). For real cancellation, keep the underlying Future or use structured concurrency / virtual threads.</p>
-<p><b>Java 21+ perspective:</b> with virtual threads, plain blocking code (${C('var u = fetchUser(); var t = fetchCart(u);')}) is cheap again and far easier to debug (real stack traces). CompletableFuture remains great for fan-out/fan-in and composing libraries that already return futures; structured concurrency (${C('StructuredTaskScope')}, preview in 21-24, finalized in later releases) adds scoped cancellation and error propagation for the same use cases.</p>`,
+<p><b>Java 21+ perspective:</b> with virtual threads, plain blocking code (${C('var u = fetchUser(); var t = fetchCart(u);')}) is cheap again and far easier to debug (real stack traces). CompletableFuture remains great for fan-out/fan-in and composing libraries that already return futures; structured concurrency (${C('StructuredTaskScope')}, a preview API since Java 21 that is still being refined in Java 25) adds scoped cancellation and error propagation for the same use cases.</p>`,
     aiEra: `<p><b>What AI changes:</b> AI writes long, plausible CompletableFuture chains quickly — and they are notoriously hard to review: wrong thread pools, swallowed exceptions, nested futures, a stray ${C('join()')} in the middle that serialises everything. <b>Use AI as a partner:</b> ask it to "<i>annotate each stage with the thread it runs on and what happens on failure</i>", or to rewrite the chain in virtual-thread style and compare readability. Ask for a test that injects failures and delays at each stage. <b>Where AI goes wrong:</b> ${C('supplyAsync')} without an executor for blocking I/O, ${C('thenApply')} where ${C('thenCompose')} is needed, believing ${C('orTimeout')} or ${C('cancel')} stops the work, and ${C('allOf(...).join()')} followed by ignoring individual failures. <b>What you must still own:</b> the latency budget (which calls are on the critical path), the fallback semantics (is a missing discount acceptable? a missing price is not), and the choice between async composition and simple blocking code on virtual threads.</p>`,
     problems: [{
       title: 'Best Price Aggregator with Per-Vendor Timeouts',
@@ -1857,6 +1857,263 @@ public class BestPrice {
         dry: { head: ['vendor', 'outcome', 'normalised value', 'completes at'], rows: [['A', '499.0 after 120 ms', 'Optional[499.0]', '120 ms'], ['B', 'IOException', 'Optional.empty (exceptionally)', '~0 ms'], ['C', 'needs 3000 ms', 'Optional.empty (completeOnTimeout)', '500 ms'], ['D', '520.0 after 80 ms', 'Optional[520.0]', '80 ms'], ['allOf → min', '', H.c('g', 'min(499, 520) = 499.0'), '500 ms']] },
         complexity: `<p>Wall time ≤ timeoutMs (+ scheduling noise) regardless of vendor count, as long as the executor has a thread per concurrent vendor call (or use virtual threads). Work O(V), memory O(V).</p>`,
         followUps: ['Return early as soon as K vendors answered', 'Cancel/interrupt slow vendor calls instead of letting them run', 'Rewrite with virtual threads and StructuredTaskScope-like semantics']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 8 — Virtual Threads (Java 21)
+     ====================================================================== */
+  function vtSim(carriers, n, pinned, record) {
+    var phase = [], ioUntil = [], ready = [], parked = [], car = [], rows = [], frames = [], t = 0, done = 0;
+    for (var i = 0; i < n; i++) { phase.push(0); ioUntil.push(-1); ready.push(i); }
+    for (var c = 0; c < carriers; c++) { car.push(null); rows.push([]); }
+    var name = function (i) { return 'V' + (i + 1); };
+    while (done < n && t < 40) {
+      var woke = [];
+      for (var p = parked.length - 1; p >= 0; p--) if (ioUntil[parked[p]] === t) { woke.push(parked[p]); parked.splice(p, 1); }
+      woke.reverse().forEach(function (v) { ready.push(v); });
+      var events = [];
+      for (c = 0; c < carriers; c++) {
+        var cell = '·';
+        if (car[c] && car[c].mode === 'pin') {
+          cell = name(car[c].v) + ' pinned';
+          car[c].left--;
+          if (car[c].left === 0) { car[c].mode = 'cont'; phase[car[c].v] = 2; }
+          events.push(name(car[c].v) + ' blocks on I/O <b>inside synchronized</b> → stays <span class="c-r">pinned</span> to carrier C' + (c + 1) + ' (carrier wasted)');
+        } else {
+          var v = -1;
+          if (car[c] && car[c].mode === 'cont') { v = car[c].v; car[c] = null; }
+          else if (ready.length) v = ready.shift();
+          if (v >= 0) {
+            cell = name(v) + (phase[v] === 0 ? ' cpu' : ' cpu2');
+            if (phase[v] === 0) {
+              phase[v] = 1;
+              if (pinned.indexOf(v) >= 0) { car[c] = { v: v, mode: 'pin', left: 2 }; events.push(name(v) + ' runs on C' + (c + 1) + ', then starts a blocking call while holding a monitor'); }
+              else { ioUntil[v] = t + 3; parked.push(v); events.push(name(v) + ' runs on C' + (c + 1) + ', then calls blocking I/O → <span class="c-g">unmounts</span> (its stack is saved to the heap) and C' + (c + 1) + ' is free'); }
+            } else { phase[v] = 3; done++; events.push(name(v) + ' finishes its last bit of CPU on C' + (c + 1) + ' and ends'); }
+          }
+        }
+        rows[c].push(cell);
+      }
+      if (record) {
+        var gh = {};
+        rows.forEach(function (r, ci) { var x = r[r.length - 1]; if (/pinned/.test(x)) gh[ci + ',' + t] = 'bad'; else if (x !== '·') gh[ci + ',' + t] = 'ok'; });
+        var cols = []; for (var k = 0; k <= t; k++) cols.push('t' + k);
+        frames.push({ narr: '<b>Tick ' + t + '</b>: ' + (woke.length ? 'I/O finished for ' + woke.map(name).join(', ') + ' → back in the run queue. ' : '') + (events.length ? events.join('; ') + '.' : 'All carriers idle — every virtual thread is waiting on I/O.'), parts: [
+          { type: 'grid', label: 'Carrier (platform) threads over time', rowHead: rows.map(function (r, ci) { return 'C' + (ci + 1); }), colHead: cols, rows: rows.map(function (r) { return r.slice(); }), hl: gh },
+          { type: 'queue', label: 'Scheduler run queue (ForkJoinPool)', items: ready.map(name), frontLabel: 'next to mount', backLabel: 'last' },
+          { type: 'set', label: 'Parked: waiting for I/O, NOT using a carrier', items: parked.map(name) },
+          { type: 'vars', label: 'Progress', vals: { tick: t, finished: done + '/' + n, pinned: pinned.map(name).join(', ') || 'none' }, hl: {} }
+        ] });
+      }
+      t++;
+    }
+    return { ticks: t, frames: frames };
+  }
+
+  topics.push({
+    title: 'Virtual Threads (Java 21): Millions of Cheap Threads for Blocking I/O',
+    analogy: `<p>A restaurant with <b>4 waiters</b> (carrier threads) and <b>200 tables</b> (virtual threads). In the old model each table had its <b>own dedicated waiter</b> who stood next to it doing nothing while the guests read the menu — you could only serve as many tables as you had waiters. With virtual threads, a waiter takes an order, hands it to the kitchen, and while the food is cooking (blocking I/O) he <b>walks away to serve other tables</b>. When the food is ready, <i>any</i> free waiter brings it. Each table still has its own simple story ("order → wait → eat"), but 4 waiters can handle hundreds of tables. <b>Pinning</b> is a waiter who is handcuffed to a table while the kitchen cooks.</p>`,
+    explain: `<p><b>Plain idea:</b> a classic Java thread (<b>platform thread</b>) is a thin wrapper around an OS thread: ~1 MB stack reserved, expensive to create, and a few thousand of them make the OS struggle. A <b>virtual thread</b> (Java 21, JEP 444) is a ${C('java.lang.Thread')} managed by the <b>JVM</b>: it costs a few hundred bytes to a few KB, you can create <b>millions</b>, and when it blocks on I/O it gives its OS thread back.</p>
+<h4>How it works</h4>
+<ul>
+<li>The JVM runs virtual threads on a small pool of platform threads called <b>carriers</b> (a ForkJoinPool, by default one per CPU core).</li>
+<li>Running a virtual thread = <b>mounting</b> it on a carrier. When it calls a blocking operation (socket read, ${C('sleep')}, ${C('BlockingQueue.take')}, ${C('lock.lock()')}…), the JDK <b>unmounts</b> it: its stack frames are copied to the heap and the carrier picks up another virtual thread.</li>
+<li>When the I/O completes, the virtual thread is scheduled again, possibly on a <b>different</b> carrier.</li>
+</ul>
+<h4>Creating them</h4>
+${P(`
+Thread.startVirtualThread(() -> handle(req));                  // fire one
+Thread vt = Thread.ofVirtual().name("worker-", 0).start(task); // builder with naming
+try (var ex = Executors.newVirtualThreadPerTaskExecutor()) {   // most common
+    ex.submit(() -> handle(req));                               // one NEW virtual thread per task
+}`)}
+<h4>Platform vs virtual</h4>
+${H.table(['', 'Platform thread', 'Virtual thread'], [
+  ['Backed by', 'one OS thread for its whole life', 'borrowed carrier only while running'],
+  ['Memory', '~1 MB stack reserved (configurable)', 'grows/shrinks on the heap (hundreds of bytes+)'],
+  ['Creation', 'tens of microseconds, syscalls', '~1 microsecond, plain object'],
+  ['How many', 'thousands', H.c('g', 'millions')],
+  ['Pool them?', 'yes', H.c('r', 'never — create one per task')],
+  ['Daemon / priority', 'configurable', 'always daemon, priority ignored'],
+  ['Good for', 'CPU-bound work, long-lived workers', 'blocking I/O, thread-per-request servers']
+])}
+<h4>The rules of thumb</h4>
+<ol>
+<li><b>They make waiting cheap, not computing faster.</b> CPU-bound work gains nothing — still limited by cores.</li>
+<li><b>Don't pool them.</b> Pools exist because threads were expensive; virtual threads are not. To limit concurrency to a fragile downstream (e.g. max 50 DB connections), use a <b>Semaphore</b>.</li>
+<li><b>Pinning:</b> in Java 21-23, blocking <b>inside a synchronized block</b> (or in native code) keeps the virtual thread stuck to its carrier. Java 24 (JEP 491) fixed synchronized pinning; on 21 prefer ${C('ReentrantLock')} around blocking calls. Detect with the JFR event ${C('jdk.VirtualThreadPinned')}.</li>
+<li><b>Careful with ThreadLocal caches.</b> A million virtual threads × a 1 MB ThreadLocal buffer = trouble. Prefer passing values or ${C('ScopedValue')}.</li>
+<li><b>Simple blocking code is back.</b> Instead of callback/reactive chains, write ${C('var user = fetchUser(); var cart = fetchCart(user);')} — readable, debuggable, with real stack traces — and get reactive-level scalability for I/O.</li>
+</ol>`,
+    clues: ['"handle 100k concurrent connections / requests" with blocking calls → virtual threads', '"thread-per-request but threads are too expensive" → newVirtualThreadPerTaskExecutor', '"replace reactive/callback code with simple blocking code" → virtual threads', '"limit concurrent calls to a downstream" with virtual threads → Semaphore, not a pool', '"throughput did not improve after switching" → CPU-bound work or pinning', '"synchronized + blocking I/O on Java 21" → pinning → ReentrantLock / upgrade to 24+', '"Java 21 new concurrency features" → virtual threads, structured concurrency (preview), scoped values'],
+    code: [`
+public class VirtualDemo {
+    static String fetch(int id) {
+        try {
+            Thread.sleep(100);                  // blocking "I/O": the virtual thread unmounts here
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        return "resp-" + id;
+    }
+
+    public static void main(String[] args) throws Exception {
+        long t0 = System.currentTimeMillis();
+        List<Future<String>> results = new ArrayList<>();
+        try (ExecutorService ex = Executors.newVirtualThreadPerTaskExecutor()) {
+            for (int i = 0; i < 10_000; i++) {
+                final int id = i;
+                results.add(ex.submit(() -> fetch(id)));   // 10,000 threads, each sleeps 100 ms
+            }
+        }                                                   // close() waits for all
+        System.out.println(results.get(9_999).get());       // resp-9999
+        System.out.println("elapsed ~" + (System.currentTimeMillis() - t0) + " ms"); // ~100-300 ms, not 1000 s
+
+        Thread vt = Thread.ofVirtual().name("demo-vt").start(() ->
+                System.out.println(Thread.currentThread() + " virtual? " + Thread.currentThread().isVirtual()));
+        vt.join();
+    }
+}`, `
+// Limiting downstream concurrency: Semaphore, not a pool
+class InventoryGateway {
+    private final Semaphore dbPermits = new Semaphore(50);   // DB pool has 50 connections
+
+    String lookup(String sku) throws InterruptedException {
+        dbPermits.acquire();                                 // virtual thread parks cheaply if 50 are busy
+        try {
+            Thread.sleep(20);                                // the JDBC call
+            return sku + " -> 7 units";
+        } finally {
+            dbPermits.release();
+        }
+    }
+}`, `
+// Avoid pinning on Java 21-23: use ReentrantLock around blocking calls instead of synchronized
+class TokenCache {
+    private final ReentrantLock lock = new ReentrantLock();
+    private String token;
+
+    String token() throws InterruptedException {
+        lock.lock();                 // a virtual thread waiting here unmounts (no pinning)
+        try {
+            if (token == null) {
+                Thread.sleep(50);    // blocking refresh call - fine under ReentrantLock
+                token = "tok-" + System.nanoTime();
+            }
+            return token;
+        } finally {
+            lock.unlock();
+        }
+    }
+}`],
+    codeTitle: ['10,000 blocking tasks on virtual threads', 'Semaphore to protect a downstream', 'ReentrantLock instead of synchronized (Java 21 pinning)'],
+    viz: {
+      title: 'Virtual threads hopping across carriers (with optional pinning)',
+      input: '2 5 V3',
+      inputLabel: 'carriers virtualThreads [pinned ones, e.g. V3 V4]  — each VT: 1 tick CPU, 2 ticks I/O, 1 tick CPU',
+      gen: function (input) {
+        var m = String(input).match(/\d+|V\d+/gi);
+        if (!m || m.length < 2 || /^V/i.test(m[0]) || /^V/i.test(m[1])) throw new Error('Format: carriers virtualThreads [pinned…], e.g. 2 5 V3');
+        var carriers = +m[0], n = +m[1];
+        if (carriers < 1 || carriers > 4 || n < 1 || n > 8) throw new Error('carriers 1..4, virtual threads 1..8');
+        var pinned = m.slice(2).map(function (x) { return parseInt(String(x).replace(/v/i, ''), 10) - 1; }).filter(function (x) { return x >= 0 && x < n; });
+        var run = vtSim(carriers, n, pinned, true), frames = [];
+        frames.push({ narr: n + ' virtual threads, ' + carriers + ' carrier (platform) thread(s). Each virtual thread does: 1 tick of CPU → a blocking I/O call lasting 2 ticks → 1 more tick of CPU. ' + (pinned.length ? 'Pinned (blocks while holding a monitor on Java 21): ' + pinned.map(function (i) { return 'V' + (i + 1); }).join(', ') + '.' : 'No pinning.'), parts: [
+          { type: 'queue', label: 'Scheduler run queue', items: (function () { var a = []; for (var i = 1; i <= n; i++) a.push('V' + i); return a; })(), frontLabel: 'next', backLabel: 'last' },
+          { type: 'vars', label: 'Setup', vals: { carriers: carriers, virtualThreads: n, cpuTicksPerVT: 2, ioTicksPerVT: 2 }, hl: {} }
+        ] });
+        run.frames.forEach(function (f) { frames.push(f); });
+        var plain = vtSim(carriers, n, [], false).ticks, platform = Math.ceil(n / carriers) * 4;
+        frames.push({ narr: 'Finished in <b>' + run.ticks + ' ticks</b>. ' + (pinned.length ? 'Without pinning it would take ' + plain + ' ticks — pinned threads hold a carrier while doing nothing. ' : '') + 'With ' + carriers + ' classic platform threads that block during I/O, it would take about ' + platform + ' ticks (each thread holds its OS thread for all 4 ticks). The win comes entirely from <b>not wasting carriers while waiting</b>.', parts: [
+          { type: 'bars', label: 'Total ticks to finish', values: [run.ticks, plain, platform], idxLabels: [pinned.length ? 'virtual + pinning' : 'virtual (this run)', 'virtual, no pinning', 'platform threads'], hl: { 0: 'cur', 1: 'ok', 2: 'bad' } }
+        ] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'The math of thread-per-request', html: `<p>A service handles requests that spend 200 ms waiting on a database and 2 ms computing. Target: 10,000 requests/s. Little's law: concurrent requests = 10,000 × 0.202 s ≈ <b>2,020</b> in flight. With platform threads you need ~2,000 threads (≈ 2 GB of reserved stacks, heavy scheduling). With virtual threads: 2,020 cheap objects on, say, 8 carriers, and CPU usage is only 10,000 × 2 ms = 20 core-seconds per second... which means you actually need ~20 cores — virtual threads remove the <b>thread</b> limit, not the <b>CPU</b> limit.</p>` },
+      { title: 'Spring Boot / Tomcat switch', html: `<p>Since Spring Boot 3.2, setting ${C('spring.threads.virtual.enabled=true')} makes Tomcat run each request on a virtual thread. Typical result for I/O-heavy services: much higher concurrency at the same memory. Gotchas seen in production: connection pools now become the bottleneck (thousands of virtual threads queue for 20 DB connections), and libraries using ${C('synchronized')} around I/O pin carriers on Java 21.</p>`, code: { lang: 'yaml', code: `spring:\n  threads:\n    virtual:\n      enabled: true\n  datasource:\n    hikari:\n      maximum-pool-size: 50   # now the real concurrency limit` } },
+      { title: 'Virtual threads are always daemon', html: `<p>A program that starts only virtual threads and then returns from ${C('main')} <b>exits immediately</b>, killing them — virtual threads never keep the JVM alive. Always ${C('join()')} them or use the try-with-resources executor, which waits in ${C('close()')}.</p>`, code: `
+Thread vt = Thread.startVirtualThread(() -> System.out.println("hello from " + Thread.currentThread()));
+System.out.println("daemon? " + vt.isDaemon());   // true
+vt.join();                                         // without this, the line above may never print` },
+      { title: 'Structured concurrency (preview) — the idea', html: `<p>In Java 21+ preview, ${C('StructuredTaskScope')} treats a group of subtasks as one unit: fork two calls, join both, and if one fails the other is <b>cancelled automatically</b>; the scope cannot outlive its block, so no thread leaks. It needs ${C('--enable-preview')} and its API has changed between releases, so here is the shape in pseudo-Java:</p>${P(`
+try (var scope = StructuredTaskScope.open()) {        // shape of the newer preview API
+    var user  = scope.fork(() -> findUser(id));
+    var order = scope.fork(() -> fetchOrder(id));
+    scope.join();                                     // waits; failure cancels siblings
+    return new Response(user.get(), order.get());
+}`)}<p>Today, in stable Java, the same "all or nothing" behaviour is built with an executor plus ${C('invokeAll')} or CompletableFuture with explicit cancellation.</p>` }
+    ],
+    deepDive: `<p><b>Under the hood:</b> a virtual thread is a ${C('Continuation')} (a resumable stack) plus a scheduler. Blocking JDK APIs were rewritten to check ${C('Thread.currentThread().isVirtual()')} and, instead of blocking the OS thread, register interest (e.g. with an internal poller using epoll/kqueue for sockets) and ${C('yield')} the continuation. The frames are copied lazily to heap "stack chunk" objects, so a deep but idle virtual thread costs heap, collected by the GC like any object. Scheduler: a FIFO ${C('ForkJoinPool')} with parallelism = cores (${C('-Djdk.virtualThreadScheduler.parallelism')}), able to grow temporarily (up to ${C('maxPoolSize')}, default 256) to compensate when carriers are pinned or blocked in ${C('Object.wait')} / file I/O.</p>
+<p><b>Pinning in detail:</b> a virtual thread cannot unmount when (a) it is inside a ${C('synchronized')} block/method on Java 21-23, because the monitor was owned by the carrier's OS thread identity, or (b) it is running native code / a foreign function. JEP 491 (Java 24) reworked monitors so virtual threads can unmount while holding or waiting for a monitor. File I/O on most OSes also cannot be made async, so the JDK temporarily compensates by adding a carrier. Diagnose with JFR (${C('jdk.VirtualThreadPinned')} events with stack traces) and thread dumps via ${C('jcmd <pid> Thread.dump_to_file -format=json')} (which include virtual threads; classic jstack does not list them all).</p>
+<p><b>What does not change:</b> the Java Memory Model, synchronized semantics, locks, atomics, and every concurrency bug you learned about. A data race on a virtual thread is still a data race; deadlock is still deadlock. What changes is <b>capacity planning</b>: the limit moves from "threads" to real resources — DB connections, downstream rate limits, memory per in-flight request, CPU. Bound those explicitly (semaphores, pool sizes, bounded queues) or a million cheap threads will cheerfully stampede a database.</p>
+<p><b>When to stay with platform threads / pools:</b> CPU-bound parallel work (use ForkJoinPool or a fixed pool sized to cores), tasks that need thread priorities, code relying heavily on large ThreadLocal caches, or libraries that block in native code. Reactive frameworks remain useful for streaming back-pressure semantics, but for request/response services virtual threads have largely replaced them as the default recommendation.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI assistants trained on pre-2023 code still recommend tuning ${C('newFixedThreadPool(200)')} for I/O or reaching for reactive libraries, and newer ones sometimes over-correct: "just use virtual threads everywhere", including CPU-bound loops. <b>Use AI as a partner:</b> ask it to scan a codebase for ${C('synchronized')} blocks that contain I/O (pinning candidates on Java 21), for ThreadLocal caches, and for pooled executors that could become ${C('newVirtualThreadPerTaskExecutor()')}; then ask it to list every downstream resource that now needs an explicit limit. <b>Where AI goes wrong:</b> pooling virtual threads, claiming they make computation faster, mixing up preview APIs (StructuredTaskScope's API changed across releases — always check the JDK version), and assuming jstack shows all virtual threads. <b>What you must still own:</b> capacity planning, load testing with realistic downstream limits, reading JFR pinning events, and deciding which Java version's semantics you are running on.</p>`,
+    problems: [{
+      title: 'Fetch 10,000 Pages Concurrently, at Most 100 at a Time',
+      level: 'Medium', tags: ['virtual threads', 'Semaphore', 'thread-per-task'], companies: ['Oracle', 'Netflix', 'Salesforce'],
+      statement: `<p>Implement ${C('Map<Integer, String> fetchAll(int n, int maxConcurrent)')} that "downloads" pages ${C('0..n-1')} (simulate each with ${C('Thread.sleep(50)')} and the string ${C('"page-" + id')}). Use one <b>virtual thread per page</b>, but never more than ${C('maxConcurrent')} downloads in flight (the website rate-limits connections). Return all results.</p>`,
+      constraints: `1 ≤ n ≤ 10<sup>5</sup>, 1 ≤ maxConcurrent ≤ 1000. Total time should be ≈ ⌈n / maxConcurrent⌉ × 50 ms.`,
+      example: `<p>n = 10,000, maxConcurrent = 100 → 100 waves of 50 ms ≈ ${H.c('g', '5 seconds')}. A fixed pool of 8 platform threads would need 10,000 × 50 / 8 ≈ ${H.c('r', '62 seconds')}.</p>`,
+      brute: { why: `<p>A fixed pool of 8 platform threads limits concurrency to 8: threads spend 99% of their time sleeping in I/O, so throughput is tiny. Raising the pool to 10,000 platform threads would hit OS limits and burn memory. (And a pool of virtual threads is an anti-pattern.)</p>`, code: `
+static Map<Integer, String> fetchAllPool(int n) throws InterruptedException {
+    Map<Integer, String> out = new ConcurrentHashMap<>();
+    ExecutorService pool = Executors.newFixedThreadPool(8);     // only 8 in flight
+    for (int i = 0; i < n; i++) {
+        final int id = i;
+        pool.execute(() -> {
+            try { Thread.sleep(50); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+            out.put(id, "page-" + id);
+        });
+    }
+    pool.shutdown();
+    pool.awaitTermination(10, TimeUnit.MINUTES);
+    return out;
+}` },
+      mcq: { q: 'With virtual threads, what is the right way to keep only 100 downloads in flight?', options: ['newFixedThreadPool(100) of virtual threads', 'A Semaphore(100) acquired around the download', 'Set the carrier pool size to 100', 'Thread.yield() after each download'], answer: 1, explain: 'Virtual threads should not be pooled. Create one per task and guard the scarce resource with a Semaphore; waiting virtual threads park cheaply.' },
+      hints: [`<p>Hint 1: create the executor with ${C('Executors.newVirtualThreadPerTaskExecutor()')} in try-with-resources — ${C('close()')} waits for all tasks.</p>`, `<p>Hint 2: a ${C('Semaphore(maxConcurrent)')} shared by all tasks: ${C('acquire()')} before the sleep, ${C('release()')} in finally.</p>`, `<p>Hint 3: store results in a ${C('ConcurrentHashMap')}. Restore the interrupt flag on InterruptedException. Recipe: map + semaphore → for each id submit(acquire, fetch, put, release) → close → return map.</p>`],
+      solution: {
+        approach: `<p>Thread-per-task with virtual threads gives n cheap threads; the Semaphore models the real limit (connections). Tasks beyond the limit park in ${C('acquire()')} without holding a carrier. The executor's ${C('close()')} provides both waiting and the happens-before edge so the map is complete and visible afterwards.</p>`,
+        code: `
+public class Crawler {
+    static Map<Integer, String> fetchAll(int n, int maxConcurrent) {
+        Map<Integer, String> out = new ConcurrentHashMap<>();
+        Semaphore permits = new Semaphore(maxConcurrent);
+        try (ExecutorService ex = Executors.newVirtualThreadPerTaskExecutor()) {
+            for (int i = 0; i < n; i++) {
+                final int id = i;
+                ex.submit(() -> {
+                    try {
+                        permits.acquire();                  // parks cheaply if 100 are in flight
+                        try {
+                            Thread.sleep(50);               // the download (blocking I/O)
+                            out.put(id, "page-" + id);
+                        } finally {
+                            permits.release();
+                        }
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                    return null;                            // Callable: lets us throw checked exceptions too
+                });
+            }
+        }                                                   // waits for every virtual thread
+        return out;
+    }
+
+    public static void main(String[] args) {
+        long t0 = System.currentTimeMillis();
+        Map<Integer, String> pages = fetchAll(2_000, 100);
+        System.out.println(pages.size() + " pages, page 1999 = " + pages.get(1999));
+        System.out.println("~" + (System.currentTimeMillis() - t0) + " ms (about 20 waves x 50 ms)");
+    }
+}`,
+        dry: { head: ['time', 'virtual threads alive', 'holding a permit', 'parked in acquire()', 'pages done'], rows: [['0 ms', '2,000', '100', '1,900', '0'], ['50 ms', '1,900', '100', '1,800', '100'], ['100 ms', '1,800', '100', '1,700', '200'], ['…', '…', '100', '…', '…'], ['1,000 ms', '0', '0', '0', H.c('g', '2,000')]] },
+        complexity: `<p>Time ≈ ⌈n / maxConcurrent⌉ × 50 ms. Memory O(n) small virtual-thread objects plus results. Carriers stay ≈ #cores the whole time; CPU usage is tiny because the work is waiting.</p>`,
+        followUps: ['How would you add a per-request timeout?', 'What changes if the download used a synchronized HTTP client on Java 21?', 'Turn the fixed Semaphore into a requests-per-second limiter']
       }
     }]
   });
