@@ -522,4 +522,906 @@ for n in (1, 2, 3, 5, 10, 45):
     }]
   });
 
+  // =====================================================================
+  // TOPIC 3 — House Robber: the take-or-skip pattern
+  // =====================================================================
+  topics.push({
+    title: 'House Robber: the Take-or-Skip Pattern',
+    analogy: `<p>You walk down a street of houses collecting donations for a charity drive. Rule from the neighbourhood: if you ring a doorbell, the house <b>right next door</b> gets annoyed and will not donate. At each house you ask one question: "<b>Is ringing this bell worth losing the neighbour I just rang?</b>"</p>
+      <p>You don't need to plan the whole street in advance. You only keep two numbers in your head: "best total if I stop just before this house" and "best total two houses ago". That tiny memory is the whole algorithm.</p>`,
+    explain: `<p><b>Problem:</b> houses in a line hold money <code>a[0..n-1]</code>. You cannot rob two <b>adjacent</b> houses. Maximize the total.</p>
+      <p><b>Why greedy fails:</b> "always rob the richest remaining house" on ${H.arr([2, 7, 9, 3, 1])} picks 9, then cannot take 7 or 3, then takes 2 and 1 → 12 (lucky). But on ${H.arr([5, 6, 5])} greedy takes 6 (then nothing else) = 6, while the best is 5 + 5 = <b>10</b>. "Take every other house" also fails: on ${H.arr([2, 1, 1, 2])} both even and odd positions give 3, but houses 0 and 3 give <b>4</b>.</p>
+      <h4>The 5-step recipe</h4>
+      ${H.table(['step', 'House Robber'], [
+        ['State', '<code>dp[i]</code> = the most money you can get from houses <b>0..i</b> only'],
+        ['Last choice', 'house i is either <b>skipped</b> or <b>robbed</b>'],
+        ['Transition', '<code>dp[i] = max( dp[i-1] , dp[i-2] + a[i] )</code><br>skip i → keep best of 0..i−1; rob i → neighbour i−1 is off-limits, so best of 0..i−2 plus a[i]'],
+        ['Base', '<code>dp[0] = a[0]</code>, <code>dp[1] = max(a[0], a[1])</code>'],
+        ['Answer', '<code>dp[n-1]</code>']
+      ])}
+      <p>Walk-through on [2, 7, 9, 3, 1]:</p>
+      ${H.table(['i', 'a[i]', 'skip = dp[i-1]', 'rob = dp[i-2] + a[i]', 'dp[i]'], [
+        ['0', '2', '—', '—', '2'],
+        ['1', '7', '2', '7', '7'],
+        ['2', '9', '7', '2 + 9 = 11', H.c('g', '11')],
+        ['3', '3', H.c('g', '11'), '7 + 3 = 10', '11'],
+        ['4', '1', '11', H.c('g', '11 + 1 = 12'), H.c('g', '12')]
+      ])}
+      <p>Answer <b>12</b> (houses 0, 2, 4). The "take-or-skip" shape — <i>for every item, the best answer either uses it (and pays a restriction) or ignores it</i> — reappears in knapsack, LIS, subset sum and dozens of interview problems. Learn to see it.</p>`,
+    clues: [
+      '"<b>cannot pick two adjacent</b> / neighbouring" elements → take-or-skip DP with dp[i−2] on the take branch.',
+      '"<b>maximum sum</b> of a subsequence with a gap rule" → dp[i] = max(skip, take + best compatible earlier).',
+      'Houses arranged in a <b>circle</b> → run the line version twice (exclude first house / exclude last house).',
+      '"<b>Delete and Earn</b>": taking value x deletes x−1 and x+1 → bucket by value, then it is House Robber on the buckets.',
+      '<code>N ≤ 10<sup>5</sup></code>, values ≥ 0, "O(1) extra space?" → two rolling variables.',
+      'A choice at i "<b>blocks</b>" the next k positions → take branch reads dp[i−k−1].'
+    ],
+    code: [`
+      // dp[i] = best loot using houses 0..i only.
+      int rob(int[] a) {
+          int n = a.length;
+          if (n == 1) return a[0];
+          int[] dp = new int[n];
+          dp[0] = a[0];
+          dp[1] = Math.max(a[0], a[1]);
+          for (int i = 2; i < n; i++) {
+              int skip = dp[i - 1];            // leave house i alone
+              int take = dp[i - 2] + a[i];     // rob i, so i-1 is forbidden
+              dp[i] = Math.max(skip, take);
+          }
+          return dp[n - 1];
+      }
+
+      // Same idea, O(1) space: prev2 = dp[i-2], prev1 = dp[i-1].
+      int robO1(int[] a) {
+          int prev2 = 0, prev1 = 0;            // "best before any house" = 0
+          for (int x : a) {
+              int cur = Math.max(prev1, prev2 + x);
+              prev2 = prev1;
+              prev1 = cur;
+          }
+          return prev1;
+      }`, { lang: 'python', run: true, title: 'With reconstruction: which houses? (Python, runnable)', code: `def rob_with_houses(a):
+    n = len(a)
+    dp = [0] * (n + 1)          # dp[i] = best using the first i houses (shifted by one)
+    for i in range(1, n + 1):
+        take = (dp[i - 2] if i >= 2 else 0) + a[i - 1]
+        dp[i] = max(dp[i - 1], take)
+    # walk backwards: if dp[i] == dp[i-1], house i-1 was skipped
+    houses, i = [], n
+    while i >= 1:
+        if dp[i] == dp[i - 1]:
+            i -= 1
+        else:
+            houses.append(i - 1)
+            i -= 2
+    return dp[n], sorted(houses)
+
+print(rob_with_houses([2, 7, 9, 3, 1]))   # (12, [0, 2, 4])
+print(rob_with_houses([2, 1, 1, 2]))      # (4, [0, 3])
+print(rob_with_houses([5, 6, 5]))         # (10, [0, 2])
+` }],
+    codeTitle: ['House Robber: table and O(1) versions (Java)', 'With reconstruction (Python, runnable)'],
+    viz: {
+      title: 'House Robber: each cell compares "skip" (dp[i-1]) with "rob" (dp[i-2] + a[i])',
+      input: '2 7 9 3 1',
+      inputLabel: 'money in each house (2 to 10 numbers, 0..99)',
+      gen: function (input) {
+        var a = parseNums(input, 2, 10, 0, 99, 'the houses');
+        var n = a.length, dp = [], i, frames = [];
+        for (i = 0; i < n; i++) dp.push('');
+        dp[0] = a[0];
+        frames.push({ narr: 'Base: with only house 0, rob it → dp[0] = <b>' + a[0] + '</b>.', parts: [
+          { type: 'array', label: 'a[] money', values: a.slice(), hl: { 0: 'cur' } },
+          { type: 'array', label: 'dp[i] = best using houses 0..i', values: dp.slice(), hl: { 0: 'ok' } }
+        ] });
+        dp[1] = Math.max(a[0], a[1]);
+        frames.push({ narr: 'Base: with houses 0 and 1 you can rob only one of them → dp[1] = max(' + a[0] + ', ' + a[1] + ') = <b>' + dp[1] + '</b>.', parts: [
+          { type: 'array', label: 'a[] money', values: a.slice(), hl: { 0: 'win', 1: 'win' } },
+          { type: 'array', label: 'dp[i] = best using houses 0..i', values: dp.slice(), hl: { 0: 'done', 1: 'ok' } }
+        ] });
+        for (i = 2; i < n; i++) {
+          var skip = dp[i - 1], take = dp[i - 2] + a[i];
+          var h = {}; for (var j = 0; j < i; j++) h[j] = 'done';
+          h[i - 1] = 'win'; h[i - 2] = 'win';
+          frames.push({ narr: 'House ' + i + ' has ' + a[i] + '. <b>Skip</b> it → keep dp[' + (i - 1) + '] = ' + skip + '. <b>Rob</b> it → neighbour ' + (i - 1) + ' is off-limits, so dp[' + (i - 2) + '] + ' + a[i] + ' = ' + take + '.', parts: [
+            { type: 'array', label: 'a[] money', values: a.slice(), hl: one(i, 'cur'), ptr: one(i, 'i') },
+            { type: 'array', label: 'dp[] (blue = the two cells this step reads)', values: dp.slice(), hl: h },
+            { type: 'vars', vals: { skip: skip, rob: take }, hl: take > skip ? { rob: 'ok' } : { skip: 'ok' } }
+          ] });
+          dp[i] = Math.max(skip, take);
+          h = {}; for (j = 0; j < i; j++) h[j] = 'done';
+          h[i] = 'ok';
+          frames.push({ narr: 'dp[' + i + '] = max(' + skip + ', ' + take + ') = <b>' + dp[i] + '</b> → ' + (take > skip ? '<span class="c-g">robbing house ' + i + ' is better</span>.' : '<span class="c-y">skipping house ' + i + ' is at least as good</span>.'), parts: [
+            { type: 'array', label: 'a[] money', values: a.slice(), hl: one(i, take > skip ? 'ok' : 'bad') },
+            { type: 'array', label: 'dp[]', values: dp.slice(), hl: h }
+          ] });
+        }
+        var robbed = {}, k = n - 1, steps = [];
+        while (k >= 0) {
+          if (k === 0) { robbed[0] = 'sel'; steps.push('house 0 robbed'); break; }
+          if (dp[k] === dp[k - 1]) { steps.push('dp[' + k + '] = dp[' + (k - 1) + '] → house ' + k + ' skipped'); k -= 1; }
+          else { robbed[k] = 'sel'; steps.push('dp[' + k + '] ≠ dp[' + (k - 1) + '] → house ' + k + ' robbed'); k -= 2; }
+        }
+        frames.push({ narr: '<b>Reconstruct</b> by walking back: if dp[k] equals dp[k−1], house k was not needed; otherwise it was robbed and we jump to k−2. Purple = robbed houses.', parts: [
+          { type: 'array', label: 'a[] money', values: a.slice(), hl: robbed },
+          { type: 'array', label: 'dp[]', values: dp.slice(), hl: one(n - 1, 'sel') },
+          { type: 'text', label: 'walk back', html: steps.join('<br>') }
+        ] });
+        var sum = 0; Object.keys(robbed).forEach(function (x) { sum += a[x]; });
+        frames.push({ narr: 'Answer: <b>' + dp[n - 1] + '</b> (robbed houses add up to ' + sum + '). Each step only read two earlier cells — that is why O(1) space works.', parts: [
+          { type: 'array', label: 'a[] money', values: a.slice(), hl: robbed },
+          { type: 'vars', vals: { answer: dp[n - 1] }, hl: { answer: 'sel' } }
+        ] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Greedy trap [5, 6, 5]', html: `<p>Greedy "richest first" takes 6, blocking both 5s → 6. DP: dp = [5, 6, max(6, 5+5) = ${H.c('g', '10')}]. Lesson: a big single value can be worse than two medium ones it blocks.</p>` },
+      { title: 'Not just "every other house" [2, 1, 1, 2]', html: `<p>Even indices: 2 + 1 = 3. Odd indices: 1 + 2 = 3. Optimal: houses 0 and 3 = <b>4</b> — the gap between robbed houses can be 2 or more. dp = [2, 2, 3, ${H.c('g', '4')}].</p>` },
+      { title: 'House Robber II (circular street)', html: `<p>First and last house are now neighbours. They cannot both be robbed, so the answer is <code>max(rob(a[0..n-2]), rob(a[1..n-1]))</code>. Example [2, 3, 2]: rob([2,3]) = 3, rob([3,2]) = 3 → <b>3</b> (not 4). Single house n = 1 is a special case: return a[0].</p>`, code: `int robCircle(int[] a) {
+    int n = a.length;
+    if (n == 1) return a[0];
+    return Math.max(robRange(a, 0, n - 2), robRange(a, 1, n - 1));
+}
+int robRange(int[] a, int lo, int hi) {
+    int prev2 = 0, prev1 = 0;
+    for (int i = lo; i <= hi; i++) {
+        int cur = Math.max(prev1, prev2 + a[i]);
+        prev2 = prev1;
+        prev1 = cur;
+    }
+    return prev1;
+}` },
+      { title: 'Delete and Earn reduces to House Robber', html: `<p>nums = [2, 2, 3, 3, 3, 4]. Taking a value x earns x but deletes all x−1 and x+1. Build points[v] = v × count(v): points = [0, 0, 4, 9, 4] for v = 0..4. Adjacent <i>values</i> conflict exactly like adjacent houses → House Robber on points → max(4 + 4, 9) = <b>9</b>.</p>` }
+    ],
+    deepDive: `<p><b>Two-state view (state machine).</b> Another way to write it: <code>robbed[i]</code> = best if house i is robbed, <code>free[i]</code> = best if it is not. Then robbed[i] = free[i−1] + a[i], free[i] = max(robbed[i−1], free[i−1]). This "state machine DP" generalises to stock buy/sell with cooldown (DSA 18) — the same idea with more states.</p>
+      <p><b>Proof sketch (exchange-free induction):</b> any valid robbery plan for houses 0..i either excludes i (then it is a valid plan for 0..i−1, worth ≤ dp[i−1]) or includes i (then it excludes i−1, so the rest is a valid plan for 0..i−2, worth ≤ dp[i−2]). Both cases are achievable, so dp[i] is exactly the max.</p>
+      <p><b>Negative values.</b> If money can be negative, robbing nothing must be allowed: start with prev1 = prev2 = 0 (the O(1) version already handles that since max(prev1, …) never forces a take). The array version with dp[0] = a[0] would wrongly force a negative house — use dp[0] = max(0, a[0]).</p>
+      <p><b>Variants:</b> House Robber III puts houses on a binary tree — return a pair (rob this node, skip this node) from each subtree (tree DP, DSA 18). "No k consecutive" generalises the take branch. "Maximum sum of non-adjacent elements" on a 2×N grid (pick from either row of a column, but not adjacent columns) collapses each column to max of the two rows, then House Robber.</p>
+      <p><b>Production reality:</b> the same take/skip shape schedules non-overlapping jobs for profit (weighted interval scheduling: sort by end, binary search the last compatible job, dp[i] = max(dp[i−1], profit[i] + dp[p(i)])) — used in ad-slot and meeting-room allocation.</p>`,
+    aiEra: `<p><b>What AI changes:</b> House Robber is one of the most memorised problems on the internet; an AI writes it in a second. Interviewers therefore twist it (circle, tree, values deleting neighbours, k-gap) and watch whether you <b>re-derive</b> the state instead of reciting.</p>
+      <p><b>Use AI as a partner:</b> ask <code>Give me 4 disguised versions of House Robber without naming it</code>, solve them, then ask it to check your reductions. Ask for adversarial tests: single house, two houses, all zeros, negatives.</p>
+      <p><b>Where AI goes wrong:</b> crashes on n = 1 (reads a[1]), forgets the n = 1 special case in the circular version, and in reconstruction compares the wrong cells. It also sometimes "optimises" with even/odd sums — wrong, as [2,1,1,2] shows.</p>
+      <p><b>What you must still own:</b> the take-or-skip mental model, the induction argument for why two cells suffice, and the reductions (Delete and Earn, circular, weighted intervals) that turn a new problem into this one.</p>`,
+    problems: [{
+      title: 'House Robber', level: 'Medium', tags: ['dp', 'take or skip', '1d dp'], companies: ['Amazon', 'Google', 'Microsoft', 'Cisco'],
+      statement: `<p>Houses along a street hold <code>nums[i]</code> money. Adjacent houses have connected alarms: robbing two adjacent houses on the same night calls the police. Return the maximum amount you can rob without alerting the police.</p>`,
+      constraints: `1 ≤ n ≤ 100, 0 ≤ nums[i] ≤ 400`,
+      example: `${H.arr([2, 7, 9, 3, 1], { hl: { 0: 'g', 2: 'g', 4: 'g' } })}<p>Output <b>12</b>: rob houses 0, 2 and 4 → ${H.c('g', '2 + 9 + 1 = 12')}. Robbing 7 and 3 gives only 10.</p>`,
+      brute: { why: `<p>Try every subset with no two adjacent members (recursion: at house i, either skip to i+1 or take and jump to i+2). The number of such subsets grows like Fibonacci (~1.6<sup>n</sup>); for n = 100 that is ~10<sup>21</sup>. The waste: "best from house 7 onward" is recomputed in countless branches.</p>`, code: `int best(int[] a, int i) {
+    if (i >= a.length) return 0;               // no houses left
+    int skip = best(a, i + 1);                 // leave house i
+    int take = a[i] + best(a, i + 2);          // rob i, neighbour i+1 forbidden
+    return Math.max(skip, take);
+}` },
+      mcq: { q: 'In dp[i] = max(dp[i−1], dp[i−2] + nums[i]), why dp[i−2] in the rob branch?', options: ['Because robbing i forbids house i−1, so only houses 0..i−2 remain usable', 'Because we must skip exactly one house every time', 'Because dp[i−1] is always smaller', 'It is a typo; it should be dp[i−1]'], answer: 0, explain: 'Robbing house i blocks i−1; the best you can add from the rest is the best plan for 0..i−2.' },
+      hints: [`<p>Hint 1: Look at the last house i. Either you rob it or you don't. Those are the only two possibilities.</p>`, `<p>Hint 2: dp[i] = best for houses 0..i = max(dp[i−1], dp[i−2] + nums[i]). Only two previous values matter → two variables.</p>`, `<p>Hint 3: Start with prev2 = 0, prev1 = 0 ("no houses yet") and loop over every house: cur = max(prev1, prev2 + x); prev2 = prev1; prev1 = cur. This handles n = 1 automatically.</p>`],
+      solution: {
+        approach: `<p>Take-or-skip DP with two rolling variables. <code>prev1</code> = best up to the previous house, <code>prev2</code> = best up to the house before that.</p>`,
+        code: `class Solution {
+    public int rob(int[] nums) {
+        int prev2 = 0, prev1 = 0;                 // best before the first house
+        for (int x : nums) {
+            int cur = Math.max(prev1, prev2 + x); // skip x  vs  rob x
+            prev2 = prev1;
+            prev1 = cur;
+        }
+        return prev1;
+    }
+}`,
+        alt: [{ lang: 'python', code: `class Solution:
+    def rob(self, nums):
+        prev2 = prev1 = 0
+        for x in nums:
+            prev2, prev1 = prev1, max(prev1, prev2 + x)
+        return prev1` }, { lang: 'cpp', code: `class Solution {
+public:
+    int rob(vector<int>& nums) {
+        int prev2 = 0, prev1 = 0;
+        for (int x : nums) {
+            int cur = max(prev1, prev2 + x);
+            prev2 = prev1;
+            prev1 = cur;
+        }
+        return prev1;
+    }
+};` }],
+        dry: { head: ['x', 'prev2', 'prev1', 'cur = max(prev1, prev2 + x)'], rows: [['2', '0', '0', 'max(0, 2) = 2'], ['7', '0', '2', 'max(2, 7) = 7'], ['9', '2', '7', 'max(7, 11) = 11'], ['3', '7', '11', 'max(11, 10) = 11'], ['1', '11', '11', H.c('g', 'max(11, 12) = 12')]] },
+        complexity: `<p>Time O(n), space O(1).</p>`,
+        followUps: ['Houses in a circle (House Robber II).', 'Return which houses were robbed.', 'Houses on a binary tree (House Robber III, DSA 18).']
+      }
+    }]
+  });
+
+  // =====================================================================
+  // TOPIC 4 — Coin Change: minimum coins and number of ways
+  // =====================================================================
+  function parseCoins(input, maxCoins, maxAmt) {
+    var s = String(input === undefined ? '' : input).split('|');
+    if (s.length !== 2) throw new Error('Format: coins | amount, e.g. 1 3 4 | 6');
+    var coins = parseNums(s[0], 1, maxCoins, 1, 50, 'the coins');
+    var amt = parseNums(s[1], 1, 1, 1, maxAmt, 'the amount')[0];
+    return { coins: coins, amt: amt };
+  }
+  topics.push({
+    title: 'Coin Change: Minimum Coins and Number of Ways',
+    analogy: `<p>You are a shopkeeper with unlimited coins of a few types, say ₹1, ₹3 and ₹4, and you must hand back ₹6 change.</p>
+      <ul><li><b>Minimum coins</b> question: "What is the <i>fewest</i> coins I can hand over?" Think backwards from the <b>last coin you hand over</b>: if it was ₹3, you still owe ₹3 — and you already know the best way to pay ₹3.</li>
+      <li><b>Number of ways</b> question: "How many different <i>piles</i> of coins make ₹6?" Like counting how many different shopping baskets add up to the same bill.</li></ul>
+      <p>Same coins, same table shape — but one question takes a <b>min</b>, the other <b>adds</b>, and the loop order decides whether 1+3 and 3+1 count as one pile or two.</p>`,
+    explain: `<h4>1) Minimum number of coins (LeetCode 322)</h4>
+      <p><b>Greedy fails.</b> Coins {1, 3, 4}, amount 6: greedy grabs the biggest coin 4, then 1 + 1 → <span class="c-r">3 coins</span>. Best is 3 + 3 → <span class="c-g">2 coins</span>. (Greedy only works for special "canonical" systems like real-world ₹/$ coins.)</p>
+      ${H.table(['step', 'Min coins'], [
+        ['State', '<code>dp[a]</code> = fewest coins that make exactly amount a (∞ if impossible)'],
+        ['Last choice', 'which coin c was handed over <b>last</b>?'],
+        ['Transition', '<code>dp[a] = 1 + min over coins c ≤ a of dp[a − c]</code>'],
+        ['Base', '<code>dp[0] = 0</code> (zero coins make zero), everything else starts at ∞'],
+        ['Answer', '<code>dp[amount]</code>, or −1 if still ∞']
+      ])}
+      ${H.table(['a', '0', '1', '2', '3', '4', '5', '6'], [['dp[a]', '0', '1', '2', '1', '1', '2', H.c('g', '2')], ['best last coin', '—', '1', '1', '3', '4', '4 (or 1)', '3']])}
+      <p>dp[6] = 1 + min(dp[5], dp[3], dp[2]) = 1 + min(2, 1, 2) = <b>2</b>.</p>
+      <h4>2) Number of ways = combinations (LeetCode 518)</h4>
+      <p>Now count the <b>piles</b> (order does not matter: 1+2 and 2+1 are the same pile). Trick: decide coin types <b>one at a time</b>. <code>ways[i][a]</code> = piles making a using only the first i coin types. For coin type i you either use <b>none</b> of it (ways[i−1][a]) or <b>at least one</b> (ways[i][a − c], same row because you may use it again).</p>
+      <p style="text-align:center"><code>ways[i][a] = ways[i−1][a] + ways[i][a − c<sub>i</sub>]</code>, base <code>ways[·][0] = 1</code>.</p>
+      <p>Squashed into 1D: <b>outer loop over coins, inner loop over amounts</b> (left → right): <code>ways[a] += ways[a − c]</code>.</p>
+      <h4>3) Number of ordered sequences = permutations (LeetCode 377)</h4>
+      <p>If 1+2 and 2+1 should count separately, swap the loops: <b>outer loop over amounts, inner over coins</b>: <code>ways[a] = Σ ways[a − c]</code> — exactly climbing stairs with step sizes = coins.</p>
+      ${H.table(['coins {1, 2, 5}, amount 5', 'loop order', 'result'], [
+        ['combinations (piles)', 'for coin → for amount', H.c('g', '4') + ' : 5, 2+2+1, 2+1+1+1, 1×5'],
+        ['permutations (sequences)', 'for amount → for coin', H.c('b', '9') + ' : 5, and 8 orderings of 1s and 2s']
+      ])}`,
+    clues: [
+      '"<b>fewest number of coins</b> / minimum number of items to make exactly X" → dp[a] = 1 + min dp[a − c], base 0, others ∞.',
+      '"If that amount cannot be made, <b>return −1</b>" → keep an ∞ sentinel and check it at the end.',
+      '"<b>number of combinations</b> that make up the amount" (order doesn\'t matter) → coins outer loop, amount inner loop.',
+      '"<b>different sequences</b> are counted as different combinations" (LC 377 wording!) → amount outer loop, coins inner loop.',
+      '"<b>infinite number of each kind</b> of coin" → unbounded (same coin reusable) → inner loop goes forward / same row.',
+      '<code>amount ≤ 10<sup>4</sup></code>, <code>coins ≤ 12</code> → O(amount × coins) ≈ 1.2·10<sup>5</sup> — trivial.'
+    ],
+    code: [`
+      // Minimum coins (LeetCode 322). dp[a] = fewest coins summing to a.
+      int coinChange(int[] coins, int amount) {
+          int INF = amount + 1;                  // more coins than could ever be needed
+          int[] dp = new int[amount + 1];
+          Arrays.fill(dp, INF);
+          dp[0] = 0;                             // zero coins make amount 0
+          for (int a = 1; a <= amount; a++) {
+              for (int c : coins) {
+                  if (c <= a && dp[a - c] + 1 < dp[a]) {
+                      dp[a] = dp[a - c] + 1;     // last coin handed over is c
+                  }
+              }
+          }
+          return dp[amount] == INF ? -1 : dp[amount];
+      }
+
+      // Number of COMBINATIONS (LeetCode 518): coins outer, amounts inner.
+      int change(int amount, int[] coins) {
+          int[] ways = new int[amount + 1];
+          ways[0] = 1;                           // one way to make 0: take nothing
+          for (int c : coins) {                  // decide coin types one at a time
+              for (int a = c; a <= amount; a++) {
+                  ways[a] += ways[a - c];        // add "at least one more coin c"
+              }
+          }
+          return ways[amount];
+      }
+
+      // Number of ORDERED SEQUENCES (LeetCode 377): amounts outer, coins inner.
+      int combinationSum4(int[] nums, int target) {
+          int[] ways = new int[target + 1];
+          ways[0] = 1;
+          for (int a = 1; a <= target; a++) {
+              for (int c : nums) {
+                  if (c <= a) ways[a] += ways[a - c]; // last element of the sequence is c
+              }
+          }
+          return ways[target];
+      }`, { lang: 'python', run: true, title: 'Combinations vs permutations: see the loop order matter (Python, runnable)', code: `def combos(coins, amount):
+    ways = [1] + [0] * amount
+    for c in coins:                 # coin outer -> each pile counted once
+        for a in range(c, amount + 1):
+            ways[a] += ways[a - c]
+    return ways[amount]
+
+def perms(coins, amount):
+    ways = [1] + [0] * amount
+    for a in range(1, amount + 1):  # amount outer -> every ordering counted
+        for c in coins:
+            if c <= a:
+                ways[a] += ways[a - c]
+    return ways[amount]
+
+def min_coins(coins, amount):
+    INF = float("inf")
+    dp = [0] + [INF] * amount
+    for a in range(1, amount + 1):
+        for c in coins:
+            if c <= a:
+                dp[a] = min(dp[a], dp[a - c] + 1)
+    return -1 if dp[amount] == INF else dp[amount]
+
+print("combinations of 5 with 1,2,5:", combos([1, 2, 5], 5))   # 4
+print("ordered sequences:", perms([1, 2, 5], 5))               # 9
+print("min coins for 6 with 1,3,4:", min_coins([1, 3, 4], 6))  # 2
+print("min coins for 3 with 2:", min_coins([2], 3))            # -1
+` }],
+    codeTitle: ['Min coins, combinations, permutations (Java)', 'Loop order experiment (Python, runnable)'],
+    viz: [{
+      title: 'Min coins: dp[a] looks back at dp[a − c] for every coin c',
+      input: '1 3 4 | 6',
+      inputLabel: 'coins | amount (up to 5 coins, amount ≤ 15)',
+      gen: function (input) {
+        var p = parseCoins(input, 5, 15), coins = p.coins, A = p.amt;
+        var dp = [0], last = [0], frames = [], a, j;
+        for (a = 1; a <= A; a++) { dp.push(INF); last.push(-1); }
+        frames.push({ narr: 'dp[a] = fewest coins to make a. Base dp[0] = 0; everything else starts at ∞ ("not possible yet"). Coins: ' + coins.join(', ') + '.', parts: [
+          { type: 'array', label: 'dp[a]', values: dp.map(show), hl: { 0: 'ok' } }
+        ] });
+        for (a = 1; a <= A; a++) {
+          var h = {}, notes = [], best = INF, bestC = -1;
+          for (j = 0; j < a; j++) h[j] = 'done';
+          coins.forEach(function (c) {
+            if (c <= a) {
+              h[a - c] = 'win';
+              var cand = dp[a - c] >= INF ? INF : dp[a - c] + 1;
+              notes.push('coin ' + c + ': dp[' + (a - c) + '] + 1 = ' + show(cand));
+              if (cand < best) { best = cand; bestC = c; }
+            } else notes.push('coin ' + c + ' &gt; ' + a + ': cannot use');
+          });
+          h[a] = 'cur';
+          frames.push({ narr: 'Amount ' + a + ': which coin could be the <b>last</b> one handed over? Blue cells are the amounts left after removing each coin.', parts: [
+            { type: 'array', label: 'dp[a]', values: dp.map(show), hl: h, ptr: one(a, 'a') },
+            { type: 'text', label: 'candidates', html: notes.join('<br>') }
+          ] });
+          dp[a] = best; last[a] = bestC;
+          h = {}; for (j = 0; j < a; j++) h[j] = 'done';
+          if (bestC > 0) h[a - bestC] = 'win';
+          h[a] = best >= INF ? 'bad' : 'ok';
+          frames.push({ narr: best >= INF ? 'No coin works → dp[' + a + '] stays ∞ (amount ' + a + ' is impossible).' : 'dp[' + a + '] = <b>' + best + '</b> (last coin ' + bestC + ', coming from dp[' + (a - bestC) + ']).', parts: [
+            { type: 'array', label: 'dp[a]', values: dp.map(show), hl: h }
+          ] });
+        }
+        if (dp[A] >= INF) {
+          frames.push({ narr: 'dp[' + A + '] = ∞ → the answer is <b>−1</b>: these coins can never make ' + A + '.', parts: [{ type: 'array', label: 'dp[a]', values: dp.map(show), hl: one(A, 'bad') }] });
+          return frames;
+        }
+        var used = [], hh = {}, x = A;
+        while (x > 0) { hh[x] = 'sel'; used.push(last[x]); x -= last[x]; }
+        hh[0] = 'sel';
+        frames.push({ narr: 'Answer: <b>' + dp[A] + '</b> coins. Follow the "last coin" links back from ' + A + ' to 0 to list them: <b>' + used.join(' + ') + '</b>.', parts: [
+          { type: 'array', label: 'dp[a]', values: dp.map(show), hl: hh },
+          { type: 'set', label: 'coins used', items: used.map(String) }
+        ] });
+        return frames;
+      }
+    }, {
+      title: 'Number of ways (combinations): ways[i][a] = ways[i−1][a] (skip coin) + ways[i][a−c] (use it again)',
+      input: '1 2 5 | 5',
+      inputLabel: 'coins | amount (up to 4 coins, amount ≤ 10)',
+      gen: function (input) {
+        var p = parseCoins(input, 4, 10), coins = p.coins, A = p.amt, n = coins.length;
+        var rows = [], i, a, filled = {};
+        for (i = 0; i <= n; i++) { rows.push([]); for (a = 0; a <= A; a++) rows[i].push(i === 0 ? (a === 0 ? 1 : 0) : ''); }
+        for (a = 0; a <= A; a++) filled['0,' + a] = 1;
+        var rh = ['no coins'].concat(coins.map(function (c, k) { return '+ coin ' + c; }));
+        var ch = range(A + 1).map(function (x) { return 'a=' + x; });
+        var frames = [];
+        frames.push({ narr: 'Row 0 = "using no coin types": only amount 0 can be made (the empty pile) → 1, every other amount → 0.', parts: [
+          grid('ways[i][a]', rows, rh, ch, gridHl(filled, {}))
+        ] });
+        for (i = 1; i <= n; i++) {
+          var c = coins[i - 1];
+          for (a = 0; a <= A; a++) {
+            var up = rows[i - 1][a], left = a >= c ? rows[i][a - c] : 0;
+            rows[i][a] = up + left;
+            var sp = {}; sp[(i - 1) + ',' + a] = 'win';
+            if (a >= c) sp[i + ',' + (a - c)] = 'win';
+            sp[i + ',' + a] = 'cur';
+            frames.push({ narr: 'Coin ' + c + ', amount ' + a + ': piles that use <b>no</b> coin ' + c + ' = cell above = ' + up + (a >= c ? '; piles that use <b>at least one</b> = same row, ' + c + ' to the left = ' + left : '; coin ' + c + ' is too big to use') + ' → <b>' + rows[i][a] + '</b>.', parts: [
+              grid('ways[i][a]', rows, rh, ch, gridHl(filled, sp))
+            ] });
+            filled[i + ',' + a] = 1;
+          }
+        }
+        frames.push({ narr: 'Answer in the bottom-right cell: <b>' + rows[n][A] + '</b> different piles make ' + A + '. Notice each row only read itself and the row above → a single 1D array with the coin loop outside is enough.', parts: [
+          grid('ways[i][a]', rows, rh, ch, gridHl(filled, one(n + ',' + A, 'sel')))
+        ] });
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'Impossible amount → −1', html: `<p>coins = [2], amount = 3. dp = [0, ∞, 1, ∞]. dp[3] = 1 + dp[1] = ∞ → return <b>−1</b>. Using <code>Integer.MAX_VALUE</code> as ∞ and then doing <code>+ 1</code> overflows to a negative number and returns garbage — that is why we use <code>amount + 1</code> as ∞ (no answer can need more than <code>amount</code> coins when the smallest coin is 1).</p>` },
+      { title: 'Combinations vs permutations, by hand', html: `<p>coins {1, 2}, amount 3.</p>${H.table(['loop order', 'what is counted', 'answer'], [['coin outer', '{1,1,1}, {1,2}', H.c('g', '2')], ['amount outer', '1+1+1, 1+2, 2+1', H.c('b', '3')]])}<p>With coin-outer, once you move to coin 2 you can never add a 1 after a 2 → each pile is built in one fixed order (all 1s, then all 2s) → counted once.</p>` },
+      { title: 'Amount 0', html: `<p>coins = [1], amount = 0 → min coins = <b>0</b>, number of ways = <b>1</b> (the empty pile). Interviewers check this: dp[0] = 0 for min, ways[0] = 1 for counting.</p>` },
+      { title: 'Perfect Squares is coin change in disguise', html: `<p>"Fewest perfect squares summing to n" (LC 279): the coins are 1, 4, 9, 16, … ≤ n. n = 12 → 4 + 4 + 4 = <b>3</b> (greedy 9 + 1 + 1 + 1 = 4 squares is wrong). Same dp, O(n√n).</p>`, code: `int numSquares(int n) {
+    int[] dp = new int[n + 1];
+    Arrays.fill(dp, n + 1);
+    dp[0] = 0;
+    for (int a = 1; a <= n; a++)
+        for (int s = 1; s * s <= a; s++)
+            dp[a] = Math.min(dp[a], dp[a - s * s] + 1);
+    return dp[n];
+}` }
+    ],
+    deepDive: `<p><b>Why the loop order decides combinations vs permutations.</b> Coin-outer processes coin types in a fixed order, so every multiset is generated exactly once, as "all coins of type 1, then all of type 2, …". Amount-outer lets the last coin be any type at every step, so every arrangement is generated. Mixing them up is the #1 bug on this topic.</p>
+      <p><b>Overflow.</b> LC 518 promises the answer fits in a 32-bit int, but intermediate cells can still overflow in some inputs for LC 377 (which is why some solutions use <code>long</code> or skip values over Integer.MAX_VALUE). In exam settings answers are taken mod 10<sup>9</sup>+7.</p>
+      <p><b>Complexity.</b> Both are O(amount × #coins) time and O(amount) space. This is <i>pseudo-polynomial</i>: polynomial in the <b>value</b> of amount, exponential in its number of bits. Amount = 10<sup>9</sup> would need a different idea (e.g. BFS with pruning for small answers, or math for canonical coin systems).</p>
+      <p><b>BFS view of min coins.</b> Amounts are nodes; each coin is an edge of weight 1. Min coins = shortest path from 0 to amount — BFS solves it too and can stop early, but the dp is simpler and has the same worst case.</p>
+      <p><b>When greedy is optimal.</b> Coin systems where greedy always works are called <i>canonical</i> (₹1, 2, 5, 10, 20 … and US 1, 5, 10, 25 are). Kozen &amp; Zaks showed that if greedy fails, a counterexample exists below c<sub>max</sub> + c<sub>second max</sub>, and Pearson gave an O(n<sup>3</sup>) test for canonicity. In interviews: assume arbitrary coins → DP.</p>
+      <p><b>Reconstruction.</b> Keep <code>last[a]</code> = the coin that achieved dp[a]; walk a → a − last[a] until 0 to print the coins (the visualizer does this).</p>`,
+    aiEra: `<p><b>What AI changes:</b> assistants know LC 322/518/377 by heart, so the interviewer's real test becomes: "Here is a slightly different wording — do you count piles or sequences? Is the coin reusable?" That reading skill is yours.</p>
+      <p><b>Use AI as a partner:</b> paste the problem wording and ask <code>Is this order-sensitive? Quote the exact sentence that decides it.</code> Then generate random tests and compare your DP against a brute-force enumerator the AI writes.</p>
+      <p><b>Where AI goes wrong:</b> swapping the loop order (answering 9 instead of 4), using <code>Integer.MAX_VALUE</code> as ∞ and overflowing on +1, applying greedy for "real-looking" coin sets, and forgetting amount = 0.</p>
+      <p><b>What you must still own:</b> the combinations-vs-permutations argument, the ∞ sentinel choice, the pseudo-polynomial caveat, and turning disguised wordings (perfect squares, minimum stamps, ribbon cutting) into this exact table.</p>`,
+    problems: [{
+      title: 'Coin Change (minimum coins)', level: 'Medium', tags: ['dp', 'unbounded knapsack', 'coin change'], companies: ['Amazon', 'Google', 'Microsoft', 'Goldman Sachs', 'Uber'],
+      statement: `<p>Given coin denominations <code>coins</code> (unlimited supply of each) and an integer <code>amount</code>, return the fewest number of coins needed to make up exactly that amount. If it cannot be made, return <code>-1</code>.</p>`,
+      constraints: `1 ≤ coins.length ≤ 12, 1 ≤ coins[i] ≤ 2<sup>31</sup>−1, 0 ≤ amount ≤ 10<sup>4</sup>`,
+      example: `<p>coins = [1, 3, 4], amount = 6 → Output <b>2</b> (${H.c('g', '3 + 3')}). Greedy would take ${H.c('r', '4 + 1 + 1 = 3 coins')}.</p><p>coins = [2], amount = 3 → <b>−1</b>.</p>`,
+      brute: { why: `<p>Recursively try every coin as the next coin: f(a) = 1 + min f(a − c). Without memo the tree has up to (#coins)<sup>amount / smallest coin</sup> nodes — for amount 100 and coins {1,2,5} that is astronomically many. The same remaining amount (say 37) is solved again in millions of branches.</p>`, code: `int minCoins(int[] coins, int a) {
+    if (a == 0) return 0;
+    int best = Integer.MAX_VALUE;
+    for (int c : coins) {
+        if (c <= a) {
+            int sub = minCoins(coins, a - c);
+            if (sub != Integer.MAX_VALUE) best = Math.min(best, sub + 1);
+        }
+    }
+    return best;   // MAX_VALUE means impossible; caller converts to -1
+}` },
+      mcq: { q: 'Which initial value is the safest "∞" for dp[a] in Java?', options: ['Integer.MAX_VALUE', 'amount + 1', '0', '-1'], answer: 1, explain: 'No valid answer needs more than amount coins (all coins ≥ 1), so amount + 1 means impossible — and dp + 1 never overflows. MAX_VALUE + 1 wraps to a negative number.' },
+      hints: [`<p>Hint 1: Think about the <b>last</b> coin you hand over. If it is c, the rest is the best way to pay a − c.</p>`, `<p>Hint 2: dp[a] = 1 + min(dp[a − c]) over coins c ≤ a; dp[0] = 0; fill a = 1..amount in increasing order.</p>`, `<p>Hint 3: Fill dp with amount + 1 as ∞. At the end return dp[amount] &gt; amount ? −1 : dp[amount]. amount = 0 returns 0. Coins larger than amount are simply skipped (also avoids int overflow with huge coins).</p>`],
+      solution: {
+        approach: `<p>Unbounded "min" DP over amounts. Each amount looks back at amount − c for every coin and keeps the smallest count + 1.</p>`,
+        code: `class Solution {
+    public int coinChange(int[] coins, int amount) {
+        int INF = amount + 1;                       // impossible marker
+        int[] dp = new int[amount + 1];
+        Arrays.fill(dp, INF);
+        dp[0] = 0;
+        for (int a = 1; a <= amount; a++) {
+            for (int c : coins) {
+                if (c <= a) dp[a] = Math.min(dp[a], dp[a - c] + 1);
+            }
+        }
+        return dp[amount] > amount ? -1 : dp[amount];
+    }
+}`,
+        alt: [{ lang: 'python', code: `class Solution:
+    def coinChange(self, coins, amount):
+        INF = amount + 1
+        dp = [0] + [INF] * amount
+        for a in range(1, amount + 1):
+            for c in coins:
+                if c <= a and dp[a - c] + 1 < dp[a]:
+                    dp[a] = dp[a - c] + 1
+        return -1 if dp[amount] > amount else dp[amount]` }, { lang: 'cpp', code: `class Solution {
+public:
+    int coinChange(vector<int>& coins, int amount) {
+        vector<int> dp(amount + 1, amount + 1);
+        dp[0] = 0;
+        for (int a = 1; a <= amount; a++)
+            for (int c : coins)
+                if (c <= a) dp[a] = min(dp[a], dp[a - c] + 1);
+        return dp[amount] > amount ? -1 : dp[amount];
+    }
+};` }],
+        dry: { head: ['a', 'coin 1 → dp[a-1]+1', 'coin 3 → dp[a-3]+1', 'coin 4 → dp[a-4]+1', 'dp[a]'], rows: [['1', '1', '—', '—', '1'], ['2', '2', '—', '—', '2'], ['3', '3', '1', '—', '1'], ['4', '2', '2', '1', '1'], ['5', '2', '3', '2', '2'], ['6', '3', H.c('g', '2'), '3', H.c('g', '2')]] },
+        complexity: `<p>Time O(amount × #coins) ≈ 1.2·10<sup>5</sup> operations; space O(amount).</p>`,
+        followUps: ['Print the coins used (store the last coin per amount).', 'Count the number of combinations instead (LC 518).', 'Each coin may be used at most once → 0/1 knapsack, iterate amounts backwards.']
+      }
+    }]
+  });
+
+  // =====================================================================
+  // TOPIC 5 — 0/1 Knapsack
+  // =====================================================================
+  topics.push({
+    title: '0/1 Knapsack: Take Each Item at Most Once',
+    analogy: `<p>You are packing a cabin bag with a <b>7 kg</b> limit for a trip. On the bed: a laptop, a camera, a jacket, a pair of shoes — each has a weight and a "how happy it makes me" score. You either pack an item or you don't (you can't pack half a laptop, and you only own one of each).</p>
+      <p>A clever packer thinks item by item: "<b>For every possible remaining space</b> (0 kg, 1 kg, … 7 kg), what is the happiest bag I can make with the items I have looked at so far?" Each new item asks: "<i>Is it worth giving up its weight in space?</i>"</p>`,
+    explain: `<p><b>Problem:</b> n items, item i has weight <code>w[i]</code> and value <code>v[i]</code>. Bag capacity <code>W</code>. Choose a subset with total weight ≤ W and maximum total value. Each item is used <b>0 or 1</b> times — hence "0/1".</p>
+      <p><b>Greedy by value/weight ratio fails here</b> (it only works for <i>fractional</i> knapsack, where you can cut items). W = 7, items (weight:value) 1:1, 3:4, 4:5, 5:7. Best ratio is 5:7 (1.4) → take it, 2 kg left → add 1:1 → value 8. But 3:4 + 4:5 = weight 7, value <b>9</b>.</p>
+      <h4>Why one index is not enough</h4>
+      <p>In House Robber, knowing "which house" was enough. Here, after deciding some items, what matters for the future is also <b>how much space is left</b>. So the state needs two numbers.</p>
+      ${H.table(['step', '0/1 Knapsack'], [
+        ['State', '<code>dp[i][c]</code> = best value using only the <b>first i items</b> with capacity <b>c</b>'],
+        ['Last choice', 'item i (the i-th item) is <b>skipped</b> or <b>taken</b>'],
+        ['Transition', '<code>dp[i][c] = max( dp[i−1][c] , dp[i−1][c − w<sub>i</sub>] + v<sub>i</sub> )</code> (take only if w<sub>i</sub> ≤ c)'],
+        ['Base', '<code>dp[0][c] = 0</code> (no items → no value) and <code>dp[i][0] = 0</code>'],
+        ['Order', 'row by row (i = 1..n); each row only reads the row above'],
+        ['Answer', '<code>dp[n][W]</code>']
+      ])}
+      <p>Both arrows point to the <b>row above</b> (i−1) — that is what "each item at most once" looks like in the table: once you take item i you jump to a state where item i is no longer available.</p>
+      ${H.table(['items ↓ / capacity →', '0', '1', '2', '3', '4', '5', '6', '7'], [
+        ['none', '0', '0', '0', '0', '0', '0', '0', '0'],
+        ['+ 1:1', '0', '1', '1', '1', '1', '1', '1', '1'],
+        ['+ 3:4', '0', '1', '1', '4', '5', '5', '5', '5'],
+        ['+ 4:5', '0', '1', '1', '4', '5', '6', '6', H.c('b', '9')],
+        ['+ 5:7', '0', '1', '1', '4', '5', '7', '8', H.c('g', '9')]
+      ])}
+      <h4>Space optimization: one row, loop capacity <u>backwards</u></h4>
+      <p>Since row i only reads row i−1, keep one array. But if you loop c from small to big, <code>dp[c − w]</code> has <i>already</i> been updated for item i — you would be reading "row i", i.e. using the item twice. Looping c from <b>W down to w</b> reads values that are still from the previous item.</p>
+      ${H.table(['loop direction (1D)', 'reads dp[c−w] from', 'meaning'], [['c = W → w (backwards)', 'previous item (old row)', H.c('g', '0/1 knapsack')], ['c = w → W (forwards)', 'current item (new row)', H.c('b', 'unbounded knapsack (next topic)')]])}`,
+    clues: [
+      '"each item can be used <b>at most once</b>" + weight/capacity/budget limit + maximize value → 0/1 knapsack.',
+      '"<b>subset</b> whose sum equals target" / "can the array be <b>partitioned</b> into two equal-sum parts" → boolean 0/1 knapsack (subset sum).',
+      '"assign <b>+ or −</b> to each number to reach target" (Target Sum) → count subsets with sum (total + target)/2 → counting 0/1 knapsack.',
+      '<code>N ≤ 100–200</code> and <code>W ≤ 10<sup>4</sup>–10<sup>5</sup></code> → O(N·W) table is the intended solution.',
+      '<code>W ≤ 10<sup>9</sup></code> but values small → flip it: dp over <b>value</b> = min weight to reach that value.',
+      '<code>N ≤ 40</code> and huge W → meet-in-the-middle (split items into two halves of 2<sup>20</sup> subsets each).'
+    ],
+    code: [`
+      // 0/1 knapsack, full table. dp[i][c] = best value from first i items, capacity c.
+      int knapsack(int[] wt, int[] val, int W) {
+          int n = wt.length;
+          int[][] dp = new int[n + 1][W + 1];          // row 0 and column 0 are all 0
+          for (int i = 1; i <= n; i++) {
+              int w = wt[i - 1], v = val[i - 1];       // the i-th item
+              for (int c = 0; c <= W; c++) {
+                  dp[i][c] = dp[i - 1][c];             // skip item i
+                  if (w <= c) {
+                      dp[i][c] = Math.max(dp[i][c], dp[i - 1][c - w] + v); // take it once
+                  }
+              }
+          }
+          return dp[n][W];
+      }
+
+      // Same thing in one array: capacity loop runs BACKWARDS so each item is used once.
+      int knapsack1D(int[] wt, int[] val, int W) {
+          int[] dp = new int[W + 1];
+          for (int i = 0; i < wt.length; i++) {
+              for (int c = W; c >= wt[i]; c--) {       // right-to-left!
+                  dp[c] = Math.max(dp[c], dp[c - wt[i]] + val[i]);
+              }
+          }
+          return dp[W];
+      }`, { lang: 'python', run: true, title: 'Knapsack + which items were packed (Python, runnable)', code: `def knapsack(wt, val, W):
+    n = len(wt)
+    dp = [[0] * (W + 1) for _ in range(n + 1)]
+    for i in range(1, n + 1):
+        w, v = wt[i - 1], val[i - 1]
+        for c in range(W + 1):
+            dp[i][c] = dp[i - 1][c]
+            if w <= c:
+                dp[i][c] = max(dp[i][c], dp[i - 1][c - w] + v)
+    # walk back: if the value changed between rows, item i was taken
+    picked, c = [], W
+    for i in range(n, 0, -1):
+        if dp[i][c] != dp[i - 1][c]:
+            picked.append(i - 1)
+            c -= wt[i - 1]
+    return dp[n][W], sorted(picked)
+
+print(knapsack([1, 3, 4, 5], [1, 4, 5, 7], 7))     # (9, [1, 2])
+print(knapsack([10, 20, 30], [60, 100, 120], 50))  # (220, [1, 2])
+` }],
+    codeTitle: ['0/1 knapsack: 2D table and 1D backward loop (Java)', 'With item reconstruction (Python, runnable)'],
+    viz: [{
+      title: '0/1 knapsack table: each cell reads the cell above (skip) and the cell above-left by w (take)',
+      input: '7 | 1:1 3:4 4:5 5:7',
+      inputLabel: 'capacity | weight:value items (≤ 5 items, capacity ≤ 10)',
+      gen: function (input) {
+        var p = parseKnap(input, 5, 10), W = p.W, wt = p.w, val = p.v, n = wt.length;
+        var rows = [], i, c, filled = {}, frames = [];
+        for (i = 0; i <= n; i++) { rows.push([]); for (c = 0; c <= W; c++) rows[i].push(i === 0 ? 0 : ''); }
+        for (c = 0; c <= W; c++) filled['0,' + c] = 1;
+        var rh = ['none'].concat(wt.map(function (w, k) { return '+ ' + w + ':' + val[k]; }));
+        var ch = range(W + 1).map(String);
+        frames.push({ narr: 'Rows = items considered so far (weight:value), columns = capacity 0..' + W + '. Row "none" is all 0: no items, no value.', parts: [
+          grid('dp[i][c]', rows, rh, ch, gridHl(filled, {}))
+        ] });
+        for (i = 1; i <= n; i++) {
+          var w = wt[i - 1], v = val[i - 1];
+          for (c = 0; c <= W; c++) {
+            var skip = rows[i - 1][c], take = w <= c ? rows[i - 1][c - w] + v : null;
+            rows[i][c] = take !== null && take > skip ? take : skip;
+            var sp = {}; sp[(i - 1) + ',' + c] = take !== null && take > skip ? 'win' : 'ok';
+            if (take !== null) sp[(i - 1) + ',' + (c - w)] = take > skip ? 'ok' : 'win';
+            sp[i + ',' + c] = 'cur';
+            frames.push({ narr: 'Item ' + w + ':' + v + ', capacity ' + c + '. Skip → cell above = ' + skip + '. ' + (take === null ? 'Take → impossible (weight ' + w + ' &gt; ' + c + ').' : 'Take → cell above, ' + w + ' columns left (' + rows[i - 1][c - w] + ') + ' + v + ' = ' + take + '.') + ' Keep <b>' + rows[i][c] + '</b> (green = the winner).', parts: [
+              grid('dp[i][c]', rows, rh, ch, gridHl(filled, sp))
+            ] });
+            filled[i + ',' + c] = 1;
+          }
+        }
+        var path = {}, cc = W, picked = [];
+        for (i = n; i >= 1; i--) {
+          path[i + ',' + cc] = 'sel';
+          if (rows[i][cc] !== rows[i - 1][cc]) { picked.push(wt[i - 1] + ':' + val[i - 1]); cc -= wt[i - 1]; }
+        }
+        path['0,' + cc] = 'sel';
+        frames.push({ narr: 'Answer dp[' + n + '][' + W + '] = <b>' + rows[n][W] + '</b>. Walk back up: when a cell differs from the one above, that item was taken (jump left by its weight). Packed: <b>' + (picked.length ? picked.reverse().join(', ') : 'nothing') + '</b>.', parts: [
+          grid('dp[i][c]', rows, rh, ch, gridHl(filled, path)),
+          { type: 'set', label: 'items packed (weight:value)', items: picked }
+        ] });
+        return frames;
+      }
+    }, {
+      title: 'One-array version: why the capacity loop must run right-to-left',
+      input: '6 | 2:3 3:4',
+      inputLabel: 'capacity | weight:value items (≤ 3 items, capacity ≤ 8)',
+      gen: function (input) {
+        var p = parseKnap(input, 3, 8), W = p.W, wt = p.w, val = p.v, frames = [], c, k;
+        var dp = []; for (c = 0; c <= W; c++) dp.push(0);
+        frames.push({ narr: 'One array dp[c] (all 0). For each item we sweep capacity from <b>' + W + ' down to its weight</b>.', parts: [
+          { type: 'array', label: 'dp[c]', values: dp.slice() }
+        ] });
+        for (k = 0; k < wt.length; k++) {
+          for (c = W; c >= wt[k]; c--) {
+            var cand = dp[c - wt[k]] + val[k], h = {};
+            h[c] = 'cur'; h[c - wt[k]] = 'win';
+            frames.push({ narr: 'Item ' + wt[k] + ':' + val[k] + ', c = ' + c + ': dp[' + (c - wt[k]) + '] (blue) has <b>not</b> been touched for this item yet — it is still the "row above". Take → ' + dp[c - wt[k]] + ' + ' + val[k] + ' = ' + cand + ' vs keep ' + dp[c] + '.', parts: [
+              { type: 'array', label: 'dp[c]', values: dp.slice(), hl: h, ptr: one(c, 'c') }
+            ] });
+            if (cand > dp[c]) dp[c] = cand;
+          }
+          frames.push({ narr: 'Finished item ' + wt[k] + ':' + val[k] + '. Every cell used it at most once.', parts: [
+            { type: 'array', label: 'dp[c]', values: dp.slice(), hl: one(W, 'ok') }
+          ] });
+        }
+        var bad = []; for (c = 0; c <= W; c++) bad.push(0);
+        for (c = wt[0]; c <= W; c++) bad[c] = Math.max(bad[c], bad[c - wt[0]] + val[0]);
+        frames.push({ narr: '<span class="c-r">Danger demo:</span> sweeping item ' + wt[0] + ':' + val[0] + ' <b>left-to-right</b> instead gives dp[' + W + '] = ' + bad[W] + ' — it reused the same item ' + Math.floor(W / wt[0]) + ' times! That is unbounded knapsack, not 0/1.', parts: [
+          { type: 'array', label: 'WRONG (forward) sweep with only item ' + wt[0] + ':' + val[0], values: bad.slice(), hl: one(W, 'bad') },
+          { type: 'array', label: 'correct 0/1 answer row', values: dp.slice(), hl: one(W, 'sel') }
+        ] });
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'Classic textbook instance', html: `<p>W = 50, items (10 kg, ₹60), (20 kg, ₹100), (30 kg, ₹120). Ratio-greedy takes 10 + 20 = ₹160 then cannot fit 30. DP: 20 + 30 = 50 kg → <b>₹220</b>. (Fractional knapsack would get ₹240 by cutting the 30-kg item — but here items are indivisible.)</p>` },
+      { title: 'Subset sum = boolean knapsack', html: `<p>"Is there a subset of [3, 34, 4, 12, 5, 2] with sum 9?" Weight = value = the number; dp[c] = can we hit exactly c. <code>dp[c] |= dp[c − x]</code>, backwards. 4 + 5 = 9 → <b>true</b>. Partition Equal Subset Sum = subset sum with target total/2 (odd total → false immediately).</p>`, code: `boolean subsetSum(int[] a, int target) {
+    boolean[] can = new boolean[target + 1];
+    can[0] = true;                         // empty subset makes 0
+    for (int x : a)
+        for (int c = target; c >= x; c--)  // backwards: each number once
+            can[c] = can[c] || can[c - x];
+    return can[target];
+}` },
+      { title: 'Counting subsets: Target Sum', html: `<p>nums = [1,1,1,1,1], target 3: choose a + or − for each. If P = sum of "+" numbers, then P − (total − P) = target → P = (total + target)/2 = 4. Count subsets summing to 4 → C(5,4) = <b>5</b>. Same backward loop with <code>ways[c] += ways[c − x]</code>. If (total + target) is odd or |target| &gt; total → 0.</p>` },
+      { title: 'Huge capacity, small values: flip the DP', html: `<p>n = 100, W = 10<sup>9</sup>, each value ≤ 1000. A W-wide table is impossible. Instead <code>minW[val]</code> = least weight achieving total value exactly val (size ≤ 100 × 1000 = 10<sup>5</sup>). Answer = largest val with minW[val] ≤ W. Same 0/1 backward loop, roles of weight and value swapped.</p>` }
+    ],
+    deepDive: `<p><b>Pseudo-polynomial, NP-hard.</b> O(n·W) looks polynomial, but W is a <i>number</i> written with log₂W bits; doubling the bits squares W. The 0/1 knapsack decision problem is NP-complete (weakly), so no algorithm polynomial in the bit-size is known. The DP is fast exactly when W (or total value) is small.</p>
+      <p><b>Bitset speed-up for subset sum.</b> For the boolean version, the whole row update is <code>bits |= bits &lt;&lt; x</code>. With <code>java.util.BitSet</code> or C++ <code>std::bitset</code> that processes 64 capacities per machine word: O(n·W/64). A classic trick for partition problems with sums up to 10<sup>6</sup>.</p>
+      <p><b>Reconstruction needs the 2D table</b> (or one bit per (i, c) "taken" flag). The 1D array forgets which items made each value. Hirschberg-style divide &amp; conquer can reconstruct in O(W) memory at ~2× time.</p>
+      <p><b>Meet in the middle.</b> When n ≤ 40 and W is huge: enumerate the 2<sup>20</sup> subsets of each half, sort one half by weight with a running best value, and binary-search the complement for each subset of the other half → O(2<sup>n/2</sup>·n).</p>
+      <p><b>Approximation.</b> In practice (cloud bin packing, ad budgets) people use the FPTAS: scale values down by a factor, run the value-indexed DP, and get within (1 − ε) of optimal in polynomial time. Solvers like OR-Tools use branch-and-bound with LP relaxation bounds (the fractional greedy gives the bound!).</p>
+      <p><b>Bounded knapsack</b> (item i has count k<sub>i</sub>): split each count into powers of two (1, 2, 4, …, remainder) and run 0/1 on the bundles → O(W·Σ log k<sub>i</sub>); a monotonic-queue trick gives O(n·W).</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI writes the 2D knapsack instantly. What it cannot do for you in an interview is <b>recognise</b> knapsack inside "split players into two teams of equal skill" or "assign + / −" and explain why the backward loop is needed.</p>
+      <p><b>Use AI as a partner:</b> ask it to produce the 1D version and then ask <code>Explain why the inner loop must go backwards using a 2-item example where forwards gives the wrong answer</code>. If its example doesn't actually break, you've caught it. Use it to write a brute-force 2<sup>n</sup> checker for random testing.</p>
+      <p><b>Where AI goes wrong:</b> forward loop in 1D 0/1 knapsack (silently becomes unbounded), greedy by ratio for 0/1, int overflow when values are large, and forgetting the parity check in Partition / Target Sum.</p>
+      <p><b>What you must still own:</b> the 2-dimensional state argument ("what matters for the future is items left AND space left"), the loop-direction proof, and the pseudo-polynomial complexity story — including what to do when W is 10<sup>9</sup>.</p>`,
+    problems: [{
+      title: '0/1 Knapsack', level: 'Medium', tags: ['dp', 'knapsack', '2d dp'], companies: ['Amazon', 'Microsoft', 'Flipkart', 'Walmart'],
+      statement: `<p>You have <code>n</code> items; item i weighs <code>wt[i]</code> and is worth <code>val[i]</code>. Your bag holds at most <code>W</code> weight. Each item can be taken at most once and cannot be broken. Return the maximum total value you can carry.</p>`,
+      constraints: `1 ≤ n ≤ 1000, 1 ≤ W ≤ 1000, 1 ≤ wt[i] ≤ 1000, 1 ≤ val[i] ≤ 1000`,
+      example: `<p>W = 7, items (weight:value) = ${H.c('m', '1:1')}, ${H.c('g', '3:4')}, ${H.c('g', '4:5')}, ${H.c('m', '5:7')} → Output <b>9</b>.</p><p>${H.c('g', '3:4 + 4:5')} weighs exactly 7 and is worth 9. The best-ratio item 5:7 plus 1:1 is only 8.</p>`,
+      brute: { why: `<p>Try all 2<sup>n</sup> subsets (take/skip recursion) and keep the best that fits. n = 1000 → 2<sup>1000</sup> subsets: hopeless. The waste: the question "best value from items i..n−1 with c capacity left" depends only on (i, c), yet it is answered again for every different set of earlier choices that leaves the same c.</p>`, code: `int best(int[] wt, int[] val, int i, int cap) {
+    if (i == wt.length) return 0;                      // no items left
+    int skip = best(wt, val, i + 1, cap);
+    int take = 0;
+    if (wt[i] <= cap) take = val[i] + best(wt, val, i + 1, cap - wt[i]);
+    return Math.max(skip, take);
+}` },
+      mcq: { q: 'In the 1D version you loop capacity from small to large by mistake. What happens?', options: ['Nothing, same answer', 'Items can be counted more than once (it becomes unbounded knapsack)', 'It throws an exception', 'It returns 0'], answer: 1, explain: 'dp[c − w] was already updated with item i in this sweep, so taking it again reuses the same item.' },
+      hints: [`<p>Hint 1: The recursion best(i, cap) has only two changing parameters. Different take/skip histories reach the same (i, cap) — memoize on it.</p>`, `<p>Hint 2: Table dp[i][c] = max(dp[i−1][c], dp[i−1][c−w] + v). Both arrows go to the row above because the item can't be reused.</p>`, `<p>Hint 3: Shrink to one array and loop c from W down to w. Recipe: dp[0..W] = 0; for each item: for c = W..w: dp[c] = max(dp[c], dp[c−w] + v); return dp[W].</p>`],
+      solution: {
+        approach: `<p>Item-by-item DP over capacities using one array swept right-to-left, so every read of <code>dp[c − w]</code> still holds the value from before this item.</p>`,
+        code: `class Solution {
+    public int knapSack(int W, int[] wt, int[] val) {
+        int[] dp = new int[W + 1];                     // dp[c] = best value with capacity c
+        for (int i = 0; i < wt.length; i++) {
+            for (int c = W; c >= wt[i]; c--) {         // backwards = each item once
+                dp[c] = Math.max(dp[c], dp[c - wt[i]] + val[i]);
+            }
+        }
+        return dp[W];
+    }
+}`,
+        alt: [{ lang: 'python', code: `class Solution:
+    def knapSack(self, W, wt, val):
+        dp = [0] * (W + 1)
+        for w, v in zip(wt, val):
+            for c in range(W, w - 1, -1):
+                dp[c] = max(dp[c], dp[c - w] + v)
+        return dp[W]` }, { lang: 'cpp', code: `class Solution {
+public:
+    int knapSack(int W, vector<int>& wt, vector<int>& val) {
+        vector<int> dp(W + 1, 0);
+        for (size_t i = 0; i < wt.size(); i++)
+            for (int c = W; c >= wt[i]; c--)
+                dp[c] = max(dp[c], dp[c - wt[i]] + val[i]);
+        return dp[W];
+    }
+};` }],
+        dry: { head: ['after item', 'dp[0..7]', 'note'], rows: [['1:1', '0 1 1 1 1 1 1 1', 'any capacity ≥ 1 takes it'], ['3:4', '0 1 1 4 5 5 5 5', 'c=4: 1 + 4 = 5'], ['4:5', '0 1 1 4 5 6 6 9', 'c=7: dp[3] + 5 = 9'], ['5:7', '0 1 1 4 5 7 8 9', H.c('g', 'c=7: max(9, dp[2]+7=8) = 9')]] },
+        complexity: `<p>Time O(n·W) = 10<sup>6</sup>; space O(W) (O(n·W) if you need to list the items).</p>`,
+        followUps: ['Return the chosen items (keep the 2D table).', 'W up to 10<sup>9</sup>, values ≤ 100 → DP over value.', 'Each item has a count limit (bounded knapsack).']
+      }
+    }]
+  });
+
+  // =====================================================================
+  // TOPIC 6 — Unbounded knapsack (rod cutting)
+  // =====================================================================
+  topics.push({
+    title: 'Unbounded Knapsack: Reuse Items as Often as You Like (Rod Cutting)',
+    analogy: `<p>A carpenter has one 8-metre wooden rod and a price list: a 1 m piece sells for ₹1, 2 m for ₹5, 3 m for ₹8, 4 m for ₹9. She can cut <b>as many pieces of each size as she likes</b>. How should she cut to earn the most?</p>
+      <p>The difference from packing a suitcase: the shop has an <b>endless supply</b> of each piece size. After choosing a 3 m piece, the 3 m option is <i>still on the menu</i> for the rest of the rod.</p>`,
+    explain: `<p><b>Unbounded knapsack:</b> same as 0/1 knapsack (weights, values, capacity W) but each item type can be taken <b>any number of times</b>. Rod cutting, coin change, "minimum cost to buy at least X", perfect squares and integer break are all this pattern.</p>
+      <h4>The only change: "take" stays on the same row</h4>
+      ${H.table(['', '0/1 knapsack', 'unbounded knapsack'], [
+        ['skip item i', 'dp[i−1][c]', 'dp[i−1][c]'],
+        ['take item i', 'dp[<b>i−1</b>][c − w] + v → item gone', 'dp[<b>i</b>][c − w] + v → item still available'],
+        ['1D loop over c', H.c('g', 'W → w (backwards)'), H.c('b', 'w → W (forwards)')]
+      ])}
+      <p>Because "take" lands on the same row, you may take item i again from there, and again … That single index change is the whole difference.</p>
+      <h4>Even simpler 1D view (capacity-first)</h4>
+      <p>For unbounded problems where only the total matters (not the order), you can also think "<b>what was the last piece cut?</b>": <code>best[len] = max over pieces p ≤ len of price[p] + best[len − p]</code>. Same answer, same O(W·n).</p>
+      <p>Rod length 4, prices p1 = 1, p2 = 5, p3 = 8, p4 = 9:</p>
+      ${H.table(['len', 'options (last piece + best of the rest)', 'best[len]'], [
+        ['1', '1 + best[0]', '1'],
+        ['2', '1 + best[1] = 2, 5 + best[0] = 5', '5'],
+        ['3', '1 + 5, 5 + 1, 8 + 0', '8'],
+        ['4', '1 + 8, 5 + 5, 8 + 1, 9 + 0', H.c('g', '10') + ' (2 + 2)']
+      ])}`,
+    clues: [
+      '"<b>unlimited</b> supply / <b>infinite</b> number of each" item, coin or piece → unbounded knapsack.',
+      '"cut a rod / ribbon / log into pieces" with a price or allowed lengths → rod cutting = unbounded knapsack.',
+      '"break the integer n into a sum of at least two positive integers and <b>maximise the product</b>" (Integer Break) → unbounded with product.',
+      '"minimum cost to buy <b>at least</b> X units" with bundle offers reusable → unbounded min DP (careful: "at least" means cap at X).',
+      'Same constraint shapes as 0/1 knapsack: <code>W ≤ 10<sup>4</sup></code>, item types ≤ 100 → O(n·W).'
+    ],
+    code: [`
+      // Unbounded knapsack (each item type reusable). 1D, capacity loop FORWARDS.
+      int unboundedKnapsack(int[] wt, int[] val, int W) {
+          int[] dp = new int[W + 1];                 // dp[c] = best value with capacity c
+          for (int i = 0; i < wt.length; i++) {
+              for (int c = wt[i]; c <= W; c++) {     // forwards: dp[c - w] may already use item i
+                  dp[c] = Math.max(dp[c], dp[c - wt[i]] + val[i]);
+              }
+          }
+          return dp[W];
+      }
+
+      // Rod cutting: price[k] = price of a piece of length k+1. Last-piece formulation.
+      int cutRod(int[] price, int n) {
+          int[] best = new int[n + 1];               // best[0] = 0: empty rod earns nothing
+          for (int len = 1; len <= n; len++) {
+              for (int piece = 1; piece <= len && piece <= price.length; piece++) {
+                  best[len] = Math.max(best[len], price[piece - 1] + best[len - piece]);
+              }
+          }
+          return best[n];
+      }`, { lang: 'python', run: true, title: 'Rod cutting with the actual cuts (Python, runnable)', code: `def cut_rod(price, n):
+    best = [0] * (n + 1)
+    first_cut = [0] * (n + 1)          # which piece to cut first for this length
+    for length in range(1, n + 1):
+        for piece in range(1, min(length, len(price)) + 1):
+            cand = price[piece - 1] + best[length - piece]
+            if cand > best[length]:
+                best[length], first_cut[length] = cand, piece
+    cuts, L = [], n
+    while L > 0:
+        cuts.append(first_cut[L])
+        L -= first_cut[L]
+    return best[n], cuts
+
+print(cut_rod([1, 5, 8, 9], 4))                     # (10, [2, 2])
+print(cut_rod([1, 5, 8, 9, 10, 17, 17, 20], 8))     # (22, [2, 6])
+print(cut_rod([3, 5, 8, 9, 10, 17, 17, 20], 8))     # (24, [1, 1, 1, 1, 1, 1, 1, 1])
+` }],
+    codeTitle: ['Unbounded knapsack and rod cutting (Java)', 'Rod cutting with reconstruction (Python, runnable)'],
+    viz: {
+      title: 'Unbounded table: "take" reads the SAME row (item still available), "skip" reads the row above',
+      input: '8 | 1:1 2:5 3:8 4:9',
+      inputLabel: 'capacity | weight:value item types (≤ 4 types, capacity ≤ 10)',
+      gen: function (input) {
+        var p = parseKnap(input, 4, 10), W = p.W, wt = p.w, val = p.v, n = wt.length;
+        var rows = [], i, c, filled = {}, frames = [];
+        for (i = 0; i <= n; i++) { rows.push([]); for (c = 0; c <= W; c++) rows[i].push(i === 0 ? 0 : ''); }
+        for (c = 0; c <= W; c++) filled['0,' + c] = 1;
+        var rh = ['none'].concat(wt.map(function (w, k) { return '+ ' + w + ':' + val[k] + ' ∞'; }));
+        var ch = range(W + 1).map(String);
+        frames.push({ narr: 'Rows add one item <b>type</b> at a time (reusable). Columns = capacity. Watch the "take" arrow: it points <b>left within the same row</b>.', parts: [
+          grid('dp[i][c]', rows, rh, ch, gridHl(filled, {}))
+        ] });
+        for (i = 1; i <= n; i++) {
+          var w = wt[i - 1], v = val[i - 1];
+          for (c = 0; c <= W; c++) {
+            var skip = rows[i - 1][c], take = w <= c ? rows[i][c - w] + v : null;
+            rows[i][c] = take !== null && take > skip ? take : skip;
+            var tw = take !== null && take > skip;
+            var sp = {}; sp[(i - 1) + ',' + c] = tw ? 'win' : 'ok';
+            if (take !== null) sp[i + ',' + (c - w)] = tw ? 'ok' : 'win';
+            sp[i + ',' + c] = 'cur';
+            frames.push({ narr: 'Type ' + w + ':' + v + ', capacity ' + c + '. Skip → above = ' + skip + '. ' + (take === null ? 'Too heavy to take.' : 'Take one more → <b>same row</b>, ' + w + ' to the left (' + rows[i][c - w] + ', which may already contain this type) + ' + v + ' = ' + take + '.') + ' Keep <b>' + rows[i][c] + '</b>.', parts: [
+              grid('dp[i][c]', rows, rh, ch, gridHl(filled, sp))
+            ] });
+            filled[i + ',' + c] = 1;
+          }
+        }
+        var path = {}, used = [], ii = n, cc = W;
+        while (ii > 0 && cc > 0) {
+          path[ii + ',' + cc] = 'sel';
+          if (rows[ii][cc] === rows[ii - 1][cc]) ii--;
+          else { used.push(wt[ii - 1] + ':' + val[ii - 1]); cc -= wt[ii - 1]; }
+        }
+        path[ii + ',' + cc] = 'sel';
+        frames.push({ narr: 'Answer <b>' + rows[n][W] + '</b>. Walking back: equal to the cell above → go up (type not used); otherwise go left by its weight and <b>stay in the row</b> (it may be used again). Used: ' + (used.length ? used.join(' + ') : 'nothing') + '.', parts: [
+          grid('dp[i][c]', rows, rh, ch, gridHl(filled, path)),
+          { type: 'set', label: 'pieces / items used (with repeats)', items: used }
+        ] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'CLRS rod of length 8', html: `<p>Prices for lengths 1..8: 1, 5, 8, 9, 10, 17, 17, 20. Best for length 8 = <b>22</b>: cut 2 + 6 (5 + 17). Selling the whole rod gives only 20; four 2 m pieces give 20.</p>` },
+      { title: 'Integer Break (LC 343)', html: `<p>Break n (≥ 2) into at least two positive parts maximizing the product. dp[i] = max over j of max(j, dp[j]) × max(i−j, dp[i−j]) — the max(j, dp[j]) allows "do not break this part further". n = 10 → 3 + 3 + 4 → <b>36</b>. (Math shortcut: use as many 3s as possible — a nice follow-up.)</p>`, code: `int integerBreak(int n) {
+    int[] dp = new int[n + 1];
+    dp[1] = 1;
+    for (int i = 2; i <= n; i++)
+        for (int j = 1; j < i; j++)
+            dp[i] = Math.max(dp[i], Math.max(j, dp[j]) * Math.max(i - j, dp[i - j]));
+    return dp[n];
+}` },
+      { title: 'Minimum cost to get at least X (bundles)', html: `<p>Packs of 3 cans for ₹5, 5 cans for ₹7, need <b>at least</b> 11 cans. Exact-amount DP would miss "buy 12". Fix: let dp[x] = min cost for at least x cans and use <code>dp[max(0, x − size)] + price</code>. Options: 5+3+3 cans = ₹7+₹5+₹5 = <b>₹17</b> (exactly 11), 5+5+3 = ₹19 (13 cans), 3+3+3+3 = ₹20 (12 cans) → <b>₹17</b>. When pack sizes don't line up exactly, buying a little extra can be cheapest, and only the clamp lets the DP consider it. The clamp to 0 is the whole trick.</p>` },
+      { title: 'Coin change is unbounded knapsack', html: `<p>Min coins: weight = coin value, "value" = 1 coin, minimize instead of maximize, exact capacity. Number of combinations: same forward loop with + instead of max. If you understood the forward-loop rule here, you understand why LC 518's inner loop goes forward.</p>` }
+    ],
+    deepDive: `<p><b>Proof of the forward loop.</b> In the 1D array, when we compute dp[c] for item i, dp[c − w] has already been updated in this same sweep, i.e. it equals dp[i][c − w] (the same row). That is exactly the unbounded transition. For 0/1 we needed dp[i−1][c − w], so we had to read it <i>before</i> it was overwritten — hence backwards.</p>
+      <p><b>Item-outer vs capacity-outer.</b> For a <i>max/min value</i> question, both loop orders give the same answer for unbounded knapsack (order of items does not change a sum). For <i>counting</i>, they differ: item-outer counts multisets, capacity-outer counts sequences (seen in coin change).</p>
+      <p><b>Dominance pruning.</b> If item A is no heavier and no less valuable than item B, B can be dropped. Real solvers also use the best-ratio item: for very large W, the optimal solution uses the best-ratio item for "most" of the capacity, so you only need DP on a small residual (periodicity of unbounded knapsack) — a known trick when W is up to 10<sup>9</sup> but weights are small.</p>
+      <p><b>Exact vs "at most" vs "at least".</b> With dp initialised to 0 everywhere, dp[c] means "best with capacity <i>at most</i> c". If the problem wants <i>exactly</i> c (e.g. coin change), initialise unreachable states to −∞ (max) or +∞ (min) and only dp[0] = 0. "At least" needs the clamp max(0, c − w). Mixing these up is the classic silent bug.</p>
+      <p><b>Production:</b> cutting-stock problems (paper rolls, steel bars, cloud VM shapes) are large unbounded knapsacks; industry solves them with column generation, where unbounded knapsack DP is the pricing subproblem solved thousands of times.</p>`,
+    aiEra: `<p><b>What AI changes:</b> the forward-vs-backward loop rule is a one-liner for an assistant to write, and also a one-liner for it to get wrong without noticing. Your value is <b>verifying</b> which variant the problem needs.</p>
+      <p><b>Use AI as a partner:</b> give it a problem statement and ask <code>Is each item reusable? Is the capacity exact, at most, or at least?</code> before asking for code. Then ask it to generate a brute-force recursive enumerator to cross-check on small inputs.</p>
+      <p><b>Where AI goes wrong:</b> uses 0-initialisation for an "exact amount" problem (returns a value for an impossible capacity), forgets the "at least" clamp, and for Integer Break forgets that a part may stay unbroken (dp[2] = 1 but the part "2" contributes 2).</p>
+      <p><b>What you must still own:</b> the one-index difference between 0/1 and unbounded, the three capacity semantics (exact / at most / at least), and spotting the pattern behind cutting, bundles and change-making.</p>`,
+    problems: [{
+      title: 'Rod Cutting', level: 'Medium', tags: ['dp', 'unbounded knapsack'], companies: ['Amazon', 'Microsoft', 'Google'],
+      statement: `<p>A rod of length <code>n</code> can be cut into integer-length pieces. <code>price[k]</code> is the selling price of a piece of length <code>k+1</code>. Pieces of the same length may be produced any number of times. Return the maximum total price obtainable (not cutting at all is allowed).</p>`,
+      constraints: `1 ≤ n ≤ 1000, price.length = n, 1 ≤ price[k] ≤ 10<sup>5</sup>`,
+      example: `<p>price = [1, 5, 8, 9, 10, 17, 17, 20], n = 8 → Output <b>22</b>.</p>${H.table(['cut', 'value'], [['8 (no cut)', '20'], ['2 + 2 + 2 + 2', '20'], [H.c('g', '2 + 6'), H.c('g', '5 + 17 = 22')]])}`,
+      brute: { why: `<p>Recursively choose the first piece length (1..n) and solve the rest: T(n) = Σ T(n−k) → 2<sup>n−1</sup> ways to cut. n = 1000 → impossible. The waste: "best for remaining length 5" is recomputed for every way of cutting the first 3 metres.</p>`, code: `int cut(int[] price, int len) {
+    if (len == 0) return 0;
+    int best = 0;
+    for (int piece = 1; piece <= len; piece++)
+        best = Math.max(best, price[piece - 1] + cut(price, len - piece));
+    return best;
+}` },
+      mcq: { q: 'Which statement about rod cutting\'s 1D dp is correct?', options: ['best[len] = max over piece of price[piece−1] + best[len − piece]', 'best[len] = best[len−1] + price[0]', 'It needs a backward loop like 0/1 knapsack', 'It cannot be done in less than O(2ⁿ)'], answer: 0, explain: 'Choose the last (or first) piece; the remainder is an independent smaller rod. Pieces are reusable, so no backward loop is needed.' },
+      hints: [`<p>Hint 1: The only thing that matters about a partly-cut rod is its remaining length. That is your state.</p>`, `<p>Hint 2: best[len] = max(price[p−1] + best[len−p]) for p = 1..len; best[0] = 0. This is unbounded knapsack with weight = piece length.</p>`, `<p>Hint 3: Fill len = 1..n in increasing order (O(n²) = 10<sup>6</sup>). Use long if prices × count could exceed 2·10<sup>9</sup> (here 1000 × 10<sup>5</sup> = 10<sup>8</sup>, int is fine).</p>`],
+      solution: {
+        approach: `<p>Last-piece DP: for each length, try every possible piece as the last cut and add the best price of the remainder (already computed, since it is shorter).</p>`,
+        code: `class Solution {
+    public int cutRod(int[] price) {
+        int n = price.length;
+        int[] best = new int[n + 1];                   // best[0] = 0
+        for (int len = 1; len <= n; len++) {
+            for (int piece = 1; piece <= len; piece++) {
+                best[len] = Math.max(best[len], price[piece - 1] + best[len - piece]);
+            }
+        }
+        return best[n];
+    }
+}`,
+        alt: [{ lang: 'python', code: `class Solution:
+    def cutRod(self, price):
+        n = len(price)
+        best = [0] * (n + 1)
+        for length in range(1, n + 1):
+            for piece in range(1, length + 1):
+                best[length] = max(best[length], price[piece - 1] + best[length - piece])
+        return best[n]` }],
+        dry: { head: ['len', 'best candidates (piece + rest)', 'best[len]'], rows: [['1', '1+0', '1'], ['2', '1+1, 5+0', '5'], ['3', '1+5, 5+1, 8+0', '8'], ['4', '1+8, 5+5, 8+1, 9', '10'], ['5', '1+10, 5+8, 8+5, 9+1, 10', '13'], ['6', '…, 17+0', '17'], ['7', '1+17, 5+13, 8+10, …', '18'], ['8', '5+17 (piece 2 + best[6])', H.c('g', '22')]] },
+        complexity: `<p>Time O(n²), space O(n).</p>`,
+        followUps: ['Print the cuts (store the best first piece per length).', 'Each cut costs a fixed fee c → subtract c per cut.', 'Only certain lengths are allowed → loop over the allowed list.']
+      }
+    }]
+  });
+
 registerModule({ id: 'dsa17', title: 'Dynamic Programming I', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

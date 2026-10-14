@@ -119,6 +119,14 @@
             }
           }
         }
+        var worst = cur.slice().reverse(), nC = cur.length;
+        frames.push({ narr: 'For contrast, the <b>worst</b> order is longest first (sorted descending): total waiting <b>' + total(worst) + '</b>. The biggest job would delay everybody behind it.', parts: [
+          bar(worst, (function () { var h = {}; worst.forEach(function (_, k) { h[k] = 'bad'; }); return h; })(), 'worst order = sorted descending'), { type: 'vars', vals: { worstTotal: total(worst), bestTotal: total(cur) }, hl: { worstTotal: 'bad', bestTotal: 'ok' } }
+        ] });
+        frames.push({ narr: 'A quick formula check: in sorted order, the job at position i is waited for by the <b>n − 1 − i</b> jobs behind it. Smallest durations get the biggest multipliers — that is why ascending order wins.', parts: [
+          { type: 'table', label: 'contribution of each job', columns: ['position i', 'duration', 'jobs behind (n−1−i)', 'adds'], rows: cur.map(function (x, k) { return [k, x, nC - 1 - k, x * (nC - 1 - k)]; }) },
+          { type: 'vars', vals: { total: total(cur) }, hl: { total: 'ok' } }
+        ] });
         frames.push({ narr: 'No inversions left → the order is sorted ascending, which is exactly what the greedy "shortest first" produces in one <code>Arrays.sort</code>. Final total = <b>' + total(cur) + '</b>. ' + (swaps ? 'We needed ' + swaps + ' swaps and every one helped — that is the whole exchange-argument proof.' : 'Your input was already sorted: greedy order, nothing to fix.'), parts: [
           bar(cur, (function () { var h = {}; cur.forEach(function (_, k) { h[k] = 'sel'; }); return h; })(), 'optimal order = sorted ascending'), { type: 'vars', vals: { totalWait: total(cur), swaps: swaps }, hl: { totalWait: 'sel' } },
           { type: 'code', label: 'the greedy that the proof justifies', lang: 'java', code: 'Arrays.sort(d);\nfor (int x : d) { total += clock; clock += x; }', hl: { 1: 'ok', 2: 'ok' } }
@@ -2428,6 +2436,1303 @@ print(coin_change([2], 3))         # -1`, run: true }],
       }
     ]
   });
+
+  // =====================================================================
+  // PRACTICE — Easy
+  // =====================================================================
+  practice.push({
+    title: 'Assign Cookies',
+    level: 'Easy',
+    tags: ['greedy', 'sorting', 'two pointers'],
+    companies: ['Amazon', 'Google'],
+    statement: `<p>Each child <code>i</code> has a greed factor <code>g[i]</code>: the smallest cookie size that makes them happy. Each cookie <code>j</code> has size <code>s[j]</code>. A child gets at most one cookie, and a cookie goes to at most one child. Child i is content if they get a cookie with <code>s[j] ≥ g[i]</code>. Return the <b>maximum number of content children</b>.</p>`,
+    constraints: `1 ≤ g.length ≤ 3·10<sup>4</sup>, 0 ≤ s.length ≤ 3·10<sup>4</sup>, 1 ≤ g[i], s[j] ≤ 2<sup>31</sup> − 1`,
+    example: `${H.arr([1, 2, 3], { label: 'g (greed)' })}${H.arr([1, 1], { label: 's (cookies)', hl: { 0: 'g' } })}
+      <p>Output <b>1</b>: both cookies have size 1, so only the child with greed 1 can be satisfied. With g = [1, 2] and s = [1, 2, 3] the output is <b>2</b>.</p>`,
+    brute: {
+      why: `<p>Backtracking: for each child, either give nothing or try every unused cookie that is big enough. Exponential in the number of children — hopeless at 3·10<sup>4</sup>. The waste: giving a big cookie to an easy child when a small one would do is never better, so most branches are pointless.</p>`,
+      code: `
+        int bruteCookies(int[] g, int[] s) {
+            return assign(g, s, 0, new boolean[s.length]);
+        }
+
+        int assign(int[] g, int[] s, int child, boolean[] used) {
+            if (child == g.length) return 0;
+            int best = assign(g, s, child + 1, used);                 // this child gets nothing
+            for (int c = 0; c < s.length; c++) {
+                if (!used[c] && s[c] >= g[child]) {
+                    used[c] = true;
+                    best = Math.max(best, 1 + assign(g, s, child + 1, used));
+                    used[c] = false;
+                }
+            }
+            return best;
+        }`
+    },
+    mcq: {
+      q: 'Cookies are sorted small to large. The current smallest cookie is too small for the least greedy child still waiting. What should you do with it?',
+      options: ['Give it to the greediest child anyway', 'Throw it away (skip it) — it cannot satisfy anyone still waiting', 'Stop the algorithm', 'Swap it with a bigger cookie'],
+      answer: 1,
+      explain: 'If it cannot satisfy the least greedy remaining child, it cannot satisfy anybody remaining. Skip it and try the next (bigger) cookie.'
+    },
+    hints: [
+      `<p><b>Aha:</b> the least greedy child is the easiest to please — give them the <b>smallest cookie that works</b>. Saving bigger cookies for greedier children can only help.</p>`,
+      `<p>Sort both arrays. Walk cookies from small to large with a pointer on children: if the cookie satisfies the current child, move to the next child; either way move to the next cookie.</p>`,
+      `<p>Edge cases: no cookies → 0; more cookies than children → stop when all children are content. Recipe: sort g, sort s → child = 0 → for each cookie: if child &lt; g.length and s[cookie] ≥ g[child] → child++ → return child.</p>`
+    ],
+    solution: {
+      approach: `<p>Sort children by greed and cookies by size; match each cookie, smallest first, to the least greedy child it can satisfy. Exchange argument: if an optimal answer gives the least greedy child a bigger cookie, swap it for the smallest sufficient cookie — nobody becomes unhappy.</p>`,
+      code: `
+        import java.util.*;
+
+        class Solution {
+            public int findContentChildren(int[] g, int[] s) {
+                int[] greed = g.clone(), size = s.clone();
+                Arrays.sort(greed);
+                Arrays.sort(size);
+                int child = 0;
+                for (int cookie = 0; cookie < size.length && child < greed.length; cookie++) {
+                    if (size[cookie] >= greed[child]) child++;   // smallest cookie that pleases this child
+                    // otherwise this cookie is too small for everyone left: skip it
+                }
+                return child;
+            }
+
+            public static void main(String[] args) {
+                Solution sol = new Solution();
+                System.out.println(sol.findContentChildren(new int[]{1, 2, 3}, new int[]{1, 1}));     // 1
+                System.out.println(sol.findContentChildren(new int[]{1, 2}, new int[]{1, 2, 3}));     // 2
+            }
+        }`,
+      dry: {
+        head: ['cookie', 'child greed', 'cookie ≥ greed?', 'content'],
+        rows: [['1', '1', '<span class="c-g">yes</span>', '1'], ['2', '2', '<span class="c-g">yes</span>', '2'], ['3', '— (all done)', '', '<span class="c-p">2</span>']]
+      },
+      complexity: `<p><b>Time O(N log N + M log M)</b> for the two sorts, O(N + M) for the scan. <b>Space O(N + M)</b> for the copies.</p>`,
+      followUps: ['Each child may take up to two cookies whose total size ≥ greed.', 'Return which cookie each content child receives.']
+    }
+  });
+
+  practice.push({
+    title: 'Lemonade Change',
+    level: 'Easy',
+    tags: ['greedy', 'simulation'],
+    companies: ['Amazon', 'Apple'],
+    statement: `<p>A lemonade costs $5. Customers pay one at a time with a $5, $10 or $20 bill (<code>bills[i]</code>). You start with no change. Return <code>true</code> if you can give every customer correct change.</p>`,
+    constraints: `1 ≤ bills.length ≤ 10<sup>5</sup>, bills[i] ∈ {5, 10, 20}`,
+    example: `${H.arr([5, 5, 5, 10, 20], { label: 'bills', hl: { 4: 'g' } })}
+      <p>Output <b>true</b>: after three $5s you hold 5,5,5; the $10 takes one $5 back (hold 5,5,10); the $20 gets ${H.c('g', '$10 + $5')}. For [5, 5, 10, 10, 20] the output is <b>false</b>: the $20 arrives when you hold only two $10s.</p>`,
+    brute: {
+      why: `<p>For every $20 there are two ways to give change ($10+$5 or $5+$5+$5). Track the set of all reachable (fives, tens) states after each customer; it is correct but the set can grow with the number of customers. The waste: one of the two choices is always at least as good, so we only ever need one state.</p>`,
+      code: `
+        boolean bruteLemonade(int[] bills) {
+            Set<Long> states = new HashSet<>();
+            states.add(0L);                                 // state = fives * 1_000_000 + tens
+            for (int b : bills) {
+                Set<Long> next = new HashSet<>();
+                for (long st : states) {
+                    long f = st / 1_000_000, t = st % 1_000_000;
+                    if (b == 5) next.add((f + 1) * 1_000_000 + t);
+                    else if (b == 10) { if (f >= 1) next.add((f - 1) * 1_000_000 + t + 1); }
+                    else {
+                        if (f >= 1 && t >= 1) next.add((f - 1) * 1_000_000 + t - 1);   // $10 + $5
+                        if (f >= 3) next.add((f - 3) * 1_000_000 + t);                 // $5 x 3
+                    }
+                }
+                if (next.isEmpty()) return false;
+                states = next;
+            }
+            return true;
+        }`
+    },
+    mcq: {
+      q: 'A customer pays $20 and you hold three $5s and one $10. Which change should you give?',
+      options: ['$5 + $5 + $5', '$10 + $5', 'Either, it never matters', 'Refuse the sale'],
+      answer: 1,
+      explain: 'A $5 can pay change for a $10 or a $20; a $10 can only help with a $20. Spend the less useful $10 first and keep the flexible $5s.'
+    },
+    hints: [
+      `<p><b>Aha:</b> $5 bills are the most useful (they work for both $10 and $20 customers). Whenever you have a choice, keep $5s.</p>`,
+      `<p>Count only <code>fives</code> and <code>tens</code> ($20s are never given as change). For a $20, prefer $10 + $5; fall back to three $5s.</p>`,
+      `<p>Edge cases: the first customer pays $10 or $20 → false immediately. Recipe: for each bill: 5 → fives++; 10 → need a five; 20 → if tens &gt; 0 and fives &gt; 0 use them, else if fives ≥ 3 use three, else false → true.</p>`
+    ],
+    solution: {
+      approach: `<p>Simulate with two counters, always giving change with the largest bill possible. Exchange argument: any successful plan that pays a $20 with three $5s while a $10 was available can swap to $10 + $5 and still succeed, because it now holds an extra $5 instead of a $10 — and a $5 can do everything a $10 can.</p>`,
+      code: `
+        class Solution {
+            public boolean lemonadeChange(int[] bills) {
+                int fives = 0, tens = 0;
+                for (int b : bills) {
+                    if (b == 5) {
+                        fives++;
+                    } else if (b == 10) {
+                        if (fives == 0) return false;
+                        fives--; tens++;
+                    } else {                                   // $20: change of $15
+                        if (tens > 0 && fives > 0) { tens--; fives--; }   // keep the flexible $5s
+                        else if (fives >= 3) fives -= 3;
+                        else return false;
+                    }
+                }
+                return true;
+            }
+
+            public static void main(String[] args) {
+                Solution s = new Solution();
+                System.out.println(s.lemonadeChange(new int[]{5, 5, 5, 10, 20}));   // true
+                System.out.println(s.lemonadeChange(new int[]{5, 5, 10, 10, 20}));  // false
+            }
+        }`,
+      complexity: `<p><b>Time O(N)</b>, <b>Space O(1)</b>.</p>`,
+      followUps: ['Prices and bills are arbitrary (e.g. coins 1, 3, 4): is greedy change still safe? (No — see the coin change topic.)', 'Return the index of the first customer you cannot serve.']
+    }
+  });
+
+  practice.push({
+    title: 'Maximum Units on a Truck',
+    level: 'Easy',
+    tags: ['greedy', 'sorting'],
+    companies: ['Amazon'],
+    statement: `<p><code>boxTypes[i] = [numberOfBoxes, unitsPerBox]</code>. A truck can carry at most <code>truckSize</code> boxes (any types). Return the <b>maximum total units</b> you can load.</p>`,
+    constraints: `1 ≤ boxTypes.length ≤ 1000, 1 ≤ numberOfBoxes, unitsPerBox ≤ 1000, 1 ≤ truckSize ≤ 10<sup>6</sup>`,
+    example: `${H.table(['type', 'boxes', 'units/box'], [['0', '1', '3'], ['1', '2', '2'], ['2', '3', '1']])}
+      <p>truckSize = 4 → Output <b>8</b>: ${H.c('g', '1 box × 3 + 2 boxes × 2 + 1 box × 1')} = 3 + 4 + 1. Every box takes one slot, so take the boxes with the most units first.</p>`,
+    brute: {
+      why: `<p>Expand every box into its own entry and try "take or skip" for each box with at most truckSize taken. That is 2<sup>(total boxes)</sup> choices. The waste: every box costs exactly one slot, so a box with more units is always at least as good as one with fewer — there is nothing to search.</p>`,
+      code: `
+        int bruteUnits(int[][] boxTypes, int truckSize) {
+            List<Integer> boxes = new ArrayList<>();
+            for (int[] t : boxTypes) for (int i = 0; i < t[0]; i++) boxes.add(t[1]);   // one entry per box
+            return pick(boxes, 0, truckSize);
+        }
+
+        int pick(List<Integer> boxes, int i, int left) {
+            if (i == boxes.size() || left == 0) return 0;
+            int skip = pick(boxes, i + 1, left);
+            int take = boxes.get(i) + pick(boxes, i + 1, left - 1);
+            return Math.max(skip, take);
+        }`
+    },
+    mcq: {
+      q: 'Why is greedy safe here even though boxes cannot be cut (unlike 0/1 knapsack)?',
+      options: ['Because unitsPerBox ≤ 1000', 'Because every box uses exactly one slot, so no awkward leftover space can appear', 'Because the truck is large', 'It is not safe; you need DP'],
+      answer: 1,
+      explain: 'All "weights" are equal (1 slot). Swapping a lower-unit box in the truck for a higher-unit box outside never breaks the capacity, so best-first is optimal.'
+    },
+    hints: [
+      `<p><b>Aha:</b> this is fractional knapsack where every item weighs exactly 1 — the ratio is simply unitsPerBox.</p>`,
+      `<p>Sort box types by unitsPerBox descending, then take <code>min(left, numberOfBoxes)</code> boxes of each type until the truck is full.</p>`,
+      `<p>Edge cases: truckSize larger than all boxes → take everything. Recipe: sort by units desc → for each type: take = min(left, count); units += take × perBox; left -= take; stop at 0.</p>`
+    ],
+    solution: {
+      approach: `<p>Sort types by units per box (descending) and fill the truck greedily. Exchange argument: any loaded box with fewer units than an unloaded box can be swapped for it, slot count unchanged, units not lower.</p>`,
+      code: `
+        import java.util.*;
+
+        class Solution {
+            public int maximumUnits(int[][] boxTypes, int truckSize) {
+                int[][] b = boxTypes.clone();
+                Arrays.sort(b, (x, y) -> Integer.compare(y[1], x[1]));   // most units per box first
+                int units = 0, left = truckSize;
+                for (int[] t : b) {
+                    if (left == 0) break;
+                    int take = Math.min(left, t[0]);
+                    units += take * t[1];
+                    left -= take;
+                }
+                return units;
+            }
+
+            public static void main(String[] args) {
+                Solution s = new Solution();
+                System.out.println(s.maximumUnits(new int[][]{{1, 3}, {2, 2}, {3, 1}}, 4));             // 8
+                System.out.println(s.maximumUnits(new int[][]{{5, 10}, {2, 5}, {4, 7}, {3, 9}}, 10));   // 91
+            }
+        }`,
+      complexity: `<p><b>Time O(T log T)</b> for T box types; or O(T + 1000) with counting sort on unitsPerBox ≤ 1000. <b>Space O(T)</b>.</p>`,
+      followUps: ['Boxes now have different sizes (weights): which problem is it, and is greedy still correct?', 'Use a counting sort since unitsPerBox ≤ 1000.']
+    }
+  });
+
+  practice.push({
+    title: 'Best Time to Buy and Sell Stock II',
+    level: 'Easy',
+    tags: ['greedy', 'array'],
+    companies: ['Amazon', 'Microsoft', 'Bloomberg', 'Goldman Sachs'],
+    statement: `<p><code>prices[i]</code> is a stock's price on day <code>i</code>. You may complete as many transactions as you like, but you can hold at most one share at a time (you may buy and sell on the same day). Return the <b>maximum profit</b>.</p>`,
+    constraints: `1 ≤ prices.length ≤ 3·10<sup>4</sup>, 0 ≤ prices[i] ≤ 10<sup>4</sup>`,
+    example: `${H.arr([7, 1, 5, 3, 6, 4], { label: 'prices', hl: { 1: 'g', 2: 'g', 3: 'g', 4: 'g' } })}
+      <p>Output <b>7</b>: buy at 1, sell at 5 (+4); buy at 3, sell at 6 (+3). Equivalently, add up every day-to-day rise: ${H.c('g', '(5−1) + (6−3) = 7')}.</p>`,
+    brute: {
+      why: `<p>Recursion over days with a "holding / not holding" flag: each day you either do nothing or buy/sell. Without memoization this explores 2<sup>N</sup> paths. The waste: the profit of any buy-low/sell-high stretch equals the sum of its daily rises, so we can decide day by day.</p>`,
+      code: `
+        int bruteStock(int[] p, int day, boolean holding) {
+            if (day == p.length) return 0;
+            int best = bruteStock(p, day + 1, holding);                                  // do nothing
+            if (holding) best = Math.max(best, p[day] + bruteStock(p, day + 1, false));  // sell today
+            else best = Math.max(best, -p[day] + bruteStock(p, day + 1, true));          // buy today
+            return best;
+        }`
+    },
+    mcq: {
+      q: 'Prices go 1 → 3 → 6. Which gives more profit: one trade (buy 1, sell 6) or two trades (1→3, 3→6)?',
+      options: ['One trade', 'Two trades', 'They are equal (5 each)', 'Neither is allowed'],
+      answer: 2,
+      explain: '6 − 1 = 5 and (3 − 1) + (6 − 3) = 5. A long rise is just the sum of its daily rises — that is why summing positive differences is optimal.'
+    },
+    hints: [
+      `<p><b>Aha:</b> any trade from day a to day b earns <code>prices[b] − prices[a]</code> = the sum of the daily differences in between.</p>`,
+      `<p>So collect every positive daily difference and skip every negative one. No need to find valleys and peaks explicitly.</p>`,
+      `<p>Edge cases: a single day or always-falling prices → 0. Recipe: profit = 0 → for i from 1: if prices[i] &gt; prices[i − 1] → profit += prices[i] − prices[i − 1] → return profit.</p>`
+    ],
+    solution: {
+      approach: `<p>Bank every upward step. Any optimal set of trades consists of rising stretches, whose profit equals the sum of the positive daily differences inside them; adding every positive difference can only be ≥ that, and it is always achievable (buy at each valley, sell at each peak).</p>`,
+      code: `
+        class Solution {
+            public int maxProfit(int[] prices) {
+                int profit = 0;
+                for (int i = 1; i < prices.length; i++) {
+                    if (prices[i] > prices[i - 1]) {
+                        profit += prices[i] - prices[i - 1];   // bank every rise
+                    }
+                }
+                return profit;
+            }
+
+            public static void main(String[] args) {
+                Solution s = new Solution();
+                System.out.println(s.maxProfit(new int[]{7, 1, 5, 3, 6, 4}));  // 7
+                System.out.println(s.maxProfit(new int[]{1, 2, 3, 4, 5}));     // 4
+                System.out.println(s.maxProfit(new int[]{7, 6, 4, 3, 1}));     // 0
+            }
+        }`,
+      complexity: `<p><b>Time O(N)</b>, <b>Space O(1)</b>.</p>`,
+      followUps: ['Each transaction has a fee (LC 714): greedy breaks — use the two-state DP.', 'At most k transactions (LC 188): DP.', 'Cooldown of one day after selling (LC 309).']
+    }
+  });
+
+  // =====================================================================
+  // PRACTICE — Medium
+  // =====================================================================
+  practice.push({
+    title: 'Non-overlapping Intervals',
+    level: 'Medium',
+    tags: ['greedy', 'intervals', 'sorting'],
+    companies: ['Amazon', 'Google', 'Meta', 'Microsoft'],
+    statement: `<p>Given an array of intervals <code>[start, end]</code>, return the <b>minimum number of intervals you need to remove</b> so that the rest do not overlap. Intervals that only touch at a point (like [1,2] and [2,3]) do <b>not</b> overlap.</p>`,
+    constraints: `1 ≤ N ≤ 10<sup>5</sup>, −5·10<sup>4</sup> ≤ start &lt; end ≤ 5·10<sup>4</sup>`,
+    example: `${H.arr(['[1,2]', '[2,3]', '[3,4]', '[1,3]'], { label: 'intervals', hl: { 3: 'r' } })}
+      <p>Output <b>1</b>: remove ${H.c('r', '[1,3]')}; the other three only touch. Keeping the most intervals = removing the fewest.</p>`,
+    brute: {
+      why: `<p>Try every subset to keep (2<sup>N</sup>), check all pairs for overlap, and return N − (largest valid subset). Exponential. The waste: it ignores that keeping the earliest-ending interval is always safe.</p>`,
+      code: `
+        int bruteErase(int[][] a) {
+            int n = a.length, bestKeep = 0;
+            for (int mask = 0; mask < (1 << n); mask++) {
+                boolean ok = true;
+                for (int i = 0; i < n && ok; i++)
+                    for (int j = i + 1; j < n && ok; j++)
+                        if ((mask >> i & 1) == 1 && (mask >> j & 1) == 1
+                                && a[i][0] < a[j][1] && a[j][0] < a[i][1]) ok = false;   // real overlap
+                if (ok) bestKeep = Math.max(bestKeep, Integer.bitCount(mask));
+            }
+            return n - bestKeep;
+        }`
+    },
+    mcq: {
+      q: 'Two intervals overlap and you must drop one of them. With earliest-end-first, which one survives?',
+      options: ['The longer one', 'The one that starts first', 'The one that ends first', 'The one with the smaller index'],
+      answer: 2,
+      explain: 'Keeping the one that ends first leaves the most room for everything after it. This is activity selection; removals = N − kept.'
+    },
+    hints: [
+      `<p><b>Aha:</b> "fewest removals" = N − "most intervals you can keep without overlap" = activity selection.</p>`,
+      `<p>Sort by end. Keep an interval if its start ≥ the end of the last kept one; otherwise it is removed.</p>`,
+      `<p>Touching is allowed → use <code>≥</code>. Use <code>Integer.compare</code> in the comparator. Recipe: sort by end → kept = 0, lastEnd = −∞ → for each: if start ≥ lastEnd {kept++; lastEnd = end} → return N − kept.</p>`
+    ],
+    solution: {
+      approach: `<p>Activity selection with earliest end first; answer is the number of intervals skipped. The "greedy stays ahead" proof from the Activity Selection topic applies unchanged.</p>`,
+      code: `
+        import java.util.*;
+
+        class Solution {
+            public int eraseOverlapIntervals(int[][] intervals) {
+                int[][] a = intervals.clone();
+                Arrays.sort(a, (x, y) -> Integer.compare(x[1], y[1]));   // earliest end first
+                int kept = 0;
+                long lastEnd = Long.MIN_VALUE;
+                for (int[] it : a) {
+                    if (it[0] >= lastEnd) {          // fits after the last kept interval
+                        kept++;
+                        lastEnd = it[1];
+                    }
+                }
+                return a.length - kept;              // everything not kept is removed
+            }
+
+            public static void main(String[] args) {
+                Solution s = new Solution();
+                System.out.println(s.eraseOverlapIntervals(new int[][]{{1, 2}, {2, 3}, {3, 4}, {1, 3}}));  // 1
+                System.out.println(s.eraseOverlapIntervals(new int[][]{{1, 2}, {1, 2}, {1, 2}}));          // 2
+            }
+        }`,
+      complexity: `<p><b>Time O(N log N)</b>, <b>Space O(N)</b> for the copy (or O(log N) sorting in place).</p>`,
+      followUps: ['Return which intervals to remove.', 'Each interval has a removal cost; minimize total cost (weighted → DP).']
+    }
+  });
+
+  practice.push({
+    title: 'Minimum Number of Arrows to Burst Balloons',
+    level: 'Medium',
+    tags: ['greedy', 'intervals', 'sorting'],
+    companies: ['Amazon', 'Meta', 'Microsoft'],
+    statement: `<p>Balloons are horizontal segments <code>[xstart, xend]</code> on a wall. An arrow shot straight up at position <code>x</code> bursts every balloon with <code>xstart ≤ x ≤ xend</code> (endpoints included). Return the <b>minimum number of arrows</b> to burst all balloons.</p>`,
+    constraints: `1 ≤ N ≤ 10<sup>5</sup>, −2<sup>31</sup> ≤ xstart &lt; xend ≤ 2<sup>31</sup> − 1`,
+    example: `${H.arr(['[10,16]', '[2,8]', '[1,6]', '[7,12]'], { label: 'balloons' })}
+      <p>Output <b>2</b>: an arrow at ${H.c('g', 'x = 6')} bursts [1,6] and [2,8]; an arrow at ${H.c('g', 'x = 12')} bursts [7,12] and [10,16].</p>`,
+    brute: {
+      why: `<p>Simulate naively: repeatedly find the unburst balloon with the smallest end (O(N) scan), shoot there, and mark every balloon it hits (another O(N) scan). Correct, but O(N²) = 10<sup>10</sup> for N = 10<sup>5</sup>. The waste: after one sort by end, a single left-to-right pass does the same work.</p>`,
+      code: `
+        int bruteArrows(int[][] points) {
+            int n = points.length, arrows = 0;
+            boolean[] burst = new boolean[n];
+            while (true) {
+                int pick = -1;                              // unburst balloon that ends first
+                for (int i = 0; i < n; i++)
+                    if (!burst[i] && (pick == -1 || points[i][1] < points[pick][1])) pick = i;
+                if (pick == -1) return arrows;
+                arrows++;
+                long x = points[pick][1];                   // shoot at its right end
+                for (int i = 0; i < n; i++)
+                    if (points[i][0] <= x && x <= points[i][1]) burst[i] = true;
+            }
+        }`
+    },
+    mcq: {
+      q: 'Why is the comparator <code>(a, b) -&gt; a[1] - b[1]</code> dangerous in this problem?',
+      options: ['It sorts by start instead of end', 'Coordinates go down to −2<sup>31</sup> and up to 2<sup>31</sup> − 1, so the subtraction can overflow and sort wrongly', 'It is slower than Integer.compare', 'It is not stable'],
+      answer: 1,
+      explain: 'For example 2^31−1 − (−2^31) overflows int and becomes negative. LeetCode includes exactly such a test. Use Integer.compare(a[1], b[1]).'
+    },
+    hints: [
+      `<p><b>Aha:</b> some arrow must burst the balloon that ends first; shooting at its <b>right end</b> also hits as many other balloons as possible.</p>`,
+      `<p>Sort by end. Keep the position of the last arrow; a balloon needs a new arrow only if its start is <b>strictly greater</b> than that position (touching balloons share it).</p>`,
+      `<p>Overflow traps: use <code>Integer.compare</code> and a <code>long</code> initial arrow position below every start. Recipe: sort by end → arrows = 0, at = −∞ → for each: if start &gt; at {arrows++; at = end} → return arrows.</p>`
+    ],
+    solution: {
+      approach: `<p>Earliest end first, closed intervals. The first arrow at the smallest end bursts every balloon that starts by then; any solution's first arrow can be moved right to that end without missing anything (exchange argument).</p>`,
+      code: `
+        import java.util.*;
+
+        class Solution {
+            public int findMinArrowShots(int[][] points) {
+                int[][] p = points.clone();
+                Arrays.sort(p, (a, b) -> Integer.compare(a[1], b[1]));   // no overflow
+                int arrows = 0;
+                long at = Long.MIN_VALUE;            // position of the last arrow
+                for (int[] b : p) {
+                    if (b[0] > at) {                 // not reached by the last arrow
+                        arrows++;
+                        at = b[1];                   // shoot at this balloon's right end
+                    }
+                }
+                return arrows;
+            }
+
+            public static void main(String[] args) {
+                Solution s = new Solution();
+                System.out.println(s.findMinArrowShots(new int[][]{{10, 16}, {2, 8}, {1, 6}, {7, 12}}));  // 2
+                System.out.println(s.findMinArrowShots(new int[][]{{1, 2}, {2, 3}, {3, 4}, {4, 5}}));     // 2
+                System.out.println(s.findMinArrowShots(new int[][]{{-2147483648, 2147483647}}));         // 1
+            }
+        }`,
+      complexity: `<p><b>Time O(N log N)</b>, <b>Space O(N)</b> for the copy.</p>`,
+      followUps: ['Return the arrow positions.', 'Balloons are 2D rectangles and arrows are vertical lines: does anything change?']
+    }
+  });
+
+  practice.push({
+    title: 'Partition Labels',
+    level: 'Medium',
+    tags: ['greedy', 'string', 'two pointers'],
+    companies: ['Amazon', 'Meta', 'Google'],
+    statement: `<p>Split string <code>s</code> into <b>as many parts as possible</b> so that each letter appears in at most one part. Return the list of part sizes (concatenating the parts in order must give <code>s</code>).</p>`,
+    constraints: `1 ≤ s.length ≤ 500, s has lowercase English letters`,
+    example: `<p>s = "ababcbaca<b>defegde</b>hijhklij" → Output ${H.c('g', '[9, 7, 8]')}: "ababcbaca", "defegde", "hijhklij". Every 'a' is in the first part, every 'e' in the second, and so on.</p>
+      ${H.kv([['a', 'last at 8'], ['b', 'last at 5'], ['c', 'last at 7'], ['e', 'last at 15'], ['j', 'last at 23']], { label: 'last occurrence' })}`,
+    brute: {
+      why: `<p>For every position i, check whether you may cut right after it: no letter of s[start..i] appears again after i. Each check scans the prefix and the suffix → O(N²) (or O(N²·26)). Fine for 500, but the waste is obvious: the "furthest last occurrence so far" already answers every check in O(1).</p>`,
+      code: `
+        List<Integer> brutePartition(String s) {
+            List<Integer> sizes = new ArrayList<>();
+            int start = 0;
+            for (int i = 0; i < s.length(); i++) {
+                boolean canCut = true;                       // no letter of s[start..i] appears after i
+                for (int a = start; a <= i && canCut; a++)
+                    if (s.indexOf(s.charAt(a), i + 1) != -1) canCut = false;
+                if (canCut) {
+                    sizes.add(i - start + 1);
+                    start = i + 1;
+                }
+            }
+            return sizes;
+        }`
+    },
+    mcq: {
+      q: 'You are scanning "abac…" and the current part has seen letters whose last occurrences are at indices 2, 8 and 5. When can you close the part?',
+      options: ['At index 2', 'At index 5', 'At index 8, unless a letter seen before then extends further', 'Only at the end of the string'],
+      answer: 2,
+      explain: 'The part must stretch to the furthest last occurrence of any letter in it. New letters met on the way may push that end further.'
+    },
+    hints: [
+      `<p><b>Aha:</b> once a part contains letter x, it must reach x's <b>last occurrence</b>. Cut as early as that allows — cutting early gives more parts.</p>`,
+      `<p>Precompute <code>last[c]</code>. Scan with <code>end = max(end, last[s[i]])</code>; when <code>i == end</code>, close the part.</p>`,
+      `<p>Edge cases: one letter repeated ("aaaa" → [4]); all distinct ("abc" → [1,1,1]). Recipe: last[] → start = end = 0 → for i: end = max(end, last[s[i]]); if i == end {add end − start + 1; start = i + 1} → return sizes.</p>`
+    ],
+    solution: {
+      approach: `<p>Interval-merging greedy: each letter defines an interval [first, last]; parts are the merged groups. Scanning and extending <code>end</code> builds the groups in one pass; closing a part as soon as possible maximizes the count.</p>`,
+      code: `
+        import java.util.*;
+
+        class Solution {
+            public List<Integer> partitionLabels(String s) {
+                int[] last = new int[26];
+                for (int i = 0; i < s.length(); i++) last[s.charAt(i) - 'a'] = i;   // last occurrence
+                List<Integer> sizes = new ArrayList<>();
+                int start = 0, end = 0;
+                for (int i = 0; i < s.length(); i++) {
+                    end = Math.max(end, last[s.charAt(i) - 'a']);   // the part must reach here
+                    if (i == end) {                                 // every letter so far ends by i
+                        sizes.add(end - start + 1);
+                        start = i + 1;
+                    }
+                }
+                return sizes;
+            }
+
+            public static void main(String[] args) {
+                Solution sol = new Solution();
+                System.out.println(sol.partitionLabels("ababcbacadefegdehijhklij"));  // [9, 7, 8]
+                System.out.println(sol.partitionLabels("eccbbbbdec"));                // [10]
+            }
+        }`,
+      complexity: `<p><b>Time O(N)</b>, <b>Space O(1)</b> (26 counters).</p>`,
+      followUps: ['Return the parts as strings.', 'Minimize the size of the largest part instead (different problem: binary search + check).']
+    }
+  });
+
+  practice.push({
+    title: 'Task Scheduler',
+    level: 'Medium',
+    tags: ['greedy', 'counting', 'heap'],
+    companies: ['Meta', 'Amazon', 'Microsoft', 'Uber'],
+    statement: `<p>A CPU runs tasks labeled 'A' to 'Z'. Each task takes one time unit; in each unit the CPU runs one task or stays idle. Two runs of the <b>same</b> task must be separated by at least <code>n</code> units. Return the <b>minimum number of units</b> to finish all tasks (in any order).</p>`,
+    constraints: `1 ≤ tasks.length ≤ 10<sup>4</sup>, 0 ≤ n ≤ 100`,
+    example: `${H.arr(['A', 'A', 'A', 'B', 'B', 'B'], { label: 'tasks' })}
+      <p>n = 2 → Output <b>8</b>: ${H.c('g', 'A B idle A B idle A B')}. The three A's need two gaps of length 2 between them; B fills one slot of each gap.</p>`,
+    brute: {
+      why: `<p>Simulate time unit by unit: each unit, scan all 26 letters and run the ready task with the most copies left (or idle). Correct, but the time can be up to ~10<sup>6</sup> units × 26 letters. The waste: the answer is fully determined by the most frequent count, so a formula gives it in O(N).</p>`,
+      code: `
+        int simulate(char[] tasks, int n) {
+            int[] freq = new int[26];
+            for (char t : tasks) freq[t - 'A']++;
+            int[] readyAt = new int[26];                 // earliest time each letter may run again
+            int done = 0, time = 0;
+            while (done < tasks.length) {
+                int pick = -1;                           // ready letter with the most copies left
+                for (int c = 0; c < 26; c++)
+                    if (freq[c] > 0 && readyAt[c] <= time && (pick == -1 || freq[c] > freq[pick])) pick = c;
+                if (pick != -1) {
+                    freq[pick]--;
+                    readyAt[pick] = time + n + 1;
+                    done++;
+                }
+                time++;                                  // ran a task or stayed idle
+            }
+            return time;
+        }`
+    },
+    mcq: {
+      q: 'tasks = A×4, B×4, C×1, n = 3. What is the answer?',
+      options: ['9', '14', '15', '16'],
+      answer: 1,
+      explain: 'maxFreq = 4, two letters have it: (4 − 1)·(3 + 1) + 2 = 14. Total tasks = 9 &lt; 14, so 14. Layout: A B C _ A B _ _ A B _ _ A B.'
+    },
+    hints: [
+      `<p><b>Aha:</b> the most frequent task decides the skeleton: it needs <code>maxF − 1</code> full blocks of length <code>n + 1</code>, then one final row.</p>`,
+      `<p>The final row holds every task that also has frequency maxF (<code>countMax</code>). So the skeleton length is <code>(maxF − 1)·(n + 1) + countMax</code>.</p>`,
+      `<p>If there are so many different tasks that idle slots disappear, the answer is just <code>tasks.length</code>. Recipe: count → maxF, countMax → return max(tasks.length, (maxF − 1)(n + 1) + countMax).</p>`
+    ],
+    solution: {
+      approach: `<p>Counting greedy. The lower bound <code>(maxF − 1)(n + 1) + countMax</code> comes from the most frequent tasks; filling the gaps with the remaining tasks round-robin achieves it whenever there are enough idle slots, otherwise no idling is needed at all and the answer is the number of tasks.</p>`,
+      code: `
+        class Solution {
+            public int leastInterval(char[] tasks, int n) {
+                int[] freq = new int[26];
+                for (char t : tasks) freq[t - 'A']++;
+                int maxF = 0, countMax = 0;
+                for (int f : freq) maxF = Math.max(maxF, f);
+                for (int f : freq) if (f == maxF) countMax++;
+                // (maxF - 1) blocks of length n + 1, plus a final row of the most frequent tasks
+                int frame = (maxF - 1) * (n + 1) + countMax;
+                return Math.max(tasks.length, frame);     // no idle needed if tasks overflow the frame
+            }
+
+            public static void main(String[] args) {
+                Solution s = new Solution();
+                System.out.println(s.leastInterval("AAABBB".toCharArray(), 2));        // 8
+                System.out.println(s.leastInterval("AAABBB".toCharArray(), 0));        // 6
+                System.out.println(s.leastInterval("AAAABBBBC".toCharArray(), 3));     // 14
+            }
+        }`,
+      complexity: `<p><b>Time O(N)</b>, <b>Space O(1)</b> (26 counters).</p>`,
+      followUps: ['Output an actual valid schedule (max-heap + cooldown queue).', 'Tasks must run in the given order (LC 2365): simulate with a map of next allowed times.']
+    }
+  });
+
+  practice.push({
+    title: 'Boats to Save People',
+    level: 'Medium',
+    tags: ['greedy', 'two pointers', 'sorting'],
+    companies: ['Amazon', 'Google', 'Microsoft'],
+    statement: `<p><code>people[i]</code> is the weight of person i. Every boat carries <b>at most two people</b> with total weight ≤ <code>limit</code>. Every person weighs at most <code>limit</code>. Return the <b>minimum number of boats</b> to carry everyone.</p>`,
+    constraints: `1 ≤ N ≤ 5·10<sup>4</sup>, 1 ≤ people[i] ≤ limit ≤ 3·10<sup>4</sup>`,
+    example: `${H.arr([3, 2, 2, 1], { label: 'people' })}
+      <p>limit = 3 → Output <b>3</b>: boats ${H.c('g', '(1, 2), (2), (3)')}. Sorted [1, 2, 2, 3]: the heaviest (3) cannot share with anyone; then 2 + 1 = 3 fits; the last 2 goes alone.</p>`,
+    brute: {
+      why: `<p>Take the first person without a boat and try every partner (or nobody), recursively. That explores all matchings — exponential. The waste: the heaviest person should simply try the lightest; if even the lightest does not fit, nobody does.</p>`,
+      code: `
+        int bruteBoats(int[] p, int limit, boolean[] used) {
+            int first = -1;
+            for (int i = 0; i < p.length; i++) if (!used[i]) { first = i; break; }
+            if (first == -1) return 0;                          // everyone is on a boat
+            used[first] = true;
+            int best = 1 + bruteBoats(p, limit, used);          // rides alone
+            for (int j = first + 1; j < p.length; j++) {
+                if (!used[j] && p[first] + p[j] <= limit) {     // shares with j
+                    used[j] = true;
+                    best = Math.min(best, 1 + bruteBoats(p, limit, used));
+                    used[j] = false;
+                }
+            }
+            used[first] = false;
+            return best;
+        }`
+    },
+    mcq: {
+      q: 'Sorted weights, the heaviest person cannot share a boat with the lightest person. What follows?',
+      options: ['Try the second lightest', 'The heaviest must go alone — nobody else is lighter than the lightest', 'Put the two lightest together', 'The answer is −1'],
+      answer: 1,
+      explain: 'If heaviest + lightest > limit, then heaviest + anyone > limit. Send the heaviest alone and move on.'
+    },
+    hints: [
+      `<p><b>Aha:</b> the heaviest person needs a boat now. The best partner to try is the lightest person — the one most likely to fit, and the least "useful" for anyone else.</p>`,
+      `<p>Sort, put pointers at both ends. If <code>p[i] + p[j] ≤ limit</code>, both board (i++); the heaviest always boards (j−−); count a boat.</p>`,
+      `<p>Loop while <code>i ≤ j</code> so a single person left in the middle still gets a boat. Recipe: sort → i = 0, j = n − 1 → while i ≤ j: if p[i] + p[j] ≤ limit → i++; j−−; boats++ → return boats.</p>`
+    ],
+    solution: {
+      approach: `<p>Two pointers on sorted weights: the heaviest person H always leaves now, taking the lightest L along when they fit.</p>
+        <p><b>Exchange argument.</b> If H + L &gt; limit, H cannot share with anyone, so every plan sends H alone — same as greedy. If H + L ≤ limit, take any optimal plan where L is not with H. If H's boat-mate is X and L's is Y, swap L and X: (H, L) fits because L ≤ X, and (X, Y) fits because Y ≤ H gives X + Y ≤ X + H ≤ limit. If H or L was alone, moving L into H's boat leaves the others alone — still valid. The boat count never increases, so some optimal plan matches greedy's first boat; repeat on the rest.</p>`,
+      code: `
+        import java.util.*;
+
+        class Solution {
+            public int numRescueBoats(int[] people, int limit) {
+                int[] p = people.clone();
+                Arrays.sort(p);
+                int i = 0, j = p.length - 1, boats = 0;
+                while (i <= j) {
+                    if (p[i] + p[j] <= limit) i++;   // lightest rides with the heaviest
+                    j--;                             // heaviest always leaves on this boat
+                    boats++;
+                }
+                return boats;
+            }
+
+            public static void main(String[] args) {
+                Solution s = new Solution();
+                System.out.println(s.numRescueBoats(new int[]{3, 2, 2, 1}, 3));  // 3
+                System.out.println(s.numRescueBoats(new int[]{3, 5, 3, 4}, 5));  // 4
+                System.out.println(s.numRescueBoats(new int[]{1, 2}, 3));        // 1
+            }
+        }`,
+      complexity: `<p><b>Time O(N log N)</b> (counting sort makes it O(N + limit)). <b>Space O(N)</b> for the copy.</p>`,
+      followUps: ['Boats can carry up to 3 people: why does the two-pointer greedy stop being obviously correct?', 'Weights ≤ 3·10<sup>4</sup>: replace the sort with counting sort.']
+    }
+  });
+
+  practice.push({
+    title: 'Two City Scheduling',
+    level: 'Medium',
+    tags: ['greedy', 'sorting', 'exchange argument'],
+    companies: ['Bloomberg', 'Amazon'],
+    statement: `<p>A company will interview <code>2n</code> people. <code>costs[i] = [aCost, bCost]</code> is the cost of flying person i to city A or to city B. Exactly <code>n</code> people must go to each city. Return the <b>minimum total cost</b>.</p>`,
+    constraints: `2 ≤ 2n ≤ 100, 1 ≤ aCost, bCost ≤ 1000`,
+    example: `${H.table(['person', 'A', 'B', 'A − B'], [['0', '10', '20', '−10'], ['1', '30', '200', H.c('g', '−170')], ['2', '400', '50', H.c('r', '350')], ['3', '30', '20', '10']])}
+      <p>Output <b>110</b>: persons 1 and 0 (most negative A − B) fly to ${H.c('g', 'A: 30 + 10')}, persons 3 and 2 fly to ${H.c('b', 'B: 20 + 50')}.</p>`,
+    brute: {
+      why: `<p>Try every way to choose which n people go to A: C(2n, n) subsets — for 2n = 100 that is about 10<sup>29</sup>. The waste: the only thing that matters about a person is how much cheaper A is than B (A − B).</p>`,
+      code: `
+        int bruteTwoCity(int[][] costs) {
+            int m = costs.length, n = m / 2, best = Integer.MAX_VALUE;
+            for (int mask = 0; mask < (1 << m); mask++) {
+                if (Integer.bitCount(mask) != n) continue;      // exactly n people to city A
+                int total = 0;
+                for (int i = 0; i < m; i++) total += ((mask >> i) & 1) == 1 ? costs[i][0] : costs[i][1];
+                best = Math.min(best, total);
+            }
+            return best;
+        }`
+    },
+    mcq: {
+      q: 'Imagine everyone first flies to B. Sending person i to A instead changes the cost by aCost − bCost. Which n people should switch to A?',
+      options: ['The n with the smallest aCost', 'The n with the smallest (aCost − bCost)', 'The n with the largest bCost', 'Any n people'],
+      answer: 1,
+      explain: 'Total = ΣbCost + Σ over A-people of (aCost − bCost). Minimizing it means choosing the n most negative differences.'
+    },
+    hints: [
+      `<p><b>Aha:</b> start from "everyone flies to B". Moving person i to A adds <code>a<sub>i</sub> − b<sub>i</sub></code>. You must move exactly n people.</p>`,
+      `<p>Sort by <code>a − b</code> ascending; the first n go to A, the rest to B.</p>`,
+      `<p>Exchange check: if someone with a larger a − b is in A while someone with a smaller one is in B, swapping them lowers the cost. Recipe: sort by a − b → sum a for first half, b for second half.</p>`
+    ],
+    solution: {
+      approach: `<p>Rewrite the cost as Σb + Σ<sub>A</sub>(a − b); choose the n smallest differences. A swap of a wrongly placed pair changes the total by (smaller diff − larger diff) ≤ 0, so the sorted split is optimal.</p>`,
+      code: `
+        import java.util.*;
+
+        class Solution {
+            public int twoCitySchedCost(int[][] costs) {
+                int[][] c = costs.clone();
+                // most "A-friendly" first: smallest (aCost - bCost); values ≤ 1000 so no overflow
+                Arrays.sort(c, (x, y) -> Integer.compare(x[0] - x[1], y[0] - y[1]));
+                int n = c.length / 2, total = 0;
+                for (int i = 0; i < c.length; i++) total += i < n ? c[i][0] : c[i][1];
+                return total;
+            }
+
+            public static void main(String[] args) {
+                Solution s = new Solution();
+                System.out.println(s.twoCitySchedCost(new int[][]{{10, 20}, {30, 200}, {400, 50}, {30, 20}}));  // 110
+            }
+        }`,
+      complexity: `<p><b>Time O(N log N)</b> (quickselect on the differences gives O(N)). <b>Space O(N)</b>.</p>`,
+      followUps: ['Three cities with n people each: greedy no longer works — min-cost flow or DP.', 'City A can take at most k people (not exactly n).']
+    }
+  });
+
+  practice.push({
+    title: 'Largest Number',
+    level: 'Medium',
+    tags: ['greedy', 'sorting', 'custom comparator', 'string'],
+    companies: ['Amazon', 'Microsoft', 'Goldman Sachs', 'Zoho'],
+    statement: `<p>Given a list of non-negative integers <code>nums</code>, arrange them so they form the <b>largest number</b> and return it as a string (the result may be huge).</p>`,
+    constraints: `1 ≤ nums.length ≤ 100, 0 ≤ nums[i] ≤ 10<sup>9</sup>`,
+    example: `${H.arr([3, 30, 34, 5, 9], { label: 'nums' })}
+      <p>Output ${H.c('g', '"9534330"')}. Note "3" goes before "30" because "330" &gt; "303" — plain string sorting would put "30" after "3" only by luck, and numeric sorting is simply wrong.</p>`,
+    brute: {
+      why: `<p>Try all N! orders, build each string, keep the largest (all have the same length, so string comparison = numeric comparison). 100! orders is impossible. The waste: the best relative order of any two numbers can be decided by looking at just those two.</p>`,
+      code: `
+        String best;
+
+        String bruteLargest(int[] nums) {
+            best = "";
+            perm(nums, new boolean[nums.length], 0, "");
+            return best.startsWith("0") ? "0" : best;
+        }
+
+        void perm(int[] nums, boolean[] used, int placed, String cur) {
+            if (placed == nums.length) {
+                if (cur.compareTo(best) > 0) best = cur;     // same length: lexicographic = numeric
+                return;
+            }
+            for (int i = 0; i < nums.length; i++) {
+                if (used[i]) continue;
+                used[i] = true;
+                perm(nums, used, placed + 1, cur + nums[i]);
+                used[i] = false;
+            }
+        }`
+    },
+    mcq: {
+      q: 'How should "3" and "30" be ordered?',
+      options: ['"30" first, because 30 &gt; 3', '"3" first, because "330" &gt; "303"', 'It does not matter', '"30" first, because it is longer'],
+      answer: 1,
+      explain: 'Compare the two possible concatenations directly: a before b iff a + b &gt; b + a. "330" &gt; "303", so "3" goes first.'
+    },
+    hints: [
+      `<p><b>Aha (exchange argument):</b> for two neighbours a, b in the answer, swapping them only changes that local pair. So a must come before b exactly when <code>a + b &gt; b + a</code> as strings.</p>`,
+      `<p>Convert to strings and sort with the comparator <code>(a, b) -&gt; (b + a).compareTo(a + b)</code>. This ordering is transitive (it is equivalent to comparing a / (10<sup>len(a)</sup> − 1)), so sorting is valid.</p>`,
+      `<p>Edge case: all zeros → "0", not "000". Recipe: map to strings → sort with the concat comparator → if first is "0" return "0" → join.</p>`
+    ],
+    solution: {
+      approach: `<p>Custom comparator from an adjacent-swap exchange argument: put a before b when a + b &gt; b + a. Any arrangement violating this for a neighbouring pair can be improved by swapping that pair, so the sorted order is optimal.</p>`,
+      code: `
+        import java.util.*;
+
+        class Solution {
+            public String largestNumber(int[] nums) {
+                String[] s = new String[nums.length];
+                for (int i = 0; i < nums.length; i++) s[i] = String.valueOf(nums[i]);
+                Arrays.sort(s, (a, b) -> (b + a).compareTo(a + b));   // a first if a+b > b+a
+                if (s[0].equals("0")) return "0";                       // all numbers were zero
+                StringBuilder sb = new StringBuilder();
+                for (String x : s) sb.append(x);
+                return sb.toString();
+            }
+
+            public static void main(String[] args) {
+                Solution sol = new Solution();
+                System.out.println(sol.largestNumber(new int[]{10, 2}));            // 210
+                System.out.println(sol.largestNumber(new int[]{3, 30, 34, 5, 9}));  // 9534330
+                System.out.println(sol.largestNumber(new int[]{0, 0}));             // 0
+            }
+        }`,
+      complexity: `<p><b>Time O(N log N · L)</b> where L ≤ 10 is the digit length (each comparison builds strings of length ≤ 2L). <b>Space O(N · L)</b>.</p>`,
+      followUps: ['Smallest number instead (watch out for leading zeros).', 'Prove the comparator is transitive.']
+    }
+  });
+
+  practice.push({
+    title: 'Queue Reconstruction by Height',
+    level: 'Medium',
+    tags: ['greedy', 'sorting', 'insertion'],
+    companies: ['Google', 'Amazon'],
+    statement: `<p><code>people[i] = [h, k]</code>: person i has height h and exactly k people <b>in front</b> of them with height ≥ h. The array is shuffled. Reconstruct and return the queue.</p>`,
+    constraints: `1 ≤ N ≤ 2000, 0 ≤ h ≤ 10<sup>6</sup>, 0 ≤ k &lt; N, a valid queue exists`,
+    example: `<p>[[7,0],[4,4],[7,1],[5,0],[6,1],[5,2]] → ${H.c('g', '[[5,0],[7,0],[5,2],[6,1],[4,4],[7,1]]')}. Check [5,2]: in front are 5 and 7 — two people with height ≥ 5. ✔</p>
+      ${H.table(['insert (tallest first)', 'at index k', 'queue after'], [['[7,0]', '0', '[7,0]'], ['[7,1]', '1', '[7,0] [7,1]'], ['[6,1]', '1', '[7,0] [6,1] [7,1]'], ['[5,0]', '0', '[5,0] [7,0] [6,1] [7,1]'], ['[5,2]', '2', '[5,0] [7,0] [5,2] [6,1] [7,1]'], ['[4,4]', '4', H.c('g', '[5,0] [7,0] [5,2] [6,1] [4,4] [7,1]')]])}`,
+    brute: {
+      why: `<p>Try every permutation and check each person's k: N! orders (pruned backtracking helps but stays exponential). The waste: once taller people are placed, a shorter person's position is forced — exactly index k.</p>`,
+      code: `
+        int[][] bruteQueue(int[][] people) {
+            int[][] cur = new int[people.length][];
+            return place(people, new boolean[people.length], cur, 0) ? cur : null;
+        }
+
+        boolean place(int[][] people, boolean[] used, int[][] cur, int pos) {
+            if (pos == people.length) return true;
+            for (int i = 0; i < people.length; i++) {
+                if (used[i]) continue;
+                int taller = 0;                                  // people already in front with height >= h
+                for (int j = 0; j < pos; j++) if (cur[j][0] >= people[i][0]) taller++;
+                if (taller != people[i][1]) continue;            // k must match exactly
+                used[i] = true;
+                cur[pos] = people[i];
+                if (place(people, used, cur, pos + 1)) return true;
+                used[i] = false;
+            }
+            return false;
+        }`
+    },
+    mcq: {
+      q: 'Why insert the tallest people first?',
+      options: ['Because tall people are fewer', 'Shorter people are invisible to taller people\'s k, so inserting a shorter person later never breaks anyone already placed', 'It makes the list shorter', 'Because sorting is cheaper that way'],
+      answer: 1,
+      explain: 'A person\'s k counts only people with height ≥ theirs. Everyone already placed is at least as tall, so the new person goes exactly at index k, and taller people\'s counts are unaffected.'
+    },
+    hints: [
+      `<p><b>Aha:</b> short people do not count toward a tall person's k. So place tall people first; later insertions of shorter people cannot disturb them.</p>`,
+      `<p>Sort by height descending, and for equal heights by k ascending. Insert each person into a list at index k.</p>`,
+      `<p>Equal heights: [5,0] must be inserted before [5,2] (both count each other). Recipe: sort (h desc, k asc) → list.add(k, person) for each → toArray.</p>`
+    ],
+    solution: {
+      approach: `<p>Sort tallest first (ties by k ascending) and insert each person at index k. When a person is inserted, everyone already in the list is at least as tall, so exactly k of them must be in front — index k. Later (shorter) insertions do not affect anyone's count.</p>`,
+      code: `
+        import java.util.*;
+
+        class Solution {
+            public int[][] reconstructQueue(int[][] people) {
+                int[][] p = people.clone();
+                Arrays.sort(p, (a, b) -> a[0] != b[0] ? Integer.compare(b[0], a[0])   // taller first
+                                                       : Integer.compare(a[1], b[1])); // then smaller k
+                List<int[]> queue = new ArrayList<>();
+                for (int[] person : p) queue.add(person[1], person);   // exactly k taller-or-equal in front
+                return queue.toArray(new int[0][]);
+            }
+
+            public static void main(String[] args) {
+                int[][] q = new Solution().reconstructQueue(new int[][]{{7, 0}, {4, 4}, {7, 1}, {5, 0}, {6, 1}, {5, 2}});
+                System.out.println(Arrays.deepToString(q));   // [[5, 0], [7, 0], [5, 2], [6, 1], [4, 4], [7, 1]]
+            }
+        }`,
+      complexity: `<p><b>Time O(N²)</b> in the worst case because of list insertions (N ≤ 2000 → fine); a Fenwick tree over empty slots (insert shortest first) gives O(N log N). <b>Space O(N)</b>.</p>`,
+      followUps: ['Make it O(N log N) with a BIT / segment tree of free positions.', 'Validate a given queue in O(N log N).']
+    }
+  });
+
+  // =====================================================================
+  // PRACTICE — Hard
+  // =====================================================================
+  practice.push({
+    title: 'Candy',
+    level: 'Hard',
+    tags: ['greedy', 'array', 'two passes'],
+    companies: ['Amazon', 'Google', 'Microsoft', 'Uber'],
+    statement: `<p>N children stand in a line with ratings <code>ratings[i]</code>. Give candies so that every child gets <b>at least one</b>, and a child with a <b>higher rating than an immediate neighbour</b> gets more candies than that neighbour. Return the <b>minimum total</b> number of candies.</p>`,
+    constraints: `1 ≤ N ≤ 2·10<sup>4</sup>, 0 ≤ ratings[i] ≤ 2·10<sup>4</sup>`,
+    example: `${H.arr([1, 0, 2], { label: 'ratings' })}${H.arr([2, 1, 2], { label: 'candies', hl: { 0: 'g', 2: 'g' } })}
+      <p>Output <b>5</b>. With ratings [1, 2, 2] the output is <b>4</b> (candies 1, 2, 1): equal neighbours have no constraint.</p>`,
+    brute: {
+      why: `<p>Start everyone at 1 and repeatedly sweep the line fixing any violated rule (raise the higher-rated child to neighbour + 1) until nothing changes. It reaches the minimum, but a long decreasing run can need O(N) sweeps → O(N²). The waste: the left rules and right rules can each be satisfied in one directed pass.</p>`,
+      code: `
+        int bruteCandy(int[] r) {
+            int n = r.length;
+            int[] c = new int[n];
+            Arrays.fill(c, 1);
+            boolean changed = true;
+            while (changed) {                                   // relax until every rule holds
+                changed = false;
+                for (int i = 0; i < n; i++) {
+                    if (i > 0 && r[i] > r[i - 1] && c[i] <= c[i - 1]) { c[i] = c[i - 1] + 1; changed = true; }
+                    if (i + 1 < n && r[i] > r[i + 1] && c[i] <= c[i + 1]) { c[i] = c[i + 1] + 1; changed = true; }
+                }
+            }
+            int sum = 0;
+            for (int x : c) sum += x;
+            return sum;
+        }`
+    },
+    mcq: {
+      q: 'After the left-to-right pass, why take <code>max(c[i], c[i+1] + 1)</code> in the right-to-left pass instead of just <code>c[i+1] + 1</code>?',
+      options: ['To keep the sum small', 'To keep the left-neighbour rule that the first pass already satisfied', 'Because of integer overflow', 'It makes no difference'],
+      answer: 1,
+      explain: 'The first pass guarantees c[i] &gt; c[i−1] when needed. Overwriting with c[i+1] + 1 could lower c[i] and break that. The max satisfies both sides with the smallest value.'
+    },
+    hints: [
+      `<p><b>Aha:</b> split the rule into two independent rules — "beat your left neighbour if higher" and "beat your right neighbour if higher". Each one is easy in one directed pass.</p>`,
+      `<p>Pass 1 (left → right): if r[i] &gt; r[i−1], c[i] = c[i−1] + 1. Pass 2 (right → left): if r[i] &gt; r[i+1], c[i] = max(c[i], c[i+1] + 1).</p>`,
+      `<p>Each c[i] ends as the max of the two "slope lengths" ending at i — the smallest value satisfying both rules. Equal ratings impose nothing. Recipe: fill 1 → pass 1 → pass 2 with max → sum.</p>`
+    ],
+    solution: {
+      approach: `<p>Two greedy passes. After pass 1, c[i] = length of the increasing run ending at i from the left — the minimum to satisfy left rules. Pass 2 computes the same from the right and keeps the max. Every child needs at least both values, and the max satisfies both rules, so the total is minimal.</p>`,
+      code: `
+        import java.util.*;
+
+        class Solution {
+            public int candy(int[] ratings) {
+                int n = ratings.length;
+                int[] c = new int[n];
+                Arrays.fill(c, 1);                                     // everyone gets at least one
+                for (int i = 1; i < n; i++)                            // beat the LEFT neighbour
+                    if (ratings[i] > ratings[i - 1]) c[i] = c[i - 1] + 1;
+                for (int i = n - 2; i >= 0; i--)                       // beat the RIGHT neighbour
+                    if (ratings[i] > ratings[i + 1]) c[i] = Math.max(c[i], c[i + 1] + 1);
+                int sum = 0;
+                for (int x : c) sum += x;
+                return sum;
+            }
+
+            public static void main(String[] args) {
+                Solution s = new Solution();
+                System.out.println(s.candy(new int[]{1, 0, 2}));            // 5
+                System.out.println(s.candy(new int[]{1, 2, 2}));            // 4
+                System.out.println(s.candy(new int[]{1, 3, 4, 5, 2}));      // 11
+            }
+        }`,
+      dry: {
+        head: ['i', 'rating', 'after pass 1', 'after pass 2'],
+        rows: [['0', '1', '1', '1'], ['1', '3', '2', '2'], ['2', '4', '3', '3'], ['3', '5', '4', '4'], ['4', '2', '1', '1 → total <span class="c-p">11</span>']]
+      },
+      complexity: `<p><b>Time O(N)</b>, <b>Space O(N)</b>. An O(1)-space one-pass version counts up-slopes and down-slopes, but the two-pass version is what interviewers expect first.</p>`,
+      followUps: ['Children sit in a circle.', 'Do it with O(1) extra space (slope counting).']
+    }
+  });
+
+  practice.push({
+    title: 'IPO (Maximize Capital)',
+    level: 'Hard',
+    tags: ['greedy', 'heap', 'sorting'],
+    companies: ['Amazon', 'Google', 'Meta'],
+    statement: `<p>You start with capital <code>w</code> and may finish at most <code>k</code> distinct projects. Project i needs <code>capital[i]</code> to start (it is not spent) and adds <code>profits[i]</code> to your capital when finished. Return your <b>maximum final capital</b>.</p>`,
+    constraints: `1 ≤ k ≤ 10<sup>5</sup>, 0 ≤ w ≤ 10<sup>9</sup>, 1 ≤ N ≤ 10<sup>5</sup>, 0 ≤ profits[i] ≤ 10<sup>4</sup>, 0 ≤ capital[i] ≤ 10<sup>9</sup>; the answer fits in a 32-bit signed int`,
+    example: `<p>k = 2, w = 0, profits = [1, 2, 3], capital = [0, 1, 1] → Output <b>4</b>. Round 1: only project 0 is affordable → w = 1. Round 2: projects 1 and 2 are affordable, take the richer ${H.c('g', 'project 2 (+3)')} → w = 4.</p>`,
+    brute: {
+      why: `<p>Each round, scan all projects, pick the unused affordable one with the largest profit: O(k·N) = 10<sup>10</sup> in the worst case. The waste: projects become affordable in a fixed order (by capital) and never stop being affordable, so a sorted pointer plus a heap avoids rescanning.</p>`,
+      code: `
+        int bruteIPO(int k, int w, int[] profits, int[] capital) {
+            boolean[] used = new boolean[profits.length];
+            for (int round = 0; round < k; round++) {
+                int pick = -1;
+                for (int i = 0; i < profits.length; i++)
+                    if (!used[i] && capital[i] <= w && (pick == -1 || profits[i] > profits[pick])) pick = i;
+                if (pick == -1) break;                 // nothing affordable
+                used[pick] = true;
+                w += profits[pick];
+            }
+            return w;
+        }`
+    },
+    mcq: {
+      q: 'Why is it safe to always take the most profitable affordable project?',
+      options: ['Because profits are sorted', 'Capital only grows, so anything affordable now stays affordable; taking the biggest profit first makes later options a superset', 'Because k is small', 'It is not safe; you need DP'],
+      answer: 1,
+      explain: 'Profits are non-negative, so a richer you can afford everything a poorer you could. Exchange: swapping a smaller first pick for the largest affordable never shrinks future choices or the total.'
+    },
+    hints: [
+      `<p><b>Aha:</b> capital never decreases. So the set of affordable projects only grows over time, and the best move each round is the most profitable affordable project.</p>`,
+      `<p>Sort projects by required capital. Each round, push every newly affordable project's profit into a <b>max-heap</b>, then pop the top.</p>`,
+      `<p>Stop early if the heap is empty (stuck). Recipe: sort indices by capital → for round in 1..k: while next affordable → push profit; if heap empty → break; w += poll → return w.</p>`
+    ],
+    solution: {
+      approach: `<p>Two-structure greedy: a pointer over projects sorted by capital "unlocks" projects as w grows; a max-heap gives the best unlocked profit each round. Exchange argument: if an optimal sequence starts with a smaller affordable profit, swapping in the largest affordable one leaves capital at least as high at every later step.</p>`,
+      code: `
+        import java.util.*;
+
+        class Solution {
+            public int findMaximizedCapital(int k, int w, int[] profits, int[] capital) {
+                int n = profits.length;
+                Integer[] order = new Integer[n];
+                for (int i = 0; i < n; i++) order[i] = i;
+                Arrays.sort(order, (a, b) -> Integer.compare(capital[a], capital[b]));   // cheapest to start first
+                PriorityQueue<Integer> affordable = new PriorityQueue<>(Collections.reverseOrder()); // max-heap of profits
+                int next = 0;
+                for (int round = 0; round < k; round++) {
+                    while (next < n && capital[order[next]] <= w) {
+                        affordable.add(profits[order[next++]]);   // unlocked forever
+                    }
+                    if (affordable.isEmpty()) break;              // cannot start anything
+                    w += affordable.poll();                       // best project we can do now
+                }
+                return w;
+            }
+
+            public static void main(String[] args) {
+                Solution s = new Solution();
+                System.out.println(s.findMaximizedCapital(2, 0, new int[]{1, 2, 3}, new int[]{0, 1, 1}));  // 4
+                System.out.println(s.findMaximizedCapital(3, 0, new int[]{1, 2, 3}, new int[]{0, 1, 2}));  // 6
+            }
+        }`,
+      complexity: `<p><b>Time O(N log N + k log N)</b>: sorting plus at most N pushes and k pops. <b>Space O(N)</b>.</p>`,
+      followUps: ['Projects can lose money (negative profits): what breaks?', 'Each project also takes time and you have a deadline.']
+    }
+  });
+
+  practice.push({
+    title: 'Course Schedule III',
+    level: 'Hard',
+    tags: ['greedy', 'heap', 'scheduling'],
+    companies: ['Google', 'Amazon', 'Microsoft'],
+    statement: `<p><code>courses[i] = [duration, lastDay]</code>: course i takes <code>duration</code> consecutive days and must be finished by day <code>lastDay</code>. You start on day 1, take one course at a time. Return the <b>maximum number of courses</b> you can take.</p>`,
+    constraints: `1 ≤ N ≤ 10<sup>4</sup>, 1 ≤ duration, lastDay ≤ 10<sup>4</sup>`,
+    example: `${H.table(['course', 'duration', 'lastDay'], [['A', '100', '200'], ['B', '200', '1300'], ['C', '1000', '1250'], ['D', '2000', '3200']])}
+      <p>Output <b>3</b>: A (days 1–100), C (101–1100), B (1101–1300). D would end on day 3300 &gt; 3200. Taking A, C, B, D is impossible.</p>`,
+    brute: {
+      why: `<p>Try all 2<sup>N</sup> subsets; a subset is feasible iff running it in deadline order finishes each course on time (Earliest Deadline First is optimal for a fixed set). Exponential. The waste: when a deadline is missed, dropping the single longest course taken so far is always the best repair.</p>`,
+      code: `
+        int bruteCourses(int[][] courses) {
+            int n = courses.length, best = 0;
+            int[][] c = courses.clone();
+            Arrays.sort(c, (a, b) -> Integer.compare(a[1], b[1]));    // deadline order
+            for (int mask = 0; mask < (1 << n); mask++) {
+                int time = 0;
+                boolean ok = true;
+                for (int i = 0; i < n && ok; i++) {
+                    if ((mask >> i & 1) == 0) continue;
+                    time += c[i][0];
+                    if (time > c[i][1]) ok = false;                     // finished too late
+                }
+                if (ok) best = Math.max(best, Integer.bitCount(mask));
+            }
+            return best;
+        }`
+    },
+    mcq: {
+      q: 'Processing courses by deadline, adding course X makes you finish too late. Which course should you drop?',
+      options: ['Course X, always', 'The course with the earliest deadline', 'The longest course taken so far (possibly X itself)', 'The shortest course taken so far'],
+      answer: 2,
+      explain: 'Every taken course counts as 1. Dropping the longest one frees the most time for the future while losing only one course — and the remaining set still meets all deadlines.'
+    },
+    hints: [
+      `<p><b>Aha 1:</b> for any fixed set of courses, taking them in order of <b>lastDay</b> is best (exchange argument: swapping two adjacent courses that are out of deadline order never hurts).</p>`,
+      `<p><b>Aha 2:</b> scan courses by lastDay, keep the taken durations in a <b>max-heap</b> and the total time. If total &gt; current lastDay, remove the longest taken course.</p>`,
+      `<p>The heap size is the answer. Removing the longest keeps the count as high as possible and the time as low as possible. Recipe: sort by lastDay → for each: push duration, time += duration; if time &gt; lastDay → time −= poll → return heap size.</p>`
+    ],
+    solution: {
+      approach: `<p>Earliest-deadline order plus "drop the longest when late" (Moore–Hodgson). Invariant: after each course, the heap holds a maximum-size feasible set among the courses seen, and among those the one with the smallest total time. Dropping the longest preserves both.</p>`,
+      code: `
+        import java.util.*;
+
+        class Solution {
+            public int scheduleCourse(int[][] courses) {
+                int[][] c = courses.clone();
+                Arrays.sort(c, (a, b) -> Integer.compare(a[1], b[1]));                // earliest deadline first
+                PriorityQueue<Integer> taken = new PriorityQueue<>(Collections.reverseOrder()); // longest on top
+                int time = 0;
+                for (int[] course : c) {
+                    taken.add(course[0]);
+                    time += course[0];
+                    if (time > course[1]) {            // late: give up the longest course so far
+                        time -= taken.poll();
+                    }
+                }
+                return taken.size();
+            }
+
+            public static void main(String[] args) {
+                Solution s = new Solution();
+                System.out.println(s.scheduleCourse(new int[][]{{100, 200}, {200, 1300}, {1000, 1250}, {2000, 3200}}));  // 3
+                System.out.println(s.scheduleCourse(new int[][]{{3, 2}, {4, 3}}));                                       // 0
+            }
+        }`,
+      dry: {
+        head: ['course (by lastDay)', 'push', 'time', 'late?', 'heap'],
+        rows: [['100, 200', '100', '100', 'no', '{100}'], ['1000, 1250', '1000', '1100', 'no', '{1000, 100}'], ['200, 1300', '200', '1300', 'no', '{1000, 200, 100}'], ['2000, 3200', '2000', '3300 → drop 2000 → 1300', '<span class="c-r">yes</span>', 'size <span class="c-p">3</span>']]
+      },
+      complexity: `<p><b>Time O(N log N)</b>, <b>Space O(N)</b>.</p>`,
+      followUps: ['Courses have different values: maximize total value (no longer greedy — DP over time).', 'Return the actual course order.']
+    }
+  });
+
+  practice.push({
+    title: 'Minimum Number of Refueling Stops',
+    level: 'Hard',
+    tags: ['greedy', 'heap'],
+    companies: ['Google', 'Amazon', 'Meta'],
+    statement: `<p>A car drives east from position 0 to <code>target</code> with <code>startFuel</code> liters (1 liter per mile). <code>stations[i] = [position, fuel]</code>, sorted by position. When the car stops at a station it takes <b>all</b> of that station's fuel (unlimited tank). Return the <b>minimum number of stops</b> to reach the target, or −1. Arriving with 0 fuel still counts as arriving.</p>`,
+    constraints: `1 ≤ target, startFuel ≤ 10<sup>9</sup>, 0 ≤ N ≤ 500, 0 &lt; position[i] &lt; target, 1 ≤ fuel[i] &lt; 10<sup>9</sup>`,
+    example: `<p>target = 100, startFuel = 10, stations = [[10,60],[20,30],[30,30],[60,40]] → Output <b>2</b>. Reach 10, take ${H.c('g', '60')} (now reach 70); you passed 20, 30, 60 — take the biggest of them, ${H.c('g', '40 at mile 60')} (reach 110 ≥ 100).</p>`,
+    brute: {
+      why: `<p>For every station you can reach, choose "stop" or "skip" recursively: 2<sup>N</sup> paths. The waste: you never need to decide <i>when</i> you pass a station. Only when you are about to run dry does it matter which passed station you "should have" stopped at — and the answer is always the one with the most fuel.</p>`,
+      code: `
+        long INF = Long.MAX_VALUE / 4;
+
+        int bruteRefuel(int target, int startFuel, int[][] stations) {
+            long r = dfs(target, stations, 0, startFuel);
+            return r >= INF ? -1 : (int) r;
+        }
+
+        // reach = farthest position reachable with the fuel picked up so far
+        long dfs(int target, int[][] st, int i, long reach) {
+            if (reach >= target) return 0;
+            if (i == st.length || st[i][0] > reach) return INF;          // stuck before station i
+            long skip = dfs(target, st, i + 1, reach);
+            long stop = 1 + dfs(target, st, i + 1, reach + st[i][1]);
+            return Math.min(skip, stop);
+        }`
+    },
+    mcq: {
+      q: 'You will run out of fuel before the next station. You have passed stations with 30, 30 and 40 liters without stopping. What does the greedy do?',
+      options: ['Give up and return −1', '"Retroactively" stop at the 40-liter station', 'Stop at the first one you passed', 'Stop at all three'],
+      answer: 1,
+      explain: 'You must have stopped somewhere among the passed stations; one stop is unavoidable, and the 40-liter one extends your reach the most. The heap makes "pick the biggest passed station" O(log N).'
+    },
+    hints: [
+      `<p><b>Aha:</b> drive as far as you can. Only when you cannot go further do you need a stop — and you may pretend you stopped at any station you already passed.</p>`,
+      `<p>Push the fuel of every station within reach into a <b>max-heap</b>. While <code>reach &lt; target</code>: add newly reachable stations, then pop the largest fuel (one more stop). If the heap is empty, return −1.</p>`,
+      `<p>Use <code>long</code> for reach (fuel sums can exceed 2<sup>31</sup>). Recipe: reach = startFuel, stops = 0 → while reach &lt; target: push stations with pos ≤ reach; if heap empty → −1; reach += poll; stops++ → return stops.</p>`
+    ],
+    solution: {
+      approach: `<p>Lazy, retroactive greedy with a max-heap: each forced stop takes the largest fuel among stations already passed. Stays-ahead proof: after k stops, greedy's reach is the maximum reach possible with any k stops (it is the startFuel plus the k largest fuels among reachable stations), so it reaches the target with the fewest stops. An O(N²) DP (<code>dp[k]</code> = farthest reach with k stops) is the standard alternative.</p>`,
+      code: `
+        import java.util.*;
+
+        class Solution {
+            public int minRefuelStops(int target, int startFuel, int[][] stations) {
+                PriorityQueue<Integer> passed = new PriorityQueue<>(Collections.reverseOrder()); // fuel we could have taken
+                long reach = startFuel;          // farthest position reachable with stops chosen so far
+                int stops = 0, i = 0;
+                while (reach < target) {
+                    while (i < stations.length && stations[i][0] <= reach) {
+                        passed.add(stations[i++][1]);   // within reach: remember it
+                    }
+                    if (passed.isEmpty()) return -1;   // nothing to refuel from: stuck
+                    reach += passed.poll();            // stop at the best station we passed
+                    stops++;
+                }
+                return stops;
+            }
+
+            public static void main(String[] args) {
+                Solution s = new Solution();
+                System.out.println(s.minRefuelStops(100, 10, new int[][]{{10, 60}, {20, 30}, {30, 30}, {60, 40}}));  // 2
+                System.out.println(s.minRefuelStops(100, 1, new int[][]{{10, 100}}));                             // -1
+                System.out.println(s.minRefuelStops(1, 1, new int[][]{}));                                        // 0
+            }
+        }`,
+      complexity: `<p><b>Time O(N log N)</b>: each station is pushed and popped at most once. <b>Space O(N)</b>.</p>`,
+      followUps: ['Write the O(N²) DP and compare.', 'The tank has a maximum capacity: what changes?', 'Each stop costs money proportional to the fuel taken.']
+    }
+  });
+
+  // =====================================================================
+  // QUIZ
+  // =====================================================================
+  quiz.push(
+    {
+      q: 'Which two properties must a problem have for a greedy algorithm to be optimal?',
+      options: ['Overlapping subproblems and memoization', 'Greedy choice property and optimal substructure', 'Monotonicity and binary searchability', 'Sorted input and unique answers'],
+      answer: 1,
+      explain: 'Greedy choice property: some optimal answer contains the greedy first choice. Optimal substructure: after that choice, the rest is a smaller instance whose optimum completes the overall optimum. Overlapping subproblems is the DP signal.'
+    },
+    {
+      q: 'In an exchange-argument proof, what do you do with an optimal solution O that differs from greedy\'s solution G?',
+      options: ['Show O is invalid', 'Modify O step by step to agree with G without making it worse', 'Show G is shorter than O', 'Run both on random inputs'],
+      answer: 1,
+      explain: 'Find the first difference, swap/replace to match G, prove validity and no loss, repeat. At the end O has become G, so G is optimal.'
+    },
+    {
+      q: 'Which greedy key is <b>always</b> optimal for "maximum number of non-overlapping meetings in one room"?',
+      options: ['Earliest start', 'Shortest duration', 'Earliest end', 'Fewest overlaps with other meetings'],
+      answer: 2,
+      explain: 'Earliest start fails on (0,10),(1,2),(3,4): it takes (0,10) and gets 1 instead of 2. Shortest fails on (1,5),(4,7),(6,10). Earliest end is always correct (exchange / stays-ahead proof).'
+    },
+    {
+      q: 'Job sequencing (unit jobs). Jobs X(deadline 2, profit 50) and Y(deadline 1, profit 40). Processing by profit, where should X be placed?',
+      options: ['Slot 1', 'Slot 2 (the latest free slot within its deadline)', 'Either slot', 'X should be skipped'],
+      answer: 1,
+      explain: 'Slot 2 leaves slot 1 free for Y, total 90. Putting X in slot 1 blocks Y and gives only 50.'
+    },
+    {
+      q: 'Items (value, weight): (60,10), (100,20), (120,30), capacity 50. What are the fractional and 0/1 optimal values?',
+      options: ['240 and 240', '240 and 220', '220 and 160', '160 and 220'],
+      answer: 1,
+      explain: 'Fractional: 60 + 100 + 2/3·120 = 240. 0/1: items 2 and 3 (weights 20 + 30) = 220. Ratio greedy on whole items would get only 160.'
+    },
+    {
+      q: 'Huffman frequencies 1, 1, 2, 4. What is the total number of encoded bits?',
+      options: ['14', '15', '16', '8'],
+      answer: 0,
+      explain: 'Merges: 1+1 = 2 (cost 2), 2+2 = 4 (cost 4), 4+4 = 8 (cost 8). Total 2 + 4 + 8 = 14. Check: depths 3, 3, 2, 1 → 1·3 + 1·3 + 2·2 + 4·1 = 14.'
+    },
+    {
+      q: 'Minimum platforms: train A 9:00–10:00 and train B 10:00–11:00, and a platform CANNOT serve an arrival and a departure at the same instant. Which comparison does the two-pointer sweep use?',
+      options: ['<code>arr[i] &lt; dep[j]</code> → answer 1', '<code>arr[i] &lt;= dep[j]</code> → answer 2', '<code>arr[i] &gt; dep[j]</code> → answer 0', 'The tie rule does not matter'],
+      answer: 1,
+      explain: 'Processing the arrival first on ties counts both trains as present at 10:00 → 2 platforms. The LeetCode Meeting Rooms convention (half-open intervals) uses &lt; and gets 1.'
+    },
+    {
+      q: 'Gas station: gain = gas − cost = [−1, 2, −3, 4]. What does the one-pass greedy return?',
+      options: ['0', '1', '3', '−1'],
+      answer: 2,
+      explain: 'Total = 2 ≥ 0. Tank: −1 → reset, start 1; +2 = 2; 2 − 3 = −1 → reset, start 3; +4 = 4. Answer 3. Check from 3: 4 → 3 → 5 → 2, never negative.'
+    },
+    {
+      q: 'Jump Game II on [2, 3, 1, 1, 4]. What do the variables (jumps, curEnd) look like after scanning index 0?',
+      options: ['(0, 0)', '(1, 2)', '(1, 4)', '(2, 4)'],
+      answer: 1,
+      explain: 'At i = 0, farthest = 2 and i == curEnd (0), so jumps becomes 1 and curEnd becomes 2: with one jump you can stand anywhere in [1, 2].'
+    },
+    {
+      q: 'For coins {1, 3, 4}, what is the smallest amount where "biggest coin first" is not optimal?',
+      options: ['5', '6', '7', '8'],
+      answer: 1,
+      explain: '6: greedy 4 + 1 + 1 = 3 coins, optimal 3 + 3 = 2 coins. Amounts 1..5 are fine. Kozen–Zaks says the smallest counterexample is below 4 + 3 = 7, consistent with 6.'
+    },
+    {
+      q: 'Which of these problems is NOT correctly solved by a simple greedy?',
+      options: ['Maximum number of non-overlapping intervals', 'Fractional knapsack', 'Weighted interval scheduling (maximize total profit)', 'Minimum arrows to burst balloons'],
+      answer: 2,
+      explain: 'With profits, earliest end can sacrifice one very valuable interval for two cheap ones. It needs DP with binary search.'
+    },
+    {
+      q: 'Why is <code>Arrays.sort(a, (x, y) -&gt; x[1] - y[1])</code> risky for interval problems with values in [−2<sup>31</sup>, 2<sup>31</sup> − 1]?',
+      options: ['It is O(N²)', 'The subtraction can overflow, producing a wrong sign and a wrong order', 'It is not stable', 'It sorts in descending order'],
+      answer: 1,
+      explain: 'E.g. 2147483647 − (−2147483648) overflows to −1. Always use Integer.compare / Long.compare.'
+    },
+    {
+      q: 'Smith\'s rule: to minimize Σ weight × finish time on one machine, order jobs by…',
+      options: ['Shortest time first', 'Largest weight first', 'Smallest time / weight first', 'Earliest deadline first'],
+      answer: 2,
+      explain: 'Swapping neighbours a, b changes the cost by w<sub>a</sub>t<sub>b</sub> − w<sub>b</sub>t<sub>a</sub>, so a goes first iff t<sub>a</sub>/w<sub>a</sub> &lt; t<sub>b</sub>/w<sub>b</sub>. With equal weights it becomes shortest job first.'
+    },
+    {
+      q: 'Which statement about matroids and greedy is correct?',
+      options: ['Greedy is optimal for every problem with optimal substructure', 'Greedy "add the heaviest element that keeps the set independent" is optimal for all weights exactly when the structure is a matroid', 'Matroids only apply to graphs', '0/1 knapsack is a matroid'],
+      answer: 1,
+      explain: 'Rado–Edmonds theorem. Graphic matroids give Kruskal, scheduling matroids give job sequencing. Knapsack is not a matroid, so greedy fails there.'
+    }
+  );
+
+  // =====================================================================
+  // INTERVIEW Q&A
+  // =====================================================================
+  interview.push(
+    {
+      q: 'What is a greedy algorithm, and how is it different from dynamic programming?',
+      level: 'B',
+      a: `<p>A greedy algorithm builds the answer step by step, always taking the choice that looks best right now and <b>never revisiting it</b>. DP instead considers <b>every</b> choice at each step and reuses answers to overlapping subproblems. Greedy is a special case that works when one local choice is provably safe (greedy choice property); DP is the fallback when you cannot prove that. Greedy is typically O(N log N) and O(1) extra space; DP is often O(N·W) or O(N²) time and memory. Example: fractional knapsack → greedy by ratio; 0/1 knapsack → DP.</p>`,
+      followUps: ['Give a problem where both work and greedy is faster.', 'Can every greedy be rewritten as a DP?']
+    },
+    {
+      q: 'How do you convince an interviewer that your greedy is correct?',
+      level: 'I',
+      a: `<p>I use one of three arguments. <b>Exchange argument:</b> take any optimal solution that differs from mine, swap one piece to match my choice, show it stays valid and is no worse, repeat. <b>Greedy stays ahead:</b> define a measure after k steps (k-th finish time, reach) and prove by induction mine is always at least as good. <b>Structural bound:</b> show a lower bound every solution must meet (e.g. max overlap for meeting rooms) and that greedy meets it. Before any of that I spend a minute trying to break the greedy with 2–4 item inputs; if I cannot break it and one argument fits, I am confident. If time is short, I offer a brute-force stress test.</p>`,
+      followUps: ['Walk me through the exchange argument for activity selection.', 'What does "greedy stays ahead" look like for Jump Game II?']
+    },
+    {
+      q: 'Why does activity selection sort by end time and not by start time or duration?',
+      level: 'B',
+      a: `<p>Ending earliest frees the room soonest, leaving the maximum time for the rest. Counterexamples kill the others: <b>earliest start</b> on (0,10),(1,2),(3,4) picks (0,10) and gets 1 instead of 2; <b>shortest</b> on (1,5),(4,7),(6,10) picks (4,7), which blocks both others, giving 1 instead of 2. Proof for end time: any optimal schedule's first meeting can be replaced by the earliest-ending meeting — it ends no later, so nothing after it conflicts. Then induct on the remaining meetings that start after it.</p>`,
+      followUps: ['What if touching meetings are not allowed?', 'What if meetings have profits?']
+    },
+    {
+      q: 'Explain job sequencing with deadlines and why each job goes into the latest free slot.',
+      level: 'I',
+      a: `<p>Unit-time jobs with deadlines and profits; maximize profit. Process jobs by profit descending; place each in the latest free slot ≤ its deadline, skip if none. <b>Richest first</b> is safe by exchange: if an optimal schedule omits the richest job g, either a slot ≤ d<sub>g</sub> is free (add g, contradiction) or one holds a cheaper job (swap it out). <b>Latest slot</b> keeps early slots open for jobs with tight deadlines: X(d=2, 50), Y(d=1, 40) — earliest-slot placement gets 50, latest-slot gets 90. For speed, a DSU with <code>find(t)</code> = latest free slot ≤ t makes it O(N log N + N α(N)); an alternative sorts by deadline and keeps a min-heap of profits, popping the smallest when the heap exceeds the deadline.</p>`,
+      followUps: ['Why is the set of feasible job sets a matroid?', 'How do you handle deadlines up to 10^9?']
+    },
+    {
+      q: 'Why does greedy work for fractional knapsack but not for 0/1 knapsack?',
+      level: 'I',
+      a: `<p>In the fractional version you can think of every item as 1-kg slices worth the item's ratio. If a cheaper slice is in the bag while a better slice is outside, swapping them increases value — so the best bag is filled by ratio, highest first. In 0/1, items are indivisible; taking the best-ratio item can leave an awkward gap that no remaining item fills. Example: capacity 50, items (60,10), (100,20), (120,30): ratio greedy takes 60 + 100 = 160 and cannot fit 120; the optimum is 100 + 120 = 220. The fractional value (240) is still useful as an upper bound in branch-and-bound.</p>`,
+      followUps: ['Can you do fractional knapsack in O(N)?', 'What approximation does greedy give for 0/1 knapsack?']
+    },
+    {
+      q: 'Walk me through Huffman coding and why merging the two smallest frequencies is optimal.',
+      level: 'A',
+      a: `<p>Put all characters in a min-heap by frequency. Repeatedly pop the two smallest, create a parent with their sum, push it back; after N − 1 merges the last node is the root; left = 0, right = 1. Total bits = Σ freq × depth = the sum of all merged weights. Proof: (1) <b>exchange</b> — in some optimal tree the two rarest characters are sibling leaves at the deepest level (swapping a rarer character deeper never increases cost); (2) <b>reduction</b> — merging them into one symbol of weight f<sub>x</sub> + f<sub>y</sub> gives a smaller instance whose optimal tree, expanded, is optimal for the original (cost differs by exactly f<sub>x</sub> + f<sub>y</sub>). Complexity O(N log N), or O(N) with two queues if frequencies are pre-sorted. Real use: DEFLATE/gzip/PNG, JPEG, HPACK, zstd literals.</p>`,
+      followUps: ['What is a canonical Huffman code?', 'How far is Huffman from the entropy?', 'How do you handle a single distinct character?']
+    },
+    {
+      q: 'How do you find the minimum number of meeting rooms or train platforms?',
+      level: 'I',
+      a: `<p>The answer is the <b>maximum number of intervals overlapping at any instant</b>. Sort start times and end times separately and sweep with two pointers: a start before the next end adds a room, otherwise an end frees one; track the max. That is O(N log N). A min-heap of end times (sorted by start) gives the same count and also the actual room assignment. For small integer times, a difference array is O(N + T). Correctness: every solution needs ≥ max overlap rooms, and the greedy "reuse any free room" never opens room k unless k intervals overlap at that moment. The tie rule (arrival == departure) must match the problem: GFG platforms counts both; LeetCode Meeting Rooms lets them share.</p>`,
+      followUps: ['Return which room each meeting uses.', 'Meetings are added online one at a time — what structure?']
+    },
+    {
+      q: 'Explain the Gas Station greedy and why it is correct.',
+      level: 'I',
+      a: `<p>Compute gain = gas − cost. If Σgain &lt; 0, return −1 — no start can create fuel. Otherwise scan with a running tank from a candidate start; when the tank goes negative at i, set start = i + 1 and tank = 0. <b>Why skipping is safe:</b> starting at s you reached every station m between s and i with ≥ 0 fuel and still failed; starting fresh at m gives 0 fuel there, so it fails too. <b>Why the final candidate works:</b> it sits right after the minimum prefix sum; from there all partial sums are ≥ the minimum, and wrapping around adds a non-negative total. O(N) time, O(1) space.</p>`,
+      followUps: ['What is the minimum initial fuel if you must start at station 0?', 'What if the tank has a capacity limit?']
+    },
+    {
+      q: 'Jump Game II: why is the O(N) greedy optimal, and what is the common wrong greedy?',
+      level: 'A',
+      a: `<p>Wrong greedy: "always jump as far as possible" — on [2,3,1,1,4] it goes 0 → 2 → 3 → 4 (3 jumps) instead of 0 → 1 → 4 (2). Right greedy: indices reachable in ≤ k jumps form a prefix [0, R<sub>k</sub>] because you can always jump shorter. R<sub>k+1</sub> = max(i + nums[i]) over i ≤ R<sub>k</sub>. Scanning with curEnd = R<sub>k</sub> and farthest = R<sub>k+1</sub>, incrementing jumps whenever i reaches curEnd, computes exactly these values — it is BFS where each level is an interval, so the queue collapses into two integers. The first k with R<sub>k</sub> ≥ n − 1 is optimal (greedy stays ahead). O(N) time, O(1) space.</p>`,
+      followUps: ['Return the path.', 'How do "minimum taps to water a garden" and "video stitching" reduce to this?']
+    },
+    {
+      q: 'Give an example where greedy fails and explain how you would detect it during an interview.',
+      level: 'B',
+      a: `<p>Coin change with coins {1, 3, 4} and amount 6: biggest-first gives 4 + 1 + 1 = 3 coins; optimal is 3 + 3 = 2. With {3, 4}, greedy even reports "impossible" (4, then 2 left) though 3 + 3 works. Detection: state the greedy rule, then try tiny, awkward inputs — near-ties, sizes that do not divide each other, an expensive item that blocks two cheaper ones. If I break it, I switch to DP (here O(amount × coins)). If I cannot break it and cannot prove it, I propose a brute-force stress test. Real currencies are designed to be canonical, so "it works for rupees/dollars" is not evidence.</p>`,
+      followUps: ['What is a canonical coin system and how do you test one?', 'How does the DP for fewest coins work?']
+    },
+    {
+      q: 'What is a matroid, and why does it matter for greedy algorithms?',
+      level: 'E',
+      a: `<p>A matroid is a ground set with a family of "independent" subsets that is (1) <b>hereditary</b> — subsets of independent sets are independent — and (2) has the <b>exchange property</b> — if A and B are independent and |A| &gt; |B|, some element of A \\ B can be added to B keeping it independent. Rado–Edmonds theorem: the greedy "sort by weight descending, add if still independent" returns a maximum-weight basis for <b>every</b> weight function exactly when the structure is a matroid. Examples: forests in a graph (graphic matroid → Kruskal's MST), sets of unit jobs that can all meet deadlines (job sequencing), any k elements (top-k). Knapsack and coin change are not matroids, so greedy has no guarantee there. Practical use: if you can show the feasible sets satisfy the exchange property, the greedy proof is free.</p>`,
+      followUps: ['Show that the job-sequencing feasibility family has the exchange property.', 'What is the intersection of two matroids, and why is greedy not enough there?']
+    },
+    {
+      q: 'Your greedy uses a custom comparator. What can go wrong in Java?',
+      level: 'A',
+      a: `<p>Three things. (1) <b>Overflow:</b> <code>(a, b) -&gt; a - b</code> breaks for values near ±2<sup>31</sup>; use <code>Integer.compare</code>. (2) <b>Precision:</b> comparing <code>double</code> ratios can mis-order close values; for v<sub>1</sub>/w<sub>1</sub> vs v<sub>2</sub>/w<sub>2</sub> compare <code>(long) v1 * w2</code> with <code>(long) v2 * w1</code>. Casting a double difference to int (<code>(int)(r2 - r1)</code>) is a classic bug — 0.7 becomes 0. (3) <b>Contract violations:</b> a comparator that is not transitive or not consistent can make TimSort throw <code>IllegalArgumentException: Comparison method violates its general contract!</code> or silently produce a wrong order. Exchange-derived rules (like Largest Number's a+b vs b+a) must be shown transitive. Also make sure the proof holds for any tie order, or break ties explicitly.</p>`,
+      followUps: ['Prove the Largest Number comparator is transitive.', 'Why does Java use TimSort for objects and dual-pivot quicksort for primitives?']
+    },
+    {
+      q: 'How would you use an AI assistant when solving a greedy problem, and what would you not trust it with?',
+      level: 'I',
+      a: `<p>I use it to <b>attack</b> my solution, not to replace my reasoning: "find the smallest input where this greedy is not optimal", "write a brute force and a random tester comparing it with my code", "list every boundary rule this statement implies (touching intervals, ties, overflow)". I do not trust its claim that a greedy is correct, because it will produce a fluent but hand-wavy proof, or apply a memorised template (ratio greedy, earliest end) to a look-alike problem where it fails, such as 0/1 knapsack or weighted intervals. I verify by the stress test and by writing the exchange argument myself. In an interview, I own the counterexample hunt and the proof; the code is the cheap part now.</p>`,
+      followUps: ['Design a stress-testing harness in 10 lines.', 'How do you review AI-written comparator code?']
+    },
+    {
+      q: 'Greedy algorithms in production: where have you seen them, and what trade-offs come with them?',
+      level: 'E',
+      a: `<p>Schedulers (Earliest Deadline First in real-time systems, shortest-job-first approximations in batch queues), compression (Huffman in DEFLATE/JPEG/HPACK), networking (Dijkstra's greedy shortest paths inside link-state routing such as OSPF and IS-IS), memory allocators (first-fit/best-fit), cache eviction (LRU is a greedy heuristic; Belady's offline optimum evicts the item used furthest in the future), ad allocation and bin packing (first-fit decreasing). The trade-off: many of these underlying problems are NP-hard, so the greedy is an <b>approximation</b> chosen for speed and simplicity, with known bounds (set cover ≈ ln n, FFD ≤ 11/9·OPT + 6/9). Production concerns are tie-breaking determinism, stability under small input changes, and monitoring for adversarial inputs that hit the worst case.</p>`,
+      followUps: ['Why is Belady\'s algorithm optimal but impractical?', 'When would you accept an approximation over an exact DP?']
+    }
+  );
 
   registerModule({
     id: 'dsa16',

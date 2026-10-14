@@ -1754,7 +1754,17 @@ for arr in ([4, 2, -3, 1, 6], [1, 2, 3], [1, -1], [3, 0, 5], [-3, 2, 3, 1, 6]):
     }, {
       title: 'Starts at index 0 — why the seed matters',
       html: `<p>arr = [−3, 2, 1, 6]: balances −3, −1, <b>0</b>, 6. Without the seed {0}, no balance repeats and you would wrongly answer false. With the seed, pf = 0 at index 2 matches the "before the start" balance → subarray [0..2] = [−3, 2, 1].</p>`,
-      code: `System.out.println(hasZeroSum(new int[]{-3, 2, 1, 6})); // true only because of seen.add(0L)`
+      code: `boolean hasZeroSum(int[] a) {
+    Set<Long> seen = new HashSet<>();
+    seen.add(0L);                       // remove this line and the answer below becomes false
+    long pf = 0;
+    for (int x : a) { pf += x; if (!seen.add(pf)) return true; }
+    return false;
+}
+
+void demo() {
+    System.out.println(hasZeroSum(new int[]{-3, 2, 1, 6})); // true only because of seen.add(0L)
+}`
     }, {
       title: 'Bank statement in real life',
       html: `${H.table(['day', 'transaction', 'balance'], [['start', '—', '₹1000'], ['Mon', '+500', '₹1500'], ['Tue', '−200', '₹1300'], ['Wed', '−300', H.c('r', '₹1000')], ['Thu', '+100', '₹1100']])}
@@ -2562,6 +2572,765 @@ print(find_max_length([0, 1, 1, 0, 1, 1, 1, 0]))        # 4`
           '<b>Count</b> subarrays with equal 0s and 1s → map of counts with seed {0: 1}.',
           'Equal 0s, 1s and 2s → key = pair (c1 − c0, c2 − c1).',
           'Longest substring with equal vowels and consonants (same ±1 trick on characters).'
+        ]
+      }
+    }]
+  });
+
+  /* =====================================================================
+     TOPIC 8 — Sliding window + hashing
+     ===================================================================== */
+  topics.push({
+    title: 'Sliding Window + Hashing: Longest Substring Without Repeats & Minimum Window Substring',
+    analogy: `<p>A <b>VIP lounge with a strict "no twins" rule</b>. Guests enter from the right door one by one; the bouncer keeps the <b>guest list</b> (a HashSet) of who is inside. If a newcomer's name is <b>already on the list</b>, people must leave through the left door — oldest first — until the earlier person with that name is gone. The bouncer's question every night: "what was the <b>biggest crowd</b> we ever had with no repeated names?" → <b>longest substring without repeating characters</b>.</p>
+<p>Now flip it: a <b>shopping list</b> (the shopkeeper's tally of what you need: A×1, B×1, C×1). You walk down the aisle picking items into your basket (expand right). As soon as the basket covers the whole list, you try handing back items from the <b>front</b> of the basket (shrink left) while it still covers the list — looking for the <b>shortest stretch of aisle</b> that has everything → <b>minimum window substring</b>.</p>`,
+    explain: `<p>Both problems use the <b>variable-size sliding window</b> from DSA 6, with a hash structure that describes what is <b>inside the window</b>. Two pointers, <code>left</code> and <code>right</code>, only ever move forward, so the total work is O(N).</p>
+
+<h4>The universal template</h4>
+<pre>left = 0
+for right in 0..n-1:
+    add s[right] to the window map        // expand
+    while (window is INVALID / or can be improved):
+        remove s[left] from the map; left++   // shrink
+    update the answer using [left..right]</pre>
+<p>What changes between problems is only: <b>what the map stores</b> and <b>what "valid" means</b>.</p>
+
+<h4>Problem A — longest substring without repeating characters</h4>
+<p>Window is valid when every character inside is unique. Use a <b>HashSet</b> of the window's characters. When <code>s[right]</code> is already in the set, shrink from the left (removing characters) until it is not.</p>
+${H.table(['right', 'char', 'action', 'window', 'best'], [['0', 'a', H.c('g', 'add a'), 'a', '1'], ['1', 'b', H.c('g', 'add b'), 'ab', '2'], ['2', 'c', H.c('g', 'add c'), 'abc', '3'], ['3', 'a', H.c('r', 'a inside! remove a') + ', add a', 'bca', '3'], ['4', 'b', H.c('r', 'remove b') + ', add b', 'cab', '3'], ['5', 'c', H.c('r', 'remove c') + ', add c', 'abc', '3'], ['6', 'b', H.c('r', 'remove a, b') + ', add b', 'cb', '3'], ['7', 'b', H.c('r', 'remove c, b') + ', add b', 'b', '3']])}
+<p><b>Faster jump:</b> store <code>char → last index</code> in a map. When you meet a repeat, jump <code>left = max(left, last[c] + 1)</code> in one step instead of removing one by one. The <code>max</code> matters: an old last index that is already outside the window must not pull <code>left</code> backwards ("abba").</p>
+
+<h4>Problem B — minimum window substring</h4>
+<p>Window is valid when it contains every character of <code>t</code> with at least the required multiplicity. Keep a <b>need map</b> (tally from t) and a counter <code>missing</code> = how many required characters are still missing.</p>
+<ul>
+<li>Expand: if <code>need[c] &gt; 0</code>, this character was actually needed → <code>missing−−</code>. Then <code>need[c]−−</code> (extra copies go negative = surplus).</li>
+<li>While <code>missing == 0</code> (valid): record the window if shorter, then remove <code>s[left]</code>: <code>need[d]++</code>; if it becomes &gt; 0 we just gave away a required character → <code>missing++</code>.</li>
+</ul>
+${H.table(['event', 'window', 'length', 'best'], [['first valid at right = 5', 'ADOBEC', '6', 'ADOBEC'], ['valid again at right = 10, shrink', 'CODEBA', '6', 'ADOBEC'], ['valid again at right = 12, shrink', H.c('g', 'BANC'), '4', H.c('g', 'BANC')]])}
+<p>For s = "ADOBECODEBANC", t = "ABC" the answer is <b>"BANC"</b>.</p>
+
+<h4>Why it is O(N)</h4>
+<p><code>right</code> moves N times; <code>left</code> also moves at most N times in total (it never goes back). Each move does O(1) hash work. So even though there is a <code>while</code> inside a <code>for</code>, the total is O(N) — <b>amortized</b> analysis.</p>`,
+    clues: [
+      '"longest / shortest substring or subarray" + a condition on its contents → sliding window + map/set',
+      '"without repeating characters", "all unique", "no duplicates" → HashSet window or last-index map',
+      '"contains all characters of t", "covers", "minimum window" → need-map + missing counter, shrink while valid',
+      '"at most K distinct", "exactly K distinct" → window frequency map; exactly(K) = atMost(K) − atMost(K−1)',
+      '"find all anagrams / permutation in string" → fixed-size window with counts',
+      'N up to 10<sup>5</sup> and O(N<sup>2</sup>) substrings would TLE → two pointers that only move forward',
+      '"characters can be any ASCII" → int[128] (or a HashMap for Unicode)'
+    ],
+    code: [`
+import java.util.*;
+
+public class WindowHashing {
+    // Longest substring without repeating characters — HashSet + shrink
+    static int lengthOfLongestSubstringSet(String s) {
+        Set<Character> window = new HashSet<>();
+        int left = 0, best = 0;
+        for (int right = 0; right < s.length(); right++) {
+            char c = s.charAt(right);
+            while (window.contains(c)) {          // duplicate inside: shrink from the left
+                window.remove(s.charAt(left++));
+            }
+            window.add(c);
+            best = Math.max(best, right - left + 1);
+        }
+        return best;
+    }
+
+    // Longest substring with at most k distinct characters — the general template
+    static int longestAtMostKDistinct(String s, int k) {
+        Map<Character, Integer> cnt = new HashMap<>();
+        int left = 0, best = 0;
+        for (int right = 0; right < s.length(); right++) {
+            cnt.merge(s.charAt(right), 1, Integer::sum);           // expand
+            while (cnt.size() > k) {                                // invalid: too many distinct
+                char d = s.charAt(left++);
+                cnt.computeIfPresent(d, (key, v) -> v == 1 ? null : v - 1);
+            }
+            best = Math.max(best, right - left + 1);                // valid window
+        }
+        return best;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(lengthOfLongestSubstringSet("abcabcbb")); // 3
+        System.out.println(lengthOfLongestSubstringSet("pwwkew"));   // 3
+        System.out.println(longestAtMostKDistinct("eceba", 2));      // 3 ("ece")
+    }
+}`, {
+      lang: 'python', run: true, title: 'Python (runnable): both problems',
+      code: `from collections import Counter
+
+def longest_unique(s):
+    last, left, best = {}, 0, 0
+    for right, c in enumerate(s):
+        if c in last and last[c] >= left:
+            left = last[c] + 1          # jump past the previous copy
+        last[c] = right
+        best = max(best, right - left + 1)
+    return best
+
+def min_window(s, t):
+    need, missing = Counter(t), len(t)
+    left, best = 0, (float("inf"), 0, 0)
+    for right, c in enumerate(s):
+        if need[c] > 0:
+            missing -= 1
+        need[c] -= 1
+        while missing == 0:
+            if right - left + 1 < best[0]:
+                best = (right - left + 1, left, right + 1)
+            need[s[left]] += 1
+            if need[s[left]] > 0:
+                missing += 1
+            left += 1
+    return "" if best[0] == float("inf") else s[best[1]:best[2]]
+
+print(longest_unique("abcabcbb"), longest_unique("abba"), longest_unique("pwwkew"))  # 3 2 3
+print(min_window("ADOBECODEBANC", "ABC"))   # BANC
+print(repr(min_window("a", "aa")))          # ''`
+    }],
+    codeTitle: ['Set-based window and the general at-most-K template (Java)', 'Python (runnable)'],
+    viz: [{
+      title: 'Longest substring without repeats: HashSet window (add = green, removal = red)',
+      input: 'abcabcbb',
+      inputLabel: 'String (letters only, at most 16)',
+      gen: function (input) {
+        var s = parseWord(input, 16, 'string'), ch = s.split(''), set = [], left = 0, best = 0, bl = 0, br = -1, frames = [];
+        frames.push({ narr: 'Window [left..right] must contain only unique characters. The HashSet holds exactly the characters inside the window.', parts: [{ type: 'array', label: 's', values: ch.slice() }, { type: 'set', label: 'window characters', items: [] }, { type: 'vars', vals: { left: 0, best: 0 } }] });
+        for (var r = 0; r < ch.length; r++) {
+          var c = ch[r];
+          if (set.indexOf(c) >= 0) {
+            frames.push({ narr: 'right = ' + r + ': <b>' + c + '</b> is <span class="c-r">already in the window</span> → we must shrink from the left until the old "' + c + '" is gone.', parts: [{ type: 'array', label: 's', values: ch.slice(), range: [left, r - 1], ptr: hlm(one(left, 'L'), one(r, 'R')), hl: one(r, 'bad') }, { type: 'set', label: 'window characters', items: set.slice(), hl: one(c, 'bad') }, { type: 'vars', vals: { left: left, right: r, best: best } }] });
+          }
+          while (set.indexOf(c) >= 0) {
+            var d = ch[left];
+            frames.push({ narr: 'Remove <b>' + d + '</b> (index ' + left + ') from the window, left → ' + (left + 1) + '.' + (d === c ? ' That was the old copy of "' + c + '" — the duplicate is gone.' : ''), parts: [{ type: 'array', label: 's', values: ch.slice(), range: [left + 1, r - 1], ptr: hlm(one(left + 1, 'L'), one(r, 'R')), hl: one(left, 'bad') }, { type: 'set', label: 'window characters', items: set.slice(), hl: one(d, 'bad') }, { type: 'vars', vals: { left: left + 1, right: r, best: best } }] });
+            set.splice(set.indexOf(d), 1); left++;
+          }
+          set.push(c);
+          var len = r - left + 1, imp = len > best;
+          if (imp) { best = len; bl = left; br = r; }
+          frames.push({ narr: '<span class="c-g">Add</span> <b>' + c + '</b>. Window "' + s.slice(left, r + 1) + '" has length ' + len + '. ' + (imp ? '<b>New best = ' + best + '</b>.' : 'Best stays ' + best + '.'), parts: [{ type: 'array', label: 's', values: ch.slice(), range: [left, r], ptr: hlm(one(left, 'L'), one(r, 'R')), hl: one(r, 'ok') }, { type: 'set', label: 'window characters', items: set.slice(), hl: one(c, 'ok') }, { type: 'vars', vals: { left: left, right: r, length: len, best: best }, hl: { best: imp ? 'ok' : '' } }] });
+        }
+        frames.push({ narr: 'Answer: <b>' + best + '</b> ("' + s.slice(bl, br + 1) + '"). Each character was added once and removed at most once → O(N).', parts: [{ type: 'array', label: 's', values: ch.slice(), hl: rng(bl, br, 'sel') }, { type: 'vars', vals: { answer: best }, hl: { answer: 'sel' } }] });
+        return frames;
+      }
+    }, {
+      title: 'Same problem, faster jump: map char → last index, left = max(left, last + 1)',
+      input: 'abba',
+      inputLabel: 'String (letters only, at most 16)',
+      gen: function (input) {
+        var s = parseWord(input, 16, 'string'), ch = s.split(''), last = new Map(), left = 0, best = 0, frames = [];
+        frames.push({ narr: 'Instead of removing characters one by one, remember where each character was <b>last</b> seen. On a repeat, jump left past it. Watch "abba": the max() protects us from jumping backwards.', parts: [{ type: 'array', label: 's', values: ch.slice() }, { type: 'map', label: 'char → last index', entries: [] }, { type: 'vars', vals: { left: 0, best: 0 } }] });
+        for (var r = 0; r < ch.length; r++) {
+          var c = ch[r], had = last.has(c), note;
+          if (had && last.get(c) >= left) {
+            note = '<b>' + c + '</b> was last seen at ' + last.get(c) + ', which is <span class="c-r">inside</span> the window → jump left to ' + (last.get(c) + 1) + '.';
+            left = last.get(c) + 1;
+          } else if (had) {
+            note = '<b>' + c + '</b> was last seen at ' + last.get(c) + ', but that is <b>before</b> left = ' + left + ' (already outside the window) → left stays. Without max() we would wrongly move left back to ' + (last.get(c) + 1) + '!';
+          } else note = '<b>' + c + '</b> never seen → <span class="c-g">new key</span>, left stays ' + left + '.';
+          last.set(c, r);
+          var len = r - left + 1, imp = len > best;
+          if (imp) best = len;
+          frames.push({ narr: 'right = ' + r + ': ' + note + ' Window length ' + len + (imp ? ', <b>new best ' + best + '</b>.' : '.'), parts: [{ type: 'array', label: 's', values: ch.slice(), range: [left, r], ptr: hlm(one(left, 'L'), one(r, 'R')), hl: one(r, had ? 'bad' : 'ok') }, { type: 'map', label: 'char → last index', entries: ents(last), hl: one(c, had ? 'bad' : 'ok') }, { type: 'vars', vals: { left: left, right: r, best: best }, hl: { best: imp ? 'ok' : '' } }] });
+        }
+        frames.push({ narr: 'Answer: <b>' + best + '</b>. One pass, O(1) work per character, no inner loop at all.', parts: [{ type: 'map', label: 'char → last index', entries: ents(last) }, { type: 'vars', vals: { answer: best }, hl: { answer: 'sel' } }] });
+        return frames;
+      }
+    }, {
+      title: 'Minimum window substring: need-map + missing counter, expand then shrink',
+      input: 'ADOBECODEBANC | ABC',
+      inputLabel: 's | t  (letters only; s at most 16, t at most 6)',
+      gen: function (input) {
+        var p = splitBar(input, 2, 'ADOBECODEBANC | ABC'), s = parseWord(p[0], 16, 's'), t = parseWord(p[1], 6, 't'), ch = s.split('');
+        var need = new Map(), missing = t.length, left = 0, bestLen = Infinity, bestL = 0, frames = [];
+        t.split('').forEach(function (c) { need.set(c, (need.get(c) || 0) + 1); });
+        function needView() { var out = []; need.forEach(function (v, k) { if (t.indexOf(k) >= 0) out.push([k, v]); }); return out; }
+        frames.push({ narr: 'Tally of t: what we still need. <b>missing</b> = ' + missing + ' characters. Positive need = still required; 0 = exactly satisfied; negative = surplus in the window.', parts: [{ type: 'array', label: 's', values: ch.slice() }, { type: 'map', label: 'need (chars of t)', entries: needView() }, { type: 'vars', vals: { missing: missing, best: '—' } }] });
+        for (var r = 0; r < ch.length; r++) {
+          var c = ch[r], useful = (need.get(c) || 0) > 0;
+          if (useful) missing--;
+          need.set(c, (need.get(c) || 0) - 1);
+          frames.push({ narr: 'right = ' + r + ': take <b>' + c + '</b>. ' + (useful ? '<span class="c-g">It was needed</span> → missing = ' + missing + '.' : (t.indexOf(c) >= 0 ? 'Already have enough ' + c + ' → surplus (need ' + need.get(c) + ').' : 'Not in t → irrelevant.')), parts: [{ type: 'array', label: 's', values: ch.slice(), range: [left, r], ptr: hlm(one(left, 'L'), one(r, 'R')), hl: one(r, useful ? 'ok' : 'cur') }, { type: 'map', label: 'need (chars of t)', entries: needView(), hl: useful ? one(c, 'ok') : {} }, { type: 'vars', vals: { missing: missing, best: bestLen === Infinity ? '—' : s.substr(bestL, bestLen) }, hl: { missing: useful ? 'ok' : '' } }] });
+          while (missing === 0) {
+            var len = r - left + 1, imp = len < bestLen;
+            if (imp) { bestLen = len; bestL = left; }
+            var d = ch[left];
+            need.set(d, need.get(d) + 1);
+            var lost = need.get(d) > 0;
+            if (lost) missing++;
+            frames.push({ narr: 'Window "' + s.slice(left, r + 1) + '" (length ' + len + ') covers t. ' + (imp ? '<b>New best!</b> ' : '') + 'Try to shrink: <span class="c-r">remove ' + d + '</span>. ' + (lost ? 'That was a required copy → missing = ' + missing + ', window no longer valid, stop shrinking.' : 'Still valid (it was surplus or irrelevant) → keep shrinking.'), parts: [{ type: 'array', label: 's', values: ch.slice(), range: [left + 1, r], ptr: hlm(one(left + 1, 'L'), one(r, 'R')), hl: hlm(one(left, 'bad')) }, { type: 'map', label: 'need (chars of t)', entries: needView(), hl: t.indexOf(d) >= 0 ? one(d, 'bad') : {} }, { type: 'vars', vals: { missing: missing, best: s.substr(bestL, bestLen) }, hl: { best: imp ? 'sel' : '', missing: lost ? 'bad' : '' } }] });
+            left++;
+          }
+        }
+        frames.push({ narr: bestLen === Infinity ? 'No window covers t → return "".' : 'Answer: <b>"' + s.substr(bestL, bestLen) + '"</b> (length ' + bestLen + '). Both pointers moved at most N times → O(|s| + |t|).', parts: [{ type: 'array', label: 's', values: ch.slice(), hl: bestLen === Infinity ? {} : rng(bestL, bestL + bestLen - 1, 'sel') }, { type: 'vars', vals: { answer: bestLen === Infinity ? '""' : s.substr(bestL, bestLen) }, hl: { answer: 'sel' } }] });
+        return frames;
+      }
+    }],
+    examples: [{
+      title: '"abba" — the max() in the jump version',
+      html: `${H.table(['right', 'char', 'last[char]', 'left', 'window', 'best'], [['0', 'a', '—', '0', 'a', '1'], ['1', 'b', '—', '0', 'ab', '2'], ['2', 'b', '1 (inside)', H.c('r', '2'), 'b', '2'], ['3', 'a', '0 (outside!)', H.c('g', 'max(2, 1) = 2'), 'ba', '2']])}
+<p>Without <code>max</code>, at right = 3 left would jump <b>back</b> to 1 and the window "bba" (length 3) would be wrongly accepted.</p>`
+    }, {
+      title: '"pwwkew" → 3, and substring ≠ subsequence',
+      html: `<p>The answer is "wke" (length 3). "pwke" is <b>not</b> valid — it skips a character, so it is a subsequence, not a substring. Windows are always contiguous.</p>
+${H.arr(['p', 'w', 'w', 'k', 'e', 'w'], { label: 's', hl: { 2: 'g', 3: 'g', 4: 'g' } })}`
+    }, {
+      title: 'Longest substring with at most 2 distinct characters',
+      html: `<p>s = "eceba", K = 2. Window map grows: e, c, e → {e:2, c:1} (size 2, length 3). Adding b makes size 3 → shrink: remove e (e:1), remove c (c:0 → delete) → size 2 window "eb". Best = 3 ("ece"). The only change from Problem A: "valid" means <code>map.size() ≤ K</code>.</p>`
+    }, {
+      title: 'Find all anagrams of p in s (fixed-size window)',
+      html: `<p>s = "cbaebabacd", p = "abc". Slide a window of length 3 with a count map; whenever it equals p's counts, record the start. Answer [0, 6] ("cba", "bac"). A neat trick: keep a <code>matches</code> counter of letters whose counts agree, so each slide is O(1) instead of comparing 26 counts.</p>`,
+      code: `List<Integer> findAnagrams(String s, String p) {
+    List<Integer> res = new ArrayList<>();
+    if (p.length() > s.length()) return res;
+    int[] need = new int[26], win = new int[26];
+    for (char c : p.toCharArray()) need[c - 'a']++;
+    for (int i = 0; i < s.length(); i++) {
+        win[s.charAt(i) - 'a']++;                              // enter
+        if (i >= p.length()) win[s.charAt(i - p.length()) - 'a']--; // leave
+        if (i >= p.length() - 1 && Arrays.equals(win, need)) res.add(i - p.length() + 1);
+    }
+    return res;
+}`
+    }],
+    deepDive: `<p><b>Amortized proof.</b> In both algorithms each index enters the window once (when <code>right</code> passes it) and leaves at most once (when <code>left</code> passes it). Hash operations are O(1) average, so total time is O(N) (plus O(|t|) to build the need map). Space is O(Σ) — the alphabet size — not O(N).</p>
+<p><b>Set version vs jump version.</b> The set version may touch a character twice (add + remove); the jump version touches each once but needs the <code>max(left, last + 1)</code> guard because it never deletes stale entries. With a fixed alphabet use <code>int[128]</code> filled with −1 for "last index" — fastest in practice. For Unicode, iterate code points and use a <code>HashMap&lt;Integer,Integer&gt;</code>.</p>
+<p><b>Minimum window details.</b> The <code>missing</code> counter turns "does the window cover t?" from an O(Σ) comparison into an O(1) check. Equivalent formulation: <code>required = distinct chars of t</code>, <code>formed</code> = how many distinct chars currently meet their quota. With duplicates in t ("AABC"), multiplicities matter: "ABC" does not cover "AABC". An optimization for very long s with short t: first filter s to positions whose character is in t, then slide over that shorter list.</p>
+<p><b>When sliding window breaks.</b> The window technique needs <b>monotonicity</b>: if a window is valid, every bigger window (for "minimum") or every smaller window (for "longest") must also be valid. Unique characters and "covers t" both have it. "Subarray sum = K with negatives" does not — that is why topics 5–7 use prefix sums + hashing instead.</p>
+<p><b>Exactly K distinct.</b> "Number of subarrays with exactly K distinct integers" is not directly monotone, but <code>exactly(K) = atMost(K) − atMost(K − 1)</code>, and each atMost is a monotone window count (add <code>right − left + 1</code> per step). That identity is a top-tier interview trick (LeetCode 992).</p>`,
+    aiEra: `<p><b>What AI changes:</b> both problems are famous and AI produces them reliably. The template is what you should internalize, because interviews now remix it: "at most K distinct", "with at most one replacement", "covering all items with quantities", "streaming log of user IDs".</p>
+<p><b>Use AI as a partner:</b> <code>Give me the generic sliding-window-with-map template and 6 problems that are instances of it, with the one line that changes</code>; <code>Generate inputs for min window substring with duplicate letters in t, t longer than s, uppercase vs lowercase</code>; <code>Explain the amortized O(N) proof in two sentences</code>.</p>
+<p><b>Where AI goes wrong:</b> missing the <code>max()</code> in the jump version ("abba"), comparing <code>Integer</code> counts with <code>==</code> in Java (works below 128 thanks to the cache, silently breaks above), ignoring multiplicities of t, returning <code>s.substring(l, r)</code> with an off-by-one, and applying sliding window to sums with negatives.</p>
+<p><b>What you must still own:</b> defining what "valid" means, proving monotonicity before choosing the window, and explaining why nested <code>while</code> inside <code>for</code> is still O(N).</p>`,
+    problems: [{
+      title: 'Longest Substring Without Repeating Characters',
+      level: 'Medium', tags: ['sliding window', 'hashset', 'hashmap'], companies: ['Amazon', 'Google', 'Meta', 'Microsoft', 'Bloomberg', 'Adobe'],
+      statement: `<p>Given a string <code>s</code>, return the length of the longest <b>substring</b> (contiguous) that contains no repeated characters.</p>`,
+      constraints: `0 ≤ s.length ≤ 5·10<sup>4</sup>; s consists of English letters, digits, symbols and spaces.`,
+      example: `${H.arr(['a', 'b', 'c', 'a', 'b', 'c', 'b', 'b'], { label: 's', hl: { 0: 'g', 1: 'g', 2: 'g' } })}<p>Output ${H.c('g', '3')} — "abc". For "bbbbb" → 1, for "pwwkew" → 3 ("wke"), for "" → 0.</p>`,
+      brute: {
+        why: `<p>For every start i, extend j while characters stay unique (using a set), and record the longest. That is <b>O(N<sup>2</sup>)</b> in the worst case (≈ 10<sup>9</sup> for N = 5·10<sup>4</sup> with a large alphabet). The waste: after a duplicate at j, starting over from i + 1 re-scans characters we already know are unique.</p>`,
+        code: `int lengthOfLongestSubstringBrute(String s) {
+    int best = 0;
+    for (int i = 0; i < s.length(); i++) {
+        Set<Character> seen = new HashSet<>();
+        for (int j = i; j < s.length(); j++) {
+            if (!seen.add(s.charAt(j))) break;      // repeat: this start can go no further
+            best = Math.max(best, j - i + 1);
+        }
+    }
+    return best;
+}`
+      },
+      mcq: {
+        q: 'Jump version: s = "abba". At right = 3 (char a), last[a] = 0 and left = 2. What should left become?',
+        options: ['2 — max(left, last[a] + 1) = max(2, 1)', '1 — always last[a] + 1', '0 — restart from the beginning', '3 — start fresh at right'],
+        answer: 0,
+        explain: 'The old "a" at index 0 is already outside the window [2..2]. Moving left back to 1 would re-admit the duplicate "b". max() keeps left monotone.'
+      },
+      hints: [
+        `<p><b>Hint 1:</b> If s[i..j] has no repeats, so does every substring inside it. So when you hit a repeat, you do not need to restart — just move the left edge forward past the earlier copy.</p>`,
+        `<p><b>Hint 2:</b> Keep the window's characters in a HashSet (shrink one by one) or a map char → last index (jump directly).</p>`,
+        `<p><b>Hint 3 (recipe):</b> left = 0; for right: c = s[right]; if c in last and last[c] ≥ left → left = last[c] + 1; last[c] = right; best = max(best, right − left + 1). Edge cases: empty string, all same char, spaces/symbols (use a map or int[128]).</p>`
+      ],
+      solution: {
+        approach: `<p><b>Sliding window with a last-index map.</b> The window [left..right] always holds unique characters. On a repeat whose previous index is inside the window, jump left just past it. Each character is processed once, so the scan is linear.</p>`,
+        code: `class Solution {
+    public int lengthOfLongestSubstring(String s) {
+        Map<Character, Integer> last = new HashMap<>();   // char -> last index seen
+        int left = 0, best = 0;
+        for (int right = 0; right < s.length(); right++) {
+            char c = s.charAt(right);
+            Integer prev = last.get(c);
+            if (prev != null && prev >= left) left = prev + 1;   // duplicate inside window: jump
+            last.put(c, right);
+            best = Math.max(best, right - left + 1);
+        }
+        return best;
+    }
+}`,
+        alt: [{
+          lang: 'java', title: 'int[128] instead of a HashMap (fastest)', code: `class SolutionArray {
+    public int lengthOfLongestSubstring(String s) {
+        int[] last = new int[128];
+        Arrays.fill(last, -1);
+        int left = 0, best = 0;
+        for (int right = 0; right < s.length(); right++) {
+            char c = s.charAt(right);
+            left = Math.max(left, last[c] + 1);   // max() handles stale indexes like in "abba"
+            last[c] = right;
+            best = Math.max(best, right - left + 1);
+        }
+        return best;
+    }
+}`
+        }, {
+          lang: 'python', code: `def length_of_longest_substring(s):
+    last, left, best = {}, 0, 0
+    for right, c in enumerate(s):
+        if c in last and last[c] >= left:
+            left = last[c] + 1
+        last[c] = right
+        best = max(best, right - left + 1)
+    return best`
+        }, {
+          lang: 'cpp', code: `int lengthOfLongestSubstring(string s) {
+    vector<int> last(256, -1);
+    int left = 0, best = 0;
+    for (int right = 0; right < (int)s.size(); right++) {
+        unsigned char c = s[right];
+        left = max(left, last[c] + 1);
+        last[c] = right;
+        best = max(best, right - left + 1);
+    }
+    return best;
+}`
+        }],
+        dry: {
+          head: ['right', 's[right]', 'last[c] before', 'left after', 'window', 'best'],
+          rows: [
+            ['0', 'a', '—', '0', 'a', '1'],
+            ['1', 'b', '—', '0', 'ab', '2'],
+            ['2', 'c', '—', '0', 'abc', H.c('g', '3')],
+            ['3', 'a', H.c('r', '0 (inside)'), '1', 'bca', '3'],
+            ['4', 'b', H.c('r', '1 (inside)'), '2', 'cab', '3'],
+            ['5', 'c', H.c('r', '2 (inside)'), '3', 'abc', '3'],
+            ['6', 'b', H.c('r', '4 (inside)'), '5', 'cb', '3'],
+            ['7', 'b', H.c('r', '6 (inside)'), '7', 'b', '3']
+          ]
+        },
+        complexity: `<p><b>Time:</b> O(N) — one pass, O(1) map work per character. <b>Space:</b> O(min(N, Σ)) where Σ is the alphabet size (128 for ASCII).</p>`,
+        followUps: [
+          'Return the substring itself (track bestLeft).',
+          'Longest substring with at most K distinct characters (map of counts, shrink while size &gt; K).',
+          'Longest substring where each character appears at most twice.',
+          'Longest Repeating Character Replacement (window valid if length − maxFreq ≤ k).'
+        ]
+      }
+    }, {
+      title: 'Minimum Window Substring',
+      level: 'Hard', tags: ['sliding window', 'hashmap', 'two pointers'], companies: ['Meta', 'Amazon', 'Google', 'Microsoft', 'LinkedIn', 'Airbnb'],
+      statement: `<p>Given strings <code>s</code> and <code>t</code>, return the <b>shortest substring of s</b> that contains every character of <code>t</code> <b>including duplicates</b>. If no such substring exists, return "". The answer is unique when it exists.</p>`,
+      constraints: `1 ≤ |s|, |t| ≤ 10<sup>5</sup>; s and t consist of uppercase and lowercase English letters. Target O(|s| + |t|).`,
+      example: `<p>s = "ADOBECODEBANC", t = "ABC" → ${H.c('g', '"BANC"')}.</p>
+${H.arr('ADOBECODEBANC'.split(''), { label: 's', hl: { 9: 'g', 10: 'g', 11: 'g', 12: 'g' } })}
+<p>s = "a", t = "aa" → ${H.c('r', '""')} (s has only one 'a', t needs two).</p>`,
+      brute: {
+        why: `<p>For every start l, extend r and maintain counts; as soon as the window covers t (check 52 letter counts), record it and stop extending. That is <b>O(|s|<sup>2</sup> · Σ)</b> ≈ 5·10<sup>11</sup> at the limits. The waste: after finding a valid window at (l, r), the next start l + 1 re-extends over the same characters instead of reusing the counts.</p>`,
+        code: `String minWindowBrute(String s, String t) {
+    int[] need = new int[128];
+    for (char c : t.toCharArray()) need[c]++;
+    String best = "";
+    for (int l = 0; l < s.length(); l++) {
+        int[] have = new int[128];
+        for (int r = l; r < s.length(); r++) {
+            have[s.charAt(r)]++;
+            if (covers(have, need)) {
+                if (best.isEmpty() || r - l + 1 < best.length()) best = s.substring(l, r + 1);
+                break;                         // longer windows from this l cannot be shorter
+            }
+        }
+    }
+    return best;
+}
+
+boolean covers(int[] have, int[] need) {
+    for (int c = 0; c < 128; c++) if (have[c] < need[c]) return false;
+    return true;
+}`
+      },
+      mcq: {
+        q: 'While shrinking a valid window, you remove s[left] = \'D\' (not in t) and then \'B\' where need[B] goes from 0 to 1. What do you do?',
+        options: ['After removing D keep shrinking; after B the window is invalid (missing++), so stop and expand right again', 'Stop at D because the window changed', 'Keep shrinking after B too — validity is only checked at the end', 'Reset the window to start at right'],
+        answer: 0,
+        explain: 'Removing irrelevant or surplus characters keeps the window valid, so keep shrinking. When a count of a required char becomes positive, a requirement is unmet: missing++ and the shrink loop ends.'
+      },
+      hints: [
+        `<p><b>Hint 1:</b> If window [l..r] covers t, then any bigger window also does (monotonic). So: grow right until it covers t, then shrink left as much as possible while it still covers t. Record each such tight window.</p>`,
+        `<p><b>Hint 2:</b> Keep a <b>need</b> tally from t and a single integer <b>missing</b> = number of required characters not yet in the window. That makes "is it valid?" an O(1) check.</p>`,
+        `<p><b>Hint 3 (recipe):</b> for right: if need[c] &gt; 0 → missing−−; need[c]−−. while missing == 0: record [left..right]; need[s[left]]++; if need[s[left]] &gt; 0 → missing++; left++. Return the best or "". Edge cases: |t| &gt; |s|, duplicates in t, case sensitivity.</p>`
+      ],
+      solution: {
+        approach: `<p><b>Expand–shrink window with a need map.</b> The need map starts as t's tally. Taking a character decrements it; a positive value before decrementing means it fulfilled a requirement (missing−−). When missing hits 0, the window covers t: record it, then give characters back from the left until a requirement breaks. Both pointers only move forward → O(|s| + |t|).</p>`,
+        code: `class Solution {
+    public String minWindow(String s, String t) {
+        if (t.length() > s.length()) return "";
+        Map<Character, Integer> need = new HashMap<>();      // char -> how many more we need (negative = surplus)
+        for (char c : t.toCharArray()) need.merge(c, 1, Integer::sum);
+        int missing = t.length();                            // required chars not yet in the window
+        int left = 0, bestLeft = 0, bestLen = Integer.MAX_VALUE;
+
+        for (int right = 0; right < s.length(); right++) {
+            char c = s.charAt(right);
+            if (need.getOrDefault(c, 0) > 0) missing--;      // this char fills a requirement
+            need.merge(c, -1, Integer::sum);                 // take it into the window
+
+            while (missing == 0) {                           // window covers t: try to shrink
+                if (right - left + 1 < bestLen) { bestLen = right - left + 1; bestLeft = left; }
+                char d = s.charAt(left++);
+                int after = need.merge(d, 1, Integer::sum);  // give d back
+                if (after > 0) missing++;                    // we just lost a required copy
+            }
+        }
+        return bestLen == Integer.MAX_VALUE ? "" : s.substring(bestLeft, bestLeft + bestLen);
+    }
+}`,
+        alt: [{
+          lang: 'java', title: 'int[128] version (same logic, faster)', code: `class SolutionArray {
+    public String minWindow(String s, String t) {
+        int[] need = new int[128];
+        for (char c : t.toCharArray()) need[c]++;
+        int missing = t.length(), left = 0, bestLeft = 0, bestLen = Integer.MAX_VALUE;
+        for (int right = 0; right < s.length(); right++) {
+            if (need[s.charAt(right)]-- > 0) missing--;
+            while (missing == 0) {
+                if (right - left + 1 < bestLen) { bestLen = right - left + 1; bestLeft = left; }
+                if (++need[s.charAt(left++)] > 0) missing++;
+            }
+        }
+        return bestLen == Integer.MAX_VALUE ? "" : s.substring(bestLeft, bestLeft + bestLen);
+    }
+}`
+        }, {
+          lang: 'python', code: `from collections import Counter
+
+def min_window(s, t):
+    need, missing = Counter(t), len(t)
+    left, best_l, best_len = 0, 0, float("inf")
+    for right, c in enumerate(s):
+        if need[c] > 0:
+            missing -= 1
+        need[c] -= 1
+        while missing == 0:
+            if right - left + 1 < best_len:
+                best_l, best_len = left, right - left + 1
+            need[s[left]] += 1
+            if need[s[left]] > 0:
+                missing += 1
+            left += 1
+    return "" if best_len == float("inf") else s[best_l:best_l + best_len]`
+        }],
+        dry: {
+          head: ['right', 's[right]', 'missing after', 'shrink phase (left moves)', 'best'],
+          rows: [
+            ['0', 'A', H.c('g', '2'), '—', '—'],
+            ['1–2', 'D, O', '2', 'not in t → surplus', '—'],
+            ['3', 'B', H.c('g', '1'), '—', '—'],
+            ['4', 'E', '1', '—', '—'],
+            ['5', 'C', H.c('g', '0'), 'record "ADOBEC" (6); remove A → ' + H.c('r', 'missing 1') + ', left = 1', 'ADOBEC'],
+            ['6–9', 'O, D, E, B', '1', 'B is surplus (need B = −1)', 'ADOBEC'],
+            ['10', 'A', H.c('g', '0'), 'record 1..10 (10); remove D, O, B, E (still valid), record "CODEBA" (6, not shorter); remove C → ' + H.c('r', 'missing 1') + ', left = 6', 'ADOBEC'],
+            ['11', 'N', '1', '—', 'ADOBEC'],
+            ['12', 'C', H.c('g', '0'), 'remove O, D, E (valid) → record "EBANC" (5), then "BANC" (4); remove B → ' + H.c('r', 'missing 1') + ', left = 10', H.c('g', 'BANC')]
+          ]
+        },
+        complexity: `<p><b>Time:</b> O(|s| + |t|) — each pointer moves at most |s| times. <b>Space:</b> O(Σ) for the need map (52 letters).</p>`,
+        followUps: [
+          'Return the number of minimal windows, or all start indices.',
+          'Minimum window <b>subsequence</b> (LeetCode 727) — order matters, needs DP / two-pass scan instead.',
+          'Smallest subarray containing all distinct values of the array (t = set of all values).',
+          'Stream version: s arrives character by character; report the current best window.'
+        ]
+      }
+    }]
+  });
+
+  /* =====================================================================
+     TOPIC 9 — Longest consecutive sequence (set chain-start trick)
+     ===================================================================== */
+  topics.push({
+    title: 'HashSet Chain-Start Trick: Longest Consecutive Sequence in O(N)',
+    analogy: `<p>At the club door, every guest wears a <b>numbered wristband</b>: 100, 4, 200, 1, 3, 2. The manager asks: "What is the longest run of <b>consecutive</b> wristband numbers inside?" The smart bouncer puts all numbers on his <b>VIP list (a HashSet)</b>. Then for each guest he asks one cheap question: "Is the guest <b>right before you</b> (number − 1) inside?"</p>
+<ul><li>If <b>yes</b>, you are in the middle of somebody else's line — <b>skip</b> you; that line will be counted from its front.</li>
+<li>If <b>no</b>, you are the <b>front of a line</b>: count forward (you+1, you+2, …) by checking the list until a number is missing.</li></ul>
+<p>Every line is walked exactly once, from its front. No sorting needed.</p>`,
+    explain: `<p><b>Problem:</b> given an unsorted array, find the length of the longest sequence of consecutive integers (they can be anywhere in the array, in any order). Required: <b>O(N)</b>.</p>
+
+<h4>Idea 1 (obvious): sort</h4>
+<p>Sort, then scan runs, skipping duplicates. O(N log N) — good, but the problem asks for O(N).</p>
+
+<h4>Idea 2 (naive hashing): count up from every number</h4>
+<p>Put everything in a HashSet; for each x, count x+1, x+2, … while present. Correct, but a long run of length L is re-walked from <b>each</b> of its L members: 1+2+…+L = O(N<sup>2</sup>) for one long run.</p>
+
+<h4>Idea 3 (the trick): only count from chain starts</h4>
+<p>x is a <b>chain start</b> if <code>x − 1</code> is <b>not</b> in the set. Only chain starts walk forward. Every number is walked over by at most one chain → O(N) total.</p>
+${H.chips([100, 4, 200, 1, 3, 2], { label: 'set', hl: { 1: 'g', 100: 'g', 200: 'g', 2: 'r', 3: 'r', 4: 'r' } })}
+${H.table(['x', 'x − 1 in set?', 'role', 'walk', 'length'], [['100', '99: no', H.c('g', 'start'), '100 → (101 missing)', '1'], ['4', '3: ' + H.c('r', 'yes'), 'skip', '—', '—'], ['200', '199: no', H.c('g', 'start'), '200', '1'], ['1', '0: no', H.c('g', 'start'), '1 → 2 → 3 → 4 → (5 missing)', H.c('g', '4')], ['3', '2: ' + H.c('r', 'yes'), 'skip', '—', '—'], ['2', '1: ' + H.c('r', 'yes'), 'skip', '—', '—']])}
+<p>Answer: <b>4</b> (the run 1, 2, 3, 4).</p>
+
+<h4>The code</h4>
+<pre>Set&lt;Integer&gt; set = all numbers;
+for (int x : set)                       // iterate the SET (duplicates gone)
+    if (!set.contains(x - 1)) {         // x starts a chain
+        int len = 1;
+        while (set.contains(x + len)) len++;
+        best = max(best, len);
+    }</pre>
+
+<h4>Why "iterate the set, not the array"?</h4>
+<p>If the array has the chain start 1 repeated 50,000 times, iterating the array would walk the same long chain 50,000 times → O(N<sup>2</sup>) again. The set has each value once, so each chain is walked once.</p>`,
+    clues: [
+      '"longest consecutive elements sequence" + "unsorted" + "O(n) time" → HashSet + chain-start check',
+      '"elements can appear in any order" and sorting is forbidden or too slow → hashing',
+      '"is x − 1 present?" / "is this the beginning of a run?" → start-of-chain test',
+      '"numbers arrive one by one, keep the longest run" → boundary HashMap (x → run length at the ends) or DSU',
+      'N ≤ 10<sup>5</sup> with values up to ±10<sup>9</sup> → cannot use a boolean array, need a set',
+      '"merge adjacent ranges" / "connected numbers" → union-find is an alternative'
+    ],
+    code: [`
+import java.util.*;
+
+public class LongestConsecutive {
+    static int longestConsecutive(int[] nums) {
+        Set<Integer> set = new HashSet<>();
+        for (int x : nums) set.add(x);                  // O(N), duplicates collapse
+        int best = 0;
+        for (int x : set) {                             // iterate the SET, not nums
+            if (set.contains(x - 1)) continue;          // not a chain start: someone before x exists
+            int len = 1;
+            while (set.contains(x + len)) len++;        // walk the chain forward
+            best = Math.max(best, len);
+        }
+        return best;
+    }
+
+    // Streaming version: numbers arrive one by one; keep the longest run so far.
+    // map holds, for the ENDPOINTS of each run, the length of that run.
+    static int[] streamingLongest(int[] stream) {
+        Map<Integer, Integer> runLen = new HashMap<>();
+        int best = 0;
+        int[] after = new int[stream.length];
+        for (int i = 0; i < stream.length; i++) {
+            int x = stream[i];
+            if (!runLen.containsKey(x)) {
+                int left = runLen.getOrDefault(x - 1, 0);   // run ending at x-1
+                int right = runLen.getOrDefault(x + 1, 0);  // run starting at x+1
+                int len = left + 1 + right;
+                runLen.put(x, len);                         // mark x as seen
+                runLen.put(x - left, len);                  // new left endpoint
+                runLen.put(x + right, len);                 // new right endpoint
+                best = Math.max(best, len);
+            }
+            after[i] = best;
+        }
+        return after;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(longestConsecutive(new int[]{100, 4, 200, 1, 3, 2}));        // 4
+        System.out.println(longestConsecutive(new int[]{0, 3, 7, 2, 5, 8, 4, 6, 0, 1})); // 9
+        System.out.println(Arrays.toString(streamingLongest(new int[]{5, 1, 3, 2, 4}))); // [1, 1, 1, 3, 5]
+    }
+}`, {
+      lang: 'python', run: true, title: 'Python (runnable)',
+      code: `def longest_consecutive(nums):
+    s = set(nums)
+    best = 0
+    for x in s:
+        if x - 1 not in s:          # chain start
+            length = 1
+            while x + length in s:
+                length += 1
+            best = max(best, length)
+    return best
+
+print(longest_consecutive([100, 4, 200, 1, 3, 2]))         # 4
+print(longest_consecutive([0, 3, 7, 2, 5, 8, 4, 6, 0, 1])) # 9
+print(longest_consecutive([]))                             # 0`
+    }],
+    codeTitle: ['Chain-start trick and the streaming boundary map (Java)', 'Python version (runnable)'],
+    viz: [{
+      title: 'Build the VIP set, then count only from chain starts',
+      input: '100 4 200 1 3 2',
+      inputLabel: 'Array (whole numbers, at most 14)',
+      gen: function (input) {
+        var a = parseNums(input, 14, 'array'), set = [], frames = [];
+        frames.push({ narr: 'Phase 1: put every number on the VIP list (HashSet). Duplicates are rejected.', parts: [{ type: 'array', label: 'nums', values: a.slice() }, { type: 'set', label: 'VIP set', items: [] }] });
+        for (var i = 0; i < a.length; i++) {
+          var dup = set.indexOf(a[i]) >= 0;
+          if (!dup) set.push(a[i]);
+          frames.push({ narr: 'Add <b>' + a[i] + '</b>: ' + (dup ? '<span class="c-r">already on the list</span> (duplicate ignored — this is why we later iterate the set, not the array).' : '<span class="c-g">inserted</span>.'), parts: [{ type: 'array', label: 'nums', values: a.slice(), ptr: one(i, 'i'), hl: one(i, dup ? 'bad' : 'ok') }, { type: 'set', label: 'VIP set', items: set.slice(), hl: one(a[i], dup ? 'bad' : 'ok') }] });
+        }
+        var best = 0, bestStart = null, walks = 0;
+        set.forEach(function (x) {
+          if (set.indexOf(x - 1) >= 0) {
+            var h = one(x, 'cur'); h[x - 1] = 'bad';
+            frames.push({ narr: 'x = <b>' + x + '</b>: is ' + (x - 1) + ' on the list? <span class="c-r">Yes (hit)</span> → ' + x + ' is in the middle of a line. <b>Skip</b> — the line will be counted from its front.', parts: [{ type: 'set', label: 'VIP set', items: set.slice(), hl: h }, { type: 'vars', vals: { x: x, 'x - 1 present': true, best: best, 'total steps walked': walks } }] });
+            return;
+          }
+          var len = 1, chainHl = one(x, 'sel');
+          frames.push({ narr: 'x = <b>' + x + '</b>: ' + (x - 1) + ' is <b>not</b> on the list → ' + x + ' is the <b>front of a line</b>. Walk forward.', parts: [{ type: 'set', label: 'VIP set', items: set.slice(), hl: chainHl }, { type: 'vars', vals: { x: x, 'x - 1 present': false, length: 1, best: best, 'total steps walked': walks } }] });
+          while (set.indexOf(x + len) >= 0) {
+            chainHl[x + len] = 'sel'; walks++;
+            frames.push({ narr: 'Is ' + (x + len) + ' present? <span class="c-r">Yes (hit)</span> → length ' + (len + 1) + '.', parts: [{ type: 'set', label: 'VIP set', items: set.slice(), hl: hlm(chainHl, one(x + len, 'bad')) }, { type: 'vars', vals: { x: x, length: len + 1, best: best, 'total steps walked': walks } }] });
+            len++;
+          }
+          var imp = len > best;
+          if (imp) { best = len; bestStart = x; }
+          frames.push({ narr: (x + len) + ' is missing → the line ' + x + (len > 1 ? '..' + (x + len - 1) : '') + ' has length <b>' + len + '</b>. ' + (imp ? '<b>New best = ' + best + '</b>.' : 'Best stays ' + best + '.'), parts: [{ type: 'set', label: 'VIP set', items: set.slice(), hl: chainHl }, { type: 'vars', vals: { x: x, length: len, best: best, 'total steps walked': walks }, hl: { best: imp ? 'ok' : '' } }] });
+        });
+        var fin = {};
+        if (bestStart !== null) for (var q = 0; q < best; q++) fin[bestStart + q] = 'sel';
+        frames.push({ narr: 'Answer: <b>' + best + '</b>' + (bestStart !== null ? ' (' + bestStart + '..' + (bestStart + best - 1) + ')' : '') + '. Forward steps walked in total: ' + walks + ' ≤ N — each number was walked over by at most one line. That is the O(N) proof in action.', parts: [{ type: 'set', label: 'VIP set', items: set.slice(), hl: fin }, { type: 'vars', vals: { answer: best }, hl: { answer: 'sel' } }] });
+        return frames;
+      }
+    }, {
+      title: 'Streaming version: boundary map (x → length of its run, kept correct at run endpoints)',
+      input: '5 1 3 2 4 10',
+      inputLabel: 'Numbers arriving one by one (at most 12)',
+      gen: function (input) {
+        var a = parseNums(input, 12, 'stream'), m = new Map(), best = 0, frames = [];
+        frames.push({ narr: 'Numbers arrive one at a time. For a new x, look at the run ending at x − 1 and the run starting at x + 1; joining them through x gives one bigger run. Only the two <b>endpoints</b> of a run need the correct length.', parts: [{ type: 'array', label: 'stream', values: a.slice() }, { type: 'map', label: 'x → run length (exact at endpoints)', entries: [] }, { type: 'vars', vals: { best: 0 } }] });
+        for (var i = 0; i < a.length; i++) {
+          var x = a[i];
+          if (m.has(x)) {
+            frames.push({ narr: '<b>' + x + '</b> already seen → <span class="c-r">duplicate</span>, ignore.', parts: [{ type: 'array', label: 'stream', values: a.slice(), ptr: one(i, 'new'), hl: one(i, 'bad') }, { type: 'map', label: 'x → run length', entries: ents(m), hl: one(x, 'bad') }, { type: 'vars', vals: { best: best } }] });
+            continue;
+          }
+          var L = m.get(x - 1) || 0, R = m.get(x + 1) || 0, len = L + 1 + R;
+          m.set(x, len); m.set(x - L, len); m.set(x + R, len);
+          var imp = len > best; if (imp) best = len;
+          var h = one(x, 'ok'); h[x - L] = 'ok'; h[x + R] = 'ok';
+          frames.push({ narr: 'New <b>' + x + '</b>: run on the left has length ' + L + (L ? ' (ends at ' + (x - 1) + ')' : '') + ', run on the right has length ' + R + (R ? ' (starts at ' + (x + 1) + ')' : '') + '. Joined run = ' + L + ' + 1 + ' + R + ' = <b>' + len + '</b>, spanning ' + (x - L) + '..' + (x + R) + '. <span class="c-g">Update x and both endpoints</span>.' + (imp ? ' New best ' + best + '.' : ''), parts: [{ type: 'array', label: 'stream', values: a.slice(), ptr: one(i, 'new'), hl: one(i, 'ok') }, { type: 'map', label: 'x → run length (exact at endpoints)', entries: ents(m), hl: h }, { type: 'vars', vals: { left: L, right: R, joined: len, best: best }, hl: { best: imp ? 'sel' : '' } }] });
+        }
+        frames.push({ narr: 'Longest run after the whole stream: <b>' + best + '</b>. Each arrival did O(1) map work — handy when you cannot wait for all the data.', parts: [{ type: 'map', label: 'final map', entries: ents(m) }, { type: 'vars', vals: { answer: best }, hl: { answer: 'sel' } }] });
+        return frames;
+      }
+    }],
+    examples: [{
+      title: 'Duplicates: [1, 2, 0, 1] → 3',
+      html: `<p>Set = {0, 1, 2}. Chain start 0 (−1 missing): 0 → 1 → 2 → (3 missing) → length 3. Duplicates never extend a run; consecutive means <b>distinct</b> values in a row.</p>`
+    }, {
+      title: 'Negatives and a big gap: [−1, −2, 0, 5, 9, 6] → 3',
+      html: `${H.table(['chain start', 'run', 'length'], [['−2', '−2, −1, 0', H.c('g', '3')], ['5', '5, 6', '2'], ['9', '9', '1']])}
+<p>−1, 0 and 6 are skipped because their predecessor is present. Values can be any ints — that is why a boolean array indexed by value does not work here.</p>`
+    }, {
+      title: 'Return the actual sequence, not just its length',
+      html: `<p>Remember the start of the best chain; the sequence is <code>start, start + 1, …, start + best − 1</code>. For [100, 4, 200, 1, 3, 2] → start 1 → [1, 2, 3, 4].</p>`,
+      code: `List<Integer> longestRun(int[] nums) {
+    Set<Integer> set = new HashSet<>();
+    for (int x : nums) set.add(x);
+    int best = 0, bestStart = 0;
+    for (int x : set) {
+        if (set.contains(x - 1)) continue;
+        int len = 1;
+        while (set.contains(x + len)) len++;
+        if (len > best) { best = len; bestStart = x; }
+    }
+    List<Integer> run = new ArrayList<>();
+    for (int i = 0; i < best; i++) run.add(bestStart + i);
+    return run;
+}`
+    }, {
+      title: 'Sorting alternative (O(N log N), often fine in practice)',
+      html: `<p>Sort [100, 4, 200, 1, 3, 2] → [1, 2, 3, 4, 100, 200]. Scan: equal neighbours → skip; neighbour + 1 → extend; otherwise reset. Longest = 4. Sorting uses no extra hash memory and, for N = 10<sup>5</sup>, is often just as fast as hashing — but it does not meet a strict O(N) requirement.</p>
+${H.arr([1, 2, 3, 4, 100, 200], { label: 'sorted', hl: { 0: 'g', 1: 'g', 2: 'g', 3: 'g' } })}`
+    }],
+    deepDive: `<p><b>O(N) proof.</b> Building the set is O(N). In the scan, the <code>contains(x − 1)</code> check costs O(1) per distinct value. The inner <code>while</code> runs only for chain starts and walks over the members of that chain; chains are disjoint, so the total number of inner steps over the whole algorithm is at most the number of distinct values. Total O(N) average.</p>
+<p><b>Overflow trap.</b> <code>x + len</code> with x near <code>Integer.MAX_VALUE</code> wraps to a large negative number; if that negative number happens to be in the set, you would extend a chain incorrectly. Likewise <code>x − 1</code> for <code>Integer.MIN_VALUE</code> wraps to MAX_VALUE. LeetCode's limits (±10<sup>9</sup>) avoid it; in production code use <code>long</code> arithmetic or explicit bounds checks.</p>
+<p><b>Constant factors.</b> A <code>HashSet&lt;Integer&gt;</code> of 10<sup>5</sup> elements costs roughly 5–6 MB and many cache misses; <code>Arrays.sort</code> on an <code>int[]</code> (dual-pivot quicksort) is tight and cache-friendly. In benchmarks the sort-based version is frequently competitive at this size. Interviews still expect the O(N) idea and the ability to discuss that trade-off.</p>
+<p><b>Alternatives.</b> (1) <b>Union-Find</b>: union x with x+1 when both are present; the largest component is the answer — O(N α(N)), more code. (2) <b>Boundary map</b> (shown above): supports streaming inserts in O(1) each; only endpoints of a run hold correct lengths, which is enough because new numbers can only attach at endpoints. (3) If values lie in a small range [0, M], a <code>boolean[M + 1]</code> plus one linear scan is O(N + M) with no hashing.</p>
+<p><b>Variants.</b> Longest consecutive path in a binary tree (DFS, not hashing); longest arithmetic subsequence with difference d (map value → best length ending at value, a DP with a hash map); "can the array be split into consecutive groups of size k" (count map + start from smallest, LeetCode 846).</p>`,
+    aiEra: `<p><b>What AI changes:</b> an assistant will produce the chain-start solution on request, but it often iterates over <code>nums</code> instead of the set — the version that times out on adversarial duplicate-heavy tests. Recognizing why that matters is now your job.</p>
+<p><b>Use AI as a partner:</b> <code>Generate a worst-case input that makes iterating over nums (instead of the set) quadratic</code>; <code>Benchmark HashSet vs sort for N = 10^5 and 10^7 and explain the result</code>; <code>Write the union-find version and compare code size</code>.</p>
+<p><b>Where AI goes wrong:</b> claiming the double loop is O(N<sup>2</sup>) and "optimizing" it away (it is O(N) amortized); skipping the <code>x − 1</code> check (true O(N<sup>2</sup>)); sorting and calling it O(N); ignoring overflow at the int boundaries.</p>
+<p><b>What you must still own:</b> the amortized argument ("each value is walked over by at most one chain"), choosing set-iteration over array-iteration, and discussing when sorting is the pragmatic choice despite the extra log factor.</p>`,
+    problems: [{
+      title: 'Longest Consecutive Sequence',
+      level: 'Medium', tags: ['hashset', 'amortized analysis'], companies: ['Google', 'Amazon', 'Meta', 'Microsoft', 'Uber', 'Spotify'],
+      statement: `<p>Given an unsorted integer array <code>nums</code>, return the length of the longest sequence of <b>consecutive integers</b> that all appear in the array (in any positions). Your algorithm must run in <b>O(N)</b> time.</p>`,
+      constraints: `0 ≤ N ≤ 10<sup>5</sup>, −10<sup>9</sup> ≤ nums[i] ≤ 10<sup>9</sup>`,
+      example: `${H.arr([100, 4, 200, 1, 3, 2], { label: 'nums', hl: { 1: 'g', 3: 'g', 4: 'g', 5: 'g' } })}<p>Output ${H.c('g', '4')}: the values 1, 2, 3, 4 are all present. [0, 3, 7, 2, 5, 8, 4, 6, 0, 1] → 9 (0..8).</p>`,
+      brute: {
+        why: `<p>For every x, repeatedly scan the whole array to see if x+1, x+2, … exist. A run of length L costs O(N·L) per starting value → up to <b>O(N<sup>3</sup>)</b>. Sorting first gives O(N log N), still above the required O(N). The waste: repeated linear searches (fix: a set) and re-walking runs from their middle (fix: only start at chain fronts).</p>`,
+        code: `int longestConsecutiveBrute(int[] nums) {
+    int best = 0;
+    for (int x : nums) {
+        int len = 1;
+        while (containsLinear(nums, x + len)) len++;   // O(N) search each time
+        best = Math.max(best, len);
+    }
+    return best;
+}
+
+boolean containsLinear(int[] a, int target) {
+    for (int v : a) if (v == target) return true;
+    return false;
+}`
+      },
+      mcq: {
+        q: 'In the O(N) solution, why do we skip x when x − 1 is in the set?',
+        options: ['x is inside a chain that will be fully counted from its smaller start, so walking from x would repeat work', 'Because x − 1 is a duplicate of x', 'To avoid integer overflow', 'Because negative numbers cannot start a chain'],
+        answer: 0,
+        explain: 'Only chain fronts walk forward. Every element is walked over by exactly one chain, which keeps the total inner-loop work O(N).'
+      },
+      hints: [
+        `<p><b>Hint 1:</b> "Is x+1 present?" must be O(1) → put all numbers in a HashSet first.</p>`,
+        `<p><b>Hint 2:</b> Counting forward from every number repeats work. Only start counting from numbers that have <b>no predecessor</b> (x − 1 absent).</p>`,
+        `<p><b>Hint 3 (recipe):</b> set = all nums; for x in set: if x−1 not in set: len = 1; while x+len in set: len++; best = max(best, len). Iterate the set (not nums) so duplicates do not trigger repeated walks. Edge cases: empty array → 0, all duplicates → 1.</p>`
+      ],
+      solution: {
+        approach: `<p><b>HashSet + chain-start check.</b> Load all values into a set. A value whose predecessor is absent starts a chain; walk forward from it while successors are present. Each chain is walked once from its front, so total work is linear.</p>`,
+        code: `class Solution {
+    public int longestConsecutive(int[] nums) {
+        Set<Integer> set = new HashSet<>();
+        for (int x : nums) set.add(x);
+        int best = 0;
+        for (int x : set) {                        // each distinct value once
+            if (set.contains(x - 1)) continue;     // not the front of a chain
+            int len = 1;
+            while (set.contains(x + len)) len++;   // walk this chain once
+            best = Math.max(best, len);
+        }
+        return best;
+    }
+}`,
+        alt: [{
+          lang: 'python', code: `def longest_consecutive(nums):
+    s = set(nums)
+    best = 0
+    for x in s:
+        if x - 1 not in s:
+            length = 1
+            while x + length in s:
+                length += 1
+            best = max(best, length)
+    return best`
+        }, {
+          lang: 'cpp', code: `int longestConsecutive(vector<int>& nums) {
+    unordered_set<int> s(nums.begin(), nums.end());
+    int best = 0;
+    for (int x : s) {
+        if (s.count(x - 1)) continue;
+        int len = 1;
+        while (s.count(x + len)) len++;
+        best = max(best, len);
+    }
+    return best;
+}`
+        }],
+        dry: {
+          head: ['x (from set)', 'x − 1 in set?', 'role', 'walk forward', 'length', 'best'],
+          rows: [
+            ['100', 'no', H.c('g', 'start'), '101 ✗', '1', '1'],
+            ['4', H.c('r', 'yes (3)'), 'skip', '—', '—', '1'],
+            ['200', 'no', H.c('g', 'start'), '201 ✗', '1', '1'],
+            ['1', 'no', H.c('g', 'start'), '2 ✓ 3 ✓ 4 ✓ 5 ✗', '4', H.c('g', '4')],
+            ['3', H.c('r', 'yes (2)'), 'skip', '—', '—', '4'],
+            ['2', H.c('r', 'yes (1)'), 'skip', '—', '—', '4']
+          ]
+        },
+        complexity: `<p><b>Time:</b> O(N) average — set build O(N), scan O(N), inner walks O(N) in total. <b>Space:</b> O(N) for the set.</p>`,
+        followUps: [
+          'Numbers arrive as a stream — maintain the answer after each insert (boundary map or DSU).',
+          'Return the sequence itself.',
+          'Longest consecutive sequence in a binary tree (parent → child path).',
+          'Can the array be divided into groups of k consecutive numbers? (LeetCode 846, count map + smallest first)'
         ]
       }
     }]
