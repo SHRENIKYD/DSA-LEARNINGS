@@ -940,7 +940,7 @@ class Pecs {
           T.forEach(function (X) { h[X] = canAssign(X) ? 'ok' : 'done'; });
           return h;
         }
-        var graph = { type: 'graph', label: 'Which List<X> can be assigned to x? (green = allowed)', directed: true, height: 48, nodes: [
+        var graph = { type: 'graph', label: 'Which List&lt;X&gt; can be assigned to x? (green = allowed)', directed: true, height: 48, nodes: [
           { id: 'Object', label: 'Object', x: 50, y: 6, shape: 'box' }, { id: 'Number', label: 'Number', x: 30, y: 24, shape: 'box' }, { id: 'String', label: 'String', x: 75, y: 24, shape: 'box' },
           { id: 'Integer', label: 'Integer', x: 15, y: 42, shape: 'box' }, { id: 'Double', label: 'Double', x: 45, y: 42, shape: 'box' }],
           edges: [['Number', 'Object'], ['String', 'Object'], ['Integer', 'Number'], ['Double', 'Number']], hl: hierHl() };
@@ -1006,7 +1006,7 @@ nums.add(null);                       // allowed
 Number first = nums.get(0);           // reading as Number is allowed
 nums.remove(0);                       // removing is allowed (remove takes an index/Object)
 System.out.println(first + " " + nums); // 1 [2, null]` },
-      { title: 'Wildcard capture: swap on a List<?>', html: `<p>${C('void swap(List<?> l, int i, int j) { l.set(i, l.get(j)); }')} fails — ${C('l.get(j)')} returns "capture of ?", and ${C('set')} will not accept it because javac cannot prove the two captures are the same type. The standard fix (used by ${C('Collections.swap')}) is a <b>private generic helper</b> that gives the unknown type a name:</p>`, code: `
+      { title: 'Wildcard capture: swap on a List&lt;?&gt;', html: `<p>${C('void swap(List<?> l, int i, int j) { l.set(i, l.get(j)); }')} fails — ${C('l.get(j)')} returns "capture of ?", and ${C('set')} will not accept it because javac cannot prove the two captures are the same type. The standard fix (used by ${C('Collections.swap')}) is a <b>private generic helper</b> that gives the unknown type a name:</p>`, code: `
 class Swapper {
     public static void swap(List<?> list, int i, int j) {   // nice public API: any list
         swapHelper(list, i, j);                             // javac "captures" ? as T
