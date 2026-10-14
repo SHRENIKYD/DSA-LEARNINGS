@@ -1605,7 +1605,7 @@ Piece wk1 = pool.computeIfAbsent("KING-w", k -> new Piece(PieceKind.KING, true))
 Piece wk2 = pool.computeIfAbsent("KING-w", k -> new Piece(PieceKind.KING, true));
 System.out.println(wk1 == wk2); // true: one shared flyweight` },
       { title: 'Integer cache bug in the wild', html: `<p>A test compares two <code>Integer</code> user ids with <code>==</code> and passes (ids 1–100 come from the flyweight cache). In production ids exceed 127, two different objects are created, and <code>==</code> returns false — "random" bugs. Lesson: flyweight sharing is an optimisation, never a contract; compare values with <code>equals</code>.</p>` },
-      { title: 'Map tiles and sprites', html: `<p>An open-world game map of 10 000 × 10 000 tiles uses maybe 200 tile types (grass, water, road…). The map is a 2D array of <b>short</b> indices into a tile-type table: 200 MB → 200 MB/… well, 10<sup>8</sup> × 2 bytes = 200 MB for indices vs 10<sup>8</sup> full objects (tens of GB). Indices into a table are the most compact flyweight of all.</p>` }
+      { title: 'Map tiles and sprites', html: `<p>An open-world game map of 10 000 × 10 000 tiles uses maybe 200 tile types (grass, water, road…). The map is a 2D array of <b>short</b> indices into a tile-type table: 10<sup>8</sup> tiles × 2 bytes = 200 MB, versus 10<sup>8</sup> full tile objects at 40+ bytes each (4+ GB, before textures). Small indices into a shared table are the most compact flyweight of all.</p>` }
     ],
     deepDive: `<p><b>When it is worth it.</b> Flyweight trades simplicity for memory. Do it only when (1) there are <i>very many</i> objects, (2) memory is actually a problem (measure with a heap profiler), (3) most state can be made extrinsic, and (4) object identity does not matter to the program. For a few thousand objects, it is premature optimisation.</p>
       <p><b>Java object overhead</b> makes the win bigger than it looks: every object has a 12–16 byte header plus alignment to 8 bytes; a <code>Tree</code> record with two ints and a reference is ~24 bytes. Arrays of primitives (struct-of-arrays: <code>int[] xs, ys; short[] typeIdx</code>) can cut even that, and Project Valhalla's value classes aim to remove headers entirely.</p>
@@ -1682,6 +1682,240 @@ class Document {
 }`,
         complexity: `<p><code>append</code> amortised O(1); <code>styleAt</code> O(1). Memory ≈ 4 bytes/char (2 for the char, 2 for the style id) + O(distinct styles), versus ~60 bytes/char naively.</p>`,
         followUps: ['Store style runs (start index, style id) instead of one id per char — when is that better?', 'Support insert in the middle efficiently (rope / piece table) while keeping flyweight styles.', 'How would you garbage-collect styles no character uses anymore?']
+      }
+    }]
+  });
+  /* =====================================================================
+     TOPIC 8 — CHOOSING THE RIGHT STRUCTURAL PATTERN
+     ===================================================================== */
+  var PICK_Q = [
+    ['Q1', 'Wrong interface?', 'P1', 'Adapter'],
+    ['Q2', 'Many classes, 1 entry?', 'P2', 'Facade'],
+    ['Q3', 'Part-whole tree?', 'P3', 'Composite'],
+    ['Q4', 'Two axes vary?', 'P4', 'Bridge'],
+    ['Q5', 'Millions of twins?', 'P5', 'Flyweight'],
+    ['Q6', 'Same API, add feature?', 'P6', 'Decorator'],
+    ['Q7', 'Same API, control access?', 'P7', 'Proxy']
+  ];
+  var PICK_S = [
+    ['Use a vendor SMS SDK (sendMsg(mobile, body) → "OK:123") through our Notifier.send(phone, text)', 0, 'The vendor class works but has the wrong method shape — translate, do not rewrite.'],
+    ['Let callers stack gzip, encryption and checksums on any output stream, in any order', 5, 'Same interface (OutputStream), extra behaviour, combinable at runtime.'],
+    ['Do not load a 50 MB report from S3 until the user actually opens it; also block non-owners', 6, 'Same interface, but the wrapper decides whether/when the real object is created or reached.'],
+    ['Checkout needs Inventory, Pricing, Payment, Shipping, Email in order; three different callers do it today', 1, 'Hide many subsystems behind one simple use-case method.'],
+    ['Total salary of any team, where teams contain people and other teams', 2, 'Part-whole hierarchy; treat a person and a team the same.'],
+    ['Shapes (circle, square, star) must render on Canvas, SVG and PDF, and both lists grow', 3, 'Two independent dimensions — avoid M × N subclasses.'],
+    ['A map app shows 5 million markers using 12 icon types', 4, 'Huge count of objects whose heavy data is identical — share it.']
+  ];
+
+  topics.push({
+    title: 'Choosing the Right Structural Pattern',
+    analogy: `<p>A carpenter's toolbox has a saw, a chisel and a plane. All three "remove wood", and a beginner grabs whichever is nearest. An expert reads the job first — "cut across", "carve a corner", "smooth a surface" — and the tool picks itself.</p>
+      <p>Adapter, Decorator and Proxy are like that: in code they look <b>almost identical</b> (a class that wraps another and forwards calls). What separates them is the <b>job</b> — the intent. Read the requirement, name the job, and the pattern follows.</p>`,
+    explain: `<p><b>Seven patterns, seven jobs.</b> Every structural pattern is about how objects are <i>connected</i>. Learn each one as a single sentence:</p>
+      ${H.table(['Pattern', 'One-line job', 'Interface vs wrapped object', 'Telltale words'], [
+        ['<b>Adapter</b>', 'make an existing class fit the interface I expect', H.c('y', 'different'), 'third-party, legacy, convert, incompatible'],
+        ['<b>Decorator</b>', 'add behaviour by wrapping, stackable', H.c('g', 'same'), 'add-ons, toppings, any combination, around'],
+        ['<b>Proxy</b>', 'control access to the real object', H.c('g', 'same'), 'lazy, cache, permission, remote, placeholder'],
+        ['<b>Facade</b>', 'one simple entry over many classes', H.c('b', 'new, simpler'), 'simplify, orchestrate, SDK, one call'],
+        ['<b>Composite</b>', 'treat one and a group alike in a tree', H.c('g', 'same for leaf and group'), 'nested, hierarchy, folder, bundle, team'],
+        ['<b>Bridge</b>', 'split two dimensions into two hierarchies', 'abstraction holds implementor', 'X × Y combinations, platforms, drivers'],
+        ['<b>Flyweight</b>', 'share identical heavy state between many objects', 'same', 'millions, memory, identical, intern']
+      ])}
+      <p><b>The three look-alikes</b> (all "wrap and delegate"):</p>
+      ${H.kv([['Adapter', 'changes the <b>shape</b> (interface)'], ['Decorator', 'keeps the shape, changes the <b>behaviour</b> (adds)'], ['Proxy', 'keeps the shape and behaviour, controls <b>access/lifecycle</b>']])}
+      <p>A quick test: <i>"If I removed the wrapper, would the client still compile?"</i> For a Decorator or Proxy, yes — it could use the real object directly (same interface). For an Adapter, no — the client cannot call the adaptee at all. And <i>"Who builds the wrapper?"</i> — decorators are usually stacked by the client; proxies are usually handed out by a factory/framework.</p>
+      <p><b>Patterns combine.</b> Real designs mix them: a logging library is a <b>Facade</b> (<code>Logger.info</code>) over a <b>Bridge</b> (logger ↔ appender), where appenders can be <b>Decorated</b> (async, filtered) and grouped as a <b>Composite</b> (send to console + file). Interviewers reward naming the pattern <i>and</i> the trade-off, not reciting UML.</p>`,
+    clues: ['Interviewer asks "<b>what is the difference between</b> Adapter, Decorator and Proxy?" — answer with intent + who builds it', '"design a logging framework / notification system / file system" — expect 2–3 structural patterns combined', '"<b>without modifying</b> existing classes" → a wrapping pattern; then ask: change shape, add behaviour, or control access?', '"<b>class explosion</b>" in the requirements → Decorator (optional add-ons) or Bridge (two axes)', '"<b>memory</b>" / "millions" → Flyweight; "<b>tree</b>" → Composite; "<b>simplify</b>" → Facade', 'beware over-engineering: "only one implementation, ever" → no pattern needed (YAGNI)'],
+    code: [`
+// Same target interface, three different INTENTS. Read the comments, not the shapes.
+interface Storage { byte[] read(String key); }
+
+class DiskStorage implements Storage {
+    public byte[] read(String key) { return ("data:" + key).getBytes(); }
+}
+
+// ADAPTER: vendor class has the wrong shape; we translate.
+class VendorBlobClient { String fetchBase64(String bucket, String path) { return Base64.getEncoder().encodeToString(path.getBytes()); } }
+class BlobAdapter implements Storage {
+    private final VendorBlobClient client; private final String bucket;
+    BlobAdapter(VendorBlobClient c, String bucket) { client = c; this.bucket = bucket; }
+    public byte[] read(String key) { return Base64.getDecoder().decode(client.fetchBase64(bucket, key)); }
+}
+
+// DECORATOR: same shape, ADD behaviour (decompress / checksum / log) — client stacks it.
+class LoggingStorage implements Storage {
+    private final Storage inner;
+    LoggingStorage(Storage inner) { this.inner = inner; }
+    public byte[] read(String key) {
+        byte[] b = inner.read(key);
+        System.out.println("read " + key + " (" + b.length + " bytes)");
+        return b;
+    }
+}
+
+// PROXY: same shape and behaviour, CONTROL access (permission + lazy creation).
+class SecuredStorage implements Storage {
+    private final java.util.function.Supplier<Storage> factory; private Storage real;
+    private final Set<String> allowedPrefixes;
+    SecuredStorage(java.util.function.Supplier<Storage> factory, Set<String> allowed) { this.factory = factory; this.allowedPrefixes = allowed; }
+    public byte[] read(String key) {
+        if (allowedPrefixes.stream().noneMatch(key::startsWith)) throw new SecurityException(key);
+        if (real == null) real = factory.get();          // created on first allowed use
+        return real.read(key);
+    }
+}
+
+class PatternsSideBySide {
+    public static void main(String[] args) {
+        Storage s = new LoggingStorage(new SecuredStorage(DiskStorage::new, Set.of("public/")));
+        System.out.println(new String(s.read("public/logo.png")));
+        Storage blob = new LoggingStorage(new BlobAdapter(new VendorBlobClient(), "assets"));
+        System.out.println(new String(blob.read("a.txt")));
+    }
+}`],
+    codeTitle: ['Adapter vs Decorator vs Proxy on one interface'],
+    viz: {
+      title: 'Decision path: which structural pattern fits?',
+      input: '1 2 3 4 5 6 7',
+      inputLabel: 'Scenario numbers to walk through (1–7)',
+      gen: function (input) {
+        var picks = words(input, 'Enter scenario numbers 1-7, e.g. 1 3 6', 7).map(Number);
+        picks.forEach(function (n) { if (!(n >= 1 && n <= 7 && Math.floor(n) === n)) throw new Error('Scenarios are numbered 1 to 7'); });
+        var nodes = [], edges = [];
+        PICK_Q.forEach(function (q, i) {
+          nodes.push(B(q[0], q[1], 28, 6 + i * 16));
+          nodes.push(B(q[2], q[3], 80, 6 + i * 16));
+          edges.push([q[0], q[2], 'yes']);
+          if (i < PICK_Q.length - 1) edges.push([q[0], PICK_Q[i + 1][0], 'no']);
+        });
+        var f = [];
+        f.push(F('<b>The decision ladder.</b> Ask the questions top to bottom; the first "yes" names the pattern. Order matters a little: "wrong interface?" comes first because an adapter is needed regardless of anything else, and the two "same API" questions come last because they separate the look-alikes by intent.',
+          [G('Structural pattern chooser', nodes, edges, { h: 110 }), { type: 'table', label: 'scenarios', columns: ['#', 'requirement'], rows: PICK_S.map(function (s, i) { return [String(i + 1), s[0]]; }) }]));
+        picks.forEach(function (n) {
+          var s = PICK_S[n - 1], target = s[1], hl = {}, ehl = {};
+          f.push(F('<b>Scenario ' + n + ':</b> "' + s[0] + '". Start at the top and ask each question honestly.',
+            [G('Structural pattern chooser', nodes, edges, { h: 110, hl: { Q1: 'cur' } }), TXT('<b>Requirement:</b> ' + s[0], 'scenario ' + n)]));
+          for (var i = 0; i < target; i++) { hl[PICK_Q[i][0]] = 'done'; ehl[PICK_Q[i][0] + '-' + PICK_Q[i + 1][0]] = 'done'; }
+          hl[PICK_Q[target][0]] = 'ok'; hl[PICK_Q[target][2]] = 'sel'; ehl[PICK_Q[target][0] + '-' + PICK_Q[target][2]] = 'ok';
+          f.push(F((target > 0 ? 'The first ' + target + ' question(s) are "no". ' : '') + '"' + PICK_Q[target][1] + '" → <b>yes</b>. Pattern: <b>' + PICK_Q[target][3] + '</b>. Why: ' + s[2],
+            [G('Structural pattern chooser', nodes, edges, { h: 110, hl: hl, ehl: ehl, tags: one(PICK_Q[target][2], 'answer') }), VARS('verdict', { scenario: n, pattern: PICK_Q[target][3] }, { pattern: 'sel' })]));
+        });
+        f.push(F('<b>Cheat sheet.</b> Wrapping patterns differ by intent: Adapter changes the <i>interface</i>, Decorator adds <i>behaviour</i>, Proxy controls <i>access</i>. Facade simplifies <i>many</i> classes; Composite unifies <i>trees</i>; Bridge splits <i>two axes</i>; Flyweight shares <i>memory</i>.',
+          [{ type: 'table', label: 'remember by the verb', columns: ['Pattern', 'verb'], rows: [['Adapter', 'translate'], ['Decorator', 'add'], ['Proxy', 'guard / delay / cache'], ['Facade', 'simplify'], ['Composite', 'nest'], ['Bridge', 'separate'], ['Flyweight', 'share']], hl: { 0: 'sel', 1: 'sel', 2: 'sel' } }]));
+        return f;
+      }
+    },
+    examples: [
+      { title: 'Same code shape, different names: how to tell', html: `<p>Class <code>X implements Storage</code> holding a <code>Storage</code>, forwarding <code>read()</code> and adding a check before it. Is it a Decorator or a Proxy? Ask: does the check <i>add a feature</i> the caller asked for (compression → Decorator), or <i>guard access</i> to the same feature (permission, lazy, cache → Proxy)? If the wrapped field were a <i>different</i> type (<code>VendorBlobClient</code>), it would be an Adapter.</p>` },
+      { title: 'Logging framework uses four patterns at once', html: `<p>${H.chips(['Facade: Logger.info(...)', 'Bridge: Logger → Appender interface', 'Composite: MultiAppender(console, file)', 'Decorator: AsyncAppender(FileAppender)'], { hl: { 'Facade: Logger.info(...)': 'b' } })} Log4j/Logback really are structured this way. Being able to point at each piece and name it is a strong interview signal.</p>` },
+      { title: 'When NOT to use a pattern', html: `<p>One payment provider, no plan for a second: an <code>interface PaymentGateway</code> + adapter is cheap and fine, but a full Bridge with abstraction hierarchies is over-engineering. A list of 200 objects: Flyweight is pointless. A single optional feature that every call needs: just put it in the class. Patterns are answers to <i>forces</i> (change, scale, memory) — no force, no pattern.</p>` },
+      { title: 'Decorator vs Composite — both have "a list or field of the same type"', html: `<p>A decorator wraps <b>exactly one</b> component and adds behaviour; a composite holds <b>many</b> children and combines their results. A <code>MultiAppender(List&lt;Appender&gt;)</code> that forwards each log line to all children is a Composite; an <code>AsyncAppender(Appender)</code> that queues lines for one child is a Decorator.</p>` }
+    ],
+    deepDive: `<p><b>Patterns as answers to forces.</b> Each structural pattern removes one kind of pain: <i>incompatibility</i> (Adapter), <i>combinatorial features</i> (Decorator), <i>access/lifecycle concerns mixed into business code</i> (Proxy), <i>coupling to many subsystems</i> (Facade), <i>type checks over hierarchies</i> (Composite), <i>M × N subclassing</i> (Bridge), <i>memory from duplication</i> (Flyweight). In an interview, name the force first ("the danger here is class explosion along two axes"), then the pattern.</p>
+      <p><b>Costs you should volunteer.</b> Indirection (harder debugging, deeper stack traces), more classes, identity surprises (<code>==</code>, <code>instanceof</code>, <code>getClass()</code> on wrappers and proxies), and performance overhead per layer (usually negligible, but not for a hot inner loop or a flyweight-scale count). Frameworks hide wrappers (Spring proxies, Hibernate proxies), so knowing the patterns explains framework "magic" bugs like self-invocation and lazy-initialisation exceptions.</p>
+      <p><b>Modern Java tools:</b> records make flyweights and composite leaves trivially immutable; sealed interfaces make composites exhaustive; lambdas turn single-method decorators and adapters into one-liners (<code>Function.andThen</code>, method references as adapters: <code>Runnable r = service::start</code>); <code>java.lang.reflect.Proxy</code> gives dynamic proxies; virtual threads change nothing structurally but make blocking proxies (remote calls) cheaper.</p>`,
+    aiEra: `<p><b>What AI changes:</b> generating the code of any of these patterns takes seconds now, so interviews and code reviews focus on <i>selection and trade-offs</i>. In AI-assisted codebases you will also <i>review</i> lots of generated wrappers — and the common failure is the wrong pattern for the force (a "Manager" god facade, a decorator that is really a proxy with hidden caching, a bridge for a single implementation).</p>
+      <p><b>AI systems are built from these patterns:</b> tool adapters (MCP servers adapt APIs), guardrail decorators around model calls, LLM gateways as proxies, agent "task" facades, hierarchical plans as composites, a provider bridge (features × model vendors), and KV-cache sharing as flyweights. <b>Use AI as a partner:</b> <code>Here are the requirements. List the forces you see (change axes, memory, access control) and for each, the structural pattern and its cost. Do not write code yet.</code> <b>Where AI goes wrong:</b> naming patterns by shape instead of intent, and stacking patterns where a plain class would do. <b>What you must still own:</b> the judgment call and the ability to defend it.</p>`,
+    problems: [{
+      title: 'Design a Mini Logging Library (Four Patterns, One Design)',
+      level: 'Hard', tags: ['facade', 'bridge', 'composite', 'decorator'], companies: ['Amazon', 'Atlassian', 'Uber', 'Microsoft'],
+      statement: `<p>Build a small logging library. Callers write <code>Log.get("orders").info("placed {}", id)</code>. Requirements: (1) levels DEBUG &lt; INFO &lt; WARN &lt; ERROR with a minimum level per logger; (2) outputs ("appenders"): console and in-memory (for tests), more later; (3) send one logger to <b>several</b> appenders; (4) optional per-appender features: <b>level filter</b> and <b>prefix with timestamp</b>, combinable. Name the pattern behind each requirement.</p>`,
+      constraints: `<p>Adding a new appender or a new appender feature must not edit existing classes. Callers must never see appender classes. Formatting replaces each <code>{}</code> with the next argument.</p>`,
+      example: `<p><code>Log.configure("orders", Level.INFO, new Multi(new Console(), new Filtered(new Memory(), Level.WARN)))</code>. Then <code>info("placed {}", 42)</code> → ${H.c('g', 'console prints it')}, memory ${H.c('r', 'ignores it')} (below WARN). <code>error("failed {}", 7)</code> → both receive it.</p>`,
+      brute: { why: `<p>One <code>Logger</code> class with a <code>switch (outputType)</code> for console/file/memory, boolean flags for timestamp and filters, and a list of output names to loop over. Every new output adds a case inside the logger; every feature adds flags checked in every case; tests cannot capture output without editing the class. It is a god class that violates Open/Closed in three directions at once.</p>`, code: `class Logger {
+    String output = "console"; boolean timestamp; int minLevel = 1;
+    final List<String> memory = new ArrayList<>();
+    void log(int level, String msg) {
+        if (level < minLevel) return;
+        String line = timestamp ? System.currentTimeMillis() + " " + msg : msg;
+        switch (output) {
+            case "console" -> System.out.println(line);
+            case "memory" -> memory.add(line);
+            case "both" -> { System.out.println(line); memory.add(line); }
+            default -> throw new IllegalStateException(output);
+        }
+    }
+}` },
+      mcq: { q: '"Send one logger to several appenders, and the logger should not care how many" — which pattern?', options: ['Decorator', 'Composite (an appender that holds a list of appenders)', 'Flyweight', 'Adapter'], answer: 1, explain: 'A MultiAppender implements Appender and forwards each event to all its children — one and many treated alike.' },
+      hints: [`<p>Hint 1: Map requirements to forces: simple caller API → Facade; logger vs output vary independently → Bridge (Logger holds an Appender interface); many outputs as one → Composite; optional stackable features → Decorator.</p>`, `<p>Hint 2: <code>interface Appender { void append(Level l, String logger, String msg); }</code>. Console/Memory are concrete; <code>Multi</code> holds a list; <code>Filtered</code> and <code>Timestamped</code> wrap one appender.</p>`, `<p>Hint 3: <code>Log</code> is a static facade with a <code>ConcurrentHashMap&lt;String, Logger&gt;</code>. <code>Logger.log</code> checks its min level, formats <code>{}</code> placeholders once, then calls its appender. Unconfigured loggers default to INFO + console.</p>`],
+      solution: {
+        approach: `<p><b>Facade:</b> static <code>Log.get(name)</code> / <code>Log.configure(...)</code> hide registry and wiring. <b>Bridge:</b> <code>Logger</code> (abstraction: levels, formatting) holds an <code>Appender</code> (implementor: where text goes) — each side grows independently. <b>Composite:</b> <code>Multi</code> is an Appender containing Appenders. <b>Decorator:</b> <code>Filtered</code> and <code>Timestamped</code> wrap one Appender and add behaviour; they stack in any order. New output = new Appender class; new feature = new decorator; callers untouched.</p>`,
+        code: `enum Level { DEBUG, INFO, WARN, ERROR }
+
+// ---- Implementor side of the bridge ----
+interface Appender { void append(Level level, String logger, String message); }
+
+class Console implements Appender {
+    public void append(Level l, String lg, String m) { System.out.println(l + " [" + lg + "] " + m); }
+}
+class Memory implements Appender {                       // great for tests
+    final List<String> lines = new CopyOnWriteArrayList<>();
+    public void append(Level l, String lg, String m) { lines.add(l + " " + m); }
+}
+
+// ---- Composite: many appenders treated as one ----
+class Multi implements Appender {
+    private final List<Appender> children;
+    Multi(Appender... children) { this.children = List.of(children); }
+    public void append(Level l, String lg, String m) { for (Appender a : children) a.append(l, lg, m); }
+}
+
+// ---- Decorators: optional, stackable features ----
+class Filtered implements Appender {
+    private final Appender inner; private final Level min;
+    Filtered(Appender inner, Level min) { this.inner = inner; this.min = min; }
+    public void append(Level l, String lg, String m) { if (l.compareTo(min) >= 0) inner.append(l, lg, m); }
+}
+class Timestamped implements Appender {
+    private final Appender inner; private final java.util.function.Supplier<Instant> clock;
+    Timestamped(Appender inner, java.util.function.Supplier<Instant> clock) { this.inner = inner; this.clock = clock; }
+    public void append(Level l, String lg, String m) { inner.append(l, lg, clock.get() + " " + m); }
+}
+
+// ---- Abstraction side of the bridge ----
+final class Logger {
+    private final String name; private volatile Level min; private volatile Appender out;
+    Logger(String name, Level min, Appender out) { this.name = name; this.min = min; this.out = out; }
+    void reconfigure(Level m, Appender a) { min = m; out = a; }
+
+    void debug(String f, Object... a) { log(Level.DEBUG, f, a); }
+    void info(String f, Object... a)  { log(Level.INFO, f, a); }
+    void warn(String f, Object... a)  { log(Level.WARN, f, a); }
+    void error(String f, Object... a) { log(Level.ERROR, f, a); }
+
+    private void log(Level level, String fmt, Object[] args) {
+        if (level.compareTo(min) < 0) return;               // cheap check before formatting
+        StringBuilder sb = new StringBuilder();
+        int argIdx = 0, i = 0;
+        while (i < fmt.length()) {
+            if (i + 1 < fmt.length() && fmt.charAt(i) == '{' && fmt.charAt(i + 1) == '}' && argIdx < args.length) {
+                sb.append(args[argIdx++]); i += 2;
+            } else sb.append(fmt.charAt(i++));
+        }
+        out.append(level, name, sb.toString());
+    }
+}
+
+// ---- Facade: the only class callers know ----
+final class Log {
+    private static final Map<String, Logger> LOGGERS = new ConcurrentHashMap<>();
+    private Log() {}
+    static Logger get(String name) { return LOGGERS.computeIfAbsent(name, n -> new Logger(n, Level.INFO, new Console())); }
+    static void configure(String name, Level min, Appender out) { get(name).reconfigure(min, out); }
+
+    public static void main(String[] args) {
+        Memory mem = new Memory();
+        Log.configure("orders", Level.INFO,
+            new Multi(new Console(), new Filtered(new Timestamped(mem, Instant::now), Level.WARN)));
+        Logger log = Log.get("orders");
+        log.debug("hidden {}", 1);          // below INFO: dropped before formatting
+        log.info("placed {}", 42);          // console only
+        log.error("failed {} of {}", 7, 9); // console + memory (timestamped)
+        System.out.println("memory has " + mem.lines.size() + " line(s)");   // 1
+    }
+}`,
+        complexity: `<p>Per log call: O(length of message) formatting + O(number of appenders) in the composite tree. Disabled levels cost one comparison (formatting skipped). Adding outputs/features is O(1) new classes, zero edits.</p>`,
+        followUps: ['Add an AsyncAppender decorator with a bounded queue — what happens when the queue is full?', 'Support logger hierarchies ("orders.payment" inherits from "orders") — which pattern helps?', 'Avoid building the message string when the level is disabled for expensive arguments (Supplier&lt;String&gt;).']
       }
     }]
   });
