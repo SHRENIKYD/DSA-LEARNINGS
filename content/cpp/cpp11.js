@@ -377,7 +377,7 @@
       { line: 4, txt: 'store', run: function (st, t) {
         var r = st.r[t], old = st.s.counter, lost = old !== r.seen, res;
         st.s.counter = r.tmp;
-        if (lost) { st.s.lost++; res = { say: 'counter = ' + r.tmp + ' (LOST UPDATE: overwrote ' + old + ')', cls: 'bad', narr: '<span class="c-r">STOREs ' + r.tmp + ' over ' + old + '.</span> It read ' + r.seen + ' earlier, but the other thread changed counter since then. That increment is <b>lost forever</b>.' }; }
+        if (lost) { st.s.lost++; res = { say: 'counter = ' + r.tmp + ' (LOST UPDATE: overwrote ' + old + ')', cls: 'bad', narr: '<span class="c-r">STOREs ' + r.tmp + ', overwriting the ' + old + ' that the other thread wrote.</span> It loaded ' + r.seen + ' earlier, but the other thread changed counter since then. That increment is <b>lost forever</b>.' }; }
         else res = { say: 'counter = ' + r.tmp, cls: 'ok', narr: 'STOREs ' + r.tmp + ' back to memory. Nobody touched counter in between, so this increment counts.' };
         if (r.k < 1) { r.k++; res.jump = 0; }
         return res;
@@ -877,6 +877,510 @@
         dry: { head: ['step', 'T1: transfer(A,B,30)', 'T2: transfer(B,A,70)', 'A', 'B'], rows: [['1', 'scoped_lock(A,B): gets A, try B ok', '', '100', '50'], ['2', '', 'scoped_lock(B,A): try B busy, waits (holds nothing)', '100', '50'], ['3', 'balance 100 ≥ 30 → A-=30, B+=30', '', '70', '80'], ['4', 'unlock both', 'gets B, gets A', '70', '80'], ['5', '', 'balance 80 ≥ 70 → B-=70, A+=70', '140', '10']] },
         complexity: `<p>O(1) per transfer plus lock cost (~20 ns uncontended, microseconds when contended). No deadlock in any interleaving; total money invariant preserved because every read-modify-write happens under both locks.</p>`,
         followUps: ['How would you do a consistent "sum of all balances" snapshot without stopping the world?', 'Transfer among 3 accounts atomically?', 'Why can a try_lock-and-back-off scheme livelock, and how does random backoff help?']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 4 — condition_variable, producer-consumer
+     ====================================================================== */
+  var CV_CODE = {
+    whileC: 'std::unique_lock lk(m);\nnotEmpty.wait(lk, [&] { return !buf.empty(); });   // loops!\nint item = buf.front(); buf.pop();\nlk.unlock();\nnotFull.notify_one();',
+    ifC: 'std::unique_lock lk(m);\nif (buf.empty()) notEmpty.wait(lk);   // BUG: if, not while\nint item = buf.front(); buf.pop();\nlk.unlock();\nnotFull.notify_one();',
+    whileP: 'std::unique_lock lk(m);\nnotFull.wait(lk, [&] { return buf.size() < CAP; });\nbuf.push(item);\nlk.unlock();\nnotEmpty.notify_one();',
+    ifP: 'std::unique_lock lk(m);\nif (buf.size() == CAP) notFull.wait(lk);   // BUG: if\nbuf.push(item);\nlk.unlock();\nnotEmpty.notify_one();'
+  };
+  var vizCV = {
+    title: 'Producer-consumer: wait() and notify_one() on a bounded buffer',
+    input: 'C1 P C2 C1 P P P C1 C2 P',
+    inputLabel: 'Who runs next: P, C1, C2 (prefix "if:" to see the if-instead-of-while bug)',
+    gen: function (input) {
+      var s = String(input === undefined || input === null ? 'C1 P C2 C1 P P P C1 C2 P' : input).trim(), mode = 'while';
+      var mm = s.match(/^\s*(if|while)\s*:(.*)$/i);
+      if (mm) { mode = mm[1].toLowerCase(); s = mm[2]; }
+      var toks = s.toUpperCase().split(/[\s,]+/).filter(Boolean).map(function (x) { return x === 'C' ? 'C1' : x; });
+      if (!toks.length || toks.some(function (x) { return ['P', 'C1', 'C2'].indexOf(x) < 0; })) throw new Error('Use the tokens P, C1, C2 separated by spaces, e.g. "C1 P C2 C1" (optional prefix "if:")');
+      if (toks.length > 30) throw new Error('Use at most 30 steps');
+      var CAP = 2, buf = [], nextItem = 1, state = { P: 'ready', C1: 'ready', C2: 'ready' }, notEmptyQ = [], notFullQ = [], log = [], eaten = [], frames = [];
+      function frame(narr, actor, line, cls, owner) {
+        var hl = {}; if (log.length) hl[log.length - 1] = cls;
+        var lh = {}; if (line) lh[line] = cls === 'bad' ? 'bad' : cls === 'ok' ? 'ok' : 'cur';
+        var isP = actor === 'P', codeKey = (mode === 'if' ? 'if' : 'while') + (isP ? 'P' : 'C');
+        var bh = {}; if (cls === 'ok' && buf.length && isP) bh[buf.length - 1] = 'ok';
+        frames.push({ narr: narr, parts: [
+          { type: 'queue', label: 'Shared buffer (capacity ' + CAP + ')', items: buf.slice(), hl: bh, frontLabel: 'pop', backLabel: 'push' },
+          { type: 'queue', label: 'Sleeping on notEmpty (consumers waiting for data)', items: notEmptyQ.slice(), frontLabel: 'woken first', backLabel: 'joins' },
+          { type: 'queue', label: 'Sleeping on notFull (producers waiting for space)', items: notFullQ.slice(), frontLabel: 'woken first', backLabel: 'joins' },
+          { type: 'vars', label: 'Mutex and thread states', vals: { 'm owner': owner || 'nobody', P: state.P, C1: state.C1, C2: state.C2, 'consumed so far': eaten.length ? eaten.join(', ') : 'none' }, hl: { 'm owner': owner ? 'cur' : 'ok' } },
+          { type: 'code', label: actor ? (isP ? 'Producer code (' + actor + ')' : 'Consumer code (' + actor + ')') : 'Consumer code', lang: 'cpp', code: CV_CODE[codeKey], hl: lh },
+          { type: 'table', label: 'Event log', columns: ['#', 'thread', 'what happened', 'buffer after'], rows: clone(log), hl: hl }
+        ] });
+      }
+      function add(actor, what) { log.push([String(log.length + 1), actor, what, '[' + buf.join(', ') + ']']); }
+      function wake(q, who) {
+        if (!q.length) return ' notify_one(): nobody is sleeping, so the notification does nothing (that is fine).';
+        var w = q.shift(); state[w] = 'woken (needs m)';
+        return ' notify_one() wakes <b>' + w + '</b>. It does not run yet: it must first re-lock m, then re-check the condition.';
+      }
+      frame('Mode <b>' + mode + '</b>. One producer P and two consumers C1, C2 share a buffer of capacity 2, one mutex <code>m</code> and two condition variables. Each token in your input lets that thread try <b>one</b> operation. Sleeping threads cannot run until someone notifies them.', null, 0, 'cur', null);
+      for (var i = 0; i < toks.length; i++) {
+        var X = toks[i], isP = X === 'P';
+        if (state[X] === 'waiting') {
+          add(X, 'asleep on the cv: not runnable, skipped');
+          frame('<b>' + X + '</b> is asleep inside <code>wait()</code>. A sleeping thread uses no CPU and is not runnable until a notify (or a spurious wakeup) moves it. Nothing happens.', X, 2, 'win', null);
+          continue;
+        }
+        var woken = state[X].indexOf('woken') === 0, pre = woken ? 'wakes up, re-locks m and ' : 'locks m and ';
+        var blocked = isP ? buf.length >= CAP : buf.length === 0;
+        if (blocked && woken && mode === 'if') {
+          add(X, isP ? 'skips re-check, pushes into a FULL buffer' : 'skips re-check, pops from an EMPTY buffer');
+          frame('<span class="c-r"><b>' + X + ' crashes.</b></span> It ' + pre + 'does <b>not</b> re-check (because of <code>if</code>). ' + (isP ? 'The buffer is full again, so it overflows the capacity.' : 'Someone else already took the item ("stolen wakeup"), so <code>buf.front()</code> on an empty queue is <b>undefined behaviour</b>.') + ' Always wait in a loop / with a predicate.', X, 3, 'bad', X);
+          return frames;
+        }
+        if (blocked) {
+          (isP ? notFullQ : notEmptyQ).push(X); state[X] = 'waiting';
+          add(X, (woken ? 're-checks: still ' : 'sees buffer ') + (isP ? 'full' : 'empty') + ' → wait() (unlocks m, sleeps)');
+          frame('<b>' + X + '</b> ' + pre + 'checks the predicate: the buffer is <b>' + (isP ? 'full' : 'empty') + '</b>' + (woken ? ' again (another thread got there first, or the wakeup was spurious)' : '') + '. <code>wait()</code> <b>atomically</b> unlocks m and puts ' + X + ' to sleep in the ' + (isP ? 'notFull' : 'notEmpty') + ' queue. Unlocking is essential: otherwise nobody else could ever change the buffer.', X, 2, 'win', null);
+          continue;
+        }
+        var what, extra;
+        if (isP) { var it = nextItem++; buf.push(it); what = 'pushes item ' + it; extra = wake(notEmptyQ); }
+        else { var got = buf.shift(); eaten.push(got + ' by ' + X); what = 'pops item ' + got; extra = wake(notFullQ); }
+        state[X] = 'ready';
+        add(X, (woken ? 're-checks ok, ' : '') + what);
+        frame('<b>' + X + '</b> ' + pre + (woken ? 're-checks: the condition is true now, so it continues. ' : 'the condition already holds, so it does not wait. ') + 'It ' + what + ', then unlocks m.' + extra, X, isP ? 3 : 3, 'ok', X);
+      }
+      frame('Done. Items consumed: <b>' + (eaten.length ? eaten.join(', ') : 'none') + '</b>. Notice the pattern: <b>wait with a predicate</b> (re-checked after every wakeup), <b>change the state under the mutex</b>, then <b>notify</b>. Try the prefix <code>if:</code> with "C1 P C2 C1" to watch the if-instead-of-while crash.', null, 0, 'cur', null);
+      return frames;
+    }
+  };
+
+  topics.push({
+    title: 'condition_variable: Sleeping Until Something Changes (Producer-Consumer)',
+    analogy: `<p>At a busy burger place you don't stand at the counter asking "is my order ready? is it ready now?" every second (that's <b>busy-waiting</b>, wasting everyone's time). You take a <b>buzzer</b> and sit down. When the kitchen puts your burger on the counter it <b>buzzes</b> you. You walk up and <b>check the tray</b>: if someone else grabbed it by mistake, you sit down and wait again. The buzzer is the <b>condition_variable</b>, the counter is the shared data, and "check the tray again" is the <b>predicate loop</b>.</p>`,
+    explain: `<p>A <code>std::condition_variable</code> lets a thread <b>sleep until another thread says "something changed"</b>, using zero CPU while it waits. It always works together with a <b>mutex</b> and a <b>condition</b> (a predicate on shared data, such as "queue not empty").</p>
+      <p><b>The waiting side</b> (needs a <code>unique_lock</code>, because wait must unlock and relock it):</p>
+      <pre>std::unique_lock lk(m);
+cv.wait(lk, [&amp;] { return !q.empty(); });   // sleeps until the predicate is true
+// here: m is locked AND the predicate is true</pre>
+      <p><code>wait(lk, pred)</code> is exactly <code>while (!pred()) wait(lk);</code>. Each <code>wait(lk)</code> <b>atomically</b> unlocks m and goes to sleep; when woken, it <b>re-locks m</b> before returning. The predicate is checked under the lock, so it reads shared data safely.</p>
+      <p><b>The notifying side:</b> change the shared data <b>while holding the mutex</b>, then call <code>cv.notify_one()</code> (wake one waiter) or <code>cv.notify_all()</code> (wake all of them, e.g. for shutdown).</p>
+      ${H.table(['rule', 'why'], [
+        ['Always wait with a <b>predicate</b> (or a while loop)', '<b>spurious wakeups</b>: wait may return with nobody notifying; <b>stolen wakeups</b>: another thread consumed the item first'],
+        ['Modify the condition <b>under the same mutex</b>', 'otherwise the waiter can check "empty", you push + notify, and then it goes to sleep: a <b>lost wakeup</b>, sleeping forever'],
+        ['Use <code>notify_one</code> when any single waiter can handle the event', 'avoids waking a "thundering herd" that all fight for the mutex'],
+        ['Use <code>notify_all</code> when the state change matters to everyone', 'shutdown flags, "phase finished", several kinds of waiters on one cv'],
+        ['A cv has no memory', 'a notify with no waiters is simply lost, which is why the <b>predicate (state)</b> is the source of truth, not the notify']
+      ])}
+      <p><b>Producer-consumer</b> is the classic use: producers push work into a shared queue, consumers pop it. With a <b>bounded</b> queue you need two conditions: consumers wait for "not empty", producers wait for "not full". This gives <b>back-pressure</b>: fast producers are slowed to the consumers' speed instead of eating all memory.</p>
+      <p><b>Timeouts:</b> <code>cv.wait_for(lk, 200ms, pred)</code> returns <code>false</code> if time ran out and the predicate is still false. <b>C++20</b> adds lighter tools for simple cases: <code>std::counting_semaphore</code>, <code>std::latch</code> (one-shot countdown), <code>std::barrier</code> (reusable phase sync), and <code>atomic::wait/notify</code>.</p>`,
+    clues: ['"producer-consumer" / "work queue" / "blocking queue" → mutex + condition_variable (two cvs if bounded)', '"wait until X is ready without busy-waiting / burning CPU" → condition_variable or C++20 latch/semaphore', '"print odd/even alternately", "FooBar", "ping-pong between threads" → shared turn variable + cv with predicate', '"spurious wakeup" / "lost wakeup" / "if vs while" → always wait with a predicate, modify state under the lock', '"graceful shutdown of worker threads" → a <code>closed</code> flag + <code>notify_all</code>', '"bounded buffer" / "back-pressure" → second cv for not-full'],
+    code: [R`
+      #include <bits/stdc++.h>
+      using namespace std;
+
+      // Unbounded MPMC (multi-producer multi-consumer) blocking queue with shutdown.
+      template <class T>
+      class BlockingQueue {
+          mutex m;
+          condition_variable notEmpty;
+          deque<T> q;
+          bool closed = false;
+      public:
+          void push(T v) {
+              {
+                  lock_guard<mutex> g(m);            // change the state UNDER the mutex
+                  q.push_back(std::move(v));
+              }
+              notEmpty.notify_one();                 // notify after unlocking (slightly cheaper)
+          }
+          // returns nullopt only when the queue is closed AND drained
+          optional<T> pop() {
+              unique_lock<mutex> lk(m);              // unique_lock: wait() must unlock/relock it
+              notEmpty.wait(lk, [&] { return !q.empty() || closed; });   // predicate handles spurious wakeups
+              if (q.empty()) return nullopt;         // closed and nothing left
+              T v = std::move(q.front());
+              q.pop_front();
+              return v;
+          }
+          void close() {
+              { lock_guard<mutex> g(m); closed = true; }
+              notEmpty.notify_all();                 // EVERY waiter must see the shutdown
+          }
+      };
+
+      int main() {
+          BlockingQueue<int> jobs;
+          atomic<long long> sum{0};
+          vector<jthread> workers;
+          for (int w = 0; w < 3; ++w)
+              workers.emplace_back([&] { while (auto j = jobs.pop()) sum += *j; });
+          for (int i = 1; i <= 100; ++i) jobs.push(i);
+          jobs.close();
+          workers.clear();                           // join all
+          cout << sum << "\n";                       // 5050
+      }`],
+    codeTitle: ['A blocking queue with condition_variable and clean shutdown'],
+    viz: vizCV,
+    examples: [
+      { title: 'One-shot "I am ready" signal', html: `<p>Main must not use the database until the worker finished connecting. The flag is the truth; the cv just avoids polling. Because <code>ready</code> is written and read under the mutex, there's no data race and no lost wakeup, even if the worker finishes before main starts waiting (the predicate is already true, so wait returns immediately).</p>`, code: R`
+        std::mutex m;
+        std::condition_variable cv;
+        bool ready = false;
+
+        int main() {
+            std::thread worker([] {
+                /* connect to the database ... */
+                { std::lock_guard g(m); ready = true; }
+                cv.notify_one();
+            });
+            std::unique_lock lk(m);
+            cv.wait(lk, [] { return ready; });     // returns at once if already ready
+            std::cout << "worker is ready\n";
+            lk.unlock();
+            worker.join();
+        }` },
+      { title: 'The lost wakeup bug', html: `<p>The setter changes <code>flagSet</code> <b>without</b> the mutex. Timeline: the waiter locks, checks <code>flagSet</code> (false)... the setter writes true and notifies (no one is sleeping yet, so it's lost)... the waiter now calls wait and sleeps <b>forever</b>. It's also a data race on <code>flagSet</code>. Fix: set the flag under the mutex (an atomic flag alone is not enough to close this window).</p>`, code: R`
+        std::mutex mx;
+        std::condition_variable cv2;
+        bool flagSet = false;
+        void setterBAD()  { flagSet = true; cv2.notify_one(); }                 // no lock: can be lost
+        void setterGood() { { std::lock_guard g(mx); flagSet = true; } cv2.notify_one(); }
+        void waiter() {
+            std::unique_lock lk(mx);
+            cv2.wait(lk, [] { return flagSet; });
+        }` },
+      { title: 'Alternate odd/even printing with one cv', html: `<p>Two threads must print 1..10 in order: one prints odds, the other evens. A shared <code>turn</code> number plus <code>wait(pred)</code> makes each thread sleep until it's its turn. Use <code>notify_all</code> or <code>notify_one</code>: with exactly two threads and one waiting, both are fine.</p>`, code: R`
+        int main() {
+            std::mutex m; std::condition_variable cv; int turn = 1; const int N = 10;
+            auto run = [&](int parity) {
+                while (true) {
+                    std::unique_lock lk(m);
+                    cv.wait(lk, [&] { return turn > N || turn % 2 == parity; });
+                    if (turn > N) return;
+                    std::cout << turn << ' ';
+                    ++turn;
+                    cv.notify_all();
+                }
+            };
+            std::thread odd(run, 1), even(run, 0);
+            odd.join(); even.join();                   // prints 1 2 3 ... 10
+        }` },
+      { title: 'C++20: latch and counting_semaphore', html: `<p><code>std::latch</code> is a one-time countdown: "start the race when all 4 runners are on the line". <code>std::counting_semaphore&lt;N&gt;</code> limits how many threads may enter at once (e.g. max 3 concurrent downloads). They have no "predicate loop" footguns, so prefer them when they fit.</p>`, code: R`
+        int main() {
+            std::latch allReady(4);
+            std::counting_semaphore<3> slots(3);          // at most 3 inside at once
+            std::vector<std::jthread> ts;
+            for (int i = 0; i < 4; ++i)
+                ts.emplace_back([&, i] {
+                    allReady.arrive_and_wait();           // everyone starts together
+                    slots.acquire();                      // take a slot (blocks if 3 are busy)
+                    std::cout << ("download " + std::to_string(i) + "\n");
+                    slots.release();
+                });
+        }` }
+    ],
+    deepDive: `<p><b>Why "atomically unlock and sleep" matters.</b> If wait did <code>unlock(); sleep();</code> as two separate steps, a notify could land between them and be lost. The implementation (pthread_cond_wait over futexes on Linux) registers the thread as a waiter <i>before</i> releasing the mutex, so any notify after the unlock is seen.</p>
+      <p><b>Spurious wakeups are real.</b> POSIX and the C++ standard explicitly allow wait to return without a notify (signals interrupting the futex syscall, implementation simplicity on multiprocessors). There are also <b>stolen wakeups</b>: you were notified, but between the notify and your re-lock another thread took the item. One rule handles both: <b>re-check the predicate in a loop</b>, which the predicate overload does for you.</p>
+      <p><b>Notify inside or outside the lock?</b> Both are correct if the state was changed under the lock. Notifying after unlocking avoids "hurry up and wait" (the woken thread immediately blocks on the mutex you still hold). Notifying under the lock is required when the cv itself might be destroyed right after the waiter wakes up (e.g. a stack-allocated cv in a one-shot handshake), and some schedulers handle it efficiently with <i>wait morphing</i>.</p>
+      <p><b>notify_all and the thundering herd.</b> Waking 64 consumers for one item makes 63 of them grab the mutex, find nothing, and sleep again: lots of context switches. Use notify_one for "one item available"; use notify_all for broadcasts (shutdown, phase changes) or when different waiters wait for different predicates on the same cv.</p>
+      <p><b>Cancellation in C++20.</b> <code>std::condition_variable_any</code> has <code>wait(lk, stop_token, pred)</code>, which also wakes up when a <code>jthread</code> is asked to stop. That gives clean shutdown without a manual closed flag.</p>
+      <p><b>Performance.</b> A cv handoff (notify → other thread running) costs a few microseconds because it involves the kernel scheduler. For extreme low latency (trading, audio), people use lock-free SPSC ring buffers with spinning or <code>atomic::wait</code>, trading CPU for latency. For normal servers, a mutex+cv queue handling ~10<sup>5</sup>–10<sup>6</sup> items/s is plenty.</p>`,
+    aiEra: `<p><b>What AI changes:</b> "write me a thread-safe blocking queue" is now a one-line prompt, and the result is usually close. The skill that matters shifts from typing the pattern to <b>reviewing</b> it in seconds.</p>
+      <p><b>Use AI as a partner:</b> paste your queue and ask <code>"Find any path where a notify can be lost, a waiter can sleep forever after close(), or pop can run on an empty queue"</code>. Ask it to generate a stress test with random sleeps, more consumers than producers, and a shutdown in the middle.</p>
+      <p><b>Where AI goes wrong:</b> classic slips are <code>if</code> instead of <code>while</code>, setting the flag outside the mutex, using <code>notify_one</code> for shutdown (only one worker exits, the rest hang), forgetting to wake producers blocked on "not full" during close, and holding the lock while running the job.</p>
+      <p><b>What you must still own:</b> knowing the three rules (predicate loop, state under mutex, right notify), reasoning about shutdown and back-pressure, and choosing between cv, semaphore, latch and lock-free queues for the latency you need.</p>`,
+    problems: [{
+      title: 'Bounded Blocking Queue (Producer-Consumer)',
+      level: 'Medium', tags: ['condition_variable', 'producer-consumer', 'mutex'], companies: ['Amazon', 'Microsoft', 'Uber', 'LinkedIn'],
+      statement: `<p>Implement <code>BoundedQueue&lt;T&gt;</code> with capacity C: <code>push(x)</code> blocks while the queue is full, <code>pop()</code> blocks while it is empty, and <code>size()</code> returns the current size. It must work with any number of producer and consumer threads (LeetCode 1188 "Design Bounded Blocking Queue").</p>`,
+      constraints: `1 ≤ C ≤ 10<sup>4</sup>; up to 16 producers and 16 consumers; no busy-waiting.`,
+      example: `<p>C = 2. Producer pushes 1, 2, 3; consumer pops slowly.</p>${H.table(['event', 'queue', 'who sleeps'], [['push 1', '[1]', '-'], ['push 2', '[1, 2]', '-'], ['push 3', '[1, 2] (full)', '<span class="c-y">producer on notFull</span>'], ['pop → 1', '[2]', 'producer woken'], ['push 3 (retry)', '[2, 3]', '-']])}`,
+      brute: { why: `<p>Busy-waiting: spin until there is room / an item, releasing and re-taking the lock in a tight loop. It's correct but burns a full CPU core per waiting thread and steals cycles from the very threads that would make progress.</p>`, code: R`
+        template <class T>
+        class SpinQueue {
+            std::mutex m; std::deque<T> q; size_t cap;
+        public:
+            explicit SpinQueue(size_t c) : cap(c) {}
+            void push(T x) {
+                while (true) {
+                    std::lock_guard g(m);
+                    if (q.size() < cap) { q.push_back(std::move(x)); return; }
+                }                                           // spins at 100% CPU while full
+            }
+            T pop() {
+                while (true) {
+                    std::lock_guard g(m);
+                    if (!q.empty()) { T v = std::move(q.front()); q.pop_front(); return v; }
+                }
+            }
+        };` },
+      mcq: { q: 'Why do we need TWO condition variables (notEmpty and notFull) here?', options: ['One cv cannot be waited on by two threads', 'Producers and consumers wait for different conditions; with one cv a notify_one might wake the wrong kind of thread and the right one sleeps forever', 'condition_variable has a maximum of 1 waiter', 'It makes the queue lock-free'], answer: 1, explain: 'With a single cv, a consumer\'s notify_one could wake another consumer instead of the waiting producer. You can survive with one cv only by always using notify_all (slower). Two cvs make notify_one always target the right group.' },
+      hints: [`<p><b>Aha:</b> "full" and "empty" are two different reasons to sleep, so give each its own condition_variable.</p>`, `<p>push: <code>notFull.wait(lk, [&amp;]{ return q.size() &lt; cap; })</code>, push, <code>notEmpty.notify_one()</code>. pop is the mirror image.</p>`, `<p>Always use the predicate overload (spurious + stolen wakeups). Mutate the deque under the lock. Make <code>size()</code> lock too. Recipe: lock → wait(pred) → modify → unlock → notify the other side.</p>`],
+      solution: {
+        approach: `<p>One mutex guards the deque. Two condition variables: consumers sleep on <b>notEmpty</b>, producers sleep on <b>notFull</b>. Each operation: lock → wait until its predicate holds → modify → unlock → notify_one the <i>other</i> side. Predicates make spurious and stolen wakeups harmless. Notifying after unlocking avoids waking a thread straight into a held lock.</p>`,
+        code: R`
+          #include <bits/stdc++.h>
+          using namespace std;
+
+          template <class T>
+          class BoundedQueue {
+              mutable mutex m;
+              condition_variable notEmpty, notFull;
+              deque<T> q;
+              const size_t cap;
+          public:
+              explicit BoundedQueue(size_t capacity) : cap(capacity) {}
+
+              void push(T x) {
+                  unique_lock<mutex> lk(m);
+                  notFull.wait(lk, [&] { return q.size() < cap; });   // sleep while full
+                  q.push_back(std::move(x));
+                  lk.unlock();
+                  notEmpty.notify_one();                              // one consumer can proceed
+              }
+
+              T pop() {
+                  unique_lock<mutex> lk(m);
+                  notEmpty.wait(lk, [&] { return !q.empty(); });      // sleep while empty
+                  T v = std::move(q.front());
+                  q.pop_front();
+                  lk.unlock();
+                  notFull.notify_one();                               // one producer can proceed
+                  return v;
+              }
+
+              size_t size() const { lock_guard<mutex> g(m); return q.size(); }
+          };
+
+          int main() {
+              BoundedQueue<int> bq(2);
+              long long total = 0;
+              {
+                  jthread producer([&] { for (int i = 1; i <= 1000; ++i) bq.push(i); });
+                  jthread consumer([&] { for (int i = 1; i <= 1000; ++i) total += bq.pop(); });
+              }                                          // both joined: total is visible
+              cout << total << "\n";                     // 500500
+          }`,
+        dry: { head: ['step', 'thread', 'action', 'queue', 'sleepers'], rows: [['1', 'C', 'pop: empty → wait on notEmpty', '[]', 'C'], ['2', 'P', 'push 1 → notify notEmpty', '[1]', '(C woken)'], ['3', 'C', 're-check ok → pop 1 → notify notFull', '[]', '-'], ['4', 'P', 'push 2, push 3', '[2, 3]', '-'], ['5', 'P', 'push 4: full → wait on notFull', '[2, 3]', 'P'], ['6', 'C', 'pop 2 → notify notFull', '[3]', '(P woken)'], ['7', 'P', 're-check ok → push 4', '[3, 4]', '-']] },
+        complexity: `<p>O(1) amortized per push/pop (deque). Memory O(C). Waiting threads use no CPU. Each blocked handoff costs a few µs (kernel wake-up).</p>`,
+        followUps: ['Add <code>close()</code> so blocked producers and consumers all return (hint: notify_all on both cvs)', 'Add <code>try_push_for(timeout)</code> using <code>wait_for</code>', 'How would a lock-free single-producer single-consumer ring buffer differ?']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 5 — atomics, fetch_add, compare_exchange
+     ====================================================================== */
+  var CAS_CODE = 'int expected = x.load();\nwhile (true) {\n    int desired = expected + 10;\n    if (x.compare_exchange_weak(expected, desired)) break;\n}   // on failure CAS copied the CURRENT x into expected';
+  function casOps() {
+    return [
+      { line: 1, txt: 'load', run: function (st, t) { st.r[t].exp = st.s.x; return { say: 'expected = x.load() → ' + st.s.x, narr: 'takes a snapshot: expected = <b>' + st.s.x + '</b>.' }; } },
+      { line: 3, txt: 'compute', run: function (st, t) { var r = st.r[t]; r.des = r.exp + 10; return { say: 'desired = ' + r.exp + ' + 10 = ' + r.des, narr: 'computes the new value privately: desired = <b>' + r.des + '</b>. Nothing in shared memory has changed yet.' }; } },
+      { line: 4, txt: 'cas', run: function (st, t) {
+        var r = st.r[t];
+        if (st.s.x === r.exp) { st.s.x = r.des; st.s.ok++; return { say: 'CAS(' + r.exp + ' → ' + r.des + ') SUCCESS', cls: 'ok', narr: '<code>compare_exchange</code>: x is still ' + r.exp + ', exactly what it expected, so in <b>one indivisible step</b> it writes ' + r.des + '. Done.', jump: 3 }; }
+        var cur = st.s.x; r.retries++; st.s.fails++;
+        var old = r.exp; r.exp = cur;
+        return { say: 'CAS(' + old + ' → ' + r.des + ') FAILS, x is ' + cur, cls: 'bad', narr: '<span class="c-r">CAS fails:</span> it expected ' + old + ' but x is now <b>' + cur + '</b> (the other thread got there first). Nothing is overwritten. CAS loads the current value into <code>expected</code>, and the loop retries with fresh data. <b>No update is lost.</b>', jump: 1 };
+      } }
+    ];
+  }
+  var vizCAS = {
+    title: 'Compare-and-swap loop: fail, refresh, retry, never lose an update',
+    input: 'A B A B A B',
+    inputLabel: 'Schedule of A / B steps',
+    gen: function (input) {
+      var sched = parseSched(input, 'A B A B A B');
+      return interleave({
+        code: { A: CAS_CODE, B: CAS_CODE },
+        ops: { A: casOps(), B: casOps() },
+        shared: { x: 0, ok: 0, fails: 0 }, reg: { exp: '-', des: '-', retries: 0 },
+        cols: ['x in memory'], colVals: function (st) { return [st.s.x]; },
+        view: function (st) { return { x: st.s.x, 'A.expected': st.r.A.exp, 'A.desired': st.r.A.des, 'B.expected': st.r.B.exp, 'B.desired': st.r.B.des, 'failed CAS attempts': st.s.fails }; },
+        viewHl: function (st) { return st.s.fails ? { 'failed CAS attempts': 'win' } : {}; },
+        intro: 'Both threads add 10 to <code>std::atomic&lt;int&gt; x</code> using the general-purpose <b>CAS loop</b> (the same pattern works for any update: max, multiply, push onto a stack). The key: the write only happens if x still holds the value we based our computation on.',
+        finish: function (st) { return '<span class="c-g"><b>x = ' + st.s.x + '</b></span> (correct: 0 + 10 + 10). Failed attempts: ' + st.s.fails + '. A failed CAS is not an error, just a retry with fresh data. This is <b>lock-free</b>: some thread always makes progress, and nobody ever sleeps holding a lock.'; }
+      }, sched);
+    }
+  };
+  var SPIN_CODE = 'while (flag.test_and_set(std::memory_order_acquire))\n    ;                            // spin: keep trying\nshared += 1;                     // critical section\nflag.clear(std::memory_order_release);';
+  function spinOps() {
+    return [
+      { line: 1, txt: 'tas', run: function (st, t) {
+        if (!st.s.flag) { st.s.flag = true; st.s.owner = t; return { say: 'test_and_set: was false → acquired', cls: 'ok', narr: '<code>test_and_set</code> atomically sets the flag to true and returns the <b>old</b> value: false, so this thread now owns the spinlock.' }; }
+        st.s.spins++;
+        return { say: 'test_and_set: was true → spin', cls: 'win', narr: 'tries <code>test_and_set</code>, gets <b>true</b> back (someone holds it) and loops again. Unlike a mutex it does not sleep: it <b>burns CPU</b> while it waits.', jump: 0 };
+      } },
+      { line: 3, txt: 'work', run: function (st, t) { st.s.shared++; return { say: 'shared += 1 → ' + st.s.shared, narr: 'does the critical-section work safely: shared = ' + st.s.shared + '.' }; } },
+      { line: 4, txt: 'clear', run: function (st, t) { st.s.flag = false; st.s.owner = null; return { say: 'clear() → released', narr: '<code>clear(release)</code> sets the flag back to false and publishes the writes made inside the critical section.' }; } }
+    ];
+  }
+  var vizSpin = {
+    title: 'A spinlock from std::atomic_flag: waiting by spinning',
+    input: 'A B B B A A B B B',
+    inputLabel: 'Schedule of A / B steps',
+    gen: function (input) {
+      var sched = parseSched(input, 'A B B B A A B B B');
+      return interleave({
+        code: { A: SPIN_CODE, B: SPIN_CODE },
+        ops: { A: spinOps(), B: spinOps() },
+        shared: { flag: false, owner: null, shared: 0, spins: 0 }, reg: {},
+        cols: ['flag', 'shared'], colVals: function (st) { return [st.s.flag, st.s.shared]; },
+        view: function (st) { return { flag: st.s.flag, owner: st.s.owner || 'nobody', shared: st.s.shared, 'wasted spin steps': st.s.spins }; },
+        viewHl: function (st) { return st.s.spins ? { 'wasted spin steps': 'bad' } : {}; },
+        intro: 'A spinlock is the simplest lock you can build from one atomic: <code>std::atomic_flag</code>. Thread A grabs it first; watch thread B spin in place, using CPU without making progress, until A clears the flag.',
+        finish: function (st) { return 'shared = <b>' + st.s.shared + '</b>, wasted spin steps: <b>' + st.s.spins + '</b>. Spinlocks are great when the critical section is a few nanoseconds and threads run on different cores. They are terrible when the holder can be descheduled, because everyone else spins for a whole time slice. That is why std::mutex spins briefly and then sleeps.'; }
+      }, sched);
+    }
+  };
+
+  topics.push({
+    title: 'Atomics: std::atomic, fetch_add & Compare-and-Swap',
+    analogy: `<p>At the deli counter there's a <b>ticket dispenser</b>. When you pull a ticket, reading the number and advancing the roll happen as <b>one physical motion</b>: two customers can never get the same number, no matter how fast they grab. That's an <b>atomic</b> operation. <b>Compare-and-swap</b> is like editing a shared doc that says "only save my change if the doc is still at version 7; if someone saved in between, show me the new version and let me redo my edit".</p>`,
+    explain: `<p><code>std::atomic&lt;T&gt;</code> wraps a value so that each operation on it is <b>indivisible</b> (no thread can ever see it half-done) and <b>never a data race</b>. It works for integers, pointers, <code>bool</code>, and since C++20 floating point <code>fetch_add</code> and <code>std::atomic&lt;std::shared_ptr&lt;T&gt;&gt;</code>.</p>
+      ${H.table(['operation', 'meaning', 'returns'], [
+        ['<code>x.load()</code> / <code>x.store(v)</code>', 'read / write the whole value at once', 'value / nothing'],
+        ['<code>x.exchange(v)</code>', 'write v, give back the old value', 'old value'],
+        ['<code>x.fetch_add(d)</code>, <code>fetch_sub</code>, <code>fetch_and/or/xor</code>', 'read-modify-write in one step', 'old value'],
+        ['<code>++x</code>, <code>x += d</code>, <code>x |= m</code>', 'same as fetch_* (atomic RMW)', 'new value'],
+        ['<code>x.compare_exchange_weak(exp, des)</code>', 'if x == exp then x = des (true); else exp = x (false)', 'bool'],
+        ['<code>x.is_lock_free()</code>', 'does the hardware do it without a hidden lock?', 'bool']
+      ])}
+      <p><span class="c-r"><b>Trap:</b></span> <code>x = x + 1</code> on an atomic is <b>two</b> atomic operations (a load, then a store). Another thread can slip in between, so updates get lost. Use <code>++x</code> or <code>fetch_add</code>.</p>
+      <p><b>Compare-and-swap (CAS)</b> is the universal tool. Anything you can compute from the old value (max, multiply, "push node onto list") becomes atomic with a <b>CAS loop</b>: read the value, compute the new one privately, then CAS. If someone changed it meanwhile, CAS fails, refreshes <code>expected</code> with the current value, and you retry. <code>compare_exchange_weak</code> may fail even when the values are equal (spuriously, on ARM/POWER), so use it in loops; <code>compare_exchange_strong</code> never fails spuriously, so use it for a single attempt.</p>
+      <p><b>When to use atomics vs a mutex:</b> atomics for <b>one</b> variable with a simple update (counters, flags, a pointer swap, statistics, sequence numbers). The moment your invariant involves <b>two or more</b> variables ("balance and history must agree"), use a mutex. Hand-made lock-free data structures are expert territory.</p>
+      <p><b>Lock-free</b> means at least one thread always makes progress even if others are paused; nobody can block everyone by being descheduled while holding a lock. It doesn't automatically mean faster: heavy contention on one atomic makes all cores fight over a single cache line.</p>`,
+    clues: ['"thread-safe counter / statistic / ID generator" → <code>std::atomic</code> + <code>fetch_add</code> (often relaxed)', '"stop flag" / "is shutting down" → <code>std::atomic&lt;bool&gt;</code>', '"update only if unchanged" / "lock-free" / "optimistic concurrency" → compare_exchange loop', '"atomic max / min" (no fetch_max before C++26) → CAS loop', '"only one thread should initialize / claim this" → <code>compare_exchange_strong(false → true)</code> or <code>std::call_once</code>', '"implement a spinlock" → <code>std::atomic_flag</code> + test_and_set(acquire) / clear(release)'],
+    code: [R`
+      #include <bits/stdc++.h>
+      using namespace std;
+
+      atomic<long long> requests{0};
+      atomic<int> peak{0};
+      atomic<bool> claimed{false};
+
+      // atomic max with a CAS loop (std::atomic has no fetch_max before C++26)
+      void updatePeak(int v) {
+          int cur = peak.load();
+          while (cur < v && !peak.compare_exchange_weak(cur, v)) {
+              // CAS failed: cur now holds the latest peak; loop re-checks cur < v
+          }
+      }
+
+      int main() {
+          vector<jthread> pool;
+          for (int t = 0; t < 4; ++t)
+              pool.emplace_back([t] {
+                  for (int i = 0; i < 1000; ++i) {
+                      requests.fetch_add(1);              // indivisible read-modify-write
+                      updatePeak(t * 1000 + i);
+                  }
+                  bool expected = false;                  // exactly ONE thread wins the claim
+                  if (claimed.compare_exchange_strong(expected, true))
+                      cout << ("thread " + to_string(t) + " did the one-time setup\n");
+              });
+          pool.clear();                                   // join
+          cout << requests << " " << peak << "\n";        // 4000 3999
+          cout << boolalpha << requests.is_lock_free() << "\n";   // true on x86-64 / ARM64
+      }`],
+    codeTitle: ['fetch_add, CAS-loop max, and a one-shot claim'],
+    viz: [vizCAS, vizSpin],
+    examples: [
+      { title: 'x = x + 1 on an atomic still loses updates', html: `<p>Each half is atomic, but the pair is not: thread A loads 5, thread B loads 5, both store 6. The fix is one RMW: <code>x.fetch_add(1)</code> or <code>++x</code>. This is the atomic version of the check-then-act bug.</p>`, code: R`
+        std::atomic<int> hits{0};
+        void bad()  { hits = hits + 1; }        // load, then store: NOT one atomic step
+        void good() { hits.fetch_add(1); }      // one indivisible read-modify-write
+        void alsoGood() { ++hits; }             // operator++ is fetch_add(1) + 1` },
+      { title: 'A correct (and polite) spinlock', html: `<p>Test-and-set with <b>acquire</b> to enter and <b>release</b> to leave (topic 6 explains why). The inner loop only <i>reads</i> (<code>test()</code>, C++20) so waiting cores share the cache line instead of bouncing it with writes ("test-and-test-and-set"). <code>yield()</code> or a CPU pause instruction reduces wasted power.</p>`, code: R`
+        class SpinLock {
+            std::atomic_flag f = ATOMIC_FLAG_INIT;
+        public:
+            void lock() {
+                while (f.test_and_set(std::memory_order_acquire)) {     // try to grab
+                    while (f.test(std::memory_order_relaxed))            // wait by reading only
+                        std::this_thread::yield();
+                }
+            }
+            void unlock() { f.clear(std::memory_order_release); }
+        };
+        int main() {
+            SpinLock sl; long long n = 0;
+            { std::jthread a([&] { for (int i = 0; i < 10000; ++i) { std::lock_guard g(sl); ++n; } });
+              std::jthread b([&] { for (int i = 0; i < 10000; ++i) { std::lock_guard g(sl); ++n; } }); }
+            std::cout << n << "\n";                                     // 20000
+        }` },
+      { title: 'False sharing: atomics that slow each other down', html: `<p>Four per-thread counters in one array sit in the <b>same 64-byte cache line</b>. They are different variables, so it's correct, but every increment invalidates the line in the other cores' caches. Padding each counter to its own line can make this 5–10× faster.</p>`, code: R`
+        struct alignas(64) PaddedCounter { std::atomic<long long> v{0}; };   // one cache line each
+        PaddedCounter perThread[4];
+        void work(int id) {
+            for (int i = 0; i < 1000000; ++i)
+                perThread[id].v.fetch_add(1, std::memory_order_relaxed);
+        }` },
+      { title: 'Big atomics may use a hidden lock', html: `<p><code>std::atomic&lt;T&gt;</code> works for any trivially copyable T, but if T is larger than what the CPU can swap in one instruction (usually 8 or 16 bytes), the library uses an internal lock. Check <code>is_always_lock_free</code> at compile time if you care (signal handlers, real-time code).</p>`, code: R`
+        struct Small { int a, b; };            // 8 bytes: lock-free on x86-64
+        struct Big   { long long v[8]; };      // 64 bytes: uses a lock inside the library
+        static_assert(std::atomic<Small>::is_always_lock_free);
+        bool bigIsLockFree() { return std::atomic<Big>{}.is_lock_free(); }   // false (needs -latomic to link)` }
+    ],
+    deepDive: `<p><b>What the hardware does.</b> On x86-64, <code>fetch_add</code> compiles to <code>lock xadd</code> and CAS to <code>lock cmpxchg</code>; the <code>lock</code> prefix holds the cache line in exclusive state for the duration of the operation. On ARMv8.1+ there are single instructions (<code>ldadd</code>, <code>cas</code>); older ARM uses a <b>load-linked / store-conditional</b> pair (<code>ldxr</code>/<code>stxr</code>), where the store fails if anything touched the line in between, even an unrelated write or an interrupt. That's exactly why <code>compare_exchange_weak</code> is allowed to fail spuriously: it maps to one LL/SC attempt, while <code>_strong</code> hides an internal retry loop.</p>
+      <p><b>Cost model.</b> An uncontended atomic RMW costs ≈ 5–20 ns. Under contention each operation must pull the cache line from another core through the coherence protocol (MESI), ≈ 40–100+ ns, and the operations are serialized. 32 threads incrementing one atomic can be <i>slower</i> than one thread. Scalable designs <b>shard</b>: per-thread or per-core counters, summed when read.</p>
+      <p><b>Progress guarantees.</b> <i>Blocking</i> (mutex): a paused lock holder stalls everyone. <i>Lock-free</i>: the system as a whole always progresses (a CAS loop: if my CAS failed, someone else's succeeded). <i>Wait-free</i>: every thread finishes in a bounded number of its own steps (e.g. <code>fetch_add</code> on x86).</p>
+      <p><b>The ABA problem.</b> A lock-free stack pop reads top = A, then gets paused. Others pop A, pop B, push A back. The CAS "top is still A → set top = B" succeeds, but B was freed: memory corruption. Fixes: tagged pointers (pointer + version counter, double-width CAS), hazard pointers (standardized in C++26), epoch-based reclamation/RCU (also C++26), or simply never freeing nodes while threads run.</p>
+      <p><b>More tools:</b> <code>std::atomic_ref&lt;T&gt;</code> (C++20) performs atomic operations on an ordinary object you don't own. <code>x.wait(old)</code> / <code>x.notify_one()</code> (C++20) let a thread sleep until an atomic changes, a lightweight futex-like alternative to a cv. Every atomic operation also takes a <b>memory order</b> argument, which is the next topic.</p>`,
+    aiEra: `<p><b>What AI changes:</b> assistants know the CAS-loop pattern and will produce a lock-free stack or queue on request. Lock-free code that "compiles and passes a test" is now cheap; lock-free code that is <b>correct</b> is as rare as ever.</p>
+      <p><b>Use AI as a partner:</b> ask <code>"Is there any multi-variable invariant in this class that atomics on individual fields cannot protect?"</code> and <code>"Explain the ABA risk in this pop() and propose a reclamation scheme"</code>. Ask it to benchmark sharded vs single atomic counters for your core count.</p>
+      <p><b>Where AI goes wrong:</b> it turns every field into an atomic and calls the class thread-safe, writes <code>x = x + 1</code> on atomics, uses <code>compare_exchange_weak</code> outside a loop, frees nodes right after popping in lock-free structures (ABA / use-after-free), and adds <code>memory_order_relaxed</code> everywhere "for speed".</p>
+      <p><b>What you must still own:</b> deciding whether a problem is single-variable (atomic is fine) or multi-variable (use a lock), knowing that lock-free is not automatically faster, and recognizing ABA and memory-reclamation issues. In interviews, a correct mutex solution beats an incorrect lock-free one every time.</p>`,
+    problems: [{
+      title: 'Atomic Maximum Tracker',
+      level: 'Medium', tags: ['atomic', 'compare_exchange', 'lock-free'], companies: ['Meta', 'Nvidia', 'Optiver'],
+      statement: `<p>Many threads measure request latencies. Implement <code>void record(int latency)</code> and <code>int worst()</code> so that <code>worst()</code> returns the maximum latency ever recorded. It must be lock-free (no mutex) and correct under any interleaving.</p>`,
+      constraints: `Up to 64 threads, 10<sup>7</sup> calls to record; 0 ≤ latency ≤ 10<sup>9</sup>`,
+      example: `<p>Thread A records 70 while thread B records 90; starting worst = 50.</p>${H.table(['naive load/store', 'CAS loop'], [['A loads 50, B loads 50', 'A loads 50, B loads 50'], ['B stores 90', 'B: CAS(50→90) succeeds'], ['A stores 70 (70 &gt; 50 it thought)', 'A: CAS(50→70) <b>fails</b>, sees 90'], ['<span class="c-r">worst = 70 (wrong)</span>', 'A: 70 &lt; 90 → stop. <span class="c-g">worst = 90</span>']])}`,
+      brute: { why: `<p>"Load, compare, store" is a check-then-act: between A's load and A's store, B can store a bigger value, and A then overwrites it with a smaller one. Each operation is atomic, but the sequence is not.</p>`, code: R`
+        std::atomic<int> worstSeen{0};
+        void recordBAD(int latency) {
+            if (latency > worstSeen.load())     // check ...
+                worstSeen.store(latency);       // ... then act: can overwrite a larger value
+        }` },
+      mcq: { q: 'In the CAS loop <code>while (cur &lt; v &amp;&amp; !m.compare_exchange_weak(cur, v)) {}</code>, what happens to <code>cur</code> when the CAS fails?', options: ['It stays the same, so the loop retries with stale data', 'It is set to v', 'It is updated to the value currently stored in m', 'It becomes 0'], answer: 2, explain: 'On failure compare_exchange writes the actual current value into the expected argument. The loop condition then re-checks cur &lt; v with fresh data, and stops if someone already stored something bigger.' },
+      hints: [`<p><b>Aha:</b> you want "store v only if the current value is still the one I compared against". That's exactly compare-and-swap.</p>`, `<p>Loop: <code>int cur = m.load(); while (cur &lt; v &amp;&amp; !m.compare_exchange_weak(cur, v)) {}</code>.</p>`, `<p>Exit early when <code>cur ≥ v</code> (someone already did better; no write needed, which also reduces cache traffic). Use <code>_weak</code> because we are in a loop anyway. Relaxed ordering is fine for a pure statistic.</p>`],
+      solution: {
+        approach: `<p>CAS loop: snapshot the current max, and while our value is bigger try to swap it in. A failed CAS means someone else changed the max, and <code>cur</code> is refreshed automatically, so we re-evaluate. The loop ends either because we won or because the stored max is already ≥ ours. Lock-free: every failed CAS implies another thread's CAS succeeded.</p>`,
+        code: R`
+          #include <bits/stdc++.h>
+          using namespace std;
+
+          class MaxTracker {
+              atomic<int> best{numeric_limits<int>::min()};
+          public:
+              void record(int v) {
+                  int cur = best.load(memory_order_relaxed);
+                  // keep trying while our value is still bigger than what is stored
+                  while (cur < v && !best.compare_exchange_weak(cur, v, memory_order_relaxed)) {
+                      // failure (real or spurious): cur was refreshed with the latest value
+                  }
+              }
+              int worst() const { return best.load(memory_order_relaxed); }
+          };
+
+          int main() {
+              MaxTracker t;
+              {
+                  vector<jthread> pool;
+                  for (int id = 0; id < 8; ++id)
+                      pool.emplace_back([&t, id] {
+                          mt19937 rng(id);
+                          for (int i = 0; i < 100000; ++i) t.record(int(rng() % 1000000));
+                      });
+                  t.record(1000000);                    // a known maximum from the main thread
+              }
+              cout << t.worst() << "\n";                // 1000000
+          }`,
+        dry: { head: ['step', 'thread', 'cur (local)', 'stored max', 'CAS result'], rows: [['1', 'A(v=70)', '50', '50', '-'], ['2', 'B(v=90)', '50', '50', '-'], ['3', 'B', '50', '90', '<span class="c-g">success</span>'], ['4', 'A', '50 → 90', '90', '<span class="c-r">fail, cur refreshed</span>'], ['5', 'A', '90', '90', 'loop exits: 90 ≥ 70']] },
+        complexity: `<p>O(1) expected per record; under contention a call may retry, but each retry means another thread succeeded (lock-free). No writes at all when v ≤ current max, which keeps the cache line shared and fast.</p>`,
+        followUps: ['Track both max and the request id that produced it, atomically (hint: pack into 64 bits, or use a mutex)', 'C++26 adds <code>fetch_max</code>: what would it compile to on x86 vs ARM?', 'How would you make this scale to 128 cores (per-core maxima)?']
       }
     }]
   });

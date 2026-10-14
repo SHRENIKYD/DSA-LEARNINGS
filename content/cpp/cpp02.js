@@ -2383,6 +2383,231 @@ int main() {
     }
   });
 
+  practice.push({
+    title: 'Trapping Rain Water',
+    level: 'Hard', tags: ['array', 'two pointers', 'prefix max'], companies: ['Google', 'Amazon', 'Goldman Sachs', 'Meta'],
+    statement: `<p>Given a <code>vector&lt;int&gt;</code> of bar heights (each bar has width 1), compute how many units of rain water are trapped between the bars after it rains.</p>`,
+    constraints: `1 ≤ n ≤ 2 · 10<sup>4</sup>; 0 ≤ height[i] ≤ 10<sup>5</sup>`,
+    example: `<p>${H.arr([0, 1, 0, 2, 1, 0, 1, 3, 2, 1, 2, 1])} → ${H.c('g', '6')}. Water above bar i = min(tallest bar on its left, tallest on its right) − height[i], if positive. For i = 5 (height 0): left max 2, right max 3 → 2 units.</p>`,
+    brute: {
+      why: `<p>For every bar, scan left to find the tallest bar on the left and scan right to find the tallest on the right: O(n) per bar → O(n²) total (4·10<sup>8</sup> steps for n = 2·10<sup>4</sup> — too slow in a tight limit). The waste: the same "max so far" values are recomputed for every bar.</p>`,
+      code: R`long long trapBrute(const vector<int>& h) {
+    int n = h.size();
+    long long water = 0;
+    for (int i = 0; i < n; ++i) {
+        int leftMax = 0, rightMax = 0;
+        for (int l = i; l >= 0; --l) leftMax = max(leftMax, h[l]);    // O(n)
+        for (int r = i; r < n; ++r) rightMax = max(rightMax, h[r]);   // O(n)
+        water += min(leftMax, rightMax) - h[i];
+    }
+    return water;
+}`
+    },
+    mcq: { q: 'With two pointers L and R and running maxima leftMax and rightMax, when may we safely settle bar L?', options: ['When h[L] &gt; h[R]', 'When leftMax ≤ rightMax — the left side is the limiting wall for L', 'Always', 'When L == R'], answer: 1, explain: 'If leftMax ≤ rightMax, there is a bar on the right at least as tall as leftMax, so water at L is exactly leftMax − h[L], regardless of the unseen middle.' },
+    hints: [`<p>Hint 1: Water at i = min(maxLeft[i], maxRight[i]) − h[i]. Precompute both arrays in two passes: O(n) time, O(n) space.</p>`, `<p>Hint 2: To get O(1) space, move two pointers inward. Keep leftMax and rightMax. The side with the smaller max is the bottleneck, so its water is known now.</p>`, `<p>Hint 3: Loop while L &lt; R: if h[L] &lt; h[R], update leftMax and add leftMax − h[L], then ++L; else do the mirror on the right. Use <code>long long</code> for the total.</p>`],
+    solution: {
+      approach: `<p>Two pointers. At each step the shorter side's water is fully determined by its own running max, because the other side already has a wall at least that tall. Each index is settled exactly once. Input by <code>const&amp;</code>, total in <code>long long</code>.</p>`,
+      code: R`#include <bits/stdc++.h>
+using namespace std;
+
+long long trap(const vector<int>& h) {
+    int L = 0, R = (int)h.size() - 1;
+    int leftMax = 0, rightMax = 0;
+    long long water = 0;
+    while (L < R) {
+        if (h[L] < h[R]) {                 // left side is the bottleneck
+            leftMax = max(leftMax, h[L]);
+            water += leftMax - h[L];
+            ++L;
+        } else {                           // right side is the bottleneck
+            rightMax = max(rightMax, h[R]);
+            water += rightMax - h[R];
+            --R;
+        }
+    }
+    return water;
+}
+
+int main() {
+    cout << trap({0, 1, 0, 2, 1, 0, 1, 3, 2, 1, 2, 1}) << "\n";   // 6
+    cout << trap({4, 2, 0, 3, 2, 5}) << "\n";                     // 9
+}`,
+      alt: [R`// Prefix/suffix max arrays: easier to explain, O(n) extra space.
+long long trapArrays(const vector<int>& h) {
+    int n = h.size();
+    vector<int> lm(n), rm(n);
+    for (int i = 0; i < n; ++i) lm[i] = max(i ? lm[i - 1] : 0, h[i]);
+    for (int i = n - 1; i >= 0; --i) rm[i] = max(i + 1 < n ? rm[i + 1] : 0, h[i]);
+    long long w = 0;
+    for (int i = 0; i < n; ++i) w += min(lm[i], rm[i]) - h[i];
+    return w;
+}`],
+      dry: { head: ['L', 'R', 'h[L]', 'h[R]', 'side', 'leftMax / rightMax', 'water'], rows: [['0', '5', '4', '5', 'left (4 &lt; 5)', '4 / 0', '0'], ['1', '5', '2', '5', 'left', '4 / 0', '2'], ['2', '5', '0', '5', 'left', '4 / 0', '6'], ['3', '5', '3', '5', 'left', '4 / 0', '7'], ['4', '5', '2', '5', 'left', '4 / 0', H.c('g', '9')]] },
+      complexity: `<p>O(n) time, O(1) extra space. (Dry run is for [4,2,0,3,2,5].)</p>`,
+      followUps: ['Trapping Rain Water II on a 2D height map (needs a priority queue).', 'Container With Most Water: similar two pointers, different question — what is moved and why?']
+    }
+  });
+
+  practice.push({
+    title: 'First Missing Positive in O(n) Time and O(1) Space',
+    level: 'Hard', tags: ['array', 'in-place', 'index as hash', 'cyclic placement'], companies: ['Amazon', 'Microsoft', 'Databricks', 'Google'],
+    statement: `<p>Given an unsorted <code>vector&lt;int&gt;&amp; nums</code>, return the smallest positive integer that does <b>not</b> appear in it. You must run in O(n) time and use O(1) extra space (you may modify the vector).</p>`,
+    constraints: `1 ≤ n ≤ 10<sup>5</sup>; −2<sup>31</sup> ≤ nums[i] ≤ 2<sup>31</sup> − 1`,
+    example: `<p>${H.arr([3, 4, -1, 1])} → ${H.c('g', '2')} (1 is present, 2 is missing). ${H.arr([1, 2, 0])} → ${H.c('g', '3')}. ${H.arr([7, 8, 9, 11, 12])} → ${H.c('g', '1')}.</p>`,
+    brute: {
+      why: `<p>Put everything into an <code>unordered_set</code> and test 1, 2, 3, … until one is missing. O(n) time but O(n) extra memory. Or sort (O(n log n)) and scan. Both break one of the two limits. The key insight: the answer is always in 1..n+1, so the array's own indices can serve as the "set".</p>`,
+      code: R`int firstMissingBrute(const vector<int>& nums) {
+    unordered_set<int> seen(nums.begin(), nums.end());   // O(n) extra memory
+    int k = 1;
+    while (seen.count(k)) ++k;
+    return k;
+}`
+    },
+    mcq: { q: 'Why is the answer always between 1 and n + 1?', options: ['Because the values are small', 'With n slots, at best 1..n are all present (answer n + 1); otherwise some value in 1..n is missing', 'Because of sorting', 'It is not; it can be any number'], answer: 1, explain: 'n numbers can cover at most n distinct positives. If they cover exactly 1..n the answer is n+1; otherwise the first gap is ≤ n. Values ≤ 0 or > n are irrelevant.' },
+    hints: [`<p>Hint 1: Only values in [1, n] matter. Try to put value v at index v − 1, so that in the end nums[i] == i + 1 wherever possible.</p>`, `<p>Hint 2: For each i, <b>while</b> nums[i] is in [1, n] and nums[nums[i] − 1] != nums[i], swap nums[i] into its home. The inequality test prevents infinite loops on duplicates.</p>`, `<p>Hint 3: Then scan: the first i with nums[i] != i + 1 gives answer i + 1; if all match, the answer is n + 1. Each swap places one value permanently, so total swaps ≤ n.</p>`],
+    solution: {
+      approach: `<p><b>Cyclic placement</b>: treat index v − 1 as the "home" of value v. Swap values home until each slot holds its own value or a useless one. Every swap puts at least one value into its final home, so there are at most n swaps overall → O(n) despite the inner while. Then the first slot whose value is wrong reveals the missing number.</p>`,
+      code: R`#include <bits/stdc++.h>
+using namespace std;
+
+int firstMissingPositive(vector<int>& nums) {
+    int n = nums.size();
+    for (int i = 0; i < n; ++i) {
+        // Keep sending nums[i] to its home slot nums[i]-1 while that is useful.
+        while (nums[i] >= 1 && nums[i] <= n && nums[nums[i] - 1] != nums[i])
+            swap(nums[i], nums[nums[i] - 1]);
+    }
+    for (int i = 0; i < n; ++i)
+        if (nums[i] != i + 1) return i + 1;   // first slot without its value
+    return n + 1;                             // 1..n all present
+}
+
+int main() {
+    vector<int> a = {3, 4, -1, 1}, b = {1, 2, 0}, c = {7, 8, 9, 11, 12};
+    cout << firstMissingPositive(a) << " "    // 2
+         << firstMissingPositive(b) << " "    // 3
+         << firstMissingPositive(c) << "\n";  // 1
+}`,
+      dry: { head: ['i', 'array before', 'action', 'array after'], rows: [['0', '3 4 -1 1', 'swap 3 to index 2', '-1 4 3 1'], ['0', '-1 4 3 1', '-1 not in [1,4]: stop', '-1 4 3 1'], ['1', '-1 4 3 1', 'swap 4 to index 3', '-1 1 3 4'], ['1', '-1 1 3 4', 'swap 1 to index 0', '1 -1 3 4'], ['scan', '1 -1 3 4', 'index 1 holds -1', H.c('g', 'answer 2')]] },
+      complexity: `<p>O(n) time (≤ n swaps in total plus two scans), O(1) extra space. It modifies the caller's vector — mention this trade-off.</p>`,
+      followUps: ['Find all numbers in 1..n that are missing (the same placement trick).', 'Find the duplicate and the missing number in an array of 1..n.']
+    }
+  });
+
+  practice.push({
+    title: 'Text Justification',
+    level: 'Hard', tags: ['string', 'greedy', 'simulation', 'formatting'], companies: ['Google', 'Airbnb', 'LinkedIn', 'Coursera'],
+    statement: `<p>Given a <code>vector&lt;string&gt;</code> of words and a line width <code>maxWidth</code>, format the text so each line has exactly <code>maxWidth</code> characters. Pack as many words as possible on each line (greedy). Distribute extra spaces between words as evenly as possible; if they do not divide evenly, the <b>left</b> gaps get more. The <b>last line</b> and lines with a <b>single word</b> are left-justified (single spaces between words, padded with spaces on the right).</p>`,
+    constraints: `1 ≤ words.size() ≤ 300; 1 ≤ word length ≤ maxWidth ≤ 100.`,
+    example: `<p>words = ["This","is","an","example","of","text","justification."], maxWidth = 16 →</p><pre>"This    is    an"\n"example  of text"\n"justification.  "</pre><p><b>Why line 1:</b> letters = 4+2+2 = 8, spaces to place = 16 − 8 = 8 across 2 gaps → 4 and 4. <b>Line 2:</b> letters 13, 3 spaces across 2 gaps → 2 (left) and 1. <b>Line 3</b> is the last line → left-justified.</p>`,
+    brute: {
+      why: `<p>A naive approach builds each line by repeatedly inserting one space at a time into the gap with the fewest spaces, re-scanning the line after every insert — O(width²) per line — and often mixes up the last-line and single-word rules. Computing the gap sizes with one division and one remainder is both faster and easier to get right.</p>`,
+      code: R`string padOneByOne(vector<string> line, int maxWidth) {
+    // line holds the words of one line; add spaces one at a time (slow, fiddly)
+    if (line.size() == 1) return line[0] + string(maxWidth - line[0].size(), ' ');
+    vector<string> gaps(line.size() - 1, " ");
+    int len = 0;
+    for (auto& w : line) len += w.size();
+    len += gaps.size();
+    for (size_t g = 0; len < maxWidth; g = (g + 1) % gaps.size(), ++len)
+        gaps[g] += ' ';                         // round-robin from the left
+    string out = line[0];
+    for (size_t k = 0; k < gaps.size(); ++k) out += gaps[k] + line[k + 1];
+    return out;
+}`
+    },
+    mcq: { q: 'A line has letters totalling 10, maxWidth 17 and 3 gaps. How many spaces go in each gap?', options: ['3, 2, 2', '2, 2, 3', '2, 3, 2', '7, 0, 0'], answer: 0, explain: '17 − 10 = 7 spaces over 3 gaps: 7 / 3 = 2 each, remainder 1 → the first (leftmost) gap gets one extra: 3, 2, 2.' },
+    hints: [`<p>Hint 1: Greedy line breaking: starting at word i, keep adding word j while <code>lettersSoFar + wordLen + (j − i)</code> (one space per gap so far) fits in maxWidth.</p>`, `<p>Hint 2: For a normal line with g = j − i − 1 gaps and total spaces S = maxWidth − letters: every gap gets <code>S / g</code> spaces and the first <code>S % g</code> gaps get one more.</p>`, `<p>Hint 3: If it is the last line or g == 0, join with single spaces and pad the right with <code>string(k, ' ')</code>. Build lines with <code>+=</code>; take <code>words</code> by <code>const&amp;</code>.</p>`],
+    solution: {
+      approach: `<p>Two-step greedy per line: (1) find the largest group of words that fits with single spaces; (2) distribute the spaces using integer division and remainder (left gaps get the extras), or left-justify for the last line and single-word lines. Every word and every output character is handled a constant number of times.</p>`,
+      code: R`#include <bits/stdc++.h>
+using namespace std;
+
+vector<string> fullJustify(const vector<string>& words, int maxWidth) {
+    vector<string> res;
+    int n = words.size(), i = 0;
+    while (i < n) {
+        // 1) pick words i..j-1 for this line
+        int j = i, letters = 0;
+        while (j < n && letters + (int)words[j].size() + (j - i) <= maxWidth) {
+            letters += words[j].size();
+            ++j;
+        }
+        int gaps = j - i - 1;
+        string line;
+        if (j == n || gaps == 0) {
+            // 2a) last line or single word: left-justify
+            for (int k = i; k < j; ++k) {
+                if (k > i) line += ' ';
+                line += words[k];
+            }
+            line += string(maxWidth - line.size(), ' ');
+        } else {
+            // 2b) full justification: spread spaces, extras go to the left gaps
+            int spaces = maxWidth - letters;
+            int each = spaces / gaps, extra = spaces % gaps;
+            for (int k = i; k < j; ++k) {
+                line += words[k];
+                if (k < j - 1) line += string(each + (k - i < extra ? 1 : 0), ' ');
+            }
+        }
+        res.push_back(line);
+        i = j;
+    }
+    return res;
+}
+
+int main() {
+    vector<string> w = {"This", "is", "an", "example", "of", "text", "justification."};
+    for (const string& line : fullJustify(w, 16)) cout << "\"" << line << "\"\n";
+}`,
+      dry: { head: ['line', 'words', 'letters', 'gaps', 'spaces', 'each / extra', 'result'], rows: [['1', 'This is an', '8', '2', '8', '4 / 0', '"This    is    an"'], ['2', 'example of text', '13', '2', '3', '1 / 1', '"example  of text"'], ['3 (last)', 'justification.', '14', '0', '2', 'left-justify', '"justification.  "']] },
+      complexity: `<p>O(total characters of output) time = O(lines × maxWidth); O(1) extra space besides the output.</p>`,
+      followUps: ['Centre-justify every line instead.', 'Minimise the "raggedness" (sum of squared trailing spaces) — that needs dynamic programming, like TeX does.']
+    }
+  });
+
+  /* ======================================================================
+     QUIZ
+     ====================================================================== */
+  quiz.push(
+    { q: 'Predict the output: <pre><code>int x = 3;\nif (x = 0) cout &lt;&lt; "A";\nelse cout &lt;&lt; "B" &lt;&lt; x;</code></pre>', options: ['A', 'B3', 'B0', 'Compile error'], answer: 2, explain: '<code>x = 0</code> assigns 0 and the condition value is 0 (false), so the else branch runs and prints x, which is now 0: <b>B0</b>.' },
+    { q: 'Predict the output: <pre><code>int d = 2;\nswitch (d) {\n  case 1: cout &lt;&lt; "1";\n  case 2: cout &lt;&lt; "2";\n  case 3: cout &lt;&lt; "3"; break;\n  default: cout &lt;&lt; "D";\n}</code></pre>', options: ['2', '23', '23D', '123'], answer: 1, explain: 'Jump to case 2, print "2", fall through (no break) into case 3, print "3", then break. Output: <b>23</b>.' },
+    { q: 'What does this loop do? <pre><code>vector&lt;int&gt; v = {1, 2, 3};\nfor (size_t i = v.size() - 1; i &gt;= 0; --i) cout &lt;&lt; v[i];</code></pre>', options: ['Prints 321', 'Prints 321 then runs forever / crashes (i wraps around)', 'Does not compile', 'Prints 123'], answer: 1, explain: 'size_t is unsigned, so i ≥ 0 is always true. After i = 0, --i wraps to 2⁶⁴−1 and v[i] is out of bounds: undefined behaviour.' },
+    { q: 'Predict the output: <pre><code>void f(int x) { x = 99; }\nvoid g(int&amp; x) { x = 7; }\nint a = 1; f(a); cout &lt;&lt; a; g(a); cout &lt;&lt; a;</code></pre>', options: ['17', '997', '197', '11'], answer: 0, explain: 'f changes its own copy, so a stays 1; g takes a reference and sets a to 7. Output: <b>17</b>.' },
+    { q: 'Inside <code>void h(int arr[])</code> on a 64-bit machine, what is <code>sizeof(arr)</code> when called with <code>int a[10]</code>?', options: ['40', '10', '8', '4'], answer: 2, explain: 'The array decays to a pointer; the parameter is really <code>int*</code>, so sizeof gives the pointer size, 8 bytes.' },
+    { q: 'Given <code>void p(int)</code> and <code>void p(double)</code>, which call is a compile error?', options: ['<code>p(\'x\')</code>', '<code>p(2.5f)</code>', '<code>p(5L)</code>', '<code>p(true)</code>'], answer: 2, explain: 'long → int and long → double are both standard conversions of the same rank → ambiguous. char and bool promote to int; float promotes to double.' },
+    { q: 'Which declaration is <b>illegal</b>?', options: ['<code>void f(int a, int b = 2);</code>', '<code>void f(int a = 1, int b);</code>', '<code>void f(int a = 1, int b = 2);</code>', '<code>void f(int a, int b = 2, int c = 3);</code>'], answer: 1, explain: 'Default arguments must be trailing: once a parameter has a default, every parameter after it must also have one.' },
+    { q: 'After <code>vector&lt;int&gt; v; v.reserve(10);</code> what are <code>v.size()</code> and <code>v.capacity()</code>?', options: ['10 and 10', '0 and at least 10', '10 and 0', '0 and 0'], answer: 1, explain: 'reserve only allocates room; it creates no elements. Use resize(10) if you want 10 elements.' },
+    { q: 'Why is <code>vector::push_back</code> amortised O(1)?', options: ['It never reallocates', 'The capacity grows by a constant factor, so total copying over n pushes is O(n)', 'It uses a linked list internally', 'Because it is inlined'], answer: 1, explain: 'With doubling, copies total 1 + 2 + 4 + … &lt; 2n over n pushes. Growth by a constant amount would give O(n²) total.' },
+    { q: 'Predict the output: <pre><code>string s = "hello";\ncout &lt;&lt; s.substr(1, 3) &lt;&lt; " " &lt;&lt; s.find(\'z\') == string::npos;</code></pre> (Careful — think about what the last part does.)', options: ['ell 1', 'el 1', 'Compile error', 'ell true'], answer: 2, explain: '<code>&lt;&lt;</code> binds tighter than <code>==</code>, so the expression becomes <code>(cout &lt;&lt; … &lt;&lt; s.find(\'z\')) == string::npos</code>, comparing an ostream with a size_t — compile error. Wrap comparisons in brackets when printing them.' },
+    { q: 'Input is <code>42</code> then a newline then <code>Ada Lovelace</code>. After <code>cin &gt;&gt; n; getline(cin, name);</code> what is <code>name</code>?', options: ['"Ada Lovelace"', '"Ada"', '"" (empty)', '"42"'], answer: 2, explain: 'cin &gt;&gt; n leaves the newline in the buffer; getline reads up to it and returns an empty string. Use <code>getline(cin &gt;&gt; ws, name)</code>.' },
+    { q: 'What does <code>cout &lt;&lt; "abc" + 1;</code> print?', options: ['abc1', 'bc', 'Compile error', 'b'], answer: 1, explain: '"abc" is a char array that decays to a pointer; + 1 moves the pointer to the second character, so it prints "bc".' },
+    { q: 'Which statement about <code>for (const auto&amp; s : names)</code> over a <code>vector&lt;string&gt;</code> is true?', options: ['Each string is copied', 'Strings can be modified', 'No copies are made and the strings cannot be modified through s', 'It only works for arrays'], answer: 2, explain: 'const auto&amp; binds a read-only reference to each element: no copy, no modification. Use auto&amp; to modify, plain auto to get copies.' },
+    { q: 'For a recursive <code>fact(n)</code> with base case <code>n &lt;= 1</code>, how many stack frames for fact exist at the deepest point of <code>fact(5)</code>?', options: ['1', '4', '5', '6'], answer: 2, explain: 'fact(5), fact(4), fact(3), fact(2), fact(1) are all on the stack when the base case is reached: 5 frames (plus main).' },
+    { q: 'Predict the output: <pre><code>int i = 0;\nwhile (i &lt; 5) {\n  if (i == 2) { i += 2; continue; }\n  cout &lt;&lt; i;\n  ++i;\n}</code></pre>', options: ['01234', '0134', '014', '01'], answer: 2, explain: 'i = 0 and 1 are printed. At i = 2 the if jumps i to 4 and <code>continue</code> skips the print. i = 4 is printed, then i becomes 5 and the loop ends. Output: <b>014</b> — 2 and 3 never print.' }
+  );
+
+  /* ======================================================================
+     INTERVIEW Q&A
+     ====================================================================== */
+  interview.push(
+    { q: 'What is the difference between pass by value, pass by reference and pass by const reference? When do you use each?', level: 'B', a: `<p><b>By value</b> (<code>int x</code>) gives the function its own copy: changes do not affect the caller, and copying costs O(size). <b>By reference</b> (<code>int&amp; x</code>) makes the parameter an alias of the caller's variable: no copy, and changes are visible to the caller. <b>By const reference</b> (<code>const T&amp; x</code>) is an alias that cannot be modified: no copy, read-only, and it also accepts temporaries and literals.</p><p>Rule I follow: small cheap types (int, double, char, pointers, <code>string_view</code>) by value; big types I only read (<code>string</code>, <code>vector</code>, structs) by const reference; anything the function must modify by non-const reference; results are returned by value (RVO/move makes it cheap).</p>`, followUps: ['Why is <code>const int&amp;</code> not faster than <code>int</code>?', 'What is a "sink" parameter and why is it taken by value?', 'How does Java\'s parameter passing compare?'] },
+    { q: 'What is the difference between a reference and a pointer?', level: 'B', a: `<p>A <b>reference</b> is an alias: it must be initialised when created, can never be re-bound to another object, cannot be null, and is used with normal syntax (<code>r = 5</code>). A <b>pointer</b> is a variable holding an address: it can be null, can be re-pointed, supports arithmetic, and needs <code>*</code>/<code>-&gt;</code> to reach the object. Under the hood a reference parameter is usually passed as an address, so performance is the same.</p><p>Use references for parameters that must refer to something; use pointers when "nothing" is a valid value or when you need to re-seat or do arithmetic (arrays, C APIs). <code>r = b</code> on a reference assigns b's value into the referred object — it does not re-bind.</p>`, followUps: ['Can you have a reference to a reference? An array of references?', 'What is a dangling reference and how do you create one?'] },
+    { q: 'Explain size vs capacity of a <code>std::vector</code>, and why <code>push_back</code> is amortised O(1).', level: 'I', a: `<p><code>size()</code> is the number of elements stored; <code>capacity()</code> is how many fit in the current heap buffer. When a <code>push_back</code> finds size == capacity, the vector allocates a bigger buffer — about 2× in libstdc++/libc++, 1.5× in MSVC — moves or copies all elements, and frees the old buffer.</p><p>Because growth is geometric, over n pushes the total elements copied are 1 + 2 + 4 + … &lt; 2n, so the <b>average</b> cost per push is O(1) even though one individual push can be O(n). If capacity grew by a constant (+k), the total would be O(n²/k). <code>reserve(n)</code> pre-allocates and avoids all reallocations; <code>resize(n)</code> changes the size itself.</p>`, followUps: ['Which pointers/iterators are invalidated by a reallocation?', 'Why does the vector copy instead of move elements if the move constructor is not noexcept?', 'Why might 1.5 be a better growth factor than 2?'] },
+    { q: 'What is array-to-pointer decay? How does it affect functions that take arrays?', level: 'B', a: `<p>In most expressions a C array converts ("decays") to a pointer to its first element. A parameter declared as <code>int arr[]</code> or even <code>int arr[10]</code> is actually <code>int* arr</code>. Consequences: inside the function <code>sizeof(arr)</code> is the pointer size (8), the length is lost, so you must pass it separately; you cannot copy-assign arrays; <code>a == b</code> compares addresses.</p><p>Modern fixes: use <code>std::array&lt;T, N&gt;</code> (size in the type), <code>std::vector</code>, or <code>std::span&lt;T&gt;</code> (C++20, a pointer + length view). You can also take an array by reference, <code>void f(int (&amp;a)[10])</code>, or with a template <code>template&lt;size_t N&gt; void f(int (&amp;a)[N])</code> to keep the size.</p>`, followUps: ['When does an array NOT decay? (sizeof, &amp;, decltype, reference binding)', 'What is std::span and what does it not own?'] },
+    { q: 'How does the compiler choose between overloaded functions?', level: 'I', a: `<p>Overload resolution has three steps. (1) <b>Name lookup</b> collects all functions with that name, including those found by argument-dependent lookup. (2) Keep the <b>viable</b> ones — right number of arguments (counting defaults) and every argument convertible. (3) Rank each argument's conversion: <b>exact match</b> (including adding const) &gt; <b>promotion</b> (char/short/bool → int, float → double) &gt; <b>standard conversion</b> (int ↔ double, long → int, pointer → bool) &gt; <b>user-defined conversion</b> (const char* → std::string). The winner must be at least as good on every argument and better on one; otherwise the call is ambiguous.</p><p>Classic trap: with <code>f(bool)</code> and <code>f(const string&amp;)</code>, <code>f("hi")</code> calls the bool version, because pointer → bool is a standard conversion and beats the user-defined one.</p>`, followUps: ['Why can\'t you overload on return type?', 'What is name mangling? How does <code>extern "C"</code> affect it?', 'How do templates take part in overload resolution?'] },
+    { q: 'What are the rules for default arguments, and where should the default be written?', level: 'B', a: `<p>Defaults must be <b>trailing</b> — after the first defaulted parameter, all following parameters need defaults. A default is specified <b>once</b>, normally in the declaration in the header, not again in the definition (that is a compile error). The compiler inserts the default <b>at the call site</b>, using the declaration the caller can see, and evaluates the default expression on every call.</p><p>Implications: changing a default in a header requires callers to recompile; for virtual functions the default is taken from the static type, not the overriding function; combining overloads and defaults can create ambiguous calls such as <code>f(int)</code> plus <code>f(int, int = 0)</code>. You cannot skip a middle argument — use an options struct with designated initialisers if you need that.</p>`, followUps: ['What happens with default arguments on virtual functions?', 'When would you prefer overloads to defaults?'] },
+    { q: 'Explain the call stack. What is a stack frame and what causes a stack overflow?', level: 'B', a: `<p>Each function call creates a <b>frame</b> on the call stack holding the return address, saved registers, parameters that do not fit in registers, and local variables. The stack grows with nested calls and shrinks as functions return — last called, first finished. Allocation is just moving the stack pointer, so it is very fast.</p><p>The stack is small: typically 8 MB for the main thread on Linux and 1 MB on Windows. <b>Stack overflow</b> happens with very deep or infinite recursion (e.g. a DFS 10<sup>6</sup> levels deep) or huge local arrays (<code>int a[10000000]</code>). Fixes: convert recursion to iteration with an explicit stack, put big data on the heap (<code>vector</code>) or in static storage, or increase the stack size (ulimit, thread attributes) as a last resort.</p>`, followUps: ['Why is returning a pointer to a local variable a bug?', 'What is tail-call optimisation and does C++ guarantee it?'] },
+    { q: 'What are the most common bugs with loops in C++?', level: 'B', a: `<p>(1) <b>Off-by-one</b>: <code>i &lt;= n</code> instead of <code>i &lt; n</code>, reading one past the end. (2) <b>Unsigned underflow</b>: <code>for (size_t i = n - 1; i &gt;= 0; --i)</code> never ends, and <code>v.size() - 1</code> on an empty vector is huge. (3) <b>Signed/unsigned comparison</b>: <code>int i &lt; v.size()</code> converts negative i to a huge unsigned. (4) <b>Forgotten update</b> in a while loop, or a <code>continue</code> that jumps over the increment. (5) <b>Range-for copies</b>: <code>for (auto x : v) x *= 2;</code> changes nothing. (6) <b>Modifying a container while iterating</b>, e.g. <code>push_back</code> inside a range-for over the same vector invalidates iterators. (7) Floating-point loop counters that never hit the exit value exactly.</p><p>Habits that prevent them: compile with <code>-Wall -Wextra</code>, use signed indices or <code>std::ssize</code>, prefer range-for/algorithms, and dry-run edge cases (empty, one element).</p>`, followUps: ['How would you iterate a vector backwards safely?', 'What is a loop invariant? Give one for binary search.'] },
+    { q: 'Compare C arrays, <code>std::array</code> and <code>std::vector</code>. Which do you default to?', level: 'I', a: `<p><b>C arrays</b> have a compile-time size, no size information once passed (decay), no bounds checking, and cannot be copied with <code>=</code>. <b><code>std::array&lt;T, N&gt;</code></b> wraps a C array with zero overhead but knows its size, can be copied, compared and returned, and offers <code>.at()</code>. <b><code>std::vector&lt;T&gt;</code></b> has a run-time, growable size and stores its elements on the heap with a 24-byte header.</p><p>Default: <code>vector</code>. Use <code>std::array</code> for small fixed-size data where avoiding a heap allocation matters (26 letter counts, 4 direction offsets, a 3×3 board). Use C arrays only for C interop or legacy code. For passing contiguous data without caring about ownership, use <code>std::span</code>.</p>`, followUps: ['Where does a std::array live: stack or heap?', 'What is the problem with vector&lt;bool&gt;?'] },
+    { q: 'How do <code>std::string</code> and C-style strings differ? What is SSO?', level: 'I', a: `<p>A C string is a <code>char</code> array terminated by <code>'\\0'</code>; its length is found by scanning (<code>strlen</code>, O(n)), it has no automatic memory management, and buffer overflows are easy. <code>std::string</code> stores its length (O(1) <code>size()</code>), manages its own memory, grows like a vector, supports <code>+=</code>, <code>find</code>, <code>substr</code>, comparison operators, and can contain '\\0' bytes. <code>c_str()</code> gives a null-terminated view for C APIs.</p><p><b>Small String Optimisation</b>: short strings (≤ 15 chars in libstdc++, ≤ 22 in libc++) are stored inside the 32/24-byte string object itself, avoiding a heap allocation. That makes short strings cheap to create and copy, which matters in hash maps keyed by short words.</p>`, followUps: ['What does string_view add and what is its main danger?', 'Why does "é".size() return 2?'] },
+    { q: 'Why is building a string with <code>s = s + c</code> in a loop slow, and what should you do instead?', level: 'I', a: `<p><code>s + c</code> creates a brand-new temporary string containing all of s plus c, then assigns it back. On round i that copies about i characters, so building n characters costs 1 + 2 + … + n ≈ n²/2 copies — O(n²). For n = 10<sup>5</sup> that is around 5 × 10<sup>9</sup> operations.</p><p><code>s += c</code> (or <code>push_back</code>, <code>append</code>) writes into spare capacity in place and only occasionally reallocates geometrically, so it is amortised O(1) per character and O(n) total. If the final size is known, call <code>reserve</code> first. The same issue appears with <code>ans = word + " " + ans</code> when reversing words; build in order and reverse, or collect pieces and join once.</p>`, followUps: ['Can the compiler optimise s = s + c away?', 'How would you join a vector&lt;string&gt; efficiently?'] },
+    { q: 'What are <code>break</code>, <code>continue</code> and <code>[[fallthrough]]</code>? How does a switch statement work under the hood?', level: 'I', a: `<p><code>break</code> exits the innermost loop or switch; <code>continue</code> skips to the next iteration (in a <code>for</code> loop the increment still runs). In a <code>switch</code>, control jumps to the matching <code>case</code> label and runs downward until a <code>break</code> — falling through subsequent labels otherwise. <code>[[fallthrough]];</code> (C++17) marks intentional fall-through so <code>-Wimplicit-fallthrough</code> stays quiet.</p><p>Compilers turn dense case values into a <b>jump table</b> (an array of code addresses indexed by the value — O(1) dispatch) and sparse values into a binary search of comparisons. Switch works only on integral types and enums, not strings. With an <code>enum class</code> and no default, <code>-Wswitch</code> warns when a new enumerator is not handled. Variables declared inside a case need braces if other labels can jump past their initialisation.</p>`, followUps: ['How do you break out of two nested loops?', 'Why can\'t you switch on a std::string, and what do people do instead?'] },
+    { q: 'Predict the output and explain: <code>vector&lt;int&gt; v = {1, 2}; int&amp; r = v[0]; v.push_back(3); cout &lt;&lt; r;</code>', level: 'A', a: `<p>This is <b>undefined behaviour</b>. <code>v</code> starts with size 2 and (typically) capacity 2. <code>push_back(3)</code> finds no room, allocates a larger buffer, moves the elements and frees the old buffer. <code>r</code> still refers to the old, freed memory — a dangling reference. It might print 1, garbage, or crash; AddressSanitizer reports heap-use-after-free.</p><p>Rules: any operation that may reallocate (<code>push_back</code>, <code>insert</code>, <code>resize</code>, <code>reserve</code> beyond capacity) invalidates all pointers, references and iterators to the vector's elements; <code>erase</code> invalidates those at or after the erase point. Fixes: keep indices instead of references, <code>reserve</code> enough capacity up front, or re-acquire the reference after the modification.</p>`, followUps: ['Is v.push_back(v[0]) safe?', 'Which containers keep references stable on insertion (list, deque ends, map)?'] },
+    { q: 'How would you design a function that returns several values in modern C++?', level: 'I', a: `<p>Options, from most to least preferred today: (1) return a small <b>named struct</b> — self-documenting fields, and the caller unpacks with structured bindings <code>auto [mn, mx] = stats(v);</code>; (2) return a <code>std::pair</code>/<code>std::tuple</code> for quick internal helpers; (3) <code>std::optional&lt;T&gt;</code> when the result may be absent, or <code>std::expected&lt;T, E&gt;</code> (C++23) when you need an error; (4) reference <b>out-parameters</b> (<code>int&amp; mn, int&amp; mx</code>) — still common in older code and when reusing a large buffer across calls.</p><p>Returning by value is cheap: guaranteed copy elision for temporaries (C++17), NRVO for named locals in practice, and moves otherwise. Out-parameters make call sites harder to read and the data flow less obvious, so I reserve them for performance-critical buffer reuse.</p>`, followUps: ['What is NRVO and when can it not apply?', 'When is an output parameter still the right choice?'] }
+  );
+
   registerModule({
     id: 'cpp02',
     title: 'Control Flow, Functions, Arrays & Strings',

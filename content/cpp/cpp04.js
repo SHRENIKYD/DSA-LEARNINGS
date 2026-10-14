@@ -1291,6 +1291,10 @@ int main() {
           }
         });
         frames.push({ narr: 'Summary: <b>' + (nextId - 1) + '</b> tickets were ever issued, <b>' + live.length + '</b> are alive. One shared whiteboard (the statics), many personal notebooks (each object\'s id). <code>Ticket::liveCount()</code> could report this without any object.', parts: [graph(), vars({ 'Ticket::nextId': 'sel', 'Ticket::alive': 'sel' })] });
+        frames.push({ narr: 'Cheat sheet: per-object members are stamped into every object (they count toward sizeof); static members exist once, before main, even with zero objects. Static member functions have no <code>this</code>, so they can only read statics directly.', parts: [
+          { type: 'table', label: 'static vs non-static', columns: ['', 'int id (non-static)', 'static int nextId'], rows: [['copies', 'one per object (' + live.length + ' now)', 'exactly 1'], ['inside sizeof(Ticket)?', 'yes', 'no'], ['exists with 0 objects?', 'no', 'yes'], ['access', 'obj.id', 'Ticket::nextId']], hl: { 0: 'sel' } },
+          vars()
+        ] });
         return frames;
       }
     },
