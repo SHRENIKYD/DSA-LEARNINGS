@@ -2334,4 +2334,875 @@ class Masked {
       }
     }]
   });
-registerModule({ id: 'java09', title: 'Lambdas, Streams & Optional', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
+
+  /* ======================================================================
+     PRACTICE — Easy
+     ====================================================================== */
+  practice.push({
+    title: 'Sum of Squares of Odd Numbers', level: 'Easy', tags: ['IntStream', 'filter', 'map', 'sum'], companies: ['TCS', 'Infosys', 'Amazon'],
+    statement: `<p>Given an <code>int[] nums</code>, return the sum of the squares of all <b>odd</b> numbers as a <code>long</code>. Negative numbers can be odd too.</p>`,
+    constraints: `0 ≤ N ≤ 10<sup>6</sup>, |nums[i]| ≤ 10<sup>5</sup> (a square fits in long, the total may not fit in int).`,
+    example: `<p>${H.arr([1, 2, 3, -5, 4], { hl: { 0: 'g', 2: 'g', 3: 'g' } })} → 1 + 9 + 25 = ${H.c('g', '35')}. Note −5 is odd: <code>-5 % 2</code> is <b>−1</b> in Java, not 1.</p>`,
+    brute: { why: `<p>A plain loop is perfectly fine here (O(N)). The "brute" risk is the bug many people write: <code>x % 2 == 1</code>, which silently skips negative odd numbers, and an <code>int</code> total that overflows.</p>`, code: `long sumSqOdd(int[] nums) {
+    int total = 0;                       // bug 1: int can overflow
+    for (int x : nums)
+        if (x % 2 == 1) total += x * x;  // bug 2: misses negative odds (-5 % 2 == -1)
+    return total;
+}` },
+    mcq: { q: 'Which test correctly detects odd numbers including negatives?', options: ['<code>x % 2 != 0</code>', '<code>x % 2 == 1</code>', '<code>x / 2 == 1</code>', '<code>x &amp; 2</code>'], answer: 0, explain: 'In Java the remainder takes the sign of the dividend: -5 % 2 == -1. Checking "not zero" (or <code>(x &amp; 1) == 1</code>) works for all ints.' },
+    hints: [`<p>Hint 1: the three English steps are "keep odd", "square", "add up" → filter, map, sum.</p>`, `<p>Hint 2: <code>Arrays.stream(nums)</code> gives an <code>IntStream</code>; switch to <code>LongStream</code> with <code>asLongStream()</code> <b>before</b> squaring so the multiplication happens in long.</p>`, `<p>Hint 3: odd test = <code>x % 2 != 0</code>. Empty array → 0 automatically.</p>`],
+    solution: {
+      approach: `<p>Primitive stream pipeline: filter odd, widen to long, square, sum. No boxing, no overflow.</p>`,
+      code: `class SumSqOdd {
+    static long sumSqOdd(int[] nums) {
+        return Arrays.stream(nums)
+                     .filter(x -> x % 2 != 0)     // works for negatives
+                     .asLongStream()              // widen first
+                     .map(x -> x * x)
+                     .sum();
+    }
+
+    public static void main(String[] args) {
+        System.out.println(sumSqOdd(new int[]{1, 2, 3, -5, 4}));   // 35
+        System.out.println(sumSqOdd(new int[]{}));                 // 0
+    }
+}`,
+      dry: { head: ['x', 'odd?', 'x²', 'running sum'], rows: [['1', 'yes', '1', '1'], ['2', 'no', '–', '1'], ['3', 'yes', '9', '10'], ['-5', 'yes (−1 ≠ 0)', '25', '35'], ['4', 'no', '–', '<span class="c-g">35</span>']] },
+      complexity: `<p>O(N) time, O(1) extra space.</p>`,
+      followUps: ['Return the sum modulo 10<sup>9</sup>+7', 'Do it in parallel — is it safe? (yes: sum is associative with identity 0)']
+    }
+  });
+
+  practice.push({
+    title: 'Predict the Output: Reusing a Stream', level: 'Easy', tags: ['predict output', 'single use', 'IllegalStateException'], companies: ['Oracle', 'Capgemini'],
+    statement: `<p>What does this print?</p><pre>Stream&lt;String&gt; s = Stream.of("a", "b", "c");
+Stream&lt;String&gt; upper = s.map(String::toUpperCase);
+System.out.println(upper.toList());
+System.out.println(s.count());</pre>`,
+    constraints: `Java 17+. Assume no try/catch around the code.`,
+    example: `<p>Clue: <code>s</code> was already "used" when <code>map</code> was called on it — linking a new stage consumes the old stream object.</p>`,
+    brute: { why: `<p>The naive mental model treats a stream like a list you can read many times, predicting <code>[A, B, C]</code> then <code>3</code>. A stream is a one-shot pipeline: once a stage has been linked or a terminal op has run, that stream object is spent.</p>`, code: `class ListModel {                    // what people imagine: a re-readable collection
+    public static void main(String[] args) {
+        List<String> s = List.of("a", "b", "c");
+        System.out.println(s.stream().map(String::toUpperCase).toList()); // [A, B, C]
+        System.out.println(s.size());                                     // 3 — fine for a List
+    }
+}` },
+    mcq: { q: 'When exactly does <code>s</code> become unusable?', options: ['As soon as <code>s.map(...)</code> is called', 'Only after <code>upper.toList()</code> runs', 'Never — count() works on any stream', 'After the JVM garbage-collects it'], answer: 0, explain: 'Calling any intermediate or terminal operation on a stream marks it "linked or consumed". The new stage <code>upper</code> owns the pipeline now; any further call on <code>s</code> throws IllegalStateException.' },
+    hints: [`<p>Hint 1: a stream is not a data structure; it is a pipeline you can traverse once.</p>`, `<p>Hint 2: the first println works normally and prints <code>[A, B, C]</code>.</p>`, `<p>Hint 3: the second line throws <code>IllegalStateException: stream has already been operated upon or closed</code>. Fix: keep a <code>Supplier&lt;Stream&lt;String&gt;&gt;</code> and call <code>get()</code> for each use, or keep the List.</p>`],
+    solution: {
+      approach: `<p>Output:</p><pre>[A, B, C]
+Exception in thread "main" java.lang.IllegalStateException: stream has already been operated upon or closed</pre><p>Use a <code>Supplier</code> (or the source collection) to create a fresh stream each time.</p>`,
+      code: `class StreamReuse {
+    public static void main(String[] args) {
+        Stream<String> s = Stream.of("a", "b", "c");
+        Stream<String> upper = s.map(String::toUpperCase);
+        System.out.println(upper.toList());        // [A, B, C]
+        try {
+            System.out.println(s.count());         // s was already linked to map()
+        } catch (IllegalStateException e) {
+            System.out.println("IllegalStateException: " + e.getMessage());
+        }
+
+        // Fix: a recipe that builds a NEW stream on every call
+        Supplier<Stream<String>> fresh = () -> Stream.of("a", "b", "c");
+        System.out.println(fresh.get().map(String::toUpperCase).toList()); // [A, B, C]
+        System.out.println(fresh.get().count());                            // 3
+    }
+}`,
+      dry: { head: ['line', 'stream state', 'output'], rows: [['Stream.of', 's: fresh', '–'], ['s.map(...)', 's: <b>linked</b>, upper: fresh', '–'], ['upper.toList()', 'upper: consumed', '[A, B, C]'], ['s.count()', 's already linked', '<span class="c-r">IllegalStateException</span>']] },
+      complexity: `<p>O(N) per traversal; creating a new stream is cheap.</p>`,
+      followUps: ['Does <code>Iterable.forEach</code> have the same restriction? (no — each call makes a new iterator)', 'What does <code>stream.iterator()</code> do to the stream?']
+    }
+  });
+
+  practice.push({
+    title: 'Clean Name List to a Single String', level: 'Easy', tags: ['filter', 'map', 'joining'], companies: ['Zoho', 'Freshworks'],
+    statement: `<p>Given a <code>List&lt;String&gt;</code> of names that may contain <code>null</code>, empty or blank entries and extra spaces, return one string: the cleaned names (trimmed, upper-case) in original order, separated by <code>", "</code> and wrapped in square brackets. If nothing is left, return <code>"[]"</code>.</p>`,
+    constraints: `0 ≤ N ≤ 10<sup>5</sup>. The input list itself may contain nulls (use <code>Arrays.asList</code> to build such a list).`,
+    example: `<p>Input: ["  ana ", null, "", "bo", "   "] → Output: ${H.c('g', '"[ANA, BO]"')}</p>`,
+    brute: { why: `<p>A loop with a <code>StringBuilder</code> and a "first element?" flag to place commas correctly. It works but the comma logic is the classic off-by-one source; <code>Collectors.joining</code> handles separators, prefix and suffix (including the empty case) for you.</p>`, code: `String clean(List<String> names) {
+    StringBuilder sb = new StringBuilder("[");
+    boolean first = true;
+    for (String n : names) {
+        if (n == null || n.isBlank()) continue;
+        if (!first) sb.append(", ");
+        sb.append(n.strip().toUpperCase());
+        first = false;
+    }
+    return sb.append("]").toString();
+}` },
+    mcq: { q: 'What does <code>Stream.&lt;String&gt;empty().collect(Collectors.joining(", ", "[", "]"))</code> return?', options: ['<code>"[]"</code>', '<code>""</code>', '<code>null</code>', 'It throws NoSuchElementException'], answer: 0, explain: 'joining always adds the prefix and suffix, even for zero elements.' },
+    hints: [`<p>Hint 1: drop the bad entries first: <code>filter(Objects::nonNull)</code>, then <code>filter(s -&gt; !s.isBlank())</code>.</p>`, `<p>Hint 2: <code>map(String::strip)</code> then <code>map(String::toUpperCase)</code>.</p>`, `<p>Hint 3: finish with <code>Collectors.joining(", ", "[", "]")</code> — it handles the empty case.</p>`],
+    solution: {
+      approach: `<p>Filter out nulls and blanks, normalise each name, and let <code>joining</code> handle separators and brackets.</p>`,
+      code: `class CleanNames {
+    static String clean(List<String> names) {
+        return names.stream()
+                    .filter(Objects::nonNull)
+                    .filter(s -> !s.isBlank())
+                    .map(String::strip)
+                    .map(String::toUpperCase)
+                    .collect(Collectors.joining(", ", "[", "]"));
+    }
+
+    public static void main(String[] args) {
+        System.out.println(clean(Arrays.asList("  ana ", null, "", "bo", "   ")));   // [ANA, BO]
+        System.out.println(clean(Arrays.asList(null, " ")));                       // []
+    }
+}`,
+      dry: { head: ['element', 'nonNull', 'not blank', 'strip + upper', 'joined so far'], rows: [['"  ana "', '✔', '✔', 'ANA', '[ANA'], ['null', '✘', '–', '–', '[ANA'], ['""', '✔', '✘', '–', '[ANA'], ['"bo"', '✔', '✔', 'BO', '[ANA, BO'], ['"   "', '✔', '✘', '–', '<span class="c-g">[ANA, BO]</span>']] },
+      complexity: `<p>O(total characters) time; joining uses one StringBuilder internally.</p>`,
+      followUps: ['Also remove duplicates while keeping the first occurrence', 'Sort case-insensitively before joining']
+    }
+  });
+
+  practice.push({
+    title: 'Predict the Output: Primitive Stream Traps', level: 'Easy', tags: ['predict output', 'IntStream', 'chars', 'boxing'], companies: ['Accenture', 'Wipro', 'SAP'],
+    statement: `<p>What does this print, line by line?</p><pre>int[] arr = {3, 1, 2};
+System.out.println(Stream.of(arr).count());
+System.out.println(Arrays.stream(arr).boxed().sorted().toList());
+"hi".chars().forEach(c -&gt; System.out.print(c + " "));
+System.out.println();
+System.out.println("hi".chars().mapToObj(c -&gt; String.valueOf((char) c)).collect(Collectors.joining("-")));
+System.out.println(IntStream.range(1, 4).sum() + IntStream.rangeClosed(1, 4).sum());</pre>`,
+    constraints: `Java 17+.`,
+    example: `<p>Clues: generics can't hold <code>int</code>; <code>chars()</code> returns an <code>IntStream</code>; <code>range</code> excludes its end, <code>rangeClosed</code> includes it.</p>`,
+    brute: { why: `<p>The "everything is a collection of letters and numbers" model predicts 3, [1, 2, 3], "h i", "h-i", 16 — and gets lines 1 and 3 wrong. <code>Stream.of(int[])</code> makes a stream of ONE array; <code>chars()</code> prints code numbers.</p>`, code: `class NaiveGuess {
+    public static void main(String[] args) {
+        System.out.println(3);          // guess for Stream.of(arr).count()   (wrong)
+        System.out.println("[1, 2, 3]");
+        System.out.println("h i ");     // guess for chars() printing          (wrong)
+        System.out.println("h-i");
+        System.out.println(16);
+    }
+}` },
+    mcq: { q: 'What is the type of <code>Stream.of(arr)</code> when <code>arr</code> is an <code>int[]</code>?', options: ['<code>Stream&lt;int[]&gt;</code>', '<code>IntStream</code>', '<code>Stream&lt;Integer&gt;</code>', 'compile error'], answer: 0, explain: '<code>Stream.of(T... values)</code> needs an object array to spread. <code>int[]</code> is a single object, so T = int[] and the stream has one element.' },
+    hints: [`<p>Hint 1: line 1 — how many <i>objects</i> did you pass to <code>Stream.of</code>?</p>`, `<p>Hint 2: line 3 — <code>'h'</code> is 104 and <code>'i'</code> is 105.</p>`, `<p>Hint 3: last line — range(1, 4) = 1+2+3 = 6; rangeClosed(1, 4) = 10; int + int = 16 (numbers, not string concatenation).</p>`],
+    solution: {
+      approach: `<p>Output:</p><pre>1
+[1, 2, 3]
+104 105
+h-i
+16</pre>`,
+      code: `class PrimitiveTraps {
+    public static void main(String[] args) {
+        int[] arr = {3, 1, 2};
+        System.out.println(Stream.of(arr).count());                         // 1
+        System.out.println(Arrays.stream(arr).boxed().sorted().toList());   // [1, 2, 3]
+        "hi".chars().forEach(c -> System.out.print(c + " "));              // 104 105
+        System.out.println();
+        System.out.println("hi".chars().mapToObj(c -> String.valueOf((char) c))
+                                       .collect(Collectors.joining("-"))); // h-i
+        System.out.println(IntStream.range(1, 4).sum() + IntStream.rangeClosed(1, 4).sum()); // 16
+    }
+}`,
+      dry: { head: ['line', 'key fact', 'prints'], rows: [['1', 'Stream&lt;int[]&gt; with one element', '1'], ['2', 'Arrays.stream → IntStream → boxed', '[1, 2, 3]'], ['3', 'chars() gives ints', '104 105'], ['4', 'cast back to char', 'h-i'], ['5', '6 + 10', '16']] },
+      complexity: `<p>Trivial; the point is the types.</p>`,
+      followUps: ['What does <code>Stream.of(new Integer[]{3, 1, 2}).count()</code> print? (3)', 'How do you stream the emoji in "hi😀" correctly? (<code>codePoints()</code>)']
+    }
+  });
+
+  /* ======================================================================
+     PRACTICE — Medium
+     ====================================================================== */
+  practice.push({
+    title: 'Departments Ranked by Average Salary', level: 'Medium', tags: ['groupingBy', 'averagingDouble', 'sorting entries'], companies: ['Amazon', 'Deloitte', 'Cognizant'],
+    statement: `<p>Given <code>List&lt;Emp&gt;</code> where <code>Emp(String name, String dept, double salary)</code>, return a list of strings <code>"dept=avg"</code> for every department, ordered by <b>average salary descending</b>, ties broken by <b>department name ascending</b>. Format the average with one decimal place.</p>`,
+    constraints: `1 ≤ N ≤ 10<sup>6</sup>; salaries are non-negative.`,
+    example: `<p>Asha Eng 120, Ben Eng 95, Chen Ops 70, Dia Sales 80, Eli Ops 75</p><p>Averages: Eng 107.5, Sales 80.0, Ops 72.5 → ${H.c('g', '[Eng=107.5, Sales=80.0, Ops=72.5]')}</p>`,
+    brute: { why: `<p>Collect department names, then for each department loop over all employees again to compute its average: O(D × N). With 10<sup>6</sup> employees and 10<sup>3</sup> departments that is 10<sup>9</sup> steps. One grouping pass does it in O(N).</p>`, code: `record Emp(String name, String dept, double salary) {}
+
+class BruteAvg {
+    static List<String> ranked(List<Emp> emps) {
+        Set<String> depts = new TreeSet<>();
+        for (Emp e : emps) depts.add(e.dept());
+        List<String> out = new ArrayList<>();
+        List<double[]> avgs = new ArrayList<>();
+        for (String d : depts) {                        // D passes over all N employees
+            double sum = 0; int cnt = 0;
+            for (Emp e : emps) if (e.dept().equals(d)) { sum += e.salary(); cnt++; }
+            out.add(d);
+            avgs.add(new double[]{sum / cnt});
+        }
+        List<Integer> idx = new ArrayList<>();
+        for (int i = 0; i < out.size(); i++) idx.add(i);
+        idx.sort((a, b) -> Double.compare(avgs.get(b)[0], avgs.get(a)[0]));  // stable: names stay sorted on ties
+        List<String> res = new ArrayList<>();
+        for (int i : idx) res.add(out.get(i) + "=" + String.format("%.1f", avgs.get(i)[0]));
+        return res;
+    }
+}` },
+    mcq: { q: 'Which downstream collector computes the per-department average directly?', options: ['<code>Collectors.averagingDouble(Emp::salary)</code>', '<code>Collectors.counting()</code>', '<code>Collectors.reducing(0.0, Double::sum)</code>', '<code>Collectors.summingDouble(Emp::salary)</code>'], answer: 0, explain: 'averagingDouble keeps a running sum and count per bucket and divides at the end (finisher). summing gives totals; counting gives counts.' },
+    hints: [`<p>Hint 1: "average per department" = <code>groupingBy(Emp::dept, averagingDouble(Emp::salary))</code>.</p>`, `<p>Hint 2: stream the resulting map's <code>entrySet()</code> and sort with <code>comparingByValue</code> reversed, then <code>comparingByKey</code>.</p>`, `<p>Hint 3: format with <code>String.format("%.1f", value)</code> — note <code>%.1f</code> uses the default locale; pass <code>Locale.ROOT</code> to guarantee a dot.</p>`],
+    solution: {
+      approach: `<p>One pass to group and average, then sort the small entry set.</p>`,
+      code: `record Emp(String name, String dept, double salary) {}
+
+class RankedDepts {
+    static List<String> ranked(List<Emp> emps) {
+        Map<String, Double> avg = emps.stream()
+            .collect(Collectors.groupingBy(Emp::dept, Collectors.averagingDouble(Emp::salary)));
+        return avg.entrySet().stream()
+            .sorted(Map.Entry.<String, Double>comparingByValue().reversed()
+                             .thenComparing(Map.Entry.comparingByKey()))
+            .map(e -> e.getKey() + "=" + String.format(Locale.ROOT, "%.1f", e.getValue()))
+            .toList();
+    }
+
+    public static void main(String[] args) {
+        System.out.println(ranked(List.of(new Emp("Asha", "Eng", 120), new Emp("Ben", "Eng", 95),
+            new Emp("Chen", "Ops", 70), new Emp("Dia", "Sales", 80), new Emp("Eli", "Ops", 75))));
+        // [Eng=107.5, Sales=80.0, Ops=72.5]
+    }
+}`,
+      dry: { head: ['bucket', 'sum', 'count', 'average'], rows: [['Eng', '215', '2', '107.5'], ['Ops', '145', '2', '72.5'], ['Sales', '80', '1', '80.0'], ['sorted', '–', '–', '<span class="c-g">Eng, Sales, Ops</span>']] },
+      complexity: `<p>O(N + D log D) time, O(D) space.</p>`,
+      followUps: ['Only include departments with at least 3 employees (<code>collectingAndThen</code> or filter the entries using a count map)', 'Return the median instead of the average']
+    }
+  });
+
+  practice.push({
+    title: 'Predict the Output: orElse vs orElseGet vs or', level: 'Medium', tags: ['predict output', 'Optional', 'eager vs lazy'], companies: ['Goldman Sachs', 'Barclays'],
+    statement: `<p>What does <code>main</code> print?</p><pre>static int calls = 0;
+static String make(String tag) { calls++; System.out.println("make " + tag); return tag; }
+
+Optional&lt;String&gt; a = Optional.of("A");
+Optional&lt;String&gt; e = Optional.empty();
+System.out.println(a.orElse(make("x")));
+System.out.println(a.orElseGet(() -&gt; make("y")));
+System.out.println(e.orElse(make("z")));
+System.out.println(e.orElseGet(() -&gt; make("w")));
+System.out.println(a.map(s -&gt; s + "!").or(() -&gt; Optional.of(make("v"))).get());
+System.out.println("calls=" + calls);</pre>`,
+    constraints: `Java 11+.`,
+    example: `<p>Clue: a method <b>argument</b> is always evaluated before the method runs; a <b>lambda</b> argument is just an object until someone calls it.</p>`,
+    brute: { why: `<p>The tempting model "the fallback only runs if needed" is true only for the Supplier-based methods. Treating <code>orElse(make("x"))</code> as lazy predicts no "make x" line and calls=2 — wrong.</p>`, code: `class WrongModel {
+    public static void main(String[] args) {
+        // Belief: fallbacks only run when the Optional is empty
+        System.out.println("A");
+        System.out.println("A");
+        System.out.println("make z");
+        System.out.println("z");
+        System.out.println("make w");
+        System.out.println("w");
+        System.out.println("A!");
+        System.out.println("calls=2");   // wrong: orElse(make("x")) also ran
+    }
+}` },
+    mcq: { q: 'How many times is <code>make</code> called in total?', options: ['3 (x, z, w)', '2 (z, w)', '4 (x, y, z, w)', '5 (all of them)'], answer: 0, explain: '<code>orElse(make("x"))</code> evaluates its argument eagerly (x). The Supplier versions run only for the empty Optional (w). <code>or</code> takes a Supplier too and <code>a</code> is present, so v never runs. And z runs because e is empty — and it is eager anyway.' },
+    hints: [`<p>Hint 1: Java evaluates <code>make("x")</code> before calling <code>orElse</code>, even though <code>a</code> has a value.</p>`, `<p>Hint 2: <code>orElseGet</code> and <code>or</code> take Suppliers — only invoked when the Optional is empty.</p>`, `<p>Hint 3: so "make" lines appear for x, z and w only. The order of printing: "make x" comes before the first "A".</p>`],
+    solution: {
+      approach: `<p>Output:</p><pre>make x
+A
+A
+make z
+z
+make w
+w
+A!
+calls=3</pre>`,
+      code: `class OrElsePredict {
+    static int calls = 0;
+
+    static String make(String tag) {
+        calls++;
+        System.out.println("make " + tag);
+        return tag;
+    }
+
+    public static void main(String[] args) {
+        Optional<String> a = Optional.of("A");
+        Optional<String> e = Optional.empty();
+        System.out.println(a.orElse(make("x")));                // make x, A   (eager!)
+        System.out.println(a.orElseGet(() -> make("y")));       // A           (lazy, not called)
+        System.out.println(e.orElse(make("z")));                // make z, z
+        System.out.println(e.orElseGet(() -> make("w")));       // make w, w
+        System.out.println(a.map(s -> s + "!").or(() -> Optional.of(make("v"))).get()); // A!
+        System.out.println("calls=" + calls);                   // calls=3
+    }
+}`,
+      dry: { head: ['line', 'Optional', 'fallback evaluated?', 'prints'], rows: [['orElse(make x)', 'present', '<span class="c-r">yes (eager)</span>', 'make x, A'], ['orElseGet(make y)', 'present', 'no', 'A'], ['orElse(make z)', 'empty', 'yes', 'make z, z'], ['orElseGet(make w)', 'empty', 'yes', 'make w, w'], ['or(make v)', 'present', 'no', 'A!']] },
+      complexity: `<p>O(1). The lesson: side effects in <code>orElse</code> arguments always happen.</p>`,
+      followUps: ['Rewrite a repository call <code>findById(id).orElse(repo.save(new User()))</code> correctly', 'Is <code>orElse(null)</code> legal? When is it useful?']
+    }
+  });
+
+  practice.push({
+    title: 'Second Highest Distinct Salary', level: 'Medium', tags: ['distinct', 'sorted', 'skip', 'Optional'], companies: ['Amazon', 'Adobe', 'LinkedIn'],
+    statement: `<p>Return the second highest <b>distinct</b> salary from a list as an <code>Optional&lt;Integer&gt;</code>. Return <code>Optional.empty()</code> if it doesn't exist. (The Java twin of the famous SQL question.)</p>`,
+    constraints: `0 ≤ N ≤ 10<sup>6</sup>; salaries fit in int.`,
+    example: `<p>${H.arr([100, 300, 300, 200], { hl: { 3: 'g' } })} → ${H.c('g', 'Optional[200]')} (300 is highest; the duplicate 300 must not count as "second").</p><p>[5, 5] → Optional.empty</p>`,
+    brute: { why: `<p>Sorting the whole list and then picking index 1 ignores duplicates ([300, 300] → 300, wrong) and needs bounds checks. Correct manual versions track top-two variables with tricky equality cases.</p>`, code: `Optional<Integer> secondHighest(List<Integer> s) {
+    List<Integer> copy = new ArrayList<>(s);
+    copy.sort(Collections.reverseOrder());
+    for (int i = 1; i < copy.size(); i++)
+        if (!copy.get(i).equals(copy.get(0))) return Optional.of(copy.get(i));
+    return Optional.empty();
+}` },
+    mcq: { q: 'Which pipeline returns the second highest distinct value?', options: ['<code>distinct().sorted(reverseOrder()).skip(1).findFirst()</code>', '<code>sorted(reverseOrder()).skip(1).findFirst()</code>', '<code>max(naturalOrder()).skip(1)</code>', '<code>distinct().sorted().skip(1).findFirst()</code>'], answer: 0, explain: 'Without distinct, duplicates of the max occupy the second position. Ascending sort would return the second LOWEST. max returns an Optional, which has no skip.' },
+    hints: [`<p>Hint 1: remove duplicates first, then order high → low.</p>`, `<p>Hint 2: <code>skip(1)</code> drops the highest; <code>findFirst()</code> returns an Optional — empty if nothing is left.</p>`, `<p>Hint 3: for O(N) with no sorting: <code>TreeSet</code> of size ≤ 2, or two variables. The stream version is O(N log N) but clear.</p>`],
+    solution: {
+      approach: `<p>distinct → sort descending → skip one → findFirst. The Optional naturally represents "no second value".</p>`,
+      code: `class SecondHighest {
+    static Optional<Integer> secondHighest(List<Integer> salaries) {
+        return salaries.stream()
+                       .distinct()
+                       .sorted(Comparator.reverseOrder())
+                       .skip(1)
+                       .findFirst();
+    }
+
+    public static void main(String[] args) {
+        System.out.println(secondHighest(List.of(100, 300, 300, 200)));  // Optional[200]
+        System.out.println(secondHighest(List.of(5, 5)));                // Optional.empty
+        System.out.println(secondHighest(List.of()).orElse(-1));         // -1
+    }
+}`,
+      dry: { head: ['stage', 'elements'], rows: [['source', '100 300 300 200'], ['distinct', '100 300 200'], ['sorted desc', '300 200 100'], ['skip 1', '200 100'], ['findFirst', '<span class="c-g">Optional[200]</span>']] },
+      complexity: `<p>O(N log N) time, O(N) space. O(N) alternative: keep the top two distinct values in a single pass.</p>`,
+      followUps: ['Generalise to the N-th highest distinct salary', 'Return the employees who earn the second highest salary']
+    }
+  });
+
+  practice.push({
+    title: 'First Non-Repeating Character', level: 'Medium', tags: ['chars', 'groupingBy', 'LinkedHashMap', 'Optional'], companies: ['Amazon', 'Microsoft', 'Goldman Sachs'],
+    statement: `<p>Return the first character in a string that appears exactly once, as <code>Optional&lt;Character&gt;</code>. Use streams: frequencies must be collected in <b>first-seen order</b>.</p>`,
+    constraints: `0 ≤ length ≤ 10<sup>5</sup>; case-sensitive ('a' ≠ 'A').`,
+    example: `<p>"swiss" → counts ${H.kv([['s', 3], ['w', 1], ['i', 1]])} → first with count 1: ${H.c('g', "'w'")}</p><p>"aabb" → Optional.empty</p>`,
+    brute: { why: `<p>For each position, scan the whole string to count that character: O(N²). For 10<sup>5</sup> characters that is 10<sup>10</sup> steps. Counting once (O(N)) and then scanning in order fixes it.</p>`, code: `Optional<Character> firstUnique(String s) {
+    for (int i = 0; i < s.length(); i++) {
+        int count = 0;
+        for (int j = 0; j < s.length(); j++)        // rescans everything
+            if (s.charAt(j) == s.charAt(i)) count++;
+        if (count == 1) return Optional.of(s.charAt(i));
+    }
+    return Optional.empty();
+}` },
+    mcq: { q: 'Why pass <code>LinkedHashMap::new</code> to groupingBy here?', options: ['To keep keys in first-seen order so "first" is meaningful', 'To make counting faster', 'Because HashMap cannot hold Character keys', 'To sort characters alphabetically'], answer: 0, explain: 'HashMap iteration order depends on hash codes. LinkedHashMap preserves insertion order — the order characters first appeared.' },
+    hints: [`<p>Hint 1: count all characters first (one pass), then find the first one with count 1.</p>`, `<p>Hint 2: <code>s.chars().mapToObj(c -&gt; (char) c)</code> then <code>groupingBy(Function.identity(), LinkedHashMap::new, counting())</code>.</p>`, `<p>Hint 3: stream the entry set, <code>filter(e -&gt; e.getValue() == 1)</code>, <code>map(Map.Entry::getKey)</code>, <code>findFirst()</code>. Empty string → empty Optional.</p>`],
+    solution: {
+      approach: `<p>Two passes: an ordered frequency map, then the first entry with count 1.</p>`,
+      code: `class FirstUnique {
+    static Optional<Character> firstUnique(String s) {
+        Map<Character, Long> freq = s.chars()
+            .mapToObj(c -> (char) c)
+            .collect(Collectors.groupingBy(Function.identity(), LinkedHashMap::new, Collectors.counting()));
+        return freq.entrySet().stream()
+                   .filter(e -> e.getValue() == 1L)
+                   .map(Map.Entry::getKey)
+                   .findFirst();
+    }
+
+    public static void main(String[] args) {
+        System.out.println(firstUnique("swiss"));   // Optional[w]
+        System.out.println(firstUnique("aabb"));    // Optional.empty
+        System.out.println(firstUnique(""));        // Optional.empty
+    }
+}`,
+      dry: { head: ['char', 'count after pass 1'], rows: [['s', '1 → 2 → 3'], ['w', '1'], ['i', '1'], ['scan in order', 's(3) skip, <span class="c-g">w(1) → answer</span>']] },
+      complexity: `<p>O(N) time, O(Σ) space where Σ = number of distinct characters.</p>`,
+      followUps: ['Make it case-insensitive', 'Process an endless stream of characters and answer "first unique so far" after each one']
+    }
+  });
+
+  practice.push({
+    title: 'Count Primes vs Non-Primes with partitioningBy', level: 'Medium', tags: ['partitioningBy', 'IntStream', 'noneMatch'], companies: ['Infosys', 'Samsung'],
+    statement: `<p>For the numbers 1..n, return a <code>Map&lt;Boolean, Long&gt;</code> where <code>true</code> maps to how many are prime and <code>false</code> to how many are not. Both keys must always be present.</p>`,
+    constraints: `1 ≤ n ≤ 10<sup>5</sup>. 1 is not prime.`,
+    example: `<p>n = 20 → primes 2, 3, 5, 7, 11, 13, 17, 19 → ${H.c('g', '{false=12, true=8}')}</p>`,
+    brute: { why: `<p>Testing every divisor from 2 to x − 1 makes each prime test O(x), so the total is O(n²) ≈ 10<sup>10</sup> for n = 10<sup>5</sup>. Checking divisors only up to √x brings it to O(n√n) ≈ 3·10<sup>7</sup>; a sieve gives O(n log log n).</p>`, code: `Map<Boolean, Long> countPrimes(int n) {
+    long p = 0, np = 0;
+    for (int x = 1; x <= n; x++) {
+        boolean prime = x >= 2;
+        for (int d = 2; d < x && prime; d++)       // O(x) per number
+            if (x % d == 0) prime = false;
+        if (prime) p++; else np++;
+    }
+    Map<Boolean, Long> m = new HashMap<>();
+    m.put(true, p);
+    m.put(false, np);
+    return m;
+}` },
+    mcq: { q: 'What does <code>partitioningBy</code> return for an empty stream?', options: ['<code>{false=[], true=[]}</code> (both keys present)', 'An empty map <code>{}</code>', '<code>null</code>', 'It throws'], answer: 0, explain: 'partitioningBy always creates both partitions. groupingBy, by contrast, only creates keys it actually sees.' },
+    hints: [`<p>Hint 1: two buckets keyed by a yes/no question → <code>partitioningBy(predicate, downstream)</code>.</p>`, `<p>Hint 2: prime test with streams: <code>x &gt;= 2 &amp;&amp; IntStream.rangeClosed(2, (int) Math.sqrt(x)).noneMatch(d -&gt; x % d == 0)</code>; noneMatch short-circuits on the first divisor.</p>`, `<p>Hint 3: <code>IntStream.rangeClosed(1, n).boxed().collect(partitioningBy(Primes::isPrime, counting()))</code>.</p>`],
+    solution: {
+      approach: `<p>√x trial division expressed with <code>noneMatch</code> (short-circuits), then <code>partitioningBy</code> with <code>counting()</code>.</p>`,
+      code: `class PrimeSplit {
+    static boolean isPrime(int x) {
+        return x >= 2 && IntStream.rangeClosed(2, (int) Math.sqrt(x)).noneMatch(d -> x % d == 0);
+    }
+
+    static Map<Boolean, Long> countPrimes(int n) {
+        return IntStream.rangeClosed(1, n).boxed()
+                        .collect(Collectors.partitioningBy(PrimeSplit::isPrime, Collectors.counting()));
+    }
+
+    public static void main(String[] args) {
+        System.out.println(countPrimes(20));    // {false=12, true=8}
+        System.out.println(countPrimes(1));     // {false=1, true=0}
+    }
+}`,
+      dry: { head: ['x', 'divisors checked', 'prime?'], rows: [['1', '–', 'no (x &lt; 2)'], ['2', 'range(2..1) empty', 'yes'], ['9', '2, 3 → 3 divides', 'no'], ['19', '2, 3, 4', 'yes'], ['total', '–', '<span class="c-g">true=8, false=12</span>']] },
+      complexity: `<p>O(n√n) time, O(1) extra besides boxing. Sieve of Eratosthenes: O(n log log n) time, O(n) space.</p>`,
+      followUps: ['Return the primes themselves for the true bucket (<code>partitioningBy(isPrime)</code> with default toList)', 'Use a sieve with <code>BitSet</code> and stream its set bits (<code>bitSet.stream()</code>)']
+    }
+  });
+
+  practice.push({
+    title: 'Group Anagrams', level: 'Medium', tags: ['groupingBy', 'String keys', 'LinkedHashMap'], companies: ['Amazon', 'Facebook', 'Uber'],
+    statement: `<p>Group words that are anagrams of each other (same letters, different order). Return the groups in the order their first word appears; inside each group keep the input order. (LeetCode 49.)</p>`,
+    constraints: `1 ≤ N ≤ 10<sup>4</sup>, word length ≤ 100, lowercase letters.`,
+    example: `<p>["eat","tea","tan","ate","nat","bat"] → ${H.c('g', '[[eat, tea, ate], [tan, nat], [bat]]')}</p><p>The key for each word is its letters sorted: eat → "aet", tan → "ant", bat → "abt".</p>`,
+    brute: { why: `<p>Compare every pair of words by sorting both and checking equality: O(N² · L log L). With 10<sup>4</sup> words that's 10<sup>8</sup> comparisons, each sorting strings. A canonical key per word turns it into one grouping pass.</p>`, code: `List<List<String>> groupAnagrams(String[] words) {
+    List<List<String>> groups = new ArrayList<>();
+    boolean[] used = new boolean[words.length];
+    for (int i = 0; i < words.length; i++) {
+        if (used[i]) continue;
+        List<String> g = new ArrayList<>(List.of(words[i]));
+        char[] a = words[i].toCharArray(); Arrays.sort(a);
+        for (int j = i + 1; j < words.length; j++) {
+            char[] b = words[j].toCharArray(); Arrays.sort(b);   // re-sorted again and again
+            if (!used[j] && Arrays.equals(a, b)) { g.add(words[j]); used[j] = true; }
+        }
+        groups.add(g);
+    }
+    return groups;
+}` },
+    mcq: { q: 'What makes a good grouping key for anagrams?', options: ['The word\'s letters sorted, e.g. "eat" → "aet"', 'The word\'s length', 'The word\'s first letter', 'The word\'s hashCode'], answer: 0, explain: 'Anagrams contain exactly the same letters, so their sorted letters are identical. Length and first letter collide with non-anagrams; hashCode of the original word differs between anagrams.' },
+    hints: [`<p>Hint 1: give each word a canonical "signature" that is equal for all its anagrams.</p>`, `<p>Hint 2: signature = sorted characters: <code>char[] c = w.toCharArray(); Arrays.sort(c); new String(c)</code>.</p>`, `<p>Hint 3: <code>groupingBy(Anagrams::key, LinkedHashMap::new, toList())</code> then <code>new ArrayList&lt;&gt;(map.values())</code>. For long words a 26-count key is O(L) instead of O(L log L).</p>`],
+    solution: {
+      approach: `<p>One pass: compute a signature per word and bucket by it, keeping first-seen order with LinkedHashMap.</p>`,
+      code: `class Anagrams {
+    static String key(String w) {
+        char[] c = w.toCharArray();
+        Arrays.sort(c);
+        return new String(c);
+    }
+
+    static List<List<String>> groupAnagrams(String[] words) {
+        Map<String, List<String>> groups = Arrays.stream(words)
+            .collect(Collectors.groupingBy(Anagrams::key, LinkedHashMap::new, Collectors.toList()));
+        return new ArrayList<>(groups.values());
+    }
+
+    public static void main(String[] args) {
+        System.out.println(groupAnagrams(new String[]{"eat", "tea", "tan", "ate", "nat", "bat"}));
+        // [[eat, tea, ate], [tan, nat], [bat]]
+    }
+}`,
+      dry: { head: ['word', 'key', 'buckets after'], rows: [['eat', 'aet', '{aet=[eat]}'], ['tea', 'aet', '{aet=[eat, tea]}'], ['tan', 'ant', '{aet=[eat, tea], ant=[tan]}'], ['ate', 'aet', '{aet=[eat, tea, ate], ant=[tan]}'], ['nat', 'ant', '… ant=[tan, nat]'], ['bat', 'abt', '<span class="c-g">… abt=[bat]</span>']] },
+      complexity: `<p>O(N · L log L) time, O(N · L) space.</p>`,
+      followUps: ['Return only groups with at least 2 words', 'Use a frequency-count key to get O(N · L)']
+    }
+  });
+
+  practice.push({
+    title: 'Moving Averages Over a Price Series', level: 'Medium', tags: ['IntStream.range', 'prefix sums', 'mapToObj'], companies: ['Zerodha', 'Citadel', 'Bloomberg'],
+    statement: `<p>Given daily <code>int[] prices</code> and a window size <code>k</code>, return the list of averages of every contiguous window of size k (as <code>List&lt;Double&gt;</code>), in order. Use an index stream — no explicit loop for the output.</p>`,
+    constraints: `1 ≤ k ≤ N ≤ 10<sup>6</sup>; prices ≤ 10<sup>6</sup> (window sums need long).`,
+    example: `<p>prices ${H.arr([1, 3, 5, 7, 9])}, k = 3 → windows [1,3,5], [3,5,7], [5,7,9] → ${H.c('g', '[3.0, 5.0, 7.0]')}</p>`,
+    brute: { why: `<p>For each of the N − k + 1 windows, sum k elements: O(N·k). With N = 10<sup>6</sup> and k = 10<sup>5</sup> that is ~10<sup>11</sup> additions. A prefix-sum array answers each window in O(1).</p>`, code: `List<Double> movingAvg(int[] p, int k) {
+    return IntStream.rangeClosed(0, p.length - k)
+                    .mapToObj(i -> Arrays.stream(p, i, i + k).asLongStream().sum() / (double) k) // O(k) per window
+                    .toList();
+}` },
+    mcq: { q: 'With prefix sums <code>pre[i] = p[0] + … + p[i-1]</code>, the sum of window starting at i is…', options: ['<code>pre[i + k] - pre[i]</code>', '<code>pre[i + k - 1] - pre[i]</code>', '<code>pre[k] - pre[i]</code>', '<code>pre[i] - pre[i - k]</code> for every i ≥ 0'], answer: 0, explain: 'pre has N + 1 entries with pre[0] = 0, so elements i..i+k−1 sum to pre[i+k] − pre[i].' },
+    hints: [`<p>Hint 1: recomputing every window repeats almost all the work of the previous window.</p>`, `<p>Hint 2: build <code>long[] pre</code> of size N + 1 (a simple loop, or <code>Arrays.parallelPrefix</code> on a copy). Each window sum is a subtraction.</p>`, `<p>Hint 3: <code>IntStream.rangeClosed(0, n - k).mapToObj(i -&gt; (pre[i + k] - pre[i]) / (double) k).toList()</code>. Divide as double, not int.</p>`],
+    solution: {
+      approach: `<p>Prefix sums turn every window sum into O(1); an index stream produces the outputs in order.</p>`,
+      code: `class MovingAverage {
+    static List<Double> movingAvg(int[] p, int k) {
+        int n = p.length;
+        long[] pre = new long[n + 1];
+        for (int i = 0; i < n; i++) pre[i + 1] = pre[i] + p[i];      // prefix sums in long
+        return IntStream.rangeClosed(0, n - k)
+                        .mapToObj(i -> (pre[i + k] - pre[i]) / (double) k)
+                        .toList();
+    }
+
+    public static void main(String[] args) {
+        System.out.println(movingAvg(new int[]{1, 3, 5, 7, 9}, 3));   // [3.0, 5.0, 7.0]
+        System.out.println(movingAvg(new int[]{4}, 1));               // [4.0]
+    }
+}`,
+      dry: { head: ['i', 'pre[i]', 'window', 'pre[i+3] − pre[i]', 'avg'], rows: [['0', '0', '[1,3,5]', '9 − 0 = 9', '3.0'], ['1', '1', '[3,5,7]', '16 − 1 = 15', '5.0'], ['2', '4', '[5,7,9]', '25 − 4 = 21', '<span class="c-g">7.0</span>']] },
+      complexity: `<p>O(N) time, O(N) extra space for the prefix array.</p>`,
+      followUps: ['Return an exponential moving average instead (needs sequential state — is a stream still a good fit?)', 'Handle a live feed of prices with a fixed-size ArrayDeque']
+    }
+  });
+
+  /* ======================================================================
+     PRACTICE — Hard
+     ====================================================================== */
+  practice.push({
+    title: 'Predict the Output: flatMap + distinct + sorted + limit with peeks', level: 'Hard', tags: ['predict output', 'lazy evaluation', 'barrier', 'short-circuit'], companies: ['Morgan Stanley', 'Oracle', 'Google'],
+    statement: `<p>What does this print, in exact order?</p><pre>List&lt;List&lt;String&gt;&gt; data = List.of(List.of("b", "a"), List.of("c", "a"), List.of("d"));
+String r = data.stream()
+    .peek(l -&gt; System.out.println("list " + l))
+    .flatMap(List::stream)
+    .peek(x -&gt; System.out.println("item " + x))
+    .distinct()
+    .sorted()
+    .peek(x -&gt; System.out.println("sorted " + x))
+    .limit(2)
+    .collect(Collectors.joining(","));
+System.out.println(r);</pre>`,
+    constraints: `Sequential stream, Java 17+.`,
+    example: `<p>Clues: <code>sorted</code> is a barrier — nothing passes it until upstream is exhausted; <code>limit(2)</code> stops the sorted buffer from releasing more; the duplicate "a" is still <i>seen</i> by the peek before <code>distinct</code>.</p>`,
+    brute: { why: `<p>Two wrong models are common: (1) fully horizontal — all "list" lines, then all "item" lines, then all "sorted" lines for every element (4 of them); (2) fully vertical ignoring the barrier — "list [b, a]", "item b", "sorted b"… Both miss that the barrier collects everything first and that limit cancels the release after 2.</p>`, code: `class HorizontalGuess {
+    public static void main(String[] args) {
+        for (String l : List.of("[b, a]", "[c, a]", "[d]")) System.out.println("list " + l);
+        for (String x : List.of("b", "a", "c", "a", "d")) System.out.println("item " + x);
+        for (String x : List.of("a", "b", "c", "d")) System.out.println("sorted " + x);  // wrong: c and d never pass
+        System.out.println("a,b");
+    }
+}` },
+    mcq: { q: 'How many "sorted …" lines are printed?', options: ['2', '4', '5', '0'], answer: 0, explain: 'sorted releases elements one at a time and checks downstream cancellation before each. After "b" passes limit(2), the quota is full, so "c" and "d" are never released — and never peeked.' },
+    hints: [`<p>Hint 1: upstream of <code>sorted</code> runs vertically for every element: each list is peeked, flattened, each item peeked, then distinct either drops it or lets it into sorted's buffer.</p>`, `<p>Hint 2: after the source is exhausted, sorted's buffer is [a, b, c, d] (one "a" was dropped by distinct, but "item a" was printed twice).</p>`, `<p>Hint 3: sorted releases "a" (peek, limit 1/2), "b" (peek, limit 2/2 → cancel) and stops. Result "a,b".</p>`],
+    solution: {
+      approach: `<p>Output:</p><pre>list [b, a]
+item b
+item a
+list [c, a]
+item c
+item a
+list [d]
+item d
+sorted a
+sorted b
+a,b</pre>`,
+      code: `class BarrierPredict {
+    public static void main(String[] args) {
+        List<List<String>> data = List.of(List.of("b", "a"), List.of("c", "a"), List.of("d"));
+        String r = data.stream()
+            .peek(l -> System.out.println("list " + l))
+            .flatMap(List::stream)
+            .peek(x -> System.out.println("item " + x))
+            .distinct()
+            .sorted()
+            .peek(x -> System.out.println("sorted " + x))
+            .limit(2)
+            .collect(Collectors.joining(","));
+        System.out.println(r);
+    }
+}`,
+      dry: { head: ['phase', 'event', 'distinct set', 'sorted buffer'], rows: [
+        ['upstream', 'list [b, a] → item b', '{b}', '[b]'],
+        ['upstream', 'item a', '{b, a}', '[b, a]'],
+        ['upstream', 'list [c, a] → item c', '{b, a, c}', '[b, a, c]'],
+        ['upstream', 'item a (duplicate, dropped)', '{b, a, c}', '[b, a, c]'],
+        ['upstream', 'list [d] → item d', '{b, a, c, d}', '[b, a, c, d]'],
+        ['end()', 'sort → [a, b, c, d]', '–', 'release a → sorted a (1/2)'],
+        ['end()', 'release b → sorted b (2/2)', '–', '<span class="c-y">cancel: c, d never released</span>']
+      ] },
+      complexity: `<p>All 5 items flow to the barrier (O(N log N) sort), only 2 leave it.</p>`,
+      followUps: ['What prints if <code>sorted()</code> is removed?', 'What if <code>limit(2)</code> moves before <code>distinct()</code>?']
+    }
+  });
+
+  practice.push({
+    title: 'Write a Custom Top-K Collector', level: 'Hard', tags: ['Collector.of', 'PriorityQueue', 'generics', 'parallel-safe'], companies: ['Google', 'Netflix', 'Uber'],
+    statement: `<p>Implement <code>static &lt;T&gt; Collector&lt;T, ?, List&lt;T&gt;&gt; topK(int k, Comparator&lt;? super T&gt; cmp)</code> that collects the <b>k largest</b> elements (by <code>cmp</code>) in descending order, using <b>O(k)</b> memory — not by sorting the whole stream. It must work correctly with parallel streams.</p>`,
+    constraints: `1 ≤ k ≤ 10<sup>4</sup>, stream size up to 10<sup>8</sup>.`,
+    example: `<p><code>Stream.of(5, 1, 9, 3, 7, 9).collect(topK(3, Comparator.naturalOrder()))</code> → ${H.c('g', '[9, 9, 7]')}</p><p><code>Stream.of("pear", "fig", "banana").collect(topK(2, comparingInt(String::length)))</code> → [banana, pear]</p>`,
+    brute: { why: `<p><code>sorted(cmp.reversed()).limit(k)</code> is correct and short, but <code>sorted</code> buffers <b>all</b> N elements: O(N) memory and O(N log N) time. For 10<sup>8</sup> elements and k = 10 that's gigabytes for 10 results.</p>`, code: `class SortAll {
+    static <T> List<T> topK(Stream<T> s, int k, Comparator<? super T> cmp) {
+        Comparator<T> desc = (a, b) -> cmp.compare(b, a);
+        return s.sorted(desc).limit(k).toList();      // buffers every element
+    }
+}` },
+    mcq: { q: 'Which heap keeps the k LARGEST elements in O(k) memory?', options: ['A min-heap of size k: when it exceeds k, remove the smallest', 'A max-heap of all elements', 'A min-heap of all elements', 'A max-heap of size k: remove the largest when full'], answer: 0, explain: 'The min-heap root is the weakest of the current top k; any new element bigger than it replaces it. Removing the largest would throw away the best candidates.' },
+    hints: [`<p>Hint 1: the container (A) is a <code>PriorityQueue&lt;T&gt;</code> ordered by <code>cmp</code> (a min-heap w.r.t. cmp).</p>`, `<p>Hint 2: accumulator: <code>offer</code>, then <code>poll</code> if size &gt; k. Combiner (parallel): pour the smaller heap into the other with the same trimming. Finisher: drain into a list and sort descending.</p>`, `<p>Hint 3: <code>Collector.of(supplier, accumulator, combiner, finisher)</code>. Validate k ≥ 1. The finisher sorts only k items: O(k log k).</p>`],
+    solution: {
+      approach: `<p>Bounded min-heap per thread. Each element costs O(log k); merging two heaps costs O(k log k); the final sort O(k log k). Memory O(k) per thread.</p>`,
+      code: `class TopK {
+    static <T> Collector<T, ?, List<T>> topK(int k, Comparator<? super T> cmp) {
+        if (k < 1) throw new IllegalArgumentException("k must be >= 1");
+        return Collector.<T, PriorityQueue<T>, List<T>>of(
+            () -> new PriorityQueue<T>(cmp),                  // min-heap by cmp
+            (heap, x) -> {                                    // accumulator
+                heap.offer(x);
+                if (heap.size() > k) heap.poll();             // drop the weakest
+            },
+            (h1, h2) -> {                                     // combiner (parallel)
+                for (T x : h2) {
+                    h1.offer(x);
+                    if (h1.size() > k) h1.poll();
+                }
+                return h1;
+            },
+            heap -> {                                         // finisher
+                List<T> out = new ArrayList<>(heap);
+                out.sort(cmp.reversed());
+                return out;
+            });
+    }
+
+    public static void main(String[] args) {
+        System.out.println(Stream.of(5, 1, 9, 3, 7, 9).collect(topK(3, Comparator.<Integer>naturalOrder())));  // [9, 9, 7]
+        System.out.println(Stream.of("pear", "fig", "banana").collect(topK(2, Comparator.comparingInt(String::length)))); // [banana, pear]
+        System.out.println(IntStream.rangeClosed(1, 1_000_000).boxed().parallel()
+                                    .collect(topK(3, Comparator.<Integer>naturalOrder())));                 // [1000000, 999999, 999998]
+    }
+}`,
+      dry: { head: ['element', 'heap after offer', 'size &gt; 3?', 'heap after poll'], rows: [['5', '[5]', 'no', '[5]'], ['1', '[1, 5]', 'no', '[1, 5]'], ['9', '[1, 5, 9]', 'no', '[1, 5, 9]'], ['3', '[1, 3, 5, 9]', 'yes', '[3, 5, 9]'], ['7', '[3, 5, 7, 9]', 'yes', '[5, 7, 9]'], ['9', '[5, 7, 9, 9]', 'yes', '[7, 9, 9]'], ['finish', 'sort desc', '–', '<span class="c-g">[9, 9, 7]</span>']] },
+      complexity: `<p>O(N log k) time, O(k) space per thread (+ O(P·k log k) to combine P partial heaps).</p>`,
+      followUps: ['Make ties deterministic (e.g. by insertion order) — what extra state do you need?', 'Return a <code>Collector</code> that yields both top-k and bottom-k using <code>teeing</code>']
+    }
+  });
+
+  practice.push({
+    title: 'Build Your Own Lazy Stream', level: 'Hard', tags: ['laziness', 'iterators', 'generics', 'design'], companies: ['Google', 'Atlassian', 'JetBrains'],
+    statement: `<p>Implement a tiny lazy pipeline class <code>Lazy&lt;T&gt;</code> with <code>of(Iterable)</code>, <code>iterate(seed, next)</code>, <code>map</code>, <code>filter</code>, <code>limit</code> and a terminal <code>toList()</code>. Requirements: (1) nothing runs until <code>toList()</code>; (2) elements are processed one at a time; (3) an infinite source followed by <code>limit</code> must terminate; (4) a pipeline can be run more than once (each run starts fresh). Prove laziness by counting how many times the mapper runs.</p>`,
+    constraints: `No java.util.stream inside the implementation. Generic and type-safe.`,
+    example: `<p><code>Lazy.iterate(1, x -&gt; x + 1).map(square).filter(even).limit(3).toList()</code> → ${H.c('g', '[4, 16, 36]')} with the mapper called exactly <b>6</b> times (for 1..6).</p>`,
+    brute: { why: `<p>An eager design where each operation immediately builds a new <code>ArrayList</code> is simple, but <code>map</code> on an infinite source never returns, and every stage materialises a full intermediate list (O(N) memory per stage). Laziness requires each stage to wrap the previous stage's <b>iterator</b> instead.</p>`, code: `class EagerList<T> {
+    final List<T> items;
+    EagerList(List<T> items) { this.items = items; }
+
+    <R> EagerList<R> map(Function<? super T, ? extends R> f) {
+        List<R> out = new ArrayList<>();
+        for (T t : items) out.add(f.apply(t));          // runs NOW over everything
+        return new EagerList<>(out);
+    }
+
+    EagerList<T> filter(Predicate<? super T> p) {
+        List<T> out = new ArrayList<>();
+        for (T t : items) if (p.test(t)) out.add(t);
+        return new EagerList<>(out);
+    }
+
+    EagerList<T> limit(int n) { return new EagerList<>(new ArrayList<>(items.subList(0, Math.min(n, items.size())))); }
+}` },
+    mcq: { q: 'Why does <code>Lazy</code> store a <code>Supplier&lt;Iterator&lt;T&gt;&gt;</code> instead of an <code>Iterator&lt;T&gt;</code>?', options: ['So each terminal run gets a fresh iterator chain (re-runnable, no shared state)', 'Because iterators cannot be generic', 'To make it thread-safe automatically', 'Suppliers are faster than iterators'], answer: 0, explain: 'An Iterator is single-use. Storing a recipe that builds a new iterator chain on demand keeps the pipeline lazy AND re-runnable — Java streams chose single-use instead.' },
+    hints: [`<p>Hint 1: each stage = "given the upstream iterator, return a new iterator that does my job on demand". Nothing happens until someone calls <code>hasNext()/next()</code>.</p>`, `<p>Hint 2: <code>filter</code>'s <code>hasNext()</code> must look ahead: pull from upstream until a match is found and buffer it. <code>limit</code>'s <code>hasNext()</code> must check its counter <b>before</b> asking upstream (otherwise it pulls one extra element from an infinite source).</p>`, `<p>Hint 3: keep a <code>Supplier&lt;Iterator&lt;T&gt;&gt;</code> per stage; <code>toList()</code> calls <code>get()</code> once and drains the iterator.</p>`],
+    solution: {
+      approach: `<p>Pull-based laziness with iterator decorators. Each operator returns a new <code>Lazy</code> holding a recipe that wraps the upstream iterator. The terminal operation builds the chain and drains it, so elements are pulled one at a time through every stage — the same observable behaviour as Java's push-based Sink chain.</p>`,
+      code: `final class Lazy<T> {
+    private final Supplier<Iterator<T>> src;
+    private Lazy(Supplier<Iterator<T>> src) { this.src = src; }
+
+    static <T> Lazy<T> of(Iterable<T> items) { return new Lazy<>(items::iterator); }
+
+    static <T> Lazy<T> iterate(T seed, UnaryOperator<T> next) {
+        return new Lazy<>(() -> new Iterator<T>() {
+            T cur = seed;
+            public boolean hasNext() { return true; }           // infinite
+            public T next() { T r = cur; cur = next.apply(cur); return r; }
+        });
+    }
+
+    <R> Lazy<R> map(Function<? super T, ? extends R> f) {
+        return new Lazy<>(() -> {
+            Iterator<T> up = src.get();
+            return new Iterator<R>() {
+                public boolean hasNext() { return up.hasNext(); }
+                public R next() { return f.apply(up.next()); }  // runs only when pulled
+            };
+        });
+    }
+
+    Lazy<T> filter(Predicate<? super T> p) {
+        return new Lazy<>(() -> {
+            Iterator<T> up = src.get();
+            return new Iterator<T>() {
+                T buffered;
+                boolean ready;
+                public boolean hasNext() {
+                    while (!ready && up.hasNext()) {             // look ahead for the next match
+                        T x = up.next();
+                        if (p.test(x)) { buffered = x; ready = true; }
+                    }
+                    return ready;
+                }
+                public T next() {
+                    if (!hasNext()) throw new NoSuchElementException();
+                    ready = false;
+                    return buffered;
+                }
+            };
+        });
+    }
+
+    Lazy<T> limit(long n) {
+        return new Lazy<>(() -> {
+            Iterator<T> up = src.get();
+            return new Iterator<T>() {
+                long left = n;
+                public boolean hasNext() { return left > 0 && up.hasNext(); } // check quota FIRST
+                public T next() {
+                    if (!hasNext()) throw new NoSuchElementException();
+                    left--;
+                    return up.next();
+                }
+            };
+        });
+    }
+
+    List<T> toList() {                                           // terminal: builds and drains the chain
+        List<T> out = new ArrayList<>();
+        Iterator<T> it = src.get();
+        while (it.hasNext()) out.add(it.next());
+        return out;
+    }
+}
+
+class LazyDemo2 {
+    static int mapperCalls = 0;
+
+    public static void main(String[] args) {
+        Lazy<Integer> pipeline = Lazy.iterate(1, x -> x + 1)
+            .map(x -> { mapperCalls++; return x * x; })
+            .filter(x -> x % 2 == 0)
+            .limit(3);
+        System.out.println("built, mapper calls = " + mapperCalls);   // 0  (nothing ran)
+        System.out.println(pipeline.toList());                        // [4, 16, 36]
+        System.out.println("mapper calls = " + mapperCalls);          // 6
+        System.out.println(pipeline.toList());                        // [4, 16, 36] again (re-runnable)
+        System.out.println(Lazy.of(List.of("a", "bb", "ccc")).map(String::length).toList()); // [1, 2, 3]
+    }
+}`,
+      dry: { head: ['pull #', 'iterate gives', 'map (x²)', 'filter even', 'limit left'], rows: [['1', '1', '1', '✘', '3'], ['2', '2', '4', '✔ emit', '2'], ['3', '3', '9', '✘', '2'], ['4', '4', '16', '✔ emit', '1'], ['5', '5', '25', '✘', '1'], ['6', '6', '36', '✔ emit', '0 → stop']] },
+      complexity: `<p>Each element costs O(1) per stage; memory O(1) per stage (no intermediate lists). Total work is proportional to elements actually pulled.</p>`,
+      followUps: ['Add <code>flatMap</code> (hint: keep a "current inner iterator")', 'Add <code>sorted()</code> — why must it buffer everything, and how does that break infinite sources?']
+    }
+  });
+
+  practice.push({
+    title: 'Two-Level Sales Report with Nested groupingBy', level: 'Hard', tags: ['nested groupingBy', 'summingDouble', 'TreeMap', 'formatting'], companies: ['Walmart', 'Swiggy', 'Salesforce'],
+    statement: `<p>Given <code>List&lt;Sale&gt;</code> with <code>Sale(String city, String category, double amount)</code>, produce one line per city (cities sorted A→Z): <code>"City: cat1=total1, cat2=total2 | top=catX"</code>, where categories inside a city are sorted A→Z, totals use one decimal, and <code>top</code> is the category with the highest total (ties → alphabetically first). Do it with streams/collectors.</p>`,
+    constraints: `Up to 10<sup>6</sup> sales, ≤ 10<sup>3</sup> cities, ≤ 50 categories per city.`,
+    example: `<p>Sales: (Pune, food, 20), (Pune, toys, 12.5), (Delhi, food, 5), (Pune, food, 10), (Delhi, books, 8)</p><p>Output:</p><pre>Delhi: books=8.0, food=5.0 | top=books
+Pune: food=30.0, toys=12.5 | top=food</pre>`,
+    brute: { why: `<p>Manual nested maps with <code>computeIfAbsent</code> and <code>merge</code> work in O(N), but the code mixes aggregation, sorting and formatting, and it's easy to forget sorted maps or tie-breaking. Re-scanning all sales per (city, category) pair would be O(N · C · K).</p>`, code: `record Sale(String city, String category, double amount) {}
+
+class ManualReport {
+    static List<String> report(List<Sale> sales) {
+        Map<String, Map<String, Double>> m = new TreeMap<>();
+        for (Sale s : sales)
+            m.computeIfAbsent(s.city(), c -> new TreeMap<>()).merge(s.category(), s.amount(), Double::sum);
+        List<String> out = new ArrayList<>();
+        for (Map.Entry<String, Map<String, Double>> e : m.entrySet()) {
+            StringBuilder sb = new StringBuilder(e.getKey() + ": ");
+            String top = null; double best = -1;
+            boolean first = true;
+            for (Map.Entry<String, Double> c : e.getValue().entrySet()) {
+                if (!first) sb.append(", ");
+                sb.append(c.getKey()).append('=').append(String.format(Locale.ROOT, "%.1f", c.getValue()));
+                if (c.getValue() > best) { best = c.getValue(); top = c.getKey(); }   // ties keep alphabetical first
+                first = false;
+            }
+            out.add(sb.append(" | top=").append(top).toString());
+        }
+        return out;
+    }
+}` },
+    mcq: { q: 'Which collector builds <code>Map&lt;String, Map&lt;String, Double&gt;&gt;</code> with BOTH levels sorted by key?', options: ['<code>groupingBy(Sale::city, TreeMap::new, groupingBy(Sale::category, TreeMap::new, summingDouble(Sale::amount)))</code>', '<code>groupingBy(Sale::city, groupingBy(Sale::category, summingDouble(Sale::amount)))</code>', '<code>toMap(Sale::city, Sale::amount, Double::sum)</code>', '<code>partitioningBy(Sale::city, summingDouble(Sale::amount))</code>'], answer: 0, explain: 'Nested groupingBy gives the two levels; passing TreeMap::new at each level sorts keys. The plain version uses HashMaps (unordered). toMap loses the category level; partitioningBy needs a boolean predicate.' },
+    hints: [`<p>Hint 1: two-level aggregation = a <code>groupingBy</code> whose downstream is another <code>groupingBy</code>, finishing with <code>summingDouble</code>.</p>`, `<p>Hint 2: pass <code>TreeMap::new</code> at both levels so iteration is already sorted.</p>`, `<p>Hint 3: per city, join <code>key=value</code> pairs with <code>joining(", ")</code>; pick the top with <code>entrySet().stream().max(...)</code>. Make the tie-break explicit: <code>comparingByValue().thenComparing(comparingByKey(reverseOrder()))</code> so the alphabetically-first category wins a tie (max picks the greatest, and a reversed key order makes "a" greater than "b").</p>`],
+    solution: {
+      approach: `<p>Aggregate with nested sorted groupingBy, then format each city with two small streams: one joining the category totals, one choosing the top category with an explicit tie-break.</p>`,
+      code: `record Sale(String city, String category, double amount) {}
+
+class SalesReport {
+    static List<String> report(List<Sale> sales) {
+        Map<String, Map<String, Double>> byCity = sales.stream()
+            .collect(Collectors.groupingBy(Sale::city, TreeMap::new,
+                     Collectors.groupingBy(Sale::category, TreeMap::new,
+                                           Collectors.summingDouble(Sale::amount))));
+
+        Comparator<Map.Entry<String, Double>> bestFirst =
+            Map.Entry.<String, Double>comparingByValue()
+                     .thenComparing(Map.Entry.comparingByKey(Comparator.reverseOrder())); // tie -> A..Z wins
+
+        return byCity.entrySet().stream()
+            .map(city -> {
+                String cats = city.getValue().entrySet().stream()
+                    .map(c -> c.getKey() + "=" + String.format(Locale.ROOT, "%.1f", c.getValue()))
+                    .collect(Collectors.joining(", "));
+                String top = city.getValue().entrySet().stream()
+                    .max(bestFirst).map(Map.Entry::getKey).orElse("-");
+                return city.getKey() + ": " + cats + " | top=" + top;
+            })
+            .toList();
+    }
+
+    public static void main(String[] args) {
+        report(List.of(new Sale("Pune", "food", 20), new Sale("Pune", "toys", 12.5),
+                       new Sale("Delhi", "food", 5), new Sale("Pune", "food", 10),
+                       new Sale("Delhi", "books", 8)))
+            .forEach(System.out::println);
+        // Delhi: books=8.0, food=5.0 | top=books
+        // Pune: food=30.0, toys=12.5 | top=food
+    }
+}`,
+      dry: { head: ['sale', 'byCity after'], rows: [['Pune food 20', '{Pune={food=20}}'], ['Pune toys 12.5', '{Pune={food=20, toys=12.5}}'], ['Delhi food 5', '{Delhi={food=5}, Pune={…}}'], ['Pune food 10', '… Pune={food=30, toys=12.5}'], ['Delhi books 8', '<span class="c-g">{Delhi={books=8, food=5}, Pune={food=30, toys=12.5}}</span>']] },
+      complexity: `<p>O(N log C) to aggregate into TreeMaps (C = keys per level) + O(cities × categories) to format. Memory O(cities × categories).</p>`,
+      followUps: ['Use <code>BigDecimal</code> for money (<code>reducing(BigDecimal.ZERO, Sale::amount, BigDecimal::add)</code>)', 'Run it in parallel — which map type and collector would you switch to?']
+    }
+  });
+
+  /* ======================================================================
+     QUIZ
+     ====================================================================== */
+  quiz.push(
+    { q: 'Which of these is a valid functional interface?', options: ['An interface with one abstract method plus three default methods', 'An interface with two abstract methods', 'An abstract class with one abstract method', 'Any interface annotated with <code>@FunctionalInterface</code>, whatever it contains'], answer: 0, explain: 'Only abstract methods count (default, static and public Object methods are excluded). Abstract classes can never be lambda targets, and the annotation only asks the compiler to check the rule — it cannot make an invalid interface valid.' },
+    { q: 'What does <code>Function&lt;Integer,Integer&gt; f = x -&gt; x + 1, g = x -&gt; x * 2;</code> then <code>f.compose(g).apply(3)</code> return?', options: ['7', '8', '6', '9'], answer: 0, explain: 'compose runs the argument first: f(g(3)) = f(6) = 7. andThen would be g(f(3)) = 8.' },
+    { q: 'Why does this fail to compile? <code>int n = 0; list.forEach(x -&gt; n++);</code>', options: ['Captured local variables must be effectively final', 'forEach cannot take a lambda', '<code>n++</code> is not an expression', 'Lambdas cannot access any outside variables'], answer: 0, explain: 'A lambda captures a copy of a local; modifying it is forbidden. Fields can be modified (the lambda captures <code>this</code>), but prefer <code>count()</code>/<code>sum()</code> anyway.' },
+    { q: '<code>String::compareToIgnoreCase</code> used as a <code>Comparator&lt;String&gt;</code> is which kind of method reference?', options: ['Unbound instance method reference', 'Static method reference', 'Bound instance method reference', 'Constructor reference'], answer: 0, explain: 'No specific receiver is given; the first parameter becomes the receiver: (a, b) -&gt; a.compareToIgnoreCase(b).' },
+    { q: 'What does this print? <code>Stream.of(1, 2, 3).map(x -&gt; { System.out.print(x); return x; });</code>', options: ['Nothing', '123', '1', 'It does not compile'], answer: 0, explain: 'There is no terminal operation, so the lazy pipeline never runs.' },
+    { q: 'What does this print? <code>Stream.of(1, 2, 3, 4).peek(System.out::print).filter(x -&gt; x &gt; 1).findFirst();</code>', options: ['12', '1234', '2', '1'], answer: 0, explain: 'Vertical processing: 1 is peeked and filtered out, 2 is peeked, passes and is found → stop. 3 and 4 are never pulled.' },
+    { q: 'What happens with <code>Stream.iterate(1, x -&gt; x + 1).sorted().limit(3).toList()</code>?', options: ['It never finishes (sorted waits for an end of an infinite stream)', '[1, 2, 3]', 'IllegalStateException', 'An empty list'], answer: 0, explain: 'sorted is a barrier and must consume all elements before emitting any; with an infinite source, limit after it can never help.' },
+    { q: 'What is <code>Stream.of(3, 1, 2).reduce(Integer::max)</code>?', options: ['<code>Optional[3]</code>', '<code>3</code>', '<code>Optional.empty</code>', '<code>[3]</code>'], answer: 0, explain: 'The one-argument reduce has no identity, so it returns an Optional (empty for an empty stream).' },
+    { q: 'Which call throws <code>IllegalStateException: Duplicate key</code>?', options: ['<code>Stream.of("a", "a").collect(toMap(s -&gt; s, s -&gt; 1))</code>', '<code>Stream.of("a", "a").collect(groupingBy(s -&gt; s))</code>', '<code>Stream.of("a", "a").collect(toMap(s -&gt; s, s -&gt; 1, Integer::sum))</code>', '<code>Stream.of("a", "a").distinct().toList()</code>'], answer: 0, explain: 'toMap without a merge function rejects duplicate keys. groupingBy collects all values per key, and the 3-argument toMap merges them.' },
+    { q: 'What does <code>Stream.of("apple", "avocado", "kiwi").collect(partitioningBy(s -&gt; s.startsWith("z")))</code> return?', options: ['<code>{false=[apple, avocado, kiwi], true=[]}</code>', '<code>{false=[apple, avocado, kiwi]}</code>', '<code>{}</code>', '<code>{true=[]}</code>'], answer: 0, explain: 'partitioningBy always contains both keys, even when one partition is empty.' },
+    { q: 'What does <code>Stream.of(List.of(1, 2), List.of(3)).flatMap(List::stream).count()</code> return?', options: ['3', '2', '1', '5'], answer: 0, explain: 'flatMap flattens the two lists into one stream of three integers.' },
+    { q: 'What does <code>"ab".chars().sum()</code> return?', options: ['195', '"ab"', '2', 'It does not compile'], answer: 0, explain: 'chars() is an IntStream of UTF-16 codes: 97 + 98 = 195.' },
+    { q: 'Which parallel reduction is guaranteed to equal the sequential result?', options: ['<code>reduce(0, Integer::sum)</code>', '<code>reduce(10, Integer::sum)</code>', '<code>reduce(0, (a, b) -&gt; a - b)</code>', '<code>forEach(x -&gt; total[0] += x)</code>'], answer: 0, explain: 'It needs a true identity (0 for +) and an associative operation. 10 is added once per chunk, subtraction is not associative, and forEach into a shared array is a data race.' },
+    { q: 'Which line runs <code>loadDefault()</code> even when <code>opt</code> holds a value?', options: ['<code>opt.orElse(loadDefault())</code>', '<code>opt.orElseGet(() -&gt; loadDefault())</code>', '<code>opt.orElseGet(this::loadDefault)</code>', '<code>opt.or(() -&gt; Optional.of(loadDefault()))</code>'], answer: 0, explain: 'A method argument is evaluated before the call. The others pass Suppliers, which run only when the Optional is empty.' },
+    { q: 'Which is considered an Optional anti-pattern?', options: ['A field declared as <code>private Optional&lt;String&gt; nickname;</code>', 'A repository method returning <code>Optional&lt;User&gt;</code>', 'Using <code>orElseThrow()</code> when absence is a bug', 'Chaining <code>map</code> and <code>filter</code> on an Optional'], answer: 0, explain: 'Optional was designed for return types. As a field it is not Serializable, adds memory overhead and confuses frameworks — keep the field nullable and expose an Optional getter.' },
+    { q: 'Since Java 16, <code>stream.toList()</code> returns…', options: ['An unmodifiable List (add throws UnsupportedOperationException)', 'An ArrayList you can freely modify', 'A LinkedList', 'A List that rejects null elements'], answer: 0, explain: 'Stream.toList() is unmodifiable but allows nulls. Collectors.toList() makes no promise about mutability (it is an ArrayList today); toUnmodifiableList() rejects nulls.' }
+  );
+
+  /* ======================================================================
+     INTERVIEW Q&A
+     ====================================================================== */
+  interview.push(
+    { q: 'What is a functional interface? Name the core ones in <code>java.util.function</code>.', level: 'B', a: `<p>A functional interface has <b>exactly one abstract method</b> (the SAM), so a lambda or method reference can implement it. Default methods, static methods and public <code>Object</code> methods (like <code>equals</code> in <code>Comparator</code>) don't count. <code>@FunctionalInterface</code> is optional but makes the compiler enforce the rule.</p><p>Core ones: <code>Function&lt;T,R&gt;</code> (apply), <code>Predicate&lt;T&gt;</code> (test), <code>Consumer&lt;T&gt;</code> (accept), <code>Supplier&lt;T&gt;</code> (get), <code>BiFunction</code>, <code>UnaryOperator</code>, <code>BinaryOperator</code>, plus primitive versions like <code>IntPredicate</code>, <code>ToIntFunction</code>, <code>IntUnaryOperator</code> that avoid boxing. Older interfaces such as <code>Runnable</code>, <code>Callable</code> and <code>Comparator</code> are functional too.</p>`, followUps: ['Can a functional interface extend another interface?', 'Why are there IntPredicate and friends at all?'] },
+    { q: 'Lambda vs anonymous inner class — what are the differences?', level: 'I', a: `<p><b>Syntax:</b> lambdas are concise and only work for functional interfaces; anonymous classes can implement any interface or extend a class, and can have state (fields) and multiple methods.</p><p><b>Semantics:</b> inside a lambda <code>this</code> refers to the enclosing instance; inside an anonymous class it is the anonymous object. Lambdas cannot shadow local variable names.</p><p><b>Implementation:</b> anonymous classes compile to separate <code>Outer$1.class</code> files and always allocate a new instance. Lambdas compile to a private method plus an <code>invokedynamic</code> call site bootstrapped by <code>LambdaMetafactory</code>; non-capturing lambdas are typically cached singletons. Both can only capture effectively final locals.</p>`, followUps: ['When would you still choose an anonymous class?', 'What does invokedynamic buy the JVM here?'] },
+    { q: 'Why must captured local variables be effectively final?', level: 'I', a: `<p>Locals live on the stack of the current thread and disappear when the method returns, but a lambda can outlive the method (stored in a field, executed later or on another thread). So Java <b>copies</b> the value into the lambda object. If the variable could change afterwards, the copy and the original would silently diverge, or Java would need shared, synchronised storage for locals. The rule keeps semantics simple and thread-safe.</p><p>Fields are different: the lambda captures <code>this</code> and reads the field live — which is why mutating fields from lambdas works but can create races. Workarounds like <code>int[] box</code> or <code>AtomicInteger</code> exist, but in streams the correct fix is usually a reduction (<code>count</code>, <code>sum</code>, <code>collect</code>).</p>`, followUps: ['Is an effectively final reference to a mutable object safe?', 'How do anonymous classes handle the same problem?'] },
+    { q: 'Explain the four kinds of method references with examples.', level: 'B', a: `<p>1. <b>Static:</b> <code>Integer::parseInt</code> ≡ <code>s -&gt; Integer.parseInt(s)</code>.<br>2. <b>Bound instance</b> (specific object): <code>System.out::println</code> ≡ <code>x -&gt; System.out.println(x)</code>; the receiver is evaluated once, when the reference is created (null → immediate NPE).<br>3. <b>Unbound instance</b> (arbitrary object of a type): <code>String::toUpperCase</code> ≡ <code>s -&gt; s.toUpperCase()</code>; the first lambda parameter becomes the receiver, so <code>String::compareTo</code> works as a <code>Comparator</code>.<br>4. <b>Constructor:</b> <code>ArrayList::new</code>, <code>String[]::new</code>; the overload is chosen by the target functional interface's shape.</p>`, followUps: ['Why is <code>Function&lt;Integer,String&gt; f = Integer::toString</code> ambiguous?', 'Why can removing a listener registered as <code>this::onEvent</code> fail?'] },
+    { q: 'What is the difference between intermediate and terminal operations? Why are streams lazy?', level: 'B', a: `<p><b>Intermediate</b> operations (<code>filter</code>, <code>map</code>, <code>sorted</code>, <code>limit</code>…) return a new stream and only <i>describe</i> work. <b>Terminal</b> operations (<code>collect</code>, <code>toList</code>, <code>forEach</code>, <code>reduce</code>, <code>count</code>, <code>findFirst</code>…) trigger execution and produce a result or side effect. Without a terminal op, nothing runs.</p><p>Laziness lets Java fuse all stages into one pass where each element travels the whole pipeline before the next (vertical processing), avoid intermediate collections, short-circuit (<code>findFirst</code>, <code>anyMatch</code>, <code>limit</code>) and work with infinite sources like <code>Stream.iterate</code>. The cost is that side effects inside lambdas run only for elements actually pulled — sometimes never.</p>`, followUps: ['Which intermediate operations are stateful?', 'Why might <code>peek</code> not print anything before <code>count()</code>?'] },
+    { q: 'Walk me through the execution order of <code>Stream.of(1,2,3,4).filter(x -&gt; x % 2 == 0).map(x -&gt; x * 10).findFirst()</code>.', level: 'I', a: `<p>Building the pipeline creates stage objects; nothing runs. <code>findFirst</code> wraps stages into a Sink chain and pulls from the source with cancellation checks:</p><ol><li>1 → filter fails → dropped.</li><li>2 → filter passes → map gives 20 → findFirst stores 20 and requests cancellation.</li><li>Before pulling 3, the source asks <code>cancellationRequested()</code> → true → stop.</li></ol><p>So filter ran twice, map once, and elements 3 and 4 were never touched. With a <code>sorted()</code> inserted before <code>findFirst</code>, all elements would pass filter and map first (sorted is a barrier), then sorted would release only the first one.</p>`, followUps: ['How does limit() signal that it is done?', 'What changes with parallel()?'] },
+    { q: 'map vs flatMap — when do you use each? Also for Optional.', level: 'B', a: `<p><code>map</code> is a 1 → 1 transformation: each element becomes exactly one new element (<code>map(String::length)</code>). <code>flatMap</code> is 1 → 0..n: your function returns a <b>stream</b> per element and the results are concatenated — used to flatten nested collections (<code>orders.flatMap(o -&gt; o.items().stream())</code>), split lines into words, generate pairs, or drop missing values (<code>flatMap(Optional::stream)</code>).</p><p>For <code>Optional</code>: use <code>map</code> when the function returns a plain (possibly null) value; use <code>flatMap</code> when it already returns an <code>Optional</code>, otherwise you get <code>Optional&lt;Optional&lt;T&gt;&gt;</code>. Java 16's <code>mapMulti</code> is an alternative to flatMap that avoids creating a small stream per element.</p>`, followUps: ['What does flatMap do with an empty inner stream?', 'When is mapMulti better than flatMap?'] },
+    { q: 'How does <code>groupingBy</code> work, and what are downstream collectors?', level: 'I', a: `<p><code>groupingBy(classifier)</code> computes a key for each element and puts the element into that key's bucket, creating buckets on demand (<code>computeIfAbsent</code> internally) in a <code>HashMap</code>. The default bucket is a List. A <b>downstream collector</b> decides what each bucket becomes: <code>counting()</code>, <code>summingInt</code>, <code>averagingDouble</code>, <code>mapping(f, toList())</code>, <code>maxBy</code>, <code>filtering</code>, <code>collectingAndThen</code>, or even another <code>groupingBy</code> for multi-level maps. The 3-argument form adds a map factory such as <code>TreeMap::new</code> (sorted keys) or <code>LinkedHashMap::new</code> (first-seen order).</p><p>Gotchas: a null key throws NPE; HashMap order is not guaranteed (flaky tests); <code>maxBy</code> yields <code>Optional</code> values; filtering before grouping removes empty groups, whereas <code>Collectors.filtering</code> keeps them. <code>partitioningBy</code> is the boolean special case that always has both keys.</p>`, followUps: ['How would you get the top-paid employee per department as a plain value, not an Optional?', 'groupingBy vs groupingByConcurrent?'] },
+    { q: 'What is the difference between <code>reduce</code> and <code>collect</code>?', level: 'A', a: `<p><code>reduce</code> is an <b>immutable</b> reduction: it combines values with a function that returns a new value each time — great for sums, max, products. Requirements: a true identity and an associative, stateless accumulator (plus a combiner in the 3-arg form when result and element types differ).</p><p><code>collect</code> is a <b>mutable</b> reduction: each thread gets a container from a supplier, the accumulator mutates it, the combiner merges containers, and an optional finisher converts the result. Using <code>reduce</code> to build a List or String would copy on every step (O(n²) for strings) or, if you cheat by mutating, break in parallel. Rule: numbers/immutable values → <code>reduce</code> or specialised terminals; containers → <code>collect</code>.</p>`, followUps: ['Write a Collector with Collector.of', 'What do the Collector characteristics IDENTITY_FINISH, UNORDERED and CONCURRENT mean?'] },
+    { q: 'When should you use parallel streams, and what are the pitfalls?', level: 'A', a: `<p>Use them for <b>CPU-bound</b>, <b>large</b> workloads (N × cost-per-element is big) over sources that <b>split well</b> (arrays, ArrayList, IntStream.range), with <b>pure</b> lambdas and associative reductions — and only after measuring with JMH.</p><p>Pitfalls: (1) shared mutable state (<code>forEach(list::add)</code>) causes lost updates or exceptions; (2) wrong identity / non-associative reduce gives different results; (3) <code>forEach</code> order is nondeterministic (<code>forEachOrdered</code> fixes it at a cost); (4) ordered stateful ops (<code>limit</code>, <code>distinct</code>, <code>sorted</code>, <code>findFirst</code>) need coordination — <code>unordered()</code> helps; (5) all parallel streams share the <b>ForkJoinPool common pool</b>, so blocking I/O starves the whole JVM; (6) ThreadLocal context (MDC, security, transactions) is not propagated; (7) small N is slower than sequential.</p>`, followUps: ['How do you run a parallel stream in a custom pool?', 'Are virtual threads a replacement for parallel streams?'] },
+    { q: 'orElse vs orElseGet vs orElseThrow — when do you use each?', level: 'I', a: `<p><code>orElse(value)</code>: the argument is evaluated <b>eagerly</b> before the call, even if the Optional is present — fine for cheap constants (<code>""</code>, <code>0</code>, a static default). <code>orElseGet(supplier)</code>: the supplier runs <b>only if empty</b> — use for anything computed, expensive, or with side effects (DB calls, object creation, logging). <code>orElseThrow()</code> (Java 10) / <code>orElseThrow(() -&gt; new NotFound(...))</code>: absence is an error — this replaces <code>get()</code>, whose name hid the possibility of <code>NoSuchElementException</code>.</p><p>A classic production bug: <code>repo.findById(id).orElse(repo.save(new Entity()))</code> inserts a row every time. Use <code>orElseGet</code>.</p>`, followUps: ['What does <code>or()</code> add (Java 9)?', 'Is <code>orElse(null)</code> ever OK?'] },
+    { q: 'What are the best practices and anti-patterns for Optional?', level: 'I', a: `<p><b>Do:</b> use Optional as a <b>return type</b> for "may not exist" queries; chain <code>map</code>/<code>flatMap</code>/<code>filter</code>; finish with <code>orElse</code> (constants), <code>orElseGet</code> (computed), <code>orElseThrow</code> (errors) or <code>ifPresentOrElse</code>; use <code>OptionalInt</code>/<code>OptionalDouble</code> for primitives.</p><p><b>Don't:</b> return <code>null</code> from an Optional-returning method; use Optional for fields (not Serializable, extra memory), method parameters (callers can still pass null → three states; prefer overloads), collection elements or map values; wrap collections (return an empty list instead); call <code>get()</code> without a check; write <code>isPresent()</code> + <code>get()</code> ladders; use <code>==</code> or <code>synchronized</code> on Optionals (value-based class); use <code>Optional.of</code> on something that can be null.</p>`, followUps: ['How would you migrate a nullable getter API to Optional without breaking callers?', 'How do JSpecify / @Nullable annotations complement Optional?'] },
+    { q: 'Explain stateless vs stateful intermediate operations and why it matters.', level: 'A', a: `<p><b>Stateless</b> ops (<code>filter</code>, <code>map</code>, <code>flatMap</code>, <code>peek</code>) decide each element independently, so they stream perfectly and parallelise trivially. <b>Stateful</b> ops remember things: <code>distinct</code> keeps a set of seen elements, <code>limit</code>/<code>skip</code> keep counters, <code>sorted</code> buffers <i>everything</i>. Consequences: sorted is a full barrier (breaks short-circuiting upstream, never finishes on infinite streams, O(N) memory); distinct needs O(distinct) memory; in parallel, ordered stateful ops require buffering and cross-thread coordination, often wiping out the speedup — hence <code>unordered()</code>.</p><p>Also, the lambdas you pass must be <b>stateless</b> themselves: a <code>filter</code> that consults a mutable set you modify inside it makes results depend on execution order, which differs between sequential and parallel runs.</p>`, followUps: ['How does sorted() handle a downstream limit()?', 'Which source characteristics make distinct() or sorted() no-ops?'] },
+    { q: 'How do you handle checked exceptions inside lambdas used in streams?', level: 'A', a: `<p>The standard functional interfaces' methods don't declare checked exceptions, so <code>map(path -&gt; Files.readString(path))</code> doesn't compile. Options: (1) catch inside the lambda and rethrow as an unchecked exception — <code>UncheckedIOException</code> for IOExceptions, preserving the cause; (2) write a small <code>ThrowingFunction</code> interface plus a <code>wrap()</code> adapter; (3) return a result type (<code>Either</code>/<code>Try</code>-style record or <code>Optional</code>) so failures become data you can partition and report; (4) step out of the stream into a loop when error handling dominates.</p><p>Avoid "sneaky throw" hacks and never swallow exceptions by returning null — that just moves the failure downstream. For I/O-heavy pipelines also remember try-with-resources around <code>Files.lines</code>.</p>`, followUps: ['How would you collect both successes and failures from a stream?', 'Why does UncheckedIOException exist?'] },
+    { q: 'Are Java streams always slower than loops? How would you decide in a performance-critical path?', level: 'E', a: `<p>Not always. For large data and simple pipelines, the JIT inlines the sink chain and performance is close to a hand-written loop. Streams lose when: collections are tiny and the code is extremely hot (setup objects and virtual calls dominate); boxing sneaks in (<code>Stream&lt;Integer&gt;</code> instead of <code>IntStream</code>); call sites become megamorphic (one <code>apply</code> site sees many lambda classes, blocking inlining); or a stateful op like <code>sorted</code> materialises everything. They can win when laziness/short-circuiting avoids work a naive loop would do, or when <code>parallel()</code> legitimately applies.</p><p>Decide with <b>JMH</b> benchmarks (warm-up, forks, blackholes), profile with async-profiler/JFR for allocation and CPU, and prefer readability unless the profiler shows the pipeline on the hot path. Use primitive streams, avoid boxing, and keep pipelines monomorphic in hot code.</p>`, followUps: ['What is a megamorphic call site?', 'How does escape analysis interact with Optional and lambdas?'] }
+  );
+
+  registerModule({
+    id: 'java09',
+    title: 'Lambdas, Streams & Optional',
+    intro: `<p>Modern Java code reads very differently from Java 7 code: instead of loops full of temporary lists and <code>if (x != null)</code> checks, you pass <b>behaviour</b> as lambdas, describe data processing as <b>stream pipelines</b>, and model "maybe no answer" with <b>Optional</b>. This module takes you from your first lambda to the internals interviewers love: the four kinds of method references, how a pipeline really runs (element by element, lazily, with short-circuiting and barriers), the collectors behind every "group by / count / top K" question, <code>flatMap</code> and primitive streams, why <code>parallelStream()</code> is not a free speed-up, and how to use Optional without creating new bugs.</p>
+<p>Every topic has an interactive visualizer — including a <b>pipeline simulator</b> you can edit to watch elements flow through <code>filter → map → limit → collect</code> one at a time — plus "predict the output" drills, because output-prediction questions about laziness, <code>peek</code>, <code>orElse</code> and parallel reduce are interview favourites.</p>`,
+    goals: [
+      'Pick the right functional interface (Function, Predicate, Consumer, Supplier, primitive variants) and compose behaviour with andThen/compose/and/or/negate and Comparator chains',
+      'Name and use all four kinds of method references, and spot the ambiguous or early-binding cases',
+      'Trace any stream pipeline element by element: predict peek/println output, short-circuiting, the sorted() barrier, count() elision and infinite streams',
+      'Solve grouping, counting, top-K, frequency and flattening questions with collect, toMap, groupingBy, partitioningBy, flatMap and IntStream',
+      'Explain when parallel streams help or hurt (identity, associativity, shared state, common pool) and fix parallel bugs',
+      'Use Optional idiomatically (map/flatMap/filter, orElse vs orElseGet vs orElseThrow) and avoid its anti-patterns'
+    ],
+    prereqs: `Java 5 (Strings, wrapper classes, equals/hashCode, Comparable vs Comparator), Java 7 (Collections Framework in Practice) and Java 8 (Generics — wildcards and PECS help with Collector and Comparator signatures).`,
+    hours: 14,
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
+  });
+})();
