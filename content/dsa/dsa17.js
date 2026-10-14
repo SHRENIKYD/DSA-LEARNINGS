@@ -1369,7 +1369,7 @@ print(cut_rod([3, 5, 8, 9, 10, 17, 17, 20], 8))     # (24, [1, 1, 1, 1, 1, 1, 1,
             dp[i] = Math.max(dp[i], Math.max(j, dp[j]) * Math.max(i - j, dp[i - j]));
     return dp[n];
 }` },
-      { title: 'Minimum cost to get at least X (bundles)', html: `<p>Packs of 3 cans for ₹5, 5 cans for ₹7, need <b>at least</b> 11 cans. Exact-amount DP would miss "buy 12". Fix: let dp[x] = min cost for at least x cans and use <code>dp[max(0, x − size)] + price</code>. Options: 5+3+3 cans = ₹7+₹5+₹5 = <b>₹17</b> (exactly 11), 5+5+3 = ₹19 (13 cans), 3+3+3+3 = ₹20 (12 cans) → <b>₹17</b>. When pack sizes don't line up exactly, buying a little extra can be cheapest, and only the clamp lets the DP consider it. The clamp to 0 is the whole trick.</p>` },
+      { title: 'Minimum cost to get at least X (bundles)', html: `<p>Packs of 3 cans for ₹5 or 5 cans for ₹7; you need <b>at least</b> 12 cans. Exactly 12 cans costs ₹20 (3+3+3+3), but 5+5+3 = 13 cans costs only <b>₹19</b>. An exact-amount DP would never look at 13. Fix: dp[x] = min cost for at least x cans, transition <code>dp[x] = min(dp[max(0, x − size)] + price)</code>. The clamp to 0 is the whole trick.</p>` },
       { title: 'Coin change is unbounded knapsack', html: `<p>Min coins: weight = coin value, "value" = 1 coin, minimize instead of maximize, exact capacity. Number of combinations: same forward loop with + instead of max. If you understood the forward-loop rule here, you understand why LC 518's inner loop goes forward.</p>` }
     ],
     deepDive: `<p><b>Proof of the forward loop.</b> In the 1D array, when we compute dp[c] for item i, dp[c − w] has already been updated in this same sweep, i.e. it equals dp[i][c − w] (the same row). That is exactly the unbounded transition. For 0/1 we needed dp[i−1][c − w], so we had to read it <i>before</i> it was overwritten — hence backwards.</p>
@@ -1420,6 +1420,778 @@ print(cut_rod([3, 5, 8, 9, 10, 17, 17, 20], 8))     # (24, [1, 1, 1, 1, 1, 1, 1,
         dry: { head: ['len', 'best candidates (piece + rest)', 'best[len]'], rows: [['1', '1+0', '1'], ['2', '1+1, 5+0', '5'], ['3', '1+5, 5+1, 8+0', '8'], ['4', '1+8, 5+5, 8+1, 9', '10'], ['5', '1+10, 5+8, 8+5, 9+1, 10', '13'], ['6', '…, 17+0', '17'], ['7', '1+17, 5+13, 8+10, …', '18'], ['8', '5+17 (piece 2 + best[6])', H.c('g', '22')]] },
         complexity: `<p>Time O(n²), space O(n).</p>`,
         followUps: ['Print the cuts (store the best first piece per length).', 'Each cut costs a fixed fee c → subtract c per cut.', 'Only certain lengths are allowed → loop over the allowed list.']
+      }
+    }]
+  });
+
+  // =====================================================================
+  // TOPIC 7 — Longest Common Subsequence
+  // =====================================================================
+  topics.push({
+    title: 'Longest Common Subsequence (LCS): DP on Two Strings',
+    analogy: `<p>Two friends describe the same holiday from memory. Riya says: "<b>beach, museum, market, dinner, fireworks</b>". Arjun says: "<b>museum, dinner, karaoke, fireworks</b>". Each forgot or added some things, but the events they <i>both</i> mention appear in the same order: <b>museum → dinner → fireworks</b>.</p>
+      <p>The longest list of shared events kept in order is their <b>longest common subsequence</b>. It is how <code>git diff</code> decides which lines stayed the same between two versions of a file — everything else is "added" or "removed".</p>`,
+    explain: `<p><b>Subsequence</b> = delete some characters (possibly none) without reordering: "ace" is a subsequence of "a<u>b</u>c<u>d</u>e". <b>Substring</b> must be contiguous ("bcd"). LCS asks for the longest string that is a subsequence of <b>both</b> inputs.</p>
+      <p>Brute force: s1 of length n has 2<sup>n</sup> subsequences — check each against s2 → hopeless for n = 1000.</p>
+      <h4>Recipe — compare the LAST characters</h4>
+      ${H.table(['step', 'LCS'], [
+        ['State', '<code>dp[i][j]</code> = LCS length of the <b>first i chars</b> of s1 and the <b>first j chars</b> of s2 (prefixes)'],
+        ['Last chars match', 's1[i−1] == s2[j−1] → use it! <code>dp[i][j] = 1 + dp[i−1][j−1]</code> (diagonal)'],
+        ['Last chars differ', 'at least one of them is not in the LCS → drop one: <code>dp[i][j] = max(dp[i−1][j], dp[i][j−1])</code> (up or left)'],
+        ['Base', 'empty prefix: <code>dp[0][j] = dp[i][0] = 0</code>'],
+        ['Answer', '<code>dp[n][m]</code>']
+      ])}
+      <p>The extra row and column of zeros (for the empty prefix) mean you never need an <code>if (i == 0)</code> inside the loop. s1 = "abcde", s2 = "ace":</p>
+      ${H.table(['', '""', 'a', 'c', 'e'], [
+        ['""', '0', '0', '0', '0'],
+        ['a', '0', H.c('g', '1 ↖'), '1', '1'],
+        ['b', '0', '1', '1', '1'],
+        ['c', '0', '1', H.c('g', '2 ↖'), '2'],
+        ['d', '0', '1', '2', '2'],
+        ['e', '0', '1', '2', H.c('g', '3 ↖')]
+      ])}
+      <p>Green ↖ cells are matches; walking back along them spells <b>"ace"</b>.</p>
+      <h4>Why is "drop one" safe when characters differ?</h4>
+      <p>If s1's last char x and s2's last char y differ, an LCS cannot end with both x and y (it has one last character). So either x is unused (answer = LCS(s1 without x, s2)) or y is unused (answer = LCS(s1, s2 without y)). Taking the max covers both cases. When they match, using the match is never worse (exchange argument: any LCS that doesn't end with that pair can swap its last char to use it).</p>`,
+    clues: [
+      '"<b>longest common subsequence</b>" / "longest sequence appearing in both <b>in the same relative order</b>" → dp[i][j] on prefixes.',
+      '"minimum number of <b>deletions</b> (or insertions + deletions) to make two strings equal" → n + m − 2·LCS.',
+      '"<b>longest palindromic subsequence</b>" → LCS(s, reverse(s)).',
+      '"<b>uncrossed lines</b>" / "max matching pairs without crossing" → LCS on arrays.',
+      '"<b>shortest common supersequence</b>" → n + m − LCS (and rebuild it from the table).',
+      'Two strings with <code>n, m ≤ 1000–5000</code> → O(n·m) table expected; contiguous ("substring") wording → reset to 0 on mismatch instead.'
+    ],
+    code: [`
+      // LCS length. dp[i][j] = LCS of s1[0..i-1] and s2[0..j-1].
+      int lcs(String s1, String s2) {
+          int n = s1.length(), m = s2.length();
+          int[][] dp = new int[n + 1][m + 1];           // row 0 / col 0 = empty prefix = 0
+          for (int i = 1; i <= n; i++) {
+              for (int j = 1; j <= m; j++) {
+                  if (s1.charAt(i - 1) == s2.charAt(j - 1)) {
+                      dp[i][j] = 1 + dp[i - 1][j - 1];  // use the matching pair (diagonal)
+                  } else {
+                      dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]); // drop one char
+                  }
+              }
+          }
+          return dp[n][m];
+      }
+
+      // Rebuild one actual LCS string by walking back from dp[n][m].
+      String lcsString(String s1, String s2, int[][] dp) {
+          StringBuilder sb = new StringBuilder();
+          int i = s1.length(), j = s2.length();
+          while (i > 0 && j > 0) {
+              if (s1.charAt(i - 1) == s2.charAt(j - 1)) {
+                  sb.append(s1.charAt(i - 1));          // part of the LCS
+                  i--; j--;
+              } else if (dp[i - 1][j] >= dp[i][j - 1]) {
+                  i--;                                  // came from above
+              } else {
+                  j--;                                  // came from the left
+              }
+          }
+          return sb.reverse().toString();
+      }`, { lang: 'python', run: true, title: 'LCS with two rolling rows + the string itself (Python, runnable)', code: `def lcs_len_two_rows(s1, s2):
+    prev = [0] * (len(s2) + 1)              # row i-1
+    for ch in s1:
+        cur = [0] * (len(s2) + 1)           # row i
+        for j in range(1, len(s2) + 1):
+            if ch == s2[j - 1]:
+                cur[j] = prev[j - 1] + 1
+            else:
+                cur[j] = max(prev[j], cur[j - 1])
+        prev = cur
+    return prev[-1]
+
+def lcs_string(s1, s2):
+    n, m = len(s1), len(s2)
+    dp = [[0] * (m + 1) for _ in range(n + 1)]
+    for i in range(1, n + 1):
+        for j in range(1, m + 1):
+            if s1[i - 1] == s2[j - 1]:
+                dp[i][j] = dp[i - 1][j - 1] + 1
+            else:
+                dp[i][j] = max(dp[i - 1][j], dp[i][j - 1])
+    out, i, j = [], n, m
+    while i and j:
+        if s1[i - 1] == s2[j - 1]:
+            out.append(s1[i - 1]); i -= 1; j -= 1
+        elif dp[i - 1][j] >= dp[i][j - 1]:
+            i -= 1
+        else:
+            j -= 1
+    return "".join(reversed(out))
+
+print(lcs_len_two_rows("abcde", "ace"), lcs_string("abcde", "ace"))        # 3 ace
+print(lcs_len_two_rows("AGGTAB", "GXTXAYB"), lcs_string("AGGTAB", "GXTXAYB"))  # 4 GTAB
+print(lcs_len_two_rows("abc", "def"), repr(lcs_string("abc", "def")))      # 0 ''
+` }],
+    codeTitle: ['LCS length + reconstruction (Java)', 'Two-row version and reconstruction (Python, runnable)'],
+    viz: {
+      title: 'LCS table: match → diagonal + 1, mismatch → max(up, left); then trace the arrows back',
+      input: 'abcde ace',
+      inputLabel: 'two words separated by a space (each ≤ 8 letters)',
+      gen: function (input) {
+        var w = parseTwoWords(input, 8), s1 = w[0], s2 = w[1], n = s1.length, m = s2.length;
+        var rows = [], i, j, filled = {}, frames = [];
+        for (i = 0; i <= n; i++) { rows.push([]); for (j = 0; j <= m; j++) rows[i].push(i === 0 || j === 0 ? 0 : ''); }
+        for (i = 0; i <= n; i++) for (j = 0; j <= m; j++) if (i === 0 || j === 0) filled[i + ',' + j] = 1;
+        var rh = ['""'].concat(s1.split('')), ch = ['""'].concat(s2.split(''));
+        frames.push({ narr: 'Rows = prefixes of "' + s1 + '", columns = prefixes of "' + s2 + '". The empty-prefix row and column are 0: nothing in common with an empty string.', parts: [
+          grid('dp[i][j]', rows, rh, ch, gridHl(filled, {}))
+        ] });
+        for (i = 1; i <= n; i++) {
+          for (j = 1; j <= m; j++) {
+            var a = s1[i - 1], b = s2[j - 1], sp = {}, narr;
+            if (a === b) {
+              rows[i][j] = rows[i - 1][j - 1] + 1;
+              sp[(i - 1) + ',' + (j - 1)] = 'ok';
+              narr = '"' + a + '" == "' + b + '" → <span class="c-g">match!</span> Use it: diagonal ' + rows[i - 1][j - 1] + ' + 1 = <b>' + rows[i][j] + '</b>.';
+            } else {
+              var up = rows[i - 1][j], left = rows[i][j - 1];
+              rows[i][j] = Math.max(up, left);
+              sp[(i - 1) + ',' + j] = up >= left ? 'ok' : 'win';
+              sp[i + ',' + (j - 1)] = up >= left ? 'win' : 'ok';
+              narr = '"' + a + '" ≠ "' + b + '" → one of them is not used. Drop "' + a + '" (up = ' + up + ') or drop "' + b + '" (left = ' + left + ') → max = <b>' + rows[i][j] + '</b>.';
+            }
+            sp[i + ',' + j] = 'cur';
+            frames.push({ narr: narr, parts: [
+              grid('dp[i][j]', rows, rh, ch, gridHl(filled, sp)),
+              { type: 'vars', vals: { 's1 prefix': s1.slice(0, i), 's2 prefix': s2.slice(0, j) } }
+            ] });
+            filled[i + ',' + j] = 1;
+          }
+        }
+        var path = {}, out = [];
+        i = n; j = m;
+        while (i > 0 && j > 0) {
+          if (s1[i - 1] === s2[j - 1]) { path[i + ',' + j] = 'sel'; out.unshift(s1[i - 1]); i--; j--; }
+          else { path[i + ',' + j] = 'win'; if (rows[i - 1][j] >= rows[i][j - 1]) i--; else j--; }
+        }
+        frames.push({ narr: 'LCS length = <b>' + rows[n][m] + '</b>. Walk back from the bottom-right: on a match (purple) take the letter and go diagonal; otherwise move to the bigger neighbour (blue). Letters collected: <b>"' + out.join('') + '"</b>.', parts: [
+          grid('dp[i][j]', rows, rh, ch, gridHl(filled, path)),
+          { type: 'array', label: 'one LCS', values: out.length ? out : ['(empty)'], hl: {} }
+        ] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'GeeksforGeeks classic: AGGTAB vs GXTXAYB', html: `<p>LCS = <b>"GTAB"</b>, length 4. Note the answer string need not be unique: for "abc" vs "acb" both "ab" and "ac" are LCSs of length 2 — the tie-break in the walk-back decides which one you print.</p>` },
+      { title: 'Delete Operation for Two Strings (LC 583)', html: `<p>"sea" → "eat": minimum deletions from both to make them equal. Keep the LCS "ea" (length 2) and delete everything else: (3 − 2) + (3 − 2) = <b>2</b>. Formula n + m − 2·LCS. With different insert/delete costs this becomes edit distance (next topic).</p>` },
+      { title: 'Longest Palindromic Subsequence = LCS(s, reverse(s))', html: `<p>s = "bbbab", reverse = "babbb", LCS = "bbbb" → <b>4</b>. Why: a palindrome reads the same both ways, so a palindromic subsequence of s is common to s and its reverse (and the longest common one can be chosen to be a palindrome).</p>` },
+      { title: 'Substring vs subsequence (do not mix them up)', html: `<p><b>Longest common substring</b> (contiguous): on mismatch, the run breaks → <code>dp[i][j] = 0</code>; on match <code>dp[i][j] = dp[i−1][j−1] + 1</code>; answer = max over all cells (not the corner). "abcdxyz" vs "xyzabcd" → substring "abcd" (4); the LCS is also 4 here, but for "abcde" vs "ace" the substring answer is just 1.</p>`, code: `int longestCommonSubstring(String a, String b) {
+    int[][] dp = new int[a.length() + 1][b.length() + 1];
+    int best = 0;
+    for (int i = 1; i <= a.length(); i++)
+        for (int j = 1; j <= b.length(); j++)
+            if (a.charAt(i - 1) == b.charAt(j - 1)) {
+                dp[i][j] = dp[i - 1][j - 1] + 1;
+                best = Math.max(best, dp[i][j]);
+            }                                      // else stays 0: the run is broken
+    return best;
+}` }
+    ],
+    deepDive: `<p><b>Space.</b> Each row reads only the row above and itself → two rows O(min(n, m)) (put the shorter string on the columns). With a single row plus one saved "diagonal" variable it is one array. Reconstruction needs the full table, or <b>Hirschberg's algorithm</b>: divide &amp; conquer that finds the middle crossing point using forward and backward two-row passes → O(n·m) time, O(n + m) space. That is how diff tools handle large files.</p>
+      <p><b>Lower bounds.</b> Under the Strong Exponential Time Hypothesis there is no O((nm)<sup>1−ε</sup>) algorithm for LCS (Abboud–Backurs–Vassilevska Williams 2015, Bringmann–Künnemann). So O(n·m) — with bit-parallel tricks giving O(n·m/64) — is essentially the end of the road for general strings.</p>
+      <p><b>Hunt–Szymanski.</b> When matches are rare, process only matching pairs with an LIS-like technique: O((r + n) log n) where r = number of matching (i, j) pairs. If one string is a permutation (all distinct characters), LCS reduces to <b>LIS</b> in O(n log n) — a classic follow-up (DSA 18 covers LIS).</p>
+      <p><b>Real diff.</b> git uses Myers' O((n + m)·D) algorithm, where D = size of the edit script — very fast when files are similar. It finds a shortest edit script of insertions/deletions, which is equivalent to an LCS. Patience diff and histogram diff add heuristics for human-readable output.</p>
+      <p><b>Bioinformatics.</b> DNA alignment (Needleman–Wunsch global, Smith–Waterman local) is the same grid with match/mismatch/gap scores instead of 1/0 — the template you learn here scales directly.</p>`,
+    aiEra: `<p><b>What AI changes:</b> the LCS table is boilerplate for any copilot. Interviews now lean on variants: print the string, count distinct LCSs, LCS of three strings, LCS with constraints, or "this looks like LCS but it is actually substring". The skill is reading the wording precisely.</p>
+      <p><b>Use AI as a partner:</b> ask <code>Give me 5 problems that reduce to LCS without saying so</code> and practise the reduction. Ask it to explain Hirschberg at a high level and then try to implement the two-row forward pass yourself.</p>
+      <p><b>Where AI goes wrong:</b> confusing substring and subsequence, off-by-one between dp indices and string indices (<code>s1.charAt(i)</code> instead of <code>i − 1</code>), and walking back with the wrong tie-break so the printed string is not actually common. Always verify the printed string is a subsequence of both.</p>
+      <p><b>What you must still own:</b> the "compare last characters" argument, the prefix-state definition, and the family of reductions (min deletions, LPS, SCS, uncrossed lines).</p>`,
+    problems: [{
+      title: 'Longest Common Subsequence', level: 'Medium', tags: ['dp', 'strings', '2d dp'], companies: ['Amazon', 'Google', 'Microsoft', 'Meta'],
+      statement: `<p>Given two strings <code>text1</code> and <code>text2</code>, return the length of their longest common subsequence, or 0 if there is none. A subsequence keeps the relative order of characters but may skip characters.</p>`,
+      constraints: `1 ≤ text1.length, text2.length ≤ 1000; lowercase English letters only`,
+      example: `<p>text1 = "${H.c('g', 'a')}b${H.c('g', 'c')}d${H.c('g', 'e')}", text2 = "${H.c('g', 'ace')}" → Output <b>3</b> ("ace" appears in order in both).</p><p>text1 = "abc", text2 = "def" → <b>0</b>.</p>`,
+      brute: { why: `<p>Recursion on (i, j): if chars match, 1 + f(i+1, j+1); else max(f(i+1, j), f(i, j+1)). Without memo, mismatches branch in two and the same (i, j) is reached along many paths → up to O(2<sup>n+m</sup>). With n = m = 1000, impossible. Only (n+1)(m+1) ≈ 10<sup>6</sup> distinct (i, j) pairs exist.</p>`, code: `int f(String a, String b, int i, int j) {
+    if (i == a.length() || j == b.length()) return 0;     // one string used up
+    if (a.charAt(i) == b.charAt(j)) return 1 + f(a, b, i + 1, j + 1);
+    return Math.max(f(a, b, i + 1, j), f(a, b, i, j + 1));
+}` },
+      mcq: { q: 'text1[i−1] ≠ text2[j−1]. Which cells can give dp[i][j]?', options: ['Only the diagonal dp[i−1][j−1]', 'max(dp[i−1][j], dp[i][j−1])', 'dp[i−1][j−1] + 1', 'Always 0'], answer: 1, explain: 'At least one of the two last characters is not part of the LCS, so drop one of them and take the better result.' },
+      hints: [`<p>Hint 1: Compare only the <b>last</b> characters of the two prefixes. Either they match (great, use them) or at least one of them is useless.</p>`, `<p>Hint 2: dp[i][j] over prefixes with an extra 0 row/column. Match → diag + 1; else max(up, left).</p>`, `<p>Hint 3: Fill rows top-to-bottom, columns left-to-right; answer dp[n][m]. For O(m) memory keep two rows (prev, cur) — swap them after each row.</p>`],
+      solution: {
+        approach: `<p>Prefix DP over both strings, implemented with two rolling rows to use O(m) memory.</p>`,
+        code: `class Solution {
+    public int longestCommonSubsequence(String text1, String text2) {
+        int n = text1.length(), m = text2.length();
+        int[] prev = new int[m + 1], cur = new int[m + 1];   // rows i-1 and i
+        for (int i = 1; i <= n; i++) {
+            char a = text1.charAt(i - 1);
+            for (int j = 1; j <= m; j++) {
+                if (a == text2.charAt(j - 1)) cur[j] = prev[j - 1] + 1;   // diagonal + 1
+                else cur[j] = Math.max(prev[j], cur[j - 1]);              // up or left
+            }
+            int[] t = prev; prev = cur; cur = t;                         // row i becomes "previous"
+        }
+        return prev[m];
+    }
+}`,
+        alt: [{ lang: 'python', code: `class Solution:
+    def longestCommonSubsequence(self, text1, text2):
+        m = len(text2)
+        prev = [0] * (m + 1)
+        for a in text1:
+            cur = [0] * (m + 1)
+            for j in range(1, m + 1):
+                cur[j] = prev[j - 1] + 1 if a == text2[j - 1] else max(prev[j], cur[j - 1])
+            prev = cur
+        return prev[m]` }, { lang: 'cpp', code: `class Solution {
+public:
+    int longestCommonSubsequence(string text1, string text2) {
+        int n = text1.size(), m = text2.size();
+        vector<vector<int>> dp(n + 1, vector<int>(m + 1, 0));
+        for (int i = 1; i <= n; i++)
+            for (int j = 1; j <= m; j++)
+                dp[i][j] = text1[i - 1] == text2[j - 1] ? dp[i - 1][j - 1] + 1
+                                                        : max(dp[i - 1][j], dp[i][j - 1]);
+        return dp[n][m];
+    }
+};` }],
+        dry: { head: ['i (char of text1)', 'row after processing ("" a c e)', 'note'], rows: [['1 (a)', '0 1 1 1', 'a matches a'], ['2 (b)', '0 1 1 1', 'no match, copy max'], ['3 (c)', '0 1 2 2', 'c matches c: diag 1 + 1'], ['4 (d)', '0 1 2 2', 'no match'], ['5 (e)', '0 1 2 3', H.c('g', 'e matches e → 3')]] },
+        complexity: `<p>Time O(n·m) = 10<sup>6</sup>; space O(m) with two rows (O(n·m) to rebuild the string).</p>`,
+        followUps: ['Print the LCS itself.', 'LCS of three strings → dp[i][j][k].', 'One string has all distinct characters → reduce to LIS in O(n log n).']
+      }
+    }]
+  });
+
+  // =====================================================================
+  // TOPIC 8 — Edit distance (Levenshtein)
+  // =====================================================================
+  topics.push({
+    title: 'Edit Distance (Levenshtein): Insert, Delete, Replace',
+    analogy: `<p>You type "<b>horse</b>" but meant "<b>ros</b>". Your phone's autocorrect wonders: "How many single-letter fixes would turn what they typed into a real word?" Each fix is one keystroke: <b>insert</b> a letter, <b>delete</b> a letter, or <b>replace</b> one letter with another.</p>
+      <p>The word with the fewest fixes is probably what you meant. That count is the <b>edit distance</b>, and the same grid that computes it powers spell-checkers, DNA comparison and fuzzy search ("did you mean …?").</p>`,
+    explain: `<p><b>Problem:</b> minimum number of operations (insert, delete, replace one character) to convert <code>word1</code> into <code>word2</code>.</p>
+      ${H.table(['step', 'Edit distance'], [
+        ['State', '<code>dp[i][j]</code> = min ops to turn the first i chars of word1 into the first j chars of word2'],
+        ['Last chars equal', 'nothing to do for them: <code>dp[i][j] = dp[i−1][j−1]</code>'],
+        ['Last chars differ', '<code>1 + min( dp[i−1][j−1]</code> (replace), <code>dp[i−1][j]</code> (delete word1[i−1]), <code>dp[i][j−1]</code> (insert word2[j−1]) <code>)</code>'],
+        ['Base', '<code>dp[i][0] = i</code> (delete all i chars), <code>dp[0][j] = j</code> (insert all j chars)'],
+        ['Answer', '<code>dp[n][m]</code>']
+      ])}
+      <p>Remember the three arrows with this picture:</p>
+      ${H.table(['arrow', 'from cell', 'operation', 'meaning'], [
+        ['↖ diagonal', 'dp[i−1][j−1]', 'replace (or free if equal)', 'last chars now match each other'],
+        ['↑ up', 'dp[i−1][j]', H.c('r', 'delete'), 'drop word1\'s last char'],
+        ['← left', 'dp[i][j−1]', H.c('g', 'insert'), 'append word2\'s last char to word1']
+      ])}
+      <p>horse → ros (answer 3):</p>
+      ${H.table(['', '""', 'r', 'o', 's'], [
+        ['""', '0', '1', '2', '3'],
+        ['h', '1', H.c('y', '1'), '2', '3'],
+        ['o', '2', '2', H.c('y', '1'), '2'],
+        ['r', '3', '2', H.c('y', '2'), '2'],
+        ['s', '4', '3', '3', H.c('y', '2')],
+        ['e', '5', '4', '4', H.c('g', '3')]
+      ])}
+      <p>One optimal script: <b>h→r</b> (replace) "rorse", delete <b>r</b> "rose", delete <b>e</b> "ros" → 3 operations.</p>
+      <p><b>Compared with LCS:</b> same grid, same "look at the last characters" idea. LCS maximises matches with arrows worth +1; edit distance minimises cost with arrows worth +1 per operation. If only insert and delete are allowed (no replace), edit distance = n + m − 2·LCS.</p>`,
+    clues: [
+      '"minimum number of <b>operations</b> to convert word1 to word2" with <b>insert / delete / replace</b> → Levenshtein dp[i][j].',
+      '"<b>one edit away</b>" → do not build the table; two pointers in O(n) (check length difference ≤ 1).',
+      '"<b>fuzzy match</b>", "did you mean", "spell-check", "similar strings within k typos" → edit distance (banded to k for speed).',
+      '"only insertions and deletions allowed" → n + m − 2·LCS.',
+      'Different <b>costs</b> per operation ("insert costs 2, delete 3") → same grid, weighted arrows.',
+      '<code>word lengths ≤ 500</code> → O(n·m) = 2.5·10<sup>5</sup> cells, intended.'
+    ],
+    code: [`
+      // Levenshtein distance. dp[i][j] = min ops: word1[0..i-1] -> word2[0..j-1].
+      int minDistance(String word1, String word2) {
+          int n = word1.length(), m = word2.length();
+          int[][] dp = new int[n + 1][m + 1];
+          for (int i = 0; i <= n; i++) dp[i][0] = i;          // delete everything
+          for (int j = 0; j <= m; j++) dp[0][j] = j;          // insert everything
+          for (int i = 1; i <= n; i++) {
+              for (int j = 1; j <= m; j++) {
+                  if (word1.charAt(i - 1) == word2.charAt(j - 1)) {
+                      dp[i][j] = dp[i - 1][j - 1];               // free: chars already match
+                  } else {
+                      int replace = dp[i - 1][j - 1];
+                      int delete  = dp[i - 1][j];
+                      int insert  = dp[i][j - 1];
+                      dp[i][j] = 1 + Math.min(replace, Math.min(delete, insert));
+                  }
+              }
+          }
+          return dp[n][m];
+      }`, { lang: 'python', run: true, title: 'Edit distance + the actual list of edits (Python, runnable)', code: `def edit_script(a, b):
+    n, m = len(a), len(b)
+    dp = [[0] * (m + 1) for _ in range(n + 1)]
+    for i in range(n + 1):
+        dp[i][0] = i
+    for j in range(m + 1):
+        dp[0][j] = j
+    for i in range(1, n + 1):
+        for j in range(1, m + 1):
+            if a[i - 1] == b[j - 1]:
+                dp[i][j] = dp[i - 1][j - 1]
+            else:
+                dp[i][j] = 1 + min(dp[i - 1][j - 1], dp[i - 1][j], dp[i][j - 1])
+    ops, i, j = [], n, m
+    while i > 0 or j > 0:
+        if i > 0 and j > 0 and a[i - 1] == b[j - 1] and dp[i][j] == dp[i - 1][j - 1]:
+            i, j = i - 1, j - 1                          # match, free
+        elif i > 0 and j > 0 and dp[i][j] == dp[i - 1][j - 1] + 1:
+            ops.append("replace " + a[i - 1] + " -> " + b[j - 1]); i, j = i - 1, j - 1
+        elif i > 0 and dp[i][j] == dp[i - 1][j] + 1:
+            ops.append("delete " + a[i - 1]); i -= 1
+        else:
+            ops.append("insert " + b[j - 1]); j -= 1
+    return dp[n][m], list(reversed(ops))
+
+print(edit_script("horse", "ros"))
+print(edit_script("intention", "execution"))
+print(edit_script("", "abc"))
+` }],
+    codeTitle: ['Levenshtein distance (Java)', 'Distance + edit script (Python, runnable)'],
+    viz: {
+      title: 'Edit distance table: three arrows (↖ replace/match, ↑ delete, ← insert) and the cheapest path back',
+      input: 'horse ros',
+      inputLabel: 'from-word and to-word separated by a space (each ≤ 7 letters)',
+      gen: function (input) {
+        var w = parseTwoWords(input, 7), s1 = w[0], s2 = w[1], n = s1.length, m = s2.length;
+        var rows = [], i, j, filled = {}, frames = [];
+        for (i = 0; i <= n; i++) { rows.push([]); for (j = 0; j <= m; j++) rows[i].push(i === 0 ? j : (j === 0 ? i : '')); }
+        for (i = 0; i <= n; i++) for (j = 0; j <= m; j++) if (i === 0 || j === 0) filled[i + ',' + j] = 1;
+        var rh = ['""'].concat(s1.split('')), ch = ['""'].concat(s2.split(''));
+        frames.push({ narr: 'Base row: turning "" into the first j letters of "' + s2 + '" needs j inserts. Base column: turning the first i letters of "' + s1 + '" into "" needs i deletes.', parts: [
+          grid('dp[i][j]', rows, rh, ch, gridHl(filled, {}))
+        ] });
+        for (i = 1; i <= n; i++) {
+          for (j = 1; j <= m; j++) {
+            var a = s1[i - 1], b = s2[j - 1], sp = {}, narr;
+            if (a === b) {
+              rows[i][j] = rows[i - 1][j - 1];
+              sp[(i - 1) + ',' + (j - 1)] = 'ok';
+              narr = '"' + a + '" == "' + b + '" → no operation needed: copy the diagonal = <b>' + rows[i][j] + '</b>.';
+            } else {
+              var rep = rows[i - 1][j - 1], del = rows[i - 1][j], ins = rows[i][j - 1];
+              var best = Math.min(rep, del, ins);
+              rows[i][j] = best + 1;
+              sp[(i - 1) + ',' + (j - 1)] = rep === best ? 'ok' : 'win';
+              sp[(i - 1) + ',' + j] = del === best ? 'ok' : 'win';
+              sp[i + ',' + (j - 1)] = ins === best ? 'ok' : 'win';
+              var who = rep === best ? 'replace ' + a + '→' + b : (del === best ? 'delete ' + a : 'insert ' + b);
+              narr = '"' + a + '" ≠ "' + b + '". Replace ↖ ' + rep + ', delete ↑ ' + del + ', insert ← ' + ins + '. Cheapest + 1 = <b>' + rows[i][j] + '</b> (e.g. ' + who + ').';
+            }
+            sp[i + ',' + j] = 'cur';
+            frames.push({ narr: narr, parts: [
+              grid('dp[i][j]', rows, rh, ch, gridHl(filled, sp)),
+              { type: 'vars', vals: { from: s1.slice(0, i), to: s2.slice(0, j) } }
+            ] });
+            filled[i + ',' + j] = 1;
+          }
+        }
+        var path = {}, ops = [];
+        i = n; j = m;
+        while (i > 0 || j > 0) {
+          path[i + ',' + j] = 'sel';
+          if (i > 0 && j > 0 && s1[i - 1] === s2[j - 1] && rows[i][j] === rows[i - 1][j - 1]) { i--; j--; }
+          else if (i > 0 && j > 0 && rows[i][j] === rows[i - 1][j - 1] + 1) { ops.unshift('replace ' + s1[i - 1] + '→' + s2[j - 1]); i--; j--; }
+          else if (i > 0 && rows[i][j] === rows[i - 1][j] + 1) { ops.unshift('delete ' + s1[i - 1]); i--; }
+          else { ops.unshift('insert ' + s2[j - 1]); j--; }
+        }
+        path['0,0'] = 'sel';
+        frames.push({ narr: 'Edit distance = <b>' + rows[n][m] + '</b>. Tracing back from the corner (purple) gives one cheapest edit script: ' + (ops.length ? ops.join(', ') : 'no edits — the words are equal') + '.', parts: [
+          grid('dp[i][j]', rows, rh, ch, gridHl(filled, path)),
+          { type: 'queue', label: 'edit script (first → last)', items: ops.length ? ops : ['(none)'] }
+        ] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'intention → execution = 5', html: `<p>LeetCode's second sample. One script: delete <b>t</b> (inention), replace <b>i→e</b> (enention), replace <b>n→x</b> (exention), replace <b>n→c</b> (exection), insert <b>u</b> (execution). 5 operations; the table proves no 4-step script exists.</p>` },
+      { title: 'Empty strings', html: `<p>"" → "abc" = <b>3</b> inserts; "abc" → "" = <b>3</b> deletes; "" → "" = 0. These are exactly the base row and column — if your base cases are right, these tests pass for free.</p>` },
+      { title: 'One Edit Distance in O(n) without a table', html: `<p>"Are s and t exactly one edit apart?" Walk both strings until the first mismatch. If lengths are equal, the rest must match after skipping one char in both (replace). If t is one longer, the rest of s must equal the rest of t after skipping t's char (insert). Anything else → false. O(n) time, O(1) space — a common follow-up that tests whether you <i>over-engineer</i>.</p>`, code: `boolean isOneEditDistance(String s, String t) {
+    if (s.length() > t.length()) return isOneEditDistance(t, s);  // make s the shorter
+    if (t.length() - s.length() > 1) return false;
+    for (int i = 0; i < s.length(); i++) {
+        if (s.charAt(i) != t.charAt(i)) {
+            if (s.length() == t.length())
+                return s.substring(i + 1).equals(t.substring(i + 1)); // replace
+            return s.substring(i).equals(t.substring(i + 1));          // insert into s
+        }
+    }
+    return s.length() + 1 == t.length();   // all equal so far: only an extra last char is ok
+}` },
+      { title: 'Weighted costs', html: `<p>Insert costs 1, delete costs 1, replace costs 2: then replace is never better than delete + insert, and the answer becomes n + m − 2·LCS. "kitten" → "sitting": Levenshtein = <b>3</b> (k→s, e→i, insert g); with replace = 2 it is 5. Same grid; just put the costs on the arrows.</p>` }
+    ],
+    deepDive: `<p><b>Why the three arrows are complete.</b> Look at an optimal edit script for the last characters. Either word1's last char is deleted (↑), or word2's last char was inserted (←), or the two last characters end up aligned with each other — free if equal, one replace if not (↖). There is no fourth possibility, so the min over three arrows is exact (induction on i + j).</p>
+      <p><b>Space &amp; speed.</b> Two rows give O(m) memory. If you only care whether distance ≤ k (spell-check), compute just a <b>band</b> of width 2k+1 around the diagonal → O(n·k). Ukkonen's algorithm and Myers' bit-parallel algorithm (O(n·m/64)) make fuzzy search over big dictionaries fast; Lucene/Elasticsearch fuzzy queries use <b>Levenshtein automata</b> to match all terms within distance 1–2 without comparing each one.</p>
+      <p><b>Damerau–Levenshtein</b> adds a fourth operation: swapping two adjacent characters ("teh" → "the" = 1). Add the arrow dp[i−2][j−2] + 1 when the last two characters are swapped (optimal string alignment variant).</p>
+      <p><b>Metric.</b> Levenshtein distance satisfies the triangle inequality, so BK-trees can prune dictionary search for "all words within distance 2". No known strongly subquadratic algorithm exists for general strings (SETH-hard, Backurs–Indyk 2015).</p>
+      <p><b>Bioinformatics:</b> Needleman–Wunsch is this grid with a scoring matrix (BLOSUM) and gap penalties; affine gaps (opening a gap costs more than extending it) need three grids (Gotoh's algorithm) — a state-machine DP.</p>`,
+    aiEra: `<p><b>What AI changes:</b> edit distance is a one-prompt solution. The interview signal shifts to <b>which arrow means what</b>, reconstructing the script, handling weighted costs, and knowing when not to use the table (one-edit check, or ≤ k band).</p>
+      <p><b>Use AI as a partner:</b> ask an assistant to produce the edit script for random word pairs and verify it by applying the operations yourself — a fast way to catch tie-breaking bugs. Ask it to explain how a Levenshtein automaton works in Lucene; then implement the O(n·k) band yourself.</p>
+      <p><b>Where AI goes wrong:</b> swapping insert/delete arrows (harmless for the distance but wrong in the printed script), wrong base cases (dp[0][j] = 0), and string slicing in loops that turns an O(n) one-edit check into O(n<sup>2</sup>).</p>
+      <p><b>What you must still own:</b> the completeness argument for the three arrows, mapping real product needs (autocorrect, dedupe customer names, DNA) to costs and bands, and the LCS ↔ edit-distance relationship.</p>`,
+    problems: [{
+      title: 'Edit Distance', level: 'Hard', tags: ['dp', 'strings', '2d dp'], companies: ['Google', 'Amazon', 'Microsoft', 'LinkedIn', 'Bloomberg'],
+      statement: `<p>Given two strings <code>word1</code> and <code>word2</code>, return the minimum number of operations required to convert word1 to word2. Allowed operations on word1: insert a character, delete a character, replace a character.</p>`,
+      constraints: `0 ≤ word1.length, word2.length ≤ 500; lowercase English letters`,
+      example: `<p>word1 = "horse", word2 = "ros" → Output <b>3</b>.</p>${H.table(['step', 'operation', 'word'], [['1', H.c('y', 'replace h → r'), 'rorse'], ['2', H.c('r', 'delete r'), 'rose'], ['3', H.c('r', 'delete e'), 'ros']])}`,
+      brute: { why: `<p>Recursion f(i, j) tries all three operations on every mismatch → 3-way branching, about 3<sup>n+m</sup> calls. With 500-letter words that never finishes. Yet there are only 501 × 501 ≈ 2.5·10<sup>5</sup> distinct (i, j) states.</p>`, code: `int f(String a, String b, int i, int j) {
+    if (i == 0) return j;                         // insert the remaining j chars
+    if (j == 0) return i;                         // delete the remaining i chars
+    if (a.charAt(i - 1) == b.charAt(j - 1)) return f(a, b, i - 1, j - 1);
+    return 1 + Math.min(f(a, b, i - 1, j - 1),    // replace
+               Math.min(f(a, b, i - 1, j),        // delete
+                        f(a, b, i, j - 1)));      // insert
+}` },
+      mcq: { q: 'Which cell corresponds to INSERTING word2[j−1] at the end of the current word1 prefix?', options: ['dp[i−1][j−1]', 'dp[i−1][j]', 'dp[i][j−1]', 'dp[i][j]'], answer: 2, explain: 'After inserting word2[j−1], that char is matched; what remains is converting word1[0..i−1] into word2[0..j−2] → dp[i][j−1].' },
+      hints: [`<p>Hint 1: Only the last characters matter. If they are equal, they cost nothing. If not, the last operation was a replace, a delete or an insert.</p>`, `<p>Hint 2: dp[i][j] over prefixes; equal → dp[i−1][j−1]; else 1 + min(↖, ↑, ←). Base dp[i][0] = i, dp[0][j] = j.</p>`, `<p>Hint 3: Watch empty strings (the base cases handle them). For O(m) memory: one row plus a variable holding the old diagonal value before you overwrite it.</p>`],
+      solution: {
+        approach: `<p>Prefix DP with three transitions, using a single row plus a saved diagonal for O(m) memory.</p>`,
+        code: `class Solution {
+    public int minDistance(String word1, String word2) {
+        int n = word1.length(), m = word2.length();
+        int[] dp = new int[m + 1];
+        for (int j = 0; j <= m; j++) dp[j] = j;            // row 0: insert j chars
+        for (int i = 1; i <= n; i++) {
+            int diag = dp[0];                              // old dp[i-1][0]
+            dp[0] = i;                                     // dp[i][0]: delete i chars
+            for (int j = 1; j <= m; j++) {
+                int up = dp[j];                            // old dp[i-1][j] (not yet overwritten)
+                if (word1.charAt(i - 1) == word2.charAt(j - 1)) {
+                    dp[j] = diag;                          // match: free
+                } else {
+                    dp[j] = 1 + Math.min(diag, Math.min(up, dp[j - 1])); // replace, delete, insert
+                }
+                diag = up;                                 // becomes dp[i-1][j-1] for next j
+            }
+        }
+        return dp[m];
+    }
+}`,
+        alt: [{ lang: 'python', code: `class Solution:
+    def minDistance(self, word1, word2):
+        m = len(word2)
+        dp = list(range(m + 1))
+        for i in range(1, len(word1) + 1):
+            diag, dp[0] = dp[0], i
+            for j in range(1, m + 1):
+                up = dp[j]
+                if word1[i - 1] == word2[j - 1]:
+                    dp[j] = diag
+                else:
+                    dp[j] = 1 + min(diag, up, dp[j - 1])
+                diag = up
+        return dp[m]` }],
+        dry: { head: ['i (word1 char)', 'row dp[i][0..3] for "" r o s', 'note'], rows: [['0', '0 1 2 3', 'base: inserts'], ['1 (h)', '1 1 2 3', 'h→r replace = 1'], ['2 (o)', '2 2 1 2', 'o==o: copy diag 1'], ['3 (r)', '3 2 2 2', 'r vs s: min(1, 2, 2) + 1 = 2'], ['4 (s)', '4 3 3 2', 's==s: diag 2'], ['5 (e)', '5 4 4 3', H.c('g', 'delete e: up 2 + 1 = 3')]] },
+        complexity: `<p>Time O(n·m) = 2.5·10<sup>5</sup>; space O(m) (keep the full table to print the edit script).</p>`,
+        followUps: ['Return the list of edits.', 'Is the distance ≤ k? (banded DP, O(n·k))', 'Allow swapping adjacent characters (Damerau–Levenshtein).']
+      }
+    }]
+  });
+
+  // =====================================================================
+  // TOPIC 9 — Grid paths: obstacles and minimum path sum
+  // =====================================================================
+  topics.push({
+    title: 'Grid DP: Unique Paths (with Obstacles) and Minimum Path Sum',
+    analogy: `<p>A delivery rider in a city of perfect square blocks starts at the top-left corner and must reach the bottom-right, moving only <b>right</b> or <b>down</b> (one-way streets!). Some junctions are closed for road works.</p>
+      <p>To count routes to any junction, the rider only needs to know: "how many routes reach the junction <b>just above</b>, and how many reach the one <b>just to the left</b>?" — because the last move into this junction came from one of those two. Same idea for the <i>cheapest</i> route when every junction charges a toll.</p>`,
+    explain: `<p><b>Unique Paths:</b> an m × n grid, start (0,0), finish (m−1, n−1), moves right or down. The last move into cell (r, c) came from above (r−1, c) or from the left (r, c−1):</p>
+      <p style="text-align:center"><code>paths[r][c] = paths[r−1][c] + paths[r][c−1]</code></p>
+      ${H.table(['', 'c0', 'c1', 'c2', 'c3'], [['r0', '1', '1', '1', '1'], ['r1', '1', '2', '3', '4'], ['r2', '1', '3', '6', H.c('g', '10')]])}
+      <p>First row and first column are all 1 (only one straight way). For a 3 × 4 grid the answer is 10 — also C(5, 2) = 10, since every path is 5 moves of which 2 are "down".</p>
+      <h4>With obstacles (Unique Paths II)</h4>
+      <p>A blocked cell can't be stepped on, so <code>paths = 0</code> there. Everything else stays the same — the zero simply stops flowing. Careful with the first row/column: cells <b>after</b> an obstacle in the first row are unreachable (0), not 1. If the start or finish is blocked, the answer is 0.</p>
+      ${H.table(['grid', 'paths'], [[H.arr([0, 0, 0], { idx: false }) + H.arr([0, 1, 0], { idx: false, hl: { 1: 'r' } }) + H.arr([0, 0, 0], { idx: false }), H.arr([1, 1, 1], { idx: false }) + H.arr([1, 0, 1], { idx: false, hl: { 1: 'r' } }) + H.arr([1, 1, 2], { idx: false, hl: { 2: 'g' } })]])}
+      <h4>Minimum Path Sum</h4>
+      <p>Each cell has a cost; find the cheapest route. Swap "+" for "min":</p>
+      <p style="text-align:center"><code>cost[r][c] = grid[r][c] + min(cost[r−1][c], cost[r][c−1])</code></p>
+      <p>First row: only reachable from the left → running sums. First column: running sums down. Grid [[1,3,1],[1,5,1],[4,2,1]] → answer <b>7</b> via 1→3→1→1→1.</p>
+      <p>The grid itself is the DP table, and the fill order is just "row by row, left to right" — every cell's dependencies (above and left) are already done.</p>`,
+    clues: [
+      '"robot at the <b>top-left</b> can only move <b>right or down</b>" → grid DP from top and left.',
+      '"<b>obstacles</b>" marked as 1 / "#" in the grid → that cell\'s dp = 0 (count) or ∞ (min cost).',
+      '"<b>minimum path sum</b> / minimum cost path / maximum gold collected" with right/down moves → grid[r][c] + min/max(up, left).',
+      'Moves in <b>all four directions</b> → not a DAG any more: use BFS / Dijkstra instead of grid DP.',
+      '"must have at least 1 health at every step" (Dungeon Game) → fill <b>backwards</b> from the bottom-right.',
+      '<code>m, n ≤ 100–200</code> → O(m·n) table; "O(n) extra space?" → one row array.'
+    ],
+    code: [`
+      // Unique Paths II: grid[r][c] == 1 means blocked. One row of dp is enough.
+      int uniquePathsWithObstacles(int[][] grid) {
+          int m = grid.length, n = grid[0].length;
+          int[] dp = new int[n];                 // dp[c] = paths to (current row, c)
+          dp[0] = grid[0][0] == 1 ? 0 : 1;       // blocked start -> 0 paths
+          for (int r = 0; r < m; r++) {
+              for (int c = 0; c < n; c++) {
+                  if (grid[r][c] == 1) {
+                      dp[c] = 0;                 // nobody can stand here
+                  } else if (c > 0) {
+                      dp[c] += dp[c - 1];        // from above (old dp[c]) + from left
+                  }
+              }
+          }
+          return dp[n - 1];
+      }
+
+      // Minimum Path Sum: reuse the grid itself as the dp table (modifies input).
+      int minPathSum(int[][] g) {
+          int m = g.length, n = g[0].length;
+          for (int r = 0; r < m; r++) {
+              for (int c = 0; c < n; c++) {
+                  if (r == 0 && c == 0) continue;               // start: cost is its own value
+                  int up   = r > 0 ? g[r - 1][c] : Integer.MAX_VALUE;
+                  int left = c > 0 ? g[r][c - 1] : Integer.MAX_VALUE;
+                  g[r][c] += Math.min(up, left);                // cheapest way in + this toll
+              }
+          }
+          return g[m - 1][n - 1];
+      }`, { lang: 'python', run: true, title: 'Paths, obstacle paths, min path + route (Python, runnable)', code: `from math import comb
+
+def unique_paths(m, n):
+    row = [1] * n
+    for _ in range(1, m):
+        for c in range(1, n):
+            row[c] += row[c - 1]
+    return row[-1]
+
+def paths_with_obstacles(g):
+    n = len(g[0])
+    dp = [0] * n
+    dp[0] = 1 if g[0][0] == 0 else 0
+    for r in range(len(g)):
+        for c in range(n):
+            if g[r][c] == 1:
+                dp[c] = 0
+            elif c > 0:
+                dp[c] += dp[c - 1]
+    return dp[-1]
+
+def min_path(g):
+    m, n = len(g), len(g[0])
+    cost = [[0] * n for _ in range(m)]
+    for r in range(m):
+        for c in range(n):
+            if r == 0 and c == 0:
+                cost[r][c] = g[0][0]
+            else:
+                up = cost[r - 1][c] if r > 0 else float("inf")
+                left = cost[r][c - 1] if c > 0 else float("inf")
+                cost[r][c] = g[r][c] + min(up, left)
+    route, r, c = [], m - 1, n - 1           # walk back to list the cells
+    while True:
+        route.append(g[r][c])
+        if r == 0 and c == 0:
+            break
+        if c == 0 or (r > 0 and cost[r - 1][c] <= cost[r][c - 1]):
+            r -= 1
+        else:
+            c -= 1
+    return cost[m - 1][n - 1], route[::-1]
+
+print(unique_paths(3, 7), comb(8, 2))                                  # 28 28
+print(paths_with_obstacles([[0, 0, 0], [0, 1, 0], [0, 0, 0]]))          # 2
+print(min_path([[1, 3, 1], [1, 5, 1], [4, 2, 1]]))                      # (7, [1, 3, 1, 1, 1])
+` }],
+    codeTitle: ['Unique Paths II (1 row) and Minimum Path Sum (in place) — Java', 'All three + route reconstruction (Python, runnable)'],
+    viz: [{
+      title: 'Counting paths with obstacles: each cell = from above + from the left (blocked cells stay 0)',
+      input: '0 0 0 0 / 0 1 0 0 / 0 0 0 1 / 1 0 0 0',
+      inputLabel: 'grid rows separated by / (0 = open, 1 = blocked; up to 5×6)',
+      gen: function (input) {
+        var g = parseMatrix(input, 5, 6, 0, 1), R = g.length, C = g[0].length, r, c, frames = [];
+        var dp = [], filled = {};
+        for (r = 0; r < R; r++) { dp.push([]); for (c = 0; c < C; c++) dp[r].push(g[r][c] === 1 ? '■' : ''); }
+        var rh = range(R).map(function (x) { return 'r' + x; }), ch = range(C).map(function (x) { return 'c' + x; });
+        var blocked = {}; for (r = 0; r < R; r++) for (c = 0; c < C; c++) if (g[r][c] === 1) blocked[r + ',' + c] = 'bad';
+        frames.push({ narr: 'Grid with ■ = blocked. We will write in each open cell how many right/down routes reach it from the top-left.', parts: [
+          grid('paths[r][c]', dp, rh, ch, blocked)
+        ] });
+        for (r = 0; r < R; r++) {
+          for (c = 0; c < C; c++) {
+            var sp = Object.assign({}, blocked), narr;
+            if (g[r][c] === 1) {
+              narr = '(' + r + ',' + c + ') is blocked → <span class="c-r">0 routes</span> pass through it. It will feed 0 to its right and lower neighbours.';
+              sp[r + ',' + c] = 'bad';
+              frames.push({ narr: narr, parts: [grid('paths[r][c]', dp, rh, ch, gridHl(filled, sp))] });
+              filled[r + ',' + c] = 1;
+              continue;
+            }
+            if (r === 0 && c === 0) { dp[0][0] = 1; narr = 'Start cell: exactly <b>1</b> way to be here (do nothing).'; }
+            else {
+              var up = r > 0 ? (g[r - 1][c] === 1 ? 0 : dp[r - 1][c]) : 0;
+              var left = c > 0 ? (g[r][c - 1] === 1 ? 0 : dp[r][c - 1]) : 0;
+              dp[r][c] = up + left;
+              if (r > 0) sp[(r - 1) + ',' + c] = g[r - 1][c] === 1 ? 'bad' : 'win';
+              if (c > 0) sp[r + ',' + (c - 1)] = g[r][c - 1] === 1 ? 'bad' : 'win';
+              narr = '(' + r + ',' + c + '): from above ' + (r > 0 ? up : '— (edge)') + ' + from the left ' + (c > 0 ? left : '— (edge)') + ' = <b>' + dp[r][c] + '</b>.' + (dp[r][c] === 0 ? ' <span class="c-r">Unreachable: both ways in are walled off.</span>' : '');
+            }
+            sp[r + ',' + c] = 'cur';
+            frames.push({ narr: narr, parts: [grid('paths[r][c]', dp, rh, ch, gridHl(filled, sp))] });
+            filled[r + ',' + c] = 1;
+          }
+        }
+        var ans = g[R - 1][C - 1] === 1 ? 0 : dp[R - 1][C - 1];
+        var fin = gridHl(filled, blocked); fin[(R - 1) + ',' + (C - 1)] = ans ? 'sel' : 'bad';
+        frames.push({ narr: 'Answer: <b>' + ans + '</b> route(s) reach the bottom-right corner.' + (g[R - 1][C - 1] === 1 ? ' (The finish itself is blocked.)' : ''), parts: [grid('paths[r][c]', dp, rh, ch, fin)] });
+        return frames;
+      }
+    }, {
+      title: 'Minimum path sum: each cell = its toll + the cheaper of (above, left); then trace the cheapest route',
+      input: '1 3 1 / 1 5 1 / 4 2 1',
+      inputLabel: 'cost grid rows separated by / (0..9, up to 5×6)',
+      gen: function (input) {
+        var g = parseMatrix(input, 5, 6, 0, 9), R = g.length, C = g[0].length, r, c, frames = [];
+        var cost = [], filled = {};
+        for (r = 0; r < R; r++) { cost.push([]); for (c = 0; c < C; c++) cost[r].push(''); }
+        var rh = range(R).map(function (x) { return 'r' + x; }), ch = range(C).map(function (x) { return 'c' + x; });
+        frames.push({ narr: 'Left: the tolls. Right: the cheapest total cost to reach each cell (moves: right or down).', parts: [
+          grid('toll grid', g, rh, ch, {}), grid('cost[r][c]', cost, rh, ch, {})
+        ] });
+        for (r = 0; r < R; r++) {
+          for (c = 0; c < C; c++) {
+            var sp = {}, narr;
+            if (r === 0 && c === 0) { cost[0][0] = g[0][0]; narr = 'Start: cost = its own toll ' + g[0][0] + '.'; }
+            else {
+              var up = r > 0 ? cost[r - 1][c] : INF, left = c > 0 ? cost[r][c - 1] : INF;
+              cost[r][c] = g[r][c] + Math.min(up, left);
+              if (r > 0) sp[(r - 1) + ',' + c] = up <= left ? 'ok' : 'win';
+              if (c > 0) sp[r + ',' + (c - 1)] = left < up ? 'ok' : 'win';
+              narr = '(' + r + ',' + c + '): toll ' + g[r][c] + ' + min(above ' + show(up) + ', left ' + show(left) + ') = <b>' + cost[r][c] + '</b>. Green = the cheaper way in.';
+            }
+            sp[r + ',' + c] = 'cur';
+            frames.push({ narr: narr, parts: [
+              grid('toll grid', g, rh, ch, one(r + ',' + c, 'cur')),
+              grid('cost[r][c]', cost, rh, ch, gridHl(filled, sp))
+            ] });
+            filled[r + ',' + c] = 1;
+          }
+        }
+        var path = {}, tolls = [];
+        r = R - 1; c = C - 1;
+        for (;;) {
+          path[r + ',' + c] = 'sel'; tolls.unshift(g[r][c]);
+          if (r === 0 && c === 0) break;
+          if (c === 0 || (r > 0 && cost[r - 1][c] <= cost[r][c - 1])) r--; else c--;
+        }
+        frames.push({ narr: 'Cheapest total: <b>' + cost[R - 1][C - 1] + '</b>. Walk back from the corner always stepping to the cheaper of above/left: tolls ' + tolls.join(' → ') + '.', parts: [
+          grid('toll grid', g, rh, ch, path),
+          grid('cost[r][c]', cost, rh, ch, gridHl(filled, path))
+        ] });
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'Unique Paths has a formula', html: `<p>Without obstacles, every route is (m−1) downs and (n−1) rights in some order → <b>C(m+n−2, m−1)</b>. m = 3, n = 7 → C(8, 2) = <b>28</b>. Good to mention, but the DP generalises to obstacles and costs while the formula does not. To compute C(n, k) without overflow, multiply and divide step by step in a long: <code>res = res * (n − k + i) / i</code>.</p>` },
+      { title: 'Obstacle in the first row', html: `<p>Grid [[0, 1, 0], [0, 0, 0]]: cell (0,2) is <b>0</b> (the obstacle blocks the only way in along the top row), not 1. A common bug is initialising the whole first row to 1. Answer: only the route down-then-right → <b>1</b>.</p>` },
+      { title: 'Triangle (LC 120) — grid DP on a triangle, bottom-up', html: `<p>[[2], [3,4], [6,5,7], [4,1,8,3]], move to adjacent index below. Go <b>bottom-up</b>: start with the last row as dp and for each row above set <code>dp[j] = tri[i][j] + min(dp[j], dp[j+1])</code>. Rows: [4,1,8,3] → [7,6,10] → [9,10] → [<b>11</b>] (2+3+5+1). Bottom-up means no edge cases for the triangle's edges.</p>`, code: `int minimumTotal(List<List<Integer>> tri) {
+    int n = tri.size();
+    int[] dp = new int[n + 1];                      // extra 0 below the last row
+    for (int i = n - 1; i >= 0; i--)
+        for (int j = 0; j <= i; j++)
+            dp[j] = tri.get(i).get(j) + Math.min(dp[j], dp[j + 1]);
+    return dp[0];
+}` },
+      { title: 'Dungeon Game: why some grids are filled backwards', html: `<p>The knight needs health ≥ 1 at every cell. A forward DP would have to remember both "current health" and "minimum seen so far" — two numbers that trade off. Backwards, <code>need[r][c] = max(1, min(need[r+1][c], need[r][c+1]) − dungeon[r][c])</code> is a single number: the minimum health needed when <i>entering</i> (r, c). Rule: fill in the direction where the future is a single number.</p>` }
+    ],
+    deepDive: `<p><b>Why right/down makes it a DP.</b> With only right/down moves, every path visits cells in increasing (r + c) order — the grid is a DAG and row-major order is a topological order. Allow up/left moves and cycles appear; then "cheapest path" needs Dijkstra (non-negative tolls) or BFS (unit costs) — DSA 19–20.</p>
+      <p><b>One-row memory.</b> In <code>dp[c] += dp[c−1]</code>, before the update dp[c] still holds the row above (from above), and dp[c−1] already holds the current row (from the left). That is why the single array works without copying — the same trick as the unbounded knapsack forward loop. Choose the shorter dimension for the row: O(min(m, n)) memory.</p>
+      <p><b>Overflow.</b> Unique Paths for a 100 × 100 grid is C(198, 99) ≈ 2.3·10<sup>58</sup> — huge. LeetCode guarantees answers ≤ 2·10<sup>9</sup>; otherwise use mod 10<sup>9</sup>+7 or BigInteger.</p>
+      <p><b>Cherry Pickup / two walkers.</b> When two people walk simultaneously (or go there and back), the state becomes (step, r1, r2) since c = step − r — a 3D DP in O(n<sup>3</sup>). That is a DP II/III pattern built on this grid foundation.</p>
+      <p><b>Counting with modulo and obstacles at scale.</b> For a huge grid (10<sup>5</sup> × 10<sup>5</sup>) with only k ≤ 3000 obstacles, count paths via inclusion–exclusion over obstacles sorted by position: ways(start → o<sub>i</sub> avoiding earlier obstacles) using C(·,·) with precomputed factorials → O(k<sup>2</sup>) — a classic competitive-programming upgrade (AtCoder DP contest "Grid 2").</p>
+      <p><b>Production:</b> seam carving (content-aware image resizing) is minimum path sum over an energy grid, moving down with three choices (down-left, down, down-right). Dynamic time warping for comparing speech/time series is the same grid with min over three neighbours.</p>`,
+    aiEra: `<p><b>What AI changes:</b> grid DP is the easiest DP for an assistant to write. Interviewers therefore use twists: obstacles on the first row, blocked start, four-directional movement (no longer DP!), backward fill (Dungeon Game), or "print the route".</p>
+      <p><b>Use AI as a partner:</b> ask for tricky grids: <code>Give me 6 small obstacle grids that break naive first-row initialisation</code>, and run them against your code. Ask it to compare DP vs Dijkstra on a grid with 4-way movement and explain why DP fails there.</p>
+      <p><b>Where AI goes wrong:</b> initialising the first row/column to 1 regardless of obstacles, forgetting that the start cell can be blocked, modifying the input grid when the caller still needs it, and using Integer.MAX_VALUE + toll (overflow) at edges.</p>
+      <p><b>What you must still own:</b> the DAG argument (why right/down allows DP and 4-way doesn't), the choice of fill direction, and the one-row memory trick's correctness.</p>`,
+    problems: [{
+      title: 'Unique Paths II (with obstacles)', level: 'Medium', tags: ['dp', 'grid dp', 'counting'], companies: ['Amazon', 'Google', 'Bloomberg'],
+      statement: `<p>A robot starts at the top-left of an m × n grid and wants to reach the bottom-right, moving only right or down. <code>obstacleGrid[r][c] = 1</code> marks an obstacle the robot cannot enter; 0 is open. Return the number of distinct paths.</p>`,
+      constraints: `1 ≤ m, n ≤ 100; answer ≤ 2·10<sup>9</sup>`,
+      example: `${H.table(['grid', 'paths per cell'], [['0 0 0<br>0 ' + H.c('r', '1') + ' 0<br>0 0 0', '1 1 1<br>1 ' + H.c('r', '0') + ' 1<br>1 1 ' + H.c('g', '2')]])}<p>Output <b>2</b>: right-right-down-down and down-down-right-right; every other route crosses the obstacle.</p>`,
+      brute: { why: `<p>Recursively walk right or down from every cell and count arrivals: up to C(m+n−2, m−1) paths — for 100 × 100 about 10<sup>58</sup> recursive leaves. Every cell is re-explored once per route that reaches it, though its answer never changes.</p>`, code: `int count(int[][] g, int r, int c) {
+    int m = g.length, n = g[0].length;
+    if (r >= m || c >= n || g[r][c] == 1) return 0;   // off-grid or blocked
+    if (r == m - 1 && c == n - 1) return 1;           // reached the goal
+    return count(g, r + 1, c) + count(g, r, c + 1);   // down or right
+}` },
+      mcq: { q: 'The first row is [0, 0, 1, 0]. What are the path counts for that row?', options: ['1 1 1 1', '1 1 0 0', '1 1 0 1', '0 0 0 0'], answer: 1, explain: 'In row 0 the only way in is from the left. The obstacle gives 0 and every cell after it inherits 0.' },
+      hints: [`<p>Hint 1: The last move into a cell came from above or from the left. Obstacles contribute 0.</p>`, `<p>Hint 2: paths[r][c] = 0 if blocked, else paths[r−1][c] + paths[r][c−1] (missing neighbours count 0). Start = 1 if open.</p>`, `<p>Hint 3: One array dp of length n: for each row, for each c: if blocked dp[c] = 0 else if c &gt; 0 dp[c] += dp[c−1]. Initialise dp[0] = 1 only if the start is open. Return dp[n−1].</p>`],
+      solution: {
+        approach: `<p>Row-by-row counting DP in one array: before the update, dp[c] is "from above"; dp[c−1] is "from the left" (already updated for this row).</p>`,
+        code: `class Solution {
+    public int uniquePathsWithObstacles(int[][] obstacleGrid) {
+        int n = obstacleGrid[0].length;
+        int[] dp = new int[n];
+        dp[0] = obstacleGrid[0][0] == 1 ? 0 : 1;
+        for (int[] row : obstacleGrid) {
+            for (int c = 0; c < n; c++) {
+                if (row[c] == 1) dp[c] = 0;            // blocked cell
+                else if (c > 0) dp[c] += dp[c - 1];    // above + left
+            }
+        }
+        return dp[n - 1];
+    }
+}`,
+        alt: [{ lang: 'python', code: `class Solution:
+    def uniquePathsWithObstacles(self, obstacleGrid):
+        n = len(obstacleGrid[0])
+        dp = [0] * n
+        dp[0] = 0 if obstacleGrid[0][0] else 1
+        for row in obstacleGrid:
+            for c in range(n):
+                if row[c]:
+                    dp[c] = 0
+                elif c:
+                    dp[c] += dp[c - 1]
+        return dp[-1]` }],
+        dry: { head: ['row', 'grid row', 'dp after the row'], rows: [['0', '0 0 0', '1 1 1'], ['1', '0 1 0', '1 0 1'], ['2', '0 0 0', '1 1 ' + H.c('g', '2')]] },
+        complexity: `<p>Time O(m·n), space O(n).</p>`,
+        followUps: ['Minimum Path Sum on the same grid.', 'Robot can also move diagonally down-right → add a third term.', 'Count paths modulo 10<sup>9</sup>+7 on a 10<sup>5</sup> × 10<sup>5</sup> grid with few obstacles (combinatorics + inclusion–exclusion).']
+      }
+    }, {
+      title: 'Minimum Path Sum', level: 'Medium', tags: ['dp', 'grid dp', 'min cost'], companies: ['Amazon', 'Goldman Sachs', 'Microsoft'],
+      statement: `<p>Given an m × n grid of non-negative integers, find a path from the top-left to the bottom-right that minimizes the sum of all numbers along the path. You can only move right or down.</p>`,
+      constraints: `1 ≤ m, n ≤ 200, 0 ≤ grid[i][j] ≤ 200`,
+      example: `${H.table(['grid', 'cost'], [[H.c('g', '1') + ' ' + H.c('g', '3') + ' ' + H.c('g', '1') + '<br>1 5 ' + H.c('g', '1') + '<br>4 2 ' + H.c('g', '1'), '1 4 5<br>2 7 6<br>6 8 ' + H.c('g', '7')]])}<p>Output <b>7</b> via 1 → 3 → 1 → 1 → 1. Going down first (1 → 1 → 4 → 2 → 1) costs 9.</p>`,
+      brute: { why: `<p>Enumerate every right/down route (C(m+n−2, m−1) of them, ~10<sup>118</sup> for 200 × 200) and sum each. The cheapest cost to reach any middle cell is recomputed for every route through it.</p>`, code: `int best(int[][] g, int r, int c) {
+    if (r == 0 && c == 0) return g[0][0];
+    int up = r > 0 ? best(g, r - 1, c) : Integer.MAX_VALUE;
+    int left = c > 0 ? best(g, r, c - 1) : Integer.MAX_VALUE;
+    return g[r][c] + Math.min(up, left);              // exponential without memo
+}` },
+      mcq: { q: 'How should the first row be filled?', options: ['All zeros', 'Copy the grid values', 'Running (prefix) sums of the row, since it is reachable only from the left', 'All infinity'], answer: 2, explain: 'Cells in row 0 can only be entered from the left, so their cost is the sum of everything before them plus themselves.' },
+      hints: [`<p>Hint 1: The cheapest way into (r, c) is via the cheaper of its two possible predecessors.</p>`, `<p>Hint 2: cost[r][c] = grid[r][c] + min(cost[r−1][c], cost[r][c−1]); edges have only one predecessor.</p>`, `<p>Hint 3: Use one row array: dp[c] = grid[r][c] + min(dp[c] (above), dp[c−1] (left)), treating missing neighbours as +∞. Start dp[0] with grid[0][0] and build the first row as prefix sums.</p>`],
+      solution: {
+        approach: `<p>Grid DP with "min" instead of "+", stored in a single row array.</p>`,
+        code: `class Solution {
+    public int minPathSum(int[][] grid) {
+        int m = grid.length, n = grid[0].length;
+        int[] dp = new int[n];
+        for (int r = 0; r < m; r++) {
+            for (int c = 0; c < n; c++) {
+                if (r == 0 && c == 0) dp[c] = grid[0][0];
+                else if (r == 0) dp[c] = dp[c - 1] + grid[r][c];          // only from the left
+                else if (c == 0) dp[c] = dp[c] + grid[r][c];              // only from above
+                else dp[c] = Math.min(dp[c], dp[c - 1]) + grid[r][c];     // cheaper of above/left
+            }
+        }
+        return dp[n - 1];
+    }
+}`,
+        alt: [{ lang: 'python', code: `class Solution:
+    def minPathSum(self, grid):
+        n = len(grid[0])
+        dp = [float("inf")] * n
+        dp[0] = 0
+        for row in grid:
+            dp[0] += row[0]
+            for c in range(1, n):
+                dp[c] = min(dp[c], dp[c - 1]) + row[c]
+        return dp[-1]` }],
+        dry: { head: ['row', 'grid row', 'dp after the row'], rows: [['0', '1 3 1', '1 4 5'], ['1', '1 5 1', '2 7 6'], ['2', '4 2 1', '6 8 ' + H.c('g', '7')]] },
+        complexity: `<p>Time O(m·n) = 4·10<sup>4</sup>; space O(n).</p>`,
+        followUps: ['Print the path (keep the full table and walk back).', 'Maximum gold instead of minimum cost.', 'Movement in 4 directions → Dijkstra.']
       }
     }]
   });

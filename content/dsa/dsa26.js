@@ -202,7 +202,7 @@ for o, a, b in cases:
         }
         var lefts = summary.filter(function (r) { return r[3] === 'left'; }).length, rights = summary.filter(function (r) { return r[3] === 'right'; }).length;
         frames.push({
-          narr: 'Summary: ' + lefts + ' left turn(s), ' + rights + ' right turn(s). ' + (rights === 0 && lefts > 0 ? 'Only left turns → if this path closed up it would be a <b>convex</b> counter-clockwise polygon (Topic 4 uses exactly this test).' : lefts === 0 && rights > 0 ? 'Only right turns → a clockwise convex chain.' : 'Mixed turns → the path wiggles; a closed version would be <b>non-convex</b>.'),
+          narr: 'Summary: ' + lefts + ' left turn(s), ' + rights + ' right turn(s). ' + (lefts === 0 && rights === 0 ? 'Every cross product was 0 → all points are <b>collinear</b> (this is exactly the "Check If It Is a Straight Line" test).' : rights === 0 && lefts > 0 ? 'Only left turns → if this path closed up it would be a <b>convex</b> counter-clockwise polygon (Topic 4 uses exactly this test).' : lefts === 0 && rights > 0 ? 'Only right turns → a clockwise convex chain.' : 'Mixed turns → the path wiggles; a closed version would be <b>non-convex</b>.'),
           parts: [{ type: 'table', label: 'turn at every inner point', columns: ['point', 'coords', 'cross', 'turn'], rows: summary }]
         });
         return frames;
@@ -290,6 +290,831 @@ public:
         ] },
         complexity: `<p>Time <b>O(N)</b>, space <b>O(1)</b>. Each check is two multiplications and a subtraction.</p>`,
         followUps: ['Return the maximum number of points on one line (LeetCode 149 — practice set).', 'What changes if points may repeat? (If p[0] == p[1], the direction is (0,0) and every cross is 0 — pick a different second point.)', 'Coordinates are doubles from GPS: how do you choose a tolerance?']
+      }
+    }]
+  });
+
+  // =====================================================================
+  // TOPIC 2 — Segment intersection
+  // =====================================================================
+  topics.push({
+    title: 'Segment Intersection: Straddle Test, Collinear Cases & the Crossing Point',
+    analogy: `<p>Two roads are drawn on a paper map as straight strokes. Do they cross? Stand on road 1 and look along it: if the two ends of road 2 are on <b>opposite sides</b> of you (one on your left, one on your right), road 2 cuts across your line. But that alone is not enough — road 2 might cross your <i>line</i> far beyond the end of your road. So you also stand on road 2 and check that road 1's ends are on opposite sides of <i>it</i>. Both roads must "split" each other. That double check is the whole algorithm.</p>`,
+    explain: `<p>Segments <b>P1P2</b> and <b>Q1Q2</b>. Compute four orientations with the Topic 1 helper:</p>
+      ${H.table(['name', 'question', 'formula'], [
+        ['o1', 'which side of line P1P2 is Q1?', 'sign(cross(P1, P2, Q1))'],
+        ['o2', 'which side of line P1P2 is Q2?', 'sign(cross(P1, P2, Q2))'],
+        ['o3', 'which side of line Q1Q2 is P1?', 'sign(cross(Q1, Q2, P1))'],
+        ['o4', 'which side of line Q1Q2 is P2?', 'sign(cross(Q1, Q2, P2))']
+      ])}
+      <p><b>General case:</b> if <code>o1 ≠ o2</code> <i>and</i> <code>o3 ≠ o4</code>, the segments intersect (this also covers a T-shaped touch where one value is 0).</p>
+      <p><b>Special (collinear) cases:</b> if some <code>o = 0</code>, that endpoint lies on the other segment's <i>line</i>; it touches the <i>segment</i> only if it is also inside the segment's bounding box. Check all four: <code>o1 = 0 &amp;&amp; onSegment(P1,P2,Q1)</code>, and so on. If none applies → no intersection.</p>
+      <p><b>Worked example.</b> P1=(0,0), P2=(6,4), Q1=(0,4), Q2=(6,0) (an X shape).</p>
+      ${H.table(['test', 'cross', 'sign'], [
+        ['o1: (P1,P2,Q1)', '6·4 − 4·0 = 24', H.c('g', '+ (left)')],
+        ['o2: (P1,P2,Q2)', '6·0 − 4·6 = −24', H.c('r', '− (right)')],
+        ['o3: (Q1,Q2,P1)', '(Q2−Q1)×(P1−Q1) = (6,−4)×(0,−4) = 6·(−4) − (−4)·0 = −24', H.c('r', '− (right)')],
+        ['o4: (Q1,Q2,P2)', '(6,−4)×(P2−Q1) = (6,−4)×(6,0) = 0 − (−24) = 24', H.c('g', '+ (left)')]
+      ])}
+      <p>o1 ≠ o2 and o3 ≠ o4 → <b>they cross</b>.</p>
+      <p><b>Where do they cross?</b> Write P(t) = P1 + t·r with r = P2 − P1, and Q(u) = Q1 + u·s with s = Q2 − Q1. Crossing both sides of <code>P1 + t·r = Q1 + u·s</code> with s (and with r) kills one unknown each time:</p>
+      <ul>
+        <li><code>t = ((Q1 − P1) × s) / (r × s)</code></li>
+        <li><code>u = ((Q1 − P1) × r) / (r × s)</code></li>
+      </ul>
+      <p>Valid crossing ⇔ <code>r × s ≠ 0</code> and <code>0 ≤ t ≤ 1</code> and <code>0 ≤ u ≤ 1</code>. In the example r = (6,4), s = (6,−4), r×s = −24−24 = −48, Q1−P1 = (0,4): t = (0·(−4) − 4·6)/(−48) = 0.5, so the point is P1 + 0.5·(6,4) = <b>(3, 2)</b>. If <code>r × s = 0</code> the lines are parallel: either disjoint, or collinear (then check overlap of the 1D projections).</p>
+      <p><b>Cheap pre-filter:</b> if the bounding boxes do not overlap, skip everything. Real systems with millions of segments do this first.</p>`,
+    clues: [
+      '"Do two line segments <b>intersect / cross / touch</b>?" → four orientation tests + collinear on-segment checks.',
+      '"Return the <b>intersection point</b>" → parametric t and u with cross products; keep numerators/denominator as integers until the final division.',
+      '"Does the polyline / path <b>cross itself</b>?" (LeetCode 335 Self Crossing, snake games) → segment intersection against earlier segments.',
+      '"Can the robot <b>see</b> the target / is the line of sight blocked by walls?" → segment vs each wall segment.',
+      'N segments, "<b>any</b> pair intersects?" with N ≤ 10<sup>5</sup> → sweep line (Shamos–Hoey) instead of O(N<sup>2</sup>) pairs.',
+      '"Endpoints count as intersecting" or "touching counts" in the statement → you MUST handle the o = 0 cases, not just the strict straddle.'
+    ],
+    code: [`
+      static long cross(long[] o, long[] a, long[] b) {
+          return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+      }
+
+      // p is already known to be collinear with a-b; is it inside the segment's bounding box?
+      static boolean inBox(long[] a, long[] b, long[] p) {
+          return Math.min(a[0], b[0]) <= p[0] && p[0] <= Math.max(a[0], b[0])
+              && Math.min(a[1], b[1]) <= p[1] && p[1] <= Math.max(a[1], b[1]);
+      }
+
+      // True if closed segments P1P2 and Q1Q2 share at least one point (touching counts).
+      static boolean segmentsIntersect(long[] p1, long[] p2, long[] q1, long[] q2) {
+          int o1 = Long.signum(cross(p1, p2, q1));
+          int o2 = Long.signum(cross(p1, p2, q2));
+          int o3 = Long.signum(cross(q1, q2, p1));
+          int o4 = Long.signum(cross(q1, q2, p2));
+          if (o1 != o2 && o3 != o4) return true;            // proper crossing or T-touch
+          if (o1 == 0 && inBox(p1, p2, q1)) return true;    // Q1 lies on P1P2
+          if (o2 == 0 && inBox(p1, p2, q2)) return true;    // Q2 lies on P1P2
+          if (o3 == 0 && inBox(q1, q2, p1)) return true;    // P1 lies on Q1Q2
+          if (o4 == 0 && inBox(q1, q2, p2)) return true;    // P2 lies on Q1Q2
+          return false;                                     // separated
+      }`, `
+      // Crossing point of two NON-parallel segments, or null if they do not cross.
+      // Exact test on integers; only the final coordinates use doubles.
+      static double[] crossingPoint(long[] p1, long[] p2, long[] q1, long[] q2) {
+          long rx = p2[0] - p1[0], ry = p2[1] - p1[1];      // r = P2 - P1
+          long sx = q2[0] - q1[0], sy = q2[1] - q1[1];      // s = Q2 - Q1
+          long qx = q1[0] - p1[0], qy = q1[1] - p1[1];      // Q1 - P1
+          long den = rx * sy - ry * sx;                     // r x s
+          if (den == 0) return null;                        // parallel or collinear: handle separately
+          long tNum = qx * sy - qy * sx;                    // (Q1 - P1) x s
+          long uNum = qx * ry - qy * rx;                    // (Q1 - P1) x r
+          if (den < 0) { den = -den; tNum = -tNum; uNum = -uNum; }   // make the denominator positive
+          if (tNum < 0 || tNum > den || uNum < 0 || uNum > den) return null; // outside a segment
+          double t = (double) tNum / den;
+          return new double[]{p1[0] + t * rx, p1[1] + t * ry};
+      }`],
+    codeTitle: ['Yes/no intersection test (handles every touching case)', 'Where they cross (parametric form, exact range check)'],
+    viz: {
+      title: 'Four orientation tests decide if two segments meet',
+      input: '0,0 6,4 0,4 6,0',
+      inputLabel: 'P1 P2 Q1 Q2 as x,y (coordinates -20..20)',
+      gen: function (input) {
+        var pts = parsePts(input, 4, 4, 20), P1 = pts[0], P2 = pts[1], Q1 = pts[2], Q2 = pts[3], frames = [];
+        var ids = ['P1', 'P2', 'Q1', 'Q2'];
+        var E = [['P1', 'P2'], ['Q1', 'Q2']];
+        function pl(hl, ehl, extra, label) {
+          var p = pts.slice(), id = ids.slice();
+          if (extra) { p.push(extra); id.push('X'); }
+          var tags = {}; p.forEach(function (q, i) { tags[id[i]] = '(' + r2(q[0]) + ',' + r2(q[1]) + ')'; });
+          return plot(p, { ids: id, edges: E, hl: hl, ehl: ehl, tags: tags, label: label || 'segments P1P2 and Q1Q2' });
+        }
+        function sg(c) { return c > 0 ? '+1 (left)' : c < 0 ? '−1 (right)' : '0 (on the line)'; }
+        var bx = !(Math.max(P1[0], P2[0]) < Math.min(Q1[0], Q2[0]) || Math.max(Q1[0], Q2[0]) < Math.min(P1[0], P2[0]) || Math.max(P1[1], P2[1]) < Math.min(Q1[1], Q2[1]) || Math.max(Q1[1], Q2[1]) < Math.min(P1[1], P2[1]));
+        frames.push({ narr: 'Two segments. We will never compute slopes — only four cross products. First a cheap filter: do their <b>bounding boxes</b> overlap? ' + (bx ? '<span class="c-g">Yes</span>, so we must look closer.' : '<span class="c-r">No</span> — they cannot meet, but let us still run the full test to see why.'),
+          parts: [pl({}, {}), { type: 'vars', label: 'bounding boxes', vals: { 'P box x': Math.min(P1[0], P2[0]) + '..' + Math.max(P1[0], P2[0]), 'P box y': Math.min(P1[1], P2[1]) + '..' + Math.max(P1[1], P2[1]), 'Q box x': Math.min(Q1[0], Q2[0]) + '..' + Math.max(Q1[0], Q2[0]), 'Q box y': Math.min(Q1[1], Q2[1]) + '..' + Math.max(Q1[1], Q2[1]), overlap: bx ? 'yes' : 'no' }, hl: { overlap: bx ? 'ok' : 'bad' } }] });
+        var c1 = cross(P1, P2, Q1), c2 = cross(P1, P2, Q2), c3 = cross(Q1, Q2, P1), c4 = cross(Q1, Q2, P2);
+        var o1 = Math.sign(c1), o2 = Math.sign(c2), o3 = Math.sign(c3), o4 = Math.sign(c4);
+        var vals = {};
+        vals.o1 = sg(c1);
+        frames.push({ narr: 'Stand on <b>P1 → P2</b>. Where is <b>Q1</b>? cross(P1,P2,Q1) = <b>' + c1 + '</b> → ' + sg(c1) + '.', parts: [pl({ P1: 'cur', P2: 'cur', Q1: 'sel' }, { 'P1-P2': 'cur' }), { type: 'vars', label: 'orientations so far', vals: JSON.parse(JSON.stringify(vals)), hl: { o1: 'cur' } }] });
+        vals.o2 = sg(c2);
+        frames.push({ narr: 'Still on P1 → P2. Where is <b>Q2</b>? cross(P1,P2,Q2) = <b>' + c2 + '</b> → ' + sg(c2) + '. ' + (o1 !== o2 ? '<span class="c-g">Q1 and Q2 are split by line P1P2</span> (or one touches it).' : (o1 === 0 ? '<span class="c-y">Both Q1 and Q2 lie ON line P1P2</span> — the segments are collinear; only the overlap checks can say yes.' : '<span class="c-r">Q1 and Q2 are on the same side</span> — a crossing is impossible unless an endpoint touches.')), parts: [pl({ P1: 'cur', P2: 'cur', Q2: 'sel' }, { 'P1-P2': 'cur' }), { type: 'vars', label: 'orientations so far', vals: JSON.parse(JSON.stringify(vals)), hl: { o2: o1 !== o2 ? 'ok' : 'bad' } }] });
+        vals.o3 = sg(c3);
+        frames.push({ narr: 'Now stand on <b>Q1 → Q2</b>. Where is <b>P1</b>? cross(Q1,Q2,P1) = <b>' + c3 + '</b> → ' + sg(c3) + '.', parts: [pl({ Q1: 'cur', Q2: 'cur', P1: 'sel' }, { 'Q1-Q2': 'cur' }), { type: 'vars', label: 'orientations so far', vals: JSON.parse(JSON.stringify(vals)), hl: { o3: 'cur' } }] });
+        vals.o4 = sg(c4);
+        frames.push({ narr: 'Where is <b>P2</b>? cross(Q1,Q2,P2) = <b>' + c4 + '</b> → ' + sg(c4) + '. ' + (o3 !== o4 ? '<span class="c-g">P1 and P2 are split by line Q1Q2.</span>' : (o3 === 0 ? '<span class="c-y">Both P1 and P2 lie ON line Q1Q2</span> (collinear).' : '<span class="c-r">P1 and P2 are on the same side of line Q1Q2.</span>')), parts: [pl({ Q1: 'cur', Q2: 'cur', P2: 'sel' }, { 'Q1-Q2': 'cur' }), { type: 'vars', label: 'orientations', vals: JSON.parse(JSON.stringify(vals)), hl: { o4: o3 !== o4 ? 'ok' : 'bad' } }] });
+        function inBox(a, b, p) { return Math.min(a[0], b[0]) <= p[0] && p[0] <= Math.max(a[0], b[0]) && Math.min(a[1], b[1]) <= p[1] && p[1] <= Math.max(a[1], b[1]); }
+        var general = o1 !== o2 && o3 !== o4, why = '';
+        var hit = general;
+        if (!hit) {
+          if (o1 === 0 && inBox(P1, P2, Q1)) { hit = true; why = 'Q1 lies on segment P1P2'; }
+          else if (o2 === 0 && inBox(P1, P2, Q2)) { hit = true; why = 'Q2 lies on segment P1P2'; }
+          else if (o3 === 0 && inBox(Q1, Q2, P1)) { hit = true; why = 'P1 lies on segment Q1Q2'; }
+          else if (o4 === 0 && inBox(Q1, Q2, P2)) { hit = true; why = 'P2 lies on segment Q1Q2'; }
+        }
+        frames.push({ narr: general ? '<b>General case holds</b>: o1 ≠ o2 AND o3 ≠ o4 → each segment splits the other → <span class="c-g">they intersect</span>.' : hit ? 'General case fails, but a <b>collinear special case</b> fires: ' + why + ' (orientation 0 AND inside the bounding box) → <span class="c-g">they touch</span>.' : 'General case fails and no endpoint lies on the other segment → <span class="c-r">no intersection</span>.' + (o1 === 0 && o2 === 0 ? ' (They are collinear but their shadows on the line do not overlap.)' : ''),
+          parts: [pl(hit ? { P1: 'ok', P2: 'ok', Q1: 'ok', Q2: 'ok' } : { P1: 'bad', P2: 'bad', Q1: 'bad', Q2: 'bad' }, hit ? { 'P1-P2': 'ok', 'Q1-Q2': 'ok' } : { 'P1-P2': 'bad', 'Q1-Q2': 'bad' }),
+            { type: 'code', lang: 'java', label: 'decision', code: 'if (o1 != o2 && o3 != o4) return true;\nif (o1 == 0 && inBox(P1,P2,Q1)) return true;\nif (o2 == 0 && inBox(P1,P2,Q2)) return true;\nif (o3 == 0 && inBox(Q1,Q2,P1)) return true;\nif (o4 == 0 && inBox(Q1,Q2,P2)) return true;\nreturn false;', hl: general ? { 1: 'ok' } : hit ? { 2: 'ok', 3: 'ok', 4: 'ok', 5: 'ok' } : { 6: 'bad' } }] });
+        var rx = P2[0] - P1[0], ry = P2[1] - P1[1], sx = Q2[0] - Q1[0], sy = Q2[1] - Q1[1], qx = Q1[0] - P1[0], qy = Q1[1] - P1[1];
+        var den = rx * sy - ry * sx;
+        if (den !== 0) {
+          var t = (qx * sy - qy * sx) / den, u = (qx * ry - qy * rx) / den;
+          var X = [P1[0] + t * rx, P1[1] + t * ry], inside = t >= 0 && t <= 1 && u >= 0 && u <= 1;
+          frames.push({ narr: 'Where would the <b>lines</b> meet? r×s = ' + den + ', t = ' + r2(t) + ', u = ' + r2(u) + ' → point X = (' + r2(X[0]) + ', ' + r2(X[1]) + '). ' + (inside ? 'Both t and u are in [0,1] → X is on <b>both segments</b>.' : 'At least one of t, u is outside [0,1] → the lines meet at X, but X is off a segment, so the segments do not meet.'),
+            parts: [pl({ X: inside ? 'ok' : 'bad' }, {}, X, 'lines extended meet at X'), { type: 'vars', label: 'parametric solve', vals: { 'r = P2−P1': '(' + rx + ',' + ry + ')', 's = Q2−Q1': '(' + sx + ',' + sy + ')', 'r×s': den, t: r2(t), u: r2(u) }, hl: { t: t >= 0 && t <= 1 ? 'ok' : 'bad', u: u >= 0 && u <= 1 ? 'ok' : 'bad' } }] });
+        } else {
+          frames.push({ narr: 'r × s = 0 → the segments are <b>parallel</b>. ' + (cross(P1, P2, Q1) === 0 ? 'They are also collinear: project both onto the line and check whether the two 1D intervals overlap (that is what the inBox checks did).' : 'They lie on different parallel lines, so they can never meet.'),
+            parts: [pl({}, {}), { type: 'vars', label: 'parallel check', vals: { 'r×s': 0, 'collinear?': cross(P1, P2, Q1) === 0 ? 'yes' : 'no' } }] });
+        }
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'The X (proper crossing)', html: `<p>P1(0,0)–P2(6,4) and Q1(0,4)–Q2(6,0): o1 = +, o2 = −, o3 = −, o4 = + → general case → intersect at (3,2). This is the textbook case everybody gets right.</p>` },
+      { title: 'The T-touch (endpoint on the other segment)', html: `<p>P1(0,0)–P2(4,0) and Q1(2,0)–Q2(2,5). o1 = cross(P1,P2,Q1) = 0 (Q1 is on the line), o2 = + , o3 = sign(cross(Q1,Q2,P1)) = +, o4 = −. o1 ≠ o2 and o3 ≠ o4 → the general case already returns true. A "strict" test that demands <code>o1·o2 &lt; 0</code> would wrongly say "no".</p>
+        ${H.table(['o1', 'o2', 'o3', 'o4', 'result'], [['0', '+1', '+1', '−1', H.c('g', 'touch → true')]])}` },
+      { title: 'Collinear and overlapping', html: `<p>P1(0,0)–P2(4,0) and Q1(2,0)–Q2(7,0). All four orientations are 0, so the general case fails (0 = 0). The special cases rescue it: o1 = 0 and Q1 = (2,0) is inside P's box [0..4] → <span class="c-g">true</span>. The overlap is the segment (2,0)–(4,0).</p>` },
+      { title: 'Collinear but apart (the classic bug)', html: `<p>P1(0,0)–P2(2,2) and Q1(3,3)–Q2(5,5). All orientations 0. A sloppy solution that says "collinear ⇒ intersect" returns true. The bounding-box checks all fail (3 &gt; 2), so the correct answer is <span class="c-r">false</span>.</p>` },
+      { title: 'Parallel, never meeting', html: `<p>P1(0,0)–P2(4,0) and Q1(0,2)–Q2(4,2). o1 = o2 = + (both Q points on the left of P), so the general case fails; no orientation is 0; answer false. In the parametric form r × s = 4·0 − 0·4 = 0 signals "parallel" before any division.</p>`, code: `long[] p1 = {0, 0}, p2 = {4, 0}, q1 = {0, 2}, q2 = {4, 2};
+long rxs = (p2[0] - p1[0]) * (q2[1] - q1[1]) - (p2[1] - p1[1]) * (q2[0] - q1[0]);
+System.out.println("r x s = " + rxs + " -> parallel, never divide by this");` }
+    ],
+    deepDive: `<p><b>Why "o1 ≠ o2 and o3 ≠ o4" is enough (with zeros).</b> If, say, o1 = 0 and o2 ≠ 0, the two lines are not parallel and meet exactly at Q1. The condition o3 ≠ o4 says P1 and P2 are on different sides of (or on) line Q1Q2, so the meeting point Q1 lies between P1 and P2 — on the segment. When both o1 and o2 are 0 the segments are collinear and the bounding-box checks take over. This is the version in CLRS (Section 33.1).</p>
+      <p><b>Overflow and signs.</b> Never test <code>c1 * c2 &lt; 0</code> on raw cross products: each can be ~10<sup>18</sup>, and their product overflows long. Compare <code>Long.signum</code> values. For the crossing point keep <code>tNum</code>, <code>uNum</code> and <code>den</code> as exact integers and compare <code>0 ≤ tNum ≤ den</code> after normalising the sign; divide only at the end. If an exact rational point is required (judges sometimes want fractions), output <code>(p1.x·den + tNum·rx) / den</code> reduced by gcd.</p>
+      <p><b>Many segments.</b> Testing all pairs is O(N<sup>2</sup>). The <b>Shamos–Hoey</b> sweep answers "does ANY pair intersect?" in O(N log N): sweep a vertical line left to right, keep active segments ordered by y in a balanced BST (<code>TreeSet</code> with a comparator evaluated at the current x), and only test each newly inserted or removed segment against its neighbours above and below. <b>Bentley–Ottmann</b> extends it to report all K intersections in O((N + K) log N). Both are notoriously hard to make robust — degenerate inputs (vertical segments, shared endpoints, three segments through one point) need careful tie-breaking.</p>
+      <p><b>Production reality.</b> GIS engines (JTS/GEOS behind PostGIS's <code>ST_Intersects</code>) use spatial indexes (R-trees) to find candidate pairs, then exactly this predicate with robust arithmetic. Chip-design tools check millions of wire segments for shorts; game physics does "ray vs wall" tests for bullets and line of sight every frame.</p>`,
+    aiEra: `<p><b>What AI changes:</b> an LLM will produce a working-looking intersection function in seconds — and in a large fraction of attempts it misses one of the degenerate cases (collinear-apart, T-touch, zero-length segment) or uses floating slopes. The interview has shifted toward "here is generated code, find the bug" and toward degenerate-case reasoning.</p>
+      <p><b>Use AI as a partner:</b> <code>Generate a brute-force checker that rasterises both segments on a fine integer grid, and 1000 random small-coordinate tests including collinear and touching cases</code>. Differential testing against a dumb oracle is exactly what you would want in production and AI writes the harness fast.</p>
+      <p><b>Where AI goes wrong:</b> multiplying two cross products (overflow), returning true for all collinear pairs, dividing by <code>r × s</code> before checking for zero, and mixing "touching counts" vs "strict crossing" semantics without reading the statement.</p>
+      <p><b>What you must still own:</b> the case analysis table (general vs four collinear checks), the reason it is complete, and the decision of exact vs floating arithmetic.</p>`,
+    problems: [{
+      title: 'Intersection Point of Two Segments', level: 'Medium', tags: ['geometry', 'cross product', 'math'], companies: ['Google', 'Uber', 'Bloomberg'],
+      statement: `<p>Given two segments by their endpoints <code>start1, end1</code> and <code>start2, end2</code> (integer coordinates), return their intersection point as <code>[x, y]</code>. If they share infinitely many points (collinear overlap), return the one with the <b>smallest x</b>, breaking ties by <b>smallest y</b>. If they do not meet, return an empty array. (This is "Intersection", Cracking the Coding Interview 16.3.)</p>`,
+      constraints: `|coordinates| ≤ 10<sup>6</sup>; a segment may have length 0 only if both endpoints are equal; answers within 10<sup>−6</sup> are accepted`,
+      example: `<p><code>start1=(0,0), end1=(1,0), start2=(1,1), end2=(0,−1)</code> → ${H.c('g', '[0.5, 0]')}. r = (1,0), s = (−1,−2), r×s = −2; t = 0.5, u = 0.5 → both inside [0,1].</p>
+        <p><code>(0,0)-(3,3)</code> and <code>(1,1)-(2,2)</code> → ${H.c('g', '[1, 1]')}: collinear overlap from (1,1) to (2,2); smallest x is 1.</p>
+        <p><code>(0,0)-(1,1)</code> and <code>(1,0)-(2,1)</code> → ${H.c('r', '[]')}: parallel, different lines.</p>`,
+      brute: {
+        why: `<p>The school approach writes each segment as <code>y = kx + b</code> and solves the two equations with doubles. It needs special code for vertical segments (k is infinite), compares slopes with <code>==</code> on doubles, and treats "same slope" as "no answer" — so it silently fails on collinear overlaps. Every patch adds another special case. It is not slow, it is <b>wrong-prone</b>: the wasted effort is all the case-handling that vector cross products make unnecessary.</p>`,
+        code: `class Solution {
+    // Naive slope-intercept solution: shown to illustrate the special cases it gets wrong.
+    public double[] intersection(int[] s1, int[] e1, int[] s2, int[] e2) {
+        if (s1[0] == e1[0] || s2[0] == e2[0]) return new double[0];   // BUG: gives up on vertical segments
+        double k1 = (double) (e1[1] - s1[1]) / (e1[0] - s1[0]), b1 = s1[1] - k1 * s1[0];
+        double k2 = (double) (e2[1] - s2[1]) / (e2[0] - s2[0]), b2 = s2[1] - k2 * s2[0];
+        if (k1 == k2) return new double[0];                              // BUG: collinear overlaps ignored
+        double x = (b2 - b1) / (k1 - k2), y = k1 * x + b1;
+        if (x < Math.min(s1[0], e1[0]) || x > Math.max(s1[0], e1[0])) return new double[0];
+        if (x < Math.min(s2[0], e2[0]) || x > Math.max(s2[0], e2[0])) return new double[0];
+        return new double[]{x, y};
+    }
+}`
+      },
+      mcq: { q: 'You computed r × s = 0 for the two direction vectors. What is the next check?', options: ['Return empty — parallel segments never meet', 'Check whether (Q1 − P1) × r = 0; if so they are collinear and may overlap', 'Divide anyway; Java returns Infinity', 'Swap the segments and recompute'], answer: 1, explain: 'r × s = 0 means parallel. They can still overlap if they lie on the same line, which is exactly when Q1 − P1 is also parallel to r.' },
+      hints: [
+        `<p>Hint 1: Describe segment 1 as P1 + t·r (t from 0 to 1) and segment 2 as Q1 + u·s. A meeting point solves P1 + t·r = Q1 + u·s — two unknowns, two equations.</p>`,
+        `<p>Hint 2: Cross both sides with s to remove u: t = ((Q1−P1)×s)/(r×s). Cross with r to get u = ((Q1−P1)×r)/(r×s). Keep numerators and denominator as long integers and check 0 ≤ num ≤ den after making den positive.</p>`,
+        `<p>Hint 3: If r × s = 0: if (Q1−P1) × r ≠ 0 they are parallel apart → []. Otherwise collinear: the overlap (if any) starts at one of the four endpoints; collect endpoints that lie inside BOTH bounding boxes and return the lexicographically smallest.</p>`
+      ],
+      solution: {
+        approach: `<p>Vector form removes every special case. Non-parallel: exact integer range check on t and u, then one division. Parallel: either distinct lines (empty) or collinear — then the smallest shared point must be an endpoint of one of the segments, so test the four endpoints against both boxes.</p>`,
+        code: `class Solution {
+    public double[] intersection(int[] s1, int[] e1, int[] s2, int[] e2) {
+        long[] p1 = {s1[0], s1[1]}, p2 = {e1[0], e1[1]}, q1 = {s2[0], s2[1]}, q2 = {e2[0], e2[1]};
+        long rx = p2[0] - p1[0], ry = p2[1] - p1[1];          // r = P2 - P1
+        long sx = q2[0] - q1[0], sy = q2[1] - q1[1];          // s = Q2 - Q1
+        long qx = q1[0] - p1[0], qy = q1[1] - p1[1];          // Q1 - P1
+        long den = rx * sy - ry * sx;                         // r x s
+        if (den == 0) {
+            if (qx * ry - qy * rx != 0) return new double[0];  // parallel, different lines
+            double[] best = null;                              // collinear: best shared endpoint
+            for (long[] c : new long[][]{p1, p2, q1, q2}) {
+                if (inBox(p1, p2, c) && inBox(q1, q2, c)) {
+                    if (best == null || c[0] < best[0] || (c[0] == best[0] && c[1] < best[1]))
+                        best = new double[]{c[0], c[1]};
+                }
+            }
+            return best == null ? new double[0] : best;
+        }
+        long tNum = qx * sy - qy * sx;                        // (Q1 - P1) x s
+        long uNum = qx * ry - qy * rx;                        // (Q1 - P1) x r
+        if (den < 0) { den = -den; tNum = -tNum; uNum = -uNum; }
+        if (tNum < 0 || tNum > den || uNum < 0 || uNum > den) return new double[0];
+        double t = (double) tNum / den;
+        return new double[]{p1[0] + t * rx, p1[1] + t * ry};
+    }
+
+    private boolean inBox(long[] a, long[] b, long[] p) {
+        return Math.min(a[0], b[0]) <= p[0] && p[0] <= Math.max(a[0], b[0])
+            && Math.min(a[1], b[1]) <= p[1] && p[1] <= Math.max(a[1], b[1]);
+    }
+}`,
+        alt: [{ lang: 'python', code: `class Solution:
+    def intersection(self, s1, e1, s2, e2):
+        rx, ry = e1[0] - s1[0], e1[1] - s1[1]
+        sx, sy = e2[0] - s2[0], e2[1] - s2[1]
+        qx, qy = s2[0] - s1[0], s2[1] - s1[1]
+        den = rx * sy - ry * sx
+        def in_box(a, b, p):
+            return min(a[0], b[0]) <= p[0] <= max(a[0], b[0]) and min(a[1], b[1]) <= p[1] <= max(a[1], b[1])
+        if den == 0:
+            if qx * ry - qy * rx != 0:
+                return []
+            cands = [c for c in (s1, e1, s2, e2) if in_box(s1, e1, c) and in_box(s2, e2, c)]
+            return list(map(float, min(cands))) if cands else []
+        t_num, u_num = qx * sy - qy * sx, qx * ry - qy * rx
+        if den < 0:
+            den, t_num, u_num = -den, -t_num, -u_num
+        if not (0 <= t_num <= den and 0 <= u_num <= den):
+            return []
+        t = t_num / den
+        return [s1[0] + t * rx, s1[1] + t * ry]` }],
+        dry: { head: ['quantity', 'value', 'meaning'], rows: [
+          ['r = P2 − P1', '(1, 0)', 'direction of segment 1'],
+          ['s = Q2 − Q1', '(−1, −2)', 'direction of segment 2'],
+          ['Q1 − P1', '(1, 1)', 'jump from P1 to Q1'],
+          ['den = r × s', '1·(−2) − 0·(−1) = −2', 'non-zero → not parallel'],
+          ['tNum = (Q1−P1) × s', '1·(−2) − 1·(−1) = −1', ''],
+          ['uNum = (Q1−P1) × r', '1·0 − 1·1 = −1', ''],
+          ['normalise sign', 'den = 2, tNum = 1, uNum = 1', '0 ≤ 1 ≤ 2 for both → on both segments'],
+          ['answer', 'P1 + 0.5·r = (0.5, 0)', '<span class="c-g">[0.5, 0]</span>']
+        ] },
+        complexity: `<p><b>O(1)</b> time and space. Every intermediate product is ≤ 4·10<sup>12</sup> here, far inside long.</p>`,
+        followUps: ['Return the exact answer as reduced fractions instead of doubles.', 'Given N segments, report whether any two intersect in O(N log N) (Shamos–Hoey sweep).', 'LeetCode 335 Self Crossing: a path of N moves — does it ever cross itself? (O(N) with a constant number of look-backs.)']
+      }
+    }]
+  });
+
+  // =====================================================================
+  // TOPIC 3 — Convex hull (Andrew monotone chain, Graham scan)
+  // =====================================================================
+  topics.push({
+    title: 'Convex Hull: Andrew\'s Monotone Chain & Graham Scan',
+    analogy: `<p>Hammer a handful of nails into a wooden board. Stretch a <b>rubber band</b> wide around all of them and let go. It snaps tight and touches only the outermost nails — the inner nails are inside, untouched. The shape the band makes is the <b>convex hull</b>.</p>
+      <p>To build it by hand, walk around the outside always keeping the nails on your left. Whenever you notice you just made a <b>right turn</b>, the nail you turned at was a dent — it must be inside, so you throw it away and re-check. That "undo the dent" step is the heart of every fast hull algorithm.</p>`,
+    explain: `<p>A shape is <b>convex</b> if the straight segment between any two of its points stays inside it (no dents, no caves). The <b>convex hull</b> of a set of points is the smallest convex polygon containing them all. Walking its boundary counter-clockwise, every corner is a <b>left turn</b>.</p>
+      <p><b>Andrew's monotone chain</b> (the one to code in interviews):</p>
+      <ol>
+        <li><b>Sort</b> points by x, then by y. The first and last points are surely on the hull.</li>
+        <li><b>Lower hull:</b> go left → right. Push each point onto a stack, but first <b>pop</b> while the last two stack points and the new point make a <b>non-left turn</b> (<code>cross ≤ 0</code>).</li>
+        <li><b>Upper hull:</b> go right → left with the same rule.</li>
+        <li>Join them, dropping the duplicated end points.</li>
+      </ol>
+      <p><b>Worked example.</b> Points sorted: A(0,0) B(1,2) C(2,1) D(3,3) E(4,0). Lower hull:</p>
+      ${H.table(['new point', 'stack before', 'test', 'action', 'stack after'], [
+        ['A(0,0)', '[]', '—', 'push', '[A]'],
+        ['B(1,2)', '[A]', '—', 'push', '[A, B]'],
+        ['C(2,1)', '[A, B]', 'cross(A,B,C) = 1·1 − 2·2 = −3 ' + H.c('r', '≤ 0'), 'pop B, push C', '[A, C]'],
+        ['D(3,3)', '[A, C]', 'cross(A,C,D) = 2·3 − 1·3 = 3 ' + H.c('g', '&gt; 0'), 'push', '[A, C, D]'],
+        ['E(4,0)', '[A, C, D]', 'cross(C,D,E) = 1·(−1) − 2·2 = −5 → pop D; cross(A,C,E) = 2·0 − 1·4 = −4 → pop C', 'push', '[A, E]']
+      ])}
+      <p>Lower hull = A → E. Upper pass (E, D, C, B, A) gives E → D → B → A. Hull counter-clockwise: <b>A, E, D, B</b>. C was inside.</p>
+      <p><b>Why O(N log N):</b> sorting is N log N; after that each point is pushed once and popped at most once per chain, so the loops are O(N) total — an amortized argument you will meet again in Topic 7.</p>
+      <p><b>Graham scan</b> is the older cousin: pick the lowest point as a pivot, sort the rest by <b>angle</b> around it (using cross products, not <code>atan2</code>), then run the same push/pop stack once. Same complexity; angle sorting has more tie-breaking traps, which is why Andrew's version is usually preferred.</p>
+      <p><b>Collinear points on the boundary:</b> pop on <code>cross ≤ 0</code> to drop them (minimal hull), pop only on <code>cross &lt; 0</code> to keep them (LeetCode "Erect the Fence" wants them kept).</p>`,
+    clues: [
+      '"<b>Smallest fence / rubber band / perimeter</b> enclosing all points" → convex hull.',
+      '"<b>Farthest pair</b> of points", "<b>diameter</b> of a point set" → hull + rotating calipers (O(N) after the hull).',
+      '"Is this polygon / set <b>convex</b>?", "outermost points", "boundary trees" → hull or the turn test.',
+      'N up to 10<sup>5</sup>–10<sup>6</sup> points → O(N log N) monotone chain; N ≤ 100 lets you even try O(N<sup>3</sup>) brute force for checking.',
+      '"Keep points that lie <b>on the edges</b>" vs "only corners" → the single character <code>&lt;</code> vs <code>≤</code> in the pop condition.',
+      'DP with "<b>minimum of lines</b> a·x + b" (convex hull trick, DSA 23) → the same lower-hull stack, applied to lines instead of points.'
+    ],
+    code: [`
+      // Andrew's monotone chain. Returns hull vertices counter-clockwise, no collinear
+      // boundary points, no duplicates. O(N log N) time, O(N) extra space.
+      static long cross(long[] o, long[] a, long[] b) {
+          return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+      }
+
+      static List<long[]> convexHull(long[][] input) {
+          long[][] p = input.clone();
+          Arrays.sort(p, (a, b) -> a[0] != b[0] ? Long.compare(a[0], b[0]) : Long.compare(a[1], b[1]));
+          int n = p.length;
+          if (n < 3) return new ArrayList<>(Arrays.asList(p));
+          long[][] h = new long[2 * n][];
+          int k = 0;
+          for (int i = 0; i < n; i++) {                       // lower hull, left -> right
+              while (k >= 2 && cross(h[k - 2], h[k - 1], p[i]) <= 0) k--;  // pop dents
+              h[k++] = p[i];
+          }
+          for (int i = n - 2, lower = k + 1; i >= 0; i--) {   // upper hull, right -> left
+              while (k >= lower && cross(h[k - 2], h[k - 1], p[i]) <= 0) k--;
+              h[k++] = p[i];
+          }
+          // last point equals the first one; also guards the "all points identical" case
+          return new ArrayList<>(Arrays.asList(Arrays.copyOf(h, Math.max(1, k - 1))));
+      }`, `
+      // Graham scan: pivot = lowest (then leftmost) point; sort others by angle using cross.
+      static long cross(long[] o, long[] a, long[] b) {
+          return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+      }
+      static long dist2(long[] a, long[] b) {
+          long dx = a[0] - b[0], dy = a[1] - b[1];
+          return dx * dx + dy * dy;
+      }
+
+      static List<long[]> grahamScan(long[][] pts) {
+          int n = pts.length, piv = 0;
+          for (int i = 1; i < n; i++)
+              if (pts[i][1] < pts[piv][1] || (pts[i][1] == pts[piv][1] && pts[i][0] < pts[piv][0])) piv = i;
+          final long[] p0 = pts[piv];
+          List<long[]> rest = new ArrayList<>();
+          for (int i = 0; i < n; i++) if (i != piv) rest.add(pts[i]);
+          // All points are above p0 (or level and to its right), so angles lie in [0, pi)
+          // and the cross-product comparator is a valid total order.
+          rest.sort((a, b) -> {
+              long c = cross(p0, a, b);
+              if (c != 0) return c > 0 ? -1 : 1;            // a has the smaller angle
+              return Long.compare(dist2(p0, a), dist2(p0, b)); // same ray: nearer first
+          });
+          Deque<long[]> st = new ArrayDeque<>();
+          st.push(p0);
+          for (long[] p : rest) {
+              while (st.size() >= 2) {
+                  long[] top = st.pop();
+                  if (cross(st.peek(), top, p) > 0) { st.push(top); break; }  // left turn: keep top
+              }
+              st.push(p);
+          }
+          List<long[]> hull = new ArrayList<>(st);
+          Collections.reverse(hull);                           // counter-clockwise from p0
+          return hull;
+      }`],
+    codeTitle: ['Andrew\'s monotone chain (interview default)', 'Graham scan (angle sort + stack)'],
+    viz: {
+      title: 'Monotone chain: build the lower and upper hull, popping every right turn',
+      input: '0,0 1,3 2,1 3,4 4,2 5,0 2,5 4,4 3,2 6,3',
+      inputLabel: 'points x,y (3 to 12 points, coordinates -15..15)',
+      gen: function (input) {
+        var raw = parsePts(input, 3, 12, 15), seen = {}, P = [];
+        raw.forEach(function (p) { var k = p[0] + ',' + p[1]; if (!seen[k]) { seen[k] = 1; P.push(p); } });
+        if (P.length < 3) throw new Error('Need at least 3 distinct points.');
+        P.sort(function (a, b) { return a[0] !== b[0] ? a[0] - b[0] : a[1] - b[1]; });
+        var L = 'ABCDEFGHIJKL', ids = P.map(function (_, i) { return L[i]; }), n = P.length, frames = [];
+        var st = [], doneEdges = [], phase = 'lower';
+        function edgesOf(stack) { var e = []; for (var i = 0; i + 1 < stack.length; i++) e.push([ids[stack[i]], ids[stack[i + 1]]]); return e; }
+        function draw(cur, popped, label) {
+          var hl = {}, ehl = {}, edges = doneEdges.concat(edgesOf(st));
+          st.forEach(function (i) { hl[ids[i]] = 'ok'; });
+          if (cur !== undefined) hl[ids[cur]] = 'cur';
+          if (popped !== undefined) hl[ids[popped]] = 'bad';
+          if (cur !== undefined && st.length) { edges.push([ids[st[st.length - 1]], ids[cur]]); ehl[ids[st[st.length - 1]] + '-' + ids[cur]] = popped !== undefined ? 'bad' : 'cur'; }
+          return plot(P, { ids: ids, edges: edges, hl: hl, ehl: ehl, label: label || (phase + ' hull in progress') });
+        }
+        function stackPart() { return { type: 'stack', label: phase + ' chain (stack)', items: st.map(function (i) { return ids[i]; }), hl: one(st.length - 1, 'cur') }; }
+        frames.push({ narr: 'Step 1: <b>sort</b> by x, then y, and name the points A, B, C … in that order: ' + P.map(function (p, i) { return ids[i] + pstr(p); }).join(', ') + '. ' + ids[0] + ' (leftmost) and ' + ids[n - 1] + ' (rightmost) are surely on the hull.',
+          parts: [plot(P, { ids: ids, hl: one(ids[0], 'sel'), label: 'sorted points' }), { type: 'array', label: 'sorted order', values: ids.slice() }] });
+        function pass(order) {
+          var base = st.length;
+          order.forEach(function (i) {
+            while (st.length >= base + 2) {
+              var a = st[st.length - 2], b = st[st.length - 1], c = cross(P[a], P[b], P[i]);
+              if (c > 0) {
+                frames.push({ narr: 'New point <b>' + ids[i] + '</b>. Check the turn ' + ids[a] + ' → ' + ids[b] + ' → ' + ids[i] + ': cross = <b>' + c + '</b> &gt; 0 → <span class="c-g">left turn, ' + ids[b] + ' stays</span>.',
+                  parts: [draw(i), stackPart(), { type: 'vars', vals: { turn: ids[a] + '→' + ids[b] + '→' + ids[i], cross: c }, hl: { cross: 'ok' } }] });
+                break;
+              }
+              st.pop();
+              frames.push({ narr: 'New point <b>' + ids[i] + '</b>. Turn ' + ids[a] + ' → ' + ids[b] + ' → ' + ids[i] + ': cross = <b>' + c + '</b> ' + (c === 0 ? '= 0 (straight)' : '&lt; 0 (right turn)') + ' → <span class="c-r">' + ids[b] + ' is a dent, pop it</span> and re-check with the new top.',
+                parts: [draw(i, b), stackPart(), { type: 'vars', vals: { turn: ids[a] + '→' + ids[b] + '→' + ids[i], cross: c }, hl: { cross: 'bad' } }] });
+            }
+            st.push(i);
+            frames.push({ narr: 'Push <b>' + ids[i] + '</b> onto the ' + phase + ' chain. Stack: [' + st.map(function (k) { return ids[k]; }).join(', ') + '].',
+              parts: [draw(), stackPart()] });
+          });
+        }
+        pass(P.map(function (_, i) { return i; }));
+        var lower = st.slice();
+        frames.push({ narr: '<b>Lower hull done</b>: ' + lower.map(function (i) { return ids[i]; }).join(' → ') + '. Now walk back right → left for the <b>upper hull</b>, starting from ' + ids[n - 1] + ', with the very same pop rule.',
+          parts: [draw(undefined, undefined, 'lower hull'), stackPart()] });
+        doneEdges = edgesOf(lower);
+        phase = 'upper';
+        st = [n - 1];
+        var ord = []; for (var i = n - 2; i >= 0; i--) ord.push(i);
+        // upper pass: same rule; the chain starts at the rightmost point
+        (function () {
+          ord.forEach(function (i) {
+            while (st.length >= 2) {
+              var a = st[st.length - 2], b = st[st.length - 1], c = cross(P[a], P[b], P[i]);
+              if (c > 0) {
+                frames.push({ narr: 'Upper pass, new point <b>' + ids[i] + '</b>. Turn ' + ids[a] + ' → ' + ids[b] + ' → ' + ids[i] + ': cross = <b>' + c + '</b> &gt; 0 → <span class="c-g">left turn, keep ' + ids[b] + '</span>.',
+                  parts: [draw(i), stackPart(), { type: 'vars', vals: { turn: ids[a] + '→' + ids[b] + '→' + ids[i], cross: c }, hl: { cross: 'ok' } }] });
+                break;
+              }
+              st.pop();
+              frames.push({ narr: 'Upper pass, new point <b>' + ids[i] + '</b>. Turn ' + ids[a] + ' → ' + ids[b] + ' → ' + ids[i] + ': cross = <b>' + c + '</b> → <span class="c-r">pop ' + ids[b] + '</span>.',
+                parts: [draw(i, b), stackPart(), { type: 'vars', vals: { turn: ids[a] + '→' + ids[b] + '→' + ids[i], cross: c }, hl: { cross: 'bad' } }] });
+            }
+            st.push(i);
+            frames.push({ narr: 'Push <b>' + ids[i] + '</b>. Upper stack: [' + st.map(function (k) { return ids[k]; }).join(', ') + '].', parts: [draw(), stackPart()] });
+          });
+        })();
+        var hull = lower.slice(0, lower.length - 1).concat(st.slice(0, st.length - 1));
+        var hl = {}, ehl = {}, edges = [];
+        P.forEach(function (_, i) { hl[ids[i]] = 'done'; });
+        hull.forEach(function (i, k) { hl[ids[i]] = 'sel'; var j = hull[(k + 1) % hull.length]; edges.push([ids[i], ids[j]]); ehl[ids[i] + '-' + ids[j]] = 'ok'; });
+        var inside = P.length - hull.length;
+        frames.push({ narr: '<b>Hull (counter-clockwise):</b> ' + hull.map(function (i) { return ids[i]; }).join(' → ') + ' → back to ' + ids[hull[0]] + '. ' + inside + ' point(s) were inside or on an edge and got popped. Every point was pushed at most twice and popped at most twice → O(N) after the sort.',
+          parts: [plot(P, { ids: ids, edges: edges, hl: hl, ehl: ehl, directed: true, label: 'convex hull' }), { type: 'array', label: 'hull order', values: hull.map(function (i) { return ids[i]; }) }] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Square with a point in the middle', html: `<p>Points (0,0), (4,0), (4,4), (0,4), (2,2). Sorted: (0,0), (0,4), (2,2), (4,0), (4,4). Lower chain: (0,0), (0,4); then (2,2) arrives and the turn (0,0)→(0,4)→(2,2) has cross = −8, so (0,4) is popped; (4,0) arrives and pops (2,2) (cross = −8); (4,4) is a left turn (cross = 16). The upper chain brings back (0,4). Hull = 4 corners; (2,2) is gone.</p>
+        ${H.arr(['(0,0)', '(4,0)', '(4,4)', '(0,4)'], { label: 'hull CCW', hl: { 0: 'g', 1: 'g', 2: 'g', 3: 'g' } })}` },
+      { title: 'All points on one line', html: `<p>(0,0), (1,1), (2,2), (3,3). With <code>pop on cross ≤ 0</code> the lower chain ends as [(0,0), (3,3)] and the upper chain also as [(3,3), (0,0)] → hull = the two end points (a "degenerate polygon" of area 0). With <code>pop on cross &lt; 0</code> every point is kept, but each appears twice (once per chain) → you must de-duplicate. Always test this case.</p>` },
+      { title: 'Keeping collinear boundary points', html: `<p>Square corners plus (2,0) on the bottom edge. Minimal hull (pop on ≤ 0): 4 corners. "Erect the Fence" style (pop on &lt; 0): 5 points, including (2,0), because the turn (0,0) → (2,0) → (4,0) has cross = 0 and is not popped.</p>
+        ${H.table(['pop condition', 'hull size', 'use when'], [['cross ≤ 0', '4', 'corners only (area, perimeter, calipers)'], ['cross &lt; 0', '5', 'every point touching the fence']])}` },
+      { title: 'Perimeter of the fence', html: `<p>Once you have the hull, the fence length is the sum of distances between consecutive hull vertices (wrap around). For the square example: 4 + 4 + 4 + 4 = 16. Interior points never matter.</p>`, code: `long[][] hull = {{0, 0}, {4, 0}, {4, 4}, {0, 4}};
+double per = 0;
+for (int i = 0; i < hull.length; i++) {
+    long[] a = hull[i], b = hull[(i + 1) % hull.length];
+    per += Math.hypot(b[0] - a[0], b[1] - a[1]);
+}
+System.out.println(per);   // 16.0` },
+      { title: 'Farthest pair (diameter) with rotating calipers', html: `<p>The two farthest points of a set are always hull vertices. After the hull (H vertices), sweep two "calipers": for each edge, advance the opposite pointer while the triangle area (|cross|) keeps growing. Each pointer moves at most H steps → O(H) after the hull, versus O(N<sup>2</sup>) for checking all pairs.</p>` }
+    ],
+    deepDive: `<p><b>Lower bound.</b> Any comparison-based hull algorithm needs Ω(N log N): put numbers x<sub>i</sub> on the parabola (x<sub>i</sub>, x<sub>i</sub><sup>2</sup>); all are hull vertices and the hull visits them in sorted order, so a faster hull would sort faster than possible.</p>
+      <p><b>Output-sensitive algorithms.</b> <b>Jarvis march</b> (gift wrapping): from the leftmost point repeatedly pick the point that makes every other point lie to the left — O(N·H) where H = hull size; great when H is tiny. <b>Chan's algorithm</b> combines Graham and Jarvis for O(N log H), optimal. <b>QuickHull</b> recursively takes the farthest point from a dividing line — average O(N log N), worst O(N<sup>2</sup>), and it generalises well to 3D (Qhull, used in MATLAB/SciPy).</p>
+      <p><b>Correctness of the pop rule.</b> Invariant: the stack is the lower hull of the points processed so far, with all turns strictly left. A new point to the right can only invalidate points at the <i>end</i> of the chain (those now above the segment to the new point), and those are exactly the ones failing the turn test; earlier points stay valid because the chain is convex. Each point is pushed once and popped at most once per chain → amortized O(1) per point.</p>
+      <p><b>Degenerate inputs that break hull code:</b> duplicates (dedupe or the cross is 0), all collinear (two-point hull, or duplicates when keeping collinear points), fewer than 3 points, many points sharing the extreme x (sorting by y as the tiebreak matters). Overflow: coordinates near 10<sup>9</sup> need long cross products.</p>
+      <p><b>Production reality.</b> Physics engines approximate objects by convex hulls because collision tests between convex shapes are cheap (GJK, separating axis theorem). Robotics computes reachable regions; GIS uses hulls (and concave hulls / alpha shapes) to outline point clouds; ML uses them in support vector machines and in the convex hull trick to speed up DP.</p>`,
+    aiEra: `<p><b>What AI changes:</b> "convex hull in Java" is a solved prompt, and assistants usually produce Andrew's algorithm correctly for the generic case. The interview signal moves to: choosing <code>&lt;</code> vs <code>≤</code> for the problem's collinear rule, handling the all-collinear and duplicate cases, and connecting a word problem ("smallest fence", "farthest towers") to the hull.</p>
+      <p><b>Use AI as a partner:</b> ask it to write a brute-force O(N<sup>3</sup>) hull checker plus a random generator that loves degenerate inputs (many collinear points on a grid, duplicates), then fuzz your implementation against it. Ask for a rotating-calipers implementation only after you can explain why the farthest pair lies on the hull.</p>
+      <p><b>Where AI goes wrong:</b> angle sorting with <code>Math.atan2</code> (ties between nearly-parallel directions mis-ordered), Graham-scan comparators that are not transitive when the pivot is chosen badly, forgetting to remove the duplicated first point at the end, and returning duplicates for collinear inputs in "keep boundary points" variants.</p>
+      <p><b>What you must still own:</b> the push/pop invariant, the amortized O(N) argument, and the edge-case table — that is what an interviewer probes after the code compiles.</p>`,
+    problems: [{
+      title: 'Erect the Fence', level: 'Hard', tags: ['geometry', 'convex hull', 'monotone chain'], companies: ['Google', 'Amazon'],
+      statement: `<p>Trees in a garden are given as points <code>trees[i] = [x, y]</code>. Fence the whole garden with the <b>minimum length</b> of rope; a tree is "on the fence" if it lies on the rope (corners <b>and</b> trees lying exactly on a straight stretch). Return all trees on the fence, in any order. (LeetCode 587.)</p>`,
+      constraints: `1 ≤ N ≤ 3000, 0 ≤ x, y ≤ 100, all points distinct`,
+      example: `<p><code>[[1,1],[2,2],[2,0],[2,4],[3,3],[4,2]]</code> → ${H.c('g', '[[1,1],[2,0],[4,2],[3,3],[2,4]]')}. Only (2,2) is strictly inside.</p>
+        <p><code>[[1,2],[2,2],[4,2]]</code> → ${H.c('g', '[[1,2],[2,2],[4,2]]')}: all collinear, the "fence" is a line and every tree touches it.</p>`,
+      brute: {
+        why: `<p>For every ordered pair (i, j), check whether <b>no</b> tree lies strictly to the right of i → j. If so, i → j is a fence edge and every tree on segment ij is on the fence. That is N<sup>2</sup> pairs × N checks = <b>O(N<sup>3</sup>)</b> ≈ 2.7·10<sup>10</sup> for N = 3000 → far too slow. The waste: most pairs are obviously interior, and we re-scan all trees for each.</p>`,
+        code: `class Solution {
+    public int[][] outerTrees(int[][] t) {
+        int n = t.length;
+        boolean[] on = new boolean[n];
+        if (n <= 3) return t;                              // all of them touch the rope
+        for (int i = 0; i < n; i++)
+            for (int j = 0; j < n; j++) {
+                if (i == j) continue;
+                boolean edge = true;
+                for (int k = 0; k < n && edge; k++)
+                    if (cross(t[i], t[j], t[k]) < 0) edge = false;   // someone is on the right
+                if (!edge) continue;
+                for (int k = 0; k < n; k++)                     // trees on this fence stretch
+                    if (cross(t[i], t[j], t[k]) == 0 && between(t[i], t[j], t[k])) on[k] = true;
+            }
+        List<int[]> res = new ArrayList<>();
+        for (int k = 0; k < n; k++) if (on[k]) res.add(t[k]);
+        return res.toArray(new int[0][]);
+    }
+    private int cross(int[] o, int[] a, int[] b) {
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    }
+    private boolean between(int[] a, int[] b, int[] p) {
+        return Math.min(a[0], b[0]) <= p[0] && p[0] <= Math.max(a[0], b[0])
+            && Math.min(a[1], b[1]) <= p[1] && p[1] <= Math.max(a[1], b[1]);
+    }
+}`
+      },
+      mcq: { q: 'In the monotone chain, which pop condition keeps trees that lie exactly on a fence edge?', options: ['Pop while cross ≤ 0', 'Pop while cross &lt; 0', 'Pop while cross ≥ 0', 'Never pop'], answer: 1, explain: 'A tree on a straight stretch makes a zero cross product. Popping only on strictly negative (right) turns keeps it.' },
+      hints: [
+        `<p>Hint 1: The answer is the convex hull, <i>including</i> points on its edges. Sort points by (x, y) so the leftmost and rightmost are on the fence.</p>`,
+        `<p>Hint 2: Andrew's monotone chain with the pop condition <code>cross &lt; 0</code> (only strict right turns are dents). Build the lower chain left → right and the upper chain right → left.</p>`,
+        `<p>Hint 3: Collinear input makes both chains contain the same points, so de-duplicate (track indices in a boolean[]). Recipe: sort; lower pass; upper pass with stack floor = lowerSize + 1; take h[0..k−2]; skip repeated indices.</p>`
+      ],
+      solution: {
+        approach: `<p>Monotone chain on sorted points, popping only strict right turns so collinear boundary trees stay. Store <b>indices</b> in the stack so duplicates produced by collinear inputs can be removed with a boolean array.</p>`,
+        code: `class Solution {
+    public int[][] outerTrees(int[][] trees) {
+        int n = trees.length;
+        if (n <= 3) return trees;
+        int[][] p = trees.clone();
+        Arrays.sort(p, (a, b) -> a[0] != b[0] ? Integer.compare(a[0], b[0]) : Integer.compare(a[1], b[1]));
+        int[] h = new int[2 * n];          // stack of indices into p
+        int k = 0;
+        for (int i = 0; i < n; i++) {                                   // lower chain
+            while (k >= 2 && cross(p[h[k - 2]], p[h[k - 1]], p[i]) < 0) k--;
+            h[k++] = i;
+        }
+        for (int i = n - 2, floor = k + 1; i >= 0; i--) {              // upper chain
+            while (k >= floor && cross(p[h[k - 2]], p[h[k - 1]], p[i]) < 0) k--;
+            h[k++] = i;
+        }
+        boolean[] used = new boolean[n];
+        List<int[]> res = new ArrayList<>();
+        for (int i = 0; i < k - 1; i++) {   // h[k-1] is p[0] again
+            if (!used[h[i]]) { used[h[i]] = true; res.add(p[h[i]]); }
+        }
+        return res.toArray(new int[0][]);
+    }
+
+    private int cross(int[] o, int[] a, int[] b) {
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    }
+}`,
+        alt: [{ lang: 'python', code: `class Solution:
+    def outerTrees(self, trees):
+        pts = sorted(map(tuple, trees))
+        if len(pts) <= 3:
+            return [list(p) for p in pts]
+        def cross(o, a, b):
+            return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+        def chain(seq):
+            st = []
+            for p in seq:
+                while len(st) >= 2 and cross(st[-2], st[-1], p) < 0:
+                    st.pop()
+                st.append(p)
+            return st
+        hull = set(chain(pts)) | set(chain(pts[::-1]))   # set removes collinear duplicates
+        return [list(p) for p in hull]` }],
+        dry: { head: ['step', 'new point', 'turn test', 'stack after'], rows: [
+          ['sort', '—', '—', 'order: (1,1) (2,0) (2,2) (2,4) (3,3) (4,2)'],
+          ['lower', '(1,1), (2,0)', 'push both', '[(1,1), (2,0)]'],
+          ['lower', '(2,2)', 'cross((1,1),(2,0),(2,2)) = 2 ≥ 0', '[(1,1), (2,0), (2,2)]'],
+          ['lower', '(2,4)', 'cross((2,0),(2,2),(2,4)) = 0 → keep', '[…, (2,2), (2,4)]'],
+          ['lower', '(3,3)', 'cross = −2 pop (2,4); cross = −2 pop (2,2); then 4 ≥ 0', '[(1,1), (2,0), (3,3)]'],
+          ['lower', '(4,2)', 'cross((2,0),(3,3),(4,2)) = −4 pop (3,3)', '[(1,1), (2,0), (4,2)]'],
+          ['upper', '(3,3), (2,4)', 'cross((4,2),(3,3),(2,4)) = 0 keep', '[…, (4,2), (3,3), (2,4)]'],
+          ['upper', '(2,2), (2,0)', 'both pushed, then popped by (1,1)', '[…, (2,4), (1,1)]'],
+          ['result', '—', 'drop last, dedupe', '<span class="c-g">(1,1) (2,0) (4,2) (3,3) (2,4)</span>']
+        ] },
+        complexity: `<p><b>O(N log N)</b> for the sort, O(N) for both chains (each index pushed/popped at most once per chain). Space O(N).</p>`,
+        followUps: ['Return only the corners (minimum number of trees to tie the rope to).', 'Return the rope length (perimeter of the hull).', 'Erect the Fence II (LeetCode 1924): the smallest enclosing <b>circle</b> — randomized Welzl, expected O(N) (see practice).']
+      }
+    }]
+  });
+
+  // =====================================================================
+  // TOPIC 4 — Polygon area (shoelace), convexity, Pick, point in polygon
+  // =====================================================================
+  topics.push({
+    title: 'Polygon Area with the Shoelace Formula (plus Convexity, Pick\'s Theorem & Point-in-Polygon)',
+    analogy: `<p>Stand at a lamp post in the middle of a field and shine a torch at a fenced garden. As your friend walks along the fence, the torch beam sweeps over a thin triangle for each fence piece: lamp post → start of the piece → end of the piece. When your friend walks one way the beam paints area <b>in</b>; on the far side of the garden it sweeps back the other way and paints area <b>out</b>. After a full lap, everything outside the garden has been painted in and out equally and cancels. What is left is exactly the garden's area.</p>
+      <p>That is the <b>shoelace formula</b>: add up signed triangle areas from a fixed point. It is called "shoelace" because when you write the coordinates in two columns, the multiplications criss-cross like laces in a shoe.</p>`,
+    explain: `<p>For a polygon with vertices <code>P<sub>0</sub>, P<sub>1</sub>, …, P<sub>n−1</sub></code> listed <b>in order</b> around the boundary (and wrapping back to P<sub>0</sub>):</p>
+      <p style="text-align:center"><code>2·Area = | ∑ (x<sub>i</sub>·y<sub>i+1</sub> − x<sub>i+1</sub>·y<sub>i</sub>) |</code></p>
+      <p>Each term is the cross product of P<sub>i</sub> and P<sub>i+1</sub> as vectors from the origin — twice the <b>signed</b> area of triangle (origin, P<sub>i</sub>, P<sub>i+1</sub>).</p>
+      <p><b>Worked example</b> — a house shape (0,0), (4,0), (4,3), (2,5), (0,3):</p>
+      ${H.table(['i', 'P<sub>i</sub>', 'P<sub>i+1</sub>', 'x<sub>i</sub>·y<sub>i+1</sub>', 'x<sub>i+1</sub>·y<sub>i</sub>', 'term'], [
+        ['0', '(0,0)', '(4,0)', '0', '0', '0'],
+        ['1', '(4,0)', '(4,3)', '12', '0', '12'],
+        ['2', '(4,3)', '(2,5)', '20', '6', '14'],
+        ['3', '(2,5)', '(0,3)', '6', '0', '6'],
+        ['4', '(0,3)', '(0,0)', '0', '0', '0'],
+        ['', '', '', '', 'sum', H.c('g', '32')]
+      ])}
+      <p>Area = 32 / 2 = <b>16</b>. Check by eye: a 4×3 rectangle (12) + a triangle roof of base 4 and height 2 (4) = 16 ✓.</p>
+      <p><b>The sign is a bonus.</b> The signed sum is <b>positive</b> when the vertices go counter-clockwise and <b>negative</b> when clockwise. So the shoelace also answers "which direction is this polygon listed in?" — useful before running algorithms that assume CCW order.</p>
+      <p><b>Three friends of the shoelace:</b></p>
+      <ul>
+        <li><b>Convexity test:</b> walk the vertices; every turn (cross product of consecutive edges) must have the same sign. One left and one right turn → not convex.</li>
+        <li><b>Pick's theorem</b> (lattice polygons — all vertices at integer points): <code>Area = I + B/2 − 1</code>, where B = lattice points on the boundary (each edge contributes <code>gcd(|dx|, |dy|)</code>) and I = lattice points strictly inside. So <code>I = Area − B/2 + 1</code> — count millions of interior points with zero loops.</li>
+        <li><b>Point in polygon:</b> shoot a ray to the right from the point and count how many edges it crosses — odd means inside (the "ray casting" or even-odd rule).</li>
+      </ul>`,
+    clues: [
+      '"<b>Area of a polygon</b> given its vertices in order" → shoelace, keep 2·area as a long integer.',
+      '"Are the vertices given <b>clockwise or counter-clockwise</b>?" → sign of the shoelace sum.',
+      '"Is the polygon <b>convex</b>?" → all consecutive cross products share one sign (ignore zeros).',
+      '"How many <b>lattice / integer points</b> lie inside / on the boundary?" → Pick\'s theorem + gcd per edge.',
+      '"Is the point <b>inside</b> the polygon / which region / geofence?" → ray casting (even-odd) or winding number.',
+      'Area of the <b>largest triangle</b> from N points (N ≤ 50) → O(N<sup>3</sup>) triples with |cross| / 2; N large → triangle vertices lie on the convex hull.'
+    ],
+    code: [`
+      // Twice the SIGNED area: > 0 counter-clockwise, < 0 clockwise. Exact in long.
+      static long twiceSignedArea(long[][] p) {
+          long s = 0;
+          int n = p.length;
+          for (int i = 0; i < n; i++) {
+              long[] a = p[i], b = p[(i + 1) % n];           // wrap around to the first vertex
+              s += a[0] * b[1] - b[0] * a[1];                 // cross(P_i, P_{i+1})
+          }
+          return s;
+      }
+
+      static double area(long[][] p) {
+          return Math.abs(twiceSignedArea(p)) / 2.0;
+      }
+
+      // Convex iff all non-zero turns have the same sign (vertices in order, simple polygon).
+      static boolean isConvex(long[][] p) {
+          int n = p.length, sign = 0;
+          for (int i = 0; i < n; i++) {
+              long[] a = p[i], b = p[(i + 1) % n], c = p[(i + 2) % n];
+              long cr = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+              int s = Long.signum(cr);
+              if (s == 0) continue;                           // straight angle: fine
+              if (sign == 0) sign = s;
+              else if (s != sign) return false;               // a left AND a right turn
+          }
+          return true;
+      }
+
+      static long gcd(long a, long b) { return b == 0 ? Math.abs(a) : gcd(b, a % b); }
+
+      // Pick's theorem: A = I + B/2 - 1  ->  I = (2A - B + 2) / 2. Lattice polygon required.
+      static long[] latticeCounts(long[][] p) {
+          int n = p.length;
+          long b = 0;
+          for (int i = 0; i < n; i++) {
+              long[] u = p[i], v = p[(i + 1) % n];
+              b += gcd(Math.abs(v[0] - u[0]), Math.abs(v[1] - u[1])); // lattice steps on this edge
+          }
+          long twiceA = Math.abs(twiceSignedArea(p));
+          long inside = (twiceA - b + 2) / 2;
+          return new long[]{inside, b};
+      }`, `
+      // Point in polygon (even-odd rule) with exact integer math.
+      // Returns 1 = inside, 0 = on the boundary, -1 = outside.
+      static int pointInPolygon(long[][] poly, long px, long py) {
+          int n = poly.length;
+          boolean inside = false;
+          for (int i = 0; i < n; i++) {
+              long[] a = poly[i], b = poly[(i + 1) % n];
+              long cr = (b[0] - a[0]) * (py - a[1]) - (b[1] - a[1]) * (px - a[0]);
+              boolean inBox = Math.min(a[0], b[0]) <= px && px <= Math.max(a[0], b[0])
+                           && Math.min(a[1], b[1]) <= py && py <= Math.max(a[1], b[1]);
+              if (cr == 0 && inBox) return 0;                 // exactly on an edge
+              // Half-open rule: count edges whose y-range contains py as [low, high).
+              long[] lo = a[1] <= b[1] ? a : b, hi = a[1] <= b[1] ? b : a;
+              if (lo[1] <= py && py < hi[1]) {
+                  long side = (hi[0] - lo[0]) * (py - lo[1]) - (hi[1] - lo[1]) * (px - lo[0]);
+                  if (side > 0) inside = !inside;             // point left of the upward edge
+              }                                               // = edge crosses the ray to the right
+          }
+          return inside ? 1 : -1;
+      }`, { lang: 'python', run: true, title: 'Shoelace + Pick in Python (runnable)', code: `from math import gcd
+
+def twice_signed_area(p):
+    n = len(p)
+    return sum(p[i][0] * p[(i + 1) % n][1] - p[(i + 1) % n][0] * p[i][1] for i in range(n))
+
+def pick(p):
+    n = len(p)
+    b = sum(gcd(abs(p[(i + 1) % n][0] - p[i][0]), abs(p[(i + 1) % n][1] - p[i][1])) for i in range(n))
+    a2 = abs(twice_signed_area(p))
+    return (a2 - b + 2) // 2, b      # interior, boundary
+
+house = [(0, 0), (4, 0), (4, 3), (2, 5), (0, 3)]
+s = twice_signed_area(house)
+print("2*signed area =", s, "-> area", abs(s) / 2, "CCW" if s > 0 else "CW")
+print("clockwise listing gives", twice_signed_area(house[::-1]))
+inside, boundary = pick(house)
+print("lattice points inside:", inside, "on boundary:", boundary)
+
+# brute-force check of Pick's theorem for the house
+def strictly_inside(pt, poly):
+    x, y = pt
+    res = False
+    n = len(poly)
+    for i in range(n):
+        (x1, y1), (x2, y2) = poly[i], poly[(i + 1) % n]
+        if (x2 - x1) * (y - y1) - (y2 - y1) * (x - x1) == 0 and min(x1, x2) <= x <= max(x1, x2) and min(y1, y2) <= y <= max(y1, y2):
+            return False                     # on the boundary
+        if (y1 > y) != (y2 > y) and x < x1 + (y - y1) * (x2 - x1) / (y2 - y1):
+            res = not res
+    return res
+print("brute force interior count:", sum(strictly_inside((x, y), house) for x in range(0, 5) for y in range(0, 6)))` }],
+    codeTitle: ['Shoelace, convexity and Pick (Java)', 'Point in polygon, exact (Java)', 'Shoelace + Pick check (Python, runnable)'],
+    viz: {
+      title: 'Shoelace: add one signed "torch-beam" triangle per edge',
+      input: '0,0 4,0 4,3 2,5 0,3',
+      inputLabel: 'polygon vertices x,y in boundary order (3 to 9 points, coordinates -12..12)',
+      gen: function (input) {
+        var P = parsePts(input, 3, 9, 12), n = P.length, frames = [];
+        var ids = P.map(function (_, i) { return 'P' + i; });
+        var oi = -1;
+        P.forEach(function (p, i) { if (p[0] === 0 && p[1] === 0) oi = i; });
+        var pts = P.slice(), allIds = ids.slice();
+        if (oi < 0) { pts.push([0, 0]); allIds.push('O'); }
+        var Oid = oi < 0 ? 'O' : ids[oi];
+        var poly = [];
+        for (var i = 0; i < n; i++) poly.push([ids[i], ids[(i + 1) % n]]);
+        var rows = [], sum = 0;
+        frames.push({ narr: 'The polygon, listed in order ' + ids.join(' → ') + ' → back to P0. We fix the <b>origin O = (0,0)</b> as the lamp post' + (oi >= 0 ? ' (here it is the vertex ' + Oid + ')' : '') + ' and add one signed triangle (O, P<sub>i</sub>, P<sub>i+1</sub>) per edge.',
+          parts: [plot(pts, { ids: allIds, edges: poly, hl: one(Oid, 'sel'), label: 'polygon and origin O' }), { type: 'vars', vals: { 'running sum (2·area)': 0 } }] });
+        for (i = 0; i < n; i++) {
+          var a = P[i], b = P[(i + 1) % n], t1 = a[0] * b[1], t2 = b[0] * a[1], term = t1 - t2;
+          sum += term;
+          rows.push([String(i), pstr(a), pstr(b), String(t1), String(t2), String(term), String(sum)]);
+          var e = poly.slice(), ehl = {}, hl = {};
+          if (Oid !== ids[i]) { e.push([Oid, ids[i]]); ehl[Oid + '-' + ids[i]] = term >= 0 ? 'ok' : 'bad'; }
+          if (Oid !== ids[(i + 1) % n]) { e.push([Oid, ids[(i + 1) % n]]); ehl[Oid + '-' + ids[(i + 1) % n]] = term >= 0 ? 'ok' : 'bad'; }
+          ehl[ids[i] + '-' + ids[(i + 1) % n]] = 'cur';
+          hl[ids[i]] = 'cur'; hl[ids[(i + 1) % n]] = 'cur'; hl[Oid] = 'sel';
+          frames.push({ narr: 'Edge ' + ids[i] + ' → ' + ids[(i + 1) % n] + ': term = x<sub>i</sub>·y<sub>i+1</sub> − x<sub>i+1</sub>·y<sub>i</sub> = ' + a[0] + '·' + b[1] + ' − ' + b[0] + '·' + a[1] + ' = <b>' + term + '</b>. ' + (term > 0 ? 'Positive: the beam sweeps counter-clockwise and <span class="c-g">paints area in</span>.' : term < 0 ? 'Negative: the beam sweeps clockwise and <span class="c-r">paints area out</span> (cancels earlier over-painting).' : 'Zero: O, ' + ids[i] + ' and ' + ids[(i + 1) % n] + ' are collinear — a flat triangle adds nothing.') + ' Running sum = ' + sum + '.',
+            parts: [plot(pts, { ids: allIds, edges: e, ehl: ehl, hl: hl, label: 'signed triangle (O, ' + ids[i] + ', ' + ids[(i + 1) % n] + ')' }),
+              { type: 'table', label: 'shoelace terms', columns: ['i', 'P_i', 'P_i+1', 'x_i·y_i+1', 'x_i+1·y_i', 'term', 'running'], rows: rows.map(function (r) { return r.slice(); }), hl: one(rows.length - 1, 'cur') }] });
+        }
+        var area2 = Math.abs(sum);
+        frames.push({ narr: 'Sum = <b>' + sum + '</b>. ' + (sum > 0 ? 'Positive → the vertices are listed <b>counter-clockwise</b>.' : sum < 0 ? 'Negative → the vertices are listed <b>clockwise</b>.' : 'Zero → the polygon is degenerate (all points on a line).') + ' Area = |' + sum + '| / 2 = <b>' + (area2 / 2) + '</b>.',
+          parts: [plot(P, { ids: ids, edges: poly, hl: (function () { var h = {}; ids.forEach(function (d) { h[d] = 'ok'; }); return h; })(), label: 'area = ' + (area2 / 2) }), { type: 'vars', vals: { 'signed sum': sum, 'area': area2 / 2, 'orientation': sum > 0 ? 'CCW' : sum < 0 ? 'CW' : 'flat' }, hl: { area: 'sel' } }] });
+        function g(x, y) { x = Math.abs(x); y = Math.abs(y); while (y) { var t = x % y; x = y; y = t; } return x; }
+        var B = 0, brows = [];
+        for (i = 0; i < n; i++) { var u = P[i], v = P[(i + 1) % n], gg = g(v[0] - u[0], v[1] - u[1]); B += gg; brows.push([ids[i] + '→' + ids[(i + 1) % n], (v[0] - u[0]) + ', ' + (v[1] - u[1]), String(gg)]); }
+        var I = (area2 - B + 2) / 2;
+        frames.push({ narr: '<b>Pick\'s theorem</b> bonus (integer vertices): boundary lattice points B = ∑ gcd(|dx|, |dy|) = <b>' + B + '</b>. Interior I = Area − B/2 + 1 = ' + (area2 / 2) + ' − ' + (B / 2) + ' + 1 = <b>' + I + '</b>' + (sum === 0 ? ' (meaningless for a flat polygon).' : '. No point-by-point counting needed.') + ' (Pick needs a simple, non-self-crossing polygon.)',
+          parts: [{ type: 'table', label: 'lattice steps per edge', columns: ['edge', 'dx, dy', 'gcd'], rows: brows }, { type: 'vars', vals: { B: B, 'area': area2 / 2, 'I = A − B/2 + 1': I }, hl: { 'I = A − B/2 + 1': 'sel' } }] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Rectangle sanity check', html: `<p>(0,0), (5,0), (5,3), (0,3): terms 0, 15, 15, 0 → sum 30 → area <b>15</b> = 5 × 3 ✓. Always test a formula on a shape whose answer you know.</p>` },
+      { title: 'Concave L-shape (shoelace does not care about dents)', html: `<p>(0,0), (4,0), (4,1), (1,1), (1,3), (0,3). Terms: (0·0−4·0) = 0; (4·1−4·0) = 4; (4·1−1·1) = 3; (1·3−1·1) = 2; (1·3−0·3) = 3; (0·0−0·3) = 0 → sum <b>12</b> → area <b>6</b>. Check: 4×1 bottom bar + 1×2 upright bar = 4 + 2 = 6 ✓. The dent is handled automatically by the signed triangles — no need to split the shape into rectangles.</p>
+        ${H.arr([0, 4, 3, 2, 3, 0], { label: 'terms', hl: { 1: 'g', 2: 'g', 3: 'g', 4: 'g' } })}` },
+      { title: 'Clockwise input flips the sign', html: `<p>The house listed backwards (0,3), (2,5), (4,3), (4,0), (0,0) gives sum <b>−32</b>. Taking the absolute value still gives area 16; the minus sign tells you the order was clockwise. Many hull/offset algorithms require CCW — reverse the list when the sign is negative.</p>` },
+      { title: 'Pick\'s theorem on the house', html: `<p>Edges: (4,0) gcd 4, (0,3) gcd 3, (−2,2) gcd 2, (−2,−2) gcd 2, (0,−3) gcd 3 → B = 14. Area 16 → I = 16 − 7 + 1 = <b>10</b> interior lattice points. The runnable Python snippet confirms it by brute force.</p>` },
+      { title: 'Largest triangle from a few points', html: `<p>Points (0,0), (0,1), (1,0), (0,2), (2,0). Try all triples with |cross|/2: the best is (0,0), (0,2), (2,0) → |2·2 − 0·0| / 2 = <b>2</b>. With N ≤ 50 that is only ~20 000 triples.</p>`, code: `int[][] p = {{0, 0}, {0, 1}, {1, 0}, {0, 2}, {2, 0}};
+long best = 0;
+for (int i = 0; i < p.length; i++)
+    for (int j = i + 1; j < p.length; j++)
+        for (int k = j + 1; k < p.length; k++) {
+            long c = (long) (p[j][0] - p[i][0]) * (p[k][1] - p[i][1]) - (long) (p[j][1] - p[i][1]) * (p[k][0] - p[i][0]);
+            best = Math.max(best, Math.abs(c));
+        }
+System.out.println(best / 2.0);   // 2.0` }
+    ],
+    deepDive: `<p><b>Why the cancellation works.</b> The shoelace is the discrete form of Green's theorem: area = ½∮(x dy − y dx). Geometrically, triangle (O, P<sub>i</sub>, P<sub>i+1</sub>) has signed area ½·cross(P<sub>i</sub>, P<sub>i+1</sub>). Any point outside the polygon is covered by as many positive triangles as negative ones; any point inside is covered exactly once more positively (for CCW order). The choice of origin does not matter — moving it changes every term but the total telescopes back. In practice, <b>subtract P<sub>0</sub> from every vertex</b> first: the numbers get smaller, which reduces overflow risk and floating error for coordinates like GPS values (~10<sup>6</sup> with decimals).</p>
+      <p><b>Overflow.</b> Coordinates ≤ 10<sup>9</sup> make each product ≤ 10<sup>18</sup>; the running sum of N such terms can overflow even when the final area fits. Shifting by P<sub>0</sub> helps; otherwise accumulate in <code>BigInteger</code> or use <code>Math.addExact</code> to detect it.</p>
+      <p><b>When the formula lies.</b> A <b>self-intersecting</b> polygon (a bow-tie) gives the <i>net</i> signed area — the two lobes cancel. Pick's theorem needs a simple lattice polygon. On a <b>sphere</b> (lat/long on Earth) the plane formula is wrong for big regions; GIS libraries either project to a local plane (UTM) or use spherical excess / geodesic area (GeographicLib, PostGIS <code>ST_Area(geography)</code>).</p>
+      <p><b>Point in polygon details.</b> Ray casting must treat vertices exactly on the ray carefully; the <b>half-open rule</b> (count an edge if <code>low.y ≤ p.y &lt; high.y</code>) counts each vertex once and ignores horizontal edges. The <b>winding number</b> (sum of signed crossings) also works for self-intersecting shapes and is what SVG's <code>nonzero</code> fill rule uses; even-odd is SVG's <code>evenodd</code>. For a <b>convex</b> polygon you can answer in O(log N) with binary search over the fan of triangles from P<sub>0</sub>. For millions of queries against fixed polygons (geofencing), use a spatial index or a trapezoidal decomposition.</p>`,
+    aiEra: `<p><b>What AI changes:</b> shoelace is one line in any language and assistants recall it perfectly. The interesting work is upstream — getting vertices <b>in boundary order</b> (raw data from sensors or a database is often unordered), checking for self-intersections, choosing projection for GPS data, and deciding integer vs floating arithmetic.</p>
+      <p><b>Use AI as a partner:</b> ask it to generate random lattice polygons and a brute-force interior-point counter to validate your Pick's theorem code, or to explain Green's theorem in pictures. Ask "what assumptions does this area function make about its input?" — a good model lists order, simplicity, and planarity.</p>
+      <p><b>Where AI goes wrong:</b> it happily computes the "area" of unordered points (garbage), applies plane formulas to lat/long degrees, forgets the wrap-around term (last vertex back to first), and writes ray casting that double-counts a vertex lying exactly on the ray.</p>
+      <p><b>What you must still own:</b> the signed-area intuition (it powers orientation of whole polygons), the half-open rule, and the habit of checking a formula on a rectangle before trusting it.</p>`,
+    problems: [{
+      title: 'Convex Polygon', level: 'Medium', tags: ['geometry', 'cross product'], companies: ['Google', 'Microsoft'],
+      statement: `<p>You are given the vertices of a <b>simple</b> polygon (edges do not cross) in order, as <code>points[i] = [x, y]</code>. Return <code>true</code> if the polygon is <b>convex</b>. Consecutive collinear vertices are allowed. (LeetCode 469.)</p>`,
+      constraints: `3 ≤ N ≤ 10<sup>4</sup>, −10<sup>4</sup> ≤ x, y ≤ 10<sup>4</sup>`,
+      example: `<p><code>[[0,0],[0,5],[5,5],[5,0]]</code> → ${H.c('g', 'true')} — every turn is a right turn (cross = −25 each).</p>
+        <p><code>[[0,0],[0,10],[10,10],[10,0],[5,5]]</code> → ${H.c('r', 'false')} — at (10,0) the turn is right (−50) but at (5,5) it is left (+50): a dent.</p>`,
+      brute: {
+        why: `<p>A polygon is convex iff for every edge, all vertices lie on one side of the edge's line. Checking every edge against every vertex is <b>O(N<sup>2</sup>)</b> = 10<sup>8</sup> cross products at N = 10<sup>4</sup> — borderline slow, and wasteful: a dent always shows up <i>locally</i> as a turn of the wrong sign, so looking at consecutive triples is enough.</p>`,
+        code: `class Solution {
+    public boolean isConvex(List<List<Integer>> points) {
+        int n = points.size();
+        for (int i = 0; i < n; i++) {
+            List<Integer> a = points.get(i), b = points.get((i + 1) % n);
+            int pos = 0, neg = 0;
+            for (int k = 0; k < n; k++) {               // every vertex vs this edge line
+                List<Integer> c = points.get(k);
+                long cr = (long) (b.get(0) - a.get(0)) * (c.get(1) - a.get(1))
+                        - (long) (b.get(1) - a.get(1)) * (c.get(0) - a.get(0));
+                if (cr > 0) pos++;
+                else if (cr < 0) neg++;
+            }
+            if (pos > 0 && neg > 0) return false;      // vertices on both sides
+        }
+        return true;
+    }
+}`
+      },
+      mcq: { q: 'Walking the polygon you see turn signs: −, −, 0, −, −. Is it convex?', options: ['No — a zero means a dent', 'Yes — zeros are straight angles; all non-zero turns agree', 'Only if N is even', 'Cannot tell without the area'], answer: 1, explain: 'A zero cross product is a 180° angle (collinear vertices). Convexity only fails when both a positive and a negative turn appear.' },
+      hints: [
+        `<p>Hint 1: In a convex polygon you turn the same way at every corner (all left if CCW, all right if CW). A dent is a turn the other way.</p>`,
+        `<p>Hint 2: For each i compute cross(P<sub>i</sub>, P<sub>i+1</sub>, P<sub>i+2</sub>) with indices mod N. Remember the first non-zero sign.</p>`,
+        `<p>Hint 3: Skip zeros (straight angles). If any later non-zero sign differs from the remembered one → false. Use long. Don't forget the two wrap-around triples (N−2, N−1, 0) and (N−1, 0, 1).</p>`
+      ],
+      solution: {
+        approach: `<p>One pass over all N consecutive triples (with wrap-around), tracking the sign of the first non-zero turn. Because the polygon is guaranteed simple, "all turns agree" is equivalent to convex. (For a non-simple input such as a pentagram, all turns agree but it is not convex — you would also need total turning = 360°.)</p>`,
+        code: `class Solution {
+    public boolean isConvex(List<List<Integer>> points) {
+        int n = points.size(), sign = 0;
+        for (int i = 0; i < n; i++) {
+            List<Integer> a = points.get(i), b = points.get((i + 1) % n), c = points.get((i + 2) % n);
+            long cr = (long) (b.get(0) - a.get(0)) * (c.get(1) - a.get(1))
+                    - (long) (b.get(1) - a.get(1)) * (c.get(0) - a.get(0));
+            int s = Long.signum(cr);
+            if (s == 0) continue;                 // straight angle: allowed
+            if (sign == 0) sign = s;              // first real turn fixes the direction
+            else if (s != sign) return false;     // turned the other way: dent
+        }
+        return true;
+    }
+}`,
+        alt: [{ lang: 'python', code: `class Solution:
+    def isConvex(self, points):
+        n, sign = len(points), 0
+        for i in range(n):
+            (ax, ay), (bx, by), (cx, cy) = points[i], points[(i + 1) % n], points[(i + 2) % n]
+            cr = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax)
+            if cr:
+                s = 1 if cr > 0 else -1
+                if sign == 0:
+                    sign = s
+                elif s != sign:
+                    return False
+        return True` }],
+        dry: { head: ['i', 'triple', 'cross', 'sign', 'state'], rows: [
+          ['0', '(0,0) (0,10) (10,10)', '0·10 − 10·10 = −100', '−', 'sign = −'],
+          ['1', '(0,10) (10,10) (10,0)', '10·(−10) − 0·10 = −100', '−', 'agrees'],
+          ['2', '(10,10) (10,0) (5,5)', '0·(−5) − (−10)(−5) = −50', '−', 'agrees'],
+          ['3', '(10,0) (5,5) (0,0)', '(−5)·0 − 5·(−10) = +50', '+', '<span class="c-r">differs → false</span>']
+        ] },
+        complexity: `<p>Time <b>O(N)</b>, space <b>O(1)</b>.</p>`,
+        followUps: ['Also return whether the vertices are listed clockwise (sign of the shoelace sum).', 'Answer many "is point inside this convex polygon?" queries in O(log N) each.', 'How would you detect a self-intersecting (non-simple) input?']
       }
     }]
   });

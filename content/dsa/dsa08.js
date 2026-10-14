@@ -3336,6 +3336,1034 @@ boolean containsLinear(int[] a, int target) {
     }]
   });
 
+  /* =====================================================================
+     PRACTICE — Easy
+     ===================================================================== */
+  practice.push({
+    title: 'Ransom Note',
+    level: 'Easy', tags: ['frequency', 'int[26]'], companies: ['Amazon', 'Microsoft', 'Apple'],
+    statement: `<p>Given two strings <code>ransomNote</code> and <code>magazine</code>, return <b>true</b> if the note can be built from letters cut out of the magazine. Each magazine letter can be used <b>only once</b>.</p>`,
+    constraints: `1 ≤ ransomNote.length, magazine.length ≤ 10<sup>5</sup>; lowercase English letters.`,
+    example: `<p>note = "aa", magazine = "aab" → ${H.c('g', 'true')} (two a's available). note = "aa", magazine = "ab" → ${H.c('r', 'false')} (only one a).</p>`,
+    brute: {
+      why: `<p>For each note letter, search the magazine for an unused copy and mark it: <b>O(n·m)</b> = 10<sup>10</sup> at the limits. The waste: we only care <i>how many</i> of each letter the magazine has, not where.</p>`,
+      code: `boolean canConstructBrute(String note, String magazine) {
+    StringBuilder mag = new StringBuilder(magazine);
+    for (char c : note.toCharArray()) {
+        int pos = mag.indexOf(String.valueOf(c));   // O(m) search
+        if (pos < 0) return false;
+        mag.deleteCharAt(pos);                      // use it up
+    }
+    return true;
+}`
+    },
+    mcq: { q: 'Which single data structure answers this in O(n + m)?', options: ['A tally of magazine letters (int[26]) decremented by the note', 'A HashSet of magazine letters', 'Sorting the note only', 'A stack of magazine letters'], answer: 0, explain: 'A set loses multiplicity ("aa" needs two a\'s). Counts keep it.' },
+    hints: [
+      `<p><b>Hint 1:</b> Order does not matter, only counts — this is the shopkeeper's tally sheet.</p>`,
+      `<p><b>Hint 2:</b> Count magazine letters in <code>int[26]</code>, then spend them for each note letter.</p>`,
+      `<p><b>Hint 3:</b> If any count goes below zero, the magazine ran out → false. Quick reject: note longer than magazine.</p>`
+    ],
+    solution: {
+      approach: `<p>Tally the magazine, then walk the note decrementing. A negative count means the note needs a letter the magazine cannot supply.</p>`,
+      code: `class Solution {
+    public boolean canConstruct(String ransomNote, String magazine) {
+        if (ransomNote.length() > magazine.length()) return false;
+        int[] cnt = new int[26];
+        for (int i = 0; i < magazine.length(); i++) cnt[magazine.charAt(i) - 'a']++;
+        for (int i = 0; i < ransomNote.length(); i++) {
+            if (--cnt[ransomNote.charAt(i) - 'a'] < 0) return false;   // ran out of this letter
+        }
+        return true;
+    }
+}`,
+      alt: [{ lang: 'python', code: `from collections import Counter
+
+def can_construct(note, magazine):
+    return not (Counter(note) - Counter(magazine))   # leftover need -> impossible` }],
+      dry: { head: ['step', 'char', 'count after', 'ok?'], rows: [['tally "aab"', '—', 'a=2, b=1', '—'], ['note[0]', 'a', 'a=1', H.c('g', 'yes')], ['note[1]', 'a', 'a=0', H.c('g', 'yes → true')]] },
+      complexity: `<p><b>Time:</b> O(n + m). <b>Space:</b> O(1) (26 counters).</p>`,
+      followUps: ['Unicode letters → HashMap over code points.', 'Return the minimum number of extra letters needed.']
+    }
+  });
+
+  practice.push({
+    title: 'Intersection of Two Arrays II',
+    level: 'Easy', tags: ['hashmap', 'frequency'], companies: ['Meta', 'Amazon', 'Google'],
+    statement: `<p>Given two integer arrays, return their intersection where each element appears <b>as many times as it shows in both</b> (the minimum of the two counts). Any order.</p>`,
+    constraints: `1 ≤ n, m ≤ 1000, 0 ≤ values ≤ 1000`,
+    example: `<p>nums1 = [1, 2, 2, 1], nums2 = [2, 2] → ${H.c('g', '[2, 2]')}. nums1 = [4, 9, 5], nums2 = [9, 4, 9, 8, 4] → ${H.c('g', '[4, 9]')}.</p>`,
+    brute: {
+      why: `<p>For each element of nums1, scan nums2 for an unused equal element and mark it: <b>O(n·m)</b>. The waste: rescanning nums2 when a count map of nums1 answers "how many are left?" in O(1).</p>`,
+      code: `int[] intersectBrute(int[] a, int[] b) {
+    boolean[] used = new boolean[b.length];
+    List<Integer> res = new ArrayList<>();
+    for (int x : a) {
+        for (int j = 0; j < b.length; j++) {
+            if (!used[j] && b[j] == x) { used[j] = true; res.add(x); break; }
+        }
+    }
+    return res.stream().mapToInt(Integer::intValue).toArray();
+}`
+    },
+    mcq: { q: 'Why is a HashSet not enough here?', options: ['It forgets how many times a value appears, but the output must repeat values (min of counts)', 'HashSet cannot store integers', 'HashSet is slower than a list', 'It is enough'], answer: 0, explain: 'Intersection I (unique values) uses sets; Intersection II needs counts.' },
+    hints: [
+      `<p><b>Hint 1:</b> The answer contains value v exactly min(count1[v], count2[v]) times.</p>`,
+      `<p><b>Hint 2:</b> Tally the smaller array into a map, then walk the other array and "spend" counts.</p>`,
+      `<p><b>Hint 3:</b> For x in nums2: if cnt[x] &gt; 0 → output x, cnt[x]−−. Follow-up: sorted inputs → two pointers, O(1) extra space.</p>`
+    ],
+    solution: {
+      approach: `<p>Count the first array, then spend counts while scanning the second. Each output value is emitted at most as many times as both arrays allow.</p>`,
+      code: `class Solution {
+    public int[] intersect(int[] nums1, int[] nums2) {
+        if (nums1.length > nums2.length) return intersect(nums2, nums1);  // tally the smaller one
+        Map<Integer, Integer> cnt = new HashMap<>();
+        for (int x : nums1) cnt.merge(x, 1, Integer::sum);
+        List<Integer> res = new ArrayList<>();
+        for (int x : nums2) {
+            Integer c = cnt.get(x);
+            if (c != null && c > 0) { res.add(x); cnt.put(x, c - 1); }   // spend one copy
+        }
+        int[] out = new int[res.size()];
+        for (int i = 0; i < out.length; i++) out[i] = res.get(i);
+        return out;
+    }
+}`,
+      alt: [{ lang: 'python', code: `from collections import Counter
+
+def intersect(nums1, nums2):
+    return list((Counter(nums1) & Counter(nums2)).elements())   # & = min of counts` }],
+      complexity: `<p><b>Time:</b> O(n + m). <b>Space:</b> O(min(n, m)).</p>`,
+      followUps: ['Both arrays sorted → two pointers.', 'nums2 is on disk and too big for memory → stream it in chunks against the map of nums1.']
+    }
+  });
+
+  practice.push({
+    title: 'Isomorphic Strings',
+    level: 'Easy', tags: ['hashmap', 'bijection'], companies: ['LinkedIn', 'Amazon', 'Google'],
+    statement: `<p>Two strings s and t are <b>isomorphic</b> if the characters of s can be replaced to get t, where every occurrence of a character maps to the same character, and <b>no two different characters map to the same character</b> (a one-to-one mapping). Return true if s and t are isomorphic.</p>`,
+    constraints: `1 ≤ s.length == t.length ≤ 5·10<sup>4</sup>; any valid ASCII characters.`,
+    example: `<p>"egg", "add" → ${H.c('g', 'true')} (e→a, g→d). "foo", "bar" → ${H.c('r', 'false')} (o would need to map to both a and r). "badc", "baba" → ${H.c('r', 'false')} (b→b and d→b: two letters map to the same one).</p>`,
+    brute: {
+      why: `<p>Check every pair (i, j): s[i] == s[j] must hold exactly when t[i] == t[j]. That is <b>O(n<sup>2</sup>)</b> = 2.5·10<sup>9</sup> comparisons. The waste: a mapping table answers "what did s[i] map to before?" in O(1).</p>`,
+      code: `boolean isIsomorphicBrute(String s, String t) {
+    for (int i = 0; i < s.length(); i++) {
+        for (int j = i + 1; j < s.length(); j++) {
+            boolean sameS = s.charAt(i) == s.charAt(j);
+            boolean sameT = t.charAt(i) == t.charAt(j);
+            if (sameS != sameT) return false;
+        }
+    }
+    return true;
+}`
+    },
+    mcq: { q: 'Why does "badc" vs "baba" need a SECOND map (t → s)?', options: ['One map s→t accepts b→b and d→b; only the reverse map notices that b in t is claimed twice', 'Because the strings have different lengths', 'To handle uppercase letters', 'It does not — one map is always enough'], answer: 0, explain: 'Isomorphism is a bijection: check both directions (or map both to "first index seen").' },
+    hints: [
+      `<p><b>Hint 1:</b> Record what each character of s maps to; a conflict means false.</p>`,
+      `<p><b>Hint 2:</b> One direction is not enough — also record which s-character already owns each t-character.</p>`,
+      `<p><b>Hint 3:</b> Neat trick: map both strings to "index of first occurrence" patterns and compare, e.g. "egg" → [0,1,1], "add" → [0,1,1].</p>`
+    ],
+    solution: {
+      approach: `<p>Two maps enforce a one-to-one mapping: <code>s→t</code> catches one letter mapping to two, <code>t→s</code> catches two letters mapping to one.</p>`,
+      code: `class Solution {
+    public boolean isIsomorphic(String s, String t) {
+        Map<Character, Character> st = new HashMap<>(), ts = new HashMap<>();
+        for (int i = 0; i < s.length(); i++) {
+            char a = s.charAt(i), b = t.charAt(i);
+            Character prevB = st.putIfAbsent(a, b);     // returns existing mapping, or null if new
+            Character prevA = ts.putIfAbsent(b, a);
+            if ((prevB != null && prevB != b) || (prevA != null && prevA != a)) return false;
+        }
+        return true;
+    }
+}`,
+      alt: [{ lang: 'python', code: `def is_isomorphic(s, t):
+    st, ts = {}, {}
+    for a, b in zip(s, t):
+        if st.setdefault(a, b) != b or ts.setdefault(b, a) != a:
+            return False          # a already maps elsewhere, or b is already owned
+    return True` }],
+      dry: { head: ['i', 's[i] → t[i]', 's→t map', 't→s map', 'ok?'], rows: [['0', 'b → b', '{b:b}', '{b:b}', 'yes'], ['1', 'a → a', '{b:b, a:a}', '{b:b, a:a}', 'yes'], ['2', 'd → b', '{…, d:b}', H.c('r', 'b already owned by b'), H.c('r', 'false')]] },
+      complexity: `<p><b>Time:</b> O(n). <b>Space:</b> O(Σ) for the alphabet.</p>`,
+      followUps: ['Word Pattern (LeetCode 290): same bijection between letters and words.', 'Group strings by isomorphism pattern (key = first-occurrence index list).']
+    }
+  });
+
+  practice.push({
+    title: 'Happy Number',
+    level: 'Easy', tags: ['hashset', 'cycle detection'], companies: ['Uber', 'Airbnb', 'Adobe'],
+    statement: `<p>Start with a positive integer n. Repeatedly replace it by the <b>sum of the squares of its digits</b>. If this process reaches <b>1</b>, n is happy (return true). If it loops forever without reaching 1, return false.</p>`,
+    constraints: `1 ≤ n ≤ 2<sup>31</sup> − 1`,
+    example: `<p>n = 19: 1²+9² = <b>82</b> → 8²+2² = <b>68</b> → 6²+8² = <b>100</b> → 1²+0²+0² = ${H.c('g', '1 → true')}.</p><p>n = 2: 4 → 16 → 37 → 58 → 89 → 145 → 42 → 20 → ${H.c('r', '4 (seen before!) → false')}.</p>`,
+    brute: {
+      why: `<p>Keep the history in a list and search it linearly each step: O(k<sup>2</sup>) for k steps. Or "run 1000 steps and hope" — not a proof. The waste: "have I seen this number before?" is exactly a HashSet question.</p>`,
+      code: `boolean isHappyBrute(int n) {
+    List<Integer> history = new ArrayList<>();
+    while (n != 1 && !history.contains(n)) {   // contains() is O(k) on a list
+        history.add(n);
+        n = digitSquareSum(n);
+    }
+    return n == 1;
+}
+
+int digitSquareSum(int n) {
+    int s = 0;
+    while (n > 0) { int d = n % 10; s += d * d; n /= 10; }
+    return s;
+}`
+    },
+    mcq: { q: 'Why is the process guaranteed to either reach 1 or repeat a number?', options: ['After one step any int becomes ≤ 9²·10 = 810, so only finitely many values are possible — eventually one repeats', 'Because every number is happy', 'Because the sequence always decreases', 'It is not guaranteed; you must cap the steps'], answer: 0, explain: 'Finite state space + deterministic step ⇒ the sequence must eventually cycle (pigeonhole). A set detects the first repeat.' },
+    hints: [
+      `<p><b>Hint 1:</b> An infinite loop means you visit some number twice.</p>`,
+      `<p><b>Hint 2:</b> Store visited numbers in a HashSet; stop at 1 or at a repeat.</p>`,
+      `<p><b>Hint 3:</b> Follow-up with O(1) memory: Floyd's slow/fast pointers on the sequence (DSA 12).</p>`
+    ],
+    solution: {
+      approach: `<p>Walk the sequence while remembering every value in a HashSet. Reaching 1 → happy; meeting a remembered value → cycle → not happy.</p>`,
+      code: `class Solution {
+    public boolean isHappy(int n) {
+        Set<Integer> seen = new HashSet<>();
+        while (n != 1 && seen.add(n)) {   // add() is false when n repeats -> cycle
+            n = next(n);
+        }
+        return n == 1;
+    }
+
+    private int next(int n) {
+        int s = 0;
+        while (n > 0) { int d = n % 10; s += d * d; n /= 10; }
+        return s;
+    }
+}`,
+      alt: [{ lang: 'python', code: `def is_happy(n):
+    seen = set()
+    while n != 1 and n not in seen:
+        seen.add(n)
+        n = sum(int(d) ** 2 for d in str(n))
+    return n == 1` }],
+      dry: { head: ['n', 'in set?', 'next'], rows: [['19', H.c('g', 'no → add'), '82'], ['82', H.c('g', 'no → add'), '68'], ['68', H.c('g', 'no → add'), '100'], ['100', H.c('g', 'no → add'), '1'], ['1', '—', H.c('g', 'stop: true')]] },
+      complexity: `<p><b>Time:</b> O(log n) per step and a bounded number of steps (values quickly drop below 1000). <b>Space:</b> O(number of steps), small.</p>`,
+      followUps: ['Solve with O(1) extra space using Floyd cycle detection.', 'Count how many numbers ≤ N are happy (memoize results in a map).']
+    }
+  });
+
+  /* =====================================================================
+     PRACTICE — Medium
+     ===================================================================== */
+  practice.push({
+    title: 'Top K Frequent Elements',
+    level: 'Medium', tags: ['frequency', 'bucket sort', 'heap'], companies: ['Amazon', 'Meta', 'Google', 'Microsoft', 'Oracle'],
+    statement: `<p>Given an integer array <code>nums</code> and an integer k, return the <b>k most frequent</b> elements (any order). The answer is guaranteed to be unique. Aim for better than O(N log N).</p>`,
+    constraints: `1 ≤ N ≤ 10<sup>5</sup>, 1 ≤ k ≤ number of distinct values`,
+    example: `<p>nums = [1, 1, 1, 2, 2, 3], k = 2 → ${H.c('g', '[1, 2]')} (1 appears 3 times, 2 twice, 3 once).</p>`,
+    brute: {
+      why: `<p>Tally, then sort all distinct values by count: O(N + D log D). Fine in practice, but the follow-up asks for better. A naive brute that recounts each value by scanning is O(N·D).</p>`,
+      code: `int[] topKFrequentSort(int[] nums, int k) {
+    Map<Integer, Integer> cnt = new HashMap<>();
+    for (int x : nums) cnt.merge(x, 1, Integer::sum);
+    List<Integer> keys = new ArrayList<>(cnt.keySet());
+    keys.sort((a, b) -> cnt.get(b) - cnt.get(a));     // most frequent first: O(D log D)
+    int[] res = new int[k];
+    for (int i = 0; i < k; i++) res[i] = keys.get(i);
+    return res;
+}`
+    },
+    mcq: { q: 'Bucket sort works here because…', options: ['every frequency is between 1 and N, so we can index buckets by frequency', 'the values are small', 'k is always 1', 'HashMaps are sorted by value'], answer: 0, explain: 'Frequencies are bounded by N, so an array of N+1 buckets indexed by count replaces sorting.' },
+    hints: [
+      `<p><b>Hint 1:</b> First build the tally sheet value → count.</p>`,
+      `<p><b>Hint 2:</b> Instead of sorting by count, drop each value into bucket[count] (counts are 1..N).</p>`,
+      `<p><b>Hint 3:</b> Walk buckets from N down to 1, collecting values until you have k. Alternative: a min-heap of size k (O(N log k)).</p>`
+    ],
+    solution: {
+      approach: `<p><b>Tally + bucket sort by frequency.</b> Bucket i holds the values that occur exactly i times. Reading buckets from high to low yields the most frequent values first in O(N) total.</p>`,
+      code: `class Solution {
+    @SuppressWarnings("unchecked")
+    public int[] topKFrequent(int[] nums, int k) {
+        Map<Integer, Integer> cnt = new HashMap<>();
+        for (int x : nums) cnt.merge(x, 1, Integer::sum);
+
+        List<Integer>[] bucket = new List[nums.length + 1];       // bucket[f] = values with frequency f
+        for (Map.Entry<Integer, Integer> e : cnt.entrySet()) {
+            int f = e.getValue();
+            if (bucket[f] == null) bucket[f] = new ArrayList<>();
+            bucket[f].add(e.getKey());
+        }
+
+        int[] res = new int[k];
+        int idx = 0;
+        for (int f = nums.length; f >= 1 && idx < k; f--) {
+            if (bucket[f] == null) continue;
+            for (int v : bucket[f]) {
+                if (idx == k) break;
+                res[idx++] = v;
+            }
+        }
+        return res;
+    }
+}`,
+      alt: [{ lang: 'python', code: `from collections import Counter
+
+def top_k_frequent(nums, k):
+    return [v for v, _ in Counter(nums).most_common(k)]   # heap-based, O(N log k)` }],
+      complexity: `<p><b>Time:</b> O(N). <b>Space:</b> O(N). Heap version: O(N log k) time, O(D + k) space.</p>`,
+      followUps: ['Top K frequent words with ties broken alphabetically (heap with a custom comparator).', 'Streaming top-K over billions of events (Count-Min Sketch + heap, "heavy hitters").']
+    }
+  });
+
+  practice.push({
+    title: 'Subarray Sums Divisible by K',
+    level: 'Medium', tags: ['prefix sum', 'hashmap', 'modulo'], companies: ['Amazon', 'Twilio', 'Meta'],
+    statement: `<p>Given an integer array <code>nums</code> (negatives allowed) and an integer k, return the number of non-empty contiguous subarrays whose sum is <b>divisible by k</b>.</p>`,
+    constraints: `1 ≤ N ≤ 3·10<sup>4</sup>, −10<sup>4</sup> ≤ nums[i] ≤ 10<sup>4</sup>, 2 ≤ k ≤ 10<sup>4</sup>`,
+    example: `<p>nums = [4, 5, 0, −2, −3, 1], k = 5 → ${H.c('g', '7')}: [4, 5, 0, −2, −3, 1], [5], [5, 0], [5, 0, −2, −3], [0], [0, −2, −3], [−2, −3].</p>`,
+    brute: {
+      why: `<p>All (l, r) pairs with a running sum and a modulo check: <b>O(N<sup>2</sup>)</b> ≈ 4.5·10<sup>8</sup>. The waste: divisibility depends only on the <b>remainders</b> of two prefix sums, which a tally can match in O(1).</p>`,
+      code: `int subarraysDivByKBrute(int[] nums, int k) {
+    int count = 0;
+    for (int l = 0; l < nums.length; l++) {
+        int sum = 0;
+        for (int r = l; r < nums.length; r++) {
+            sum += nums[r];
+            if (sum % k == 0) count++;        // works for negatives too: -5 % 5 == 0
+        }
+    }
+    return count;
+}`
+    },
+    mcq: { q: 'pf = −7 and k = 5. Which remainder must you store so it matches pf = 3?', options: ['3, using ((pf % k) + k) % k', '−2, Java\'s raw −7 % 5', '7', '2'], answer: 0, explain: '−7 and 3 differ by 10, a multiple of 5, so they must land in the same bucket. Java gives −7 % 5 = −2, so normalize to 3.' },
+    hints: [
+      `<p><b>Hint 1:</b> sum(l..r) divisible by k ⇔ pf[r] ≡ pf[l−1] (mod k).</p>`,
+      `<p><b>Hint 2:</b> Tally remainders (an <code>int[k]</code> is enough) seeded with remainder 0 → 1.</p>`,
+      `<p><b>Hint 3:</b> For each prefix: r = ((pf % k) + k) % k; answer += cnt[r]; cnt[r]++. Normalize negatives!</p>`
+    ],
+    solution: {
+      approach: `<p><b>Prefix-remainder tally.</b> Two prefixes with equal remainders bound a subarray whose sum is a multiple of k. Counting earlier equal remainders at each step counts every such subarray once.</p>`,
+      code: `class Solution {
+    public int subarraysDivByK(int[] nums, int k) {
+        int[] cnt = new int[k];          // remainder -> how many prefixes had it
+        cnt[0] = 1;                      // empty prefix
+        int pf = 0, total = 0;
+        for (int x : nums) {
+            pf = ((pf + x) % k + k) % k; // keep pf as a normalized remainder (no overflow)
+            total += cnt[pf];
+            cnt[pf]++;
+        }
+        return total;
+    }
+}`,
+      alt: [{ lang: 'python', code: `def subarrays_div_by_k(nums, k):
+    cnt = [0] * k
+    cnt[0] = 1
+    pf = total = 0
+    for x in nums:
+        pf = (pf + x) % k        # Python % is already non-negative for k > 0
+        total += cnt[pf]
+        cnt[pf] += 1
+    return total` }],
+      dry: { head: ['x', 'remainder', 'cnt[rem] before', 'total'], rows: [['4', '4', '0', '0'], ['5', '4', H.c('r', '1'), '1'], ['0', '4', H.c('r', '2'), '3'], ['−2', '2', '0', '3'], ['−3', '4', H.c('r', '3'), '6'], ['1', '0', H.c('r', '1'), H.c('g', '7')]] },
+      complexity: `<p><b>Time:</b> O(N + k). <b>Space:</b> O(k).</p>`,
+      followUps: ['Continuous Subarray Sum (length ≥ 2, store first index of each remainder).', 'Make Sum Divisible by P (LeetCode 1590): remove the shortest subarray — store last index of each remainder.']
+    }
+  });
+
+  practice.push({
+    title: 'Continuous Subarray Sum (multiple of k, length ≥ 2)',
+    level: 'Medium', tags: ['prefix sum', 'hashmap', 'first index', 'modulo'], companies: ['Meta', 'Amazon', 'Microsoft'],
+    statement: `<p>Given a non-negative integer array <code>nums</code> and an integer k, return <b>true</b> if there is a contiguous subarray of <b>length at least 2</b> whose sum is a multiple of k (0 counts as a multiple).</p>`,
+    constraints: `1 ≤ N ≤ 10<sup>5</sup>, 0 ≤ nums[i] ≤ 10<sup>9</sup>, 1 ≤ k ≤ 2<sup>31</sup> − 1`,
+    example: `<p>nums = [23, 2, 4, 6, 7], k = 6 → ${H.c('g', 'true')} ([2, 4] sums to 6). nums = [23, 2, 6, 4, 7], k = 13 → ${H.c('r', 'false')}. nums = [5, 0, 0], k = 3 → ${H.c('g', 'true')} ([0, 0] sums to 0).</p>`,
+    brute: {
+      why: `<p>Every subarray of length ≥ 2 with a running sum: <b>O(N<sup>2</sup>)</b> = 10<sup>10</sup>. The waste: only remainders matter, and the earliest index of each remainder is all we need to test the length condition.</p>`,
+      code: `boolean checkSubarraySumBrute(int[] nums, int k) {
+    for (int l = 0; l < nums.length; l++) {
+        long sum = nums[l];
+        for (int r = l + 1; r < nums.length; r++) {
+            sum += nums[r];
+            if (sum % k == 0) return true;   // length r - l + 1 >= 2
+        }
+    }
+    return false;
+}`
+    },
+    mcq: { q: 'Why store the FIRST index of each remainder (and never overwrite)?', options: ['The earliest match gives the longest subarray, which is the most likely to satisfy length ≥ 2', 'To save memory', 'Because later indices are always invalid', 'Overwriting would be equally correct'], answer: 0, explain: 'With [0] and k = 1 style cases, overwriting with i would make every later match too short. The earliest index maximizes length.' },
+    hints: [
+      `<p><b>Hint 1:</b> Same remainder at prefix j and prefix i ⇒ sum(j+1..i) is a multiple of k.</p>`,
+      `<p><b>Hint 2:</b> Map remainder → FIRST index, seeded with {0: −1}.</p>`,
+      `<p><b>Hint 3:</b> At i: rem = pf % k; if rem in map and i − map[rem] ≥ 2 → true; else if rem not in map → map[rem] = i. Keep pf as a remainder to avoid overflow.</p>`
+    ],
+    solution: {
+      approach: `<p>Track prefix remainders with their earliest index. A repeated remainder at distance ≥ 2 proves a valid subarray.</p>`,
+      code: `class Solution {
+    public boolean checkSubarraySum(int[] nums, int k) {
+        Map<Integer, Integer> first = new HashMap<>();
+        first.put(0, -1);                          // empty prefix has remainder 0
+        int rem = 0;
+        for (int i = 0; i < nums.length; i++) {
+            rem = (int) (((long) rem + nums[i]) % k);   // long avoids overflow before %
+            Integer j = first.get(rem);
+            if (j != null) {
+                if (i - j >= 2) return true;       // subarray j+1..i has length >= 2
+            } else {
+                first.put(rem, i);                 // keep the earliest index only
+            }
+        }
+        return false;
+    }
+}`,
+      alt: [{ lang: 'python', code: `def check_subarray_sum(nums, k):
+    first, rem = {0: -1}, 0
+    for i, x in enumerate(nums):
+        rem = (rem + x) % k
+        if rem in first:
+            if i - first[rem] >= 2:
+                return True
+        else:
+            first[rem] = i
+    return False` }],
+      dry: { head: ['i', 'x', 'rem (mod 6)', 'first[rem]', 'decision'], rows: [['0', '23', '5', '—', H.c('g', 'store 5:0')], ['1', '2', '1', '—', H.c('g', 'store 1:1')], ['2', '4', '5', H.c('r', '0'), H.c('g', '2 − 0 = 2 ≥ 2 → true')]] },
+      complexity: `<p><b>Time:</b> O(N). <b>Space:</b> O(min(N, k)).</p>`,
+      followUps: ['Return the subarray boundaries.', 'Allow negative numbers (normalize remainders).']
+    }
+  });
+
+  practice.push({
+    title: 'Count Number of Nice Subarrays (exactly k odd numbers)',
+    level: 'Medium', tags: ['prefix sum', 'hashmap', 'counting'], companies: ['Amazon', 'Roblox', 'Meta'],
+    statement: `<p>A subarray is <b>nice</b> if it contains exactly <code>k</code> odd numbers. Given <code>nums</code> and k, return the number of nice subarrays.</p>`,
+    constraints: `1 ≤ N ≤ 5·10<sup>4</sup>, 1 ≤ nums[i] ≤ 10<sup>5</sup>, 1 ≤ k ≤ N`,
+    example: `<p>nums = [1, 1, 2, 1, 1], k = 3 → ${H.c('g', '2')}: [1, 1, 2, 1] and [1, 2, 1, 1]. nums = [2, 2, 2, 1, 2, 2, 1, 2, 2, 2], k = 2 → ${H.c('g', '16')}.</p>`,
+    brute: {
+      why: `<p>Every (l, r) with a running odd counter: <b>O(N<sup>2</sup>)</b> = 2.5·10<sup>9</sup>. The waste: "number of odds in l..r" is a prefix-count difference, so this is "count subarrays with sum k" in disguise.</p>`,
+      code: `int numberOfSubarraysBrute(int[] nums, int k) {
+    int count = 0;
+    for (int l = 0; l < nums.length; l++) {
+        int odd = 0;
+        for (int r = l; r < nums.length; r++) {
+            odd += nums[r] & 1;
+            if (odd == k) count++;
+            else if (odd > k) break;          // more odds can only grow
+        }
+    }
+    return count;
+}`
+    },
+    mcq: { q: 'Turn each element into (nums[i] % 2). The problem then becomes…', options: ['Count subarrays with sum exactly k', 'Longest subarray with sum k', 'Does a zero-sum subarray exist?', 'Count distinct elements per window'], answer: 0, explain: 'Odd → 1, even → 0: the number of odds in a subarray is its sum. Then use the prefix-count map from topic 6.' },
+    hints: [
+      `<p><b>Hint 1:</b> Replace each number by 1 if odd, 0 if even.</p>`,
+      `<p><b>Hint 2:</b> Now count subarrays with sum exactly k: prefix count of odds + tally {0: 1}.</p>`,
+      `<p><b>Hint 3:</b> Prefix odd-counts lie in 0..N, so an <code>int[N + 1]</code> replaces the map. Alternative: atMost(k) − atMost(k − 1) with a sliding window.</p>`
+    ],
+    solution: {
+      approach: `<p><b>Odd-count prefix + tally.</b> Let odd = number of odd values so far. Each earlier prefix with odd − k odds starts a nice subarray ending here.</p>`,
+      code: `class Solution {
+    public int numberOfSubarrays(int[] nums, int k) {
+        int[] cnt = new int[nums.length + 1];   // prefix odd count -> how many prefixes
+        cnt[0] = 1;
+        int odd = 0, total = 0;
+        for (int x : nums) {
+            odd += x & 1;                        // 1 if odd
+            if (odd >= k) total += cnt[odd - k]; // earlier prefixes with odd - k odds
+            cnt[odd]++;
+        }
+        return total;
+    }
+}`,
+      alt: [{ lang: 'python', code: `def number_of_subarrays(nums, k):
+    cnt = [0] * (len(nums) + 1)
+    cnt[0] = 1
+    odd = total = 0
+    for x in nums:
+        odd += x & 1
+        if odd >= k:
+            total += cnt[odd - k]
+        cnt[odd] += 1
+    return total` }],
+      complexity: `<p><b>Time:</b> O(N). <b>Space:</b> O(N).</p>`,
+      followUps: ['Binary Subarrays With Sum (LeetCode 930) — identical with 0/1 input.', 'Count subarrays with exactly k distinct values (LeetCode 992, Hard).']
+    }
+  });
+
+  practice.push({
+    title: 'Longest Substring with At Most K Distinct Characters',
+    level: 'Medium', tags: ['sliding window', 'hashmap'], companies: ['Google', 'Meta', 'Amazon', 'Coupang'],
+    statement: `<p>Given a string s and an integer k, return the length of the longest substring that contains <b>at most k distinct</b> characters.</p>`,
+    constraints: `1 ≤ s.length ≤ 5·10<sup>4</sup>, 0 ≤ k ≤ 50`,
+    example: `<p>s = "eceba", k = 2 → ${H.c('g', '3')} ("ece"). s = "aa", k = 1 → ${H.c('g', '2')}.</p>`,
+    brute: {
+      why: `<p>For every start, extend while the distinct count (a set) stays ≤ k: <b>O(N<sup>2</sup>)</b>. The waste: when the window becomes invalid we restart instead of shrinking from the left.</p>`,
+      code: `int lengthOfLongestSubstringKDistinctBrute(String s, int k) {
+    int best = 0;
+    for (int i = 0; i < s.length(); i++) {
+        Set<Character> seen = new HashSet<>();
+        for (int j = i; j < s.length(); j++) {
+            seen.add(s.charAt(j));
+            if (seen.size() > k) break;
+            best = Math.max(best, j - i + 1);
+        }
+    }
+    return best;
+}`
+    },
+    mcq: { q: 'While shrinking, when may you remove a character from the window map entirely?', options: ['Only when its count drops to 0', 'As soon as it is at s[left]', 'Never — just decrement', 'When the map size equals k'], answer: 0, explain: 'map.size() must equal the number of distinct characters in the window, so delete keys exactly when their count reaches 0.' },
+    hints: [
+      `<p><b>Hint 1:</b> If a window has ≤ k distinct characters, so does every window inside it → sliding window.</p>`,
+      `<p><b>Hint 2:</b> Keep a count map of the window; valid ⇔ map.size() ≤ k.</p>`,
+      `<p><b>Hint 3:</b> Expand right; while size &gt; k, decrement s[left] (delete at 0) and left++; update best. k = 0 → answer 0.</p>`
+    ],
+    solution: {
+      approach: `<p>The general window-with-map template: the map's size is the number of distinct characters inside, shrink while it exceeds k.</p>`,
+      code: `class Solution {
+    public int lengthOfLongestSubstringKDistinct(String s, int k) {
+        Map<Character, Integer> cnt = new HashMap<>();
+        int left = 0, best = 0;
+        for (int right = 0; right < s.length(); right++) {
+            cnt.merge(s.charAt(right), 1, Integer::sum);
+            while (cnt.size() > k) {
+                char d = s.charAt(left++);
+                cnt.computeIfPresent(d, (key, v) -> v == 1 ? null : v - 1);   // delete at 0
+            }
+            best = Math.max(best, right - left + 1);
+        }
+        return best;
+    }
+}`,
+      alt: [{ lang: 'python', code: `from collections import defaultdict
+
+def length_of_longest_substring_k_distinct(s, k):
+    cnt, left, best = defaultdict(int), 0, 0
+    for right, c in enumerate(s):
+        cnt[c] += 1
+        while len(cnt) > k:
+            d = s[left]
+            cnt[d] -= 1
+            if cnt[d] == 0:
+                del cnt[d]
+            left += 1
+        best = max(best, right - left + 1)
+    return best` }],
+      dry: { head: ['right', 'char', 'map after', 'shrink?', 'best'], rows: [['0', 'e', '{e:1}', 'no', '1'], ['1', 'c', '{e:1, c:1}', 'no', '2'], ['2', 'e', '{e:2, c:1}', 'no', H.c('g', '3')], ['3', 'b', '{e:2, c:1, b:1}', H.c('r', 'yes: drop e, c(→0 delete)') + ' → {e:1, b:1}', '3'], ['4', 'a', '{e:1, b:1, a:1}', H.c('r', 'yes: drop e(→0)') + ' → {b:1, a:1}', '3']] },
+      complexity: `<p><b>Time:</b> O(N). <b>Space:</b> O(k).</p>`,
+      followUps: ['Fruit Into Baskets (k = 2).', 'Stream of characters: keep last index per character in a LinkedHashMap to evict the leftmost in O(1).']
+    }
+  });
+
+  practice.push({
+    title: '4Sum II (count tuples from four arrays)',
+    level: 'Medium', tags: ['hashmap', 'meet in the middle'], companies: ['Amazon', 'Google', 'Adobe'],
+    statement: `<p>Given four integer arrays A, B, C, D, each of length n, return the number of tuples (i, j, k, l) with <code>A[i] + B[j] + C[k] + D[l] == 0</code>.</p>`,
+    constraints: `1 ≤ n ≤ 200, −2<sup>28</sup> ≤ values ≤ 2<sup>28</sup>`,
+    example: `<p>A = [1, 2], B = [−2, −1], C = [−1, 2], D = [0, 2] → ${H.c('g', '2')}: (0,0,0,1): 1 − 2 − 1 + 2 = 0 and (1,1,0,0): 2 − 1 − 1 + 0 = 0.</p>`,
+    brute: {
+      why: `<p>Four nested loops: n<sup>4</sup> = 1.6·10<sup>9</sup> for n = 200. The waste: for each (C, D) pair we search for a matching (A, B) sum by enumeration instead of lookup.</p>`,
+      code: `int fourSumCountBrute(int[] A, int[] B, int[] C, int[] D) {
+    int count = 0;
+    for (int a : A) for (int b : B) for (int c : C) for (int d : D)
+        if (a + b + c + d == 0) count++;
+    return count;
+}`
+    },
+    mcq: { q: 'What do you store in the HashMap?', options: ['Every sum A[i] + B[j] → how many pairs produce it', 'Every element of A', 'Every quadruple sum', 'Only the distinct values of C'], answer: 0, explain: 'Then each (C[k], D[l]) pair looks up −(C[k] + D[l]) in O(1): n² + n² work instead of n⁴ ("meet in the middle").' },
+    hints: [
+      `<p><b>Hint 1:</b> Split the four arrays into two halves: (A, B) and (C, D).</p>`,
+      `<p><b>Hint 2:</b> Tally all n<sup>2</sup> sums of A and B in a map sum → count.</p>`,
+      `<p><b>Hint 3:</b> For every c + d, add count[−(c + d)]. That is 2-Sum where each "number" is a pair sum.</p>`
+    ],
+    solution: {
+      approach: `<p><b>Meet in the middle with a counting map.</b> n<sup>2</sup> sums from the first half go into a tally; n<sup>2</sup> lookups from the second half count matching tuples.</p>`,
+      code: `class Solution {
+    public int fourSumCount(int[] A, int[] B, int[] C, int[] D) {
+        Map<Integer, Integer> ab = new HashMap<>();
+        for (int a : A) for (int b : B) ab.merge(a + b, 1, Integer::sum);   // values ≤ 2^29: no overflow
+        int count = 0;
+        for (int c : C) for (int d : D) count += ab.getOrDefault(-(c + d), 0);
+        return count;
+    }
+}`,
+      alt: [{ lang: 'python', code: `from collections import Counter
+
+def four_sum_count(A, B, C, D):
+    ab = Counter(a + b for a in A for b in B)
+    return sum(ab[-(c + d)] for c in C for d in D)` }],
+      complexity: `<p><b>Time:</b> O(n<sup>2</sup>). <b>Space:</b> O(n<sup>2</sup>).</p>`,
+      followUps: ['k arrays: split into two halves of k/2 arrays → O(n<sup>k/2</sup>).', 'Return the tuples themselves (map sum → list of pairs; output size may be huge).']
+    }
+  });
+
+  practice.push({
+    title: 'Brick Wall',
+    level: 'Medium', tags: ['hashmap', 'prefix sum', 'frequency'], companies: ['Meta', 'Google', 'Amazon'],
+    statement: `<p>A wall has several rows of bricks of equal total width (row = list of brick widths). Draw one vertical line from top to bottom that crosses the <b>fewest bricks</b>; a line through an edge between two bricks does not cross them. You may not draw along the two outer edges. Return the minimum number of crossed bricks.</p>`,
+    constraints: `1 ≤ rows ≤ 10<sup>4</sup>, total bricks ≤ 2·10<sup>4</sup>, row width ≤ 2<sup>31</sup> − 1`,
+    example: `<p>wall = [[1,2,2,1],[3,1,2],[1,3,2],[2,4],[3,1,2],[1,3,1,1]] → ${H.c('g', '2')}. Edge position 4 (from the left) appears in 4 of the 6 rows, so a line at x = 4 crosses only 6 − 4 = 2 bricks.</p>`,
+    brute: {
+      why: `<p>Try every x from 1 to width − 1 and count crossed bricks per row: O(width · bricks). Width can be 2<sup>31</sup> → impossible. The waste: only positions where some edge exists can be optimal, and we can count them directly.</p>`,
+      code: `int leastBricksBrute(List<List<Integer>> wall) {
+    int width = 0;
+    for (int w : wall.get(0)) width += w;
+    int best = wall.size();
+    for (int x = 1; x < width; x++) {            // hopeless when width is huge
+        int crossed = 0;
+        for (List<Integer> row : wall) {
+            int pos = 0;
+            boolean onEdge = false;
+            for (int w : row) { pos += w; if (pos == x) { onEdge = true; break; } if (pos > x) break; }
+            if (!onEdge) crossed++;
+        }
+        best = Math.min(best, crossed);
+    }
+    return best;
+}`
+    },
+    mcq: { q: 'Which positions should you count in the map?', options: ['Running sums of brick widths in each row, excluding the row\'s final total', 'Each brick width', 'Only the first brick of each row', 'The total width'], answer: 0, explain: 'Inner edges sit at prefix sums of widths. The final prefix equals the wall\'s outer edge, which is not allowed.' },
+    hints: [
+      `<p><b>Hint 1:</b> Crossing the fewest bricks = passing through the most edges.</p>`,
+      `<p><b>Hint 2:</b> Edge positions in a row are prefix sums of its widths (skip the last one).</p>`,
+      `<p><b>Hint 3:</b> Tally every edge position across rows; answer = rows − (largest tally). No edges at all → rows.</p>`
+    ],
+    solution: {
+      approach: `<p><b>Tally edge positions.</b> The best line goes through the most common inner edge position. Prefix sums give each row's edges; a HashMap counts them.</p>`,
+      code: `class Solution {
+    public int leastBricks(List<List<Integer>> wall) {
+        Map<Integer, Integer> edges = new HashMap<>();   // position -> rows with an edge there
+        int most = 0;
+        for (List<Integer> row : wall) {
+            int pos = 0;
+            for (int i = 0; i < row.size() - 1; i++) {   // skip the last brick: outer edge
+                pos += row.get(i);
+                most = Math.max(most, edges.merge(pos, 1, Integer::sum));
+            }
+        }
+        return wall.size() - most;
+    }
+}`,
+      alt: [{ lang: 'python', code: `from collections import Counter
+from itertools import accumulate
+
+def least_bricks(wall):
+    edges = Counter(p for row in wall for p in list(accumulate(row))[:-1])
+    return len(wall) - max(edges.values(), default=0)` }],
+      complexity: `<p><b>Time:</b> O(total bricks). <b>Space:</b> O(distinct edge positions).</p>`,
+      followUps: ['Return the best x position too.', 'Rows arrive as a stream (keep the running max).']
+    }
+  });
+
+  /* =====================================================================
+     PRACTICE — Hard
+     ===================================================================== */
+  practice.push({
+    title: 'Subarrays with K Different Integers',
+    level: 'Hard', tags: ['sliding window', 'hashmap', 'atMost trick'], companies: ['Amazon', 'Google', 'Uber'],
+    statement: `<p>Given an integer array <code>nums</code> and an integer k, return the number of <b>good</b> subarrays — contiguous subarrays with <b>exactly k</b> different integers.</p>`,
+    constraints: `1 ≤ N ≤ 2·10<sup>4</sup>, 1 ≤ nums[i], k ≤ N`,
+    example: `<p>nums = [1, 2, 1, 2, 3], k = 2 → ${H.c('g', '7')}: [1,2], [2,1], [1,2], [2,3], [1,2,1], [2,1,2], [1,2,1,2]. nums = [1, 2, 1, 3, 4], k = 3 → ${H.c('g', '3')}.</p>`,
+    brute: {
+      why: `<p>For each start, extend with a set and count windows whose distinct count is exactly k (stop once it exceeds k): <b>O(N<sup>2</sup>)</b> = 4·10<sup>8</sup>. Why a plain sliding window is not enough: for a fixed right end, the valid starts form a whole <i>range</i> of positions (shrinking a little keeps exactly k distinct values, shrinking more drops to k − 1), so "shrink until valid, then add 1" undercounts.</p>`,
+      code: `int subarraysWithKDistinctBrute(int[] nums, int k) {
+    int count = 0;
+    for (int l = 0; l < nums.length; l++) {
+        Set<Integer> seen = new HashSet<>();
+        for (int r = l; r < nums.length; r++) {
+            seen.add(nums[r]);
+            if (seen.size() == k) count++;
+            else if (seen.size() > k) break;
+        }
+    }
+    return count;
+}`
+    },
+    mcq: { q: 'Why does exactly(k) = atMost(k) − atMost(k − 1) help?', options: ['"At most k distinct" is monotone, so each atMost is a simple sliding window that adds (right − left + 1) per step', 'Because exactly(k) is always 0', 'It turns the problem into sorting', 'It removes the need for a HashMap'], answer: 0, explain: 'Windows with ≤ k distinct shrink nicely. Subtracting the ≤ k−1 ones leaves exactly k.' },
+    hints: [
+      `<p><b>Hint 1:</b> Counting "exactly" is awkward; counting "at most" is easy with a sliding window.</p>`,
+      `<p><b>Hint 2:</b> In atMost(k), after shrinking so the window [left..right] has ≤ k distinct, every subarray ending at right and starting in [left..right] is valid: add right − left + 1.</p>`,
+      `<p><b>Hint 3:</b> Answer = atMost(k) − atMost(k − 1). Use a count map, delete keys at 0. atMost(0) returns 0.</p>`
+    ],
+    solution: {
+      approach: `<p><b>atMost difference.</b> Two runs of the window-with-map template. Each run is O(N), and the subtraction isolates the windows with exactly k distinct integers.</p>`,
+      code: `class Solution {
+    public int subarraysWithKDistinct(int[] nums, int k) {
+        return atMost(nums, k) - atMost(nums, k - 1);
+    }
+
+    // number of subarrays with at most k distinct values
+    private int atMost(int[] a, int k) {
+        Map<Integer, Integer> cnt = new HashMap<>();
+        int left = 0, res = 0;
+        for (int right = 0; right < a.length; right++) {
+            cnt.merge(a[right], 1, Integer::sum);
+            while (cnt.size() > k) {
+                cnt.computeIfPresent(a[left++], (key, v) -> v == 1 ? null : v - 1);
+            }
+            res += right - left + 1;      // all subarrays ending at right that start in [left..right]
+        }
+        return res;
+    }
+}`,
+      alt: [{ lang: 'python', code: `from collections import defaultdict
+
+def subarrays_with_k_distinct(nums, k):
+    def at_most(k):
+        cnt, left, res = defaultdict(int), 0, 0
+        for right, x in enumerate(nums):
+            cnt[x] += 1
+            while len(cnt) > k:
+                y = nums[left]
+                cnt[y] -= 1
+                if cnt[y] == 0:
+                    del cnt[y]
+                left += 1
+            res += right - left + 1
+        return res
+    return at_most(k) - at_most(k - 1)` }],
+      dry: { head: ['right', 'x', 'atMost(2): left', '+ count', 'atMost(1): left', '+ count'], rows: [['0', '1', '0', '1', '0', '1'], ['1', '2', '0', '2', '1', '1'], ['2', '1', '0', '3', '2', '1'], ['3', '2', '0', '4', '3', '1'], ['4', '3', '3', '2', '4', '1'], ['total', '—', '—', '12', '—', '5 → ' + H.c('g', '12 − 5 = 7')]] },
+      complexity: `<p><b>Time:</b> O(N) (two linear passes). <b>Space:</b> O(k).</p>`,
+      followUps: ['Count subarrays with at most k distinct and length ≥ L.', 'Same identity for "exactly k odd numbers" or "binary subarrays with sum k".']
+    }
+  });
+
+  practice.push({
+    title: 'Number of Submatrices That Sum to Target',
+    level: 'Hard', tags: ['prefix sum', 'hashmap', '2D'], companies: ['Google', 'Amazon', 'Meta'],
+    statement: `<p>Given an R × C integer matrix and an integer target, return the number of non-empty <b>submatrices</b> (axis-aligned rectangles) whose elements sum to target.</p>`,
+    constraints: `1 ≤ R, C ≤ 100, −1000 ≤ matrix[i][j] ≤ 1000, −10<sup>8</sup> ≤ target ≤ 10<sup>8</sup>`,
+    example: `<p>matrix = [[0,1,0],[1,1,1],[0,1,0]], target = 0 → ${H.c('g', '4')} (the four single 0 cells). matrix = [[1,−1],[−1,1]], target = 0 → ${H.c('g', '5')} (two 1×2 rows, two 2×1 columns, and the whole 2×2).</p>`,
+    brute: {
+      why: `<p>Enumerate all rectangles (R<sup>2</sup>·C<sup>2</sup> ≈ 10<sup>8</sup> for 100×100) and get each sum in O(1) from a 2D prefix table. Borderline-slow; and the naive version that sums each rectangle cell by cell is O(R<sup>3</sup>C<sup>3</sup>). The waste: for a fixed pair of rows, the inner two column loops are just "count subarrays with sum = target" — an O(C) hashing job.</p>`,
+      code: `int numSubmatrixSumTargetBrute(int[][] m, int target) {
+    int R = m.length, C = m[0].length, count = 0;
+    int[][] P = new int[R + 1][C + 1];                       // 2D prefix sums
+    for (int i = 0; i < R; i++)
+        for (int j = 0; j < C; j++)
+            P[i + 1][j + 1] = m[i][j] + P[i][j + 1] + P[i + 1][j] - P[i][j];
+    for (int r1 = 0; r1 < R; r1++)
+        for (int r2 = r1; r2 < R; r2++)
+            for (int c1 = 0; c1 < C; c1++)
+                for (int c2 = c1; c2 < C; c2++) {
+                    int sum = P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1];
+                    if (sum == target) count++;
+                }
+    return count;
+}`
+    },
+    mcq: { q: 'After fixing the top and bottom rows, what 1D problem remains?', options: ['Count subarrays with sum = target over the column sums between those rows', 'Longest consecutive sequence of columns', 'Two Sum on the first row', 'Distinct elements in every window'], answer: 0, explain: 'Collapsing rows top..bottom into one array of column sums turns every rectangle into a contiguous subarray of that array.' },
+    hints: [
+      `<p><b>Hint 1:</b> A rectangle = (pair of rows) × (contiguous range of columns).</p>`,
+      `<p><b>Hint 2:</b> For each top row, extend bottom row by row, keeping col[c] = sum of matrix[top..bottom][c].</p>`,
+      `<p><b>Hint 3:</b> On col[], run the topic-6 algorithm: prefix sums + tally {0: 1}, add cnt[pf − target]. Total O(R<sup>2</sup>·C); loop over the smaller dimension squared.</p>`
+    ],
+    solution: {
+      approach: `<p><b>Row-pair compression + prefix-sum tally.</b> O(R<sup>2</sup>) row pairs; for each, the column-sum array is updated in O(C) and scanned with a counting map in O(C).</p>`,
+      code: `class Solution {
+    public int numSubmatrixSumTarget(int[][] matrix, int target) {
+        int R = matrix.length, C = matrix[0].length, count = 0;
+        for (int top = 0; top < R; top++) {
+            int[] col = new int[C];                         // column sums of rows top..bottom
+            for (int bottom = top; bottom < R; bottom++) {
+                for (int c = 0; c < C; c++) col[c] += matrix[bottom][c];
+                Map<Integer, Integer> cnt = new HashMap<>();
+                cnt.put(0, 1);
+                int pf = 0;
+                for (int c = 0; c < C; c++) {               // 1D: count subarrays with sum = target
+                    pf += col[c];
+                    count += cnt.getOrDefault(pf - target, 0);
+                    cnt.merge(pf, 1, Integer::sum);
+                }
+            }
+        }
+        return count;
+    }
+}`,
+      alt: [{ lang: 'python', code: `from collections import defaultdict
+
+def num_submatrix_sum_target(matrix, target):
+    R, C, count = len(matrix), len(matrix[0]), 0
+    for top in range(R):
+        col = [0] * C
+        for bottom in range(top, R):
+            for c in range(C):
+                col[c] += matrix[bottom][c]
+            cnt, pf = defaultdict(int), 0
+            cnt[0] = 1
+            for v in col:
+                pf += v
+                count += cnt[pf - target]
+                cnt[pf] += 1
+    return count` }],
+      complexity: `<p><b>Time:</b> O(R<sup>2</sup>·C) — 10<sup>6</sup> for 100×100. <b>Space:</b> O(C).</p>`,
+      followUps: ['Max sum rectangle no larger than k (LeetCode 363): same compression, but needs a TreeSet (ceiling) — hashing cannot answer "≤".', 'Count submatrices with all ones (stack-based histogram).']
+    }
+  });
+
+  practice.push({
+    title: 'Substring with Concatenation of All Words',
+    level: 'Hard', tags: ['sliding window', 'hashmap', 'strings'], companies: ['Amazon', 'Apple', 'Microsoft'],
+    statement: `<p>Given a string s and an array <code>words</code> of strings that all have the <b>same length</b>, return all start indices of substrings of s that are a concatenation of <b>every word exactly once</b>, in any order, without gaps.</p>`,
+    constraints: `1 ≤ |s| ≤ 10<sup>4</sup>, 1 ≤ words.length ≤ 5000, 1 ≤ words[i].length ≤ 30`,
+    example: `<p>s = "barfoothefoobarman", words = ["foo","bar"] → ${H.c('g', '[0, 9]')} ("barfoo" at 0, "foobar" at 9).</p>
+<p>s = "wordgoodgoodgoodbestword", words = ["word","good","best","word"] → ${H.c('r', '[]')} (needs "word" twice).</p>`,
+    brute: {
+      why: `<p>For every start i, cut the next W words of length L and compare their tally with the words' tally: O(|s| · W · L). With |s| = 10<sup>4</sup>, W = 5000, L = 30 that is far too slow. The waste: windows starting at i and i + L share all but one word.</p>`,
+      code: `List<Integer> findSubstringBrute(String s, String[] words) {
+    List<Integer> res = new ArrayList<>();
+    int L = words[0].length(), W = words.length, total = L * W;
+    Map<String, Integer> need = new HashMap<>();
+    for (String w : words) need.merge(w, 1, Integer::sum);
+    for (int i = 0; i + total <= s.length(); i++) {
+        Map<String, Integer> seen = new HashMap<>();
+        int j = 0;
+        for (; j < W; j++) {
+            String w = s.substring(i + j * L, i + (j + 1) * L);
+            if (seen.merge(w, 1, Integer::sum) > need.getOrDefault(w, 0)) break;  // too many / unknown word
+        }
+        if (j == W) res.add(i);
+    }
+    return res;
+}`
+    },
+    mcq: { q: 'Why run the sliding window L separate times (offsets 0..L−1)?', options: ['Words are aligned to multiples of L from the start; each offset gives one word grid that can be slid word by word', 'To handle uppercase letters', 'Because words may have different lengths', 'To sort the words'], answer: 0, explain: 'From offset o, s splits into chunks o, o+L, o+2L… A valid concatenation lies on exactly one of these L grids.' },
+    hints: [
+      `<p><b>Hint 1:</b> All words have length L, so split s into L-length chunks — but the split can start at any of L offsets.</p>`,
+      `<p><b>Hint 2:</b> For each offset, slide a window over chunks with a count map (like minimum window, but the "characters" are words).</p>`,
+      `<p><b>Hint 3:</b> Unknown chunk → reset the window. A chunk whose count exceeds its need → shrink from the left until it fits. Window holds W words → record left, then drop the leftmost word.</p>`
+    ],
+    solution: {
+      approach: `<p><b>L interleaved word-level sliding windows.</b> Each offset processes every chunk once as it enters and at most once as it leaves, with O(1) map work per chunk plus O(L) to cut the substring.</p>`,
+      code: `class Solution {
+    public List<Integer> findSubstring(String s, String[] words) {
+        List<Integer> res = new ArrayList<>();
+        int L = words[0].length(), W = words.length;
+        if (s.length() < L * W) return res;
+        Map<String, Integer> need = new HashMap<>();
+        for (String w : words) need.merge(w, 1, Integer::sum);
+
+        for (int off = 0; off < L; off++) {
+            Map<String, Integer> win = new HashMap<>();
+            int left = off, used = 0;                       // used = words currently in the window
+            for (int right = off; right + L <= s.length(); right += L) {
+                String w = s.substring(right, right + L);
+                if (!need.containsKey(w)) {                 // not a word: nothing can span this chunk
+                    win.clear(); used = 0; left = right + L;
+                    continue;
+                }
+                win.merge(w, 1, Integer::sum);
+                used++;
+                while (win.get(w) > need.get(w)) {          // too many copies of w: shrink
+                    win.merge(s.substring(left, left + L), -1, Integer::sum);
+                    used--; left += L;
+                }
+                if (used == W) {                            // exact concatenation found
+                    res.add(left);
+                    win.merge(s.substring(left, left + L), -1, Integer::sum);
+                    used--; left += L;                      // slide by one word
+                }
+            }
+        }
+        return res;
+    }
+}`,
+      alt: [{ lang: 'python', code: `from collections import Counter, defaultdict
+
+def find_substring(s, words):
+    L, W = len(words[0]), len(words)
+    need, res = Counter(words), []
+    for off in range(L):
+        win, left, used = defaultdict(int), off, 0
+        for right in range(off, len(s) - L + 1, L):
+            w = s[right:right + L]
+            if w not in need:
+                win.clear(); used = 0; left = right + L
+                continue
+            win[w] += 1; used += 1
+            while win[w] > need[w]:
+                win[s[left:left + L]] -= 1; used -= 1; left += L
+            if used == W:
+                res.append(left)
+                win[s[left:left + L]] -= 1; used -= 1; left += L
+    return res` }],
+      complexity: `<p><b>Time:</b> O(L · (|s| / L) · L) = O(|s| · L) for substring cutting. <b>Space:</b> O(W · L) for the maps.</p>`,
+      followUps: ['Words of different lengths (much harder: backtracking / trie).', 'Use rolling hashes to avoid creating substrings (DSA 9).']
+    }
+  });
+
+  practice.push({
+    title: 'Max Points on a Line',
+    level: 'Hard', tags: ['hashmap', 'geometry', 'gcd'], companies: ['LinkedIn', 'Apple', 'Google', 'Twitter'],
+    statement: `<p>Given an array of <b>distinct</b> points on the plane, return the maximum number of points that lie on the same straight line.</p>`,
+    constraints: `1 ≤ N ≤ 300, −10<sup>4</sup> ≤ x, y ≤ 10<sup>4</sup>, all points unique`,
+    example: `<p>[[1,1],[2,2],[3,3]] → ${H.c('g', '3')}. [[1,1],[3,2],[5,3],[4,1],[2,3],[1,4]] → ${H.c('g', '4')} ((3,2), (4,1), (2,3), (1,4) lie on x + y = 5).</p>`,
+    brute: {
+      why: `<p>For every pair of points (defining a line), count all points on it with a cross-product test: <b>O(N<sup>3</sup>)</b> = 2.7·10<sup>7</sup> — fine for N = 300, too slow for N = 3000. The waste: for a fixed anchor point, the lines through it are identified by <b>slope</b>; a map can group all other points by slope in one pass.</p>`,
+      code: `int maxPointsBrute(int[][] p) {
+    int n = p.length;
+    if (n <= 2) return n;
+    int best = 2;
+    for (int i = 0; i < n; i++)
+        for (int j = i + 1; j < n; j++) {
+            int cnt = 0;
+            for (int k = 0; k < n; k++) {
+                long cross = (long) (p[j][0] - p[i][0]) * (p[k][1] - p[i][1])
+                           - (long) (p[j][1] - p[i][1]) * (p[k][0] - p[i][0]);
+                if (cross == 0) cnt++;                 // k is on line (i, j)
+            }
+            best = Math.max(best, cnt);
+        }
+    return best;
+}`
+    },
+    mcq: { q: 'Why store slopes as a reduced (dy, dx) pair instead of the double dy / dx?', options: ['Floating-point rounding can make equal slopes differ (or different slopes collide), and vertical lines divide by zero', 'Doubles cannot be HashMap keys in Java', 'Pairs are faster to compute than division', 'To sort the slopes'], answer: 0, explain: 'Reduce by gcd and normalize the sign; then equal slopes give identical integer keys. Also beware −0.0 vs 0.0 with doubles.' },
+    hints: [
+      `<p><b>Hint 1:</b> Fix an anchor point; every other point defines a line through the anchor, identified by its slope.</p>`,
+      `<p><b>Hint 2:</b> Group by slope with a HashMap; the biggest group + 1 (the anchor) is the best line through that anchor.</p>`,
+      `<p><b>Hint 3:</b> Key = (dy/g, dx/g) with g = gcd(|dy|, |dx|), sign normalized so dx &gt; 0 (or dx = 0 and dy &gt; 0). Pack into one long. Answer = max over anchors.</p>`
+    ],
+    solution: {
+      approach: `<p><b>Anchor + slope tally.</b> For each anchor i, normalize the direction to every later point j and count equal directions. Exact integer keys avoid floating-point errors; O(N<sup>2</sup>) pairs overall.</p>`,
+      code: `class Solution {
+    public int maxPoints(int[][] points) {
+        int n = points.length;
+        if (n <= 2) return n;
+        int best = 0;
+        for (int i = 0; i < n; i++) {
+            Map<Long, Integer> slopes = new HashMap<>();   // normalized direction -> count
+            int local = 0;
+            for (int j = i + 1; j < n; j++) {
+                int dx = points[j][0] - points[i][0];
+                int dy = points[j][1] - points[i][1];
+                int g = gcd(Math.abs(dx), Math.abs(dy));  // points are distinct, so g > 0
+                dx /= g; dy /= g;
+                if (dx < 0 || (dx == 0 && dy < 0)) { dx = -dx; dy = -dy; }  // one sign per direction
+                long key = ((long) dx << 32) | (dy & 0xffffffffL);         // pack (dx, dy) into a long
+                local = Math.max(local, slopes.merge(key, 1, Integer::sum));
+            }
+            best = Math.max(best, local + 1);              // + the anchor itself
+        }
+        return best;
+    }
+
+    private int gcd(int a, int b) { return b == 0 ? a : gcd(b, a % b); }
+}`,
+      alt: [{ lang: 'python', code: `from math import gcd
+from collections import defaultdict
+
+def max_points(points):
+    n = len(points)
+    if n <= 2:
+        return n
+    best = 0
+    for i in range(n):
+        slopes = defaultdict(int)
+        for j in range(i + 1, n):
+            dx = points[j][0] - points[i][0]
+            dy = points[j][1] - points[i][1]
+            g = gcd(dx, dy)
+            dx, dy = dx // g, dy // g
+            if dx < 0 or (dx == 0 and dy < 0):
+                dx, dy = -dx, -dy
+            slopes[(dx, dy)] += 1
+        best = max(best, max(slopes.values(), default=0) + 1)
+    return best` }],
+      complexity: `<p><b>Time:</b> O(N<sup>2</sup> · log V) (gcd). <b>Space:</b> O(N).</p>`,
+      followUps: ['Duplicate points allowed: count duplicates of the anchor separately and add them to every line.', 'Return the line itself (anchor + direction).']
+    }
+  });
+
+  /* =====================================================================
+     QUIZ
+     ===================================================================== */
+  quiz.push({ q: 'A Java HashMap has capacity 16. Into which bucket does key <code>Integer 37</code> go?', options: ['5', '37', '2', '7'], answer: 0, explain: 'hash(37) = 37 ^ (37 &gt;&gt;&gt; 16) = 37; 37 &amp; 15 = 0b100101 &amp; 0b1111 = 0b0101 = 5.' });
+  quiz.push({ q: 'You override <code>equals()</code> in a key class but not <code>hashCode()</code>. What usually happens with <code>set.contains(new Key(same fields))</code>?', options: ['Returns false: the two equal objects have different identity hashCodes and land in different buckets', 'Returns true: equals() is all that matters', 'Throws an exception', 'It does not compile'], answer: 0, explain: 'The lookup computes a different bucket, so equals() is never even called on the stored object. Override both (or use a record).' });
+  quiz.push({ q: 'With default settings (capacity 16, load factor 0.75), the first resize happens when inserting the…', options: ['13th distinct key', '16th distinct key', '12th distinct key', '17th distinct key'], answer: 0, explain: 'Threshold = 16 × 0.75 = 12. Java resizes when size becomes greater than 12, i.e. after inserting the 13th key.' });
+  quiz.push({ q: 'When does a Java 8+ HashMap bucket turn into a red-black tree?', options: ['When its chain grows past 8 nodes AND the table has at least 64 buckets (otherwise it resizes)', 'Whenever two keys collide', 'When the map holds more than 64 keys', 'Never — only TreeMap uses trees'], answer: 0, explain: 'TREEIFY_THRESHOLD = 8 and MIN_TREEIFY_CAPACITY = 64. Small tables are resized instead, which usually spreads the chain out.' });
+  quiz.push({ q: '"Aa" and "BB" have the same <code>hashCode()</code> (2112). Putting both in a HashSet results in…', options: ['Both stored in the same bucket; equals() tells them apart; size() = 2', 'The second one overwrites the first', 'An exception: duplicate hash', 'Only one stored, size() = 1'], answer: 0, explain: 'Equal hashCodes only mean the same bucket. Equality is decided by equals(), so both strings are kept.' });
+  quiz.push({ q: 'Why do prefix-sum + hashing solutions use <code>long</code> for the running sum in Java when N ≤ 10<sup>5</sup> and |a[i]| ≤ 10<sup>9</sup>?', options: ['The running sum can reach 10<sup>14</sup>, far beyond int\'s ~2.1·10<sup>9</sup>', 'HashMap does not accept Integer keys', 'long lookups are faster', 'To allow negative numbers'], answer: 0, explain: '10<sup>5</sup> × 10<sup>9</sup> = 10<sup>14</sup>. An int overflows silently and produces wrong matches.' });
+  quiz.push({ q: 'Count subarrays with sum K: what must the map contain before the loop starts?', options: ['{0: 1}', '{0: −1}', '{} (empty)', '{K: 1}'], answer: 0, explain: 'The empty prefix (sum 0) has occurred once, so subarrays starting at index 0 are counted. {0: −1} is the seed for "longest" problems that store indices.' });
+  quiz.push({ q: 'Longest subarray with sum K: a balance that is already in the map shows up again. You should…', options: ['Keep the existing (earliest) index — never overwrite', 'Overwrite it with the current index', 'Delete it', 'Store both indices in a list'], answer: 0, explain: 'The earliest index gives the longest future subarray. Overwriting would make answers shorter (that is the "shortest" variant).' });
+  quiz.push({ q: 'Why can\'t you solve "count subarrays with sum K" using a sliding window when the array contains negatives?', options: ['Adding an element can decrease the sum, so "shrink when the sum is too big" is no longer correct (no monotonicity)', 'Sliding windows cannot count', 'Negative numbers cannot be stored in a HashMap', 'It works fine with negatives'], answer: 0, explain: 'Sliding window needs monotone sums (all non-negative values). Prefix sum + hashing works for any integers.' });
+  quiz.push({ q: 'Distinct elements in every window of size K: what goes wrong if you use a HashSet and remove the outgoing element?', options: ['If another copy of that value is still inside the window, the set wrongly forgets it', 'Nothing — it works', 'The set grows without bound', 'It becomes O(N<sup>2</sup>)'], answer: 0, explain: 'Window [1, 2, 1] sliding out the first 1 would remove 1 although the second 1 remains. Use counts and delete at 0.' });
+  quiz.push({ q: 'In "longest substring without repeating characters" with a last-index map, why <code>left = max(left, last[c] + 1)</code>?', options: ['A stale last index (already left of the window) must not move left backwards — e.g. "abba"', 'To avoid integer overflow', 'Because last[c] can be negative', 'It is only needed for uppercase letters'], answer: 0, explain: 'In "abba", at the final a, last[a] = 0 but left is already 2. Without max, left would jump back to 1 and re-admit the duplicate b.' });
+  quiz.push({ q: 'Longest consecutive sequence: why iterate over the HashSet rather than the original array?', options: ['Duplicates of a chain start in the array would re-walk the same chain many times, breaking O(N)', 'Sets iterate in sorted order', 'Arrays cannot be iterated in Java', 'It makes no difference at all'], answer: 0, explain: 'With the set, each distinct chain start walks its chain exactly once, so total work is O(N).' });
+  quiz.push({ q: 'Two Sum: you check for the complement <i>before</i> inserting the current element because…', options: ['Otherwise an element can pair with itself (e.g. target 6, x = 3 at one index)', 'Inserting first is slower', 'HashMap.put fails on duplicates', 'The order never matters'], answer: 0, explain: 'Check-then-insert keeps the invariant "map contains only earlier indices", so i ≠ j automatically and real duplicates like [3, 3] still work.' });
+  quiz.push({ q: 'Which structure gives sorted iteration and floor/ceiling queries, at O(log N) per operation?', options: ['TreeMap', 'HashMap', 'LinkedHashMap', 'HashSet'], answer: 0, explain: 'TreeMap is a red-black tree ordered by key. HashMap has no order; LinkedHashMap keeps insertion order.' });
+  quiz.push({ q: 'Minimum window substring keeps a counter <code>missing</code>. When you remove s[left] and need[s[left]] becomes 1, you…', options: ['Increase missing — the window no longer covers t — and stop shrinking', 'Decrease missing', 'Record a new best window', 'Reset the whole map'], answer: 0, explain: 'A positive need means a required character is now missing. The window is invalid, so you go back to expanding right.' });
+  quiz.push({ q: 'Subarray sums divisible by 5: in Java, prefix sum −7 and prefix sum 3 should…', options: ['Share remainder 3 after normalizing ((−7 % 5) + 5) % 5', 'Have different remainders (−2 and 3)', 'Both be ignored', 'Cause an exception'], answer: 0, explain: '−7 − 3 = −10 is a multiple of 5, so they must match. Java\'s −7 % 5 is −2, which must be normalized.' });
+
+  /* =====================================================================
+     INTERVIEW Q&A
+     ===================================================================== */
+  interview.push({
+    q: 'How does a Java HashMap find the value for a key? Walk me through <code>get(key)</code>.', level: 'B',
+    a: `<p>1) Compute <code>key.hashCode()</code>. 2) Spread it: <code>h ^ (h &gt;&gt;&gt; 16)</code>, so high bits influence the low bits. 3) Bucket index = <code>hash &amp; (capacity − 1)</code> — capacity is a power of two, so this equals <code>hash % capacity</code> but is a single AND instruction. 4) In that bucket, walk the chain (a linked list, or a red-black tree if the bucket was treeified) comparing the stored hash first and then <code>equals()</code>. 5) Return the value on a match, or <code>null</code>. Average cost O(1) because the load factor keeps chains very short; worst case O(N) for a list bucket or O(log N) for a tree bucket.</p>`,
+    followUps: ['Why compare the stored hash before calling equals()?', 'What happens for a null key?', 'Why is capacity always a power of two?']
+  });
+  interview.push({
+    q: 'What is the contract between <code>equals()</code> and <code>hashCode()</code>, and what breaks if you violate it?', level: 'B',
+    a: `<p>If <code>a.equals(b)</code> is true, then <code>a.hashCode() == b.hashCode()</code> must be true. The reverse is not required — equal hashes can belong to unequal objects (collisions). hashCode must also be consistent while the fields used by equals do not change. If you override equals without hashCode, two "equal" objects usually get different identity hashes, land in different buckets, and <code>contains</code>/<code>get</code> silently fail; you can also end up with "duplicates" in a HashSet. Fix: override both using the same fields (<code>Objects.hash(...)</code>), or use a <b>record</b>, and keep key fields immutable.</p>`,
+    followUps: ['Why are mutable keys dangerous even with a correct hashCode?', 'Is it legal for hashCode() to always return 42? What is the cost?']
+  });
+  interview.push({
+    q: 'HashMap is "O(1)". When is it not? Give average, amortized and worst-case costs.', level: 'I',
+    a: `<p><b>Average:</b> O(1) for get/put/remove, assuming the hash spreads keys evenly; at load factor ≤ 0.75 the expected chain length is below 1. <b>Amortized:</b> put is O(1) amortized because a resize (O(N)) happens only after the number of keys doubles, so its cost is spread over many cheap inserts. <b>Worst case:</b> if all keys collide (bad hashCode or an attack), one bucket holds everything: O(N) per operation with a list, O(log N) after Java 8 treeifies (keys should be Comparable to get the full benefit). Iteration is O(N + capacity), which matters after many removals because the table never shrinks.</p>`,
+    followUps: ['How would an attacker force collisions on a web server?', 'Why does iterating a huge, mostly-empty map stay slow?']
+  });
+  interview.push({
+    q: 'Explain load factor and rehashing. Why 0.75? What happens to keys during a resize?', level: 'I',
+    a: `<p>Load factor = size / capacity at which the table grows. 0.75 is a trade-off: lower wastes memory with empty buckets, higher makes chains longer and lookups slower (with chaining, expected probes grow roughly like 1 + α/2). When <code>size &gt; capacity × 0.75</code>, Java allocates a table twice as large and moves every node. Because capacity doubles, the new index of a key depends on just one more bit of its hash: each node either <b>stays at index i</b> or <b>moves to i + oldCapacity</b>. Java 8 splits each chain into a "lo" and "hi" list preserving order, so no hash recomputation is needed. If you know the size up front, pre-size with <code>HashMap.newHashMap(n)</code> (Java 19+) to avoid repeated resizes.</p>`,
+    followUps: ['What does new HashMap&lt;&gt;(100) actually mean?', 'Does HashMap ever shrink?']
+  });
+  interview.push({
+    q: 'Chaining vs open addressing — compare them and name real implementations of each.', level: 'A',
+    a: `<p><b>Chaining</b> stores colliding entries in a per-bucket list/tree (Java HashMap, C++ std::unordered_map in libstdc++). Pros: simple deletes, graceful under high load, supports treeify. Cons: pointer chasing, extra node objects, poor cache locality. <b>Open addressing</b> stores everything in the array itself and probes other slots on collision (linear, quadratic or a perturbation sequence): Python dict/set, Google SwissTable (Abseil flat_hash_map), Rust's HashMap (hashbrown). Pros: compact and cache-friendly, SIMD can scan metadata bytes. Cons: must keep load lower, deletions need tombstones, clustering under bad hashes. Most modern high-performance tables use open addressing.</p>`,
+    followUps: ['How does deletion work with linear probing?', 'Why does Python keep dict load below about 2/3?']
+  });
+  interview.push({
+    q: 'You need to count subarrays with sum K in an array with negatives. Walk me through your approach and its correctness.', level: 'I',
+    a: `<p>Sliding window fails because negatives break monotonicity. Use prefix sums: sum(l..r) = P[r] − P[l−1]. For each end r, the number of valid starts equals the number of earlier prefixes equal to P[r] − K. Keep a HashMap prefix → count, seeded with {0: 1} for the empty prefix. In one pass: add x to P, add <code>cnt[P − K]</code> to the answer, then increment <code>cnt[P]</code> — querying before inserting ensures we never count an empty subarray (important when K = 0). Every subarray is counted exactly once, at its right end. O(N) time, O(N) space; use long for the prefix and the answer when values or N are large.</p>`,
+    followUps: ['How does it change for "divisible by K"?', 'Extend it to count submatrices with sum K.', 'What changes if you want the longest such subarray?']
+  });
+  interview.push({
+    q: 'Why does the zero-sum-subarray check seed the set with 0? Why do "longest" problems seed with {0: −1}?', level: 'B',
+    a: `<p>A subarray starting at index 0 has sum P[r] − P[−1], where P[−1] = 0 is the balance before any element. Without that seed, a prefix that itself sums to 0 (or to K) has nothing to match against, and the answer starting at index 0 is missed. In "longest" problems we store indices, so the empty prefix is recorded at index −1: a match at index i then yields length i − (−1) = i + 1, exactly the length of arr[0..i]. In counting problems the seed is a count of 1 because the empty prefix occurred once.</p>`,
+    followUps: ['Give an input that fails without the seed.', 'What is the seed for the shortest-subarray variant?']
+  });
+  interview.push({
+    q: 'Design a data structure with insert, delete and getRandom, all in average O(1).', level: 'A',
+    a: `<p>Combine an <b>ArrayList</b> of values (for O(1) random access) with a <b>HashMap value → index in the list</b>. Insert: if absent, append to the list and record its index. getRandom: pick a random index in the list. Delete: look up the index of the value, move the <b>last</b> element into that slot (update its index in the map), remove the last element and the map entry — no shifting, so O(1). With duplicates allowed (LeetCode 381) the map becomes value → set of indices. This is a classic "hash map + array" pairing; LRU cache is the "hash map + doubly linked list" pairing.</p>`,
+    followUps: ['How do you support duplicates?', 'How would you make getRandom weighted by frequency?']
+  });
+  interview.push({
+    q: 'Your service uses a HashMap&lt;String, User&gt; shared by many threads and occasionally hangs or loses entries. What is going on and how do you fix it?', level: 'A',
+    a: `<p>HashMap is not thread-safe. Concurrent puts can lose updates, corrupt the table during a resize, or (in Java 7 with head insertion) create a cycle in a bucket that makes get() loop forever. Fixes: use <b>ConcurrentHashMap</b> (lock-free reads, CAS on empty bins, per-bin locking on writes, cooperative resizing; no null keys or values), and use its atomic methods — <code>computeIfAbsent</code>, <code>merge</code> — instead of check-then-act sequences like <code>if (!map.containsKey(k)) map.put(k, v)</code>, which race even on a concurrent map. <code>Collections.synchronizedMap</code> works but serializes all access.</p>`,
+    followUps: ['Why does ConcurrentHashMap forbid null values?', 'How would you count events per key from many threads? (merge or LongAdder)']
+  });
+  interview.push({
+    q: 'Longest consecutive sequence in O(N): explain why the nested loop is not O(N²).', level: 'I',
+    a: `<p>Put all numbers in a HashSet. For each x in the set, only start counting if x − 1 is absent (x is the front of a chain); then walk x + 1, x + 2, … while present. The outer loop does O(1) work per distinct value. The inner while loop only runs from chain fronts, and the chains are disjoint, so across the whole run the inner loop advances at most once per distinct value. Total inner steps ≤ N, total work O(N). Iterating the set (not the raw array) matters: duplicates of a chain front in the array would otherwise rewalk the same chain repeatedly.</p>`,
+    followUps: ['Solve it for a stream of numbers.', 'When would sorting be the better engineering choice?']
+  });
+  interview.push({
+    q: 'When would you NOT use a HashMap, even though it would work?', level: 'I',
+    a: `<p>(1) Keys are small dense integers or characters → a plain array (<code>int[26]</code>, <code>int[128]</code>, <code>boolean[N]</code>) is faster, smaller and has an O(1) <i>worst</i> case. (2) You need order, ranges, floor/ceiling or "≤ K" queries → TreeMap or sorting + binary search; hashing only answers exact matches. (3) Memory is tight with millions of primitives → boxing costs ~60–80 bytes per entry; use primitive collections or sorting. (4) Input is sorted already → two pointers with O(1) space. (5) Adversarial input with a weak hash → sorting gives a guaranteed O(N log N). (6) Approximate answers are acceptable at huge scale → Bloom filters, HyperLogLog, Count-Min Sketch.</p>`,
+    followUps: ['How much memory does HashMap&lt;Integer,Integer&gt; use per entry?', 'What is a Bloom filter\'s false-positive trade-off?']
+  });
+  interview.push({
+    q: 'Minimum window substring: explain the algorithm and prove it runs in O(|s| + |t|).', level: 'A',
+    a: `<p>Build need = tally of t and missing = |t|. Move right across s: if need[c] &gt; 0 the character fulfils a requirement, so missing−−; then need[c]−− (surplus goes negative). Whenever missing == 0 the window covers t: record it if shorter, then remove s[left] (need[d]++; if it becomes positive, missing++) and advance left; repeat while still valid. Correctness: for every right end we shrink to the smallest valid window ending there, and the optimum ends at some right. Complexity: right moves |s| times, left moves at most |s| times in total, and each move is O(1) → O(|s| + |t|), with O(Σ) space.</p>`,
+    followUps: ['How do you handle duplicate characters in t?', 'How would you adapt it to words instead of characters?']
+  });
+  interview.push({
+    q: 'Group anagrams: which key do you use and what is the complexity? Any pitfalls?', level: 'B',
+    a: `<p>Key = the word's letters sorted ("tea" → "aet"), giving O(N · K log K) for N words of max length K. Faster: a 26-count signature such as "1#0#0#…#1", O(N · K). Pitfalls: building a count key without separators ("1" + "11" vs "11" + "1" collide), using the sum of character codes or a product of primes (sums collide; products overflow), forgetting empty strings, and Unicode text where <code>int[26]</code> does not apply. Use <code>computeIfAbsent(key, k -&gt; new ArrayList&lt;&gt;())</code> to collect groups in one pass.</p>`,
+    followUps: ['Group strings that are shifts of each other.', 'What if each word is 10<sup>5</sup> characters long but there are only 10 words?']
+  });
+  interview.push({
+    q: 'What makes a good hash function for a custom key? How would you write hashCode for a Point(x, y)?', level: 'I',
+    a: `<p>A good hash is deterministic, consistent with equals, cheap, and spreads typical keys across all bits (small changes in input should change many output bits). For Point(x, y): <code>31 * x + y</code> or <code>Objects.hash(x, y)</code> (which does the same with boxing), or simply declare <code>record Point(int x, int y)</code>. Avoid <code>x + y</code> or <code>x ^ y</code> — (1, 2) and (2, 1) collide, and x ^ y is 0 for every diagonal point. For competitive programming or untrusted input, mix bits with a randomized function (e.g. splitmix64 with a random seed) to resist anti-hash tests. Java additionally spreads hashes internally, but it cannot fix a hash that maps many keys to the same int.</p>`,
+    followUps: ['Why multiply by 31?', 'How would you pack two ints into one long key instead?']
+  });
+  interview.push({
+    q: 'Design "unique visitors in the last 5 minutes" for a site with 50M users. Start from the hashing solution.', level: 'E',
+    a: `<p>Exact baseline: keep, per minute bucket, a set of user IDs, plus a sliding window map userId → count across the last 5 buckets (add on enter, decrement and delete at 0 on expiry); answer = map size. That is the "distinct elements in every window" pattern, O(1) per event. At 50M users the exact map costs gigabytes and cannot be sharded and merged cheaply. Production approach: one <b>HyperLogLog</b> sketch per minute (≈12 KB, ~0.81% error), keep the last 5 and merge them for the answer (HLL merges by taking register maxima), e.g. Redis <code>PFADD</code>/<code>PFMERGE</code>/<code>PFCOUNT</code>. Shard events by time, not by user, and expire old sketches with TTLs.</p>`,
+    followUps: ['Why can HyperLogLog sketches be merged but exact counts cannot simply be added?', 'How do you get exact numbers for billing at the end of the day?']
+  });
+
 
   registerModule({
     id: 'dsa08',
