@@ -2346,6 +2346,1061 @@ ${H.table(['approach', 'time (N total nodes)', 'extra space'], [
 <p><b>What you must still own:</b> the dummy + tail habit, the O(N + M) argument, and the jump from "merge two" to "merge k with a heap".</p>`
   });
 
+  // =====================================================================
+  // PRACTICE — Easy
+  // =====================================================================
+  practice.push({
+    title: 'Remove Linked List Elements',
+    level: 'Easy',
+    tags: ['dummy node'],
+    companies: ['Amazon', 'Microsoft'],
+    statement: `<p>Given the <code>head</code> of a linked list and an integer <code>val</code>, remove <b>all</b> nodes whose value equals <code>val</code> and return the new head.</p>`,
+    constraints: `0 ≤ nodes ≤ 10<sup>4</sup>, 1 ≤ Node.val ≤ 50, 0 ≤ val ≤ 50`,
+    example: `${chain([7, 7, 1, 7, 2], { 0: 'r', 1: 'r', 3: 'r' })}<p>val = 7 → ${H.c('g', '1 → 2')}. The first two 7s are the head and then the new head — exactly the case a dummy node handles. <code>[7, 7]</code> → empty list.</p>`,
+    brute: {
+      why: `<p>Build a brand-new list, copying every value that is not <code>val</code>. Correct and O(N) time, but it allocates up to N new nodes (O(N) extra memory) when we could just re-link the existing ones.</p>`,
+      code: `
+ListNode removeElements(ListNode head, int val) {
+    ListNode dummy = new ListNode(0), tail = dummy;
+    for (ListNode c = head; c != null; c = c.next) {
+        if (c.val != val) { tail.next = new ListNode(c.val); tail = tail.next; }   // copies
+    }
+    return dummy.next;
+}`
+    },
+    mcq: { q: 'After skipping a matching node with <code>prev.next = prev.next.next</code>, what should <code>prev</code> do?', options: ['Move forward one node', 'Stay where it is', 'Jump to the head', 'Move forward two nodes'], answer: 1, explain: 'The new prev.next might also match (e.g. 7 → 7). Only advance prev when you did not delete.' },
+    hints: [
+      `<p>The only awkward node is the head, because it has no predecessor. Give it one.</p>`,
+      `<p>Dummy node pointing to head; a single pointer <code>prev</code> that always sits <b>before</b> the node being checked.</p>`,
+      `<p>Loop while <code>prev.next != null</code>: if it matches, skip it (prev stays); else prev = prev.next. Return <code>dummy.next</code>. Test: all nodes match, none match, empty list.</p>`
+    ],
+    solution: {
+      approach: `<p>Dummy + prev; skip matches in place; advance only when the next node is kept.</p>`,
+      code: `
+class Solution {
+    public ListNode removeElements(ListNode head, int val) {
+        ListNode dummy = new ListNode(0, head);
+        ListNode prev = dummy;
+        while (prev.next != null) {
+            if (prev.next.val == val) prev.next = prev.next.next;   // drop it, stay put
+            else prev = prev.next;                                  // keep it, move on
+        }
+        return dummy.next;
+    }
+}`,
+      complexity: `<p><b>Time O(N)</b> — each node is examined once. <b>Space O(1)</b> — one dummy and one pointer.</p>`,
+      followUps: ['Do it recursively: head.next = removeElements(head.next, val); return head.val == val ? head.next : head.', 'What is the recursion depth for 10<sup>4</sup> nodes, and is it safe?']
+    }
+  });
+
+  practice.push({
+    title: 'Remove Duplicates from Sorted List',
+    level: 'Easy',
+    tags: ['linked list', 'sorted'],
+    companies: ['Amazon', 'Adobe'],
+    statement: `<p>Given the <code>head</code> of a <b>sorted</b> linked list, delete duplicates so that each value appears only <b>once</b>. Return the list, still sorted.</p>`,
+    constraints: `0 ≤ nodes ≤ 300, -100 ≤ Node.val ≤ 100, sorted in non-decreasing order`,
+    example: `${chain([1, 1, 2, 3, 3], { 1: 'r', 4: 'r' })}<p>Output ${H.c('g', '1 → 2 → 3')}. Because the list is sorted, equal values are always <b>neighbours</b>, so we only compare each node with the next one.</p>`,
+    brute: {
+      why: `<p>Keep a HashSet of values seen so far and unlink any node whose value is already in the set. Works even for unsorted lists, but uses O(N) memory and ignores the fact that the list is sorted.</p>`,
+      code: `
+ListNode deleteDuplicates(ListNode head) {
+    Set<Integer> seen = new HashSet<>();
+    ListNode dummy = new ListNode(0, head), prev = dummy;
+    while (prev.next != null) {
+        if (!seen.add(prev.next.val)) prev.next = prev.next.next;   // already seen: drop
+        else prev = prev.next;
+    }
+    return dummy.next;
+}`
+    },
+    mcq: { q: 'Why is no dummy node needed here?', options: ['Because the list is short', 'Because the head is never deleted — we always keep the first copy', 'Because duplicates are rare', 'A dummy is required'], answer: 1, explain: 'We keep the first node of every run of equal values, so the head always survives and never needs a predecessor.' },
+    hints: [
+      `<p>Sorted ⇒ duplicates sit next to each other. You never need to remember anything except the current node.</p>`,
+      `<p>One pointer <code>curr</code>. If <code>curr.next.val == curr.val</code>, unlink curr.next; otherwise move curr forward.</p>`,
+      `<p>Do not advance after unlinking — a run like 1 → 1 → 1 needs two unlinks from the same curr. Stop when curr or curr.next is null.</p>`
+    ],
+    solution: {
+      approach: `<p>Single pointer; compare with the next node; unlink equal neighbours.</p>`,
+      code: `
+class Solution {
+    public ListNode deleteDuplicates(ListNode head) {
+        ListNode curr = head;
+        while (curr != null && curr.next != null) {
+            if (curr.next.val == curr.val) curr.next = curr.next.next;   // drop the copy
+            else curr = curr.next;                                       // new value: move on
+        }
+        return head;
+    }
+}`,
+      complexity: `<p><b>Time O(N)</b>, <b>Space O(1)</b>.</p>`,
+      followUps: ['Remove ALL nodes that have duplicates (see "Remove Duplicates II").', 'What if the list is unsorted and you must use O(1) memory? (O(N²) compare-all, or sort first.)']
+    }
+  });
+
+  practice.push({
+    title: 'Intersection of Two Linked Lists',
+    level: 'Easy',
+    tags: ['two pointers'],
+    companies: ['Amazon', 'Microsoft', 'Bloomberg'],
+    statement: `<p>Two singly linked lists may <b>merge</b> at some node and share every node after it (a Y shape). Given both heads, return the node where they intersect, or <code>null</code> if they never do. The lists have no cycles and must keep their structure. Aim for O(1) memory.</p>`,
+    constraints: `1 ≤ m, n ≤ 3·10<sup>4</sup>, 1 ≤ Node.val ≤ 10<sup>5</sup>`,
+    example: `<p>A: ${H.c('b', '4 → 1')} → ${H.c('p', '8 → 4 → 5')}<br>B: ${H.c('y', '5 → 6 → 1')} → ${H.c('p', '8 → 4 → 5')}</p><p>Output: node ${H.c('p', '8')}. Careful: B also has a node with value 1, but it is a <b>different node</b> — intersection is about identity, not equal values.</p>`,
+    brute: {
+      why: `<p>Put every node of A into a HashSet, then walk B and return the first node found in the set. O(m + n) time but O(m) memory.</p>`,
+      code: `
+ListNode getIntersectionNode(ListNode headA, ListNode headB) {
+    Set<ListNode> inA = new HashSet<>();
+    for (ListNode a = headA; a != null; a = a.next) inA.add(a);
+    for (ListNode b = headB; b != null; b = b.next) if (inA.contains(b)) return b;
+    return null;
+}`
+    },
+    mcq: { q: 'Pointer a walks A then switches to B; pointer b walks B then switches to A. Why do they meet at the intersection?', options: ['They walk at different speeds', 'Both walk exactly lenA + lenB − (shared part) steps before reaching it', 'The lists are sorted', 'They do not always meet'], answer: 1, explain: 'a covers A-only + shared + B-only; b covers B-only + shared + A-only. Same total, so they arrive at the shared start together (or both reach null together if there is none).' },
+    hints: [
+      `<p>The only problem is the different lengths before the merge point. If both pointers had walked the same number of nodes, they would line up.</p>`,
+      `<p>Two pointers. When one reaches the end of its list, restart it at the head of the <b>other</b> list. Compare references at every step.</p>`,
+      `<p>Loop <code>while (a != b)</code>: <code>a = (a == null) ? headB : a.next</code>, same for b. If there is no intersection, both become null at the same time after m + n steps, so the loop ends with null.</p>`
+    ],
+    solution: {
+      approach: `<p>Switch heads at the end to equalise path lengths; meet at the first shared node or at null.</p>`,
+      code: `
+class Solution {
+    public ListNode getIntersectionNode(ListNode headA, ListNode headB) {
+        ListNode a = headA, b = headB;
+        while (a != b) {                       // compares node identity
+            a = (a == null) ? headB : a.next;  // finished A? continue on B
+            b = (b == null) ? headA : b.next;  // finished B? continue on A
+        }
+        return a;                              // the meeting node, or null
+    }
+}`,
+      complexity: `<p><b>Time O(m + n)</b> — each pointer walks at most both lists once. <b>Space O(1)</b>.</p>`,
+      followUps: ['Alternative: compute both lengths, advance the longer list by the difference, then walk together.', 'How would you detect the intersection if the lists could contain cycles?']
+    }
+  });
+
+  practice.push({
+    title: 'Palindrome Linked List',
+    level: 'Easy',
+    tags: ['fast & slow', 'reversal'],
+    companies: ['Amazon', 'Meta', 'Microsoft'],
+    statement: `<p>Given the <code>head</code> of a singly linked list, return <code>true</code> if its values read the same forwards and backwards. Follow-up: O(N) time and <b>O(1)</b> extra space.</p>`,
+    constraints: `1 ≤ nodes ≤ 10<sup>5</sup>, 0 ≤ Node.val ≤ 9`,
+    example: `${chain([1, 2, 2, 1], { 0: 'b', 3: 'b', 1: 'y', 2: 'y' })}<p>→ ${H.c('g', 'true')}: outer pair 1/1 matches, inner pair 2/2 matches. <code>1 → 2</code> → ${H.c('r', 'false')}.</p>`,
+    brute: {
+      why: `<p>Copy all values into an ArrayList and compare from both ends with two indices. O(N) time but O(N) memory — the follow-up forbids it.</p>`,
+      code: `
+boolean isPalindrome(ListNode head) {
+    List<Integer> vals = new ArrayList<>();
+    for (ListNode c = head; c != null; c = c.next) vals.add(c.val);
+    for (int i = 0, j = vals.size() - 1; i < j; i++, j--)
+        if (!vals.get(i).equals(vals.get(j))) return false;
+    return true;
+}`
+    },
+    mcq: { q: 'For O(1) space, which two building blocks do you combine?', options: ['Sorting + binary search', 'Find the middle + reverse the second half', 'HashMap + counting', 'Recursion + memoization'], answer: 1, explain: 'Reverse the second half in place; now you can walk from the head and from the reversed half at the same time and compare.' },
+    hints: [
+      `<p>Comparing "front" with "back" needs a way to walk backwards. A singly list cannot — unless you reverse half of it.</p>`,
+      `<p>Fast &amp; slow to find the middle; reverse from slow to the end; compare the two halves node by node.</p>`,
+      `<p>Odd lengths: the middle node ends up in the second half and is compared with nothing extra — compare while the reversed pointer is non-null. Be polite: reverse the second half back before returning.</p>`
+    ],
+    solution: {
+      approach: `<p>Middle → reverse second half → compare → restore.</p>`,
+      code: `
+class Solution {
+    public boolean isPalindrome(ListNode head) {
+        ListNode slow = head, fast = head;
+        while (fast != null && fast.next != null) {   // slow -> (second) middle
+            slow = slow.next;
+            fast = fast.next.next;
+        }
+        ListNode second = reverse(slow);              // reversed second half
+        boolean ok = true;
+        for (ListNode a = head, b = second; b != null; a = a.next, b = b.next) {
+            if (a.val != b.val) { ok = false; break; }
+        }
+        reverse(second);                              // restore the input
+        return ok;
+    }
+
+    private ListNode reverse(ListNode head) {
+        ListNode prev = null;
+        while (head != null) {
+            ListNode next = head.next;
+            head.next = prev;
+            prev = head;
+            head = next;
+        }
+        return prev;
+    }
+}`,
+      complexity: `<p><b>Time O(N)</b> (find middle, reverse, compare, restore — each linear). <b>Space O(1)</b>.</p>`,
+      followUps: ['Why does the first half still reach the middle node after reversal (it still points into the reversed part)?', 'Is restoring the list important in a multi-threaded program?']
+    }
+  });
+
+  // =====================================================================
+  // PRACTICE — Medium
+  // =====================================================================
+  practice.push({
+    title: 'Add Two Numbers',
+    level: 'Medium',
+    tags: ['dummy node', 'carry'],
+    companies: ['Amazon', 'Microsoft', 'Bloomberg', 'Adobe'],
+    statement: `<p>Two non-negative integers are stored as linked lists in <b>reverse order</b> (ones digit first), one digit per node. Return their sum as a linked list in the same format.</p>`,
+    constraints: `1 ≤ nodes per list ≤ 100, 0 ≤ Node.val ≤ 9, no leading zeros except the number 0`,
+    example: `<p>${H.c('b', '2 → 4 → 3')} (342) + ${H.c('y', '5 → 6 → 4')} (465) = ${H.c('g', '7 → 0 → 8')} (807).</p><p>Digit by digit: 2+5 = 7; 4+6 = 10 → write 0, carry 1; 3+4+1 = 8. <code>9 → 9</code> + <code>1</code> → <code>0 → 0 → 1</code> (the final carry creates a new node).</p>`,
+    brute: {
+      why: `<p>Convert both lists to <code>long</code>, add, convert back. It breaks on 100-digit numbers: a long holds only about 19 digits, so it <b>overflows</b>. (BigInteger works but hides the actual skill.)</p>`,
+      code: `
+ListNode addTwoNumbers(ListNode l1, ListNode l2) {
+    long a = 0, b = 0, p = 1;
+    for (ListNode c = l1; c != null; c = c.next, p *= 10) a += c.val * p;   // overflows past ~19 digits
+    p = 1;
+    for (ListNode c = l2; c != null; c = c.next, p *= 10) b += c.val * p;
+    long s = a + b;
+    ListNode dummy = new ListNode(0), tail = dummy;
+    do { tail.next = new ListNode((int) (s % 10)); tail = tail.next; s /= 10; } while (s > 0);
+    return dummy.next;
+}`
+    },
+    mcq: { q: 'Both lists are exhausted but carry = 1. What now?', options: ['Ignore it', 'Append a new node with value 1', 'Add 1 to the head', 'Throw an exception'], answer: 1, explain: '99 + 1 = 100: the extra carry becomes a new most-significant digit, i.e. a new last node.' },
+    hints: [
+      `<p>Reverse order is a gift: the ones digits come first, exactly the order you add by hand.</p>`,
+      `<p>Dummy + tail for the result; loop while <code>l1 != null || l2 != null || carry != 0</code>.</p>`,
+      `<p>Each step: sum = carry + (l1 digit or 0) + (l2 digit or 0); new node sum % 10; carry = sum / 10; advance whichever lists are not null. Different lengths and the final carry are handled by the loop condition.</p>`
+    ],
+    solution: {
+      approach: `<p>Grade-school addition with a carry, building the answer with dummy + tail.</p>`,
+      code: `
+class Solution {
+    public ListNode addTwoNumbers(ListNode l1, ListNode l2) {
+        ListNode dummy = new ListNode(0), tail = dummy;
+        int carry = 0;
+        while (l1 != null || l2 != null || carry != 0) {
+            int sum = carry;
+            if (l1 != null) { sum += l1.val; l1 = l1.next; }
+            if (l2 != null) { sum += l2.val; l2 = l2.next; }
+            tail.next = new ListNode(sum % 10);   // digit to write
+            tail = tail.next;
+            carry = sum / 10;                     // 0 or 1
+        }
+        return dummy.next;
+    }
+}`,
+      complexity: `<p><b>Time O(max(m, n))</b>. <b>Space O(1)</b> extra besides the output list (max(m, n) + 1 nodes).</p>`,
+      followUps: ['Digits stored most-significant first (Add Two Numbers II): reverse both, or use two stacks.', 'Subtract instead of add — how do you handle the borrow and leading zeros?']
+    }
+  });
+
+  practice.push({
+    title: 'Odd Even Linked List',
+    level: 'Medium',
+    tags: ['in-place', 'two lists'],
+    companies: ['Amazon', 'Microsoft'],
+    statement: `<p>Group all nodes at <b>odd positions</b> (1st, 3rd, 5th, …) first, followed by the nodes at <b>even positions</b>, keeping the relative order inside each group. Positions, not values. O(1) extra space, O(N) time.</p>`,
+    constraints: `0 ≤ nodes ≤ 10<sup>4</sup>, -10<sup>6</sup> ≤ Node.val ≤ 10<sup>6</sup>`,
+    example: `${chain([2, 1, 3, 5, 6, 4, 7], { 0: 'b', 2: 'b', 4: 'b', 6: 'b', 1: 'y', 3: 'y', 5: 'y' })}<p>→ ${H.c('b', '2 → 3 → 6 → 7')} → ${H.c('y', '1 → 5 → 4')}. Positions 1, 3, 5, 7 first, then 2, 4, 6.</p>`,
+    brute: {
+      why: `<p>Copy odd-position values into one ArrayList and even-position values into another, then rewrite the node values in order. O(N) extra memory and it changes values rather than re-linking nodes.</p>`,
+      code: `
+ListNode oddEvenList(ListNode head) {
+    List<Integer> odd = new ArrayList<>(), even = new ArrayList<>();
+    int pos = 1;
+    for (ListNode c = head; c != null; c = c.next, pos++) (pos % 2 == 1 ? odd : even).add(c.val);
+    odd.addAll(even);
+    int i = 0;
+    for (ListNode c = head; c != null; c = c.next) c.val = odd.get(i++);
+    return head;
+}`
+    },
+    mcq: { q: 'What must you save before the loop so you can glue the two groups at the end?', options: ['The tail of the list', 'The head of the even list (head.next)', 'The middle node', 'The length'], answer: 1, explain: 'The odd chain starts at head; the even chain starts at head.next. After weaving, odd.next = evenHead connects them.' },
+    hints: [
+      `<p>Odd and even nodes alternate. If every node skips its neighbour (<code>node.next = node.next.next</code>), you get two separate chains.</p>`,
+      `<p>Pointers <code>odd = head</code>, <code>even = head.next</code>, <code>evenHead = even</code>. Advance them leapfrog style.</p>`,
+      `<p>Loop while <code>even != null &amp;&amp; even.next != null</code>: odd.next = even.next; odd = odd.next; even.next = odd.next; even = even.next. Finally odd.next = evenHead. Handle head == null first.</p>`
+    ],
+    solution: {
+      approach: `<p>Weave two chains in place, then append the even chain to the odd chain.</p>`,
+      code: `
+class Solution {
+    public ListNode oddEvenList(ListNode head) {
+        if (head == null) return null;
+        ListNode odd = head, even = head.next, evenHead = even;
+        while (even != null && even.next != null) {
+            odd.next = even.next;    // next odd node
+            odd = odd.next;
+            even.next = odd.next;    // next even node
+            even = even.next;
+        }
+        odd.next = evenHead;         // glue: odds then evens
+        return head;
+    }
+}`,
+      dry: { head: ['step', 'odd chain', 'even chain'], rows: [['start', '2', '1'], ['1', '2 → 3', '1 → 5'], ['2', '2 → 3 → 6', '1 → 5 → 4'], ['3', '2 → 3 → 6 → 7', '1 → 5 → 4 → null'], ['glue', '<span class="c-g">2 → 3 → 6 → 7 → 1 → 5 → 4</span>', '—']] },
+      complexity: `<p><b>Time O(N)</b>, <b>Space O(1)</b>.</p>`
+    }
+  });
+
+  practice.push({
+    title: 'Swap Nodes in Pairs',
+    level: 'Medium',
+    tags: ['dummy node', 'reversal'],
+    companies: ['Amazon', 'Meta', 'Microsoft'],
+    statement: `<p>Swap every two adjacent nodes and return the new head. You must change <b>links</b>, not values.</p>`,
+    constraints: `0 ≤ nodes ≤ 100, 0 ≤ Node.val ≤ 100`,
+    example: `${chain([1, 2, 3, 4])}<p>→ ${H.c('g', '2 → 1 → 4 → 3')}. <code>[1, 2, 3]</code> → <code>2 → 1 → 3</code> (the lonely last node stays).</p>`,
+    brute: {
+      why: `<p>Swap the <b>values</b> of each pair. It produces the right sequence in O(N), but the problem forbids changing values — imagine nodes carrying large payloads or being referenced elsewhere.</p>`,
+      code: `
+ListNode swapPairs(ListNode head) {
+    for (ListNode c = head; c != null && c.next != null; c = c.next.next) {
+        int t = c.val; c.val = c.next.val; c.next.val = t;   // swaps values, not nodes
+    }
+    return head;
+}`
+    },
+    mcq: { q: 'With prev → a → b → rest, which assignment order swaps a and b safely?', options: ['a.next = b; b.next = rest; prev.next = a', 'prev.next = b; a.next = b.next; b.next = a', 'b.next = a; prev.next = b; a.next = b.next', 'prev.next = a.next; b.next = prev'], answer: 1, explain: 'prev.next = b first, then a.next = b.next (= rest, still intact), then b.next = a. Option C sets b.next = a before reading b.next, losing rest.' },
+    hints: [
+      `<p>This is "reverse in groups of 2". Each swap touches three links: prev → a, a → b, b → rest.</p>`,
+      `<p>Dummy node + <code>prev</code>. For each pair: a = prev.next, b = a.next; rewire; then prev = a (a is now second in the pair).</p>`,
+      `<p>Stop when fewer than two nodes remain: <code>while (prev.next != null &amp;&amp; prev.next.next != null)</code>. Read b.next before overwriting it.</p>`
+    ],
+    solution: {
+      approach: `<p>Dummy + prev; three pointer writes per pair; prev jumps to the node that moved second.</p>`,
+      code: `
+class Solution {
+    public ListNode swapPairs(ListNode head) {
+        ListNode dummy = new ListNode(0, head), prev = dummy;
+        while (prev.next != null && prev.next.next != null) {
+            ListNode a = prev.next, b = a.next;
+            prev.next = b;       // prev -> b
+            a.next = b.next;     // a -> rest
+            b.next = a;          // b -> a
+            prev = a;            // a is now the second node of the pair
+        }
+        return dummy.next;
+    }
+}`,
+      complexity: `<p><b>Time O(N)</b>, <b>Space O(1)</b>.</p>`,
+      followUps: ['Generalise to k (Reverse Nodes in k-Group).', 'Recursive version: swapPairs(head) = b with b.next = a and a.next = swapPairs(rest).']
+    }
+  });
+
+  practice.push({
+    title: 'Reverse Linked List II (between left and right)',
+    level: 'Medium',
+    tags: ['reversal', 'dummy node'],
+    companies: ['Amazon', 'Meta', 'Microsoft'],
+    statement: `<p>Given the <code>head</code> of a singly linked list and two positions <code>left ≤ right</code> (1-indexed), reverse the nodes from position left to position right and return the list. Do it in one pass.</p>`,
+    constraints: `1 ≤ n ≤ 500, -500 ≤ Node.val ≤ 500, 1 ≤ left ≤ right ≤ n`,
+    example: `${chain([1, 2, 3, 4, 5], { 1: 'y', 2: 'y', 3: 'y' })}<p>left = 2, right = 4 → ${H.c('m', '1')} → ${H.c('g', '4 → 3 → 2')} → ${H.c('m', '5')}. With left = 1 the head changes — use a dummy.</p>`,
+    brute: {
+      why: `<p>Copy values into an array, reverse the sub-array [left−1, right−1], write the values back. O(N) time but O(N) memory and it swaps values instead of links.</p>`,
+      code: `
+ListNode reverseBetween(ListNode head, int left, int right) {
+    List<Integer> vals = new ArrayList<>();
+    for (ListNode c = head; c != null; c = c.next) vals.add(c.val);
+    Collections.reverse(vals.subList(left - 1, right));   // reverse the middle part
+    int i = 0;
+    for (ListNode c = head; c != null; c = c.next) c.val = vals.get(i++);
+    return head;
+}`
+    },
+    mcq: { q: 'In the "head insertion" method, <code>pre</code> sits before position left and <code>curr = pre.next</code> stays fixed. What does each step do?', options: ['Swaps curr with its neighbour values', 'Moves the node after curr to the front of the sublist (right after pre)', 'Reverses the whole list', 'Moves curr to the end'], answer: 1, explain: 'Take move = curr.next, unlink it, insert it after pre. After right − left steps the sublist is reversed and curr has drifted to the end of it.' },
+    hints: [
+      `<p>Only three places change: the node before the sublist, the sublist itself, and the node after it.</p>`,
+      `<p>Dummy; walk <code>pre</code> left − 1 steps; <code>curr = pre.next</code>. Repeat right − left times: pull the node after curr and insert it right after pre.</p>`,
+      `<p>Loop body: move = curr.next; curr.next = move.next; move.next = pre.next; pre.next = move. curr never moves but ends as the sublist's tail. Return dummy.next (left = 1 changes the head).</p>`
+    ],
+    solution: {
+      approach: `<p>Dummy + "head insertion": repeatedly pull the next node to the front of the sublist.</p>`,
+      code: `
+class Solution {
+    public ListNode reverseBetween(ListNode head, int left, int right) {
+        ListNode dummy = new ListNode(0, head), pre = dummy;
+        for (int i = 1; i < left; i++) pre = pre.next;   // pre = node before position left
+        ListNode curr = pre.next;                         // will end up as the sublist's tail
+        for (int i = 0; i < right - left; i++) {
+            ListNode move = curr.next;   // node to bring to the front
+            curr.next = move.next;       // unlink it
+            move.next = pre.next;        // put it before the current sublist head
+            pre.next = move;             // ...and hook it after pre
+        }
+        return dummy.next;
+    }
+}`,
+      dry: { head: ['step', 'list (left=2, right=4)'], rows: [['start', '1 → [2 → 3 → 4] → 5'], ['move 3', '1 → [3 → 2 → 4] → 5'], ['move 4', '1 → <span class="c-g">[4 → 3 → 2]</span> → 5']] },
+      complexity: `<p><b>Time O(N)</b> (walk to left, then right − left moves). <b>Space O(1)</b>.</p>`
+    }
+  });
+
+  practice.push({
+    title: 'Reorder List',
+    level: 'Medium',
+    tags: ['fast & slow', 'reversal', 'merge'],
+    companies: ['Amazon', 'Meta', 'Microsoft', 'Adobe'],
+    statement: `<p>Given L<sub>0</sub> → L<sub>1</sub> → … → L<sub>n−1</sub> → L<sub>n</sub>, reorder it in place to L<sub>0</sub> → L<sub>n</sub> → L<sub>1</sub> → L<sub>n−1</sub> → L<sub>2</sub> → L<sub>n−2</sub> → … Only links may change.</p>`,
+    constraints: `1 ≤ nodes ≤ 5·10<sup>4</sup>, 1 ≤ Node.val ≤ 1000`,
+    example: `${chain([1, 2, 3, 4, 5], { 0: 'b', 1: 'b', 2: 'b', 3: 'y', 4: 'y' })}<p>→ ${H.c('g', '1 → 5 → 2 → 4 → 3')}: take one from the front, one from the back, alternately.</p>`,
+    brute: {
+      why: `<p>Store all nodes in an ArrayList, then use two indices i (front) and j (back) to relink. O(N) time but O(N) extra memory for the array of references.</p>`,
+      code: `
+void reorderList(ListNode head) {
+    List<ListNode> nodes = new ArrayList<>();
+    for (ListNode c = head; c != null; c = c.next) nodes.add(c);
+    int i = 0, j = nodes.size() - 1;
+    while (i < j) {
+        nodes.get(i).next = nodes.get(j);   // front -> back
+        i++;
+        if (i == j) break;
+        nodes.get(j).next = nodes.get(i);   // back -> next front
+        j--;
+    }
+    nodes.get(i).next = null;               // new tail
+}`
+    },
+    mcq: { q: 'Which three known steps solve Reorder List in O(1) space?', options: ['Sort, dedupe, merge', 'Find middle, reverse second half, interleave the halves', 'Reverse whole list, then merge with itself', 'Use a stack of all nodes'], answer: 1, explain: 'The back half read backwards is just the reversed second half; then alternate nodes from the two halves.' },
+    hints: [
+      `<p>"Front, back, front, back…" — the back elements in that order are the second half <b>reversed</b>.</p>`,
+      `<p>Three helpers you already know: middle (first-middle variant), reverse, and an alternating merge.</p>`,
+      `<p>Cut after the middle (<code>slow.next = null</code>) so the first half ends; reverse the second half; then weave: save both nexts, link a → b → (a's old next), advance both. The first half is equal or one longer, so stop when the second half runs out.</p>`
+    ],
+    solution: {
+      approach: `<p>Split at the first middle, reverse the second half, interleave.</p>`,
+      code: `
+class Solution {
+    public void reorderList(ListNode head) {
+        if (head == null || head.next == null) return;
+        ListNode slow = head, fast = head;
+        while (fast.next != null && fast.next.next != null) {   // first middle
+            slow = slow.next;
+            fast = fast.next.next;
+        }
+        ListNode second = reverse(slow.next);
+        slow.next = null;                       // first half ends at slow
+        ListNode first = head;
+        while (second != null) {                // weave
+            ListNode n1 = first.next, n2 = second.next;
+            first.next = second;
+            second.next = n1;
+            first = n1;
+            second = n2;
+        }
+    }
+
+    private ListNode reverse(ListNode h) {
+        ListNode prev = null;
+        while (h != null) { ListNode nx = h.next; h.next = prev; prev = h; h = nx; }
+        return prev;
+    }
+}`,
+      complexity: `<p><b>Time O(N)</b>, <b>Space O(1)</b>.</p>`
+    }
+  });
+
+  practice.push({
+    title: 'Remove Duplicates from Sorted List II',
+    level: 'Medium',
+    tags: ['dummy node', 'sorted'],
+    companies: ['Amazon', 'Microsoft', 'Bloomberg'],
+    statement: `<p>Given the <code>head</code> of a sorted linked list, delete <b>all</b> nodes that have duplicate values, leaving only values that appeared exactly once.</p>`,
+    constraints: `0 ≤ nodes ≤ 300, -100 ≤ Node.val ≤ 100, sorted non-decreasing`,
+    example: `${chain([1, 2, 3, 3, 4, 4, 5], { 2: 'r', 3: 'r', 4: 'r', 5: 'r' })}<p>→ ${H.c('g', '1 → 2 → 5')}. <code>1 → 1 → 1 → 2 → 3</code> → <code>2 → 3</code> (the head itself disappears — dummy!).</p>`,
+    brute: {
+      why: `<p>Count every value in a HashMap, then rebuild with only count-1 values. Two passes and O(N) memory; it also ignores the sortedness that lets us detect runs locally.</p>`,
+      code: `
+ListNode deleteDuplicates(ListNode head) {
+    Map<Integer, Integer> cnt = new HashMap<>();
+    for (ListNode c = head; c != null; c = c.next) cnt.merge(c.val, 1, Integer::sum);
+    ListNode dummy = new ListNode(0, head), prev = dummy;
+    while (prev.next != null) {
+        if (cnt.get(prev.next.val) > 1) prev.next = prev.next.next;
+        else prev = prev.next;
+    }
+    return dummy.next;
+}`
+    },
+    mcq: { q: 'You are on a run 3 → 3 → 3. Where should <code>prev.next</code> point after handling it?', options: ['The first 3', 'The last 3', 'The first node after the run', 'null'], answer: 2, explain: 'Every node of the run must vanish, so prev (the last kept node) links straight to the node after the run; prev itself does not move yet.' },
+    hints: [
+      `<p>Sorted ⇒ duplicates form runs. You must remove the whole run, including its first node, so you need the node <b>before</b> the run.</p>`,
+      `<p>Dummy + <code>prev</code> (last node definitely kept) + <code>curr</code> scanning. Detect a run by <code>curr.next != null &amp;&amp; curr.next.val == curr.val</code>.</p>`,
+      `<p>If a run: skip to its last node, then <code>prev.next = curr.next</code> (prev stays). Else: <code>prev = prev.next</code>. Always <code>curr = prev.next</code> afterwards.</p>`
+    ],
+    solution: {
+      approach: `<p>Dummy + prev; skip whole runs of equal values; advance prev only past unique nodes.</p>`,
+      code: `
+class Solution {
+    public ListNode deleteDuplicates(ListNode head) {
+        ListNode dummy = new ListNode(0, head), prev = dummy;
+        ListNode curr = head;
+        while (curr != null) {
+            if (curr.next != null && curr.next.val == curr.val) {
+                int dup = curr.val;
+                while (curr != null && curr.val == dup) curr = curr.next;   // skip the whole run
+                prev.next = curr;                                          // cut it out
+            } else {
+                prev = curr;          // unique: keep it
+                curr = curr.next;
+            }
+        }
+        return dummy.next;
+    }
+}`,
+      complexity: `<p><b>Time O(N)</b>, <b>Space O(1)</b>.</p>`
+    }
+  });
+
+  practice.push({
+    title: 'Sort List',
+    level: 'Medium',
+    tags: ['merge sort', 'fast & slow', 'merge'],
+    companies: ['Amazon', 'Meta', 'Microsoft', 'ByteDance'],
+    statement: `<p>Sort a linked list in ascending order in <b>O(N log N)</b> time. Follow-up: constant extra space.</p>`,
+    constraints: `0 ≤ nodes ≤ 5·10<sup>4</sup>, -10<sup>5</sup> ≤ Node.val ≤ 10<sup>5</sup>`,
+    example: `${chain([4, 2, 1, 3])}<p>→ ${H.c('g', '1 → 2 → 3 → 4')}. Split [4, 2] [1, 3] → sort each → [2, 4] [1, 3] → merge → 1, 2, 3, 4.</p>`,
+    brute: {
+      why: `<p>Copy values into an array, <code>Arrays.sort</code>, write back. O(N log N) time but O(N) memory, and it is not really sorting the list. Insertion sort on the list itself is O(1) memory but O(N²) time — too slow for 5·10<sup>4</sup>.</p>`,
+      code: `
+ListNode sortList(ListNode head) {
+    List<Integer> vals = new ArrayList<>();
+    for (ListNode c = head; c != null; c = c.next) vals.add(c.val);
+    Collections.sort(vals);
+    int i = 0;
+    for (ListNode c = head; c != null; c = c.next) c.val = vals.get(i++);
+    return head;
+}`
+    },
+    mcq: { q: 'Why is merge sort (not quicksort or heapsort) the natural choice for linked lists?', options: ['It needs random access', 'Splitting and merging only need sequential walks and relinking — no indexing or extra buffer', 'It is always faster', 'Java requires it'], answer: 1, explain: 'Heapsort needs random access; quicksort\'s partitioning is awkward and degrades on bad pivots. Merging lists is in place, so merge sort fits perfectly.' },
+    hints: [
+      `<p>You already know how to cut a list in half (first-middle) and how to merge two sorted lists. Combine them recursively.</p>`,
+      `<p>Base case: 0 or 1 node. Otherwise split at the <b>first</b> middle (so 2 nodes split into 1 + 1), sort both halves, merge.</p>`,
+      `<p>Recursion depth is only log₂N ≈ 16. For true O(1) space, do bottom-up: merge runs of size 1, 2, 4, … walking the list each round.</p>`
+    ],
+    solution: {
+      approach: `<p>Top-down merge sort: split with fast &amp; slow, recurse, merge with dummy + tail.</p>`,
+      code: `
+class Solution {
+    public ListNode sortList(ListNode head) {
+        if (head == null || head.next == null) return head;
+        ListNode slow = head, fast = head;
+        while (fast.next != null && fast.next.next != null) {   // first middle
+            slow = slow.next;
+            fast = fast.next.next;
+        }
+        ListNode right = slow.next;
+        slow.next = null;                                       // cut into two lists
+        return merge(sortList(head), sortList(right));
+    }
+
+    private ListNode merge(ListNode a, ListNode b) {
+        ListNode dummy = new ListNode(0), tail = dummy;
+        while (a != null && b != null) {
+            if (a.val <= b.val) { tail.next = a; a = a.next; }
+            else { tail.next = b; b = b.next; }
+            tail = tail.next;
+        }
+        tail.next = (a != null) ? a : b;
+        return dummy.next;
+    }
+}`,
+      complexity: `<p><b>Time O(N log N)</b>: log N levels, O(N) merging per level. <b>Space O(log N)</b> recursion (O(1) with the bottom-up variant).</p>`
+    }
+  });
+
+  practice.push({
+    title: 'Copy List with Random Pointer',
+    level: 'Medium',
+    tags: ['hashmap', 'interweaving'],
+    companies: ['Amazon', 'Meta', 'Microsoft', 'Bloomberg'],
+    statement: `<p>Each node has <code>next</code> and an extra pointer <code>random</code> that can point to <b>any</b> node in the list or to null. Return a <b>deep copy</b>: brand-new nodes whose next and random pointers point into the <b>new</b> list, never into the original.</p>`,
+    constraints: `0 ≤ n ≤ 1000, -10<sup>4</sup> ≤ Node.val ≤ 10<sup>4</sup>, random is null or a node in the list`,
+    example: `<p>Original: ${H.c('b', '7')} → ${H.c('b', '13')} → 11 → 10 → 1, with random: 7→null, 13→7, 11→1, 10→11, 1→7.</p><p>Output: a new list ${H.c('g', "7' → 13' → 11' → 10' → 1'")} with randoms 13'→7', 11'→1', … The hard part: when we create 13', the copy 7' must already be findable.</p>`,
+    brute: {
+      why: `<p>Copy the nodes into an ArrayList, then for every random pointer walk the original list from the head to find its <b>index</b>, and point to the copy at that index. Each lookup is O(N) → <b>O(N²)</b>.</p>`,
+      code: `
+class Node { int val; Node next, random; Node(int val) { this.val = val; } }
+
+class Solution {
+    public Node copyRandomList(Node head) {
+        List<Node> copies = new ArrayList<>();
+        for (Node c = head; c != null; c = c.next) copies.add(new Node(c.val));
+        for (int i = 0; i + 1 < copies.size(); i++) copies.get(i).next = copies.get(i + 1);
+        int i = 0;
+        for (Node c = head; c != null; c = c.next, i++) {
+            if (c.random == null) continue;
+            int j = 0;
+            for (Node d = head; d != c.random; d = d.next) j++;   // O(N) search for the index
+            copies.get(i).random = copies.get(j);
+        }
+        return copies.isEmpty() ? null : copies.get(0);
+    }
+}`
+    },
+    mcq: { q: 'After weaving copies in (A → A\' → B → B\' → …), how do you set <code>A\'.random</code>?', options: ['A\'.random = A.random', 'A\'.random = A.random.next', 'A\'.random = A.next.random', 'A\'.random = A.random.random'], answer: 1, explain: 'Every original X is immediately followed by its copy X\'. So the copy of A.random is A.random.next (when A.random is not null).' },
+    hints: [
+      `<p>The core need is a mapping original → copy. A HashMap gives it in O(N) memory (two passes). Can the list itself store the mapping?</p>`,
+      `<p>Interweave: insert each copy right after its original. Then "copy of X" = <code>X.next</code>, so randoms can be set in one pass.</p>`,
+      `<p>Three passes: (1) weave copies in; (2) <code>c.next.random = (c.random == null) ? null : c.random.next</code>; (3) unweave, restoring the original next pointers and linking the copies to each other. Handle head == null.</p>`
+    ],
+    solution: {
+      approach: `<p>Interweave copies to get an O(1)-memory original→copy mapping, fix randoms, then split the two lists. (A HashMap&lt;Node, Node&gt; version is equally accepted and simpler; it uses O(N) extra memory.)</p>`,
+      code: `
+class Node { int val; Node next, random; Node(int val) { this.val = val; } }
+
+class Solution {
+    public Node copyRandomList(Node head) {
+        if (head == null) return null;
+        // 1) weave: A -> A' -> B -> B' -> ...
+        for (Node c = head; c != null; c = c.next.next) {
+            Node copy = new Node(c.val);
+            copy.next = c.next;
+            c.next = copy;
+        }
+        // 2) randoms: the copy of X.random is X.random.next
+        for (Node c = head; c != null; c = c.next.next) {
+            if (c.random != null) c.next.random = c.random.next;
+        }
+        // 3) unweave: restore the original list and chain the copies
+        Node newHead = head.next;
+        for (Node c = head; c != null; c = c.next) {
+            Node copy = c.next;
+            c.next = copy.next;                                      // original skips its copy
+            copy.next = (copy.next != null) ? copy.next.next : null; // copy skips the next original
+        }
+        return newHead;
+    }
+}`,
+      complexity: `<p><b>Time O(N)</b> (three linear passes). <b>Space O(1)</b> extra besides the N new nodes (HashMap version: O(N)).</p>`,
+      followUps: ['Deep-copy a general graph (Clone Graph) — why do you need a visited map there?', 'Why must step 3 restore the original list?']
+    }
+  });
+
+  practice.push({
+    title: 'Find the Duplicate Number (Floyd on an array)',
+    level: 'Medium',
+    tags: ['Floyd', 'fast & slow', 'hidden linked list'],
+    companies: ['Amazon', 'Google', 'Microsoft', 'Bloomberg'],
+    statement: `<p>An array <code>nums</code> has n + 1 integers, each in the range [1, n]. Exactly one value is repeated (possibly many times). Return it <b>without modifying</b> the array and using only <b>O(1)</b> extra space.</p>`,
+    constraints: `1 ≤ n ≤ 10<sup>5</sup>, nums.length = n + 1, 1 ≤ nums[i] ≤ n`,
+    example: `${H.arr([1, 3, 4, 2, 2], { hl: { 3: 'y', 4: 'y' } })}<p>→ ${H.c('g', '2')}. Read it as a linked list: index → nums[index]: 0 → 1 → 3 → 2 → 4 → ${H.c('p', '2')} → 4 → … Two indices (3 and 4) both point to 2, so 2 is where the cycle starts — the duplicate.</p>`,
+    brute: {
+      why: `<p>A HashSet of seen values returns the first repeat in O(N) time but O(N) memory. Sorting a copy also costs O(N) memory, and sorting in place modifies the array — both forbidden.</p>`,
+      code: `
+int findDuplicate(int[] nums) {
+    Set<Integer> seen = new HashSet<>();
+    for (int x : nums) if (!seen.add(x)) return x;
+    return -1;
+}`
+    },
+    mcq: { q: 'Why must the sequence 0 → nums[0] → nums[nums[0]] → … contain a cycle?', options: ['Because the array is sorted', 'n + 1 indices map into only n values 1..n, and index 0 is never a target, so the walk must eventually repeat', 'Because nums contains 0', 'It does not always'], answer: 1, explain: 'Every step lands on an index in 1..n — a finite set — so the walk repeats. The node with two incoming arrows (two indices holding the same value) is the cycle entrance.' },
+    hints: [
+      `<p>Treat each index i as a node whose <code>next</code> is <code>nums[i]</code>. A duplicate value means two nodes point to the same next node.</p>`,
+      `<p>Start at index 0 (nothing points to it, so it is a true "head" outside the cycle). Run Floyd: slow = nums[slow], fast = nums[nums[fast]].</p>`,
+      `<p>Phase 2 as in Linked List Cycle II: reset one pointer to the start, move both one step at a time; they meet at the cycle entrance, which is the duplicate value.</p>`
+    ],
+    solution: {
+      approach: `<p>Floyd's cycle detection on the implicit list i → nums[i]; the cycle start is the duplicate.</p>`,
+      code: `
+class Solution {
+    public int findDuplicate(int[] nums) {
+        int slow = 0, fast = 0;
+        do {                                   // phase 1: meet inside the cycle
+            slow = nums[slow];
+            fast = nums[nums[fast]];
+        } while (slow != fast);
+        int p = 0;                             // phase 2: from the head (index 0)
+        while (p != slow) {
+            p = nums[p];
+            slow = nums[slow];
+        }
+        return p;                              // cycle entrance = duplicate value
+    }
+}`,
+      dry: { head: ['phase', 'slow', 'fast / p', 'note (nums = 1 3 4 2 2)'], rows: [['1', '1', '3', ''], ['1', '3', '4', 'fast: 3 → 2 → 4'], ['1', '2', '4', 'fast: 4 → 2 → 4'], ['1', '4', '4', '<span class="c-r">meet</span>'], ['2', '2', 'p = 1', 'p from 0'], ['2', '4', 'p = 3', ''], ['2', '2', 'p = 2', '<span class="c-g">equal → 2</span>']] },
+      complexity: `<p><b>Time O(N)</b>, <b>Space O(1)</b>, array untouched.</p>`,
+      followUps: ['Binary search on the value range (count how many ≤ mid) gives O(N log N) with O(1) space — compare.', 'Why would Floyd fail if the values could be 0?']
+    }
+  });
+
+  // =====================================================================
+  // PRACTICE — Hard
+  // =====================================================================
+  practice.push({
+    title: 'Merge k Sorted Lists',
+    level: 'Hard',
+    tags: ['heap', 'merge', 'divide and conquer'],
+    companies: ['Amazon', 'Google', 'Meta', 'Microsoft', 'Uber'],
+    statement: `<p>You are given an array of <code>k</code> linked lists, each sorted ascending. Merge them all into one sorted linked list and return it.</p>`,
+    constraints: `0 ≤ k ≤ 10<sup>4</sup>, 0 ≤ each length ≤ 500, total nodes N ≤ 10<sup>4</sup>, -10<sup>4</sup> ≤ Node.val ≤ 10<sup>4</sup>`,
+    example: `<p>${H.c('b', '1 → 4 → 5')}, ${H.c('y', '1 → 3 → 4')}, ${H.c('p', '2 → 6')} → ${H.c('g', '1 → 1 → 2 → 3 → 4 → 4 → 5 → 6')}.</p><p>At every step the smallest remaining value is one of the k <b>fronts</b> — a min-heap of the fronts gives it in O(log k).</p>`,
+    brute: {
+      why: `<p>Merge the lists one by one into an accumulator. The accumulator grows, so early nodes get re-walked by every later merge: total O(N·k). With k = 10<sup>4</sup> lists that is far too slow.</p>`,
+      code: `
+ListNode mergeKLists(ListNode[] lists) {
+    ListNode acc = null;
+    for (ListNode l : lists) acc = mergeTwo(acc, l);   // acc keeps growing: O(N*k) total
+    return acc;
+}
+
+ListNode mergeTwo(ListNode a, ListNode b) {
+    ListNode dummy = new ListNode(0), t = dummy;
+    while (a != null && b != null) {
+        if (a.val <= b.val) { t.next = a; a = a.next; } else { t.next = b; b = b.next; }
+        t = t.next;
+    }
+    t.next = (a != null) ? a : b;
+    return dummy.next;
+}`
+    },
+    mcq: { q: 'What does the min-heap hold at any moment?', options: ['All N nodes', 'At most k nodes: the current front of each non-empty list', 'Only the k smallest values overall', 'The list heads in their original order'], answer: 1, explain: 'Each list contributes only its current front; after popping a node we push its next. So the heap has ≤ k entries, and each push/pop is O(log k).' },
+    hints: [
+      `<p>Generalise "compare the two fronts" to "pick the smallest of k fronts". Which structure returns the minimum of k items quickly and supports inserting a replacement?</p>`,
+      `<p><code>PriorityQueue&lt;ListNode&gt;</code> ordered by val. Seed it with every non-null head; dummy + tail for the result.</p>`,
+      `<p>Loop: poll the smallest node, attach it to tail, push its <code>next</code> if not null. Skip null lists (k may be 0 or lists may be empty). Alternative: divide &amp; conquer pairwise merging, also O(N log k).</p>`
+    ],
+    solution: {
+      approach: `<p>Min-heap of the k fronts; each node is pushed and popped once.</p>`,
+      code: `
+class Solution {
+    public ListNode mergeKLists(ListNode[] lists) {
+        PriorityQueue<ListNode> pq = new PriorityQueue<>((a, b) -> Integer.compare(a.val, b.val));
+        for (ListNode head : lists) if (head != null) pq.offer(head);   // k fronts
+        ListNode dummy = new ListNode(0), tail = dummy;
+        while (!pq.isEmpty()) {
+            ListNode smallest = pq.poll();             // O(log k)
+            tail.next = smallest;
+            tail = smallest;
+            if (smallest.next != null) pq.offer(smallest.next);   // its list's new front
+        }
+        return dummy.next;
+    }
+}`,
+      alt: [{ lang: 'python', code: `import heapq
+
+class Solution:
+    def mergeKLists(self, lists):
+        heap = []
+        for i, node in enumerate(lists):
+            if node:
+                heapq.heappush(heap, (node.val, i, node))   # i breaks ties (nodes are not comparable)
+        dummy = tail = ListNode(0)
+        while heap:
+            _, i, node = heapq.heappop(heap)
+            tail.next = tail = node
+            if node.next:
+                heapq.heappush(heap, (node.next.val, i, node.next))
+        return dummy.next` }],
+      complexity: `<p><b>Time O(N log k)</b>: N pushes and pops on a heap of size ≤ k. <b>Space O(k)</b> for the heap (the output reuses the input nodes).</p>`,
+      followUps: ['Divide &amp; conquer: merge lists[i] with lists[i + step] for step = 1, 2, 4, … — O(N log k) time, O(1) extra space.', 'The lists are huge files on disk (external merge sort): what changes?']
+    }
+  });
+
+  practice.push({
+    title: 'LFU Cache',
+    level: 'Hard',
+    tags: ['design', 'hashmap', 'doubly linked list'],
+    companies: ['Amazon', 'Google', 'Microsoft'],
+    statement: `<p>Design <code>LFUCache(capacity)</code> with <code>get(key)</code> and <code>put(key, value)</code>, both <b>O(1)</b> average. When full, evict the key with the <b>lowest use count</b>; if several keys tie, evict the <b>least recently used</b> among them. Every get or put on a key increases its use count by 1 (a new key starts at 1).</p>`,
+    constraints: `1 ≤ capacity ≤ 10<sup>4</sup>, 0 ≤ key ≤ 10<sup>5</sup>, 0 ≤ value ≤ 10<sup>9</sup>, at most 2·10<sup>5</sup> calls`,
+    example: `<p>capacity 2: put(1,1), put(2,2), get(1) → 1 (count: 1→2, 2→1), put(3,3) → ${H.c('r', 'evicts 2')} (lowest count), get(2) → -1, get(3) → 3 (count 2), put(4,4) → keys 1 and 3 both have count 2; 1 was used less recently → ${H.c('r', 'evicts 1')}. get(1) → -1, get(3) → 3, get(4) → 4.</p>`,
+    brute: {
+      why: `<p>Store value, count and last-used time per key; on eviction scan every key for the smallest (count, time). get/put are O(1) but each eviction is <b>O(capacity)</b> → up to 2·10<sup>9</sup> steps in the worst case.</p>`,
+      code: `
+class LFUCache {
+    private final int capacity;
+    private long clock = 0;
+    private final Map<Integer, long[]> data = new HashMap<>();   // key -> {value, count, lastUsed}
+
+    public LFUCache(int capacity) { this.capacity = capacity; }
+
+    public int get(int key) {
+        long[] d = data.get(key);
+        if (d == null) return -1;
+        d[1]++; d[2] = clock++;
+        return (int) d[0];
+    }
+
+    public void put(int key, int value) {
+        long[] d = data.get(key);
+        if (d != null) { d[0] = value; d[1]++; d[2] = clock++; return; }
+        if (data.size() == capacity) {
+            int victim = -1; long[] best = null;
+            for (Map.Entry<Integer, long[]> e : data.entrySet()) {      // O(N) scan
+                long[] v = e.getValue();
+                if (best == null || v[1] < best[1] || (v[1] == best[1] && v[2] < best[2])) { best = v; victim = e.getKey(); }
+            }
+            data.remove(victim);
+        }
+        data.put(key, new long[]{value, 1, clock++});
+    }
+}`
+    },
+    mcq: { q: 'How can eviction find "lowest count, then least recent" in O(1)?', options: ['Sort keys on every call', 'Keep a bucket (recency-ordered list) per count plus the current minimum count', 'A TreeMap of counts only', 'A single LRU list'], answer: 1, explain: 'Bucket[c] is an LRU-ordered list of keys with count c. minFreq tells which bucket to evict from, and its oldest key is the victim. Counts only increase by 1, so minFreq is easy to maintain.' },
+    hints: [
+      `<p>It is "many LRU caches, one per use count". Inside one count, the order is recency — exactly the LRU list you already built.</p>`,
+      `<p>Maps: key → value, key → count, count → <code>LinkedHashSet&lt;key&gt;</code> (a hash set that remembers insertion order — itself a hash table + doubly linked list). Plus an int <code>minFreq</code>.</p>`,
+      `<p>touch(key): remove from bucket[c]; if that bucket empties and c == minFreq, minFreq++; add to bucket[c+1]. New key: evict the first element of bucket[minFreq] if full, then insert with count 1 and set minFreq = 1. Update before evict for existing keys.</p>`
+    ],
+    solution: {
+      approach: `<p>Frequency buckets, each an insertion-ordered set (LRU within the same count), plus minFreq. Every operation is a constant number of hash operations.</p>`,
+      code: `
+class LFUCache {
+    private final int capacity;
+    private int minFreq = 0;
+    private final Map<Integer, Integer> vals = new HashMap<>();
+    private final Map<Integer, Integer> freq = new HashMap<>();
+    private final Map<Integer, LinkedHashSet<Integer>> buckets = new HashMap<>();   // count -> keys, oldest first
+
+    public LFUCache(int capacity) { this.capacity = capacity; }
+
+    public int get(int key) {
+        if (!vals.containsKey(key)) return -1;
+        touch(key);
+        return vals.get(key);
+    }
+
+    public void put(int key, int value) {
+        if (capacity <= 0) return;
+        if (vals.containsKey(key)) {            // existing: update + count a use (never evicts)
+            vals.put(key, value);
+            touch(key);
+            return;
+        }
+        if (vals.size() == capacity) {          // evict: least frequent, then least recent
+            LinkedHashSet<Integer> set = buckets.get(minFreq);
+            int victim = set.iterator().next(); // oldest key in the lowest bucket
+            set.remove(victim);
+            if (set.isEmpty()) buckets.remove(minFreq);
+            vals.remove(victim);
+            freq.remove(victim);
+        }
+        vals.put(key, value);
+        freq.put(key, 1);
+        buckets.computeIfAbsent(1, f -> new LinkedHashSet<>()).add(key);
+        minFreq = 1;                            // a brand-new key always has the lowest count
+    }
+
+    // Move key from bucket[c] to bucket[c + 1]
+    private void touch(int key) {
+        int c = freq.get(key);
+        LinkedHashSet<Integer> set = buckets.get(c);
+        set.remove(key);
+        if (set.isEmpty()) {
+            buckets.remove(c);
+            if (minFreq == c) minFreq = c + 1;  // the key itself now lives in c + 1
+        }
+        freq.put(key, c + 1);
+        buckets.computeIfAbsent(c + 1, f -> new LinkedHashSet<>()).add(key);   // newest in its bucket
+    }
+}`,
+      complexity: `<p><b>Time O(1)</b> average per call (hash map/set operations; LinkedHashSet removal is O(1) via its internal doubly linked list). <b>Space O(capacity)</b>.</p>`,
+      followUps: ['Implement the buckets as your own doubly linked lists instead of LinkedHashSet.', 'LFU never forgets old popularity — how do real caches (TinyLFU) age the counts?']
+    }
+  });
+
+  practice.push({
+    title: 'Design a Text Editor (cursor in a doubly linked list)',
+    level: 'Hard',
+    tags: ['design', 'doubly linked list', 'sentinel'],
+    companies: ['Google', 'Microsoft', 'Amazon'],
+    statement: `<p>Build a text editor with a cursor:</p><ul><li><code>addText(text)</code>: insert text at the cursor; the cursor ends after it.</li><li><code>deleteText(k)</code>: delete up to k characters to the <b>left</b> of the cursor; return how many were deleted.</li><li><code>cursorLeft(k)</code> / <code>cursorRight(k)</code>: move the cursor up to k positions; return the last <b>min(10, len)</b> characters to the left of the cursor.</li></ul><p>Follow-up: each call in O(k) time, independent of the total text length.</p>`,
+    constraints: `1 ≤ text.length, k ≤ 40, text has lowercase letters, at most 2·10<sup>4</sup> calls in total`,
+    example: `<p>addText("leetcode") → <code>leetcode|</code>; deleteText(4) → ${H.c('g', '4')} (<code>leet|</code>); addText("practice") → <code>leetpractice|</code>; cursorRight(3) → ${H.c('g', '"etpractice"')} (already at the end); cursorLeft(8) → ${H.c('g', '"leet"')} (<code>leet|practice</code>); deleteText(10) → ${H.c('g', '4')} (only 4 chars on the left); cursorLeft(2) → ${H.c('g', '""')}; cursorRight(6) → ${H.c('g', '"practi"')}.</p>`,
+    brute: {
+      why: `<p>One StringBuilder plus an integer cursor. <code>insert</code> and <code>delete</code> in the middle shift every character to the right of the cursor: <b>O(total length)</b> per call, even when k is tiny. Up to 2·10<sup>4</sup> × 8·10<sup>5</sup> character moves in the worst case.</p>`,
+      code: `
+class TextEditor {
+    private final StringBuilder sb = new StringBuilder();
+    private int cursor = 0;
+
+    public void addText(String text) { sb.insert(cursor, text); cursor += text.length(); }   // shifts the right part
+
+    public int deleteText(int k) {
+        int d = Math.min(k, cursor);
+        sb.delete(cursor - d, cursor);                                                        // shifts again
+        cursor -= d;
+        return d;
+    }
+
+    public String cursorLeft(int k) { cursor = Math.max(0, cursor - k); return sb.substring(Math.max(0, cursor - 10), cursor); }
+
+    public String cursorRight(int k) { cursor = Math.min(sb.length(), cursor + k); return sb.substring(Math.max(0, cursor - 10), cursor); }
+}`
+    },
+    mcq: { q: 'Represent the cursor as "it sits right after node <code>cur</code>". What should <code>cur</code> be when the cursor is at the very start of the text?', options: ['null', 'A sentinel node placed before the first character', 'The first character', 'The last character'], answer: 1, explain: 'A sentinel gives the "start of text" position a real node, so inserting at the start and stopping on deletes need no null checks — the dummy-node trick again.' },
+    hints: [
+      `<p>Inserting or deleting next to a position you already hold is the one thing linked lists do in O(1). The cursor is that position.</p>`,
+      `<p>Doubly linked list of characters with a head sentinel; field <code>cur</code> = the node just left of the cursor (sentinel at the start). Moving left/right is following prev/next.</p>`,
+      `<p>addText: insert each char after cur and advance cur. deleteText: while k-- &gt; 0 and cur is not the sentinel, unlink cur and step to cur.prev. To report, walk back from cur at most 10 nodes and reverse the collected characters.</p>`
+    ],
+    solution: {
+      approach: `<p>Doubly linked list + sentinel + cursor node; every operation touches only O(k) nodes (and at most 10 for the report).</p>`,
+      code: `
+class TextEditor {
+    private static class Node {
+        char ch;
+        Node prev, next;
+        Node(char ch) { this.ch = ch; }
+    }
+
+    private final Node head = new Node('#');   // sentinel: "start of text"
+    private Node cur = head;                   // the cursor sits right AFTER this node
+
+    public void addText(String text) {
+        for (char c : text.toCharArray()) {
+            Node n = new Node(c);
+            n.prev = cur;
+            n.next = cur.next;
+            if (cur.next != null) cur.next.prev = n;
+            cur.next = n;
+            cur = n;                            // typing moves the cursor forward
+        }
+    }
+
+    public int deleteText(int k) {
+        int deleted = 0;
+        while (k-- > 0 && cur != head) {       // remove the char just left of the cursor
+            Node left = cur.prev;
+            left.next = cur.next;
+            if (cur.next != null) cur.next.prev = left;
+            cur = left;
+            deleted++;
+        }
+        return deleted;
+    }
+
+    public String cursorLeft(int k) {
+        while (k-- > 0 && cur != head) cur = cur.prev;
+        return leftText();
+    }
+
+    public String cursorRight(int k) {
+        while (k-- > 0 && cur.next != null) cur = cur.next;
+        return leftText();
+    }
+
+    private String leftText() {                // last min(10, len) chars left of the cursor
+        StringBuilder sb = new StringBuilder();
+        for (Node n = cur; n != head && sb.length() < 10; n = n.prev) sb.append(n.ch);
+        return sb.reverse().toString();
+    }
+}`,
+      complexity: `<p><b>Time O(k)</b> per call (plus ≤ 10 steps for the report), independent of text length. <b>Space O(total characters)</b> — one node per character, which is heavy; the alternative "two stacks" design (left of cursor, right of cursor) has the same complexity with less memory.</p>`,
+      followUps: ['Implement it with two ArrayDeques (left stack, right stack) and compare memory.', 'Real editors use gap buffers, piece tables or ropes — what does each optimise?']
+    }
+  });
+
+  // =====================================================================
+  // QUIZ
+  // =====================================================================
+  quiz.push(
+    { q: 'What does it cost to read the k-th element of a singly linked list, given only the head?', options: ['O(1)', 'O(log k)', 'O(k)', 'O(N²)'], answer: 2, explain: 'There is no index arithmetic: you follow next k times. Arrays get O(1) because the address of element k can be computed directly.' },
+    { q: 'You hold a reference to node X in a singly list. Inserting a new node right <b>after</b> X costs…', options: ['O(1)', 'O(N)', 'O(log N)', 'Impossible without the head'], answer: 0, explain: 'newNode.next = X.next; X.next = newNode. Two writes, no walking. (Inserting BEFORE X would need X\'s predecessor.)' },
+    { q: 'A singly linked list keeps both head and tail pointers. Which operation is still O(N)?', options: ['addFirst', 'addLast', 'removeFirst', 'removeLast'], answer: 3, explain: 'To remove the tail you must set the second-last node\'s next to null, and a singly list cannot step back from the tail to find it.' },
+    { q: 'What problem does a dummy (sentinel) node before the head solve?', options: ['It makes the list sorted', 'Every real node, including the head, now has a predecessor, so head insert/delete need no special case', 'It speeds up traversal', 'It prevents cycles'], answer: 1, explain: 'Most edits change prev.next. The dummy is the head\'s prev; at the end you return dummy.next, which may be a new head.' },
+    { q: 'Remove the 2nd node from the end of D → 1 → 2 → 3 → 4 → 5 with fast and slow starting at the dummy D. How many steps does fast take alone before both move together?', options: ['1', '2', '3', '5'], answer: 2, explain: 'n + 1 = 3. Then when fast becomes null, slow is on 3 — just before the victim 4.' },
+    { q: 'List 1 → 2 → 3 → 4 → 5 → 6 with <code>while (fast != null &amp;&amp; fast.next != null)</code>, both starting at head. Where does slow stop?', options: ['3', '4', '5', '6'], answer: 1, explain: 'Rounds: (2, 3), (3, 5), (4, null). The even length has two middles; this condition returns the second one, 4.' },
+    { q: 'In Floyd\'s cycle detection, why compare <code>slow == fast</code> instead of <code>slow.val == fast.val</code>?', options: ['It is faster', 'Different nodes may hold equal values; only the same node proves the pointers met', 'Values can be null', 'Java forbids comparing ints'], answer: 1, explain: 'A list like 1 → 2 → 1 → null has repeated values but no cycle. Identity comparison is what matters.' },
+    { q: 'Why does Floyd use speeds 1 and 2 rather than 1 and 3?', options: ['Speed 3 is slower', 'With a speed difference of 1 the gap shrinks by exactly 1 per round, so the pointers cannot jump over each other', 'Speed 3 uses more memory', 'There is no reason'], answer: 1, explain: 'With difference 2, an odd gap on an even-length loop stays odd forever — they could circle without ever meeting.' },
+    { q: 'At the end of the iterative reversal loop, which variable holds the new head?', options: ['head', 'curr', 'prev', 'next'], answer: 2, explain: 'curr is null (we walked off the end); prev is the last node processed, i.e. the old tail = new head. Returning head returns the new tail.' },
+    { q: 'Reverse 1 → 2 → 3 → 4 → 5 → 6 → 7 in groups of k = 3 (leave a short tail as is). Result?', options: ['3 → 2 → 1 → 6 → 5 → 4 → 7', '7 → 6 → 5 → 4 → 3 → 2 → 1', '3 → 2 → 1 → 4 → 5 → 6 → 7', '1 → 2 → 3 → 6 → 5 → 4 → 7'], answer: 0, explain: 'Two full groups [1 2 3] and [4 5 6] are reversed; the single leftover 7 stays.' },
+    { q: 'Merging sorted lists of lengths N and M by splicing nodes uses how much extra space?', options: ['O(1)', 'O(N + M)', 'O(log(N + M))', 'O(N · M)'], answer: 0, explain: 'Only a dummy node and a few pointers; existing nodes are re-hooked. (The recursive version uses O(N + M) stack.)' },
+    { q: 'In an LRU cache built from HashMap + doubly linked list, why does each node store its <b>key</b>?', options: ['To sort the list', 'When the LRU node is evicted from the list, we need its key to remove it from the map', 'To compute hash codes faster', 'It is not needed'], answer: 1, explain: 'Eviction starts from tail.prev (a node). Without the key stored inside, you could not find which map entry to delete.' },
+    { q: 'Which Java constructor turns a LinkedHashMap into an LRU-ordered map?', options: ['new LinkedHashMap&lt;&gt;(16, 0.75f, false)', 'new LinkedHashMap&lt;&gt;(16, 0.75f, true)', 'new LinkedHashMap&lt;&gt;()', 'new TreeMap&lt;&gt;()'], answer: 1, explain: 'The third argument accessOrder = true moves an entry to the end on every get/put. Override removeEldestEntry to evict when size() &gt; capacity.' }
+  );
+
+  // =====================================================================
+  // INTERVIEW Q&A
+  // =====================================================================
+  interview.push(
+    {
+      q: 'When would you choose a linked list over an array (or ArrayList)?', level: 'B',
+      a: `<p>Choose by the <b>operations</b>. Arrays give O(1) access by index, compact memory and great cache behaviour; inserting or deleting in the middle shifts elements (O(N)). Linked lists give O(1) insert/delete <b>at a node you already hold</b> (or at the ends), and grow without copying, but access by index is O(N), each node carries pointer overhead, and walking the list causes cache misses.</p>
+<p>So: lots of indexing, sorting or binary search → array. Frequent add/remove at the ends or at known positions, or the need to move items around by handle (LRU cache, task schedulers, undo history) → linked list. In Java, <code>ArrayList</code>/<code>ArrayDeque</code> win most real benchmarks; reach for a linked structure when the O(1) handle-based removal is truly needed.</p>`,
+      followUps: ['Why is LinkedList.get(i) in a loop a hidden O(N²)?', 'What is a cache miss and why does it hurt linked lists?']
+    },
+    {
+      q: 'Singly vs doubly linked list: what do you gain and what do you pay?', level: 'B',
+      a: `<p>A doubly linked list adds a <code>prev</code> pointer to each node. Gains: walk in both directions; delete a node you hold in O(1) (it knows its predecessor); remove the tail in O(1) with a tail pointer; insert before a node in O(1). Costs: one extra reference per node (more memory), twice as many pointer updates per insert/delete, and more ways to get it wrong (forgetting to fix <code>prev</code>, or <code>head</code>/<code>tail</code> at the ends).</p>
+<p>Java's <code>java.util.LinkedList</code> is doubly linked, which is why it implements <code>Deque</code> with O(1) operations at both ends.</p>`,
+      followUps: ['How do sentinel nodes simplify a doubly linked list?', 'What is an XOR linked list and why can\'t Java implement it?']
+    },
+    {
+      q: 'Explain the dummy node trick. When do you reach for it?', level: 'I',
+      a: `<p>Create a fake node whose <code>next</code> is the real head, run the algorithm as if the dummy were part of the list, and return <code>dummy.next</code>. Since most edits work on "the node before", and the head has no node before it, the dummy removes all head special cases.</p>
+<p>Signals: the head might be deleted or replaced (remove elements, remove N-th from end, remove duplicates II, reverse between left = 1, k-group reversal), or you are <b>building</b> a new list node by node (merge, partition, add two numbers) — then a dummy + tail pointer avoids "is the result empty?" checks. Cost is one node, O(1).</p>`,
+      followUps: ['Why must you return dummy.next instead of head?', 'Where do sentinels appear in real libraries (Linux list_head, std::list)?']
+    },
+    {
+      q: 'How does Floyd\'s cycle detection work, and how do you find where the cycle starts?', level: 'I',
+      a: `<p>Phase 1: slow moves 1 step, fast moves 2. If fast reaches null there is no cycle. If there is one, both eventually enter it and fast gains exactly 1 node per round, so it lands on slow within one lap.</p>
+<p>Phase 2: let a = distance head → cycle start, b = start → meeting point, c = loop length. At the meeting, slow walked a + b and fast walked 2(a + b) = a + b + k·c, so <b>a = k·c − b</b>. Walking a steps from the meeting point therefore ends at the start. Put one pointer at head, keep one at the meeting node, move both 1 step at a time; they meet at the cycle start. O(N) time, O(1) space.</p>`,
+      followUps: ['How do you get the cycle length?', 'Apply it to Find the Duplicate Number.', 'What is Brent\'s algorithm and when is it better?']
+    },
+    {
+      q: 'Reverse a singly linked list. Give the iterative and the recursive versions and compare them.', level: 'I',
+      a: `<p><b>Iterative:</b> <code>prev = null, curr = head</code>; loop: <code>next = curr.next; curr.next = prev; prev = curr; curr = next;</code> return prev. Invariant: prev heads the reversed prefix, curr heads the untouched suffix. O(N) time, O(1) space.</p>
+<p><b>Recursive:</b> if head or head.next is null return head; <code>newHead = reverse(head.next); head.next.next = head; head.next = null; return newHead;</code>. Also O(N) time, but O(N) stack frames — a 10<sup>6</sup>-node list can throw <code>StackOverflowError</code>, and Java has no tail-call elimination. Prefer iterative in production; show recursive to demonstrate understanding.</p>`,
+      followUps: ['What happens if you forget head.next = null in the recursive version?', 'How would you reverse only positions left..right?']
+    },
+    {
+      q: 'Remove the N-th node from the end in one pass. Walk me through edge cases.', level: 'I',
+      a: `<p>Dummy before head; fast and slow both start at the dummy. Move fast n + 1 steps, then move both until fast is null. The gap stays n + 1, so slow ends on the node <b>before</b> the target; do <code>slow.next = slow.next.next</code> and return <code>dummy.next</code>.</p>
+<p>Edge cases: n equals the length (the head is removed — slow stays on the dummy, and returning <code>head</code> would be a bug); single node with n = 1 (result is empty); n = 1 (remove the tail). Constraints guarantee 1 ≤ n ≤ length; if not guaranteed, check that fast does not become null during the first phase before the loop ends.</p>`,
+      followUps: ['Why n + 1 steps rather than n?', 'How is this useful on a stream you can read only once?']
+    },
+    {
+      q: 'How do you find the middle node, and which middle do different algorithms need?', level: 'I',
+      a: `<p>Slow moves 1, fast moves 2. With <code>while (fast != null &amp;&amp; fast.next != null)</code> slow ends at index ⌊N/2⌋: the middle for odd N and the <b>second</b> middle for even N (LeetCode "Middle of the Linked List", palindrome check). With <code>while (fast.next != null &amp;&amp; fast.next.next != null)</code> it ends on the <b>first</b> middle — required for merge sort / reorder list so that a 2-node list splits into 1 + 1 (otherwise the recursion never shrinks).</p>
+<p>It is one pass but the same ~1.5N pointer moves as count-then-walk; the benefit is a single traversal.</p>`,
+      followUps: ['How would you find the node at 1/3 of the list?', 'How do you delete the middle node (you need the node before it)?']
+    },
+    {
+      q: 'Design an LRU cache with O(1) get and put.', level: 'A',
+      a: `<p>Combine a <b>HashMap&lt;key, Node&gt;</b> with a <b>doubly linked list</b> ordered by recency, with head and tail sentinels (head side = most recent). get: look up the node; if present, unlink it and add it after head, return its value. put: if the key exists, update and move to front; otherwise, if full, evict <code>tail.prev</code> — unlink it and remove its <b>key</b> from the map (that is why nodes store keys) — then create the node, add to front, put into the map.</p>
+<p>Each call = one hash operation + a constant number of pointer writes → O(1) average; space O(capacity). In Java, <code>LinkedHashMap(16, 0.75f, true)</code> with <code>removeEldestEntry</code> gives the same in a few lines; in Python, <code>OrderedDict</code> with <code>move_to_end</code>/<code>popitem(last=False)</code>.</p>`,
+      followUps: ['What is the bug if you check capacity before checking whether the key exists?', 'How would you add TTL expiry?', 'How does LFU differ?']
+    },
+    {
+      q: 'Walk through Reverse Nodes in k-Group. What are the classic bugs?', level: 'A',
+      a: `<p>Dummy + <code>groupPrev</code>. Per group: find <code>kth</code> by walking k steps from groupPrev (null → fewer than k remain → stop). Let <code>groupNext = kth.next</code>. Reverse the group with prev starting at groupNext, looping until curr == groupNext — so the old first node automatically points to the rest. Save <code>oldFirst = groupPrev.next</code>, hook <code>groupPrev.next = kth</code>, set <code>groupPrev = oldFirst</code>. O(N) time (each node counted once and flipped once), O(1) space.</p>
+<p>Bugs: reversing the short tail; saving oldFirst <b>after</b> the hook; starting prev at null (the group's end is disconnected); counting with an off-by-one; returning head instead of dummy.next. Test k = 1, k = n, and n divisible by k.</p>`,
+      followUps: ['Write the recursive version — what is its stack depth?', 'Change it so the leftover group is reversed too.']
+    },
+    {
+      q: 'Why is java.util.LinkedList often slower than ArrayList, even for insert-heavy code?', level: 'A',
+      a: `<p>Big-O hides constants. Each LinkedList element costs a node object (~24 bytes) plus a boxed Integer (~16 bytes), allocated separately and scattered across the heap, so traversal is pointer chasing with frequent cache misses and more GC work. ArrayList stores references contiguously; shifting elements uses <code>System.arraycopy</code>, a fast block memory move, so an O(N) shift of thousands of elements is still cheap.</p>
+<p>Also, "O(1) insert in the middle" assumes you are already <b>at</b> the position; finding it is O(N) on a list. Use a linked list when you hold handles to nodes (iterators, map values) and must remove/move them in O(1); otherwise ArrayList or ArrayDeque usually wins.</p>`,
+      followUps: ['How would you measure it fairly (JMH)?', 'When does ArrayDeque beat LinkedList as a queue?']
+    },
+    {
+      q: 'How do you merge k sorted linked lists efficiently? Compare approaches.', level: 'A',
+      a: `<p>Three options with N total nodes: (1) merge one by one into an accumulator — O(N·k) because early nodes are re-walked; (2) a <b>min-heap</b> of the k fronts: pop the smallest, attach, push its next — O(N log k) time, O(k) space; (3) <b>divide and conquer</b>: merge pairs (0,1), (2,3)…, then pairs of results — log k rounds of O(N) work = O(N log k), O(1) extra space iteratively.</p>
+<p>The heap version is easiest to explain and streams naturally (useful for external merge sort over files); divide and conquer avoids the heap and its comparator overhead.</p>`,
+      followUps: ['In Python, why push (val, index, node) instead of (val, node)?', 'How does this relate to LSM-tree compaction?']
+    },
+    {
+      q: 'How do you find where two linked lists intersect? What if they might contain cycles?', level: 'I',
+      a: `<p>Without cycles: two pointers that switch to the other list's head when they reach the end. Each walks lenA + lenB − shared nodes before reaching the merge point, so they arrive together (or both reach null if there is no intersection). O(m + n) time, O(1) space. Alternative: compute lengths and advance the longer list by the difference.</p>
+<p>With possible cycles: run Floyd on each. If exactly one has a cycle they cannot intersect. If neither has one, use the method above. If both have cycles, they intersect only if they share the same cycle: walk around one cycle from its entry and check whether you meet the other's entry; if the entries are the same node, find the merge point on the tails like the acyclic case.</p>`,
+      followUps: ['Why compare node references, not values?', 'Can two lists intersect and then split apart again?']
+    },
+    {
+      q: 'A production LRU cache is a bottleneck under many threads. How do you scale it?', level: 'E',
+      a: `<p>Even <code>get</code> mutates the recency list, so a read-write lock does not help and a single lock serialises everything. Options: (1) <b>striping/segmentation</b> — hash keys into N independent LRU caches, each with its own lock (eviction becomes per-segment, an approximation of global LRU); (2) <b>buffered reads</b> — record "key was read" in lock-free ring buffers and replay them into the policy in batches (Caffeine's design), so the hot path only touches a ConcurrentHashMap; (3) <b>sampled/approximate LRU</b> — like Redis, keep a last-access timestamp per key and evict the oldest of a small random sample, avoiding a global list entirely; (4) CLOCK-style algorithms with a reference bit instead of moving nodes.</p>
+<p>Also revisit the policy: pure LRU is vulnerable to scans; W-TinyLFU, ARC or 2Q usually give better hit rates. Measure hit rate and p99 latency before and after.</p>`,
+      followUps: ['What consistency guarantees do you lose with segmentation?', 'How would you add per-entry TTL without a background thread per entry?']
+    },
+    {
+      q: 'Your linked-list code hangs or crashes on hidden tests. How do you debug pointer bugs systematically?', level: 'E',
+      a: `<p>A hang almost always means you created a <b>cycle</b> (e.g. forgot <code>head.next = null</code> in recursive reversal, or <code>ge.next = null</code> in partition) and something is printing or walking forever. A NullPointerException means you dereferenced <code>.next</code> without checking — usually on empty, one-node or two-node lists.</p>
+<p>Process: (1) dry-run on paper with boxes and arrows for 0, 1, 2, 3 nodes and the boundaries (head, tail, k = n); (2) add a safe printer that stops after, say, 2N steps and reports "cycle detected"; (3) assert invariants (DLL: <code>n.next.prev == n</code>; LRU: map size equals list size); (4) write a brute-force reference (copy to ArrayList, do the operation there) and compare on all small inputs or random inputs. AI assistants are good at generating those harnesses quickly; you still decide which invariants matter.</p>`,
+      followUps: ['Write a printer that detects cycles with Floyd before printing.', 'Which three inputs would you always test first for any list problem?']
+    }
+  );
+
   registerModule({
     id: 'dsa12',
     title: 'Linked Lists',
