@@ -3151,7 +3151,7 @@ for (const attempt of [
   () => Color.from('PURPLE'),
   () => Object.create(Color.prototype).name
 ]) {
-  try { attempt(); console.log('allowed?!'); } catch (e) { console.log(e.name + ': ' + e.message); }
+  try { attempt(); console.log('allowed?!'); } catch (e) { console.log(e.name + ': ' + e.message.split('\\n')[0].slice(0, 70)); }
 }
 console.log(Color.isColor(Color.RED), Color.isColor(Object.create(Color.prototype)), Color.isColor('RED'));
 const describe = (c) => {
