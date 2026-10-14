@@ -1965,7 +1965,7 @@ System.out.println(copy + " " + view);          // line E</pre>`,
 B: UOE
 C: UOE
 D: NPE
-[99, 2, 3, 4] [99, 2, 3]</pre><p>${H.c('b', 'Arrays.asList')} is a fixed-size <b>view</b> over the array (writes go through), ${H.c('r', 'List.of')} is fully immutable and null-hostile, and ${H.c('g', 'new ArrayList<>(…)')} is an independent growable copy.</p>`,
+[99, 2, 3, 4] [99, 2, 3]</pre><p>${H.c('b', 'Arrays.asList')} is a fixed-size <b>view</b> over the array (writes go through), ${H.c('r', 'List.of')} is fully immutable and null-hostile, and ${H.c('g', 'new ArrayList&lt;&gt;(…)')} is an independent growable copy.</p>`,
     brute: { why: `<p>The naive mental model "every List is an ArrayList" predicts <code>1</code> for line A (assuming a copy), no exceptions for B and C, and <code>false</code> for D. All four are wrong because the three lists have completely different internals.</p>`, code: `Integer[] arr = {1, 2, 3};
 List<Integer> assumedCopy = new ArrayList<>(Arrays.asList(arr));   // what people THINK asList does
 assumedCopy.set(0, 99);

@@ -114,7 +114,7 @@ public class PoolDemo {
             List<Runnable> neverRan = pool.shutdownNow();    // then force
             System.out.println("Dropped " + neverRan.size() + " tasks");
         }
-        System.out.println("completed = " + pool.getCompletedTaskCount());
+        System.out.println("completed by pool threads = " + pool.getCompletedTaskCount()); // tasks run by CallerRunsPolicy on main are not counted
     }
 }`, `
 // Java 19+: ExecutorService is AutoCloseable. close() = shutdown() + wait for all tasks.
@@ -1695,7 +1695,7 @@ public class CheckoutService {
                 .exceptionally(ex -> new Quote("guest", -1));             // any failure -> fallback
 
         Quote q = quote.join();                                            // only blocking point
-        System.out.println(q + " in ~" + (System.currentTimeMillis() - t0) + " ms"); // ~180 ms, not 300
+        System.out.println(q + " in ~" + (System.currentTimeMillis() - t0) + " ms"); // roughly max(100+80, 120) = 180 ms plus thread start-up, not 300
         IO.shutdown();
     }
 }`, `
@@ -1969,7 +1969,7 @@ public class VirtualDemo {
             }
         }                                                   // close() waits for all
         System.out.println(results.get(9_999).get());       // resp-9999
-        System.out.println("elapsed ~" + (System.currentTimeMillis() - t0) + " ms"); // ~100-300 ms, not 1000 s
+        System.out.println("elapsed ~" + (System.currentTimeMillis() - t0) + " ms"); // well under a second, not 1000 s
 
         Thread vt = Thread.ofVirtual().name("demo-vt").start(() ->
                 System.out.println(Thread.currentThread() + " virtual? " + Thread.currentThread().isVirtual()));

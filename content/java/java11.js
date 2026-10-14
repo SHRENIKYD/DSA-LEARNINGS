@@ -2032,4 +2032,1027 @@ class Bank {
       }
     }]
   });
-registerModule({ id: 'java11', title: 'Concurrency I', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
+
+  /* ======================================================================
+     PRACTICE — Easy
+     ====================================================================== */
+  practice.push({
+    title: 'Fix the Lost-Update Counter',
+    level: 'Easy', tags: ['race condition', 'synchronized', 'atomicity'], companies: ['TCS', 'Infosys', 'Amazon'],
+    statement: `<p>Two threads each call ${C('increment()')} 100,000 times on a shared ${C('Counter')}. The program prints numbers like 131,442 instead of 200,000. Make ${C('Counter')} thread-safe so the result is <b>always</b> 200,000, and make ${C('get()')} return an up-to-date value.</p>`,
+    constraints: `2–16 threads, up to 10<sup>7</sup> increments total.`,
+    example: `<p>Before: ${H.c('r', '131442, 158003, 200000, 119876 …')} (changes every run). After: ${H.c('g', '200000')} every run.</p>`,
+    brute: {
+      why: `<p>${C('count++')} is LOAD, ADD, STORE. Two threads interleaving between LOAD and STORE overwrite each other's work. The broken version also has no visibility guarantee for ${C('get()')}.</p>`,
+      code: `
+class Counter {
+    private int count;
+    void increment() { count++; }      // read-modify-write race
+    int get() { return count; }         // may also read a stale value
+}`
+    },
+    mcq: { q: 'Which fix is NOT sufficient on its own?', options: ['Make increment() and get() synchronized', 'Use AtomicInteger.incrementAndGet()', 'Declare count volatile', 'Guard count with a private lock object in both methods'], answer: 2, explain: 'volatile gives visibility, not atomicity: count++ on a volatile is still three steps and still loses updates.' },
+    hints: [
+      `<p>Hint 1: the bug is atomicity — LOAD, ADD, STORE must become one indivisible step.</p>`,
+      `<p>Hint 2: ${C('synchronized')} on both methods (same lock: ${C('this')}).</p>`,
+      `<p>Hint 3: the getter needs the lock too, for visibility. Alternative: ${C('AtomicInteger')} (lock-free CAS).</p>`
+    ],
+    solution: {
+      approach: `<p>Guard the field with one lock and use it on every access. The increment becomes atomic; the getter sees the latest value via the unlock → lock happens-before edge.</p>`,
+      code: `
+class SafeCounter {
+    private int count;                               // guarded by "this"
+    synchronized void increment() { count++; }
+    synchronized int get() { return count; }
+
+    public static void main(String[] args) throws InterruptedException {
+        SafeCounter c = new SafeCounter();
+        Runnable job = () -> { for (int i = 0; i < 100_000; i++) c.increment(); };
+        Thread t1 = new Thread(job), t2 = new Thread(job);
+        t1.start(); t2.start(); t1.join(); t2.join();
+        System.out.println(c.get());                 // always 200000
+    }
+}`,
+      alt: [{ lang: 'java', title: 'Lock-free alternative', code: `
+class AtomicCounter {
+    private final AtomicInteger count = new AtomicInteger();
+    void increment() { count.incrementAndGet(); }    // CAS loop: atomic without a lock
+    int get() { return count.get(); }                // volatile read semantics
+}` }],
+      dry: { head: ['time', 'T1', 'T2', 'count'], rows: [['1', 'lock, 0 → 1, unlock', 'BLOCKED', '1'], ['2', 'BLOCKED', 'lock, 1 → 2, unlock', '2'], ['…', '…', '…', '<span class="c-g">200000</span>']] },
+      complexity: `<p>O(1) per call; contention serializes increments. For very hot counters, ${C('LongAdder')} spreads updates across cells.</p>`,
+      followUps: ['When would LongAdder beat AtomicInteger?', 'Why is get() synchronized even though reading an int is atomic?']
+    }
+  });
+
+  practice.push({
+    title: 'Stop a Worker Thread Gracefully',
+    level: 'Easy', tags: ['volatile', 'interrupt', 'visibility'], companies: ['Microsoft', 'Zoho', 'Cisco'],
+    statement: `<p>A ${C('Worker')} runs a loop doing small units of work. Add a ${C('stop()')} method that another thread can call so the worker finishes its current unit and exits <b>promptly</b>. The current code sometimes never stops. Also make it respond to ${C('Thread.interrupt()')}.</p>`,
+    constraints: `Single worker thread, any thread may call stop(). The worker must exit within a few milliseconds of stop().`,
+    example: `<p>main starts the worker, sleeps 50 ms, calls ${C('stop()')}, then ${C('join(1000)')}. Expected: ${H.c('g', '"worker stopped cleanly after N units"')} and ${C('isAlive() == false')}.</p>`,
+    brute: {
+      why: `<p>A plain ${C('boolean running')} gives no visibility guarantee; the JIT may hoist the read out of the loop and the worker spins forever. ${C('Thread.stop()')} is not an option: it is unsafe and throws ${C('UnsupportedOperationException')} since JDK 20.</p>`,
+      code: `
+class BrokenWorker implements Runnable {
+    private boolean running = true;               // NOT volatile
+    public void run() { long n = 0; while (running) n++; System.out.println("stopped " + n); }
+    void stop() { running = false; }              // worker may never see this
+}`
+    },
+    mcq: { q: 'The worker sometimes blocks for a long time in <code>queue.take()</code>. Which stop mechanism reliably wakes it?', options: ['Setting the volatile flag', 'thread.interrupt()', 'Thread.yield()', 'Lowering its priority'], answer: 1, explain: 'A flag is only checked when the loop comes around. interrupt() makes blocking calls like take(), sleep() and wait() throw InterruptedException right away.' },
+    hints: [
+      `<p>Hint 1: the problem is visibility of the flag, not atomicity — a single writer sets it once.</p>`,
+      `<p>Hint 2: ${C('private volatile boolean running')}; loop on ${C('running && !Thread.currentThread().isInterrupted()')}.</p>`,
+      `<p>Hint 3: if the loop body blocks (sleep/wait/take), catch ${C('InterruptedException')}, restore the flag and exit.</p>`
+    ],
+    solution: {
+      approach: `<p>Cooperative cancellation: a volatile flag for visibility, plus interrupt support for blocking calls. The worker checks both on each iteration and exits cleanly, leaving no half-done work.</p>`,
+      code: `
+class Worker implements Runnable {
+    private volatile boolean running = true;     // volatile: the stop request becomes visible
+    private long processed;                      // only the worker thread touches this
+
+    public void run() {
+        while (running && !Thread.currentThread().isInterrupted()) {
+            processed++;                         // one unit of work
+            if (processed % 1_000 == 0) Thread.onSpinWait();
+        }
+        System.out.println("worker stopped cleanly after " + processed + " units");
+    }
+
+    void stop() { running = false; }
+
+    public static void main(String[] args) throws InterruptedException {
+        Worker w = new Worker();
+        Thread t = new Thread(w, "worker");
+        t.start();
+        Thread.sleep(50);
+        w.stop();                                // or t.interrupt() if it may be blocked
+        t.join(1_000);
+        System.out.println("alive after stop? " + t.isAlive());   // false
+    }
+}`,
+      dry: { head: ['time', 'main', 'worker', 'running'], rows: [['0 ms', 'start()', 'looping', 'true'], ['50 ms', 'stop() (volatile write)', 'looping', 'false'], ['50.01 ms', 'join()', 'reads false → exits loop, prints', 'false'], ['end', 'prints alive=false', 'TERMINATED', '—']] },
+      complexity: `<p>O(1) to stop; worst-case latency = one loop iteration.</p>`,
+      followUps: ['Why must you restore the interrupt flag after catching InterruptedException?', 'How does ExecutorService.shutdownNow() stop its workers?']
+    }
+  });
+
+  practice.push({
+    title: 'What Can This Print? start() vs run()',
+    level: 'Easy', tags: ['threads', 'start', 'output prediction'], companies: ['Capgemini', 'Accenture', 'Wipro'],
+    statement: `<p>Predict <b>every</b> possible output of the snippet below, then change it so the task really runs on the "worker" thread and "main done" is always printed <b>after</b> the task's line.</p>${P(`Thread t = new Thread(() ->
+    System.out.println("in " + Thread.currentThread().getName()), "worker");
+t.run();
+System.out.println("main done");`)}`,
+    constraints: `Standard JVM, single invocation from main.`,
+    example: `<p>Original: always ${H.c('y', 'in main')} then ${H.c('y', 'main done')} (only one possible output). Fixed: always ${H.c('g', 'in worker')} then ${H.c('g', 'main done')}.</p>`,
+    brute: {
+      why: `<p>${C('t.run()')} is an ordinary method call on main's stack: no thread is created, the Thread object stays NEW, and ${C('currentThread()')} is main. Many candidates answer "in worker" — that is the trap.</p>`,
+      code: `
+class RunTrap {
+    public static void main(String[] args) {
+        Thread t = new Thread(() -> System.out.println("in " + Thread.currentThread().getName()), "worker");
+        t.run();                                  // plain call: prints "in main"
+        System.out.println("main done");
+        System.out.println(t.getState());         // NEW — it never started
+    }
+}`
+    },
+    mcq: { q: 'If we only replace run() with start() (no join), how many different outputs are possible?', options: ['1', '2', '3', '4'], answer: 1, explain: '"in worker" / "main done" can appear in either order, so 2 outputs. join() pins the order to 1.' },
+    hints: [
+      `<p>Hint 1: only ${C('start()')} asks the JVM to create a new thread; ${C('run()')} is just the method the new thread will call.</p>`,
+      `<p>Hint 2: after ${C('start()')} the two prints race — order is not guaranteed.</p>`,
+      `<p>Hint 3: ${C('t.join()')} before the last print forces ordering (and makes the worker's writes visible).</p>`
+    ],
+    solution: {
+      approach: `<p>Use ${C('start()')} to get real concurrency, then ${C('join()')} to wait for completion before printing. join gives both ordering and a happens-before edge.</p>`,
+      code: `
+class RunFixed {
+    public static void main(String[] args) throws InterruptedException {
+        Thread t = new Thread(() -> System.out.println("in " + Thread.currentThread().getName()), "worker");
+        t.start();                                // new OS thread, its own stack
+        t.join();                                 // wait for it to finish
+        System.out.println("main done");          // always after "in worker"
+        System.out.println(t.getState());         // TERMINATED
+    }
+}`,
+      dry: { head: ['version', 'line 1', 'line 2', '#outputs'], rows: [['run()', 'in main', 'main done', '1'], ['start(), no join', 'in worker / main done', 'main done / in worker', '2'], ['start() + join()', 'in worker', 'main done', '1']] },
+      complexity: `<p>Constant time; the point is semantics, not cost (thread creation ≈ tens of µs).</p>`,
+      followUps: ['What does t.start() after t.run() do? (Works — the thread was still NEW.)', 'What does a second t.start() do?']
+    }
+  });
+
+  practice.push({
+    title: 'Make a Lazy Price Cache Thread-Safe',
+    level: 'Easy', tags: ['check-then-act', 'synchronized', 'HashMap'], companies: ['Flipkart', 'Swiggy', 'Amazon'],
+    statement: `<p>${C('PriceCache.get(sku)')} returns a cached price or loads it with a slow ${C('loader')} and caches it. Under concurrency the slow loader is called several times for the same SKU, and occasionally entries vanish. Make it thread-safe so each SKU is loaded <b>at most once</b>, and report the number of loads.</p>`,
+    constraints: `Up to 32 threads, 10<sup>4</sup> distinct SKUs; loader takes ~5 ms and is a pure function.`,
+    example: `<p>8 threads all call ${C('get("sku-1")')} at once → loader called ${H.c('g', 'exactly 1')} time, every thread gets the same price.</p>`,
+    brute: {
+      why: `<p>${C('get → null → load → put')} is check-then-act: several threads see null and all load. Plain ${C('HashMap')} is also not safe for concurrent writes — concurrent resizes can drop entries.</p>`,
+      code: `
+class UnsafePriceCache {
+    private final Map<String, Long> cache = new HashMap<>();
+    private final Function<String, Long> loader;
+    UnsafePriceCache(Function<String, Long> loader) { this.loader = loader; }
+    long get(String sku) {
+        Long v = cache.get(sku);                 // check
+        if (v == null) {
+            v = loader.apply(sku);               // several threads load the same sku
+            cache.put(sku, v);                   // concurrent puts can corrupt the HashMap
+        }
+        return v;
+    }
+}`
+    },
+    mcq: { q: 'Which ConcurrentHashMap call performs "get or load once" atomically per key?', options: ['putIfAbsent(k, loader.apply(k))', 'computeIfAbsent(k, loader)', 'get then put', 'containsKey then put'], answer: 1, explain: 'computeIfAbsent runs the mapping function at most once per absent key, atomically. putIfAbsent(k, loader.apply(k)) calls the loader before the check — every thread still loads.' },
+    hints: [
+      `<p>Hint 1: name the race — check (get null) then act (load + put).</p>`,
+      `<p>Hint 2: simplest: make ${C('get')} synchronized so check + load + put is one step.</p>`,
+      `<p>Hint 3: that serializes all SKUs; per-key atomicity with ${C('ConcurrentHashMap.computeIfAbsent')} lets different SKUs load in parallel (keep the loader short and non-recursive).</p>`
+    ],
+    solution: {
+      approach: `<p>Version 1: one lock around check-load-put (correct, simple, but loads of different SKUs wait for each other). Version 2 (alt): ${C('computeIfAbsent')} on a ConcurrentHashMap gives per-key atomicity — the standard production answer.</p>`,
+      code: `
+class PriceCache {
+    private final Map<String, Long> cache = new HashMap<>();   // guarded by "this"
+    private final Function<String, Long> loader;
+    private int loads;                                          // guarded by "this"
+
+    PriceCache(Function<String, Long> loader) { this.loader = loader; }
+
+    synchronized long get(String sku) {
+        Long v = cache.get(sku);              // check ...
+        if (v == null) {
+            v = loader.apply(sku);            // ... and act under the same lock: loads at most once
+            loads++;
+            cache.put(sku, v);
+        }
+        return v;
+    }
+
+    synchronized int loads() { return loads; }
+}`,
+      alt: [{ lang: 'java', title: 'Per-key atomic version', code: `
+class ConcurrentPriceCache {
+    private final ConcurrentHashMap<String, Long> cache = new ConcurrentHashMap<>();
+    private final AtomicInteger loads = new AtomicInteger();
+    private final Function<String, Long> loader;
+
+    ConcurrentPriceCache(Function<String, Long> loader) { this.loader = loader; }
+
+    long get(String sku) {
+        return cache.computeIfAbsent(sku, k -> {   // runs at most once per absent key
+            loads.incrementAndGet();
+            return loader.apply(k);
+        });
+    }
+
+    int loads() { return loads.get(); }
+}` }],
+      dry: { head: ['time', 'T1', 'T2', 'loads'], rows: [['1', 'get(sku-1): miss → load', 'BLOCKED', '1'], ['2', 'put, unlock', 'get(sku-1): hit', '1'], ['3', '—', 'returns cached price', '<span class="c-g">1</span>']] },
+      complexity: `<p>Synchronized version: O(1) + loader time, fully serialized. computeIfAbsent: only threads asking for the <b>same</b> missing key wait.</p>`,
+      followUps: ['What happens if the loader throws?', 'Why must the computeIfAbsent function not modify the same map?']
+    }
+  });
+
+  /* ======================================================================
+     PRACTICE — Medium
+     ====================================================================== */
+  practice.push({
+    title: 'Print in Order (LeetCode 1114)',
+    level: 'Medium', tags: ['wait/notify', 'ordering', 'LeetCode concurrency'], companies: ['Microsoft', 'Apple', 'Bloomberg'],
+    statement: `<p>One ${C('Foo')} instance is shared by three threads: A calls ${C('first()')}, B calls ${C('second()')}, C calls ${C('third()')} — started in <b>any</b> order. Guarantee the output is always "firstsecondthird".</p>`,
+    constraints: `Threads may start in any order; each method is called exactly once.`,
+    example: `<p>Start order C, A, B → output ${H.c('g', 'firstsecondthird')}. C must wait until second has run; B must wait until first has run.</p>`,
+    brute: {
+      why: `<p>Spin on a plain int ${C('stage')}: wastes CPU and, without volatile, the spinning thread may never see the update (hoisted read) — it can hang.</p>`,
+      code: `
+class FooSpin {
+    private int stage = 1;                                   // NOT volatile
+    public void first(Runnable r) { r.run(); stage = 2; }
+    public void second(Runnable r) { while (stage != 2) { } r.run(); stage = 3; }
+    public void third(Runnable r) { while (stage != 3) { } r.run(); }
+}`
+    },
+    mcq: { q: 'Is notify() enough instead of notifyAll() here?', options: ['Yes, always', 'No: the woken thread might be the wrong one (third waiting while second should go) and the right one would sleep forever', 'Only if stage is volatile', 'Only on x86'], answer: 1, explain: 'Waiters wait for different conditions (stage 2 vs stage 3). notify() could wake the thread whose condition is still false; it re-waits and nobody wakes the right one.' },
+    hints: [
+      `<p>Hint 1: shared state: ${C('int stage')} = which method may run next.</p>`,
+      `<p>Hint 2: second: ${C('while (stage != 2) wait();')}; first sets stage = 2 then ${C('notifyAll()')}.</p>`,
+      `<p>Hint 3: all methods synchronized on the same instance so stage needs no volatile.</p>`
+    ],
+    solution: {
+      approach: `<p>A guarded block per stage. Each method waits until it is its turn, runs, advances the stage, and wakes everyone so the next stage's thread can re-check its guard.</p>`,
+      code: `
+class Foo {
+    private int stage = 1;                       // which method may run next; guarded by this
+
+    public synchronized void first(Runnable printFirst) throws InterruptedException {
+        printFirst.run();
+        stage = 2;
+        notifyAll();
+    }
+
+    public synchronized void second(Runnable printSecond) throws InterruptedException {
+        while (stage != 2) wait();
+        printSecond.run();
+        stage = 3;
+        notifyAll();
+    }
+
+    public synchronized void third(Runnable printThird) throws InterruptedException {
+        while (stage != 3) wait();
+        printThird.run();
+    }
+}`,
+      dry: { head: ['event', 'stage', 'effect'], rows: [['C: third()', '1', 'waits'], ['A: first()', '1 → 2', 'prints first, notifyAll'], ['C wakes', '2', 'still ≠ 3 → waits again'], ['B: second()', '2 → 3', 'prints second, notifyAll'], ['C wakes', '3', '<span class="c-g">prints third</span>']] },
+      complexity: `<p>O(1) work per method; at most a few wake-ups.</p>`,
+      followUps: ['Solve it with two CountDownLatches.', 'Solve it with Semaphores initialised to 0.']
+    }
+  });
+
+  practice.push({
+    title: 'Odd-Even Printer with Two Threads',
+    level: 'Medium', tags: ['wait/notify', 'alternation'], companies: ['Amazon', 'Paytm', 'Oracle'],
+    statement: `<p>Two threads, "odd" and "even", must print the numbers 1..n in order, alternating: odd prints 1, even prints 2, odd prints 3… Both threads must terminate when done.</p>`,
+    constraints: `1 ≤ n ≤ 10<sup>6</sup>. Must work for odd and even n; no busy-waiting.`,
+    example: `<p>n = 5 → ${H.c('b', 'odd: 1')}, ${H.c('g', 'even: 2')}, ${H.c('b', 'odd: 3')}, ${H.c('g', 'even: 4')}, ${H.c('b', 'odd: 5')}; both threads exit.</p>`,
+    brute: {
+      why: `<p>Spinning with ${C('Thread.yield()')} on a volatile counter works but burns two cores. Using ${C('if')} instead of ${C('while')} around wait, or forgetting to wake the partner at the end, causes wrong output or a thread that never exits.</p>`,
+      code: `
+class SpinOddEven {
+    private volatile int next = 1;
+    void run(boolean odd, int n) {
+        while (next <= n) {
+            if ((next % 2 == 1) == odd) { System.out.println(next); next++; }   // only one writer at a time by turn
+            else Thread.yield();                                                // burns CPU
+        }
+    }
+}`
+    },
+    mcq: { q: 'n = 4. After even prints 4, why must it call notifyAll() before exiting?', options: ['It does not need to', 'The odd thread may be waiting for its turn; it must wake to see next > n and exit, or it waits forever', 'To release the lock', 'To print a newline'], answer: 1, explain: 'The waiter re-checks the guard only when woken. If nobody wakes it after the last number, the odd thread stays in WAITING and join() hangs.' },
+    hints: [
+      `<p>Hint 1: shared ${C('int next')} guarded by one lock; a thread may print only when ${C('next')}'s parity matches it.</p>`,
+      `<p>Hint 2: wait while ${C('next <= n')} and it is not my turn; then if ${C('next > n')}, wake partner and exit.</p>`,
+      `<p>Hint 3: print, ${C('next++')}, ${C('notifyAll()')}, loop.</p>`
+    ],
+    solution: {
+      approach: `<p>One monitor, one turn variable. Each thread waits for its parity, prints, advances, and notifies. The termination check is part of the guard so both threads leave cleanly for any n.</p>`,
+      code: `
+class OddEvenPrinter {
+    private final int n;
+    private int next = 1;                                       // guarded by this
+    OddEvenPrinter(int n) { this.n = n; }
+
+    void run(boolean odd) throws InterruptedException {
+        synchronized (this) {
+            while (true) {
+                while (next <= n && (next % 2 == 1) != odd) wait();   // not my turn yet
+                if (next > n) { notifyAll(); return; }                // done: let the partner exit too
+                System.out.println(Thread.currentThread().getName() + ": " + next);
+                next++;
+                notifyAll();
+            }
+        }
+    }
+
+    public static void main(String[] args) throws InterruptedException {
+        OddEvenPrinter p = new OddEvenPrinter(5);
+        Thread odd = new Thread(() -> { try { p.run(true); } catch (InterruptedException e) { Thread.currentThread().interrupt(); } }, "odd");
+        Thread even = new Thread(() -> { try { p.run(false); } catch (InterruptedException e) { Thread.currentThread().interrupt(); } }, "even");
+        odd.start(); even.start();
+        odd.join(); even.join();
+    }
+}`,
+      dry: { head: ['next', 'odd thread', 'even thread'], rows: [['1', 'prints 1', 'waits'], ['2', 'waits', 'prints 2'], ['3', 'prints 3', 'waits'], ['…', '…', '…'], ['6 (n=5)', 'sees next &gt; n → exits', 'woken → exits']] },
+      complexity: `<p>O(n) prints, about n context switches (each number hands the lock to the other thread).</p>`,
+      followUps: ['Generalise to k threads printing round-robin.', 'Replace wait/notify with two Semaphores.']
+    }
+  });
+
+  practice.push({
+    title: 'Design a Bounded Blocking Queue (LeetCode 1188)',
+    level: 'Medium', tags: ['wait/notify', 'producer-consumer', 'circular buffer'], companies: ['LinkedIn', 'Uber', 'Google'],
+    statement: `<p>Implement ${C('BoundedBlockingQueue(int capacity)')} with ${C('enqueue(int)')} (blocks while full), ${C('dequeue()')} (blocks while empty) and ${C('size()')}. Multiple producers and consumers call concurrently. Use a fixed array (no ${C('java.util.concurrent')}).</p>`,
+    constraints: `1 ≤ capacity ≤ 30, up to 8 producers and 8 consumers, 40 operations each.`,
+    example: `<p>capacity 2: enqueue 1, enqueue 2, enqueue 3 ${H.c('y', '(blocks)')}, dequeue → 1 ${H.c('g', '(unblocks the producer)')}, dequeue → 2, dequeue → 3. FIFO order is preserved.</p>`,
+    brute: {
+      why: `<p>Using ${C('if')} + ${C('notify')}: a woken consumer may find the queue already emptied by another consumer and read garbage; notify may wake a producer when a consumer was needed, stalling everyone (lost wake-up).</p>`,
+      code: `
+class FlakyQueue {
+    private final Deque<Integer> q = new ArrayDeque<>();
+    private final int cap;
+    FlakyQueue(int cap) { this.cap = cap; }
+    synchronized void enqueue(int x) throws InterruptedException {
+        if (q.size() == cap) wait();      // if: wrong after spurious/stolen wake-ups
+        q.addLast(x);
+        notify();                          // may wake the wrong kind of thread
+    }
+    synchronized int dequeue() throws InterruptedException {
+        if (q.isEmpty()) wait();
+        int x = q.removeFirst();           // NoSuchElementException possible
+        notify();
+        return x;
+    }
+}`
+    },
+    mcq: { q: 'What does a circular array buy you over an ArrayDeque here?', options: ['Thread safety', 'A hard, preallocated capacity with O(1) enqueue/dequeue and no resizing', 'Fairness', 'Nothing'], answer: 1, explain: 'Thread safety comes from the monitor either way; the array makes the bound explicit and avoids allocation, like ArrayBlockingQueue.' },
+    hints: [
+      `<p>Hint 1: state = array, head, tail, size — all guarded by ${C('this')}.</p>`,
+      `<p>Hint 2: enqueue: ${C('while (size == cap) wait();')} write at tail, tail = (tail+1) % cap, size++, notifyAll.</p>`,
+      `<p>Hint 3: dequeue mirrors it with ${C('while (size == 0)')}. size() is synchronized too.</p>`
+    ],
+    solution: {
+      approach: `<p>Classic monitor-based bounded buffer over a ring array. Two guards share one wait set, so ${C('notifyAll')} is required for correctness; the while loops make spurious and stolen wake-ups harmless.</p>`,
+      code: `
+class BoundedBlockingQueue {
+    private final int[] items;
+    private int head, tail, size;                 // guarded by this
+
+    public BoundedBlockingQueue(int capacity) { items = new int[capacity]; }
+
+    public synchronized void enqueue(int element) throws InterruptedException {
+        while (size == items.length) wait();      // full
+        items[tail] = element;
+        tail = (tail + 1) % items.length;
+        size++;
+        notifyAll();
+    }
+
+    public synchronized int dequeue() throws InterruptedException {
+        while (size == 0) wait();                 // empty
+        int x = items[head];
+        head = (head + 1) % items.length;
+        size--;
+        notifyAll();
+        return x;
+    }
+
+    public synchronized int size() { return size; }
+}`,
+      dry: { head: ['op', 'head', 'tail', 'size', 'array'], rows: [['enqueue 1', '0', '1', '1', '[1, _]'], ['enqueue 2', '0', '0', '2', '[1, 2]'], ['enqueue 3', '—', '—', '2', 'producer waits'], ['dequeue → 1', '1', '0', '1', '[_, 2] + notifyAll'], ['enqueue 3 (resumes)', '1', '1', '2', '[3, 2]']] },
+      complexity: `<p>O(1) per operation; notifyAll may cause extra wake-ups under heavy contention (two Conditions fix that).</p>`,
+      followUps: ['Rewrite with ReentrantLock and notFull/notEmpty Conditions.', 'Add offer(x, timeout) that gives up after the timeout.']
+    }
+  });
+
+  practice.push({
+    title: 'Find the Deadlock in a Lock Snapshot',
+    level: 'Medium', tags: ['deadlock', 'wait-for graph', 'cycle detection'], companies: ['Oracle', 'Databricks', 'Atlassian'],
+    statement: `<p>You get a snapshot from a monitoring tool: ${C('holder')} maps each lock to the thread holding it, and ${C('waitsFor')} maps each blocked thread to the single lock it is waiting for. Return the threads of one deadlock cycle (in wait order, starting anywhere), or an empty list if there is none.</p>`,
+    constraints: `Up to 10<sup>5</sup> threads and locks. A thread waits for at most one lock; a lock has at most one holder.`,
+    example: `<p>holder = {A: T1, B: T2, C: T3}, waitsFor = {T1: B, T2: C, T3: A} → ${H.c('r', '[T1, T2, T3]')} (T1 → T2 → T3 → T1). With waitsFor = {T1: B} only → ${H.c('g', '[]')}.</p>`,
+    brute: {
+      why: `<p>From every thread, walk the wait chain up to N steps and see if you return to the start: O(N²) in the worst case (long chains walked again and again). Fine for 100 threads, too slow for 10<sup>5</sup>.</p>`,
+      code: `
+class SlowDetector {
+    static List<String> find(Map<String, String> holder, Map<String, String> waitsFor) {
+        for (String start : waitsFor.keySet()) {
+            List<String> path = new ArrayList<>();
+            String t = start;
+            for (int step = 0; step <= waitsFor.size() && t != null; step++) {
+                path.add(t);
+                String lock = waitsFor.get(t);
+                t = lock == null ? null : holder.get(lock);
+                if (start.equals(t)) return path;            // came back to start
+            }
+        }
+        return List.of();
+    }
+}`
+    },
+    mcq: { q: 'Each thread has at most one outgoing wait-for edge. What structure is the wait-for graph then?', options: ['A tree', 'A functional graph: each component has at most one cycle, so a single pointer walk with colours finds it in O(N)', 'A DAG always', 'A complete graph'], answer: 1, explain: 'Out-degree ≤ 1 means following pointers is deterministic; marking nodes visited on the current path vs finished gives linear-time cycle detection.' },
+    hints: [
+      `<p>Hint 1: edge T → holder(waitsFor(T)). Deadlock ⇔ a cycle in this thread-to-thread graph.</p>`,
+      `<p>Hint 2: three colours: unvisited, on current path, finished. Walk from each unvisited thread; stop at null or a non-unvisited node.</p>`,
+      `<p>Hint 3: if you stop at a node "on current path", the cycle is the path suffix from that node. Mark the path finished otherwise, so no node is walked twice → O(N).</p>`
+    ],
+    solution: {
+      approach: `<p>Pointer-walking cycle detection on a functional graph with path colouring — exactly what ${C('ThreadMXBean.findDeadlockedThreads')} and database deadlock detectors do conceptually.</p>`,
+      code: `
+class DeadlockDetector {
+    static List<String> findDeadlock(Map<String, String> holder, Map<String, String> waitsFor) {
+        Map<String, Integer> state = new HashMap<>();          // absent = new, 1 = on path, 2 = finished
+        for (String start : waitsFor.keySet()) {
+            if (state.containsKey(start)) continue;
+            List<String> path = new ArrayList<>();
+            String t = start;
+            while (t != null && !state.containsKey(t)) {
+                state.put(t, 1);
+                path.add(t);
+                String lock = waitsFor.get(t);
+                t = lock == null ? null : holder.get(lock);    // edge: t → owner of the lock it wants
+            }
+            if (t != null && state.get(t) == 1) {              // returned to a node on THIS path → cycle
+                return new ArrayList<>(path.subList(path.indexOf(t), path.size()));
+            }
+            for (String p : path) state.put(p, 2);
+        }
+        return List.of();
+    }
+
+    public static void main(String[] args) {
+        Map<String, String> holder = Map.of("A", "T1", "B", "T2", "C", "T3");
+        Map<String, String> waits = Map.of("T1", "B", "T2", "C", "T3", "A");
+        System.out.println(findDeadlock(holder, waits).size());        // 3
+        System.out.println(findDeadlock(holder, Map.of("T1", "B")));   // []
+    }
+}`,
+      dry: { head: ['step', 't', 'waits for', 'held by', 'state'], rows: [['1', 'T1', 'B', 'T2', 'T1 on path'], ['2', 'T2', 'C', 'T3', 'T2 on path'], ['3', 'T3', 'A', 'T1', 'T3 on path'], ['4', 'T1', '—', '—', '<span class="c-r">already on path → cycle [T1, T2, T3]</span>']] },
+      complexity: `<p>O(N) time and space: each thread is put on a path once and finished once.</p>`,
+      followUps: ['Return all deadlock cycles, not just one.', 'Support read-write locks where a lock can have several holders (out-degree &gt; 1 → general DFS).']
+    }
+  });
+
+  practice.push({
+    title: 'Fair Ticket Lock (No Starvation)',
+    level: 'Medium', tags: ['starvation', 'fairness', 'wait/notify'], companies: ['Intel', 'Nvidia', 'Goldman Sachs'],
+    statement: `<p>${C('synchronized')} is unfair: a newly arriving thread can grab the lock ahead of threads that have waited for seconds. Implement ${C('TicketLock')} with ${C('lock()')} / ${C('unlock()')} that grants the lock in strict <b>arrival (FIFO) order</b>, like a deli counter "take a number". Only the owner may unlock.</p>`,
+    constraints: `Up to 64 threads. lock() is not reentrant. A thread interrupted while waiting must not break the queue for others.`,
+    example: `<p>T1 holds the lock; T2, T3, T4 call lock() in that order → after T1 unlocks, the lock goes to ${H.c('g', 'T2, then T3, then T4')} — never T4 before T2.</p>`,
+    brute: {
+      why: `<p>A boolean mutex with ${C('while (locked) wait()')} is correct but unfair: after ${C('notifyAll')}, whichever woken (or brand-new) thread grabs the monitor first wins; an unlucky thread can lose every race — starvation.</p>`,
+      code: `
+class UnfairMutex {
+    private boolean locked;
+    synchronized void lock() throws InterruptedException {
+        while (locked) wait();             // whoever wins the race gets in: no order
+        locked = true;
+    }
+    synchronized void unlock() { locked = false; notifyAll(); }
+}`
+    },
+    mcq: { q: 'Why must a waiting thread NOT simply give up (throw) when interrupted in this design?', options: ['Interrupts are ignored by wait()', 'Its ticket number would never be served, so every later ticket waits forever', 'Because unlock() would throw', 'It is fine to give up'], answer: 1, explain: 'nowServing only advances on unlock by the owner. If ticket k is abandoned, nowServing reaches k and stops; all tickets after k starve. Either wait uninterruptibly or implement ticket cancellation.' },
+    hints: [
+      `<p>Hint 1: two counters: ${C('nextTicket')} (handed out on arrival) and ${C('nowServing')}.</p>`,
+      `<p>Hint 2: lock(): ${C('my = nextTicket++')}; ${C('while (my != nowServing) wait();')}. unlock(): ${C('nowServing++')}; ${C('notifyAll()')}.</p>`,
+      `<p>Hint 3: track the owner thread to reject foreign unlocks; on interrupt, keep waiting but remember to restore the interrupt flag afterwards.</p>`
+    ],
+    solution: {
+      approach: `<p>A ticket lock: the order is fixed the moment a thread takes its number, inside the monitor. Unlock advances "now serving" and wakes all; only the thread holding that exact ticket passes its guard. Interrupts are deferred so no ticket is ever abandoned.</p>`,
+      code: `
+class TicketLock {
+    private long nextTicket = 0;        // next number handed out at the door; guarded by this
+    private long nowServing = 0;        // number allowed in; guarded by this
+    private Thread owner;               // guarded by this
+
+    public synchronized void lock() {
+        long my = nextTicket++;          // FIFO position decided here
+        boolean interrupted = false;
+        while (my != nowServing) {
+            try { wait(); } catch (InterruptedException e) { interrupted = true; }   // never abandon a ticket
+        }
+        owner = Thread.currentThread();
+        if (interrupted) Thread.currentThread().interrupt();                           // restore the flag
+    }
+
+    public synchronized void unlock() {
+        if (owner != Thread.currentThread()) throw new IllegalMonitorStateException("not the owner");
+        owner = null;
+        nowServing++;
+        notifyAll();                     // everyone checks; exactly one ticket matches
+    }
+}`,
+      dry: { head: ['event', 'nextTicket', 'nowServing', 'who may enter'], rows: [['T1 lock (ticket 0)', '1', '0', 'T1'], ['T2 lock (ticket 1)', '2', '0', 'T2 waits'], ['T3 lock (ticket 2)', '3', '0', 'T3 waits'], ['T1 unlock', '3', '1', '<span class="c-g">T2</span> (T3 re-waits)'], ['T2 unlock', '3', '2', '<span class="c-g">T3</span>']] },
+      complexity: `<p>O(1) per lock/unlock, but each unlock wakes all W waiters (O(W) wake-ups). Production fair locks (AQS) wake only the next in queue.</p>`,
+      followUps: ['Why do fair locks have lower throughput than unfair ones?', 'Make it reentrant with a hold count.']
+    }
+  });
+
+  practice.push({
+    title: 'Build a Counting Semaphore from wait/notify',
+    level: 'Medium', tags: ['semaphore', 'wait/notify', 'resource limiting'], companies: ['Amazon', 'VMware', 'Salesforce'],
+    statement: `<p>Implement ${C('SimpleSemaphore(int permits)')} with ${C('acquire()')} (blocks until a permit is available, then takes it), ${C('tryAcquire()')} (non-blocking), and ${C('release()')}. Use it to let at most 2 of 5 threads use a "database connection" at the same time.</p>`,
+    constraints: `0 ≤ permits ≤ 10<sup>4</sup>; any number of threads. acquire must respond to interruption.`,
+    example: `<p>permits = 2, five threads each acquire → work 20 ms → release. The observed maximum number of threads inside is ${H.c('g', 'exactly 2')}, never 3.</p>`,
+    brute: {
+      why: `<p>Spinning on an ${C('AtomicInteger')} with ${C('decrementAndGet')} and "undo" on failure can briefly drive permits negative and wastes CPU; spinning on a plain int is a race (two threads both see 1 and both take it).</p>`,
+      code: `
+class SpinSemaphore {
+    private int permits;
+    SpinSemaphore(int permits) { this.permits = permits; }
+    void acquire() {
+        while (permits == 0) { }   // spins, may never see a release (no visibility)
+        permits--;                 // two threads can both pass the check → permits = -1
+    }
+    void release() { permits++; }
+}`
+    },
+    mcq: { q: 'Why is notify() (not notifyAll) acceptable in release() here?', options: ['It never is', 'All waiters wait for the same condition (permits &gt; 0) and one released permit can satisfy exactly one waiter', 'Because permits is volatile', 'Because only one thread ever waits'], answer: 1, explain: 'Uniform waiters + one-in-one-out are the two conditions for safe notify(). The JLS also guarantees a notification is not lost if the chosen waiter is concurrently interrupted.' },
+    hints: [
+      `<p>Hint 1: the guard is ${C('permits > 0')}; the state is one int guarded by the semaphore's monitor.</p>`,
+      `<p>Hint 2: acquire: ${C('while (permits == 0) wait(); permits--;')}. release: ${C('permits++; notify();')}</p>`,
+      `<p>Hint 3: tryAcquire is the same check without waiting. Demo: track "inside" and "maxInside" under a separate lock.</p>`
+    ],
+    solution: {
+      approach: `<p>A guarded counter. acquire waits for a positive count and decrements under the lock; release increments and wakes one waiter. Because all waiters are interchangeable, a single notify is enough (notifyAll would also be correct, just noisier).</p>`,
+      code: `
+class SimpleSemaphore {
+    private int permits;                                  // guarded by this
+
+    SimpleSemaphore(int permits) {
+        if (permits < 0) throw new IllegalArgumentException("permits < 0");
+        this.permits = permits;
+    }
+
+    synchronized void acquire() throws InterruptedException {
+        while (permits == 0) wait();
+        permits--;
+    }
+
+    synchronized boolean tryAcquire() {
+        if (permits == 0) return false;
+        permits--;
+        return true;
+    }
+
+    synchronized void release() {
+        permits++;
+        notify();                                         // uniform waiters, one permit → one waiter
+    }
+
+    static int inside, maxInside;                         // demo bookkeeping, guarded by SimpleSemaphore.class
+
+    public static void main(String[] args) throws InterruptedException {
+        SimpleSemaphore sem = new SimpleSemaphore(2);
+        Thread[] ts = new Thread[5];
+        for (int i = 0; i < ts.length; i++) {
+            ts[i] = new Thread(() -> {
+                try {
+                    sem.acquire();
+                    try {
+                        synchronized (SimpleSemaphore.class) { inside++; maxInside = Math.max(maxInside, inside); }
+                        Thread.sleep(20);                 // "use the DB connection"
+                        synchronized (SimpleSemaphore.class) { inside--; }
+                    } finally {
+                        sem.release();                    // always give the permit back
+                    }
+                } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+            });
+            ts[i].start();
+        }
+        for (Thread t : ts) t.join();
+        synchronized (SimpleSemaphore.class) { System.out.println("max inside = " + maxInside); }   // 2
+    }
+}`,
+      dry: { head: ['event', 'permits', 'waiting'], rows: [['T1 acquire', '2 → 1', '—'], ['T2 acquire', '1 → 0', '—'], ['T3 acquire', '0', 'T3'], ['T1 release + notify', '0 → 1 → 0 (T3 takes it)', '—'], ['…', '…', '<span class="c-g">max inside = 2</span>']] },
+      complexity: `<p>O(1) per call. java.util.concurrent.Semaphore adds fairness options, timeouts and bulk permits via AQS.</p>`,
+      followUps: ['Add acquire(int n) for multiple permits — is notify still safe?', 'How does a binary semaphore differ from a mutex?']
+    }
+  });
+
+  /* ======================================================================
+     PRACTICE — Hard
+     ====================================================================== */
+  practice.push({
+    title: 'Print Zero Even Odd (LeetCode 1116)',
+    level: 'Hard', tags: ['wait/notify', 'three-way coordination', 'LeetCode concurrency'], companies: ['Microsoft', 'Bloomberg', 'Nvidia'],
+    statement: `<p>One ${C('ZeroEvenOdd(n)')} instance is shared by three threads: A calls ${C('zero(printNumber)')}, B calls ${C('even(printNumber)')}, C calls ${C('odd(printNumber)')}. Together they must print ${C('0102030405…0n')}: a zero before every number, numbers in increasing order, evens printed only by B and odds only by C.</p>`,
+    constraints: `1 ≤ n ≤ 1000. Threads start in any order. ${C('printNumber')} is an ${C('IntConsumer')}.`,
+    example: `<p>n = 5 → ${H.c('g', '0102030405')}. n = 2 → ${H.c('g', '0102')} (odd prints 1, even prints 2).</p>`,
+    brute: {
+      why: `<p>A single boolean "zero's turn / number's turn" is not enough: after a zero, both even and odd wake up, and without checking the parity of the next number the wrong one may print (e.g. even prints 1). Spinning on volatiles works but burns three cores.</p>`,
+      code: `
+class ZeroEvenOddBroken {
+    private final int n;
+    private boolean zeroTurn = true;
+    private int i = 1;
+    ZeroEvenOddBroken(int n) { this.n = n; }
+    synchronized void numberTurn(IntConsumer p) throws InterruptedException {
+        while (zeroTurn) wait();          // BUG: ignores parity — even may print an odd number
+        p.accept(i++);
+        zeroTurn = true;
+        notifyAll();
+    }
+}`
+    },
+    mcq: { q: 'What is the minimal shared state that makes every guard decidable?', options: ['One boolean', 'A boolean zeroTurn plus the next number i (parity tells odd/even whose turn it is)', 'Three semaphores only', 'A queue of strings'], answer: 1, explain: 'zeroTurn says whether a zero is due; when it is false, i % 2 decides between even and odd. Each thread\'s guard reads only these two fields.' },
+    hints: [
+      `<p>Hint 1: state = ${C('boolean zeroTurn')}, ${C('int i')} (next number). zero waits for zeroTurn; even waits for !zeroTurn && i even; odd waits for !zeroTurn && i odd.</p>`,
+      `<p>Hint 2: each method loops exactly as many times as it must print: zero n times, even ⌊n/2⌋ times, odd ⌈n/2⌉ times.</p>`,
+      `<p>Hint 3: after printing, flip zeroTurn (and i++ for numbers), then notifyAll — waiters have different guards so notify() is unsafe.</p>`
+    ],
+    solution: {
+      approach: `<p>One monitor, two state variables, three guards. Every print is followed by a state change and notifyAll; each thread re-checks its own guard in a while loop. Loop counts are fixed up front, so all threads terminate.</p>`,
+      code: `
+class ZeroEvenOdd {
+    private final int n;
+    private int i = 1;                 // next number to print; guarded by this
+    private boolean zeroTurn = true;   // guarded by this
+
+    public ZeroEvenOdd(int n) { this.n = n; }
+
+    public synchronized void zero(IntConsumer printNumber) throws InterruptedException {
+        for (int k = 0; k < n; k++) {
+            while (!zeroTurn) wait();
+            printNumber.accept(0);
+            zeroTurn = false;
+            notifyAll();
+        }
+    }
+
+    public synchronized void even(IntConsumer printNumber) throws InterruptedException {
+        for (int k = 2; k <= n; k += 2) {
+            while (zeroTurn || i % 2 != 0) wait();
+            printNumber.accept(i++);
+            zeroTurn = true;
+            notifyAll();
+        }
+    }
+
+    public synchronized void odd(IntConsumer printNumber) throws InterruptedException {
+        for (int k = 1; k <= n; k += 2) {
+            while (zeroTurn || i % 2 != 1) wait();
+            printNumber.accept(i++);
+            zeroTurn = true;
+            notifyAll();
+        }
+    }
+}`,
+      dry: { head: ['zeroTurn', 'i', 'who passes its guard', 'prints'], rows: [['true', '1', 'zero', '0'], ['false', '1', 'odd', '1'], ['true', '2', 'zero', '0'], ['false', '2', 'even', '2'], ['true', '3', 'zero', '0 … and so on']] },
+      complexity: `<p>O(n) prints; each print triggers a notifyAll waking at most 2 other threads.</p>`,
+      followUps: ['Solve with three Semaphores (zero=1, odd=0, even=0).', 'Why is holding the monitor for the entire for-loop fine here?']
+    }
+  });
+
+  practice.push({
+    title: 'Building H2O (LeetCode 1117)',
+    level: 'Hard', tags: ['wait/notify', 'barrier', 'grouping'], companies: ['Apple', 'Google', 'Amazon'],
+    statement: `<p>Hydrogen threads call ${C('hydrogen(releaseHydrogen)')} and oxygen threads call ${C('oxygen(releaseOxygen)')}. Threads must be released in groups forming a water molecule: each consecutive group of 3 releases contains exactly <b>two H and one O</b> (any order within the group). A thread must wait until it can be part of the current molecule.</p>`,
+    constraints: `Total input has exactly 2m H threads and m O threads, 1 ≤ m ≤ 20, arriving in any order.`,
+    example: `<p>Arrivals "OOHHHH" → valid outputs include ${H.c('g', 'HHOHHO')}, ${H.c('g', 'HOHHHO')}, ${H.c('g', 'OHHOHH')}; invalid: ${H.c('r', 'HHHOOH')} (first triple has 3 H).</p>`,
+    brute: {
+      why: `<p>Releasing H whenever fewer than 2 H are "pending" and O whenever fewer than 1 O is pending, but never resetting per molecule, lets a third H slip into the current group once the counters are decremented in the wrong place. Using a global ordering ("two H then one O") is too strict and can make threads wait needlessly — and ${C('if')}-based waits break under spurious wake-ups.</p>`,
+      code: `
+class H2OBroken {
+    private int h, o;
+    synchronized void hydrogen(Runnable r) throws InterruptedException {
+        if (h == 2) wait();          // if: a woken H may proceed when h is still 2
+        r.run(); h++;
+        notify();                    // may wake the wrong atom; nobody ever resets h and o
+    }
+    synchronized void oxygen(Runnable r) throws InterruptedException {
+        if (o == 1) wait();
+        r.run(); o++;
+        notify();
+    }
+}`
+    },
+    mcq: { q: 'When should the per-molecule counters (h, o) be reset to zero?', options: ['After every release', 'Exactly when the third atom of the molecule is released (h == 2 && o == 1)', 'Never', 'When an oxygen arrives'], answer: 1, explain: 'The counters describe the molecule being assembled. Only when it is complete may the next molecule\'s atoms start being released.' },
+    hints: [
+      `<p>Hint 1: track the molecule under construction: ${C('h')} = H released so far (0..2), ${C('o')} = O released (0..1).</p>`,
+      `<p>Hint 2: H waits while h == 2; O waits while o == 1. After releasing, increment.</p>`,
+      `<p>Hint 3: if h == 2 and o == 1 the molecule is complete → reset both to 0. Always notifyAll (H and O wait for different conditions).</p>`
+    ],
+    solution: {
+      approach: `<p>A monitor that admits at most two H and one O into the current "slot". The atom that completes the molecule resets the slot. Because every group of three consecutive releases fills exactly one slot, the output is always valid.</p>`,
+      code: `
+class H2O {
+    private int h = 0, o = 0;          // atoms released into the current molecule; guarded by this
+
+    public synchronized void hydrogen(Runnable releaseHydrogen) throws InterruptedException {
+        while (h == 2) wait();          // this molecule already has both hydrogens
+        releaseHydrogen.run();
+        h++;
+        completeIfFull();
+    }
+
+    public synchronized void oxygen(Runnable releaseOxygen) throws InterruptedException {
+        while (o == 1) wait();          // this molecule already has its oxygen
+        releaseOxygen.run();
+        o++;
+        completeIfFull();
+    }
+
+    private void completeIfFull() {     // called with the monitor held
+        if (h == 2 && o == 1) { h = 0; o = 0; }   // molecule done: open the next slot
+        notifyAll();
+    }
+}`,
+      dry: { head: ['arrival', 'h', 'o', 'action', 'output'], rows: [['O', '0 → 0', '0 → 1', 'released', 'O'], ['O', '0', '1', 'waits (o == 1)', 'O'], ['H', '0 → 1', '1', 'released', 'OH'], ['H', '1 → 2 → 0', '1 → 0', 'released, molecule complete, reset', 'OHH'], ['(waiting O)', '0', '0 → 1', 'wakes, released', 'OHHO']] },
+      complexity: `<p>O(1) per atom plus wake-ups; notifyAll may wake several waiting atoms that re-wait.</p>`,
+      followUps: ['Solve with Semaphore(2) for H, Semaphore(1) for O and a CyclicBarrier(3).', 'Generalise to a molecule with a H, b O atoms.']
+    }
+  });
+
+  practice.push({
+    title: 'The Dining Philosophers (LeetCode 1226)',
+    level: 'Hard', tags: ['deadlock', 'lock ordering', 'resource hierarchy'], companies: ['Google', 'Microsoft', 'Oracle'],
+    statement: `<p>Five philosophers (0..4) sit at a round table with one fork between each pair. Philosopher p needs forks p and (p+1) % 5 to eat. Implement ${C('wantsToEat(p, pickLeft, pickRight, eat, putLeft, putRight)')} so that no two neighbours use a fork at the same time and the system <b>never deadlocks</b>, no matter how calls interleave.</p>`,
+    constraints: `Each philosopher calls wantsToEat 1–60 times, all concurrently.`,
+    example: `<p>If all five pick up their left fork simultaneously, the naive version deadlocks: ${H.c('r', 'everyone holds one fork and waits for the right one forever')}. A correct solution always completes.</p>`,
+    brute: {
+      why: `<p>Everyone locks left then right. If all grab left at once, each waits for the right fork held by the neighbour — a 5-thread circular wait. Coffman's four conditions all hold.</p>`,
+      code: `
+class NaiveDiners {
+    private final Object[] forks = { new Object(), new Object(), new Object(), new Object(), new Object() };
+    void wantsToEat(int p, Runnable eat) {
+        synchronized (forks[p]) {                  // left
+            synchronized (forks[(p + 1) % 5]) {    // right — all five can be stuck here
+                eat.run();
+            }
+        }
+    }
+}`
+    },
+    mcq: { q: 'With "lower-numbered fork first", what does philosopher 4 do differently?', options: ['Nothing', 'Picks fork 0 (its right) before fork 4 (its left), breaking the symmetry that formed the cycle', 'Never eats', 'Uses a timeout'], answer: 1, explain: 'Philosopher 4 needs forks 4 and 0; ordering by number makes it take 0 first. Now the wait chain can no longer wrap around the table.' },
+    hints: [
+      `<p>Hint 1: give forks a global order (their index). Which Coffman condition does that break?</p>`,
+      `<p>Hint 2: ${C('first = min(left, right)')}, ${C('second = max(left, right)')}; lock first then second.</p>`,
+      `<p>Hint 3: alternatives: allow at most 4 philosophers to try at once (Semaphore(4)), or tryLock with random back-off.</p>`
+    ],
+    solution: {
+      approach: `<p>Resource hierarchy (Dijkstra): always acquire the lower-numbered fork first. Circular wait becomes impossible, so deadlock is impossible. Neighbours still exclude each other because they share a fork object.</p>`,
+      code: `
+class DiningPhilosophers {
+    private final Object[] forks = new Object[5];
+
+    public DiningPhilosophers() {
+        for (int i = 0; i < 5; i++) forks[i] = new Object();
+    }
+
+    public void wantsToEat(int philosopher, Runnable pickLeftFork, Runnable pickRightFork,
+                           Runnable eat, Runnable putLeftFork, Runnable putRightFork) throws InterruptedException {
+        int left = philosopher, right = (philosopher + 1) % 5;
+        int first = Math.min(left, right), second = Math.max(left, right);   // global order breaks the cycle
+        synchronized (forks[first]) {
+            synchronized (forks[second]) {
+                pickLeftFork.run();
+                pickRightFork.run();
+                eat.run();
+                putLeftFork.run();
+                putRightFork.run();
+            }
+        }
+    }
+}`,
+      dry: { head: ['philosopher', 'left, right', 'locks first', 'then'], rows: [['0', '0, 1', '0', '1'], ['1', '1, 2', '1', '2'], ['2', '2, 3', '2', '3'], ['3', '3, 4', '3', '4'], ['4', '4, 0', '<span class="c-g">0</span>', '4 (symmetry broken)']] },
+      complexity: `<p>O(1) per meal. Throughput: up to 2 philosophers eat at once (5 forks / 2). Starvation is theoretically possible with unfair intrinsic locks; fair ReentrantLocks remove it.</p>`,
+      followUps: ['Prove there is no deadlock with the ordering argument.', 'Implement the Semaphore(4) "waiter" solution — which condition does it break?']
+    }
+  });
+
+  practice.push({
+    title: 'Read-Write Lock with Writer Preference',
+    level: 'Hard', tags: ['starvation', 'read-write lock', 'wait/notify'], companies: ['Amazon', 'Databricks', 'Meta'],
+    statement: `<p>Implement ${C('lockRead/unlockRead/lockWrite/unlockWrite')}. Many readers may hold the lock together; a writer needs exclusive access. Under a constant stream of readers, a reader-preferring lock <b>starves writers</b> forever. Your lock must prefer writers: once a writer is waiting, new readers must queue behind it. Handle interruption of a waiting writer without stranding readers.</p>`,
+    constraints: `Up to 100 readers and 10 writers concurrently. Not reentrant. Misuse (unlock without lock) throws IllegalMonitorStateException.`,
+    example: `<p>Readers R1, R2 hold the lock; writer W arrives and waits; reader R3 arrives → ${H.c('y', 'R3 waits')} (writer preference). R1, R2 unlock → ${H.c('g', 'W writes')} → W unlocks → R3 reads.</p>`,
+    brute: {
+      why: `<p>The simple version lets a reader in whenever no writer is <b>active</b>. With overlapping readers there is never a moment with zero readers, so a waiting writer never enters — classic starvation. It also cannot express "a writer is waiting".</p>`,
+      code: `
+class ReaderPreferringRW {
+    private int readers;
+    private boolean writing;
+    synchronized void lockRead() throws InterruptedException { while (writing) wait(); readers++; }
+    synchronized void unlockRead() { if (--readers == 0) notifyAll(); }
+    synchronized void lockWrite() throws InterruptedException {
+        while (writing || readers > 0) wait();   // starves while readers keep overlapping
+        writing = true;
+    }
+    synchronized void unlockWrite() { writing = false; notifyAll(); }
+}`
+    },
+    mcq: { q: 'A waiting writer is interrupted and leaves. Why must it call notifyAll() on its way out?', options: ['It must not', 'Readers may be waiting only because waitingWriters &gt; 0; after decrementing, they must be woken to re-check, or they wait forever', 'To release the monitor', 'To wake other writers only'], answer: 1, explain: 'Readers\' guard includes waitingWriters > 0. Changing that state without notifying can leave readers waiting for an event that will never come (a lost wake-up).' },
+    hints: [
+      `<p>Hint 1: state: ${C('readers')} (active), ${C('writing')} (active writer?), ${C('waitingWriters')}.</p>`,
+      `<p>Hint 2: readers wait while ${C('writing || waitingWriters > 0')}; writers increment waitingWriters, wait while ${C('writing || readers > 0')}, decrement, then set writing.</p>`,
+      `<p>Hint 3: on InterruptedException in lockWrite: decrement waitingWriters, notifyAll, rethrow. Unlocks validate state and notifyAll.</p>`
+    ],
+    solution: {
+      approach: `<p>One monitor, three counters. "A writer is waiting" becomes part of the readers' guard, so writers cannot be starved by overlapping readers. Every state change that might make some guard true is followed by notifyAll. (Trade-off: a constant stream of writers can now starve readers — production locks like ${C('ReentrantReadWriteLock(true)')} use a FIFO queue to be fair to both.)</p>`,
+      code: `
+class WriterPreferringRWLock {
+    private int readers = 0;          // active readers; guarded by this
+    private boolean writing = false;  // active writer?
+    private int waitingWriters = 0;   // queued writers → new readers must wait
+
+    public synchronized void lockRead() throws InterruptedException {
+        while (writing || waitingWriters > 0) wait();
+        readers++;
+    }
+
+    public synchronized void unlockRead() {
+        if (readers <= 0) throw new IllegalMonitorStateException("no read lock held");
+        if (--readers == 0) notifyAll();                 // last reader out lets a writer in
+    }
+
+    public synchronized void lockWrite() throws InterruptedException {
+        waitingWriters++;
+        try {
+            while (writing || readers > 0) wait();
+        } catch (InterruptedException e) {
+            waitingWriters--;                            // leaving the queue changes the readers' guard
+            notifyAll();                                 // so wake them to re-check
+            throw e;
+        }
+        waitingWriters--;
+        writing = true;
+    }
+
+    public synchronized void unlockWrite() {
+        if (!writing) throw new IllegalMonitorStateException("no write lock held");
+        writing = false;
+        notifyAll();
+    }
+}`,
+      dry: { head: ['event', 'readers', 'writing', 'waitingWriters', 'note'], rows: [['R1, R2 lockRead', '2', 'false', '0', ''], ['W lockWrite', '2', 'false', '1', 'W waits'], ['R3 lockRead', '2', 'false', '1', '<span class="c-y">R3 waits (writer preference)</span>'], ['R1, R2 unlockRead', '0', 'false', '1', 'notifyAll'], ['W enters', '0', 'true', '0', 'R3 still waits (writing)'], ['W unlockWrite', '1', 'false', '0', 'R3 reads']] },
+      complexity: `<p>O(1) per operation plus notifyAll wake-ups. Readers run in parallel when no writer is active or waiting.</p>`,
+      followUps: ['Make it fair to both sides with a ticket queue.', 'Support lock downgrading (write → read) like ReentrantReadWriteLock.', 'Why is upgrading read → write deadlock-prone?']
+    }
+  });
+
+  practice.push({
+    title: 'Lost Updates: Smallest Possible Final Count',
+    level: 'Hard', tags: ['race condition', 'interleavings', 'model checking', 'output prediction'], companies: ['Jane Street', 'Two Sigma', 'Google'],
+    statement: `<p>Two threads each execute ${C('count++')} exactly ${C('n')} times on a shared plain ${C('int')} starting at 0, where ${C('count++')} = LOAD (r = count), ADD (r = r + 1), STORE (count = r). Over <b>all</b> possible interleavings of the 6n micro-steps, what are the minimum and maximum final values? Write a program that computes both exactly, and explain the minimum by hand.</p>`,
+    constraints: `1 ≤ n ≤ 6 (state space must be explored exhaustively).`,
+    example: `<p>n = 1 → min ${H.c('r', '1')}, max ${H.c('g', '2')}. n = 2 → min ${H.c('r', '2')}, max ${H.c('g', '4')}. For every n ≥ 2 the minimum is 2 — not n, as most people guess.</p>`,
+    brute: {
+      why: `<p>Enumerate every interleaving recursively without remembering states: the number of interleavings is C(6n, 3n) — about 2.7 million for n = 4 and 2.7 billion for n = 6. The same (pcA, pcB, registers, count) state is re-explored many times.</p>`,
+      code: `
+class BruteInterleavings {
+    static int n, min = Integer.MAX_VALUE, max = Integer.MIN_VALUE;
+    static void go(int pa, int pb, int ra, int rb, int count) {
+        int end = 3 * n;
+        if (pa == end && pb == end) { min = Math.min(min, count); max = Math.max(max, count); return; }
+        if (pa < end) {
+            if (pa % 3 == 0) go(pa + 1, pb, count, rb, count);
+            else if (pa % 3 == 1) go(pa + 1, pb, ra + 1, rb, count);
+            else go(pa + 1, pb, ra, rb, ra);
+        }
+        if (pb < end) {
+            if (pb % 3 == 0) go(pa, pb + 1, ra, count, count);
+            else if (pb % 3 == 1) go(pa, pb + 1, ra, rb + 1, count);
+            else go(pa, pb + 1, ra, rb, rb);
+        }
+    }
+}`
+    },
+    mcq: { q: 'Which schedule produces 2 for n = 3?', options: ['A and B alternate micro-steps strictly', 'A loads 0 and stalls; B does 2 full increments; A stores 1; B loads 1 and stalls; A does its last 2 increments; B stores 2', 'B runs fully, then A', 'Impossible — the minimum is 3'], answer: 1, explain: 'A\'s stale store wipes B\'s first n−1 increments; B\'s stale store (of 1 + 1) wipes A\'s last n−1 increments. Each thread contributes exactly one surviving increment.' },
+    hints: [
+      `<p>Hint 1: a state is (pcA, pcB, rA, rB, count). The future depends only on the state, not on how you got there → memoize.</p>`,
+      `<p>Hint 2: DFS returns {min, max} final count reachable from a state; combine the results of stepping A or B.</p>`,
+      `<p>Hint 3: values stay ≤ 2n + 1 and pcs ≤ 3n, so pack the state into one long (6 bits per field) as the memo key.</p>`
+    ],
+    solution: {
+      approach: `<p><b>Explicit-state model checking with memoization.</b> This is how tools like jcstress' cousins and TLA+ reason about concurrency: enumerate reachable states, not paths. Each state is solved once. Hand proof of the minimum: every STORE writes at least 1. For n ≥ 2, the very last STORE belongs to a thread whose last LOAD came <i>after</i> its own earlier STORE, so it loaded ≥ 1 and stores ≥ 2. The schedule in the MCQ reaches exactly 2, so the minimum is 2 (for n = 1 both threads can load 0 and store 1).</p>`,
+      code: `
+class LostUpdateExplorer {
+    private final int n;                                  // increments per thread
+    private final Map<Long, int[]> memo = new HashMap<>();
+
+    LostUpdateExplorer(int n) {
+        if (n < 1 || n > 6) throw new IllegalArgumentException("1 <= n <= 6");
+        this.n = n;
+    }
+
+    /** {min, max} final value of count over ALL interleavings. */
+    int[] explore() { return dfs(0, 0, 0, 0, 0); }
+
+    // pc = micro-steps done (0..3n): pc % 3 == 0 → LOAD, 1 → ADD, 2 → STORE
+    private int[] dfs(int pa, int pb, int ra, int rb, int count) {
+        int end = 3 * n;
+        if (pa == end && pb == end) return new int[]{count, count};
+        long key = ((((long) pa * 64 + pb) * 64 + ra) * 64 + rb) * 64 + count;
+        int[] cached = memo.get(key);
+        if (cached != null) return cached;
+        int lo = Integer.MAX_VALUE, hi = Integer.MIN_VALUE;
+        if (pa < end) {
+            int[] r = switch (pa % 3) {
+                case 0 -> dfs(pa + 1, pb, count, rb, count);    // A: LOAD
+                case 1 -> dfs(pa + 1, pb, ra + 1, rb, count);   // A: ADD (private)
+                default -> dfs(pa + 1, pb, ra, rb, ra);         // A: STORE
+            };
+            lo = Math.min(lo, r[0]); hi = Math.max(hi, r[1]);
+        }
+        if (pb < end) {
+            int[] r = switch (pb % 3) {
+                case 0 -> dfs(pa, pb + 1, ra, count, count);    // B: LOAD
+                case 1 -> dfs(pa, pb + 1, ra, rb + 1, count);   // B: ADD
+                default -> dfs(pa, pb + 1, ra, rb, rb);         // B: STORE
+            };
+            lo = Math.min(lo, r[0]); hi = Math.max(hi, r[1]);
+        }
+        int[] res = {lo, hi};
+        memo.put(key, res);
+        return res;
+    }
+
+    public static void main(String[] args) {
+        for (int n = 1; n <= 5; n++) {
+            int[] r = new LostUpdateExplorer(n).explore();
+            System.out.println("n=" + n + " min=" + r[0] + " max=" + r[1]);   // n=1 min=1 max=2, then min=2 max=2n
+        }
+    }
+}`,
+      dry: { head: ['step (n = 2)', 'A', 'B', 'count'], rows: [['1', 'LOAD r=0', '', '0'], ['2', '', '1 full increment (LOAD 0, ADD, STORE 1)', '1'], ['3', 'ADD r=1, STORE 1 (wipes B)', '', '1'], ['4', '', 'LOAD r=1', '1'], ['5', '1 full increment (1 → 2)', '', '2'], ['6', '', 'ADD r=2, STORE 2 (wipes A)', '<span class="c-r">2</span>']] },
+      complexity: `<p>States ≤ (3n+1)² · (2n+2)³ — under a million for n = 6; each solved once, O(1) work → effectively linear in the state count, versus C(6n, 3n) paths for brute force.</p>`,
+      followUps: ['Apply partial-order reduction: ADD is thread-local, so merge it with LOAD. How much smaller is the state space?', 'With three threads, what is the minimum?', 'How does jcstress discover such outcomes empirically?']
+    }
+  });
+
+  /* ======================================================================
+     QUIZ
+     ====================================================================== */
+  quiz.push(
+    { q: `${C('Thread t = new Thread(() -> System.out.println(Thread.currentThread().getName()), "worker"); t.run();')} — what is printed (called from main)?`, options: ['worker', 'main', 'Thread-0', 'Nothing; run() throws'], answer: 1, explain: 'run() is an ordinary method call on the current (main) thread. Only start() creates a new thread that would print "worker".' },
+    { q: 'A thread is trying to enter a <code>synchronized</code> block whose monitor another thread holds. What does <code>getState()</code> report?', options: ['WAITING', 'TIMED_WAITING', 'BLOCKED', 'RUNNABLE'], answer: 2, explain: 'BLOCKED means "waiting to acquire a monitor". WAITING is for wait()/join()/park() without timeout.' },
+    { q: 'Two threads each run <code>count++</code> 1,000 times on a <code>volatile int count = 0</code>. Which statement is true?', options: ['The result is always 2000 because volatile is atomic', 'The result can be less than 2000', 'The program throws ConcurrentModificationException', 'The result is always exactly 1000'], answer: 1, explain: 'volatile guarantees visibility of each read and write, but count++ is still LOAD-ADD-STORE; interleavings lose updates.' },
+    { q: 'Thread 1 is inside <code>static synchronized void a()</code> of class X. Can thread 2 enter <code>synchronized void b()</code> on an instance of X at the same time?', options: ['No, the class is locked', 'Yes — a() locks X.class, b() locks the instance: different monitors', 'Only if b() is final', 'Only after a() calls wait()'], answer: 1, explain: 'Static synchronized methods lock the Class object; instance synchronized methods lock this. They do not exclude each other.' },
+    { q: 'A synchronized method <code>outer()</code> calls another synchronized method <code>inner()</code> on the same object. What happens?', options: ['Deadlock with itself', 'IllegalMonitorStateException', 'It proceeds: intrinsic locks are reentrant (hold count becomes 2)', 'inner() runs without any lock'], answer: 2, explain: 'The owner can re-acquire its own monitor; the JVM tracks a recursion count and releases only when it returns to 0.' },
+    { q: 'Why must <code>wait()</code> be called inside a <code>while</code> loop that re-checks the condition?', options: ['Because wait() returns immediately the first time', 'Spurious wake-ups are allowed, and another thread may change the state between notify and re-acquiring the lock', 'To avoid IllegalMonitorStateException', 'It is only a style convention'], answer: 1, explain: 'A thread returning from wait() has no guarantee its condition holds: spurious wake-ups, stolen conditions, and notifyAll waking everyone all require a re-check.' },
+    { q: 'What happens when a thread calls <code>lock.notifyAll()</code> without holding <code>lock</code>\'s monitor?', options: ['Nothing; the call is ignored', 'All waiters wake up anyway', 'IllegalMonitorStateException is thrown', 'Compile error'], answer: 2, explain: 'wait/notify/notifyAll require owning the target object\'s monitor; this is checked at runtime.' },
+    { q: 'Which of these does NOT create a happens-before edge between two threads?', options: ['Unlocking a monitor, then another thread locking it', 'Writing a volatile, then another thread reading that value', '<code>t.join()</code> returning', 'The writer calling <code>Thread.sleep(1000)</code> before the reader reads a plain field'], answer: 3, explain: 'sleep() and yield() have no synchronization semantics (JLS 17.3). Waiting a long time is not a memory-visibility guarantee.' },
+    { q: 'Plain fields x = y = 0. T1: <code>x = 1; r1 = y;</code> T2: <code>y = 1; r2 = x;</code> Which outcome surprises people but is legal?', options: ['r1 = 0, r2 = 1', 'r1 = 1, r2 = 0', 'r1 = 1, r2 = 1', 'r1 = 0, r2 = 0'], answer: 3, explain: 'Store buffers (even on x86) and compiler reordering allow both reads to happen before either write is visible. Making x and y volatile forbids (0, 0).' },
+    { q: 'Always acquiring locks in a single global order prevents deadlock by breaking which Coffman condition?', options: ['Mutual exclusion', 'Hold and wait', 'No preemption', 'Circular wait'], answer: 3, explain: 'With a total order on locks, a chain of waiting threads can only go "upward" and can never close into a cycle.' },
+    { q: 'Your service shows 100% CPU, threads are RUNNABLE, logs are full of "retrying", and no request completes. Most likely?', options: ['Deadlock', 'Livelock', 'Starvation of one thread', 'GC pause'], answer: 1, explain: 'Livelock: threads keep reacting to each other (retry without back-off) and burn CPU without progress. A deadlock would show BLOCKED threads and idle CPU.' },
+    { q: 'Why does double-checked locking need <code>volatile</code> on the instance field?', options: ['To make the constructor synchronized', 'So the fast-path reader, which takes no lock, gets a happens-before edge and never sees a partially constructed object', 'To prevent two instances from being created', 'Because static fields are not visible across threads'], answer: 1, explain: 'Creating once is guaranteed by the lock + re-check. Safe publication to lock-free readers needs the volatile write/read pair.' },
+    { q: 'An immutable object with only <code>final</code> fields is published through a plain (non-volatile) static field. A reader that sees the reference…', options: ['may see default values in its final fields', 'is guaranteed to see the constructor\'s values of the final fields (if this did not escape)', 'throws NullPointerException', 'must synchronize to read any field'], answer: 1, explain: 'final-field semantics (JLS 17.5) guarantee correctly initialized final fields to any thread that obtains the reference after construction — even through a data race.' }
+  );
+
+  /* ======================================================================
+     INTERVIEW
+     ====================================================================== */
+  interview.push(
+    { level: 'B', q: 'What is the difference between a process and a thread? What do threads share?', a: `<p>A <b>process</b> is a running program with its own address space (memory), file handles and at least one thread. A <b>thread</b> is an independent path of execution <b>inside</b> a process. Threads of one JVM share the <b>heap</b> (all objects, static fields, class metadata) but each has its own <b>stack</b> (locals, call frames) and program counter. Sharing makes communication cheap — just read a field — but it is also why races exist. Switching threads is cheaper than switching processes, and a crash (uncaught exception) kills one thread, while a native crash kills the whole process.</p>`, followUps: ['Where do local variables captured by a lambda live?', 'How much memory does a platform thread stack use by default?'] },
+    { level: 'B', q: 'start() vs run(), and Runnable vs extending Thread?', a: `<p>${C('start()')} asks the JVM to create a new OS thread, which then calls ${C('run()')}; it returns immediately and can be called only once (second call → ${C('IllegalThreadStateException')}). Calling ${C('run()')} directly is an ordinary method call on the <b>current</b> thread — no concurrency at all. Prefer implementing ${C('Runnable')} (or a lambda): it separates the task from the worker, keeps your single inheritance slot free, and the same task can be submitted to an executor or a virtual thread. Extend ${C('Thread')} only if you truly customise thread behaviour.</p>`, followUps: ['What prints if you call run() on a Thread named "worker" from main?', 'How do you return a value from a thread? (Callable/Future — next module)'] },
+    { level: 'I', q: 'Explain the six thread states. What is the difference between BLOCKED and WAITING?', a: `<p>${C('NEW')} (created), ${C('RUNNABLE')} (running or ready — Java does not distinguish; also shown for threads in native blocking I/O), ${C('BLOCKED')} (waiting to <b>acquire a monitor</b> for synchronized), ${C('WAITING')} (waiting indefinitely for another thread: ${C('wait()')}, ${C('join()')}, ${C('LockSupport.park()')}), ${C('TIMED_WAITING')} (same with a timeout, incl. ${C('sleep')}), ${C('TERMINATED')}. <b>BLOCKED</b> = lock contention: "the door is locked, I'm queuing". <b>WAITING</b> = voluntary: "I'm in the waiting room until someone notifies me". After notify, a waiting thread moves to BLOCKED until it re-acquires the monitor. ${C('ReentrantLock')} waiters show as WAITING (parking), not BLOCKED.</p>`, followUps: ['Which state is a thread in during Thread.sleep()?', 'Many threads RUNNABLE but CPU idle — what is going on?'] },
+    { level: 'I', q: 'What exactly does synchronized guarantee, and which object does it lock?', a: `<p>Three guarantees: <b>mutual exclusion</b> (one thread at a time per monitor), <b>visibility</b> (an unlock happens-before every later lock of the same monitor, so the next owner sees all writes), and <b>ordering</b> (accesses cannot leak out of the critical section). An instance synchronized method locks ${C('this')}; a static one locks the ${C('Class')} object; a block locks the expression given. It is <b>reentrant</b> (hold count) and released on any exit including exceptions. It does not offer timeouts, interruptible acquisition or fairness — that is what ${C('ReentrantLock')} adds. Best practice: lock a private final object, guard all accesses (reads too) with the same lock, keep critical sections short.</p>`, followUps: ['Does a static synchronized method block an instance synchronized method?', 'Why is synchronized(someString) dangerous?'] },
+    { level: 'I', q: 'volatile vs synchronized — when is volatile enough?', a: `<p>${C('volatile')} gives <b>visibility</b> and <b>ordering</b> (a volatile write publishes all prior writes to a thread that reads the value) plus atomic reads/writes even for long/double. It does <b>not</b> make compound actions (count++, check-then-act) atomic, and never blocks. ${C('synchronized')} gives visibility <b>and</b> atomicity of whole blocks. Volatile alone is enough when: (1) writes don't depend on the current value or only one thread writes, (2) the variable is not part of an invariant with other variables, (3) no locking is needed for other reasons. Classic uses: stop flags, status fields, a single-writer timestamp, publishing an immutable object (config snapshot), DCL instance field.</p>`, followUps: ['Is volatile int[] arr making the elements volatile?', 'Show the "cheap read-write lock" pattern.'] },
+    { level: 'A', q: 'Explain happens-before and give the main rules with an example.', a: `<p>Happens-before (HB) is the JMM's partial order that defines visibility: if A HB B, B sees A's effects. If two conflicting accesses are not HB-ordered, it is a <b>data race</b> and reads may return stale or reordered values. Rules: program order within a thread; monitor unlock HB later lock of the same monitor; volatile write HB later read of that variable; ${C('Thread.start()')} HB actions of the started thread; a thread's actions HB another thread's return from ${C('join()')}; interrupt HB detection; final-field freeze at end of constructor; and <b>transitivity</b>. Example: T1 ${C('data = 42; ready = true;')} (ready volatile), T2 ${C('if (ready) print(data)')} — chain via program order → volatile → program order guarantees 42. java.util.concurrent classes document similar edges (put HB take, future completion HB get). HB is about visibility, not wall-clock time.</p>`, followUps: ['What is the DRF-SC guarantee?', 'Name five ways to safely publish an object.'] },
+    { level: 'A', q: 'Why was double-checked locking broken, and how do you fix it today?', a: `<p>${C('instance = new X()')} is allocate → run constructor → store reference, and without synchronization the compiler/CPU may make the reference visible before the constructor's writes. A thread on the unsynchronized fast path sees non-null and uses a half-built object; since it never takes the lock, nothing gives it an HB edge. Fix since Java 5 (JSR-133): declare the field ${C('volatile')} — the volatile write publishes the fully constructed object; read it into a local to do a single volatile read on the fast path. Simpler alternatives: the <b>holder idiom</b> (static nested class with a static final field — lazy, thread-safe via class-init locking, zero synchronization in your code) or an <b>enum</b> singleton (also serialization- and reflection-safe).</p>`, followUps: ['Why read the volatile into a local variable?', 'Does making all fields of X final fix DCL without volatile?'] },
+    { level: 'I', q: 'wait() vs sleep(); why the while loop; notify() vs notifyAll()?', a: `<p>${C('wait()')} is an Object method: must hold that object's monitor, <b>releases it</b>, waits until notify/notifyAll/interrupt/timeout/spurious wake-up, then re-acquires before returning. ${C('sleep()')} is a static Thread method: pauses the current thread for a time and <b>keeps</b> every lock it holds. Always wait in ${C('while (!condition)')}: spurious wake-ups, conditions stolen by other threads, and notifyAll waking threads whose condition is still false. Use ${C('notifyAll()')} by default; ${C('notify()')} is safe only if all waiters wait for the same condition and each notification lets exactly one proceed (e.g. a semaphore permit). Otherwise notify can wake the wrong thread and lose the wake-up, freezing the system.</p>`, followUps: ['What is a lost notification and how does the condition variable prevent it?', 'How do Condition objects improve on notifyAll?'] },
+    { level: 'A', q: 'Implement a producer-consumer bounded buffer without java.util.concurrent. Walk me through it.', a: `<p>State: a ring array (or deque), count, capacity — all guarded by the buffer's monitor. ${C('put')}: synchronized; ${C('while (count == capacity) wait();')} insert; ${C('notifyAll()')}. ${C('take')}: synchronized; ${C('while (count == 0) wait();')} remove; ${C('notifyAll()')}; return. Why it works: the monitor makes each operation atomic and visible; wait releases the lock so the other side can make progress; while loops make spurious/stolen wake-ups harmless; notifyAll is needed because producers and consumers share one wait set with different conditions. InterruptedException propagates so callers can cancel. In production use ${C('ArrayBlockingQueue')}, which is the same design with one ReentrantLock and two Conditions (notFull, notEmpty) to avoid waking the wrong side.</p>`, followUps: ['What breaks with if instead of while?', 'How would you add a timeout to put?'] },
+    { level: 'I', q: 'What is a deadlock? How do you prevent, detect and recover from it in Java?', a: `<p>Threads blocked forever, each waiting for a lock held by another — a cycle in the wait-for graph. It needs all four <b>Coffman conditions</b>: mutual exclusion, hold-and-wait, no preemption, circular wait. <b>Prevent</b>: global lock ordering (e.g. by account id) breaks circular wait; ${C('tryLock(timeout)')} with back-off breaks no-preemption; a single coarse lock breaks hold-and-wait; open calls (no alien methods under a lock). <b>Detect</b>: ${C('jstack')}/${C('jcmd Thread.print')} print "Found one Java-level deadlock"; ${C('ThreadMXBean.findDeadlockedThreads()')} programmatically; JFR. <b>Recover</b>: intrinsic-lock deadlocks are unrecoverable (BLOCKED threads cannot be interrupted) — restart; hence prefer ordering or timed locks in risky paths.</p>`, followUps: ['Write a deadlock-free transfer(a, b).', 'What is a thread-starvation deadlock in an executor?'] },
+    { level: 'A', q: 'Explain livelock and starvation with real examples and fixes.', a: `<p><b>Livelock</b>: threads stay active but make no progress because they keep reacting to each other — two threads that tryLock a second lock, fail, release, and retry in lockstep; message handlers that keep rolling back each other's transactions. Symptoms: high CPU, RUNNABLE threads, endless retries. Fix: randomized/exponential back-off with jitter, or a deterministic tie-breaker (ordering). <b>Starvation</b>: a thread never gets a resource although others progress — unfair locks with barging, a reader-preferring RW lock under constant reads starving writers, a thread holding a lock for long periods, CPU-bound tasks hogging virtual-thread carriers. Fixes: fair locks (${C('ReentrantLock(true)')}), writer preference / FIFO queues, shorter critical sections, separate pools for CPU-heavy work.</p>`, followUps: ['Why are fair locks slower?', 'How do retry storms in microservices relate to livelock?'] },
+    { level: 'A', q: 'What is the difference between a race condition and a data race?', a: `<p>A <b>data race</b> (JLS definition) is two accesses to the same variable from different threads, at least one a write, not ordered by happens-before. It is a memory-model concept; its consequence is that reads may see stale or reordered values. A <b>race condition</b> is a correctness bug where the outcome depends on timing — e.g. check-then-act or read-modify-write without atomicity. They overlap but neither implies the other: ${C('if (atomic.get() > 0) atomic.decrementAndGet()')} has no data race but is a race condition; a benign data race like ${C('String.hashCode')}'s cached hash is not a race condition because every thread computes the same value. Fixing data races (locks/volatile) gives visibility; fixing race conditions requires making the whole compound action atomic.</p>`, followUps: ['Give a race condition built entirely from thread-safe collection calls.', 'Why is String.hashCode caching safe without volatile?'] },
+    { level: 'E', q: 'How does HotSpot implement synchronized, and what changed in recent JDKs?', a: `<p>Each object header has a mark word. Uncontended locking uses a <b>lightweight/thin lock</b>: a CAS installs a lock record, costing a few nanoseconds. On contention (or wait/notify) the lock <b>inflates</b> to an ${C('ObjectMonitor')} with owner, recursion count, entry list (BLOCKED threads) and wait set; threads spin adaptively before parking. Bytecode: blocks use ${C('monitorenter/monitorexit')} plus an exception handler; methods use the ${C('ACC_SYNCHRONIZED')} flag. <b>Biased locking</b> was deprecated in JDK 15 and removed in JDK 18 (CAS got cheap, revocation was costly). A new lightweight-locking scheme (opt-in in 21, default in 23) avoids displacing the header, enabling compact object headers. JIT optimisations: lock elision via escape analysis and lock coarsening. With virtual threads, synchronized pinned the carrier in Java 21; JEP 491 (JDK 24) fixed that.</p>`, followUps: ['What is lock coarsening and when can it hurt latency?', 'How would you find the most contended monitor in production? (JFR jdk.JavaMonitorEnter)'] },
+    { level: 'E', q: 'Concurrent code passes all tests on Intel laptops but fails on ARM servers. Why, and how do you make it robust?', a: `<p>x86 has a strong hardware memory model (TSO): it only lets a later load overtake an earlier store, so many data races happen to "work". ARM64 (Graviton, Apple Silicon) and POWER allow store-store and load-load reordering, so a plain ready-flag pattern can expose the flag before the data. The JIT is also allowed to reorder on any platform. The code has a <b>data race</b> that x86 masked. Fix the program, not the platform: establish happens-before with volatile, locks, or java.util.concurrent hand-offs; publish immutable objects; and test with jcstress on ARM CI runners. Because of DRF-SC, once the program is data-race-free it behaves identically on every architecture.</p>`, followUps: ['What do volatile reads and writes compile to on ARM64 (ldar/stlr)?', 'When would you use VarHandle acquire/release instead of volatile?'] },
+    { level: 'A', q: 'How do you stop a thread correctly? What is the right way to handle InterruptedException?', a: `<p>Java cancellation is <b>cooperative</b>. ${C('Thread.stop()')} was unsafe (it could leave objects half-updated) and throws ${C('UnsupportedOperationException')} since JDK 20. Use ${C('thread.interrupt()')}: blocking methods (sleep, wait, join, BlockingQueue.take, lockInterruptibly) throw ${C('InterruptedException')}, and loops check ${C('Thread.currentThread().isInterrupted()')}. A volatile "running" flag works for loops that never block. When you catch InterruptedException you must either propagate it (declare ${C('throws')}) or restore the flag with ${C('Thread.currentThread().interrupt()')} — swallowing it hides the cancellation request from callers, so executors' ${C('shutdownNow()')} and timeouts stop working. Clean up (finally blocks) and exit promptly.</p>`, followUps: ['Why does catching InterruptedException clear the interrupt flag?', 'How do you cancel a thread blocked in non-interruptible socket I/O?'] }
+  );
+
+  registerModule({
+    id: 'java11',
+    title: 'Concurrency I: Threads & the Java Memory Model',
+    intro: `<p>Your laptop has 8–16 cores and every backend server handles thousands of requests at once — so every serious Java job, and almost every senior Java interview, tests <b>concurrency</b>. This module builds it from the ground up, using plain Java only: what a thread really is and how it moves through its <b>lifecycle</b>; why ${C('count++')} silently loses updates (<b>race conditions</b>); how ${C('synchronized')} and <b>intrinsic locks</b> fix them; why a loop can spin forever without ${C('volatile')} (<b>visibility vs atomicity</b>); the <b>Java Memory Model</b> and its <b>happens-before</b> rules; coordinating threads with <b>wait/notify</b>; and how systems freeze through <b>deadlock, livelock and starvation</b>.</p>
+<p>Every topic has a visualizer where you play the scheduler — interleave two threads step by step, watch shared variables, lock owners, wait sets and the thread state machine change — plus "<b>what can this print?</b>" puzzles, because interviewers love asking for <i>all</i> possible outputs. The next module (Concurrency II) builds on this with ${C('java.util.concurrent')}: executors, atomics, locks, CompletableFuture and virtual threads.</p>`,
+    goals: [
+      'Create, start, join and interrupt threads correctly, and read any thread state (NEW, RUNNABLE, BLOCKED, WAITING, TIMED_WAITING, TERMINATED) in a thread dump',
+      'Spot read-modify-write and check-then-act races in code and list every possible output of small concurrent programs',
+      'Make classes thread-safe with synchronized, choosing the right lock object and guarding every access to an invariant',
+      'Explain visibility vs atomicity vs ordering, and state exactly when volatile alone is enough',
+      'Use happens-before rules (locks, volatile, start/join, final fields) to prove code correct, and fix double-checked locking',
+      'Write guarded blocks with wait/notifyAll (bounded buffer, latch, semaphore, LeetCode 1114–1117 style problems)',
+      'Prevent deadlock with lock ordering, detect it with jstack/ThreadMXBean, and recognise livelock and starvation'
+    ],
+    prereqs: `Java 3–4 (classes, objects, static, interfaces), Java 9 (lambdas — used to write Runnables), and comfort with Java 7 (collections). Helpful: Java 10 (Collections Internals) for the ConcurrentHashMap remarks. No prior concurrency knowledge needed.`,
+    hours: 16,
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
+  });
+})();
