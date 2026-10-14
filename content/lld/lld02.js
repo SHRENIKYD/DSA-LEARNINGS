@@ -3322,7 +3322,7 @@ class CheckoutTests {
   quiz.forEach(function (q, i) { rotate(q, i * 3 + 1); });
   var allProblems = practice.slice();
   topics.forEach(function (t) { (t.problems || []).forEach(function (p) { allProblems.push(p); }); });
-  allProblems.forEach(function (p, i) { rotate(p.mcq, i * 2 + 1); });
+  allProblems.forEach(function (p, i) { rotate(p.mcq, i * 3 + 2); });
 
   registerModule({
     id: 'lld02',

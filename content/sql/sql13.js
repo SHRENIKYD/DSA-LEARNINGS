@@ -261,7 +261,7 @@ except ValueError as e:
             var rec = { name: name, off: fe, len: len, state: 'live' }, si;
             if (reuse >= 0) { slots[reuse] = rec; si = reuse; } else { slots.push(rec); si = slots.length - 1; }
             var cl = []; for (var k = 0; k < len; k++) cl.push(fe + k); cl.push(HDR + si);
-            snap('<b>Insert ' + name + '</b> (' + len + ' units): bytes go at the <b>end</b> of free space (offset ' + fe + '), and ' + (reuse >= 0 ? 'a <b>reused</b> slot s' + si + ' (no new slot needed)' : 'a new slot s' + si + ' is appended at the front') + '. Its RID is <b>(page, ' + si + ')</b>.', { cells: cl, slot: si, cls: 'cur' });
+            snap('<b>Insert ' + name + '</b> (' + len + ' units): bytes go at the <b>end</b> of free space (offset ' + fe + '), and ' + (reuse >= 0 ? 'it takes the <b>reused</b> slot s' + si + ' (no new slot entry needed)' : 'a new slot s' + si + ' is appended at the front') + '. Its RID is <b>(page, ' + si + ')</b>.', { cells: cl, slot: si, cls: 'cur' });
           } else if ((m = /^-([A-Za-z0-9]{1,3})$/.exec(t))) {
             var di = -1; slots.forEach(function (s, i) { if (s.name === m[1] && s.state === 'live') di = i; });
             if (di < 0) { snap('Delete ' + m[1] + ': no live record with that name — nothing to do.'); return; }
@@ -1200,7 +1200,7 @@ ORDER BY level, created_seq DESC;`, 'Read path: candidate SSTables for one key (
     codeTitle: ['Toy LSM engine', 'Compaction outcome in SQL', 'Lookup candidates'],
     viz: {
       title: 'LSM write path: WAL + memtable → flush to L0 → compaction → reads',
-      input: 'mem=3 | 5 1 9 3 7 -3 2 8 4 6 | get 3 | get 7',
+      input: 'mem=3 | 5 1 9 3 7 2 8 4 6 -3 1 2 7 | get 3 | get 7 | get 4',
       inputLabel: 'mem=N | keys to put (-k = delete) | get k ...',
       gen: function (input) {
         var s = String(input || '').trim(), mem = 3;
@@ -2455,7 +2455,7 @@ ORDER BY snapshot, k;`),
     level: 'Medium', tags: ['WAL', 'fsync', 'simulation'], companies: ['Stripe', 'Amazon', 'PlanetScale'],
     statement: `<p>Transactions arrive every <b>0.1 ms</b> (10,000/s) and each needs its COMMIT record fsynced; one fsync takes <b>1 ms</b>. Simulate 2,000 commits under (a) one fsync per commit, served one at a time, and (b) <b>group commit</b>: when an fsync finishes, the next fsync covers <i>all</i> commits waiting at that moment. Report number of fsyncs, average and max commit latency.</p>`,
     constraints: `Times in ms; the log device does one fsync at a time.`,
-    example: `<p>Serial: capacity 1,000 commits/s &lt; 10,000/s arrivals → the queue explodes, ${H.c('r', 'max latency ≈ 1.8 s')}. Group commit: ${H.c('g', '~200 fsyncs, latency ≈ 1.5–2 ms')}.</p>`,
+    example: `<p>Serial: capacity 1,000 commits/s &lt; 10,000/s arrivals → the queue explodes, ${H.c('r', 'max latency ≈ 1.8 s')}. Group commit: ${H.c('g', '~200 fsyncs, average latency ≈ 1.5 ms, max ≈ 1.9 ms')}.</p>`,
     brute: {
       why: `<p>One fsync per commit is the naive design: correct, but the device's fsync rate caps throughput at 1 / 1 ms = 1,000 commits/s, and latency grows without bound when arrivals exceed it.</p>`,
       code: { lang: 'python', run: true, code: `ARRIVE, FSYNC, N = 0.1, 1.0, 2000
@@ -2601,7 +2601,7 @@ print("log tail:", [(r["lsn"], r["type"], r.get("undo_next")) for r in log[6:]])
     level: 'Hard', tags: ['storage engine design', 'LSM', 'time-series', 'capacity planning'], companies: ['Datadog', 'Grafana Labs', 'Uber', 'Netflix'],
     statement: `<p>Design the single-node storage engine for a metrics database: <b>1,000,000 points/s</b> (series_id 8 B, timestamp 8 B, float64 value 8 B), queries mostly "last 1–6 hours for a few series", retention <b>30 days</b>. Choose the data structure, key layout, write path, compaction strategy, compression and deletion strategy, and size WAL bandwidth, memtable, flush frequency, total disk and compaction bandwidth. Write the sizing as code.</p>`,
     constraints: `One NVMe disk (≈ 2 GB/s sequential write, 1 M IOPS), 64 GB RAM. Gorilla-style compression ≈ 1.4 bytes per point.`,
-    example: `<p>Raw ingest = 24 MB/s. Memtable 1 GB flushes every ~40 s. Compressed ≈ 1.4 MB/s → ${H.c('b', '≈ 3.6 TB for 30 days')}. Time-window compaction with WA ≈ 3 → ${H.c('g', '≈ 28 MB/s total disk writes')}. A B-tree on (series, ts) would dirty a random 16 KB page per point: ${H.c('r', '≈ 32 GB/s')} — impossible.</p>`,
+    example: `<p>Raw ingest = 24 MB/s. Memtable 1 GB flushes every ~40 s. Compressed ≈ 1.4 MB/s → ${H.c('b', '≈ 3.6 TB for 30 days')}. Time-window compaction with WA ≈ 3 → ${H.c('g', '≈ 28 MB/s total disk writes')}. A B-tree on (series, ts) would dirty a random 16 KB page per point: ${H.c('r', '≈ 33 GB/s')} — impossible.</p>`,
     brute: {
       why: `<p>The naive design is a relational table <code>points(series_id, ts, value)</code> with a B-tree primary key in a general-purpose engine. With a million <i>different</i> series receiving points, inserts land on random leaf pages: page writes, doublewrite and index maintenance blow past any disk, and 30-day deletes become billions of row deletes.</p>`,
       code: { lang: 'python', run: true, code: `points_per_s = 1_000_000
