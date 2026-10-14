@@ -701,4 +701,752 @@ public class Main {
       }
     ]
   });
+
+  /* ======================================================================
+     TOPIC 3 — Method overriding rules
+     ====================================================================== */
+  topics.push({
+    title: 'Method Overriding Rules: Signature, Return Type, Access, Exceptions, @Override',
+    analogy: `<p>A <b>franchise restaurant</b>. Head office (the parent class) publishes a menu item: <i>"Masala Dosa — served to everyone, may contain nuts"</i>. A local branch (the subclass) may cook its <b>own version</b> (override), but under franchise rules: same dish name and same order form (same signature); it may serve something <b>more specific</b> — a "Mysore Masala Dosa" is still a dosa (covariant return); it may <b>not</b> turn away customers head office promised to serve (no narrower access); and it may <b>not</b> add new surprise allergens head office never warned about (no new or broader checked exceptions). Break a rule and the franchise contract (the compiler) refuses.</p>`,
+    explain: `<p><b>Overriding</b> = a subclass provides its own body for an <b>instance</b> method it inherited, with the <b>same name and same parameter types</b>. At runtime, Java calls the version belonging to the object's actual class (that is runtime polymorphism — next topic).</p>
+      ${H.table(['Rule', 'Allowed', 'Not allowed'], [
+        ['1. Signature (name + parameter types)', 'exactly the same', 'different params → that is an <b>overload</b>, not an override'],
+        ['2. Return type', 'same, or a <b>subtype</b> for reference types (covariant): <code>Number → Integer</code>', 'a different primitive (<code>int → long</code>) or an unrelated type'],
+        ['3. Access', 'same or <b>wider</b>: <code>protected → public</code>', 'narrower: <code>public → protected</code>'],
+        ['4. Checked exceptions', 'fewer, none, or <b>narrower</b>: <code>IOException → FileNotFoundException</code>', 'new or broader checked exceptions: <code>IOException → Exception</code>'],
+        ['5. Unchecked exceptions', 'any (RuntimeException, Error)', '—'],
+        ['6. What can be overridden', 'non-private, non-static, non-final instance methods', '<code>final</code> (error), <code>static</code> (only hidden), <code>private</code> (not inherited), constructors']
+      ])}
+      <p>Access order, from narrowest to widest: <code>private</code> &lt; <i>package-private</i> &lt; <code>protected</code> &lt; <code>public</code>.</p>
+      <p><b>Why these rules?</b> They all protect the caller who holds a <b>parent-type</b> reference. Code written as <code>Shape s = ...; Number n = s.area();</code> was compiled against Shape's promise. Whatever subclass shows up at runtime must keep that promise: still callable (access), still returns something usable as a <code>Number</code> (covariant return), and throws nothing the caller was not forced to handle (exceptions). This is the <b>Liskov Substitution Principle</b> enforced by the compiler.</p>
+      <p><b>Always write <code>@Override</code>.</b> It costs nothing and turns a silent bug (you accidentally wrote an overload) into a compile error.</p>`,
+    clues: [
+      '"Can an overriding method throw a broader exception / change the return type / reduce visibility?" → the five rules',
+      '"Can we override a static / private / final method?" → hiding / not inherited / compile error',
+      '"Difference between overloading and overriding" → same name; params differ (compile time) vs same signature in subclass (runtime)',
+      '"What is a covariant return type?" → child returns a subtype of the parent\'s return type',
+      '"Why use @Override?" → compiler verifies you really override (catches equals(MyType) mistakes)',
+      'Output puzzles where a "static method" is called through a parent-type reference → hiding, not polymorphism'
+    ],
+    code: [`
+      import java.io.*;
+
+      class Reader {
+          protected Object read() throws IOException { return "raw"; }
+      }
+
+      class FileReaderX extends Reader {
+          @Override                                   // compiler checks this really overrides
+          public String read()                        // wider access (protected -> public): OK
+                  throws FileNotFoundException {      // narrower checked exception: OK
+              return "file contents";                 // String is a subtype of Object: covariant return OK
+          }
+          // public int read() { ... }                // ERROR: int is not a subtype of Object
+          // void read() throws Exception { ... }     // ERROR: weaker access AND broader exception
+      }
+
+      public class Main {
+          public static void main(String[] args) throws IOException {
+              Reader r = new FileReaderX();
+              Object o = r.read();                    // caller only knows Reader's promise...
+              System.out.println(o);                  // ...but the subclass version runs: file contents
+              String s = new FileReaderX().read();    // through a child reference we get the precise type
+              System.out.println(s.length());         // 13
+          }
+      }`],
+    codeTitle: ['A legal override that uses every allowed freedom'],
+    viz: {
+      title: 'Override rule checker: is this override legal?',
+      input: 'public Number IOException ; protected Integer FileNotFoundException',
+      inputLabel: 'parent ; child — each: [access] [static] [final] returnType exception|none (access: public, protected, package, private)',
+      gen: function (input) {
+        var RET = { 'void': null, 'int': null, 'long': null, 'double': null, 'boolean': null, 'Object': null, 'Number': 'Object', 'Integer': 'Number', 'Long': 'Number', 'Double': 'Number', 'CharSequence': 'Object', 'String': 'CharSequence', 'List': 'Object', 'ArrayList': 'List' };
+        var PRIM = { 'void': 1, 'int': 1, 'long': 1, 'double': 1, 'boolean': 1 };
+        var EXC = { 'Throwable': null, 'Exception': 'Throwable', 'IOException': 'Exception', 'FileNotFoundException': 'IOException', 'SQLException': 'Exception', 'RuntimeException': 'Exception', 'IllegalArgumentException': 'RuntimeException', 'NullPointerException': 'RuntimeException' };
+        var ACC = { 'private': 0, 'package': 1, 'default': 1, 'protected': 2, 'public': 3 };
+        function isSub(map, a, b) { var x = a; while (x) { if (x === b) return true; x = map[x]; } return false; }
+        function unchecked(e) { return isSub(EXC, e, 'RuntimeException'); }
+        function parseSide(s, who) {
+          var t = s.trim().split(/\s+/).filter(Boolean), d = { acc: 'package', st: false, fin: false, ret: null, ex: 'none' };
+          var i = 0;
+          for (; i < t.length; i++) {
+            if (ACC[t[i]] !== undefined) d.acc = t[i] === 'default' ? 'package' : t[i];
+            else if (t[i] === 'static') d.st = true;
+            else if (t[i] === 'final') d.fin = true;
+            else break;
+          }
+          if (i >= t.length || !(t[i] in RET)) throw new Error(who + ': return type must be one of ' + Object.keys(RET).join(', '));
+          d.ret = t[i++];
+          if (i < t.length) {
+            if (t[i] !== 'none' && !(t[i] in EXC)) throw new Error(who + ': exception must be none or one of ' + Object.keys(EXC).join(', '));
+            d.ex = t[i++];
+          }
+          if (i < t.length) throw new Error(who + ': too many words. Example: public Number IOException');
+          return d;
+        }
+        var raw = String(input === undefined || input === null ? '' : input);
+        var sides = raw.split(';');
+        if (sides.length !== 2) throw new Error('Write parent ; child, e.g. public Number IOException ; public Integer none');
+        var P = parseSide(sides[0], 'Parent'), C = parseSide(sides[1], 'Child');
+        function decl(d) { return (d.acc === 'package' ? '' : d.acc + ' ') + (d.st ? 'static ' : '') + (d.fin ? 'final ' : '') + d.ret + ' area()' + (d.ex === 'none' ? '' : ' throws ' + d.ex); }
+        var code = ['class Shape {', '    ' + decl(P) + ' { ... }', '}', 'class Circle extends Shape {', '    @Override', '    ' + decl(C) + ' { ... }', '}'].join('\n');
+        var rows = [], frames = [], problems = 0, hiding = false;
+        function tbl(hlRow) { return { type: 'table', label: 'Rule checklist', columns: ['Rule', 'Parent', 'Child', 'Verdict'], rows: rows.map(function (r) { return r.slice(); }), hl: hlRow === undefined ? {} : one(hlRow, rows[hlRow][3].indexOf('✗') >= 0 ? 'bad' : 'ok') }; }
+        function push(narr, lines, cls) { var h = {}; lines.forEach(function (l) { h[l] = cls; }); frames.push({ narr: narr, parts: [{ type: 'code', label: 'Parent and child declarations', lang: 'java', code: code, hl: h }, tbl(rows.length ? rows.length - 1 : undefined)] }); }
+        push('We compare the parent method on line 2 with the child method on line 6. Same name <code>area()</code> and same (empty) parameter list, so the child is <b>trying</b> to override. Now check each rule, like the compiler does.', [2, 6], 'cur');
+        var r0 = 'OK ✓';
+        if (P.acc === 'private') { r0 = 'not inherited ✗'; problems++; }
+        else if (P.fin) { r0 = 'final cannot be overridden ✗'; problems++; }
+        else if (P.st && !C.st) { r0 = 'instance cannot override static ✗'; problems++; }
+        else if (!P.st && C.st) { r0 = 'static cannot hide instance ✗'; problems++; }
+        else if (P.st && C.st) { r0 = 'HIDING (legal, not polymorphic)'; hiding = true; }
+        rows.push(['Modifiers (private / final / static)', (P.acc === 'private' ? 'private ' : '') + (P.st ? 'static ' : '') + (P.fin ? 'final' : '') || '—', (C.st ? 'static ' : '') + (C.fin ? 'final' : '') || '—', r0]);
+        push(r0.indexOf('✗') >= 0 ? (P.acc === 'private' ? 'The parent method is <b>private</b>: subclasses do not even see it, so the child method is a <b>brand-new method</b>. With <code>@Override</code> this is a compile error ("method does not override").' : P.fin ? '<b>final</b> means "no subclass may override this". Compile error.' : 'Mixing static and instance methods with the same signature is a compile error: statics belong to the class, instance methods to objects.') : hiding ? 'Both are <b>static</b>: this is <b>hiding</b>, not overriding. Allowed, but which one runs depends on the <i>reference type</i>, never on the object. (And <code>@Override</code> would actually be an error here.)' : 'Neither method is private, final or static: overriding is possible. ✓', [2, 6], r0.indexOf('✗') >= 0 ? 'bad' : 'ok');
+        var accOk = ACC[C.acc] >= ACC[P.acc];
+        if (!accOk) problems++;
+        rows.push(['Access: same or wider', P.acc, C.acc, accOk ? 'OK ✓' : 'narrower ✗']);
+        push(accOk ? 'Access <b>' + C.acc + '</b> is the same as or wider than <b>' + P.acc + '</b>. Anyone who could call the parent version can still call the child version. ✓' : 'Access <b>' + C.acc + '</b> is <b>narrower</b> than <b>' + P.acc + '</b>. Code holding a <code>Shape</code> reference was promised it may call <code>area()</code>; a Circle cannot take that back. <span class="c-r">Compile error: attempting to assign weaker access privileges.</span>', [6], accOk ? 'ok' : 'bad');
+        var retOk, retWhy;
+        if (PRIM[P.ret] || PRIM[C.ret]) { retOk = P.ret === C.ret; retWhy = retOk ? 'Primitive/void return types match exactly. ✓' : 'With primitives or void the return type must be <b>identical</b> — <code>' + C.ret + '</code> ≠ <code>' + P.ret + '</code>. No widening here. <span class="c-r">Compile error: incompatible return type.</span>'; }
+        else { retOk = isSub(RET, C.ret, P.ret); retWhy = retOk ? (C.ret === P.ret ? 'Same return type. ✓' : '<code>' + C.ret + '</code> IS-A <code>' + P.ret + '</code> → <b>covariant return</b>. A caller expecting a ' + P.ret + ' happily accepts a ' + C.ret + '. ✓') : '<code>' + C.ret + '</code> is not a subtype of <code>' + P.ret + '</code>. A caller expecting a ' + P.ret + ' could get something unusable. <span class="c-r">Compile error.</span>'; }
+        if (!retOk) problems++;
+        rows.push(['Return type: same or subtype', P.ret, C.ret, retOk ? 'OK ✓' : 'incompatible ✗']);
+        push(retWhy, [6], retOk ? 'ok' : 'bad');
+        var exOk, exWhy;
+        if (C.ex === 'none') { exOk = true; exWhy = 'The child throws nothing extra. Throwing <b>fewer</b> exceptions is always fine. ✓'; }
+        else if (unchecked(C.ex)) { exOk = true; exWhy = '<code>' + C.ex + '</code> is <b>unchecked</b> (a RuntimeException). The compiler never restricts unchecked exceptions. ✓'; }
+        else if (P.ex !== 'none' && !unchecked(P.ex) && isSub(EXC, C.ex, P.ex)) { exOk = true; exWhy = '<code>' + C.ex + '</code> IS-A <code>' + P.ex + '</code>: a <b>narrower</b> checked exception. Callers already catch ' + P.ex + ', so they also catch this. ✓'; }
+        else { exOk = false; exWhy = 'Checked <code>' + C.ex + '</code> is ' + (P.ex === 'none' || unchecked(P.ex) ? 'new — the parent declared no checked exception' : 'broader than / unrelated to <code>' + P.ex + '</code>') + '. Callers of <code>Shape.area()</code> were never forced to handle it. <span class="c-r">Compile error: overridden method does not throw ' + C.ex + '.</span>'; }
+        if (!exOk) problems++;
+        rows.push(['Checked exceptions: none / same / narrower', P.ex, C.ex, exOk ? 'OK ✓' : 'broader ✗']);
+        push(exWhy, [6], exOk ? 'ok' : 'bad');
+        var verdict = problems ? '<span class="c-r"><b>Does not compile</b> — ' + problems + ' rule(s) broken.</span> Fix every ✗ row.' : hiding ? '<span class="c-y"><b>Compiles as method HIDING</b></span> (remove <code>@Override</code>). Calls are resolved by reference type at compile time.' : '<span class="c-g"><b>Legal override.</b></span> <code>Shape s = new Circle(); s.area()</code> will run Circle\'s version at runtime.';
+        frames.push({ narr: 'Verdict: ' + verdict + ' Try other inputs, e.g. <code>public Object none ; public String none</code> or <code>protected Number IOException ; public Integer Exception</code>.', parts: [{ type: 'code', label: 'Parent and child declarations', lang: 'java', code: code, hl: { 6: problems ? 'bad' : 'ok' } }, tbl()] });
+        return frames;
+      }
+    },
+    examples: [
+      {
+        title: '@Override catches the classic equals(Point) mistake',
+        html: `<p><code>equals(Point other)</code> does <b>not</b> override <code>Object.equals(Object)</code> — the parameter type differs, so it is an <b>overload</b>. Collections call <code>equals(Object)</code>, so <code>list.contains</code> fails. Adding <code>@Override</code> to the wrong version would be a compile error, catching the bug instantly.</p>
+          ${H.table(['Call', 'Method chosen', 'Result'], [['<code>p1.equals(p2)</code> (both Point refs)', 'equals(Point) — overload', H.c('g', 'true')], ['<code>list.contains(p2)</code>', 'equals(Object) — Object\'s identity check', H.c('r', 'false')]])}`,
+        code: `import java.util.*;
+
+class Point {
+    final int x, y;
+    Point(int x, int y) { this.x = x; this.y = y; }
+    // @Override    <- uncommenting this gives: "method does not override or implement a method from a supertype"
+    public boolean equals(Point o) { return o != null && x == o.x && y == o.y; }   // OVERLOAD, not override
+}
+
+public class Main {
+    public static void main(String[] args) {
+        Point p1 = new Point(1, 2), p2 = new Point(1, 2);
+        System.out.println(p1.equals(p2));                 // true  (overload chosen at compile time)
+        System.out.println(List.of(p1).contains(p2));      // false (List calls equals(Object))
+    }
+}`
+      },
+      {
+        title: 'Covariant return: copy() that returns the precise type',
+        html: `<p>Since Java 5 an override may return a <b>subtype</b>. Callers holding the child type then avoid a cast. The JDK uses this everywhere (e.g. <code>StringBuilder.append</code> returns <code>StringBuilder</code>, though declared in <code>Appendable</code> to return <code>Appendable</code>).</p>`,
+        code: `class Shape {
+    Shape copy() { return new Shape(); }
+}
+
+class Circle extends Shape {
+    final double r;
+    Circle(double r) { this.r = r; }
+    @Override
+    Circle copy() { return new Circle(r); }        // covariant: Circle IS-A Shape
+}
+
+public class Main {
+    public static void main(String[] args) {
+        Circle c = new Circle(2.5).copy();           // no cast needed
+        Shape s = c;
+        System.out.println(c.r + " " + (s.copy() instanceof Circle));   // 2.5 true
+    }
+}`
+      },
+      {
+        title: 'Exceptions: narrower is fine, broader is not',
+        html: `${H.table(['Parent declares', 'Child declares', 'Legal?'], [
+          ['<code>throws IOException</code>', '<code>throws FileNotFoundException</code>', H.c('g', 'yes (narrower)')],
+          ['<code>throws IOException</code>', '(nothing)', H.c('g', 'yes (fewer)')],
+          ['<code>throws IOException</code>', '<code>throws IllegalStateException</code>', H.c('g', 'yes (unchecked)')],
+          ['<code>throws IOException</code>', '<code>throws Exception</code>', H.c('r', 'no (broader)')],
+          ['(nothing)', '<code>throws IOException</code>', H.c('r', 'no (new checked)')]
+        ])}`,
+        code: `import java.io.*;
+
+class Loader {
+    void load(String path) throws IOException { }
+}
+
+class SafeLoader extends Loader {
+    @Override
+    void load(String path) {                        // throws nothing: callers' catch blocks are simply unused
+        if (path.isEmpty()) throw new IllegalArgumentException("empty path");  // unchecked: always allowed
+    }
+}
+
+class StrictLoader extends Loader {
+    @Override
+    void load(String path) throws FileNotFoundException { }   // narrower checked exception: allowed
+    // void load(String path) throws Exception { }             // ERROR: broader than IOException
+}
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        Loader l = new SafeLoader();
+        l.load("a.txt");                            // compiler still demands IOException handling here
+        System.out.println("loaded");
+    }
+}`
+      },
+      {
+        title: 'Static methods are hidden, not overridden',
+        html: `<p>For a <code>static</code> method the compiler picks the version from the <b>declared type</b> of the reference. The object is ignored entirely — even <code>((Parent) null).greet()</code> works!</p>`,
+        code: `class Parent {
+    static String greet() { return "Parent.greet"; }
+    String hello() { return "Parent.hello"; }
+}
+
+class Child extends Parent {
+    static String greet() { return "Child.greet"; }      // HIDES Parent.greet
+    @Override String hello() { return "Child.hello"; }   // OVERRIDES Parent.hello
+}
+
+public class Main {
+    @SuppressWarnings("static-access")
+    public static void main(String[] args) {
+        Parent p = new Child();
+        System.out.println(p.greet());                 // Parent.greet  (declared type decides)
+        System.out.println(p.hello());                 // Child.hello   (object decides)
+        System.out.println(((Parent) null).greet());   // Parent.greet  (no object needed at all)
+    }
+}`
+      }
+    ],
+    deepDive: `<p><b>1. Bridge methods.</b> The JVM itself matches methods by name <i>and</i> full descriptor including return type. For <code>Circle copy()</code> overriding <code>Shape copy()</code>, javac emits a hidden <b>synthetic bridge</b> <code>Shape copy()</code> in Circle that just calls <code>Circle copy()</code>. The same trick makes generic overrides work after type erasure (<code>compareTo(Object)</code> bridging to <code>compareTo(Person)</code>). You can see them with <code>javap -p -c</code>.</p>
+      <p><b>2. Overriding is decided after erasure.</b> <code>void f(List&lt;String&gt;)</code> and <code>void f(List&lt;Integer&gt;)</code> in the same class clash ("same erasure"). A subclass method with a raw <code>List</code> parameter can override a generic one.</p>
+      <p><b>3. Package-private methods across packages.</b> A package-private method in <code>com.a.Base</code> is <b>not</b> overridden by a same-signature method in <code>com.b.Sub</code>; they are two unrelated methods. Puzzlers love this.</p>
+      <p><b>4. No parameter contravariance.</b> Changing a parameter from <code>String</code> to <code>Object</code> in a subclass does not "widen" the override — it creates an overload. Only the return type has variance in Java.</p>
+      <p><b>5. Not part of the signature.</b> <code>synchronized</code>, <code>final</code> parameters, parameter names, and <code>strictfp</code> do not affect overriding. An override is <b>not</b> automatically synchronized just because the parent was.</p>
+      <p><b>6. Calling the original.</b> Inside the child, <code>super.m()</code> reaches the parent version (via <code>invokespecial</code>). From outside there is no way to force the parent version on a child object — that is what makes overriding trustworthy for frameworks.</p>
+      <p><b>7. Interfaces too.</b> Implementing an interface method is overriding: the implementation must be <code>public</code> (interface methods are implicitly public), so <code>void run()</code> without <code>public</code> fails with "weaker access".</p>`,
+    aiEra: `<p><b>What AI changes:</b> IDEs and assistants generate overrides for you ("Implement methods", "Override equals"). The <i>typing</i> is solved; knowing whether a hand-written or AI-written method <i>really</i> overrides is not.</p>
+      <p><b>Use AI as a partner:</b> paste a class and ask <code>Which of these methods actually override something, which are overloads, and which hide a static?</code> Or <code>Show the bridge methods javac will generate for this class</code> and confirm with <code>javap -p</code>.</p>
+      <p><b>Where AI goes wrong:</b> it occasionally writes <code>equals(MyType)</code> without <code>@Override</code>, makes interface implementations package-private, declares <code>throws Exception</code> on an override "to be safe" (compile error), or claims statics are polymorphic.</p>
+      <p><b>What you must still own:</b> the five rules and the reasoning behind them (substitutability). In interviews you must explain <i>why</i> narrowing access is illegal, not just that it is.</p>`,
+    problems: [
+      {
+        title: 'Guided: Fix the Four Broken Overrides',
+        level: 'Medium', tags: ['overriding', 'covariant return', 'exceptions', 'static hiding'], companies: ['Oracle', 'SAP', 'Cognizant'],
+        statement: `<p>A junior wrote <code>Circle extends Shape</code> with four "overrides". For each, say whether it compiles and why, then write a corrected <code>Circle</code> where all four really override (or correctly hide) the parent.</p>
+          <pre>class Shape {
+    protected Number area() throws IOException
+    public Shape copy()
+    void draw()
+    public static String kind()
+}
+// Circle's attempts:
+private Integer area()              // (a)
+public Circle copy()                // (b)
+public void draw() throws Exception // (c)
+public String kind()                // (d) instance method</pre>`,
+        constraints: `Java 21. Keep <code>Shape</code> unchanged. <code>Circle</code> stores a radius.`,
+        example: `<p>(a) ${H.c('r', '✗ weaker access')} (protected → private). (b) ${H.c('g', '✓ covariant return')}. (c) ${H.c('r', '✗ new checked exception')} — Shape.draw declares none. (d) ${H.c('r', '✗ instance method cannot override a static method')}.</p>`,
+        brute: {
+          why: `<p>The tempting "fix" is to delete <code>@Override</code> and tweak parameter lists until the errors vanish. It compiles — but every method is now an <b>overload</b> or an unrelated method, so <code>Shape s = new Circle(2); s.area()</code> silently runs <b>Shape's</b> version and returns 0. You traded a loud compile error for a quiet runtime bug.</p>`,
+          code: `import java.io.*;
+
+class Shape {
+    protected Number area() throws IOException { return 0; }
+    public Shape copy() { return new Shape(); }
+    void draw() { System.out.println("shape"); }
+    public static String kind() { return "shape"; }
+}
+
+class Circle extends Shape {
+    final double r;
+    Circle(double r) { this.r = r; }
+    public Integer area(double scale) { return (int) (Math.PI * r * r * scale); }  // overload: never called via Shape
+    void draw(String color) { System.out.println(color + " circle"); }             // overload again
+}
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        Shape s = new Circle(2);
+        System.out.println(s.area());   // 0  <- Shape's version: the "override" never happened
+        s.draw();                       // shape
+    }
+}`
+        },
+        mcq: { q: 'Attempt (c) adds "throws Exception" to draw(). The cleanest fix is…', options: ['Remove the throws clause (or throw an unchecked exception instead)', 'Add throws Exception to Shape.draw() too', 'Catch Exception in main', 'Make draw() static'], answer: 0, explain: 'You are not allowed to change Shape here, and the override may only throw fewer/narrower checked exceptions. Dropping the clause or using an unchecked exception keeps the contract.' },
+        hints: [
+          `<p>Hint 1: For each attempt run the checklist in order — modifiers (static/final/private), access (same or wider), return (same or subtype), checked exceptions (none/same/narrower).</p>`,
+          `<p>Hint 2: (a) needs <code>protected</code> or <code>public</code>; returning <code>Double</code> (a Number) is fine and you may drop <code>throws IOException</code>. (d) must be <code>static</code> too — and then it is hiding, so no <code>@Override</code>.</p>`,
+          `<p>Hint 3: Verify with a parent reference: <code>Shape s = new Circle(2); s.area(); s.copy(); s.draw();</code> must all run Circle's code, while <code>s.kind()</code> still prints "shape" (static: reference type decides).</p>`
+        ],
+        solution: {
+          approach: `<p>Fix each attempt with the smallest change that satisfies the rules, and put <code>@Override</code> on every true override so the compiler guards them forever. For the static <code>kind()</code>, make the child static too (legal hiding) and remember it is <b>not</b> polymorphic.</p>`,
+          code: `import java.io.*;
+
+class Shape {
+    protected Number area() throws IOException { return 0; }
+    public Shape copy() { return new Shape(); }
+    void draw() { System.out.println("shape"); }
+    public static String kind() { return "shape"; }
+}
+
+class Circle extends Shape {
+    final double r;
+    Circle(double r) { this.r = r; }
+
+    @Override
+    public Double area() {                                   // (a) wider access, covariant Double, no checked exception
+        return Math.PI * r * r;
+    }
+
+    @Override
+    public Circle copy() { return new Circle(r); }           // (b) was already legal: covariant return
+
+    @Override
+    public void draw() {                                     // (c) no new checked exception
+        if (r <= 0) throw new IllegalStateException("bad radius");   // unchecked is fine
+        System.out.println("circle r=" + r);
+    }
+
+    public static String kind() { return "circle"; }         // (d) static hides static (no @Override!)
+}
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        Shape s = new Circle(2);
+        System.out.printf("%.2f%n", s.area().doubleValue());   // 12.57  (Circle's area)
+        System.out.println(s.copy() instanceof Circle);         // true
+        s.draw();                                               // circle r=2.0
+        System.out.println(Shape.kind() + " " + Circle.kind()); // shape circle (hiding: decided by the type name)
+    }
+}`,
+          dry: {
+            head: ['attempt', 'rule broken', 'fix', 'Shape s = new Circle(2) calls…'],
+            rows: [
+              ['(a) private Integer area()', 'access protected → private', 'public Double area()', 'Circle.area → 12.57'],
+              ['(b) public Circle copy()', 'none ✓', 'keep, add @Override', 'Circle.copy'],
+              ['(c) draw() throws Exception', 'new checked exception', 'drop throws; unchecked if needed', 'Circle.draw'],
+              ['(d) public String kind()', 'instance vs static', 'public static String kind()', 'Shape.kind (hiding)']
+            ]
+          },
+          complexity: `<p>O(1) per call. The real cost being avoided is a silent wrong-method bug that only shows up at runtime.</p>`,
+          followUps: ['Why is <code>@Override</code> on the static <code>kind()</code> a compile error?', 'Could Circle.area() return <code>double</code> (primitive)? Why not?', 'What bridge methods will javac generate for Circle?']
+        }
+      }
+    ]
+  });
+
+  /* ======================================================================
+     TOPIC 4 — Polymorphism: compile-time vs runtime
+     ====================================================================== */
+  topics.push({
+    title: 'Polymorphism: Compile-Time (Overloading) vs Runtime (Dynamic Dispatch)',
+    analogy: `<p>A <b>universal TV remote</b>. You press the same <b>Power</b> button every time, but a Samsung, an LG and a Sony TV each switch on in their own way. The remote does not know or care which brand is in front of it — the <b>TV decides</b> what "power" means at the moment you press. That is <b>runtime polymorphism</b>. Now think of a <b>coffee machine with three slots</b>: a pod slot, a beans slot and a powder slot. Which slot you use is decided <b>by looking at what is in your hand before you start</b>. That is <b>compile-time polymorphism</b> (overloading): the choice is made early, from the visible type, not from what is "really" inside.</p>`,
+    explain: `<p><b>Polymorphism</b> means "many forms": one name, many behaviours. Java has two kinds, and interviews always ask you to separate them.</p>
+      ${H.table(['', 'Compile-time (static)', 'Runtime (dynamic)'], [
+        ['Mechanism', '<b>Overloading</b>: same name, different parameter lists', '<b>Overriding</b>: subclass replaces an inherited instance method'],
+        ['Who decides', 'javac, from the <b>declared (static) types</b> of the arguments', 'the JVM, from the <b>actual class of the object</b>'],
+        ['When', 'while compiling', 'every time the call runs'],
+        ['Also called', 'static binding, early binding', 'dynamic dispatch, late binding, virtual call']
+      ])}
+      <p><b>The golden rule:</b> <i>the reference type decides <b>what you are allowed to call</b>; the object type decides <b>which version runs</b>.</i></p>
+      <p>${H.c('b', '<code>Animal a = new Dog();</code>')} — <code>a.sound()</code> compiles because <code>Animal</code> has <code>sound()</code>, and runs <code>Dog</code>'s version. <code>a.fetch()</code> does <b>not</b> compile even though the object is a Dog, because <code>Animal</code> has no <code>fetch()</code>. To call it you must <b>downcast</b>: <code>if (a instanceof Dog d) d.fetch();</code> (pattern matching, Java 16+).</p>
+      <p><b>Not polymorphic</b> (decided by the reference type at compile time): <b>fields</b>, <b>static methods</b>, <b>private methods</b>, and the choice between <b>overloads</b>.</p>
+      <p><b>How javac picks an overload</b> — three phases, stopping at the first phase that finds something:</p>
+      <ol>
+        <li><b>Phase 1:</b> exact match or <i>widening</i> only (<code>int → long</code>, <code>String → Object</code>). No boxing, no varargs.</li>
+        <li><b>Phase 2:</b> also allow <i>boxing/unboxing</i> (<code>int ↔ Integer</code>).</li>
+        <li><b>Phase 3:</b> also allow <i>varargs</i>.</li>
+      </ol>
+      <p>Inside a phase, the <b>most specific</b> method wins (<code>Integer</code> beats <code>Object</code>); if none is most specific → "reference is ambiguous" compile error. That is why <code>f(5)</code> picks <code>f(long)</code> over <code>f(Integer)</code>: widening (phase 1) beats boxing (phase 2).</p>`,
+    clues: [
+      '"Difference between compile-time and runtime polymorphism" / "static vs dynamic binding"',
+      '"Animal a = new Dog(); what does a.sound() print?" → object decides (dynamic dispatch)',
+      '"What does p.name print when Parent p = new Child()?" → fields are NOT polymorphic',
+      '"f(null) with f(String) and f(Object)" / "f(5) with f(long) and f(Integer)" → overload resolution phases',
+      '"Replace this if-else / instanceof chain on types" → push the behaviour into overridden methods',
+      '"Can we achieve polymorphism with static methods?" → no, statics are hidden, bound at compile time'
+    ],
+    code: [`
+      import java.util.*;
+
+      abstract class Notification {
+          abstract String channel();                       // each subclass decides
+          String send(String msg) {                        // shared algorithm calls the overridable method
+              return "[" + channel() + "] " + msg;
+          }
+      }
+      class Email extends Notification { String channel() { return "EMAIL"; } }
+      class Sms   extends Notification { String channel() { return "SMS"; } }
+      class Push  extends Notification {
+          String channel() { return "PUSH"; }
+          @Override String send(String msg) { return super.send(msg.toUpperCase()); }
+      }
+
+      public class Main {
+          // compile-time polymorphism: two overloads, chosen by the static argument type
+          static String describe(int n)    { return "int " + n; }
+          static String describe(String s) { return "text " + s; }
+
+          public static void main(String[] args) {
+              List<Notification> all = List.of(new Email(), new Sms(), new Push());
+              for (Notification n : all) {
+                  System.out.println(n.send("order shipped"));   // runtime polymorphism: object decides
+              }
+              System.out.println(describe(42) + " | " + describe("42"));
+              // [EMAIL] order shipped
+              // [SMS] order shipped
+              // [PUSH] ORDER SHIPPED
+              // int 42 | text 42
+          }
+      }`],
+    codeTitle: ['Both kinds of polymorphism in one program'],
+    viz: [
+      {
+        title: 'Dynamic dispatch: which sound() and move() run for a.intro()?',
+        input: 'Puppy',
+        inputLabel: 'Runtime class for "Animal a = new ___()": Animal, Dog, Puppy or Cat',
+        gen: function (input) {
+          var X = cleanWord(input, 'Puppy');
+          var DEF = { Animal: { sound: 2, move: 3, intro: 4 }, Dog: { sound: 7 }, Puppy: { move: 10 }, Cat: { sound: 13, move: 14 } };
+          var PAR = { Animal: null, Dog: 'Animal', Puppy: 'Dog', Cat: 'Animal' };
+          var VAL = { 'Animal.sound': '...', 'Animal.move': 'walks', 'Dog.sound': 'Woof', 'Puppy.move': 'tumbles', 'Cat.sound': 'Meow', 'Cat.move': 'sneaks' };
+          if (!DEF[X]) throw new Error('Choose one of: Animal, Dog, Puppy, Cat');
+          var code = [
+            'class Animal {',
+            '    String sound() { return "..."; }',
+            '    String move()  { return "walks"; }',
+            '    String intro() { return sound() + " and " + move(); }',
+            '}',
+            'class Dog extends Animal {',
+            '    @Override String sound() { return "Woof"; }',
+            '}',
+            'class Puppy extends Dog {',
+            '    @Override String move()  { return "tumbles"; }',
+            '}',
+            'class Cat extends Animal {',
+            '    @Override String sound() { return "Meow"; }',
+            '    @Override String move()  { return "sneaks"; }',
+            '}',
+            '// main:',
+            'Animal a = new ' + X + '();',
+            'System.out.println(a.intro());'
+          ].join('\n');
+          var nodes = [{ id: 'Object', x: 50, y: 6 }, { id: 'Animal', x: 50, y: 22 }, { id: 'Dog', x: 28, y: 38 }, { id: 'Cat', x: 72, y: 38 }, { id: 'Puppy', x: 28, y: 54 }];
+          var edges = [['Animal', 'Object', 'extends'], ['Dog', 'Animal', 'extends'], ['Cat', 'Animal', 'extends'], ['Puppy', 'Dog', 'extends']];
+          function lookup(m) { var path = [], c = X; while (c) { path.push(c); if (DEF[c][m]) return { cls: c, path: path, line: DEF[c][m] }; c = PAR[c]; } return null; }
+          function graph(path, found, extraTag) {
+            var hl = {}, ehl = {}, tags = {};
+            path.forEach(function (c, i) { hl[c] = c === found ? 'ok' : 'cur'; if (i > 0) ehl[path[i - 1] + '-' + c] = 'cur'; });
+            tags[X] = 'object is a ' + X;
+            if (extraTag) tags[found] = extraTag;
+            return hier('Lookup walks UP from the object\'s class', nodes, edges, hl, ehl, tags, 62);
+          }
+          function vtable() {
+            return { type: 'table', label: 'Method table (vtable) for class ' + X, columns: ['method', 'implementation used'], rows: ['sound', 'move', 'intro'].map(function (m) { var r = lookup(m); return [m + '()', r.cls + '.' + m + (r.cls === X ? '' : ' (inherited)')]; }) };
+          }
+          var frames = [], s = lookup('sound'), mv = lookup('move'), it = lookup('intro');
+          var sv = VAL[s.cls + '.sound'], mvv = VAL[mv.cls + '.move'];
+          frames.push({ narr: '<b>Compile time:</b> javac only looks at the <i>declared</i> type <code>Animal</code>. Does Animal have <code>intro()</code>? Yes → the call compiles as "invoke virtual Animal.intro()". javac does <b>not</b> know the object will be a ' + X + '.', parts: [{ type: 'code', label: 'Program', lang: 'java', code: code, hl: { 17: 'cur', 18: 'cur', 1: 'win', 4: 'win' } }, hier('Class hierarchy', nodes, edges, { Animal: 'cur' }, {}, { Animal: 'declared type' }, 62)] });
+          frames.push({ narr: '<b>Runtime:</b> <code>a</code> points to a real <b>' + X + '</b> object. The JVM looks up <code>intro()</code> starting at ' + X + ' and walking up: ' + it.path.join(' → ') + '. Found in <b>' + it.cls + '</b>.', parts: [{ type: 'code', label: 'Program', lang: 'java', code: code, hl: { 18: 'cur', 4: 'ok' } }, graph(it.path, it.cls, 'intro() found'), vtable()] });
+          frames.push({ narr: 'Inside <code>Animal.intro()</code>, <code>this</code> is still the ' + X + ' object. The call <code>sound()</code> is really <code>this.sound()</code> — another <b>virtual</b> call, so the lookup starts again from <b>' + X + '</b>, not from Animal!', parts: [{ type: 'code', label: 'Program', lang: 'java', code: code, hl: { 4: 'cur' } }, { type: 'stack', label: 'Call stack', items: ['main', X + '.intro()  [code from ' + it.cls + ']'], hl: { 1: 'cur' } }, graph(s.path, s.cls, 'sound() found')] });
+          frames.push({ narr: 'Lookup for <code>sound()</code>: ' + s.path.join(' → ') + ' → found in <b>' + s.cls + '</b> (line ' + s.line + '). It returns <b>"' + sv + '"</b>.', parts: [{ type: 'code', label: 'Program', lang: 'java', code: code, hl: one(s.line, 'ok') }, { type: 'stack', label: 'Call stack', items: ['main', X + '.intro()', s.cls + '.sound()'], hl: { 2: 'cur' } }, { type: 'vars', label: 'Partial result', vals: { 'sound()': '"' + sv + '"' }, hl: { 'sound()': 'ok' } }] });
+          frames.push({ narr: 'Next <code>move()</code>, also virtual: ' + mv.path.join(' → ') + ' → found in <b>' + mv.cls + '</b> (line ' + mv.line + '), returns <b>"' + mvv + '"</b>.', parts: [{ type: 'code', label: 'Program', lang: 'java', code: code, hl: one(mv.line, 'ok') }, graph(mv.path, mv.cls, 'move() found'), { type: 'vars', label: 'Partial result', vals: { 'sound()': '"' + sv + '"', 'move()': '"' + mvv + '"' }, hl: { 'move()': 'ok' } }] });
+          frames.push({ narr: '<code>intro()</code> glues them: <b>"' + sv + ' and ' + mvv + '"</b>. Same line of code in Animal, but the result depends entirely on the object. Try every class: Animal, Dog, Puppy, Cat. Notice Puppy gets Dog\'s sound and its own move.', parts: [{ type: 'code', label: 'Program', lang: 'java', code: code, hl: { 18: 'ok' } }, vtable(), out(sv + ' and ' + mvv)] });
+          return frames;
+        }
+      },
+      {
+        title: 'Overload resolution: javac\'s three phases',
+        input: 'int',
+        inputLabel: 'Static type of the argument (byte, short, char, int, long, float, double, boolean, Integer, Long, String, null), optionally remove candidates: e.g. "int -long"',
+        gen: function (input) {
+          var t = String(input === undefined || input === null ? '' : input).trim().split(/\s+/).filter(Boolean);
+          var TYPES = ['byte', 'short', 'char', 'int', 'long', 'float', 'double', 'boolean', 'Integer', 'Long', 'String', 'null'];
+          if (!t.length || TYPES.indexOf(t[0]) < 0) throw new Error('First word must be one of: ' + TYPES.join(', '));
+          var T = t[0], removed = {};
+          t.slice(1).forEach(function (w) {
+            var k = w.replace(/^-/, '');
+            if (['long', 'Integer', 'Object', 'varargs'].indexOf(k) < 0 || w[0] !== '-') throw new Error('Remove candidates with -long, -Integer, -Object or -varargs');
+            removed[k] = true;
+          });
+          var PRIM = { byte: 1, short: 1, char: 1, int: 1, long: 1, float: 1, double: 1, boolean: 1 };
+          var WIDEN = { byte: ['short', 'int', 'long', 'float', 'double'], short: ['int', 'long', 'float', 'double'], char: ['int', 'long', 'float', 'double'], int: ['long', 'float', 'double'], long: ['float', 'double'], float: ['double'], double: [], boolean: [] };
+          var BOX = { byte: 'Byte', short: 'Short', char: 'Character', int: 'Integer', long: 'Long', float: 'Float', double: 'Double', boolean: 'Boolean' };
+          var UNBOX = { Integer: 'int', Long: 'long' };
+          function primTo(a, p) { return a === p || WIDEN[a].indexOf(p) >= 0; }
+          function refTo(a, p) { return a === 'null' || a === p || p === 'Object'; }
+          function app(phase, param) {
+            var argPrim = !!PRIM[T], parPrim = !!PRIM[param];
+            if (argPrim && parPrim) return primTo(T, param);
+            if (!argPrim && !parPrim) return refTo(T, param);
+            if (phase < 2) return false;
+            if (argPrim && !parPrim) return refTo(BOX[T], param);
+            return !!UNBOX[T] && primTo(UNBOX[T], param);
+          }
+          var C = [{ k: 'long', p: 'long', line: 1 }, { k: 'Integer', p: 'Integer', line: 2 }, { k: 'Object', p: 'Object', line: 3 }, { k: 'varargs', p: 'int', line: 4, va: true }].filter(function (c) { return !removed[c.k]; });
+          var code = ['static void f(long x)    { System.out.println("long"); }', 'static void f(Integer x) { System.out.println("Integer"); }', 'static void f(Object x)  { System.out.println("Object"); }', 'static void f(int... xs) { System.out.println("varargs"); }', '', '// the call:  f(arg);   where arg is declared as ' + T].join('\n');
+          var rows = C.map(function (c) { return ['f(' + (c.va ? 'int...' : c.p) + ')', '', '', '']; });
+          function sub(a, b) { if (a === b) return true; if (PRIM[a] && PRIM[b]) return primTo(a, b); if (!PRIM[a] && !PRIM[b]) return b === 'Object'; return false; }
+          var frames = [], removedTxt = Object.keys(removed).length ? ' (removed: ' + Object.keys(removed).join(', ') + ')' : '';
+          function codeHl(lines, cls) { var h = { 6: 'cur' }; C.forEach(function (c) { if (removed[c.k]) h[c.line] = 'done'; }); ['long', 'Integer', 'Object', 'varargs'].forEach(function (k, i) { if (removed[k]) h[i + 1] = 'done'; }); lines.forEach(function (l) { h[l] = cls; }); return h; }
+          function tbl(hlIdx, cls) { var h = {}; if (hlIdx !== undefined) h[hlIdx] = cls; return { type: 'table', label: 'Applicable?', columns: ['Candidate', 'Phase 1: widening only', 'Phase 2: + boxing', 'Phase 3: + varargs'], rows: rows.map(function (r) { return r.slice(); }), hl: h }; }
+          frames.push({ narr: 'The argument\'s <b>declared type</b> is <code>' + T + '</code>' + removedTxt + '. javac does not care about the runtime value — only this type. It tries three phases in order and stops at the first phase where some method fits.', parts: [{ type: 'code', label: 'Overloads', lang: 'java', code: code, hl: codeHl([], 'cur') }, tbl()] });
+          var winner = null, phaseWon = 0, ambiguous = false;
+          for (var ph = 1; ph <= 3 && !winner && !ambiguous; ph++) {
+            var appl = [];
+            C.forEach(function (c, i) {
+              // in phases 1-2 a varargs method counts as fixed arity: f(int[] xs). Only null converts to int[] here.
+              var ok = ph < 3 ? (c.va ? T === 'null' : app(ph, c.p)) : app(2, c.p);
+              rows[i][ph] = ok ? (c.va && ph < 3 ? '✓ (as int[])' : '✓') : '✗';
+              if (ok) appl.push(c);
+            });
+            var desc = ph === 1 ? 'Phase 1 allows only an exact match or <b>widening</b> (byte→short→int→long→float→double, char→int, any reference→Object, null→any reference). No boxing, no varargs.' : ph === 2 ? 'Nothing fit, so Phase 2 also allows <b>boxing/unboxing</b> (int↔Integer, long↔Long), optionally followed by widening.' : 'Still nothing, so Phase 3 finally allows <b>varargs</b>.';
+            var lines = appl.map(function (c) { return c.line; });
+            frames.push({ narr: desc + ' Applicable: ' + (appl.length ? appl.map(function (c) { return '<code>f(' + (c.va ? 'int...' : c.p) + ')</code>'; }).join(', ') : '<b>none</b>') + '.', parts: [{ type: 'code', label: 'Overloads', lang: 'java', code: code, hl: codeHl(lines, 'ok') }, tbl()] });
+            if (appl.length) {
+              var pt = function (c) { return c.va && ph < 3 ? 'int[]' : c.p; };
+              var best = appl.filter(function (a) { return appl.every(function (b) { return sub(pt(a), pt(b)); }); });
+              if (best.length === 1) { winner = best[0]; phaseWon = ph; }
+              else { ambiguous = true; }
+            }
+          }
+          if (winner) {
+            frames.push({ narr: 'Most specific in phase ' + phaseWon + ': <b><code>f(' + (winner.va ? 'int...' : winner.p) + ')</code></b>' + (phaseWon === 1 && C.length > 1 ? ' — later phases are never even considered, which is why widening beats boxing and boxing beats varargs.' : '.') + ' This decision is baked into the bytecode; it never changes at runtime.', parts: [{ type: 'code', label: 'Overloads', lang: 'java', code: code, hl: codeHl([winner.line], 'sel') }, tbl(C.indexOf(winner), 'sel'), out(winner.va ? 'varargs' : winner.p)] });
+          } else {
+            frames.push({ narr: ambiguous ? '<span class="c-r">Compile error: reference to f is ambiguous</span> — several methods fit and none is more specific than all others.' : '<span class="c-r">Compile error: no suitable method found for f(' + T + ')</span>.', parts: [{ type: 'code', label: 'Overloads', lang: 'java', code: code, hl: codeHl([6], 'bad') }, tbl()] });
+          }
+          frames.push({ narr: 'Try: <code>Long</code> (phase 1 picks Object, not long!), <code>null</code> (ambiguous: <code>int...</code> counts as <code>int[]</code>, and Integer vs int[] has no winner), <code>null -varargs</code> (Integer beats Object), <code>float</code> (boxing to Float → Object), <code>int -long</code> (boxing → Integer), <code>int -long -Integer -Object</code> (varargs).', parts: [tbl(), { type: 'text', label: 'Rule of thumb', html: 'widening &gt; boxing &gt; varargs. Within a phase: most specific wins, or it is ambiguous.' }] });
+          return frames;
+        }
+      }
+    ],
+    examples: [
+      {
+        title: 'Overload chosen at compile time, override chosen at runtime — in the same call',
+        html: `<p>Two-step decision: <b>javac</b> picks the <i>signature</i> using the declared types; the <b>JVM</b> then picks the <i>implementation</i> of that signature using the object.</p>
+          ${H.table(['Call', 'javac picks signature (static types)', 'JVM picks body (object = B)', 'Prints'], [
+            ['<code>a.m("hi")</code>', 'm(String) — most specific in A', 'B does not override m(String)', 'A.String'],
+            ['<code>a.m(o)</code> with <code>Object o = "hi"</code>', 'm(Object) — o is declared Object', 'B overrides m(Object)', 'B.Object']
+          ])}`,
+        code: `class A {
+    void m(Object o) { System.out.println("A.Object"); }
+    void m(String s) { System.out.println("A.String"); }
+}
+
+class B extends A {
+    @Override void m(Object o) { System.out.println("B.Object"); }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        A a = new B();
+        Object o = "hi";
+        a.m("hi");    // A.String
+        a.m(o);       // B.Object
+    }
+}`
+      },
+      {
+        title: 'Upcast is free, downcast needs a check',
+        html: `<p>Upcasting (<code>Dog → Animal</code>) is automatic and always safe. Downcasting (<code>Animal → Dog</code>) needs an explicit cast and fails with <code>ClassCastException</code> if the object is not really a Dog. Use <code>instanceof</code> with a pattern variable (Java 16+) to test and cast in one step.</p>`,
+        code: `class Animal { }
+class Dog extends Animal { String fetch() { return "fetching!"; } }
+class Cat extends Animal { }
+
+public class Main {
+    public static void main(String[] args) {
+        Animal[] zoo = { new Dog(), new Cat() };
+        for (Animal a : zoo) {
+            if (a instanceof Dog d) {             // test + cast + new variable d
+                System.out.println(d.fetch());
+            } else {
+                System.out.println(a.getClass().getSimpleName() + " cannot fetch");
+            }
+        }
+        try {
+            Dog wrong = (Dog) zoo[1];             // compiles, but the object is a Cat
+        } catch (ClassCastException e) {
+            System.out.println("ClassCastException");
+        }
+    }
+}`
+      },
+      {
+        title: 'Fields are not polymorphic — methods are',
+        html: `<p>Same name field in parent and child → two fields. Field access uses the <b>reference type</b>; method calls use the <b>object</b>. This is why we keep fields private and go through methods.</p>
+          ${H.table(['Expression', 'Decided by', 'Value'], [['<code>p.name</code>', 'reference type Parent', 'parent'], ['<code>p.getName()</code>', 'object type Child', 'child'], ['<code>((Child) p).name</code>', 'reference type Child', 'child']])}`,
+        code: `class Parent {
+    String name = "parent";
+    String getName() { return name; }
+}
+
+class Child extends Parent {
+    String name = "child";                         // hides, does not override
+    @Override String getName() { return name; }    // this one IS overridden
+}
+
+public class Main {
+    public static void main(String[] args) {
+        Parent p = new Child();
+        System.out.println(p.name);                // parent
+        System.out.println(p.getName());           // child
+        System.out.println(((Child) p).name);      // child
+    }
+}`
+      },
+      {
+        title: 'Modern alternative: sealed types + pattern-matching switch (Java 21)',
+        html: `<p>Classic OOP puts behaviour <i>inside</i> each class (override). Java 21 also lets you keep data classes simple and put behaviour in one exhaustive <code>switch</code>. The compiler checks every subtype is handled because the interface is <code>sealed</code>. Use overriding when new <i>types</i> are added often; use sealed + switch when new <i>operations</i> are added often.</p>`,
+        code: `sealed interface Shape permits Circle, Square, Rect { }
+record Circle(double r) implements Shape { }
+record Square(double side) implements Shape { }
+record Rect(double w, double h) implements Shape { }
+
+public class Main {
+    static double area(Shape s) {
+        return switch (s) {                        // exhaustive: no default needed
+            case Circle c -> Math.PI * c.r() * c.r();
+            case Square q -> q.side() * q.side();
+            case Rect r   -> r.w() * r.h();
+        };
+    }
+    public static void main(String[] args) {
+        System.out.printf("%.1f %.1f %.1f%n", area(new Circle(1)), area(new Square(2)), area(new Rect(2, 3)));
+        // 3.1 4.0 6.0
+    }
+}`
+      }
+    ],
+    deepDive: `<p><b>1. Bytecode call instructions.</b> <code>invokestatic</code> (static methods), <code>invokespecial</code> (constructors, private methods, <code>super.m()</code>) — both bound at link time. <code>invokevirtual</code> (class methods) and <code>invokeinterface</code> (interface methods) — dispatched on the receiver's class. <code>invokedynamic</code> powers lambdas and string concatenation.</p>
+      <p><b>2. vtables and itables.</b> HotSpot gives each class a <b>vtable</b>: an array of method pointers where an overriding method reuses its parent's slot. <code>invokevirtual</code> = load the object's class → index the slot → jump. Interfaces use <b>itables</b>, which need a search, so they are slightly slower before the JIT kicks in.</p>
+      <p><b>3. The JIT removes most of the cost.</b> Using <b>Class Hierarchy Analysis</b>, if only one loaded class implements a method, the call is devirtualized and inlined. At a call site the JIT keeps an <b>inline cache</b>: <i>monomorphic</i> (1 receiver type seen → inline it), <i>bimorphic</i> (2 → type check + both inlined), <i>megamorphic</i> (3+ → real vtable/itable call, no inlining). Hot loops over a <code>List&lt;Shape&gt;</code> with many shape types can be measurably slower — one reason data-oriented code sometimes uses a switch.</p>
+      <p><b>4. Java is single-dispatch.</b> The runtime choice depends only on the receiver object, never on the runtime types of the arguments (those were fixed by overloading at compile time). To dispatch on two objects (e.g. collision of Asteroid with Ship) you use <b>double dispatch</b> / the Visitor pattern — or, in Java 21, a <code>switch</code> over a record pair with nested patterns.</p>
+      <p><b>5. Overloading gotchas.</b> <code>List&lt;Integer&gt;.remove(1)</code> removes <i>index</i> 1 (phase 1: <code>remove(int)</code>), not the value 1 — use <code>remove(Integer.valueOf(1))</code>. <code>f(null)</code> with <code>f(String)</code> and <code>f(Integer)</code> is ambiguous. Overloads + lambdas can also be ambiguous (<code>submit(Runnable)</code> vs <code>submit(Callable)</code>).</p>
+      <p><b>6. Calling overridable methods from constructors</b> runs the subclass version before the subclass's fields are initialized — the object is half-built. Effective Java: constructors must not invoke overridable methods.</p>`,
+    aiEra: `<p><b>What AI changes:</b> generated code frequently uses <code>if (x instanceof A) ... else if (x instanceof B) ...</code> chains, or string "type" fields with switches. They work, but every new type means editing every chain.</p>
+      <p><b>Use AI as a partner:</b> ask <code>Refactor this instanceof chain into polymorphic methods</code> and also <code>…into a sealed interface with an exhaustive switch</code>, then compare which is easier to extend for your case. For puzzles, ask the model to <i>explain</i> each phase of overload resolution, then verify by compiling.</p>
+      <p><b>Where AI goes wrong:</b> claiming overloads are chosen by runtime type, predicting <code>f(long)</code> vs <code>f(Integer)</code> wrongly, or forgetting that fields and statics are not polymorphic. LLMs also over-trust "the object decides" for static methods.</p>
+      <p><b>What you must still own:</b> the two-step mental model (javac picks signature, JVM picks body), and the design call between overriding, sealed + switch, and visitor.</p>`,
+    problems: [
+      {
+        title: 'Guided: Polymorphic Payroll',
+        level: 'Medium', tags: ['polymorphism', 'abstract class', 'overriding'], companies: ['Amazon', 'Flipkart', 'Walmart', 'Accenture'],
+        statement: `<p>A company has three kinds of employees. Compute the <b>total monthly payroll</b> for a mixed list:</p>
+          <ul><li><b>Salaried</b>: annual salary / 12.</li>
+          <li><b>Hourly</b>: rate × hours for the first 160 hours, 1.5 × rate for every hour above 160.</li>
+          <li><b>Commission</b>: base + sales × percentage.</li></ul>
+          <p>Adding a fourth type (e.g. Intern with a fixed stipend) must not require editing the total-payroll code.</p>`,
+        constraints: `Up to 10<sup>5</sup> employees; money as <code>double</code> is acceptable here (rounded to 2 decimals for display).`,
+        example: `<p>Salaried(1,200,000/yr) → ${H.c('g', '100,000')}; Hourly(500/h, 170 h) → 160×500 + 10×750 = ${H.c('g', '87,500')}; Commission(30,000 + 5% of 400,000) → ${H.c('g', '50,000')}. Total ${H.c('b', '237,500.00')}.</p>`,
+        brute: {
+          why: `<p>A single <code>Employee</code> class with a <code>type</code> string and a big <code>switch</code>. It works, but every new employee type means editing this switch (and every other switch like it — tax, bonus, reports). Forget one and you get a silent wrong answer. Unused fields (hours for salaried staff) pile up.</p>`,
+          code: `import java.util.*;
+
+class Employee {
+    String type; double annual, rate, hours, base, sales, pct;   // every field for every type
+    Employee(String type) { this.type = type; }
+}
+
+public class Main {
+    static double pay(Employee e) {
+        switch (e.type) {                                   // must be edited for every new type
+            case "SALARIED": return e.annual / 12;
+            case "HOURLY":   return e.hours <= 160 ? e.rate * e.hours : 160 * e.rate + (e.hours - 160) * e.rate * 1.5;
+            case "COMMISSION": return e.base + e.sales * e.pct;
+            default: return 0;                              // a new "INTERN" silently earns 0
+        }
+    }
+    public static void main(String[] args) {
+        Employee s = new Employee("SALARIED"); s.annual = 1_200_000;
+        Employee i = new Employee("INTERN");
+        System.out.println(pay(s) + pay(i));                // 100000.0
+    }
+}`
+        },
+        mcq: { q: 'Where should "how to compute pay" live in an OOP design?', options: ['In each Employee subclass as an overridden method', 'In one static switch in the Payroll class', 'In the caller, using instanceof', 'In a String field describing the formula'], answer: 0, explain: 'Each subclass owns its rule; the total-payroll loop just calls e.monthlyPay() and never changes when new types are added (open/closed principle).' },
+        hints: [
+          `<p>Hint 1: The loop "for each employee, add pay" is the same for everyone. Only the <i>formula</i> differs → make the formula an overridable method.</p>`,
+          `<p>Hint 2: <code>abstract class Employee { abstract double monthlyPay(); }</code> with three subclasses. Total = sum over <code>List&lt;Employee&gt;</code>.</p>`,
+          `<p>Hint 3: Edge cases — exactly 160 hours (no overtime), 0 sales, empty list (total 0). Validate negative inputs in constructors.</p>`
+        ],
+        solution: {
+          approach: `<p>An abstract <code>Employee</code> declares <code>monthlyPay()</code>; each subclass overrides it with its own formula. The payroll loop depends only on the abstract type, so adding <code>Intern</code> is one new class and zero edits elsewhere — dynamic dispatch picks the right formula for each object.</p>`,
+          code: `import java.util.*;
+
+abstract class Employee {
+    private final String name;
+    Employee(String name) { this.name = name; }
+    String name() { return name; }
+    abstract double monthlyPay();                       // each subclass must supply its formula
+}
+
+class Salaried extends Employee {
+    private final double annual;
+    Salaried(String n, double annual) { super(n); this.annual = annual; }
+    @Override double monthlyPay() { return annual / 12; }
+}
+
+class Hourly extends Employee {
+    private static final int REGULAR = 160;
+    private final double rate, hours;
+    Hourly(String n, double rate, double hours) { super(n); this.rate = rate; this.hours = hours; }
+    @Override double monthlyPay() {
+        double regular = Math.min(hours, REGULAR) * rate;
+        double overtime = Math.max(0, hours - REGULAR) * rate * 1.5;
+        return regular + overtime;
+    }
+}
+
+class Commission extends Employee {
+    private final double base, sales, pct;
+    Commission(String n, double base, double sales, double pct) { super(n); this.base = base; this.sales = sales; this.pct = pct; }
+    @Override double monthlyPay() { return base + sales * pct; }
+}
+
+class Intern extends Employee {                         // added later: nothing else changes
+    Intern(String n) { super(n); }
+    @Override double monthlyPay() { return 15_000; }
+}
+
+public class Main {
+    static double total(List<? extends Employee> staff) {
+        double sum = 0;
+        for (Employee e : staff) sum += e.monthlyPay();   // dynamic dispatch picks the formula
+        return sum;
+    }
+    public static void main(String[] args) {
+        List<Employee> staff = List.of(
+            new Salaried("Asha", 1_200_000),
+            new Hourly("Ben", 500, 170),
+            new Commission("Chen", 30_000, 400_000, 0.05));
+        System.out.printf("%.2f%n", total(staff));          // 237500.00
+    }
+}`,
+          alt: [{ lang: 'python', code: `from abc import ABC, abstractmethod\n\nclass Employee(ABC):\n    def __init__(self, name):\n        self.name = name\n    @abstractmethod\n    def monthly_pay(self): ...\n\nclass Salaried(Employee):\n    def __init__(self, name, annual):\n        super().__init__(name); self.annual = annual\n    def monthly_pay(self):\n        return self.annual / 12\n\nclass Hourly(Employee):\n    def __init__(self, name, rate, hours):\n        super().__init__(name); self.rate, self.hours = rate, hours\n    def monthly_pay(self):\n        return min(self.hours, 160) * self.rate + max(0, self.hours - 160) * self.rate * 1.5\n\nclass Commission(Employee):\n    def __init__(self, name, base, sales, pct):\n        super().__init__(name); self.base, self.sales, self.pct = base, sales, pct\n    def monthly_pay(self):\n        return self.base + self.sales * self.pct\n\nstaff = [Salaried("Asha", 1_200_000), Hourly("Ben", 500, 170), Commission("Chen", 30_000, 400_000, 0.05)]\nprint(f"{sum(e.monthly_pay() for e in staff):.2f}")`, run: true }],
+          dry: {
+            head: ['employee', 'runtime class', 'method that runs', 'pay', 'running total'],
+            rows: [
+              ['Asha', 'Salaried', 'Salaried.monthlyPay', '1,200,000 / 12 = 100,000', '100,000'],
+              ['Ben', 'Hourly', 'Hourly.monthlyPay', '160×500 + 10×750 = 87,500', '187,500'],
+              ['Chen', 'Commission', 'Commission.monthlyPay', '30,000 + 0.05×400,000 = 50,000', H.c('g', '237,500')]
+            ]
+          },
+          complexity: `<p>O(N) time for N employees, O(1) extra space. Each call is a virtual call; with 3 receiver types the JIT's inline cache is megamorphic, still nanoseconds per call.</p>`,
+          followUps: ['Add a <code>bonus()</code> with a default in the parent that only some subclasses override.', 'How would a sealed interface + records + switch look? When is that better?', 'Why should money in production use <code>BigDecimal</code> or <code>long</code> paise?']
+        }
+      }
+    ]
+  });
 registerModule({ id: 'java04', title: 'OOP Pillars in Java', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 12, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
