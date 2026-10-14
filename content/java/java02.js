@@ -763,6 +763,479 @@ class FirstNegative {
     }]
   });
 
+  /* ======================================================================
+     TOPIC 4 — Methods, the call stack and pass-by-value
+     ====================================================================== */
+  topics.push({
+    title: 'Methods, the Call Stack and Why Java Is Always Pass-by-Value',
+    analogy: `<p>A method is a <b>vending machine</b>: you put things in (arguments), it does its job, and something drops out (the return value). Now, how do you hand things over? Java <b>always hands over a photocopy</b>. If you give it a number, it gets a photocopy of the number — scribbling on the copy never changes your original. If you give it an object, you are handing over a photocopy of your <b>house address</b>, not the house. The method can walk to the address and repaint your front door (the change is real!), but if it scribbles a different address on its photocopy, your own address card is untouched.</p>`,
+    explain: `<h4>1. Anatomy of a method</h4>
+<pre><code>public static int add(int a, int b) {   // modifiers, return type, name, parameters
+    return a + b;                         // body; return hands a value back
+}</code></pre>
+${H.table(['Part', 'Meaning'], [['<code>public</code>', 'who may call it (access modifier — Classes module)'], ['<code>static</code>', 'belongs to the class, callable without an object (<code>Math.max</code>)'], ['<code>int</code>', 'type of the value given back; <code>void</code> = nothing given back'], ['<code>add</code>', 'name: a verb in camelCase (<code>computeTotal</code>, <code>isValid</code>)'], ['<code>(int a, int b)</code>', '<b>parameters</b>: local variables filled by the caller\'s <b>arguments</b>']])}
+<p>A non-void method must <code>return</code> a value on <b>every</b> path, or it does not compile. A <code>void</code> method may use a bare <code>return;</code> to leave early.</p>
+<h4>2. The call stack — where method calls live</h4>
+<p>Each call gets a fresh <b>stack frame</b>: a little box holding its parameters and local variables. Calling pushes a frame on top; returning pops it and the caller continues where it left off. Local variables vanish with their frame. Infinite recursion keeps pushing frames until the JVM throws <code>StackOverflowError</code>.</p>
+<h4>3. Pass-by-value, precisely</h4>
+<p>Java copies the <b>value of each argument</b> into the parameter. What is that value?</p>
+${H.table(['Argument type', 'What gets copied', 'Can the method change the caller\'s thing?'], [
+  ['primitive (<code>int</code>, <code>double</code>, …)', 'the number itself', H.c('r', 'No') + ' — it only has a copy'],
+  ['reference (array, object)', 'the <b>reference</b> (the "address")', H.c('g', 'It can change the object\'s contents') + ' — both copies point to the same object'],
+  ['reassigning the parameter <code>arr = new int[3]</code>', 'only the method\'s copy changes', H.c('r', 'No') + ' — the caller still points to the old object']
+])}
+<p>So the famous <code>swap(int a, int b)</code> cannot swap the caller's variables, but <code>swap(int[] arr, int i, int j)</code> can swap two elements <b>inside</b> the array. And because <code>String</code> is immutable, <code>s += "!"</code> inside a method builds a new String for the local copy — the caller's String is unchanged.</p>
+<h4>4. Returning more than one value</h4>
+<p>Java returns exactly one value. To give back two (say min and max), return a small array <code>new int[]{min, max}</code>, an object, or (Java 16+) a <b>record</b>: <code>record MinMax(int min, int max) {}</code>.</p>
+<h4>5. Recursion in one paragraph</h4>
+<p>A method may call itself. It needs a <b>base case</b> that stops, and each call must move towards it. <code>fact(n) = n * fact(n - 1)</code> with <code>fact(0) = 1</code> pushes n + 1 frames, then pops them while multiplying. Deep recursion (≈ 10 000+ frames with default settings) risks <code>StackOverflowError</code>, so prefer loops for long chains.</p>`,
+    clues: [
+      '"Why doesn\'t my swap method work?" / "Is Java pass-by-reference?" → always pass-by-value; references are copied',
+      '"What does this print after calling modify(arr)?" → contents changed through the copy are visible; reassignment is not',
+      '"Return two values from a method" → array, small class, or record',
+      '"StackOverflowError" in the stack trace → recursion without (or never reaching) a base case, or recursion too deep',
+      '"Method should not change the input array" → defensive copy: <code>arr.clone()</code> / <code>Arrays.copyOf</code>',
+      '"missing return statement" compile error → some path does not return a value'
+    ],
+    code: [`
+import java.util.Arrays;
+
+public class PassByValue {
+    static void tryToChange(int x, int[] arr, String s) {
+        x = 100;                    // changes the LOCAL copy only
+        arr[0] = 99;                // follows the copied reference → changes the SHARED array
+        s = s + "!";                // builds a new String; only the local copy points to it
+        arr = new int[]{7, 7};      // local copy now points elsewhere; caller unaffected
+        arr[1] = 55;                // modifies the NEW array nobody else can see
+    }
+
+    static void brokenSwap(int a, int b) { int t = a; a = b; b = t; }          // swaps copies
+    static void swap(int[] a, int i, int j) { int t = a[i]; a[i] = a[j]; a[j] = t; } // works
+
+    static int[] minMax(int[] a) {                   // return two values in an array
+        int min = a[0], max = a[0];
+        for (int v : a) { if (v < min) min = v; if (v > max) max = v; }
+        return new int[]{min, max};
+    }
+
+    static long fact(int n) {                        // recursion: base case + smaller call
+        if (n <= 1) return 1;
+        return n * fact(n - 1);
+    }
+
+    public static void main(String[] args) {
+        int n = 5;
+        int[] data = {1, 2, 3};
+        String word = "hi";
+        tryToChange(n, data, word);
+        System.out.println(n + " " + Arrays.toString(data) + " " + word);  // 5 [99, 2, 3] hi
+
+        int p = 1, q = 2;
+        brokenSwap(p, q);
+        System.out.println(p + " " + q);                                    // 1 2
+        swap(data, 0, 2);
+        System.out.println(Arrays.toString(data));                          // [3, 2, 99]
+
+        System.out.println(Arrays.toString(minMax(new int[]{4, -2, 9})));   // [-2, 9]
+        System.out.println(fact(5));                                        // 120
+    }
+}`],
+    codeTitle: ['Primitives vs references vs reassignment, plus returning two values and recursion'],
+    viz: [{
+      title: 'Stack frames and the heap during tweak(n, data)',
+      input: '1 2 3',
+      inputLabel: 'initial array (1..6 integers)',
+      gen: function (input) {
+        var a = intsOf(input, 1, 6, -999, 999, 'Enter 1 to 6 integers separated by spaces, e.g. 1 2 3');
+        var A = a.slice(), B = null;
+        var code = 'static void tweak(int x, int[] arr) {\n    x = 100;\n    arr[0] = 99;\n    arr = new int[]{7, 7};\n    arr[1] = 55;\n}\npublic static void main(String[] args) {\n    int n = 5;\n    int[] data = {' + a.join(', ') + '};\n    tweak(n, data);\n    System.out.println(n + " " + Arrays.toString(data));\n}';
+        function heap(hlk) {
+          var e = [['@A (data\'s array)', '[' + A.join(', ') + ']']];
+          if (B) e.push(['@B (new array)', '[' + B.join(', ') + ']']);
+          return { type: 'map', label: 'Heap (objects live here)', entries: e, hl: hlk ? one(hlk, 'ok') : {} };
+        }
+        function f(line, cls, st, mainV, tw, hk, narr, o) {
+          var parts = [{ type: 'code', label: 'Code', lang: 'java', code: code, hl: one(line, cls || 'cur') },
+            { type: 'stack', label: 'Call stack', items: st, hl: one(st.length - 1, 'cur') },
+            { type: 'vars', label: 'main\'s frame', vals: mainV.v, hl: mainV.h || {} }];
+          if (tw) parts.push({ type: 'vars', label: 'tweak\'s frame (copies!)', vals: tw.v, hl: tw.h || {} });
+          parts.push(heap(hk));
+          if (o !== undefined) parts.push(out(o));
+          return { narr: narr, parts: parts };
+        }
+        var fr = [];
+        fr.push(f(8, 'cur', ['main'], { v: { n: 5 }, h: { n: 'ok' } }, null, null, '<code>main</code> starts with its own stack frame. <code>n = 5</code> is a primitive: the number lives <b>inside the frame</b>.'));
+        fr.push(f(9, 'cur', ['main'], { v: { n: 5, data: '→ @A' }, h: { data: 'ok' } }, null, '@A (data\'s array)', 'The array object is created on the <b>heap</b> at some address (call it @A). The variable <code>data</code> holds only the <b>reference</b> → @A.'));
+        fr.push(f(10, 'cur', ['main', 'tweak'], { v: { n: 5, data: '→ @A' } }, { v: { x: 5, arr: '→ @A' }, h: { x: 'ok', arr: 'ok' } }, null, 'Call <code>tweak(n, data)</code>: a new frame is pushed. Java <b>copies the values</b>: x gets a copy of 5, arr gets a copy of the reference — both <code>data</code> and <code>arr</code> now point to the <b>same</b> array @A.'));
+        fr.push(f(2, 'cur', ['main', 'tweak'], { v: { n: 5, data: '→ @A' }, h: { n: 'ok' } }, { v: { x: 100, arr: '→ @A' }, h: { x: 'bad' } }, null, '<code>x = 100</code> changes tweak\'s copy only. main\'s <code>n</code> is still <b>5</b>.'));
+        A[0] = 99;
+        fr.push(f(3, 'ok', ['main', 'tweak'], { v: { n: 5, data: '→ @A' } }, { v: { x: 100, arr: '→ @A' } }, '@A (data\'s array)', '<code>arr[0] = 99</code> follows the reference to @A and changes the <b>shared</b> object. main will see this change!'));
+        B = [7, 7];
+        fr.push(f(4, 'bad', ['main', 'tweak'], { v: { n: 5, data: '→ @A' }, h: { data: 'ok' } }, { v: { x: 100, arr: '→ @B' }, h: { arr: 'bad' } }, '@B (new array)', '<code>arr = new int[]{7, 7}</code> creates @B and points tweak\'s <b>copy</b> at it. main\'s <code>data</code> still points to @A — reassigning a parameter never reaches the caller.'));
+        B[1] = 55;
+        fr.push(f(5, 'cur', ['main', 'tweak'], { v: { n: 5, data: '→ @A' } }, { v: { x: 100, arr: '→ @B' } }, '@B (new array)', '<code>arr[1] = 55</code> changes @B, which nobody else knows about.'));
+        fr.push(f(6, 'done', ['main'], { v: { n: 5, data: '→ @A' } }, null, null, 'tweak returns: its frame is <b>popped</b>, x and arr vanish. @B has no references left, so the garbage collector may reclaim it.'));
+        fr.push(f(11, 'ok', ['main'], { v: { n: 5, data: '→ @A' }, h: { n: 'ok', data: 'ok' } }, null, '@A (data\'s array)', 'Printed: n is unchanged (primitive copy) but the array shows 99 (changed through the copied reference).', '5 [' + A.join(', ') + ']'));
+        return fr;
+      }
+    }, {
+      title: 'Recursion: frames pushed and popped for fact(n)',
+      input: '4',
+      inputLabel: 'n (0..7)',
+      gen: function (input) {
+        var n = intOf(input, 0, 7, 'Enter a whole number from 0 to 7');
+        var code = 'static long fact(int n) {\n    if (n <= 1) return 1;\n    return n * fact(n - 1);\n}';
+        var stack = ['main: fact(' + n + ')'], steps = [{ l: 1, st: ['main'], v: { n: n }, narr: '<code>main</code> calls <code>fact(' + n + ')</code>. Every call gets its <b>own</b> frame with its <b>own</b> <code>n</code> — they do not overwrite each other.' }];
+        for (var k = n; k >= 1; k--) {
+          stack.push('fact(' + k + ')');
+          if (k > 1) steps.push({ l: 3, st: stack.slice(), v: { n: k }, narr: 'fact(' + k + '): not the base case, so it must wait for <code>fact(' + (k - 1) + ')</code>. A new frame is pushed; this one is paused mid-multiplication.' });
+          else steps.push({ l: 2, cls: 'ok', st: stack.slice(), v: { n: k }, narr: 'fact(' + k + ') hits the <b>base case</b> and returns 1. Now the stack unwinds.' });
+        }
+        if (n === 0) { stack.push('fact(0)'); steps.push({ l: 2, cls: 'ok', st: stack.slice(), v: { n: 0 }, narr: 'fact(0) is the base case (n ≤ 1) → returns 1 straight away.' }); }
+        var val = 1;
+        for (var j = 2; j <= n; j++) {
+          stack.pop();
+          val *= j;
+          steps.push({ l: 3, cls: 'ok', st: stack.slice(), v: { n: j, 'returned value': val }, hv: { 'returned value': 'ok' }, narr: 'Frame for fact(' + (j - 1) + ') popped; fact(' + j + ') resumes and computes ' + j + ' × ' + (val / j) + ' = <b>' + val + '</b>.' });
+        }
+        stack = ['main'];
+        if (n <= 1) steps.push({ l: 2, cls: 'ok', st: ['main', 'fact(' + n + ')'], v: { n: n }, narr: 'For n ≤ 1 there is nothing to unwind: the base case answers immediately. Try n = 5 to watch the stack grow and shrink.' });
+        steps.push({ l: 1, cls: 'done', st: stack, v: { result: val }, hv: { result: 'sel' }, out: String(val), narr: 'All fact frames are gone. main receives <b>' + val + '</b>. Max stack depth was ' + (Math.max(n, 1) + 1) + ' frames — each recursive call costs one frame.' });
+        return codeFrames(code, steps);
+      }
+    }],
+    examples: [
+      { title: 'The swap that does not swap', html: `<p><code>brokenSwap(p, q)</code> receives copies 1 and 2, swaps the <b>copies</b>, then the frame is destroyed. p and q never changed. This is the single most common "Is Java pass-by-reference?" interview probe.</p>
+${H.table(['frame', 'a', 'b'], [['on entry', '1', '2'], ['after swap', H.c('g', '2'), H.c('g', '1')], ['main after return', 'p = ' + H.c('r', '1'), 'q = ' + H.c('r', '2')]])}`, code: `
+static void brokenSwap(int a, int b) { int t = a; a = b; b = t; }
+static void demo() {
+    int p = 1, q = 2;
+    brokenSwap(p, q);
+    System.out.println(p + " " + q);   // 1 2
+}` },
+      { title: 'A String parameter cannot be changed', html: `<p>Strings are immutable objects. <code>s += "!"</code> creates a <b>new</b> String and points the local copy at it. The caller's variable still points to the original "hi". Contrast with a <code>StringBuilder</code>, whose <code>append</code> changes the shared object.</p>`, code: `
+static void shout(String s, StringBuilder sb) {
+    s += "!";          // new String object, local copy only
+    sb.append("!");    // mutates the shared object
+}
+static void demo() {
+    String s = "hi";
+    StringBuilder sb = new StringBuilder("hi");
+    shout(s, sb);
+    System.out.println(s + " " + sb);   // hi hi!
+}` },
+      { title: 'Returning two values with a record (Java 16+)', html: `<p>A record is a tiny immutable data class with a constructor, getters, <code>equals</code>, <code>hashCode</code> and <code>toString</code> generated for you. It is the cleanest way to return several named values. (Records are covered fully in Modern Java.)</p>`, code: `
+record MinMax(int min, int max) {}
+
+class Stats {
+    static MinMax of(int[] a) {
+        int mn = a[0], mx = a[0];
+        for (int v : a) { mn = Math.min(mn, v); mx = Math.max(mx, v); }
+        return new MinMax(mn, mx);
+    }
+    public static void main(String[] args) {
+        MinMax r = of(new int[]{4, -2, 9});
+        System.out.println(r.min() + " " + r.max() + " " + r);   // -2 9 MinMax[min=-2, max=9]
+    }
+}` },
+      { title: 'Defensive copy: protect the caller\'s array', html: `<p>Because a method <b>can</b> modify an array it receives, a method that should not change its input must work on a copy. <code>sortedCopy</code> leaves the caller's array intact.</p>`, code: `
+static int[] sortedCopy(int[] a) {
+    int[] copy = java.util.Arrays.copyOf(a, a.length);  // or a.clone()
+    java.util.Arrays.sort(copy);
+    return copy;
+}
+static void demo() {
+    int[] marks = {70, 40, 90};
+    int[] s = sortedCopy(marks);
+    System.out.println(java.util.Arrays.toString(marks) + " " + java.util.Arrays.toString(s)); // [70, 40, 90] [40, 70, 90]
+}` }
+    ],
+    deepDive: `<p><b>What a frame really is.</b> In the JVM each frame has a <b>local variable array</b> (slot 0 is <code>this</code> for instance methods, then the parameters, then locals; <code>long</code>/<code>double</code> take two slots) and an <b>operand stack</b> used by bytecode like <code>iload</code>, <code>iadd</code>, <code>ireturn</code>. The compiler computes the maximum size of both, so frames are fixed-size and cheap to push.</p>
+<p><b>Thread stacks.</b> Each thread has its own stack (default ~512 KB–1 MB on 64-bit Linux, set with <code>-Xss</code>). Objects live on the shared <b>heap</b>; only primitives and references live in frames. That is why a local <code>int</code> cannot be seen by other threads, but an object passed between threads can.</p>
+<p><b>Why "pass-by-reference" is the wrong word.</b> In C++ <code>void f(int&amp; x)</code> passes a <b>reference to the caller's variable</b>, so <code>x = 5</code> changes the caller. Java has no way to do that. Java passes <b>references by value</b> — the <i>value</i> of a reference variable is copied. The JLS (§8.4.1) says parameters are initialised with the argument values. The test: can a method make the caller's variable point to a different object? In Java, never.</p>
+<p><b>The JIT erases most call cost.</b> Small, hot methods are <b>inlined</b> by C2 (the call disappears; the body is pasted into the caller), so splitting code into well-named small methods costs essentially nothing. <b>Escape analysis</b> can even avoid allocating the <code>int[]{min, max}</code> on the heap if it never escapes.</p>
+<p><b>No tail-call optimisation.</b> Java does not reuse frames for tail calls, so even "tail recursive" code can overflow. Convert deep recursion to a loop or an explicit stack (DFS on a 10<sup>6</sup>-node path graph is the classic victim).</p>
+<p><b>Parameter hygiene in production.</b> Some teams mark parameters <code>final</code> to forbid reassignment; static analysers flag "parameter reassigned". Validate inputs at public method boundaries (<code>Objects.requireNonNull(arr, "arr")</code>) and fail fast.</p>`,
+    aiEra: `<p><b>What AI changes:</b> assistants write helper methods instantly and suggest extracting methods; you will spend more time <b>reviewing</b> method boundaries than typing them.</p>
+<p><b>Use AI as a partner:</b> <code>"Draw the stack frames and heap for this call as ASCII"</code>, <code>"Does this method mutate its input? List every side effect."</code>, <code>"Convert this recursive DFS to an iterative one with an explicit stack."</code></p>
+<p><b>Where AI goes wrong:</b> it sometimes says "objects are passed by reference in Java" (sloppy and wrong for interviews), forgets defensive copies so a utility method silently mutates caller data, and writes elegant recursion that overflows on large inputs.</p>
+<p><b>What you must still own:</b> the precise pass-by-value explanation with a picture, spotting side effects during code review, and judging when recursion depth is safe.</p>`,
+    problems: [{
+      title: 'Min and Max in One Pass, Returned from One Method',
+      level: 'Easy', tags: ['methods', 'return multiple values', 'single pass'], companies: ['Amazon', 'Cognizant'],
+      statement: `<p>Write <code>static int[] minMax(int[] a)</code> that returns <code>{min, max}</code> of a non-empty array using <b>one pass</b>, and do <b>not</b> modify the input. Then explain why <code>void minMax(int[] a, int min, int max)</code> ("fill in my two variables") cannot work in Java.</p>`,
+      constraints: `1 ≤ a.length ≤ 10<sup>6</sup>; values fit in int`,
+      example: `<p>a = [4, -2, 9, 0] → ${H.c('g', '{-2, 9}')}. The array stays [4, -2, 9, 0] after the call.</p>`,
+      brute: { why: `<p>Sort a copy and read the two ends: correct and does not touch the input, but sorting is O(n log n) and allocates a full copy, when a single O(n) scan suffices. Another "brute" mistake is to sort the caller's array directly — a nasty side effect.</p>`, code: `
+static int[] minMaxBySort(int[] a) {
+    int[] c = java.util.Arrays.copyOf(a, a.length);   // copy so we do not mutate the caller
+    java.util.Arrays.sort(c);                          // O(n log n)
+    return new int[]{c[0], c[c.length - 1]};
+}` },
+      mcq: { q: '<code>static void fill(int min, int max) { min = 1; max = 9; }</code> is called as <code>fill(lo, hi)</code>. After the call…', options: ['lo = 1, hi = 9', 'lo and hi are unchanged', 'It does not compile', 'Only lo changes'], answer: 1, explain: 'Primitives are copied into the parameters; assigning to the copies never affects lo and hi.' },
+      hints: [`<p>Hint 1: one loop can update both answers — compare each value against the current min <b>and</b> the current max.</p>`, `<p>Hint 2: Java returns one value, but an <code>int[]</code> of length 2 (or a record) <i>is</i> one value that carries two numbers.</p>`, `<p>Hint 3: start both min and max at <code>a[0]</code> (not 0 — the array might be all negative). Recipe: mn = mx = a[0]; for v in a: update; return {mn, mx}.</p>`],
+      solution: {
+        approach: `<p>Initialise both trackers with the first element, scan once, return them packed in a new array. The input is only read, never written, so no defensive copy is needed.</p>`,
+        code: `
+class MinMaxDemo {
+    static int[] minMax(int[] a) {
+        if (a == null || a.length == 0) throw new IllegalArgumentException("need at least one element");
+        int mn = a[0], mx = a[0];               // NOT 0: the array could be all negative
+        for (int i = 1; i < a.length; i++) {
+            if (a[i] < mn) mn = a[i];
+            else if (a[i] > mx) mx = a[i];      // a value can't be both new min and new max
+        }
+        return new int[]{mn, mx};
+    }
+    public static void main(String[] args) {
+        int[] a = {4, -2, 9, 0};
+        System.out.println(java.util.Arrays.toString(minMax(a)));  // [-2, 9]
+        System.out.println(java.util.Arrays.toString(a));          // [4, -2, 9, 0] unchanged
+    }
+}`,
+        alt: [{ lang: 'python', code: `def min_max(a):\n    mn = mx = a[0]\n    for v in a[1:]:\n        if v < mn: mn = v\n        elif v > mx: mx = v\n    return mn, mx          # Python returns a tuple\n\nprint(min_max([4, -2, 9, 0]))`, run: true }],
+        dry: { head: ['i', 'a[i]', 'mn', 'mx'], rows: [['start', '4', '4', '4'], ['1', '-2', H.c('g', '-2'), '4'], ['2', '9', '-2', H.c('g', '9')], ['3', '0', '-2', '9']] },
+        complexity: `<p>O(n) time, O(1) extra space (the 2-element result). About 1.5n comparisons in the worst case thanks to the <code>else if</code>; the pairwise trick reduces it to ⌈3n/2⌉ − 2.</p>`,
+        followUps: ['Return a record <code>MinMax(int min, int max)</code> instead — why is it nicer for callers?', 'Implement the pairwise comparison trick (compare elements in pairs first).', 'Also return the indexes of min and max.']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 5 — Method overloading and varargs
+     ====================================================================== */
+  topics.push({
+    title: 'Method Overloading and Varargs (int... args)',
+    analogy: `<p>Think of a <b>coffee shop counter</b> with several baristas, each specialising in one kind of order: one handles "a coffee", one handles "a coffee + a muffin", one handles "a big group order of any size". You just shout <i>"order!"</i> and the manager (the <b>compiler</b>) looks at <b>what you are holding</b> and sends you to the best-matching barista. That is <b>overloading</b>: one name, several methods, chosen by the arguments. The "any size group order" barista is <b>varargs</b> — the fallback who accepts zero, one or a hundred items, and is only used when nobody more specific fits.</p>`,
+    explain: `<h4>1. Overloading = same name, different parameter lists</h4>
+<pre><code>static int    area(int side)                 { return side * side; }       // square
+static int    area(int w, int h)             { return w * h; }             // rectangle
+static double area(double radius)            { return Math.PI * radius * radius; } // circle</code></pre>
+<p>Methods may share a name if their <b>parameter lists differ</b> in number, types or order of types. The <b>return type alone is not enough</b>: <code>int f()</code> and <code>long f()</code> cannot coexist — at a call <code>f();</code> the compiler could not tell which one you meant. Parameter <i>names</i> do not count either.</p>
+<p>The <code>println</code> you use daily is overloaded about ten times (<code>println(int)</code>, <code>println(char)</code>, <code>println(String)</code>, <code>println(Object)</code>, …) — that is how <code>println('a')</code> prints <code>a</code> but <code>println('a' + 1)</code> prints <code>98</code>.</p>
+<h4>2. How the compiler picks — three phases</h4>
+<p>The choice is made at <b>compile time</b> from the <b>declared (static) types</b> of the arguments. The compiler tries three phases and stops at the first phase that finds a match:</p>
+${H.table(['Phase', 'Allowed conversions', 'Example: f(5) with f(long) and f(Integer)'], [
+  ['1. strict', 'exact match or <b>widening</b> (int→long→float→double, char→int, subclass→superclass)', H.c('g', 'f(long) chosen here')],
+  ['2. loose', 'phase 1 + <b>boxing/unboxing</b> (int↔Integer)', 'f(Integer) would only be tried if phase 1 failed'],
+  ['3. varargs', 'phase 2 + <b>variable arity</b> expansion (int... soaks up any number of ints)', 'last resort']])}
+<p>Inside a phase, if several methods match, the <b>most specific</b> wins (the one whose parameter types could be passed to the others: <code>f(int)</code> beats <code>f(long)</code>, <code>f(String)</code> beats <code>f(Object)</code>). If no single most-specific method exists, you get a compile error: <i>"reference to f is ambiguous"</i>.</p>
+<p>Memory hook: <b>Widening beats Boxing beats Varargs</b> — "<b>W</b>ise <b>B</b>aristas <b>V</b>ary".</p>
+<h4>3. Varargs — "zero or more arguments"</h4>
+<pre><code>static int sum(int... nums) {          // nums is an int[] inside the method
+    int total = 0;
+    for (int n : nums) total += n;
+    return total;
+}
+sum();            // 0      (nums is an empty array, not null)
+sum(4);           // 4
+sum(1, 2, 3);     // 6
+sum(new int[]{5, 5}); // 10 (you can pass an array directly)</code></pre>
+<p>Rules: only <b>one</b> varargs parameter, and it must be <b>last</b> (<code>format(String fmt, Object... args)</code>). Each call quietly allocates an array. Calling with no arguments gives an <b>empty</b> array — so if your method needs at least one value, say so in the signature: <code>max(int first, int... rest)</code>.</p>
+<h4>4. Overloading vs overriding (preview)</h4>
+${H.table(['', 'Overloading', 'Overriding (OOP module)'], [['Where', 'same class (or inherited)', 'subclass redefines a superclass method'], ['Signature', 'different parameters', 'same parameters'], ['Decided', H.c('b', 'compile time') + ' (static types)', H.c('p', 'run time') + ' (actual object)']])}`,
+    clues: [
+      '"Which method is called?" with <code>int</code>, <code>long</code>, <code>Integer</code>, <code>Object</code>, <code>int...</code> overloads → apply Widening → Boxing → Varargs, then most specific',
+      '"Pass null to an overloaded method" → most specific reference type, or an ambiguity compile error',
+      '"Accept any number of arguments", "like printf / String.format / List.of" → varargs',
+      '"Method must receive at least one value" → <code>(int first, int... rest)</code> signature',
+      '"Can we overload by return type?" → no; parameters must differ',
+      '"Compile-time vs run-time polymorphism" → overloading vs overriding'
+    ],
+    code: [`
+public class Overloads {
+    static String f(long x)    { return "long"; }
+    static String f(Integer x) { return "Integer"; }
+    static String f(Object x)  { return "Object"; }
+    static String f(int... x)  { return "int..."; }
+
+    // Varargs with a required first argument: max() with zero args will not compile
+    static int max(int first, int... rest) {
+        int best = first;
+        for (int v : rest) if (v > best) best = v;
+        return best;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(f(5));                  // long     (phase 1: int widens to long)
+        System.out.println(f('a'));                // long     (char widens to long)
+        System.out.println(f(5.0));                // Object   (phase 2: double boxes to Double → Object)
+        System.out.println(f(Integer.valueOf(5))); // Integer  (phase 1: exact match, more specific than Object)
+        System.out.println(f());                   // int...   (only varargs accepts zero arguments)
+        System.out.println(f(1, 2));               // int...   (only varargs accepts two)
+
+        System.out.println(max(3));                // 3
+        System.out.println(max(3, 9, 4));          // 9
+
+        System.out.println('a');                   // a   -> println(char)
+        System.out.println('a' + 1);               // 98  -> char + int is int -> println(int)
+        System.out.println((char) ('a' + 1));      // b   -> cast back -> println(char)
+    }
+}`],
+    codeTitle: ['Overload resolution in action and a safe varargs signature'],
+    viz: [{
+      title: 'Overload resolution: which f(...) gets called?',
+      input: '5',
+      inputLabel: "argument(s): try 5 · 5L · 'a' · (short) 3 · 5.0 · 5.0f · Integer.valueOf(5) · null · (empty) · 1, 2",
+      gen: function (input) {
+        var raw = String(input === undefined || input === null ? '' : input).trim();
+        var key = raw.replace(/\s+/g, '');
+        var A = {
+          '5': { t: 'int', p1: 'f(long)', p1set: ['f(long)'] },
+          '5L': { t: 'long', p1: 'f(long)', p1set: ['f(long)'] },
+          "'a'": { t: 'char', p1: 'f(long)', p1set: ['f(long)'] },
+          '(short)3': { t: 'short', p1: 'f(long)', p1set: ['f(long)'] },
+          '5.0': { t: 'double', p2: 'f(Object)', p2set: ['f(Object)'] },
+          '5.0f': { t: 'float', p2: 'f(Object)', p2set: ['f(Object)'] },
+          'Integer.valueOf(5)': { t: 'Integer', p1: 'f(Integer)', p1set: ['f(Integer)', 'f(Object)'] },
+          'null': { t: 'null type', amb: true, p1set: ['f(Integer)', 'f(Object)', 'f(int...)'] },
+          '': { t: '(no arguments)', p3: 'f(int...)' },
+          '1,2': { t: 'int, int', p3: 'f(int...)' }
+        };
+        var a = A[key];
+        if (!a) throw new Error("Pick one of: 5, 5L, 'a', (short) 3, 5.0, 5.0f, Integer.valueOf(5), null, 1, 2 — or leave empty");
+        var cands = ['f(long)', 'f(Integer)', 'f(Object)', 'f(int...)'];
+        var code = 'static String f(long x)    { return "long"; }\nstatic String f(Integer x) { return "Integer"; }\nstatic String f(Object x)  { return "Object"; }\nstatic String f(int... x)  { return "int..."; }\n\nf(' + raw + ');';
+        function check1(c, t) {
+          if (t === '(no arguments)' || t === 'int, int') return c === 'f(int...)' ? 'needs varargs expansion ✗ (phase 3)' : 'wrong number of args ✗';
+          if (c === 'f(long)') {
+            if (t === 'long') return 'exact match ✓';
+            if (t === 'int' || t === 'char' || t === 'short') return 'widening ' + t + ' → long ✓';
+            if (t === 'double' || t === 'float') return t + ' → long would be narrowing ✗';
+            if (t === 'Integer') return 'needs unboxing ✗ (phase 2 only)';
+            return 'null cannot become a primitive ✗';
+          }
+          if (c === 'f(Integer)') {
+            if (t === 'Integer') return 'exact match ✓';
+            if (t === 'null type') return 'null fits any reference type ✓';
+            if (t === 'int') return 'needs boxing ✗ (phase 2 only)';
+            return t + ' could only box to its own wrapper, never Integer ✗';
+          }
+          if (c === 'f(Object)') {
+            if (t === 'Integer') return 'Integer is-an Object (widening reference) ✓';
+            if (t === 'null type') return 'null fits any reference type ✓';
+            return 'needs boxing first ✗ (phase 2 only)';
+          }
+          if (t === 'null type') return 'treated as f(int[] x): null fits int[] ✓';
+          return 'treated as f(int[] x): ' + t + ' is not an int[] ✗';
+        }
+        function table(phase, chosen, set, note) {
+          var rows = cands.map(function (c) {
+            var ok = set && set.indexOf(c) >= 0;
+            return [c, phase === 1 ? check1(c, a.t) : note(c), ok ? (chosen === c ? 'CHOSEN' : 'applicable') : '—'];
+          });
+          var hl = {};
+          cands.forEach(function (c, i) { if (set && set.indexOf(c) >= 0) hl[i] = chosen === c ? 'sel' : 'ok'; });
+          return { type: 'table', label: 'Phase ' + phase + ' candidates', columns: ['method', 'check', 'result'], rows: rows, hl: hl };
+        }
+        var fr = [];
+        fr.push({ narr: 'The call is <code>f(' + esc(raw) + ')</code>. The compiler first works out the <b>static type</b> of the argument: <b>' + esc(a.t) + '</b>. It decides now, at compile time — nothing is decided at run time.', parts: [{ type: 'code', label: 'Four overloads + the call', lang: 'java', code: code, hl: one(6, 'cur') }, { type: 'vars', label: 'argument', vals: { expression: raw || '(none)', 'static type': a.t } }] });
+        fr.push({ narr: '<b>Phase 1 (strict)</b>: only exact matches and widening — no boxing, no varargs expansion. A varargs method is still considered here, but only as if its parameter were a plain <code>int[]</code>.', parts: [table(1, a.p1, a.p1set || [], null)] });
+        if (a.p1) {
+          fr.push({ narr: (a.p1set.length > 1 ? 'Several methods are applicable in phase 1, so the compiler picks the <b>most specific</b>: <code>Integer</code> can be passed where <code>Object</code> is expected but not vice versa → ' : 'Exactly one method matches in phase 1 → ') + '<b>' + a.p1 + '</b>. Phases 2 and 3 are <b>never tried</b> — that is why widening beats boxing.', parts: [table(1, a.p1, a.p1set, null), { type: 'code', label: 'Result', lang: 'java', code: code, hl: one(cands.indexOf(a.p1) + 1, 'ok') }] });
+          fr.push({ narr: 'Prints <code>' + a.p1.replace('f(', '').replace(')', '') + '</code>. Rule of thumb: <b>W</b>idening → <b>B</b>oxing → <b>V</b>arargs, and inside a phase the most specific wins.', parts: [out(a.p1.replace('f(', '').replace(')', ''))] });
+        } else if (a.amb) {
+          fr.push({ narr: 'Three methods match in phase 1. Most specific? <code>Integer</code> and <code>int[]</code> are both more specific than <code>Object</code>, but neither is a subtype of the other.', parts: [table(1, null, a.p1set, null)] });
+          fr.push({ narr: '<span class="c-r">Compile error: "reference to f is ambiguous — both f(Integer) and f(int...) match".</span> Fix it by casting: <code>f((Integer) null)</code> or <code>f((Object) null)</code>.', parts: [{ type: 'code', label: 'Result', lang: 'java', code: code, hl: { 2: 'bad', 4: 'bad', 6: 'bad' } }, out('error: reference to f is ambiguous')] });
+        } else if (a.p2) {
+          fr.push({ narr: 'Phase 1 found nothing. <b>Phase 2 (loose)</b> also allows boxing: ' + a.t + ' boxes to ' + (a.t === 'double' ? 'Double' : 'Float') + ', which is an Object. It is not an Integer, so f(Integer) still fails.', parts: [table(2, a.p2, a.p2set, function (c) { return c === 'f(Object)' ? 'box to ' + (a.t === 'double' ? 'Double' : 'Float') + ' → Object ✓' : c === 'f(Integer)' ? (a.t === 'double' ? 'Double' : 'Float') + ' is not an Integer ✗' : c === 'f(long)' ? 'narrowing still not allowed ✗' : 'not an int[] ✗'; })] });
+          fr.push({ narr: 'Chosen: <b>f(Object)</b>. Prints <code>Object</code>. Phase 3 (varargs) is not needed.', parts: [{ type: 'code', label: 'Result', lang: 'java', code: code, hl: one(3, 'ok') }, out('Object')] });
+        } else {
+          fr.push({ narr: 'Phase 1 and phase 2 find nothing: every fixed-arity method needs exactly one argument, and you passed ' + (key === '' ? 'zero' : 'two') + '.', parts: [table(2, null, [], function (c) { return c === 'f(int...)' ? 'needs varargs expansion ✗ (phase 3)' : 'wrong number of args ✗'; })] });
+          fr.push({ narr: '<b>Phase 3 (varargs)</b>: <code>f(int... x)</code> packs the arguments into a new array: ' + (key === '' ? '<code>new int[0]</code>' : '<code>new int[]{1, 2}</code>') + '. Chosen!', parts: [table(3, 'f(int...)', ['f(int...)'], function (c) { return c === 'f(int...)' ? 'pack into int[] ✓' : '—'; }), { type: 'code', label: 'Result', lang: 'java', code: code, hl: one(4, 'ok') }] });
+          fr.push({ narr: 'Prints <code>int...</code>. Varargs is the last resort — any fixed-arity match in phases 1–2 would have won.', parts: [out('int...')] });
+        }
+        return fr;
+      }
+    }],
+    examples: [
+      { title: 'null and String vs Object', html: `<p><code>p(null)</code> with <code>p(String)</code> and <code>p(Object)</code> calls <b>p(String)</b>: both accept null, String is more specific. Add a third overload <code>p(Integer)</code> and the same call no longer compiles — String and Integer are unrelated, so it is <b>ambiguous</b>.</p>`, code: `
+static void p(String s) { System.out.println("String"); }
+static void p(Object o) { System.out.println("Object"); }
+static void demo() {
+    p(null);            // String  (most specific)
+    p((Object) null);   // Object  (cast changes the static type)
+    Object o = "hi";
+    p(o);               // Object! static type decides, not the runtime String
+}` },
+      { title: 'Widening beats boxing — even across types', html: `<p>With <code>m(int)</code> and <code>m(Long)</code>, calling <code>m(b)</code> for a <code>byte b</code> picks <b>m(int)</b> (byte widens to int). Java never does <b>widening then boxing</b> (byte → long → Long is not allowed), but boxing then widening reference is fine (int → Integer → Object).</p>
+${H.table(['Argument', 'm(int)', 'm(Long)', 'chosen'], [['byte', 'widen ✓', 'byte→Long ✗', 'm(int)'], ['int', 'exact ✓', 'int→Long ✗ (would need int→long→Long)', 'm(int)'], ['long', '✗ narrowing', 'box ✓ (phase 2)', 'm(Long)']])}`, code: `
+static void m(int x)  { System.out.println("m int"); }
+static void m(Long x) { System.out.println("m Long"); }
+static void demo() {
+    byte b = 1;
+    m(b);      // m int
+    m(5L);     // m Long (phase 2: long boxes to Long)
+}` },
+      { title: 'Fixed arity always beats varargs', html: `<p><code>h(1, 2)</code> with <code>h(int, int)</code> and <code>h(int...)</code> calls the fixed version (phase 1). <code>h(1)</code> and <code>h()</code> can only use varargs. This is why <code>List.of</code> has overloads for 0–10 elements plus a varargs fallback: the common small calls avoid the hidden array allocation.</p>`, code: `
+static void h(int a, int b) { System.out.println("h fixed"); }
+static void h(int... a)     { System.out.println("h varargs, length " + a.length); }
+static void demo() {
+    h(1, 2);   // h fixed
+    h(1);      // h varargs, length 1
+    h();       // h varargs, length 0
+}` },
+      { title: 'Varargs gotcha: Arrays.asList with a primitive array', html: `<p><code>Arrays.asList(T... a)</code> is generic. A generic type cannot be a primitive, so passing an <code>int[]</code> makes <b>T = int[]</b> and you get a list with <b>one element</b> (the whole array). Use <code>Integer[]</code> or <code>Arrays.stream(arr).boxed().toList()</code>.</p>`, code: `
+int[] prim = {1, 2, 3};
+Integer[] boxed = {1, 2, 3};
+System.out.println(java.util.Arrays.asList(prim).size());    // 1  (List<int[]>)
+System.out.println(java.util.Arrays.asList(boxed).size());   // 3  (List<Integer>)
+System.out.println(java.util.Arrays.stream(prim).boxed().toList()); // [1, 2, 3]` }
+    ],
+    deepDive: `<p><b>The real rules (JLS §15.12.2).</b> The compiler first collects <b>potentially applicable</b> methods (right name, right arity — a varargs method of arity n accepts ≥ n − 1 arguments). Phase 1 tests "strict invocation" (identity, widening primitive, widening reference). Phase 2 adds boxing/unboxing ("loose invocation"). Phase 3 allows variable-arity invocation. In phases 1–2 a varargs method participates only as if its last parameter were a plain array — which is why <code>f(null)</code> can match <code>f(int...)</code> and become ambiguous with <code>f(Integer)</code>.</p>
+<p><b>Why this order?</b> Backward compatibility. Boxing and varargs arrived in Java 5. If they had been allowed in phase 1, existing Java 1.4 code like <code>list.remove(int)</code> vs <code>remove(Object)</code> could suddenly have changed meaning. The phases guarantee old calls resolve exactly as before.</p>
+<p><b>The famous <code>List.remove</code> trap.</b> <code>List&lt;Integer&gt; list</code>: <code>list.remove(1)</code> calls <code>remove(int index)</code> (phase 1, exact) and removes the element at position 1, not the value 1. Use <code>list.remove(Integer.valueOf(1))</code> to remove by value.</p>
+<p><b>Varargs internals.</b> <code>int... x</code> compiles to an <code>int[]</code> parameter with the <code>ACC_VARARGS</code> flag; each call site does <code>new int[]{…}</code>. In hot loops that allocation matters (the JIT's escape analysis often removes it, but not always). Generic varargs (<code>T...</code>) create a <code>T[]</code> that is really an <code>Object[]</code> after erasure — "possible heap pollution" warnings, silenced with <code>@SafeVarargs</code> only when the method does not store or expose the array (Generics module).</p>
+<p><b>Overloading and inheritance.</b> A subclass can add overloads of an inherited method name. Because overload resolution uses static types, <code>Animal a = new Dog(); a.speak(x)</code> chooses among methods visible on <code>Animal</code>, then overriding picks the Dog body at runtime — a two-step dance interviewers love.</p>
+<p><b>API design advice</b> (Effective Java, Item 52): avoid overloads with the same number of parameters whose types are related (boxing or subtypes) — callers get surprised. Prefer distinct names like <code>writeInt</code>/<code>writeLong</code>, or static factory names (<code>ofSeconds</code>, <code>ofMillis</code>).</p>`,
+    aiEra: `<p><b>What AI changes:</b> IDEs and AI assistants show you which overload a call binds to (hover / "go to declaration"), so in real work you rarely compute it by hand. But interviews and code reviews of tricky APIs still test the rules.</p>
+<p><b>Use AI as a partner:</b> <code>"For each call below, which overload is chosen and in which JLS phase?"</code> — then verify by compiling; ask <code>"Suggest clearer names instead of these overloads"</code>, or <code>"Find calls to List.remove that might remove by index by mistake."</code></p>
+<p><b>Where AI goes wrong:</b> it often claims boxing happens before widening, forgets that a varargs method participates in phases 1–2 as an array (missing the null ambiguity), and generates overload sets that are ambiguous for <code>null</code> or lambdas.</p>
+<p><b>What you must still own:</b> the W-B-V order plus "most specific" reasoning, recognising that overloading is static (compile-time), and designing APIs that do not need a language lawyer to call correctly.</p>`,
+    problems: [{
+      title: 'A Safe Varargs max()',
+      level: 'Easy', tags: ['varargs', 'overloading', 'API design'], companies: ['Google', 'Microsoft'],
+      statement: `<p>Design a static method that returns the maximum of <b>one or more</b> ints, callable as <code>max(7)</code>, <code>max(3, 9)</code>, <code>max(5, 1, 8, 2)</code> or with an existing array. Calling it with <b>no arguments must be a compile error</b>, not a runtime crash. Also explain which method <code>max(3, 9)</code> binds to if you additionally declare <code>max(int a, int b)</code>.</p>`,
+      constraints: `Any number of int arguments ≥ 1; values fit in int`,
+      example: `<p><code>max(5, 1, 8, 2)</code> → ${H.c('g', '8')}. <code>max(7)</code> → ${H.c('g', '7')}. <code>max()</code> → ${H.c('r', 'does not compile')}.</p>`,
+      brute: { why: `<p>The obvious signature <code>max(int... nums)</code> accepts zero arguments, so <code>max()</code> compiles and you must decide at runtime what to do (throw? return MIN_VALUE?). The bug is found by a user in production instead of by the compiler.</p>`, code: `
+static int maxAll(int... nums) {
+    if (nums.length == 0) throw new IllegalArgumentException("need at least one number"); // runtime check
+    int best = nums[0];
+    for (int v : nums) if (v > best) best = v;
+    return best;
+}` },
+      mcq: { q: 'You declare both <code>max(int a, int b)</code> and <code>max(int first, int... rest)</code>. Which runs for <code>max(3, 9)</code>?', options: ['max(int first, int... rest)', 'max(int a, int b)', 'Compile error: ambiguous', 'Whichever was declared first'], answer: 1, explain: 'Phase 1 (no varargs expansion) already finds max(int, int), so the varargs version is never considered.' },
+      hints: [`<p>Hint 1: the compiler can enforce "at least one" if the first value is a separate, ordinary parameter.</p>`, `<p>Hint 2: signature <code>static int max(int first, int... rest)</code>. Inside, <code>rest</code> is an <code>int[]</code> (possibly empty, never null for normal calls).</p>`, `<p>Hint 3: start <code>best = first</code>, loop over rest. To accept an existing array <code>arr</code>, call <code>max(arr[0], Arrays.copyOfRange(arr, 1, arr.length))</code> or add an overload <code>max(int[] arr)</code>.</p>`],
+      solution: {
+        approach: `<p>Split the arguments into a mandatory first value and an optional varargs tail. The compiler rejects <code>max()</code> because no overload accepts zero arguments. Two-argument calls can be given a fast fixed-arity overload (no array allocation) which wins in phase 1.</p>`,
+        code: `
+class SafeMax {
+    static int max(int a, int b) {               // fast path: no hidden array
+        return a >= b ? a : b;
+    }
+    static int max(int first, int... rest) {     // one or more
+        int best = first;
+        for (int v : rest) if (v > best) best = v;
+        return best;
+    }
+    public static void main(String[] args) {
+        System.out.println(max(7));              // 7  -> varargs with rest = {}
+        System.out.println(max(3, 9));           // 9  -> max(int, int), phase 1
+        System.out.println(max(5, 1, 8, 2));     // 8  -> varargs with rest = {1, 8, 2}
+        int[] arr = {4, 12, 6};
+        System.out.println(max(arr[0], java.util.Arrays.copyOfRange(arr, 1, arr.length))); // 12
+        // max();  // does not compile: no method accepts zero arguments
+    }
+}`,
+        alt: [{ lang: 'python', code: `def max_of(first, *rest):\n    best = first\n    for v in rest:\n        if v > best:\n            best = v\n    return best\n\nprint(max_of(7), max_of(3, 9), max_of(5, 1, 8, 2))`, run: true }],
+        dry: { head: ['call', 'phase', 'method', 'rest', 'result'], rows: [['max(7)', '3 (varargs)', 'max(int, int...)', '{}', '7'], ['max(3, 9)', '1 (strict)', 'max(int, int)', '—', '9'], ['max(5, 1, 8, 2)', '3 (varargs)', 'max(int, int...)', '{1, 8, 2}', '8']] },
+        complexity: `<p>O(k) time for k arguments, plus one array allocation of size k − 1 per varargs call; the two-argument overload allocates nothing.</p>`,
+        followUps: ['Write a generic <code>&lt;T extends Comparable&lt;T&gt;&gt; T max(T first, T... rest)</code> — what warning appears and why?', 'Why does <code>Math.max</code> only take two arguments?']
+      }
+    }]
+  });
+
   registerModule({
     id: 'java02',
     title: 'Control Flow, Methods, Arrays & String Basics',
