@@ -2346,7 +2346,7 @@ print(ways_bottom_up(100_000))     # same value, O(1) memory
       title: 'Number of Islands (recursion-safe)', level: 'Medium', tags: ['DFS', 'BFS', 'explicit stack', 'grid'], companies: ['Amazon', 'Google', 'Meta', 'Microsoft', 'Bloomberg'],
       statement: `<p>Given an m × n grid of <code>"1"</code> (land) and <code>"0"</code> (water), count the islands. An island is land connected horizontally or vertically. Your solution must not crash on a grid that is entirely land.</p>`,
       constraints: `1 ≤ m, n ≤ 300 → up to 90 000 cells in one island`,
-      example: `<p>${H.table(['', 'c0', 'c1', 'c2', 'c3'], [['r0', H.c('g', '1'), H.c('g', '1'), '0', '0'], ['r1', H.c('g', '1'), '0', '0', H.c('b', '1')], ['r2', '0', '0', H.c('y', '1'), H.c('b', '1')]])}</p><p>Output <b>3</b>: green, blue and amber groups.</p>`,
+      example: `<p>${H.table(['', 'c0', 'c1', 'c2', 'c3'], [['r0', H.c('g', '1'), H.c('g', '1'), '0', '0'], ['r1', H.c('g', '1'), '0', '0', H.c('b', '1')], ['r2', '0', '0', H.c('y', '1'), '0']])}</p><p>Output <b>3</b>: green, blue and amber groups.</p>`,
       brute: { why: `<p>The textbook recursive DFS is correct, but on a 300 × 300 all-land grid the recursion goes up to 90 000 frames deep → <code>RecursionError</code> with Python's default limit of 1000 (and a crash risk if you just raise the limit on older versions). The algorithm is fine — the <b>call stack</b> is the problem.</p>`, code: `
 def num_islands_recursive(grid):
     R, C = len(grid), len(grid[0])
@@ -2363,7 +2363,7 @@ def num_islands_recursive(grid):
                 sink(r, c)
     return count
 
-print(num_islands_recursive([list("1100"), list("1001"), list("0011")]))  # 3
+print(num_islands_recursive([list("1100"), list("1001"), list("0010")]))  # 3
 ` },
       mcq: { q: 'Which change makes the island-sinking safe for a 300 × 300 all-land grid?', options: ['Replace recursion with an explicit stack (or a deque BFS)', 'Add <code>@cache</code> to <code>sink</code>', 'Iterate rows in reverse order', 'Use <code>try/except RecursionError</code> and return 0'], answer: 0, explain: 'The depth problem disappears when the pending cells live in a list/deque on the heap. Caching does nothing (each cell is visited once anyway), and catching the error gives a wrong answer.' },
       hints: [`<p>Hint 1: Every time you find an unvisited "1", you found a new island — then you must mark all of its land as visited.</p>`, `<p>Hint 2: Marking can use a <code>list</code> as a stack: push the start cell, pop a cell, push its land neighbours. No recursion → no depth limit.</p>`, `<p>Hint 3: Mark a cell as visited <b>when you push it</b> (not when you pop) so it is never pushed twice. Recipe: for each cell == "1": count += 1; grid[r][c] = "0"; stack = [(r, c)]; while stack: pop, check 4 neighbours, sink and push.</p>`],
@@ -2390,7 +2390,7 @@ def num_islands(grid: List[List[str]]) -> int:
                         stack.append((nr, nc))
     return count
 
-print(num_islands([list("1100"), list("1001"), list("0011")]))   # 3
+print(num_islands([list("1100"), list("1001"), list("0010")]))   # 3
 big = [["1"] * 300 for _ in range(300)]                           # one huge island
 print(num_islands(big))                                           # 1, no RecursionError
 ` },
@@ -2418,7 +2418,7 @@ print(num_islands_bfs([list("11000"), list("11000"), list("00100"), list("00011"
 ` }],
         dry: { head: ['found at', 'count', 'cells sunk by the stack'], rows: [
           ['(0,0)', '1', '(0,0) (1,0) (0,1)'],
-          ['(1,3)', '2', '(1,3) (2,3)'],
+          ['(1,3)', '2', '(1,3) — its neighbours are water'],
           ['(2,2)', '3', '(2,2)'],
           ['end', H.c('g', '3'), '—']
         ] },
