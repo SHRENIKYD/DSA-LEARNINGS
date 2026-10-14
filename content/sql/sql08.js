@@ -1086,6 +1086,447 @@ SELECT (SELECT COUNT(*) FROM (SELECT * FROM enrollments_old EXCEPT SELECT * FROM
     }]
   });
 
+  /* =====================================================================
+     TOPIC 5 — 3NF: no transitive dependencies (+ 3NF synthesis)
+     ===================================================================== */
+  topics.push({
+    title: '3NF: Nothing but the Key (Transitive Dependencies & Synthesis)',
+    analogy: `<p>Gossip chain: "I know Ravi → Ravi works in Sales → Sales is on floor 3, so Ravi sits on floor 3." If you write "floor 3" next to Ravi's name, you are storing <b>second-hand information</b>. The day Sales moves to floor 4, every second-hand note is stale. 3NF says: <b>store a fact next to the thing it is directly about</b> — the floor belongs with the department, not with each employee.</p>`,
+    explain: `<p><b>🟢 The plain idea.</b> A <b>transitive dependency</b> is a chain <code>key → X → Y</code> where X is <b>not</b> a key. Y depends on the key only "through" X. Example: <code>emp_id → dept_id → dept_floor</code>. Storing dept_floor in the employees table repeats it for every employee in that department.</p>
+<p><b>3NF</b> (the precise rule, Zaniolo's form): for every non-trivial FD <code>X → A</code> in the table, <b>at least one</b> is true:</p>
+<ol>
+<li>X is a <b>superkey</b>, or</li>
+<li>A is a <b>prime</b> attribute (part of some candidate key).</li>
+</ol>
+<p>The famous oath: <i>"Every non-key attribute must provide a fact about <b>the key</b> (1NF), <b>the whole key</b> (2NF), and <b>nothing but the key</b> (3NF) — so help me Codd."</i></p>
+${H.table(['FD in employees(emp_id, name, dept_id, dept_name, dept_floor)', 'X superkey?', 'A prime?', '3NF ok?'], [
+  ['emp_id → name, dept_id', H.c('g', 'yes'), '—', H.c('g', '✔')],
+  ['dept_id → dept_name', H.c('r', 'no'), H.c('r', 'no'), H.c('r', '✘ transitive')],
+  ['dept_id → dept_floor', H.c('r', 'no'), H.c('r', 'no'), H.c('r', '✘ transitive')]])}
+<p><b>Fix:</b> move <code>dept_id → dept_name, dept_floor</code> into <code>departments(dept_id PK, dept_name, dept_floor)</code>; keep dept_id in employees as a foreign key.</p>
+<p><b>🔵 How it really works — two ways to reach 3NF.</b></p>
+<ul>
+<li><b>Decomposition (top-down):</b> repeatedly find a violating FD X → A and split the table into (X ∪ X⁺-stuff) and (the rest with X kept as FK). This is what you do by hand.</li>
+<li><b>Synthesis (bottom-up, Bernstein 1976):</b> (1) compute a <b>minimal cover</b> of the FDs; (2) make one table per left side, holding the left side and all its right sides; (3) if no table contains a candidate key of the original relation, add a table that is just a key; (4) drop tables that are subsets of others. The result is <b>always</b> 3NF, <b>lossless</b> and <b>dependency-preserving</b> — a guarantee BCNF cannot give.</li>
+</ul>
+<p>Worked synthesis on R(A,B,C,D,E), F = {A → BC, B → C, AB → D, D → E}: split right sides → A→B, A→C, B→C, AB→D, D→E. In AB→D, B is extraneous (A⁺ already has D) → A→D. A→C is redundant (A→B→C). Minimal cover: {A→B, B→C, A→D, D→E}. Group by left side: <b>(A, B, D)</b>, <b>(B, C)</b>, <b>(D, E)</b>. A is the key and lives in (A,B,D) → done. Try it in the second visualizer.</p>
+<p><b>Derived data is a cousin of transitive dependency.</b> <code>age</code> next to <code>birth_date</code>, or <code>line_total</code> next to <code>qty × unit_price</code>, is a fact you can compute — store it only as a generated column or a deliberate cache.</p>`,
+    clues: [
+      'A table with a single-column key whose non-key columns describe <b>another</b> thing (department, zip code, category) → transitive dependency',
+      '"Employee → department → manager / floor / budget" style chains',
+      '"zip → city, state" — the textbook 3NF example (with real-world caveats)',
+      '"Every non-key attribute must depend on the key, the whole key and nothing but the key" — 2NF + 3NF in one sentence',
+      '"Decompose to 3NF while preserving dependencies" → 3NF synthesis from a minimal cover',
+      'Derived/computed columns (age, totals) stored next to their sources — redundancy of the same flavour'
+    ],
+    code: [{ lang: 'sql', db: 'messy', title: 'emp_flat → 3NF (departments split out)', code: `PRAGMA foreign_keys = ON;
+-- emp_id -> dept_id -> (dept_name, dept_floor) is transitive: give departments their own table
+CREATE TABLE departments (
+  dept_id    TEXT PRIMARY KEY,
+  dept_name  TEXT NOT NULL UNIQUE,
+  dept_floor INTEGER NOT NULL
+);
+CREATE TABLE employees (
+  emp_id   INTEGER PRIMARY KEY,
+  emp_name TEXT NOT NULL,
+  dept_id  TEXT NOT NULL REFERENCES departments(dept_id)
+);
+INSERT INTO departments SELECT DISTINCT dept_id, dept_name, dept_floor FROM emp_flat;
+INSERT INTO employees   SELECT emp_id, emp_name, dept_id FROM emp_flat;
+
+UPDATE departments SET dept_floor = 4 WHERE dept_id = 'D1';     -- Sales moves: ONE row
+INSERT INTO departments VALUES ('D4', 'Research', 6);           -- no employees yet: allowed
+DELETE FROM employees WHERE emp_id = 5;                         -- Legal survives without Eli
+
+SELECT e.emp_name, d.dept_name, d.dept_floor
+FROM employees e JOIN departments d USING (dept_id)
+ORDER BY e.emp_id;` },
+    { lang: 'sql', title: 'Derived data: use a generated column instead of a stored copy', code: `CREATE TABLE order_lines (
+  order_id   INTEGER NOT NULL,
+  sku        TEXT    NOT NULL,
+  qty        INTEGER NOT NULL CHECK (qty > 0),
+  unit_price INTEGER NOT NULL CHECK (unit_price > 0),       -- price at time of sale (a real fact)
+  line_total INTEGER GENERATED ALWAYS AS (qty * unit_price) VIRTUAL,  -- derived: can never disagree
+  PRIMARY KEY (order_id, sku)
+);
+INSERT INTO order_lines (order_id, sku, qty, unit_price) VALUES (101, 'P-LAMP', 2, 1200), (101, 'P-MUG', 3, 300);
+UPDATE order_lines SET qty = 5 WHERE sku = 'P-MUG';            -- line_total follows automatically
+SELECT sku, qty, unit_price, line_total FROM order_lines ORDER BY sku;` }],
+    codeTitle: ['Split out the transitive dependency', 'Derived columns done right'],
+    viz: [{
+      title: 'Employees → 3NF: cutting the transitive chain',
+      gen: function () {
+        var cols = ['emp_id', 'emp_name', 'dept_id', 'dept_name', 'dept_floor'];
+        var rows = [[1, 'Asha', 'D1', 'Sales', 3], [2, 'Ben', 'D1', 'Sales', 3], [3, 'Chen', 'D2', 'Engineering', 5], [4, 'Dara', 'D2', 'Engineering', 5], [5, 'Eli', 'D3', 'Legal', 7]];
+        var cp = function () { return rows.map(function (r) { return r.slice(); }); };
+        var fds = [{ l: ['emp_id'], r: ['emp_name', 'dept_id'] }, { l: ['dept_id'], r: ['dept_name', 'dept_floor'] }];
+        var f = [];
+        f.push({ narr: 'emp_flat: key = <b>emp_id</b> (one column). It is 1NF and automatically 2NF — no composite key, so no partial dependency. Is it 3NF?', parts: [{ type: 'table', label: 'emp_flat  KEY emp_id', columns: cols, rows: cp() }] });
+        f.push({ narr: 'FD arrows: emp_id → dept_id (fine, emp_id is the key) and <b>dept_id → dept_name, dept_floor</b> (red): dept_id is not a key and dept_name/floor are not prime. That chain emp_id → dept_id → floor is a <b>transitive dependency</b>.', parts: [fdGraph(['emp_id', 'emp_name', 'dept_id', 'dept_name', 'dept_floor'], fds, false, { fdHl: { 0: 'ok', 1: 'bad' }, attrHl: { emp_id: 'sel' } })] });
+        f.push({ narr: 'In the data: "Sales is on floor 3" is stored twice, "Engineering is on floor 5" twice (amber). Second-hand facts, copied per employee.', parts: [{ type: 'table', label: 'emp_flat', columns: cols, rows: cp(), hl: { 0: 'cur', 1: 'cur', 2: 'win', 3: 'win' } }] });
+        var up = cp(); up[0][4] = 4;
+        f.push({ narr: '<b>Update anomaly:</b> Sales moves to floor 4; the script updates only Asha\'s row. Ben\'s row still says 3 (red). Which floor is Sales on?', parts: [{ type: 'table', label: 'emp_flat after a partial update', columns: cols, rows: up, hl: { 0: 'ok', 1: 'bad' } }] });
+        f.push({ narr: '<b>Delete anomaly:</b> Eli leaves. He is Legal\'s only employee, so deleting his row erases "Legal is on floor 7". <b>Insert anomaly:</b> a new department "Research" can\'t exist until someone joins it.', parts: [{ type: 'table', label: 'emp_flat', columns: cols, rows: cp(), hl: { 4: 'bad' } }, { type: 'table', label: 'cannot insert', columns: cols, rows: [[null, null, 'D4', 'Research', 6]], hl: { 0: 'bad' } }] });
+        f.push({ narr: 'Fix: move the violating FD <b>dept_id → dept_name, dept_floor</b> into its own table, keyed by its left side. dept_id stays in employees as a foreign key (it is the "glue" that makes the split lossless).', parts: [
+          { type: 'table', label: 'departments  KEY dept_id', columns: ['dept_id', 'dept_name', 'dept_floor'], rows: [['D1', 'Sales', 3], ['D2', 'Engineering', 5], ['D3', 'Legal', 7]], hl: { 0: 'ok', 1: 'ok', 2: 'ok' } },
+          { type: 'table', label: 'employees  KEY emp_id', columns: ['emp_id', 'emp_name', 'dept_id'], rows: rows.map(function (r) { return r.slice(0, 3); }) }] });
+        f.push({ narr: 'Check every FD against its new home: in each table, the left side of every FD is now that table\'s key → <b>both tables are in 3NF</b> (in fact BCNF).', parts: [{ type: 'table', label: '3NF check', columns: ['table', 'FD', 'left side a superkey?', 'verdict'], rows: [['employees', 'emp_id → emp_name, dept_id', 'yes', '3NF ✔'], ['departments', 'dept_id → dept_name, dept_floor', 'yes', '3NF ✔']], hl: { 0: 'ok', 1: 'ok' } }] });
+        f.push({ narr: 'Replay the anomalies: Sales → floor 4 is one row; Research can be added with no employees; deleting Eli leaves Legal intact.', parts: [
+          { type: 'table', label: 'departments', columns: ['dept_id', 'dept_name', 'dept_floor'], rows: [['D1', 'Sales', 4], ['D2', 'Engineering', 5], ['D3', 'Legal', 7], ['D4', 'Research', 6]], hl: { 0: 'ok', 2: 'sel', 3: 'ok' } },
+          { type: 'table', label: 'employees (Eli removed)', columns: ['emp_id', 'emp_name', 'dept_id'], rows: rows.slice(0, 4).map(function (r) { return r.slice(0, 3); }) }] });
+        return f;
+      }
+    }, {
+      title: '3NF synthesis: minimal cover → one table per left side',
+      input: 'A B C D E | A->BC; B->C; AB->D; D->E',
+      inputLabel: 'attributes | FDs',
+      gen: function (input) {
+        var S = parseSpec(input, false), L = S.L, R = S.attrs, frames = [];
+        frames.push({ narr: 'Input: R(' + fmt(R, L) + ') with ' + S.fds.length + ' FDs. Synthesis guarantees a 3NF result that is lossless <b>and</b> keeps every FD checkable inside one table.', parts: [fdGraph(R, S.fds, L), fdTable(S.fds, L)] });
+        var mc = minimalCover(S.fds, L);
+        mc.log.forEach(function (st, i) {
+          if (i === 0) frames.push({ narr: 'Step 1a — ' + st.what, parts: [fdTable(st.F, L, {}, 'split FDs')] });
+          else frames.push({ narr: 'Step 1b — ' + st.what, parts: [{ type: 'text', label: 'minimal cover in progress', html: '<span class="c-y">' + H.esc(st.what) + '</span>' }] });
+        });
+        var F = mc.F;
+        frames.push({ narr: 'Minimal cover: ' + F.map(function (f) { return fdStr(f, L); }).join(', ') + '. No FD can be simplified or removed.', parts: [fdGraph(R, F, L, { label: 'minimal cover' }), fdTable(F, L, {}, 'minimal cover')] });
+        var groups = [];
+        F.forEach(function (f) {
+          var g = groups.filter(function (x) { return sameSet(x.l, f.l); })[0];
+          if (!g) { g = { l: f.l.slice(), attrs: f.l.slice() }; groups.push(g); }
+          if (!has(g.attrs, f.r[0])) g.attrs.push(f.r[0]);
+        });
+        var rels = groups.map(function (g) { return { attrs: S.ord(g.attrs), key: g.l, why: 'from ' + fmt(g.l, L) + ' → …' }; });
+        var tbl = function (hl) { return { type: 'table', label: 'tables', columns: ['table', 'attributes', 'key', 'reason'], rows: rels.map(function (r, i) { return ['R' + (i + 1), fmt(r.attrs, L), fmt(r.key, L), r.why]; }), hl: hl || {} }; };
+        var allOk = {}; rels.forEach(function (_, i) { allOk[i] = 'ok'; });
+        frames.push({ narr: 'Step 2 — one table per distinct left side, holding the left side plus everything it determines.', parts: [tbl(allOk)] });
+        var keys = keysOf(R, S.fds);
+        var holder = -1;
+        rels.forEach(function (r, i) { if (holder < 0 && keys.some(function (k) { return subset(k, r.attrs); })) holder = i; });
+        if (holder >= 0) {
+          var hh = {}; hh[holder] = 'sel';
+          frames.push({ narr: 'Step 3 — candidate key(s) of R: ' + keys.map(function (k) { return fmt(k, L); }).join(', ') + '. Table R' + (holder + 1) + ' already contains one, so the join of all tables is lossless. Nothing to add.', parts: [tbl(hh)] });
+        } else {
+          rels.push({ attrs: keys[0].slice(), key: keys[0].slice(), why: 'key table (lossless join)' });
+          var kh = {}; kh[rels.length - 1] = 'ok';
+          frames.push({ narr: 'Step 3 — no table contains a candidate key (' + keys.map(function (k) { return fmt(k, L); }).join(', ') + '). Add one table that is just the key <b>' + fmt(keys[0], L) + '</b>; without it the join could invent rows.', parts: [tbl(kh)] });
+        }
+        var removed = [];
+        rels = rels.filter(function (r, i) {
+          var sub = rels.some(function (o, j) { return j !== i && subset(r.attrs, o.attrs) && (!sameSet(r.attrs, o.attrs) || j < i); });
+          if (sub) removed.push(fmt(r.attrs, L));
+          return !sub;
+        });
+        frames.push({ narr: 'Step 4 — drop any table whose attributes are contained in another table. ' + (removed.length ? 'Removed: ' + removed.join('; ') + '.' : 'None to remove.'), parts: [tbl()] });
+        var fin = {}; rels.forEach(function (_, i) { fin[i] = 'sel'; });
+        frames.push({ narr: '<b>Result:</b> ' + rels.map(function (r) { return '(' + fmt(r.attrs, L) + ')'; }).join(' ') + '. Every FD of the minimal cover lives inside one table (dependency-preserving), a key table guarantees a lossless join, and each table is in 3NF.', parts: [tbl(fin), fdGraph(R, F, L, { label: 'minimal cover (all preserved)' })] });
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'zip → city, state (and its real-world caveat)', html: `<p><code>customers(id, name, street, zip, city, state)</code> with zip → city, state. Textbook answer: <code>zips(zip PK, city, state)</code>. Real-world answer: in the US a ZIP can span several cities and in India a PIN can cover multiple localities, so zip → city is <b>not</b> a true FD everywhere. Many production systems deliberately keep city in the address row (denormalized but correct) and validate with a lookup service. Always confirm the FD is a real rule first.</p>` },
+      { title: 'Employee → department → manager', html: `<p><code>employees(emp_id, name, dept_id, dept_manager_id)</code>: dept_id → dept_manager_id is transitive. When a department changes manager, every employee row needs an update. Move it: <code>departments(dept_id, manager_id)</code>. Note manager_id itself references employees — a cycle of foreign keys that is fine and common.</p>` },
+      { title: 'A table that is 3NF but has a non-key determinant', html: `<p>R(student, subject, tutor), keys (student, subject) and (student, tutor), FD tutor → subject. tutor is not a superkey, but subject is <b>prime</b>, so 3NF's escape clause applies: R <b>is</b> 3NF. The redundancy survives ("tutor T teaches maths" repeats per student). BCNF (next topic) removes the escape clause.</p>` },
+      { title: 'Synthesis adds a key table', html: `<p>R(A, B, C, D), F = {A → B, C → D}. Groups: (A, B), (C, D). Candidate key: AC — not inside either table. Without a key table, joining (A,B) and (C,D) has no common column → a cross join that invents rows. Synthesis adds <b>(A, C)</b>: the "link" table, exactly like an order_items junction table.</p>`, code: { lang: 'sql', code: `CREATE TABLE r_ab (a TEXT PRIMARY KEY, b TEXT NOT NULL);
+CREATE TABLE r_cd (c TEXT PRIMARY KEY, d TEXT NOT NULL);
+CREATE TABLE r_ac (a TEXT NOT NULL REFERENCES r_ab(a), c TEXT NOT NULL REFERENCES r_cd(c), PRIMARY KEY (a, c));
+INSERT INTO r_ab VALUES ('a1', 'b1'), ('a2', 'b2');
+INSERT INTO r_cd VALUES ('c1', 'd1'), ('c2', 'd2');
+INSERT INTO r_ac VALUES ('a1', 'c1'), ('a2', 'c2');            -- the original R had 2 rows
+SELECT COUNT(*) AS without_key_table FROM r_ab, r_cd;          -- 4: invented rows
+SELECT COUNT(*) AS with_key_table FROM r_ac JOIN r_ab USING (a) JOIN r_cd USING (c);  -- 2: exact` } }
+    ],
+    deepDive: `<h4>🟣 Why 3NF has the "prime attribute" escape clause</h4>
+<p>Without it, some relations could only be normalized by losing an FD (see BCNF). Bernstein's synthesis proves that 3NF is <b>always</b> reachable while preserving every dependency and keeping a lossless join. The price: a little residual redundancy when a non-key determinant points into a key (overlapping candidate keys).</p>
+<h4>Checking 3NF is NP-hard; synthesizing it is polynomial</h4>
+<p>Testing whether an attribute is prime requires knowing all candidate keys (NP-complete in general), so "is this relation in 3NF?" is NP-hard. Synthesis sidesteps this: computing a minimal cover is polynomial, and the algorithm needs only <b>one</b> candidate key (found greedily by shrinking R while its closure stays complete). Production designers never hit these limits — real tables have a handful of keys.</p>
+<h4>Minimal covers are not unique</h4>
+<p>Different removal orders can yield different minimal covers (e.g. F = {A→B, B→A, A→C, B→C}: you may drop either A→C or B→C), hence different but equally valid 3NF schemas. Pick the one that matches how the business talks about entities.</p>
+<h4>Snapshot vs transitive</h4>
+<p><code>orders.ship_city</code> looks transitive (order → customer → city) but it is a <b>snapshot</b>: "where this order was shipped". It must not change when the customer moves. If the column means "where the customer lives now", it is transitive and belongs with the customer; if it means "where we shipped", it is a fact about the order. Naming (<code>ship_to_city</code>) documents the difference and settles the interview argument.</p>
+<h4>Production reality</h4>
+<p>3NF/BCNF is the default for OLTP schemas (PostgreSQL, MySQL, SQL Server back ends). Teams typically stop there and denormalize selectively for proven hot paths. Higher forms (4NF, 5NF) matter mainly when a table contains two independent multi-valued facts.</p>`,
+    aiEra: `<p><b>What AI changes:</b> assistants can run minimal-cover and synthesis steps quickly and explain them. For schema reviews, an LLM can scan dozens of tables and flag "this column looks transitively dependent (city next to zip)". That makes 3NF review cheap.</p>
+<p><b>Use AI as a partner:</b> <code>For each table, list FDs whose left side is not a key, say whether the right side is prime, and propose the split with migration SQL.</code> Then ask the follow-up most models skip: <code>Which of these columns are snapshots that must NOT follow the source?</code> That one question prevents the most common normalization bug — "fixing" a historical record into a live reference.</p>
+<p><b>Where AI goes wrong:</b> it forgets the prime-attribute clause (declaring 3NF tables "not 3NF"), skips the key table in synthesis, and treats zip → city as universal truth. <b>What you must still own:</b> the precise definition, the synthesis steps, and the business judgement about snapshots.</p>`,
+    problems: [{
+      title: 'Shipments with ZIP, City and State',
+      level: 'Medium', tags: ['3NF', 'transitive dependency', 'decomposition'], companies: ['FedEx', 'Flipkart', 'Shopify'],
+      statement: `<p><code>shipments(shipment_id, customer_id, customer_name, zip, city, state, weight_kg)</code>, key shipment_id. Rules: shipment_id → customer_id, zip, weight_kg; customer_id → customer_name; zip → city, state (assume this holds for your country's data). Which normal form is the table in? Decompose to 3NF in SQL and show that changing a city name is a one-row update.</p>`,
+      constraints: `<p>SQLite. Foreign keys enforced. The shipment's destination zip is a fact of the shipment (not the customer's home zip).</p>`,
+      example: `<p>Two shipments to 411001 both carry ${H.c('r', 'Pune, MH')}. Renaming the city requires updating every shipment row to that zip; miss one and the same zip maps to two cities.</p>`,
+      brute: {
+        why: `<p>Keeping the flat table: key is single-column so it is 2NF, but customer_name and city/state are second-hand facts. A city rename or a customer rename touches N rows, and a ZIP with no shipments can't be stored for address validation.</p>`,
+        code: `CREATE TABLE shipments (
+  shipment_id INTEGER PRIMARY KEY, customer_id INTEGER NOT NULL, customer_name TEXT NOT NULL,
+  zip TEXT NOT NULL, city TEXT NOT NULL, state TEXT NOT NULL, weight_kg REAL NOT NULL);
+INSERT INTO shipments VALUES
+  (1, 10, 'Asha', '411001', 'Pune', 'MH', 2.5),
+  (2, 11, 'Ben',  '411001', 'Pune', 'MH', 1.0),
+  (3, 10, 'Asha', '110001', 'New Delhi', 'DL', 4.0);
+UPDATE shipments SET city = 'Pune City' WHERE shipment_id = 1;   -- forgot shipment 2
+SELECT zip, GROUP_CONCAT(DISTINCT city) AS cities FROM shipments GROUP BY zip;  -- 411001 -> two cities`
+      },
+      mcq: { q: 'Highest normal form of the original shipments table?', options: ['2NF — single-column key, but transitive dependencies exist', '1NF only', '3NF', 'BCNF'], answer: 0, explain: 'No composite key → no partial dependency → 2NF. customer_id → name and zip → city/state are non-key determinants of non-prime attributes → not 3NF.' },
+      hints: [`<p>Hint 1: List the FDs whose left side is not shipment_id. Those are your transitive dependencies.</p>`, `<p>Hint 2: Each one becomes a table keyed by its left side: customers(customer_id, name), zips(zip, city, state).</p>`, `<p>Hint 3: shipments keeps shipment_id, customer_id (FK), zip (FK), weight_kg. Migrate with SELECT DISTINCT, then rejoin to verify.</p>`],
+      solution: {
+        approach: `<p>Key: shipment_id. Non-key determinants: customer_id → customer_name and zip → city, state. Both right sides are non-prime → two 3NF violations. Create <code>customers</code> and <code>zips</code> keyed by those determinants; shipments keeps the determinants as foreign keys. Each split shares a column that is the key of the new table → lossless; each FD sits whole inside one table → dependency-preserving. City rename = one row in <code>zips</code>.</p>`,
+        code: `PRAGMA foreign_keys = ON;
+CREATE TABLE shipments_old (
+  shipment_id INTEGER PRIMARY KEY, customer_id INTEGER NOT NULL, customer_name TEXT NOT NULL,
+  zip TEXT NOT NULL, city TEXT NOT NULL, state TEXT NOT NULL, weight_kg REAL NOT NULL);
+INSERT INTO shipments_old VALUES
+  (1, 10, 'Asha', '411001', 'Pune', 'MH', 2.5),
+  (2, 11, 'Ben',  '411001', 'Pune', 'MH', 1.0),
+  (3, 10, 'Asha', '110001', 'New Delhi', 'DL', 4.0);
+
+CREATE TABLE customers (customer_id INTEGER PRIMARY KEY, customer_name TEXT NOT NULL);
+CREATE TABLE zips      (zip TEXT PRIMARY KEY, city TEXT NOT NULL, state TEXT NOT NULL);
+CREATE TABLE shipments (
+  shipment_id INTEGER PRIMARY KEY,
+  customer_id INTEGER NOT NULL REFERENCES customers(customer_id),
+  zip         TEXT    NOT NULL REFERENCES zips(zip),
+  weight_kg   REAL    NOT NULL CHECK (weight_kg > 0));
+
+INSERT INTO customers SELECT DISTINCT customer_id, customer_name FROM shipments_old;
+INSERT INTO zips      SELECT DISTINCT zip, city, state FROM shipments_old;
+INSERT INTO shipments SELECT shipment_id, customer_id, zip, weight_kg FROM shipments_old;
+
+UPDATE zips SET city = 'Pune City' WHERE zip = '411001';     -- one row, every shipment sees it
+SELECT s.shipment_id, c.customer_name, z.zip, z.city, z.state, s.weight_kg
+FROM shipments s JOIN customers c USING (customer_id) JOIN zips z USING (zip)
+ORDER BY s.shipment_id;`,
+        complexity: `<p>Migration O(N). Updates of a city or a customer name: O(1) rows via PK. Reads: two indexed joins.</p>`,
+        followUps: ['A ZIP can map to two cities after all — how does the schema change?', 'Should a shipment store the city as it was on the shipping date? Why?']
+      }
+    }]
+  });
+
+  /* =====================================================================
+     TOPIC 6 — BCNF (and a peek at 4NF/5NF)
+     ===================================================================== */
+  function preserved(fds, rels) {
+    // Standard polynomial test: grow X using only what each table can "see".
+    return fds.map(function (f) {
+      var res = f.l.slice(), changed = true;
+      while (changed) {
+        changed = false;
+        rels.forEach(function (Ri) {
+          var add = minus(inter(closure(inter(res, Ri), fds).res, Ri), res);
+          if (add.length) { res = res.concat(add); changed = true; }
+        });
+      }
+      return subset(f.r, res);
+    });
+  }
+  topics.push({
+    title: 'BCNF: Every Determinant Is a Key',
+    analogy: `<p>A tuition centre: each tutor teaches exactly <b>one</b> subject, and each student has <b>one tutor per subject</b>. The sign-up register lists (student, subject, tutor). "Mr. Rao teaches Maths" gets written on every line where a student picks Mr. Rao — the <b>tutor</b> quietly decides the subject even though the tutor is not the register's key. BCNF says: <b>if a column decides something, it must be a key of that table</b>. Give tutors their own page.</p>`,
+    explain: `<p><b>🟢 The plain idea.</b> <b>Boyce–Codd Normal Form</b> is 3NF without the escape clause:</p>
+<p style="padding-left:1em"><b>BCNF:</b> for every non-trivial FD X → Y in the table, <b>X is a superkey</b>. Full stop.</p>
+<p>3NF allowed a non-key determinant if the thing it determined was <b>prime</b>. That loophole only matters when a table has <b>overlapping candidate keys</b>. The tutoring register:</p>
+${H.table(['student', 'subject', 'tutor'], [['Asha', 'Maths', H.c('y', 'Mr. Rao')], ['Ben', 'Maths', H.c('y', 'Mr. Rao')], ['Asha', 'Physics', 'Ms. Iyer'], ['Chen', 'Maths', 'Ms. Sen'], ['Ben', 'Physics', 'Ms. Iyer']])}
+<p>FDs: (student, subject) → tutor and tutor → subject. Candidate keys: <b>(student, subject)</b> and <b>(student, tutor)</b>. Every attribute is prime, so the table is <b>3NF</b>. But tutor → subject has a non-superkey left side → <b>not BCNF</b>. Symptom: "Mr. Rao teaches Maths" is stored twice; if Mr. Rao switches to Statistics you must update several rows.</p>
+<p><b>🔵 How it really works — BCNF decomposition algorithm:</b></p>
+<ol>
+<li>Find an FD X → Y that holds in table R (including implied ones) where X is <b>not</b> a superkey of R.</li>
+<li>Replace R with <b>R1 = X ∪ Y</b> (X⁺ restricted to R) and <b>R2 = R − (Y − X)</b>. X is in both, and X is a key of R1, so the split is <b>lossless</b>.</li>
+<li>Repeat on R1 and R2 until no violations remain.</li>
+</ol>
+<p>Tutoring: violation tutor → subject → <code>tutors(tutor, subject)</code> + <code>student_tutors(student, tutor)</code>.</p>
+<p><b>The catch — dependency preservation.</b> The rule "a student has one tutor per subject" ((student, subject) → tutor) now spans two tables: no single table contains student, subject and tutor together, so no PK/UNIQUE can enforce it. BCNF decomposition is always <b>lossless</b> but <b>not always dependency-preserving</b>. You then choose:</p>
+${H.table(['option', 'you get', 'you pay'], [['stay in 3NF', 'every rule enforced by keys', 'a little redundancy (tutor → subject repeated)'], ['go BCNF', 'zero FD redundancy', 'enforce the lost rule with a trigger, a check in the app, or a smarter redesign']])}
+<p><b>Rule of thumb:</b> most real tables reach BCNF for free when they reach 3NF (single candidate key ⇒ 3NF = BCNF). Overlapping composite keys are the only place to look.</p>
+<p><b>Beyond BCNF.</b> <b>4NF</b> removes <b>multi-valued dependencies</b> — two independent lists in one table (a course's teachers and its textbooks) forcing every combination to be stored. <b>5NF</b> (PJNF) removes join dependencies that can only be rebuilt from three or more projections. Both are rarer, but 4NF shows up in interviews as "why does this junction table have a cross product of rows?".</p>`,
+    clues: [
+      '"3NF but not BCNF" — look for overlapping composite candidate keys and a non-key determinant pointing into a key',
+      '"Each tutor teaches one subject; each student has one tutor per subject" — the textbook BCNF case',
+      '"Decompose into BCNF" → find X → Y with X not a superkey, split into (X ∪ Y) and (R − Y)',
+      '"Is the decomposition dependency-preserving?" — BCNF may lose an FD; 3NF synthesis never does',
+      '"Every determinant is a candidate key" — the one-line BCNF definition',
+      'Two independent multi-valued facts in one table (skills × languages, teachers × books) → 4NF, not BCNF'
+    ],
+    code: [{ lang: 'sql', title: 'Tutoring register → BCNF + a trigger for the lost dependency', code: `PRAGMA foreign_keys = ON;
+-- BCNF tables: every determinant is a key
+CREATE TABLE tutors (
+  tutor   TEXT PRIMARY KEY,
+  subject TEXT NOT NULL                       -- tutor -> subject, enforced by the PK
+);
+CREATE TABLE student_tutors (
+  student TEXT NOT NULL,
+  tutor   TEXT NOT NULL REFERENCES tutors(tutor),
+  PRIMARY KEY (student, tutor)
+);
+-- Lost FD: (student, subject) -> tutor spans two tables, so no PK/UNIQUE can enforce it.
+-- A trigger re-checks it. RAISE(IGNORE) silently skips the bad row so this demo keeps running;
+-- in production use RAISE(ABORT, 'student already has a tutor for this subject').
+CREATE TRIGGER one_tutor_per_subject
+BEFORE INSERT ON student_tutors
+WHEN EXISTS (
+  SELECT 1 FROM student_tutors st JOIN tutors t ON t.tutor = st.tutor
+  WHERE st.student = NEW.student
+    AND t.subject = (SELECT subject FROM tutors WHERE tutor = NEW.tutor))
+BEGIN
+  SELECT RAISE(IGNORE);
+END;
+
+INSERT INTO tutors VALUES ('Mr. Rao', 'Maths'), ('Ms. Sen', 'Maths'), ('Ms. Iyer', 'Physics');
+INSERT INTO student_tutors VALUES ('Asha', 'Mr. Rao'), ('Ben', 'Mr. Rao'), ('Asha', 'Ms. Iyer'),
+                                  ('Chen', 'Ms. Sen'), ('Ben', 'Ms. Iyer');
+INSERT INTO student_tutors VALUES ('Asha', 'Ms. Sen');   -- 2nd Maths tutor for Asha: skipped by the trigger
+
+UPDATE tutors SET subject = 'Statistics' WHERE tutor = 'Mr. Rao';   -- one row, not one per student
+
+SELECT st.student, t.subject, st.tutor
+FROM student_tutors st JOIN tutors t USING (tutor)
+ORDER BY st.student, t.subject;` },
+    { lang: 'sql', title: '4NF: two independent lists force a cross product', code: `-- course ->> teacher and course ->> book are independent multi-valued facts.
+CREATE TABLE course_teacher_book (course TEXT, teacher TEXT, book TEXT, PRIMARY KEY (course, teacher, book));
+INSERT INTO course_teacher_book VALUES
+  ('DB', 'Rao', 'Ramakrishnan'), ('DB', 'Rao', 'Silberschatz'),
+  ('DB', 'Sen', 'Ramakrishnan'), ('DB', 'Sen', 'Silberschatz');   -- 2 teachers x 2 books = 4 rows
+-- Adding a 3rd book means adding one row PER teacher (or the data lies). 4NF split:
+CREATE TABLE course_teachers (course TEXT, teacher TEXT, PRIMARY KEY (course, teacher));
+CREATE TABLE course_books    (course TEXT, book    TEXT, PRIMARY KEY (course, book));
+INSERT INTO course_teachers SELECT DISTINCT course, teacher FROM course_teacher_book;
+INSERT INTO course_books    SELECT DISTINCT course, book    FROM course_teacher_book;
+INSERT INTO course_books VALUES ('DB', 'Kleppmann');            -- one row, done
+SELECT (SELECT COUNT(*) FROM course_teachers) AS teacher_rows,
+       (SELECT COUNT(*) FROM course_books)    AS book_rows,
+       (SELECT COUNT(*) FROM course_teachers JOIN course_books USING (course)) AS combos_if_rejoined;` }],
+    codeTitle: ['BCNF split + trigger for the lost FD', '4NF bonus: multi-valued dependencies'],
+    viz: [{
+      title: 'Tutoring register: 3NF but not BCNF',
+      gen: function () {
+        var cols = ['student', 'subject', 'tutor'];
+        var rows = [['Asha', 'Maths', 'Mr. Rao'], ['Ben', 'Maths', 'Mr. Rao'], ['Asha', 'Physics', 'Ms. Iyer'], ['Chen', 'Maths', 'Ms. Sen'], ['Ben', 'Physics', 'Ms. Iyer']];
+        var fds = [{ l: ['student', 'subject'], r: ['tutor'] }, { l: ['tutor'], r: ['subject'] }];
+        var f = [];
+        f.push({ narr: 'The register: one row per (student, subject) with the chosen tutor. Rules: a student has one tutor per subject; a tutor teaches one subject.', parts: [{ type: 'table', label: 'register', columns: cols, rows: rows }] });
+        f.push({ narr: 'FD arrows: (student, subject) → tutor, and <b>tutor → subject</b>. Candidate keys: (student, subject) <b>and</b> (student, tutor) — they overlap on student.', parts: [fdGraph(cols, fds, false, { fdHl: { 0: 'ok', 1: 'cur' }, attrTags: { student: 'prime', subject: 'prime', tutor: 'prime' } })] });
+        f.push({ narr: '3NF test for tutor → subject: tutor is not a superkey, <b>but</b> subject is prime (part of key (student, subject)) → 3NF\'s escape clause lets it pass. <b>The table is in 3NF.</b>', parts: [{ type: 'table', label: 'normal-form check', columns: ['FD', 'left side superkey?', 'right side prime?', '3NF', 'BCNF'], rows: [['student, subject → tutor', 'yes', '—', '✔', '✔'], ['tutor → subject', 'no', 'yes', '✔ (escape clause)', '✘']], hl: { 0: 'ok', 1: 'bad' } }] });
+        f.push({ narr: 'BCNF has no escape clause: tutor decides subject but tutor is not a key → <b>violation</b>. In the data, "Mr. Rao teaches Maths" and "Ms. Iyer teaches Physics" are each stored twice (red).', parts: [{ type: 'table', label: 'register', columns: cols, rows: rows, hl: { 0: 'bad', 1: 'bad', 2: 'cur', 4: 'cur' } }, fdGraph(cols, fds, false, { fdHl: { 1: 'bad' } })] });
+        var up = rows.map(function (r) { return r.slice(); }); up[0][1] = 'Statistics';
+        f.push({ narr: '<b>Update anomaly:</b> Mr. Rao switches to Statistics; only Asha\'s row gets updated. Now Mr. Rao teaches two subjects — breaking the rule the data was supposed to follow.', parts: [{ type: 'table', label: 'register after partial update', columns: cols, rows: up, hl: { 0: 'ok', 1: 'bad' } }] });
+        f.push({ narr: 'BCNF split on the violating FD tutor → subject: <b>R1 = (tutor, subject)</b> with key tutor, <b>R2 = R − {subject} = (student, tutor)</b>. tutor is shared and is R1\'s key → lossless.', parts: [
+          { type: 'table', label: 'tutors  KEY tutor', columns: ['tutor', 'subject'], rows: [['Mr. Rao', 'Maths'], ['Ms. Iyer', 'Physics'], ['Ms. Sen', 'Maths']], hl: { 0: 'ok', 1: 'ok', 2: 'ok' } },
+          { type: 'table', label: 'student_tutors  KEY (student, tutor)', columns: ['student', 'tutor'], rows: rows.map(function (r) { return [r[0], r[2]]; }), hl: { 0: 'ok', 1: 'ok', 2: 'ok', 3: 'ok', 4: 'ok' } }] });
+        f.push({ narr: 'The price: the rule (student, subject) → tutor no longer fits inside one table. Insert (Asha, Ms. Sen) — each table looks perfectly valid on its own…', parts: [
+          { type: 'table', label: 'tutors', columns: ['tutor', 'subject'], rows: [['Mr. Rao', 'Maths'], ['Ms. Iyer', 'Physics'], ['Ms. Sen', 'Maths']] },
+          { type: 'table', label: 'student_tutors', columns: ['student', 'tutor'], rows: rows.map(function (r) { return [r[0], r[2]]; }).concat([['Asha', 'Ms. Sen']]), hl: { 5: 'cur' } }] });
+        f.push({ narr: '…but the join reveals Asha now has <b>two Maths tutors</b> (red). The lost dependency must be enforced by a trigger or application check — or you stay in 3NF on purpose.', parts: [{ type: 'table', label: 'student_tutors ⋈ tutors', columns: cols, rows: [['Asha', 'Maths', 'Mr. Rao'], ['Asha', 'Maths', 'Ms. Sen'], ['Asha', 'Physics', 'Ms. Iyer'], ['Ben', 'Maths', 'Mr. Rao'], ['Ben', 'Physics', 'Ms. Iyer'], ['Chen', 'Maths', 'Ms. Sen']], hl: { 0: 'bad', 1: 'bad' } }] });
+        f.push({ narr: 'Decision table. Interview answer: "BCNF removes all FD redundancy but may lose dependency preservation; 3NF always preserves dependencies. I pick based on which rule is more costly to enforce."', parts: [{ type: 'table', label: 'trade-off', columns: ['', '3NF (one table)', 'BCNF (two tables)'], rows: [['tutor → subject stored', 'once per student', 'once ✔'], ['one tutor per subject per student', 'PK enforces ✔', 'needs trigger ✘'], ['lossless', '—', 'yes ✔']], hl: { 0: 'sel', 1: 'sel', 2: 'sel' } }] });
+        return f;
+      }
+    }, {
+      title: 'BCNF decomposition calculator',
+      input: 'A B C D E | A->B; BC->E; ED->A',
+      inputLabel: 'attributes | FDs',
+      gen: function (input) {
+        var S = parseSpec(input, false), L = S.L, frames = [];
+        var work = [S.attrs.slice()], done = [], splits = 0;
+        var keyOf = function (R) { var k = keysOf(R, S.fds); return k.length ? fmt(k[0], L) : fmt(R, L); };
+        var table = function (cur, hl) {
+          var rowsT = [], h = {};
+          done.forEach(function (R) { rowsT.push([fmt(R, L), keyOf(R), 'BCNF ✔']); h[rowsT.length - 1] = 'ok'; });
+          work.forEach(function (R) { rowsT.push([fmt(R, L), keyOf(R), R === cur ? 'checking…' : 'to check']); if (R === cur) h[rowsT.length - 1] = hl || 'cur'; });
+          return { type: 'table', label: 'tables so far', columns: ['attributes', 'a candidate key', 'status'], rows: rowsT, hl: h };
+        };
+        frames.push({ narr: 'Start with R(' + fmt(S.attrs, L) + '). Candidate keys: <b>' + keysOf(S.attrs, S.fds).map(function (k) { return fmt(k, L); }).join(', ') + '</b>. We look for any FD (given or implied) whose left side is not a superkey.', parts: [fdGraph(S.attrs, S.fds, L), table(null)] });
+        while (work.length && splits < 10) {
+          var R = work[0], v = bcnfViolation(R, S.fds);
+          if (!v) {
+            frames.push({ narr: 'Table (' + fmt(R, L) + '): every non-trivial FD inside it has a superkey on the left → <b>BCNF</b>.', parts: [table(R, 'ok')] });
+            done.push(work.shift());
+            continue;
+          }
+          splits++;
+          var R1 = S.ord(v.c), R2 = S.ord(minus(R, v.Y));
+          var ah = {}; v.X.forEach(function (a) { ah[a] = 'bad'; }); v.Y.forEach(function (a) { ah[a] = 'cur'; });
+          frames.push({ narr: 'In (' + fmt(R, L) + ') the FD <b>' + fmt(v.X, L) + ' → ' + fmt(v.Y, L) + '</b> holds (' + fmt(v.X, L) + '⁺ ∩ table = ' + fmt(v.c, L) + ') but ' + fmt(v.X, L) + ' is not a superkey → violation.', parts: [fdGraph(S.attrs, S.fds, L, { attrHl: ah }), table(R, 'bad')] });
+          work.shift();
+          work.unshift(R2); work.unshift(R1);
+          frames.push({ narr: 'Split into <b>(' + fmt(R1, L) + ')</b> = X ∪ Y with key ' + fmt(v.X, L) + ', and <b>(' + fmt(R2, L) + ')</b> = table − Y. They share ' + fmt(v.X, L) + ', which is a key of the first → lossless.', parts: [table(R1, 'ok')] });
+        }
+        var rels = done.concat(work);
+        var pres = preserved(S.fds, rels), rows = S.fds.map(function (f, i) { return [fdStr(f, L), pres[i] ? 'preserved' : 'LOST — needs a trigger/app check']; }), ph = {};
+        pres.forEach(function (p, i) { ph[i] = p ? 'ok' : 'bad'; });
+        frames.push({ narr: '<b>Final BCNF schema:</b> ' + rels.map(function (R) { return '(' + fmt(R, L) + ')'; }).join(' ') + '. Lossless by construction. Dependency check: ' + (pres.every(Boolean) ? 'every FD is still enforceable.' : '<span class="c-r">some FDs span several tables and are lost</span> — the classic BCNF trade-off.'), parts: [{ type: 'table', label: 'final tables', columns: ['attributes', 'a candidate key'], rows: rels.map(function (R) { return [fmt(R, L), keyOf(R)]; }), hl: (function () { var h = {}; rels.forEach(function (_, i) { h[i] = 'sel'; }); return h; })() }, { type: 'table', label: 'dependency preservation', columns: ['FD', 'status'], rows: rows, hl: ph }] });
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'Identify: 3NF, not BCNF', html: `<p>R(A, B, C, D, E), F = {A → B, BC → E, ED → A}. Keys: ACD, BCD, CDE (topic 2). Every attribute is prime ⇒ every FD has a prime right side ⇒ <b>3NF</b>. But A, BC and ED are not superkeys ⇒ three BCNF violations. Decompose on A → B: (A, B) and (A, C, D, E); continue on (A, C, D, E) with AC → E (implied: A → B, BC → E) … The calculator above shows one valid result and that ED → A is lost.</p>` },
+      { title: 'Single candidate key ⇒ 3NF = BCNF', html: `<p>If a table has exactly one candidate key, then "right side prime" can only mean "right side is part of that key", which makes the FD trivial or the left side a superkey. So for single-key tables, passing 3NF means passing BCNF. That is why most well-designed OLTP tables are BCNF without anyone trying.</p>` },
+      { title: 'Bank: branch → city inside a loan table', html: `<p><code>loans(loan_no, branch, customer, amount)</code> with keys loan_no and FD branch → (nothing else here) is BCNF. Add <code>branch_city</code>: branch → branch_city, branch is not a key ⇒ not BCNF (and not 3NF either, because branch_city is non-prime). Not every BCNF violation is "3NF-but-not-BCNF" — check the 3NF clause separately.</p>` },
+      { title: 'Spotting a 4NF problem', html: `<p><code>employee_skill_language(emp, skill, language)</code> where skills and languages are independent. The key is all three columns, there are no non-trivial FDs at all ⇒ BCNF. Yet adding one new language means inserting one row per skill. That is a <b>multi-valued dependency</b> emp ↠ skill | language; 4NF splits it into (emp, skill) and (emp, language).</p>` }
+    ],
+    deepDive: `<h4>🟣 Why BCNF decomposition is always lossless</h4>
+<p>Each step splits R on X → Y into R1 = XY and R2 = R − (Y − X). The intersection is X, and X → Y means X → R1, i.e. X is a superkey of R1. By the binary lossless-join test (R1 ∩ R2 → R1), the split is lossless; induction covers repeated splits.</p>
+<h4>Why it may not preserve dependencies</h4>
+<p>Classic proof: R(J, K, L) with JK → L and L → K. Keys: JK and JL. L → K violates BCNF; any BCNF decomposition must separate J, K, L so that no table contains all of JK → L. There is <b>no</b> BCNF decomposition preserving JK → L. Hence the textbook rule: "lossless always, dependency preservation not guaranteed; 3NF guarantees both".</p>
+<h4>Testing BCNF on a decomposed table</h4>
+<p>To test a sub-table Ri you must consider FDs <b>implied</b> by F and projected onto Ri, not just the ones written down. Shortcut: for each subset X of Ri, check whether X⁺ ∩ Ri adds attributes without covering Ri. That is exponential in |Ri| — fine for interviews and the calculator. For the <b>original</b> relation, checking only the given FDs suffices (Ullman).</p>
+<h4>4NF and 5NF in one paragraph each</h4>
+<p><b>Multi-valued dependency</b> X ↠ Y: for a given X, the set of Y values is independent of the remaining attributes. 4NF: every non-trivial MVD has a superkey on the left. Typical cause: merging two independent many-to-many relationships into one junction table. <b>5NF / PJNF</b>: every join dependency is implied by the candidate keys; violations look like "supplier supplies part, part used in project, supplier works on project ⇒ supplier supplies that part to that project" (a cyclic business rule). If the rule is real, the 3-way table is redundant and three 2-column tables suffice.</p>
+<h4>DKNF and 6NF</h4>
+<p>Domain-Key NF (Fagin) — every constraint follows from domains and keys — is mostly theoretical. 6NF (every table has a key plus at most one other attribute) appears in temporal databases and in "anchor modelling" / data-vault style warehouses where each attribute's history is versioned independently.</p>`,
+    aiEra: `<p><b>What AI changes:</b> BCNF decomposition is mechanical, so models do it well for small textbook relations — but they routinely skip the step that interviews care about: <b>checking dependency preservation</b>. Tools that auto-normalize schemas (some ER/AI design assistants) tend to produce BCNF and silently drop a business rule.</p>
+<p><b>Use AI as a partner:</b> after any proposed decomposition, ask <code>For each original FD, which single table enforces it? If none, write the trigger or constraint that would.</code> And ask for a property-based test: <code>generate random inserts into the decomposed tables and show a case where the original rule is violated</code>. If it can produce one, you have found the lost dependency.</p>
+<p><b>Where AI goes wrong:</b> it treats "3NF" and "BCNF" as synonyms, ignores implied FDs when testing sub-tables, and invents MVD violations where facts are not independent. <b>What you must still own:</b> the trade-off decision (3NF + key-enforced rules vs BCNF + trigger) and explaining it in a minute.</p>`,
+    problems: [{
+      title: 'Court Bookings: 3NF but not BCNF',
+      level: 'Hard', tags: ['BCNF', 'overlapping keys', 'redesign'], companies: ['Playo', 'Google', 'Microsoft'],
+      statement: `<p>A tennis club stores today's bookings as <code>bookings(court, start_time, end_time, rate_type)</code>. Court 1 uses rate types SAVER and STANDARD; court 2 uses PREMIUM-A and PREMIUM-B (so <b>rate_type → court</b>). A court can't have two bookings starting or ending at the same time. Find the candidate keys, prove the table is 3NF but not BCNF, and design a BCNF schema that <b>still</b> enforces "no double booking" with keys only.</p>`,
+      constraints: `<p>SQLite. No triggers in the final design. Show sample data, the anomaly in the original, and that the redesigned tables rebuild the original view.</p>`,
+      example: `<p>Rows: (1, 09:30, 10:30, SAVER), (1, 11:00, 12:00, SAVER), (2, 10:00, 11:30, PREMIUM-B). "SAVER belongs to court 1" is stored twice ${H.c('r', '(redundancy)')}; PREMIUM-A's court can't be recorded until someone books it ${H.c('r', '(insert anomaly)')}.</p>`,
+      brute: {
+        why: `<p>Keeping the single table works for bookings but stores rate_type → court once per booking, cannot list a rate type with no bookings, and a mistaken row (court 2, SAVER) is accepted because nothing ties SAVER to court 1. The naive BCNF split (rate_type, court) + (rate_type, start, end) loses the "no double booking per court" rule, since court and start_time are no longer in the same table.</p>`,
+        code: `CREATE TABLE bookings (
+  court INTEGER NOT NULL, start_time TEXT NOT NULL, end_time TEXT NOT NULL, rate_type TEXT NOT NULL,
+  PRIMARY KEY (court, start_time), UNIQUE (court, end_time));
+INSERT INTO bookings VALUES (1, '09:30', '10:30', 'SAVER'), (1, '11:00', '12:00', 'SAVER'),
+                            (1, '14:00', '15:30', 'STANDARD'), (2, '10:00', '11:30', 'PREMIUM-B');
+INSERT INTO bookings VALUES (2, '16:00', '17:00', 'SAVER');      -- accepted, but SAVER is a court-1 rate!
+SELECT rate_type, GROUP_CONCAT(DISTINCT court) AS courts_on_file
+FROM bookings GROUP BY rate_type HAVING COUNT(DISTINCT court) > 1;  -- SAVER -> 1,2: rule broken`
+      },
+      mcq: { q: 'Why is the original table in 3NF even though rate_type is not a key?', options: ['court, the right side of rate_type → court, is a prime attribute', 'rate_type is unique per row', 'Tables with time columns are exempt', 'Because there is no transitive dependency on start_time'], answer: 0, explain: 'court belongs to the candidate key (court, start_time), so the 3NF escape clause applies; BCNF has no such clause.' },
+      hints: [`<p>Hint 1: Candidate keys: (court, start_time), (court, end_time), (rate_type, start_time), (rate_type, end_time). Every attribute is prime.</p>`, `<p>Hint 2: rate_type → court violates BCNF. A plain split loses (court, start_time) → … . Is there an attribute that, together with court, determines the rate type?</p>`, `<p>Hint 3: Introduce is_member: (court, is_member) ↔ rate_type. Tables: rate_types(rate_type PK, court, is_member, UNIQUE(court, is_member)) and bookings(court, start_time, end_time, is_member) with PK (court, start_time), UNIQUE (court, end_time), FK (court, is_member).</p>`],
+      solution: {
+        approach: `<p><b>Keys:</b> (court, start), (court, end), (rate_type, start), (rate_type, end) — every column is prime ⇒ <b>3NF</b>. <b>BCNF violation:</b> rate_type → court, rate_type not a superkey. The textbook split (rate_type, court) + (rate_type, start, end) is lossless but makes "court can't be double-booked" unenforceable by keys. <b>Redesign:</b> a rate type is really "court + member/non-member". Store <code>rate_types(rate_type PK, court, is_member)</code> with UNIQUE(court, is_member), and <code>bookings(court, start, end, is_member)</code> with PK (court, start) and UNIQUE (court, end). Both tables are BCNF (every determinant — rate_type, (court,is_member), (court,start), (court,end) — is a key), and the double-booking rule stays a key. The composite FK makes invalid court/rate combos impossible.</p>`,
+        code: `PRAGMA foreign_keys = ON;
+CREATE TABLE rate_types (
+  rate_type TEXT PRIMARY KEY,
+  court     INTEGER NOT NULL,
+  is_member INTEGER NOT NULL CHECK (is_member IN (0, 1)),
+  UNIQUE (court, is_member)                         -- (court, is_member) -> rate_type
+);
+CREATE TABLE bookings (
+  court      INTEGER NOT NULL,
+  start_time TEXT    NOT NULL,
+  end_time   TEXT    NOT NULL CHECK (end_time > start_time),
+  is_member  INTEGER NOT NULL,
+  PRIMARY KEY (court, start_time),                  -- no two bookings start together on a court
+  UNIQUE (court, end_time),
+  FOREIGN KEY (court, is_member) REFERENCES rate_types(court, is_member)
+);
+INSERT INTO rate_types VALUES ('SAVER', 1, 1), ('STANDARD', 1, 0), ('PREMIUM-A', 2, 1), ('PREMIUM-B', 2, 0);
+INSERT INTO bookings VALUES (1, '09:30', '10:30', 1), (1, '11:00', '12:00', 1),
+                            (1, '14:00', '15:30', 0), (2, '10:00', '11:30', 0);
+-- PREMIUM-A exists with zero bookings (no insert anomaly); a "court 2 SAVER" booking is impossible.
+
+CREATE VIEW bookings_original AS
+SELECT b.court, b.start_time, b.end_time, r.rate_type
+FROM bookings b JOIN rate_types r ON r.court = b.court AND r.is_member = b.is_member;
+
+SELECT * FROM bookings_original ORDER BY court, start_time;`,
+        complexity: `<p>All rules are enforced by unique indexes: O(log N) per insert. The view costs one indexed join per booking. No triggers, no lost dependencies.</p>`,
+        followUps: ['How would you prevent overlapping bookings (09:30–10:30 vs 10:00–11:00), not just equal start times?', 'If a third court gets a "junior" rate, does the design still work?']
+      }
+    }]
+  });
+
   registerModule({
     id: 'sql08',
     title: 'Normalization & Denormalization',

@@ -356,6 +356,276 @@ WHERE c.city = 'Delhi';
     ]
   });
 
+  /* =====================================================================
+     TOPIC 2 — Reading plans: EXPLAIN, EXPLAIN QUERY PLAN, EXPLAIN ANALYZE
+     ===================================================================== */
+  var EQP_DICT = [
+    [/^SCAN (\S+) USING COVERING INDEX (\S+)/i, function (m) { return 'Walk the <b>whole index</b> ' + m[2] + ' but never touch table ' + m[1] + ' (every needed column is in the index). Cheaper than a table scan, still reads every entry.'; }, 'win'],
+    [/^SCAN (\S+) USING INDEX (\S+)/i, function (m) { return 'Read <b>all of</b> ' + m[1] + ' in the order of index ' + m[2] + ' (usually to skip a sort), fetching each row from the table. Full read + random lookups — watch out on big tables.'; }, 'cur'],
+    [/^SCAN (\S+)$/i, function (m) { return '<b>Full table scan</b> of ' + m[1] + ': every row is read and tested. Fine for small tables or when most rows are needed; a red flag on a big table, especially inside a loop.'; }, 'bad'],
+    [/^SEARCH (\S+) USING INTEGER PRIMARY KEY \((.*)\)/i, function (m) { return '<b>Rowid lookup</b> on ' + m[1] + ' (' + H.esc(m[2]) + '): jump straight to the row in the table B-tree. The cheapest access there is.'; }, 'ok'],
+    [/^SEARCH (\S+) USING COVERING INDEX (\S+) \((.*)\)/i, function (m) { return '<b>Index seek, index-only</b>: descend ' + m[2] + ' to the range ' + H.esc(m[3]) + ' and read only matching entries. Table ' + m[1] + ' is never touched.'; }, 'ok'],
+    [/^SEARCH (\S+) USING AUTOMATIC (COVERING )?INDEX \((.*)\)/i, function (m) { return 'SQLite <b>built a temporary index</b> on ' + m[1] + ' (' + H.esc(m[3]) + ') just for this query, because no real index fits. It works, but it is a strong hint you are <b>missing an index</b>.'; }, 'cur'],
+    [/^SEARCH (\S+) USING INDEX (\S+) \((.*)\)/i, function (m) { return '<b>Index seek</b>: descend ' + m[2] + ' straight to ' + H.esc(m[3]) + ', then fetch each matching row from table ' + m[1] + ' for the other columns.'; }, 'ok'],
+    [/^BLOOM FILTER ON (\S+)/i, function (m) { return 'A <b>Bloom filter</b> on ' + m[1] + ': a tiny bit-array that answers "definitely not here" cheaply, so most useless lookups are skipped.'; }, 'win'],
+    [/^USE TEMP B-TREE FOR (.*)$/i, function (m) { return 'An <b>extra sort step</b> for ' + m[1] + ': rows are put into a temporary B-tree. Costs O(n log n) and blocks streaming. An index in the right order can remove it.'; }, 'cur'],
+    [/^CORRELATED (SCALAR|LIST) SUBQUERY/i, function () { return 'A <b>correlated subquery</b>: it is re-run <b>once per outer row</b>. Its children show how each run finds its rows — make sure that is a SEARCH, not a SCAN.'; }, 'cur'],
+    [/^(SCALAR|LIST) SUBQUERY/i, function () { return 'A non-correlated subquery: run <b>once</b>, result reused (for IN it becomes a temporary lookup list).'; }, 'win'],
+    [/^MATERIALIZE/i, function () { return 'The subquery/CTE is run once and its rows are <b>stored in a temp table</b>, then read like a table.'; }, 'win'],
+    [/^CO-ROUTINE/i, function () { return 'The subquery runs as a <b>co-routine</b>: it produces rows lazily, one at a time, as the outer query asks for them (no temp table).'; }, 'win'],
+    [/^MULTI-INDEX OR/i, function () { return 'An <b>OR</b> was split into separate index lookups (one per branch below); the row ids are merged and de-duplicated.'; }, 'ok'],
+    [/^INDEX \d+/i, function () { return 'One branch of the multi-index OR.'; }, 'win'],
+    [/^(COMPOUND QUERY|LEFT-MOST SUBQUERY|UNION ALL|UNION USING TEMP B-TREE)/i, function () { return 'Part of a UNION / compound query: each branch is planned separately.'; }, 'win']
+  ];
+  function explainLine(d) {
+    for (var i = 0; i < EQP_DICT.length; i++) { var m = d.match(EQP_DICT[i][0]); if (m) return { txt: EQP_DICT[i][1](m), cls: EQP_DICT[i][2] }; }
+    return { txt: 'Engine-specific step: ' + H.esc(d), cls: 'win' };
+  }
+
+  topics.push({
+    title: 'Reading Plans: EXPLAIN, EXPLAIN QUERY PLAN & EXPLAIN ANALYZE',
+    analogy: `<p>A query plan is the <b>recipe card</b> the kitchen actually follows. <code>EXPLAIN</code> shows the recipe <i>before</i> cooking: "chop onions, then fry, about 10 minutes". <code>EXPLAIN ANALYZE</code> cooks the dish with a stopwatch running and writes the <b>real</b> times next to each step: "chopping took 40 minutes because there were 50 onions, not 5". The gap between the guess and the real number is usually where your problem is.</p>`,
+    explain: `<p>Every engine can print the plan it chose. Three flavours:</p>
+${H.table(['Command', 'Runs the query?', 'Shows'], [
+  ['<code>EXPLAIN QUERY PLAN</code> (SQLite)', 'No', 'One line per access step: SCAN / SEARCH / temp B-tree / subquery'],
+  ['<code>EXPLAIN</code> (SQLite)', 'No', 'The low-level bytecode program (OpenRead, SeekGE, Next …)'],
+  ['<code>EXPLAIN</code> (PostgreSQL/MySQL)', 'No', 'Plan tree with <b>estimated</b> cost and rows'],
+  ['<code>EXPLAIN ANALYZE</code> (PostgreSQL/MySQL 8.0.18+)', H.c('r', '<b>Yes!</b>'), 'Estimates <b>and</b> actual rows, loops and time per node']
+])}
+<p><b>How to read a plan tree — inside out.</b> The deepest (most indented) nodes run first and feed their parents. Read bottom-up: "scan this, filter that, join with this, sort, return".</p>
+<p><b>SQLite vocabulary you will see:</b></p>
+${H.table(['Plan line', 'Meaning', 'Good or bad?'], [
+  ['<code>SCAN orders</code>', 'read every row', H.c('r', 'bad on big tables')],
+  ['<code>SEARCH orders USING INDEX idx_x (col=?)</code>', 'seek into the index, then fetch rows', H.c('g', 'good')],
+  ['<code>… USING COVERING INDEX …</code>', 'answer from the index alone', H.c('g', 'best')],
+  ['<code>… USING INTEGER PRIMARY KEY (rowid=?)</code>', 'direct row lookup', H.c('g', 'best')],
+  ['<code>USE TEMP B-TREE FOR ORDER BY</code>', 'extra sort', H.c('y', 'maybe avoidable')],
+  ['<code>AUTOMATIC INDEX</code>', 'temporary index built at run time', H.c('y', 'missing index')],
+  ['<code>CORRELATED SCALAR SUBQUERY</code>', 're-run for every outer row', H.c('y', 'check the inner access')]
+])}
+<p><b>PostgreSQL node line, decoded:</b></p>
+<pre>Index Scan using idx_orders_customer on orders o
+   (cost=0.29..8.47 rows=10 width=36) (actual time=0.015..0.031 rows=10 loops=38)</pre>
+<ul>
+<li><code>cost=0.29..8.47</code> — <i>startup</i> cost (before the first row) .. <i>total</i> cost, in arbitrary units (1.0 ≈ one sequential page read).</li>
+<li><code>rows=10</code> — <b>estimated</b> rows <i>per loop</i>. <code>width=36</code> — average row size in bytes.</li>
+<li><code>actual … rows=10 loops=38</code> — <b>real</b> rows per loop, and this node ran 38 times (it is the inner side of a nested loop). Total rows = 10 × 38 = 380; total time ≈ 0.031 ms × 38.</li>
+</ul>
+<p><b>The 4-step plan-reading checklist:</b> (1) find the node with the biggest actual time; (2) compare estimated vs actual rows — a 10× or bigger gap means bad statistics or a non-sargable predicate; (3) look for <code>Seq Scan</code> with a large <code>Rows Removed by Filter</code>; (4) look for sorts or hashes that spilled to disk (<code>external merge</code>, <code>Batches: 8</code>).</p>`,
+    clues: [
+      '"How would you find out why this query is slow?" → EXPLAIN first, then EXPLAIN ANALYZE (with BUFFERS) on a safe copy',
+      '"Estimated rows 1, actual rows 50,000" → misestimate: stale stats, correlated columns, or a function on a column',
+      '"Seq Scan … Rows Removed by Filter: 2,999,990" → missing or unusable index for that predicate',
+      '"Sort Method: external merge Disk: 120MB" / "Batches: 16" → work_mem too small, sort/hash spilled to disk',
+      '"loops=50000" on an inner node → nested loop running the inner side too many times',
+      'SQLite "USE TEMP B-TREE FOR ORDER BY" or "AUTOMATIC INDEX" → an index in the right order/columns is missing'
+    ],
+    code: [
+      { lang: 'sql', db: 'shop', title: 'Three SQLite plans side by side (▶ Run)', code: `-- 1) A correlated subquery: re-run once per Delhi customer
+EXPLAIN QUERY PLAN
+SELECT c.name,
+       (SELECT max(o.created_at) FROM orders o WHERE o.customer_id = c.id) AS last_order
+FROM customers c
+WHERE c.city = 'Delhi'
+ORDER BY c.name;
+
+-- 2) A join + GROUP BY + ORDER BY: two temp B-trees (two sorts)
+EXPLAIN QUERY PLAN
+SELECT c.city, count(*) AS orders_2026
+FROM customers c JOIN orders o ON o.customer_id = c.id
+WHERE o.created_at >= '2026-01-01'
+GROUP BY c.city
+ORDER BY orders_2026 DESC;
+
+-- 3) OR across two different indexed columns: MULTI-INDEX OR
+EXPLAIN QUERY PLAN
+SELECT * FROM orders WHERE customer_id = 42 OR created_at >= '2026-09-01';` },
+      { lang: 'text', title: 'PostgreSQL EXPLAIN (ANALYZE, BUFFERS) — annotated', code: `EXPLAIN (ANALYZE, BUFFERS)
+SELECT c.name, o.id, o.total_cents
+FROM customers c JOIN orders o ON o.customer_id = c.id
+WHERE c.city = 'Delhi' AND o.status = 'pending';
+
+Nested Loop  (cost=4.58..145.20 rows=9 width=24) (actual time=0.061..0.412 rows=20 loops=1)
+  Buffers: shared hit=126
+  ->  Bitmap Heap Scan on customers c  (cost=4.57..13.05 rows=40 width=16) (actual time=0.030..0.060 rows=38 loops=1)
+        Recheck Cond: (city = 'Delhi'::text)
+        Heap Blocks: exact=5
+        ->  Bitmap Index Scan on idx_customers_city  (cost=0.00..4.56 rows=40 width=0) (actual time=0.020..0.020 rows=38 loops=1)
+              Index Cond: (city = 'Delhi'::text)
+  ->  Index Scan using idx_orders_customer on orders o  (cost=0.28..3.29 rows=1 width=16) (actual time=0.006..0.009 rows=1 loops=38)
+        Index Cond: (customer_id = c.id)
+        Filter: (status = 'pending'::text)
+        Rows Removed by Filter: 10
+Planning Time: 0.310 ms
+Execution Time: 0.455 ms
+
+-- Read inside-out: Bitmap Index Scan (38 ids) -> Bitmap Heap Scan (38 customers)
+--   -> for each customer (loops=38) an Index Scan on orders, filter status
+-- Estimates are close (40 vs 38, 9 vs 20) => statistics are healthy.` }
+    ],
+    codeTitle: ['SQLite EXPLAIN QUERY PLAN', 'PostgreSQL EXPLAIN ANALYZE (text)'],
+    viz: [
+      {
+        title: 'Walk an EXPLAIN ANALYZE tree bottom-up and find the bottleneck',
+        gen: function () {
+          var nodes = [
+            { id: 'L', label: 'Limit', x: 50, y: 6, shape: 'box' },
+            { id: 'S', label: 'Sort (total_cents DESC)', x: 50, y: 20, shape: 'box' },
+            { id: 'H', label: 'Hash Join', x: 50, y: 34, shape: 'box' },
+            { id: 'SO', label: 'Seq Scan orders', x: 24, y: 50, shape: 'box' },
+            { id: 'HB', label: 'Hash', x: 76, y: 50, shape: 'box' },
+            { id: 'SC', label: 'Index Scan customers', x: 76, y: 64, shape: 'box' }
+          ];
+          var edges = [['SO', 'H'], ['HB', 'H'], ['SC', 'HB'], ['H', 'S'], ['S', 'L']];
+          var rows = [
+            ['Index Scan customers (city = Delhi)', 40, 38, '0.06'],
+            ['Hash (build)', 40, 38, '0.08'],
+            ['Seq Scan orders (created_at ≥ 2026-09-01 via date())', 15, 150, '41.2'],
+            ['Hash Join', 2, 19, '41.6'],
+            ['Sort', 2, 19, '41.7'],
+            ['Limit 10', 2, 10, '41.7']
+          ];
+          var order = ['SC', 'HB', 'SO', 'H', 'S', 'L'];
+          var say = [
+            'Start at the <b>deepest leaf</b>: an index scan on <code>customers</code> for city = Delhi. Estimated 40, actual 38 — a healthy estimate.',
+            'Those 38 customers are loaded into an in-memory <b>hash table</b> (the build side of a hash join). Tiny, fast.',
+            'The other leaf: a <b>Seq Scan on orders</b>. The filter is <code>date(created_at) &gt;= \'2026-09-01\'</code> — a function on the column, so no index can be used and the planner can only <i>guess</i> the selectivity. It guessed <b>15</b> rows; reality is <b>150</b>. And it took 41 ms — almost all the query time.',
+            '<b>Hash Join</b>: each order row probes the hash table by customer_id. Estimated 2 rows out, actual 19 — the error from the scan flows upward and multiplies.',
+            '<b>Sort</b> by total_cents DESC — cheap here because only 19 rows reach it.',
+            '<b>Limit</b> returns 10 rows. Verdict: the bottleneck is the Seq Scan (99% of time) and the root cause is the non-sargable <code>date(created_at)</code>. Fix: <code>created_at &gt;= \'2026-09-01\'</code> so the index on created_at can be used.'
+          ];
+          var frames = [{ narr: 'A plan is a <b>tree</b>. The root (top) returns rows to you; leaves (bottom) read tables. We read it <b>bottom-up</b>, because leaves run first and feed their parents.', parts: [{ type: 'graph', label: 'plan tree', directed: true, height: 70, nodes: nodes, edges: edges, hl: { L: 'sel' } }, { type: 'text', html: 'Query: last-week orders of Delhi customers, top 10 by value.' }] }];
+          for (var k = 0; k < order.length; k++) {
+            var hl = {}; for (var j = 0; j < k; j++) hl[order[j]] = 'done';
+            var bad = k === 2; hl[order[k]] = bad ? 'bad' : 'cur';
+            var thl = {}; thl[k] = bad ? 'bad' : 'cur';
+            var shown = rows.slice(0, k + 1).map(function (r) { var ratio = (r[2] / r[1]); return [r[0], r[1], r[2], (ratio >= 1 ? ratio.toFixed(1) + '× under' : (1 / ratio).toFixed(1) + '× over'), r[3]]; });
+            frames.push({ narr: say[k], parts: [{ type: 'graph', label: 'plan tree', directed: true, height: 70, nodes: nodes, edges: edges, hl: hl }, { type: 'table', label: 'node: estimated vs actual', columns: ['node', 'est rows', 'actual rows', 'estimate error', 'time ms (incl. children)'], rows: shown, hl: thl }] });
+          }
+          frames.push({ narr: 'Self-time per node (its own time minus children). One bar dwarfs the rest: that is where to spend your effort. Never optimize the Sort here — it costs 0.1 ms.', parts: [{ type: 'bars', label: 'self time (ms)', values: [0.06, 0.02, 41.2, 0.4, 0.1, 0.0], idxLabels: ['IdxScan', 'Hash', 'SeqScan', 'HashJoin', 'Sort', 'Limit'], hl: { 2: 'bad' } }] });
+          return frames;
+        }
+      },
+      {
+        title: 'Decode SQLite EXPLAIN QUERY PLAN output line by line',
+        input: '2 0 SEARCH c USING INDEX idx_customers_city (city=?); 6 0 CORRELATED SCALAR SUBQUERY 1; 11 6 SEARCH o USING INDEX idx_orders_customer (customer_id=?); 30 0 USE TEMP B-TREE FOR ORDER BY',
+        inputLabel: 'EQP rows: "id parent detail" separated by ;',
+        gen: function (input) {
+          var lines = String(input || '').split(';').map(function (s) { return s.trim(); }).filter(Boolean);
+          if (!lines.length) throw new Error('Paste rows like: 2 0 SCAN orders; 5 0 USE TEMP B-TREE FOR ORDER BY');
+          if (lines.length > 10) throw new Error('At most 10 plan rows');
+          var rows = lines.map(function (l) {
+            var m = l.match(/^(\d+)\s+(\d+)\s+(?:\d+\s+)?(.+)$/);
+            if (!m) throw new Error('Each row needs: id parent detail — e.g. "2 0 SCAN orders"');
+            return { id: m[1], parent: m[2], detail: m[3] };
+          });
+          var depth = {}, nodes = [], edges = [], perDepth = {};
+          rows.forEach(function (r) {
+            depth[r.id] = r.parent === '0' || depth[r.parent] === undefined ? 0 : depth[r.parent] + 1;
+            var d = depth[r.id]; perDepth[d] = (perDepth[d] || 0) + 1;
+          });
+          var seen = {};
+          rows.forEach(function (r, i) {
+            var d = depth[r.id]; seen[d] = (seen[d] || 0) + 1;
+            var lab = r.detail.length > 30 ? r.detail.slice(0, 29) + '…' : r.detail;
+            nodes.push({ id: 'n' + r.id, label: lab, x: Math.min(92, 8 + d * 14 + 46 * ((seen[d] - 1) / Math.max(1, perDepth[d]))), y: 6 + i * 11, shape: 'box', w: 40 });
+            if (r.parent !== '0' && depth[r.parent] !== undefined) edges.push(['n' + r.parent, 'n' + r.id]);
+          });
+          var h = 12 + rows.length * 11;
+          var frames = [{ narr: 'SQLite prints one row per step: <b>id</b>, <b>parent</b> (0 = top level) and a <b>detail</b> text. A row whose parent is another row is <i>nested inside</i> it (e.g. the plan of a subquery). Top-level rows run as <b>nested loops in the order shown</b>: the first line is the outer loop.', parts: [{ type: 'table', label: 'EXPLAIN QUERY PLAN output', columns: ['id', 'parent', 'detail'], rows: rows.map(function (r) { return [r.id, r.parent, r.detail]; }) }] }];
+          var verdicts = [];
+          rows.forEach(function (r, i) {
+            var e = explainLine(r.detail), hl = {}, thl = {};
+            rows.forEach(function (x, j) { if (j < i) hl['n' + x.id] = 'done'; });
+            hl['n' + r.id] = e.cls === 'bad' ? 'bad' : e.cls === 'ok' ? 'ok' : 'cur'; thl[i] = e.cls === 'bad' ? 'bad' : 'cur';
+            if (e.cls === 'bad' || /AUTOMATIC|TEMP B-TREE|CORRELATED/.test(r.detail)) verdicts.push(r.detail);
+            frames.push({ narr: '<b>' + H.esc(r.detail) + '</b> — ' + e.txt, parts: [{ type: 'graph', label: 'plan as a tree', directed: true, height: h, nodes: nodes, edges: edges, hl: hl }, { type: 'table', label: 'rows', columns: ['id', 'parent', 'detail'], rows: rows.map(function (x) { return [x.id, x.parent, x.detail]; }), hl: thl }] });
+          });
+          frames.push({ narr: verdicts.length ? '<b>Things worth a second look:</b> ' + verdicts.map(H.esc).join(' · ') + '. Ask: is there an index that removes the scan or the sort? Is the correlated part a cheap SEARCH?' : H.c('g', 'Every step is an index seek or a cheap helper — this plan looks healthy.'), parts: [{ type: 'set', label: 'flags', items: verdicts.length ? verdicts : ['no red flags'] }] });
+          return frames;
+        }
+      }
+    ],
+    examples: [
+      { title: 'From "SCAN + TEMP B-TREE" to one covering seek', html: `<p>Query: top 10 orders above 195 rupees, highest first. Without an index on <code>total_cents</code> SQLite must <b>scan all 3,000 orders</b> and then <b>sort</b> the survivors (${H.c('r', 'SCAN orders')} + ${H.c('r', 'USE TEMP B-TREE FOR ORDER BY')}). With <code>idx_orders_total</code> the plan becomes a single ${H.c('g', 'SEARCH orders USING COVERING INDEX idx_orders_total (total_cents>?)')}: the index is already sorted (it walks it backwards for DESC), and it holds both <code>total_cents</code> and the rowid (= <code>id</code>), so the table is never read and the LIMIT stops after 10 entries.</p>`, code: { lang: 'sql', db: 'shop', code: `EXPLAIN QUERY PLAN
+SELECT id, total_cents FROM orders
+WHERE total_cents > 19500 ORDER BY total_cents DESC LIMIT 10;
+
+CREATE INDEX idx_orders_total ON orders(total_cents);
+
+EXPLAIN QUERY PLAN
+SELECT id, total_cents FROM orders
+WHERE total_cents > 19500 ORDER BY total_cents DESC LIMIT 10;
+
+SELECT id, total_cents FROM orders
+WHERE total_cents > 19500 ORDER BY total_cents DESC LIMIT 10;` } },
+      { title: 'Estimated vs actual: the most important comparison', html: `<p>In PostgreSQL, compare <code>rows=</code> (estimate) with <code>actual … rows=</code> on every node:</p>${H.table(['node', 'est', 'actual', 'reading'], [['Index Scan customers', '40', '38', H.c('g', 'healthy')], ['Seq Scan orders, Filter date(created_at) …', '15', '150', H.c('r', '10× under-estimate')], ['Nested Loop', '1', '48,000', H.c('r', '48,000× — plan chosen for 1 row, got 48k')]])}<p>A planner that believes "1 row" happily picks a nested loop with a full inner scan. When the truth is 48,000 rows, that loop does 48,000 inner scans. Fix the estimate (ANALYZE, extended statistics, sargable predicate) and the planner usually fixes the plan itself.</p>` },
+      { title: 'MySQL EXPLAIN in one table', html: `<p>MySQL's classic EXPLAIN is a table, one row per table access. The <code>type</code> column is the access method, from best to worst: ${H.chips(['system/const', 'eq_ref', 'ref', 'range', 'index', 'ALL'], { hl: { 0: 'g', 1: 'g', 2: 'g', 3: 'b', 4: 'y', 5: 'r' } })}</p><p><code>key</code> = index used, <code>rows</code> = estimated rows examined, <code>filtered</code> = % kept by the WHERE, <code>Extra</code>: "Using index" (covering ✔), "Using where", "Using filesort" (extra sort), "Using temporary" (temp table). <code>EXPLAIN FORMAT=TREE</code> and <code>EXPLAIN ANALYZE</code> (8.0.18+) show a PostgreSQL-like tree with actual times.</p>`, code: { lang: 'text', code: `mysql> EXPLAIN SELECT * FROM orders WHERE customer_id = 42 ORDER BY total_cents;
++----+-------------+--------+------+---------------------+---------------------+---------+-------+------+----------+----------------+
+| id | select_type | table  | type | possible_keys       | key                 | key_len | ref   | rows | filtered | Extra          |
++----+-------------+--------+------+---------------------+---------------------+---------+-------+------+----------+----------------+
+|  1 | SIMPLE      | orders | ref  | idx_orders_customer | idx_orders_customer | 4       | const |   10 |   100.00 | Using filesort |
++----+-------------+--------+------+---------------------+---------------------+---------+-------+------+----------+----------------+` } },
+      { title: 'EXPLAIN ANALYZE really runs the statement', html: `<p><code>EXPLAIN ANALYZE DELETE FROM orders WHERE …</code> <b>deletes the rows</b>. Always wrap data-changing statements in a transaction and roll back. Also: on production, a slow query under EXPLAIN ANALYZE is still slow (and holds locks), so try it on a replica or a copy first. Add <code>BUFFERS</code> to see pages read from cache (<code>shared hit</code>) vs disk (<code>read</code>), and <code>SETTINGS</code> to show non-default planner settings.</p>`, code: { lang: 'sql', check: false, code: `-- PostgreSQL: safe way to profile a write
+BEGIN;
+EXPLAIN (ANALYZE, BUFFERS, SETTINGS)
+UPDATE orders SET status = 'cancelled'
+WHERE status = 'pending' AND created_at < now() - interval '30 days';
+ROLLBACK;   -- the update is undone; you keep the timing information` } },
+      { title: 'Peeking under the hood: SQLite bytecode', html: `<p>Plain <code>EXPLAIN</code> in SQLite prints the compiled program. For an index seek you will see <code>OpenRead</code> (open the index), <code>SeekGE</code> (jump to the first key ≥ 42), <code>IdxGT</code> (stop when the key passes 42), <code>IdxRowid</code> (take the rowid from the entry), <code>ResultRow</code>, and <code>Next</code> (loop). A full scan shows <code>Rewind</code> + <code>Next</code> over the table instead.</p>`, code: { lang: 'sql', db: 'shop', code: `EXPLAIN SELECT id FROM orders WHERE customer_id = 42;` } }
+    ],
+    deepDive: `<h4>How costs are computed (PostgreSQL)</h4>
+<p>Seq Scan cost = <code>pages × seq_page_cost + rows × cpu_tuple_cost + rows × (#quals) × cpu_operator_cost</code>. For a 3,000-row table on 30 pages with one filter: 30 × 1.0 + 3000 × 0.01 + 3000 × 0.0025 = <b>67.5</b>. An index scan adds <code>random_page_cost</code> (4.0 by default) per heap page fetched, discounted by the index's <b>correlation</b> (how well the physical row order matches the index order). That is why the crossover between seek and scan depends so much on correlation and on <code>random_page_cost</code> (set it to ~1.1 on SSDs).</p>
+<h4>Gotchas when reading plans</h4>
+<ul>
+<li><b>Per-loop numbers.</b> <code>actual time</code> and <code>rows</code> are averages per loop. Multiply by <code>loops</code> for the total. Parallel plans report per worker.</li>
+<li><b>Cost is not milliseconds.</b> Compare costs only between plans of the <i>same</i> query on the <i>same</i> server.</li>
+<li><b>EXPLAIN ANALYZE overhead.</b> Timing every row costs something (gettimeofday); use <code>TIMING OFF</code> for row counts only on very fast nodes.</li>
+<li><b>Cold vs warm cache.</b> First run reads from disk (<code>Buffers: read=</code>), second from RAM (<code>hit=</code>). Benchmark both, and never conclude from one run.</li>
+<li><b>Production capture.</b> <code>auto_explain</code> (log plans of queries slower than N ms), <code>pg_stat_statements</code> (top queries by total time), MySQL slow query log + <code>performance_schema</code>, SQL Server Query Store (plan history + forcing).</li>
+<li><b>SQLite extras.</b> CLI <code>.eqp on</code> prints the plan before every query; <code>.scanstats on</code> (3.42+) and <code>sqlite3_stmt_scanstatus()</code> give actual loop and row counts per step.</li>
+<li><b>Tools.</b> explain.depesz.com, explain.dalibo.com (PEV2) and pgMustard turn PostgreSQL plans into colored trees; MySQL Workbench Visual Explain; SSMS graphical plans with "actual vs estimated" warnings.</li>
+</ul>`,
+    aiEra: `<p><b>What AI changes:</b> Reading a 200-line plan used to take an expert. Now you can paste <code>EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)</code> into an assistant and get a decent summary in seconds. Several Postgres monitoring tools now ship built-in "explain this plan" AI features.</p>
+<p><b>Use AI as a partner:</b> "Here is the plan and the table sizes. List the top 3 nodes by self-time, every node where actual/estimated rows differ by more than 10×, and for each suggest a cause. Do not suggest indexes yet." Then you decide what to test.</p>
+<p><b>Where AI goes wrong:</b> it often confuses per-loop with total numbers, treats cost units as milliseconds, recommends an index on a column that is wrapped in a function (useless), or suggests a covering index with 12 columns that will slow down every write. It also can't know your cache was cold.</p>
+<p><b>What you must still own:</b> the inside-out reading habit, the estimate-vs-actual check, and verifying every suggestion by re-running EXPLAIN ANALYZE yourself.</p>`,
+    problems: [
+      {
+        title: 'Kill the scan and the sort', level: 'Medium', tags: ['EXPLAIN QUERY PLAN', 'covering index', 'ORDER BY'], companies: ['Swiggy', 'Uber', 'Stripe'],
+        statement: `<p>The "Top 10 big orders" widget runs this query thousands of times a minute:</p><pre>SELECT id, total_cents FROM orders
+WHERE total_cents &gt; 19500
+ORDER BY total_cents DESC LIMIT 10;</pre><p>Read its plan, name the two expensive steps, and change the <b>schema</b> (not the query) so that the plan becomes a single index step with no temporary B-tree. Show the before/after plans.</p>`,
+        constraints: `SQLite <code>shop</code> database; you may add exactly one index; the result must be unchanged.`,
+        example: `<p>Before: ${H.c('r', 'SCAN orders')} + ${H.c('r', 'USE TEMP B-TREE FOR ORDER BY')}. After: ${H.c('g', 'SEARCH orders USING COVERING INDEX idx_orders_total (total_cents>?)')}. Same 10 rows, starting with order 2321 (20,499 cents).</p>`,
+        brute: { why: `<p>The current query reads all 3,000 rows to test <code>total_cents &gt; 19500</code> (150 survive), then sorts the survivors in a temp B-tree, just to return 10. Work grows with table size, not with the 10 rows you need — at 30M orders this widget would melt the database.</p>`, code: { lang: 'sql', db: 'shop', code: `EXPLAIN QUERY PLAN
+SELECT id, total_cents FROM orders
+WHERE total_cents > 19500
+ORDER BY total_cents DESC LIMIT 10;
+-- SCAN orders
+-- USE TEMP B-TREE FOR ORDER BY` } },
+        mcq: { q: 'Which single index removes BOTH the scan and the sort?', options: ['An index on (id)', 'An index on (total_cents)', 'An index on (created_at, total_cents)', 'No index can remove a sort'], answer: 1, explain: 'An index on total_cents gives a range seek for > 19500 and is already ordered by total_cents, so it can be walked backwards for DESC. Because id is the rowid, the index also covers the SELECT list.' },
+        hints: [`<p>Hint 1: Two problems: <i>finding</i> rows (the WHERE) and <i>ordering</i> them (the ORDER BY). Both mention the same column.</p>`, `<p>Hint 2: A B+tree index is a sorted list. A sorted list can answer a range <i>and</i> hand rows back in order — forwards or backwards.</p>`, `<p>Hint 3: In SQLite every index entry also stores the rowid; <code>id INTEGER PRIMARY KEY</code> <i>is</i> the rowid, so an index on <code>total_cents</code> alone already "covers" <code>SELECT id, total_cents</code>. Recipe: create the index, re-run EQP, compare, run the query.</p>`],
+        solution: {
+          approach: `<p>Create <code>idx_orders_total(total_cents)</code>. The planner now seeks to the right end of the index (the largest value), walks backwards while <code>total_cents &gt; 19500</code>, and stops after 10 entries because of LIMIT. No table access (covering: rowid = id is in every entry) and no sort (the index is already in order). Work drops from "read 3,000 rows + sort 150" to "~log₂(3000) + 10 entry reads".</p>`,
+          code: { lang: 'sql', db: 'shop', code: `CREATE INDEX idx_orders_total ON orders(total_cents);
+
+EXPLAIN QUERY PLAN
+SELECT id, total_cents FROM orders
+WHERE total_cents > 19500
+ORDER BY total_cents DESC LIMIT 10;
+-- SEARCH orders USING COVERING INDEX idx_orders_total (total_cents>?)
+
+SELECT id, total_cents FROM orders
+WHERE total_cents > 19500
+ORDER BY total_cents DESC LIMIT 10;` },
+          complexity: `<p>Before: O(N) scan + O(k log k) sort of the k survivors. After: O(log N + 10). Cost: one more index to maintain on every insert/update of total_cents.</p>`,
+          followUps: ['What happens to the plan if you also SELECT <code>status</code>? (No longer covering — it must visit the table 10 times; still no sort.)', 'In PostgreSQL, what extra condition decides whether this becomes an Index Only Scan? (The visibility map / VACUUM.)']
+        }
+      }
+    ]
+  });
+
   registerModule({
     id: 'sql11',
     title: 'Query Execution & Optimization',

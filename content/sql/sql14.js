@@ -436,6 +436,275 @@ ORDER BY session_id;` },
       }
     }]
   });
+
+  /* =====================================================================
+     TOPIC 2 — Multi-leader & leaderless replication, quorums
+     ===================================================================== */
+  topics.push({
+    title: 'Multi-Leader & Leaderless Replication: Conflicts and Quorums (R + W > N)',
+    analogy: `<p><b>Multi-leader</b> is a family shopping list on three phones that each work offline. Mum adds "milk", Dad deletes "milk" on his phone in a tunnel; when both reconnect, the phones must <b>merge</b> — and somebody's change may lose.</p>
+<p><b>Leaderless with quorums</b> is like 5 referees keeping score. When a goal happens you only wait until <b>3</b> referees have written it down (W = 3). To learn the score you ask any <b>3</b> referees (R = 3) and trust the newest answer. Since 3 + 3 &gt; 5, at least one referee you ask <i>must</i> have seen the goal.</p>`,
+    explain: `<p><b>Multi-leader (multi-master) replication</b>: several nodes accept writes, each forwards its changes to the others. Why? (1) <b>Multi-datacenter</b>: users in Europe write to the EU leader with low latency and the DC can survive a cross-ocean outage. (2) <b>Offline clients</b>: every phone/laptop with a local DB is a "leader" (calendar apps, notes, CouchDB/PouchDB sync). (3) <b>Collaborative editing</b> (Google Docs, Figma) is the extreme version.</p>
+<p>The price is <b>write conflicts</b>: the same record changed in two places before they heard about each other. Ways to handle them:</p>
+${H.table(['Strategy', 'How', 'Catch'], [
+  ['<b>Avoid</b>', 'give every record a "home" leader (all writes for user 42 go to EU)', 'breaks when the home DC fails and you re-route'],
+  ['<b>Last-write-wins (LWW)</b>', 'keep the value with the biggest timestamp', '<span class="c-r">silently drops</span> the other write; clock skew picks the "wrong" winner'],
+  ['<b>Merge / CRDT</b>', 'data types that merge automatically (counters, sets, text CRDTs like Yjs/Automerge)', 'only for data with a sensible merge'],
+  ['<b>Keep siblings</b>', 'store both versions, let the app or user resolve (Riak, CouchDB)', 'pushes complexity to the application']
+])}
+<p><b>Leaderless replication</b> (Amazon's Dynamo paper → Cassandra, ScyllaDB, Riak): no leader at all. The client (or a coordinator node) sends each write to all <b>N</b> replicas of the key and calls it successful after <b>W</b> acknowledge. A read asks replicas and waits for <b>R</b> answers, then returns the newest version (by version number or timestamp).</p>
+<p><b>The quorum rule:</b> if <b>R + W &gt; N</b>, the set of nodes you read from and the set that took the latest write <b>must overlap</b> in at least one node, so the read sees the latest successful write. Common setting: N = 3, W = 2, R = 2. You can tune: W = N, R = 1 for read-heavy data (but one dead node blocks writes); W = 1, R = N for write-heavy logs.</p>
+${H.table(['N, W, R', 'R + W &gt; N?', 'writes survive', 'reads survive'], [
+  ['3, 2, 2', H.c('g', 'yes (4 &gt; 3)'), '1 node down', '1 node down'],
+  ['3, 1, 1', H.c('r', 'no (2 ≤ 3)'), '2 down', '2 down — but reads may be stale'],
+  ['5, 3, 3', H.c('g', 'yes (6 &gt; 5)'), '2 down', '2 down'],
+  ['3, 3, 1', H.c('g', 'yes (4 &gt; 3)'), '0 down!', '2 down']
+])}
+<p>Replicas that missed a write are fixed by three mechanisms: <b>read repair</b> (the coordinator notices a stale answer during a read and writes the newer value back), <b>anti-entropy</b> (a background job compares replicas using <b>Merkle trees</b> — hash trees that let two nodes find which key ranges differ without sending all data), and <b>hinted handoff</b> (a neighbour keeps a "hint" for a down node and delivers it when the node returns).</p>
+<p>In Cassandra you pick the quorum per query with a <b>consistency level</b>: <code>ONE</code>, <code>QUORUM</code> (majority of N), <code>LOCAL_QUORUM</code> (majority within this datacenter), <code>ALL</code>. QUORUM writes + QUORUM reads give R + W &gt; N.</p>`,
+    clues: [
+      '"tunable consistency" / "consistency level QUORUM" → leaderless quorum (Cassandra/Dynamo style)',
+      '"N = 3, how many acks for strong reads?" → R + W > N, e.g. W = 2, R = 2',
+      '"users write in two regions with low latency" → multi-leader, then ask how conflicts are resolved',
+      '"works offline and syncs later" → multi-leader with merge/CRDT',
+      '"last write wins lost my update" → LWW + clock skew; use version vectors or CRDTs',
+      '"always writable even during node failures" → leaderless, sloppy quorum, hinted handoff'
+    ],
+    code: [
+      { lang: 'sql', db: 'repl', title: 'Resolve a quorum read and find replicas to repair (runnable)', code: `-- read_resp lists which R = 3 nodes answered each read; kv_replicas holds each node's copy.
+WITH answers AS (
+  SELECT q.read_id, q.k, q.node, kv.v, kv.ver,
+         MAX(kv.ver) OVER (PARTITION BY q.read_id) AS newest_ver
+  FROM read_resp AS q
+  JOIN kv_replicas AS kv ON kv.node = q.node AND kv.k = q.k
+)
+SELECT read_id, k, node, v, ver,
+       CASE WHEN ver = newest_ver THEN 'winner/up to date'
+            ELSE 'STALE -> read repair to ver ' || newest_ver END AS action
+FROM answers
+ORDER BY read_id, ver DESC, node;` },
+      { lang: 'python', run: true, title: 'Version vectors: detect concurrent writes instead of guessing (runnable)', code: `# A version vector maps replica -> how many writes from that replica this value includes.
+# v1 "happened before" v2 if every counter in v1 <= v2 (and they differ).
+# If neither dominates, the writes were CONCURRENT -> a real conflict to merge.
+
+def compare(a, b):
+    keys = set(a) | set(b)
+    a_le_b = all(a.get(k, 0) <= b.get(k, 0) for k in keys)
+    b_le_a = all(b.get(k, 0) <= a.get(k, 0) for k in keys)
+    if a_le_b and b_le_a:
+        return "equal"
+    if a_le_b:
+        return "a happened before b (b wins, no conflict)"
+    if b_le_a:
+        return "b happened before a (a wins, no conflict)"
+    return "CONCURRENT -> keep both siblings or merge"
+
+
+us = {"us": 3, "eu": 1}        # edited in US after seeing 1 EU write
+eu = {"us": 2, "eu": 2}        # edited in EU after seeing only 2 US writes
+later = {"us": 3, "eu": 2}     # a merge that saw both
+
+print(compare(us, eu))
+print(compare(us, later))
+print(compare(later, later))
+
+
+def merge(a, b):
+    """Pointwise max: the vector of a value that has seen both histories."""
+    return {k: max(a.get(k, 0), b.get(k, 0)) for k in set(a) | set(b)}
+
+
+print("merged vector:", dict(sorted(merge(us, eu).items())))
+` }
+    ],
+    codeTitle: ['Quorum read resolution', 'Version vectors'],
+    viz: [{
+      title: 'Quorum write + quorum read: does R + W > N guarantee a fresh read?',
+      input: 'N=5 W=3 R=3 down=1',
+      inputLabel: 'N (2-7) replicas, W write acks, R read answers, down = nodes offline during the write',
+      gen: function (input) {
+        var s = String(input || '');
+        function grab(name, def) { var m = new RegExp(name + '\\s*=\\s*(\\d+)', 'i').exec(s); return m ? parseInt(m[1], 10) : def; }
+        var N = grab('N', 3), W = grab('W', 2), R = grab('R', 2), down = grab('down', 0);
+        if (N < 2 || N > 7) throw new Error('N must be 2..7  e.g. N=5 W=3 R=3 down=1');
+        if (W < 1 || W > N || R < 1 || R > N) throw new Error('W and R must be between 1 and N');
+        if (down < 0 || down >= N) throw new Error('down must be 0..N-1');
+        var ids = [], i, frames = [];
+        for (i = 0; i < N; i++) ids.push('n' + (i + 1));
+        var ver = {}; ids.forEach(function (id) { ver[id] = 1; });
+        function nodes() {
+          var arr = [{ id: 'C', label: 'Client', x: 6, y: 32, shape: 'box' }, { id: 'K', label: 'Coordinator', x: 34, y: 32, shape: 'box' }];
+          ids.forEach(function (id, j) { arr.push({ id: id, label: id, x: 82, y: N === 1 ? 32 : 4 + j * (56 / (N - 1)), shape: 'box' }); });
+          return arr;
+        }
+        var edges = [['C', 'K']].concat(ids.map(function (id) { return ['K', id]; }));
+        function tags() { var t = {}; ids.forEach(function (id, j) { t[id] = (j >= N - down && phase === 'write') ? 'DOWN' : 'v' + ver[id]; }); return t; }
+        var phase = 'setup';
+        frames.push({ narr: 'Setup: every key is stored on <b>N = ' + N + '</b> replicas, all holding <b>v1</b>. A write must be acknowledged by <b>W = ' + W + '</b> nodes; a read waits for <b>R = ' + R + '</b> answers. R + W = ' + (R + W) + (R + W > N ? ' &gt; ' : ' ≤ ') + N + '.', parts: [
+          { type: 'graph', directed: true, height: 64, nodes: nodes(), edges: edges, tags: tags() },
+          { type: 'vars', label: 'Quorum settings', vals: { N: N, W: W, R: R, 'R+W': R + W, 'overlap guaranteed?': R + W > N ? 'yes' : 'NO' }, hl: { 'overlap guaranteed?': R + W > N ? 'ok' : 'bad' } }
+        ] });
+        phase = 'write';
+        var live = ids.slice(0, N - down), acked = [];
+        var downHl = {}; ids.slice(N - down).forEach(function (id) { downHl[id] = 'done'; });
+        frames.push({ narr: 'Client writes <b>v2</b>. The coordinator sends it to all ' + N + ' replicas. ' + (down ? '<b>' + down + '</b> node(s) are offline and never answer.' : 'All nodes are up.') + ' Worst case for the read later: only the first W live nodes manage to store it in time.', parts: [
+          { type: 'graph', directed: true, height: 64, nodes: nodes(), edges: edges, hl: Object.assign({ K: 'cur' }, downHl), ehl: { 'C-K': 'cur' }, tags: tags() }
+        ] });
+        if (live.length < W) {
+          frames.push({ narr: '<span class="c-r">Write FAILS:</span> only ' + live.length + ' replicas are alive but W = ' + W + ' acks are needed. Higher W = stronger durability but <b>lower write availability</b> (writes survive at most N − W = ' + (N - W) + ' failures).', parts: [
+            { type: 'graph', directed: true, height: 64, nodes: nodes(), edges: edges, hl: Object.assign({ K: 'bad' }, downHl), ehl: { 'C-K': 'bad' }, tags: tags() },
+            { type: 'vars', label: 'Result', vals: { live: live.length, needed_W: W, write: 'rejected' }, hl: { write: 'bad' } }
+          ] });
+          frames.push({ narr: 'Try lowering W, or use a <b>sloppy quorum</b> (Dynamo/Riak): accept the write on stand-in nodes and hand it off later (hinted handoff). That keeps writes available but breaks the R + W &gt; N guarantee until handoff finishes.', parts: [
+            { type: 'text', html: 'Writes tolerate <b>N − W</b> failures, reads tolerate <b>N − R</b> failures. With N = ' + N + ': W = ' + W + ' tolerates ' + (N - W) + ', R = ' + R + ' tolerates ' + (N - R) + '.' }
+          ] });
+          return frames;
+        }
+        for (i = 0; i < W; i++) {
+          var id = live[i]; ver[id] = 2; acked.push(id);
+          var hl = Object.assign({ K: 'cur' }, downHl), eh = {};
+          acked.forEach(function (a) { hl[a] = 'ok'; eh['K-' + a] = 'ok'; });
+          frames.push({ narr: 'Ack ' + (i + 1) + ' of ' + W + ' from <b>' + id + '</b> (now holds v2).' + (i + 1 === W ? ' <span class="c-g">W reached → the write is reported successful.</span> The other replicas still have v1 (they will catch up via read repair / anti-entropy).' : ''), parts: [
+            { type: 'graph', directed: true, height: 64, nodes: nodes(), edges: edges, hl: hl, ehl: eh, tags: tags() },
+            { type: 'set', label: 'Write set (have v2)', items: acked.slice(), hl: (function () { var o = {}; o[id] = 'ok'; return o; })() }
+          ] });
+        }
+        phase = 'read';
+        var readSet = ids.slice(N - R);   // worst case: the R nodes least likely to have the write
+        var overlap = readSet.filter(function (x) { return acked.indexOf(x) >= 0; });
+        var hl2 = {}, eh2 = {};
+        readSet.forEach(function (x) { hl2[x] = overlap.indexOf(x) >= 0 ? 'sel' : 'win'; eh2['K-' + x] = 'cur'; });
+        frames.push({ narr: 'Now a read. The down nodes are back (still on v1). Worst case, the coordinator hears from the <b>last R = ' + R + '</b> nodes: ' + readSet.join(', ') + '. Overlap with the write set: <b>' + (overlap.length ? overlap.join(', ') : 'none') + '</b>.', parts: [
+          { type: 'graph', directed: true, height: 64, nodes: nodes(), edges: edges, hl: hl2, ehl: eh2, tags: tags() },
+          { type: 'set', label: 'Write set', items: acked.slice() },
+          { type: 'set', label: 'Read set', items: readSet.slice(), hl: (function () { var o = {}; overlap.forEach(function (x) { o[x] = 'sel'; }); return o; })() }
+        ] });
+        var best = 0; readSet.forEach(function (x) { if (ver[x] > best) best = ver[x]; });
+        var fresh = best === 2;
+        frames.push({ narr: fresh
+          ? '<span class="c-g">Fresh read:</span> answers were ' + readSet.map(function (x) { return x + '=v' + ver[x]; }).join(', ') + '. The coordinator returns the highest version, <b>v2</b>. Because R + W &gt; N, at least one node in any read set must be in the write set (pigeonhole principle).'
+          : '<span class="c-r">STALE read:</span> every answering node still has v1, so the client gets <b>v1</b> even though the v2 write "succeeded". R + W = ' + (R + W) + ' ≤ N = ' + N + ', so the read set and write set can miss each other.', parts: [
+          { type: 'graph', directed: true, height: 64, nodes: nodes(), edges: edges, hl: Object.assign({}, hl2, { C: fresh ? 'ok' : 'bad' }), ehl: { 'C-K': fresh ? 'ok' : 'bad' }, tags: tags() },
+          { type: 'table', label: 'Read answers', columns: ['node', 'version', 'in write set?'], rows: readSet.map(function (x) { return [x, 'v' + ver[x], acked.indexOf(x) >= 0 ? 'yes' : 'no']; }),
+            hl: (function () { var o = {}; readSet.forEach(function (x, j) { o[j] = ver[x] === 2 ? 'ok' : (fresh ? 'cur' : 'bad'); }); return o; })() }
+        ] });
+        var repaired = fresh ? readSet.filter(function (x) { return ver[x] === 1; }) : [];
+        repaired.forEach(function (x) { ver[x] = 2; });
+        frames.push({ narr: fresh
+          ? (repaired.length ? '<b>Read repair:</b> the coordinator noticed ' + repaired.join(', ') + ' answered v1 and writes v2 back to them. Nodes nobody read are fixed later by anti-entropy (Merkle-tree comparison).' : 'Every node in the read set already had v2 — nothing to repair.')
+          : 'No repair possible: the coordinator never saw v2. Only background anti-entropy will spread it. Fix: raise R or W so that R + W &gt; N.', parts: [
+          { type: 'graph', directed: true, height: 64, nodes: nodes(), edges: edges, hl: (function () { var o = {}; repaired.forEach(function (x) { o[x] = 'ok'; }); return o; })(), tags: tags() }
+        ] });
+        var rows = [[3, 2, 2], [3, 1, 1], [3, 3, 1], [5, 3, 3], [5, 1, 5], [N, W, R]];
+        frames.push({ narr: 'Cheat sheet. Your setting is the last row. Writes tolerate <b>N − W</b> failed nodes, reads <b>N − R</b>. Even with R + W &gt; N, edge cases (sloppy quorums, a write that failed on some nodes but was not rolled back, clock-based LWW) mean quorums are <i>not</i> automatically linearizable.', parts: [
+          { type: 'table', label: 'Quorum configurations', columns: ['N', 'W', 'R', 'R+W>N', 'write tolerates', 'read tolerates'],
+            rows: rows.map(function (r) { return [r[0], r[1], r[2], r[1] + r[2] > r[0] ? 'yes' : 'no', (r[0] - r[1]) + ' down', (r[0] - r[2]) + ' down']; }),
+            hl: (function () { var o = { 5: 'sel' }; rows.forEach(function (r, j) { if (j < 5 && r[1] + r[2] <= r[0]) o[j] = 'bad'; }); return o; })() }
+        ] });
+        return frames;
+      }
+    }, {
+      title: 'Multi-leader conflict: last-write-wins vs version vectors',
+      gen: function () {
+        var nodes = [
+          { id: 'A', label: 'Asha (US)', x: 8, y: 12, shape: 'box' }, { id: 'US', label: 'Leader US', x: 40, y: 12, shape: 'box' },
+          { id: 'B', label: 'Ben (EU)', x: 8, y: 48, shape: 'box' }, { id: 'EU', label: 'Leader EU', x: 40, y: 48, shape: 'box' },
+          { id: 'X', label: 'After sync', x: 84, y: 30, shape: 'box' }
+        ];
+        var edges = [['A', 'US', 'title=B'], ['B', 'EU', 'title=C'], ['US', 'EU', 'async'], ['EU', 'US', 'async'], ['US', 'X'], ['EU', 'X']];
+        return [
+          { narr: 'A wiki page has <b>title = "A"</b> in both datacenters. Each DC has its own leader so local writes are fast.', parts: [
+            { type: 'graph', directed: true, height: 60, nodes: nodes, edges: edges, tags: { US: 'title=A', EU: 'title=A' } },
+            { type: 'table', label: 'Versions', columns: ['DC', 'title', 'wall clock ts', 'version vector'], rows: [['US', 'A', '10:00:00.000', '{us:1, eu:0}'], ['EU', 'A', '10:00:00.000', '{us:1, eu:0}']] }
+          ] },
+          { narr: 'At the same moment Asha sets the title to <b>"B"</b> in the US and Ben sets it to <b>"C"</b> in Europe. Each leader accepts its local write immediately. The EU server clock runs <b>5 ms slow</b>.', parts: [
+            { type: 'graph', directed: true, height: 60, nodes: nodes, edges: edges, hl: { US: 'cur', EU: 'cur' }, ehl: { 'A-US': 'ok', 'B-EU': 'ok' }, tags: { US: 'title=B', EU: 'title=C' } },
+            { type: 'table', label: 'Versions', columns: ['DC', 'title', 'wall clock ts', 'version vector'], rows: [['US', 'B', '10:00:00.010', '{us:2, eu:0}'], ['EU', 'C', '10:00:00.008 (clock 5 ms slow, really .013)', '{us:1, eu:1}']], hl: { 0: 'cur', 1: 'cur' } }
+          ] },
+          { narr: 'Replication crosses the ocean. Each leader now holds <b>two different values</b> for one row → a <b>write conflict</b>. Something must pick or merge.', parts: [
+            { type: 'graph', directed: true, height: 60, nodes: nodes, edges: edges, hl: { US: 'bad', EU: 'bad' }, ehl: { 'US-EU': 'cur', 'EU-US': 'cur' }, tags: { US: 'B vs C?', EU: 'C vs B?' } }
+          ] },
+          { narr: '<b>Last-write-wins</b> keeps the bigger timestamp: .010 &gt; .008 → <b>"B"</b> wins everywhere. But Ben actually wrote <i>later</i> (real time .013). His edit is <span class="c-r">silently thrown away</span> and nobody is told. Cassandra uses LWW per cell, so this is real.', parts: [
+            { type: 'graph', directed: true, height: 60, nodes: nodes, edges: edges, hl: { X: 'bad', B: 'bad' }, ehl: { 'US-X': 'ok', 'EU-X': 'bad' }, tags: { X: 'title=B', B: 'edit lost' } },
+            { type: 'table', label: 'LWW decision', columns: ['candidate', 'timestamp', 'result'], rows: [['B (US)', '.010', 'kept'], ['C (EU)', '.008', 'DROPPED']], hl: { 0: 'ok', 1: 'bad' } }
+          ] },
+          { narr: '<b>Version vectors</b> compare causality instead of clocks: {us:2, eu:0} vs {us:1, eu:1} — neither is ≥ the other in every slot, so the writes are <b>concurrent</b>. The DB keeps both as <b>siblings</b> and the app (or user) resolves: e.g. show "B / C — pick one".', parts: [
+            { type: 'graph', directed: true, height: 60, nodes: nodes, edges: edges, hl: { X: 'sel' }, ehl: { 'US-X': 'ok', 'EU-X': 'ok' }, tags: { X: 'siblings: B | C' } },
+            { type: 'table', label: 'Causality check', columns: ['vector', 'us', 'eu', 'verdict'], rows: [['US write', 2, 0, ''], ['EU write', 1, 1, ''], ['compare', 'US bigger', 'EU bigger', 'CONCURRENT → conflict']], hl: { 2: 'sel' } }
+          ] },
+          { narr: 'Best option when the data allows it: a <b>CRDT</b> (conflict-free replicated data type). A like-counter is a G-Counter (each DC counts its own likes, total = sum), a tag list is an OR-Set, text uses sequence CRDTs (Yjs, Automerge). Merges are automatic and never lose an update.', parts: [
+            { type: 'table', label: 'Pick a resolution strategy', columns: ['data', 'strategy'], rows: [['page title, profile field', 'siblings / ask the user, or home-region routing'], ['like counter', 'G-Counter CRDT (sum per-DC counters)'], ['shopping cart', 'OR-Set CRDT (add wins)'], ['bank balance', 'do NOT multi-leader: single leader / consensus']], hl: { 3: 'bad' } }
+          ] }
+        ];
+      }
+    }],
+    examples: [
+      { title: 'Quorum math for N = 3', html: `<p>N = 3, W = 2, R = 2 → R + W = 4 &gt; 3. Write set {n1, n2}; whichever 2 nodes you read, at least one is n1 or n2 (only n3 is "outside", and you need 2). Tolerates 1 dead node for both reads and writes. Drop to W = 1, R = 1 and you get speed but reads can miss the write entirely.</p>` },
+      { title: 'Resolve read 1 on cart:9', html: `<p>Nodes C, D, E answered: C = qty=1 (v2), D = qty=2 (v3), E = empty (v1). Highest version wins → <b>qty=2</b>. C and E are stale and get a read-repair write of v3. Run the topic's reference query to see both reads resolved.</p>`, code: { lang: 'sql', db: 'repl', code: `SELECT kv.v AS answer, kv.ver
+FROM read_resp AS q JOIN kv_replicas AS kv ON kv.node = q.node AND kv.k = q.k
+WHERE q.read_id = 1
+ORDER BY kv.ver DESC
+LIMIT 1;   -- newest version among the R answers` } },
+      { title: 'All strong (W, R) pairs for N = 5', html: `<p>Generate every W and R from 1 to 5 and keep the pairs with R + W &gt; N. You will see the trade-off directly: (5, 1) is fast to read but a single dead node blocks writes; (3, 3) balances both (each tolerates 2 failures).</p>`, code: { lang: 'sql', code: `WITH RECURSIVE k(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM k WHERE x < 5)
+SELECT w.x AS W, r.x AS R,
+       5 - w.x AS write_failures_tolerated,
+       5 - r.x AS read_failures_tolerated
+FROM k AS w CROSS JOIN k AS r
+WHERE w.x + r.x > 5
+ORDER BY MIN(5 - w.x, 5 - r.x) DESC, W;` } },
+      { title: 'Cassandra consistency levels in practice', html: `<p>With replication factor 3 per DC, <code>LOCAL_QUORUM</code> = 2 of the 3 local replicas. Writing and reading at LOCAL_QUORUM gives strong reads <i>within</i> a datacenter without paying a cross-ocean round trip; use <code>EACH_QUORUM</code> or <code>QUORUM</code> across DCs only when you truly need global freshness.</p>`, code: { lang: 'text', check: false, code: `-- cqlsh
+CREATE KEYSPACE shop WITH replication =
+  {'class': 'NetworkTopologyStrategy', 'us_east': 3, 'eu_west': 3};
+
+CONSISTENCY LOCAL_QUORUM;          -- 2 of 3 replicas in this DC
+INSERT INTO shop.carts (user_id, sku, qty) VALUES (9, 'PEN-1', 2);
+SELECT qty FROM shop.carts WHERE user_id = 9 AND sku = 'PEN-1';` } }
+    ],
+    deepDive: `<p><b>Why R + W &gt; N is not the whole story.</b> The overlap argument assumes the write set is a fixed group of N "home" replicas. Dynamo/Riak <b>sloppy quorums</b> let writes land on any W reachable nodes when home nodes are down (for availability), so a later quorum read on the home nodes can miss them until <b>hinted handoff</b> delivers. A write that reached only 1 of 2 required nodes reports failure but is <b>not rolled back</b>, so later reads may or may not see it. A read concurrent with a write can return the new value from one quorum and the old from the next. And with <b>LWW timestamps</b>, clock skew decides the winner. Getting true <b>linearizability</b> requires extra work: synchronous read repair before returning, and for compare-and-set you need consensus — Cassandra's lightweight transactions (<code>IF NOT EXISTS</code>) run Paxos, and Cassandra 5's Accord protocol brings general ACID transactions.</p>
+<p><b>Repair machinery.</b> Anti-entropy compares <b>Merkle trees</b>: each leaf hashes a key range, parents hash children; two replicas exchange root hashes, recurse only into differing subtrees, and stream just those ranges. Cassandra runs this as <code>nodetool repair</code> (or incremental repair); you must run it at least every <code>gc_grace_seconds</code> (default 10 days) or deleted data can come back from the dead because a replica missed the <b>tombstone</b>.</p>
+<p><b>Multi-leader in the wild.</b> MySQL Group Replication multi-primary mode certifies conflicting writesets and aborts losers; Postgres has BDR/pgEdge/pgactive-style logical multi-master with conflict handlers; CouchDB keeps revision trees with deterministic winners plus conflict lists; DynamoDB Global Tables are multi-region multi-leader with LWW by default (and a newer multi-region strong consistency mode). Topologies matter: circular and star topologies can loop changes forever unless each change carries the IDs of nodes it has visited, and causally dependent writes can arrive out of order on all-to-all links — version vectors fix that.</p>
+<p><b>Note:</b> the DynamoDB <i>service</i> is not leaderless — each partition has a Paxos-elected leader — even though it is named after the leaderless Dynamo paper. Interviewers like this nuance.</p>`,
+    aiEra: `<p><b>What AI changes:</b> local-first and agentic apps are multi-leader by nature — an AI agent on a laptop editing a doc offline while a teammate edits online is exactly the conflict problem. CRDT libraries (Yjs, Automerge) now power AI co-editing, and LLMs are sometimes used to <i>propose</i> semantic merges of conflicting text siblings, with a human approving.</p>
+<p><b>Use AI as a partner:</b> <code>"Simulate N=3, W=2, R=1 under one node failure and one concurrent write; list every possible read result."</code> Asking for enumerations of interleavings is where AI saves you time.</p>
+<p><b>Where AI goes wrong:</b> it repeats "R + W &gt; N means strong consistency" without the sloppy-quorum and failed-write caveats, calls DynamoDB "leaderless", and suggests LWW for counters (which loses increments). <b>What you must own:</b> choosing which data may be merged automatically, which must be single-leader, and proving the overlap argument on a whiteboard.</p>`,
+    problems: [{
+      title: 'Quorum Read Resolution with Read Repair',
+      level: 'Medium', tags: ['quorum', 'leaderless', 'window functions'], companies: ['Apple', 'Netflix', 'Uber'],
+      statement: `<p>A leaderless store keeps N = 5 copies of each key in <code>kv_replicas(node, k, v, ver)</code>. Each quorum read records the R nodes that answered in <code>read_resp(read_id, node, k)</code>. For every read, return the value the client should get (highest <code>ver</code> among the answers) and the list of answering nodes that need <b>read repair</b> (their ver is lower). Output: <code>read_id, k, answer, ver, repair_nodes</code> (comma-separated, NULL if none).</p>`,
+      constraints: `R answers per read (R ≤ N ≤ 7). Versions are integers; assume the highest version is unique per key (no concurrent siblings).`,
+      example: `<p>Read 1 on cart:9 heard C (v2), D (v3), E (v1) → answer ${H.c('g', 'qty=2 (v3)')}, repair ${H.c('r', 'C,E')}. Read 2 on theme:7 heard B (v4), C (v4), E (v5) → answer ${H.c('g', 'dark (v5)')}, repair ${H.c('r', 'B,C')}.</p>`,
+      brute: { why: `<p>Return the <b>first</b> answer that arrives (like R = 1). Fast, but read 1 could return C's stale "qty=1" even though a quorum holds v3, and nothing gets repaired, so stale replicas stay stale.</p>`, code: { lang: 'sql', db: 'repl', code: `SELECT q.read_id, q.k, kv.v AS answer, kv.ver
+FROM read_resp AS q
+JOIN kv_replicas AS kv ON kv.node = q.node AND kv.k = q.k
+GROUP BY q.read_id          -- SQLite picks an arbitrary row per group: "first answer wins"
+ORDER BY q.read_id;` } },
+      mcq: { q: 'N = 5, W = 3. What is the smallest R that guarantees each read overlaps the latest successful write?', options: ['1', '2', '3', '5'], answer: 2, explain: 'Need R + W > N → R + 3 > 5 → R ≥ 3.' },
+      hints: [
+        `<p>Hint 1: Join each answer to its stored copy, then you need "max version per read" next to every row → <code>MAX(ver) OVER (PARTITION BY read_id)</code>.</p>`,
+        `<p>Hint 2: The answer row is the one with <code>ver = newest</code>; the repair list is <code>GROUP_CONCAT(node)</code> over rows with <code>ver &lt; newest</code>.</p>`,
+        `<p>Hint 3: Aggregate per read with conditional expressions: <code>MAX(CASE WHEN ver = newest THEN v END)</code> for the answer, and <code>GROUP_CONCAT(CASE WHEN ver &lt; newest THEN node END)</code> (NULLs are skipped) for repairs.</p>`
+      ],
+      solution: {
+        approach: `<p>Window max gives every answer the newest version of its read; one GROUP BY then picks the winning value and collects the lagging nodes. In Cassandra, the coordinator does exactly this in memory (using cell timestamps instead of integer versions) and, for reads at QUORUM, performs blocking read repair on the mismatched replicas before replying.</p>`,
+        code: { lang: 'sql', db: 'repl', code: `WITH answers AS (
+  SELECT q.read_id, q.k, q.node, kv.v, kv.ver,
+         MAX(kv.ver) OVER (PARTITION BY q.read_id) AS newest
+  FROM read_resp AS q
+  JOIN kv_replicas AS kv ON kv.node = q.node AND kv.k = q.k
+)
+SELECT read_id,
+       k,
+       MAX(CASE WHEN ver = newest THEN v END)             AS answer,
+       MAX(newest)                                        AS ver,
+       GROUP_CONCAT(CASE WHEN ver < newest THEN node END) AS repair_nodes
+FROM answers
+GROUP BY read_id, k
+ORDER BY read_id;` },
+        complexity: `<p>O(total answers) with a sort per read; per real read it is O(R) work in the coordinator.</p>`,
+        followUps: ['What if two answers have the same version but different values (concurrent siblings)?', 'Should read repair be synchronous or asynchronous? Trade-offs?', 'How do tombstones (deletes) interact with read repair?']
+      }
+    }]
+  });
   registerModule({ id: 'sql14', title: 'Distributed Databases & NoSQL', intro: `<p>tmp</p>`, goals: [], prereqs: `tmp`, hours: 12,
     databases: { repl: DB_REPL, shard: DB_SHARD, nosql: DB_NOSQL, bank: DB_BANK },
     topics: topics, practice: practice, quiz: quiz, interview: interview });

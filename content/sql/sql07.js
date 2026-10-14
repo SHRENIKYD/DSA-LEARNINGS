@@ -1808,7 +1808,7 @@ ORDER BY 1;`),
     level: 'Medium', tags: ['constraints', 'data quality', 'CHECK'], companies: ['Databricks', 'Snowflake', 'Atlassian'],
     statement: `<p>Before moving <code>users_raw</code> (messy DB) into a properly constrained table, produce one report: for each planned rule, how many rows break it. Rules: id unique; email NOT NULL; email unique (case-insensitive); age between 13 and 120; country is 2 upper-case letters.</p>`,
     constraints: `<ul><li>One query, one row per rule, columns (rule, violations).</li></ul>`,
-    example: `${H.table(['rule', 'violations'], [['duplicate id', '2'], ['email NOT NULL', '1'], ['email unique (ci)', '4'], ['age 13..120', '3'], ['country 2 upper letters', '1']])}<p>Rows counted are all rows involved in a duplicate group (ids 5,5; emails asha×2, ben×2).</p>`,
+    example: `${H.table(['rule', 'violations'], [['duplicate id', '2'], ['email NOT NULL', '1'], ['email unique (ci)', '4'], ['age 13..120', '2'], ['country 2 upper letters', '1']])}<p>Rows counted are all rows involved in a duplicate group (ids 5,5; emails asha×2, ben×2). Age: Chen (−3) and Eve (230). Country: Eve ('india').</p>`,
     brute: { why: `<p>"Just copy it with INSERT OR IGNORE into the constrained table". It runs — and silently drops every row that breaks any rule. You lose customers without knowing which or why. The snippet shows 8 rows in, fewer out, no explanation.</p>`,
       code: messy(`CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL COLLATE NOCASE UNIQUE, name TEXT,
                     age INTEGER CHECK (age BETWEEN 13 AND 120), country TEXT CHECK (length(country) = 2 AND country = upper(country)));
@@ -1832,9 +1832,472 @@ UNION ALL
 SELECT 'country 2 upper letters', COUNT(*) FROM users_raw
   WHERE NOT (length(country) = 2 AND country = upper(country));`),
       complexity: `<p>Each rule is one scan (plus a grouping for the uniqueness rules): O(R · N log N) for R rules — fine for a one-off audit; add indexes on lower(email) for very large tables.</p>`,
-      followUps: ['Wait — the expected "age" count says 3 but only Chen and Eve are out of range. Find the third (hint: none — check your own counts and correct the spec!).', 'Turn the audit into a view that a nightly job alerts on.']
+      followUps: ['Why does Ghost (NULL email) count once for NOT NULL but zero times for the uniqueness rule?', 'Turn the audit into a view that a nightly job alerts on.']
     }
   });
+  practice.push({
+    title: 'Product Tags: a Many-to-Many with Cascades on Both Sides',
+    level: 'Medium', tags: ['many-to-many', 'junction table', 'CASCADE'], companies: ['Etsy', 'Meesho', 'Pinterest'],
+    statement: `<p>Products can have many tags ("sale", "eco", "new") and a tag can be on many products. Design the tables so a tag can't be attached twice to the same product, deleting a product or a tag removes only the links, and write a query for "all products tagged sale". Then delete the tag "eco" and show the links left.</p>`,
+    constraints: `<ul><li>Tag names unique, case-insensitive.</li><li>SQLite with foreign keys on.</li></ul>`,
+    example: `<p>Phone: sale, new · Cable: sale, eco · Book: eco</p>${H.table(['tagged sale'], [['Cable'], ['Phone']])}<p>After deleting "eco": links 5 → 3, products untouched.</p>`,
+    brute: { why: `<p>A <code>tags TEXT</code> column like <code>'sale,new'</code>. Renaming a tag means rewriting every product; <code>LIKE '%sale%'</code> also matches "wholesale"; duplicates like 'sale,sale' are possible; deleting a tag requires string surgery in every row.</p>`,
+      code: lab(`CREATE TABLE products_bad (id INTEGER PRIMARY KEY, name TEXT, tags TEXT);
+INSERT INTO products_bad VALUES (1, 'Phone', 'sale,new'), (2, 'Cable', 'sale,eco'), (3, 'Pallet', 'wholesale');
+SELECT name FROM products_bad WHERE tags LIKE '%sale%';   -- Pallet appears: false positive`) },
+    mcq: { q: 'Deleting the tag "eco" should…', options: ['delete every product tagged eco', 'delete only the product_tags links for eco', 'be blocked while links exist', 'set product names to NULL'], answer: 1, explain: 'The links are parts of the relationship; CASCADE from tags to product_tags removes them, products survive.' },
+    hints: ['<p>Hint 1: N-M → three tables: products, tags, product_tags.</p>', '<p>Hint 2: product_tags(product_id, tag_id) with a composite PRIMARY KEY, both FKs ON DELETE CASCADE.</p>', '<p>Hint 3: Tag names <code>COLLATE NOCASE UNIQUE</code>. Query with two joins filtered on the tag name; index tag_id for "products by tag".</p>'],
+    solution: {
+      approach: `<p>Classic junction table. Composite PK blocks duplicate links and serves "tags of a product"; a second index on (tag_id) serves "products with a tag". Cascades on both FKs mean either side can be deleted cleanly.</p>`,
+      code: lab(`PRAGMA foreign_keys = ON;
+CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+CREATE TABLE tags (id INTEGER PRIMARY KEY, name TEXT NOT NULL COLLATE NOCASE UNIQUE);
+CREATE TABLE product_tags (
+  product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  tag_id     INTEGER NOT NULL REFERENCES tags(id)     ON DELETE CASCADE,
+  PRIMARY KEY (product_id, tag_id)
+);
+CREATE INDEX idx_product_tags_tag ON product_tags(tag_id);
+
+INSERT INTO products VALUES (1, 'Phone'), (2, 'Cable'), (3, 'Book');
+INSERT INTO tags VALUES (1, 'sale'), (2, 'eco'), (3, 'new');
+INSERT INTO product_tags VALUES (1, 1), (1, 3), (2, 1), (2, 2), (3, 2);
+INSERT OR IGNORE INTO product_tags VALUES (1, 1);          -- duplicate link: ignored
+
+SELECT p.name AS tagged_sale
+FROM products p JOIN product_tags pt ON pt.product_id = p.id JOIN tags t ON t.id = pt.tag_id
+WHERE t.name = 'SALE'                                       -- NOCASE: matches 'sale'
+ORDER BY p.name;
+
+DELETE FROM tags WHERE name = 'eco';
+SELECT (SELECT COUNT(*) FROM product_tags) AS links_left, (SELECT COUNT(*) FROM products) AS products_left;`),
+      complexity: `<p>Attach/detach O(log N). "Products for tag" O(log N + k) via idx_product_tags_tag; "tags for product" via the PK prefix.</p>`,
+      followUps: ['Add who tagged it and when — where do those columns go?', 'Find products having BOTH "sale" and "new" (relational division: GROUP BY ... HAVING COUNT(DISTINCT tag) = 2).']
+    }
+  });
+
+  practice.push({
+    title: 'Org Chart: Delete a Manager Safely',
+    level: 'Medium', tags: ['self-reference', 'SET NULL', 'UPDATE before DELETE'], companies: ['Workday', 'SAP', 'Google'],
+    statement: `<p><code>employees(id, name, manager_id → employees.id)</code>. When a manager leaves, their direct reports must be re-assigned to the leaving manager's own manager (skip-level), and only then is the manager deleted. Write the schema so that a forgotten re-assignment never deletes people (no CASCADE), and the SQL for "Ravi (id 2) leaves".</p>`,
+    constraints: `<ul><li>Nobody can manage themselves.</li><li>Must work in one transaction.</li></ul>`,
+    example: `<p>Maya (CEO) → Ravi → Tom, Uma. After Ravi leaves: Tom and Uma report to <b>Maya</b>.</p>${H.table(['employee', 'manager'], [['Maya', '-'], ['Sara', 'Maya'], ['Tom', H.c('g', 'Maya')], ['Uma', H.c('g', 'Maya')]])}`,
+    brute: { why: `<p>Declare <code>manager_id ... ON DELETE CASCADE</code> "so deletes are clean". Deleting Ravi then deletes Tom and Uma — and their reports, recursively. One HR action fires half a department from the database.</p>`,
+      code: lab(`PRAGMA foreign_keys = ON;
+CREATE TABLE employees (id INTEGER PRIMARY KEY, name TEXT NOT NULL,
+                        manager_id INTEGER REFERENCES employees(id) ON DELETE CASCADE);
+INSERT INTO employees VALUES (1, 'Maya', NULL), (2, 'Ravi', 1), (3, 'Sara', 1), (4, 'Tom', 2), (5, 'Uma', 2);
+DELETE FROM employees WHERE id = 2;
+SELECT name FROM employees;   -- Tom and Uma are gone too!`) },
+    mcq: { q: 'Which ON DELETE action is the best safety net for manager_id here?', options: ['CASCADE', 'SET NULL (or RESTRICT)', 'SET DEFAULT with default 0', 'No FK at all'], answer: 1, explain: 'SET NULL keeps people if someone forgets to re-assign (they become "no manager" and show up in a report); RESTRICT forces the re-assignment first. Never CASCADE people.' },
+    hints: ['<p>Hint 1: The FK action is only a safety net; the business logic is "re-assign then delete".</p>', '<p>Hint 2: <code>UPDATE employees SET manager_id = (SELECT manager_id FROM employees WHERE id = 2) WHERE manager_id = 2;</code></p>', '<p>Hint 3: Wrap UPDATE + DELETE in BEGIN/COMMIT; use ON DELETE RESTRICT (forces the update first) or SET NULL; add CHECK (manager_id &lt;&gt; id).</p>'],
+    solution: {
+      approach: `<p>Self-referencing FK with RESTRICT so the database refuses to delete a manager who still has reports. The transaction first moves reports to the skip-level manager, then deletes. A self-join shows the new org chart.</p>`,
+      code: lab(`PRAGMA foreign_keys = ON;
+CREATE TABLE employees (
+  id INTEGER PRIMARY KEY, name TEXT NOT NULL,
+  manager_id INTEGER REFERENCES employees(id) ON DELETE RESTRICT,
+  CHECK (manager_id IS NULL OR manager_id <> id)
+);
+CREATE INDEX idx_employees_manager ON employees(manager_id);
+INSERT INTO employees VALUES (1, 'Maya', NULL), (2, 'Ravi', 1), (3, 'Sara', 1), (4, 'Tom', 2), (5, 'Uma', 2);
+
+BEGIN;
+UPDATE employees
+SET manager_id = (SELECT manager_id FROM employees WHERE id = 2)
+WHERE manager_id = 2;
+DELETE FROM employees WHERE id = 2;      -- allowed now: no reports left
+COMMIT;
+
+SELECT e.name AS employee, COALESCE(m.name, '-') AS manager
+FROM employees e LEFT JOIN employees m ON m.id = e.manager_id ORDER BY e.id;`),
+      complexity: `<p>Re-assignment O(log N + k) with the manager_id index; the RESTRICT check on delete is one index probe.</p>`,
+      followUps: ['What if the CEO leaves (manager_id NULL)? Who do reports go to?', 'Prevent cycles (A manages B manages A) — can a CHECK do it? (no; trigger with a recursive CTE)']
+    }
+  });
+
+  practice.push({
+    title: 'Change a Column\'s Type with a Table Rebuild',
+    level: 'Medium', tags: ['ALTER TABLE', 'table rebuild', 'data conversion'], companies: ['Shopify', 'Zoho'],
+    statement: `<p>A legacy SQLite table stores prices as display text: <code>price TEXT</code> with values like <code>'₹1,299.00'</code>. Convert it to <code>price_cents INTEGER NOT NULL CHECK (price_cents &gt; 0)</code>, keeping ids and an index on name, in one transaction.</p>`,
+    constraints: `<ul><li>SQLite has no <code>ALTER COLUMN ... TYPE</code>.</li><li>Abort (no change) if any value can't be converted.</li></ul>`,
+    example: `${H.table(['id', 'old price', 'price_cents'], [['1', '₹1,299.00', H.c('g', '129900')], ['2', '₹49.50', H.c('g', '4950')], ['3', '₹10', H.c('g', '1000')]])}`,
+    brute: { why: `<p>Add a new <code>price_cents</code> column next to the old text one and "migrate later". Now there are two sources of truth; some code updates one, some the other, and they drift. The old column can't even be dropped while something indexes or reads it.</p>`,
+      code: lab(`CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT, price TEXT);
+INSERT INTO items VALUES (1, 'Phone', '₹1,299.00'), (2, 'Cable', '₹49.50');
+ALTER TABLE items ADD COLUMN price_cents INTEGER;   -- both columns now exist...
+UPDATE items SET price = '₹1,199.00' WHERE id = 1;  -- ...and only one gets updated
+SELECT * FROM items;`) },
+    mcq: { q: 'Why rename the NEW table to the old name (instead of renaming the old one away first)?', options: ['It is faster', 'Foreign keys and code that reference the old name keep pointing at the right table', 'SQLite forbids the other order', 'It keeps rowids'], answer: 1, explain: 'Other tables\' REFERENCES clauses name "items"; after DROP old + RENAME new → items, they refer to the new table.' },
+    hints: ['<p>Hint 1: Recipe: FKs off → BEGIN → CREATE items_new → INSERT ... SELECT with conversion → DROP items → RENAME → recreate indexes → foreign_key_check → COMMIT → FKs on.</p>', '<p>Hint 2: Conversion: strip ₹ and commas with <code>replace()</code>, then <code>CAST(ROUND(x * 100) AS INTEGER)</code>.</p>', '<p>Hint 3: The new table\'s CHECK and NOT NULL make the INSERT fail (and the transaction roll back) if a value is unconvertible — exactly the "abort" behaviour you want.</p>'],
+    solution: {
+      approach: `<p>The SQLite rebuild recipe with the conversion inside INSERT ... SELECT. The target table's constraints validate every converted value, so bad data aborts the transaction instead of slipping through.</p>`,
+      code: lab(`CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT NOT NULL, price TEXT NOT NULL);
+CREATE INDEX idx_items_name ON items(name);
+INSERT INTO items VALUES (1, 'Phone', '₹1,299.00'), (2, 'Cable', '₹49.50'), (3, 'Sticker', '₹10');
+
+PRAGMA foreign_keys = OFF;
+BEGIN;
+CREATE TABLE items_new (
+  id          INTEGER PRIMARY KEY,
+  name        TEXT    NOT NULL,
+  price_cents INTEGER NOT NULL CHECK (price_cents > 0)
+);
+INSERT INTO items_new (id, name, price_cents)
+SELECT id, name,
+       CAST(ROUND(CAST(replace(replace(price, '₹', ''), ',', '') AS REAL) * 100) AS INTEGER)
+FROM items;
+DROP TABLE items;                         -- also drops idx_items_name
+ALTER TABLE items_new RENAME TO items;
+CREATE INDEX idx_items_name ON items(name);
+PRAGMA foreign_key_check;
+COMMIT;
+PRAGMA foreign_keys = ON;
+
+SELECT id, name, price_cents, typeof(price_cents) AS t FROM items;`),
+      complexity: `<p>O(N) copy + O(N log N) to rebuild the index; needs space for two copies of the table during the transaction.</p>`,
+      followUps: ['How would you do this on a 200 GB Postgres table without downtime? (new column + trigger/dual-write + batched backfill + swap)', 'How do you find rows that would fail conversion before starting?']
+    }
+  });
+
+  practice.push({
+    title: 'Soft Delete That Lets an Email Re-register',
+    level: 'Medium', tags: ['soft delete', 'partial unique index'], companies: ['Netflix', 'Spotify', 'CRED'],
+    statement: `<p>Accounts are soft-deleted (<code>deleted_at</code> set) so their history remains. A person who deleted their account must be able to sign up again with the same email, but two <i>active</i> accounts may never share an email. Design the uniqueness rule and demonstrate: sign up, delete, sign up again, then a duplicate active sign-up is rejected.</p>`,
+    constraints: `<ul><li>Case-insensitive emails.</li><li>Deleted rows are never physically removed.</li></ul>`,
+    example: `${H.table(['id', 'email', 'deleted_at'], [['1', 'asha@mail.com', '2026-09-01'], ['2', 'asha@mail.com', H.c('g', 'NULL (active)')]])}<p>A third active asha@mail.com → rejected.</p>`,
+    brute: { why: `<p>A plain <code>UNIQUE (email)</code> blocks re-registration forever because the deleted row still holds the email. People "fix" it by mangling the old email (<code>asha@mail.com#deleted</code>) — breaking history, audits and any join on email.</p>`,
+      code: lab(`CREATE TABLE accounts_bad (id INTEGER PRIMARY KEY, email TEXT NOT NULL UNIQUE, deleted_at TEXT);
+INSERT INTO accounts_bad (email) VALUES ('asha@mail.com');
+UPDATE accounts_bad SET deleted_at = '2026-09-01' WHERE id = 1;
+INSERT OR IGNORE INTO accounts_bad (email) VALUES ('asha@mail.com');   -- blocked forever
+SELECT COUNT(*) AS accounts FROM accounts_bad;`) },
+    mcq: { q: 'Which index expresses "unique among active accounts"?', options: ['UNIQUE (email, deleted_at)', 'CREATE UNIQUE INDEX ... ON accounts(lower(email)) WHERE deleted_at IS NULL', 'UNIQUE (email) DEFERRABLE', 'CHECK (deleted_at IS NULL)'], answer: 1, explain: 'A partial unique index only covers rows matching its WHERE. (email, deleted_at) fails because NULLs are distinct — two active rows would both pass!' },
+    hints: ['<p>Hint 1: The rule only applies to some rows — that is what partial indexes are for.</p>', '<p>Hint 2: <code>CREATE UNIQUE INDEX ... ON accounts(lower(email)) WHERE deleted_at IS NULL</code>.</p>', '<p>Hint 3: Beware the tempting <code>UNIQUE(email, deleted_at)</code>: since NULL ≠ NULL, two active duplicates would be allowed.</p>'],
+    solution: {
+      approach: `<p>Partial unique expression index: uniqueness of lower(email) only among rows where deleted_at IS NULL. Deleted rows keep their real email for history; active rows stay unique.</p>`,
+      code: lab(`CREATE TABLE accounts (
+  id         INTEGER PRIMARY KEY,
+  email      TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  deleted_at TEXT
+);
+CREATE UNIQUE INDEX uq_accounts_active_email ON accounts (lower(email)) WHERE deleted_at IS NULL;
+
+INSERT INTO accounts (email) VALUES ('asha@mail.com');                 -- sign up
+UPDATE accounts SET deleted_at = '2026-09-01' WHERE id = 1;            -- soft delete
+INSERT INTO accounts (email) VALUES ('Asha@Mail.com');                 -- re-register: allowed
+INSERT OR IGNORE INTO accounts (email) VALUES ('asha@mail.com');       -- 2nd active: rejected
+SELECT 'duplicate active attempt' AS step, changes() AS stored;
+
+SELECT id, email, quote(deleted_at) AS deleted_at FROM accounts ORDER BY id;`),
+      complexity: `<p>Index contains only active rows, so it is smaller than a full index; each sign-up is one O(log N) probe.</p>`,
+      followUps: ['Queries must now always say <code>WHERE deleted_at IS NULL</code> — how would a view help?', 'GDPR erasure: when must a soft-deleted row become a hard delete or anonymisation?']
+    }
+  });
+
+  practice.push({
+    title: 'Pre-flight Impact Report for Deleting a Customer',
+    level: 'Hard', tags: ['foreign keys', 'cascade analysis', 'CTE'], companies: ['Stripe', 'Amazon', 'Razorpay'],
+    statement: `<p>Support wants to delete a customer from the <b>shop</b> database. Before running any DELETE, produce a report for a given customer id: for every table touched, how many rows would be <b>deleted</b> (CASCADE), <b>nulled</b> (SET NULL) or would <b>block</b> the delete (RESTRICT), and a final verdict. Use the real ON DELETE rules of the shop schema. Run it for customers 1 and 4.</p>`,
+    constraints: `<ul><li>Read-only: no data may change.</li><li>Change the customer id in one place.</li></ul>`,
+    example: `${H.table(['customer', 'addresses deleted', 'reviews nulled', 'orders blocking', 'verdict'], [['1 Asha', '2', '2', '2', H.c('r', 'BLOCKED')], ['4 Dara', '1', '1', '0', H.c('g', 'SAFE')]])}`,
+    brute: { why: `<p>"Just try the DELETE and see." In production that is a gamble: if it succeeds you have already destroyed data you didn't count (addresses, anonymised reviews, orders' ship_address_id), and if it fails the error says only "FOREIGN KEY constraint failed" — not which table or how many rows. Counting only <code>orders</code> misses everything else.</p>`,
+      code: shop(`-- "impact analysis" that only looks at one child table
+SELECT COUNT(*) AS orders_for_customer_4 FROM orders WHERE customer_id = 4;   -- 0 -> "nothing happens"? wrong:
+SELECT COUNT(*) AS addresses_that_would_vanish FROM addresses WHERE customer_id = 4;`) },
+    mcq: { q: 'Customer 1 has orders with ON DELETE RESTRICT. How many addresses are deleted if you run the DELETE anyway?', options: ['2', '0 — the statement fails atomically', '1', 'Depends on the order of execution'], answer: 1, explain: 'Any RESTRICT violation aborts the whole statement, including its cascades.' },
+    hints: ['<p>Hint 1: Read the schema with <code>pragma_foreign_key_list</code> to list every FK pointing at customers and its on_delete action.</p>', '<p>Hint 2: Put the id in a CTE <code>WITH target(id) AS (SELECT 1)</code> and count per child table, labelling each with its action.</p>', '<p>Hint 3: Second-level effects matter: deleting addresses SET NULLs orders.ship_address_id. Verdict = BLOCKED if any RESTRICT count &gt; 0.</p>'],
+    solution: {
+      approach: `<p>First list the FK graph from the catalog, then one parameterised CTE that counts affected rows per relationship (including the second-level SET NULL on orders.ship_address_id) and derives a verdict. The query is read-only, so it is safe to run in production and can be shown in an admin UI before confirming.</p>`,
+      code: shop(`-- 1) Which FKs point at customers, and with what action?
+SELECT m.name AS child_table, f."from" AS fk_column, f.on_delete
+FROM sqlite_master m, pragma_foreign_key_list(m.name) f
+WHERE m.type = 'table' AND f."table" = 'customers';
+
+-- 2) Impact report for customers 1 and 4
+WITH target(id) AS (SELECT 1 UNION ALL SELECT 4),
+impact AS (
+  SELECT t.id AS customer_id,
+    (SELECT COUNT(*) FROM addresses a WHERE a.customer_id = t.id)                       AS addresses_deleted,
+    (SELECT COUNT(*) FROM orders o WHERE o.ship_address_id IN
+        (SELECT a.id FROM addresses a WHERE a.customer_id = t.id))                      AS orders_address_nulled,
+    (SELECT COUNT(*) FROM reviews r WHERE r.customer_id = t.id)                         AS reviews_nulled,
+    (SELECT COUNT(*) FROM orders o WHERE o.customer_id = t.id)                          AS orders_blocking
+  FROM target t
+)
+SELECT i.*, CASE WHEN orders_blocking > 0 THEN 'BLOCKED (RESTRICT)' ELSE 'SAFE to delete' END AS verdict
+FROM impact i ORDER BY customer_id;`),
+      complexity: `<p>Each count is an indexed lookup on the FK column: O(log N + k) per relationship — that is one more reason to index every FK.</p>`,
+      followUps: ['Generalise: generate these count queries automatically from pragma_foreign_key_list (recursive over levels).', 'For a BLOCKED customer, design the GDPR path: anonymise personal fields + soft delete.']
+    }
+  });
+
+  practice.push({
+    title: 'Library Loans: One Open Loan per Copy',
+    level: 'Hard', tags: ['schema design', 'partial unique index', 'CHECK'], companies: ['Goodreads', 'Microsoft'],
+    statement: `<p>Design a library: books (ISBN), physical copies (barcode), members, and loans. A copy can be on loan to at most one member at a time, but has many loans over its life. Due date must be after borrow date; return date (if any) can't be before borrow date. Show: borrow, a second borrow of the same copy rejected, return, borrow again, and "copies currently out".</p>`,
+    constraints: `<ul><li>Books and copies are different entities.</li><li>Nothing in the loan history may be deletable while referenced.</li></ul>`,
+    example: `${H.table(['loan', 'copy', 'member', 'returned_at'], [['1', 'C-1', 'Asha', '2026-10-05'], ['2', 'C-1', 'Ben', H.c('y', 'NULL (out)')]])}<p>A third loan of C-1 while loan 2 is open → rejected.</p>`,
+    brute: { why: `<p>Put <code>borrowed_by</code> and <code>due_at</code> columns on the copies table. It enforces "one borrower" — but every return wipes the history (who had it, was it late?), fines can't be computed, and a book with 5 copies is stored 5 times with its title.</p>`,
+      code: lab(`CREATE TABLE copies_bad (barcode TEXT PRIMARY KEY, title TEXT, borrowed_by TEXT, due_at TEXT);
+INSERT INTO copies_bad VALUES ('C-1', 'SQL Basics', 'Asha', '2026-10-10');
+UPDATE copies_bad SET borrowed_by = NULL, due_at = NULL WHERE barcode = 'C-1';   -- returned: history gone
+UPDATE copies_bad SET borrowed_by = 'Ben', due_at = '2026-10-20' WHERE barcode = 'C-1';
+SELECT * FROM copies_bad;   -- no trace that Asha ever borrowed it`) },
+    mcq: { q: 'How do you allow many loans per copy but only one OPEN loan?', options: ['UNIQUE (copy_id)', 'UNIQUE (copy_id, returned_at)', 'Partial UNIQUE index on loans(copy_id) WHERE returned_at IS NULL', 'CHECK (COUNT(*) <= 1)'], answer: 2, explain: 'The partial index covers only open loans. UNIQUE(copy_id, returned_at) fails because NULLs are distinct; CHECK cannot count rows.' },
+    hints: ['<p>Hint 1: Entities: books 1-N copies, members, loans (copy N-1, member N-1). Loans are history — append, don\'t overwrite.</p>', '<p>Hint 2: "At most one open loan per copy" → <code>CREATE UNIQUE INDEX ... ON loans(copy_id) WHERE returned_at IS NULL</code>.</p>', '<p>Hint 3: Date rules as table CHECKs comparing ISO text; FKs from loans RESTRICT so history can\'t be orphaned.</p>'],
+    solution: {
+      approach: `<p>Separate the title (books) from the physical item (copies) and the event (loans). The partial unique index turns "one open loan per copy" into a database guarantee, while closed loans accumulate as history.</p>`,
+      code: lab(`PRAGMA foreign_keys = ON;
+CREATE TABLE books   (id INTEGER PRIMARY KEY, isbn TEXT NOT NULL UNIQUE, title TEXT NOT NULL);
+CREATE TABLE copies  (id INTEGER PRIMARY KEY, book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE RESTRICT,
+                      barcode TEXT NOT NULL UNIQUE);
+CREATE TABLE members (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL COLLATE NOCASE UNIQUE);
+CREATE TABLE loans (
+  id          INTEGER PRIMARY KEY,
+  copy_id     INTEGER NOT NULL REFERENCES copies(id)  ON DELETE RESTRICT,
+  member_id   INTEGER NOT NULL REFERENCES members(id) ON DELETE RESTRICT,
+  borrowed_at TEXT NOT NULL,
+  due_at      TEXT NOT NULL,
+  returned_at TEXT,
+  CHECK (due_at > borrowed_at),
+  CHECK (returned_at IS NULL OR returned_at >= borrowed_at)
+);
+CREATE UNIQUE INDEX uq_one_open_loan_per_copy ON loans(copy_id) WHERE returned_at IS NULL;
+CREATE INDEX idx_loans_member ON loans(member_id);
+
+INSERT INTO books VALUES (1, '9780000000001', 'SQL Basics');
+INSERT INTO copies VALUES (1, 1, 'C-1'), (2, 1, 'C-2');
+INSERT INTO members VALUES (1, 'Asha', 'asha@mail.com'), (2, 'Ben', 'ben@mail.com');
+
+INSERT INTO loans (copy_id, member_id, borrowed_at, due_at) VALUES (1, 1, '2026-10-01', '2026-10-15');
+INSERT OR IGNORE INTO loans (copy_id, member_id, borrowed_at, due_at) VALUES (1, 2, '2026-10-02', '2026-10-16');
+SELECT 'Ben borrows C-1 while out' AS attempt, changes() AS stored;     -- 0
+UPDATE loans SET returned_at = '2026-10-05' WHERE id = 1;              -- Asha returns it
+INSERT INTO loans (copy_id, member_id, borrowed_at, due_at) VALUES (1, 2, '2026-10-06', '2026-10-20');
+
+SELECT c.barcode, b.title, m.name AS borrower, l.due_at
+FROM loans l JOIN copies c ON c.id = l.copy_id JOIN books b ON b.id = c.book_id JOIN members m ON m.id = l.member_id
+WHERE l.returned_at IS NULL;
+SELECT l.id, c.barcode, m.name, l.borrowed_at, quote(l.returned_at) AS returned_at
+FROM loans l JOIN copies c ON c.id = l.copy_id JOIN members m ON m.id = l.member_id ORDER BY l.id;`),
+      complexity: `<p>Borrow = one partial-index probe O(log open_loans). "Currently out" can scan only the small set of open loans using the same index.</p>`,
+      followUps: ['Limit each member to 3 open loans — can SQL constraints do it? (trigger or counter column)', 'Add reservations (holds) queued per book, not per copy.']
+    }
+  });
+
+  practice.push({
+    title: 'Multi-tenant SaaS: Make Cross-tenant References Impossible',
+    level: 'Hard', tags: ['composite foreign key', 'multi-tenancy', 'security'], companies: ['Atlassian', 'Salesforce', 'Notion'],
+    statement: `<p>A project-management SaaS stores every tenant in the same tables. A task belongs to a project, and both carry <code>tenant_id</code>. Bug reports show a task of tenant A pointing at a project of tenant B (a data leak). Redesign so the database itself makes that impossible, and show a safe insert pattern.</p>`,
+    constraints: `<ul><li>Keep surrogate ids.</li><li>SQLite with foreign keys on; the script must run.</li></ul>`,
+    example: `${H.table(['task', 'tenant', 'project', 'project\'s tenant', 'allowed?'], [['T1', 'A', 'P1', 'A', H.c('g', 'yes')], ['T2', 'A', 'P2', 'B', H.c('r', 'no — FK (tenant_id, project_id) fails')]])}`,
+    brute: { why: `<p>Simple FK <code>project_id REFERENCES projects(id)</code> plus a <code>tenant_id</code> column on tasks. The FK only checks the project exists <i>somewhere</i>. Nothing ties the task's tenant to the project's tenant, so one buggy API call (or a prompt-injected agent) links data across customers.</p>`,
+      code: lab(`PRAGMA foreign_keys = ON;
+CREATE TABLE projects (id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, name TEXT NOT NULL);
+CREATE TABLE tasks (id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL,
+                    project_id INTEGER NOT NULL REFERENCES projects(id), title TEXT NOT NULL);
+INSERT INTO projects VALUES (1, 100, 'A: Website'), (2, 200, 'B: Secret plan');
+INSERT INTO tasks VALUES (1, 100, 2, 'tenant A task inside tenant B project');   -- accepted: leak
+SELECT t.title, t.tenant_id AS task_tenant, p.tenant_id AS project_tenant FROM tasks t JOIN projects p ON p.id = t.project_id;`) },
+    mcq: { q: 'What must the parent table have for FOREIGN KEY (tenant_id, project_id) REFERENCES projects(tenant_id, id) to be valid?', options: ['Nothing extra', 'A UNIQUE (or PK) constraint on (tenant_id, id)', 'An index on name', 'tenant_id as the only PK'], answer: 1, explain: 'A foreign key must reference a set of columns declared unique; (tenant_id, id) is unique because id alone is.' },
+    hints: ['<p>Hint 1: The rule involves two columns of the child matching two columns of the parent → composite foreign key.</p>', '<p>Hint 2: Add <code>UNIQUE (tenant_id, id)</code> to projects (redundant for uniqueness, required as an FK target), then <code>FOREIGN KEY (tenant_id, project_id) REFERENCES projects (tenant_id, id)</code>.</p>', '<p>Hint 3: Safe insert: <code>INSERT ... SELECT ... FROM projects WHERE tenant_id = ? AND id = ?</code> — inserts nothing for a foreign project. Postgres adds row-level security on top.</p>'],
+    solution: {
+      approach: `<p>Composite FK including tenant_id: a task can only reference a project with the <b>same</b> tenant. The parent gets UNIQUE (tenant_id, id) so it is a legal FK target. Inserts go through an INSERT ... SELECT that resolves the project inside the caller's tenant. (Leading every index with tenant_id also prepares the schema for sharding by tenant.)</p>`,
+      code: lab(`PRAGMA foreign_keys = ON;
+CREATE TABLE tenants (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+CREATE TABLE projects (
+  id        INTEGER PRIMARY KEY,
+  tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  name      TEXT NOT NULL,
+  UNIQUE (tenant_id, id)                        -- makes (tenant_id, id) a legal FK target
+);
+CREATE TABLE tasks (
+  id         INTEGER PRIMARY KEY,
+  tenant_id  INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  project_id INTEGER NOT NULL,
+  title      TEXT NOT NULL,
+  FOREIGN KEY (tenant_id, project_id) REFERENCES projects (tenant_id, id) ON DELETE CASCADE
+);
+CREATE INDEX idx_tasks_tenant_project ON tasks(tenant_id, project_id);
+
+INSERT INTO tenants VALUES (100, 'Acme'), (200, 'Globex');
+INSERT INTO projects VALUES (1, 100, 'Website'), (2, 200, 'Secret plan');
+INSERT INTO tasks (tenant_id, project_id, title) VALUES (100, 1, 'Fix login');           -- same tenant: OK
+-- INSERT INTO tasks (tenant_id, project_id, title) VALUES (100, 2, 'Leak');            -- FOREIGN KEY constraint failed
+
+-- Safe insert pattern: resolve the project inside the caller's tenant (inserts 0 rows for a foreign project)
+INSERT INTO tasks (tenant_id, project_id, title)
+SELECT tenant_id, id, 'Sneaky task' FROM projects WHERE tenant_id = 100 AND id = 2;
+SELECT 'cross-tenant attempt' AS step, changes() AS inserted;
+
+SELECT t.id, t.title, t.tenant_id, p.name AS project FROM tasks t
+JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id;`),
+      complexity: `<p>The composite FK check is one probe of the (tenant_id, id) unique index: O(log N). Extra storage: one more unique index on projects.</p>`,
+      followUps: ['Postgres row-level security: <code>CREATE POLICY ... USING (tenant_id = current_setting(\'app.tenant\')::int)</code>.', 'Schema-per-tenant vs shared tables: trade-offs at 10 vs 100,000 tenants.']
+    }
+  });
+
+  practice.push({
+    title: 'Comments on Posts OR Photos (Polymorphic Association)',
+    level: 'Hard', tags: ['polymorphism', 'CHECK', 'foreign keys'], companies: ['Meta', 'Reddit', 'ShareChat'],
+    statement: `<p>Users can comment on posts and on photos. The ORM default is <code>commentable_type</code> + <code>commentable_id</code>. Show why that breaks integrity, then design a schema where every comment points to exactly one existing post <i>or</i> photo, and comments disappear with their target.</p>`,
+    constraints: `<ul><li>A comment must target exactly one thing — not zero, not two.</li><li>Real foreign keys, enforced by SQLite.</li></ul>`,
+    example: `${H.table(['comment', 'post_id', 'photo_id', 'valid?'], [['c1', '1', 'NULL', H.c('g', 'yes')], ['c2', 'NULL', '7', H.c('g', 'yes')], ['c3', '1', '7', H.c('r', 'no — two targets')], ['c4', 'NULL', 'NULL', H.c('r', 'no — no target')]])}`,
+    brute: { why: `<p><code>commentable_id</code> can't have a FOREIGN KEY because it points to different tables depending on another column. Deleting a post leaves its comments orphaned, typos in <code>commentable_type</code> ('Post', 'post', 'Posts') are accepted, and ids that exist in neither table are accepted.</p>`,
+      code: lab(`PRAGMA foreign_keys = ON;
+CREATE TABLE posts (id INTEGER PRIMARY KEY, body TEXT);
+CREATE TABLE comments_poly (id INTEGER PRIMARY KEY, commentable_type TEXT, commentable_id INTEGER, body TEXT);
+INSERT INTO posts VALUES (1, 'Hello');
+INSERT INTO comments_poly VALUES (1, 'Post', 1, 'nice'), (2, 'Psot', 1, 'typo type'), (3, 'Photo', 999, 'no such photo');
+DELETE FROM posts WHERE id = 1;
+SELECT COUNT(*) AS orphan_comments FROM comments_poly c
+WHERE NOT EXISTS (SELECT 1 FROM posts p WHERE c.commentable_type = 'Post' AND p.id = c.commentable_id);`) },
+    mcq: { q: 'Which CHECK enforces "exactly one of post_id, photo_id"?', options: ['CHECK (post_id IS NOT NULL OR photo_id IS NOT NULL)', 'CHECK ((post_id IS NOT NULL) + (photo_id IS NOT NULL) = 1)', 'CHECK (post_id <> photo_id)', 'UNIQUE (post_id, photo_id)'], answer: 1, explain: 'In SQLite a boolean expression is 0/1, so summing the IS NOT NULL tests counts the targets. OR allows two targets.' },
+    hints: ['<p>Hint 1: Give each target its own nullable FK column so the database can check it.</p>', '<p>Hint 2: Add a CHECK that counts non-NULL targets: <code>(post_id IS NOT NULL) + (photo_id IS NOT NULL) = 1</code> (Postgres: <code>num_nonnulls(post_id, photo_id) = 1</code>).</p>', '<p>Hint 3: Both FKs ON DELETE CASCADE, index both columns. Alternative: a supertype table <code>commentables</code> that posts and photos share their id with.</p>'],
+    solution: {
+      approach: `<p>Exclusive-arc design: one nullable FK per target type + a CHECK that exactly one is set. Every comment is guaranteed to have a real, existing target, and deleting a post or photo cascades to its comments.</p>`,
+      code: lab(`PRAGMA foreign_keys = ON;
+CREATE TABLE posts  (id INTEGER PRIMARY KEY, body TEXT NOT NULL);
+CREATE TABLE photos (id INTEGER PRIMARY KEY, url TEXT NOT NULL);
+CREATE TABLE comments (
+  id       INTEGER PRIMARY KEY,
+  post_id  INTEGER REFERENCES posts(id)  ON DELETE CASCADE,
+  photo_id INTEGER REFERENCES photos(id) ON DELETE CASCADE,
+  body     TEXT NOT NULL,
+  CHECK ((post_id IS NOT NULL) + (photo_id IS NOT NULL) = 1)
+);
+CREATE INDEX idx_comments_post  ON comments(post_id);
+CREATE INDEX idx_comments_photo ON comments(photo_id);
+
+INSERT INTO posts VALUES (1, 'Hello world');
+INSERT INTO photos VALUES (7, 'https://img.example/7.jpg');
+INSERT INTO comments (post_id, body)  VALUES (1, 'nice post');
+INSERT INTO comments (photo_id, body) VALUES (7, 'great shot');
+INSERT OR IGNORE INTO comments (post_id, photo_id, body) VALUES (1, 7, 'two targets');   -- CHECK: skipped
+INSERT OR IGNORE INTO comments (body) VALUES ('no target');                             -- CHECK: skipped
+-- INSERT INTO comments (photo_id, body) VALUES (999, 'ghost');   -- FOREIGN KEY constraint failed
+
+DELETE FROM posts WHERE id = 1;   -- its comment cascades away
+SELECT id, quote(post_id) AS post_id, quote(photo_id) AS photo_id, body FROM comments;`),
+      complexity: `<p>Each insert: O(1) CHECK + one FK probe O(log N). Fetching comments of a post/photo uses its own index.</p>`,
+      followUps: ['With 10 commentable types, the exclusive arc gets wide — compare with the supertype-table design.', 'Postgres: rewrite the CHECK with <code>num_nonnulls</code>.']
+    }
+  });
+
+  practice.push({
+    title: 'Hotel Bookings: No Overlapping Stays',
+    level: 'Hard', tags: ['constraints beyond CHECK', 'triggers', 'overlap'], companies: ['Booking.com', 'Airbnb', 'MakeMyTrip', 'OYO'],
+    statement: `<p>A room can't be booked by two guests for overlapping nights. Check-out must be after check-in. A CHECK can't look at other rows and UNIQUE can't express "ranges don't overlap". Enforce it in SQLite, demonstrate a valid back-to-back booking, and write the query that would detect overlaps in existing data.</p>`,
+    constraints: `<ul><li>Stays are half-open intervals [check_in, check_out): leaving on the 5th and arriving on the 5th is fine.</li><li>The script must run without errors.</li></ul>`,
+    example: `${H.table(['room', 'check_in', 'check_out', 'result'], [['101', '2026-10-01', '2026-10-05', H.c('g', 'booked')], ['101', '2026-10-05', '2026-10-08', H.c('g', 'booked (back-to-back)')], ['101', '2026-10-04', '2026-10-06', H.c('r', 'rejected: overlaps both')]])}<p>Two ranges overlap exactly when <code>a.check_in &lt; b.check_out AND b.check_in &lt; a.check_out</code>.</p>`,
+    brute: { why: `<p>Check in the application: <code>SELECT</code> for overlaps, then <code>INSERT</code> if none. Two requests for the same room arrive together, both SELECTs see "free", both INSERT — double booking. App-side checks without a database-level guarantee lose races.</p>`,
+      code: lab(`CREATE TABLE bookings_app (id INTEGER PRIMARY KEY, room INTEGER, check_in TEXT, check_out TEXT);
+-- request A and request B both ran "SELECT ... overlap" first and saw nothing, then both inserted:
+INSERT INTO bookings_app VALUES (1, 101, '2026-10-01', '2026-10-05'), (2, 101, '2026-10-03', '2026-10-06');
+SELECT a.id, b.id AS clashes_with FROM bookings_app a JOIN bookings_app b
+  ON a.room = b.room AND a.id < b.id AND a.check_in < b.check_out AND b.check_in < a.check_out;`) },
+    mcq: { q: 'Which overlap test is correct for half-open intervals [in, out)?', options: ['a.in <= b.out AND b.in <= a.out', 'a.in < b.out AND b.in < a.out', 'a.in = b.in', 'a.out > b.out'], answer: 1, explain: 'Strict < lets a stay ending on the 5th touch one starting on the 5th without counting as overlap.' },
+    hints: ['<p>Hint 1: The rule compares the new row with OTHER rows → beyond CHECK/UNIQUE. In Postgres this is an EXCLUDE constraint; in SQLite, a BEFORE INSERT/UPDATE trigger.</p>', '<p>Hint 2: Trigger body: <code>SELECT RAISE(ABORT, \'...\') WHERE EXISTS (overlap query using NEW.*)</code>; add a CHECK (check_out &gt; check_in) for single-row sanity.</p>', '<p>Hint 3: Index (room_id, check_in) so the overlap probe is cheap; cover UPDATE too (exclude the row itself: <code>b.id &lt;&gt; NEW.id</code>).</p>'],
+    solution: {
+      approach: `<p>CHECK for the single-row rule; BEFORE INSERT and BEFORE UPDATE triggers for the cross-row rule. Because SQLite serialises writers, the trigger's check and the insert happen atomically — no race. In Postgres: <code>EXCLUDE USING gist (room_id WITH =, daterange(check_in, check_out) WITH &amp;&amp;)</code>.</p>`,
+      code: lab(`CREATE TABLE bookings (
+  id        INTEGER PRIMARY KEY,
+  room_id   INTEGER NOT NULL,
+  guest     TEXT    NOT NULL,
+  check_in  TEXT    NOT NULL,
+  check_out TEXT    NOT NULL,
+  CHECK (check_out > check_in)
+);
+CREATE INDEX idx_bookings_room ON bookings(room_id, check_in);
+
+CREATE TRIGGER trg_bookings_no_overlap_ins BEFORE INSERT ON bookings
+WHEN EXISTS (SELECT 1 FROM bookings b
+             WHERE b.room_id = NEW.room_id AND b.check_in < NEW.check_out AND NEW.check_in < b.check_out)
+BEGIN
+  SELECT RAISE(ABORT, 'room already booked for those nights');
+END;
+CREATE TRIGGER trg_bookings_no_overlap_upd BEFORE UPDATE ON bookings
+WHEN EXISTS (SELECT 1 FROM bookings b
+             WHERE b.id <> NEW.id AND b.room_id = NEW.room_id
+               AND b.check_in < NEW.check_out AND NEW.check_in < b.check_out)
+BEGIN
+  SELECT RAISE(ABORT, 'room already booked for those nights');
+END;
+
+INSERT INTO bookings (room_id, guest, check_in, check_out) VALUES (101, 'Asha', '2026-10-01', '2026-10-05');
+INSERT INTO bookings (room_id, guest, check_in, check_out) VALUES (101, 'Ben',  '2026-10-05', '2026-10-08');  -- back-to-back OK
+INSERT INTO bookings (room_id, guest, check_in, check_out) VALUES (102, 'Chen', '2026-10-04', '2026-10-06');  -- other room OK
+-- INSERT INTO bookings (room_id, guest, check_in, check_out) VALUES (101, 'Dara', '2026-10-04', '2026-10-06');
+--   ^ Error: room already booked for those nights
+
+-- audit query: should return no rows
+SELECT a.id, b.id AS clashes_with FROM bookings a JOIN bookings b
+  ON a.room_id = b.room_id AND a.id < b.id AND a.check_in < b.check_out AND b.check_in < a.check_out;
+SELECT room_id, guest, check_in, check_out FROM bookings ORDER BY room_id, check_in;`),
+      complexity: `<p>Each insert runs one indexed probe on (room_id, check_in): O(log N + bookings of that room). The audit self-join is O(N log N) with the index.</p>`,
+      followUps: ['Why does this trigger approach need care in Postgres/MySQL under READ COMMITTED? (two transactions don\'t see each other\'s rows — use EXCLUDE or SELECT ... FOR UPDATE on the room)', 'Model room types with N identical rooms: book a type, assign a room later.']
+    }
+  });
+  /* ======================= QUIZ ======================= */
+  quiz.push(
+    { q: 'You store prices in a REAL column. Which problem is most likely?', options: ['Prices sort alphabetically', 'Sums like 0.1 + 0.2 are not exact, so totals drift by tiny amounts', 'REAL cannot store decimals', 'REAL columns cannot be indexed'], answer: 1, explain: 'Binary floating point cannot represent most decimal fractions exactly. Use integer minor units (cents) or NUMERIC.' },
+    { q: 'In a normal (non-STRICT) SQLite table, what happens when you insert <code>\'hello\'</code> into an INTEGER column?', options: ['Error: datatype mismatch', 'It is stored as TEXT', 'It is stored as 0', 'It is stored as NULL'], answer: 1, explain: 'Declared types are only affinity in SQLite. Text that does not look like a number is stored as TEXT. STRICT tables reject it.' },
+    { q: 'Table: <code>age INTEGER CHECK (age &gt;= 18)</code>. Which INSERT succeeds?', options: ['age = 17', 'age = NULL', 'age = -1', 'none of them'], answer: 1, explain: 'NULL &gt;= 18 is UNKNOWN; CHECK only rejects FALSE. Add NOT NULL if age is required.' },
+    { q: 'Column <code>status TEXT NOT NULL DEFAULT \'open\'</code>. What does <code>INSERT INTO t (status) VALUES (NULL)</code> do?', options: ['Stores \'open\'', 'Stores NULL', 'Fails the NOT NULL constraint', 'Stores an empty string'], answer: 2, explain: 'DEFAULT is used only when the column is omitted. An explicit NULL is taken literally and violates NOT NULL.' },
+    { q: 'How many rows with <code>email = NULL</code> can a <code>UNIQUE (email)</code> column hold (SQLite / Postgres default)?', options: ['0', '1', 'Any number', 'Only if the table is empty'], answer: 2, explain: 'NULLs are treated as distinct for UNIQUE. Postgres 15+ can opt into NULLS NOT DISTINCT.' },
+    { q: 'A SQLite database declares foreign keys, but orphans keep appearing. Most likely cause?', options: ['The parent has no index', 'PRAGMA foreign_keys = ON is not set on the connection', 'The FK uses CASCADE', 'SQLite does not support foreign keys'], answer: 1, explain: 'SQLite enforces FKs only when the per-connection pragma is ON (off by default for compatibility).' },
+    { q: 'Reviews should survive when their author deletes their account, but no longer point to the author. Which action?', options: ['ON DELETE CASCADE', 'ON DELETE SET NULL', 'ON DELETE RESTRICT', 'ON UPDATE CASCADE'], answer: 1, explain: 'SET NULL keeps the child row and clears the reference. The FK column must be nullable.' },
+    { q: 'customers → orders (CASCADE) → invoices (RESTRICT). You delete a customer who has an invoiced order. Result?', options: ['Customer and orders deleted, invoice kept', 'Only the customer is deleted', 'The whole DELETE fails; nothing changes', 'The invoice is deleted too'], answer: 2, explain: 'A statement is atomic: any RESTRICT violation in the cascade tree aborts everything.' },
+    { q: 'Students and Courses are many-to-many, and each pair has a grade. Where does <code>grade</code> go?', options: ['students table', 'courses table', 'the junction table (enrollments)', 'a JSON column on students'], answer: 2, explain: 'The grade describes the relationship (one student in one course), so it lives in the junction table.' },
+    { q: 'For a 1-1 relationship User — Profile, which design enforces "at most one profile per user"?', options: ['profiles.user_id FK only', 'profiles.user_id FK + UNIQUE (or user_id as profiles\' PK)', 'users.profile_id without UNIQUE', 'A junction table'], answer: 1, explain: 'An FK alone allows many profiles per user (1-N). UNIQUE on the FK makes it 1-1.' },
+    { q: 'Which change can SQLite\'s ALTER TABLE do directly?', options: ['Change a column from TEXT to INTEGER', 'Add a CHECK constraint to an existing column', 'Add a nullable column', 'Add a UNIQUE column'], answer: 2, explain: 'SQLite supports ADD COLUMN (with limits), RENAME, DROP COLUMN. Type/constraint changes need the table-rebuild recipe.' },
+    { q: 'Why copy <code>unit_price_cents</code> into order_items instead of joining to products.price_cents?', options: ['To save storage', 'Because joins are slow', 'So past orders keep the price actually paid when the catalogue price changes', 'Because SQLite cannot join on price'], answer: 2, explain: 'The paid price is a historical fact. Without the snapshot, a price change would silently rewrite old invoices.' }
+  );
+
+  /* ======================= INTERVIEW ======================= */
+  interview.push(
+    { q: 'What is the difference between a primary key, a unique key, a candidate key and a surrogate key?', level: 'B',
+      a: `<p>A <b>candidate key</b> is any minimal set of columns that uniquely identifies a row (e.g. <code>id</code>, or <code>email</code>). You pick one as the <b>primary key</b>: unique, never NULL, one per table, the row's official identity and the usual FK target. The other candidates become <b>alternate/unique keys</b> declared <code>UNIQUE NOT NULL</code> (a plain UNIQUE column may hold NULLs). A <b>natural key</b> comes from the real world (email, ISBN); a <b>surrogate key</b> is invented (auto-increment, UUID) and never changes. Typical design: surrogate PK + UNIQUE on the natural key, so the business rule is still enforced but FKs stay stable.</p>`,
+      followUps: ['When would you use a natural key as the PK?', 'BIGINT auto-increment vs UUIDv4 vs UUIDv7 as primary keys?'] },
+    { q: 'Explain the ON DELETE options and how you choose between them.', level: 'I',
+      a: `<p><b>CASCADE</b> deletes children with the parent — for parts that can't exist alone (order_items of an order, addresses of a user). <b>SET NULL</b> keeps the child and clears the FK — for history worth keeping anonymously (reviews of a deleted user). <b>SET DEFAULT</b> re-points to a default parent. <b>RESTRICT</b> refuses the delete immediately while children exist; <b>NO ACTION</b> (the default) also refuses but checks at end of statement or at commit if deferred. My rule: CASCADE for composition, SET NULL for optional association, RESTRICT for anything financial or legal — and soft deletes for business entities people "delete" but auditors still need.</p>`,
+      followUps: ['What is the difference between RESTRICT and NO ACTION in practice?', 'How would you delete a customer with 10 million dependent rows without long locks?'] },
+    { q: 'Why might foreign keys not be enforced in SQLite, and how do you check?', level: 'B',
+      a: `<p>For backward compatibility SQLite ships with FK enforcement <b>off</b>; each connection must run <code>PRAGMA foreign_keys = ON;</code> (outside a transaction). Without it, REFERENCES clauses are parsed but ignored, so orphans and cascades silently don't happen. Check the setting with <code>PRAGMA foreign_keys;</code> (returns 0/1), list declared FKs with <code>PRAGMA foreign_key_list(table)</code>, and find existing violations with <code>PRAGMA foreign_key_check;</code>. In apps, set it in the connection factory and assert it at startup.</p>`,
+      followUps: ['Why is the pragma a no-op inside a transaction?', 'How do you clean up orphans found by foreign_key_check?'] },
+    { q: 'How do you add a NOT NULL column to a large production table without downtime?', level: 'A',
+      a: `<p>Expand → backfill → contract. (1) Add the column as nullable (metadata-only, instant). (2) Deploy code that writes the new column for new/updated rows. (3) Backfill old rows in small batches (e.g. 5,000 ids per transaction) to keep locks and replication lag low. (4) Verify <code>COUNT(*) WHERE col IS NULL = 0</code>. (5) Tighten: in Postgres add <code>CHECK (col IS NOT NULL) NOT VALID</code>, <code>VALIDATE CONSTRAINT</code> (no write lock), then <code>SET NOT NULL</code> (PG 12+ skips the scan); set <code>lock_timeout</code> around every DDL. In SQLite the final step is a table rebuild. Never use a fake DEFAULT like '' just to satisfy NOT NULL.</p>`,
+      followUps: ['Why is a constant DEFAULT instant in Postgres 11+ but a volatile one isn\'t?', 'How do gh-ost / pt-online-schema-change work for MySQL?'] },
+    { q: 'Should business rules live in the database (constraints) or in the application?', level: 'I',
+      a: `<p>Both, for different reasons. <b>Invariants</b> — things that must never be false for any writer (unique emails, positive quantities, valid references, one open loan per copy) — belong in the database, because the database sees every write: APIs, scripts, migrations, admin consoles, other services and AI agents. The app should also validate them to give friendly error messages. <b>Policies</b> that change often or need context (discount eligibility, rate limits, workflow approvals) belong in code. Constraints are cheap (O(1) or one index probe), self-documenting, and turn silent data corruption into loud, early errors.</p>`,
+      followUps: ['Give an example of a rule that looks like an invariant but is really a policy.', 'How do you surface constraint errors as good API messages?'] },
+    { q: 'Walk me through designing the schema for an e-commerce store.', level: 'I',
+      a: `<p>I'd go requirements → entities → relationships → attributes/types → constraints → delete policies → indexes. Entities: customers, addresses, categories (self-referencing tree), products, orders, order_items, payments, reviews. Cardinalities: customer 1-N orders, order N-M products resolved by order_items (qty + <b>unit price snapshot</b>), order 1-N payments (retries/refunds), customer/product 1-N reviews with UNIQUE(product, customer). Types: integer cents + currency, UTC timestamps, status via CHECK or lookup table. Constraints: email UNIQUE (case-insensitive), SKU UNIQUE, stock ≥ 0, qty &gt; 0, rating 1–5. Deletes: addresses CASCADE, orders RESTRICT, order_items CASCADE from orders but RESTRICT from products, reviews SET NULL from customers. Indexes on every FK plus orders(customer_id, placed_at) for "my orders".</p>`,
+      followUps: ['How do you prevent overselling the last item?', 'How would you add product variants and multiple warehouses?'] },
+    { q: 'How do you map a many-to-many relationship, and what goes in the junction table?', level: 'B',
+      a: `<p>Create a third (junction/bridge/associative) table with a foreign key to each side, e.g. <code>enrollments(student_id, course_id)</code>. Its primary key is usually the composite <code>(student_id, course_id)</code>, which also prevents duplicate pairs and serves lookups by the first column; add a separate index on the second column for reverse lookups. Any attribute that describes the <i>pair</i> — grade, enrolled_on, quantity, role — lives in the junction table. If the same pair can legitimately repeat (retakes, repeated purchases), use a surrogate id PK and include the distinguishing column (term) in a UNIQUE constraint.</p>`,
+      followUps: ['When does a junction table deserve its own surrogate id?', 'How do you find students enrolled in ALL of a set of courses?'] },
+    { q: 'What is the difference between DROP, DELETE and TRUNCATE?', level: 'B',
+      a: `<p><code>DELETE FROM t [WHERE ...]</code> is DML: removes chosen rows one by one, fires triggers and FK actions, can be rolled back, keeps the table. <code>TRUNCATE t</code> (Postgres/MySQL) removes <b>all</b> rows quickly by deallocating storage, usually resets identity counters, fires no row triggers, and is blocked (or needs CASCADE) when other tables reference it; in Postgres it is transactional, in MySQL it implicitly commits. <code>DROP TABLE t</code> is DDL: removes the rows <b>and</b> the definition, indexes, triggers and grants. SQLite has no TRUNCATE; an unqualified DELETE uses a fast "truncate optimization".</p>`,
+      followUps: ['Why can TRUNCATE be faster than DELETE on a huge table?', 'Can you roll back a DROP TABLE?'] },
+    { q: 'How would you enforce "only one default address per customer" or "one active subscription per user"?', level: 'I',
+      a: `<p>With a <b>partial unique index</b>: <code>CREATE UNIQUE INDEX ... ON addresses(customer_id) WHERE is_default = 1</code>. It only indexes rows matching the predicate, so a customer can have many non-default addresses but at most one default. A plain <code>UNIQUE(customer_id, is_default)</code> is wrong (it would allow only one non-default address too), and <code>UNIQUE(user_id, ended_at)</code> fails for "active" rows because NULLs are distinct. Supported by SQLite and Postgres; MySQL lacks partial indexes, so you use a generated column that is NULL for inactive rows plus a UNIQUE on it.</p>`,
+      followUps: ['How do you switch the default address atomically?', 'How would you do it in MySQL 8?'] },
+    { q: 'What constraints can\'t be expressed with CHECK/UNIQUE/FK, and how do you enforce them?', level: 'A',
+      a: `<p>Anything that compares a row with <b>other rows</b> or aggregates: non-overlapping date ranges, "at most 5 addresses", "an order must have at least one line", "no cycles in a manager hierarchy", "sum of splits equals the payment". Options: Postgres <code>EXCLUDE USING gist</code> for overlaps; triggers that RAISE on violation (careful with concurrency under READ COMMITTED — lock the parent row or use SERIALIZABLE); a counter column maintained transactionally with a CHECK; deferred constraint triggers checked at commit; or app logic inside a transaction with <code>SELECT ... FOR UPDATE</code>. Always pair with a periodic audit query.</p>`,
+      followUps: ['Why can a trigger-based overlap check still double-book under concurrency?', 'Write the EXCLUDE constraint for room bookings.'] },
+    { q: 'What are ER diagram cardinality and participation, and how do they turn into SQL?', level: 'B',
+      a: `<p><b>Cardinality</b> is the maximum on each side (1 or many); <b>participation/optionality</b> is the minimum (0 = optional, 1 = mandatory). In crow's foot, <code>||</code> means exactly one, <code>o|</code> zero or one, <code>|&lt;</code> one or many, <code>o&lt;</code> zero or many. Mapping: 1-N → FK on the many side; mandatory parent → FK NOT NULL; optional → nullable FK; 1-1 → FK + UNIQUE; N-M → junction table. "At least one child" can't be declared with an FK and needs a trigger or transaction logic.</p>`,
+      followUps: ['Model "a course is taught by one or two professors".', 'What is a weak entity?'] },
+    { q: 'Polymorphic associations (commentable_type + commentable_id): what\'s wrong and what are the alternatives?', level: 'A',
+      a: `<p>The id column points at different tables depending on a type string, so no foreign key is possible: orphans after deletes, typos in the type, ids that exist nowhere, no cascades, and joins that need CASE logic. Alternatives: (1) <b>exclusive arc</b> — one nullable FK per target plus <code>CHECK (num_nonnulls(post_id, photo_id) = 1)</code>; (2) <b>supertype table</b> — a <code>commentables(id)</code> table that posts and photos reference with their own PK, and comments FK to it; (3) separate tables per target (post_comments, photo_comments) with a UNION view. Choose (1) for few targets, (2) for many.</p>`,
+      followUps: ['How do ORMs like Rails/Django support the better patterns?', 'How do you migrate existing polymorphic data?'] },
+    { q: 'How do you approach schema design when an AI assistant generates the first draft?', level: 'E',
+      a: `<p>I treat the draft as a junior engineer's PR. First I restate the requirements as cardinality sentences and check every relationship both ways. Then I review a fixed checklist: money types, timezone handling, NOT NULL on mandatory columns, UNIQUE on natural keys (case-insensitive where needed), CHECKs for business ranges, ON DELETE per FK (no blanket CASCADE), indexes on FK columns and hot queries, snapshot columns for history (prices, addresses), and dialect correctness (e.g. SQLite's FK pragma, MySQL's implicit commits). I ask the assistant to generate seed data and a constraint-violation test suite, run it on the real engine, and review generated migrations for table rewrites and locks before production.</p>`,
+      followUps: ['Which mistakes do LLMs make most often in DDL?', 'How do you give an AI agent database access safely?'] }
+  );
   registerModule({
     id: 'sql07',
     title: 'DDL, Constraints & ER Modelling',

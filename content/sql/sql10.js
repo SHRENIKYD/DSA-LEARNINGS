@@ -845,6 +845,370 @@ CREATE INDEX idx_sessions_expires ON sessions (expires_at);`, 'PostgreSQL altern
       }
     }]
   });
+
+  /* =====================================================================
+     TOPIC 5 - Composite indexes and the left-prefix rule
+     ===================================================================== */
+  var CP_COLS = ['last_name', 'first_name', 'city'];
+  function cpEntries() {
+    var out = [], id = 1;
+    ['Garcia', 'Kim', 'Lee', 'Patel'].forEach(function (ln) {
+      ['Asha', 'Ben'].forEach(function (fn) {
+        ['Pune', 'Rio'].forEach(function (c) { out.push([ln, fn, c, id]); id++; });
+      });
+    });
+    // scramble the ids so they look like real rowids
+    return out.map(function (r, i) { return [r[0], r[1], r[2], (i * 7) % 16 + 101]; });
+  }
+
+  topics.push({
+    title: 'Composite Indexes & the Left-Prefix Rule',
+    analogy: `<p>A paper <b>phone book</b> is sorted by <b>(last name, first name, city)</b>. Finding all the <b>Lees</b>? Easy — they are one block of pages. <b>Lee, Ben</b>? Even easier — a smaller block inside the Lee block. But finding everyone whose <b>first name is Ben</b>? The Bens are scattered across every last name — the phone book's order is useless, you must read the whole thing. And "Lee, anyone, living in Pune"? You can jump to the Lee block, but inside it the Pune people are scattered among the first names, so you read the entire Lee block and check each city. That is the whole <b>left-prefix rule</b> in one picture.</p>`,
+    explain: `<p>A <b>composite (multi-column) index</b> on <code>(a, b, c)</code> stores entries sorted by <code>a</code>, then by <code>b</code> among equal <code>a</code>, then by <code>c</code> among equal <code>(a, b)</code> — exactly like sorting a spreadsheet by three columns. It is <b>one</b> B+tree, not three.</p>
+<p><b>Left-prefix rule:</b> the index can be <b>seeked</b> using a leading run of its columns, left to right, with no gaps:</p>
+${H.table(['WHERE clause', 'Seek uses', 'Why'], [
+  ['<code>a = 1</code>', '<span class="c-g">a</span>', 'leftmost column → one contiguous block'],
+  ['<code>a = 1 AND b = 2</code>', '<span class="c-g">a, b</span>', 'smaller block inside the a-block'],
+  ['<code>a = 1 AND b = 2 AND c = 3</code>', '<span class="c-g">a, b, c</span>', 'full key'],
+  ['<code>b = 2</code>', '<span class="c-r">nothing (scan)</span>', 'b-values are scattered across all a-values'],
+  ['<code>a = 1 AND c = 3</code>', '<span class="c-y">a only</span>, then c filtered inside the block', 'gap at b breaks the prefix'],
+  ['<code>a &gt; 1 AND b = 2</code>', '<span class="c-y">a (range)</span>, b only filtered', 'after a range, the next column is not sorted across the range'],
+  ['<code>b = 2 AND a = 1</code>', '<span class="c-g">a, b</span>', 'order in the WHERE clause does not matter — the planner reorders']
+])}
+<p><b>Choosing the column order — the ESR guideline</b> (Equality, Sort, Range):</p>
+<ol>
+<li><b>Equality</b> columns first (<code>customer_id = ?</code>, <code>status = ?</code>). Among them, put first the ones that appear in the most queries, so one index serves many queries.</li>
+<li>Then the <b>Sort</b> column (<code>ORDER BY created_at</code>) — after equalities are fixed, the entries are already in that order, so no sort step is needed.</li>
+<li>Then <b>Range</b> columns (<code>created_at &gt; ?</code>, <code>price BETWEEN</code>) — a range ends the seekable prefix, so it goes last.</li>
+</ol>
+<p>"Put the most selective column first" is a common myth: for <b>equality</b> predicates the order between equality columns hardly changes the seek cost (the combined block is the same size). What matters is <b>which queries can use the prefix</b> and that ranges come last.</p>
+<p>A composite index <code>(a, b)</code> also makes a single-column index on <code>(a)</code> <b>redundant</b> — drop it. But it does <i>not</i> replace an index on <code>(b)</code>.</p>`,
+    clues: [
+      '"Which column should go first in the composite index?" → equality columns used by the most queries, then ORDER BY column, then range column (ESR)',
+      '"The index on (a, b) is not used for WHERE b = ?" → left-prefix rule; need an index starting with b (or a skip scan)',
+      '"WHERE x = ? ORDER BY y LIMIT n is slow" → composite (x, y) removes the sort and stops after n rows',
+      '"We have indexes on (a) and on (a, b)" → (a) is redundant',
+      'Plan shows only the first column used, e.g. <code>(last_name=?)</code> even though more columns are filtered → gap or range broke the prefix'
+    ],
+    code: [shop(`CREATE INDEX idx_name ON customers(last_name, first_name, city);
+
+EXPLAIN QUERY PLAN SELECT * FROM customers WHERE last_name = 'Lee';                          -- (last_name=?)
+EXPLAIN QUERY PLAN SELECT * FROM customers WHERE last_name = 'Lee' AND first_name = 'Ben';   -- (last_name=? AND first_name=?)
+EXPLAIN QUERY PLAN SELECT * FROM customers WHERE first_name = 'Ben' AND last_name = 'Lee';   -- same: WHERE order is irrelevant
+EXPLAIN QUERY PLAN SELECT * FROM customers WHERE first_name = 'Ben';                         -- SCAN: no left prefix
+EXPLAIN QUERY PLAN SELECT * FROM customers WHERE last_name = 'Lee' AND city = 'Pune';        -- only (last_name=?), city filtered
+EXPLAIN QUERY PLAN SELECT * FROM customers WHERE last_name > 'K' AND first_name = 'Ben';     -- range on last_name ends the prefix
+
+-- Row counts that explain the plans:
+SELECT
+  (SELECT COUNT(*) FROM customers WHERE last_name = 'Lee')                        AS lee_block,
+  (SELECT COUNT(*) FROM customers WHERE last_name = 'Lee' AND first_name = 'Ben') AS lee_ben_block,
+  (SELECT COUNT(*) FROM customers WHERE first_name = 'Ben')                       AS bens_scattered;`, 'Left-prefix rule, live'),
+    shop(`-- ESR: Equality (customer_id, status) → Sort (created_at). No TEMP B-TREE for the ORDER BY,
+-- and the scan stops after 5 entries because of LIMIT.
+CREATE INDEX idx_orders_cust_status_created ON orders(customer_id, status, created_at);
+EXPLAIN QUERY PLAN
+SELECT id, total_cents, created_at FROM orders
+WHERE customer_id = 42 AND status = 'delivered'
+ORDER BY created_at DESC LIMIT 5;
+SELECT id, total_cents, created_at FROM orders
+WHERE customer_id = 42 AND status = 'delivered'
+ORDER BY created_at DESC LIMIT 5;`, 'Equality → Sort → Range column order')],
+    codeTitle: ['Which prefixes are usable?', 'ESR in practice'],
+    viz: [{
+      title: 'Left-prefix matching on index (last_name, first_name, city)',
+      input: 'last_name=Lee, city=Pune',
+      inputLabel: 'conditions, e.g. last_name=Lee, first_name=Ben  |  first_name=Ben  |  last_name>K, first_name=Asha',
+      gen: function (input) {
+        var conds = {}, txt = String(input).trim();
+        if (!txt) throw new Error('Type at least one condition like last_name=Lee');
+        txt.split(',').forEach(function (c) {
+          var m = c.trim().match(/^(last_name|first_name|city)\s*(=|>|<)\s*([A-Za-z]+)$/i);
+          if (!m) throw new Error('Use column=value / column>value / column<value with columns last_name, first_name, city');
+          conds[m[1].toLowerCase()] = { op: m[2], v: m[3].charAt(0).toUpperCase() + m[3].slice(1).toLowerCase() };
+        });
+        var E = cpEntries(), cols = ['last_name', 'first_name', 'city', '→ rowid'], frames = [];
+        var test = function (val, c) { return c.op === '=' ? val === c.v : c.op === '>' ? val > c.v : val < c.v; };
+        frames.push({ narr: 'The index stores 16 entries sorted by <b>last_name</b>, then <b>first_name</b>, then <b>city</b> — like a phone book. Query: <code>WHERE ' + txt.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</code>.', parts: [
+          { type: 'table', label: 'idx(last_name, first_name, city) — leaf entries in order', columns: cols, rows: E }
+        ] });
+        // work out the seekable prefix
+        var seek = [], filter = [], stopped = false;
+        CP_COLS.forEach(function (c) {
+          if (!conds[c]) { stopped = true; return; }
+          if (stopped) { filter.push(c); return; }
+          seek.push(c);
+          if (conds[c].op !== '=') stopped = true;
+        });
+        Object.keys(conds).forEach(function (c) { if (seek.indexOf(c) < 0 && filter.indexOf(c) < 0) filter.push(c); });
+        var seekTxt = seek.map(function (c) { return c + conds[c].op + '?'; }).join(' AND ');
+        frames.push({ narr: seek.length ? 'Walk the index columns left to right: ' + seek.map(function (c) { return '<b>' + c + '</b> (' + (conds[c].op === '=' ? 'equality ✔' : 'range — the prefix ends here') + ')'; }).join(', ') + (filter.length ? '. Columns <b>' + filter.join(', ') + '</b> come after a gap or a range, so they cannot narrow the seek — they will only be <b>checked</b> on each entry inside the block.' : '. Every condition is part of the seek.') : 'The first index column <b>last_name</b> has no condition, so there is <b>no left prefix</b>. The matching entries are scattered all over the index; a seek is impossible.', parts: [
+          { type: 'vars', label: 'planner analysis', vals: { seek_columns: seek.join(', ') || 'none', filter_only: filter.join(', ') || 'none', sqlite_plan: seek.length ? 'SEARCH USING INDEX (' + seekTxt + ')' : 'SCAN (table or full index)' }, hl: { seek_columns: seek.length ? 'ok' : 'bad' } }
+        ] });
+        var block = [], hl = {}, i;
+        if (seek.length) {
+          for (i = 0; i < E.length; i++) {
+            var inBlock = seek.every(function (c) { return test(E[i][CP_COLS.indexOf(c)], conds[c]); });
+            if (inBlock) { block.push(i); hl[i] = 'win'; }
+          }
+          frames.push({ narr: 'Seek lands on one <b>contiguous block</b> of ' + block.length + ' entries (blue) — that is what sorting by the leading column(s) buys you. Everything outside the block is never read.', parts: [
+            { type: 'table', label: 'block found by the seek', columns: cols, rows: E, hl: hl }
+          ] });
+        } else {
+          for (i = 0; i < E.length; i++) block.push(i);
+        }
+        var examined = 0, matches = 0, hl2 = seek.length ? Object.assign({}, hl) : {};
+        for (var b = 0; b < block.length; b++) {
+          var r = E[block[b]], ok = Object.keys(conds).every(function (c) { return test(r[CP_COLS.indexOf(c)], conds[c]); });
+          examined++; if (ok) matches++;
+          hl2[block[b]] = ok ? 'ok' : 'bad';
+          if (filter.length || !seek.length) {
+            var view = Object.assign({}, hl2); view[block[b]] = ok ? 'ok' : 'cur';
+            frames.push({ narr: (seek.length ? 'Inside the block' : 'Full index scan') + ', entry ' + (b + 1) + ': (' + r.slice(0, 3).join(', ') + ') → ' + (ok ? '<span class="c-g">matches every condition</span>' : 'fails a condition, skip') + '.' + (!seek.length && ok ? ' Matches are <b>scattered</b> — that is why no seek was possible.' : ''), parts: [
+              { type: 'table', label: seek.length ? 'filtering inside the block' : 'reading every entry', columns: cols, rows: E, hl: view },
+              { type: 'vars', vals: { examined: examined, matches: matches } }
+            ] });
+          }
+        }
+        if (!filter.length && seek.length) frames.push({ narr: 'No leftover conditions: every entry in the block is a match. <b>' + matches + '</b> matches, ' + examined + ' entries examined — zero waste.', parts: [
+          { type: 'table', label: 'result', columns: cols, rows: E, hl: hl2 }
+        ] });
+        frames.push({ narr: 'Result: <b>' + matches + '</b> matching entries; <b>' + examined + '</b> of 16 examined. ' + (seek.length ? (filter.length ? 'To avoid examining the misses, reorder the index so the filtered column joins the prefix (e.g. put equality columns before the gap/range).' : 'Perfect prefix use.') : 'Fix: an index whose <b>first</b> column is the one you filter on (or, in some engines, a skip scan when the leading column has very few values).'), parts: [
+          { type: 'bars', label: 'entries', values: [16, examined, matches], idxLabels: ['in index', 'examined', 'matched'], hl: { 1: examined > matches ? 'bad' : 'ok', 2: 'ok' } }
+        ] });
+        return frames;
+      }
+    }],
+    examples: [
+      { title: '"Latest 5 orders of a customer" — (customer_id, created_at)', html: `<p>With only <code>(customer_id)</code>: seek the customer's ~10 orders, fetch them all, sort, keep 5. With <code>(customer_id, created_at)</code>: the customer's entries are already in date order; read the last 5 backwards and stop. For a customer with 50,000 orders that is 5 entries read instead of 50,000 plus a sort.</p>`, code: shop(`CREATE INDEX idx_oc ON orders(customer_id);
+EXPLAIN QUERY PLAN SELECT id FROM orders WHERE customer_id = 7 ORDER BY created_at DESC LIMIT 5;  -- + TEMP B-TREE (sort)
+CREATE INDEX idx_occ ON orders(customer_id, created_at);
+EXPLAIN QUERY PLAN SELECT id FROM orders WHERE customer_id = 7 ORDER BY created_at DESC LIMIT 5;  -- no sort step`) },
+      { title: 'Equality before range, not the other way round', html: `<p>Query: <code>WHERE customer_id = 42 AND created_at &gt;= '2026-05-01'</code>. Index <code>(customer_id, created_at)</code> seeks <code>(customer_id=? AND created_at&gt;?)</code> — a tight block. Index <code>(created_at, customer_id)</code> can only seek <code>created_at&gt;?</code> (≈ half the table!) and then filter customer_id entry by entry. Same two columns, wildly different cost.</p>`, code: shop(`CREATE INDEX idx_bad ON orders(created_at, customer_id);
+EXPLAIN QUERY PLAN SELECT id FROM orders INDEXED BY idx_bad WHERE customer_id = 42 AND created_at >= '2026-05-01';
+CREATE INDEX idx_good ON orders(customer_id, created_at);
+EXPLAIN QUERY PLAN SELECT id FROM orders WHERE customer_id = 42 AND created_at >= '2026-05-01';
+SELECT COUNT(*) AS rows_after_may FROM orders WHERE created_at >= '2026-05-01';`) },
+      { title: 'One composite vs two single-column indexes', html: `<p>Indexes on <code>(customer_id)</code> and <code>(status)</code> separately: for <code>WHERE customer_id = 42 AND status = 'paid'</code> SQLite and MySQL usually pick <b>one</b> of them and filter the other column row by row (MySQL can sometimes "index merge", Postgres can "BitmapAnd" both — both cost more than a single composite seek). A composite <code>(customer_id, status)</code> seeks both at once. Rule: <b>queries that filter on several columns together want one composite index.</b></p>`, code: shop(`CREATE INDEX idx_c ON orders(customer_id);
+CREATE INDEX idx_s ON orders(status);
+EXPLAIN QUERY PLAN SELECT * FROM orders WHERE customer_id = 42 AND status = 'paid';   -- uses ONE index
+CREATE INDEX idx_cs ON orders(customer_id, status);
+EXPLAIN QUERY PLAN SELECT * FROM orders WHERE customer_id = 42 AND status = 'paid';   -- both columns in the seek`) }
+    ],
+    deepDive: `<p><b>After a range, later columns are still useful — as filters.</b> With <code>(a, b)</code> and <code>a &gt; 5 AND b = 2</code>, the engine seeks on <code>a &gt; 5</code> and checks <code>b</code> on each index entry <i>before</i> fetching the row (MySQL calls this <b>Index Condition Pushdown</b>, "Using index condition"; Postgres shows it as an Index Cond/Filter on the index). Cheaper than fetching rows, but still reads the whole range.</p>
+<p><b>Skip scan.</b> If the leading column has very few distinct values, an engine can seek once per distinct value: Oracle (long ago), MySQL 8.0.13+ ("Using index for skip scan"), SQLite (needs <code>ANALYZE</code> statistics showing ≥ 18 rows per leading value), and <b>PostgreSQL 18</b> (2025) for B-tree. It turns "no left prefix" into k small seeks — useful, but not a substitute for the right index.</p>
+<p><b>IN lists behave like several equalities.</b> <code>a IN (1,2,3) AND b = 7</code> on <code>(a, b)</code> is three seeks on (a, b). But <code>a IN (…) ORDER BY b</code> loses the free ordering (the three blocks must be merged/sorted).</p>
+<p><b>Sort direction.</b> <code>ORDER BY a ASC, b DESC</code> cannot be served by a plain <code>(a, b)</code> index scanned in one direction; create <code>(a ASC, b DESC)</code> (supported in Postgres, MySQL 8+, SQLite, SQL Server). Fully reversed order (<code>a DESC, b DESC</code>) is fine — scan backwards.</p>
+<p><b>GROUP BY.</b> <code>GROUP BY a, b</code> can stream groups from an <code>(a, b)</code> index without hashing or sorting. Combine with covering (next topic) for "loose index scans".</p>
+<p><b>Cost of width.</b> Each extra column makes entries bigger (lower fanout) and adds write cost when that column changes. Typical composite indexes have 2–4 columns; 6+ is usually a smell unless it is a deliberate covering index.</p>`,
+    aiEra: `<p><b>What AI changes:</b> index advisors (and LLMs) are good at proposing composite indexes from a query log, but they optimise query by query. Your job is the <b>portfolio view</b>: one well-ordered composite index can serve five queries through its prefixes, while five AI-suggested indexes cost five times the writes.</p>
+<p><b>Use AI as a partner:</b> "Here are 8 queries on <code>orders</code>. Propose at most 3 indexes; for each query, say which index and which prefix columns it uses, and whether a sort is avoided." Then verify every claim with <code>EXPLAIN QUERY PLAN</code>.</p>
+<p><b>Where AI goes wrong:</b> it repeats the "most selective column first" myth, places range columns before equality columns, and forgets that <code>(a, b)</code> makes <code>(a)</code> redundant. <b>What you must still own:</b> the left-prefix rule, ESR ordering, and reading <code>(col=? AND col2&gt;?)</code> in a plan to see exactly how much of the index was used.</p>`,
+    problems: [{
+      title: 'Index for a Filtered, Sorted Order Feed',
+      level: 'Medium', tags: ['composite index', 'ESR', 'order by'], companies: ['Uber', 'Swiggy', 'DoorDash'],
+      statement: `<p>The order history screen runs:</p><p><code>SELECT id, total_cents, created_at FROM orders WHERE customer_id = ? AND status = 'delivered' ORDER BY created_at DESC LIMIT 5</code></p><p>Design a single index so the query seeks on both filters and needs <b>no sort step</b>. Explain why <code>(created_at, customer_id, status)</code> is wrong.</p>`,
+      constraints: `<p>One index. Shop database. Prove it with EXPLAIN QUERY PLAN (no <code>USE TEMP B-TREE FOR ORDER BY</code> line).</p>`,
+      example: `<p>Customer 42 → 5 rows, newest first: ${H.c('g', '14839 | 49143 | 2026-09-17 23:07')}, 4839 | 29143 | 2026-09-07 … Plan wanted: ${H.c('g', 'SEARCH orders USING INDEX … (customer_id=? AND status=?)')} and nothing else.</p>`,
+      brute: { why: `<p>No index: scan all 20,000 orders, keep customer 42's delivered ones, sort them with a temporary B-tree, return 5. With the wrong order <code>(created_at, customer_id, status)</code> the planner can only walk the <i>entire</i> index in date order hoping to meet customer 42 — still a full (index) scan, because the leading column has no equality condition.</p>`, code: shop(`EXPLAIN QUERY PLAN
+SELECT id, total_cents, created_at FROM orders
+WHERE customer_id = 42 AND status = 'delivered' ORDER BY created_at DESC LIMIT 5;   -- SCAN + TEMP B-TREE
+CREATE INDEX idx_wrong ON orders(created_at, customer_id, status);
+EXPLAIN QUERY PLAN
+SELECT id, total_cents, created_at FROM orders
+WHERE customer_id = 42 AND status = 'delivered' ORDER BY created_at DESC LIMIT 5;   -- SCAN ... USING INDEX (whole index)`) },
+      mcq: { q: 'Following ESR, which order is right?', options: ['(customer_id, status, created_at)', '(created_at, customer_id, status)', '(status, created_at, customer_id)', '(created_at, status)'], answer: 0, explain: 'Equality columns (customer_id, status) first, then the sort column created_at. Any order between the two equality columns works for this query; customer_id first also serves "all orders of a customer".' },
+      hints: [`<p>Hint 1: which predicates are equalities, and which column is only used for sorting?</p>`, `<p>Hint 2: after fixing customer_id and status, the remaining entries in a <code>(customer_id, status, created_at)</code> index are already sorted by created_at.</p>`, `<p>Hint 3: DESC is fine — the leaf chain can be walked backwards. LIMIT 5 means only 5 entries are read.</p>`],
+      solution: {
+        approach: `<p>ESR: put the two equality columns first and the sort column last: <code>(customer_id, status, created_at)</code>. The seek finds the (42, 'delivered') block, whose entries are ordered by created_at; the engine walks it from the end and stops after 5. Putting customer_id first (instead of status) also lets the same index serve "all orders of customer X" through its prefix.</p>`,
+        code: shop(`CREATE INDEX idx_orders_cust_status_created ON orders(customer_id, status, created_at);
+
+EXPLAIN QUERY PLAN
+SELECT id, total_cents, created_at FROM orders
+WHERE customer_id = 42 AND status = 'delivered'
+ORDER BY created_at DESC LIMIT 5;
+-- SEARCH orders USING INDEX idx_orders_cust_status_created (customer_id=? AND status=?)   (no TEMP B-TREE)
+
+SELECT id, total_cents, created_at FROM orders
+WHERE customer_id = 42 AND status = 'delivered'
+ORDER BY created_at DESC LIMIT 5;`),
+        complexity: `<p>O(log N + 5) entries + 5 row fetches, independent of how many orders the customer has. Without the sort-column in the index: O(log N + k) + O(k log k) sort for k customer orders.</p>`,
+        followUps: ['Make it covering so the 5 row fetches disappear (next topic).', 'What if the screen also allows <code>status IN (\'delivered\', \'shipped\')</code>? Does the free ordering survive?']
+      }
+    }]
+  });
+
+  /* =====================================================================
+     TOPIC 6 - Covering indexes and index-only scans
+     ===================================================================== */
+  var CV_ROWS = [[312, 42, '2026-02-11', 4100, 'delivered'], [1940, 42, '2026-03-05', 990, 'delivered'], [4839, 42, '2026-09-07', 29143, 'delivered'],
+    [8839, 42, '2026-07-19', 27143, 'delivered'], [10777, 42, '2026-05-02', 15200, 'cancelled'], [14839, 42, '2026-09-17', 49143, 'delivered']];
+
+  topics.push({
+    title: 'Covering Indexes & Index-Only Scans',
+    analogy: `<p>Imagine a cookbook whose index line reads: <i>"Pancakes — p. 88"</i>. To know the cooking time you must flip to page 88. Now imagine a smarter index: <i>"Pancakes — 20 min — vegetarian — p. 88"</i>. If your question is "which recipes take under 30 minutes?", you never open a single recipe page — the <b>index already contains everything you asked for</b>. That is a <b>covering index</b>: the query is answered from the index alone, and the "flip to the page" step (the table lookup) disappears.</p>`,
+    explain: `<p>From the clustered-index topic: a secondary index seek is normally <b>two steps</b> — find entries in the index, then fetch each row from the table to read the other columns. For a query matching k rows that is <b>k extra random reads</b>.</p>
+<p>An index <b>covers</b> a query when <b>every column the query touches</b> — in <code>SELECT</code>, <code>WHERE</code>, <code>JOIN … ON</code>, <code>GROUP BY</code>, <code>ORDER BY</code> — is stored in the index. Then the engine never visits the table:</p>
+${H.table(['Engine', 'How the plan says "covered"'], [
+  ['SQLite', '<code>USING COVERING INDEX idx_name</code>'],
+  ['PostgreSQL', '<code>Index Only Scan</code> (check <code>Heap Fetches: 0</code>)'],
+  ['MySQL', '<code>Extra: Using index</code>'],
+  ['SQL Server', 'no <code>Key Lookup</code> operator in the plan']
+])}
+<p>Two ways to add the extra columns:</p>
+<ol>
+<li><b>As key columns</b>: <code>CREATE INDEX … ON orders(customer_id, created_at, total_cents)</code>. Works everywhere (SQLite, MySQL). The extra column becomes part of the sort order.</li>
+<li><b>As non-key payload</b>: <code>CREATE INDEX … ON orders(customer_id, created_at) INCLUDE (total_cents)</code> — PostgreSQL 11+ and SQL Server. INCLUDE columns sit only in the leaves: they don't affect ordering or uniqueness, and keep internal pages slim.</li>
+</ol>
+<p><b>Free riders:</b> the row pointer is always in the index. In SQLite that is the rowid (so <code>SELECT id … </code> is covered when id is the INTEGER PRIMARY KEY); in InnoDB it is the primary key, so every secondary index silently covers the PK columns.</p>
+<p><b>Biggest enemy: <code>SELECT *</code>.</b> It needs every column, so no reasonable index covers it. Selecting only the columns you use is a performance feature, not just style.</p>
+<p><b>Cost:</b> a wider index = more disk, more RAM, more write work, and an update to any covered column must update the index. Cover your <b>hottest</b> queries, not everything.</p>`,
+    clues: [
+      '"The plan uses the index but the query is still slow and returns many rows" → key lookups; make the index covering',
+      '"Key Lookup" / "Heap Fetches" / missing "Using index" in the plan → not covered',
+      '"Dashboard / count / sum query over a date range" → index on (range column, grouped column, summed column) answers it index-only',
+      '"Why avoid SELECT *?" → it defeats covering indexes (and wastes I/O and network)',
+      '"Add a column to an index without changing its order or uniqueness" → INCLUDE (Postgres, SQL Server)'
+    ],
+    code: [shop(`-- Step 1: index on customer_id only → must visit the table for created_at and total_cents.
+CREATE INDEX idx_c ON orders(customer_id);
+EXPLAIN QUERY PLAN
+SELECT created_at, total_cents FROM orders WHERE customer_id = 42 ORDER BY created_at DESC;
+-- SEARCH orders USING INDEX idx_c (customer_id=?)  +  USE TEMP B-TREE FOR ORDER BY
+
+-- Step 2: add the sort column → sort disappears, lookups remain (total_cents is not in the index).
+CREATE INDEX idx_cc ON orders(customer_id, created_at);
+EXPLAIN QUERY PLAN
+SELECT created_at, total_cents FROM orders WHERE customer_id = 42 ORDER BY created_at DESC;
+
+-- Step 3: add the selected column → COVERING: the table is never touched.
+CREATE INDEX idx_ccc ON orders(customer_id, created_at, total_cents);
+EXPLAIN QUERY PLAN
+SELECT created_at, total_cents FROM orders WHERE customer_id = 42 ORDER BY created_at DESC;
+
+-- The rowid (id) rides along for free, so this is covered too:
+EXPLAIN QUERY PLAN SELECT id, created_at FROM orders WHERE customer_id = 42;
+-- ...but SELECT * never is:
+EXPLAIN QUERY PLAN SELECT * FROM orders WHERE customer_id = 42;`, 'From lookups to COVERING INDEX'),
+    pg(`-- PostgreSQL 11+ / SQL Server: INCLUDE adds payload columns to the leaves only
+CREATE INDEX idx_orders_cust_created ON orders (customer_id, created_at DESC) INCLUDE (total_cents, status);
+
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT created_at, total_cents FROM orders WHERE customer_id = 42 ORDER BY created_at DESC LIMIT 20;
+--  Index Only Scan using idx_orders_cust_created on orders
+--    Index Cond: (customer_id = 42)
+--    Heap Fetches: 0          <-- needs a recently VACUUMed table (visibility map)
+
+-- MySQL: look for "Using index" in Extra
+EXPLAIN SELECT created_at, total_cents FROM orders WHERE customer_id = 42;`, 'INCLUDE columns (Postgres / SQL Server)')],
+    codeTitle: ['Three steps to a covering index', 'INCLUDE and index-only scans elsewhere'],
+    viz: [{
+      title: 'Covered or not? Counting table lookups',
+      input: 'customer_id, created_at | created_at, total_cents',
+      inputLabel: 'index columns | SELECT columns   (columns: id, customer_id, created_at, total_cents, status)',
+      gen: function (input) {
+        var sp = String(input).split('|');
+        if (sp.length !== 2) throw new Error('Format: index columns | select columns, e.g. customer_id, created_at | created_at, total_cents');
+        var ALL = ['id', 'customer_id', 'created_at', 'total_cents', 'status'];
+        var parse = function (s) { return s.split(',').map(function (x) { return x.trim().toLowerCase(); }).filter(Boolean); };
+        var idxCols = parse(sp[0]), sel = parse(sp[1]);
+        if (!idxCols.length || !sel.length || idxCols.concat(sel).some(function (c) { return ALL.indexOf(c) < 0; })) throw new Error('Use only: ' + ALL.join(', '));
+        if (idxCols[0] !== 'customer_id') throw new Error('The query filters on customer_id = 42, so make customer_id the first index column');
+        var frames = [], need = ['customer_id', 'created_at'];
+        sel.forEach(function (c) { if (need.indexOf(c) < 0) need.push(c); });
+        var stored = idxCols.slice(); if (stored.indexOf('id') < 0) stored.push('id');
+        var missing = need.filter(function (c) { return stored.indexOf(c) < 0; });
+        var hlNeed = {}; need.forEach(function (c) { hlNeed[c] = stored.indexOf(c) >= 0 ? 'ok' : 'bad'; });
+        frames.push({ narr: 'Query: <code>SELECT ' + sel.join(', ') + ' FROM orders WHERE customer_id = 42 ORDER BY created_at DESC</code>. First list <b>every column the query touches</b> — SELECT list + WHERE + ORDER BY.', parts: [
+          { type: 'set', label: 'columns the query needs', items: need }
+        ] });
+        frames.push({ narr: 'The index stores <b>' + idxCols.join(', ') + '</b> plus the row pointer (<b>id</b>, the rowid — free). ' + (missing.length ? 'Missing: <span class="c-r">' + missing.join(', ') + '</span> → for every match we must go to the table.' : '<span class="c-g">Everything needed is inside the index → covering!</span>'), parts: [
+          { type: 'set', label: 'needed columns (green = in index, red = missing)', items: need, hl: hlNeed },
+          { type: 'set', label: 'stored in index entries', items: stored }
+        ] });
+        var idxRows = CV_ROWS.map(function (r) { return stored.map(function (c) { return r[ALL.indexOf(c)]; }); });
+        var hb = {}; idxRows.forEach(function (_, i) { hb[i] = 'win'; });
+        frames.push({ narr: 'Seek the index for customer_id = 42: the 6 matching entries are one contiguous block (≈3 page reads to get there).', parts: [
+          { type: 'table', label: 'index entries for customer 42', columns: stored, rows: idxRows, hl: hb },
+          { type: 'vars', vals: { index_pages: 3, table_lookups: 0 } }
+        ] });
+        var lookups = 0;
+        if (missing.length) {
+          var heap = CV_ROWS.map(function (r) { return r.slice(); }), hh = {};
+          CV_ROWS.forEach(function (r, i) {
+            lookups++;
+            Object.keys(hh).forEach(function (k) { hh[k] = 'done'; });
+            hh[i] = 'sel';
+            frames.push({ narr: 'Entry ' + (i + 1) + ' gives rowid <b>' + r[0] + '</b>, but we still need ' + missing.join(', ') + ' → <b>key lookup</b>: descend the table B+tree to row ' + r[0] + ' (≈2–3 more page reads, usually a random I/O).', parts: [
+              { type: 'table', label: 'table orders (full rows)', columns: ALL, rows: heap, hl: Object.assign({}, hh) },
+              { type: 'vars', vals: { index_pages: 3, table_lookups: lookups }, hl: { table_lookups: 'bad' } }
+            ] });
+          });
+        } else {
+          var ho = {}; idxRows.forEach(function (_, i) { ho[i] = 'ok'; });
+          frames.push({ narr: 'Every requested column is right here in the leaf entries. The engine reads them in order and <b>never opens the table</b>. SQLite prints <code>USING COVERING INDEX</code>; Postgres says <code>Index Only Scan</code>; MySQL says <code>Using index</code>.', parts: [
+            { type: 'table', label: 'answer straight from the index', columns: stored, rows: idxRows, hl: ho },
+            { type: 'vars', vals: { index_pages: 3, table_lookups: 0 }, hl: { table_lookups: 'ok' } }
+          ] });
+        }
+        var cost = 3 + lookups * 3;
+        frames.push({ narr: (missing.length ? 'Not covered: ' + cost + ' page reads (3 for the index + 3 per lookup × ' + lookups + '). Add <b>' + missing.join(', ') + '</b> to the index (as key or INCLUDE columns) to drop to 3. Try input <code>customer_id, created_at, total_cents | created_at, total_cents</code>.' : 'Covered: 3 page reads total. With 10,000 matches the non-covered version would need ~30,000 extra reads; this one reads a few more leaf pages.') + ' Try <code>status</code> in the select list to see coverage break again.', parts: [
+          { type: 'bars', label: 'page reads for 6 matches', values: [3 + 6 * 3, 3], idxLabels: ['not covered', 'covered'], hl: missing.length ? { 0: 'bad' } : { 1: 'ok' } },
+          { type: 'text', html: missing.length ? 'SQLite: <code>SEARCH orders USING INDEX … (customer_id=?)</code>' : 'SQLite: <code>SEARCH orders USING COVERING INDEX … (customer_id=?)</code>' }
+        ] });
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'COUNT(*) reads the smallest index, not the table', html: `<p><code>SELECT COUNT(*) FROM orders</code> needs no column values at all — any index has one entry per row, so the engine counts entries in the <b>narrowest</b> index (fewest pages) instead of reading wide table rows. SQLite shows <code>SCAN orders USING COVERING INDEX …</code>; InnoDB likewise uses the smallest secondary index.</p>`, code: shop(`EXPLAIN QUERY PLAN SELECT COUNT(*) FROM orders;               -- SCAN orders (table)
+CREATE INDEX idx_orders_status ON orders(status);
+EXPLAIN QUERY PLAN SELECT COUNT(*) FROM orders;               -- SCAN orders USING COVERING INDEX idx_orders_status
+EXPLAIN QUERY PLAN SELECT COUNT(*) FROM orders WHERE status = 'pending';
+SELECT COUNT(*) FROM orders WHERE status = 'pending';`) },
+      { title: 'Covering a join', html: `<p><code>SELECT c.city, SUM(o.total_cents) FROM customers c JOIN orders o ON o.customer_id = c.id GROUP BY c.city</code>. On the orders side the query touches only <code>customer_id</code> and <code>total_cents</code> → index <code>(customer_id, total_cents)</code> lets the join probe and the SUM read only the index. The customers side is fetched by rowid (PK).</p>`, code: shop(`CREATE INDEX idx_orders_cust_total ON orders(customer_id, total_cents);
+EXPLAIN QUERY PLAN
+SELECT c.city, SUM(o.total_cents) FROM customers c JOIN orders o ON o.customer_id = c.id GROUP BY c.city;`) },
+      { title: 'Postgres index-only scans need VACUUM', html: `<p>Postgres indexes do not store row visibility (MVCC) info, so an index-only scan checks the <b>visibility map</b>: if a heap page is marked "all-visible", the index answer is trusted; otherwise it fetches the heap tuple anyway (<code>Heap Fetches: 9500</code>). On a heavily updated table that autovacuum can't keep up with, your "covering" index silently behaves like a normal one. Fix: tune autovacuum for that table, or accept it.</p>` }
+    ],
+    deepDive: `<p><b>Key column vs INCLUDE.</b> Key columns are in internal pages too (they guide the search and define order/uniqueness). INCLUDE columns live only in leaves, so internal pages keep high fanout and a UNIQUE index stays unique on the key only: <code>CREATE UNIQUE INDEX ON users(email) INCLUDE (name)</code>. In SQLite/MySQL (no INCLUDE) appending the column as a trailing key column achieves coverage with slightly larger internal entries.</p>
+<p><b>The "rowid / PK for free" effect.</b> SQLite indexes end with the rowid; InnoDB secondaries end with the PK; Postgres stores TIDs (not the PK) — so in Postgres <code>SELECT id … WHERE email = ?</code> is covered only if <code>id</code> is in the index.</p>
+<p><b>Why index-only can be dramatically faster.</b> Matching rows are scattered across table pages (random I/O, one page per row in the worst case), while matching index entries are packed into a few adjacent leaf pages (sequential). For 10,000 matches: ~10,000 random table reads vs ~50 leaf pages.</p>
+<p><b>Costs and limits.</b> Wider leaves → fewer entries per page → bigger index, more cache pressure. Every UPDATE of a covered column must modify the index (in Postgres it also kills HOT updates). SQL Server caps key size (1700 bytes nonclustered), InnoDB 3072 bytes. Covering long TEXT/JSON columns is almost always a mistake.</p>
+<p><b>Design recipe:</b> (1) Seek columns in ESR order, (2) then any remaining columns the hot query reads, (3) stop if the index would approach the width of the table — at that point you are building a second copy of the table (sometimes that is exactly what you want: a "narrow projection" for one critical query).</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI-generated code loves <code>SELECT *</code> and ORM default projections, which quietly prevent covering indexes. A quick review habit — "does this hot query select only what it needs?" — pays off more than ever.</p>
+<p><b>Use AI as a partner:</b> give it the hot query and current indexes and ask: "Which columns force a table lookup? Propose the minimal INCLUDE/trailing columns to make it index-only, and estimate the size cost." Then confirm with <code>EXPLAIN</code> (look for COVERING / Index Only Scan / Using index).</p>
+<p><b>Where AI goes wrong:</b> it suggests covering indexes for <code>SELECT *</code> queries (impossible without copying the table), forgets Postgres visibility-map caveats, and proposes INCLUDE on MySQL/SQLite where it does not exist. <b>What you must still own:</b> listing every column a query touches, and judging whether the extra width is worth it for that query's frequency.</p>`,
+    problems: [{
+      title: 'Make the Revenue Dashboard Index-Only',
+      level: 'Medium', tags: ['covering index', 'group by', 'range'], companies: ['Shopify', 'Stripe', 'Zomato'],
+      statement: `<p>A dashboard refreshes every 10 seconds with:</p><p><code>SELECT status, COUNT(*), SUM(total_cents) FROM orders WHERE created_at &gt;= '2026-09-01' GROUP BY status</code></p><p>Design one index so the query never touches the table (SQLite plan says <code>COVERING INDEX</code>).</p>`,
+      constraints: `<p>Shop database. One index. ~2,000 of the 20,000 orders are in the date range.</p>`,
+      example: `<p>Result: cancelled 59 · ${H.c('g', 'delivered 1399')} · paid 118 · pending 15 · shipped 407. Target plan: ${H.c('g', 'SEARCH orders USING COVERING INDEX … (created_at>?)')} + a small temp B-tree for GROUP BY.</p>`,
+      brute: { why: `<p>No index: scan all 20,000 rows to keep the 2,000 in range. An index on <code>created_at</code> alone fixes the scan but then does ~2,000 random table lookups to read <code>status</code> and <code>total_cents</code> — every refresh, every 10 seconds.</p>`, code: shop(`EXPLAIN QUERY PLAN
+SELECT status, COUNT(*), SUM(total_cents) FROM orders WHERE created_at >= '2026-09-01' GROUP BY status;   -- SCAN
+CREATE INDEX idx_created ON orders(created_at);
+EXPLAIN QUERY PLAN
+SELECT status, COUNT(*), SUM(total_cents) FROM orders WHERE created_at >= '2026-09-01' GROUP BY status;   -- index + 2,000 lookups`) },
+      mcq: { q: 'Which columns must the covering index contain?', options: ['created_at, status, total_cents', 'created_at only', 'status only', 'id, created_at'], answer: 0, explain: 'Every column the query touches: the range column (created_at) plus status (GROUP BY/SELECT) and total_cents (SUM). created_at must come first so the range can seek.' },
+      hints: [`<p>Hint 1: list every column the query touches: WHERE, GROUP BY, SELECT, aggregates.</p>`, `<p>Hint 2: the range column must lead (it is the only seekable predicate); the other two ride along to make it covering.</p>`, `<p>Hint 3: <code>CREATE INDEX … ON orders(created_at, status, total_cents)</code> and look for COVERING in the plan. In Postgres: <code>(created_at) INCLUDE (status, total_cents)</code>.</p>`],
+      solution: {
+        approach: `<p>Seek on the range column, carry the rest: <code>(created_at, status, total_cents)</code>. The engine seeks to 2026-09-01, walks ~2,000 adjacent leaf entries, and aggregates directly from them — zero table lookups. The GROUP BY still needs a tiny temp B-tree (5 groups) because entries are ordered by created_at, not status, which is cheap.</p>`,
+        code: shop(`CREATE INDEX idx_orders_dash ON orders(created_at, status, total_cents);
+
+EXPLAIN QUERY PLAN
+SELECT status, COUNT(*) AS n, SUM(total_cents) AS revenue_cents
+FROM orders WHERE created_at >= '2026-09-01' GROUP BY status;
+-- SEARCH orders USING COVERING INDEX idx_orders_dash (created_at>?)
+
+SELECT status, COUNT(*) AS n, SUM(total_cents) AS revenue_cents
+FROM orders WHERE created_at >= '2026-09-01' GROUP BY status ORDER BY n DESC;`),
+        alt: [pg(`-- PostgreSQL
+CREATE INDEX idx_orders_dash ON orders (created_at) INCLUDE (status, total_cents);`, 'PostgreSQL INCLUDE version')],
+        complexity: `<p>O(log N + k/B) leaf pages for k rows in range (B entries per leaf) instead of O(N) (scan) or O(k) random lookups. Index size ≈ 3 small columns × 20,000 rows. Extra write cost on every order insert and every status change.</p>`,
+        followUps: ['At 500M orders, would you still compute this live? (pre-aggregated rollup table / materialized view updated incrementally)', 'Would <code>(status, created_at, total_cents)</code> work? When would it be better? (one seek per status with skip-scan-like IN lists; avoids the GROUP BY sort)']
+      }
+    }]
+  });
   registerModule({
     id: 'sql10', title: 'Index Internals', lang: 'sql',
     intro: `<p>tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro tmp intro</p>`,
