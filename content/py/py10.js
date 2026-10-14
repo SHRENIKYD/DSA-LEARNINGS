@@ -301,7 +301,10 @@ def run(fn):
         t.join()
     return counter
 
-print("unsafe:", run(unsafe), "expected", 4 * N)   # may be lower (varies by version/luck)
+# On CPython 3.10+ "unsafe" often prints 800000 anyway, because the GIL is only
+# handed over at certain points (calls, loop back-edges). That is luck, not safety:
+# older versions, other code shapes and free-threaded builds DO lose updates.
+print("unsafe:", run(unsafe), "expected", 4 * N)
 print("safe:  ", run(safe), "expected", 4 * N)     # always 800000
 ` }, { lang: 'python', title: 'Producer–consumer with queue.Queue and sentinels', code: `import queue
 import threading
@@ -1571,7 +1574,7 @@ async def trial(handler):
     await asyncio.gather(heartbeat(lags), handler())
     return max(lags)
 
-print("worst heartbeat lag, blocking:   ", asyncio.run(trial(bad_handler)), "s")   # ~0.3
+print("worst heartbeat lag, blocking:   ", asyncio.run(trial(bad_handler)), "s")   # ~0.2-0.3
 print("worst heartbeat lag, to_thread:  ", asyncio.run(trial(good_handler)), "s")  # ~0.0
 ` }, { lang: 'python', title: 'Race across await and the asyncio.Lock fix (run locally)', code: `import asyncio
 
@@ -2004,4 +2007,892 @@ if __name__ == "__main__":
     }]
   });
 
-registerModule({ id: 'py10', title: 'Concurrency', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
+  /* ================= PRACTICE: Easy ================= */
+  practice.push({
+    title: 'Print in Order (LeetCode 1114)', level: 'Easy', tags: ['threading', 'Event', 'ordering'], companies: ['Microsoft', 'Apple', 'Bloomberg'],
+    statement: `<p>Three threads call <code>first()</code>, <code>second()</code> and <code>third()</code> on the same <code>Foo</code> object, in <b>any</b> order. Make sure the output is always "firstsecondthird".</p>`,
+    constraints: `<p>Each method is called exactly once by a different thread; thread start order is arbitrary. No busy-waiting.</p>`,
+    example: `<p>Threads start in order ${H.c('b', '[3, 1, 2]')} (third first). Output must still be ${H.c('g', '"firstsecondthird"')} — third() has to <b>wait</b> until second() is done, which waits until first() is done.</p>`,
+    brute: { why: `<p>Spinning on a boolean (<code>while not self.done1: pass</code>) burns 100% of a core and, because of the GIL, slows down the very thread you're waiting for.</p>`, code: `class FooSpin:
+    def __init__(self):
+        self.done1 = self.done2 = False
+    def first(self, printFirst):
+        printFirst(); self.done1 = True
+    def second(self, printSecond):
+        while not self.done1:
+            pass                      # busy-wait: wastes CPU
+        printSecond(); self.done2 = True
+    def third(self, printThird):
+        while not self.done2:
+            pass
+        printThird()` },
+    mcq: { q: 'Which primitive lets a thread sleep until another thread says "done"?', options: ['threading.Lock', 'threading.Event', 'queue.Queue.empty()', 'time.sleep(0.01) polling'], answer: 1, explain: 'Event.wait() blocks without using CPU until another thread calls set(). It is the simplest one-shot signal.' },
+    hints: [`<p>Hint 1: You need two "gates": one opened when first finishes, one when second finishes.</p>`, `<p>Hint 2: Use two <code>threading.Event</code> objects. <code>second</code> waits on gate 1; <code>third</code> waits on gate 2.</p>`, `<p>Hint 3: Set the event <b>after</b> printing. Events stay set, so calling wait() after set() returns immediately — order of thread start doesn't matter.</p>`],
+    solution: {
+      approach: `<p>Two Events act as one-way gates. first prints then opens gate 1; second waits for gate 1, prints, opens gate 2; third waits for gate 2. Waiting threads sleep in the OS without holding the GIL.</p>`,
+      code: `import threading
+
+class Foo:
+    def __init__(self):
+        self.first_done = threading.Event()
+        self.second_done = threading.Event()
+
+    def first(self, printFirst: "Callable[[], None]") -> None:
+        printFirst()
+        self.first_done.set()          # open gate 1
+
+    def second(self, printSecond: "Callable[[], None]") -> None:
+        self.first_done.wait()         # sleep until gate 1 opens
+        printSecond()
+        self.second_done.set()         # open gate 2
+
+    def third(self, printThird: "Callable[[], None]") -> None:
+        self.second_done.wait()
+        printThird()
+
+if __name__ == "__main__":
+    foo, out = Foo(), []
+    calls = {1: lambda: foo.first(lambda: out.append("first")),
+             2: lambda: foo.second(lambda: out.append("second")),
+             3: lambda: foo.third(lambda: out.append("third"))}
+    ts = [threading.Thread(target=calls[i]) for i in (3, 1, 2)]
+    for t in ts: t.start()
+    for t in ts: t.join()
+    print("".join(out))                # firstsecondthird`,
+      complexity: `<p>O(1) work per call; waiting threads use no CPU.</p>`,
+      followUps: ['Solve it with two Semaphores initialised to 0.', 'Solve it with one Condition and a step counter.']
+    }
+  });
+
+  practice.push({
+    title: 'Thread-Safe Counter Class', level: 'Easy', tags: ['threading', 'Lock', 'race condition'], companies: ['Amazon', 'Goldman Sachs'],
+    statement: `<p>Implement <code>Counter</code> with <code>increment(n=1)</code>, <code>decrement(n=1)</code> and a <code>value</code> property, safe to call from many threads at once. 8 threads each calling <code>increment()</code> 10,000 times must always end at exactly 80,000.</p>`,
+    constraints: `<p>Up to 64 threads. Operations must be O(1). Must be correct on any CPython build (with or without GIL).</p>`,
+    example: `<p>8 threads × 10,000 increments → ${H.c('g', 'value == 80000')}. Without a lock you may get ${H.c('r', '79,4xx')} on some versions/builds because two threads read the same old value.</p>`,
+    brute: { why: `<p><code>self._v += n</code> without a lock is load-add-store; a thread switch between load and store loses an update. It may look fine in a quick test and fail in production under load or on a free-threaded build.</p>`, code: `class UnsafeCounter:
+    def __init__(self):
+        self._v = 0
+    def increment(self, n=1):
+        self._v += n          # not atomic
+    @property
+    def value(self):
+        return self._v` },
+    mcq: { q: 'Does reading self._v for the value property need the lock?', options: ['No, never', 'Yes, to get a consistent value and memory visibility on all builds', 'Only on Windows', 'Only if n > 1'], answer: 1, explain: 'A single int read is atomic in CPython, but taking the lock makes the class correct by construction (and keeps it correct if value later combines several fields).' },
+    hints: [`<p>Hint 1: The critical section is the read-modify-write of <code>_v</code>.</p>`, `<p>Hint 2: Create one <code>threading.Lock()</code> in <code>__init__</code> and wrap every access in <code>with self._lock:</code>.</p>`, `<p>Hint 3: Keep the locked block tiny — no I/O or logging inside. Test with 8 threads and an assertion on the final value.</p>`],
+    solution: {
+      approach: `<p>One lock guards the integer. Every mutation and read happens inside <code>with self._lock</code>, so read-modify-write sequences can't interleave.</p>`,
+      code: `import threading
+
+class Counter:
+    def __init__(self):
+        self._v = 0
+        self._lock = threading.Lock()
+
+    def increment(self, n=1):
+        with self._lock:
+            self._v += n
+
+    def decrement(self, n=1):
+        with self._lock:
+            self._v -= n
+
+    @property
+    def value(self):
+        with self._lock:
+            return self._v
+
+if __name__ == "__main__":
+    c = Counter()
+    def work():
+        for _ in range(10_000):
+            c.increment()
+    ts = [threading.Thread(target=work) for _ in range(8)]
+    for t in ts: t.start()
+    for t in ts: t.join()
+    print(c.value)        # 80000`,
+      complexity: `<p>O(1) per operation; contention grows with thread count — for very hot counters use per-thread counters summed at the end, or <code>itertools.count()</code> (next() is atomic in CPython) for ID generation.</p>`,
+      followUps: ['How would you build a counter that 32 threads update millions of times per second with low contention?', 'Is itertools.count() thread-safe? On which builds?']
+    }
+  });
+
+  practice.push({
+    title: 'Run Coroutines Concurrently and Prove It', level: 'Easy', tags: ['asyncio', 'gather', 'timing'], companies: ['Meta', 'Shopify'],
+    statement: `<p>Write <code>async def run_all(delays)</code>. For each delay <code>d</code>, a coroutine waits <code>d</code> seconds (<code>asyncio.sleep</code>) and returns <code>d * 10</code>. Run them <b>concurrently</b> and return <code>(results_in_input_order, elapsed_seconds)</code>. Elapsed should be ≈ max(delays), not their sum.</p>`,
+    constraints: `<p>1 ≤ len(delays) ≤ 1000, 0 ≤ d ≤ 2. Use <code>time.perf_counter()</code> for timing.</p>`,
+    example: `<p>delays = ${H.c('b', '[0.3, 0.1, 0.2]')} → results ${H.c('g', '[3.0, 1.0, 2.0]')}, elapsed ≈ ${H.c('g', '0.30 s')} (sequential would be 0.60 s).</p>`,
+    brute: { why: `<p>Awaiting each coroutine in a for loop runs them one after another: elapsed = sum of delays. It "uses async" but gets zero concurrency.</p>`, code: `import asyncio, time
+
+async def run_all_sequential(delays):
+    start = time.perf_counter()
+    out = []
+    for d in delays:
+        await asyncio.sleep(d)
+        out.append(d * 10)
+    return out, time.perf_counter() - start` },
+    mcq: { q: 'Why does asyncio.gather return results in input order even though tasks finish in a different order?', options: ['It sorts them', 'It stores each result at its argument index', 'It runs tasks sequentially', 'It is random'], answer: 1, explain: 'gather wraps each awaitable in a Task and places each result in the slot matching its position in the argument list.' },
+    hints: [`<p>Hint 1: Create all coroutines first, then wait for them together.</p>`, `<p>Hint 2: <code>await asyncio.gather(*(job(d) for d in delays))</code>.</p>`, `<p>Hint 3: Measure with <code>time.perf_counter()</code> before and after the gather; round when printing. Edge: empty list → gather returns [].</p>`],
+    solution: {
+      approach: `<p>Schedule every coroutine at once with <code>gather</code>; the event loop overlaps all the sleeps, so elapsed time is the longest single delay.</p>`,
+      code: `import asyncio
+import time
+
+async def job(d):
+    await asyncio.sleep(d)
+    return d * 10
+
+async def run_all(delays):
+    start = time.perf_counter()
+    results = await asyncio.gather(*(job(d) for d in delays))
+    return results, time.perf_counter() - start
+
+if __name__ == "__main__":
+    res, secs = asyncio.run(run_all([0.3, 0.1, 0.2]))
+    print(res, f"{secs:.2f}s")     # [3.0, 1.0, 2.0] 0.30s`,
+      complexity: `<p>Elapsed ≈ max(delays); memory O(n) tasks.</p>`,
+      followUps: ['Rewrite with TaskGroup.', 'Print each result as soon as it is ready (as_completed).']
+    }
+  });
+
+  practice.push({
+    title: 'Safe Parallel Map (Order Kept, Errors Captured)', level: 'Easy', tags: ['ThreadPoolExecutor', 'futures', 'error handling'], companies: ['Stripe', 'Atlassian'],
+    statement: `<p>Write <code>parallel_map(fn, items, workers)</code> that applies <code>fn</code> to every item using a thread pool and returns a list in <b>input order</b> of <code>("ok", value)</code> or <code>("err", "ExceptionType: message")</code>. One failing item must not hide the others' results.</p>`,
+    constraints: `<p>len(items) ≤ 10<sup>4</sup>, workers ≤ 64, fn is I/O-bound.</p>`,
+    example: `<p>fn = <code>lambda x: 10 // x</code>, items = ${H.c('b', '[5, 0, 2]')} → ${H.c('g', '[("ok", 2), ("err", "ZeroDivisionError: integer division or modulo by zero"), ("ok", 5)]')}.</p>`,
+    brute: { why: `<p><code>list(ex.map(fn, items))</code> raises at the first failing item while iterating, so you lose every later result (they were computed but never collected).</p>`, code: `from concurrent.futures import ThreadPoolExecutor
+
+def parallel_map_fragile(fn, items, workers):
+    with ThreadPoolExecutor(workers) as ex:
+        return list(ex.map(fn, items))     # first exception aborts the list` },
+    mcq: { q: 'How do you keep input order while still catching errors per item?', options: ['as_completed and sort by finish time', 'submit each item, keep the futures in a list, then read them in list order', 'Use ex.map and catch around list()', 'Use a global results dict without keys'], answer: 1, explain: 'A list of futures in submission order preserves input order; calling result() inside try/except per future isolates failures.' },
+    hints: [`<p>Hint 1: <code>submit</code> returns a Future per item — keep them in a list.</p>`, `<p>Hint 2: Loop over the list; wrap <code>f.result()</code> in try/except and build the tuple.</p>`, `<p>Hint 3: Format errors as <code>f"{type(e).__name__}: {e}"</code>. Empty input → empty list.</p>`],
+    solution: {
+      approach: `<p>Submit everything, keep futures in input order, then resolve them one by one with per-future exception handling. Execution is parallel; collection order is deterministic.</p>`,
+      code: `from concurrent.futures import ThreadPoolExecutor
+
+def parallel_map(fn, items, workers=8):
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futures = [ex.submit(fn, x) for x in items]
+        out = []
+        for f in futures:                       # input order
+            try:
+                out.append(("ok", f.result()))
+            except Exception as e:
+                out.append(("err", f"{type(e).__name__}: {e}"))
+        return out
+
+if __name__ == "__main__":
+    print(parallel_map(lambda x: 10 // x, [5, 0, 2], workers=3))`,
+      complexity: `<p>Wall time ≈ ⌈n / workers⌉ × per-item latency; O(n) memory.</p>`,
+      followUps: ['Add a per-item timeout.', 'Make it lazy for an infinite generator of items.']
+    }
+  });
+
+  /* ================= PRACTICE: Medium ================= */
+  practice.push({
+    title: 'Print FooBar Alternately (LeetCode 1115)', level: 'Medium', tags: ['threading', 'Semaphore', 'ping-pong'], companies: ['Microsoft', 'Uber'],
+    statement: `<p>Thread A calls <code>foo()</code>, which prints "foo" n times; thread B calls <code>bar()</code>, which prints "bar" n times. Make the output exactly "foobar" repeated n times, regardless of scheduling.</p>`,
+    constraints: `<p>1 ≤ n ≤ 1000. No busy waiting.</p>`,
+    example: `<p>n = 2 → ${H.c('g', '"foobarfoobar"')}. If B starts first it must wait; after each "foo" the turn passes to B, after each "bar" back to A.</p>`,
+    brute: { why: `<p>A shared <code>turn</code> variable polled in a loop works but spins the CPU and fights for the GIL; a single Lock doesn't enforce <i>alternation</i>, only exclusion.</p>`, code: `class FooBarSpin:
+    def __init__(self, n):
+        self.n, self.turn = n, "foo"
+    def foo(self, printFoo):
+        for _ in range(self.n):
+            while self.turn != "foo":
+                pass
+            printFoo(); self.turn = "bar"
+    def bar(self, printBar):
+        for _ in range(self.n):
+            while self.turn != "bar":
+                pass
+            printBar(); self.turn = "foo"` },
+    mcq: { q: 'Initial values for the two semaphores (foo_sem, bar_sem)?', options: ['(0, 0)', '(1, 0)', '(1, 1)', '(0, 1)'], answer: 1, explain: 'foo goes first, so it starts with one permit; bar starts blocked. Each side releases the other after printing — a token passed back and forth.' },
+    hints: [`<p>Hint 1: Think of a single "turn token" passed between two threads.</p>`, `<p>Hint 2: Two semaphores: foo acquires foo_sem, prints, releases bar_sem; bar acquires bar_sem, prints, releases foo_sem.</p>`, `<p>Hint 3: Start foo_sem at 1, bar_sem at 0. Each method loops n times.</p>`],
+    solution: {
+      approach: `<p>Two semaphores model whose turn it is. Exactly one permit exists across both at any time, so the threads strictly alternate.</p>`,
+      code: `import threading
+
+class FooBar:
+    def __init__(self, n):
+        self.n = n
+        self.foo_sem = threading.Semaphore(1)   # foo may go first
+        self.bar_sem = threading.Semaphore(0)   # bar must wait
+
+    def foo(self, printFoo: "Callable[[], None]") -> None:
+        for _ in range(self.n):
+            self.foo_sem.acquire()
+            printFoo()
+            self.bar_sem.release()              # hand the turn to bar
+
+    def bar(self, printBar: "Callable[[], None]") -> None:
+        for _ in range(self.n):
+            self.bar_sem.acquire()
+            printBar()
+            self.foo_sem.release()              # hand the turn back
+
+if __name__ == "__main__":
+    fb, out = FooBar(3), []
+    tb = threading.Thread(target=fb.bar, args=(lambda: out.append("bar"),))
+    ta = threading.Thread(target=fb.foo, args=(lambda: out.append("foo"),))
+    tb.start(); ta.start(); ta.join(); tb.join()
+    print("".join(out))                         # foobarfoobarfoobar`,
+      dry: { head: ['step', 'foo_sem', 'bar_sem', 'printed'], rows: [['start', '1', '0', ''], ['A acquires foo', '0', '1', 'foo'], ['B acquires bar', '1', '0', 'foobar'], ['A acquires foo', '0', '1', 'foobarfoo']] },
+      complexity: `<p>O(n) prints, two context switches per pair.</p>`,
+      followUps: ['Generalise to k threads printing in a ring.', 'Solve it with asyncio.Event in one thread.']
+    }
+  });
+
+  practice.push({
+    title: 'Print Zero Even Odd (LeetCode 1116)', level: 'Medium', tags: ['threading', 'Semaphore', 'coordination'], companies: ['Microsoft', 'Bloomberg'],
+    statement: `<p>Three threads share a <code>ZeroEvenOdd(n)</code> object: one calls <code>zero()</code>, one <code>even()</code>, one <code>odd()</code>. Together they must print "0102030405…" up to n: a zero before every number, numbers in increasing order.</p>`,
+    constraints: `<p>1 ≤ n ≤ 1000. Each method receives <code>printNumber(x)</code>.</p>`,
+    example: `<p>n = 5 → ${H.c('g', '"0102030405"')}. zero prints 0 then wakes odd for 1; odd wakes zero; zero wakes even for 2; and so on.</p>`,
+    brute: { why: `<p>One Lock and a shared "next" counter checked in loops leads to busy-waiting and tricky off-by-one bugs; nobody is told when it is their turn.</p>`, code: `class ZeroEvenOddSpin:
+    def __init__(self, n):
+        self.n, self.state, self.k = n, "zero", 1
+    def zero(self, printNumber):
+        for _ in range(self.n):
+            while self.state != "zero":
+                pass
+            printNumber(0)
+            self.state = "odd" if self.k % 2 else "even"` },
+    mcq: { q: 'Who decides whether odd() or even() runs next?', options: ['odd and even race for it', 'zero(), based on the next number\'s parity', 'A random choice', 'The OS scheduler'], answer: 1, explain: 'zero knows the next number i; it releases the odd semaphore if i is odd, otherwise the even one. That makes the hand-off deterministic.' },
+    hints: [`<p>Hint 1: Three semaphores: zero_sem=1, odd_sem=0, even_sem=0.</p>`, `<p>Hint 2: zero loops i = 1..n: acquire zero_sem, print 0, release odd_sem if i odd else even_sem.</p>`, `<p>Hint 3: odd loops over 1,3,5…: acquire odd_sem, print, release zero_sem. even loops over 2,4,6… similarly. Loop counts must match exactly or a thread waits forever.</p>`],
+    solution: {
+      approach: `<p>zero is the conductor: after each 0 it signals the thread that owns the next number. That thread prints and hands control back to zero.</p>`,
+      code: `import threading
+
+class ZeroEvenOdd:
+    def __init__(self, n):
+        self.n = n
+        self.zero_sem = threading.Semaphore(1)
+        self.odd_sem = threading.Semaphore(0)
+        self.even_sem = threading.Semaphore(0)
+
+    def zero(self, printNumber: "Callable[[int], None]") -> None:
+        for i in range(1, self.n + 1):
+            self.zero_sem.acquire()
+            printNumber(0)
+            (self.odd_sem if i % 2 else self.even_sem).release()
+
+    def even(self, printNumber: "Callable[[int], None]") -> None:
+        for i in range(2, self.n + 1, 2):
+            self.even_sem.acquire()
+            printNumber(i)
+            self.zero_sem.release()
+
+    def odd(self, printNumber: "Callable[[int], None]") -> None:
+        for i in range(1, self.n + 1, 2):
+            self.odd_sem.acquire()
+            printNumber(i)
+            self.zero_sem.release()
+
+if __name__ == "__main__":
+    z, out = ZeroEvenOdd(5), []
+    p = lambda x: out.append(str(x))
+    ts = [threading.Thread(target=f, args=(p,)) for f in (z.even, z.odd, z.zero)]
+    for t in ts: t.start()
+    for t in ts: t.join()
+    print("".join(out))      # 0102030405`,
+      complexity: `<p>O(n) prints, 2n hand-offs.</p>`,
+      followUps: ['What happens if even() loops one time too many?', 'Rewrite using a single Condition and a state variable.']
+    }
+  });
+
+  practice.push({
+    title: 'Design a Bounded Blocking Queue (LeetCode 1188)', level: 'Medium', tags: ['threading', 'Condition', 'producer-consumer'], companies: ['Google', 'LinkedIn', 'Rubrik'],
+    statement: `<p>Implement <code>BoundedBlockingQueue(capacity)</code> with <code>enqueue(x)</code> (blocks while full), <code>dequeue()</code> (blocks while empty) and <code>size()</code>. Many producer and consumer threads use it at once. Do <b>not</b> use <code>queue.Queue</code>.</p>`,
+    constraints: `<p>1 ≤ capacity ≤ 30; up to 50 threads; up to 10<sup>4</sup> operations.</p>`,
+    example: `<p>capacity 2: enqueue 1, enqueue 2, enqueue 3 → ${H.c('r', 'blocks')}; another thread dequeues → returns ${H.c('g', '1')} and wakes the blocked producer, which inserts 3.</p>`,
+    brute: { why: `<p>Polling with <code>while len(q) == cap: time.sleep(0.01)</code> wastes CPU, adds up to 10 ms latency per wait, and the check-then-append is still racy without a lock.</p>`, code: `import time
+from collections import deque
+
+class PollingQueue:
+    def __init__(self, cap):
+        self.cap, self.q = cap, deque()
+    def enqueue(self, x):
+        while len(self.q) >= self.cap:
+            time.sleep(0.01)       # polling + race between check and append
+        self.q.append(x)` },
+    mcq: { q: 'Why must Condition.wait() be called inside a while loop, not an if?', options: ['wait() is slow', 'Another thread may grab the item between notify and wake-up (and spurious wake-ups exist)', 'Python requires it syntactically', 'To release the lock'], answer: 1, explain: 'After waking you must re-check the predicate: another consumer may have taken the item first. while not predicate: wait() is the standard pattern (or wait_for).' },
+    hints: [`<p>Hint 1: One lock, two Conditions sharing it: <code>not_full</code> and <code>not_empty</code>.</p>`, `<p>Hint 2: enqueue: <code>with not_full: while full: not_full.wait()</code>; append; <code>not_empty.notify()</code>. dequeue is the mirror image.</p>`, `<p>Hint 3: Use a <code>deque</code> for O(1) popleft. <code>notify()</code> (not notify_all) is enough because each operation frees exactly one slot / adds one item.</p>`],
+    solution: {
+      approach: `<p>Exactly how <code>queue.Queue</code> is built: a mutex plus two condition variables on it. Producers wait on "not full", consumers on "not empty"; each successful operation notifies the other side.</p>`,
+      code: `import threading
+from collections import deque
+
+class BoundedBlockingQueue:
+    def __init__(self, capacity: int):
+        self.cap = capacity
+        self.items = deque()
+        lock = threading.Lock()
+        self.not_full = threading.Condition(lock)
+        self.not_empty = threading.Condition(lock)
+
+    def enqueue(self, element: int) -> None:
+        with self.not_full:
+            while len(self.items) >= self.cap:
+                self.not_full.wait()
+            self.items.append(element)
+            self.not_empty.notify()        # wake one consumer
+
+    def dequeue(self) -> int:
+        with self.not_empty:
+            while not self.items:
+                self.not_empty.wait()
+            x = self.items.popleft()
+            self.not_full.notify()         # wake one producer
+            return x
+
+    def size(self) -> int:
+        with self.not_full:
+            return len(self.items)
+
+if __name__ == "__main__":
+    q, got = BoundedBlockingQueue(2), []
+    prod = [threading.Thread(target=lambda i=i: q.enqueue(i)) for i in range(6)]
+    cons = [threading.Thread(target=lambda: got.append(q.dequeue())) for _ in range(6)]
+    for t in prod + cons: t.start()
+    for t in prod + cons: t.join()
+    print(sorted(got), q.size())           # [0, 1, 2, 3, 4, 5] 0`,
+      dry: { head: ['op', 'items', 'blocked'], rows: [['enqueue 0', '[0]', '-'], ['enqueue 1', '[0, 1]', '-'], ['enqueue 2', '[0, 1]', 'producer waits on not_full'], ['dequeue → 0', '[1] then [1, 2]', 'producer woken, appends 2']] },
+      complexity: `<p>O(1) per operation; blocked threads use no CPU.</p>`,
+      followUps: ['Add timeouts to enqueue/dequeue.', 'Write the asyncio version with asyncio.Condition.', 'How would you add a close() that wakes everyone?']
+    }
+  });
+
+  practice.push({
+    title: 'Building H2O (LeetCode 1117)', level: 'Medium', tags: ['threading', 'Barrier', 'Semaphore'], companies: ['Uber', 'Microsoft'],
+    statement: `<p>Hydrogen and oxygen threads arrive in any order. Group them into water molecules: each group of 3 must contain exactly 2 H and 1 O, and all three must "bond" (print) before any thread of the next molecule prints.</p>`,
+    constraints: `<p>Total threads 3n, n ≤ 20; input like "HOH", "OOHHHH".</p>`,
+    example: `<p>Input ${H.c('b', '"OOHHHH"')} → valid outputs include ${H.c('g', '"HHOHHO"')}, ${H.c('g', '"HOHHHO"')} — each consecutive triple has 2 H and 1 O.</p>`,
+    brute: { why: `<p>Counting H and O under one lock and releasing threads when counts hit 2 and 1 needs careful reset logic; it's easy to let a third H slip into a molecule or deadlock when counts reset early.</p>`, code: `import threading
+
+class H2OCounting:
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.h = self.o = 0          # fragile manual bookkeeping
+    def hydrogen(self, releaseHydrogen):
+        with self.lock:
+            self.h += 1
+        releaseHydrogen()` },
+    mcq: { q: 'What does threading.Barrier(3) contribute here?', options: ['Limits H to 2', 'Makes the three members of one molecule wait for each other before bonding', 'Prints the output', 'Prevents deadlock automatically'], answer: 1, explain: 'Semaphores (2 for H, 1 for O) choose WHO is in the molecule; the barrier makes them proceed TOGETHER.' },
+    hints: [`<p>Hint 1: Separate two concerns: admission (who joins the current molecule) and rendezvous (wait for all three).</p>`, `<p>Hint 2: <code>Semaphore(2)</code> for H, <code>Semaphore(1)</code> for O, <code>Barrier(3)</code> for the meet-up.</p>`, `<p>Hint 3: Acquire your semaphore, wait at the barrier, release your atom, then release the semaphore — releasing only after printing keeps the next molecule from overtaking.</p>`],
+    solution: {
+      approach: `<p>The semaphores admit at most 2 H and 1 O into the "bonding room"; the barrier makes the three admitted threads release together. Because permits are returned only after printing, the next molecule cannot complete its barrier until the current one has printed.</p>`,
+      code: `import threading
+
+class H2O:
+    def __init__(self):
+        self.h_slots = threading.Semaphore(2)
+        self.o_slots = threading.Semaphore(1)
+        self.barrier = threading.Barrier(3)
+
+    def hydrogen(self, releaseHydrogen: "Callable[[], None]") -> None:
+        with self.h_slots:              # at most 2 H in the current molecule
+            self.barrier.wait()         # wait for partners
+            releaseHydrogen()
+
+    def oxygen(self, releaseOxygen: "Callable[[], None]") -> None:
+        with self.o_slots:              # exactly 1 O
+            self.barrier.wait()
+            releaseOxygen()
+
+if __name__ == "__main__":
+    w, out, lock = H2O(), [], threading.Lock()
+    def emit(c):
+        with lock:
+            out.append(c)
+    ts = [threading.Thread(target=(w.hydrogen if c == "H" else w.oxygen), args=(lambda c=c: emit(c),)) for c in "OOHHHH"]
+    for t in ts: t.start()
+    for t in ts: t.join()
+    s = "".join(out)
+    print(s, all(sorted(s[i:i + 3]) == ["H", "H", "O"] for i in range(0, len(s), 3)))`,
+      complexity: `<p>O(1) per thread; each molecule costs one barrier cycle.</p>`,
+      followUps: ['Generalise to molecules like CH4.', 'What breaks if you release the semaphore before calling releaseHydrogen?']
+    }
+  });
+
+  practice.push({
+    title: 'Dining Philosophers Without Deadlock (LeetCode 1226)', level: 'Medium', tags: ['threading', 'deadlock', 'lock ordering'], companies: ['Google', 'Microsoft', 'Oracle'],
+    statement: `<p>Five philosophers sit at a round table with one fork between each pair. To eat, a philosopher needs both adjacent forks. Implement <code>wantsToEat(philosopher, pickLeftFork, pickRightFork, eat, putLeftFork, putRightFork)</code> so that no deadlock can occur, and explain which deadlock condition you broke.</p>`,
+    constraints: `<p>5 philosophers, each wants to eat n times (1 ≤ n ≤ 60), called from 5 threads.</p>`,
+    example: `<p>Naive: all 5 pick up their left fork simultaneously → each waits for the right fork forever → ${H.c('r', 'deadlock')}. With ordered acquisition (always lower-numbered fork first) philosopher 4 reaches for fork 0 first, breaking the cycle → ${H.c('g', 'everyone eventually eats')}.</p>`,
+    brute: { why: `<p>"Pick left, then right" creates a circular wait: P0 waits for P1's fork, …, P4 waits for P0's fork. All four Coffman conditions hold (mutual exclusion, hold-and-wait, no preemption, circular wait), so it can deadlock.</p>`, code: `import threading
+
+class NaiveTable:
+    def __init__(self):
+        self.forks = [threading.Lock() for _ in range(5)]
+    def wantsToEat(self, p, pickL, pickR, eat, putL, putR):
+        left, right = self.forks[p], self.forks[(p + 1) % 5]
+        with left:            # everyone grabs left first...
+            with right:       # ...and may wait here forever
+                pickL(); pickR(); eat(); putL(); putR()` },
+    mcq: { q: 'Acquiring forks in global numeric order breaks which deadlock condition?', options: ['Mutual exclusion', 'Hold and wait', 'No preemption', 'Circular wait'], answer: 3, explain: 'With a total order on locks, a cycle of waiting threads is impossible: someone always holds the highest-numbered lock they need and can proceed.' },
+    hints: [`<p>Hint 1: Deadlock needs a cycle of "holds A, waits for B". Remove the cycle.</p>`, `<p>Hint 2: Number forks 0–4. Each philosopher locks <code>min(left, right)</code> first, then <code>max(left, right)</code>.</p>`, `<p>Hint 3: Alternatives: a <code>Semaphore(4)</code> so at most 4 philosophers try at once (breaks circular wait too), or a single table lock (correct but no parallel eating).</p>`],
+    solution: {
+      approach: `<p><b>Resource ordering.</b> Every philosopher acquires the lower-numbered fork first. Philosopher 4 (forks 4 and 0) therefore reaches for fork 0 first, which breaks the circular wait. Two non-adjacent philosophers can still eat in parallel.</p>`,
+      code: `import threading
+
+class DiningPhilosophers:
+    def __init__(self):
+        self.forks = [threading.Lock() for _ in range(5)]
+
+    def wantsToEat(self, philosopher: int, pickLeftFork, pickRightFork, eat,
+                   putLeftFork, putRightFork) -> None:
+        left, right = philosopher, (philosopher + 1) % 5
+        first, second = sorted((left, right))      # global order → no cycle
+        with self.forks[first], self.forks[second]:
+            pickLeftFork()
+            pickRightFork()
+            eat()
+            putLeftFork()
+            putRightFork()
+
+if __name__ == "__main__":
+    table, meals = DiningPhilosophers(), [0] * 5
+    def diner(p):
+        for _ in range(50):
+            table.wantsToEat(p, lambda: None, lambda: None,
+                             lambda: meals.__setitem__(p, meals[p] + 1),
+                             lambda: None, lambda: None)
+    ts = [threading.Thread(target=diner, args=(p,)) for p in range(5)]
+    for t in ts: t.start()
+    for t in ts: t.join()
+    print(meals)          # [50, 50, 50, 50, 50] — no deadlock`,
+      complexity: `<p>O(1) per meal; up to 2 philosophers eat concurrently.</p>`,
+      followUps: ['Is the solution starvation-free? How would you guarantee fairness?', 'Implement the Semaphore(4) "waiter" variant.', 'Where does lock ordering appear in real systems (DB row locks, bank transfers)?']
+    }
+  });
+
+  practice.push({
+    title: 'Async Retry with Exponential Backoff and Jitter', level: 'Medium', tags: ['asyncio', 'retries', 'resilience'], companies: ['AWS', 'Anthropic', 'Netflix'],
+    statement: `<p>Write <code>async def retry(op, attempts=5, base=0.1, cap=2.0, retry_on=(ConnectionError, TimeoutError))</code> that awaits <code>op()</code>, retrying only on the listed exceptions, waiting a random delay between 0 and <code>min(cap, base · 2<sup>i</sup>)</code> before attempt i+1 ("full jitter"). Re-raise the last error after the final attempt. Other exceptions propagate immediately.</p>`,
+    constraints: `<p>attempts ≤ 10. Must not swallow <code>CancelledError</code>. Delays must be awaited (not time.sleep).</p>`,
+    example: `<p>op fails with ConnectionError twice, then returns "ok" → result ${H.c('g', '"ok"')} after waits in ${H.c('b', '[0, 0.1]')} and ${H.c('b', '[0, 0.2]')}. If op raises ValueError → ${H.c('r', 'raised immediately')}, no retry.</p>`,
+    brute: { why: `<p>A fixed <code>time.sleep(1)</code> retry loop blocks the event loop, retries non-retryable errors (bugs), and makes thousands of clients retry at the same instant (a "thundering herd") after an outage.</p>`, code: `import time
+
+async def retry_naive(op, attempts=5):
+    for i in range(attempts):
+        try:
+            return await op()
+        except Exception:
+            time.sleep(1)          # blocks the loop; retries everything
+    return None` },
+    mcq: { q: 'Why add random jitter to the backoff?', options: ['To make tests slower', 'To spread retries out so many clients don\'t hit the server at the same moment', 'Because asyncio requires it', 'To avoid CancelledError'], answer: 1, explain: 'Without jitter, all clients that failed together retry together, recreating the overload. Full jitter (uniform 0..delay) spreads them out.' },
+    hints: [`<p>Hint 1: Loop over attempt index i; try <code>return await op()</code>.</p>`, `<p>Hint 2: <code>except retry_on as e:</code> remember it; if it was the last attempt, raise; else <code>await asyncio.sleep(random.uniform(0, min(cap, base * 2 ** i)))</code>.</p>`, `<p>Hint 3: Don't catch broad <code>Exception</code> (bugs should surface) and never catch <code>CancelledError</code>. Accept a <code>sleep</code> parameter to make it testable.</p>`],
+    solution: {
+      approach: `<p>Bounded attempts, selective exceptions, exponential growth capped at <code>cap</code>, full jitter, and non-blocking <code>asyncio.sleep</code>. Cancellation passes straight through because <code>CancelledError</code> isn't in <code>retry_on</code>.</p>`,
+      code: `import asyncio
+import random
+
+async def retry(op, attempts=5, base=0.1, cap=2.0,
+                retry_on=(ConnectionError, TimeoutError), sleep=asyncio.sleep):
+    for i in range(attempts):
+        try:
+            return await op()
+        except retry_on:
+            if i == attempts - 1:
+                raise                                   # out of attempts
+            delay = random.uniform(0, min(cap, base * 2 ** i))
+            await sleep(delay)                          # non-blocking wait
+
+if __name__ == "__main__":
+    calls = 0
+    async def flaky():
+        global calls
+        calls += 1
+        if calls < 3:
+            raise ConnectionError("reset")
+        return "ok"
+    print(asyncio.run(retry(flaky, base=0.01)), "after", calls, "calls")   # ok after 3 calls`,
+      complexity: `<p>At most <code>attempts</code> calls; expected total wait ≈ ½ · Σ min(cap, base·2<sup>i</sup>).</p>`,
+      followUps: ['Honour a Retry-After header from a 429 response.', 'Add a total deadline across all attempts.', 'When should you NOT retry (non-idempotent POST without idempotency key)?']
+    }
+  });
+
+  practice.push({
+    title: 'Async Token-Bucket Rate Limiter', level: 'Medium', tags: ['asyncio', 'rate limiting', 'token bucket'], companies: ['Stripe', 'Cloudflare', 'OpenAI'],
+    statement: `<p>Implement <code>TokenBucket(rate, capacity)</code> with <code>async acquire()</code>. Tokens refill continuously at <code>rate</code> per second up to <code>capacity</code>. <code>acquire()</code> takes one token, waiting (without blocking the loop) if none is available. Many tasks may call it concurrently; they must be served in arrival order.</p>`,
+    constraints: `<p>rate ≤ 10<sup>4</sup>/s, capacity ≤ 10<sup>4</sup>, up to 10<sup>4</sup> waiting tasks.</p>`,
+    example: `<p>rate = 20/s, capacity = 5, 10 tasks call acquire at t=0 → the first ${H.c('g', '5 pass instantly')} (burst), then one every ${H.c('b', '0.05 s')}: total ≈ ${H.c('g', '0.25 s')}.</p>`,
+    brute: { why: `<p>A Semaphore limits <b>concurrency</b>, not <b>rate</b>: 5 slots with fast calls can still do thousands per second. A "sleep 1/rate after each call" approach ignores bursts and drifts.</p>`, code: `import asyncio
+
+class NaiveLimiter:
+    def __init__(self, rate):
+        self.rate = rate
+    async def acquire(self):
+        await asyncio.sleep(1 / self.rate)    # every caller sleeps in parallel → no real limit` },
+    mcq: { q: 'Why hold an asyncio.Lock while a caller sleeps for its token?', options: ['To block the event loop', 'So waiting callers are served one at a time in FIFO order and token math isn\'t raced', 'Locks make sleeping faster', 'It is not needed in asyncio'], answer: 1, explain: 'asyncio.Lock is FIFO-fair. Holding it serialises the refill-check-sleep-consume sequence, which spans an await and would otherwise race.' },
+    hints: [`<p>Hint 1: Store <code>tokens</code> (float) and <code>last</code> refill time (<code>loop.time()</code>, monotonic).</p>`, `<p>Hint 2: Refill: <code>tokens = min(capacity, tokens + (now - last) * rate)</code>. If tokens ≥ 1 → take one. Else sleep <code>(1 - tokens) / rate</code> and refill again.</p>`, `<p>Hint 3: Wrap the whole thing in <code>async with self._lock</code> so callers queue fairly. Start full (capacity tokens) to allow an initial burst.</p>`],
+    solution: {
+      approach: `<p>Lazy refill on each call (no background task), monotonic time, and an asyncio.Lock to make the check-sleep-consume sequence atomic and FIFO. The loop stays free while callers sleep.</p>`,
+      code: `import asyncio
+import time
+
+class TokenBucket:
+    def __init__(self, rate: float, capacity: int):
+        self.rate, self.capacity = rate, capacity
+        self.tokens = float(capacity)
+        self.last = None
+        self._lock = asyncio.Lock()
+
+    def _refill(self, now):
+        if self.last is not None:
+            self.tokens = min(self.capacity, self.tokens + (now - self.last) * self.rate)
+        self.last = now
+
+    async def acquire(self):
+        loop = asyncio.get_running_loop()
+        async with self._lock:                         # FIFO for waiters
+            self._refill(loop.time())
+            while self.tokens < 1:
+                await asyncio.sleep((1 - self.tokens) / self.rate)
+                self._refill(loop.time())
+            self.tokens -= 1
+
+async def main():
+    bucket = TokenBucket(rate=20, capacity=5)
+    start = time.perf_counter()
+    stamps = []
+    async def call(i):
+        await bucket.acquire()
+        stamps.append(round(time.perf_counter() - start, 2))
+    await asyncio.gather(*(call(i) for i in range(10)))
+    print(stamps)          # ~[0.0 x5, 0.05, 0.1, 0.15, 0.2, 0.25]
+
+if __name__ == "__main__":
+    asyncio.run(main())`,
+      complexity: `<p>O(1) per acquire plus waiting; memory O(1) + queued waiters in the lock.</p>`,
+      followUps: ['Support acquire(n) for token-weighted limits (LLM tokens per minute).', 'Share the limit across processes (Redis + Lua script).', 'Compare with a sliding-window counter.']
+    }
+  });
+
+  /* ================= PRACTICE: Hard ================= */
+  practice.push({
+    title: 'Writer-Preferring Read-Write Lock', level: 'Hard', tags: ['threading', 'Condition', 'read-write lock', 'starvation'], companies: ['Google', 'Databricks', 'Oracle'],
+    statement: `<p>Implement <code>RWLock</code> with context managers <code>read()</code> and <code>write()</code>. Many readers may hold the lock together; a writer needs exclusive access. It must be <b>writer-preferring</b>: once a writer is waiting, new readers must wait, so a steady stream of readers can't starve writers.</p>`,
+    constraints: `<p>Up to 100 threads; reads are 10× more frequent than writes. Python has no built-in RW lock.</p>`,
+    example: `<p>Readers R1, R2 are reading. Writer W arrives → waits. Reader R3 arrives → ${H.c('y', 'must wait')} (W is waiting). R1, R2 finish → ${H.c('g', 'W writes alone')} → then R3 reads.</p>`,
+    brute: { why: `<p>One plain Lock for everything is correct but serialises readers, losing all read parallelism. A reader-preferring RW lock (readers enter whenever no writer is <i>active</i>) lets continuous readers starve writers forever.</p>`, code: `import threading
+from contextlib import contextmanager
+
+class ReaderPreferring:
+    def __init__(self):
+        self.cond = threading.Condition()
+        self.readers, self.writer = 0, False
+    @contextmanager
+    def read(self):
+        with self.cond:
+            while self.writer:              # ignores WAITING writers → starvation
+                self.cond.wait()
+            self.readers += 1
+        try:
+            yield
+        finally:
+            with self.cond:
+                self.readers -= 1
+                self.cond.notify_all()` },
+    mcq: { q: 'Which extra piece of state makes the lock writer-preferring?', options: ['A count of active readers', 'A count of WAITING writers that readers check before entering', 'A second Lock for readers', 'A timeout on read()'], answer: 1, explain: 'Readers wait while writer_active OR waiting_writers > 0. Writers announce themselves by incrementing waiting_writers before waiting.' },
+    hints: [`<p>Hint 1: State under one Condition: <code>readers</code> (active), <code>writer</code> (bool active), <code>waiting_writers</code>.</p>`, `<p>Hint 2: read-enter waits while <code>writer or waiting_writers</code>; write-enter increments waiting_writers, waits while <code>writer or readers</code>, then decrements and sets writer=True.</p>`, `<p>Hint 3: On every exit, <code>notify_all()</code> (both readers and writers may be waiting on different predicates). Use <code>try/finally</code> in the context managers so exceptions don't leak the lock.</p>`],
+    solution: {
+      approach: `<p>A single Condition guards three counters. Readers defer to both active and waiting writers; writers wait only for active users. <code>notify_all</code> on release wakes everyone to re-check their predicate. Readers can still be delayed by a steady stream of writers (the opposite trade-off), which is usually acceptable because writes are rare.</p>`,
+      code: `import threading
+import time
+from contextlib import contextmanager
+
+class RWLock:
+    def __init__(self):
+        self._cond = threading.Condition()
+        self._readers = 0
+        self._writer = False
+        self._waiting_writers = 0
+
+    @contextmanager
+    def read(self):
+        with self._cond:
+            while self._writer or self._waiting_writers:
+                self._cond.wait()
+            self._readers += 1
+        try:
+            yield
+        finally:
+            with self._cond:
+                self._readers -= 1
+                if self._readers == 0:
+                    self._cond.notify_all()
+
+    @contextmanager
+    def write(self):
+        with self._cond:
+            self._waiting_writers += 1
+            while self._writer or self._readers:
+                self._cond.wait()
+            self._waiting_writers -= 1
+            self._writer = True
+        try:
+            yield
+        finally:
+            with self._cond:
+                self._writer = False
+                self._cond.notify_all()
+
+if __name__ == "__main__":
+    lock, log = RWLock(), []
+    data = {"v": 0}
+    def reader(i):
+        with lock.read():
+            log.append(f"R{i} sees {data['v']}")
+            time.sleep(0.02)
+    def writer():
+        with lock.write():
+            data["v"] += 1
+            log.append("W wrote")
+    ts = [threading.Thread(target=reader, args=(i,)) for i in range(3)]
+    ts.insert(2, threading.Thread(target=writer))
+    for t in ts:
+        t.start()
+        time.sleep(0.005)
+    for t in ts: t.join()
+    print(log)`,
+      dry: { head: ['event', 'readers', 'writer', 'waiting_writers', 'who waits'], rows: [['R0, R1 enter', '2', 'F', '0', '-'], ['W arrives', '2', 'F', '1', 'W'], ['R2 arrives', '2', 'F', '1', 'W, R2 (writer waiting)'], ['R0, R1 leave → W enters', '0', 'T', '0', 'R2'], ['W leaves → R2 enters', '1', 'F', '0', '-']] },
+      complexity: `<p>O(1) per acquire/release plus wake-ups; notify_all can cause a thundering herd with many waiters — acceptable at ~100 threads.</p>`,
+      followUps: ['Make it fair (FIFO) between readers and writers.', 'Support upgrading a read lock to a write lock — why is that deadlock-prone?', 'Write the asyncio version.']
+    }
+  });
+
+  practice.push({
+    title: 'Async Priority Job Scheduler with Limits and Cancellation', level: 'Hard', tags: ['asyncio', 'PriorityQueue', 'cancellation', 'design'], companies: ['Airbnb', 'Datadog', 'Anthropic'],
+    statement: `<p>Build <code>Scheduler(limit)</code> for async jobs. <code>submit(fn, priority)</code> (lower number = more urgent) returns <code>(job_id, future)</code>. At most <code>limit</code> jobs run at once; the most urgent waiting job starts next (FIFO among equal priorities). <code>cancel(job_id)</code> works for both waiting and running jobs and must <b>not</b> kill the worker. <code>close()</code> shuts everything down cleanly.</p>`,
+    constraints: `<p>limit ≤ 100, up to 10<sup>5</sup> jobs, Python 3.11+.</p>`,
+    example: `<p>limit = 1. Submit A(p=5), B(p=1), C(p=1), D(p=9); cancel C before it starts → run order ${H.c('g', 'B, A, D')}; C's future is ${H.c('r', 'cancelled')}. (B and C tie on priority, so submission order breaks the tie.)</p>`,
+    brute: { why: `<p>Calling <code>asyncio.create_task</code> for every job ignores priority and limits (all start at once). A Semaphore adds a limit but wakes waiters in FIFO order, not priority order, and cancelling a job by cancelling the worker task loses the worker.</p>`, code: `import asyncio
+
+class NaiveScheduler:
+    def __init__(self, limit):
+        self.sem = asyncio.Semaphore(limit)
+    def submit(self, fn, priority=10):
+        async def run():
+            async with self.sem:              # FIFO, priority ignored
+                return await fn()
+        return asyncio.create_task(run())` },
+    mcq: { q: 'How should a worker tell "the job was cancelled" from "I (the worker) am being shut down" when it catches CancelledError?', options: ['Check fut.done()', 'asyncio.current_task().cancelling() > 0 means the worker itself is being cancelled', 'Catch Exception instead', 'It cannot tell'], answer: 1, explain: 'Since 3.11 a task tracks pending cancel requests. If the worker\'s own cancelling() count is non-zero, the cancel was aimed at the worker → re-raise. Otherwise only the inner job was cancelled → mark its future and keep looping.' },
+    hints: [`<p>Hint 1: <code>asyncio.PriorityQueue</code> of <code>(priority, seq, job_id, fn)</code>; the increasing <code>seq</code> gives FIFO ties and avoids comparing functions.</p>`, `<p>Hint 2: Start exactly <code>limit</code> worker tasks. Each loops: get job → if its future is cancelled, skip → run <code>fn()</code> as its own Task (so it can be cancelled separately) → set the future's result/exception.</p>`, `<p>Hint 3: <code>cancel()</code>: if running, cancel the job's Task; if waiting, cancel the Future (worker skips it). <code>close()</code>: cancel workers and gather them with <code>return_exceptions=True</code>.</p>`],
+    solution: {
+      approach: `<p>A priority queue feeds a fixed pool of worker tasks (the concurrency limit). Each job runs in its own Task so it can be cancelled independently; the worker distinguishes job cancellation from its own shutdown via <code>cancelling()</code>. Futures give callers a handle for results, exceptions and cancellation.</p>`,
+      code: `import asyncio
+import itertools
+
+class Scheduler:
+    def __init__(self, limit):
+        self._q = asyncio.PriorityQueue()
+        self._seq = itertools.count()
+        self._futures = {}
+        self._running = {}
+        self._workers = [asyncio.create_task(self._worker()) for _ in range(limit)]
+
+    def submit(self, fn, priority=10):
+        job_id = next(self._seq)
+        fut = asyncio.get_running_loop().create_future()
+        self._futures[job_id] = fut
+        self._q.put_nowait((priority, job_id, fn))
+        return job_id, fut
+
+    def cancel(self, job_id):
+        fut = self._futures.get(job_id)
+        if fut is None or fut.done():
+            return False
+        task = self._running.get(job_id)
+        if task is not None:
+            task.cancel()                   # running: cancel the job's own task
+        else:
+            fut.cancel()                    # waiting: worker will skip it
+        return True
+
+    async def _worker(self):
+        while True:
+            _, job_id, fn = await self._q.get()
+            fut = self._futures.pop(job_id)
+            try:
+                if fut.cancelled():
+                    continue
+                task = asyncio.create_task(fn())
+                self._running[job_id] = task
+                try:
+                    result = await task
+                    if not fut.done():
+                        fut.set_result(result)
+                except asyncio.CancelledError:
+                    fut.cancel()
+                    if asyncio.current_task().cancelling():
+                        task.cancel()
+                        raise               # the WORKER is shutting down
+                except Exception as e:
+                    if not fut.done():
+                        fut.set_exception(e)
+                finally:
+                    self._running.pop(job_id, None)
+            finally:
+                self._q.task_done()
+
+    async def close(self):
+        for w in self._workers:
+            w.cancel()
+        await asyncio.gather(*self._workers, return_exceptions=True)
+
+async def main():
+    order = []
+    def job(name, secs):
+        async def run():
+            order.append(name)
+            await asyncio.sleep(secs)
+            return name
+        return run
+    s = Scheduler(limit=1)
+    _, fa = s.submit(job("A", 0.01), priority=5)
+    _, fb = s.submit(job("B", 0.01), priority=1)
+    c_id, fc = s.submit(job("C", 0.01), priority=1)
+    _, fd = s.submit(job("D", 0.5), priority=9)
+    s.cancel(c_id)                                  # cancel while waiting
+    print(await fb, await fa)                       # B A
+    await asyncio.sleep(0.05)
+    print("D running:", order[-1] == "D", "cancel D:", s.cancel(3))
+    await asyncio.sleep(0)
+    print("order:", order, "C cancelled:", fc.cancelled(), "D cancelled:", fd.cancelled())
+    await s.close()
+
+if __name__ == "__main__":
+    asyncio.run(main())`,
+      complexity: `<p>submit O(log n), dispatch O(log n); at most <code>limit</code> jobs running. Memory O(n) for queued jobs and futures.</p>`,
+      followUps: ['Add aging so low-priority jobs eventually run (avoid starvation).', 'Add per-job timeouts and retries.', 'Persist the queue so jobs survive a restart.']
+    }
+  });
+
+  practice.push({
+    title: 'Graceful Shutdown of an Async Worker Service', level: 'Hard', tags: ['asyncio', 'shutdown', 'signals', 'Queue'], companies: ['Google', 'Spotify', 'Shopify'],
+    statement: `<p>An async service accepts jobs into a queue and processes them with N worker tasks. When a stop signal arrives (SIGTERM in production; simulate it with a timer) it must: (1) stop accepting new jobs, (2) give in-flight and queued jobs up to <code>drain_timeout</code> seconds to finish, (3) cancel whatever is left, (4) return a report <code>{"done": d, "dropped": k, "drained": bool}</code>. No task may be left running.</p>`,
+    constraints: `<p>N ≤ 50 workers, job durations 0–1 s, drain_timeout ≤ 30 s (Kubernetes default grace period is 30 s).</p>`,
+    example: `<p>20 jobs arriving every 10 ms, each taking 50 ms, 3 workers, stop after 0.1 s, drain_timeout 1 s → about ${H.c('b', '10 jobs accepted')}, all ${H.c('g', 'finished during drain')}, ${H.c('r', '~10 never accepted')} (counted as dropped), drained = True.</p>`,
+    brute: { why: `<p>Exiting immediately (or <code>sys.exit</code> in a signal handler) kills in-flight work mid-way. Waiting forever for the queue can exceed the grace period, and then the orchestrator sends SIGKILL anyway — with no cleanup at all.</p>`, code: `import asyncio
+
+async def run_service_abrupt(jobs, workers):
+    q = asyncio.Queue()
+    for j in jobs:
+        q.put_nowait(j)
+    async def worker():
+        while True:
+            await asyncio.sleep(await q.get())
+    tasks = [asyncio.create_task(worker()) for _ in range(workers)]
+    await asyncio.sleep(0.1)       # "signal" arrives
+    for t in tasks:
+        t.cancel()                 # in-flight jobs lost, no report` },
+    mcq: { q: 'What should happen FIRST when the stop signal arrives?', options: ['Cancel all workers', 'Stop accepting new work (close intake)', 'Clear the queue', 'Call sys.exit()'], answer: 1, explain: 'Close the intake so the backlog stops growing, then drain with a deadline, then cancel leftovers, then close resources.' },
+    hints: [`<p>Hint 1: Use an <code>asyncio.Event</code> as the stop flag; in production, <code>loop.add_signal_handler(signal.SIGTERM, stop.set)</code>.</p>`, `<p>Hint 2: After <code>await stop.wait()</code>: cancel the intake task, then <code>async with asyncio.timeout(drain_timeout): await q.join()</code>; catch <code>TimeoutError</code> → drained = False.</p>`, `<p>Hint 3: Workers must call <code>task_done()</code> in <code>finally</code>. Finally cancel workers and <code>gather(..., return_exceptions=True)</code> so nothing is left pending. Dropped = total − done.</p>`],
+    solution: {
+      approach: `<p>Three phases: <b>stop intake</b> (cancel the producer), <b>drain with a deadline</b> (<code>q.join()</code> under <code>asyncio.timeout</code>), <b>force stop</b> (cancel workers, await them). Everything is awaited, so the loop closes with no pending tasks and a truthful report.</p>`,
+      code: `import asyncio
+
+async def run_service(jobs, workers=3, drain_timeout=1.0, stop_after=0.1):
+    q = asyncio.Queue()
+    stop = asyncio.Event()
+    done = []
+
+    async def worker():
+        while True:
+            job = await q.get()
+            try:
+                await asyncio.sleep(job)          # pretend to process
+                done.append(job)
+            finally:
+                q.task_done()
+
+    async def intake():
+        for job in jobs:
+            await q.put(job)
+            await asyncio.sleep(0.01)             # jobs arrive over time
+
+    loop = asyncio.get_running_loop()
+    # Production: loop.add_signal_handler(signal.SIGTERM, stop.set)
+    loop.call_later(stop_after, stop.set)
+
+    pool = [asyncio.create_task(worker()) for _ in range(workers)]
+    producer = asyncio.create_task(intake())
+
+    await stop.wait()
+    producer.cancel()                             # 1. stop accepting work
+    drained = True
+    try:
+        async with asyncio.timeout(drain_timeout):
+            await q.join()                        # 2. drain with a deadline
+    except TimeoutError:
+        drained = False
+    for t in pool:                                # 3. force-stop leftovers
+        t.cancel()
+    await asyncio.gather(producer, *pool, return_exceptions=True)
+    return {"done": len(done), "dropped": len(jobs) - len(done), "drained": drained}
+
+if __name__ == "__main__":
+    print(asyncio.run(run_service([0.05] * 20)))
+    print(asyncio.run(run_service([0.5] * 20, drain_timeout=0.2)))   # drained False`,
+      complexity: `<p>Shutdown time ≤ drain_timeout + one cancellation round-trip; O(N) tasks cancelled.</p>`,
+      followUps: ['Persist undrained jobs (put them back on a durable queue) instead of dropping them.', 'Expose a readiness probe that turns false as soon as stop is set.', 'How do Uvicorn/Gunicorn implement graceful worker shutdown?']
+    }
+  });
+
+  /* ================= QUIZ ================= */
+  quiz.push(
+    { q: 'You run a pure-Python CPU-heavy function on 4 threads on standard CPython 3.13 (GIL build). Roughly what speed-up do you expect?', options: ['About 4×', 'About 1× (or slightly worse)', 'About 2×', 'It depends only on the switch interval'], answer: 1, explain: 'Only the GIL holder runs Python bytecode, so CPU-bound threads take turns. Handoff overhead often makes it a little slower than serial.' },
+    { q: 'Why do threads still speed up downloading 100 web pages?', options: ['The GIL is disabled for network code', 'Blocking socket calls release the GIL while waiting, so waits overlap', 'Threads use more cores for parsing', 'Python batches network calls automatically'], answer: 1, explain: 'C-level blocking calls wrap the wait in Py_BEGIN_ALLOW_THREADS, releasing the GIL. Other threads run while one waits on the network.' },
+    { q: 'Is <code>counter += 1</code> on a shared global safe without a lock?', options: ['Yes, the GIL makes it atomic', 'No — it is load, add, store; a switch between them can lose an update', 'Yes, but only for ints', 'Only on Linux'], answer: 1, explain: 'It compiles to several bytecodes. Even if a given CPython version rarely switches there, correctness must not depend on it — and free-threaded builds will lose updates.' },
+    { q: 'What happens with <code>pool.map(lambda x: x * 2, data)</code> on a multiprocessing Pool?', options: ['Works fine', 'Fails: lambdas cannot be pickled to send to worker processes', 'Runs in the parent only', 'Runs but returns None'], answer: 1, explain: 'Functions are pickled by qualified name; a lambda has no importable name. Use a top-level def.' },
+    { q: 'Which start method became the default on Linux in Python 3.14?', options: ['fork', 'spawn', 'forkserver', 'thread'], answer: 2, explain: '3.14 switched POSIX platforms (other than macOS, which uses spawn) from fork to forkserver, because fork is unsafe in processes that have threads.' },
+    { q: 'You need results in the same order as the inputs. Which is simplest?', options: ['as_completed', 'executor.map', 'wait(FIRST_COMPLETED)', 'add_done_callback'], answer: 1, explain: 'executor.map yields in input order (it waits for item 0, then 1, …). as_completed yields in finish order.' },
+    { q: 'What does calling an <code>async def</code> function without <code>await</code> do?', options: ['Runs it in the background', 'Runs it synchronously', 'Creates a coroutine object that does not run (and warns "never awaited")', 'Raises SyntaxError'], answer: 2, explain: 'Calling a coroutine function just builds a coroutine object. It runs only when awaited or wrapped in a Task.' },
+    { q: 'Three tasks <code>sleep(2)</code>, <code>sleep(1)</code>, <code>sleep(3)</code> are run with <code>asyncio.gather</code>. Total time and result order?', options: ['6 s; finish order', '3 s; argument order', '3 s; finish order', '2 s; argument order'], answer: 1, explain: 'The sleeps overlap so total ≈ the longest (3 s). gather places each result at its argument position.' },
+    { q: 'In <code>gather(a(), b(), c())</code>, b raises after 1 s. What happens to a and c?', options: ['They are cancelled', 'They keep running; the caller sees b\'s exception immediately', 'They are restarted', 'gather waits for them, then raises'], answer: 1, explain: 'Without return_exceptions, gather propagates the first exception right away but does not cancel the others. TaskGroup is the tool that cancels siblings.' },
+    { q: 'An async web handler calls <code>requests.get(url)</code>. What is the effect?', options: ['Nothing — requests is async-aware', 'The event loop is blocked for the whole request; every other task waits', 'It raises an error', 'It automatically runs in a thread'], answer: 1, explain: 'requests is synchronous. Inside async def it blocks the single loop thread. Use httpx/aiohttp, or await asyncio.to_thread(requests.get, url).' },
+    { q: 'Which statement about <code>asyncio.Semaphore(10)</code> is true?', options: ['It limits requests per second to 10', 'It limits how many tasks are inside the guarded block at once to 10', 'It blocks the event loop when full', 'It only works with threads'], answer: 1, explain: 'A semaphore caps concurrency (in-flight count). For requests per second you need a token bucket or similar rate limiter.' },
+    { q: 'Two coroutines do: check <code>stock &gt; 0</code>, <code>await pay()</code>, <code>stock -= 1</code>. Stock starts at 1. What can happen?', options: ['Nothing bad: asyncio is single-threaded', 'Both pass the check before either decrements → stock becomes -1', 'A deadlock', 'A RuntimeError'], answer: 1, explain: 'The await lets the other task run between check and act. Protect the whole sequence with an asyncio.Lock.' },
+    { q: 'What does <code>sys._is_gil_enabled()</code> returning False tell you?', options: ['The program has no threads', 'You are on a free-threaded build with the GIL actually disabled, so threads can run Python in parallel', 'asyncio is disabled', 'The interpreter is PyPy'], answer: 1, explain: 'On free-threaded builds (3.13t/3.14t) the GIL can be off; importing an extension that does not support it may turn it back on, which this function reveals.' }
+  );
+
+  /* ================= INTERVIEW ================= */
+  interview.push(
+    { q: 'What is the GIL, why does CPython have it, and what does it mean for my code?', level: 'I', a: `<p>The Global Interpreter Lock is a mutex that a thread must hold to execute Python bytecode in CPython, so only one thread runs Python code at a time per interpreter. It exists mainly because of <b>reference counting</b>: every object's refcount is updated constantly, and making each update atomic or individually locked was historically slower for single-threaded code and complicated the C-API. Consequences: threads help <b>I/O-bound</b> work (the GIL is released while blocking) and C code that releases it (NumPy), but not pure-Python <b>CPU-bound</b> work — use processes there. The GIL does not make your own multi-step operations thread-safe. Since 3.13 there is an optional free-threaded build (officially supported in 3.14) without a GIL.</p>`, followUps: ['When exactly is the GIL released?', 'What did PEP 703 have to change to remove it?', 'Does PyPy have a GIL?'] },
+    { q: 'Concurrency vs parallelism — explain with a Python example of each.', level: 'B', a: `<p><b>Concurrency</b> is structuring a program so multiple tasks make progress with overlapping lifetimes — they may take turns on one core. <b>Parallelism</b> is tasks literally executing at the same instant on multiple cores. asyncio fetching 1,000 URLs on one thread is concurrent but not parallel: one task runs at a time, the waits overlap. A <code>ProcessPoolExecutor</code> computing hashes on 8 cores is parallel. Threads in CPython (GIL build) give concurrency for Python code and parallelism only for GIL-releasing C code. The question to ask first is "is my program waiting or computing?" — concurrency helps waiting, parallelism helps computing.</p>`, followUps: ['Can you have parallelism without concurrency?', 'Which one does Little\'s law describe?'] },
+    { q: 'How do you choose between threading, multiprocessing and asyncio?', level: 'I', a: `<p>Start with the bottleneck. <b>CPU-bound pure Python</b> → processes (<code>ProcessPoolExecutor</code>), or vectorise with NumPy/Polars, or (3.14t) free-threaded threads. <b>I/O-bound with many concurrent connections and async libraries available</b> → asyncio: tasks cost KBs, scale to tens of thousands, switch only at awaits. <b>I/O-bound with blocking libraries or modest concurrency</b> → a thread pool: least code change. <b>Mixed</b> → asyncio for I/O plus a process pool via <code>run_in_executor</code>. <b>Beyond one machine or needs durability</b> → a job queue (Celery/RQ) or Ray/Dask. I'd also mention memory per unit, debugging complexity, and that many services combine models (N processes × 1 event loop × a thread pool).</p>`, followUps: ['What if the library only has a sync API but you need 10k connections?', 'How does the free-threaded build change this?'] },
+    { q: 'What is a race condition? Show one in Python and fix it.', level: 'B', a: `<p>A race condition is when the result depends on the timing of concurrent operations. Classic: two threads run <code>balance += amount</code> — it's load, add, store, so both can load 100, both store 110, and one deposit is lost. Fix: make the read-modify-write a critical section with a <code>threading.Lock</code> (<code>with lock: balance += amount</code>), or avoid shared state by sending updates through a <code>queue.Queue</code> to one owner thread. In asyncio the same bug happens across <code>await</code>: check, await, act — fix with <code>asyncio.Lock</code> around the whole sequence.</p>`, followUps: ['How would you test for a race that only appears 1 in 10,000 runs?', 'What is a data race vs a race condition?'] },
+    { q: 'Explain deadlock and how you prevent it in practice.', level: 'I', a: `<p>Deadlock: a set of threads each holds a resource and waits for one held by another, forming a cycle — everyone waits forever. It needs four conditions (Coffman): mutual exclusion, hold-and-wait, no preemption, circular wait. Prevention in practice: <b>global lock ordering</b> (e.g., always lock the lower account id first in a transfer) to break circular wait; <b>acquire with timeouts</b> (<code>lock.acquire(timeout=…)</code>) and back off; keep critical sections tiny and never call unknown code (callbacks, I/O) while holding a lock; prefer message passing via queues. Diagnose hangs with <code>faulthandler.dump_traceback_later</code> or <code>py-spy dump</code> to see where each thread is stuck.</p>`, followUps: ['What is livelock?', 'Can asyncio code deadlock?'] },
+    { q: 'Walk me through what the asyncio event loop does on each iteration.', level: 'A', a: `<p>The loop keeps a <b>ready queue</b> of callbacks (deque), a <b>heap of timers</b>, and a <b>selector</b> (epoll/kqueue/IOCP). Each iteration: compute a timeout — zero if callbacks are ready, else until the earliest timer; call <code>selector.select(timeout)</code> and schedule callbacks for ready sockets; move due timers to the ready queue; run the callbacks that were ready at the start of this iteration. A Task's callback is its <code>__step</code>: it resumes the coroutine with <code>send()</code> until the coroutine yields a Future it's waiting on; the Task registers a done-callback on that Future to schedule itself again. So <code>await</code> ultimately means "yield a Future to the loop and get rescheduled when it completes".</p>`, followUps: ['How is asyncio.sleep implemented?', 'Why does the loop only run callbacks that were ready at the start of the iteration?', 'What does uvloop replace?'] },
+    { q: 'gather vs TaskGroup vs wait vs as_completed — when do you use each?', level: 'A', a: `<p><b>gather</b>: run awaitables concurrently and get results in argument order; on first exception it raises immediately but does not cancel the others (use <code>return_exceptions=True</code> for partial results). <b>TaskGroup</b> (3.11+): structured concurrency — if one child fails, siblings are cancelled and all errors come as an <code>ExceptionGroup</code>; no orphan tasks. Default for new code. <b>wait</b>: low-level, returns (done, pending) with FIRST_COMPLETED / FIRST_EXCEPTION / ALL_COMPLETED — ideal for races and hedged requests. <b>as_completed</b>: iterate results in finish order — progress reporting, reacting to the fastest.</p>`, followUps: ['How do you get partial results from a TaskGroup?', 'What is except* and why was it added?'] },
+    { q: 'How does cancellation work in asyncio, and what are the common mistakes?', level: 'A', a: `<p><code>task.cancel()</code> requests cancellation; at the task's next resume, <code>CancelledError</code> is thrown into the coroutine at its current <code>await</code>, and it propagates down to any awaited Task/Future. This lets <code>finally</code> and <code>async with</code> clean up. Timeouts (<code>asyncio.timeout</code>, <code>wait_for</code>) and TaskGroup are built on it. Mistakes: catching and swallowing <code>CancelledError</code> (breaks timeouts and shutdown; since 3.11 tasks count cancel requests via <code>cancelling()</code>), doing slow blocking work in <code>finally</code>, assuming cancelling the awaiting task stops a thread started with <code>to_thread</code> (it doesn't), and not awaiting cancelled tasks before closing the loop.</p>`, followUps: ['What does asyncio.shield do and when is it dangerous?', 'Why is CancelledError a BaseException?'] },
+    { q: 'Your FastAPI service gets slow for all endpoints under load. CPU on one core is 100%. What do you check?', level: 'A', a: `<p>Suspect the event loop is blocked. Steps: enable asyncio debug mode or measure <b>loop lag</b> (a periodic callback measuring lateness); run <code>py-spy top</code>/<code>dump</code> on the worker to see which function holds the loop; look for sync calls in <code>async def</code> endpoints (requests, sync DB drivers, boto3, <code>time.sleep</code>, big JSON parsing, password hashing). Fixes: async clients, <code>await asyncio.to_thread(...)</code> for blocking I/O, <code>run_in_executor(ProcessPool)</code> for CPU work, or define the endpoint as plain <code>def</code> so FastAPI runs it in its thread pool. Then scale with more worker processes, since one loop uses one core.</p>`, followUps: ['What is the default size of the to_thread pool?', 'How would you alert on loop lag?'] },
+    { q: 'What gets pickled when you use a ProcessPoolExecutor, and how do you reduce the cost?', level: 'I', a: `<p>The function (by importable qualified name — so it must be top-level), its arguments, and the return value are pickled, sent through a pipe, and unpickled in the other process. Exceptions are pickled back too. Costs grow with data size. Reduce them by: sending small descriptions (paths, offsets, IDs) instead of big objects; loading heavy read-only data once per worker with an <code>initializer</code>; batching tiny tasks (<code>chunksize</code>); using <code>shared_memory</code> or memory-mapped files for large arrays (zero-copy); returning aggregates (counts) rather than raw data. Also remember spawn/forkserver re-import the main module, so guard entry code with <code>if __name__ == "__main__":</code>.</p>`, followUps: ['What is BrokenProcessPool?', 'How does fork interact with copy-on-write and refcounts?'] },
+    { q: 'Design a system to call an LLM API for 1 million documents under a rate limit of 3,000 requests/minute.', level: 'E', a: `<p>Throughput is capped by the provider: 1M / 3,000 per min ≈ 5.6 hours — say so first. Design: an asyncio worker using the async SDK; a <b>token bucket</b> for requests/min and another for tokens/min; a <b>Semaphore</b> sized by Little's law (rate 50/s × ~6 s latency ≈ 300 in flight, bounded by connection limits); <code>asyncio.timeout</code> per call; retries on 429/5xx with exponential backoff + jitter honouring Retry-After; idempotent writes keyed by document ID to a DB so restarts skip finished work; a bounded queue fed from storage for back-pressure; metrics (in-flight, error rate, 429s, cost); graceful shutdown on SIGTERM. Consider the provider's batch API, which trades latency for higher limits and lower cost, and multiple processes only if parsing becomes CPU-bound.</p>`, followUps: ['How do you avoid paying twice for a document after a crash?', 'How would you share the rate limit across 10 machines?'] },
+    { q: 'What changed in Python 3.13/3.14 for concurrency?', level: 'E', a: `<p><b>3.13</b>: experimental free-threaded build (PEP 703, <code>python3.13t</code>) with <code>sys._is_gil_enabled()</code>; <code>Queue.shutdown()</code> for <code>queue.Queue</code> and <code>asyncio.Queue</code>; default executor sizes based on <code>os.process_cpu_count()</code>. <b>3.14</b>: free-threading becomes officially supported though not the default (PEP 779); <code>concurrent.interpreters</code> and <code>InterpreterPoolExecutor</code> expose sub-interpreters, each with its own GIL (PEP 734); the default multiprocessing start method on Linux moved from fork to forkserver; asyncio gained introspection (<code>python -m asyncio ps/pstree</code>); <code>Executor.map</code> got a <code>buffersize</code> argument. Earlier milestones worth naming: 3.11 TaskGroup, asyncio.timeout, ExceptionGroup; 3.12 per-interpreter GIL and eager task factory.</p>`, followUps: ['Would you deploy the free-threaded build today? What would you check?', 'How do sub-interpreters share data?'] },
+    { q: 'Implement a thread-safe producer–consumer pipeline. How do you shut it down cleanly?', level: 'I', a: `<p>Use <code>queue.Queue(maxsize=N)</code>: producers <code>put()</code> (blocking when full → back-pressure), consumers loop on <code>get()</code> and call <code>task_done()</code> in a <code>finally</code>. Shutdown options: (1) after producing, put one <b>sentinel</b> (e.g. <code>None</code>) per consumer; each consumer exits when it sees one; (2) on 3.13+, call <code>q.shutdown()</code> so blocked <code>get()</code>s raise <code>queue.ShutDown</code> once the queue is drained (or immediately with <code>immediate=True</code>); (3) an <code>Event</code> plus <code>get(timeout=…)</code>. Then <code>join()</code> every thread. Avoid daemon threads for real work — they're killed abruptly at exit. For multi-stage pipelines, size each stage's workers and queue independently.</p>`, followUps: ['Why is "while not q.empty(): q.get()" wrong?', 'What changes for multiprocessing.Queue?'] },
+    { q: 'How would you debug a Python program that hangs with multiple threads?', level: 'A', a: `<p>Get stack traces of all threads: <code>py-spy dump --pid PID</code> (no code changes), or <code>faulthandler.dump_traceback_later(timeout)</code> / <code>faulthandler.register(signal.SIGUSR1)</code> built in. Look for threads blocked in <code>acquire</code> (deadlock — compare which locks each holds), in <code>Queue.get</code> with no producer left (missing sentinel/task_done), in <code>join()</code> on a thread that's waiting on the joiner, or in a C call that never releases the GIL. For asyncio, <code>asyncio.all_tasks()</code> with <code>task.print_stack()</code>, debug mode for slow callbacks, and in 3.14 <code>python -m asyncio pstree PID</code>. Then fix with consistent lock ordering, timeouts and explicit shutdown protocols, and add a regression stress test.</p>`, followUps: ['How do you make race conditions reproducible in tests?', 'What is the danger of fork() in a threaded program?'] }
+  );
+
+  registerModule({
+    id: 'py10',
+    title: 'Concurrency: GIL, Threads, Processes & asyncio',
+    intro: `<p>Modern Python programs spend most of their life <b>waiting</b> — on networks, databases, disks and AI APIs — or <b>crunching</b> numbers. This module teaches you to tell those two apart in seconds and to pick the right tool: <b>threads</b> for blocking I/O, <b>processes</b> for CPU work, and <b>asyncio</b> for thousands of concurrent connections on one thread.</p>
+<p>You will see <i>why</i> the GIL exists and when it is released (with a timeline visualizer), break and fix race conditions, push work through process pools, read the <code>concurrent.futures</code> API like a pro, and step inside the asyncio event loop to watch the ready queue and parked tasks. Then you will learn the pitfalls that hurt real services (blocking the loop, lost tasks, races across <code>await</code>) and how to design concurrent systems with limits, timeouts, retries and graceful shutdown — including what changed with the free-threaded 3.13t/3.14t builds and sub-interpreters.</p>
+<p><small>Note: the ▶ Run button uses Pyodide (Python in your browser), which has <b>one thread and no child processes</b>. Snippets marked runnable work there; thread, process and <code>asyncio.run</code> examples are meant to be run on your own machine with <code>python3 file.py</code>.</small></p>`,
+    goals: [
+      'Classify any workload as I/O-bound or CPU-bound and choose threads, processes, asyncio (or vectorisation) with a one-sentence justification',
+      'Explain the GIL precisely: why it exists, when it is released, what it does and does not protect, and what the free-threaded build changes',
+      'Write correct thread code with Lock, Event, Condition, Semaphore and queue.Queue, and avoid races and deadlocks',
+      'Use multiprocessing / ProcessPoolExecutor safely: pickling rules, start methods, the __main__ guard, chunking and shared memory',
+      'Trace the asyncio event loop by hand and use tasks, gather, TaskGroup, timeouts, cancellation, Semaphores and Queues correctly',
+      'Spot and fix async pitfalls (blocking calls, missing awaits, lost tasks, races across await) and design rate-limited, gracefully-stoppable concurrent services'
+    ],
+    prereqs: `Python 7 (Iterators, Generators & Context Managers) — generators explain how coroutines work; Python 6 (Closures & Decorators); Python 9 (Errors, Type Hints & Testing) for exception handling. Basic idea of what a process and a CPU core are.`,
+    hours: 14,
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
+  });
+})();
