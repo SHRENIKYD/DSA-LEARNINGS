@@ -1568,11 +1568,11 @@ class GcMetrics {
     codeTitle: ['Launch flags', 'GC overhead from MXBeans'],
     viz: [{
       title: 'Heap sawtooth: how allocation rate, young size and promotion drive GC',
-      input: 'alloc=400 young=800 survive=10 live=1200 old=3000 secs=20',
+      input: 'alloc=500 young=1000 survive=15 live=700 old=3000 secs=24',
       inputLabel: 'alloc MB/s, young MB, survive % promoted per young GC, live MB, old MB, seconds',
       gen: function (input) {
-        var o = kvParse(input, { alloc: 400, young: 800, survive: 10, live: 1200, old: 3000, secs: 20 });
-        var A = num(o.alloc, 1, 20000, 'alloc'), Y = num(o.young, 16, 100000, 'young'), P = num(o.survive, 0, 100, 'survive'), LV = num(o.live, 0, 100000, 'live'), OC = num(o.old, 32, 200000, 'old'), T = num(o.secs, 4, 30, 'secs');
+        var o = kvParse(input, { alloc: 500, young: 1000, survive: 15, live: 700, old: 3000, secs: 24 });
+        var A = num(o.alloc, 1, 20000, 'alloc'), Y = num(o.young, 16, 100000, 'young'), P = num(o.survive, 0, 100, 'survive'), LV = num(o.live, 0, 100000, 'live'), OC = num(o.old, 32, 200000, 'old'), T = num(o.secs, 4, 40, 'secs');
         if (LV >= OC) throw new Error('live must be smaller than old (otherwise the heap cannot even hold the live set)');
         var ihop = Math.round(OC * 0.45), yu = 0, ou = LV, F = [], used = [], labels = [], ygc = 0, mixed = 0, full = 0;
         var gcEvery = (Y / A).toFixed(2), promoRate = (A * P / 100).toFixed(0);
@@ -1590,7 +1590,7 @@ class GcMetrics {
           ] });
         }
         var toIhop = P > 0 ? ((ihop - LV) / (A * P / 100)).toFixed(1) : '∞';
-        F.push({ narr: 'Reading the result: old gen reaches IHOP every ~<b>' + toIhop + ' s</b> because of promotion. Levers: (1) <b>allocate less</b> (fewer young GCs, fewer promotions), (2) bigger young gen → fewer GCs <i>and</i> more time for objects to die before promotion, (3) bigger old/total heap → rarer marking cycles, (4) shorter object lifetimes (don\'t hold request data in caches). Try survive=40 or old=1500 to provoke full GCs.', parts: [{ type: 'table', label: 'What-if', columns: ['Change', 'Effect'], rows: [['alloc ÷ 2', 'young GC interval × 2, promotion ÷ 2'], ['young × 2', 'half as many young GCs; often lower survive %'], ['old × 2', 'marking cycles much rarer'], ['survive ↑ (medium-lived data)', 'old fills fast → mixed/full GCs']] }] });
+        F.push({ narr: 'Reading the result: old gen reaches IHOP every ~<b>' + toIhop + ' s</b> because of promotion. Levers: (1) <b>allocate less</b> (fewer young GCs, fewer promotions), (2) bigger young gen → fewer GCs <i>and</i> more time for objects to die before promotion, (3) bigger old/total heap → rarer marking cycles, (4) shorter object lifetimes (don\'t hold request data in caches). Try <code>alloc=3000 survive=60 old=1500</code> to provoke full GCs (promotion outruns marking), or <code>live=1300</code> to see marking run almost constantly.', parts: [{ type: 'table', label: 'What-if', columns: ['Change', 'Effect'], rows: [['alloc ÷ 2', 'young GC interval × 2, promotion ÷ 2'], ['young × 2', 'half as many young GCs; often lower survive %'], ['old × 2', 'marking cycles much rarer'], ['survive ↑ (medium-lived data)', 'old fills fast → mixed/full GCs']] }] });
         return F;
       }
     }, {
