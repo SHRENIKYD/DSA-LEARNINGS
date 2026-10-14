@@ -1049,6 +1049,7 @@ public class SafeCasts {
         var fin = {}; fin[res] = 'sel';
         var ok = res === A;
         f.push({ narr: 'Result type: <b>' + res + '</b>. Assigning it back to a <b>' + A + '</b> variable ' + (ok ? 'is fine.' : 'is a <span class="c-r">compile error</span> (possible lossy conversion from ' + res + ' to ' + A + '). Fix with an explicit cast or a compound assignment.'), parts: [g(fin, (function () { var o = {}; o[res] = 'result'; return o; })()), { type: 'code', label: 'Does it compile?', lang: 'java', code: A + ' r1 = a ' + op + ' b;' + (ok ? '                // OK' : '                // ERROR') + '\n' + A + ' r2 = (' + A + ') (a ' + op + ' b);       // OK: explicit cast\n' + (res === A || ['byte', 'short', 'char', 'int', 'long', 'float', 'double'].indexOf(res) >= 0 ? A + ' r3 = a; r3 ' + op + '= b;       // OK: hidden cast in ' + op + '=' : ''), hl: { 1: ok ? 'ok' : 'bad', 2: 'ok', 3: 'ok' } }] });
+        f.push({ narr: 'Cheat sheet: the result type of an arithmetic operator is never smaller than <b>int</b>, and it is the wider of the two operand types otherwise. Memorise the four rules: <b>double → float → long → int</b>.', parts: [{ type: 'table', label: 'Binary numeric promotion examples', columns: ['expression', 'result type'], rows: [['byte + byte', 'int'], ['char + char', 'int'], ['short * long', 'long'], ['int / float', 'float'], ['long + double', 'double'], [A + ' ' + op + ' ' + B, res]], hl: { 5: 'sel' } }] });
         return f;
       }
     }],
@@ -1695,7 +1696,7 @@ public class Chars {
             kind = 'a <b>surrogate pair</b>: high ' + hex(u, 4) + ' + low ' + hex(units[i + 1], 4) + ' → code point (' + hex(u, 4) + ' − 0xD800) × 0x400 + (' + hex(units[i + 1], 4) + ' − 0xDC00) + 0x10000 = <b>U+' + cp.toString(16).toUpperCase() + '</b> (' + cp + '). <code>charAt(' + i + ')</code> alone would give you only half of it!';
           } else {
             cp = u; hl[i] = 'cur'; w = 1;
-            kind = (u < 128 ? 'plain <b>ASCII</b>' : 'a single char in the Basic Multilingual Plane') + ': code point <b>U+' + cp.toString(16).toUpperCase().padStart(4, '0') + '</b> (' + cp + ').';
+            kind = (u >= 0xD800 && u <= 0xDFFF) ? 'an <b>unpaired surrogate</b> ' + hex(u, 4) + ' — half of a character with no partner. This is broken text (it prints as ?); it usually comes from cutting a String in the middle of an emoji.' : (u < 128 ? 'plain <b>ASCII</b>' : 'a single char in the Basic Multilingual Plane') + ': code point <b>U+' + cp.toString(16).toUpperCase().padStart(4, '0') + '</b> (' + cp + ').';
           }
           var b = cp < 0x80 ? 1 : cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4;
           utf8 += b;
@@ -1708,6 +1709,7 @@ public class Chars {
           i += w;
         }
         f.push({ narr: 'Totals: <code>length()</code> = <b>' + s.length + '</b>, <code>codePointCount</code> = <b>' + cps.length + '</b>, UTF-8 size = <b>' + utf8 + ' bytes</b>. Use code points when you count, reverse or truncate user-visible text.', parts: [{ type: 'table', label: 'Three ways to measure "' + H.esc(s) + '"', columns: ['measure', 'value', 'Java'], rows: [['UTF-16 units', String(s.length), 's.length()'], ['code points', String(cps.length), 's.codePointCount(0, s.length())'], ['UTF-8 bytes', String(utf8), 's.getBytes(UTF_8).length']], hl: { 1: 'sel' } }] });
+        f.push({ narr: 'The safe loop pattern in Java: read a whole code point, handle it, then advance by <code>Character.charCount(cp)</code> (1 or 2). Or simply use <code>s.codePoints()</code>.', parts: [{ type: 'code', label: 'Iterate by code point', lang: 'java', code: 'for (int i = 0; i < s.length(); ) {\n    int cp = s.codePointAt(i);      // whole character\n    System.out.println(Character.getName(cp));\n    i += Character.charCount(cp);   // 1 or 2 chars\n}', hl: { 2: 'ok', 4: 'ok' } }] });
         return f;
       }
     }, {
