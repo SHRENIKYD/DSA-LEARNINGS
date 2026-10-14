@@ -1327,7 +1327,9 @@ SELECT o.cohort_month, s.cohort_size,
        ROUND(100.0 * COUNT(DISTINCT CASE WHEN month_no = 3 THEN o.user_id END) / s.cohort_size) AS m3_pct
 FROM offsets o JOIN sizes s ON s.cohort_month = o.cohort_month
 GROUP BY o.cohort_month, s.cohort_size
-ORDER BY o.cohort_month;`
+ORDER BY o.cohort_month;
+-- Caution: months after the end of the data (e.g. Feb cohort M3 = May) show 0 here.
+-- The Hard practice problem "Monthly Retention Matrix" turns those into NULL (right-censoring).`
     }],
     codeTitle: ['Ordered funnel', 'Cohort retention matrix'],
     viz: [{
