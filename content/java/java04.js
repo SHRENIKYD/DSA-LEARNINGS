@@ -3579,7 +3579,7 @@ public class Main {
         System.out.println(quote(new Bike(), 7));        // 350000
     }
 }`,
-      complexity: `<p>O(1) per quote.</p>`,
+      complexity: `<p>O(1) per quote: one virtual call plus one instanceof check.</p>`,
       followUps: ['A Truck has its own insurance formula — what do you override?', 'What if both interfaces had a default <code>cost</code>?']
     }
   });
