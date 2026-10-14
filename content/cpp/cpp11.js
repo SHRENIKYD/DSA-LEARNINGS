@@ -365,4 +365,519 @@
       }
     }]
   });
+
+  /* ======================================================================
+     TOPIC 2 — Data races & race conditions
+     ====================================================================== */
+  var RACE_CODE = 'for (int k = 0; k < 2; ++k) {\n    int tmp = counter;   // 1. LOAD  (copy into a register)\n    tmp = tmp + 1;       // 2. ADD   (only in the register)\n    counter = tmp;       // 3. STORE (write back to memory)\n}';
+  function raceOps() {
+    return [
+      { line: 2, txt: 'load', run: function (st, t) { var r = st.r[t]; r.tmp = st.s.counter; r.seen = st.s.counter; return { say: 'tmp = counter (reads ' + r.tmp + ')', narr: 'LOADs <code>counter</code> into its private register: tmp = <b>' + r.tmp + '</b>.' }; } },
+      { line: 3, txt: 'add', run: function (st, t) { var r = st.r[t]; r.tmp++; return { say: 'tmp = ' + r.tmp + ' (in register)', narr: 'adds 1 <b>inside its own register</b>: tmp = ' + r.tmp + '. Memory still says counter = ' + st.s.counter + '.' }; } },
+      { line: 4, txt: 'store', run: function (st, t) {
+        var r = st.r[t], old = st.s.counter, lost = old !== r.seen, res;
+        st.s.counter = r.tmp;
+        if (lost) { st.s.lost++; res = { say: 'counter = ' + r.tmp + ' (LOST UPDATE: overwrote ' + old + ')', cls: 'bad', narr: '<span class="c-r">STOREs ' + r.tmp + ' over ' + old + '.</span> It read ' + r.seen + ' earlier, but the other thread changed counter since then. That increment is <b>lost forever</b>.' }; }
+        else res = { say: 'counter = ' + r.tmp, cls: 'ok', narr: 'STOREs ' + r.tmp + ' back to memory. Nobody touched counter in between, so this increment counts.' };
+        if (r.k < 1) { r.k++; res.jump = 0; }
+        return res;
+      } }
+    ];
+  }
+  var vizRace = {
+    title: 'counter++ is three steps: watch an update get lost',
+    input: 'A B A B A B',
+    inputLabel: 'Schedule of A / B steps (try "A A A B B B" for a lucky run)',
+    gen: function (input) {
+      var sched = parseSched(input, 'A B A B A B');
+      return interleave({
+        code: { A: RACE_CODE, B: RACE_CODE },
+        ops: { A: raceOps(), B: raceOps() },
+        shared: { counter: 0, lost: 0 }, reg: { tmp: '-', seen: 0, k: 0 },
+        cols: ['counter in memory'], colVals: function (st) { return [st.s.counter]; },
+        view: function (st) { return { counter: st.s.counter, 'A.tmp (register)': st.r.A.tmp, 'B.tmp (register)': st.r.B.tmp, 'lost updates': st.s.lost }; },
+        viewHl: function (st) { return st.s.lost ? { 'lost updates': 'bad' } : {}; },
+        intro: 'Both threads run <code>++counter</code> twice, so the answer "should" be <b>4</b>. But <code>++counter</code> on a plain int is really <b>load → add → store</b>. You are the scheduler: each letter lets one thread do one of those tiny steps.',
+        finish: function (st) {
+          return st.s.counter === 4
+            ? '<span class="c-g">counter = 4.</span> This schedule happened to keep each load-add-store together, so nothing was lost. <b>Lucky is not correct</b>: in C++ this program has a data race and is undefined behaviour no matter what number comes out.'
+            : '<span class="c-r">counter = ' + st.s.counter + ' instead of 4</span> (' + st.s.lost + ' lost update' + (st.s.lost === 1 ? '' : 's') + '). Two threads loaded the same old value, both added 1, and the second store overwrote the first. Fix: <code>std::atomic&lt;int&gt;</code> (one indivisible fetch_add) or a mutex around the three steps.';
+        }
+      }, sched);
+    }
+  };
+  var BANK_CODE = '// balance is std::atomic<int>, starts at 100\nif (balance.load() >= 80) {      // 1. CHECK\n    balance.fetch_sub(80);       // 2. ACT\n}';
+  function bankOps() {
+    return [
+      { line: 2, txt: 'check', run: function (st, t) { var ok = st.s.balance >= 80; st.r[t].go = ok; return { say: 'check: balance ' + st.s.balance + (ok ? ' >= 80, yes' : ' < 80, no'), narr: 'checks the balance: ' + st.s.balance + (ok ? ' is enough, so it decides to withdraw.' : ' is not enough, so it gives up.'), jump: ok ? 1 : 2 }; } },
+      { line: 3, txt: 'act', run: function (st, t) {
+        st.s.balance -= 80;
+        var bad = st.s.balance < 0;
+        return { say: 'fetch_sub(80) -> balance ' + st.s.balance, cls: bad ? 'bad' : 'ok', narr: bad ? '<span class="c-r">withdraws 80 based on a check that is no longer true.</span> Balance is now <b>' + st.s.balance + '</b>. Each single operation was atomic, but the check-then-act pair was not.' : 'withdraws 80 atomically. Balance = ' + st.s.balance + '.' };
+      } }
+    ];
+  }
+  var vizBank = {
+    title: 'Race condition without a data race: check-then-act',
+    input: 'A B A B',
+    inputLabel: 'Schedule of A / B steps (try "A A B B")',
+    gen: function (input) {
+      var sched = parseSched(input, 'A B A B');
+      return interleave({
+        code: { A: BANK_CODE, B: BANK_CODE },
+        ops: { A: bankOps(), B: bankOps() },
+        shared: { balance: 100 }, reg: { go: '-' },
+        cols: ['balance'], colVals: function (st) { return [st.s.balance]; },
+        view: function (st) { return { balance: st.s.balance, 'A decided to withdraw': st.r.A.go, 'B decided to withdraw': st.r.B.go }; },
+        viewHl: function (st) { return st.s.balance < 0 ? { balance: 'bad' } : {}; },
+        intro: 'Balance is a <code>std::atomic&lt;int&gt;</code>, so there is <b>no data race</b>: every single load and fetch_sub is indivisible. Two customers each try to withdraw 80 from 100. Only one should succeed.',
+        finish: function (st) {
+          return st.s.balance < 0
+            ? '<span class="c-r">Balance = ' + st.s.balance + '.</span> This is a <b>race condition</b> (a logic bug about timing), not a data race. Atomics on each step do not help: the decision must be taken and applied as one unit. Fix: hold a mutex over check + act, or use a compare_exchange loop that only subtracts if the value is still what you checked.'
+            : '<span class="c-g">Balance = ' + st.s.balance + '.</span> This schedule did the check and the act of one thread back-to-back, so the second thread saw the true balance. The bug is still there; it just did not show up this time.';
+        }
+      }, sched);
+    }
+  };
+
+  topics.push({
+    title: 'Data Races, Race Conditions & Why "It Worked on My Machine" Means Nothing',
+    analogy: `<p>Two cashiers share one whiteboard that shows "<b>cookies sold: 5</b>". Both sell a cookie at the same moment. Each reads 5, each thinks "5 + 1 = 6", each wipes the board and writes <b>6</b>. Two cookies were sold, but the board only went up by one. Nobody did anything "wrong" alone; the problem is that <b>read → think → write</b> is three moves, and the other cashier slipped in between.</p>`,
+    explain: `<p><b>Why it happens.</b> <code>++counter</code> looks like one action, but the CPU does three: <b>load</b> the value into a register, <b>add</b> 1 in the register, <b>store</b> it back. If another thread runs between the load and the store, one increment vanishes. Run 4 threads × 100,000 increments and you typically get something like 217,893 instead of 400,000, and a different number every run.</p>
+      <p><b>The official definition (learn this sentence).</b> A <b>data race</b> happens when two threads access the <b>same memory location</b>, <b>at least one of them writes</b>, <b>at least one access is not atomic</b>, and <b>neither happens-before the other</b> (nothing orders them: no lock, no join, no atomic handshake). In C++ a data race is <span class="c-r"><b>undefined behaviour</b></span>. Not "maybe a wrong number": the whole program has no meaning, and the optimizer is allowed to assume it never happens.</p>
+      ${H.table(['', 'data race', 'race condition'], [
+        ['what', 'unsynchronized conflicting access to one memory location', 'the result depends on timing / ordering of events'],
+        ['level', 'language rule (the C++ memory model)', 'program logic'],
+        ['consequence', 'undefined behaviour', 'a wrong but well-defined result'],
+        ['example', '<code>int c; c++</code> from two threads', 'atomic check balance, then atomic withdraw'],
+        ['detected by', 'ThreadSanitizer (TSan)', 'thinking, tests, model checkers']
+      ])}
+      <p>You can have one without the other: a mutex-protected <code>map</code> where you check <code>contains(k)</code> in one locked call and <code>insert</code> in another has no data race but still has a race condition (check-then-act).</p>
+      <p><b>The four cures</b> (pick in this order):</p>
+      <ol><li><b>Don't share</b>: give each thread its own data (own slice, <code>thread_local</code>, local variable) and combine at the end.</li>
+      <li><b>Share only immutable data</b>: many readers and zero writers is always safe.</li>
+      <li><b>Lock</b>: protect the shared data with a mutex so only one thread at a time runs the critical section (topic 3).</li>
+      <li><b>Atomics</b>: for single variables, <code>std::atomic</code> makes each operation indivisible (topic 5).</li></ol>
+      <p><b>Memory location</b> = one scalar object (an int, a pointer, a double...). Two different members of a struct are two locations, so two threads may write <code>s.a</code> and <code>s.b</code> at the same time safely. The exceptions: adjacent bit-fields share a location, and <code>vector&lt;bool&gt;</code> packs 8 elements into one byte.</p>`,
+    clues: ['"the count is sometimes lower than expected" / "flaky test under load" → lost update from a read-modify-write data race', '"works in Debug, hangs in Release" → optimizer hoisted a non-atomic flag read out of a loop', '"is this code thread-safe?" → look for shared + mutable + unsynchronized', '"check if absent, then insert" / "if balance ≥ x then withdraw" → check-then-act race condition: make the pair one atomic unit', '"volatile bool stop" in C++ → not a synchronization tool; use <code>std::atomic&lt;bool&gt;</code>', '"how would you find it?" → ThreadSanitizer <code>-fsanitize=thread</code>, stress tests, code review'],
+    code: [R`
+      #include <bits/stdc++.h>
+      using namespace std;
+
+      int plainHits = 0;               // shared, NOT protected  -> data race (UB)
+      atomic<int> atomicHits{0};       // shared, every op is indivisible -> correct
+
+      int main() {
+          vector<thread> pool;
+          for (int t = 0; t < 4; ++t)
+              pool.emplace_back([] {
+                  for (int i = 0; i < 100000; ++i) {
+                      ++plainHits;     // load + add + store: increments get lost
+                      ++atomicHits;    // one atomic fetch_add: never lost
+                  }
+              });
+          for (auto& th : pool) th.join();
+          cout << "plain : " << plainHits << "  (expected 400000, usually less)\n";
+          cout << "atomic: " << atomicHits << "  (always 400000)\n";
+      }
+      // Build with: g++ -std=c++20 -O1 -g -fsanitize=thread race.cpp
+      // TSan reports: "WARNING: ThreadSanitizer: data race ... Write of size 4 ... plainHits"`],
+    codeTitle: ['Lost updates: plain int vs std::atomic (run it under TSan)'],
+    viz: [vizRace, vizBank],
+    examples: [
+      { title: 'The flag that never changes (works in -O0, hangs in -O2)', html: `<p>With a plain <code>bool</code>, the compiler may legally assume no other thread changes <code>stopFlag</code> (that would be a data race, which "cannot happen"). So it reads it <b>once</b>, keeps it in a register, and turns the loop into <code>while (true)</code>. <code>volatile</code> is not the fix in C++ (it gives no atomicity and no ordering between threads). <code>std::atomic&lt;bool&gt;</code> is.</p>`, code: R`
+        std::atomic<bool> stopFlag{false};        // NOT plain bool, NOT volatile bool
+        void worker() {
+            while (!stopFlag.load()) {            // re-read from memory every iteration
+                /* do a unit of work */
+            }
+        }
+        int main() {
+            std::thread t(worker);
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            stopFlag.store(true);                 // worker sees it and exits
+            t.join();
+        }` },
+      { title: 'Check-then-act on a "thread-safe" map', html: `<p>Each method locks internally, yet two threads can both see "not there" and both insert/compute. The data is never corrupted, but the expensive load runs twice or the second value overwrites the first: a <b>race condition</b>. Fix: one lock around the whole compound action (or an API like <code>getOrCreate</code>).</p>`, code: R`
+        class SafeCache {
+            std::mutex m;
+            std::unordered_map<std::string, int> data_;
+        public:
+            // the whole "check + insert" happens under ONE lock: no window in between
+            int getOrCompute(const std::string& key, const std::function<int()>& compute) {
+                std::lock_guard<std::mutex> g(m);
+                auto it = data_.find(key);
+                if (it != data_.end()) return it->second;
+                int v = compute();                       // (holding the lock while computing is a trade-off)
+                data_.emplace(key, v);
+                return v;
+            }
+        };` },
+      { title: 'Different struct members are fine, vector&lt;bool&gt; is not', html: `<p>Two threads writing <code>p.x</code> and <code>p.y</code> is <b>not</b> a data race: different memory locations. Two threads writing <code>flags[0]</code> and <code>flags[1]</code> of a <code>vector&lt;bool&gt;</code> <b>is</b> a data race, because both bits live in the same byte and each write is a read-modify-write of that byte. Use <code>vector&lt;char&gt;</code> or <code>vector&lt;uint8_t&gt;</code> instead.</p>`, code: R`
+        struct Point { int x; int y; };
+        int main() {
+            Point p{};
+            std::thread a([&] { p.x = 1; });      // OK: separate memory locations
+            std::thread b([&] { p.y = 2; });
+            a.join(); b.join();
+
+            std::vector<char> flags(2);           // vector<bool> here would be a data race
+            std::thread c([&] { flags[0] = 1; });
+            std::thread d([&] { flags[1] = 1; });
+            c.join(); d.join();
+            std::cout << p.x + p.y + flags[0] + flags[1] << "\n";   // 5
+        }` },
+      { title: 'shared_ptr: the count is atomic, the object is not', html: `<p>Copying <i>different</i> <code>shared_ptr</code> objects that point to the same thing from many threads is safe (the reference count uses atomic increments). But reading and writing the <b>same</b> <code>shared_ptr</code> variable from two threads is a data race, and so is mutating the pointed-to object without a lock. C++20 adds <code>std::atomic&lt;std::shared_ptr&lt;T&gt;&gt;</code> for the first case.</p>` }
+    ],
+    deepDive: `<p><b>Why UB and not "just a wrong value"?</b> Because it lets compilers optimize single-threaded code freely: keep variables in registers, merge or remove loads and stores, reorder independent statements. If data races were defined, every memory access would need to be treated like an atomic, and all code would get slower. Under the "data-race-free programs behave sequentially consistent" contract (the <b>SC-DRF</b> guarantee), if <i>you</i> remove all data races, the compiler and CPU promise your program behaves as if threads simply took turns.</p>
+      <p><b>Real damage, not theory:</b> torn reads (a 64-bit value written as two 32-bit halves on a 32-bit CPU, so a reader sees half old, half new), loops that never exit, a "double-checked" pointer seen as non-null before the object it points to is constructed, and the compiler re-reading a variable twice so one <code>if</code> sees two different values. There is <b>no such thing as a benign data race</b> in C++.</p>
+      <p><b>ThreadSanitizer</b> (<code>-fsanitize=thread</code>, GCC and Clang) instruments every memory access and tracks happens-before with vector clocks. It reports the two conflicting accesses with stack traces. Cost: about 5–15× slower and 5–10× more memory, and it cannot be combined with AddressSanitizer in one build. It only finds races on paths that actually execute, so pair it with stress tests (many iterations, more threads than cores, random sleeps). Valgrind's Helgrind/DRD are alternatives.</p>
+      <p><b>volatile in C++ ≠ volatile in Java/C#.</b> In C++ it only means "this access has side effects (memory-mapped I/O), do not remove it". It gives no atomicity and no inter-thread ordering. Multi-threaded code needs <code>std::atomic</code> or locks.</p>
+      <p><b>Happens-before sources</b> you can rely on: thread start (everything before the <code>std::thread</code> constructor is visible in the new thread), <code>join()</code>, mutex unlock → later lock of the same mutex, atomic release-store → acquire-load that reads it, <code>promise::set_value</code> → <code>future::get</code>, <code>notify</code> + <code>wait</code> under a mutex. Every correct concurrent design is a chain of these edges.</p>`,
+    aiEra: `<p><b>What AI changes:</b> pasting a TSan report into an assistant gets a quick explanation of which two accesses collide and a plausible fix. Static analyzers with LLM help also flag "shared mutable state without a lock" during review.</p>
+      <p><b>Use AI as a partner:</b> <code>"List every variable in this file that is accessed by more than one thread, and for each say what protects it"</code>. That ownership table is the best review you can ask for. Also ask it to write a stress test that hammers the code with 32 threads under TSan.</p>
+      <p><b>Where AI goes wrong:</b> it often "fixes" a race by sprinkling <code>volatile</code>, by making each operation atomic while leaving a check-then-act gap, or by adding a sleep. It also says "this is a benign race" with confidence, but C++ has none. And it may report code as race-free because tests passed.</p>
+      <p><b>What you must still own:</b> the data-race definition, the ownership/protection map of your shared state, and the judgment of which invariant must hold atomically (the unit that a lock must cover). An interviewer will ask you to <i>find</i> the race by reading, not by running.</p>`,
+    problems: [{
+      title: 'Bug Hunt: The Lossy Hit Counter',
+      level: 'Easy', tags: ['data race', 'atomic', 'mutex', 'thread_local'], companies: ['Google', 'Amazon', 'Jane Street'],
+      statement: `<p>A web server counts page hits with 8 threads, each running <code>for (i = 0; i &lt; 1'000'000; ++i) ++hits;</code> on a global <code>long long hits</code>. The dashboard shows numbers like 3,912,447 instead of 8,000,000. (1) Explain exactly why. (2) Give three correct fixes and say which is fastest.</p>`,
+      constraints: `8 threads, 10<sup>6</sup> increments each, final total must be exactly 8·10<sup>6</sup>`,
+      example: `<p>One lost update, step by step (counter starts at 7):</p>${H.table(['step', 'Thread A', 'Thread B', 'hits in memory'], [['1', 'load 7', '', '7'], ['2', '', 'load 7', '7'], ['3', 'add → 8, store 8', '', '8'], ['4', '', 'add → 8, store 8', '<span class="c-r">8 (should be 9)</span>']])}`,
+      brute: { why: `<p>The buggy code: <code>++hits</code> on a plain integer is a load-add-store. Two threads interleave inside it, so increments are lost. It's also a data race, so the result isn't even guaranteed to be "a smaller number": it's undefined behaviour.</p>`, code: R`
+        long long hits = 0;                       // shared, unprotected
+        void handleRequests() {
+            for (int i = 0; i < 1000000; ++i) ++hits;   // DATA RACE: load + add + store
+        }
+        int main() {
+            std::vector<std::thread> pool;
+            for (int t = 0; t < 8; ++t) pool.emplace_back(handleRequests);
+            for (auto& th : pool) th.join();
+            std::cout << hits << "\n";            // anything up to 8000000 (UB)
+        }` },
+      mcq: { q: 'Which fix is usually the FASTEST for 8 threads hammering one counter?', options: ['A std::mutex around ++hits', 'std::atomic&lt;long long&gt; with fetch_add', 'Each thread counts in a local variable, then adds it once at the end', 'Mark hits as volatile'], answer: 2, explain: 'Local counting does 10<sup>6</sup> register increments per thread and only ONE shared update each. Atomics are correct but all 8 cores fight over one cache line (~20-100 ns per contended op). A mutex is slower still. volatile does not fix anything.' },
+      hints: [`<p><b>Aha:</b> the bug is not "two threads", it's <b>shared + mutable + unsynchronized</b>. Remove any one of the three and it's fixed.</p>`, `<p>Fix 1: <code>std::atomic&lt;long long&gt;</code>. Fix 2: <code>std::mutex</code> + <code>lock_guard</code>. Fix 3: stop sharing: count locally, then publish once.</p>`, `<p>For Fix 3 the final "publish" still needs to be safe: use one atomic <code>fetch_add</code> per thread, or write into a per-thread slot and sum after <code>join()</code>. Remember <code>relaxed</code> is enough for a pure counter read after join.</p>`],
+      solution: {
+        approach: `<p><b>Why:</b> lost updates from interleaved load-add-store (see the table). <b>Fixes</b>, from fastest to slowest under heavy contention: (3) <b>don't share</b>: accumulate in a local and add once; (2) <b>atomic</b> <code>fetch_add</code>: every increment is indivisible, but the cache line bounces between cores; (1) <b>mutex</b>: correct but every increment pays a lock and unlock, and threads go to sleep under contention. Never use <code>volatile</code>.</p>`,
+        code: R`
+          #include <bits/stdc++.h>
+          using namespace std;
+
+          constexpr int THREADS = 8, PER = 1000000;
+
+          // Fix 1: mutex (correct, slowest under contention)
+          long long hitsLocked = 0;
+          mutex hitsMutex;
+          void withMutex() {
+              for (int i = 0; i < PER; ++i) {
+                  lock_guard<mutex> g(hitsMutex);   // only one thread inside at a time
+                  ++hitsLocked;
+              }
+          }
+
+          // Fix 2: atomic (correct, one indivisible fetch_add per hit)
+          atomic<long long> hitsAtomic{0};
+          void withAtomic() {
+              for (int i = 0; i < PER; ++i)
+                  hitsAtomic.fetch_add(1, memory_order_relaxed);   // counter only: relaxed is enough
+          }
+
+          // Fix 3: don't share (fastest): count privately, publish once
+          atomic<long long> hitsBatched{0};
+          void withLocalCount() {
+              long long mine = 0;                   // lives in a register, no other thread sees it
+              for (int i = 0; i < PER; ++i) ++mine;
+              hitsBatched.fetch_add(mine, memory_order_relaxed);   // ONE shared write per thread
+          }
+
+          template <class F> void runAll(F f) {
+              vector<thread> pool;
+              for (int t = 0; t < THREADS; ++t) pool.emplace_back(f);
+              for (auto& th : pool) th.join();      // join = happens-before, totals are now visible
+          }
+
+          int main() {
+              runAll(withMutex);      cout << hitsLocked << "\n";          // 8000000
+              runAll(withAtomic);     cout << hitsAtomic.load() << "\n";   // 8000000
+              runAll(withLocalCount); cout << hitsBatched.load() << "\n";  // 8000000
+          }`,
+        dry: { head: ['fix', 'shared writes per thread', 'contention', 'result'], rows: [['buggy ++hits', '1,000,000 (racy)', 'silent corruption', '<span class="c-r">≤ 8,000,000, UB</span>'], ['mutex', '1,000,000 lock/unlock pairs', 'threads sleep and wake', '<span class="c-g">8,000,000</span>'], ['atomic fetch_add', '1,000,000 atomic RMWs', 'cache line ping-pong', '<span class="c-g">8,000,000</span>'], ['local + 1 publish', '1', 'almost none', '<span class="c-g">8,000,000</span>']] },
+        complexity: `<p>All O(N) work. Rough real timings for 8×10<sup>6</sup> increments on 8 cores: local ≈ 1–3 ms, contended atomic ≈ 50–200 ms, contended mutex ≈ 200–800 ms. The asymptotic class is the same; the constant factor from cache-line traffic is everything.</p>`,
+        followUps: ['How would you make a sharded counter that is cheap to increment and occasionally read?', 'What is false sharing and how does <code>alignas(std::hardware_destructive_interference_size)</code> help?', 'Why is <code>memory_order_relaxed</code> safe for this counter but not for a "data is ready" flag?']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 3 — mutex, lock_guard, unique_lock, scoped_lock, deadlock
+     ====================================================================== */
+  var MUTEX_CODE = 'for (int k = 0; k < 2; ++k) {\n    std::lock_guard g(m);   // lock m (waits if taken)\n    int tmp = counter;      // LOAD\n    counter = tmp + 1;      // ADD + STORE\n}                           // ~lock_guard: unlock m';
+  function mutexOps() {
+    return [
+      lockOp(2, 'm'),
+      { line: 3, txt: 'load', run: function (st, t) { st.r[t].tmp = st.s.counter; return { say: 'tmp = counter (' + st.s.counter + ')', narr: 'reads counter = <b>' + st.s.counter + '</b> while holding the lock. The other thread cannot be in here.' }; } },
+      { line: 4, txt: 'store', run: function (st, t) { st.s.counter = st.r[t].tmp + 1; return { say: 'counter = ' + st.s.counter, narr: 'writes back <b>' + st.s.counter + '</b>. Because of the lock, nobody could sneak in between the load and this store.' }; } },
+      unlockOp(5, 'm', function (st, t) { if (st.r[t].k < 1) { st.r[t].k++; return 0; } })
+    ];
+  }
+  var vizMutex = {
+    title: 'A mutex turns load-add-store into one protected block',
+    input: 'A B A B A B B A',
+    inputLabel: 'Schedule of A / B steps (same one that lost updates before)',
+    gen: function (input) {
+      var sched = parseSched(input, 'A B A B A B B A');
+      return interleave({
+        code: { A: MUTEX_CODE, B: MUTEX_CODE },
+        ops: { A: mutexOps(), B: mutexOps() },
+        shared: { counter: 0, m: null }, reg: { tmp: '-', k: 0 },
+        cols: ['counter', 'm owner'], colVals: function (st) { return [st.s.counter, st.s.m || 'nobody']; },
+        view: function (st) { return { 'm owner': st.s.m ? 'thread ' + st.s.m : 'nobody (unlocked)', counter: st.s.counter, 'A.tmp': st.r.A.tmp, 'B.tmp': st.r.B.tmp }; },
+        viewHl: function (st) { return { 'm owner': st.s.m ? 'cur' : 'ok' }; },
+        intro: 'Same race as before, but now each increment is wrapped in <code>std::lock_guard g(m)</code>. Watch the <b>m owner</b> box: while one thread holds the key, the other one is <b>blocked</b> when it tries to lock (blue rows).',
+        finish: function (st) { return '<span class="c-g"><b>counter = ' + st.s.counter + '.</b></span> No matter what schedule you type, the answer is always 4, because the load and the store of one thread can never be split by the other. The price: blocked steps (blue rows) where a thread just waits.'; }
+      }, sched);
+    }
+  };
+
+  var DL_CODE = {
+    naive: { A: 'std::lock_guard g1(m1);   // lock m1\nstd::lock_guard g2(m2);   // lock m2\nmoveMoney();\n/* } unlock m2, m1 */', B: 'std::lock_guard g1(m2);   // lock m2 (!)\nstd::lock_guard g2(m1);   // lock m1\nmoveMoney();\n/* } unlock m1, m2 */' },
+    ordered: { A: 'std::lock_guard g1(m1);   // always m1 first\nstd::lock_guard g2(m2);   // then m2\nmoveMoney();\n/* } unlock */', B: 'std::lock_guard g1(m1);   // always m1 first\nstd::lock_guard g2(m2);   // then m2\nmoveMoney();\n/* } unlock */' },
+    scoped: { A: 'std::scoped_lock g(m1, m2);  // both or none\nmoveMoney();\n/* } unlock both */', B: 'std::scoped_lock g(m2, m1);  // order does not matter\nmoveMoney();\n/* } unlock both */' }
+  };
+  function workOp(line) { return { line: line, txt: 'work', run: function (st, t) { st.s.done++; return { say: 'moveMoney() (holds both locks)', cls: 'ok', narr: 'holds <b>both</b> mutexes and does the transfer safely.' }; } }; }
+  function unlockBoth(line) { return { line: line, txt: 'unlock', run: function (st, t) { st.s.m1 = null; st.s.m2 = null; return { say: 'unlock m1 and m2', narr: 'leaves the scope: the guards unlock both mutexes.' }; } }; }
+  function dlOps(mode, t) {
+    if (mode === 'scoped') return [
+      { line: 1, txt: 'scoped_lock', can: function (st) { return st.s.m1 === null && st.s.m2 === null; }, waitSay: function (st) { return 'scoped_lock needs both; ' + (st.s.m1 ? 'm1 is held by ' + st.s.m1 : 'm2 is held by ' + st.s.m2) + ' (it never holds one while waiting for the other)'; },
+        run: function (st, tt) { st.s.m1 = tt; st.s.m2 = tt; return { say: 'scoped_lock(m1, m2) -> got both', cls: 'ok', narr: 'locks <b>both</b> mutexes as one step. Internally std::lock tries, and if it cannot get the second it releases the first and retries, so it never sits on one key while waiting for another.' }; } },
+      workOp(2), unlockBoth(3)];
+    var first = (mode === 'naive' && t === 'B') ? 'm2' : 'm1', second = first === 'm1' ? 'm2' : 'm1';
+    return [lockOp(1, first), lockOp(2, second), workOp(3), unlockBoth(4)];
+  }
+  var vizDeadlock = {
+    title: 'Deadlock: two threads, two mutexes, opposite order',
+    input: 'naive: A B A B',
+    inputLabel: 'mode: schedule   (modes: naive | ordered | scoped)',
+    gen: function (input) {
+      var s = String(input || 'naive: A B A B'), mode = 'naive', rest = s;
+      var mm = s.match(/^\s*([a-zA-Z]+)\s*:(.*)$/);
+      if (mm) { mode = mm[1].toLowerCase(); rest = mm[2]; }
+      if (!DL_CODE[mode]) throw new Error('Mode must be naive, ordered or scoped, e.g. "naive: A B A B"');
+      var sched = parseSched(rest, 'A B A B');
+      return interleave({
+        code: DL_CODE[mode],
+        ops: { A: dlOps(mode, 'A'), B: dlOps(mode, 'B') },
+        shared: { m1: null, m2: null, done: 0 }, reg: {},
+        cols: ['m1 owner', 'm2 owner'], colVals: function (st) { return [st.s.m1 || '-', st.s.m2 || '-']; },
+        view: function (st) { return { 'm1 owner': st.s.m1 || 'nobody', 'm2 owner': st.s.m2 || 'nobody', 'transfers done': st.s.done + ' / 2' }; },
+        viewHl: function (st) { return { 'm1 owner': st.s.m1 ? 'cur' : 'ok', 'm2 owner': st.s.m2 ? 'cur' : 'ok' }; },
+        intro: 'Mode <b>' + mode + '</b>. Each thread needs <b>both</b> mutexes to move money between two accounts. ' + (mode === 'naive' ? 'Thread A locks m1 then m2; thread B locks m2 then m1. Try the schedule "A B A B", then "A A B B".' : mode === 'ordered' ? 'Both threads lock in the SAME global order: m1, then m2. Try any schedule you like.' : 'Both threads use <code>std::scoped_lock</code>, which acquires several mutexes with a deadlock-avoidance algorithm.'),
+        deadlock: '<span class="c-r"><b>DEADLOCK.</b></span> A holds m1 and waits for m2; B holds m2 and waits for m1. Each waits for the other forever: a <b>cycle</b> in the wait-for graph. The program freezes with 0% CPU. Fixes: lock in one global order, or use <code>std::scoped_lock(m1, m2)</code>.',
+        finish: function (st) { return '<span class="c-g"><b>Both transfers finished.</b></span> ' + (mode === 'naive' ? 'This schedule was lucky: one thread grabbed both locks before the other started. The deadlock is still possible on another day.' : 'With ' + (mode === 'ordered' ? 'a single global lock order' : 'scoped_lock') + ' no cycle can form, so <b>every</b> schedule completes.'); }
+      }, sched);
+    }
+  };
+
+  topics.push({
+    title: 'Mutexes: lock_guard, unique_lock, scoped_lock & Avoiding Deadlock',
+    analogy: `<p>A café has <b>one bathroom and one key</b> on a hook. Whoever takes the key goes in; everyone else waits in line. When they come out they hang the key back. That key is a <b>mutex</b> ("mutual exclusion"). A <b>lock_guard</b> is a key on a spring cord: it snaps back to the hook automatically when you leave, even if you leave in a hurry (an exception). A <b>deadlock</b> is two people who each hold one of two keys and wait for the other's key forever.</p>`,
+    explain: `<p>A <b>mutex</b> protects a <b>critical section</b>: code that touches shared data. Only one thread at a time can own it. <code>m.lock()</code> waits (sleeps) until the mutex is free, then owns it; <code>m.unlock()</code> releases it. Unlocking "publishes" everything you wrote: the next thread that locks the same mutex is guaranteed to see it.</p>
+      <p><b>Never call lock()/unlock() by hand.</b> If code between them throws or returns early, the mutex stays locked forever. Use an RAII guard:</p>
+      ${H.table(['guard', 'use it when', 'extra powers'], [
+        ['<code>std::lock_guard&lt;std::mutex&gt;</code>', 'simple scoped critical section (most of the time)', 'none: lock in ctor, unlock in dtor, tiny and fast'],
+        ['<code>std::unique_lock&lt;std::mutex&gt;</code>', 'you need flexibility, or a condition_variable', '<code>unlock()</code> early / relock, <code>defer_lock</code>, <code>try_to_lock</code>, timeouts, movable'],
+        ['<code>std::scoped_lock</code> (C++17)', 'you need <b>several</b> mutexes at once', 'locks all of them with a deadlock-avoidance algorithm'],
+        ['<code>std::shared_lock&lt;std::shared_mutex&gt;</code>', 'many readers, rare writers', 'readers share; a writer uses unique_lock and is alone']
+      ])}
+      <p><b>Other mutex types:</b> <code>std::recursive_mutex</code> (same thread may lock it again, usually a design smell), <code>std::timed_mutex</code> (<code>try_lock_for(50ms)</code>), <code>std::shared_mutex</code> (reader-writer lock).</p>
+      <p><b>Deadlock</b> needs four things at once (the <b>Coffman conditions</b>): mutual exclusion, <b>hold-and-wait</b> (keep one lock while waiting for another), no preemption, and a <b>circular wait</b>. Break any one and deadlock is impossible. In practice you break the cycle:</p>
+      <ul><li><b>Lock ordering:</b> all code takes mutexes in one global order (e.g., by account id). No cycles can form.</li>
+      <li><b>Lock everything at once:</b> <code>std::scoped_lock lk(a.m, b.m);</code></li>
+      <li><b>Don't call unknown code while holding a lock</b> (callbacks, virtual functions, logging that might lock) since it may take locks you don't know about.</li>
+      <li><b>Keep critical sections tiny:</b> copy the data out under the lock, do slow work (I/O, allocation, computing) outside.</li></ul>
+      <p><b>Golden rule of encapsulation:</b> the mutex and the data it guards live together in one class, and you never hand out a pointer or reference to the guarded data (otherwise callers touch it without the lock).</p>`,
+    clues: ['"thread-safe class" / "make this cache safe for concurrent use" → private mutex + lock_guard in every member function', '"transfer between two accounts" / "lock two objects" → <code>std::scoped_lock</code> or global lock order (deadlock!)', '"program freezes, CPU at 0%" → deadlock: look for two locks taken in opposite orders', '"many reads, few writes" → <code>std::shared_mutex</code> + <code>shared_lock</code> / <code>unique_lock</code>', '"needs to unlock before waiting" / "used with condition_variable" → <code>std::unique_lock</code>', '"exception thrown while holding the lock" → RAII guard, never manual unlock'],
+    code: [R`
+      #include <bits/stdc++.h>
+      using namespace std;
+
+      // The mutex lives next to the data it protects. Every public method locks it.
+      class ThreadSafeCounter {
+          mutable mutex m;          // mutable: so const methods (get) can lock it too
+          long long value = 0;
+      public:
+          void add(long long d) {
+              lock_guard<mutex> g(m);           // lock now, unlock at the closing brace
+              value += d;
+          }
+          long long get() const {
+              lock_guard<mutex> g(m);
+              return value;                     // copy out while locked
+          }
+      };
+
+      int main() {
+          ThreadSafeCounter c;
+          vector<jthread> pool;
+          for (int t = 0; t < 4; ++t)
+              pool.emplace_back([&c] { for (int i = 0; i < 1000; ++i) c.add(1); });
+          pool.clear();                          // jthread destructors join here
+          cout << c.get() << "\n";               // 4000
+      }`, R`
+      #include <bits/stdc++.h>
+      using namespace std;
+
+      mutex mtx;
+      vector<string> logLines;
+
+      void appendLog(const string& raw) {
+          string formatted = "[" + to_string(raw.size()) + "] " + raw;   // slow work OUTSIDE the lock
+
+          unique_lock<mutex> lk(mtx);            // locks now
+          logLines.push_back(formatted);
+          size_t n = logLines.size();
+          lk.unlock();                           // release early: the rest does not touch logLines
+
+          if (n % 1000 == 0) cout << "flushed " << n << "\n";
+      }                                          // dtor: does nothing, we no longer own the lock
+
+      bool tryQuickUpdate() {
+          unique_lock<mutex> lk(mtx, try_to_lock);   // do not wait if busy
+          if (!lk.owns_lock()) return false;         // someone else has it: skip this round
+          logLines.emplace_back("quick");
+          return true;
+      }
+
+      int main() { appendLog("hello"); cout << tryQuickUpdate() << "\n"; }`],
+    codeTitle: ['A thread-safe class with lock_guard', 'unique_lock: unlock early and try_to_lock'],
+    viz: [vizMutex, vizDeadlock],
+    examples: [
+      { title: 'Reader-writer cache with shared_mutex', html: `<p>Lookups are frequent and only read, so many threads may hold a <code>shared_lock</code> at the same time. An update takes a <code>unique_lock</code> and waits until all readers have left. Good when reads dominate heavily; with balanced read/write traffic a plain mutex is often faster (shared_mutex has more bookkeeping).</p>`, code: R`
+        class Config {
+            mutable std::shared_mutex rw;
+            std::map<std::string, std::string> kv;
+        public:
+            std::optional<std::string> get(const std::string& k) const {
+                std::shared_lock lk(rw);                 // many readers at once
+                auto it = kv.find(k);
+                if (it == kv.end()) return std::nullopt;
+                return it->second;                       // return a COPY, never a reference
+            }
+            void set(const std::string& k, std::string v) {
+                std::unique_lock lk(rw);                 // writer: exclusive
+                kv[k] = std::move(v);
+            }
+        };` },
+      { title: 'Leaking a reference defeats the lock', html: `<p><code>items()</code> locks, returns a reference, then unlocks when it returns. The caller then iterates the vector with <b>no lock</b> while another thread calls <code>add()</code> and reallocates it: data race, dangling iterators. Fix: return a copy, or take a callback and run it under the lock (carefully).</p>`, code: R`
+        class Bag {
+            std::mutex m;
+            std::vector<int> v;
+        public:
+            void add(int x) { std::lock_guard g(m); v.push_back(x); }
+            const std::vector<int>& itemsBAD() { std::lock_guard g(m); return v; }   // BUG: escapes the lock
+            std::vector<int> itemsGood() { std::lock_guard g(m); return v; }         // snapshot copy
+        };` },
+      { title: 'std::lock with defer_lock (pre-C++17 style)', html: `<p>Before <code>scoped_lock</code> existed, you created two <code>unique_lock</code>s that don't lock yet (<code>defer_lock</code>), then called <code>std::lock(a, b)</code>, which locks both without deadlock. You'll see this in older codebases and interviews.</p>`, code: R`
+        struct Account { std::mutex m; long long balance = 0; };
+        void transfer(Account& from, Account& to, long long amt) {
+            if (&from == &to) return;                          // locking the same mutex twice = UB
+            std::unique_lock<std::mutex> l1(from.m, std::defer_lock);
+            std::unique_lock<std::mutex> l2(to.m, std::defer_lock);
+            std::lock(l1, l2);                                  // both, deadlock-free
+            from.balance -= amt;
+            to.balance += amt;
+        }` },
+      { title: 'Lock granularity: one big lock vs striped locks', html: `<p>One mutex for a whole hash map is simple but makes all threads queue. <b>Lock striping</b> uses, say, 16 mutexes and picks one by <code>hash(key) % 16</code>, so threads touching different stripes run in parallel. Java's old ConcurrentHashMap did this. More locks means more parallelism but also harder multi-key operations (you must lock stripes in index order).</p>`, code: R`
+        class StripedMap {
+            static constexpr size_t N = 16;
+            std::array<std::mutex, N> locks;
+            std::array<std::unordered_map<int, int>, N> shards;
+            size_t idx(int key) const { return std::hash<int>{}(key) % N; }
+        public:
+            void put(int k, int v) { size_t i = idx(k); std::lock_guard g(locks[i]); shards[i][k] = v; }
+            std::optional<int> get(int k) {
+                size_t i = idx(k); std::lock_guard g(locks[i]);
+                auto it = shards[i].find(k);
+                return it == shards[i].end() ? std::nullopt : std::optional<int>(it->second);
+            }
+        };` }
+    ],
+    deepDive: `<p><b>How a mutex really works (Linux).</b> <code>std::mutex</code> sits on a <b>futex</b> ("fast userspace mutex"): one atomic integer. Uncontended lock = one atomic compare-and-swap in user space (≈ 15–25 ns, no system call). If it's taken, the thread may spin briefly, then calls <code>futex_wait</code> and the kernel puts it to sleep; unlock does an atomic store and, only if someone is sleeping, <code>futex_wake</code>. So mutexes are cheap when uncontended and expensive (microseconds, context switches) when contended. <b>Contention, not locking, is the cost.</b></p>
+      <p><b>Fairness is not guaranteed.</b> A thread that unlocks and immediately relocks often wins again (it's hot in cache), so others can starve. <b>Priority inversion:</b> a low-priority thread holds a lock that a high-priority thread needs while medium-priority threads hog the CPU (the Mars Pathfinder bug). Real-time systems use priority-inheritance mutexes.</p>
+      <p><b>How std::lock / scoped_lock avoid deadlock:</b> lock the first mutex, <code>try_lock</code> the others; if one fails, release everything, then retry starting with the one that failed. It never <i>holds</i> while <i>blocking</i>, which breaks hold-and-wait. Lock-ordering instead breaks circular wait and has no retries, so large systems often enforce a <b>lock hierarchy</b> (each mutex has a level; you may only lock lower levels while holding higher ones), checked at runtime in debug builds.</p>
+      <p><b>Deadlock vs livelock vs starvation.</b> Deadlock: everyone sleeps forever. Livelock: everyone is busy retrying and backing off in sync, no progress (two people stepping aside in a corridor). Starvation: the system progresses but one thread never gets its turn.</p>
+      <p><b>Static checking.</b> Clang's Thread Safety Analysis (<code>-Wthread-safety</code> with annotations like <code>GUARDED_BY(mu)</code>, <code>REQUIRES(mu)</code>) catches "accessed without the lock" at compile time. Google's Abseil <code>absl::Mutex</code> uses these annotations everywhere and also has built-in deadlock detection in debug mode.</p>
+      <p><b>Don't lock the same std::mutex twice</b> in one thread: it's undefined behaviour (usually a self-deadlock). If you "need" recursion, restructure into a public locking function that calls a private <code>*_locked</code> helper that assumes the lock is held.</p>`,
+    aiEra: `<p><b>What AI changes:</b> generating a thread-safe wrapper class or converting manual lock/unlock to RAII guards is instant. Assistants are good at spotting a missing guard in a member function.</p>
+      <p><b>Use AI as a partner:</b> ask <code>"Draw the lock-acquisition graph of this module: which functions lock which mutexes, in what order, and which call each other while holding a lock?"</code>. Cycles in that graph are your potential deadlocks. Ask it to add Clang thread-safety annotations so the compiler enforces the design.</p>
+      <p><b>Where AI goes wrong:</b> it puts slow I/O or callbacks inside critical sections, returns references to guarded members, picks <code>recursive_mutex</code> to "fix" a self-deadlock, or suggests <code>shared_mutex</code> everywhere even for tiny write-heavy sections where it's slower.</p>
+      <p><b>What you must still own:</b> deciding which invariant each mutex protects, the global lock order, and critical-section size. These are design decisions that need the whole picture of the system, and you'll be asked to defend them in a design interview.</p>`,
+    problems: [{
+      title: 'Thread-Safe Bank Transfer (No Deadlock)',
+      level: 'Medium', tags: ['mutex', 'scoped_lock', 'deadlock', 'lock ordering'], companies: ['Goldman Sachs', 'Bloomberg', 'Citadel'],
+      statement: `<p>Each <code>Account</code> has its own <code>std::mutex</code>. Implement <code>bool transfer(Account&amp; from, Account&amp; to, long long amt)</code> that moves money only if <code>from</code> has enough, is safe when called concurrently from many threads in any directions (including A→B and B→A at the same time), and never deadlocks. Money must never be created or destroyed: the total over all accounts stays constant.</p>`,
+      constraints: `Up to 10<sup>4</sup> accounts, 32 threads, 10<sup>6</sup> transfers; a transfer to the same account must be handled.`,
+      example: `<p>Accounts A = 100, B = 50. Thread 1: transfer(A, B, 30). Thread 2: transfer(B, A, 70), both at once.</p>${H.table(['order', 'result'], [['T1 first', 'A=70, B=80 → T2 ok → A=140, B=10'], ['T2 first', 'B=50 &lt; 70 → T2 fails; T1 → A=70, B=80']])}<p>Either outcome is fine; ${H.c('g', 'total is always 150')} and ${H.c('r', 'the program must never hang')}.</p>`,
+      brute: { why: `<p>Locking <code>from</code> then <code>to</code> looks natural but T1 locks A then waits for B, while T2 locks B then waits for A: circular wait, <b>deadlock</b>. Also <code>transfer(A, A, x)</code> locks the same mutex twice, which is undefined behaviour.</p>`, code: R`
+        struct Account { std::mutex m; long long balance = 0; };
+        bool transferBAD(Account& from, Account& to, long long amt) {
+            std::lock_guard<std::mutex> g1(from.m);   // T1: A   | T2: B
+            std::lock_guard<std::mutex> g2(to.m);     // T1 waits B, T2 waits A -> deadlock
+            if (from.balance < amt) return false;
+            from.balance -= amt;
+            to.balance += amt;
+            return true;
+        }` },
+      mcq: { q: 'T1 runs transfer(A,B) and T2 runs transfer(B,A). Which change GUARANTEES no deadlock?', options: ['Add a sleep between the two locks', 'Lock both with std::scoped_lock(from.m, to.m)', 'Use recursive_mutex', 'Lock to.m first instead of from.m'], answer: 1, explain: 'scoped_lock uses std::lock\'s deadlock-avoidance algorithm (never holds one while blocking on another). Swapping the order just moves the cycle; sleeping only hides it; recursive_mutex is about re-locking in the SAME thread.' },
+      hints: [`<p><b>Aha:</b> deadlock needs a cycle. Two threads taking the same two locks in opposite orders is the textbook cycle.</p>`, `<p>Either acquire both atomically with <code>std::scoped_lock</code>, or always lock the account with the smaller id (or address) first.</p>`, `<p>Edge case: <code>&amp;from == &amp;to</code> → return early (locking one mutex twice is UB). Check the balance <b>after</b> locking, never before (check-then-act). Recipe: same-account check → lock both → check balance → move → unlock by scope exit.</p>`],
+      solution: {
+        approach: `<p>Use <code>std::scoped_lock lk(from.m, to.m)</code>: it acquires both mutexes as one unit with a try-and-back-off algorithm, so no circular wait can form regardless of argument order. Do the balance check <i>inside</i> the critical section so the decision and the update are one atomic unit. The alternative (shown in comments) is <b>global lock ordering</b> by account id, which is cheaper and avoids retries but requires a total order on every lock in the system.</p>`,
+        code: R`
+          #include <bits/stdc++.h>
+          using namespace std;
+
+          struct Account {
+              int id;
+              mutex m;
+              long long balance;
+              Account(int i, long long b) : id(i), balance(b) {}
+          };
+
+          bool transfer(Account& from, Account& to, long long amt) {
+              if (&from == &to) return true;              // same account: nothing to move, and avoid double-lock UB
+              scoped_lock lk(from.m, to.m);               // both or none: deadlock-free
+              if (from.balance < amt) return false;       // check INSIDE the lock (no check-then-act gap)
+              from.balance -= amt;
+              to.balance += amt;
+              return true;
+          }
+
+          // Alternative: global lock order by id (no retries, but every caller must follow it)
+          bool transferOrdered(Account& from, Account& to, long long amt) {
+              if (&from == &to) return true;
+              Account& first  = from.id < to.id ? from : to;
+              Account& second = from.id < to.id ? to : from;
+              lock_guard<mutex> g1(first.m);
+              lock_guard<mutex> g2(second.m);
+              if (from.balance < amt) return false;
+              from.balance -= amt;
+              to.balance += amt;
+              return true;
+          }
+
+          int main() {
+              Account a(1, 100), b(2, 50);
+              {
+                  jthread t1([&] { for (int i = 0; i < 100000; ++i) transfer(a, b, 1); });
+                  jthread t2([&] { for (int i = 0; i < 100000; ++i) transfer(b, a, 1); });
+              }                                            // both joined here
+              scoped_lock lk(a.m, b.m);
+              cout << a.balance + b.balance << "\n";       // always 150
+          }`,
+        dry: { head: ['step', 'T1: transfer(A,B,30)', 'T2: transfer(B,A,70)', 'A', 'B'], rows: [['1', 'scoped_lock(A,B): gets A, try B ok', '', '100', '50'], ['2', '', 'scoped_lock(B,A): try B busy, waits (holds nothing)', '100', '50'], ['3', 'balance 100 ≥ 30 → A-=30, B+=30', '', '70', '80'], ['4', 'unlock both', 'gets B, gets A', '70', '80'], ['5', '', 'balance 80 ≥ 70 → B-=70, A+=70', '140', '10']] },
+        complexity: `<p>O(1) per transfer plus lock cost (~20 ns uncontended, microseconds when contended). No deadlock in any interleaving; total money invariant preserved because every read-modify-write happens under both locks.</p>`,
+        followUps: ['How would you do a consistent "sum of all balances" snapshot without stopping the world?', 'Transfer among 3 accounts atomically?', 'Why can a try_lock-and-back-off scheme livelock, and how does random backoff help?']
+      }
+    }]
+  });
 registerModule({ id: 'cpp11', title: 'Concurrency in C++', intro: 'x', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

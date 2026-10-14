@@ -1875,7 +1875,7 @@ delete[] buf;</pre>
       snap(8, 'Scope ends → <b>' + d[0] + '</b> is destroyed (newest first) and its deleter runs: <code>' + H.esc(d[1]) + '</code>.', st.length - 1, 'bad');
       st.pop(); outl.push(d[1]);
     });
-    snap(8, 'All four resources released in reverse order of acquisition, with zero cleanup code inside <code>work()</code>. Note the deleter is only called for a <b>non-null</b> pointer — if <code>fopen</code> failed, <code>fclose(nullptr)</code> is never called.');
+    snap(8, 'All four resources released in reverse order of acquisition, with zero cleanup code inside <code>work()</code>. Detail: <code>unique_ptr</code> calls its deleter only for a <b>non-null</b> pointer (if <code>fopen</code> failed, <code>fclose(nullptr)</code> is never called), but <code>shared_ptr</code> calls its deleter even for a null pointer — so guard inside shared_ptr deleters.');
     return frames;
   }
 
@@ -2113,6 +2113,863 @@ delete[] buf;</pre>
         followUps: ['How would you let a statement safely outlive the Connection object (hint: shared_ptr&lt;db_t&gt; inside the statement\'s deleter)?', 'What if <code>db_close</code> can fail and you need to report the error?', 'How does <code>std::out_ptr</code> (C++23) help with C APIs that return handles through a <code>T**</code> parameter?']
       }
     }]
+  });
+
+  /* ======================================================================
+     PRACTICE — Easy
+     ====================================================================== */
+  practice.push({
+    title: 'Fix the Mismatched delete (and Then Delete Neither)', level: 'Easy', tags: ['new[]/delete[]', 'vector', 'leak hunt'], companies: ['Amazon', 'Infosys', 'Qualcomm'],
+    statement: `<p><code>average(n)</code> reads <code>n</code> doubles into <code>new double[n]</code>, returns their mean and frees the array with <code>delete arr;</code>. Explain why this is undefined behavior, fix it minimally, then rewrite it so no manual memory management remains. Also handle <code>n == 0</code>.</p>`,
+    constraints: `0 ≤ n ≤ 10<sup>6</sup>. Return 0.0 for n = 0.`,
+    example: `<p>values = ${H.arr([2, 4, 9], { label: 'input' })} → mean ${H.c('g', '5.0')}. With <code>delete</code> instead of <code>delete[]</code> it may "work" for doubles on GCC — ${H.c('r', 'still UB')}, and for class types it runs only one destructor and can crash.</p>`,
+    brute: { why: `<p>The original pairs <code>new[]</code> with scalar <code>delete</code> (UB) and also divides by zero for n = 0. Even after switching to <code>delete[]</code>, any exception between allocation and the delete (e.g. a throwing input parser) leaks the array.</p>`, code: R`
+      #include <vector>
+      double averageBuggy(const std::vector<double>& in) {
+          int n = static_cast<int>(in.size());
+          double* arr = new double[n];
+          for (int i = 0; i < n; ++i) arr[i] = in[i];
+          double s = 0;
+          for (int i = 0; i < n; ++i) s += arr[i];
+          delete arr;                 // UB: must be delete[]
+          return s / n;               // n == 0 -> NaN
+      }` },
+    mcq: { q: 'What exactly is wrong with <code>new double[n]</code> + <code>delete arr</code>?', options: ['Undefined behavior: array form must be freed with delete[]', 'Only a memory leak', 'Compile error', 'Nothing for doubles, it is fine'], answer: 0, explain: 'Mixing the array and scalar forms is UB regardless of element type. It often appears to work for trivial types, which hides it.' },
+    hints: [`<p>Hint 1: Every <code>new T[n]</code> needs <code>delete[]</code>; the minimal fix is adding the brackets — but think about exceptions and early returns too.</p>`, `<p>Hint 2: <code>std::vector&lt;double&gt;</code> owns its buffer and frees it with the right form automatically; you do not even need a copy if you can read the input directly.</p>`, `<p>Hint 3: Recipe — if <code>in.empty()</code> return 0.0; otherwise <code>std::accumulate(in.begin(), in.end(), 0.0) / in.size()</code>. Note the <code>0.0</code> seed: an <code>int</code> seed would truncate.</p>`],
+    solution: {
+      approach: `<p>Minimal fix: <code>delete[] arr;</code> plus an n = 0 guard. Real fix: no owning raw pointer at all — operate on the vector (or copy into one) and let RAII free it. Use <code>std::accumulate</code> with a <code>double</code> initial value.</p>`,
+      code: R`
+        #include <iostream>
+        #include <numeric>
+        #include <vector>
+        double average(const std::vector<double>& in) {
+            if (in.empty()) return 0.0;
+            return std::accumulate(in.begin(), in.end(), 0.0) / static_cast<double>(in.size());
+        }
+        int main() {
+            std::cout << average({2, 4, 9}) << " " << average({}) << "\n";   // 5 0
+        }
+      `,
+      dry: { head: ['input', 'empty?', 'sum', 'result'], rows: [['{2,4,9}', 'no', '15.0', '5.0'], ['{}', 'yes', '—', '0.0']] },
+      complexity: `<p>O(n) time, O(1) extra memory (no copy at all in the final version).</p>`,
+      followUps: ['What is the "array cookie" and why does it make delete vs delete[] matter for class types?', 'When would <code>std::unique_ptr&lt;double[]&gt;</code> be preferable to a vector?']
+    }
+  });
+
+  practice.push({
+    title: 'Rule of Zero: Make Image Copy-Safe', level: 'Easy', tags: ['rule of 3/5/0', 'shallow copy', 'double free'], companies: ['Adobe', 'Microsoft', 'EA'],
+    statement: `<p><code>class Image</code> holds <code>unsigned char* pixels_</code> allocated with <code>new[]</code> and a destructor that <code>delete[]</code>s it. Copying an Image crashes at the end of the program with "double free". Make <code>Image</code> safe to copy (deep copy) and move, writing <b>no</b> destructor, copy or move functions.</p>`,
+    constraints: `Width/height up to 10<sup>4</sup>. Copies must be independent (changing one does not change the other).`,
+    example: `<p><code>Image a(2, 2); Image b = a; b.set(0, 0, 255);</code> → ${H.c('g', 'a.get(0,0) == 0, b.get(0,0) == 255')}. Original code: both share one buffer → ${H.c('r', 'both destructors delete[] it')}.</p>`,
+    brute: { why: `<p>The compiler-generated copy constructor copies the <b>pointer</b> (shallow copy), so two Images own one buffer; the second destructor frees freed memory. Writing a correct Rule-of-5 by hand (deep copy ctor, copy-and-swap assignment, move ctor/assign, destructor) is ~30 lines and easy to get subtly wrong.</p>`, code: R`
+      #include <cstddef>
+      class ImageBad {
+          std::size_t w_, h_;
+          unsigned char* pixels_;
+      public:
+          ImageBad(std::size_t w, std::size_t h) : w_(w), h_(h), pixels_(new unsigned char[w * h]()) {}
+          ~ImageBad() { delete[] pixels_; }     // implicit copy duplicates pixels_ -> double free
+      };
+      int main() { ImageBad a(2, 2); /* ImageBad b = a;  -> double free at exit */ }` },
+    mcq: { q: 'Which member makes <code>Image</code> correctly copyable with zero hand-written special members?', options: ['std::vector&lt;unsigned char&gt;', 'std::unique_ptr&lt;unsigned char[]&gt;', 'std::shared_ptr&lt;unsigned char[]&gt;', 'unsigned char* with a destructor'], answer: 0, explain: 'vector deep-copies on copy and moves cheaply. unique_ptr would make Image move-only; shared_ptr would make copies share (and mutate) the same pixels.' },
+    hints: [`<p>Hint 1: The bug is "two owners of one buffer". Which standard type owns a buffer and knows how to deep-copy it?</p>`, `<p>Hint 2: Replace the raw pointer with <code>std::vector&lt;unsigned char&gt;</code> sized <code>w*h</code>; delete the destructor.</p>`, `<p>Hint 3: Now the implicit copy constructor copies the vector (deep), the implicit move moves it (O(1)), and the implicit destructor frees it. That is the Rule of Zero.</p>`],
+    solution: {
+      approach: `<p>Rule of Zero: let a member that already has correct value semantics own the resource. <code>std::vector</code> deep-copies, moves in O(1) and frees itself, so every special member the compiler generates for Image is correct.</p>`,
+      code: R`
+        #include <cassert>
+        #include <cstddef>
+        #include <vector>
+        class Image {
+            std::size_t w_, h_;
+            std::vector<unsigned char> pixels_;      // owns + deep-copies
+        public:
+            Image(std::size_t w, std::size_t h) : w_(w), h_(h), pixels_(w * h, 0) {}
+            unsigned char get(std::size_t x, std::size_t y) const { return pixels_[y * w_ + x]; }
+            void set(std::size_t x, std::size_t y, unsigned char v) { pixels_[y * w_ + x] = v; }
+        };
+        int main() {
+            Image a(2, 2);
+            Image b = a;                // deep copy
+            b.set(0, 0, 255);
+            assert(a.get(0, 0) == 0 && b.get(0, 0) == 255);
+            Image c = std::move(b);     // O(1) move
+            assert(c.get(0, 0) == 255);
+        }
+      `,
+      complexity: `<p>Copy O(w·h) (it must duplicate pixels), move O(1), destruction O(1) for trivial elements.</p>`,
+      followUps: ['If copies were rare and images huge, how could <code>shared_ptr&lt;const std::vector&lt;unsigned char&gt;&gt;</code> give copy-on-write?', 'Why would <code>unique_ptr&lt;unsigned char[]&gt;</code> make Image move-only?']
+    }
+  });
+
+  practice.push({
+    title: 'Fix the Dangling Reference Return', level: 'Easy', tags: ['stack lifetime', 'dangling reference', 'string_view'], companies: ['Google', 'Bloomberg'],
+    statement: `<p>Three helper functions compile (with warnings) but print garbage: one returns <code>const std::string&amp;</code> to a local, one returns <code>std::string_view</code> into a local string, and one returns <code>const char*</code> from <code>local.c_str()</code>. Explain each in terms of stack lifetime and fix all three.</p>`,
+    constraints: `Keep the functions' purpose: build "Hello, &lt;name&gt;!". No heap allocation by hand.`,
+    example: `<p><code>greet("Ana")</code> should return ${H.c('g', '"Hello, Ana!"')}. The buggy versions return a view/reference into a string that was ${H.c('r', 'destroyed when the function returned')}.</p>`,
+    brute: { why: `<p>All three return a <b>non-owning</b> handle (reference, view, raw char pointer) to an object whose storage belongs to the function's stack frame (and possibly a heap buffer it owned). When the frame is popped the string's destructor runs and frees/invalidates that storage.</p>`, code: R`
+      #include <string>
+      #include <string_view>
+      const std::string& greetRef(const std::string& n) { std::string s = "Hello, " + n + "!"; return s; }   // dangling
+      std::string_view greetView(const std::string& n) { std::string s = "Hello, " + n + "!"; return s; }    // dangling
+      const char* greetC(const std::string& n) { std::string s = "Hello, " + n + "!"; return s.c_str(); }   // dangling` },
+    mcq: { q: 'Is returning <code>std::string</code> by value expensive here?', options: ['No — copy elision/move makes it cheap', 'Yes — it always deep-copies', 'Yes — it allocates twice', 'It does not compile'], answer: 0, explain: 'Returning a local by value uses NRVO or, failing that, a move (a pointer swap). The safe version costs nothing extra.' },
+    hints: [`<p>Hint 1: Ask "who owns the characters after return?" For all three versions the answer is "a dead object".</p>`, `<p>Hint 2: Return an <b>owning</b> type: <code>std::string</code> by value.</p>`, `<p>Hint 3: A function may return a reference/view only to something that outlives the call: a parameter passed by reference, a member of <code>*this</code>, or a static. Turn on <code>-Wall</code> (GCC warns "reference to local variable returned") and <code>-fsanitize=address</code>.</p>`],
+    solution: {
+      approach: `<p>Return by value. The string object is moved (or constructed directly in the caller's storage via NRVO), so the caller owns the characters. Views and references are fine as <i>parameters</i> (the caller keeps the data alive during the call) but dangerous as return types from functions that build data locally.</p>`,
+      code: R`
+        #include <iostream>
+        #include <string>
+        #include <string_view>
+        std::string greet(std::string_view name) {           // view as parameter: fine
+            std::string s = "Hello, ";
+            s += name;
+            s += '!';
+            return s;                                         // owning return: safe and cheap
+        }
+        int main() {
+            std::string g = greet("Ana");
+            std::cout << g << "\n";                           // Hello, Ana!
+        }
+      `,
+      dry: { head: ['version', 'returns', 'owner after return', 'safe?'], rows: [['greetRef', 'const string&amp;', 'dead local', '<span class="c-r">no</span>'], ['greetView', 'string_view', 'dead local', '<span class="c-r">no</span>'], ['greetC', 'const char*', 'dead local', '<span class="c-r">no</span>'], ['greet', 'string', 'caller', '<span class="c-g">yes</span>']] },
+      complexity: `<p>O(len) to build the string; return is O(1).</p>`,
+      followUps: ['When is returning <code>const std::string&amp;</code> from a getter OK?', 'What does <code>std::string_view sv = greet("x");</code> do? (Hint: the temporary dies at the semicolon.)']
+    }
+  });
+
+  practice.push({
+    title: 'Prove There Is No Leak With an Instance Counter', level: 'Easy', tags: ['testing', 'RAII', 'leak detection'], companies: ['Microsoft', 'Amazon'],
+    statement: `<p>Write a reusable <code>Counted</code> base (or mixin) that tracks how many objects of a type are alive, then write a test showing that a function which builds a vector of <code>unique_ptr&lt;Order&gt;</code> and throws halfway leaves <b>zero</b> live Orders. Show that the raw-pointer version leaks.</p>`,
+    constraints: `Count must include copies and moves (every constructor increments, the destructor decrements). Single-threaded test.`,
+    example: `<p>After <code>try { buildOrders(5, /*failAt=*/3); } catch (...) {}</code>: raw version ${H.c('r', 'alive == 3')}, unique_ptr version ${H.c('g', 'alive == 0')}.</p>`,
+    brute: { why: `<p>Storing <code>Order*</code> in a vector and deleting them at the end of the function leaks every Order created before the throw — the cleanup loop never runs. Without a counter, nothing in a unit test notices; the leak shows up weeks later as rising memory in production.</p>`, code: R`
+      #include <stdexcept>
+      #include <vector>
+      struct Order { static inline int alive = 0; Order() { ++alive; } ~Order() { --alive; } };
+      void buildOrdersRaw(int n, int failAt) {
+          std::vector<Order*> v;
+          for (int i = 0; i < n; ++i) {
+              if (i == failAt) throw std::runtime_error("db down");
+              v.push_back(new Order());
+          }
+          for (Order* o : v) delete o;           // never reached on throw -> leak
+      }
+      int main() { try { buildOrdersRaw(5, 3); } catch (...) {} return Order::alive; }   // returns 3` },
+    mcq: { q: 'Why must the copy constructor also increment the counter?', options: ['Copies are destroyed too; otherwise the count goes negative', 'The compiler requires it', 'To make the class movable', 'It does not need to'], answer: 0, explain: 'Every object that is destroyed decrements. If some constructors (copy/move) do not increment, the books do not balance.' },
+    hints: [`<p>Hint 1: A CRTP template <code>template&lt;class T&gt; struct Counted { static inline int alive = 0; ... };</code> gives each type its own counter.</p>`, `<p>Hint 2: Define default, copy and move constructors that all <code>++alive</code>, and a destructor that <code>--alive</code>. Assignment does not change the count.</p>`, `<p>Hint 3: Test: record <code>alive</code> before, call the function in try/catch, assert it is unchanged. Swap <code>Order*</code> for <code>std::unique_ptr&lt;Order&gt;</code> and the vector's destructor cleans up during unwinding.</p>`],
+    solution: {
+      approach: `<p>A CRTP base gives every derived type an independent static counter. The test is "count before == count after", even when the function throws. With <code>std::vector&lt;std::unique_ptr&lt;Order&gt;&gt;</code>, unwinding destroys the vector, which destroys each unique_ptr, which deletes each Order.</p>`,
+      code: R`
+        #include <cassert>
+        #include <memory>
+        #include <stdexcept>
+        #include <vector>
+        template <class T>
+        struct Counted {
+            static inline int alive = 0;
+            Counted() { ++alive; }
+            Counted(const Counted&) { ++alive; }
+            Counted(Counted&&) noexcept { ++alive; }
+            Counted& operator=(const Counted&) = default;
+            Counted& operator=(Counted&&) = default;
+            ~Counted() { --alive; }
+        };
+        struct Order : Counted<Order> { int id = 0; };
+
+        std::vector<std::unique_ptr<Order>> buildOrders(int n, int failAt) {
+            std::vector<std::unique_ptr<Order>> v;
+            for (int i = 0; i < n; ++i) {
+                if (i == failAt) throw std::runtime_error("db down");
+                v.push_back(std::make_unique<Order>());
+            }
+            return v;
+        }
+        int main() {
+            int before = Order::alive;
+            try { buildOrders(5, 3); } catch (const std::exception&) {}
+            assert(Order::alive == before);          // nothing leaked
+            { auto ok = buildOrders(4, -1); assert(Order::alive == before + 4); }
+            assert(Order::alive == before);
+        }
+      `,
+      dry: { head: ['i', 'action', 'alive'], rows: [['0..2', 'make_unique', '1, 2, 3'], ['3', 'throw', '3'], ['unwind', '~vector → 3 × ~unique_ptr', '0'], ['assert', 'before == after', '<span class="c-g">pass</span>']] },
+      complexity: `<p>O(1) overhead per construction/destruction. For multithreaded tests make the counter <code>std::atomic&lt;int&gt;</code>.</p>`,
+      followUps: ['How would you count bytes instead of objects (global operator new)?', 'How does LeakSanitizer find leaks without any counters?']
+    }
+  });
+
+  /* ======================================================================
+     PRACTICE — Medium
+     ====================================================================== */
+  practice.push({
+    title: 'Linked List of unique_ptr Without Stack Overflow', level: 'Medium', tags: ['unique_ptr', 'linked list', 'destructor', 'recursion'], companies: ['Google', 'Meta', 'Amazon'],
+    statement: `<p>Implement a singly linked list where each node owns the next via <code>std::unique_ptr&lt;Node&gt; next</code>. Support <code>push_front</code>, <code>pop_front</code>, <code>reverse</code> and <code>size</code>. The list must be destroyable with <b>10 million</b> nodes — the naive version crashes with a stack overflow when it goes out of scope. Explain why and fix it.</p>`,
+    constraints: `Up to 10<sup>7</sup> nodes. No raw <code>new</code>/<code>delete</code>. O(1) push/pop, O(n) reverse.`,
+    example: `<p>push_front 3, 2, 1 → ${H.arr([1, 2, 3], { label: 'list' })} → reverse → ${H.arr([3, 2, 1], { label: 'list' })}. Destroying a list of 10<sup>7</sup> nodes: naive ${H.c('r', 'segfault')}, fixed ${H.c('g', 'fine')}.</p>`,
+    brute: { why: `<p>With the default destructor, destroying the head destroys <code>head-&gt;next</code>, which destroys its <code>next</code>, and so on: a recursion as deep as the list. Each level uses a stack frame (~50–100 bytes), so ~10<sup>5</sup>–10<sup>6</sup> nodes exhaust an 8 MB stack.</p>`, code: R`
+      #include <memory>
+      struct NodeR { int val; std::unique_ptr<NodeR> next; };
+      struct ListNaive {
+          std::unique_ptr<NodeR> head;
+          void push_front(int v) { head = std::unique_ptr<NodeR>(new NodeR{v, std::move(head)}); }
+          // implicit ~ListNaive(): destroys head -> recursive chain of ~NodeR -> stack overflow for huge lists
+      };
+      int main() { ListNaive l; for (int i = 0; i < 1000; ++i) l.push_front(i); }` },
+    mcq: { q: 'Why does the iterative destructor avoid deep recursion?', options: ['It detaches each node\'s next before the node dies, so each destructor has nothing to recurse into', 'It uses delete instead of unique_ptr', 'Compilers optimize recursion away automatically', 'It frees nodes in reverse order'], answer: 0, explain: 'Moving next out (head = std::move(head->next)) leaves the old node with an empty next; its destructor is O(1) and non-recursive.' },
+    hints: [`<p>Hint 1: Who calls whom during destruction? <code>~unique_ptr</code> → <code>~Node</code> → <code>~unique_ptr</code> (next) → … that is recursion.</p>`, `<p>Hint 2: In <code>~List()</code>, loop: <code>while (head) head = std::move(head-&gt;next);</code>. Each assignment destroys exactly one node whose <code>next</code> was already moved out.</p>`, `<p>Hint 3: Reverse with three owners: <code>prev</code>, <code>cur = std::move(head)</code>, and <code>next = std::move(cur-&gt;next)</code>; then <code>cur-&gt;next = std::move(prev); prev = std::move(cur); cur = std::move(next);</code>. Finally <code>head = std::move(prev)</code>.</p>`],
+    solution: {
+      approach: `<p>Ownership is a chain of unique_ptrs. To destroy it without recursion, peel off one node at a time: move the head's <code>next</code> into <code>head</code>, which destroys the old head (whose next is now empty). Reverse uses the same "move the links" style, so no node is ever copied or leaked.</p>`,
+      code: R`
+        #include <cassert>
+        #include <cstddef>
+        #include <memory>
+        #include <utility>
+        class List {
+            struct Node { int val; std::unique_ptr<Node> next; };
+            std::unique_ptr<Node> head_;
+            std::size_t n_ = 0;
+        public:
+            List() = default;
+            List(List&&) noexcept = default;
+            List& operator=(List&&) noexcept = default;
+            ~List() { while (head_) head_ = std::move(head_->next); }   // iterative: O(1) stack
+            void push_front(int v) { head_ = std::unique_ptr<Node>(new Node{v, std::move(head_)}); ++n_; }
+            bool pop_front() {
+                if (!head_) return false;
+                head_ = std::move(head_->next);                          // old head destroyed here
+                --n_;
+                return true;
+            }
+            void reverse() {
+                std::unique_ptr<Node> prev, cur = std::move(head_);
+                while (cur) {
+                    auto next = std::move(cur->next);
+                    cur->next = std::move(prev);
+                    prev = std::move(cur);
+                    cur = std::move(next);
+                }
+                head_ = std::move(prev);
+            }
+            int front() const { return head_->val; }
+            std::size_t size() const { return n_; }
+        };
+        int main() {
+            List l;
+            for (int v : {3, 2, 1}) l.push_front(v);     // 1 2 3
+            l.reverse();                                  // 3 2 1
+            assert(l.front() == 3 && l.size() == 3);
+            List big;
+            for (int i = 0; i < 10'000'000; ++i) big.push_front(i);
+        }   // big destroyed iteratively: no stack overflow
+      `,
+      dry: { head: ['step', 'prev', 'cur', 'next', 'list so far'], rows: [['start', '∅', '1', '—', '1→2→3'], ['iter 1', '1', '2', '2', '1→∅'], ['iter 2', '2', '3', '3', '2→1'], ['iter 3', '3', '∅', '∅', '3→2→1'], ['done', '—', '—', '—', 'head = 3→2→1']] },
+      complexity: `<p>push/pop O(1); reverse O(n); destruction O(n) time, O(1) stack. Note: <code>new Node{...}</code> appears only because <code>make_unique</code> cannot aggregate-initialise before C++20's parenthesised aggregate init; in C++20 <code>std::make_unique&lt;Node&gt;(v, std::move(head_))</code> also works.</p>`,
+      followUps: ['Why is <code>shared_ptr</code> for <code>next</code> a poor choice here?', 'How would you add an O(1) <code>push_back</code> (raw tail pointer — why is that safe)?']
+    }
+  });
+
+  practice.push({
+    title: 'Texture Cache That Never Keeps Unused Textures Alive', level: 'Medium', tags: ['weak_ptr', 'cache', 'flyweight', 'shared_ptr'], companies: ['Unity', 'EA', 'Nvidia', 'Adobe'],
+    statement: `<p>Implement <code>TextureCache::get(name)</code> returning <code>std::shared_ptr&lt;Texture&gt;</code>. If some part of the program still uses a texture with that name, return the <b>same</b> object; if all users have released it, it must already have been freed, and <code>get</code> loads it again. The cache itself must not keep textures alive. Add <code>purge()</code> to drop expired map entries.</p>`,
+    constraints: `Loading is expensive (count loads). Up to 10<sup>5</sup> names. Single-threaded (follow-up: thread-safe).`,
+    example: `${H.table(['Call', 'loads', 'note'], [['a = get("grass")', '1', 'loaded'], ['b = get("grass")', '1', '<span class="c-g">same object, a == b</span>'], ['a.reset(); b.reset()', '1', 'texture freed (cache holds only weak_ptr)'], ['c = get("grass")', '2', 'expired → loaded again']])}`,
+    brute: { why: `<p>A map of <code>shared_ptr&lt;Texture&gt;</code> works as a cache but <b>never frees</b> anything: the cache is itself an owner, so use_count never reaches 0. Memory only grows. A map of raw pointers cannot tell whether a texture is still alive.</p>`, code: R`
+      #include <map>
+      #include <memory>
+      #include <string>
+      struct Texture { std::string name; };
+      class CacheForever {
+          std::map<std::string, std::shared_ptr<Texture>> m_;      // owns everything forever
+      public:
+          std::shared_ptr<Texture> get(const std::string& n) {
+              auto& sp = m_[n];
+              if (!sp) sp = std::make_shared<Texture>(Texture{n});
+              return sp;
+          }
+      };
+      int main() { CacheForever c; auto t = c.get("grass"); return t->name.size() == 5 ? 0 : 1; }` },
+    mcq: { q: 'What does the cache store per name?', options: ['weak_ptr&lt;Texture&gt;', 'shared_ptr&lt;Texture&gt;', 'unique_ptr&lt;Texture&gt;', 'Texture by value'], answer: 0, explain: 'A weak_ptr lets the cache find a live texture (lock) without owning it, so the texture dies when its last real user lets go.' },
+    hints: [`<p>Hint 1: The cache must <i>observe</i>, not own → <code>std::unordered_map&lt;std::string, std::weak_ptr&lt;Texture&gt;&gt;</code>.</p>`, `<p>Hint 2: In <code>get</code>: <code>if (auto sp = map[name].lock()) return sp;</code> otherwise load, store <code>map[name] = sp;</code> (assigning a shared_ptr to a weak_ptr), return sp.</p>`, `<p>Hint 3: Expired entries stay in the map as empty weak_ptrs (small, but they accumulate): <code>std::erase_if(map, [](auto&amp; kv){ return kv.second.expired(); })</code> in <code>purge()</code>. Prefer <code>shared_ptr(new T)</code> over make_shared if textures are huge, so expired entries do not pin the texture bytes (see the make_shared tail).</p>`],
+    solution: {
+      approach: `<p>Flyweight with weak references: users own textures through shared_ptr; the cache holds weak_ptrs and resurrects nothing — <code>lock()</code> either returns the live object or empty, in which case we reload. Because textures are large and the cache's weak_ptrs can live long, construct with <code>shared_ptr(new Texture)</code> so the pixel memory is released as soon as the last user leaves.</p>`,
+      code: R`
+        #include <cassert>
+        #include <memory>
+        #include <string>
+        #include <unordered_map>
+        #include <vector>
+        struct Texture {
+            std::string name;
+            std::vector<unsigned char> pixels;
+            static inline int loads = 0;
+            explicit Texture(std::string n) : name(std::move(n)), pixels(1024) { ++loads; }
+        };
+        class TextureCache {
+            std::unordered_map<std::string, std::weak_ptr<Texture>> map_;
+        public:
+            std::shared_ptr<Texture> get(const std::string& name) {
+                auto& slot = map_[name];
+                if (auto sp = slot.lock()) return sp;                 // still in use somewhere
+                std::shared_ptr<Texture> sp(new Texture(name));     // separate block: bytes freed promptly
+                slot = sp;                                          // observe only
+                return sp;
+            }
+            void purge() { std::erase_if(map_, [](const auto& kv) { return kv.second.expired(); }); }
+            std::size_t entries() const { return map_.size(); }
+        };
+        int main() {
+            TextureCache c;
+            auto a = c.get("grass");
+            auto b = c.get("grass");
+            assert(a == b && Texture::loads == 1);
+            a.reset(); b.reset();                                   // texture destroyed now
+            auto d = c.get("grass");
+            assert(Texture::loads == 2);
+            d.reset();
+            c.purge();
+            assert(c.entries() == 0);
+        }
+      `,
+      dry: { head: ['call', 'weak slot', 'use_count', 'loads'], rows: [['get → a', 'set', '1', '1'], ['get → b', 'lock() ok', '2', '1'], ['a,b reset', 'expired', '0 (destroyed)', '1'], ['get → d', 'lock() empty → reload', '1', '2'], ['d reset; purge', 'erased', '—', '2']] },
+      complexity: `<p><code>get</code> O(1) average (hash + lock CAS). Memory: one map entry per name until purge.</p>`,
+      followUps: ['Make it thread-safe: what must the mutex protect, and can loading happen outside the lock?', 'Add an LRU "keep the last K textures alive" policy on top (hint: also hold K shared_ptrs).']
+    }
+  });
+
+  practice.push({
+    title: 'Doubly Linked List With shared_ptr next and weak_ptr prev', level: 'Medium', tags: ['weak_ptr', 'reference cycle', 'linked list'], companies: ['Amazon', 'Microsoft', 'Oracle'],
+    statement: `<p>Implement a deque-like doubly linked list with <code>push_back</code>, <code>pop_front</code>, <code>pop_back</code>, and a backward traversal. Nodes link with <code>next</code> and <code>prev</code>. A first version that used <code>shared_ptr</code> for both links never frees its nodes. Fix the ownership so all nodes are freed when the list is destroyed.</p>`,
+    constraints: `Up to 10<sup>5</sup> nodes (follow-up: 10<sup>7</sup>). O(1) push/pop at both ends.`,
+    example: `<p>push_back 1, 2, 3 → forward ${H.arr([1, 2, 3])} backward ${H.arr([3, 2, 1])}. With shared_ptr both ways, after the list is destroyed ${H.c('r', 'each middle node still has use_count ≥ 1')} → leak.</p>`,
+    brute: { why: `<p>With <code>shared_ptr</code> in both directions, neighbours own each other: node 1 owns 2 (next) and 2 owns 1 (prev). When the list drops head and tail, every node still has a count from its neighbour → nothing is ever freed.</p>`, code: R`
+      #include <memory>
+      struct DNodeBad { int v; std::shared_ptr<DNodeBad> next, prev; };     // cycle between neighbours
+      int main() {
+          auto a = std::make_shared<DNodeBad>(); auto b = std::make_shared<DNodeBad>();
+          a->next = b; b->prev = a;
+      }   // a and b leak` },
+    mcq: { q: 'Which link direction should own?', options: ['next owns (shared_ptr), prev observes (weak_ptr)', 'prev owns, next observes', 'both observe', 'both own and call reset() in the destructor'], answer: 0, explain: 'One direction must be non-owning to break the 2-cycle; conventionally next owns so the head owns the whole chain.' },
+    hints: [`<p>Hint 1: Every adjacent pair forms a 2-cycle if both links own. Choose one owning direction.</p>`, `<p>Hint 2: <code>std::shared_ptr&lt;Node&gt; next; std::weak_ptr&lt;Node&gt; prev;</code>. The list holds <code>head</code> (owning) and <code>tail</code> (a weak_ptr or raw pointer — the tail is already owned by its predecessor).</p>`, `<p>Hint 3: <code>pop_back</code>: <code>auto t = tail.lock(); auto p = t-&gt;prev.lock(); if (p) p-&gt;next.reset(); else head.reset(); tail = p;</code>. Iterative destructor as in the singly linked list problem to avoid deep recursion for huge lists.</p>`],
+    solution: {
+      approach: `<p>Owning direction = <code>next</code>; back links are <code>weak_ptr</code>. The list owns only <code>head</code>; <code>tail</code> is a weak observer. Popping fixes both neighbours' links. The destructor peels nodes iteratively. (In production you would use raw <code>prev</code> pointers — the list guarantees lifetimes and it avoids control-block traffic — or simply <code>std::list</code>; this exercise is about seeing the cycle.)</p>`,
+      code: R`
+        #include <cassert>
+        #include <memory>
+        #include <vector>
+        class DList {
+            struct Node { int v; std::shared_ptr<Node> next; std::weak_ptr<Node> prev; };
+            std::shared_ptr<Node> head_;
+            std::weak_ptr<Node> tail_;
+        public:
+            ~DList() { while (head_) head_ = std::move(head_->next); }
+            void push_back(int v) {
+                auto n = std::make_shared<Node>();
+                n->v = v;
+                if (auto t = tail_.lock()) { n->prev = t; t->next = n; }
+                else head_ = n;
+                tail_ = n;
+            }
+            bool pop_front() {
+                if (!head_) return false;
+                head_ = std::move(head_->next);
+                if (head_) head_->prev.reset(); else tail_.reset();
+                return true;
+            }
+            bool pop_back() {
+                auto t = tail_.lock();
+                if (!t) return false;
+                auto p = t->prev.lock();
+                if (p) p->next.reset(); else head_.reset();   // t destroyed when last owner drops
+                tail_ = p;
+                return true;
+            }
+            std::vector<int> backward() const {
+                std::vector<int> out;
+                for (auto n = tail_.lock(); n; n = n->prev.lock()) out.push_back(n->v);
+                return out;
+            }
+        };
+        int main() {
+            DList d;
+            for (int v : {1, 2, 3, 4}) d.push_back(v);
+            assert((d.backward() == std::vector<int>{4, 3, 2, 1}));
+            d.pop_back(); d.pop_front();
+            assert((d.backward() == std::vector<int>{3, 2}));
+        }   // all nodes freed: only next links own
+      `,
+      dry: { head: ['op', 'forward', 'owners of node 2', 'note'], rows: [['push 1..4', '1 2 3 4', 'node1.next', 'prev links add 0'], ['pop_back', '1 2 3', 'node1.next', 'node3.next reset → node4 freed'], ['pop_front', '2 3', 'head_', 'node1 freed, node2.prev reset'], ['~DList', '—', '—', 'iterative peel, all freed']] },
+      complexity: `<p>All operations O(1) except traversal O(n). Each node carries 32 bytes of link overhead (two 16-byte smart pointers) plus a control block — a reason real lists use raw back pointers.</p>`,
+      followUps: ['Rewrite with <code>unique_ptr next</code> + raw <code>Node* prev</code>. Why is the raw pointer safe there?', 'What does LeakSanitizer report for the buggy version ("indirect leak")?']
+    }
+  });
+
+  practice.push({
+    title: 'Shape Factory Registry and the Missing Virtual Destructor', level: 'Medium', tags: ['unique_ptr', 'polymorphism', 'virtual destructor', 'factory'], companies: ['Bloomberg', 'Autodesk', 'Microsoft'],
+    statement: `<p>Build a registry <code>Factory</code> where shapes register a creator by name (<code>"circle"</code>, <code>"rect"</code>) and <code>create(name)</code> returns <code>std::unique_ptr&lt;Shape&gt;</code> (null for unknown names). A teammate's version leaks every <code>Rect</code>'s internal label buffer. Find the bug and build the registry correctly.</p>`,
+    constraints: `Creators stored as <code>std::function&lt;std::unique_ptr&lt;Shape&gt;()&gt;</code>. Unknown name → nullptr, not an exception.`,
+    example: `<p><code>auto s = f.create("rect"); s-&gt;area();</code> → works. At scope end the buggy version runs only ${H.c('r', '~Shape()')} — the Rect's <code>std::string</code> member is never destroyed. With <code>virtual ~Shape() = default;</code> ${H.c('g', '~Rect() then ~Shape()')}.</p>`,
+    brute: { why: `<p>Deleting a derived object through a base pointer whose destructor is not virtual is <b>undefined behavior</b>; in practice only the base destructor runs, so derived members (strings, vectors) leak their memory. unique_ptr&lt;Shape&gt; calls <code>delete</code> on a <code>Shape*</code>, so it inherits this bug.</p>`, code: R`
+      #include <memory>
+      #include <string>
+      struct ShapeBad { double area() const { return 0; } };                 // no virtual destructor
+      struct RectBad : ShapeBad { std::string label = std::string(100, 'x'); };
+      int main() {
+          std::unique_ptr<ShapeBad> s = std::make_unique<RectBad>();       // compiles...
+      }   // ...but delete through ShapeBad* -> UB, label's 100 bytes leak` },
+    mcq: { q: 'What single line fixes the leak?', options: ['virtual ~Shape() = default; in the base class', 'Use shared_ptr instead of unique_ptr', 'Add ~Rect() that deletes label', 'Mark Rect final'], answer: 0, explain: 'A virtual destructor makes delete-through-base dispatch to the most-derived destructor. (Curiously, shared_ptr created by make_shared&lt;Rect&gt; would also call the right destructor, because its deleter captures the real type — but relying on that is fragile.)' },
+    hints: [`<p>Hint 1: Who deletes the object? <code>unique_ptr&lt;Shape&gt;</code> → <code>delete (Shape*)p</code>. Which destructor does that call if <code>~Shape</code> is not virtual?</p>`, `<p>Hint 2: Base classes meant for polymorphic deletion need <code>virtual ~Base() = default;</code> (Core Guidelines C.35: public virtual or protected non-virtual).</p>`, `<p>Hint 3: Registry: <code>std::unordered_map&lt;std::string, std::function&lt;std::unique_ptr&lt;Shape&gt;()&gt;&gt;</code>; <code>create</code> looks up and calls the function, or returns nullptr.</p>`],
+    solution: {
+      approach: `<p>Give the base a virtual destructor; store creator lambdas that return <code>std::make_unique&lt;Derived&gt;()</code> converted to <code>unique_ptr&lt;Shape&gt;</code>. Ownership flows from the factory to the caller with no raw new/delete.</p>`,
+      code: R`
+        #include <cassert>
+        #include <functional>
+        #include <memory>
+        #include <string>
+        #include <unordered_map>
+        struct Shape {
+            virtual ~Shape() = default;                 // the fix
+            virtual double area() const = 0;
+        };
+        struct Circle : Shape { double r = 1; double area() const override { return 3.14159 * r * r; } };
+        struct Rect : Shape { std::string label = std::string(100, 'x'); double area() const override { return 6; } };
+
+        class Factory {
+            std::unordered_map<std::string, std::function<std::unique_ptr<Shape>()>> makers_;
+        public:
+            template <class T>
+            void add(const std::string& name) { makers_[name] = [] { return std::make_unique<T>(); }; }
+            std::unique_ptr<Shape> create(const std::string& name) const {
+                auto it = makers_.find(name);
+                return it == makers_.end() ? nullptr : it->second();
+            }
+        };
+        int main() {
+            Factory f;
+            f.add<Circle>("circle");
+            f.add<Rect>("rect");
+            auto s = f.create("rect");
+            assert(s && s->area() == 6);
+            assert(f.create("hexagon") == nullptr);
+        }   // ~Rect (frees label) then ~Shape
+      `,
+      complexity: `<p>create: O(1) average lookup + one allocation. Virtual destructor adds a vtable slot (the class already has a vptr because of <code>area()</code>).</p>`,
+      followUps: ['Why does <code>std::shared_ptr&lt;ShapeBad&gt; p = std::make_shared&lt;RectBad&gt;();</code> happen to destroy correctly?', 'How would self-registration with static objects work, and what is the static initialisation order risk?']
+    }
+  });
+
+  practice.push({
+    title: 'Callbacks That Outlive Their Object: enable_shared_from_this', level: 'Medium', tags: ['enable_shared_from_this', 'weak_ptr', 'async', 'use-after-free'], companies: ['Google', 'Microsoft', 'Zoom', 'Discord'],
+    statement: `<p>A <code>Connection</code> registers a callback with an <code>EventLoop</code> (a queue of <code>std::function&lt;void()&gt;</code> that runs later). The callback captures <code>this</code>. If the Connection is destroyed before the loop runs, the callback touches freed memory. Provide two fixes: (a) the callback keeps the Connection alive until it runs; (b) the callback is skipped if the Connection is gone.</p>`,
+    constraints: `Connections are created via <code>std::make_shared</code>. No raw <code>this</code> captured in deferred callbacks.`,
+    example: `${H.table(['Capture', 'Connection destroyed before loop runs', 'Behaviour'], [['<code>[this]</code>', 'yes', '<span class="c-r">use-after-free</span>'], ['<code>[self = shared_from_this()]</code>', 'no (kept alive)', 'callback runs safely'], ['<code>[weak = weak_from_this()]</code>', 'yes', 'lock() empty → skipped']])}`,
+    brute: { why: `<p>Capturing <code>this</code> stores a raw pointer with no lifetime information. Wrapping it as <code>std::shared_ptr&lt;Connection&gt;(this)</code> is worse: it creates a second control block → double delete.</p>`, code: R`
+      #include <functional>
+      #include <iostream>
+      #include <memory>
+      #include <vector>
+      std::vector<std::function<void()>> loopQueue;
+      struct ConnBad {
+          int id = 7;
+          void onReadable() { loopQueue.push_back([this] { std::cout << id << "\n"; }); }   // raw this
+      };
+      int main() {
+          { auto c = std::make_shared<ConnBad>(); c->onReadable(); }   // c destroyed
+          // for (auto& f : loopQueue) f();   // would read freed memory
+      }` },
+    mcq: { q: 'Why does <code>shared_from_this()</code> require the object to already be owned by a shared_ptr?', options: ['It finds the existing control block through an internal weak_ptr set when the first shared_ptr was created', 'It allocates a new control block', 'It copies the object', 'It only works in constructors'], answer: 0, explain: 'enable_shared_from_this holds a weak_ptr that the first shared_ptr constructor fills in. If no shared_ptr owns the object, shared_from_this throws std::bad_weak_ptr (since C++17).' },
+    hints: [`<p>Hint 1: Inherit <code>public std::enable_shared_from_this&lt;Connection&gt;</code>. It gives you <code>shared_from_this()</code> and <code>weak_from_this()</code>.</p>`, `<p>Hint 2: Fix (a): capture <code>self = shared_from_this()</code> — the queue now co-owns the Connection until the callback runs and is destroyed.</p>`, `<p>Hint 3: Fix (b): capture <code>weak = weak_from_this()</code> and inside do <code>if (auto self = weak.lock()) self-&gt;handle();</code>. Never call either in the constructor (no owner exists yet).</p>`],
+    solution: {
+      approach: `<p>Use the existing control block instead of raw <code>this</code>. Strong capture means "finish my work even if everybody else lets go" (good for writes that must complete); weak capture means "only if I still exist" (good for UI updates, timers, retries). Both prevent use-after-free.</p>`,
+      code: R`
+        #include <cassert>
+        #include <functional>
+        #include <memory>
+        #include <string>
+        #include <vector>
+        struct EventLoop {
+            std::vector<std::function<void()>> q;
+            void runAll() { auto items = std::move(q); q.clear(); for (auto& f : items) f(); }
+        };
+        class Connection : public std::enable_shared_from_this<Connection> {
+        public:
+            std::vector<std::string>* log;
+            explicit Connection(std::vector<std::string>* l) : log(l) {}
+            void sendLater(EventLoop& loop) {               // (a) keep alive until done
+                loop.q.push_back([self = shared_from_this()] { self->log->push_back("sent"); });
+            }
+            void refreshLater(EventLoop& loop) {            // (b) skip if gone
+                loop.q.push_back([weak = weak_from_this()] {
+                    if (auto self = weak.lock()) self->log->push_back("refreshed");
+                    // else: the Connection is gone, nothing to do
+                });
+            }
+        };
+        int main() {
+            std::vector<std::string> log;
+            EventLoop sendLoop, refreshLoop;
+            {
+                auto c1 = std::make_shared<Connection>(&log);
+                c1->sendLater(sendLoop);                    // queue co-owns c1
+                auto c2 = std::make_shared<Connection>(&log);
+                c2->refreshLater(refreshLoop);              // queue only observes c2
+            }                                               // c2 destroyed now; c1 kept alive by sendLoop
+            sendLoop.runAll();                              // "sent"
+            refreshLoop.runAll();                           // lock() empty -> skipped
+            assert(log.size() == 1 && log[0] == "sent");
+        }                                                   // c1 freed when sendLoop's lambda was destroyed
+      `,
+      dry: { head: ['moment', 'c1 use_count', 'c2 use_count', 'event'], rows: [['after make_shared + schedule', '2 (local + queue)', '1 (local; weak adds 0)', '—'], ['scope ends', '1 (queue)', '0 → destroyed', 'c2 gone'], ['sendLoop.runAll()', '1 → 0 after items die', '—', 'log "sent", then c1 freed'], ['refreshLoop.runAll()', '—', '—', 'lock() empty → skipped']] },
+      complexity: `<p>Each capture copies a shared/weak pointer (atomic increment). lock() is a CAS. Negligible compared to I/O.</p>`,
+      followUps: ['If one Connection scheduled both callbacks on the same loop, would the weak one run? (Hint: the strong lambda is still alive in the queue while the weak one runs.)', 'When is a strong capture dangerous (cycles: object owns loop, loop owns callback, callback owns object)?']
+    }
+  });
+
+  practice.push({
+    title: 'Copy-on-Write Document With shared_ptr<const T>', level: 'Medium', tags: ['shared_ptr', 'copy-on-write', 'immutability', 'use_count'], companies: ['Google', 'Figma', 'Adobe'],
+    statement: `<p>Implement <code>Doc</code>, a value type holding a large <code>std::vector&lt;std::string&gt;</code> of lines. Copying a Doc must be O(1) (share the data); modifying a Doc (<code>setLine</code>) must not affect other copies — clone the data only if it is shared. Reads must never clone.</p>`,
+    constraints: `Up to 10<sup>6</sup> lines; thousands of copies (undo history). Single-threaded writes per Doc.`,
+    example: `<p><code>Doc a; a.append("x"); Doc b = a;</code> → ${H.c('b', 'share one buffer (use_count 2)')}. <code>b.setLine(0, "y")</code> → ${H.c('g', 'b clones, a still "x"')}. A second <code>b.setLine</code> does not clone again (b's buffer is now unshared).</p>`,
+    brute: { why: `<p>Storing the vector by value deep-copies all lines on every copy — 10<sup>6</sup> strings per undo step. Storing <code>shared_ptr&lt;vector&gt;</code> without the clone check makes copies alias: editing one edits all.</p>`, code: R`
+      #include <string>
+      #include <vector>
+      struct DocDeep {
+          std::vector<std::string> lines;                // every copy duplicates everything
+          void setLine(std::size_t i, std::string s) { lines[i] = std::move(s); }
+      };
+      int main() { DocDeep a{{"x"}}; DocDeep b = a; b.setLine(0, "y"); return a.lines[0] == "x" ? 0 : 1; }` },
+    mcq: { q: 'Why store <code>shared_ptr&lt;const std::vector&lt;std::string&gt;&gt;</code> (const) rather than non-const?', options: ['Shared data can never be mutated in place by accident; writers must clone into a fresh buffer', 'const makes it faster', 'shared_ptr requires const', 'To prevent copying the Doc'], answer: 0, explain: 'Making the shared buffer const turns "mutate shared state" into a compile error; the only path to change is the explicit detach-and-clone.' },
+    hints: [`<p>Hint 1: Copy = copy the shared_ptr (use_count + 1). The data is shared until someone writes.</p>`, `<p>Hint 2: Before a write, "detach": if <code>data_.use_count() &gt; 1</code> (or always, for simplicity), make a mutable copy: <code>auto copy = std::make_shared&lt;std::vector&lt;std::string&gt;&gt;(*data_);</code> modify it, then <code>data_ = std::move(copy);</code>.</p>`, `<p>Hint 3: If use_count() == 1 you are the sole owner — you may modify in place via a <code>const_cast</code> on a buffer you created as non-const, or keep it simple and keep a non-const shared_ptr privately while exposing only const reads. use_count is reliable here because a single Doc is not shared across threads.</p>`],
+    solution: {
+      approach: `<p>Hold the buffer through a shared_ptr. Copies share it. Writers call <code>detach()</code>, which clones only when <code>use_count() &gt; 1</code>; after that the writer is the sole owner and mutates in place. Readers get <code>const</code> access only. This is how many editors implement cheap undo snapshots.</p>`,
+      code: R`
+        #include <cassert>
+        #include <memory>
+        #include <string>
+        #include <vector>
+        class Doc {
+            using Lines = std::vector<std::string>;
+            std::shared_ptr<Lines> data_ = std::make_shared<Lines>();
+            void detach() {
+                if (data_.use_count() > 1) data_ = std::make_shared<Lines>(*data_);   // clone only if shared
+            }
+        public:
+            const std::string& line(std::size_t i) const { return (*data_)[i]; }   // read: never clones
+            std::size_t size() const { return data_->size(); }
+            void append(std::string s) { detach(); data_->push_back(std::move(s)); }
+            void setLine(std::size_t i, std::string s) { detach(); (*data_)[i] = std::move(s); }
+            long sharers() const { return data_.use_count(); }
+        };
+        int main() {
+            Doc a;
+            a.append("x");
+            Doc b = a;                         // O(1): shared
+            assert(a.sharers() == 2);
+            b.setLine(0, "y");                 // clone happens here
+            assert(a.line(0) == "x" && b.line(0) == "y");
+            assert(a.sharers() == 1 && b.sharers() == 1);
+            b.setLine(0, "z");                 // no clone: b is sole owner
+            assert(b.line(0) == "z");
+        }
+      `,
+      dry: { head: ['op', 'a buffer', 'b buffer', 'use_count'], rows: [['a.append("x")', 'B1{x}', '—', '1'], ['b = a', 'B1{x}', 'B1', '2'], ['b.setLine(0,"y")', 'B1{x}', 'B2{y} (clone)', '1 / 1'], ['b.setLine(0,"z")', 'B1{x}', 'B2{z} (in place)', '1 / 1']] },
+      complexity: `<p>Copy O(1); first write after sharing O(n) clone; later writes O(1). Reads O(1).</p>`,
+      followUps: ['Why is <code>use_count()</code> unreliable for COW if Doc copies live on different threads?', 'How do persistent data structures (structural sharing) reduce the O(n) clone to O(log n)?']
+    }
+  });
+
+  /* ======================================================================
+     PRACTICE — Hard
+     ====================================================================== */
+  practice.push({
+    title: 'SharedPtr + WeakPtr With Strong and Weak Counts', level: 'Hard', tags: ['shared_ptr', 'weak_ptr', 'control block', 'atomics'], companies: ['Google', 'Jane Street', 'Citadel', 'Meta'],
+    statement: `<p>Extend a hand-written <code>SharedPtr&lt;T&gt;</code> with a <code>WeakPtr&lt;T&gt;</code>. The control block holds an atomic <b>strong</b> count and an atomic <b>weak</b> count. Rules: object destroyed when strong hits 0; control block freed when strong and weak are both 0. Implement <code>WeakPtr::lock()</code> race-free ("increment strong only if it is not zero") and <code>expired()</code>.</p>`,
+    constraints: `Thread-safe counts. No double free of the block when the last SharedPtr and the last WeakPtr die concurrently.`,
+    example: `${H.table(['Code', 'strong', 'weak', 'object', 'block'], [['SharedPtr a(new int(1))', '1', '1*', 'alive', 'alive'], ['WeakPtr w = a', '1', '2*', 'alive', 'alive'], ['a.reset()', '0', '1', '<span class="c-r">deleted</span>', 'alive'], ['w.lock()', '0', '1', '—', 'returns empty'], ['w.reset()', '0', '0', '—', '<span class="c-g">freed</span>']])}<p class="c-m">* using the libstdc++ trick: weak = number of WeakPtrs + 1 while strong &gt; 0.</p>`,
+    brute: { why: `<p>Freeing the control block when strong hits 0 (like the strong-only SharedPtr) leaves every WeakPtr pointing at freed memory. Checking <code>strong &gt; 0</code> and then incrementing in two steps (load, then fetch_add) races: another thread can drop strong to 0 and delete the object in between.</p>`, code: R`
+      #include <atomic>
+      struct CtrlRacy { std::atomic<long> strong{1}; int* obj; };
+      int* lockRacy(CtrlRacy* c) {
+          if (c->strong.load() > 0) {          // check...
+              c->strong.fetch_add(1);           // ...then act: object may already be deleted
+              return c->obj;
+          }
+          return nullptr;
+      }` },
+    mcq: { q: 'Why does libstdc++ keep "weak = WeakPtrs + 1 while any SharedPtr exists"?', options: ['So exactly one thread observes weak reaching 0 and frees the block, with no separate check of both counters', 'To make weak_ptr faster to copy', 'Because weak_ptr needs a strong reference', 'It is required by the standard wording'], answer: 0, explain: 'The strong owners collectively hold one weak reference. When strong hits 0 that thread drops the extra weak reference; whoever brings weak to 0 frees the block — a single atomic decision, so no race between "last strong" and "last weak".' },
+    hints: [`<p>Hint 1: Block = <code>{ atomic&lt;long&gt; strong{1}, weak{1}; T* ptr; }</code>. The "+1 weak" belongs to the group of strong owners.</p>`, `<p>Hint 2: releaseStrong: <code>if (strong.fetch_sub(1, acq_rel) == 1) { delete ptr; releaseWeak(); }</code>. releaseWeak: <code>if (weak.fetch_sub(1, acq_rel) == 1) delete block;</code>.</p>`, `<p>Hint 3: lock(): load strong into <code>n</code>; loop <code>while (n != 0) { if (strong.compare_exchange_weak(n, n + 1)) return SharedPtr(block); }</code> return empty. CAS fails and reloads <code>n</code> if another thread changed it.</p>`],
+    solution: {
+      approach: `<p>Two counters, one rule each. Strong owners collectively own one weak reference, so block lifetime is decided by a single counter reaching zero. <code>lock()</code> uses a CAS loop to implement increment-if-not-zero atomically. SharedPtr gets a private constructor from a control block that assumes the strong count was already incremented.</p>`,
+      code: R`
+        #include <atomic>
+        #include <cassert>
+        #include <utility>
+
+        template <class T> class WeakPtr;
+
+        template <class T>
+        struct Ctrl {
+            std::atomic<long> strong{1};
+            std::atomic<long> weak{1};          // +1 held collectively by the strong owners
+            T* ptr;
+            explicit Ctrl(T* p) : ptr(p) {}
+            void releaseWeak() noexcept { if (weak.fetch_sub(1, std::memory_order_acq_rel) == 1) delete this; }
+            void releaseStrong() noexcept {
+                if (strong.fetch_sub(1, std::memory_order_acq_rel) == 1) { delete ptr; ptr = nullptr; releaseWeak(); }
+            }
+        };
+
+        template <class T>
+        class SharedPtr {
+            Ctrl<T>* c_ = nullptr;
+            friend class WeakPtr<T>;
+            struct Adopt {};
+            SharedPtr(Ctrl<T>* c, Adopt) noexcept : c_(c) {}           // strong already incremented
+        public:
+            SharedPtr() noexcept = default;
+            explicit SharedPtr(T* p) : c_(p ? new Ctrl<T>(p) : nullptr) {}
+            SharedPtr(const SharedPtr& o) noexcept : c_(o.c_) { if (c_) c_->strong.fetch_add(1, std::memory_order_relaxed); }
+            SharedPtr(SharedPtr&& o) noexcept : c_(std::exchange(o.c_, nullptr)) {}
+            SharedPtr& operator=(SharedPtr o) noexcept { std::swap(c_, o.c_); return *this; }
+            ~SharedPtr() { if (c_) c_->releaseStrong(); }
+            void reset() noexcept { SharedPtr().swap(*this); }
+            void swap(SharedPtr& o) noexcept { std::swap(c_, o.c_); }
+            T* get() const noexcept { return c_ ? c_->ptr : nullptr; }
+            T& operator*() const { return *get(); }
+            long use_count() const noexcept { return c_ ? c_->strong.load() : 0; }
+            explicit operator bool() const noexcept { return get() != nullptr; }
+        };
+
+        template <class T>
+        class WeakPtr {
+            Ctrl<T>* c_ = nullptr;
+        public:
+            WeakPtr() noexcept = default;
+            WeakPtr(const SharedPtr<T>& s) noexcept : c_(s.c_) { if (c_) c_->weak.fetch_add(1, std::memory_order_relaxed); }
+            WeakPtr(const WeakPtr& o) noexcept : c_(o.c_) { if (c_) c_->weak.fetch_add(1, std::memory_order_relaxed); }
+            WeakPtr& operator=(WeakPtr o) noexcept { std::swap(c_, o.c_); return *this; }
+            ~WeakPtr() { if (c_) c_->releaseWeak(); }
+            void reset() noexcept { WeakPtr().swap(*this); }
+            void swap(WeakPtr& o) noexcept { std::swap(c_, o.c_); }
+            bool expired() const noexcept { return !c_ || c_->strong.load(std::memory_order_acquire) == 0; }
+            SharedPtr<T> lock() const noexcept {
+                if (!c_) return {};
+                long n = c_->strong.load(std::memory_order_relaxed);
+                while (n != 0) {                                        // increment-if-not-zero
+                    if (c_->strong.compare_exchange_weak(n, n + 1, std::memory_order_acq_rel, std::memory_order_relaxed))
+                        return SharedPtr<T>(c_, typename SharedPtr<T>::Adopt{});
+                }
+                return {};
+            }
+        };
+
+        int main() {
+            SharedPtr<int> a(new int(1));
+            WeakPtr<int> w = a;
+            { auto s = w.lock(); assert(s && *s == 1 && a.use_count() == 2); }
+            a.reset();                       // object deleted, block kept for w
+            assert(w.expired() && !w.lock());
+            w.reset();                       // block freed
+        }
+      `,
+      dry: { head: ['op', 'strong', 'weak (incl. +1)', 'effect'], rows: [['a(new int)', '1', '1', '—'], ['w = a', '1', '2', '—'], ['s = w.lock()', '2', '2', 'CAS 1→2'], ['s dies', '1', '2', '—'], ['a.reset()', '0', '1', 'delete int; drop +1'], ['w.lock()', '0', '1', 'loop sees 0 → empty'], ['w.reset()', '0', '0', 'delete block']] },
+      complexity: `<p>All operations O(1); lock() is a CAS loop (usually one iteration). Memory: one extra allocation per managed object (std::make_shared fuses it).</p>`,
+      followUps: ['Add the aliasing constructor (share ownership, point elsewhere).', 'Why can increments be <code>relaxed</code> but decrements need acq_rel?', 'How would you make <code>makeShared</code> co-allocate T inside the block (placement new + manual destroy)?']
+    }
+  });
+
+  practice.push({
+    title: 'Build a Leak Detector by Replacing Global operator new/delete', level: 'Hard', tags: ['operator new', 'leak detection', 'testing', 'allocation tracking'], companies: ['Microsoft', 'Unity', 'Qualcomm', 'Apple'],
+    statement: `<p>Write a tiny test-only allocation tracker: replace the global <code>operator new</code>/<code>operator delete</code> so they count live allocations and live bytes, then write a <code>LeakCheck</code> RAII guard that records the counters in its constructor and, in its destructor, reports how many allocations and bytes were leaked inside its scope.</p>`,
+    constraints: `Must handle sized delete (<code>operator delete(void*, std::size_t)</code>) and array forms. The tracker itself must not allocate through the tracked operators (no infinite recursion).`,
+    example: `<p><code>{ LeakCheck lc; auto p = std::make_unique&lt;int&gt;(1); }</code> → ${H.c('g', 'leaked 0 allocations, 0 bytes')}. <code>{ LeakCheck lc; new int(2); }</code> → ${H.c('r', 'leaked 1 allocation, 4 bytes')}.</p>`,
+    brute: { why: `<p>Counting only in a custom class's constructor misses raw buffers, strings and containers. Using a <code>std::map</code> inside <code>operator new</code> to remember sizes recurses (the map allocates through <code>operator new</code>). Forgetting the array/sized overloads gives mismatched counts.</p>`, code: R`
+      #include <cstdlib>
+      #include <map>
+      #include <new>
+      // BAD idea: a std::map inside operator new would call operator new again -> infinite recursion.
+      static long allocations = 0;
+      void* trackedNewNaive(std::size_t n) { ++allocations; return std::malloc(n); }   // no size bookkeeping
+      int main() { void* p = trackedNewNaive(8); std::free(p); return allocations == 1 ? 0 : 1; }` },
+    mcq: { q: 'How can operator delete know the size of the block without a lookup table?', options: ['Store the size in a small header just before the pointer returned to the caller', 'Ask malloc_usable_size', 'Use sizeof(*p)', 'It cannot'], answer: 0, explain: 'Allocating n + header bytes and stashing n in the header lets delete read it back in O(1). Keep the header aligned to max_align_t so returned pointers stay suitably aligned.' },
+    hints: [`<p>Hint 1: Replace <code>void* operator new(std::size_t)</code> and <code>void operator delete(void*) noexcept</code>; the array forms can forward to them. Use <code>malloc/free</code> inside to avoid recursion.</p>`, `<p>Hint 2: Allocate <code>n + sizeof(std::max_align_t)</code> bytes, write <code>n</code> at the start, return <code>base + header</code>. In delete, step back by the header, read n, update counters, <code>free(base)</code>.</p>`, `<p>Hint 3: Counters as <code>std::atomic&lt;long&gt;</code>. <code>LeakCheck</code> stores the counts in its constructor and prints the difference in its destructor — note the guard itself must not allocate in between (avoid building strings there).</p>`],
+    solution: {
+      approach: `<p>Global replacement functions with a size header. All other overloads (array, sized, nothrow) forward to the core pair so the books always balance. The RAII guard snapshots counters and reports the delta at scope exit — a mini LeakSanitizer for unit tests. (Real projects use ASan/LSan or heaptrack; this exercise shows how they hook allocation.)</p>`,
+      code: R`
+        #include <atomic>
+        #include <cstddef>
+        #include <cstdio>
+        #include <cstdlib>
+        #include <memory>
+        #include <new>
+
+        static std::atomic<long> gLiveAllocs{0}, gLiveBytes{0};
+        constexpr std::size_t kHeader = alignof(std::max_align_t);
+
+        void* operator new(std::size_t n) {
+            auto* base = static_cast<unsigned char*>(std::malloc(n + kHeader));
+            if (!base) throw std::bad_alloc();
+            *reinterpret_cast<std::size_t*>(base) = n;          // remember the size
+            gLiveAllocs.fetch_add(1, std::memory_order_relaxed);
+            gLiveBytes.fetch_add(static_cast<long>(n), std::memory_order_relaxed);
+            return base + kHeader;
+        }
+        void operator delete(void* p) noexcept {
+            if (!p) return;
+            auto* base = static_cast<unsigned char*>(p) - kHeader;
+            std::size_t n = *reinterpret_cast<std::size_t*>(base);
+            gLiveAllocs.fetch_sub(1, std::memory_order_relaxed);
+            gLiveBytes.fetch_sub(static_cast<long>(n), std::memory_order_relaxed);
+            std::free(base);
+        }
+        void* operator new[](std::size_t n) { return ::operator new(n); }
+        void operator delete[](void* p) noexcept { ::operator delete(p); }
+        void operator delete(void* p, std::size_t) noexcept { ::operator delete(p); }
+        void operator delete[](void* p, std::size_t) noexcept { ::operator delete(p); }
+
+        class LeakCheck {
+            const char* name_;
+            long allocs_, bytes_;
+        public:
+            explicit LeakCheck(const char* name) : name_(name), allocs_(gLiveAllocs.load()), bytes_(gLiveBytes.load()) {}
+            ~LeakCheck() {
+                long a = gLiveAllocs.load() - allocs_, b = gLiveBytes.load() - bytes_;
+                std::printf("[%s] leaked %ld allocation(s), %ld byte(s)\n", name_, a, b);
+            }
+        };
+
+        int main() {
+            { LeakCheck lc("smart"); auto p = std::make_unique<int>(1); }   // leaked 0
+            { LeakCheck lc("raw");   new int(2); }                           // leaked 1, 4 bytes
+        }
+      `,
+      dry: { head: ['scope', 'allocs at start', 'event', 'allocs at end', 'report'], rows: [['smart', 'A', 'new 4 B, then delete', 'A', '0 / 0'], ['raw', 'A', 'new 4 B, never freed', 'A+1', '<span class="c-r">1 / 4</span>']] },
+      complexity: `<p>O(1) per allocation plus a 16-byte header (<code>max_align_t</code> alignment) per block. Atomic counters make it thread-safe for counting; per-thread scopes would need thread-local snapshots.</p>`,
+      followUps: ['How would you also record the allocation call stack (backtrace) for each live block?', 'What breaks if a library allocates with malloc and frees with delete through your header scheme?', 'How do aligned new overloads (<code>std::align_val_t</code>) fit in?']
+    }
+  });
+
+  practice.push({
+    title: 'Deep-Copy a Cyclic Graph Without shared_ptr Cycles', level: 'Hard', tags: ['ownership design', 'arena', 'unique_ptr', 'graph clone'], companies: ['Meta', 'Google', 'Amazon'],
+    statement: `<p>A <code>Graph</code> holds nodes with arbitrary directed edges, including cycles and self-loops. Design ownership so that destroying the Graph frees every node (no leaks, no shared_ptr cycles), and implement a <b>deep copy</b> (copy constructor) that reproduces the same shape with fresh nodes — edges in the copy must point to nodes of the copy, never the original.</p>`,
+    constraints: `Up to 10<sup>5</sup> nodes and 10<sup>6</sup> edges. Copy in O(V + E). Graph must be copyable and movable.`,
+    example: `<p>Original: ${H.c('b', '0→1, 1→2, 2→0, 2→2')} (cycle + self-loop). After <code>Graph g2 = g1;</code> → same edges, all pointers inside g2, ${H.c('g', 'and deleting g1 leaves g2 valid')}.</p>`,
+    brute: { why: `<p>Edges as <code>shared_ptr&lt;Node&gt;</code> leak every cycle (ref counting cannot free them). Making edges weak_ptrs works but every traversal pays <code>lock()</code>. A copy that copies the node <i>pointers</i> produces a graph whose edges point into the original — a use-after-free as soon as the original dies.</p>`, code: R`
+      #include <memory>
+      #include <vector>
+      struct GNodeBad { int id; std::vector<std::shared_ptr<GNodeBad>> out; };   // cycles leak
+      int main() {
+          auto a = std::make_shared<GNodeBad>(); auto b = std::make_shared<GNodeBad>();
+          a->out.push_back(b); b->out.push_back(a);
+      }   // leak: a <-> b` },
+    mcq: { q: 'In an arena design, who owns the nodes?', options: ['The Graph, via std::vector&lt;std::unique_ptr&lt;Node&gt;&gt;; edges are non-owning raw pointers', 'Each node owns its out-neighbours', 'Every edge owns its target', 'Nobody; nodes are leaked on purpose'], answer: 0, explain: 'All nodes share one lifetime (the graph\'s), so a single owner holds them all and edges merely refer. Cycles stop mattering because edges do not own.' },
+    hints: [`<p>Hint 1: Separate <b>ownership</b> from <b>reference</b>: the Graph owns nodes in a <code>vector&lt;unique_ptr&lt;Node&gt;&gt;</code> (stable addresses), edges are <code>Node*</code>.</p>`, `<p>Hint 2: Deep copy in two passes: (1) create one new node per old node and record <code>old → new</code> in an <code>unordered_map&lt;const Node*, Node*&gt;</code> (or store each node's index); (2) for every old edge u→v add <code>map[u] → map[v]</code>.</p>`, `<p>Hint 3: Copy assignment via copy-and-swap; moves are defaulted (moving the vector keeps node addresses valid because the nodes themselves do not move). Alternative design: indices instead of pointers make copies trivial (just copy vectors).</p>`],
+    solution: {
+      approach: `<p>Arena ownership: the graph is the single owner, edges are plain pointers, so cycles are harmless and destruction is just destroying the vector. Copying maps each old node to its clone (an index works since each node stores its position), then rewires edges through the map. Moves keep node addresses stable because only the vector of unique_ptrs moves.</p>`,
+      code: R`
+        #include <cassert>
+        #include <memory>
+        #include <utility>
+        #include <vector>
+        class Graph {
+        public:
+            struct Node { int id; std::size_t idx; std::vector<Node*> out; };
+        private:
+            std::vector<std::unique_ptr<Node>> nodes_;     // the single owner
+        public:
+            Graph() = default;
+            Graph(const Graph& o) {
+                nodes_.reserve(o.nodes_.size());
+                for (const auto& n : o.nodes_) addNode(n->id);                 // pass 1: clone nodes
+                for (const auto& n : o.nodes_)                                  // pass 2: rewire edges
+                    for (const Node* v : n->out) nodes_[n->idx]->out.push_back(nodes_[v->idx].get());
+            }
+            Graph& operator=(Graph o) noexcept { nodes_.swap(o.nodes_); return *this; }   // copy-and-swap
+            Graph(Graph&&) noexcept = default;
+            Node* addNode(int id) {
+                nodes_.push_back(std::make_unique<Node>(Node{id, nodes_.size(), {}}));
+                return nodes_.back().get();
+            }
+            void addEdge(Node* u, Node* v) { u->out.push_back(v); }
+            Node* at(std::size_t i) const { return nodes_[i].get(); }
+            std::size_t size() const { return nodes_.size(); }
+        };
+        int main() {
+            Graph g1;
+            auto* a = g1.addNode(0); auto* b = g1.addNode(1); auto* c = g1.addNode(2);
+            g1.addEdge(a, b); g1.addEdge(b, c); g1.addEdge(c, a); g1.addEdge(c, c);   // cycle + self-loop
+            Graph g2 = g1;
+            assert(g2.at(2)->out[0] == g2.at(0));      // points into g2, not g1
+            assert(g2.at(2)->out[1] == g2.at(2));
+            assert(g2.at(0) != g1.at(0));
+            { Graph tmp = std::move(g1); }              // original destroyed; g2 unaffected
+            assert(g2.at(1)->out[0]->id == 2);
+        }
+      `,
+      dry: { head: ['pass', 'old', 'new / action'], rows: [['1', 'nodes 0,1,2', 'clones 0\',1\',2\' (idx 0..2)'], ['2', '0→1', '0\'→1\''], ['2', '1→2', '1\'→2\''], ['2', '2→0, 2→2', '2\'→0\', 2\'→2\''], ['destroy g1', 'vector freed', 'g2 untouched']] },
+      complexity: `<p>Copy O(V + E) time and memory; destruction O(V + E) (frees vectors); no reference counting cost on traversal.</p>`,
+      followUps: ['How would you support deleting a single node (and all edges into it) efficiently?', 'Compare with an index-based graph (<code>vector&lt;vector&lt;int&gt;&gt;</code>): when is it strictly better?', 'How does <code>std::pmr::monotonic_buffer_resource</code> make allocating 10<sup>5</sup> nodes faster?']
+    }
+  });
+
+  practice.push({
+    title: 'Hot-Reloadable Config With atomic<shared_ptr<const Config>>', level: 'Hard', tags: ['shared_ptr', 'atomics', 'RCU', 'concurrency', 'immutability'], companies: ['Google', 'Meta', 'Cloudflare', 'Netflix'],
+    statement: `<p>Many request threads read a <code>Config</code> on every request; an admin thread occasionally reloads it. Readers must never block, never see a half-updated config, and a config must be freed once no request uses it anymore. Implement <code>ConfigStore</code> with <code>std::shared_ptr&lt;const Config&gt; current()</code> and <code>void publish(Config)</code>.</p>`,
+    constraints: `10<sup>5</sup> reads/s per thread, rare writes. C++20. No reader-side mutex in the final solution.`,
+    example: `${H.table(['Time', 'Reader A', 'Admin', 'Old config freed?'], [['t0', 'snap = current() (v1, count 2)', '—', '—'], ['t1', 'uses v1', 'publish(v2) → store now v2', 'no: A still holds v1'], ['t2', 'snap dies', '—', '<span class="c-g">yes, v1 freed by A\'s thread</span>'], ['t3', 'current() → v2', '—', '—']])}`,
+    brute: { why: `<p>A global <code>Config</code> guarded by a mutex makes every request contend on one lock. A plain <code>std::shared_ptr&lt;Config&gt;</code> global read and written by different threads is a data race on the shared_ptr object itself (its two pointers are not updated atomically) — even though the reference count is atomic.</p>`, code: R`
+      #include <memory>
+      #include <mutex>
+      #include <string>
+      struct Config { std::string db; int timeoutMs = 100; };
+      class ConfigStoreLocked {
+          std::mutex m_;
+          std::shared_ptr<const Config> cfg_ = std::make_shared<const Config>();
+      public:
+          std::shared_ptr<const Config> current() { std::lock_guard<std::mutex> g(m_); return cfg_; }   // every read locks
+          void publish(Config c) { auto p = std::make_shared<const Config>(std::move(c)); std::lock_guard<std::mutex> g(m_); cfg_ = std::move(p); }
+      };
+      int main() { ConfigStoreLocked s; return s.current()->timeoutMs == 100 ? 0 : 1; }` },
+    mcq: { q: 'Why is <code>Config</code> held as <code>const</code>?', options: ['Published snapshots are immutable, so readers can use them without locks; writers publish a new snapshot instead of mutating', 'atomic&lt;shared_ptr&gt; requires const', 'To save memory', 'To prevent copying'], answer: 0, explain: 'Immutability is what makes lock-free reading safe: nobody ever writes to a config another thread might be reading. Updates are whole-snapshot swaps (read-copy-update).' },
+    hints: [`<p>Hint 1: Separate two races: the <b>object</b> (solve by immutability) and the <b>pointer variable</b> (solve by an atomic smart pointer).</p>`, `<p>Hint 2: <code>std::atomic&lt;std::shared_ptr&lt;const Config&gt;&gt; cur_;</code> — <code>cur_.load()</code> returns an owning snapshot; <code>cur_.store(std::make_shared&lt;const Config&gt;(...))</code> publishes.</p>`, `<p>Hint 3: Old snapshots are freed automatically when the last reader's shared_ptr dies — on that reader's thread. If a destructor is expensive, readers pay it; mitigate by handing old configs to a background reaper. Note: libstdc++'s atomic&lt;shared_ptr&gt; uses a small internal lock bit, so check <code>is_lock_free()</code> if it matters.</p>`],
+    solution: {
+      approach: `<p>Read-Copy-Update with reference counting: readers atomically load an owning snapshot of an immutable Config and use it for the whole request; writers build a new Config off to the side and atomically store it. The shared_ptr count guarantees an old snapshot lives exactly as long as some request still uses it, then is freed — no grace-period machinery needed.</p>`,
+      code: R`
+        #include <atomic>
+        #include <cassert>
+        #include <memory>
+        #include <string>
+        #include <thread>
+        #include <vector>
+        struct Config { std::string db = "primary"; int timeoutMs = 100; };
+
+        class ConfigStore {
+            std::atomic<std::shared_ptr<const Config>> cur_{std::make_shared<const Config>()};
+        public:
+            std::shared_ptr<const Config> current() const { return cur_.load(std::memory_order_acquire); }
+            void publish(Config c) { cur_.store(std::make_shared<const Config>(std::move(c)), std::memory_order_release); }
+        };
+
+        int main() {
+            ConfigStore store;
+            std::atomic<long> sum{0};
+            std::vector<std::thread> readers;
+            for (int t = 0; t < 4; ++t)
+                readers.emplace_back([&] {
+                    for (int i = 0; i < 10000; ++i) {
+                        auto snap = store.current();          // owning snapshot for this "request"
+                        sum.fetch_add(snap->timeoutMs, std::memory_order_relaxed);
+                    }                                         // snapshot released here
+                });
+            store.publish(Config{"replica", 250});            // concurrent publish
+            for (auto& th : readers) th.join();
+            assert(store.current()->db == "replica");
+            assert(sum.load() >= 4L * 10000 * 100);
+        }
+      `,
+      dry: { head: ['event', 'store points to', 'v1 owners', 'v2 owners'], rows: [['start', 'v1', 'store', '—'], ['reader loads', 'v1', 'store, reader', '—'], ['publish v2', 'v2', 'reader', 'store'], ['reader done', 'v2', '— → v1 freed', 'store']] },
+      complexity: `<p>Read: one atomic load + refcount increment/decrement (contended cache line under heavy load — shard per thread or use hazard pointers/RCU libraries for extreme read rates). Write: one allocation + atomic store.</p>`,
+      followUps: ['Why is <code>std::shared_ptr&lt;Config&gt;</code> (non-const) with in-place edits unsafe even with the atomic wrapper?', 'How would you avoid the refcount cache-line contention for 64+ reader threads?', 'Pre-C++20, which deprecated free functions did this job?']
+    }
   });
   registerModule({ id: 'cpp06', title: 'Memory Management, RAII & Smart Pointers', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview });
 })();

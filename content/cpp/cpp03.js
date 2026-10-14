@@ -1960,7 +1960,7 @@ int main() {
     std::cout << (p == nullptr) << ' ' << *n << '\\n';  // 1 1
 }` },
       dry: { head: ['step', 'p', 'q', 'x', 'y'], rows: [['start', '&amp;x', '&amp;y', '1', '2'], ['t = a', '&amp;x', '&amp;y', '1', '2'], ['a = b', '<span class="c-g">&amp;y</span>', '&amp;y', '1', '2'], ['b = t', '&amp;y', '<span class="c-g">&amp;x</span>', '1', '2']] },
-      complexity: `<p>O(1).</p>`,
+      complexity: `<p>O(1) time and space: three pointer copies.</p>`,
       followUps: ['Does <code>std::swap(p, q)</code> do the same thing?', 'When would you sort an array of pointers instead of the objects themselves?']
     }
   });
@@ -2221,7 +2221,7 @@ void mergeInto(int* a, int m, const int* b, int n) {
         if (i > 0 && *(a + i - 1) > *(b + j - 1))
             *--w = *(a + --i);        // take the larger from a
         else
-            *--w = *(b + --j);        // take from b (ties: b, still stable enough here)
+            *--w = *(b + --j);        // ties go to b, so equal a-values stay before b-values (stable)
     }
     // remaining a-values (i > 0) are already in their final positions
 }
@@ -2235,7 +2235,275 @@ int main() {
 }` },
       dry: { head: ['i', 'j', 'compare', 'write slot ← value'], rows: [['3', '2', '7 vs 5', 'a[4] ← 7'], ['2', '2', '4 vs 5', 'a[3] ← 5'], ['2', '1', '4 vs 2', 'a[2] ← 4'], ['1', '1', '1 vs 2', 'a[1] ← 2'], ['1', '0', 'b done', 'a[0] = 1 already in place']] },
       complexity: `<p>Time O(m + n), space O(1).</p>`,
-      followUps: ['Why does the loop condition only test <code>j &gt; 0</code>?', 'Make it stable (equal elements from a stay before those from b)']
+      followUps: ['Why does the loop condition only test <code>j &gt; 0</code>?', 'Prove the tie rule keeps equal a-elements before b-elements (stability)']
+    }
+  });
+
+  /* ======================================================================
+     PRACTICE: Hard
+     ====================================================================== */
+  practice.push({
+    title: 'Implement memmove (Overlap-Safe Copy)',
+    level: 'Hard', tags: ['pointer arithmetic', 'overlap', 'void*', 'bytes'], companies: ['Apple', 'Nvidia', 'Arm', 'Jane Street'],
+    statement: `<p>Implement <code>void* myMemmove(void* dst, const void* src, std::size_t n)</code>: copy <code>n</code> bytes from <code>src</code> to <code>dst</code> and return <code>dst</code>. Unlike <code>memcpy</code>, the two ranges <b>may overlap</b>, and the result must be as if the bytes were first copied to a temporary buffer. No heap allocation.</p>`,
+    constraints: `<p>0 ≤ n ≤ 10<sup>9</sup>. Both ranges are valid for n bytes. O(1) extra memory.</p>`,
+    example: `<p>buf = <code>"abcdef"</code>, <code>myMemmove(buf + 2, buf, 4)</code> → <code>"ababcd"</code>.</p>${H.arr(['a', 'b', 'c', 'd', 'e', 'f'], { ptr: { 0: 'src', 2: 'dst' } })}<p>Copying <b>forwards</b> would overwrite c and d before reading them and produce <span class="c-r">"ababab"</span>. When dst is after src, copy <b>backwards</b>: ${H.c('g', '"ababcd"')}.</p>`,
+    brute: { why: `<p>Copy into a temporary heap buffer, then from the buffer to dst. Always correct for overlap, but needs O(n) extra memory and an allocation that can fail, which a low-level primitive must avoid.</p>`, code: { lang: 'cpp', code: `#include <cstddef>
+#include <vector>
+void* memmoveBrute(void* dst, const void* src, std::size_t n) {
+    const unsigned char* s = static_cast<const unsigned char*>(src);
+    std::vector<unsigned char> tmp(s, s + n);                 // O(n) extra memory
+    unsigned char* d = static_cast<unsigned char*>(dst);
+    for (std::size_t i = 0; i < n; ++i) d[i] = tmp[i];
+    return dst;
+}` } },
+    mcq: { q: 'dst = src + 2 and n = 4. Which direction must you copy?', options: ['Forwards (low to high addresses)', 'Backwards (high to low addresses)', 'Either works', 'It is impossible without a buffer'], answer: 1, explain: 'dst starts inside the source range after src; copying from the end first reads each source byte before it gets overwritten.' },
+    hints: [`<p>You cannot do arithmetic on <code>void*</code>. Convert both to <code>unsigned char*</code> (byte pointers).</p>`, `<p>If dst &lt; src (or the ranges do not overlap), copy forward; if dst &gt; src, copy backward from the last byte. Comparing pointers into different objects with <code>&lt;</code> is unspecified, so use <code>std::less&lt;&gt;</code> (a total order) or compare <code>uintptr_t</code> values.</p>`, `<p>Recipe: <code>if (d == s || n == 0) return dst;</code> <code>if (std::less&lt;const unsigned char*&gt;{}(d, s))</code> forward loop <code>while (n--) *d++ = *s++;</code> else <code>d += n; s += n; while (n--) *--d = *--s;</code>.</p>`],
+    solution: {
+      approach: `<p>Choose the copy direction so that every source byte is read before it can be overwritten. Byte pointers for arithmetic; <code>std::less</code> for a well-defined pointer comparison.</p>`,
+      code: { lang: 'cpp', code: `#include <cstddef>
+#include <functional>
+#include <iostream>
+
+void* myMemmove(void* dst, const void* src, std::size_t n) {
+    auto* d = static_cast<unsigned char*>(dst);           // byte pointers: arithmetic allowed
+    auto* s = static_cast<const unsigned char*>(src);
+    if (d == s || n == 0) return dst;
+    if (std::less<const unsigned char*>{}(d, s)) {        // dst before src: forward is safe
+        while (n--) *d++ = *s++;
+    } else {                                               // dst after src: go backwards
+        d += n;
+        s += n;                                            // one past the ends (allowed)
+        while (n--) *--d = *--s;
+    }
+    return dst;
+}
+
+int main() {
+    char buf[] = "abcdef";
+    myMemmove(buf + 2, buf, 4);
+    std::cout << buf << '\\n';      // ababcd
+    char buf2[] = "abcdef";
+    myMemmove(buf2, buf2 + 2, 4);
+    std::cout << buf2 << '\\n';     // cdefef
+}` },
+      dry: { head: ['step (backward)', 'read s', 'write d', 'buf'], rows: [['1', 'buf[3] = d', 'buf[5]', 'abcded'], ['2', 'buf[2] = c', 'buf[4]', 'abcdcd'], ['3', 'buf[1] = b', 'buf[3]', 'abcbcd'], ['4', 'buf[0] = a', 'buf[2]', '<span class="c-g">ababcd</span>']] },
+      complexity: `<p>Time O(n), extra space O(1). Real libc versions copy word- or vector-sized chunks after aligning, which is why they are much faster.</p>`,
+      followUps: ['Why is <code>memcpy</code> with overlapping ranges UB, and why is it still sometimes faster than memmove?', 'How would you copy 8 bytes at a time without violating alignment or strict aliasing? (memcpy into a uint64_t)']
+    }
+  });
+
+  practice.push({
+    title: 'Remove All Matching Nodes With a Pointer-to-Pointer',
+    level: 'Hard', tags: ['pointer to pointer', 'linked list', 'delete', 'dangling'], companies: ['Meta', 'Google', 'Amazon'],
+    statement: `<p>Given <code>struct Node { int val; Node* next; };</code> nodes allocated with <code>new</code>, write <code>void removeAll(Node** head, int target)</code> that unlinks and <code>delete</code>s every node whose value is <code>target</code>. Use a <code>Node**</code> "link" cursor so that removing the head needs <b>no special case</b>, and never touch a node after deleting it.</p>`,
+    constraints: `<p>0 ≤ length ≤ 10<sup>5</sup>. No dummy node allocation. No leaks (verify mentally or with ASan/LeakSanitizer).</p>`,
+    example: `<p>${H.arr([6, 1, 6, 6, 2], { label: 'list', hl: { 0: 'r', 2: 'r', 3: 'r' } })} target 6 → ${H.arr([1, 2], { hl: { 0: 'g', 1: 'g' } })}. The head (6) is removed by the same code path as the middle ones, because the cursor points at <i>the link</i> that leads to the current node (first <code>head</code> itself, later some <code>node-&gt;next</code>).</p>`,
+    brute: { why: `<p>The typical version keeps <code>prev</code> and <code>cur</code> pointers and needs a separate loop or branch for "the head matches". Two code paths double the chance of bugs: forgetting to update <code>*head</code>, or reading <code>cur-&gt;next</code> after <code>delete cur</code> (use-after-free).</p>`, code: { lang: 'cpp', code: `struct Node { int val; Node* next; };
+void removeAllBrute(Node** head, int target) {
+    while (*head && (*head)->val == target) {      // special case: matching heads
+        Node* dead = *head;
+        *head = dead->next;
+        delete dead;
+    }
+    Node* prev = *head;
+    while (prev && prev->next) {                    // general case
+        if (prev->next->val == target) {
+            Node* dead = prev->next;
+            prev->next = dead->next;                // read next BEFORE delete
+            delete dead;
+        } else {
+            prev = prev->next;
+        }
+    }
+}` } },
+    mcq: { q: 'With <code>Node** link</code> pointing at the pointer that leads to the current node, how do you unlink the current node?', options: ['<code>link = link-&gt;next;</code>', '<code>*link = (*link)-&gt;next;</code> after saving the node to delete', '<code>delete *link; *link = (*link)-&gt;next;</code>', '<code>**link = nullptr;</code>'], answer: 1, explain: 'Save <code>Node* dead = *link;</code>, then overwrite the link with <code>dead-&gt;next</code>, then delete. Option 3 reads (*link)->next after deleting it: use-after-free.' },
+    hints: [`<p>A <code>Node**</code> can point at <code>head</code> itself or at any node's <code>next</code> field. All those links are the same type, so one code path handles them all.</p>`, `<p>If <code>(*link)-&gt;val</code> matches: save the node, redirect <code>*link</code> to its next, delete it, and do <b>not</b> advance (the new <code>*link</code> must be checked too). Otherwise advance: <code>link = &amp;(*link)-&gt;next;</code>.</p>`, `<p>Recipe: <code>for (Node** link = head; *link; ) { Node* cur = *link; if (cur-&gt;val == target) { *link = cur-&gt;next; delete cur; } else link = &amp;cur-&gt;next; }</code>. Order matters: read <code>cur-&gt;next</code> before <code>delete cur</code>.</p>`],
+    solution: {
+      approach: `<p>Indirect pointer cursor over the links themselves (Linus Torvalds' "good taste" example). One uniform loop; each node is deleted only after its next pointer has been read.</p>`,
+      code: { lang: 'cpp', code: `#include <iostream>
+
+struct Node { int val; Node* next; };
+
+void removeAll(Node** head, int target) {
+    Node** link = head;                     // points at the link to the current node
+    while (*link != nullptr) {
+        Node* cur = *link;
+        if (cur->val == target) {
+            *link = cur->next;              // bypass cur (works for head and middle alike)
+            delete cur;                     // cur is never used after this line
+        } else {
+            link = &cur->next;              // advance to the next link
+        }
+    }
+}
+
+Node* build(std::initializer_list<int> vals) {
+    Node* head = nullptr;
+    Node** tail = &head;                    // same trick for appending
+    for (int v : vals) { *tail = new Node{v, nullptr}; tail = &(*tail)->next; }
+    return head;
+}
+
+int main() {
+    Node* head = build({6, 1, 6, 6, 2});
+    removeAll(&head, 6);
+    for (Node* p = head; p; p = p->next) std::cout << p->val << ' ';   // 1 2
+    std::cout << '\\n';
+    while (head) { Node* n = head->next; delete head; head = n; }      // free the rest
+}` },
+      dry: { head: ['link points at', '*link → val', 'action', 'list now'], rows: [['head', '6', 'unlink + delete', '1 6 6 2'], ['head', '1', 'advance to &amp;node1.next', '1 6 6 2'], ['node1.next', '6', 'unlink + delete', '1 6 2'], ['node1.next', '6', 'unlink + delete', '1 2'], ['node1.next', '2', 'advance', '1 2'], ['node2.next', 'null', 'stop', '1 2']] },
+      complexity: `<p>Time O(N), extra space O(1).</p>`,
+      followUps: ['Rewrite with <code>std::unique_ptr&lt;Node&gt;</code> links: what changes and what new pitfall appears (recursive destruction depth)?', 'Insert into a sorted list using the same Node** cursor']
+    }
+  });
+
+  practice.push({
+    title: 'Build a Minimal Bounds-Checked ArrayView',
+    level: 'Hard', tags: ['span', 'decay', 'const', 'class design'], companies: ['Microsoft', 'Bloomberg', 'Citadel'],
+    statement: `<p>Implement a tiny non-owning view <code>template&lt;class T&gt; class ArrayView</code> (pointer + size) that: (1) constructs from a pointer and size, from a C array <b>without losing its length</b> (no decay), and from a <code>std::vector</code>; (2) has <code>size()</code>, <code>empty()</code>, unchecked <code>operator[]</code>, checked <code>at()</code> throwing <code>std::out_of_range</code>; (3) supports range-for; (4) has <code>subview(offset, count)</code> with bounds checks; (5) converts <code>ArrayView&lt;T&gt;</code> to <code>ArrayView&lt;const T&gt;</code>.</p>`,
+    constraints: `<p>No allocation. All operations O(1) except iteration. Must compile with <code>-std=c++20</code>.</p>`,
+    example: `<p><code>int a[5] = {1,2,3,4,5}; ArrayView&lt;int&gt; v(a);</code> → <code>v.size() == ${H.c('g', '5')}</code> (not 2!). <code>v.subview(1, 3)</code> views ${H.arr([2, 3, 4], { hl: { 0: 'b', 1: 'b', 2: 'b' } })}. <code>v.at(7)</code> throws ${H.c('r', 'out_of_range')}.</p>`,
+    brute: { why: `<p>Passing <code>(T* p, size_t n)</code> pairs everywhere: the two values travel separately, so any caller can pass the wrong n, sizes get recomputed with <code>sizeof</code> on decayed pointers, and there is no single place to add bounds checks.</p>`, code: { lang: 'cpp', code: `#include <cstddef>
+// Pointer + size as separate parameters: nothing ties them together
+long long sumRaw(const int* p, std::size_t n) {
+    long long s = 0;
+    for (std::size_t i = 0; i < n; ++i) s += p[i];   // trusts n blindly
+    return s;
+}` } },
+    mcq: { q: 'How can the constructor learn the length of a C array argument?', options: ['<code>sizeof(arr) / sizeof(arr[0])</code> inside a constructor taking <code>T* arr</code>', 'A template constructor taking <code>T (&amp;arr)[N]</code>, which binds by reference so no decay happens', 'It cannot', 'Using <code>strlen</code>'], answer: 1, explain: 'Binding to a reference to array is one of the decay exceptions; N is deduced from the argument type.' },
+    hints: [`<p>Store <code>T* data_</code> and <code>std::size_t size_</code>. Iterators can simply be <code>T*</code>: <code>begin()</code> returns <code>data_</code>, <code>end()</code> returns <code>data_ + size_</code>.</p>`, `<p>C array: <code>template&lt;std::size_t N&gt; ArrayView(T (&amp;arr)[N])</code>. Vector: take <code>std::vector&lt;std::remove_const_t&lt;T&gt;&gt;&amp;</code> (and a const overload for <code>ArrayView&lt;const X&gt;</code>). Conversion to const: a converting constructor from <code>ArrayView&lt;U&gt;</code> constrained with <code>requires std::is_convertible_v&lt;U(*)[], T(*)[]&gt;</code>.</p>`, `<p><code>subview(off, cnt)</code>: check <code>off &lt;= size_</code> and <code>cnt &lt;= size_ - off</code> (written this way to avoid overflow), then return <code>{data_ + off, cnt}</code>. Remember the view does not own data: it dangles if the array dies.</p>`],
+    solution: {
+      approach: `<p>Same design as <code>std::span</code>: a pointer and a length stored together, constructors that capture the length at the point where it is still known (no decay), raw pointers as iterators, and checked accessors. The class is trivially copyable and cheap to pass by value.</p>`,
+      code: { lang: 'cpp', code: `#include <cstddef>
+#include <iostream>
+#include <stdexcept>
+#include <type_traits>
+#include <vector>
+
+template <class T>
+class ArrayView {
+public:
+    ArrayView() = default;
+    ArrayView(T* p, std::size_t n) : data_(p), size_(n) {}
+
+    template <std::size_t N>
+    ArrayView(T (&arr)[N]) : data_(arr), size_(N) {}            // reference to array: no decay
+
+    ArrayView(std::vector<std::remove_const_t<T>>& v) : data_(v.data()), size_(v.size()) {}
+
+    template <class U = T> requires std::is_const_v<U>
+    ArrayView(const std::vector<std::remove_const_t<T>>& v) : data_(v.data()), size_(v.size()) {}
+
+    template <class U> requires std::is_convertible_v<U (*)[], T (*)[]>
+    ArrayView(ArrayView<U> other) : data_(other.data()), size_(other.size()) {}   // T -> const T
+
+    T* data() const { return data_; }
+    std::size_t size() const { return size_; }
+    bool empty() const { return size_ == 0; }
+
+    T& operator[](std::size_t i) const { return data_[i]; }      // unchecked, like span
+    T& at(std::size_t i) const {
+        if (i >= size_) throw std::out_of_range("ArrayView::at");
+        return data_[i];
+    }
+    ArrayView subview(std::size_t off, std::size_t cnt) const {
+        if (off > size_ || cnt > size_ - off) throw std::out_of_range("ArrayView::subview");
+        return ArrayView(data_ + off, cnt);
+    }
+    T* begin() const { return data_; }                           // raw pointers are iterators
+    T* end() const { return data_ + size_; }
+
+private:
+    T* data_ = nullptr;
+    std::size_t size_ = 0;
+};
+
+long long sum(ArrayView<const int> v) {                          // read-only view parameter
+    long long s = 0;
+    for (int x : v) s += x;
+    return s;
+}
+
+int main() {
+    int a[5] = {1, 2, 3, 4, 5};
+    ArrayView<int> v(a);                       // size 5, no decay
+    v[0] = 10;                                 // writable view
+    std::cout << v.size() << ' ' << sum(v) << ' ' << sum(v.subview(1, 3)) << '\\n';   // 5 24 9
+    std::vector<int> vec{7, 8};
+    std::cout << sum(vec) << '\\n';             // 15 (const view from a vector)
+    try { v.at(7); } catch (const std::out_of_range& e) { std::cout << "caught " << e.what() << '\\n'; }
+}` },
+      dry: { head: ['call', 'data_', 'size_', 'result'], rows: [['ArrayView v(a)', '&amp;a[0]', '5', 'N deduced = 5'], ['v.subview(1, 3)', '&amp;a[1]', '3', 'views 2 3 4 → sum 9'], ['sum(v) after v[0]=10', '&amp;a[0]', '5', '10+2+3+4+5 = 24'], ['v.at(7)', '-', '-', 'throws out_of_range']] },
+      complexity: `<p>Construction, indexing, subview: O(1). Iteration O(N). Size: 16 bytes on 64-bit.</p>`,
+      followUps: ['Why is <code>const ArrayView&lt;int&gt;</code> still able to modify elements? (shallow const, like span)', 'What happens if you construct an ArrayView from a temporary vector and keep it?', 'Add a fixed-extent version like <code>std::span&lt;T, N&gt;</code>']
+    }
+  });
+
+  practice.push({
+    title: 'Bug Hunt Gauntlet: Five Lifetime Bugs in One Program',
+    level: 'Hard', tags: ['dangling', 'use-after-free', 'iterator invalidation', 'bug hunt'], companies: ['Google', 'Microsoft', 'Meta', 'Mozilla'],
+    statement: `<p>This "inventory" program has <b>five</b> lifetime bugs. Find each one, name the bug class, and rewrite the program correctly.</p><pre>struct Item { std::string name; int qty; };
+std::vector&lt;Item&gt; inv;
+Item* cheapest = nullptr;
+
+const char* label(int id) { std::string s = "item-" + std::to_string(id); return s.c_str(); }   // A
+void add(std::string n, int q) { inv.push_back({n, q}); if (!cheapest) cheapest = &amp;inv.back(); } // B
+std::string_view upper(std::string s) { for (auto&amp; c : s) c = toupper(c); return s; }           // C
+int* stock() { int* p = new int(5); int* alias = p; delete p; return alias; }                    // D
+auto counter() { int n = 0; return [&amp;] { return ++n; }; }                                      // E</pre>`,
+    constraints: `<p>Keep the same features. No raw <code>new</code>/<code>delete</code> in the fixed version.</p>`,
+    example: `<p>${H.table(['line', 'bug class', 'object that died'], [['A', 'pointer into a dead local', 's (and its buffer)'], ['B', 'pointer into a growing vector', 'old vector buffer after reallocation'], ['C', 'view of a dead parameter', 'parameter s'], ['D', 'use-after-free via alias', 'heap int'], ['E', 'lambda captures a dead local by reference', 'n']])}`,
+    brute: { why: `<p>Adding null checks everywhere (<code>if (cheapest)</code>, <code>if (p)</code>) fixes nothing: dangling pointers are <b>not null</b>. Turning locals into <code>static</code> to "keep them alive" introduces shared state and breaks reentrancy. These are the most common non-fixes seen in code review.</p>`, code: { lang: 'cpp', code: `#include <string>
+// Non-fix: static buffer keeps the address valid but every call overwrites it
+const char* labelStatic(int id) {
+    static std::string s;
+    s = "item-" + std::to_string(id);
+    return s.c_str();          // label(1) and label(2) now return the SAME buffer
+}` } },
+    mcq: { q: 'Which single tool would report bugs B and D at runtime with stack traces of the allocation and the free?', options: ['-Wall', 'AddressSanitizer (-fsanitize=address)', 'UBSan only', 'gdb watchpoints'], answer: 1, explain: 'Both are heap-use-after-free; ASan poisons and quarantines freed heap memory and prints the access, free and allocation stacks.' },
+    hints: [`<p>For every pointer/reference/view/lambda capture, ask: <i>who owns the thing it refers to, and when does that owner die?</i></p>`, `<p>A: return <code>std::string</code>. B: store an index. C: return <code>std::string</code>. D: use <code>std::unique_ptr</code> or return a value. E: capture by value with <code>mutable</code>.</p>`, `<p>After fixing, compile with <code>-Wall -Wextra -fsanitize=address,undefined</code> and add a test that inserts enough items to force several vector reallocations (that is what exposes B).</p>`],
+    solution: {
+      approach: `<p>Replace every non-owning handle whose target can die with either an owning value or a stable handle (index). Lambdas own their state via value capture.</p>`,
+      code: { lang: 'cpp', code: `#include <cctype>
+#include <cstddef>
+#include <iostream>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+
+struct Item { std::string name; int qty; };
+std::vector<Item> inv;
+std::optional<std::size_t> cheapestIdx;            // B: index survives reallocation
+
+std::string label(int id) { return "item-" + std::to_string(id); }      // A: owning return
+
+void add(std::string n, int q) {
+    inv.push_back({std::move(n), q});
+    if (!cheapestIdx || q < inv[*cheapestIdx].qty) cheapestIdx = inv.size() - 1;
+}
+
+std::string upper(std::string s) {                 // C: return the owning string
+    for (auto& c : s) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    return s;
+}
+
+std::unique_ptr<int> stock() { return std::make_unique<int>(5); }      // D: single owner
+
+auto counter() { int n = 0; return [n]() mutable { return ++n; }; }    // E: lambda owns n
+
+int main() {
+    for (int i = 0; i < 100; ++i) add(label(i), 100 - i);   // many reallocations: still safe
+    std::cout << upper(inv[*cheapestIdx].name) << '\\n';     // ITEM-99
+    auto s = stock();
+    auto c = counter();
+    c();
+    std::cout << *s << ' ' << c() << '\\n';                  // 5 2
+}` },
+      dry: { head: ['bug', 'before', 'after'], rows: [['A', 'const char* into dead local', 'std::string value'], ['B', 'Item* across push_back', 'optional index'], ['C', 'string_view of dead parameter', 'std::string value'], ['D', 'alias used after delete', 'unique_ptr owner'], ['E', '[&amp;] capture of dead n', '[n] mutable capture']] },
+      complexity: `<p>Same asymptotics as the original; <code>add</code> is amortized O(1). The fixes add at most one string move per call.</p>`,
+      followUps: ['Which of the five does <code>-Wall</code> catch at compile time with GCC 13+?', 'If <code>inv</code> were a <code>std::deque</code>, would bug B still exist?', 'How would you enforce "no raw new/delete" in CI? (clang-tidy cppcoreguidelines-owning-memory)']
     }
   });
 
