@@ -921,7 +921,7 @@ SELECT 'blockers for customer 3' AS note, COUNT(*) AS orders FROM orders WHERE c
             { type: 'table', label: 'order_items (order_id → orders ON DELETE CASCADE)', columns: ['id', 'order_id', 'product'], rows: copyRows(I), hl: ih || {} }
           ];
         }
-        function idxWhere(rows, col, val) { var h = {}; rows.forEach(function (r, k) { if (r[col] === val) h[k] = arguments.length ? 'cur' : 'cur'; }); return h; }
+        function idxWhere(rows, col, val) { var h = {}; rows.forEach(function (r, k) { if (r[col] === val) h[k] = 'cur'; }); return h; }
         var frames = [];
         frames.push({ narr: 'Three tables in a chain. <b>orders.customer_id</b> uses <b>ON DELETE ' + label + '</b>; <b>order_items.order_id</b> uses ON DELETE CASCADE. (In SQLite this only works after <code>PRAGMA foreign_keys = ON;</code>.)', parts: [g()].concat(tables()) });
         var ci = -1; C.forEach(function (r, k) { if (r[0] === cid) ci = k; });
@@ -1134,6 +1134,283 @@ WHERE o.customer_id = 1;
 -- one row returned => DELETE FROM customers WHERE id = 1 would fail and change nothing`),
         complexity: `<p>With FK indexes each cascaded row is found in O(log N); the delete touches O(k) rows where k is the size of the subtree (here 2 orders + 3 items + 2 wishlist + 2 review updates). The pre-flight query is one indexed join.</p>`,
         followUps: ['Change the design so a customer with invoices can still be "deleted" for GDPR (anonymise personal columns + soft delete).', 'How would you delete a customer with 5 million order_items without locking the tables for minutes?']
+      }
+    }]
+  });
+  /* ======================= TOPIC 5: ER DIAGRAMS ======================= */
+  // Shared ER-diagram builder: turns "A 1-N B verb; ..." into frames that add entities and relationships one by one.
+  function erFrames(input, opts) {
+    opts = opts || {};
+    var specs = String(input === undefined || input === null ? '' : input).split(';').map(function (s) { return s.trim(); }).filter(function (s) { return s; });
+    if (!specs.length) throw new Error('Type relationships like: Customer 1-N Order places; Student N-M Course enrolls');
+    if (specs.length > 9) throw new Error('Use at most 9 relationships');
+    var SLOTS = [[14, 10], [50, 10], [86, 10], [14, 50], [50, 50], [86, 50], [32, 30], [68, 30], [86, 30], [14, 30]];
+    var nodes = [], edges = [], tabs = {}, order = [], frames = [];
+    function node(name) {
+      for (var i = 0; i < nodes.length; i++) if (nodes[i].id === name) return nodes[i];
+      if (nodes.length >= SLOTS.length) throw new Error('At most ' + SLOTS.length + ' entities (incl. junction tables)');
+      var used = nodes.map(function (n) { return n.x + ',' + n.y; }), s = null;
+      for (var k = 0; k < SLOTS.length; k++) if (used.indexOf(SLOTS[k][0] + ',' + SLOTS[k][1]) < 0) { s = SLOTS[k]; break; }
+      var n = { id: name, label: name, x: s[0], y: s[1], shape: 'box' };
+      nodes.push(n); tabs[name] = { cols: ['id PK'], fks: [] }; order.push(name);
+      return n;
+    }
+    function snakeId(n) { return n.replace(/([a-z])([A-Z])/g, '$1_$2').toLowerCase() + '_id'; }
+    function tagFor() { var t = {}; order.forEach(function (n) { t[n] = tabs[n].fks.length ? 'FK ' + tabs[n].fks.join(', ') : 'PK id'; }); return t; }
+    function tableRows() { return order.map(function (n) { return [n, tabs[n].cols.join(', '), tabs[n].fks.length ? tabs[n].fks.map(function (f) { return f + ' → ' + tabs[n].ref[f]; }).join('; ') : '—']; }); }
+    function graph(hl, ehl) { return { type: 'graph', directed: false, height: 60, label: opts.label || 'ER diagram', nodes: nodes.map(function (n) { return { id: n.id, label: n.label, x: n.x, y: n.y, shape: 'box' }; }), edges: edges.map(function (e) { return e.slice(); }), hl: hl || {}, ehl: ehl || {}, tags: tagFor() }; }
+    function tbl(hl) { return { type: 'table', label: 'tables generated so far', columns: ['table', 'columns', 'foreign keys'], rows: tableRows(), hl: hl || {} }; }
+    function addFk(child, parent, extra) {
+      var col = snakeId(parent); tabs[child].ref = tabs[child].ref || {};
+      if (tabs[child].fks.indexOf(col) < 0) { tabs[child].fks.push(col); tabs[child].cols.push(col + (extra ? ' ' + extra : '')); tabs[child].ref[col] = parent + '.id'; }
+      return col;
+    }
+    frames.push({ narr: opts.intro || 'We build the ER diagram one relationship at a time. Every <b>entity</b> (a noun the business cares about) becomes a box and later a table; every <b>relationship</b> (a verb) becomes a labelled line, and its <b>cardinality</b> decides where the foreign key goes.', parts: [{ type: 'text', html: 'Input: ' + specs.map(function (s) { return '<code>' + H.esc(s) + '</code>'; }).join(' · ') }, { type: 'table', label: 'mapping rules', columns: ['cardinality', 'meaning', 'becomes'], rows: [['1-N', 'one A has many B', 'FK in B → A'], ['1-1', 'one A has at most one B', 'FK in B → A + UNIQUE'], ['N-M', 'many A ↔ many B', 'junction table A_B with two FKs']] }] });
+    specs.forEach(function (sp) {
+      var m = sp.match(/^([A-Za-z]\w*)\s+(1-1|1-N|N-1|N-M|M-N)\s+([A-Za-z]\w*)\s*(.*)$/i);
+      if (!m) throw new Error('Could not read "' + sp + '". Format: EntityA 1-N EntityB verb (cardinality 1-1, 1-N, N-1 or N-M)');
+      var a = m[1], card = m[2].toUpperCase(), b = m[3], verb = m[4] || 'relates to';
+      if (card === 'N-1') { var t = a; a = b; b = t; card = '1-N'; }
+      if (card === 'M-N') card = 'N-M';
+      if (a === b && card !== '1-N') throw new Error('Self-relationships are supported as 1-N only (e.g. Employee 1-N Employee manages)');
+      var fresh = [];
+      [a, b].forEach(function (n) { if (!nodes.some(function (x) { return x.id === n; })) { node(n); fresh.push(n); } });
+      if (fresh.length) {
+        var fh = {}; fresh.forEach(function (n) { fh[n] = 'ok'; });
+        frames.push({ narr: 'New entit' + (fresh.length > 1 ? 'ies' : 'y') + ': <b>' + fresh.join('</b>, <b>') + '</b>. Each one becomes a table with a surrogate primary key <code>id</code>.', parts: [graph(fh), tbl(fresh.reduce(function (h, n) { h[order.indexOf(n)] = 'ok'; return h; }, {}))] });
+      }
+      var rh = {}; rh[a] = 'cur'; rh[b] = 'cur';
+      if (card === '1-N') {
+        var col = a === b ? 'manager_id' : addFk(b, a);
+        if (a === b) { tabs[a].ref = tabs[a].ref || {}; if (tabs[a].fks.indexOf(col) < 0) { tabs[a].fks.push(col); tabs[a].cols.push(col); tabs[a].ref[col] = a + '.id'; } }
+        if (a !== b) edges.push([a, b, '1 : N ' + verb]);
+        var eh = {}; eh[a + '-' + b] = 'cur';
+        frames.push({ narr: '<b>' + a + ' 1-N ' + b + '</b> ("one ' + a + ' ' + verb + ' many ' + b + '"). Rule: the foreign key goes on the <b>many</b> side → <code>' + b + '.' + col + '</code> references ' + a + '.id.' + (a === b ? ' This is a <b>self-reference</b>: the FK points back to the same table (a tree/hierarchy).' : ' Why not the other way? ' + a + ' would need a list of ids in one cell — that breaks first normal form.'), parts: [graph(rh, eh), tbl(one(order.indexOf(b), 'cur'))] });
+      } else if (card === '1-1') {
+        var c1 = addFk(b, a, 'UNIQUE');
+        edges.push([a, b, '1 : 1 ' + verb]);
+        var e1 = {}; e1[a + '-' + b] = 'cur';
+        frames.push({ narr: '<b>' + a + ' 1-1 ' + b + '</b>. Put the FK on the dependent side (' + b + ') and make it <b>UNIQUE</b> → <code>' + b + '.' + c1 + ' UNIQUE</code>. UNIQUE is what turns "many" into "at most one". (Alternative: ' + b + ' uses ' + a + '\'s id as its own primary key.)', parts: [graph(rh, e1), tbl(one(order.indexOf(b), 'cur'))] });
+      } else {
+        edges.push([a, b, 'N : M ' + verb]);
+        var e2 = {}; e2[a + '-' + b] = 'cur';
+        frames.push({ narr: '<b>' + a + ' N-M ' + b + '</b>: a ' + a + ' ' + verb + ' many ' + b + ', and a ' + b + ' has many ' + a + '. Neither table can hold the FK (it would need a list). We need a third table…', parts: [graph(rh, e2), tbl()] });
+        var jn = a + '_' + b, na = node(jn);
+        var A = nodes.filter(function (x) { return x.id === a; })[0], B = nodes.filter(function (x) { return x.id === b; })[0];
+        var mx = Math.round((A.x + B.x) / 2), my = Math.round((A.y + B.y) / 2);
+        if (!nodes.some(function (x) { return x.id !== jn && Math.abs(x.x - mx) < 14 && Math.abs(x.y - my) < 10; })) { na.x = mx; na.y = my; }
+        edges = edges.filter(function (e) { return !(e[0] === a && e[1] === b); });
+        edges.push([a, jn, '1 : N']); edges.push([jn, b, 'N : 1']);
+        addFk(jn, a); addFk(jn, b);
+        tabs[jn].cols[0] = 'PK (' + snakeId(a) + ', ' + snakeId(b) + ')';
+        var jh = {}; jh[jn] = 'ok'; var je = {}; je[a + '-' + jn] = 'ok'; je[jn + '-' + b] = 'ok';
+        frames.push({ narr: 'Resolved with a <b>junction table</b> <code>' + jn + '</code>: two FKs and a composite primary key (' + snakeId(a) + ', ' + snakeId(b) + '), so the same pair cannot be stored twice. Facts about the pair itself (a grade, a date, a quantity) live here.', parts: [graph(jh, je), tbl(one(order.indexOf(jn), 'ok'))] });
+      }
+    });
+    frames.push({ narr: opts.outro || 'Finished diagram: ' + order.length + ' tables. Read every line as two sentences (one per direction) and check them with the business — most schema bugs are a cardinality someone assumed instead of asked.', parts: [graph(), tbl()] });
+    return frames;
+  }
+
+  topics.push({
+    title: 'ER Diagrams: Entities, Relationships & Cardinality',
+    analogy: `<p>An ER diagram is the <b>architect's floor plan</b> before the house is built. Rooms are <b>entities</b> (Kitchen, Bedroom), doors are <b>relationships</b> ("kitchen opens into dining room"), and the plan notes how many: "one hallway leads to many rooms". Moving a wall on paper costs an eraser; moving it after the concrete sets costs a fortune. Same with tables and millions of rows.</p>`,
+    explain: `<p>An <b>Entity-Relationship (ER) diagram</b> is a picture of the data a business cares about, drawn before writing DDL.</p>
+<ul>
+<li><b>Entity</b> — a thing you store many of: Customer, Order, Product. (Nouns in the requirements.) Becomes a <b>table</b>.</li>
+<li><b>Attribute</b> — a fact about it: name, price, placed_at. Becomes a <b>column</b>. The identifying attribute is the <b>key</b>.</li>
+<li><b>Relationship</b> — how entities connect: Customer <i>places</i> Order. (Verbs.) Becomes a <b>foreign key</b> or a <b>junction table</b>.</li>
+<li><b>Cardinality</b> — how many on each side: 1-1, 1-N (one-to-many), N-M (many-to-many).</li>
+<li><b>Participation / optionality</b> — must it exist? "Every order <b>must</b> have a customer" (mandatory → NOT NULL) vs "a customer <b>may</b> have no orders" (optional).</li>
+</ul>
+<h4>Crow's foot notation (the one you'll see at work)</h4>
+${H.table(['Symbol at the line end', 'Read as', 'In SQL'], [
+  ['<code>||</code>', 'exactly one', 'FK NOT NULL'],
+  ['<code>o|</code>', 'zero or one', 'nullable FK, or FK + UNIQUE'],
+  ['<code>|&lt;</code>', 'one or many', 'needs app logic / trigger to force "at least one"'],
+  ['<code>o&lt;</code>', 'zero or many', 'plain FK on the child']
+])}
+<p>Example: <code>Customer ||——o&lt; Order</code> reads "each order belongs to exactly one customer; a customer has zero or more orders". (Textbooks also use <b>Chen notation</b>: rectangles for entities, diamonds for relationships, ovals for attributes. Same ideas, more ink.)</p>
+<h4>Mapping an ER diagram to tables — the five rules</h4>
+${H.table(['ER construct', 'Table design'], [
+  ['Entity', 'table with a primary key'],
+  ['1-N relationship', 'FK column on the <b>N</b> (many) side'],
+  ['1-1 relationship', 'FK + <code>UNIQUE</code> on the dependent side (or shared primary key)'],
+  ['N-M relationship', '<b>junction table</b> with two FKs + composite PK; relationship attributes (grade, qty) go here'],
+  ['Multi-valued attribute (many phones)', 'separate child table (1-N)'],
+  ['Weak entity (OrderLine has no meaning without Order)', 'composite PK including the owner\'s FK, ON DELETE CASCADE']
+])}`,
+    clues: [
+      '"design the database for …" / "draw the ER diagram" → list nouns (entities) and verbs (relationships) first',
+      '"a student can take many courses and a course has many students" → N-M → junction table',
+      '"each user has exactly one profile" → 1-1 → FK + UNIQUE or shared PK',
+      '"store the grade / quantity / role for each pair" → attribute of the relationship → column in the junction table',
+      '"employees have managers who are employees" → self-referencing FK (recursive relationship)',
+      '"a user can have several phone numbers" → multi-valued attribute → child table, not phone1/phone2/phone3',
+      '"comments on posts AND on photos" → polymorphic association → separate FKs + CHECK, or a supertype table'
+    ],
+    code: [
+      lab(`PRAGMA foreign_keys = ON;
+-- ER: Department 1-N Professor, Professor 1-N Course, Student N-M Course (with grade), Student 1-1 IdCard
+CREATE TABLE departments (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);
+CREATE TABLE professors  (id INTEGER PRIMARY KEY, name TEXT NOT NULL,
+                          department_id INTEGER NOT NULL REFERENCES departments(id) ON DELETE RESTRICT);
+CREATE TABLE courses     (id INTEGER PRIMARY KEY, code TEXT NOT NULL UNIQUE, title TEXT NOT NULL,
+                          professor_id INTEGER REFERENCES professors(id) ON DELETE SET NULL);   -- optional: o|
+CREATE TABLE students    (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+CREATE TABLE id_cards    (student_id INTEGER PRIMARY KEY                                       -- shared PK = 1-1
+                            REFERENCES students(id) ON DELETE CASCADE,
+                          card_no TEXT NOT NULL UNIQUE, issued_on TEXT NOT NULL);
+CREATE TABLE enrollments (                                                                      -- N-M junction
+  student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+  course_id  INTEGER NOT NULL REFERENCES courses(id)  ON DELETE CASCADE,
+  grade      TEXT CHECK (grade IN ('A', 'B', 'C', 'D', 'F')),   -- NULL = not graded yet
+  PRIMARY KEY (student_id, course_id)
+);
+CREATE INDEX idx_enrollments_course ON enrollments(course_id);   -- PK already covers student_id lookups
+
+INSERT INTO departments VALUES (1, 'Computer Science'), (2, 'Mathematics');
+INSERT INTO professors VALUES (1, 'Dr. Rao', 1), (2, 'Dr. Lee', 2);
+INSERT INTO courses VALUES (1, 'CS101', 'Intro to Databases', 1), (2, 'MA201', 'Linear Algebra', 2), (3, 'CS102', 'Algorithms', 1);
+INSERT INTO students VALUES (1, 'Asha'), (2, 'Ben'), (3, 'Chen');
+INSERT INTO id_cards VALUES (1, 'CARD-001', '2026-08-01'), (2, 'CARD-002', '2026-08-01');
+INSERT INTO enrollments VALUES (1, 1, 'A'), (1, 2, 'B'), (2, 1, NULL), (3, 3, 'A');
+
+SELECT s.name AS student, c.code, p.name AS professor, d.name AS department, COALESCE(e.grade, '-') AS grade
+FROM enrollments e
+JOIN students s    ON s.id = e.student_id
+JOIN courses c     ON c.id = e.course_id
+LEFT JOIN professors p ON p.id = c.professor_id
+LEFT JOIN departments d ON d.id = p.department_id
+ORDER BY s.name, c.code;`, 'ER diagram → tables (university)')
+    ],
+    codeTitle: ['From ER diagram to DDL'],
+    viz: {
+      title: 'Build an ER diagram entity by entity (type your own!)',
+      input: 'Department 1-N Professor employs; Professor 1-N Course teaches; Student N-M Course enrolls in; Student 1-1 IdCard holds',
+      inputLabel: 'Relationships "A 1-N B verb" separated by ; (cardinality 1-1, 1-N, N-1, N-M)',
+      gen: function (input) { return erFrames(input); }
+    },
+    examples: [
+      { title: 'Reading cardinality both ways (the interview habit)', html: `<p>Every line on an ER diagram is <b>two sentences</b>. Say both out loud and the FK placement falls out:</p>${H.table(['Relationship', 'Left → right', 'Right → left', 'Design'], [
+        ['Customer — Order', 'a customer places <b>many</b> orders', 'an order belongs to <b>one</b> customer', '1-N: orders.customer_id'],
+        ['Order — Product', 'an order contains <b>many</b> products', 'a product appears in <b>many</b> orders', 'N-M: order_items'],
+        ['User — Profile', 'a user has <b>one</b> profile', 'a profile belongs to <b>one</b> user', '1-1: profiles.user_id UNIQUE'],
+        ['Employee — Employee', 'a manager manages <b>many</b>', 'an employee has <b>one</b> manager', 'self 1-N: employees.manager_id']])}<p>If either sentence is unclear, ask the interviewer — that question itself earns points.</p>` },
+      { title: 'Self-referencing relationship: employees and managers', html: `<p>One table plays both roles. The CEO has <code>manager_id = NULL</code>. A self-join answers "who reports to whom"; a recursive CTE (SQL 5) walks the whole chain.</p>`,
+        code: lab(`PRAGMA foreign_keys = ON;
+CREATE TABLE employees (
+  id INTEGER PRIMARY KEY, name TEXT NOT NULL,
+  manager_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+  CHECK (manager_id IS NULL OR manager_id <> id)        -- nobody manages themselves
+);
+INSERT INTO employees VALUES (1, 'Maya (CEO)', NULL), (2, 'Ravi', 1), (3, 'Sara', 1), (4, 'Tom', 2), (5, 'Uma', 2);
+SELECT e.name AS employee, COALESCE(m.name, '-') AS manager
+FROM employees e LEFT JOIN employees m ON m.id = e.manager_id ORDER BY e.id;`) },
+      { title: 'Multi-valued attribute: phone1, phone2, phone3 is a smell', html: `<p>"A contact can have several phone numbers" tempts you to add <code>phone1, phone2, phone3</code>. What about a 4th? How do you search "who has 98450-…"? Three ORs. The ER answer: phone is a <b>multi-valued attribute</b> → its own 1-N child table, with a type and a UNIQUE per contact.</p>`,
+        code: lab(`PRAGMA foreign_keys = ON;
+CREATE TABLE contacts (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+CREATE TABLE contact_phones (
+  contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+  kind  TEXT NOT NULL CHECK (kind IN ('mobile', 'home', 'work')),
+  phone TEXT NOT NULL,
+  PRIMARY KEY (contact_id, phone)
+);
+INSERT INTO contacts VALUES (1, 'Asha'), (2, 'Ben');
+INSERT INTO contact_phones VALUES (1, 'mobile', '+91-98450-00001'), (1, 'work', '+91-80-4000-0001'), (2, 'mobile', '+44-7700-900002');
+SELECT c.name, COUNT(*) AS phones, group_concat(p.kind || ':' || p.phone, ' | ') AS numbers
+FROM contacts c JOIN contact_phones p ON p.contact_id = c.id GROUP BY c.id;`) },
+      { title: 'Inheritance (ISA): card payments vs UPI payments', html: `<p>A Payment is either a CardPayment (last4, network) or a UpiPayment (vpa). Three classic mappings:</p>${H.table(['Strategy', 'Shape', 'Pros / cons'], [
+        ['Single table', 'one payments table, nullable subtype columns + <code>kind</code> + CHECK', 'simple, fast; many NULLs, CHECK gets long'],
+        ['Class table', 'payments (common) + card_payments / upi_payments sharing the PK', 'clean, normalized; needs joins'],
+        ['Concrete table', 'card_payments and upi_payments, no shared table', 'no joins; "all payments" needs UNION, ids may clash']])}<p>The snippet shows the single-table version, with a CHECK making sure each kind fills exactly its own columns.</p>`,
+        code: lab(`CREATE TABLE payments (
+  id INTEGER PRIMARY KEY,
+  kind TEXT NOT NULL CHECK (kind IN ('card', 'upi')),
+  amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
+  card_last4 TEXT, card_network TEXT, upi_vpa TEXT,
+  CHECK ((kind = 'card' AND card_last4 IS NOT NULL AND card_network IS NOT NULL AND upi_vpa IS NULL)
+      OR (kind = 'upi'  AND upi_vpa IS NOT NULL AND card_last4 IS NULL AND card_network IS NULL))
+);
+INSERT INTO payments VALUES (1, 'card', 129900, '4242', 'VISA', NULL), (2, 'upi', 49900, NULL, NULL, 'asha@okbank');
+INSERT OR IGNORE INTO payments VALUES (3, 'upi', 100, '4242', NULL, 'mix@bank');   -- mixed columns: rejected
+SELECT * FROM payments;`) },
+      { title: 'Weak entity: order lines numbered within an order', html: `<p>Line 1, line 2, line 3 restart for every order — "line 2" means nothing on its own. That is a <b>weak entity</b>: its key is (owner key, partial key) = <code>(order_id, line_no)</code>, and it dies with its owner (CASCADE).</p>`,
+        code: lab(`PRAGMA foreign_keys = ON;
+CREATE TABLE orders (id INTEGER PRIMARY KEY, placed_at TEXT NOT NULL);
+CREATE TABLE order_lines (
+  order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  line_no  INTEGER NOT NULL CHECK (line_no >= 1),
+  item     TEXT NOT NULL,
+  PRIMARY KEY (order_id, line_no)
+);
+INSERT INTO orders VALUES (1, '2026-10-01'), (2, '2026-10-02');
+INSERT INTO order_lines VALUES (1, 1, 'Phone'), (1, 2, 'Case'), (2, 1, 'Book');   -- line 1 exists twice, in different orders
+SELECT * FROM order_lines ORDER BY order_id, line_no;`) }
+    ],
+    deepDive: `<h4>Conceptual → logical → physical</h4>
+<p>Data modelling has three layers. <b>Conceptual</b>: entities and relationships in business words, no types (whiteboard). <b>Logical</b>: attributes, keys, cardinalities, normalized (tool-independent). <b>Physical</b>: actual DDL for one engine — types, indexes, partitioning, storage. In interviews, spend 2 minutes conceptual, 5 logical, then talk physical only where it matters (indexes for the hot queries).</p>
+<h4>Ternary relationships</h4>
+<p>"A supplier supplies a part to a project" is a three-way fact. Splitting it into three binary relationships (supplier–part, part–project, supplier–project) loses information: you can no longer tell which supplier supplied which part <i>to which</i> project. Model it as one junction table with three FKs, and think carefully about which subset is the key.</p>
+<h4>Cardinality constraints SQL cannot express directly</h4>
+<p>A FK gives "zero or one parent" (nullable) or "exactly one" (NOT NULL). It cannot force "at least one child" (an order must have ≥ 1 line) or "at most 5 children". Options: create parent and first child in one transaction with a deferred check, a trigger, a counter column with a CHECK, or app logic. Say this out loud in interviews — it shows you know where declarative integrity ends.</p>
+<h4>Polymorphic associations</h4>
+<p>Rails-style <code>commentable_type + commentable_id</code> cannot have a foreign key, so orphans are guaranteed eventually. Better: one nullable FK per target (<code>post_id</code>, <code>photo_id</code>) with <code>CHECK (exactly one is not NULL)</code>, or a shared supertype table (<code>commentables</code>) that posts and photos both reference.</p>
+<h4>Diagrams as code</h4>
+<p>Teams keep ER diagrams next to the code with Mermaid <code>erDiagram</code>, dbdiagram.io (DBML), PlantUML, or generate them from the live database (SchemaSpy, DBeaver, DataGrip). A diagram generated from production can't drift out of date — a hand-drawn one usually does.</p>
+<h4>Surrogate keys in the diagram</h4>
+<p>Conceptual diagrams use natural identifiers ("a course is identified by its code"). The physical design usually adds surrogate ids but must keep the natural one as <code>UNIQUE NOT NULL</code> — otherwise you lose the business rule that two courses cannot share a code.</p>`,
+    aiEra: `<p><b>What AI changes:</b> LLMs are genuinely good at the first draft: paste a requirements paragraph and get entities, relationships and Mermaid <code>erDiagram</code> code in seconds. That turns ER modelling from a drawing exercise into a <b>review</b> exercise. Your value is spotting the wrong cardinality, the missing entity, and the rule the model invented.</p>
+<p><b>Use AI as a partner:</b> <code>"From these requirements, list entities, relationships and cardinalities as a table. For each relationship, write both directional sentences and flag every cardinality you had to assume."</code> Then challenge it: <code>"What changes if a course can be co-taught by two professors?"</code> — watch 1-N become N-M. Ask for the Mermaid diagram and paste it into your docs.</p>
+<p><b>Where AI goes wrong:</b> it collapses N-M into 1-N when the text is ambiguous, models relationship attributes on the wrong entity (grade on Student), invents entities that are really attributes, and loves polymorphic <code>*_type</code> columns. <b>What you must still own:</b> asking the business the cardinality questions, and knowing the ER → table mapping rules cold so you can verify the output in seconds.</p>`,
+    problems: [{
+      title: 'Model Students, Courses & Enrolments',
+      level: 'Medium', tags: ['ER modelling', 'many-to-many', 'junction table'], companies: ['Coursera', 'Byju\'s', 'Google'],
+      statement: `<p>Requirements: students enrol in courses; a student can take many courses and a course has many students. Each enrolment records the enrolment date and a grade (A–F, empty until graded). A student cannot enrol twice in the same course. Write the DDL and a query listing each course with its number of students and how many have an A.</p>`,
+      constraints: `<ul><li>No duplicate (student, course) pairs.</li><li>Deleting a student removes their enrolments; a course with enrolments cannot be deleted.</li><li>Grade must be A, B, C, D, F or NULL.</li></ul>`,
+      example: `<p>Asha → CS101 (A), MA201 (B); Ben → CS101 (not graded); Chen → CS102 (A).</p>${H.table(['course', 'students', 'a_grades'], [['CS101', '2', '1'], ['CS102', '1', '1'], ['MA201', '1', '0']])}`,
+      brute: {
+        why: `<p>Storing the course list in the student row (<code>courses = 'CS101,MA201'</code>) — a "repeating group". There is nowhere to put a grade per course, no FK can check the codes, and searching uses <code>LIKE '%CS10%'</code> which also matches CS101 <i>and</i> CS102 — false positives. Counting students per course requires string parsing.</p>`,
+        code: lab(`CREATE TABLE students_bad (id INTEGER PRIMARY KEY, name TEXT, courses TEXT);
+INSERT INTO students_bad VALUES (1, 'Asha', 'CS101,MA201'), (2, 'Ben', 'CS101'), (3, 'Chen', 'CS102');
+-- "Who takes CS10?" (a course that does not exist) -> matches everyone with CS101 or CS102
+SELECT name FROM students_bad WHERE courses LIKE '%CS10%';
+-- grades? enrolment dates? there is simply no place to store them.`)
+      },
+      mcq: { q: 'Where does the grade column belong?', options: ['students', 'courses', 'the enrollments junction table', 'a separate grades table with only a grade column'], answer: 2, explain: 'A grade describes one (student, course) pair — an attribute of the relationship, so it lives in the junction table.' },
+      hints: [
+        '<p>Hint 1: Read both directions: a student takes many courses, a course has many students → N-M.</p>',
+        '<p>Hint 2: N-M needs a junction table <code>enrollments(student_id, course_id, ...)</code> with a composite PRIMARY KEY — that also blocks double enrolment.</p>',
+        '<p>Hint 3: student FK → ON DELETE CASCADE, course FK → ON DELETE RESTRICT, grade CHECK IN (...). Count with <code>COUNT(*)</code> and <code>SUM(grade = \'A\')</code> after a LEFT JOIN from courses.</p>'
+      ],
+      solution: {
+        approach: `<p>Three tables: two entities plus a junction table that holds the relationship's own attributes (date, grade). The composite PK enforces "no double enrolment", the two FKs carry different delete policies, and the CHECK restricts grades.</p>`,
+        code: lab(`PRAGMA foreign_keys = ON;
+CREATE TABLE students (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+CREATE TABLE courses  (id INTEGER PRIMARY KEY, code TEXT NOT NULL UNIQUE, title TEXT NOT NULL);
+CREATE TABLE enrollments (
+  student_id  INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+  course_id   INTEGER NOT NULL REFERENCES courses(id)  ON DELETE RESTRICT,
+  enrolled_on TEXT    NOT NULL DEFAULT (date('now')),
+  grade       TEXT    CHECK (grade IN ('A', 'B', 'C', 'D', 'F')),
+  PRIMARY KEY (student_id, course_id)
+);
+CREATE INDEX idx_enrollments_course ON enrollments(course_id);
+
+INSERT INTO students VALUES (1, 'Asha'), (2, 'Ben'), (3, 'Chen');
+INSERT INTO courses VALUES (1, 'CS101', 'Databases'), (2, 'MA201', 'Linear Algebra'), (3, 'CS102', 'Algorithms');
+INSERT INTO enrollments (student_id, course_id, enrolled_on, grade) VALUES
+  (1, 1, '2026-08-01', 'A'), (1, 2, '2026-08-01', 'B'), (2, 1, '2026-08-03', NULL), (3, 3, '2026-08-02', 'A');
+INSERT OR IGNORE INTO enrollments (student_id, course_id) VALUES (1, 1);   -- double enrolment: blocked by PK
+
+SELECT c.code,
+       COUNT(e.student_id)                   AS students,
+       COALESCE(SUM(e.grade = 'A'), 0)       AS a_grades
+FROM courses c
+LEFT JOIN enrollments e ON e.course_id = c.id
+GROUP BY c.id
+ORDER BY c.code;`),
+        complexity: `<p>Enrol/check duplicate: O(log N) via the composite PK index. "Courses of a student" uses the PK prefix; "students of a course" uses idx_enrollments_course. The report is one O(E) pass over enrollments.</p>`,
+        followUps: ['Add multiple attempts at the same course (retakes) — what happens to the primary key?', 'Add a seat limit per course. Can a CHECK enforce it? (no — needs a counter column or trigger)']
       }
     }]
   });

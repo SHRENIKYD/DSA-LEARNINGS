@@ -1367,7 +1367,7 @@ ORDER BY salary DESC, id;` },
         for (var b = 0; b < k; b++) sizes.push(base + (b < extra ? 1 : 0));
         var cols = ['value', 'NTILE(' + k + ')', 'RANK', 'PERCENT_RANK', 'CUME_DIST'];
         var rows = v.map(function (x) { return [x, '·', '·', '·', '·']; });
-        var frames = [{ narr: 'N = ' + n + ' rows, k = ' + k + ' buckets. ⌊' + n + '/' + k + '⌋ = ' + base + ' rows each, and the first ' + extra + ' bucket(s) get one extra (' + n + ' mod ' + k + ' = ' + extra + '). Bucket sizes: <b>' + sizes.join(', ') + '</b>.', parts: [{ type: 'table', label: 'ORDER BY value DESC', columns: cols, rows: copyRows(rows) }, { type: 'bars', label: 'bucket sizes', values: sizes.slice(), idxLabels: sizes.map(function (s, q) { return 'b' + (q + 1); }) }] });
+        var frames = [{ narr: 'N = ' + n + ' rows, k = ' + k + ' buckets. ⌊' + n + '/' + k + '⌋ = ' + base + ' rows each, and the first ' + extra + ' bucket(s) get one extra (' + n + ' mod ' + k + ' = ' + extra + '). Bucket sizes: <b>' + sizes.join(', ') + '</b>.', parts: [{ type: 'table', label: 'ORDER BY value DESC', columns: cols, rows: copyRows(rows) }, { type: 'bars', label: 'bucket sizes', values: sizes.slice(), idxLabels: sizes.map(function (s, q) { return 'b' + (q + 1); }) }] }];
         var pos = 0, bucketOf = [];
         for (var q = 0; q < k; q++) {
           if (!sizes[q]) continue;
