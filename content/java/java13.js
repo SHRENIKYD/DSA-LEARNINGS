@@ -576,4 +576,441 @@ class MiniJvm {
     }]
   });
 
+  /* ======================================================================
+     TOPIC 3 — JIT: interpreter, tiered C1/C2, inlining, escape analysis, deopt
+     ====================================================================== */
+  topics.push({
+    title: 'The JIT Compiler: Tiered C1/C2, Inlining, Escape Analysis & Deoptimization',
+    analogy: `<p>A new cook in a restaurant reads the recipe card <b>line by line</b> for every order — slow but works immediately (the <b>interpreter</b>). After making the same pasta 200 times, she writes herself a quick cheat-sheet (the <b>C1</b> compiler: fast to produce, decent speed) and keeps notes on what customers actually order. After 5,000 orders she studies those notes and builds a fully optimised station: sauces pre-mixed, steps merged, "everyone orders it without onions, so skip that step" (the <b>C2</b> compiler, using profile data). If one day a customer <i>does</i> ask for onions, she throws away the optimised station for that dish, goes back to the recipe card, and later rebuilds (<b>deoptimization</b>).</p>`,
+    explain: `<p>The JVM starts by <b>interpreting</b> bytecode: easy to start, but maybe 10–50× slower than machine code. Meanwhile it <b>counts</b> how often each method is called and how often loops spin. Methods that turn out to be <b>hot</b> are compiled to native machine code <b>Just-In-Time</b> (JIT) — while the program runs.</p>
+<h4>1. Tiered compilation (default since Java 8)</h4>
+${H.table(['Tier', 'Who', 'Speed of code', 'Purpose'], [
+  ['0', 'Interpreter', 'slowest', 'run immediately, gather counts'],
+  ['1', 'C1, no profiling', 'good', 'trivial methods (getters) that would not benefit from C2'],
+  ['2', 'C1, light profiling', 'good', 'used when C2 is busy'],
+  ['3', 'C1 + full profiling', 'good (a bit slower than 1/2)', 'collect types seen, branch counts, call targets'],
+  ['4', '<b>C2</b> (the "server" compiler)', H.c('g', 'fastest'), 'aggressive, speculative optimisation using the profile']
+])}
+<p>The usual path is <b>0 → 3 → 4</b>. Rough default triggers: ~200 calls to reach tier 3, ~5,000+ calls (or many loop back-edges) to reach tier 4. Compilation happens on <b>background compiler threads</b>; the method keeps running interpreted until the new code is installed.</p>
+<h4>2. The big optimisations (in order of importance)</h4>
+<ol><li><b>Inlining</b> — copy the body of a called method into the caller. Removes call overhead and, more importantly, lets every other optimisation see across method boundaries. Small methods (≤ 35 bytes of bytecode) are always candidates; hot methods up to ~325 bytes.</li>
+<li><b>Speculation from the profile</b> — "this ${C('Shape s')} has only ever been a ${C('Circle')}" → inline ${C('Circle.area()')} directly behind a cheap type check (a <b>guard</b>). Called <b>monomorphic</b> (1 type) / <b>bimorphic</b> (2 types) inlining. With 3+ types the site is <b>megamorphic</b> and falls back to a virtual call.</li>
+<li><b>Escape analysis</b> — if an object never leaves the method (not returned, not stored in a field, not passed to un-inlined code), the JIT can skip the heap allocation entirely (<b>scalar replacement</b>: the fields become local registers) and remove locks on it (<b>lock elision</b>).</li>
+<li><b>Loop optimisations</b> — range-check elimination, unrolling, vectorisation with SIMD instructions (auto-vectorisation; or explicitly via the incubating Vector API).</li>
+<li><b>Dead code elimination, constant folding, intrinsics</b> — e.g. ${C('Math.sqrt')}, ${C('System.arraycopy')}, ${C('String.indexOf')} map straight to special CPU instructions.</li></ol>
+<h4>3. Deoptimization</h4>
+<p>Speculation can be wrong. When a guard fails (a ${C('Square')} finally shows up), the compiled code hits an <b>uncommon trap</b>: the JVM rebuilds the interpreter frame from the compiled frame, continues in the interpreter, marks the code "not entrant", and later recompiles with the new knowledge. You see it as ${C('made not entrant')} in ${C('-XX:+PrintCompilation')}.</p>
+${P(`
+java -XX:+PrintCompilation Main
+#  ms   id  tier  method
+   95   12    3    com.shop.Price::total (42 bytes)
+  410   57    4    com.shop.Price::total (42 bytes)
+  412   12    3    com.shop.Price::total (42 bytes)   made not entrant   <- tier 3 version retired
+ 2100   57    4    com.shop.Price::total (42 bytes)   made not entrant   <- deopt: speculation failed`)}
+<h4>4. Why you should care</h4>
+<ul><li><b>Warm-up</b>: the first seconds/minutes of a service are slow. Latency SLOs, autoscaling and benchmarks must account for it.</li>
+<li><b>Benchmarks lie</b> without JMH: the JIT removes code whose result is unused and compiles mid-measurement.</li>
+<li><b>Code shape matters</b>: small methods, monomorphic hot calls and non-escaping temporary objects are cheap.</li></ul>`,
+    clues: [
+      '"Why is the first request slow and later ones fast?" → interpreter + JIT warm-up',
+      '"My microbenchmark says the loop takes 0 ns" → dead code elimination; use JMH and Blackhole',
+      '"Is creating small objects in a hot loop expensive?" → escape analysis / scalar replacement / TLAB bump allocation',
+      '"Interface call with many implementations got slow" → megamorphic call site, no inlining',
+      '"C1 vs C2", "what is OSR", "what does made not entrant mean" → tiered compilation and deopt',
+      '"Fast startup for serverless/CLI" → TieredStopAtLevel=1, CDS/AOT cache (Leyden), GraalVM native image'
+    ],
+    code: [`
+// A hot method the JIT will inline, speculate on, and scalar-replace.
+interface Shape { double area(); }
+record Circle(double r) implements Shape { public double area() { return Math.PI * r * r; } }
+record Square(double s) implements Shape { public double area() { return s * s; } }
+
+class JitDemo {
+    // Monomorphic while only Circles arrive: C2 inlines Circle.area() behind a type guard.
+    static double total(Shape[] shapes) {
+        double sum = 0;
+        for (Shape s : shapes) sum += s.area();
+        return sum;
+    }
+
+    // 'p' never escapes this method: escape analysis lets C2 skip the allocation entirely.
+    static double distance(double x, double y) {
+        record Point(double x, double y) {}
+        Point p = new Point(x, y);
+        return Math.sqrt(p.x() * p.x() + p.y() * p.y());
+    }
+
+    public static void main(String[] args) {
+        Shape[] circles = new Shape[1000];
+        for (int i = 0; i < circles.length; i++) circles[i] = new Circle(i % 10);
+        double acc = 0;
+        for (int round = 0; round < 20_000; round++) acc += total(circles);  // gets hot -> tier 3 -> tier 4
+        circles[0] = new Square(2);                                          // new type -> guard fails -> deopt
+        acc += total(circles);
+        for (int i = 0; i < 1_000_000; i++) acc += distance(i, i + 1);
+        System.out.println(acc > 0);   // use the result so the JIT cannot delete the work
+    }
+}`, { lang: 'bash', title: 'JIT diagnostics flags', code: `java -XX:+PrintCompilation Main                       # every compile: tier, size, "made not entrant"
+java -XX:+UnlockDiagnosticVMOptions -XX:+PrintInlining Main   # inlining decisions: "inline (hot)", "too big", "megamorphic"
+java -XX:TieredStopAtLevel=1 Main                       # C1 only: faster startup, lower peak (CLIs, short jobs)
+java -XX:-DoEscapeAnalysis Main                         # turn EA off to measure its effect
+java -XX:ReservedCodeCacheSize=512m Main                # bigger code cache (watch for "CodeCache is full")
+jcmd <pid> Compiler.codecache                           # code cache usage at runtime` }],
+    codeTitle: ['Code the JIT loves (and one change it hates)', 'Seeing what the JIT does'],
+    viz: [{
+      title: 'Tiered compilation timeline: interpreter → C1 → C2 → deopt → recompile',
+      input: 'calls=9000 tier3=200 tier4=5000 newTypeAt=6500',
+      inputLabel: 'calls, tier3 / tier4 thresholds, newTypeAt (0 = never a new type)',
+      gen: function (input) {
+        var o = kvParse(input, { calls: 9000, tier3: 200, tier4: 5000, newTypeAt: 6500 });
+        var calls = num(o.calls, 10, 1000000, 'calls'), t3 = num(o.tier3, 1, 100000, 'tier3'), t4 = num(o.tier4, 2, 500000, 'tier4'), nt = num(o.newTypeAt, 0, 1000000, 'newTypeAt');
+        if (t3 >= t4) throw new Error('tier3 must be smaller than tier4');
+        var nodes = [
+          { id: 'T0', label: 'Tier 0 interpreter', x: 12, y: 15, shape: 'box', w: 20 },
+          { id: 'T3', label: 'Tier 3 C1 + profiling', x: 45, y: 15, shape: 'box', w: 22 },
+          { id: 'T4', label: 'Tier 4 C2 optimized', x: 82, y: 15, shape: 'box', w: 22 },
+          { id: 'DEOPT', label: 'uncommon trap → deopt', x: 60, y: 48, shape: 'box', w: 26 }
+        ];
+        var edges = [['T0', 'T3', '~' + t3 + ' calls'], ['T3', 'T4', '~' + t4 + ' calls'], ['T4', 'DEOPT', 'guard fails'], ['DEOPT', 'T0', 'back to interpreter']];
+        var cost = { T0: 60, T3: 12, T4: 2 }, history = [], labels = [];
+        var F = [];
+        function push(at, tier, narr, ehl, profile, extra) {
+          history.push(cost[tier]); labels.push(String(at));
+          var hl = {}; hl[tier] = tier === 'T4' ? 'ok' : 'cur';
+          var parts = [
+            { type: 'graph', label: 'Where does Shape.area() execute?', directed: true, height: 60, nodes: nodes, edges: edges, hl: hl, ehl: ehl || {} },
+            { type: 'vars', label: 'JVM bookkeeping for total()', vals: { 'calls so far': at, 'running as': tier === 'T0' ? 'interpreted bytecode' : tier === 'T3' ? 'C1 code (profiling)' : 'C2 code', 'type profile at s.area()': profile }, hl: { 'running as': 'cur' } },
+            { type: 'bars', label: 'Approx. ns per call (illustrative)', values: history.slice(), idxLabels: labels.slice() }
+          ];
+          (extra || []).forEach(function (p) { parts.push(p); });
+          F.push({ narr: narr, parts: parts });
+        }
+        push(1, 'T0', 'Call #1: no machine code exists, so the <b>interpreter</b> runs the bytecode. Each method has an invocation counter and a back-edge (loop) counter.', {}, '{}');
+        push(Math.min(t3 - 1, calls), 'T0', 'Still interpreted. Cheap to start, slow to run. Counting continues; nothing is compiled for code that runs once (startup code, config parsing).', {}, '{}');
+        if (calls < t3) { push(calls, 'T0', 'Program ends before the method became hot. It never left the interpreter — that is fine for cold code.', {}, '{}'); return F; }
+        push(t3, 'T3', 'Threshold reached (~' + t3 + ' calls): the method is queued for <b>C1</b>. A background compiler thread produces machine code with <b>profiling counters</b> built in. It is installed and the next call jumps to it.', { 'T0-T3': 'ok' }, '{Circle: ' + t3 + '}');
+        if (calls < t4) { push(calls, 'T3', 'Program ends while running C1 code. Peak C2 performance was never reached — typical for short-lived jobs, which is why serverless cares about warm-up.', {}, '{Circle: ' + calls + '}'); return F; }
+        push(Math.floor((t3 + t4) / 2), 'T3', 'C1 code is ~5× faster than interpreting, and it records: receiver types at every call site, branch taken/not-taken counts, null checks seen. So far every receiver is a <b>Circle</b>.', {}, '{Circle: ' + Math.floor((t3 + t4) / 2) + '}');
+        push(t4, 'T4', '~' + t4 + ' calls: the method is hot enough for <b>C2</b>. Using the profile, C2 <b>speculates</b>: "s is always a Circle" → inline <code>Circle.area()</code> behind one cheap class-check guard, unroll the loop, keep values in registers.', { 'T3-T4': 'ok' }, '{Circle: ' + t4 + '} → monomorphic', [note('C2 compiled code (pseudo)', '<code>if (s.klass != Circle) uncommon_trap();<br>sum += PI * s.r * s.r;   // inlined, no call</code>')]);
+        if (nt > t4 && nt <= calls) {
+          push(nt, 'T4', 'Call #' + nt + ': a <b>Square</b> arrives. The guard <span class="c-r">fails</span> → <b>uncommon trap</b>.', { 'T4-DEOPT': 'bad' }, '{Circle, Square}', [note('What the JVM does', 'Rebuilds an interpreter frame from the compiled frame\'s registers, resumes in the interpreter, and marks the C2 code <b>"made not entrant"</b>.')]);
+          push(nt + 1, 'T0', '<b>Deoptimized</b>: we are back in the interpreter for this method — a visible latency blip. Profiling restarts with the new type information.', { 'DEOPT-T0': 'bad' }, '{Circle, Square}');
+          var rc = Math.min(calls, nt + Math.max(t3, Math.floor((t4 - t3) / 3)));
+          push(rc, 'T4', 'Recompiled by C2 with the updated profile: now <b>bimorphic</b> — two inlined bodies behind two guards. Still fast. A <i>third</i> type would make the site <b>megamorphic</b> (real virtual call, no inlining).', { 'T0-T3': 'ok', 'T3-T4': 'ok' }, '{Circle, Square} → bimorphic');
+        }
+        push(calls, 'T4', 'Steady state at call #' + calls + ': C2 code runs most of the time. Total compile work happened on background threads, but the <b>warm-up</b> phase (left bars) is real latency your users felt.', {}, 'stable');
+        return F;
+      }
+    }, {
+      title: 'Inlining + escape analysis: how an allocation disappears',
+      gen: function () {
+        var src = 'static double dist(double x, double y) {\n  Point p = new Point(x, y);\n  return Math.sqrt(p.x() * p.x() + p.y() * p.y());\n}';
+        var s2 = 'static double dist(double x, double y) {\n  Point p = new Point(x, y);      // ctor inlined\n  return Math.sqrt(p.x * p.x + p.y * p.y); // getters inlined\n}';
+        var s3 = 'static double dist(double x, double y) {\n  double px = x, py = y;          // object replaced by its fields\n  return Math.sqrt(px * px + py * py);\n}';
+        var s4 = 'dist:  ; x in xmm0, y in xmm1\n  mulsd  xmm0, xmm0\n  mulsd  xmm1, xmm1\n  addsd  xmm0, xmm1\n  sqrtsd xmm0, xmm0      ; Math.sqrt is an intrinsic\n  ret';
+        function f(narr, code, lbl, hl, heap, hh) { return { narr: narr, parts: [{ type: 'code', label: lbl, lang: lbl.indexOf('machine') >= 0 ? 'text' : 'java', code: code, hl: hl }, { type: 'vars', label: 'Per call', vals: heap, hl: hh || {} }] }; }
+        return [
+          f('Original code: every call allocates a <code>Point</code> on the heap (fast TLAB bump, but it still fills Eden and costs GC work later).', src, 'Source', { 2: 'cur' }, { 'heap allocations': 1, 'calls': 3, 'bytes allocated': '~32' }, { 'heap allocations': 'bad' }),
+          f('Step 1 — <b>Inlining</b>: the constructor and the accessor methods are tiny (a few bytes of bytecode), so C2 copies their bodies into <code>dist</code>. Now the optimiser can see <i>everything</i> that happens to <code>p</code>.', s2, 'After inlining', { 2: 'cur', 3: 'cur' }, { 'heap allocations': 1, 'calls': 0, 'bytes allocated': '~32' }, { calls: 'ok' }),
+          f('Step 2 — <b>Escape analysis</b> asks: does <code>p</code> leave this method? Not returned, not stored in a field or array, not passed to a non-inlined call, not synchronized on by others. Answer: <span class="c-g">NoEscape</span>.', s2, 'After inlining', { 2: 'ok' }, { 'p escapes?': 'no', 'heap allocations': 1 }, { 'p escapes?': 'ok' }),
+          f('Step 3 — <b>Scalar replacement</b>: the object is replaced by its fields as plain local values (registers). No <code>new</code>, no header, no GC pressure.', s3, 'After scalar replacement', { 2: 'ok', 3: 'ok' }, { 'heap allocations': 0, 'bytes allocated': 0 }, { 'heap allocations': 'ok', 'bytes allocated': 'ok' }),
+          f('Step 4 — the final machine code is four SIMD-register instructions. <code>Math.sqrt</code> is an <b>intrinsic</b>: replaced by the CPU\'s <code>sqrtsd</code>.', s4, 'Generated machine code (x86-64, simplified)', { 2: 'cur', 3: 'cur', 4: 'cur', 5: 'cur' }, { 'heap allocations': 0, 'instructions': 5 }, { instructions: 'ok' }),
+          f('What breaks it: store <code>p</code> in a field or a list, return it, pass it to a method too big to inline, or let it flow to a megamorphic call. Then <code>p</code> "escapes" and the allocation is back. EA also only runs in C2 — during warm-up the allocations happen.', 'static List<Point> seen = new ArrayList<>();\nstatic double dist(double x, double y) {\n  Point p = new Point(x, y);\n  seen.add(p);            // ESCAPES: stored globally\n  return Math.sqrt(p.x() * p.x() + p.y() * p.y());\n}', 'Escaping version', { 4: 'bad' }, { 'p escapes?': 'yes (GlobalEscape)', 'heap allocations': 1 }, { 'p escapes?': 'bad' })
+        ];
+      }
+    }],
+    examples: [
+      { title: 'The microbenchmark that measures nothing', html: `<p>A loop computing ${C('Math.log(i)')} whose result is never used runs in "0 ns" after warm-up — C2 proved the result is dead and deleted the loop. And measuring the first 1,000 iterations measures the <b>interpreter</b>. JMH fixes both: warm-up iterations, forked JVMs, and ${C('Blackhole.consume(x)')} to keep results alive.</p>`, code: `
+// Wrong: result unused -> dead code elimination; no warm-up -> measures interpreter
+long t0 = System.nanoTime();
+for (int i = 1; i < 1_000_000; i++) Math.log(i);
+System.out.println((System.nanoTime() - t0) + " ns  <- meaningless number");` },
+      { title: 'On-Stack Replacement (OSR): a long loop in main', html: `<p>${C('main')} is called once, so the invocation counter never gets hot. But its loop runs 100 million times. The back-edge counter triggers an <b>OSR compilation</b>: the JVM compiles the method with a special entry point at the loop header and switches the <i>running</i> frame to compiled code mid-loop. In ${C('PrintCompilation')} output, OSR compiles are marked with ${C('%')}.</p>` },
+      { title: 'Megamorphic call site slowdown', html: `<p>A hot loop calls ${C('handler.handle(event)')} where ${C('handler')} is an interface with 1 implementation in tests but 6 in production. In tests the call is inlined (monomorphic); in production it is megamorphic, inlining stops, escape analysis around it fails, and throughput drops 2–5× in that loop. Fixes: split loops by type, use a ${C('switch')} over a sealed hierarchy (each branch statically known), or accept the cost if it is not the bottleneck.</p>` },
+      { title: 'Choosing JIT settings for a CLI tool vs a server', html: `${H.table(['Workload', 'Choice', 'Why'], [['CLI that runs 300 ms', C('-XX:TieredStopAtLevel=1') + ' + CDS/AOT cache', 'C2 never pays off; startup dominates'], ['Long-running API server', 'defaults (tiered C1+C2)', 'peak throughput matters'], ['Serverless with strict cold-start', 'AOT cache (JDK 24+) or GraalVM native image', 'skip warm-up entirely'], ['Container with 1 CPU', 'beware: few compiler threads', 'JIT competes with your app for CPU']])}` }
+    ],
+    deepDive: `<p><b>Why C2 is speculative.</b> Java has virtual calls everywhere and class loading can change the class hierarchy at any time. C2 uses <b>Class Hierarchy Analysis</b> (CHA): if only one class implements a method <i>right now</i>, it inlines without even a guard, and registers a <b>dependency</b>. If a new subclass is loaded later, every compiled method depending on that assumption is deoptimized. Speculation + cheap guards + deopt is the core trick that makes a dynamic language fast.</p>
+<p><b>Inlining heuristics.</b> ${C('MaxInlineSize')} (35 bytes) for any call, ${C('FreqInlineSize')} (325 bytes) for hot calls, ${C('MaxInlineLevel')} (15 since JDK 14) for depth, and an overall node budget. Already-compiled big callees are often not inlined (${C('InlineSmallCode')}). ${C('-XX:+PrintInlining')} explains each decision: "too big", "hot method too big", "callee is too large", "megamorphic".</p>
+<p><b>Escape analysis limits.</b> HotSpot's C2 EA is intra-procedural after inlining, and scalar replacement fails for objects that merge at control-flow joins (e.g. ${C('p = cond ? new P(1) : new P(2)')} — improved in recent JDKs) or arrays with non-constant indexes. Objects that escape only to a lock can still get <b>lock elision</b>. GraalVM's compiler has a stronger <b>partial escape analysis</b> which allocates only on the branch where the object actually escapes.</p>
+<p><b>Allocation is already cheap.</b> Even without EA, a heap allocation is a pointer bump in the thread's <b>TLAB</b> (thread-local allocation buffer) — ~10 instructions. The real cost is GC work later and cache misses, which is why removing allocations in very hot paths still pays.</p>
+<p><b>Code cache.</b> Compiled code lives in the code cache (segmented since JDK 9: non-method, profiled, non-profiled; default reserve 240 MB with tiered). If it fills, the JIT stops compiling ("CodeCache is full. Compiler has been disabled") and performance silently degrades — monitor it in large apps.</p>
+<p><b>Deopt storms and safepoints.</b> Deoptimizing requires stopping at a safepoint or handshake. Repeated deopt/recompile cycles ("deopt storm", visible in JFR as ${C('jdk.Deoptimization')} events) waste CPU; HotSpot caps recompilations per method (${C('PerMethodRecompilationCutoff')}) and then gives up optimising that method.</p>
+<p><b>The 2026 landscape.</b> HotSpot C2 remains the default peak compiler. Graal (in Oracle GraalVM) is an alternative JIT written in Java and the basis of <b>native image</b> AOT compilation. OpenJDK's Project Leyden delivered the AOT cache (JDK 24, JEP 483) and AOT method profiling (JDK 25, JEP 515) so the JVM starts with classes linked and profiles ready, shortening warm-up without giving up the JIT.</p>`,
+    aiEra: `<p><b>What AI changes:</b> assistants can read ${C('PrintCompilation')}/${C('PrintInlining')} logs or JFR compilation events and summarise "which hot methods failed to inline and why" in seconds. They also write correct JMH harnesses quickly — a big improvement over hand-rolled ${C('System.nanoTime')} loops.</p>
+<p><b>Where AI goes wrong:</b> it repeats folklore — "make methods final for speed" (C2 already uses CHA; final rarely matters), "object pooling is faster than new" (usually false on modern JVMs, and it defeats escape analysis and generational GC), "Java is interpreted so it is slow". It may also suggest ancient flags like ${C('-server')} or ${C('-XX:+AggressiveOpts')} (removed). And it loves to micro-optimise code that is not hot.</p>
+<p><b>What you still own:</b> deciding whether a hot path is actually hot (profile first), designing benchmarks that survive the JIT, recognising warm-up in latency graphs after deploys, and choosing between JIT, AOT cache and native image for a workload. When an AI suggests a performance change, demand a JMH number before and after.</p>`,
+    problems: [{
+      title: 'Inline Cache Simulator: Count the Deoptimizations',
+      level: 'Medium', tags: ['JIT', 'inline cache', 'simulation'], companies: ['Oracle', 'Azul', 'Netflix'],
+      statement: `<p>A call site ${C('shape.area()')} sees a sequence of receiver classes. The site is compiled by C2 after the first ${C('c')} calls using the types seen so far: ≤ 2 types → guarded inlining of exactly those types; 3+ types → <b>megamorphic</b> virtual call (no guards, never deoptimizes). After compilation, a receiver not in the inlined set triggers a <b>deoptimization</b>; the site is immediately recompiled with the updated type set. Return the number of deoptimizations and the final shape (${C('MONOMORPHIC')}, ${C('BIMORPHIC')}, ${C('MEGAMORPHIC')}).</p>`,
+      constraints: `1 ≤ receivers ≤ 10<sup>5</sup>, 1 ≤ c ≤ receivers length. Class names are short strings.`,
+      example: `<p>receivers = [C, C, C, S, C, T, S], c = 3</p>${H.table(['call', 'type', 'compiled set', 'event'], [['1-3', 'C', '— (profiling)', 'compile after call 3 → {C} mono'], ['4', 'S', '{C}', H.c('r', 'DEOPT #1') + ' → recompile {C,S} bi'], ['5', 'C', '{C,S}', 'ok'], ['6', 'T', '{C,S}', H.c('r', 'DEOPT #2') + ' → 3 types → mega'], ['7', 'S', 'mega', 'virtual call, ok']])}<p>Output: ${H.c('g', '2 deopts, MEGAMORPHIC')}.</p>`,
+      brute: { why: `<p>Recompute the full set of distinct types from the start of the array at every call (O(N) per call → O(N<sup>2</sup>)). It gives the right answer but re-scans history the JVM already summarised in its profile. With 10<sup>5</sup> calls that is 10<sup>10</sup> steps.</p>`, code: `
+class InlineCacheBrute {
+    static String simulate(String[] r, int c) {
+        int deopts = 0; Set<String> compiled = null;
+        for (int i = 0; i < r.length; i++) {
+            Set<String> seenSoFar = new HashSet<>();
+            for (int j = 0; j <= i; j++) seenSoFar.add(r[j]);          // O(i) re-scan every call
+            if (i + 1 == c) compiled = seenSoFar;                        // first compile
+            else if (compiled != null && compiled.size() <= 2 && !compiled.contains(r[i])) {
+                deopts++; compiled = seenSoFar;                          // recompile with full history
+            }
+        }
+        int k = compiled == null ? 0 : compiled.size();
+        return deopts + " " + (k <= 1 ? "MONOMORPHIC" : k == 2 ? "BIMORPHIC" : "MEGAMORPHIC");
+    }
+}` },
+      mcq: { q: 'Why does a megamorphic site never deoptimize in this model?', options: ['It uses a real virtual/interface dispatch (vtable/itable), which handles any receiver without speculation', 'Because the JVM stops loading new classes', 'Because megamorphic code is interpreted', 'Because C1 takes over'], answer: 0, explain: 'There is no type guard to fail: the call is dispatched dynamically. You lose inlining, but you never hit an uncommon trap at that site.' },
+      hints: [`<p>Hint 1: The JVM keeps a <b>running</b> profile; you can too. Maintain one ${C('Set')} of seen types as you go — no re-scanning.</p>`, `<p>Hint 2: Separate "what has been seen" (profile) from "what the compiled code assumes" (compiled set). Deopt happens only when compiled code exists, is not megamorphic, and the receiver is outside the compiled set.</p>`, `<p>Hint 3: Recipe — for each call i: add type to seen. If i+1 == c: compiled = copy(seen). Else if compiled != null and compiled.size() ≤ 2 and type not in compiled: deopts++, compiled = copy(seen). Classify by compiled.size() at the end (or seen.size() if never compiled).</p>`],
+      solution: {
+        approach: `<p>One pass with a running profile set (like the JVM's receiver-type profile) and a separate snapshot representing the compiled code's assumptions. Each step is O(1) average; snapshots are copied only on compile/deopt, and the snapshot never exceeds 3 elements before becoming megamorphic.</p>`,
+        code: `
+class InlineCacheSim {
+    static String simulate(String[] receivers, int compileAt) {
+        Set<String> seen = new LinkedHashSet<>();     // running type profile
+        Set<String> compiled = null;                  // assumptions baked into C2 code
+        int deopts = 0;
+        for (int i = 0; i < receivers.length; i++) {
+            String type = receivers[i];
+            seen.add(type);
+            if (i + 1 == compileAt) {
+                compiled = new HashSet<>(seen);       // first C2 compile uses the profile
+            } else if (compiled != null && compiled.size() <= 2 && !compiled.contains(type)) {
+                deopts++;                             // guard failed: uncommon trap
+                compiled = new HashSet<>(seen);       // recompile with updated profile
+            }
+        }
+        int k = (compiled == null ? seen : compiled).size();
+        String shape = k <= 1 ? "MONOMORPHIC" : k == 2 ? "BIMORPHIC" : "MEGAMORPHIC";
+        return deopts + " " + shape;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(simulate(new String[] { "C", "C", "C", "S", "C", "T", "S" }, 3)); // 2 MEGAMORPHIC
+        System.out.println(simulate(new String[] { "C", "C", "C", "C" }, 2));                // 0 MONOMORPHIC
+    }
+}`,
+        dry: { head: ['i', 'type', 'seen', 'compiled', 'deopts'], rows: [
+          ['0', 'C', '{C}', '—', '0'], ['2', 'C', '{C}', '{C} (compile)', '0'], ['3', 'S', '{C,S}', H.c('r', '{C,S} (recompile)'), '1'],
+          ['4', 'C', '{C,S}', '{C,S}', '1'], ['5', 'T', '{C,S,T}', H.c('r', '{C,S,T} mega'), '2'], ['6', 'S', '{C,S,T}', 'mega (no guard)', H.c('g', '2')]
+        ] },
+        complexity: `<p>O(N) time with O(1) average set operations; O(T) space for T distinct types. Snapshots are copied at most a few times because the compiled set can grow only to 3 before becoming megamorphic.</p>`,
+        followUps: ['Model PerMethodRecompilationCutoff: stop optimising after k deopts', 'How would CHA (only one implementor loaded) change the model?', 'Why does a sealed interface + switch avoid this problem?']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 4 — JVM memory areas: heap, stacks, metaspace, code cache, native
+     ====================================================================== */
+  topics.push({
+    title: 'JVM Memory Areas: Heap, Thread Stacks, Metaspace, Code Cache & Native Memory',
+    analogy: `<p>Picture an office building. Each employee (a <b>thread</b>) has a personal <b>notepad</b> on their desk — they scribble the numbers for the task they are doing right now and tear the page off when the task is done (the <b>stack</b>). The big shared <b>warehouse</b> in the basement holds every actual product the company owns; notes on a notepad only say "item is on shelf 42" (the <b>heap</b>, with references). The <b>library of manuals</b> describing how each product type works lives in a separate archive room (<b>Metaspace</b>). The janitor (<b>GC</b>) only cleans the warehouse — notepads clean themselves.</p>`,
+    explain: `<p>When you run ${C('java -Xmx4g -jar app.jar')}, the JVM process uses several memory regions. Some are <b>shared</b> by all threads, some are <b>private</b> to each thread.</p>
+${H.table(['Area', 'Shared?', 'Holds', 'Sized by', 'When full'], [
+  ['<b>Heap</b>', 'shared', 'All objects and arrays; String pool (since Java 7); static field values (they live with the Class mirror object)', C('-Xms') + ' / ' + C('-Xmx'), C('OutOfMemoryError: Java heap space')],
+  ['<b>JVM stack</b> (one per thread)', H.c('b', 'private'), 'Frames: local variables (primitives + references), operand stack, return address', C('-Xss') + ' (default ~1 MB on 64-bit Linux)', C('StackOverflowError')],
+  ['<b>PC register</b>', H.c('b', 'private'), 'Address of the current bytecode instruction', 'tiny', '—'],
+  ['<b>Native method stack</b>', H.c('b', 'private'), 'Frames of C/C++ code called via JNI / FFM', 'OS thread stack', 'crash / StackOverflowError'],
+  ['<b>Metaspace</b>', 'shared', 'Class metadata: methods, bytecode, runtime constant pool, field layouts (replaced PermGen in Java 8)', C('-XX:MaxMetaspaceSize') + ' (unlimited by default!)', C('OutOfMemoryError: Metaspace')],
+  ['<b>Code cache</b>', 'shared', 'JIT-compiled machine code', C('-XX:ReservedCodeCacheSize') + ' (240 MB)', 'JIT stops compiling (warning in log)'],
+  ['<b>Direct / native memory</b>', 'shared', 'DirectByteBuffers, memory segments (FFM API), GC bookkeeping, thread stacks, JIT working memory', C('-XX:MaxDirectMemorySize') + ', OS limits', C('OutOfMemoryError: Direct buffer memory') + ' or OOM-killer']
+])}
+<h4>Where does each thing live? A simple rule</h4>
+${P(`
+class Shop {
+    static int orders = 0;             // value lives with the Shop Class mirror (on the heap); metadata in Metaspace
+    void sell() {
+        int qty = 2;                   // primitive local  -> this thread's stack frame
+        Cart cart = new Cart();        // reference 'cart' -> stack;   the Cart object -> heap
+        String name = "pen";           // reference -> stack;  "pen" literal -> String pool (heap)
+        cart.add(name, qty);           // new frame for add() pushed on the stack
+    }                                  // frame popped: qty, cart, name vanish; the Cart object
+}                                      // stays on the heap until GC finds it unreachable`)}
+<p><b>Common myth:</b> "primitives live on the stack, objects on the heap". Better: <b>local variables</b> live in stack frames (and a reference is a local too); <b>fields</b> live inside their object on the heap — so an ${C('int')} field of an object is on the heap. And the JIT may keep a non-escaping object entirely in registers (escape analysis).</p>
+<h4>Total memory ≠ -Xmx</h4>
+<p>Container sizing rule of thumb: <b>process RSS ≈ heap + metaspace + code cache + (threads × stack size) + direct buffers + GC overhead + malloc arenas</b>. A service with ${C('-Xmx4g')}, 400 threads and Netty direct buffers can easily use 5.5–6 GB. Give the container headroom, or the Linux OOM-killer ends the process with no Java stack trace at all (exit code 137).</p>
+<h4>The OutOfMemoryError family</h4>
+${H.table(['Message', 'Area', 'Usual cause'], [
+  [C('Java heap space'), 'heap', 'leak or genuinely too small heap / huge load'],
+  [C('GC overhead limit exceeded'), 'heap', '&gt;98% time in GC recovering &lt;2% heap (Parallel GC) — effectively a leak'],
+  [C('Metaspace'), 'metaspace', 'class loader leak, endless dynamic proxies / generated classes'],
+  [C('Direct buffer memory'), 'native', 'NIO buffers not released, Netty misconfiguration'],
+  [C('unable to create native thread'), 'OS', 'too many threads, ulimit / container pid limit'],
+  [C('Requested array size exceeds VM limit'), 'heap', 'array longer than ~Integer.MAX_VALUE − 8']
+])}`,
+    clues: [
+      '"Where are local variables / objects / static fields stored?" → stack vs heap vs Metaspace',
+      '"StackOverflowError on a deep tree / long linked list recursion" → convert to iteration or raise <code>-Xss</code>',
+      '"Container killed with exit code 137 but heap looks fine" → native memory (threads, direct buffers, metaspace) outside <code>-Xmx</code>',
+      '"PermGen vs Metaspace" → Java 8 change; metadata moved to native memory',
+      '"OutOfMemoryError: Metaspace after several redeploys" → class loader leak',
+      '"Heap bigger than 32 GB got slower / holds less" → compressed oops cliff'
+    ],
+    code: [`
+import java.lang.management.*;
+
+// Print the JVM's own view of its memory areas (works on any JDK 9+).
+class MemoryAreas {
+    public static void main(String[] args) {
+        Runtime rt = Runtime.getRuntime();
+        System.out.printf("heap: used=%d MB committed=%d MB max=%d MB%n",
+                (rt.totalMemory() - rt.freeMemory()) >> 20, rt.totalMemory() >> 20, rt.maxMemory() >> 20);
+        for (MemoryPoolMXBean pool : ManagementFactory.getMemoryPoolMXBeans()) {
+            MemoryUsage u = pool.getUsage();
+            // Typical pool names with G1: "G1 Eden Space", "G1 Survivor Space", "G1 Old Gen",
+            // "Metaspace", "Compressed Class Space", "CodeHeap 'profiled nmethods'", ...
+            System.out.printf("%-35s %-8s used=%6d KB%n", pool.getName(), pool.getType(), u.getUsed() >> 10);
+        }
+        System.out.println("threads alive: " + ManagementFactory.getThreadMXBean().getThreadCount());
+    }
+}`, { lang: 'bash', title: 'Native Memory Tracking: see ALL areas, not just the heap', code: `java -XX:NativeMemoryTracking=summary -Xmx1g -jar app.jar &
+jcmd <pid> VM.native_memory summary
+#  Java Heap (reserved=1048576KB, committed=262144KB)
+#  Class     (reserved=1056768KB, committed=10240KB)    <- metaspace + compressed class space
+#  Thread    (reserved=410000KB,  committed=410000KB)   <- 400 threads x ~1 MB stacks
+#  Code      (reserved=247808KB,  committed=17000KB)    <- code cache
+#  GC        (reserved=60000KB,   committed=60000KB)    <- remembered sets, mark bitmaps
+#  Internal / Other / Symbol / Arena ...                <- direct buffers show under Other` }],
+    codeTitle: ['Inspecting memory pools from inside the JVM', 'Native Memory Tracking'],
+    viz: [{
+      title: 'Follow a program: what goes on the stack, the heap and Metaspace',
+      gen: function () {
+        var code = 'class Shop {\n  static int orders = 0;\n  public static void main(String[] a) {\n    int qty = 2;\n    Cart cart = new Cart();\n    cart.add("pen", qty);\n    orders++;\n  }\n}\nclass Cart {\n  List<String> items = new ArrayList<>();\n  void add(String n, int q) {\n    for (int i = 0; i < q; i++) items.add(n);\n  }\n}';
+        function f(narr, line, stack, heap, meta, hh, extra) {
+          var parts = [
+            { type: 'code', label: 'Shop.java', lang: 'java', code: code, hl: line ? (typeof line === 'object' ? line : one(line, 'cur')) : {} },
+            { type: 'stack', label: 'main thread: JVM stack (top = right)', items: stack, hl: stack.length ? one(stack.length - 1, 'cur') : {} },
+            { type: 'map', label: 'Heap (shared, GC-managed)', entries: heap, hl: hh || {} },
+            { type: 'set', label: 'Metaspace (class metadata)', items: meta }
+          ];
+          (extra || []).forEach(function (p) { parts.push(p); });
+          return { narr: narr, parts: parts };
+        }
+        return [
+          f('<code>java Shop</code>: the app class loader loads <b>Shop</b>; its metadata (methods, bytecode, constant pool) goes into <b>Metaspace</b>. The <code>Class</code> mirror object and the static field <code>orders = 0</code> are on the heap.', 2, [], [['Shop.class mirror', 'orders=0']], ['Shop'], { 'Shop.class mirror': 'ok' }),
+          f('<code>main</code> is invoked: a <b>frame</b> is pushed on the main thread\'s stack, holding slot 0 = args and room for locals.', 3, ['main(args)'], [['Shop.class mirror', 'orders=0'], ['String[] @a1', 'args (empty)']], ['Shop']),
+          f('<code>int qty = 2</code>: a primitive local — stored directly in main\'s frame. No heap involved.', 4, ['main: qty=2'], [['Shop.class mirror', 'orders=0'], ['String[] @a1', 'args (empty)']], ['Shop']),
+          f('<code>new Cart()</code>: first use of Cart → load it (Metaspace). The object is allocated on the <b>heap</b> (in Eden, via a thread-local TLAB bump). Its field <code>items</code> points to a new ArrayList, also on the heap. The local <code>cart</code> holds only a <b>reference</b>.', 5, ['main: qty=2, cart→@c7'], [['Shop.class mirror', 'orders=0'], ['String[] @a1', 'args (empty)'], ['Cart @c7', 'items→@L9'], ['ArrayList @L9', 'size=0']], ['Shop', 'Cart', 'ArrayList (bootstrap)'], { 'Cart @c7': 'ok', 'ArrayList @L9': 'ok' }),
+          f('<code>cart.add("pen", qty)</code>: a new frame for <code>add</code> is pushed on top. Its locals: <code>this</code>=@c7, <code>n</code>→"pen" (the literal is in the <b>String pool</b> on the heap), <code>q</code>=2 (a <i>copy</i> — Java is pass-by-value).', { 6: 'cur', 12: 'cur' }, ['main: qty=2, cart→@c7', 'add: this→@c7, n→@s1, q=2'], [['Shop.class mirror', 'orders=0'], ['Cart @c7', 'items→@L9'], ['ArrayList @L9', 'size=0'], ['"pen" @s1 (pool)', 'String']], ['Shop', 'Cart', 'ArrayList (bootstrap)'], { '"pen" @s1 (pool)': 'ok' }),
+          f('The loop runs: <code>i</code> lives in add\'s frame; <code>items.add(n)</code> pushes yet another frame (ArrayList.add), stores the <b>reference</b> to "pen" twice in the list\'s backing array (heap).', 13, ['main: qty=2, cart→@c7', 'add: this, n, q=2, i=1', 'ArrayList.add(e)'], [['Shop.class mirror', 'orders=0'], ['Cart @c7', 'items→@L9'], ['ArrayList @L9', 'size=2 → [@s1, @s1]'], ['"pen" @s1 (pool)', 'String']], ['Shop', 'Cart', 'ArrayList (bootstrap)'], { 'ArrayList @L9': 'cur' }),
+          f('<code>add</code> returns: its frame is popped instantly — <code>n</code>, <code>q</code>, <code>i</code> disappear with no GC work. Stack memory is reclaimed by moving a pointer.', 6, ['main: qty=2, cart→@c7'], [['Shop.class mirror', 'orders=0'], ['Cart @c7', 'items→@L9'], ['ArrayList @L9', 'size=2'], ['"pen" @s1 (pool)', 'String']], ['Shop', 'Cart', 'ArrayList (bootstrap)']),
+          f('<code>orders++</code>: a <b>static</b> field — getstatic/putstatic on the Shop class, value stored with the Class mirror on the heap, shared by every thread (so this needs synchronization in concurrent code!).', 7, ['main: qty=2, cart→@c7'], [['Shop.class mirror', 'orders=1'], ['Cart @c7', 'items→@L9'], ['ArrayList @L9', 'size=2'], ['"pen" @s1 (pool)', 'String']], ['Shop', 'Cart', 'ArrayList (bootstrap)'], { 'Shop.class mirror': 'ok' }),
+          f('<code>main</code> returns: its frame is popped. Now nothing on any stack references Cart @c7 — the Cart and its ArrayList are <span class="c-r">unreachable</span> and will be reclaimed by the next GC that scans this region. Metaspace entries stay until the class loader dies.', 8, [], [['Shop.class mirror', 'orders=1'], ['Cart @c7', 'unreachable'], ['ArrayList @L9', 'unreachable'], ['"pen" @s1 (pool)', 'String']], ['Shop', 'Cart', 'ArrayList (bootstrap)'], { 'Cart @c7': 'bad', 'ArrayList @L9': 'bad' })
+        ];
+      }
+    }, {
+      title: 'Stack frames pile up: when does StackOverflowError happen?',
+      input: 'n=7 stackFrames=5',
+      inputLabel: 'n = recursion depth of depth(n); stackFrames = how many frames fit (models -Xss)',
+      gen: function (input) {
+        var o = kvParse(input, { n: 7, stackFrames: 5 });
+        var n = num(o.n, 1, 30, 'n'), cap = num(o.stackFrames, 2, 30, 'stackFrames');
+        var code = 'static int depth(int n) {\n  if (n == 0) return 0;      // base case\n  return 1 + depth(n - 1);  // pushes a NEW frame\n}';
+        var F = [], st = [];
+        F.push({ narr: 'Each call needs a frame (locals + operand stack + bookkeeping). The thread stack has room for about <b>' + cap + '</b> frames here (real JVM: ~10,000–20,000 small frames with the default 1 MB <code>-Xss</code>).', parts: [{ type: 'code', label: 'Recursive code', lang: 'java', code: code, hl: {} }, { type: 'stack', label: 'Thread stack (' + cap + ' frames capacity)', items: [] }, { type: 'vars', label: 'Stack use', vals: { used: 0, capacity: cap } }] });
+        for (var k = n; k >= 0; k--) {
+          if (st.length === cap) {
+            F.push({ narr: 'Trying to push <code>depth(' + k + ')</code> but the stack is full → <span class="c-r"><b>StackOverflowError</b></span>. The JVM detects this with guard pages at the end of the stack. It is an <i>Error</i>, and the stack trace will show the same line repeated ~1024 times.', parts: [{ type: 'code', label: 'Recursive code', lang: 'java', code: code, hl: { 3: 'bad' } }, { type: 'stack', label: 'Thread stack (FULL)', items: st.slice(), hl: one(st.length - 1, 'bad') }, { type: 'vars', label: 'Stack use', vals: { used: st.length, capacity: cap }, hl: { used: 'bad' } }] });
+            F.push({ narr: 'Fixes: (1) rewrite recursion as a loop with an explicit <code>ArrayDeque</code> stack on the heap (best), (2) raise <code>-Xss</code> or create a <code>new Thread(group, task, name, stackSizeBytes)</code> with a bigger stack for that one job, (3) make sure the base case is actually reachable (most SOEs are infinite-recursion bugs, e.g. <code>equals</code> calling itself or bidirectional <code>toString</code>).', parts: [note('Iterative version', '<code>int d = 0; while (n-- &gt; 0) d++; return d;</code> — O(1) stack, no limit.')] });
+            return F;
+          }
+          st.push('depth(' + k + ')');
+          F.push({ narr: 'Call <code>depth(' + k + ')</code>: push frame #' + st.length + '. ' + (k === 0 ? 'Base case reached.' : 'n ≠ 0, so it must call itself again before it can return.'), parts: [{ type: 'code', label: 'Recursive code', lang: 'java', code: code, hl: one(k === 0 ? 2 : 3, 'cur') }, { type: 'stack', label: 'Thread stack (' + cap + ' frames capacity)', items: st.slice(), hl: one(st.length - 1, 'cur') }, { type: 'vars', label: 'Stack use', vals: { used: st.length, capacity: cap }, hl: { used: st.length === cap ? 'bad' : 'cur' } }] });
+        }
+        while (st.length) {
+          var top = st.pop();
+          F.push({ narr: top + ' returns ' + (n - st.length) + ' to its caller; its frame is popped.', parts: [{ type: 'code', label: 'Recursive code', lang: 'java', code: code, hl: { 3: 'ok' } }, { type: 'stack', label: 'Thread stack', items: st.slice() }, { type: 'vars', label: 'Stack use', vals: { used: st.length, capacity: cap } }] });
+        }
+        F.push({ narr: 'Done: depth(' + n + ') = <b>' + n + '</b>, peak stack use ' + (n + 1) + ' of ' + cap + ' frames. Increase n above ' + (cap - 1) + ' to see the overflow.', parts: [{ type: 'vars', label: 'Result', vals: { result: n, peakFrames: n + 1 }, hl: { result: 'ok' } }] });
+        return F;
+      }
+    }],
+    examples: [
+      { title: 'Object size and compressed oops', html: `<p>On a 64-bit JVM with a heap under ~32 GB, references are <b>compressed</b> to 4 bytes. An object has a 12-byte header (8-byte mark word + 4-byte class pointer) padded to a multiple of 8. So ${C('new Object()')} = 16 bytes, an ${C('Integer')} = 16 bytes (12 header + 4 value), and ${C('new int[10]')} = 16 header + 40 = 56 bytes. With <b>compact object headers</b> (JDK 25, ${C('-XX:+UseCompactObjectHeaders')}) the header shrinks to 8 bytes, saving 10–20% heap in object-heavy apps.</p>${H.table(['Heap', 'Reference size', 'Effect'], [['31 GB', '4 bytes (compressed)', 'fits more objects'], ['34 GB', '8 bytes', H.c('r', 'may hold FEWER objects than 31 GB!')]])}` },
+      { title: 'Metaspace OOM from generated classes', html: `<p>A service creates a new ${C('GroovyClassLoader')} (or CGLIB proxy, or JSON serializer per request with a new loader) for every rule evaluation. Each loader defines new classes; the loaders are cached in a map and never released. Heap is fine, but Metaspace grows by MBs per minute → ${C('OutOfMemoryError: Metaspace')}. Fix: reuse one loader / cache the generated class, and set ${C('-XX:MaxMetaspaceSize')} so the failure is fast and visible instead of eating the container's memory.</p>` },
+      { title: 'unable to create native thread', html: `<p>A legacy service creates a ${C('new Thread')} per incoming request. Under a spike it reaches the container's pid limit (or ${C('ulimit -u')}), and ${C('Thread.start()')} fails with ${C('OutOfMemoryError: unable to create native thread')} — even though heap is half empty. Fix: a bounded thread pool, or virtual threads (Java 21), which keep their stacks as heap objects and cost only hundreds of bytes when parked.</p>`, code: `
+// Virtual threads: 100k concurrent tasks without 100k OS stacks
+try (ExecutorService ex = Executors.newVirtualThreadPerTaskExecutor()) {
+    for (int i = 0; i < 100_000; i++) {
+        ex.submit(() -> { Thread.sleep(10); return 1; });
+    }
+}   // close() waits for all tasks
+System.out.println("done");` },
+      { title: 'Exit code 137 with a "small" heap', html: `<p>Pod limit 2 GiB, ${C('-Xmx1800m')}. Heap use is only 1.2 GB, yet the pod is OOM-killed. NMT shows: metaspace 180 MB, 250 threads × 1 MB stacks = 250 MB, code cache 60 MB, direct buffers 200 MB, GC structures 70 MB. Total ≈ 2.5 GB. Fix: ${C('-XX:MaxRAMPercentage=70')} instead of a hard-coded Xmx, cap direct memory, reduce threads.</p>` }
+    ],
+    deepDive: `<p><b>What is in a frame exactly.</b> Local variable array (size ${C('max_locals')}), operand stack (size ${C('max_stack')}), a pointer to the method's runtime constant pool, and return info. In compiled code, frames are machine frames sized by the JIT and many locals live in registers. The JVM maps interpreter and compiled frames to each other during deoptimization and for stack walking (exceptions, ${C('StackWalker')}, profilers).</p>
+<p><b>Static fields moved.</b> Before Java 8, class metadata and statics lived in <b>PermGen</b> inside the Java heap with a fixed max (${C('-XX:MaxPermSize')}), and interned Strings were there until Java 7. Java 7 moved the String pool to the heap; Java 8 removed PermGen and put metadata in native <b>Metaspace</b> while static field values went into the ${C('java.lang.Class')} mirror on the heap. "Compressed class space" (default 1 GB reserve) is the part of Metaspace that holds class structures addressed by the compressed class pointer.</p>
+<p><b>TLABs.</b> Each thread gets a private chunk of Eden (a Thread-Local Allocation Buffer). Allocation = bump a pointer within your TLAB, no locking. When it fills, the thread grabs a new TLAB. Large objects or full TLABs take a slower shared path. JFR's ${C('jdk.ObjectAllocationOutsideTLAB')} and ${C('jdk.ObjectAllocationSample')} events show who allocates most.</p>
+<p><b>Stack sizing trade-off.</b> ${C('-Xss')} is reserved per platform thread (virtual memory) but committed lazily, so 1 MB × 1000 threads is mostly reservation; deep recursions commit it. Too small: SOE in libraries with deep call chains (template engines, regex backtracking — ${C('java.util.regex')} recursion on huge inputs is a classic). Virtual threads store their frames in heap "stack chunks" while unmounted, which is why millions are feasible.</p>
+<p><b>Off-heap.</b> ${C('ByteBuffer.allocateDirect')} memory is freed only when the small buffer object is GC'd (a Cleaner runs) — so a big young generation can delay native frees and cause "Direct buffer memory" errors. The Foreign Function &amp; Memory API (final in Java 22) gives ${C('Arena')}-scoped segments with deterministic ${C('close()')}, the modern replacement for ${C('Unsafe')} off-heap tricks.</p>
+<p><b>Containers.</b> Since JDK 10 (and 8u191) the JVM reads cgroup limits (${C('UseContainerSupport')}, on by default). With no ${C('-Xmx')}, max heap = ${C('MaxRAMPercentage')} (default <b>25%</b>) of the container limit — often far too small for a dedicated service; 60–75% is typical, leaving room for native areas.</p>`,
+    aiEra: `<p><b>What AI changes:</b> paste an ${C('NMT summary')}, a ${C('jcmd GC.heap_info')} output, or a Kubernetes OOMKilled event into an assistant and it can quickly total the areas and point at the suspicious one. It can also draft container memory budgets ("given limit 4 GiB and 300 threads, propose Xmx/MaxRAMPercentage/MaxMetaspaceSize").</p>
+<p><b>Where AI goes wrong:</b> it repeats the "primitives on stack, objects on heap" myth, still mentions PermGen and ${C('-XX:MaxPermSize')} for modern JDKs (ignored since Java 8), treats ${C('-Xmx')} as total process memory, and suggests ${C('-Xss')} increases for what is really infinite recursion.</p>
+<p><b>What you still own:</b> the mental model of which area overflowed (the error message tells you), budgeting total RSS for containers, choosing iteration over recursion for unbounded inputs, and verifying with real measurements (NMT, ${C('/proc/<pid>/status')}, container metrics) before changing flags in production.</p>`,
+    problems: [{
+      title: 'Iterative DFS to Survive a Million-Node Chain',
+      level: 'Medium', tags: ['stack', 'recursion', 'StackOverflowError', 'graphs'], companies: ['Google', 'Meta', 'Amazon'],
+      statement: `<p>Given a directed graph as adjacency lists (${C('int[][] adj')}) and a start node, return how many nodes are reachable. The graph can be a <b>single chain of 10<sup>6</sup> nodes</b> (0→1→2→…). A recursive DFS crashes with ${C('StackOverflowError')} on the default 1 MB thread stack. Write a version that cannot overflow the stack.</p>`,
+      constraints: `1 ≤ N ≤ 10<sup>6</sup>, total edges ≤ 2·10<sup>6</sup>. Must use O(N) heap memory and O(1) call-stack depth.`,
+      example: `<p>adj = [[1,2],[3],[3],[],[0]], start = 0 → reachable {0,1,2,3} → ${H.c('g', '4')}. Node 4 points <i>to</i> 0 but nothing reaches 4.</p><p>Chain of 10<sup>6</sup>: recursive version needs 10<sup>6</sup> frames → ${H.c('r', 'StackOverflowError')} at roughly depth 10–20k; iterative returns ${H.c('g', '1000000')}.</p>`,
+      brute: { why: `<p>Classic recursive DFS. Correct on small graphs, but call depth equals the longest path. Every frame costs ~50–100 bytes of the thread stack, so a 10<sup>6</sup>-long chain needs ~100 MB of stack. The default is 1 MB → crash. Raising ${C('-Xss')} just moves the cliff.</p>`, code: `
+class RecursiveReach {
+    static int count(int[][] adj, int start) {
+        boolean[] seen = new boolean[adj.length];
+        return dfs(adj, start, seen);
+    }
+    static int dfs(int[][] adj, int u, boolean[] seen) {
+        if (seen[u]) return 0;
+        seen[u] = true;
+        int c = 1;
+        for (int v : adj[u]) c += dfs(adj, v, seen);   // depth = path length -> StackOverflowError
+        return c;
+    }
+}` },
+      mcq: { q: 'Where does the explicit ArrayDeque stack store its data?', options: ['On the heap — limited by -Xmx, not -Xss', 'On the thread stack', 'In Metaspace', 'In the code cache'], answer: 0, explain: 'The deque is an ordinary object with a backing array on the heap. Heap is usually GBs, the thread stack ~1 MB, so moving the "to-do list" to the heap removes the depth limit.' },
+      hints: [`<p>Hint 1: Recursion stores "what to do next" on the <b>call stack</b>. You can store the same thing in a data structure on the <b>heap</b>.</p>`, `<p>Hint 2: Use ${C('ArrayDeque<Integer>')} (or an ${C('int[]')} with a top index to avoid boxing) as an explicit stack. Mark a node seen when you <b>push</b> it, so each node is pushed at most once.</p>`, `<p>Hint 3: Recipe — push start, mark seen. While stack not empty: pop u, count++, for each neighbour v not seen: mark, push. The explicit stack size is at most N; call depth stays 1.</p>`],
+      solution: {
+        approach: `<p>Replace the implicit call stack with an explicit array-based stack on the heap. Marking at push time guarantees O(N) pushes. Using a primitive ${C('int[]')} avoids boxing 10<sup>6</sup> Integers (which would allocate ~16 MB of garbage).</p>`,
+        code: `
+class IterativeReach {
+    static int count(int[][] adj, int start) {
+        int n = adj.length;
+        boolean[] seen = new boolean[n];
+        int[] stack = new int[n];            // each node pushed at most once -> n slots suffice
+        int top = 0, reached = 0;
+        stack[top++] = start;
+        seen[start] = true;
+        while (top > 0) {
+            int u = stack[--top];
+            reached++;
+            for (int v : adj[u]) {
+                if (!seen[v]) {
+                    seen[v] = true;          // mark on push, not on pop
+                    stack[top++] = v;
+                }
+            }
+        }
+        return reached;
+    }
+
+    public static void main(String[] args) {
+        int n = 1_000_000;
+        int[][] chain = new int[n][];
+        for (int i = 0; i < n; i++) chain[i] = i + 1 < n ? new int[] { i + 1 } : new int[0];
+        System.out.println(count(chain, 0));                                        // 1000000, no SOE
+        System.out.println(count(new int[][] { {1, 2}, {3}, {3}, {}, {0} }, 0));    // 4
+    }
+}`,
+        dry: { head: ['step', 'pop u', 'stack after pushes', 'seen', 'reached'], rows: [
+          ['init', '—', '[0]', '{0}', '0'], ['1', '0', '[1, 2]', '{0,1,2}', '1'], ['2', '2', '[1, 3]', '{0,1,2,3}', '2'],
+          ['3', '3', '[1]', 'same', '3'], ['4', '1', '[] (3 already seen)', 'same', H.c('g', '4')]
+        ] },
+        complexity: `<p>Time O(N + E). Heap O(N) for ${C('seen')} and the stack array (~5 MB for 10<sup>6</sup> nodes). Call-stack depth O(1) — immune to ${C('StackOverflowError')}.</p>`,
+        followUps: ['Produce a post-order (e.g. topological sort) iteratively — what extra state do you push?', 'When is running the recursive version in a thread with a 512 MB stack acceptable?', 'Would virtual threads change the stack limit?']
+      }
+    }]
+  });
+
 registerModule({ id: 'java13', title: 'JVM Internals & Performance', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

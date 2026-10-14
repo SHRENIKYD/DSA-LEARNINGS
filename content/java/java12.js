@@ -886,6 +886,741 @@ static final class SafeBank { static final class Account { final int id; long ba
     }]
   });
 
+  /* ======================================================================
+     TOPIC 4 — Semaphore, CountDownLatch, CyclicBarrier (+ Phaser)
+     ====================================================================== */
+  function latchViz(input) {
+    var names = tokens(input, /[\s,]+/, 'Type worker names in the order they finish, e.g. DB Cache Kafka');
+    if (names.length > 6) throw new Error('Use at most 6 workers');
+    var count = names.length, done = [], frames = [];
+    function g(hl, ehl) {
+      var nodes = [{ id: 'L', label: 'CountDownLatch(' + names.length + ') count=' + count, x: 55, y: 30, shape: 'box', w: 26 }, { id: 'M', label: 'main: ' + (count ? 'await() … parked' : 'RUNNING'), x: 90, y: 30, shape: 'box', w: 18 }];
+      var edges = [['L', 'M']];
+      names.forEach(function (n, i) {
+        nodes.push({ id: 'W' + i, label: n + (done.indexOf(n) >= 0 ? ' ✔' : ' …'), x: 12, y: 6 + i * (48 / Math.max(1, names.length - 1)), shape: 'box', w: 16 });
+        edges.push(['W' + i, 'L', done.indexOf(n) >= 0 ? 'countDown' : '']);
+      });
+      return { type: 'graph', label: 'Workers → latch → waiting main thread', directed: true, height: 60, nodes: nodes, edges: edges, hl: hl || {}, ehl: ehl || {} };
+    }
+    function fr(narr, hl, ehl, bhl) {
+      var bars = names.map(function (n) { return done.indexOf(n) >= 0 ? 0 : 1; });
+      frames.push({ narr: narr, parts: [g(hl, ehl), { type: 'vars', label: 'Latch', vals: { count: count, 'main state': count ? 'WAITING' : 'RUNNABLE', finished: done.join(', ') || '—' }, hl: bhl || {} }, { type: 'bars', label: 'still to finish (1 = pending)', values: bars, idxLabels: names.slice() }] });
+    }
+    fr('Main creates <code>new CountDownLatch(' + names.length + ')</code> — one count per service it must wait for — and starts ' + names.length + ' worker threads.', {}, {});
+    fr('Main calls <b>latch.await()</b>. count = ' + count + ' &gt; 0, so main is <b>parked</b>. It will wake up only when the count reaches zero.', one('M', 'cur'), {});
+    names.forEach(function (n, i) {
+      done.push(n); count--;
+      var h = one('W' + i, 'ok'); h.L = count ? 'cur' : 'ok';
+      fr('<b>' + n + '</b> finishes and calls <b>countDown()</b>: count ' + (count + 1) + ' → <b>' + count + '</b>. ' + (count ? 'Not zero yet, main keeps sleeping. ' + n + ' does NOT wait — countDown never blocks.' : '<span class="c-g">Zero!</span> All threads blocked in await() are released at once.'), h, one('W' + i + '-L', 'ok'), { count: count ? 'cur' : 'ok' });
+    });
+    fr('Main is running again: "all ' + names.length + ' services are up, start serving traffic". Order of finishing did not matter.', one('M', 'ok'), one('L-M', 'ok'));
+    fr('A latch is <b>one-shot</b>: further countDown() calls do nothing (count stays 0) and every later await() returns immediately. Need to repeat per round? Use <b>CyclicBarrier</b> (resets itself) or <b>Phaser</b>.', one('L', 'done'), {});
+    return frames;
+  }
+
+  function semViz(input) {
+    var parts = String(input).split('|');
+    if (parts.length < 2) throw new Error('Format: permits | ops, e.g. 2 | A+ B+ C+ A- C- B-');
+    var permits = parseInt(parts[0], 10);
+    if (!(permits >= 1 && permits <= 5)) throw new Error('permits must be 1..5');
+    var ops = tokens(parts[1], /[\s,]+/, 'Add ops like A+ B+ A-');
+    if (ops.length > 18) throw new Error('At most 18 ops');
+    var avail = permits, holders = [], waitQ = [], frames = [];
+    function fr(narr, hl, vhl) {
+      var slots = [];
+      for (var i = 0; i < Math.max(permits, holders.length); i++) slots.push(holders[i] || "free");
+      var shl = {};
+      holders.forEach(function (h, i) { if (hl && hl[h]) shl[i] = hl[h]; });
+      frames.push({ narr: narr, parts: [
+        { type: 'array', label: 'Permits (think: parking spots)', values: slots, hl: shl },
+        { type: 'vars', label: 'Semaphore', vals: { availablePermits: avail, holders: holders.length, waiting: waitQ.length }, hl: vhl || {} },
+        { type: 'queue', label: 'Threads blocked in acquire()', items: waitQ.slice(), frontLabel: 'next', backLabel: 'last' }
+      ] });
+    }
+    fr('<code>new Semaphore(' + permits + ')</code>: ' + permits + ' permits. At most ' + permits + ' threads may be inside the guarded section at the same time. Ops: A+ = A.acquire(), A- = A.release().');
+    ops.forEach(function (op) {
+      var mm = /^(\w{1,6})([+-])$/.exec(op);
+      if (!mm) throw new Error('Bad op "' + op + '" — use Name+ or Name-');
+      var t = mm[1];
+      if (mm[2] === '+') {
+        if (waitQ.indexOf(t) >= 0) { fr(t + ' is blocked in acquire() already — it cannot run another step.'); return; }
+        if (avail > 0) { avail--; holders.push(t); fr('<b>' + t + '.acquire()</b>: a permit is free → take it. available ' + (avail + 1) + ' → ' + avail + '.', one(t, 'ok'), { availablePermits: 'cur' }); }
+        else { waitQ.push(t); fr('<b>' + t + '.acquire()</b>: 0 permits left → ' + t + ' <b>blocks</b> until someone releases. (tryAcquire() would return false instead.)', {}, { availablePermits: 'bad' }); }
+      } else {
+        var i = holders.indexOf(t);
+        if (i < 0) {
+          avail++;
+          fr('<b>' + t + '.release()</b> without holding a permit! Semaphores do <b>not</b> track owners, so this silently <span class="c-r">creates an extra permit</span> (now ' + avail + '). A classic bug — always release in finally, exactly once.', {}, { availablePermits: 'bad' });
+        } else {
+          holders.splice(i, 1); avail++;
+          if (waitQ.length) {
+            var nx = waitQ.shift(); holders.push(nx); avail--;
+            fr('<b>' + t + '.release()</b>: permit returned and immediately handed to the first waiter <b>' + nx + '</b>, who wakes up.', one(nx, 'ok'), { availablePermits: 'ok' });
+          } else fr('<b>' + t + '.release()</b>: permit returned. available = ' + avail + '.', {}, { availablePermits: 'ok' });
+        }
+      }
+    });
+    fr('End: available = ' + avail + ' of ' + permits + ', holders [' + holders.join(', ') + '], waiting [' + waitQ.join(', ') + '].');
+    return frames;
+  }
+
+  topics.push({
+    title: 'Synchronizers: Semaphore, CountDownLatch, CyclicBarrier & Phaser',
+    analogy: `<p><b>Semaphore</b> = a <b>parking lot with 3 spots</b> and a counter at the gate: cars enter while spots are free, the 4th car waits until someone leaves. <b>CountDownLatch</b> = a <b>rocket launch checklist</b>: "fuel ✔, weather ✔, crew ✔" — when the last item is ticked the rocket launches, and the checklist is never reused. <b>CyclicBarrier</b> = friends meeting for a <b>group hike</b>: at each checkpoint everyone waits until the whole group arrives, then they all continue together — and the same rule applies at the next checkpoint.</p>`,
+    explain: `<p><b>Plain idea:</b> these classes coordinate <i>when</i> threads may proceed. They all use a counter plus a waiting line (AQS for Semaphore and CountDownLatch; a lock + condition for CyclicBarrier).</p>
+${H.table(['Tool', 'Counter means', 'Who waits?', 'Reusable?', 'Typical use'], [
+  [C('Semaphore(n)'), 'permits left', 'threads calling acquire() when 0', H.c('g', 'yes'), 'limit concurrency: max 10 DB calls, rate limiting'],
+  [C('CountDownLatch(n)'), 'events still to happen', 'threads calling await()', H.c('r', 'no (one-shot)'), 'wait for N services to start / N tasks to finish; start gate'],
+  [C('CyclicBarrier(n, action)'), 'parties not yet arrived', 'the arriving parties themselves', H.c('g', 'yes (auto reset)'), 'iterative parallel algorithms, simulations by rounds'],
+  [C('Phaser'), 'registered parties per phase', 'arriving parties (or not: arrive vs arriveAndAwaitAdvance)', H.c('g', 'yes, dynamic parties'), 'multi-phase work where parties join/leave'],
+  [C('Exchanger<V>'), 'pairs', 'two threads swapping objects', 'yes', 'double buffering (fill one buffer, drain the other)']
+])}
+<h4>Semaphore</h4>
+${P(`
+Semaphore dbSlots = new Semaphore(10);   // at most 10 concurrent DB calls
+dbSlots.acquire();                        // take a permit (blocks if none)
+try {
+    callDatabase();
+} finally {
+    dbSlots.release();                    // give it back - in finally!
+}`)}
+<p>Key facts: no ownership (any thread can release, even one that never acquired → permit leak or permit creation); ${C('acquire(k)')} takes several permits; ${C('tryAcquire(timeout)')} avoids waiting forever; ${C('new Semaphore(1)')} is a mutex that is <b>not</b> reentrant; fairness option like ReentrantLock.</p>
+<h4>CountDownLatch</h4>
+<p>${C('countDown()')} decrements and <b>never blocks</b>; ${C('await()')} blocks until the count is 0 (or ${C('await(timeout)')} returns false). Two classic patterns: <b>"wait for N workers to finish"</b> (latch(N), each worker counts down in finally) and <b>"start gate"</b> (latch(1): all workers await, main counts down once → everybody starts at the same instant, great for load tests).</p>
+<h4>CyclicBarrier</h4>
+<p>${C('barrier.await()')} blocks until <b>n parties</b> have called it; then an optional <b>barrier action</b> runs (on the last arriving thread) and all are released; the barrier resets for the next round. If one party is interrupted or times out, the barrier is <b>broken</b> and all others get ${C('BrokenBarrierException')} — nobody waits forever for a dead friend.</p>
+<h4>Latch vs barrier — the interview one-liner</h4>
+<p>A <b>latch</b> waits for <b>events</b> (the counting threads move on); a <b>barrier</b> waits for <b>threads</b> (the arriving threads themselves wait for each other) and can be reused.</p>`,
+    clues: ['"at most N at the same time" / "limit concurrent connections" → Semaphore', '"wait until all N services have started" → CountDownLatch(N)', '"start all threads at exactly the same moment" → CountDownLatch(1) start gate', '"threads work in rounds / phases and sync after each" → CyclicBarrier', '"number of participants changes over time" → Phaser', '"two threads swap buffers" → Exchanger', '"print in order: first, second, third" → semaphores or latches as signals'],
+    code: [`
+public class LatchAndBarrier {
+    public static void main(String[] args) throws Exception {
+        // 1) CountDownLatch: main waits for 3 services
+        CountDownLatch ready = new CountDownLatch(3);
+        for (String svc : List.of("db", "cache", "kafka")) {
+            new Thread(() -> {
+                try {
+                    System.out.println(svc + " started");
+                } finally {
+                    ready.countDown();             // in finally: a crash still counts down
+                }
+            }).start();
+        }
+        if (ready.await(5, TimeUnit.SECONDS)) System.out.println("all services up");
+        else System.out.println("startup timed out");
+
+        // 2) CyclicBarrier: 3 workers, 2 rounds, barrier action prints a summary each round
+        CyclicBarrier barrier = new CyclicBarrier(3, () -> System.out.println("--- round complete ---"));
+        List<Thread> ts = new ArrayList<>();
+        for (int w = 1; w <= 3; w++) {
+            final int id = w;
+            Thread t = new Thread(() -> {
+                try {
+                    for (int round = 1; round <= 2; round++) {
+                        System.out.println("worker " + id + " finished round " + round);
+                        barrier.await(2, TimeUnit.SECONDS);   // wait for the other two
+                    }
+                } catch (InterruptedException | BrokenBarrierException | TimeoutException e) {
+                    System.out.println("barrier broken: " + e);
+                }
+            });
+            ts.add(t);
+            t.start();
+        }
+        for (Thread t : ts) t.join();
+    }
+}`, `
+// Semaphore as a bulkhead around a slow dependency
+class InventoryClient {
+    private final Semaphore slots = new Semaphore(5, true);   // max 5 in-flight calls, fair
+
+    String stock(String sku) throws InterruptedException {
+        if (!slots.tryAcquire(100, TimeUnit.MILLISECONDS)) {
+            return "UNKNOWN (busy)";                         // fail fast instead of piling up
+        }
+        try {
+            Thread.sleep(20);                                // the remote call
+            return sku + ": 42 in stock";
+        } finally {
+            slots.release();
+        }
+    }
+}`],
+    codeTitle: ['CountDownLatch + CyclicBarrier', 'Semaphore bulkhead with tryAcquire timeout'],
+    viz: [{
+      title: 'CountDownLatch counting down to zero',
+      input: 'DB Cache Kafka',
+      inputLabel: 'Worker names in the order they finish (max 6)',
+      gen: latchViz
+    }, {
+      title: 'Semaphore permits as parking spots',
+      input: '2 | A+ B+ C+ D+ A- B- C- D-',
+      inputLabel: 'permits | ops (A+ = acquire, A- = release)',
+      gen: semViz
+    }],
+    examples: [
+      { title: 'Start gate for a fair load test', html: `<p>Ten threads are created at different times. Each calls ${C('startGate.await()')}. Main calls ${C('startGate.countDown()')} once → all ten are released together, so the load test measures real contention, not thread start-up order. A second latch(10) ("finish line") lets main measure total time.</p>`, code: `
+CountDownLatch startGate = new CountDownLatch(1);
+CountDownLatch finishLine = new CountDownLatch(10);
+for (int i = 0; i < 10; i++) {
+    new Thread(() -> {
+        try {
+            startGate.await();
+            Math.sqrt(12345.0);            // the work under test
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } finally {
+            finishLine.countDown();
+        }
+    }).start();
+}
+long t0 = System.nanoTime();
+startGate.countDown();                     // GO!
+finishLine.await();
+System.out.println("took " + (System.nanoTime() - t0) / 1_000 + " us");` },
+      { title: 'Print in order with semaphores (LeetCode 1114)', html: `<p>Three threads call ${C('first()')}, ${C('second()')}, ${C('third()')} in random order; output must be "firstsecondthird". Two semaphores with 0 permits act as signals: second waits on s2, which first releases; third waits on s3, which second releases.</p>`, code: `
+class Foo {
+    private final Semaphore s2 = new Semaphore(0), s3 = new Semaphore(0);
+    void first(Runnable p) { p.run(); s2.release(); }
+    void second(Runnable p) throws InterruptedException { s2.acquire(); p.run(); s3.release(); }
+    void third(Runnable p) throws InterruptedException { s3.acquire(); p.run(); }
+}` },
+      { title: 'Phaser with parties that come and go', html: `<p>A Phaser is a reusable barrier where parties can ${C('register()')} and ${C('arriveAndDeregister()')} dynamically. Here 3 workers do 2 phases; ${C('getPhase()')} goes 0 → 1 → 2. ${C('onAdvance')} can be overridden to stop after a number of phases.</p>`, code: `
+Phaser phaser = new Phaser(1);                 // main registers itself
+for (int i = 0; i < 3; i++) {
+    phaser.register();
+    final int id = i;
+    new Thread(() -> {
+        for (int p = 0; p < 2; p++) {
+            System.out.println("worker " + id + " phase " + phaser.getPhase());
+            phaser.arriveAndAwaitAdvance();
+        }
+        phaser.arriveAndDeregister();
+    }).start();
+}
+for (int p = 0; p < 2; p++) phaser.arriveAndAwaitAdvance();  // main follows along
+phaser.arriveAndDeregister();
+System.out.println("done, terminated = " + phaser.isTerminated());` },
+      { title: 'Broken barrier', html: `<p>Party 3 is interrupted while waiting. CyclicBarrier marks itself <b>broken</b>: parties 1 and 2 immediately get ${C('BrokenBarrierException')} instead of waiting forever, and ${C('barrier.isBroken()')} is true until ${C('reset()')}. With CountDownLatch you get no such signal — waiters just keep waiting (so always use timed ${C('await')} in production).</p>` }
+    ],
+    deepDive: `<p><b>Implementation:</b> Semaphore and CountDownLatch are thin AQS subclasses using <b>shared</b> mode (many threads can be released by one event, propagating wake-ups down the queue). CountDownLatch's ${C('tryAcquireShared')} succeeds only when state == 0; ${C('countDown')} is a CAS loop on state that signals when it hits 0. CyclicBarrier is built from a ReentrantLock and a Condition plus a ${C('Generation')} object: each round creates a new Generation; breaking sets ${C('generation.broken = true')} and ${C('signalAll()')}. Phaser is a lock-free design with a 64-bit state (phase, parties, unarrived) and supports <b>tiering</b> (a tree of phasers) to reduce contention with thousands of parties.</p>
+<p><b>Memory effects:</b> actions before ${C('countDown()')} happen-before actions after a successful ${C('await()')} return; actions before ${C('release()')} happen-before a successful ${C('acquire()')}; actions before ${C('barrier.await()')} happen-before the barrier action, which happens-before returns from await in other threads. So data written by workers is safely visible to the main thread after the latch opens — no volatile needed.</p>
+<p><b>Production traps:</b> (1) countDown not in finally → an exception means the latch never reaches zero and main hangs. (2) Semaphore permits leaking on early returns, or being released twice and silently growing. (3) Latch sized wrong (e.g. N workers but some skip countDown). (4) CyclicBarrier party count larger than the pool size → deadlock, because the parties waiting at the barrier occupy all pool threads and the missing party never gets scheduled. (5) Semaphores limit concurrency inside <b>one JVM</b> only — for a cluster-wide limit you need Redis/token-bucket or a rate-limiting gateway.</p>
+<p><b>Rate limiting vs concurrency limiting:</b> a Semaphore limits <i>how many at once</i>; it does not limit <i>how many per second</i>. A 10-permit semaphore around a 10 ms call allows ~1,000 calls/s. For "100 requests per second" use a token bucket (see practice) or Guava/Resilience4j RateLimiter.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI will instantly produce LeetCode-style "print in order" or "FizzBuzz multithreaded" answers with semaphores — the pattern is memorised everywhere. Interviewers therefore shift to <b>why</b> questions: "what happens if a worker throws before countDown?", "why does your barrier deadlock on a 4-thread pool?". <b>Use AI as a partner:</b> ask it to enumerate failure modes of your synchronizer usage, or to rewrite a latch-based fan-out with structured concurrency or CompletableFuture.allOf and compare. <b>Where AI goes wrong:</b> uses ${C('Semaphore')} for per-second rate limits, forgets timeouts on ${C('await()')}, puts ${C('countDown()')} outside finally, or claims Semaphore tracks which thread holds a permit. <b>What you must still own:</b> choosing between "wait for events" (latch) and "wait for each other" (barrier), sizing pools so barrier parties can all run, and deciding whether a limit belongs in-process or in shared infrastructure.</p>`,
+    problems: [{
+      title: 'Race Harness: Start Together, Measure Until All Finish',
+      level: 'Easy', tags: ['CountDownLatch', 'testing', 'coordination'], companies: ['Microsoft', 'Atlassian', 'Adobe'],
+      statement: `<p>Write ${C('long runRace(int n, Runnable work)')} that starts ${C('n')} threads, makes them all begin ${C('work')} at the <b>same moment</b>, waits for <b>all</b> of them to finish, and returns the elapsed time in milliseconds (from the start signal to the last finisher). If a worker throws, the harness must still finish (no hang).</p>`,
+      constraints: `1 ≤ n ≤ 1000. work may throw RuntimeException.`,
+      example: `<p>n = 3, work = sleep 50 ms. Threads are created one after another (taking a few ms each), but they all wait at the gate. Main opens the gate → all 3 sleep in parallel → elapsed ≈ ${H.c('g', '50 ms')}, not 150.</p>`,
+      brute: { why: `<p>Start threads in a loop and ${C('join()')} each. Problem 1: thread #1 starts working while thread #50 is still being created, so they don't really compete — the measurement is skewed. Problem 2: ${C('Thread.sleep')}-based "wait a bit for everyone" guesses are flaky.</p>`, code: `
+static long naiveRace(int n, Runnable work) throws InterruptedException {
+    long t0 = System.currentTimeMillis();
+    List<Thread> ts = new ArrayList<>();
+    for (int i = 0; i < n; i++) { Thread t = new Thread(work); ts.add(t); t.start(); } // staggered start
+    for (Thread t : ts) t.join();
+    return System.currentTimeMillis() - t0;
+}` },
+      mcq: { q: 'Which latch counts do you need for "start together" and "wait for all n"?', options: ['latch(n) and latch(1)', 'latch(1) for start, latch(n) for finish', 'one latch(n + 1)', 'CyclicBarrier only'], answer: 1, explain: 'Start gate: one event (main says GO) → count 1, n waiters. Finish line: n events (each worker done) → count n, one waiter (main).' },
+      hints: [`<p>Hint 1: two different questions — "has GO been said?" (1 event) and "has everyone finished?" (n events). That's two latches.</p>`, `<p>Hint 2: workers: ${C('start.await()')} then ${C('work.run()')}; main: record time, ${C('start.countDown()')}, ${C('done.await()')}, record time.</p>`, `<p>Hint 3: put ${C('done.countDown()')} in a <b>finally</b> so a throwing worker still counts. Restore the interrupt flag if ${C('await')} is interrupted.</p>`],
+      solution: {
+        approach: `<p>Start gate latch(1) + finish line latch(n). Creating threads is outside the timed window because every worker parks on the gate. The finally block guarantees the finish latch reaches zero even on failures.</p>`,
+        code: `
+public class RaceHarness {
+    static long runRace(int n, Runnable work) throws InterruptedException {
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch done = new CountDownLatch(n);
+        for (int i = 0; i < n; i++) {
+            new Thread(() -> {
+                try {
+                    start.await();                 // everyone parks here
+                    work.run();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } catch (RuntimeException e) {
+                    System.out.println("worker failed: " + e.getMessage());
+                } finally {
+                    done.countDown();              // ALWAYS count down
+                }
+            }).start();
+        }
+        long t0 = System.nanoTime();
+        start.countDown();                         // GO
+        done.await();                              // wait for the last one
+        return (System.nanoTime() - t0) / 1_000_000;
+    }
+
+    public static void main(String[] args) throws InterruptedException {
+        long ms = runRace(3, () -> {
+            try { Thread.sleep(50); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        });
+        System.out.println("elapsed ~" + ms + " ms");   // about 50
+    }
+}`,
+        dry: { head: ['step', 'start.count', 'done.count', 'what happens'], rows: [['create T1..T3', '1', '3', 'each T parks in start.await()'], ['main: start.countDown()', '0', '3', H.c('g', 'all 3 released together')], ['T2 finishes (50 ms)', '0', '2', 'countDown in finally'], ['T1, T3 finish', '0', '0', 'main wakes from done.await()'], ['return', '0', '0', 'elapsed ≈ 50 ms']] },
+        complexity: `<p>O(n) threads and O(1) synchronizer state. Elapsed time ≈ the slowest worker, plus wake-up latency (microseconds per thread).</p>`,
+        followUps: ['Make it reusable for 5 rounds (CyclicBarrier)', 'Add a timeout so a hung worker cannot block the harness forever', 'Why is JMH still better for micro-benchmarks?']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 5 — Atomics, CAS, LongAdder, ABA
+     ====================================================================== */
+  topics.push({
+    title: 'Atomics & CAS: Lock-Free Counters, Retry Loops, ABA and LongAdder',
+    analogy: `<p>Imagine a <b>shared whiteboard</b> showing "Tickets sold: 41". You want to add one. Instead of locking the room, you say: "<i>If the board still says 41, change it to 42</i>". If someone else changed it to 42 while you were thinking, your conditional edit <b>fails</b>, you read again (42), and retry with "if 42, make it 43". Nobody ever waits outside a locked door — you only redo a tiny bit of work when you lose a race. That conditional edit is <b>Compare-And-Swap (CAS)</b>, a single CPU instruction.</p>`,
+    explain: `<p><b>Plain idea:</b> ${C('count++')} is really three steps — <b>read</b>, <b>add</b>, <b>write</b> — and two threads can interleave them and lose an update. ${C('volatile')} fixes visibility but not this. Locks fix it by making threads wait. <b>Atomic classes</b> fix it with CAS: a hardware instruction (${C('LOCK CMPXCHG')} on x86, LDXR/STXR or CAS on ARM) that does "compare the current value with what I expect; if equal, write the new value" as <b>one indivisible step</b>, returning success or failure.</p>
+<h4>The CAS retry loop (how incrementAndGet works)</h4>
+${P(`
+int incrementAndGet(AtomicInteger a) {
+    while (true) {
+        int expected = a.get();           // 1. read current value
+        int next = expected + 1;          // 2. compute privately
+        if (a.compareAndSet(expected, next)) // 3. publish only if nobody changed it
+            return next;
+        // lost the race: someone changed the value, loop and retry
+    }
+}`)}
+<h4>The atomic family</h4>
+${H.table(['Class', 'For', 'Handy methods'], [
+  [C('AtomicInteger / AtomicLong'), 'counters, ids, sequence numbers', C('incrementAndGet, addAndGet, compareAndSet, updateAndGet, accumulateAndGet')],
+  [C('AtomicBoolean'), 'run-once flags', C('compareAndSet(false, true)')],
+  [C('AtomicReference<V>'), 'swap a whole immutable object', C('compareAndSet(old, new), getAndUpdate')],
+  [C('AtomicStampedReference<V>'), 'reference + int version', 'fixes the ABA problem'],
+  [C('AtomicIntegerArray / AtomicLongArray'), 'per-slot atomic arrays', C('incrementAndGet(i)')],
+  [C('LongAdder / LongAccumulator'), 'very hot counters (metrics)', C('increment(), sum()')],
+  [C('VarHandle'), 'CAS on a plain field (Java 9+)', C('compareAndSet, getAcquire, setRelease')]
+])}
+<h4>updateAndGet: your function, CAS loop for free</h4>
+<p>${C('max.accumulateAndGet(x, Math::max)')} keeps a running maximum without a lock. The function may be called <b>several times</b> when there is contention, so it must be <b>pure</b> (no side effects, no printing, no I/O).</p>
+<h4>LongAdder: spread the contention</h4>
+<p>With 64 threads hammering one AtomicLong, most CAS attempts fail and retry, and the cache line bounces between cores. ${C('LongAdder')} keeps a base value plus an array of <b>cells</b>; each thread mostly updates its own cell, and ${C('sum()')} adds them up. Writes scale almost linearly; the trade-off is that ${C('sum()')} is not an atomic snapshot and costs O(cells). Perfect for metrics, bad for "generate unique ids".</p>
+<h4>The ABA problem</h4>
+<p>Thread 1 reads <b>A</b>, gets paused. Thread 2 changes A → B → A. Thread 1's CAS(A, X) <b>succeeds</b> although the world changed underneath (e.g., in a lock-free stack the node A was popped and pushed back with a different next pointer). Fix: ${C('AtomicStampedReference')} — CAS on (reference, stamp), and every change bumps the stamp. In Java, garbage collection already prevents the most common ABA case (a freed node's memory being reused while still referenced), which is why it bites less often than in C++.</p>
+<h4>When atomics are the wrong tool</h4>
+<p>Atomics protect <b>one variable</b>. Two variables that must change together (balance and history, min and max) need a lock — or one AtomicReference to an immutable object holding both.</p>`,
+    clues: ['"thread-safe counter / id generator without locks" → AtomicInteger / AtomicLong', '"count++ gives wrong totals with many threads" → lost update → atomic or lock', '"millions of increments per second from many threads (metrics)" → LongAdder', '"run this initialisation only once" → AtomicBoolean.compareAndSet(false, true)', '"lock-free stack/queue" → AtomicReference + CAS loop (watch ABA)', '"value changed and changed back" → ABA → AtomicStampedReference', '"update two fields atomically" → lock, or AtomicReference to an immutable record'],
+    code: [`
+public class CasDemo {
+    // Hand-written CAS loop: atomically double the value unless it would exceed a cap.
+    static int doubleCapped(AtomicInteger a, int cap) {
+        while (true) {
+            int cur = a.get();
+            int next = Math.min(cur * 2, cap);
+            if (a.compareAndSet(cur, next)) return next;   // success
+            Thread.onSpinWait();                           // hint to the CPU while spinning
+        }
+    }
+
+    public static void main(String[] args) throws InterruptedException {
+        AtomicInteger hits = new AtomicInteger();
+        LongAdder adds = new LongAdder();
+        AtomicInteger max = new AtomicInteger(Integer.MIN_VALUE);
+        int[] plain = {0};                                 // the broken version, for contrast
+
+        Thread[] ts = new Thread[4];
+        for (int t = 0; t < ts.length; t++) {
+            final int id = t;
+            ts[t] = new Thread(() -> {
+                for (int i = 0; i < 100_000; i++) {
+                    hits.incrementAndGet();                // atomic
+                    adds.increment();                      // striped, scales better
+                    plain[0]++;                            // RACE: lost updates
+                    max.accumulateAndGet(id * 1000 + i % 1000, Math::max);
+                }
+            });
+            ts[t].start();
+        }
+        for (Thread t : ts) t.join();
+        System.out.println("atomic   = " + hits.get());    // 400000
+        System.out.println("adder    = " + adds.sum());    // 400000
+        System.out.println("plain    = " + plain[0]);      // usually LESS than 400000
+        System.out.println("max      = " + max.get());     // 3999
+        System.out.println("doubled  = " + doubleCapped(new AtomicInteger(300), 500)); // 500
+    }
+}`, `
+// Treiber stack: the classic lock-free stack with AtomicReference
+class LockFreeStack<T> {
+    private record Node<T>(T value, Node<T> next) {}
+    private final AtomicReference<Node<T>> top = new AtomicReference<>();
+
+    void push(T v) {
+        Node<T> oldTop, newTop;
+        do {
+            oldTop = top.get();
+            newTop = new Node<>(v, oldTop);
+        } while (!top.compareAndSet(oldTop, newTop));   // retry if top moved
+    }
+
+    T pop() {
+        Node<T> oldTop;
+        do {
+            oldTop = top.get();
+            if (oldTop == null) return null;
+        } while (!top.compareAndSet(oldTop, oldTop.next()));
+        return oldTop.value();
+    }
+}`],
+    codeTitle: ['AtomicInteger vs LongAdder vs plain int, plus a custom CAS loop', 'Treiber lock-free stack'],
+    viz: {
+      title: 'CAS retry loop: N threads increment the same AtomicInteger',
+      input: '3 10',
+      inputLabel: 'threads (1-5) and starting value, e.g. 3 10',
+      gen: function (input) {
+        var m = String(input).match(/-?\d+/g);
+        if (!m || m.length < 1) throw new Error('Format: threads startValue, e.g. 3 10');
+        var n = +m[0], value = m.length > 1 ? +m[1] : 0;
+        if (n < 1 || n > 5 || Math.abs(value) > 1e6) throw new Error('threads must be 1..5, start value small');
+        var code = 'while (true) {\n    int expected = value.get();      // read\n    int next = expected + 1;         // compute\n    if (value.compareAndSet(expected, next))\n        return next;                 // won\n    // lost: someone changed it → retry\n}';
+        var frames = [], live = [], exp = {}, attempts = 0, fails = 0, start = value;
+        for (var i = 1; i <= n; i++) live.push('T' + i);
+        function vals() {
+          var v = { 'value (shared)': value, 'CAS attempts': attempts, 'failed CAS': fails };
+          for (var i = 1; i <= n; i++) { var t = 'T' + i; v[t] = exp[t] === undefined ? 'done' : 'expects ' + exp[t] + ' → ' + (exp[t] + 1); }
+          return v;
+        }
+        function fr(narr, line, cls, hl, bars) {
+          var parts = [codePart(code, line, cls), { type: 'vars', label: 'Shared value + each thread\'s private locals', vals: vals(), hl: hl || {} }];
+          if (bars) parts.push(bars);
+          frames.push({ narr: narr, parts: parts });
+        }
+        fr('Shared <b>AtomicInteger value = ' + value + '</b>. ' + n + ' threads each call incrementAndGet() exactly once, all at the same time. Correct final answer: ' + (start + n) + '.', null);
+        var round = 0;
+        while (live.length && round < 6) {
+          round++;
+          live.forEach(function (t) { exp[t] = value; });
+          var h = {}; live.forEach(function (t) { h[t] = 'cur'; });
+          fr('Round ' + round + ': every still-running thread (' + live.join(', ') + ') <b>reads</b> value = ' + value + ' and privately computes ' + (value + 1) + '. Nothing is shared yet — the work is cheap and wasted work is fine.', [2, 3], 'cur', h);
+          var winner = live[0];
+          attempts++;
+          value = exp[winner] + 1;
+          var hw = {}; hw[winner] = 'ok'; hw['value (shared)'] = 'ok';
+          delete exp[winner];
+          fr('<b>' + winner + '</b> executes CAS(expected=' + (value - 1) + ', new=' + value + '): memory still holds ' + (value - 1) + ' → <span class="c-g">SUCCESS</span>. The CPU did compare+write as one indivisible instruction. value = ' + value + '.', [4, 5], 'ok', hw);
+          var losers = live.slice(1);
+          losers.forEach(function (t) {
+            attempts++; fails++;
+            var hb = {}; hb[t] = 'bad'; hb['failed CAS'] = 'bad';
+            fr('<b>' + t + '</b> tries CAS(expected=' + exp[t] + ', new=' + (exp[t] + 1) + ') but memory now holds <b>' + value + '</b> ≠ ' + exp[t] + ' → <span class="c-r">FAILS</span>. No damage done — it just loops back and re-reads. (With count++ this update would have been silently LOST.)', 6, 'bad', hb);
+          });
+          live = losers;
+        }
+        fr('All done: value = <b>' + value + '</b> (correct: ' + (start + n) + '). Total CAS attempts = ' + attempts + ' = n(n+1)/2 for n=' + n + ' in this worst-case schedule; ' + fails + ' were retries. Under heavy contention retries grow — that is why <b>LongAdder</b> spreads updates over many cells.', null, null, { 'value (shared)': 'sel' }, { type: 'bars', label: 'CAS attempts per thread (worst case: thread k tries k times)', values: (function () { var a = []; for (var i = 1; i <= n; i++) a.push(i); return a; })(), idxLabels: (function () { var a = []; for (var i = 1; i <= n; i++) a.push('T' + i); return a; })() });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Lost update with count++ — the numbers', html: `<p>Two threads, count = 5. T1 reads 5. T2 reads 5. T1 writes 6. T2 writes 6. Two increments, final value <b>6</b> instead of 7. ${H.table(['step', 'T1', 'T2', 'memory'], [['1', 'read 5', '', '5'], ['2', '', 'read 5', '5'], ['3', 'write 6', '', '6'], ['4', '', H.c('r', 'write 6'), H.c('r', '6 (lost one)')]])} With ${C('compareAndSet(5, 6)')} in step 4 the CAS fails (memory is 6, not 5), T2 re-reads 6 and writes 7.</p>` },
+      { title: 'Run-once initialisation with AtomicBoolean', html: `<p>Many threads may call ${C('start()')}, but the expensive setup must run exactly once. Only one thread wins ${C('compareAndSet(false, true)')}; the rest return immediately. (If others must <i>wait</i> until setup finishes, use a latch or a holder-class idiom instead.)</p>`, code: `
+class Service {
+    private final AtomicBoolean started = new AtomicBoolean(false);
+    void start() {
+        if (!started.compareAndSet(false, true)) return;  // someone else already did it
+        System.out.println("starting once on " + Thread.currentThread().getName());
+    }
+}` },
+      { title: 'Updating two values together with an immutable record', html: `<p>Need min and max to be consistent with each other? Put both in an immutable record and swap the <b>whole object</b> with ${C('AtomicReference.updateAndGet')}. The lambda may run several times under contention, so it only builds a new object — no side effects.</p>`, code: `
+record Range(int min, int max) {}
+AtomicReference<Range> range = new AtomicReference<>(new Range(Integer.MAX_VALUE, Integer.MIN_VALUE));
+for (int x : new int[]{5, -2, 9, 3}) {
+    range.updateAndGet(r -> new Range(Math.min(r.min(), x), Math.max(r.max(), x)));
+}
+System.out.println(range.get()); // Range[min=-2, max=9]` },
+      { title: 'ABA fixed with a stamp', html: `<p>Each change bumps the stamp. Thread 1 remembers (A, stamp 0). Meanwhile A→B (stamp 1) → A (stamp 2). Thread 1's ${C('compareAndSet(A, X, 0, 1)')} now fails because the stamp is 2, even though the reference is A again.</p>`, code: `
+AtomicStampedReference<String> ref = new AtomicStampedReference<>("A", 0);
+int seen = ref.getStamp();                                  // thread 1 reads stamp 0
+ref.compareAndSet("A", "B", ref.getStamp(), ref.getStamp() + 1); // thread 2: A -> B
+ref.compareAndSet("B", "A", ref.getStamp(), ref.getStamp() + 1); // thread 2: B -> A
+boolean ok = ref.compareAndSet("A", "X", seen, seen + 1);   // thread 1 (stale)
+System.out.println(ok + " stamp=" + ref.getStamp());        // false stamp=2` }
+    ],
+    deepDive: `<p><b>Hardware:</b> on x86, ${C('compareAndSet')} becomes ${C('LOCK CMPXCHG')}: the core takes exclusive ownership of the cache line (MESI "Modified"), compares, writes, and acts as a full memory fence. Uncontended it costs ~5-20 ns; contended, the cache line ping-pongs between cores and each attempt can cost 100+ ns. ARMv8.1+ has a native CAS instruction (LSE atomics); older ARM uses load-linked/store-conditional loops. ${C('getAndAdd')} maps to ${C('LOCK XADD')} on x86 — it never fails, which is why ${C('incrementAndGet')} on modern JDKs is not literally a CAS loop on x86 (the intrinsic uses XADD), while ${C('updateAndGet')} must be.</p>
+<p><b>Memory ordering:</b> Atomic ${C('get/set')} have volatile semantics; ${C('compareAndSet')} has volatile read+write semantics. Weaker modes exist via VarHandle/atomics: ${C('lazySet/setRelease')} (cheaper publishing, used inside queues), ${C('getAcquire')}, ${C('getPlain')}, ${C('weakCompareAndSetPlain')} (may fail spuriously, no ordering). Use these only with proof — they are how JDK authors squeeze nanoseconds.</p>
+<p><b>Lock-free vs wait-free:</b> a CAS loop is <b>lock-free</b> — some thread always makes progress — but an individual unlucky thread can starve in theory. <b>Wait-free</b> means every thread finishes in a bounded number of steps (e.g., XADD-based getAndIncrement). Under extreme contention a lock can beat CAS because parked threads stop burning CPU and stop bouncing the cache line.</p>
+<p><b>LongAdder internals</b> (Striped64): starts with just ${C('base')}; on the first CAS failure it creates a ${C('Cell[]')} (size grows in powers of two up to #CPUs), and each thread hashes to a cell via its probe value. Cells are annotated ${C('@Contended')} — padded to sit on separate cache lines and avoid <b>false sharing</b>. ConcurrentHashMap's ${C('size()')} uses the same counter-cell trick.</p>
+<p><b>False sharing</b> also hurts your own code: two AtomicLongs allocated next to each other in an array can share a 64-byte cache line, so threads updating "different" counters still fight. Padding or LongAdder fixes it.</p>`,
+    aiEra: `<p><b>What AI changes:</b> models know the CAS idioms well and will happily write ${C('AtomicInteger')} code — sometimes too happily, wrapping every field in its own atomic and thinking the class is now thread-safe (it is not: compound invariants across fields still break). <b>Use AI as a partner:</b> ask "<i>which invariants in this class span more than one atomic variable?</i>", or have it generate a jcstress test that tries all interleavings of your CAS loop. <b>Where AI goes wrong:</b> side effects (logging, I/O, list.add) inside ${C('updateAndGet')} lambdas that run multiple times; using LongAdder for ID generation; claiming CAS is always faster than locks; writing lock-free queues without considering ABA or memory reclamation. <b>What you must still own:</b> knowing when lock-free is worth the complexity (rarely, outside libraries and hot counters), and measuring with JMH at realistic thread counts.</p>`,
+    problems: [{
+      title: 'Lock-Free Running Maximum with a CAS Loop',
+      level: 'Medium', tags: ['CAS', 'AtomicLong', 'lock-free'], companies: ['Google', 'Netflix', 'Datadog'],
+      statement: `<p>A latency tracker receives values from many threads. Implement ${C('class MaxTracker')} with ${C('void record(long latencyMs)')} and ${C('long max()')} that keeps the maximum ever seen. Do it <b>without locks</b> using an explicit ${C('compareAndSet')} loop, and avoid useless CAS attempts when the new value is not larger.</p>`,
+      constraints: `Up to 64 writer threads, 10<sup>7</sup> records/s; record() must never block.`,
+      example: `<p>Threads record ${H.arr([120, 85, 340, 200, 340, 90])} concurrently → ${C('max()')} = ${H.c('g', '340')}. Most records (85, 90, 200 after 340) should not even attempt a CAS.</p>`,
+      brute: { why: `<p>${C('synchronized void record(...)')} is correct, but with 64 threads every call takes the same monitor → threads park and wake constantly, and throughput collapses. Also, almost all calls do <b>nothing</b> (value not larger), yet they still pay for the lock.</p>`, code: `
+class SyncMaxTracker {
+    private long max = Long.MIN_VALUE;
+    synchronized void record(long v) { if (v > max) max = v; }
+    synchronized long max() { return max; }
+}` },
+      mcq: { q: 'Inside the CAS loop, you read cur = 300 and want to store 340, but the CAS fails. What is the right next step?', options: ['Give up: someone else stored something', 'Re-read; if the new current value ≥ 340, stop; else retry the CAS', 'Spin until the value is 300 again', 'Take a lock'], answer: 1, explain: 'A failure means the value changed. Re-read: if another thread already stored something ≥ 340, our update is unnecessary; otherwise retry with the fresh expected value.' },
+      hints: [`<p>Hint 1: the fast path is a plain read — if ${C('v <= max.get()')} there is nothing to do. Most calls end here, with no write at all (no cache-line ownership needed).</p>`, `<p>Hint 2: otherwise loop: ${C('cur = get()')}; if ${C('v <= cur')} return; if ${C('compareAndSet(cur, v)')} return; else loop.</p>`, `<p>Hint 3: the one-liner equivalent is ${C('max.accumulateAndGet(v, Math::max)')} — but that always performs a CAS even when v is smaller, so the explicit loop is faster on hot paths.</p>`],
+      solution: {
+        approach: `<p>Check-then-CAS loop. Each failed CAS means somebody else made progress (lock-free). The early-exit check turns the common case into a single volatile read. Monotonic max cannot suffer ABA problems: the value only ever grows, so "same value" really means "nothing relevant changed".</p>`,
+        code: `
+public class MaxTracker {
+    private final AtomicLong max = new AtomicLong(Long.MIN_VALUE);
+
+    void record(long v) {
+        long cur = max.get();
+        while (v > cur) {                         // only try when we would raise it
+            if (max.compareAndSet(cur, v)) return; // we won
+            cur = max.get();                       // lost: re-read and re-check
+        }
+    }
+
+    long max() { return max.get(); }
+
+    public static void main(String[] args) throws InterruptedException {
+        MaxTracker t = new MaxTracker();
+        long[] samples = {120, 85, 340, 200, 340, 90};
+        Thread[] ts = new Thread[samples.length];
+        for (int i = 0; i < samples.length; i++) {
+            final long s = samples[i];
+            ts[i] = new Thread(() -> t.record(s));
+            ts[i].start();
+        }
+        for (Thread th : ts) th.join();
+        System.out.println(t.max());               // 340
+    }
+}`,
+        dry: { head: ['thread', 'v', 'cur read', 'v &gt; cur?', 'CAS', 'max after'], rows: [['T1', '120', 'MIN', 'yes', 'MIN→120 ✔', '120'], ['T3', '340', '120', 'yes', '120→340 ✔', '340'], ['T4', '200', '120 (stale)', 'yes', H.c('r', '120→200 ✘ (is 340)'), '340'], ['T4 retry', '200', '340', H.c('g', 'no → return'), '—', '340'], ['T2', '85', '340', 'no → return', '—', '340']] },
+        complexity: `<p>O(1) expected per record; under contention a thread retries at most until someone stores a value ≥ its own. Space O(1). Reads of max are a single volatile load.</p>`,
+        followUps: ['Track min and max together atomically (AtomicReference to a record)', 'Track a per-minute max that resets (LongAccumulator + reset, or a ring of buckets)', 'Why can a LongAccumulator(Math::max) beat this under extreme contention?']
+      }
+    }]
+  });
+
+  /* ======================================================================
+     TOPIC 6 — BlockingQueue & Producer-Consumer
+     ====================================================================== */
+  topics.push({
+    title: 'BlockingQueue & the Producer-Consumer Pattern',
+    analogy: `<p>A <b>sushi conveyor belt</b> with room for 5 plates. The chef (producer) puts plates on the belt; customers (consumers) take them off. If the belt is <b>full</b>, the chef simply waits before making more — no plates fall on the floor. If the belt is <b>empty</b>, customers wait — nobody grabs at thin air. The chef and the customers never talk to each other directly; the belt decouples them and absorbs short bursts. That belt is a <b>bounded BlockingQueue</b>.</p>`,
+    explain: `<p><b>Plain idea:</b> a ${C('BlockingQueue')} is a thread-safe queue whose ${C('put')} <b>waits</b> when full and whose ${C('take')} <b>waits</b> when empty. All the locking, waiting and signalling you would write with ${C('wait/notify')} is done for you, correctly.</p>
+<h4>Four ways to insert and remove</h4>
+${H.table(['', 'Throws', 'Returns special value', 'Blocks', 'Times out'], [
+  ['Insert', C('add(e)'), C('offer(e)') + ' → false', H.c('g', C('put(e)')), C('offer(e, t, unit)')],
+  ['Remove', C('remove()'), C('poll()') + ' → null', H.c('g', C('take()')), C('poll(t, unit)')],
+  ['Peek', C('element()'), C('peek()'), '—', '—']
+])}
+<p>Null elements are <b>forbidden</b> (null is the "nothing there" signal of ${C('poll')}).</p>
+<h4>The implementations</h4>
+${H.table(['Class', 'Bound', 'Inside', 'Pick it when'], [
+  [C('ArrayBlockingQueue'), 'fixed, required', 'array + 1 lock + 2 conditions', 'predictable memory, simple back-pressure'],
+  [C('LinkedBlockingQueue'), 'optional (default Integer.MAX_VALUE!)', 'linked nodes + separate put/take locks', 'higher throughput: producers and consumers rarely block each other'],
+  [C('PriorityBlockingQueue'), 'unbounded', 'binary heap', 'urgent jobs first (put never blocks!)'],
+  [C('DelayQueue'), 'unbounded', 'heap of Delayed', 'retry later, cache expiry, scheduled jobs'],
+  [C('SynchronousQueue'), 'zero', 'direct hand-off', 'each put waits for a take (cached thread pool)'],
+  [C('LinkedTransferQueue'), 'unbounded', 'lock-free dual queue', C('transfer()') + ': wait until a consumer received it'],
+  [C('LinkedBlockingDeque'), 'optional', 'deque', 'work stealing, LIFO processing']
+])}
+<h4>The pattern</h4>
+${P(`
+BlockingQueue<Job> q = new ArrayBlockingQueue<>(100);
+// producer thread(s)
+q.put(job);              // waits if 100 jobs are already waiting
+// consumer thread(s)
+Job j = q.take();        // waits if nothing to do
+process(j);`)}
+<h4>How do consumers know when to stop?</h4>
+<ol>
+<li><b>Poison pill:</b> the producer puts a special sentinel object (e.g. ${C('Job.STOP')}) — <b>one per consumer</b>. A consumer that takes it exits its loop.</li>
+<li><b>Interrupt:</b> ${C('executor.shutdownNow()')} interrupts consumers blocked in ${C('take()')}, which throws InterruptedException.</li>
+<li><b>Timed poll + flag:</b> ${C('poll(1, SECONDS)')} in a loop that also checks a ${C('volatile boolean running')}.</li>
+</ol>
+<h4>Why bounded matters</h4>
+<p>If producers are faster than consumers forever, an unbounded queue grows until OutOfMemoryError — and before that, latency explodes (a job waits behind a million others). A bound converts overload into <b>back-pressure</b>: producers slow down to the consumers' speed. Little's law tells you the sizing: items in queue ≈ arrival rate × wait time.</p>`,
+    clues: ['"producer-consumer" / "decouple fast producer from slow consumer" → BlockingQueue', '"bounded buffer" / "producers must wait when full" → ArrayBlockingQueue put/take', '"how do consumers stop cleanly?" → poison pill (one per consumer) or interrupt', '"process urgent tasks first" → PriorityBlockingQueue', '"retry after 30 seconds" / "expire entries" → DelayQueue', '"hand-off with no buffering" → SynchronousQueue', '"implement it yourself without BlockingQueue" → lock + 2 conditions or wait/notifyAll'],
+    code: [`
+public class Pipeline {
+    record Job(int id, String payload) {
+        static final Job STOP = new Job(-1, "");          // poison pill
+    }
+
+    public static void main(String[] args) throws InterruptedException {
+        BlockingQueue<Job> q = new ArrayBlockingQueue<>(5);  // bounded = back-pressure
+        int consumers = 2;
+
+        Thread producer = new Thread(() -> {
+            try {
+                for (int i = 1; i <= 10; i++) q.put(new Job(i, "img-" + i)); // blocks when full
+                for (int c = 0; c < consumers; c++) q.put(Job.STOP);      // one pill EACH
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }, "producer");
+
+        List<Thread> workers = new ArrayList<>();
+        for (int c = 1; c <= consumers; c++) {
+            Thread w = new Thread(() -> {
+                try {
+                    while (true) {
+                        Job j = q.take();                     // blocks when empty
+                        if (j == Job.STOP) break;             // identity check on the pill
+                        System.out.println(Thread.currentThread().getName() + " processed " + j.payload());
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }, "consumer-" + c);
+            workers.add(w);
+            w.start();
+        }
+        producer.start();
+        producer.join();
+        for (Thread w : workers) w.join();
+        System.out.println("pipeline finished, queue size = " + q.size()); // 0
+    }
+}`],
+    codeTitle: ['Producer-consumer with ArrayBlockingQueue and poison pills'],
+    viz: {
+      title: 'Bounded BlockingQueue: put blocks when full, take blocks when empty',
+      input: '3 | P P P P P C C C C C C P',
+      inputLabel: 'capacity | events (P = a producer calls put, C = a consumer calls take)',
+      gen: function (input) {
+        var parts = String(input).split('|');
+        if (parts.length < 2) throw new Error('Format: capacity | P C P …, e.g. 3 | P P P P C C');
+        var cap = parseInt(parts[0], 10);
+        if (!(cap >= 1 && cap <= 6)) throw new Error('capacity must be 1..6');
+        var ev = tokens(parts[1], /[\s,]+/, 'Add events P or C');
+        if (ev.length > 20) throw new Error('At most 20 events');
+        var q = [], item = 0, pN = 0, cN = 0, waitP = [], waitC = [], frames = [], consumed = [];
+        function g(hl, ehl) {
+          return { type: 'graph', label: 'Producers → queue → consumers', directed: true, height: 40, nodes: [
+            { id: 'P', label: 'Producers' + (waitP.length ? ' (' + waitP.length + ' blocked)' : ''), x: 12, y: 20, shape: 'box', w: 20 },
+            { id: 'Q', label: 'ArrayBlockingQueue ' + q.length + '/' + cap, x: 50, y: 20, shape: 'box', w: 28 },
+            { id: 'C', label: 'Consumers' + (waitC.length ? ' (' + waitC.length + ' blocked)' : ''), x: 88, y: 20, shape: 'box', w: 20 }
+          ], edges: [['P', 'Q', 'put'], ['Q', 'C', 'take']], hl: hl || {}, ehl: ehl || {} };
+        }
+        function fr(narr, hl, ehl, qhl) {
+          frames.push({ narr: narr, parts: [g(hl, ehl), { type: 'queue', label: 'Buffer (capacity ' + cap + ')', items: q.slice(), hl: qhl || {}, frontLabel: 'head → take()', backLabel: 'tail ← put()' },
+            { type: 'vars', label: 'Waiting rooms (Conditions)', vals: { 'notFull waiters (producers)': waitP.map(function (w) { return w.who + '(' + w.it + ')'; }).join(', ') || '—', 'notEmpty waiters (consumers)': waitC.join(', ') || '—', consumed: consumed.join(' ') || '—' }, hl: {} }] });
+        }
+        fr('Empty buffer with capacity ' + cap + '. Producers call <b>put</b>, consumers call <b>take</b>. Inside: one ReentrantLock plus two Conditions, <code>notFull</code> and <code>notEmpty</code>.');
+        ev.forEach(function (e) {
+          e = e.toUpperCase();
+          if (e === 'P') {
+            pN++; item++; var who = 'P' + pN, it = 'J' + item;
+            if (waitC.length) {
+              var c = waitC.shift(); consumed.push(it);
+              fr('<b>' + who + '.put(' + it + ')</b>: a consumer (' + c + ') is waiting on <code>notEmpty</code>. The item goes in, <code>signal()</code> wakes ' + c + ', and ' + c + ' takes ' + it + ' right away.', one('C', 'ok'), { 'P-Q': 'ok', 'Q-C': 'ok' });
+            } else if (q.length < cap) {
+              q.push(it);
+              fr('<b>' + who + '.put(' + it + ')</b>: room available → appended at the tail. size ' + q.length + '/' + cap + '.', one('Q', 'ok'), one('P-Q', 'ok'), one(q.length - 1, 'ok'));
+            } else {
+              waitP.push({ who: who, it: it });
+              fr('<b>' + who + '.put(' + it + ')</b>: buffer <span class="c-r">FULL</span> → ' + who + ' <b>blocks</b> on <code>notFull.await()</code>, still holding ' + it + '. This is back-pressure: the producer is slowed to the consumers\' pace instead of using unlimited memory.', one('P', 'bad'), one('P-Q', 'bad'));
+            }
+          } else if (e === 'C') {
+            cN++; var cw = 'C' + cN;
+            if (q.length) {
+              var got = q.shift(); consumed.push(got);
+              var narr = '<b>' + cw + '.take()</b> → gets <b>' + got + '</b> from the head (FIFO).';
+              if (waitP.length) {
+                var p = waitP.shift(); q.push(p.it);
+                narr += ' A slot freed up, so <code>notFull.signal()</code> wakes <b>' + p.who + '</b>, which finally inserts ' + p.it + '.';
+                fr(narr, one('P', 'ok'), { 'Q-C': 'ok', 'P-Q': 'ok' }, one(q.length - 1, 'ok'));
+              } else fr(narr, one('C', 'ok'), one('Q-C', 'ok'));
+            } else {
+              waitC.push(cw);
+              fr('<b>' + cw + '.take()</b>: buffer <span class="c-y">EMPTY</span> → ' + cw + ' <b>blocks</b> on <code>notEmpty.await()</code>. It uses no CPU while parked (no busy-waiting).', one('C', 'cur'), one('Q-C', 'bad'));
+            }
+          } else throw new Error('Events must be P or C, got "' + e + '"');
+        });
+        fr('End: buffer [' + q.join(', ') + '], consumed in order: ' + (consumed.join(' ') || 'nothing') + '. ' + (waitP.length + waitC.length ? 'Some threads are still blocked — in a real program you stop them with poison pills or interrupts.' : 'Nobody is blocked.'));
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Poison-pill count bug', html: `<p>3 consumers, producer puts <b>one</b> STOP. Consumer 1 takes it and exits; consumers 2 and 3 block in ${C('take()')} forever → ${C('join()')} hangs and the JVM never exits. Rule: <b>one pill per consumer</b>, or have a consumer that sees the pill <b>put it back</b> before exiting so the next consumer sees it too.</p>`, code: `
+// "Pass the pill on" variant: works for any number of consumers
+static void consume(BlockingQueue<String> q, String stop) throws InterruptedException {
+    while (true) {
+        String s = q.take();
+        if (s == stop) { q.put(stop); return; }   // re-insert for the next consumer
+        System.out.println("got " + s);
+    }
+}` },
+      { title: 'Batching with drainTo', html: `<p>Writing to a database row by row is slow. A consumer can block for the first element, then grab up to 99 more without waiting using ${C('drainTo')} — one batch insert instead of 100 round-trips. Throughput up, latency per item slightly up.</p>`, code: `
+static List<String> nextBatch(BlockingQueue<String> q, int max) throws InterruptedException {
+    List<String> batch = new ArrayList<>(max);
+    batch.add(q.take());              // wait for at least one
+    q.drainTo(batch, max - 1);        // take whatever else is already there, no waiting
+    return batch;
+}` },
+      { title: 'DelayQueue for retries', html: `<p>A failed webhook should be retried after 5 s, 10 s, 20 s… Put a ${C('Delayed')} element with the next-attempt time; ${C('take()')} returns it only when its delay has expired. One thread can manage thousands of pending retries with no sleeping loops.</p>`, code: `
+class Retry implements Delayed {
+    final String url; final long dueAtNanos;
+    Retry(String url, long delayMs) { this.url = url; this.dueAtNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(delayMs); }
+    public long getDelay(TimeUnit unit) { return unit.convert(dueAtNanos - System.nanoTime(), TimeUnit.NANOSECONDS); }
+    public int compareTo(Delayed o) { return Long.compare(getDelay(TimeUnit.NANOSECONDS), o.getDelay(TimeUnit.NANOSECONDS)); }
+}` },
+      { title: 'Little\'s law sizing', html: `<p>Jobs arrive at 200/s; consumers process 250/s in total. Normally the queue is near empty. During a 10-second burst of 400/s the backlog grows by (400 − 250) × 10 = <b>1,500</b> jobs. A capacity of 2,000 absorbs it; a capacity of 100 would push back on producers after 0.7 s. Choose deliberately: do you want buffering (smooth bursts) or fast push-back (protect latency)?</p>` }
+    ],
+    deepDive: `<p><b>ArrayBlockingQueue vs LinkedBlockingQueue internals.</b> ABQ uses <b>one</b> ReentrantLock for both ends plus ${C('notEmpty')}/${C('notFull')} conditions; a put and a take can never run at the same time, but there is no allocation per element (good for GC). LBQ uses <b>two locks</b> (${C('putLock')}, ${C('takeLock')}) and an ${C('AtomicInteger count')}, so a producer and a consumer can work simultaneously at opposite ends — usually higher throughput — at the cost of allocating a Node per element. Its default capacity is ${C('Integer.MAX_VALUE')}: always pass a bound.</p>
+<p><b>Signalling subtleties.</b> A put on LBQ signals notEmpty only when the queue goes from 0 to 1 (and uses "cascading" signals to wake further takers), minimising lock handoffs. Your own implementations must use ${C('while')} loops around ${C('await')}, and with a single condition (wait/notify) you must use ${C('notifyAll')} — ${C('notify')} may wake a producer when a consumer was needed, and the system can stall.</p>
+<p><b>Beyond one JVM.</b> A BlockingQueue lives in memory: a crash loses its contents. For durability, multiple machines or replay you move to Kafka, RabbitMQ, SQS — the same producer-consumer idea at system scale (partitions ≈ multiple queues, consumer groups ≈ consumer threads, broker retention ≈ bounded buffer). Low-latency trading systems go the other way: the <b>LMAX Disruptor</b> ring buffer pre-allocates entries, avoids locks, and uses sequence numbers with padding against false sharing to reach tens of millions of events per second.</p>
+<p><b>Virtual threads + BlockingQueue</b> work well together: a virtual thread blocked in ${C('take()')} unmounts from its carrier, so you can have thousands of consumers cheaply. ${C('ExecutorService')} itself is producer-consumer: submit = put, worker = consumer loop.</p>`,
+    aiEra: `<p><b>What AI changes:</b> "write a producer-consumer in Java" is a solved prompt — you will get correct BlockingQueue code in seconds. Interviews now probe the <b>edges</b>: shutdown, bounds, ordering, failures, and the hand-written wait/notify version. <b>Use AI as a partner:</b> ask it to generate a stress test with randomised producer/consumer speeds and an invariant check (every item consumed exactly once), or to translate the in-memory pipeline into a Kafka design and list what changes (durability, ordering per partition, at-least-once delivery). <b>Where AI goes wrong:</b> one poison pill for many consumers, ${C('new LinkedBlockingQueue<>()')} with no bound, swallowing InterruptedException, ${C('if')} instead of ${C('while')} in hand-written versions, ${C('notify')} instead of ${C('notifyAll')}. <b>What you must still own:</b> the capacity number, the overload policy, and the shutdown story.</p>`,
+    problems: [{
+      title: 'Log Pipeline: Producer, N Consumers, Clean Shutdown',
+      level: 'Medium', tags: ['BlockingQueue', 'poison pill', 'ExecutorService'], companies: ['Amazon', 'LinkedIn', 'Splunk'],
+      statement: `<p>A reader thread produces log lines; ${C('n')} worker threads parse them and count lines per level (INFO/WARN/ERROR) into a shared ${C('ConcurrentHashMap')}. Implement ${C('Map<String, Long> process(List<String> lines, int n)')} using a <b>bounded</b> BlockingQueue of capacity 100 and an ExecutorService for the workers. All workers must stop cleanly and the method must return the final counts.</p>`,
+      constraints: `1 ≤ n ≤ 16, up to 10<sup>6</sup> lines; each line starts with its level, e.g. "ERROR db timeout".`,
+      example: `<p>lines = ["INFO a", "ERROR b", "INFO c", "WARN d"], n = 2 → ${H.c('g', '{INFO=2, ERROR=1, WARN=1}')}. Which worker handles which line does not matter.</p>`,
+      brute: { why: `<p>A single thread is simplest and fine for small inputs. A common broken "parallel" version shares a plain ${C('HashMap')} and does ${C('map.put(k, map.get(k) + 1)')} from many threads — a check-then-act race that loses counts (and can corrupt the HashMap).</p>`, code: `
+static Map<String, Long> processSequential(List<String> lines) {
+    Map<String, Long> counts = new HashMap<>();
+    for (String line : lines) counts.merge(line.split(" ", 2)[0], 1L, Long::sum);
+    return counts;
+}` },
+      mcq: { q: 'You have 4 consumer threads and use poison pills. How many pills should the producer put?', options: ['1', '4', '0 — call shutdown() instead', 'As many as there are lines'], answer: 1, explain: 'Each consumer exits after taking one pill, so 4 consumers need 4 pills (or each consumer must put the pill back before exiting).' },
+      hints: [`<p>Hint 1: queue ${C('new ArrayBlockingQueue<String>(100)')}; the calling thread itself can be the producer.</p>`, `<p>Hint 2: workers loop ${C('take()')} until they see the pill (compare by identity with a unique ${C('new String("EOF")')}), and update counts with ${C('counts.merge(level, 1L, Long::sum)')} — atomic per key on ConcurrentHashMap.</p>`, `<p>Hint 3: after putting all lines, put n pills, then ${C('shutdown()')} + ${C('awaitTermination')}. Recipe: start n workers → put lines → put n pills → wait → return counts.</p>`],
+      solution: {
+        approach: `<p>Classic producer-consumer: bounded queue for back-pressure, ConcurrentHashMap.merge for race-free counting, n poison pills for termination, executor shutdown + awaitTermination so the map is fully populated (and visible — termination gives happens-before) before returning.</p>`,
+        code: `
+public class LogPipeline {
+    @SuppressWarnings("StringOperationCanBeSimplified")
+    private static final String EOF = new String("EOF");   // unique identity, never equal by == to a real line
+
+    static Map<String, Long> process(List<String> lines, int n) throws InterruptedException {
+        BlockingQueue<String> q = new ArrayBlockingQueue<>(100);
+        ConcurrentHashMap<String, Long> counts = new ConcurrentHashMap<>();
+        ExecutorService workers = Executors.newFixedThreadPool(n);
+        for (int i = 0; i < n; i++) {
+            workers.execute(() -> {
+                try {
+                    while (true) {
+                        String line = q.take();
+                        if (line == EOF) return;                       // poison pill
+                        String level = line.split(" ", 2)[0];
+                        counts.merge(level, 1L, Long::sum);            // atomic per key
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            });
+        }
+        for (String line : lines) q.put(line);                         // blocks if workers lag
+        for (int i = 0; i < n; i++) q.put(EOF);                        // one pill per worker
+        workers.shutdown();
+        if (!workers.awaitTermination(1, TimeUnit.MINUTES)) workers.shutdownNow();
+        return counts;
+    }
+
+    public static void main(String[] args) throws InterruptedException {
+        System.out.println(process(List.of("INFO a", "ERROR b", "INFO c", "WARN d"), 2));
+    }
+}`,
+        dry: { head: ['step', 'queue', 'W1', 'W2', 'counts'], rows: [['put 4 lines', '[INFO a, ERROR b, INFO c, WARN d]', 'idle', 'idle', '{}'], ['W1 take, W2 take', '[INFO c, WARN d]', 'INFO a', 'ERROR b', '{INFO=1, ERROR=1}'], ['W1 take, W2 take', '[]', 'INFO c', 'WARN d', '{INFO=2, ERROR=1, WARN=1}'], ['put EOF, EOF', '[EOF, EOF]', 'takes EOF → exit', 'takes EOF → exit', 'final'], ['awaitTermination', '[]', 'done', 'done', H.c('g', '{INFO=2, ERROR=1, WARN=1}')]] },
+        complexity: `<p>O(L) total work for L lines, spread over n workers; memory O(100 + distinct levels) thanks to the bound. Throughput is capped by the single producer and by queue lock contention — batch lines (drainTo) if that becomes the bottleneck.</p>`,
+        followUps: ['What if one worker throws on a malformed line — does the pipeline still finish?', 'Preserve per-source ordering with multiple queues (partitioning by key)', 'How would this look with Kafka and a consumer group?']
+      }
+    }]
+  });
+
   registerModule({
     id: 'java12',
     title: 'Concurrency II: java.util.concurrent',

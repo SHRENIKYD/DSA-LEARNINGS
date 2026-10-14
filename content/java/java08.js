@@ -1646,5 +1646,514 @@ class DynArray<E> {
     }]
   });
 
+  /* ======================================================================
+     PRACTICE — Easy
+     ====================================================================== */
+  practice.push({
+    title: 'Generic Pair: swap() and mapFirst()',
+    level: 'Easy', tags: ['generic record', 'type parameters', 'Function'], companies: ['TCS', 'Cognizant', 'Amazon'],
+    statement: `<p>Create a generic record ${C('Pair<A, B>')} with a method ${C('swap()')} returning ${C('Pair<B, A>')} and a method ${C('mapFirst(f)')} that applies a function to the first value and returns a new pair whose first type is the function's result type. ${C('new Pair<>("age", 30).mapFirst(String::length)')} must have static type ${C('Pair<Integer, Integer>')}.</p>`,
+    constraints: `Values may be null (records allow it). No casts in caller code.`,
+    example: `<p>${C('new Pair<>("age", 30).swap()')} → ${H.c('g', 'Pair[first=30, second=age]')} of type ${C('Pair<Integer, String>')}. ${C('mapFirst(String::length)')} → ${H.c('g', 'Pair[first=3, second=30]')}.</p>`,
+    brute: { why: `<p>An ${C('Object')}-based pair needs casts on every read and loses the information that the types swapped. ${C('(Integer) p.swap().first')} compiles even when it is wrong and fails only at runtime.</p>`, code: `
+class ObjPair {
+    final Object first, second;
+    ObjPair(Object f, Object s) { first = f; second = s; }
+    ObjPair swap() { return new ObjPair(second, first); }
+    public static void main(String[] args) {
+        ObjPair p = new ObjPair("age", 30).swap();
+        Integer n = (Integer) p.first;      // manual cast, unchecked by the compiler
+        System.out.println(n);              // 30
+    }
+}` },
+    mcq: { q: 'What should the signature of mapFirst be?', options: ['<code>Pair&lt;A, B&gt; mapFirst(Function&lt;A, A&gt; f)</code>', '<code>&lt;C&gt; Pair&lt;C, B&gt; mapFirst(Function&lt;? super A, ? extends C&gt; f)</code>', '<code>Pair&lt;Object, B&gt; mapFirst(Function f)</code>', '<code>&lt;A&gt; Pair&lt;A, B&gt; mapFirst(Function&lt;A, A&gt; f)</code>'], answer: 1, explain: 'A new method-level type parameter C lets the first type change. PECS: the function consumes an A (super) and produces a C (extends). Option 4 shadows the record\'s A.' },
+    hints: [`<p>Hint 1: the record header declares both type parameters once: ${C('record Pair<A, B>(A first, B second)')}. ${C('swap')} simply returns ${C('new Pair<>(second, first)')} — the diamond infers ${C('<B, A>')}.</p>`, `<p>Hint 2: ${C('mapFirst')} changes the first type, so it needs its <b>own</b> type parameter: ${C('<C> Pair<C, B> mapFirst(...)')}.</p>`, `<p>Hint 3: make the function parameter flexible with PECS: ${C('Function<? super A, ? extends C>')}. Then ${C('return new Pair<>(f.apply(first), second);')}.</p>`],
+    solution: {
+      approach: `<p>Class-level parameters A and B describe the pair; a method-level parameter C describes the new first type. The compiler tracks every change, so callers never cast.</p>`,
+      code: `
+import java.util.function.*;
+
+record Pair<A, B>(A first, B second) {
+    Pair<B, A> swap() { return new Pair<>(second, first); }
+
+    <C> Pair<C, B> mapFirst(Function<? super A, ? extends C> f) {
+        return new Pair<>(f.apply(first), second);
+    }
+
+    public static void main(String[] args) {
+        Pair<String, Integer> p = new Pair<>("age", 30);
+        Pair<Integer, String> s = p.swap();
+        Pair<Integer, Integer> m = p.mapFirst(String::length);
+        System.out.println(s);                              // Pair[first=30, second=age]
+        System.out.println(m);                              // Pair[first=3, second=30]
+        System.out.println(m.first() + m.second());         // 33 — both Integers, no cast
+    }
+}`,
+      dry: { head: ['expression', 'static type', 'value'], rows: [['p', 'Pair&lt;String, Integer&gt;', '(age, 30)'], ['p.swap()', 'Pair&lt;Integer, String&gt;', '(30, age)'], ['p.mapFirst(String::length)', 'Pair&lt;Integer, Integer&gt;', '(3, 30)']] },
+      complexity: `<p>O(1) per call; one small record allocation.</p>`,
+      followUps: ['Add <code>mapSecond</code> and a general <code>map(Function, Function)</code>.', 'Why is a <code>Pair</code> class often discouraged in public APIs? (meaningless names — prefer a named record)']
+    }
+  });
+
+  practice.push({
+    title: 'Fix the Signature: Sum Any List of Numbers',
+    level: 'Easy', tags: ['wildcards', 'invariance', 'does it compile'], companies: ['Infosys', 'Capgemini', 'Paytm'],
+    statement: `<p>A teammate wrote ${C('static double sum(List<Number> nums)')}. These calls fail to compile: ${C('sum(listOfIntegers)')}, ${C('sum(listOfDoubles)')}. Fix <b>only the signature</b> so that ${C('List<Integer>')}, ${C('List<Double>')}, ${C('List<Number>')} and ${C('Set<Long>')} all work, with no casts and no warnings.</p>`,
+    constraints: `Up to 10<sup>6</sup> elements; elements are non-null.`,
+    example: `<p>${C('sum(List.of(1, 2, 3))')} → ${H.c('g', '6.0')}; ${C('sum(Set.of(10L))')} → ${H.c('g', '10.0')}. Before the fix: ${H.c('r', 'incompatible types: List<Integer> cannot be converted to List<Number>')}.</p>`,
+    brute: { why: `<p>Copying into a new ${C('List<Number>')} at every call site compiles, but it allocates a whole new list (O(n) extra memory) and spreads boilerplate everywhere — it treats the symptom (invariance) instead of fixing the API.</p>`, code: `
+class SumCopy {
+    static double sum(List<Number> nums) {
+        double s = 0;
+        for (Number n : nums) s += n.doubleValue();
+        return s;
+    }
+    public static void main(String[] args) {
+        List<Integer> ints = List.of(1, 2, 3);
+        System.out.println(sum(new ArrayList<Number>(ints)));   // 6.0 — works, but copies every time
+    }
+}` },
+    mcq: { q: 'Why does <code>sum(List&lt;Integer&gt;)</code> fail with the original signature?', options: ['Integer cannot be unboxed', 'Generics are invariant: List&lt;Integer&gt; is not a subtype of List&lt;Number&gt;', 'The method is static', 'List.of returns an immutable list'], answer: 1, explain: 'Even though Integer is a Number, List&lt;Integer&gt; and List&lt;Number&gt; are unrelated types. Otherwise you could add a Double to a list of Integers through the List&lt;Number&gt; reference.' },
+    hints: [`<p>Hint 1: the method only <b>reads</b> numbers out of the collection — the collection is a <b>producer</b>.</p>`, `<p>Hint 2: Producer Extends → ${C('? extends Number')}. To accept a Set too, widen ${C('List')} to ${C('Collection')} (or ${C('Iterable')}).</p>`, `<p>Hint 3: final signature: ${C('static double sum(Collection<? extends Number> nums)')}. Inside, each element is still a ${C('Number')}, so ${C('doubleValue()')} works unchanged.</p>`],
+    solution: {
+      approach: `<p>Replace the exact type with an upper-bounded wildcard and the most general collection interface the method needs. The body does not change at all.</p>`,
+      code: `
+import java.util.*;
+
+class SumFixed {
+    static double sum(Collection<? extends Number> nums) {
+        double s = 0;
+        for (Number n : nums) s += n.doubleValue();   // reading as Number is safe
+        return s;
+    }
+    public static void main(String[] args) {
+        System.out.println(sum(List.of(1, 2, 3)));           // 6.0
+        System.out.println(sum(List.of(1.5, 2.5)));          // 4.0
+        System.out.println(sum(new ArrayList<Number>(List.of(1, 2.5)))); // 3.5
+        System.out.println(sum(Set.of(10L)));                // 10.0
+    }
+}`,
+      complexity: `<p>O(n) time, O(1) extra space (no copying).</p>`,
+      followUps: ['Why might summing large longs as doubles lose precision? Return <code>BigDecimal</code> instead.', 'Could you write it as <code>&lt;N extends Number&gt; double sum(Collection&lt;N&gt;)</code>? Which is preferred and why?']
+    }
+  });
+
+  practice.push({
+    title: 'Generic countIf with a Predicate',
+    level: 'Easy', tags: ['generic method', 'PECS', 'Predicate'], companies: ['Flipkart', 'Swiggy', 'Microsoft'],
+    statement: `<p>Write ${C('countIf(items, test)')} returning how many items satisfy ${C('test')}. It must accept any ${C('Iterable')} and a predicate written for the element type <b>or any supertype</b> — e.g. count Integers with a ${C('Predicate<Number>')} or a ${C('Predicate<Object>')}.</p>`,
+    constraints: `0 ≤ n ≤ 10<sup>6</sup>; the predicate never throws.`,
+    example: `<p>${C('countIf(List.of(1, 5, 8), (Number n) -> n.intValue() > 4)')} → ${H.c('g', '2')}; ${C('countIf(Set.of("a", "bb"), Objects::nonNull)')} → ${H.c('g', '2')}.</p>`,
+    brute: { why: `<p>Writing ${C('countIfInts')}, ${C('countIfStrings')}, … one per type duplicates logic. Using ${C('Predicate<T>')} exactly also rejects perfectly good general predicates (${C('Predicate<Object>')}), forcing callers to write adapters.</p>`, code: `
+class CountInts {
+    static int countIfInts(List<Integer> items, java.util.function.Predicate<Integer> test) {
+        int c = 0;
+        for (Integer x : items) if (test.test(x)) c++;
+        return c;
+    }
+    public static void main(String[] args) {
+        System.out.println(countIfInts(List.of(1, 5, 8), x -> x > 4));   // 2 — but only for Integers
+    }
+}` },
+    mcq: { q: 'The predicate receives elements as input. Which type is most flexible and still safe?', options: ['<code>Predicate&lt;T&gt;</code>', '<code>Predicate&lt;? extends T&gt;</code>', '<code>Predicate&lt;? super T&gt;</code>', '<code>Predicate&lt;Object&gt;</code>'], answer: 2, explain: 'A predicate consumes Ts → Consumer Super. ? extends T would make test(t) impossible to call (you cannot pass a T to something expecting an unknown subtype). Predicate&lt;Object&gt; alone would reject Predicate&lt;Integer&gt;.' },
+    hints: [`<p>Hint 1: one type parameter ${C('<T>')} links the elements and the predicate.</p>`, `<p>Hint 2: items are read (producer → ${C('Iterable<? extends T>')}); the predicate takes T as input (consumer → ${C('Predicate<? super T>')}).</p>`, `<p>Hint 3: loop with ${C('for (T t : items)')}, increment when ${C('test.test(t)')}. An empty iterable returns 0 naturally.</p>`],
+    solution: {
+      approach: `<p>PECS on both parameters. T is inferred from the items; any predicate on T or a supertype is accepted.</p>`,
+      code: `
+import java.util.*;
+import java.util.function.*;
+
+class CountIf {
+    static <T> int countIf(Iterable<? extends T> items, Predicate<? super T> test) {
+        int count = 0;
+        for (T t : items) if (test.test(t)) count++;
+        return count;
+    }
+    public static void main(String[] args) {
+        Predicate<Number> big = n -> n.intValue() > 4;
+        System.out.println(countIf(List.of(1, 5, 8), big));            // 2
+        System.out.println(countIf(Set.of("a", "bb"), Objects::nonNull)); // 2
+        System.out.println(countIf(List.<String>of(), s -> true));     // 0
+    }
+}`,
+      complexity: `<p>O(n) time, O(1) space.</p>`,
+      followUps: ['Write it with streams: <code>StreamSupport.stream(items.spliterator(), false).filter(test).count()</code>.', 'Overload for arrays: <code>&lt;T&gt; int countIf(T[] a, Predicate&lt;? super T&gt; p)</code> — why does it not accept <code>int[]</code>?']
+    }
+  });
+
+  practice.push({
+    title: 'Generic indexOf for Arrays (and why int[] is rejected)',
+    level: 'Easy', tags: ['generic method', 'arrays', 'equals'], companies: ['Wipro', 'HCL', 'Oracle'],
+    statement: `<p>Write ${C('static <T> int indexOf(T[] arr, T key)')} returning the first index whose element equals ${C('key')} (null-safe), or -1. Then explain why ${C('indexOf(new int[]{1, 2}, 2)')} does not compile and provide an overload that handles ${C('int[]')}.</p>`,
+    constraints: `0 ≤ n ≤ 10<sup>6</sup>; elements and key may be null.`,
+    example: `<p>${C('indexOf(new String[]{"a", null, "c"}, null)')} → ${H.c('g', '1')}; ${C('indexOf(new Integer[]{4, 2}, 2)')} → ${H.c('g', '1')}; ${C('indexOf(new int[]{1, 2}, 2)')} with only the generic version → ${H.c('r', 'compile error')}.</p>`,
+    brute: { why: `<p>Using ${C('==')} compares references: ${C('new String("a") == "a"')} is false, and Integers outside the cache (-128..127) compare unequal. Using ${C('arr[i].equals(key)')} crashes with NullPointerException on null elements.</p>`, code: `
+class IndexOfBroken {
+    static <T> int indexOf(T[] arr, T key) {
+        for (int i = 0; i < arr.length; i++) if (arr[i] == key) return i;   // reference comparison: wrong
+        return -1;
+    }
+    public static void main(String[] args) {
+        Integer[] a = {1000, 2000};
+        System.out.println(indexOf(a, 2000));   // -1 (autoboxing makes a different Integer object)
+    }
+}` },
+    mcq: { q: 'Why can T not be inferred as int for <code>indexOf(new int[]{1, 2}, 2)</code>?', options: ['int[] is not an array', 'Type arguments must be reference types; int[] is not a T[] for any reference T', 'Because 2 is a literal', 'Because arrays are covariant'], answer: 1, explain: 'T[] means "array of some reference type". int is primitive, so int[] can never match T[]. (T itself could be int[] for a parameter of type T, but not here.) Primitive arrays need their own overloads — exactly why java.util.Arrays has 9 versions of sort.' },
+    hints: [`<p>Hint 1: use ${C('Objects.equals(a, b)')} — it handles nulls on either side and calls ${C('equals')} otherwise.</p>`, `<p>Hint 2: generics never cover primitives; ${C('T[]')} cannot be ${C('int[]')}. Write a separate overload ${C('static int indexOf(int[] arr, int key)')} that uses ${C('==')} (correct for primitives).</p>`, `<p>Hint 3: overload resolution picks the int[] version for ${C('int[]')} arguments and the generic one for object arrays. Return -1 when not found; empty arrays return -1.</p>`],
+    solution: {
+      approach: `<p>Generic version with ${C('Objects.equals')} for any object array; a primitive overload for ${C('int[]')}. This mirrors ${C('java.util.Arrays')}, which repeats methods per primitive type because of erasure.</p>`,
+      code: `
+import java.util.*;
+
+class IndexOf {
+    static <T> int indexOf(T[] arr, T key) {
+        for (int i = 0; i < arr.length; i++) if (Objects.equals(arr[i], key)) return i;
+        return -1;
+    }
+    static int indexOf(int[] arr, int key) {          // primitives need their own overload
+        for (int i = 0; i < arr.length; i++) if (arr[i] == key) return i;
+        return -1;
+    }
+    public static void main(String[] args) {
+        System.out.println(indexOf(new String[]{"a", null, "c"}, null));  // 1
+        System.out.println(indexOf(new Integer[]{1000, 2000}, 2000));      // 1 (equals, not ==)
+        System.out.println(indexOf(new int[]{1, 2}, 2));                   // 1 (int[] overload)
+        System.out.println(indexOf(new String[]{}, "x"));                  // -1
+    }
+}`,
+      complexity: `<p>O(n) time, O(1) space.</p>`,
+      followUps: ['Why does <code>indexOf(new Integer[]{1}, "1")</code> compile? (T inferred as a common supertype) — how would you make it a compile error?', 'Add a <code>Comparator</code>-based binary search variant for sorted arrays.']
+    }
+  });
+
+  /* ======================================================================
+     PRACTICE — Medium
+     ====================================================================== */
+  practice.push({
+    title: 'maxBy with a Comparator (PECS on both sides)',
+    level: 'Medium', tags: ['PECS', 'Comparator', 'Optional'], companies: ['Amazon', 'Walmart', 'PhonePe'],
+    statement: `<p>Write ${C('maxBy(items, cmp)')} returning an ${C('Optional')} of the largest element according to ${C('cmp')} (first one wins ties). It must accept ${C('List<Integer>')} with a ${C('Comparator<Number>')}, and the result must be typed by the <b>caller's</b> choice: ${C('Optional<Integer> r = maxBy(ints, byDouble);')}.</p>`,
+    constraints: `0 ≤ n ≤ 10<sup>6</sup>; empty input → Optional.empty().`,
+    example: `<p>ints = [3, 9, 4, 9], cmp = compare by doubleValue → ${H.c('g', 'Optional[9]')} (the first 9). Empty list → ${H.c('m', 'Optional.empty')}.</p>`,
+    brute: { why: `<p>Sorting a copy and taking the last element works but is O(n log n) time and O(n) extra space for an O(n) problem, and ${C('sort')} is stable so "first wins ties" needs care. A signature with ${C('Comparator<T>')} rejects the ${C('Comparator<Number>')}.</p>`, code: `
+class MaxBySort {
+    static <T> Optional<T> maxBy(List<T> items, Comparator<T> cmp) {
+        if (items.isEmpty()) return Optional.empty();
+        List<T> copy = new ArrayList<>(items);
+        copy.sort(cmp.reversed());                   // O(n log n), stable → first max ends up first
+        return Optional.of(copy.get(0));
+    }
+    public static void main(String[] args) {
+        System.out.println(maxBy(List.of(3, 9, 4), Comparator.naturalOrder())); // Optional[9]
+    }
+}` },
+    mcq: { q: 'Which signature compiles for <code>Optional&lt;Integer&gt; r = maxBy(ints, Comparator&lt;Number&gt;)</code>?', options: ['<code>&lt;T&gt; Optional&lt;T&gt; maxBy(Iterable&lt;T&gt;, Comparator&lt;T&gt;)</code>', '<code>&lt;T&gt; Optional&lt;T&gt; maxBy(Iterable&lt;? extends T&gt;, Comparator&lt;? super T&gt;)</code>', '<code>Optional&lt;?&gt; maxBy(Iterable&lt;?&gt;, Comparator&lt;?&gt;)</code>', '<code>&lt;T&gt; Optional&lt;? extends T&gt; maxBy(...)</code>'], answer: 1, explain: 'T is inferred as Integer (from the target and items); Comparator&lt;Number&gt; is a Comparator&lt;? super Integer&gt;. Option 1 forces T = Number and Integer at once. Wildcard return types (option 4) burden every caller.' },
+    hints: [`<p>Hint 1: one pass, keep ${C('best')}; replace only when ${C('cmp.compare(x, best) > 0')} (strictly), so the first max wins.</p>`, `<p>Hint 2: items produce Ts → ${C('Iterable<? extends T>')}; the comparator consumes Ts → ${C('Comparator<? super T>')}. Return ${C('Optional<T>')} with no wildcard.</p>`, `<p>Hint 3: handle empty with an iterator: if ${C('!it.hasNext()')} return empty; otherwise seed best with the first element and continue.</p>`],
+    solution: {
+      approach: `<p>Single pass with an iterator, PECS on both parameters, a plain ${C('Optional<T>')} return — the same shape as ${C('Collections.max(Collection<? extends T>, Comparator<? super T>)')}.</p>`,
+      code: `
+import java.util.*;
+
+class MaxBy {
+    static <T> Optional<T> maxBy(Iterable<? extends T> items, Comparator<? super T> cmp) {
+        Iterator<? extends T> it = items.iterator();
+        if (!it.hasNext()) return Optional.empty();
+        T best = it.next();
+        while (it.hasNext()) {
+            T x = it.next();
+            if (cmp.compare(x, best) > 0) best = x;      // strict: first max wins ties
+        }
+        return Optional.ofNullable(best);
+    }
+    public static void main(String[] args) {
+        Comparator<Number> byDouble = Comparator.comparingDouble(Number::doubleValue);
+        List<Integer> ints = List.of(3, 9, 4, 9);
+        Optional<Integer> r = maxBy(ints, byDouble);       // T = Integer
+        System.out.println(r);                              // Optional[9]
+        System.out.println(maxBy(List.<Integer>of(), byDouble)); // Optional.empty
+        System.out.println(maxBy(List.of("kiwi", "fig", "banana"), Comparator.comparingInt(String::length))); // Optional[banana]
+    }
+}`,
+      dry: { head: ['x', 'compare(x, best)', 'best'], rows: [['3 (seed)', '—', '3'], ['9', '&gt; 0', '9'], ['4', '&lt; 0', '9'], ['9', '0 (tie)', '9 (first kept)']] },
+      complexity: `<p>O(n) time, O(1) space.</p>`,
+      followUps: ['Return both min and max in one pass (a record <code>MinMax&lt;T&gt;</code>).', 'Why does <code>Collections.max</code> throw on empty input while <code>Stream.max</code> returns Optional?']
+    }
+  });
+
+  practice.push({
+    title: 'Reverse a List<?> In Place (Wildcard Capture)',
+    level: 'Medium', tags: ['wildcard capture', 'helper method', 'two pointers'], companies: ['Google', 'Bloomberg', 'Zoho'],
+    statement: `<p>Implement ${C('public static void reverse(List<?> list)')} that reverses any list in place. The public signature must stay ${C('List<?>')} (callers should not care about the type). A direct implementation fails with "${C('capture#1 of ?')}" errors — fix it without unchecked casts or raw types.</p>`,
+    constraints: `0 ≤ n ≤ 10<sup>6</sup>; the list supports set(); O(1) extra space.`,
+    example: `<p>[a, b, c, d] → ${H.c('g', '[d, c, b, a]')}; [1, 2, 3] → ${H.c('g', '[3, 2, 1]')}; [] → ${H.c('m', '[]')}.</p>`,
+    brute: { why: `<p>The direct version ${C('Object tmp = list.get(i); list.set(i, list.get(j));')} does not compile: ${C('set')} expects "capture of ?", which no Object value can match. The tempting raw-type fix (${C('List raw = list')}) compiles with warnings and disables all checks.</p>`, code: `
+class ReverseRaw {
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    static void reverse(List<?> list) {
+        List raw = list;                            // works, but throws away type checking
+        for (int i = 0, j = raw.size() - 1; i < j; i++, j--) {
+            Object tmp = raw.get(i);
+            raw.set(i, raw.get(j));
+            raw.set(j, tmp);
+        }
+    }
+    public static void main(String[] args) {
+        List<String> s = new ArrayList<>(List.of("a", "b", "c"));
+        reverse(s);
+        System.out.println(s);                      // [c, b, a]
+    }
+}` },
+    mcq: { q: 'What does the private helper <code>&lt;T&gt; void rev(List&lt;T&gt; l)</code> achieve?', options: ['It makes the method faster', 'Calling it from reverse(List&lt;?&gt;) lets javac capture the unknown type and NAME it T, so get/set type-check', 'It converts the list to a raw type', 'It copies the list'], answer: 1, explain: 'Capture conversion turns ? into a fresh type variable; passing the list to a generic method binds T to that captured type. Inside, get returns T and set accepts T — fully type-safe, no warnings. Collections.reverse and Collections.swap use exactly this trick.' },
+    hints: [`<p>Hint 1: inside a method taking ${C('List<?>')} you can read (Object) but not write. Inside a method taking ${C('List<T>')} you can do both with T.</p>`, `<p>Hint 2: keep the public ${C('List<?>')} method and delegate to ${C('private static <T> void reverseHelper(List<T> list)')}.</p>`, `<p>Hint 3: two pointers i = 0, j = n − 1; swap via a ${C('T tmp')}; stop when i ≥ j. Works for empty and single-element lists.</p>`],
+    solution: {
+      approach: `<p>Wildcard-capture helper: the public API stays simple, the private generic method gives the captured type a name so swaps type-check.</p>`,
+      code: `
+import java.util.*;
+
+class Reverse {
+    public static void reverse(List<?> list) {
+        reverseHelper(list);                      // ? captured as T
+    }
+    private static <T> void reverseHelper(List<T> list) {
+        for (int i = 0, j = list.size() - 1; i < j; i++, j--) {
+            T tmp = list.get(i);
+            list.set(i, list.get(j));
+            list.set(j, tmp);
+        }
+    }
+    public static void main(String[] args) {
+        List<String> s = new ArrayList<>(List.of("a", "b", "c", "d"));
+        reverse(s);
+        System.out.println(s);                    // [d, c, b, a]
+        List<Integer> n = new ArrayList<>(List.of(1, 2, 3));
+        reverse(n);
+        System.out.println(n);                    // [3, 2, 1]
+    }
+}`,
+      dry: { head: ['i', 'j', 'list'], rows: [['0', '3', '[d, b, c, a]'], ['1', '2', '[d, c, b, a]'], ['2', '1', 'stop (i ≥ j)']] },
+      complexity: `<p>O(n) time for random-access lists, O(1) extra space. For a LinkedList, get/set are O(n) each → use a ListIterator pair (as Collections.reverse does).</p>`,
+      followUps: ['Rewrite using two ListIterators so LinkedList is O(n).', 'Why can you call <code>list.clear()</code> and <code>list.remove(0)</code> on a <code>List&lt;?&gt;</code> but not <code>add</code>?']
+    }
+  });
+
+  practice.push({
+    title: 'Generic LRU Cache&lt;K, V&gt;',
+    level: 'Medium', tags: ['generic class', 'LinkedHashMap', 'design'], companies: ['Amazon', 'Microsoft', 'Uber'],
+    statement: `<p>Implement ${C('LruCache<K, V>')} with a fixed capacity: ${C('V get(K key)')} (null if missing, marks the key as recently used) and ${C('void put(K key, V value)')} (evicts the least-recently-used entry when full). Add ${C('V getOrLoad(K key, Function<? super K, ? extends V> loader)')} that computes and caches a missing value.</p>`,
+    constraints: `1 ≤ capacity ≤ 10<sup>5</sup>; up to 10<sup>6</sup> operations; each O(1) average.`,
+    example: `<p>capacity 2: put(1,"a"), put(2,"b"), get(1), put(3,"c") → key ${H.c('r', '2 evicted')} (1 was used more recently). get(2) → ${H.c('m', 'null')}.</p>`,
+    brute: { why: `<p>A ${C('HashMap')} plus a ${C('List')} of keys in usage order: moving a key to the end needs ${C('list.remove(key)')}, an O(n) scan, so each get/put is O(n). A raw ${C('Map')} would also force casts on every get.</p>`, code: `
+class LruSlow<K, V> {
+    private final int cap;
+    private final Map<K, V> map = new HashMap<>();
+    private final List<K> order = new ArrayList<>();     // most recent at the end
+    LruSlow(int cap) { this.cap = cap; }
+    V get(K k) {
+        if (!map.containsKey(k)) return null;
+        order.remove(k); order.add(k);                   // O(n)
+        return map.get(k);
+    }
+    void put(K k, V v) {
+        if (map.containsKey(k)) order.remove(k);
+        else if (map.size() == cap) map.remove(order.remove(0));
+        order.add(k); map.put(k, v);
+    }
+}` },
+    mcq: { q: 'Which LinkedHashMap constructor flag makes iteration order follow ACCESS rather than insertion?', options: ['<code>new LinkedHashMap&lt;&gt;(16, 0.75f, false)</code>', '<code>new LinkedHashMap&lt;&gt;(16, 0.75f, true)</code>', '<code>new LinkedHashMap&lt;&gt;(true)</code>', 'It always uses access order'], answer: 1, explain: 'The third argument accessOrder = true moves an entry to the end on every get/put. Combined with overriding removeEldestEntry, it gives an O(1) LRU cache.' },
+    hints: [`<p>Hint 1: ${C('LinkedHashMap')} with ${C('accessOrder = true')} keeps entries from least- to most-recently used.</p>`, `<p>Hint 2: subclass it (anonymous class with diamond is fine since Java 9) and override ${C('removeEldestEntry(Map.Entry<K, V> eldest)')} to return ${C('size() > capacity')}.</p>`, `<p>Hint 3: ${C('getOrLoad')} → ${C('map.computeIfAbsent(key, loader)')} — its parameter type is exactly ${C('Function<? super K, ? extends V>')}. Note: a loader returning null caches nothing.</p>`],
+    solution: {
+      approach: `<p>Two type parameters K and V on the class flow into an access-ordered LinkedHashMap. The loader uses the JDK's own PECS shape.</p>`,
+      code: `
+import java.util.*;
+import java.util.function.*;
+
+class LruCache<K, V> {
+    private final Map<K, V> map;
+
+    LruCache(int capacity) {
+        if (capacity < 1) throw new IllegalArgumentException("capacity must be >= 1");
+        this.map = new LinkedHashMap<>(16, 0.75f, true) {          // diamond + anonymous class (Java 9+)
+            @Override protected boolean removeEldestEntry(Map.Entry<K, V> eldest) {
+                return size() > capacity;                           // evict LRU after an insert
+            }
+        };
+    }
+
+    V get(K key) { return map.get(key); }                           // marks as recently used
+    void put(K key, V value) { map.put(key, value); }
+    V getOrLoad(K key, Function<? super K, ? extends V> loader) { return map.computeIfAbsent(key, loader); }
+    @Override public String toString() { return map.toString(); }
+
+    public static void main(String[] args) {
+        LruCache<Integer, String> c = new LruCache<>(2);
+        c.put(1, "a");
+        c.put(2, "b");
+        c.get(1);                                  // 1 is now most recent
+        c.put(3, "c");                             // evicts 2
+        System.out.println(c);                     // {1=a, 3=c}
+        System.out.println(c.get(2));              // null
+        Function<Object, String> describe = k -> "loaded:" + k;   // a Function<Object, …> works too
+        System.out.println(c.getOrLoad(7, describe)); // loaded:7
+        System.out.println(c);                     // {3=c, 7=loaded:7}
+    }
+}`,
+      dry: { head: ['operation', 'map (LRU → MRU)', 'evicted'], rows: [['put(1,a)', '{1=a}', '—'], ['put(2,b)', '{1=a, 2=b}', '—'], ['get(1)', '{2=b, 1=a}', '—'], ['put(3,c)', '{1=a, 3=c}', H.c('r', '2')], ['getOrLoad(7)', '{3=c, 7=loaded:7}', H.c('r', '1')]] },
+      complexity: `<p>O(1) average for get/put/getOrLoad; O(capacity) space.</p>`,
+      followUps: ['Make it thread-safe — why is <code>Collections.synchronizedMap</code> around an access-ordered map tricky? (get mutates)', 'Production alternative: Caffeine — what does it do better (W-TinyLFU, async loading)?']
+    }
+  });
+
+  practice.push({
+    title: 'Generic Binary Search over a Sorted List',
+    level: 'Medium', tags: ['bounded type', 'binary search', 'Comparable'], companies: ['Google', 'Adobe', 'Goldman Sachs'],
+    statement: `<p>Write ${C('static <T extends Comparable<? super T>> int search(List<? extends T> list, T key)')} that returns an index of ${C('key')} in an ascending list, or ${C('-(insertionPoint) - 1')} if absent (same contract as ${C('Collections.binarySearch')}). It must work for ${C('List<LocalDate>')} and for a list of Apples where only Fruit is Comparable.</p>`,
+    constraints: `0 ≤ n ≤ 10<sup>6</sup>; list is random-access and sorted; no nulls.`,
+    example: `<p>[2, 5, 8, 12], key 8 → ${H.c('g', '2')}; key 6 → insertion point 2 → ${H.c('y', '-3')}; key 1 → ${H.c('y', '-1')}; key 20 → ${H.c('y', '-5')}.</p>`,
+    brute: { why: `<p>A linear scan is O(n) — 10<sup>6</sup> comparisons per lookup instead of about 20. Declaring ${C('<T extends Comparable<T>>')} also rejects ${C('LocalDate')} (Comparable&lt;ChronoLocalDate&gt;).</p>`, code: `
+class LinearSearch {
+    static <T extends Comparable<? super T>> int search(List<? extends T> list, T key) {
+        for (int i = 0; i < list.size(); i++) {
+            int c = list.get(i).compareTo(key);
+            if (c == 0) return i;
+            if (c > 0) return -i - 1;          // passed the spot where key would be
+        }
+        return -list.size() - 1;
+    }
+}` },
+    mcq: { q: 'Why does the middle computation use <code>(lo + hi) &gt;&gt;&gt; 1</code>?', options: ['It is required by generics', 'It avoids int overflow when lo + hi exceeds Integer.MAX_VALUE', 'It rounds up', 'It is faster than division only on ARM'], answer: 1, explain: 'lo + hi can overflow for huge lists, making mid negative (the famous 2006 JDK binarySearch bug). The unsigned shift treats the sum as unsigned. lo + (hi - lo) / 2 also works.' },
+    hints: [`<p>Hint 1: the bound lets you call ${C('compareTo')} on elements; ${C('? super T')} admits LocalDate and Apple; ${C('List<? extends T>')} lets a ${C('List<Apple>')} be searched with a ${C('Fruit')}-typed key (T = Fruit) too.</p>`, `<p>Hint 2: classic loop: lo = 0, hi = n − 1; mid = ${C('(lo + hi) >>> 1')}; compare ${C('list.get(mid).compareTo(key)')}.</p>`, `<p>Hint 3: when the loop ends, ${C('lo')} is the insertion point → return ${C('-(lo + 1)')}. Empty list → -1.</p>`],
+    solution: {
+      approach: `<p>Standard binary search; the generic bound mirrors ${C('Collections.binarySearch(List<? extends Comparable<? super T>>, T)')}.</p>`,
+      code: `
+import java.util.*;
+import java.time.*;
+
+class GenericSearch {
+    static <T extends Comparable<? super T>> int search(List<? extends T> list, T key) {
+        int lo = 0, hi = list.size() - 1;
+        while (lo <= hi) {
+            int mid = (lo + hi) >>> 1;                 // overflow-safe midpoint
+            int c = list.get(mid).compareTo(key);      // element is a T → has compareTo
+            if (c < 0) lo = mid + 1;
+            else if (c > 0) hi = mid - 1;
+            else return mid;
+        }
+        return -(lo + 1);                              // lo = insertion point
+    }
+    public static void main(String[] args) {
+        List<Integer> a = List.of(2, 5, 8, 12);
+        System.out.println(search(a, 8) + " " + search(a, 6) + " " + search(a, 1) + " " + search(a, 20)); // 2 -3 -1 -5
+        List<LocalDate> d = List.of(LocalDate.of(2024, 1, 1), LocalDate.of(2025, 6, 1));
+        System.out.println(search(d, LocalDate.of(2025, 6, 1)));   // 1
+    }
+}`,
+      dry: { head: ['lo', 'hi', 'mid', 'list[mid] vs 6', 'action'], rows: [['0', '3', '1', '5 &lt; 6', 'lo = 2'], ['2', '3', '2', '8 &gt; 6', 'hi = 1'], ['2', '1', '—', '—', 'return -(2+1) = -3']] },
+      complexity: `<p>O(log n) comparisons on random-access lists; O(1) space.</p>`,
+      followUps: ['Add a Comparator overload <code>search(List&lt;? extends T&gt;, T, Comparator&lt;? super T&gt;)</code>.', 'Return the FIRST occurrence when duplicates exist (lower bound).']
+    }
+  });
+
+  practice.push({
+    title: 'Merge Two Sorted Lists of Any Comparable Type',
+    level: 'Medium', tags: ['bounded type', 'two pointers', 'PECS'], companies: ['Meta', 'Atlassian', 'Intuit'],
+    statement: `<p>Write ${C('merge(a, b)')} that merges two ascending lists into a new ascending ${C('List<T>')} (stable: on ties, elements of ${C('a')} come first). It must merge a ${C('List<Apple>')} with a ${C('List<Banana>')} into a ${C('List<Fruit>')} when only ${C('Fruit')} implements ${C('Comparable<Fruit>')}.</p>`,
+    constraints: `0 ≤ |a|, |b| ≤ 10<sup>6</sup>; both sorted; no nulls.`,
+    example: `<p>[1, 4, 9] + [2, 4, 10] → ${H.c('g', '[1, 2, 4(a), 4(b), 9, 10]')}. Apples(3, 8) + Bananas(5) → ${H.c('g', '[Apple3, Banana5, Apple8]')} typed ${C('List<Fruit>')}.</p>`,
+    brute: { why: `<p>Concatenating then sorting is O((n + m) log(n + m)) instead of O(n + m), and with ${C('List<T> a, List<T> b')} you cannot pass a List&lt;Apple&gt; and a List&lt;Banana&gt; together — invariance forces T to be both.</p>`, code: `
+class MergeSort {
+    static <T extends Comparable<? super T>> List<T> merge(List<T> a, List<T> b) {
+        List<T> out = new ArrayList<>(a);
+        out.addAll(b);
+        Collections.sort(out);            // O(N log N), and both lists must be exactly List<T>
+        return out;
+    }
+}` },
+    mcq: { q: 'For <code>merge(apples, bananas)</code> to return <code>List&lt;Fruit&gt;</code>, which parameter types are needed?', options: ['<code>List&lt;T&gt; a, List&lt;T&gt; b</code>', '<code>List&lt;? extends T&gt; a, List&lt;? extends T&gt; b</code>', '<code>List&lt;? super T&gt; a, List&lt;? super T&gt; b</code>', '<code>List&lt;?&gt; a, List&lt;?&gt; b</code>'], answer: 1, explain: 'Both inputs only produce elements → extends. T is then inferred as Fruit, a common supertype, and the result is List&lt;Fruit&gt;. With List&lt;?&gt; you could not compare or return typed elements.' },
+    hints: [`<p>Hint 1: two pointers i over a, j over b; append the smaller; then append the leftovers.</p>`, `<p>Hint 2: signature ${C('<T extends Comparable<? super T>> List<T> merge(List<? extends T> a, List<? extends T> b)')}. Elements read from either list are Ts, so ${C('x.compareTo(y)')} type-checks.</p>`, `<p>Hint 3: stability: take from a when ${C('a.get(i).compareTo(b.get(j)) <= 0')}. Presize the output: ${C('new ArrayList<>(a.size() + b.size())')}.</p>`],
+    solution: {
+      approach: `<p>Linear two-pointer merge, producers declared with ${C('? extends T')} so the caller (or inference) can pick a common supertype.</p>`,
+      code: `
+import java.util.*;
+
+class Fruit implements Comparable<Fruit> {
+    final int w;
+    Fruit(int w) { this.w = w; }
+    public int compareTo(Fruit o) { return Integer.compare(w, o.w); }
+    public String toString() { return getClass().getSimpleName() + w; }
+}
+class Apple extends Fruit { Apple(int w) { super(w); } }
+class Banana extends Fruit { Banana(int w) { super(w); } }
+
+class MergeLists {
+    static <T extends Comparable<? super T>> List<T> merge(List<? extends T> a, List<? extends T> b) {
+        List<T> out = new ArrayList<>(a.size() + b.size());
+        int i = 0, j = 0;
+        while (i < a.size() && j < b.size()) {
+            if (a.get(i).compareTo(b.get(j)) <= 0) out.add(a.get(i++));   // <= keeps it stable
+            else out.add(b.get(j++));
+        }
+        while (i < a.size()) out.add(a.get(i++));
+        while (j < b.size()) out.add(b.get(j++));
+        return out;
+    }
+    public static void main(String[] args) {
+        System.out.println(merge(List.of(1, 4, 9), List.of(2, 4, 10)));        // [1, 2, 4, 4, 9, 10]
+        List<Fruit> mixed = merge(List.of(new Apple(3), new Apple(8)), List.of(new Banana(5)));
+        System.out.println(mixed);                                             // [Apple3, Banana5, Apple8]
+    }
+}`,
+      dry: { head: ['i', 'j', 'compare', 'out'], rows: [['0', '0', 'Apple3 ≤ Banana5', '[Apple3]'], ['1', '0', 'Apple8 &gt; Banana5', '[Apple3, Banana5]'], ['1', '1', 'b exhausted', '[Apple3, Banana5, Apple8]']] },
+      complexity: `<p>O(n + m) time, O(n + m) space for the output.</p>`,
+      followUps: ['Merge k sorted lists with a <code>PriorityQueue</code> — what is the generic type of the heap entries?', 'Make it lazy: return an <code>Iterator&lt;T&gt;</code> instead of a list.']
+    }
+  });
+
+  practice.push({
+    title: 'Generic groupBy with a Key Extractor',
+    level: 'Medium', tags: ['generic method', 'Function', 'HashMap'], companies: ['Swiggy', 'Salesforce', 'ServiceNow'],
+    statement: `<p>Write ${C('groupBy(items, keyFn)')} returning ${C('Map<K, List<T>>')} that groups items by ${C('keyFn(item)')}, preserving item order inside each group and first-seen order of keys. It must accept a key function declared on a supertype (e.g. ${C('Function<Object, Integer>')} hashing anything) and one returning a subtype of K.</p>`,
+    constraints: `0 ≤ n ≤ 10<sup>6</sup>; keys may repeat; keyFn never returns null.`,
+    example: `<p>words ["apple", "bob", "avocado", "cat"], key = length → ${H.c('g', '{5=[apple], 3=[bob, cat], 7=[avocado]}')}.</p>`,
+    brute: { why: `<p>Collect the distinct keys first, then for each key scan all items again: O(n · k). With many distinct keys this approaches O(n<sup>2</sup>). A raw ${C('Map')} would also lose the element type.</p>`, code: `
+class GroupSlow {
+    static <T, K> Map<K, List<T>> groupBy(List<T> items, java.util.function.Function<T, K> f) {
+        Map<K, List<T>> out = new LinkedHashMap<>();
+        for (T t : items) out.putIfAbsent(f.apply(t), new ArrayList<>());
+        for (K k : out.keySet())
+            for (T t : items) if (f.apply(t).equals(k)) out.get(k).add(t);   // rescans per key
+        return out;
+    }
+}` },
+    mcq: { q: 'Which parameter type for keyFn is most flexible while still letting the result be <code>Map&lt;K, List&lt;T&gt;&gt;</code>?', options: ['<code>Function&lt;T, K&gt;</code>', '<code>Function&lt;? super T, ? extends K&gt;</code>', '<code>Function&lt;? extends T, ? super K&gt;</code>', '<code>Function&lt;?, ?&gt;</code>'], answer: 1, explain: 'The function consumes Ts (super) and produces Ks (extends) — the exact shape of Collectors.groupingBy(Function&lt;? super T, ? extends K&gt;).' },
+    hints: [`<p>Hint 1: one pass with ${C('computeIfAbsent(key, k -> new ArrayList<>())')}.</p>`, `<p>Hint 2: ${C('LinkedHashMap')} keeps first-seen key order. Signature: ${C('<T, K> Map<K, List<T>> groupBy(Iterable<? extends T> items, Function<? super T, ? extends K> keyFn)')}.</p>`, `<p>Hint 3: inside the loop, ${C('K k = keyFn.apply(t)')} compiles because ${C('? extends K')} is a K. Add t to the group list. Empty input → empty map.</p>`],
+    solution: {
+      approach: `<p>Single pass, PECS on the function, insertion-ordered map. Equivalent to ${C('stream.collect(groupingBy(keyFn, LinkedHashMap::new, toList()))')}.</p>`,
+      code: `
+import java.util.*;
+import java.util.function.*;
+
+class GroupBy {
+    static <T, K> Map<K, List<T>> groupBy(Iterable<? extends T> items, Function<? super T, ? extends K> keyFn) {
+        Map<K, List<T>> out = new LinkedHashMap<>();
+        for (T t : items) {
+            K k = keyFn.apply(t);
+            out.computeIfAbsent(k, x -> new ArrayList<>()).add(t);
+        }
+        return out;
+    }
+    public static void main(String[] args) {
+        List<String> words = List.of("apple", "bob", "avocado", "cat");
+        Map<Integer, List<String>> byLen = groupBy(words, String::length);
+        System.out.println(byLen);                                  // {5=[apple], 3=[bob, cat], 7=[avocado]}
+        Function<Object, Integer> bucket = o -> Math.floorMod(o.hashCode(), 2);
+        Map<Integer, List<Integer>> parity = groupBy(List.of(1, 2, 3, 4), bucket);   // Function<Object, …> accepted
+        System.out.println(parity);                                 // {1=[1, 3], 0=[2, 4]}
+    }
+}`,
+      complexity: `<p>O(n) expected time, O(n) space.</p>`,
+      followUps: ['Add a downstream reducer: <code>&lt;T, K, R&gt; Map&lt;K, R&gt; groupBy(…, Function&lt;? super List&lt;T&gt;, ? extends R&gt;)</code>.', 'Make the map type caller-chosen with a <code>Supplier&lt;M&gt;</code> where <code>M extends Map&lt;K, List&lt;T&gt;&gt;</code>.']
+    }
+  });
+
   registerModule({ id: 'java08', title: 'Generics', lang: 'java', intro: `<p>stub</p>`, goals: [], prereqs: `x`, hours: 12, topics: topics, practice: practice, quiz: quiz, interview: interview });
 })();
