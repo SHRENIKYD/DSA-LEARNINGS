@@ -1347,7 +1347,7 @@ const byVowels = words
   .map(w => ({ w, key: (w.match(/[aeiou]/g) || []).length })) // compute key once per item
   .sort((a, b) => a.key - b.key || a.w.localeCompare(b.w))
   .map(x => x.w);
-console.log(byVowels); // [ 'fig', 'kiwi', 'apple', 'banana' ]` }],
+console.log(byVowels); // [ 'fig', 'apple', 'kiwi', 'banana' ] (apple and kiwi tie on 2 vowels → alphabetical)` }],
     codeTitle: ['Default vs comparator', 'Stability & pitfalls'],
     viz: [{
       title: 'Why [10, 9, 1, 100].sort() is "wrong": the string trap',
@@ -2259,6 +2259,530 @@ console.log(load('{oops}'));                                          // { ok: f
         followUps: ['Tag types explicitly instead of guessing: <code>{"$date": "…"}</code>, and also support Map and BigInt', 'Validate the shape with a schema after parsing', 'Stream-parse a 500 MB file without loading it all']
       }
     }]
+  });
+
+  /* ================= PRACTICE: Easy ================= */
+  practice.push({
+    title: 'Chunk an Array into Groups of Size k',
+    level: 'Easy', tags: ['arrays', 'slice', 'loops'], companies: ['Amazon', 'Meesho', 'Lodash-style utilities'],
+    statement: `<p>Write <code>chunk(arr, size)</code> that splits <code>arr</code> into consecutive groups of <code>size</code> items. The last group may be smaller. Do not mutate the input. <code>size</code> &lt; 1 must throw a <code>RangeError</code>.</p>`,
+    constraints: `<p>0 ≤ n ≤ 10<sup>6</sup>; 1 ≤ size ≤ 10<sup>6</sup> (integer).</p>`,
+    example: `<p><code>chunk([1, 2, 3, 4, 5], 2)</code> → ${H.c('g', '[[1, 2], [3, 4], [5]]')}<br>${H.arr([1, 2, 3, 4, 5], { hl: { 0: 'g', 1: 'g', 2: 'b', 3: 'b', 4: 'y' } })}Colours show the groups; 5 is left over, so it forms a short final group.</p>`,
+    brute: { why: `<p>Repeatedly <code>splice(0, size)</code> from a copy works and reads nicely, but each <code>splice(0, …)</code> shifts every remaining element left: O(n²/size) moves overall — painful for a million items with small chunks.</p>`, code: { lang: 'js', run: true, code: `function chunk(arr, size) {
+  if (size < 1) throw new RangeError('size must be >= 1');
+  const copy = [...arr];
+  const out = [];
+  while (copy.length) out.push(copy.splice(0, size)); // front removal shifts everything
+  return out;
+}
+console.log(chunk([1, 2, 3, 4, 5], 2)); // [ [ 1, 2 ], [ 3, 4 ], [ 5 ] ]` } },
+    mcq: { q: 'Which call extracts the chunk that starts at index i?', options: ['<code>arr.slice(i, i + size)</code>', '<code>arr.splice(i, i + size)</code>', '<code>arr.slice(i, size)</code>', '<code>arr.slice(i * size)</code>'], answer: 0, explain: 'slice(start, end) copies [start, end). slice ignores an end past the array length, which handles the short last chunk for free. splice would mutate.' },
+    hints: [`<p>Jump the index by <code>size</code> each time: 0, size, 2·size… Each jump starts a new group.</p>`, `<p><code>arr.slice(i, i + size)</code> copies one group without mutating, and quietly stops at the array's end.</p>`, `<p>Validate <code>size</code> first (0 would loop forever). Empty input → <code>[]</code>. One-liner variant: <code>Array.from({ length: Math.ceil(n / size) }, (_, k) =&gt; arr.slice(k * size, k * size + size))</code>.</p>`],
+    solution: {
+      approach: `<p>Step the start index by <code>size</code> and slice each window. Every element is copied exactly once, the input is untouched, and the short tail falls out naturally.</p>`,
+      code: { lang: 'js', run: true, code: `function chunk(arr, size) {
+  if (!Number.isInteger(size) || size < 1) throw new RangeError('size must be an integer >= 1');
+  const out = [];
+  for (let i = 0; i < arr.length; i += size) {
+    out.push(arr.slice(i, i + size)); // copy one group; slice stops at the end
+  }
+  return out;
+}
+
+console.log(chunk([1, 2, 3, 4, 5], 2)); // [ [ 1, 2 ], [ 3, 4 ], [ 5 ] ]
+console.log(chunk(['a', 'b', 'c'], 5)); // [ [ 'a', 'b', 'c' ] ]
+console.log(chunk([], 3));              // []
+try { chunk([1], 0); } catch (e) { console.log(e.name); } // RangeError` },
+      dry: { head: ['i', 'slice(i, i + 2)', 'out'], rows: [['0', '[1, 2]', '[[1, 2]]'], ['2', '[3, 4]', '[[1, 2], [3, 4]]'], ['4', '[5] (end clipped)', '[[1, 2], [3, 4], [5]]'], ['6', 'loop ends (6 ≥ 5)', '—']] },
+      complexity: `<p>Time O(n), space O(n) for the output.</p>`,
+      followUps: ['Chunk lazily with a generator', 'Split into exactly k groups as evenly as possible', 'Chunk a string into lines of width w without breaking words']
+    }
+  });
+
+  practice.push({
+    title: 'Remove Duplicates, Keep First Occurrence Order',
+    level: 'Easy', tags: ['arrays', 'Set', 'filter'], companies: ['Google', 'Infosys', 'Flipkart'],
+    statement: `<p>Return a new array with duplicates removed, keeping the <b>first</b> occurrence of each value in its original position. Treat <code>NaN</code> as equal to <code>NaN</code>.</p>`,
+    constraints: `<p>n ≤ 10<sup>6</sup>; values are primitives (numbers, strings, booleans, null, undefined).</p>`,
+    example: `${H.arr([3, 1, 3, 'a', 1, NaN, NaN], { hl: { 2: 'r', 4: 'r', 6: 'r' } })}<p>→ ${H.c('g', "[3, 1, 'a', NaN]")} — red items are repeats of something seen earlier.</p>`,
+    brute: { why: `<p><code>filter((x, i) =&gt; arr.indexOf(x) === i)</code> is a famous one-liner, but <code>indexOf</code> scans from the start each time: O(n²) — and because <code>indexOf</code> uses <code>===</code>, it never finds <code>NaN</code>, so <b>all</b> NaNs are dropped!</p>`, code: { lang: 'js', run: true, code: `function unique(arr) {
+  return arr.filter((x, i) => arr.indexOf(x) === i); // O(n^2); indexOf(NaN) is -1
+}
+console.log(unique([3, 1, 3, 'a', 1, NaN, NaN])); // [ 3, 1, 'a' ]  <- NaN lost!` } },
+    mcq: { q: 'Why does <code>[...new Set(arr)]</code> keep exactly one NaN?', options: ['Set uses SameValueZero equality, where NaN equals NaN', 'Set converts values to strings', 'Spread removes NaN duplicates', 'It does not — all NaNs are removed'], answer: 0, explain: 'Set, Map and includes use SameValueZero: like === except NaN equals NaN. Sets also keep insertion order, so first occurrences stay in place.' },
+    hints: [`<p>You need fast "have I seen this before?" checks — a hash-based structure, not a scan.</p>`, `<p>A <code>Set</code> stores each value once and remembers insertion order. Spreading it back gives an array.</p>`, `<p>Check NaN handling and order. Explicit loop version: if <code>!seen.has(x)</code>, add it to <code>seen</code> and push to output.</p>`],
+    solution: {
+      approach: `<p>Insert values into a <code>Set</code> (O(1) average per insert, insertion-ordered, SameValueZero equality) and spread it back into an array.</p>`,
+      code: { lang: 'js', run: true, code: `const unique = arr => [...new Set(arr)];
+
+// Same thing, written out — useful when you need a custom key (e.g. by id):
+function uniqueBy(arr, keyFn = x => x) {
+  const seen = new Set();
+  const out = [];
+  for (const item of arr) {
+    const k = keyFn(item);
+    if (!seen.has(k)) { seen.add(k); out.push(item); }
+  }
+  return out;
+}
+
+console.log(unique([3, 1, 3, 'a', 1, NaN, NaN]));          // [ 3, 1, 'a', NaN ]
+console.log(uniqueBy([{ id: 1 }, { id: 2 }, { id: 1 }], o => o.id)); // [ { id: 1 }, { id: 2 } ]` },
+      dry: { head: ['item', 'in set?', 'output'], rows: [['3', 'no → add', '[3]'], ['1', 'no → add', '[3, 1]'], ['3', '<span class="c-r">yes</span>', '[3, 1]'], ["'a'", 'no → add', "[3, 1, 'a']"], ['NaN', 'no → add', "[3, 1, 'a', NaN]"], ['NaN', '<span class="c-r">yes</span>', "[3, 1, 'a', NaN]"]] },
+      complexity: `<p>Time O(n) average, space O(n). The indexOf version is O(n²).</p>`,
+      followUps: ['Keep the LAST occurrence instead', 'Remove duplicates in place in a sorted array (two pointers)', 'Deduplicate objects by deep content']
+    }
+  });
+
+  practice.push({
+    title: 'pick and omit for Objects',
+    level: 'Easy', tags: ['objects', 'destructuring', 'Object.entries'], companies: ['Atlassian', 'Swiggy', 'Freshworks'],
+    statement: `<p>Write <code>pick(obj, keys)</code> → new object with only those keys (that exist on <code>obj</code>), and <code>omit(obj, keys)</code> → new object without them. Neither may mutate <code>obj</code>.</p>`,
+    constraints: `<p>Objects up to 10<sup>5</sup> keys; <code>keys</code> up to 10<sup>5</sup> strings.</p>`,
+    example: `<p>${H.kv([['id', 7], ['name', "'Asha'"], ['password', "'x'"], ['age', 30]], { label: 'user' })}<code>pick(user, ['id', 'name', 'email'])</code> → ${H.c('g', "{ id: 7, name: 'Asha' }")} (email does not exist, so it is skipped)<br><code>omit(user, ['password'])</code> → ${H.c('g', "{ id: 7, name: 'Asha', age: 30 }")}</p>`,
+    brute: { why: `<p>Copying with <code>{ ...obj }</code> then <code>delete</code>-ing keys works for omit, but <code>delete</code> can push the object into slow "dictionary mode", and checking membership with <code>keys.includes(k)</code> inside a loop is O(n·k).</p>`, code: { lang: 'js', run: true, code: `function omit(obj, keys) {
+  const copy = { ...obj };
+  for (const k of Object.keys(copy)) {
+    if (keys.includes(k)) delete copy[k]; // O(k) scan per key + delete
+  }
+  return copy;
+}
+console.log(omit({ id: 7, name: 'Asha', password: 'x' }, ['password']));` } },
+    mcq: { q: 'In <code>pick</code>, why check <code>Object.hasOwn(obj, k)</code> before copying?', options: ['So missing keys are skipped instead of being added as undefined, and inherited keys are ignored', 'Because obj[k] throws for missing keys', 'To make it faster', 'It is required by Object.fromEntries'], answer: 0, explain: 'Without the check, pick({}, ["email"]) would return { email: undefined }, and a key like "toString" would copy an inherited function.' },
+    hints: [`<p>Both functions build a <b>new</b> object; neither needs <code>delete</code>.</p>`, `<p><code>pick</code>: loop over <code>keys</code>, copy own ones. <code>omit</code>: turn <code>keys</code> into a <code>Set</code>, then <code>Object.fromEntries(Object.entries(obj).filter(([k]) =&gt; !drop.has(k)))</code>.</p>`, `<p>For a single fixed key, destructuring with rest is the neatest omit: <code>const { password, ...safe } = user</code>. Edge cases: empty keys list, keys not present.</p>`],
+    solution: {
+      approach: `<p><code>pick</code> walks the requested keys and copies only own properties. <code>omit</code> filters entries against a Set of excluded keys and rebuilds with <code>Object.fromEntries</code>. Both are pure.</p>`,
+      code: { lang: 'js', run: true, code: `function pick(obj, keys) {
+  const out = {};
+  for (const k of keys) {
+    if (Object.hasOwn(obj, k)) out[k] = obj[k]; // skip missing/inherited keys
+  }
+  return out;
+}
+
+function omit(obj, keys) {
+  const drop = new Set(keys);                   // O(1) membership checks
+  return Object.fromEntries(Object.entries(obj).filter(([k]) => !drop.has(k)));
+}
+
+const user = { id: 7, name: 'Asha', password: 'x', age: 30 };
+console.log(pick(user, ['id', 'name', 'email'])); // { id: 7, name: 'Asha' }
+console.log(omit(user, ['password']));            // { id: 7, name: 'Asha', age: 30 }
+
+// Fixed key? Destructuring rest is the idiomatic omit:
+const { password, ...safe } = user;
+console.log(safe, user.password);                 // { id: 7, name: 'Asha', age: 30 } x` },
+      dry: { head: ['function', 'key', 'decision'], rows: [['pick', 'id', 'own → copy'], ['pick', 'email', '<span class="c-m">missing → skip</span>'], ['omit', 'password', '<span class="c-r">in drop set → filter out</span>'], ['omit', 'age', 'keep']] },
+      complexity: `<p>pick: O(k). omit: O(n + k). Space O(result).</p>`,
+      followUps: ['Support nested paths like <code>"address.city"</code>', 'Type them in TypeScript with <code>Pick</code>/<code>Omit</code> utility types', 'Make pickBy(obj, predicate)']
+    }
+  });
+
+  practice.push({
+    title: 'Largest Number Without Crashing',
+    level: 'Easy', tags: ['spread', 'reduce', 'edge cases'], companies: ['Microsoft', 'Oracle'],
+    statement: `<p>Write <code>maxOf(nums)</code> returning the largest number, or <code>undefined</code> for an empty array. It must work for arrays of <b>5 million</b> numbers, where <code>Math.max(...nums)</code> can crash.</p>`,
+    constraints: `<p>0 ≤ n ≤ 5·10<sup>6</sup>; values are finite numbers.</p>`,
+    example: `<p><code>maxOf([3, 9, 4])</code> → ${H.c('g', '9')}; <code>maxOf([])</code> → ${H.c('m', 'undefined')} (while <code>Math.max()</code> returns ${H.c('r', '-Infinity')}); <code>maxOf(hugeArray)</code> → works, while <code>Math.max(...hugeArray)</code> → ${H.c('r', 'RangeError: Maximum call stack size exceeded')}.</p>`,
+    brute: { why: `<p>Spread passes every element as a separate <b>argument</b>, and engines cap the number of arguments (stack space). Around a few hundred thousand items V8 throws a RangeError (Safari lower). Also <code>Math.max()</code> of nothing is <code>-Infinity</code>, a confusing "answer" for empty input.</p>`, code: { lang: 'js', run: true, code: `const maxOf = nums => Math.max(...nums);
+console.log(maxOf([3, 9, 4])); // 9
+console.log(maxOf([]));        // -Infinity (surprising)
+try {
+  maxOf(new Array(5000000).fill(1));
+} catch (e) {
+  console.log(e.name);         // RangeError
+}` } },
+    mcq: { q: 'Why does <code>Math.max(...bigArray)</code> fail but a loop does not?', options: ['Spread turns each element into a function argument and argument count is limited by stack size', 'Math.max only accepts 255 arguments', 'Spread is O(n²)', 'Loops use less CPU'], answer: 0, explain: 'All arguments are placed on the call stack for the call. A loop or reduce keeps only one running value.' },
+    hints: [`<p>You only ever need to remember <b>one</b> number: the biggest seen so far.</p>`, `<p>A simple <code>for</code> loop or <code>reduce((m, x) =&gt; x &gt; m ? x : m)</code> keeps one running value.</p>`, `<p>Handle empty input first (return undefined). Start the running max from <code>nums[0]</code>, not 0 — all numbers could be negative.</p>`],
+    solution: {
+      approach: `<p>Single pass keeping the best value. Constant extra memory, no argument-count limits, and an explicit decision for empty input.</p>`,
+      code: { lang: 'js', run: true, code: `function maxOf(nums) {
+  if (nums.length === 0) return undefined;   // explicit empty-case contract
+  let best = nums[0];                        // not 0: values may all be negative
+  for (let i = 1; i < nums.length; i++) {
+    if (nums[i] > best) best = nums[i];
+  }
+  return best;
+}
+
+console.log(maxOf([3, 9, 4]));     // 9
+console.log(maxOf([-5, -2, -9]));  // -2
+console.log(maxOf([]));            // undefined
+const huge = Array.from({ length: 5000000 }, (_, i) => i % 1000);
+console.log(maxOf(huge));          // 999` },
+      dry: { head: ['i', 'nums[i]', 'best'], rows: [['start', '3', '3'], ['1', '9', '9'], ['2', '4', '9 (unchanged)']] },
+      complexity: `<p>Time O(n), extra space O(1). Spread version: O(n) stack space and a hard size limit.</p>`,
+      followUps: ['Return both min and max in one pass', 'Find the max of an array of objects by a field', 'What does Math.max return if one element is NaN?']
+    }
+  });
+
+  practice.push({
+    title: 'Predict the Output: Array Method Return Values',
+    level: 'Easy', tags: ['predict the output', 'arrays', 'mutation'], companies: ['Common screening round'],
+    statement: `<p>Without running it, write down every line this program prints. Then run it and explain each line in one sentence.</p>
+<pre>const a = [3, 1, 2];
+console.log(a.push(10));
+const b = a.sort();
+console.log(b === a, a);
+console.log(a.splice(1, 2));
+console.log(a.slice(0, 1), a);
+console.log([1, 2, 3].map(x =&gt; { x * 2 }));
+console.log([1, 2, 3].forEach(x =&gt; x * 2));</pre>`,
+    constraints: `<p>Assume Node 20+ or any modern browser.</p>`,
+    example: `<p>Line 1 prints ${H.c('g', '4')} — <code>push</code> returns the new length, not the array. Work out the rest yourself before peeking at the solution.</p>`,
+    brute: { why: `<p>Guessing from method names ("sort probably copies", "push probably returns the array") gives wrong answers. The reliable way is to track the array's state line by line and know each method's <b>return value</b> and whether it <b>mutates</b>.</p>`, code: { lang: 'js', run: true, code: `// Run it to check your predictions
+const a = [3, 1, 2];
+console.log(a.push(10));
+const b = a.sort();
+console.log(b === a, a);
+console.log(a.splice(1, 2));
+console.log(a.slice(0, 1), a);
+console.log([1, 2, 3].map(x => { x * 2 }));
+console.log([1, 2, 3].forEach(x => x * 2));` } },
+    mcq: { q: 'What does <code>[3, 1, 2, 10].sort()</code> produce?', options: ['<code>[1, 10, 2, 3]</code>', '<code>[1, 2, 3, 10]</code>', '<code>[10, 3, 2, 1]</code>', '<code>[3, 1, 2, 10]</code>'], answer: 0, explain: 'Default sort compares strings: "1" &lt; "10" &lt; "2" &lt; "3".' },
+    hints: [`<p>Keep a little table: line → state of <code>a</code> → printed value. Update the state only for mutating methods.</p>`, `<p>Return values: push → length; sort → same array (string order by default!); splice → removed items; slice → copy; map → array of callback results; forEach → undefined.</p>`, `<p>The map callback has braces but no <code>return</code>. After the default sort, a is <code>[1, 10, 2, 3]</code>; splice(1, 2) removes index 1 and 2.</p>`],
+    solution: {
+      approach: `<p>Trace state: a = [3,1,2] → push → [3,1,2,10] (prints 4) → sort (string order) → [1,10,2,3], b is the same array → splice(1,2) removes [10,2] leaving [1,3] → slice(0,1) copies [1] → map with braces returns undefineds → forEach returns undefined.</p>`,
+      code: { lang: 'js', run: true, code: `const a = [3, 1, 2];
+console.log(a.push(10));          // 4                       (new length)
+const b = a.sort();
+console.log(b === a, a);          // true [ 1, 10, 2, 3 ]    (same array, string order)
+console.log(a.splice(1, 2));      // [ 10, 2 ]               (removed items; a is now [1, 3])
+console.log(a.slice(0, 1), a);    // [ 1 ] [ 1, 3 ]          (copy; a unchanged)
+console.log([1, 2, 3].map(x => { x * 2 }));    // [ undefined, undefined, undefined ]
+console.log([1, 2, 3].forEach(x => x * 2));    // undefined` },
+      dry: { head: ['line', 'a after', 'printed'], rows: [['push(10)', '[3, 1, 2, 10]', '4'], ['sort()', '[1, 10, 2, 3]', 'true [1, 10, 2, 3]'], ['splice(1, 2)', '[1, 3]', '[10, 2]'], ['slice(0, 1)', '[1, 3]', '[1] [1, 3]'], ['map / forEach', '—', '[undefined ×3] / undefined']] },
+      complexity: `<p>Not an algorithm question — the skill is mental execution. Each line is O(n) or less.</p>`,
+      followUps: ['Rewrite every mutating call with its ES2023 non-mutating twin', 'What would <code>a.sort((x, y) =&gt; x - y)</code> print instead?']
+    }
+  });
+
+  /* ================= PRACTICE: Medium ================= */
+  practice.push({
+    title: 'Flatten a Nested Array to a Given Depth',
+    level: 'Medium', tags: ['arrays', 'recursion', 'reduce', 'polyfill'], companies: ['Meta', 'Uber', 'Adobe'],
+    statement: `<p>Implement <code>flatten(arr, depth = 1)</code> that behaves like <code>Array.prototype.flat(depth)</code>: nested arrays are opened up to <code>depth</code> levels; <code>depth = Infinity</code> flattens fully. Holes are removed. Do not use <code>flat</code>.</p>`,
+    constraints: `<p>Total elements ≤ 10<sup>5</sup>; nesting depth ≤ 1000 (deep inputs may hit recursion limits — mention an iterative version).</p>`,
+    example: `<p><code>flatten([1, [2, [3, [4]]], 5])</code> → ${H.c('g', '[1, 2, [3, [4]], 5]')}<br><code>flatten([1, [2, [3, [4]]], 5], 2)</code> → ${H.c('g', '[1, 2, 3, [4], 5]')}<br><code>flatten([1, [2, [3, [4]]], 5], Infinity)</code> → ${H.c('g', '[1, 2, 3, 4, 5]')}</p>`,
+    brute: { why: `<p>Repeatedly doing <code>result = [].concat(...result)</code> one level at a time works but rebuilds the whole array for every level (O(n·depth)) and spreading a huge array into <code>concat</code> can exceed argument limits. It also loops forever-ish with Infinity unless you check "any arrays left?" each pass.</p>`, code: { lang: 'js', run: true, code: `function flatten(arr, depth = 1) {
+  let result = arr.filter(() => true);     // drop holes
+  while (depth > 0 && result.some(Array.isArray)) {
+    result = [].concat(...result);         // one level per pass, full rebuild each time
+    depth--;
+  }
+  return result;
+}
+console.log(flatten([1, [2, [3, [4]]], 5], Infinity)); // [ 1, 2, 3, 4, 5 ]` } },
+    mcq: { q: 'In the recursive version, when do you recurse into an element?', options: ['When it is an array AND depth &gt; 0 (recursing with depth − 1)', 'Whenever it is an object', 'Only at depth 0', 'Always, then trim the result'], answer: 0, explain: 'Each recursion consumes one level of depth. At depth 0 nested arrays are copied as-is.' },
+    hints: [`<p>Think recursively: flattening <code>[a, [b, c]]</code> to depth d means: keep non-arrays, and for each array element, flatten <i>it</i> to depth d − 1 and splice its items in.</p>`, `<p><code>arr.reduce((acc, x) =&gt; Array.isArray(x) &amp;&amp; depth &gt; 0 ? acc.concat(flatten(x, depth - 1)) : (acc.push(x), acc), [])</code> — or a loop with push to avoid concat copies.</p>`, `<p><code>reduce</code> already skips holes. Infinity − 1 is still Infinity, so full flattening works for free. For very deep inputs, use an explicit stack instead of recursion.</p>`],
+    solution: {
+      approach: `<p>Depth-first recursion that pushes into one shared output array (no intermediate concat copies). <code>forEach</code> skips holes, matching <code>flat</code>. An iterative stack-based alternative avoids recursion limits.</p>`,
+      code: { lang: 'js', run: true, code: `function flatten(arr, depth = 1, out = []) {
+  arr.forEach(item => {                        // forEach skips holes, like flat()
+    if (Array.isArray(item) && depth > 0) {
+      flatten(item, depth - 1, out);           // open one level, push into same out
+    } else {
+      out.push(item);
+    }
+  });
+  return out;
+}
+
+// Iterative full flatten with an explicit stack (no recursion limit)
+function flattenDeep(arr) {
+  const stack = [...arr].reverse();
+  const out = [];
+  while (stack.length) {
+    const item = stack.pop();
+    if (Array.isArray(item)) {
+      for (let i = item.length - 1; i >= 0; i--) if (i in item) stack.push(item[i]);
+    } else {
+      out.push(item);
+    }
+  }
+  return out;
+}
+
+const data = [1, [2, [3, [4]]], 5];
+console.log(flatten(data));            // [ 1, 2, [ 3, [ 4 ] ], 5 ]
+console.log(flatten(data, 2));         // [ 1, 2, 3, [ 4 ], 5 ]
+console.log(flatten(data, Infinity));  // [ 1, 2, 3, 4, 5 ]
+console.log(flatten([1, , [2, , 3]], 1)); // [ 1, 2, 3 ] (holes removed)
+console.log(flattenDeep(data));        // [ 1, 2, 3, 4, 5 ]
+console.log(JSON.stringify(flatten(data, 2)) === JSON.stringify(data.flat(2))); // true` },
+      dry: { head: ['call', 'item', 'action', 'out'], rows: [['flatten(data, 1)', '1', 'push', '[1]'], ['', '[2, [3, [4]]]', 'array & depth 1 → recurse depth 0', '—'], ['flatten([2, [3,[4]]], 0)', '2', 'push', '[1, 2]'], ['', '[3, [4]]', 'depth 0 → push as-is', '[1, 2, [3, [4]]]'], ['back in depth 1', '5', 'push', '[1, 2, [3, [4]], 5]']] },
+      complexity: `<p>Time O(total elements visited), space O(n) output + O(depth) recursion stack.</p>`,
+      followUps: ['Write <code>flatMap</code> using your flatten', 'Flatten a nested object into dot-path keys: <code>{ a: { b: 1 } }</code> → <code>{ "a.b": 1 }</code>', 'Make it a lazy generator']
+    }
+  });
+
+  practice.push({
+    title: 'zip(...arrays)',
+    level: 'Medium', tags: ['rest parameters', 'Array.from', 'arrays'], companies: ['Google', 'Bloomberg'],
+    statement: `<p>Write a variadic <code>zip(...arrays)</code> that groups items by index: the i-th result is an array of the i-th item of every input. The result length is the length of the <b>shortest</b> input. With no arguments return <code>[]</code>.</p>`,
+    constraints: `<p>Up to 100 arrays, each up to 10<sup>5</sup> items.</p>`,
+    example: `<p><code>zip(['a', 'b', 'c'], [1, 2, 3], [true, false])</code> → ${H.c('g', "[['a', 1, true], ['b', 2, false]]")} — the third array has only 2 items, so only 2 groups are made.</p>`,
+    brute: { why: `<p>Hard-coding two parameters (<code>zip(a, b)</code>) does not scale to any number of arrays, and using the first array's length produces <code>undefined</code>s when another array is shorter.</p>`, code: { lang: 'js', run: true, code: `function zip(a, b) {
+  const out = [];
+  for (let i = 0; i < a.length; i++) out.push([a[i], b[i]]); // b may be shorter -> undefined
+  return out;
+}
+console.log(zip(['a', 'b', 'c'], [1, 2])); // [ [ 'a', 1 ], [ 'b', 2 ], [ 'c', undefined ] ]` } },
+    mcq: { q: 'How do you get the shortest length among all input arrays?', options: ['<code>Math.min(...arrays.map(a =&gt; a.length))</code>', '<code>arrays.length</code>', '<code>arrays[0].length</code>', '<code>Math.min(arrays)</code>'], answer: 0, explain: 'Map each array to its length, then spread the lengths into Math.min. With zero arrays Math.min() is Infinity — guard that case.' },
+    hints: [`<p>A rest parameter <code>...arrays</code> gives you a real array of all the input arrays.</p>`, `<p>Result length = shortest length. Build with <code>Array.from({ length: n }, (_, i) =&gt; arrays.map(arr =&gt; arr[i]))</code>.</p>`, `<p>No arguments: <code>Math.min()</code> is <code>Infinity</code> — return <code>[]</code> first. One argument: each group has a single item.</p>`],
+    solution: {
+      approach: `<p>Gather inputs with rest, compute the shortest length, then build each group by mapping over the arrays at index i. Pure and works for any number of inputs.</p>`,
+      code: { lang: 'js', run: true, code: `function zip(...arrays) {
+  if (arrays.length === 0) return [];
+  const n = Math.min(...arrays.map(a => a.length));        // shortest wins
+  return Array.from({ length: n }, (_, i) => arrays.map(arr => arr[i]));
+}
+
+console.log(zip(['a', 'b', 'c'], [1, 2, 3], [true, false])); // [ [ 'a', 1, true ], [ 'b', 2, false ] ]
+console.log(zip([1, 2]));                                     // [ [ 1 ], [ 2 ] ]
+console.log(zip());                                           // []
+
+// Unzip is just zip applied to the groups (spread them back in):
+const pairs = zip(['x', 'y'], [10, 20]);
+console.log(zip(...pairs));                                   // [ [ 'x', 'y' ], [ 10, 20 ] ]` },
+      dry: { head: ['i', 'arrays.map(arr =&gt; arr[i])'], rows: [['0', "['a', 1, true]"], ['1', "['b', 2, false]"], ['(n = 2, stop)', '—']] },
+      complexity: `<p>Time O(n·k) for k arrays of usable length n; space the same for the output.</p>`,
+      followUps: ['zipWith(fn, ...arrays) that combines each group with fn', 'Pad to the LONGEST array with a fill value', 'Make it work on any iterables, lazily']
+    }
+  });
+
+  practice.push({
+    title: 'Partition by Predicate in One Pass',
+    level: 'Medium', tags: ['arrays', 'reduce', 'destructuring'], companies: ['Amazon', 'Razorpay'],
+    statement: `<p>Write <code>partition(arr, predicate)</code> returning <code>[pass, fail]</code>: items where the predicate is truthy, and the rest, each in original order — using <b>one</b> pass. The predicate receives <code>(item, index)</code>.</p>`,
+    constraints: `<p>n ≤ 10<sup>6</sup>; the predicate may be expensive, so call it exactly once per item.</p>`,
+    example: `<p><code>const [even, odd] = partition([1, 2, 3, 4, 5], n =&gt; n % 2 === 0)</code><br>even = ${H.c('g', '[2, 4]')}, odd = ${H.c('r', '[1, 3, 5]')}</p>`,
+    brute: { why: `<p>Two filters (<code>arr.filter(p)</code> and <code>arr.filter(x =&gt; !p(x))</code>) are clear but call the predicate <b>twice</b> per item and walk the array twice — wrong if the predicate is slow, random or has side effects.</p>`, code: { lang: 'js', run: true, code: `let calls = 0;
+const isEven = n => { calls++; return n % 2 === 0; };
+const arr = [1, 2, 3, 4, 5];
+const pass = arr.filter(isEven);
+const fail = arr.filter(x => !isEven(x));
+console.log(pass, fail, 'predicate calls:', calls); // [ 2, 4 ] [ 1, 3, 5 ] predicate calls: 10` } },
+    mcq: { q: 'Which return shape lets callers write <code>const [ok, bad] = partition(...)</code>?', options: ['An array of two arrays', 'An object { pass, fail }', 'A Map', 'Two separate return statements'], answer: 0, explain: 'Array destructuring is positional, so [pass, fail] works. An object would need const { pass, fail } instead.' },
+    hints: [`<p>One loop, two buckets. Decide each item's bucket with a single predicate call.</p>`, `<p>With reduce: initial value <code>[[], []]</code>; push into <code>acc[predicate(x, i) ? 0 : 1]</code>; return acc.</p>`, `<p>Destructure the result at the call site. Empty array → <code>[[], []]</code>. Keep original order by pushing in iteration order.</p>`],
+    solution: {
+      approach: `<p>Reduce into a pair of arrays, choosing the bucket by one predicate call. Return the pair so callers can destructure it.</p>`,
+      code: { lang: 'js', run: true, code: `function partition(arr, predicate) {
+  return arr.reduce(
+    (acc, item, i) => {
+      acc[predicate(item, i) ? 0 : 1].push(item); // one call per item
+      return acc;
+    },
+    [[], []]
+  );
+}
+
+let calls = 0;
+const [even, odd] = partition([1, 2, 3, 4, 5], n => { calls++; return n % 2 === 0; });
+console.log(even, odd, 'calls:', calls);                         // [ 2, 4 ] [ 1, 3, 5 ] calls: 5
+
+const users = [{ name: 'a', active: true }, { name: 'b', active: false }];
+const [active, inactive] = partition(users, u => u.active);
+console.log(active.map(u => u.name), inactive.map(u => u.name)); // [ 'a' ] [ 'b' ]
+console.log(partition([], Boolean));                             // [ [], [] ]` },
+      dry: { head: ['item', 'predicate', 'acc'], rows: [['1', 'false', '[[], [1]]'], ['2', 'true', '[[2], [1]]'], ['3', 'false', '[[2], [1, 3]]'], ['4', 'true', '[[2, 4], [1, 3]]'], ['5', 'false', '[[2, 4], [1, 3, 5]]']] },
+      complexity: `<p>Time O(n) with exactly n predicate calls; space O(n).</p>`,
+      followUps: ['Generalise to groupBy with any number of buckets', 'Partition in place (like quicksort\'s partition step)', 'Compare with <code>Object.groupBy</code>']
+    }
+  });
+
+  practice.push({
+    title: 'Polyfill map and filter',
+    level: 'Medium', tags: ['polyfill', 'callbacks', 'prototypes', 'holes'], companies: ['Flipkart', 'Paytm', 'Walmart', 'Uber'],
+    statement: `<p>Implement <code>Array.prototype.myMap(callback, thisArg)</code> and <code>Array.prototype.myFilter(callback, thisArg)</code> matching the built-ins: callback gets <code>(element, index, array)</code>, <code>this</code> inside a normal-function callback is <code>thisArg</code>, holes are skipped, non-function callbacks throw <code>TypeError</code>, and the original array is not changed.</p>`,
+    constraints: `<p>Do not use the built-in <code>map</code>/<code>filter</code>/<code>reduce</code>/<code>forEach</code>.</p>`,
+    example: `<p><code>[1, 2, 3].myMap((x, i) =&gt; x * i)</code> → ${H.c('g', '[0, 2, 6]')}<br><code>[5, , 7].myMap(x =&gt; x + 1)</code> → ${H.c('g', '[6, &lt;empty&gt;, 8]')} (hole preserved in map)<br><code>[4, 9, 16].myFilter(x =&gt; x &gt; 5)</code> → ${H.c('g', '[9, 16]')}</p>`,
+    brute: { why: `<p>A naive version passes only the element, ignores <code>thisArg</code>, visits holes (calling the callback with <code>undefined</code>), uses an arrow function for the method (so <code>this</code> is wrong!), and reads <code>this.length</code> on every iteration.</p>`, code: { lang: 'js', run: true, code: `// Buggy: arrow function as a method -> 'this' is NOT the array
+Array.prototype.badMap = (cb) => {
+  const out = [];
+  const len = this && this.length; // 'this' here is the outer (module/global) this
+  for (let i = 0; i < len; i++) out.push(cb(this[i]));
+  return out;
+};
+console.log([1, 2, 3].badMap(x => x * 2)); // [] — 'this' is not the array
+delete Array.prototype.badMap;` } },
+    mcq: { q: 'Why must the polyfill be a <code>function</code>, not an arrow?', options: ['A method needs its own <code>this</code> (the array it was called on); arrows inherit this from outside', 'Arrows are slower', 'Arrows cannot return arrays', 'Prototypes only accept named functions'], answer: 0, explain: 'arr.myMap(...) sets this = arr only for normal functions. An arrow captures this from where it was defined (module/global scope).' },
+    hints: [`<p>Inside <code>function (callback, thisArg) { … }</code>, <code>this</code> is the array. Validate <code>typeof callback === 'function'</code> first.</p>`, `<p>Read <code>len = this.length</code> once. For each index use <code>if (i in this)</code> to skip holes, and call <code>callback.call(thisArg, this[i], i, this)</code>.</p>`, `<p>map: pre-size the result <code>new Array(len)</code> and assign <code>result[i]</code> so holes stay holes. filter: push only when the callback returns truthy. Define them with <code>Object.defineProperty</code> (non-enumerable) so <code>for...in</code> on arrays is not polluted.</p>`],
+    solution: {
+      approach: `<p>Follow the spec steps: validate the callback, capture length once, loop indices, skip holes with <code>in</code>, call with <code>(element, index, array)</code> and <code>thisArg</code>. map writes to the same index of a pre-sized array; filter pushes passing elements. Installed as non-enumerable properties.</p>`,
+      code: { lang: 'js', run: true, code: `Object.defineProperty(Array.prototype, 'myMap', {
+  value: function (callback, thisArg) {
+    if (typeof callback !== 'function') throw new TypeError(callback + ' is not a function');
+    const len = this.length;              // read once, like the spec
+    const result = new Array(len);        // same length; holes stay holes
+    for (let i = 0; i < len; i++) {
+      if (i in this) result[i] = callback.call(thisArg, this[i], i, this);
+    }
+    return result;
+  },
+  writable: true, configurable: true, enumerable: false,
+});
+
+Object.defineProperty(Array.prototype, 'myFilter', {
+  value: function (callback, thisArg) {
+    if (typeof callback !== 'function') throw new TypeError(callback + ' is not a function');
+    const len = this.length;
+    const result = [];
+    for (let i = 0; i < len; i++) {
+      if (i in this) {
+        const value = this[i];
+        if (callback.call(thisArg, value, i, this)) result.push(value);
+      }
+    }
+    return result;
+  },
+  writable: true, configurable: true, enumerable: false,
+});
+
+console.log([1, 2, 3].myMap((x, i) => x * i));        // [ 0, 2, 6 ]
+console.log([5, , 7].myMap(x => x + 1));              // [ 6, <1 empty item>, 8 ]
+console.log([4, 9, 16].myFilter(x => x > 5));         // [ 9, 16 ]
+const ctx = { factor: 10 };
+console.log([1, 2].myMap(function (x) { return x * this.factor; }, ctx)); // [ 10, 20 ]
+try { [1].myMap(null); } catch (e) { console.log(e.name); } // TypeError
+for (const k in [1]) console.log('enumerable key:', k);  // only '0' — no 'myMap'` },
+      dry: { head: ['i', 'i in this?', 'callback(x, i)', 'result'], rows: [['0', 'yes', '5 + 1 = 6', '[6, , ]'], ['1', '<span class="c-m">no (hole) → skip</span>', '—', '[6, , ]'], ['2', 'yes', '7 + 1 = 8', '[6, , 8]']] },
+      complexity: `<p>Time O(n), space O(n) for the result.</p>`,
+      followUps: ['Implement reduce with the no-initial-value rules (see the Hard set)', 'Why is extending built-in prototypes discouraged in libraries?', 'Make them work on array-likes via <code>Array.prototype.myMap.call(\'abc\', …)</code>']
+    }
+  });
+
+  practice.push({
+    title: 'Shallow Diff of Two Objects',
+    level: 'Medium', tags: ['objects', 'Object.keys', 'Set'], companies: ['Atlassian', 'Notion', 'Postman'],
+    statement: `<p>Write <code>diff(before, after)</code> returning <code>{ added, removed, changed }</code>: <code>added</code> = keys only in <code>after</code>, <code>removed</code> = keys only in <code>before</code>, <code>changed</code> = keys in both whose values differ by <code>Object.is</code>. Each list sorted alphabetically.</p>`,
+    constraints: `<p>Up to 10<sup>5</sup> keys per object; values compared shallowly (two different objects with equal contents count as changed).</p>`,
+    example: `<p>${H.kv([['name', "'Asha'"], ['age', 30], ['city', "'Pune'"]], { label: 'before' })}${H.kv([['name', "'Asha'"], ['age', 31], ['email', "'a@x.io'"]], { label: 'after', hl: { age: 'y', email: 'g' } })}→ ${H.c('g', "added: ['email']")}, ${H.c('r', "removed: ['city']")}, ${H.c('y', "changed: ['age']")}</p>`,
+    brute: { why: `<p>Comparing <code>JSON.stringify(before)</code> with <code>JSON.stringify(after)</code> only tells you <i>something</i> differs (and gives false alarms when key order differs). Nested loops over both key lists to match keys are O(n²).</p>`, code: { lang: 'js', run: true, code: `function diff(before, after) {
+  const added = [], removed = [], changed = [];
+  const bk = Object.keys(before), ak = Object.keys(after);
+  for (const k of ak) if (!bk.includes(k)) added.push(k);          // O(n) scan each
+  for (const k of bk) if (!ak.includes(k)) removed.push(k);
+  for (const k of bk) if (ak.includes(k) && before[k] !== after[k]) changed.push(k);
+  return { added: added.sort(), removed: removed.sort(), changed: changed.sort() };
+}
+console.log(diff({ a: 1, b: 2 }, { b: 3, c: 4 }));` } },
+    mcq: { q: 'Why use <code>Object.is</code> rather than <code>!==</code> for "changed"?', options: ['Object.is(NaN, NaN) is true, so a NaN that stayed NaN is not reported as changed', 'It compares deeply', 'It is faster', 'It ignores types'], answer: 0, explain: 'NaN !== NaN is true, which would flag an unchanged NaN. Object.is treats NaN as equal to itself (and distinguishes +0 from -0).' },
+    hints: [`<p>Use <code>Object.hasOwn</code> for O(1) "does the other object have this key?" checks instead of scanning key arrays.</p>`, `<p>Loop over <code>after</code>'s keys → added or (maybe) changed. Loop over <code>before</code>'s keys → removed.</p>`, `<p>Compare values with <code>Object.is</code>. Sort each result list at the end. Empty objects → three empty lists.</p>`],
+    solution: {
+      approach: `<p>Two linear passes with constant-time own-key checks. The first pass over <code>after</code> classifies keys as added or changed; the second over <code>before</code> finds removed keys.</p>`,
+      code: { lang: 'js', run: true, code: `function diff(before, after) {
+  const added = [], removed = [], changed = [];
+  for (const key of Object.keys(after)) {
+    if (!Object.hasOwn(before, key)) added.push(key);
+    else if (!Object.is(before[key], after[key])) changed.push(key);
+  }
+  for (const key of Object.keys(before)) {
+    if (!Object.hasOwn(after, key)) removed.push(key);
+  }
+  return { added: added.sort(), removed: removed.sort(), changed: changed.sort() };
+}
+
+console.log(diff({ name: 'Asha', age: 30, city: 'Pune' }, { name: 'Asha', age: 31, email: 'a@x.io' }));
+// { added: [ 'email' ], removed: [ 'city' ], changed: [ 'age' ] }
+console.log(diff({ v: NaN, tags: ['a'] }, { v: NaN, tags: ['a'] }));
+// { added: [], removed: [], changed: [ 'tags' ] }  (new array object = changed, shallowly)` },
+      dry: { head: ['pass', 'key', 'check', 'list'], rows: [['after', 'name', "same 'Asha'", '—'], ['after', 'age', '30 vs 31', 'changed'], ['after', 'email', 'not in before', 'added'], ['before', 'city', 'not in after', 'removed']] },
+      complexity: `<p>Time O(n + m + output·log output) for sorting; space O(output).</p>`,
+      followUps: ['Make it deep: recurse into nested plain objects and report paths like <code>"address.city"</code>', 'Produce a patch that turns before into after', 'Ignore keys listed in an options object']
+    }
+  });
+
+  practice.push({
+    title: 'keyBy and countBy Helpers',
+    level: 'Medium', tags: ['reduce', 'Map', 'objects', 'grouping'], companies: ['Amazon', 'Shopify'],
+    statement: `<p>Write <code>keyBy(arr, keyFn)</code> → object mapping <code>keyFn(item)</code> to the <b>last</b> item with that key, and <code>countBy(arr, keyFn)</code> → <code>Map</code> from key to count (a Map so any key type works and insertion order is kept). <code>keyFn</code> may also be a property name string.</p>`,
+    constraints: `<p>n ≤ 10<sup>6</sup>.</p>`,
+    example: `<p><code>keyBy([{ id: 'a', v: 1 }, { id: 'b', v: 2 }, { id: 'a', v: 3 }], 'id')</code> → ${H.c('g', "{ a: { id: 'a', v: 3 }, b: { id: 'b', v: 2 } }")}<br><code>countBy(['apple', 'avocado', 'banana'], w =&gt; w[0])</code> → ${H.c('g', "Map { 'a' → 2, 'b' → 1 }")}</p>`,
+    brute: { why: `<p>Using <code>find</code> inside a loop to check if a key was already seen, or <code>filter(...).length</code> per distinct key, makes these O(n²). A single pass with an object/Map is enough.</p>`, code: { lang: 'js', run: true, code: `function countBy(arr, keyFn) {
+  const keys = [...new Set(arr.map(keyFn))];
+  return new Map(keys.map(k => [k, arr.filter(x => keyFn(x) === k).length])); // O(n * distinct)
+}
+console.log(countBy(['apple', 'avocado', 'banana'], w => w[0]));` } },
+    mcq: { q: 'How do you accept either a function or a property name for <code>keyFn</code>?', options: ['<code>const fn = typeof keyFn === \'function\' ? keyFn : x =&gt; x[keyFn]</code>', '<code>keyFn.call(x)</code>', '<code>x.keyFn</code>', '<code>eval(keyFn)</code>'], answer: 0, explain: 'Normalise once at the start: wrap a string into an accessor arrow. x.keyFn would look for a property literally named "keyFn".' },
+    hints: [`<p>Both are single-pass folds: one into an object, one into a Map.</p>`, `<p>Normalise the key function first. keyBy: <code>acc[fn(x)] = x</code>. countBy: <code>m.set(k, (m.get(k) ?? 0) + 1)</code>.</p>`, `<p>"Last item wins" in keyBy happens automatically because later writes overwrite earlier ones. Use <code>Object.create(null)</code> for keyBy so keys like "constructor" are safe.</p>`],
+    solution: {
+      approach: `<p>Normalise <code>keyFn</code>, then one reduce per helper: keyBy assigns into a prototype-less object (later items overwrite earlier ones), countBy increments counts in a Map.</p>`,
+      code: { lang: 'js', run: true, code: `const toFn = keyFn => (typeof keyFn === 'function' ? keyFn : item => item[keyFn]);
+
+function keyBy(arr, keyFn) {
+  const fn = toFn(keyFn);
+  return arr.reduce((acc, item) => {
+    acc[fn(item)] = item;          // last one with the same key wins
+    return acc;
+  }, Object.create(null));
+}
+
+function countBy(arr, keyFn) {
+  const fn = toFn(keyFn);
+  return arr.reduce((m, item) => {
+    const k = fn(item);
+    return m.set(k, (m.get(k) ?? 0) + 1); // Map.set returns the map itself
+  }, new Map());
+}
+
+const rows = [{ id: 'a', v: 1 }, { id: 'b', v: 2 }, { id: 'a', v: 3 }];
+console.log(keyBy(rows, 'id'));                                  // a -> { id: 'a', v: 3 }, b -> { id: 'b', v: 2 }
+console.log(countBy(['apple', 'avocado', 'banana'], w => w[0])); // Map(2) { 'a' => 2, 'b' => 1 }
+console.log(countBy([1.2, 1.7, 2.1], Math.floor));               // Map(2) { 1 => 2, 2 => 1 }` },
+      dry: { head: ['item', 'key', 'keyBy acc', 'countBy map'], rows: [["{ id: 'a', v: 1 }", 'a', '{ a: v1 }', 'a → 1'], ["{ id: 'b', v: 2 }", 'b', '{ a: v1, b: v2 }', 'a → 1, b → 1'], ["{ id: 'a', v: 3 }", 'a', '{ a: <b>v3</b>, b: v2 }', 'a → 2, b → 1']] },
+      complexity: `<p>Time O(n), space O(distinct keys).</p>`,
+      followUps: ['groupBy returning arrays — compare with Object.groupBy / Map.groupBy', 'keyBy that throws on duplicate keys', 'sumBy(arr, keyFn, valueFn)']
+    }
+  });
+
+  practice.push({
+    title: 'Predict the Output: References, Spread & JSON',
+    level: 'Medium', tags: ['predict the output', 'references', 'spread', 'JSON'], companies: ['Common frontend screening'],
+    statement: `<p>Predict every printed line, then explain the memory picture behind each.</p>
+<pre>const a = { n: 1, inner: { m: 1 }, list: [1] };
+const b = a;
+const c = { ...a };
+const d = JSON.parse(JSON.stringify(a));
+b.n = 2;
+c.inner.m = 2;
+c.list = [9];
+d.inner.m = 3;
+console.log(a.n, a.inner.m, a.list);
+console.log(c.n, c.inner === a.inner, d.inner === a.inner);
+console.log(a === b, a === c, JSON.stringify(a) === JSON.stringify(b));</pre>`,
+    constraints: `<p>Assume a modern engine; reason with the "variables hold arrows to objects" model.</p>`,
+    example: `<p>Hint for line 1: <code>b</code> is the same object as <code>a</code>, so <code>b.n = 2</code> is visible through <code>a</code>. Work out <code>inner</code> and <code>list</code> yourself.</p>`,
+    brute: { why: `<p>Assuming "every new variable is a copy" (or that spread is deep) leads to wrong answers on lines 1 and 2. You must track which objects are <b>shared</b> after each line.</p>`, code: { lang: 'js', run: true, code: `const a = { n: 1, inner: { m: 1 }, list: [1] };
+const b = a;
+const c = { ...a };
+const d = JSON.parse(JSON.stringify(a));
+b.n = 2;
+c.inner.m = 2;
+c.list = [9];
+d.inner.m = 3;
+console.log(a.n, a.inner.m, a.list);
+console.log(c.n, c.inner === a.inner, d.inner === a.inner);
+console.log(a === b, a === c, JSON.stringify(a) === JSON.stringify(b));` } },
+    mcq: { q: 'After <code>c.list = [9]</code>, what is <code>a.list</code>?', options: ['<code>[1]</code> — c.list was re-pointed to a new array, a still points to the old one', '<code>[9]</code> — lists are shared', '<code>undefined</code>', '<code>[1, 9]</code>'], answer: 0, explain: 'Assigning a new array to c.list changes only c\'s own property. Mutating it (c.list.push(9)) would have affected a, because the spread copy shared the array.' },
+    hints: [`<p>Draw boxes: a and b → object O1. c → new object O2 whose inner/list arrows point to the <b>same</b> inner/list as O1. d → a completely separate deep copy.</p>`, `<p>Mutation through a shared arrow (<code>c.inner.m = 2</code>) is visible to everyone sharing it. Re-pointing (<code>c.list = [9]</code>) is not.</p>`, `<p>c was copied <b>before</b> <code>b.n = 2</code>, so c.n is still 1. d's inner is its own object.</p>`],
+    solution: {
+      approach: `<p>a/b share O1. c is a shallow copy taken when n was 1, sharing inner and list. d is a deep copy. b.n=2 → a.n=2. c.inner.m=2 → shared inner, so a.inner.m=2. c.list=[9] re-points only c. d.inner.m=3 changes d's private inner.</p>`,
+      code: { lang: 'js', run: true, code: `const a = { n: 1, inner: { m: 1 }, list: [1] };
+const b = a;                              // same object
+const c = { ...a };                       // shallow copy (n copied as 1; inner & list shared)
+const d = JSON.parse(JSON.stringify(a));  // deep copy (plain data only)
+b.n = 2;                                  // O1.n = 2 (a sees it)
+c.inner.m = 2;                            // shared inner -> a.inner.m = 2
+c.list = [9];                             // re-point c.list only
+d.inner.m = 3;                            // d's own inner
+console.log(a.n, a.inner.m, a.list);                                // 2 2 [ 1 ]
+console.log(c.n, c.inner === a.inner, d.inner === a.inner);         // 1 true false
+console.log(a === b, a === c, JSON.stringify(a) === JSON.stringify(b)); // true false true` },
+      dry: { head: ['line', 'a', 'c', 'd'], rows: [['copies made', 'n1 m1 [1]', 'n1, shares inner/list', 'n1 m1 [1] (own)'], ['b.n = 2', '<b>n2</b>', 'n1', 'n1'], ['c.inner.m = 2', '<b>m2</b> (shared)', 'm2', 'm1'], ['c.list = [9]', '[1]', '<b>[9]</b>', '[1]'], ['d.inner.m = 3', 'm2', 'm2', '<b>m3</b>']] },
+      complexity: `<p>Mental-model question; the key complexity insight is that spread copies one level (O(top-level keys)), JSON round-trip copies everything (O(total size)).</p>`,
+      followUps: ['Replace the JSON copy with structuredClone — what changes for Dates and Maps?', 'Which lines would change if <code>c</code> were made with <code>structuredClone(a)</code>?']
+    }
   });
 
   registerModule({ id: 'js02', title: 'Functions, Arrays & Objects', intro: '<p>stub</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview });

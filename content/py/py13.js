@@ -2182,5 +2182,923 @@ print(remove_evens_in_place([2, 4, 5, 6, 8, 7]))   # [5, 7]
       }
     }]
   });
-  registerModule({ id: 'py13', title: 'Performance & Expert Python + Gotchas Bank', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview });
+
+  /* ======================================================================
+     PRACTICE — Easy
+     ====================================================================== */
+  practice.push({
+    title: 'Predict: The Multipliers Interview Classic (late binding)',
+    level: 'Easy', tags: ['closures', 'late binding', 'predict output'], companies: ['Google', 'Toptal', 'Booking.com'],
+    statement: R`<p>Predict the output, explain it, then fix <code>multipliers()</code> so it prints <code>[0, 2, 4, 6]</code>.</p><pre>def multipliers():
+    return [lambda x: i * x for i in range(4)]
+
+print([m(2) for m in multipliers()])</pre>`,
+    constraints: R`Do not change the call site. Give at least two different fixes.`,
+    example: R`<p>Output: <code>${H.c('r', '[6, 6, 6, 6]')}</code>. Every lambda looks up <code>i</code> when it is <b>called</b>; by then the comprehension has finished and <code>i</code> is 3, so each returns 3 × 2 = 6.</p>`,
+    brute: { why: R`<p>The four lambdas share one closure cell for <code>i</code>. They capture the <b>variable</b>, not its value at creation time, so all of them see the final value 3.</p>`, code: { lang: 'python', run: true, code: R`
+def multipliers():
+    return [lambda x: i * x for i in range(4)]
+
+print([m(2) for m in multipliers()])        # [6, 6, 6, 6]
+print([c.cell_contents for c in multipliers()[0].__closure__])   # [3]` } },
+    mcq: { q: 'Which change binds the current value of i into each lambda?', options: ['<code>lambda x, i=i: i * x</code>', '<code>lambda x: (i) * x</code>', 'Use a list instead of a comprehension', 'Rename i to j'], answer: 0, explain: 'Default values are evaluated at definition time, so i=i snapshots the current i into each lambda. Parentheses or renaming change nothing.' },
+    hints: [R`<p>Hint 1: ask "when is <code>i</code> looked up?" — at call time, after the loop has finished.</p>`, R`<p>Hint 2: something evaluated at <b>definition</b> time can freeze the value: a default argument, <code>functools.partial</code>, or a factory function with its own scope.</p>`, R`<p>Hint 3: fixes — <code>lambda x, i=i: i * x</code>; or <code>partial(operator.mul, i)</code>; or a generator <code>(lambda x: i * x for i in range(4))</code> consumed lazily (fragile!). Prefer the first two.</p>`],
+    solution: {
+      approach: R`<p>Snapshot <code>i</code> at creation time. A default argument is the shortest fix; <code>functools.partial</code> is the most explicit. Mention ruff rule B023 ("function definition does not bind loop variable") that flags this automatically.</p>`,
+      code: { lang: 'python', run: true, code: R`
+import operator
+from functools import partial
+
+def multipliers_default():
+    return [lambda x, i=i: i * x for i in range(4)]   # value captured now
+
+def multipliers_partial():
+    return [partial(operator.mul, i) for i in range(4)]
+
+print([m(2) for m in multipliers_default()])    # [0, 2, 4, 6]
+print([m(2) for m in multipliers_partial()])    # [0, 2, 4, 6]
+` },
+      dry: { head: ['lambda #', 'i at creation', 'i at call (buggy)', 'result buggy', 'result fixed'], rows: [
+        ['0', '0', '3', '6', '0'], ['1', '1', '3', '6', '2'], ['2', '2', '3', '6', '4'], ['3', '3', '3', '6', '6']
+      ] },
+      complexity: R`<p>O(k) to build k functions, O(1) per call. The fix changes correctness, not cost.</p>`,
+      followUps: ['Does the same bug happen with <code>def</code> inside a for loop?', 'Why does the <code>i=i</code> trick let a caller accidentally override i?']
+    }
+  });
+
+  practice.push({
+    title: 'Predict: Tic-Tac-Toe Board Marks a Whole Column',
+    level: 'Easy', tags: ['aliasing', 'list multiplication', 'predict output'], companies: ['Microsoft', 'Zoho', 'Wipro'],
+    statement: R`<p>A game creates its board with <code>board = [["."] * 3] * 3</code>, then plays <code>board[0][1] = "X"</code>. Predict what <code>for row in board: print("".join(row))</code> prints, explain, and fix the board creation.</p>`,
+    constraints: R`Board size n × n with 1 ≤ n ≤ 100; the fix must create n independent rows.`,
+    example: R`<p>Output: <code>${H.c('r', '.X.')}</code> three times. Expected: <code>${H.c('g', '.X.')}</code> then <code>...</code> twice.</p>`,
+    brute: { why: R`<p><code>* 3</code> on the outer list copies the <b>reference</b> to the single inner row three times. All three rows are one object, so writing to "row 0" writes to all of them.</p>`, code: { lang: 'python', run: true, code: R`
+board = [["."] * 3] * 3
+board[0][1] = "X"
+for row in board:
+    print("".join(row))
+print(board[0] is board[2])     # True` } },
+    mcq: { q: 'How many distinct row list objects does <code>[["."] * 3] * 3</code> create?', options: ['1', '3', '9', '0 — it is a tuple'], answer: 0, explain: 'The inner ["."]*3 runs once, producing one list; the outer * 3 makes three references to it.' },
+    hints: [R`<p>Hint 1: check <code>board[0] is board[1]</code> — identity reveals the sharing.</p>`, R`<p>Hint 2: the expression that builds a row must run <b>once per row</b>, i.e. inside a loop or comprehension.</p>`, R`<p>Hint 3: fix — <code>board = [["."] * n for _ in range(n)]</code>. The inner <code>["."] * n</code> is fine because strings are immutable.</p>`],
+    solution: {
+      approach: R`<p>Build each row separately with a comprehension. Inner multiplication of immutable items is safe; outer multiplication of mutable rows is not.</p>`,
+      code: { lang: 'python', run: true, code: R`
+n = 3
+board = [["."] * n for _ in range(n)]   # n independent rows
+board[0][1] = "X"
+for row in board:
+    print("".join(row))
+print(board[0] is board[2])             # False
+` },
+      complexity: R`<p>O(n²) to build the board, O(1) per move.</p>`,
+      followUps: ['Would <code>[[None] * 3 for _ in range(3)]</code> also be safe?', 'Does <code>copy.copy(board)</code> fix aliasing between boards?']
+    }
+  });
+
+  practice.push({
+    title: 'Predict: sort() Returns None and Other In-Place Traps',
+    level: 'Easy', tags: ['in-place methods', 'predict output', 'strings'], companies: ['TCS', 'Accenture', 'Meta'],
+    statement: R`<p>Predict the output of this snippet line by line and fix the two bugs so it prints the sorted scores and <code>HELLO</code>.</p><pre>scores = [30, 10, 20]
+best = scores.sort(reverse=True)
+print(best)
+name = "hello"
+name.upper()
+print(name)
+print(sorted(scores) == scores, scores)</pre>`,
+    constraints: R`Use built-ins only; explain which methods mutate and which return new objects.`,
+    example: R`<p>Output: <code>${H.c('r', 'None')}</code>, <code>${H.c('r', 'hello')}</code>, <code>False [30, 20, 10]</code>. <code>list.sort()</code> sorts in place and returns <code>None</code>; <code>str.upper()</code> returns a new string that was thrown away; <code>scores</code> itself is now descending.</p>`,
+    brute: { why: R`<p>Mixing up "mutate and return None" methods (<code>sort</code>, <code>append</code>, <code>reverse</code>, <code>update</code>) with "return a new object" methods (<code>sorted</code>, all <code>str</code> methods, <code>+</code>). Strings are immutable, so string methods can never change the original.</p>`, code: { lang: 'python', run: true, code: R`
+scores = [30, 10, 20]
+best = scores.sort(reverse=True)
+print(best)                     # None
+name = "hello"
+name.upper()                    # result discarded
+print(name)                     # hello
+print(sorted(scores) == scores, scores)   # False [30, 20, 10]` } },
+    mcq: { q: 'Which of these returns a NEW object instead of mutating?', options: ['<code>sorted(lst)</code>', '<code>lst.sort()</code>', '<code>lst.reverse()</code>', '<code>d.update(other)</code>'], answer: 0, explain: 'sorted() always builds and returns a new list. The others mutate in place and return None — a convention (Command–Query Separation) so you notice the mutation.' },
+    hints: [R`<p>Hint 1: a method that mutates in place returns <code>None</code> in Python by convention.</p>`, R`<p>Hint 2: <code>str</code> is immutable — <code>name.upper()</code> must be assigned: <code>name = name.upper()</code>.</p>`, R`<p>Hint 3: fix — <code>best = sorted(scores, reverse=True)</code> keeps the original order intact; or call <code>scores.sort(...)</code> on its own line and print <code>scores</code>.</p>`],
+    solution: {
+      approach: R`<p>Use the function form that returns a new value (<code>sorted</code>) when you need the result in an expression, and re-assign results of string methods.</p>`,
+      code: { lang: 'python', run: true, code: R`
+scores = [30, 10, 20]
+best = sorted(scores, reverse=True)   # new list; scores unchanged
+print(best, scores)                   # [30, 20, 10] [30, 10, 20]
+name = "hello"
+name = name.upper()                   # rebind to the new string
+print(name)                           # HELLO
+` },
+      complexity: R`<p>Sorting O(n log n) either way; <code>sorted</code> also uses O(n) extra memory for the new list.</p>`,
+      followUps: ['Why does <code>lst = lst.append(4)</code> lose your data?', 'Is <code>reversed(lst)</code> a list?']
+    }
+  });
+
+  practice.push({
+    title: 'Speed Up a CSV Line Builder (join vs +=)',
+    level: 'Easy', tags: ['strings', 'performance', 'timeit'], companies: ['Stripe', 'Shopify', 'Zomato'],
+    statement: R`<p>Export 200,000 order rows to CSV text. The current code concatenates strings with <code>+=</code> inside two nested loops. Rewrite it with <code>str.join</code> and an f-string per row, and measure both with <code>timeit</code>.</p>`,
+    constraints: R`Rows are tuples <code>(id, name, amount)</code>; output is one string, lines separated by <code>\n</code>, fields by commas, no trailing newline.`,
+    example: R`<p>rows = <code>[(1, "pen", 2.5), (2, "ink", 4.0)]</code> → <code>${H.c('g', '"1,pen,2.5\\n2,ink,4.0"')}</code>.</p>`,
+    brute: { why: R`<p>Each <code>+=</code> may create a brand-new string and copy everything built so far, so the worst case is O(total²). CPython sometimes resizes in place as an optimisation when the string has only one reference, but that is fragile (any other reference, or PyPy, disables it) and the per-field Python work is still heavy.</p>`, code: { lang: 'python', run: true, code: R`
+def to_csv_slow(rows):
+    out = ""
+    for i, row in enumerate(rows):
+        for j, field in enumerate(row):
+            out += str(field)              # repeated concatenation
+            if j < len(row) - 1:
+                out += ","
+        if i < len(rows) - 1:
+            out += "\n"
+    return out
+
+print(repr(to_csv_slow([(1, "pen", 2.5), (2, "ink", 4.0)])))` } },
+    mcq: { q: 'Why is <code>"\\n".join(lines)</code> guaranteed linear?', options: ['It measures all pieces first, allocates the final string once, then copies each piece once', 'It uses multiple threads', 'It compresses the strings', 'It caches previous results'], answer: 0, explain: 'join does two passes: sum lengths, one allocation, one copy per piece → O(total length).' },
+    hints: [R`<p>Hint 1: collect pieces in a list (or generator) and glue them once at the end.</p>`, R`<p>Hint 2: an f-string per row (<code>f"{i},{name},{amt}"</code>) replaces the inner loop and the comma bookkeeping.</p>`, R`<p>Hint 3: recipe — <code>"\n".join(f"{a},{b},{c}" for a, b, c in rows)</code>. For real CSV with quotes and commas inside fields, use the <code>csv</code> module writing to <code>io.StringIO</code>.</p>`],
+    solution: {
+      approach: R`<p>One generator of formatted lines + one <code>join</code>. Fewer bytecodes per row, one final allocation, and no quadratic risk. Measure with <code>timeit</code> on realistic data size.</p>`,
+      code: { lang: 'python', run: true, code: R`
+import timeit
+
+def to_csv_slow(rows):
+    out = ""
+    for i, row in enumerate(rows):
+        for j, field in enumerate(row):
+            out += str(field)
+            if j < len(row) - 1:
+                out += ","
+        if i < len(rows) - 1:
+            out += "\n"
+    return out
+
+def to_csv_fast(rows):
+    return "\n".join(f"{a},{b},{c}" for a, b, c in rows)
+
+rows = [(i, f"item{i}", i * 0.5) for i in range(200_000)]
+assert to_csv_fast(rows) == to_csv_slow(rows)
+for fn in (to_csv_slow, to_csv_fast):
+    t = min(timeit.repeat(lambda: fn(rows), number=1, repeat=3))
+    print(f"{fn.__name__:<12} {t * 1000:7.1f} ms")
+` },
+      complexity: R`<p>O(total output length) time and memory for the fast version; the slow version is O(total²) in the worst case and has a much larger constant.</p>`,
+      followUps: ['Stream the CSV to a file without building the whole string', 'Why is <code>csv.writer</code> safer than f-strings?']
+    }
+  });
+
+  practice.push({
+    title: 'Common Customer IDs: From O(n·m) to O(n + m)',
+    level: 'Easy', tags: ['set', 'performance', 'hashing'], companies: ['Amazon', 'Walmart', 'Swiggy'],
+    statement: R`<p>Given two lists of customer IDs (yesterday's buyers and today's buyers, up to 10<sup>6</sup> each), return the IDs that appear in both, sorted ascending, without duplicates.</p>`,
+    constraints: R`1 ≤ n, m ≤ 10<sup>6</sup>; IDs are ints; output sorted ascending, unique.`,
+    example: R`<p>a = <code>[5, 1, 9, 5, 3]</code>, b = <code>[3, 5, 7, 5]</code> → <code>${H.c('g', '[3, 5]')}</code>.</p>`,
+    brute: { why: R`<p><code>x in b</code> on a list scans all of <code>b</code>: n × m = 10<sup>12</sup> comparisons. The extra <code>not in out</code> check is another linear scan.</p>`, code: { lang: 'python', run: true, code: R`
+def common_slow(a, b):
+    out = []
+    for x in a:
+        if x in b and x not in out:     # two linear scans per element
+            out.append(x)
+    return sorted(out)
+
+print(common_slow([5, 1, 9, 5, 3], [3, 5, 7, 5]))` } },
+    mcq: { q: 'What is the time complexity of <code>set(a) &amp; set(b)</code>?', options: ['O(n + m) on average', 'O(n · m)', 'O(n log m)', 'O(1)'], answer: 0, explain: 'Building each set is linear; intersection iterates the smaller set and probes the other in O(1) average.' },
+    hints: [R`<p>Hint 1: the question "is x in b?" is asked n times — make each answer O(1).</p>`, R`<p>Hint 2: sets give O(1) membership and deduplicate for free; <code>&amp;</code> computes the intersection in C.</p>`, R`<p>Hint 3: recipe — <code>sorted(set(a) &amp; set(b))</code>. Memory-sensitive variant: build a set of the smaller list only and stream the bigger one.</p>`],
+    solution: {
+      approach: R`<p>Convert to sets and intersect; sort only the (usually small) result. Building the set of the smaller input and iterating the larger one keeps memory down.</p>`,
+      code: { lang: 'python', run: true, code: R`
+import random
+import time
+
+def common_fast(a, b):
+    small, big = (a, b) if len(a) <= len(b) else (b, a)
+    s = set(small)
+    return sorted({x for x in big if x in s})
+
+print(common_fast([5, 1, 9, 5, 3], [3, 5, 7, 5]))      # [3, 5]
+random.seed(3)
+a = [random.randrange(2_000_000) for _ in range(300_000)]
+b = [random.randrange(2_000_000) for _ in range(300_000)]
+t = time.perf_counter()
+r = common_fast(a, b)
+print(len(r), f"common ids in {(time.perf_counter() - t) * 1000:.0f} ms")
+assert r == sorted(set(a) & set(b))
+` },
+      complexity: R`<p>O(n + m + k log k) time where k is the number of common IDs; O(min(n, m) + k) memory.</p>`,
+      followUps: ['Both lists are already sorted — do it with O(1) extra memory (two pointers)', 'The lists live on two different machines — how do you intersect with minimal network transfer (Bloom filter)?']
+    }
+  });
+
+  /* ======================================================================
+     PRACTICE — Medium
+     ====================================================================== */
+  practice.push({
+    title: 'Predict: try / except / else / finally Execution Order',
+    level: 'Medium', tags: ['exceptions', 'finally', 'predict output'], companies: ['Bloomberg', 'Goldman Sachs', 'Oracle'],
+    statement: R`<p>Predict everything this prints, in order, for <code>run(1)</code>, <code>run(0)</code> and <code>run("x")</code>. Then explain the rule that decides the return value.</p><pre>def run(d):
+    try:
+        r = 10 / d
+    except ZeroDivisionError:
+        print("except")
+        return "E"
+    else:
+        print("else")
+        return "OK"
+    finally:
+        print("finally")
+</pre>`,
+    constraints: R`State the full output including the printed return values of <code>print(run(1))</code>, <code>print(run(0))</code>, and what happens for <code>run("x")</code>.`,
+    example: R`<p><code>print(run(1))</code> → <code>else</code>, <code>finally</code>, <code>${H.c('g', 'OK')}</code>. The else branch's <code>return "OK"</code> is <i>pending</i> while finally runs; finally has no return, so "OK" goes through.</p>`,
+    brute: { why: R`<p>The common wrong answer is "return exits immediately, so finally does not print" — but <code>finally</code> <b>always</b> runs on the way out, whether via return, exception, break or continue. A <code>TypeError</code> is not caught by <code>except ZeroDivisionError</code>, so it propagates <i>after</i> finally runs.</p>`, code: { lang: 'python', run: true, code: R`
+def run(d):
+    try:
+        r = 10 / d
+    except ZeroDivisionError:
+        print("except")
+        return "E"
+    else:
+        print("else")
+        return "OK"
+    finally:
+        print("finally")
+
+print(run(1))
+print(run(0))
+try:
+    print(run("x"))
+except TypeError as e:
+    print("TypeError escaped:", e)` } },
+    mcq: { q: 'For <code>run("x")</code>, what is printed before the TypeError reaches the caller?', options: ['"finally" only', '"except" then "finally"', 'Nothing', '"else" then "finally"'], answer: 0, explain: 'The except clause does not match TypeError and else only runs when no exception occurred, but finally runs before the exception propagates.' },
+    hints: [R`<p>Hint 1: <code>else</code> runs only if the <code>try</code> block raised nothing.</p>`, R`<p>Hint 2: <code>finally</code> runs last in every path; if <b>it</b> contained a <code>return</code>, that would override any pending return or swallow the exception.</p>`, R`<p>Hint 3: trace three paths — success: else → finally → "OK"; ZeroDivisionError: except → finally → "E"; TypeError: (no matching except) → finally → exception propagates.</p>`],
+    solution: {
+      approach: R`<p>Keep only the code that can raise in <code>try</code>, put the success path in <code>else</code> (so its own errors are not accidentally caught), and use <code>finally</code> for cleanup with <b>no return statements</b> (Python 3.14 warns about them — PEP 765).</p>`,
+      code: { lang: 'python', run: true, code: R`
+def run(d):
+    try:
+        r = 10 / d
+    except ZeroDivisionError:
+        print("except")
+        return "E"
+    else:
+        print("else")
+        return "OK"
+    finally:
+        print("finally")            # cleanup only; no return here
+
+for arg in (1, 0, "x"):
+    try:
+        print("->", run(arg))
+    except TypeError as e:
+        print("-> TypeError:", e)
+` },
+      dry: { head: ['call', 'printed', 'result'], rows: [
+        ['run(1)', 'else, finally', '"OK"'],
+        ['run(0)', 'except, finally', '"E"'],
+        ['run("x")', 'finally', '<span class="c-r">TypeError propagates</span>']
+      ] },
+      complexity: R`<p>O(1). The point is control flow: finally runs on every exit path.</p>`,
+      followUps: ['What prints if finally does <code>return "F"</code> and the try raises KeyError?', 'How do <code>with</code> statements relate to try/finally?']
+    }
+  });
+
+  practice.push({
+    title: 'Predict: The Global Counter UnboundLocalError',
+    level: 'Medium', tags: ['scope', 'LEGB', 'predict output'], companies: ['Uber', 'Paytm', 'Intuit'],
+    statement: R`<p>A metrics module counts requests. Predict what happens, explain using LEGB and compile-time scoping, and give a clean fix that avoids <code>global</code>.</p><pre>count = 0
+def handle():
+    count += 1
+    return count
+handle()</pre>`,
+    constraints: R`The fix must be safe to test (no hidden module state) and simple to reason about.`,
+    example: R`<p>Result: <code>${H.c('r', "UnboundLocalError: cannot access local variable 'count' where it is not associated with a value")}</code>. Because <code>count += 1</code> assigns, <code>count</code> is local to <code>handle</code> — and is read before it has a value.</p>`,
+    brute: { why: R`<p>The quick fix <code>global count</code> works, but global mutable state makes tests order-dependent and is not thread-safe (<code>count += 1</code> is a read-modify-write that can race across threads).</p>`, code: { lang: 'python', run: true, code: R`
+count = 0
+def handle():
+    global count            # works, but hidden shared state
+    count += 1
+    return count
+
+print(handle(), handle())   # 1 2
+
+def broken():
+    total += 1              # local because of the assignment
+try:
+    total = 0
+    broken()
+except UnboundLocalError as e:
+    print("UnboundLocalError:", e)` } },
+    mcq: { q: 'When does Python decide that <code>count</code> is local inside <code>handle</code>?', options: ['At compile time, because the function body contains an assignment to count', 'At runtime, on the line where count is first assigned', 'Only if count does not exist globally', 'Never — augmented assignment always uses globals'], answer: 0, explain: 'The compiler scans the whole function body; any binding makes the name local for the entire function (LOAD_FAST), unless declared global/nonlocal.' },
+    hints: [R`<p>Hint 1: run <code>dis.dis(handle)</code> — you will see <code>LOAD_FAST count</code>, not <code>LOAD_GLOBAL</code>.</p>`, R`<p>Hint 2: move the state into an object (a class with a counter attribute, or a closure using <code>nonlocal</code>) so each test can create a fresh one.</p>`, R`<p>Hint 3: for thread safety use a <code>threading.Lock</code> around the increment, or <code>itertools.count()</code> whose <code>next()</code> is atomic in CPython.</p>`],
+    solution: {
+      approach: R`<p>Encapsulate the state: a small class (or closure with <code>nonlocal</code>) owns the counter; inject it where needed. Add a lock if multiple threads handle requests.</p>`,
+      code: { lang: 'python', run: true, code: R`
+import threading
+
+class RequestCounter:
+    def __init__(self):
+        self._n = 0
+        self._lock = threading.Lock()
+    def handle(self):
+        with self._lock:              # read-modify-write made atomic
+            self._n += 1
+            return self._n
+
+c = RequestCounter()
+threads = [threading.Thread(target=lambda: [c.handle() for _ in range(10_000)]) for _ in range(4)]
+for t in threads: t.start()
+for t in threads: t.join()
+print(c.handle() - 1)                 # 40000
+
+def make_counter():
+    n = 0
+    def handle():
+        nonlocal n                    # rebinds the enclosing variable
+        n += 1
+        return n
+    return handle
+h = make_counter()
+print(h(), h())                       # 1 2
+` },
+      complexity: R`<p>O(1) per request; the lock adds a small constant cost.</p>`,
+      followUps: ['Is <code>count += 1</code> atomic under the GIL? Under free-threaded Python?', 'Why does reading a global without assigning it work fine?']
+    }
+  });
+
+  practice.push({
+    title: 'Predict: Chained Comparisons, Precedence and Negative Powers',
+    level: 'Medium', tags: ['operators', 'precedence', 'predict output'], companies: ['Adobe', 'Cisco', 'Atlassian'],
+    statement: R`<p>Predict each value without running it, then verify:</p><pre>print(1 &lt; 3 &gt; 2)
+print(1 == 1 in [1])
+print(False == False in [False])
+print(-2 ** 2, (-2) ** 2)
+print(not 1 == 2, 2 ** 3 ** 2)
+print(10 - 4 - 3, 2 * 3 % 4)</pre>`,
+    constraints: R`Explain each line with the precise rule (chaining, precedence, associativity).`,
+    example: R`<p>Line 1 → <code>${H.c('g', 'True')}</code> because it means <code>1 &lt; 3 and 3 &gt; 2</code>. Line 2 → <code>${H.c('g', 'True')}</code>: <code>in</code> is a comparison operator too, so it chains: <code>(1 == 1) and (1 in [1])</code>.</p>`,
+    brute: { why: R`<p>Reading left to right like arithmetic gives wrong answers: <code>(1 == 1) in [1]</code> would be <code>True in [1]</code> → True by luck, but <code>(False == False) in [False]</code> → <code>True in [False]</code> → False, while the real chained answer is True. Unary minus binds <b>looser</b> than <code>**</code>, and <code>**</code> is right-associative.</p>`, code: { lang: 'python', run: true, code: R`
+# the "naive left-to-right" reading, made explicit, gives different answers:
+print((1 == 1) in [1])            # True (by luck)
+print((False == False) in [False])  # False  <- naive reading
+print((-2) ** 2)                  # 4      <- naive reading of -2 ** 2` } },
+    mcq: { q: 'What is <code>2 ** 3 ** 2</code>?', options: ['512 (right-associative: 2 ** 9)', '64 ((2 ** 3) ** 2)', '36', 'SyntaxError'], answer: 0, explain: 'Exponentiation groups from the right, like in maths: 2^(3^2) = 2^9 = 512.' },
+    hints: [R`<p>Hint 1: all comparison operators — <code>&lt; &gt; == != &lt;= &gt;= in, not in, is, is not</code> — chain: <code>a op1 b op2 c</code> ≡ <code>a op1 b and b op2 c</code> (b evaluated once).</p>`, R`<p>Hint 2: <code>**</code> binds tighter than unary minus on its left: <code>-2 ** 2</code> = <code>-(2 ** 2)</code> = −4; and it is right-associative.</p>`, R`<p>Hint 3: <code>not</code> has lower precedence than <code>==</code>, so <code>not 1 == 2</code> = <code>not (1 == 2)</code> = True. <code>*</code> and <code>%</code> share precedence, left to right: <code>(2 * 3) % 4</code> = 2. Subtraction is left-associative: (10 − 4) − 3 = 3.</p>`],
+    solution: {
+      approach: R`<p>Apply three rules: comparisons chain; precedence table (<code>**</code> &gt; unary <code>-</code> &gt; <code>* / // %</code> &gt; <code>+ -</code> &gt; comparisons &gt; <code>not</code> &gt; <code>and</code> &gt; <code>or</code>); <code>**</code> is right-associative, everything else left-associative. In real code, add parentheses — readability beats cleverness.</p>`,
+      code: { lang: 'python', run: true, code: R`
+print(1 < 3 > 2)                  # True   (1<3 and 3>2)
+print(1 == 1 in [1])              # True   (1==1 and 1 in [1])
+print(False == False in [False])  # True   (False==False and False in [False])
+print(-2 ** 2, (-2) ** 2)         # -4 4
+print(not 1 == 2, 2 ** 3 ** 2)    # True 512
+print(10 - 4 - 3, 2 * 3 % 4)      # 3 2
+` },
+      dry: { head: ['expression', 'rewritten', 'value'], rows: [
+        ['1 &lt; 3 &gt; 2', '1&lt;3 and 3&gt;2', 'True'],
+        ['False == False in [False]', '(False==False) and (False in [False])', 'True'],
+        ['-2 ** 2', '-(2 ** 2)', '-4'],
+        ['2 ** 3 ** 2', '2 ** (3 ** 2)', '512']
+      ] },
+      complexity: R`<p>O(1); this is about language rules, not cost. Note chaining evaluates the middle operand once.</p>`,
+      followUps: ['What does <code>x = 5; print(1 &lt; x &lt; 10 == True)</code> print?', 'Is <code>a is b is c</code> chained too?']
+    }
+  });
+
+  practice.push({
+    title: 'Memoize an Exponential Recursion (Grid Paths with Obstacles)',
+    level: 'Medium', tags: ['lru_cache', 'dynamic programming', 'performance'], companies: ['Amazon', 'Goldman Sachs', 'Salesforce'],
+    statement: R`<p>Count the paths from the top-left to the bottom-right of an R × C grid moving only right or down, avoiding cells marked <code>1</code>. The recursive solution is correct but takes forever on a 16 × 16 grid. Make it fast <b>without rewriting the logic</b>, then measure the speed-up and the cache size.</p>`,
+    constraints: R`1 ≤ R, C ≤ 200; answer can be huge (Python ints are arbitrary precision).`,
+    example: R`<p>Grid <code>[[0,0,0],[0,1,0],[0,0,0]]</code> → <code>${H.c('g', '2')}</code>: right-right-down-down and down-down-right-right; the centre obstacle blocks the other 4 of the 6 paths.</p>`,
+    brute: { why: R`<p>Plain recursion recomputes the same cell over and over: the call tree has up to C(R+C, R) leaves — about 6·10<sup>8</sup> for 16 × 16. Profiling shows millions of calls to the same function with the same arguments: the textbook signal for memoization.</p>`, code: { lang: 'python', run: true, code: R`
+def paths_slow(grid, r=0, c=0):
+    R, C = len(grid), len(grid[0])
+    if r >= R or c >= C or grid[r][c] == 1:
+        return 0
+    if (r, c) == (R - 1, C - 1):
+        return 1
+    return paths_slow(grid, r + 1, c) + paths_slow(grid, r, c + 1)
+
+print(paths_slow([[0, 0, 0], [0, 1, 0], [0, 0, 0]]))     # 2
+print(paths_slow([[0] * 9 for _ in range(9)]))            # 12870 (already slow-ish)` } },
+    mcq: { q: 'Why can\'t you put <code>@lru_cache</code> directly on <code>paths_slow(grid, r, c)</code>?', options: ['grid is a list, which is unhashable, so it cannot be part of the cache key', 'lru_cache only works on methods', 'Recursion is not allowed with caches', 'It would cache the wrong answer'], answer: 0, explain: 'Cache keys are built from the arguments; lists cannot be hashed. Make the grid a closure variable (or a tuple of tuples) and cache only on (r, c).' },
+    hints: [R`<p>Hint 1: the answer for cell (r, c) depends only on (r, c) — the same subproblem is reached by many routes.</p>`, R`<p>Hint 2: define an inner function <code>go(r, c)</code> that closes over the grid, decorate it with <code>@cache</code>, and call it once.</p>`, R`<p>Hint 3: for 200 × 200 the recursion depth reaches ~400 frames — fine under the default limit of 1000, but a bottom-up DP table (or a single row of size C) avoids recursion entirely.</p>`],
+    solution: {
+      approach: R`<p>Memoize on the cell coordinates with <code>functools.cache</code> on an inner function (grid captured by closure). Each of the R·C cells is computed once: exponential → O(R·C). Show <code>cache_info()</code> to prove it. Bottom-up 1-D DP is the iterative alternative.</p>`,
+      code: { lang: 'python', run: true, code: R`
+import time
+from functools import cache
+
+def paths_fast(grid):
+    R, C = len(grid), len(grid[0])
+    @cache
+    def go(r, c):
+        if r >= R or c >= C or grid[r][c] == 1:
+            return 0
+        if (r, c) == (R - 1, C - 1):
+            return 1
+        return go(r + 1, c) + go(r, c + 1)
+    result = go(0, 0)
+    print("   cache:", go.cache_info())
+    return result
+
+def paths_dp(grid):
+    C = len(grid[0])
+    row = [0] * C
+    row[0] = 1 if grid[0][0] == 0 else 0
+    for r in range(len(grid)):
+        for c in range(C):
+            if grid[r][c] == 1:
+                row[c] = 0
+            elif c > 0:
+                row[c] += row[c - 1]        # from above (old row[c]) + from left
+    return row[-1]
+
+print(paths_fast([[0, 0, 0], [0, 1, 0], [0, 0, 0]]))      # 2
+big = [[0] * 16 for _ in range(16)]
+t = time.perf_counter(); a = paths_fast(big); dt = time.perf_counter() - t
+print(a, f"in {dt * 1000:.2f} ms;  dp agrees: {paths_dp(big) == a}")
+` },
+      complexity: R`<p>Memoized: O(R·C) time and O(R·C) cache + O(R + C) recursion depth. 1-D DP: O(R·C) time, O(C) space. The brute force was exponential.</p>`,
+      followUps: ['Return the count modulo 10<sup>9</sup>+7 — does Python need it?', 'Why must cached functions be pure (no side effects, no mutable inputs)?']
+    }
+  });
+
+  practice.push({
+    title: 'Shrink 1M Sensor Readings in Memory',
+    level: 'Medium', tags: ['memory', '__slots__', 'array', 'tracemalloc'], companies: ['Tesla', 'Siemens', 'Bosch'],
+    statement: R`<p>An IoT service keeps the last 1,000,000 readings <code>(sensor_id: int, timestamp: float, value: float)</code> in RAM as a list of dicts and is hitting its 512 MB container limit. Measure the current memory per reading with <code>tracemalloc</code>, then design two smaller representations and measure them too.</p>`,
+    constraints: R`Must still support: append a reading, read reading i, and compute the average value. Pure standard library.`,
+    example: R`<p>List of dicts ≈ ${H.c('r', '~270 bytes/reading')} → 1M readings ≈ 270 MB. <code>__slots__</code> objects ≈ 140 bytes; three <code>array</code> columns ≈ ${H.c('g', '~24 bytes/reading')} (8 + 8 + 8).</p>`,
+    brute: { why: R`<p>A dict per record pays for a hash table (keys, hashes, values, spare slots) plus a separate boxed object for every number (24–28 bytes each). The data itself is only 24 bytes per reading; the rest is overhead.</p>`, code: { lang: 'python', run: true, code: R`
+import tracemalloc
+
+def build_dicts(n):
+    return [{"sensor_id": i % 500, "ts": 1_700_000_000.0 + i, "value": i * 0.1} for i in range(n)]
+
+tracemalloc.start()
+data = build_dicts(100_000)
+cur, _ = tracemalloc.get_traced_memory()
+tracemalloc.stop()
+print(f"dicts: {cur / len(data):.0f} bytes per reading")` } },
+    mcq: { q: 'Which layout gives the smallest memory per reading in pure Python?', options: ['Column arrays: array("q") / array("d") per field', 'A list of namedtuples', 'A list of dicts with short key names', 'A dict of dicts keyed by index'], answer: 0, explain: 'array stores raw 8-byte machine values without per-value object headers; the other options still create one Python object per number plus a container per record.' },
+    hints: [R`<p>Hint 1: two kinds of overhead — the per-record container and the per-value boxed number. Fix the first with <code>__slots__</code>/tuples, the second only with raw arrays.</p>`, R`<p>Hint 2: <code>array("q")</code> stores 64-bit ints, <code>array("d")</code> 64-bit floats; <code>append</code> is amortised O(1) and <code>sum()</code> works on them directly.</p>`, R`<p>Hint 3: wrap the three arrays in a small class with <code>append(sid, ts, v)</code>, <code>__getitem__(i)</code> returning a tuple, and <code>mean()</code>. A bounded "last N" buffer can use a ring index instead of deleting from the front.</p>`],
+    solution: {
+      approach: R`<p>Measure three layouts with tracemalloc under identical data. The <code>__slots__</code> class keeps the object API with ~2× savings; the column store (struct-of-arrays) gives ~10× by eliminating per-value objects, and is also what NumPy/Arrow would do. Choose by access pattern: row-wise objects for business logic, columns for analytics.</p>`,
+      code: { lang: 'python', run: true, code: R`
+import tracemalloc
+from array import array
+
+class Reading:
+    __slots__ = ("sensor_id", "ts", "value")
+    def __init__(self, sensor_id, ts, value):
+        self.sensor_id, self.ts, self.value = sensor_id, ts, value
+
+class ColumnStore:
+    def __init__(self):
+        self.sid, self.ts, self.val = array("q"), array("d"), array("d")
+    def append(self, sid, ts, v):
+        self.sid.append(sid); self.ts.append(ts); self.val.append(v)
+    def __getitem__(self, i):
+        return self.sid[i], self.ts[i], self.val[i]
+    def __len__(self):
+        return len(self.val)
+    def mean(self):
+        return sum(self.val) / len(self.val)
+
+def measure(build, n=100_000):
+    tracemalloc.start()
+    obj = build(n)
+    cur, _ = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+    return cur / n, obj
+
+def dicts(n): return [{"sensor_id": i % 500, "ts": 1.7e9 + i, "value": i * 0.1} for i in range(n)]
+def slots(n): return [Reading(i % 500, 1.7e9 + i, i * 0.1) for i in range(n)]
+def columns(n):
+    cs = ColumnStore()
+    for i in range(n):
+        cs.append(i % 500, 1.7e9 + i, i * 0.1)
+    return cs
+
+for name, fn in (("dicts", dicts), ("slots", slots), ("columns", columns)):
+    per, obj = measure(fn)
+    print(f"{name:<8} {per:6.1f} bytes/reading")
+cs = columns(5)
+print(cs[2], round(cs.mean(), 3), len(cs))
+` },
+      complexity: R`<p>All layouts: O(1) append (amortised) and O(1) index, O(n) mean. Memory: ~270 → ~140 → ~24–26 bytes per reading (arrays over-allocate a little while growing).</p>`,
+      followUps: ['Make it a fixed-size ring buffer of the last N readings', 'Move to NumPy structured arrays or Arrow — what do you gain?', 'Why might the container RSS not drop after deleting the dict version?']
+    }
+  });
+
+  practice.push({
+    title: 'Live Leaderboard: Stop Re-Sorting After Every Score',
+    level: 'Medium', tags: ['heapq', 'profiling', 'top-k'], companies: ['Riot Games', 'Dream11', 'Zynga'],
+    statement: R`<p>A game server receives a stream of scores and, after <b>each</b> score, must report the current top 3. The existing code appends then calls <code>sorted()</code> every time; the profile shows 95% of time in <code>sorted</code>. Make each update O(log k).</p>`,
+    constraints: R`Up to 10<sup>6</sup> scores; k = 3 (general k ≤ 100). Report the top k in descending order after each score.`,
+    example: R`<p>Scores <code>5, 1, 9, 7, 3</code> → after each: <code>[5]</code>, <code>[5, 1]</code>, <code>[9, 5, 1]</code>, <code>[9, 7, 5]</code>, <code>${H.c('g', '[9, 7, 5]')}</code> (3 is too small to enter).</p>`,
+    brute: { why: R`<p>Sorting all scores so far after each insert costs O(i log i) at step i → O(n² log n) total, and keeps every score in memory even though only the top 3 matter.</p>`, code: { lang: 'python', run: true, code: R`
+def leaderboard_slow(scores, k=3):
+    seen, out = [], []
+    for s in scores:
+        seen.append(s)
+        out.append(sorted(seen, reverse=True)[:k])   # full sort every time
+    return out
+
+print(leaderboard_slow([5, 1, 9, 7, 3]))` } },
+    mcq: { q: 'Which structure keeps the top k with O(log k) per update?', options: ['A min-heap of size k (root = weakest of the top k)', 'A max-heap of all scores', 'A sorted list with insert()', 'A set'], answer: 0, explain: 'Compare the new score with the heap root (the smallest of the current top k); replace it if bigger with heapreplace — O(log k). A max-heap of everything needs O(n) memory and O(k log n) to read the top k.' },
+    hints: [R`<p>Hint 1: you only ever need to know the <b>smallest</b> member of the current top k to decide if a new score gets in.</p>`, R`<p>Hint 2: <code>heapq</code> is a min-heap: while the heap has fewer than k items <code>heappush</code>; otherwise if score &gt; heap[0], <code>heapreplace</code>.</p>`, R`<p>Hint 3: reporting needs <code>sorted(heap, reverse=True)</code> — that is O(k log k) with k = 3, effectively constant. Profile again afterwards to confirm the hot spot moved.</p>`],
+    solution: {
+      approach: R`<p>Maintain a size-k min-heap. Each update is O(log k), memory O(k). Verify with cProfile: <code>sorted</code> disappears from the top of the report.</p>`,
+      code: { lang: 'python', run: true, code: R`
+import cProfile
+import heapq
+import io
+import pstats
+import random
+
+def leaderboard_fast(scores, k=3):
+    heap, out = [], []
+    for s in scores:
+        if len(heap) < k:
+            heapq.heappush(heap, s)
+        elif s > heap[0]:
+            heapq.heapreplace(heap, s)        # pop weakest + push new, O(log k)
+        out.append(sorted(heap, reverse=True))
+    return out
+
+print(leaderboard_fast([5, 1, 9, 7, 3]))     # [[5], [5, 1], [9, 5, 1], [9, 7, 5], [9, 7, 5]]
+
+random.seed(5)
+stream = [random.randrange(10**6) for _ in range(100_000)]
+pr = cProfile.Profile()
+pr.enable(); leaderboard_fast(stream); pr.disable()
+buf = io.StringIO()
+pstats.Stats(pr, stream=buf).sort_stats("tottime").print_stats(3)
+print("\n".join(buf.getvalue().splitlines()[:12]))
+` },
+      complexity: R`<p>O(n log k) time total, O(k) memory, versus O(n² log n) time and O(n) memory before.</p>`,
+      followUps: ['Support score updates for existing players (lazy deletion or a sorted container)', 'Top-k across 50 game servers — merge per-server heaps with <code>heapq.merge</code> / nlargest']
+    }
+  });
+
+  /* ======================================================================
+     PRACTICE — Hard
+     ====================================================================== */
+  practice.push({
+    title: 'Predict: Comprehension Inside a Class Body',
+    level: 'Hard', tags: ['scope', 'class body', 'comprehension', 'predict output'], companies: ['Google', 'Two Sigma', 'Dropbox'],
+    statement: R`<p>Predict what each class definition does, explain the scoping rule, and give a clean fix for <code>A</code>.</p><pre>class A:
+    base = 10
+    values = [base + i for i in range(3)]
+
+class B:
+    n = 3
+    values = [i for i in range(n)]</pre>`,
+    constraints: R`Your explanation must say which parts of a comprehension are evaluated in which scope. The fix must not use globals.`,
+    example: R`<p><code>A</code> → <code>${H.c('r', "NameError: name 'base' is not defined")}</code>. <code>B</code> → works, <code>B.values == ${H.c('g', '[0, 1, 2]')}</code>. Same class, same kind of comprehension — different result!</p>`,
+    brute: { why: R`<p>Intuition says "the comprehension is inside the class, so it sees class variables". But a class body is <b>not</b> an enclosing scope for nested functions/comprehensions: names defined in a class are invisible inside them (that is why methods must write <code>self.x</code>). The one exception: the <b>outermost iterable</b> (<code>range(n)</code> in B) is evaluated directly in the class scope before the comprehension's own scope starts.</p>`, code: { lang: 'python', run: true, code: R`
+try:
+    class A:
+        base = 10
+        values = [base + i for i in range(3)]   # base used in the inner expression
+except NameError as e:
+    print("A ->", type(e).__name__, e)
+
+class B:
+    n = 3
+    values = [i for i in range(n)]              # n used in the OUTERMOST iterable: OK
+print("B ->", B.values)` } },
+    mcq: { q: 'Which part of <code>[expr for x in ITER if cond]</code> is evaluated in the enclosing (class) scope?', options: ['Only ITER, the outermost iterable', 'expr and cond', 'Everything', 'Nothing'], answer: 0, explain: 'The first iterable is evaluated eagerly in the enclosing scope (and passed in); expr, cond and any inner iterables run in the comprehension scope, which skips class scopes during name lookup. PEP 709 inlining (3.12) kept this behaviour.' },
+    hints: [R`<p>Hint 1: LEGB lookup goes Local → Enclosing <b>function</b> → Global → Builtin. Class bodies are not "E".</p>`, R`<p>Hint 2: you can smuggle the value in through the outermost iterable or a default argument, but clearer fixes compute the list with a helper function or after the class body.</p>`, R`<p>Hint 3: clean fixes — (a) a module-level helper <code>def _values(base): return [base + i for i in range(3)]</code> called in the class body; (b) set it after the class: <code>A.values = [A.base + i for i in range(3)]</code>; (c) a <code>@classmethod</code>/<code>functools.cached_property</code> if it should be computed lazily.</p>`],
+    solution: {
+      approach: R`<p>Pass class-level values into a function explicitly. A helper function called from the class body receives <code>base</code> as an argument, so no scope magic is needed and the intent is obvious. Mention the hack <code>[b + i for b in [base] for i in range(3)]</code> only to show you understand the outermost-iterable rule.</p>`,
+      code: { lang: 'python', run: true, code: R`
+def _offsets(base, n):
+    return [base + i for i in range(n)]
+
+class A:
+    base = 10
+    values = _offsets(base, 3)                     # explicit argument: clear and correct
+
+class A2:
+    base = 10
+    values = [b + i for b in [base] for i in range(3)]   # works: [base] is the outermost iterable
+
+print(A.values, A2.values)                          # [10, 11, 12] [10, 11, 12]
+` },
+      dry: { head: ['piece', 'evaluated in', 'sees class names?'], rows: [
+        ['range(3) / range(n) (outermost iterable)', 'class body scope', '<span class="c-g">yes</span>'],
+        ['base + i (element expression)', 'comprehension scope', '<span class="c-r">no → NameError</span>'],
+        ['if-conditions, inner for-iterables', 'comprehension scope', '<span class="c-r">no</span>']
+      ] },
+      complexity: R`<p>O(n) to build the list; the issue is purely about name resolution at class-creation time.</p>`,
+      followUps: ['Does the same NameError happen with a lambda in a class body?', 'Why do methods need <code>self.</code> or <code>ClassName.</code> to read class attributes?']
+    }
+  });
+
+  practice.push({
+    title: 'Predict: The Set That Lost Its Element (mutable hash key)',
+    level: 'Hard', tags: ['__hash__', '__eq__', 'hash table', 'predict output'], companies: ['Meta', 'LinkedIn', 'Databricks'],
+    statement: R`<p>Predict the three printed values, explain them with how hash tables work, and redesign <code>Point</code> so this bug is impossible.</p><pre>class Point:
+    def __init__(self, x, y): self.x, self.y = x, y
+    def __eq__(self, o): return (self.x, self.y) == (o.x, o.y)
+    def __hash__(self): return hash((self.x, self.y))
+
+p = Point(1, 2)
+seen = {p}
+p.x = 99
+print(p in seen, Point(1, 2) in seen, len(seen))</pre>`,
+    constraints: R`The redesigned class must still be usable as a dict key and in sets, and compare by value.`,
+    example: R`<p>Output: <code>${H.c('r', 'False False 1')}</code>. The point is <i>inside</i> the set (length 1), yet neither the mutated object nor an equal fresh <code>Point(1, 2)</code> can find it.</p>`,
+    brute: { why: R`<p>A set stores each element in the bucket chosen by its hash <b>at insertion time</b>. After <code>p.x = 99</code>, <code>hash(p)</code> changes, so <code>p in seen</code> probes a different bucket → not found. <code>Point(1, 2)</code> has the old hash and probes the right bucket, but <code>__eq__</code> compares (1, 2) with the mutated (99, 2) → not equal → not found. The element is stranded.</p>`, code: { lang: 'python', run: true, code: R`
+class Point:
+    def __init__(self, x, y): self.x, self.y = x, y
+    def __eq__(self, o): return (self.x, self.y) == (o.x, o.y)
+    def __hash__(self): return hash((self.x, self.y))
+
+p = Point(1, 2)
+seen = {p}
+p.x = 99
+print(p in seen, Point(1, 2) in seen, len(seen))   # False False 1
+print(any(q is p for q in seen))                    # True: it IS in there` } },
+    mcq: { q: 'What is the rule this code breaks?', options: ['An object\'s hash must never change while it is in a hash-based container (hash must depend only on immutable state)', 'Classes must not define __eq__', '__hash__ must return a positive number', 'Sets can only hold built-in types'], answer: 0, explain: 'Equal objects must have equal hashes, and the hash must stay constant for the object\'s lifetime in a dict/set. Hashing mutable fields violates the second rule.' },
+    hints: [R`<p>Hint 1: draw the hash table: the element sits in the bucket for hash((1, 2)). Where does each lookup go?</p>`, R`<p>Hint 2: make the fields immutable: <code>@dataclass(frozen=True)</code> generates <code>__eq__</code> and <code>__hash__</code> and blocks assignment with <code>FrozenInstanceError</code>.</p>`, R`<p>Hint 3: alternatives — <code>typing.NamedTuple</code>; or keep the class mutable but hash by identity (do not define <code>__hash__</code>/<code>__eq__</code>), or set <code>__hash__ = None</code> to make it explicitly unhashable.</p>`],
+    solution: {
+      approach: R`<p>Hash only immutable state. A frozen dataclass makes the contract enforced by the language: equal values → equal hashes, and the value cannot change after creation. To "move" a point, create a new one with <code>dataclasses.replace</code>.</p>`,
+      code: { lang: 'python', run: true, code: R`
+from dataclasses import FrozenInstanceError, dataclass, replace
+
+@dataclass(frozen=True)
+class Point:
+    x: int
+    y: int
+
+p = Point(1, 2)
+seen = {p}
+try:
+    p.x = 99
+except FrozenInstanceError as e:
+    print("blocked:", type(e).__name__)
+q = replace(p, x=99)                     # a NEW point instead of mutating
+print(p in seen, Point(1, 2) in seen, q in seen, len(seen))   # True True False 1
+` },
+      dry: { head: ['step', 'hash used', 'bucket probed', 'eq check', 'found?'], rows: [
+        ['add p=(1,2)', 'h(1,2)', 'B1', '—', 'stored in B1'],
+        ['p.x = 99', '—', '—', '—', 'p still sits in B1'],
+        ['p in seen', 'h(99,2)', 'B2 (empty)', '—', '<span class="c-r">False</span>'],
+        ['Point(1,2) in seen', 'h(1,2)', 'B1', '(1,2) == (99,2)? no', '<span class="c-r">False</span>']
+      ] },
+      complexity: R`<p>O(1) average set operations once the contract holds. Breaking it does not slow things down — it silently loses data, which is worse.</p>`,
+      followUps: ['Why do lists define <code>__hash__ = None</code>?', 'Is a tuple containing a list hashable?', 'What happens to dict lookups if two unequal objects share a hash?']
+    }
+  });
+
+  practice.push({
+    title: 'Vectorize Nearest-Centre Assignment (k-means step)',
+    level: 'Hard', tags: ['numpy', 'broadcasting', 'vectorization', 'memory'], companies: ['NVIDIA', 'Spotify', 'Uber'],
+    statement: R`<p>Assign each of n 2-D points to its nearest of k centres (the k-means "assignment step"). The triple-nested Python loop takes minutes for n = 10<sup>6</sup>, k = 64. Write (a) a faster pure-Python version and (b) a NumPy version that never needs more than ~100 MB of temporary memory.</p>`,
+    constraints: R`n ≤ 10<sup>6</sup>, k ≤ 1024, d = 2 (but the NumPy version should work for any d). Return a list/array of centre indexes; ties → the lower index.`,
+    example: R`<p>points <code>[(0,0), (9,9), (5,4)]</code>, centres <code>[(0,0), (10,10)]</code> → <code>${H.c('g', '[0, 1, 0]')}</code>. (5,4) is √41 ≈ 6.4 from (0,0) and √61 ≈ 7.8 from (10,10).</p>`,
+    brute: { why: R`<p>n·k·d Python-level operations (6.4·10<sup>7</sup> distance computations with per-element bytecode, a <code>sqrt</code> call each, and manual min tracking). The square root is also unnecessary — comparing <b>squared</b> distances gives the same winner.</p>`, code: { lang: 'python', run: true, code: R`
+import math
+
+def assign_slow(points, centres):
+    labels = []
+    for p in points:
+        best, best_d = -1, float("inf")
+        for j, c in enumerate(centres):
+            s = 0.0
+            for a, b in zip(p, c):
+                s += (a - b) ** 2
+            dist = math.sqrt(s)            # unnecessary sqrt
+            if dist < best_d:
+                best, best_d = j, dist
+        labels.append(best)
+    return labels
+
+print(assign_slow([(0, 0), (9, 9), (5, 4)], [(0, 0), (10, 10)]))` } },
+    mcq: { q: 'A naive broadcast <code>pts[:, None, :] - centres[None, :, :]</code> for n = 10<sup>6</sup>, k = 1024, d = 2 in float64 allocates about…', options: ['16 GB for the difference array alone', '16 MB', '160 KB', 'nothing — broadcasting never allocates'], answer: 0, explain: 'The result has n·k·d = 2·10⁹ elements × 8 bytes = 16 GB. Broadcasting avoids copying the INPUTS, but the OUTPUT is fully materialised. Chunk over points or use the dot-product expansion.' },
+    hints: [R`<p>Hint 1: drop the sqrt; and in pure Python, <code>min(range(k), key=...)</code> with <code>math.dist</code> or an inlined squared distance moves work into C.</p>`, R`<p>Hint 2: NumPy — squared distance expands to <code>‖p‖² − 2·p·c + ‖c‖²</code>; the middle term for all pairs is one matrix multiply <code>P @ C.T</code> (BLAS, multithreaded), producing an (n, k) matrix — no (n, k, d) tensor.</p>`, R`<p>Hint 3: process points in chunks of, say, 16,384 rows so each (chunk, k) matrix is ~130 MB at k = 1024 (or ~8 MB at k = 64), then <code>argmin(axis=1)</code> per chunk. Tie-break: argmin returns the first minimum → lower index.</p>`],
+    solution: {
+      approach: R`<p>Vectorized: precompute <code>‖c‖²</code> once; for each chunk of points compute <code>D = ‖c‖² − 2·P·Cᵀ</code> (‖p‖² is the same for every centre of a given point, so it cannot change the argmin and can be dropped), then <code>argmin(axis=1)</code>. Work is the same O(n·k·d) but runs in BLAS at GFLOP speed; chunking bounds temporary memory. Pure-Python fallback: squared distances + <code>min</code> with a key.</p>`,
+      code: { lang: 'python', check: false, code: R`
+import numpy as np
+
+def assign_numpy(points, centres, chunk=16_384):
+    P = np.asarray(points, dtype=np.float64)        # (n, d)
+    C = np.asarray(centres, dtype=np.float64)       # (k, d)
+    c_sq = (C * C).sum(axis=1)                      # (k,)  ||c||^2, computed once
+    labels = np.empty(len(P), dtype=np.int64)
+    for start in range(0, len(P), chunk):
+        block = P[start:start + chunk]              # view, no copy
+        # ||p||^2 is constant per row -> irrelevant for argmin, so skip it
+        d = c_sq[None, :] - 2.0 * (block @ C.T)     # (chunk, k) via BLAS
+        labels[start:start + chunk] = d.argmin(axis=1)
+    return labels
+
+print(assign_numpy([(0, 0), (9, 9), (5, 4)], [(0, 0), (10, 10)]))   # [0 1 0]
+rng = np.random.default_rng(0)
+pts, cen = rng.random((1_000_000, 2)), rng.random((64, 2))
+print(np.bincount(assign_numpy(pts, cen), minlength=64)[:8])` },
+      alt: [{ lang: 'python', run: true, title: 'Pure Python, faster', code: R`
+import random
+import time
+
+def assign_fast(points, centres):
+    idx = range(len(centres))
+    out = []
+    for px, py in points:
+        # squared distance, no sqrt; min() loop runs in C, key in Python
+        out.append(min(idx, key=lambda j: (px - centres[j][0]) ** 2 + (py - centres[j][1]) ** 2))
+    return out
+
+print(assign_fast([(0, 0), (9, 9), (5, 4)], [(0, 0), (10, 10)]))   # [0, 1, 0]
+random.seed(0)
+pts = [(random.random(), random.random()) for _ in range(20_000)]
+cen = [(random.random(), random.random()) for _ in range(16)]
+t = time.perf_counter(); lab = assign_fast(pts, cen)
+print(f"{len(lab)} points in {(time.perf_counter() - t) * 1000:.0f} ms")` }],
+      complexity: R`<p>All versions O(n·k·d) arithmetic. NumPy: one GEMM per chunk, memory O(chunk·k + n). Pure-Python fast: O(n·k) with smaller constant than the brute force; NumPy is typically 50–200× faster again.</p>`,
+      followUps: ['Implement the update step (new centres = mean of assigned points) with <code>np.bincount</code> weights or <code>np.add.at</code>', 'When is a KD-tree (<code>scipy.spatial.cKDTree</code>) better than brute force?', 'Run it on GPU with CuPy or PyTorch — what changes?']
+    }
+  });
+
+  practice.push({
+    title: 'Profile-Driven Fix: p95 Latency per Endpoint',
+    level: 'Hard', tags: ['profiling', 'grouping', 'sorting', 'performance'], companies: ['Datadog', 'New Relic', 'Grafana Labs'],
+    statement: R`<p>Given request records <code>(endpoint, latency_ms)</code>, return a dict <code>endpoint → p95 latency</code> using the nearest-rank method (sort the endpoint's latencies ascending and take index <code>ceil(0.95·m) − 1</code>). The current code loops over every endpoint and re-filters the whole list each time. With 2·10<sup>6</sup> records and 5,000 endpoints it takes over an hour. Profile, explain the hot spot, and fix it.</p>`,
+    constraints: R`n ≤ 2·10<sup>6</sup> records, E ≤ 10<sup>4</sup> endpoints, latencies are non-negative floats. Output keys sorted by endpoint name.`,
+    example: R`<p>Records for "/a": latencies 10, 20, …, 200 (20 values) → ceil(0.95·20) − 1 = 18 → <code>${H.c('g', '190')}</code>. "/b": [5] → ceil(0.95) − 1 = 0 → <code>${H.c('g', '5')}</code>.</p>`,
+    brute: { why: R`<p>For each of E endpoints it scans all n records: O(E·n) = 10<sup>10</sup> comparisons. cProfile shows one list comprehension line with enormous tottime and the function called E times. Algorithmic, not micro: group once, then work per group.</p>`, code: { lang: 'python', run: true, code: R`
+import math
+
+def p95_slow(records):
+    out = {}
+    for ep in sorted({e for e, _ in records}):
+        lat = sorted(l for e, l in records if e == ep)   # full scan per endpoint
+        out[ep] = lat[math.ceil(0.95 * len(lat)) - 1]
+    return out
+
+recs = [("/a", float(v)) for v in range(10, 201, 10)] + [("/b", 5.0)]
+print(p95_slow(recs))         # {'/a': 190.0, '/b': 5.0}` } },
+    mcq: { q: 'After grouping in one pass, what is the cheapest exact way to get each p95?', options: ['Sort each group (total O(n log n)) or use a selection algorithm per group', 'Sort the entire record list once by latency and scan', 'Use statistics.mean', 'Keep a running average per endpoint'], answer: 0, explain: 'Per-group sorting costs Σ m log m ≤ n log n. heapq.nlargest(k) with k = m − ceil(0.95m) + 1 (the top ~5%) is even cheaper for big groups. Means and running averages are not percentiles.' },
+    hints: [R`<p>Hint 1: the profile says the same full list is scanned E times. Visit each record exactly once: <code>defaultdict(list)</code> keyed by endpoint.</p>`, R`<p>Hint 2: per group, the p95 element is the (m − r + 1)-th largest where r = ceil(0.95·m). <code>heapq.nlargest(m − r + 1, group)[-1]</code> touches the group once with a small heap — or just <code>sorted(group)[r − 1]</code>.</p>`, R`<p>Hint 3: for streaming / huge data, exact percentiles need all values; production systems use mergeable sketches (t-digest, DDSketch, HDR histograms) with bounded memory and known error.</p>`],
+    solution: {
+      approach: R`<p>One grouping pass (O(n)), then per-group selection. Total O(n log n) worst case instead of O(E·n). Verify by profiling again: time should now be dominated by the single grouping loop and the per-group sort, both proportional to n.</p>`,
+      code: { lang: 'python', run: true, code: R`
+import heapq
+import math
+import random
+import time
+from collections import defaultdict
+
+def p95_fast(records):
+    groups = defaultdict(list)
+    for ep, lat in records:                     # ONE pass over the data
+        groups[ep].append(lat)
+    out = {}
+    for ep in sorted(groups):
+        g = groups[ep]
+        r = math.ceil(0.95 * len(g))            # nearest-rank position (1-based)
+        out[ep] = heapq.nlargest(len(g) - r + 1, g)[-1]   # r-th smallest
+    return out
+
+recs = [("/a", float(v)) for v in range(10, 201, 10)] + [("/b", 5.0)]
+print(p95_fast(recs))                           # {'/a': 190.0, '/b': 5.0}
+
+random.seed(2)
+big = [(f"/ep{random.randrange(500)}", random.expovariate(1 / 40)) for _ in range(200_000)]
+t = time.perf_counter(); res = p95_fast(big); dt = time.perf_counter() - t
+print(len(res), "endpoints in", f"{dt * 1000:.0f} ms")
+` },
+      dry: { head: ['group', 'm', 'r = ceil(0.95·m)', 'nlargest(m − r + 1)', 'p95'], rows: [
+        ['/a', '20', '19', 'top 2 → [200, 190]', '<span class="c-g">190</span>'],
+        ['/b', '1', '1', 'top 1 → [5]', '<span class="c-g">5</span>']
+      ] },
+      complexity: R`<p>O(n) grouping + Σ O(m log(m − r + 1)) selection ≈ O(n log(n/20)) worst case, O(n) memory. Brute force was O(E·n + n log n).</p>`,
+      followUps: ['Compute p50/p95/p99 in one pass per group', 'Records arrive as an endless stream — which sketch would you use and why?', 'Parallelise across files: which partial results are mergeable (counts, sums) and which are not (exact percentiles)?']
+    }
+  });
+
+  practice.push({
+    title: 'Predict: Numbers That Collapse into One Key',
+    level: 'Hard', tags: ['hashing', 'numeric tower', 'NaN', 'predict output'], companies: ['Jane Street', 'Citadel', 'Hudson River Trading'],
+    statement: R`<p>Predict all five lines on CPython (64-bit), and explain each with the hash/equality rules for Python numbers.</p><pre>print({True: "a", 1: "b", 1.0: "c"})
+print(len({0, 0.0, False, -0.0}))
+print(hash(-1) == hash(-2))
+print({1, True, 1.0} == {1})
+print(float("nan") in {float("nan")})</pre>`,
+    constraints: R`Explain the invariant "a == b ⇒ hash(a) == hash(b)", how Python makes it hold across int/float/bool/Decimal/Fraction, and the identity shortcut.`,
+    example: R`<p>Line 1 → <code>${H.c('g', "{True: 'c'}")}</code>: all three keys are equal with equal hashes, so they are one key; the first key object (True) stays, the last value ("c") wins.</p>`,
+    brute: { why: R`<p>Guessing "3 keys" or "4 elements" treats <code>True</code>, <code>1</code> and <code>1.0</code> as different because their types differ. Python's rule is about <b>equality</b>, not type: equal numbers must hash equally, so containers treat them as the same element.</p>`, code: { lang: 'python', run: true, code: R`
+# naive mental model: "different types -> different keys"
+keys = [True, 1, 1.0]
+print([type(k).__name__ for k in keys], "<- 3 types, but...")
+print(True == 1 == 1.0, hash(True) == hash(1) == hash(1.0))` } },
+    mcq: { q: 'Why is <code>hash(-1) == hash(-2)</code> True in CPython?', options: ['−1 is reserved as an error signal in the C hash API, so hash(−1) is changed to −2', 'Negative numbers all hash to −2', 'It is random per process', 'Because −1 == −2 modulo 2'], answer: 0, explain: 'C-level tp_hash functions return −1 to mean "an error occurred", so an int whose hash would be −1 gets −2 instead. Collisions are legal; only equal ⇒ equal-hash is required.' },
+    hints: [R`<p>Hint 1: <code>bool</code> is a subclass of <code>int</code>; <code>True == 1</code> and <code>False == 0 == 0.0 == -0.0</code>.</p>`, R`<p>Hint 2: numeric hashes are defined mathematically (reduction modulo the prime 2<sup>61</sup> − 1 on 64-bit) so that equal int, float, Fraction and Decimal values hash the same.</p>`, R`<p>Hint 3: containers check <code>is</code> before <code>==</code>. Two separately created NaN objects are not identical and NaN ≠ NaN, so the lookup fails; the same NaN object would be found.</p>`],
+    solution: {
+      approach: R`<p>Apply the invariant: equal ⇒ same hash ⇒ same slot ⇒ same key. Line 2: 0, 0.0, False, −0.0 are all equal → 1 element. Line 3: −1's hash is remapped to −2 (C API error sentinel). Line 4: the set collapses to <code>{1}</code>. Line 5: distinct NaN objects, NaN != NaN → False.</p>`,
+      code: { lang: 'python', run: true, code: R`
+print({True: "a", 1: "b", 1.0: "c"})       # {True: 'c'}
+print(len({0, 0.0, False, -0.0}))          # 1
+print(hash(-1) == hash(-2))                # True (CPython detail)
+print({1, True, 1.0} == {1})               # True
+print(float("nan") in {float("nan")})      # False: two different NaN objects
+x = float("nan")
+print(x in {x})                            # True: identity shortcut
+
+from decimal import Decimal
+from fractions import Fraction
+print(hash(0.5) == hash(Fraction(1, 2)) == hash(Decimal("0.5")))   # True
+` },
+      dry: { head: ['line', 'key rule', 'output'], rows: [
+        ['1', 'True == 1 == 1.0, equal hashes → one key', "{True: 'c'}"],
+        ['2', '0 == 0.0 == False == -0.0', '1'],
+        ['3', 'hash(-1) remapped to -2', 'True'],
+        ['4', '{1, True, 1.0} collapses to {1}', 'True'],
+        ['5', 'different NaN objects; NaN != NaN', 'False']
+      ] },
+      complexity: R`<p>O(1) per hash operation. The lesson: mixing bools and ints (or ints and floats) as keys in one dict silently merges entries — a real bug source in JSON/CSV processing.</p>`,
+      followUps: ['Why is <code>hash(float("inf"))</code> a fixed number but NaN hashing changed in 3.10 to use object identity?', 'How would you count True and 1 separately in a Counter?']
+    }
+  });
+
+  /* ======================================================================
+     QUIZ
+     ====================================================================== */
+  quiz.push(
+    { q: R`In a cProfile report, which column tells you how much time was spent in a function's <b>own</b> code, excluding the functions it called?`, options: ['tottime', 'cumtime', 'ncalls', 'percall (cumulative)'], answer: 0, explain: R`<code>tottime</code> excludes sub-calls, so the biggest tottime is the function whose own lines burn CPU. <code>cumtime</code> includes everything called beneath it.` },
+    { q: R`A function takes 30% of runtime. You make it 10× faster. Roughly how much faster is the whole program?`, options: ['≈1.37×', '≈10×', '≈3×', '≈1.03×'], answer: 0, explain: R`Amdahl: new time = 0.7 + 0.3/10 = 0.73 → 1/0.73 ≈ 1.37×. The untouched 70% dominates.` },
+    { q: R`Why does <code>timeit.repeat</code> advice say to look at the <b>minimum</b> of the runs?`, options: ['Noise (other processes, GC, frequency scaling) only ever makes runs slower, so the minimum is the least-disturbed measurement', 'The minimum is always the first run', 'The mean is mathematically undefined for timings', 'timeit only returns one value'], answer: 0, explain: R`Interference adds time, never removes it. For distributions and statistical comparisons use <code>pyperf</code>, which reports mean ± std dev across worker processes.` },
+    { q: R`What does this print? <code>def f(a=[]): a.append(1); return len(a)</code> then <code>print(f(), f(), f([]))</code>`, options: ['1 2 1', '1 1 1', '1 2 3', '3 3 1'], answer: 0, explain: R`The default list is shared: the first call makes it length 1, the second length 2. The third call passes its own new list → 1. (These are ints, so print shows the values at call time.)` },
+    { q: R`<code>fns = [lambda: i for i in range(3)]; print([f() for f in fns])</code>`, options: ['[2, 2, 2]', '[0, 1, 2]', '[0, 0, 0]', 'NameError'], answer: 0, explain: R`Closures look up <code>i</code> when called; by then it is 2. Fix with <code>lambda i=i: i</code>.` },
+    { q: R`<code>t = (1, [2]); t[1] += [3]</code> raises TypeError. What is <code>t</code> afterwards?`, options: ['(1, [2, 3])', '(1, [2])', '(1, [2], [3])', 't is deleted'], answer: 0, explain: R`<code>+=</code> first calls <code>list.__iadd__</code> (mutates in place), then tries <code>t[1] = result</code>, which fails because tuples do not support item assignment. The mutation already happened.` },
+    { q: R`For an array of <b>10 numbers</b>, which is usually faster in CPython: a plain loop/<code>sum</code>, or converting to NumPy and calling <code>.sum()</code>?`, options: ['The plain Python version — NumPy has ~µs fixed overhead per call plus conversion cost', 'NumPy, always', 'They are identical', 'NumPy cannot sum 10 numbers'], answer: 0, explain: R`Vectorization wins for large arrays; for tiny ones the per-call overhead and list→array conversion dominate.` },
+    { q: R`<code>a = np.arange(6); v = a[1:4]; v[0] = 99</code>. What happened to <code>a</code>?`, options: ['a[1] is now 99 — basic slices are views sharing memory', 'Nothing — slices copy', 'a raises an error because v is read-only', 'a becomes [99, 99, 99, 3, 4, 5]'], answer: 0, explain: R`Basic slicing returns a view (new strides, same buffer). Fancy indexing (<code>a[[1, 2, 3]]</code>) and boolean masks return copies. Use <code>.copy()</code> when you need independence.` },
+    { q: R`Which statement about <code>sys.getsizeof(my_list)</code> is true?`, options: ['It counts the list object and its pointer array, not the objects the list refers to', 'It returns the deep size of the list and its contents', 'It returns the number of elements', 'It works only for NumPy arrays'], answer: 0, explain: R`getsizeof is shallow. Use tracemalloc (allocations) or a recursive walker for deep size.` },
+    { q: R`What is the main memory benefit of <code>__slots__</code>?`, options: ['Instances do not get a per-instance __dict__, so each object is smaller and attribute layout is fixed', 'Attributes are stored on disk', 'It makes the class immutable', 'It disables garbage collection for the class'], answer: 0, explain: R`Slots store attributes in fixed C-level slots. Side effects: no new attributes, no <code>__weakref__</code> unless listed, care with multiple inheritance.` },
+    { q: R`Your profile shows 90% of wall time waiting on HTTP calls and only 5% CPU. Which change helps most?`, options: ['Overlap the requests (asyncio / thread pool) or batch them', 'Rewrite the parsing code in Cython', 'Switch to PyPy', 'Add __slots__ to the response objects'], answer: 0, explain: R`I/O-bound time cannot be compiled away. Concurrency or fewer round-trips attacks the actual bottleneck.` },
+    { q: R`Why is <b>untyped</b> Cython code often barely faster than CPython?`, options: ['Variables are still generic PyObjects, so every operation goes through the Python C API with boxing and type checks', 'Cython compiles to bytecode', 'Cython does not support loops', 'It runs inside the same interpreter loop'], answer: 0, explain: R`The speed comes from <code>cdef</code> C types and typed memoryviews, which turn operations into plain C arithmetic.` },
+    { q: R`In a <code>pyproject.toml</code>, what does the <code>[build-system]</code> table tell a frontend like pip or uv?`, options: ['Which packages to install in an isolated env and which backend object to call to build sdists/wheels', 'The runtime dependencies of the project', 'Which tests to run', 'Where to upload the package'], answer: 0, explain: R`PEP 518 <code>requires</code> + PEP 517 <code>build-backend</code>. Runtime deps live in <code>[project].dependencies</code>.` },
+    { q: R`A wheel is named <code>pkg-1.0-cp312-abi3-manylinux_2_28_x86_64.whl</code>. On which interpreters can it be installed?`, options: ['CPython 3.12 and newer on x86-64 Linux with glibc ≥ 2.28', 'Only CPython 3.12 on any OS', 'Any Python on any OS', 'PyPy only'], answer: 0, explain: R`<code>abi3</code> = stable ABI, valid for the tagged minimum version and later; the platform tag pins OS, libc version and CPU.` },
+    { q: R`What does <code>print({True: 1, 1: 2, 1.0: 3})</code> output?`, options: ['{True: 3}', '{True: 1, 1: 2, 1.0: 3}', '{1.0: 3}', '{1: 3}'], answer: 0, explain: R`All three keys are equal with equal hashes: one key. Dicts keep the first key object and overwrite the value.` },
+    { q: R`What does this print? <code>x = 10</code>, <code>def g(): print(x); x = 5</code>, then <code>g()</code>`, options: ['UnboundLocalError', '10', '5', 'None'], answer: 0, explain: R`Because <code>x</code> is assigned somewhere in <code>g</code>, the compiler makes it local for the whole function; reading it before assignment fails.` }
+  );
+
+  /* ======================================================================
+     INTERVIEW Q&A
+     ====================================================================== */
+  interview.push(
+    { q: R`Your Python service got 3× slower after a release. Walk me through how you find the cause.`, level: 'I', a: R`<p>1) <b>Reproduce and quantify</b>: which endpoint/job, p50 vs p99, CPU vs wall time (if CPU is flat and latency rose, it is I/O or lock waiting). 2) <b>Diff the release</b> for obvious suspects (new dependency, query, logging). 3) <b>Profile</b> — locally with <code>cProfile</code> + <code>pstats</code> sorted by cumtime then tottime, or in production with a sampling profiler (<code>py-spy record</code>, continuous profiling) and compare flame graphs before/after. 4) Look for the classic shapes: a function called far more often (N+1 queries, missing cache), an O(n²) pattern (<code>in list</code>, <code>pop(0)</code>), or heavy serialization. 5) Fix the top item only, <b>benchmark</b> with realistic data, deploy, and re-profile. Amdahl's law guides what is worth fixing.</p>`, followUps: ['How do you profile without restarting the process?', 'What if the profile is flat — no single hot spot?', 'How would you prevent this regression in CI?'] },
+    { q: R`Explain the mutable default argument problem and how to fix it. Is it ever intentional?`, level: 'B', a: R`<p>Default values are evaluated <b>once</b>, when the <code>def</code> statement runs, and stored in <code>func.__defaults__</code>. If the default is mutable (<code>[]</code>, <code>{}</code>, a set, an object) every call that omits the argument shares and mutates the same object, so state leaks between calls. Fix: use <code>None</code> (or a private sentinel <code>object()</code> when None is meaningful) and create the object inside the body. Related forms: <code>datetime.now()</code> defaults freeze at import, class-level lists are shared by instances, and dataclasses require <code>field(default_factory=list)</code>. It is occasionally used deliberately as a cache (<code>def f(n, _memo={})</code>), but <code>functools.cache</code> expresses that more clearly. Linters flag it (ruff B006/B008).</p>`, followUps: ['Why does Python evaluate defaults at definition time?', 'How does the same rule help fix late-binding closures?'] },
+    { q: R`cProfile vs py-spy vs line_profiler vs tracemalloc — when do you use each?`, level: 'I', a: R`<p><b>cProfile</b> (stdlib, deterministic): exact call counts and per-function times for a whole run; overhead on call-heavy code; best for local investigation and tests. <b>py-spy</b> (sampling, external): attaches to a running PID, near-zero overhead, flame graphs, sees native frames; best in production or for hangs (<code>py-spy dump</code>). <b>line_profiler</b>: per-line timings for functions you decorate; use after cProfile has found the slow function. <b>tracemalloc</b> (stdlib): memory allocations by line, snapshots and diffs; for leaks and peak memory (memray is the richer third-party option). Plus <code>timeit</code>/<code>pyperf</code> for micro-benchmarks to confirm a fix, and Scalene for combined CPU/GPU/memory views.</p>`, followUps: ['Why can cProfile exaggerate the cost of tiny functions?', 'What is PEP 669 and why do profiler authors care?'] },
+    { q: R`What does "vectorization" mean in NumPy and why is it fast? When is it the wrong tool?`, level: 'I', a: R`<p>Vectorization replaces Python-level loops with whole-array operations (ufuncs, reductions, broadcasting, boolean masks). It is fast because an ndarray stores unboxed values contiguously with one dtype, so a single C loop (often SIMD, or BLAS for linear algebra) processes all elements without per-element interpreter dispatch, type checks or object allocation — typically 10–100× faster. It is the wrong tool for tiny arrays (fixed ~µs call overhead), logic with complex branching or sequential dependencies (exponential smoothing, early exit) — use Numba/Cython — when temporaries explode memory (an (n, n) intermediate), and when data must first be converted from Python objects at high cost.</p>`, followUps: ['Explain broadcasting rules with an example', 'How do you avoid huge temporaries?', 'Why is np.vectorize slow?'] },
+    { q: R`Your process holds 6 GB for 20 million small records. How do you reduce memory?`, level: 'A', a: R`<p>First <b>measure</b> with tracemalloc/memray to confirm what dominates. Then, in order: (1) <b>don't hold everything</b> — stream with generators/chunks if the algorithm allows; (2) <b>shrink per-record overhead</b>: dicts → <code>@dataclass(slots=True)</code>/<code>__slots__</code> or tuples (~2× smaller); (3) <b>remove per-value boxing</b>: columnar storage with <code>array</code>, NumPy (smallest safe dtypes, float32/int32), or Arrow/Polars — often 5–10× smaller; (4) <b>deduplicate</b> repeated strings with <code>sys.intern</code> or categorical dtypes; (5) look for <b>leaks</b>: unbounded caches, growing global lists, reference cycles. Also remember pymalloc may not return freed memory to the OS (fragmentation), so measure RSS over time, not just after one GC.</p>`, followUps: ['Why might RSS stay high after you delete the objects?', 'Trade-offs of __slots__?', 'When would you use mmap?'] },
+    { q: R`Compare Cython, Numba, PyPy, mypyc and Rust/PyO3 for speeding up Python.`, level: 'A', a: R`<p><b>Numba</b>: JIT for numeric Python/NumPy loops with a decorator; easiest win for array maths with custom logic; limited language subset. <b>Cython</b>: superset language compiled to C extensions; needs type declarations for speed; great for wrapping C libraries and releasing the GIL. <b>PyPy</b>: alternative interpreter with tracing JIT; speeds up whole pure-Python programs without code changes, but C-extension compatibility/speed and Python-version lag are trade-offs. <b>mypyc</b>: compiles type-annotated modules; moderate gains with no new language. <b>Rust + PyO3/maturin</b>: memory-safe native code with excellent tooling and parallelism (Polars, pydantic-core, orjson); higher skill cost. Decision: profile → NumPy first if array-shaped → Numba/Cython for custom loops → PyPy for whole-app → Rust/C++ for reusable cores or existing libraries.</p>`, followUps: ['What is the cost of crossing the Python/native boundary?', 'How does the free-threaded build affect native extensions?'] },
+    { q: R`What is the GIL's relevance to performance tuning, and what changed in Python 3.13/3.14?`, level: 'A', a: R`<p>The GIL lets only one thread execute Python bytecode at a time, so CPU-bound pure-Python code does not speed up with threads; I/O-bound code does (the GIL is released while waiting). Workarounds: multiprocessing/ProcessPoolExecutor (pickling cost), native code that releases the GIL (NumPy, Cython <code>nogil</code>, Numba, PyO3 <code>allow_threads</code>), or subinterpreters with per-interpreter GILs (<code>concurrent.interpreters</code> in 3.14). 3.13 shipped an experimental <b>free-threaded</b> build (PEP 703, <code>python3.13t</code>); 3.14 made it officially supported (PEP 779) though still not the default, with single-thread overhead reduced substantially. Extensions must be rebuilt and declare thread-safety. For tuning: measure whether you are CPU- or I/O-bound before choosing threads, processes or async.</p>`, followUps: ['Is <code>x += 1</code> on a shared int thread-safe?', 'When does multiprocessing lose to threads?'] },
+    { q: R`Walk through what happens when you run <code>pip install somepackage</code> for a package that has only an sdist.`, level: 'I', a: R`<p>pip queries the index, the resolver chooses a version compatible with all constraints, and finds no matching wheel, so it downloads the sdist. It reads <code>pyproject.toml [build-system]</code>, creates an <b>isolated build environment</b>, installs the build <code>requires</code> (e.g. setuptools, scikit-build-core, maturin), and calls the backend's PEP 517 hooks (<code>get_requires_for_build_wheel</code>, <code>build_wheel</code>). The backend may compile C/C++/Rust code — requiring compilers and system headers on the user's machine, which is slow and error-prone. The resulting wheel is cached and installed: files unpacked into site-packages, metadata in <code>*.dist-info</code>, console scripts generated from entry points. That is why maintainers publish binary wheels for each platform via cibuildwheel.</p>`, followUps: ['What is a wheel tag and how does pip choose between wheels?', 'Why is the src layout recommended?'] },
+    { q: R`Library vs application: how should each declare and pin dependencies?`, level: 'I', a: R`<p>A <b>library</b> declares <i>abstract</i>, loose requirements in <code>[project].dependencies</code> (lower bounds, upper bounds only for known breakage) so it can coexist with other libraries in users' environments; exact pins in a library cause unresolvable conflicts. An <b>application/service</b> additionally commits a <b>lock file</b> (<code>uv.lock</code>, Poetry/PDM locks, or standard <code>pylock.toml</code> from PEP 751) with exact versions and hashes of the full transitive tree, so CI and production are reproducible; upgrades are deliberate (<code>uv lock --upgrade</code>, Dependabot/Renovate). Dev tools go into dependency groups (PEP 735). Security: hash checking, pip-audit, Trusted Publishing for releases.</p>`, followUps: ['What problem does a lock file solve that requirements ranges cannot?', 'How do you handle a transitive dependency with a CVE?'] },
+    { q: R`Explain late binding in closures with an example and two fixes.`, level: 'B', a: R`<p>Closures capture <b>variables</b> (cells), not values. In <code>[lambda: i for i in range(3)]</code> all lambdas share the cell for <code>i</code>, which holds 2 after the loop, so each returns 2. The lookup happens when the lambda is <b>called</b>. Fixes: bind the current value at definition time via a default argument <code>lambda i=i: i</code>; use <code>functools.partial(f, i)</code>; or create each function in a factory <code>def make(i): return lambda: i</code> so each has its own scope. The same issue appears with callbacks registered in loops (GUI buttons, asyncio tasks referencing a loop variable). ruff B023 detects it.</p>`, followUps: ['Does the same happen with generator expressions?', 'Where are closure cells stored?'] },
+    { q: R`Why is <code>is</code> wrong for comparing numbers and strings, even though it "works" for small values?`, level: 'B', a: R`<p><code>is</code> tests <b>identity</b> (same object), <code>==</code> tests <b>value</b>. CPython caches small ints (−5…256) and interns some strings (identifier-like literals, names), so <code>a is b</code> may be True for those by accident, but values created at runtime (<code>int("1000")</code>, joined strings) are separate objects. Behaviour differs across CPython versions, PyPy, and even REPL vs script (constant folding/merging). Python 3.8+ emits a <code>SyntaxWarning</code> for <code>is</code> with a literal. Use <code>is</code> only for singletons: <code>None</code>, <code>True</code>/<code>False</code> when you mean the exact object, sentinels, and <code>NotImplemented</code>/<code>Ellipsis</code>.</p>`, followUps: ['Why does <code>x = float("nan"); x in [x]</code> return True?', 'What does sys.intern do and when would you use it?'] },
+    { q: R`Predict and explain: <code>a = [1, 2, 3]; for x in a: a.remove(x)</code>. What is <code>a</code>?`, level: 'I', a: R`<p>Result <code>[2]</code>. The list iterator keeps an index. Index 0 → x = 1, remove it → list [2, 3]. Index 1 → x = 3 (2 slid into index 0 and was skipped), remove it → [2]. Index 2 ≥ len 1 → stop. Mutating a list's size while iterating it skips elements (and dicts/sets raise <code>RuntimeError</code>). Fix by building a new list (<code>[x for x in a if keep(x)]</code>), assigning back with <code>a[:] = …</code> if aliases must see it, iterating over a copy (<code>for x in a[:]</code>), or iterating indexes backwards. Each <code>remove</code> is also O(n), so the loop is O(n²) even when it happens to work.</p>`, followUps: ['What happens if you append inside the loop?', 'How do you delete dict entries safely during iteration?'] },
+    { q: R`What does <code>__hash__</code> have to do with <code>__eq__</code>, and what goes wrong with mutable keys?`, level: 'A', a: R`<p>Hash containers require: if <code>a == b</code> then <code>hash(a) == hash(b)</code>, and an object's hash must not change while it is stored. Defining <code>__eq__</code> without <code>__hash__</code> sets <code>__hash__ = None</code> (unhashable) to protect this. If you hash on mutable fields and then mutate, the element sits in the bucket of its old hash: lookups for the mutated object probe the wrong bucket, and lookups for an equal-to-the-old-value object find it but fail <code>__eq__</code> — the item is unreachable yet still counted in <code>len</code>. Fix: hash only immutable state (<code>@dataclass(frozen=True)</code>, NamedTuple), or keep identity hashing for mutable entities. Also: equal values across types (1, 1.0, True) hash equally by design, so they collapse into one key.</p>`, followUps: ['Why are lists unhashable but tuples hashable (sometimes)?', 'Why is hash(-1) == hash(-2) in CPython?'] },
+    { q: R`How would you speed up a CPU-bound pure-Python function 50× without leaving the Python ecosystem? Give a concrete plan.`, level: 'E', a: R`<p>1) <b>Prove</b> it is the bottleneck (profile; Amdahl estimate of the end-to-end gain). 2) <b>Algorithm & data structures</b> first: complexity wins dwarf everything (sets/dicts, sorting once, caching, heaps, prefix sums). 3) <b>Push loops into C</b> with built-ins, itertools, slicing, <code>bytes</code>/<code>bytearray</code> tricks. 4) If array-shaped, <b>NumPy/Polars</b>; mind temporaries and dtypes. 5) If loop-shaped, <b>Numba</b> (<code>@njit</code>, possibly <code>parallel=True</code>) or <b>Cython</b> with full typing; release the GIL and parallelise with threads. 6) For whole-program pure Python, test <b>PyPy</b>. 7) For a reusable core, <b>Rust/PyO3</b>. At every step keep a pure-Python reference implementation and a property-based test (Hypothesis) comparing outputs, plus a pyperf benchmark in CI to catch regressions.</p>`, followUps: ['How do you package the compiled version for users on Windows/macOS/Linux?', 'How would you keep the pure-Python fallback?'] }
+  );
+
+  /* ----------------------------------------------------------------------
+     Spread correct answers across positions (authored with the correct
+     option first; rotate deterministically so it is not always "A").
+     ---------------------------------------------------------------------- */
+  function rotateMcq(m, k) {
+    var n = m.options.length, shift = k % n;
+    if (!shift) return;
+    var opts = m.options.slice(), out = [];
+    for (var i = 0; i < n; i++) out[(i + shift) % n] = opts[i];
+    m.options = out;
+    m.answer = (m.answer + shift) % n;
+  }
+  quiz.forEach(function (q, i) { rotateMcq(q, i + 1); });
+  var mcqCounter = 0;
+  topics.forEach(function (t) { (t.problems || []).forEach(function (p) { if (p.mcq) rotateMcq(p.mcq, 2 + mcqCounter++); }); });
+  practice.forEach(function (p) { if (p.mcq) rotateMcq(p.mcq, 1 + mcqCounter++); });
+
+  registerModule({
+    id: 'py13',
+    title: 'Performance & Expert Python + Gotchas Bank',
+    intro: R`<p>This is the "senior Python" module. First you learn to <b>measure</b> instead of guess: <code>cProfile</code>, <code>pstats</code>, <code>timeit</code>, sampling profilers and Amdahl's law. Then you work through the speed levers in the order a professional pulls them — better data structures and built-ins, <b>NumPy vectorization</b> (broadcasting, views, dtypes), <b>memory optimization</b> (<code>tracemalloc</code>, <code>__slots__</code>, generators, compact arrays), and leaving the interpreter with <b>Numba, Cython, PyPy, mypyc and Rust/PyO3</b> when profiles prove it is worth it. You will also learn to <b>package</b> code properly with <code>pyproject.toml</code>, wheels and uv.</p>
+<p>The second half is a <b>gotchas bank</b>: mutable default arguments, aliasing, late-binding closures, scope surprises, <code>finally</code> overrides, hash/equality traps and number quirks — with a repeatable 5-step method for any "predict the output" question. Every topic has a visualizer (profiler hot-spot bars, loop-vs-vectorized timing bars, the shared default-argument object graph, a list-mutation simulator) and runnable examples you can execute in the browser.</p>`,
+    goals: [
+      'Profile any Python program with cProfile/pstats or py-spy, read tottime vs cumtime, and use Amdahl\'s law to decide what is worth optimising',
+      'Benchmark correctly with <code>timeit</code>/<code>perf_counter</code> (repeats, minimum, realistic sizes) and prove a speed-up before and after',
+      'Replace Python loops with NumPy vectorized code using ufuncs, masks, axis reductions and broadcasting — and know when a loop is actually faster',
+      'Cut memory with streaming generators, <code>__slots__</code>/slotted dataclasses, array/NumPy columns and tracemalloc-driven leak hunting',
+      'Choose between Numba, Cython, PyPy, mypyc, ctypes/pybind11 and Rust/PyO3 for a profiled hot spot, and explain the GIL/free-threading trade-offs',
+      'Package a project with <code>pyproject.toml</code>, build backends, wheels and lock files, and decode wheel compatibility tags',
+      'Predict the output of tricky Python snippets (mutable defaults, late binding, scope, aliasing, hashing, finally) and explain the rule behind each'
+    ],
+    prereqs: R`Python 5 (Data Structure Internals & Comprehensions), Python 6 (Closures, Decorators & functools), Python 7 (Iterators & Generators), Python 8 (Advanced OOP: dunders, __slots__, dataclasses) and Python 12 (CPython Internals: bytecode, reference counting, GC). Helpful: Python 10 (Concurrency & the GIL) and basic Big-O.`,
+    hours: 16,
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
+  });
 })();
