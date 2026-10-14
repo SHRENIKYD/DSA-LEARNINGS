@@ -1774,6 +1774,467 @@ SELECT
     ]
   });
 
+  /* =====================================================================
+     PRACTICE — Easy
+     ===================================================================== */
+  practice.push({
+    title: 'Predict the access path, then check', level: 'Easy', tags: ['EXPLAIN QUERY PLAN', 'scan vs seek'], companies: ['Amazon', 'Infosys', 'TCS'],
+    statement: `<p>Before running anything, predict whether each query will <b>SCAN</b> or <b>SEARCH</b> (and with which index), then verify with <code>EXPLAIN QUERY PLAN</code>:</p><ol><li><code>SELECT * FROM orders WHERE id = 42</code></li><li><code>SELECT * FROM orders WHERE customer_id = 42</code></li><li><code>SELECT * FROM orders WHERE total_cents &gt; 15000</code></li><li><code>SELECT count(*) FROM orders WHERE status = 'delivered'</code></li></ol>`,
+    constraints: `SQLite <code>shop</code>. Indexes: PK on id, <code>idx_orders_customer</code>, <code>idx_orders_created</code>, <code>idx_orders_status_created(status, created_at)</code>.`,
+    example: `<p>1 → ${H.c('g', 'SEARCH … INTEGER PRIMARY KEY')}; 2 → ${H.c('g', 'SEARCH … idx_orders_customer')}; 3 → ${H.c('r', 'SCAN orders')} (no index on total_cents); 4 → ${H.c('g', 'SEARCH … COVERING INDEX idx_orders_status_created (status=?)')} — count needs nothing but the index.</p>`,
+    brute: { why: `<p>Guessing from wall-clock time: run each query and see which "feels slow". On 3,000 rows everything takes under a millisecond, so timing tells you nothing. Measured in SQLite VM steps they differ a lot (PK lookup ≈ 13, index seek ≈ 99, scan ≈ 14,000), but you only see that with the plan or a profiler.</p>`, code: { lang: 'sql', db: 'shop', code: `SELECT * FROM orders WHERE id = 42;
+SELECT * FROM orders WHERE customer_id = 42;
+SELECT count(*) FROM orders WHERE total_cents > 15000;
+SELECT count(*) FROM orders WHERE status = 'delivered';` } },
+    mcq: { q: 'Why can query 4 avoid reading the table entirely?', options: ['count(*) is cached', 'The index (status, created_at) contains every column the query needs', 'SQLite skips WHERE for count(*)', 'status is the primary key'], answer: 1, explain: 'The query only needs to test status and count entries — both possible from the index alone, so the plan says COVERING INDEX.' },
+    hints: [`<p>Hint 1: For each WHERE column, ask: is there an index whose <b>first</b> column is this column?</p>`, `<p>Hint 2: The INTEGER PRIMARY KEY is the rowid — the table itself is a B-tree keyed by it, so <code>id = ?</code> is a direct lookup.</p>`, `<p>Hint 3: If the query needs only indexed columns (or count), expect "COVERING". Recipe: write the four predictions, then run four EXPLAIN QUERY PLAN statements.</p>`],
+    solution: {
+      approach: `<p>Map each predicate to an index: <code>id</code> → rowid B-tree (cheapest), <code>customer_id</code> → <code>idx_orders_customer</code>, <code>total_cents</code> → nothing (scan), <code>status</code> → leading column of <code>idx_orders_status_created</code> and nothing else needed → covering seek.</p>`,
+      code: { lang: 'sql', db: 'shop', code: `EXPLAIN QUERY PLAN SELECT * FROM orders WHERE id = 42;
+EXPLAIN QUERY PLAN SELECT * FROM orders WHERE customer_id = 42;
+EXPLAIN QUERY PLAN SELECT * FROM orders WHERE total_cents > 15000;
+EXPLAIN QUERY PLAN SELECT count(*) FROM orders WHERE status = 'delivered';` },
+      complexity: `<p>PK lookup O(log N); index seek O(log N + k) + k table lookups; scan O(N); covering seek O(log N + k) with no table access.</p>`,
+      followUps: ['Which single index would turn query 3 into a seek, and would it be worth it for 826 of 3,000 rows (27%)?']
+    }
+  });
+
+  practice.push({
+    title: 'Un-hide the index: arithmetic on the column', level: 'Easy', tags: ['sargable', 'rewrite'], companies: ['Flipkart', 'Walmart'],
+    statement: `<p>A legacy report filters with <code>WHERE customer_id + 0 = 42</code> (someone once used <code>+ 0</code> to "disable" an index during a debugging session and it was never removed). Another query uses <code>WHERE customer_id - 2 = 40</code>. Make both sargable and show the plan change.</p>`,
+    constraints: `SQLite <code>shop</code>; results must stay identical (10 rows for customer 42).`,
+    example: `<p>${H.c('r', 'SCAN orders')} (≈12,000 VM steps) → ${H.c('g', 'SEARCH orders USING INDEX idx_orders_customer (customer_id=?)')} (≈100 VM steps). Same 10 rows.</p>`,
+    brute: { why: `<p>Any expression around the column (<code>+ 0</code>, <code>- 2</code>, <code>* 1</code>, <code>abs()</code>) means the engine must compute it for every row before comparing — the index is sorted by <code>customer_id</code>, not by <code>customer_id + 0</code>. All 3,000 rows are read to return 10.</p>`, code: { lang: 'sql', db: 'shop', code: `EXPLAIN QUERY PLAN SELECT * FROM orders WHERE customer_id + 0 = 42;
+EXPLAIN QUERY PLAN SELECT * FROM orders WHERE customer_id - 2 = 40;
+SELECT count(*) FROM orders WHERE customer_id - 2 = 40;` } },
+    mcq: { q: 'Which predicate is sargable?', options: ['<code>customer_id - 2 = 40</code>', '<code>customer_id = 40 + 2</code>', '<code>abs(customer_id) = 42</code>', '<code>customer_id * 1 = 42</code>'], answer: 1, explain: 'Arithmetic on the constant side is folded once; the bare column is compared with a value, so the index can seek.' },
+    hints: [`<p>Hint 1: Algebra: move everything that isn't the bare column to the other side of the comparison.</p>`, `<p>Hint 2: <code>customer_id - 2 = 40</code> ⇔ <code>customer_id = 42</code>. With integers this is exact.</p>`, `<p>Hint 3: Verify with EXPLAIN and a count comparison. (In SQLite the unary <code>+</code> trick, <code>WHERE +customer_id = 42</code>, is the documented way to <i>deliberately</i> disable an index — useful in experiments, never in production by accident.)</p>`],
+    solution: {
+      approach: `<p>Rewrite both as <code>customer_id = 42</code>. The column now stands alone, so the planner seeks <code>idx_orders_customer</code> straight to the 10 entries. Integer addition/subtraction is exactly invertible, so the results are identical.</p>`,
+      code: { lang: 'sql', db: 'shop', code: `EXPLAIN QUERY PLAN SELECT * FROM orders WHERE customer_id = 42;
+SELECT
+  (SELECT count(*) FROM orders WHERE customer_id - 2 = 40) AS old_count,
+  (SELECT count(*) FROM orders WHERE customer_id = 42)     AS new_count;` },
+      complexity: `<p>O(N) → O(log N + 10).</p>`,
+      followUps: ['Why is <code>price * 1.18 &gt; 1000</code> → <code>price &gt; 1000 / 1.18</code> riskier than the integer case?']
+    }
+  });
+
+  practice.push({
+    title: 'Case-insensitive login lookup', level: 'Easy', tags: ['expression index', 'sargable'], companies: ['Google', 'Okta', 'Auth0'],
+    statement: `<p>Login must match emails case-insensitively. The query is <code>SELECT id, email FROM customers WHERE lower(email) = lower(:input)</code>. There is a UNIQUE index on <code>email</code>, but the plan is a full scan. Fix it <b>without changing the query</b>.</p>`,
+    constraints: `SQLite <code>shop</code>; input example <code>'USER7@Mail.com'</code>; exactly one row expected.`,
+    example: `<p>Before: ${H.c('r', 'SCAN customers')}. After: ${H.c('g', 'SEARCH customers USING INDEX idx_customers_email_lower (&lt;expr&gt;=?)')} → row <code>7 | user7@mail.com</code>.</p>`,
+    brute: { why: `<p><code>lower(email)</code> is computed for each of the 320 customers on every login. The UNIQUE index stores raw emails in case-sensitive order, so it can't help. At 50M users and 1,000 logins/second, that's 5×10<sup>10</sup> lower() calls per second — impossible.</p>`, code: { lang: 'sql', db: 'shop', code: `EXPLAIN QUERY PLAN
+SELECT id, email FROM customers WHERE lower(email) = lower('USER7@Mail.com');
+SELECT id, email FROM customers WHERE lower(email) = lower('USER7@Mail.com');` } },
+    mcq: { q: 'For an expression index to be used, the query must…', options: ['use exactly the same expression as the index', 'use the raw column', 'add INDEXED BY', 'run ANALYZE first'], answer: 0, explain: 'The planner matches the expression textually/structurally: an index on lower(email) serves WHERE lower(email) = ?, not upper(email) or email COLLATE NOCASE.' },
+    hints: [`<p>Hint 1: You can't change the query, so change what the index stores: index the <b>expression</b>, not the column.</p>`, `<p>Hint 2: <code>CREATE INDEX … ON customers(lower(email))</code> works in SQLite, PostgreSQL (<code>((lower(email)))</code>) and MySQL 8.0.13+ (functional key part).</p>`, `<p>Hint 3: Alternatives worth naming: store emails normalised at write time, a <code>COLLATE NOCASE</code> column/index (SQLite), <code>citext</code> (PostgreSQL), or a case-insensitive collation (MySQL default). Recipe: create index → EXPLAIN → run.</p>`],
+    solution: {
+      approach: `<p>Create an <b>expression index</b> on <code>lower(email)</code>. The right-hand side <code>lower('USER7@Mail.com')</code> is a constant, folded once; the left side matches the indexed expression exactly, so SQLite seeks the index. Consider making it <code>UNIQUE</code> too, so two accounts can't differ only by case.</p>`,
+      code: { lang: 'sql', db: 'shop', code: `CREATE UNIQUE INDEX idx_customers_email_lower ON customers(lower(email));
+
+EXPLAIN QUERY PLAN
+SELECT id, email FROM customers WHERE lower(email) = lower('USER7@Mail.com');
+SELECT id, email FROM customers WHERE lower(email) = lower('USER7@Mail.com');` },
+      complexity: `<p>O(N) → O(log N). Cost: one more index to maintain on insert/update of email.</p>`,
+      followUps: ['What does <code>lower()</code> do with non-ASCII letters like "İ" in SQLite vs PostgreSQL?']
+    }
+  });
+
+  practice.push({
+    title: 'Yes/no questions: COUNT vs EXISTS', level: 'Easy', tags: ['EXISTS', 'rewrite', 'early exit'], companies: ['Uber', 'Ola'],
+    statement: `<p>The app checks "does customer 36 have any cancelled order?" with <code>SELECT count(*) &gt; 0 FROM orders WHERE customer_id = 36 AND status = 'cancelled'</code>. Rewrite it so the engine can stop at the first match, and compare the work.</p>`,
+    constraints: `SQLite <code>shop</code>; answer is 1 (true).`,
+    example: `<p>Both return ${H.c('g', '1')}. Measured: count version ≈ 79 VM steps (visits all 10 orders of the customer), EXISTS ≈ 25 (stops at the first cancelled one). For a customer with 100,000 orders the gap is 100,000 : 1.</p>`,
+    brute: { why: `<p><code>count(*)</code> must visit <b>every</b> matching row to produce an exact number, even though the caller only needs "zero or not zero". Work grows with the number of matches.</p>`, code: { lang: 'sql', db: 'shop', code: `SELECT count(*) > 0 AS has_cancelled
+FROM orders WHERE customer_id = 36 AND status = 'cancelled';` } },
+    mcq: { q: 'Why can EXISTS be cheaper than count(*) &gt; 0?', options: ['EXISTS uses a different index', 'EXISTS can stop after the first qualifying row', 'count(*) ignores indexes', 'EXISTS skips the WHERE clause'], answer: 1, explain: 'EXISTS is a semi-join / short-circuit: the moment one row qualifies, the answer is known.' },
+    hints: [`<p>Hint 1: The question is boolean. Which SQL construct answers "is there at least one?" directly?</p>`, `<p>Hint 2: <code>SELECT EXISTS (SELECT 1 FROM … WHERE …)</code> returns 1 or 0.</p>`, `<p>Hint 3: Bonus: an index on <code>(customer_id, status)</code> would make even the first match a direct seek. Recipe: rewrite → EXPLAIN → run.</p>`],
+    solution: {
+      approach: `<p>Use <code>EXISTS</code>. The subquery seeks <code>idx_orders_customer</code> for customer 36 and returns as soon as one row has <code>status = 'cancelled'</code>. Same answer, work bounded by "position of the first match" instead of "number of matches".</p>`,
+      code: { lang: 'sql', db: 'shop', code: `EXPLAIN QUERY PLAN
+SELECT EXISTS (SELECT 1 FROM orders WHERE customer_id = 36 AND status = 'cancelled');
+SELECT EXISTS (SELECT 1 FROM orders WHERE customer_id = 36 AND status = 'cancelled') AS has_cancelled;` },
+      complexity: `<p>count: O(log N + k) for k matches; EXISTS: O(log N + position of first match).</p>`,
+      followUps: ['Rewrite "customers with more than 0 orders" as a semi-join for all customers.']
+    }
+  });
+
+  /* =====================================================================
+     PRACTICE — Medium
+     ===================================================================== */
+  practice.push({
+    title: 'The integer-division trap', level: 'Medium', tags: ['sargable', 'equivalence', 'rewrite'], companies: ['Stripe', 'Razorpay'],
+    statement: `<p>A finance query uses <code>WHERE total_cents / 100 &gt; 150</code> ("orders above ₹150"). A colleague "optimized" it to <code>WHERE total_cents &gt; 15000</code> and created an index on <code>total_cents</code>. The numbers in the report changed. Find the bug and write a rewrite that is both sargable and <b>exactly</b> equivalent.</p>`,
+    constraints: `SQLite <code>shop</code>; <code>total_cents</code> is a non-negative INTEGER, so <code>/</code> is integer division.`,
+    example: `<p>Original: ${H.c('b', '811')} rows. Colleague's version: ${H.c('r', '826')} rows (15 extra: totals 15001–15099, where total/100 = 150, not &gt; 150). Correct rewrite <code>total_cents &gt;= 15100</code>: ${H.c('g', '811')} rows, with a covering seek.</p>`,
+    brute: { why: `<p>The original is correct but non-sargable: it computes <code>total_cents / 100</code> for all 3,000 rows (≈12,800 VM steps). The colleague's rewrite is fast but <b>wrong</b>: it treats integer division like real division.</p>`, code: { lang: 'sql', db: 'shop', code: `SELECT
+  (SELECT count(*) FROM orders WHERE total_cents / 100 > 150) AS original,
+  (SELECT count(*) FROM orders WHERE total_cents > 15000)     AS colleague;` } },
+    mcq: { q: 'For non-negative integers, <code>x / 100 &gt; 150</code> (integer division) is equivalent to…', options: ['x &gt; 15000', 'x &gt;= 15000', 'x &gt;= 15100', 'x &gt; 15099.99'], answer: 2, explain: 'x / 100 > 150 ⇔ x / 100 ≥ 151 ⇔ x ≥ 15100 for non-negative integers (division truncates).' },
+    hints: [`<p>Hint 1: Integer division truncates: 15,099 / 100 = 150, which is <b>not</b> &gt; 150.</p>`, `<p>Hint 2: <code>x / 100 &gt; 150</code> ⇔ <code>x / 100 ≥ 151</code> ⇔ smallest such x is 151 × 100.</p>`, `<p>Hint 3: Always prove a rewrite with counts (or EXCEPT both ways). Recipe: compute the correct bound, add index, EXPLAIN, compare counts.</p>`],
+    solution: {
+      approach: `<p>Solve the inequality under integer semantics: <code>total_cents / 100 &gt; 150</code> ⇔ <code>total_cents ≥ 15100</code> (for non-negative values; negatives truncate toward zero and would need separate care). With an index on <code>total_cents</code> the count becomes a covering range seek (~1,600 VM steps vs ~12,800), and the result matches the original exactly.</p>`,
+      code: { lang: 'sql', db: 'shop', code: `CREATE INDEX idx_orders_total ON orders(total_cents);
+
+EXPLAIN QUERY PLAN SELECT count(*) FROM orders WHERE total_cents >= 15100;
+
+SELECT
+  (SELECT count(*) FROM orders WHERE total_cents / 100 > 150) AS original,
+  (SELECT count(*) FROM orders WHERE total_cents >= 15100)    AS rewrite;` },
+      complexity: `<p>O(N) with N divisions → O(log N + k) covering range. Correctness check: both counts = 811.</p>`,
+      followUps: ['What changes for <code>total_cents / 100.0 &gt; 150</code> (real division)?', 'How do NULL totals affect each version?']
+    }
+  });
+
+  practice.push({
+    title: 'Last-30-days dashboard tile', level: 'Medium', tags: ['sargable', 'covering index', 'dates'], companies: ['Shopify', 'Swiggy'],
+    statement: `<p>A tile shows "orders and revenue in the last 30 days" (today = 2026-10-14):</p><pre>SELECT count(*), sum(total_cents) FROM orders
+WHERE julianday('2026-10-14') - julianday(created_at) &lt; 30;</pre><p>Make it sargable, then make it <b>index-only</b>.</p>`,
+    constraints: `SQLite <code>shop</code>; same count (89) and sum (938,083) as the original; one new index allowed.`,
+    example: `<p>Original: ${H.c('r', 'SCAN orders')}. Final: ${H.c('g', 'SEARCH orders USING COVERING INDEX idx_orders_created_total (created_at&gt;?)')} → ≈376 VM steps.</p>`,
+    brute: { why: `<p>Two <code>julianday()</code> calls per row for all 3,000 rows, then a subtraction and comparison — the column is buried in arithmetic, so <code>idx_orders_created</code> is useless. Then each matching row's <code>total_cents</code> is read from the table.</p>`, code: { lang: 'sql', db: 'shop', code: `EXPLAIN QUERY PLAN
+SELECT count(*), sum(total_cents) FROM orders
+WHERE julianday('2026-10-14') - julianday(created_at) < 30;
+SELECT count(*), sum(total_cents) FROM orders
+WHERE julianday('2026-10-14') - julianday(created_at) < 30;` } },
+    mcq: { q: 'Which index makes the sargable version index-only?', options: ['(total_cents, created_at)', '(created_at, total_cents)', '(created_at) alone', '(customer_id, created_at)'], answer: 1, explain: 'created_at first for the range seek; total_cents as a passenger so sum() never touches the table.' },
+    hints: [`<p>Hint 1: Compute the boundary once: rows newer than <code>date('2026-10-14', '-30 days')</code>.</p>`, `<p>Hint 2: Check equivalence carefully: <code>julianday(today) - julianday(ts) &lt; 30</code> means ts &gt; today − 30 days (as a datetime). Compare counts to be sure your boundary matches on this data.</p>`, `<p>Hint 3: Then add <code>total_cents</code> to an index led by <code>created_at</code> so <code>sum()</code> reads only index entries. Recipe: rewrite → compare → index → EXPLAIN.</p>`],
+    solution: {
+      approach: `<p>Turn the predicate around so the column stands alone: <code>created_at &gt;= date('2026-10-14', '-30 days')</code>. (Strictly, the original is "&gt; 2026-09-14 00:00:00"; the two differ only for a row stamped exactly at midnight — check the business meaning and the counts.) Then build <code>(created_at, total_cents)</code>: the seek finds the 89 recent entries and the sum is computed from the index alone.</p>`,
+      code: { lang: 'sql', db: 'shop', code: `CREATE INDEX idx_orders_created_total ON orders(created_at, total_cents);
+
+EXPLAIN QUERY PLAN
+SELECT count(*), sum(total_cents) FROM orders
+WHERE created_at >= date('2026-10-14', '-30 days');
+
+SELECT
+  (SELECT count(*) || ' / ' || sum(total_cents) FROM orders
+     WHERE julianday('2026-10-14') - julianday(created_at) < 30)  AS original,
+  (SELECT count(*) || ' / ' || sum(total_cents) FROM orders
+     WHERE created_at >= date('2026-10-14', '-30 days'))          AS rewrite;` },
+      complexity: `<p>O(N) with 2N function calls → O(log N + 89) index entries, zero table reads.</p>`,
+      followUps: ['The existing <code>idx_orders_created</code> is now a left prefix of the new index — can you drop it?', 'How would you parameterize "today" from the application?']
+    }
+  });
+
+  practice.push({
+    title: 'Customers who never referred anyone', level: 'Medium', tags: ['NOT IN', 'NOT EXISTS', 'anti-join', 'NULL'], companies: ['Microsoft', 'Airbnb'],
+    statement: `<p>Growth wants customers who have <b>never referred</b> another customer. The first attempt returns <b>zero rows</b>:</p><pre>SELECT id, name FROM customers
+WHERE id NOT IN (SELECT referred_by FROM customers);</pre><p>Explain why, fix it, and say which join algorithm the fixed query maps to.</p>`,
+    constraints: `SQLite <code>shop</code>; <code>referred_by</code> is nullable (every 5th customer has NULL).`,
+    example: `<p>NOT IN → ${H.c('r', '0 rows')}. NOT EXISTS → ${H.c('g', '280 rows')} (ids 51–320, plus ids 1, 6, 11, …, 46 — nobody's referred_by points at them).</p>`,
+    brute: { why: `<p><code>x NOT IN (list)</code> means <code>x &lt;&gt; v1 AND x &lt;&gt; v2 AND …</code>. If the list contains a NULL, one term is <code>x &lt;&gt; NULL</code> = UNKNOWN, so the whole AND can never be TRUE: <b>no rows</b>, silently. It's a correctness bug, not a speed bug — and engines also can't turn NULL-able NOT IN into a plain anti-join, so it's often slower too.</p>`, code: { lang: 'sql', db: 'shop', code: `SELECT count(*) AS rows_returned
+FROM customers WHERE id NOT IN (SELECT referred_by FROM customers);
+SELECT count(*) AS null_referrers FROM customers WHERE referred_by IS NULL;` } },
+    mcq: { q: 'What does <code>5 NOT IN (1, 2, NULL)</code> evaluate to?', options: ['TRUE', 'FALSE', 'UNKNOWN (NULL)', 'An error'], answer: 2, explain: '5<>1 is TRUE, 5<>2 is TRUE, 5<>NULL is UNKNOWN; TRUE AND TRUE AND UNKNOWN = UNKNOWN, and WHERE keeps only TRUE.' },
+    hints: [`<p>Hint 1: Count the NULLs in <code>referred_by</code>. Then expand NOT IN into a chain of <code>&lt;&gt;</code> ANDs and evaluate with one NULL.</p>`, `<p>Hint 2: <code>NOT EXISTS (SELECT 1 FROM customers r WHERE r.referred_by = c.id)</code> compares with <code>=</code>, and NULL rows simply never match — exactly the intended meaning.</p>`, `<p>Hint 3: Alternatives: <code>NOT IN (… WHERE referred_by IS NOT NULL)</code>, or <code>LEFT JOIN … WHERE r.id IS NULL</code>. Recipe: show 0 rows, rewrite, count, EXPLAIN.</p>`],
+    solution: {
+      approach: `<p>Use <code>NOT EXISTS</code>. It asks "is there no row r with r.referred_by = c.id?", which ignores NULLs naturally and is what the business means. Planners treat it as an <b>anti-join</b> (PostgreSQL: Hash Anti Join / Merge Anti Join; SQLite: a correlated probe that stops at the first match — an index on <code>referred_by</code> would make each probe a seek).</p>`,
+      code: { lang: 'sql', db: 'shop', code: `SELECT count(*) AS never_referred
+FROM customers c
+WHERE NOT EXISTS (SELECT 1 FROM customers r WHERE r.referred_by = c.id);
+
+-- Make each anti-join probe a seek instead of a scan
+CREATE INDEX idx_customers_referred_by ON customers(referred_by);
+EXPLAIN QUERY PLAN
+SELECT c.id, c.name
+FROM customers c
+WHERE NOT EXISTS (SELECT 1 FROM customers r WHERE r.referred_by = c.id);` },
+      complexity: `<p>Without index: O(N²) probes in SQLite (each probe scans); with index: O(N log N). PostgreSQL hash anti-join: O(N).</p>`,
+      followUps: ['Rewrite it as a LEFT JOIN … IS NULL and compare plans.', 'Is <code>NOT IN</code> ever safe? (Yes, when the subquery column is NOT NULL.)']
+    }
+  });
+
+  practice.push({
+    title: 'OR across two indexed columns', level: 'Medium', tags: ['OR', 'UNION ALL', 'multi-index OR'], companies: ['Atlassian', 'Freshworks'],
+    statement: `<p>Support search: "orders of customer 42 <b>or</b> any order since 2026-09-01". Read SQLite's plan for the OR version, then write the portable <code>UNION ALL</code> rewrite that seeks both indexes on any engine, without returning a row twice.</p><pre>SELECT id FROM orders
+WHERE customer_id = 42 OR created_at &gt;= '2026-09-01';</pre>`,
+    constraints: `SQLite <code>shop</code>; result: 159 rows; <code>customer_id</code> is NOT NULL.`,
+    example: `<p>SQLite plan: ${H.c('g', 'MULTI-INDEX OR')} → INDEX 1 (customer_id=?) + INDEX 2 (created_at&gt;?). UNION ALL: two SEARCH branches; 159 = 159.</p>`,
+    brute: { why: `<p>An OR over two different columns can't be one B-tree range: no single index is sorted by both. Engines without index-merge (or when the planner decides against it) fall back to a <b>full scan</b> testing both conditions on every row. On a 50M-row table, that's 50M rows for a few hundred results.</p>`, code: { lang: 'sql', db: 'shop', code: `EXPLAIN QUERY PLAN
+SELECT id FROM orders WHERE customer_id = 42 OR created_at >= '2026-09-01';
+SELECT count(*) FROM orders WHERE customer_id = 42 OR created_at >= '2026-09-01';` } },
+    mcq: { q: 'Why does the second UNION ALL branch need <code>AND customer_id &lt;&gt; 42</code>?', options: ['To make it sargable', 'To avoid returning rows that match both conditions twice', 'Because UNION ALL requires it', 'To use the covering index'], answer: 1, explain: 'An order of customer 42 placed after 2026-09-01 satisfies both branches; excluding it from branch 2 keeps the result a set without paying for UNION\'s dedupe.' },
+    hints: [`<p>Hint 1: Split the OR into two queries, each with one sargable predicate.</p>`, `<p>Hint 2: Rows matching both would appear twice; either use <code>UNION</code> (dedupe sort) or exclude branch 1's rows from branch 2.</p>`, `<p>Hint 3: If the excluded column were nullable, use <code>customer_id IS NOT 42</code> (SQLite) / <code>IS DISTINCT FROM 42</code> (PG). Recipe: EQP OR, write UNION ALL, EQP, compare counts.</p>`],
+    solution: {
+      approach: `<p>Branch 1 seeks <code>idx_orders_customer</code>; branch 2 seeks <code>idx_orders_created</code> and drops rows already returned by branch 1. <code>UNION ALL</code> just concatenates — no sort, no hash. SQLite (MULTI-INDEX OR), PostgreSQL (BitmapOr) and MySQL (index_merge union) can do this internally, but the rewrite works everywhere and lets you tune each branch.</p>`,
+      code: { lang: 'sql', db: 'shop', code: `EXPLAIN QUERY PLAN
+SELECT id FROM orders WHERE customer_id = 42
+UNION ALL
+SELECT id FROM orders WHERE created_at >= '2026-09-01' AND customer_id <> 42;
+
+SELECT
+  (SELECT count(*) FROM orders WHERE customer_id = 42 OR created_at >= '2026-09-01') AS with_or,
+  (SELECT count(*) FROM (
+      SELECT id FROM orders WHERE customer_id = 42
+      UNION ALL
+      SELECT id FROM orders WHERE created_at >= '2026-09-01' AND customer_id <> 42)) AS with_union_all;` },
+      complexity: `<p>Scan O(N) → two seeks O(log N + k₁) + O(log N + k₂).</p>`,
+      followUps: ['When is plain UNION the better choice?', 'What does PostgreSQL\'s BitmapOr do differently from UNION ALL?']
+    }
+  });
+
+  practice.push({
+    title: 'Leaderboard with per-row subqueries (no index)', level: 'Medium', tags: ['correlated subquery', 'pre-aggregation', 'rewrite'], companies: ['Dream11', 'Zomato', 'Netflix'],
+    statement: `<p>A leaderboard shows every customer's lifetime order count and spend. On a replica where <code>idx_orders_customer</code> was never created, it takes forever:</p><pre>SELECT c.id, c.name,
+  (SELECT count(*)         FROM orders o WHERE o.customer_id = c.id) AS n,
+  (SELECT sum(total_cents) FROM orders o WHERE o.customer_id = c.id) AS spend
+FROM customers c ORDER BY spend DESC, c.id LIMIT 5;</pre><p>Rewrite it so <code>orders</code> is read <b>once</b>, and explain when the correlated form is actually fine.</p>`,
+    constraints: `SQLite <code>shop</code> with <code>idx_orders_customer</code> dropped; top row: customer 246, 10 orders, 123,150.`,
+    example: `<p>Measured (VM steps): correlated without index ≈ ${H.c('r', '4,176,000')}; pre-aggregated ≈ ${H.c('g', '59,000')} (70× less). With <code>idx_orders_customer</code> present, the correlated form drops to ≈ 22,000 — even cheaper in SQLite.</p>`,
+    brute: { why: `<p>Each of 320 customers runs <b>two</b> subqueries, and without an index each one scans all 3,000 orders: 320 × 2 × 3,000 ≈ 1.9M row visits (plan: <code>CORRELATED SCALAR SUBQUERY</code> → <code>SCAN o</code>, twice). Classic N × M.</p>`, code: { lang: 'sql', db: 'shop', code: `DROP INDEX idx_orders_customer;
+EXPLAIN QUERY PLAN
+SELECT c.id, c.name,
+  (SELECT count(*)         FROM orders o WHERE o.customer_id = c.id) AS n,
+  (SELECT sum(total_cents) FROM orders o WHERE o.customer_id = c.id) AS spend
+FROM customers c ORDER BY spend DESC, c.id LIMIT 5;` } },
+    mcq: { q: 'When is a correlated subquery in the SELECT list perfectly fine?', options: ['Never', 'When the outer row count is small and the subquery is an index seek', 'Only in PostgreSQL', 'When it returns more than one row'], answer: 1, explain: 'It is a nested loop: cost ≈ outer rows × cost per probe. Few outer rows × cheap index seek is fast; many outer rows × scan is a disaster.' },
+    hints: [`<p>Hint 1: Both subqueries aggregate the same table by the same key. Compute both aggregates in <b>one</b> GROUP BY.</p>`, `<p>Hint 2: Join the per-customer summary (300 rows) to customers. Use LEFT JOIN + COALESCE so the 20 customers with no orders still appear.</p>`, `<p>Hint 3: Measure both shapes; then try again with the index restored. Recipe: drop index → pre-aggregate → join → compare top 5.</p>`],
+    solution: {
+      approach: `<p>Aggregate once — <code>SELECT customer_id, count(*), sum(total_cents) FROM orders GROUP BY customer_id</code> — and LEFT JOIN that summary to customers. <code>orders</code> is scanned a single time; SQLite then probes the 300-row summary with an automatic index + Bloom filter (PostgreSQL would hash join). Rule of thumb: <b>set-based beats per-row when the outer side is large or the inner probe is a scan</b>; with a selective outer filter and an index, the correlated form can win (SQLite: 22K vs 44K steps with the index present).</p>`,
+      code: { lang: 'sql', db: 'shop', code: `DROP INDEX idx_orders_customer;
+
+EXPLAIN QUERY PLAN
+SELECT c.id, c.name, COALESCE(a.n, 0) AS n, a.spend
+FROM customers c
+LEFT JOIN (SELECT customer_id, count(*) AS n, sum(total_cents) AS spend
+           FROM orders GROUP BY customer_id) a ON a.customer_id = c.id
+ORDER BY a.spend DESC, c.id LIMIT 5;
+
+SELECT c.id, c.name, COALESCE(a.n, 0) AS n, a.spend
+FROM customers c
+LEFT JOIN (SELECT customer_id, count(*) AS n, sum(total_cents) AS spend
+           FROM orders GROUP BY customer_id) a ON a.customer_id = c.id
+ORDER BY a.spend DESC, c.id LIMIT 5;` },
+      complexity: `<p>Correlated, no index: O(C × O) ≈ 1.9M row visits. Pre-aggregated: O(O log O) for the grouping + O(C) probes. With an index the correlated form is O(C × (log O + k)).</p>`,
+      followUps: ['Write it with a window function instead.', 'Which form would you pick for "only the 40 Mumbai customers" and why?']
+    }
+  });
+
+  practice.push({
+    title: 'Aggregate before you join', level: 'Medium', tags: ['pre-aggregation', 'join', 'GROUP BY'], companies: ['Amazon', 'BigBasket'],
+    statement: `<p>"Units sold per product category":</p><pre>SELECT p.category, sum(i.qty) AS units
+FROM order_items i JOIN products p ON p.id = i.product_id
+GROUP BY p.category ORDER BY p.category;</pre><p>The join looks up a product for each of the 6,000 order lines. Rewrite it so the join handles at most 60 rows, and verify identical results.</p>`,
+    constraints: `SQLite <code>shop</code>: order_items 6,000 rows, 60 products, 5 categories.`,
+    example: `<p>Both return 5 rows (books, garden, kitchen, tech, toys — 3,000 units each). Measured: ≈96,000 → ≈56,000 VM steps; on 50M order lines the join input shrinks from 50M rows to ≤ 60K product rows.</p>`,
+    brute: { why: `<p>The join runs first: 6,000 primary-key lookups into products (<code>SCAN i</code> + <code>SEARCH p USING INTEGER PRIMARY KEY</code>), then a temp B-tree groups 6,000 joined rows into 5 categories. Most of that join work is repeated for the same 60 products.</p>`, code: { lang: 'sql', db: 'shop', code: `EXPLAIN QUERY PLAN
+SELECT p.category, sum(i.qty) AS units
+FROM order_items i JOIN products p ON p.id = i.product_id
+GROUP BY p.category ORDER BY p.category;` } },
+    mcq: { q: 'Why is "group order_items by product_id first" valid here?', options: ['sum() is decomposable: sum per product, then sum per category gives the same total', 'Because products is small', 'Because GROUP BY is always pushed down', 'It is only valid for count()'], answer: 0, explain: 'SUM/COUNT/MIN/MAX are decomposable aggregates, so partial sums can be combined. AVG must be split into SUM and COUNT; COUNT(DISTINCT) is not decomposable this way.' },
+    hints: [`<p>Hint 1: Many order lines share a product. Collapse them to one row per product <i>before</i> the join.</p>`, `<p>Hint 2: Derived table: <code>SELECT product_id, sum(qty) AS units FROM order_items GROUP BY product_id</code> (can scan <code>idx_items_product</code> in order — no sort).</p>`, `<p>Hint 3: Join that (≤60 rows) to products and sum again by category. Check equality with EXCEPT. Recipe: pre-aggregate → join → re-aggregate → compare.</p>`],
+    solution: {
+      approach: `<p><b>Eager (partial) aggregation:</b> sum quantities per product first (one ordered pass over <code>idx_items_product</code>, no sort), join the ≤ 60 summary rows to products, then roll up per category. Valid because SUM is decomposable. Some engines (SQL Server, Oracle, Spark) do this automatically in certain cases; most OLTP planners don't, so it's a manual rewrite worth knowing for star-schema reports.</p>`,
+      code: { lang: 'sql', db: 'shop', code: `EXPLAIN QUERY PLAN
+SELECT p.category, sum(a.units) AS units
+FROM (SELECT product_id, sum(qty) AS units FROM order_items GROUP BY product_id) a
+JOIN products p ON p.id = a.product_id
+GROUP BY p.category ORDER BY p.category;
+
+SELECT p.category, sum(a.units) AS units
+FROM (SELECT product_id, sum(qty) AS units FROM order_items GROUP BY product_id) a
+JOIN products p ON p.id = a.product_id
+GROUP BY p.category ORDER BY p.category;
+
+-- equivalence check: must print 0
+SELECT count(*) AS differences FROM (
+  SELECT p.category, sum(i.qty) FROM order_items i JOIN products p ON p.id = i.product_id GROUP BY p.category
+  EXCEPT
+  SELECT p.category, sum(a.units) FROM (SELECT product_id, sum(qty) AS units FROM order_items GROUP BY product_id) a
+  JOIN products p ON p.id = a.product_id GROUP BY p.category);` },
+      complexity: `<p>Join input: 6,000 rows → 60 rows. Total: O(I) ordered scan + O(P) lookups instead of O(I) lookups + O(I log I) grouping.</p>`,
+      followUps: ['How would you compute the <b>average</b> line quantity per category with this trick?', 'Why doesn\'t it work for COUNT(DISTINCT customer)?']
+    }
+  });
+
+  /* =====================================================================
+     PRACTICE — Hard
+     ===================================================================== */
+  practice.push({
+    title: 'Cost it like a planner: seek or scan?', level: 'Hard', tags: ['cost model', 'cardinality', 'selectivity'], companies: ['Oracle', 'Snowflake', 'Databricks'],
+    statement: `<p>Pretend you are PostgreSQL's planner. Using its default cost constants (sequential page 1.0, random page 4.0, cpu per row ≈ 0.0125 for a scan, ≈ 0.0175 per row fetched via an index) and statistics computed from the data, decide <b>scan vs index seek</b> for:</p><ol><li><code>WHERE customer_id = 42</code> (index on customer_id)</li><li><code>WHERE status = 'delivered'</code> (index on status)</li></ol><p><code>orders</code> occupies 32 pages. Do all the arithmetic in SQL.</p>`,
+    constraints: `Estimate equality rows as rows/NDV (customer_id) and via an MCV frequency (status). For many matching rows on few pages, use the Mackert–Lohman approximation pages_fetched ≈ 2·T·N / (2·T + N). Index descent ≈ 3 random pages.`,
+    example: `<p>Expected: est rows 10 and 1,760; seq scan cost ${H.c('b', '69.5')}; index cost for customer 42 ${H.c('g', '52.2')} (seek wins); index cost for delivered ${H.c('r', '289.8')} (scan wins — 59% of rows).</p>`,
+    brute: { why: `<p>The brute force is to run both plans and time them — in production, on every query shape, with hints or <code>NOT INDEXED</code>. That's slow, noisy (cache state changes every run) and doesn't explain anything. A planner instead predicts both costs from a few numbers; you should be able to do the same on a whiteboard.</p>`, code: { lang: 'sql', db: 'shop', code: `-- "Just try both" (what the planner avoids doing):
+EXPLAIN QUERY PLAN SELECT * FROM orders WHERE status = 'delivered';
+EXPLAIN QUERY PLAN SELECT * FROM orders NOT INDEXED WHERE status = 'delivered';
+SELECT count(*) FROM orders WHERE status = 'delivered';` } },
+    mcq: { q: 'Why does the index lose for status = \'delivered\' even though it "uses an index"?', options: ['Indexes never work on TEXT', '1,760 matches spread over 32 pages cause ~62 random page fetches (×4) plus per-row CPU, more than reading 32 pages sequentially', 'The index is not unique', 'Because of MVCC'], answer: 1, explain: 'Random fetches cost 4× a sequential page; with 59% selectivity the index path touches the same pages repeatedly and in random order. A full scan reads each page once, sequentially.' },
+    hints: [`<p>Hint 1: Cardinality first: rows(customer_id = 42) ≈ 3000 / 300; rows(status = delivered) = MCV frequency × 3000.</p>`, `<p>Hint 2: Seq scan = pages × 1.0 + rows × 0.0125. Index = 3 × 4.0 (descent) + pages_fetched × 4.0 + matches × 0.0175, where pages_fetched = matches for tiny k, or 2·T·N/(2·T+N) when N is large relative to T.</p>`, `<p>Hint 3: Use a CTE for the statistics, a second CTE for the estimates, and a final SELECT with <code>round()</code>. Then compare with what a real planner would choose (SQLite has no MCV stats, so it still picks the index for 'delivered').</p>`],
+    solution: {
+      approach: `<p>Compute statistics the way ANALYZE would (row count, NDV, MCV frequency), derive the estimated row counts, and plug them into the two cost formulas. For <code>customer_id = 42</code>: 10 rows → index ≈ 12 + 40 + 0.2 = 52.2 &lt; 69.5 → <b>seek</b>. For <code>status = 'delivered'</code>: 1,760 rows → ≈ 62 random page fetches → ≈ 289.8 &gt; 69.5 → <b>seq scan</b>. That's exactly why PostgreSQL ignores a low-selectivity index. SQLite, lacking MCV statistics, still seeks — a nice illustration that plans depend on what stats the engine has.</p>`,
+      code: { lang: 'sql', db: 'shop', code: `WITH s AS (
+  SELECT count(*) * 1.0                AS n,
+         32.0                          AS pages,
+         count(DISTINCT customer_id)   AS ndv_c,
+         (SELECT count(*) FROM orders WHERE status = 'delivered') * 1.0 / count(*) AS mcv_delivered
+  FROM orders
+), est AS (
+  SELECT n, pages, n / ndv_c AS rows_c, n * mcv_delivered AS rows_d FROM s
+)
+SELECT
+  round(rows_c, 1)                                   AS est_rows_customer_42,
+  round(rows_d, 1)                                   AS est_rows_delivered,
+  round(pages * 1.0 + n * 0.0125, 1)                 AS seq_scan_cost,
+  round(3 * 4.0 + rows_c * 4.0 + rows_c * 0.0175, 1) AS idx_cost_customer_42,
+  round(3 * 4.0 + (2 * pages * rows_d / (2 * pages + rows_d)) * 4.0
+        + rows_d * 0.0175, 1)                        AS idx_cost_delivered
+FROM est;` },
+      complexity: `<p>Planner work is O(1) per candidate — that's the point of estimating. The arithmetic: 69.5 (scan) vs 52.2 (seek) for 0.3% selectivity; 69.5 vs 289.8 for 59%.</p>`,
+      followUps: ['Re-run the numbers with random_page_cost = 1.1 (SSD). Does the delivered decision change?', 'What if the table were physically sorted by status (correlation ≈ 1)?']
+    }
+  });
+
+  practice.push({
+    title: 'Latest order for every customer', level: 'Hard', tags: ['correlated subquery', 'composite index', 'window function', 'greatest-n-per-group'], companies: ['Amazon', 'Uber', 'Swiggy'],
+    statement: `<p>Return each customer's most recent order (customer_id, order id, created_at). The current query:</p><pre>SELECT o.customer_id, o.id, o.created_at
+FROM orders o
+WHERE o.created_at = (SELECT max(o2.created_at) FROM orders o2
+                      WHERE o2.customer_id = o.customer_id)
+ORDER BY o.customer_id;</pre><p>Make it fast, keep it correct, and compare at least two formulations with the planner and with measurements.</p>`,
+    constraints: `SQLite <code>shop</code>; 300 customers have orders; <code>created_at</code> is unique per customer here (discuss ties anyway). One new index allowed.`,
+    example: `<p>First rows: ${H.c('g', '1 | 2400 | 2026-04-26 20:40:00')}, ${H.c('g', '2 | 2143 | 2026-07-26 16:02:37')}, ${H.c('g', '3 | 86 | 2026-09-15 01:55:14')}. Measured (VM steps, all 300 rows): original ≈ 232,000; with index <code>(customer_id, created_at)</code> ≈ 58,000; SQLite bare-column <code>max()</code> ≈ 37,000; window function ≈ 164,000.</p>`,
+    brute: { why: `<p>For each of the 3,000 orders, the correlated subquery seeks that customer's ~10 orders in <code>idx_orders_customer</code> and reads each one from the table to find the max <code>created_at</code>: 3,000 × (seek + 10 table lookups). Same work repeated 10 times per customer, plus table lookups because the index doesn't contain <code>created_at</code>.</p>`, code: { lang: 'sql', db: 'shop', code: `EXPLAIN QUERY PLAN
+SELECT o.customer_id, o.id, o.created_at
+FROM orders o
+WHERE o.created_at = (SELECT max(o2.created_at) FROM orders o2
+                      WHERE o2.customer_id = o.customer_id)
+ORDER BY o.customer_id;
+-- SCAN o USING INDEX idx_orders_customer
+-- CORRELATED SCALAR SUBQUERY 1
+--   SEARCH o2 USING INDEX idx_orders_customer (customer_id=?)` } },
+    mcq: { q: 'With an index on (customer_id, created_at), how does the engine find max(created_at) for one customer?', options: ['Scan all of that customer\'s entries', 'Seek to the customer and read the LAST entry of its range', 'Sort the customer\'s orders', 'It cannot use the index for max()'], answer: 1, explain: 'Inside one customer_id the entries are sorted by created_at, so the max is the last entry of the range — an O(log N) min/max optimization, and covering (no table access).' },
+    hints: [`<p>Hint 1: The expensive part is "max created_at for one customer". Which index makes that a single seek with no table access?</p>`, `<p>Hint 2: <code>(customer_id, created_at)</code>: equality column first, then the column you take the max of. Now both the outer scan and the subquery become COVERING.</p>`, `<p>Hint 3: Compare alternatives: <code>ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY created_at DESC)</code> (portable; but SQLite sorts here), SQLite's bare-column <code>max()</code>, PostgreSQL's <code>DISTINCT ON</code>. Think about ties: "= max" returns all tied rows; ROW_NUMBER picks one (add id as tie-breaker).</p>`],
+    solution: {
+      approach: `<p>Create <code>idx_orders_cust_created(customer_id, created_at)</code>. The subquery's max becomes "seek to customer, take the last entry" (covering), and the outer loop walks the same index (covering, already in customer order — no sort). That's 4× less work and the SQL stays portable. Engine-specific fastest forms: SQLite's <code>SELECT customer_id, id, max(created_at) … GROUP BY customer_id</code> (bare columns come from the max row — SQLite only), PostgreSQL's <code>SELECT DISTINCT ON (customer_id) … ORDER BY customer_id, created_at DESC</code>. The window-function version is the most readable and handles ties deterministically with <code>id</code>, but in SQLite it pays for a temp B-tree sort; in PostgreSQL with the same index it's typically competitive. Measure on your engine.</p>`,
+      code: { lang: 'sql', db: 'shop', code: `CREATE INDEX idx_orders_cust_created ON orders(customer_id, created_at);
+
+-- Portable: correlated max, now fully covered by the index
+EXPLAIN QUERY PLAN
+SELECT o.customer_id, o.id, o.created_at
+FROM orders o
+WHERE o.created_at = (SELECT max(o2.created_at) FROM orders o2
+                      WHERE o2.customer_id = o.customer_id)
+ORDER BY o.customer_id;
+
+-- Window-function version (deterministic with a tie-breaker)
+SELECT customer_id, id, created_at
+FROM (SELECT customer_id, id, created_at,
+             ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY created_at DESC, id DESC) AS rn
+      FROM orders)
+WHERE rn = 1
+ORDER BY customer_id
+LIMIT 3;
+
+-- SQLite-only shortcut: bare columns are taken from the row holding max()
+SELECT customer_id, id, max(created_at) AS created_at
+FROM orders GROUP BY customer_id ORDER BY customer_id LIMIT 3;` },
+      complexity: `<p>Original: O(O × (log O + k)) with table lookups. Indexed correlated: O(O × log O), index-only. Window: O(O log O) sort (or O(O) with a matching index in engines that use it). Bare max / DISTINCT ON with index: one ordered pass O(O).</p>`,
+      followUps: ['Return the latest <b>3</b> orders per customer.', 'How would a LATERAL join (PostgreSQL) solve this when only 50 customers are requested?']
+    }
+  });
+
+  practice.push({
+    title: 'Who bought books in 2026? (kill the fan-out)', level: 'Hard', tags: ['semi-join', 'DISTINCT', 'sargable', 'multi-join'], companies: ['Flipkart', 'Amazon', 'Myntra'],
+    statement: `<p>Marketing's query for "customers who bought at least one <i>books</i> product in 2026":</p><pre>SELECT DISTINCT c.id, c.name, c.city
+FROM customers c
+JOIN orders o      ON o.customer_id = c.id
+JOIN order_items i ON i.order_id = o.id
+JOIN products p    ON p.id = i.product_id
+WHERE p.category = 'books' AND strftime('%Y', o.created_at) = '2026'
+ORDER BY c.id;</pre><p>Read its plan, list every problem, and rewrite it. Prove the result is unchanged (120 customers).</p>`,
+    constraints: `SQLite <code>shop</code>; no new indexes; same 120 rows.`,
+    example: `<p>Original plan: ${H.c('r', 'SCAN i USING COVERING INDEX …')} → 3 PK lookups per line → ${H.c('r', 'USE TEMP B-TREE FOR DISTINCT')} → ORDER BY sort. ≈54,800 VM steps. Rewrite: ${H.c('g', 'LIST SUBQUERY')} chain driven by <code>idx_items_product</code> → ≈12,200 VM steps (4.5× less), same 120 rows.</p>`,
+    brute: { why: `<p>Three problems: (1) the join <b>fans out</b> — one row per matching order line, many per customer — so DISTINCT has to sort them back down; (2) the year filter is <b>non-sargable</b> (<code>strftime</code> on <code>o.created_at</code>), so it can't drive the plan; (3) the planner therefore starts from all 6,000 order lines and does 3 lookups each before filtering.</p>`, code: { lang: 'sql', db: 'shop', code: `EXPLAIN QUERY PLAN
+SELECT DISTINCT c.id, c.name, c.city
+FROM customers c
+JOIN orders o      ON o.customer_id = c.id
+JOIN order_items i ON i.order_id = o.id
+JOIN products p    ON p.id = i.product_id
+WHERE p.category = 'books' AND strftime('%Y', o.created_at) = '2026'
+ORDER BY c.id;` } },
+    mcq: { q: 'What is the main reason the original needs DISTINCT?', options: ['customers has duplicate rows', 'The joins create one row per matching order line, so a customer appears many times', 'SQLite requires DISTINCT with ORDER BY', 'The year filter returns duplicates'], answer: 1, explain: 'Join fan-out: a customer with 4 qualifying lines appears 4 times. The question is "does at least one exist?", which is a semi-join — no duplicates are ever produced.' },
+    hints: [`<p>Hint 1: The output only has customer columns; orders/items/products are only used to <b>test existence</b>. That's a semi-join: <code>c.id IN (…)</code> or <code>EXISTS (…)</code>.</p>`, `<p>Hint 2: Make the year filter a half-open range and express "books" as <code>product_id IN (SELECT id FROM products WHERE category = 'books')</code> so <code>idx_items_product</code> can drive it.</p>`, `<p>Hint 3: In SQLite, prefer <code>IN (subquery)</code> here: it's evaluated once into a list; EXISTS would run per customer. Prove equality with EXCEPT both ways. Recipe: semi-join + sargable range + IN chain → EXPLAIN → compare.</p>`],
+    solution: {
+      approach: `<p>Rewrite as a <b>semi-join</b>: customers whose id is in the set of customer_ids that have a 2026 order containing a books product. Inside, start from the 12 books products, use <code>idx_items_product</code> to find their order lines, look up each order by PK and keep 2026 ones (half-open range). No fan-out reaches the outer query, so DISTINCT disappears; the outer side is 120 PK lookups. In PostgreSQL both IN and EXISTS become a Hash Semi Join; in SQLite the IN form is the one that gets evaluated once.</p>`,
+      code: { lang: 'sql', db: 'shop', code: `EXPLAIN QUERY PLAN
+SELECT c.id, c.name, c.city
+FROM customers c
+WHERE c.id IN (
+  SELECT o.customer_id
+  FROM orders o
+  JOIN order_items i ON i.order_id = o.id
+  WHERE o.created_at >= '2026-01-01' AND o.created_at < '2027-01-01'
+    AND i.product_id IN (SELECT id FROM products WHERE category = 'books'))
+ORDER BY c.id;
+
+-- Same rows? Both differences must be 0.
+WITH old AS (
+  SELECT DISTINCT c.id FROM customers c
+  JOIN orders o ON o.customer_id = c.id
+  JOIN order_items i ON i.order_id = o.id
+  JOIN products p ON p.id = i.product_id
+  WHERE p.category = 'books' AND strftime('%Y', o.created_at) = '2026'),
+new AS (
+  SELECT c.id FROM customers c
+  WHERE c.id IN (SELECT o.customer_id FROM orders o JOIN order_items i ON i.order_id = o.id
+                 WHERE o.created_at >= '2026-01-01' AND o.created_at < '2027-01-01'
+                   AND i.product_id IN (SELECT id FROM products WHERE category = 'books')))
+SELECT (SELECT count(*) FROM old) AS old_rows, (SELECT count(*) FROM new) AS new_rows,
+       (SELECT count(*) FROM (SELECT id FROM old EXCEPT SELECT id FROM new)) AS only_old,
+       (SELECT count(*) FROM (SELECT id FROM new EXCEPT SELECT id FROM old)) AS only_new;` },
+      complexity: `<p>Original: O(I) lines × 3 lookups + DISTINCT sort of the fan-out. Rewrite: O(B·k) lines of books products + their order lookups + O(C') customer lookups. Measured 54.8K → 12.2K VM steps.</p>`,
+      followUps: ['Which index would make the inner part even cheaper?', 'How would you also return the number of books lines per customer without reintroducing DISTINCT?']
+    }
+  });
+
+  practice.push({
+    title: 'Inactive customers report (anti-join done right)', level: 'Hard', tags: ['anti-join', 'NOT EXISTS', 'sargable', 'covering index'], companies: ['Salesforce', 'HubSpot', 'CRED'],
+    statement: `<p>CRM wants customers with <b>no order in the last 180 days</b> (today = 2026-10-14). The current query:</p><pre>SELECT c.id, c.name FROM customers c
+WHERE c.id NOT IN (
+  SELECT DISTINCT customer_id FROM orders
+  WHERE julianday('2026-10-14') - julianday(created_at) &lt;= 180)
+ORDER BY c.id;</pre><p>Rewrite it (correctness first, then speed), add the best index for the new shape, and show plans and measurements.</p>`,
+    constraints: `SQLite <code>shop</code>; expected 25 rows (20 customers who never ordered + 5 inactive ones). <code>orders.customer_id</code> is NOT NULL.`,
+    example: `<p>Measured VM steps: original ≈ ${H.c('r', '26,200')}; NOT EXISTS + sargable range ≈ ${H.c('y', '8,800')}; plus covering index <code>(customer_id, created_at)</code> ≈ ${H.c('g', '5,100')}. Final plan line: <code>SEARCH o USING COVERING INDEX idx_orders_cust_created (customer_id=? AND created_at&gt;?)</code>.</p>`,
+    brute: { why: `<p>The subquery computes two <code>julianday()</code> calls for all 3,000 orders (non-sargable), adds a pointless <code>DISTINCT</code>, and builds the whole list before anything is returned. It happens to be correct here only because <code>customer_id</code> is NOT NULL — the same pattern on a nullable column would silently return nothing.</p>`, code: { lang: 'sql', db: 'shop', code: `EXPLAIN QUERY PLAN
+SELECT c.id, c.name FROM customers c
+WHERE c.id NOT IN (
+  SELECT DISTINCT customer_id FROM orders
+  WHERE julianday('2026-10-14') - julianday(created_at) <= 180)
+ORDER BY c.id;
+SELECT count(*) AS inactive FROM customers c
+WHERE c.id NOT IN (
+  SELECT DISTINCT customer_id FROM orders
+  WHERE julianday('2026-10-14') - julianday(created_at) <= 180);` } },
+    mcq: { q: 'For the NOT EXISTS version, which index lets each probe answer from the index alone?', options: ['(created_at)', '(customer_id)', '(customer_id, created_at)', '(created_at, customer_id)'], answer: 2, explain: 'Each probe is "customer_id = ? AND created_at > ?": equality first, then the range column; both live in the index, so the probe is a covering seek that stops at the first hit.' },
+    hints: [`<p>Hint 1: Correctness: NOT IN breaks with NULLs; NOT EXISTS with a correlated <code>=</code> never does. Make it the default habit.</p>`, `<p>Hint 2: Speed: make the date test sargable — <code>o.created_at &gt;= date('2026-10-14', '-180 days')</code> — and drop DISTINCT (EXISTS stops at the first row anyway).</p>`, `<p>Hint 3: Each probe asks "any order for this customer after date X?": index <code>(customer_id, created_at)</code> answers that with one covering seek. Check: still 25 rows, and the plan line ends with <code>(customer_id=? AND created_at&gt;?)</code>.</p>`],
+    solution: {
+      approach: `<p>Use an <b>anti-join</b> with NOT EXISTS: for each customer, probe "is there an order with this customer_id and created_at in the window?". The date predicate is now a range on the bare column, so with <code>(customer_id, created_at)</code> each probe is a single covering seek that stops at the first hit (or proves absence after one descent). DISTINCT is gone. PostgreSQL would plan this as a Hash Anti Join or a Nested Loop Anti Join with an Index Only Scan, depending on sizes.</p>`,
+      code: { lang: 'sql', db: 'shop', code: `CREATE INDEX idx_orders_cust_created ON orders(customer_id, created_at);
+
+EXPLAIN QUERY PLAN
+SELECT c.id, c.name FROM customers c
+WHERE NOT EXISTS (
+  SELECT 1 FROM orders o
+  WHERE o.customer_id = c.id
+    AND o.created_at >= date('2026-10-14', '-180 days'))
+ORDER BY c.id;
+
+SELECT c.id, c.name FROM customers c
+WHERE NOT EXISTS (
+  SELECT 1 FROM orders o
+  WHERE o.customer_id = c.id
+    AND o.created_at >= date('2026-10-14', '-180 days'))
+ORDER BY c.id;` },
+      complexity: `<p>Original: O(O) function evaluations + list build + O(C) membership tests. Final: O(C × log O) covering probes, each stopping at the first match. Measured 26.2K → 5.1K VM steps.</p>`,
+      followUps: ['The boundary changed from "≤ 180 days of julian time" to "≥ a date": prove the counts match and say which one the business wants.', 'Write the LEFT JOIN … IS NULL version and compare its plan.']
+    }
+  });
+
   registerModule({
     id: 'sql11',
     title: 'Query Execution & Optimization',

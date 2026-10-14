@@ -904,6 +904,460 @@ class FireCar {
     }]
   });
 
+  /* ======================= TOPIC 3: ELEVATOR SCHEDULING ======================= */
+  // Plan the waypoints for a scheduling algorithm. Requests are all known at time 0 (like disk scheduling).
+  function liftPlan(algo, start, dir, reqs, top) {
+    var uniq = []; reqs.forEach(function (r) { if (uniq.indexOf(r) < 0) uniq.push(r); });
+    var asc = uniq.slice().sort(function (a, b) { return a - b; });
+    var out = [], d = dir, cur = start, i;
+    if (algo === 'FCFS') out = uniq.slice();
+    else if (algo === 'SSTF') {
+      var left = asc.slice();
+      while (left.length) {
+        var best = -1, bd = 1e9;
+        for (i = 0; i < left.length; i++) {
+          var dist = Math.abs(left[i] - cur), goesUp = left[i] >= cur;
+          if (dist < bd || (dist === bd && ((d === 'up') === goesUp))) { bd = dist; best = i; }
+        }
+        var nx = left.splice(best, 1)[0];
+        if (nx !== cur) d = nx > cur ? 'up' : 'down';
+        out.push(nx); cur = nx;
+      }
+    } else {
+      var first, second, end;
+      if (dir === 'up') { first = asc.filter(function (x) { return x >= start; }); second = asc.filter(function (x) { return x < start; }).reverse(); end = top; }
+      else { first = asc.filter(function (x) { return x <= start; }).reverse(); second = asc.filter(function (x) { return x > start; }); end = 0; }
+      out = first.slice();
+      if (algo === 'SCAN' && second.length && (!first.length || first[first.length - 1] !== end)) out.push('E' + end);
+      out = out.concat(second);
+    }
+    // compute distance + wait (floors travelled before each request is served)
+    var pos = start, total = 0, wait = {}, ws = [];
+    out.forEach(function (w) {
+      var f = typeof w === 'string' ? Number(w.slice(1)) : w;
+      total += Math.abs(f - pos); pos = f;
+      if (typeof w !== 'string' && wait[w] === undefined) { wait[w] = total; ws.push(total); }
+    });
+    var avg = ws.length ? ws.reduce(function (a, b) { return a + b; }, 0) / ws.length : 0;
+    return { route: out, total: total, avgWait: Math.round(avg * 10) / 10, maxWait: ws.length ? Math.max.apply(null, ws) : 0 };
+  }
+  function liftGrid(top, carFloor, sym, waiting, served, cls, trail) {
+    var rows = [], rh = [], hl = {};
+    for (var f = top; f >= 0; f--) {
+      var r = top - f;
+      rh.push('Floor ' + f);
+      var st = waiting.indexOf(f) >= 0 ? '● waiting' : served.indexOf(f) >= 0 ? '✓ served' : '';
+      rows.push([f === carFloor ? sym : (trail && trail.indexOf(f) >= 0 ? '·' : ''), st]);
+      if (f === carFloor) hl[r + ',0'] = cls || 'cur';
+      if (waiting.indexOf(f) >= 0) hl[r + ',1'] = 'win';
+      if (served.indexOf(f) >= 0) hl[r + ',1'] = 'ok';
+    }
+    return { type: 'grid', label: 'Shaft (· = floors already travelled)', rows: rows, rowHead: rh, colHead: ['car', 'request'], hl: hl };
+  }
+
+  topics.push({
+    title: 'Elevator System II: Scheduling Strategies (FCFS, SSTF, SCAN, LOOK) and Multi-Car Dispatch',
+    analogy: `<p>Imagine a <b>delivery rider with five parcels</b> for houses on one long street. He could deliver in the order the orders came in (zig-zagging up and down the street), or always ride to the <b>nearest</b> house next (fast, but the house at the far end may wait forever if new nearby orders keep coming), or ride <b>to the end of the street and back</b> like a bus, or ride only <b>as far as the last parcel</b> in that direction and then turn around. Those four habits are FCFS, SSTF, SCAN and LOOK — and an elevator is just a rider on a vertical street.</p>`,
+    explain: `<p>The car state machine (previous topic) says <i>how</i> to move. The <b>scheduling strategy</b> says <i>where to go next</i>. Because the rule changes (office morning rush vs. hospital vs. night mode), it belongs behind a <b>Strategy</b> interface — State and Strategy working together.</p>
+${H.table(['Strategy', 'Rule in plain words', 'Good', 'Bad'], [
+  ['<b>FCFS</b> (first come first served)', 'serve requests in arrival order', 'perfectly fair, trivial', 'zig-zags; huge travel'],
+  ['<b>SSTF</b> (shortest seek time first)', 'always go to the nearest request', 'low total travel', 'far floors can <b>starve</b>'],
+  ['<b>SCAN</b> ("elevator algorithm")', 'keep going one way to the <b>end floor</b>, serving on the way, then reverse', 'no starvation, predictable', 'rides to the top even if nobody is there'],
+  ['<b>LOOK</b>', 'like SCAN, but turn around at the <b>last request</b> in that direction', 'no starvation and less waste', 'slightly more bookkeeping']
+])}
+<p><b>Worked example</b>: car at floor <b>5</b> going ▲, requests arrive as <b>8, 2, 6, 1, 4</b>, floors 0–9.</p>
+${H.table(['Strategy', 'Stops in order', 'Floors travelled'], [
+  ['FCFS', '5 → 8 → 2 → 6 → 1 → 4', '3+6+4+5+3 = ' + H.c('r', '21')],
+  ['SSTF', '5 → 6 → 8 → 4 → 2 → 1', '1+2+4+2+1 = ' + H.c('g', '10')],
+  ['SCAN', '5 → 6 → 8 → <i>9 (end)</i> → 4 → 2 → 1', '1+2+1+5+2+1 = ' + H.c('y', '12')],
+  ['LOOK', '5 → 6 → 8 → 4 → 2 → 1', '1+2+4+2+1 = ' + H.c('g', '10')]
+])}
+<p>SSTF and LOOK tie here, but SSTF has no direction memory: if people keep pressing floors near the car, someone waiting at floor 0 may <b>never</b> be served (starvation). LOOK guarantees every waiting request is reached within one full sweep up and one down. That is why real elevators use SCAN/LOOK-style "<b>collective control</b>": keep moving in your direction while there are calls ahead; reverse only when there are none.</p>
+<p><b>Directional hall calls matter.</b> A person at floor 4 pressing ▼ while the car goes up past 4 should <b>not</b> be picked up (they would ride up first). So the car keeps two sets: <code>upStops</code> and <code>downStops</code>; on the way up it serves car calls + ▲ hall calls; ▼ calls wait for the down sweep.</p>
+<p><b>Many cars → a dispatcher.</b> A hall call must be assigned to one car. The dispatcher computes a <b>cost</b> per car — estimated travel time to reach the caller given its current direction (idle: plain distance; moving toward the caller in the same direction: distance; otherwise: finish the sweep and come back) plus a small load penalty — and picks the cheapest. Also a Strategy: <code>NearestCar</code>, <code>ZoneBased</code> (car A serves 0–10, car B 11–20), <code>DestinationDispatch</code>.</p>`,
+    clues: [
+      '"Minimise waiting time" / "minimise travel" / "avoid starvation" in an elevator prompt → compare SSTF vs SCAN/LOOK out loud.',
+      '"The scheduling algorithm should be configurable" → <code>SchedulingStrategy</code> interface (Strategy pattern) plugged into the car/controller.',
+      '"Multiple elevators" → a <b>dispatcher</b> with a cost function; the car-level scheduling stays per car.',
+      '"Morning rush everybody goes up from the lobby" → zoning / up-peak mode = a different dispatch strategy, swapped at runtime.',
+      'Disk-scheduling words (seek time, head, cylinder) mean the same algorithms — FCFS/SSTF/SCAN/C-SCAN/LOOK/C-LOOK.',
+      '"Requests keep arriving while moving" → online problem: keep a sorted set per direction and re-plan each tick rather than computing one fixed route.'
+    ],
+    code: [{ lang: 'java', title: 'Pluggable scheduling strategies + comparison', code: `import java.util.*;
+
+enum Dir { UP, DOWN }
+
+/** Strategy: given where the car is, plan the waypoints it will visit. */
+interface SchedulingStrategy {
+    String name();
+    List<Integer> route(int start, Dir dir, List<Integer> requests, int topFloor);
+}
+
+class Fcfs implements SchedulingStrategy {
+    public String name() { return "FCFS"; }
+    public List<Integer> route(int start, Dir dir, List<Integer> req, int top) {
+        return new ArrayList<>(new LinkedHashSet<>(req));        // arrival order, duplicates removed
+    }
+}
+
+class Sstf implements SchedulingStrategy {
+    public String name() { return "SSTF"; }
+    public List<Integer> route(int start, Dir dir, List<Integer> req, int top) {
+        TreeSet<Integer> left = new TreeSet<>(req);
+        List<Integer> out = new ArrayList<>();
+        int cur = start;
+        Dir d = dir;
+        while (!left.isEmpty()) {
+            Integer lo = left.floor(cur), hi = left.ceiling(cur);  // nearest below / above in O(log n)
+            int dDown = lo == null ? Integer.MAX_VALUE : cur - lo;
+            int dUp = hi == null ? Integer.MAX_VALUE : hi - cur;
+            int next;
+            if (dUp < dDown || (dUp == dDown && d == Dir.UP)) { next = hi; d = Dir.UP; }
+            else { next = lo; d = Dir.DOWN; }                       // tie -> keep current direction
+            out.add(next);
+            left.remove(next);
+            cur = next;
+        }
+        return out;
+    }
+}
+
+class Look implements SchedulingStrategy {
+    public String name() { return "LOOK"; }
+    public List<Integer> route(int start, Dir dir, List<Integer> req, int top) {
+        TreeSet<Integer> s = new TreeSet<>(req);
+        List<Integer> out = new ArrayList<>();
+        if (dir == Dir.UP) {
+            out.addAll(s.tailSet(start, true));                   // everything at/above, ascending
+            out.addAll(s.headSet(start, false).descendingSet());  // then turn at the LAST request
+        } else {
+            out.addAll(s.headSet(start, true).descendingSet());
+            out.addAll(s.tailSet(start, false));
+        }
+        return out;
+    }
+}
+
+class Scan implements SchedulingStrategy {
+    public String name() { return "SCAN"; }
+    public List<Integer> route(int start, Dir dir, List<Integer> req, int top) {
+        TreeSet<Integer> s = new TreeSet<>(req);
+        List<Integer> first = new ArrayList<>(), second = new ArrayList<>();
+        int end;
+        if (dir == Dir.UP) { first.addAll(s.tailSet(start, true)); second.addAll(s.headSet(start, false).descendingSet()); end = top; }
+        else { first.addAll(s.headSet(start, true).descendingSet()); second.addAll(s.tailSet(start, false)); end = 0; }
+        List<Integer> out = new ArrayList<>(first);
+        boolean alreadyAtEnd = !first.isEmpty() && first.get(first.size() - 1) == end;
+        if (!second.isEmpty() && !alreadyAtEnd) out.add(end);    // ride all the way to the end floor
+        out.addAll(second);
+        return out;
+    }
+}
+
+class SchedulerBench {
+    static int distance(int start, List<Integer> route) {
+        int total = 0, pos = start;
+        for (int f : route) { total += Math.abs(f - pos); pos = f; }
+        return total;
+    }
+
+    public static void main(String[] args) {
+        List<Integer> req = List.of(8, 2, 6, 1, 4);
+        for (SchedulingStrategy s : List.of(new Fcfs(), new Sstf(), new Scan(), new Look())) {
+            List<Integer> r = s.route(5, Dir.UP, req, 9);
+            System.out.printf("%-4s route=%s floors=%d%n", s.name(), r, distance(5, r));
+        }
+    }
+}` }, { lang: 'java', title: 'Multi-car dispatcher with a direction-aware cost function', code: `import java.util.*;
+
+enum Motion { UP, DOWN, IDLE }
+
+record Call(int floor, boolean wantsUp) {}
+
+class Car {
+    final String id;
+    int floor;
+    Motion motion;
+    final List<Integer> assigned = new ArrayList<>();
+    Car(String id, int floor, Motion motion) { this.id = id; this.floor = floor; this.motion = motion; }
+}
+
+interface DispatchStrategy { Car choose(List<Car> cars, Call call, int top); }
+
+/** Estimated floors to travel before reaching the caller, assuming SCAN-like sweeps, + load penalty. */
+class NearestCarDispatch implements DispatchStrategy {
+    static int travel(Car c, Call k, int top) {
+        int p = c.floor, f = k.floor();
+        switch (c.motion) {
+            case IDLE: return Math.abs(p - f);
+            case UP:
+                if (k.wantsUp() && f >= p) return f - p;          // on the way
+                if (!k.wantsUp()) return (top - p) + (top - f);    // up to the top, then down to f
+                return (top - p) + top + f;                        // full loop: top, bottom, back up to f
+            default:
+                if (!k.wantsUp() && f <= p) return p - f;
+                if (k.wantsUp()) return p + f;                     // down to 0, then up to f
+                return p + top + (top - f);
+        }
+    }
+    public Car choose(List<Car> cars, Call call, int top) {
+        Car best = null;
+        int bestCost = Integer.MAX_VALUE;
+        for (Car c : cars) {
+            int cost = travel(c, call, top) + c.assigned.size();   // small penalty spreads the load
+            if (cost < bestCost) { bestCost = cost; best = c; }
+        }
+        return best;
+    }
+}
+
+class Dispatcher {
+    private final List<Car> cars;
+    private final int top;
+    private DispatchStrategy strategy;                 // swappable: zoning in the morning rush, etc.
+    Dispatcher(List<Car> cars, int top, DispatchStrategy s) { this.cars = cars; this.top = top; this.strategy = s; }
+    void setStrategy(DispatchStrategy s) { strategy = s; }
+
+    Car onHallCall(Call call) {
+        Car c = strategy.choose(cars, call, top);
+        c.assigned.add(call.floor());
+        if (c.motion == Motion.IDLE && c.floor != call.floor()) c.motion = call.floor() > c.floor ? Motion.UP : Motion.DOWN;
+        return c;
+    }
+
+    public static void main(String[] args) {
+        List<Car> cars = List.of(new Car("A", 0, Motion.IDLE), new Car("B", 6, Motion.DOWN), new Car("C", 3, Motion.UP));
+        Dispatcher d = new Dispatcher(cars, 9, new NearestCarDispatch());
+        for (Call call : List.of(new Call(4, true), new Call(7, false), new Call(2, false))) {
+            System.out.println("call " + call + " -> car " + d.onHallCall(call).id);
+        }
+    }
+}` }],
+    codeTitle: ['Car-level scheduling strategies', 'Building-level dispatch'],
+    viz: [{
+      title: 'Scheduling race: watch the car serve the request list (FCFS / SSTF / SCAN / LOOK)',
+      input: 'algo=LOOK; start=5; dir=up; req=8 2 6 1 4',
+      inputLabel: 'algo=FCFS|SSTF|SCAN|LOOK; start=0-9; dir=up|down; req=up to 8 floors 0-9',
+      gen: function (input) {
+        var o = kvParse(input, 'Format: algo=LOOK; start=5; dir=up; req=8 2 6 1 4');
+        var algo = String(o.algo || 'LOOK').toUpperCase();
+        if (['FCFS', 'SSTF', 'SCAN', 'LOOK'].indexOf(algo) < 0) throw new Error('algo must be FCFS, SSTF, SCAN or LOOK');
+        var start = parseInt(o.start, 10), dir = String(o.dir || 'up').toLowerCase(), top = 9;
+        if (isNaN(start) || start < 0 || start > top) throw new Error('start must be 0-9');
+        if (dir !== 'up' && dir !== 'down') throw new Error('dir must be up or down');
+        var reqs = tokens(o.req || '', /[\s,]+/, 8, 'req = floors 0-9, e.g. req=8 2 6 1 4').map(Number);
+        if (reqs.some(function (x) { return isNaN(x) || x < 0 || x > top || x % 1; })) throw new Error('Requests must be floors 0-9');
+        var plan = liftPlan(algo, start, dir, reqs, top);
+        var waiting = []; reqs.forEach(function (r) { if (waiting.indexOf(r) < 0) waiting.push(r); });
+        var served = [], trail = [start], pos = start, moved = 0, frames = [];
+        var rule = { FCFS: 'serve strictly in arrival order', SSTF: 'always go to the nearest waiting floor', SCAN: 'keep going ' + dir + ' to the END floor, then reverse', LOOK: 'keep going ' + dir + ' while requests remain ahead, then reverse' }[algo];
+        var routeTxt = plan.route.map(function (w) { return typeof w === 'string' ? w.slice(1) + '(end)' : String(w); });
+        frames.push(F('<b>' + algo + '</b>: ' + rule + '. Car starts at floor <b>' + start + '</b> heading ' + dir + '. All requests (blue ●) are already waiting. Planned route: <b>' + routeTxt.join(' → ') + '</b>.', [
+          liftGrid(top, pos, '■', waiting, served, 'cur', []),
+          QUEUE('Planned stops (' + algo + ')', routeTxt, { 0: 'cur' }, 'next', 'last'),
+          VARS('Car', { algo: algo, floor: pos, direction: dir, floorsMoved: 0 })
+        ]));
+        var step = 1;
+        plan.route.forEach(function (w, wi) {
+          var isEnd = typeof w === 'string', tgt = isEnd ? Number(w.slice(1)) : w;
+          while (pos !== tgt) {
+            var up = tgt > pos;
+            pos += up ? step : -step; moved++;
+            if (trail.indexOf(pos) < 0) trail.push(pos);
+            if (pos !== tgt) {
+              var passing = waiting.indexOf(pos) >= 0 ? ' Passing floor ' + pos + ' where someone waits — ' + (algo === 'FCFS' || algo === 'SSTF' ? 'this textbook ' + algo + ' does not stop (only its chosen target counts).' : 'it is scheduled later in this sweep plan.') : '';
+              frames.push(F('Moving ' + (up ? '▲' : '▼') + ' to floor ' + pos + ' (target ' + tgt + ').' + passing, [
+                liftGrid(top, pos, up ? '▲' : '▼', waiting, served, 'cur', trail),
+                QUEUE('Remaining planned stops', routeTxt.slice(wi), { 0: 'cur' }, 'next', 'last'),
+                VARS('Car', { algo: algo, floor: pos, direction: up ? 'up' : 'down', floorsMoved: moved })
+              ]));
+            }
+          }
+          if (isEnd) {
+            frames.push(F('Reached the <b>end floor ' + tgt + '</b> with nobody to serve here. That is the cost of SCAN: it always rides to the wall before turning. LOOK would have turned around at the last real request.', [
+              liftGrid(top, pos, '■', waiting, served, 'bad', trail),
+              QUEUE('Remaining planned stops', routeTxt.slice(wi + 1), {}, 'next', 'last'),
+              VARS('Car', { algo: algo, floor: pos, floorsMoved: moved, wastedTrip: 'yes' }, { wastedTrip: 'bad' })
+            ]));
+          } else {
+            waiting.splice(waiting.indexOf(tgt), 1); served.push(tgt);
+            frames.push(F('Stop at floor <b>' + tgt + '</b>: doors open, request served after <b>' + moved + '</b> floors of travel (its wait). ' + (waiting.length ? waiting.length + ' still waiting.' : 'Everyone served!'), [
+              liftGrid(top, pos, '[< >]', waiting, served, 'ok', trail),
+              QUEUE('Remaining planned stops', routeTxt.slice(wi + 1), { 0: 'cur' }, 'next', 'last'),
+              VARS('Car', { algo: algo, floor: pos, floorsMoved: moved, served: served.length + '/' + (served.length + waiting.length) }, { floorsMoved: 'ok' })
+            ]));
+          }
+        });
+        var all = ['FCFS', 'SSTF', 'SCAN', 'LOOK'].map(function (a) { var p = liftPlan(a, start, dir, reqs, top); return { a: a, p: p }; });
+        var hl = {}; all.forEach(function (x, i) { if (x.a === algo) hl[i] = 'sel'; });
+        frames.push(F('Done: <b>' + algo + '</b> travelled <b>' + plan.total + '</b> floors. Compare all four on the same input: total travel (efficiency), average and worst wait (fairness). Try changing <code>algo=</code> or the requests — e.g. put requests at both ends to see SCAN waste, or many near the car to see SSTF neglect far floors.', [
+          TABLE('Same requests, four strategies', ['strategy', 'route', 'total floors', 'avg wait', 'max wait'], all.map(function (x) { return [x.a, [start].concat(x.p.route.map(function (w) { return typeof w === 'string' ? w.slice(1) + '*' : w; })).join('→'), x.p.total, x.p.avgWait, x.p.maxWait]; }), hl),
+          { type: 'bars', label: 'Total floors travelled', values: all.map(function (x) { return x.p.total; }), idxLabels: all.map(function (x) { return x.a; }), hl: one(['FCFS', 'SSTF', 'SCAN', 'LOOK'].indexOf(algo), 'sel') }
+        ]));
+        return frames;
+      }
+    }, {
+      title: 'Multi-car dispatch: cost function picks a car for each hall call',
+      input: 'cars=0 idle, 6 down, 3 up; calls=4 up, 7 down, 2 down',
+      inputLabel: 'cars = up to 4 "floor motion" (idle/up/down); calls = up to 6 "floor up|down"; floors 0-9',
+      gen: function (input) {
+        var o = kvParse(input, 'Format: cars=0 idle, 6 down, 3 up; calls=4 up, 7 down');
+        var top = 9, names = ['A', 'B', 'C', 'D'];
+        var cars = tokens(o.cars || '', ',', 4, 'cars=0 idle, 6 down, 3 up').map(function (t, i) {
+          var p = t.split(/\s+/), fl = parseInt(p[0], 10), mo = String(p[1] || 'idle').toLowerCase();
+          if (isNaN(fl) || fl < 0 || fl > top || ['idle', 'up', 'down'].indexOf(mo) < 0) throw new Error('Each car is "floor motion", e.g. 6 down');
+          return { id: names[i], floor: fl, motion: mo, assigned: [] };
+        });
+        var calls = tokens(o.calls || '', ',', 6, 'calls=4 up, 7 down').map(function (t) {
+          var p = t.split(/\s+/), fl = parseInt(p[0], 10), dd = String(p[1] || '').toLowerCase();
+          if (isNaN(fl) || fl < 0 || fl > top || (dd !== 'up' && dd !== 'down')) throw new Error('Each call is "floor up|down", e.g. 7 down');
+          return { floor: fl, up: dd === 'up' };
+        });
+        function travel(c, k) {
+          var p = c.floor, f = k.floor;
+          if (c.motion === 'idle') return [Math.abs(p - f), 'idle: just the distance'];
+          if (c.motion === 'up') {
+            if (k.up && f >= p) return [f - p, 'on the way up'];
+            if (!k.up) return [(top - p) + (top - f), 'finish up-sweep, come down'];
+            return [(top - p) + top + f, 'behind it: full loop'];
+          }
+          if (!k.up && f <= p) return [p - f, 'on the way down'];
+          if (k.up) return [p + f, 'finish down-sweep, come up'];
+          return [p + top + (top - f), 'behind it: full loop'];
+        }
+        function carGrid(hlCar, callFloor) {
+          var rows = [], rh = [], hl = {};
+          for (var f = top; f >= 0; f--) {
+            var r = top - f; rh.push('Floor ' + f);
+            rows.push(cars.map(function (c, ci) {
+              var s = c.floor === f ? (c.motion === 'up' ? '▲' : c.motion === 'down' ? '▼' : '■') : (c.assigned.indexOf(f) >= 0 ? '○' : '');
+              if (c.floor === f) hl[r + ',' + ci] = ci === hlCar ? 'sel' : 'cur';
+              else if (c.assigned.indexOf(f) >= 0) hl[r + ',' + ci] = 'win';
+              return s;
+            }).concat([f === callFloor ? 'CALL' : '']));
+            if (f === callFloor) hl[r + ',' + cars.length] = 'bad';
+          }
+          return { type: 'grid', label: 'Building (■ idle, ▲/▼ moving, ○ assigned stop)', rows: rows, rowHead: rh, colHead: cars.map(function (c) { return 'car ' + c.id; }).concat(['hall']), hl: hl };
+        }
+        var frames = [];
+        frames.push(F('Building with ' + cars.length + ' cars. Each hall call goes to the dispatcher, which asks every car "how many floors until you can reach this caller <i>going their way</i>?" and adds a small load penalty (1 per stop already assigned). Cheapest car wins.', [carGrid(-1, -1), TABLE('Cars', ['car', 'floor', 'motion'], cars.map(function (c) { return [c.id, c.floor, c.motion]; }))]));
+        calls.forEach(function (k) {
+          var rows = [], best = -1, bc = 1e9;
+          cars.forEach(function (c, i) {
+            var t = travel(c, k), cost = t[0] + c.assigned.length;
+            rows.push([c.id, c.floor + ' ' + c.motion, t[1], t[0], c.assigned.length, cost]);
+            if (cost < bc) { bc = cost; best = i; }
+          });
+          frames.push(F('Hall call: floor <b>' + k.floor + ' ' + (k.up ? '▲' : '▼') + '</b>. Compute each car\'s cost. A car moving the other way, or already past the caller, must finish its sweep first — that is why "nearest by distance" is not enough.', [carGrid(-1, k.floor), TABLE('Cost per car', ['car', 'now', 'reasoning', 'travel', 'load', 'cost'], rows)]));
+          var c = cars[best];
+          c.assigned.push(k.floor);
+          if (c.motion === 'idle' && c.floor !== k.floor) c.motion = k.floor > c.floor ? 'up' : 'down';
+          frames.push(F('Car <b>' + c.id + '</b> wins with cost ' + bc + '. The call is added to car ' + c.id + '\'s stop set (○). ' + (c.motion !== 'idle' ? 'Its state is now ' + c.motion + ', which changes its cost for the next call.' : ''), [carGrid(best, k.floor), TABLE('Cost per car', ['car', 'now', 'reasoning', 'travel', 'load', 'cost'], rows, one(best, 'sel'))]));
+        });
+        frames.push(F('All calls assigned. The dispatcher is a <b>Strategy</b> too: at 9 am you could swap in a zoning strategy (cars A/B serve floors 1–5, C/D serve 6–9) without touching the cars or the state machine.', [carGrid(-1, -1), TABLE('Assignments', ['car', 'stops assigned'], cars.map(function (c) { return [c.id, c.assigned.join(', ') || '—']; }))]));
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'SSTF starvation, step by step', html: `<p>Car at 5. Waiting: floor 0. Every few seconds someone presses 4 or 6. SSTF always picks the nearer 4/6, so floor 0 waits forever. ${H.table(['time', 'car at', 'waiting', 'SSTF picks'], [['t0', '5', '0, 6', '6'], ['t1', '6', '0, 4', '4'], ['t2', '4', '0, 6', '6'], ['…', '…', H.c('r', '0 still waiting'), '…']])} LOOK would keep going in one direction and reach 0 within one sweep. ${H.c('g', 'Bounded waiting')} is a requirement worth saying out loud.</p>` },
+      { title: 'C-SCAN / C-LOOK: fairness for the top floors', html: `<p>With SCAN, middle floors are passed twice per cycle but end floors once, so their worst-case wait is longer. <b>C-SCAN</b> (circular) serves only while going up, then rides empty straight to the bottom and starts again — every floor gets the same worst-case wait. Common in disk schedulers; in buildings, a similar idea is an "up-peak" mode where cars return to the lobby after each trip.</p>` },
+      { title: 'Directional hall calls in the stop sets', html: `<p>Car at 2 going ▲ with car call 8. Hall calls: 5▲ and 5▼. With two sets: <code>upStops = {5, 8}</code>, <code>downStops = {5}</code>. Going up it stops at 5 for the ▲ caller only; the ▼ caller is served on the way back down. Passing a floor serves it only if the floor is in the set for the <b>current direction</b>.</p>`, code: `import java.util.*;
+class DirectionalStops {
+    final TreeSet<Integer> up = new TreeSet<>(), down = new TreeSet<>();
+    void hallCall(int floor, boolean wantsUp) { (wantsUp ? up : down).add(floor); }
+    /** Should a car moving in direction 'goingUp' stop at 'floor'? */
+    boolean shouldStop(int floor, boolean goingUp) { return goingUp ? up.contains(floor) : down.contains(floor); }
+}` },
+      { title: 'Estimating wait time for the dispatcher', html: `<p>Our cost uses floors, but production systems estimate <b>seconds</b>: travel ≈ floors × 1.5 s + stops on the way × 10 s (doors + boarding). A car 3 floors away with 4 stops in between (≈ 44 s) loses to an idle car 7 floors away (≈ 10 s). The structure stays the same — only the cost function (a Strategy) gets smarter.</p>` }
+    ],
+    deepDive: `<p><b>Offline vs online.</b> Textbook FCFS/SSTF/SCAN/LOOK assume all requests are known (offline). Real elevators are <b>online</b>: requests keep arriving. The correct implementation is not "compute a route once" but "on every tick, ask: is my current floor in the stop set for my direction? Is there anything ahead? If not, reverse or go idle." That is LOOK expressed as a state machine — exactly the <code>chooseDirection()</code> in the previous topic.</p>
+<p><b>Complexity.</b> With a <code>TreeSet</code> per direction, adding a stop and finding the next stop ahead (<code>ceiling</code>/<code>floor</code>) are O(log F); with F ≤ 200 floors a <code>boolean[]</code> scan is also fine. SSTF over N pending requests is O(N) per decision with a list, O(log N) with a sorted set (nearest = floor/ceiling of the current position).</p>
+<p><b>Starvation proof for LOOK.</b> A request at floor f is reached at most after the car finishes its current sweep and one sweep in the opposite direction — at most 2·(top − bottom) floors of travel, regardless of new arrivals, because the car never reverses while requests remain ahead. SSTF has no such bound.</p>
+<p><b>Dispatch is an assignment problem.</b> Assigning calls one at a time greedily (what we do) is standard. Modern controllers <b>re-assign</b> periodically (a call may move to a newly idle car), and destination-dispatch systems group passengers by destination so a car makes fewer stops — fewer stops is the biggest win, since each stop costs ~10 seconds.</p>
+<p><b>Traffic modes as Strategy swaps.</b> Up-peak (morning): send idle cars to the lobby. Down-peak (evening): park cars at the top. Inter-floor (midday): spread cars across zones. Night: park one car at the lobby, put others in energy-save. A <code>TrafficModeStrategy</code> chosen by time-of-day or by measured traffic keeps all this out of the car code.</p>
+<p><b>Energy and comfort.</b> Fewer direction reversals = less energy and fewer jerks; LOOK minimises reversals. Some systems penalise reversals in the cost function and cap the number of stops per trip.</p>`,
+    aiEra: `<p><b>What AI changes:</b> asking "which elevator algorithm is best?" gets a confident generic answer. The better use is <b>simulation</b>: <code>Write a Java simulator that replays 10,000 random requests (Poisson arrivals, 70% from the lobby at 9 am) through FCFS, SSTF and LOOK and reports average and 99th-percentile wait.</code> Data beats opinions, and AI writes simulators fast.</p>
+<p><b>ML in real dispatch:</b> modern controllers learn traffic patterns (badge-ins, calendar, weather) and tune dispatch weights or pre-position idle cars. Reinforcement learning has been studied for dispatch for decades; in practice it usually tunes a <b>cost function</b> inside a classic, verifiable controller rather than replacing it, because safety rules must stay deterministic.</p>
+<p><b>Where AI goes wrong:</b> LLM-written elevators often use one <code>PriorityQueue</code> ordered by distance — that is SSTF with starvation — or ignore hall-call direction. They also mix scheduling into the state machine with if/else. <b>What you must still own:</b> naming the trade-off (throughput vs fairness), proving bounded waiting, and keeping scheduling as a swappable Strategy separate from the car's State.</p>`,
+    problems: [{
+      title: 'LOOK Service Order and Distance', level: 'Medium', tags: ['elevator', 'scheduling', 'treeset'], companies: ['Amazon', 'Microsoft', 'Adobe', 'Goldman Sachs'],
+      statement: `<p>An elevator is at floor <code>start</code> moving in direction <code>dir</code> (UP or DOWN). Pending requests are given as a list of floors (may contain duplicates). Using the <b>LOOK</b> policy, return the order in which the floors are served and the total floors travelled. Then implement a <code>LookScheduler</code> class that supports <b>online</b> use: <code>addRequest(floor)</code> at any time and <code>nextStop()</code> that returns the next floor to go to (or -1 if idle), updating its direction.</p>`,
+      constraints: `0 ≤ floors ≤ 10<sup>6</sup>, up to 10<sup>5</sup> requests; a request at the current floor is served immediately.`,
+      example: `<p>start = 5, dir = UP, requests = [8, 2, 6, 1, 4, 6]. Up sweep: ${H.c('g', '6, 8')}; reverse at 8 (last request above); down sweep: ${H.c('b', '4, 2, 1')}. Order = [6, 8, 4, 2, 1]; distance = 1 + 2 + 4 + 2 + 1 = <b>10</b>. The duplicate 6 is served once.</p>`,
+      brute: { why: `<p>Simulate floor by floor: at each floor scan every pending request to see if one is here, and to see if anything remains ahead. That is O(F × N) — 10<sup>6</sup> floors × 10<sup>5</sup> requests = 10<sup>11</sup> steps. All the work spent "checking empty floors" is wasted; a sorted structure can jump straight to the next stop.</p>`, code: `import java.util.*;
+class BruteLook {
+    static List<Integer> order(int start, boolean up, List<Integer> req, int top) {
+        List<Integer> pending = new ArrayList<>(new HashSet<>(req)), out = new ArrayList<>();
+        int pos = start;
+        while (!pending.isEmpty()) {
+            if (pending.remove(Integer.valueOf(pos))) { out.add(pos); continue; }   // O(N) scan
+            boolean ahead = false;
+            for (int f : pending) if (up ? f > pos : f < pos) ahead = true;          // O(N) scan per floor
+            if (!ahead) { up = !up; continue; }
+            pos += up ? 1 : -1;                                                       // one floor at a time
+        }
+        return out;
+    }
+}` },
+      mcq: { q: 'The car is at 5 going UP, with requests at 3 and 7. A new request for 6 arrives when the car is at 5.5 (between 5 and 6). What does LOOK do?', options: ['Stops at 6, then 7, then reverses to 3', 'Goes to 7 first because it was earlier', 'Reverses to 3 immediately because 3 is closer to 5 than 7', 'Ignores 6 until the next sweep'], answer: 0, explain: 'LOOK serves everything ahead in the current direction in floor order, including late arrivals ahead of the car.' },
+      hints: [`<p>Hint 1: LOOK = "everything at or above me in ascending order, then everything below me in descending order" (for UP). Duplicates do not matter — use a set.</p>`, `<p>Hint 2: A <code>TreeSet</code> gives <code>tailSet(start, true)</code> and <code>headSet(start, false).descendingSet()</code>. For the online version, <code>ceiling(pos)</code> / <code>floor(pos)</code> give the next stop in each direction in O(log N).</p>`, `<p>Hint 3: Online <code>nextStop()</code>: if direction is UP and <code>ceiling(pos)</code> exists → go there; else flip to DOWN and try <code>floor(pos)</code>; if neither, return -1 (idle). Remove the floor when served, update pos.</p>`],
+      solution: {
+        approach: `<p>Offline: put requests in a TreeSet; for UP take the tail set (≥ start) ascending, then the head set (&lt; start) descending; the mirror for DOWN. Distance is the sum of absolute gaps. Online: keep the TreeSet and the current direction; <code>nextStop</code> looks ahead with <code>ceiling</code>/<code>floor</code> and flips only when nothing remains ahead — that is exactly the LOOK rule, and it avoids starvation.</p>`,
+        code: `import java.util.*;
+
+class LookScheduler {
+    private final TreeSet<Integer> pending = new TreeSet<>();
+    private int pos;
+    private boolean up;
+
+    LookScheduler(int start, boolean up) { this.pos = start; this.up = up; }
+
+    void addRequest(int floor) { pending.add(floor); }
+
+    /** Next floor to stop at under LOOK, or -1 if idle. Serves (removes) it and moves there. */
+    int nextStop() {
+        if (pending.isEmpty()) return -1;
+        Integer next = up ? pending.ceiling(pos) : pending.floor(pos);
+        if (next == null) {                         // nothing ahead -> reverse (the LOOK turn)
+            up = !up;
+            next = up ? pending.ceiling(pos) : pending.floor(pos);
+        }
+        pending.remove(next);
+        pos = next;
+        return next;
+    }
+
+    /** Offline helper: whole order + distance. */
+    static long[] serveAll(int start, boolean up, List<Integer> req, List<Integer> orderOut) {
+        LookScheduler s = new LookScheduler(start, up);
+        req.forEach(s::addRequest);
+        long dist = 0;
+        int at = start;
+        for (int f = s.nextStop(); f != -1; f = s.nextStop()) {
+            orderOut.add(f);
+            dist += Math.abs(f - at);
+            at = f;
+        }
+        return new long[] { dist };
+    }
+
+    public static void main(String[] args) {
+        List<Integer> order = new ArrayList<>();
+        long[] d = serveAll(5, true, List.of(8, 2, 6, 1, 4, 6), order);
+        System.out.println(order + " distance=" + d[0]);      // [6, 8, 4, 2, 1] distance=10
+
+        LookScheduler live = new LookScheduler(5, true);
+        live.addRequest(3); live.addRequest(7);
+        live.addRequest(6);                                     // arrives late, but is ahead
+        System.out.println(live.nextStop() + " " + live.nextStop() + " " + live.nextStop()); // 6 7 3
+    }
+}`,
+        complexity: `<p>O(N log N) to insert N requests; each <code>nextStop</code> is O(log N). Space O(N). Compared with the brute force O(F × N), we never visit empty floors in the algorithm (the physical car still moves floor by floor, but the decision is instant).</p>`,
+        followUps: ['Modify it into C-LOOK (only serve while going up; jump back to the lowest request).', 'Hall calls have a direction: a ▼ caller must not be served on the up sweep. How do you change the data structure?', 'Add a second car: how would you decide which scheduler gets a new request?']
+      }
+    }]
+  });
+
   registerModule({
     id: 'lld09',
     title: 'State-Heavy Designs: Elevator, Vending Machine, ATM',
