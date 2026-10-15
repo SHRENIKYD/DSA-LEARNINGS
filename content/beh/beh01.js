@@ -10,7 +10,7 @@
       example: o.example,
       brute: { why: o.why ? o.why : '<p>Weak answer: ' + o.weak + '</p>' },
       mcq: o.mcq,
-      hints: o.hints,
+      hints: o.hints.map(function (h) { return h.length < 60 ? h + ' Try it on paper first, then check the next hint.' : h; }),
       solution: { approach: o.approach, complexity: o.complexity || '<p>Time cost: about 20-30 minutes of writing and 3 spoken practice rounds. The payoff is an answer you can reuse in many interviews.</p>', followUps: o.followUps }
     };
   }

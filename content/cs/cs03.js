@@ -999,3 +999,320 @@ topics.push({
     }
   }]
 });
+
+
+/* =========================== PRACTICE: EASY =========================== */
+practice.push({
+  title: 'FCFS Table with Four Processes', level: 'Easy', tags: ['FCFS', 'metrics'], companies: ['TCS', 'Wipro'],
+  statement: `<p>P1 (AT 0, BT 3), P2 (AT 1, BT 4), P3 (AT 2, BT 2), P4 (AT 4, BT 1). Using FCFS, give the Gantt chart, CT, TAT, WT for each process, and the average TAT and WT.</p>`,
+  constraints: `Integer times, non-preemptive, ties by lower PID.`,
+  example: `<p>Gantt: P1[0–3] P2[3–7] P3[7–9] P4[9–10]. Avg TAT <b>5.5</b>, avg WT <b>3.0</b>.</p>`,
+  brute: { why: `<p>Subtracting burst from completion without subtracting arrival (WT = CT − BT) gives wrong numbers. Always do TAT = CT − AT first.</p>` },
+  mcq: { q: 'P3 arrives at 2 and starts at 7. Its waiting time is…', options: ['5', '7', '2', '9'], answer: 0, explain: 'Non-preemptive: WT = start − arrival = 7 − 2 = 5.' },
+  hints: [`<p>Hint 1: FCFS runs strictly in arrival order, and each job runs until it finishes.</p>`, `<p>Hint 2: start time = max(arrival time, previous job's completion time).</p>`, `<p>Hint 3: TAT = CT − AT; WT = TAT − BT; add and divide by 4.</p>`],
+  solution: {
+    approach: `<p>Run in arrival order: P1 0–3, P2 3–7, P3 7–9, P4 9–10, so CT = 3, 7, 9, 10. TAT = CT − AT = 3, 6, 7, 6 (sum 22, average 5.5). WT = TAT − BT = 0, 2, 5, 5 (sum 12, average 3.0). Because FCFS never preempts, response time equals waiting time here.</p>`,
+    code: { lang: 'python', run: true, code: `procs = [("P1", 0, 3), ("P2", 1, 4), ("P3", 2, 2), ("P4", 4, 1)]
+t, tat_sum, wt_sum = 0, 0, 0
+for name, at, bt in sorted(procs, key=lambda p: p[1]):
+    t = max(t, at)            # CPU idles until the job arrives
+    t += bt                   # run to completion
+    tat, wt = t - at, t - at - bt
+    tat_sum += tat; wt_sum += wt
+    print(name, "CT", t, "TAT", tat, "WT", wt)
+print("avg TAT", tat_sum / len(procs), "avg WT", wt_sum / len(procs))` },
+    dry: { head: ['PID', 'Start', 'CT', 'TAT', 'WT'], rows: [['P1', 0, 3, 3, 0], ['P2', 3, 7, 6, 2], ['P3', 7, 9, 7, 5], ['P4', 9, 10, 6, 5]] },
+    complexity: `<p>Time O(n log n) for sorting by arrival, then one linear pass.</p>`, followUps: ['Redo with SJF (same answer here? check P2 vs P3).']
+  }
+});
+practice.push({
+  title: 'CPU Utilization and Throughput with an Idle Gap', level: 'Easy', tags: ['utilization', 'throughput'], companies: ['Infosys'],
+  statement: `<p>P1 (AT 0, BT 4), P2 (AT 7, BT 3), P3 (AT 8, BT 2). FCFS. Find the Gantt chart, CPU utilization, throughput, and average WT and TAT.</p>`,
+  constraints: `Utilization = busy / total elapsed.`,
+  example: `<p>Gantt: P1[0–4] idle[4–7] P2[7–10] P3[10–12]. Utilization 9/12 = <b>75%</b>, throughput 3/12 = <b>0.25</b> jobs per unit, avg WT 0.67, avg TAT 3.67.</p>`,
+  brute: { why: `<p>Counting total time as the sum of bursts (9) gives 100% utilization and hides the idle gap.</p>` },
+  mcq: { q: 'Total elapsed time is 12 and busy time 9. Utilization is…', options: ['75%', '9%', '133%', '25%'], answer: 0, explain: 'Utilization = busy time / elapsed time = 9 / 12 = 0.75.' },
+  hints: [`<p>Hint 1: The CPU is idle whenever nobody who has arrived is left to run; idle time counts in the total.</p>`, `<p>Hint 2: P2 cannot start before its arrival time 7, even though the CPU is free earlier.</p>`, `<p>Hint 3: P3 arrives at 8 while P2 runs → waits 2 units.</p>`],
+  solution: {
+    approach: `<p>P1 runs 0–4. Nobody is ready until P2 arrives at 7, so the CPU idles for 3 units. P2 runs 7–10 (WT 0). P3 arrived at 8 and waits until 10, runs 10–12 (WT 2). Elapsed 12, busy 4 + 3 + 2 = 9 → utilization 75%. Throughput = 3 jobs / 12 = 0.25. TAT = 4, 3, 4 → 3.67. WT = 0, 0, 2 → 0.67.</p>`,
+    dry: { head: ['PID', 'Start', 'CT', 'TAT', 'WT'], rows: [['P1', 0, 4, 4, 0], ['P2', 7, 10, 3, 0], ['P3', 10, 12, 4, 2]] },
+    complexity: `<p>Time O(n) after the processes are ordered by arrival time.</p>`, followUps: ['What utilization if P2 arrived at 4?']
+  }
+});
+practice.push({
+  title: 'FCFS versus SJF When Everyone Arrives at Time 0', level: 'Easy', tags: ['FCFS', 'SJF'], companies: ['Oracle', 'TCS'],
+  statement: `<p>Four jobs arrive at t=0 in this order with bursts 8, 4, 2, 6. Compute the average waiting time under FCFS and SJF and say how much SJF saves.</p>`,
+  constraints: `Non-preemptive.`,
+  example: `<p>FCFS waits 0, 8, 12, 14 → <b>8.5</b>. SJF order 2, 4, 6, 8 → waits 0, 2, 6, 12 → <b>5.0</b>. SJF saves 3.5 per job.</p>`,
+  brute: { why: `<p>Trying all 4! = 24 orders works but is unnecessary; sorting by burst is optimal.</p>` },
+  mcq: { q: 'With all arrivals at 0, the waiting time of a job in a non-preemptive schedule equals…', options: ['the sum of bursts scheduled before it', 'its own burst', 'its priority', 'the quantum'], answer: 0, explain: 'It starts exactly when all earlier jobs have finished.' },
+  hints: [`<p>Hint 1: With everyone at t=0, waiting = sum of the bursts scheduled earlier.</p>`, `<p>Hint 2: For SJF sort the bursts in ascending order and then recompute the running sums.</p>`, `<p>Hint 3: Compare the totals of the waits: FCFS gives 34 in total, SJF gives only 20 in total.</p>`],
+  solution: {
+    approach: `<p>FCFS order (8, 4, 2, 6): job waits are 0, 8, 12, 14 so total 34 and average 8.5. SJF order (2, 4, 6, 8): waits 0, 2, 6, 12 so total 20 and average 5.0. The saving of 3.5 per job comes from not making short jobs wait behind the burst of 8. This is the convoy effect in numbers.</p>`,
+    dry: { head: ['Policy', 'Order of bursts', 'Waits', 'Average'], rows: [['FCFS', '8, 4, 2, 6', '0, 8, 12, 14', '8.5'], ['SJF', '2, 4, 6, 8', '0, 2, 6, 12', '5.0']] },
+    complexity: `<p>Time O(n log n) to sort the bursts, space O(1) extra.</p>`, followUps: ['Prove sorting is optimal with an exchange argument.']
+  }
+});
+practice.push({
+  title: 'Choosing the Quantum from the Switch Cost', level: 'Easy', tags: ['round robin', 'quantum', 'overhead'], companies: ['Qualcomm', 'Cisco'],
+  statement: `<p>A context switch costs 1 ms. (a) With q = 4 ms, what fraction of CPU time is lost to switching? (b) What is the smallest q so that overhead is at most 5%? (c) With 10 CPU-bound processes and that q, how long until a process gets the CPU again?</p>`,
+  constraints: `Overhead = s / (q + s). Assume every quantum is fully used.`,
+  example: `<p>(a) 1 / 5 = <b>20%</b>. (b) q ≥ 19 ms. (c) 9 × (19 + 1) = <b>180 ms</b>.</p>`,
+  brute: { why: `<p>Picking q by gut feeling ("something like 10 ms") hides the trade-off. The formula shows both the overhead and the response bound.</p>` },
+  mcq: { q: 'Doubling q while the switch cost stays the same will usually…', options: ['lower overhead and raise response time', 'raise overhead and lower response time', 'change nothing', 'lower both'], answer: 0, explain: 'Fewer switches per second but each wait between turns grows.' },
+  hints: [`<p>Hint 1: The fraction wasted on switching is overhead = s / (q + s) for a fully used quantum.</p>`, `<p>Hint 2: Solve the inequality 1 / (q + 1) ≤ 0.05 for q, giving q + 1 ≥ 20.</p>`, `<p>Hint 3: Wait between turns ≈ (n − 1) × (q + s).</p>`],
+  solution: {
+    approach: `<p>(a) 1 / (4 + 1) = 20% of the CPU is lost. (b) Need 1 / (q + 1) ≤ 0.05, so q + 1 ≥ 20 and q ≥ 19 ms. (c) A process waits for the other 9 to take a turn, each costing q + s = 20 ms: 9 × 20 = 180 ms between its own turns. This is the heart of the quantum choice: bigger q wastes less on switching but makes interactive response slower.</p>`,
+    dry: { head: ['q (ms)', 'overhead s/(q+s)', 'worst wait for 10 jobs'], rows: [[4, '20%', '45 ms'], [10, '9.1%', '99 ms'], [19, '5%', '180 ms'], [50, '2%', '459 ms']] },
+    complexity: `<p>Closed-form arithmetic.</p>`, followUps: ['How does CFS avoid a fixed q?']
+  }
+});
+
+/* =========================== PRACTICE: MEDIUM =========================== */
+practice.push({
+  title: 'SRTF with Four Processes', level: 'Medium', tags: ['SRTF', 'gantt'], companies: ['Amazon', 'Microsoft'],
+  statement: `<p>P1 (AT 0, BT 8), P2 (AT 1, BT 4), P3 (AT 2, BT 9), P4 (AT 3, BT 5). Using SRTF, find the Gantt chart, and the average WT, TAT and RT.</p>`,
+  constraints: `Ties: earlier arrival. Zero switch cost.`,
+  example: `<p>Gantt: P1[0–1] P2[1–5] P4[5–10] P1[10–17] P3[17–26]. Avg WT <b>6.5</b>, avg TAT <b>13.0</b>, avg RT <b>4.25</b>.</p>`,
+  brute: { why: `<p>Comparing arriving burst times with the <i>original</i> burst of the running job (instead of remaining time) makes P1 look as if it had 8 left at t=1 and would still be preempted, but the same mistake later gives wrong preemptions. Always use remaining time.</p>` },
+  mcq: { q: 'At t=3, P4 (BT 5) arrives while P2 has 2 left. SRTF…', options: ['keeps P2', 'preempts P2 for P4', 'runs P3', 'runs P1'], answer: 0, explain: 'P2 has remaining 2 which is smaller than 5.' },
+  hints: [`<p>Hint 1: Re-decide at t=1, 2, 3 (arrivals) and at completions.</p>`, `<p>Hint 2: At t=1, P2 (4) beats P1 (7 left).</p>`, `<p>Hint 3: After P2 ends at 5: P4 (5), P1 (7), P3 (9).</p>`],
+  solution: {
+    approach: `<p>t=0 P1 runs. t=1 P2 arrives (4 &lt; 7 left): P2 runs; P3 (9) at t=2 and P4 (5) at t=3 are longer than P2's remaining so P2 finishes at 5. Ready then: P1 (7), P3 (9), P4 (5) → P4 runs 5–10. Then P1 (7) before P3 (9): P1 10–17, P3 17–26. CT: P1 17, P2 5, P3 26, P4 10. TAT = 17, 4, 24, 7 → 13.0. WT = 9, 0, 15, 2 → 6.5. RT = 0, 0, 15, 2 → 4.25.</p>`,
+    code: `// Tick-by-tick SRTF: returns completion times (input sorted by arrival; ties go to the lower index)
+vector<int> srtf(const vector<array<int, 2>>& p) {      // p[i] = {arrival, burst}
+    int n = p.size(), t = 0, done = 0;
+    vector<int> rem(n), ct(n, 0);
+    for (int i = 0; i < n; i++) rem[i] = p[i][1];
+    while (done < n) {
+        int best = -1;
+        for (int i = 0; i < n; i++)
+            if (p[i][0] <= t && rem[i] > 0 && (best < 0 || rem[i] < rem[best])) best = i;
+        if (best < 0) { t++; continue; }                 // idle
+        rem[best]--; t++;                                // run one unit
+        if (rem[best] == 0) { ct[best] = t; done++; }
+    }
+    return ct;
+}`,
+    dry: { head: ['t', 'Ready (remaining)', 'Runs'], rows: [[0, 'P1=8', 'P1'], [1, 'P1=7, P2=4', 'P2'], [5, 'P1=7, P3=9, P4=5', 'P4'], [10, 'P1=7, P3=9', 'P1'], [17, 'P3=9', 'P3'], [26, '—', 'done']] },
+    complexity: `<p>O(T · n) tick simulation, or O(n log n) with a heap and event jumping.</p>`, followUps: ['Compare with non-preemptive SJF (avg WT 7.75).']
+  }
+});
+practice.push({
+  title: 'Round Robin with q = 3', level: 'Medium', tags: ['round robin', 'gantt'], companies: ['Amazon', 'Cisco'],
+  statement: `<p>P1 (AT 0, BT 7), P2 (AT 2, BT 4), P3 (AT 4, BT 1), P4 (AT 5, BT 4). Round robin with q = 3, newcomers queue before the preempted job. Find the Gantt chart and average WT, TAT, RT.</p>`,
+  constraints: `Zero switch cost.`,
+  example: `<p>Gantt: P1[0–3] P2[3–6] P1[6–9] P3[9–10] P4[10–13] P2[13–14] P1[14–15] P4[15–16]. Avg WT <b>7.0</b>, avg TAT <b>11.0</b>, avg RT <b>2.75</b>.</p>`,
+  brute: { why: `<p>Sorting the processes by remaining time each round turns it into SRTF. RR order is only the queue order.</p>` },
+  mcq: { q: 'At t=6 P2 is preempted; P3 (AT 4) and P4 (AT 5) are already waiting behind P1. The queue is…', options: ['P1, P3, P4, P2', 'P2, P1, P3, P4', 'P3, P4, P1, P2', 'P1, P2, P3, P4'], answer: 0, explain: 'P1 was already in the queue (put there at t=3), P3 and P4 arrived while P2 ran, and the preempted P2 goes last.' },
+  hints: [`<p>Hint 1: Write the queue after every slice.</p>`, `<p>Hint 2: t=3: queue [P2, P1]. t=6: [P1, P3, P4, P2].</p>`, `<p>Hint 3: Remaining after first rounds: P1 1, P2 1, P4 1 plus P3 done at 10.</p>`],
+  solution: {
+    approach: `<p>Queue trace: t=0 [P1]; P1 runs 0–3 (4 left), P2 arrived at 2 so queue [P2, P1]. P2 runs 3–6 (1 left); P3 and P4 arrive: [P1, P3, P4, P2]. P1 runs 6–9 (1 left): [P3, P4, P2, P1]. P3 9–10 done. P4 10–13 (1 left): [P2, P1, P4]. P2 13–14 done. P1 14–15 done. P4 15–16 done. CT: P1 15, P2 14, P3 10, P4 16. TAT 15, 12, 6, 11 → 11.0. WT 8, 8, 5, 7 → 7.0. RT 0, 1, 5, 5 → 2.75.</p>`,
+    dry: { head: ['Slice', 'Runs', 'Left', 'Queue after'], rows: [['0–3', 'P1', 4, 'P2, P1'], ['3–6', 'P2', 1, 'P1, P3, P4, P2'], ['6–9', 'P1', 1, 'P3, P4, P2, P1'], ['9–10', 'P3', 0, 'P4, P2, P1'], ['10–13', 'P4', 1, 'P2, P1, P4'], ['13–14', 'P2', 0, 'P1, P4'], ['14–15', 'P1', 0, 'P4'], ['15–16', 'P4', 0, '—']] },
+    complexity: `<p>O(total burst / q) slices.</p>`, followUps: ['Redo with the opposite tie rule (preempted first) and compare.']
+  }
+});
+practice.push({
+  title: 'Preemptive versus Non-Preemptive Priority', level: 'Medium', tags: ['priority', 'gantt'], companies: ['Infosys', 'Adobe'],
+  statement: `<p>A (AT 0, BT 4, pr 5), B (AT 1, BT 3, pr 2), C (AT 2, BT 2, pr 4), D (AT 3, BT 5, pr 1). Lower number = higher priority. Compute the Gantt chart and average WT and TAT for (a) non-preemptive and (b) preemptive priority.</p>`,
+  constraints: `Ties by earlier arrival.`,
+  example: `<p>(a) A[0–4] D[4–9] B[9–12] C[12–14]: avg WT <b>4.75</b>, TAT <b>8.25</b>. (b) A[0–1] B[1–3] D[3–8] B[8–9] C[9–11] A[11–14]: avg WT <b>5.5</b>, TAT <b>9.0</b>.</p>`,
+  brute: { why: `<p>Sorting by priority and ignoring arrival times would run D first at t=0, even though D arrives at t=3.</p>` },
+  mcq: { q: 'In the non-preemptive version, why does D (pr 1) not start at t=3?', options: ['A is already running and cannot be preempted', 'D has the lowest priority', 'D has not arrived', 'B is better'], answer: 0, explain: 'Without preemption A keeps the CPU until t=4.' },
+  hints: [`<p>Hint 1: Non-preemptive: choose only at completion times from the processes that have already arrived.</p>`, `<p>Hint 2: Non-preemptive: at t=4 the ready jobs are B(2), C(4), D(1), so D wins.</p>`, `<p>Hint 3: Preemptive: B takes over at t=1, D takes over at t=3.</p>`],
+  solution: {
+    approach: `<p>(a) A runs 0–4. At t=4 ready: B (2), C (4), D (1) → D 4–9, then B 9–12, C 12–14. WT: A 0, B 8, C 10, D 1 → 4.75. TAT: 4, 11, 12, 6 → 8.25. (b) A 0–1; B (pr 2) arrives at 1 and preempts A. B runs 1–3; then D (pr 1) arrives at 3 and preempts B (1 left): D 3–8. Then B 8–9, C 9–11 (C has been waiting), A 11–14. WT: A 10, B 5, C 7, D 0 → 5.5; TAT 14, 8, 9, 5 → 9.0. Preemption gave the important jobs faster service but the average got worse due to more waiting for A and C.</p>`,
+    dry: { head: ['Variant', 'Gantt', 'WT (A,B,C,D)', 'Avg WT', 'Avg TAT'], rows: [['Non-preemptive', 'A D B C', '0, 8, 10, 1', '4.75', '8.25'], ['Preemptive', 'A B D B C A', '10, 5, 7, 0', '5.5', '9.0']] },
+    complexity: `<p>O(n log n) with a heap.</p>`, followUps: ['Add aging every 4 ticks and redraw.']
+  }
+});
+practice.push({
+  title: 'CFS Shares for Nice 0 and Nice 10', level: 'Medium', tags: ['CFS', 'nice', 'weights'], companies: ['Red Hat', 'Google'],
+  statement: `<p>Two CPU-bound tasks share one CPU under CFS: A (nice 0, weight 1024) and B (nice 10, weight 110). Each needs 100 ms of CPU. (a) What CPU share does each get while both run? (b) When does A finish? (c) When does B finish? (d) How fast does each vruntime grow?</p>`,
+  constraints: `Ignore overheads; continuous approximation.`,
+  example: `<p>Shares 90.3% and 9.7%. A finishes at about <b>110.7 ms</b>, B at <b>200 ms</b>. vruntime speed: A 1.0 per ms, B 9.31 per ms.</p>`,
+  brute: { why: `<p>Assuming equal time slices ("fair = 50/50") ignores weights; CFS is fair in vruntime, not in raw milliseconds.</p>` },
+  mcq: { q: 'Why can B run at all if its vruntime grows 9.3× faster?', options: ['Because A\'s vruntime keeps growing too, so eventually B is leftmost again', 'B has real-time priority', 'CFS gives B a fixed slice', 'B is never preempted'], answer: 0, explain: 'The scheduler runs the smallest vruntime; every task eventually becomes the smallest.' },
+  hints: [`<p>Hint 1: While both run, share = weight of the task divided by the total weight.</p>`, `<p>Hint 2: A finishes after 100 / 0.903 ms of wall time.</p>`, `<p>Hint 3: B gets 9.7% of that time, then runs alone for its remaining time.</p>`],
+  solution: {
+    approach: `<p>Total weight 1134. A's share is 1024 / 1134 = 90.3%, B's share is 110 / 1134 = 9.7%. A needs 100 ms at 90.3% of the CPU, so it finishes at 100 / 0.903 ≈ 110.7 ms. In that time B has received 0.097 × 110.7 ≈ 10.7 ms, so it needs 89.3 ms more. Now it runs alone, so it finishes at 110.7 + 89.3 = 200 ms (the CPU was never idle: total work is 200 ms). vruntime speed is 1024 / weight: A 1.0, B 9.31 per ms. At the moment A finishes both have vruntime about 100 (A: 100 × 1; B: 10.7 × 9.31 ≈ 100): the equal-vruntime state is the definition of the fair share.</p>`,
+    dry: { head: ['Quantity', 'A (nice 0)', 'B (nice 10)'], rows: [['weight', 1024, 110], ['share while both run', '90.3%', '9.7%'], ['CPU received at t=110.7', '100 ms', '10.7 ms'], ['vruntime at t=110.7', '100', '≈ 100'], ['finish time', '110.7 ms', '200 ms']] },
+    complexity: `<p>Closed-form arithmetic, O(1) time and space.</p>`, followUps: ['What if B were nice −10 (weight 9548)?']
+  }
+});
+practice.push({
+  title: 'Predict the Next CPU Burst', level: 'Medium', tags: ['SJF', 'exponential averaging'], companies: ['Oracle', 'VMware'],
+  statement: `<p>SJF needs burst estimates. With α = 0.5 and initial guess τ₀ = 10, the last seven actual bursts were 6, 4, 6, 4, 13, 13, 13. Compute every prediction and the next one. What happens with α = 0 and α = 1?</p>`,
+  constraints: `τ(n+1) = α · t(n) + (1 − α) · τ(n).`,
+  example: `<p>Predictions: 10, 8, 6, 6, 5, 9, 11 then next <b>12</b>. The estimate lags a regime change (4 → 13) and then catches up.</p>`,
+  brute: { why: `<p>Using the plain average of all past bursts reacts too slowly to a change in behaviour; exponential decay weights recent bursts more.</p>` },
+  mcq: { q: 'α = 1 means the prediction equals…', options: ['the most recent actual burst', 'the initial guess', 'the average of all bursts', 'zero'], answer: 0, explain: 'With alpha = 1 the formula reduces to tau(n+1) = t(n).' },
+  hints: [`<p>Hint 1: Start with the initial guess τ = 10 and keep the formula in front of you.</p>`, `<p>Hint 2: After each actual burst: τ = 0.5 × actual + 0.5 × τ.</p>`, `<p>Hint 3: α = 0 never learns; α = 1 forgets everything but the last burst.</p>`],
+  solution: {
+    approach: `<p>Apply the formula step by step. τ₀ = 10. After actual 6: 0.5·6 + 0.5·10 = 8. After 4: 6. After 6: 6. After 4: 5. After 13: 9. After 13: 11. After 13: 12. So the next prediction is 12. The sequence shows the weights: the newest burst counts half, the one before a quarter, and so on, so the prediction chases the jump to 13 over a few steps. α = 0 keeps predicting 10 forever (ignores reality), α = 1 predicts exactly the last burst (noisy, no smoothing). Typical practice: α = 0.5.</p>`,
+    code: { lang: 'python', run: true, code: `alpha, tau = 0.5, 10.0
+for actual in [6, 4, 6, 4, 13, 13, 13]:
+    print("predicted %.2f actual %d" % (tau, actual))
+    tau = alpha * actual + (1 - alpha) * tau
+print("next prediction %.2f" % tau)` },
+    dry: { head: ['n', 'actual', 'prediction τ(n)', 'τ(n+1)'], rows: [[1, 6, 10, 8], [2, 4, 8, 6], [3, 6, 6, 6], [4, 4, 6, 5], [5, 13, 5, 9], [6, 13, 9, 11], [7, 13, 11, 12]] },
+    complexity: `<p>O(1) per burst, O(1) memory per process.</p>`, followUps: ['Why is the estimate bad right after a phase change?']
+  }
+});
+practice.push({
+  title: 'Round Robin with Context-Switch Cost: q = 5 versus q = 20', level: 'Medium', tags: ['round robin', 'overhead'], companies: ['Amazon', 'Nvidia'],
+  statement: `<p>Four CPU-bound jobs A, B, C, D arrive at t=0, each needs 20 ms. A context switch between different jobs costs 1 ms. Compare RR with q = 5 and q = 20: average turnaround and average response time.</p>`,
+  constraints: `Order A, B, C, D. No switch after the last slice.`,
+  example: `<p>q=5: avg TAT <b>86</b>, avg RT <b>9</b>. q=20: avg TAT <b>51.5</b>, avg RT <b>31.5</b>.</p>`,
+  brute: { why: `<p>Ignoring the switch cost makes q=5 finish all at 77–80 and q=20 at 20–80 with no penalty for the many extra switches.</p>` },
+  mcq: { q: 'Which q gives the better average response time?', options: ['q = 5', 'q = 20', 'Equal', 'Cannot tell'], answer: 0, explain: 'Short quanta give everyone their first turn sooner (9 ms vs 31.5 ms).' },
+  hints: [`<p>Hint 1: q=5: each slice + switch = 6 ms; 16 slices.</p>`, `<p>Hint 2: Job A last slice is slice index 12 (0-based) ending at 5 + 6·12 = 77.</p>`, `<p>Hint 3: For q=20 there are only four slices, so the completion times are 20, 41, 62, 83.</p>`],
+  solution: {
+    approach: `<p>q=5: each job needs 4 slices, the rotation is A B C D, so 16 slices. Slice j (0-based) ends at 5 + 6j ms (5 ms of work, then 1 ms switch). A's last slice is j=12 → 77, B j=13 → 83, C j=14 → 89, D j=15 → 95. Average TAT = (77 + 83 + 89 + 95)/4 = 86. First turns start at 0, 6, 12, 18 → average RT 9. q=20: one slice each; CT = 20, 41, 62, 83 → average TAT 51.5; starts 0, 21, 42, 63 → average RT 31.5. Trade-off: the small quantum triples the number of switches and raises turnaround by 34 ms, but gives each job its first CPU turn 22 ms sooner on average.</p>`,
+    dry: { head: ['q', 'slices', 'CT (A,B,C,D)', 'Avg TAT', 'Avg RT'], rows: [[5, 16, '77, 83, 89, 95', '86', '9'], [20, 4, '20, 41, 62, 83', '51.5', '31.5']] },
+    complexity: `<p>Closed form or O(total / q) simulation.</p>`, followUps: ['What is the best q for minimising TAT? (largest q; the answer is FCFS)']
+  }
+});
+
+
+/* =========================== PRACTICE: HARD =========================== */
+practice.push({
+  title: 'Trace a 3-Level MLFQ with Four Jobs', level: 'Hard', tags: ['MLFQ', 'trace'], companies: ['Google', 'VMware'],
+  statement: `<p>MLFQ with Q0 (q = 2), Q1 (q = 4), Q2 (q = 8). New jobs enter Q0, a job that uses its whole quantum is demoted one level, higher queues always run first, a job preempted by a higher-queue arrival goes to the back of its own queue. Jobs: P1 (AT 0, BT 12), P2 (AT 2, BT 6), P3 (AT 4, BT 3), P4 (AT 5, BT 1). Give the Gantt chart, CT, WT and the averages.</p>`,
+  constraints: `No I/O, no boost, zero switch cost. Arrivals at the same level never preempt the running job.`,
+  example: `<p>Gantt: P1[0–2] P2[2–4] P3[4–6] P4[6–7] P1[7–11] P2[11–15] P3[15–16] P1[16–22]. CT: P1 22, P2 15, P3 16, P4 7. Avg WT <b>6.75</b>, avg TAT <b>12.25</b>.</p>`,
+  brute: { why: `<p>Plain round robin with q = 2 would interleave P1 and P2 continuously and cannot explain why P4 (BT 1) finishes at 7 or why P1 gets 4- and 6-tick runs later. The queue levels and demotions are what shape the chart.</p>` },
+  mcq: { q: 'P4 arrives at t=5 while P3 is mid-quantum in Q0. What happens?', options: ['P3 finishes its Q0 quantum; P4 waits in Q0 behind nothing and runs next', 'P4 preempts P3 immediately', 'P4 enters Q2', 'P3 is demoted at once'], answer: 0, explain: 'Same-level arrivals do not preempt; P3 uses its quantum (4–6), then P4 (in Q0) is picked ahead of the demoted jobs.' },
+  hints: [`<p>Hint 1: Keep three lists. After every quantum decide: finished, demoted, or preempted.</p>`, `<p>Hint 2: By t=6 the queues are Q0 = [P4], Q1 = [P1, P2, P3].</p>`, `<p>Hint 3: Q1 runs P1 (4 ticks, full → Q2), P2 (4 ticks, finishes exactly), P3 (1 tick, done), then Q2: P1 for 6 ticks.</p>`],
+  solution: {
+    approach: `<p>t=0–2: P1 in Q0, full quantum → Q1 (10 left). t=2–4: P2 (arrived 2), full quantum → Q1 (4 left). t=4–6: P3, full quantum → Q1 (1 left); P4 arrives at 5 into Q0. t=6–7: P4 runs 1 tick and finishes (within quantum). Q0 empty → Q1 = [P1, P2, P3]. t=7–11: P1 uses all 4 → Q2 (6 left). t=11–15: P2 uses its 4 remaining ticks and finishes at 15. t=15–16: P3 runs 1 tick, done. t=16–22: P1 alone in Q2 finishes. CT = 22, 15, 16, 7; TAT = 22, 13, 12, 2 (avg 12.25); WT = 10, 7, 9, 1 (avg 6.75). The short job P4 finished almost instantly, the long job P1 sank to Q2 and finished last.</p>`,
+    dry: { head: ['Interval', 'Runs', 'Queue', 'Result'], rows: [['0–2', 'P1', 'Q0', 'full quantum → Q1 (10 left)'], ['2–4', 'P2', 'Q0', '→ Q1 (4 left)'], ['4–6', 'P3', 'Q0', '→ Q1 (1 left)'], ['6–7', 'P4', 'Q0', 'done at 7'], ['7–11', 'P1', 'Q1', 'full 4 → Q2 (6 left)'], ['11–15', 'P2', 'Q1', 'done at 15'], ['15–16', 'P3', 'Q1', 'done at 16'], ['16–22', 'P1', 'Q2', 'done at 22']] },
+    complexity: `<p>O(total burst) simulation.</p>`, followUps: ['Add a boost at t=10 and redraw.', 'What if P2 did 1 tick of I/O every quantum?']
+  }
+});
+practice.push({
+  title: 'Priority Scheduling with Aging (Hand Simulation)', level: 'Hard', tags: ['priority', 'aging', 'preemptive'], companies: ['Microsoft', 'Amazon'],
+  statement: `<p>Preemptive priority (lower number = higher priority) with aging: effective priority = base − floor(w / 2), where w = number of consecutive ticks the process has waited in the ready queue (reset to 0 whenever it runs). Jobs: P1 (AT 0, BT 10, pr 5), P2 (AT 2, BT 3, pr 1), P3 (AT 2, BT 4, pr 2), P4 (AT 4, BT 2, pr 1). Ties: earlier arrival. Find the Gantt chart and the average WT, TAT. Compare with no aging.</p>`,
+  constraints: `Decide at every tick. Compare avg WT with aging to without.`,
+  example: `<p>With aging: P1 P1 P2 P2 P2 P3 P4 P4 P3 P1 P3 P3 P1×7; avg WT <b>4.25</b>, avg TAT <b>9.0</b>. Without aging: avg WT <b>3.75</b>, avg TAT <b>8.5</b>, but P1 runs only 2 ticks before t=11.</p>`,
+  brute: { why: `<p>Taking the base priority only gives the no-aging chart: P1 is starved until t=11 even though many other jobs were just waiting. Aging lets P1 and P3 take turns earlier, improving fairness at a small cost in average waiting time.</p>` },
+  mcq: { q: 'Why does P1 get the CPU at t=9 although P2/P4 have a better base priority?', options: ['They already finished; P1 ties with P3 at effective priority 2 and arrived earlier', 'Aging makes P1 priority 0', 'Round robin kicked in', 'P1 is real-time'], answer: 0, explain: 'At t=9 P1 has waited 7 ticks → effective 5 − 3 = 2, tying with P3 (2); P1 arrived earlier.' },
+  hints: [`<p>Hint 1: Track w for every ready job each tick.</p>`, `<p>Hint 2: P1 waits during ticks 2–8, so by t=9 its w is 7: 5 − 3 = 2.</p>`, `<p>Hint 3: Reset w when a job runs. Ties: earlier arrival.</p>`],
+  solution: {
+    approach: `<p>Decision per tick. t=0, t=1: only P1 → runs. t=2: P2 (1) and P3 (2) arrive → P2 runs ticks 2–4. At t=4 P3 (aged to 1) and the newly arrived P4 (1) tie with P2 at effective 1, and P2 wins the tie by earlier arrival and lower PID. t=5: P2 done. Ready P1 (w=3 → 5−1 = 4), P3 (w=3 → 2−1 = 1), P4 (w=1 → 1) → tie P3/P4 at 1, P3 arrived earlier: P3 runs 1 tick. t=6: P3 reset (2), P4 (w=2 → 0) → P4 runs ticks 6–7 and finishes at 8. t=8: P1 (w=6 → 2), P3 (w=2 → 1) → P3. t=9: P3 reset (2) vs P1 (w=7 → 2) tie, P1 arrived earlier → P1 runs 1 tick. t=10: P1 reset (5), P3 (w=1 → 2) → P3 runs 10–12 and finishes at 12. Then P1 runs the remaining 7 ticks (12–19). CT: P1 19, P2 5, P3 12, P4 8. TAT 19, 3, 10, 4 → 9.0. WT 9, 0, 6, 2 → avg 4.25. Without aging the order is P1 P1 P2 P2 P2 P4 P4 P3×4 P1×8 with avg WT 3.75; aging trades 0.5 of average waiting time for the lowest-priority jobs not being locked out.</p>`,
+    code: { lang: 'python', run: true, code: `# Verify the hand simulation (lower number = better; aging every 2 waiting ticks)
+jobs = {"P1": [0, 10, 5], "P2": [2, 3, 1], "P3": [2, 4, 2], "P4": [4, 2, 1]}
+rem = {n: j[1] for n, j in jobs.items()}
+wait = {n: 0 for n in jobs}
+fin, line = {}, []
+t = 0
+while len(fin) < len(jobs):
+    ready = [n for n in jobs if jobs[n][0] <= t and rem[n] > 0]
+    pick = min(ready, key=lambda n: (jobs[n][2] - wait[n] // 2, jobs[n][0], n))
+    for n in ready:
+        wait[n] = 0 if n == pick else wait[n] + 1
+    rem[pick] -= 1
+    line.append(pick)
+    t += 1
+    if rem[pick] == 0:
+        fin[pick] = t
+print("|".join(line))
+wts = [fin[n] - jobs[n][0] - jobs[n][1] for n in jobs]
+print("WT", wts, "avg", sum(wts) / len(wts))` },
+    dry: { head: ['t', 'Ready (eff. priority)', 'Runs'], rows: [[2, 'P2=1, P3=2, P1=5', 'P2'], [4, 'P2=1, P4=1, P3=1, P1=4', 'P2 (earlier arrival)'], [5, 'P3=1, P4=1, P1=4', 'P3 (earlier arrival)'], [6, 'P4=0, P3=2, P1=3', 'P4'], [8, 'P3=1, P1=2', 'P3'], [9, 'P1=2, P3=2', 'P1 (earlier arrival)'], [10, 'P3=2, P1=5', 'P3'], [12, 'P1', 'P1 to the end']] },
+    complexity: `<p>O(T · n) tick simulation.</p>`, followUps: ['Choose an aging interval so that no job waits longer than 20 ticks.']
+  }
+});
+practice.push({
+  title: 'Priority Inversion and Its Fixes', level: 'Hard', tags: ['priority inversion', 'locks', 'real-time'], companies: ['NVIDIA', 'Apple', 'Tesla'],
+  statement: `<p>Three threads share one CPU: H (high), M (medium), L (low). L takes a mutex at t=0; H wakes at t=1 and wants the same mutex; M wakes at t=2 and is CPU-bound for a long time. (a) What goes wrong? (b) Draw the timeline. (c) Name and compare two fixes. (d) How would you detect the problem in production?</p>`,
+  constraints: `Strict fixed-priority preemptive scheduling.`,
+  example: `<p>Timeline: L runs 0–1 holding the lock. H arrives, blocks on the lock. L would run again, but M arrives at 2 and preempts L. H is effectively waiting for M, which has a lower priority. Fix: priority inheritance makes L run at H's priority until it unlocks.</p>`,
+  brute: { why: `<p>"Just give L a higher priority forever" breaks the whole priority design and starves M and everything else; "just avoid locks" is not realistic in shared code.</p>` },
+  mcq: { q: 'Which technique raises the lock holder\'s priority only while a higher-priority thread is blocked on it?', options: ['Priority inheritance', 'Aging', 'Round robin', 'Priority ceiling'], answer: 0, explain: 'Inheritance is dynamic and temporary; ceiling is static (the highest priority of any user of the lock).' },
+  hints: [`<p>Hint 1: Draw three lanes with arrivals at 0, 1 and 2.</p>`, `<p>Hint 2: Who prevents L from releasing the lock?</p>`, `<p>Hint 3: Fixes: inheritance, ceiling, avoid sharing the lock, or lock-free design.</p>`],
+  solution: {
+    approach: `<p>(a) L holds the lock but is preempted by M, so H (the most important thread) cannot proceed until M finishes and L runs again: a medium-priority, unrelated thread indirectly delays the highest-priority thread for an unbounded time. This is priority inversion; the 1997 Mars Pathfinder suffered repeated resets from it because a watchdog noticed the high-priority bus task was not running. (b) t=0–1 L (locked); t=1 H arrives, runs, tries the lock and blocks; t=1–2 L runs; t=2 M arrives and preempts L; M runs as long as it wants; H starves. (c) Priority inheritance: when H blocks on L's lock, L temporarily inherits H's priority, so M cannot preempt it; L finishes the critical section, unlocks, returns to low priority, and H takes the lock. Priority ceiling: each lock has a ceiling equal to the highest priority of any thread that may lock it; holders run at the ceiling while holding it, which also prevents deadlock but boosts holders even when no one is waiting. (d) Production: measure lock wait time of high-priority threads, watch for deadline misses/watchdog resets, use tracing (ftrace sched_switch, eBPF) to see which thread ran while H was blocked. In POSIX use PTHREAD_PRIO_INHERIT on the mutex.</p>`,
+    dry: { head: ['t', 'Event', 'Running', 'Comment'], rows: [[0, 'L locks mutex', 'L', 'critical section starts'], [1, 'H arrives, wants mutex', 'H → blocked', 'L runs again'], [2, 'M arrives', 'M', 'M preempts L (higher priority than L)'], ['2…', 'M keeps computing', 'M', 'H waits indirectly for M: inversion'], ['fix', 'L inherits H priority', 'L', 'M cannot preempt; L unlocks; H runs']] },
+    complexity: `<p>Not applicable; discuss bounds: with inheritance a high-priority thread blocks for at most one critical section per lock.</p>`, followUps: ['Why can priority inheritance not fully prevent chained blocking?', 'What is the difference to the lock convoy?']
+  }
+});
+practice.push({
+  title: 'Design the Scheduling Policy for a Mixed Server', level: 'Hard', tags: ['design', 'policy', 'cgroups'], companies: ['Google', 'Meta', 'Netflix'],
+  statement: `<p>One 16-core Linux server runs: (1) a latency-critical API (p99 &lt; 20 ms), (2) a nightly report generator that is CPU-bound for hours, (3) a log shipper and metrics agent, (4) an ML inference process with a data-loading thread pool. Design the CPU scheduling policy: classes, weights, affinity, and what you would monitor. Justify using the metrics from this module.</p>`,
+  constraints: `Linux 6.6+ (EEVDF), cgroup v2 available.`,
+  example: `<p>Answer sketch: API in a cgroup with high cpu.weight and latency-nice; reports at nice 19 / low weight; agents small weight but never starved; inference threads pinned to their own cores; watch p99 scheduling latency and run-queue length.</p>`,
+  brute: { why: `<p>"Run everything at default and add more cores" ignores that the report generator will soak up the CPU and that the API's tail latency is driven by wake-up delays, not by average utilization.</p>` },
+  mcq: { q: 'Which metric best tells you the API is being starved by batch work?', options: ['Scheduling (run-queue) latency at p99', 'Average CPU utilization', 'Total throughput', 'Number of processes'], answer: 0, explain: 'Starvation shows up as ready-to-run delay in the tail, not in average utilization.' },
+  hints: [`<p>Hint 1: Separate the workloads by class: latency-critical vs throughput vs background.</p>`, `<p>Hint 2: Use cgroup weights (shares), not only nice; add CPU affinity or isolation for the inference threads.</p>`, `<p>Hint 3: Name the failure mode of each choice (throttling from quotas, inversion, starvation).</p>`],
+  solution: {
+    approach: `<p>Policy: (1) API service in its own cgroup with cpu.weight 800 and short-slice/latency-sensitive setting so it wins whenever it wakes; no hard quota (quotas throttle and cause latency spikes). (2) Report generator in a batch cgroup with cpu.weight 50 and nice 19 (or SCHED_BATCH/IDLE), allowed to use all leftover cycles: this is throughput work where response time does not matter. (3) Log shipper and metrics agent get a small but non-zero weight (100), so fair sharing guarantees they never starve (no strict priority). (4) Inference: isolate cores (cpuset 8–15, isolcpus/nohz_full if needed) so its data loader threads do not move and keep caches warm, while the API uses 0–7 plus spill. Keep RT classes only for tiny critical threads and enable RT throttling to protect the rest. Monitoring: p99 scheduling latency (runqlat), run-queue length, cgroup cpu.stat throttled time, involuntary context switches, CPU steal if virtualised, and the API's p99 latency itself. Trade-offs: weights are fair-share (work-conserving, safe) while quotas are hard caps; priority inheritance on shared mutexes avoids inversion; test with a load test that runs the report generator at full speed. This mirrors the module: MLQ-style classes on top, weighted-fair CFS/EEVDF inside, aging replaced by fair-share.</p>`,
+    dry: { head: ['Workload', 'Class / setting', 'Why'], rows: [['API', 'cpu.weight 800, latency-sensitive, no quota', 'response time, p99'], ['Reports', 'nice 19, weight 50', 'throughput, leftovers only'], ['Agents', 'weight 100', 'must progress, cannot starve'], ['Inference', 'own cpuset, pinned', 'cache locality, GPU feed']] },
+    complexity: `<p>Not an algorithmic question; the cost is operational (tuning and monitoring).</p>`, followUps: ['What breaks if you set a hard cpu.max on the API?', 'How would you test the policy before production?']
+  }
+});
+practice.push({
+  title: 'Round Robin: q = 2 versus q = 4 on Staggered Arrivals', level: 'Hard', tags: ['round robin', 'quantum', 'comparison'], companies: ['Qualcomm', 'Intel'],
+  statement: `<p>P1 (AT 0, BT 5), P2 (AT 2, BT 3), P3 (AT 3, BT 1), P4 (AT 4, BT 2), P5 (AT 6, BT 4). Newcomers queue before the preempted job. Compute avg WT, TAT, RT and the number of context switches for q = 2 and q = 4. Which would you choose for an interactive system and why?</p>`,
+  constraints: `A switch is counted whenever the CPU moves from one process to a different one.`,
+  example: `${H.table(['q', 'Avg WT', 'Avg TAT', 'Avg RT', 'Switches'], [[2, '4.8', '7.8', '2.0', 8], [4, '4.2', '7.2', '3.0', 5]])}`,
+  brute: { why: `<p>Answering "smaller q is always better for interactivity" without quantifying overhead. With q = 2 you pay 3 more switches for an RT gain of only 1 unit here.</p>` },
+  mcq: { q: 'In this data set, which statement is true?', options: ['q=2 has the better response time but more switches', 'q=4 has the better response time', 'They are identical', 'q=2 has fewer switches'], answer: 0, explain: 'avg RT is 2.0 vs 3.0, and 8 vs 5 switches.' },
+  hints: [`<p>Hint 1: Do both queue traces carefully; write the queue after every slice.</p>`, `<p>Hint 2: q=2 Gantt: P1 P2 P1 P3 P4 P2 P5 P1 P5 (slice lengths 2,2,2,1,2,1,2,1,2).</p>`, `<p>Hint 3: q=4 Gantt: P1(4) P2(3) P3(1) P4(2) P1(1) P5(4).</p>`],
+  solution: {
+    approach: `<p>q=2: slices P1 0–2, P2 2–4, P1 4–6, P3 6–7, P4 7–9, P2 9–10, P5 10–12, P1 12–13, P5 13–15. CT: P1 13, P2 10, P3 7, P4 9, P5 15 → TAT 13, 8, 4, 5, 9 (7.8); WT 8, 5, 3, 3, 5 (4.8); RT 0, 0, 3, 3, 4 (2.0); 8 switches. q=4: P1 0–4, P2 4–7, P3 7–8, P4 8–10, P1 10–11, P5 11–15. While P1 runs 0–4, P2 (2), P3 (3) and P4 (4) arrive, so the queue becomes [P2, P3, P4, P1]. CT: P1 11, P2 7, P3 8, P4 10, P5 15 → TAT 11, 5, 5, 6, 9 (7.2); WT 6, 2, 4, 4, 5 (4.2); RT 0, 2, 4, 4, 5 (P5 arrives at 6 and first runs at 11) → 3.0; 5 switches. For an interactive system choose q=2 only if the extra switches are cheap relative to 2 time units (the gain is one unit of average response); in real systems with q ≈ 10 ms and a switch ≈ 10 µs both are fine, and the rule is to choose q so that about 80% of CPU bursts finish within one quantum.</p>`,
+    dry: { head: ['q', 'Slices (process start–end)', 'CT (P1..P5)', 'Switches'], rows: [[2, 'P1 0–2, P2 2–4, P1 4–6, P3 6–7, P4 7–9, P2 9–10, P5 10–12, P1 12–13, P5 13–15', '13, 10, 7, 9, 15', 8], [4, 'P1 0–4, P2 4–7, P3 7–8, P4 8–10, P1 10–11, P5 11–15', '11, 7, 8, 10, 15', 5]] },
+    complexity: `<p>Time O(total burst / q) slices, one deque operation each.</p>`, followUps: ['Find a q where the average WT is minimal for this data.']
+  }
+});
+
+
+/* =========================== QUIZ =========================== */
+quiz.push({ q: 'Process arrives at 3, burst 4, completes at 12. What are its turnaround and waiting times?', options: ['TAT = 9, WT = 5', 'TAT = 12, WT = 8', 'TAT = 9, WT = 9', 'TAT = 5, WT = 9'], answer: 0, explain: 'TAT = CT − AT = 12 − 3 = 9. WT = TAT − BT = 9 − 4 = 5.' });
+quiz.push({ q: 'The convoy effect is best described as…', options: ['short processes stuck behind one long process in a FIFO queue', 'two processes deadlocked on each other', 'a process migrating between CPUs', 'priority being inherited by a lock holder'], answer: 0, explain: 'It is the FCFS pathology: a long CPU burst at the head makes everyone else wait.' });
+quiz.push({ q: 'Which algorithm gives the minimum possible average waiting time (for known burst times)?', options: ['SRTF (preemptive SJF)', 'FCFS', 'Round Robin q = 1', 'Non-preemptive priority'], answer: 0, explain: 'SRTF is provably optimal; non-preemptive SJF is optimal among non-preemptive schedules.' });
+quiz.push({ q: 'How does SJF estimate the next CPU burst?', options: ['Exponential average of previous bursts', 'The process tells the OS exactly', 'It uses the process size in memory', 'It reads the program counter'], answer: 0, explain: 'τ(n+1) = α·t(n) + (1 − α)·τ(n).' });
+quiz.push({ q: 'A low-priority job never runs because high-priority jobs keep arriving. The standard remedy is…', options: ['aging', 'a larger time quantum', 'priority inheritance', 'switching to FCFS only'], answer: 0, explain: 'Aging gradually raises the priority of waiting jobs. Priority inheritance solves a different problem (inversion).' });
+quiz.push({ q: 'If the time quantum of Round Robin is made extremely large, RR behaves like…', options: ['FCFS', 'SJF', 'Priority scheduling', 'MLFQ'], answer: 0, explain: 'Every process finishes within one quantum, so order is simply arrival order.' });
+quiz.push({ q: 'Context switch = 2 µs, quantum = 8 µs. Approximately what fraction of CPU time is lost?', options: ['20%', '25%', '2%', '80%'], answer: 0, explain: 'overhead = s / (q + s) = 2 / 10 = 20%.' });
+quiz.push({ q: 'What distinguishes MLFQ from a multilevel queue (MLQ)?', options: ['Processes move between queues based on behaviour', 'MLFQ has more queues', 'MLQ uses preemption, MLFQ does not', 'MLFQ is only for real-time systems'], answer: 0, explain: 'In MLQ the queue is assigned permanently by process type; MLFQ demotes and promotes.' });
+quiz.push({ q: 'In Linux CFS, which task is chosen next?', options: ['The leftmost node (smallest vruntime) of the red-black tree', 'The task with the highest nice value', 'The longest-waiting task in a FIFO list', 'The task with the biggest weight'], answer: 0, explain: 'CFS always picks the task that has had the least weighted CPU time.' });
+quiz.push({ q: 'A nice 0 task (weight 1024) runs 10 ms. Its vruntime increases by…', options: ['10 ms', '1024 ms', '0.01 ms', '10.24 ms'], answer: 0, explain: 'Δvruntime = Δexec × 1024 / weight = 10 × 1 = 10 ms.' });
+quiz.push({ q: 'A task with nice 5 (weight 335) runs 10 ms. Its vruntime increases by about…', options: ['30.6 ms', '3.3 ms', '10 ms', '335 ms'], answer: 0, explain: '10 × 1024 / 335 ≈ 30.6, so it quickly moves to the right of the tree and gets less CPU.' });
+quiz.push({ q: 'Why do interactive tasks get good latency in CFS without special heuristics?', options: ['They sleep, so their vruntime stays small and they become leftmost soon after waking', 'They always have nice −20', 'They get a fixed 100 ms slice', 'The kernel detects them with a classifier'], answer: 0, explain: 'A sleeping task does not accumulate vruntime, so it is chosen quickly upon waking.' });
+quiz.push({ q: 'Which kernel versions replaced CFS with EEVDF for normal tasks?', options: ['Linux 6.6 and later', 'Linux 2.6.23', 'Linux 4.0', 'Linux 5.10 LTS only'], answer: 0, explain: 'EEVDF landed in 6.6 (late 2023); CFS was the default from 2.6.23 until then.' });
+quiz.push({ q: 'A high-priority task is blocked on a lock held by a low-priority task that a medium-priority task keeps preempting. This is…', options: ['priority inversion', 'the convoy effect', 'thrashing', 'starvation by aging'], answer: 0, explain: 'The fix is priority inheritance (or ceiling).' });
+
+/* =========================== INTERVIEW =========================== */
+interview.push({ q: `Explain turnaround time, waiting time and response time. Which one would you optimise for an interactive system?`, level: 'B', a: `<p><b>Turnaround</b> = completion − arrival (the whole stay in the system). <b>Waiting</b> = turnaround − burst, i.e. time spent in the ready queue. <b>Response</b> = first run − arrival, i.e. how long until the process first gets the CPU. For interactive systems the user feels <b>response time</b> (and its variance): a program that starts echoing keystrokes within milliseconds feels fast even if its total completion time is long. For batch work we optimise throughput and turnaround. For servers we optimise tail (p99) latency. In a non-preemptive schedule response equals waiting for each job.</p>`, followUps: ['Give an algorithm that is good at response but bad at turnaround.', 'What is CPU utilization and how can it be low although many processes exist?'] });
+interview.push({ q: `What is the convoy effect and how do you fix it?`, level: 'B', a: `<p>In FCFS, one long CPU-bound process at the head of the queue makes many short or I/O-bound processes wait. It also leaves I/O devices idle (the I/O-bound ones cannot issue requests) and then the CPU idle when the hog blocks, so both resources are underused. Numbers: bursts 24, 3, 3 in that order give average wait 17 (16 with arrivals at 0, 1, 2), reversed they give 3. Fixes: shortest-job-first or SRTF, preemptive time slicing (round robin, MLFQ, CFS) so that nobody monopolises the CPU, separate queues for short and long work, and chunking long jobs. The same pattern appears in event loops (a slow handler) and in locks (lock convoy).</p>`, followUps: ['How does Node.js avoid the convoy effect with long computations?', 'How does MLFQ avoid it without knowing burst times?'] });
+interview.push({ q: `Why is SJF optimal for average waiting time and why can't we just use it everywhere?`, level: 'I', a: `<p>Exchange argument: if a longer job runs right before a shorter one, swapping them reduces the shorter job's wait by the longer job's length and increases the longer job's wait by the shorter job's length, a net reduction. So sorted order is optimal. Practical problems: (1) the scheduler does not know the next CPU burst, it has to predict it, typically with an exponential average; (2) it starves long jobs when short ones keep arriving (needs aging); (3) the preemptive version (SRTF) adds context switches; (4) it needs measurement overhead. MLFQ and CFS approximate it using past behaviour instead of explicit predictions.</p>`, followUps: ['Write the exponential averaging formula and explain alpha.', 'Is SJF fair?'] });
+interview.push({ q: `Walk me through Round Robin and how you choose the time quantum.`, level: 'I', a: `<p>RR keeps a FIFO ready queue. The head process runs for at most q; if it is still unfinished the timer interrupt preempts it and it goes to the back. With n processes nobody waits longer than (n−1)·q for the next turn. Choosing q: too large → degenerates to FCFS (bad response); too small → context switch overhead s/(q+s) dominates and caches go cold. Rule of thumb: make q much larger than the switch cost (10–100×) and large enough that about 80% of CPU bursts complete within one quantum; typical values are 10–100 ms in old systems and a few ms in modern dynamic-slice schedulers. RR has higher average turnaround than SJF but bounded response and no starvation.</p>`, followUps: ['What happens to the queue if a new process arrives exactly when a quantum expires?', 'How does Linux choose a time slice?'] });
+interview.push({ q: `What is starvation in priority scheduling and how does aging fix it?`, level: 'I', a: `<p>Starvation (indefinite blocking) happens when low-priority processes never get the CPU because higher-priority processes keep arriving. Aging gradually improves the priority of processes that wait: for example, lower the priority number by 1 for every 10 ticks spent in the ready queue and reset it after the process runs. This bounds the worst-case wait because eventually a waiting process becomes the best candidate. Choose the aging rate to match the longest delay you are willing to tolerate. Aging is different from priority inheritance, which fixes priority inversion with locks.</p>`, followUps: ['What is priority inversion and the Mars Pathfinder story?', 'Does round robin starve anyone?'] });
+interview.push({ q: `Explain multilevel queue versus multilevel feedback queue scheduling.`, level: 'I', a: `<p><b>MLQ</b> partitions the ready queue into fixed queues by process class (system, interactive, batch). Each queue has its own algorithm (for example RR for interactive, FCFS for batch) and the queues are scheduled by fixed priority or by time slices. A process stays in its queue for life, which is rigid. <b>MLFQ</b> lets processes move: new jobs start at the top; if a job uses its whole quantum it is demoted to a queue with longer quanta; jobs that block early stay high; a periodic boost lifts everyone back up to prevent starvation and to re-detect behaviour changes. MLFQ approximates SJF using only past behaviour. Parameters: number of queues, quanta, demotion rule (allotment vs per-quantum), boost period.</p>`, followUps: ['How could a program game an MLFQ and how do you stop it?', 'What replaced MLFQ-style heuristics in Linux?'] });
+interview.push({ q: `How does the Linux Completely Fair Scheduler work?`, level: 'A', a: `<p>Each runnable task has a vruntime = CPU time used scaled by 1024/weight, where weight comes from the nice value (nice 0 → 1024, ×1.25 per nice step). Runnable tasks sit in a red-black tree ordered by vruntime. The scheduler picks the leftmost (smallest vruntime) task, which is cached for O(1) access; runs it for a slice (period × weight / total weight, with a minimum granularity); updates its vruntime; and re-inserts it (O(log n)). Over time all vruntimes converge so CPU shares are proportional to weights. Sleepers keep a small vruntime so they are scheduled quickly when they wake (clamped to min_vruntime − latency/2 so long sleepers cannot hog), new tasks start near min_vruntime. Group scheduling via cgroups applies weights hierarchically. Since Linux 6.6 normal tasks use EEVDF, which keeps weights and vruntime-like lag but chooses among eligible tasks the earliest virtual deadline, giving better latency control.</p>`, followUps: ['What data structure and complexity does it use?', 'How would you give one process 10× more CPU than another?', 'What is EEVDF and why was it introduced?'] });
+interview.push({ q: `Two tasks, nice 0 and nice 5. How much CPU does each get under CFS?`, level: 'I', a: `<p>Weights: nice 0 = 1024, nice 5 = 335. Total 1359. Shares: 1024/1359 ≈ 75.3% and 335/1359 ≈ 24.7%. Equivalent view via vruntime: the nice-5 task's vruntime grows 1024/335 ≈ 3.06× faster per millisecond of real CPU, so the scheduler picks it about a third as often. With a 6 ms scheduling period the slices are about 4.5 ms and 1.5 ms. A rule of thumb: every nice level is about a 10% change in CPU share relative to its neighbour (a factor of 1.25 in weight).</p>`, followUps: ['What happens when the nice-5 task sleeps and wakes?', 'How is this expressed in cgroup v2?'] });
+interview.push({ q: `Given a table of arrival and burst times, how do you avoid mistakes when drawing a preemptive Gantt chart?`, level: 'I', a: `<p>Work by events, not by guessing. List the times where something can change: every arrival and every completion (and for RR every quantum end). At each event write the ready set with <i>remaining</i> times, apply the rule (smallest remaining for SRTF, best priority for priority scheduling, front of the queue for RR) and record the interval to the next event. Keep a remaining-time column. State your tie-breaks (earlier arrival, then lower PID; for RR whether a newcomer goes before the preempted process). Afterwards compute CT from the chart, then TAT = CT − AT, WT = TAT − BT, RT = first run − AT. Sanity checks: sum of Gantt slots = sum of bursts (plus idle), WT is never negative, and in a non-preemptive schedule RT = WT.</p>`, followUps: ['Show the SRTF chart for P1(0,7) P2(2,4) P3(4,1) P4(5,4).', 'What changes if context switches cost time?'] });
+interview.push({ q: `How would you choose a scheduler for (a) an interactive desktop, (b) a batch cluster, (c) a hard real-time controller?`, level: 'A', a: `<p>(a) Interactive: metric is response time and its tail. Preemptive time slicing with a boost for tasks returning from I/O: MLFQ in textbooks, CFS/EEVDF on Linux with small latency targets; low-priority background work at high nice. (b) Batch: metric is throughput and utilization. Few context switches, long slices or FCFS with backfilling, SJF using user-provided time limits; guard against starvation of big jobs with aging or reservations. (c) Hard real time: metric is meeting deadlines in the worst case, so use fixed-priority (Rate-Monotonic) or EDF with admission control and a schedulability test (RM bound n(2^(1/n) − 1), EDF bound 1). Use priority inheritance for shared locks and keep the kernel preemptible with bounded latency (PREEMPT_RT). Averages are irrelevant here.</p>`, followUps: ['What is the schedulability bound for 3 tasks under RM?', 'How does Linux separate these classes?'] });
+interview.push({ q: `What is priority inversion? Explain with an example and the standard solutions.`, level: 'A', a: `<p>A high-priority task H waits for a lock held by a low-priority task L, while a medium-priority task M (not using the lock) keeps preempting L, so H is effectively blocked by M for an unbounded time. The Mars Pathfinder (1997) hit this: a low-priority meteorological task held a bus mutex, a medium task ran, and the high-priority bus management task missed its deadline, causing watchdog resets. Fixes: <b>priority inheritance</b> (L temporarily runs at H's priority while H waits, so M cannot preempt it), <b>priority ceiling</b> (the lock holder runs at the lock's ceiling priority, which also prevents deadlock), reducing lock sharing, or lock-free structures. POSIX mutexes support PTHREAD_PRIO_INHERIT and PTHREAD_PRIO_PROTECT; Linux futexes implement PI via rt-mutexes.</p>`, followUps: ['Why does inheritance not solve chained blocking completely?', 'How would you detect inversion in production?'] });
+interview.push({ q: `What are the costs of a context switch and how does that affect scheduling decisions?`, level: 'A', a: `<p>Direct cost: saving and restoring registers (including FPU/vector state lazily), switching kernel stacks, updating the page-table base (CR3), and scheduler bookkeeping: a few microseconds. Indirect cost: TLB flushes or reduced reuse (mitigated by PCIDs/ASIDs), cold L1/L2 caches and branch predictors, possibly migration to another core with a cold cache: often tens of microseconds to milliseconds of lost efficiency. Consequences: time slices must be much longer than the switch cost, schedulers prefer to keep a task on the same CPU (affinity), preemption is limited by a minimum granularity, batch jobs use long slices, and thread-per-request designs give way to event loops or user-space schedulers (goroutines, async runtimes). Spectre/Meltdown mitigations raised switch costs further.</p>`, followUps: ['Thread vs process switch cost?', 'How does cooperative scheduling reduce this cost?'] });
+interview.push({ q: `How does the scheduler change in virtualized and containerized environments?`, level: 'E', a: `<p>There are two levels: the hypervisor schedules vCPUs as threads on physical cores, and the guest OS schedules tasks on vCPUs. A runnable guest task may sit idle because its vCPU is not running: this appears as <b>steal time</b>. Lock-holder preemption (a vCPU holding a spinlock descheduled) is the virtualization version of priority inversion. In containers there is one kernel scheduler, and cgroups provide the fairness boundary: cpu.weight (shares, work-conserving) and cpu.max (quota, a hard cap that throttles and can cause latency spikes even at low average usage). Kubernetes maps CPU requests to weights and limits to quotas, so setting limits equal to requests with the static CPU manager gives dedicated cores for latency-critical pods. Monitor throttled periods, run-queue latency, and steal.</p>`, followUps: ['Why can a CPU limit hurt tail latency?', 'What does CPU pinning buy you?'] });
+interview.push({ q: `How is scheduling applied in LLM inference servers, and what concepts from this module map onto it?`, level: 'E', a: `<p>An inference server must schedule many requests that share a GPU. Concepts: <b>continuous batching</b> re-forms the batch at every decoding step (a token-level round robin with quantum = one iteration) so finished requests leave and new ones join, avoiding the convoy effect of static batches. <b>Chunked prefill</b> splits long prompts so decode steps are not blocked (preventing a long job from monopolising). Admission and priority classes implement priority scheduling with preemption (evict or swap the KV-cache of low-priority requests) and need aging to prevent starvation. Research systems predict output length and run shortest-predicted-job-first or use MLFQ with demotion as tokens accumulate. Metrics: time-to-first-token (response time), time-per-output-token, throughput (tokens/s), tail latency. The trade-offs mirror CPU scheduling exactly: batch size bigger → throughput up, latency up.</p>`, followUps: ['What is head-of-line blocking in a batch of requests?', 'How would you prevent starvation of long generations?'] });
+
+
+registerModule({
+  id: 'cs03',
+  title: 'CPU Scheduling',
+  intro: `<p>The CPU can run only one thing at a time per core, but your laptop feels like it runs hundreds of programs together. The trick is the <b>scheduler</b>: the part of the OS that decides who runs next and for how long. This module teaches every classic algorithm (FCFS, SJF, SRTF, priority, round robin, multilevel queues) plus what Linux really does (CFS and its successor EEVDF). You will practise the exact calculations interviewers love: draw the Gantt chart, then compute waiting, turnaround and response times and their averages. Each topic has a step-by-step visualizer where you can type your own process table.</p>`,
+  goals: [
+    'Define utilization, throughput, turnaround, waiting, response time and fairness, and compute them from a Gantt chart',
+    'Draw correct Gantt charts and average WT/TAT for FCFS, SJF, SRTF, priority (with aging), round robin (q = 2, 4) and MLFQ by hand',
+    'Explain the convoy effect, starvation, aging, priority inversion and the quantum trade-off with numbers',
+    'Describe Linux CFS: vruntime, red-black tree, nice weights, sleeper behaviour, and mention EEVDF',
+    'Choose a scheduler for interactive, batch, real-time and mixed workloads and defend the trade-offs'
+  ],
+  prereqs: `CS Core: Processes &amp; Threads (process states, context switch). Basic arithmetic and the ability to read a timeline. Helpful: a queue and a binary search tree from DSA.`,
+  hours: 10,
+  topics: topics, practice: practice, quiz: quiz, interview: interview
+});
+})();
