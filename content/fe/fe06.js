@@ -1643,11 +1643,11 @@ function showErrors(form, errors /* [{ id: 'email', msg: 'Enter your email' }] *
         constraints: `No new JavaScript. Keep the visual labels visible. Use the fewest ARIA attributes possible.`,
         example: `<p>Screen reader before: ${H.c('r', '"edit text" · "protected edit text" · "radio button" · "Submit"')}</p>
           <p>After: ${H.c('g', '"Email, edit text, required" · "Password, protected edit text, invalid entry, Use at least 8 characters" · "Plan, group. Free, radio button, 1 of 2" · "Create account, button"')}</p>`,
-        brute: { why: `<p>Adding <code>aria-label</code> to every input fixes names but hides the visible text from sighted voice-control users, doesn't group the radios, and leaves the div-button and the colour-only error.</p>`, code: `<input aria-label="Email" placeholder="Email">
+        brute: { why: `<p>Adding <code>aria-label</code> to every input fixes names but hides the visible text from sighted voice-control users, doesn't group the radios, and leaves the div-button and the colour-only error.</p>`, code: { lang: 'html', code: `<input aria-label="Email" placeholder="Email">
 <input type="password" aria-label="Password" class="red">
 <input type="radio" name="plan" aria-label="Free">
 <input type="radio" name="plan" aria-label="Pro">
-<div class="btn" onclick="go()">Submit</div>` },
+<div class="btn" onclick="go()">Submit</div>` } },
         mcq: { q: 'Which element gives a group of radio buttons a spoken question?', options: ['A &lt;label&gt; around all radios', 'fieldset with legend', 'a div with aria-label', 'placeholder on the first radio'], answer: 1, explain: 'fieldset + legend is the native grouping pattern; the legend is read with each option so users know what the choice is about.' },
         hints: [
           `<p>Hint 1: placeholder text is not a label. Each input needs a <code>&lt;label for&gt;</code> that stays visible.</p>`,
@@ -1986,7 +1986,7 @@ console.log(pickElement({ expands: true }));
 console.log(pickElement({ toggles: true }));
 console.log(pickElement({ submitsForm: true, navigates: true }));
 console.log(pickElement({}));` },
-      complexity: `<p>O(1).</p>`,
+      complexity: `<p>O(1) time and space: a few early returns.</p>`,
       followUps: ['What about a link that opens a menu on this page?', 'When is a button that navigates (router push) acceptable?']
     }
   });
@@ -2017,7 +2017,7 @@ const passes = (ratio, px, bold, level) => ratio >= requiredRatio(px, bold, leve
 
 console.log(requiredRatio(16, false, 'AA'), requiredRatio(24, false, 'AA'), requiredRatio(19, true, 'AAA'));
 console.log(passes(4.2, 16, false, 'AA'), passes(4.2, 24, false, 'AA'));` },
-      complexity: `<p>O(1).</p>`,
+      complexity: `<p>O(1) time and space: one table lookup.</p>`,
       followUps: ['What threshold applies to a 1px input border (UI component)?', 'Does the large-text rule apply to icons?']
     }
   });
@@ -2027,9 +2027,9 @@ console.log(passes(4.2, 16, false, 'AA'), passes(4.2, 24, false, 'AA'));` },
     statement: `<p>Write the HTML skeleton of a shop page with a logo, a main navigation, a search form, the main content with a heading, a "Related products" sidebar, and a footer. Requirements: a working <b>skip link</b> as the first focusable element, correct <b>landmarks</b> (banner, navigation, search, main, complementary, contentinfo), exactly one <code>h1</code>, a language on the document, and a distinct label on the navigation (there will be a second nav in the footer).</p>`,
     constraints: `Use native elements before ARIA. No JavaScript.`,
     example: `<p>Landmark list a screen reader should offer: ${H.c('g', 'banner · navigation "Primary" · search · main · complementary "Related products" · navigation "Footer" · contentinfo')}.</p>`,
-    brute: { why: `<p>An all-div layout with class names has no landmarks, no skip link, and the screen reader user must tab through the whole header on every page.</p>`, code: `<div class="header"><div class="nav">...</div></div>
+    brute: { why: `<p>An all-div layout with class names has no landmarks, no skip link, and the screen reader user must tab through the whole header on every page.</p>`, code: { lang: 'html', code: `<div class="header"><div class="nav">...</div></div>
 <div class="content"><div class="title">Shoes</div></div>
-<div class="footer">...</div>` },
+<div class="footer">...</div>` } },
     mcq: { q: 'Why does the second &lt;nav&gt; need an aria-label?', options: ['Browsers require it', 'So users can tell the two navigation landmarks apart', 'To make it focusable', 'It improves SEO ranking directly'], answer: 1, explain: 'When a page has two landmarks of the same type, each needs a unique accessible name ("Primary", "Footer") so the landmark list is meaningful.' },
     hints: [
       `<p>Hint 1: the skip link is just an <code>&lt;a href="#main"&gt;</code> placed first in <code>body</code>, hidden until focused.</p>`,
@@ -2339,7 +2339,7 @@ for (const k of ['ArrowDown', 'ArrowUp', 'ArrowUp', 'Enter', 'Escape']) {
   st = reduce(st, k, options);
   console.log(k.padEnd(10), JSON.stringify(st), JSON.stringify(ariaProps(st, options, 'opt')));
 }` },
-      complexity: `<p>O(1) per key.</p>`,
+      complexity: `<p>O(1) time per key press, and no extra memory beyond the new state object.</p>`,
       followUps: ['Add typeahead: typing a letter highlights the next option starting with it', 'Add aria-autocomplete="list" and a polite live region saying "3 suggestions available"']
     }
   });
