@@ -471,9 +471,9 @@ public class MiniGateway {
           { id: 'AUTH', label: 'Auth (JWT)', x: 45, y: 15, shape: 'box' },
           { id: 'RL', label: 'Rate limit', x: 64, y: 15, shape: 'box' },
           { id: 'RT', label: 'Router', x: 85, y: 15, shape: 'box' },
-          { id: 'ORD', label: 'Orders svc', x: 55, y: 55, shape: 'box' },
-          { id: 'USR', label: 'Users svc', x: 74, y: 55, shape: 'box' },
-          { id: 'PAY', label: 'Payments svc', x: 93, y: 55, shape: 'box' },
+          { id: 'ORD', label: 'Orders svc', x: 52, y: 55, shape: 'box' },
+          { id: 'USR', label: 'Users svc', x: 70, y: 55, shape: 'box' },
+          { id: 'PAY', label: 'Payments svc', x: 89, y: 55, shape: 'box' },
           { id: 'LOG', label: 'Logs/metrics', x: 18, y: 55, shape: 'box' }
         ];
         var edges = [['C', 'TLS'], ['TLS', 'AUTH'], ['AUTH', 'RL'], ['RL', 'RT'], ['RT', 'ORD'], ['RT', 'USR'], ['RT', 'PAY'], ['TLS', 'LOG']];
@@ -851,6 +851,736 @@ redis.call('EXPIRE', KEYS[1], math.ceil(cap / rate) * 2)
 return allowed` }],
         complexity: `<p>O(1) time per call, O(clients) memory (two numbers each). Redis version: one round trip (~0.5 ms) per request, atomic thanks to single-threaded script execution.</p>`,
         followUps: ['Return Retry-After when rejecting.', 'Support a per-request cost (e.g. LLM tokens).', 'How do you avoid a Redis round trip on every request?']
+      }
+    }]
+  });
+
+  /* ================= TOPIC 5: Window-based limiters ================= */
+  function windowInput(input, maxN) {
+    var halves = String(input || '').split('|');
+    if (halves.length !== 2) throw new Error('Format: limit=3 window=10 | 1 2 5 11 12');
+    var kv = parseKV(halves[0]);
+    var limit = num(kv.limit, NaN), W = num(kv.window, NaN);
+    if (!(limit >= 1 && limit <= 10) || !(W >= 2 && W <= 60)) throw new Error('Use limit 1-10 and window 2-60 seconds');
+    return { limit: limit, W: W, times: parseTimes(halves[1], maxN) };
+  }
+  function idxRange(times, lo, hiT, upto) {
+    // indexes j <= upto with lo < times[j] <= hiT  (or lo <= when lo is inclusive, handled by caller)
+    var a = -1, b = -1;
+    for (var j = 0; j <= upto; j++) if (times[j] > lo && times[j] <= hiT) { if (a < 0) a = j; b = j; }
+    return a < 0 ? [upto, upto] : [a, b];
+  }
+  topics.push({
+    title: 'Rate Limiting II: Fixed Window, Sliding Log and Sliding Window Counter',
+    analogy: `<p>A gym allows <b>3 visits per 10 days</b>. <b>Fixed window</b>: the counter resets on day 1, 11, 21… — so you could visit on days 8, 9, 10 and again 11, 12, 13: six visits in six days, technically legal. <b>Sliding log</b>: the front desk keeps your visit diary and counts visits in the last 10 days from <i>today</i> — exact, but they store every visit. <b>Sliding window counter</b>: the desk only remembers "visits last period" and "visits this period" and estimates the overlap — almost exact, tiny memory.</p>`,
+    explain: `<p>Window algorithms answer "how many requests in the last <i>W</i> seconds?" and reject when the answer reaches the limit <i>N</i>.</p>
+      <p><b>1. Fixed window counter.</b> Key = <code>client:floor(now / W)</code>; <code>INCR</code> it, set expiry W; reject if count &gt; N. Dead simple: one counter per client per window. ${H.c('r', 'Flaw')}: <b>boundary burst</b> — N requests at the end of one window plus N at the start of the next = <b>2N</b> requests in a short span.</p>
+      ${H.arr(['t=8', 't=9', 't=9', 't=10', 't=10', 't=11'], { label: 'limit 3 / 10 s — all 6 ALLOWED', hl: { 0: 'g', 1: 'g', 2: 'g', 3: 'y', 4: 'y', 5: 'y' } })}
+      <p>Above: window [0,10) allows 8, 9, 9; window [10,20) resets at t=10 and allows 10, 10, 11 → 6 requests within 3 seconds.</p>
+      <p><b>2. Sliding window log.</b> Keep a sorted list of each client's accepted timestamps. On a request at <i>now</i>: delete entries ≤ now − W, count the rest; if count &lt; N allow and append now. ${H.c('g', 'Exact')}, but memory is O(N) per client (a 1000/hour limit stores up to 1000 timestamps per user). In Redis: a sorted set with <code>ZREMRANGEBYSCORE</code>, <code>ZCARD</code>, <code>ZADD</code>.</p>
+      <p><b>3. Sliding window counter</b> (the popular compromise). Keep only two fixed-window counters: previous and current. Assume requests in the previous window were spread evenly, and weight it by how much of it still overlaps the sliding window:</p>
+      <p style="text-align:center"><code>estimate = prev × (1 − elapsed/W) + curr</code></p>
+      <p>Example: limit 10 per minute. Previous minute had 8, current minute has 4 so far, and we are 15 s (25%) into the current minute. Estimate = 8 × 0.75 + 4 = <b>10</b> → reject (≥ 10). At 30 s in: 8 × 0.5 + 4 = 8 → allow. Cloudflare reported this approximation was wrong for only ~0.003% of requests across 400M requests, while using two counters per key.</p>
+      ${H.table(['Algorithm', 'Memory / key', 'Accuracy', 'Bursts', 'Typical use'], [
+        ['Fixed window', '1 counter', 'Up to 2× at boundaries', 'Allowed at window edges', 'Daily/monthly quotas, simple APIs'],
+        ['Sliding log', 'N timestamps', H.c('g', 'Exact'), 'Never above N in any W', 'Low limits where precision matters (login attempts)'],
+        ['Sliding window counter', '2 counters', '~Exact (assumes even spread)', 'Smoothed', 'High-scale API limits (Cloudflare, many gateways)'],
+        ['Token bucket', '2 numbers', 'Exact for its model', 'Up to capacity', 'Public APIs that permit bursts']
+      ])}`,
+    clues: [
+      '"N requests per minute per user" + "simple" → fixed window (mention the boundary burst flaw)',
+      '"never exceed N in ANY rolling window" / "exact" / "login attempts" → sliding window log',
+      '"millions of users, low memory, accurate enough" → sliding window counter',
+      '"daily quota resets at midnight" → fixed window is actually the requirement',
+      '"Redis sorted set ZREMRANGEBYSCORE ZCARD" in the question → sliding log implementation',
+      '"limit spikes at the start of each minute" → boundary problem of fixed windows'
+    ],
+    code: [
+      { lang: 'python', title: 'All three window limiters (Python, runnable)', run: true, code: `from collections import defaultdict, deque
+
+
+class FixedWindow:
+    def __init__(self, limit, window):
+        self.limit, self.window = limit, window
+        self.counts = defaultdict(int)            # (client, window_id) -> count
+
+    def allow(self, client, now):
+        key = (client, int(now // self.window))
+        if self.counts[key] >= self.limit:
+            return False
+        self.counts[key] += 1
+        return True
+
+
+class SlidingLog:
+    def __init__(self, limit, window):
+        self.limit, self.window = limit, window
+        self.logs = defaultdict(deque)            # client -> accepted timestamps
+
+    def allow(self, client, now):
+        log = self.logs[client]
+        while log and log[0] <= now - self.window:  # evict timestamps outside (now-W, now]
+            log.popleft()
+        if len(log) >= self.limit:
+            return False
+        log.append(now)
+        return True
+
+
+class SlidingWindowCounter:
+    def __init__(self, limit, window):
+        self.limit, self.window = limit, window
+        self.counts = defaultdict(int)            # (client, window_id) -> count
+
+    def allow(self, client, now):
+        wid = int(now // self.window)
+        elapsed = now - wid * self.window
+        prev = self.counts[(client, wid - 1)]
+        curr = self.counts[(client, wid)]
+        estimate = prev * (1 - elapsed / self.window) + curr
+        if estimate >= self.limit:
+            return False
+        self.counts[(client, wid)] += 1
+        return True
+
+
+times = [8, 9, 9, 10, 10, 11, 15, 19, 21]
+for cls in (FixedWindow, SlidingLog, SlidingWindowCounter):
+    lim = cls(limit=3, window=10)
+    res = ["ok" if lim.allow("u1", t) else "429" for t in times]
+    print(f"{cls.__name__:22s}", list(zip(times, res)))` },
+      { lang: 'java', title: 'Sliding window counter (Java)', code: `import java.util.*;
+import java.util.concurrent.*;
+
+public class SlidingWindowCounterLimiter {
+    private final int limit;
+    private final long windowMs;
+    // per client: [windowId, prevCount, currCount]
+    private final ConcurrentHashMap<String, long[]> state = new ConcurrentHashMap<>();
+
+    SlidingWindowCounterLimiter(int limit, long windowMs) { this.limit = limit; this.windowMs = windowMs; }
+
+    boolean allow(String client, long nowMs) {
+        long[] s = state.computeIfAbsent(client, k -> new long[]{nowMs / windowMs, 0, 0});
+        synchronized (s) {
+            long wid = nowMs / windowMs;
+            if (wid != s[0]) {                       // roll the windows forward
+                s[1] = (wid == s[0] + 1) ? s[2] : 0; // previous = old current only if adjacent
+                s[2] = 0;
+                s[0] = wid;
+            }
+            double elapsedFrac = (nowMs - wid * windowMs) / (double) windowMs;
+            double estimate = s[1] * (1.0 - elapsedFrac) + s[2];
+            if (estimate >= limit) return false;
+            s[2]++;
+            return true;
+        }
+    }
+
+    public static void main(String[] args) {
+        SlidingWindowCounterLimiter lim = new SlidingWindowCounterLimiter(3, 10_000);
+        long[] times = {8_000, 9_000, 9_500, 10_000, 10_500, 11_000, 15_000, 19_000, 21_000};
+        for (long t : times) System.out.println("t=" + t / 1000.0 + "s -> " + (lim.allow("u1", t) ? "ok" : "429"));
+    }
+}` },
+      { lang: 'text', title: 'Sliding log in Redis (MULTI/EXEC or Lua)', code: `-- KEYS[1] = "log:{client}"  ARGV: now_ms, window_ms, limit, unique_member
+redis.call('ZREMRANGEBYSCORE', KEYS[1], 0, tonumber(ARGV[1]) - tonumber(ARGV[2]))
+local count = redis.call('ZCARD', KEYS[1])
+if count >= tonumber(ARGV[3]) then return 0 end
+redis.call('ZADD', KEYS[1], ARGV[1], ARGV[4])          -- member must be unique (e.g. now_ms..random)
+redis.call('PEXPIRE', KEYS[1], ARGV[2])
+return 1` }
+    ],
+    codeTitle: ['Three limiters (Python)', 'Sliding counter (Java)', 'Sliding log (Redis Lua)'],
+    viz: [{
+      title: 'Fixed window: the boundary burst',
+      input: 'limit=3 window=10 | 2 7 8 9 10 11 12 15 21',
+      inputLabel: 'limit=<N> window=<seconds> | request times',
+      gen: function (input) {
+        var o = windowInput(input, 16), L = o.limit, W = o.W, ts = o.times;
+        var frames = [], hl = {}, counts = {};
+        frames.push({ narr: 'Fixed windows of <b>' + W + ' s</b>: [0,' + W + '), [' + W + ',' + 2 * W + '), … Each window has its own counter that starts at 0. Limit: <b>' + L + '</b> per window.', parts: [{ type: 'array', label: 'request times', values: ts }] });
+        for (var i = 0; i < ts.length; i++) {
+          var wid = Math.floor(ts[i] / W), c = counts[wid] || 0, ok = c < L;
+          if (ok) counts[wid] = c + 1;
+          hl[i] = ok ? 'ok' : 'bad';
+          var rg = [i, i];
+          for (var j = 0; j <= i; j++) if (Math.floor(ts[j] / W) === wid) { rg = [j, i]; break; }
+          var ptr = {}; ptr[i] = 'now';
+          frames.push({ narr: 't=' + ts[i] + ' falls in window <b>[' + wid * W + ', ' + (wid + 1) * W + ')</b> (blue range). Counter = ' + c + '. ' + (ok ? '<span class="c-g">' + c + ' &lt; ' + L + ' → allow</span>, counter becomes ' + (c + 1) + '.' : '<span class="c-r">Counter already ' + L + ' → reject 429</span>.'), parts: [
+            { type: 'array', label: 'request times', values: ts, hl: JSON.parse(JSON.stringify(hl)), ptr: ptr, range: rg },
+            { type: 'vars', label: 'fixed window', vals: { 'window id': wid, 'window span': '[' + wid * W + ', ' + (wid + 1) * W + ')', counter: counts[wid] || 0, limit: L }, hl: { counter: ok ? 'ok' : 'bad' } }
+          ] });
+        }
+        // find worst burst: max accepted in any W-length span
+        var acc = ts.filter(function (t, k) { return hl[k] === 'ok'; }), worst = 0, ws = 0;
+        for (var a = 0; a < acc.length; a++) { var n = 0; for (var b = a; b < acc.length && acc[b] < acc[a] + W; b++) n++; if (n > worst) { worst = n; ws = acc[a]; } }
+        frames.push({ narr: 'Look across the boundary: in the rolling span [' + ws + ', ' + (ws + W) + ') the fixed window accepted <b>' + worst + '</b> requests' + (worst > L ? ' — <span class="c-r">more than the limit of ' + L + '</span>. Up to 2× the limit can slip through around a window edge.' : '. No boundary burst in this input — try times clustered just before and after ' + W + '.'), parts: [
+          { type: 'array', label: 'accepted (green) vs rejected (red)', values: ts, hl: hl },
+          { type: 'vars', vals: { limit: L, 'worst rolling count': worst }, hl: { 'worst rolling count': worst > L ? 'bad' : 'ok' } }
+        ] });
+        return frames;
+      }
+    }, {
+      title: 'Sliding window log: exact count in the last W seconds',
+      input: 'limit=3 window=10 | 2 7 8 9 10 11 12 15 21',
+      inputLabel: 'limit=<N> window=<seconds> | request times',
+      gen: function (input) {
+        var o = windowInput(input, 16), L = o.limit, W = o.W, ts = o.times;
+        var frames = [], hl = {}, log = [];
+        frames.push({ narr: 'Sliding log keeps every <b>accepted</b> timestamp. For a request at t, it looks only at (t − ' + W + ', t] — a window that slides with time instead of jumping.', parts: [{ type: 'array', label: 'request times', values: ts }, { type: 'set', label: 'log (accepted timestamps)', items: [] }] });
+        for (var i = 0; i < ts.length; i++) {
+          var t = ts[i], evicted = log.filter(function (x) { return x <= t - W; });
+          log = log.filter(function (x) { return x > t - W; });
+          var ok = log.length < L;
+          if (ok) log.push(t);
+          hl[i] = ok ? 'ok' : 'bad';
+          var ptr = {}; ptr[i] = 'now';
+          var shl = {}; if (ok) shl[String(t)] = 'ok';
+          frames.push({ narr: 'Request at <b>t=' + t + '</b>. Window = (' + (t - W) + ', ' + t + ']. ' + (evicted.length ? 'Evict old entries ' + evicted.join(', ') + '. ' : '') + 'Log holds ' + (ok ? log.length - 1 : log.length) + ' entries. ' + (ok ? '<span class="c-g">Below ' + L + ' → allow</span> and append ' + t + '.' : '<span class="c-r">Already ' + L + ' in the last ' + W + ' s → reject</span>.'), parts: [
+            { type: 'array', label: 'request times (blue = inside sliding window)', values: ts, hl: JSON.parse(JSON.stringify(hl)), ptr: ptr, range: idxRange(ts, t - W, t, i) },
+            { type: 'set', label: 'log (accepted timestamps in window)', items: log.map(String), hl: shl },
+            { type: 'vars', vals: { 'window': '(' + (t - W) + ', ' + t + ']', 'count in window': ok ? log.length - 1 : log.length, limit: L } }
+          ] });
+        }
+        frames.push({ narr: 'Exact: no rolling ' + W + '-second span ever contains more than ' + L + ' accepted requests. The cost is memory — up to ' + L + ' timestamps per client (fine for 5 login attempts, heavy for 10,000 requests/hour).', parts: [{ type: 'array', label: 'final decisions', values: ts, hl: hl }] });
+        return frames;
+      }
+    }, {
+      title: 'Sliding window counter: two counters + overlap weight',
+      input: 'limit=4 window=10 | 1 3 5 8 11 12 13 15 19 21 22 26',
+      inputLabel: 'limit=<N> window=<seconds> | request times',
+      gen: function (input) {
+        var o = windowInput(input, 16), L = o.limit, W = o.W, ts = o.times;
+        var frames = [], hl = {}, counts = {};
+        frames.push({ narr: 'Only two numbers per client: <b>prev</b> (accepted in the previous fixed window) and <b>curr</b> (accepted so far in this one). Estimate = prev × (1 − elapsed/W) + curr. Limit ' + L + ' per ' + W + ' s.', parts: [{ type: 'array', label: 'request times', values: ts }, { type: 'vars', vals: { prev: 0, curr: 0, estimate: 0, limit: L } }] });
+        for (var i = 0; i < ts.length; i++) {
+          var t = ts[i], wid = Math.floor(t / W), elapsed = t - wid * W;
+          var prev = counts[wid - 1] || 0, curr = counts[wid] || 0;
+          var weight = 1 - elapsed / W, est = prev * weight + curr, ok = est < L;
+          if (ok) counts[wid] = curr + 1;
+          hl[i] = ok ? 'ok' : 'bad';
+          var ptr = {}; ptr[i] = 'now';
+          frames.push({ narr: 't=' + t + ': current window starts at ' + wid * W + ', we are ' + elapsed + 's in, so ' + Math.round(weight * 100) + '% of the previous window still overlaps the sliding window (t−' + W + ', t]. Estimate = ' + prev + ' × ' + r2(weight) + ' + ' + curr + ' = <b>' + r2(est) + '</b>. ' + (ok ? '<span class="c-g">&lt; ' + L + ' → allow</span> (curr becomes ' + (curr + 1) + ').' : '<span class="c-r">≥ ' + L + ' → reject</span>.'), parts: [
+            { type: 'array', label: 'request times (blue = sliding window span)', values: ts, hl: JSON.parse(JSON.stringify(hl)), ptr: ptr, range: idxRange(ts, t - W, t, i) },
+            { type: 'vars', label: 'two counters', vals: { 'prev window': '[' + (wid - 1) * W + ',' + wid * W + ')', prev: prev, curr: ok ? curr + 1 : curr, 'overlap weight': r2(weight), estimate: r2(est), limit: L }, hl: { estimate: ok ? 'ok' : 'bad' } }
+          ] });
+        }
+        frames.push({ narr: 'The estimate assumes the previous window\'s requests were spread evenly. It can be slightly off when they were bunched up, but memory stays at 2 counters per client no matter how high the limit — that is why large-scale limiters use it.', parts: [{ type: 'array', label: 'final decisions', values: ts, hl: hl }] });
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'Sliding counter worked by hand', html: `<p>Limit 100/min. At 12:01:45 a request arrives. Window 12:00 had 84 accepted, window 12:01 has 37 so far. Elapsed = 45 s → overlap of previous window = 15/60 = 0.25. Estimate = 84 × 0.25 + 37 = <b>58</b> &lt; 100 → allow, curr becomes 38.</p>
+        ${H.table(['', 'value'], [['prev', '84'], ['curr', '37'], ['weight', '0.25'], ['estimate', '84×0.25+37 = 58'], ['decision', H.c('g', 'allow')]])}` },
+      { title: 'Fixed window is right for quotas', html: `<p>"Free plan: 1,000 API calls per calendar month" — the business literally wants a counter that resets on the 1st. Use key <code>quota:{key}:2026-10</code>, <code>INCR</code>, compare, expire after 35 days. Combine with a per-second token bucket so nobody burns the month in one minute.</p>` },
+      { title: 'Login brute-force protection with a sliding log', html: `<p>Rule: max 5 failed logins per account per 15 minutes. Low N, precision matters, and failures are rare → a sorted set of failure timestamps per account is tiny. Add a second, per-IP limit across accounts (credential stuffing tries many accounts from one IP) and exponential lockout.</p>` },
+      { title: 'Choosing the key matters as much as the algorithm', html: `<p>Per IP: unfair behind corporate NAT or mobile carriers (thousands of users share an IP). Per user id: needs auth first. Per API key: best for B2B. Per endpoint + key: protects expensive endpoints. Often you use several: <code>ip</code> for anonymous, <code>user</code> for logged-in, <code>org</code> for plan quotas.</p>` }
+    ],
+    deepDive: `<p><b>Atomicity in Redis.</b> Fixed window: <code>INCR key</code> then <code>EXPIRE key W NX</code> (Redis 7 supports <code>NX</code> so you don't extend it on every call). Do both in a pipeline/Lua; if the process dies between INCR and EXPIRE you get an immortal key. Sliding log: ZREMRANGEBYSCORE + ZCARD + ZADD must be in one Lua script, or two concurrent requests both see "count = N−1" and both add. Members must be unique (timestamp + random suffix), otherwise two requests in the same millisecond collapse into one entry.</p>
+      <p><b>Should rejected requests count?</b> In a sliding log, if you also log rejected requests, a client that keeps hammering stays locked out forever (good for abuse, harsh for buggy retries). Most APIs count only accepted requests; anti-abuse limiters often count all attempts.</p>
+      <p><b>Error bound of the sliding counter.</b> Worst case: all prev-window requests sat at its very end. Then the true count in the sliding window is prev + curr, while the estimate is prev × weight + curr, so it under-counts by prev × (1 − weight) — it can admit up to roughly N extra in the worst adversarial pattern, but real traffic is spread out, which is why the measured error is tiny.</p>
+      <p><b>Multi-region and clock skew.</b> Window ids computed from local clocks on different gateway nodes can disagree by a few hundred ms near boundaries; use Redis server time or tolerate it. Across regions, a single global Redis adds 100 ms+ latency, so use per-region limits (limit ÷ regions, or weighted by traffic) and asynchronously reconcile — accepting small overshoot.</p>
+      <p><b>Response headers.</b> IETF's RateLimit header fields draft (<code>RateLimit-Policy</code>, <code>RateLimit</code>) and the common <code>X-RateLimit-Limit/Remaining/Reset</code> tell clients their budget. Always send <code>Retry-After</code> on 429 so well-behaved clients back off precisely.</p>
+      <p><b>Load shedding is different.</b> Rate limits are per-client fairness. When the whole service is overloaded you also need adaptive load shedding (reject by priority when CPU/queue latency is high) and concurrency limits — limits that react to server health (e.g. Netflix's adaptive concurrency limits).</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI crawlers and agents generate bursty, machine-speed traffic; sites now rate-limit by bot identity (verified user agents, Web Bot Auth signatures) and by cost. For your own LLM features, you often need two windows at once: a short window (tokens per minute) to protect provider limits and a long fixed window (dollars per month) for budgets.</p>
+      <p><b>Use AI as a partner:</b> ask for a simulation harness comparing algorithms: <code>Generate bursty traffic (Poisson + spikes at window edges), run fixed, log and sliding counter limiters, and report max requests in any rolling window</code>. Reading the output teaches you the boundary flaw faster than any diagram.</p>
+      <p><b>Where AI goes wrong:</b> uses <code>now // W</code> on floats inconsistently, forgets that <code>ZADD</code> with the same member overwrites, counts the current request before checking (off-by-one: allows N−1), and claims the sliding counter is "exact".</p>
+      <p><b>What you must still own:</b> which algorithm matches the business promise ("never more than N in any minute" vs "N per calendar minute"), what the key is, and the memory/accuracy math at your scale.</p>`,
+    problems: [{
+      title: 'Implement a sliding window counter limiter',
+      level: 'Medium', tags: ['rate limiting', 'sliding window', 'design'], companies: ['Cloudflare', 'Google', 'Atlassian'],
+      statement: `<p>Implement <code>allow(client, nowSeconds)</code> enforcing "at most N requests per W seconds" with the sliding window counter approximation, using O(1) memory per client. Explain the error vs an exact log, and how you'd run it on Redis for 50 gateway nodes.</p>`,
+      constraints: `<p>10M active clients; N up to 10,000 per hour; per-call O(1); memory ≤ ~32 bytes of state per client.</p>`,
+      example: `<p>N=4, W=10. Accepted at 1, 3, 5, 8 (window 0 has 4). At t=12: prev=4, curr=0, weight=0.8 → est 3.2 → ${H.c('g', 'allow')}. At t=13: est = 4×0.7 + 1 = 3.8 → ${H.c('g', 'allow')}. At t=15: est = 4×0.5 + 2 = 4 → ${H.c('r', 'reject')}.</p>`,
+      brute: { why: `<p><b>Naive:</b> a sliding log per client stores up to N timestamps — 10,000 × 8 bytes × 10M clients = 800 GB. Exact, but impossible at this scale. A fixed window fits in memory but allows 2N around boundaries.</p>`, code: { lang: 'python', code: `from collections import deque
+
+class ExactLog:
+    """O(N) memory per client: 10k timestamps x 10M clients is far too much."""
+    def __init__(self, n, w):
+        self.n, self.w, self.logs = n, w, {}
+
+    def allow(self, c, now):
+        log = self.logs.setdefault(c, deque())
+        while log and log[0] <= now - self.w:
+            log.popleft()
+        if len(log) >= self.n:
+            return False
+        log.append(now)
+        return True` } },
+      mcq: { q: 'Prev window had 50, current has 20, we are 40% into the current window, limit 60. Decision?', options: ['Allow: 50×0.6 + 20 = 50 < 60', 'Reject: 50 + 20 = 70 ≥ 60', 'Allow: 20 < 60, prev is ignored', 'Reject: 50×0.4 + 20 = 40 is wrong formula anyway'], answer: 0, explain: 'Weight is the remaining overlap of the previous window: 1 − 0.4 = 0.6. Estimate 30 + 20 = 50.' },
+      hints: [`<p>Hint 1: You only need counts for the current fixed window and the one before it.</p>`, `<p>Hint 2: estimate = prev × (1 − elapsed/W) + curr. Reject if estimate ≥ N, otherwise increment curr.</p>`, `<p>Hint 3: When time jumps by two or more windows, prev must become 0, not the stale current. In Redis use two keys <code>c:{id}:{wid}</code> with TTL 2W, read both, decide and INCR in one Lua script.</p>`],
+      solution: {
+        approach: `<p>Per client store (windowId, prev, curr). On a call: compute wid = floor(now/W). If wid moved forward by 1, prev = curr, curr = 0; if by more, prev = curr = 0. Compute weight and estimate; allow and increment if below N. On Redis: keys per window with expiry 2W, Lua script reads <code>prev</code> and <code>curr</code>, computes the estimate with server time, INCRs <code>curr</code> if allowed — one round trip, atomic across all 50 nodes.</p>`,
+        code: { lang: 'python', run: true, code: `class SlidingWindowCounter:
+    def __init__(self, n, w):
+        self.n, self.w = n, w
+        self.state = {}                       # client -> [wid, prev, curr]
+
+    def allow(self, client, now):
+        wid = int(now // self.w)
+        s = self.state.get(client)
+        if s is None:
+            s = [wid, 0, 0]
+        elif wid != s[0]:
+            s = [wid, s[2] if wid == s[0] + 1 else 0, 0]   # roll forward
+        weight = 1 - (now - wid * self.w) / self.w
+        estimate = s[1] * weight + s[2]
+        allowed = estimate < self.n
+        if allowed:
+            s[2] += 1
+        self.state[client] = s
+        return allowed, round(estimate, 2)
+
+
+lim = SlidingWindowCounter(n=4, w=10)
+for t in [1, 3, 5, 8, 9, 12, 13, 15, 19, 35]:
+    print(t, lim.allow("c1", t))` },
+        complexity: `<p>O(1) time; 3 numbers per client (~24 bytes) → 10M clients ≈ 240 MB, versus 800 GB for the exact log. Worst-case over-admission ≈ prev × (1 − weight) when traffic bunches at the end of the previous window.</p>`,
+        followUps: ['Return RateLimit-Remaining and Retry-After for this algorithm.', 'How would you shard the Redis keys and handle a Redis node failure?']
+      }
+    }]
+  });
+
+  /* ================= TOPIC 6: Pagination ================= */
+  topics.push({
+    title: 'Pagination: Offset vs Cursor (Keyset)',
+    analogy: `<p>Reading a long newspaper column. <b>Offset pagination</b> = "start reading at the 41st line". If the editor adds two lines at the top while you're reading, your "41st line" is now a line you already read — duplicates. If they remove lines, you skip some. <b>Cursor pagination</b> = putting a bookmark on the last line you read and saying "continue <i>after this line</i>". New lines on top don't move your bookmark.</p>`,
+    explain: `<p>No API should return 10 million rows in one response. <b>Pagination</b> splits a list into pages. Two main styles:</p>
+      <p><b>1. Offset / limit</b> — <code>GET /posts?limit=20&amp;offset=40</code> → SQL <code>ORDER BY created_at DESC LIMIT 20 OFFSET 40</code>.</p>
+      <ul>
+        <li>${H.c('g', 'Pros')}: dead simple; "jump to page 37" and "showing 41–60 of 1,284" are easy.</li>
+        <li>${H.c('r', 'Cons')}: the DB still <b>reads and throws away</b> the first <i>offset</i> rows, so page 10,000 is very slow (O(offset + limit)). And when rows are inserted or deleted between requests, items <b>shift</b>: users see duplicates or miss items.</li>
+      </ul>
+      <p><b>2. Cursor / keyset</b> — the response includes an opaque <code>next_cursor</code> that encodes the position of the last item (e.g. its <code>(created_at, id)</code>). Next request: <code>GET /posts?limit=20&amp;cursor=eyJ0Ijo...</code> → SQL <code>WHERE (created_at, id) &lt; (:t, :id) ORDER BY created_at DESC, id DESC LIMIT 20</code>.</p>
+      <ul>
+        <li>${H.c('g', 'Pros')}: uses the index to <b>seek</b> straight to the position → every page is equally fast, O(log n + limit). Stable under inserts/deletes: no duplicates, no skips.</li>
+        <li>${H.c('r', 'Cons')}: no random "jump to page 37"; no cheap total count; sort key must be unique (add <code>id</code> as a tie-breaker) and indexed.</li>
+      </ul>
+      ${H.table(['', 'Offset', 'Cursor / keyset'], [
+        ['Request', '<code>?page=3&amp;size=20</code>', '<code>?cursor=abc&amp;limit=20</code>'],
+        ['Deep page cost', H.c('r', 'O(offset + limit) — gets slower'), H.c('g', 'O(log n + limit) — constant-ish')],
+        ['Inserts while paging', H.c('r', 'Duplicates / skipped items'), H.c('g', 'Stable')],
+        ['Jump to page N', H.c('g', 'Yes'), H.c('r', 'No (only next/prev)')],
+        ['Best for', 'Admin tables, small datasets, search results UI with page numbers', 'Feeds, infinite scroll, public APIs, data exports, sync']
+      ])}
+      <p>Make the cursor <b>opaque</b> (base64 of JSON, ideally signed or encrypted) so clients don't build their own and you can change its internals later. Return it in the body (<code>"next_cursor"</code>, <code>"has_more"</code>) or in a <code>Link: &lt;...&gt;; rel="next"</code> header.</p>`,
+    clues: [
+      '"infinite scroll", "news feed", "timeline" → cursor pagination',
+      '"new items arrive constantly while the user scrolls" → offset gives duplicates → cursor',
+      '"page 50,000 is slow" / "OFFSET 1000000" → keyset pagination with an index',
+      '"jump to page 7", "total pages" in an admin UI → offset is acceptable',
+      '"export all rows reliably", "sync changes since last time" → cursor / change token',
+      '"sort by a non-unique column" → add id as tie-breaker in the cursor'
+    ],
+    code: [
+      { lang: 'sql', title: 'Offset vs keyset in SQL (runs in SQLite)', code: `CREATE TABLE posts (id INTEGER PRIMARY KEY, created_at INTEGER NOT NULL, title TEXT);
+CREATE INDEX idx_posts_created ON posts(created_at DESC, id DESC);
+INSERT INTO posts(id, created_at, title) VALUES
+ (1,100,'a'),(2,105,'b'),(3,105,'c'),(4,110,'d'),(5,120,'e'),
+ (6,125,'f'),(7,130,'g'),(8,130,'h'),(9,140,'i'),(10,150,'j');
+
+-- Offset page 2 (size 3): the DB walks past 3 rows and throws them away
+SELECT id, created_at, title FROM posts
+ORDER BY created_at DESC, id DESC
+LIMIT 3 OFFSET 3;
+
+-- Keyset page 2: page 1 ended at (created_at=130, id=7); seek straight past it.
+-- Row-value comparison handles the tie on created_at=130 correctly.
+SELECT id, created_at, title FROM posts
+WHERE (created_at, id) < (130, 7)
+ORDER BY created_at DESC, id DESC
+LIMIT 3;` },
+      { lang: 'python', title: 'Opaque, tamper-evident cursors (Python, runnable)', run: true, code: `import base64, hashlib, hmac, json
+
+SECRET = b"server-side-secret"          # in production: from a secrets manager, rotated
+
+
+def encode_cursor(created_at, row_id):
+    payload = json.dumps({"t": created_at, "id": row_id}, separators=(",", ":")).encode()
+    sig = hmac.new(SECRET, payload, hashlib.sha256).digest()[:8]   # short MAC
+    return base64.urlsafe_b64encode(payload + sig).decode().rstrip("=")
+
+
+def decode_cursor(cursor):
+    raw = base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4))
+    payload, sig = raw[:-8], raw[-8:]
+    expected = hmac.new(SECRET, payload, hashlib.sha256).digest()[:8]
+    if not hmac.compare_digest(sig, expected):
+        raise ValueError("invalid cursor")                   # -> HTTP 400
+    d = json.loads(payload)
+    return d["t"], d["id"]
+
+
+POSTS = sorted([(150, 10), (140, 9), (130, 8), (130, 7), (125, 6), (120, 5), (110, 4)], reverse=True)
+
+
+def list_posts(limit, cursor=None):
+    rows = POSTS
+    if cursor:
+        t, i = decode_cursor(cursor)
+        rows = [r for r in POSTS if r < (t, i)]               # keyset: strictly after the bookmark
+    page = rows[:limit]
+    has_more = len(rows) > limit
+    nxt = encode_cursor(*page[-1]) if page and has_more else None
+    return {"data": page, "next_cursor": nxt, "has_more": has_more}
+
+
+p1 = list_posts(3)
+print(p1)
+p2 = list_posts(3, p1["next_cursor"])
+print(p2)
+try:
+    decode_cursor(p1["next_cursor"][:-2] + "AA")
+except ValueError as e:
+    print("tampered cursor rejected:", e)` },
+      { lang: 'json', title: 'A cursor-paginated response body', code: `{
+  "data": [
+    {"id": "post_9", "created_at": "2026-10-14T10:20:00Z", "title": "Rate limiting 101"},
+    {"id": "post_8", "created_at": "2026-10-14T10:10:00Z", "title": "Idempotency keys"}
+  ],
+  "has_more": true,
+  "next_cursor": "eyJ0IjoxMzAsImlkIjo4fQ",
+  "links": {"next": "/v1/posts?limit=2&cursor=eyJ0IjoxMzAsImlkIjo4fQ"}
+}` }
+    ],
+    codeTitle: ['SQL', 'Cursor encoding (Python)', 'Response shape (JSON)'],
+    viz: {
+      title: 'Offset vs cursor while new posts arrive',
+      input: 'posts=10 page=3 new=2',
+      inputLabel: 'posts=<5-14> page=<size 2-5> new=<posts inserted between page fetches 0-4>',
+      gen: function (input) {
+        var kv = parseKV(input);
+        var N = num(kv.posts, NaN), P = num(kv.page, NaN), NEW = num(kv['new'], NaN);
+        if (!(N >= 5 && N <= 14) || !(P >= 2 && P <= 5) || !(NEW >= 0 && NEW <= 4)) throw new Error('Use posts 5-14, page 2-5, new 0-4 (e.g. posts=10 page=3 new=2)');
+        var frames = [];
+        function rowsOf(ids) { return ids.map(function (id) { return ['post_' + id, '10:' + (id < 10 ? '0' + id : id), id > N ? 'new!' : '']; }); }
+        var cols = ['id', 'created', 'note'];
+        var ids = []; for (var i = N; i >= 1; i--) ids.push(i);
+        var page1 = ids.slice(0, P), hl1 = {};
+        for (i = 0; i < P; i++) hl1[i] = 'sel';
+        frames.push({ narr: 'A feed sorted <b>newest first</b>. Page size = ' + P + '. <b>Offset pagination</b>, page 1: <code>LIMIT ' + P + ' OFFSET 0</code> → posts ' + page1.join(', ') + '. The user reads them.', parts: [
+          { type: 'table', label: 'posts table (newest first)', columns: cols, rows: rowsOf(ids), hl: hl1 },
+          { type: 'vars', label: 'offset client', vals: { 'page shown': 1, offset: 0, 'rows DB scanned': P } }
+        ] });
+        var ids2 = []; for (i = N + NEW; i >= 1; i--) ids2.push(i);
+        var hlNew = {}; for (i = 0; i < NEW; i++) hlNew[i] = 'ok';
+        frames.push({ narr: NEW ? '<b>' + NEW + ' new post(s)</b> are published at the top while the user is scrolling. Every old row shifts down by ' + NEW + ' position(s).' : 'No new posts arrive this time (try new=2 to see the problem).', parts: [
+          { type: 'table', label: 'posts table now', columns: cols, rows: rowsOf(ids2), hl: hlNew }
+        ] });
+        var off2 = ids2.slice(P, 2 * P), hl2 = {}, dups = [];
+        for (i = P; i < Math.min(2 * P, ids2.length); i++) { var dup = page1.indexOf(ids2[i]) >= 0; hl2[i] = dup ? 'bad' : 'sel'; if (dup) dups.push(ids2[i]); }
+        frames.push({ narr: 'Offset page 2: <code>LIMIT ' + P + ' OFFSET ' + P + '</code> → posts ' + off2.join(', ') + '. ' + (dups.length ? '<span class="c-r">Duplicates: post ' + dups.join(', ') + ' were already on page 1!</span> The user sees them twice. (If posts were deleted instead, items would be silently skipped.)' : 'No duplicates because nothing shifted.'), parts: [
+          { type: 'table', label: 'offset page 2', columns: cols, rows: rowsOf(ids2), hl: hl2 },
+          { type: 'vars', label: 'offset client', vals: { 'page shown': 2, offset: P, duplicates: dups.length, 'rows DB scanned': 2 * P }, hl: { duplicates: dups.length ? 'bad' : 'ok' } }
+        ] });
+        var cursor = page1[page1.length - 1];
+        frames.push({ narr: 'Now the <b>cursor</b> way. Page 1 is the same: ' + page1.join(', ') + ', but the response also returns <code>next_cursor</code> = "after post_' + cursor + '" (encoded as base64 of its sort key).', parts: [
+          { type: 'table', label: 'cursor page 1', columns: cols, rows: rowsOf(ids), hl: hl1 },
+          { type: 'vars', label: 'cursor client', vals: { 'next_cursor': 'post_' + cursor, 'has_more': N > P } }
+        ] });
+        var after = ids2.filter(function (id) { return id < cursor && id <= N; }).slice(0, P), hl3 = {};
+        ids2.forEach(function (id, k) { if (after.indexOf(id) >= 0) hl3[k] = 'ok'; else if (id > N) hl3[k] = 'done'; });
+        frames.push({ narr: 'Cursor page 2: <code>WHERE id &lt; ' + cursor + ' ORDER BY id DESC LIMIT ' + P + '</code> → posts ' + after.join(', ') + '. <span class="c-g">No duplicates, no skips</span> — the new posts at the top do not move the bookmark. The index seeks straight to id ' + cursor + ' instead of scanning skipped rows.', parts: [
+          { type: 'table', label: 'cursor page 2', columns: cols, rows: rowsOf(ids2), hl: hl3 },
+          { type: 'vars', label: 'cursor client', vals: { 'next_cursor': after.length ? 'post_' + after[after.length - 1] : 'null', duplicates: 0, 'rows DB scanned': after.length }, hl: { duplicates: 'ok' } }
+        ] });
+        frames.push({ narr: 'Cost at scale: fetching page 50,000 of size 20. Offset makes the database read and discard ~1,000,000 rows; keyset reads ~20 rows after one index seek. (New posts are fetched separately via a "newer than first cursor" call — that is how feeds show "3 new posts ↑".)', parts: [
+          { type: 'table', label: 'deep page cost (page 50,000, size 20)', columns: ['method', 'rows read', 'stable under inserts?', 'jump to page N?'], rows: [['OFFSET 999980 LIMIT 20', '~1,000,000', 'no', 'yes'], ['WHERE key < cursor LIMIT 20', '~20 (+ index seek)', 'yes', 'no']], hl: { 0: 'bad', 1: 'ok' } }
+        ] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Feed API with cursor', html: `<p><code>GET /v1/feed?limit=20</code> → 20 items + <code>next_cursor</code>. Scrolling: <code>GET /v1/feed?limit=20&amp;cursor=X</code>. Pull-to-refresh: <code>GET /v1/feed?limit=20&amp;before_cursor=FIRST</code> (items newer than the first one shown). Clients never parse cursors; servers can change the encoding (e.g. from id to a ranking score + id) without breaking anyone.</p>` },
+      { title: 'Admin table with page numbers', html: `<p>An internal dashboard with 3,000 refunds, filters, and "page 4 of 150". Offset is fine: max offset is tiny, data rarely changes during a session, and page jumps are a requirement. Cap the max offset (e.g. 10,000) so nobody accidentally runs a terrible query.</p>` },
+      { title: 'Non-unique sort key bug', html: `<p>Sorting by <code>created_at</code> only, with a cursor of just the timestamp, when 5 posts share 10:00:00 and the page boundary falls between them: <code>WHERE created_at &lt; '10:00:00'</code> skips the remaining ones. Fix: cursor = <code>(created_at, id)</code>, compare the pair, and index both columns in the same order.</p>
+        ${H.table(['cursor', 'query', 'result'], [['created_at only', '<code>created_at &lt; t</code>', H.c('r', 'skips ties')], ['(created_at, id)', '<code>(created_at, id) &lt; (t, id)</code>', H.c('g', 'exact')]])}` },
+      { title: 'Stripe-style list endpoints', html: `<p>Stripe uses <code>starting_after=obj_id</code> / <code>ending_before=obj_id</code> plus <code>limit</code> and returns <code>has_more</code>. The cursor is simply the id of a returned object — transparent but still stable. GitHub's REST API uses the <code>Link</code> header with <code>rel="next"</code>; GraphQL APIs use the Relay connection spec (<code>edges</code>, <code>pageInfo { endCursor hasNextPage }</code>).</p>` }
+    ],
+    deepDive: `<p><b>Why OFFSET is slow.</b> B-tree indexes let you find "the row with key X" in O(log n), but not "the 1,000,000th row" — the engine must walk 1,000,000 index entries (or worse, rows) and discard them. Keyset converts "position" into "key", which the index can seek to. On Postgres/MySQL, ensure the <code>ORDER BY</code> exactly matches a composite index (same columns, same direction) and use row-value comparison <code>(a, b) &lt; (x, y)</code>.</p>
+      <p><b>Total counts.</b> <code>COUNT(*)</code> over a big filtered set is expensive and changes constantly. Options: omit it, return an estimate ("about 10,000 results"), cache it, or compute it asynchronously. Search engines return approximate totals for this reason.</p>
+      <p><b>Cursor contents and security.</b> A cursor may encode sort keys, filter parameters (so a client can't change filters mid-pagination), a snapshot timestamp and a version number. Sign it (HMAC) or encrypt it so clients can't forge positions or read internal ids; give it an expiry if it refers to server-side state. Never put raw SQL in a cursor.</p>
+      <p><b>Sharded / distributed data.</b> With data across shards, offset requires fetching offset+limit from every shard and merging — catastrophic for deep pages. Keyset works per shard: each shard returns limit rows after the cursor, the service merges by sort key and the new cursor holds the last key (or per-shard positions). Elasticsearch offers <code>search_after</code> (keyset) and point-in-time snapshots instead of deep <code>from</code>/<code>size</code> (capped at 10,000 by default).</p>
+      <p><b>Consistency of a full scan.</b> Keyset gives "no duplicates, no skips for rows that existed throughout", but a row updated so that its sort key moves can still appear twice or be missed. For exports, sort by an immutable key (id) or paginate over a snapshot. For sync APIs, use a <b>change token</b>: "give me everything modified after token T" sorted by (updated_at, id).</p>`,
+    aiEra: `<p><b>What AI changes:</b> agents consume your list endpoints and are notoriously bad at handling pagination — they stop at page 1 and answer from partial data. Make it obvious: <code>has_more</code>, <code>next_cursor</code>, sensible default limits, and tool descriptions that say "results are paginated". MCP defines cursor-based pagination for listing tools and resources (<code>nextCursor</code>). Vector-search APIs paginate by score + id the same way keyset does.</p>
+      <p><b>Use AI as a partner:</b> ask it to write a migration from offset to keyset including the composite index, then ask: <code>Show me a dataset with duplicate timestamps where your cursor query skips a row</code>. Use it to generate property tests: paginate through all rows while inserting randomly; assert no duplicates.</p>
+      <p><b>Where AI goes wrong:</b> cursor on a non-unique column, forgetting the tie-breaker in the index, using <code>&lt;=</code> instead of <code>&lt;</code> (returns the last item again), exposing raw database offsets inside a "cursor", and computing <code>COUNT(*)</code> on every page.</p>
+      <p><b>What you must still own:</b> choosing pagination from the product requirement (page numbers vs infinite scroll vs export), the index design, and the consistency guarantees you promise API users.</p>`,
+    problems: [{
+      title: 'Design pagination for a social timeline API',
+      level: 'Medium', tags: ['pagination', 'api design', 'feeds'], companies: ['Twitter/X', 'Meta', 'LinkedIn'],
+      statement: `<p>Design <code>GET /v1/timeline</code> for a home feed: infinite scroll down (older), pull-to-refresh (newer), items ranked by time, new posts arriving every second. Specify request/response, cursor contents, DB query and index.</p>`,
+      constraints: `<p>Posts table 5B rows, sharded by author; timeline precomputed per user (list of post ids by time); p99 page latency 100 ms; users may scroll 1,000+ items deep.</p>`,
+      example: `<p>First call returns posts 980–961 with <code>next_cursor</code>=C1 and <code>prev_cursor</code>=C0. Ten seconds later 3 new posts exist; <code>?before=C0</code> returns exactly those 3; <code>?cursor=C1</code> returns 960–941 with no duplicates.</p>`,
+      brute: { why: `<p><b>Naive:</b> <code>?page=N&amp;size=20</code> with <code>ORDER BY created_at DESC OFFSET (N−1)×20</code>. New posts shift everything, so scrolling shows duplicates; deep pages force the DB to scan and discard thousands of rows; across shards, each shard must return offset+limit rows for a merge. Latency grows with depth and the UX is buggy.</p>` },
+      mcq: { q: 'Your cursor encodes only created_at. What breaks?', options: ['Posts with the same timestamp at a page boundary are skipped or duplicated', 'Nothing — timestamps are unique', 'Cursor becomes too long', 'The index cannot be used'], answer: 0, explain: 'Sort keys must be unique; add the post id as a tie-breaker and compare (created_at, id) together.' },
+      hints: [`<p>Hint 1: Use a unique, monotonic sort key — (created_at, post_id) or a Snowflake id that already embeds time.</p>`, `<p>Hint 2: Two directions: <code>cursor</code> for older items (key &lt; last), <code>before</code> for newer items (key &gt; first).</p>`, `<p>Hint 3: The timeline store (Redis sorted set per user with score = time) supports range-by-score; the cursor carries the score + id. Make the cursor opaque and signed.</p>`],
+      solution: {
+        approach: `<p><b>API:</b> <code>GET /v1/timeline?limit=20[&amp;cursor=…|&amp;before=…]</code> → <code>{ data: [...], next_cursor, prev_cursor, has_more }</code>. Default limit 20, max 100.</p>
+          <p><b>Sort key:</b> Snowflake-style post ids (time-ordered, unique) so the key is a single 64-bit number; otherwise (created_at, id).</p>
+          <p><b>Storage &amp; query:</b> each user's timeline is a Redis sorted set (score = post id) capped at ~800 entries; older pages fall back to a DB table <code>timeline(user_id, post_id)</code> with primary key (user_id, post_id DESC). Older page: <code>ZREVRANGEBYSCORE tl:{u} (cursor -inf LIMIT 0 20</code> (exclusive bound) or SQL <code>WHERE user_id=? AND post_id &lt; ? ORDER BY post_id DESC LIMIT 20</code>. Newer: <code>post_id &gt; first ORDER BY post_id ASC LIMIT 20</code>, then reverse. Hydrate post ids with a batched multi-get from the posts cache.</p>
+          <p><b>Cursor:</b> base64url(JSON {v:1, pid:last_id}) + HMAC; invalid → 400. Deleted posts are simply filtered during hydration (page may return fewer than limit; <code>has_more</code> still tells the truth).</p>
+          <p><b>Why it meets the constraints:</b> each page is one index seek + 20 reads regardless of depth; inserts at the top never shift the bookmark; works per shard and merges by key.</p>`,
+        complexity: `<p>O(log n + limit) per page in both Redis (skip list) and B-tree; hydration O(limit) via multi-get. Memory: 800 ids × 8 B per active user in Redis.</p>`,
+        followUps: ['How would ranked (non-chronological) feeds change the cursor?', 'How do you show "12 new posts" without fetching them?']
+      }
+    }]
+  });
+
+  /* ================= TOPIC 7: Idempotency keys ================= */
+  topics.push({
+    title: 'Idempotency Keys: Making Retries Safe',
+    analogy: `<p>You press the lift button five times — the lift still comes once. That button is <b>idempotent</b>: pressing it again changes nothing. A "Pay ₹500" button is <b>not</b> naturally like that: press twice, pay twice. An <b>idempotency key</b> is like writing a unique cheque number on your payment. If the bank sees cheque #8841 again, it says "already cashed — here's the same receipt" instead of paying twice.</p>`,
+    explain: `<p>Networks fail in the worst possible spot: your <code>POST /payments</code> reaches the server, the card is charged, and then the <b>response</b> is lost (timeout, Wi-Fi drop, load balancer reset). The client can't tell "never arrived" from "arrived but reply lost". If it retries blindly → <span class="c-r">double charge</span>. If it never retries → lost orders.</p>
+      <p><b>Idempotent</b> means: doing the operation once or many times leaves the system in the same state. GET, PUT, DELETE are idempotent by definition; POST and PATCH usually are not. The fix for POST: the client generates a unique <b>Idempotency-Key</b> (a UUID) per <i>logical</i> operation and sends it on every retry of that operation.</p>
+      <p><b>Server algorithm:</b></p>
+      <ol>
+        <li>Look up the key (scoped to the account/user) in an idempotency store.</li>
+        <li><b>Not found</b> → atomically insert <code>{key, request_hash, status: IN_PROGRESS}</code> (unique constraint), do the work, save the <b>response</b> (status code + body), mark <code>COMPLETED</code>, return it.</li>
+        <li><b>Found, COMPLETED, same request hash</b> → <span class="c-p">replay the stored response</span> without doing the work again.</li>
+        <li><b>Found, IN_PROGRESS</b> → the first attempt is still running → <code>409 Conflict</code> ("retry later").</li>
+        <li><b>Found, but different request body</b> → client bug (key reused for a different operation) → <code>422</code>.</li>
+        <li>Keys expire after e.g. 24 hours.</li>
+      </ol>
+      ${H.table(['Attempt', 'Key', 'Store says', 'Server does', 'Client gets'], [
+        ['1', 'k-8841', 'miss', 'charge ₹500, save response', H.c('y', '(response lost in network)')],
+        ['2 (retry)', 'k-8841', 'COMPLETED', 'nothing — replay', H.c('g', '201 + same payment id')],
+        ['3 (bug)', 'k-8841 with ₹900', 'hash mismatch', 'reject', H.c('r', '422')]
+      ])}
+      <p>${H.c('b', 'Key points')}: the key comes from the <b>client</b> (only it knows "this is the same intent"); generate it <b>before</b> the first attempt and reuse it on retries; store the response <b>atomically with</b> the side effect where possible (same DB transaction) so a crash can't leave "charged but not recorded".</p>`,
+    clues: [
+      '"client may retry", "network timeout", "at-least-once delivery" + "must not double-charge" → idempotency key',
+      '"payment", "money transfer", "order placement", "send exactly one email" → idempotent POST',
+      '"webhooks / queue consumers receive duplicates" → dedupe by event id (consumer-side idempotency)',
+      '"exactly-once" in the question → say: at-least-once delivery + idempotent processing',
+      '"two identical requests arrive at the same time" → unique constraint / IN_PROGRESS lock → 409 for the second',
+      '"retry safely on 5xx" → only idempotent methods or requests carrying an Idempotency-Key'
+    ],
+    code: [
+      { lang: 'http', title: 'Idempotent POST on the wire', code: `POST /v1/payments HTTP/1.1
+Host: api.pay.example
+Authorization: Bearer sk_live_...
+Idempotency-Key: 3f2b8c1e-7d4a-4f8e-9c55-1a2b3c4d5e6f
+Content-Type: application/json
+
+{"amount": 50000, "currency": "INR", "source": "card_tok_123", "description": "Order #9001"}
+
+HTTP/1.1 201 Created
+Content-Type: application/json
+
+{"id": "pay_71", "status": "succeeded", "amount": 50000}
+
+# --- client timed out before seeing that, so it retries with the SAME key ---
+
+POST /v1/payments HTTP/1.1
+Idempotency-Key: 3f2b8c1e-7d4a-4f8e-9c55-1a2b3c4d5e6f
+...same body...
+
+HTTP/1.1 201 Created
+Idempotent-Replayed: true
+
+{"id": "pay_71", "status": "succeeded", "amount": 50000}` },
+      { lang: 'python', title: 'Idempotent payment handler (Python, runnable)', run: true, code: `import hashlib, json, sqlite3, uuid
+
+db = sqlite3.connect(":memory:", isolation_level=None)
+db.executescript("""
+CREATE TABLE idempotency (
+  account_id TEXT, idem_key TEXT, request_hash TEXT, status TEXT,
+  response_code INTEGER, response_body TEXT,
+  PRIMARY KEY (account_id, idem_key)
+);
+CREATE TABLE payments (id TEXT PRIMARY KEY, account_id TEXT, amount INTEGER);
+""")
+
+
+def fingerprint(body):
+    return hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()
+
+
+def create_payment(account, key, body):
+    h = fingerprint(body)
+    db.execute("BEGIN IMMEDIATE")                  # serialise writers for this demo
+    try:
+        row = db.execute("SELECT request_hash, status, response_code, response_body FROM idempotency "
+                         "WHERE account_id=? AND idem_key=?", (account, key)).fetchone()
+        if row:
+            db.execute("COMMIT")
+            if row[0] != h:
+                return 422, {"error": "Idempotency-Key reused with a different request"}
+            if row[1] == "IN_PROGRESS":
+                return 409, {"error": "original request still in progress, retry later"}
+            return row[2], json.loads(row[3]) | {"replayed": True}
+        # first time: do the side effect AND record the response in ONE transaction
+        pay_id = "pay_" + uuid.uuid4().hex[:6]
+        db.execute("INSERT INTO payments VALUES (?,?,?)", (pay_id, account, body["amount"]))
+        resp = {"id": pay_id, "status": "succeeded", "amount": body["amount"]}
+        db.execute("INSERT INTO idempotency VALUES (?,?,?,?,?,?)",
+                   (account, key, h, "COMPLETED", 201, json.dumps(resp)))
+        db.execute("COMMIT")
+        return 201, resp
+    except Exception:
+        db.execute("ROLLBACK")
+        raise
+
+
+body = {"amount": 50000, "currency": "INR"}
+print(create_payment("acct_1", "k-8841", body))          # charges
+print(create_payment("acct_1", "k-8841", body))          # retry -> replayed, no new charge
+print(create_payment("acct_1", "k-8841", {"amount": 90000, "currency": "INR"}))  # 422
+print(create_payment("acct_1", "k-9999", body))          # new intent -> new charge
+print("payments rows:", db.execute("SELECT COUNT(*) FROM payments").fetchone()[0])` }
+    ],
+    codeTitle: ['HTTP exchange', 'Handler with SQL transaction (Python)'],
+    viz: {
+      title: 'Idempotency key: first call, lost reply, replay',
+      input: 'k1:500*, k1:500, k2:200, k1:900, k3:700!, k2:200',
+      inputLabel: 'key:amount list. * = reply lost in network, ! = duplicate arrives while first is in flight',
+      gen: function (input) {
+        var reqs = String(input || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean).map(function (s) {
+          var m = /^([A-Za-z0-9_-]{1,12}):(\d{1,7})([*!]?)$/.exec(s);
+          if (!m) throw new Error('Each item must look like k1:500 (optionally k1:500* or k1:500!)');
+          return { key: m[1], amt: +m[2], flag: m[3] };
+        });
+        if (!reqs.length || reqs.length > 8) throw new Error('Use 1-8 requests');
+        var store = {}, ledger = [], frames = [], pid = 70;
+        var nodes = [
+          { id: 'C', label: 'Client', x: 8, y: 32, shape: 'box' },
+          { id: 'API', label: 'Payments API', x: 36, y: 32, shape: 'box' },
+          { id: 'ST', label: 'Idempotency store', x: 70, y: 8, shape: 'box' },
+          { id: 'PSP', label: 'Card network', x: 70, y: 56, shape: 'box' },
+          { id: 'DB', label: 'Ledger DB', x: 90, y: 32, shape: 'box' }
+        ];
+        var edges = [['C', 'API'], ['API', 'C'], ['API', 'ST'], ['API', 'PSP'], ['PSP', 'DB']];
+        function g(hl, ehl, tags) { return { type: 'graph', directed: true, height: 66, nodes: nodes, edges: edges, hl: hl, ehl: ehl, tags: tags || {} }; }
+        function sm(hlKey, cls) {
+          var e = Object.keys(store).map(function (k) { var s = store[k]; return [k, s.status + ' | ₹' + s.amt + (s.resp ? ' | ' + s.resp : '')]; });
+          var h = {}; if (hlKey) h[hlKey] = cls;
+          return { type: 'map', label: 'idempotency store (key → status | request | saved response)', entries: e, hl: h };
+        }
+        function lt(hlLast) { var h = {}; if (hlLast) h[ledger.length - 1] = 'ok'; return { type: 'table', label: 'ledger (actual charges)', columns: ['payment', 'key', 'amount'], rows: ledger.map(function (l) { return l.slice(); }), hl: h }; }
+        frames.push({ narr: 'Each payment request carries an <code>Idempotency-Key</code> chosen by the client. The API checks the store <b>before</b> touching the card network. Watch the ledger: each key should charge <b>at most once</b>.', parts: [g({ API: 'cur' }, {}), sm(), lt()] });
+        reqs.forEach(function (r, i) {
+          var s = store[r.key], tag = 'POST ₹' + r.amt + ' key=' + r.key;
+          if (!s) {
+            store[r.key] = { status: 'IN_PROGRESS', amt: r.amt, resp: '' };
+            frames.push({ narr: 'Request ' + (i + 1) + ': <code>' + tag + '</code>. Store lookup: <b>miss</b> — first time we see this key. Atomically insert it as <b>IN_PROGRESS</b> (a unique constraint guarantees only one request can win this insert).', parts: [g({ C: 'cur', ST: 'ok' }, { 'C-API': 'cur', 'API-ST': 'ok' }, { C: tag }), sm(r.key, 'ok'), lt()] });
+            if (r.flag === '!') {
+              frames.push({ narr: 'While the card is still being charged, a <b>duplicate</b> with the same key arrives (user double-tapped, or a proxy retried). Lookup finds <b>IN_PROGRESS</b> → reply <span class="c-r">409 Conflict</span> "still processing, retry later". Without this check both would charge.', parts: [g({ ST: 'bad', API: 'cur' }, { 'API-ST': 'bad', 'API-C': 'bad' }, { C: 'dup → 409' }), sm(r.key, 'bad'), lt()] });
+            }
+            pid++;
+            var payId = 'pay_' + pid;
+            ledger.push([payId, r.key, '₹' + r.amt]);
+            store[r.key].status = 'COMPLETED';
+            store[r.key].resp = '201 ' + payId;
+            frames.push({ narr: 'Charge the card (₹' + r.amt + ') and, <b>in the same transaction</b>, write the ledger row and save the response <code>201 {id: ' + payId + '}</code> under the key, marking it <b>COMPLETED</b>.', parts: [g({ PSP: 'ok', DB: 'ok', ST: 'ok' }, { 'API-PSP': 'ok', 'PSP-DB': 'ok', 'API-ST': 'ok' }), sm(r.key, 'ok'), lt(true)] });
+            if (r.flag === '*') {
+              frames.push({ narr: '<span class="c-r">The reply is lost</span> on the way back (timeout / dropped connection). The client has no idea whether it was charged. The only safe move: <b>retry with the SAME key</b>.', parts: [g({ C: 'bad' }, { 'API-C': 'bad' }, { C: 'timeout ?' }), sm(r.key, 'cur'), lt()] });
+            } else {
+              frames.push({ narr: 'Client receives <span class="c-g">201 Created, id ' + payId + '</span>.', parts: [g({ C: 'ok' }, { 'API-C': 'ok' }, { C: '201 ' + payId }), sm(r.key, 'ok'), lt()] });
+            }
+          } else if (s.amt !== r.amt) {
+            frames.push({ narr: 'Request ' + (i + 1) + ': <code>' + tag + '</code>. Key found, but the stored request was ₹' + s.amt + ' — <b>different body</b>. The client reused a key for a different operation (a bug). Reply <span class="c-r">422 Unprocessable</span>; never charge.', parts: [g({ ST: 'bad', C: 'bad' }, { 'C-API': 'cur', 'API-ST': 'bad', 'API-C': 'bad' }, { C: '422' }), sm(r.key, 'bad'), lt()] });
+          } else {
+            frames.push({ narr: 'Request ' + (i + 1) + ': <code>' + tag + '</code>. Key found, same request fingerprint, status COMPLETED → <span class="c-p">replay the saved response</span> <code>' + s.resp + '</code> with header <code>Idempotent-Replayed: true</code>. The card network is <b>not</b> called; the ledger does not change.', parts: [g({ ST: 'sel', C: 'ok', PSP: 'done', DB: 'done' }, { 'C-API': 'cur', 'API-ST': 'sel', 'API-C': 'ok' }, { C: 'replay ' + s.resp }), sm(r.key, 'sel'), lt()] });
+          }
+        });
+        var keys = Object.keys(store).length;
+        frames.push({ narr: 'Result: ' + reqs.length + ' requests, <b>' + ledger.length + ' charges</b> for ' + keys + ' distinct keys — every logical payment happened exactly once, even with lost replies, retries and duplicates.', parts: [sm(), lt(), { type: 'vars', vals: { requests: reqs.length, 'distinct keys': keys, charges: ledger.length }, hl: { charges: ledger.length === keys ? 'ok' : 'bad' } }] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'The double-charge timeline without a key', html: `${H.table(['time', 'client', 'server'], [
+          ['0 ms', 'POST /payments ₹500', ''],
+          ['40 ms', '', 'charges card → pay_71'],
+          ['45 ms', '', 'sends 201 … connection resets'],
+          ['5,000 ms', 'timeout! retries POST', ''],
+          ['5,040 ms', '', H.c('r', 'charges card again → pay_72')]
+        ])}<p>Customer is charged ₹1,000. With an idempotency key, the second POST finds the key and replays <code>pay_71</code>.</p>` },
+      { title: 'Natural idempotency without a header', html: `<p>Sometimes you can design the operation to be idempotent: <code>PUT /v1/orders/ord_9001</code> with a client-generated id (repeating it just overwrites with the same data), "set balance-reservation for order X" instead of "add ₹500", or a DB unique constraint on <code>(order_id)</code> in the payments table so a second insert fails. Idempotency keys are the general tool when the client cannot pick the resource id.</p>`, code: { lang: 'sql', code: `CREATE TABLE charges (order_id TEXT PRIMARY KEY, amount INTEGER NOT NULL);
+INSERT INTO charges(order_id, amount) VALUES ('ord_9001', 500) ON CONFLICT(order_id) DO NOTHING;
+INSERT INTO charges(order_id, amount) VALUES ('ord_9001', 500) ON CONFLICT(order_id) DO NOTHING;
+SELECT COUNT(*) AS charges_for_order FROM charges WHERE order_id = 'ord_9001';` } },
+      { title: 'Idempotent message consumers', html: `<p>Kafka/SQS deliver <b>at least once</b>, so a consumer may see "OrderPaid #42" twice. Keep a <code>processed_events(event_id PRIMARY KEY)</code> table and insert into it in the same transaction as the side effect; a duplicate insert fails → skip. This is the consumer-side twin of the HTTP idempotency key, and together they give "effectively exactly-once".</p>` },
+      { title: 'What should the client use as the key?', html: `<p>A random UUID (v4 or v7) generated when the user clicks "Pay", stored with the pending operation so app restarts reuse it. ${H.c('r', 'Not')} a hash of the body (two genuine ₹500 payments to the same shop would collide), ${H.c('r', 'not')} a new UUID per retry (defeats the purpose). Scope keys per account so two customers' keys never clash.</p>` }
+    ],
+    deepDive: `<p><b>The hard part is atomicity.</b> If the idempotency record lives in Redis but the payment in Postgres, a crash between "charge" and "save response" leaves the key IN_PROGRESS forever, and a retry can't tell whether to charge. Best: store the idempotency row in the <b>same database transaction</b> as the business write. When the side effect is external (card network), split the work into <b>recovery points</b> (Stripe's approach): record each completed phase on the key row (<code>started → charge_created → finished</code>); a retry resumes from the last recovery point. Pass your own idempotency key downstream too (most PSPs accept one) so the external call itself is safe to repeat.</p>
+      <p><b>IN_PROGRESS locks need leases.</b> If the worker died, the key stays locked. Store <code>locked_at</code>; a retry after, say, 60 s may take over (with a fencing check) or run reconciliation against the PSP to discover whether the charge happened.</p>
+      <p><b>What to store and for how long.</b> Store status code + body + relevant headers; replay exactly. Should you store 5xx responses? Usually no — let the retry actually retry. Store 4xx validation errors? Often yes (deterministic). TTL 24 h–7 days covers realistic retry windows; old keys are purged by a TTL index or partition drop.</p>
+      <p><b>Request fingerprint.</b> Hash a canonical form of the body (sorted keys) plus method and path. Mismatch → 422. This catches client bugs that would otherwise silently return a response for a different request.</p>
+      <p><b>Exactly-once is a myth; effectively-once is real.</b> Delivery across a network can't be exactly-once, but at-least-once delivery + idempotent processing produces exactly-once <i>effects</i>. The IETF draft "The Idempotency-Key HTTP Header Field" standardises the header; Stripe, Adyen, PayPal and AWS (<code>ClientToken</code>) all follow this pattern.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI agents retry aggressively and sometimes repeat a whole tool call when a step looks uncertain. Any tool that has side effects (send email, place order, transfer money, create ticket) must be idempotent or the agent will do it twice. Good agent tool design: require an idempotency key or a client-generated id, and return clear "already done" responses the model can understand.</p>
+      <p><b>Use AI as a partner:</b> ask it to enumerate failure points: <code>List every place this payment handler can crash or time out and what state each leaves behind</code>. Then make it write a fault-injection test that kills the process at each point and retries.</p>
+      <p><b>Where AI goes wrong:</b> check-then-insert without a unique constraint (race: two requests both see "miss"), storing the key in a cache with no durability, replaying cached 500 errors forever, hashing the body as the key, and claiming Kafka gives "exactly-once" end-to-end.</p>
+      <p><b>What you must still own:</b> the atomicity boundary (what is in one transaction), the behaviour for in-flight duplicates, retention, and the reconciliation story with external systems.</p>`,
+    problems: [{
+      title: 'Make a payment POST idempotent',
+      level: 'Hard', tags: ['idempotency', 'payments', 'consistency'], companies: ['Stripe', 'PayPal', 'Razorpay', 'Adyen'],
+      statement: `<p>Design and implement <code>POST /v1/payments</code> so that retries (client timeouts, mobile network drops, gateway retries) never double-charge, concurrent duplicates are handled, and a crash at any point can be recovered.</p>`,
+      constraints: `<p>5k payments/s; the card network call takes 200 ms–5 s and accepts its own idempotency key; keys retained 24 h; multi-instance API servers; Postgres as the system of record.</p>`,
+      example: `<p>Client sends key K with ₹500 → 201 pay_71 (reply lost). Retry with K → ${H.c('p', '201 pay_71 replayed')}. Duplicate with K while the first is still processing → ${H.c('r', '409')}. K with ₹900 → ${H.c('r', '422')}.</p>`,
+      brute: { why: `<p><b>Naive design:</b> check "have I seen this key?" in Redis, then charge, then write the key. Two concurrent retries both see "no" and both charge (race). If the server crashes after charging but before writing the key, the retry charges again. If the key is written first and the server crashes before charging, the retry replays nothing and the payment silently never happens.</p>`, code: { lang: 'python', code: `seen = {}
+
+def naive_create_payment(key, amount, charge):
+    if key in seen:                 # check ...
+        return seen[key]
+    result = charge(amount)         # ... then act: two concurrent calls both get here
+    seen[key] = result              # crash before this line -> retry charges again
+    return result` } },
+      mcq: { q: 'Two requests with the same new key arrive within 1 ms on different servers. What guarantees only one charges?', options: ['An atomic insert of the key row protected by a UNIQUE constraint (the loser sees a conflict)', 'Checking the key in a local in-memory map', 'Sleeping a random time before charging', 'Asking the client not to do that'], answer: 0, explain: 'Only an atomic primitive shared by all servers (DB unique constraint, Redis SET NX) can decide a single winner.' },
+      hints: [`<p>Hint 1: The first step must be an <b>atomic claim</b> of the key (INSERT with unique constraint), not a read.</p>`, `<p>Hint 2: Record progress (recovery points) on the key row; pass a derived idempotency key to the card network so even the external call can be repeated safely.</p>`, `<p>Hint 3: Cases: miss → claim + process; COMPLETED + same hash → replay; IN_PROGRESS → 409 (or wait); different hash → 422; stale IN_PROGRESS lease → resume/reconcile.</p>`],
+      solution: {
+        approach: `<p><b>Table</b> <code>idempotency_keys(account_id, key, request_hash, phase, locked_at, response_code, response_body, created_at, PRIMARY KEY(account_id, key))</code>.</p>
+          <p><b>Flow:</b> (1) <code>INSERT … ON CONFLICT DO NOTHING</code>; if inserted → we own it (phase=started, locked_at=now). If not → read row: hash mismatch → 422; COMPLETED → replay; IN_PROGRESS and lease fresh → 409; lease stale → take over and resume from <code>phase</code>. (2) In one transaction create the <code>payments</code> row (status=pending) and set phase=payment_created. (3) Call the card network with idempotency key <code>account:key</code> — repeating it returns the same charge. (4) In one transaction update payment status, write ledger entries, store response, phase=finished. (5) Return response. A background reconciler sweeps stale keys and queries the card network for the truth.</p>`,
+        code: { lang: 'java', code: `import java.util.*;
+import java.util.concurrent.*;
+import java.util.function.*;
+
+public class IdempotentPayments {
+    enum Status { IN_PROGRESS, COMPLETED }
+    static final class Entry {
+        final String requestHash; volatile Status status = Status.IN_PROGRESS; volatile String response;
+        Entry(String h) { requestHash = h; }
+    }
+    // stands in for a DB table with PRIMARY KEY(account, key); putIfAbsent = atomic INSERT
+    private final ConcurrentHashMap<String, Entry> store = new ConcurrentHashMap<>();
+    private final List<String> ledger = Collections.synchronizedList(new ArrayList<>());
+
+    String createPayment(String account, String key, long amount, Function<Long, String> cardNetwork) {
+        String hash = Integer.toHexString(Objects.hash(amount));      // real code: SHA-256 of canonical body
+        Entry mine = new Entry(hash);
+        Entry existing = store.putIfAbsent(account + ":" + key, mine);
+        if (existing != null) {
+            if (!existing.requestHash.equals(hash)) return "422 key reused with different body";
+            if (existing.status == Status.IN_PROGRESS) return "409 still processing";
+            return existing.response + " (replayed)";
+        }
+        String chargeId = cardNetwork.apply(amount);   // downstream call also gets an idempotency key in real life
+        ledger.add(chargeId + " " + amount);
+        mine.response = "201 " + chargeId;
+        mine.status = Status.COMPLETED;                // publish after response is set
+        return mine.response;
+    }
+
+    public static void main(String[] args) throws Exception {
+        IdempotentPayments api = new IdempotentPayments();
+        int[] seq = {70};
+        Function<Long, String> card = amt -> "pay_" + (++seq[0]);
+        System.out.println(api.createPayment("acct1", "k1", 500, card));
+        System.out.println(api.createPayment("acct1", "k1", 500, card));
+        System.out.println(api.createPayment("acct1", "k1", 900, card));
+        // 8 concurrent duplicates of a new key: exactly one charge
+        ExecutorService pool = Executors.newFixedThreadPool(8);
+        List<Future<String>> fs = new ArrayList<>();
+        for (int i = 0; i < 8; i++) fs.add(pool.submit(() -> api.createPayment("acct1", "k2", 200, card)));
+        for (Future<String> f : fs) System.out.println("  concurrent -> " + f.get());
+        pool.shutdown();
+        System.out.println("ledger = " + api.ledger);
+    }
+}` },
+        complexity: `<p>Extra cost per payment: one indexed insert + one update on the key row (~1–2 ms). Storage: ~1 KB × 5k/s × 86,400 s ≈ 430 GB/day of key rows at 24 h retention — partition by day and drop old partitions (or store only hash + compact response).</p>`,
+        followUps: ['Should a cached 500 response be replayed?', 'How does the client persist the key across an app restart?', 'How would you handle the same key arriving at two regions?']
       }
     }]
   });

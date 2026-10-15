@@ -963,4 +963,513 @@ public class ShopMonolith {
     }]
   });
 
+  /* ================================================================
+     TOPIC 6 — Functional vs non-functional requirements
+     ================================================================ */
+  topics.push({
+    title: 'Functional vs Non-Functional Requirements',
+    analogy: `<p>Buying a car. <b>Functional</b>: it drives, it has 5 seats, air-conditioning and a boot — things the car <i>does</i>. <b>Non-functional</b>: 0–100 km/h in 9 seconds, 18 km per litre, 5-star safety rating, runs 200,000 km without major repairs, costs under ₹10 lakh — <i>how well</i> it does those things. Two cars can have identical features and be completely different machines because of the second list.</p>
+<p>A restaurant is the same: the <b>menu</b> is functional; <b>"food within 15 minutes, open 7 am–midnight every day, never makes anyone sick"</b> is non-functional — and that list decides how big the kitchen must be.</p>`,
+    explain: `<p>🟢 <b>Functional requirements (FRs)</b> describe <b>what the system does</b> — features and behaviours. They usually read like "a user can &lt;verb&gt; …":</p>
+<ul><li>Users can upload a photo.</li><li>Users can follow other users.</li><li>The system sends a reminder email 24 h before a booking.</li></ul>
+<p>🟢 <b>Non-functional requirements (NFRs)</b> describe <b>how well</b> the system does it — qualities and limits. They decide the <b>architecture</b>:</p>
+${H.table(['Quality', 'Question it answers', 'Measurable example'], [
+  ['Scalability', 'How much load?', '10M daily users, 5,000 requests/s at peak'],
+  ['Latency (performance)', 'How fast?', 'p99 &lt; 200 ms for the home feed'],
+  ['Throughput', 'How much work per second?', '50,000 events/s ingested'],
+  ['Availability', 'How often is it up?', '99.95% per month'],
+  ['Consistency', 'How fresh/correct is what users read?', 'balance correct immediately; likes may lag 5 s'],
+  ['Durability', 'Can data be lost?', 'zero loss of confirmed payments'],
+  ['Security &amp; privacy', 'Who can see/do what?', 'encrypted in transit and at rest; GDPR delete in 30 days'],
+  ['Cost', 'What may it cost?', '&lt; $0.002 per request'],
+  ['Maintainability / observability', 'Can we change and debug it?', 'deploy daily; every request traced']
+])}
+<p><b>The golden rule: NFRs need numbers.</b> "Fast", "scalable", "highly available" are wishes. "p99 &lt; 200 ms at 5k QPS, 99.9% monthly availability" is a requirement you can design for and test.</p>
+<p><b>Quick test to classify:</b> if removing it makes a <b>feature disappear</b>, it is functional. If removing it makes the same feature <b>slower, flakier, less safe or more expensive</b>, it is non-functional.</p>
+<p><b>Also capture:</b></p>
+<ul><li><b>Constraints</b> — fixed facts you must live with: "must run on AWS", "team knows Java", "data must stay in the EU".</li>
+<li><b>Out of scope</b> — what you deliberately will not design today. Saying it out loud saves time and shows judgement.</li>
+<li><b>Priorities</b> — when NFRs conflict (they always do), which wins? For a bank: consistency over availability. For a social feed: availability and latency over perfect freshness.</li></ul>
+<p>In an interview, spend the first ~5 minutes producing 3–5 FRs and 4–6 numbered NFRs. Everything you draw later should trace back to one of these lines.</p>`,
+    clues: [
+      '"Users should be able to…" → functional requirement; list the core 3, mark the rest out of scope.',
+      '"Fast", "scalable", "reliable" with no numbers → ask for (or propose) concrete targets: p99, QPS, nines.',
+      '"Can users see stale data?" → consistency requirement; it changes caching and replication choices.',
+      '"We can never lose a transaction" → durability requirement; synchronous replication, write-ahead logs, backups.',
+      '"Must comply with GDPR / HIPAA / data residency" → security/compliance NFR or constraint; affects where data lives.',
+      '"With a fixed budget" or "a team of 3" → constraint; prefer managed services and simple designs.'
+    ],
+    code: [
+      { lang: 'json', title: 'Requirements written down as a structured spec (handy for design docs)', code: `{
+  "system": "Photo sharing app",
+  "functional": [
+    "Users can upload a photo with a caption",
+    "Users can follow other users",
+    "Users see a home feed of photos from people they follow"
+  ],
+  "nonFunctional": {
+    "scale": { "dailyActiveUsers": 10000000, "uploadsPerDay": 2000000, "readWriteRatio": "100:1" },
+    "latency": { "feedP99Ms": 300, "uploadP99Ms": 2000 },
+    "availability": "99.95% monthly",
+    "consistency": "feed may lag new posts by up to 10 s; follows visible to the follower immediately",
+    "durability": "an acknowledged upload is never lost",
+    "security": "private accounts visible only to approved followers"
+  },
+  "constraints": ["Cloud: AWS", "Team: 8 engineers", "Launch: 6 months"],
+  "outOfScope": ["Stories", "Direct messages", "Ads"]
+}` }
+    ],
+    codeTitle: ['Requirements spec (JSON)'],
+    viz: {
+      title: 'Requirement sorter: functional or non-functional (and is it measurable?)',
+      input: 'users can post photos; feed loads in under 200 ms at p99; users can follow friends; the site should be fast; 99.9% uptime; data must never be lost; users can search by hashtag; must handle 10k requests per second; must be secure',
+      inputLabel: 'Requirements separated by semicolons',
+      gen: function (input) {
+        var reqs = String(input || '').split(';').map(function (s) { return s.trim(); }).filter(Boolean);
+        if (reqs.length < 2) throw new Error('Enter at least 2 requirements separated by semicolons');
+        if (reqs.length > 12) throw new Error('Use at most 12 requirements');
+        var NFR = [
+          [/(per second|qps|rps|throughput|concurrent|scale|scalab|million|handle \d|\d+k\b)/i, 'scale/throughput'],
+          [/\b(ms|millisecond|seconds?|latency|p9\d|p50|fast|slow|quick|speed|respon)/i, 'latency'],
+          [/(uptime|availab|\bdown\b|downtime|nines|99\.)/i, 'availability'],
+          [/(never (be )?lost|lose|durab|backup)/i, 'durability'],
+          [/(secur|encrypt|privacy|private|gdpr|hipaa|auth|compliance)/i, 'security/compliance'],
+          [/(consisten|stale|fresh|real[- ]?time|immediately)/i, 'consistency/freshness'],
+          [/(cost|budget|cheap|\$)/i, 'cost'],
+          [/(maintain|observab|monitor|deploy)/i, 'operability']
+        ];
+        var fr = [], nfr = [], rows = [], frames = [];
+        frames.push({ narr: 'We will sort <b>' + reqs.length + '</b> requirements. Rule of thumb: a <b>feature</b> (a verb the user does) is functional; a <b>quality</b> (how fast, how often up, how safe, how much) is non-functional. Non-functional ones must carry a <b>number</b> to be testable.',
+          parts: [{ type: 'queue', label: 'Incoming requirements', items: reqs.map(function (r) { return r.length > 34 ? r.slice(0, 32) + '…' : r; }), frontLabel: 'next', backLabel: 'last' }] });
+        reqs.forEach(function (r, i) {
+          var cat = null;
+          for (var k = 0; k < NFR.length; k++) if (NFR[k][0].test(r)) { cat = NFR[k][1]; break; }
+          var short = r.length > 34 ? r.slice(0, 32) + '…' : r;
+          var measurable = /\d/.test(r);
+          var verdict, cls, why;
+          if (cat) {
+            nfr.push(short);
+            verdict = 'NFR (' + cat + ')';
+            if (measurable) { cls = 'ok'; why = 'a quality with a number — testable, the design can be checked against it.'; }
+            else { cls = 'cur'; why = '<span class="c-y">a quality but VAGUE — no number.</span> Rewrite it, e.g. ' + (cat === 'latency' ? '"p99 &lt; 200 ms"' : cat === 'availability' ? '"99.9% monthly"' : cat === 'durability' ? '"zero loss of acknowledged writes (RPO = 0)"' : cat === 'security/compliance' ? '"TLS everywhere, data encrypted at rest, OWASP top-10 covered"' : '"a target like 5,000 requests/s"') + '.'; }
+          } else {
+            fr.push(short);
+            verdict = 'FR (feature)'; cls = 'sel';
+            why = 'describes something the system <b>does</b>. Remove it and a feature disappears.';
+          }
+          rows.push([String(i + 1), short, verdict, cat ? (measurable ? 'yes' : 'NO - add a number') : '-']);
+          var fl = {}; fl[short] = 'ok';
+          frames.push({ narr: '“' + hesc(r) + '” → <b>' + verdict + '</b>: ' + why,
+            parts: [{ type: 'set', label: 'Functional (what it does)', items: fr.slice(), hl: cat ? {} : fl },
+              { type: 'set', label: 'Non-functional (how well)', items: nfr.slice(), hl: cat ? (function () { var h = {}; h[short] = measurable ? 'ok' : 'cur'; return h; })() : {} },
+              { type: 'table', label: 'Sorting log', columns: ['#', 'requirement', 'type', 'measurable?'], rows: cp(rows), hl: (function () { var h = {}; h[rows.length - 1] = cls; return h; })() }] });
+        });
+        var vague = rows.filter(function (r) { return /^NO/.test(r[3]); }).length;
+        frames.push({ narr: 'Result: <b>' + fr.length + ' functional</b>, <b>' + nfr.length + ' non-functional</b>' + (vague ? ', of which <span class="c-y">' + vague + ' are vague</span> and need numbers before they can guide the design.' : ', all measurable — great.') + ' (This sorter uses simple keyword rules; in real life you judge meaning, not words.)',
+          parts: [{ type: 'bars', label: 'Count by type', values: [fr.length, nfr.length - vague, vague], idxLabels: ['FR', 'NFR ok', 'NFR vague'], hl: { 2: vague ? 'bad' : 'ok' } },
+            { type: 'table', label: 'Final classification', columns: ['#', 'requirement', 'type', 'measurable?'], rows: cp(rows) }] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Classifying a ride-hailing app\'s list', html: `${H.table(['Requirement', 'Type', 'Why'], [
+  ['Rider requests a ride from A to B', H.c('g', 'FR'), 'a feature'],
+  ['Driver sees nearby ride requests', H.c('g', 'FR'), 'a feature'],
+  ['Match a driver within 10 s for 95% of requests', H.c('b', 'NFR (latency)'), 'how fast the matching feature works'],
+  ['Driver locations update every 4 s for 1M online drivers', H.c('b', 'NFR (throughput/scale)'), '1M / 4 s = 250k location writes/s'],
+  ['A ride is never assigned to two drivers', H.c('b', 'NFR (consistency)'), 'correctness under concurrency'],
+  ['Payments retained 7 years for tax law', H.c('y', 'Constraint/compliance'), 'imposed from outside']
+])}` },
+      { title: 'Turning vague into measurable', html: `${H.table(['Vague', 'Measurable'], [
+  ['"The site should be fast"', 'Home page p95 &lt; 300 ms, p99 &lt; 800 ms, measured at the load balancer'],
+  ['"Highly available"', '99.95% of requests succeed per 30-day window (≈ 22 min of errors allowed)'],
+  ['"Scalable"', 'Handles 3× today\'s peak (15k QPS) with linear cost'],
+  ['"Secure"', 'All traffic TLS 1.2+, passwords hashed with a slow hash (bcrypt/Argon2), admin needs MFA'],
+  ['"Never lose data"', 'RPO = 0 for orders (synchronous replica), daily backups kept 35 days']
+])}` },
+      { title: 'Same FR, different NFRs, different architecture', html: `<p>FR: "send a message to another user".</p>
+<ul><li><b>Office chat for 200 people, messages may arrive within 5 s:</b> one server, one database, polling every few seconds. Done.</li>
+<li><b>WhatsApp-scale (billions of messages/day), delivered in &lt; 1 s, works on bad mobile networks, end-to-end encrypted:</b> persistent connections (WebSockets/MQTT-style), connection gateways, per-user queues, offline storage, delivery receipts, encryption keys managed on devices.</li></ul>
+<p>The FR is identical; the NFRs created all the complexity.</p>` },
+      { title: 'NFRs that pull in opposite directions', html: `<ul><li><b>Latency vs consistency:</b> reading from a nearby replica is fast but may be slightly stale.</li><li><b>Availability vs consistency:</b> during a network split, either reject writes (consistent) or accept them on both sides (available, may conflict).</li><li><b>Durability vs latency:</b> waiting for 3 copies on disk before replying is safer and slower.</li><li><b>Everything vs cost:</b> multi-region active-active roughly doubles your bill.</li></ul><p>Good answers name the conflict and pick a side per feature.</p>` }
+    ],
+    deepDive: `<p><b>Standards view.</b> ISO/IEC 25010 lists quality characteristics: functional suitability, performance efficiency, compatibility, usability, reliability, security, maintainability, portability. Interviews mostly care about performance (latency/throughput), reliability (availability/durability), scalability, consistency, security and cost.</p>
+<p><b>SLI → SLO → SLA.</b> An <b>SLI</b> (indicator) is what you measure (fraction of requests under 300 ms). An <b>SLO</b> (objective) is your internal target (99% of requests under 300 ms over 30 days). An <b>SLA</b> (agreement) is the contract with customers, with penalties — always looser than the SLO so you have a safety margin. NFRs become SLOs in production.</p>
+<p><b>Hidden NFRs that bite later:</b> data retention and deletion (GDPR "right to erasure" — hard if data is copied into caches, logs, backups, analytics, and ML training sets); auditability (who changed what); data residency (EU data stays in the EU); accessibility; observability (if you cannot see it, you cannot meet its SLO).</p>
+<p><b>Per-feature NFRs.</b> One system can have different targets per path: checkout needs strong consistency and 99.99%; recommendations can be stale for an hour and degrade gracefully to "popular items". Splitting NFRs per feature is how real architectures save money.</p>
+<p><b>Derived numbers.</b> NFRs feed estimation: 10M DAU × 20 reads/day ÷ 86,400 s ≈ 2,300 reads/s average, ×2–3 for peak ≈ 6,000 reads/s. That single number decides whether one database is enough (Module 3).</p>`,
+    aiEra: `<p><b>AI products add new NFRs.</b> For an LLM feature you also specify: <b>quality</b> (task success rate on an evaluation set, hallucination rate), <b>TTFT</b> and tokens/second, <b>cost per request</b> (tokens × price), <b>safety</b> (blocked harmful outputs, prompt-injection resistance), <b>data handling</b> (is user data used for training? retention?), and <b>determinism</b> needs (same input → same answer for audits?). These are NFRs exactly like latency and availability — they need numbers and tests.</p>
+<p><b>Use AI as a partner:</b> <code>Here are my functional requirements for a booking app. List non-functional requirements I may have missed, each with a sensible numeric target and why.</code> Models are good at completeness checklists.</p>
+<p><b>Where AI goes wrong:</b> it produces generic numbers ("99.999% availability") without asking what they cost, and mixes features with qualities. <b>You own:</b> choosing targets that match the business, and knowing which ones are expensive.</p>`,
+    problems: [{
+      title: 'Sort the requirements of a ticket-booking site',
+      level: 'Easy', tags: ['requirements', 'functional', 'non-functional'], companies: ['BookMyShow', 'Ticketmaster', 'Amazon'],
+      statement: `<p>Classify each line as <b>FR</b>, <b>NFR</b> (name the quality) or <b>constraint</b>, and rewrite any vague NFR with a number:</p>
+<ol><li>Users can browse upcoming concerts.</li><li>Users can pick a specific seat.</li><li>The site must be fast.</li><li>A seat can never be sold to two people.</li><li>Handle 100,000 users trying to buy within the first minute of a big sale.</li><li>Payment card data must follow PCI DSS.</li><li>Users get an email ticket after paying.</li><li>The system should be reliable.</li></ol>`,
+      constraints: `<p>Assume a national ticketing site with occasional huge on-sale spikes.</p>`,
+      example: `<p>Line 4 → ${H.c('b', 'NFR: consistency/correctness')}. Why: the feature (buy a seat) exists without it; the requirement is about <i>how correctly</i> it behaves under concurrent buyers.</p>`,
+      brute: { why: `<p><b>Naive approach:</b> call everything a "requirement" and move on, or mark "the site must be fast" and "reliable" as done. It breaks because vague lines cannot guide design choices — you cannot tell whether one database is enough, whether you need a queue for the on-sale spike, or how much downtime is acceptable.</p>` },
+      mcq: { q: '"A seat can never be sold to two people" is best described as…', options: ['A functional requirement', 'A consistency (correctness) non-functional requirement', 'A cost constraint', 'Out of scope'], answer: 1, explain: 'It constrains how the booking feature behaves under concurrency — a consistency guarantee.' },
+      hints: [
+        `<p>Hint 1: Ask "if I delete this line, does a feature disappear (FR) or does a feature get worse (NFR)?"</p>`,
+        `<p>Hint 2: Rules imposed from outside (law, payment industry standards, chosen cloud) are constraints/compliance.</p>`,
+        `<p>Hint 3: For "fast" pick per-page latency percentiles; for "reliable" pick availability plus durability targets, and be stricter during on-sale windows.</p>`
+      ],
+      solution: {
+        approach: `<ol><li><b>FR</b> — browse concerts.</li><li><b>FR</b> — seat selection.</li><li><b>NFR (latency), vague</b> → "event pages p95 &lt; 300 ms; seat map loads p99 &lt; 1 s; checkout p99 &lt; 2 s (excluding the payment provider)".</li><li><b>NFR (consistency/correctness)</b> — no double booking; needs an atomic seat hold (e.g. a conditional update or row lock) with an expiry.</li><li><b>NFR (scalability/throughput)</b> — 100k users in a minute ≈ 1,700 new users/s plus many seat-map refreshes; suggests a <b>virtual waiting room / queue</b> so the core booking path sees a controlled rate.</li><li><b>Constraint/compliance (security)</b> — PCI DSS; easiest path: never touch raw card data, use a payment provider\'s hosted page/tokens.</li><li><b>FR</b> — email ticket (can be asynchronous via a queue).</li><li><b>NFR (availability/durability), vague</b> → "99.95% monthly, 99.99% during on-sale windows; zero loss of confirmed bookings (synchronous replication)".</li></ol>
+<p><b>Design consequences:</b> lines 4 and 5 are the heart of the system — they lead to seat holds with TTLs, a waiting room in front of checkout, and a strongly consistent store for seat inventory, while browsing can be cached heavily on a CDN.</p>`,
+        complexity: `<p>3 FRs, 4 NFRs (2 rewritten with numbers), 1 compliance constraint. Every later box (cache, waiting room, consistent seat store, async email) traces to one of these lines.</p>`,
+        followUps: ['Which requirement would you relax first if the launch date moved up?', 'How would you test the "never sold twice" requirement before launch?']
+      }
+    }]
+  });
+
+  /* ================================================================
+     TOPIC 7 — Latency vs throughput
+     ================================================================ */
+  topics.push({
+    title: 'Latency vs Throughput (and Why Averages Lie)',
+    analogy: `<p>A <b>pizza shop</b>. <b>Latency</b> = how long <i>your</i> pizza takes from order to hand: 15 minutes. <b>Throughput</b> = how many pizzas the shop finishes <i>per hour</i>: 40. Add 5 more ovens and throughput doubles — but your pizza still takes about 15 minutes. Now a cricket final ends and 200 people walk in at once: the ovens are full, a <b>queue</b> forms, and your "15-minute" pizza takes an hour. Same shop, same oven speed — the waiting line ate your latency.</p>
+<p>A <b>highway</b> works the same way: latency is how long one car takes from A to B; throughput is cars per hour. More lanes raise throughput, not the speed limit.</p>`,
+    explain: `<p>🟢 <b>Latency</b> = time for <b>one</b> request to complete (milliseconds). <b>Throughput</b> = how many requests the system completes <b>per unit of time</b> (requests per second, QPS, MB/s). <b>Bandwidth</b> = the maximum possible data rate of a link (e.g. 1 Gbps); throughput is what you actually achieve.</p>
+<p><b>They are related but different:</b></p>
+<ul><li><b>Parallelism</b> (more servers, more threads) raises throughput but does not make one request faster.</li>
+<li><b>Batching</b> (send 100 writes together) raises throughput but each item waits for the batch → higher latency.</li>
+<li><b>Queueing</b> links them: as throughput demand approaches capacity, requests wait in line and latency <b>explodes</b>.</li></ul>
+<p><b>Little\'s Law</b> (always true for a stable system): <b>L = λ × W</b> — requests in flight = arrival rate × time each spends inside. Example: 2,000 requests/s × 0.05 s = <b>100</b> requests in progress at any moment → you need at least ~100 threads/connections/worker slots.</p>
+<p><b>Utilisation and queues.</b> With random arrivals, a simple single-server queue has average time in system ≈ <code>service time ÷ (1 − utilisation)</code>:</p>
+${H.table(['Utilisation', 'Latency multiplier', '10 ms service becomes'], [['50%', '2×', '20 ms'], ['80%', '5×', '50 ms'], ['90%', '10×', '100 ms'], ['95%', '20×', '200 ms'], ['99%', '100×', '1 s']])}
+<p>That is why production systems aim to run busy components at roughly 50–70% utilisation, not 100%.</p>
+<p><b>Percentiles, not averages.</b> Sort all request latencies: <b>p50</b> (median) = half are faster; <b>p95</b> / <b>p99</b> = 95% / 99% are faster. The slowest 1% is the <b>tail</b>. Averages hide the tail: 99 requests at 10 ms and one at 2 s average 30 ms — a number no real user ever saw. Your heaviest users (big carts, many friends) often live in the tail.</p>
+<p><b>Latency numbers every designer should know</b> (orders of magnitude, 2020s hardware):</p>
+${H.table(['Operation', 'Approx. time'], [['L1 cache reference', '~1 ns'], ['Main memory (RAM) reference', '~100 ns'], ['Read 1 MB sequentially from RAM', '~5–10 µs'], ['Random read from NVMe SSD', '~20–100 µs'], ['Read 1 MB sequentially from NVMe SSD', '~0.3 ms'], ['Round trip inside one data center', '~0.5 ms'], ['Spinning-disk (HDD) seek', '~5–10 ms'], ['Round trip US East ↔ US West', '~60–70 ms'], ['Round trip India ↔ US East', '~200 ms']])}
+<p>Takeaways: memory is ~1000× faster than SSD random reads; one network hop inside a data center costs as much as thousands of RAM reads; crossing an ocean costs more than almost any computation you do per request.</p>`,
+    clues: [
+      '"p99 under 200 ms" → latency target on the tail; design for the slowest requests, not the average.',
+      '"Handle 50,000 requests per second" → throughput target; think parallelism, horizontal scaling, batching.',
+      '"How many threads / connections do we need?" → Little\'s Law: concurrency = rate × latency.',
+      '"Latency spikes at peak hours even though CPU is only at 85%" → queueing near high utilisation.',
+      '"Each page calls 50 backend services" → tail amplification: fan-out makes rare slow calls common.',
+      '"Analytics events, can be a few seconds late" → trade latency for throughput: batch and buffer.'
+    ],
+    code: [
+      { lang: 'python', run: true, title: 'Runnable: Little\'s Law, percentiles and tail amplification', code: `import math
+
+# 1) Little's Law: in-flight requests = arrival rate * time in system
+rate_per_s = 2000
+latency_s = 0.050
+print("in-flight requests =", rate_per_s * latency_s)          # 100.0
+
+# 2) Percentiles vs average
+lat_ms = [12, 15, 11, 14, 13, 250, 16, 12, 18, 900, 14, 13, 15, 12, 11, 17, 13, 16, 14, 12]
+s = sorted(lat_ms)
+
+def pct(sorted_vals, p):
+    # nearest-rank percentile: smallest value with at least p% of data <= it
+    k = max(1, math.ceil(p / 100 * len(sorted_vals)))
+    return sorted_vals[k - 1]
+
+print("average =", round(sum(s) / len(s), 1), "ms")
+print("p50 =", pct(s, 50), "ms   p90 =", pct(s, 90), "ms   p99 =", pct(s, 99), "ms")
+
+# 3) Fan-out: a page waits for N backend calls; each call is slow 1% of the time
+for n in (1, 10, 50, 100):
+    p_slow_page = 1 - 0.99 ** n
+    print(f"page calls {n:>3} services -> {p_slow_page:6.1%} of pages hit a slow call")
+
+# 4) Queueing: time in system ~ service / (1 - utilisation)
+service_ms = 10
+for u in (0.5, 0.8, 0.9, 0.95, 0.99):
+    print(f"utilisation {u:.0%}: ~{service_ms / (1 - u):.0f} ms")` }
+    ],
+    codeTitle: ['Latency maths (runnable)'],
+    viz: [{
+      title: 'Throughput limit and the queue: what happens when demand exceeds capacity',
+      input: 'workers=4, serviceMs=100, rps=50, seconds=8',
+      inputLabel: 'workers (1-64), serviceMs (1-5000), rps (1-100000), seconds (4-12)',
+      gen: function (input) {
+        var o = kvParse(input);
+        var w = numIn(o.workers, 4, 1, 64, 'workers'), sv = numIn(o.servicems, 100, 1, 5000, 'serviceMs'), rps = numIn(o.rps, 50, 1, 100000, 'rps'), secs = Math.round(numIn(o.seconds, 8, 4, 12, 'seconds'));
+        var cap = w * 1000 / sv, rho = rps / cap, q = 0, qs = [], lats = [], frames = [];
+        var nodes = [bx('C', 'Clients', 10, 30), bx('Q', 'Request queue', 42, 30), bx('W', 'Workers ×' + w, 80, 30)];
+        var edges = [['C', 'Q', rps + ' req/s in'], ['Q', 'W', 'max ' + (Math.round(cap * 10) / 10) + ' req/s']];
+        frames.push({ narr: '<b>Capacity</b> (max throughput) = workers × (1000 ÷ service ms) = ' + w + ' × ' + (Math.round(1000 / sv * 100) / 100) + ' = <b>' + (Math.round(cap * 10) / 10) + ' req/s</b>. Demand = <b>' + rps + ' req/s</b>, so utilisation ρ = ' + Math.round(rho * 100) + '%. ' + (rho < 1 ? 'Below 100% — the system can keep up.' : '<span class="c-r">Above 100% — it cannot keep up; a queue will grow every second.</span>'),
+          parts: [{ type: 'graph', label: 'A service is a queue in front of workers', directed: true, height: 60, nodes: cp(nodes), edges: cp(edges), hl: { W: rho < 1 ? 'ok' : 'bad' } },
+            { type: 'vars', label: 'Inputs', vals: { workers: w, serviceMs: sv, demandRps: rps, capacityRps: Math.round(cap * 10) / 10, utilisation: Math.round(rho * 100) + '%' }, hl: { utilisation: rho < 0.7 ? 'ok' : rho < 1 ? 'cur' : 'bad' } }] });
+        for (var t = 1; t <= secs; t++) {
+          var served = Math.min(cap, q + rps);
+          q = Math.max(0, q + rps - served);
+          var wait = q / cap * 1000, lat = sv + wait;
+          qs.push(Math.round(q)); lats.push(Math.round(lat));
+          var growing = q > 0;
+          frames.push({ narr: 'Second ' + t + ': ' + rps + ' arrive, ' + Math.round(served) + ' served. Queue = <b>' + Math.round(q) + '</b>. A request arriving now waits ≈ ' + fmtMs(wait) + ' + ' + sv + ' ms service = <b>' + fmtMs(lat) + '</b>. ' + (growing ? '<span class="c-r">The queue grows by ' + Math.round(rps - cap) + ' every second — latency climbs forever until clients time out.</span>' : 'No backlog: latency ≈ service time. Throughput = demand.'),
+            parts: [{ type: 'graph', label: 'Second ' + t, directed: true, height: 60, nodes: cp(nodes), edges: cp(edges), hl: { Q: growing ? 'bad' : 'ok', W: 'cur' }, ehl: { 'C-Q': 'cur', 'Q-W': growing ? 'bad' : 'ok' }, tags: { Q: Math.round(q) + ' waiting' } },
+              { type: 'bars', label: 'Queue length at end of each second', values: qs.slice(), idxLabels: qs.map(function (_, i) { return 't' + (i + 1); }), hl: (function () { var h = {}; h[qs.length - 1] = growing ? 'bad' : 'ok'; return h; })() },
+              { type: 'bars', label: 'Latency for a new arrival (ms)', values: lats.slice(), idxLabels: lats.map(function (_, i) { return 't' + (i + 1); }) }] });
+        }
+        var est = rho < 1 ? Math.round(sv / (1 - rho)) : null;
+        frames.push({ narr: rho < 1 ? 'Smooth, evenly spaced arrivals never queue below 100% utilisation. Real traffic is <b>bursty</b>: a rough single-queue estimate gives ≈ service ÷ (1 − ρ) = <b>' + est + ' ms</b> average at ρ = ' + Math.round(rho * 100) + '%. ' + (rho > 0.8 ? '<span class="c-y">That is already ' + Math.round(1 / (1 - rho)) + '× the service time — add capacity before it gets worse.</span>' : 'Comfortable headroom.') : '<b>Fix options:</b> add workers (raise capacity), make each request cheaper (lower service ms, e.g. caching), shed or rate-limit excess load (return 429 fast), or buffer the work asynchronously if callers do not need an immediate answer. Note: adding a bigger queue alone only hides the problem — latency still grows.',
+          parts: [{ type: 'table', label: 'Utilisation vs latency (random arrivals, single queue)', columns: ['utilisation', 'latency ≈'], rows: [['50%', fmtMs(sv * 2)], ['80%', fmtMs(sv * 5)], ['90%', fmtMs(sv * 10)], ['95%', fmtMs(sv * 20)], ['≥100%', 'unbounded (queue grows)']], hl: (function () { var h = {}; h[rho >= 1 ? 4 : rho >= 0.93 ? 3 : rho >= 0.85 ? 2 : rho >= 0.65 ? 1 : 0] = rho >= 1 ? 'bad' : 'cur'; return h; })() }] });
+        return frames;
+      }
+    }, {
+      title: 'Percentiles: why p99 matters more than the average',
+      input: '12 15 11 14 13 250 16 12 18 900 14 13 15 12 11 17 13 16 14 12',
+      inputLabel: 'Request latencies in ms (4-40 numbers)',
+      gen: function (input) {
+        var a = String(input || '').trim().split(/[\s,]+/).map(Number);
+        if (a.length < 4 || a.some(function (x) { return isNaN(x) || x < 0; })) throw new Error('Enter at least 4 non-negative numbers separated by spaces');
+        if (a.length > 40) throw new Error('Use at most 40 numbers');
+        var s = a.slice().sort(function (x, y) { return x - y; }), n = s.length;
+        function rank(p) { return Math.max(1, Math.ceil(p / 100 * n)) - 1; }
+        var avg = a.reduce(function (x, y) { return x + y; }, 0) / n;
+        var frames = [];
+        frames.push({ narr: n + ' requests in arrival order. Most are fast; a few are very slow. Which single number describes the "speed" of this service?', parts: [{ type: 'bars', label: 'latency per request (ms), arrival order', values: a.slice() }] });
+        frames.push({ narr: 'The <b>average</b> is ' + avg.toFixed(1) + ' ms. Look at the bars: ' + (s.filter(function (x) { return Math.abs(x - avg) < avg * 0.2; }).length) + ' requests are actually near that number. The average blends fast and slow into a value almost nobody experienced.', parts: [{ type: 'bars', label: 'latency per request (ms)', values: a.slice(), hl: (function () { var h = {}; a.forEach(function (x, i) { if (x > avg) h[i] = 'bad'; }); return h; })() }, { type: 'vars', vals: { average: avg.toFixed(1) + ' ms' }, hl: { average: 'cur' } }] });
+        frames.push({ narr: '<b>Sort</b> the latencies. Percentiles are just positions in this sorted list.', parts: [{ type: 'bars', label: 'sorted latencies (ms)', values: s.slice(), idxLabels: s.map(function (_, i) { return String(i + 1); }) }] });
+        [[50, 'p50 (median): half of the requests are faster than this — the "typical" experience.', 'ok'], [90, 'p90: 9 out of 10 requests are at most this slow.', 'cur'], [99, 'p99: only 1 in 100 requests is slower. With 1 million requests a day, that is still 10,000 unhappy requests — often from your biggest customers.', 'bad']].forEach(function (pp) {
+          var r = rank(pp[0]), h = {}, ptr = {};
+          h[r] = pp[2]; ptr[r] = 'p' + pp[0];
+          frames.push({ narr: '<b>p' + pp[0] + ' = ' + s[r] + ' ms</b> (nearest-rank: position ' + (r + 1) + ' of ' + n + '). ' + pp[1], parts: [{ type: 'bars', label: 'sorted latencies (ms)', values: s.slice(), hl: h, ptr: ptr }] });
+        });
+        var p50 = s[rank(50)], p99 = s[rank(99)];
+        frames.push({ narr: 'Summary: p50 = ' + p50 + ' ms but p99 = ' + p99 + ' ms (' + Math.round(p99 / Math.max(1, p50)) + '× worse). SLOs are written on percentiles ("p99 &lt; 300 ms") because the tail is what users complain about. And with <b>fan-out</b> the tail spreads: a page that waits for 100 backend calls hits at least one p99-slow call on 63% of loads.',
+          parts: [{ type: 'table', label: 'Which number to report', columns: ['metric', 'value', 'tells you'], rows: [['average', avg.toFixed(1) + ' ms', 'blended; hides outliers'], ['p50', p50 + ' ms', 'typical user'], ['p90', s[rank(90)] + ' ms', 'unlucky users'], ['p99', p99 + ' ms', 'the tail you must design for'], ['max', s[n - 1] + ' ms', 'worst case (noisy)']], hl: { 3: 'bad' } },
+            { type: 'table', label: 'Fan-out: chance a page hits ≥ 1 slow (p99) call', columns: ['calls per page', 'pages affected'], rows: [['1', '1%'], ['10', '9.6%'], ['50', '39.5%'], ['100', '63.4%']], hl: { 3: 'bad' } }] });
+        return frames;
+      }
+    }, {
+      title: 'Latency numbers on a human scale',
+      gen: function () {
+        var items = [['L1 cache', 1], ['RAM read', 100], ['1 MB from RAM', 7000], ['SSD random read', 50000], ['1 MB from SSD', 300000], ['DC round trip', 500000], ['HDD seek', 8000000], ['US East↔West', 65000000], ['India↔US East', 200000000]];
+        function human(ns) {
+          var sec = ns;
+          if (sec < 120) return sec + ' seconds';
+          if (sec < 7200) return (sec / 60).toFixed(1) + ' minutes';
+          if (sec < 172800) return (sec / 3600).toFixed(1) + ' hours';
+          if (sec < 3 * 31536000) return (sec / 86400).toFixed(1) + ' days';
+          return (sec / 31536000).toFixed(1) + ' years';
+        }
+        function real(ns) { return ns < 1000 ? ns + ' ns' : ns < 1e6 ? (ns / 1000) + ' µs' : (ns / 1e6) + ' ms'; }
+        var frames = [], vals = items.map(function (it) { return Math.round(Math.log10(it[1]) * 10) / 10; });
+        frames.push({ narr: 'Real latencies span <b>8 orders of magnitude</b>, so the bars show log₁₀(nanoseconds). Each step up by 1 = 10× slower. Trick to feel them: pretend 1 nanosecond is <b>1 second</b>.', parts: [{ type: 'bars', label: 'log₁₀(ns)', values: vals.slice(), idxLabels: items.map(function (it) { return it[0]; }) }] });
+        items.forEach(function (it, i) {
+          var h = {}; h[i] = 'cur';
+          frames.push({ narr: '<b>' + it[0] + '</b> ≈ ' + real(it[1]) + '. On the human scale (1 ns = 1 s) that is <b>' + human(it[1]) + '</b>.' + (i === 5 ? ' One network hop inside the data center = several days of "RAM time" — this is why chatty services that make dozens of internal calls get slow.' : i === 8 ? ' A cross-ocean round trip ≈ 6 years of "RAM time". No code optimisation competes with moving data closer to users.' : i === 3 ? ' This is why databases keep hot data in RAM (buffer pools) and why caches like Redis exist.' : ''),
+            parts: [{ type: 'bars', label: 'log₁₀(ns)', values: vals.slice(), idxLabels: items.map(function (x) { return x[0]; }), hl: h }, { type: 'vars', vals: { operation: it[0], real: real(it[1]), ifNsWereSeconds: human(it[1]) }, hl: { ifNsWereSeconds: 'sel' } }] });
+        });
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'Sizing a thread pool with Little\'s Law', html: `<p>Peak: 1,200 requests/s. Each request holds a thread for 80 ms (mostly waiting on the DB). In flight = 1,200 × 0.08 = <b>96</b>. With 4 app servers, each needs ≥ 24 threads; give ~2× headroom → 48. If the DB slows to 400 ms, in-flight jumps to 480 — pools exhaust and requests queue. <b>Latency changes change the capacity you need.</b></p>` },
+      { title: 'Batching: more throughput, more latency', html: `<p>Writing analytics events one-by-one: 1 DB round trip each (~1 ms) → ~1,000 writes/s per connection. Batching 500 events every 100 ms: one 5 ms write per batch → ~100,000 events/s, but each event waits up to 100 ms before it is stored. Fine for analytics; <span class="c-r">not</span> fine for "did my payment go through?".</p>` },
+      { title: 'Bandwidth is a throughput ceiling', html: `<p>A server with a 1 Gbps network card ≈ 125 MB/s. Serving 2 MB images → max ~62 images/s per server, no matter how fast the CPU is. At 6,000 image views/s you would need ~100 servers — or a CDN. Always check the bytes, not just the request count.</p>` },
+      { title: 'Average looked fine, users were angry', html: `<p>Dashboard: average 45 ms ✔. Complaints: "checkout hangs". Percentiles: p50 20 ms, p99 2.4 s. Cause: 1% of requests hit a cold cache and a missing index on a big table. Fixing the index moved p99 to 180 ms; average barely changed. Lesson: alert on p95/p99, not the mean.</p>` }
+    ],
+    deepDive: `<p><b>The tail at scale.</b> In large fan-out systems (search, feeds), the user waits for the slowest of N calls. Techniques: <b>hedged requests</b> (send a duplicate to another replica if the first has not answered by the p95 time — use the first response), <b>tied requests</b>, timeouts with partial results ("show 9 of 10 sections"), and reducing fan-out.</p>
+<p><b>Measuring correctly.</b> Load-test tools that wait for each response before sending the next under-report latency during stalls (<b>coordinated omission</b>). Use open-model load generators that send at a fixed rate, and record full histograms (HdrHistogram-style), not just averages. Percentiles cannot be averaged across servers — merge histograms instead.</p>
+<p><b>Queueing theory in one line.</b> Kingman\'s formula: waiting time ≈ (ρ ÷ (1 − ρ)) × ((c<sub>a</sub>² + c<sub>s</sub>²) ÷ 2) × service time — waits grow with utilisation <i>and</i> with variability of arrivals (c<sub>a</sub>) and service times (c<sub>s</sub>). Reducing variability (rate limiting, smoothing, splitting slow requests to a separate pool) helps as much as adding capacity.</p>
+<p><b>Throughput bottlenecks.</b> A pipeline\'s throughput equals its slowest stage. Amdahl\'s law limits speed-ups from parallelism by the serial portion (one lock, one DB primary, one hot key). Find the bottleneck before scaling anything else.</p>
+<p><b>Latency budgets.</b> If the page SLO is p99 300 ms, split it: 40 ms network, 30 ms gateway, 150 ms for parallel backend calls, 50 ms render, 30 ms slack. Each team gets a number to defend. Remember sequential calls add up; parallel calls cost the max (and amplify the tail).</p>`,
+    aiEra: `<p><b>LLM serving is a latency-vs-throughput trade-off machine.</b> GPUs are expensive, so providers <b>batch</b> many users\' requests together (continuous batching): throughput (tokens/s per GPU) rises, per-user latency rises a bit. Key metrics: <b>TTFT</b> (time to first token, dominated by queueing + prompt processing) and <b>TPOT</b> (time per output token). Long prompts hurt TTFT; long answers hurt total latency.</p>
+<p><b>Design tactics for AI features:</b> stream tokens (perceived latency drops even if total does not), cache repeated prompts and answers, use smaller/faster models for simple steps and big models only where needed, and run non-interactive AI work (summaries, tagging) asynchronously in batch APIs, which are typically cheaper because the provider can schedule them flexibly.</p>
+<p><b>Use AI as a partner:</b> paste a latency histogram or load-test output and ask for the bottleneck hypotheses. <b>Where AI goes wrong:</b> quoting averages, ignoring queueing effects, or mixing up bandwidth and latency. <b>You own:</b> the percentile SLOs, Little\'s Law sanity checks and capacity headroom.</p>`,
+    problems: [{
+      title: 'How many workers do we need?',
+      level: 'Medium', tags: ['latency', 'throughput', "little's law", 'capacity'], companies: ['Amazon', 'Uber', 'Stripe'],
+      statement: `<p>An API receives <b>600 requests/s</b> at peak. Each request takes <b>50 ms</b> of worker time (mostly waiting on the database). (a) How many requests are in flight on average? (b) How many worker threads should the fleet have so utilisation stays around 60%? (c) What happens to latency if traffic jumps to 1,000 requests/s with your chosen fleet? (d) What happens if the DB slows to 200 ms per request at 600 requests/s?</p>`,
+      constraints: `<p>Assume arrivals are random (bursty), threads block while waiting for the DB.</p>`,
+      example: `<p>(a) ${H.c('b', '600 × 0.05 = 30')} requests in flight. Why: Little\'s Law, L = λ × W.</p>`,
+      brute: { why: `<p><b>Naive answer:</b> "600 requests/s, so 600 threads" or "one thread handles 20/s, so 30 threads exactly." The first wastes memory; the second runs at 100% utilisation, where random bursts create queues and latency shoots up (≈ unbounded at ρ → 1). Both ignore headroom and how latency changes affect needed concurrency.</p>` },
+      mcq: { q: 'With 30 average in-flight requests, why not provision exactly 30 threads?', options: ['Threads are free, so use more', 'At 100% utilisation bursts form queues and latency explodes', 'Little\'s Law is only approximate', 'The DB needs one thread per request'], answer: 1, explain: 'Queueing delay grows like 1/(1 − ρ); at ρ ≈ 1 even small bursts create long waits.' },
+      hints: [
+        `<p>Hint 1: In flight = rate × time in system. Use seconds: 50 ms = 0.05 s.</p>`,
+        `<p>Hint 2: For ~60% utilisation, threads ≈ in-flight ÷ 0.6.</p>`,
+        `<p>Hint 3: Re-run the same formulas for the new rate and for the new latency; compare with your thread count to see if ρ ≥ 1 (overload).</p>`
+      ],
+      solution: {
+        approach: `<p><b>(a)</b> L = λ × W = 600 × 0.05 = <b>30</b> requests in flight on average.</p>
+<p><b>(b)</b> For ~60% utilisation: 30 ÷ 0.6 = <b>50 threads</b> across the fleet (e.g. 5 servers × 10, or better 3 servers × 17 so losing one server still leaves capacity — always check N−1).</p>
+<p><b>(c)</b> At 1,000 req/s: needed busy threads = 1,000 × 0.05 = 50 → utilisation ≈ 100%. Queues grow during every burst; latency rises sharply (single-queue estimate ≈ service ÷ (1 − ρ) → very large). Response: autoscale on utilisation/latency, and protect the system with rate limiting or load shedding (fast 429/503) instead of letting everything time out.</p>
+<p><b>(d)</b> DB at 200 ms: L = 600 × 0.2 = <b>120</b> in flight, but we only have 50 threads → ρ = 2.4: the backlog grows by ~350 requests every second. Latency explodes and connection pools exhaust. Adding app threads alone may just push more load onto the struggling DB. Fixes: find why the DB slowed (missing index, lock contention), add caching, set timeouts so stuck requests release threads, and shed load.</p>
+<p><b>Lesson:</b> required concurrency depends on <i>latency</i> as well as traffic. A slow dependency can take down a healthy service by eating all its threads.</p>`,
+        complexity: `<p>Concurrency = λ × W. Capacity = threads ÷ W requests/s (50 ÷ 0.05 = 1,000/s max; at 200 ms only 250/s). Keep utilisation ≈ 50–70% and survive losing one server.</p>`,
+        followUps: ['How would virtual threads (Java 21) or async I/O change the thread count, and what limit would you hit next?', 'Which metric would you autoscale on: CPU, latency or in-flight requests?']
+      }
+    }]
+  });
+
+  /* ================================================================
+     TOPIC 8 — Availability
+     ================================================================ */
+  topics.push({
+    title: 'Availability: Nines, Single Points of Failure & Redundancy',
+    analogy: `<p>A <b>24-hour pharmacy</b>. <b>Availability</b> = the chance the door is open and someone can serve you when you show up. If only <b>one pharmacist</b> has the key and she is sick, the shop is closed — a <b>single point of failure</b>. Hire two pharmacists who each have a key (<b>redundancy</b>), and the shop stays open when one is out. But if both live on the same street that floods, they are both stuck — redundancy only helps when failures are <b>independent</b>.</p>`,
+    explain: `<p>🟢 <b>Availability</b> = the fraction of time (or of requests) the system works correctly.</p>
+<p><code>Availability = uptime ÷ (uptime + downtime)</code> or, request-based, <code>successful requests ÷ valid requests</code>.</p>
+<p>It is quoted in <b>"nines"</b>:</p>
+${H.table(['Availability', 'Downtime per year', 'per month (30 d)', 'per day'], [
+  ['99% ("two nines")', '3.65 days', '7.2 hours', '14.4 min'],
+  ['99.9% ("three nines")', '8.76 hours', '43.2 min', '1.44 min'],
+  ['99.95%', '4.38 hours', '21.6 min', '43 s'],
+  ['99.99% ("four nines")', '52.6 min', '4.32 min', '8.6 s'],
+  ['99.999% ("five nines")', '5.26 min', '26 s', '0.86 s']
+])}
+<p>Each extra nine is <b>10× less downtime</b> — and usually far more than 10× the cost and effort.</p>
+<p><b>Combining components:</b></p>
+<ul><li><b>In series</b> (a request needs A <i>and</i> B): multiply. 99.9% × 99.9% = <b>99.8%</b>. More hops in a chain → lower availability.</li>
+<li><b>In parallel</b> (redundant copies; any one is enough): <code>1 − (1 − A)<sup>n</sup></code>. Two 99% servers → 1 − 0.01² = <b>99.99%</b> (if failures are independent and failover works).</li></ul>
+<p><b>MTBF and MTTR:</b> <code>A = MTBF ÷ (MTBF + MTTR)</code> — mean time between failures vs mean time to recover. A server that fails once a month (720 h) and takes 1 hour to fix is 99.86% available; cut repair time to 6 minutes with automatic failover and it becomes 99.986%. <b>Recovering faster is often cheaper than failing less.</b></p>
+<p><b>Single point of failure (SPOF)</b> = any component whose failure takes the whole system down: one app server, one database with no replica, one load balancer, one DNS provider, one region, even one engineer who knows the password. Finding and removing SPOFs is a core design skill.</p>
+<p><b>Related but different words:</b></p>
+<ul><li><b>Reliability</b>: does it do the right thing over time (no wrong answers, no silent failures)?</li>
+<li><b>Durability</b>: once data is saved, does it stay saved? (A system can be down but durable — your data is safe, you just cannot reach it right now.)</li>
+<li><b>Fault tolerance</b>: keeps working through component failures (via redundancy).</li></ul>
+<p><b>SLA / SLO / error budget:</b> an SLO of 99.9% per 30 days gives an <b>error budget</b> of 43.2 minutes. If you have budget left, ship features faster; if it is spent, slow down and fix reliability.</p>`,
+    clues: [
+      '"Must be highly available" → ask for the nines; compute the downtime budget; remove SPOFs.',
+      '"What if this server/database/region dies?" → redundancy (replicas, multiple instances, multi-AZ) + health checks + automatic failover.',
+      '"Request passes through 6 services" → series availability multiplies down; reduce hard dependencies or make some optional.',
+      '"99.99% with components that are each 99.9%" → you need parallel redundancy, not just better parts.',
+      '"Degrade gracefully" → if recommendations fail, still show the product page (optional dependency).',
+      '"Durable" vs "available" in the same sentence → separate them: data never lost vs service reachable.'
+    ],
+    code: [
+      { lang: 'python', run: true, title: 'Runnable: availability calculator (series, parallel, MTTR)', code: `MIN_PER_YEAR = 365 * 24 * 60
+
+def series(*avail):
+    """Request needs every component: multiply."""
+    total = 1.0
+    for a in avail:
+        total *= a
+    return total
+
+def parallel(a, n):
+    """n independent redundant copies, any one is enough."""
+    return 1 - (1 - a) ** n
+
+def downtime_minutes(a):
+    return (1 - a) * MIN_PER_YEAR
+
+lb, app, db = 0.9999, 0.999, 0.9995
+
+single = series(lb, app, db)
+redundant = series(lb, parallel(app, 2), parallel(db, 2))
+
+for name, a in [("one of each", single), ("2 apps + 2 DBs", redundant)]:
+    print(f"{name:<15} availability = {a:.5%}  downtime = {downtime_minutes(a):7.1f} min/year")
+
+# MTBF / MTTR: recovering faster vs failing less
+mtbf_h = 720  # fails about once a month
+for mttr_min in (60, 6):
+    a = mtbf_h / (mtbf_h + mttr_min / 60)
+    print(f"MTTR {mttr_min:>2} min -> availability {a:.4%}")` }
+    ],
+    codeTitle: ['Availability maths (runnable)'],
+    viz: [{
+      title: 'Availability calculator: components in series, replicas in parallel',
+      input: 'LB:99.99, App:99.9 x2, DB:99.95 x2',
+      inputLabel: 'Name:percent [xN replicas], comma separated (2-6 components)',
+      gen: function (input) {
+        var parts = String(input || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+        if (parts.length < 2 || parts.length > 6) throw new Error('Enter 2 to 6 components like App:99.9 x2');
+        var comps = parts.map(function (p) {
+          var m = p.match(/^([A-Za-z][\w-]{0,11})\s*:\s*(\d{1,2}(\.\d+)?|100)\s*%?\s*(x\s*(\d))?$/i);
+          if (!m) throw new Error('Bad component "' + p + '". Format: Name:99.9 or Name:99.9 x2');
+          var a = Number(m[2]) / 100, n = m[5] ? Number(m[5]) : 1;
+          if (n < 1 || n > 5) throw new Error('Replicas must be 1-5');
+          return { name: m[1], a: a, n: n, eff: 1 - Math.pow(1 - a, n) };
+        });
+        var nodes = [bx('U', 'Users', 6, 30)], edges = [], prev = 'U', xs = comps.length;
+        comps.forEach(function (c, i) {
+          var x = 22 + i * (74 / Math.max(1, xs - 1 || 1));
+          if (xs === 1) x = 50;
+          var id = 'C' + i;
+          nodes.push(bx(id, c.name + (c.n > 1 ? ' ×' + c.n : ''), Math.min(92, x), 30));
+          edges.push([prev, id]);
+          prev = id;
+        });
+        var frames = [], running = 1, rows = [];
+        frames.push({ narr: 'A request must pass through <b>every</b> component in this chain (they are in <b>series</b>). Components marked ×N have N redundant replicas (in <b>parallel</b>): any one healthy replica is enough. We assume failures are independent.',
+          parts: [{ type: 'graph', label: 'Request path', directed: true, height: 60, nodes: cp(nodes), edges: cp(edges) }] });
+        comps.forEach(function (c, i) {
+          var id = 'C' + i, hl = {}, tags = {};
+          running *= c.eff;
+          rows.push([c.name, (c.a * 100).toFixed(3) + '%', String(c.n), (c.eff * 100).toFixed(5) + '%', (running * 100).toFixed(5) + '%', downtime(running * 100)]);
+          for (var j = 0; j <= i; j++) hl['C' + j] = j === i ? 'cur' : 'ok';
+          tags[id] = (c.eff * 100).toFixed(4) + '%';
+          var ehl = {}; edges.forEach(function (e, k) { if (k <= i) ehl[e[0] + '-' + e[1]] = k === i ? 'cur' : 'ok'; });
+          frames.push({ narr: '<b>' + hesc(c.name) + '</b>: one copy is ' + (c.a * 100).toFixed(3) + '% available' + (c.n > 1 ? '. With ' + c.n + ' replicas: 1 − (1 − ' + c.a.toFixed(4) + ')<sup>' + c.n + '</sup> = <b>' + (c.eff * 100).toFixed(5) + '%</b> — redundancy turned it into a much stronger link.' : ' and it has <span class="c-r">no replica — a single point of failure</span>.') + ' Chain so far (multiply in series): <b>' + (running * 100).toFixed(5) + '%</b> ≈ ' + downtime(running * 100) + ' downtime.',
+            parts: [{ type: 'graph', label: 'Request path', directed: true, height: 60, nodes: cp(nodes), edges: cp(edges), hl: hl, ehl: ehl, tags: tags },
+              { type: 'table', label: 'Running calculation', columns: ['component', 'one copy', 'replicas', 'effective', 'chain so far', 'downtime'], rows: cp(rows), hl: (function () { var h = {}; h[rows.length - 1] = c.n > 1 ? 'ok' : 'cur'; return h; })() }] });
+        });
+        var weakest = 0;
+        comps.forEach(function (c, i) { if (c.eff < comps[weakest].eff) weakest = i; });
+        var hlw = {}; hlw['C' + weakest] = 'bad';
+        frames.push({ narr: 'End-to-end availability = <b>' + (running * 100).toFixed(4) + '%</b> → about <b>' + downtime(running * 100) + '</b> of downtime. The weakest link is <b>' + hesc(comps[weakest].name) + '</b> (' + (comps[weakest].eff * 100).toFixed(4) + '%) — improve it first (add a replica, faster failover). The chain can never be better than its weakest link.',
+          parts: [{ type: 'graph', label: 'Weakest link', directed: true, height: 60, nodes: cp(nodes), edges: cp(edges), hl: hlw },
+            { type: 'bars', label: 'Expected downtime per component (minutes/year)', values: comps.map(function (c) { return Math.round((1 - c.eff) * 525600 * 10) / 10; }), idxLabels: comps.map(function (c) { return c.name; }), hl: (function () { var h = {}; h[weakest] = 'bad'; return h; })() }] });
+        frames.push({ narr: '<b>Reality check:</b> these maths assume <i>independent</i> failures and instant failover. Two DB replicas in the same rack, a bad config pushed to all app servers at once, or a region-wide outage break that assumption. Real designs spread replicas across availability zones and roll out changes gradually.',
+          parts: [{ type: 'table', label: 'What breaks independence', columns: ['correlated failure', 'mitigation'], rows: [['same rack / power / zone', 'spread across availability zones'], ['bad deploy everywhere at once', 'canary + gradual rollout + quick rollback'], ['shared dependency (DNS, auth)', 'redundant providers, caching, graceful degradation'], ['whole region outage', 'multi-region (costly)']] }] });
+        return frames;
+      }
+    }, {
+      title: 'Failover: one server dies, the load balancer routes around it',
+      gen: function () {
+        var nodes = [bx('U', 'Users', 8, 32), bx('LB', 'Load Balancer', 34, 32), bx('A1', 'App 1', 64, 12), bx('A2', 'App 2', 64, 52), bx('DB', 'DB primary', 90, 20), bx('R', 'DB standby', 90, 50)];
+        var edges = [['U', 'LB'], ['LB', 'A1'], ['LB', 'A2'], ['A1', 'DB'], ['A2', 'DB'], ['DB', 'R', 'replicate']];
+        return story({ label: 'Redundant app servers + DB standby', height: 64, nodes: nodes, edges: edges, steps: [
+          { narr: 'Normal day: the load balancer spreads requests across two app servers and pings each one every few seconds (<b>health checks</b>). The DB primary streams its changes to a standby.', on: ['U-LB', 'LB-A1', 'LB-A2', 'DB-R'], hl: { LB: 'ok', A1: 'ok', A2: 'ok', DB: 'ok', R: 'win' }, tags: { A1: 'healthy', A2: 'healthy', R: 'standby' } },
+          { reset: true, narr: '<span class="c-r">App 1 crashes</span> (out of memory). Requests already sent to it fail; users may see a few errors.', on: ['LB-A1'], cls: 'bad', keep: 'bad', hl: { A1: 'bad' }, tags: { A1: 'down', A2: 'healthy' }, labels: { 'LB-A1': 'timeout' } },
+          { narr: 'After ~2–3 failed health checks (say 10 s), the LB marks App 1 <b>unhealthy</b> and stops sending it traffic. App 2 carries everything — so each server must have spare capacity (N+1 planning).', on: ['U-LB', 'LB-A2'], hl: { A1: 'bad', A2: 'cur', LB: 'cur' }, tags: { A1: 'removed', A2: '100% of traffic' } },
+          { narr: 'Meanwhile automation starts a replacement App 3 (autoscaling group / Kubernetes). Downtime for users: a few seconds of errors, not hours. Mean time to recover (MTTR) is what made this fast.', on: ['A2-DB'], hl: { A1: 'done', A2: 'ok', LB: 'ok' }, tags: { A1: 'replacing…' } },
+          { reset: true, narr: '<span class="c-r">Now the DB primary dies.</span> All writes fail — the database was the next single point of failure.', on: ['A1-DB', 'A2-DB'], cls: 'bad', keep: 'bad', hl: { DB: 'bad', A1: 'ok', A2: 'ok' }, tags: { DB: 'down', A1: 'healthy' } },
+          { narr: 'Failover: the standby is <b>promoted</b> to primary (managed databases typically do this in about a minute), and apps reconnect via a DNS name or proxy that now points at it. If replication was <b>asynchronous</b>, the last few writes may be lost — a durability trade-off you must choose consciously.', ehl: { 'DB-R': 'cur' }, hl: { DB: 'done', R: 'ok' }, tags: { R: 'new primary', DB: 'down' } },
+          { narr: 'Lesson: availability comes from <b>redundancy + detection + automatic failover</b>, and every layer (LB, app, DB, DNS, region) needs its own answer to "what if this dies?".', hl: { LB: 'ok', A1: 'ok', A2: 'ok', R: 'ok', DB: 'done' }, tags: { A1: 'replaced', R: 'primary' } }
+        ] });
+      }
+    }],
+    examples: [
+      { title: 'A chain of microservices loses nines', html: `<p>A checkout request touches gateway, auth, cart, pricing, inventory, payments: 6 services, each 99.9%. Series: 0.999<sup>6</sup> ≈ <b>99.4%</b> → ~52 hours/year of failed checkouts. Fixes: fewer synchronous hops, caching auth tokens, making pricing/inventory reads tolerate short outages (cached values), and redundancy inside each service.</p>` },
+      { title: 'Error budget in practice', html: `<p>SLO 99.9% per 30 days = 43.2 minutes of allowed "badness". Week 1: a bad deploy causes 25 minutes of 50% errors (counts as ~12.5 minutes request-based). Budget left: ~30 minutes. Week 3: another incident eats the rest → the team freezes risky launches and spends the sprint on reliability. Error budgets turn "be reliable" into a shared, numeric decision.</p>` },
+      { title: 'Durable but not available (and the reverse)', html: `<ul><li>A database server loses power: data is safe on disk and in backups (<b>durable</b>) but nobody can read it for 20 minutes (<b>not available</b>).</li><li>A cache-only service with no persistence restarts instantly (<b>available</b>) but lost all its data (<b>not durable</b>) — fine for a cache, disastrous for orders.</li></ul><p>Object stores like Amazon S3 advertise both separately: designed for 99.999999999% (eleven nines) durability and 99.99% availability for the Standard class.</p>` },
+      { title: 'Spotting SPOFs in a diagram', html: `${H.table(['Box', 'SPOF?', 'Fix'], [['1 load balancer', H.c('r', 'yes'), 'managed LB spread across zones, or 2 LBs with a floating IP'], ['3 app servers', H.c('g', 'no'), 'keep stateless; N+1 capacity'], ['1 database, no replica', H.c('r', 'yes'), 'standby in another zone + automatic failover'], ['Single region', H.c('y', 'yes (rare)'), 'multi-region if the business needs it'], ['1 DNS provider', H.c('y', 'yes (rare)'), 'secondary DNS provider']])}` }
+    ],
+    deepDive: `<p><b>Measuring availability.</b> Time-based ("was the health check green?") hides partial outages. Request-based (successful / total requests) captures "10% of users get errors". Many SLOs combine availability with latency: a request that takes 30 s counts as failed. Measure from the user\'s side too (synthetic probes from several regions, real-user monitoring), because your servers can look healthy while DNS or the CDN is broken.</p>
+<p><b>Independence is the big assumption.</b> Correlated failures dominate real outages: the same bug or config on every server, a shared dependency (identity provider, DNS, a cloud control plane), retries from every client at once (retry storms). Mitigations: canary releases, cell-based architecture (split users into independent cells so one bad cell affects only a slice), exponential backoff with jitter, circuit breakers.</p>
+<p><b>Failover is not free.</b> Detection takes time (health-check intervals × failure thresholds), promotion takes time, clients must reconnect, and asynchronous replication may lose recent writes (RPO &gt; 0). Unexercised failover often fails when needed — teams run game days and chaos experiments to prove it works.</p>
+<p><b>Graceful degradation.</b> Classify dependencies as <b>critical</b> (payments for checkout) or <b>optional</b> (recommendations, reviews). For optional ones: short timeouts, fallback content, circuit breakers. This raises <i>effective</i> availability without buying more nines from every component.</p>
+<p><b>Planned downtime counts.</b> Schema migrations, upgrades and certificate rotations must be done online (rolling deploys, expand-and-contract migrations) to hit four nines — 52 minutes a year does not leave room for maintenance windows.</p>`,
+    aiEra: `<p><b>An LLM provider is a dependency in series.</b> If your feature hard-depends on a model API that is, say, 99.9% available and also rate-limits you at peak, your feature inherits those failures. Patterns: timeouts, retries with backoff, <b>fallback</b> to another model or provider, cached answers for common queries, and graceful degradation ("AI summary unavailable — here is the full text").</p>
+<p><b>AI in operations.</b> AI assistants now summarise alerts, correlate logs and suggest likely causes during incidents, and draft postmortems. Useful — but they can confidently blame the wrong component. Humans keep the decision to roll back or fail over, and automated remediation needs guardrails (rate limits on actions, approval for destructive steps).</p>
+<p><b>Use AI as a partner:</b> <code>Here is my architecture. List every single point of failure and the correlated failures that would break my redundancy assumptions.</code> <b>You own:</b> the SLO choice, the error budget policy and proving failover works with real drills.</p>`,
+    problems: [{
+      title: 'Can this design hit 99.99%?',
+      level: 'Hard', tags: ['availability', 'redundancy', 'spof'], companies: ['Google', 'Amazon', 'Microsoft'],
+      statement: `<p>A payments API must reach <b>99.99%</b> monthly availability. Current design: one managed load balancer (99.99%), one app server (99.5%), one database (99.9%), plus a call to an external fraud-check API (99.9%) on every request. Compute today\'s availability, show the minimum changes to reach 99.99% on paper, and list what could still break the maths in reality.</p>`,
+      constraints: `<p>Assume independent failures and instant failover for the calculation. You may add replicas and change how the fraud check is used.</p>`,
+      example: `<p>Today: 0.9999 × 0.995 × 0.999 × 0.999 = ${H.c('r', '≈ 99.29%')} → about ${H.c('r', '62 hours/year')} of failures. Why: four links in series, and the app server alone allows 0.5% downtime.</p>`,
+      brute: { why: `<p><b>Naive fix:</b> "Buy a bigger, more reliable server." Even a 99.99% app server still leaves the DB (99.9%) and fraud API (99.9%) in series: 0.9999 × 0.9999 × 0.999 × 0.999 ≈ 99.78%. You cannot reach four nines by improving one link when other links are weaker — you need redundancy and fewer hard dependencies.</p>` },
+      mcq: { q: 'Two independent app servers at 99.5% each, behind a load balancer, give app-tier availability of about…', options: ['99.5%', '99.75%', '99.9975%', '100%'], answer: 2, explain: '1 − (0.005)² = 1 − 0.000025 = 99.9975%.' },
+      hints: [
+        `<p>Hint 1: Series multiply; parallel uses 1 − (1 − A)<sup>n</sup>. Find which links dominate the downtime.</p>`,
+        `<p>Hint 2: Add replicas to the app tier and the DB (standby in another zone). For the external fraud API you cannot add replicas — can the request survive without it?</p>`,
+        `<p>Hint 3: Fraud check fallback: on timeout, apply a conservative local rule set (allow small amounts, queue large ones for review) so the fraud API becomes an optional dependency. Then recompute.</p>`
+      ],
+      solution: {
+        approach: `<p><b>Today:</b> 0.9999 × 0.995 × 0.999 × 0.999 ≈ <b>0.99290</b> (≈ 62 h/year).</p>
+<p><b>Changes:</b></p>
+<ol><li><b>App tier:</b> 3 stateless servers across zones: 1 − 0.005³ ≈ 0.99999988 (≈ 1).</li>
+<li><b>Database:</b> primary + synchronous standby in another zone with automatic failover: 1 − 0.001² = 0.999999 (on paper).</li>
+<li><b>Fraud check:</b> make it non-blocking for availability: 200 ms timeout + circuit breaker; on failure use local rules (approve low-risk/low-amount, hold high-risk for async review). Effective availability of the <i>request path</i> for this link ≈ 1 (the decision quality degrades instead of failing).</li>
+<li><b>Load balancer:</b> managed, multi-zone: 0.9999.</li></ol>
+<p><b>New total:</b> 0.9999 × ~1 × 0.999999 × ~1 ≈ <b>99.99%</b> — now the LB is the limiting link; meeting it comfortably needs the LB SLA to be at least that good (or DNS failover across two LBs/regions).</p>
+<p><b>What still breaks the maths:</b> correlated failures (bad deploy to all 3 app servers → canary + rollback), a zone or region outage, failover taking 60 s (a few per month eat most of the 4.3-minute monthly budget → test and tune detection), retry storms after a blip, expired certificates, DNS issues, and planned maintenance (must be online). Monitor request-based SLOs and keep an error-budget policy.</p>`,
+        complexity: `<p>99.29% → ~99.99% (62 h/year → ~53 min/year). Cost: ~3× app servers, a standby DB, fallback logic for fraud checks, and operational drills.</p>`,
+        followUps: ['What is the risk of approving payments when the fraud API is down, and how do you cap it?', 'How long can a DB failover take if you get two per month and still meet 99.99%?', 'When would you go multi-region?']
+      }
+    }]
+  });
+
 registerModule({ id: 'hld01', title: 'x', intro: 'x', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

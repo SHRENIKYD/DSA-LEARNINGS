@@ -1262,4 +1262,188 @@ class ReplicaDemo {
     }]
   });
 
+  /* =====================================================================
+     TOPIC 7 — The Scaling Journey: 100 → 10M users
+     ===================================================================== */
+  function stageOf(users) {
+    if (users <= 1000) return 1;
+    if (users <= 10000) return 2;
+    if (users <= 100000) return 3;
+    if (users <= 1000000) return 4;
+    if (users <= 10000000) return 5;
+    return 6;
+  }
+  var STAGE_NAME = { 1: 'One box does everything', 2: 'Separate the database', 3: 'Load balancer + stateless app fleet', 4: 'Cache, read replicas, CDN', 5: 'Autoscaling, multi-AZ, async queues', 6: 'Multi-region + sharding' };
+  function stageGraph(st, apps, reps, bad) {
+    var n, e, hl = {}, tags = {};
+    if (st === 1) { n = [B('U', 'Users', 12, 30), B('S', 'Web + App + DB (1 VM)', 58, 30)]; e = [['U', 'S']]; hl.S = 'ok'; }
+    else if (st === 2) { n = [B('U', 'Users', 8, 30), B('A', 'App server (bigger VM)', 42, 30), B('D', 'Database (own VM)', 82, 30)]; e = [['U', 'A'], ['A', 'D']]; hl.D = 'ok'; }
+    else if (st === 3) {
+      n = [B('U', 'Users', 6, 30), B('LB', 'Load Balancer', 25, 30), B('A1', 'App 1', 48, 12), B('A2', 'App 2…' + apps, 48, 48), B('R', 'Redis sessions', 80, 8), B('P', 'DB primary', 80, 30), B('SB', 'DB standby', 80, 52)];
+      e = [['U', 'LB'], ['LB', 'A1'], ['LB', 'A2'], ['A1', 'R'], ['A1', 'P'], ['A2', 'P'], ['P', 'SB', 'sync']];
+      hl.LB = 'ok'; hl.A2 = 'ok'; hl.R = 'ok'; hl.SB = 'ok'; tags.A2 = apps + ' stateless servers';
+    } else if (st === 4) {
+      n = [B('U', 'Users', 6, 34), B('CDN', 'CDN (static)', 26, 8), B('LB', 'Load Balancer', 26, 34), B('A1', 'App 1', 50, 20), B('A2', 'App 2…' + apps, 50, 50), B('C', 'Redis cache', 80, 6), B('P', 'DB primary', 80, 28), B('RR', reps + ' read replicas', 80, 52)];
+      e = [['U', 'CDN'], ['U', 'LB'], ['LB', 'A1'], ['LB', 'A2'], ['A1', 'C'], ['A1', 'P'], ['A2', 'RR'], ['P', 'RR', 'repl']];
+      hl.CDN = 'ok'; hl.C = 'ok'; hl.RR = 'ok'; tags.A2 = apps + ' servers';
+    } else if (st === 5) {
+      n = [B('U', 'Users', 6, 30), B('CDN', 'CDN', 24, 8), B('LB', 'LB (multi-AZ)', 24, 30), B('A', 'App fleet ×' + apps, 50, 30), B('Q', 'Queue', 50, 54), B('W', 'Workers', 22, 54), B('C', 'Cache cluster', 80, 8), B('P', 'DB primary', 80, 30), B('RR', reps + ' replicas', 80, 52)];
+      e = [['U', 'CDN'], ['U', 'LB'], ['LB', 'A'], ['A', 'C'], ['A', 'P'], ['A', 'RR'], ['P', 'RR'], ['A', 'Q', 'jobs'], ['Q', 'W']];
+      hl.A = 'ok'; hl.Q = 'ok'; hl.W = 'ok'; tags.A = 'autoscaling 2–3 AZs';
+    } else {
+      n = [B('U', 'Users worldwide', 8, 30), B('G', 'Geo DNS', 28, 30), B('RA', 'Region A: LB + apps', 55, 10), B('RB', 'Region B: LB + apps', 55, 50), B('DA', 'Shards (A)', 88, 10), B('DB2', 'Shards (B)', 88, 50)];
+      e = [['U', 'G'], ['G', 'RA'], ['G', 'RB'], ['RA', 'DA'], ['RB', 'DB2'], ['DA', 'DB2', 'replicate']];
+      hl.G = 'ok'; hl.RA = 'ok'; hl.RB = 'ok'; hl.DA = 'ok'; hl.DB2 = 'ok';
+    }
+    if (bad) bad.forEach(function (b) { hl[b[0]] = 'bad'; tags[b[0]] = b[1]; });
+    return G('Stage ' + st + ': ' + STAGE_NAME[st], n, e, hl, {}, tags, 60);
+  }
+  var PAIN = {
+    2: [['S', 'CPU 95%: app & DB fight']],
+    3: [['A', 'maxed out + SPOF']],
+    4: [['P', 'CPU 90%, mostly reads']],
+    5: [['A2', 'spikes; slow tasks in requests']],
+    6: [['P', 'write limit; far from users']]
+  };
+  var PAIN_TXT = {
+    2: 'App and database share one machine: they fight for CPU and RAM, and every deploy restarts the database too.',
+    3: 'The single app server is maxed out — and it is a single point of failure. A bigger box only buys a little time.',
+    4: 'The database is drowning in reads (the same hot pages over and over), and serving images/JS from app servers wastes bandwidth.',
+    5: 'Traffic swings 5× between night and evening, and slow work (emails, image resizing) runs inside user requests, making them slow.',
+    6: 'One region is far from users on other continents, and write volume or data size is beyond what one primary can hold.'
+  };
+  var FIX_TXT = {
+    1: 'Start simple: one VM runs web server, app and database. Cheap, easy to debug. Take backups!',
+    2: 'Move the database to its own machine (or a managed DB). Each can now be sized and tuned on its own — usually scale the DB <b>up</b>.',
+    3: 'Make the app <b>stateless</b> (sessions → Redis), put a <b>load balancer</b> in front of N+1 app servers, and add a DB <b>standby</b> for failover.',
+    4: 'Add a <b>cache</b> for hot data, <b>read replicas</b> for the remaining reads, and a <b>CDN</b> for images, CSS and JS.',
+    5: '<b>Autoscale</b> the app fleet across 2–3 availability zones, move slow work to a <b>queue + workers</b>, add replicas, split out heavy services if needed.',
+    6: '<b>Multi-region</b> deployment with geo-DNS routing, and <b>shard</b> the data so writes spread over many primaries (HLD 5, 7).'
+  };
+
+  topics.push({
+    title: 'The Scaling Journey: From 100 to 10 Million Users',
+    analogy: `<p>A home baker sells cakes from her kitchen (100 customers). Demand grows, so she rents a small shop and moves the oven out of her kitchen (separate the database). Then she hires several bakers who all follow the same recipe book (stateless servers) with a manager handing out orders (load balancer). Then she pre-bakes the best sellers each morning (cache) and opens counters in other neighbourhoods that sell the same cakes (replicas, CDN). Finally she opens factories in other cities (regions) and splits the menu between them (sharding).</p>
+      <p>She never built the factory on day one. <b>Each step was forced by a real bottleneck.</b> That is the scaling journey.</p>`,
+    explain: `<p>"Scale this app from 100 to 10 million users" is one of the most common system design warm-ups. The interviewer wants to see that you evolve the design <b>step by step, driven by bottlenecks</b>, not jump straight to a giant diagram.</p>
+      <h4>First, turn users into requests per second</h4>
+      <p>Assume each daily active user makes ~50 requests per day and peak traffic is ~3× the average:</p>
+      ${H.table(['Daily users', 'Avg req/s (users × 50 ÷ 86,400)', 'Peak req/s (×3)'], [
+        ['100', '0.06', '~0.2'], ['10,000', '~6', '~17'], ['100,000', '~58', '~170'], ['1,000,000', '~580', '~1,700'], ['10,000,000', H.c('b', '~5,800'), H.c('b', '~17,000')]
+      ])}
+      <p>Notice: even 10M daily users is "only" ~17k requests/second at peak. That is very achievable with the ideas in this module. (HLD 3 teaches this estimation properly.)</p>
+      <h4>The stages</h4>
+      ${H.table(['Users', 'Stage', 'Bottleneck that forces the next step'], [
+        ['~100–1k', '1. One box: app + DB together', 'App and DB fight for resources'],
+        ['~10k', '2. Separate DB server; scale both up', 'Single app server maxed out, and it is a SPOF'],
+        ['~100k', '3. LB + 2+ stateless app servers + session store + DB standby', 'DB overloaded by reads; static files'],
+        ['~1M', '4. Cache + read replicas + CDN', 'Daily spikes; slow tasks inside requests; zone failures'],
+        ['~10M', '5. Autoscaling, multi-AZ, queues + workers, more replicas', 'Write volume, global latency'],
+        ['10M+', '6. Multi-region, sharding, service split', '—']
+      ])}
+      <p>The numbers on the left are rough — a video app hits stage 4 much earlier than a to-do app. What matters is the <b>reason</b> for each step. In an interview, say the bottleneck out loud: "<i>At this point the database CPU is the limit and 90% of queries are reads, so I add a cache and read replicas.</i>"</p>
+      <p>And always measure: <b>monitor first</b> (CPU, memory, p99 latency, DB query time, error rate), then scale the tier that is actually hurting.</p>`,
+    clues: [
+      '"Scale this app from 100 to 10M users" → evolve stage by stage, naming the bottleneck each time',
+      '"Start with a single server" → the interviewer expects you to evolve it, not to over-design it',
+      '"Traffic doubled overnight" → which tier hurts first? Measure, then scale that tier',
+      '"Read-heavy and global" → cache + replicas + CDN, later multi-region',
+      '"Startup with 3 engineers" → managed services and the simplest stage that works',
+      '"10M daily users" → ~17k peak rps: horizontal app tier, replicas, cache — sharding maybe later'
+    ],
+    code: { lang: 'python', run: true, title: 'Users → requests/second → which stage (runnable)', code: `import math
+
+REQ_PER_USER_PER_DAY = 50      # assumption: say it out loud in an interview
+PEAK_FACTOR = 3                # busiest hour vs daily average
+SERVER_RPS = 2_000             # measured capacity of one app server
+TARGET_UTIL = 0.7              # leave headroom
+
+def stage(users):
+    for limit, name in [(1_000, "1 one box"), (10_000, "2 separate DB"),
+                        (100_000, "3 LB + stateless apps"), (1_000_000, "4 cache + replicas + CDN"),
+                        (10_000_000, "5 autoscale + multi-AZ + queues")]:
+        if users <= limit:
+            return name
+    return "6 multi-region + sharding"
+
+print(f"{'users':>12} {'avg rps':>9} {'peak rps':>9} {'app servers':>12}  stage")
+for users in [100, 10_000, 100_000, 1_000_000, 10_000_000, 50_000_000]:
+    avg = users * REQ_PER_USER_PER_DAY / 86_400
+    peak = avg * PEAK_FACTOR
+    servers = max(1, math.ceil(peak / (SERVER_RPS * TARGET_UTIL))) + (1 if users > 10_000 else 0)
+    print(f"{users:>12,} {avg:>9,.1f} {peak:>9,.0f} {servers:>12}  {stage(users)}")
+` },
+    viz: {
+      title: 'Grow the app: single server → load balancer → replicas → regions',
+      input: '100 10000 100000 1000000 10000000 50000000',
+      inputLabel: 'Daily active users at each milestone (ascending, max 8 values)',
+      gen: function (input) {
+        var us = String(input || '').trim().split(/[\s,]+/).filter(Boolean).map(Number);
+        if (!us.length || us.some(function (x) { return !(x >= 1); })) throw new Error('Enter user counts like: 100 10000 1000000');
+        if (us.length > 8) throw new Error('At most 8 milestones');
+        if (us.some(function (x) { return x > 1e10; })) throw new Error('Keep it under 10 billion users');
+        for (var i = 1; i < us.length; i++) if (us[i] < us[i - 1]) throw new Error('Milestones must be in ascending order');
+        var frames = [], prev = 0, rows = [];
+        frames.push({ narr: 'We will grow one app through each milestone. Assumptions: <b>50 requests per user per day</b>, peak = 3× average, one app server handles 2,000 req/s and we run it at 70%. Each new stage is triggered by a <b>specific bottleneck</b>.', parts: [
+          { type: 'array', label: 'milestones (daily users)', values: us.map(fmt) },
+          V('Assumptions', { 'req/user/day': 50, 'peak factor': 3, 'server capacity': '2,000 rps', 'target util': '70%' })
+        ] });
+        us.forEach(function (u, idx) {
+          var st = stageOf(u), avg = u * 50 / 86400, peak = avg * 3;
+          var apps = st >= 3 ? Math.ceil(peak / 1400) + 1 : 1; if (st >= 3 && apps < 2) apps = 2;
+          var reps = st === 4 ? 2 : (st >= 5 ? Math.max(3, Math.ceil(peak * 0.9 * 0.2 / 4000)) : 0);
+          if (prev && st > prev) {
+            for (var s = prev + 1; s <= st; s++) {
+              frames.push({ narr: '<b>' + fmt(u) + ' users — pain point.</b> ' + PAIN_TXT[s], parts: [stageGraph(s - 1, Math.max(2, apps), Math.max(2, reps), PAIN[s]), V('Load now', { 'daily users': fmt(u), 'peak req/s': fmt(peak) }, { 'peak req/s': 'bad' })] });
+              frames.push({ narr: '<b>Fix → Stage ' + s + ': ' + STAGE_NAME[s] + '.</b> ' + FIX_TXT[s], parts: [stageGraph(s, apps, reps), V('Sizing', { 'daily users': fmt(u), 'avg req/s': avg < 10 ? avg.toFixed(1) : fmt(avg), 'peak req/s': fmt(peak), 'app servers': apps, 'read replicas': reps }, { 'app servers': 'ok' })] });
+            }
+          } else {
+            frames.push({ narr: '<b>' + fmt(u) + ' daily users</b> (peak ≈ ' + (peak < 10 ? peak.toFixed(1) : fmt(peak)) + ' req/s). ' + (idx === 0 ? FIX_TXT[st] : 'Still fine at Stage ' + st + ' — just add capacity within the same design.') + (st === 1 ? ' Building a 20-server cluster here would be wasted money and complexity.' : ''), parts: [stageGraph(st, apps, reps), V('Sizing', { 'daily users': fmt(u), 'avg req/s': avg < 10 ? avg.toFixed(2) : fmt(avg), 'peak req/s': peak < 10 ? peak.toFixed(1) : fmt(peak), 'app servers': apps, 'read replicas': reps })] });
+          }
+          rows.push([fmt(u), fmt(Math.max(1, peak)), st + ': ' + STAGE_NAME[st], apps]);
+          prev = st;
+        });
+        frames.push({ narr: '<b>The journey at a glance.</b> Each row added only what the bottleneck demanded. In an interview, narrate it exactly like this: numbers → bottleneck → fix → new bottleneck.', parts: [
+          { type: 'table', label: 'Milestones', columns: ['daily users', 'peak req/s', 'stage', 'app servers'], rows: rows, hl: (function () { var h = {}; h[rows.length - 1] = 'sel'; return h; })() },
+          { type: 'bars', label: 'Peak req/s per milestone', values: us.map(function (u) { return Math.round(u * 50 / 86400 * 3); }), idxLabels: us.map(fmt) }
+        ] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Stage 1 → 2: the 2 a.m. outage', html: `<p>A startup runs Django + PostgreSQL on one VM. A memory-hungry import job makes the OS kill the database process. Splitting the DB to its own machine (or a managed database) means app bugs can no longer kill the data tier, and each can be sized separately — the DB gets lots of RAM, the app gets CPU.</p>` },
+      { title: 'Stage 3: the first load balancer', html: `<p>At ~100k users, the single app server is at 80% CPU every evening and every deploy is a minute of downtime. Steps: move sessions to Redis, move uploads to S3, put 3 app servers behind a managed LB with health checks. Bonus: <b>rolling deploys</b> — update one server at a time while the others serve, so deploys have zero downtime.</p>` },
+      { title: 'Stage 4: one cache line saved the database', html: `<p>At ~1M users, 70% of DB time goes to the same 1,000 popular product pages. Caching each page's data in Redis for 60 s cuts DB reads by ~10×. Read replicas take most of what is left; the CDN serves images from servers near users. Order matters: <b>cache first</b> (cheapest win), then replicas.</p>` },
+      { title: 'Stage 5: the queue that made checkout fast', html: `<p>Checkout took 2.5 s because it sent the email, generated the PDF invoice and called the analytics API inside the request. Now checkout writes the order, puts an <code>OrderPlaced</code> message on a queue and returns in 200 ms; workers send emails and invoices in the background, retrying failures. Workers scale independently by queue length.</p>` }
+    ],
+    deepDive: `<p><b>Order of operations matters.</b> The cheapest wins usually come first: add indexes and fix slow queries (free), add caching (cheap, huge gains for read-heavy apps), then replicas, then horizontal app scaling, and only much later sharding and multi-region (expensive, permanent complexity). Many companies serve tens of millions of users from one primary database + replicas + cache.</p>
+      <p><b>Managed services shift the stages.</b> In 2026 a small team can start at "stage 3–4 quality" by using a managed database with a standby and read replicas, a managed cache, a serverless or container platform that autoscales, and a CDN — without operating any of it. The concepts are the same; the work is configuration rather than building.</p>
+      <p><b>What breaks at each order of magnitude</b> (a useful mental model): 10× more users is usually fine with more of the same; 100× usually needs a new component (cache, queue, replicas); 1000× often needs a new <i>data</i> architecture (sharding, denormalisation, async pipelines). Plan one order of magnitude ahead, not three.</p>
+      <p><b>Organisational scaling</b> runs in parallel: at some point one codebase with 100 engineers deploys too slowly, and teams split it into services. That is about people and deploy independence, not raw traffic — a monolith can scale technically much further than people think.</p>
+      <p><b>Cost awareness:</b> each stage costs money every month. Autoscaling down at night, right-sizing instances, reserved/committed-use pricing and caching often save more than any clever architecture. Interviewers at senior levels like hearing cost trade-offs.</p>`,
+    aiEra: `<p><b>What AI changes:</b> an AI assistant can draft a full "100 → 10M" evolution in seconds — which is exactly why interviewers now probe the <b>why</b>: "why a cache before replicas?", "what metric told you to add the queue?", "what does this cost per month?". Generated diagrams that jump straight to Kafka, Kubernetes and five microservices are a red flag.</p>
+      <p><b>AI features change the scaling curve:</b> an LLM-powered feature can turn a cheap 20 ms request into a 2–10 s request costing real money per call. Scaling such an app means queueing and streaming responses, caching repeated prompts and embeddings, routing simple requests to small models, and rate limiting per user — the same stage-by-stage thinking, with a GPU bill attached.</p>
+      <p><b>Use AI as a partner:</b> <code>Act as an interviewer: I will propose a design for each milestone from 100 to 10M users; challenge each step with "what is the bottleneck?" and "what does it cost?"</code>. <b>Where AI goes wrong:</b> it over-engineers early stages and assumes huge request rates without doing the math. <b>What you must own:</b> the numbers, the bottleneck story, and saying "not yet".</p>`,
+    problems: [{
+      title: 'Scale This App from 100 to 10 Million Users',
+      level: 'Hard', tags: ['scaling', 'load balancer', 'cache', 'read replicas', 'cdn', 'queues'], companies: ['Amazon', 'Google', 'Meta', 'Microsoft'],
+      statement: `<p>You built a recipe-sharing app: users browse recipes (with photos), search, save favourites and post new recipes. Today it runs on <b>one VM</b> (app + PostgreSQL + uploaded photos on disk) with 100 daily users. Describe how the architecture evolves as it grows to <b>10,000</b>, <b>1 million</b> and <b>10 million</b> daily users. For each step state the bottleneck, the change, and a rough size.</p>`,
+      constraints: `Read:write ≈ 50:1; average 50 requests/user/day; photos average 500 KB; 99.9% availability expected from 1M users on.`,
+      example: `<p>10M users × 50 ÷ 86,400 ≈ ${H.c('b', '5,800 avg rps')}, ≈ ${H.c('b', '17,000 peak rps')}. At 1,400 usable rps per app server → ~13 servers + spare. Reads ≈ 98% of requests → caching and replicas carry most of the load.</p>`,
+      brute: { why: `<p><b>Naive design 1 — "just buy a bigger VM":</b> works until ~10k users, then hits the single-machine ceiling, and the whole app (including photos on its disk) dies with that one machine. <b>Naive design 2 — "microservices + Kubernetes + Kafka + sharded DB from day one":</b> months of work and big bills for 100 users, slower feature development, and more ways to fail. Both ignore the core idea: change the design when a measured bottleneck forces it.</p>` },
+      mcq: { q: 'At 1M users the database is at 85% CPU, mostly from repeated recipe-page reads. First move?', options: ['Add a cache for hot recipe data (then replicas)', 'Shard the database by user id', 'Add more app servers'], answer: 0, explain: 'Repeated reads of the same hot data are exactly what a cache removes cheaply. Sharding is for write/size limits; more app servers only add DB load.' },
+      hints: [`<p>Convert each milestone to peak requests/second first; that tells you which tier hurts.</p>`, `<p>Order: separate DB → stateless + LB → photos to object storage + CDN → cache → read replicas → autoscaling + queues → (maybe) sharding.</p>`, `<p>For each step say: bottleneck → change → size (servers, replicas) → what new problem appears.</p>`],
+      solution: {
+        approach: `<p><b>100 users (peak ~0.2 rps):</b> one VM is perfect. Add automated backups and monitoring. Nothing else.</p>
+          <p><b>10,000 users (peak ~17 rps):</b> bottleneck is not raw load but fragility — app and DB share a box and photos live on its disk. Move PostgreSQL to a managed instance (automated backups, a standby), move photos to <b>object storage</b> served via a <b>CDN</b>. The app VM is now disposable.</p>
+          <p><b>~100,000 users (peak ~170 rps):</b> one app server is a SPOF and deploys cause downtime. Make the app <b>stateless</b> (sessions in Redis or signed tokens), run <b>3 app servers</b> (N+1) behind a <b>load balancer</b> with health checks; rolling deploys.</p>
+          <p><b>1 million users (peak ~1,700 rps, ~98% reads):</b> DB CPU climbs from repeated recipe and search reads. Add a <b>Redis cache</b> for recipe pages and popular lists (cache-aside, TTL 1–5 min), then <b>2 read replicas</b> for remaining reads with read-your-writes for a user's own posts. App tier: ⌈1700/1400⌉ + 1 = 3, spread across <b>2–3 availability zones</b>; DB primary with a standby in another zone for 99.9%. Search moves to a search engine (e.g. OpenSearch) when SQL LIKE queries get slow.</p>
+          <p><b>10 million users (peak ~17,000 rps):</b> app fleet ⌈17000/1400⌉ + 1 ≈ 14 servers with <b>autoscaling</b> (night vs evening traffic). Slow work (image resizing, notification emails, feed updates) goes through a <b>queue + workers</b>. Cache cluster and 3–5 replicas absorb reads; the primary handles ~340 writes/s (2% of 17k) — still fine on one big primary, so <b>no sharding yet</b>. Add rate limiting, observability (metrics, traces), and plan the next step: if writes or data size outgrow one primary, shard (e.g. by user id); if users are global, add a second region.</p>
+          <p><b>Narration tip:</b> at every step state the metric that triggered it — that is what interviewers grade.</p>`,
+        complexity: `<p>Peak rps = users × 50 ÷ 86,400 × 3. App servers = ⌈peak ÷ 1,400⌉ + 1. Photo storage at 10M users: if 2% post one recipe/month with 3 photos → 600k photos/month × 0.5 MB ≈ 300 GB/month — object storage handles that easily.</p>`,
+        followUps: ['Which single metric would you watch to decide each step?', 'What changes if the app becomes popular in Europe and Asia at once?', 'Where would you add the first rate limiter?']
+      }
+    }]
+  });
+
 registerModule({ id: 'hld02', title: 'Scalability Basics', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 8, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

@@ -2326,4 +2326,983 @@ class StockItem {
       }
     }]
   });
-registerModule({ id: 'lld11', title: 'xxxx', intro: '<p>x</p>', goals: [], prereqs: 'xxxxxxxxxxxxxxxxxxxxxxxxx', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
+  /* ======================= PRACTICE: EASY ======================= */
+  practice.push({
+    title: 'Email and Phone Number Value Objects', level: 'Easy', tags: ['value object', 'validation', 'primitive obsession'], companies: ['Freshworks', 'Zoho', 'Twilio'],
+    statement: `<p>A CRM stores contacts as <code>Contact(String name, String email, String phone)</code>. The same email appears as <code>Asha@Mail.com</code> and <code>asha@mail.com </code>, so duplicates pile up; phones appear as <code>98450 12345</code>, <code>+91-9845012345</code> and <code>09845012345</code>. Create <code>Email</code> and <code>IndianMobile</code> value objects that <b>validate and normalise</b> in their constructors, then show that a <code>Set&lt;Email&gt;</code> deduplicates automatically.</p>`,
+    constraints: `Email: one @, non-empty local part, domain with a dot. Mobile: 10 digits starting 6-9 after stripping spaces, dashes, a leading +91 or 0. Store mobile as "+91XXXXXXXXXX".`,
+    example: `<p><code>new Email(" Asha@Mail.com ")</code> equals <code>new Email("asha@mail.com")</code> → ${H.c('g', 'true')}. <code>new IndianMobile("098450-12345")</code> → ${H.c('g', '+919845012345')}. <code>new IndianMobile("12345")</code> → ${H.c('r', 'IllegalArgumentException')}. A set of 4 raw emails with 2 duplicates has size ${H.c('b', '2')}.</p>`,
+    brute: { why: `<p>Validation and normalisation are copy-pasted into the signup form, the import job and the API; one of them forgets <code>toLowerCase()</code>, so duplicates appear. Strings can also be swapped: <code>new Contact(name, phone, email)</code> compiles.</p>`, code: `class ContactBrute {
+    String name, email, phone;
+    ContactBrute(String name, String email, String phone) { this.name = name; this.email = email; this.phone = phone; }
+    static boolean sameEmail(String a, String b) { return a.equalsIgnoreCase(b); }   // forgot trim(); other callers forget even this
+}` },
+    mcq: { q: 'Where should email normalisation (trim + lowercase) happen?', options: ['In the Email value object constructor, so every Email is normalised', 'In each service before comparing', 'In the database with a trigger', 'In the UI form'], answer: 0, explain: 'If the VO constructor normalises, no un-normalised Email can exist anywhere. Every other place gets it for free.' },
+    hints: [`<p>Hint 1: Use records with compact constructors; reassign the parameter (<code>value = value.trim().toLowerCase();</code>) before validating.</p>`, `<p>Hint 2: For the phone, strip everything except digits and a leading +, then remove a +91 or 0 prefix, then check 10 digits starting 6-9.</p>`, `<p>Hint 3: Records give you <code>equals</code>/<code>hashCode</code> on the normalised value, so <code>HashSet</code> dedupes with no extra code.</p>`],
+    solution: {
+      approach: `<p>Two records. Each compact constructor normalises, then validates, then the record stores only the canonical form. Equality and hashing come from the record. A <code>Contact</code> record now takes <code>Email</code> and <code>IndianMobile</code>, so arguments cannot be swapped.</p>`,
+      code: `record Email(String value) {
+    Email {
+        if (value == null) throw new IllegalArgumentException("email required");
+        value = value.trim().toLowerCase();
+        int at = value.indexOf('@');
+        if (at <= 0 || at != value.lastIndexOf('@') || !value.substring(at + 1).contains(".") || value.endsWith("."))
+            throw new IllegalArgumentException("invalid email: " + value);
+    }
+}
+record IndianMobile(String value) {
+    IndianMobile {
+        if (value == null) throw new IllegalArgumentException("phone required");
+        String d = value.replaceAll("[^0-9+]", "");
+        if (d.startsWith("+91")) d = d.substring(3); else if (d.startsWith("0")) d = d.substring(1);
+        if (!d.matches("[6-9][0-9]{9}")) throw new IllegalArgumentException("invalid mobile: " + value);
+        value = "+91" + d;
+    }
+}
+record Contact(String name, Email email, IndianMobile phone) {}
+
+class ContactDemo {
+    public static void main(String[] args) {
+        Set<Email> emails = new HashSet<>();
+        for (String raw : List.of(" Asha@Mail.com ", "asha@mail.com", "ravi@x.in", "RAVI@X.IN")) emails.add(new Email(raw));
+        System.out.println(emails.size() + " " + emails);                         // 2
+        System.out.println(new IndianMobile("098450-12345").value());             // +919845012345
+        System.out.println(new IndianMobile("+91 98450 12345").equals(new IndianMobile("9845012345")));  // true
+        try { new IndianMobile("12345"); } catch (IllegalArgumentException e) { System.out.println(e.getMessage()); }
+        System.out.println(new Contact("Asha", new Email("a@b.co"), new IndianMobile("9845012345")));
+    }
+}`,
+      complexity: `<p>O(length of input) per construction. Duplicates handled by hashing in O(1) average.</p>`,
+      followUps: ['How would you support international numbers (libphonenumber behind a port)?', 'Should Email know about disposable-domain blocklists, or is that a separate policy?', 'How would you store these VOs in a database column?']
+    }
+  });
+
+  practice.push({
+    title: 'Inject the Dependencies of a Daily Report Mailer', level: 'Easy', tags: ['dependency injection', 'testing', 'clock'], companies: ['Microsoft', 'Salesforce', 'Infosys'],
+    statement: `<p><code>DailyReportJob.run()</code> creates <code>new SalesDao()</code>, <code>new SmtpClient()</code> and calls <code>LocalDate.now()</code>. It emails yesterday's total sales to the manager, but on Sundays it skips sending. Refactor to <b>constructor injection</b> with interfaces and an injected <code>Clock</code>, and write a "test" in <code>main</code> using fakes proving: (1) Monday sends one mail with Sunday's total, (2) Sunday sends nothing.</p>`,
+    constraints: `No frameworks or mocking libraries. Tests must not depend on today's real date.`,
+    example: `<p>Clock fixed at Monday 2026-03-02 → sales for 2026-03-01 = ₹12,500 → mail "Sales 2026-03-01: 12500" ${H.c('g', 'sent')}. Clock fixed at Sunday 2026-03-01 → ${H.c('m', 'no mail')}.</p>`,
+    brute: { why: `<p>Three hidden dependencies: the DB, SMTP and the system clock. Testing the Sunday rule requires running the test on a Sunday against a real database and mail server.</p>`, code: `class DailyReportJobBrute {
+    void run() {
+        LocalDate today = LocalDate.now();                       // hidden dependency
+        if (today.getDayOfWeek() == DayOfWeek.SUNDAY) return;
+        long total = 12_500;                                     // pretend: new SalesDao().totalFor(today.minusDays(1))
+        System.out.println("SMTP: Sales " + today.minusDays(1) + ": " + total);   // pretend: new SmtpClient().send(...)
+    }
+}` },
+    mcq: { q: 'What is the simplest way to make the Sunday rule testable?', options: ['Inject java.time.Clock and use LocalDate.now(clock)', 'Add a boolean parameter isSunday to run()', 'Use a static mutable "today" field', 'Mock LocalDate.now() with bytecode tricks'], answer: 0, explain: 'Clock is the JDK\'s built-in seam for time. Production passes Clock.systemDefaultZone(); tests pass Clock.fixed(...).' },
+    hints: [`<p>Hint 1: Interfaces: <code>SalesQuery { long totalFor(LocalDate d); }</code>, <code>Mailer { void send(String to, String body); }</code>.</p>`, `<p>Hint 2: Both are single-method interfaces, so fakes can be lambdas.</p>`, `<p>Hint 3: Collect sent mails in a <code>List&lt;String&gt;</code> inside the fake mailer and assert on its size and content.</p>`],
+    solution: {
+      approach: `<p>Introduce two ports and inject them plus a <code>Clock</code>. The job contains only the business rule. Tests build the job with lambdas and fixed clocks — two compositions, one class.</p>`,
+      code: `interface SalesQuery { long totalFor(LocalDate day); }
+interface Mailer { void send(String to, String body); }
+
+class DailyReportJob {
+    private final SalesQuery sales; private final Mailer mailer; private final Clock clock; private final String manager;
+    DailyReportJob(SalesQuery sales, Mailer mailer, Clock clock, String manager) {
+        this.sales = sales; this.mailer = mailer; this.clock = clock; this.manager = manager;
+    }
+    void run() {
+        LocalDate today = LocalDate.now(clock);
+        if (today.getDayOfWeek() == DayOfWeek.SUNDAY) return;
+        LocalDate yesterday = today.minusDays(1);
+        mailer.send(manager, "Sales " + yesterday + ": " + sales.totalFor(yesterday));
+    }
+
+    static Clock at(String date) { return Clock.fixed(Instant.parse(date + "T06:00:00Z"), ZoneOffset.UTC); }
+
+    public static void main(String[] args) {
+        List<String> outbox = new ArrayList<>();
+        SalesQuery fakeSales = day -> day.equals(LocalDate.of(2026, 3, 1)) ? 12_500 : 0;
+        Mailer fakeMailer = (to, body) -> outbox.add(to + " | " + body);
+
+        new DailyReportJob(fakeSales, fakeMailer, at("2026-03-02"), "boss@shop.in").run();   // Monday
+        System.out.println(outbox.size() == 1 && outbox.get(0).endsWith("2026-03-01: 12500") ? "Monday test PASSED" : "FAILED " + outbox);
+
+        outbox.clear();
+        new DailyReportJob(fakeSales, fakeMailer, at("2026-03-01"), "boss@shop.in").run();   // Sunday
+        System.out.println(outbox.isEmpty() ? "Sunday test PASSED" : "FAILED " + outbox);
+    }
+}`,
+      complexity: `<p>O(1). Tests run in microseconds with no I/O.</p>`,
+      followUps: ['What timezone should the Clock use for "yesterday" in a multi-country business?', 'How would you add retries to Mailer without changing DailyReportJob? (Decorator implementing Mailer.)', 'Where is the composition root for a scheduled job?']
+    }
+  });
+
+  practice.push({
+    title: 'Rebuild a Shopping Cart from Its Events', level: 'Easy', tags: ['event sourcing', 'replay', 'fold'], companies: ['Amazon', 'Myntra', 'Shopify'],
+    statement: `<p>You receive the event stream of one cart: <code>ItemAdded(sku, qty, unitPrice)</code>, <code>QuantityChanged(sku, qty)</code>, <code>ItemRemoved(sku)</code>, <code>CouponApplied(percent)</code>, <code>CheckedOut</code>. Write <code>replay(events)</code> that returns the current cart (items with quantities, total after coupon, checked-out flag), and <code>stateAt(events, k)</code> for the cart after the first k events.</p>`,
+    constraints: `Up to 10<sup>5</sup> events. Prices in paise. Coupon percent applies to the total at the end (latest coupon wins). Events are facts: apply never throws.`,
+    example: `<p>Events: +tea 2 @12000, +mug 1 @25000, qty tea→3, coupon 10%, −mug → items {tea: 3}, subtotal 36000, total ${H.c('g', '32400')}. <code>stateAt(k=2)</code> → {tea 2, mug 1}, total 49000.</p>`,
+    brute: { why: `<p>Storing only the latest cart row loses the story; and writing replay with validation inside (e.g. "throw if qty changed for a missing sku") makes some historical streams impossible to load.</p>`, code: `class CartRowBrute {
+    final Map<String, Integer> items = new HashMap<>();
+    void changeQty(String sku, int q) {
+        if (!items.containsKey(sku)) throw new IllegalStateException("unknown sku");   // validation inside replay: old streams may fail to load
+        items.put(sku, q);
+    }
+}` },
+    mcq: { q: 'During replay you find QuantityChanged for a sku that is not in the cart (an old bug wrote it). Best behaviour?', options: ['Apply defensively (ignore or treat as add) — never throw during replay; fix future writes in decide', 'Throw and refuse to load the cart', 'Delete the event from the store', 'Skip the whole stream'], answer: 0, explain: 'Replay must be total. Historical oddities are handled leniently in apply; correctness rules are enforced when new commands are decided.' },
+    hints: [`<p>Hint 1: Use a sealed interface of records and a <code>switch</code> with pattern matching in <code>apply</code>.</p>`, `<p>Hint 2: Keep items in a <code>LinkedHashMap&lt;String, Line&gt;</code> so output order is stable.</p>`, `<p>Hint 3: <code>stateAt(k)</code> is just <code>replay(events.subList(0, k))</code>.</p>`],
+    solution: {
+      approach: `<p>A mutable <code>Cart</code> state with an <code>apply(event)</code> switch; <code>replay</code> folds the list. Unknown skus in <code>QuantityChanged</code> are ignored rather than thrown. Total = sum(qty × price) × (100 − coupon) / 100 with integer rounding.</p>`,
+      code: `sealed interface CartEvent permits ItemAdded, QuantityChanged, ItemRemoved, CouponApplied, CheckedOut {}
+record ItemAdded(String sku, int qty, long unitPrice) implements CartEvent {}
+record QuantityChanged(String sku, int qty) implements CartEvent {}
+record ItemRemoved(String sku) implements CartEvent {}
+record CouponApplied(int percent) implements CartEvent {}
+record CheckedOut() implements CartEvent {}
+
+class Cart {
+    record Line(int qty, long unitPrice) {}
+    final Map<String, Line> items = new LinkedHashMap<>();
+    int coupon; boolean checkedOut;
+
+    void apply(CartEvent e) {
+        switch (e) {
+            case ItemAdded a -> items.merge(a.sku(), new Line(a.qty(), a.unitPrice()), (o, n) -> new Line(o.qty() + n.qty(), n.unitPrice()));
+            case QuantityChanged q -> items.computeIfPresent(q.sku(), (k, l) -> new Line(q.qty(), l.unitPrice()));   // lenient: ignore unknown sku
+            case ItemRemoved r -> items.remove(r.sku());
+            case CouponApplied c -> coupon = c.percent();
+            case CheckedOut c -> checkedOut = true;
+        }
+    }
+    long subtotal() { return items.values().stream().mapToLong(l -> l.qty() * l.unitPrice()).sum(); }
+    long total() { return subtotal() * (100 - coupon) / 100; }
+
+    static Cart replay(List<CartEvent> events) { Cart c = new Cart(); events.forEach(c::apply); return c; }
+    static Cart stateAt(List<CartEvent> events, int k) { return replay(events.subList(0, Math.min(k, events.size()))); }
+
+    public static void main(String[] args) {
+        List<CartEvent> log = List.of(new ItemAdded("tea", 2, 12_000), new ItemAdded("mug", 1, 25_000),
+            new QuantityChanged("tea", 3), new CouponApplied(10), new ItemRemoved("mug"), new QuantityChanged("ghost", 9));
+        Cart now = replay(log);
+        System.out.println(now.items + " subtotal=" + now.subtotal() + " total=" + now.total() + " checkedOut=" + now.checkedOut);
+        Cart early = stateAt(log, 2);
+        System.out.println(early.items + " total=" + early.total());
+    }
+}`,
+      complexity: `<p>O(E) for E events, O(distinct skus) memory. Snapshots make repeated loads O(events since snapshot).</p>`,
+      followUps: ['How would a projection compute "most-removed products" across all carts?', 'What if the unit price changes between two ItemAdded events for the same sku?', 'Where do the rules "max 10 per sku" and "no edits after checkout" go?']
+    }
+  });
+
+  /* ======================= PRACTICE: MEDIUM ======================= */
+  practice.push({
+    title: 'Library System: Find the Aggregate Boundaries', level: 'Medium', tags: ['aggregate', 'boundary', 'reference by id'], companies: ['Amazon', 'Oracle', 'ThoughtWorks'],
+    statement: `<p>Library rules: (1) a member can hold at most 5 loans at once; (2) a <b>copy</b> (physical book) can be lent to only one member at a time; (3) a member with unpaid fines ≥ ₹100 cannot borrow; (4) a <b>title</b> (ISBN) can have many copies; catalog data (author, summary) is edited by librarians. Decide the aggregates, what each holds, how they reference each other, and implement <code>borrow(memberId, copyId)</code> so that both invariants (1)–(3) and (2) hold. Explain which rule is checked in which aggregate.</p>`,
+    constraints: `100k members, 1M copies. Two librarians may lend at the same moment. One aggregate per transaction is preferred; explain any exception.`,
+    example: `<p>Aggregates: ${H.chips(['Member (loanCount, fines)', 'Copy (status, borrower id)', 'Title (catalog data)'], { label: 'three small aggregates' })} Asha with 5 loans borrows copy c9 → ${H.c('r', 'rejected by Member')}. Ravi borrows c9 already lent → ${H.c('r', 'rejected by Copy')}.</p>`,
+    brute: { why: `<p>One giant <code>Library</code> object holding all members, titles and copies. Every borrow locks the whole library (no concurrency), loading it means loading millions of objects, and catalog edits conflict with lending.</p>`, code: `class LibraryBrute {
+    final Map<String, List<String>> loansByMember = new HashMap<>();   // everything in one object
+    final Map<String, String> copyHolder = new HashMap<>();
+    synchronized void borrow(String member, String copy) {              // one lock for the entire library
+        if (copyHolder.containsKey(copy)) throw new IllegalStateException("copy taken");
+        loansByMember.computeIfAbsent(member, k -> new ArrayList<>()).add(copy);
+        copyHolder.put(copy, member);
+    }
+}` },
+    mcq: { q: 'Rule (2) "one borrower per copy" must be instant. Which aggregate owns it?', options: ['Copy — status and borrower id live there; concurrent lends of the same copy conflict on its version', 'Member', 'Title', 'A global Library aggregate'], answer: 0, explain: 'The invariant needs only the copy\'s own state, so a small Copy aggregate enforces it and optimistic locking on that copy serialises racing lends.' },
+    hints: [`<p>Hint 1: List each rule and the data it needs: loans count + fines → Member; copy status → Copy; catalog → Title.</p>`, `<p>Hint 2: <code>borrow</code> touches Member and Copy. Options: (a) modify both in one transaction (pragmatic, documented exception), or (b) Copy first, then a <code>CopyLent</code> event updates Member, with a compensating return if Member rejects.</p>`, `<p>Hint 3: Reference by ID: <code>Copy.borrower</code> is a <code>MemberId</code>, <code>Copy.title</code> is an ISBN; Member keeps a set of <code>CopyId</code>s (bounded by 5).</p>`],
+    solution: {
+      approach: `<p>Three aggregates: <b>Member</b> (active loan copy IDs ≤ 5, fines), <b>Copy</b> (AVAILABLE/LENT, borrower MemberId, ISBN), <b>Title</b> (catalog). Borrowing checks Member rules via <code>member.canBorrow()</code> + <code>member.recordLoan</code>, and Copy rules via <code>copy.lendTo</code>. Here both are saved in one unit of work (an explicit, small exception justified because both are tiny and the rule must be instant); the eventual alternative is described in follow-ups. Versions on both aggregates prevent double lending under concurrency.</p>`,
+      code: `record MemberId(String v) {} record CopyId(String v) {} record Isbn(String v) {}
+
+final class Member {
+    static final int MAX = 5; static final long FINE_BLOCK = 10_000;
+    final MemberId id; private final Set<CopyId> loans = new LinkedHashSet<>(); private long finesPaise; long version;
+    Member(MemberId id, long fines) { this.id = id; this.finesPaise = fines; }
+    void recordLoan(CopyId c) {
+        if (finesPaise >= FINE_BLOCK) throw new IllegalStateException("unpaid fines");
+        if (loans.size() >= MAX) throw new IllegalStateException("loan limit " + MAX);
+        loans.add(c);
+    }
+    void recordReturn(CopyId c) { loans.remove(c); }
+    int loanCount() { return loans.size(); }
+}
+final class Copy {
+    enum Status { AVAILABLE, LENT }
+    final CopyId id; final Isbn title; private Status status = Status.AVAILABLE; private MemberId borrower; long version;
+    Copy(CopyId id, Isbn title) { this.id = id; this.title = title; }
+    void lendTo(MemberId m) { if (status == Status.LENT) throw new IllegalStateException("copy already lent"); status = Status.LENT; borrower = m; }
+    void giveBack() { status = Status.AVAILABLE; borrower = null; }
+    Optional<MemberId> borrower() { return Optional.ofNullable(borrower); }
+}
+
+class LendingService {
+    final Map<MemberId, Member> members = new HashMap<>(); final Map<CopyId, Copy> copies = new HashMap<>();
+    String borrow(MemberId m, CopyId c) {
+        Member member = members.get(m); Copy copy = copies.get(c);
+        try {
+            copy.lendTo(m);                       // Copy invariant: one borrower
+            try { member.recordLoan(c); }         // Member invariants: limit + fines
+            catch (IllegalStateException e) { copy.giveBack(); throw e; }   // keep both consistent (one unit of work)
+            copy.version++; member.version++;     // save both
+            return "OK " + m.v() + " <- " + c.v();
+        } catch (IllegalStateException e) { return "REJECTED " + m.v() + " " + c.v() + ": " + e.getMessage(); }
+    }
+    public static void main(String[] args) {
+        LendingService s = new LendingService();
+        MemberId asha = new MemberId("asha"), ravi = new MemberId("ravi"), dev = new MemberId("dev");
+        s.members.put(asha, new Member(asha, 0)); s.members.put(ravi, new Member(ravi, 0)); s.members.put(dev, new Member(dev, 15_000));
+        for (int i = 1; i <= 7; i++) { CopyId c = new CopyId("c" + i); s.copies.put(c, new Copy(c, new Isbn("978-1"))); }
+        for (int i = 1; i <= 6; i++) System.out.println(s.borrow(asha, new CopyId("c" + i)));   // 6th rejected
+        System.out.println(s.borrow(ravi, new CopyId("c1")));   // copy already lent
+        System.out.println(s.borrow(dev, new CopyId("c7")));    // fines
+        System.out.println("c6 still available? " + s.copies.get(new CopyId("c6")).borrower().isEmpty());
+    }
+}`,
+      complexity: `<p>O(1) per borrow; each aggregate is tiny (Member ≤ 5 loan IDs). Contention only when two people want the same copy or the same member acts twice concurrently.</p>`,
+      followUps: ['Rewrite borrow with eventual consistency: Copy lent → CopyLent event → Member.recordLoan, with CopyReturnForced as compensation.', 'Where do reservations (waitlist per title) live?', 'Why should Title not hold a list of all its Copy objects?']
+    }
+  });
+
+  practice.push({
+    title: 'Payment Methods as Plugins with Capability Selection', level: 'Medium', tags: ['plugin', 'registry', 'open closed'], companies: ['Razorpay', 'Stripe', 'Adyen'],
+    statement: `<p>Checkout must show the payment methods that support the buyer's <b>country</b>, <b>currency</b> and <b>amount</b>, sorted by a plugin-provided priority. Plugins: UPI (IN, INR, ≤ ₹1,00,000), Card (any country, INR/USD), PayPal (US/GB, USD/GBP), BNPL (IN, INR, ₹1,000–₹50,000). Requirements: adding a method never edits checkout code; a plugin whose <code>supports</code> throws is skipped and logged; a disabled plugin (by config) never appears; <code>pay(methodId, …)</code> routes to the plugin.</p>`,
+    constraints: `Up to 50 plugins; selection per checkout must be fast. Plugins are third-party code: do not trust them not to throw.`,
+    example: `<p>Buyer IN, INR, ₹2,000 → ${H.chips(['UPI (p1)', 'BNPL (p2)', 'Card (p3)'])}. Buyer US, USD, $50 → ${H.chips(['PayPal', 'Card'])}. Config disables BNPL → it disappears without code changes.</p>`,
+    brute: { why: `<p><code>CheckoutService.methodsFor()</code> is a chain of if/else per method, with country and amount rules for every provider inline. Every new provider or rule change edits and redeploys checkout; a bug in one branch hides all methods.</p>`, code: `class CheckoutBrute {
+    List<String> methodsFor(String country, String cur, long amount) {
+        List<String> out = new ArrayList<>();
+        if (country.equals("IN") && cur.equals("INR") && amount <= 10_000_000) out.add("UPI");
+        if (cur.equals("INR") || cur.equals("USD")) out.add("CARD");
+        if ((country.equals("US") || country.equals("GB")) && !cur.equals("INR")) out.add("PAYPAL");
+        // a new provider = another if here, in the core checkout code
+        return out;
+    }
+}` },
+    mcq: { q: 'A plugin\'s supports() throws NullPointerException for some country. What should the registry do?', options: ['Catch it, log with the plugin id, treat as "not supported" and continue', 'Let the checkout page fail', 'Remove all plugins', 'Retry forever'], answer: 0, explain: 'Plugin failures are isolated at the boundary; the core degrades gracefully.' },
+    hints: [`<p>Hint 1: Extension point: <code>id()</code>, <code>priority()</code>, <code>supports(PaymentContext)</code>, <code>pay(...)</code>.</p>`, `<p>Hint 2: <code>PaymentContext</code> is a record (country, currency, amountMinor) — a value object handed to plugins, so they cannot mutate core state.</p>`, `<p>Hint 3: <code>available(ctx)</code> = filter enabled → safe supports → sort by priority then id.</p>`],
+    solution: {
+      approach: `<p>The core defines <code>PaymentPlugin</code> and an immutable <code>PaymentContext</code>. A <code>PaymentRegistry</code> holds plugins by id, filters by config and capability with a guarded call, sorts by priority, and routes <code>pay</code> by id. Each provider is one class; config is a plain set of disabled ids.</p>`,
+      code: `record PaymentContext(String country, String currency, long amountMinor) {}
+
+interface PaymentPlugin {
+    String id(); int priority();
+    boolean supports(PaymentContext ctx);
+    String pay(PaymentContext ctx, String ref);
+}
+
+class PaymentRegistry {
+    private final Map<String, PaymentPlugin> plugins = new LinkedHashMap<>();
+    private final Set<String> disabled;
+    final List<String> log = new ArrayList<>();
+    PaymentRegistry(Set<String> disabled) { this.disabled = disabled; }
+    void register(PaymentPlugin p) { if (plugins.putIfAbsent(p.id(), p) != null) throw new IllegalArgumentException("duplicate " + p.id()); }
+
+    List<String> available(PaymentContext ctx) {
+        return plugins.values().stream()
+            .filter(p -> !disabled.contains(p.id()))
+            .filter(p -> safeSupports(p, ctx))
+            .sorted(Comparator.comparingInt(PaymentPlugin::priority).thenComparing(PaymentPlugin::id))
+            .map(PaymentPlugin::id).toList();
+    }
+    private boolean safeSupports(PaymentPlugin p, PaymentContext ctx) {
+        try { return p.supports(ctx); } catch (RuntimeException e) { log.add(p.id() + " supports() failed: " + e); return false; }
+    }
+    String pay(String id, PaymentContext ctx, String ref) {
+        if (!available(ctx).contains(id)) throw new IllegalArgumentException(id + " not available for " + ctx);
+        return plugins.get(id).pay(ctx, ref);
+    }
+}
+
+class Upi implements PaymentPlugin {
+    public String id() { return "upi"; } public int priority() { return 1; }
+    public boolean supports(PaymentContext c) { return c.country().equals("IN") && c.currency().equals("INR") && c.amountMinor() <= 10_000_000; }
+    public String pay(PaymentContext c, String ref) { return "UPI collect request for " + ref; }
+}
+class Card implements PaymentPlugin {
+    public String id() { return "card"; } public int priority() { return 3; }
+    public boolean supports(PaymentContext c) { return Set.of("INR", "USD").contains(c.currency()); }
+    public String pay(PaymentContext c, String ref) { return "card auth for " + ref; }
+}
+class PayPal implements PaymentPlugin {
+    public String id() { return "paypal"; } public int priority() { return 2; }
+    public boolean supports(PaymentContext c) { return Set.of("US", "GB").contains(c.country()) && Set.of("USD", "GBP").contains(c.currency()); }
+    public String pay(PaymentContext c, String ref) { return "paypal redirect for " + ref; }
+}
+class Bnpl implements PaymentPlugin {
+    public String id() { return "bnpl"; } public int priority() { return 2; }
+    public boolean supports(PaymentContext c) { return c.country().equals("IN") && c.amountMinor() >= 100_000 && c.amountMinor() <= 5_000_000; }
+    public String pay(PaymentContext c, String ref) { return "bnpl plan for " + ref; }
+}
+class Flaky implements PaymentPlugin {
+    public String id() { return "flaky"; } public int priority() { return 0; }
+    public boolean supports(PaymentContext c) { throw new NullPointerException("region table not loaded"); }
+    public String pay(PaymentContext c, String ref) { return "never"; }
+}
+
+class PaymentDemo {
+    public static void main(String[] args) {
+        PaymentRegistry reg = new PaymentRegistry(Set.of());
+        List.of(new Upi(), new Card(), new PayPal(), new Bnpl(), new Flaky()).forEach(reg::register);
+        PaymentContext in = new PaymentContext("IN", "INR", 200_000);
+        System.out.println(reg.available(in));                                         // [upi, bnpl, card]
+        System.out.println(reg.available(new PaymentContext("US", "USD", 5_000)));    // [paypal, card]
+        System.out.println(reg.pay("upi", in, "order-17"));
+        PaymentRegistry noBnpl = new PaymentRegistry(Set.of("bnpl"));
+        List.of(new Upi(), new Card(), new Bnpl()).forEach(noBnpl::register);
+        System.out.println(noBnpl.available(in) + " " + reg.log);
+    }
+}`,
+      complexity: `<p>O(P log P) per checkout for P plugins (tiny). Adding a method: one class + one registration (or a ServiceLoader entry).</p>`,
+      followUps: ['How would you A/B test the ordering of payment methods without touching plugins?', 'How do you time-box a slow supports() call?', 'How would plugins declare required config (API keys) and fail startup cleanly if missing?']
+    }
+  });
+
+  practice.push({
+    title: 'Hotel Booking: Model the Domain with a No-Overlap Invariant', level: 'Medium', tags: ['aggregate', 'value object', 'repository', 'invariants'], companies: ['Booking.com', 'OYO', 'Airbnb', 'MakeMyTrip'],
+    statement: `<p>Model hotel room booking. A <b>room</b> cannot have two confirmed bookings with overlapping dates (checkout day may equal the next check-in day). Bookings can be cancelled (frees the dates). Price = nightly rate × nights, with weekend nights (Fri, Sat) at +20%. Identify entities, value objects and the aggregate that owns the no-overlap rule; implement it with a repository port and in-memory adapter with optimistic locking.</p>`,
+    constraints: `Thousands of bookings per room per year. Two guests may try to book the same room for overlapping dates at the same time.`,
+    example: `<p>Room 101: booked 1–4 May (${H.c('g', 'ok')}), 4–6 May (${H.c('g', 'ok, checkout = check-in')}), 3–5 May (${H.c('r', 'overlap')}). Cancel 1–4 May, then 3–5 May overlaps 4–6 May → still ${H.c('r', 'rejected')}. Price for Thu–Sun (3 nights: Thu, Fri, Sat) at ₹3,000 = 3000 + 3600 + 3600 = ${H.c('b', '₹10,200')}.</p>`,
+    brute: { why: `<p><code>BookingService</code> queries "any overlapping booking?" then inserts a new <code>Booking</code> row. Two concurrent requests both see "no overlap" and both insert: double booking. Dates are strings, so <code>end &lt; start</code> slips through, and price logic lives in the controller.</p>`, code: `class BookingServiceBrute {
+    final List<String[]> rows = new ArrayList<>();          // {room, start, end} as strings
+    void book(String room, String start, String end) {
+        boolean clash = rows.stream().anyMatch(r -> r[0].equals(room) && r[1].compareTo(end) < 0 && start.compareTo(r[2]) < 0);
+        // race window: another request can insert here
+        if (!clash) rows.add(new String[]{room, start, end});
+    }
+}` },
+    mcq: { q: 'Which aggregate best enforces "no overlapping bookings for a room"?', options: ['RoomCalendar (per room): holds that room\'s confirmed date ranges and a version', 'Booking (each booking is independent)', 'Hotel (all rooms and all bookings)', 'Guest'], answer: 0, explain: 'The invariant needs all bookings of one room together, instantly. A per-room calendar is the smallest boundary that contains that data; its version serialises concurrent bookings for the same room only.' },
+    hints: [`<p>Hint 1: Value objects: <code>DateRange</code> (half-open [start, end)), <code>Money</code>/<code>long paise</code>, <code>RoomNo</code>. Entity inside the aggregate: <code>Reservation</code> with id and status.</p>`, `<p>Hint 2: <code>RoomCalendar.reserve(range, guest)</code> checks overlap against CONFIRMED reservations only.</p>`, `<p>Hint 3: To keep the aggregate small, keep only future reservations (archive past ones). Pricing is a pure function over the DateRange.</p>`],
+    solution: {
+      approach: `<p><code>DateRange</code> VO owns overlap and night iteration. <code>RoomCalendar</code> aggregate (root) holds reservations for one room and enforces no-overlap; cancel marks a reservation CANCELLED. <code>Pricing</code> is a pure function. The repository stores per-room snapshots with a version and rejects stale saves; the service retries on conflict.</p>`,
+      code: `record DateRange(LocalDate start, LocalDate end) {                 // [start, end)
+    DateRange { if (!start.isBefore(end)) throw new IllegalArgumentException("start < end required"); }
+    boolean overlaps(DateRange o) { return start.isBefore(o.end) && o.start.isBefore(end); }
+    List<LocalDate> nights() { return start.datesUntil(end).toList(); }
+}
+
+final class Pricing {
+    static long price(DateRange r, long nightly) {
+        long total = 0;
+        for (LocalDate d : r.nights()) {
+            boolean weekend = d.getDayOfWeek() == DayOfWeek.FRIDAY || d.getDayOfWeek() == DayOfWeek.SATURDAY;
+            total += weekend ? nightly * 120 / 100 : nightly;
+        }
+        return total;
+    }
+}
+
+final class RoomCalendar {                                         // aggregate root, one per room
+    enum Status { CONFIRMED, CANCELLED }
+    static final class Reservation { final String id, guest; final DateRange range; Status status = Status.CONFIRMED;
+        Reservation(String id, String guest, DateRange r) { this.id = id; this.guest = guest; this.range = r; } }
+    final String room; long version; private final Map<String, Reservation> reservations = new LinkedHashMap<>();
+    RoomCalendar(String room) { this.room = room; }
+
+    String reserve(String id, String guest, DateRange r) {
+        for (Reservation x : reservations.values())
+            if (x.status == Status.CONFIRMED && x.range.overlaps(r)) throw new IllegalStateException(room + " busy " + x.range.start() + ".." + x.range.end());
+        reservations.put(id, new Reservation(id, guest, r));
+        return id;
+    }
+    void cancel(String id) {
+        Reservation x = reservations.get(id);
+        if (x == null || x.status == Status.CANCELLED) throw new IllegalStateException("nothing to cancel");
+        x.status = Status.CANCELLED;
+    }
+    RoomCalendar copy() { RoomCalendar c = new RoomCalendar(room); c.version = version;
+        reservations.forEach((k, v) -> { Reservation n = new Reservation(v.id, v.guest, v.range); n.status = v.status; c.reservations.put(k, n); }); return c; }
+}
+
+interface RoomCalendarRepository { RoomCalendar load(String room); void save(RoomCalendar c); }
+class InMemoryCalendars implements RoomCalendarRepository {
+    private final Map<String, RoomCalendar> db = new HashMap<>();
+    public synchronized RoomCalendar load(String room) { return db.computeIfAbsent(room, RoomCalendar::new).copy(); }
+    public synchronized void save(RoomCalendar c) {
+        RoomCalendar cur = db.get(c.room);
+        if (cur != null && cur.version != c.version) throw new IllegalStateException("conflict on " + c.room);
+        RoomCalendar s = c.copy(); s.version++; db.put(c.room, s);
+    }
+}
+
+class BookingDemo {
+    static final LocalDate MAY = LocalDate.of(2026, 5, 1);
+    static String book(RoomCalendarRepository repo, String room, String id, int from, int to) {
+        RoomCalendar cal = repo.load(room);
+        try { cal.reserve(id, "guest-" + id, new DateRange(MAY.plusDays(from - 1), MAY.plusDays(to - 1))); repo.save(cal); return id + " ok"; }
+        catch (IllegalStateException e) { return id + " rejected: " + e.getMessage(); }
+    }
+    public static void main(String[] args) {
+        RoomCalendarRepository repo = new InMemoryCalendars();
+        System.out.println(book(repo, "101", "b1", 1, 4) + " | " + book(repo, "101", "b2", 4, 6) + " | " + book(repo, "101", "b3", 3, 5));
+        RoomCalendar cal = repo.load("101"); cal.cancel("b1"); repo.save(cal);
+        System.out.println(book(repo, "101", "b4", 3, 5));                          // still overlaps b2
+        RoomCalendar x = repo.load("101"), y = repo.load("101");                     // race for 10..12
+        x.reserve("r1", "a", new DateRange(MAY.plusDays(9), MAY.plusDays(11))); repo.save(x);
+        y.reserve("r2", "b", new DateRange(MAY.plusDays(9), MAY.plusDays(11)));
+        try { repo.save(y); } catch (IllegalStateException e) { System.out.println("second guest: " + e.getMessage()); }
+        System.out.println("Thu-Sun price: " + Pricing.price(new DateRange(LocalDate.of(2026, 5, 7), LocalDate.of(2026, 5, 10)), 3000));
+    }
+}`,
+      complexity: `<p>O(R) overlap check for R future reservations of one room (use a <code>TreeMap</code> keyed by start date for O(log R)). Contention is per room, not per hotel.</p>`,
+      followUps: ['How would "hold for 10 minutes during payment" fit (a HELD status with expiry)?', 'If a room type (not a specific room) is booked, where does the invariant move?', 'How do you price with dynamic rates without putting the rate engine inside the aggregate?']
+    }
+  });
+
+  practice.push({
+    title: 'Expense Approvals as a Hexagon with Two Driving Adapters', level: 'Medium', tags: ['hexagonal', 'ports', 'use case'], companies: ['SAP', 'Zoho', 'Expensify'],
+    statement: `<p>Employees submit expenses; managers approve or reject. Rules: amount &gt; 0; expenses above ₹50,000 need a second approval from finance; an expense unapproved after 7 days is auto-escalated. Build the core with ports and two <b>driving adapters</b>: a command-line adapter (submit/approve) and a <b>scheduler adapter</b> that triggers escalation. Outbound ports: repository, notifier, clock. Show both adapters calling the same core.</p>`,
+    constraints: `No frameworks. Use cases must be testable with in-memory adapters. Escalation must be idempotent (running the job twice does not notify twice).`,
+    example: `<p>Submit ₹80,000 (day 0) → manager approves → status ${H.c('y', 'NEEDS_FINANCE')}. Submit ₹2,000 (day 0) → no action → scheduler on day 8 → ${H.c('r', 'ESCALATED')}, one notification; scheduler again → no new notification.</p>`,
+    brute: { why: `<p>An <code>ExpenseController</code> handles HTTP, the approval rules, SQL and email; the nightly cron is a separate script that copy-pastes the rules with raw SQL. The two drift apart; testing escalation means waiting a week or editing DB timestamps.</p>`, code: `class ExpenseControllerBrute {
+    final Map<String, String> status = new HashMap<>();
+    void approve(String id, long amount) {
+        status.put(id, amount > 5_000_000 ? "NEEDS_FINANCE" : "APPROVED");   // rule copy #1
+        System.out.println("SMTP: approved " + id);
+    }
+}
+// escalate.sh: UPDATE expenses SET status='ESCALATED' WHERE created < now() - 7  -- rule copy #2, no notification dedupe` },
+    mcq: { q: 'The nightly scheduler is which kind of adapter?', options: ['A driving (inbound) adapter: it calls an inbound port such as EscalateOverdueUseCase', 'A driven adapter implementing a repository', 'Part of the domain', 'Not an adapter; it should contain the escalation rules'], answer: 0, explain: 'Anything that triggers the application — HTTP, CLI, cron, a message — is a driving adapter. It contains no rules; it just calls the use case.' },
+    hints: [`<p>Hint 1: Domain: <code>Expense</code> with status machine SUBMITTED → APPROVED | NEEDS_FINANCE → APPROVED, REJECTED, ESCALATED; method <code>escalateIfOverdue(now)</code> returns whether it changed.</p>`, `<p>Hint 2: Inbound ports: <code>SubmitExpense</code>, <code>ApproveExpense</code>, <code>EscalateOverdue</code>. Outbound: <code>ExpenseRepository</code>, <code>Notifier</code>, <code>Clock</code>.</p>`, `<p>Hint 3: Idempotency for free: <code>escalateIfOverdue</code> returns false when already escalated, and only a true result triggers notification.</p>`],
+    solution: {
+      approach: `<p>The <code>Expense</code> entity owns all state transitions. One application service implements three inbound ports. The CLI adapter parses text commands; the scheduler adapter simply calls <code>escalateOverdue()</code>. Both run against the same service, wired in the composition root with in-memory repository, a recording notifier and a mutable test clock.</p>`,
+      code: `enum ExpenseStatus { SUBMITTED, NEEDS_FINANCE, APPROVED, REJECTED, ESCALATED }
+
+class Expense {
+    static final long FINANCE_LIMIT = 5_000_000;
+    final String id, employee; final long amount; final Instant submittedAt; ExpenseStatus status = ExpenseStatus.SUBMITTED;
+    Expense(String id, String employee, long amount, Instant at) {
+        if (amount <= 0) throw new IllegalArgumentException("amount > 0");
+        this.id = id; this.employee = employee; this.amount = amount; this.submittedAt = at;
+    }
+    void approveByManager() { require(ExpenseStatus.SUBMITTED, ExpenseStatus.ESCALATED); status = amount > FINANCE_LIMIT ? ExpenseStatus.NEEDS_FINANCE : ExpenseStatus.APPROVED; }
+    void approveByFinance() { require(ExpenseStatus.NEEDS_FINANCE); status = ExpenseStatus.APPROVED; }
+    boolean escalateIfOverdue(Instant now) {
+        if (status != ExpenseStatus.SUBMITTED || now.isBefore(submittedAt.plus(Duration.ofDays(7)))) return false;
+        status = ExpenseStatus.ESCALATED; return true;
+    }
+    private void require(ExpenseStatus... ok) { if (!Arrays.asList(ok).contains(status)) throw new IllegalStateException(id + " is " + status); }
+}
+
+interface SubmitExpense { String submit(String employee, long amount); }            // inbound ports
+interface ApproveExpense { ExpenseStatus approve(String id, String role); }
+interface EscalateOverdue { int escalateOverdue(); }
+interface ExpenseRepository { void save(Expense e); Expense get(String id); List<Expense> all(); }  // outbound
+interface Notifier { void notify(String msg); }
+
+class ExpenseService implements SubmitExpense, ApproveExpense, EscalateOverdue {
+    private final ExpenseRepository repo; private final Notifier notifier; private final Clock clock; private int seq;
+    ExpenseService(ExpenseRepository r, Notifier n, Clock c) { repo = r; notifier = n; clock = c; }
+    public String submit(String emp, long amount) { Expense e = new Expense("x" + (++seq), emp, amount, clock.instant()); repo.save(e); return e.id; }
+    public ExpenseStatus approve(String id, String role) {
+        Expense e = repo.get(id);
+        if (role.equals("finance")) e.approveByFinance(); else e.approveByManager();
+        repo.save(e); return e.status;
+    }
+    public int escalateOverdue() {
+        int n = 0;
+        for (Expense e : repo.all()) if (e.escalateIfOverdue(clock.instant())) { repo.save(e); notifier.notify("escalated " + e.id); n++; }
+        return n;
+    }
+}
+
+class InMemoryExpenses implements ExpenseRepository {
+    private final Map<String, Expense> m = new LinkedHashMap<>();
+    public void save(Expense e) { m.put(e.id, e); } public Expense get(String id) { return m.get(id); } public List<Expense> all() { return List.copyOf(m.values()); }
+}
+class MutableClock extends Clock {                                   // test clock we can move forward
+    Instant now; MutableClock(Instant start) { now = start; }
+    public ZoneId getZone() { return ZoneOffset.UTC; } public Clock withZone(ZoneId z) { return this; } public Instant instant() { return now; }
+}
+class ExpenseCli {                                                   // driving adapter #1
+    private final SubmitExpense submit; private final ApproveExpense approve;
+    ExpenseCli(SubmitExpense s, ApproveExpense a) { submit = s; approve = a; }
+    String run(String line) {
+        String[] p = line.split(" ");
+        try {
+            return switch (p[0]) {
+                case "submit" -> submit.submit(p[1], Long.parseLong(p[2]) * 100);
+                case "approve" -> approve.approve(p[1], p[2]).toString();
+                default -> "usage: submit <emp> <rupees> | approve <id> <manager|finance>";
+            };
+        } catch (RuntimeException e) { return "error: " + e.getMessage(); }
+    }
+}
+class NightlyEscalationJob {                                         // driving adapter #2
+    private final EscalateOverdue useCase; NightlyEscalationJob(EscalateOverdue u) { useCase = u; }
+    void tick() { System.out.println("job escalated " + useCase.escalateOverdue()); }
+}
+
+class ExpenseApp {
+    public static void main(String[] args) {
+        MutableClock clock = new MutableClock(Instant.parse("2026-01-01T09:00:00Z"));
+        List<String> sent = new ArrayList<>();
+        ExpenseService svc = new ExpenseService(new InMemoryExpenses(), sent::add, clock);
+        ExpenseCli cli = new ExpenseCli(svc, svc); NightlyEscalationJob job = new NightlyEscalationJob(svc);
+        String big = cli.run("submit asha 80000"), small = cli.run("submit ravi 2000");
+        System.out.println(cli.run("approve " + big + " manager"));      // NEEDS_FINANCE
+        clock.now = clock.now.plus(Duration.ofDays(8));
+        job.tick(); job.tick();                                          // 1 then 0: idempotent
+        System.out.println(cli.run("approve " + big + " finance") + " " + sent);
+    }
+}`,
+      complexity: `<p>O(1) per approval; escalation O(N) over open expenses (a real repository would query only SUBMITTED ones older than 7 days).</p>`,
+      followUps: ['How would a third driving adapter (Slack bot buttons) be added?', 'Where would you put "managers cannot approve their own expenses"?', 'How do you prevent two scheduler instances escalating concurrently? (Optimistic locking or a job lock port.)']
+    }
+  });
+
+  practice.push({
+    title: 'Build an Account Statement Projection with Checkpoints', level: 'Medium', tags: ['event sourcing', 'projection', 'cqrs', 'idempotency'], companies: ['Goldman Sachs', 'Revolut', 'PhonePe'],
+    statement: `<p>An event store has a <b>global ordered feed</b> of events from many account streams: <code>(position, accountId, type, amount, day)</code>. Build a <code>StatementProjection</code> that maintains, per account, the running balance and a list of statement lines, and per day the total volume. It must track a <b>checkpoint</b> (last processed position) so it can resume after a crash, ignore already-processed positions on redelivery, and be <b>rebuildable from scratch</b>.</p>`,
+    constraints: `Millions of events; projection processes them in batches. Redelivery after crash is possible (at-least-once).`,
+    example: `<p>Feed: 1 A Dep 100 d1, 2 B Dep 50 d1, 3 A Wd 30 d2 → A: balance ${H.c('b', '70')}, lines [+100, −30]; B: 50; volume d1=150, d2=30; checkpoint 3. Crash after position 2 and redeliver 1..3 → same result (positions ≤ checkpoint skipped).</p>`,
+    brute: { why: `<p>The UI computes statements by reading every event of every account on each page view (O(all events) per request), or the projection blindly applies every delivered message, so a redelivery after a crash doubles deposits.</p>`, code: `class StatementBrute {
+    static long balance(List<long[]> allEvents, long account) {          // {pos, account, sign*amount}
+        long b = 0;
+        for (long[] e : allEvents) if (e[1] == account) b += e[2];     // full scan on every page view
+        return b;
+    }
+}` },
+    mcq: { q: 'The projection crashes after updating balances for position 42 but before saving checkpoint 42. On restart, position 42 is delivered again. What prevents a double count?', options: ['Store the checkpoint atomically with the read-model update (same transaction), or make each update idempotent per position', 'Nothing: projections are approximate', 'Delete the event', 'Increase the batch size'], answer: 0, explain: 'Projection state and checkpoint must move together, or each event\'s effect must be idempotent. Then at-least-once delivery yields exactly-once results.' },
+    hints: [`<p>Hint 1: Projection state = <code>Map&lt;account, Long&gt;</code> balances, <code>Map&lt;account, List&lt;String&gt;&gt;</code> lines, <code>Map&lt;day, Long&gt;</code> volume, <code>long checkpoint</code>.</p>`, `<p>Hint 2: <code>handle(event)</code>: if <code>position ≤ checkpoint</code> return; else update all maps and set checkpoint = position (atomically in a real DB).</p>`, `<p>Hint 3: <code>rebuild(feed)</code> = new empty projection + handle every event. Compare with the live one to verify.</p>`],
+    solution: {
+      approach: `<p>The projection is a pure consumer of the global feed. Each event updates three read structures and advances the checkpoint. Positions at or below the checkpoint are skipped, making redelivery harmless. Rebuild creates a fresh instance and replays from position 1.</p>`,
+      code: `record FeedEvent(long position, String account, String type, long amount, String day) {}
+
+class StatementProjection {
+    final Map<String, Long> balances = new TreeMap<>();
+    final Map<String, List<String>> lines = new TreeMap<>();
+    final Map<String, Long> volumeByDay = new TreeMap<>();
+    long checkpoint;
+
+    void handle(FeedEvent e) {
+        if (e.position() <= checkpoint) return;                           // already applied: idempotent skip
+        long signed = e.type().equals("Deposited") ? e.amount() : -e.amount();
+        balances.merge(e.account(), signed, Long::sum);
+        lines.computeIfAbsent(e.account(), k -> new ArrayList<>()).add(e.day() + " " + (signed > 0 ? "+" : "") + signed);
+        volumeByDay.merge(e.day(), e.amount(), Long::sum);
+        checkpoint = e.position();                                        // in a DB: same transaction as the updates
+    }
+    static StatementProjection rebuild(List<FeedEvent> feed) { StatementProjection p = new StatementProjection(); feed.forEach(p::handle); return p; }
+
+    public static void main(String[] args) {
+        List<FeedEvent> feed = List.of(new FeedEvent(1, "A", "Deposited", 100, "d1"), new FeedEvent(2, "B", "Deposited", 50, "d1"),
+            new FeedEvent(3, "A", "Withdrew", 30, "d2"), new FeedEvent(4, "B", "Withdrew", 10, "d2"));
+        StatementProjection live = new StatementProjection();
+        feed.subList(0, 2).forEach(live::handle);                         // processed 1..2, then "crash"
+        feed.forEach(live::handle);                                       // redelivery from position 1
+        System.out.println(live.balances + " " + live.lines + " " + live.volumeByDay + " cp=" + live.checkpoint);
+        System.out.println("rebuild matches: " + rebuild(feed).balances.equals(live.balances));
+    }
+}`,
+      complexity: `<p>O(1) amortised per event; reads are O(1) lookups instead of scans. Rebuild is O(total events) and can run in the background into a new table, then swap.</p>`,
+      followUps: ['How do you rebuild a projection without downtime (blue/green read tables)?', 'How would the UI show a just-made deposit before the projection catches up?', 'What if events for one account must be processed in order but different accounts in parallel?']
+    }
+  });
+  /* ======================= PRACTICE: HARD ======================= */
+  practice.push({
+    title: 'Event-Sourced Wallet with Snapshots and Concurrency Control', level: 'Hard', tags: ['event sourcing', 'snapshots', 'optimistic concurrency'], companies: ['Paytm', 'Stripe', 'Coinbase', 'JPMorgan'],
+    statement: `<p>Build an event-sourced wallet: commands <code>credit(amount, ref)</code>, <code>debit(amount, ref)</code>; rules: balance never negative, each <code>ref</code> processed at most once (payment-gateway retries reuse the ref), daily debit limit ₹20,000. Provide: an event store with per-stream <b>expected-version append</b>; <b>snapshots</b> every 50 events (load = snapshot + tail); a command handler that <b>retries</b> on version conflicts (reload, re-decide). Show two concurrent debits that would together overdraw the wallet: exactly one must succeed.</p>`,
+    constraints: `Streams up to 10<sup>6</sup> events; loading must not replay all of them. Amounts in paise. Clock injected.`,
+    example: `<p>Balance ₹1,000. Two tabs debit ₹800 at the same time: tab A appends at v7 ${H.c('g', 'ok')}; tab B's append at v7 ${H.c('r', 'conflicts')} → retry reloads (balance 200) → ${H.c('r', 'rejected: insufficient funds')}. A retried credit with the same ref → ${H.c('m', 'no new event (idempotent)')}.</p>`,
+    brute: { why: `<p>A <code>balance</code> column updated with <code>read → compute → write</code> in two requests loses an update (both read 1000, both write 200 — ₹1,600 spent, balance shows 200). Retries of the same gateway callback credit twice. Replaying a million events per request is too slow, so someone adds a cache that drifts from the truth.</p>`, code: `class WalletBrute {
+    long balance = 100_000;
+    void debit(long amt) {
+        long read = balance;                 // thread A and B both read 100000
+        if (read >= amt) balance = read - amt;   // both write 20000 -> lost update
+    }
+}` },
+    mcq: { q: 'Where is "each ref processed at most once" best enforced in an event-sourced wallet?', options: ['In decide: the wallet state keeps the set of processed refs (rebuilt from events), so a duplicate command produces no event', 'In apply: skip duplicate events', 'In the HTTP layer with a cache', 'It cannot be enforced with event sourcing'], answer: 0, explain: 'Idempotency is a business rule over the stream\'s history, so it belongs in command handling. The processed refs are part of the derived state (and of the snapshot).' },
+    hints: [`<p>Hint 1: State = balance, processed refs, debits per day, version. Snapshot = a copy of that state + its version.</p>`, `<p>Hint 2: <code>append(stream, expectedVersion, events)</code> throws if the stream length differs. Handler loop: load → decide → append; on conflict repeat up to N times.</p>`, `<p>Hint 3: Take a snapshot after an append crosses a multiple of 50; loading reads the latest snapshot and only events with version &gt; snapshot.version.</p>`],
+    solution: {
+      approach: `<p>Events: <code>Credited(ref, amount, day)</code>, <code>Debited(ref, amount, day)</code>. <code>WalletState</code> is derived via <code>apply</code>, includes processed refs and per-day debits, and is copyable for snapshots. <code>decide</code> returns zero or one event. The store enforces expected versions; the handler retries on conflict, re-deciding against fresh state, so the losing concurrent debit is correctly rejected.</p>`,
+      code: `sealed interface WalletEvent permits Credited, Debited {}
+record Credited(String ref, long amount, LocalDate day) implements WalletEvent {}
+record Debited(String ref, long amount, LocalDate day) implements WalletEvent {}
+
+class Conflict extends RuntimeException { Conflict() { super("version conflict"); } }
+
+final class WalletState {
+    long balance, version; final Set<String> refs = new HashSet<>(); final Map<LocalDate, Long> debitsByDay = new HashMap<>();
+    void apply(WalletEvent e) {
+        switch (e) {
+            case Credited c -> { balance += c.amount(); refs.add(c.ref()); }
+            case Debited d -> { balance -= d.amount(); refs.add(d.ref()); debitsByDay.merge(d.day(), d.amount(), Long::sum); }
+        }
+        version++;
+    }
+    WalletState copy() { WalletState s = new WalletState(); s.balance = balance; s.version = version; s.refs.addAll(refs); s.debitsByDay.putAll(debitsByDay); return s; }
+}
+
+class WalletStore {
+    static final int SNAPSHOT_EVERY = 50;
+    private final Map<String, List<WalletEvent>> streams = new HashMap<>();
+    private final Map<String, WalletState> snapshots = new HashMap<>();
+    int lastTailReplayed;
+    synchronized WalletState load(String id) {
+        WalletState s = snapshots.containsKey(id) ? snapshots.get(id).copy() : new WalletState();
+        List<WalletEvent> all = streams.getOrDefault(id, List.of());
+        lastTailReplayed = 0;
+        for (int i = (int) s.version; i < all.size(); i++) { s.apply(all.get(i)); lastTailReplayed++; }
+        return s;
+    }
+    synchronized void append(String id, long expected, List<WalletEvent> events) {
+        List<WalletEvent> s = streams.computeIfAbsent(id, k -> new ArrayList<>());
+        if (s.size() != expected) throw new Conflict();
+        s.addAll(events);
+        if (s.size() / SNAPSHOT_EVERY > expected / SNAPSHOT_EVERY) {             // crossed a multiple of 50
+            WalletState snap = new WalletState(); s.forEach(snap::apply); snapshots.put(id, snap);
+        }
+    }
+}
+
+final class Wallet {
+    static final long DAILY_DEBIT_LIMIT = 2_000_000;
+    static List<WalletEvent> decideCredit(WalletState s, String ref, long amt, LocalDate day) {
+        if (amt <= 0) throw new IllegalArgumentException("amount > 0");
+        return s.refs.contains(ref) ? List.of() : List.of(new Credited(ref, amt, day));
+    }
+    static List<WalletEvent> decideDebit(WalletState s, String ref, long amt, LocalDate day) {
+        if (amt <= 0) throw new IllegalArgumentException("amount > 0");
+        if (s.refs.contains(ref)) return List.of();                                    // idempotent retry
+        if (amt > s.balance) throw new IllegalStateException("insufficient funds: " + s.balance);
+        if (s.debitsByDay.getOrDefault(day, 0L) + amt > DAILY_DEBIT_LIMIT) throw new IllegalStateException("daily limit");
+        return List.of(new Debited(ref, amt, day));
+    }
+}
+
+class WalletHandler {
+    private final WalletStore store; private final Clock clock;
+    WalletHandler(WalletStore s, Clock c) { store = s; clock = c; }
+    String debit(String wallet, String ref, long amt) {
+        for (int attempt = 0; attempt < 5; attempt++) {
+            WalletState s = store.load(wallet);
+            try {
+                List<WalletEvent> ev = Wallet.decideDebit(s, ref, amt, LocalDate.now(clock));
+                store.append(wallet, s.version, ev);
+                return ev.isEmpty() ? "duplicate ignored" : "debited " + amt;
+            } catch (Conflict c) { /* someone appended first: reload and decide again */ }
+            catch (IllegalStateException e) { return "rejected: " + e.getMessage(); }
+        }
+        return "gave up after retries";
+    }
+    public static void main(String[] args) {
+        WalletStore store = new WalletStore(); Clock clock = Clock.fixed(Instant.parse("2026-07-01T10:00:00Z"), ZoneOffset.UTC);
+        LocalDate today = LocalDate.now(clock);
+        for (int i = 0; i < 60; i++) { WalletState s = store.load("w1"); store.append("w1", s.version, Wallet.decideCredit(s, "c" + i, 1_000, today)); }
+        WalletState loaded = store.load("w1");
+        System.out.println("balance " + loaded.balance + " v" + loaded.version + ", replayed only " + store.lastTailReplayed + " events after snapshot");
+        WalletState tabA = store.load("w1"), tabB = store.load("w1");                     // both see balance 60000
+        store.append("w1", tabA.version, Wallet.decideDebit(tabA, "d1", 50_000, today)); // A wins
+        try { store.append("w1", tabB.version, Wallet.decideDebit(tabB, "d2", 50_000, today)); }
+        catch (Conflict c) { System.out.println("tab B conflict -> handler retry: " + new WalletHandler(store, clock).debit("w1", "d2", 50_000)); }
+        System.out.println(new WalletHandler(store, clock).debit("w1", "d1", 50_000));   // same ref again
+        System.out.println("final balance " + store.load("w1").balance);                  // 10000
+    }
+}`,
+      complexity: `<p>Load O(snapshot copy + ≤ 50 tail events). Append O(k). Conflicts cost a reload + re-decide; under heavy contention on one wallet, serialise commands per stream (single writer) instead of retrying.</p>`,
+      followUps: ['The processed-refs set grows forever — how would you bound it (expire refs older than the gateway retry window)?', 'How would you make snapshots asynchronous so appends stay fast?', 'Design a projection for "daily statement emails" from the global feed.']
+    }
+  });
+
+  practice.push({
+    title: 'Write a Reflection-Based DI Container (Autowiring, Scopes, Cycles)', level: 'Hard', tags: ['dependency injection', 'reflection', 'container design'], companies: ['Google', 'JetBrains', 'Pivotal'],
+    statement: `<p>Implement a mini Guice/Spring: <code>bind(Interface.class, Impl.class)</code>, <code>singleton(Type.class)</code> (default prototype), <code>instance(Type.class, obj)</code>, and <code>get(Type.class)</code> which <b>autowires</b> by finding the type's single constructor and recursively resolving its parameter types. Requirements: clear error for missing bindings of interfaces, ambiguous constructors, and <b>dependency cycles</b> (print the path); singletons created once; thread-safe <code>get</code>.</p>`,
+    constraints: `Plain Java (java.lang.reflect). Up to a few hundred types. No field injection.`,
+    example: `<p><code>OrderService(OrderRepo, Clock)</code>, <code>OrderRepo → InMemoryOrderRepo(Clock)</code>, Clock as an instance → <code>get(OrderService.class)</code> builds InMemoryOrderRepo then OrderService; Clock shared. A ↔ B constructors → ${H.c('r', 'Dependency cycle: A -> B -> A')}.</p>`,
+    brute: { why: `<p>A giant hand-written factory with one method per class, edited for every new constructor parameter; or a static service locator map that classes query from inside methods, hiding dependencies and failing at runtime on first use.</p>`, code: `class FactoryBrute {
+    static Object create(String name) {
+        switch (name) {                                   // edited for every class and every new constructor parameter
+            case "clock": return Clock.systemUTC();
+            case "service": return new Object();          // imagine: new OrderService(new InMemoryOrderRepo(Clock.systemUTC()), Clock.systemUTC())
+            default: throw new IllegalArgumentException(name);
+        }
+    }
+}` },
+    mcq: { q: 'Resolving A needs B, and B needs A (both via constructors). What is the correct container behaviour?', options: ['Fail fast at resolution with the cycle path A -> B -> A', 'Create A with null for B', 'Recurse until StackOverflowError', 'Silently switch to setter injection'], answer: 0, explain: 'A constructor cycle cannot be satisfied. A good container detects it with a resolution stack and reports the full path so the developer can fix the design.' },
+    hints: [`<p>Hint 1: <code>Class.getDeclaredConstructors()</code>; require exactly one (or one marked with an annotation you define). <code>ctor.getParameterTypes()</code> gives the dependency types.</p>`, `<p>Hint 2: Keep a <code>ThreadLocal&lt;Deque&lt;Class&lt;?&gt;&gt;&gt;</code> resolution stack for cycle detection; a <code>ConcurrentHashMap</code> for singletons guarded by a lock to avoid creating two singletons concurrently.</p>`, `<p>Hint 3: Interfaces/abstract classes without a binding → error "No binding for X (needed by Y)". Unwrap <code>InvocationTargetException</code> to show the real constructor error.</p>`],
+    solution: {
+      approach: `<p>Bindings map an abstraction to a concrete class; instances map a type to a ready object; a singleton set marks cached types. <code>get</code> resolves the binding, checks caches, detects cycles via a thread-local stack, picks the single constructor, recursively <code>get</code>s each parameter type and invokes it. Singleton creation is done under one re-entrant lock so concurrent callers never create duplicates (re-entrancy allows the recursive resolution).</p>`,
+      code: `import java.lang.reflect.*;
+
+class MiniInjector {
+    private final Map<Class<?>, Class<?>> bindings = new HashMap<>();
+    private final Map<Class<?>, Object> instances = new ConcurrentHashMap<>();
+    private final Set<Class<?>> singletonTypes = ConcurrentHashMap.newKeySet();
+    private final ReentrantLock creationLock = new ReentrantLock();
+    private final ThreadLocal<Deque<Class<?>>> resolving = ThreadLocal.withInitial(ArrayDeque::new);
+
+    <T> MiniInjector bind(Class<T> api, Class<? extends T> impl) { bindings.put(api, impl); return this; }
+    <T> MiniInjector instance(Class<T> type, T obj) { instances.put(type, obj); return this; }
+    MiniInjector singleton(Class<?> type) { singletonTypes.add(type); return this; }
+
+    <T> T get(Class<T> type) {
+        Object ready = instances.get(type);
+        if (ready != null) return type.cast(ready);
+        Class<?> impl = bindings.getOrDefault(type, type);
+        if (impl.isInterface() || Modifier.isAbstract(impl.getModifiers())) {
+            Deque<Class<?>> st = resolving.get();
+            throw new IllegalStateException("No binding for " + type.getSimpleName() + (st.isEmpty() ? "" : " (needed by " + st.peek().getSimpleName() + ")"));
+        }
+        boolean single = singletonTypes.contains(type) || singletonTypes.contains(impl);
+        if (!single) return type.cast(create(impl));
+        creationLock.lock();
+        try {
+            Object cached = instances.get(type);
+            if (cached == null) { cached = create(impl); instances.put(type, cached); }
+            return type.cast(cached);
+        } finally { creationLock.unlock(); }
+    }
+
+    private Object create(Class<?> impl) {
+        Deque<Class<?>> stack = resolving.get();
+        if (stack.contains(impl)) {
+            List<String> path = new ArrayList<>();
+            stack.descendingIterator().forEachRemaining(c -> path.add(c.getSimpleName()));
+            path.add(impl.getSimpleName());
+            throw new IllegalStateException("Dependency cycle: " + String.join(" -> ", path));
+        }
+        Constructor<?>[] ctors = impl.getDeclaredConstructors();
+        if (ctors.length != 1) throw new IllegalStateException(impl.getSimpleName() + " must have exactly one constructor, has " + ctors.length);
+        stack.push(impl);
+        try {
+            Class<?>[] params = ctors[0].getParameterTypes();
+            Object[] args = new Object[params.length];
+            for (int i = 0; i < params.length; i++) args[i] = get(params[i]);
+            ctors[0].setAccessible(true);
+            return ctors[0].newInstance(args);
+        } catch (InvocationTargetException e) {
+            throw new IllegalStateException("constructor of " + impl.getSimpleName() + " failed: " + e.getCause(), e.getCause());
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("cannot create " + impl.getSimpleName(), e);
+        } finally { stack.pop(); }
+    }
+}
+
+interface OrderRepo { int count(); }
+class InMemoryOrderRepo implements OrderRepo { final Clock clock; InMemoryOrderRepo(Clock c) { clock = c; } public int count() { return 0; } }
+class OrderService { final OrderRepo repo; final Clock clock; OrderService(OrderRepo r, Clock c) { repo = r; clock = c; } }
+class Ping { Ping(Pong p) {} }
+class Pong { Pong(Ping p) {} }
+interface Unbound {}
+class NeedsUnbound { NeedsUnbound(Unbound u) {} }
+
+class InjectorDemo {
+    public static void main(String[] args) {
+        MiniInjector inj = new MiniInjector()
+            .instance(Clock.class, Clock.systemUTC())
+            .bind(OrderRepo.class, InMemoryOrderRepo.class).singleton(OrderRepo.class);
+        OrderService a = inj.get(OrderService.class), b = inj.get(OrderService.class);
+        System.out.println("service prototype? " + (a != b) + ", repo singleton? " + (a.repo == b.repo) + ", clock shared? " + (a.clock == ((InMemoryOrderRepo) a.repo).clock));
+        for (Class<?> bad : List.of(Ping.class, NeedsUnbound.class))
+            try { inj.get(bad); } catch (IllegalStateException e) { System.out.println(e.getMessage()); }
+    }
+}`,
+      complexity: `<p>Resolution is O(size of the dependency graph) per prototype <code>get</code>; singletons are O(1) after the first build. Reflection cost is paid at startup; compile-time DI (Dagger) removes it entirely.</p>`,
+      followUps: ['How would you add request scope (one instance per HTTP request)? (Scope interface + ThreadLocal/request map.)', 'How would you validate the whole graph at startup instead of on first get?', 'Why does Spring need proxies for @Transactional, and why does self-invocation bypass them?']
+    }
+  });
+
+  practice.push({
+    title: 'Evolve Event Schemas: Upcasters and a Projection Rebuild', level: 'Hard', tags: ['event sourcing', 'upcasting', 'schema evolution', 'projection'], companies: ['Uber', 'Zalando', 'ING'],
+    statement: `<p>An order stream was written by three app versions. v1: <code>OrderPlaced{orderId, amountRupees}</code>. v2: <code>OrderPlaced{orderId, amountPaise, currency}</code>. v3: renamed to <code>OrderSubmitted{orderId, money{paise, currency}, channel}</code> with <code>channel</code> defaulting to "web" for older events. Events are stored as <code>(type, version, Map payload)</code>. Write an <b>upcaster chain</b> so the domain only ever sees the latest <code>OrderSubmitted</code> record, then rebuild a "revenue by channel" projection from the mixed history. Unknown future versions must fail loudly, not silently.</p>`,
+    constraints: `History is immutable (no rewriting stored events). Up to 10<sup>7</sup> events: upcasting must be a cheap per-event transformation.`,
+    example: `<p>Stored: (OrderPlaced v1, 499 rupees), (OrderPlaced v2, 25000 paise INR), (OrderSubmitted v3, 1000 paise INR, app) → upcast to three <code>OrderSubmitted</code> records: 49900/INR/web, 25000/INR/web, 1000/INR/app → revenue ${H.c('b', 'web 74900, app 1000')}.</p>`,
+    brute: { why: `<p>The projection code has <code>if (version == 1) … else if (version == 2) …</code> branches everywhere events are read; each new consumer re-implements them, slightly differently. Or a migration script rewrites history in place — losing the original facts and risking corruption of the audit log.</p>`, code: `class RevenueBrute {
+    static long amount(Map<String, Object> p, int version) {
+        if (version == 1) return ((Number) p.get("amountRupees")).longValue() * 100;   // copied into every consumer...
+        if (version == 2) return ((Number) p.get("amountPaise")).longValue();
+        return ((Number) ((Map<?, ?>) p.get("money")).get("paise")).longValue();       // ...and each copy drifts
+    }
+}` },
+    mcq: { q: 'Why upcast on read instead of rewriting stored v1 events into v3?', options: ['Stored events are historical facts and the audit trail; upcasting keeps them intact while giving code one modern shape', 'Rewriting is impossible in any database', 'Upcasting is always faster than reading', 'v1 events are never read again'], answer: 0, explain: 'Immutability of the log is the core promise of event sourcing. Upcasters translate at the edge; copy-transform migrations into a new stream are a rare, deliberate last resort.' },
+    hints: [`<p>Hint 1: Model a stored event as <code>record StoredEvent(String type, int version, Map&lt;String, Object&gt; payload)</code>.</p>`, `<p>Hint 2: Each upcaster handles one step (type, version) → next (type, version). Apply repeatedly until the event is at the latest version. Chain steps, never jump v1 → v3 directly (each step stays tiny).</p>`, `<p>Hint 3: After upcasting, deserialize into the typed record. Throw on unknown (type, version) so a newer writer deployed before the reader is noticed.</p>`],
+    solution: {
+      approach: `<p>A registry of single-step upcasters keyed by "type@version". <code>upcast</code> loops until the event reaches <code>OrderSubmitted@3</code>, then maps the payload to a record. The projection consumes only the typed record. Old data stays untouched; adding v4 later is one more step plus a new latest mapping.</p>`,
+      code: `record StoredEvent(String type, int version, Map<String, Object> payload) {}
+record OrderSubmitted(String orderId, long paise, String currency, String channel) {}
+
+class Upcasters {
+    private final Map<String, UnaryOperator<StoredEvent>> steps = new HashMap<>();
+    static final String LATEST = "OrderSubmitted@3";
+
+    Upcasters() {
+        steps.put("OrderPlaced@1", e -> {                                     // rupees -> paise, assume INR
+            Map<String, Object> p = new HashMap<>(e.payload());
+            p.put("amountPaise", ((Number) p.remove("amountRupees")).longValue() * 100);
+            p.put("currency", "INR");
+            return new StoredEvent("OrderPlaced", 2, p);
+        });
+        steps.put("OrderPlaced@2", e -> {                                     // rename + nest money + default channel
+            Map<String, Object> p = new HashMap<>();
+            p.put("orderId", e.payload().get("orderId"));
+            p.put("money", Map.of("paise", e.payload().get("amountPaise"), "currency", e.payload().get("currency")));
+            p.put("channel", "web");
+            return new StoredEvent("OrderSubmitted", 3, p);
+        });
+    }
+    OrderSubmitted upcast(StoredEvent e) {
+        int guard = 0;
+        while (!(e.type() + "@" + e.version()).equals(LATEST)) {
+            UnaryOperator<StoredEvent> step = steps.get(e.type() + "@" + e.version());
+            if (step == null || ++guard > 10) throw new IllegalStateException("no upcaster for " + e.type() + "@" + e.version());
+            e = step.apply(e);
+        }
+        Map<?, ?> money = (Map<?, ?>) e.payload().get("money");
+        return new OrderSubmitted((String) e.payload().get("orderId"), ((Number) money.get("paise")).longValue(),
+            (String) money.get("currency"), (String) e.payload().getOrDefault("channel", "web"));
+    }
+}
+
+class RevenueByChannel {
+    final Map<String, Long> revenue = new TreeMap<>();
+    void on(OrderSubmitted e) { revenue.merge(e.channel(), e.paise(), Long::sum); }
+    static RevenueByChannel rebuild(List<StoredEvent> history, Upcasters up) {
+        RevenueByChannel p = new RevenueByChannel();
+        for (StoredEvent raw : history) p.on(up.upcast(raw));
+        return p;
+    }
+    public static void main(String[] args) {
+        List<StoredEvent> history = List.of(
+            new StoredEvent("OrderPlaced", 1, Map.of("orderId", "o1", "amountRupees", 499)),
+            new StoredEvent("OrderPlaced", 2, Map.of("orderId", "o2", "amountPaise", 25_000L, "currency", "INR")),
+            new StoredEvent("OrderSubmitted", 3, Map.of("orderId", "o3", "money", Map.of("paise", 1_000L, "currency", "INR"), "channel", "app")));
+        Upcasters up = new Upcasters();
+        history.forEach(e -> System.out.println(up.upcast(e)));
+        System.out.println(rebuild(history, up).revenue);                     // {app=1000, web=74900}
+        try { up.upcast(new StoredEvent("OrderSubmitted", 4, Map.of())); } catch (IllegalStateException e) { System.out.println(e.getMessage()); }
+        System.out.println("stored v1 untouched: " + history.get(0));
+    }
+}`,
+      complexity: `<p>O(steps) per event (a few map copies); rebuild O(N). Stored data never changes.</p>`,
+      followUps: ['How do you deploy a new event version safely when old readers are still running (tolerant readers, deploy readers first)?', 'When would you choose a copy-and-transform migration into a new stream instead?', 'How would Avro/Protobuf schema registries help here?']
+    }
+  });
+
+  practice.push({
+    title: 'Ride-Hailing: Aggregates, Domain Events and a Process Manager', level: 'Hard', tags: ['aggregate', 'domain events', 'eventual consistency', 'saga'], companies: ['Uber', 'Ola', 'Grab', 'Lyft'],
+    statement: `<p>When a <b>Trip</b> completes: the rider's <b>Payment</b> must be charged; on success the <b>Driver</b>'s earnings are credited (80% of fare) and the driver becomes available; if the charge fails, the trip is marked PAYMENT_PENDING and the rider is blocked from new trips until paid. Trip, Payment and Driver are separate aggregates (separate transactions). Design the aggregates, the events (<code>TripCompleted</code>, <code>PaymentCaptured</code>, <code>PaymentFailed</code>), and a <b>process manager</b> that reacts to events and sends the next command. Handlers must be idempotent.</p>`,
+    constraints: `Millions of trips/day. No distributed transaction across aggregates. Event delivery is at-least-once.`,
+    example: `<p>Trip t1 fare ₹250 completes → PaymentCaptured → driver d1 earnings ${H.c('g', '+₹200')}, available. Trip t2 card declined → PaymentFailed → trip ${H.c('y', 'PAYMENT_PENDING')}, rider blocked; duplicate TripCompleted(t1) → ${H.c('m', 'ignored, no second charge')}.</p>`,
+    brute: { why: `<p><code>TripService.complete()</code> charges the card, updates the driver row and the trip row in one long method (and one DB transaction holding locks during a slow card call). If the card call times out after charging, the transaction rolls back trip and driver updates while money was taken; retrying charges twice.</p>`, code: `class TripServiceBrute {
+    final Map<String, Long> driverEarnings = new HashMap<>();
+    void complete(String trip, String driver, long fare) {
+        boolean charged = Math.random() > 0.1;           // slow remote call inside the "transaction"
+        if (!charged) throw new IllegalStateException("roll back everything?!");
+        driverEarnings.merge(driver, fare * 80 / 100, Long::sum);   // retry after a timeout = double credit
+    }
+}` },
+    mcq: { q: 'Charging succeeded but crediting the driver failed (driver DB down). What is the right recovery?', options: ['Keep the charge; the PaymentCaptured event is redelivered until the idempotent driver-credit handler succeeds', 'Refund the rider immediately', 'Roll back the trip', 'Ask the driver to call support'], answer: 0, explain: 'Each step is a committed fact. The process continues forward by retrying the next idempotent step; compensation (refund) is only for genuine business failure, not a temporarily unavailable service.' },
+    hints: [`<p>Hint 1: Trip (status, riderId, driverId, fare), Payment (per trip: status, attempt ref), Driver (available flag, earnings, credited trip IDs), RiderAccount (blocked flag).</p>`, `<p>Hint 2: Process manager: on TripCompleted → command Payment.charge; on PaymentCaptured → Driver.credit + Driver.makeAvailable; on PaymentFailed → Trip.markPaymentPending + Rider.block.</p>`, `<p>Hint 3: Idempotency inside aggregates: Payment ignores a second charge for the same trip; Driver keeps the set of credited trip IDs.</p>`],
+    solution: {
+      approach: `<p>Four small aggregates, each enforcing its own rules and making repeated commands harmless. Events flow through a simple in-memory bus with a queue (to mimic asynchronous delivery). The <code>TripProcessManager</code> has no business state of its own beyond routing: it translates events into the next aggregate command. A duplicate event replays harmlessly because every step is idempotent.</p>`,
+      code: `sealed interface RideEvent permits TripCompleted, PaymentCaptured, PaymentFailed {}
+record TripCompleted(String tripId, String rider, String driver, long fare) implements RideEvent {}
+record PaymentCaptured(String tripId, String driver, long fare) implements RideEvent {}
+record PaymentFailed(String tripId, String rider, String reason) implements RideEvent {}
+
+class Trip {
+    final String id, rider, driver; final long fare; String status = "ONGOING";
+    Trip(String id, String rider, String driver, long fare) { this.id = id; this.rider = rider; this.driver = driver; this.fare = fare; }
+    Optional<RideEvent> complete() { if (!status.equals("ONGOING")) return Optional.empty(); status = "COMPLETED"; return Optional.of(new TripCompleted(id, rider, driver, fare)); }
+    void markPaymentPending() { if (status.equals("COMPLETED")) status = "PAYMENT_PENDING"; }
+}
+class Payment {                                                   // one per trip
+    final String tripId; String status = "NONE";
+    Payment(String tripId) { this.tripId = tripId; }
+    Optional<RideEvent> charge(TripCompleted t, Predicate<String> gateway) {
+        if (!status.equals("NONE")) return Optional.empty();       // idempotent: already charged or failed
+        if (gateway.test(t.rider())) { status = "CAPTURED"; return Optional.of(new PaymentCaptured(t.tripId(), t.driver(), t.fare())); }
+        status = "FAILED"; return Optional.of(new PaymentFailed(t.tripId(), t.rider(), "card declined"));
+    }
+}
+class Driver {
+    final String id; long earnings; boolean available; private final Set<String> creditedTrips = new HashSet<>();
+    Driver(String id) { this.id = id; }
+    void creditFor(String tripId, long fare) { if (creditedTrips.add(tripId)) earnings += fare * 80 / 100; available = true; }
+}
+class RiderAccount { final String id; boolean blocked; RiderAccount(String id) { this.id = id; } void block() { blocked = true; } }
+
+class TripProcessManager {
+    final Map<String, Trip> trips = new HashMap<>(); final Map<String, Payment> payments = new HashMap<>();
+    final Map<String, Driver> drivers = new HashMap<>(); final Map<String, RiderAccount> riders = new HashMap<>();
+    final Deque<RideEvent> bus = new ArrayDeque<>(); final Predicate<String> gateway;
+    TripProcessManager(Predicate<String> gateway) { this.gateway = gateway; }
+
+    void publish(Optional<RideEvent> e) { e.ifPresent(bus::add); }
+    void drain() {
+        while (!bus.isEmpty()) {
+            RideEvent e = bus.poll();
+            switch (e) {
+                case TripCompleted t -> publish(payments.computeIfAbsent(t.tripId(), Payment::new).charge(t, gateway));
+                case PaymentCaptured p -> drivers.computeIfAbsent(p.driver(), Driver::new).creditFor(p.tripId(), p.fare());
+                case PaymentFailed f -> { trips.get(f.tripId()).markPaymentPending(); riders.computeIfAbsent(f.rider(), RiderAccount::new).block(); }
+            }
+        }
+    }
+    public static void main(String[] args) {
+        TripProcessManager pm = new TripProcessManager(rider -> !rider.equals("ravi"));   // ravi's card declines
+        pm.trips.put("t1", new Trip("t1", "asha", "d1", 25_000));
+        pm.trips.put("t2", new Trip("t2", "ravi", "d1", 18_000));
+        pm.publish(pm.trips.get("t1").complete()); pm.publish(pm.trips.get("t2").complete());
+        pm.drain();
+        pm.bus.add(new TripCompleted("t1", "asha", "d1", 25_000));                        // duplicate delivery
+        pm.drain();
+        Driver d1 = pm.drivers.get("d1");
+        System.out.println("d1 earnings " + d1.earnings + ", available " + d1.available);     // 20000 once
+        System.out.println("t2 " + pm.trips.get("t2").status + ", ravi blocked " + pm.riders.get("ravi").blocked);
+    }
+}`,
+      complexity: `<p>O(1) per event per handler. Each aggregate is tiny and locked only during its own step, so millions of trips scale horizontally (partition by trip/driver ID).</p>`,
+      followUps: ['Where would timeouts go (payment pending for 24 hours → collections)? (Process manager schedules a deadline event.)', 'How do you show the rider a consistent trip receipt while steps are still in flight?', 'Choreography (handlers react independently) vs orchestration (this process manager) — trade-offs?']
+    }
+  });
+  /* ======================= QUIZ ======================= */
+  quiz.push(
+    { q: 'What is an "anemic domain model"?', options: ['Domain classes with only getters/setters while all rules live in service classes', 'A model with too few classes', 'A model that uses value objects everywhere', 'A database with no indexes'], answer: 0, explain: 'Anemic objects hold data but no behaviour, so rules are duplicated across services and nothing stops invalid state.' },
+    { q: 'Which injection style should be your default in plain Java?', options: ['Constructor injection with final fields', 'Field injection with reflection', 'Setter injection', 'A static service locator'], answer: 0, explain: 'Constructor injection makes dependencies explicit, required and immutable, and needs no framework for tests.' },
+    { q: 'In a hand-written DI container, what is the "resolution stack" for?', options: ['Detecting dependency cycles and reporting the path', 'Caching singletons', 'Sorting beans alphabetically', 'Running constructors in parallel'], answer: 0, explain: 'If a type is requested while it is already being built higher up the stack, there is a cycle (A → B → A).' },
+    { q: 'In hexagonal architecture, a JDBC repository implementing <code>BookRepository</code> is a…', options: ['Driven (secondary) adapter implementing an outbound port', 'Driving adapter', 'Inbound port', 'Domain entity'], answer: 0, explain: 'The core needs storage; it defines the BookRepository port; the JDBC class is the driven adapter that implements it.' },
+    { q: 'Which statement about source-code dependencies in hexagonal architecture is true?', options: ['They all point inward: adapters depend on ports, the domain depends on nothing external', 'The domain depends on the database layer', 'Ports depend on adapters', 'Controllers and repositories depend on each other'], answer: 0, explain: 'The dependency rule: the core owns the interfaces; technology plugs in from outside.' },
+    { q: 'Two <code>Money(100, "INR")</code> objects created separately are…', options: ['Equal, because value objects compare by value', 'Different, because they are different objects', 'Equal only if they are the same reference', 'Not comparable'], answer: 0, explain: 'Value objects have no identity; equality is defined by their attributes (records do this automatically).' },
+    { q: 'How should an entity implement <code>equals</code>?', options: ['By its identity (ID) only', 'By all fields', 'By reference only', 'It should never override equals'], answer: 0, explain: 'An entity stays the same entity even when its attributes change, so only the ID matters.' },
+    { q: 'Which is NOT one of Vernon\'s aggregate design rules?', options: ['Make aggregates as large as possible to keep everything consistent', 'Reference other aggregates by identity', 'Design small aggregates', 'Use eventual consistency outside the boundary'], answer: 0, explain: 'Large aggregates cause contention and slow loads. Keep them small; only true invariants share a boundary.' },
+    { q: 'Should there be an <code>OrderLineRepository</code> when OrderLine is inside the Order aggregate?', options: ['No — repositories exist only for aggregate roots; lines are loaded and saved with their Order', 'Yes, every table needs a repository', 'Yes, for performance', 'Only in event sourcing'], answer: 0, explain: 'Exposing inner entities through their own repository lets callers bypass the root and its invariants.' },
+    { q: 'Why dispatch domain events <i>after</i> the aggregate is saved?', options: ['So handlers only react to committed facts (no emails for orders that failed to save)', 'Because events are slow', 'Because handlers need the database lock', 'It does not matter'], answer: 0, explain: 'Publishing before commit can announce something that never happened. The outbox makes "save + record event" atomic.' },
+    { q: 'The transactional outbox gives which delivery guarantee?', options: ['At-least-once, so consumers must be idempotent', 'Exactly-once with no extra work', 'At-most-once', 'No guarantee'], answer: 0, explain: 'The relay may publish and crash before marking sent, so duplicates are possible. Idempotent consumers make the effect exactly-once.' },
+    { q: 'In event sourcing, where must business-rule validation happen?', options: ['When deciding on a command, before producing events — never inside apply', 'Inside apply while replaying', 'In the event store', 'In projections'], answer: 0, explain: 'Apply must always succeed for historical events; rules only gate new commands.' },
+    { q: 'What is a snapshot in event sourcing?', options: ['A cached state at version N so loading replays only later events', 'A backup of the database', 'A projection for the UI', 'A deleted event'], answer: 0, explain: 'Snapshots speed up loading; they can be deleted and rebuilt from the log at any time.' },
+    { q: 'Which is the best sign that a plugin architecture (not just a strategy) is needed?', options: ['Third parties or other teams add features without changing or redeploying the core', 'There are two algorithms', 'The code has an if statement', 'You use Java'], answer: 0, explain: 'Plugin systems add discovery, versioning, lifecycle and isolation on top of the strategy idea — worth it when extension is external.' }
+  );
+
+  /* ======================= INTERVIEW ======================= */
+  interview.push(
+    { q: 'What is wrong with a "tightly coupled, anemic" design, and how would you fix it incrementally?', level: 'B', a: `<p><b>Coupling:</b> services build their own dependencies with <code>new</code> (DB client, payment SDK, mailer), so any vendor change edits business code and nothing is unit-testable without real infrastructure. <b>Anemia:</b> entities are getter/setter bags; rules live in many services and get duplicated, and one copy is eventually wrong. <b>Incremental fix:</b> add seams at boundaries (interfaces for I/O, time, randomness) with constructor injection; move one rule at a time into an entity method (<code>order.cancel()</code>) and delete the setter; cover each step with fast tests using fakes. Strangle, do not rewrite.</p>`, followUps: ['How do you find all copies of a rule in a big codebase?', 'When is an anemic model acceptable?'] },
+    { q: 'Explain dependency injection without mentioning any framework.', level: 'B', a: `<p>A class receives what it needs through its constructor instead of creating it. <code>OrderService(OrderRepository repo, PaymentPort pay, Clock clock)</code>. One place — the <b>composition root</b>, usually <code>main</code> — builds the concrete objects from the leaves up and passes them in. Tests build the same class with fakes. Benefits: dependencies are visible, swappable and testable; the class depends on abstractions (DIP). A container (Spring, Guice, Dagger) only automates the composition root: registry of bindings + recursive resolution + scopes + lifecycle.</p>`, followUps: ['DI vs Service Locator?', 'What is a captive dependency?', 'How would you write a container in 30 lines?'] },
+    { q: 'How does a DI container resolve a dependency graph, and how does it detect cycles?', level: 'I', a: `<p>For a requested type it looks up the binding (interface → implementation or factory), checks the singleton cache, otherwise pushes the type onto a <b>resolution stack</b>, recursively resolves each constructor parameter, invokes the constructor, caches it if singleton, and pops. If a type is requested while already on the stack, there is a cycle; the stack contents give the exact path (A → B → A). Spring can break some setter/field cycles via early references but constructor cycles fail, and Spring Boot rejects cycles by default since 2.6. The right fix is usually a design change: extract the shared part into a third class or decouple with an event.</p>`, followUps: ['How do scopes (singleton/prototype/request) change resolution?', 'Compile-time DI (Dagger) — what is different?'] },
+    { q: 'Design a plugin system for exporting reports in many formats, built by third parties.', level: 'I', a: `<p><b>Extension point:</b> a tiny, stable <code>ExporterPlugin</code> interface (<code>format()</code>, <code>apiVersion()</code>, <code>start/stop</code>, <code>export(Report)</code>) with immutable inputs (records). <b>Discovery:</b> <code>ServiceLoader</code> with <code>META-INF/services</code> or <code>provides … with</code>; or a plugins folder with one <code>URLClassLoader</code> per JAR for dependency isolation and hot install. <b>Registry:</b> map format → plugin, with conflict rules. <b>Safety:</b> version check at load, try/catch around start and every call, timeouts on an executor, quarantine failing plugins, and out-of-process execution for untrusted code. <b>Evolution:</b> add default methods, semantic versioning, contract tests run against every plugin.</p>`, followUps: ['How do you unload a plugin without leaking memory?', 'How is MCP similar to this?'] },
+    { q: 'Walk through hexagonal architecture at class level for a "borrow book" feature.', level: 'I', a: `<p><b>Domain:</b> <code>Book</code> (entity with <code>borrow(member, today)</code>), <code>BookId</code>, <code>MemberId</code> (VOs). <b>Inbound port:</b> <code>BorrowBookUseCase.borrow(BorrowBookCommand)</code>. <b>Outbound ports:</b> <code>BookRepository</code>, <code>MemberNotifier</code>, <code>Clock</code>. <b>Application service:</b> <code>BorrowBookService implements BorrowBookUseCase</code> — load via port, call the domain, save, notify. <b>Driving adapters:</b> REST controller, CLI, Kafka consumer, tests — each translates its input to the command and maps errors (DomainException → 409). <b>Driven adapters:</b> JDBC/Mongo repositories, email notifier. Composition root wires them. Every compile-time arrow points inward; enforce with modules or ArchUnit.</p>`, followUps: ['Where do transactions go?', 'Do you map between domain and persistence models? Trade-offs?'] },
+    { q: 'Entity vs value object: how do you decide, and how do you implement each in modern Java?', level: 'B', a: `<p>Ask: "does the business track <i>this particular one</i> over time?" Yes → <b>entity</b>: stable typed ID (<code>record CustomerId(UUID value)</code>), behaviour methods instead of setters, <code>equals/hashCode</code> on ID only. No → <b>value object</b>: a <code>record</code> with a validating compact constructor, immutable, operations return new instances (<code>money.plus(other)</code>), equality by all fields. Default to value objects; they remove primitive obsession, centralise validation, are thread-safe and make great map keys. The same real-world thing can be either depending on context (a ₹500 note for a shop vs for the central bank).</p>`, followUps: ['How do you persist value objects?', 'Why never use double for money?'] },
+    { q: 'How do you find aggregate boundaries for a new domain?', level: 'A', a: `<p>(1) List every invariant as a one-line rule. (2) For each, list the minimal data it needs. (3) Data that must be consistent <b>immediately and together</b> forms one aggregate with a root that enforces the rule. (4) Everything else is referenced <b>by ID</b> and synchronised with domain events (eventual consistency). (5) Check size and contention: if one aggregate would be loaded by thousands of concurrent users (a product's stock inside every order), split it and ask the business whether the rule can tolerate a short delay. (6) One repository per root; one aggregate per transaction (justify exceptions). Example: Order(lines, total limit) vs Inventory(stock per SKU) vs Customer(credit).</p>`, followUps: ['How do you handle a uniqueness rule across all users?', 'What if two aggregates truly must change atomically?'] },
+    { q: 'What is optimistic locking on aggregates and when would you choose pessimistic locking?', level: 'I', a: `<p>Each aggregate carries a <b>version</b>. Save does <code>UPDATE … SET version = v+1 WHERE id = ? AND version = v</code> (or appends events with expected version). If 0 rows match, someone else saved first → <code>ConcurrencyConflict</code>; the application reloads, re-runs the command against fresh state (it may now be rejected) and saves again with bounded retries. No locks are held while the user thinks. <b>Pessimistic</b> (<code>SELECT … FOR UPDATE</code>) suits hot aggregates where retries would storm (a flash-sale counter) or long critical sections — at the cost of blocking and deadlock risk. Very hot single aggregates are better served by a single-writer queue per aggregate.</p>`, followUps: ['How do you surface a conflict to a user editing a form?', 'Lost update vs write skew?'] },
+    { q: 'Explain domain events and the dual-write problem. How does the transactional outbox solve it?', level: 'A', a: `<p>A domain event is a past-tense fact (<code>OrderPlaced</code>) recorded by an aggregate, used to trigger work in other aggregates/services without coupling. The <b>dual-write problem</b>: saving to the DB and publishing to a broker are two systems — one can succeed while the other fails, causing lost or phantom events. <b>Outbox:</b> in the same DB transaction as the aggregate, insert the event into an <code>outbox</code> table. A relay (polling with <code>FOR UPDATE SKIP LOCKED</code>, or CDC like Debezium) publishes rows and marks them sent. Crashes between publish and mark cause duplicates → <b>at-least-once</b>; consumers dedupe on <code>eventId</code> (processed table in the same transaction as their effect). Partition by aggregate ID to keep per-aggregate order.</p>`, followUps: ['Domain events vs integration events?', 'Why not publish inside the DB transaction?'] },
+    { q: 'What is event sourcing? Write the core loop in pseudo-Java.', level: 'A', a: `<p>The source of truth is an append-only stream of events per aggregate; state is derived. <b>Load:</b> <code>state = empty; for (e : store.read(id)) state.apply(e);</code>. <b>Handle command:</b> <code>events = decide(command, state)</code> — validates and may reject. <b>Save:</b> <code>store.append(id, expectedVersion = state.version, events)</code> — fails if someone appended first; retry. <b>apply</b> is a pure state change that never validates or throws. Add <b>snapshots</b> for long streams and <b>projections</b> (read models) fed by the global event feed, rebuildable at any time. Benefits: full audit, time travel, new read models from old data. Costs: schema evolution (upcasters), eventual consistency of reads, GDPR (crypto-shredding), learning curve.</p>`, followUps: ['How do you fix a wrong event that was already stored?', 'Event store on Postgres — schema?'] },
+    { q: 'When would you NOT use event sourcing or full DDD tactical patterns?', level: 'E', a: `<p>For CRUD-heavy areas with few rules (admin settings, reference data, simple catalogues), a transaction script or plain repository over tables is simpler and faster to build. Event sourcing adds versioning discipline, projection infrastructure, eventual consistency in the UI and harder ad-hoc querying; DDD aggregates add mapping and ceremony. Apply them selectively to the <b>core domain</b> where rules, auditability or concurrency matter (payments, bookings, inventory, ledgers). Mixed architectures are normal: one bounded context event-sourced, another CRUD. Saying this in an interview shows judgement rather than pattern enthusiasm.</p>`, followUps: ['How do you migrate one aggregate to event sourcing later?', 'What is a bounded context and how does it relate?'] },
+    { q: 'How do you evolve event schemas once events are stored forever?', level: 'E', a: `<p>Never edit stored events. Options: (1) <b>weak schema / tolerant reader</b>: only additive changes with defaults; (2) <b>upcasters</b>: single-step transformers applied on read (v1 → v2 → v3) so domain code sees only the latest shape; (3) <b>new event type</b> for changed meaning (OrderSubmitted alongside OrderPlaced); (4) <b>copy-and-transform</b> into a new stream as a rare migration. Use a version field and schemas (Avro/Protobuf/JSON Schema with a registry) for integration events; deploy readers before writers; fail loudly on unknown versions. Name events in domain language from day one — they are your most durable API.</p>`, followUps: ['How do you handle renamed fields with Avro?', 'What does "deploy readers first" protect against?'] },
+    { q: 'How do AI tools change the way you design and maintain these architectures?', level: 'E', a: `<p>AI generates code fast, which makes coupling and anemic models grow fast too, so explicit boundaries matter more. Small, well-named ports and plugin interfaces are ideal units of work for coding agents ("write a DynamoDB adapter that passes the repository contract tests"). LLMs themselves belong behind outbound ports (swap providers, deterministic fakes in tests). Agent tool calls are driving adapters and should map to aggregate commands, so a confused agent cannot corrupt state. AI is great at discovery tasks (find all rule copies, map event publishers/subscribers, list invariants) but humans must own boundary decisions, consistency trade-offs and long-lived contracts like event schemas.</p>`, followUps: ['How would you review an AI-generated domain model?', 'How do you make an agent\'s actions auditable? (Event-sourced run logs.)'] }
+  );
+  registerModule({
+    id: 'lld11',
+    title: 'Extensible Architecture & DDD Tactical Patterns',
+    intro: `<p>Most code works on day one. The hard part is day three hundred, when the payment provider changes, a new rule arrives, three teams want to add features and an auditor asks "what was this balance on 1st March?". This module teaches the tools senior engineers use to build code that <b>survives change</b>.</p>
+<p>We start with the <b>brute force</b> almost everyone writes first — tightly coupled services and anemic data classes — and watch a single change ripple through it. Then we fix it, one tool at a time: <b>dependency injection by hand</b> (and a container you write yourself), <b>plugin architectures</b>, <b>hexagonal architecture</b> (ports and adapters) at class level, the DDD building blocks — <b>entities, value objects, aggregates, repositories, domain events</b> — and finally <b>event sourcing</b>, where you store the story and rebuild the state.</p>
+<p>Every topic has an everyday analogy first, an interactive visualizer (change ripples, DI wiring, plugin boot, ports-and-adapters rings, aggregate boundaries, event flow with outbox, and event-log replay step by step), compilable plain-Java code with no frameworks, worked examples, an expert deep dive and an AI-era section. Practice problems ask you to model domains, find aggregate boundaries and rebuild state from events.</p>`,
+    goals: [
+      'Explain why tightly coupled, anemic designs hurt and refactor them step by step into rich, testable models',
+      'Wire an application by hand with constructor injection and a composition root, and build a small DI container with scopes and cycle detection',
+      'Design a plugin architecture with extension points, discovery (ServiceLoader), versioning, lifecycle and failure isolation',
+      'Structure a feature as a hexagon: domain, inbound/outbound ports, driving/driven adapters, with all dependencies pointing inward',
+      'Model a domain with entities, value objects, small aggregates and repositories, and find aggregate boundaries from invariants',
+      'Use domain events with the transactional outbox and idempotent handlers for eventual consistency between aggregates',
+      'Implement event sourcing in Java: decide/apply, rehydration, expected-version appends, snapshots, projections and upcasting'
+    ],
+    prereqs: `LLD 2 (SOLID — especially Dependency Inversion), LLD 4–6 (creational, structural and behavioral patterns: Strategy, Observer, Decorator), LLD 10 (Concurrency in LLD) for optimistic locking intuition, and comfortable modern Java (interfaces, records, sealed types, lambdas, generics).`,
+    hours: 16,
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
+  });
+})();

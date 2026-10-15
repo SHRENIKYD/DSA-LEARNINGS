@@ -1163,5 +1163,315 @@ else:                                       # someone else is loading
       }
     }]
   });
+
+  /* =====================================================================
+     TOPIC 7 — Cache Penetration, Breakdown & Avalanche
+     ===================================================================== */
+  function bloomPos(x) { return [((x * 7 + 3) % 16 + 16) % 16, ((x * 11 + 5) % 16 + 16) % 16]; }
+  topics.push({
+    title: 'Cache Penetration, Breakdown & Avalanche',
+    analogy: `<p>A library has a <b>front desk</b> (the cache) and a huge <b>basement archive</b> (the database). <b>Penetration:</b> a prankster keeps asking for books that <i>do not exist</i>; the desk never has them, so a librarian runs to the basement every time — and finds nothing. <b>Breakdown:</b> the one bestseller everyone wants is missing from the desk for a minute and a crowd runs to the basement. <b>Avalanche:</b> the whole front desk closes at once and <i>everyone</i> heads downstairs. The fix for the prankster is a <b>catalogue card index</b> at the door (a Bloom filter) and a note saying "we don't have that book" (a negative cache).</p>`,
+    explain: `<p>Three failure modes are often confused in interviews. All three push traffic past the cache onto the database:</p>
+${H.table(['Name', 'What happens', 'Main fixes'], [['<b>Penetration</b>', 'requests for keys that <b>do not exist</b> in the DB; nothing is ever cached, so <b>every</b> request reaches the DB (bugs, scrapers, attackers sending random IDs)', 'negative caching, <b>Bloom filter</b>, input validation, rate limiting'], ['<b>Breakdown</b> (hot-key miss)', 'one very hot key expires; many concurrent requests miss it (previous topic)', 'single-flight, lock, stale-while-revalidate, refresh-ahead'], ['<b>Avalanche</b>', '<b>many</b> keys expire at the same time, or the cache cluster restarts/fails; the DB gets the whole read load', 'TTL jitter, HA cache (replicas), multi-level caches, warmup, circuit breakers / rate limits on the DB path']])}
+<p><b>Negative caching:</b> when the DB says "not found", cache that answer too: <code>SET user:999 "∅" EX 60</code>. Repeated lookups of the same missing ID become hits. Keep the TTL short so a newly-created item appears quickly (or delete the negative entry when the item is created).</p>
+<p>But an attacker can send <i>different</i> random IDs every time — negative caching never hits, and it fills the cache with junk. That is where a <b>Bloom filter</b> helps: a compact bit array that answers <b>"definitely not present"</b> or <b>"maybe present"</b>.</p>
+<ul><li><b>Add</b> a key: hash it with <i>k</i> hash functions, set those <i>k</i> bits to 1.</li>
+<li><b>Check</b> a key: if <i>any</i> of its k bits is 0 → ${H.c('g', 'definitely not in the set')} → reject without touching cache or DB. If all are 1 → ${H.c('y', 'maybe')} → continue normally (false positives possible, false negatives impossible).</li></ul>
+${H.bits(0b1011110111000011, 16, { label: 'Bloom filter, 16 bits, after adding user IDs 1–6 with 2 hash functions' })}
+<p>Real sizes: 100M keys at a 1% false-positive rate need only ~120 MB (≈ 9.6 bits per key, 7 hash functions) — tiny compared to caching 100M negative answers. Bloom filters cannot delete items (use a <b>counting</b> Bloom filter or a <b>Cuckoo filter</b> if keys get deleted) and must be rebuilt as the dataset grows.</p>`,
+    clues: ['"attackers request random non-existent product IDs and the DB is overloaded" → penetration: Bloom filter + rate limit', '"many lookups return not found" (username availability, coupon codes) → negative cache / Bloom filter', '"after the Redis cluster restarted, the database went down" → avalanche: warmup, HA, circuit breaker', '"all keys were loaded by one batch job and expire together" → avalanche: TTL jitter', '"must answer is X definitely absent using little memory" → Bloom filter (no false negatives)', '"keys are deleted often" → counting Bloom or Cuckoo filter'],
+    code: [{ lang: 'python', run: true, title: 'Bloom filter guard in front of the DB (runnable)', code: `import hashlib
+import math
+
+class BloomFilter:
+    def __init__(self, expected_items, fp_rate):
+        # Optimal size m and hash count k for the target false-positive rate
+        self.m = math.ceil(-expected_items * math.log(fp_rate) / (math.log(2) ** 2))
+        self.k = max(1, round(self.m / expected_items * math.log(2)))
+        self.bits = bytearray((self.m + 7) // 8)
+
+    def _positions(self, key):
+        # Double hashing: derive k positions from two 64-bit hashes
+        d = hashlib.sha256(key.encode()).digest()
+        h1 = int.from_bytes(d[:8], "big")
+        h2 = int.from_bytes(d[8:16], "big") | 1
+        return [(h1 + i * h2) % self.m for i in range(self.k)]
+
+    def add(self, key):
+        for p in self._positions(key):
+            self.bits[p // 8] |= 1 << (p % 8)
+
+    def might_contain(self, key):
+        return all(self.bits[p // 8] >> (p % 8) & 1 for p in self._positions(key))
+
+# Load every existing product ID at startup (and on each insert)
+existing = [f"product:{i}" for i in range(100_000)]
+bf = BloomFilter(expected_items=len(existing), fp_rate=0.01)
+for key in existing:
+    bf.add(key)
+print(f"m = {bf.m:,} bits ({bf.m / 8 / 1024:.0f} KB), k = {bf.k} hash functions")
+
+# No false negatives: every real key passes
+assert all(bf.might_contain(k) for k in existing[:5000])
+
+# Attack: 50,000 random IDs that do NOT exist
+attack = [f"product:{i}" for i in range(10_000_000, 10_050_000)]
+reached_db = sum(bf.might_contain(k) for k in attack)
+print(f"attack requests: {len(attack):,}; reached the DB (false positives): {reached_db} "
+      f"({reached_db / len(attack):.2%})")` }],
+    codeTitle: ['Bloom filter sizing + attack simulation'],
+    viz: {
+      title: 'Penetration: random missing IDs vs negative cache vs Bloom filter',
+      input: 'bloom | 3 999 42 999 1234 77 5 500',
+      inputLabel: 'mode (none | negative | bloom) | IDs requested (users 1–6 exist)',
+      gen: function (input) {
+        var sp = String(input || '').split('|');
+        if (sp.length !== 2) throw new Error('Format: mode | ids   e.g. bloom | 3 999 42');
+        var mode = sp[0].trim().toLowerCase();
+        if (['none', 'negative', 'bloom'].indexOf(mode) < 0) throw new Error('mode must be none, negative or bloom');
+        var ids = sp[1].trim().split(/[\s,]+/).filter(Boolean).map(Number);
+        if (!ids.length || ids.length > 12 || ids.some(function (x) { return !(x >= 0 && x < 1e7 && Math.floor(x) === x); })) throw new Error('Give 1–12 non-negative integer IDs');
+        var bloom = 0; for (var u = 1; u <= 6; u++) bloomPos(u).forEach(function (p) { bloom |= (1 << p); });
+        var cache = {}, dbq = 0, rejected = 0, frames = [];
+        function g(hl, ehl, lab) {
+          var nodes = [box('CL', 'Clients / attacker', 8, 30), box('A', 'App', 34, 30), box('C', 'Cache', 66, 10), box('D', 'Database', 92, 30)];
+          var edges = [['CL', 'A', lab.ca || ''], ['A', 'C', lab.ac || ''], ['A', 'D', lab.ad || '']];
+          if (mode === 'bloom') { nodes.push(box('B', 'Bloom filter', 66, 52)); edges.push(['A', 'B', lab.ab || '']); }
+          return { type: 'graph', directed: true, height: 60, label: 'Mode: ' + mode, nodes: nodes, edges: edges, hl: hl, ehl: ehl };
+        }
+        function st(bh) {
+          var out = [];
+          if (mode === 'bloom') out.push({ type: 'bits', label: 'Bloom bits (users 1–6 added, 2 hashes)', value: bloom, width: 16, hl: bh || {} });
+          out.push({ type: 'map', label: 'Cache', entries: entries(cache) });
+          out.push({ type: 'vars', label: 'Counters', vals: { 'DB queries': dbq, 'rejected early': rejected } });
+          return out;
+        }
+        frames.push({ narr: 'Users <b>1–6</b> exist in the DB. Requests for other IDs are for things that do not exist. Mode: <b>' + mode + '</b>.', parts: [g({}, {}, {})].concat(st()) });
+        ids.forEach(function (id) {
+          var exists = id >= 1 && id <= 6, key = 'user:' + id;
+          if (mode === 'bloom') {
+            var ps = bloomPos(id), bh = {}, maybe = ps.every(function (p) { return (bloom >> p) & 1; });
+            ps.forEach(function (p) { bh[p] = ((bloom >> p) & 1) ? 'ok' : 'bad'; });
+            if (!maybe) {
+              rejected++;
+              frames.push({ narr: 'ID <b>' + id + '</b>: hash positions ' + ps.join(' & ') + '. At least one bit is <b>0</b> → <span class="c-g">definitely not present</span>. Return 404 instantly; cache and DB untouched.', parts: [g({ B: 'ok', A: 'cur' }, { 'A-B': 'ok' }, { ab: 'check ' + id + ' → no' })].concat(st(bh)) });
+              return;
+            }
+            frames.push({ narr: 'ID <b>' + id + '</b>: positions ' + ps.join(' & ') + ' are both 1 → <span class="c-y">maybe present</span>' + (exists ? '' : ' (this is a <b>false positive</b> — the bits were set by other IDs)') + '. Continue to the cache.', parts: [g({ B: 'cur', A: 'cur' }, { 'A-B': 'cur' }, { ab: 'check ' + id + ' → maybe' })].concat(st(bh)) });
+          }
+          if (Object.prototype.hasOwnProperty.call(cache, key)) {
+            frames.push({ narr: 'ID <b>' + id + '</b>: cache <span class="c-g">hit</span> (' + (cache[key] === '∅' ? 'a cached "not found" — negative caching at work' : 'real row') + '). No DB query.', parts: [g({ C: 'ok' }, { 'CL-A': 'ok', 'A-C': 'ok' }, { ac: 'GET ' + key + ' → hit' })].concat(st()) });
+            return;
+          }
+          dbq++;
+          if (exists) {
+            cache[key] = 'row';
+            frames.push({ narr: 'ID <b>' + id + '</b>: cache miss → DB finds the row → cache it. Normal cache-aside.', parts: [g({ C: 'bad', D: 'ok' }, { 'A-C': 'bad', 'A-D': 'ok' }, { ac: 'miss', ad: 'SELECT → row' })].concat(st()) });
+          } else if (mode === 'none') {
+            frames.push({ narr: 'ID <b>' + id + '</b>: cache miss → DB says <b>not found</b> → <span class="c-r">nothing to cache</span>. The next request for ' + id + ' will hit the DB again. This is <b>cache penetration</b>.', parts: [g({ C: 'bad', D: 'bad' }, { 'A-C': 'bad', 'A-D': 'bad' }, { ac: 'miss', ad: 'SELECT → none' })].concat(st()) });
+          } else {
+            cache[key] = '∅';
+            frames.push({ narr: 'ID <b>' + id + '</b>: cache miss → DB says not found → cache <b>"∅"</b> with a short TTL (negative caching). Repeats of ' + id + ' become hits — but a <i>new</i> random ID still reaches the DB.', parts: [g({ C: 'cur', D: 'bad' }, { 'A-C': 'cur', 'A-D': 'bad' }, { ac: 'SET ' + key + ' ∅ EX 60', ad: 'SELECT → none' })].concat(st()) });
+          }
+        });
+        var bad = ids.filter(function (x) { return !(x >= 1 && x <= 6); }).length;
+        frames.push({ narr: 'Done (' + mode + '): <b>' + dbq + '</b> DB queries for ' + ids.length + ' requests, ' + bad + ' of which asked for non-existent IDs. Try the same IDs with <code>none</code>, <code>negative</code> and <code>bloom</code> to compare.', parts: [g({}, {}, {}), { type: 'bars', label: 'DB queries vs requests', values: [ids.length, dbq, rejected], idxLabels: ['requests', 'DB queries', 'rejected early'], hl: { 1: dbq > ids.length / 2 ? 'bad' : 'ok', 2: 'ok' } }] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Bloom filter sizing by hand', html: `<p>Formulas: <code>m = −n·ln(p) / (ln 2)²</code>, <code>k = (m/n)·ln 2</code>.</p>${H.table(['n keys', 'false-positive p', 'bits per key', 'total memory', 'k'], [['10M', '1%', '9.6', '≈ 12 MB', '7'], ['100M', '1%', '9.6', '≈ 120 MB', '7'], ['100M', '0.1%', '14.4', '≈ 180 MB', '10']])}<p>Each 10× better false-positive rate costs only ~4.8 more bits per key.</p>` },
+      { title: 'Username availability check', html: `<p>Sign-up form checks "is <code>cool_dev_99</code> taken?" on every keystroke — most answers are "not taken", i.e. a <b>miss</b> for a key that does not exist. A Bloom filter of all 500M usernames (~600 MB at 1%) answers "definitely available" locally for most keystrokes; only "maybe taken" goes to the DB for the definitive answer. Final sign-up still relies on a unique index in the DB.</p>` },
+      { title: 'Avalanche drill: Redis cluster restart', html: `<p>Normal: 100k QPS reads, 97% hit rate → DB sees 3k QPS. Cache restarts empty → DB would see 100k QPS (33×). Plan: replicas + automatic failover (so a node loss is not a full flush), <b>circuit breaker / concurrency limit</b> on the DB path (shed load, serve defaults), warm the top keys from a snapshot or log replay before admitting full traffic, and per-key single-flight to collapse duplicates.</p>` },
+      { title: 'Validate before you cache', html: `<p>Cheap checks stop most junk before any lookup: ID format (<code>^[0-9]{1,12}$</code>), range checks (IDs below the current max), signed/opaque IDs (an HMAC in the ID so random guesses are rejected), and per-client rate limits. Defence in depth: validation → rate limit → Bloom → negative cache → DB.</p>` }
+    ],
+    deepDive: `<p><b>Why negative caching alone fails under attack.</b> With uniformly random IDs from a 64-bit space, the chance of repeating an ID is ~0, so the negative cache hit rate is ~0% and it evicts real hot keys (cache pollution). Bloom filters fix the cost side: constant memory per <i>real</i> key, independent of attack volume.</p>
+<p><b>Keeping the filter correct.</b> A missing entry in the filter means a <i>real</i> item is rejected — a false negative, which is a correctness bug. So: add to the filter <b>before</b> (or atomically with) committing a new item, rebuild periodically from the DB, and if the filter cannot be trusted (just restarted, rebuilding), bypass it rather than reject. Distributed options: RedisBloom (<code>BF.ADD</code>/<code>BF.EXISTS</code>, scalable filters that grow by adding layers) or a filter shipped to each app server and refreshed.</p>
+<p><b>Alternatives:</b> Cuckoo filters support deletion and slightly better space at low FP rates; quotient filters merge well; XOR/binary-fuse filters are smaller but static. Databases use the same idea internally — LSM-tree stores (RocksDB, Cassandra) keep a Bloom filter per SSTable to skip disk reads for absent keys.</p>
+<p><b>Avalanche engineering.</b> Spread expiry (jitter), avoid "flush all" operations, use replicas so a node loss is partial, run multi-level caches so an L2 outage still leaves L1 hits, and put a <b>bulkhead</b> on DB access: a fixed pool (say 200 connections) plus load shedding, so the DB serves what it can at full speed rather than everything slowly. Netflix's EVCache replicates each cache across zones so a zone loss does not cold-start the fleet.</p>
+<p><b>Observability:</b> track "not found" rate per endpoint, DB QPS from cache misses, Bloom-rejected count and the filter's estimated FP rate (fill ratio); a sudden rise in not-found misses is often an attack or a client bug looping on deleted IDs.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI scrapers and agents generate huge volumes of long-tail, often non-existent lookups (guessing URLs, probing IDs, hallucinated product SKUs), so penetration is now an everyday problem, not just an attack scenario. LLM agents calling your APIs may also retry aggressively — avalanche risk grows with automated clients.</p>
+<p><b>Use AI as a partner:</b> <code>Size a Bloom filter for 300M keys at 0.5% FP and estimate how much DB load it removes under 20k random-ID QPS</code>; <code>Generate a load test mixing 70% hot keys, 20% cold keys and 10% non-existent IDs</code>.</p>
+<p><b>Where AI goes wrong:</b> claims Bloom filters can have false negatives (they cannot, unless you forget to add items), caches "not found" forever (new items stay invisible), or suggests caching every negative result with no TTL — turning an attack into cache pollution.</p>
+<p><b>What you must still own:</b> the threat model (who sends missing keys and why), the false-positive budget, how the filter stays in sync with inserts, and the DB protection (rate limits, circuit breakers) that remains when every cache layer fails.</p>`,
+    problems: [{
+      title: 'Stop Random-ID Scraping', level: 'Medium', tags: ['penetration', 'Bloom filter', 'negative cache', 'rate limiting'], companies: ['Amazon', 'Cloudflare', 'Shopee'],
+      statement: `<p>A scraper hits <code>GET /products/{id}</code> with random IDs at 30k req/s. 99% of those IDs do not exist. The cache hit rate collapses from 95% to 40% and the product DB is overloaded. There are 80M real products, 50k new ones per day. Design the protection.</p>`,
+      constraints: `<p>Real users must never get a false 404 · added memory ≤ 1 GB per region · new products must be visible within 5 s.</p>`,
+      example: `<p>Without protection: ${H.c('r', '29,700 DB lookups/s')} for missing IDs. With a 1% FP Bloom filter: ${H.c('g', '~297/s')} reach the DB, and those few become negative-cache hits on repeat.</p>`,
+      brute: { why: `<p><b>Naive design:</b> negative-cache every not-found with TTL 1 h. Random IDs never repeat, so the negative cache never hits, and 30k junk keys/s × 3600 s = 108M junk entries evicting real products (cache pollution). Blocking IPs alone fails against rotating proxies.</p>` },
+      mcq: { q: 'A Bloom filter says "maybe present" for a missing ID. What happens?', options: ['A real user gets a 404 wrongly', 'The request continues to cache/DB and gets a correct not-found', 'The filter is corrupted', 'Redis crashes'], answer: 1, explain: 'False positives only cost one extra lookup; correctness is preserved. Only false negatives (impossible if every insert is added) would hurt users.' },
+      hints: [`<p>Hint 1: You need a cheap "definitely not here" check whose memory depends on the 80M real IDs, not on attack volume.</p>`, `<p>Hint 2: Bloom filter with n = 100M (growth room), p = 1% → ~120 MB, k = 7. Check it before the cache.</p>`, `<p>Hint 3: Add new IDs to the filter in the same flow that creates the product (before returning success); short-TTL negative cache for false positives; rate-limit per client/ASN; rebuild the filter nightly.</p>`],
+      solution: {
+        approach: `<p><b>Layers, cheapest first:</b></p>
+<ol><li><b>Validation:</b> reject malformed IDs at the edge (format/range). Optionally make public IDs opaque (e.g. Base62 with an HMAC check digit) so random guesses fail instantly.</li>
+<li><b>Rate limiting</b> per client key / IP / ASN at the API gateway; bot detection for the scraper.</li>
+<li><b>Bloom filter</b> of all product IDs: n = 100M, p = 1% → ~120 MB, k = 7. Kept in RedisBloom (shared) or loaded into each API server's memory (fastest). Check before the cache: "definitely absent" → 404 immediately.</li>
+<li><b>Keeping it fresh:</b> the product-creation service adds the ID to the filter <i>before</i> acknowledging creation; a CDC consumer also adds IDs (belt and braces) so new products are visible within seconds; nightly rebuild from the DB to reset the fill ratio.</li>
+<li><b>Negative cache</b> (TTL 60 s) for the ~1% false positives so repeated probes of the same ID are cheap; deleted on product creation.</li>
+<li><b>DB bulkhead:</b> fixed connection pool + load shedding so the DB can never be pushed over regardless of layers above.</li></ol>
+<p>Result: missing-ID DB traffic drops ~100×, the cache stays full of real products (hit rate back to ~95%), memory cost ~120 MB per copy.</p>`,
+        complexity: `<p>Bloom check: k = 7 hash computations, O(1), no network if local. Memory ≈ 9.6 bits × 100M ≈ 120 MB. FP traffic ≈ 1% of junk requests.</p>`,
+        followUps: ['Products get deleted often — what changes?', 'How do you rebuild the filter without a window of false negatives?', 'How would a Cuckoo filter compare here?']
+      }
+    }]
+  });
+
+  /* =====================================================================
+     TOPIC 8 — Multi-level caches + sizing with hit-rate math
+     ===================================================================== */
+  function genHarmonic(n, s) {
+    // sum_{i=1..n} i^-s : exact for the first 5000 terms, midpoint integral for the tail
+    var a = Math.min(n, 5000), sum = 0, i;
+    for (i = 1; i <= a; i++) sum += Math.pow(i, -s);
+    if (n > a) {
+      var lo = a + 0.5, hi = n + 0.5;
+      sum += Math.abs(s - 1) < 1e-9 ? Math.log(hi / lo) : (Math.pow(hi, 1 - s) - Math.pow(lo, 1 - s)) / (1 - s);
+    }
+    return sum;
+  }
+  topics.push({
+    title: 'Multi-Level Caches & Sizing with Hit-Rate Math',
+    analogy: `<p>Think of where you keep <b>snacks</b>: a few in your <b>pocket</b> (instant), more in your <b>desk drawer</b> (a few seconds), a box in the <b>office kitchen</b> (a minute), and the <b>supermarket</b> (half an hour). You reach for the closest place first and only go further when it is empty. Each level is bigger and slower than the one before. And the question "how big should my drawer be?" has a math answer: big enough to hold the snacks you eat <i>most often</i> — the rest are not worth the space.</p>`,
+    explain: `<p>Real systems stack several caches. A request stops at the <b>first level that has the answer</b>:</p>
+${H.table(['Level', 'Where', 'Latency to user', 'Size', 'Shared by'], [['Browser / app cache', "user's device (HTTP <code>Cache-Control</code>, ETag)", '0 ms', 'MBs', 'one user'], ['CDN edge (+ origin shield)', 'PoP near the user', '5–30 ms', 'TBs per PoP', 'users in a region'], ['Reverse proxy', 'nginx / Varnish at origin', '+1 ms', 'GBs', 'all users'], ['<b>L1</b> in-process', "app server's heap (Caffeine, a dict)", '~100 ns', '100 MB – few GB', 'one server'], ['<b>L2</b> distributed', 'Redis / Memcached cluster', '~0.5 ms', '10s – 1000s GB', 'whole fleet'], ['DB buffer pool / page cache', 'inside the database host', 'ms', 'RAM of DB', 'the DB'], ['Disk / object store', 'source of truth', '5 ms – 100 ms', 'unbounded', '—']])}
+<p><b>Combined hit rate:</b> if each level catches a fraction <i>h<sub>i</sub></i> of what reaches it, the fraction reaching the database is <code>(1−h<sub>1</sub>)(1−h<sub>2</sub>)…</code>. Example: CDN 60%, L1 50%, L2 90% → DB sees <code>0.4 × 0.5 × 0.1 = 2%</code> of requests.</p>
+<p><b>Effective latency</b> = Σ (fraction served at level i × latency of level i). A 1% change in the hit rate of a slow level often matters more than halving the latency of a fast one.</p>
+<p><b>The L1 trade-off:</b> an in-process cache is ~5,000× faster than Redis and absorbs hot keys perfectly, but every server has its <b>own copy</b>: 200 servers = 200 copies to keep fresh. Keep L1 small (hot keys only), give it a short TTL (seconds), and broadcast invalidations (Redis pub/sub, or Redis <b>client-side caching</b> with <code>CLIENT TRACKING</code>, where the server tells clients which keys changed).</p>
+<p><b>Sizing a cache</b> — three questions:</p>
+<ol><li><b>Working set:</b> how many distinct keys are requested in a TTL window? Only those need to fit.</li>
+<li><b>Popularity skew:</b> real traffic is roughly <b>Zipf</b>-distributed — the k-th most popular key gets traffic ∝ 1/k<sup>s</sup> (s ≈ 0.7–1.1). So caching the top 10% of keys often yields 70–90% hit rate, and each extra GB helps less (diminishing returns).</li>
+<li><b>Bytes:</b> memory ≈ keys × (key + value + ~50–100 B overhead) × 1.2–1.5 (fragmentation, growth) × replicas.</li></ol>
+<p>Pick the size where the curve flattens and the miss rate keeps the DB comfortably within capacity.</p>`,
+    clues: ['"hot key gets 500k QPS" → L1 in-process cache in front of Redis', '"global users, static or semi-static content" → CDN edge + origin shield', '"how much memory does the cache need?" → working set × object size × overhead, using hit-rate curve', '"DB can handle 5k QPS, traffic is 200k QPS" → required hit rate ≥ 97.5%', '"80% of traffic goes to 20% of items" → Zipf/power-law: a small cache gives a high hit rate', '"200 app servers each cache config locally" → L1 coherence: short TTL + pub/sub invalidation'],
+    code: [{ lang: 'python', run: true, title: 'Size a cache with hit-rate math (runnable)', code: `# 1) Required hit rate from capacity
+total_qps, db_capacity_qps = 200_000, 5_000
+required = 1 - db_capacity_qps / total_qps
+print(f"DB can take {db_capacity_qps:,} of {total_qps:,} QPS -> need hit rate >= {required:.1%}")
+
+# 2) Zipf popularity: what hit rate do we get by caching the top C of N keys?
+N, s = 1_000_000, 0.99
+weights = [1 / (i ** s) for i in range(1, N + 1)]
+total = sum(weights)
+prefix, running = {}, 0.0
+targets = {N // 1000, N // 100, N // 20, N // 10, N // 5, N // 2}
+for i, w in enumerate(weights, start=1):
+    running += w
+    if i in targets:
+        prefix[i] = running / total
+
+value_bytes, key_bytes, overhead = 2_048, 40, 80
+print(f"\\n{'cached keys':>12} {'share':>7} {'hit rate':>9} {'memory':>9}")
+for c in sorted(prefix):
+    mem_gb = c * (value_bytes + key_bytes + overhead) * 1.3 / 1e9   # x1.3 fragmentation/headroom
+    print(f"{c:>12,} {c / N:>7.1%} {prefix[c]:>9.1%} {mem_gb:>7.2f} GB")
+
+# 3) Multi-level: fraction reaching the DB and effective latency
+levels = [("CDN", 0.60, 20.0), ("L1", 0.50, 60.0), ("L2", 0.90, 60.5)]   # (name, hit rate, ms when served here)
+db_ms = 70.5
+remaining, latency = 1.0, 0.0
+for name, h, ms in levels:
+    served = remaining * h
+    latency += served * ms
+    remaining -= served
+    print(f"{name}: serves {served:.1%} of all requests")
+latency += remaining * db_ms
+print(f"DB sees {remaining:.1%} of traffic; average latency = {latency:.1f} ms")` }],
+    codeTitle: ['Hit-rate & memory sizing'],
+    viz: [{
+      title: 'Multi-level cache: how 10,000 requests trickle down the layers',
+      input: '10000 | browser=0.3 cdn=0.6 l1=0.5 l2=0.9',
+      inputLabel: 'requests | hit rate per layer (0–1)',
+      gen: function (input) {
+        var sp = String(input || '').split('|');
+        if (sp.length !== 2) throw new Error('Format: N | browser=0.3 cdn=0.6 l1=0.5 l2=0.9');
+        var n = parseInt(sp[0], 10);
+        if (!(n >= 10 && n <= 1e7)) throw new Error('N must be between 10 and 10,000,000');
+        var rates = { browser: 0, cdn: 0, l1: 0, l2: 0 };
+        sp[1].trim().split(/\s+/).forEach(function (kv) {
+          var m = /^(browser|cdn|l1|l2)=([0-9.]+)$/i.exec(kv);
+          if (!m) throw new Error('Use browser=0.3 cdn=0.6 l1=0.5 l2=0.9');
+          var v = parseFloat(m[2]); if (!(v >= 0 && v <= 1)) throw new Error('Hit rates must be between 0 and 1');
+          rates[m[1].toLowerCase()] = v;
+        });
+        var layers = [['U', 'browser', 'Browser cache', 0], ['E', 'cdn', 'CDN edge', 20], ['L1', 'l1', 'App L1 (in-process)', 60], ['L2', 'l2', 'Redis L2', 60.5]];
+        var dbMs = 70.5, frames = [], remaining = n, served = [], lat = 0, reach = [];
+        function g(hl, ehl, lab) { return { type: 'graph', directed: true, height: 40, label: 'Request path (closest level first)', nodes: [box('U', 'Browser', 6, 20), box('E', 'CDN edge', 29, 20), box('L1', 'App L1', 52, 20), box('L2', 'Redis L2', 74, 20), box('D', 'Database', 95, 20)], edges: [['U', 'E', lab.UE || ''], ['E', 'L1', lab.EL1 || ''], ['L1', 'L2', lab.L1L2 || ''], ['L2', 'D', lab.L2D || '']], hl: hl, ehl: ehl }; }
+        frames.push({ narr: '<b>' + n.toLocaleString() + '</b> requests start at the user\'s browser. Each layer answers what it can (hit) and passes the rest (miss) to the next, slower layer.', parts: [g({ U: 'cur' }, {}, {}), { type: 'vars', label: 'Hit rate per layer', vals: { browser: rates.browser, cdn: rates.cdn, l1: rates.l1, l2: rates.l2 } }] });
+        var nextId = { U: 'E', E: 'L1', L1: 'L2', L2: 'D' };
+        layers.forEach(function (L) {
+          reach.push(Math.round(remaining));
+          var hits = remaining * rates[L[1]], miss = remaining - hits;
+          served.push(Math.round(hits)); lat += hits * L[3];
+          var hl = {}; hl[L[0]] = hits >= miss ? 'ok' : 'bad'; var eh = {}; eh[L[0] + '-' + nextId[L[0]]] = 'bad'; var lab = {}; lab[L[0] + nextId[L[0]]] = Math.round(miss).toLocaleString() + ' miss';
+          frames.push({ narr: '<b>' + L[2] + '</b> receives ' + Math.round(remaining).toLocaleString() + ' requests, hits <span class="c-g">' + Math.round(hits).toLocaleString() + '</span> (' + Math.round(rates[L[1]] * 100) + '%) served in ~' + L[3] + ' ms, and passes <span class="c-r">' + Math.round(miss).toLocaleString() + '</span> misses down.', parts: [g(hl, eh, lab), { type: 'bars', label: 'Requests reaching each level so far', values: reach.slice(), idxLabels: layers.slice(0, reach.length).map(function (x) { return x[1]; }), hl: (function () { var h = {}; h[reach.length - 1] = 'cur'; return h; })() }] });
+          remaining = miss;
+        });
+        reach.push(Math.round(remaining)); lat += remaining * dbMs;
+        frames.push({ narr: 'The <b>database</b> receives only <b>' + Math.round(remaining).toLocaleString() + '</b> of ' + n.toLocaleString() + ' requests (' + pct(remaining, n) + ') — the product of all the miss rates.', parts: [g({ D: remaining / n > 0.1 ? 'bad' : 'ok' }, {}, {}), { type: 'bars', label: 'Requests reaching each level', values: reach.slice(), idxLabels: ['browser', 'cdn', 'l1', 'l2', 'db'], hl: { 4: remaining / n > 0.1 ? 'bad' : 'ok' } }] });
+        frames.push({ narr: 'Effective average latency = Σ(share × latency) = <b>' + (lat / n).toFixed(1) + ' ms</b>. Compare: with no caches every request would cost ~' + dbMs + ' ms. Raise one hit rate in the input and watch the DB bar shrink.', parts: [{ type: 'table', label: 'Where requests were answered', columns: ['level', 'served', 'share', 'latency each'], rows: layers.map(function (L, i) { return [L[2], served[i].toLocaleString(), pct(served[i], n), L[3] + ' ms']; }).concat([['Database', Math.round(remaining).toLocaleString(), pct(remaining, n), dbMs + ' ms']]), hl: { 4: 'sel' } }, { type: 'vars', label: 'Result', vals: { 'avg latency': (lat / n).toFixed(1) + ' ms', 'DB share': pct(remaining, n) }, hl: { 'avg latency': 'sel' } }] });
+        return frames;
+      }
+    }, {
+      title: 'Sizing: Zipf hit-rate curve (diminishing returns)',
+      input: 'keys=10000000 s=0.9 kb=2',
+      inputLabel: 'keys=N s=skew(0.5–1.5) kb=avg value size',
+      gen: function (input) {
+        var m = /keys=(\d+)\s+s=([0-9.]+)\s+kb=([0-9.]+)/i.exec(String(input || ''));
+        if (!m) throw new Error('Format: keys=10000000 s=0.9 kb=2');
+        var N = +m[1], s = +m[2], kb = +m[3];
+        if (!(N >= 1000 && N <= 1e10)) throw new Error('keys must be 1,000 – 10,000,000,000');
+        if (!(s >= 0.5 && s <= 1.5)) throw new Error('s must be 0.5 – 1.5');
+        if (!(kb > 0 && kb <= 1024)) throw new Error('kb must be 0 – 1024');
+        var total = genHarmonic(N, s), shares = [0.001, 0.01, 0.05, 0.1, 0.2, 0.5], vals = [], labs = [], frames = [], rows = [];
+        frames.push({ narr: 'Popularity follows <b>Zipf(s = ' + s + ')</b>: the k-th most popular key gets traffic ∝ 1/k<sup>' + s + '</sup>. If we cache the top C keys, hit rate = (traffic of top C) ÷ (total traffic). Let us grow C.', parts: [{ type: 'vars', label: 'Inputs', vals: { 'distinct keys': N.toLocaleString(), skew: s, 'value size': kb + ' KB', 'per-key overhead': '~100 B' } }] });
+        shares.forEach(function (f, i) {
+          var c = Math.max(1, Math.round(N * f)), hr = genHarmonic(c, s) / total, gb = c * (kb * 1024 + 100) * 1.3 / 1e9;
+          vals.push(Math.round(hr * 1000) / 10); labs.push((f * 100) + '%');
+          rows.push([(f * 100) + '%', c.toLocaleString(), (hr * 100).toFixed(1) + '%', gb.toFixed(gb < 10 ? 2 : 0) + ' GB']);
+          var gain = i ? (vals[i] - vals[i - 1]).toFixed(1) : vals[0];
+          frames.push({ narr: 'Cache the top <b>' + (f * 100) + '%</b> (' + c.toLocaleString() + ' keys, ≈ ' + gb.toFixed(gb < 10 ? 2 : 0) + ' GB with overhead) → hit rate <b>' + (hr * 100).toFixed(1) + '%</b>' + (i ? ' (+' + gain + ' points for ' + (f / shares[i - 1]).toFixed(0) + '× the memory).' : '.'), parts: [{ type: 'bars', label: 'hit rate (%) vs share of keys cached', values: vals.slice(), idxLabels: labs.slice(), hl: (function () { var h = {}; h[i] = 'cur'; return h; })() }, { type: 'table', label: 'Sizing table', columns: ['share cached', 'keys', 'hit rate', 'memory'], rows: rows.map(function (r) { return r.slice(); }), hl: (function () { var h = {}; h[i] = 'cur'; return h; })() }] });
+        });
+        frames.push({ narr: 'Notice the <b>diminishing returns</b>: the first sliver of keys buys most of the hit rate; going from 20% to 50% of keys costs 2.5× memory for a few points. Choose the smallest size whose miss traffic your DB can absorb (e.g. DB handles 5% of QPS → need ≥ 95%).', parts: [{ type: 'bars', label: 'hit rate (%) vs share of keys cached', values: vals.slice(), idxLabels: labs.slice(), hl: { 3: 'sel' } }, { type: 'table', label: 'Sizing table', columns: ['share cached', 'keys', 'hit rate', 'memory'], rows: rows.map(function (r) { return r.slice(); }) }] });
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'Size a cache end to end', html: `<p>Requirements: 120k read QPS, DB safe at 6k QPS, 50M items, 1.5 KB each, Zipf s ≈ 1.</p>${H.table(['Step', 'Math', 'Result'], [['Required hit rate', '1 − 6k / 120k', '<b>≥ 95%</b>'], ['Keys needed (Zipf s=1, 50M keys)', 'H(C)/H(N) ≈ ln C / ln N: top 10% → ≈ 87%, top 20% → ≈ 91%, top 40% → ≈ 95%', '<b>≈ 20M keys</b>'], ['Bytes', '20M × (1.5 KB + 0.1 KB) × 1.3', '<b>≈ 42 GB</b>'], ['Topology', '42 GB × 2 (replica) ÷ 6 shards', '<b>~14 GB RAM per node</b>']])}<p>Then validate with real traces: measure the hit-rate curve (e.g. by simulating the access log, or Redis <code>keyspace_hits/misses</code> while varying maxmemory).</p>` },
+      { title: 'Little\'s Law sanity check on the cache cluster', html: `<p>120k QPS × 0.5 ms average Redis latency = <b>60 concurrent requests</b> in flight at the cache tier. One Redis shard handles ~100k+ simple ops/s, so 6 shards give generous headroom — the cluster is sized by <b>memory</b>, not throughput. For hot keys it is the opposite: one key's QPS lands on one shard, so add L1.</p>` },
+      { title: 'L1 + L2 coherence via pub/sub', html: `<p>Each app server keeps an L1 (Caffeine, 10k entries, TTL 10 s). On write: update DB → <code>DEL</code> in Redis → <code>PUBLISH invalidate user:42</code>. Every server subscribes and evicts <code>user:42</code> from its L1. Pub/sub is fire-and-forget (a disconnected server misses messages), so the 10 s L1 TTL bounds staleness anyway. Redis 6+ client-side caching (<code>CLIENT TRACKING ON</code>) automates this: the server remembers which keys each client read and pushes invalidation messages.</p>` },
+      { title: 'HTTP caching headers as a cache layer', html: `${H.table(['Header', 'Meaning'], [['<code>Cache-Control: public, max-age=300</code>', 'browser + CDN may reuse for 5 min'], ['<code>s-maxage=3600</code>', 'shared caches (CDN) use 1 h; browsers use max-age'], ['<code>stale-while-revalidate=60</code>', 'serve stale up to 60 s while refreshing in background'], ['<code>ETag</code> + <code>If-None-Match</code>', 'revalidate cheaply: <code>304 Not Modified</code> with no body'], ['<code>private, no-store</code>', 'personal or sensitive data: never in shared caches']])}` }
+    ],
+    deepDive: `<p><b>Inclusive vs exclusive levels.</b> Most web stacks are <i>inclusive</i> by accident: the same hot object sits in CDN, L1 and L2, wasting memory but making each level independently useful. CPU caches choose deliberately (some L3s are exclusive). For app caches, inclusive is fine — L1 is small and only holds the hottest keys.</p>
+<p><b>Hit-rate curves from real traces.</b> Instead of guessing Zipf parameters, compute a <b>miss-ratio curve</b> from an access log using stack distances (Mattson's algorithm: for LRU, a request hits in any cache larger than its reuse distance). Tools like SHARDS sample the trace so it runs in constant memory. This answers "what if we double the cache?" before buying RAM.</p>
+<p><b>Admission matters at every level.</b> A CDN should not cache one-hit wonders (most long-tail objects are requested once) — "cache on second hit" or TinyLFU admission raises hit rates of byte-limited caches. L1 should only hold keys above a popularity threshold.</p>
+<p><b>Latency tails and request fan-out.</b> A page that needs 50 cache lookups in parallel sees the <i>max</i> of 50 latencies; if each lookup has a 1% chance of 50 ms (a miss or GC pause), ~40% of pages hit the slow tail (1 − 0.99<sup>50</sup>). Multi-level caching, batching (<code>MGET</code>) and hedged requests reduce the tail.</p>
+<p><b>Cost model.</b> RAM is the expensive part: an extra 100 GB of Redis may cost far less than the DB replicas it avoids — or far more if the extra hit rate is 0.3 points. Compute "DB QPS saved per GB" at the margin and stop where it drops below the DB's cost per QPS.</p>
+<p><b>Warm vs cold L1.</b> Rolling deploys restart servers with empty L1s; with 200 servers deploying 10 at a time, L2 sees a modest bump — but a full fleet restart shifts all hot-key traffic to Redis at once (plan capacity for it).</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI applications add new levels to the hierarchy: <b>provider-side prompt caching</b> (reusing the computed prefix of long prompts for a fraction of the price), <b>exact-match response caches</b> keyed by a hash of model + prompt + parameters, <b>semantic caches</b> (embedding similarity lookup — a hit when a new question is "close enough" to a cached one, with a tunable similarity threshold that trades accuracy for hit rate), and embedding caches. The same hit-rate math decides whether they pay off — but a miss now costs dollars, not milliseconds.</p>
+<p><b>Use AI as a partner:</b> <code>Given this access log sample, fit a Zipf exponent and produce a hit-rate vs memory table</code>; <code>Compute cost saved per month for a semantic cache at 30% hit rate on 2M LLM calls/day</code>.</p>
+<p><b>Where AI goes wrong:</b> adds hit rates instead of multiplying miss rates, ignores per-key overhead and replicas when sizing, assumes uniform popularity, or proposes a semantic cache for personalised or time-sensitive answers (wrong answers served to the wrong user).</p>
+<p><b>What you must still own:</b> the latency/cost budget per level, what each level may cache (privacy: never put per-user data in a shared CDN cache), and the coherence story across levels.</p>`,
+    problems: [{
+      title: 'Size the Cache for a URL Shortener', level: 'Medium', tags: ['sizing', 'hit rate', 'Zipf', 'multi-level'], companies: ['Bitly', 'Google', 'Microsoft'],
+      statement: `<p>A URL shortener stores 2 billion short links (key 8 B, long URL avg 120 B). Redirect traffic: 300k reads/s average, 1M/s peak. The database cluster can serve 20k reads/s. Traffic is heavily skewed: ~90% of clicks go to links created in the last week, and popularity is roughly Zipf (s ≈ 1). Decide the caching layers and the cache size.</p>`,
+      constraints: `<p>p99 redirect &lt; 50 ms globally · DB ≤ 20k QPS at peak · links never change after creation (except deletion for abuse).</p>`,
+      example: `<p>Required hit rate at peak: ${H.c('b', '1 − 20k / 1M = 98%')}. Caching all 2B links: 2B × ~250 B ≈ ${H.c('r', '500 GB+')}. Caching the hot 100M: ≈ ${H.c('g', '25–35 GB')}.</p>`,
+      brute: { why: `<p><b>Naive design:</b> "cache everything in Redis" → 2B × (8 + 120 + ~100 overhead) × 1.3 ≈ 600 GB of RAM, ×2 for replicas — expensive, and most of those links are never clicked again. Or "cache nothing, scale the DB" → 50 DB replicas to absorb 1M QPS.</p>` },
+      mcq: { q: 'Links are immutable once created. What does that mean for invalidation?', options: ['Very short TTLs are mandatory', 'Long TTLs are safe; only abuse deletions need explicit invalidation', 'Write-back is required', 'You cannot use a CDN'], answer: 1, explain: 'Immutable data is the easiest case: cache long, purge explicitly on the rare deletion.' },
+      hints: [`<p>Hint 1: Start from the required hit rate (98% at peak) and the skew (recent + Zipf).</p>`, `<p>Hint 2: Layer it: CDN/edge caching of 301/302 responses for the hottest links, L1 in-process for the top few thousand, Redis L2 for the hot 5%.</p>`, `<p>Hint 3: Memory per entry ≈ 8 + 120 + ~100 overhead ≈ 230 B; ×1.3 headroom. Use allkeys-lfu so long-lived popular links stay. Abuse deletions → DEL + CDN purge.</p>`],
+      solution: {
+        approach: `<p><b>1. Required hit rate:</b> peak 1M QPS, DB budget 20k → combined hit rate ≥ 98%.</p>
+<p><b>2. Layers:</b></p>
+<ul><li><b>CDN edge</b> caches redirect responses (<code>Cache-Control: public, max-age=86400</code> on 301/302 for non-tracked links). Viral links are absorbed at the edge: say 50% of traffic.</li>
+<li><b>L1 in-process</b> on each redirect server: top ~100k links (≈ 25 MB), TTL 10 min — handles hot keys without hitting one Redis shard.</li>
+<li><b>Redis L2</b>: ~90% of clicks go to last week's links (~50M), and the older 10% is itself Zipf-skewed, so caching ~100M links (last week + the hottest older ones, 5% of all keys) should catch ≈ 95% of the traffic reaching it (verify with a trace simulation). 100M × ~230 B × 1.3 ≈ <b>30 GB</b> → 4 shards × ~8 GB primaries + replicas. Policy <code>allkeys-lfu</code>; TTL 7 days with jitter (immutable data, TTL only for memory hygiene).</li></ul>
+<p><b>3. Check the math:</b> edge 50% → 500k reach origin; L1 40% → 300k; Redis 95% → 15k reach the DB ≤ 20k budget. Latency: edge hits ~10–20 ms, origin hits ~30–40 ms, DB path ~45 ms → p99 within 50 ms.</p>
+<p><b>4. Invalidation:</b> links never change; on abuse deletion: DB tombstone → DEL Redis key → pub/sub L1 evict → CDN purge by URL. <b>Penetration:</b> random short codes are common (bots) — Bloom filter of existing codes (2B keys at 1% ≈ 2.4 GB) or negative cache with short TTL.</p>`,
+        complexity: `<p>Redis ≈ 30 GB (×2 with replicas); L1 ≈ 25 MB per server; DB peak ≈ 15k QPS. Each redirect: O(1) lookups across levels.</p>`,
+        followUps: ['Analytics needs every click counted — how does CDN caching affect that?', 'A link goes viral in one region — which layer absorbs it?', 'How do you measure the real hit-rate curve before buying RAM?']
+      }
+    }]
+  });
   registerModule({ id: 'hld06', title: 'Caching', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 10, topics: topics, practice: practice, quiz: quiz, interview: interview });
 })();
