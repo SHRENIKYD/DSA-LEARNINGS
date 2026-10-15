@@ -1071,4 +1071,195 @@ print("only the app tier redundant:", f"{series(LB, parallel(APP, 3), DB):.4%}",
     }]
   });
 
+  /* =====================================================================
+     TOPIC 6 — Read Replicas (intro)
+     ===================================================================== */
+  topics.push({
+    title: 'Read Replicas: Scaling Reads (and the Stale-Read Trap)',
+    analogy: `<p>A school has one official <b>master timetable</b> in the principal's office. Only the principal may change it. Copies are pinned on every floor so students do not crowd the office to read it. When the principal changes a class, a helper walks around and updates the copies — which takes a few minutes. For those few minutes a student reading a floor copy sees the <b>old</b> timetable.</p>
+      <p>That is a database with <b>read replicas</b>: one <b>primary</b> takes every change, many <b>replicas</b> serve reads, and the copies are <b>a little behind</b>.</p>`,
+    explain: `<p>Most apps read far more than they write: a social feed, a product page or a news site may do <b>10 to 100 reads for every write</b>. A single database server spends most of its CPU answering reads. Read replicas spread that work.</p>
+      <h4>How it works</h4>
+      <ol>
+        <li>All <b>writes</b> (INSERT/UPDATE/DELETE) go to one <b>primary</b> (also called leader/master).</li>
+        <li>The primary records every change in a log (PostgreSQL WAL, MySQL binlog) and <b>streams</b> it to each <b>replica</b> (follower), which replays it.</li>
+        <li><b>Reads</b> are spread across replicas (round robin or least connections, just like app servers). The app or a proxy decides: writes → primary, reads → replicas.</li>
+      </ol>
+      ${H.table(['', 'Primary', 'Read replica'], [
+        ['Accepts writes', H.c('g', 'Yes'), H.c('r', 'No (read-only)')],
+        ['Serves reads', 'Yes (use for must-be-fresh reads)', H.c('g', 'Yes — this is its job')],
+        ['Freshness', 'Always latest', 'Behind by the <b>replication lag</b> (usually ms, sometimes seconds or more)'],
+        ['If it dies', 'Promote a replica (failover)', 'Remove it; others take its reads']
+      ])}
+      <h4>Numbers to feel it</h4>
+      <p>A DB handles 10,000 queries/s: 9,000 reads + 1,000 writes and is at 90% CPU. Add 3 replicas and send reads there: each replica gets ~3,000 reads/s, the primary now only does 1,000 writes/s (plus replication work). Reads scale <b>almost linearly</b> with replicas.</p>
+      <p>${H.c('r', 'What replicas do NOT fix:')} <b>writes</b>. Every write still goes to the one primary, and every replica must replay every write. If writes are the bottleneck you need other tools: batching, caching, queues, or <b>sharding</b> (HLD 5).</p>
+      <h4>The trap: replication lag → stale reads</h4>
+      <p>Most replicas are <b>asynchronous</b>: the primary says "done" before replicas have the change. Asha updates her profile name, the page reloads, the read hits a replica that is 2 seconds behind → she sees her ${H.c('r', 'old name')} and thinks the save failed. The classic fix is <b>read-your-writes</b> consistency: for a short window after a user writes, send <i>that user's</i> reads to the primary (or to a replica known to be caught up).</p>`,
+    clues: [
+      '"Read-heavy" / "100:1 read-to-write ratio" → read replicas (and caching)',
+      '"Database CPU high, mostly SELECT queries" → add read replicas',
+      '"User updates profile but still sees old data" → replication lag; read-your-writes',
+      '"Heavy analytics/reporting queries slow down the app" → dedicated reporting replica',
+      '"Writes are the bottleneck" → replicas will NOT help; think sharding/queues',
+      '"Survive the database server dying" → a replica that can be promoted (failover)'
+    ],
+    code: { lang: 'java', title: 'Routing reads and writes with read-your-writes (Java, compiles)', code: `import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
+
+class DbNode {
+    final String name;
+    DbNode(String name) { this.name = name; }
+    @Override public String toString() { return name; }
+}
+
+// Decides which database each query goes to.
+class ReplicaRouter {
+    private final DbNode primary;
+    private final List<DbNode> replicas;
+    private final AtomicInteger next = new AtomicInteger();
+    private final long rywWindowMs;   // e.g. a bit longer than typical replication lag
+    // NOTE: kept in memory only for the demo. In a stateless fleet, put "last write time"
+    // in the user's session or a cookie so every app server sees it.
+    private final Map<String, Long> lastWriteAt = new ConcurrentHashMap<>();
+
+    ReplicaRouter(DbNode primary, List<DbNode> replicas, long rywWindowMs) {
+        this.primary = primary;
+        this.replicas = List.copyOf(replicas);
+        this.rywWindowMs = rywWindowMs;
+    }
+
+    // Every write goes to the primary; remember when this user last wrote.
+    DbNode forWrite(String userId, long nowMs) {
+        lastWriteAt.put(userId, nowMs);
+        return primary;
+    }
+
+    // Reads go to replicas, EXCEPT right after this user wrote something.
+    DbNode forRead(String userId, long nowMs) {
+        Long w = lastWriteAt.get(userId);
+        if (w != null && nowMs - w < rywWindowMs) return primary;     // read-your-writes
+        if (replicas.isEmpty()) return primary;
+        return replicas.get(Math.floorMod(next.getAndIncrement(), replicas.size()));  // round robin
+    }
+}
+
+class ReplicaDemo {
+    public static void main(String[] args) {
+        ReplicaRouter r = new ReplicaRouter(new DbNode("primary"),
+                List.of(new DbNode("replica-1"), new DbNode("replica-2")), 5_000);
+        long t = 0;
+        System.out.println("asha reads  -> " + r.forRead("asha", t));          // replica-1
+        System.out.println("asha writes -> " + r.forWrite("asha", t + 100));    // primary
+        System.out.println("asha reads  -> " + r.forRead("asha", t + 600));     // primary (fresh)
+        System.out.println("ben reads   -> " + r.forRead("ben", t + 700));      // replica-2
+        System.out.println("asha reads  -> " + r.forRead("asha", t + 9_000));   // replica-1 again
+    }
+}` },
+    viz: {
+      title: 'Writes to the primary, reads from replicas, and a stale read',
+      input: 'lag=2',
+      inputLabel: 'Replication lag in ticks (0–4)',
+      gen: function (input) {
+        var o = kvParse(input), lag = o.lag !== undefined ? Number(o.lag) : 2;
+        if (!(lag >= 0 && lag <= 4 && Math.floor(lag) === lag)) throw new Error('Use lag=0 … lag=4');
+        var writes = [{ t: 0, v: 'Asha' }], rr = 0, frames = [], staleCount = 0, replicaReads = 0;
+        function valAt(node, t) {
+          var v = writes[0].v;
+          writes.forEach(function (w) { if (node === 'P' ? w.t <= t : w.t + lag <= t) v = w.v; });
+          return v;
+        }
+        function nodes() { return [B('U', 'Users', 7, 30), B('A', 'App servers', 29, 30), B('P', 'DB primary', 60, 8), B('R1', 'Replica 1', 88, 30), B('R2', 'Replica 2', 60, 52)]; }
+        var edges = [['U', 'A'], ['A', 'P', 'writes'], ['A', 'R1'], ['A', 'R2', 'reads'], ['P', 'R1', 'log'], ['P', 'R2']];
+        function tbl(t, hlRow) {
+          var rows = [['primary', valAt('P', t)], ['replica 1', valAt('R1', t)], ['replica 2', valAt('R2', t)]], h = {};
+          rows.forEach(function (r, i) { if (i > 0 && r[1] !== rows[0][1]) h[i] = 'bad'; });
+          if (hlRow !== undefined) h[hlRow] = h[hlRow] === 'bad' ? 'bad' : 'sel';
+          return { type: 'table', label: 'users.name for id=42 on each node (t=' + t + ')', columns: ['node', 'name'], rows: rows, hl: h };
+        }
+        frames.push({ narr: 'Setup: one <b>primary</b> takes all writes and streams its change log to <b>2 replicas</b>. Reads are spread across replicas with round robin. Replication lag = <b>' + lag + '</b> tick' + (lag === 1 ? '' : 's') + '.', parts: [G('Primary + read replicas', nodes(), edges, { P: 'sel' }, {}, { P: 'writes only here' }), tbl(0)] });
+        var events = [
+          { t: 1, k: 'read', u: 'asha' }, { t: 2, k: 'write', v: 'Asha K' }, { t: 3, k: 'read', u: 'asha' }, { t: 4, k: 'read', u: 'asha' },
+          { t: 5, k: 'note' }, { t: 6, k: 'write', v: 'Asha Kumar', ryw: true }, { t: 7, k: 'read', u: 'asha', ryw: true }, { t: 7, k: 'read', u: 'ben', ryw: true }, { t: 7 + lag, k: 'catch' }
+        ];
+        var rywOn = false, lastWrite = -99;
+        events.forEach(function (ev) {
+          var t = ev.t;
+          if (ev.k === 'write') {
+            writes.push({ t: t, v: ev.v }); lastWrite = t; if (ev.ryw) rywOn = true;
+            frames.push({ narr: 't=' + t + ': Asha saves her name as <b>"' + ev.v + '"</b>. The write goes to the <b>primary</b>, which commits and replies "OK" right away (asynchronous replication). Replicas will get it at t=' + (t + lag) + '.', parts: [
+              G('Write path', nodes(), edges, { P: 'ok', A: 'cur' }, { 'U-A': 'cur', 'A-P': 'ok', 'P-R1': 'cur', 'P-R2': 'cur' }, { P: 'UPDATE users …' }), tbl(t, 0)] });
+          } else if (ev.k === 'read') {
+            var target, why;
+            if (rywOn && ev.u === 'asha' && t - lastWrite < lag + 3) { target = 'P'; why = 'Read-your-writes is ON: Asha wrote ' + (t - lastWrite) + ' tick(s) ago, so <b>her</b> reads go to the primary.'; }
+            else { target = rr % 2 === 0 ? 'R1' : 'R2'; rr++; replicaReads++; why = 'Read routed round-robin to <b>' + (target === 'R1' ? 'Replica 1' : 'Replica 2') + '</b>.'; }
+            var got = valAt(target, t), fresh = valAt('P', t), stale = got !== fresh;
+            if (stale) staleCount++;
+            var hl = {}; hl[target] = stale ? 'bad' : 'ok';
+            var eh = { 'U-A': 'cur' }; eh['A-' + target] = stale ? 'bad' : 'ok';
+            frames.push({ narr: 't=' + t + ': <b>' + ev.u + '</b> loads the profile. ' + why + ' It returns <b>"' + got + '"</b>. ' + (stale
+              ? (ev.u === 'asha' ? '<span class="c-r">STALE! Asha just saved "' + fresh + '" and sees her old name — "did my save fail?"</span>' : '<span class="c-y">Slightly stale, but Ben never saw the new value, so he cannot tell. Usually acceptable.</span>')
+              : '<span class="c-g">Fresh.</span>'), parts: [
+              G('Read path', nodes(), edges, hl, eh, (function () { var tg = {}; tg[target] = '→ "' + got + '"'; return tg; })()),
+              tbl(t, target === 'P' ? 0 : (target === 'R1' ? 1 : 2)),
+              V('Counters', { 'reads on replicas': replicaReads, 'stale reads': staleCount, 'lag (ticks)': lag }, { 'stale reads': staleCount ? 'bad' : '' })] });
+          } else if (ev.k === 'note') {
+            frames.push({ narr: (staleCount ? 'Asha hit a stale read because replication is asynchronous.' : 'With lag 0 no read was stale — but real lag is never guaranteed to be 0.') + ' <b>Fix: read-your-writes.</b> After a user writes, route <i>that user\'s</i> reads to the primary for a short window (longer than typical lag). Everyone else keeps using replicas.', parts: [
+              { type: 'code', label: 'Routing rule', lang: 'java', code: 'if (now - lastWriteAt(user) < WINDOW)\n    return primary;      // read-your-writes\nreturn nextReplica();    // round robin', hl: { 1: 'cur', 2: 'ok' } },
+              tbl(t)] });
+          } else {
+            frames.push({ narr: 't=' + t + ': replicas have replayed the log and <b>caught up</b> — this is <b>eventual consistency</b>: stop writing and all copies converge. Replicas absorbed most reads, so the primary\'s CPU is free for writes.', parts: [
+              G('Caught up', nodes(), edges, { P: 'ok', R1: 'ok', R2: 'ok' }, { 'P-R1': 'ok', 'P-R2': 'ok' }), tbl(t),
+              V('Totals', { 'reads served by replicas': replicaReads, 'stale reads seen by the writer': staleCount, 'writes handled by primary': writes.length - 1 })] });
+          }
+        });
+        frames.push({ narr: '<b>Failover bonus:</b> if the primary dies, a replica can be <b>promoted</b> to become the new primary. With async replication the last few writes not yet copied can be lost — that is why critical systems keep at least one <b>synchronous</b> standby.', parts: [
+          G('Primary failure', nodes(), [['U', 'A'], ['A', 'R1', 'writes + reads'], ['A', 'R2'], ['R1', 'R2', 'log']], { P: 'bad', R1: 'sel' }, { 'A-R1': 'ok' }, { P: 'crashed', R1: 'promoted' })] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Read/write math for a news site', html: `<p>Peak 20,000 queries/s, 95% reads. One primary can do ~8,000 queries/s comfortably.</p>
+        ${H.table(['Setup', 'Primary load', 'Each replica'], [
+          ['No replicas', H.c('r', '20,000 q/s (overloaded)'), '–'],
+          ['3 replicas', '1,000 writes/s', '~6,333 reads/s'],
+          ['4 replicas', '1,000 writes/s', H.c('g', '4,750 reads/s')]
+        ])}<p>Writes (1,000/s) are replayed on every replica too, so replicas need similar hardware to the primary.</p>` },
+      { title: 'The reporting replica', html: `<p>Finance runs a 3-minute <code>SELECT … GROUP BY</code> across 2 years of orders every hour. On the primary it hogs CPU and I/O and checkout gets slow. Route analytics to a <b>dedicated replica</b> that serves no user traffic — slow reports cannot hurt checkout, and slightly old data is fine for reports. (At larger scale this becomes a data warehouse, HLD 13.)</p>` },
+      { title: 'Read-your-writes three ways', html: `<ol><li><b>Time window:</b> after a user writes, read from primary for N seconds (simple; N must exceed typical lag).</li>
+        <li><b>Track position:</b> remember the primary's log position (LSN/GTID) of the user's last write; read from a replica only if it has replayed past it.</li>
+        <li><b>Return the new data:</b> the write API returns the saved object, so the UI shows it without re-reading.</li></ol>
+        <p>Most apps combine 1 or 3 with "always read money/auth from the primary".</p>` },
+      { title: 'Lag spike during a migration', html: `<p>A big <code>UPDATE</code> touching 50M rows runs on the primary. Replicas must replay it too and fall <b>minutes</b> behind. Users see stale data everywhere. ${H.c('g', 'Fix:')} batch large updates (e.g. 10k rows at a time), monitor replica lag (alert at a few seconds), and have the router stop sending reads to a replica whose lag exceeds a threshold.</p>` }
+    ],
+    deepDive: `<p><b>Sync vs async replication:</b> with <b>synchronous</b> replication the primary waits for a replica to confirm before acknowledging the write — no data loss on failover but higher write latency, and writes stall if that replica is slow. <b>Asynchronous</b> is fast but a failover can lose the last writes. <b>Semi-synchronous</b> (MySQL) / <code>synchronous_standby_names</code> with quorum (PostgreSQL) waits for at least one of several replicas — the common production middle ground.</p>
+      <p><b>Consistency anomalies beyond stale reads:</b> <i>monotonic reads</i> — a user hits a fresh replica then a laggier one and sees data "go back in time" (fix: pin a user's reads to one replica for a session). <i>Consistent prefix</i> — seeing an answer before its question when different rows arrive in different orders (relevant once data is sharded). These are previewed here and formalised in HLD 10.</p>
+      <p><b>How lag is measured:</b> PostgreSQL exposes <code>pg_stat_replication</code> (write/flush/replay lag); MySQL shows <code>Seconds_Behind_Source</code>. Proxies like ProxySQL, PgBouncer-based setups, cloud "reader endpoints" (Aurora, Cloud SQL, Azure) and drivers with read/write splitting can route automatically and avoid lagging replicas.</p>
+      <p><b>Replicas are also your disaster tools:</b> a replica in another zone is a hot standby for failover; a <b>delayed replica</b> (e.g. 1 hour behind on purpose) can save you from an accidental <code>DROP TABLE</code>. But a replica is <b>not a backup</b> — a bad delete replicates instantly. Keep point-in-time backups too.</p>
+      <p><b>Limits:</b> each replica adds load on the primary to ship the log, and each must replay all writes; past ~5–15 replicas teams use cascading replication or caches instead. And replicas do nothing for write throughput or dataset size — that is sharding.</p>`,
+    aiEra: `<p><b>What AI changes:</b> query analysers and AI copilots for databases can classify queries (read vs write, fresh vs tolerant), suggest which can move to replicas, and spot N+1 queries that are better fixed than scaled. AI-driven anomaly detection catches replica-lag spikes early.</p>
+      <p><b>AI systems use the same idea:</b> a vector database for retrieval (RAG) usually has one write path for ingesting embeddings and many read replicas for similarity search, because queries vastly outnumber document updates. And the same stale-read trap appears: a user uploads a document and immediately asks about it, but the replica's index has not caught up — read-your-writes again.</p>
+      <p><b>Use AI as a partner:</b> <code>Here are our top 20 queries by total time; mark which can tolerate a few seconds of staleness and which must hit the primary</code>. <b>Where AI goes wrong:</b> it suggests replicas for write-heavy workloads, ignores lag in correctness reasoning, and calls a replica a backup. <b>What you must own:</b> deciding which reads must be fresh — that is a product decision, not a database setting.</p>`,
+    problems: [{
+      title: 'Database at 90% CPU, 95% of Queries Are Reads',
+      level: 'Medium', tags: ['read replicas', 'replication lag', 'read-your-writes'], companies: ['LinkedIn', 'Airbnb', 'Booking.com'],
+      statement: `<p>A travel review site has 8 stateless app servers and one PostgreSQL primary at <b>90% CPU</b> during evening peaks. Query mix: 95% reads (hotel pages, reviews, search filters), 5% writes (new reviews, bookings, profile edits). Users who post a review must see it immediately; booking confirmations must never show stale data. Design the read-scaling plan.</p>`,
+      constraints: `Peak 12,000 queries/s; one DB box comfortably handles ~5,000 q/s; typical replica lag 50–500 ms, occasionally 5 s during batch jobs.`,
+      example: `<p>11,400 reads/s ÷ ~4,000 per replica (leaving headroom) ≈ ${H.c('g', '3 replicas')}, primary keeps 600 writes/s + must-be-fresh reads. A user who posts a review and refreshes must hit ${H.c('b', 'the primary')} for that read.</p>`,
+      brute: { why: `<p>Naive plan A: "add more app servers" — the DB is the bottleneck, so more app servers just send more queries to the same overloaded primary. Naive plan B: "add replicas and send <b>all</b> reads there" — CPU drops, but users who just posted a review do not see it, and booking pages can show "pending" after payment succeeded, causing duplicate bookings and support tickets.</p>` },
+      mcq: { q: 'Which reads should still go to the primary?', options: ['A user\'s reads right after their own write, and booking/payment status', 'All hotel page reads', 'Nothing — replicas are always up to date'], answer: 0, explain: 'Freshness-critical reads (read-your-writes, money/booking state) go to the primary; everything else tolerates sub-second staleness.' },
+      hints: [`<p>Compute reads/s and how many replicas that needs at a safe utilisation.</p>`, `<p>Classify reads: tolerant (hotel pages, search) vs must-be-fresh (my own new review, booking status).</p>`, `<p>Recipe: router with write → primary; fresh-class reads + reads within N s of the user's last write → primary; others → replicas by least connections; eject replicas whose lag &gt; 2 s.</p>`],
+      solution: {
+        approach: `<p><b>Capacity:</b> 12,000 q/s × 95% = 11,400 reads/s. At ~4,000 reads/s per replica (80% of capacity) → 3 replicas; run <b>4</b> so one can fail or be patched (N+1). The primary keeps 600 writes/s plus a small share of fresh reads → well under 50% CPU.</p>
+          <p><b>Routing (in the data-access layer or a proxy):</b> writes → primary. Reads are tagged: <i>tolerant</i> (hotel pages, reviews list, search) → replicas via least connections; <i>fresh</i> (booking and payment status, account settings) → primary. <b>Read-your-writes:</b> when a user writes, store <code>last_write_at</code> in their session; for 5 seconds after, their reads go to the primary. The review-post API also returns the created review so the UI shows it instantly.</p>
+          <p><b>Lag safety:</b> monitor replay lag per replica; the router stops sending reads to any replica more than 2 s behind (falls back to others or the primary). Batch jobs are chunked to avoid lag spikes; heavy reporting moves to a separate reporting replica.</p>
+          <p><b>Availability bonus:</b> put one replica in another zone as a synchronous (or semi-sync) standby that can be promoted if the primary fails.</p>
+          <p><b>Next steps if growth continues:</b> a cache (Redis) for hot hotel pages cuts replica load further (HLD 6); if writes become the bottleneck, consider sharding (HLD 5).</p>`,
+        complexity: `<p>Replicas needed = ⌈reads ÷ per-replica budget⌉ + 1 = ⌈11,400 ÷ 4,000⌉ + 1 = 4. Each replica also replays all 600 writes/s.</p>`,
+        followUps: ['How would you implement read-your-writes across a stateless fleet without sticky sessions?', 'A replica falls 10 minutes behind — what should the system do automatically?']
+      }
+    }]
+  });
+
 registerModule({ id: 'hld02', title: 'Scalability Basics', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 8, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

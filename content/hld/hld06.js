@@ -896,13 +896,13 @@ def owner(slot):
     return next(name for lo, hi, name in owners if lo <= slot <= hi)
 
 print("sanity check: slot('123456789') =", key_slot("123456789"), "(Redis docs: 12739)")
-for k in ["user:42", "user:43", "{user:42}:cart", "{user:42}:wishlist", "session:abc"]:
+for k in ["user:7", "user:2", "session:abc", "{user:7}:cart", "{user:7}:wishlist"]:
     s = key_slot(k)
     print(f"{k:20} slot {s:5} -> {owner(s)}")` }],
     codeTitle: ['redis-cli cheat sheet', 'redis-py cache-aside', 'Hash slot calculator'],
     viz: [{
       title: 'Redis Cluster routing: CRC16(key) mod 16384 → slot → node',
-      input: 'user:42 user:43 {user:42}:cart {user:42}:wishlist session:abc 123456789',
+      input: 'user:7 user:2 session:abc {user:7}:cart {user:7}:wishlist product:9',
       inputLabel: 'Keys (space separated, ≤ 10). Try {tags}!',
       gen: function (input) {
         var keys = String(input || '').trim().split(/\s+/).filter(Boolean);
@@ -979,6 +979,187 @@ for k in ["user:42", "user:43", "{user:42}:cart", "{user:42}:wishlist", "session
 <li><b>Bigger scale:</b> partition by score range into multiple sorted sets on different shards; rank = Σ <code>ZCARD</code> of higher buckets + rank within own bucket.</li></ul>`,
         complexity: `<p>ZADD/ZREVRANK O(log N) ≈ 26 steps for 50M; top-100 O(log N + 100). Memory ≈ 5 GB per copy.</p>`,
         followUps: ['Daily / weekly leaderboards with automatic reset?', 'Friends-only leaderboard?', 'How do you handle ties fairly (earlier achiever ranks higher)?']
+      }
+    }]
+  });
+
+  /* =====================================================================
+     TOPIC 6 — Thundering Herd / Cache Stampede
+     ===================================================================== */
+  topics.push({
+    title: 'Thundering Herd & Cache Stampede',
+    analogy: `<p>A busy office has one <b>coffee machine</b>. The pot runs empty at 9:00 sharp. Fifty people walk up at the same moment, see it is empty, and <b>all fifty start brewing their own pot</b> — the machine jams and nobody gets coffee for ten minutes. The smart office has a rule: <b>the first person who finds it empty brews; everyone else waits two minutes and shares that pot</b>. Even smarter: someone tops it up at 8:55, <i>before</i> it runs dry.</p>`,
+    explain: `<p>A <b>cache stampede</b> (also called <b>thundering herd</b>, <b>dog-piling</b>, or <b>cache breakdown</b> for a single hot key) happens when a popular key disappears — TTL expiry, eviction, a deploy that flushed the cache — and <b>many concurrent requests miss at the same time</b>. Each one runs the same expensive DB query or computation. The DB slows down, so each query takes longer, so even more requests pile up behind them. Latency explodes and the DB can fall over — a feedback loop.</p>
+${H.table(['Moment', 'Hot key: 5,000 req/s, recompute 200 ms'], [['Key valid', '0 DB queries — all hits'], ['Key expires', 'every request in the next 200 ms misses → <b>1,000</b> identical queries'], ['DB slows to 2 s under load', 'now <b>10,000</b> requests miss before anyone refills the key'], ['Result', '<span class="c-r">DB at 100% CPU, timeouts, retries make it worse</span>']])}
+<p><b>The fixes (use more than one):</b></p>
+<ol><li><b>Request coalescing / single-flight:</b> within one server, only the first miss for a key calls the DB; other threads wait on the same in-flight future. Cuts duplicates per server from thousands to one.</li>
+<li><b>Distributed lock (mutex) on refill:</b> across servers, the first miss does <code>SET lock:key token NX PX 3000</code>. Winner recomputes and fills; losers briefly sleep and re-read the cache, or serve a stale copy. Now the whole fleet sends ~1 query.</li>
+<li><b>Stale-while-revalidate (soft TTL):</b> keep the old value past its "soft" expiry; serve it instantly while one request refreshes in the background. Users never wait.</li>
+<li><b>Probabilistic early expiration (XFetch):</b> each request, as expiry approaches, rolls a die and with growing probability refreshes the key <i>early</i>. One lucky request refreshes before the deadline, so the key never actually expires under load.</li>
+<li><b>TTL jitter:</b> <code>TTL = 300 + random(0..60)</code> so keys loaded together do not expire together (prevents a <i>mass</i> stampede, a.k.a. cache avalanche).</li>
+<li><b>Never-expire hot keys + background refresh:</b> a job refreshes the top-N keys every few seconds.</li></ol>`,
+    clues: ['"every hour on the hour our DB CPU spikes to 100%" → synchronized TTL expiry, add jitter', '"a viral post / celebrity key expires and the DB falls over" → hot-key stampede: single-flight + lock + stale-while-revalidate', '"after a deploy that cleared the cache, the site went down" → cold-start herd: warmup, gradual traffic, coalescing', '"recomputing this value takes 5 seconds" → expensive recompute = stampede risk; refresh ahead of expiry', '"retries make the outage worse" → herd + retry storm: backoff with jitter, circuit breaker', '"millions of clients reconnect at the same time" → thundering herd beyond caches; add jittered backoff'],
+    code: [{ lang: 'java', title: 'Single-flight: one loader per key per JVM', code: `class SingleFlight<K, V> {
+    // key -> the load currently in progress for that key
+    private final ConcurrentHashMap<K, CompletableFuture<V>> inFlight = new ConcurrentHashMap<>();
+
+    V load(K key, Function<K, V> loader) {
+        CompletableFuture<V> mine = new CompletableFuture<>();
+        CompletableFuture<V> existing = inFlight.putIfAbsent(key, mine);
+        if (existing != null) {
+            return existing.join();              // someone else is loading: wait and share
+        }
+        try {
+            V v = loader.apply(key);             // we are the leader: do the expensive work once
+            mine.complete(v);
+            return v;
+        } catch (RuntimeException e) {
+            mine.completeExceptionally(e);       // waiters see the same failure (no retry storm)
+            throw e;
+        } finally {
+            inFlight.remove(key, mine);          // next miss after this starts a fresh load
+        }
+    }
+
+    public static void main(String[] args) throws Exception {
+        SingleFlight<String, String> sf = new SingleFlight<>();
+        AtomicInteger dbCalls = new AtomicInteger();
+        Function<String, String> slowDb = k -> {
+            dbCalls.incrementAndGet();
+            try { Thread.sleep(200); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+            return "value-of-" + k;
+        };
+        ExecutorService pool = Executors.newFixedThreadPool(50);
+        List<Future<String>> results = new ArrayList<>();
+        for (int i = 0; i < 50; i++) results.add(pool.submit(() -> sf.load("hot:key", slowDb)));
+        for (Future<String> f : results) f.get();
+        pool.shutdown();
+        System.out.println("50 concurrent misses -> DB calls = " + dbCalls.get());   // usually 1
+    }
+}` }, { lang: 'python', run: true, title: 'Naive vs lock vs XFetch early refresh (deterministic simulation)', code: `import math
+import random
+
+RATE = 1000        # requests per second on one hot key
+TTL = 60.0         # seconds
+DELTA = 2.0        # seconds to recompute the value (slow query)
+DURATION = 300.0   # simulate 5 minutes
+BETA = 1.0         # XFetch aggressiveness (>1 refreshes earlier)
+
+def simulate(strategy, seed=7):
+    rng = random.Random(seed)
+    expiry = TTL                 # key was loaded at t=0
+    refresh_done = None          # time an in-flight recompute finishes
+    recomputes, waits = 0, 0
+    for i in range(int(RATE * DURATION)):
+        now = i / RATE
+        if refresh_done is not None and now >= refresh_done:   # recompute finished
+            expiry, refresh_done = refresh_done + TTL, None
+        expired = now >= expiry
+        if strategy == "naive":
+            if expired:
+                recomputes += 1          # every miss queries the DB until someone refills
+                if refresh_done is None:
+                    refresh_done = now + DELTA
+        elif strategy == "lock":
+            if expired:
+                if refresh_done is None:
+                    recomputes += 1      # only the lock winner recomputes
+                    refresh_done = now + DELTA
+                else:
+                    waits += 1           # others wait (or serve stale)
+        elif strategy == "xfetch":
+            # refresh early with probability rising as expiry approaches
+            early = now - DELTA * BETA * math.log(rng.random()) >= expiry
+            if (expired or early) and refresh_done is None:
+                recomputes += 1
+                refresh_done = now + DELTA
+            elif expired:
+                waits += 1
+    return recomputes, waits
+
+for s in ("naive", "lock", "xfetch"):
+    r, w = simulate(s)
+    print(f"{s:7} DB recomputes in 5 min = {r:5}   requests that had to wait = {w}")` }],
+    codeTitle: ['Request coalescing (Java)', 'Stampede strategies compared (Python)'],
+    viz: {
+      title: 'Stampede: concurrent misses vs request coalescing',
+      input: '8 both',
+      inputLabel: 'number of concurrent requests (2–12) and mode: naive | coalesce | both',
+      gen: function (input) {
+        var m = /^\s*(\d+)\s*(naive|coalesce|both)?\s*$/i.exec(String(input || ''));
+        if (!m) throw new Error('Format: N mode   e.g. 8 both');
+        var n = +m[1], mode = (m[2] || 'both').toLowerCase();
+        if (n < 2 || n > 12) throw new Error('N must be 2–12');
+        var frames = [], reqs = []; for (var i = 1; i <= n; i++) reqs.push('r' + i);
+        function g(title, hl, ehl, lab) { return { type: 'graph', directed: true, height: 56, label: title, nodes: [box('Q', n + ' concurrent requests', 10, 28), box('A', 'App fleet', 40, 28), box('C', 'Cache', 75, 8), box('D', 'Database', 75, 48)], edges: [['Q', 'A', lab.qa || ''], ['A', 'C', lab.ac || ''], ['A', 'D', lab.ad || '']], hl: hl, ehl: ehl }; }
+        function naive() {
+          frames.push({ narr: '<b>NAIVE.</b> The hot key <code>feed:top</code> just hit its TTL. ' + n + ' requests arrive within the same few milliseconds.', parts: [g('No protection', { C: 'bad' }, {}, { ac: 'feed:top expired' }), { type: 'queue', label: 'Requests in flight', items: reqs.slice(), frontLabel: 'first', backLabel: 'last' }, { type: 'bars', label: 'DB queries running', values: [0], idxLabels: ['DB'] }] });
+          var hlq = {}; reqs.forEach(function (r, i) { hlq[i] = 'bad'; });
+          frames.push({ narr: 'Every request checks the cache → <span class="c-r">MISS</span>, ' + n + ' times. None of them knows the others are about to do the same work.', parts: [g('No protection', { C: 'bad', A: 'cur' }, { 'Q-A': 'cur', 'A-C': 'bad' }, { ac: n + '× GET → miss' }), { type: 'queue', label: 'Requests in flight', items: reqs.slice(), hl: hlq }, { type: 'bars', label: 'DB queries running', values: [0], idxLabels: ['DB'] }] });
+          var load = [], labels = [];
+          for (var k = 1; k <= n; k++) { load.push(k); labels.push('t' + k); }
+          frames.push({ narr: 'All ' + n + ' run the <b>same expensive query</b>. DB concurrency jumps from 0 to ' + n + '; each query slows down because they fight for CPU and locks (latency ≈ ' + (200 * n / 2) + ' ms instead of 200 ms).', parts: [g('No protection', { D: 'bad', A: 'cur' }, { 'A-D': 'bad' }, { ad: n + '× SELECT (same!)' }), { type: 'queue', label: 'Requests in flight', items: reqs.slice(), hl: hlq }, { type: 'bars', label: 'DB concurrent queries as the herd arrives', values: load, idxLabels: labels, hl: (function () { var h = {}; h[n - 1] = 'bad'; return h; })() }] });
+          frames.push({ narr: 'Finally all ' + n + ' write the <b>same value</b> into the cache. ' + (n - 1) + ' of those DB queries were pure waste. With 5,000 req/s instead of ' + n + ', this is how a DB falls over.', parts: [g('No protection', { C: 'ok', D: 'bad' }, { 'A-C': 'ok' }, { ac: n + '× SET (same value)' }), { type: 'vars', label: 'Cost', vals: { 'DB queries': n, 'useful': 1, 'wasted': n - 1 }, hl: { wasted: 'bad' } }] });
+        }
+        function coal() {
+          frames.push({ narr: '<b>COALESCED.</b> Same situation: <code>feed:top</code> expired and ' + n + ' requests arrive together.', parts: [g('Single-flight + lock', { C: 'bad' }, {}, { ac: 'feed:top expired' }), { type: 'queue', label: 'Requests in flight', items: reqs.slice() }, { type: 'bars', label: 'DB queries running', values: [0], idxLabels: ['DB'] }] });
+          var hl = { 0: 'ok' }; for (var i = 1; i < n; i++) hl[i] = 'cur';
+          frames.push({ narr: '<b>r1</b> misses first and wins the lock: <code>SET lock:feed:top token NX PX 3000</code> → OK. The other ' + (n - 1) + ' see the lock is taken (or find an in-flight future in their process) and <b>wait</b> instead of querying.', parts: [g('Single-flight + lock', { A: 'cur', C: 'cur' }, { 'A-C': 'cur' }, { ac: 'SET lock NX → r1 wins' }), { type: 'queue', label: 'r1 = leader (green), others waiting (amber)', items: reqs.slice(), hl: hl }, { type: 'stack', label: 'Lock holder', items: ['lock:feed:top = r1'] }] });
+          frames.push({ narr: 'Only r1 queries the DB. DB concurrency stays at <b>1</b>, so the query runs at its normal 200 ms.', parts: [g('Single-flight + lock', { D: 'ok', A: 'cur' }, { 'A-D': 'ok' }, { ad: '1× SELECT' }), { type: 'queue', label: 'waiting on r1', items: reqs.slice(), hl: hl }, { type: 'bars', label: 'DB concurrent queries', values: [1], idxLabels: ['DB'], hl: { 0: 'ok' } }] });
+          var all = {}; for (var j = 0; j < n; j++) all[j] = 'ok';
+          frames.push({ narr: 'r1 writes the fresh value (with a jittered TTL), releases the lock, and all ' + (n - 1) + ' waiters read it from the cache (or receive the shared future). Everyone answered, <b>1</b> DB query total.', parts: [g('Single-flight + lock', { C: 'ok' }, { 'A-C': 'ok', 'Q-A': 'ok' }, { ac: 'SET value; DEL lock', qa: 'all served' }), { type: 'queue', label: 'Requests served', items: reqs.slice(), hl: all }, { type: 'vars', label: 'Cost', vals: { 'DB queries': 1, 'useful': 1, 'wasted': 0 }, hl: { wasted: 'ok' } }] });
+          frames.push({ narr: 'Even better: with <b>stale-while-revalidate</b> the waiters would not wait at all — they get the slightly old value instantly while r1 refreshes. And with <b>early refresh</b> (XFetch / refresh-ahead) the key is renewed before it ever expires.', parts: [{ type: 'table', label: 'Stampede defences', columns: ['technique', 'scope', 'waiters'], rows: [['single-flight', 'one process', 'wait on future'], ['distributed lock', 'whole fleet', 'sleep + re-read, or stale'], ['stale-while-revalidate', 'whole fleet', 'served instantly (stale)'], ['XFetch / refresh-ahead', 'whole fleet', 'never miss'], ['TTL jitter', 'many keys', 'prevents mass expiry']] }] });
+        }
+        if (mode === 'naive' || mode === 'both') naive();
+        if (mode === 'coalesce' || mode === 'both') coal();
+        if (mode === 'both') frames.push({ narr: 'Side by side: <b>' + n + '</b> DB queries without protection vs <b>1</b> with coalescing. At real traffic (thousands per second) the gap is the difference between an outage and a non-event.', parts: [{ type: 'bars', label: 'DB queries for one expiry', values: [n, 1], idxLabels: ['naive', 'coalesced'], hl: { 0: 'bad', 1: 'ok' } }] });
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Redis lock-based refill (pseudocode)', html: `<p>Use a unique token so you never delete someone else's lock, and an expiry so a crashed leader cannot block forever:</p>`, code: { lang: 'text', code: `value = GET key
+if value != nil: return value
+token = random_uuid()
+if SET lock:key token NX PX 3000:          # I am the leader
+    value = db.load(key)
+    SET key value EX 300 + rand(0, 30)
+    EVAL "if redis.call('get',KEYS[1])==ARGV[1] then return redis.call('del',KEYS[1]) end" 1 lock:key token
+    return value
+else:                                       # someone else is loading
+    repeat up to 20 times: sleep 25ms; value = GET key; if value: return value
+    return stale_copy_or_fallback()         # never pile onto the DB` } },
+      { title: 'XFetch formula in plain words', html: `<p>Refresh early if <code>now − Δ·β·ln(rand()) ≥ expiry</code>, where Δ = how long a recompute takes and β ≥ 1. Because <code>−ln(rand())</code> is usually small but occasionally large, far from expiry almost nobody refreshes; within the last few Δ before expiry, the chance rises fast, so typically <b>one</b> request refreshes slightly early. Slow-to-compute keys (big Δ) get refreshed earlier automatically.</p>` },
+      { title: 'The hourly spike', html: `<p>A batch job warms 2M keys at 02:00 with <code>EX 3600</code>. Every hour on the hour they all expire together → DB CPU 15% → 95% for 3 minutes. Fix: <code>EX 3600 + rand(0, 600)</code> spreads expiries over 10 minutes; peak extra load drops ~6×. Combine with refresh-ahead for the top 1% of keys.</p>` },
+      { title: 'Herds outside caches', html: `<p>The same pattern appears when 1M mobile clients reconnect after a server restart, when cron jobs on 500 servers all fire at <code>0 * * * *</code>, or when clients retry a failed call immediately. Same cure: <b>jitter</b> (randomized delays), <b>exponential backoff</b>, and <b>coalescing</b>.</p>` }
+    ],
+    deepDive: `<p><b>Why it is a feedback loop.</b> Little's Law: concurrent requests = arrival rate × latency. If the DB slows from 200 ms to 2 s under the herd, the number of concurrent misses grows 10× at the same arrival rate, which slows the DB further. Without coalescing, the system has an unstable equilibrium — a small expiry can tip it into collapse ("metastable failure"). Retries (often 3× per layer, multiplied across layers) amplify this into a <b>retry storm</b>.</p>
+<p><b>Lock details.</b> The lock TTL must exceed the recompute time; otherwise a second leader starts. Use a random token and a compare-and-delete Lua script to release. Losers must have a bounded wait and a fallback (stale value, default, or 503) — never "wait forever". A lock-free alternative is Facebook's <b>lease</b>: the cache itself gives only one client per key per ~10 s a fill token and tells others "hot miss — retry shortly", which also fixes stale sets.</p>
+<p><b>Stale-while-revalidate needs two TTLs.</b> Store <code>{value, softExpiry}</code> with a Redis TTL = hard expiry (e.g. soft 60 s, hard 600 s). Past soft expiry: serve the value and trigger an async refresh guarded by single-flight/lock. Past hard expiry: genuine miss. HTTP CDNs implement exactly this via <code>stale-while-revalidate</code> and <b>request collapsing</b> (Varnish, Fastly, Cloudflare, nginx <code>proxy_cache_lock</code>).</p>
+<p><b>Cold-start herd.</b> After a full cache flush, every key misses at once. Protect the DB with <b>admission control</b>: a concurrency limit (bulkhead) on DB calls, load shedding of low-priority traffic, and gradual traffic ramp-up; pre-warm by replaying the most frequent keys from access logs.</p>
+<p><b>Math check:</b> XFetch (Vattani et al., 2015) is shown to be optimal in expectation among memoryless early-refresh schemes; with β = 1 the expected number of early refreshes per expiry is close to one.</p>`,
+    aiEra: `<p><b>What AI changes:</b> LLM calls are the ultimate expensive recompute — seconds of latency and real money per call. A popular prompt (a shared summary, a trending question) with a semantic/response cache that expires can trigger a <b>cost stampede</b>: hundreds of identical model calls billed at once and rate-limit errors from the provider. Single-flight, stale-while-revalidate and refresh-ahead are now cost controls, not just latency tools.</p>
+<p><b>Use AI as a partner:</b> <code>Review this cache code for stampede risk: what happens when 10k requests miss the same key within 100 ms?</code>; <code>Write a Redis Lua compare-and-delete for my lock and a test that kills the leader mid-refresh</code>.</p>
+<p><b>Where AI goes wrong:</b> generates a Redis lock without expiry or without a unique token (deleting other clients' locks), uses <code>SETNX</code> then a separate <code>EXPIRE</code> (not atomic), makes losers spin-wait without a bound, or "fixes" a stampede by raising DB connection limits (feeding the herd).</p>
+<p><b>What you must still own:</b> spotting which keys are hot and expensive, choosing between waiting and serving stale, and load-testing the expiry moment — the incident only happens under real concurrency.</p>`,
+    problems: [{
+      title: 'Fix the Homepage Stampede', level: 'Hard', tags: ['stampede', 'single-flight', 'stale-while-revalidate', 'jitter'], companies: ['Netflix', 'Reddit', 'Twitter/X'],
+      statement: `<p>The homepage calls <code>getTrending()</code>, cached in Redis under one key with TTL 60 s. Computing it takes a 3-second aggregation query. Traffic is 40k req/s across 200 app servers. Every minute, p99 latency spikes to 10 s and DB CPU hits 100%. Explain what is happening and design a fix.</p>`,
+      constraints: `<p>Trending may be up to 2 minutes stale · DB can run at most ~5 concurrent aggregations · no request should wait more than 100 ms for trending data.</p>`,
+      example: `<p>At expiry, during the 3 s recompute: 40,000 × 3 = ${H.c('r', '120,000 misses')} → potentially 120k identical aggregations. With coalescing + stale-while-revalidate: ${H.c('g', '1 aggregation')}, and every request is served the previous value instantly.</p>`,
+      brute: { why: `<p><b>Naive fixes:</b> increase TTL to 10 min (the spike still happens, just less often, and data is staler than allowed); add DB read replicas (each replica gets its own herd); add a per-server in-memory lock (still 200 servers × 1 = 200 concurrent 3-second aggregations — 40× the DB limit).</p>` },
+      mcq: { q: 'Why is a per-process single-flight alone not enough here?', options: ['Java cannot do it', 'There are 200 servers, so up to 200 aggregations still run', 'Redis does not support it', 'It increases staleness'], answer: 1, explain: 'Single-flight dedups within one process. Fleet-wide you need a distributed lock, a lease, or a background refresher.' },
+      hints: [`<p>Hint 1: The value is expensive (3 s) and shared by everyone → one key, one recompute, everyone else must not wait on the DB.</p>`, `<p>Hint 2: Store the value with a soft expiry; serve stale past it; refresh behind a Redis lock (<code>SET NX PX</code>) — or move refresh to a background job entirely.</p>`, `<p>Hint 3: Add an L1 in-process copy (a few seconds) so 40k req/s do not all hit one Redis key; keep a hard TTL far beyond soft TTL; alert if the value is older than 2 min.</p>`],
+      solution: {
+        approach: `<p><b>Diagnosis:</b> a classic hot-key stampede. When the key expires, every request that arrives during the 3-second recompute misses and runs the aggregation; the DB slows, the window widens, and more requests pile in.</p>
+<p><b>Fix (layered):</b></p>
+<ol><li><b>Decouple refresh from requests:</b> a scheduled worker (leader-elected, or guarded by <code>SET lock:trending NX PX 10000</code>) recomputes trending every 30 s and writes <code>{value, computedAt}</code> with a hard TTL of 10 min. The request path never computes it.</li>
+<li><b>Stale-while-revalidate fallback:</b> if a request finds <code>computedAt</code> older than 60 s (worker failed), it serves the stale value immediately and tries to take the lock to trigger one refresh asynchronously.</li>
+<li><b>L1 cache:</b> each app server keeps trending in memory for 5 s with single-flight on its Redis read → Redis sees ~200 × 0.2 = 40 reads/s on that key instead of 40k.</li>
+<li><b>Hard miss path</b> (cold start): single-flight + distributed lock; losers return a default "popular" list rather than waiting more than 100 ms.</li>
+<li><b>Guardrails:</b> DB bulkhead (max 5 concurrent aggregations), alert on value age &gt; 2 min, jittered TTLs for other keys.</li></ol>
+<p>Result: exactly ~2 aggregations/minute, no request waits on the DB, staleness ≤ ~60 s normally and ≤ 2 min worst case.</p>`,
+        complexity: `<p>DB: O(1) aggregations per refresh interval regardless of traffic. Redis: O(servers / L1 TTL) reads/s for the hot key. Request latency: one in-memory lookup.</p>`,
+        followUps: ['What if the worker that holds the lock dies mid-refresh?', 'How would you do this per-country (200 trending keys)?', 'How do you load-test the expiry moment?']
       }
     }]
   });
