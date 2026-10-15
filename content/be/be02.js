@@ -153,9 +153,9 @@ Content-Length: 31
 
 {"message":"Hello, Asha!"}` } },
     { title: 'Changing the port the clean way', html: `<p>Hardcoding a port is a bug waiting for deployment day (cloud platforms inject the port). Read it from configuration, with a sensible default for your laptop. In Spring that is a property; in Node an environment variable.</p>`,
-      code: [{ lang: 'yaml', code: `# src/main/resources/application.yml
+      code: { lang: 'yaml', code: `# src/main/resources/application.yml  (Spring; Express: PORT=4000 node app.js)
 server:
-  port: 8081          # override at run time: SERVER_PORT=9000 ./mvnw spring-boot:run` }, { lang: 'bash', check: false, code: `PORT=4000 node app.js      # Express reads process.env.PORT` }] },
+  port: 8081          # override at run time: SERVER_PORT=9000 ./mvnw spring-boot:run` } },
     { title: 'Common first-day errors', html: `${H.table(['Symptom', 'Likely cause', 'Fix'], [['<code>Port 8080 was already in use</code>', 'an old server still running', 'stop it, or change the port'], ['<code>404</code> on a URL you "defined"', 'controller class not in a scanned package / route not mounted', 'keep controllers under the main class package; check <code>app.use</code>'], ['<code>Cannot find module \'express\'</code>', 'forgot <code>npm install</code>', 'run it in the project folder'], ['browser downloads / shows blank JSON', 'returned a string not an object', 'return an object / use <code>res.json</code>']])}` }
   ],
   deepDive: `<p><b>What <code>@SpringBootApplication</code> really is.</b> It is three annotations in one: <code>@Configuration</code> (this class can define beans), <code>@EnableAutoConfiguration</code> (look at the jars on the classpath and configure sensible defaults - web starter present means "start Tomcat + Spring MVC + Jackson"), and <code>@ComponentScan</code> (find <code>@RestController</code>, <code>@Service</code>, ... in this package <i>and below</i>). That last bit explains the classic "404 on my controller": a controller in a sibling package is never scanned. We go deep on this in the Spring Boot Deep Dive module.</p>
@@ -820,9 +820,7 @@ console.log(JSON.stringify(handlePost('not an object')));` }
   },
   examples: [
     { title: 'curl proof: one request, three errors', html: `<p>Send a body with a blank title, no author and an impossible year. A good API answers <b>once</b> with all three problems.</p>`,
-      code: [{ lang: 'bash', check: false, code: `curl -i -X POST localhost:8080/api/books \\
-  -H "Content-Type: application/json" \\
-  -d '{"title":"  ","year":3000}'` }, { lang: 'json', title: 'Expected 400 body', code: `{
+      code: { lang: 'json', title: 'Expected 400 body for: curl -i -X POST localhost:8080/api/books -H "Content-Type: application/json" -d \'{"title":"  ","year":3000}\'', code: `{
   "status": 400,
   "error": "Validation failed",
   "details": [
@@ -830,7 +828,7 @@ console.log(JSON.stringify(handlePost('not an object')));` }
     { "field": "author", "message": "author is required" },
     { "field": "year", "message": "year must be at most 2026" }
   ]
-}` }] },
+}` } },
     { title: 'Validation vs business rule: duplicate ISBN', html: `<p>Is "ISBN already exists" a validation error? No - the request on its own is fine; it clashes with <i>data we already hold</i>. That check needs the repository, so it lives in the <b>service</b> and answers <span class="c-r">409 Conflict</span>. A common bug is checking it in the controller "because it is validation" - then a second entry point (a batch import, a queue consumer) forgets the check.</p>`,
       code: { lang: 'java', check: false, code: `// BookService
 public Book create(BookRequest req) {
@@ -1100,13 +1098,12 @@ console.log(JSON.stringify(handle('/api/books/2', function () { return null.titl
   },
   examples: [
     { title: 'The same 404 in both stacks (curl view)', html: `<p>Whatever framework you use, the client must see exactly the same shape:</p>`,
-      code: [{ lang: 'bash', check: false, code: `curl -i localhost:8080/api/books/999
-curl -i localhost:3000/api/books/999` }, { lang: 'json', title: 'Both return', code: `{
+      code: { lang: 'json', title: 'Both stacks return (curl -i localhost:8080/api/books/999 and :3000)', code: `{
   "status": 404,
   "error": "Not Found",
   "message": "Book 999 does not exist",
   "path": "/api/books/999"
-}` }] },
+}` } },
     { title: 'Express 4 vs 5: async errors', html: `<p>In Express 4, an error thrown <i>after an <code>await</code></i> was never caught: the request hung and the process could crash with an unhandled rejection. Express 5 forwards rejected promises to your error handler. If you still support Express 4, wrap handlers or use a tiny helper.</p>`,
       code: { lang: 'js', check: false, code: `// Express 4 style helper (harmless in Express 5)
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -1496,7 +1493,7 @@ class JpaBookRepository implements BookRepository {     // next module: same met
     private final BookJpaDao dao;
     JpaBookRepository(BookJpaDao dao) { this.dao = dao; }
     public Optional<Book> findById(long id) { return dao.findById(id); }
-    /* ... */
+    public Optional<Book> findAll() { return Optional.empty(); }
 }` } },
     { title: 'Testing a service with a fake repository (no server)', html: `<p>The unit test builds the service with the in-memory repository and checks behaviour directly - no HTTP, no port, runs in a millisecond.</p>`,
       code: { lang: 'java', code: `class ServiceCheck {
@@ -1954,48 +1951,48 @@ practice.push({
   brute: { why: `<p>All routes in one file, with a global array, copy-pasted validation and <code>try/catch</code> in every handler. It runs, but adding a database means rewriting everything, errors have different shapes per endpoint, and nothing can be unit tested without HTTP.</p>` },
   mcq: { q: 'GET /api/todos?done=maybe should return…', options: ['400 Bad Request', '200 with all todos', '404 Not Found', '500'], answer: 0, explain: 'The parameter is present but not a valid boolean; this is a client input error, so 400 with a clear message.' },
   hints: [
-    `<p>Hint 1: copy the Books structure: <code>Todo</code> record, <code>TodoRepository</code> interface + in-memory implementation, <code>TodoService</code>, <code>TodoController</code>.</p>`,
+    `<p>Hint 1: copy the Books structure: <code>Todo</code> record, <code>TodoRepository</code> interface + in-memory implementation, <code>ItemService</code>, <code>TodoController</code>.</p>`,
     `<p>Hint 2: validation of the body is a DTO/validator job; validation of the <code>done</code> query value is also at the edge - parse "true"/"false" strictly and fail otherwise. "Not found" is a service decision.</p>`,
     `<p>Hint 3: the toggle endpoint reads the current todo, flips <code>done</code>, saves, returns 200. Make it atomic if you care about two simultaneous toggles (a lock or <code>compute</code> on the map entry).</p>`
   ],
   solution: {
     approach: `<p><b>Structure:</b> repository (Map + AtomicLong), service (<code>create</code>, <code>list(Boolean done)</code>, <code>get</code>, <code>update</code>, <code>toggle</code>, <code>delete</code>, throwing <code>NotFoundException</code> for unknown ids), controller (thin), validator for <code>text</code> (1-200 chars, trimmed), global handler mapping NotFound to 404, validation to 400, everything else to 500. <b>Filter:</b> parse <code>done</code> in the controller: absent means null (no filter), "true"/"false" map to booleans, anything else raises a 400. <b>Toggle:</b> <code>repo.findById</code> then save <code>done = !done</code>; use <code>ConcurrentHashMap.compute</code> to make read-modify-write atomic. <b>Verification:</b> run the curl list: create (201), invalid (400 with message), list with filter, patch (200), get missing (404), delete (204), delete again (404).</p>
     <p>Running the same script against both stacks must give identical statuses; differences point to inconsistent error handling, usually the unknown-route 404 or broken-JSON case.</p>`,
-    code: { lang: 'java', title: 'Plain-Java core: repository + service with atomic toggle', code: `record Todo(long id, String text, boolean done) {}
+    code: { lang: 'java', title: 'Plain-Java core: repository + service with atomic toggle', code: `record Item(long id, String text, boolean done) {}
 
-class TodoNotFoundException extends RuntimeException {
-    TodoNotFoundException(long id) { super("Todo " + id + " does not exist"); }
+class ItemNotFoundException extends RuntimeException {
+    ItemNotFoundException(long id) { super("Item " + id + " does not exist"); }
 }
 
-class TodoService {
-    private final Map<Long, Todo> store = new ConcurrentHashMap<>();
+class ItemService {
+    private final Map<Long, Item> store = new ConcurrentHashMap<>();
     private final AtomicLong seq = new AtomicLong();
 
-    Todo create(String text) {
+    Item create(String text) {
         if (text == null || text.trim().isEmpty() || text.length() > 200) {
             throw new IllegalArgumentException("text must be 1-200 characters");
         }
         long id = seq.incrementAndGet();
-        Todo t = new Todo(id, text.trim(), false);
+        Item t = new Item(id, text.trim(), false);
         store.put(id, t);
         return t;
     }
 
-    List<Todo> list(Boolean done) {                       // null means "no filter"
-        List<Todo> out = new ArrayList<>();
-        for (Todo t : store.values()) if (done == null || t.done() == done) out.add(t);
-        out.sort(Comparator.comparingLong(Todo::id));
+    List<Item> list(Boolean done) {                       // null means "no filter"
+        List<Item> out = new ArrayList<>();
+        for (Item t : store.values()) if (done == null || t.done() == done) out.add(t);
+        out.sort(Comparator.comparingLong(Item::id));
         return out;
     }
 
-    Todo toggle(long id) {
+    Item toggle(long id) {
         // compute() runs atomically for this key, so two toggles cannot interleave
-        Todo updated = store.computeIfPresent(id, (k, t) -> new Todo(t.id(), t.text(), !t.done()));
-        if (updated == null) throw new TodoNotFoundException(id);
+        Item updated = store.computeIfPresent(id, (k, t) -> new Item(t.id(), t.text(), !t.done()));
+        if (updated == null) throw new ItemNotFoundException(id);
         return updated;
     }
 
-    void delete(long id) { if (store.remove(id) == null) throw new TodoNotFoundException(id); }
+    void delete(long id) { if (store.remove(id) == null) throw new ItemNotFoundException(id); }
 }` },
     complexity: `<p>Create/get/toggle/delete are O(1) on the map; list is O(n log n) because of sorting for a stable order. Memory O(n).</p>`,
     followUps: ['Add pagination to GET /api/todos.', 'Replace the Map with a database table and describe what changes.']
