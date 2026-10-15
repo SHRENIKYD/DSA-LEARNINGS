@@ -1446,4 +1446,383 @@ for users in [100, 10_000, 100_000, 1_000_000, 10_000_000, 50_000_000]:
     }]
   });
 
-registerModule({ id: 'hld02', title: 'Scalability Basics', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 8, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
+  /* =====================================================================
+     PRACTICE — Easy → Medium → Hard
+     ===================================================================== */
+  practice.push({
+    title: 'Spot the Single Points of Failure',
+    level: 'Easy', tags: ['SPOF', 'redundancy'], companies: ['Amazon', 'Microsoft'],
+    statement: `<p>A diagram shows: <b>Users → DNS (managed) → 1 load balancer → 3 app servers → 1 MySQL database</b>. App servers also write uploaded files to a <b>single NFS file server</b>. Everything runs in one availability zone. List every single point of failure and one fix for each.</p>`,
+    constraints: `Answer with a list; no budget limit given, but prefer the simplest fix.`,
+    example: `<p>${H.c('r', 'LB')}, ${H.c('r', 'MySQL')}, ${H.c('r', 'NFS server')}, ${H.c('r', 'the single zone')} are SPOFs. The ${H.c('g', '3 app servers')} are not (losing one is fine), and managed DNS is already redundant.</p>`,
+    brute: { why: `<p>Answering only "the database" misses half the picture. Another common miss: calling the 3 app servers a SPOF (they are redundant) while ignoring the NFS server and the single zone, which can take everything down together.</p>` },
+    mcq: { q: 'Which component is NOT a SPOF here?', options: ['The app tier (3 servers)', 'The load balancer', 'The NFS file server', 'The availability zone'], answer: 0, explain: 'With 3 app servers behind health checks, one failure only reduces capacity.' },
+    hints: [`<p>Walk one request through the diagram and ask "if this disappears, do requests still succeed?"</p>`, `<p>Do not forget shared storage and the physical location (zone).</p>`, `<p>Fix per SPOF: LB pair or managed LB; MySQL primary + standby with failover; NFS → object storage; spread every tier across 2–3 zones.</p>`],
+    solution: {
+      approach: `<p><b>SPOFs:</b></p><ul>
+        <li><b>Load balancer</b> → use a managed multi-AZ load balancer, or two LBs with a floating IP (keepalived/VRRP).</li>
+        <li><b>MySQL</b> → primary + standby (semi-sync replication) with automatic failover (managed multi-AZ DB or an orchestrator), plus point-in-time backups.</li>
+        <li><b>NFS file server</b> → replace with object storage (S3/GCS), which is replicated across zones by the provider; serve files via a CDN.</li>
+        <li><b>Single availability zone</b> → spread app servers, the LB and the DB standby across 2–3 zones, with enough capacity in the survivors.</li></ul>
+        <p><b>Not SPOFs:</b> the app tier (3 stateless servers + health checks) and managed DNS. Also check non-hardware SPOFs: TLS certificates, secrets, one person who can deploy.</p>`,
+      complexity: `<p>Each fix roughly doubles that tier's cost (standby/extra zone), but turns a series weak link into a parallel pair.</p>`
+    }
+  });
+
+  practice.push({
+    title: 'Which Server Gets Request #10?',
+    level: 'Easy', tags: ['round robin', 'load balancer'], companies: ['Cisco', 'Akamai'],
+    statement: `<p>A round-robin load balancer has servers <b>[S1, S2, S3, S4]</b> and starts at S1. (a) Which server receives request #10? (b) After request #10, S3 is marked unhealthy and skipped. Which servers receive requests #11 to #14? (c) How many requests has each server received after #14?</p>`,
+    constraints: `Requests numbered from 1; the counter keeps increasing, unhealthy servers are skipped by moving to the next one.`,
+    example: `<p>Requests 1–4 → S1 S2 S3 S4, 5–8 → S1 S2 S3 S4, ${H.c('b', '9 → S1, 10 → S2')}.</p>`,
+    brute: { why: `<p>Writing out every request by hand works for 14 requests but not for "request #1,000,003". Use the modulo rule: server index = (k − 1) mod N. When servers are skipped, simulate from the point of change.</p>` },
+    mcq: { q: 'With 4 servers, request #1,000,003 goes to…', options: ['S3', 'S1', 'S4', 'S2'], answer: 0, explain: '(1,000,003 − 1) mod 4 = 1,000,002 mod 4 = 2 → index 2 = S3.' },
+    hints: [`<p>Index = (k − 1) mod 4 with S1 at index 0.</p>`, `<p>After #10 the next counter position is S3, which is unhealthy → skip to S4.</p>`, `<p>Write the cycle without S3: S4, S1, S2, S4, …</p>`],
+    solution: {
+      approach: `<p><b>(a)</b> (10 − 1) mod 4 = 1 → <b>S2</b>.</p>
+        <p><b>(b)</b> The next position after S2 is S3, which is unhealthy, so the balancer skips it: #11 → <b>S4</b>, #12 → <b>S1</b>, #13 → <b>S2</b>, #14 → S3 is skipped again → <b>S4</b>.</p>
+        <p><b>(c)</b> After #10: S1 = 3 (1, 5, 9), S2 = 3 (2, 6, 10), S3 = 2 (3, 7), S4 = 2 (4, 8). Then +S4, +S1, +S2, +S4 → <b>S1 = 4, S2 = 4, S3 = 2, S4 = 4</b>. Total 14 ✓. Round robin balances counts, and the healthy servers absorb the dead server's share.</p>`,
+      code: { lang: 'python', run: true, code: `servers = ["S1", "S2", "S3", "S4"]
+healthy = {s: True for s in servers}
+counter, served = 0, {s: 0 for s in servers}
+
+def pick():
+    global counter
+    for _ in range(len(servers)):          # skip unhealthy, at most one full lap
+        s = servers[counter % len(servers)]
+        counter += 1
+        if healthy[s]:
+            return s
+    raise RuntimeError("no healthy servers")
+
+for k in range(1, 15):
+    if k == 11:
+        healthy["S3"] = False               # health check failed after request 10
+    s = pick()
+    served[s] += 1
+    print(k, "->", s)
+print(served)
+` },
+      complexity: `<p>O(1) per pick normally; O(N) worst case when skipping unhealthy servers.</p>`
+    }
+  });
+
+  practice.push({
+    title: 'How Many App Servers Do We Need?',
+    level: 'Easy', tags: ['capacity', 'horizontal scaling', 'N+1'], companies: ['Google', 'Uber'],
+    statement: `<p>A load test shows one app server handles <b>1,500 requests/second</b> before latency degrades. Peak traffic is <b>12,000 rps</b>. You want each server at most <b>70%</b> busy at peak and to survive <b>one server failure</b>. How many servers? What if you must survive losing an entire availability zone out of 3?</p>`,
+    constraints: `Servers are identical and stateless; load is spread evenly.`,
+    example: `<p>Usable per server = 1,500 × 0.7 = ${H.c('b', '1,050 rps')}. 12,000 ÷ 1,050 = 11.4 → ${H.c('b', '12')} + 1 spare = ${H.c('g', '13')}.</p>`,
+    brute: { why: `<p>Naive: 12,000 ÷ 1,500 = 8 servers. At peak they run at 100% — any spike, GC pause or slow dependency pushes latency through the roof, and losing one server overloads the other 7 (114%).</p>` },
+    mcq: { q: 'Why add the "+1"?', options: ['To stay within target when one server dies at peak', 'Because load balancers need an odd number', 'To store sessions'], answer: 0, explain: 'N+1 means losing any single server still leaves enough capacity at the target utilisation.' },
+    hints: [`<p>Never size to 100%: compute usable capacity = capacity × target utilisation.</p>`, `<p>Round up, then add spares for the failures you must survive.</p>`, `<p>For zones: the 2 surviving zones must carry all 12,000 rps on their own.</p>`],
+    solution: {
+      approach: `<p><b>Single-server failure:</b> usable = 1,500 × 0.7 = 1,050 rps. ⌈12,000 ÷ 1,050⌉ = 12, plus 1 spare = <b>13 servers</b>. If one dies, 12 remain, each at 12,000 ÷ 12 = 1,000 rps ≈ 67% of capacity ✓.</p>
+        <p><b>Zone failure with 3 zones:</b> the 2 survivors must hold all 12 needed servers → 6 per zone → <b>18 servers</b> total (6 + 6 + 6). Normal day each runs at 12,000 ÷ 18 ≈ 667 rps (44%). With only 2 zones you would need 12 per zone = 24 total — more zones make redundancy cheaper.</p>
+        <p>Also: re-run the load test after major releases, since per-server capacity drifts.</p>`,
+      complexity: `<p>servers = ⌈peak ÷ (capacity × util)⌉ + spares; zone-safe per zone = ⌈needed ÷ (zones − 1)⌉.</p>`
+    }
+  });
+
+  practice.push({
+    title: 'Scale Up or Scale Out?',
+    level: 'Easy', tags: ['vertical scaling', 'horizontal scaling'], companies: ['Infosys', 'TCS', 'Oracle'],
+    statement: `<p>For each case, say <b>vertical</b>, <b>horizontal</b>, or <b>both</b>, with one reason: (1) a Redis cache using 95% of its 16 GB RAM, data growing slowly; (2) a stateless image-thumbnail service whose load triples every Friday evening; (3) a legacy app that stores sessions in memory and must handle 2× load next week; (4) a PostgreSQL database at 70% CPU, 60% writes.</p>`,
+    constraints: `Prefer the least risky change that solves the problem.`,
+    example: `<p>(2) is the textbook ${H.c('g', 'horizontal + autoscaling')} case: stateless and spiky. (3) is ${H.c('y', 'vertical for now')} — scaling out would break the in-memory sessions.</p>`,
+    brute: { why: `<p>"Always horizontal" breaks the legacy app (sessions) and is overkill for a slowly growing cache. "Always vertical" fails the Friday spikes (you would pay for a giant box all week) and leaves single points of failure.</p>` },
+    mcq: { q: 'Which case is the clearest fit for horizontal scaling?', options: ['The stateless thumbnail service with weekly spikes', 'The legacy app with in-memory sessions', 'The cache that grows slowly'], answer: 0, explain: 'Stateless + spiky = add/remove identical workers automatically.' },
+    hints: [`<p>Is the component stateless? Can it be split?</p>`, `<p>Is the growth steady or spiky? Spiky favours elastic horizontal scaling.</p>`, `<p>Databases with many writes: scale up first; replicas do not help writes.</p>`],
+    solution: {
+      approach: `<p><b>(1) Vertical</b> — move to a larger memory node (e.g. 32 GB); growth is slow. Later, a Redis Cluster (horizontal, sharded) if data keeps growing — plus a replica for availability.</p>
+        <p><b>(2) Horizontal</b> — stateless workers behind a load balancer or reading from a queue, with autoscaling and scheduled scale-up before Friday evening.</p>
+        <p><b>(3) Vertical now, horizontal next</b> — a bigger box safely handles 2× next week; meanwhile move sessions to Redis so the app can scale out afterwards. (Sticky sessions are an emergency alternative.)</p>
+        <p><b>(4) Vertical</b> — more CPU/faster disks for the primary; tune queries and indexes. Read replicas would only help the 40% reads; if writes keep growing, plan batching/queues and eventually sharding.</p>`,
+      complexity: `<p>No computation — the skill is matching state, growth pattern and read/write mix to the scaling style.</p>`
+    }
+  });
+
+  practice.push({
+    title: 'Everyone Logged Out After Every Deploy',
+    level: 'Medium', tags: ['stateless', 'sessions', 'deploys'], companies: ['Shopify', 'Atlassian'],
+    statement: `<p>An app runs on 4 servers with <b>sticky sessions</b> (sessions in memory). Each deploy restarts servers one by one, and users complain they are logged out and lose their carts during every deploy (3 deploys per day). Explain why and redesign so deploys are invisible to users.</p>`,
+    constraints: `200k concurrent sessions, ~3 KB each; zero-downtime deploys required; carts must survive.`,
+    example: `<p>Server 2 restarts → its ~50k in-memory sessions ${H.c('r', 'vanish')} → those users are re-routed to other servers that never knew them → ${H.c('r', 'logged out, empty cart')}.</p>`,
+    brute: { why: `<p>Deploying less often, or deploying at 3 a.m., hides the problem but slows the team and still logs out night users. Copying sessions between servers before restart (session replication in the app server cluster) works for 2–3 nodes but scales badly and adds complex failure modes.</p>` },
+    mcq: { q: 'Root cause?', options: ['State lives inside the processes being restarted', 'Round robin is the wrong algorithm', 'The deploy is too fast'], answer: 0, explain: 'Whatever lives in a process dies with the process. Externalise it.' },
+    hints: [`<p>Restarting a server = wiping its memory. What lives there?</p>`, `<p>Move sessions and carts to a shared, replicated store; then stickiness is unnecessary.</p>`, `<p>Add graceful shutdown: fail readiness, drain in-flight requests, exit. Migrate by dual-reading old and new session locations for one session lifetime.</p>`],
+    solution: {
+      approach: `<p><b>Why:</b> sessions and carts live only in each server's RAM, and stickiness pins users to one server. Restarting it destroys their state; the LB moves them to a server that has never seen their session id.</p>
+        <p><b>Redesign:</b> (1) store sessions in a replicated Redis (≈ 200k × 3 KB ≈ 600 MB) with TTL; (2) persist carts in Redis hashes or the database (carts are valuable — many shops keep them for days); (3) remove sticky sessions so load is even; (4) graceful shutdown on deploy: mark not-ready → LB stops new requests → wait for in-flight requests (e.g. 30 s) → exit; (5) rolling or blue-green deploy keeps ≥ 3 of 4 servers serving.</p>
+        <p><b>Migration with no logout:</b> deploy code that reads the session from Redis first and falls back to local memory, writing every session it touches to Redis. After one session lifetime (e.g. 30 min) all active sessions are in Redis; then remove the fallback and stickiness.</p>`,
+      complexity: `<p>One extra ~0.5 ms Redis round trip per request; ~600 MB of Redis memory, replicated.</p>`
+    }
+  });
+
+  practice.push({
+    title: 'Chat Servers: Round Robin or Least Connections?',
+    level: 'Medium', tags: ['least connections', 'websockets', 'load balancer'], companies: ['Discord', 'Slack', 'Meta'],
+    statement: `<p>A chat service keeps <b>WebSocket</b> connections open for hours. It has 5 servers; after a deploy, servers come back one by one. With round robin, monitoring shows one server with 60k connections and another with 8k. Explain the imbalance and pick an algorithm. What new risk does your choice create, and how do you handle it?</p>`,
+    constraints: `300k concurrent connections at peak; each server comfortably holds 80k; clients reconnect automatically.`,
+    example: `<p>The first server back after the deploy received ${H.c('r', 'all reconnects')} while it was the only one up — and round robin never moves existing connections, so the imbalance stays for hours.</p>`,
+    brute: { why: `<p>Round robin balances <b>new</b> connections evenly but ignores how many each server already holds. Long-lived connections never "finish", so early imbalances (deploys, restarts) persist for hours. Adding servers does not help the overloaded one either.</p>` },
+    mcq: { q: 'Best default for long-lived connections?', options: ['Least connections (with slow start)', 'Round robin', 'IP hash'], answer: 0, explain: 'It sends new connections where there are fewest open ones, healing imbalance over time; slow start protects freshly added servers.' },
+    hints: [`<p>Round robin assumes each unit of work ends quickly. Do WebSockets?</p>`, `<p>Least connections fixes new placements. What happens to a brand-new server with 0 connections?</p>`, `<p>Protect it with slow start / max-connection caps, and make clients reconnect with random jitter.</p>`],
+    solution: {
+      approach: `<p><b>Why imbalance:</b> connections are long-lived. During the rolling deploy, clients from restarted servers reconnect to whichever servers are up; the early ones collect huge numbers. Round robin then splits new connections evenly but never corrects existing counts.</p>
+        <p><b>Choice: least connections</b> — new connections go to the server with the fewest open ones, so imbalance heals as users reconnect over time.</p>
+        <p><b>New risk:</b> a freshly started server with 0 connections attracts <i>every</i> new connection at once (a reconnect storm) and can be overwhelmed while cold. <b>Mitigations:</b> slow start (ramp its weight over 1–2 minutes), a per-server connection cap (e.g. 80k) that the LB respects, readiness only after warm-up, and clients reconnecting with exponential backoff + random jitter so 60k clients do not reconnect in the same second.</p>
+        <p><b>Optional rebalancing:</b> servers far above average can gracefully close a small percentage of connections (clients reconnect elsewhere) to converge faster. Messages for a user reach the right server via pub/sub, so it does not matter which server holds the socket.</p>`,
+      complexity: `<p>Least-connections pick is O(N) over 5 servers (trivial). Target per server ≈ 300k ÷ 5 = 60k, below the 80k cap, with room for one failure (75k each on 4).</p>`
+    }
+  });
+
+  practice.push({
+    title: 'Stale Profile After Update',
+    level: 'Medium', tags: ['read replicas', 'replication lag', 'consistency'], companies: ['LinkedIn', 'Twitter/X'],
+    statement: `<p>After adding 3 async read replicas, users report: "I changed my profile photo, the page refreshed, and the old photo is back. Refreshing again shows the new one." Explain the bug and give two fixes, with their trade-offs.</p>`,
+    constraints: `Replica lag is usually 100–800 ms; occasionally 5 s. Reads are 97% of traffic.`,
+    example: `<p>t=0 write to ${H.c('b', 'primary')}; t=0.2 s refresh reads ${H.c('r', 'replica 2 (lag 0.8 s) → old photo')}; t=1.5 s refresh reads replica 1 → new photo. The data "flickers".</p>`,
+    brute: { why: `<p>Sending all reads back to the primary fixes the bug but throws away the replicas — the primary overloads again. Making replication synchronous for all replicas slows every write and stalls writes whenever any replica is slow.</p>` },
+    mcq: { q: 'What guarantee does the user expect here?', options: ['Read-your-writes', 'Strong global ordering of all events', 'Nothing — it is fine'], answer: 0, explain: 'A user must see their own writes; other users seeing it a second later is acceptable.' },
+    hints: [`<p>Async replication means a replica can be behind right after a write.</p>`, `<p>Only the writing user needs fresh data immediately.</p>`, `<p>Options: route the writer's reads to primary for N seconds; or track the write's log position and use only caught-up replicas; or return the new data from the write.</p>`],
+    solution: {
+      approach: `<p><b>Bug:</b> asynchronous replication + round-robin reads. The refresh right after the write can land on a replica that has not yet replayed it. Successive refreshes hit different replicas with different lag, so data flickers (also a <i>monotonic reads</i> violation).</p>
+        <p><b>Fix 1 — time-window read-your-writes:</b> on write, store <code>last_write_at</code> in the user's session; for ~10 s (above worst normal lag) route that user's reads to the primary. Simple; small extra primary load (only recent writers). Risk: a lag spike longer than the window.</p>
+        <p><b>Fix 2 — position-based:</b> after the write, record the primary's log position (LSN/GTID) in the session; route the user's reads only to replicas that have replayed past it (or the primary if none). Precise and robust to lag spikes; more complex, needs lag/position visibility in the router.</p>
+        <p><b>Also:</b> return the new photo URL in the write response so the UI updates instantly; pin a user's reads to one replica per session to avoid flicker; and since profile photos are cached by the CDN, use a new file name (versioned URL) per upload instead of overwriting.</p>`,
+      complexity: `<p>Extra primary reads ≈ (writes/s × reads per user in the window) — tiny compared with 97% read traffic.</p>`
+    }
+  });
+
+  practice.push({
+    title: 'Mixed Fleet: Old and New Servers',
+    level: 'Medium', tags: ['weighted round robin', 'load balancer', 'capacity'], companies: ['Netflix', 'Walmart'],
+    statement: `<p>Your pool has 6 old servers (each handles 1,000 rps) and you add 3 new servers (each handles 3,000 rps). Peak load is 9,000 rps. With plain round robin, what happens? Choose weights so every server runs at the same utilisation, and compute that utilisation. How should the new servers be introduced safely?</p>`,
+    constraints: `Total capacity = 6×1,000 + 3×3,000 = 15,000 rps.`,
+    example: `<p>Round robin: each of 9 servers gets 1,000 rps → old servers at ${H.c('r', '100%')}, new at ${H.c('y', '33%')}. Weights 1 : 3 → old 600 rps (${H.c('g', '60%')}), new 1,800 rps (${H.c('g', '60%')}).</p>`,
+    brute: { why: `<p>Round robin treats all servers as equal. The old servers hit 100% and latency explodes, while the new servers — the ones you just paid for — sit two-thirds idle. Removing the old servers entirely leaves 9,000 rps on 9,000 rps capacity (100%) and no redundancy.</p>` },
+    mcq: { q: 'With weights 1 (old) and 3 (new), what share does ONE new server get?', options: ['3/15 = 20%', '1/9 ≈ 11%', '1/3 ≈ 33%'], answer: 0, explain: 'Total weight = 6×1 + 3×3 = 15; one new server has weight 3 → 3/15.' },
+    hints: [`<p>Weights should be proportional to capacity.</p>`, `<p>Share of a server = its weight ÷ sum of all weights.</p>`, `<p>Safe introduction: slow start, canary weight first, watch error rate and latency, then full weight.</p>`],
+    solution: {
+      approach: `<p><b>Plain RR:</b> 9,000 ÷ 9 = 1,000 rps each → old servers at 100% (slow, errors), new at 33%.</p>
+        <p><b>Weights ∝ capacity:</b> old = 1, new = 3; total weight 15. Old server gets 9,000 × 1/15 = 600 rps (60% of 1,000); new gets 9,000 × 3/15 = 1,800 rps (60% of 3,000). Equal 60% utilisation everywhere. Use smooth weighted RR (interleaved) or weighted least connections if request costs vary.</p>
+        <p><b>Safe rollout:</b> add new servers with a low weight first (canary), enable slow start so caches/JIT warm up, compare latency and error rate with the old ones, then raise to weight 3. Once stable, consider retiring the old servers: 3 new servers alone = 9,000 capacity — not enough with headroom, so keep some old ones or add a 4th/5th new one (9,000 ÷ 2,100 usable ≈ 5 servers incl. N+1).</p>`,
+      complexity: `<p>Utilisation = load ÷ total capacity = 9,000 ÷ 15,000 = 60% when weights match capacity.</p>`
+    }
+  });
+
+  practice.push({
+    title: 'The In-Memory Rate Limiter That Leaks',
+    level: 'Medium', tags: ['stateless', 'rate limiting', 'redis'], companies: ['Stripe', 'Cloudflare'],
+    statement: `<p>An API promises "max 100 requests per minute per API key". Each of the 8 app servers counts requests in a local HashMap. Customers notice they can make ~800/min, and the limit also resets whenever a server restarts. Fix it so the limit is global and survives restarts, and explain what happens if the shared counter store is unavailable.</p>`,
+    constraints: `Peak 40,000 rps total; added latency must stay under 1 ms; 50k active API keys.`,
+    example: `<p>8 servers × 100 per server = ${H.c('r', '800/min')} effective limit. Shared counter: <code>INCR rl:key42:202610151204</code> → ${H.c('g', '101 → reject')} no matter which server.</p>`,
+    brute: { why: `<p>Dividing the limit by the number of servers (12 per server) breaks with uneven routing, changes whenever autoscaling adds servers, and still resets on restart. Sticky routing by API key makes load uneven and fails when a server dies.</p>` },
+    mcq: { q: 'Why does the local counter allow ~800/min?', options: ['Each of 8 servers counts separately', 'HashMaps are slow', 'Round robin skips servers'], answer: 0, explain: 'Requests are spread across 8 servers, each with its own independent count of up to 100.' },
+    hints: [`<p>The counter is state; state must leave the app server.</p>`, `<p>Redis INCR is atomic; add EXPIRE so old windows disappear.</p>`, `<p>Decide fail-open vs fail-closed; consider a small local fallback limit.</p>`],
+    solution: {
+      approach: `<p><b>Design:</b> move the counter to a shared, replicated Redis. Per request: <code>INCR rl:{key}:{minute}</code>; if the result is 1, set <code>EXPIRE 60</code> (or do both atomically with a small Lua script / pipeline). If the count &gt; 100 → HTTP 429 with a <code>Retry-After</code> header. Every server sees the same count; restarts do not matter.</p>
+        <p><b>Scale:</b> 40,000 rps → 40,000 Redis ops/s — fine for a small Redis cluster; keys are spread by API key. Latency ≈ 0.2–0.5 ms in the same zone. Memory: 50k keys × ~100 bytes ≈ 5 MB.</p>
+        <p><b>Accuracy:</b> fixed windows allow up to 2× bursts at the window boundary; a sliding-window or token-bucket algorithm smooths it (HLD 9).</p>
+        <p><b>Redis down:</b> choose explicitly. <i>Fail open</i> (allow requests, maybe with a generous local per-server limit) keeps the API available — typical for rate limits. <i>Fail closed</i> (reject) is for abuse-sensitive endpoints like login. Add a circuit breaker so a slow Redis does not slow every request.</p>`,
+      complexity: `<p>O(1) atomic operation per request; memory O(active keys).</p>`
+    }
+  });
+
+  practice.push({
+    title: 'Flash Sale: 50× Traffic in 5 Minutes',
+    level: 'Hard', tags: ['autoscaling', 'horizontal scaling', 'queues', 'load shedding'], companies: ['Flipkart', 'Amazon', 'Alibaba'],
+    statement: `<p>A shop normally peaks at 2,000 rps on 4 app servers. A sneaker drop at 10:00 is expected to bring <b>100,000 rps</b> within 5 minutes, mostly people refreshing the product page and pressing "Buy". Only 5,000 pairs exist. Design how the system scales and stays up, and what happens to requests beyond capacity.</p>`,
+    constraints: `Autoscaling adds a server in ~3 minutes; the DB primary handles ~3,000 writes/s; overselling is unacceptable.`,
+    example: `<p>Reactive autoscaling alone: at 10:00 load jumps 50×; new servers arrive at 10:03 — ${H.c('r', 'three minutes of timeouts')}, and 100k "Buy" clicks hammering one inventory row would melt the DB.</p>`,
+    brute: { why: `<p>"Turn on autoscaling" is too slow (minutes) for a spike that arrives in seconds, and it scales only the app tier — the database and the single hot inventory row become the bottleneck. Letting every click hit the DB with <code>UPDATE stock = stock − 1</code> causes lock contention, timeouts and, with sloppy code, overselling.</p>` },
+    mcq: { q: 'What absorbs the read storm (people refreshing the product page) most cheaply?', options: ['CDN/edge cache of the product page with a short TTL', 'More database replicas', 'Bigger app servers'], answer: 0, explain: 'The page is identical for everyone; serving it from the edge removes most of the 100k rps before it reaches your servers.' },
+    hints: [`<p>Separate the read storm (page views) from the write storm (buy attempts). They need different tools.</p>`, `<p>Pre-scale before 10:00; cache the page at the edge; put buy requests through a queue or a virtual waiting room.</p>`, `<p>Inventory: atomic decrement in Redis (or reservation tokens) before the DB; shed load gracefully with 429/"sold out" instead of timeouts.</p>`],
+    solution: {
+      approach: `<p><b>1. Pre-scale (scheduled, not reactive):</b> at 09:45 scale the app tier to the expected peak (e.g. 100,000 × 10% reaching origin ÷ 1,400 ≈ 8 + spares → ~12 servers, more if the CDN hit rate is lower), warm caches, raise DB connection limits. Reactive autoscaling stays on as backup.</p>
+        <p><b>2. Kill the read storm at the edge:</b> product page served from the CDN with a 1–5 s TTL; stock count shown from a cached value. 90%+ of the 100k rps never reaches the origin.</p>
+        <p><b>3. Control the write storm:</b> a <b>virtual waiting room</b> admits users at a rate the backend can handle (e.g. 2,000/s). "Buy" does an <b>atomic decrement</b> of a Redis counter (<code>DECR stock:sku42</code>); if the result ≥ 0 the user gets a reservation; otherwise "sold out" immediately. Reservations are written to an order queue; workers create orders in the DB at a steady ~1,000/s. Exactly 5,000 reservations exist, so <b>no overselling</b>; unpaid reservations expire after 10 minutes and return to stock.</p>
+        <p><b>4. Shed load gracefully:</b> rate limits per user/IP (bots), fast 429 or "sold out" responses instead of timeouts, circuit breakers around non-essential services (recommendations off during the drop).</p>
+        <p><b>5. Redundancy:</b> Redis with a replica, multi-AZ app tier, DB standby; run a load test of the whole flow beforehand.</p>`,
+      complexity: `<p>Origin load ≈ (1 − CDN hit rate) × 100k rps; inventory decision O(1) in Redis; DB writes capped by the queue consumer rate (~1,000/s).</p>`,
+      followUps: ['How do you keep the Redis counter and the DB inventory in sync if a worker crashes?', 'How do you stop bots from taking all 5,000 pairs?']
+    }
+  });
+
+  practice.push({
+    title: 'Design for 99.99%: Remove Every SPOF',
+    level: 'Hard', tags: ['availability', 'SPOF', 'multi-AZ', 'failover'], companies: ['Stripe', 'Google', 'Microsoft'],
+    statement: `<p>A payments-status API must reach <b>99.99%</b> availability (≈ 52 minutes downtime/year). Current: 1 LB (99.95%), 2 app servers (99.9% each), 1 PostgreSQL (99.9%), 1 Redis (99.9%), all in one zone. Compute today's theoretical availability, then design a version that meets the target and show the math. State what the math ignores.</p>`,
+    constraints: `Single region allowed; 3 availability zones available; DB failover takes ~30 s; budget is not the main concern.`,
+    example: `<p>Today: 0.9995 × (1 − 0.001²) × 0.999 × 0.999 ≈ ${H.c('r', '99.75%')} ≈ 22 h/year. The single DB and Redis dominate.</p>`,
+    brute: { why: `<p>Adding app servers alone changes 0.999999 to 0.999999999 — meaningless — because the series chain is dominated by the single LB, DB and Redis. Going multi-region active-active immediately adds huge complexity (data conflicts) when a well-built single region with 3 zones can reach the target.</p>` },
+    mcq: { q: 'Which change raises availability the most from the current design?', options: ['Making the DB and Redis redundant with automatic failover', 'Adding a third app server', 'A faster load-balancing algorithm'], answer: 0, explain: 'Single 99.9% components in series cap the whole system near 99.8%; giving them standbys removes the biggest weak links.' },
+    hints: [`<p>Series: multiply. Parallel: 1 − (1 − a)<sup>n</sup>.</p>`, `<p>Make every tier at least 2-way redundant across zones; use a managed multi-AZ LB.</p>`, `<p>Then account for failover time: 30 s per DB failover × expected failovers/year must fit inside 52 minutes along with everything else.</p>`],
+    solution: {
+      approach: `<p><b>Today:</b> LB 0.9995 × app (1 − 0.001²) = 0.999999 × DB 0.999 × Redis 0.999 ≈ <b>0.99750</b> → ~22 hours/year.</p>
+        <p><b>Design (3 zones):</b> managed multi-AZ load balancer (provider SLA typically 99.99%; or 2 self-run LBs with floating IP); app servers 2 per zone (6 total, N+1 per zone — any zone can be lost); PostgreSQL primary + synchronous standby in a second zone + async replica in the third, with automatic failover (managed multi-AZ or Patroni/etcd quorum to avoid split brain); Redis primary + 2 replicas across zones with automatic failover.</p>
+        <p><b>Math:</b> LB ≈ 0.9999; app 1 − 0.001⁶ ≈ 1; DB pair 1 − 0.001² = 0.999999; Redis 1 − 0.001³ ≈ 1. Product ≈ <b>0.99990</b> → dominated by the LB. Add failover time: e.g. 4 DB failovers × 30 s + 4 Redis failovers × 10 s ≈ 2.7 minutes/year. Total ≈ 53 + 3 minutes — right at the edge, so add client retries for idempotent reads (hides most failover blips) and consider a second LB path (DNS failover) to buy margin.</p>
+        <p><b>What the math ignores:</b> correlated failures (bad deploys, config pushes, cert expiry, a region-wide control-plane issue), human error, dependency outages, and partial failures (slow, not dead). Mitigate with staged rollouts per zone, automated rollback, chaos drills, and SLO-based alerting. Real 99.99% is as much process as hardware.</p>`,
+      complexity: `<p>Availability budget: 0.01% of 525,600 min ≈ 52.6 min/year; each redundant tier turns (1 − a) into (1 − a)<sup>n</sup>.</p>`
+    }
+  });
+
+  practice.push({
+    title: 'Reconnect Storm After a Server Dies',
+    level: 'Hard', tags: ['least connections', 'websockets', 'thundering herd', 'failover'], companies: ['Discord', 'WhatsApp', 'Zoom'],
+    statement: `<p>A real-time notifications service holds <b>1.2M WebSocket connections</b> on 12 servers (100k each, max 130k). One server crashes: its 100k clients reconnect within ~2 seconds. The LB uses least connections. Ten minutes later autoscaling adds a 13th server. Walk through what happens at each step, what can go wrong, and how to design it to be safe.</p>`,
+    constraints: `TLS handshake + auth costs ~5 ms CPU per connection; a server can accept ~3,000 new connections/s safely.`,
+    example: `<p>100k reconnects in 2 s = ${H.c('r', '50,000 handshakes/s')} across 11 servers ≈ 4,500/s each — above the 3,000/s safe rate. Later the new 13th server has 0 connections, so least connections sends it ${H.c('r', 'every')} new connection.</p>`,
+    brute: { why: `<p>Naive view: "least connections + autoscaling handles it". In reality the instant reconnect storm overloads TLS/auth CPU on all survivors (and the auth service), causing timeouts → clients retry immediately → an even bigger storm (a thundering herd). Then the empty new server is flooded by least connections while cold.</p>` },
+    mcq: { q: 'The single most effective client-side fix for reconnect storms is…', options: ['Exponential backoff with random jitter', 'Reconnecting faster', 'Using IP hash'], answer: 0, explain: 'Jitter spreads 100k reconnects over tens of seconds instead of 2, keeping per-server handshake rate safe.' },
+    hints: [`<p>Compute handshake rate per surviving server and compare with the safe rate.</p>`, `<p>Spread the reconnects in time (client jitter) and cap acceptance per server (server/LB side).</p>`, `<p>For the new server: slow start or connection-rate caps; optionally move a few connections from the fullest servers gradually.</p>`],
+    solution: {
+      approach: `<p><b>Crash:</b> 100k clients lose their sockets. Least connections spreads reconnects over the 11 survivors (each heads from 100k toward ~109k, under the 130k cap ✓). But arriving in ~2 s means ~4,500 handshakes/s per server — over the 3,000/s safe rate — and the auth service gets 50k requests/s. Timeouts trigger immediate retries → herd.</p>
+        <p><b>Fixes for the storm:</b> (1) clients reconnect with <b>exponential backoff + full jitter</b> (first retry random 0–30 s), spreading 100k over ~30 s ≈ 300/s per server; (2) servers/LB enforce a <b>max accept rate</b> and return a fast "retry later" instead of timing out; (3) resumable sessions: short-lived resume tokens validated locally (signed) so reconnects skip the expensive auth call; (4) TLS session resumption to cut handshake CPU.</p>
+        <p><b>New 13th server:</b> it has 0 connections, so least connections would send it all new connections. Use <b>slow start</b> (ramp weight over minutes) and a per-server new-connection rate cap. Rebalancing: the fullest servers gracefully close a small percentage of connections per minute (with jitter) so load converges toward 1.2M ÷ 13 ≈ 92k each.</p>
+        <p><b>Capacity planning:</b> keep headroom for one server's worth of connections on the rest (11 × 130k = 1.43M ≥ 1.2M ✓) and add servers before reaching ~85% of cap. Message delivery stays correct throughout because routing goes through pub/sub keyed by user, not by server.</p>`,
+      complexity: `<p>Reconnect rate per server ≈ dropped connections ÷ (survivors × spread window): 100k ÷ (11 × 30 s) ≈ 300/s with 30 s jitter vs 4,500/s without.</p>`,
+      followUps: ['How would you detect and fix the imbalance automatically?', 'What changes if an entire zone (4 servers) fails at once?']
+    }
+  });
+
+  practice.push({
+    title: 'Global Photo App: 10k to 10M Users',
+    level: 'Hard', tags: ['scaling journey', 'cdn', 'object storage', 'replicas', 'stateless'], companies: ['Instagram/Meta', 'Pinterest', 'Snap'],
+    statement: `<p>A photo-sharing app (upload photos, view a feed of people you follow, like, comment) has 10k users in one country, running on 2 VMs (app + PostgreSQL), photos stored on the app VM's disk. It is going viral: 1M users in 6 months, 10M in 18 months, users on 3 continents. Propose the scaling plan with key numbers, focusing on the ideas from this module (stateless app, load balancing, SPOFs, read replicas) and noting where later topics take over.</p>`,
+    constraints: `Each user views ~200 photos/day, uploads ~1 photo/week (2 MB original); read:write ≈ 500:1; target 99.9% → 99.95%.`,
+    example: `<p>10M users × 200 views ÷ 86,400 ≈ ${H.c('b', '23,000 photo views/s')} average (~70k peak) — photo <b>bytes</b> must come from a CDN, not your servers. Uploads ≈ 10M ÷ 7 ÷ 86,400 ≈ ${H.c('b', '17/s')} × 2 MB = 34 MB/s.</p>`,
+    brute: { why: `<p>Keeping photos on app server disks makes the app stateful (can't scale out, a dead disk loses photos), and serving 70k image requests/s from app servers would need a huge fleet and terabits of bandwidth. Just "adding bigger servers" ignores the 3-continent latency and leaves the single DB as a SPOF.</p>` },
+    mcq: { q: 'First architectural change as growth starts?', options: ['Move photos to object storage + CDN and make app servers stateless', 'Shard PostgreSQL by user id', 'Rewrite into microservices'], answer: 0, explain: 'It removes the biggest state from the app tier and the biggest bandwidth load, enabling horizontal scaling.' },
+    hints: [`<p>Separate the byte-heavy path (images) from the metadata path (feed, likes, comments).</p>`, `<p>Images: object storage + CDN. Metadata: stateless API fleet + LB + DB primary/standby + replicas + cache.</p>`, `<p>At 10M across continents: CDN handles global image latency; consider read replicas in other regions; feed generation is a later topic (HLD 15).</p>`],
+    solution: {
+      approach: `<p><b>Step 1 (now, 10k → 100k):</b> move photos to <b>object storage</b> (uploads via pre-signed URLs, multiple sizes generated by background workers), serve them via a <b>CDN</b>. Make the API <b>stateless</b> (token or Redis sessions). Managed PostgreSQL with a standby (removes the DB SPOF). 2–3 API servers behind a <b>load balancer</b> with health checks.</p>
+        <p><b>Step 2 (1M users):</b> metadata reads ≈ 1M × ~300 API calls/day ÷ 86,400 ≈ 3,500 rps avg, ~10k peak. API fleet ⌈10,000 ÷ 1,400⌉ + 1 ≈ 9 servers across 2–3 zones with autoscaling. DB: add a <b>Redis cache</b> for hot data (user profiles, like counts) and <b>2–3 read replicas</b>; read-your-writes for a user's own posts and comments. Queue + workers for thumbnails and notifications.</p>
+        <p><b>Step 3 (10M users, 3 continents):</b> photo views ~70k/s peak are served almost entirely by the CDN's edge locations near users. API traffic ~100k rps peak → ~75+ servers with autoscaling. Writes ≈ a few hundred/s (likes, comments, uploads) — still OK for one primary with good indexing, but the feed query becomes the hot spot: precompute feeds (fan-out, HLD 15) and cache them. To cut API latency on other continents, deploy read-only API stacks with <b>cross-region read replicas</b> in 2 more regions; writes go to the home region (or later, shard users by region). Storage: 10M ÷ 7 × 2 MB × 365 ≈ 1 PB/year originals → object storage tiers.</p>
+        <p><b>SPOF review at each step:</b> LB (managed multi-AZ), API (N+1 per zone), DB (standby + replicas), Redis (replica), CDN (provider-redundant; optionally multi-CDN), workers (queue-based, any can die).</p>`,
+      complexity: `<p>Photo views ≈ users × 200 ÷ 86,400 (×3 for peak); upload bandwidth ≈ uploads/s × 2 MB; storage ≈ 1 PB/year at 10M users.</p>`
+    }
+  });
+
+  /* =====================================================================
+     QUIZ
+     ===================================================================== */
+  quiz.push(
+    { q: 'What is <b>horizontal</b> scaling?', options: ['Adding more machines and spreading load across them', 'Moving to a machine with more CPU and RAM', 'Adding indexes to the database', 'Compressing responses'], answer: 0, explain: 'Scale out = more machines behind a load balancer. Scale up (vertical) = a bigger machine.' },
+    { q: 'Which is the main reason a web tier must be <b>stateless</b> before scaling out?', options: ['So any server can handle any request and servers can be added/removed freely', 'Stateless code runs faster on one CPU', 'Load balancers refuse stateful servers', 'It removes the need for a database'], answer: 0, explain: 'If state lives in one server, requests routed elsewhere break and that server cannot be safely removed.' },
+    { q: 'After adding a second app server, users are "randomly" logged out about half the time. Most likely cause?', options: ['Sessions are stored in each server\'s memory', 'The database is too slow', 'DNS caching', 'The CDN is misconfigured'], answer: 0, explain: 'Round robin alternates servers; the one that did not create the session does not know it.' },
+    { q: 'Requests take either 10 ms or 30 s, unpredictably. Which LB algorithm handles this best?', options: ['Least connections (or least outstanding requests)', 'Round robin', 'IP hash', 'Random with no checks'], answer: 0, explain: 'It sends new work to the server with the least in-flight work, so slow requests do not pile up on one server.' },
+    { q: 'Servers A (weight 3) and B (weight 1) use weighted round robin. Out of 400 requests, A gets about…', options: ['300', '200', '100', '400'], answer: 0, explain: 'Share = 3 ÷ (3 + 1) = 75% → 300.' },
+    { q: 'Two independent app servers each have 99% availability and either can serve all traffic. Availability of the app tier?', options: ['99.99%', '98.01%', '99%', '99.5%'], answer: 0, explain: 'Parallel: 1 − 0.01 × 0.01 = 0.9999.' },
+    { q: 'LB 99.99% → app tier 99.99% → DB 99.9% in series. Overall availability is closest to…', options: ['99.88%', '99.99%', '99.9%', '99.999%'], answer: 0, explain: 'Series: 0.9999 × 0.9999 × 0.999 ≈ 0.9988. The weakest link dominates.' },
+    { q: 'What do read replicas NOT help with?', options: ['Write throughput on the primary', 'Read-heavy load', 'Isolating slow reporting queries', 'Having a standby to promote on failure'], answer: 0, explain: 'Every write still goes to the single primary, and every replica must replay all writes.' },
+    { q: 'A user edits a post and immediately sees the old version. Which fix targets exactly this?', options: ['Read-your-writes: route that user\'s reads to the primary briefly', 'Add more replicas', 'Use round robin for writes', 'Increase the cache TTL'], answer: 0, explain: 'The user is reading from a lagging async replica; only the writer needs immediate freshness.' },
+    { q: 'Main drawback of sticky sessions?', options: ['A server failure loses its users\' sessions and load can become uneven', 'They need a database', 'They make requests slower by 1 second', 'They only work with UDP'], answer: 0, explain: 'State still lives in one server; affinity just hides that until the server dies or gets overloaded.' },
+    { q: 'Why is a JWT harder to revoke than a server-side session?', options: ['Servers verify it locally without a lookup, so it stays valid until it expires', 'JWTs are encrypted with the user\'s password', 'JWTs cannot have an expiry', 'Browsers never delete JWTs'], answer: 0, explain: 'No lookup means nothing to delete; revocation needs short expiry, refresh tokens, or a deny-list lookup.' },
+    { q: 'A freshly added server under least connections often gets overloaded because…', options: ['It has 0 connections, so it receives all new connections while still cold', 'Least connections ignores new servers', 'It is skipped by health checks', 'Its weight defaults to zero'], answer: 0, explain: 'Use slow start / warm-up and connection-rate caps.' },
+    { q: 'Peak 9,000 rps, each server handles 1,500 rps, target 75% utilisation, N+1. How many servers?', options: ['9', '6', '7', '12'], answer: 0, explain: 'Usable = 1,125 rps; ⌈9,000 ÷ 1,125⌉ = 8; +1 spare = 9.' }
+  );
+
+  /* =====================================================================
+     INTERVIEW Q&A
+     ===================================================================== */
+  interview.push(
+    { q: 'What is the difference between vertical and horizontal scaling? When would you choose each?', level: 'B',
+      a: `<p><b>Vertical</b> (scale up) = a bigger machine: more CPU, RAM, faster disks. No code change and no distributed-systems complexity, but there is a hardware ceiling, cost grows steeply at the top, resizing often needs a restart, and it remains a single point of failure.</p>
+        <p><b>Horizontal</b> (scale out) = more machines behind a load balancer. Near-unlimited growth, redundancy, autoscaling — but the service must be stateless and shared data becomes the hard part.</p>
+        <p><b>Choice:</b> scale stateless app servers out; scale the database up as long as reasonable, then add replicas/caching, and shard only when needed. For tiny apps, one box is the right answer.</p>`,
+      followUps: ['What is diagonal scaling?', 'Why doesn\'t doubling cores double throughput?'] },
+    { q: 'What does it mean for a service to be stateless, and how do you make an existing service stateless?', level: 'B',
+      a: `<p>A stateless service keeps nothing between requests that another copy would need: any instance can serve any request, and killing an instance loses nothing but in-flight work.</p>
+        <p>To get there, find every kind of hidden state and move it out: sessions → Redis or signed tokens; uploaded files → object storage; counters (rate limits) → Redis atomic ops; in-app cron → a scheduler/queue or leader election; carts → Redis/DB. Harmless local caches can stay. Add graceful shutdown so deploys drain connections. Test: kill a server mid-traffic — users should not notice.</p>`,
+      followUps: ['Is a WebSocket server stateless?', 'Where would you store a shopping cart and why?'] },
+    { q: 'Compare sticky sessions, a central session store, and JWTs.', level: 'I',
+      a: `<p><b>Sticky sessions:</b> LB pins a user to one server holding their session in memory. No code change, but uneven load, sessions lost on crash/deploy, scale-out only helps new users.</p>
+        <p><b>Central store (Redis):</b> cookie holds a random id; data lives in a replicated store with TTL. Servers are stateless; instant logout/revocation; costs ~0.5 ms lookup per request and the store must be highly available.</p>
+        <p><b>JWT / signed token:</b> claims signed by the server and verified locally — no lookup, great across microservices. Hard to revoke before expiry, larger cookies, readable payload. Common pattern: short-lived access tokens (5–15 min) + revocable refresh tokens.</p>`,
+      followUps: ['How do you log a user out of all devices with each approach?', 'Where should a browser store a token?'] },
+    { q: 'Explain round robin vs least connections. When does round robin fail?', level: 'B',
+      a: `<p><b>Round robin</b> sends requests to servers in a fixed rotation. It is simple, stateless and perfect when requests cost about the same and servers are identical.</p>
+        <p><b>Least connections</b> sends each new request/connection to the server with the fewest in-flight ones, so it adapts to uneven request durations and long-lived connections.</p>
+        <p>Round robin fails when work is uneven (some requests take 30 s), when servers differ in size (use weights), and with long-lived connections where early imbalances persist. Least connections has its own trap: a new empty server gets flooded — use slow start.</p>`,
+      followUps: ['What is the power of two choices?', 'What does "least connections" mean with HTTP/2 multiplexing?'] },
+    { q: 'How does a load balancer know a server is down, and what happens to requests during that time?', level: 'I',
+      a: `<p><b>Active health checks:</b> the LB probes each server (e.g. <code>GET /health</code> every 5 s); after N consecutive failures (e.g. 2–3) it removes the server, after M successes it adds it back. <b>Passive checks / outlier detection:</b> the LB watches real traffic and ejects servers returning errors or timing out.</p>
+        <p>Between the crash and removal (interval × threshold, e.g. 10–15 s) some requests fail. Reduce it with passive checks, shorter intervals, and retries to another server for idempotent requests (with a retry budget to avoid amplifying load). Keep health checks shallow so a shared dependency blip does not mark every server unhealthy.</p>`,
+      followUps: ['Liveness vs readiness — what is the difference?', 'What should a load balancer do if ALL targets are unhealthy?'] },
+    { q: 'What is a single point of failure? How do you find and remove them?', level: 'B',
+      a: `<p>A SPOF is a component whose failure stops the whole system or a whole feature. Find them by walking one request path end to end (DNS → LB → app → cache → DB → storage) and asking "what if this disappears?" — including non-hardware ones: TLS certs, secrets, a config service, one region/zone, one engineer.</p>
+        <p>Remove them with redundancy (active-active or active-passive), detection (health checks, heartbeats), and automatic switching (failover, floating IPs, promotion). Make copies fail independently — different zones — and size the survivors to carry the full load (N+1).</p>`,
+      followUps: ['Who load-balances the load balancer?', 'Give an example of a non-hardware SPOF you have seen.'] },
+    { q: 'Calculate the availability of: 2 LBs in parallel (99.9% each) → 3 app servers in parallel (99% each) → 1 database (99.95%).', level: 'I',
+      a: `<p>LB tier: 1 − 0.001² = 0.999999. App tier: 1 − 0.01³ = 0.999999. DB: 0.9995. In series: 0.999999 × 0.999999 × 0.9995 ≈ <b>0.999498 ≈ 99.95%</b> — about 4.4 hours/year of downtime.</p>
+        <p>The single database dominates; adding app servers would change almost nothing. Next step: a standby DB with automatic failover (1 − 0.0005² ≈ 0.99999975), then budget for failover time. Caveat: this assumes independent failures — real systems have correlated failures (bad deploys, zone outages), so measured availability is lower.</p>`,
+      followUps: ['How much downtime per year is 99.99%?', 'Why does real availability fall short of this math?'] },
+    { q: 'What are read replicas, and what problems do they introduce?', level: 'I',
+      a: `<p>Read replicas are copies of the database that replay the primary's change log and serve read queries. Writes go to the primary; reads are spread over replicas, so read capacity scales nearly linearly. Replicas also serve as failover candidates and can isolate heavy reporting queries.</p>
+        <p>Problems: <b>replication lag</b> with async replication → stale reads (fix with read-your-writes, position-aware routing, pinning a user to one replica for monotonic reads); they do <b>nothing for writes</b>; every replica replays all writes; failover with async replication can lose recent writes; and a replica is not a backup (deletes replicate too).</p>`,
+      followUps: ['Synchronous vs asynchronous replication trade-off?', 'How would you route reads automatically?'] },
+    { q: 'Walk me through scaling a web app from 100 users to 10 million users.', level: 'I',
+      a: `<p>Convert to load first: 10M DAU × ~50 requests ÷ 86,400 ≈ 5,800 rps avg, ~17k peak. Then evolve by bottleneck:</p>
+        <ol><li><b>100–1k:</b> one box, backups, monitoring.</li>
+        <li><b>~10k:</b> separate DB (managed), files to object storage + CDN.</li>
+        <li><b>~100k:</b> stateless app, LB + N+1 servers, sessions in Redis, DB standby.</li>
+        <li><b>~1M:</b> cache hot reads, read replicas with read-your-writes, multi-AZ.</li>
+        <li><b>~10M:</b> autoscaling (~14 servers at peak), queues + workers for slow tasks, more replicas, observability, rate limiting.</li>
+        <li><b>Beyond:</b> sharding when writes/size outgrow one primary, multi-region for global latency.</li></ol>
+        <p>At each step I name the metric that triggered it.</p>`,
+      followUps: ['What would you do first if the DB is the bottleneck at 1M users?', 'When would you split into microservices?'] },
+    { q: 'Your API servers are at 90% CPU but the database is at 20%. What do you do, short term and long term?', level: 'B',
+      a: `<p><b>Short term:</b> if the service is stateless, add servers behind the load balancer (or raise the autoscaling max) — that is the fastest relief. If it is not stateless, scale the instances up vertically as a stop-gap.</p>
+        <p><b>Then investigate:</b> profile where CPU goes (JSON serialisation, TLS, inefficient code, a hot loop, GC pressure), check whether one endpoint dominates, and whether a cache could avoid recomputing responses. <b>Long term:</b> autoscaling on CPU or request rate with headroom, right-sized instances, offloading heavy work to async workers, and performance fixes — often cheaper than more servers.</p>`,
+      followUps: ['What metric would you autoscale on?', 'How would you avoid overloading the DB when you add servers?'] },
+    { q: 'How do you scale the load balancer itself and avoid it being a SPOF?', level: 'A',
+      a: `<p>Options: (1) <b>Managed cloud LBs</b> (AWS ALB/NLB, Google Cloud LB) are already distributed fleets across zones and scale automatically. (2) <b>Self-hosted pair</b> (HAProxy/nginx/Envoy) in active-passive with a floating IP via VRRP/keepalived; heartbeat failover in seconds. (3) <b>Active-active</b> LB nodes behind DNS round robin or anycast/ECMP routing, so many LB nodes share traffic and failures are absorbed. (4) Layered: an L4 tier spreading to an L7 tier.</p>
+        <p>Also: health-check the LBs, spread them across zones, and keep configs in version control with staged rollouts — a bad LB config push is a classic global outage.</p>`,
+      followUps: ['What is anycast?', 'What is split brain in an active-passive LB pair?'] },
+    { q: 'A server crashes holding 100k WebSocket connections. What happens and how do you design for it?', level: 'A',
+      a: `<p>All 100k clients reconnect almost simultaneously — a thundering herd. Survivors face a spike of TLS handshakes and auth calls; if they slow down, clients time out and retry, making it worse. Least connections then also floods any newly added server.</p>
+        <p>Design: clients use exponential backoff with full jitter; servers cap the accept rate and reply fast with "retry later"; resumable sessions with locally verifiable resume tokens skip the auth service; TLS session resumption; slow start for new servers; capacity headroom so N−1 servers hold all connections; message routing via pub/sub so any server can deliver to any user.</p>`,
+      followUps: ['How do you rebalance connections after the storm?', 'How do you deploy such servers without causing storms?'] },
+    { q: 'How do you handle in-flight requests during deploys in a horizontally scaled service?', level: 'I',
+      a: `<p>Use rolling, blue-green or canary deploys plus <b>graceful shutdown</b>: on SIGTERM the instance fails its readiness check, the LB stops sending new requests (deregistration/connection draining), the instance finishes in-flight requests within a timeout (e.g. 30 s), closes long-lived connections politely, then exits. New instances become ready only after warm-up.</p>
+        <p>Requirements: stateless servers (no session loss), backward-compatible API and DB changes during the overlap (old and new code run together), and health-check-based automated rollback if error rates rise.</p>`,
+      followUps: ['Blue-green vs canary — when would you pick each?', 'How do you handle a DB schema change during a rolling deploy?'] }
+  );
+
+  /* ---------- vary the position of the correct option (deterministic rotation) ---------- */
+  function rotateMcq(m, shift) {
+    if (!m || !m.options) return;
+    var n = m.options.length, s = shift % n;
+    if (!s) return;
+    var correct = m.options[m.answer];
+    m.options = m.options.slice(n - s).concat(m.options.slice(0, n - s));
+    m.answer = m.options.indexOf(correct);
+  }
+  quiz.forEach(function (q, i) { rotateMcq(q, i * 3 + 1); });
+  practice.forEach(function (p, i) { rotateMcq(p.mcq, i + 1); });
+  topics.forEach(function (t, i) { (t.problems || []).forEach(function (p, j) { rotateMcq(p.mcq, i + j + 2); }); });
+
+  registerModule({
+    id: 'hld02',
+    title: 'Scalability Basics',
+    intro: `<p>Your app works for 100 users. What happens at 100,000? At 10 million? This module is about the first, most important moves every system makes as it grows: <b>bigger machines vs more machines</b>, making servers <b>stateless</b> so they can be copied freely, handling <b>sessions</b> once there is more than one server, spreading traffic with <b>load balancers</b> (round robin, weighted, least connections), hunting down <b>single points of failure</b>, and taking read load off the database with <b>read replicas</b>.</p>
+      <p>Every idea comes with an everyday analogy, animated architecture diagrams that evolve step by step (single server → load balancer → replicas → regions), worked numbers, and interview-style practice like <i>"scale this app from 100 to 10M users"</i>, <i>"fix the single point of failure"</i> and <i>"make this service stateless"</i>. These are the building blocks every later HLD module assumes.</p>`,
+    goals: [
+      'Explain vertical vs horizontal scaling with pros, cons and cost curves, and pick the right one for a given tier',
+      'Make a service stateless by finding hidden state (sessions, files, counters, cron) and moving it to shared stores',
+      'Compare sticky sessions, central session stores and signed tokens (JWT), including revocation trade-offs',
+      'Simulate round robin, weighted round robin and least connections, and choose an algorithm from traffic shape',
+      'Find single points of failure, design redundancy and failover, and compute availability for series/parallel components',
+      'Use read replicas to scale reads, explain replication lag, and apply read-your-writes',
+      'Narrate a step-by-step scaling plan from 100 to 10M users, sizing servers with peak QPS, headroom and N+1'
+    ],
+    prereqs: `HLD 1 (Client-Server &amp; Request Flow): what a server, request and database are, and the meaning of latency, throughput and availability. Comfort with simple multiplication and percentages. Code is optional (small Java/Python examples).`,
+    hours: 9,
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
+  });
+})();
