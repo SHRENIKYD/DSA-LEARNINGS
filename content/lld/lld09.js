@@ -2583,6 +2583,1183 @@ class SeatMachine {
     }]
   });
 
+  /* ======================= PRACTICE: EASY ======================= */
+  practice.push({
+    title: 'Traffic Light with Pedestrian Button', level: 'Easy', tags: ['enum state', 'timer', 'state pattern'], companies: ['Microsoft', 'Cisco', 'Bosch'],
+    statement: `<p>Model a traffic light that cycles <b>RED (30 s) → GREEN (25 s) → YELLOW (5 s) → RED</b>. A <code>tick()</code> is called once per second. A pedestrian button may be pressed at any time: during GREEN it cuts the remaining green time to at most 5 seconds; in RED or YELLOW it does nothing. Print the colour whenever it changes. <b>Add-a-state follow-up:</b> a FLASHING_YELLOW night mode.</p>`,
+    constraints: `Durations are fixed per state. No threads needed — the caller drives <code>tick()</code>.`,
+    example: `<p>Start RED with 30 s. After 30 ticks → ${H.c('g', 'GREEN')} (25 s). 3 ticks later the button is pressed → remaining green becomes ${H.c('y', '5')} instead of 22. 5 ticks later → ${H.c('y', 'YELLOW')}, 5 more → ${H.c('r', 'RED')}.</p>`,
+    brute: { why: `<p>Integer state codes and a counter inside one <code>tick()</code> with nested <code>if (state == 0) … else if (state == 1)</code>; the button handler repeats the same ladder. Adding FLASHING_YELLOW means editing both ladders, and magic numbers (0/1/2) make it easy to send RED → YELLOW by mistake.</p>`, code: `class NaiveLight {
+    int state = 0, remaining = 30;          // 0 = red, 1 = green, 2 = yellow
+    void tick() {
+        if (--remaining > 0) return;
+        if (state == 0) { state = 1; remaining = 25; }
+        else if (state == 1) { state = 2; remaining = 5; }
+        else if (state == 2) { state = 0; remaining = 30; }
+    }
+    void press() { if (state == 1 && remaining > 5) remaining = 5; }   // the ladder again
+}` },
+    mcq: { q: 'Where should the rule "button shortens GREEN only" live in an enum State design?', options: ['As a method on the enum that GREEN overrides; the others inherit "do nothing"', 'In the TrafficLight.press() method with an if on the colour', 'In a static utility class', 'In every tick() call'], answer: 0, explain: 'Constant-specific methods put the behaviour next to the state it belongs to; the context just delegates.' },
+    hints: [`<p>Hint 1: Each colour knows its duration and its successor — that is all a cycle needs. A Java enum with a constructor argument and an abstract <code>next()</code> is perfect.</p>`, `<p>Hint 2: Give the enum a method <code>int onPedestrian(int remaining)</code> that returns <code>remaining</code> by default; only GREEN overrides it with <code>Math.min(remaining, 5)</code>.</p>`, `<p>Hint 3: The context holds <code>light</code> and <code>remaining</code>. tick(): decrement; when it hits 0, switch to <code>light.next()</code> and reload its duration. Night mode = one more constant whose next() is itself.</p>`],
+    solution: {
+      approach: `<p>An enum where every constant carries its duration and its successor (enum State pattern). The pedestrian rule is a constant-specific override on GREEN. The <code>TrafficLight</code> context only counts down and delegates; FLASHING_YELLOW is one new constant that loops to itself.</p>`,
+      code: `enum Light {
+    RED(30)    { Light next() { return GREEN; } },
+    GREEN(25)  {
+        Light next() { return YELLOW; }
+        int onPedestrian(int remaining) { return Math.min(remaining, 5); }   // only GREEN reacts
+    },
+    YELLOW(5)  { Light next() { return RED; } },
+    FLASHING_YELLOW(1) { Light next() { return FLASHING_YELLOW; } };       // add-a-state: night mode
+
+    final int seconds;
+    Light(int seconds) { this.seconds = seconds; }
+    abstract Light next();
+    int onPedestrian(int remaining) { return remaining; }                   // default: ignore
+}
+
+class TrafficLight {
+    private Light light = Light.RED;
+    private int remaining = Light.RED.seconds;
+
+    void tick() {
+        if (--remaining > 0) return;
+        Light next = light.next();
+        if (next != light) System.out.println(light + " -> " + next);
+        light = next;
+        remaining = light.seconds;
+    }
+    void pressButton()  { remaining = light.onPedestrian(remaining); }
+    void nightMode()    { light = Light.FLASHING_YELLOW; remaining = light.seconds; }
+    Light light()       { return light; }
+    int remaining()     { return remaining; }
+
+    public static void main(String[] args) {
+        TrafficLight t = new TrafficLight();
+        for (int i = 0; i < 33; i++) t.tick();          // RED -> GREEN, 3 s into green
+        t.pressButton();
+        System.out.println("green left after button: " + t.remaining());   // 5
+        for (int i = 0; i < 10; i++) t.tick();          // GREEN -> YELLOW -> RED
+        System.out.println("now " + t.light());
+    }
+}`,
+      complexity: `<p>O(1) per tick and per button press. Adding a colour/mode = one enum constant.</p>`,
+      followUps: ['Two crossing roads must never both be GREEN — model the intersection as one state machine, not two.', 'An emergency vehicle sensor forces RED in all directions: which state and which transitions?']
+    }
+  });
+
+  practice.push({
+    title: 'Metro Turnstile (+ add a BROKEN state)', level: 'Easy', tags: ['state pattern', 'add-a-state'], companies: ['Amazon', 'Thoughtworks'],
+    statement: `<p>A turnstile is <b>LOCKED</b> or <b>UNLOCKED</b>. Events: <code>coin()</code> and <code>push()</code>. LOCKED + coin → UNLOCKED; LOCKED + push → sound alarm, stay LOCKED; UNLOCKED + push → let one person through, LOCKED; UNLOCKED + coin → refund the extra coin, stay UNLOCKED. <b>Follow-up:</b> add <b>BROKEN</b>: any state + <code>fault()</code> → BROKEN (coins refunded, pushes ignored) until <code>repair()</code> → LOCKED.</p>`,
+    constraints: `Single-threaded. Count passengers and collected coins.`,
+    example: `<p>Events: push → ${H.c('r', 'alarm')}; coin → UNLOCKED; coin → ${H.c('y', 'refund')}; push → passenger 1, LOCKED; fault → BROKEN; coin → ${H.c('y', 'refund')}; repair → LOCKED. Collected = ${H.c('g', '1 coin')}, passengers = 1.</p>`,
+    brute: { why: `<p>A <code>boolean locked</code> plus a later <code>boolean broken</code>: now there are 4 combinations, and code like <code>if (locked) … else …</code> forgets to check <code>broken</code> first — a broken gate that still takes coins. Each new mode doubles the combinations.</p>`, code: `class FlagTurnstile {
+    boolean locked = true, broken = false;
+    int coins, passengers;
+    void coin() { if (locked) { locked = false; coins++; } else System.out.println("refund"); }   // forgot broken!
+    void push() { if (!locked) { passengers++; locked = true; } else System.out.println("alarm"); }
+    void fault() { broken = true; }
+}` },
+    mcq: { q: 'After adding BROKEN with default-reject methods, which existing state classes change?', options: ['None — fault() is handled once in the context or by a default method; only Broken is new', 'Locked and Unlocked both', 'Only Unlocked', 'All classes and the interface'], answer: 0, explain: 'An event valid in every state (fault) can be handled once; the new state class handles its own coin/push.' },
+    hints: [`<p>Hint 1: Draw the 2 × 2 table (LOCKED/UNLOCKED × coin/push). Every cell has a defined outcome — there are no "impossible" cells here.</p>`, `<p>Hint 2: <code>interface GateState { GateState coin(Turnstile t); GateState push(Turnstile t); }</code> returning the next state keeps the context in charge of the field.</p>`, `<p>Hint 3: fault() is legal from every state → handle it in the context (<code>state = new Broken()</code>). Broken.coin refunds, Broken.push ignores, repair() only works in Broken.</p>`],
+    solution: {
+      approach: `<p>States return their successor (functional State pattern), so the context is the only writer of <code>state</code>. Counters live in the context. BROKEN is a new class; the global <code>fault()</code> event is handled once in the context because it is valid everywhere.</p>`,
+      code: `interface GateState {
+    GateState coin(Turnstile t);
+    GateState push(Turnstile t);
+    default GateState repair(Turnstile t) { t.say("nothing to repair"); return this; }
+}
+final class Locked implements GateState {
+    public GateState coin(Turnstile t) { t.collect(); return new Unlocked(); }
+    public GateState push(Turnstile t) { t.say("ALARM: pay first"); return this; }
+    public String toString() { return "LOCKED"; }
+}
+final class Unlocked implements GateState {
+    public GateState coin(Turnstile t) { t.say("already open, coin refunded"); return this; }
+    public GateState push(Turnstile t) { t.pass(); return new Locked(); }
+    public String toString() { return "UNLOCKED"; }
+}
+final class Broken implements GateState {                     // follow-up: one new class
+    public GateState coin(Turnstile t) { t.say("out of order, coin refunded"); return this; }
+    public GateState push(Turnstile t) { t.say("out of order"); return this; }
+    public GateState repair(Turnstile t) { t.say("repaired"); return new Locked(); }
+    public String toString() { return "BROKEN"; }
+}
+
+class Turnstile {
+    private GateState state = new Locked();
+    private int coins, passengers;
+    void coin()   { state = state.coin(this); }
+    void push()   { state = state.push(this); }
+    void repair() { state = state.repair(this); }
+    void fault()  { state = new Broken(); }                    // valid in every state: handled once
+    void collect() { coins++; }
+    void pass()    { passengers++; }
+    void say(String s) { System.out.println("[" + state + "] " + s); }
+
+    public static void main(String[] args) {
+        Turnstile t = new Turnstile();
+        t.push(); t.coin(); t.coin(); t.push(); t.fault(); t.coin(); t.repair();
+        System.out.println(t.state + " coins=" + t.coins + " passengers=" + t.passengers);   // LOCKED 1 1
+    }
+}`,
+      complexity: `<p>O(1) per event. Adding BROKEN: 1 new class + 2 context methods; Locked/Unlocked untouched.</p>`,
+      followUps: ['Support a monthly pass (tap card) as another event — which states care?', 'Two people push through on one coin (tailgating sensor): which transition detects it?']
+    }
+  });
+
+  practice.push({
+    title: 'Smart Door Lock with Keypad Lockout', level: 'Easy', tags: ['state pattern', 'guards', 'time'], companies: ['Google', 'Amazon', 'Samsung'],
+    statement: `<p>A smart door is <b>OPEN</b>, <b>CLOSED</b> or <b>LOCKED</b>. <code>close()</code>: OPEN → CLOSED. <code>open()</code>: CLOSED → OPEN. <code>lock()</code>: CLOSED → LOCKED (you cannot lock an open door). <code>unlock(code, now)</code>: LOCKED → CLOSED if the code is right. Three wrong codes in a row → <b>LOCKED_OUT</b> for 60 seconds: every unlock attempt is refused until <code>now ≥ lockedUntil</code>, then the door behaves as LOCKED again.</p>`,
+    constraints: `Time is passed in as seconds (<code>long now</code>) so it is testable. The wrong-attempt counter resets on success.`,
+    example: `<p>close, lock, unlock("0000", t=1) ✗, unlock("1111", t=2) ✗, unlock("2222", t=3) ✗ → ${H.c('r', 'LOCKED_OUT until t=63')}; unlock("4321", t=10) → ${H.c('r', 'refused')}; unlock("4321", t=70) → ${H.c('g', 'CLOSED')}.</p>`,
+    brute: { why: `<p>Fields <code>isOpen</code>, <code>isLocked</code>, <code>failCount</code>, <code>lockedUntil</code> and if-checks in each method. <code>lock()</code> forgets to check <code>isOpen</code> (so an open door reports "locked"), and the lockout check is copy-pasted into unlock only — an attacker can keep calling it because one branch forgot the time check.</p>`, code: `class FlagDoor {
+    boolean isOpen = true, isLocked = false;
+    int fails; long lockedUntil;
+    void lock() { isLocked = true; }                          // bug: can "lock" an open door
+    boolean unlock(String code, long now) {
+        if (code.equals("4321")) { isLocked = false; fails = 0; return true; }  // bug: ignores lockout time
+        if (++fails >= 3) lockedUntil = now + 60;
+        return false;
+    }
+}` },
+    mcq: { q: 'Is LOCKED_OUT better modelled as a separate state or as a counter inside LOCKED?', options: ['A separate state: it accepts different events (all unlocks refused) and has its own exit condition (time)', 'A counter, because states must not hold data', 'A boolean flag on the door', 'An exception thrown from unlock()'], answer: 0, explain: 'Different allowed behaviour + a distinct exit condition is exactly what makes something a state.' },
+    hints: [`<p>Hint 1: Table first: 4 states × 4 events. Most cells are "not allowed"; lock in OPEN is a classic trap.</p>`, `<p>Hint 2: LOCKED_OUT is a state holding <code>lockedUntil</code>. Its unlock() checks time first: before → refuse; after → behave like LOCKED (delegate to a fresh Locked state).</p>`, `<p>Hint 3: Keep the wrong-attempt counter in Locked (per locking session) and reset it on success. Pass <code>now</code> into unlock rather than calling the clock inside.</p>`],
+    solution: {
+      approach: `<p>Four state classes behind an interface with default "not allowed" methods. Locked counts failures; on the third it returns a <code>LockedOut(now + 60)</code>. LockedOut refuses until the time passes, then delegates to a fresh <code>Locked</code> so the code path for a correct PIN exists in one place.</p>`,
+      code: `interface DoorState {
+    default DoorState open(SmartDoor d)  { d.say("cannot open now"); return this; }
+    default DoorState close(SmartDoor d) { d.say("cannot close now"); return this; }
+    default DoorState lock(SmartDoor d)  { d.say("cannot lock now"); return this; }
+    default DoorState unlock(SmartDoor d, String code, long now) { d.say("not locked"); return this; }
+}
+final class OpenDoor implements DoorState {
+    public DoorState close(SmartDoor d) { return new ClosedDoor(); }
+    public String toString() { return "OPEN"; }
+}
+final class ClosedDoor implements DoorState {
+    public DoorState open(SmartDoor d) { return new OpenDoor(); }
+    public DoorState lock(SmartDoor d) { return new LockedDoor(); }
+    public String toString() { return "CLOSED"; }
+}
+final class LockedDoor implements DoorState {
+    private int fails = 0;
+    public DoorState unlock(SmartDoor d, String code, long now) {
+        if (d.codeMatches(code)) return new ClosedDoor();
+        if (++fails >= 3) { d.say("3 wrong codes: locked out for 60 s"); return new LockedOut(now + 60); }
+        d.say("wrong code (" + fails + "/3)");
+        return this;
+    }
+    public String toString() { return "LOCKED"; }
+}
+final class LockedOut implements DoorState {
+    private final long until;
+    LockedOut(long until) { this.until = until; }
+    public DoorState unlock(SmartDoor d, String code, long now) {
+        if (now < until) { d.say("locked out for " + (until - now) + " s"); return this; }
+        return new LockedDoor().unlock(d, code, now);           // time is up: behave like LOCKED
+    }
+    public String toString() { return "LOCKED_OUT"; }
+}
+
+class SmartDoor {
+    private DoorState state = new OpenDoor();
+    private final String secret;
+    SmartDoor(String secret) { this.secret = secret; }
+    void open()  { state = state.open(this); }
+    void close() { state = state.close(this); }
+    void lock()  { state = state.lock(this); }
+    void unlock(String code, long now) { state = state.unlock(this, code, now); }
+    boolean codeMatches(String c) { return secret.equals(c); }
+    void say(String s) { System.out.println("[" + state + "] " + s); }
+
+    public static void main(String[] args) {
+        SmartDoor d = new SmartDoor("4321");
+        d.lock();                                   // cannot lock an open door
+        d.close(); d.lock();
+        d.unlock("0000", 1); d.unlock("1111", 2); d.unlock("2222", 3);
+        d.unlock("4321", 10);                       // still locked out
+        d.unlock("4321", 70);
+        System.out.println("final " + d.state);     // CLOSED
+    }
+}`,
+      complexity: `<p>O(1) per event. Lockout costs no timers: it is evaluated lazily from <code>now</code>.</p>`,
+      followUps: ['Auto-lock 30 s after the door closes: which state starts the timer and which cancels it?', 'Store failures server-side so resetting the device does not reset the counter.']
+    }
+  });
+
+  practice.push({
+    title: 'Order Status Lifecycle Validator', level: 'Easy', tags: ['enum', 'transition table', 'EnumMap'], companies: ['Flipkart', 'Swiggy', 'Amazon'],
+    statement: `<p>An e-commerce order moves through <b>PLACED → PACKED → SHIPPED → DELIVERED</b>. <b>CANCELLED</b> is allowed from PLACED or PACKED only. <b>RETURN_REQUESTED</b> is allowed from DELIVERED only within 7 days of delivery, then <b>RETURNED</b>. Implement <code>Order.moveTo(newStatus, today)</code> that rejects illegal transitions with a clear message and keeps a history. The rules must be readable in one place.</p>`,
+    constraints: `Dates as <code>LocalDate</code>. Terminal states: CANCELLED, RETURNED. Support listing the allowed next statuses for the UI.`,
+    example: `<p>PLACED → PACKED ✓ → ${H.c('r', 'CANCELLED? allowed')} … or PACKED → SHIPPED ✓ → ${H.c('r', 'CANCELLED ✗ (already shipped)')} → DELIVERED on 1 Mar ✓ → RETURN_REQUESTED on 5 Mar ✓; on 10 Mar ✗ (window closed).</p>`,
+    brute: { why: `<p>A string status and <code>if (status.equals("PLACED") &amp;&amp; next.equals("PACKED")) …</code> chains spread across controller, service and admin tools. The same rule is implemented three times, slightly differently, and the UI cannot ask "what can I do next?".</p>`, code: `class NaiveOrder {
+    String status = "PLACED";
+    boolean moveTo(String next) {
+        if (status.equals("PLACED") && (next.equals("PACKED") || next.equals("CANCELLED"))) { status = next; return true; }
+        if (status.equals("PACKED") && (next.equals("SHIPPED") || next.equals("CANCELLED"))) { status = next; return true; }
+        if (status.equals("SHIPPED") && next.equals("DELIVERED")) { status = next; return true; }
+        // return window? typo "DELIVERD"? every caller re-implements part of this
+        return false;
+    }
+}` },
+    mcq: { q: 'Why is an EnumMap&lt;Status, EnumSet&lt;Status&gt;&gt; a good fit here?', options: ['States have little behaviour; the rules are pure "from → allowed to" data that the UI can also read', 'It is faster than a switch in all cases', 'Because State classes cannot be used with enums', 'It removes the need for a date check'], answer: 0, explain: 'When states carry almost no behaviour, a transition table is the clearest single source of truth; extra conditions become guards.' },
+    hints: [`<p>Hint 1: Separate the <b>structure</b> (which arrows exist) from <b>guards</b> (the 7-day rule). Structure is an EnumMap of EnumSets.</p>`, `<p>Hint 2: <code>allowedNext()</code> returns <code>TABLE.get(status)</code> — free UI support. Terminal states map to an empty set.</p>`, `<p>Hint 3: In moveTo: if the arrow is missing → reject; if target is RETURN_REQUESTED, check <code>today ≤ deliveredOn + 7 days</code>; record deliveredOn when entering DELIVERED; append "A → B" to history.</p>`],
+    solution: {
+      approach: `<p>Table-driven: one static EnumMap holds every legal arrow. One guard handles the time window. The order records the delivery date as an entry action of DELIVERED and keeps an immutable-ish history list.</p>`,
+      code: `import java.time.*;
+import java.util.*;
+
+enum Status { PLACED, PACKED, SHIPPED, DELIVERED, CANCELLED, RETURN_REQUESTED, RETURNED }
+
+class Order {
+    private static final Map<Status, EnumSet<Status>> NEXT = new EnumMap<>(Status.class);
+    static {
+        NEXT.put(Status.PLACED, EnumSet.of(Status.PACKED, Status.CANCELLED));
+        NEXT.put(Status.PACKED, EnumSet.of(Status.SHIPPED, Status.CANCELLED));
+        NEXT.put(Status.SHIPPED, EnumSet.of(Status.DELIVERED));
+        NEXT.put(Status.DELIVERED, EnumSet.of(Status.RETURN_REQUESTED));
+        NEXT.put(Status.RETURN_REQUESTED, EnumSet.of(Status.RETURNED));
+        NEXT.put(Status.CANCELLED, EnumSet.noneOf(Status.class));     // terminal
+        NEXT.put(Status.RETURNED, EnumSet.noneOf(Status.class));      // terminal
+    }
+    private Status status = Status.PLACED;
+    private LocalDate deliveredOn;
+    private final List<String> history = new ArrayList<>();
+
+    Set<Status> allowedNext() { return Collections.unmodifiableSet(NEXT.get(status)); }
+
+    boolean moveTo(Status next, LocalDate today) {
+        if (!NEXT.get(status).contains(next)) { history.add("REJECTED " + status + " -> " + next); return false; }
+        if (next == Status.RETURN_REQUESTED && today.isAfter(deliveredOn.plusDays(7))) {         // guard
+            history.add("REJECTED return: window closed on " + deliveredOn.plusDays(7));
+            return false;
+        }
+        if (next == Status.DELIVERED) deliveredOn = today;                                       // entry action
+        history.add(status + " -> " + next);
+        status = next;
+        return true;
+    }
+    Status status() { return status; }
+    List<String> history() { return history; }
+
+    public static void main(String[] args) {
+        Order o = new Order();
+        o.moveTo(Status.PACKED, LocalDate.of(2026, 3, 1));
+        o.moveTo(Status.SHIPPED, LocalDate.of(2026, 3, 1));
+        o.moveTo(Status.CANCELLED, LocalDate.of(2026, 3, 1));          // rejected
+        o.moveTo(Status.DELIVERED, LocalDate.of(2026, 3, 2));
+        System.out.println("allowed now: " + o.allowedNext());
+        o.moveTo(Status.RETURN_REQUESTED, LocalDate.of(2026, 3, 12));  // rejected: > 7 days
+        o.moveTo(Status.RETURN_REQUESTED, LocalDate.of(2026, 3, 6));
+        o.history().forEach(System.out::println);
+    }
+}`,
+      complexity: `<p>O(1) per transition (EnumSet lookup is a bit test). Adding a status = one enum constant + one table row.</p>`,
+      followUps: ['Persist with optimistic locking so two services cannot ship and cancel simultaneously.', 'Emit a domain event (OrderShipped) on each transition — where do you hook it?']
+    }
+  });
+
+  /* ======================= PRACTICE: MEDIUM ======================= */
+  practice.push({
+    title: 'Coffee Machine with Recipes and Ingredient Inventory', level: 'Medium', tags: ['state pattern', 'inventory', 'machine coding'], companies: ['Swiggy', 'Zomato', 'Uber', 'Amazon'],
+    statement: `<p>Build a coffee machine. Recipes: <b>espresso</b> (water 50, beans 18, price 120), <b>latte</b> (water 50, milk 150, beans 18, price 180), <b>cappuccino</b> (water 50, milk 100, beans 18, price 160). States: <b>IDLE</b>, <b>PAID</b> (money inserted), <b>BREWING</b>, <b>NEEDS_REFILL</b> (no drink can be made). Events: <code>pay(amount)</code>, <code>select(drink)</code>, <code>cancel()</code>, <code>refill(ingredient, qty)</code>. Selecting a drink whose ingredients are missing must refuse <i>before</i> charging; when nothing can be brewed, go to NEEDS_REFILL and refund any money.</p>`,
+    constraints: `Ingredients in ml/grams as ints. Refill allowed in any state except BREWING. Adding a new drink must not change state classes.`,
+    example: `<p>Stock: water 200, milk 120, beans 40. pay 200 → PAID; select latte → ${H.c('r', 'not enough milk (needs 150)')}, stay PAID; select cappuccino → ${H.c('g', 'brew, change 40')} → IDLE. Stock now water 150, milk 20, beans 22. Next espresso possible (beans 22 ≥ 18) → after it beans 4 → ${H.c('y', 'NEEDS_REFILL')}.</p>`,
+    brute: { why: `<p>One <code>makeDrink(String name, int money)</code> with <code>if (name.equals("latte")) { if (milk &gt;= 150 &amp;&amp; …) }</code> per drink, plus status flags. A new drink copies the whole block; the "check before charging" order is easy to get wrong in one copy; refill during brewing is not prevented.</p>`, code: `class NaiveCoffee {
+    int water = 200, milk = 120, beans = 40;
+    String make(String name, int money) {
+        if (name.equals("latte")) {
+            if (money < 180) return "pay more";
+            if (milk < 150) return "no milk";            // money handling differs per copy...
+            water -= 50; milk -= 150; beans -= 18; return "latte, change " + (money - 180);
+        } else if (name.equals("espresso")) {
+            if (beans < 18) return "no beans";
+            water -= 50; beans -= 18; return "espresso, change " + (money - 120);   // forgot price check!
+        }
+        return "unknown";
+    }
+}` },
+    mcq: { q: 'Where should recipes live so that adding "mocha" needs no state-class changes?', options: ['In data: a Map&lt;String, Recipe&gt; where Recipe is a record of ingredients + price', 'One State class per drink', 'In the PAID state as if/else', 'In an enum switch inside BREWING'], answer: 0, explain: 'Drinks are data, states are behaviour. Mixing them makes every new drink a code change across states.' },
+    hints: [`<p>Hint 1: States describe the machine's mode (IDLE, PAID, BREWING, NEEDS_REFILL); drinks are <b>data</b> (record Recipe(Map ingredients, price)).</p>`, `<p>Hint 2: PAID.select runs checks in order: known drink → enough money → enough ingredients (Inventory.canMake) → BREWING → consume + change → next state is NEEDS_REFILL if no recipe can be made, else IDLE.</p>`, `<p>Hint 3: Entering NEEDS_REFILL refunds the balance. refill() is accepted in IDLE/PAID/NEEDS_REFILL; in NEEDS_REFILL it re-checks and returns to IDLE if any drink is possible.</p>`],
+    solution: {
+      approach: `<p>States as an enum with behaviour; recipes and inventory as data. The machine's helper <code>anyDrinkPossible()</code> decides between IDLE and NEEDS_REFILL after each brew and after each refill. Ingredient checks happen before money is kept, so a refused drink never costs anything.</p>`,
+      code: `import java.util.*;
+
+record Recipe(int price, Map<String, Integer> needs) {}
+
+enum CoffeeState {
+    IDLE {
+        CoffeeState pay(CoffeeMachine m, int amt) { m.addBalance(amt); return PAID; }
+    },
+    PAID {
+        CoffeeState pay(CoffeeMachine m, int amt) { m.addBalance(amt); return PAID; }
+        CoffeeState select(CoffeeMachine m, String drink) {
+            Recipe r = m.recipe(drink);
+            if (r == null) { m.say("unknown drink"); return PAID; }
+            if (m.balance() < r.price()) { m.say("insert " + (r.price() - m.balance()) + " more"); return PAID; }
+            String missing = m.missingFor(r);
+            if (missing != null) { m.say("not enough " + missing + ", pick another"); return PAID; }
+            m.brew(drink, r);                                   // BREWING happens here (synchronous demo)
+            return m.anyDrinkPossible() ? IDLE : NEEDS_REFILL.enter(m);
+        }
+        CoffeeState cancel(CoffeeMachine m) { m.refund(); return IDLE; }
+    },
+    BREWING {
+        CoffeeState refill(CoffeeMachine m, String ing, int qty) { m.say("wait, brewing"); return BREWING; }
+    },
+    NEEDS_REFILL {
+        CoffeeState pay(CoffeeMachine m, int amt) { m.say("needs refill, money returned: " + amt); return NEEDS_REFILL; }
+        CoffeeState refill(CoffeeMachine m, String ing, int qty) { m.addStock(ing, qty); return m.anyDrinkPossible() ? IDLE : NEEDS_REFILL; }
+    };
+
+    CoffeeState pay(CoffeeMachine m, int amt) { m.say("cannot pay now"); return this; }
+    CoffeeState select(CoffeeMachine m, String d) { m.say("pay first"); return this; }
+    CoffeeState cancel(CoffeeMachine m) { m.say("nothing to cancel"); return this; }
+    CoffeeState refill(CoffeeMachine m, String ing, int qty) { m.addStock(ing, qty); return this; }
+    CoffeeState enter(CoffeeMachine m) { m.refund(); return this; }        // entry action
+}
+
+class CoffeeMachine {
+    private CoffeeState state = CoffeeState.IDLE;
+    private int balance;
+    private final Map<String, Integer> stock = new HashMap<>();
+    private final Map<String, Recipe> recipes = new LinkedHashMap<>();
+
+    CoffeeMachine() {
+        recipes.put("espresso", new Recipe(120, Map.of("water", 50, "beans", 18)));
+        recipes.put("latte", new Recipe(180, Map.of("water", 50, "milk", 150, "beans", 18)));
+        recipes.put("cappuccino", new Recipe(160, Map.of("water", 50, "milk", 100, "beans", 18)));
+    }
+    void pay(int amt)                     { state = state.pay(this, amt); }
+    void select(String d)                 { state = state.select(this, d); }
+    void cancel()                         { state = state.cancel(this); }
+    void refill(String ing, int qty)      { state = state.refill(this, ing, qty); }
+
+    Recipe recipe(String d)               { return recipes.get(d); }
+    int balance()                         { return balance; }
+    void addBalance(int a)                { balance += a; }
+    void addStock(String ing, int q)      { stock.merge(ing, q, Integer::sum); }
+    void refund()                         { if (balance > 0) say("refund " + balance); balance = 0; }
+    String missingFor(Recipe r) {
+        for (Map.Entry<String, Integer> e : r.needs().entrySet())
+            if (stock.getOrDefault(e.getKey(), 0) < e.getValue()) return e.getKey();
+        return null;
+    }
+    boolean anyDrinkPossible()            { return recipes.values().stream().anyMatch(r -> missingFor(r) == null); }
+    void brew(String drink, Recipe r) {
+        state = CoffeeState.BREWING;
+        r.needs().forEach((k, v) -> stock.merge(k, -v, Integer::sum));
+        int change = balance - r.price();
+        balance = 0;
+        say("enjoy your " + drink + (change > 0 ? ", change " + change : ""));
+    }
+    void say(String s) { System.out.println("[" + state + "] " + s); }
+
+    public static void main(String[] args) {
+        CoffeeMachine m = new CoffeeMachine();
+        m.refill("water", 200); m.refill("milk", 120); m.refill("beans", 40);
+        m.pay(200); m.select("latte"); m.select("cappuccino");
+        m.pay(120); m.select("espresso");
+        System.out.println("state " + m.state + ", stock " + m.stock);   // NEEDS_REFILL
+        m.refill("beans", 100);
+        System.out.println("after refill: " + m.state);                  // IDLE
+    }
+}`,
+      complexity: `<p>Each event is O(R · I) at worst (recipes × ingredients) for the refill check — tiny. New drink = one map entry.</p>`,
+      followUps: ['Brewing takes 40 s: make BREWING asynchronous with a BREW_DONE event and a timeout.', 'Show only the drinks that can currently be made on the screen — which method already gives you that?']
+    }
+  });
+
+  practice.push({
+    title: 'ATM: PIN Lockout Across ATMs and Daily Withdrawal Limit', level: 'Medium', tags: ['atm', 'bank service', 'state per card'], companies: ['Goldman Sachs', 'JPMorgan', 'Paytm'],
+    statement: `<p>Implement the bank-side <code>CardAuthService</code> used by every ATM. Each card is <b>ACTIVE</b> or <b>BLOCKED</b>. <code>verifyPin(card, pin)</code>: 3 consecutive wrong PINs (across any ATMs) → BLOCKED; a correct PIN resets the counter. BLOCKED cards fail every call until <code>adminUnblock(card)</code>. <code>authorizeWithdrawal(card, amount, date)</code> enforces a daily limit of ₹25,000 that resets when the date changes, and returns a reason on failure.</p>`,
+    constraints: `Up to 10<sup>6</sup> cards; many ATMs call concurrently, so methods must be thread-safe per card.`,
+    example: `<p>Wrong PIN at ATM-1, wrong at ATM-2, wrong at ATM-3 → ${H.c('r', 'BLOCKED')} (the counter is per card, not per ATM). Unblock. Withdraw 20,000 on 1 Jun ✓, 6,000 on 1 Jun ${H.c('r', 'DAILY_LIMIT')}, 6,000 on 2 Jun ${H.c('g', '✓ (new day)')}.</p>`,
+    brute: { why: `<p>Counting wrong PINs inside each ATM object: a thief tries 2 PINs at each of 50 ATMs and never gets blocked. Storing "withdrawn today" without the date means the limit never resets (or a midnight job must reset millions of rows).</p>`, code: `class PerAtmCounter {
+    int wrong = 0;                                   // lives in ONE ATM: a thief just walks to the next ATM
+    boolean verify(String pin, String real) {
+        if (pin.equals(real)) { wrong = 0; return true; }
+        wrong++;
+        return false;
+    }
+}` },
+    mcq: { q: 'How do you reset the daily limit without a midnight batch job?', options: ['Store (date, amountToday) per card; if the stored date differs from today, treat amountToday as 0', 'Reset all rows at midnight with a cron job', 'Never reset it', 'Keep the limit in the ATM'], answer: 0, explain: 'Lazy reset keyed by date is O(1), has no batch job and no midnight race.' },
+    hints: [`<p>Hint 1: The state belongs to the <b>card at the bank</b>: status, failed attempts, and (date, withdrawnToday). Make it a small class per card.</p>`, `<p>Hint 2: Use <code>ConcurrentHashMap&lt;String, CardAccount&gt;</code> and synchronize on the CardAccount object so two ATMs updating the same card are serialized, while different cards run in parallel.</p>`, `<p>Hint 3: Lazy reset: if <code>lastDate != date</code>, set withdrawnToday = 0 and lastDate = date before checking. Return an enum result: OK, WRONG_PIN, BLOCKED, DAILY_LIMIT.</p>`],
+    solution: {
+      approach: `<p>Per-card state object at the bank (ACTIVE/BLOCKED + counters), stored in a ConcurrentHashMap and locked per card. PIN failures are counted globally per card; the daily limit uses a lazy, date-keyed reset. Results are an enum so ATMs can show the right screen.</p>`,
+      code: `import java.time.*;
+import java.util.*;
+import java.util.concurrent.*;
+
+enum AuthResult { OK, WRONG_PIN, BLOCKED, DAILY_LIMIT, UNKNOWN_CARD }
+
+class CardAccount {
+    final String pin;
+    boolean blocked;
+    int wrongPins;
+    LocalDate lastDate;
+    long withdrawnToday;
+    CardAccount(String pin) { this.pin = pin; }
+}
+
+class CardAuthService {
+    static final int MAX_WRONG = 3;
+    static final long DAILY_LIMIT = 25_000;
+    private final ConcurrentHashMap<String, CardAccount> cards = new ConcurrentHashMap<>();
+
+    void register(String card, String pin) { cards.put(card, new CardAccount(pin)); }
+
+    AuthResult verifyPin(String card, String pin) {
+        CardAccount a = cards.get(card);
+        if (a == null) return AuthResult.UNKNOWN_CARD;
+        synchronized (a) {                                      // per-card lock: ATMs on other cards are not blocked
+            if (a.blocked) return AuthResult.BLOCKED;
+            if (a.pin.equals(pin)) { a.wrongPins = 0; return AuthResult.OK; }
+            if (++a.wrongPins >= MAX_WRONG) { a.blocked = true; return AuthResult.BLOCKED; }
+            return AuthResult.WRONG_PIN;
+        }
+    }
+
+    AuthResult authorizeWithdrawal(String card, long amount, LocalDate date) {
+        CardAccount a = cards.get(card);
+        if (a == null) return AuthResult.UNKNOWN_CARD;
+        synchronized (a) {
+            if (a.blocked) return AuthResult.BLOCKED;
+            if (!date.equals(a.lastDate)) { a.lastDate = date; a.withdrawnToday = 0; }   // lazy daily reset
+            if (a.withdrawnToday + amount > DAILY_LIMIT) return AuthResult.DAILY_LIMIT;
+            a.withdrawnToday += amount;
+            return AuthResult.OK;
+        }
+    }
+
+    void adminUnblock(String card) {
+        CardAccount a = cards.get(card);
+        synchronized (a) { a.blocked = false; a.wrongPins = 0; }
+    }
+
+    public static void main(String[] args) {
+        CardAuthService s = new CardAuthService();
+        s.register("C1", "1234");
+        System.out.println(s.verifyPin("C1", "1111") + " " + s.verifyPin("C1", "2222") + " " + s.verifyPin("C1", "3333"));
+        System.out.println("correct PIN while blocked: " + s.verifyPin("C1", "1234"));    // BLOCKED
+        s.adminUnblock("C1");
+        LocalDate d1 = LocalDate.of(2026, 6, 1);
+        System.out.println(s.authorizeWithdrawal("C1", 20_000, d1));                    // OK
+        System.out.println(s.authorizeWithdrawal("C1", 6_000, d1));                     // DAILY_LIMIT
+        System.out.println(s.authorizeWithdrawal("C1", 6_000, d1.plusDays(1)));         // OK
+    }
+}`,
+      complexity: `<p>O(1) per call; contention only between requests for the same card. Memory O(cards).</p>`,
+      followUps: ['Withdrawal authorized but the ATM fails to dispense: how do you give the limit back (and only once)?', 'Use a database instead of memory: write the conditional UPDATE that enforces the limit atomically.']
+    }
+  });
+
+  practice.push({
+    title: 'Elevator with Directional Hall Calls', level: 'Medium', tags: ['elevator', 'scheduling', 'simulation'], companies: ['Amazon', 'Microsoft', 'Otis', 'Adobe'],
+    statement: `<p>A single car is at floor <code>start</code> moving <code>dir</code>. Requests are <b>car calls</b> (a floor pressed inside) and <b>hall calls</b> (floor + ▲ or ▼). Rules: going up, stop for car calls and ▲ hall calls; going down, stop for car calls and ▼ hall calls; keep moving in the current direction while <i>any</i> request lies ahead; otherwise reverse (a ▼ call at the highest point is served when the car turns there). Return the sequence of stops.</p>`,
+    constraints: `Floors 0–100, up to 1000 requests, all known at time 0.`,
+    example: `<p>Start 2 going ▲. Car call 8, hall 5▲, hall 5▼, hall 3▼. Up sweep stops at ${H.c('g', '5 (▲ caller), 8 (car)')}. Nothing above 8 → reverse. Down sweep stops at ${H.c('b', '5 (▼ caller), 3 (▼ caller)')}. Stops = [5, 8, 5, 3]. The ▼ caller at 5 was <b>not</b> picked up on the way up.</p>`,
+    brute: { why: `<p>One set of floors ignoring direction: the car stops at 5 on the way up and picks up the person who wants to go down — they ride up to 8 and back, and the floor is then removed from the set so the car never stops at 5 again on the way down. Wrong for passengers, and it looks "optimal" in a distance metric, which is why interviewers use this trap.</p>`, code: `import java.util.*;
+class DirectionBlind {
+    static List<Integer> stops(int start, List<Integer> floors) {
+        TreeSet<Integer> all = new TreeSet<>(floors);   // loses the direction of each hall call
+        List<Integer> out = new ArrayList<>(all.tailSet(start, true));
+        out.addAll(all.headSet(start, false).descendingSet());
+        return out;                                     // 5 served once, on the way up: wrong for 5-DOWN
+    }
+}` },
+    mcq: { q: 'The car is at 8 going up; the only remaining request is hall 8▼. What happens?', options: ['Nothing is ahead, so the car reverses to DOWN at 8 and serves the ▼ call right there', 'It ignores the call until the next up sweep', 'It goes to the top floor first', 'It serves it only if a car call exists'], answer: 0, explain: 'With nothing ahead, LOOK reverses; after reversing, the ▼ call at the current floor matches the new direction.' },
+    hints: [`<p>Hint 1: Keep three sets: carCalls, upCalls, downCalls. A floor is a stop for direction d if it is in carCalls or in the hall set for d.</p>`, `<p>Hint 2: Simulate floor by floor: serve what matches the current direction at the current floor; if any request in <i>any</i> set lies strictly ahead, move one floor; otherwise flip direction (without moving).</p>`, `<p>Hint 3: The loop terminates because if requests remain but none is ahead in either direction, they are at the current floor and get served after at most one flip.</p>`],
+    solution: {
+      approach: `<p>Floor-by-floor LOOK with three sets. At each floor serve car calls and same-direction hall calls; then decide: something ahead → move; nothing ahead → reverse. Opposite-direction calls at the turning floor are served right after the flip, exactly like a real collective-control elevator.</p>`,
+      code: `import java.util.*;
+
+class DirectionalElevator {
+    final TreeSet<Integer> car = new TreeSet<>(), up = new TreeSet<>(), down = new TreeSet<>();
+    int floor;
+    boolean goingUp;
+    DirectionalElevator(int start, boolean goingUp) { this.floor = start; this.goingUp = goingUp; }
+
+    void carCall(int f)                  { car.add(f); }
+    void hallCall(int f, boolean wantsUp){ (wantsUp ? up : down).add(f); }
+
+    private boolean anyAhead() {
+        for (TreeSet<Integer> s : List.of(car, up, down)) {
+            Integer x = goingUp ? s.higher(floor) : s.lower(floor);
+            if (x != null) return true;
+        }
+        return false;
+    }
+    private boolean empty() { return car.isEmpty() && up.isEmpty() && down.isEmpty(); }
+
+    List<Integer> run() {
+        List<Integer> stops = new ArrayList<>();
+        while (!empty()) {
+            boolean served = car.remove(floor);
+            served |= goingUp ? up.remove(floor) : down.remove(floor);   // only same-direction hall calls
+            if (served) stops.add(floor);
+            if (empty()) break;
+            if (anyAhead()) floor += goingUp ? 1 : -1;
+            else goingUp = !goingUp;                                     // LOOK turn, no movement
+        }
+        return stops;
+    }
+
+    public static void main(String[] args) {
+        DirectionalElevator e = new DirectionalElevator(2, true);
+        e.carCall(8); e.hallCall(5, true); e.hallCall(5, false); e.hallCall(3, false);
+        System.out.println(e.run());                       // [5, 8, 5, 3]
+    }
+}`,
+      complexity: `<p>O(F · log N) for F floors travelled (each step does O(1) set operations, O(log N) each). For an online version, run one iteration per tick.</p>`,
+      followUps: ['Show the hall-button lights: when exactly does 5▼ turn off?', 'Two cars: how does the dispatcher use the direction of each hall call?']
+    }
+  });
+
+  practice.push({
+    title: 'Washing Machine Cycle with Pause/Resume (history state)', level: 'Medium', tags: ['state machine', 'timers', 'history state'], companies: ['Samsung', 'LG', 'Whirlpool', 'Microsoft'],
+    statement: `<p>A washing machine runs <b>FILLING (2 ticks) → WASHING (5) → RINSING (3) → SPINNING (2) → DONE</b>. The door is locked in every running state. <code>pause()</code> moves any running state to <b>PAUSED</b>, remembering where it was and how many ticks were left; <code>resume()</code> returns to exactly that state and time (a <b>history state</b>). The door may open only in IDLE, PAUSED and DONE. <code>start()</code> works only in IDLE with the door closed.</p>`,
+    constraints: `Tick-driven. pause() in IDLE/DONE/PAUSED is ignored. Print each transition.`,
+    example: `<p>start → FILLING (2) → WASHING; after 2 washing ticks ${H.c('y', 'pause')} → PAUSED (remembers WASHING, 3 left); open door ✓; close; ${H.c('g', 'resume')} → WASHING with 3 ticks left, not 5. Opening the door during RINSING → ${H.c('r', 'refused, door locked')}.</p>`,
+    brute: { why: `<p>A <code>phase</code> int, a <code>paused</code> boolean and a <code>remaining</code> counter. Every method checks <code>paused</code> first — except the one somebody forgets (tick keeps counting while paused, so the wash "finishes" while the door is open). Resume often restarts the phase from the beginning because the remaining time was overwritten.</p>`, code: `class NaiveWasher {
+    int phase = 0, remaining = 0; boolean paused = false, doorOpen = false;
+    int[] durations = {2, 5, 3, 2};
+    void tick() {
+        if (--remaining <= 0 && phase < 4) { phase++; remaining = phase < 4 ? durations[phase] : 0; }  // forgot "if (paused) return"
+    }
+    void pause() { paused = true; }
+    void openDoor() { if (paused || phase == 4) doorOpen = true; }
+}` },
+    mcq: { q: 'What exactly must PAUSED remember to implement resume correctly?', options: ['The state it was paused from AND the ticks remaining in it', 'Only the original program', 'Nothing, resume restarts the cycle', 'Only the ticks remaining'], answer: 0, explain: 'A history state stores the interrupted sub-state plus its progress so the machine continues exactly where it stopped.' },
+    hints: [`<p>Hint 1: Running phases differ only in name, duration and successor → an enum with (duration, next). PAUSED and IDLE/DONE are special.</p>`, `<p>Hint 2: Keep <code>current</code>, <code>remaining</code>, plus <code>resumeTo</code>/<code>resumeRemaining</code> captured on pause. tick() does nothing unless current is a running phase.</p>`, `<p>Hint 3: Door rule = a method on the enum: <code>doorMayOpen()</code> true for IDLE, PAUSED, DONE. Guard start() with "door closed".</p>`],
+    solution: {
+      approach: `<p>An enum of phases with duration, successor and a door rule. The machine stores the current phase and remaining ticks; pause() snapshots both into history fields and switches to PAUSED; resume() restores them. tick() advances only running phases.</p>`,
+      code: `enum Phase {
+    IDLE(0, null), FILLING(2, "WASHING"), WASHING(5, "RINSING"), RINSING(3, "SPINNING"), SPINNING(2, "DONE"), DONE(0, null), PAUSED(0, null);
+    final int ticks;
+    private final String nextName;
+    Phase(int ticks, String nextName) { this.ticks = ticks; this.nextName = nextName; }
+    Phase next() { return nextName == null ? this : Phase.valueOf(nextName); }
+    boolean running() { return ticks > 0; }
+    boolean doorMayOpen() { return this == IDLE || this == PAUSED || this == DONE; }
+}
+
+class Washer {
+    private Phase phase = Phase.IDLE, resumeTo;
+    private int remaining, resumeRemaining;
+    private boolean doorOpen;
+
+    void start() {
+        if (phase != Phase.IDLE || doorOpen) { System.out.println("cannot start (" + phase + ", door " + (doorOpen ? "open" : "closed") + ")"); return; }
+        go(Phase.FILLING, Phase.FILLING.ticks);
+    }
+    void tick() {
+        if (!phase.running()) return;                       // paused/idle/done: time does not move
+        if (--remaining == 0) { Phase n = phase.next(); go(n, n.ticks); }
+    }
+    void pause() {
+        if (!phase.running()) return;
+        resumeTo = phase; resumeRemaining = remaining;      // history
+        go(Phase.PAUSED, 0);
+    }
+    void resume() {
+        if (phase != Phase.PAUSED || doorOpen) { System.out.println("cannot resume"); return; }
+        go(resumeTo, resumeRemaining);
+    }
+    void openDoor()  { if (phase.doorMayOpen()) doorOpen = true; else System.out.println("door locked during " + phase); }
+    void closeDoor() { doorOpen = false; }
+    private void go(Phase p, int ticks) { System.out.println(phase + " -> " + p + (ticks > 0 ? " (" + ticks + " ticks)" : "")); phase = p; remaining = ticks; }
+
+    public static void main(String[] args) {
+        Washer w = new Washer();
+        w.start();
+        for (int i = 0; i < 4; i++) w.tick();               // FILLING done, 2 ticks into WASHING
+        w.pause(); w.openDoor(); w.closeDoor(); w.resume();  // WASHING (3 ticks)
+        for (int i = 0; i < 4; i++) w.tick();               // -> RINSING, 1 tick in
+        w.openDoor();                                        // refused
+        for (int i = 0; i < 10; i++) w.tick();              // -> SPINNING -> DONE
+    }
+}`,
+      complexity: `<p>O(1) per event and tick. A new program (e.g. "quick wash") = different durations; a new phase = one enum constant.</p>`,
+      followUps: ['Power cut: persist (phase, remaining) and resume after restart.', 'Different programs (cotton, wool): Strategy for durations, same state machine.']
+    }
+  });
+
+  practice.push({
+    title: 'Vending Machine: Add Card/UPI Payment (AUTHORIZING state)', level: 'Medium', tags: ['add-a-state', 'idempotency', 'async callback'], companies: ['PhonePe', 'Razorpay', 'Amazon'],
+    statement: `<p>Extend a vending machine (IDLE → SELECTED → … ) with card/UPI payment. After <code>select(slot)</code> the user taps <code>payByCard()</code> → <b>AUTHORIZING</b> with a fresh <code>authId</code>. The payment gateway later calls <code>onAuthResult(authId, approved)</code> — possibly <b>twice</b> (retries) or <b>late</b> (after a timeout). Approved → DISPENSING → IDLE; declined → SELECTED; <code>timeout()</code> → IDLE and the auth must be voided. Duplicate or stale callbacks must not dispense twice.</p>`,
+    constraints: `Callbacks may arrive on another thread. A callback for an old authId is ignored (and voided if it was an approval).`,
+    example: `<p>select A1, payByCard → AUTHORIZING (auth-1). onAuthResult(auth-1, true) → ${H.c('g', 'dispense')}. Duplicate onAuthResult(auth-1, true) → ${H.c('b', 'ignored')}. Next: select B2, payByCard (auth-2), timeout → IDLE; late onAuthResult(auth-2, true) → ${H.c('y', 'void auth-2, nothing dispensed')}.</p>`,
+    brute: { why: `<p>A boolean <code>waitingForCard</code> and a callback that just does <code>if (approved) dispense()</code>. Duplicate callbacks dispense twice; a late approval after a timeout dispenses to whoever is standing there now (or charges a customer who already walked away).</p>`, code: `class NaiveCardVending {
+    boolean waiting; int dispensed;
+    void payByCard() { waiting = true; }
+    void onAuthResult(boolean approved) {
+        if (approved) dispensed++;            // duplicate callback -> dispensed twice; late callback -> free item
+        waiting = false;
+    }
+}` },
+    mcq: { q: 'A gateway retries the same approval callback. What makes the second one harmless?', options: ['Accept a callback only if the machine is AUTHORIZING and authId equals the current pending id; then clear the pending id', 'Use a bigger timeout', 'Synchronize the method only', 'Dispense twice and refund later'], answer: 0, explain: 'Matching on the pending authId plus state makes the transition happen once; after it, the id no longer matches.' },
+    hints: [`<p>Hint 1: AUTHORIZING is a real state because the machine waits for an outside answer that may never come. Store <code>pendingAuthId</code> when entering it.</p>`, `<p>Hint 2: onAuthResult: if state != AUTHORIZING or authId != pending → stale/duplicate: if approved, call <code>gateway.voidAuth(authId)</code> (unless it was already captured); return.</p>`, `<p>Hint 3: Make every public method <code>synchronized</code> (callbacks come from another thread). Track captured ids in a set so you never void a payment you used.</p>`],
+    solution: {
+      approach: `<p>Add one state (AUTHORIZING) and a pending authId. Transitions out of AUTHORIZING happen only for the matching id; anything else is a duplicate (already captured → ignore) or stale (→ void). Methods are synchronized because the gateway calls back on its own thread.</p>`,
+      code: `import java.util.*;
+
+enum VState { IDLE, SELECTED, AUTHORIZING, DISPENSING }
+
+interface Gateway { void voidAuth(String authId); }
+
+class CardVending {
+    private VState state = VState.IDLE;
+    private String slot, pendingAuth;
+    private int seq = 0, dispensed = 0;
+    private final Set<String> captured = new HashSet<>();
+    private final Gateway gateway;
+    CardVending(Gateway g) { gateway = g; }
+
+    synchronized void select(String s) {
+        if (state != VState.IDLE && state != VState.SELECTED) { System.out.println("busy"); return; }
+        slot = s; state = VState.SELECTED;
+    }
+    synchronized String payByCard() {
+        if (state != VState.SELECTED) { System.out.println("select first"); return null; }
+        pendingAuth = "auth-" + (++seq);
+        state = VState.AUTHORIZING;
+        return pendingAuth;
+    }
+    synchronized void onAuthResult(String authId, boolean approved) {
+        boolean current = state == VState.AUTHORIZING && authId.equals(pendingAuth);
+        if (!current) {                                              // duplicate or stale
+            if (approved && !captured.contains(authId)) { gateway.voidAuth(authId); System.out.println("stale " + authId + " voided"); }
+            else System.out.println("duplicate " + authId + " ignored");
+            return;
+        }
+        pendingAuth = null;
+        if (!approved) { state = VState.SELECTED; System.out.println("declined, try again"); return; }
+        captured.add(authId);
+        state = VState.DISPENSING;
+        dispensed++;
+        System.out.println("dispensing " + slot + " (" + authId + ")");
+        state = VState.IDLE;
+    }
+    synchronized void timeout() {
+        if (state != VState.AUTHORIZING) return;
+        System.out.println("payment timed out");
+        pendingAuth = null;                                          // a late approval will now be stale
+        state = VState.IDLE;
+    }
+    synchronized int dispensed() { return dispensed; }
+
+    public static void main(String[] args) {
+        CardVending vm = new CardVending(id -> System.out.println("gateway: void " + id));
+        vm.select("A1");
+        String a1 = vm.payByCard();
+        vm.onAuthResult(a1, true);
+        vm.onAuthResult(a1, true);                 // duplicate
+        vm.select("B2");
+        String a2 = vm.payByCard();
+        vm.timeout();
+        vm.onAuthResult(a2, true);                 // late -> void
+        System.out.println("items dispensed: " + vm.dispensed());   // 1
+    }
+}`,
+      complexity: `<p>O(1) per event; the captured-id set grows with sales (prune by age in production).</p>`,
+      followUps: ['The approval arrives, but the motor jams: refund via the gateway — which state handles that?', 'Persist pendingAuth so a reboot during AUTHORIZING can reconcile with the gateway.']
+    }
+  });
+
+  practice.push({
+    title: 'Parking Exit Gate Machine (mini machine-coding)', level: 'Medium', tags: ['state pattern', 'payments', 'machine coding'], companies: ['Uber', 'Flipkart', 'Paytm'],
+    statement: `<p>Design the exit gate of a parking lot. States: <b>WAITING</b> (no car), <b>TICKET_SCANNED</b> (fee computed), <b>PAID</b>, <b>GATE_OPEN</b>. Events: <code>scan(ticketId, now)</code>, <code>lostTicket()</code> (flat fee ₹500), <code>pay(amount)</code>, <code>vehiclePassed()</code>, <code>cancel()</code>. Fee: first hour ₹50, each extra started hour ₹30, free within 10 minutes. A free exit opens the gate immediately. The gate must close only after the vehicle-passed sensor fires. A ticket can be used to exit only once.</p>`,
+    constraints: `Times in minutes. Overpayment returns change. Underpayment keeps the state and shows the amount due.`,
+    example: `<p>Entry at 0, scan at 130 min → 3 started hours → 50 + 30 + 30 = ${H.c('b', '₹110')}. pay 100 → ${H.c('r', 'due 10')}; pay 20 → ${H.c('g', 'change 10, GATE_OPEN')}; vehiclePassed → WAITING. Scanning the same ticket again → ${H.c('r', 'already used')}.</p>`,
+    brute: { why: `<p>One <code>handle(String event)</code> with nested ifs and booleans <code>paid</code>, <code>gateOpen</code>, <code>scanned</code>. The gate opens on payment but nothing prevents a second car from tailgating while it is open; reusing a ticket is not detected; the lost-ticket path is pasted into the scan branch.</p>`, code: `class NaiveGate {
+    boolean scanned, paid, open; int due;
+    void scan(int minutes) { scanned = true; due = minutes <= 10 ? 0 : 50 + 30 * ((minutes - 1) / 60); }   // ticket reuse not checked
+    void pay(int amt) { if (scanned && amt >= due) { paid = true; open = true; } }
+    void passed() { open = false; scanned = false; paid = false; }
+}` },
+    mcq: { q: 'The fee for a stay of exactly 60 minutes with this pricing is…', options: ['₹50 (one started hour)', '₹80', '₹0', '₹30'], answer: 0, explain: '60 minutes is one started hour: ceil(60/60) = 1 → ₹50. 61 minutes would be ₹80.' },
+    hints: [`<p>Hint 1: Fee logic is a pure function (a Strategy) separate from the gate's state machine: <code>fee(minutes)</code> with ceiling division for started hours.</p>`, `<p>Hint 2: States: WAITING accepts scan/lostTicket; TICKET_SCANNED accepts pay/cancel; GATE_OPEN accepts only vehiclePassed. PAID can be skipped by going straight to GATE_OPEN after full payment.</p>`, `<p>Hint 3: Keep a set of used ticket ids (or mark the ticket record) and reject reuse at scan time. Track <code>due</code> in the context; partial payments reduce it.</p>`],
+    solution: {
+      approach: `<p>Enum-driven state checks in a small context class (the machine is small and linear, so an enum + guards is clearer than many classes), with fee calculation as a separate pure strategy. Used tickets are recorded when the gate opens, not when scanned, so a cancelled scan can be retried.</p>`,
+      code: `import java.util.*;
+import java.util.function.*;
+
+enum GateState { WAITING, TICKET_SCANNED, GATE_OPEN }
+
+class ExitGate {
+    private GateState state = GateState.WAITING;
+    private final Map<String, Integer> entryMinute = new HashMap<>();
+    private final Set<String> used = new HashSet<>();
+    private final IntUnaryOperator fee;                   // pricing strategy
+    private String ticket;
+    private int due;
+
+    ExitGate(IntUnaryOperator fee) { this.fee = fee; }
+    void issue(String id, int minute) { entryMinute.put(id, minute); }
+
+    void scan(String id, int now) {
+        if (state != GateState.WAITING) { say("finish current exit first"); return; }
+        if (!entryMinute.containsKey(id)) { say("unknown ticket"); return; }
+        if (used.contains(id)) { say("ticket already used"); return; }
+        ticket = id;
+        due = fee.applyAsInt(now - entryMinute.get(id));
+        state = GateState.TICKET_SCANNED;
+        say("fee Rs " + due);
+        if (due == 0) open();
+    }
+    void lostTicket() {
+        if (state != GateState.WAITING) { say("busy"); return; }
+        ticket = null; due = 500; state = GateState.TICKET_SCANNED;
+        say("lost ticket fee Rs 500");
+    }
+    void pay(int amount) {
+        if (state != GateState.TICKET_SCANNED) { say("nothing to pay"); return; }
+        due -= amount;
+        if (due > 0) { say("due Rs " + due); return; }
+        if (due < 0) say("change Rs " + (-due));
+        open();
+    }
+    void cancel() { if (state == GateState.TICKET_SCANNED) { say("cancelled, collect your money"); state = GateState.WAITING; } }
+    void vehiclePassed() {
+        if (state != GateState.GATE_OPEN) { say("ALERT: sensor without open gate"); return; }
+        state = GateState.WAITING;
+        say("gate closed");
+    }
+    private void open() { if (ticket != null) used.add(ticket); state = GateState.GATE_OPEN; say("gate open"); }
+    private void say(String s) { System.out.println("[" + state + "] " + s); }
+
+    static int standardFee(int minutes) {
+        if (minutes <= 10) return 0;
+        int hours = (minutes + 59) / 60;                  // started hours
+        return 50 + 30 * (hours - 1);
+    }
+
+    public static void main(String[] args) {
+        ExitGate g = new ExitGate(ExitGate::standardFee);
+        g.issue("T1", 0);
+        g.scan("T1", 130);          // Rs 110
+        g.pay(100); g.pay(20);      // change 10, open
+        g.vehiclePassed();
+        g.scan("T1", 140);          // already used
+        g.issue("T2", 100);
+        g.scan("T2", 105);          // free exit within 10 minutes
+        g.vehiclePassed();
+    }
+}`,
+      complexity: `<p>O(1) per event; O(T) memory for issued/used tickets (expire them daily in production).</p>`,
+      followUps: ['Add a monthly-pass flow (scan pass → open, no fee) as another event.', 'Two exit gates share the used-ticket set: make it thread-safe or move it to a database with a unique constraint.']
+    }
+  });
+
+  /* ======================= PRACTICE: HARD ======================= */
+  practice.push({
+    title: 'Multi-Elevator System (full machine-coding round)', level: 'Hard', tags: ['elevator', 'dispatcher', 'state', 'strategy', 'simulation'], companies: ['Amazon', 'Microsoft', 'Uber', 'Walmart', 'Atlassian'],
+    statement: `<p>Implement an elevator system for a building with <b>N cars</b> and floors 0..F. Requirements: hall calls (floor + direction) are assigned by a pluggable <b>DispatchStrategy</b>; car calls go to that car; each car runs a LOOK-style state machine (IDLE, MOVING_UP, MOVING_DOWN, DOORS_OPEN) on <code>tick()</code>; cars in MAINTENANCE get no calls; <code>status()</code> prints every car. The code should be runnable in 60–90 minutes and extensible (new strategy, new state) without rewrites.</p>`,
+    constraints: `N ≤ 16, F ≤ 200. Door stays open 1 tick. Ticks are driven by the caller. Deterministic output for tests.`,
+    example: `<p>3 cars at 0, 5, 9 (all idle). Car 1 (at 5) goes into maintenance. Hall 7▼ → ${H.c('b', 'car@9')} (distance 2; car@5 would be closest but is out of service). Hall 1▲ → ${H.c('b', 'car@0')}. Hall 4▲ → ${H.c('b', 'car@0')} (cost 4 + 1 stop = 5 vs car@9: 5 + 1 = 6), never the car in maintenance. After enough ticks every request is served and all cars are IDLE.</p>`,
+    brute: { why: `<p>A single <code>Elevator</code> class with a global FIFO queue that every car pops from, booleans for moving/doors, and dispatch by "first free car". Cars cross the building for calls next to another car, a car under maintenance still pops requests, and adding zoning means rewriting the queue logic.</p>`, code: `import java.util.*;
+class GlobalQueueElevators {
+    final Deque<Integer> queue = new ArrayDeque<>();
+    final int[] pos;
+    GlobalQueueElevators(int n) { pos = new int[n]; }
+    void call(int floor) { queue.add(floor); }
+    void step() {
+        for (int i = 0; i < pos.length && !queue.isEmpty(); i++) pos[i] = queue.poll();   // teleports, FIFO, ignores distance & maintenance
+    }
+}` },
+    mcq: { q: 'Which pieces should be swappable Strategies in this design?', options: ['Hall-call dispatch (nearest/zoning) and, optionally, per-car next-stop selection', 'The car states', 'The tick loop', 'The Request record'], answer: 0, explain: 'What changes by building/time-of-day is the dispatch policy; the car state machine is stable.' },
+    hints: [`<p>Hint 1: Classes: <code>Building</code> (owns cars + dispatcher), <code>Car</code> (state machine + TreeSet stops + direction), <code>DispatchStrategy</code> (choose car), records for calls. Start with one car working end-to-end.</p>`, `<p>Hint 2: Car.tick by state: IDLE → serve here / pick direction (LOOK); MOVING → move one floor, stop if floor is a stop; DOORS_OPEN → close → IDLE. Cost function: idle → distance; moving toward the caller in the same direction → distance; else distance + 2·F.</p>`, `<p>Hint 3: Make MAINTENANCE return "infinite" cost so the dispatcher skips it. Keep printing in <code>status()</code> only, so tests can assert on state. Run the simulation until all cars are idle.</p>`],
+    solution: {
+      approach: `<p>Building = composition of cars + a DispatchStrategy. Each Car is an enum-state machine with a sorted stop set and LOOK direction choice. The default strategy uses a direction-aware cost; maintenance cars report MAX cost. Everything is deterministic and driven by <code>tickAll()</code>, so a test can replay scenarios.</p>`,
+      code: `import java.util.*;
+
+enum CarMode { IDLE, MOVING_UP, MOVING_DOWN, DOORS_OPEN, MAINTENANCE }
+record Hall(int floor, boolean up) {}
+
+class Lift {
+    final int id, top;
+    int floor;
+    CarMode mode = CarMode.IDLE;
+    boolean goingUp = true;
+    final TreeSet<Integer> stops = new TreeSet<>();
+    Lift(int id, int floor, int top) { this.id = id; this.floor = floor; this.top = top; }
+
+    void addStop(int f) { if (mode != CarMode.MAINTENANCE) stops.add(f); }
+
+    int cost(Hall h) {
+        if (mode == CarMode.MAINTENANCE) return Integer.MAX_VALUE;
+        int d = Math.abs(floor - h.floor());
+        boolean toward = (mode == CarMode.MOVING_UP && h.up() && h.floor() >= floor)
+                || (mode == CarMode.MOVING_DOWN && !h.up() && h.floor() <= floor);
+        return (mode == CarMode.IDLE || mode == CarMode.DOORS_OPEN || toward) ? d + stops.size() : d + 2 * top + stops.size();
+    }
+
+    void tick() {
+        switch (mode) {
+            case IDLE -> {
+                if (stops.remove(floor)) { mode = CarMode.DOORS_OPEN; return; }
+                Integer above = stops.higher(floor), below = stops.lower(floor);
+                if (above != null && (goingUp || below == null)) { goingUp = true; mode = CarMode.MOVING_UP; }
+                else if (below != null) { goingUp = false; mode = CarMode.MOVING_DOWN; }
+            }
+            case MOVING_UP, MOVING_DOWN -> {
+                floor += mode == CarMode.MOVING_UP ? 1 : -1;
+                if (stops.remove(floor)) mode = CarMode.DOORS_OPEN;
+            }
+            case DOORS_OPEN -> mode = CarMode.IDLE;
+            case MAINTENANCE -> { }
+        }
+    }
+    @Override public String toString() { return "car" + id + "@" + floor + " " + mode + " stops=" + stops; }
+}
+
+interface DispatchStrategy { Lift choose(List<Lift> cars, Hall h); }
+
+class CostDispatch implements DispatchStrategy {
+    public Lift choose(List<Lift> cars, Hall h) {
+        Lift best = null;
+        for (Lift c : cars) if (best == null || c.cost(h) < best.cost(h)) best = c;   // ties -> lower id
+        return best == null || best.cost(h) == Integer.MAX_VALUE ? null : best;
+    }
+}
+
+class LiftBuilding {
+    private final List<Lift> cars = new ArrayList<>();
+    private DispatchStrategy strategy = new CostDispatch();
+    LiftBuilding(int top, int... starts) { for (int i = 0; i < starts.length; i++) cars.add(new Lift(i, starts[i], top)); }
+
+    void setStrategy(DispatchStrategy s) { strategy = s; }
+    Lift hallCall(int floor, boolean up) {
+        Lift c = strategy.choose(cars, new Hall(floor, up));
+        if (c == null) throw new IllegalStateException("no car in service");
+        c.addStop(floor);
+        return c;
+    }
+    void carCall(int car, int floor) { cars.get(car).addStop(floor); }
+    void maintenance(int car, boolean on) {
+        Lift c = cars.get(car);
+        if (on) { c.stops.clear(); c.mode = CarMode.MAINTENANCE; } else c.mode = CarMode.IDLE;
+    }
+    void tickAll() { cars.forEach(Lift::tick); }
+    boolean allIdle() { return cars.stream().allMatch(c -> c.stops.isEmpty() && (c.mode == CarMode.IDLE || c.mode == CarMode.MAINTENANCE)); }
+    void status() { cars.forEach(System.out::println); }
+
+    public static void main(String[] args) {
+        LiftBuilding b = new LiftBuilding(9, 0, 5, 9);
+        b.maintenance(1, true);                            // car1 out of service before the calls
+        System.out.println("7 DOWN -> car" + b.hallCall(7, false).id);   // car2 (car1 skipped)
+        System.out.println("1 UP   -> car" + b.hallCall(1, true).id);    // car0
+        System.out.println("4 UP   -> car" + b.hallCall(4, true).id);    // car0
+        b.carCall(2, 0);
+        int t = 0;
+        do { b.tickAll(); t++; } while (!b.allIdle() && t < 100);
+        System.out.println("all served after " + t + " ticks");
+        b.status();
+    }
+}`,
+      complexity: `<p>Dispatch O(N) per hall call; each tick O(N log S). Simulation of T ticks: O(T · N log S).</p>`,
+      followUps: ['Add a zoning strategy for the morning rush and switch strategies by time of day.', 'Re-assign pending hall calls when a car goes into maintenance.', 'Make it thread-safe: one event-loop thread per car, the dispatcher only posts events.']
+    }
+  });
+
+  practice.push({
+    title: 'ATM Withdrawal over a Flaky Network (idempotent, never double-charge)', level: 'Hard', tags: ['atm', 'idempotency', 'retries', 'compensation'], companies: ['Stripe', 'Goldman Sachs', 'Visa', 'Razorpay'],
+    statement: `<p>The ATM talks to the bank over a network that can <b>drop requests</b>, <b>drop responses</b> and <b>duplicate messages</b>. Implement <code>withdraw(account, amount)</code> on the ATM side and <code>debit/reverse</code> on the bank side so that, over thousands of random runs, the invariant holds: <b>money dispensed + final balance = initial balance</b>, and the customer is never charged without cash. The ATM retries a request at most 3 times with the same txnId; if it never gets an answer it must reverse.</p>`,
+    constraints: `Use a seeded Random for the fake network so runs are reproducible. Bank operations must be idempotent per txnId. Reversal itself may be dropped — keep retrying it (it is safe).`,
+    example: `<p>debit(T7) request reaches bank, response dropped → ATM retries debit(T7) → bank sees T7 already applied → ${H.c('b', 'replies approved without charging again')}. If all 3 attempts time out → ATM sends reverse(T7) until acknowledged → ${H.c('g', 'balance restored')}; no cash given.</p>`,
+    brute: { why: `<p>Retry with a <b>new</b> request each time (no txnId): a dropped response + retry = two debits, one dispense. Or give up without reversing: the bank debited, the ATM gave nothing. Both are real-world incidents; you only find them with fault injection.</p>`, code: `class RetryWithoutId {
+    long balance = 10_000;
+    boolean debit(long amt) { balance -= amt; return true; }      // not idempotent
+    void withdraw(long amt) {
+        for (int i = 0; i < 3; i++) {
+            debit(amt);                                             // response "lost" -> retry -> charged again
+        }
+    }
+}` },
+    mcq: { q: 'The ATM never received any reply to debit(T9). What is the only safe action before showing "transaction failed"?', options: ['Send reverse(T9) (retrying until acknowledged) and do not dispense', 'Dispense anyway, the debit probably worked', 'Retry with a new id T10', 'Do nothing; the bank will notice'], answer: 0, explain: 'Unknown outcome must be resolved to a known one. An idempotent reversal is safe whether or not the debit happened.' },
+    hints: [`<p>Hint 1: Bank keeps <code>Map&lt;txnId, status&gt;</code> (DEBITED / REVERSED). debit on a known id returns the stored outcome; reverse on DEBITED restores money; reverse on an unknown id stores a REVERSED tombstone so a late debit is refused.</p>`, `<p>Hint 2: Wrap calls in a fake <code>Network</code> that randomly drops the request (bank never sees it), drops the response (bank applied it), or duplicates the request.</p>`, `<p>Hint 3: ATM: generate txnId once; try debit up to 3 times; approved → dispense; no answer → loop reverse(txnId) until acknowledged. Then check the invariant after 10,000 random runs.</p>`],
+    solution: {
+      approach: `<p>Idempotent bank keyed by txnId with tombstones; ATM generates the id once, retries with the same id, dispenses only after a confirmed approval, and resolves unknown outcomes with an idempotent reversal retried until acknowledged. A seeded fault-injecting network proves the invariant across thousands of runs.</p>`,
+      code: `import java.util.*;
+
+class IdemBank {
+    enum T { DEBITED, REVERSED }
+    long balance;
+    private final Map<String, T> txns = new HashMap<>();
+    IdemBank(long balance) { this.balance = balance; }
+
+    synchronized boolean debit(String id, long amt) {
+        T t = txns.get(id);
+        if (t == T.DEBITED) return true;                 // duplicate: same answer, no new charge
+        if (t == T.REVERSED) return false;               // tombstone: reversal came first
+        if (balance < amt) return false;
+        balance -= amt;
+        txns.put(id, T.DEBITED);
+        return true;
+    }
+    synchronized void reverse(String id, long amt) {
+        T t = txns.get(id);
+        if (t == T.DEBITED) balance += amt;
+        txns.put(id, T.REVERSED);                        // also a tombstone for unknown ids
+    }
+}
+
+/** Fault injection: request lost, response lost, or duplicated. */
+class FlakyNet {
+    private final Random rnd;
+    FlakyNet(long seed) { rnd = new Random(seed); }
+    Optional<Boolean> callDebit(IdemBank bank, String id, long amt) {
+        int r = rnd.nextInt(10);
+        if (r == 0) return Optional.empty();                         // request lost
+        boolean res = bank.debit(id, amt);
+        if (r == 1) bank.debit(id, amt);                             // duplicated request
+        if (r == 2) return Optional.empty();                         // response lost (bank applied it!)
+        return Optional.of(res);
+    }
+    boolean callReverse(IdemBank bank, String id, long amt) {
+        int r = rnd.nextInt(10);
+        if (r == 0) return false;                                    // request lost
+        bank.reverse(id, amt);
+        return r != 1;                                               // r == 1: ack lost
+    }
+}
+
+class SafeAtm {
+    private int seq = 0;
+    long dispensed = 0;
+
+    boolean withdraw(IdemBank bank, FlakyNet net, long amt) {
+        String id = "T" + (++seq);                                   // generated once, reused on retries
+        for (int attempt = 0; attempt < 3; attempt++) {
+            Optional<Boolean> r = net.callDebit(bank, id, amt);
+            if (r.isPresent()) {
+                if (!r.get()) return false;                          // declined: nothing to undo
+                dispensed += amt;                                    // dispense only after confirmed approval
+                return true;
+            }
+        }
+        while (!net.callReverse(bank, id, amt)) { }                  // unknown outcome -> reverse until acked
+        return false;
+    }
+
+    public static void main(String[] args) {
+        int violations = 0;
+        for (long seed = 0; seed < 2000; seed++) {
+            IdemBank bank = new IdemBank(100_000);
+            FlakyNet net = new FlakyNet(seed);
+            SafeAtm atm = new SafeAtm();
+            for (int i = 0; i < 20; i++) atm.withdraw(bank, net, 1_000);
+            if (atm.dispensed + bank.balance != 100_000) violations++;
+        }
+        System.out.println("invariant violations in 2000 runs: " + violations);   // 0
+    }
+}`,
+      complexity: `<p>O(1) expected per withdrawal (bounded retries; the reversal loop ends with probability 1). Bank memory O(transactions) — expire ids after the retry window.</p>`,
+      followUps: ['What if the ATM crashes after approval but before dispensing? Add a journal and recovery.', 'Replace the in-memory map with a database table: which unique constraint gives idempotency for free?']
+    }
+  });
+
+  practice.push({
+    title: 'Thread-Safe Vending Machine with Concurrent Buyers', level: 'Hard', tags: ['concurrency', 'locks', 'vending machine', 'invariants'], companies: ['Amazon', 'Google', 'Microsoft'],
+    statement: `<p>A smart vending machine accepts purchases from its keypad <b>and</b> a mobile app at the same time. Implement <code>buy(slot, paidRs)</code> returning a receipt or a refusal, plus <code>restock(slot, qty)</code> and <code>collectCash()</code> from an operator thread. Guarantee under concurrency: never sell more items than stocked, cash in the machine always equals the sum of successful sales, and restocking never interleaves with a half-done sale. Prove it with a stress test.</p>`,
+    constraints: `Up to 64 concurrent threads. Per-slot operations should not block other slots longer than necessary, but cash totals must stay consistent.`,
+    example: `<p>Slot A1 has 3 items at ₹20. 50 threads try to buy A1 simultaneously → ${H.c('g', 'exactly 3 succeed')}, 47 get "sold out", cash = ₹60. Operator restocks during the burst → still never more sales than total stock.</p>`,
+    brute: { why: `<p>Unsynchronized <code>if (stock &gt; 0) { stock--; cash += price; }</code>. Two threads pass the check together → stock goes negative and more items are "sold" than exist; <code>cash += price</code> is a read-modify-write that loses updates, so cash and sales disagree.</p>`, code: `import java.util.*;
+class RacyVending {
+    final Map<String, Integer> stock = new HashMap<>(Map.of("A1", 3));
+    long cash = 0;
+    boolean buy(String slot, int price) {
+        int s = stock.get(slot);
+        if (s > 0) { stock.put(slot, s - 1); cash += price; return true; }   // check-then-act + lost update
+        return false;
+    }
+}` },
+    mcq: { q: 'Why is a single ReentrantLock around buy/restock/collect an acceptable answer here?', options: ['Each operation is microseconds and the invariant spans stock AND cash, so one lock keeps them consistent with negligible contention', 'Locks are always faster than CAS', 'Because HashMap is thread-safe', 'Only one thread can exist in Java'], answer: 0, explain: 'When an invariant spans several fields and critical sections are tiny, one lock is the simplest correct design.' },
+    hints: [`<p>Hint 1: Identify the invariant: <code>cash == Σ sales × price</code> and <code>stock ≥ 0</code>. Anything touching these fields together must be atomic.</p>`, `<p>Hint 2: Use one <code>ReentrantLock</code> (or synchronized) for buy/restock/collect. Do the slow work (motor, printing) <b>outside</b> the lock after reserving the item.</p>`, `<p>Hint 3: Stress test: ExecutorService + CountDownLatch to start all threads together; count successes with AtomicInteger; assert successes ≤ total stock and cash == successes × price.</p>`],
+    solution: {
+      approach: `<p>One lock guards the shared invariant (stock + cash + sales). <code>buy</code> validates and reserves under the lock, then performs the slow physical drop outside it. A latch-started stress test with many threads checks that sales never exceed stock and that cash matches sales exactly.</p>`,
+      code: `import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
+import java.util.concurrent.locks.*;
+
+class SafeVending {
+    private final ReentrantLock lock = new ReentrantLock();
+    private final Map<String, Integer> stock = new HashMap<>(), price = new HashMap<>();
+    private long cash = 0, sales = 0;
+
+    void addSlot(String slot, int priceRs, int qty) { lock.lock(); try { price.put(slot, priceRs); stock.put(slot, qty); } finally { lock.unlock(); } }
+
+    String buy(String slot, int paidRs) {
+        int change;
+        lock.lock();
+        try {
+            Integer p = price.get(slot);
+            if (p == null) return "no such slot";
+            if (stock.get(slot) == 0) return "sold out";
+            if (paidRs < p) return "insufficient";
+            stock.merge(slot, -1, Integer::sum);           // reserve + take money atomically
+            cash += p;
+            sales++;
+            change = paidRs - p;
+        } finally {
+            lock.unlock();
+        }
+        dropItem(slot);                                     // slow hardware work outside the lock
+        return "ok, change " + change;
+    }
+    void restock(String slot, int qty) { lock.lock(); try { stock.merge(slot, qty, Integer::sum); } finally { lock.unlock(); } }
+    long collectCash() { lock.lock(); try { long c = cash; cash = 0; return c; } finally { lock.unlock(); } }
+    long cash()  { lock.lock(); try { return cash; } finally { lock.unlock(); } }
+    long sales() { lock.lock(); try { return sales; } finally { lock.unlock(); } }
+    private void dropItem(String slot) { Thread.onSpinWait(); }
+
+    public static void main(String[] args) throws Exception {
+        SafeVending vm = new SafeVending();
+        vm.addSlot("A1", 20, 3);
+        ExecutorService pool = Executors.newFixedThreadPool(16);
+        CountDownLatch go = new CountDownLatch(1);
+        AtomicInteger ok = new AtomicInteger();
+        List<Future<?>> fs = new ArrayList<>();
+        for (int i = 0; i < 50; i++) fs.add(pool.submit(() -> {
+            go.await();
+            if (vm.buy("A1", 20).startsWith("ok")) ok.incrementAndGet();
+            return null;
+        }));
+        fs.add(pool.submit(() -> { go.await(); vm.restock("A1", 2); return null; }));   // operator mid-burst
+        go.countDown();
+        for (Future<?> f : fs) f.get();
+        pool.shutdown();
+        System.out.println("sold " + ok.get() + " (<= 5), cash " + vm.cash() + ", consistent=" + (vm.cash() == 20L * ok.get()));
+    }
+}`,
+      complexity: `<p>O(1) per operation inside a tiny critical section; contention is negligible at vending-machine rates. Holding no lock during the physical drop keeps the machine responsive.</p>`,
+      followUps: ['Per-slot locks + an AtomicLong for cash: what invariant could break and how would you restore it?', 'The drop fails after the lock is released: write the compensation (refund + stock +1) safely.']
+    }
+  });
+
+  practice.push({
+    title: 'Hierarchical State Machine: Elevator with EMERGENCY Super-State', level: 'Hard', tags: ['hierarchical state machine', 'statecharts', 'elevator'], companies: ['Google', 'Tesla', 'Siemens', 'Microsoft'],
+    statement: `<p>Flat state machines explode when one rule applies to many states. Build a small <b>hierarchical state machine (HSM)</b> engine: each state may have a parent; an event is offered to the current state, and if it does not handle it, to its parent, and so on (like exceptions bubbling up). Model an elevator: parent <b>OPERATIONAL</b> with children <b>IDLE</b>, <b>MOVING</b>, <b>DOORS_OPEN</b>; sibling <b>EMERGENCY</b>. <code>FIRE</code> handled once in OPERATIONAL moves any child to EMERGENCY; <code>RESET</code> in EMERGENCY returns to IDLE. Entry/exit actions must run in the right order when leaving nested states.</p>`,
+    constraints: `Depth ≤ 4. Unhandled events are logged, not thrown. Transitions between states with a common ancestor must not exit/enter that ancestor.`,
+    example: `<p>IDLE + CALL → MOVING (exit IDLE, enter MOVING). MOVING + FIRE: MOVING does not handle FIRE → bubbles to ${H.c('b', 'OPERATIONAL')}, which transitions to EMERGENCY: ${H.c('y', 'exit MOVING, exit OPERATIONAL, enter EMERGENCY')}. EMERGENCY + CALL → ${H.c('r', 'unhandled (ignored)')}. RESET → enter OPERATIONAL, enter IDLE.</p>`,
+    brute: { why: `<p>Flat machine: copy the FIRE transition into IDLE, MOVING and DOORS_OPEN (and into every future child). Forget one and the elevator ignores fire alarms in that state. The number of transitions grows as states × global events.</p>`, code: `class FlatElevator {
+    String state = "IDLE";
+    void on(String e) {
+        if (state.equals("IDLE") && e.equals("CALL")) state = "MOVING";
+        else if (state.equals("IDLE") && e.equals("FIRE")) state = "EMERGENCY";
+        else if (state.equals("MOVING") && e.equals("ARRIVE")) state = "DOORS_OPEN";
+        else if (state.equals("MOVING") && e.equals("FIRE")) state = "EMERGENCY";
+        // DOORS_OPEN + FIRE forgotten -> alarm ignored while doors are open
+    }
+}` },
+    mcq: { q: 'Leaving MOVING (child of OPERATIONAL) for EMERGENCY (sibling of OPERATIONAL). Which exit/entry order is correct?', options: ['exit MOVING, exit OPERATIONAL, enter EMERGENCY', 'enter EMERGENCY, exit MOVING', 'exit OPERATIONAL only', 'exit MOVING, enter EMERGENCY (OPERATIONAL untouched)'], answer: 0, explain: 'Exit from the innermost state up to (not including) the lowest common ancestor, then enter downward to the target.' },
+    hints: [`<p>Hint 1: <code>HState</code> has a name, a parent, and a <code>Map&lt;String, String&gt;</code> of event → target. Dispatch walks from current up the parent chain until some state handles the event.</p>`, `<p>Hint 2: Transition: compute the ancestor chain of source and target; the lowest common ancestor (LCA) is the first shared state. Exit states from current up to the LCA (exclusive), then enter from just below the LCA down to the target.</p>`, `<p>Hint 3: If the target is a composite state (OPERATIONAL), drill into its initial child (IDLE). Log every entry/exit so the test can assert the order.</p>`],
+    solution: {
+      approach: `<p>A tiny HSM engine: states with parent links and event tables; dispatch bubbles events up the hierarchy; transitions exit up to the lowest common ancestor and enter down to the target, then drill into initial children. The elevator's FIRE rule exists once (on OPERATIONAL) and automatically covers every current and future child.</p>`,
+      code: `import java.util.*;
+
+class HState {
+    final String name;
+    final HState parent;
+    HState initialChild;
+    final Map<String, HState> on = new HashMap<>();
+    HState(String name, HState parent) { this.name = name; this.parent = parent; }
+    List<HState> pathFromRoot() {
+        LinkedList<HState> p = new LinkedList<>();
+        for (HState s = this; s != null; s = s.parent) p.addFirst(s);
+        return p;
+    }
+    public String toString() { return name; }
+}
+
+class Hsm {
+    private HState current;
+    final List<String> log = new ArrayList<>();
+    Hsm(HState start) { current = drill(start, null); }
+
+    void dispatch(String event) {
+        for (HState s = current; s != null; s = s.parent) {          // bubble up like an exception
+            HState target = s.on.get(event);
+            if (target != null) { transition(target); return; }
+        }
+        log.add("unhandled " + event + " in " + current);
+    }
+
+    private void transition(HState target) {
+        List<HState> from = current.pathFromRoot(), to = target.pathFromRoot();
+        int i = 0;
+        while (i < from.size() && i < to.size() && from.get(i) == to.get(i) && to.get(i) != target) i++;   // LCA depth
+        for (int k = from.size() - 1; k >= i; k--) log.add("exit " + from.get(k));
+        for (int k = i; k < to.size(); k++) log.add("enter " + to.get(k));
+        current = drill(target, log);
+    }
+    private HState drill(HState s, List<String> l) {               // composite target -> initial child
+        while (s.initialChild != null) { s = s.initialChild; if (l != null) l.add("enter " + s); }
+        return s;
+    }
+    HState current() { return current; }
+
+    public static void main(String[] args) {
+        HState root = new HState("ELEVATOR", null);
+        HState op = new HState("OPERATIONAL", root), em = new HState("EMERGENCY", root);
+        HState idle = new HState("IDLE", op), moving = new HState("MOVING", op), doors = new HState("DOORS_OPEN", op);
+        root.initialChild = op; op.initialChild = idle;
+        idle.on.put("CALL", moving);
+        moving.on.put("ARRIVE", doors);
+        doors.on.put("CLOSE", idle);
+        op.on.put("FIRE", em);                                      // written ONCE for all children
+        em.on.put("RESET", op);
+
+        Hsm m = new Hsm(root);
+        for (String e : List.of("CALL", "FIRE", "CALL", "RESET", "CALL", "ARRIVE", "FIRE")) {
+            m.dispatch(e);
+            m.log.add("  -> now " + m.current());
+        }
+        m.log.forEach(System.out::println);
+    }
+}`,
+      complexity: `<p>Dispatch O(depth); transition O(depth) for the LCA walk. Adding a child of OPERATIONAL inherits FIRE for free — O(1) new transitions instead of O(children).</p>`,
+      followUps: ['Add a history pseudo-state so RESET returns to the child that was active before the fire.', 'Model the door and the motor as parallel (orthogonal) regions — what changes in dispatch?']
+    }
+  });
+
+  /* ======================= QUIZ ======================= */
+  quiz.push(
+    { q: 'An object has 6 states and 5 events and is written as one method of nested if/else. Roughly how many branches must you re-check when a new state is added?', options: ['All S × E (about 30) cells, because the logic for every state lives in the same method', 'Only 1', 'Only the new state’s 5 events', 'None — if/else handles it automatically'], answer: 0, explain: 'In the ladder, every handler mixes all states; adding one means reading and possibly editing every branch. With State classes it is one new class plus the states that lead into it.' },
+    { q: 'What is the main difference between the State and Strategy patterns?', options: ['State objects change as the object reacts to events (often choosing their successor); a Strategy is chosen by the client and rarely changes itself', 'Strategy uses interfaces, State does not', 'State is only for enums', 'There is no difference'], answer: 0, explain: 'Same class diagram, different intent: who changes the reference and why.' },
+    { q: 'Car at floor 5 going up; requests 8, 2, 6, 1, 4; floors 0–9. How many floors does SCAN travel?', options: ['12 (5→6→8→9→4→2→1)', '10', '21', '9'], answer: 0, explain: 'SCAN rides to the end floor 9 before reversing: 1+2+1+5+2+1 = 12. LOOK turns at 8 and travels 10.' },
+    { q: 'Which elevator scheduling policy can starve a far-away request?', options: ['SSTF (shortest seek time first)', 'SCAN', 'LOOK', 'C-LOOK'], answer: 0, explain: 'SSTF always picks the nearest request, so a steady stream of nearby calls can postpone a far one indefinitely.' },
+    { q: 'A hall call 5▼ is pending while the car goes up past floor 5 to serve a car call at 8. What should a correct collective-control elevator do?', options: ['Not stop at 5 on the way up; serve 5▼ on the down sweep', 'Stop at 5 and take the passenger up to 8', 'Cancel the 5▼ call', 'Reverse immediately'], answer: 0, explain: 'Hall calls carry a direction; picking up a ▼ passenger on an up sweep takes them the wrong way.' },
+    { q: 'A vending machine has ₹5×1 and ₹2×3 coins and must return ₹6. Which statement is true?', options: ['Plain greedy fails (takes 5, then needs 1), but 2+2+2 works — so plan change with backtracking/DP before dispensing', 'Greedy always works for Indian coins', 'Change of ₹6 is impossible', 'The machine should round to ₹5'], answer: 0, explain: 'Limited counts break greedy even for canonical coin systems.' },
+    { q: 'Why do vending machines keep inserted coins in an escrow until the sale commits?', options: ['So cancel returns the exact coins and nothing is mixed into the coin box before the sale is certain', 'To count coins faster', 'Because coins cannot be stored in the coin box', 'For tax reasons'], answer: 0, explain: 'Escrow makes refund trivial and keeps the box consistent with completed sales only.' },
+    { q: 'Correct order of a safe ATM withdrawal?', options: ['validate → plan notes → bank debit with txnId → dispense → confirm (or reverse on failure)', 'dispense → debit → validate', 'debit → validate → dispense', 'plan notes → dispense → debit'], answer: 0, explain: 'Local, side-effect-free checks first; money moves only after approval; failures are compensated with an idempotent reversal.' },
+    { q: 'The bank receives debit(T42) twice because the ATM retried after a lost response. What should happen?', options: ['The second call is recognised by txnId and returns the same result without charging again', 'The account is debited twice', 'The bank rejects both', 'The ATM is blocked'], answer: 0, explain: 'Idempotency by a client-generated transaction id is what makes retries safe.' },
+    { q: 'An ATM cash chain ₹2000 → ₹500 → ₹200 → ₹100 with stock 500×1, 200×3, 100×0 is asked for ₹600. What does a pure greedy chain do?', options: ['Takes ₹500, gets stuck with ₹100 and fails, although 200×3 works', 'Returns 200×3', 'Returns 500 + 100', 'Dispenses ₹500 only'], answer: 0, explain: 'Greedy with limited stock can fail; each handler must be able to back off (backtracking) or use DP.' },
+    { q: 'Two threads both read state=AVAILABLE and both set HELD. What is this bug called, and a lock-free fix?', options: ['A check-then-act race; fix with an immutable snapshot + AtomicReference.compareAndSet', 'A deadlock; fix with more threads', 'A memory leak; fix with GC', 'Starvation; fix with SSTF'], answer: 0, explain: 'The check and the act must be atomic. CAS publishes the new snapshot only if nobody changed it since it was read.' },
+    { q: 'In a hierarchical state machine, why put the FIRE transition on the OPERATIONAL parent instead of each child?', options: ['Unhandled events bubble up, so one transition covers every current and future child state', 'Children cannot have transitions', 'It makes the elevator move faster', 'Parents run on a separate thread'], answer: 0, explain: 'Hierarchy removes duplicated global transitions — the main cure for state explosion.' },
+    { q: 'Which is the best sign that something should be a separate STATE rather than a boolean flag?', options: ['It changes which events are allowed or how they behave, and has its own way out', 'It is a number', 'It is displayed on a screen', 'It is stored in a database'], answer: 0, explain: 'Different behaviour per event + its own exit condition = state. Pure display conditions (like "exact change only") can stay flags.' }
+  );
+
+  /* ======================= INTERVIEW ======================= */
+  interview.push(
+    { q: 'Walk me through how you would start a "design a vending machine" interview.', level: 'I', a: `<p>(1) <b>Clarify</b>: accepted coins/notes, products and slots, change with a limited coin box, cancel/refund, sold-out, operator restock, card payments now or later. (2) <b>Entities</b>: VendingMachine (context), Inventory, Product record, Coin enum, CoinBox, escrow. (3) <b>Draw the state × event table</b> for IDLE, HAS_MONEY, DISPENSING, SOLD_OUT, MAINTENANCE vs insertCoin/select/cancel/operator. (4) Code one class per state with default-reject methods; the context's public methods are one-line delegations. (5) Walk through the money-safety order in select: slot exists → in stock → enough money → change possible → dispense → commit. (6) Finish with extensions: card payment as an AUTHORIZING state, thread safety, telemetry.</p>`, followUps: ['Where does the change-making algorithm live and why?', 'What happens if the motor jams after you took the money?'] },
+    { q: 'When would you NOT use the State pattern?', level: 'I', a: `<p>When there are only 2–3 states, transitions are just "what is next" with no per-state behaviour, and no growth is expected — an <b>enum + EnumMap transition table</b> or a small switch is clearer. Also when a condition only affects display or one check (e.g. "exact change only" lamp) — that is a derived flag, not a state. State pays off when states have real behaviour (fees, timers, hardware actions), when the same <code>switch(status)</code> is repeated across many methods, or when new states are expected (maintenance, fire, no-show). Over-patterning a two-state toggle into four classes is a code smell interviewers notice too.</p>`, followUps: ['Show the same machine as an enum table and as State classes.', 'How does Java 21 sealed + pattern matching change this choice?'] },
+    { q: 'Design the elevator car\'s state machine. What states and transitions do you need?', level: 'I', a: `<p>States: <b>IDLE</b>, <b>MOVING_UP</b>, <b>MOVING_DOWN</b>, <b>DOORS_OPEN</b>, <b>MAINTENANCE</b> (later OVERLOADED, FIRE_RECALL). On each tick or sensor event: IDLE serves a stop at the current floor (→ DOORS_OPEN) or picks a direction by LOOK (→ MOVING_*); MOVING moves one floor and stops if the floor is in the stop set for its direction; DOORS_OPEN counts down a door timer, re-opens if the sensor is blocked, then closes (→ IDLE). MAINTENANCE rejects calls. A single state field makes illegal combinations (moving with doors open) unrepresentable, which booleans would allow. Requests are kept in sorted sets (per direction), not a FIFO queue.</p>`, followUps: ['Where does the door-obstruction rule live?', 'How do you add fire recall without touching existing states?'] },
+    { q: 'Compare FCFS, SSTF, SCAN and LOOK for elevators. Which would you choose?', level: 'A', a: `<p><b>FCFS</b>: fair but zig-zags, huge travel. <b>SSTF</b>: nearest next, low travel but can starve far floors. <b>SCAN</b>: sweep to the end floor then reverse — bounded waiting, wastes trips to empty ends. <b>LOOK</b>: sweep only as far as the last request, then reverse — bounded waiting and less waste. Example: start 5 ▲, requests 8,2,6,1,4 → FCFS 21 floors, SSTF 10, SCAN 12, LOOK 10. I choose <b>LOOK</b> (collective control) per car, because it bounds waiting to about two sweeps and minimises direction reversals; the choice sits behind a <code>SchedulingStrategy</code> so it can change per building.</p>`, followUps: ['Prove LOOK cannot starve a request.', 'What is C-LOOK and when is it fairer?'] },
+    { q: 'How do you assign a hall call when there are multiple elevators?', level: 'A', a: `<p>A <b>dispatcher</b> (Strategy) computes a cost per car and picks the minimum. Cost ≈ estimated time to reach the caller <i>going their way</i>: idle car → distance; car moving toward the caller in the same direction → distance; otherwise → finish the current sweep and come back (distance + sweep penalty); plus a load term (stops already assigned × ~10 s each). Cars in maintenance or full return infinite cost. Advanced: re-assign periodically, zoning in up-peak, destination dispatch (group by destination floor to cut stops), energy-aware costs. The car's state machine stays unchanged — only the dispatch strategy evolves.</p>`, followUps: ['Why is "nearest car by distance" not enough?', 'How would you switch to zoning at 9 am?'] },
+    { q: 'How do you make sure an ATM never charges a customer for cash that was not dispensed?', level: 'A', a: `<p>Order and idempotency. Validate locally, <b>plan notes before calling the bank</b>, debit with an ATM-generated <b>txnId</b> written to the ATM journal first, dispense only after a confirmed approval, then confirm. If the dispenser jams or the bank's reply never arrives, send <b>reverse(txnId)</b>, retrying until acknowledged; the bank treats repeated debits/reversals with the same id as no-ops and keeps tombstones so a late debit after a reversal is refused. On crash, the ATM replays its journal and resolves every in-flight transaction. Notes that jam go to a sealed reject bin, reconciled against the journal.</p>`, followUps: ['What exactly must the bank store to be idempotent?', 'What if the reversal message itself is lost?'] },
+    { q: 'Where does the "3 wrong PINs → retain card" counter live, and why?', level: 'I', a: `<p>Two places. Locally, in the <b>CARD_INSERTED</b> session state (reset on a new card and on a correct PIN) so the ATM can retain the card immediately. Authoritatively, <b>at the bank per card</b>, counted across all ATMs and channels — otherwise a thief tries two PINs at each of many ATMs. The ATM never verifies the PIN itself; it sends an encrypted PIN block from the encrypting PIN pad. Putting the counter in a long-lived ATM field is a classic bug: the next customer inherits the previous one's failures.</p>`, followUps: ['How do you unblock a card safely?', 'Why is the PIN never a plain String in the ATM software?'] },
+    { q: 'Explain the check-then-act race in a state machine and three ways to fix it.', level: 'A', a: `<p>Two threads read the same state (e.g. AVAILABLE / stock 1), both pass the guard, and both apply their transition — double sale, double booking. Fixes: (1) <b>Lock</b> the whole fire() (synchronized/ReentrantLock) — simplest; keep slow I/O outside. (2) <b>CAS</b> on an immutable snapshot (state + data + version) via <code>AtomicReference.compareAndSet</code> — lock-free, losers retry on fresh data; the version also prevents ABA. (3) <b>Single-threaded event loop / actor</b> — all events queue to one thread that owns the state; no shared mutation. In a database, the CAS equivalent is optimistic locking: <code>UPDATE … WHERE id = ? AND version = ?</code> and retry on 0 rows.</p>`, followUps: ['Why must the CAS snapshot be immutable?', 'Which would you use for an elevator car and why?'] },
+    { q: 'How would you persist a state machine and recover after a crash?', level: 'A', a: `<p>Store the <b>state name + data + version</b> (e.g. ride: status ARRIVED, driverId, version 7), never the state object. Rehydrate via a factory from the stored name. Transitions use optimistic locking. For side effects (charging, dispensing) move to an <b>intermediate state</b> first (DISPENSING / AUTHORIZING), persist it, perform the effect, then fire a completion event — so after a crash you can find "stuck in DISPENSING" rows and reconcile. Publish domain events via a <b>transactional outbox</b> in the same DB transaction. Alternatively event-source: store events, rebuild state by replaying them through the pure transition function.</p>`, followUps: ['What is the outbox pattern solving?', 'Trade-offs of event sourcing for a vending fleet?'] },
+    { q: 'Interviewer: "Now add a MAINTENANCE state to your vending machine." What changes?', level: 'I', a: `<p>With default-reject methods on the state interface: (1) one new class <code>Maintenance</code> overriding <code>restock</code> and <code>finishService</code> (and returning coins on insert); (2) <code>service()</code> added to the interface with a default "not now"; (3) IDLE and SOLD_OUT override <code>service()</code> to enter maintenance; HAS_MONEY keeps the default (finish or cancel the sale first — never open the machine with a customer’s money in escrow). <code>finishService</code> returns SOLD_OUT if the inventory is still empty, else IDLE. No other state changes; the table gains one row and one column, and table-driven tests cover the new cells.</p>`, followUps: ['Why is service() refused in HAS_MONEY?', 'How do you test all the new cells?'] },
+    { q: 'What are hierarchical state machines and when do you need one?', level: 'E', a: `<p>Statecharts (Harel) let states nest: an event not handled by the current state <b>bubbles</b> to its parent. Use them when the flat table explodes because some events apply to many states — e.g. an elevator's FIRE or POWER_FAIL must work from IDLE, MOVING, DOORS_OPEN and any future child. Put FIRE once on the OPERATIONAL parent; transitions exit up to the lowest common ancestor and enter down to the target (entry/exit actions in order). Extras: <b>history states</b> (resume the previous child), <b>orthogonal regions</b> (door and motor as parallel sub-machines). Tools: Spring Statemachine, XState, SCXML, UML. Don't reach for it until the flat machine shows duplication.</p>`, followUps: ['How is the lowest common ancestor used during a transition?', 'Model the washing machine pause as a history state.'] },
+    { q: 'How would you test a state-heavy design like an ATM thoroughly?', level: 'A', a: `<p>Layers: (1) <b>Table tests</b> — for every (state, event) cell assert next state and side effects, including all illegal cells. (2) <b>Scenario tests</b> — happy path, 3 wrong PINs, insufficient funds, daily limit, note plan failure. (3) <b>Fault injection</b> with fakes: a bank that drops/duplicates/reorders messages, a dispenser that jams — assert the invariant "charged ⇔ dispensed". (4) <b>Property/randomized tests</b> — thousands of random event sequences checking invariants (never negative stock, menu only after auth). (5) <b>Concurrency stress</b> with latches for shared resources at the bank. Hardware sits behind interfaces (CardReader, Dispenser, Keypad) so all of this runs in milliseconds.</p>`, followUps: ['What invariants would you assert for the vending machine?', 'How does AI help generate these tests, and what do you still check?'] },
+    { q: 'An LLM generated an elevator/vending/ATM design for you. What do you review first?', level: 'E', a: `<p>(1) Are states explicit (one field/enum or State classes) or scattered booleans that allow illegal combos? (2) Is there a state × event table — what happens on every illegal event? (3) Money/safety order: change planned before dispensing, notes planned and approval received before cash, door safety before closing. (4) Idempotency and txnIds on every network call; compensation on failure. (5) Concurrency: check-then-act races, mutable objects in AtomicReference, locks held across I/O. (6) Scheduling: is it SSTF in disguise (PriorityQueue by distance → starvation)? Do hall calls keep direction? (7) Extensibility: can I add a state or strategy without edits elsewhere? Then I ask the AI for adversarial tests and run them.</p>`, followUps: ['Which of these bugs would not show up in a happy-path demo?', 'How do you turn the review into automated checks?'] }
+  );
+
   registerModule({
     id: 'lld09',
     title: 'State-Heavy Designs: Elevator, Vending Machine, ATM',
