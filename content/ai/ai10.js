@@ -733,7 +733,7 @@ print(json.dumps(create_ticket.schema, indent=2))
     code: { lang: 'python', check: false, code: `@mcp.tool()
 def update_status(ticket_id: int, status: Literal["open", "pending", "resolved"]) -> str:
     """Change a ticket's status. Mutating: the host should ask the user first."""
-    ...` }
+    return f"Ticket {ticket_id} set to {status}"` }
   })]
 });
 
@@ -850,7 +850,7 @@ print("done")
       for (i = 0; i < 4; i++) {
         hl = {}; hl[i] = chk[i][1] === 'FAILS' ? 'bad' : (chk[i][1] === 'ok' ? 'ok' : 'done');
         frames.push({ narr: 'Step ' + (i + 1) + ': ' + chk[i][0] + ' → <b>' + chk[i][1] + '</b>.', parts: [{ type: 'table', label: 'Checklist', columns: ['step', 'result'], rows: chk.map(function (r, j) { return [r[0], j <= i ? r[1] : '?']; }), hl: hl }] });
-        if (chk[i][1] === 'FAILS') break;
+        
       }
       frames.push({ narr: '<b>Cause:</b> ' + faults[n][1] + ' <b>Fix:</b> ' + faults[n][2], parts: [{ type: 'table', columns: ['fault', 'what you see', 'fix'], rows: [faults[n]], hl: { 0: 'sel' } }] });
       return frames;
@@ -875,7 +875,7 @@ print("done")
     example: `<p>Two explicit directory arguments after the package name, nothing else. Run it in a way that makes the reference folder read-only (mount or file permissions) because the server's allow-list is not a read/write split.</p>`,
     brute: `<p>Pass <code>/Users/sam</code> "for convenience". Now one prompt-injected instruction can read SSH keys, browser profiles or other projects.</p>`,
     mcq: { q: 'What is the safest directory argument for a server that only needs one project?', options: ['/', 'The user home directory', 'Exactly that project folder', 'A wildcard like /Users/*'], answer: 2, explain: 'Least privilege: allow only the folder required for the task.' },
-    hints: ['Allowed directories are positional arguments after the package name.', 'Use absolute paths.', 'Enforce read-only on the reference folder at the OS level (permissions or a read-only mount) in addition to the server config; one server entry per trust level can be even cleaner.'],
+    hints: ['Allowed directories are positional arguments after the package name.', 'Use absolute paths for every directory and list each allowed folder as its own argument.', 'Enforce read-only on the reference folder at the OS level (permissions or a read-only mount) in addition to the server config; one server entry per trust level can be even cleaner.'],
     approach: `<p>Create one server entry with <code>npx -y @modelcontextprotocol/server-filesystem /Users/sam/work/blog /Users/sam/docs/style-guide</code>. Because the allow-list only says <i>where</i>, not <i>read vs write</i>, protect the style guide by making that directory read-only for the user account that runs the host (file permissions, a read-only mount, or a copy), or by running two servers where the second is a read-only variant. Keep absolute paths, never pass the home directory, and review which tools the server exposes (write_file, move_file...) so you can disable ones you do not need if the host allows per-tool toggles. Finally, keep the host's per-call approval enabled for write operations so a human sees edits before they happen.</p>`,
     code: { lang: 'json', code: `{
   "mcpServers": {
@@ -1059,7 +1059,7 @@ practice.push(P({
   example: `<p>"4 apps × 6 services = 24 custom connectors. With MCP it is 4 + 6 = 10. Like USB-C: one port, any device, any charger."</p>`,
   brute: `<p>"MCP is a JSON-RPC protocol for tool discovery." Accurate but meaningless to the listener, with no benefit stated.</p>`,
   mcq: { q: 'With 5 apps and 8 services, how many integrations with a shared protocol?', options: ['40', '13', '8', '5'], answer: 1, explain: '5 clients + 8 servers = 13, versus 5 × 8 = 40.' },
-  hints: ['Start with the charger/cable analogy.', 'Say the two numbers: product vs sum.', 'Finish with the benefit: a new service or new app plugs in at the cost of one piece.'],
+  hints: ['Start with the familiar charger and cable analogy before any jargon.', 'Say the two numbers out loud: the product (4 x 6) versus the sum (4 + 6).', 'Finish with the benefit: a new service or new app plugs in at the cost of one piece.'],
   approach: `<p>Model answer: "Think of phone chargers before USB-C: every device needed its own cable. AI apps had the same problem - each needed custom code for each service, so 4 apps and 6 services meant 24 separate connectors to build and maintain. MCP is a shared plug: each service builds one MCP server and each app builds one MCP client, so the work drops to 4 + 6 = 10. When we add a seventh service, we write one server and all four apps can use it immediately. That is why vendors are shipping MCP servers and why we can reuse our own tools across apps."</p>`
 }));
 practice.push(P({
@@ -1068,7 +1068,7 @@ practice.push(P({
   example: `<p>(a) request - needs reply. (b) notification - no id, no reply. (c) success response to id 5. (d) error response to id 9.</p>`,
   brute: `<p>Deciding by the word "method" alone. Both (a) and (b) have one; the <code>id</code> is the discriminator.</p>`,
   mcq: { q: 'A JSON-RPC message with a method but no id is…', options: ['A request', 'A notification', 'A response', 'Invalid'], answer: 1, explain: 'No id means the sender expects no reply: a notification.' },
-  hints: ['Look for id.', 'Responses have result or error but no method.', 'Only requests (method + id) require a reply.'],
+  hints: ['Look for the id field first: it separates requests from notifications.', 'Responses have result or error but no method.', 'Only requests (method + id) require a reply.'],
   approach: `<p>(a) has <code>method</code> and <code>id</code> → request, the server must answer with the same id. (b) has <code>method</code> but no <code>id</code> → notification, never answered; it marks the end of the handshake. (c) has <code>id</code> and <code>result</code>, no method → successful response matching request 5. (d) has <code>id</code> and <code>error</code> → failed response; -32601 means the server does not know that method. Only (a) needs a reply. A response matching (c) must be sent exactly once per request, and the id is the only link between the two, which matters when several requests are in flight at the same time.</p>`
 }));
 practice.push(P({
@@ -1078,7 +1078,7 @@ practice.push(P({
   brute: `<p>Wrapping prints in try/except or restarting the host. The cause is not an exception; stdout is the protocol channel.</p>`,
   bruteCode: `print("Starting up...")   # goes to stdout, corrupting the JSON-RPC stream`,
   mcq: { q: 'Where should a stdio MCP server write logs?', options: ['stdout', 'stderr', 'The tool result', 'A new HTTP port'], answer: 1, explain: 'stdout is reserved for protocol messages; stderr is captured by hosts as logs.' },
-  hints: ['What stream carries the protocol?', 'Which other stream do hosts record for diagnostics?', 'Use logging.basicConfig(stream=sys.stderr) so every library log is safe too.'],
+  hints: ['Ask yourself which stream carries the protocol messages in stdio.', 'Which other stream do hosts record for diagnostics?', 'Use logging.basicConfig(stream=sys.stderr) so every library log is safe too.'],
   approach: `<p>For stdio servers the client reads every line from the child's stdout as a JSON-RPC message. A line like "Starting up..." is not JSON, so the client fails to parse it. Send diagnostics to stderr instead, ideally by configuring the logging module once at startup with a stderr handler so third-party libraries are covered too. Also check for libraries or notebooks that print on import, and make sure nothing writes progress bars to stdout.</p>`,
   code: `import logging, sys
 
@@ -1157,7 +1157,7 @@ practice.push(P({
   example: `<p>Start with plain function calling behind a clean tool interface; expose the same functions through an MCP server when the second consumer appears.</p>`,
   brute: `<p>Building a full multi-server MCP platform on day one for a single consumer: premature complexity and extra security surface.</p>`,
   mcq: { q: 'When does MCP start paying off most?', options: ['One app, one private helper', 'Multiple hosts need the same tools', 'You want a faster model', 'You want to avoid JSON'], answer: 1, explain: 'The N×M reduction matters when several hosts consume shared tools.' },
-  hints: ['Count consumers now and later.', 'Keep tool logic in plain functions with typed inputs so wrapping them is cheap.', 'Plan the external-customer case: it needs remote HTTP and OAuth.'],
+  hints: ['Count how many consumers exist now and how many you expect later.', 'Keep tool logic in plain functions with typed inputs so wrapping them is cheap.', 'Plan the external-customer case: it needs remote HTTP and OAuth.'],
   approach: `<p>Today: one consumer, so use the model provider's function calling directly. The key move is architectural: put each tool in a plain, well-typed function with a clear description and keep it independent of the chat code. When the IDE plugin and agent arrive, wrap those same functions in one FastMCP server (stdio for internal desktop use) so all internal hosts share one implementation. When customers need access, deploy the server over Streamable HTTP with OAuth 2.1, rate limits and per-tenant authorization, and publish it as the official integration. Because the tool bodies never changed, migration is mostly transport and auth work. Review cost: tool definitions occupy context in every host, so keep the tool count small.</p>`
 }));
 practice.push(P({
@@ -1166,7 +1166,7 @@ practice.push(P({
   example: `<p>Client re-fetches <code>tools/list</code>, updates the tool menu for the next model turn, and diffs against what the user approved.</p>`,
   brute: `<p>Ignoring the notification (stale tools, calls to tools that no longer exist) or silently auto-trusting new tools (rug-pull exposure).</p>`,
   mcq: { q: 'Server sends list_changed. Client should…', options: ['Reconnect from scratch', 'Call tools/list again and refresh the tool set', 'Ignore it', 'Delete the server config'], answer: 1, explain: 'The notification carries no data; the client re-fetches the list.' },
-  hints: ['The notification has no payload.', 'Only valid if the server advertised listChanged.', 'Diff the new list against the approved pins; new or changed tools need approval.'],
+  hints: ['The notification has no payload, so the client must go and ask again.', 'Only valid if the server advertised listChanged.', 'Diff the new list against the approved pins; new or changed tools need approval.'],
   approach: `<p>The notification carries no tool data, so the client issues a fresh <code>tools/list</code> (following pagination cursors if present), replaces its cached list and exposes the updated set on the next model turn. A well-behaved client only trusts the notification if the server advertised <code>tools.listChanged</code> during initialize. For security, compare the new definitions with what the user approved (hash name, description and schema): unchanged tools continue, new or modified tools are flagged and need approval before the model may call them. For in-flight calls, handle "tool no longer exists" gracefully by returning an error result to the model. Debounce bursts so rapid notifications cause one refresh.</p>`
 }));
 practice.push(P({
@@ -1175,7 +1175,7 @@ practice.push(P({
   example: `<p>Streamable HTTP, OAuth 2.1 with PKCE via company SSO, per-user tokens, stateless horizontally scaled servers, audit log.</p>`,
   brute: `<p>One shared API key in every employee's config. No per-user identity, leaked key = everyone's data, no audit trail, no revocation per person.</p>`,
   mcq: { q: 'Why use per-user OAuth tokens instead of one shared API key?', options: ['Smaller requests', 'Per-user identity, scoped access, audit and revocation', 'Faster responses', 'No TLS needed'], answer: 1, explain: 'Tokens tie actions to a person, can be scoped and expire, and can be revoked individually.' },
-  hints: ['Who is the caller on every tool call?', 'Where does scaling pain come from: session state?', 'Think of the downstream ticket API: use the user\'s authority, not a super-admin.'],
+  hints: ['Ask who the caller is on every single tool call, and how you would know.', 'Where does scaling pain come from: session state?', 'Think of the downstream ticket API: use the user\'s authority, not a super-admin.'],
   approach: `<p><b>Transport:</b> Streamable HTTP on one <code>/mcp</code> endpoint behind a load balancer with TLS; design tools to be stateless so any replica can serve any request (avoid sticky sessions unless you really need server-initiated streams). <b>Authentication:</b> act as an OAuth 2.1 protected resource; users sign in through company SSO using the authorization-code flow with PKCE; the client holds short-lived access tokens plus refresh tokens in secure storage; the server validates signature, expiry, audience (token issued for this server) and scopes on every request. <b>Authorization:</b> map the user's identity to downstream permissions, calling the ticket API with a token that represents that user (or a narrowly scoped service identity plus an explicit user check) so the model can never exceed what the person could do manually; avoid passing the incoming token blindly to unrelated services. Separate read scopes from write scopes and require host approval for writes. <b>Safety:</b> rate limits per user, argument validation, output size caps, Origin checking. <b>Audit:</b> structured log of user, tool, arguments hash, result status, latency, sent to append-only storage; alert on anomalies. <b>Failures:</b> timeouts and retries with idempotency keys on creates, clear isError messages for downstream outages, graceful token refresh, and a kill switch per tool. <b>Operations:</b> version the tool schemas, announce changes through list_changed, and run the Inspector and contract tests in CI.</p>`
 }));
 practice.push(P({
@@ -1247,7 +1247,7 @@ practice.push(P({
   example: `<p>Serve both transports side by side for a deprecation window, move to a single endpoint, then retire the old one.</p>`,
   brute: `<p>Flip everything in one release. Older clients that only know the two-endpoint design fail instantly, and you have no data on who uses what.</p>`,
   mcq: { q: 'A safe migration strategy is…', options: ['Remove the old endpoints immediately', 'Support both for a window, measure usage, announce deprecation, then remove', 'Keep SSE forever', 'Switch to stdio'], answer: 1, explain: 'Run old and new in parallel, track client usage, communicate the deadline, then retire the old transport.' },
-  hints: ['Who are your clients and can you update them?', 'Can the tool logic stay unchanged?', 'Think of statelessness: removing the dedicated long-lived stream makes load balancing easier.'],
+  hints: ['Who are your clients and can you update them?', 'Ask whether the tool logic can stay unchanged while only the transport changes.', 'Think of statelessness: removing the dedicated long-lived stream makes load balancing easier.'],
   approach: `<p>The tools, resources and prompts do not change; only the transport layer does. Step 1: upgrade the SDK and add a Streamable HTTP endpoint (single path accepting POST, optionally GET for server-initiated streams) alongside the legacy endpoints. Step 2: add logging per transport and client version so you know who still uses the old one. Step 3: document and announce a deprecation date; where clients can be updated, update them first (most SDK-based hosts already support Streamable HTTP, and some provide a fallback to the old transport). Step 4: review state: if you stored session data in memory tied to the long-lived SSE connection, move it to a shared store or make handlers stateless so any replica can answer. Step 5: re-check security: authentication on every request, Origin validation, TLS. Step 6: load test behind your load balancer, including long-running tool calls that stream results. Step 7: after the window, return a clear error on the old endpoints with a pointer to the new URL, then remove them. Keep rollback ready until traffic is clean.</p>`
 }));
 

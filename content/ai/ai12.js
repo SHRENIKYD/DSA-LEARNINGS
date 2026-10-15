@@ -380,8 +380,8 @@ model.print_trainable_parameters()     # roughly 0.1% - 1% trainable
     example: `<p>A = 8×4096 = 32,768; B = 4096×8 = 32,768; sum = 65,536 = 0.39% of 16,777,216.</p>`,
     brute: { why: `<p>Counting all 16.8M parameters as trainable (full fine-tuning) wastes memory and misses the point of LoRA.</p>` },
     mcq: { q: 'LoRA params for a d_out × d_in layer at rank r?', options: ['r × d_in × d_out', 'r × (d_in + d_out)', 'd_in × d_out / r'], answer: 1, explain: 'A is r×d_in and B is d_out×r.' },
-    hints: [`<p>Hint 1: two matrices, A and B.</p>`, `<p>Hint 2: shapes are r×d_in and d_out×r.</p>`, `<p>Hint 3: multiply the per-layer count by 4 matrices and 32 layers.</p>`],
-    solution: { approach: `<p>Per layer: A has 8×4096 = 32,768 numbers and B has 4096×8 = 32,768, total 65,536. The full layer has 4096×4096 = 16,777,216, so LoRA trains 65,536 / 16,777,216 = 0.39%, a 256× reduction. For 32 layers with 4 adapted matrices each: 32 × 4 × 65,536 = 8,388,608 trainable parameters, about 8.4M, versus roughly 8 billion in the whole model (about 0.1%). In 16-bit that adapter file is about 16.8 MB.</p>`, complexity: `<p>O(1) arithmetic.</p>` }
+    hints: [`<p>Hint 1: LoRA uses two thin matrices, called A and B, instead of one big update.</p>`, `<p>Hint 2: the shapes are r×d_in for A and d_out×r for B, so add them.</p>`, `<p>Hint 3: multiply the per-layer count by 4 matrices and 32 layers.</p>`],
+    solution: { approach: `<p>Per layer: A has 8×4096 = 32,768 numbers and B has 4096×8 = 32,768, total 65,536. The full layer has 4096×4096 = 16,777,216, so LoRA trains 65,536 / 16,777,216 = 0.39%, a 256× reduction. For 32 layers with 4 adapted matrices each: 32 × 4 × 65,536 = 8,388,608 trainable parameters, about 8.4M, versus roughly 8 billion in the whole model (about 0.1%). In 16-bit that adapter file is about 16.8 MB.</p>`, complexity: `<p>Constant-time arithmetic, O(1) per layer.</p>` }
   }]
 });
 
