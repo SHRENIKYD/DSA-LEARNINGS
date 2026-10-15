@@ -2239,6 +2239,350 @@ class Dispenser {
     }]
   });
 
+  /* ======================= TOPIC 6: PRODUCTION-GRADE STATE MACHINES ======================= */
+  topics.push({
+    title: 'Production-Grade State Machines: Table-Driven Engines, Thread-Safe Transitions, Persistence and Testing',
+    analogy: `<p>Think of a <b>railway signal cabin</b>. Old cabins had big levers mechanically <b>interlocked</b>: you physically could not set two conflicting signals to green at the same time, no matter how fast two signalmen pulled. A state machine in production needs the same interlocking: when two threads (two customers, a phone app and a keypad, two servers) try to change the state at the same moment, only one may win, and the loser must see the new state — never a mix of both.</p>`,
+    explain: `<p>Interview designs run on one thread in <code>main()</code>. Real ones do not. This topic turns your machine into something you could ship.</p>
+<p><b>1. Make the machine data: a table-driven engine.</b> A generic <code>StateMachine&lt;S, E, C&gt;</code> holds rows <code>(from, event) → (to, guard, action)</code>. Elevator, vending machine and ATM each become a <b>configuration</b> of the same engine. Benefits: transitions can be printed as a diagram, validated at startup (every state reachable? any dead ends?), and tested cell by cell.</p>
+${H.table(['from', 'event', 'guard', 'to', 'action'], [
+  ['HAS_MONEY', 'SELECT', 'paid &amp;&amp; inStock &amp;&amp; changeOk', 'DISPENSING', 'reserve item + change'],
+  ['DISPENSING', 'DROP_OK', '—', 'IDLE', 'commit stock + coins'],
+  ['DISPENSING', 'DROP_TIMEOUT', 'retries &lt; 1', 'DISPENSING', 'retry motor'],
+  ['DISPENSING', 'DROP_TIMEOUT', 'retries ≥ 1', 'IDLE', 'refund + mark slot faulty']
+])}
+<p><b>2. Make transitions atomic.</b> "Read state → check → write new state" is a <b>check-then-act race</b>. Two threads both read <i>qty = 1, state = IDLE</i>, both sell, and the machine sells one can twice. Three standard fixes:</p>
+<ul>
+<li><b>Lock</b> (<code>synchronized</code>/<code>ReentrantLock</code>) around the whole fire(): simple, correct, slightly slower under contention.</li>
+<li><b>Compare-and-set</b> (<code>AtomicReference.compareAndSet(old, new)</code>) on an immutable state snapshot: lock-free; the loser retries or fails.</li>
+<li><b>Single-threaded event loop</b> (actor): all events go into a queue consumed by one thread — no shared mutation at all. Elevators and ATMs usually work this way.</li>
+</ul>
+<p><b>3. Persist state with a version.</b> Save <code>(id, state, version)</code>. Transition with <code>UPDATE … SET state = ?, version = version + 1 WHERE id = ? AND state = ? AND version = ?</code>. If 0 rows change, someone else won — reload and decide. This is the same CAS idea, at database level (<b>optimistic locking</b>).</p>
+<p><b>4. Test every cell.</b> S states × E events = all behaviour. A parameterized test that walks the whole table catches the "—" cells (illegal events) that hand-written tests forget.</p>
+<p><b>Brute force:</b> state as a mutable <code>String</code> field, transitions scattered over services, no locking ("it is rare"), no version column. It works in demos and fails on the first sale day when thousands of requests hit the same row.</p>`,
+    clues: [
+      '"Many users / devices may act at the same time" (app + kiosk, two ATMs on one account) → atomic transitions: lock, CAS or single-threaded loop.',
+      '"State must survive restarts" → persist state + version; optimistic locking on transition.',
+      '"Business wants to change the workflow without code changes" → table-driven / config-driven state machine.',
+      '"Audit every change" → transition listeners (Observer) writing an append-only log; or event sourcing.',
+      '"Make it testable" → pure transition function or table; exhaustive state × event tests.',
+      'Words like <b>exactly once, double charge, sold twice, race</b> → the check-then-act problem.'
+    ],
+    code: [{ lang: 'java', title: 'Generic table-driven state machine: guards, actions, listeners, thread-safe fire()', code: `import java.util.*;
+import java.util.function.*;
+
+/** A reusable engine. S = state enum, E = event enum, C = context (the data the guards/actions use). */
+final class StateMachine<S extends Enum<S>, E extends Enum<E>, C> {
+    record Transition<S, C>(S to, Predicate<C> guard, Consumer<C> action) {}
+
+    private final Map<S, Map<E, List<Transition<S, C>>>> table;
+    private final List<BiConsumer<S, S>> listeners = new ArrayList<>();
+    private S current;
+
+    private StateMachine(S initial, Map<S, Map<E, List<Transition<S, C>>>> table) { this.current = initial; this.table = table; }
+
+    /** Atomic: no other thread can observe or change state mid-transition. */
+    synchronized boolean fire(E event, C ctx) {
+        List<Transition<S, C>> options = table.getOrDefault(current, Map.of()).getOrDefault(event, List.of());
+        for (Transition<S, C> t : options) {                  // first transition whose guard passes wins
+            if (t.guard().test(ctx)) {
+                S from = current;
+                t.action().accept(ctx);                         // side effect while holding the lock
+                current = t.to();
+                listeners.forEach(l -> l.accept(from, t.to())); // Observer: audit log, metrics, UI
+                return true;
+            }
+        }
+        return false;                                           // illegal event or every guard failed
+    }
+    synchronized S state() { return current; }
+    void onTransition(BiConsumer<S, S> l) { listeners.add(l); }
+
+    static <S extends Enum<S>, E extends Enum<E>, C> Builder<S, E, C> builder(Class<S> states, S initial) { return new Builder<>(states, initial); }
+
+    static final class Builder<S extends Enum<S>, E extends Enum<E>, C> {
+        private final Map<S, Map<E, List<Transition<S, C>>>> table;
+        private final S initial;
+        Builder(Class<S> states, S initial) { this.table = new EnumMap<>(states); this.initial = initial; }
+        Builder<S, E, C> permit(S from, E on, S to)  { return permit(from, on, to, c -> true, c -> {}); }
+        Builder<S, E, C> permit(S from, E on, S to, Predicate<C> guard, Consumer<C> action) {
+            table.computeIfAbsent(from, k -> new HashMap<>()).computeIfAbsent(on, k -> new ArrayList<>()).add(new Transition<>(to, guard, action));
+            return this;
+        }
+        StateMachine<S, E, C> build() { return new StateMachine<>(initial, table); }
+    }
+}
+
+enum VS { IDLE, HAS_MONEY, DISPENSING }
+enum VE { COIN, SELECT, DROP_OK, CANCEL }
+
+class Till { int balance; int stock = 1; final int price = 15; }
+
+class EngineDemo {
+    public static void main(String[] args) {
+        StateMachine<VS, VE, Till> vm = StateMachine.<VS, VE, Till>builder(VS.class, VS.IDLE)
+            .permit(VS.IDLE, VE.COIN, VS.HAS_MONEY, t -> true, t -> t.balance += 10)
+            .permit(VS.HAS_MONEY, VE.COIN, VS.HAS_MONEY, t -> true, t -> t.balance += 10)
+            .permit(VS.HAS_MONEY, VE.SELECT, VS.DISPENSING, t -> t.balance >= t.price && t.stock > 0, t -> t.stock--)
+            .permit(VS.DISPENSING, VE.DROP_OK, VS.IDLE, t -> true, t -> t.balance = 0)
+            .permit(VS.HAS_MONEY, VE.CANCEL, VS.IDLE, t -> true, t -> t.balance = 0)
+            .build();
+        vm.onTransition((a, b) -> System.out.println("audit: " + a + " -> " + b));
+        Till till = new Till();
+        System.out.println("select early: " + vm.fire(VE.SELECT, till));   // false: illegal in IDLE
+        vm.fire(VE.COIN, till);
+        System.out.println("select with 10: " + vm.fire(VE.SELECT, till)); // false: guard fails
+        vm.fire(VE.COIN, till);
+        vm.fire(VE.SELECT, till);
+        vm.fire(VE.DROP_OK, till);
+        System.out.println("final " + vm.state() + ", stock " + till.stock);
+    }
+}` }, { lang: 'java', title: 'Lock-free transitions with an immutable snapshot + compareAndSet (and the race it prevents)', code: `import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
+
+/** Immutable snapshot: state + stock + version travel together, so they can never disagree. */
+record Slot(String state, int stock, long version) {}
+
+class LastCanMachine {
+    private final AtomicReference<Slot> ref = new AtomicReference<>(new Slot("IDLE", 1, 0));
+
+    /** Lock-free buy: read snapshot, compute next, publish only if nobody changed it meanwhile. */
+    boolean buy() {
+        while (true) {
+            Slot cur = ref.get();
+            if (cur.stock() == 0) return false;                       // guard on a consistent snapshot
+            Slot next = new Slot(cur.stock() == 1 ? "SOLD_OUT" : "IDLE", cur.stock() - 1, cur.version() + 1);
+            if (ref.compareAndSet(cur, next)) return true;            // we won the race
+            // someone else transitioned first -> loop and re-check with fresh data
+        }
+    }
+    Slot snapshot() { return ref.get(); }
+
+    /** The broken version for comparison: check-then-act on plain fields. */
+    static final class Unsafe {
+        int stock = 1;
+        boolean buy() {
+            if (stock > 0) {                       // two threads can both pass this check...
+                Thread.onSpinWait();
+                stock--;                           // ...and both decrement: stock -1, two cans "sold"
+                return true;
+            }
+            return false;
+        }
+    }
+
+    public static void main(String[] args) throws Exception {
+        LastCanMachine m = new LastCanMachine();
+        ExecutorService pool = Executors.newFixedThreadPool(8);
+        List<Future<Boolean>> results = new ArrayList<>();
+        CountDownLatch go = new CountDownLatch(1);
+        for (int i = 0; i < 8; i++) results.add(pool.submit(() -> { go.await(); return m.buy(); }));
+        go.countDown();                            // release all 8 buyers at once
+        int sold = 0;
+        for (Future<Boolean> f : results) if (f.get()) sold++;
+        pool.shutdown();
+        System.out.println("CAS machine sold " + sold + " can(s); final " + m.snapshot());   // always exactly 1
+    }
+}` }],
+    codeTitle: ['Generic FSM engine', 'CAS + immutable snapshot'],
+    viz: {
+      title: 'Race on the last can: two buyers, unsafe vs lock vs compare-and-set',
+      input: 'mode=unsafe',
+      inputLabel: 'mode = unsafe | lock | cas',
+      gen: function (input) {
+        var o = kvParse(input, 'Format: mode=unsafe (or lock, cas)');
+        var mode = String(o.mode || 'unsafe').toLowerCase();
+        if (['unsafe', 'lock', 'cas'].indexOf(mode) < 0) throw new Error('mode must be unsafe, lock or cas');
+        var codes = {
+          unsafe: 'boolean buy() {\n  if (stock > 0) {        // check\n    stock = stock - 1;    // act\n    return true;\n  }\n  return false;\n}',
+          lock: 'synchronized boolean buy() {   // one thread at a time\n  if (stock > 0) {\n    stock = stock - 1;\n    return true;\n  }\n  return false;\n}',
+          cas: 'boolean buy() {\n  Slot cur = ref.get();\n  if (cur.stock() == 0) return false;\n  Slot next = new Slot(.., cur.stock() - 1, cur.version() + 1);\n  return ref.compareAndSet(cur, next) || buy(); // lost? retry\n}'
+        };
+        var timeline = [], frames = [];
+        var shared = { stock: 1, state: 'IDLE', version: 0, sold: 0 };
+        function snap(narr, who, line, cls, sharedHl) {
+          frames.push(F(narr, [
+            CODE('Thread ' + (who || '-') + ' runs (' + mode + ')', codes[mode], line ? one(line, cls || 'cur') : {}),
+            TABLE('Interleaving timeline', ['step', 'Buyer A (keypad)', 'Buyer B (phone app)', 'shared memory'], timeline, timeline.length ? one(timeline.length - 1, cls === 'bad' ? 'bad' : cls === 'ok' ? 'ok' : 'cur') : {}),
+            VARS('Shared vending slot (1 can left)', { stock: shared.stock, state: shared.state, version: shared.version, cansSold: shared.sold }, sharedHl || {})
+          ]));
+        }
+        function row(a, b) { timeline.push([timeline.length + 1, a, b, 'stock=' + shared.stock + ', v' + shared.version]); }
+        snap('One can of soda left. Buyer A presses the keypad and Buyer B taps "buy" in the phone app <b>at the same moment</b>. Each request runs on its own thread. Mode: <b>' + mode + '</b>.', null, null, null);
+        if (mode === 'unsafe') {
+          row('reads stock = 1 → check passes', ''); snap('A: <code>if (stock &gt; 0)</code> reads <b>1</b> → passes. Before A writes, the scheduler pauses A.', 'A', 2, 'cur');
+          row('', 'reads stock = 1 → check passes'); snap('B: <code>if (stock &gt; 0)</code> also reads <b>1</b> (A has not written yet) → passes. Both threads now believe they own the last can.', 'B', 2, 'bad');
+          shared.stock = 0; shared.sold = 1; shared.state = 'SOLD_OUT'; row('writes stock = 0, drops can', ''); snap('A: <code>stock = 1 − 1 = 0</code>, motor drops the can. Fine so far.', 'A', 3, 'cur', { stock: 'cur' });
+          shared.stock = -1; shared.sold = 2; row('', 'writes stock = 0 (or −1), charges card'); snap('B: computes <code>stock − 1</code> from <b>its stale read</b> → writes again, charges B\'s card and tells B "enjoy your drink". <span class="c-r">Two sales, one can.</span> Stock is now wrong and B was charged for nothing.', 'B', 3, 'bad', { stock: 'bad', cansSold: 'bad' });
+          snap('This is the <b>check-then-act</b> race. It never shows up in a single-threaded demo, which is why interviewers ask "what if two people buy at once?". Rerun with <code>mode=lock</code> or <code>mode=cas</code>.', null, null, 'bad', { cansSold: 'bad' });
+        } else if (mode === 'lock') {
+          row('acquires lock', 'waits for lock…'); snap('A enters the <code>synchronized</code> method first and holds the lock. B blocks at the door.', 'A', 1, 'cur');
+          row('reads stock = 1 → passes', 'waiting'); snap('A checks stock = 1 → passes. B cannot read anything yet.', 'A', 2, 'cur');
+          shared.stock = 0; shared.sold = 1; shared.state = 'SOLD_OUT'; shared.version = 1;
+          row('writes stock = 0, releases lock', 'waiting'); snap('A writes stock = 0, state SOLD_OUT, releases the lock. The check and the act happened as one indivisible step.', 'A', 3, 'ok', { stock: 'ok' });
+          row('', 'acquires lock, reads stock = 0'); snap('B finally gets the lock and reads the <b>fresh</b> value 0 → check fails.', 'B', 2, 'bad');
+          row('', 'returns false → "sold out"'); snap('B returns false and the app shows "Sold out — you were not charged". Exactly one sale.', 'B', 6, 'ok', { cansSold: 'ok' });
+          snap('Locks are the simplest correct answer. Cost: threads wait in line. For a vending slot or an elevator car that is perfectly fine; for very hot shared state consider CAS or a single-threaded event loop.', null, null, 'ok');
+        } else {
+          row('reads snapshot (stock 1, v0)', ''); snap('A reads the immutable snapshot <b>(stock 1, v0)</b>.', 'A', 2, 'cur');
+          row('', 'reads snapshot (stock 1, v0)'); snap('B also reads <b>(stock 1, v0)</b>. No locks — both are allowed to try.', 'B', 2, 'cur');
+          row('builds (stock 0, v1)', 'builds (stock 0, v1)'); snap('Both build a new snapshot (stock 0, SOLD_OUT, v1) privately. Nothing shared has changed yet.', 'A', 4, 'cur');
+          shared.stock = 0; shared.sold = 1; shared.state = 'SOLD_OUT'; shared.version = 1;
+          row('CAS(v0 → v1) succeeds', ''); snap('A calls <code>compareAndSet(cur, next)</code>: the reference still points to v0, so the swap <b>succeeds</b> atomically. A drops the can.', 'A', 5, 'ok', { version: 'ok', stock: 'ok' });
+          row('', 'CAS(v0 → v1) FAILS'); snap('B calls <code>compareAndSet(cur, next)</code> with its old v0 — but the current snapshot is now v1. <b>CAS fails</b>; B\'s change is never published.', 'B', 5, 'bad');
+          row('', 'retries: reads (stock 0, v1) → false'); snap('B retries with fresh data: stock 0 → returns false, "Sold out". Exactly one sale, no locks held.', 'B', 3, 'ok', { cansSold: 'ok' });
+          snap('The same idea in a database is <b>optimistic locking</b>: <code>UPDATE slot SET stock = 0, version = 1 WHERE id = 7 AND version = 0</code> → the loser updates 0 rows and retries or reports failure.', null, null, 'ok');
+        }
+        return frames;
+      }
+    },
+    examples: [
+      { title: 'Optimistic locking in SQL for a persisted ride/order state', html: `<p>Two servers receive "driver arrived" and "rider cancelled" for ride 77 at the same time. Each runs: <code>UPDATE ride SET status = ?, version = version + 1 WHERE id = 77 AND status = 'ASSIGNED' AND version = 4</code>. The first commits (1 row). The second updates <b>0 rows</b>, reloads (status now ARRIVED or CANCELLED) and re-applies its event to the <i>new</i> state — maybe the cancel now costs ₹50, maybe it is rejected. The state machine runs again on fresh data; it never overwrites.</p>` },
+      { title: 'Exhaustive table test (no framework needed)', html: `<p>Walk every (state, event) cell and compare with an expected table. 3 states × 4 events = 12 assertions, including all the rejections.</p>`, code: `import java.util.*;
+class TableTest {
+    enum S { IDLE, HAS_MONEY, DISPENSING }
+    enum E { COIN, SELECT, DROP_OK, CANCEL }
+    static S next(S s, E e) {                       // the machine under test (pure function)
+        return switch (s) {
+            case IDLE -> e == E.COIN ? S.HAS_MONEY : s;
+            case HAS_MONEY -> switch (e) { case COIN -> S.HAS_MONEY; case SELECT -> S.DISPENSING; case CANCEL -> S.IDLE; default -> s; };
+            case DISPENSING -> e == E.DROP_OK ? S.IDLE : s;
+        };
+    }
+    public static void main(String[] args) {
+        S[][] expected = {
+            { S.HAS_MONEY, S.IDLE, S.IDLE, S.IDLE },                       // IDLE
+            { S.HAS_MONEY, S.DISPENSING, S.HAS_MONEY, S.IDLE },            // HAS_MONEY
+            { S.DISPENSING, S.DISPENSING, S.IDLE, S.DISPENSING }           // DISPENSING
+        };
+        int fails = 0;
+        for (S s : S.values()) for (E e : E.values()) {
+            S got = next(s, e), want = expected[s.ordinal()][e.ordinal()];
+            if (got != want) { fails++; System.out.println("FAIL " + s + " + " + e + " -> " + got + ", want " + want); }
+        }
+        System.out.println(fails == 0 ? "all 12 cells pass" : fails + " failures");
+    }
+}` },
+      { title: 'Single-threaded event loop for an elevator car', html: `<p>Buttons, sensors and the dispatcher run on different threads, but they only <b>post</b> events. One thread per car takes events from a <code>BlockingQueue</code> and feeds them to the state machine. No locks inside the machine, and events are processed in a clear order — this is the actor model (Akka, Erlang, Go channels).</p>`, code: `import java.util.concurrent.*;
+class CarLoop implements Runnable {
+    private final BlockingQueue<String> inbox = new LinkedBlockingQueue<>();
+    private volatile boolean running = true;
+    private String state = "IDLE";
+    void post(String event) { inbox.add(event); }            // safe to call from any thread
+    public void run() {
+        while (running) {
+            try {
+                String e = inbox.poll(100, TimeUnit.MILLISECONDS);
+                if (e == null) continue;
+                if (e.equals("STOP")) { running = false; continue; }
+                state = state.equals("IDLE") && e.startsWith("CALL") ? "MOVING" : state;   // only this thread writes state
+            } catch (InterruptedException ex) { Thread.currentThread().interrupt(); return; }
+        }
+    }
+}` },
+      { title: 'Validating the table at startup', html: `<p>With transitions as data you can check the design itself: every state reachable from the start (BFS over the table), every non-terminal state has an exit, no (state, event) pair has two guards that can both be true. Run these checks in a unit test so a bad config never ships. Tools like Spring Statemachine, XState and AWS Step Functions do exactly this kind of validation.</p>` }
+    ],
+    deepDive: `<p><b>Where do side effects go?</b> Actions that talk to the outside world (charge a card, drop a can, call the bank) are the hard part. Pattern: transition to an <i>intermediate</i> state first (DISPENSING, AUTHORIZING), persist it, then perform the side effect, then fire a completion event (DROP_OK / AUTH_OK / TIMEOUT). After a crash you can see "stuck in DISPENSING since 10:02" and recover. Doing the side effect inside a lock and then failing to persist leaves the world and your state disagreeing.</p>
+<p><b>Transactional outbox.</b> When a transition must also notify other services ("order PAID"), write the new state and an outbox event row in the <b>same database transaction</b>; a relay publishes outbox rows to Kafka. Never "update DB, then publish" separately — one can succeed without the other.</p>
+<p><b>Event sourcing.</b> Instead of storing the current state, store the list of events (COIN 10, COIN 5, SELECT A1, DROP_OK). Current state = replay through the pure transition function. You get a full audit trail and time travel for debugging; the cost is replay time (fixed with snapshots) and schema evolution of events.</p>
+<p><b>Lock granularity.</b> Lock per machine/car/account, never one global lock. For a bank, the lock is the account row; for an elevator system, each car has its own loop and the dispatcher only posts events. Holding a lock while doing slow I/O (bank call) blocks every other request for that object — prefer the intermediate-state pattern above.</p>
+<p><b>CAS pitfalls.</b> CAS on a <i>mutable</i> object is useless (the reference does not change when fields do) — snapshots must be immutable (records). Under heavy contention CAS loops spin; add backoff or fall back to a lock. And the classic ABA problem (state goes A → B → A between your read and CAS) is solved by the <b>version</b> field.</p>
+<p><b>Hierarchical and parallel states.</b> UML statecharts (Harel, 1987) add nesting (EMERGENCY overrides all OPERATIONAL sub-states), history states (resume where you left off) and orthogonal regions (the door and the motor as parallel sub-machines). Use them when the flat table explodes (S × E grows too big), not before.</p>`,
+    aiEra: `<p><b>What AI changes:</b> generating a state machine engine is now trivial; making it <b>correct under concurrency</b> is not. AI-generated code frequently has check-then-act races, mutates objects inside <code>AtomicReference</code>, or holds locks across network calls. Treat every AI-written transition as suspicious until you can point at the line that makes it atomic.</p>
+<p><b>Use AI as a partner:</b> <code>Write a jcstress-style or ExecutorService stress test that fires SELECT from 50 threads at a machine with stock 1 and asserts exactly one success, repeated 10,000 times.</code> AI is excellent at writing these harnesses. Also: <code>Given this transition table, generate a Mermaid stateDiagram and list unreachable states.</code></p>
+<p><b>Agents and workflows:</b> durable-execution platforms (Temporal, AWS Step Functions, LangGraph with checkpointing) are production state machines: persisted state, retries, timeouts, compensation. AI agents built on them inherit these guarantees — and the same rules apply: idempotent steps, explicit terminal states, versioned state.</p>
+<p><b>What you must still own:</b> choosing lock vs CAS vs event loop, placing side effects safely, and proving "exactly one winner" — the reasoning an interviewer is actually testing.</p>`,
+    problems: [{
+      title: 'Thread-Safe Seat/Slot State Machine with Optimistic Versioning', level: 'Hard', tags: ['concurrency', 'cas', 'state machine', 'optimistic locking'], companies: ['Uber', 'Amazon', 'BookMyShow', 'Stripe'],
+      statement: `<p>A resource (a vending slot, a cinema seat, a parking spot) moves through states <b>AVAILABLE → HELD → SOLD</b>, with <b>HELD → AVAILABLE</b> on <code>release()</code> or hold expiry. Many threads call <code>hold(user)</code>, <code>confirm(user)</code> and <code>release(user)</code> concurrently. Guarantee: at most one user ever holds/buys it; only the holder may confirm or release; an expired hold can be taken by someone else. Implement it lock-free with an immutable snapshot and <code>compareAndSet</code>, and expose the version for database-style optimistic locking.</p>`,
+      constraints: `Up to 10<sup>4</sup> concurrent callers. Hold expires after <code>ttlMillis</code>. No <code>synchronized</code> blocks in the solution. Time is passed in (for testability).`,
+      example: `<p>50 threads call <code>hold</code> at once → ${H.c('g', 'exactly 1 returns true')}, 49 false. Holder confirms → SOLD. A non-holder calling confirm → ${H.c('r', 'false')}. If the holder waits past the TTL, ${H.c('b', 'another user’s hold succeeds')} because the expired HELD counts as AVAILABLE.</p>`,
+      brute: { why: `<p>Plain fields with if-checks: <code>if (state == AVAILABLE) { state = HELD; holder = user; }</code>. Two threads pass the check together, and the second overwrites the holder — both users think they hold the seat. Also <code>state</code> and <code>holder</code> are written separately, so a reader can see HELD with the old holder (torn state).</p>`, code: `class RacySeat {
+    String state = "AVAILABLE", holder = null;
+    boolean hold(String user) {
+        if (state.equals("AVAILABLE")) {       // check
+            state = "HELD";                     // act (not atomic with the check)
+            holder = user;                      // second field: readers can see a torn mix
+            return true;
+        }
+        return false;
+    }
+}` },
+      mcq: { q: 'Why must the snapshot passed to compareAndSet be immutable?', options: ['CAS compares references; if you mutate fields in place, the reference never changes and conflicting updates are not detected', 'Immutable objects are faster to allocate', 'AtomicReference only accepts records', 'To avoid garbage collection'], answer: 0, explain: 'compareAndSet checks reference identity. Each transition must publish a new object so a concurrent change is visible as a different reference.' },
+      hints: [`<p>Hint 1: Put <b>everything</b> that must be consistent (state, holder, expiry, version) into one immutable record. A transition = build a new record from the old one.</p>`, `<p>Hint 2: Loop: <code>cur = ref.get()</code>; compute the "effective" state (HELD but expired counts as AVAILABLE); check the guard; build <code>next</code> with <code>version + 1</code>; <code>if (ref.compareAndSet(cur, next)) return true;</code> else retry.</p>`, `<p>Hint 3: Guards: hold needs effective AVAILABLE; confirm/release need state HELD, same holder and not expired. Return false (no retry) when the guard fails on a fresh snapshot. Pass <code>now</code> as a parameter so tests can control time.</p>`],
+      solution: {
+        approach: `<p>Model the whole slot as an immutable <code>record Snap(state, holder, expiresAt, version)</code> inside an <code>AtomicReference</code>. Each operation is a CAS loop: read, evaluate the guard on that consistent snapshot (treating an expired hold as available), build the next snapshot with version + 1, and publish with <code>compareAndSet</code>. Exactly one competing thread can publish from a given snapshot; losers re-read and re-evaluate. The version doubles as the optimistic-lock column when persisting.</p>`,
+        code: `import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
+
+enum SeatState { AVAILABLE, HELD, SOLD }
+
+record Snap(SeatState state, String holder, long expiresAt, long version) {
+    boolean heldBy(String u, long now) { return state == SeatState.HELD && holder.equals(u) && now < expiresAt; }
+    boolean effectivelyAvailable(long now) {
+        return state == SeatState.AVAILABLE || (state == SeatState.HELD && now >= expiresAt);   // expired hold
+    }
+}
+
+class SeatMachine {
+    private final AtomicReference<Snap> ref = new AtomicReference<>(new Snap(SeatState.AVAILABLE, null, 0, 0));
+    private final long ttlMillis;
+    SeatMachine(long ttlMillis) { this.ttlMillis = ttlMillis; }
+
+    boolean hold(String user, long now) {
+        while (true) {
+            Snap cur = ref.get();
+            if (!cur.effectivelyAvailable(now)) return false;                       // guard on a fresh snapshot
+            Snap next = new Snap(SeatState.HELD, user, now + ttlMillis, cur.version() + 1);
+            if (ref.compareAndSet(cur, next)) return true;                          // exactly one winner
+        }
+    }
+    boolean confirm(String user, long now) {
+        while (true) {
+            Snap cur = ref.get();
+            if (!cur.heldBy(user, now)) return false;                               // only the live holder
+            Snap next = new Snap(SeatState.SOLD, user, 0, cur.version() + 1);
+            if (ref.compareAndSet(cur, next)) return true;
+        }
+    }
+    boolean release(String user, long now) {
+        while (true) {
+            Snap cur = ref.get();
+            if (!cur.heldBy(user, now)) return false;
+            Snap next = new Snap(SeatState.AVAILABLE, null, 0, cur.version() + 1);
+            if (ref.compareAndSet(cur, next)) return true;
+        }
+    }
+    Snap snapshot() { return ref.get(); }
+
+    public static void main(String[] args) throws Exception {
+        SeatMachine seat = new SeatMachine(5_000);
+        ExecutorService pool = Executors.newFixedThreadPool(16);
+        CountDownLatch go = new CountDownLatch(1);
+        List<Future<Boolean>> fs = new ArrayList<>();
+        for (int i = 0; i < 50; i++) {
+            String user = "u" + i;
+            fs.add(pool.submit(() -> { go.await(); return seat.hold(user, 1_000); }));
+        }
+        go.countDown();
+        int winners = 0;
+        for (Future<Boolean> f : fs) if (f.get()) winners++;
+        pool.shutdown();
+        Snap s = seat.snapshot();
+        System.out.println("winners=" + winners + " holder=" + s.holder() + " v" + s.version());   // winners=1
+        System.out.println("stranger confirm: " + seat.confirm("nobody", 2_000));                   // false
+        System.out.println("after expiry, u_late holds: " + seat.hold("u_late", 7_000));            // true
+        System.out.println("u_late confirms: " + seat.confirm("u_late", 7_500) + " -> " + seat.snapshot().state());
+    }
+}`,
+        complexity: `<p>Each operation is O(1) expected; under contention a loser retries, but every failed CAS means some other thread made progress (lock-free). Memory: one small record per transition (garbage collected). The version gives ABA protection and maps directly to <code>UPDATE … WHERE version = ?</code> when persisted.</p>`,
+        followUps: ['Persist it: write the SQL for hold/confirm with optimistic locking and explain what the caller does on 0 rows updated.', 'Hold 4 seats atomically (all or nothing) — why does per-seat CAS no longer suffice?', 'Add a SOLD → REFUNDED transition that only an admin can fire; where does the authorization guard live?']
+      }
+    }]
+  });
+
   registerModule({
     id: 'lld09',
     title: 'State-Heavy Designs: Elevator, Vending Machine, ATM',

@@ -2294,5 +2294,501 @@ ${H.table(['From', 'Allowed to'], [['AVAILABLE', 'LOANED, ON_HOLD, UNDER_REPAIR,
       }
     }]
   });
+
+  /* ======================= PRACTICE: EASY ======================= */
+  practice.push({
+    title: 'Library Late Fee: Tiered Rate with a Cap',
+    level: 'Easy', tags: ['library', 'dates', 'money'], companies: ['Zoho', 'TCS', 'Infosys'],
+    statement: `<p>Write <code>feePaise(LocalDate due, LocalDate returned, long bookPricePaise)</code>. No fee if returned on or before the due date. Otherwise the first 7 late days cost ₹2/day, every later day costs ₹5/day, and the total never exceeds the book's price.</p>`,
+    constraints: `Dates within 1900–2100; price ≤ ₹10<sup>5</sup>; return paise as long`,
+    example: `<p>due 15 Oct, returned 24 Oct → 9 days late → 7×200 + 2×500 = ${H.c('g', '2400 paise')}.<br>due 28 Oct, returned 2 Nov → ${H.c('g', '5 days')} (crosses a month!) → 1000 paise.<br>due 1 Jan, returned 1 Apr, price ₹300 → raw ₹439 → ${H.c('y', 'capped at 30000')}.</p>`,
+    brute: { why: `<p>Naive code subtracts day-of-month numbers (2 Nov − 28 Oct = −26 → "no fee") and forgets the cap, so a book lost for a year costs more than buying it. Both are classic date/money bugs.</p>`, code: `class NaiveFee {
+    static long fee(LocalDate due, LocalDate returned) {
+        int late = returned.getDayOfMonth() - due.getDayOfMonth();     // WRONG across months
+        if (late <= 0) return 0;
+        return late <= 7 ? late * 200L : 7 * 200L + (late - 7) * 500L;  // and no cap
+    }
+}` },
+    mcq: { q: 'Which expression gives the number of days between two LocalDates correctly across months and years?', options: ['b.toEpochDay() - a.toEpochDay()', 'b.getDayOfMonth() - a.getDayOfMonth()', 'Period.between(a, b).getDays()', 'b.getDayOfYear() - a.getDayOfYear()'], answer: 0, explain: 'Epoch days are a continuous count. Period.getDays() is only the "days" part of a y/m/d period, and day-of-year breaks across years.' },
+    hints: [`<p>Hint 1: compute late days as a difference of epoch days and clamp at 0 with Math.max — one line handles every month and leap year.</p>`, `<p>Hint 2: split into two tiers: <code>min(d, 7)</code> days at 200 paise and <code>max(0, d − 7)</code> days at 500 paise.</p>`, `<p>Hint 3: finally <code>Math.min(fee, bookPrice)</code>. Keep everything in long paise; returned-early gives 0, not a negative fee.</p>`],
+    solution: {
+      approach: `<p>Epoch-day difference → two tiers → cap. Pure function, trivial to unit-test; in the full design it is one <code>FinePolicy</code> implementation.</p>`,
+      code: `class LateFee {
+    static long feePaise(LocalDate due, LocalDate returned, long bookPricePaise) {
+        long d = Math.max(0, returned.toEpochDay() - due.toEpochDay());
+        long fee = Math.min(d, 7) * 200 + Math.max(0, d - 7) * 500;
+        return Math.min(fee, bookPricePaise);
+    }
+    public static void main(String[] args) {
+        System.out.println(feePaise(LocalDate.of(2026, 10, 15), LocalDate.of(2026, 10, 24), 30000));  // 2400
+        System.out.println(feePaise(LocalDate.of(2026, 10, 28), LocalDate.of(2026, 11, 2), 30000));   // 1000
+        System.out.println(feePaise(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 4, 1), 30000));      // 30000
+        System.out.println(feePaise(LocalDate.of(2026, 1, 10), LocalDate.of(2026, 1, 5), 30000));     // 0
+    }
+}`,
+      complexity: `<p>O(1) time and space.</p>`,
+      followUps: ['Skip library holidays when counting late days.', 'Make the tiers configurable (list of (fromDay, rate)).', 'Faculty pay half — add a decorator.']
+    }
+  });
+
+  practice.push({
+    title: 'Splitwise: Net Balance of Every Friend',
+    level: 'Easy', tags: ['splitwise', 'hashmap', 'money'], companies: ['Splitwise', 'PhonePe', 'Swiggy'],
+    statement: `<p>Each expense is (payer, amountPaise, participants). It is split <b>equally</b> among participants; leftover paise go one each to the first participants in the list. Return each person's net balance: positive = should get money back, negative = owes. The balances must sum to exactly 0.</p>`,
+    constraints: `≤ 10<sup>5</sup> expenses, ≤ 10<sup>3</sup> people, amounts ≤ 10<sup>9</sup> paise`,
+    example: `<p>Asha pays 90000 for [Asha, Ben, Chen]; Ben pays 30000 for [Ben, Chen]; Chen pays 10000 for [Asha, Ben, Chen].<br>Shares: 30000 each; 15000 each; 3334, 3333, 3333.<br>Net: Asha ${H.c('g', '+56666')}, Ben ${H.c('r', '-18333')}, Chen ${H.c('r', '-38333')} → sum 0 ✔.</p>`,
+    brute: { why: `<p>Naive: for each person, scan every expense and recompute their share with <code>double</code> (amount / n). That is O(people × expenses) and the shares of ₹100 / 3 add up to ₹99.99, so balances drift away from zero over time.</p>`, code: `class NaiveNet {
+    record Exp(String payer, long amount, List<String> among) {}
+    static Map<String, Double> net(Set<String> people, List<Exp> exps) {
+        Map<String, Double> out = new HashMap<>();
+        for (String p : people) {                       // O(P * E)
+            double v = 0;
+            for (Exp e : exps) {
+                if (e.payer().equals(p)) v += e.amount();
+                if (e.among().contains(p)) v -= (double) e.amount() / e.among().size();   // rounding drift
+            }
+            out.put(p, v);
+        }
+        return out;
+    }
+}` },
+    mcq: { q: 'Asha pays ₹600 for Ben and Chen only (not herself). What is Asha\'s net from this expense?', options: ['+600', '+400', '+200', '0'], answer: 0, explain: 'Her share is 0 because she is not a participant: paid 600 − share 0 = +600.' },
+    hints: [`<p>Hint 1: net = total paid − total share. You can add to the payer and subtract from each participant in a single pass over the expenses.</p>`, `<p>Hint 2: share = amount / n, and the first <code>amount % n</code> participants pay 1 extra paisa, so shares add up to the amount exactly.</p>`, `<p>Hint 3: use <code>Map&lt;String, Long&gt;</code> with <code>merge(key, delta, Long::sum)</code>. Assert at the end that the values sum to 0 — a free bug detector.</p>`],
+    solution: {
+      approach: `<p>One pass, exact integer shares, merge into a map. Every expense touches 1 + n entries.</p>`,
+      code: `class NetBalances {
+    record Exp(String payer, long amount, List<String> among) {}
+
+    static Map<String, Long> net(List<Exp> exps) {
+        Map<String, Long> net = new TreeMap<>();
+        for (Exp e : exps) {
+            int n = e.among().size();
+            long base = e.amount() / n, extra = e.amount() % n;
+            net.merge(e.payer(), e.amount(), Long::sum);
+            for (int i = 0; i < n; i++) net.merge(e.among().get(i), -(base + (i < extra ? 1 : 0)), Long::sum);
+        }
+        return net;
+    }
+
+    public static void main(String[] args) {
+        List<Exp> exps = List.of(
+            new Exp("asha", 90000, List.of("asha", "ben", "chen")),
+            new Exp("ben", 30000, List.of("ben", "chen")),
+            new Exp("chen", 10000, List.of("asha", "ben", "chen")));
+        Map<String, Long> net = net(exps);
+        System.out.println(net);                                                   // {asha=56666, ben=-18333, chen=-38333}
+        System.out.println(net.values().stream().mapToLong(Long::longValue).sum()); // 0
+    }
+}`,
+      complexity: `<p>O(Σ participants) time, O(people) space.</p>`,
+      followUps: ['Support EXACT and PERCENT splits via a SplitStrategy.', 'Return the pairwise "who owes whom" too.', 'Feed the result into the debt simplifier.']
+    }
+  });
+
+  practice.push({
+    title: 'BookMyShow: Ticket Price with Pluggable Pricing Rules',
+    level: 'Easy', tags: ['bookmyshow', 'strategy', 'decorator'], companies: ['BookMyShow', 'Paytm Insider', 'Flipkart'],
+    statement: `<p>Price one ticket: base price by seat type (REGULAR ₹200, PREMIUM ₹350, RECLINER ₹600), +20% on Saturday/Sunday, then a flat ₹30 convenience fee. Product will keep adding rules (festival surge, student discount, cap). Design it so a new rule is a new class, then compute the price for a Saturday PREMIUM seat.</p>`,
+    constraints: `≤ 10 rules; money in paise`,
+    example: `<p>PREMIUM on Saturday: 35000 → ×1.2 = 42000 → +3000 fee = ${H.c('g', '45000 paise (₹450)')}. REGULAR on Tuesday: 20000 + 3000 = ${H.c('g', '23000')}.</p>`,
+    brute: { why: `<p>Naive: one method with nested if-else for seat type, weekend, festivals, coupons… Every new rule edits the same method, the order of rules is implicit, and nothing can be tested in isolation.</p>`, code: `class IfElsePricing {
+    static long price(String type, DayOfWeek day, boolean festival, boolean student) {
+        long p;
+        if (type.equals("REGULAR")) p = 20000; else if (type.equals("PREMIUM")) p = 35000; else p = 60000;
+        if (day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY) p = p * 120 / 100;
+        if (festival) p = p * 125 / 100;                 // added in March
+        if (student) p = p - 5000;                      // added in June... and the list keeps growing
+        return p + 3000;
+    }
+}` },
+    mcq: { q: 'Which pattern lets you stack "weekend surge" on top of "base price" and then "convenience fee" on top of that, in any combination?', options: ['Decorator', 'Singleton', 'Factory Method', 'Iterator'], answer: 0, explain: 'Each decorator wraps another Pricing and adjusts its result, so rules compose like layers.' },
+    hints: [`<p>Hint 1: define <code>interface Pricing { long price(String seatType, DayOfWeek day); }</code> — the base table is one implementation.</p>`, `<p>Hint 2: each extra rule is a class that <b>wraps</b> another Pricing (Decorator): call the inner price, then adjust it.</p>`, `<p>Hint 3: compose at startup: <code>new ConvenienceFee(new WeekendSurge(new BasePrice(), 20), 3000)</code>. The order of wrapping is the order rules apply — make it explicit.</p>`],
+    solution: {
+      approach: `<p>Strategy for the base price, Decorators for each adjustment. Adding a festival surge = one new decorator, wired in configuration.</p>`,
+      code: `class TicketPricing {
+    interface Pricing { long price(String seatType, DayOfWeek day); }
+
+    static final class BasePrice implements Pricing {
+        private final Map<String, Long> table = Map.of("REGULAR", 20000L, "PREMIUM", 35000L, "RECLINER", 60000L);
+        public long price(String seatType, DayOfWeek day) {
+            Long p = table.get(seatType);
+            if (p == null) throw new IllegalArgumentException("unknown seat type " + seatType);
+            return p;
+        }
+    }
+    static final class WeekendSurge implements Pricing {
+        private final Pricing inner; private final int percent;
+        WeekendSurge(Pricing inner, int percent) { this.inner = inner; this.percent = percent; }
+        public long price(String t, DayOfWeek d) {
+            long p = inner.price(t, d);
+            boolean weekend = d == DayOfWeek.SATURDAY || d == DayOfWeek.SUNDAY;
+            return weekend ? p * (100 + percent) / 100 : p;
+        }
+    }
+    static final class ConvenienceFee implements Pricing {
+        private final Pricing inner; private final long fee;
+        ConvenienceFee(Pricing inner, long fee) { this.inner = inner; this.fee = fee; }
+        public long price(String t, DayOfWeek d) { return inner.price(t, d) + fee; }
+    }
+
+    public static void main(String[] args) {
+        Pricing pricing = new ConvenienceFee(new WeekendSurge(new BasePrice(), 20), 3000);
+        System.out.println(pricing.price("PREMIUM", DayOfWeek.SATURDAY));   // 45000
+        System.out.println(pricing.price("REGULAR", DayOfWeek.TUESDAY));    // 23000
+    }
+}`,
+      complexity: `<p>O(R) per price for R stacked rules; O(1) memory per rule.</p>`,
+      followUps: ['Add a student discount that never goes below ₹100.', 'Show the user a price breakdown (each decorator adds a line item).', 'Load the decorator chain from configuration per city.']
+    }
+  });
+
+  practice.push({
+    title: 'Library Catalog Search by Title or Author Words',
+    level: 'Easy', tags: ['library', 'inverted index', 'hashmap'], companies: ['Amazon', 'Zoho', 'Goodreads'],
+    statement: `<p>Build a <code>Catalog</code> with <code>add(isbn, title, author)</code> and <code>search(query)</code> returning ISBNs (sorted) of books where <b>every</b> word of the query matches a whole word in the title or author, case-insensitive.</p>`,
+    constraints: `≤ 10<sup>5</sup> books, ≤ 20 words per title, ≤ 10<sup>4</sup> queries`,
+    example: `<p>Books: (1) "Clean Code" — Robert Martin; (2) "Designing Data Intensive Applications" — Martin Kleppmann; (3) "The Art of Computer Programming" — Donald Knuth.<br>search("martin") → ${H.c('g', '[1, 2]')}; search("clean martin") → ${H.c('g', '[1]')}; search("art") → ${H.c('g', '[3]')} (not "Martin"!).</p>`,
+    brute: { why: `<p>Naive: for every query scan all books and check <code>title.contains(word)</code>. O(books × title length) per query, and substring matching gives wrong hits: "art" matches "M<b>art</b>in".</p>`, code: `class ScanSearch {
+    record B(String isbn, String title, String author) {}
+    static List<String> search(List<B> books, String q) {
+        List<String> out = new ArrayList<>();
+        for (B b : books) {
+            String text = (b.title() + " " + b.author()).toLowerCase();
+            boolean all = true;
+            for (String w : q.toLowerCase().split(" ")) if (!text.contains(w)) all = false;   // substring bug
+            if (all) out.add(b.isbn());
+        }
+        return out;
+    }
+}` },
+    mcq: { q: 'Query "clean martin" should return books containing BOTH words. With an inverted index word → set of ISBNs, how do you combine the two sets?', options: ['Intersection', 'Union', 'Difference', 'Concatenate and sort'], answer: 0, explain: 'AND semantics = set intersection. OR semantics would be union.' },
+    hints: [`<p>Hint 1: precompute at insert time: split title and author into lower-case words, and map each word to the set of ISBNs containing it.</p>`, `<p>Hint 2: for a query, look up each word's set and intersect them, starting from a copy of the first set (never mutate the index's own sets).</p>`, `<p>Hint 3: start with the smallest set to make intersection fastest; empty query → empty result; unknown word → empty result immediately.</p>`],
+    solution: {
+      approach: `<p>Inverted index (the core idea behind Lucene/Elasticsearch): O(words) indexing, and each query costs about the size of the smallest posting list.</p>`,
+      code: `class CatalogIndex {
+    private final Map<String, Set<String>> index = new HashMap<>();
+
+    void add(String isbn, String title, String author) {
+        for (String w : (title + " " + author).toLowerCase().split(" "))
+            if (!w.isBlank()) index.computeIfAbsent(w, k -> new TreeSet<>()).add(isbn);
+    }
+
+    List<String> search(String query) {
+        List<Set<String>> lists = new ArrayList<>();
+        for (String w : query.toLowerCase().split(" ")) {
+            if (w.isBlank()) continue;
+            Set<String> hits = index.get(w);
+            if (hits == null) return List.of();                 // a word nobody has -> no results
+            lists.add(hits);
+        }
+        if (lists.isEmpty()) return List.of();
+        lists.sort(Comparator.comparingInt(Set::size));         // smallest first
+        Set<String> result = new TreeSet<>(lists.get(0));
+        for (int i = 1; i < lists.size(); i++) result.retainAll(lists.get(i));
+        return new ArrayList<>(result);
+    }
+
+    public static void main(String[] args) {
+        CatalogIndex c = new CatalogIndex();
+        c.add("1", "Clean Code", "Robert Martin");
+        c.add("2", "Designing Data Intensive Applications", "Martin Kleppmann");
+        c.add("3", "The Art of Computer Programming", "Donald Knuth");
+        System.out.println(c.search("martin") + " " + c.search("clean martin") + " " + c.search("art"));
+    }
+}`,
+      complexity: `<p>Indexing O(total words). Query O(k + m log m) where m is the smallest posting list size.</p>`,
+      followUps: ['Prefix search ("mar" → Martin) with a TreeMap subMap or a trie.', 'Rank results (title match beats author match).', 'Ignore stop words like "the", "of".']
+    }
+  });
+
+  /* ======================= PRACTICE: MEDIUM ======================= */
+  practice.push({
+    title: 'Splitwise: Pairwise Ledger with Automatic Netting',
+    level: 'Medium', tags: ['splitwise', 'hashmap', 'design'], companies: ['Splitwise', 'Google Pay', 'CRED'],
+    statement: `<p>Implement <code>record(debtor, creditor, paise)</code>, <code>owes(a, b)</code> (positive if a owes b, negative if b owes a, 0 if settled) and <code>debtsOf(user)</code> (all non-zero pairwise balances involving the user). Debts in opposite directions must cancel automatically. Store each pair <b>once</b>.</p>`,
+    constraints: `≤ 10<sup>6</sup> records, ≤ 10<sup>5</sup> users; owes() must be O(1)`,
+    example: `<p>record(Ben, Asha, 300) → owes(Ben, Asha) = 300. record(Asha, Ben, 100) → owes(Ben, Asha) = ${H.c('g', '200')}, owes(Asha, Ben) = ${H.c('g', '-200')}. record(Asha, Ben, 200) → ${H.c('g', '0')} and the pair disappears from debtsOf.</p>`,
+    brute: { why: `<p>Naive: keep a list of every IOU and, on each query, scan the whole list summing both directions — O(records) per query, and the list grows forever. Another naive variant stores both <code>owes[a][b]</code> and <code>owes[b][a]</code> independently and forgets to update one, so they disagree.</p>`, code: `class ScanLedger {
+    record IOU(String from, String to, long amt) {}
+    private final List<IOU> all = new ArrayList<>();
+    void record(String d, String c, long amt) { all.add(new IOU(d, c, amt)); }
+    long owes(String a, String b) {                     // O(records) on EVERY query
+        long s = 0;
+        for (IOU i : all) {
+            if (i.from().equals(a) && i.to().equals(b)) s += i.amt();
+            if (i.from().equals(b) && i.to().equals(a)) s -= i.amt();
+        }
+        return s;
+    }
+}` },
+    mcq: { q: 'You store each pair once under the key (min(a,b), max(a,b)) with value v meaning "min owes max v". How do you answer owes(max, min)?', options: ['Return -v', 'Return v', 'Return |v|', 'Look up a second key'], answer: 0, explain: 'Canonical ordering + sign: the reverse direction is just the negation.' },
+    hints: [`<p>Hint 1: pick a canonical order for a pair (alphabetical). Store one signed number: positive means the smaller name owes the larger one.</p>`, `<p>Hint 2: record(d, c, x): if d &lt; c add +x to key (d, c), else add −x to key (c, d). owes(a, b) reads the key and flips the sign if a &gt; b.</p>`, `<p>Hint 3: remove the key when it becomes 0 so debtsOf stays small. Keep a per-user adjacency set (user → counterparties) to list a user's debts without scanning all pairs.</p>`],
+    solution: {
+      approach: `<p>Canonical pair key with a signed amount gives automatic netting and O(1) queries; an adjacency map makes per-user listing proportional to that user's counterparties.</p>`,
+      code: `class PairLedger {
+    private final Map<String, Long> bal = new HashMap<>();                 // "a|b" with a < b
+    private final Map<String, Set<String>> peers = new HashMap<>();
+
+    private static String key(String a, String b) { return a + "|" + b; }
+
+    void record(String debtor, String creditor, long amt) {
+        boolean ordered = debtor.compareTo(creditor) < 0;
+        String lo = ordered ? debtor : creditor, hi = ordered ? creditor : debtor;
+        long v = bal.merge(key(lo, hi), ordered ? amt : -amt, Long::sum);
+        if (v == 0) {
+            bal.remove(key(lo, hi));
+            peers.getOrDefault(lo, new HashSet<>()).remove(hi);
+            peers.getOrDefault(hi, new HashSet<>()).remove(lo);
+        } else {
+            peers.computeIfAbsent(lo, k -> new TreeSet<>()).add(hi);
+            peers.computeIfAbsent(hi, k -> new TreeSet<>()).add(lo);
+        }
+    }
+
+    long owes(String a, String b) {
+        if (a.compareTo(b) < 0) return bal.getOrDefault(key(a, b), 0L);
+        return -bal.getOrDefault(key(b, a), 0L);
+    }
+
+    List<String> debtsOf(String user) {
+        List<String> out = new ArrayList<>();
+        for (String p : peers.getOrDefault(user, Set.of())) {
+            long v = owes(user, p);
+            out.add(v > 0 ? user + " owes " + p + " " + v : p + " owes " + user + " " + (-v));
+        }
+        return out;
+    }
+
+    public static void main(String[] args) {
+        PairLedger l = new PairLedger();
+        l.record("ben", "asha", 300);
+        l.record("asha", "ben", 100);
+        System.out.println(l.owes("ben", "asha") + " " + l.owes("asha", "ben") + " " + l.debtsOf("asha"));
+        l.record("asha", "ben", 200);
+        System.out.println(l.owes("ben", "asha") + " " + l.debtsOf("asha"));   // 0 []
+    }
+}`,
+      complexity: `<p>record / owes O(1) expected (plus O(log d) for the TreeSet); debtsOf O(d) for d counterparties. Space O(non-zero pairs).</p>`,
+      followUps: ['Make it thread-safe per pair (ConcurrentHashMap.merge is atomic per key).', 'Add per-group ledgers.', 'Persist as rows (user_lo, user_hi, amount).']
+    }
+  });
+
+  practice.push({
+    title: 'BookMyShow Admin: Schedule Shows Without Overlaps',
+    level: 'Medium', tags: ['bookmyshow', 'treemap', 'intervals'], companies: ['BookMyShow', 'PVR INOX', 'Amazon'],
+    statement: `<p>For each screen, <code>addShow(screenId, startMinute, durationMinutes)</code> must accept the show only if it does not overlap any existing show on that screen, including a <b>15-minute cleaning buffer</b> after every show. Return true/false. Different screens are independent.</p>`,
+    constraints: `≤ 10<sup>5</sup> shows per screen; each call must be O(log n)`,
+    example: `<p>Screen 1 has 600–770 (+15 buffer → busy until 785). addShow(1, 780, 120) → ${H.c('r', 'false')} (780 &lt; 785). addShow(1, 785, 120) → ${H.c('g', 'true')}. addShow(1, 500, 90) → busy 500–605, overlaps 600 → ${H.c('r', 'false')}.</p>`,
+    brute: { why: `<p>Naive: scan every show on the screen and test overlap — O(n) per insert, and many naive versions forget the cleaning buffer or use <code>&lt;=</code> vs <code>&lt;</code> inconsistently, allowing a show to start before the previous one is cleaned.</p>`, code: `class ScanScheduler {
+    private final Map<Integer, List<int[]>> shows = new HashMap<>();     // [start, endWithBuffer)
+    boolean addShow(int screen, int start, int dur) {
+        int end = start + dur + 15;
+        for (int[] s : shows.computeIfAbsent(screen, k -> new ArrayList<>()))   // O(n)
+            if (start < s[1] && s[0] < end) return false;
+        shows.get(screen).add(new int[]{start, end});
+        return true;
+    }
+}` },
+    mcq: { q: 'Shows on a screen never overlap each other. To check a new interval [s, e), which existing shows do you need to look at?', options: ['Only the show starting just before s and the show starting just at/after s', 'All shows', 'Only the last show of the day', 'Only shows of the same movie'], answer: 0, explain: 'Non-overlapping intervals sorted by start: only the immediate predecessor and successor can collide.' },
+    hints: [`<p>Hint 1: since a screen's shows never overlap, keep them sorted by start time in a <code>TreeMap&lt;start, endWithBuffer&gt;</code>.</p>`, `<p>Hint 2: the new busy interval is [s, s + dur + 15). Check <code>floorEntry(s)</code> (its end must be ≤ s) and <code>ceilingEntry(s)</code> (its start must be ≥ new end).</p>`, `<p>Hint 3: half-open intervals make "ends exactly when the next starts" legal. One TreeMap per screen in a <code>Map&lt;screenId, TreeMap&gt;</code>; lock per screen if admins edit concurrently.</p>`],
+    solution: {
+      approach: `<p>Sorted non-overlapping intervals in a TreeMap: only two neighbours can conflict, so each insert is O(log n).</p>`,
+      code: `class ShowScheduler {
+    static final int BUFFER = 15;
+    private final Map<Integer, TreeMap<Integer, Integer>> screens = new HashMap<>();   // start -> end (with buffer)
+
+    boolean addShow(int screen, int start, int duration) {
+        TreeMap<Integer, Integer> t = screens.computeIfAbsent(screen, k -> new TreeMap<>());
+        int end = start + duration + BUFFER;
+        Map.Entry<Integer, Integer> before = t.floorEntry(start);
+        if (before != null && before.getValue() > start) return false;    // previous one still running/cleaning
+        Map.Entry<Integer, Integer> after = t.ceilingEntry(start);
+        if (after != null && after.getKey() < end) return false;          // we would run into the next one
+        t.put(start, end);
+        return true;
+    }
+
+    public static void main(String[] args) {
+        ShowScheduler s = new ShowScheduler();
+        System.out.println(s.addShow(1, 600, 170));   // true, busy until 785
+        System.out.println(s.addShow(1, 780, 120));   // false
+        System.out.println(s.addShow(1, 785, 120));   // true
+        System.out.println(s.addShow(1, 500, 90));    // false (busy until 605)
+        System.out.println(s.addShow(2, 780, 120));   // true, other screen
+    }
+}`,
+      complexity: `<p>O(log n) per insert, O(n) space per screen.</p>`,
+      followUps: ['Support removing / rescheduling a show (and what happens to existing bookings).', 'Find the earliest free slot of length L after time t.', 'Different buffer per screen size.']
+    }
+  });
+
+  practice.push({
+    title: 'BookMyShow: Cancellation Refund Policy by Time Before Show',
+    level: 'Medium', tags: ['bookmyshow', 'strategy', 'treemap', 'money'], companies: ['BookMyShow', 'MakeMyTrip', 'redBus'],
+    statement: `<p>Compute the refund when a user cancels. Tiers by time before the show: ≥ 24 h → 100% of ticket price; 4 h to 24 h → 50%; under 4 h → 0%. A ₹20 cancellation fee is deducted whenever a refund is given (never below 0). The convenience fee is never refunded. Tiers must be configurable per theatre chain.</p>`,
+    constraints: `≤ 10 tiers; money in paise; times as Instants`,
+    example: `<p>Ticket 40000 + fee 3000. Cancel 30 h before → 40000 − 2000 = ${H.c('g', '38000')}. 10 h before → 20000 − 2000 = ${H.c('g', '18000')}. 2 h before → ${H.c('r', '0')}.</p>`,
+    brute: { why: `<p>Naive: hard-coded if-else on hours inside BookingService, with doubles for percentages. Changing tiers for one chain means editing and redeploying shared code, and boundary bugs (is exactly 24 h "≥ 24"?) creep in.</p>`, code: `class HardCodedRefund {
+    static double refund(double ticket, double hoursBefore) {
+        if (hoursBefore > 24) return ticket - 20;          // exactly 24h falls through!
+        else if (hoursBefore > 4) return ticket * 0.5 - 20;
+        return 0;
+    }
+}` },
+    mcq: { q: 'Tiers are stored in a TreeMap from "minutes before show" to percent: {0:0, 240:50, 1440:100}. A user cancels 600 minutes before. Which call finds the right tier?', options: ['floorEntry(600)', 'ceilingEntry(600)', 'firstEntry()', 'get(600)'], answer: 0, explain: 'floorEntry returns the largest threshold ≤ 600, i.e. 240 → 50%.' },
+    hints: [`<p>Hint 1: make it a <code>RefundPolicy</code> interface so chains can plug different rules; the common case is a tiered table.</p>`, `<p>Hint 2: store tiers as <code>TreeMap&lt;Long minutesBefore, Integer percent&gt;</code> and use <code>floorEntry(minutesBefore)</code>. Compute minutes with <code>Duration.between(now, showStart).toMinutes()</code>.</p>`, `<p>Hint 3: refund = ticket × percent / 100, minus the fee only if percent &gt; 0, clamped at 0. Cancelling after the show started → 0. Use long paise throughout.</p>`],
+    solution: {
+      approach: `<p>Strategy interface + TreeMap-backed tiered implementation. Boundaries are explicit ("≥ threshold") and configurable.</p>`,
+      code: `class RefundCalc {
+    interface RefundPolicy { long refund(long ticketPaise, Instant now, Instant showStart); }
+
+    static final class TieredRefund implements RefundPolicy {
+        private final TreeMap<Long, Integer> tiers = new TreeMap<>();   // minutesBefore threshold -> percent
+        private final long feePaise;
+        TieredRefund(Map<Long, Integer> tiers, long feePaise) { this.tiers.putAll(tiers); this.feePaise = feePaise; }
+        public long refund(long ticket, Instant now, Instant showStart) {
+            long minutes = Duration.between(now, showStart).toMinutes();
+            if (minutes < 0) return 0;                                   // show already started
+            Map.Entry<Long, Integer> tier = tiers.floorEntry(minutes);
+            int pct = tier == null ? 0 : tier.getValue();
+            if (pct == 0) return 0;
+            return Math.max(0, ticket * pct / 100 - feePaise);
+        }
+    }
+
+    public static void main(String[] args) {
+        RefundPolicy pvr = new TieredRefund(Map.of(0L, 0, 240L, 50, 1440L, 100), 2000);
+        Instant show = Instant.parse("2026-10-17T12:30:00Z");
+        System.out.println(pvr.refund(40000, show.minus(Duration.ofHours(30)), show));   // 38000
+        System.out.println(pvr.refund(40000, show.minus(Duration.ofHours(24)), show));   // 38000 (boundary)
+        System.out.println(pvr.refund(40000, show.minus(Duration.ofHours(10)), show));   // 18000
+        System.out.println(pvr.refund(40000, show.minus(Duration.ofHours(2)), show));    // 0
+    }
+}`,
+      complexity: `<p>O(log T) per refund for T tiers; O(T) memory.</p>`,
+      followUps: ['Release the seats back to inventory atomically with the refund.', 'Allow free cancellation within 10 minutes of booking.', 'Store the policy version on each booking so later policy changes do not affect old bookings.']
+    }
+  });
+
+  practice.push({
+    title: 'Library: Renewal Policy with Clear Reasons',
+    level: 'Medium', tags: ['library', 'rules', 'dates'], companies: ['Oracle', 'Zoho', 'Wipro'],
+    statement: `<p>Implement <code>renew(loan, today, waitersForTitle)</code> returning a result with either the new due date or a reason. Rules: not overdue; fewer than 2 renewals so far; nobody waiting for the title; member not blocked. A successful renewal extends from the <b>current due date</b> (not from today) by the loan period, so renewing early does not lose days but renewing repeatedly cannot exceed 3 periods total.</p>`,
+    constraints: `dates as LocalDate; loan period 14 days for students, 30 for faculty`,
+    example: `<p>Student loan due 15 Oct, renewals 0, no waiters. renew on 12 Oct → ${H.c('g', 'OK, new due 29 Oct')}. renew again 28 Oct → ${H.c('g', 'OK, due 12 Nov')}. Third time → ${H.c('r', '"renewal limit (2) reached"')}. If renewed on 16 Oct (overdue) → ${H.c('r', '"overdue — return and pay fine"')}.</p>`,
+    brute: { why: `<p>Naive: <code>loan.due = today.plusDays(14)</code> with no checks. A member can renew forever, starve everybody on the waitlist, and renewing after the due date silently wipes the fine they owe.</p>`, code: `class NaiveRenew {
+    static LocalDate renew(LocalDate today) { return today.plusDays(14); }   // forever, even if overdue or reserved
+}` },
+    mcq: { q: 'Why extend from the current due date instead of from today?', options: ['So renewing early neither loses nor gains extra days, and the total time is bounded', 'Because LocalDate cannot add days to today', 'To charge more fines', 'It makes no difference'], answer: 0, explain: 'From-due extension gives exactly one more period per renewal; from-today lets members chain renewals into arbitrarily long loans and penalises early renewers.' },
+    hints: [`<p>Hint 1: return a small result type (record) with <code>ok</code>, <code>newDue</code> and <code>reason</code> — UIs need the reason, not just false.</p>`, `<p>Hint 2: check in order: blocked → overdue (<code>today.isAfter(due)</code>) → renewals ≥ 2 → waiters &gt; 0. Mutate only after all pass.</p>`, `<p>Hint 3: new due = due.plusDays(period). Renewing exactly on the due date is allowed (not after). Increment the renewal counter in the same step.</p>`],
+    solution: {
+      approach: `<p>Ordered guard clauses returning reasons, then a single mutation. Each guard could also be a LendingRule-style object if the rule set grows.</p>`,
+      code: `class RenewalPolicy {
+    static final int MAX_RENEWALS = 2;
+    static final class Loan { LocalDate due; int renewals; final int period; final boolean memberBlocked;
+        Loan(LocalDate due, int period, boolean blocked) { this.due = due; this.period = period; this.memberBlocked = blocked; } }
+    record Result(boolean ok, LocalDate newDue, String reason) {}
+
+    static Result renew(Loan loan, LocalDate today, int waitersForTitle) {
+        if (loan.memberBlocked) return new Result(false, null, "member is blocked");
+        if (today.isAfter(loan.due)) return new Result(false, null, "overdue - return and pay fine");
+        if (loan.renewals >= MAX_RENEWALS) return new Result(false, null, "renewal limit (" + MAX_RENEWALS + ") reached");
+        if (waitersForTitle > 0) return new Result(false, null, waitersForTitle + " member(s) waiting for this title");
+        loan.due = loan.due.plusDays(loan.period);
+        loan.renewals++;
+        return new Result(true, loan.due, "renewed");
+    }
+
+    public static void main(String[] args) {
+        Loan l = new Loan(LocalDate.of(2026, 10, 15), 14, false);
+        System.out.println(renew(l, LocalDate.of(2026, 10, 12), 0));   // ok, 2026-10-29
+        System.out.println(renew(l, LocalDate.of(2026, 10, 28), 0));   // ok, 2026-11-12
+        System.out.println(renew(l, LocalDate.of(2026, 11, 1), 0));    // limit reached
+        Loan late = new Loan(LocalDate.of(2026, 10, 15), 14, false);
+        System.out.println(renew(late, LocalDate.of(2026, 10, 16), 0)); // overdue
+    }
+}`,
+      complexity: `<p>O(1) per call.</p>`,
+      followUps: ['Let faculty renew 3 times (policy per member type).', 'Allow renewal while overdue if the fine is paid at the same time.', 'Return all failing reasons at once.']
+    }
+  });
+
+  practice.push({
+    title: 'Splitwise: Edit and Delete Expenses Without Corrupting Balances',
+    level: 'Medium', tags: ['splitwise', 'event sourcing', 'design'], companies: ['Splitwise', 'Razorpay', 'Atlassian'],
+    statement: `<p>Implement <code>ExpenseBook</code> with <code>add(payer, amount, participants)</code> returning an id, <code>edit(id, payer, amount, participants)</code>, <code>delete(id)</code> and <code>net(user)</code>. Equal splits, exact paise. After any sequence of operations, balances must equal what you would get by replaying only the surviving (latest) versions of expenses.</p>`,
+    constraints: `≤ 10<sup>5</sup> operations; net() O(1); edit/delete O(participants)`,
+    example: `<p>add(Asha, 900, [Asha,Ben,Chen]) → id 1. net: Asha +600, Ben −300, Chen −300. edit(1, Asha, 600, [Asha,Ben]) → Asha ${H.c('g', '+300')}, Ben ${H.c('g', '−300')}, Chen ${H.c('g', '0')}. delete(1) → everyone 0.</p>`,
+    brute: { why: `<p>Naive: on every edit/delete, wipe all balances and replay the entire history — O(expenses × participants) per change. Even worse naive: edit the stored expense in place without touching balances, so the books drift.</p>`, code: `class ReplayAll {
+    record Exp(String payer, long amount, List<String> among) {}
+    final Map<Integer, Exp> live = new HashMap<>();
+    Map<String, Long> net() {                                       // O(E * P) on every read
+        Map<String, Long> n = new HashMap<>();
+        for (Exp e : live.values()) {
+            n.merge(e.payer(), e.amount(), Long::sum);
+            for (String p : e.among()) n.merge(p, -e.amount() / e.among().size(), Long::sum);   // also drops paise
+        }
+        return n;
+    }
+}` },
+    mcq: { q: 'What is the cheapest correct way to apply an edit to an expense?', options: ['Apply the old version with sign −1, then the new version with sign +1', 'Recompute everything from scratch', 'Only apply the new version', 'Change the stored expense and ignore balances'], answer: 0, explain: 'Reversing the old effect and adding the new one touches only the participants of the two versions.' },
+    hints: [`<p>Hint 1: write one function <code>apply(expense, sign)</code> that adds sign × amount to the payer and subtracts sign × share from each participant.</p>`, `<p>Hint 2: edit = apply(old, −1), store new, apply(new, +1). delete = apply(old, −1), remove. Shares must be computed deterministically so reversing cancels exactly.</p>`, `<p>Hint 3: keep the history of versions (append-only) for audit; the "live" map points to the latest version. Reject edits of deleted ids.</p>`],
+    solution: {
+      approach: `<p>Event-sourcing-lite: expenses are immutable versions; balances are a derived view updated by applying and reversing versions. Deterministic exact shares guarantee reversal is perfect.</p>`,
+      code: `class ExpenseBook {
+    record Exp(String payer, long amount, List<String> among) {}
+    private final Map<Integer, Exp> live = new HashMap<>();
+    private final List<String> audit = new ArrayList<>();
+    private final Map<String, Long> net = new HashMap<>();
+    private int nextId = 1;
+
+    private void apply(Exp e, int sign) {
+        int n = e.among().size();
+        long base = e.amount() / n, extra = e.amount() % n;
+        net.merge(e.payer(), sign * e.amount(), Long::sum);
+        for (int i = 0; i < n; i++) net.merge(e.among().get(i), -sign * (base + (i < extra ? 1 : 0)), Long::sum);
+    }
+
+    int add(String payer, long amount, List<String> among) {
+        Exp e = new Exp(payer, amount, List.copyOf(among));
+        int id = nextId++;
+        live.put(id, e);
+        apply(e, +1);
+        audit.add("add " + id + " " + e);
+        return id;
+    }
+
+    void edit(int id, String payer, long amount, List<String> among) {
+        Exp old = live.get(id);
+        if (old == null) throw new IllegalArgumentException("no live expense " + id);
+        Exp now = new Exp(payer, amount, List.copyOf(among));
+        apply(old, -1);
+        apply(now, +1);
+        live.put(id, now);
+        audit.add("edit " + id + " " + old + " -> " + now);
+    }
+
+    void delete(int id) {
+        Exp old = live.remove(id);
+        if (old == null) throw new IllegalArgumentException("no live expense " + id);
+        apply(old, -1);
+        audit.add("delete " + id);
+    }
+
+    long net(String user) { return net.getOrDefault(user, 0L); }
+
+    public static void main(String[] args) {
+        ExpenseBook b = new ExpenseBook();
+        int id = b.add("asha", 90000, List.of("asha", "ben", "chen"));
+        b.edit(id, "asha", 60000, List.of("asha", "ben"));
+        System.out.println(b.net("asha") + " " + b.net("ben") + " " + b.net("chen"));   // 30000 -30000 0
+        b.delete(id);
+        System.out.println(b.net("asha") + " " + b.net("ben") + " " + b.net("chen"));   // 0 0 0
+    }
+}`,
+      complexity: `<p>add/edit/delete O(participants); net O(1); memory O(expenses + users + audit).</p>`,
+      followUps: ['Concurrent edits of the same expense: use a version number (optimistic locking).', 'Rebuild balances from the audit log after a crash.', 'Show "Ben edited Dinner: ₹900 → ₹600" in the activity feed.']
+    }
+  });
   registerModule({ id: 'lld08', title: 'Case Studies: BookMyShow, Splitwise, Library Management', intro: '<p>tmp</p>', goals: [], prereqs: 'tmp', hours: 14, topics: topics, practice: practice, quiz: quiz, interview: interview });
 })();

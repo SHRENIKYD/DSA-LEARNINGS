@@ -467,4 +467,500 @@ Content-Type: application/json
     }]
   });
 
+  /* ================================================================
+     TOPIC 3 — IP, ports, DNS at a glance
+     ================================================================ */
+  topics.push({
+    title: 'IP Addresses, Ports & DNS at a Glance',
+    analogy: `<p>An <b>IP address</b> is the <b>street address of a building</b> — the post office needs it to deliver anything. A <b>port</b> is the <b>flat (apartment) number</b> inside that building: the same building has a restaurant at door 443 and a storeroom at door 5432. <b>DNS</b> is your phone\'s <b>contacts app</b>: you tap "Mom" and the phone looks up the number for you. Nobody memorises 142.250.183.14; you type <code>google.com</code> and DNS finds the number.</p>`,
+    explain: `<p>🟢 <b>IP address</b> = a number that identifies a machine (or network interface) on a network so packets can reach it.</p>
+<ul>
+<li><b>IPv4</b>: 32 bits written as four numbers 0–255, e.g. <code>203.0.113.10</code>. Only about 4.3 billion exist — not enough for every device.</li>
+<li><b>IPv6</b>: 128 bits written in hex, e.g. <code>2001:db8::10</code>. Practically unlimited; widely deployed alongside IPv4.</li>
+<li><b>Public vs private</b>: private ranges (<code>10.0.0.0/8</code>, <code>172.16.0.0/12</code>, <code>192.168.0.0/16</code>) are used inside homes, offices and cloud networks (VPCs). They are not reachable from the internet directly; a router doing <b>NAT</b> (Network Address Translation) shares one public IP among many private ones.</li>
+</ul>
+<p>🟢 <b>Port</b> = a number 0–65535 that picks <i>which program</i> on that machine gets the data. <code>IP:port</code> together identify one server program.</p>
+${H.table(['Port', 'Usually used by'], [['80', 'HTTP (plain web)'], ['443', 'HTTPS (encrypted web) — also HTTP/3 over UDP'], ['22', 'SSH (remote login)'], ['53', 'DNS'], ['5432 / 3306', 'PostgreSQL / MySQL'], ['6379', 'Redis'], ['9092', 'Kafka']])}
+<p>🟢 <b>DNS (Domain Name System)</b> = the internet\'s phone book. It turns names like <code>www.shop.example.com</code> into IP addresses. It is a <b>giant distributed, cached database</b>:</p>
+<ol>
+<li><b>Browser cache</b> → <b>operating system cache</b> (and the <code>hosts</code> file). Found? Done in ~0 ms.</li>
+<li>Otherwise ask a <b>recursive resolver</b> (your ISP\'s, or public ones like 1.1.1.1 / 8.8.8.8). It does the legwork for you and caches answers.</li>
+<li>On a cache miss the resolver asks a <b>root server</b> ("who handles <code>.com</code>?") → a <b>TLD server</b> ("who handles <code>example.com</code>?") → the domain\'s <b>authoritative name server</b> ("what is the IP of <code>www.shop.example.com</code>?").</li>
+<li>The answer comes back with a <b>TTL</b> (time-to-live, e.g. 300 seconds): everyone may cache it that long.</li>
+</ol>
+<p>Common <b>record types</b>:</p>
+${H.table(['Record', 'Maps', 'Example'], [['A', 'name → IPv4', 'shop.example.com → 203.0.113.10'], ['AAAA', 'name → IPv6', 'shop.example.com → 2001:db8::10'], ['CNAME', 'name → another name (alias)', 'www.shop.example.com → shop.example.com'], ['MX', 'domain → mail server', 'example.com → mail.example.com'], ['NS', 'domain → its name servers', 'example.com → ns1.dnsprovider.example'], ['TXT', 'name → free text', 'domain ownership proofs, email security (SPF)']])}
+<p><b>Why system designers care:</b> DNS is step one of almost every request; a cold lookup can add tens of milliseconds; TTL controls how fast you can move traffic to new servers; and DNS can do coarse load balancing (several IPs per name, or different answers per country — "GeoDNS").</p>`,
+    clues: [
+      '"How does the browser find the server?" → DNS resolution chain: browser cache → OS → resolver → root → TLD → authoritative.',
+      '"We changed servers but some users still hit the old one" → DNS caching and <b>TTL</b>.',
+      '"Route users to the nearest data center" → GeoDNS / latency-based DNS (or anycast).',
+      '"Many sites on one IP" → the server uses the HTTP <code>Host</code> header / TLS SNI to pick the site.',
+      '"Private subnet", "VPC", "not exposed to the internet" → private IP ranges + NAT; only the load balancer gets a public address.',
+      '"Run Postgres and the API on the same box" → same IP, different ports.'
+    ],
+    code: [
+      { lang: 'bash', title: 'Looking up DNS yourself with dig (output shown as comments)', code: `# Ask for the A record of a name
+dig +noall +answer www.shop.example.com A
+# www.shop.example.com.  300  IN  CNAME  shop.example.com.
+# shop.example.com.      300  IN  A      203.0.113.10
+#   name                 TTL  class type  value
+
+# Watch the full chain: root -> TLD -> authoritative
+dig +trace www.shop.example.com
+
+# See which program is listening on which port on a Linux server
+ss -ltnp   # l=listening t=tcp n=numeric p=process` },
+      { lang: 'python', run: true, title: 'Runnable: classify IPv4 addresses (Python ipaddress module)', code: `import ipaddress
+
+for text in ["203.0.113.10", "10.1.2.3", "192.168.1.10", "172.20.0.5", "127.0.0.1", "8.8.8.8"]:
+    ip = ipaddress.ip_address(text)
+    kind = ("loopback (this machine)" if ip.is_loopback
+            else "private (inside a network, needs NAT)" if ip.is_private
+            else "public (reachable on the internet)")
+    print(f"{text:<15} 32-bit int = {int(ip):>10}  -> {kind}")
+
+print()
+print("IPv6 example:", ipaddress.ip_address("2001:db8::10").exploded)` }
+    ],
+    codeTitle: ['dig and ss', 'IP classification (runnable)'],
+    viz: [{
+      title: 'DNS resolution step by step (cold cache, then warm)',
+      input: 'www.shop.example.com cold',
+      inputLabel: 'domain + cold|warm (e.g. api.example.org cold)',
+      gen: function (input) {
+        var t = String(input || '').trim().toLowerCase().split(/\s+/);
+        var name = t[0] || 'www.shop.example.com', mode = t[1] || 'cold';
+        if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(name)) throw new Error('Enter a domain like www.shop.example.com followed by cold or warm');
+        if (name.length > 40) throw new Error('Keep the domain under 40 characters');
+        if (mode !== 'cold' && mode !== 'warm') throw new Error('Second word must be cold or warm');
+        var labels = name.split('.'), tld = labels[labels.length - 1], zone = labels.slice(-2).join('.');
+        var ip = '203.0.113.' + (10 + (name.length * 7) % 200);
+        var nodes = [bx('B', 'Browser', 10, 12), bx('OS', 'OS cache', 10, 50), bx('R', 'Recursive resolver', 44, 31), bx('ROOT', 'Root server', 85, 8), bx('TLD', '.' + tld + ' TLD', 85, 31), bx('AUTH', 'Authoritative', 85, 54)];
+        var edges = [['B', 'OS', 'cache?'], ['OS', 'R', 'query :53'], ['R', 'ROOT'], ['R', 'TLD'], ['R', 'AUTH']];
+        var rows = [], total = 0;
+        function step(narr, on, cls, hl, ms, row, labels, tags) {
+          total += ms;
+          if (row) rows.push(row.concat([ms + ' ms', total + ' ms']));
+          return { narr: narr + ' <span class="c-m">(running total ≈ ' + total + ' ms)</span>', on: on, cls: cls, hl: hl, labels: labels, tags: tags,
+            extra: [{ type: 'table', label: 'Lookup log', columns: ['who asks', 'question', 'answer', 'cost', 'total'], rows: cp(rows), hl: (function () { var h = {}; if (row) h[rows.length - 1] = cls === 'bad' ? 'bad' : 'cur'; return h; })() }] };
+        }
+        var steps = [];
+        steps.push(step('You type <b>' + hesc(name) + '</b>. The browser needs an IP address before it can open any connection. First it checks its <b>own cache</b>.' + (mode === 'warm' ? ' <span class="c-g">Hit!</span> Someone visited recently and the TTL has not expired.' : ' <span class="c-r">Miss</span> — never seen (or TTL expired).'),
+          [], 'cur', { B: mode === 'warm' ? 'ok' : 'cur' }, 0, ['Browser', 'IP of ' + name + '?', mode === 'warm' ? ip + ' (cached)' : 'not cached']));
+        if (mode === 'warm') {
+          steps.push(step('<span class="c-g">Warm path:</span> no network trip at all. The browser can immediately open a connection to <b>' + ip + '</b>. This is why the second visit to a site feels faster.', [], 'ok', { B: 'ok' }, 0, null, null, { B: ip }));
+          steps.push(step('What if only the <b>resolver</b> had it cached (another user of the same ISP looked it up)? Then it costs one short trip to the resolver, typically 5–20 ms.', ['B-OS', 'OS-R'], 'ok', { R: 'ok' }, 10, ['OS', 'IP of ' + name + '?', ip + ' (resolver cache)']));
+          steps.push(step('Caches at three levels (browser, OS, resolver) mean the slow root → TLD → authoritative walk happens only rarely. Low TTLs make it happen more often (fresher but slower and more load); high TTLs make changes propagate slowly.', [], 'ok', { B: 'ok', OS: 'ok', R: 'ok', ROOT: 'done', TLD: 'done', AUTH: 'done' }, 0, null));
+          return story({ label: 'DNS lookup (warm)', height: 62, nodes: nodes, edges: edges, steps: steps });
+        }
+        steps.push(step('The browser asks the <b>operating system</b>, which checks its cache and the hosts file. <span class="c-r">Miss.</span>', ['B-OS'], 'cur', { OS: 'cur' }, 1, ['Browser', 'IP of ' + name + '?', 'not in OS cache']));
+        steps.push(step('The OS sends a UDP packet to port 53 of the <b>recursive resolver</b> (your ISP\'s, or 1.1.1.1 / 8.8.8.8). The resolver will do all the remaining work. Its cache also misses.', ['OS-R'], 'cur', { R: 'cur' }, 10, ['OS', 'IP of ' + name + '?', 'resolver cache miss']));
+        steps.push(step('Resolver → <b>root server</b>: "who is responsible for <code>.' + tld + '</code>?" The root does not know the final IP; it only refers you to the <b>.' + tld + ' TLD</b> servers. (Resolvers usually have this cached, so this hop is often skipped.)', ['R-ROOT'], 'cur', { ROOT: 'cur' }, 15, ['Resolver', 'who handles .' + tld + '?', 'ask the .' + tld + ' TLD servers'], { 'R-ROOT': 'who has .' + tld + '?' }));
+        steps.push(step('Resolver → <b>.' + tld + ' TLD server</b>: "who is responsible for <code>' + hesc(zone) + '</code>?" Answer: the domain\'s own <b>authoritative name servers</b> (NS records).', ['R-TLD'], 'cur', { TLD: 'cur' }, 15, ['Resolver', 'who handles ' + zone + '?', 'NS: ns1.' + zone], { 'R-TLD': 'who has ' + zone + '?' }));
+        steps.push(step('Resolver → <b>authoritative server</b>: "what is the A record for <code>' + hesc(name) + '</code>?" This server owns the truth. Answer: <b>' + ip + '</b>, TTL 300 s.', ['R-AUTH'], 'cur', { AUTH: 'ok' }, 20, ['Resolver', 'A record of ' + name + '?', ip + ' (TTL 300)'], { 'R-AUTH': 'A ' + name.split('.')[0] + '…?' }, { AUTH: 'source of truth' }));
+        steps.push(step('The answer flows back: resolver caches it for 300 s, the OS caches it, the browser caches it. Now the browser can finally open a TCP connection to <b>' + ip + ':443</b>.', ['OS-R', 'B-OS'], 'sel', { B: 'ok', OS: 'ok', R: 'ok' }, 2, ['Resolver → OS → Browser', 'answer', ip], { 'OS-R': '↩ ' + ip, 'B-OS': '↩ ' + ip }, { B: ip, R: 'cached 300 s' }));
+        steps.push(step('Total for a <b>cold</b> lookup here ≈ ' + (total) + ' ms — before a single byte of the website was requested. A minute later another lookup would hit a cache and cost ~0 ms. That gap is why DNS is cached everywhere.', [], 'ok', { B: 'ok', OS: 'ok', R: 'ok', ROOT: 'done', TLD: 'done', AUTH: 'done' }, 0, null));
+        return story({ label: 'DNS lookup (cold)', height: 62, nodes: nodes, edges: edges, steps: steps });
+      }
+    }, {
+      title: 'An IPv4 address is just 32 bits',
+      input: '192.168.1.10',
+      inputLabel: 'IPv4 address (a.b.c.d)',
+      gen: function (input) {
+        var s = String(input || '').trim();
+        var p = s.split('.');
+        if (p.length !== 4 || p.some(function (x) { return !/^\d{1,3}$/.test(x) || Number(x) > 255; })) throw new Error('Enter an IPv4 address like 192.168.1.10 (four numbers 0-255)');
+        var o = p.map(Number), frames = [], acc = 0;
+        frames.push({ narr: 'The address <b>' + s + '</b> is four <b>octets</b> (8-bit numbers). Together they form one 32-bit number — that is all a computer sees.', parts: [{ type: 'array', label: 'octets', values: o.slice(), showIdx: true }] });
+        o.forEach(function (v, i) {
+          acc = acc * 256 + v;
+          var hl = {}; hl[i] = 'cur';
+          frames.push({ narr: 'Octet ' + (i + 1) + ' = <b>' + v + '</b> in binary. Running 32-bit value so far = ' + acc.toLocaleString('en-US') + '.', parts: [{ type: 'array', label: 'octets', values: o.slice(), hl: hl }, { type: 'bits', label: 'octet ' + (i + 1), value: v, width: 8, showDec: true }] });
+        });
+        var kind, cls;
+        if (o[0] === 10 || (o[0] === 172 && o[1] >= 16 && o[1] <= 31) || (o[0] === 192 && o[1] === 168)) { kind = 'PRIVATE — used inside homes, offices and cloud VPCs; not reachable from the internet without NAT or a load balancer.'; cls = 'win'; }
+        else if (o[0] === 127) { kind = 'LOOPBACK — always means "this same machine" (localhost).'; cls = 'sel'; }
+        else if (o[0] === 0 || o[0] >= 224) { kind = 'SPECIAL (multicast/reserved) — not a normal server address.'; cls = 'bad'; }
+        else { kind = 'PUBLIC — routable on the internet (in real life you would also check documentation/reserved ranges).'; cls = 'ok'; }
+        frames.push({ narr: 'Classification: <b>' + kind + '</b>', parts: [{ type: 'vars', label: 'Result', vals: { address: s, as32bitNumber: acc, kind: kind.split(' ')[0] }, hl: { kind: cls } }] });
+        frames.push({ narr: 'Add a <b>port</b> and you name one program on that machine: <code>' + s + ':443</code> is the HTTPS server, <code>' + s + ':5432</code> would be PostgreSQL. Same building, different doors.', parts: [{ type: 'map', label: 'one IP, many server programs', entries: [[s + ':443', 'web server (HTTPS)'], [s + ':5432', 'PostgreSQL'], [s + ':6379', 'Redis']], hl: (function () { var h = {}; h[s + ':443'] = 'ok'; return h; })() }] });
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'Lower the TTL before you move servers', html: `<p>Your A record has TTL = 86,400 s (1 day). You migrate to a new server and change the record. Resolvers that cached the old answer keep sending users to the <span class="c-r">old IP for up to 24 hours</span>.</p>
+<p><b>Playbook:</b> 2 days before, drop TTL to 60 s → wait for the old 1-day caches to expire → switch the record → within ~1 minute most traffic moves → keep the old server running a while (some clients ignore TTLs) → raise TTL again.</p>` },
+      { title: 'One IP, many websites', html: `<p><code>shop.example.com</code> and <code>blog.example.com</code> both resolve to <code>203.0.113.10</code>. How does the server know which site you want? The HTTP <code>Host</code> header (and, for HTTPS, the <b>SNI</b> field in the TLS handshake) carries the name. This is "virtual hosting" — and it is how load balancers route many domains through one address.</p>` },
+      { title: 'DNS as a (blunt) load balancer', html: `<p>Return 3 A records for <code>api.example.com</code>: clients pick one, spreading load roughly evenly ("round-robin DNS"). <b>Weaknesses:</b> clients cache answers (cannot shift load quickly), DNS does not know if a server is dead, and uneven caching causes hot spots. That is why DNS usually points to a <b>load balancer</b>, which does health checks (Module 4).</p>
+<p><b>GeoDNS:</b> users in India get the Mumbai load balancer\'s IP, users in Germany get Frankfurt\'s — a big latency win for global apps.</p>` },
+      { title: 'Cloud network layout with private IPs', html: `${H.table(['Box', 'IP', 'Reachable from internet?'], [['Load balancer', 'public 203.0.113.10', H.c('g', 'yes (ports 80/443 only)')], ['App servers', 'private 10.0.1.11–14', H.c('r', 'no')], ['Database', 'private 10.0.2.5', H.c('r', 'no')]])}<p>Only the front door is public. This shrinks the attack surface: attackers cannot even try to log in to your database.</p>` }
+    ],
+    deepDive: `<p><b>Transport details.</b> DNS queries normally use <b>UDP port 53</b> (one small packet each way, no handshake), falling back to TCP for large answers. Modern privacy options encrypt DNS: <b>DoH</b> (DNS over HTTPS) and <b>DoT</b> (DNS over TLS).</p>
+<p><b>Anycast.</b> Root servers and big public resolvers (1.1.1.1, 8.8.8.8) are <b>anycast</b>: the same IP is announced from hundreds of locations, and internet routing delivers your packet to the nearest one. CDNs use the same trick.</p>
+<p><b>Caching subtleties.</b> Failed lookups (NXDOMAIN) are cached too ("negative caching", governed by the zone\'s SOA record), so a typo\'d or not-yet-created record can stay "missing" for a while. Some clients and JVMs historically cached DNS longer than TTL — long-lived services should configure DNS cache TTLs explicitly so they notice IP changes.</p>
+<p><b>CNAME at the apex.</b> You cannot put a CNAME on the bare domain (<code>example.com</code>) because it must coexist with NS/SOA records; DNS providers offer ALIAS/ANAME or "CNAME flattening" to point the apex at a load balancer hostname.</p>
+<p><b>DNS is a real dependency.</b> Large outages have come from DNS: a misconfiguration at a DNS provider or inside a cloud\'s internal DNS can make healthy servers unreachable. Mitigations: multiple DNS providers, sensible TTLs, and caching resolvers inside your network.</p>
+<p><b>IPv4 exhaustion.</b> Carrier-grade NAT puts many customers behind one public IP — so "one IP = one user" is false (matters for rate limiting and fraud detection). IPv6 removes the shortage but you must support both ("dual stack").</p>`,
+    aiEra: `<p><b>AI is great at reading DNS and network output.</b> Paste <code>dig +trace</code> or a <code>curl -v</code> log and ask "where does this fail?" — models are usually good at spotting a missing record, an expired certificate or a wrong CNAME chain.</p>
+<p><b>Where AI goes wrong:</b> it invents provider-specific syntax and confidently says "DNS propagation takes 48 hours" as a law of nature (it is really just caching governed by TTLs). It can also suggest changes that are dangerous in production, like deleting NS records. Always verify against the real zone and do changes with low TTLs and a rollback plan.</p>
+<p><b>Agents need names too.</b> AI agents calling tools and APIs resolve hostnames like any client; DNS failures surface as confusing "tool unavailable" errors. Good agent platforms log the resolved IP and latency of each tool call so humans can debug.</p>
+<p><b>What you must still own:</b> understanding the resolution chain and TTL trade-offs well enough to plan a zero-downtime migration — AI can draft the checklist, but you decide the timings.</p>`,
+    problems: [{
+      title: 'Half the users still see the old server',
+      level: 'Medium', tags: ['dns', 'ttl', 'migration'], companies: ['Cloudflare', 'Amazon', 'Shopify'],
+      statement: `<p>At 10:00 you changed the A record of <code>shop.example.com</code> from the old server (198.51.100.7) to a new one (203.0.113.10). At 12:00 many users still land on the old server and see stale prices. The record\'s TTL was 86,400 seconds. Explain why, what you can do right now, and how you would run the next migration so this does not happen.</p>`,
+      constraints: `<p>You cannot force ISPs or browsers to clear their caches. The old server is still running.</p>`,
+      example: `<p>A resolver that looked up the name at ${H.c('y', '09:59')} cached ${H.c('r', '198.51.100.7')} for ${H.c('y', '24 h')} → its users hit the old server until ${H.c('y', '09:59 the next day')}. Why: caches obey the TTL that was valid <i>when they cached</i>, not the new record.</p>`,
+      brute: { why: `<p><b>Naive fix:</b> "Shut down the old server so everyone is forced over." It breaks because cached clients don\'t magically get the new IP — they just get <span class="c-r">connection errors</span> for up to 24 hours. You turn "stale prices" into "site down" for a large slice of users.</p>` },
+      mcq: { q: 'Which change BEFORE a future migration helps most?', options: ['Add more RAM to the new server', 'Lower the TTL to ~60 s a day or two before the switch', 'Use a CNAME instead of an A record', 'Turn off DNS caching in browsers'], answer: 1, explain: 'With a short TTL, caches expire quickly after you switch, so traffic moves in about a minute.' },
+      hints: [
+        `<p>Hint 1: Who holds the old answer? Browser, OS and resolver caches — each will keep it until the TTL that was attached <i>when they cached it</i> runs out.</p>`,
+        `<p>Hint 2: Right now, make the old server harmless: point it at the new data (proxy requests to the new server, or redirect) instead of turning it off.</p>`,
+        `<p>Hint 3: Next time: lower TTL early → wait one old TTL → switch → monitor both → keep old one alive as a proxy → raise TTL later. Even better, put a load balancer with a stable IP in front so server swaps never touch DNS.</p>`
+      ],
+      solution: {
+        approach: `<p><b>Why it happens:</b> DNS answers are cached for their TTL. Any resolver that cached the old IP between 10:00 the previous day and 10:00 today keeps serving it for up to 24 h. There is no global "propagation" — just thousands of independent caches expiring at different times.</p>
+<p><b>Right now:</b></p>
+<ol><li><b>Keep the old server up</b> and make it forward requests to the new server (reverse-proxy) or serve from the same database, so stale clients still see correct prices.</li>
+<li>If both servers must share data, make sure the old one is not writing to an old database (split-brain risk).</li>
+<li>Monitor traffic on the old server; when it drops near zero (after ~24 h plus a margin for misbehaving caches), retire it.</li></ol>
+<p><b>Next migration (runbook):</b></p>
+<ol><li>T−48 h: lower TTL from 86,400 to 60 s.</li><li>Wait at least the old TTL (24 h) so every cache now holds the short TTL.</li><li>Switch the record; most traffic moves within minutes.</li><li>Keep the old server proxying for a day; then raise TTL back to an hour or more.</li></ol>
+<p><b>Better architecture:</b> point DNS at a <b>load balancer</b> (stable IP / hostname) and swap servers behind it — no DNS change, instant cutover, health checks included.</p>`,
+        complexity: `<p>Worst-case staleness = the TTL that was cached (here 24 h). With TTL 60 s the switch window shrinks to about a minute, at the cost of more DNS queries (more resolver traffic, slightly slower first lookups).</p>`,
+        followUps: ['Why not keep TTL at 60 s forever?', 'How does a load balancer make server migrations independent of DNS?', 'What if some old clients ignore TTL entirely?']
+      }
+    }]
+  });
+
+  /* ================================================================
+     TOPIC 4 — Request / response lifecycle
+     ================================================================ */
+  topics.push({
+    title: 'What Happens When You Type a URL and Press Enter? (The Request Lifecycle)',
+    analogy: `<p>Ordering dinner at a restaurant you have never visited:</p>
+<ol><li><b>Find the address</b> in your contacts or a map (DNS).</li>
+<li><b>Walk in and get seated</b> — the host says "welcome", you say "table for one", they say "follow me" (TCP handshake).</li>
+<li><b>Agree on a secret code</b> so nobody at the next table can read your order (TLS encryption).</li>
+<li><b>Give your order</b> to the waiter (HTTP request).</li>
+<li>The <b>kitchen cooks</b>, maybe fetching ingredients from the <b>storeroom</b> (app server + database), or grabbing a ready dessert from the <b>counter fridge</b> (cache).</li>
+<li>The waiter <b>brings the food</b> (HTTP response) and you <b>eat</b> (the browser renders the page).</li></ol>
+<p>Each step takes time, and the slow parts are usually the walks back and forth, not the cooking.</p>`,
+    explain: `<p>🟢 This is the most famous system design warm-up question. Here is the full journey, with typical times for a user about 40 ms away (round-trip time, <b>RTT</b>) from the server:</p>
+${H.table(['#', 'Step', 'What happens', 'Typical cost'], [
+  ['1', 'URL parsing', 'Browser splits <code>https://shop.example.com/cart</code> into scheme (https), host, path. Checks HSTS list (force HTTPS).', '~0 ms'],
+  ['2', 'DNS lookup', 'Name → IP via browser/OS/resolver caches, or the full root → TLD → authoritative walk.', '0 ms (cached) to 20–100 ms (cold)'],
+  ['3', 'TCP handshake', 'SYN → SYN-ACK → ACK: both sides agree to talk and pick sequence numbers.', '1 RTT (40 ms)'],
+  ['4', 'TLS handshake', 'Agree on encryption keys and check the server\'s certificate. TLS 1.3 needs 1 RTT; TLS 1.2 needed 2.', '1 RTT (40 ms)'],
+  ['5', 'HTTP request', 'Browser sends <code>GET /cart</code> with headers and cookies.', '½ RTT'],
+  ['6', 'Server side', 'Load balancer → app server → cache and/or database → build response.', '5–100 ms'],
+  ['7', 'HTTP response', 'Status, headers, HTML body travel back.', '½ RTT + transfer time'],
+  ['8', 'Rendering', 'Parse HTML, then fetch CSS/JS/images (more requests, often from a CDN), build layout, paint pixels.', '50–1000+ ms']
+])}
+<p><b>Key insight:</b> before the server does any work, a cold HTTPS request has already spent <b>~3 round trips</b> (DNS + TCP + TLS). For a user 200 ms away (India ↔ US East), that is 600 ms of pure waiting. That is why designers care about:</p>
+<ul>
+<li><b>Reusing connections</b> (keep-alive, HTTP/2) so steps 2–4 happen once, not per request.</li>
+<li><b>Moving servers closer</b> (CDNs, multiple regions) to shrink RTT itself.</li>
+<li><b>Caching</b> on the server (skip the database) and in the browser (skip the request entirely).</li>
+</ul>
+<p>On the server side, the request usually passes: <b>load balancer</b> (picks a healthy server) → <b>web/app server</b> (routing, auth, business logic) → <b>cache</b> (fast, in memory) → <b>database</b> (source of truth, on disk) → back up the chain. The response is the same path in reverse.</p>`,
+    clues: [
+      '"What happens when you type google.com and press Enter?" → walk DNS → TCP → TLS → HTTP → LB → app → cache/DB → response → render, with costs.',
+      '"Users in another continent complain the site is slow" → RTT × number of round trips; fix with CDN / regional servers / connection reuse.',
+      '"First visit is slow, later visits fast" → cold DNS, new TCP/TLS connections, empty browser cache.',
+      '"Time to first byte (TTFB) is high" → network handshakes or slow server work (DB query, cache miss).',
+      '"Where would you add a cache?" → anywhere along the path: browser, CDN, reverse proxy, app memory, Redis, DB buffer pool.',
+      '"502 / 504 from the load balancer" → the hop from LB to app server failed or timed out.'
+    ],
+    code: [
+      { lang: 'bash', title: 'Measure each phase yourself with curl', code: `curl -o /dev/null -s -w '
+dns lookup      : %{time_namelookup}s
+tcp connected   : %{time_connect}s
+tls done        : %{time_appconnect}s
+first byte      : %{time_starttransfer}s
+total           : %{time_total}s
+' https://www.example.com/
+
+# Example output for a far-away server (values are cumulative):
+# dns lookup      : 0.031s
+# tcp connected   : 0.243s   <- 1 RTT after DNS  (~212 ms RTT)
+# tls done        : 0.457s   <- +1 RTT for TLS 1.3
+# first byte      : 0.690s   <- +1 RTT + server think time
+# total           : 0.702s` },
+      { lang: 'http', title: 'The request and the response, with caching headers', code: `GET /cart HTTP/2
+Host: shop.example.com
+Accept: text/html
+Cookie: session=7f3a9c
+
+HTTP/2 200
+Content-Type: text/html; charset=utf-8
+Content-Encoding: gzip
+Cache-Control: private, no-store
+Server-Timing: db;dur=12, cache;dur=1, app;dur=6
+
+<!doctype html> ...page...` }
+    ],
+    codeTitle: ['curl timing breakdown', 'Request + response'],
+    viz: {
+      title: 'A full HTTPS request, edge by edge, with a latency timeline',
+      input: 'rtt=40, dns=cold, tls=1.3, cache=miss',
+      inputLabel: 'rtt=ms (1-400), dns=cold|warm, tls=1.3|1.2|none, cache=hit|miss',
+      gen: function (input) {
+        var o = kvParse(input);
+        var rtt = numIn(o.rtt, 40, 1, 400, 'rtt');
+        var dns = (o.dns || 'cold').toLowerCase(), tls = (o.tls || '1.3').toLowerCase(), cache = (o.cache || 'miss').toLowerCase();
+        if (['cold', 'warm'].indexOf(dns) < 0) throw new Error('dns must be cold or warm');
+        if (['1.3', '1.2', 'none'].indexOf(tls) < 0) throw new Error('tls must be 1.3, 1.2 or none');
+        if (['hit', 'miss'].indexOf(cache) < 0) throw new Error('cache must be hit or miss');
+        var nodes = [bx('B', 'Browser', 9, 34), bx('DNS', 'DNS resolver', 30, 8), bx('LB', 'Load Balancer', 36, 34), bx('APP', 'App Server', 62, 34), bx('C', 'Cache', 88, 12), bx('DB', 'Database', 88, 56)];
+        var edges = [['B', 'DNS', ''], ['B', 'LB', ''], ['LB', 'APP', ''], ['APP', 'C', ''], ['APP', 'DB', '']];
+        var stages = [], vals = [];
+        var dnsMs = dns === 'cold' ? Math.round(10 + rtt * 0.75) : 0;
+        var tlsRtts = tls === '1.3' ? 1 : tls === '1.2' ? 2 : 0;
+        var steps = [];
+        function bars(hlLast) {
+          var h = {}; if (hlLast) h[vals.length - 1] = 'cur';
+          return { type: 'bars', label: 'Time spent per phase (ms)', values: vals.slice(), idxLabels: stages.slice(), hl: h };
+        }
+        function add(name, ms) { stages.push(name); vals.push(Math.round(ms)); }
+        function tot() { return vals.reduce(function (a, b) { return a + b; }, 0); }
+        steps.push({ narr: 'You press Enter on <code>https://shop.example.com/cart</code>. Settings: RTT = <b>' + rtt + ' ms</b>, DNS <b>' + dns + '</b>, TLS <b>' + tls + '</b>, cache <b>' + cache + '</b>. The browser parses the URL and decides it needs an IP and an encrypted connection.', hl: { B: 'cur' }, extra: [{ type: 'vars', label: 'Settings', vals: { rtt: rtt + ' ms', dns: dns, tls: tls, cache: cache } }] });
+        add('DNS', dnsMs);
+        steps.push({ narr: dns === 'cold' ? '<b>DNS:</b> cache miss, so the resolver walks root → TLD → authoritative. Cost ≈ <b>' + dnsMs + ' ms</b>. Nothing else can start until we have the IP.' : '<b>DNS:</b> the IP is already cached in the browser — <b>0 ms</b>. Free speed from caching.', on: ['B-DNS'], cls: dns === 'cold' ? 'cur' : 'ok', hl: { DNS: dns === 'cold' ? 'cur' : 'ok' }, labels: { 'B-DNS': dns === 'cold' ? 'lookup' : 'cached' }, extra: [bars(true)] });
+        add('TCP', rtt);
+        steps.push({ narr: '<b>TCP handshake:</b> SYN → SYN-ACK → ACK. The browser can send data right after the ACK, so it costs <b>1 RTT = ' + rtt + ' ms</b>. The load balancer is the server end of this connection.', on: ['B-LB'], hl: { B: 'cur', LB: 'cur' }, labels: { 'B-LB': 'SYN / SYN-ACK / ACK' }, extra: [bars(true)] });
+        add('TLS', tlsRtts * rtt);
+        steps.push({ narr: tls === 'none' ? '<b>No TLS</b> (plain HTTP): 0 ms — but anyone on the path can read or change the traffic. Browsers flag such sites as "Not secure".' : '<b>TLS ' + tls + ' handshake:</b> exchange keys, verify the certificate for shop.example.com. ' + tlsRtts + ' RTT = <b>' + (tlsRtts * rtt) + ' ms</b>. ' + (tls === '1.2' ? 'TLS 1.3 would save a whole round trip.' : 'TLS 1.3 cut this from 2 RTTs to 1.'), on: ['B-LB'], cls: tls === 'none' ? 'bad' : 'cur', hl: { B: 'cur', LB: 'cur' }, labels: { 'B-LB': tls === 'none' ? 'no encryption!' : 'TLS ' + tls + ' keys' }, extra: [bars(true)] });
+        add('Request', rtt / 2);
+        steps.push({ narr: '<b>HTTP request:</b> <code>GET /cart</code> + cookies travels to the load balancer (½ RTT ≈ ' + Math.round(rtt / 2) + ' ms). The LB picks a healthy app server and forwards it over the fast data-center network (&lt; 1 ms).', on: ['B-LB', 'LB-APP'], hl: { LB: 'cur', APP: 'cur' }, labels: { 'B-LB': 'GET /cart', 'LB-APP': 'forward' }, extra: [bars(true)] });
+        var serverMs = cache === 'hit' ? 1 + 4 : 1 + 12 + 4;
+        add('Server', serverMs);
+        if (cache === 'hit') {
+          steps.push({ narr: '<b>App server:</b> checks the session, then asks the <b>cache</b> for this user\'s cart: <span class="c-g">HIT</span> in ~1 ms (memory). Builds HTML in ~4 ms. The database is not touched at all.', on: ['APP-C'], cls: 'ok', hl: { APP: 'cur', C: 'ok', DB: 'done' }, labels: { 'APP-C': 'GET cart:42 → hit' }, extra: [bars(true)] });
+        } else {
+          steps.push({ narr: '<b>App server:</b> asks the <b>cache</b> for the cart: <span class="c-r">MISS</span> (~1 ms wasted).', on: ['APP-C'], cls: 'bad', keep: 'bad', hl: { APP: 'cur', C: 'bad' }, labels: { 'APP-C': 'GET cart:42 → miss' }, extra: [bars(false)] });
+          steps.push({ narr: 'So it queries the <b>database</b> (~12 ms: network hop + index lookup + maybe disk), then <b>writes the result into the cache</b> so the next request hits. Builds HTML (~4 ms). Server total ≈ <b>' + serverMs + ' ms</b>.', on: ['APP-DB'], hl: { APP: 'cur', DB: 'cur', C: 'ok' }, labels: { 'APP-DB': 'SELECT … cart', 'APP-C': 'SET cart:42' }, ehl: { 'APP-C': 'ok' }, extra: [bars(true)] });
+        }
+        add('Response', rtt / 2 + 5);
+        steps.push({ narr: '<b>HTTP response:</b> 200 OK + gzip-compressed HTML flows back app → LB → browser: ½ RTT + ~5 ms to transfer the bytes. This moment is "time to first byte" plus download.', on: ['LB-APP', 'B-LB'], cls: 'sel', hl: { B: 'sel', LB: 'sel', APP: 'sel' }, labels: { 'LB-APP': '↩ 200 OK', 'B-LB': '↩ 200 OK (HTML)' }, extra: [bars(true)] });
+        add('Render', 60);
+        steps.push({ narr: '<b>Rendering:</b> the browser parses HTML, discovers CSS/JS/images (more requests — but on the <i>same</i> connection, and many from a CDN), lays out and paints. ~60 ms here for a light page.', hl: { B: 'ok' }, extra: [bars(true)] });
+        var total = tot(), network = dnsMs + rtt + tlsRtts * rtt + rtt + 5;
+        steps.push({ narr: '<b>Total ≈ ' + total + ' ms.</b> Network waiting (DNS + handshakes + travel) ≈ <b>' + Math.round(network) + ' ms</b> vs server work ≈ <b>' + serverMs + ' ms</b>. ' + (network > serverMs * 3 ? 'The network dominates — move closer to users (CDN/regions) and reuse connections before optimising code.' : 'Server work is a big share here — caching and faster queries pay off.') + ' Try rtt=200 or tls=1.2 or cache=hit and compare.',
+          hl: { B: 'ok', DNS: 'ok', LB: 'ok', APP: 'ok', C: cache === 'hit' ? 'ok' : 'done', DB: cache === 'hit' ? 'done' : 'ok' },
+          extra: [bars(false), { type: 'table', label: 'Summary', columns: ['phase', 'ms', 'share'], rows: stages.map(function (s, i) { return [s, String(vals[i]), Math.round(100 * vals[i] / Math.max(1, total)) + '%']; }) }] });
+        return story({ label: 'HTTPS request lifecycle', height: 66, nodes: nodes, edges: edges, steps: steps });
+      }
+    },
+    examples: [
+      { title: 'Worked numbers: user in Mumbai, server in Virginia', html: `<p>RTT ≈ 200 ms. Cold visit: DNS ~100 ms + TCP 200 + TLS 1.3 200 + request/response 200 + server 30 + render 100 ≈ <b>830 ms</b>.</p>
+<p>Same user, server region in Mumbai (RTT 10 ms): DNS ~20 + 10 + 10 + 10 + 30 + 100 ≈ <b>180 ms</b>. Moving closer saved ~650 ms — no code change could do that. This is the business case for CDNs and multi-region.</p>` },
+      { title: 'Second visit is much faster — why?', html: `<ul><li>DNS answer cached → 0 ms.</li><li>Connection still open (keep-alive / HTTP/2) → no TCP or TLS handshake.</li><li>Static files (CSS/JS/logo) cached by the browser via <code>Cache-Control: max-age</code> → not even requested.</li><li>Server cache warm → database skipped.</li></ul><p>A repeat visit can drop from ~800 ms to ~250 ms. Designers deliberately engineer for these caches.</p>` },
+      { title: 'Where a 3-second page load really goes', html: `${H.table(['Phase', 'Time', 'Fix'], [['DNS + TCP + TLS', '0.6 s', 'CDN, connection reuse, TLS 1.3'], ['Server (TTFB)', '0.4 s', 'cache, fix slow SQL'], ['Download 4 MB JS + images', '1.2 s', 'compress, smaller images, lazy loading'], ['Run JS + render', '0.8 s', 'less JS, server-side rendering']])}<p>Lesson: measure before you optimise. Often the backend is not the main problem.</p>` },
+      { title: 'Reading a 504 Gateway Timeout', html: `<p>Browser → LB is fine; LB → app server took longer than the LB\'s timeout (say 30 s) because the app was waiting on a slow DB query. The LB gives up and returns <span class="c-r">504</span>. A <span class="c-r">502</span> would mean the LB got a broken/no response (app crashed). Knowing the path tells you which hop to investigate.</p>` }
+    ],
+    deepDive: `<p><b>TCP details.</b> After the handshake, TCP <b>slow start</b> sends only ~10 packets (~14 KB) in the first round trip, then doubles each RTT. So a 100 KB page needs several extra round trips on a fresh connection — another reason to keep pages small and reuse warm connections.</p>
+<p><b>TLS 1.3 and 0-RTT.</b> TLS 1.3 needs one round trip; resumed sessions can send data in the first flight ("0-RTT") — but 0-RTT data can be <b>replayed</b> by an attacker, so it is only safe for idempotent requests like GET.</p>
+<p><b>HTTP/2 and HTTP/3.</b> HTTP/2 multiplexes many requests on one TCP connection (no more 6-connections-per-host hacks), but one lost packet stalls all streams (TCP head-of-line blocking). HTTP/3 runs over <b>QUIC</b> on UDP: transport + TLS handshake merged into 1 RTT, independent streams, and connections survive switching from Wi-Fi to mobile data.</p>
+<p><b>Server side in more detail.</b> The LB often terminates TLS, then forwards plain HTTP (or re-encrypted) to app servers over private IPs. App servers keep <b>connection pools</b> to the DB and cache so they never pay handshake costs per request. Reverse proxies add compression, request IDs and timeouts.</p>
+<p><b>Observability.</b> Production systems attach a <b>trace ID</b> to each request and record a span per hop (OpenTelemetry). A trace waterfall shows exactly the table above for one real request — the fastest way to find which hop is slow.</p>
+<p><b>Browser caching rules.</b> <code>Cache-Control: max-age=31536000, immutable</code> for fingerprinted static files (<code>app.3f9a.js</code>); <code>no-store</code> for private pages; <code>ETag</code> + <code>304 Not Modified</code> to revalidate cheaply.</p>`,
+    aiEra: `<p><b>An LLM request has its own lifecycle.</b> When your app calls a model: network + TLS (same as above, usually tiny), then <b>queueing</b> at the provider, then <b>prefill</b> (reading your prompt — longer prompts = longer wait), then <b>decoding</b> one token at a time. Key metrics: <b>TTFT</b> (time to first token) and <b>tokens per second</b>. A 2,000-token answer at 80 tokens/s takes 25 s — so you <b>stream</b> it to keep the user engaged.</p>
+<p><b>Prompt caching</b> is the AI version of a server cache: providers can reuse the processed prefix of repeated prompts (long system prompts, documents), cutting cost and TTFT.</p>
+<p><b>Use AI as a partner:</b> paste a trace waterfall or <code>curl -w</code> output and ask "which phase dominates and what are three fixes?". <b>Where AI goes wrong:</b> it often recommends backend optimisations when the real cost is network round trips or front-end JavaScript. <b>You own:</b> measuring first, then choosing the fix.</p>`,
+    problems: [{
+      title: 'Fast in Virginia, slow in Sydney',
+      level: 'Medium', tags: ['latency', 'request lifecycle', 'cdn'], companies: ['Google', 'Netflix', 'Atlassian'],
+      statement: `<p>Your API (single region: US-East/Virginia) answers in 150 ms for US users but ~1.2 s for users in Sydney. Server processing time is the same (~30 ms) for both. Each page makes a fresh HTTPS connection and then 2 sequential API calls. Explain the gap with numbers and propose fixes in order of effort.</p>`,
+      constraints: `<p>RTT Virginia user ↔ server ≈ 20 ms; Sydney user ↔ server ≈ 200 ms. TLS 1.3. DNS is cached.</p>`,
+      example: `<p>Sydney: TCP ${H.c('y', '200')} + TLS ${H.c('y', '200')} + 2 calls × (${H.c('y', '200')} + ${H.c('g', '30')}) = ${H.c('r', '860 ms')} before rendering. Why: every round trip costs 200 ms, and there are 4 of them in sequence; the 30 ms of server work barely matters.</p>`,
+      brute: { why: `<p><b>Naive fix:</b> "Profile and optimise the server code." Server time is only 30 ms per call — making it 0 ms saves 60 ms out of ~1,000. The real cost is <b>round trips × distance</b>, which code optimisation cannot touch.</p>` },
+      mcq: { q: 'Which single change removes the most latency for Sydney users?', options: ['Rewrite the API in a faster language', 'Serve them from a region (or edge) close to Sydney', 'Add an index to the database', 'Double the server\'s CPU'], answer: 1, explain: 'RTT drops from ~200 ms to ~10 ms, shrinking every one of the four sequential round trips.' },
+      hints: [
+        `<p>Hint 1: Count the sequential round trips: TCP (1) + TLS 1.3 (1) + each API call (1 each).</p>`,
+        `<p>Hint 2: Total ≈ round trips × RTT + server time. Which term is big for Sydney?</p>`,
+        `<p>Hint 3: Fix order — reuse connections (cheap), merge the two calls into one or run them in parallel (cheap), terminate TLS at a nearby edge/CDN (medium), deploy a Sydney region with replicated data (expensive).</p>`
+      ],
+      solution: {
+        approach: `<p><b>Diagnosis.</b> US: 20 + 20 + 2 × (20 + 30) = 140 ms ✔ matches 150 ms. Sydney: 200 + 200 + 2 × (200 + 30) = 860 ms, plus rendering and extra assets ≈ 1.2 s ✔. The difference is entirely <b>RTT × number of sequential round trips</b>.</p>
+<p><b>Fixes, cheapest first:</b></p>
+<ol><li><b>Reuse connections</b> (HTTP keep-alive / HTTP/2): after the first page, the 400 ms of handshakes disappears.</li>
+<li><b>Cut sequential calls:</b> run the two API calls in parallel (saves one RTT, ~230 ms) or merge them into one endpoint (a "backend for frontend").</li>
+<li><b>Edge termination:</b> put a CDN / edge proxy in Sydney. TCP+TLS handshakes now happen with a server ~10 ms away; the edge keeps a warm, long-lived connection to Virginia. Saves ~380 ms on cold connections.</li>
+<li><b>Cache at the edge</b> any responses that are the same for everyone (product catalog), so many calls never cross the Pacific.</li>
+<li><b>Deploy in an Asia-Pacific region</b> with a read replica (or a multi-region database) → total near ~120 ms. Most expensive: data replication, consistency questions, double operations.</li></ol>
+<p><b>Verify</b> with real-user monitoring split by country before and after each step.</p>`,
+        complexity: `<p>Latency ≈ (#sequential round trips) × RTT + server time. Sydney: 4 × 200 + 60 = 860 ms → with reuse + parallel calls + edge: ~1 × 200 + 30 ≈ 230 ms → with a local region: ~1 × 10 + 30 ≈ 40 ms server-side path.</p>`,
+        followUps: ['Which data could be safely cached at the Sydney edge, and which could not?', 'What new problems appear when you add a second region with its own database replica?']
+      }
+    }]
+  });
+
+  /* ================================================================
+     TOPIC 5 — Monolith basics
+     ================================================================ */
+  topics.push({
+    title: 'Monolith Basics: One Big Kitchen',
+    analogy: `<p>A <b>monolith</b> is a restaurant with <b>one big kitchen</b>: the starters chef, the curry chef and the dessert chef all work in the same room, share the same fridge and pass plates by hand. Fast and simple — until the dessert oven catches fire and the <b>whole kitchen</b> has to be evacuated, or you want to renovate the dessert corner and must close the entire restaurant for the day.</p>
+<p>The alternative, <b>microservices</b>, is a <b>food court</b>: separate stalls, each with its own staff and fridge, talking through order slips. One stall can close without affecting the others — but now every order needs paperwork, runners and coordination.</p>`,
+    explain: `<p>🟢 A <b>monolith</b> is an application built and deployed as <b>one unit</b>: one codebase, one build, one running program (which you can copy onto many servers), usually one main database. All features — users, products, orders, payments, reports — live inside it and call each other as <b>ordinary function calls</b>.</p>
+<p>Inside, a healthy monolith is organised in <b>layers</b> and <b>modules</b>:</p>
+${H.table(['Layer', 'Job', 'Example'], [
+  ['Presentation / API', 'Receive HTTP, validate input, return JSON/HTML', '<code>OrderController</code>'],
+  ['Business logic (domain)', 'The rules: prices, stock, discounts', '<code>OrderService</code>, <code>PaymentService</code>'],
+  ['Data access', 'Talk to the database', '<code>OrderRepository</code> (SQL)'],
+  ['Database', 'Store everything durably', 'one PostgreSQL with orders, users, payments tables']
+])}
+<p><b>Why monoliths are great (especially early):</b></p>
+<ul>
+<li><span class="c-g">Simple to build, test, debug</span>: one repo, one process, a stack trace shows the whole story.</li>
+<li><span class="c-g">Fast internal calls</span>: a function call takes nanoseconds; a network call to another service takes about a millisecond and can fail.</li>
+<li><span class="c-g">Easy consistency</span>: one database transaction can update orders and payments together (all or nothing).</li>
+<li><span class="c-g">Cheap to operate</span>: one thing to deploy, monitor and secure.</li>
+</ul>
+<p><b>Where it hurts as it grows:</b></p>
+<ul>
+<li><span class="c-r">Deploy coupling</span>: a one-line change to reports means redeploying everything; 80 engineers queue for the same release.</li>
+<li><span class="c-r">Blast radius</span>: a memory leak in one module crashes the process that serves every feature.</li>
+<li><span class="c-r">Scaling all-or-nothing</span>: if only search is busy, you still copy the whole app (with its memory footprint) to add capacity.</li>
+<li><span class="c-r">Tangling</span>: without discipline, modules reach into each other\'s tables and it becomes a "big ball of mud".</li>
+</ul>
+<p><b>How a monolith scales:</b> make it <b>stateless</b> and run <b>N identical copies</b> behind a load balancer (Module 2). This carries many companies very far. Shopify runs one of the world\'s largest Ruby on Rails monoliths, organised as a <b>modular monolith</b> — strict module boundaries inside one deployable.</p>
+<p><b>Rule of thumb:</b> start with a well-structured (modular) monolith; split out a service only when a specific pain — independent scaling, independent deploys for a separate team, isolation of a risky component — is real and measured.</p>`,
+    clues: [
+      '"Small team / startup / MVP / launch in 3 months" → a modular monolith is usually the right first answer.',
+      '"Need a transaction across orders and payments" → in-process + one DB is simplest; across services you need sagas.',
+      '"One feature (reports, video processing) keeps crashing or slowing everything" → isolate it: background worker or separate service.',
+      '"Deploys take hours and teams block each other" → deploy coupling; consider splitting along team boundaries.',
+      '"Only the search part gets heavy traffic" → independent scaling is a valid reason to extract one service.',
+      '"Microservices for 3 developers?" → challenge it: operational cost often outweighs benefits.'
+    ],
+    code: [
+      { lang: 'java', title: 'Modular monolith in miniature: modules talk through interfaces, in-process', code: `// --- payments module: exposes ONLY this interface to others ---
+interface PaymentApi {
+    boolean charge(String userId, long amountPaise);
+}
+
+class PaymentService implements PaymentApi {
+    private final Map<String, Long> wallet = new HashMap<>();
+
+    PaymentService() { wallet.put("asha", 50_000L); }
+
+    @Override
+    public boolean charge(String userId, long amountPaise) {
+        long balance = wallet.getOrDefault(userId, 0L);
+        if (balance < amountPaise) return false;
+        wallet.put(userId, balance - amountPaise);
+        return true;
+    }
+}
+
+// --- orders module: depends on the payments INTERFACE, not its internals ---
+class OrderService {
+    private final PaymentApi payments;
+    private final List<String> orders = new ArrayList<>();
+
+    OrderService(PaymentApi payments) { this.payments = payments; }
+
+    String placeOrder(String userId, String item, long pricePaise) {
+        // A plain method call: nanoseconds, cannot "time out", no network.
+        if (!payments.charge(userId, pricePaise)) return "402 Payment Required";
+        orders.add(userId + ":" + item);
+        return "201 Created (order #" + orders.size() + ")";
+    }
+}
+
+// --- one process wires every module together ---
+public class ShopMonolith {
+    public static void main(String[] args) {
+        OrderService orders = new OrderService(new PaymentService());
+        System.out.println(orders.placeOrder("asha", "dosa", 12_000));
+        System.out.println(orders.placeOrder("ben", "coffee", 4_000));
+    }
+}` }
+    ],
+    codeTitle: ['Modular monolith (Java)'],
+    viz: {
+      title: 'Inside a monolith: a request, a deploy, a crash, and scaling',
+      input: 'crash=reports',
+      inputLabel: 'crash=users|orders|payments|reports|none',
+      gen: function (input) {
+        var o = kvParse(input);
+        var crash = (o.crash || String(input || '').trim() || 'reports').toLowerCase().replace(/^crash=/, '');
+        var mods = { users: 'Users', orders: 'Orders', payments: 'Payments', reports: 'Reports' };
+        if (crash !== 'none' && !mods[crash]) throw new Error('crash must be users, orders, payments, reports or none');
+        var nodes = [bx('U', 'Customer', 8, 32), bx('API', 'API layer', 30, 32), bx('users', 'Users', 56, 6), bx('orders', 'Orders', 56, 24), bx('payments', 'Payments', 56, 42), bx('reports', 'Reports', 56, 60), bx('DB', 'One database', 88, 32)];
+        var edges = [['U', 'API'], ['API', 'users'], ['API', 'orders'], ['API', 'reports'], ['orders', 'payments', 'fn call'], ['users', 'DB'], ['orders', 'DB'], ['payments', 'DB'], ['reports', 'DB']];
+        var all = ['API', 'users', 'orders', 'payments', 'reports'];
+        function allTag(t) { var r = {}; all.forEach(function (k) { r[k] = t; }); return r; }
+        var steps = [];
+        steps.push({ narr: 'One <b>process</b>, one deploy, one database. The middle boxes are <b>modules inside the same program</b> — they share memory and call each other with plain function calls.', hl: allTag('win'), tags: { API: 'same process', reports: 'same process' } });
+        steps.push({ narr: 'A customer places an order: <code>POST /orders</code> hits the API layer, which calls the Orders module.', on: ['U-API', 'API-orders'], hl: { U: 'cur', API: 'cur', orders: 'cur' }, labels: { 'U-API': 'POST /orders' } });
+        steps.push({ narr: 'Orders calls Payments with a <b>normal method call</b>: ~nanoseconds, no network, no serialization, no timeout to configure. This is the monolith\'s superpower.', on: ['orders-payments'], hl: { orders: 'cur', payments: 'cur' }, labels: { 'orders-payments': 'charge() ~50 ns' } });
+        steps.push({ narr: 'Both modules write in <b>one database transaction</b>: order row + payment row commit together or not at all (ACID). No distributed-transaction headaches.', on: ['orders-DB', 'payments-DB'], hl: { DB: 'ok', orders: 'ok', payments: 'ok' }, labels: { 'orders-DB': 'BEGIN … INSERT', 'payments-DB': '… COMMIT' } });
+        steps.push({ narr: 'Response <b>201 Created</b> goes back. Total server time maybe 10 ms, almost all of it the database.', on: ['U-API'], cls: 'sel', hl: { U: 'ok' }, labels: { 'U-API': '↩ 201 Created' } });
+        steps.push({ reset: true, narr: '<span class="c-y">Pain #1 — deploy coupling.</span> A developer fixes a typo in Reports. The <b>entire</b> application must be rebuilt, retested and redeployed, including Payments, which nobody touched.', hl: allTag('cur'), tags: { reports: 'changed 1 line', payments: 'redeployed anyway' } });
+        if (crash !== 'none') {
+          var hlc = allTag('bad'); hlc[crash] = 'bad'; hlc.U = 'bad';
+          var t = {}; t[crash] = 'memory leak → OOM';
+          steps.push({ narr: '<span class="c-r">Pain #2 — blast radius.</span> The <b>' + mods[crash] + '</b> module leaks memory. The process runs out of memory and dies — and it takes <b>every</b> feature with it, even ones that had nothing to do with ' + mods[crash] + '. Customers cannot even log in.', on: ['U-API'], cls: 'bad', keep: 'bad', hl: hlc, tags: t, labels: { 'U-API': '502 Bad Gateway' } });
+        } else {
+          steps.push({ narr: '<span class="c-g">No crash this time.</span> But remember the risk: if any module leaked memory or hogged CPU, it would take every feature down with it, because they share one process.', hl: allTag('ok') });
+        }
+        var scaleNodes = [bx('LB', 'Load Balancer', 12, 32), bx('M1', 'Monolith copy 1', 50, 8), bx('M2', 'Monolith copy 2', 50, 32), bx('M3', 'Monolith copy 3', 50, 56), bx('DB', 'One database', 88, 32)];
+        var scaleEdges = [['LB', 'M1'], ['LB', 'M2'], ['LB', 'M3'], ['M1', 'DB'], ['M2', 'DB'], ['M3', 'DB']];
+        steps.push({ reset: true, nodes: scaleNodes, edges: scaleEdges, label: 'Scaling a monolith', narr: '<span class="c-g">Scaling a monolith is easy if it is stateless:</span> run identical copies behind a load balancer. The catch: every copy carries <i>all</i> modules, even if only one feature is busy, and they all share one database.', on: ['LB-M1', 'LB-M2', 'LB-M3'], hl: { LB: 'cur', M1: 'ok', M2: 'ok', M3: 'ok' }, tags: { DB: 'next bottleneck' } });
+        var fixNodes = [bx('U', 'Customer', 8, 32), bx('APP', 'Monolith (core)', 38, 32), bx('Q', 'Job queue', 62, 56), bx('W', 'Report worker', 88, 56), bx('DB', 'Database', 88, 14)];
+        var fixEdges = [['U', 'APP'], ['APP', 'DB'], ['APP', 'Q', 'enqueue job'], ['Q', 'W'], ['W', 'DB', 'read replica']];
+        steps.push({ reset: true, nodes: fixNodes, edges: fixEdges, label: 'Fix: isolate the risky part', narr: '<b>Typical first fix:</b> move the heavy/risky part (here: reports) into a <b>background worker</b> fed by a queue. A crash there no longer kills checkout. This is how monoliths evolve — one painful piece at a time, not a big-bang rewrite.', on: ['APP-Q', 'Q-W'], hl: { APP: 'ok', W: 'cur', Q: 'cur' }, tags: { W: 'separate process' } });
+        return story({ label: 'Monolith = one deployable', height: 66, nodes: nodes, edges: edges, steps: steps });
+      }
+    },
+    examples: [
+      { title: 'In-process call vs network call', html: `${H.table(['', 'Function call (monolith)', 'Network call (separate service)'], [['Time', '~nanoseconds', '~0.5–2 ms inside a data center'], ['Can fail?', 'only with your bug', 'timeouts, DNS, network drops, the other service is down'], ['Needs', 'nothing', 'serialization, retries, timeouts, auth, versioning'], ['Transaction', 'one DB transaction', 'saga / outbox / compensations']])}<p>A page that makes 30 internal calls costs ~0 ms of overhead in a monolith and 15–60 ms if each call becomes a network hop.</p>` },
+      { title: 'A real swing back to monolith', html: `<p>In 2023 the Amazon Prime Video team published that one of their monitoring tools, originally built from serverless functions and step-by-step orchestration, was rebuilt as a single process and cut its infrastructure cost by about 90%. The data was being passed between components over the network and through storage at every step; putting the pieces in one process removed that overhead. <b>Lesson:</b> distribution has a price; pay it only for real benefits.</p>` },
+      { title: 'When a split is justified', html: `<ul><li><b>Search</b> needs 20 machines with lots of RAM while the rest needs 3 → extract search to scale it alone.</li><li><b>Payments</b> must pass strict compliance audits (PCI DSS) → isolating it shrinks what auditors must review.</li><li><b>Video transcoding</b> is CPU-hungry and crashy → move to workers so it cannot hurt checkout.</li><li>A <b>separate team</b> in another time zone owns notifications and wants its own release schedule.</li></ul><p>Each split names a concrete pain. "Microservices are modern" is not a reason.</p>` },
+      { title: 'Big ball of mud vs modular monolith', html: `<p><b>Mud:</b> <code>ReportService</code> runs raw SQL on the <code>payments</code> table directly; <code>OrderController</code> imports internal helper classes of the users module. Every change breaks something far away.</p>
+<p><b>Modular:</b> each module owns its tables and exposes an interface (<code>PaymentApi</code>); build tools or architecture tests forbid other imports. Later, extracting a module into a service is mostly replacing the interface implementation with an HTTP/gRPC client.</p>` }
+    ],
+    deepDive: `<p><b>"Monolith" is about deployment, not code quality.</b> A monolith can be beautifully modular; microservices can be a mess. The anti-pattern to fear most is the <b>distributed monolith</b>: many services that must be deployed together and call each other synchronously in long chains — all the costs of distribution, none of the independence.</p>
+<p><b>The database is the real coupling.</b> If five modules read each other\'s tables, they are coupled no matter how many repositories you split them into. Ownership rule: one module owns each table; others go through its interface.</p>
+<p><b>Strangler fig migration.</b> To leave a monolith safely, put a proxy/gateway in front, route one endpoint at a time to a new service, and delete the old code path once traffic has moved. No big-bang rewrites (they famously fail).</p>
+<p><b>Operational realities.</b> Large monoliths suffer slow builds and long test suites; fixes include build caching, modular builds (Gradle/Maven modules, Bazel), and running tests only for changed modules. Startup time and memory footprint grow too, which slows autoscaling.</p>
+<p><b>Bulkheads inside a monolith.</b> You can isolate risk without splitting: separate thread pools per feature, separate deployments of the <i>same</i> artifact with different roles (web vs worker), and routing heavy endpoints to a dedicated pool of instances.</p>
+<p><b>Microservices cost list:</b> service discovery, network failures, distributed tracing, versioned APIs, eventual consistency, per-service CI/CD and on-call. Worth it at scale with many teams; a tax for a small team.</p>`,
+    aiEra: `<p><b>AI coding tools love clear boundaries.</b> Assistants work best when a module fits in their context and has an obvious interface. A modular monolith with clean module APIs is easier for AI (and humans) to change safely than a big ball of mud — or than 40 tiny services whose behaviour is spread across repos.</p>
+<p><b>Where AI goes wrong:</b> asked to "design a scalable app", models often jump to microservices + Kafka + Kubernetes for a team of three. Push back with your real constraints: team size, traffic, deadline.</p>
+<p><b>Adding AI features to a monolith:</b> an "AI summary" feature is usually just another module calling an external LLM API. Because those calls are slow and flaky, run them asynchronously (queue + worker) with timeouts, so a slow model never blocks checkout threads — the same isolation lesson as the reports example.</p>
+<p><b>Use AI as a partner:</b> <code>Here is my package structure. Find modules that reach into other modules' internals or tables.</code> Good at spotting coupling. <b>You own</b> the decision of when a split is worth its cost.</p>`,
+    problems: [{
+      title: 'Five engineers, one product: monolith or microservices?',
+      level: 'Medium', tags: ['monolith', 'architecture decision', 'trade-offs'], companies: ['Shopify', 'Stripe', 'startups'],
+      statement: `<p>A 5-engineer startup is building a marketplace: users, listings, search, orders, payments (via an external provider) and an admin reports page. Expected: 50k users in year one. The CTO asks: "Should we start with microservices so we can scale later?" Give a recommendation with an architecture sketch and the conditions under which you would split something out.</p>`,
+      constraints: `<p>Launch in 4 months. One on-call rotation. Budget-conscious.</p>`,
+      example: `<p>Recommendation: ${H.c('g', 'modular monolith + one Postgres + background worker')}. Why: 50k users is small (a few requests/second), 5 engineers cannot operate 7 services, and orders + payments need simple transactions.</p>`,
+      brute: { why: `<p><b>Naive design:</b> 7 microservices (users, listings, search, orders, payments, reports, notifications), each with its own database, Kafka between them, Kubernetes, a service mesh. It breaks because: the team spends months on infrastructure instead of product; every feature crosses 3 services (slow, fragile development); simple order+payment consistency needs sagas; and 50k users never needed it.</p>` },
+      mcq: { q: 'Which is the strongest reason to extract one service from this monolith later?', options: ['Microservices are the industry standard', 'Search needs very different hardware and scales 10× faster than the rest', 'The codebase passed 10,000 lines', 'A new engineer joined'], answer: 1, explain: 'Independent scaling with different resource needs is a concrete, measurable pain that a split solves.' },
+      hints: [
+        `<p>Hint 1: Estimate traffic: 50k users, maybe 10% daily active, ~20 requests each → ~100k requests/day ≈ 1–2 requests/second on average. Tiny.</p>`,
+        `<p>Hint 2: The real constraints are <b>team size</b> and <b>time</b>, not scale. What can 5 people build and operate?</p>`,
+        `<p>Hint 3: Recipe — modular monolith with strict module boundaries, stateless app servers (2 copies for availability), one managed Postgres, a queue + worker for slow jobs (emails, reports), a CDN for images; list concrete "split triggers".</p>`
+      ],
+      solution: {
+        approach: `<p><b>Recommendation: a modular monolith.</b></p>
+<ul><li><b>App:</b> one codebase with modules <code>users</code>, <code>listings</code>, <code>search</code>, <code>orders</code>, <code>payments</code>, <code>admin</code>. Each module owns its tables and exposes an interface; architecture tests forbid cross-module internals.</li>
+<li><b>Runtime:</b> 2+ identical stateless app instances behind a managed load balancer (one can die), sessions in signed cookies or Redis.</li>
+<li><b>Data:</b> one managed PostgreSQL (automated backups, a standby replica). Postgres full-text search is enough for 50k listings at first.</li>
+<li><b>Async:</b> a job queue + worker process (same codebase, different entry point) for emails, payment webhooks and admin reports, so slow work never blocks web requests.</li>
+<li><b>Edge:</b> object storage + CDN for listing photos.</li>
+<li><b>Payments:</b> external provider called from the payments module with timeouts and idempotency keys.</li></ul>
+<p><b>Split triggers (measure, then act):</b> search needs a dedicated engine or different scaling → extract a search service fed by change events; payments need PCI isolation; a second team needs independent deploys; the worker\'s load needs its own autoscaling. Because module boundaries are clean, each extraction is a contained project (strangler pattern).</p>
+<p><b>Trade-off stated:</b> we accept deploy coupling and shared blast radius now, in exchange for speed of development, simple transactions and low operating cost.</p>`,
+        complexity: `<p>Operational load: 1 app artifact, 1 database, 1 queue — manageable for one on-call rotation. Capacity: a couple of modest instances serve hundreds of requests/second, far above the ~2 req/s average expected.</p>`,
+        followUps: ['How would you extract search later without downtime?', 'What would make you choose microservices from day one?', 'How do you stop the monolith from becoming a big ball of mud?']
+      }
+    }]
+  });
+
 registerModule({ id: 'hld01', title: 'x', intro: 'x', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

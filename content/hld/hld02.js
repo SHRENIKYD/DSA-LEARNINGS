@@ -595,4 +595,481 @@ DEL sess:9f2c...e1          → logout (instant)</pre>
     }]
   });
 
+  /* =====================================================================
+     TOPIC 4 — Load Balancers: Round Robin vs Least Connections
+     ===================================================================== */
+  function lbSim(durations, n) {
+    // returns per-arrival snapshots for round robin and least connections
+    var algos = { rr: { act: [], tot: [], peak: [], i: 0 }, lc: { act: [], tot: [], peak: [] } };
+    ['rr', 'lc'].forEach(function (a) { for (var k = 0; k < n; k++) { algos[a].act.push([]); algos[a].tot.push(0); algos[a].peak.push(0); } });
+    var snaps = [];
+    durations.forEach(function (d, t) {
+      var snap = { t: t, d: d };
+      ['rr', 'lc'].forEach(function (a) {
+        var A = algos[a], s, k;
+        for (k = 0; k < n; k++) A.act[k] = A.act[k].filter(function (e) { return e > t; });
+        if (a === 'rr') { s = A.i % n; A.i++; }
+        else { s = 0; for (k = 1; k < n; k++) if (A.act[k].length < A.act[s].length) s = k; }
+        A.act[s].push(t + d); A.tot[s]++;
+        if (A.act[s].length > A.peak[s]) A.peak[s] = A.act[s].length;
+        snap[a] = { pick: s, active: A.act.map(function (x) { return x.length; }), tot: A.tot.slice(), peak: A.peak.slice() };
+      });
+      snaps.push(snap);
+    });
+    return snaps;
+  }
+  function lbGraph(label, n, pick, active, cls) {
+    var nodes = [B('LB', label, 50, 6)], edges = [], hl = { LB: 'cur' }, ehl = {}, tags = {};
+    for (var k = 0; k < n; k++) {
+      var x = n === 1 ? 50 : 10 + k * (80 / (n - 1));
+      nodes.push(B('S' + k, 'S' + (k + 1), x, 26));
+      edges.push(['LB', 'S' + k]);
+      tags['S' + k] = active[k] + ' busy';
+      if (active[k] >= 3) hl['S' + k] = 'bad';
+    }
+    if (pick !== null) { hl['S' + pick] = active[pick] >= 3 ? 'bad' : cls; ehl['LB-S' + pick] = cls; }
+    return G(null, nodes, edges, hl, ehl, tags, 36);
+  }
+
+  topics.push({
+    title: 'Load Balancers: Round Robin, Weighted, Least Connections',
+    analogy: `<p>A busy supermarket has 4 checkout tills and a greeter at the entrance.</p>
+      <ul>
+        <li><b>Round robin greeter:</b> "You go to till 1, you till 2, you till 3, you till 4, you till 1…". Fair if every shopper has a basket of the same size. But if shopper #1 has a trolley piled to the roof, till 1 is stuck for 20 minutes while the greeter keeps sending people there.</li>
+        <li><b>Least connections greeter:</b> looks at the queues and sends you to the till with the <b>fewest people waiting</b>. Big trolleys no longer trap everyone behind them.</li>
+        <li><b>Weighted greeter:</b> till 1 has two cashiers, so it gets twice as many shoppers.</li>
+      </ul>`,
+    explain: `<p>A <b>load balancer (LB)</b> sits between clients and a group (a <i>pool</i>) of identical servers. Clients talk to one address — the LB — and the LB forwards each request or connection to one healthy server.</p>
+      <p>What a load balancer gives you:</p>
+      <ul>
+        <li><b>Distribution:</b> spreads work so no server is overloaded.</li>
+        <li><b>Health checks:</b> pings each server (e.g. <code>GET /health</code> every 5 s); a server that fails a few checks in a row is taken out of rotation, and put back when it recovers.</li>
+        <li><b>One stable entry point:</b> servers can be added, removed or replaced behind it without clients knowing.</li>
+        <li>Often also: TLS termination, connection reuse, request logging, sticky sessions (Topic 3).</li>
+      </ul>
+      <h4>The algorithms you must know</h4>
+      ${H.table(['Algorithm', 'How it picks', 'Good when', 'Weak when'], [
+        ['<b>Round robin</b>', 'Next server in a circle: 1, 2, 3, 1, 2, 3…', 'Requests cost about the same; servers are identical', 'Request cost varies a lot (slow ones pile up)'],
+        ['<b>Weighted round robin</b>', 'Like RR but a server with weight 3 gets 3× the turns', 'Mixed server sizes (8 vCPU next to 2 vCPU)', 'Weights are static; does not see live load'],
+        ['<b>Least connections</b>', 'Server with the fewest in-flight requests/connections right now', 'Long or uneven requests, WebSockets, uploads', 'Needs live counts; a new empty server can get flooded'],
+        ['<b>Weighted least connections</b>', 'Fewest connections ÷ weight', 'Uneven requests AND uneven servers', 'More state to track'],
+        ['<b>Random / power of two choices</b>', 'Pick 2 random servers, send to the less busy one', 'Many load balancers with no shared view', 'Pure random alone can be lumpy'],
+        ['<b>Hashing (IP / key)</b>', 'hash(client or key) mod N', 'Affinity: same user → same server (caches)', 'Uneven keys; adding a server reshuffles (see consistent hashing, HLD 7)']
+      ])}
+      <p>Tiny worked example, 3 servers, 6 requests, durations ${H.arr([6, 1, 1, 6, 1, 1], { label: 'secs' })}</p>
+      <p><b>Round robin</b> sends request 1 (6 s) and request 4 (6 s) both to ${H.c('r', 'S1')} — S1 holds 2 slow jobs while S2 and S3 finish their 1-second jobs and idle. <b>Least connections</b> sees S1 is busy and sends request 4 to a server with 0 active requests, so the slow jobs land on ${H.c('g', 'different servers')}.</p>
+      <p><b>Layer 4 vs Layer 7</b> (more in HLD 4): an L4 LB balances TCP/UDP connections by IP and port, without reading the request — very fast. An L7 LB reads HTTP (path, headers, cookies) so it can route <code>/api</code> and <code>/images</code> to different pools and balance per request, not per connection.</p>`,
+    clues: [
+      '"Requests take very different times (uploads, reports, video export)" → least connections, not round robin',
+      '"Servers have different sizes" → weighted round robin / weighted least connections',
+      '"Long-lived WebSocket connections" → least connections (balance by open connections)',
+      '"Need the same user on the same server for its local cache" → hashing / affinity (and consistent hashing)',
+      '"One server keeps getting overloaded though round robin is on" → uneven request cost or sticky sessions',
+      '"Many independent load balancer nodes" → power of two random choices'
+    ],
+    code: [{ lang: 'java', title: 'Round robin + least connections (Java, compiles)', code: `import java.util.*;
+import java.util.concurrent.atomic.*;
+
+class Backend {
+    final String name;
+    final AtomicInteger active = new AtomicInteger();   // in-flight requests right now
+    volatile boolean healthy = true;                    // flipped by the health checker
+
+    Backend(String name) { this.name = name; }
+
+    @Override public String toString() { return name + "(active=" + active.get() + ")"; }
+}
+
+interface LoadBalancer {
+    Backend pick();
+}
+
+// Round robin: a shared counter walks the list in a circle. Thread-safe, O(1).
+class RoundRobinLB implements LoadBalancer {
+    private final List<Backend> backends;
+    private final AtomicLong counter = new AtomicLong();
+
+    RoundRobinLB(List<Backend> backends) { this.backends = List.copyOf(backends); }
+
+    public Backend pick() {
+        int n = backends.size();
+        for (int tries = 0; tries < n; tries++) {          // skip unhealthy servers
+            int idx = (int) Math.floorMod(counter.getAndIncrement(), (long) n);
+            Backend b = backends.get(idx);
+            if (b.healthy) return b;
+        }
+        throw new IllegalStateException("no healthy backends");
+    }
+}
+
+// Least connections: scan for the healthy server with the fewest in-flight requests. O(N).
+class LeastConnectionsLB implements LoadBalancer {
+    private final List<Backend> backends;
+
+    LeastConnectionsLB(List<Backend> backends) { this.backends = List.copyOf(backends); }
+
+    public Backend pick() {
+        Backend best = null;
+        for (Backend b : backends) {
+            if (!b.healthy) continue;
+            if (best == null || b.active.get() < best.active.get()) best = b;
+        }
+        if (best == null) throw new IllegalStateException("no healthy backends");
+        return best;
+    }
+}
+
+class LbDemo {
+    // Wrap every forwarded request so the active counter is always correct.
+    static String forward(LoadBalancer lb, String request) {
+        Backend b = lb.pick();
+        b.active.incrementAndGet();
+        try {
+            return b.name + " handled " + request;       // real code: proxy the HTTP call here
+        } finally {
+            b.active.decrementAndGet();                  // finally: also runs on errors
+        }
+    }
+
+    public static void main(String[] args) {
+        List<Backend> pool = List.of(new Backend("S1"), new Backend("S2"), new Backend("S3"));
+        LoadBalancer rr = new RoundRobinLB(pool);
+        for (int i = 1; i <= 4; i++) System.out.println(forward(rr, "req" + i));  // S1 S2 S3 S1
+
+        pool.get(0).active.set(5);                       // pretend S1 is stuck on slow requests
+        pool.get(1).healthy = false;                     // and S2 failed its health check
+        LoadBalancer lc = new LeastConnectionsLB(pool);
+        System.out.println("least-connections picks " + lc.pick());             // S3
+    }
+}` }, { lang: 'python', run: true, title: 'Simulate both algorithms on uneven work (runnable)', code: `def simulate(durations, n, algo):
+    """One request arrives per tick; durations[i] = ticks request i keeps a server busy."""
+    active = [[] for _ in range(n)]      # per server: end times of in-flight requests
+    peak, total, rr = [0] * n, [0] * n, 0
+    for t, d in enumerate(durations):
+        for s in range(n):               # drop requests that have finished by now
+            active[s] = [end for end in active[s] if end > t]
+        if algo == "round_robin":
+            s = rr % n
+            rr += 1
+        else:                            # least connections; tie -> lowest index
+            s = min(range(n), key=lambda k: (len(active[k]), k))
+        active[s].append(t + d)
+        total[s] += 1
+        peak[s] = max(peak[s], len(active[s]))
+    return total, peak
+
+
+work = [6, 1, 1, 6, 1, 1, 6, 1, 1, 6, 1, 1]      # every 3rd request is slow (a report)
+for algo in ["round_robin", "least_connections"]:
+    total, peak = simulate(work, 3, algo)
+    print(f"{algo:<18} requests/server={total}  peak in-flight={peak}  worst={max(peak)}")
+` }],
+    viz: [{
+      title: 'Round robin vs least connections on the same traffic',
+      input: 'servers=3; 6 1 1 6 1 1 6 1 1 1 1 1',
+      inputLabel: 'servers=N; then request durations in ticks (one request arrives per tick, max 18)',
+      gen: function (input) {
+        var s = String(input || ''), m = s.match(/servers\s*=\s*(\d+)/i), n = m ? Number(m[1]) : 3;
+        var d = s.replace(/servers\s*=\s*\d+/i, ' ').split(/[\s,;]+/).filter(Boolean).map(Number);
+        if (n < 2 || n > 5) throw new Error('servers must be between 2 and 5');
+        if (!d.length || d.some(function (x) { return !(x >= 1 && x <= 20 && Math.floor(x) === x); })) throw new Error('Durations must be whole numbers 1..20, e.g. servers=3; 6 1 1 6 1 1');
+        if (d.length > 18) throw new Error('Use at most 18 requests');
+        var snaps = lbSim(d, n), frames = [], zeros = [];
+        for (var k = 0; k < n; k++) zeros.push(0);
+        frames.push({ narr: 'One request arrives every tick. Each number is how many ticks that request keeps a server busy (a 6 could be a report, a 1 a quick API call). Top: <b>round robin</b>. Bottom: <b>least connections</b>. Same traffic for both.', parts: [
+          { type: 'array', label: 'request durations (ticks)', values: d },
+          lbGraph('LB: round robin', n, null, zeros, 'cur'), lbGraph('LB: least connections', n, null, zeros, 'ok')
+        ] });
+        snaps.forEach(function (sn) {
+          var hl = {}; hl[sn.t] = 'cur';
+          var why = sn.rr.pick === sn.lc.pick ? 'Both pick <b>S' + (sn.rr.pick + 1) + '</b>.' :
+            'Round robin blindly takes the next in line, <b>S' + (sn.rr.pick + 1) + '</b> (' + (sn.rr.active[sn.rr.pick] - 1) + ' already busy). Least connections looks at live counts and picks <b>S' + (sn.lc.pick + 1) + '</b> (' + (sn.lc.active[sn.lc.pick] - 1) + ' busy).';
+          frames.push({
+            narr: 'Tick ' + sn.t + ': request #' + (sn.t + 1) + ' needs <b>' + sn.d + '</b> tick' + (sn.d > 1 ? 's' : '') + '. ' + why + (Math.max.apply(null, sn.rr.active) >= 3 ? ' <span class="c-r">A round-robin server is piling up work.</span>' : ''),
+            parts: [
+              { type: 'array', label: 'request durations', values: d, hl: hl, ptr: (function () { var p = {}; p[sn.t] = 'now'; return p; })() },
+              lbGraph('LB: round robin', n, sn.rr.pick, sn.rr.active, 'cur'),
+              { type: 'bars', label: 'Round robin — in-flight per server', values: sn.rr.active, idxLabels: sn.rr.active.map(function (_, i) { return 'S' + (i + 1); }), hl: (function () { var h = {}; h[sn.rr.pick] = 'cur'; return h; })() },
+              lbGraph('LB: least connections', n, sn.lc.pick, sn.lc.active, 'ok'),
+              { type: 'bars', label: 'Least connections — in-flight per server', values: sn.lc.active, idxLabels: sn.lc.active.map(function (_, i) { return 'S' + (i + 1); }), hl: (function () { var h = {}; h[sn.lc.pick] = 'ok'; return h; })() },
+              V('Running totals', { 'RR served': sn.rr.tot.join(' / '), 'LC served': sn.lc.tot.join(' / '), 'RR worst peak': Math.max.apply(null, sn.rr.peak), 'LC worst peak': Math.max.apply(null, sn.lc.peak) })
+            ]
+          });
+        });
+        var last = snaps[snaps.length - 1], rp = Math.max.apply(null, last.rr.peak), lp = Math.max.apply(null, last.lc.peak);
+        var rows = [];
+        for (k = 0; k < n; k++) rows.push(['S' + (k + 1), last.rr.tot[k], last.rr.peak[k], last.lc.tot[k], last.lc.peak[k]]);
+        frames.push({ narr: 'Result: round robin gives every server the same <b>number</b> of requests, but not the same <b>amount of work</b> — its busiest server peaked at <b>' + rp + '</b> in-flight requests vs <b>' + lp + '</b> for least connections. ' + (rp > lp ? 'Uneven request cost is exactly where least connections wins.' : 'With this traffic both did equally well — when requests cost the same, simple round robin is perfect.'), parts: [
+          { type: 'table', label: 'Per-server summary', columns: ['server', 'RR served', 'RR peak', 'LC served', 'LC peak'], rows: rows },
+          { type: 'bars', label: 'Worst peak in-flight (lower is better)', values: [rp, lp], idxLabels: ['round robin', 'least conn'], hl: rp > lp ? { 0: 'bad', 1: 'ok' } : { 0: 'ok', 1: 'ok' } }
+        ] });
+        return frames;
+      }
+    }, {
+      title: 'Weighted round robin (smooth, like nginx)',
+      input: 'S1:5 S2:1 S3:1',
+      inputLabel: 'name:weight pairs (2–5 servers, weights 1–9)',
+      gen: function (input) {
+        var pairs = String(input || '').trim().split(/[\s,]+/).filter(Boolean).map(function (p) { var a = p.split(':'); return { name: a[0], w: Number(a[1]) }; });
+        if (pairs.length < 2 || pairs.length > 5) throw new Error('Give 2 to 5 servers like S1:5 S2:1 S3:1');
+        pairs.forEach(function (p) { if (!p.name || !(p.w >= 1 && p.w <= 9 && Math.floor(p.w) === p.w)) throw new Error('Each entry must look like S1:3 (weight 1..9)'); });
+        var total = pairs.reduce(function (s, p) { return s + p.w; }, 0), cw = pairs.map(function () { return 0; }), served = pairs.map(function () { return 0; });
+        var frames = [], seq = [], names = pairs.map(function (p) { return p.name; });
+        frames.push({ narr: 'Weights say how many turns each server gets per cycle (total ' + total + '). A naive version would send ' + pairs[0].name + ' ' + pairs[0].w + ' requests <i>in a row</i> — bursty. The <b>smooth</b> algorithm interleaves them: every pick, add each weight to its "current" score, pick the highest, then subtract the total from the winner.', parts: [
+          { type: 'table', label: 'Servers', columns: ['server', 'weight'], rows: pairs.map(function (p) { return [p.name, p.w]; }) },
+          { type: 'bars', label: 'current score', values: cw.slice(), idxLabels: names }
+        ] });
+        var picks = Math.min(total * 2, 18);
+        for (var i = 0; i < picks; i++) {
+          var k, best = 0;
+          for (k = 0; k < pairs.length; k++) cw[k] += pairs[k].w;
+          var before = cw.slice();
+          for (k = 1; k < pairs.length; k++) if (cw[k] > cw[best]) best = k;
+          cw[best] -= total; served[best]++; seq.push(pairs[best].name);
+          var h = {}; h[best] = 'ok';
+          frames.push({ narr: 'Pick #' + (i + 1) + ': scores after adding weights = [' + before.join(', ') + ']. Highest is <b>' + pairs[best].name + '</b> → it serves this request, then its score drops by ' + total + ' so others catch up.', parts: [
+            { type: 'bars', label: 'current score (after subtracting total from the winner)', values: cw.slice(), idxLabels: names, hl: h },
+            { type: 'queue', label: 'order of picks so far', items: seq.slice(-12), hl: (function () { var q = {}; q[Math.min(seq.length, 12) - 1] = 'ok'; return q; })(), frontLabel: 'older', backLabel: 'newest' },
+            V('Requests served', (function () { var o = {}; pairs.forEach(function (p, j) { o[p.name] = served[j]; }); return o; })())
+          ] });
+        }
+        frames.push({ narr: 'After ' + picks + ' picks each server has served exactly in proportion to its weight, and the big server\'s turns are spread out instead of bunched. This is how nginx and many proxies implement weights.', parts: [
+          { type: 'bars', label: 'Served vs weight share', values: served, idxLabels: names.map(function (nm, j) { return nm + ' (w' + pairs[j].w + ')'; }), hl: { 0: 'sel' } },
+          T('Sequence: <b>' + seq.join(' ') + '</b>')
+        ] });
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'Round robin, 7 requests, 3 servers', html: `<p>Request <i>i</i> (starting at 0) goes to server <code>i mod 3</code>:</p>
+        ${H.table(['request', '0', '1', '2', '3', '4', '5', '6'], [['server', 'S1', 'S2', 'S3', 'S1', 'S2', 'S3', H.c('b', 'S1')]])}
+        <p>S1 gets 3, S2 gets 2, S3 gets 2. Over many requests the counts are equal — but only the <b>counts</b>, not the work.</p>` },
+      { title: 'Least connections with WebSockets', html: `<p>A chat service holds long-lived WebSocket connections. S1 has 9,000 open sockets, S2 has 9,200, a freshly started S3 has 0.</p>
+        <p>Round robin would give S3 only 1/3 of new connections for hours. Least connections sends new connections to ${H.c('g', 'S3')} until it catches up. ${H.c('y', 'Careful:')} if S3 is cold (empty caches), flooding it can hurt — many LBs offer <b>slow start</b>, ramping a new server's share over e.g. 60 seconds.</p>` },
+      { title: 'Weighted pool after a hardware upgrade', html: `<p>Pool: two old 4-vCPU servers and one new 16-vCPU server. Plain RR gives each 1/3 of traffic → the old ones run hot, the new one idles. Set weights 1 : 1 : 4 → the new box gets 4/6 ≈ 67% of requests.</p>
+        ${H.table(['server', 'weight', 'share'], [['old-1', '1', '17%'], ['old-2', '1', '17%'], ['new-1', '4', H.c('g', '67%')]])}` },
+      { title: 'Power of two choices', html: `<p>Ten independent LB nodes each pick a backend. If they all use "least connections" based on slightly stale numbers, they all choose the <i>same</i> currently-emptiest server at once — a herd. With <b>two random choices</b>, each LB picks 2 servers at random and sends to the less loaded one. This simple trick avoids herding and gives load nearly as even as full least connections. Envoy's default "least request" balancer works this way.</p>` }
+    ],
+    deepDive: `<p><b>What "connections" really means.</b> For an L4 LB it is open TCP connections. For an L7 HTTP LB with keep-alive and HTTP/2, one connection carries many requests, so modern proxies track <b>outstanding requests</b> instead ("least request" in Envoy, <code>least_conn</code> in nginx counts active upstream connections). Pick the metric that matches the unit of work.</p>
+      <p><b>Least connections is not least <i>load</i>.</b> Ten idle WebSocket connections cost less than one CPU-heavy request. Advanced options: <b>least response time</b> (combine active count with measured latency), <b>EWMA latency</b> (Finagle/Linkerd "peak EWMA"), or server-reported load ("utilisation-based" balancing). Each adds signal and complexity.</p>
+      <p><b>The new-server trap:</b> a just-booted server has 0 connections, so least connections sends it <i>everything</i> while its JIT, caches and connection pools are cold → it slows down or crashes → it restarts → repeat. Fixes: slow start (ramp weight over 30–120 s), warm-up requests before marking healthy, readiness checks that only pass when warm.</p>
+      <p><b>Where the LB sits and how it scales:</b> the LB itself must not become the bottleneck or single point of failure. Cloud LBs (AWS ALB/NLB, Google Cloud LB, Azure Load Balancer) are distributed fleets behind the scenes. Self-run LBs (HAProxy, nginx, Envoy) are deployed in pairs or groups with a floating IP or behind DNS/anycast (Topic 5 and HLD 4).</p>
+      <p><b>Client-side load balancing:</b> in microservices, callers often balance themselves using a service registry (gRPC with xDS, a service mesh sidecar), avoiding an extra hop. Same algorithms, different place.</p>
+      <p><b>Health checks:</b> active (LB polls <code>/health</code>) and passive (LB notices errors/timeouts on real traffic — "outlier detection"). A good health endpoint checks the process can serve, but should <i>not</i> fail just because a shared dependency is down, or every server fails at once and the LB has nowhere to send traffic.</p>`,
+    aiEra: `<p><b>What AI changes:</b> LLM inference is a fascinating load-balancing problem. Requests vary wildly (10 tokens vs 4,000 tokens), and a GPU server's real load is its queue of tokens and its KV-cache memory, not its connection count. Inference gateways in 2026 balance by <b>queue depth and KV-cache usage</b>, and prefer the server that already holds a cached prompt prefix (<i>prefix-aware / cache-aware routing</i>) — round robin is a poor fit.</p>
+      <p><b>Use AI as a partner:</b> <code>Given these per-endpoint p50/p99 latencies and server sizes, which LB algorithm and weights would you choose? Show your reasoning</code>, or ask it to generate an HAProxy/nginx/Envoy config and then check every line against the docs. <b>Where AI goes wrong:</b> it confuses nginx directive names across versions, assumes "least connections" always beats round robin, and forgets slow start and health-check thresholds. <b>What you must own:</b> matching the algorithm to the shape of your traffic, and testing it with a load test before trusting it.</p>`,
+    problems: [{
+      title: 'Pick the Load-Balancing Algorithm',
+      level: 'Medium', tags: ['load balancer', 'round robin', 'least connections', 'weights'], companies: ['Netflix', 'Cloudflare', 'Amazon'],
+      statement: `<p>A media API has two kinds of requests on the same servers:</p>
+        <ul><li><code>GET /metadata</code> — 95% of requests, ~20 ms each,</li>
+        <li><code>POST /export</code> — 5% of requests, 30 s to 3 min of CPU each.</li></ul>
+        <p>The pool has 6 servers with 8 vCPU and 2 newer servers with 32 vCPU. Users complain that some metadata calls take 10+ seconds. The LB uses plain round robin. What is happening, and what would you change?</p>`,
+      constraints: `Peak 4,000 rps; p99 for /metadata must be &lt; 200 ms.`,
+      example: `<p>With RR, a server that happened to receive 3 exports is CPU-starved, yet RR keeps sending it 1/8 of metadata calls → ${H.c('r', 'slow p99')}. Meanwhile the 32-vCPU servers get the same 1/8 share as the small ones → ${H.c('r', 'wasted capacity')}.</p>`,
+      brute: { why: `<p>"Add more servers with round robin" lowers average load but does not fix the cause: RR is blind to how busy a server is, so exports still cluster randomly and metadata calls still queue behind them. You pay for more machines and the p99 stays spiky.</p>` },
+      mcq: { q: 'Which single change helps p99 the most?', options: ['Move /export to its own pool (or async job queue)', 'Switch to IP-hash', 'Lower the health-check interval'], answer: 0, explain: 'Isolating the slow work stops it from starving fast requests; the LB algorithm then matters much less. Least connections + weights is a good second step.' },
+      hints: [`<p>RR balances request <b>counts</b>, not <b>work</b>. Which request type makes the work uneven?</p>`, `<p>Two fixes stack: separate the slow work from the fast work, and make the LB aware of server size and live load.</p>`, `<p>Recipe: L7 routing by path → export pool (or a job queue); metadata pool uses weighted least-outstanding-requests with weights ∝ vCPU and slow start.</p>`],
+      solution: {
+        approach: `<p><b>Diagnosis:</b> round robin ignores both request cost and server size. Exports randomly pile onto some servers, saturating their CPUs; RR keeps sending fast metadata requests there, so they wait in line (head-of-line blocking) → 10-second outliers. The 32-vCPU servers are under-used because they get the same share as 8-vCPU servers.</p>
+          <p><b>Fix 1 — isolate slow work (biggest win):</b> use an L7 rule: <code>/export</code> goes to a separate pool, or better, the API enqueues an export job (returns 202 + job id) and a worker fleet processes jobs from a queue at its own pace. The metadata pool now only sees uniform 20 ms requests.</p>
+          <p><b>Fix 2 — smarter algorithm:</b> for the metadata pool use <b>weighted least outstanding requests</b>: weights 1 for 8-vCPU and 4 for 32-vCPU servers, so the big boxes get ~4× traffic and any temporarily slow server receives fewer new requests. Enable slow start for newly added servers. (If several LB nodes run independently, the power-of-two-choices variant avoids herding.)</p>
+          <p><b>Fix 3 — guardrails:</b> timeouts on export calls, a per-server concurrency limit for exports, and health checks with outlier detection to eject a server whose latency spikes.</p>
+          <p><b>Result:</b> metadata p99 depends only on 20 ms work spread by live load → well under 200 ms; exports scale independently by queue depth.</p>`,
+        complexity: `<p>Round robin pick O(1); least-outstanding pick O(N) over the pool (or O(1) with power-of-two choices). Weighted share of a 32-vCPU server = 4 ÷ (6·1 + 2·4) = 4/14 ≈ 29% of metadata traffic.</p>`,
+        followUps: ['How would you size the export worker pool from queue length?', 'What happens to in-flight exports during a deploy?']
+      }
+    }]
+  });
+
+  /* =====================================================================
+     TOPIC 5 — Single Points of Failure, Redundancy, Failover
+     ===================================================================== */
+  topics.push({
+    title: 'Single Points of Failure, Health Checks & Failover',
+    analogy: `<p>A town connected to the city by <b>one bridge</b>. On a normal day nobody thinks about it. The day the bridge closes, the whole town is cut off — ambulances, food trucks, everyone. That bridge is a <b>single point of failure (SPOF)</b>: one part whose failure stops everything.</p>
+      <p>The fixes are familiar: build a <b>second bridge</b> (redundancy), put up <b>signs that redirect traffic</b> when one bridge closes (health checks + failover), and make sure both bridges are not built on the <b>same fault line</b> (independent failure domains). A car carries a <b>spare tyre</b> for the same reason; a plane has two engines and can fly on one.</p>`,
+    explain: `<p>A <b>single point of failure</b> is any component that, if it fails, takes the whole system (or a whole feature) down. To find them, <b>walk the path of one request</b> from the user to the data and back, and ask at every box and arrow: <i>"If this one thing disappears right now, what happens?"</i></p>
+      <h4>Typical SPOFs, from obvious to sneaky</h4>
+      <ul>
+        <li>One app server; one load balancer; one database; one cache/session store.</li>
+        <li>Everything in one <b>availability zone</b> (one data-centre building) or one region.</li>
+        <li>Shared infrastructure: one NAT gateway, one DNS provider, one message broker, one config service.</li>
+        <li>Non-hardware: an expiring TLS certificate, a single API key, one engineer who knows how to deploy, a manual step in failover.</li>
+      </ul>
+      <h4>How to remove a SPOF: redundancy + detection + switching</h4>
+      ${H.table(['Pattern', 'How it works', 'Example'], [
+        ['<b>Active-active</b>', 'All copies serve traffic; if one dies the others absorb its share', 'N stateless app servers behind a LB'],
+        ['<b>Active-passive (standby)</b>', 'One copy serves; a standby takes over on failure', 'Primary DB + standby replica; LB pair sharing a floating IP'],
+        ['<b>N+1 / N+2</b>', 'Provision one (or two) more than needed at peak', '10 servers needed → run 11'],
+        ['<b>Health checks</b>', 'LB probes each server; after X failures, remove it; after Y passes, add it back', '<code>GET /health</code> every 5 s, unhealthy after 2–3 failures']
+      ])}
+      <h4>Availability math (with small numbers)</h4>
+      <p><b>Availability</b> = fraction of time the system works. 99.9% ("three nines") allows about <b>8.8 hours</b> of downtime per year; 99.99% about <b>53 minutes</b>.</p>
+      <ul>
+        <li><b>In series</b> (request needs A <i>and</i> B): multiply. LB 99.99% × app 99.9% × DB 99.9% ≈ ${H.c('r', '99.79%')} — worse than any single part!</li>
+        <li><b>In parallel</b> (request needs A <i>or</i> its copy): 1 − (chance all copies are down). Two app servers at 99.9%: 1 − 0.001 × 0.001 = ${H.c('g', '99.9999%')}.</li>
+      </ul>
+      <p>So every SPOF you remove turns a weak link in the chain into a strong one. (Real numbers are lower than this ideal math because failures are often <b>correlated</b> — same bug, same zone, same bad deploy — and failover takes time.)</p>`,
+    clues: [
+      '"Fix the single point of failure" / "what happens if X dies?" → walk the request path, add redundancy per tier',
+      '"Must be highly available / 99.99%" → no SPOFs, multi-AZ, automatic failover',
+      '"One database server" in a diagram → primary + standby with automatic failover (and backups)',
+      '"Load balancer in front of everything" → who balances the load balancer? (pair, floating IP, managed LB, DNS)',
+      '"Survive a data-centre outage" → spread across availability zones / regions',
+      '"Errors spike for 15 s whenever a server dies" → health check interval × threshold, retries'
+    ],
+    code: { lang: 'python', run: true, title: 'Availability calculator: series vs parallel (runnable)', code: `def series(*parts):
+    """All parts are needed (LB AND app AND DB): multiply availabilities."""
+    total = 1.0
+    for a in parts:
+        total *= a
+    return total
+
+def parallel(a, copies):
+    """Any one copy is enough: 1 - P(all copies down). Assumes independent failures."""
+    return 1 - (1 - a) ** copies
+
+def downtime(avail):
+    minutes = (1 - avail) * 365 * 24 * 60
+    return f"{minutes:>9,.1f} min/year"
+
+LB, APP, DB = 0.9999, 0.999, 0.999
+
+single = series(LB, APP, DB)
+redundant = series(parallel(LB, 2), parallel(APP, 3), parallel(DB, 2))
+
+print(f"one of each      : {single:.6%}  -> {downtime(single)}")
+print(f"2 LB, 3 app, 2 DB: {redundant:.6%}  -> {downtime(redundant)}")
+print("only the app tier redundant:", f"{series(LB, parallel(APP, 3), DB):.4%}",
+      "<- the remaining SPOFs (LB, DB) now dominate")
+` },
+    viz: [{
+      title: 'A server dies: health checks detect it, traffic reroutes',
+      input: 'servers=3 fail=S2 at=4 detect=2 recover=12 requests=16',
+      inputLabel: 'servers (2–5), fail=Sk, at=tick it dies, detect=failed checks before removal, recover=tick it comes back, requests (≤ 24)',
+      gen: function (input) {
+        var o = kvParse(input), n = Number(o.servers || 3), failS = Number(String(o.fail || 'S2').replace(/\D/g, '')) - 1;
+        var at = Number(o.at || 4), det = Number(o.detect || 2), rec = Number(o.recover || 0), R = Number(o.requests || 16);
+        if (!(n >= 2 && n <= 5)) throw new Error('servers must be 2..5');
+        if (!(failS >= 0 && failS < n)) throw new Error('fail must name an existing server, e.g. fail=S2');
+        if (!(R >= 4 && R <= 24)) throw new Error('requests must be 4..24');
+        if (!(at >= 1 && at <= R) || !(det >= 1 && det <= 5)) throw new Error('at must be 1..requests and detect 1..5');
+        var up = [], inRot = [], served = [], fails = 0, errors = 0, passes = 0, rr = 0, frames = [], k;
+        for (k = 0; k < n; k++) { up.push(true); inRot.push(true); served.push(0); }
+        function draw(pick, err) {
+          var nodes = [B('U', 'Users', 8, 30), B('LB', 'Load Balancer', 32, 30)], edges = [['U', 'LB']], hl = { LB: 'cur' }, ehl = { 'U-LB': 'cur' }, tags = {};
+          for (var j = 0; j < n; j++) {
+            var y = n === 1 ? 30 : 6 + j * (48 / (n - 1));
+            nodes.push(B('S' + j, 'Server ' + (j + 1), 72, y));
+            edges.push(['LB', 'S' + j]);
+            if (!up[j]) { hl['S' + j] = 'bad'; tags['S' + j] = inRot[j] ? 'DOWN (LB unaware)' : 'DOWN, removed'; }
+            else if (!inRot[j]) { hl['S' + j] = 'win'; tags['S' + j] = 'back, warming up'; }
+            if (!inRot[j]) ehl['LB-S' + j] = 'done';
+          }
+          if (pick !== null) { ehl['LB-S' + pick] = err ? 'bad' : 'ok'; if (up[pick]) hl['S' + pick] = 'ok'; }
+          return G('Request path', nodes, edges, hl, ehl, tags, 60);
+        }
+        frames.push({ narr: 'Normal day: ' + n + ' healthy servers, round robin. The LB health-checks each server every tick and removes one after <b>' + det + '</b> failed check' + (det > 1 ? 's' : '') + ' in a row. Server ' + (failS + 1) + ' will die at tick ' + at + '.', parts: [draw(null, false), { type: 'bars', label: 'Requests served per server', values: served.slice(), idxLabels: served.map(function (_, j) { return 'S' + (j + 1); }) }, V('Health', { errors: 0, 'failed checks on failed server': 0 })] });
+        for (var t = 1; t <= R; t++) {
+          var note = '';
+          if (t === at) { up[failS] = false; note += '<span class="c-r">💥 Server ' + (failS + 1) + ' crashes.</span> '; }
+          if (rec && t === rec && !up[failS]) { up[failS] = true; passes = 0; note += '<span class="c-g">Server ' + (failS + 1) + ' is repaired and restarts.</span> '; }
+          // health check this tick
+          if (!up[failS] && inRot[failS]) { fails++; if (fails >= det) { inRot[failS] = false; note += 'Health check failed ' + fails + '× → <b>LB removes Server ' + (failS + 1) + ' from rotation.</b> '; } else note += 'Health check failed (' + fails + '/' + det + '), LB still trusts it. '; }
+          if (up[failS] && !inRot[failS]) { passes++; if (passes >= 2) { inRot[failS] = true; fails = 0; note += 'Two passing checks → <b>Server ' + (failS + 1) + ' rejoins rotation.</b> '; } else note += 'Check passed (' + passes + '/2) — not trusted yet. '; }
+          var rot = []; for (k = 0; k < n; k++) if (inRot[k]) rot.push(k);
+          var pick = rot[rr % rot.length]; rr++;
+          var err = !up[pick];
+          if (err) errors++; else served[pick]++;
+          var h = {}; h[pick] = err ? 'bad' : 'ok';
+          frames.push({
+            narr: 'Tick ' + t + ': ' + note + 'Request #' + t + ' → Server ' + (pick + 1) + (err ? ' — <span class="c-r">it is dead but still in rotation → error (or a retry, if the LB/client retries).</span>' : ' ✓'),
+            parts: [draw(pick, err), { type: 'bars', label: 'Requests served per server', values: served.slice(), idxLabels: served.map(function (_, j) { return 'S' + (j + 1); }), hl: h },
+              V('Health', { errors: errors, 'failed checks on failed server': fails, 'servers in rotation': rot.length + ' of ' + n }, { errors: errors ? 'bad' : '' })]
+          });
+        }
+        frames.push({ narr: 'Done. <b>' + errors + '</b> request(s) failed — only during the detection window (between the crash and removal). Shrink it with faster checks, lower thresholds, passive health checks on real traffic, and <b>retries on another server</b> for safe (idempotent) requests. Survivors absorbed the extra load — so size the pool N+1.', parts: [
+          { type: 'bars', label: 'Final requests per server', values: served.slice(), idxLabels: served.map(function (_, j) { return 'S' + (j + 1); }), hl: (function () { var q = {}; q[failS] = 'bad'; return q; })() },
+          V('Outcome', { 'total requests': R, failed: errors, 'detection window (ticks)': det })
+        ] });
+        return frames;
+      }
+    }, {
+      title: 'Hunting SPOFs layer by layer',
+      gen: function () {
+        var f = [];
+        f.push({ narr: '<b>Starting point:</b> users → DNS → one load balancer → one app server → one database. Walk the path and ask "what if this dies?" Every red box is a SPOF. (DNS from a managed provider is already spread over many servers worldwide.)', parts: [
+          G('Version 1', [B('U', 'Users', 7, 30), B('DNS', 'DNS', 24, 30), B('LB', 'Load Balancer', 45, 30), B('A1', 'App 1', 67, 30), B('DB', 'Database', 89, 30)], [['U', 'DNS'], ['DNS', 'LB'], ['LB', 'A1'], ['A1', 'DB']], { LB: 'bad', A1: 'bad', DB: 'bad', DNS: 'ok' }, {}, { LB: 'SPOF', A1: 'SPOF', DB: 'SPOF' }),
+          V('Availability (ideal)', { LB: '99.99%', app: '99.9%', DB: '99.9%', 'whole path': '≈ 99.79% (~18 h down/yr)' }, { 'whole path': 'bad' })
+        ] });
+        f.push({ narr: '<b>Fix the app tier:</b> add App 2 and App 3 (stateless, sessions in a shared store). One app server dying is now a non-event — health checks remove it.', parts: [
+          G('Version 2', [B('U', 'Users', 7, 30), B('LB', 'Load Balancer', 28, 30), B('A1', 'App 1', 55, 8), B('A2', 'App 2', 55, 30), B('A3', 'App 3', 55, 52), B('DB', 'Database', 86, 30)], [['U', 'LB'], ['LB', 'A1'], ['LB', 'A2'], ['LB', 'A3'], ['A1', 'DB'], ['A2', 'DB'], ['A3', 'DB']], { LB: 'bad', A1: 'ok', A2: 'ok', A3: 'ok', DB: 'bad' }, {}, { LB: 'SPOF', DB: 'SPOF' }),
+          V('Availability (ideal)', { 'app tier': '1 − 0.001³ ≈ 99.9999999%', 'whole path': '≈ 99.89%' })
+        ] });
+        f.push({ narr: '<b>Who balances the load balancer?</b> Run two: an active LB and a passive standby sharing a <b>floating (virtual) IP</b>. They heartbeat each other (e.g. keepalived/VRRP); if the active one stops answering, the standby claims the IP within seconds. Managed cloud load balancers do this for you across zones.', parts: [
+          G('Version 3', [B('U', 'Users', 7, 30), B('VIP', 'Floating IP', 24, 30), B('LBa', 'LB active', 44, 14), B('LBb', 'LB standby', 44, 46), B('A1', 'App 1', 66, 14), B('A2', 'App 2', 66, 46), B('DB', 'Database', 89, 30)], [['U', 'VIP'], ['VIP', 'LBa'], ['VIP', 'LBb', 'takeover'], ['LBa', 'A1'], ['LBa', 'A2'], ['A1', 'DB'], ['A2', 'DB']], { LBa: 'ok', LBb: 'win', A1: 'ok', A2: 'ok', DB: 'bad' }, { 'VIP-LBb': 'done' }, { LBb: 'heartbeat', DB: 'SPOF' })
+        ] });
+        f.push({ narr: '<b>Fix the database:</b> a <b>primary</b> takes all writes and streams changes to a <b>standby</b> (synchronous or semi-sync, so no committed data is lost). On primary failure, an orchestrator (or the managed service) promotes the standby and repoints the DB address. Failover typically takes tens of seconds; apps must reconnect and retry.', parts: [
+          G('Version 4', [B('U', 'Users', 7, 30), B('LB', 'LB pair', 26, 30), B('A1', 'App 1', 50, 14), B('A2', 'App 2', 50, 46), B('P', 'DB primary', 80, 14), B('S', 'DB standby', 80, 46)], [['U', 'LB'], ['LB', 'A1'], ['LB', 'A2'], ['A1', 'P'], ['A2', 'P'], ['P', 'S', 'replicates']], { LB: 'ok', A1: 'ok', A2: 'ok', P: 'ok', S: 'win' }, { 'P-S': 'ok' }, { S: 'ready to promote' })
+        ] });
+        f.push({ narr: '<b>Failure drill — the primary DB dies.</b> Writes fail for a short window; the standby is promoted; the app reconnects. Without the standby this would be an outage of hours (restore from backup).', parts: [
+          G('Version 4, DB failover', [B('U', 'Users', 7, 30), B('LB', 'LB pair', 26, 30), B('A1', 'App 1', 50, 14), B('A2', 'App 2', 50, 46), B('P', 'old primary', 80, 14), B('S', 'NEW primary', 80, 46)], [['U', 'LB'], ['LB', 'A1'], ['LB', 'A2'], ['A1', 'S'], ['A2', 'S'], ['A1', 'P'], ['A2', 'P']], { P: 'bad', S: 'sel', A1: 'ok', A2: 'ok' }, { 'A1-P': 'bad', 'A2-P': 'bad', 'A1-S': 'ok', 'A2-S': 'ok' }, { P: 'crashed', S: 'promoted' })
+        ] });
+        f.push({ narr: '<b>Hidden SPOF: the whole building.</b> If every box is in one availability zone (one data centre), a power or network failure there takes it all. Spread each tier across <b>two or three zones</b>.', parts: [
+          G('Version 5: multi-AZ', [B('U', 'Users', 7, 30), B('LB', 'Cloud LB (multi-AZ)', 30, 30), B('A1', 'App (zone A)', 60, 10), B('A2', 'App (zone B)', 60, 50), B('P', 'DB primary A', 90, 10), B('S', 'DB standby B', 90, 50)], [['U', 'LB'], ['LB', 'A1'], ['LB', 'A2'], ['A1', 'P'], ['A2', 'P'], ['P', 'S']], { A1: 'ok', A2: 'ok', P: 'ok', S: 'win', LB: 'ok' }, { 'P-S': 'ok' }, {})
+        ] });
+        f.push({ narr: '<b>Zone A goes dark.</b> The LB stops sending to zone A, the standby in zone B is promoted, and zone B carries everything. This only works if zone B has <b>enough spare capacity</b> to take 100% of traffic — plan for it (N+1 per zone, or 3 zones at ≤ 66% each).', parts: [
+          G('Zone A outage', [B('U', 'Users', 7, 30), B('LB', 'Cloud LB (multi-AZ)', 30, 30), B('A1', 'App (zone A)', 60, 10), B('A2', 'App (zone B)', 60, 50), B('P', 'DB primary A', 90, 10), B('S', 'DB primary B', 90, 50)], [['U', 'LB'], ['LB', 'A1'], ['LB', 'A2'], ['A1', 'P'], ['A2', 'S']], { A1: 'bad', P: 'bad', A2: 'ok', S: 'sel' }, { 'LB-A1': 'bad', 'LB-A2': 'ok', 'A2-S': 'ok' }, { A1: 'zone down', P: 'zone down', S: 'promoted' })
+        ] });
+        f.push({ narr: '<b>The checklist</b> you can say out loud in any interview.', parts: [
+          { type: 'table', label: 'SPOF checklist', columns: ['layer', 'redundancy', 'switch-over'], rows: [['DNS', 'managed, anycast, 2 providers for the paranoid', 'automatic'], ['load balancer', 'pair + floating IP, or managed multi-AZ LB', 'seconds'], ['app servers', 'N+1 stateless, multi-AZ', 'health checks, seconds'], ['session store / cache', 'replica + auto failover', 'seconds'], ['database', 'primary + standby, backups', 'tens of seconds'], ['people & process', 'runbooks, 2+ people on call, automated certs', 'practice drills']], hl: { 4: 'sel' } }
+        ] });
+        return f;
+      }
+    }],
+    examples: [
+      { title: 'The availability chain', html: `${H.table(['Design', 'Math', 'Availability', 'Downtime/yr'], [
+        ['1 LB → 1 app → 1 DB', '0.9999 × 0.999 × 0.999', '99.79%', H.c('r', '~18 h')],
+        ['1 LB → 3 apps → 1 DB', '0.9999 × (1−0.001³) × 0.999', '99.89%', '~9.6 h'],
+        ['2 LB → 3 apps → 2 DB', '(1−0.0001²) × (1−0.001³) × (1−0.001²)', '≈ 99.9999%', H.c('g', '~0.5 min')]
+      ])}<p>Making only the app tier redundant barely helped: the remaining SPOFs dominate. A chain is only as strong as its weakest link.</p>` },
+      { title: 'The expired certificate', html: `<p>Everything is redundant: 3 zones, 12 servers, replicated DB. One morning every request fails — the single wildcard TLS certificate expired. ${H.c('r', 'A SPOF does not have to be a machine.')}</p>
+        <p>${H.c('g', 'Fix:')} automatic renewal (ACME / managed certificates), alerts 30 days before expiry, and treat secrets/certs/config as part of the SPOF review.</p>` },
+      { title: 'The health check that killed everything', html: `<p>The <code>/health</code> endpoint checked "can I reach the database?". The DB had a 20-second hiccup; <b>every</b> app server failed health checks at once; the LB removed all of them → total outage that lasted longer than the DB blip.</p>
+        <p>${H.c('g', 'Fix:')} split <b>liveness</b> ("is my process OK?") from <b>readiness</b> ("should I get traffic?"), do not fail on shared dependencies, and many LBs "fail open" (send traffic to all) if every target is unhealthy.</p>` },
+      { title: 'Sizing for failure (N+1)', html: `<p>Peak needs 6 servers at 70% utilisation. If you run exactly 6 and one dies, the other 5 jump to 84% — risky. Run 7 (N+1): losing one leaves 6, exactly the plan. Across 2 zones, each zone must handle 100% alone → 6 per zone = 12 total. Across 3 zones, each must handle 50% → 3 per zone = 9 total. ${H.c('b', 'More zones = cheaper redundancy.')}</p>` }
+    ],
+    deepDive: `<p><b>Failure domains:</b> redundancy only helps if copies fail <i>independently</i>. Two servers on the same rack share a switch and power supply; two zones in a region share a control plane; two regions may share your deploy pipeline and your code. Large outages are usually <b>correlated</b> failures: a bad config pushed everywhere, a certificate, a dependency that all copies call. That is why staged rollouts (one zone, then the rest) matter as much as extra hardware.</p>
+      <p><b>Detection math:</b> with a 5-second check interval and an unhealthy threshold of 3, a dead server keeps receiving traffic for up to ~15 seconds. At 1,000 rps across 10 servers that is ~1,500 failed requests. Reduce it with passive checks (eject after N consecutive 5xx on real traffic), connection-level failure detection, and client/LB <b>retries</b> to another server — but only for idempotent requests, with a retry budget, or retries can amplify an outage.</p>
+      <p><b>Split brain:</b> in active-passive setups, if the heartbeat link breaks but both nodes are alive, both may believe they are primary. Two DB primaries accepting writes = divergent data. Protection: a third-party arbiter/quorum (odd number of voters), fencing (STONITH — "shoot the other node in the head"), or fencing tokens. This is why database failover is usually done by a consensus-backed tool (Patroni with etcd, managed RDS/Cloud SQL) — covered in HLD 11.</p>
+      <p><b>Graceful degradation:</b> not every dependency deserves to take the page down. If the recommendations service dies, show the page without recommendations. Timeouts + fallbacks + circuit breakers (HLD 12) turn a would-be SPOF into a partial feature loss.</p>
+      <p><b>Test it:</b> redundancy you have never exercised is a hope, not a plan. Game days and chaos engineering (killing instances, blocking a zone) prove that failover works and that the survivors have enough capacity.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI is very good at reviewing an architecture diagram or Terraform for SPOFs: "which resources are in a single zone?", "is the DB multi-AZ?", "does anything depend on one NAT gateway?". It can also help write runbooks and analyse incident timelines.</p>
+      <p><b>New SPOFs in AI systems:</b> one LLM provider, one model endpoint, one region with GPU capacity, one embedding model whose index cannot be swapped quickly. Resilient AI apps use a <b>model gateway</b> with fallback to a second provider or a smaller self-hosted model, timeouts and retries with backoff, and caching of common answers.</p>
+      <p><b>Use AI as a partner:</b> <code>Here is my architecture; walk the request path and list every single point of failure, including non-hardware ones (certs, secrets, people, config)</code>. <b>Where AI goes wrong:</b> it proposes multi-region active-active for a startup, treats "two copies" as independent when they share a zone, and ignores split brain. <b>What you must own:</b> choosing which SPOFs are worth removing for the availability target and budget.</p>`,
+    problems: [{
+      title: 'Fix the Single Point of Failure',
+      level: 'Medium', tags: ['SPOF', 'redundancy', 'failover', 'availability'], companies: ['Amazon', 'Stripe', 'Meta'],
+      statement: `<p>An e-commerce site runs: <b>1 nginx load balancer → 4 app servers → 1 PostgreSQL</b> server, plus <b>1 Redis</b> holding sessions. Everything is in one availability zone. The business wants <b>99.95%</b> availability (≈ 4.4 hours downtime/year). Identify every SPOF and propose a design that meets the target, explaining how each failure is detected and handled.</p>`,
+      constraints: `Peak 6,000 rps; each app server handles 2,000 rps at 70% utilisation; budget-conscious (no multi-region).`,
+      example: `<p>Today: nginx dies → ${H.c('r', '100% outage')}. Postgres dies → ${H.c('r', 'outage until restored')}. Redis dies → ${H.c('r', 'everyone logged out')}. Zone fails → ${H.c('r', 'everything')}. Losing 1 of 4 app servers → OK (but at 6,000 rps, 3 servers = 6,000/3 = 2,000 each = 100% → overloaded!).</p>`,
+      brute: { why: `<p>Naive fix: "add more app servers". The app tier was the only part that already had redundancy. The LB, database, Redis and the zone are still SPOFs, and the availability math stays dominated by them. Another naive fix — "take nightly backups" — protects data but not availability: restoring a database can take hours.</p>` },
+      mcq: { q: 'After making the app tier redundant, what most limits availability?', options: ['The remaining single LB, DB, Redis and single zone', 'The number of app servers', 'The round robin algorithm'], answer: 0, explain: 'In a series chain the weakest single components dominate. Each must get its own redundancy.' },
+      hints: [`<p>Walk one request: DNS → LB → app → Redis → Postgres. Mark each box with "what if it dies?"</p>`, `<p>Per tier: LB → managed multi-AZ LB or pair + floating IP; Redis → replica + auto-failover; Postgres → primary + synchronous standby in another zone; app → N+1 per zone.</p>`, `<p>Do the capacity math for losing a whole zone: 6,000 rps ÷ 1,400 usable per server ≈ 5 servers needed in the surviving zone.</p>`],
+      solution: {
+        approach: `<p><b>SPOFs found:</b> nginx LB, PostgreSQL, Redis, the single zone, and (capacity-wise) the app tier itself, since 3 survivors at 6,000 rps would run at 100%.</p>
+          <p><b>Design (2 availability zones, A and B):</b></p>
+          <ul><li><b>Entry:</b> a managed cloud load balancer spanning both zones (or 2 nginx nodes, one per zone, with keepalived/VRRP floating IP). Health checks every 5 s, unhealthy after 2 failures, healthy after 2 passes; connection draining on deploy.</li>
+          <li><b>App tier:</b> stateless; need ⌈6000/1400⌉ = 5 servers to carry peak. To survive a full zone loss, each zone must hold 5 → 10 total (or 3 zones × 3 = 9, cheaper). Autoscaling group spans zones.</li>
+          <li><b>Sessions:</b> Redis primary in zone A, replica in zone B, automatic failover (Sentinel or managed service). App reconnects on failover; worst case users re-login.</li>
+          <li><b>Database:</b> PostgreSQL primary in A, synchronous standby in B; automatic failover via Patroni+etcd or a managed multi-AZ database; apps connect through a DNS name/proxy that follows the primary. Point-in-time backups to object storage for disasters (accidental deletes).</li>
+          <li><b>Non-hardware:</b> managed auto-renewing TLS certs, secrets in a secret manager, deploys rolled out one zone at a time, runbooks + a failover drill each quarter.</li></ul>
+          <p><b>Check the target:</b> each tier now has an independent standby; the main residual risk is failover time (LB seconds, Redis seconds, DB ~30–60 s). A few failovers a year still fit comfortably inside 4.4 hours.</p>`,
+        complexity: `<p>Cost: roughly 2× infrastructure for the data tier and ~2× app servers for zone-level redundancy (or 1.5× with 3 zones). Availability ideal math ≈ 99.99%+ before correlated failures.</p>`,
+        followUps: ['How would you avoid split brain between the two Postgres nodes?', 'What would change for a 99.999% target?']
+      }
+    }]
+  });
+
 registerModule({ id: 'hld02', title: 'Scalability Basics', intro: '<p>x</p>', goals: [], prereqs: 'x', hours: 8, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();

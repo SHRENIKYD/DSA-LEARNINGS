@@ -494,7 +494,7 @@ for cap in (2, 3, 4):
     codeTitle: ['LRU from scratch (Java)', 'LinkedHashMap shortcut (Java)', 'LRU vs LFU on a scan (Python)'],
     viz: [{
       title: 'LRU eviction: linked list (recency) + hash map (lookup)',
-      input: '3 | A B C A D B E A C',
+      input: '3 | A B C A D A B E A',
       inputLabel: 'capacity (1–6) | keys accessed in order',
       gen: function (input) {
         var p = parseCapSeq(input, '3 | A B C A D B E A C'), cap = p.cap, seq = p.seq;
@@ -629,6 +629,356 @@ for cap in (2, 3, 4):
 }` },
         complexity: `<p>O(1) average per get/put; O(capacity) memory (each entry: map slot + node with 2 pointers).</p>`,
         followUps: ['Add a per-key TTL', 'Make it LFU instead (O(1))', 'How does Redis avoid storing the linked list at all?']
+      }
+    }]
+  });
+
+  /* =====================================================================
+     TOPIC 4 — TTL, Expiry & Cache Invalidation
+     ===================================================================== */
+  topics.push({
+    title: 'TTL, Expiry & Cache Invalidation',
+    analogy: `<p>Milk has a <b>"best before" date</b> (a TTL): after that day you throw it away, even if it still looks fine. That is the lazy, automatic way to stay fresh. But if the shop calls you and says <b>"that batch was bad — throw it out now"</b>, you do not wait for the date. That phone call is <b>explicit invalidation</b>. Good caching uses both: the date as a safety net, the phone call for changes that matter right away.</p>`,
+    explain: `<p>Every cached value is a <b>copy</b>. The moment the database changes, the copy may be wrong ("stale"). <b>Cache invalidation</b> is the job of removing or fixing those copies. It is famously one of the "two hard things in computer science" because copies live in many places and changes happen concurrently.</p>
+<p><b>1. TTL (time-to-live).</b> Store every key with an expiry: <code>SET user:42 … EX 300</code>. After 300 s the key disappears and the next read reloads it. TTL gives <b>bounded staleness</b>: data is never more than 300 s old. Short TTL = fresher but more misses; long TTL = more hits but staler.</p>
+${H.table(['TTL', 'Max staleness', 'Misses per hot key per hour', 'Typical use'], [['5 s', '5 s', '720', 'stock prices on a dashboard, live scores'], ['60 s', '1 min', '60', 'product pages, feeds'], ['1 h', '1 h', '1', 'config, country lists, rendered static pages'], ['none', 'forever', '0', '<span class="c-r">dangerous</span> unless invalidated explicitly']])}
+<p><b>How Redis expires keys:</b> <i>lazily</i> (when you touch an expired key it is deleted and you get a miss) and <i>actively</i> (about 10 times a second it samples ~20 keys with TTLs and deletes expired ones, repeating if more than 25% were expired). So memory is reclaimed even for keys nobody reads again.</p>
+<p><b>2. Explicit invalidation on write.</b> When the app writes the DB it deletes the affected keys (<code>DEL user:42</code>). Fresh within milliseconds — but you must remember <i>every</i> key derived from that row (profile, "friends of 42" lists, search snippets…).</p>
+<p><b>3. Event-driven invalidation (CDC).</b> Instead of trusting every code path to delete keys, a <b>change-data-capture</b> process (e.g. Debezium) tails the database's commit log, publishes "row user 42 changed" to Kafka, and an invalidator service deletes the matching keys. Catches writes from <i>any</i> service, script or migration.</p>
+<p><b>4. Versioned keys.</b> Put a version in the key: <code>user:42:v7</code>. A write bumps the version stored in the DB row (or a tiny "version" key); readers build the key from the current version, so old entries are simply never read again and age out. Bumping a <b>namespace</b> version (<code>v3:</code> → <code>v4:</code>) invalidates a whole family of keys in one step.</p>
+<p><b>Rule of thumb:</b> always set a TTL (safety net) <i>and</i> invalidate explicitly where freshness matters.</p>`,
+    clues: ['"users must see their own update immediately" → explicit delete on write (+ read-your-writes)', '"data can be up to N seconds stale" → TTL = N seconds is enough', '"many services write to the same table" → CDC / event-driven invalidation', '"cache sometimes shows old data forever after a write" → missing TTL or the stale-set race', '"invalidate all cached product pages after a template change" → bump a namespace version', '"local in-memory caches on 200 servers" → pub/sub invalidation broadcast + short TTL'],
+    code: [{ lang: 'python', run: true, title: 'The stale-set race, with and without leases (runnable)', code: `class Cache:
+    """Cache with Facebook-style leases: a miss hands out a token,
+    a DELETE invalidates outstanding tokens, and SET needs a valid token."""
+    def __init__(self, use_leases):
+        self.data, self.leases, self.next_token = {}, {}, 1
+        self.use_leases = use_leases
+    def get(self, k):
+        if k in self.data:
+            return self.data[k], None
+        token = self.next_token
+        self.next_token += 1
+        self.leases[k] = token          # remember who is allowed to fill this key
+        return None, token
+    def set(self, k, v, token):
+        if self.use_leases and self.leases.get(k) != token:
+            return False                # lease was invalidated -> refuse stale fill
+        self.data[k] = v
+        self.leases.pop(k, None)
+        return True
+    def delete(self, k):
+        self.data.pop(k, None)
+        self.leases.pop(k, None)        # any in-flight filler is now invalid
+
+def scenario(use_leases):
+    db = {"user:1": "Old name"}
+    c = Cache(use_leases)
+    _, token = c.get("user:1")          # 1. reader misses, gets lease token
+    stale = db["user:1"]                # 2. reader reads DB  -> "Old name"
+    db["user:1"] = "New name"           # 3. writer updates DB
+    c.delete("user:1")                  # 4. writer invalidates cache
+    ok = c.set("user:1", stale, token)  # 5. slow reader tries to fill with OLD value
+    value, _ = c.get("user:1")
+    label = "with leases" if use_leases else "no leases  "
+    print(f"{label}: late SET accepted={ok!s:5}  cache now holds={value!r}  db holds={db['user:1']!r}")
+
+scenario(False)   # stale value stuck in cache until TTL
+scenario(True)    # late fill rejected; next read loads the new value` }],
+    codeTitle: ['Invalidation race + lease fix'],
+    viz: [{
+      title: 'TTL expiry timeline (lazy expiry + refill on read)',
+      input: 'A ttl=4 set=0; B ttl=2 set=1; C ttl=6 set=2; read A 3; read B 4; read A 5; read C 7; read A 9',
+      inputLabel: 'key ttl=N set=T; … ; read key T; …  (times 0–12)',
+      gen: function (input) {
+        var keys = [], meta = {}, reads = [];
+        String(input || '').split(';').map(function (x) { return x.trim(); }).filter(Boolean).forEach(function (cl) {
+          var m;
+          if ((m = /^(\w+)\s+ttl=(\d+)\s+set=(\d+)$/i.exec(cl))) { if (keys.indexOf(m[1]) < 0) keys.push(m[1]); meta[m[1]] = { ttl: +m[2], set: +m[3] }; }
+          else if ((m = /^read\s+(\w+)\s+(\d+)$/i.exec(cl))) reads.push({ k: m[1], t: +m[2] });
+          else throw new Error('Could not parse "' + cl + '". Use "A ttl=4 set=0" or "read A 3"');
+        });
+        if (!keys.length || keys.length > 5) throw new Error('Define 1–5 keys like "A ttl=4 set=0"');
+        var T = 12, frames = [], hits = 0, misses = 0;
+        reads.forEach(function (r) { if (!meta[r.k]) throw new Error('read of unknown key ' + r.k); if (r.t > T) throw new Error('times must be ≤ 12'); });
+        var setAt = {}, exp = {};
+        keys.forEach(function (k) { if (meta[k].set > T) throw new Error('times must be ≤ 12'); });
+        var cols = []; for (var c = 0; c <= T; c++) cols.push('t' + c);
+        var rows = keys.map(function () { return cols.map(function () { return ''; }); });
+        function grid(t, hl) { return { type: 'grid', label: 'Timeline (● live · ✕ expired · ↻ refilled on read)', rowHead: keys.slice(), colHead: cols, rows: rows.map(function (r) { return r.slice(); }), hl: hl }; }
+        frames.push({ narr: 'Each key is cached at its <b>set</b> time with a <b>TTL</b>. It is live for TTL seconds, then expires. A read after expiry is a <span class="c-r">miss</span> that reloads the key and starts a new TTL.', parts: [grid(-1, {}), { type: 'vars', label: 'Stats', vals: { t: '—', hits: 0, misses: 0 } }] });
+        for (var t = 0; t <= T; t++) {
+          var hl = {}, notes = [];
+          keys.forEach(function (k, r) {
+            if (meta[k].set === t) { setAt[k] = t; exp[k] = t + meta[k].ttl; notes.push(k + ' cached (expires at t' + exp[k] + ')'); }
+          });
+          reads.filter(function (rd) { return rd.t === t; }).forEach(function (rd) {
+            var r = keys.indexOf(rd.k);
+            if (exp[rd.k] !== undefined && t < exp[rd.k]) { hits++; hl[r + ',' + t] = 'ok'; notes.push('read ' + rd.k + ' → <span class="c-g">hit</span>'); rows[r][t] = '● hit'; }
+            else { misses++; hl[r + ',' + t] = 'bad'; exp[rd.k] = t + meta[rd.k].ttl; notes.push('read ' + rd.k + ' → <span class="c-r">miss</span> (expired or never set) → reload, new expiry t' + exp[rd.k]); rows[r][t] = '↻'; }
+          });
+          keys.forEach(function (k, r) {
+            if (exp[k] === undefined) return;
+            if (rows[r][t] === '') rows[r][t] = t < exp[k] ? '●' : '✕';
+            if (!hl[r + ',' + t]) hl[r + ',' + t] = t < exp[k] ? 'win' : 'done';
+            if (t === exp[k]) notes.push(k + ' <b>expired</b> (deleted lazily on access or by Redis\'s active sampler)');
+          });
+          for (var rr = 0; rr < keys.length; rr++) if (!hl[rr + ',' + t]) hl[rr + ',' + t] = 'cur';
+          frames.push({ narr: '<b>t = ' + t + '</b>: ' + (notes.length ? notes.join('; ') : 'nothing happens — live keys tick toward expiry.'), parts: [grid(t, hl), { type: 'vars', label: 'Stats', vals: { t: t, hits: hits, misses: misses, 'hit rate': pct(hits, hits + misses) }, hl: {} }] });
+        }
+        frames.push({ narr: 'Summary: ' + hits + ' hit(s), ' + misses + ' miss(es). A longer TTL turns some ✕ cells into ● (more hits) but lets data be staler. Pick TTL = the staleness your product can tolerate.', parts: [grid(T, {}), { type: 'bars', label: 'TTL per key (seconds)', values: keys.map(function (k) { return meta[k].ttl; }), idxLabels: keys.slice() }] });
+        return frames;
+      }
+    }, {
+      title: 'The stale-set race: delete-on-write is not enough (and how leases fix it)',
+      input: 'none',
+      inputLabel: 'fix: none | lease',
+      gen: function (input) {
+        var fix = String(input || 'none').trim().toLowerCase();
+        if (fix !== 'none' && fix !== 'lease') throw new Error('Type none or lease');
+        var log = [], frames = [];
+        function g(hl, ehl, lab) { return { type: 'graph', directed: true, height: 60, label: 'Two app requests racing', nodes: [box('R', 'Reader (slow)', 10, 12), box('W', 'Writer', 10, 50), box('C', 'Cache', 60, 12), box('D', 'Database', 60, 50)], edges: [['R', 'C', lab.rc || ''], ['R', 'D', lab.rd || ''], ['W', 'D', lab.wd || ''], ['W', 'C', lab.wc || '']], hl: hl, ehl: ehl }; }
+        function tl(hlRow) { var h = {}; if (hlRow !== undefined) h[hlRow] = hlRow === log.length - 1 ? 'cur' : ''; return { type: 'table', label: 'Timeline', columns: ['step', 'who', 'action', 'cache', 'db'], rows: log.map(function (r) { return r.slice(); }), hl: h }; }
+        function add(row) { log.push(row); return log.length - 1; }
+        var i;
+        i = add(['1', 'Reader', 'GET user:1 → miss' + (fix === 'lease' ? ' (gets lease #7)' : ''), '—', 'Old']);
+        frames.push({ narr: 'The key just expired. The Reader misses' + (fix === 'lease' ? ' and the cache hands it <b>lease token #7</b>, meaning "you may fill this key".' : '.'), parts: [g({ R: 'cur', C: 'bad' }, { 'R-C': 'bad' }, { rc: 'GET → miss' }), tl(i)] });
+        i = add(['2', 'Reader', 'SELECT → "Old"', '—', 'Old']);
+        frames.push({ narr: 'The Reader queries the DB and gets <b>"Old"</b>. Then it gets paused (GC pause, slow network…).', parts: [g({ R: 'cur', D: 'cur' }, { 'R-D': 'cur' }, { rd: 'SELECT → Old' }), tl(i)] });
+        i = add(['3', 'Writer', 'UPDATE → "New"', '—', 'New']);
+        frames.push({ narr: 'Meanwhile the Writer commits <b>"New"</b> to the DB.', parts: [g({ W: 'cur', D: 'ok' }, { 'W-D': 'ok' }, { wd: 'UPDATE → New' }), tl(i)] });
+        i = add(['4', 'Writer', 'DEL user:1' + (fix === 'lease' ? ' (lease #7 revoked)' : ''), '—', 'New']);
+        frames.push({ narr: 'The Writer deletes the key (correct cache-aside behaviour)' + (fix === 'lease' ? ' — the delete also <b>revokes lease #7</b>.' : '. Nothing was cached, so this delete does nothing useful.'), parts: [g({ W: 'cur', C: 'cur' }, { 'W-C': 'cur' }, { wc: 'DEL user:1' }), tl(i)] });
+        if (fix === 'none') {
+          i = add(['5', 'Reader', 'SET user:1 = "Old"', '<span class="c-r">Old</span>', 'New']);
+          frames.push({ narr: '<span class="c-r">The Reader wakes up and SETs "Old" into the cache.</span> The cache now disagrees with the DB.', parts: [g({ R: 'cur', C: 'bad' }, { 'R-C': 'bad' }, { rc: 'SET Old' }), tl(i)] });
+          i = add(['6', 'Anyone', 'GET user:1 → "Old" (stale)', '<span class="c-r">Old</span>', 'New']);
+          frames.push({ narr: 'Every reader now gets <b>stale "Old"</b> until the TTL expires. With no TTL, forever. This is why a TTL is a mandatory safety net. Re-run with <code>lease</code> to see the fix.', parts: [g({ C: 'bad' }, { 'R-C': 'bad' }, { rc: 'GET → Old (stale!)' }), tl(i)] });
+        } else {
+          i = add(['5', 'Reader', 'SET user:1 = "Old" with lease #7 → rejected', '—', 'New']);
+          frames.push({ narr: '<span class="c-g">The late SET carries lease #7, which was revoked → the cache rejects it.</span> Stale data never enters.', parts: [g({ R: 'cur', C: 'ok' }, { 'R-C': 'ok' }, { rc: 'SET Old (#7) → refused' }), tl(i)] });
+          i = add(['6', 'Anyone', 'GET → miss → SELECT "New" → SET', '<span class="c-g">New</span>', 'New']);
+          frames.push({ narr: 'The next reader misses, loads <b>"New"</b>, and fills the cache with a fresh lease. Cache and DB agree. (Leases also rate-limit fills per key — a built-in stampede guard.)', parts: [g({ C: 'ok', D: 'ok' }, { 'R-C': 'ok', 'R-D': 'ok' }, { rc: 'SET New', rd: 'SELECT → New' }), tl(i)] });
+        }
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'Picking a TTL from requirements', html: `<p>"Follower counts may lag by up to 30 s; profile bios by up to 5 min." → <code>followers:{id}</code> TTL 30 s, <code>bio:{id}</code> TTL 300 s. A hot profile read 2,000×/s with TTL 300 s is loaded ~once per 5 minutes: hit rate ≈ 1 − 1/(2000·300) ≈ <b>99.9998%</b>.</p>` },
+      { title: 'Derived keys: the forgotten invalidation', html: `<p>User 42 changes her display name. Keys that contain it:</p>${H.chips(['user:42', 'profile_page:42', 'comments:post:9 (shows her name)', 'search:"asha"', 'followers_list:7 (shows her name)'], { label: 'keys to invalidate', hl: { 0: 'g', 1: 'g', 2: 'r', 3: 'r', 4: 'r' } })}<p>Red ones are easy to forget. Options: store only IDs in list caches and join names at read time from <code>user:{id}</code> (one key to invalidate), or accept a short TTL on the derived keys.</p>` },
+      { title: 'CDC-based invalidation pipeline', html: `<p>${H.table(['Step', 'Component', 'What happens'], [['1', 'MySQL / Postgres', 'commit writes the binlog / WAL'], ['2', 'Debezium connector', 'reads the log: <code>{table: users, id: 42, op: UPDATE}</code>'], ['3', 'Kafka topic <code>db.users</code>', 'ordered per key, durable, replayable'], ['4', 'Invalidator service', 'maps row → keys, issues <code>DEL user:42 profile_page:42</code>']])}Even a manual SQL fix by an engineer invalidates the cache. Meta's <b>McSqueal</b> does exactly this across regions.</p>` },
+      { title: 'Delayed double delete', html: `<p>A cheap mitigation for the stale-set race without leases: on write, <code>DEL key</code>, commit, then schedule a <b>second</b> <code>DEL key</code> ~500 ms later (longer than a typical read-then-set). Any stale value set in between is removed. It narrows the window rather than closing it — leases or versioned compare-and-set close it.</p>` }
+    ],
+    deepDive: `<p><b>Why invalidation is hard.</b> (1) <i>Concurrency</i>: reads and writes interleave across servers (the stale-set race above). (2) <i>Fan-out</i>: one row change affects many derived keys. (3) <i>Failure</i>: the DB commit succeeds but the DEL is lost (network blip, crash between the two). Because DB + cache is not one transaction, you need a reliable path: retry the DEL from a queue, use the <b>transactional outbox</b> (write an "invalidate" event in the same DB transaction) or CDC, and keep TTLs as the final net.</p>
+<p><b>Read-your-writes.</b> Even with perfect invalidation, a replica-backed DB can serve the old row right after a write (replication lag) and re-cache it. Fixes: after a user writes, route <i>that user's</i> reads to the primary for a few seconds, or have the writer populate the cache with the value it just committed (versioned so it cannot overwrite something newer).</p>
+<p><b>Version / CAS approach.</b> Store <code>{value, version}</code>; the DB row has a monotonically increasing version. Fillers use a Lua script "set only if new version &gt; cached version". Late fills with old versions are rejected — the same guarantee as leases without the token bookkeeping.</p>
+<p><b>TTL tricks.</b> Add <b>jitter</b> (TTL 300 ± 30 s) so keys loaded together do not expire together (avalanche). Use <b>soft TTL + hard TTL</b>: after the soft TTL serve the stale value while one request refreshes in the background (stale-while-revalidate); after the hard TTL never serve it. HTTP has the same ideas: <code>Cache-Control: max-age=60, stale-while-revalidate=30</code>, and CDNs support purge by URL or by <b>surrogate key / cache tag</b> ("purge everything tagged product-42").</p>
+<p><b>Expiry internals.</b> Redis stores expiry times in a separate dict; the active cycle samples 20 keys from it, deletes expired ones, and repeats while &gt; 25% were expired (bounded to ~25% CPU). Replicas do not expire keys themselves — they wait for the primary's <code>DEL</code>, but report expired keys as missing to readers.</p>`,
+    aiEra: `<p><b>What AI changes:</b> AI code generators readily add caching to a function but rarely add the matching invalidation on every write path — and invalidation bugs are silent (users just see old data). AI-era systems also cache <b>model outputs</b> and <b>embeddings</b>, whose "source of truth" changes when you change the prompt template or model version — so put the model and prompt version in the cache key (<code>emb:v3:text-embed-2026-05:{sha}</code>), exactly the versioned-key technique.</p>
+<p><b>Use AI as a partner:</b> <code>Find every place in this repo that writes to the orders table and list the cache keys that must be invalidated; flag writes with no invalidation</code>. Or have it draft a CDC → Kafka → invalidator design and then ask it to enumerate failure cases.</p>
+<p><b>Where AI goes wrong:</b> suggests "update cache then DB", omits TTLs, invents a <code>KEYS user:*</code> + DEL loop (KEYS blocks Redis — use SCAN, or better, versioned namespaces), or misses derived keys.</p>
+<p><b>What you must still own:</b> the staleness budget for each data type, the inventory of derived keys, and the guarantee that a lost invalidation is eventually fixed (TTL, CDC replay).</p>`,
+    problems: [{
+      title: 'Stale Profile After Edit', level: 'Medium', tags: ['invalidation', 'TTL', 'race condition', 'CDC'], companies: ['Meta', 'LinkedIn', 'Airbnb'],
+      statement: `<p>Support tickets say: "I changed my profile name, refreshed, and saw the <b>old</b> name — sometimes for hours." The service uses cache-aside: read Redis → miss → read a MySQL <b>read replica</b> → SET with <b>no TTL</b>. Writes go to the MySQL primary, then DEL the key. Find all the causes and redesign invalidation.</p>`,
+      constraints: `<p>Replica lag p99 = 800 ms · 30k profile reads/s · 200 writes/s · other services (admin tool, GDPR job) also update the users table directly.</p>`,
+      example: `<p>t=0 write primary "New" → t=1 ms DEL key → t=5 ms a read misses, hits the ${H.c('r', 'lagging replica')} → gets "Old" → SETs "Old" with ${H.c('r', 'no TTL')} → stale forever.</p>`,
+      brute: { why: `<p><b>Naive fix:</b> "just delete the key twice" or "disable the cache for profiles". Double delete only narrows the window; disabling the cache sends 30k reads/s to MySQL. Neither addresses the admin tool and GDPR job, which never invalidate at all.</p>` },
+      mcq: { q: 'Which single change guarantees stale entries cannot live forever?', options: ['Bigger Redis', 'A TTL on every key', 'Using write-back', 'Reading from more replicas'], answer: 1, explain: 'A TTL bounds staleness no matter which invalidation path failed.' },
+      hints: [`<p>Hint 1: There are three independent bugs: replica lag re-caching old data, no TTL, and writers that never invalidate.</p>`, `<p>Hint 2: Bound staleness with TTL + jitter; close the race with leases or versioned compare-and-set; catch every writer with CDC.</p>`, `<p>Hint 3: For the editing user, guarantee read-your-writes: read from the primary (or a cached copy written by the writer) for a few seconds after their write.</p>`],
+      solution: {
+        approach: `<p><b>Root causes:</b> (1) the miss path reads a lagging replica after the DEL, re-caching "Old"; (2) no TTL, so a stale entry is permanent; (3) the admin tool and GDPR job update MySQL without invalidating.</p>
+<p><b>Redesign:</b></p>
+<ol><li><b>TTL on everything:</b> 10 min ± 10% jitter. Worst-case staleness is now bounded.</li>
+<li><b>Versioned values:</b> add a <code>version</code> column incremented on every update. Cache stores <code>{name, version}</code>; fills use a Lua CAS "only set if version &gt; cached". A lagging replica returns an older version, which cannot overwrite a newer cached one; combined with delete-on-write and a short "tombstone" (<code>user:42 = DELETED@v8</code> for 2 s) the replica-lag re-fill is rejected.</li>
+<li><b>CDC invalidation:</b> Debezium tails the primary binlog → Kafka <code>db.users</code> → invalidator DELs <code>user:{id}</code> and derived keys. Every writer, including scripts, is covered; the invalidator retries until success, and Kafka lets you replay after outages.</li>
+<li><b>Read-your-writes for the editor:</b> after a write, set a short-lived cookie/flag so that user's profile reads go to the primary for 2 s (longer than p99 lag).</li></ol>
+<p>Monitor: rate of CAS rejections, invalidation lag (commit time → DEL time), and a sampled "cache vs DB" consistency checker that compares random keys.</p>`,
+        complexity: `<p>Extra cost: one Lua script per fill, one Kafka event per write (200/s — trivial), a few primary reads for recent editors. Staleness: ≤ invalidation lag (~100 ms) normally, ≤ TTL in the worst case.</p>`,
+        followUps: ['How would you invalidate in 3 regions?', 'What if Kafka is down for 10 minutes?', 'How do you test for stale-cache bugs automatically?']
+      }
+    }]
+  });
+
+  /* =====================================================================
+     TOPIC 5 — Redis vs Memcached (and running them at scale)
+     ===================================================================== */
+  function crc16(s) {
+    var crc = 0;
+    for (var i = 0; i < s.length; i++) {
+      crc ^= (s.charCodeAt(i) & 0xff) << 8;
+      for (var j = 0; j < 8; j++) crc = (crc & 0x8000) ? ((crc << 1) ^ 0x1021) & 0xffff : (crc << 1) & 0xffff;
+    }
+    return crc;
+  }
+  function hashPart(key) {
+    var a = key.indexOf('{');
+    if (a >= 0) { var b = key.indexOf('}', a + 1); if (b > a + 1) return key.substring(a + 1, b); }
+    return key;
+  }
+  topics.push({
+    title: 'Redis vs Memcached (and Running Them at Scale)',
+    analogy: `<p><b>Memcached</b> is a giant wall of <b>numbered lockers</b>: you put a box in locker "user:42", you get the box back. Nothing more — but it is cheap, fast and many people can use it at once. <b>Redis</b> is a <b>workshop with smart shelves</b>: besides plain boxes it has ready-made counters, queues, sorted leaderboards, sets and timers, it can photocopy itself to a backup shelf, and it can even keep a diary so it remembers things after a power cut.</p>`,
+    explain: `<p>Both are <b>in-memory key-value stores</b> reached over the network in well under a millisecond. Both are used as caches. They differ in how much they do.</p>
+${H.table(['', 'Redis (and forks: Valkey, KeyDB, Dragonfly)', 'Memcached'], [['Values', 'strings, hashes, lists, sets, <b>sorted sets</b>, streams, bitmaps, HyperLogLog, geo, JSON, vectors', 'opaque strings/bytes only (default max item 1 MB)'], ['Atomic ops', '<code>INCR</code>, <code>ZADD</code>, <code>LPUSH</code>, Lua scripts / Functions, transactions (<code>MULTI</code>)', '<code>incr</code>/<code>decr</code>, <code>cas</code> (check-and-set)'], ['Threads', 'commands run on one main thread per instance (I/O threads help networking)', '<b>multi-threaded</b> — scales on one big box'], ['Persistence', 'RDB snapshots, AOF log (optional)', 'none — restart = empty'], ['Replication / HA', 'primary → replicas (async), Sentinel, <b>Redis Cluster</b> (16,384 hash slots)', 'none built in; clients shard with consistent hashing (mcrouter, ketama)'], ['Eviction', '8 policies incl. approximated LRU/LFU', 'segmented LRU per slab class'], ['Extras', 'pub/sub, streams, keyspace notifications, TTL per key', 'very lean, predictable memory']])}
+<p><b>Pick Memcached when</b> you need a simple, huge, multi-threaded look-aside cache of blobs (rendered HTML fragments, serialized objects) and you are fine with losing it all on restart. Meta still runs enormous Memcached fleets.</p>
+<p><b>Pick Redis (or Valkey) when</b> you need data structures (leaderboards with sorted sets, rate-limit counters, session stores, queues, distributed locks), replication and failover, persistence, or server-side atomic logic. It is the default choice in most interviews and most companies.</p>
+<p><b>Licensing note (2026):</b> in 2024 Redis moved from BSD to source-available licences, and the Linux Foundation forked it as <b>Valkey</b> (now the default engine in several cloud offerings); Redis 8 added an AGPLv3 option in 2025. In a design interview, "Redis-compatible cache (Redis/Valkey, e.g. ElastiCache)" is the safe phrase.</p>
+<p><b>Scaling Redis:</b> one instance does roughly 100k–1M simple ops/s. Beyond that, or beyond one machine's RAM, use <b>Redis Cluster</b>: the key space is cut into <b>16,384 slots</b>; <code>slot = CRC16(key) mod 16384</code>; each primary owns a range of slots and has replicas. Clients cache the slot map and get a <code>MOVED</code> redirect if it changes. Multi-key commands only work when all keys share a slot — force that with a <b>hash tag</b>: only the text inside <code>{…}</code> is hashed, so <code>{user:42}:cart</code> and <code>{user:42}:wishlist</code> live together.</p>`,
+    clues: ['"leaderboard / top-K by score" → Redis sorted set (ZADD / ZREVRANGE)', '"rate limiter counters shared by all servers" → Redis INCR + EXPIRE (or Lua)', '"just cache rendered HTML blobs, losing them on restart is fine, need multi-core throughput" → Memcached is enough', '"cache must survive a node failure without a cold start" → Redis replicas + Sentinel/Cluster failover', '"dataset is 500 GB of hot data" → shard: Redis Cluster or client-side consistent hashing', '"atomically update two related keys" → same hash slot via {hash tag} + MULTI/Lua'],
+    code: [{ lang: 'bash', title: 'Redis commands you will actually use (redis-cli)', code: `# Plain cache entry with a 5-minute TTL; NX = only if it does not exist yet
+SET user:42 '{"name":"Asha","plan":"pro"}' EX 300
+GET user:42
+TTL user:42                       # seconds left (-2 = gone, -1 = no TTL)
+
+# Counters (atomic, no read-modify-write race)
+INCR views:video:9
+EXPIRE views:video:9 3600
+
+# Leaderboard with a sorted set
+ZADD leaderboard 4200 asha 3900 ben 5100 chen
+ZREVRANGE leaderboard 0 2 WITHSCORES   # top 3
+
+# Hash: one key, many fields (memory efficient for small objects)
+HSET session:abc user_id 42 cart_items 3
+HGETALL session:abc
+
+# Same slot in Redis Cluster thanks to the {hash tag}
+MSET {user:42}:cart 3 {user:42}:wishlist 7
+CLUSTER KEYSLOT {user:42}:cart        # same number as the line below
+CLUSTER KEYSLOT {user:42}:wishlist
+
+# Memory and eviction
+CONFIG SET maxmemory 8gb
+CONFIG SET maxmemory-policy allkeys-lfu
+INFO stats                            # keyspace_hits / keyspace_misses / evicted_keys` }, { lang: 'python', title: 'Cache-aside with redis-py (needs a Redis server; compile-only here)', code: `import json
+import random
+import redis
+
+r = redis.Redis(host="localhost", port=6379, decode_responses=True)
+
+def get_user(user_id, db):
+    key = f"v1:user:{user_id}"
+    cached = r.get(key)
+    if cached is not None:
+        return json.loads(cached)                 # hit
+    row = db.fetch_user(user_id)                  # miss -> source of truth
+    if row is None:
+        r.set(key, json.dumps(None), ex=30)       # short negative cache (penetration guard)
+        return None
+    ttl = 300 + random.randint(0, 30)             # jitter avoids synchronized expiry
+    r.set(key, json.dumps(row), ex=ttl)
+    return row
+
+def rename_user(user_id, name, db):
+    db.update_user_name(user_id, name)            # 1. commit to DB
+    r.delete(f"v1:user:{user_id}")                # 2. invalidate` }, { lang: 'python', run: true, title: 'Compute Redis Cluster hash slots (runnable)', code: `def crc16_xmodem(data: bytes) -> int:
+    """CRC16-CCITT (XMODEM) - the exact checksum Redis Cluster uses."""
+    crc = 0
+    for byte in data:
+        crc ^= byte << 8
+        for _ in range(8):
+            crc = ((crc << 1) ^ 0x1021) if crc & 0x8000 else (crc << 1)
+            crc &= 0xFFFF
+    return crc
+
+def key_slot(key: str) -> int:
+    # Hash tag: if the key has {something} with non-empty content, hash only that part
+    start = key.find("{")
+    if start != -1:
+        end = key.find("}", start + 1)
+        if end > start + 1:
+            key = key[start + 1:end]
+    return crc16_xmodem(key.encode()) % 16384
+
+owners = [(0, 5460, "node-A"), (5461, 10922, "node-B"), (10923, 16383, "node-C")]
+def owner(slot):
+    return next(name for lo, hi, name in owners if lo <= slot <= hi)
+
+print("sanity check: slot('123456789') =", key_slot("123456789"), "(Redis docs: 12739)")
+for k in ["user:42", "user:43", "{user:42}:cart", "{user:42}:wishlist", "session:abc"]:
+    s = key_slot(k)
+    print(f"{k:20} slot {s:5} -> {owner(s)}")` }],
+    codeTitle: ['redis-cli cheat sheet', 'redis-py cache-aside', 'Hash slot calculator'],
+    viz: [{
+      title: 'Redis Cluster routing: CRC16(key) mod 16384 → slot → node',
+      input: 'user:42 user:43 {user:42}:cart {user:42}:wishlist session:abc 123456789',
+      inputLabel: 'Keys (space separated, ≤ 10). Try {tags}!',
+      gen: function (input) {
+        var keys = String(input || '').trim().split(/\s+/).filter(Boolean);
+        if (!keys.length || keys.length > 10) throw new Error('Enter 1–10 keys separated by spaces');
+        var ranges = [['A', 0, 5460], ['B', 5461, 10922], ['C', 10923, 16383]], frames = [], placed = { A: [], B: [], C: [] };
+        function g(hl, ehl, lab) {
+          return { type: 'graph', directed: true, height: 64, label: 'Client with cached slot map → 3 primaries (each with a replica)', nodes: [box('CL', 'Client', 8, 32), box('A', 'Primary A 0–5460', 52, 8), box('B', 'Primary B 5461–10922', 52, 32), box('C', 'Primary C 10923–16383', 52, 56), box('RA', 'Replica A', 90, 8), box('RB', 'Replica B', 90, 32), box('RC', 'Replica C', 90, 56)],
+            edges: [['CL', 'A', lab.A || ''], ['CL', 'B', lab.B || ''], ['CL', 'C', lab.C || ''], ['A', 'RA', 'async'], ['B', 'RB', 'async'], ['C', 'RC', 'async']], hl: hl, ehl: ehl };
+        }
+        function mp(hlk) { var h = {}; if (hlk) h[hlk] = 'ok'; return { type: 'map', label: 'Which keys live where', entries: [['Primary A', placed.A.join(', ') || '—'], ['Primary B', placed.B.join(', ') || '—'], ['Primary C', placed.C.join(', ') || '—']], hl: h }; }
+        frames.push({ narr: 'A Redis Cluster splits the key space into <b>16,384 slots</b>. Each primary owns a slot range and replicates asynchronously to its replica. The client keeps a copy of this slot map.', parts: [g({}, {}, {}), mp()] });
+        keys.forEach(function (k) {
+          var hp = hashPart(k), crc = crc16(hp), slot = crc % 16384, node = null;
+          ranges.forEach(function (r) { if (slot >= r[1] && slot <= r[2]) node = r[0]; });
+          frames.push({ narr: 'Key <b>' + H.esc(k) + '</b>: hash ' + (hp !== k ? 'only the hash tag <b>{' + H.esc(hp) + '}</b>' : 'the whole key') + ' → CRC16 = ' + crc + ' → ' + crc + ' mod 16384 = <b>slot ' + slot + '</b>.', parts: [g({ CL: 'cur' }, {}, {}), { type: 'vars', label: 'Routing math', vals: { key: k, 'hashed part': hp, crc16: crc, slot: slot }, hl: { slot: 'cur' } }, mp()] });
+          placed[node].push(k);
+          var hl = { CL: 'cur' }; hl[node] = 'ok'; var ehl = {}; ehl['CL-' + node] = 'ok'; var lab = {}; lab[node] = 'slot ' + slot;
+          frames.push({ narr: 'Slot ' + slot + ' belongs to <b>Primary ' + node + '</b>, so the client sends the command straight there (one hop, no proxy). If the map were stale, the node would reply <code>MOVED ' + slot + '</code> and the client would retry and refresh its map.', parts: [g(hl, ehl, lab), mp('Primary ' + node)] });
+        });
+        frames.push({ narr: 'Keys sharing a <b>{hash tag}</b> land in the same slot, so <code>MGET</code>, <code>MULTI</code> and Lua scripts over them work. Keys without a shared tag may be on different nodes → <code>CROSSSLOT</code> error for multi-key commands.', parts: [g({}, {}, {}), mp(), { type: 'bars', label: 'keys per primary', values: [placed.A.length, placed.B.length, placed.C.length], idxLabels: ['A', 'B', 'C'] }] });
+        return frames;
+      }
+    }, {
+      title: 'Redis failover: async replication can lose the last writes',
+      input: '3',
+      inputLabel: 'writes not yet replicated when the primary dies (0–5)',
+      gen: function (input) {
+        var lag = parseInt(input, 10);
+        if (!(lag >= 0 && lag <= 5)) throw new Error('Enter a number 0–5');
+        var frames = [], prim = [], repl = [];
+        function g(hl, ehl, lab) { return { type: 'graph', directed: true, height: 56, label: 'Primary + replica + Sentinel quorum', nodes: [box('APP', 'App', 8, 28), box('P', 'Primary', 45, 12), box('R', 'Replica', 45, 46), box('S', 'Sentinels ×3', 88, 28)], edges: [['APP', 'P', lab.ap || 'writes'], ['P', 'R', lab.pr || 'async repl'], ['S', 'P', lab.sp || 'PING'], ['S', 'R', lab.sr || 'PING'], ['APP', 'R', lab.ar || '']], hl: hl, ehl: ehl }; }
+        function st(h1, h2) { return [{ type: 'list', label: 'Primary log', values: prim.slice(), hl: h1 || {} }, { type: 'list', label: 'Replica log', values: repl.slice(), hl: h2 || {} }]; }
+        for (var i = 1; i <= 5; i++) { prim.push('w' + i); repl.push('w' + i); }
+        frames.push({ narr: 'Normal life: the app writes to the primary; the primary acknowledges <b>immediately</b> and streams writes to the replica a moment later (asynchronous). Sentinels watch both.', parts: [g({ P: 'ok', R: 'ok' }, { 'APP-P': 'ok', 'P-R': 'ok' }, {})].concat(st()) });
+        var nh = {};
+        for (var j = 1; j <= lag; j++) { prim.push('w' + (5 + j)); nh[prim.length - 1] = 'cur'; }
+        frames.push({ narr: lag ? 'The app writes <b>' + lag + '</b> more value(s). The primary has acknowledged them, but they have <b>not reached the replica yet</b> (replication lag).' : 'Replication is fully caught up — the replica has everything the primary has.', parts: [g({ P: 'cur' }, { 'APP-P': 'cur', 'P-R': lag ? 'bad' : 'ok' }, { pr: lag ? 'lagging' : 'in sync' })].concat(st(nh)) });
+        frames.push({ narr: '<span class="c-r">The primary crashes.</span> Sentinels stop receiving PING replies. After <code>down-after-milliseconds</code> a majority of Sentinels agree it is down (quorum).', parts: [g({ P: 'bad', S: 'cur' }, { 'S-P': 'bad' }, { sp: 'no reply' })].concat(st(nh)) });
+        frames.push({ narr: 'Sentinels <b>promote the replica</b> to primary and tell clients the new address. Total failover typically takes a few seconds.', parts: [g({ R: 'ok', S: 'cur', P: 'bad' }, { 'S-R': 'ok' }, { sr: 'REPLICAOF NO ONE' })].concat(st()) });
+        var lostHl = {}; for (var k = 5; k < prim.length; k++) lostHl[k] = 'bad';
+        frames.push({ narr: lag ? '<span class="c-r">Writes ' + prim.slice(5).join(', ') + ' were acknowledged but never replicated — they are lost.</span> For a cache this is fine (the DB still has the truth). For Redis used as a primary store it is not: use <code>WAIT</code>, AOF, or a durable store such as MemoryDB.' : '<span class="c-g">Nothing lost</span>: the replica was caught up. The app now writes to the new primary.', parts: [g({ R: 'ok', APP: 'cur' }, { 'APP-R': 'ok' }, { ar: 'writes (new primary)' })].concat(st(lostHl)) });
+        return frames;
+      }
+    }],
+    examples: [
+      { title: 'Feature → data structure', html: `${H.table(['Feature', 'Redis structure', 'Commands'], [['Game leaderboard', 'sorted set', '<code>ZINCRBY lb 10 asha</code>, <code>ZREVRANGE lb 0 9</code>'], ['Unique visitors per day (approx.)', 'HyperLogLog (12 KB, ~0.8% error)', '<code>PFADD uv:2026-10-14 u42</code>, <code>PFCOUNT</code>'], ['Session store', 'hash + TTL', '<code>HSET sess:abc …</code>, <code>EXPIRE sess:abc 1800</code>'], ['Rate limit 100 req/min', 'string counter + TTL', '<code>INCR rl:u42:202610141205</code>, <code>EXPIRE … 60</code>'], ['Recent activity feed', 'capped list', '<code>LPUSH</code> + <code>LTRIM feed:42 0 99</code>']])}` },
+      { title: 'Sizing memory', html: `<p>50M sessions × (≈ 200 B value + ≈ 60 B key + ≈ 50 B per-key overhead) ≈ <b>15.5 GB</b>. Add ~30% for fragmentation and growth → ~20 GB. With one replica per shard, that is 40 GB of RAM. Spread over 4 shards of ~5 GB each so a failover or resync (full copy of the dataset) is quick.</p>` },
+      { title: 'Memcached at Meta scale (lessons)', html: `<p>Meta's 2013 "Scaling Memcache at Facebook" paper: thousands of Memcached servers, routed by <b>mcrouter</b>; <b>leases</b> fix stale sets and thundering herds; <b>gutter pools</b> absorb load when a server dies (instead of rehashing its keys onto healthy servers); <b>regional pools</b> share rarely-used keys; invalidations come from the MySQL commit log (McSqueal). These are the same ideas in this module, at planet scale.</p>` },
+      { title: 'Hot key on one shard', html: `<p>A celebrity's profile <code>user:1</code> gets 300k reads/s, all on the shard owning its slot — that shard melts while others idle. Fixes: an <b>L1 in-process cache</b> for that key (seconds of TTL), <b>read from replicas</b> (<code>READONLY</code>), or <b>key replication</b>: store copies <code>user:1#0..#7</code> on different slots and read a random one.</p>` }
+    ],
+    deepDive: `<p><b>Single-threaded execution.</b> Redis runs commands one at a time on its main thread, which makes every command atomic and avoids locks, but means one slow command (<code>KEYS *</code>, <code>HGETALL</code> on a 1M-field hash, a long Lua script, <code>DEL</code> of a huge set — use <code>UNLINK</code>) stalls everyone. Throughput scales by adding shards, not cores. I/O threads (Redis 6+) parallelize socket reads/writes; Dragonfly and KeyDB use multi-threaded shared-nothing designs for more per-box throughput.</p>
+<p><b>Persistence trade-offs.</b> RDB = periodic <code>fork()</code> + snapshot (compact, fast restart, but loses minutes; fork of a 50 GB process needs copy-on-write memory headroom). AOF = append every write (<code>appendfsync everysec</code> ≈ ≤ 1 s loss), periodically rewritten. For a pure cache many teams disable both and accept a cold start — but then plan for the stampede on restart.</p>
+<p><b>Cluster mechanics.</b> Nodes gossip on a cluster bus; resharding moves slots live (<code>MIGRATING</code>/<code>IMPORTING</code> states, <code>ASK</code> redirects during migration). Failover needs a majority of primaries to agree. Async replication means a split-brain minority primary can accept writes that are later discarded. <code>WAIT numreplicas timeout</code> reduces (not eliminates) loss.</p>
+<p><b>Memcached internals.</b> Memory is pre-split into 1 MB pages assigned to <b>slab classes</b> of growing chunk sizes (×1.25); an item uses the smallest chunk that fits, wasting the rest. If traffic shifts from small to large items, the slab automover rebalances pages. Its multi-threaded design with fine-grained locks gives excellent per-node throughput for simple GET/SET.</p>
+<p><b>Client-side matters.</b> Connection pooling, pipelining (send 100 commands, read 100 replies — cuts round trips), timeouts of a few ms, and circuit breakers so a sick cache does not stall your app threads.</p>`,
+    aiEra: `<p><b>What AI changes:</b> Redis has become a common <b>AI infrastructure</b> piece: vector search (Redis Query Engine, Valkey modules) for RAG, semantic caches for LLM responses, agent short-term memory and session state, and rate limiting for expensive model APIs. AI assistants generate correct redis-cli and client code fluently, so the interview focus moves to choosing structures, sizing memory and planning failure.</p>
+<p><b>Use AI as a partner:</b> <code>Estimate Redis memory for 80M keys with these value shapes, including overhead, and propose a shard count</code>; <code>Rewrite this read-modify-write into a single Lua script</code>; <code>Review this Redis usage for O(N) commands that could block</code>.</p>
+<p><b>Where AI goes wrong:</b> uses <code>KEYS</code> in production code, assumes Redis replication is synchronous, forgets <code>CROSSSLOT</code> limits in Cluster, gives outdated licensing info, or proposes Redis as the only copy of important data without persistence.</p>
+<p><b>What you must still own:</b> whether the cache may lose data, the shard/replica topology, hot-key handling, and the operational runbook for failover and cold start.</p>`,
+    problems: [{
+      title: 'Global Game Leaderboard', level: 'Medium', tags: ['Redis', 'sorted set', 'sharding'], companies: ['Riot Games', 'Supercell', 'Microsoft'],
+      statement: `<p>Design the cache/storage for a live leaderboard: 50M players, 20k score updates/s, players view their rank and the top 100 constantly (200k reads/s). Should you use Memcached or Redis? How do you shard it?</p>`,
+      constraints: `<p>Rank must be accurate within ~1 s · top-100 page p99 &lt; 20 ms · tolerate one node failure without losing the leaderboard.</p>`,
+      example: `<p>${H.c('b', 'ZINCRBY lb 50 asha')} then ${H.c('b', 'ZREVRANK lb asha')} → 1,204,551 (0-based). ${H.c('b', 'ZREVRANGE lb 0 99 WITHSCORES')} → top 100 in O(log N + 100).</p>`,
+      brute: { why: `<p><b>Naive design:</b> store scores in SQL and run <code>SELECT COUNT(*) FROM scores WHERE score &gt; :mine</code> for each rank lookup, cached in Memcached for 1 s. COUNT over 50M rows at 200k reads/s is impossible, and Memcached cannot compute ranks — it only stores blobs, so every rank must be precomputed for every player.</p>` },
+      mcq: { q: 'Which structure gives O(log N) rank lookups?', options: ['Memcached string', 'Redis list', 'Redis sorted set (skip list)', 'Redis set'], answer: 2, explain: 'A sorted set is a skip list + hash: ZADD, ZRANK and ZREVRANGE are O(log N) (+ M returned).' },
+      hints: [`<p>Hint 1: You need the server to keep scores <i>ordered</i> — that rules out plain key-value caches.</p>`, `<p>Hint 2: One Redis sorted set with 50M members ≈ 5 GB fits on one shard; reads can go to replicas. Durable copy of scores lives in a DB.</p>`, `<p>Hint 3: If it outgrows one node, split by score buckets (or by region) and compute global rank as the sum of counts in higher buckets (<code>ZCOUNT</code>).</p>`],
+      solution: {
+        approach: `<p><b>Use Redis (sorted sets).</b> Memcached cannot order or rank. Design:</p>
+<ul><li><b>Write path:</b> game servers send score events to Kafka (durable log); a consumer writes the authoritative score to a DB (DynamoDB/Postgres) and applies <code>ZADD lb GT score player</code> to Redis (GT = only increase).</li>
+<li><b>Read path:</b> top 100 via <code>ZREVRANGE lb 0 99 WITHSCORES</code>, cached for 1 s in an L1 in-process cache on API servers (all 200k reads/s hit the same key → the L1 absorbs it). Personal rank via <code>ZREVRANK</code> served from Redis replicas.</li>
+<li><b>Size:</b> 50M members × ~100 B ≈ 5 GB → one primary + 2 replicas (replicas spread read load and provide failover via Sentinel/Cluster).</li>
+<li><b>Failure:</b> if Redis loses data, rebuild from the DB or by replaying Kafka. Async replication may lose ~1 s of updates on failover — acceptable and repaired by replay.</li>
+<li><b>Bigger scale:</b> partition by score range into multiple sorted sets on different shards; rank = Σ <code>ZCARD</code> of higher buckets + rank within own bucket.</li></ul>`,
+        complexity: `<p>ZADD/ZREVRANK O(log N) ≈ 26 steps for 50M; top-100 O(log N + 100). Memory ≈ 5 GB per copy.</p>`,
+        followUps: ['Daily / weekly leaderboards with automatic reset?', 'Friends-only leaderboard?', 'How do you handle ties fairly (earlier achiever ranks higher)?']
       }
     }]
   });
