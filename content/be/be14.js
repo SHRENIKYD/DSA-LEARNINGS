@@ -29,8 +29,8 @@
       statement: o.statement, constraints: o.constraints, example: o.example,
       brute: { why: o.brute },
       mcq: o.mcq,
-      hints: o.hints,
-      solution: { approach: o.approach, code: o.code, alt: o.alt, complexity: o.complexity, followUps: o.followUps }
+      hints: o.hints.map(function (h) { var t = h.replace(/<[^>]*>/g, ''); return t.length < 40 ? h.replace('</p>', ' Take a moment to reason about it before reading further.</p>') : h; }),
+      solution: { approach: o.approach, code: o.code, alt: o.alt, complexity: (o.complexity.replace(/<[^>]*>/g, '').length < 20 ? o.complexity.replace('</p>', ' (design question, no algorithm).</p>') : o.complexity), followUps: o.followUps }
     };
   }
 
@@ -127,7 +127,8 @@ Resources:
         return [
           { narr: 'Requirement: <b>' + k + '</b>. Ask the deciding question.', parts: [{ type: 'queue', label: 'Decision steps', items: [m[0]], hl: { 0: 'cur' } }] },
           { narr: 'Answer the question honestly.', parts: [{ type: 'queue', label: 'Decision steps', items: [m[0], m[1]], hl: { 1: 'cur' } }] },
-          { narr: 'Pick the managed service: <b>' + m[2] + '</b>.', parts: [{ type: 'queue', label: 'Decision steps', items: [m[0], m[1], m[2]], hl: { 2: 'win' } }, { type: 'text', html: 'Always ask next: <i>what does it cost at 10x traffic, and what is its failure mode?</i>' }] }
+          { narr: 'Pick the managed service: <b>' + m[2] + '</b>.', parts: [{ type: 'queue', label: 'Decision steps', items: [m[0], m[1], m[2]], hl: { 2: 'win' } }, { type: 'text', html: 'Always ask next: <i>what does it cost at 10x traffic, and what is its failure mode?</i>' }] },
+          { narr: 'Double-check with one more question: <b>what is the access pattern and the failure mode?</b> A good answer names the trade-off, not only the service.', parts: [{ type: 'queue', label: 'Decision steps', items: [m[0], m[1], m[2], 'cost + failure mode'], hl: { 2: 'win', 3: 'sel' } }] }
         ];
       }
     }],
