@@ -1472,7 +1472,7 @@ async function main() {
   }
 }
 main();` },
-    { lang: 'js', title: 'The real thing (needs a network; syntax-checked here)', code: `// GET: read a todo from a public test API and log the response
+    { lang: 'js', title: 'The real thing (needs a network; syntax-checked here)', code: `// GET: read a task from a public test API and log the response
 async function showItem() {
   const res = await fetch('https://jsonplaceholder.typicode.com/todos/1');
   console.log('status:', res.status);                        // 200
