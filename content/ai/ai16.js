@@ -8,7 +8,7 @@ function P(title, level, tags, companies, statement, example, bruteWhy, mcq, hin
     statement: statement, constraints: '<p>No code is required. Answer in plain written steps, as if explaining to a teammate. Aim for something you could really do at work on Monday.</p>',
     example: example,
     brute: { why: bruteWhy },
-    mcq: mcq, hints: hints,
+    mcq: mcq, hints: hints.map(function (h) { return h.replace(/<[^>]*>/g, '').length < 60 ? h.replace('</p>', ' Try it on paper first, then compare with the written answer.</p>') : h; }),
     solution: { approach: approach, complexity: complexity, followUps: followUps }
   };
 }
@@ -1154,6 +1154,16 @@ practice.push(P('Build Your Personal Verification Policy', 'Hard', ['verificatio
   hs('group artefacts by what a silent bug costs.', 'for each group write the minimum evidence you require.', 'add a time budget so it is realistic.'),
   `<p>Policy. Tier 1 (low risk: docs, small UI, scripts for one-off use): skim, run once, confirm examples work, 1 to 5 minutes. Tier 2 (normal feature code): read tests first, run the suite, check edge cases and error paths against the seven failure patterns, trace one example by hand, review dependencies, 15 to 30 minutes per PR. Tier 3 (data and SQL): run on a copy, check row counts before and after, look for fan-out joins and null handling, compare aggregates with a trusted number. Tier 4 (money, auth, crypto, migrations, deletes, secrets): write the spec and tests myself, require property or differential tests, second reviewer, staged rollout with monitoring and a rollback plan. I refuse to accept: code I cannot explain; tests I did not read; any new dependency I have not checked on the registry; any claim of "tested" without output; summaries instead of diffs. Escalate when: the change touches an area outside the task; the AI contradicts the spec; two attempts failed with the same symptom; the data involved is regulated. Calibration: keep a log of AI mistakes I caught and ones that slipped through, review monthly, and move artefact types between tiers based on evidence.</p>`,
   `<p>One page, revisited monthly.</p>`, ['How do you adapt the policy for a junior teammate?']));
+
+practice.push(P('Run a Blameless Review of Your Own AI Habits', 'Hard', ['self-review', 'calibration', 'habits'], ['Google', 'Anthropic'],
+  `<p>Over the last month you merged about 30 AI-assisted changes. Design a 60-minute self-audit that finds where your review is weakest, and the experiment you will run for the next month to improve it.</p>`,
+  `<p>Method: sample ${H.c('b', 'changes by risk')}, re-review them cold, and count what you now find.</p>`,
+  `<p>Relying on a feeling of "I review carefully" gives no data, so blind spots stay hidden.</p>`,
+  mc('Why re-review old changes "cold"?', ['To waste time', 'Fresh eyes with the checklist reveal misses that your earlier, rushed review did not', 'To blame the AI', 'To rewrite them'], 1, 'The gap between the first and second review is your measurable blind spot.'),
+  hs('pick a sample that includes risky and boring changes.', 'use the seven-pattern checklist as the scoring sheet.', 'turn the biggest gap into one experiment with a measure.'),
+  `<p>Audit. Step 1 (10 min): list the 30 changes and tag each with risk (money, auth, data, UI, docs) and size; pick 10 weighted toward risky ones. Step 2 (35 min): re-review each cold using the checklist (hallucinated API, off-by-one, edge cases, swallowed errors, security, over-engineering, weak tests), writing down every finding with the category; also note whether the original review comments mentioned it. Step 3 (10 min): tally by category: which patterns did you find now that you missed then, and in which risk tier? Also check production: any incidents or follow-up fixes tied to these changes. Step 4 (5 min): choose the single biggest gap, for example swallowed errors in the data tier. Experiment for the next month: add one concrete habit, such as a grep for bare except and default returns before every approval, plus a test for the error path; write the expected effect ("zero swallowed errors found in cold re-review") and measure again in a month. Keep the log; repeat quarterly. The point is calibration: replace the feeling of being careful with evidence of where care is missing.</p>`,
+  `<p>One hour a month, repeated every quarter.</p>`, ['How would you involve teammates without blame?']));
+
 
 // =====================================================================
 quiz.push(mc('What is the main purpose of a CLAUDE.md-style project instruction file?', ['To store passwords', 'To give an agent with no memory the commands, layout and rules of the project at the start of each session', 'To replace tests', 'To list all past bugs'], 1, 'It is onboarding for a reader that forgets everything between sessions.'));

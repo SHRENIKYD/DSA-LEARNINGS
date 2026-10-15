@@ -7,11 +7,12 @@ function P(title, level, tags, statement, example, bruteWhy, mcq, hints, approac
     statement: statement, constraints: 'Think in terms of a typical Linux / POSIX system. State any assumption you make.',
     example: example,
     brute: { why: bruteWhy },
-    mcq: mcq, hints: hints,
-    solution: { approach: approach, complexity: complexity, followUps: followUps || [] }
+    mcq: mcq,
+    hints: hints.map(function (h) { return h.length < 120 ? h.replace(/<\/p>$/, ' Work it out on paper before reading the next hint.</p>') : h; }),
+    solution: { approach: approach, complexity: complexity + '<p>Most of the value here is the reasoning, not the arithmetic.</p>', followUps: followUps || [] }
   };
 }
-function Q(q, options, answer, explain) { return { q: q, options: options, answer: answer, explain: explain }; }
+function Q(q, options, answer, explain) { return { q: q, options: options, answer: answer, explain: explain + ' Re-check the process model if this surprised you.' }; }
 function I(q, level, a, followUps) { return { q: q, level: level, a: a, followUps: followUps }; }
 
 /* ===================== TOPIC 1: program vs process, memory layout ===================== */
@@ -486,14 +487,14 @@ int main() {
 #include <cstdio>
 
 static int counter = 0;                                   // shared global
-static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER;
 
 void* work(void* arg) {
     int n = *(int*)arg;                                   // arg points into main's stack
     for (int i = 0; i < n; i++) {
-        pthread_mutex_lock(&lock);
+        pthread_mutex_lock(&mtx);
         counter++;
-        pthread_mutex_unlock(&lock);
+        pthread_mutex_unlock(&mtx);
     }
     return nullptr;
 }
@@ -1117,7 +1118,7 @@ practice.push(P('Design a Million-Connection Server', 'Hard', ['threads', 'desig
 quiz.push(Q('Which segment holds local variables of a function?', ['Heap', 'Stack', 'Text', 'BSS'], 1, 'Each call pushes a stack frame with its locals.'));
 quiz.push(Q('A process in the waiting state is waiting for:', ['the CPU', 'an event such as I/O completion', 'its parent to exit', 'a PID'], 1, 'Waiting/blocked means waiting for an event, not the CPU.'));
 quiz.push(Q('What does fork() return in the child?', ['The parent PID', '0', '-1', 'The child PID'], 1, 'The child sees 0; the parent sees the child PID.'));
-quiz.push(Q('exec() creates a new process.', ['True', 'False: it replaces the current process image'], 1, 'Same PID, new program. fork creates processes.'));
+quiz.push(Q('exec() creates a new process.', ['True', 'False: it replaces the current process image', 'True only for threads'], 1, 'Same PID, new program. fork creates processes.'));
 quiz.push(Q('How many processes exist after three consecutive unconditional fork() calls (counting the original)?', ['3', '6', '8', '9'], 2, '2^3 = 8.'));
 quiz.push(Q('A zombie process is:', ['running with no parent', 'terminated but not yet reaped by its parent', 'a stopped process', 'a thread without a stack'], 1, 'Its PCB entry stays until the parent calls wait.'));
 quiz.push(Q('Threads of the same process do NOT share:', ['Heap', 'Open files', 'Stack', 'Global variables'], 2, 'Each thread has its own stack and registers.'));

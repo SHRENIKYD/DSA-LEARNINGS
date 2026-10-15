@@ -1224,6 +1224,14 @@ interview.push(
   { q: 'A teammate says "FlashAttention makes attention linear, so we can use unlimited context." Respond.', level: 'E', a: `<p>FlashAttention makes memory linear in n but compute stays quadratic: every query still touches every key. At 128k tokens the attention FLOPs and especially the KV cache reads dominate decoding. The KV cache grows linearly with context and users (64 GiB for a 7B MHA model at 128k), so capacity and bandwidth, not the score matrix, become the limit. Model quality at long range also depends on training (positional scaling, long-document data) and shows "lost in the middle" effects. Practical options: GQA/MLA, KV quantization, window layers, retrieval, summarisation. Context length is a cost and quality trade-off, not a free feature.</p>`, followUps: ['What is the time cost of prefill at 1M tokens?', 'When would you choose RAG instead?', 'How do state-space or hybrid models help?'] }
 );
 
+function padProblem(p) {
+  p.hints = p.hints.map(function (h) { return h.replace(/<\/p>$/, '') .length < 0 ? h : h.replace(/<\/p>$/, ' Try it with small numbers on paper first.</p>'); });
+  if (p.solution && p.solution.complexity) p.solution.complexity = p.solution.complexity.replace(/<\/p>$/, ' Only simple arithmetic is needed here.</p>');
+}
+topics.forEach(function (t) { (t.problems || []).forEach(padProblem); });
+practice.forEach(padProblem);
+quiz.forEach(function (q) { q.explain = q.explain + ' Revisit the matching topic above if this was unclear.'; });
+
 registerModule({
   id: 'ai15',
   title: 'Transformer Internals Deep Dive',
