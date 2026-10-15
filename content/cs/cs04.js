@@ -274,9 +274,10 @@
         if (!isW(n) && wait.indexOf(n) < 0 && pol === 'reader' && wait.some(isW)) { msg += ' <span class="c-r">It jumped ahead of a waiting writer (reader preference).</span>'; skipped++; }
       } else {
         var ri = readers.indexOf(n);
-        if (ri >= 0) readers.splice(ri, 1); else if (writer === n) writer = null; else throw new Error(n + ' is not inside the room');
+        var gaveUp = false;
+        if (ri >= 0) readers.splice(ri, 1); else if (writer === n) writer = null; else if (wait.indexOf(n) >= 0) { wait.splice(wait.indexOf(n), 1); gaveUp = true; } else throw new Error(n + ' never arrived');
         var o2 = admit();
-        msg = n + ' leaves. ' + (o2.length ? '<span class="c-g">' + o2.join('; ') + '.</span>' : (wait.length ? 'Waiters still blocked.' : 'The room is quiet.'));
+        msg = n + (gaveUp ? ' gave up waiting and left. ' : ' leaves. ') + (o2.length ? '<span class="c-g">' + o2.join('; ') + '.</span>' : (wait.length ? 'Waiters still blocked.' : 'The room is quiet.'));
       }
       frames.push({ narr: msg, parts: part() });
     });
