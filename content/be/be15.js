@@ -518,9 +518,9 @@ public class SsrfGuard {
     inputLabel: 'URL the attacker asks the server to fetch',
     gen: function (input) {
       var raw = String(input).trim();
-      var u;
-      try { u = new URL(raw); } catch (e) { throw new Error('Enter a full URL such as http://10.0.0.5/admin'); }
-      var host = u.hostname;
+      var mm = raw.match(/^([a-z][a-z0-9+.-]*:)\/\/(\[[^\]]+\]|[^\/:?#]+)/i);
+      if (!mm) throw new Error('Enter a full URL such as http://10.0.0.5/admin');
+      var u = { protocol: mm[1].toLowerCase() }, host = mm[2].toLowerCase();
       var m = host.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
       var internal = false, reason = 'public address';
       if (u.protocol !== 'http:' && u.protocol !== 'https:') { internal = true; reason = 'scheme ' + u.protocol + ' not allowed'; }
