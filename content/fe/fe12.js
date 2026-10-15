@@ -311,10 +311,10 @@ function ParentFixed() { return <Inner />; }` }
         title: 'Keys: why the index is a trap',
         html: `<p>A todo list of <code>Buy milk</code>, <code>Walk dog</code>, <code>Call mum</code> where each row has an uncontrolled text input for notes. You delete the first todo. With <code>key={index}</code>, the row at index 0 is now matched with the old index-0 row, so React simply updates the text of that row and the <i>typed note stays in the first input</i>. The notes shift to the wrong todo. With <code>key={todo.id}</code>, React removes exactly the deleted row together with its input and everything stays attached to the right item.</p>`,
         code: { lang: 'jsx', check: false, code: `// BAD: identity = position, which changes when items are removed or reordered
-{todos.map((t, i) => <TodoRow key={i} todo={t} />)}
+{todos.map((t, i) => <TodoRow key={i} task={t} />)}
 
 // GOOD: identity = a stable ID that belongs to the data
-{todos.map((t) => <TodoRow key={t.id} todo={t} />)}
+{todos.map((t) => <TodoRow key={t.id} task={t} />)}
 
 // Also fine: a key can be used on purpose to RESET a component.
 // Changing userId remounts the whole editor with fresh state.
@@ -2640,7 +2640,7 @@ console.log(JSON.stringify(decide([])));` },
   return (
     <ul>
       {todos.map((t) => (
-        // identity = the todo's id, which follows the item when it moves or is deleted
+        // identity = the item's id, which follows the item when it moves or is deleted
         <li key={t.id}>
           {t.title} <input placeholder="note" />
           <button onClick={() => onDelete(t.id)}>x</button>
@@ -2651,7 +2651,7 @@ console.log(JSON.stringify(decide([])));` },
 }
 
 // Bonus: a key can also be used to RESET a component on purpose.
-// <NoteEditor key={selectedTodo.id} todo={selectedTodo} />   // switching todo remounts the editor` },
+// <NoteEditor key={selectedTask.id} task={selectedTask} />   // switching task remounts the editor` },
       complexity: `<p>Reconciliation stays O(n). Deleting one row costs one DOM removal instead of rewriting every row below it.</p>`,
       followUps: ['What if items have no id? Where do you generate ids and why must it not be during render?', 'How do keys interact with CSS animations when items reorder?']
     }
