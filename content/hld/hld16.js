@@ -250,6 +250,7 @@ print(idx.nearby(37.7749, -122.4194, 2))
             frames.push(snap('Pop <b>' + u + '</b> at ' + d + ' min - no driver here. Relax its roads (green): neighbours get a better travel time if this route is shorter.', u, ehl));
           }
         }
+        frames.push(snap('Ranking: ' + (found.map(function (f) { return f[2] + ' (' + f[0] + ' min)'; }).join(' then ') || 'no driver reachable') + '. The matching service now runs the offer protocol: set the best driver to OFFERED with a compare-and-set, send the offer, wait for the answer.', null));
         frames.push(snap('Search stops. Offer the trip to the <b>closest driver first</b>; if he declines or times out (e.g. 10 s), offer to the next. Only the nodes near the rider were touched - we never explored the whole city.', null));
         return frames;
       }
