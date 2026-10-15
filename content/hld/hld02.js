@@ -17,7 +17,6 @@
   // parse "key=value" pairs such as "servers=3 fail=S2 at=4"
   function kvParse(input) {
     var out = {}, re = /(\w+)\s*=\s*([\w.]+)/g, mm;
-    String(input || '').replace(/;/g, ' ').replace(/,/g, ' ');
     while ((mm = re.exec(String(input || '')))) out[mm[1].toLowerCase()] = mm[2];
     return out;
   }
@@ -759,14 +758,14 @@ class LbDemo {
     return total, peak
 
 
-work = [6, 1, 1, 6, 1, 1, 6, 1, 1, 6, 1, 1]      # every 3rd request is slow (a report)
+work = [8, 1, 1, 8, 1, 1, 8, 1, 1, 8, 1, 1]      # every 3rd request is slow (a report)
 for algo in ["round_robin", "least_connections"]:
     total, peak = simulate(work, 3, algo)
     print(f"{algo:<18} requests/server={total}  peak in-flight={peak}  worst={max(peak)}")
 ` }],
     viz: [{
       title: 'Round robin vs least connections on the same traffic',
-      input: 'servers=3; 6 1 1 6 1 1 6 1 1 1 1 1',
+      input: 'servers=3; 8 1 1 8 1 1 8 1 1 8 1 1',
       inputLabel: 'servers=N; then request durations in ticks (one request arrives per tick, max 18)',
       gen: function (input) {
         var s = String(input || ''), m = s.match(/servers\s*=\s*(\d+)/i), n = m ? Number(m[1]) : 3;
@@ -946,7 +945,7 @@ print("only the app tier redundant:", f"{series(LB, parallel(APP, 3), DB):.4%}",
 ` },
     viz: [{
       title: 'A server dies: health checks detect it, traffic reroutes',
-      input: 'servers=3 fail=S2 at=4 detect=2 recover=12 requests=16',
+      input: 'servers=3 fail=S2 at=5 detect=3 recover=13 requests=18',
       inputLabel: 'servers (2–5), fail=Sk, at=tick it dies, detect=failed checks before removal, recover=tick it comes back, requests (≤ 24)',
       gen: function (input) {
         var o = kvParse(input), n = Number(o.servers || 3), failS = Number(String(o.fail || 'S2').replace(/\D/g, '')) - 1;
