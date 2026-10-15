@@ -22,7 +22,7 @@ function P(o) {
     example: '<p><b>Situation:</b> ' + o.s + '</p><p><span class="c-g">Good answer shape:</span> ' + o.shape + '</p>',
     brute: { why: '<p><b>Weak answer:</b> &ldquo;' + o.weak + '&rdquo;</p><p>' + o.why + '</p>', code: { lang: 'text', code: o.weak, check: false } },
     mcq: o.mcq,
-    hints: ['<p>Hint 1: ' + o.h1 + '</p>', '<p>Hint 2: ' + o.h2 + '</p>', '<p>Hint 3: ' + o.h3 + '</p>'],
+    hints: ['<p>Hint 1: ' + o.h1 + ' Think about what the other person needs to hear to say yes.</p>', '<p>Hint 2: ' + o.h2 + ' Keep it specific, warm and honest.</p>', '<p>Hint 3: ' + o.h3 + ' Then pause and let them reply.</p>'],
     solution: { approach: o.a, complexity: '<p>Not a code problem. Effort: 10 minutes of prep, one calm conversation.</p>', followUps: o.f }
   };
 }
