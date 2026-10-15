@@ -1244,7 +1244,7 @@ for u in (0.5, 0.8, 0.9, 0.95, 0.99):
         var items = [['L1 cache', 1], ['RAM read', 100], ['1 MB from RAM', 7000], ['SSD random read', 50000], ['1 MB from SSD', 300000], ['DC round trip', 500000], ['HDD seek', 8000000], ['US East↔West', 65000000], ['India↔US East', 200000000]];
         function human(ns) {
           var sec = ns;
-          if (sec < 120) return sec + ' seconds';
+          if (sec < 120) return sec + (sec === 1 ? ' second' : ' seconds');
           if (sec < 7200) return (sec / 60).toFixed(1) + ' minutes';
           if (sec < 172800) return (sec / 3600).toFixed(1) + ' hours';
           if (sec < 3 * 31536000) return (sec / 86400).toFixed(1) + ' days';
@@ -1472,4 +1472,428 @@ for mttr_min in (60, 6):
     }]
   });
 
-registerModule({ id: 'hld01', title: 'x', intro: 'x', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
+  /* ================================================================
+     PRACTICE ARENA — Easy
+     ================================================================ */
+  practice.push({
+    title: 'Requirements for a URL shortener',
+    level: 'Easy', tags: ['requirements', 'functional', 'non-functional'], companies: ['Google', 'Amazon', 'Bitly'],
+    statement: `<p>You are asked to design a URL shortener (like bit.ly). Write 3–4 functional requirements, 4–5 non-functional requirements with numbers, and 2 out-of-scope items. State the read/write ratio you assume and why it matters.</p>`,
+    constraints: `<p>Assume 100M new short links per month. Links never expire unless deleted.</p>`,
+    example: `<p>${H.c('g', 'FR: given a long URL, return a short code like sho.rt/aZ3k9Q')}; ${H.c('b', 'NFR: redirect p99 &lt; 50 ms')}. Why: redirects happen on every click, so they are the hot path; creation happens once per link.</p>`,
+    brute: { why: `<p><b>Naive list:</b> "shorten URLs, redirect, be fast and scalable". It breaks because "fast" and "scalable" give no target: you cannot decide whether one database is enough, whether a cache is needed, or how big the code space must be (100M/month for 10 years = 12 billion codes).</p>` },
+    mcq: { q: 'Why does the read/write ratio matter so much for a URL shortener?', options: ['It decides the programming language', 'Reads (redirects) vastly outnumber writes, so the design optimises the read path with caching', 'It decides the domain name', 'It does not matter'], answer: 1, explain: 'A link is created once and clicked many times; a ~100:1 read ratio makes caching and fast lookups the core of the design.' },
+    hints: [
+      `<p>Hint 1: Separate the two core actions: <b>create</b> a short link and <b>redirect</b> from a short link. Which one happens more?</p>`,
+      `<p>Hint 2: Turn the scale into rates: 100M writes/month ÷ ~2.6M seconds ≈ 40 writes/s; with 100:1 reads ≈ 4,000 redirects/s average.</p>`,
+      `<p>Hint 3: Add NFRs for latency (redirect), availability (broken links are visible to everyone), durability (never lose a mapping) and uniqueness (no two long URLs share a code).</p>`
+    ],
+    solution: {
+      approach: `<p><b>Functional:</b></p><ol><li>Create: given a long URL, return a unique short URL (optionally a custom alias).</li><li>Redirect: visiting the short URL returns HTTP 301/302 to the long URL.</li><li>Delete/disable a link (owner only).</li><li>(Optional) basic click counts.</li></ol>
+<p><b>Non-functional:</b></p><ol><li>Scale: 100M creates/month ≈ 40/s average; reads 100:1 ≈ 4,000/s average, ~10,000/s peak.</li><li>Latency: redirect p99 &lt; 50 ms server-side; create p99 &lt; 300 ms.</li><li>Availability: 99.99% for redirects (links are embedded everywhere).</li><li>Durability: a created mapping is never lost; stored for years (~12B links over 10 years).</li><li>Uniqueness and safety: codes are unique, not easily guessable; malicious URLs can be blocked.</li></ol>
+<p><b>Out of scope:</b> detailed analytics dashboards, user accounts/billing, link previews.</p>
+<p><b>Why the ratio matters:</b> at 100:1, the system is a giant read-mostly key→value lookup — cache hot codes in memory, keep the redirect path tiny, and let creation be a little slower.</p>`,
+      complexity: `<p>~40 writes/s, ~4k–10k reads/s; storage ≈ 12B × ~500 bytes ≈ 6 TB over 10 years — modest, but beyond what one small DB should hold comfortably without a plan.</p>`,
+      followUps: ['301 or 302 for the redirect — which helps analytics and which reduces load?', 'How long must the code be to cover 12 billion links with base62?']
+    }
+  });
+
+  practice.push({
+    title: 'Put the request lifecycle in order',
+    level: 'Easy', tags: ['request lifecycle', 'dns', 'tcp', 'tls'], companies: ['Microsoft', 'Google', 'Infosys'],
+    statement: `<p>These steps happen when a user opens <code>https://news.example.com</code> for the first time today. Put them in order and give a one-line reason for each: (a) TLS handshake, (b) browser renders the page and fetches images, (c) DNS lookup, (d) app server reads articles from the cache/DB, (e) TCP handshake, (f) HTTP GET sent, (g) load balancer forwards the request, (h) HTTP response returns.</p>`,
+    constraints: `<p>HTTPS, TLS 1.3, cold DNS cache, one load balancer in front of the app servers.</p>`,
+    example: `<p>First step is ${H.c('b', '(c) DNS lookup')}. Why: the browser cannot open a connection until it knows the server\'s IP address.</p>`,
+    brute: { why: `<p><b>Naive order:</b> "send GET → server answers → done". It hides the three round trips (DNS, TCP, TLS) that often dominate latency for distant users, and the server-side hops (LB, cache, DB) where failures like 502/504 come from.</p>` },
+    mcq: { q: 'Which must finish before the TLS handshake can start?', options: ['The HTTP GET', 'The TCP handshake', 'Rendering', 'The DB query'], answer: 1, explain: 'TLS (over TCP) runs on top of an established TCP connection. (HTTP/3 over QUIC merges these, but the idea of "transport first" remains.)' },
+    hints: [
+      `<p>Hint 1: Nothing network-related can happen before the name becomes an IP address.</p>`,
+      `<p>Hint 2: Transport first (TCP), then security (TLS), then the actual HTTP conversation.</p>`,
+      `<p>Hint 3: Inside the data center the request goes LB → app → cache/DB, and the response comes back the same way before the browser renders.</p>`
+    ],
+    solution: {
+      approach: `<ol><li><b>(c) DNS lookup</b> — turn news.example.com into an IP (browser/OS/resolver caches, else root → TLD → authoritative).</li><li><b>(e) TCP handshake</b> — SYN, SYN-ACK, ACK with the load balancer\'s IP; reliable byte stream established (1 RTT).</li><li><b>(a) TLS handshake</b> — agree keys, verify certificate for news.example.com (1 RTT in TLS 1.3).</li><li><b>(f) HTTP GET sent</b> — <code>GET /</code> with headers/cookies, encrypted.</li><li><b>(g) LB forwards</b> — picks a healthy app server (often terminating TLS at the LB).</li><li><b>(d) App reads data</b> — cache first; on a miss, the DB; builds HTML/JSON.</li><li><b>(h) Response returns</b> — 200 OK with compressed body, back through the LB.</li><li><b>(b) Render</b> — parse HTML, fetch CSS/JS/images (mostly from a CDN, over reused connections), paint.</li></ol>
+<p>Cost intuition: with a 100 ms RTT, steps 1–3 alone cost ~250 ms before the server does anything.</p>`,
+      complexity: `<p>Cold HTTPS: ~3 RTTs + server time + render. Warm (cached DNS, reused connection): ~1 RTT + server time + render.</p>`,
+      followUps: ['Which steps disappear on the second page view and why?', 'How does HTTP/3 change steps 2 and 3?']
+    }
+  });
+
+  practice.push({
+    title: 'Nines to minutes: the error budget',
+    level: 'Easy', tags: ['availability', 'slo', 'error budget'], companies: ['Google', 'Atlassian', 'PayPal'],
+    statement: `<p>Your SLO is <b>99.95%</b> availability per 30-day month. (a) How many minutes of full downtime is that? (b) An incident made 20% of requests fail for 50 minutes. How much budget did it use (request-based)? (c) Is the month still within SLO? (d) What does the team do next?</p>`,
+    constraints: `<p>Traffic is roughly even across the month.</p>`,
+    example: `<p>(a) 30 × 24 × 60 = 43,200 min × 0.05% = ${H.c('b', '21.6 minutes')}. Why: availability is the fraction of good time/requests; the remaining 0.05% is your budget.</p>`,
+    brute: { why: `<p><b>Naive reasoning:</b> "There were 50 minutes of incident, budget is 21.6, so we failed." It ignores that only 20% of requests failed. Counting partial outages as full downtime misjudges reliability and may freeze releases unnecessarily (or, the opposite mistake, ignore partial outages entirely).</p>` },
+    mcq: { q: '99.95% per 30 days allows roughly how much full downtime?', options: ['2.2 minutes', '21.6 minutes', '3.6 hours', '43.2 minutes'], answer: 1, explain: '43,200 minutes × 0.0005 = 21.6 minutes.' },
+    hints: [
+      `<p>Hint 1: Minutes in 30 days = 43,200. Budget = minutes × (1 − SLO).</p>`,
+      `<p>Hint 2: Request-based: a partial outage costs (duration × fraction of requests failing) "equivalent full minutes".</p>`,
+      `<p>Hint 3: Compare the used budget with the total; then apply an error-budget policy (keep shipping vs freeze risky changes).</p>`
+    ],
+    solution: {
+      approach: `<p><b>(a)</b> Budget = 43,200 × 0.0005 = <b>21.6 minutes</b> of full-outage equivalent.</p>
+<p><b>(b)</b> 50 min × 20% failing = <b>10 equivalent minutes</b> → 46% of the monthly budget.</p>
+<p><b>(c)</b> Yes — 11.6 minutes remain, assuming no other failures this month.</p>
+<p><b>(d)</b> Write a blameless postmortem, fix the root cause, and because almost half the budget is gone, slow down risky launches (smaller canaries, more testing) for the rest of the month. If the budget runs out, the policy usually freezes non-critical releases until reliability work lands.</p>`,
+      code: { lang: 'python', run: true, code: `minutes = 30 * 24 * 60
+slo = 0.9995
+budget = minutes * (1 - slo)
+used = 50 * 0.20
+print(f"budget = {budget:.1f} min, used = {used:.1f} min ({used / budget:.0%}), left = {budget - used:.1f} min")` },
+      complexity: `<p>Arithmetic only: budget = period × (1 − SLO); partial outages count as duration × failure fraction.</p>`,
+      followUps: ['How would the answer change with a 99.99% SLO?', 'Why should the internal SLO be stricter than the customer SLA?']
+    }
+  });
+
+  practice.push({
+    title: 'Pick the status code and decide whether to retry',
+    level: 'Easy', tags: ['http', 'client-server', 'retries'], companies: ['Stripe', 'Twilio', 'Shopify'],
+    statement: `<p>For each situation choose the best HTTP status code, say whether the client or the server is at fault, and whether the client should retry: (1) JSON body is malformed. (2) Token missing. (3) Token valid but user may not view this order. (4) Client sent 500 requests in 1 second, limit is 100. (5) Database is down. (6) Load balancer waited 30 s for the app server and gave up. (7) New order created.</p>`,
+    constraints: `<p>Standard HTTP semantics.</p>`,
+    example: `<p>(1) ${H.c('y', '400 Bad Request')} — client fault, ${H.c('r', 'do not retry')} unchanged. Why: the same broken body will fail the same way every time.</p>`,
+    brute: { why: `<p><b>Naive approach:</b> return 200 with <code>{"error": ...}</code> for everything, or 500 for every problem. Clients, load balancers, monitoring and retry libraries all rely on status codes; wrong codes cause pointless retries (amplifying outages) or hide real server failures from alerts.</p>` },
+    mcq: { q: 'Which response should a well-behaved client retry after waiting?', options: ['400 Bad Request', '403 Forbidden', '429 Too Many Requests', '404 Not Found'], answer: 2, explain: '429 means "slow down"; retry after the Retry-After delay. The others will fail again unchanged.' },
+    hints: [
+      `<p>Hint 1: 4xx = the client must change something; 5xx = the server failed and a later retry may work.</p>`,
+      `<p>Hint 2: 401 means "who are you?" (not authenticated); 403 means "I know who you are, but no" (not authorised).</p>`,
+      `<p>Hint 3: 502/504 come from a proxy or load balancer talking to an upstream; 503 means temporarily unavailable; retries need backoff and, for POST, an idempotency key.</p>`
+    ],
+    solution: {
+      approach: `<ol><li><b>400 Bad Request</b> — client; no retry until fixed.</li><li><b>401 Unauthorized</b> — client (not authenticated); retry only after obtaining a token.</li><li><b>403 Forbidden</b> (or 404 to hide existence) — client; no retry.</li><li><b>429 Too Many Requests</b> + <code>Retry-After</code> — client; retry after waiting, with backoff.</li><li><b>503 Service Unavailable</b> — server; retry with exponential backoff and jitter.</li><li><b>504 Gateway Timeout</b> — server side (upstream too slow); retry carefully — the original request might have succeeded, so non-idempotent requests need an idempotency key.</li><li><b>201 Created</b> with a <code>Location</code> header — success.</li></ol>
+<p><b>Design point:</b> correct codes let every hop (SDKs, gateways, LBs, alerting) behave correctly without reading bodies.</p>`,
+      complexity: `<p>Seven cases; rule: 2xx success, 4xx fix the request (except 429: wait), 5xx retry with backoff if safe.</p>`,
+      followUps: ['Why is retrying immediately on 503 from thousands of clients dangerous?', 'When might you return 404 instead of 403?']
+    }
+  });
+
+  /* ================================================================
+     PRACTICE ARENA — Medium
+     ================================================================ */
+  practice.push({
+    title: 'Requirement-gather an internal company chat',
+    level: 'Medium', tags: ['requirements', 'estimation', 'interview framework'], companies: ['Slack', 'Microsoft', 'Atlassian'],
+    statement: `<p>"Design a chat app for our company." Produce: clarifying questions, functional requirements, non-functional requirements with numbers, out-of-scope items, and two rough numbers (messages per second, storage per year). Then name the one NFR that most changes the architecture.</p>`,
+    constraints: `<p>Company of 20,000 employees across 3 continents. Messages must be searchable. Assume each active user sends 40 messages/day.</p>`,
+    example: `<p>20,000 × 40 = 800,000 messages/day ÷ 86,400 ≈ ${H.c('b', '~10 messages/s average')}, maybe ${H.c('y', '~50/s at peak')}. Why: peak is usually 3–5× average during working hours overlap.</p>`,
+    brute: { why: `<p><b>Naive design:</b> "Each client polls <code>GET /messages</code> every second." 20,000 clients × 1 request/s = 20,000 requests/s mostly returning nothing — 400× the real message rate — and up to 1 s delivery delay. Skipping requirements led straight to the wrong communication pattern.</p>` },
+    mcq: { q: 'Which requirement most pushes you toward persistent connections (WebSockets)?', options: ['Messages are stored for 7 years', 'Messages should appear for recipients within ~1 second', 'Users can upload profile pictures', 'Data is encrypted at rest'], answer: 1, explain: 'Low-latency delivery to many idle clients is what makes push over persistent connections worth it versus polling.' },
+    hints: [
+      `<p>Hint 1: Ask about channels vs direct messages, group sizes, retention, search, file sharing, compliance (legal hold), and presence ("online" dots).</p>`,
+      `<p>Hint 2: Convert 20,000 users × 40 messages into per-second rates and bytes per year (~500 bytes per message with metadata).</p>`,
+      `<p>Hint 3: The delivery-latency NFR decides push vs poll; the retention/compliance NFR decides storage and deletion design.</p>`
+    ],
+    solution: {
+      approach: `<p><b>Questions:</b> 1:1 and group channels? Max channel size? File attachments? Retention and legal hold? Search scope? Mobile push notifications? Presence? Single region or global? SSO/compliance needs?</p>
+<p><b>FRs:</b> send/receive messages in 1:1 and channels (up to 5,000 members); message history with search; mentions + notifications; file attachments (stored separately). Out of scope: voice/video, bots, message editing history.</p>
+<p><b>NFRs:</b> delivery to online recipients p99 &lt; 1 s; ~10 msgs/s average, ~50/s peak, fan-out to channel members; 99.9% availability in working hours across 3 continents; durability: no acknowledged message lost; retention 7 years (compliance) with search; SSO and encryption in transit/at rest.</p>
+<p><b>Numbers:</b> 800k msgs/day × ~500 B ≈ 400 MB/day ≈ <b>150 GB/year</b> of text (attachments separate in object storage). Small enough for a well-run relational DB plus a search index.</p>
+<p><b>Most architecture-changing NFR:</b> <b>sub-second delivery</b> → clients hold WebSocket connections to gateway servers; sending a message writes it durably, then pushes to online members; offline members get it on reconnect plus mobile push. The second is <b>7-year retention + search + legal hold</b> → a search index, archival tiers and careful deletion.</p>`,
+      complexity: `<p>~10 msgs/s avg, ~50/s peak (before fan-out); ~150 GB/year text; ~20k concurrent connections at peak — a handful of gateway servers.</p>`,
+      followUps: ['How does fan-out to a 5,000-member channel affect throughput?', 'What changes if the company has 2 million users instead of 20,000?']
+    }
+  });
+
+  practice.push({
+    title: 'The page that calls 40 services',
+    level: 'Medium', tags: ['latency', 'percentiles', 'fan-out'], companies: ['Amazon', 'LinkedIn', 'Meta'],
+    statement: `<p>A product page fans out to <b>40 backend services in parallel</b> and waits for all of them. Each service has p50 = 20 ms and p99 = 500 ms, independently. (a) Roughly what fraction of page loads include at least one 500 ms+ call? (b) What is the page\'s p50 likely dominated by? (c) Propose three techniques to cut the page\'s tail latency.</p>`,
+    constraints: `<p>Assume independence between services and that the page cannot render until every call returns (current design).</p>`,
+    example: `<p>(a) 1 − 0.99<sup>40</sup> ≈ ${H.c('r', '33%')} of page loads wait ≥ 500 ms. Why: with many parallel calls, the page waits for the <i>slowest</i>, so rare per-service slowness becomes common per page.</p>`,
+    brute: { why: `<p><b>Naive view:</b> "Each service is 20 ms typical, calls are parallel, so the page takes ~20 ms." It ignores that waiting for all 40 means waiting for the max, so the per-service tail becomes the page\'s typical behaviour. Optimising p50 of each service would barely help.</p>` },
+    mcq: { q: 'Which technique specifically targets tail latency from slow replicas?', options: ['Adding more logging', 'Hedged requests: send a backup request if the first has not answered by ~p95', 'Increasing the page timeout to 10 s', 'Sorting the results'], answer: 1, explain: 'Hedging uses whichever replica answers first, cutting off rare slow responses at a small extra load.' },
+    hints: [
+      `<p>Hint 1: P(no slow call) = 0.99<sup>40</sup>. Subtract from 1.</p>`,
+      `<p>Hint 2: The page time is the max of 40 samples — think about where the max of 40 draws usually lands.</p>`,
+      `<p>Hint 3: Ideas: reduce fan-out, make some calls optional with tight timeouts, hedge requests, cache results, render progressively.</p>`
+    ],
+    solution: {
+      approach: `<p><b>(a)</b> 1 − 0.99<sup>40</sup> ≈ 1 − 0.669 = <b>~33%</b> of page loads hit at least one ≥ 500 ms call.</p>
+<p><b>(b)</b> The page\'s median is the median of the <i>max</i> of 40 calls — far above 20 ms; it sits around each service\'s ~98th percentile (since 0.983<sup>40</sup> ≈ 0.5). The page p99 is near the services\' p99.97 — deep tail.</p>
+<p><b>(c) Techniques:</b></p><ol><li><b>Make non-critical calls optional:</b> e.g. recommendations, reviews get a 100 ms timeout and fall back to cached/empty sections — the page no longer waits for them.</li><li><b>Hedged requests</b> to replicated services: if no reply by p95 (~100 ms), send a second request elsewhere; take the first answer (costs ~5% extra load).</li><li><b>Reduce fan-out:</b> aggregate data via a backend-for-frontend or precomputed page fragments; cache stable parts (product details) at the edge.</li><li><b>Progressive rendering / streaming:</b> show the critical content first, fill the rest as it arrives.</li><li><b>Fix the tail at the source:</b> GC pauses, cold caches, noisy neighbours — measure per-service p99.9.</li></ol>`,
+      code: { lang: 'python', run: true, code: `for n in (1, 10, 40, 100):
+    print(f"{n:>3} parallel calls -> {1 - 0.99 ** n:6.1%} of pages see a p99-slow call")
+# The page median sits where each call is fast with probability 0.5 ** (1/n)
+n = 40
+print(f"page p50 ~ service percentile {0.5 ** (1 / n):.3f}")` },
+      complexity: `<p>P(slow page) = 1 − (1 − p)<sup>n</sup>; with p = 1%, n = 40 → 33%. Hedging at p95 adds ~5% load and cuts most of that tail.</p>`,
+      followUps: ['When is hedging dangerous (hint: non-idempotent writes, overloaded backends)?', 'How would you set per-call timeouts inside a 300 ms page budget?']
+    }
+  });
+
+  practice.push({
+    title: 'Monthly reports are slowing down checkout',
+    level: 'Medium', tags: ['monolith', 'isolation', 'async'], companies: ['Shopify', 'Flipkart', 'Zomato'],
+    statement: `<p>Your e-commerce monolith has an admin "export monthly sales PDF" button. When finance staff click it at month-end, checkout latency jumps from 150 ms to 3 s and some checkouts time out. Explain what is probably happening and redesign the feature without rewriting the whole system into microservices.</p>`,
+    constraints: `<p>One monolith deployed on 4 identical servers behind a load balancer, one PostgreSQL primary. Reports scan millions of order rows.</p>`,
+    example: `<p>A report request lands on ${H.c('y', 'server 2')}, runs a ${H.c('r', '90-second full-table scan')} and builds a 200-page PDF in memory → server 2\'s CPU and the DB are saturated → checkouts on every server slow down because they share the DB.</p>`,
+    brute: { why: `<p><b>Naive fix:</b> "Add more app servers." Reports still run inside the same request threads and still hammer the same primary database, so checkout still suffers. Or: "Split everything into microservices" — months of work for a problem that one queue and a replica solve.</p>` },
+    mcq: { q: 'What is the most direct fix for reports hurting checkout?', options: ['Bigger load balancer', 'Run report generation asynchronously in a separate worker reading from a read replica', 'Shorter checkout timeouts', 'Cache checkout pages'], answer: 1, explain: 'It removes reports from web request threads and from the primary DB that checkout depends on.' },
+    hints: [
+      `<p>Hint 1: Find the shared resources: request threads/CPU on the app server, and the primary database.</p>`,
+      `<p>Hint 2: Long work does not belong in an HTTP request. Accept the job, return "202 Accepted", and do it in the background.</p>`,
+      `<p>Hint 3: Point heavy read queries at a read replica (or an analytics store), and notify the user when the PDF is ready (link to object storage).</p>`
+    ],
+    solution: {
+      approach: `<p><b>Diagnosis:</b> the report runs synchronously inside a web request: it holds a request thread for minutes, burns CPU/memory building the PDF on a server that also serves checkouts, and runs heavy scans on the <b>primary</b> DB — locking resources, evicting hot pages from the DB cache and starving checkout queries. Shared resources = shared blast radius.</p>
+<p><b>Redesign (still a monolith):</b></p><ol><li><b>Async job:</b> the button calls <code>POST /reports</code> → enqueue a job → return <b>202 Accepted</b> with a job ID.</li><li><b>Worker process:</b> same codebase, separate deployment ("worker role") with its own instances, consuming the queue; crashes or memory spikes there cannot hurt web servers.</li><li><b>Read replica:</b> the worker queries a replica (or nightly-aggregated summary tables), never the primary.</li><li><b>Output:</b> write the PDF to object storage; notify by email/in-app with a signed download link; status endpoint <code>GET /reports/{id}</code>.</li><li><b>Protection:</b> limit concurrent report jobs; precompute daily aggregates so month-end reports read thousands of rows, not millions.</li></ol>
+<p><b>Result:</b> checkout latency is isolated from reporting; reports take as long as they need without timeouts.</p>`,
+      complexity: `<p>Checkout returns to ~150 ms; report latency becomes minutes but asynchronous. Cost: a queue, a worker deployment and a read replica.</p>`,
+      followUps: ['What happens if the worker crashes halfway through a report?', 'How stale can the replica be for finance reports, and how do you tell users?']
+    }
+  });
+
+  practice.push({
+    title: 'The cart disappears after adding a second server',
+    level: 'Medium', tags: ['stateless', 'client-server', 'sessions'], companies: ['Amazon', 'Walmart', 'Myntra'],
+    statement: `<p>A shop ran on one server that stored each user\'s cart in an in-memory dictionary keyed by session ID. After adding a second server behind a round-robin load balancer, users report items vanishing from their carts and being logged out randomly. Explain why and give two or three fixes with trade-offs.</p>`,
+    constraints: `<p>Traffic will keep growing; servers are replaced during deploys several times a day.</p>`,
+    example: `<p>Request 1 → ${H.c('b', 'server A')} adds "shoes" to cart in A\'s memory. Request 2 → ${H.c('y', 'server B')}: B has no cart for this session → ${H.c('r', '"your cart is empty"')}.</p>`,
+    brute: { why: `<p><b>Naive fix:</b> "Turn on sticky sessions so each user always hits the same server." It hides the bug: carts still vanish when that server restarts during each deploy or crashes, load becomes uneven, and scaling down kills sessions. State is still tied to one machine.</p>` },
+    mcq: { q: 'What makes it safe for any server to handle any request?', options: ['Sticky sessions', 'Keeping session/cart state in a shared store or in the client, so servers are stateless', 'Bigger servers', 'Shorter cookies'], answer: 1, explain: 'Stateless servers can be added, removed and restarted freely because no user data lives only in their memory.' },
+    hints: [
+      `<p>Hint 1: Where does the cart live, and what does the load balancer do with the second request?</p>`,
+      `<p>Hint 2: Move the state out of the server process: shared store (Redis/DB) or the client (signed cookie/token).</p>`,
+      `<p>Hint 3: Compare fixes on durability (restart-safe?), latency (extra hop?), size limits and security.</p>`
+    ],
+    solution: {
+      approach: `<p><b>Why:</b> the servers are <b>stateful</b>. Round-robin sends consecutive requests to different servers, and each only knows the carts and sessions in its own memory. Deploys and crashes also wipe memory.</p>
+<p><b>Fixes:</b></p><ol><li><b>Shared session store (Redis):</b> servers read/write <code>cart:{userId}</code> in Redis (~1 ms). Servers become stateless. Trade-off: an extra dependency to keep highly available (replication), small latency cost.</li><li><b>Store carts in the database:</b> durable and survives everything, enables "cart on any device" and abandoned-cart emails. Trade-off: more DB writes; cache in front if needed.</li><li><b>Client-side state:</b> sessions as signed tokens (e.g. JWT) and small carts in a signed cookie/local storage. Trade-off: size limits, cannot easily revoke tokens, never trust prices from the client.</li><li><b>Sticky sessions</b> only as a performance optimisation on top of shared state — never as the source of truth.</li></ol>
+<p><b>Recommended:</b> login sessions as signed tokens or in Redis; carts in the DB (logged-in) or Redis with TTL (guests). All app servers stateless.</p>`,
+      complexity: `<p>One extra ~1 ms hop per request to Redis/DB; in return any number of servers can serve any request and deploys never lose carts.</p>`,
+      followUps: ['How would you merge a guest cart into a user cart at login?', 'What happens to sessions if Redis goes down, and how do you mitigate it?']
+    }
+  });
+
+  practice.push({
+    title: 'How many servers to serve the images?',
+    level: 'Medium', tags: ['throughput', 'bandwidth', 'cdn'], companies: ['Pinterest', 'Instagram', 'Cloudflare'],
+    statement: `<p>A photo site serves <b>6,000 image views/s</b> at peak, average image 400 KB. Each image server has a <b>1 Gbps</b> network card and can handle 5,000 requests/s of CPU work. (a) Which is the bottleneck per server — CPU or bandwidth? (b) How many servers do you need at 60% utilisation? (c) How does a CDN change the latency and throughput picture?</p>`,
+    constraints: `<p>1 Gbps ≈ 125 MB/s usable for this exercise. Ignore protocol overhead.</p>`,
+    example: `<p>Per server: 125 MB/s ÷ 0.4 MB = ${H.c('r', '~312 images/s')} — far below the 5,000 req/s CPU limit. Why: bytes, not requests, are the limit for large files.</p>`,
+    brute: { why: `<p><b>Naive estimate:</b> "Each server handles 5,000 req/s, so 2 servers are enough." It counts requests but ignores bytes: 6,000 × 400 KB = 2.4 GB/s ≈ 19 Gbps, while two servers have 2 Gbps. The site would be ~10× short on bandwidth.</p>` },
+    mcq: { q: 'Total outbound bandwidth needed at peak is about…', options: ['2.4 MB/s', '240 MB/s', '2.4 GB/s (~19 Gbps)', '24 GB/s'], answer: 2, explain: '6,000 × 0.4 MB = 2,400 MB/s ≈ 19.2 Gbps.' },
+    hints: [
+      `<p>Hint 1: Throughput limit per server = min(CPU limit, bandwidth ÷ bytes per request).</p>`,
+      `<p>Hint 2: Divide total demand by per-server capacity × target utilisation.</p>`,
+      `<p>Hint 3: A CDN serves cached images from edges near users: lower RTT for users, and your origin only serves cache misses (e.g. 5%).</p>`
+    ],
+    solution: {
+      approach: `<p><b>(a)</b> Bandwidth: 125 MB/s ÷ 0.4 MB ≈ <b>312 images/s</b> per server vs 5,000 req/s CPU → <b>bandwidth is the bottleneck</b> by ~16×.</p>
+<p><b>(b)</b> At 60% utilisation each server should carry ~187 images/s → 6,000 ÷ 187 ≈ <b>32 servers</b> (plus N+1 for failures). Total egress ~19 Gbps, which is also expensive in cloud egress fees.</p>
+<p><b>(c) CDN:</b> images are static and identical for everyone — perfect to cache. With a 95% CDN hit rate, the origin serves only ~300 images/s → <b>2–3 servers</b> (with headroom), and users get images from a nearby edge (RTT ~10–30 ms instead of 100–250 ms). Latency improves for users and throughput demand on your servers drops ~20×. Also: serve modern formats (WebP/AVIF) and right-sized thumbnails to cut bytes (often 2–5×), which helps both bandwidth and latency.</p>`,
+      complexity: `<p>Per-server capacity = min(5,000, 125 MB/s ÷ 0.4 MB) ≈ 312/s. Without CDN ~32 servers; with 95% CDN hit ratio ~2–3 origin servers.</p>`,
+      followUps: ['What happens when a viral image is not yet cached at any edge (thundering herd on the origin)?', 'How would you invalidate an image a user deleted?']
+    }
+  });
+
+  practice.push({
+    title: 'Sequential calls blow the latency budget',
+    level: 'Medium', tags: ['latency budget', 'parallelism', 'request flow'], companies: ['Uber', 'Booking.com', 'Expedia'],
+    statement: `<p>A "trip summary" endpoint calls, one after another: user profile (30 ms), trip details (60 ms), driver profile (40 ms), price breakdown (70 ms), and map snapshot (120 ms). Plus 20 ms of its own work. The p50 target is 150 ms. Compute the current p50, identify which calls depend on each other, and redesign to meet the target.</p>`,
+    constraints: `<p>Trip details are needed to know which driver and price to fetch. The map snapshot needs only the trip ID (known from the request).</p>`,
+    example: `<p>Current: 30 + 60 + 40 + 70 + 120 + 20 = ${H.c('r', '340 ms')}. Why: sequential calls add up; independent calls are wasting time waiting in line.</p>`,
+    brute: { why: `<p><b>Naive fix:</b> "Ask every team to make their service 50% faster." Hard, slow and still leaves 170+ ms because the structure (a chain of 5 waits) is the problem. Restructuring the call graph is cheaper.</p>` },
+    mcq: { q: 'If calls A (60 ms) and B (120 ms) run in parallel, the combined wait is about…', options: ['60 ms', '90 ms', '120 ms', '180 ms'], answer: 2, explain: 'Parallel calls cost the maximum, not the sum (plus a little overhead).' },
+    hints: [
+      `<p>Hint 1: Draw the dependency graph: what needs trip details first, and what only needs the trip ID or user ID?</p>`,
+      `<p>Hint 2: Run independent calls in parallel; the cost of a parallel group is its slowest member.</p>`,
+      `<p>Hint 3: Remaining critical path still too long? Cache slow-changing data (driver profile, map snapshot) or move the slowest call off the critical path (lazy-load the map).</p>`
+    ],
+    solution: {
+      approach: `<p><b>Dependencies:</b> profile (needs user ID) and map (needs trip ID) and trip details (trip ID) can all start immediately. Driver and price need trip details.</p>
+<p><b>Parallel plan:</b> Stage 1 in parallel: {profile 30, trip 60, map 120}. Stage 2 after trip returns (at 60 ms): {driver 40, price 70} in parallel → done at 130 ms. Overall = max(120 for map, 130 for stage-2 chain) + 20 own work ≈ <b>150 ms</b> — right on the edge.</p>
+<p><b>Get comfortable margin:</b></p><ol><li><b>Cache the map snapshot</b> (immutable once a trip ends) in object storage/CDN → ~5 ms when cached.</li><li><b>Cache driver profiles</b> (change rarely) → ~2 ms.</li><li>Critical path becomes trip (60) → price (70) + 20 = <b>~150 ms worst</b>, ~130 ms typical; or have the client load the map image separately so it is not on the API path at all.</li><li>Ask the trip service to embed price breakdown (one call instead of two) → ~100 ms total.</li></ol>
+<p><b>Also</b> set per-call timeouts within the budget, and remember parallel fan-out amplifies tail latency — watch p99, not just p50.</p>`,
+      complexity: `<p>Sequential: Σ = 340 ms. Parallel by dependency stage: Σ over stages of max(stage) ≈ 150 ms; with caching/embedding ≈ 100–130 ms.</p>`,
+      followUps: ['How do you handle the price service timing out — fail the request or show "price pending"?', 'What happens to the p99 of the parallel version compared with p50?']
+    }
+  });
+
+  /* ================================================================
+     PRACTICE ARENA — Hard
+     ================================================================ */
+  practice.push({
+    title: 'Version 1 of a concert ticket sale site',
+    level: 'Hard', tags: ['requirements', 'throughput', 'consistency', 'availability'], companies: ['Ticketmaster', 'BookMyShow', 'Amazon'],
+    statement: `<p>Design the first version of a site that sells 50,000 seats for a hugely popular concert. Sales open at 10:00:00 and ~1 million fans arrive in the first 5 minutes. Requirements: nobody gets the same seat twice, the site must not crash, payment via an external provider. Give requirements with numbers, a high-level design, and walk one purchase through it.</p>`,
+    constraints: `<p>Normal days: ~20 requests/s. Sale minute: ~1M users, each refreshing the seat map. Payment provider takes 1–5 s. Seats held during payment for 8 minutes.</p>`,
+    example: `<p>1M users over 300 s ≈ ${H.c('y', '3,300 new users/s')}, each making ~10 requests → ${H.c('r', '~30,000 requests/s')} — about ${H.c('r', '1,500×')} normal traffic, for only 50,000 possible successful purchases.</p>`,
+    brute: { why: `<p><b>Naive design:</b> the everyday stack (2 app servers, one DB) with "check seat free → insert booking" in application code. At 30k req/s the app servers and DB collapse within seconds (site down for everyone), and under concurrency two requests can both see a seat as free and both book it (race condition) — violating the top requirement.</p>` },
+    mcq: { q: 'What is the most effective way to protect the booking core from 1M simultaneous users?', options: ['Make the database bigger', 'A virtual waiting room that admits users to the booking flow at a controlled rate', 'Increase timeouts to 5 minutes', 'Disable HTTPS for speed'], answer: 1, explain: 'Admission control turns an uncontrolled spike into a steady rate the core can handle, and gives users a fair, honest queue position.' },
+    hints: [
+      `<p>Hint 1: Separate the <b>read-heavy, cacheable</b> parts (event page, static assets, approximate availability) from the <b>write-critical</b> part (holding a specific seat).</p>`,
+      `<p>Hint 2: Correctness: a seat hold must be atomic — e.g. <code>UPDATE seats SET status='HELD', holder=?, expires=? WHERE id=? AND status='FREE'</code> and check that exactly one row changed.</p>`,
+      `<p>Hint 3: Admission control (waiting room/queue tokens), holds with expiry during payment, idempotency keys for payment, and async ticket emails.</p>`
+    ],
+    solution: {
+      approach: `<p><b>Requirements.</b> FR: view event, see seat map, hold seats (max 4), pay, receive ticket. NFR: zero double-booking (strong consistency on seat state); survive ~30k req/s at the edge; booking core sized for ~2,000 req/s; seat-map freshness within ~2 s is fine; 99.95% during the sale; no lost confirmed purchases; fairness (first come, first served-ish).</p>
+<p><b>Design:</b></p><ol><li><b>CDN</b> serves the event page and static assets; seat-map snapshots are generated every 1–2 s and cached at the edge — millions of refreshes never touch the origin.</li><li><b>Virtual waiting room</b> at the edge/gateway: at 10:00 users get a signed queue token with a position; the system admits e.g. 2,000 users/minute into the booking flow. Rate limiting rejects bots and abusive clients early (429).</li><li><b>Stateless booking service</b> (several instances behind a load balancer) only accepts requests with an admission token.</li><li><b>Seat inventory</b> in a strongly consistent database: atomic conditional update to move FREE → HELD with an 8-minute expiry; a sweeper (or lazy check) releases expired holds.</li><li><b>Payment</b> through the provider with an idempotency key = hold ID; on success HELD → SOLD in a transaction; on failure/timeout keep the hold until expiry and reconcile with the provider.</li><li><b>Ticket emails</b> via a queue + workers (asynchronous).</li></ol>
+<p><b>One purchase:</b> fan loads cached page (CDN) → joins waiting room (position 41,203) → admitted at 10:07 → picks seat → booking service runs the conditional UPDATE: 1 row changed → HELD → redirected to payment → provider confirms → SOLD committed → 201 + "ticket on its way" → worker emails the PDF ticket.</p>
+<p><b>Trade-offs:</b> users wait in a queue rather than hammering a broken site; seat maps are slightly stale (but holds are authoritative); infrastructure is sized for the admitted rate, not the raw spike.</p>`,
+      complexity: `<p>Edge: ~30k req/s mostly served from cache. Core: ~2k req/s; 50,000 seats sell in tens of minutes. Seat hold = one indexed conditional UPDATE (O(1) rows touched).</p>`,
+      followUps: ['How do you stop bots from taking all the early queue positions?', 'What if the payment provider is down for 3 minutes mid-sale?', 'How would you shard seat inventory if one venue had 500,000 seats?']
+    }
+  });
+
+  practice.push({
+    title: 'The site is down — but only for some users',
+    level: 'Hard', tags: ['request lifecycle', 'debugging', 'dns', 'availability'], companies: ['Cloudflare', 'Google', 'Netflix'],
+    statement: `<p>Support says: "Users in Europe can\'t load the site; India and the US are fine." Your servers\' dashboards are green. Using the request lifecycle (DNS → TCP/TLS → CDN/edge → load balancer → app → DB), list hypotheses in the order you would check them, the evidence that confirms or rules out each, and how you would mitigate quickly.</p>`,
+    constraints: `<p>Setup: GeoDNS returns region-specific load balancer IPs; a CDN fronts the site; two regions (EU, US) with app servers and a primary DB in the US.</p>`,
+    example: `<p>Clue: ${H.c('y', 'only one geography')} + ${H.c('g', 'servers green')} → the failure is probably <b>before</b> requests reach your servers (DNS answer, CDN edge, EU load balancer, network path), or inside the EU region only.</p>`,
+    brute: { why: `<p><b>Naive approach:</b> restart all app servers and roll back the last deploy. That is slow, may cause a global outage, and ignores the strongest clue: one region only, servers green. Without walking the request path you are guessing.</p>` },
+    mcq: { q: 'Users in one region fail but your app servers see normal traffic and no errors. The strongest first suspect is…', options: ['A bug in the app code', 'Something before the servers: DNS/GeoDNS answer, CDN edge, regional load balancer, or network path', 'The database index', 'Garbage collection'], answer: 1, explain: 'If failing requests never reach your servers, server metrics stay green. Check the earlier hops for that region.' },
+    hints: [
+      `<p>Hint 1: Reproduce from the affected region (synthetic probe, VPN, colleague) with <code>dig</code> and <code>curl -v</code> — which step fails: name resolution, connect, TLS, or HTTP status?</p>`,
+      `<p>Hint 2: Check what GeoDNS returns for EU resolvers, the EU load balancer health and certificates, the CDN status for European edges, and EU app server logs.</p>`,
+      `<p>Hint 3: Fast mitigation: route EU traffic to the US region via DNS/GeoDNS weights or the CDN origin setting (slower but working), then find the root cause.</p>`
+    ],
+    solution: {
+      approach: `<p><b>Walk the path, earliest hop first:</b></p><ol><li><b>DNS:</b> <code>dig</code> from an EU resolver. Wrong/empty answer, NXDOMAIN, or an IP of a retired LB? Evidence: US resolvers return a healthy IP, EU ones don\'t. Recent DNS change or expired record → fix record; low TTL helps it propagate.</li><li><b>TCP/TLS to the EU entry point:</b> <code>curl -v</code>: connection timeout (LB down, firewall/security group change, network/BGP issue) vs TLS error (expired or wrong certificate on the EU LB only — a classic: certs renewed in one region, not the other).</li><li><b>CDN edges:</b> CDN status page/logs for European points of presence; 5xx from edges with origin errors? Test bypassing the CDN.</li><li><b>EU load balancer:</b> are all EU targets marked unhealthy (bad health-check path after a deploy)? Then the LB returns 503 while app dashboards (which measure requests that arrive) look green.</li><li><b>EU app → US DB path:</b> cross-region link problems would show app errors/timeouts in EU logs — check EU separately from global aggregates (averages can hide one region!).</li></ol>
+<p><b>Mitigation within minutes:</b> shift EU users to the healthy US region (GeoDNS weights, CDN origin failover) — accept ~100 ms extra latency over an outage. Post a status page update.</p>
+<p><b>Afterwards:</b> per-region synthetic monitoring from outside (DNS + TLS + HTTP checks), alerts on certificate expiry, region-sliced dashboards, automated failover rules, and a postmortem.</p>`,
+      complexity: `<p>Each hypothesis takes 1–5 minutes to test with dig/curl and region-sliced metrics; failing over the region typically restores service in minutes (bounded by DNS TTL or instant via CDN/anycast routing).</p>`,
+      followUps: ['Why did the global dashboards stay green?', 'What monitoring would have caught this before users did?', 'What are the risks of failing EU traffic over to the US region (capacity, data residency)?']
+    }
+  });
+
+  practice.push({
+    title: 'Checkout SLO: p99 300 ms and 99.95% across four services',
+    level: 'Hard', tags: ['latency budget', 'availability', 'trade-offs'], companies: ['Stripe', 'Amazon', 'Flipkart'],
+    statement: `<p>Checkout calls four services synchronously in sequence: cart (p99 40 ms, 99.95%), pricing (p99 80 ms, 99.9%), inventory (p99 60 ms, 99.9%), payments (p99 150 ms, 99.95%), plus 30 ms gateway + 20 ms own work. Target: checkout p99 ≤ 300 ms and availability ≥ 99.95%. (a) Estimate current p99 upper bound and availability. (b) Redesign to meet both targets and state the trade-offs.</p>`,
+    constraints: `<p>Payments must stay synchronous (user waits for the result). Pricing and inventory reads can be slightly stale if checked again at commit.</p>`,
+    example: `<p>Availability now: 0.9995 × 0.999 × 0.999 × 0.9995 ≈ ${H.c('r', '99.70%')} — about 26 hours/year of failing checkouts, far below 99.95% (4.4 h/year).</p>`,
+    brute: { why: `<p><b>Naive fix:</b> ask each team to "be more reliable and faster". Even if every service hit 99.95%, four in series give 99.80%; the structure (four hard dependencies in a chain) caps you. Summing p99s also shows the chain is over budget even before any slowness.</p>` },
+    mcq: { q: 'Four hard dependencies at 99.95% each in series give about…', options: ['99.95%', '99.9%', '99.8%', '99.0%'], answer: 2, explain: '0.9995⁴ ≈ 0.998 → 99.8%.' },
+    hints: [
+      `<p>Hint 1: Upper bound on p99 for sequential calls ≈ sum of p99s (+ overhead). Availability in series = product.</p>`,
+      `<p>Hint 2: Which calls can run in parallel? Which can become soft dependencies (cache + verify later, or fallback)?</p>`,
+      `<p>Hint 3: Make pricing/inventory reads come from a local cache or be validated in the payment transaction; add redundancy and timeouts; recompute both numbers.</p>`
+    ],
+    solution: {
+      approach: `<p><b>(a) Today:</b> p99 bound ≈ 30 + 40 + 80 + 60 + 150 + 20 = <b>380 ms</b> (> 300). Availability ≈ 0.9995 × 0.999 × 0.999 × 0.9995 ≈ <b>99.70%</b> (&lt; 99.95%).</p>
+<p><b>(b) Redesign:</b></p><ol><li><b>Parallelise</b> cart, pricing and inventory reads (they only need the cart ID / SKUs, which the client can pass): wait = max(40, 80, 60) = 80 ms instead of 180 ms.</li><li><b>Soften pricing and inventory:</b> serve from a locally replicated cache (updated via events, ~1–2 s stale) with the real service as a refresh path. If the service is down, use cached values; the payment transaction re-validates the price and decrements stock atomically (reject rare mismatches with a clear message). Their effective availability on the request path rises to ~99.99%+.</li><li><b>Cart</b> reads from a replicated store (Redis with replica / DB) → ~99.99%.</li><li><b>Payments:</b> stays synchronous; add a second payment provider as failover for retriable failures (careful with idempotency) → effective ~99.99%; 150 ms p99 kept with a 1 s timeout guard for outliers.</li></ol>
+<p><b>New numbers:</b> p99 ≈ 30 + 80 (parallel, often ~5 ms from cache) + 150 + 20 ≈ <b>280 ms</b> worst case, ~210 ms with cache hits ✔. Availability ≈ gateway × 0.9999 (cart) × ~0.9999 (soft pricing/inventory) × 0.9999 (payments with failover) ≈ <b>99.96%</b> ✔ (gateway must itself be multi-zone).</p>
+<p><b>Trade-offs:</b> stale prices/stock are possible for a moment (handled by validation at commit); more moving parts (event-driven caches, second provider); more careful idempotency.</p>`,
+      code: { lang: 'python', run: true, code: `before_lat = 30 + 40 + 80 + 60 + 150 + 20
+before_av = 0.9995 * 0.999 * 0.999 * 0.9995
+after_lat = 30 + max(40, 80, 60) + 150 + 20
+after_av = 0.9999 * 0.9999 * 0.9999 * 0.99995   # cart, soft reads, payments w/ failover, gateway
+print(f"before: p99 <= {before_lat} ms, availability {before_av:.4%}")
+print(f"after : p99 <= {after_lat} ms, availability {after_av:.4%}")` },
+      complexity: `<p>Sequential p99 bound = Σ p99; parallel = max. Series availability = Π A. After redesign: ~280 ms bound, ~99.96%.</p>`,
+      followUps: ['Why is the sum of p99s only an upper bound and not the true p99?', 'What new failure modes does the second payment provider introduce?']
+    }
+  });
+
+  practice.push({
+    title: 'Ingest 200,000 analytics events per second',
+    level: 'Hard', tags: ['throughput', 'batching', 'latency vs throughput'], companies: ['Google', 'Meta', 'Amplitude'],
+    statement: `<p>Mobile apps send click/scroll events: <b>200,000 events/s</b> at peak, ~300 bytes each. Dashboards may lag by up to 1 minute. The app must never be slowed by analytics. Your first prototype inserts each event into PostgreSQL with one HTTP request per event. Explain why it fails and design an ingestion path that trades latency for throughput sensibly.</p>`,
+    constraints: `<p>Occasional loss of a tiny fraction of events (&lt; 0.1%) is acceptable; duplicates should be rare and removable.</p>`,
+    example: `<p>200,000 × 300 B = ${H.c('y', '60 MB/s')} of payload. One-insert-per-event at ~1 ms per round trip means each DB connection does ~1,000 inserts/s → ${H.c('r', '200 busy connections')} just for analytics — and every event pays HTTP + TLS overhead from the phone.</p>`,
+    brute: { why: `<p><b>Naive path:</b> phone → <code>POST /event</code> per event → app server → <code>INSERT</code> per event. It fails on every axis: 200k HTTP requests/s, 200k DB transactions/s (index updates, WAL writes per row), the phone\'s battery and data wasted on per-request overhead, and an analytics spike can slow the primary DB used by real features.</p>` },
+    mcq: { q: 'Which change gives the biggest throughput gain here?', options: ['Faster CPUs on the DB', 'Batching: clients and servers group many events per request/write', 'Shorter HTTP headers', 'More indexes on the events table'], answer: 1, explain: 'Batching amortises fixed per-request and per-write costs across hundreds of events, at the cost of a little added latency.' },
+    hints: [
+      `<p>Hint 1: Fixed costs per request/transaction dominate when each item is tiny. Group items so you pay the fixed cost once per batch.</p>`,
+      `<p>Hint 2: Decouple: accept events quickly into a durable log/queue (e.g. a Kafka-style stream), respond 202, process later.</p>`,
+      `<p>Hint 3: Write into a store built for append-heavy analytics (columnar warehouse / time-series) in micro-batches every few seconds; use event IDs for de-duplication.</p>`
+    ],
+    solution: {
+      approach: `<p><b>Why the prototype fails:</b> per-event fixed costs (HTTP/TLS, request parsing, DB transaction, WAL flush) are paid 200,000 times per second. The DB is also the wrong tool (row-store, indexes, shared with the product).</p>
+<p><b>Design:</b></p><ol><li><b>Client batching:</b> the SDK buffers events in memory/disk and sends every 10–30 s or every 100 events, gzip-compressed, in the background (never on the UI thread). 200k events/s becomes ~2,000 requests/s; compression shrinks ~60 MB/s substantially.</li><li><b>Stateless ingestion API</b> behind a load balancer: validates, stamps server time, appends the batch to a <b>durable log/stream</b> partitioned by user ID, and returns <b>202 Accepted</b> in a few ms. It does no heavy work.</li><li><b>Stream consumers</b> read the log, enrich (geo, app version), de-duplicate by event ID within a window, and write <b>micro-batches</b> (e.g. every 5–10 s, tens of thousands of rows) into a columnar analytics store / warehouse.</li><li><b>Dashboards</b> query the analytics store (lag = client flush + stream + micro-batch ≈ under 1 minute ✔).</li><li><b>Backpressure:</b> if consumers fall behind, the log buffers (hours of retention); the API sheds load (429 + client retry later) rather than slowing apps.</li></ol>
+<p><b>Trade-offs:</b> each event waits seconds to a minute (latency) in exchange for ~100× throughput per resource and isolation from the product DB. At-least-once delivery means duplicates are possible — handled by event IDs.</p>`,
+      complexity: `<p>~2k ingest requests/s instead of 200k; DB writes become a few large batches per second per partition. Freshness ≈ 10–60 s, within the 1-minute requirement.</p>`,
+      followUps: ['Where can events still be lost, and how would you measure the loss rate?', 'How would you handle a partner wanting real-time (sub-second) alerts on some events?']
+    }
+  });
+
+  practice.push({
+    title: 'Election night: 50× traffic on a news site',
+    level: 'Hard', tags: ['scalability', 'caching', 'availability', 'cdn'], companies: ['BBC', 'The New York Times', 'Google'],
+    statement: `<p>A news site normally gets 2,000 requests/s. On election night it expects <b>100,000 requests/s</b>, mostly people refreshing the live results page and a few articles. Results update every 30 s from an internal tally service. The current design is: load balancer → 6 app servers → one MySQL primary + 1 replica, rendering every page from the DB. Design the changes needed, explain how one results update flows to millions of readers, and list what you would test beforehand.</p>`,
+    constraints: `<p>Results may be up to 30–60 s stale. The site must stay up even if the tally service or DB hiccups.</p>`,
+    example: `<p>If every request rendered from the DB: ${H.c('r', '100,000 queries/s')} on hardware sized for ~2,000. With a CDN caching the results page for 15 s, the origin sees roughly ${H.c('g', '1 request per edge location per 15 s')} for that page.</p>`,
+    brute: { why: `<p><b>Naive plan:</b> "Scale to 300 app servers and a bigger DB." Expensive, slow to provision, and the single MySQL primary/replica still receives 100k reads/s — it falls over, and so does the site. It also ignores that everyone is reading the <i>same</i> page — the ideal case for caching.</p>` },
+    mcq: { q: 'Why is a short CDN TTL (e.g. 15 s) acceptable for the results page?', options: ['CDNs ignore TTLs', 'The requirement allows 30-60 s staleness, and identical content for everyone caches perfectly', 'Users never refresh', 'It makes the DB consistent'], answer: 1, explain: 'Staleness tolerance + identical content means a tiny origin load can serve millions via edges.' },
+    hints: [
+      `<p>Hint 1: Read-heavy + same content for everyone + staleness allowed → cache at the edge (CDN) with a short TTL.</p>`,
+      `<p>Hint 2: Decouple publishing from serving: when results change, render the page/JSON once and push it to storage/CDN instead of rendering per request.</p>`,
+      `<p>Hint 3: Plan for failure: serve stale content if the origin errors (stale-if-error), request coalescing at the CDN, load tests at 2× expected peak, and a "lite" static fallback page.</p>`
+    ],
+    solution: {
+      approach: `<p><b>Key idea:</b> 100k req/s of mostly identical reads should be answered by caches near users; the origin should do work proportional to <i>updates</i> (every 30 s), not to readers.</p>
+<ol><li><b>Publish, don\'t render per request:</b> a results publisher polls/receives updates from the tally service every 30 s, renders the results JSON + HTML once, and uploads them to object storage (versioned).</li><li><b>CDN in front of everything:</b> results page TTL ~15 s with <code>stale-while-revalidate</code> and <code>stale-if-error</code>; articles TTL minutes; static assets long-lived. CDN <b>request coalescing</b> so one miss per edge goes to origin, not thousands.</li><li><b>Client polling</b> of a tiny JSON (<code>/results.json</code>, cacheable) every 30 s instead of reloading the full page; or server-sent updates via a managed push service.</li><li><b>Origin protection:</b> app servers autoscaled to handle CDN misses and personalised parts only; read replicas + an in-memory cache for article queries; rate limiting at the edge.</li><li><b>Availability:</b> if the tally service fails, the last published results stay up (with "last updated 21:42"); if the origin fails, the CDN serves stale; a pre-built static fallback page exists.</li></ol>
+<p><b>Flow of one update:</b> tally changes → publisher renders v1287 → uploads JSON/HTML → within ≤ 15 s edges revalidate and fetch v1287 once each → millions of clients get it on their next poll. Origin load: a few hundred requests per update, not 100k/s.</p>
+<p><b>Test beforehand:</b> load test at 2× peak through the CDN path, origin shield behaviour, cache hit ratio (aim &gt; 99%), failover drills (kill tally service, kill DB primary), and a runbook with feature flags to turn off heavy widgets.</p>`,
+      complexity: `<p>Edge: ~100k req/s; origin: ~(number of edge locations ÷ TTL) for the results page ≈ tens of req/s plus misses. Freshness ≤ 30 s update + 15 s TTL ≈ 45 s, within requirement.</p>`,
+      followUps: ['How would you show personalised content (e.g. "your district") without breaking caching?', 'What happens if a wrong result is published — how do you purge it everywhere quickly?']
+    }
+  });
+
+  /* ================================================================
+     QUIZ
+     ================================================================ */
+  quiz.push(
+    { q: 'Which of these is a <b>non-functional</b> requirement?', options: ['Users can reset their password', 'Password reset email arrives within 60 seconds for 99% of requests', 'Admins can ban users', 'Users can upload a profile picture'], answer: 1, explain: 'It describes how well (how fast, how reliably) a feature works, with a measurable target. The others are features.' },
+    { q: 'In the hop "app server → database", which side is the client?', options: ['The database', 'The app server', 'The browser', 'Neither'], answer: 1, explain: 'The app server initiates the query, so it is the client on that hop, even though it is a server for browsers.' },
+    { q: 'You lowered a DNS record\'s TTL from 1 day to 60 s <i>right as</i> you changed the IP. Why do some users still reach the old IP for hours?', options: ['DNS servers are slow', 'Resolvers cached the old answer with the old 1-day TTL, and keep it until that expires', 'Browsers never use DNS', 'The new IP is wrong'], answer: 1, explain: 'Caches honour the TTL attached when they cached the record. Lower the TTL a full old-TTL period before the switch.' },
+    { q: 'A cold HTTPS request with TLS 1.3 needs roughly how many network round trips before the server even receives the HTTP request (excluding DNS)?', options: ['0', '1', '2 (TCP + TLS), then the request goes out', '5'], answer: 2, explain: 'One RTT for the TCP handshake, one for TLS 1.3; the request then travels on the third trip (HTTP/3/QUIC merges the first two).' },
+    { q: 'An API serves 500 requests/s and each request spends 40 ms in the system. On average how many requests are in flight?', options: ['12.5', '20', '200', '540'], answer: 1, explain: 'Little\'s Law: L = λ × W = 500 × 0.04 = 20.' },
+    { q: 'Why do engineers report p99 latency instead of only the average?', options: ['p99 is always smaller', 'Averages hide the slow tail that real users experience; p99 shows it', 'Averages are hard to compute', 'p99 measures throughput'], answer: 1, explain: 'A few very slow requests barely move the average but ruin experiences; percentiles expose them.' },
+    { q: 'Three components, each 99.9% available, are needed in series. End-to-end availability is about…', options: ['99.9%', '99.7%', '99.99%', '97%'], answer: 1, explain: '0.999³ ≈ 0.997.' },
+    { q: 'Two independent replicas, each 99% available, either one sufficient. Combined availability is…', options: ['98%', '99%', '99.5%', '99.99%'], answer: 3, explain: '1 − (0.01)² = 0.9999.' },
+    { q: 'Which is the clearest example of a <b>single point of failure</b>?', options: ['Three stateless app servers behind a load balancer', 'One database with no replica that every request needs', 'A CDN with hundreds of edges', 'Two DNS providers'], answer: 1, explain: 'If it dies, everything that depends on it fails, and nothing takes over.' },
+    { q: 'What is the main reason a monolith is often the right first architecture?', options: ['It cannot scale', 'Simple development, deployment, debugging and transactions while the team and traffic are small', 'It is required by cloud providers', 'Microservices are deprecated'], answer: 1, explain: 'A modular monolith minimises operational overhead; split later when a concrete pain appears.' },
+    { q: 'Batching database writes usually…', options: ['Lowers both latency and throughput', 'Raises throughput but adds latency for each item', 'Lowers throughput but reduces latency', 'Has no effect'], answer: 1, explain: 'Fixed costs are shared across the batch (more throughput) but items wait for the batch to fill or flush (more latency).' },
+    { q: 'A service runs at 95% utilisation with random arrivals. Compared with 50% utilisation, average latency is roughly…', options: ['the same', '~2× higher', '~10× higher', '~100× higher'], answer: 2, explain: 'Using service ÷ (1 − ρ): 50% → 2× service time; 95% → 20× service time, i.e. about 10× worse than at 50%.' },
+    { q: 'Which HTTP status should a load balancer return when the app server did not answer within its timeout?', options: ['200 OK', '404 Not Found', '504 Gateway Timeout', '201 Created'], answer: 2, explain: '504 means a gateway/proxy timed out waiting for an upstream server.' },
+    { q: 'What does DNS primarily do?', options: ['Encrypts traffic', 'Translates names like shop.example.com into IP addresses', 'Balances CPU load inside a server', 'Stores user sessions'], answer: 1, explain: 'DNS is the internet\'s distributed, cached phone book. (It can also steer traffic coarsely, e.g. GeoDNS.)' },
+    { q: 'Which statement about latency and throughput is TRUE?', options: ['Adding servers always reduces the latency of a single request', 'Throughput can rise with parallelism while single-request latency stays the same', 'They are the same metric', 'Throughput is measured in milliseconds'], answer: 1, explain: 'More workers serve more requests per second, but each request still takes its own processing time (unless queueing was the cause of delay).' }
+  );
+
+  /* ================================================================
+     INTERVIEW Q&A
+     ================================================================ */
+  interview.push(
+    { q: 'What happens when you type a URL into the browser and press Enter?', level: 'B', a: `<p>The browser parses the URL and checks HSTS. It resolves the hostname to an IP via browser/OS caches or a recursive resolver (root → TLD → authoritative), honouring TTLs. It opens a TCP connection (1 RTT handshake) and a TLS session (1 RTT in TLS 1.3, verifying the certificate). It sends the HTTP request with headers and cookies. Server side: a load balancer picks a healthy app server; the app checks auth, reads from cache and/or database, builds the response. The response (status, headers, compressed body) returns; the browser parses HTML, fetches CSS/JS/images (often from a CDN over reused connections), lays out and paints. I would mention cost: on a cold visit ~3 RTTs pass before the server does any work, which is why CDNs, connection reuse and caching matter.</p>`, followUps: ['How does HTTP/3 change this?', 'Where would you add caches along this path?', 'What changes on the second visit?'] },
+    { q: 'What is the difference between functional and non-functional requirements? Give examples.', level: 'B', a: `<p>Functional requirements describe what the system does — features: "users can upload a photo", "users can follow others". Non-functional requirements describe how well it does them — qualities with numbers: "feed p99 &lt; 300 ms", "99.95% availability", "no acknowledged upload is ever lost", "10M daily users", "GDPR deletion within 30 days". NFRs drive architecture: the same feature can need a single server or a global distributed system depending on them. I always convert vague words like "fast" into measurable targets and state constraints (budget, team, cloud) and out-of-scope items.</p>`, followUps: ['Which NFRs usually conflict?', 'How do NFRs become SLOs in production?'] },
+    { q: 'What questions do you ask in the first five minutes of a system design interview?', level: 'B', a: `<p>I clarify: (1) users and clients — who uses it, web/mobile/API; (2) the 2–3 core features and what is out of scope; (3) scale — daily active users, requests per second, data size, growth; (4) read/write ratio; (5) latency targets (p99); (6) availability target; (7) consistency — is stale data acceptable and where; (8) durability — can any data be lost; (9) constraints — budget, team, regions, compliance. Then I state assumptions with numbers, do a quick estimate, and confirm with the interviewer before drawing. This avoids designing the wrong system and shows my reasoning.</p>`, followUps: ['What do you do if the interviewer says "you decide"?', 'How do you prioritise when NFRs conflict?'] },
+    { q: 'Explain latency vs throughput and how they relate.', level: 'B', a: `<p>Latency is the time for one request to complete (ms); throughput is the number of requests completed per unit time (req/s). Parallelism increases throughput without making one request faster; batching increases throughput but adds latency per item. They connect through queueing: as demand approaches capacity, requests wait and latency rises sharply (≈ service ÷ (1 − utilisation) for a simple queue). Little\'s Law (L = λ × W) links them to concurrency: 1,000 req/s × 0.1 s = 100 requests in flight, which sizes thread and connection pools. I target 50–70% utilisation and monitor percentiles, not averages.</p>`, followUps: ['Why does latency explode near 100% utilisation?', 'Give an example where you would deliberately trade latency for throughput.'] },
+    { q: 'Why are percentiles better than averages for latency? What is tail latency?', level: 'I', a: `<p>Latency distributions are skewed: most requests are fast, a few are very slow. The average mixes them into a number few users see and hides the slow ones. p50 shows the typical experience; p95/p99 show the tail — the slowest 5%/1%. Tail latency matters because heavy users and complex requests land there, and fan-out amplifies it: a page waiting on 100 calls, each slow 1% of the time, is slow 63% of the time. Mitigations: reduce fan-out, timeouts with fallbacks, hedged requests, caching, fixing GC pauses and cold caches. Percentiles must be computed from merged histograms, not averaged across servers.</p>`, followUps: ['What is coordinated omission in load testing?', 'How do hedged requests work and when are they unsafe?'] },
+    { q: 'How do you calculate the availability of a system made of several components?', level: 'I', a: `<p>Components a request needs in series multiply: three at 99.9% give ~99.7%. Redundant replicas in parallel, where one is enough, give 1 − (1 − A)<sup>n</sup>: two at 99% give 99.99%. Also A = MTBF ÷ (MTBF + MTTR), so reducing recovery time (automatic failover) is often the cheapest win. The big caveat is independence: correlated failures — same zone, same bad deploy, shared DNS or auth — break the maths, so I spread replicas across zones, roll out gradually and make optional dependencies degrade gracefully instead of failing the request.</p>`, followUps: ['How much downtime per month is 99.95%?', 'How do you turn a hard dependency into a soft one?'] },
+    { q: 'What is a single point of failure and how do you remove one?', level: 'B', a: `<p>A SPOF is any component whose failure stops the whole system: one app server, one database without a standby, one load balancer, a single region, a single DNS provider, even one person with the only credentials. Remove it with redundancy (multiple instances, replicas, multi-zone deployment), detection (health checks) and automatic failover (LB removes dead servers, standby DB promoted). Make app servers stateless so any copy can take over. Then test it — failover that has never been exercised often fails when needed — through game days or chaos experiments.</p>`, followUps: ['Is the load balancer itself a SPOF?', 'What is lost during an asynchronous database failover?'] },
+    { q: 'Monolith vs microservices — how do you decide?', level: 'I', a: `<p>I start from constraints. A modular monolith gives simple development, in-process calls, single-database transactions and low operational cost — ideal for small teams and early products, and it scales horizontally if stateless. Microservices pay off when there are concrete pains: independent scaling of very different workloads, independent deploys for many teams, fault isolation of risky components, or compliance boundaries. Their costs are network failures, distributed transactions (sagas), observability, versioning and platform work. I would begin modular, enforce module boundaries and table ownership, and extract services one at a time with the strangler pattern when a measured pain justifies it. The anti-pattern to avoid is a distributed monolith.</p>`, followUps: ['What is a distributed monolith?', 'How would you extract the first service safely?'] },
+    { q: 'How does DNS work and how can it affect your system design?', level: 'I', a: `<p>A client checks browser and OS caches, then asks a recursive resolver, which (on a miss) queries root servers, then the TLD servers, then the domain\'s authoritative servers, and caches the answer for its TTL. Design impact: (1) a cold lookup adds latency to first requests; (2) TTL controls how fast you can move traffic — lower it before migrations; (3) DNS can do coarse load distribution (multiple A records, GeoDNS, latency-based routing) but has no health awareness and is cached by clients, so a load balancer usually sits behind it; (4) DNS is a dependency that can cause outages — use reliable/multiple providers and monitor resolution from outside.</p>`, followUps: ['Why can\'t you put a CNAME at the zone apex?', 'How do anycast resolvers reduce latency?'] },
+    { q: 'What does it mean for a server to be stateless, and why does it matter for scaling?', level: 'B', a: `<p>A stateless server keeps no user-specific data between requests in its own memory; each request carries what is needed (e.g. a token) and shared state lives in a database, cache or the client. Then any instance can serve any request: the load balancer can spread traffic freely, instances can be added or removed by autoscaling, and deploys or crashes do not log users out or lose carts. Stateful servers force sticky sessions, uneven load, and data loss on restarts. Stateless app tiers plus a well-managed stateful data tier is the standard pattern.</p>`, followUps: ['Where would you store sessions?', 'When are sticky sessions still useful?'] },
+    { q: 'A service\'s p99 latency doubled at peak while CPU is only 80%. What could be going on?', level: 'A', a: `<p>Queueing: at high utilisation, bursts create queues and waiting time grows non-linearly — 80% average CPU can mean brief periods at 100%. Other causes: a saturated resource that is not CPU (thread or connection pools, DB locks, network bandwidth, disk I/O), garbage-collection pauses with larger heaps, a slow dependency holding threads (Little\'s Law: in-flight requests grow, pools exhaust), noisy neighbours, or cache hit ratio dropping as the working set grows. I would look at per-resource saturation, pool wait times, dependency latency and GC logs, then fix by adding headroom, isolating slow dependencies with timeouts and bulkheads, and smoothing load.</p>`, followUps: ['How would Little\'s Law help you size the connection pool?', 'What is a bulkhead?'] },
+    { q: 'How would you design for a sudden 50× traffic spike (e.g. a flash sale or live event)?', level: 'A', a: `<p>First separate what can be cached from what must be strongly consistent. Serve static and shared content from a CDN with short TTLs and stale-while-revalidate, and publish precomputed pages rather than rendering per request. Protect the write-critical core with admission control — a virtual waiting room, rate limits, queues — so it sees a steady rate it was sized for. Make app tiers stateless and pre-scaled (autoscaling is often too slow for a spike), add caches for hot reads, and use atomic operations for scarce resources. Plan degradation: turn off non-essential features with flags. Load test at 2× expected peak and rehearse failure scenarios.</p>`, followUps: ['Why pre-scale instead of relying on autoscaling?', 'How do you keep the waiting room fair?'] },
+    { q: 'What are SLIs, SLOs, SLAs and error budgets?', level: 'I', a: `<p>An SLI is a measured indicator, e.g. the fraction of requests that succeed in under 300 ms. An SLO is the internal target for it over a window, e.g. 99.9% over 30 days. An SLA is an external contract with consequences (credits), set looser than the SLO. The error budget is 1 − SLO: 99.9% over 30 days allows 43.2 minutes of badness. Teams spend it on risk — launches, experiments — and when it is exhausted they prioritise reliability work. This turns "be reliable" into a shared numeric decision between product and engineering.</p>`, followUps: ['Why should the SLO be stricter than the SLA?', 'How do you measure availability for partial outages?'] },
+    { q: 'How does adding an LLM-powered feature change your system design considerations?', level: 'E', a: `<p>The LLM API is a slow, costly, rate-limited external dependency. Requirements gain new NFRs: time to first token, tokens per second, cost per request, quality/eval scores, safety and data-handling rules. Design-wise I stream responses to improve perceived latency, call the model asynchronously for non-interactive tasks (queues, batch APIs), cache prompts and answers where valid, set timeouts and retries with backoff, add fallbacks (smaller model, second provider, non-AI path) so the core product survives provider outages, and enforce per-user rate limits and budgets. Availability maths applies: a hard dependency on a 99.9% provider caps the feature at 99.9%, so graceful degradation matters.</p>`, followUps: ['How would you measure the quality of the AI feature over time?', 'Where would you put prompt caching and what does it save?'] }
+  );
+
+  registerModule({
+    id: 'hld01',
+    title: 'What is System Design? Client-Server & Request Flow',
+    lang: 'text',
+    intro: `<p>Welcome to High-Level System Design. Before load balancers, sharding and Kafka, you need the <b>basic map</b>: who sends requests (clients), who answers them (servers), how a name like <code>shop.example.com</code> becomes an address (IP and DNS), and the full journey of a request from a key press to pixels on the screen.</p>
+<p>You will also learn the two lenses every design is judged through: <b>functional</b> requirements (what it does) and <b>non-functional</b> requirements (how fast, how big, how often up), plus the numbers behind them — <b>latency vs throughput</b>, percentiles, and <b>availability</b> in "nines". Finally, you will see why most products should start life as a well-structured <b>monolith</b>.</p>
+<p>Every topic has an animated architecture visualizer: watch requests travel edge by edge through clients, DNS, load balancers, servers, caches and databases, with latency timelines you can change yourself.</p>`,
+    goals: [
+      'Explain, step by step with rough timings, what happens from typing a URL to seeing the page (DNS → TCP → TLS → HTTP → load balancer → app → cache/DB → render).',
+      'Identify the client and the server on every hop of a request chain, read raw HTTP requests/responses and pick correct status codes.',
+      'Run the first five minutes of any design interview: ask clarifying questions and write functional and measurable non-functional requirements.',
+      'Reason about latency vs throughput with Little\'s Law, queueing and percentiles (p50/p95/p99), and size a worker pool.',
+      'Compute availability for components in series and in parallel, convert nines into downtime and spot single points of failure.',
+      'Argue when a modular monolith is the right choice and which concrete pains justify splitting something out.'
+    ],
+    prereqs: `<p>No system design background needed. Helpful: basic programming in any language, having used a web browser\'s developer tools, and comfort with percentages. Pairs well with CS fundamentals on networking (TCP/IP) if you have it, but this module explains what you need.</p>`,
+    hours: 10,
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
+  });
+})();

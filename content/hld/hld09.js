@@ -1585,4 +1585,443 @@ public class IdempotentPayments {
     }]
   });
 
-registerModule({ id: 'hld09', title: 'x', intro: 'x', goals: [], prereqs: 'x', hours: 1, topics: topics, practice: practice, quiz: quiz, interview: interview }); })();
+  /* ================= PRACTICE: Easy ================= */
+  practice.push({
+    title: 'Design REST endpoints for a to-do app',
+    level: 'Easy', tags: ['rest', 'api design', 'status codes'], companies: ['Atlassian', 'Microsoft'],
+    statement: `<p>Users have lists; lists have tasks; tasks can be completed, renamed, moved between lists and deleted. Design the REST API: URLs, methods, request/response bodies and status codes.</p>`,
+    constraints: `<p>Mobile + web clients; must support listing tasks of a list with filtering by completed status; public API later.</p>`,
+    example: `<p><code>POST /v1/lists/12/tasks {"title":"Buy milk"}</code> → ${H.c('g', '201 Created')}, <code>Location: /v1/tasks/881</code>. <code>PATCH /v1/tasks/881 {"completed":true}</code> → ${H.c('g', '200')}. <code>GET /v1/tasks/999</code> → ${H.c('r', '404')}.</p>`,
+    brute: { why: `<p><b>Naive design:</b> RPC-style URLs (<code>/createTask</code>, <code>/completeTask?id=5</code>, <code>/getTasksForList</code>), everything a POST or — worse — mutations via GET, always returning 200 with <code>{"error": ...}</code> in the body. Caches and crawlers can trigger GET mutations, clients can't rely on status codes, retries are unsafe, and the API is inconsistent and hard to learn.</p>` },
+    mcq: { q: 'Marking a task complete is best modelled as…', options: ['PATCH /v1/tasks/881 with {"completed": true}', 'GET /v1/completeTask?id=881', 'POST /v1/tasks/881/delete', 'PUT /v1/complete'], answer: 0, explain: 'A partial update of the task resource. GET must never change state.' },
+    hints: [`<p>Hint 1: Identify the nouns (resources): lists, tasks. Each gets a collection URL and an item URL.</p>`, `<p>Hint 2: Map actions to verbs: create = POST to collection, read = GET, partial update = PATCH, delete = DELETE. "Move" = PATCH the task's listId.</p>`, `<p>Hint 3: Add pagination (<code>cursor</code>, <code>limit</code>), filtering (<code>?completed=false</code>), consistent error bodies and correct codes (201, 204, 400, 404, 409).</p>`],
+    solution: {
+      approach: `<p><b>Resources:</b> <code>/v1/lists</code>, <code>/v1/lists/{listId}</code>, <code>/v1/lists/{listId}/tasks</code>, <code>/v1/tasks/{taskId}</code>.</p>
+        <ul>
+          <li><code>GET /v1/lists</code> → 200 list of the user's lists (cursor paginated).</li>
+          <li><code>POST /v1/lists {name}</code> → 201 + Location.</li>
+          <li><code>GET /v1/lists/{id}/tasks?completed=false&amp;limit=50&amp;cursor=…</code> → 200 <code>{data, next_cursor, has_more}</code>.</li>
+          <li><code>POST /v1/lists/{id}/tasks {title, dueAt?}</code> → 201 (accepts <code>Idempotency-Key</code> so mobile retries don't create duplicates).</li>
+          <li><code>PATCH /v1/tasks/{id} {title?, completed?, listId?}</code> → 200 updated task; moving = changing <code>listId</code>. Use <code>If-Match: ETag</code> → 412 on concurrent edits.</li>
+          <li><code>DELETE /v1/tasks/{id}</code> → 204 (and 204/404 on repeat — still idempotent in effect).</li>
+        </ul>
+        <p><b>Errors:</b> <code>application/problem+json</code> with type, title, detail, and field errors. 400 validation, 401 no auth, 403 not your list, 404 missing, 409 conflict, 429 rate limited. Ids are opaque strings; timestamps ISO-8601 UTC.</p>`,
+      complexity: `<p>Each endpoint is O(1) or O(page size) on indexed lookups (tasks indexed by (list_id, completed, created_at, id)).</p>`,
+      followUps: ['How do you support reordering tasks within a list?', 'What changes if lists can be shared with other users?']
+    }
+  });
+
+  practice.push({
+    title: 'Choose the protocol: five quick scenarios',
+    level: 'Easy', tags: ['rest', 'grpc', 'graphql', 'websocket', 'sse'], companies: ['Google', 'Amazon'],
+    statement: `<p>Pick REST, gRPC, GraphQL, SSE, WebSocket, or webhooks for each and justify in one line: (a) inventory service called by checkout service 30k times/s; (b) public weather API; (c) multiplayer drawing game; (d) admin dashboard showing live order counts; (e) notify merchants' servers when a refund completes.</p>`,
+    constraints: `<p>One-sentence justification per scenario; mention one downside of each choice.</p>`,
+    example: `<p>(a) ${H.c('g', 'gRPC')} — internal, high QPS, typed contract, small binary payloads. Downside: needs L7/client-side load balancing.</p>`,
+    brute: { why: `<p><b>Naive answer:</b> "Use REST for everything" or "use WebSockets for everything real-time". REST between hot internal services wastes CPU on JSON; WebSockets for a one-way dashboard add stateful infrastructure for no benefit; polling a merchant API instead of webhooks wastes both sides' resources.</p>` },
+    mcq: { q: 'A dashboard only needs to receive counter updates every second. Best fit?', options: ['SSE', 'WebSocket', 'gRPC bidirectional streaming', 'Webhooks'], answer: 0, explain: 'One-way server push to a browser → SSE: plain HTTP, auto-reconnect, simplest.' },
+    hints: [`<p>Hint 1: Ask "who is the caller?" — internal service, third party, browser, or another company's server.</p>`, `<p>Hint 2: Ask "which direction does data flow, and how often?"</p>`, `<p>Hint 3: Public + cacheable → REST; internal + fast → gRPC; push one-way → SSE; push both ways → WebSocket; server-to-server events → webhooks.</p>`],
+    solution: {
+      approach: `<p><b>(a) gRPC</b>: internal, 30k req/s, protobuf is compact and fast, deadlines propagate. Downside: harder debugging (binary) and per-request load balancing needs Envoy or client-side LB.</p>
+        <p><b>(b) REST</b>: any language can call it, GET responses are CDN-cacheable for minutes, OpenAPI docs. Downside: clients may over-fetch fields.</p>
+        <p><b>(c) WebSocket</b>: every player sends and receives strokes at high frequency with low latency. Downside: stateful connections complicate scaling and deploys.</p>
+        <p><b>(d) SSE</b>: one-way push of counters to browsers over plain HTTP with built-in reconnect. Downside: text-only and one-way (fine here).</p>
+        <p><b>(e) Webhooks</b>: your server POSTs a signed event to the merchant's URL with retries and backoff; merchants dedupe by event id. Downside: you must handle merchant downtime (retry queue, dead-letter, replay UI).</p>`,
+      complexity: `<p>Not algorithmic — the "cost" axis is connections held, requests per update and payload size per protocol.</p>`,
+      followUps: ['When would GraphQL be the right answer for (b)?', 'How do you secure webhooks against forgery and replay?']
+    }
+  });
+
+  practice.push({
+    title: 'Pick pagination for three endpoints',
+    level: 'Easy', tags: ['pagination', 'cursor', 'offset'], companies: ['Shopify', 'GitHub'],
+    statement: `<p>Choose offset or cursor pagination and justify: (1) an internal admin page listing 2,000 coupons with page numbers; (2) a mobile infinite-scroll feed of comments that receive new replies every second; (3) a public "export all orders" API used by accounting tools with 50M orders.</p>`,
+    constraints: `<p>State the SQL shape and index you'd use for each.</p>`,
+    example: `<p>(2) → ${H.c('g', 'cursor')}: <code>WHERE (created_at, id) &lt; (:t, :id) ORDER BY created_at DESC, id DESC LIMIT 20</code>, index on (post_id, created_at DESC, id DESC).</p>`,
+    brute: { why: `<p><b>Naive answer:</b> offset everywhere. The feed shows duplicate comments as new ones push rows down; the export does <code>OFFSET 49,000,000</code> on its last pages — each query scans tens of millions of rows, takes minutes and can miss or duplicate orders created during the export.</p>` },
+    mcq: { q: 'Why is OFFSET 49,000,000 slow even with an index?', options: ['The engine must walk past every skipped entry; an index can seek to a key, not to a position', 'Indexes do not work with ORDER BY', 'OFFSET disables caching', 'It isn\'t slow'], answer: 0, explain: 'B-trees support seek-by-key in O(log n); finding the k-th entry still requires walking k entries.' },
+    hints: [`<p>Hint 1: Does the UI need page numbers? Does data change while paging? How deep can pages go?</p>`, `<p>Hint 2: Small, stable, page-numbered → offset is fine. Feeds and big exports → cursor/keyset.</p>`, `<p>Hint 3: For exports sort by an immutable unique key (id) to avoid rows moving between pages.</p>`],
+    solution: {
+      approach: `<p><b>(1) Offset</b>: 2,000 rows, page numbers required, data rarely changes during a session. <code>ORDER BY created_at DESC, id DESC LIMIT 50 OFFSET :o</code>; cap offset at 10,000; show total via a cheap COUNT.</p>
+        <p><b>(2) Cursor</b>: constantly changing, infinite scroll, no page numbers. Opaque cursor of (created_at, id), index <code>(post_id, created_at DESC, id DESC)</code>; a separate "newer than first item" call for new replies.</p>
+        <p><b>(3) Cursor on id</b>: <code>WHERE id &gt; :last ORDER BY id LIMIT 1000</code> on the primary key — every page is an index seek, stable while new orders are inserted (they appear at the end), resumable after failure because the cursor is just the last id. Optionally pin a snapshot time (<code>created_at ≤ export_started_at</code>) for a consistent export.</p>`,
+      complexity: `<p>Offset: O(offset + limit) per page. Keyset: O(log n + limit) per page; a full export is O(n) total instead of O(n²/limit).</p>`,
+      followUps: ['How do you add "jump to date" to the cursor feed?', 'How would you parallelise the export?']
+    }
+  });
+
+  practice.push({
+    title: 'Live cricket score updates for 10M viewers',
+    level: 'Easy', tags: ['polling', 'sse', 'cdn', 'real-time'], companies: ['Hotstar', 'ESPN', 'Cricbuzz'],
+    statement: `<p>During a final, 10M users watch a live scorecard. The score changes every ~20–40 seconds; showing it 5 seconds late is acceptable. Choose the delivery mechanism and size it roughly.</p>`,
+    constraints: `<p>Peak 10M concurrent viewers; origin servers should stay small; mobile and web clients.</p>`,
+    example: `<p>Polling a CDN-cached URL every 5 s: 2M req/s at the edge, but the origin sees about one request per CDN POP per 5 s — a few hundred req/s total.</p>`,
+    brute: { why: `<p><b>Naive design:</b> 10M WebSockets to origin servers. At ~50k sockets per node you'd need ~200 nodes plus a fan-out pub/sub layer, careful deploys and reconnect storms when a node dies — all to deliver an update every 30 seconds. Alternatively, polling the origin directly at 2M req/s would melt it.</p>` },
+    mcq: { q: 'What makes polling viable at 10M users here?', options: ['A CDN caches the score for a few seconds so the origin barely sees traffic', 'HTTP/2 makes polling free', 'Polling uses UDP', 'Mobile phones don\'t count'], answer: 0, explain: 'Staleness tolerance + identical data for everyone = perfect CDN caching; the edge absorbs the load.' },
+    hints: [`<p>Hint 1: Everyone sees the same data and 5 s staleness is fine — that screams "cache it".</p>`, `<p>Hint 2: <code>GET /v1/matches/{id}/score</code> with <code>Cache-Control: public, max-age=5</code>; clients poll every 5 s with jitter.</p>`, `<p>Hint 3: Consider SSE from the CDN edge if the CDN supports streaming fan-out; mention push notifications for wickets when the app is backgrounded.</p>`],
+    solution: {
+      approach: `<p><b>Design:</b> the scoring service writes the latest scorecard JSON to a key-value store and origin. Clients poll <code>GET /v1/matches/77/score</code> every 5 s (with ±1 s jitter) using <code>If-None-Match</code>. The CDN caches responses for 5 s (<code>max-age=5, stale-while-revalidate=5</code>) and collapses concurrent misses into one origin fetch (request coalescing).</p>
+        <p><b>Sizing:</b> 10M / 5 s = 2M req/s at the CDN — normal for a large CDN. Origin: ~300 POPs × 1 request per 5 s ≈ 60 req/s. Responses are ~1 KB → ~2 GB/s egress at the edge (304s are even smaller).</p>
+        <p><b>Upgrade path:</b> if latency targets drop to ~1 s, switch to SSE through a CDN/edge that supports streaming fan-out, or a managed pub/sub (one origin publish → millions of edge subscribers). Big events (wicket) also go out as mobile push notifications.</p>`,
+      complexity: `<p>Origin load O(POPs / TTL) instead of O(users / poll interval). Client delay ≤ TTL + poll interval ≈ 10 s worst case, ~5 s average.</p>`,
+      followUps: ['How would you deliver ball-by-ball commentary with 1-second latency?', 'What happens at the CDN when the TTL expires simultaneously for millions of users?']
+    }
+  });
+
+  /* ================= PRACTICE: Medium ================= */
+  practice.push({
+    title: 'Implement a leaky bucket (as a meter) rate limiter',
+    level: 'Medium', tags: ['rate limiting', 'leaky bucket', 'gcra'], companies: ['Cloudflare', 'Fastly', 'NGINX'],
+    statement: `<p>Implement <code>allow(key, now)</code> using the leaky bucket <b>as a meter</b>: each key has a water level that drains at <i>r</i> units/s; a request adds 1 unit; reject if the level would exceed capacity <i>b</i>. Then show the equivalent GCRA form that stores only one timestamp per key.</p>`,
+    constraints: `<p>O(1) per call; one or two numbers per key; deterministic for testing (time is passed in).</p>`,
+    example: `<p>b=3, r=1. Requests at 0, 0, 0, 0, 1, 1.5 → ${H.c('g', 'T T T')} ${H.c('r', 'F')} ${H.c('g', 'T')} ${H.c('r', 'F')} (at 1.5 the level is 3 − 0.5 = 2.5; adding 1 → 3.5 &gt; 3).</p>`,
+    brute: { why: `<p><b>Naive:</b> keep a real FIFO queue per key and a timer that removes one item every 1/r seconds. That's a queue and a timer per client — O(b) memory and constant background work even for idle keys — just to decide yes/no.</p>`, code: { lang: 'python', code: `import collections
+
+class QueueLeaky:
+    def __init__(self, b, r):
+        self.b, self.r = b, r
+        self.q = collections.defaultdict(collections.deque)
+
+    def tick(self, key):               # must be driven by a timer every 1/r seconds per key
+        if self.q[key]:
+            self.q[key].popleft()
+
+    def allow(self, key, now):
+        if len(self.q[key]) >= self.b:
+            return False
+        self.q[key].append(now)
+        return True` } },
+    mcq: { q: 'In GCRA with emission interval T = 1/r and burst tolerance τ = (b−1)·T, a request at time now is rejected when…', options: ['max(TAT, now) − now > τ', 'TAT < now', 'now − TAT > T', 'TAT == now'], answer: 0, explain: 'TAT is when the bucket would be empty again; if it is more than τ in the future, the bucket is full.' },
+    hints: [`<p>Hint 1: Drain lazily: level = max(0, level − (now − last) × r).</p>`, `<p>Hint 2: Allow if level + 1 ≤ b, then level += 1.</p>`, `<p>Hint 3: GCRA: store TAT ("theoretical arrival time"). tat = max(TAT, now); if tat − now &gt; τ reject; else TAT = tat + T.</p>`],
+    solution: {
+      approach: `<p>Meter form: two numbers per key (level, last). Drain lazily, then check capacity. GCRA form: a single timestamp per key; mathematically identical decisions, easy to store in Redis as one key with a TTL, and it directly yields Retry-After = (tat − now − τ).</p>`,
+      code: { lang: 'python', run: true, code: `class LeakyMeter:
+    def __init__(self, b, r):
+        self.b, self.r, self.s = b, r, {}
+
+    def allow(self, key, now):
+        level, last = self.s.get(key, (0.0, now))
+        level = max(0.0, level - (now - last) * self.r)   # water drained since last time
+        ok = level + 1 <= self.b
+        if ok:
+            level += 1
+        self.s[key] = (level, now)
+        return ok
+
+
+class GCRA:
+    def __init__(self, b, r):
+        self.T = 1.0 / r
+        self.tau = (b - 1) * self.T
+        self.tat = {}
+
+    def allow(self, key, now):
+        tat = max(self.tat.get(key, now), now)
+        if tat - now > self.tau:
+            return False, round(tat - now - self.tau, 3)     # (rejected, retry after)
+        self.tat[key] = tat + self.T
+        return True, 0
+
+
+m, g = LeakyMeter(3, 1), GCRA(3, 1)
+for t in [0, 0, 0, 0, 1, 1.5, 3]:
+    print(t, m.allow("k", t), g.allow("k", t))` },
+      alt: [{ lang: 'java', code: `import java.util.*;
+
+public class Gcra {
+    private final double T, tau;
+    private final Map<String, Double> tat = new HashMap<>();
+
+    Gcra(double burst, double ratePerSec) { T = 1.0 / ratePerSec; tau = (burst - 1) * T; }
+
+    synchronized boolean allow(String key, double now) {
+        double t = Math.max(tat.getOrDefault(key, now), now);
+        if (t - now > tau) return false;
+        tat.put(key, t + T);
+        return true;
+    }
+
+    public static void main(String[] args) {
+        Gcra g = new Gcra(3, 1);
+        for (double t : new double[]{0, 0, 0, 0, 1, 1.5, 3}) System.out.println(t + " " + g.allow("k", t));
+    }
+}` }],
+      complexity: `<p>O(1) time; meter = 2 numbers per key, GCRA = 1 number per key. Both match a token bucket of capacity b and rate r.</p>`,
+      followUps: ['Prove the meter and token bucket make identical decisions.', 'Implement GCRA as a Redis Lua script.']
+    }
+  });
+
+  practice.push({
+    title: 'Rate limits with plans, multiple keys and good headers',
+    level: 'Medium', tags: ['rate limiting', 'api gateway', 'quotas'], companies: ['GitHub', 'Twilio', 'OpenAI'],
+    statement: `<p>Your public API has plans: Free (10 req/s, 10k/day), Pro (100 req/s, 1M/day), Enterprise (custom). Also: 20 req/min per IP on <code>/login</code>, and a global protection of 50k req/s for the search endpoint. Design the limiter configuration, evaluation order, storage and client-facing headers.</p>`,
+    constraints: `<p>30 gateway nodes; 200k req/s total; limit checks add ≤ 2 ms p99; plan changes take effect within a minute.</p>`,
+    example: `<p>A Free key at 10,000 calls today gets ${H.c('r', '429')} with <code>Retry-After</code> = seconds until midnight UTC, even if its per-second bucket has tokens.</p>`,
+    brute: { why: `<p><b>Naive design:</b> one hard-coded limit for everyone, in-memory per node. Paid customers get throttled like free ones, abusers get 30× the limit by spreading over nodes, login brute force isn't specifically protected, and clients get bare 429s with no hint when to retry — so they hammer harder.</p>` },
+    mcq: { q: 'Which pair of algorithms best fits "100 req/s" and "1M per day" together?', options: ['Token bucket for the rate + fixed-window daily counter for the quota', 'Two sliding logs', 'Leaky bucket queue for both', 'A single fixed window of 1 second'], answer: 0, explain: 'Short-term burst control is a token bucket; a calendar-day quota is literally a fixed window.' },
+    hints: [`<p>Hint 1: List each rule as (key, algorithm, limit, window): per-IP login, per-key rate, per-key daily quota, per-endpoint global.</p>`, `<p>Hint 2: Evaluate cheapest/most-specific first, and only consume from later buckets if earlier ones pass (or refund).</p>`, `<p>Hint 3: Plans come from a cached lookup (API key → plan) refreshed every 60 s; counters in Redis via one Lua script that checks all rules atomically.</p>`],
+    solution: {
+      approach: `<p><b>Rules:</b> (1) <code>ip:{ip}:login</code> sliding log, 20/min (precise, low N). (2) <code>key:{k}:rate</code> token bucket, capacity = 2× rate, refill = plan rate. (3) <code>key:{k}:day:{yyyymmdd}</code> fixed window, plan quota, TTL 48 h. (4) <code>global:search</code> sliding window counter 50k/s, approximated per node as 50k/30 with local token buckets (no Redis hop) and periodic rebalancing.</p>
+        <p><b>Evaluation:</b> authenticate → load plan (local cache, 60 s TTL; plan changes propagate within a minute) → one Redis Lua call evaluates rules 1–3 atomically and only consumes if all pass → local global check for search. Redis is sharded by key (hash tags keep one key's counters on one shard).</p>
+        <p><b>Headers:</b> every response: <code>RateLimit-Policy</code> / <code>RateLimit</code> (or <code>X-RateLimit-Limit</code>, <code>-Remaining</code>, <code>-Reset</code>); on 429: <code>Retry-After</code> and a problem+json body naming which limit was hit and a docs link. Enterprise overrides live in the same plan table.</p>
+        <p><b>Failure:</b> Redis down → fall back to local per-node buckets at limit/30 (fail open-ish) for rate rules; keep login limits fail-closed-ish with a conservative local log.</p>`,
+      complexity: `<p>One Redis round trip (~0.5–1 ms) per request; memory ≈ (2 numbers + 1 counter) per active key + small logs for login IPs.</p>`,
+      followUps: ['How do you bill overage instead of rejecting for Enterprise?', 'How do you rate limit by LLM tokens when output length is unknown up front?']
+    }
+  });
+
+  practice.push({
+    title: 'Design the API for a chat application',
+    level: 'Medium', tags: ['websocket', 'rest', 'pagination', 'idempotency'], companies: ['Slack', 'Discord', 'WhatsApp'],
+    statement: `<p>Design the client-facing API for a team chat app: list channels, load message history, send messages, receive messages/typing indicators/presence in real time, edit and delete messages. Choose protocols per feature and define key endpoints/events.</p>`,
+    constraints: `<p>5M concurrent users; history can be years deep; messages must not be duplicated or lost on flaky mobile networks; ordering per channel must be consistent.</p>`,
+    example: `<p>Client sends <code>{"type":"send","clientMsgId":"c-91","channel":"C7","text":"hi"}</code> over WebSocket → server acks <code>{"type":"ack","clientMsgId":"c-91","id":"m_1042","seq":1042}</code> and broadcasts the message with seq 1042.</p>`,
+    brute: { why: `<p><b>Naive design:</b> clients poll <code>GET /channels/{id}/messages?page=N</code> every 2 s and send with plain <code>POST /messages</code>. Polling at 5M users costs millions of req/s with seconds of latency; offset history pages duplicate as new messages arrive; a retried POST after a timeout posts the message twice.</p>` },
+    mcq: { q: 'The phone sent a message, lost connection before the ack, and reconnects. How do we avoid a duplicate message?', options: ['Resend with the same clientMsgId; the server dedupes on (user, clientMsgId)', 'Never resend', 'Resend with a new id', 'Ask the user to check manually'], answer: 0, explain: 'A client-generated message id is an idempotency key for the send operation.' },
+    hints: [`<p>Hint 1: Split request/response things (history, channel list, edits) from real-time things (new messages, typing, presence).</p>`, `<p>Hint 2: REST + cursor pagination for history; WebSocket for live events and sending (both directions, high frequency).</p>`, `<p>Hint 3: Per-channel sequence numbers give ordering and gap detection; clientMsgId gives idempotent sends; on reconnect, fetch missed messages after the last seq via REST.</p>`],
+    solution: {
+      approach: `<p><b>REST (cacheable, paginated):</b> <code>GET /v1/channels</code>; <code>GET /v1/channels/{id}/messages?before_seq=…&amp;limit=50</code> (keyset on per-channel seq, newest first); <code>GET /v1/channels/{id}/messages?after_seq=…</code> for catch-up; <code>PATCH /v1/messages/{id}</code> and <code>DELETE /v1/messages/{id}</code>; file uploads via pre-signed URLs.</p>
+        <p><b>WebSocket</b> <code>wss://rt.chat.example/v1?token=…</code> (short-lived ticket): client → server events <code>send {clientMsgId, channel, text}</code>, <code>typing</code>, <code>read {channel, seq}</code>; server → client <code>message {id, channel, seq, …}</code>, <code>ack {clientMsgId, id, seq}</code>, <code>typing</code>, <code>presence</code>, <code>edited</code>, <code>deleted</code>.</p>
+        <p><b>Reliability:</b> server dedupes sends on (userId, clientMsgId) for 24 h; message is durably stored before ack; each channel has a monotonically increasing seq assigned by the channel's owner shard. Client tracks last seq per channel; on reconnect or detected gap it calls the <code>after_seq</code> endpoint. Typing/presence are ephemeral (may be dropped).</p>
+        <p><b>Scale:</b> connection tier of gateway nodes (~100k sockets each → ~50+ nodes) subscribed to channel topics in a pub/sub bus; heartbeat every 30 s; jittered reconnect; mobile background → push notifications.</p>`,
+      complexity: `<p>History page O(log n + 50); send = 1 write + fan-out to online channel members; steady state ~0 HTTP requests for idle clients.</p>`,
+      followUps: ['How do you handle a channel with 100k members (fan-out)?', 'How would message search fit into this API?']
+    }
+  });
+
+  practice.push({
+    title: 'Implement a sliding window log limiter (exact)',
+    level: 'Medium', tags: ['rate limiting', 'sliding window', 'deque'], companies: ['Amazon', 'Uber'],
+    statement: `<p>Implement <code>allow(user, t)</code>: allow at most N requests per user in any rolling window of W seconds (exact). Timestamps per user are non-decreasing. Also give the Redis version and its memory cost.</p>`,
+    constraints: `<p>N ≤ 1000, W ≤ 3600; amortised O(1) per call.</p>`,
+    example: `<p>N=3, W=10: t = 1, 2, 3, 4, 11, 12 → ${H.c('g', 'T T T')} ${H.c('r', 'F')} ${H.c('g', 'T T')} (at 11 the entry 1 has left the window (1, 11]; at 12 the entry 2 has left).</p>`,
+    brute: { why: `<p><b>Naive:</b> keep every timestamp forever in a list and, on each call, count how many are &gt; t − W by scanning the whole list: O(total requests) per call and unbounded memory.</p>`, code: { lang: 'python', code: `def make_naive(n, w):
+    hist = {}
+    def allow(user, t):
+        lst = hist.setdefault(user, [])
+        if sum(1 for x in lst if x > t - w) >= n:   # full scan every call
+            return False
+        lst.append(t)                              # never evicted
+        return True
+    return allow` } },
+    mcq: { q: 'Why does a deque give amortised O(1)?', options: ['Each timestamp is appended once and popped from the front at most once', 'Deques are sorted automatically', 'Python deques are hash tables', 'It doesn\'t — it is O(N) per call'], answer: 0, explain: 'Total pops ≤ total pushes, so the eviction work averages to O(1) per call.' },
+    hints: [`<p>Hint 1: Timestamps arrive in order, so the oldest is always at the front.</p>`, `<p>Hint 2: Pop from the front while front ≤ t − W; then compare the length with N.</p>`, `<p>Hint 3: Only append when allowed (so rejected calls don't extend the lockout). Redis: sorted set + Lua (ZREMRANGEBYSCORE, ZCARD, ZADD, PEXPIRE).</p>`],
+    solution: {
+      approach: `<p>Per user deque of accepted timestamps. Evict expired from the front, check size, append if allowed. Memory is O(N) per active user — fine for N=5 login attempts, expensive for N=1000 × millions of users (that's when you switch to the sliding window counter).</p>`,
+      code: { lang: 'python', run: true, code: `from collections import deque
+
+
+class SlidingLogLimiter:
+    def __init__(self, n, w):
+        self.n, self.w, self.logs = n, w, {}
+
+    def allow(self, user, t):
+        log = self.logs.setdefault(user, deque())
+        while log and log[0] <= t - self.w:      # window is (t - w, t]
+            log.popleft()
+        if len(log) >= self.n:
+            return False
+        log.append(t)
+        return True
+
+
+lim = SlidingLogLimiter(3, 10)
+print([lim.allow("u", t) for t in [1, 2, 3, 4, 11, 12]])   # T T T F T T` },
+      alt: [{ lang: 'java', code: `import java.util.*;
+
+public class SlidingLog {
+    private final int n; private final long w;
+    private final Map<String, ArrayDeque<Long>> logs = new HashMap<>();
+
+    SlidingLog(int n, long w) { this.n = n; this.w = w; }
+
+    synchronized boolean allow(String user, long t) {
+        ArrayDeque<Long> log = logs.computeIfAbsent(user, k -> new ArrayDeque<>());
+        while (!log.isEmpty() && log.peekFirst() <= t - w) log.pollFirst();
+        if (log.size() >= n) return false;
+        log.addLast(t);
+        return true;
+    }
+
+    public static void main(String[] args) {
+        SlidingLog s = new SlidingLog(3, 10);
+        for (long t : new long[]{1, 2, 3, 4, 11, 12}) System.out.print(s.allow("u", t) + " ");
+    }
+}` }],
+      complexity: `<p>Amortised O(1) time per call, O(N) memory per user. Redis sorted set: O(log N) per op, ~60–80 bytes per entry.</p>`,
+      followUps: ['Count rejected attempts too for anti-abuse — what changes?', 'How do you make the Redis member unique for same-millisecond requests?']
+    }
+  });
+
+  practice.push({
+    title: 'Design an API gateway / BFF for a mobile banking app',
+    level: 'Medium', tags: ['api gateway', 'bff', 'security'], companies: ['Revolut', 'Monzo', 'HDFC'],
+    statement: `<p>A mobile banking app calls accounts, cards, transfers, statements and KYC services. Design the edge layer: gateway responsibilities, a BFF, authentication (including device binding), rate limits for sensitive actions and timeouts.</p>`,
+    constraints: `<p>Regulatory audit logs for every request; transfers must never duplicate; app must work on weak networks; p99 for the home screen ≤ 400 ms.</p>`,
+    example: `<p>Home screen: one <code>GET /bff/v1/home</code> → BFF calls accounts, cards and recent transactions in parallel with 250 ms timeouts; cards timing out → home renders with a "cards unavailable" tile instead of failing.</p>`,
+    brute: { why: `<p><b>Naive design:</b> the app calls each service directly with a long-lived token. Five sequential calls on 3G blow the latency budget; each service re-implements auth differently; a stolen token works from any device; transfer retries double-send money; audit logs are scattered across services in different formats.</p>` },
+    mcq: { q: 'Where should "transfer above ₹1 lakh requires step-up OTP" be enforced?', options: ['In the transfers service (business rule), with the gateway only verifying token scopes', 'Only in the mobile app', 'In the CDN', 'In the load balancer'], answer: 0, explain: 'Business rules belong in services; the gateway does generic checks like token validity and scopes. Never trust the client alone.' },
+    hints: [`<p>Hint 1: Gateway = generic: TLS, WAF, token validation, device binding check, rate limits, audit log, routing. BFF = screen-shaped aggregation.</p>`, `<p>Hint 2: Short-lived access tokens bound to a device key (mTLS or DPoP-style proof), refresh tokens in secure storage.</p>`, `<p>Hint 3: Sensitive endpoints get strict limits (login, OTP, add payee); transfers need Idempotency-Key; aggregation needs per-call timeouts and partial responses.</p>`],
+    solution: {
+      approach: `<p><b>Edge:</b> CDN/WAF (bot and geo rules) → L4 LB → gateway fleet → mobile BFF → services over mTLS/gRPC.</p>
+        <p><b>Gateway:</b> TLS (certificate pinning in app), JWT validation (5-min access tokens, scopes), <b>sender-constrained tokens</b> (token bound to the device's key; each request signed) so stolen tokens are useless elsewhere; rate limits: login 5/15 min per user + per device + per IP, OTP verify 3 attempts, add-payee 3/day, general 20 req/s per user; immutable audit log stream (Kafka → WORM storage) with request id, user, device, endpoint, outcome; strips client-supplied identity headers.</p>
+        <p><b>BFF:</b> <code>GET /bff/v1/home</code> fans out in parallel with 250 ms per-call timeouts, returns partial data with per-section error flags; caches slow-changing data (profile) briefly; compresses responses.</p>
+        <p><b>Transfers:</b> <code>POST /v1/transfers</code> requires <code>Idempotency-Key</code> (stored with the transfer in one DB transaction); step-up auth enforced by the transfers service; retries only via the same key.</p>
+        <p><b>Resilience:</b> circuit breakers per upstream, no gateway retries on POST, bulkheads between statements (heavy) and transfers (critical).</p>`,
+      complexity: `<p>Home latency ≈ 1 mobile RTT + max(parallel calls) ≈ 120 + 250 ms worst case, versus 5 × RTT sequential. Gateway overhead ~2–4 ms.</p>`,
+      followUps: ['How do you revoke all sessions for a user who reports a stolen phone?', 'How do statements (large PDFs) bypass the BFF efficiently?']
+    }
+  });
+
+  practice.push({
+    title: 'Expose a GraphQL API without getting DoS-ed',
+    level: 'Medium', tags: ['graphql', 'rate limiting', 'performance'], companies: ['Meta', 'Shopify', 'GitHub'],
+    statement: `<p>Your public GraphQL API lets clients query users, their repos, each repo's issues and each issue's comments. One client sends a query nesting 6 levels deep requesting 100 items per level. Design protections and fix the N+1 query problem.</p>`,
+    constraints: `<p>Public API; 5k req/s; DB can handle 20k simple queries/s; must keep flexible queries for legit clients.</p>`,
+    example: `<p><code>users(first:100){ repos(first:100){ issues(first:100){ comments(first:100){…} } } }</code> = up to 100<sup>4</sup> = ${H.c('r', '100,000,000 nodes')} from one HTTP request. A request-count rate limit sees "1 request".</p>`,
+    brute: { why: `<p><b>Naive design:</b> rate limit by requests per minute and resolve each field with its own DB query. One malicious query costs millions of DB calls while counting as one request; even normal list queries trigger 1 + N + N×M queries (N+1 problem), saturating the database.</p>` },
+    mcq: { q: 'Best unit for rate limiting a GraphQL API?', options: ['Computed query cost (points) per time window', 'HTTP requests per minute', 'Bytes of the query string', 'Number of distinct field names'], answer: 0, explain: 'GitHub and Shopify charge "points" based on the estimated nodes a query touches; requests alone are meaningless when one request can be arbitrarily expensive.' },
+    hints: [`<p>Hint 1: Analyse the query <b>before</b> executing: depth, and a cost estimate = product of <code>first</code> arguments along paths.</p>`, `<p>Hint 2: Token bucket where each query costs its points; reject over-budget queries with a clear error.</p>`, `<p>Hint 3: DataLoader batches all <code>repo.owner</code> lookups in one tick into a single <code>WHERE id IN (…)</code>; cap <code>first</code> at 100; prefer persisted queries for first-party apps.</p>`],
+    solution: {
+      approach: `<p><b>Static limits:</b> max depth 5–7, max <code>first/last</code> 100, max total estimated nodes 500k; query parsing size limits and timeouts per request.</p>
+        <p><b>Cost-based rate limiting:</b> before executing, compute cost (e.g. sum over connections of requested page size × parent multiplier). Each client has a token bucket of e.g. 5,000 points/hour; the query's cost is debited (and refunded to actual cost afterwards). Return the cost and remaining budget in the response extensions/headers so clients can self-regulate.</p>
+        <p><b>N+1 fix:</b> per-request DataLoaders batch and cache loads by key — resolving 100 repos' owners becomes one query. Connections use keyset pagination (Relay <code>edges/pageInfo</code>).</p>
+        <p><b>First-party apps:</b> persisted queries (hash → pre-approved query) allow GET + CDN caching and block arbitrary queries from unknown clients. Monitor slow-query logs per operation name.</p>`,
+      complexity: `<p>Cost analysis is O(size of query AST) — microseconds. Batching turns O(N) DB round trips per level into O(1) per level per request.</p>`,
+      followUps: ['How do you price mutations and subscriptions?', 'How do persisted queries work with app versions in the wild?']
+    }
+  });
+
+  /* ================= PRACTICE: Hard ================= */
+  practice.push({
+    title: 'Distributed rate limiter for 1M req/s across regions',
+    level: 'Hard', tags: ['rate limiting', 'redis', 'distributed systems'], companies: ['Cloudflare', 'Stripe', 'Google'],
+    statement: `<p>Design a rate-limiting service used by 200 gateway nodes in 3 regions, enforcing per-API-key limits (e.g. 1,000 req/s) at 1M req/s total. Cover algorithm, data placement, atomicity, latency, hot keys, failure modes and accuracy guarantees.</p>`,
+    constraints: `<p>Added latency ≤ 1 ms p99; overshoot ≤ 5% acceptable; a single region outage must not block traffic; 10M API keys, 100k active per minute.</p>`,
+    example: `<p>Key K sends 3,000 req/s spread across all regions with a 1,000 req/s limit → about 1,000/s accepted globally (± 5%), the rest 429 with Retry-After.</p>`,
+    brute: { why: `<p><b>Naive design 1:</b> per-node in-memory buckets → a key can get 200× its limit. <b>Naive design 2:</b> one central Redis in one region, called synchronously → +70–150 ms cross-region latency on every request, a single point of failure, and one hot key pinning one Redis shard's CPU.</p>` },
+    mcq: { q: 'Best way to keep added latency under 1 ms while staying roughly accurate globally?', options: ['Local in-memory buckets that periodically sync usage with a regional/global store and receive a share of the limit', 'Synchronous call to a single global Redis for every request', 'No limiting, bill later', 'Sticky-route every key to one node worldwide'], answer: 0, explain: 'Local decisions are fast; asynchronous sync bounds the error. This is how large CDNs/API platforms do it.' },
+    hints: [`<p>Hint 1: You can't afford a cross-region round trip per request; decide locally and sync asynchronously.</p>`, `<p>Hint 2: Two tiers: node-local token bucket per key (fast path) + regional Redis cluster with a Lua token bucket/sliding counter (source of truth per region); regions share usage via async replication/gossip.</p>`, `<p>Hint 3: Split each key's limit across regions by recent traffic share; hot keys get node-level leasing ("take 50 tokens at a time"); define fail-open behaviour.</p>`],
+    solution: {
+      approach: `<p><b>Algorithm:</b> token bucket (or sliding window counter) per key. <b>Hierarchy:</b> global limit L is divided among regions by recent traffic share (recomputed every few seconds, with a floor). Within a region, gateway nodes <b>lease</b> batches of tokens from the regional Redis cluster (e.g. 5% of the regional share per lease) and serve from local memory — most requests touch only local memory (~µs). Lease size shrinks as the key nears its limit to bound overshoot.</p>
+        <p><b>Regional store:</b> Redis Cluster, keys hashed by API key; lease = Lua script doing refill + debit atomically using Redis TIME; TTL on idle keys. Only ~100k active keys × small state → a few GB.</p>
+        <p><b>Cross-region:</b> regions publish per-key consumption every ~1 s to each other (Kafka/CRDT counters); each region adjusts shares. Overshoot ≈ unsynced consumption in one interval (bounded by lease sizes × nodes) — tune to ≤ 5%.</p>
+        <p><b>Hot keys:</b> a single key at 300k req/s hits one Redis shard — leases make that ~1 Redis op per lease instead of per request. <b>Failures:</b> Redis down → nodes continue with last share/(nodes) locally (fail open, bounded); region down → its share is redistributed. <b>Observability:</b> per-key allowed/limited counts, sync lag, overshoot metric.</p>`,
+      complexity: `<p>Fast path O(1) local; Redis ops ≈ requests / lease size; cross-region traffic O(active keys) per sync interval. Accuracy error ≈ Σ outstanding leases + sync interval × rate.</p>`,
+      followUps: ['How would you implement "concurrent requests ≤ 20" (not rate) globally?', 'How do you test the overshoot bound?']
+    }
+  });
+
+  practice.push({
+    title: 'Public payments API: idempotency, pagination, versioning, webhooks',
+    level: 'Hard', tags: ['api design', 'idempotency', 'webhooks', 'versioning'], companies: ['Stripe', 'Razorpay', 'Adyen'],
+    statement: `<p>Design the public REST API of a payments platform: create/capture/refund payments, list payments, receive asynchronous events. Must be safe under retries, evolvable for years without breaking integrations, and protect the platform from abusive clients.</p>`,
+    constraints: `<p>Thousands of merchants in all languages; money correctness over everything; API versions must stay supported 2+ years; 10k write req/s.</p>`,
+    example: `<p><code>POST /v1/refunds</code> with <code>Idempotency-Key: r-77</code> times out → retry with r-77 → ${H.c('p', 'same refund object, Idempotent-Replayed: true')}. Merchant pinned to version 2025-06-01 keeps getting the old response shape even after a 2026 change.</p>`,
+    brute: { why: `<p><b>Naive design:</b> plain POSTs without idempotency (double refunds on retries), offset pagination on payment lists (missed payments during reconciliation), breaking field changes released to everyone (integrations crash), and merchants polling <code>GET /payments/{id}</code> every second to learn the outcome of async card flows.</p>` },
+    mcq: { q: 'How should a merchant learn that an async 3-D Secure payment finally succeeded?', options: ['A signed webhook event (payment.succeeded), with the merchant also able to GET the payment', 'Poll every 100 ms forever', 'Email', 'The client browser tells the merchant server'], answer: 0, explain: 'Webhooks push the outcome; the browser can be closed or tampered with; GET remains the source of truth for reconciliation.' },
+    hints: [`<p>Hint 1: Every POST accepts <code>Idempotency-Key</code>; responses replayed for 24 h; mismatched bodies → error.</p>`, `<p>Hint 2: Lists use cursor pagination by object id (<code>starting_after</code>), stable for reconciliation; money as integer minor units + currency.</p>`, `<p>Hint 3: Date-based versions pinned per account with a request header override; transformation layers convert the latest internal model to older shapes. Webhooks: signed, retried with backoff for days, event ids for dedupe.</p>`],
+    solution: {
+      approach: `<p><b>Resources:</b> <code>/v1/payments</code> (POST create with <code>capture_method</code>), <code>/v1/payments/{id}/capture</code> (POST), <code>/v1/refunds</code>, <code>/v1/events</code>, <code>/v1/webhook_endpoints</code>. Amounts are integers in minor units; every object has <code>id</code> with type prefix, <code>object</code>, <code>created</code>, <code>livemode</code>, <code>metadata</code>.</p>
+        <p><b>Idempotency:</b> all POSTs accept <code>Idempotency-Key</code>; key row stored in the same transaction as the business write, request fingerprint checked, response replayed with <code>Idempotent-Replayed: true</code>, 409 while in flight, keys expire after 24 h. Downstream calls to card networks carry derived keys; reconciler resolves stuck states.</p>
+        <p><b>Lists:</b> <code>GET /v1/payments?limit=100&amp;starting_after=pay_…&amp;created[gte]=…</code> → <code>{data, has_more}</code>; keyset on (created, id).</p>
+        <p><b>Versioning:</b> account pinned to the version at signup (e.g. <code>2025-06-01</code>); header <code>Api-Version</code> overrides per request; internally always compute the latest representation and run a chain of version transformers backwards. Additive changes ship to everyone; breaking ones only with a new version, changelog and upgrade tooling.</p>
+        <p><b>Events:</b> every state change creates an immutable event (id, type, data snapshot rendered in the endpoint's version). Delivery: HTTPS POST, HMAC signature with timestamp, retries with exponential backoff up to 3 days, ordering not guaranteed (merchants use <code>GET</code> for current state), manual replay from dashboard.</p>
+        <p><b>Protection:</b> per-account token buckets (separate read/write budgets), concurrency limits on expensive endpoints, 429 with Retry-After, and load shedding that prioritises critical endpoints (create/capture) over list endpoints.</p>`,
+      complexity: `<p>Writes: +1 idempotency row per POST; lists O(log n + limit); version transforms O(number of versions behind) per response, cached per version.</p>`,
+      followUps: ['How do you safely deprecate an API version with 3% of traffic still on it?', 'How do merchants verify webhooks if they rotate secrets?']
+    }
+  });
+
+  practice.push({
+    title: 'Idempotent checkout across services and a message queue',
+    level: 'Hard', tags: ['idempotency', 'sagas', 'outbox', 'messaging'], companies: ['Amazon', 'Flipkart', 'Shopify'],
+    statement: `<p>Checkout: <code>POST /v1/checkout</code> creates an order, reserves inventory, charges payment, and emits <code>OrderPlaced</code> to Kafka, consumed by email and shipping services. Design it so client retries, service crashes and duplicate Kafka deliveries never cause double orders, double charges or double emails.</p>`,
+    constraints: `<p>Services own separate databases; Kafka is at-least-once; each step may crash after doing its work but before replying.</p>`,
+    example: `<p>Payment service charges, crashes before acking; orchestrator retries "charge order O-5" → payment service finds an existing charge for O-5 → ${H.c('p', 'returns it')} instead of charging again. Email consumer gets <code>OrderPlaced(O-5)</code> twice → second is skipped via its processed-events table.</p>`,
+    brute: { why: `<p><b>Naive design:</b> the checkout handler calls inventory, payment, then publishes to Kafka, then writes the order — any crash in between leaves partial state; client retries rerun all of it (two orders, two charges); publishing to Kafka outside the DB transaction can emit an event for an order that rolled back (or lose it); consumers send an email per delivery, so duplicates spam customers.</p>` },
+    mcq: { q: 'How do you atomically "write the order" and "publish OrderPlaced"?', options: ['Transactional outbox: insert the event into an outbox table in the same DB transaction; a relay publishes it to Kafka', 'Publish first, then write the DB', 'Use a distributed 2PC between Postgres and Kafka on every request', 'Hope both succeed'], answer: 0, explain: 'The outbox makes the event part of the DB commit; the relay delivers at-least-once and consumers dedupe by event id.' },
+    hints: [`<p>Hint 1: Idempotency at every hop: client → API (Idempotency-Key), orchestrator → services (key derived from order id + step), Kafka → consumers (event id).</p>`, `<p>Hint 2: Use a saga with persisted state per order; each step is retried until it succeeds or a compensation runs (release inventory, refund).</p>`, `<p>Hint 3: Transactional outbox for events; consumers store processed event ids in the same transaction as their side effect.</p>`],
+    solution: {
+      approach: `<p><b>Entry:</b> <code>POST /v1/checkout</code> with <code>Idempotency-Key</code>. In one transaction: insert the idempotency row and an <code>orders</code> row (status=PENDING, id O-5) → return <code>202 {orderId, status}</code> (or wait briefly for completion). Retries replay the same order id.</p>
+        <p><b>Saga orchestrator</b> (state stored per order): step 1 <code>Reserve(O-5)</code> → inventory uses reservation id = O-5 (unique), so repeats are no-ops; step 2 <code>Charge(O-5, amount)</code> → payment service uses idempotency key "O-5:charge" and passes it to the PSP; step 3 mark order PLACED and insert <code>OrderPlaced</code> event into the <b>outbox</b> in the same transaction. On failure: compensations <code>Release(O-5)</code>, <code>Refund(O-5:charge)</code> — also idempotent. Timeouts → retry the same step (safe by construction).</p>
+        <p><b>Event delivery:</b> an outbox relay (polling or CDC like Debezium) publishes to Kafka with event id; consumers (email, shipping) do <code>INSERT INTO processed_events(event_id)</code> + side effect in one transaction, skipping duplicates. Email service additionally keys sends by (order, template) for safety.</p>
+        <p><b>Result:</b> at-least-once delivery everywhere + idempotent handlers = exactly-once <i>effects</i>.</p>`,
+      complexity: `<p>Per checkout: a handful of extra indexed writes (idempotency rows, outbox, processed events). Retention of dedupe tables bounded by TTL (days).</p>`,
+      followUps: ['What if the PSP does not support idempotency keys?', 'How do you detect and repair orders stuck in PENDING?']
+    }
+  });
+
+  practice.push({
+    title: 'Design a WebSocket gateway for 10M concurrent connections',
+    level: 'Hard', tags: ['websocket', 'gateway', 'pub/sub', 'scalability'], companies: ['Discord', 'Slack', 'Zoom'],
+    statement: `<p>Design the real-time connection layer for a messaging product: 10M concurrent WebSocket connections, delivering messages to users and channels, with authentication, rate limiting of client-sent events, zero-downtime deploys and resume after disconnects.</p>`,
+    constraints: `<p>Message delivery p99 &lt; 300 ms; clients send up to 5 events/s; deploys weekly; a node failure must not lose messages.</p>`,
+    example: `<p>User U has 3 devices on 3 different gateway nodes. A message for U is published once to the bus and each of those 3 nodes forwards it to its local socket.</p>`,
+    brute: { why: `<p><b>Naive design:</b> business servers hold sockets directly and look up "which server has user U" by broadcasting to all servers. Broadcast costs O(servers) per message, deploys drop millions of sockets at once (reconnect storm), and a crash loses in-flight messages with no way to resume.</p>` },
+    mcq: { q: 'How do gateway nodes learn which messages to forward?', options: ['Each node subscribes to pub/sub topics for the users/channels connected to it', 'They poll the database every second', 'Clients tell each other', 'DNS'], answer: 0, explain: 'Interest-based subscription keeps fan-out proportional to actual recipients.' },
+    hints: [`<p>Hint 1: Separate a thin, stateful connection tier from stateless business services.</p>`, `<p>Hint 2: Routing: a session registry (user → node) or topic subscriptions on a pub/sub bus; sequence numbers per user/channel for resume.</p>`, `<p>Hint 3: Deploys: drain gradually with a "reconnect" frame and jittered backoff; per-connection token bucket for client events; heartbeats.</p>`],
+    solution: {
+      approach: `<p><b>Connection tier:</b> ~100–200 gateway nodes (≈ 50–100k sockets each with async I/O, ~20–50 KB per connection → a few GB RAM per node). L4 load balancers spread new connections; no stickiness needed except the socket itself.</p>
+        <p><b>Handshake:</b> client fetches a short-lived connect ticket via REST (normal auth), then opens <code>wss://</code> with it; gateway verifies and registers <code>session → node</code> in a sharded registry (Redis) and subscribes to the user's topic (and channel topics for small channels; large channels use a separate fan-out service).</p>
+        <p><b>Delivery:</b> services persist the message (with per-user or per-channel sequence) then publish to the bus (NATS/Redis Streams/Kafka partitioned by user). Nodes forward to local sockets; clients ack by seq. On reconnect, client sends last seq per stream; gateway replays missed messages from storage then switches to live.</p>
+        <p><b>Client-sent events:</b> per-connection token bucket (5/s, burst 10); violators get an error frame, persistent abusers are disconnected. Payload size limits.</p>
+        <p><b>Ops:</b> heartbeats every 30 s; LB idle timeout &gt; heartbeat; deploy by draining one node at a time over ~10 minutes with a reconnect hint + jittered backoff; autoscale on connection count; capacity headroom for a full AZ loss (connections from it reconnect elsewhere).</p>`,
+      complexity: `<p>Memory O(connections); bus traffic O(messages × recipients' nodes); resume cost O(missed messages). Reconnect storms bounded by drain rate and client backoff.</p>`,
+      followUps: ['How would you implement presence (online/offline) for 10M users cheaply?', 'How do you handle a channel with 1M members?']
+    }
+  });
+
+  /* ================= QUIZ ================= */
+  quiz.push(
+    { q: 'Which HTTP method is NOT idempotent by definition?', options: ['POST', 'PUT', 'DELETE', 'GET'], answer: 0, explain: 'Repeating a POST may create another resource. PUT replaces with the same state, DELETE leaves it deleted, GET changes nothing.' },
+    { q: 'An internal service calls another 50k times/s and needs typed contracts and streaming. Best fit?', options: ['gRPC', 'GraphQL', 'SOAP', 'Short polling'], answer: 0, explain: 'gRPC gives protobuf over HTTP/2, generated stubs, deadlines and built-in streaming — ideal for internal high-QPS calls.' },
+    { q: 'What problem does GraphQL mainly solve for mobile clients?', options: ['Over-fetching and under-fetching (many round trips per screen)', 'Encryption', 'Rate limiting', 'Database sharding'], answer: 0, explain: 'The client asks for exactly the fields it needs across related objects in one request.' },
+    { q: 'An LLM chat UI streams tokens from server to browser. Most natural transport?', options: ['SSE (text/event-stream)', 'WebSocket is required', 'Webhooks', 'gRPC bidirectional from the browser'], answer: 0, explain: 'One-way streaming over plain HTTP; this is what major LLM APIs use.' },
+    { q: 'Token bucket with capacity 10 and rate 2/s. A client idle for 30 s then sends 15 requests instantly. How many are allowed?', options: ['10', '15', '2', '60'], answer: 0, explain: 'Tokens are capped at capacity (10), regardless of how long the client was idle.' },
+    { q: 'Main weakness of the fixed window counter?', options: ['Up to 2× the limit can pass around a window boundary', 'It needs O(N) memory per client', 'It cannot be implemented in Redis', 'It never resets'], answer: 0, explain: 'N requests at the end of one window + N at the start of the next all pass.' },
+    { q: 'Sliding window counter: prev = 40, curr = 10, 25% into the current window, limit 50. Estimate and decision?', options: ['40×0.75 + 10 = 40 → allow', '40×0.25 + 10 = 20 → allow', '40 + 10 = 50 → reject', '10 → allow'], answer: 0, explain: 'The previous window still overlaps 75% of the sliding window, so weight 0.75.' },
+    { q: 'Which algorithm produces a perfectly smooth output rate to the backend?', options: ['Leaky bucket (queue)', 'Token bucket', 'Fixed window', 'No limiting'], answer: 0, explain: 'A leaky bucket queue drains at a constant rate; bursts wait in the queue (or are dropped when it is full).' },
+    { q: 'Why is OFFSET pagination problematic for a live feed?', options: ['Inserted rows shift positions so pages contain duplicates or skip items, and deep offsets are slow', 'OFFSET is not valid SQL', 'It requires WebSockets', 'It cannot be cached at all'], answer: 0, explain: 'Positions move when data changes; the DB also scans and discards offset rows.' },
+    { q: 'A cursor is built only from created_at, which is not unique. What can happen?', options: ['Rows sharing a timestamp at a page boundary are skipped or repeated', 'Nothing', 'The query fails to parse', 'Pages become random'], answer: 0, explain: 'Always include a unique tie-breaker (id) in the sort key and cursor.' },
+    { q: 'A retried POST arrives with the same Idempotency-Key but a different amount. Correct response?', options: ['422 (key reused with a different request)', 'Replay the old response', 'Process it as a new payment', '200 with empty body'], answer: 0, explain: 'Fingerprint mismatch means a client bug; never silently replay or charge.' },
+    { q: 'Rate-limit counters kept in local memory on each of 25 gateway nodes behind round robin. Effective limit for a 100 req/s key?', options: ['About 2,500 req/s', '100 req/s', '4 req/s', 'Unlimited only for GETs'], answer: 0, explain: 'Each node enforces 100/s independently → 25 × 100. Use shared state or split the limit.' },
+    { q: 'Which is NOT a typical API gateway responsibility?', options: ['Calculating discounts for a shopping cart', 'Authentication', 'Rate limiting', 'Routing to services'], answer: 0, explain: 'Business logic belongs in services; gateways do cross-cutting, generic concerns.' }
+  );
+
+  /* ================= INTERVIEW ================= */
+  interview.push(
+    { q: 'REST vs gRPC vs GraphQL — how do you choose?', level: 'B', a: `<p>By <b>audience and access pattern</b>. <b>REST</b> for public/partner APIs: universal tooling, HTTP caching, easy debugging. <b>gRPC</b> for internal service-to-service: binary protobuf, HTTP/2 multiplexing, generated typed clients, deadlines, streaming — lower latency and CPU. <b>GraphQL</b> when many clients need differently shaped data from many sources (mobile screens): one round trip, exact fields — at the cost of harder caching, query-cost protection and N+1 batching. Common answer: REST at the edge, gRPC inside, GraphQL/BFF for rich clients.</p>`, followUps: ['How do you cache GraphQL responses?', 'Why is load balancing gRPC harder than REST?'] },
+    { q: 'What does idempotent mean, and which HTTP methods are idempotent?', level: 'B', a: `<p>An operation is idempotent if doing it once or many times leaves the server in the same state. GET, HEAD, OPTIONS (also <i>safe</i> — no side effects), PUT (replace with the same value) and DELETE (still deleted) are idempotent; POST and generally PATCH are not. It matters because clients, proxies and gateways retry on timeouts; retrying a non-idempotent request can duplicate effects, so we add idempotency keys for POSTs that must be retry-safe.</p>`, followUps: ['Is DELETE returning 404 the second time still idempotent?', 'Can PATCH be idempotent?'] },
+    { q: 'WebSockets vs SSE vs long polling: when would you pick each?', level: 'I', a: `<p><b>SSE</b> when only the server pushes (notifications, live dashboards, LLM token streaming): plain HTTP, auto-reconnect with Last-Event-ID, works with HTTP/2 and existing auth. <b>WebSocket</b> when both sides send frequently with low latency (chat with typing, games, collaborative editing): full duplex but stateful connections, custom reconnect, harder scaling. <b>Long polling</b> as a fallback when streaming is blocked by proxies. <b>Short polling</b> when updates are rare and staleness is fine — especially with a CDN in front.</p>`, followUps: ['How do you scale to 1M WebSocket connections?', 'How do you resume an SSE stream without losing events?'] },
+    { q: 'What are the responsibilities of an API gateway, and what should NOT go there?', level: 'I', a: `<p>Cross-cutting edge concerns: TLS termination, WAF/IP filtering, authentication (JWT/API keys), coarse authorization (scopes), rate limiting and quotas, request validation and size limits, routing/load balancing/canaries, protocol translation (REST↔gRPC), response caching and compression, CORS, timeouts/circuit breaking, and logging/metrics/tracing. It should NOT contain business logic (pricing, eligibility rules), or it becomes a shared monolith every team must change, and it should not do unsafe retries of non-idempotent requests.</p>`, followUps: ['API gateway vs service mesh?', 'How do you avoid the gateway being a single point of failure?'] },
+    { q: 'Explain the token bucket algorithm and how you would pick its parameters.', level: 'I', a: `<p>Each key has a bucket with capacity <i>b</i> and refill rate <i>r</i>. On a request: refill lazily by (now − last) × r up to b, then take one token if available, otherwise reject with 429 and Retry-After = (1 − tokens)/r. <i>r</i> = the sustained rate you promise (e.g. 600/min → 10/s); <i>b</i> = the burst you tolerate (e.g. a page load firing 20 calls). State is two numbers per key, O(1) per request, and it naturally supports costs other than 1 (e.g. LLM tokens).</p>`, followUps: ['How is it different from a leaky bucket?', 'How do you implement it atomically in Redis?'] },
+    { q: 'Compare fixed window, sliding log and sliding window counter.', level: 'I', a: `<p><b>Fixed window</b>: one counter per key per window; cheap; but bursts of up to 2N across a boundary. <b>Sliding log</b>: store accepted timestamps, count those in (now − W, now]; exact but O(N) memory per key. <b>Sliding window counter</b>: keep previous and current window counts and estimate prev × (1 − elapsed/W) + curr; O(1) memory and very close to exact for real traffic (assumes the previous window was evenly spread). Choose fixed for calendar quotas, log for low-N precise limits like login attempts, sliding counter for high-scale API limits.</p>`, followUps: ['What is the worst-case error of the sliding counter?', 'Should rejected requests be logged in the sliding log?'] },
+    { q: 'Design a rate limiter that works across many gateway servers.', level: 'A', a: `<p>Shared state in a Redis cluster keyed by client (hash-sharded), with the algorithm (token bucket or sliding counter) executed in a Lua script so refill-check-decrement is atomic and uses Redis server time; TTLs clean idle keys. Cheap local pre-checks (per-IP abuse, per-node global shedding) run first. For very high QPS or hot keys, nodes lease batches of tokens and decide locally, syncing periodically — trading a bounded overshoot for latency. Decide failure mode explicitly: on Redis outage fall back to local limits (limit ÷ nodes) rather than rejecting everything. Return RateLimit headers and Retry-After.</p>`, followUps: ['How do you handle multi-region?', 'What happens to accuracy with token leasing?'] },
+    { q: 'Offset vs cursor pagination — trade-offs and implementation details?', level: 'I', a: `<p>Offset (<code>LIMIT/OFFSET</code>) is simple and supports page jumps but costs O(offset) per page and shows duplicates/skips when data changes. Cursor/keyset encodes the last item's sort key, queries <code>WHERE (k, id) &lt; (:k, :id) ORDER BY k DESC, id DESC LIMIT n</code> on a matching composite index: constant cost per page and stable under inserts, but no random access or cheap totals. Cursors should be opaque (base64, signed), include a unique tie-breaker, and APIs return <code>next_cursor</code>/<code>has_more</code>.</p>`, followUps: ['How do you paginate across shards?', 'How do you support "jump to date"?'] },
+    { q: 'How do idempotency keys work for a payment API? Walk through the edge cases.', level: 'A', a: `<p>The client generates a UUID per logical payment and sends it in <code>Idempotency-Key</code> on every retry. The server atomically inserts a key row (unique on account + key) with a request fingerprint and IN_PROGRESS; performs the charge; stores the response and marks COMPLETED — ideally in the same transaction as the business write. Replays with the same fingerprint return the stored response; a different fingerprint → 422; a concurrent duplicate while IN_PROGRESS → 409; stale locks are resolved by resuming from recorded recovery points or reconciling with the PSP (to which we pass our own idempotency key). Keys expire after ~24 h. 5xx responses are usually not cached so retries can actually retry.</p>`, followUps: ['Why must the key come from the client, not the server?', 'Where should the key be stored, Redis or the main DB?'] },
+    { q: 'Is exactly-once delivery possible? How do you get exactly-once effects?', level: 'A', a: `<p>Across an unreliable network you cannot guarantee exactly-once <i>delivery</i>: a sender can't distinguish a lost message from a lost ack, so it must either risk loss (at-most-once) or duplicates (at-least-once). Systems choose at-least-once and make processing <b>idempotent</b>: idempotency keys on APIs, dedupe tables keyed by event id updated in the same transaction as the side effect, transactional outbox for publishing, and naturally idempotent operations (upserts, set-to-value). The result is exactly-once <i>effects</i>. Kafka's "exactly-once" covers read-process-write within Kafka transactions, not arbitrary external side effects.</p>`, followUps: ['How does the transactional outbox work?', 'How long do you keep dedupe records?'] },
+    { q: 'How would you version a public API?', level: 'I', a: `<p>Prefer additive, backward-compatible changes (new optional fields, new endpoints) that need no version bump. For breaking changes: a major version in the URL (<code>/v2</code>) or date-based versions pinned per account with a header override (Stripe style), with internal transformers that render the latest model into older shapes. Publish changelogs, deprecation and <code>Sunset</code> headers, usage dashboards per version and migration guides; keep old versions for a promised period. For GraphQL: evolve the schema and deprecate fields; for protobuf: never reuse field numbers, reserve removed ones.</p>`, followUps: ['How do you know who still uses v1?', 'Is changing an enum value a breaking change?'] },
+    { q: 'What HTTP status codes and headers should a rate-limited response carry?', level: 'B', a: `<p><code>429 Too Many Requests</code> (not 503, which signals server trouble), a <code>Retry-After</code> header in seconds (or HTTP date), and rate-limit information headers — the IETF RateLimit fields (<code>RateLimit-Policy</code>, <code>RateLimit</code>) or the common <code>X-RateLimit-Limit</code>, <code>X-RateLimit-Remaining</code>, <code>X-RateLimit-Reset</code>. The body should be a structured error (e.g. problem+json) naming which limit was exceeded and linking docs. Clients should back off with jitter rather than retry immediately.</p>`, followUps: ['When would you return 503 instead?', 'Should quota exhaustion use 429 or 403?'] },
+    { q: 'How do LLMs and AI agents change API design and rate limiting?', level: 'E', a: `<p>Agents are now first-class API consumers: they call tools via JSON Schema/MCP (JSON-RPC), retry aggressively and repeat steps, so side-effecting endpoints must be idempotent and errors must be descriptive enough for a model to self-correct; pagination must be explicit (<code>has_more</code>) or agents answer from page one. Rate limiting shifts from requests to <b>cost units</b>: tokens per minute, concurrent streams, dollars per day — implemented as cost-weighted token buckets plus budgets, often in an AI gateway that also routes across model providers, caches, and filters prompts. Streaming responses (SSE) become the default, so long-lived connections and idle timeouts matter.</p>`, followUps: ['How would you limit by output tokens that are unknown up front?', 'How do you protect a tool API from prompt-injected agents?'] }
+  );
+
+  registerModule({
+    id: 'hld09',
+    title: 'APIs, Gateways & Rate Limiting',
+    intro: `<p>Every system design answer reaches the moment where you say <b>how clients talk to your system</b> and <b>how you protect it</b>. This module covers that whole front door: choosing between <b>REST, gRPC and GraphQL</b>, pushing real-time data with <b>polling, SSE and WebSockets</b>, what an <b>API gateway</b> does (auth, rate limiting, routing, observability), the four classic <b>rate-limiting algorithms</b> (token bucket, leaky bucket, fixed window, sliding window log/counter), <b>offset vs cursor pagination</b>, and <b>idempotency keys</b> that make retries safe for payments.</p>
+      <p>Each topic starts with an everyday analogy, then animated visualizers (watch requests pass through a gateway, tokens drain from a bucket, a sliding window move, pages shift under offset pagination and a lost payment reply get safely replayed), runnable Java/Python limiters, real HTTP/JSON exchanges and interview-style design problems. It also covers what changes now that LLM agents call your APIs and limits are counted in tokens and dollars.</p>`,
+    goals: [
+      'Pick REST, gRPC, GraphQL, SSE, WebSockets or webhooks for each boundary of a design and defend the trade-offs',
+      'List an API gateway\'s responsibilities in pipeline order and know what belongs in services, a BFF or a service mesh instead',
+      'Implement token bucket, leaky bucket, fixed window, sliding log and sliding window counter limiters, and run them atomically in Redis across many nodes',
+      'Design cursor-based pagination with opaque cursors and correct composite indexes, and explain when offset is still fine',
+      'Make any POST retry-safe with idempotency keys, including concurrent duplicates, crashes and downstream calls'
+    ],
+    prereqs: `<p>HLD 1–3 (client-server, scalability, estimation), HLD 4 (DNS, CDN, proxies and load balancing), HLD 6 (Caching, especially Redis) and ideally HLD 8 (Messaging). Basic HTTP (methods, status codes, headers) and reading simple Java or Python.</p>`,
+    hours: 12,
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
+  });
+})();
