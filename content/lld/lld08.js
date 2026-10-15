@@ -2708,7 +2708,7 @@ ${H.table(['From', 'Allowed to'], [['AVAILABLE', 'LOANED, ON_HOLD, UNDER_REPAIR,
         System.out.println(renew(late, LocalDate.of(2026, 10, 16), 0)); // overdue
     }
 }`,
-      complexity: `<p>O(1) per call.</p>`,
+      complexity: `<p>O(1) time and O(1) extra space per renewal call.</p>`,
       followUps: ['Let faculty renew 3 times (policy per member type).', 'Allow renewal while overdue if the fine is paid at the same time.', 'Return all failing reasons at once.']
     }
   });
@@ -2790,5 +2790,345 @@ ${H.table(['From', 'Allowed to'], [['AVAILABLE', 'LOANED, ON_HOLD, UNDER_REPAIR,
       followUps: ['Concurrent edits of the same expense: use a version number (optimistic locking).', 'Rebuild balances from the audit log after a crash.', 'Show "Ben edited Dinner: ₹900 → ₹600" in the activity feed.']
     }
   });
-  registerModule({ id: 'lld08', title: 'Case Studies: BookMyShow, Splitwise, Library Management', intro: '<p>tmp</p>', goals: [], prereqs: 'tmp', hours: 14, topics: topics, practice: practice, quiz: quiz, interview: interview });
+
+  /* ======================= PRACTICE: HARD ======================= */
+  practice.push({
+    title: 'Lock-Free Multi-Seat Booking with CAS and Roll-Back',
+    level: 'Hard', tags: ['bookmyshow', 'concurrency', 'cas', 'atomic'], companies: ['BookMyShow', 'Uber', 'Goldman Sachs'],
+    statement: `<p>Seats of one show are an <code>AtomicIntegerArray</code> (0 = free, otherwise the user id holding it). Implement <code>boolean book(int user, int[] seats)</code> that takes <b>all</b> seats or none, <b>without locks</b>, safe for many threads. If it fails part-way, it must undo exactly the seats it took. Prove with a stress test that no seat is ever owned by two users and no seat is left half-booked.</p>`,
+    constraints: `≤ 10<sup>4</sup> seats, ≤ 10 seats per request, 64 threads`,
+    example: `<p>seats 3,4 free. Thread A: book(7, [3,4]); thread B: book(9, [4,5]) at the same time. Possible outcome: A wins 3 and 4 → ${H.c('g', 'true')}; B CAS on 4 fails → ${H.c('r', 'false')}, B had nothing to undo (it tries 4 before 5 because seats are sorted). Seat 5 stays ${H.c('g', 'free')}.</p>`,
+    brute: { why: `<p>Naive: a plain <code>int[]</code> with "if all free then set all" — two threads both see "all free" and both write, so the later one silently overwrites the earlier one (double booking). It also has no memory visibility guarantees between threads.</p>`, code: `class NaiveSeats {
+    final int[] owner;
+    NaiveSeats(int n) { owner = new int[n]; }
+    boolean book(int user, int[] seats) {
+        for (int s : seats) if (owner[s] != 0) return false;   // CHECK
+        for (int s : seats) owner[s] = user;                    // ACT (another thread can be between!)
+        return true;
+    }
+}` },
+    mcq: { q: 'Thread A got seat 3 via CAS but then fails on seat 4. What must it do?', options: ['compareAndSet(3, A, 0) to undo its own grab only', 'set(3, 0) unconditionally', 'Retry forever until 4 is free', 'Leave seat 3 held'], answer: 0, explain: 'A conditional undo only releases the seat if A still owns it; an unconditional set could wipe out a seat someone else legitimately owns later.' },
+    hints: [`<p>Hint 1: <code>compareAndSet(i, 0, user)</code> is an atomic "take seat i only if free". It replaces the check-then-act pair with one hardware instruction.</p>`, `<p>Hint 2: sort the requested seats and drop duplicates; take them one by one; remember what you took. On the first failure, undo each taken seat with <code>compareAndSet(i, user, 0)</code> and return false.</p>`, `<p>Hint 3: stress test: N threads with a CountDownLatch start gun, random overlapping requests; afterwards check each seat's owner and that every successful request owns all its seats (no partial bookings remain).</p>`],
+    solution: {
+      approach: `<p>Optimistic, lock-free all-or-nothing using per-seat CAS plus compensation (roll-back). Sorting gives a consistent acquisition order, so two overlapping requests collide on their first common seat rather than each grabbing half.</p>`,
+      code: `class CasSeatMap {
+    private final AtomicIntegerArray owner;
+    CasSeatMap(int n) { owner = new AtomicIntegerArray(n); }
+
+    boolean book(int user, int[] seats) {
+        int[] order = Arrays.stream(seats).distinct().sorted().toArray();
+        int taken = 0;
+        for (int s : order) {
+            if (!owner.compareAndSet(s, 0, user)) {              // lost the race (or already sold)
+                for (int k = 0; k < taken; k++) owner.compareAndSet(order[k], user, 0);   // undo only ours
+                return false;
+            }
+            taken++;
+        }
+        return true;
+    }
+
+    int ownerOf(int seat) { return owner.get(seat); }
+
+    public static void main(String[] args) throws Exception {
+        CasSeatMap map = new CasSeatMap(20);
+        int threads = 16;
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        CountDownLatch go = new CountDownLatch(1);
+        List<Future<int[]>> wins = new ArrayList<>();
+        for (int t = 1; t <= threads; t++) {
+            final int user = t;
+            final int[] req = {user % 10, (user * 7) % 10, 10 + user % 5};
+            wins.add(pool.submit(() -> { go.await(); return map.book(user, req) ? req : null; }));
+        }
+        go.countDown();
+        int ok = 0;
+        for (int t = 0; t < threads; t++) {
+            int[] req = wins.get(t).get();
+            if (req == null) continue;
+            ok++;
+            for (int s : req) if (map.ownerOf(s) != t + 1) throw new AssertionError("partial or stolen booking");
+        }
+        pool.shutdown();
+        System.out.println(ok + " successful bookings, invariant holds");
+    }
+}`,
+      complexity: `<p>O(k log k) per request for k seats; no blocking. Under heavy contention requests fail fast instead of waiting, which matches the "seat taken, pick again" UX.</p>`,
+      followUps: ['Add hold expiry: store (user, expiresAt) in an AtomicReferenceArray of immutable records.', 'Compare throughput with a per-show ReentrantLock under 64 threads.', 'Why does sorting matter less for CAS than for locks (no deadlock possible) yet still help?']
+    }
+  });
+
+  practice.push({
+    title: 'Optimal Account Balancing (Exact Minimum Transfers)',
+    level: 'Hard', tags: ['splitwise', 'backtracking', 'bitmask dp'], companies: ['Google', 'Uber', 'Splitwise', 'Airbnb'],
+    statement: `<p>Given transactions <code>[from, to, amount]</code> (from gave money to to, so to now owes from — or think of it simply as a debt edge), return the <b>minimum number of transfers</b> needed to settle all debts. This is the exact version of "simplify debts" (LeetCode 465).</p>`,
+    constraints: `1 ≤ transactions ≤ 8, ids &lt; 12, amounts ≤ 100 (so ≤ 12 non-zero people)`,
+    example: `<p>[[0,1,10],[2,0,5]] → nets: 0: −10+5 = −5, 1: +10, 2: −5 → ${H.c('g', '2')} transfers.<br>[[0,1,10],[1,0,1],[1,2,5],[2,0,5]] → nets 0: −4, 1: +4, 2: 0 → ${H.c('g', '1')}.</p>`,
+    brute: { why: `<p>Naive: settle every transaction separately (m transfers), or use greedy max-debtor/max-creditor, which is fast but <b>not optimal</b>: nets +4, +3, −2, −2, −3 give 4 greedy transfers while 3 suffice.</p>`, code: `class GreedyOnly {
+    static int transfers(int[] net) {               // NOT always minimal
+        PriorityQueue<Integer> pos = new PriorityQueue<>(Comparator.reverseOrder());
+        PriorityQueue<Integer> neg = new PriorityQueue<>(Comparator.reverseOrder());
+        for (int v : net) { if (v > 0) pos.add(v); else if (v < 0) neg.add(-v); }
+        int count = 0;
+        while (!pos.isEmpty()) {
+            int p = pos.poll(), n = neg.poll(), m = Math.min(p, n);
+            count++;
+            if (p > m) pos.add(p - m);
+            if (n > m) neg.add(n - m);
+        }
+        return count;
+    }
+}` },
+    mcq: { q: 'The non-zero nets split into 2 disjoint groups that each sum to zero, with 7 people in total. What is the minimum number of transfers (assuming neither group can be split further)?', options: ['5', '6', '7', '2'], answer: 0, explain: 'A zero-sum group of k people needs k − 1 transfers: total = 7 − 2 = 5.' },
+    hints: [`<p>Hint 1: collapse to nets and drop zeros. Now the answer depends only on that small array.</p>`, `<p>Hint 2: DFS: take the first non-zero person s; try settling them completely with each later person i of the opposite sign (<code>d[i] += d[s]</code>), recurse on s+1, undo. Count 1 per step.</p>`, `<p>Hint 3: prune — skip zeros, only pair opposite signs, and if a pairing makes d[i] exactly 0 it is a perfect match: no other choice can beat it, so break. Alternative: bitmask DP over subsets (n − max zero-sum groups).</p>`],
+    solution: {
+      approach: `<p>Backtracking over "who absorbs the first remaining balance", with the perfect-match prune. Equivalent to maximising the number of zero-sum groups; exponential but tiny for n ≤ 12.</p>`,
+      code: `class OptimalBalancing {
+    static int minTransfers(int[][] transactions) {
+        Map<Integer, Integer> bal = new HashMap<>();
+        for (int[] t : transactions) {
+            bal.merge(t[0], -t[2], Integer::sum);
+            bal.merge(t[1], t[2], Integer::sum);
+        }
+        int[] d = bal.values().stream().filter(v -> v != 0).mapToInt(Integer::intValue).toArray();
+        return dfs(d, 0);
+    }
+
+    private static int dfs(int[] d, int s) {
+        while (s < d.length && d[s] == 0) s++;
+        if (s == d.length) return 0;
+        int best = Integer.MAX_VALUE;
+        for (int i = s + 1; i < d.length; i++) {
+            if ((d[i] > 0) == (d[s] > 0) || d[i] == 0) continue;     // need opposite signs
+            d[i] += d[s];                                            // s settles fully with i
+            best = Math.min(best, 1 + dfs(d, s + 1));
+            d[i] -= d[s];
+            if (d[i] + d[s] == 0) break;                             // perfect match: optimal, stop
+        }
+        return best;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(minTransfers(new int[][]{{0, 1, 10}, {2, 0, 5}}));                          // 2
+        System.out.println(minTransfers(new int[][]{{0, 1, 10}, {1, 0, 1}, {1, 2, 5}, {2, 0, 5}}));     // 1
+        // nets a:+4 b:+3 x:-2 y:-2 z:-3  (greedy gives 4)
+        System.out.println(minTransfers(new int[][]{{10, 0, 4}, {11, 1, 3}, {2, 10, 2}, {3, 10, 2}, {4, 11, 3}}));
+    }
+}`,
+      complexity: `<p>Worst case O(n!) without pruning; with pruning very fast for n ≤ 12. Bitmask DP alternative: O(2<sup>n</sup>·n) time, O(2<sup>n</sup>) space — predictable.</p>`,
+      followUps: ['Also return the actual list of transfers.', 'Switch to greedy automatically when n > 20.', 'Prove that a zero-sum group of k people never needs fewer than k − 1 transfers.']
+    }
+  });
+
+  practice.push({
+    title: 'Sold-Out Show Waitlist: Hand Released Seats to the Next User',
+    level: 'Hard', tags: ['bookmyshow', 'concurrency', 'observer', 'queue'], companies: ['BookMyShow', 'Ticketmaster', 'District'],
+    statement: `<p>A show is sold out. Users can join a <b>waitlist</b> asking for n seats. Whenever seats come back (a hold expires or a booking is cancelled), offer them to the waitlist in <b>strict FIFO</b> order: if the head wants n seats and at least n are free, hold n for them (10-minute hold) and notify them; repeat; stop when the head does not fit. Thread-safe. Notifications must <b>not</b> be sent while holding the lock.</p>`,
+    constraints: `≤ 10<sup>4</sup> seats, ≤ 10<sup>5</sup> waitlist entries, many threads`,
+    example: `<p>Free seats: none. Waitlist: Ravi(2), Meena(1), Zoya(3). Asha cancels 2 seats {B3, B4} → Ravi gets B3, B4 held → ${H.c('g', '"Ravi: 2 seats held"')}. Ben cancels {C1} → Meena gets C1. Dev cancels {D1, D2} → Zoya needs 3, only 2 free → ${H.c('y', 'nothing yet')} (strict FIFO, no skipping).</p>`,
+    brute: { why: `<p>Naive: release seats to the open seat map and let whoever refreshes first grab them — unfair to people who waited. Another naive version sends the SMS/push inside the synchronized block: one slow notification provider blocks every booking for the show.</p>`, code: `class NaiveRelease {
+    private final Set<String> free = new TreeSet<>();
+    synchronized void release(Collection<String> seats) {
+        free.addAll(seats);                                   // waitlist ignored: first refresher wins
+        sendPushToEveryone("seats available!");               // slow I/O while holding the lock
+    }
+    private void sendPushToEveryone(String msg) { System.out.println(msg); }
+}` },
+    mcq: { q: 'Why collect notifications inside the lock but send them after unlocking?', options: ['So slow I/O never blocks other threads booking the same show', 'Because notifications must be sent in random order', 'Locks cannot call methods', 'To make the notification faster'], answer: 0, explain: 'Keep critical sections tiny: decide who gets what under the lock, do I/O outside it.' },
+    hints: [`<p>Hint 1: state = <code>TreeSet&lt;String&gt; free</code>, <code>Deque&lt;Request(user, n)&gt; waitlist</code>, one <code>ReentrantLock</code> per show.</p>`, `<p>Hint 2: <code>release(seats)</code>: lock → add seats to free → while head exists and head.n ≤ free.size(): poll n seats (pollFirst), record a hold and a pending notification → unlock → send notifications.</p>`, `<p>Hint 3: <code>request(user, n)</code>: if the waitlist is empty and n seats are free, hold immediately; otherwise join the queue (do not let newcomers jump ahead of waiters). Holds that expire call <code>release</code> again — one code path.</p>`],
+    solution: {
+      approach: `<p>Per-show lock protecting free seats + FIFO waitlist; a single <code>drain()</code> step decides assignments; notifications are collected and published after unlocking (Observer).</p>`,
+      code: `class WaitlistedShow {
+    record Request(String user, int count) {}
+    interface Notifier { void seatsHeld(String user, List<String> seats); }
+
+    private final ReentrantLock lock = new ReentrantLock();
+    private final TreeSet<String> free = new TreeSet<>();
+    private final Deque<Request> waitlist = new ArrayDeque<>();
+    private final Map<String, List<String>> holds = new HashMap<>();
+    private final Notifier notifier;
+
+    WaitlistedShow(Collection<String> initiallyFree, Notifier notifier) { free.addAll(initiallyFree); this.notifier = notifier; }
+
+    /** Returns held seats, or an empty list if the user was put on the waitlist. */
+    List<String> request(String user, int count) {
+        lock.lock();
+        try {
+            if (waitlist.isEmpty() && free.size() >= count) return holdFor(user, count);
+            waitlist.addLast(new Request(user, count));
+            return List.of();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /** Called on cancellation or hold expiry. */
+    void release(Collection<String> seats) {
+        Map<String, List<String>> toNotify = new LinkedHashMap<>();
+        lock.lock();
+        try {
+            free.addAll(seats);
+            while (!waitlist.isEmpty() && waitlist.peekFirst().count() <= free.size()) {
+                Request r = waitlist.pollFirst();
+                toNotify.put(r.user(), holdFor(r.user(), r.count()));
+            }
+        } finally {
+            lock.unlock();
+        }
+        toNotify.forEach(notifier::seatsHeld);                 // I/O outside the lock
+    }
+
+    private List<String> holdFor(String user, int count) {    // caller holds the lock
+        List<String> got = new ArrayList<>();
+        for (int i = 0; i < count; i++) got.add(free.pollFirst());
+        holds.computeIfAbsent(user, k -> new ArrayList<>()).addAll(got);
+        return got;
+    }
+
+    public static void main(String[] args) {
+        WaitlistedShow show = new WaitlistedShow(List.of(), (u, s) -> System.out.println(u + ": " + s.size() + " seats held " + s));
+        show.request("ravi", 2);
+        show.request("meena", 1);
+        show.request("zoya", 3);
+        show.release(List.of("B3", "B4"));      // ravi
+        show.release(List.of("C1"));            // meena
+        show.release(List.of("D1", "D2"));      // zoya needs 3 -> waits
+        System.out.println(show.request("late", 1));   // [] - must queue behind zoya
+    }
+}`,
+      complexity: `<p>request O(n log S); release O((r + assigned) log S) for r released seats; lock held only for in-memory work.</p>`,
+      followUps: ['Allow "skip-ahead": serve later small requests when the head does not fit — discuss fairness vs utilisation.', 'Expire waitlist entries after 1 hour.', 'Prefer adjacent seats when assigning (combine with the best-block finder).']
+    }
+  });
+
+  practice.push({
+    title: 'All-or-Nothing Multi-Book Checkout Under Contention',
+    level: 'Hard', tags: ['library', 'concurrency', 'deadlock', 'locks'], companies: ['Microsoft', 'Oracle', 'Atlassian'],
+    statement: `<p>Self-service kiosks let a member check out several copies at once. Implement <code>checkoutAll(member, barcodes)</code>: either every copy becomes LOANED to the member (and the member stays within their limit) or nothing changes. Many kiosks run concurrently; two members may request overlapping copies in different orders. The design must be <b>deadlock-free</b>.</p>`,
+    constraints: `≤ 10<sup>5</sup> copies, ≤ 10 copies per request, limit 5 per member, many threads`,
+    example: `<p>Kiosk 1: Priya requests [BC-2, BC-1]; kiosk 2: Rahul requests [BC-1, BC-2] at the same instant. Locking in request order → Priya holds BC-2 waits for BC-1, Rahul holds BC-1 waits for BC-2 → ${H.c('r', 'deadlock')}. Sorted locking → both go for BC-1 first; one wins all, the other gets ${H.c('y', '"BC-1 not available"')} with nothing changed.</p>`,
+    brute: { why: `<p>Naive: lock copies in the order the member scanned them. Two kiosks with opposite scan orders deadlock forever. The other naive fix — one global lock for the whole library — is correct but turns every kiosk into a single queue.</p>`, code: `class ScanOrderLocks {
+    final Map<String, Object> locks = new ConcurrentHashMap<>();
+    void checkoutAll(List<String> barcodes, Runnable work) {
+        lockInOrder(barcodes, 0, work);                       // scan order: deadlock-prone
+    }
+    private void lockInOrder(List<String> b, int i, Runnable work) {
+        if (i == b.size()) { work.run(); return; }
+        synchronized (locks.computeIfAbsent(b.get(i), k -> new Object())) { lockInOrder(b, i + 1, work); }
+    }
+}` },
+    mcq: { q: 'Which single change removes the possibility of deadlock between kiosks?', options: ['Acquire the copy locks in one global order (sorted by barcode)', 'Use fair locks', 'Add Thread.sleep between locks', 'Make the fields volatile'], answer: 0, explain: 'Deadlock needs a cycle in the wait-for graph; a global acquisition order makes a cycle impossible.' },
+    hints: [`<p>Hint 1: one <code>ReentrantLock</code> per copy (created lazily with computeIfAbsent) plus one per member, since the member's loan count is also shared state.</p>`, `<p>Hint 2: global order: member lock first, then copy locks sorted by barcode. Inside: check member limit + every copy AVAILABLE, then mark all LOANED. Unlock in reverse order in finally.</p>`, `<p>Hint 3: deduplicate barcodes; validate unknown barcodes before locking; consider <code>tryLock(timeout)</code> so a stuck kiosk returns "busy, try again" instead of waiting forever.</p>`],
+    solution: {
+      approach: `<p>Fine-grained locks with a total order (member → copies sorted) to rule out deadlock, two-phase check-then-commit inside the locked region, reverse unlock in finally.</p>`,
+      code: `class KioskCheckout {
+    static final int LIMIT = 5;
+    private final Map<String, String> status = new ConcurrentHashMap<>();       // barcode -> AVAILABLE | LOANED:member
+    private final Map<String, Integer> loans = new ConcurrentHashMap<>();       // member -> count
+    private final Map<String, ReentrantLock> locks = new ConcurrentHashMap<>();
+
+    void addCopy(String barcode) { status.put(barcode, "AVAILABLE"); }
+    private ReentrantLock lockOf(String key) { return locks.computeIfAbsent(key, k -> new ReentrantLock()); }
+
+    String checkoutAll(String member, List<String> barcodes) {
+        List<String> sorted = new ArrayList<>(new TreeSet<>(barcodes));
+        for (String b : sorted) if (!status.containsKey(b)) return "unknown copy " + b;
+        List<ReentrantLock> held = new ArrayList<>();
+        try {
+            ReentrantLock m = lockOf("member:" + member);           // 1) member first
+            m.lock();
+            held.add(m);
+            for (String b : sorted) {                               // 2) copies in sorted order
+                ReentrantLock l = lockOf("copy:" + b);
+                l.lock();
+                held.add(l);
+            }
+            int current = loans.getOrDefault(member, 0);
+            if (current + sorted.size() > LIMIT) return "limit " + LIMIT + " exceeded";
+            for (String b : sorted) if (!status.get(b).equals("AVAILABLE")) return b + " not available";
+            for (String b : sorted) status.put(b, "LOANED:" + member);   // commit
+            loans.put(member, current + sorted.size());
+            return "OK " + sorted;
+        } finally {
+            for (int i = held.size() - 1; i >= 0; i--) held.get(i).unlock();
+        }
+    }
+
+    public static void main(String[] args) throws Exception {
+        KioskCheckout lib = new KioskCheckout();
+        for (int i = 1; i <= 4; i++) lib.addCopy("BC-" + i);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        CountDownLatch go = new CountDownLatch(1);
+        Future<String> a = pool.submit(() -> { go.await(); return lib.checkoutAll("priya", List.of("BC-2", "BC-1")); });
+        Future<String> b = pool.submit(() -> { go.await(); return lib.checkoutAll("rahul", List.of("BC-1", "BC-2")); });
+        go.countDown();
+        System.out.println(a.get() + " | " + b.get());          // exactly one OK, never a hang
+        pool.shutdown();
+    }
+}`,
+      complexity: `<p>O(k log k) per request for k copies; lock hold time is a few map operations. No deadlock (total lock order); independent requests run in parallel.</p>`,
+      followUps: ['Use tryLock with a timeout and return "busy" instead of blocking.', 'Do it in SQL: SELECT ... ORDER BY barcode FOR UPDATE.', 'Allow partial success when the member opts in ("give me whatever is available").']
+    }
+  });
+
+  /* ======================= QUIZ ======================= */
+  quiz.push(
+    { q: 'In BookMyShow, where should the AVAILABLE / HELD / BOOKED status live?', options: ['On ShowSeat (a seat inside one show)', 'On Seat (the physical chair)', 'On Screen', 'On Movie'], answer: 0, explain: 'The same chair is sold separately for every show, so status must be per (show, seat). A Seat-level status breaks as soon as a screen runs two shows.' },
+    { q: 'Two threads run <code>if (seat.status == AVAILABLE) seat.status = BOOKED;</code> at the same time. What is the bug called?', options: ['A check-then-act race condition', 'A deadlock', 'A memory leak', 'Starvation'], answer: 0, explain: 'Both can pass the check before either acts. The check and the write must be one atomic step (lock, CAS, or conditional UPDATE).' },
+    { q: 'Why is "one ReentrantLock per show" usually better than one synchronized method for the whole booking service?', options: ['Bookings for different shows no longer wait for each other', 'It is the only way to make code compile', 'It works across many servers automatically', 'It removes the need for hold expiry'], answer: 0, explain: 'Contention is per show; a global lock serialises unrelated shows. Neither version is distributed — that needs a DB or Redis.' },
+    { q: 'A seat hold expired 2 minutes ago and no sweeper has run yet. Ben asks for that seat. Correct behaviour?', options: ['Treat the expired hold as free and let Ben hold it (lazy expiry)', 'Reject Ben until the sweeper runs', 'Extend the old hold by 10 minutes', 'Throw an exception'], answer: 0, explain: 'Correctness must never depend on a background job; any reader treats holdUntil in the past as free.' },
+    { q: 'With per-seat locks, Asha locks B4 then B5 while Ben locks B5 then B4. How do you prevent the resulting deadlock?', options: ['Acquire seat locks in a global sorted order', 'Use volatile fields', 'Increase the thread pool size', 'Catch the exception and retry'], answer: 0, explain: 'A global acquisition order makes a cycle in the wait-for graph impossible.' },
+    { q: '₹100 split equally among 3 people in paise. Which result is correct?', options: ['3334, 3333, 3333', '3333, 3333, 3333', '3333.33 each (double)', '3334, 3334, 3333'], answer: 0, explain: 'Shares must sum to exactly 10000 paise; the 1 leftover paisa goes to one person.' },
+    { q: 'Asha pays ₹900 split equally among Asha, Ben and Chen. What does the balance sheet record?', options: ['Ben owes Asha 300 and Chen owes Asha 300', 'Everyone owes Asha 300 including Asha', 'Ben and Chen owe Asha 450 each', 'Asha owes Ben and Chen 300 each'], answer: 0, explain: 'Each participant other than the payer owes the payer their share; Asha\'s own share creates no debt.' },
+    { q: 'Greedy debt simplification (largest debtor pays largest creditor) on n people with non-zero balances uses at most how many transfers?', options: ['n − 1', 'n', 'n²', 'log n'], answer: 0, explain: 'Every step zeroes at least one person, and the final step zeroes two.' },
+    { q: 'Is greedy debt simplification always optimal?', options: ['No — e.g. nets +4, +3, −2, −2, −3 need 3 transfers but greedy makes 4', 'Yes, always', 'Only when amounts are even', 'Only for 3 people'], answer: 0, explain: 'The exact problem (max number of zero-sum groups) is NP-hard; greedy is a fast approximation.' },
+    { q: 'Why separate Book and BookItem in a library design?', options: ['A title has many physical copies, each with its own barcode, shelf, status and loan history', 'Java does not allow two fields in one class', 'To make search slower', 'Because ISBNs are not unique'], answer: 0, explain: 'A copy counter cannot tell you which copy is lost, damaged or with which member.' },
+    { q: 'A returned copy has three people on the title\'s waitlist. What happens to the copy?', options: ['It becomes ON_HOLD for the first waiter with a pickup deadline, and they are notified', 'It goes back on the open shelf', 'It is loaned automatically to all three', 'It stays LOANED to the previous member'], answer: 0, explain: 'FIFO reservation queue + hold with expiry + Observer notification.' },
+    { q: 'Adding "reference books cannot be borrowed" to a well-designed checkout should require…', options: ['A new LendingRule class registered in the rule list', 'Editing the if-else ladder in checkout()', 'Changing the Member class', 'A new database'], answer: 0, explain: 'Rules as objects keep checkout closed for modification and open for extension.' },
+    { q: 'A payment webhook arrives after the seat hold expired and another user now holds the seats. What should the system do?', options: ['Refund the first user and mark the booking EXPIRED', 'Take the seats back from the second user', 'Confirm both bookings', 'Ignore the webhook and keep the money'], answer: 0, explain: 'confirm() must verify the hold is still yours and alive; otherwise refund. Never steal a valid hold.' }
+  );
+
+  /* ======================= INTERVIEW Q&A ======================= */
+  interview.push(
+    { q: 'Walk me through how you would start a "Design BookMyShow" machine-coding round.', level: 'I', a: `<p>First 5 minutes: <b>clarify</b> scope out loud — search by city, list shows, seat map, hold seats for N minutes, pay, confirm, cancel; non-functional: never double-sell, holds expire, high contention at release. Then list <b>entities</b> and split catalogue (Movie, Theatre, Screen, Seat) from inventory (Show, ShowSeat, Booking). Draw relationships, then define service APIs (<code>start(user, show, seats)</code>, <code>pay(bookingId)</code>). Choose patterns: SeatLockProvider interface (DIP), PricingStrategy, PaymentGateway interface, Observer for notifications. Then write code for the hardest part — the concurrent hold/confirm — and finish with extensions (concerts, waitlist, distributed locking).</p>`, followUps: ['Which part would you code first if you only had 45 minutes?', 'What would you leave out of scope and why?'] },
+    { q: 'Why do you need a ShowSeat class? Isn\'t Seat enough?', level: 'B', a: `<p>A Seat is a physical chair and exists once. A screen runs several shows per day, and the same chair has a different status (and often price) in each show. If status lived on Seat, booking B4 for 6 pm would make B4 look booked for 9 am and 10 pm too. ShowSeat = (Show, Seat, status, price, heldBy, holdExpiresAt) is the unit of inventory we sell. In a database it is the <code>show_seat</code> table with primary key (show_id, seat_id) — and it is where all the concurrency control focuses.</p>`, followUps: ['How many ShowSeat rows does a year of shows create? Is that a problem?', 'Would you create them eagerly or lazily?'] },
+    { q: 'How do you guarantee that two users never book the same seat?', level: 'A', a: `<p>Name the invariant: for every (show, seat) at most one live owner. Make "check free + mark HELD" atomic. In memory: a per-show <code>ReentrantLock</code>, check <b>all</b> requested seats, then take all, unlock in <code>finally</code>; or per-seat CAS with roll-back. In a DB: conditional update <code>UPDATE show_seat SET status='HELD', held_by=? WHERE show_id=? AND seat_id IN (...) AND status='AVAILABLE'</code> and check the affected row count, or <code>SELECT ... FOR UPDATE</code> in sorted order. With many servers, Redis <code>SET NX PX</code> (Lua for multi-seat) with a fencing token. Plus a unique constraint on confirmed bookings as the last safety net. Payment happens <b>after</b> the hold, outside any lock.</p>`, followUps: ['What happens if the server pauses (GC) for 30 seconds after holding?', 'Optimistic or pessimistic for a blockbuster release?'] },
+    { q: 'How do seat holds expire? Do you need a background thread?', level: 'I', a: `<p>Store <code>holdUntil</code> on the seat. <b>Lazy expiry</b>: whenever anyone checks a seat, a HELD seat with holdUntil in the past counts as free — correctness needs no background thread. A <b>sweeper</b> (ScheduledExecutorService every ~30 s, or a DB job) only tidies the seat map so users see seats turn green sooner and can trigger waitlist offers. In Redis, the key TTL is the expiry. Always inject a <code>Clock</code> so tests can fast-forward time instead of sleeping.</p>`, followUps: ['What happens to a confirm() call that arrives 1 second after expiry?', 'How do you notify waitlisted users when a hold expires?'] },
+    { q: 'The payment succeeded but the hold expired before confirmation. What do you do?', level: 'A', a: `<p><code>confirm()</code> re-checks under the lock that every seat is still HELD by this user and not expired. If not, the booking moves to EXPIRED and we <b>refund</b> using the same idempotency key, then notify the user. We never "steal" seats back from someone who legitimately holds them now. To reduce this case: keep holds long enough for typical payments (8–10 min), extend the hold when the gateway reports "payment in progress", and make the webhook handler idempotent so retries cannot double-confirm or double-refund.</p>`, followUps: ['How does an idempotency key work with a payment gateway?', 'Could you confirm first and then charge?'] },
+    { q: 'Design the Splitwise data model. How do you store balances?', level: 'I', a: `<p>Entities: User, Group, Expense (immutable: payer, total in paise, type, list of Split(user, paise)), SplitStrategy (Equal/Exact/Percent/Shares) and a BalanceSheet per group. The expense list is the source of truth; balances are a derived, incrementally-updated view. I keep <b>pairwise</b> balances with a canonical key (min user, max user) and a signed amount — one number per pair, automatically netted — and derive <b>net</b> per user (Σ = 0) for simplification. Edits apply the old expense with sign −1 and the new with +1; deletes apply −1. Money is <code>long</code> paise with largest-remainder rounding.</p>`, followUps: ['How would you support multiple currencies?', 'How do you rebuild balances after a bug?'] },
+    { q: 'Why not use double for money? What do you use instead?', level: 'B', a: `<p>Binary floating point cannot represent most decimal fractions exactly: 0.1 + 0.2 = 0.30000000000000004, and ₹100/3 rounded three times gives ₹99.99. Errors accumulate and balances stop summing to zero. Use integer minor units (<code>long</code> paise) or <code>BigDecimal</code> with an explicit scale and rounding mode (never <code>new BigDecimal(0.1)</code>; use <code>BigDecimal.valueOf</code> or strings). When splitting, compute floor shares and distribute the leftover units deterministically so the parts add up exactly.</p>`, followUps: ['How do you split ₹100 in ratio 1:1:1 exactly?', 'Where would BigDecimal be preferable to long?'] },
+    { q: 'Explain debt simplification and its complexity.', level: 'A', a: `<p>First collapse all debts into one net balance per person — only nets matter. Greedy: max-heap of creditors, max-heap of debtors; the biggest debtor pays the biggest creditor min(c, d); push back remainders. Each step zeroes at least one person, so ≤ n − 1 transfers in O(n log n). It is not always optimal: the true minimum is n minus the maximum number of disjoint zero-sum subsets, an NP-hard partition-style problem, solvable exactly for small n with bitmask DP in O(2<sup>n</sup>·n) or pruned backtracking. Product-wise, simplification can make you pay a stranger, so it is a per-group toggle.</p>`, followUps: ['Give a counterexample where greedy is not optimal.', 'How would you restrict settlements to existing relationships?'] },
+    { q: 'How do you add a new split type, e.g. "split by items on the bill"?', level: 'I', a: `<p>Add <code>ItemSplit implements SplitStrategy</code>: it takes item prices and who shared each item, splits each item equally among its sharers (exact paise), adds tax/tip proportionally, then sums per user and verifies the total equals the bill. Register it in the strategy map (an <code>EnumMap&lt;SplitType, SplitStrategy&gt;</code> or a registry). ExpenseService, Expense and BalanceSheet do not change — that is the Open/Closed principle paying off. The validation logic lives inside the strategy, so each type owns its rules.</p>`, followUps: ['Where does tax and tip rounding go?', 'How would the API accept the extra input?'] },
+    { q: 'Library: walk me through checkout, including failures.', level: 'I', a: `<p>Look up member and copy (by barcode). Run ordered lending rules, each a small class: member active, below the type\'s loan limit, unpaid fines ≤ threshold, copy AVAILABLE or ON_HOLD for this member with a live hold, not a reference book. The first violation returns a reason and <b>nothing</b> changes. Only after all pass: copy → LOANED (via the state machine), create Loan(item, member, issuedOn, dueOn = today + loanDays), add to the member\'s active loans, and clear any hold. Concurrency: lock member then copy (fixed order) or a DB conditional update on the copy status.</p>`, followUps: ['How do you make it all-or-nothing for multiple books?', 'Where do holidays come into the due date?'] },
+    { q: 'How do reservations work when a book is returned?', level: 'I', a: `<p>Reservations are per <b>title</b> (ISBN), FIFO. On return, <code>copyFreed(copy)</code> checks the queue: if empty → AVAILABLE; else the copy goes ON_HOLD for the first waiter with <code>holdUntil = today + 3</code>, and HoldListeners (SMS, email, push) are notified — Observer, ideally via an event queue so slow providers never block the desk. If the hold expires, the same <code>copyFreed</code> path passes it to the next waiter. While anyone is waiting, renewals of that title are refused so the queue moves.</p>`, followUps: ['What if the first waiter has unpaid fines?', 'Should two returned copies serve two waiters at once?'] },
+    { q: 'How would you model fines so that rules can change easily?', level: 'I', a: `<p>A <code>FinePolicy</code> strategy: <code>long fine(long daysLate, Copy copy, Member m)</code>. Implementations: FlatFine, TieredCappedFine (₹2/day for 7 days, then ₹5/day, capped at the book price), LostBookFine. Variations stack as decorators (FacultyHalfPrice, HolidayWaiver). Late days are computed with <code>toEpochDay()</code> differences on <code>LocalDate</code>. Fines are recorded as ledger entries (charged, waived with reason, paid) rather than one mutable number, so audits and disputes are easy.</p>`, followUps: ['How would you compute late days skipping holidays?', 'Who may waive a fine and how is it recorded?'] },
+    { q: 'What design patterns appear across these three case studies?', level: 'A', a: `<p><b>Strategy</b>: pricing, split types, settlement algorithms, fine policies, refund policies. <b>Observer</b>: booking confirmations, waitlist offers, hold notifications. <b>State / transition tables</b>: booking status, seat status, copy status. <b>Facade</b>: BookingService, ExpenseService, LibraryService hiding orchestration. <b>Decorator</b>: stacking price or fine adjustments. <b>Chain of responsibility / specification</b>: lending rules. <b>Dependency Inversion</b>: SeatLockProvider, PaymentGateway, Clock behind interfaces for testability. <b>Repository</b>: persistence behind interfaces. The common thread: isolate what changes (rules, algorithms, infrastructure) behind interfaces.</p>`, followUps: ['Which pattern would you remove if you had only 45 minutes?', 'Where can over-engineering hurt in a machine-coding round?'] },
+    { q: 'How do you test a concurrent booking service?', level: 'E', a: `<p>(1) Deterministic unit tests with an injected <code>Clock</code> for hold, confirm, expiry, late webhook, release. (2) Stress tests: N threads released together by a <code>CountDownLatch</code> requesting overlapping seats, thousands of rounds, then assert invariants: no seat with two owners, every successful request owns all its seats, failed requests own none. (3) Interleaving tools like jcstress or controlled schedulers for specific races. (4) For DB-backed versions, run the same tests against a real database with parallel transactions. Invariant-based assertions catch bugs that example-based tests miss.</p>`, followUps: ['Why do stress tests sometimes pass even when code is racy?', 'How would you test the distributed (Redis) version?'] },
+    { q: 'How does your in-memory BookMyShow design change when you run 50 app servers?', level: 'E', a: `<p>JVM locks protect nothing across servers, so the seat state moves to a shared store. Option A: the database is the source of truth — conditional updates or <code>FOR UPDATE</code> in sorted seat order, a hold_expires_at column, unique constraint on confirmed seats. Option B: Redis per-seat keys with <code>SET NX PX</code> (Lua script for multi-seat atomicity) as the hold layer, DB for confirmed bookings, fencing tokens checked at confirm. Option C: partition shows so each show is owned by exactly one node (actor per show); then in-memory locking is valid again, with failover. Add a virtual waiting room for mega-releases, and idempotency keys end to end.</p>`, followUps: ['What is a fencing token and why is a Redis lock alone not enough?', 'How do you rebalance show ownership when a node dies?'] }
+  );
+
+  registerModule({
+    id: 'lld08',
+    title: 'Case Studies: BookMyShow, Splitwise, Library Management',
+    intro: `<p>This module is three full machine-coding case studies, the kind you get in a 60–90 minute LLD round at Flipkart, Uber, Atlassian, PhonePe or Amazon. For each one we go <b>requirements → entities → class diagram → core Java code → the hard part → extensions</b>:</p>
+<ul>
+<li><b>BookMyShow</b> — the Seat vs ShowSeat split, and <b>concurrent seat booking</b> done right: lock → hold (with expiry) → confirm, all-or-nothing, late payment callbacks, per-show locks, CAS and database versions.</li>
+<li><b>Splitwise</b> — split strategies (equal, exact, percent, shares) with exact paise, a self-netting balance sheet, and <b>debt simplification</b> (greedy with heaps, why it is not always optimal, and the exact bitmask DP).</li>
+<li><b>Library Management</b> — Book vs BookItem, catalog search, checkout/return/renew, lending rules as objects, fine strategies, reservations with pickup windows, and a copy state machine.</li>
+</ul>
+<p>Every topic has step-by-step visualizers (class diagrams growing box by box, a seat map where two users race, live balance tables, before/after debt graphs, the library checkout flow) and every design starts with the <b>naive version and exactly why it breaks</b>.</p>`,
+    goals: [
+      'Turn a vague product ("design BookMyShow / Splitwise / a library") into entities, relationships, services and a clean class diagram in under 15 minutes',
+      'Implement concurrency-safe, all-or-nothing seat holds with expiry, and explain lock vs CAS vs database vs distributed options',
+      'Split money exactly in paise, keep a self-netting balance sheet, and simplify debts with a greedy heap algorithm — and explain why the exact version is NP-hard',
+      'Model lending rules, fines, reservations and item states so that each new business rule is a new class, not another if-else',
+      'Use Strategy, Observer, Decorator, State tables and Dependency Inversion where they genuinely help, and defend each choice in an interview'
+    ],
+    prereqs: `LLD 1 (OOP Modelling &amp; UML), LLD 2 (SOLID), LLD 4–6 (Creational, Structural, Behavioral patterns) and LLD 7 (Interview Framework: Parking Lot &amp; Tic-Tac-Toe). Comfort with Java collections, <code>java.time</code>, and basic threads/locks (Java track concurrency module) helps for the booking topics.`,
+    hours: 16,
+    topics: topics,
+    practice: practice,
+    quiz: quiz,
+    interview: interview
+  });
 })();
