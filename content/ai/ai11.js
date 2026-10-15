@@ -425,3 +425,142 @@ if __name__ == "__main__":
   }]
 });
 
+topics.push({
+  title: 'Multi-Agent Orchestration: Orchestrator-Worker, Pipeline, Debate/Critic',
+  analogy: `<p>A <b>newsroom</b>. The editor (orchestrator) splits a big story into pieces, hands each to a reporter (worker), then merges and fact-checks the pieces. Or an <b>assembly line</b> (pipeline): writer, then editor, then proofreader. Or a <b>courtroom</b>: two lawyers argue, a judge decides (debate/critic).</p>`,
+  explain: `<p>One agent with 40 tools and a huge prompt gets confused. Splitting work among several focused agents can help. Three classic shapes:</p>
+  ${H.table(['Pattern', 'How it works', 'Good for', 'Watch out'], [['Orchestrator-worker', 'A lead agent plans, sends sub-tasks to workers (often in parallel), merges results', 'Research, broad search, big code changes', 'Orchestrator becomes a bottleneck; merge quality'], ['Pipeline (sequential)', 'Agent A output feeds B, then C', 'Draft - review - format; ETL-like flows', 'Errors pass downstream and compound'], ['Debate / critic', 'One agent proposes, another critiques or votes; loop until pass', 'Code review, fact-checking, safety checks', 'Cost x2-3; agents may agree wrongly']])}
+  <p>Each worker gets its own <b>context window</b>, its own small toolset and a narrow instruction. It returns a <b>short structured result</b>, not its whole transcript - this keeps the orchestrator's context clean.</p>
+  <p><b>Honest advice:</b> start with a single agent. Add more agents only when you hit a real wall (context too big, tasks truly parallel, need independent review). More agents = more cost, more latency, more ways to fail.</p>`,
+  clues: ['"breadth-first research across many sources"', '"split the task among specialised agents"', '"one agent writes, another reviews"', '"agents disagree / vote / consensus"', '"cost doubled after we added agents"', '"how do agents hand off context?"'],
+  code: [{ lang: 'python', title: 'Orchestrator dispatching subtasks to workers and merging', run: true, code: '"# Orchestrator-worker: split a research question, fan out to workers, merge.\nFACTS = {\n    \"pricing\": \"Plan A costs 10/mo, Plan B costs 25/mo.\",\n    \"limits\": \"Plan A allows 5 users, Plan B allows 50 users.\",\n    \"security\": \"Both plans support SSO; only Plan B has audit logs.\",\n}\n\ndef worker(name, subtask):\n    \"\"\"A worker owns ONE small job and returns a structured result.\"\"\"\n    text = FACTS.get(subtask)\n    if text is None:\n        return {\"worker\": name, \"subtask\": subtask, \"ok\": False, \"error\": \"no data\"}\n    return {\"worker\": name, \"subtask\": subtask, \"ok\": True, \"text\": text}\n\ndef plan(question):\n    # A real orchestrator asks an LLM to decompose; here it is a fixed split.\n    return [\"pricing\", \"limits\", \"security\", \"compliance\"]\n\ndef orchestrate(question):\n    subtasks = plan(question)\n    print(\"Plan:\", subtasks)\n    results = []\n    for i, st in enumerate(subtasks, 1):           # sequential here; real systems run in parallel\n        r = worker(\"worker-\" + str(i), st)\n        print(\" \", r[\"worker\"], \"->\", \"ok\" if r[\"ok\"] else \"FAILED (\" + r[\"error\"] + \")\")\n        results.append(r)\n    good = [r for r in results if r[\"ok\"]]\n    bad = [r[\"subtask\"] for r in results if not r[\"ok\"]]\n    report = \"\\n\".join(\"- \" + r[\"subtask\"] + \": \" + r[\"text\"] for r in good)\n    if bad:\n        report += \"\\n- MISSING: \" + \", \".join(bad) + \" (needs retry or human)\"\n    return report\n\nprint(orchestrate(\"Compare Plan A and Plan B\"))\n"' }],
+  viz: {
+    title: 'Orchestrator-worker fan-out and merge',
+    gen: function () {
+      var N = [bx('U', 'User', 6, 25, 10), bx('O', 'Orchestrator', 32, 25, 18), bx('W1', 'Worker: pricing', 70, 4, 22), bx('W2', 'Worker: limits', 70, 17, 22), bx('W3', 'Worker: security', 70, 30, 22), bx('W4', 'Worker: compliance', 70, 43, 22)];
+      var E = [['U', 'O', 'task'], ['O', 'W1', ''], ['O', 'W2', ''], ['O', 'W3', ''], ['O', 'W4', '']];
+      function f(narr, hl, ehl, tags) { return { narr: narr, parts: [gr('Orchestrator-worker', N, E, hl, ehl, tags, 50)] }; }
+      return [
+        f('The user asks: "Compare Plan A and Plan B."', { U: 'cur' }, { 'U-O': 'ok' }),
+        f('The orchestrator <b>decomposes</b> the task into 4 independent sub-tasks.', { O: 'cur' }, {}, { O: 'plan: 4 parts' }),
+        f('<b>Fan-out</b>: each sub-task goes to its own worker, with a narrow prompt and only the tools it needs. They run in parallel.', { W1: 'cur', W2: 'cur', W3: 'cur', W4: 'cur' }, { 'O-W1': 'ok', 'O-W2': 'ok', 'O-W3': 'ok', 'O-W4': 'ok' }),
+        f('Three workers return short structured results.', { W1: 'ok', W2: 'ok', W3: 'ok', W4: 'cur' }, { 'O-W1': 'ok', 'O-W2': 'ok', 'O-W3': 'ok' }, { W1: 'done', W2: 'done', W3: 'done' }),
+        f('Worker 4 <b>fails</b> ("no data"). The orchestrator sees it; it must not pretend the part exists.', { W1: 'ok', W2: 'ok', W3: 'ok', W4: 'bad' }, { 'O-W4': 'bad' }, { W4: 'FAILED' }),
+        f('Decision: retry once with a different source, else mark "MISSING" in the report for a human.', { O: 'cur', W4: 'bad' }, {}, { O: 'retry/escalate' }),
+        f('<b>Merge</b>: the orchestrator combines 3 good results, lists the gap honestly, and replies to the user.', { O: 'sel', U: 'ok' }, { 'U-O': 'ok' }, { O: 'merged' })
+      ];
+    }
+  },
+  examples: [
+    { title: 'Debate / critic loop', html: `<p>Writer produces code. Critic checks it against a checklist and returns <code>{pass: false, issues: [...]}</code>. Writer fixes. <b>Cap at 3 rounds</b>. If still failing, escalate to a human. Use a <i>different</i> prompt (or model) for the critic, otherwise it shares the writer's blind spots.</p>` },
+    { title: 'Pipeline with typed handoffs', html: `${H.table(['Stage', 'Input', 'Output (schema)'], [['Extractor', 'raw email', '{customer, issue, urgency}'], ['Classifier', 'extracted JSON', '{queue, priority}'], ['Drafter', 'JSON + KB hits', '{reply_text}']])}<p>Pass <b>structured</b> data between stages, and validate it at each hop, so one stage's mistake is caught before the next stage trusts it.</p>` },
+    { title: 'When one agent is enough', html: `<p>"Summarise this PDF" or "answer from the FAQ" are single-agent jobs. Multi-agent shines for <i>wide</i> tasks (check 30 websites) not <i>deep sequential</i> tasks where every step needs the previous step's full context.</p>` }
+  ],
+  deepDive: `<p><b>Cost and latency.</b> Multi-agent research systems have reported using many times more tokens than a single chat for the same question. Parallel workers cut wall-clock time but not cost. Budget per sub-agent and a global cap.</p>
+  <p><b>Context handoff.</b> Workers know nothing the orchestrator does not tell them. The #1 failure is a vague delegation ("look into pricing"). Good delegation includes: objective, output format, tools allowed, boundaries, and what "done" means. Return value should be a compact summary plus pointers (links, file paths), not a transcript dump.</p>
+  <p><b>Compounding errors.</b> If each step is 95% reliable, a 10-step chain is 0.95<sup>10</sup> = 60% reliable. Validation gates between stages and independent checks matter more than adding agents.</p>
+  <p><b>Shared state.</b> Two workers editing the same file or database row cause races. Give workers separate scopes or use a single-writer merge step. Message-passing with a shared blackboard (state store) is easier to debug than free-form agent chat.</p>
+  <p><b>Debate caveats.</b> Studies show debate can improve factuality on some tasks, but agents often converge on a confident wrong answer. A verifier that can <i>run</i> something (tests, a calculator, a search) beats a verifier that only talks.</p>`,
+  aiEra: `<p><b>What AI changes:</b> coding tools now spawn sub-agents for search, tests and review so the main context stays small; research products run dozens of parallel workers.</p>
+  <p><b>Use AI as a partner:</b> ask <code>Given this task, would a single agent suffice? If not, propose roles, the handoff schemas, and the merge rule</code> - then challenge its answer.</p>
+  <p><b>Where AI goes wrong:</b> over-engineering (seven agents where one would do), vague delegation, and merge steps that smooth over disagreements instead of reporting them.</p>
+  <p><b>What you must still own:</b> the decomposition, per-agent permissions, cost caps, and an end-to-end eval - you test the whole system, not only each agent.</p>`,
+  problems: [{
+    title: 'Fan Out a Research Task',
+    level: 'Medium', tags: ['multi-agent', 'orchestrator'], companies: ['Anthropic', 'Perplexity'],
+    statement: `<p>Users ask: "Which of 12 cloud regions is cheapest and safest for our EU workload?" Design an orchestrator-worker system. State the sub-tasks, what each worker receives and returns, how results are merged, and how failures are handled.</p>`,
+    constraints: `Answer within 60 seconds; a global budget of 200k tokens.`,
+    example: `<p>Orchestrator makes 4 criteria workers (price, latency, compliance, outage history) x regions batched into 4 groups = 12 tasks max.</p>`,
+    brute: { why: `<p>One agent visits all 12 regions sequentially: 12 x 20 s = 240 s, a huge transcript, and the later regions get less attention as context fills.</p>` },
+    mcq: { q: 'What should a worker return to the orchestrator?', options: ['A short structured result plus sources', 'Its entire transcript', 'Nothing, it edits shared memory', 'Only a yes/no'], answer: 0, explain: 'Compact structured results keep the orchestrator context small and mergeable.' },
+    hints: ['<p>Hint 1: which parts are independent of each other?</p>', '<p>Hint 2: define a result schema every worker must return.</p>', '<p>Hint 3: decide the merge rule, the retry rule, and what to say when a worker fails.</p>'],
+    solution: {
+      approach: `<p><b>Decompose</b> by criterion x region group: price, latency, compliance (GDPR, data residency), outage history. Run 4 workers in parallel, each handling all 12 regions for one criterion, so a worker uses one consistent source. <b>Delegation brief</b> to each: objective, the 12 region ids, allowed tools (web search, pricing API), a 15k-token budget, and a required JSON output <code>{criterion, rows:[{region, value, source_url, confidence}]}</code>. <b>Merge</b>: the orchestrator joins rows by region, scores with a transparent weighted formula (shown to the user), and flags any region missing a criterion. <b>Failures</b>: timeout 40 s per worker; one retry with a different source; if still missing, the final answer says "no compliance data for region X". <b>Guards</b>: global 200k token cap divided among workers, max 2 retries, and a citation check (every number needs a URL). Finally a critic checks that the recommended region really has all four criteria filled.</p>`,
+      complexity: `<p>Latency is about the slowest worker (about 25 s) plus merge, not the sum. Tokens are about 4 x 15k plus orchestrator overhead, under the cap.</p>`,
+      followUps: ['What if two workers return conflicting prices?', 'How would you evaluate this system?']
+    }
+  }]
+});
+
+topics.push({
+  title: 'Agent Failure Modes: Loops, Misuse, Hallucinated Args, Compounding Errors, Cost Blowups',
+  analogy: `<p>A <b>new intern with a company credit card and no manager</b>. Given a vague task, they may keep ordering the same thing, use the wrong form, invent an account number, make a small mistake in step 2 that ruins step 9, and run up a big bill. Guardrails are the manager, the spending limit and the checklist.</p>`,
+  explain: `<p>Agents fail in a few predictable ways. Learn them and you can design against each one:</p>
+  ${H.table(['Failure', 'What it looks like', 'Guard'], [['Infinite / repeating loop', 'Same search 12 times', 'Step budget + repeat detector'], ['Tool misuse', 'Calls delete when it meant read; wrong tool for the job', 'Least privilege, clear descriptions, approval for risky tools'], ['Hallucinated arguments', 'Invents order id "A999", passes "42.5" as a string, adds unknown field', 'Schema validation + existence checks + error feedback'], ['Compounding errors', 'Wrong fact in step 2 used by steps 3-9', 'Verify intermediate results, checkpoints, tests'], ['Cost blow-up', 'Quadratic transcript growth, 50 parallel workers', 'Token/cost caps, trimming, cheaper models'], ['Prompt injection', 'Web page tells agent to leak data', 'Untrusted-data handling, no exfil path'], ['Premature "done"', 'Claims success without checking', 'Verifiers, tests, evidence required']])}
+  <p><b>The core defence is a guard around the loop</b>, written in ordinary code, not a prompt. Prompts are requests; code is enforcement. A good guard checks every step: step count, total cost, repeated identical calls, wall-clock time, and argument validity.</p>
+  <p>When the guard fires, do not just crash. Return the partial work, say why you stopped, and <b>escalate to a human</b> with the transcript.</p>`,
+  clues: ['"the agent got stuck repeating"', '"it called a tool with a made-up id"', '"bill was 10x what we expected"', '"works in demo, fails 1 in 5 in production"', '"how do you keep an autonomous agent safe?"', '"each step 95% accurate over 10 steps"'],
+  code: [
+    { lang: 'python', title: 'Loop detector + step budget + cost cap', run: true, code: '"# Loop detector + step budget + cost cap for an agent loop.\nfrom collections import Counter\n\nclass Guard:\n    def __init__(self, max_steps=8, max_repeats=2, max_cost=0.05):\n        self.max_steps, self.max_repeats, self.max_cost = max_steps, max_repeats, max_cost\n        self.steps, self.cost, self.seen = 0, 0.0, Counter()\n\n    def check(self, tool, args, step_cost):\n        self.steps += 1\n        self.cost += step_cost\n        key = (tool, tuple(sorted(args.items())))   # same tool + same args = same call\n        self.seen[key] += 1\n        if self.steps > self.max_steps:\n            return \"STOP: step budget exceeded\"\n        if self.cost > self.max_cost:\n            return \"STOP: cost cap exceeded (%.3f)\" % self.cost\n        if self.seen[key] > self.max_repeats:\n            return \"STOP: loop detected, same call %d times\" % self.seen[key]\n        return \"ok\"\n\n# A confused agent keeps searching for the same thing.\nscript = [(\"search\", {\"q\": \"refund policy\"})] * 5 + [(\"finish\", {})]\ng = Guard()\nfor tool, args in script:\n    verdict = g.check(tool, args, 0.004)\n    print(\"step\", g.steps, tool, args, \"->\", verdict)\n    if verdict != \"ok\":\n        print(\"Agent halted. Escalate to a human with the transcript so far.\")\n        break\n"' },
+    { lang: 'python', title: 'Validating tool arguments before running (JSON-Schema subset)', run: true, code: '"# Validate model-produced tool arguments against a small JSON-Schema subset.\n# Supported: type, required, properties, enum, minimum, maximum, additionalProperties.\nTYPES = {\"string\": str, \"integer\": int, \"number\": (int, float),\n         \"boolean\": bool, \"object\": dict, \"array\": list}\n\ndef validate(value, schema, path=\"args\"):\n    errors = []\n    t = schema.get(\"type\")\n    if t:\n        ok = isinstance(value, TYPES[t])\n        if t in (\"integer\", \"number\") and isinstance(value, bool):\n            ok = False                              # True is not a number here\n        if not ok:\n            return [path + \": expected \" + t + \", got \" + type(value).__name__]\n    if \"enum\" in schema and value not in schema[\"enum\"]:\n        errors.append(path + \": \" + repr(value) + \" not in \" + str(schema[\"enum\"]))\n    if \"minimum\" in schema and value < schema[\"minimum\"]:\n        errors.append(path + \": \" + str(value) + \" < minimum \" + str(schema[\"minimum\"]))\n    if \"maximum\" in schema and value > schema[\"maximum\"]:\n        errors.append(path + \": \" + str(value) + \" > maximum \" + str(schema[\"maximum\"]))\n    if t == \"object\":\n        props = schema.get(\"properties\", {})\n        for key in schema.get(\"required\", []):\n            if key not in value:\n                errors.append(path + \".\" + key + \": required field missing\")\n        for key, sub in value.items():\n            if key in props:\n                errors += validate(sub, props[key], path + \".\" + key)\n            elif schema.get(\"additionalProperties\") is False:\n                errors.append(path + \".\" + key + \": unknown field (hallucinated?)\")\n    return errors\n\nREFUND = {\"type\": \"object\", \"required\": [\"order_id\", \"amount\", \"reason\"],\n          \"additionalProperties\": False,\n          \"properties\": {\n              \"order_id\": {\"type\": \"string\"},\n              \"amount\": {\"type\": \"number\", \"minimum\": 0.01, \"maximum\": 500},\n              \"reason\": {\"type\": \"string\", \"enum\": [\"damaged\", \"late\", \"wrong_item\"]}}}\n\ncalls = [\n    {\"order_id\": \"A17\", \"amount\": 42.5, \"reason\": \"damaged\"},\n    {\"order_id\": \"A17\", \"amount\": \"42.5\", \"reason\": \"damaged\"},\n    {\"order_id\": \"A17\", \"amount\": 9000, \"reason\": \"bored\"},\n    {\"amount\": 10, \"reason\": \"late\", \"user_id\": 7},\n]\nfor i, c in enumerate(calls, 1):\n    errs = validate(c, REFUND)\n    print(\"call\", i, \"->\", \"VALID\" if not errs else \"REJECTED\")\n    for e in errs:\n        print(\"    \", e)      # this text goes back to the model so it can retry\n"' }
+  ],
+  codeTitle: ['Guard around the loop', 'Argument validator'],
+  viz: {
+    title: 'A loop detected and stopped',
+    gen: function () {
+      var rows = [], frames = [];
+      var calls = ['search("refund policy")', 'search("refund policy")', 'search("refund policy")'];
+      function tb(hl, extra) { return { type: 'table', label: 'Tool call log', columns: ['step', 'call', 'repeats', 'cost', 'guard'], rows: rows.map(function (r) { return r.slice(); }), hl: hl || {} }; }
+      frames.push({ narr: 'Setup: <b>max_steps = 8, max_repeats = 2, cost cap = $0.05</b>. The agent starts searching.', parts: [tb(), { type: 'vars', label: 'Guard limits', vals: { max_steps: 8, max_repeats: 2, cost_cap: 0.05 } }] });
+      for (var i = 0; i < 3; i++) {
+        var over = i === 2;
+        rows.push([String(i + 1), calls[i], String(i + 1), '$' + ((i + 1) * 0.004).toFixed(3), over ? 'STOP: loop' : 'ok']);
+        var hl = {}; hl[i] = over ? 'bad' : 'ok';
+        frames.push({ narr: over ? 'Step 3: the <b>same call a third time</b>. Repeats (3) &gt; max_repeats (2). The guard <span class="c-r">halts the agent</span> long before step 8 or the cost cap.' : 'Step ' + (i + 1) + ': <code>' + calls[i] + '</code>. Seen ' + (i + 1) + ' time(s). Allowed.', parts: [tb(hl), { type: 'vars', label: 'Guard state', vals: { steps: i + 1, repeats: i + 1, cost: (i + 1) * 0.004 }, hl: over ? { repeats: 'bad' } : {} }] });
+      }
+      frames.push({ narr: 'The agent returns its partial work and <b>escalates to a human</b> with the log. Cost so far: $0.012 instead of an unbounded bill.', parts: [tb({ 2: 'bad' }), { type: 'text', html: '<b>Why it matters:</b> without the guard, the model would keep searching until the context window or budget ended.' }] });
+      return frames;
+    }
+  },
+  examples: [
+    { title: 'Hallucinated argument caught', html: `<p>The model calls <code>issue_refund(order_id="A999", amount="42.5", reason="bored")</code>. The validator returns: <i>amount: expected number, got str; reason: not in enum</i>. Sent back as an observation, the model usually corrects itself. A second layer then checks "does order A999 exist?" - schema validity is not truth.</p>` },
+    { title: 'Compounding error math', html: `${H.table(['Per-step accuracy', '5 steps', '10 steps', '20 steps'], [['99%', '95%', '90%', '82%'], ['95%', '77%', '60%', '36%'], ['90%', '59%', '35%', '12%']])}<p>Long chains need verification checkpoints, not just better prompts.</p>` },
+    { title: 'Cost blow-up checklist', html: `<ul><li>Set <code>max_tokens</code> per call and a total token budget per run.</li><li>Cap parallel workers (for example 5).</li><li>Truncate big tool outputs.</li><li>Send cheap tasks to small models.</li><li>Alert when a single run costs more than 10x the median.</li></ul>` }
+  ],
+  deepDive: `<p><b>Loop detection beyond exact repeats.</b> Models vary words slightly: <code>search("refund policy")</code>, then <code>search("refund policies")</code>. Detect <i>near-duplicates</i> (normalise text, compare embeddings, or hash tool + argument shape) and detect <b>no-progress</b>: the last N observations carried no new information. Also watch A-B-A-B ping-pong between two tools.</p>
+  <p><b>Defence in depth for arguments.</b> Layer 1: schema (syntax, types, enums). Layer 2: semantic checks (does the id exist? does this user own it?). Layer 3: policy (amount over 100 needs approval). Layer 4: sandboxing (the tool only has the permissions it needs). Never trust model-supplied identity: take user id from your session, not from tool arguments.</p>
+  <p><b>Error budgets for tool errors.</b> Retry transient errors (timeouts) with backoff; do not retry permanent ones (404). Tell the model which kind it was. Cap total errors per run.</p>
+  <p><b>Graceful degradation.</b> When stopped, return: what was done, what was not, why it stopped, and the exact next step. Idempotent tools plus checkpointed state let you resume instead of restarting.</p>
+  <p><b>Observability.</b> Trace every step (inputs, outputs, tokens, latency, cost) with a run id. Without traces you cannot find which of the 12 steps went wrong.</p>`,
+  aiEra: `<p><b>What AI changes:</b> models are far better at tool use than they were, but longer autonomous runs make rare failures more likely to show up; reliability engineering is now the main differentiator between demos and products.</p>
+  <p><b>Use AI as a partner:</b> feed it a failed trace and ask <code>Classify this failure (loop, misuse, hallucinated args, compounding error, cost) and propose a code-level guard</code>.</p>
+  <p><b>Where AI goes wrong:</b> it says "I have completed the task" when a tool actually errored, it retries the same broken call, or it quietly works around a permission block in a way you did not intend.</p>
+  <p><b>What you must still own:</b> the guard code, spending limits, a kill switch, and a post-mortem habit: every production failure becomes a test case.</p>`,
+  problems: [{
+    title: 'Add a Max-Steps and Loop Guard',
+    level: 'Medium', tags: ['guardrails', 'loop', 'budget'], companies: ['Anthropic', 'Databricks'],
+    statement: `<p>Your agent loop is <code>while True: step()</code>. Rewrite the design so it cannot run forever or overspend. Specify at least 4 stop conditions, what the loop returns when it stops, and how you detect near-duplicate calls.</p>`,
+    constraints: `Typical good run is 6 steps. Per-run budget is 50,000 tokens.`,
+    example: `<p>Run hits step 9 with the same <code>search</code> 4 times: ${H.c('r', 'STOP loop detected')} and returns partial results plus a handoff note.</p>`,
+    brute: { why: `<p><code>while True</code> with only "the model decides when to stop" - one confused run can loop until the account limit.</p>` },
+    mcq: { q: 'Which guard catches the agent calling search("refund policy") over and over?', options: ['Repeat detector on (tool, normalized args)', 'A longer system prompt', 'Higher temperature', 'Bigger context window'], answer: 0, explain: 'Counting identical calls is simple code-level enforcement.' },
+    hints: ['<p>Hint 1: loops need a hard upper bound that does not depend on the model.</p>', '<p>Hint 2: key a counter by tool name plus normalised arguments.</p>', '<p>Hint 3: define what to return on stop: partial result, reason, next-step suggestion, escalation.</p>'],
+    solution: {
+      approach: `<p>Replace the infinite loop with a bounded <code>for step in range(MAX_STEPS)</code> (MAX_STEPS = 12, twice the normal 6) and a guard object checked <b>before every tool run</b>. Stop conditions: (1) step budget, (2) token or cost budget (50,000 tokens), (3) wall-clock timeout (for example 120 s), (4) repeat detector: key = tool name + normalised arguments (lowercase, strip punctuation, sort keys); stop at the 3rd identical key, (5) no-progress: the last 3 observations hash to the same value, (6) error budget: 3 consecutive tool errors. On stop, return a structured result: <code>{status: "halted", reason, partial_answer, steps_taken, last_observation, suggested_next_step}</code> and notify a human queue. Log the trace with a run id so the failure becomes a regression test. For near-duplicates, compare normalised strings first, then optional embedding similarity above 0.95. Importantly this logic lives in code, not in the prompt, because prompts are only requests.</p>`,
+      code: { lang: 'python', code: `from collections import Counter
+
+class Guard:
+    def __init__(self, max_steps=12, max_repeat=2, max_tokens=50_000):
+        self.max_steps, self.max_repeat, self.max_tokens = max_steps, max_repeat, max_tokens
+        self.steps = self.tokens = 0
+        self.seen = Counter()
+
+    def check(self, tool, args, tokens_used):
+        self.steps += 1
+        self.tokens += tokens_used
+        key = (tool, tuple(sorted((k, str(v).lower().strip()) for k, v in args.items())))
+        self.seen[key] += 1
+        if self.steps > self.max_steps: return "step budget"
+        if self.tokens > self.max_tokens: return "token budget"
+        if self.seen[key] > self.max_repeat: return "loop"
+        return None  # keep going
+
+g = Guard()
+for i in range(5):
+    print(i + 1, g.check("search", {"q": "Refund Policy "}, 3000))` },
+      complexity: `<p>Guard check is O(1) per step; total work is bounded by MAX_STEPS.</p>`,
+      followUps: ['How do you avoid false positives when a repeat is legitimate (polling)?', 'Where would you store the halted run for resuming?']
+    }
+  }]
+});
+
