@@ -481,7 +481,7 @@ hosts = list(n.network.hosts())
 print("first", hosts[0], "last", hosts[-1], "count", len(hosts))
 print("130 in same subnet:", ipaddress.ip_address("192.168.10.130") in n.network)` },
       dry: { head: ['Step', 'Work', 'Result'], rows: [['1. Mask', '/26 = 24 + 2 bits -> 128+64 = 192', '255.255.255.192'], ['2. Block size', '256 - 192', '64'], ['3. Find block', 'multiples: 0, 64, 128, 192; 64 &le; 77 &lt; 128', 'start = 64'], ['4. Network', 'copy first 3 octets, last = 64', '192.168.10.64'], ['5. Broadcast', 'next start 128 - 1', '192.168.10.127'], ['6. Range', '64+1 .. 127-1', '.65 - .126'], ['7. Hosts', '2^(32-26) - 2', '62'], ['8. Check .130', '130 in 128..191', '<span class="c-r">different subnet</span>']] },
-      complexity: `<p>O(1) arithmetic.</p>`,
+      complexity: `<p>O(1) time and space: a handful of AND/OR operations.</p>`,
       followUps: ['What changes if it were /27?', 'What if the mask were 255.255.255.224?']
     }
   }]
@@ -1312,10 +1312,10 @@ practice.push({
   title: 'Usable hosts per prefix', level: 'Easy', tags: ['subnetting', 'hosts'], companies: ['TCS', 'Cisco'],
   statement: `<p>Give the number of usable hosts and the dotted mask for each prefix: /27, /28, /29, /30, /22, /16.</p>`,
   constraints: `Usable = total addresses minus network and broadcast.`,
-  example: `${H.table(['Prefix', 'Host bits', 'Usable'], [['/27', '5', '2<sup>5</sup> - 2 = 30'], ['/28', '4', '14']])}`,
+  example: `<p>For /27 and /28:</p>${H.table(['Prefix', 'Host bits', 'Usable'], [['/27', '5', '2<sup>5</sup> - 2 = 30'], ['/28', '4', '14']])}`,
   brute: { why: `<p>Writing out all addresses of each block is silly; you only need the number of host bits h = 32 - prefix, then 2<sup>h</sup> - 2.</p>` },
   mcq: { q: 'How many usable hosts does a /29 give?', options: ['8', '6', '4', '2'], answer: 1, explain: '2^3 = 8 addresses, minus network and broadcast = 6.' },
-  hints: [`<p>Host bits = 32 - prefix.</p>`, `<p>Total = 2<sup>host bits</sup>, usable = total - 2.</p>`, `<p>Mask: write the prefix as ones; the last non-255 octet = 256 - block size.</p>`],
+  hints: [`<p>Host bits are what is left over: host bits = 32 - prefix length.</p>`, `<p>Total addresses = 2<sup>host bits</sup>, and usable hosts = total - 2.</p>`, `<p>Mask: write the prefix as ones; the last non-255 octet = 256 - block size.</p>`],
   solution: {
     approach: `<p>/27: 5 host bits, 32 addresses, <b>30</b> usable, mask 255.255.255.224. /28: 16 addresses, <b>14</b>, mask .240. /29: 8, <b>6</b>, mask .248. /30: 4, <b>2</b>, mask .252. /22: 10 host bits = 1024, <b>1,022</b>, mask 255.255.252.0. /16: 16 host bits = 65,536, <b>65,534</b>, mask 255.255.0.0.</p>`,
     code: { lang: 'python', run: true, code: `for p in (27, 28, 29, 30, 22, 16):
@@ -1323,7 +1323,7 @@ practice.push({
     mask = (0xFFFFFFFF << h) & 0xFFFFFFFF
     dotted = ".".join(str((mask >> s) & 255) for s in (24, 16, 8, 0))
     print("/%d  mask %-15s total %-6d usable %d" % (p, dotted, 2 ** h, 2 ** h - 2))` },
-    complexity: `<p>O(1).</p>`, followUps: ['Why is /31 an exception?', 'Which prefix do you need for 1,000 hosts?']
+    complexity: `<p>O(1) time and O(1) space: a few arithmetic steps.</p>`, followUps: ['Why is /31 an exception?', 'Which prefix do you need for 1,000 hosts?']
   }
 });
 practice.push({
@@ -1336,20 +1336,20 @@ practice.push({
   hints: [`<p>Memorise: 10/8, 172.16/12 (16-31), 192.168/16.</p>`, `<p>Special: 127/8 loopback, 169.254/16 link-local, 100.64/10 CGNAT, 224/4 multicast.</p>`, `<p>Everything else that is not reserved is public.</p>`],
   solution: {
     approach: `<p>172.31.4.5 - private (second octet 31 is the last in 16-31). 172.32.0.1 - <b>public</b>. 192.169.0.1 - <b>public</b> (only 192.168 is private). 10.200.1.1 - private. 169.254.9.9 - link-local/APIPA (DHCP failed). 100.64.0.1 - CGNAT shared space (not private, not public-routable on the internet). 127.0.0.5 - loopback. 224.0.0.9 - multicast (RIPv2 uses 224.0.0.9).</p>`,
-    complexity: `<p>O(1) per address.</p>`, followUps: ['How would you check this in code?', 'Is 100.64.0.1 reachable from the internet?']
+    complexity: `<p>O(1) time per address: a handful of prefix comparisons.</p>`, followUps: ['How would you check this in code?', 'Is 100.64.0.1 reachable from the internet?']
   }
 });
 practice.push({
   title: 'Shorten these IPv6 addresses', level: 'Easy', tags: ['ipv6'], companies: ['Cisco', 'Juniper'],
   statement: `<p>Compress: (a) <code>2001:0db8:0000:0000:0000:0000:0000:0001</code>, (b) <code>fe80:0000:0000:0000:0a00:27ff:fe00:0001</code>, (c) <code>2001:0db8:0000:0001:0000:0000:0000:0001</code>, (d) <code>0000:0000:0000:0000:0000:0000:0000:0000</code>.</p>`,
   constraints: `RFC 5952: lowercase, longest zero run only, never for one group.`,
-  example: `<p>${H.c('g', '2001:db8::1')}</p>`,
+  example: `<p>Full form 2001:0db8:0:0:0:0:0:1 becomes ${H.c('g', '2001:db8::1')}</p>`,
   brute: { why: `<p>Using "::" for every zero run would make the address ambiguous. Only one is allowed.</p>` },
   mcq: { q: 'Which is the correct short form of 2001:0db8:0000:0001:0000:0000:0000:0001?', options: ['2001:db8::1:0:0:0:1', '2001:db8:0:1::1', '2001:db8::1::1', '2001:db8:0:1:0:0:0:1'], answer: 1, explain: 'The longest zero run (3 groups) becomes ::, the lone zero group stays as 0.' },
-  hints: [`<p>Strip leading zeros group by group.</p>`, `<p>Mark runs of 0 groups.</p>`, `<p>Replace the longest run (min 2) with ::; all-zero address is just ::.</p>`],
+  hints: [`<p>Strip the leading zeros from every group, one group at a time.</p>`, `<p>Mark every run of consecutive all-zero groups and measure its length.</p>`, `<p>Replace the longest run (min 2) with ::; all-zero address is just ::.</p>`],
   solution: {
     approach: `<p>(a) <b>2001:db8::1</b> (b) <b>fe80::a00:27ff:fe00:1</b> (c) <b>2001:db8:0:1::1</b> - runs are 1 group (3rd) and 3 groups (5th-7th); the longer wins and the single 0 stays (d) <b>::</b> (the unspecified address). Verify: <code>ipaddress.ip_address(x).compressed</code>.</p>`,
-    complexity: `<p>O(8).</p>`, followUps: ['Expand fe80::1', 'Which of these is link-local?']
+    complexity: `<p>O(8) = constant time: one pass over the 8 groups.</p>`, followUps: ['Expand fe80::1', 'Which of these is link-local?']
   }
 });
 practice.push({
@@ -1359,10 +1359,10 @@ practice.push({
   example: `<p>/20 = 255.255.<b>240</b>.0, block size 16 in the 3rd octet.</p>`,
   brute: { why: `<p>Counting ones across 32 written bits is slow. Count full octets (8 each), then the leftover bits give the octet value 128, 192, 224, 240, 248, 252, 254.</p>` },
   mcq: { q: '255.255.254.0 is...', options: ['/22', '/23', '/24', '/25'], answer: 1, explain: '16 + 7 ones = 23 (254 = 11111110).' },
-  hints: [`<p>Leftover bits 1..8 map to 128, 192, 224, 240, 248, 252, 254, 255.</p>`, `<p>/20: 2 full octets + 4 bits -> third octet 240.</p>`, `<p>Block size = 256 - mask octet.</p>`],
+  hints: [`<p>Leftover bits 1..8 map to 128, 192, 224, 240, 248, 252, 254, 255.</p>`, `<p>/20: 2 full octets + 4 bits -> third octet 240.</p>`, `<p>Block size = 256 - the mask value of the interesting octet.</p>`],
   solution: {
     approach: `<p>/20 = 255.255.240.0 (block 16). /13 = 255.248.0.0 (8 + 5 bits -> 248; block 8 in the 2nd octet). 255.255.255.248 = 24 + 5 = <b>/29</b> (block 8). 255.255.254.0 = 16 + 7 = <b>/23</b> (block 2 in the 3rd octet, so a /23 spans two consecutive third-octet values, e.g. 10.0.4.0 - 10.0.5.255).</p>`,
-    complexity: `<p>O(1).</p>`, followUps: ['What is the wildcard mask of /23?', 'Why must mask bits be contiguous?']
+    complexity: `<p>O(1) time and O(1) space: a few arithmetic steps.</p>`, followUps: ['What is the wildcard mask of /23?', 'Why must mask bits be contiguous?']
   }
 });
 practice.push({
@@ -1372,11 +1372,11 @@ practice.push({
   example: `${H.bits(99, 8, { label: '99', hl: { 7: 'm', 6: 'g', 5: 'g' } })}`,
   brute: { why: `<p>Converting the whole address to 32 bits works but only the last octet changes because the first three octets are masked by 255.</p>` },
   mcq: { q: 'What is 99 AND 240?', options: ['64', '96', '99', '112'], answer: 1, explain: '01100011 AND 11110000 = 01100000 = 96.' },
-  hints: [`<p>99 = 64 + 32 + 2 + 1 = 01100011.</p>`, `<p>240 = 11110000 keeps the top 4 bits.</p>`, `<p>Block size 16: 96 &le; 99 &lt; 112.</p>`],
+  hints: [`<p>Write the last octet in binary: 99 = 64 + 32 + 2 + 1 = 01100011.</p>`, `<p>The mask 240 = 11110000 keeps only the top 4 bits of that octet.</p>`, `<p>Shortcut: the block size is 16, and 96 &le; 99 &lt; 112 picks the block.</p>`],
   solution: {
     approach: `<p>99 = 01100011; 240 = 11110000; AND = 01100000 = 96. Network <b>172.20.10.96</b>, broadcast = 96 + 16 - 1 = <b>172.20.10.111</b>, first host .97, last host .110, 14 usable. Same answer by block method: multiples of 16 are 96, 112 - 99 sits in the 96 block.</p>`,
     dry: { head: ['bit weight', '128', '64', '32', '16', '8', '4', '2', '1'], rows: [['99', '0', '1', '1', '0', '0', '0', '1', '1'], ['mask 240', '1', '1', '1', '1', '0', '0', '0', '0'], ['AND', '0', '1', '1', '0', '0', '0', '0', '0']] },
-    complexity: `<p>O(1).</p>`, followUps: ['Do the same for /27', 'What is the next subnet\'s network address?']
+    complexity: `<p>O(1) time and O(1) space: a few arithmetic steps.</p>`, followUps: ['Do the same for /27', 'What is the next subnet\'s network address?']
   }
 });
 
@@ -1394,7 +1394,7 @@ practice.push({
   solution: {
     approach: `<p>(a) 5 and 7 both in the block 4-7 -> 10.0.4.0/22 -> <b>same</b>. (b) 7 is in 4-7 (10.0.4.0/22), 8 is in 8-11 (10.0.8.0/22) -> <b>different</b>, even though the addresses are adjacent. (c) 130 -> 128 block (192.168.1.128/25), 20 -> 0 block (192.168.1.0/25) -> <b>different</b>. Different subnets must go via the default gateway.</p>`,
     dry: { head: ['Host', 'block size', 'block start', 'network'], rows: [['10.0.5.200 /22', '4 (3rd octet)', '4', '10.0.4.0/22'], ['10.0.7.9 /22', '4', '4', '10.0.4.0/22'], ['10.0.7.255 /22', '4', '4', '10.0.4.0/22'], ['10.0.8.1 /22', '4', '8', '10.0.8.0/22']] },
-    complexity: `<p>O(1).</p>`, followUps: ['What mask would put (b) in one subnet?', 'Is 10.0.7.255/22 a broadcast?']
+    complexity: `<p>O(1) time and O(1) space: a few arithmetic steps.</p>`, followUps: ['What mask would put (b) in one subnet?', 'Is 10.0.7.255/22 a broadcast?']
   }
 });
 practice.push({
@@ -1404,10 +1404,10 @@ practice.push({
   example: `<p>Range 10.0.0.0 - 10.0.1.255: broadcast is ${H.c('r', '10.0.1.255')}.</p>`,
   brute: { why: `<p>Looking only at the last octet works for /24, then fails on every other prefix. Always derive the block from the mask.</p>` },
   mcq: { q: 'In 10.0.0.0/23, which is the broadcast address?', options: ['10.0.0.255', '10.0.1.0', '10.0.1.255', '10.0.0.254'], answer: 2, explain: 'The /23 spans two /24s; all host bits set means 10.0.1.255.' },
-  hints: [`<p>/23 means 9 host bits: last octet plus the lowest bit of the 3rd octet.</p>`, `<p>Block size in the 3rd octet is 2: 0-1.</p>`, `<p>Network = all host bits 0, broadcast = all host bits 1.</p>`],
+  hints: [`<p>/23 means 9 host bits: the whole last octet plus the lowest bit of the 3rd octet.</p>`, `<p>The block size in the 3rd octet is 2, so third octets 0 and 1 form one block.</p>`, `<p>Network = all host bits 0, broadcast = all host bits 1.</p>`],
   solution: {
     approach: `<p>/23 = 255.255.254.0, block size 2 in the 3rd octet; 0 sits in block 0-1, so network <b>10.0.0.0</b>, broadcast <b>10.0.1.255</b>, usable <b>10.0.0.1 - 10.0.1.254</b> (510 hosts). Hence <b>10.0.0.255 is a perfectly valid host</b> and so is 10.0.1.0. The junior is wrong. Only 10.0.0.0 (network) and 10.0.1.255 (broadcast) are reserved.</p>`,
-    complexity: `<p>O(1).</p>`, followUps: ['Which hosts in a /22 end in .0 or .255 but are valid?', 'How many usable hosts?']
+    complexity: `<p>O(1) time and O(1) space: a few arithmetic steps.</p>`, followUps: ['Which hosts in a /22 end in .0 or .255 but are valid?', 'How many usable hosts?']
   }
 });
 practice.push({
@@ -1430,14 +1430,14 @@ practice.push({
   constraints: `Subnets must be equal and contiguous.`,
   example: `<p>8 subnets = 3 borrowed bits -> /19.</p>`,
   brute: { why: `<p>Dividing 65,536 by 8 gives the size but not the boundaries; you also need the third-octet step.</p>` },
-  mcq: { q: 'How many bits must be borrowed to make at least 8 subnets?', options: ['2', '3', '4', '8'], answer: 1, explain: '2^3 = 8.' },
-  hints: [`<p>Subnets = 2<sup>borrowed bits</sup>.</p>`, `<p>New prefix = 16 + borrowed bits.</p>`, `<p>Block in the 3rd octet = 256 / 8 = 32.</p>`],
+  mcq: { q: 'How many bits must be borrowed to make at least 8 subnets?', options: ['2', '3', '4', '8'], answer: 1, explain: 'Each borrowed bit doubles the subnet count, and 2^3 = 8.' },
+  hints: [`<p>The number of subnets equals 2<sup>borrowed bits</sup>.</p>`, `<p>The new prefix is the old prefix plus the borrowed bits: 16 + 3.</p>`, `<p>The block step in the 3rd octet is 256 / 8 = 32.</p>`],
   solution: {
     approach: `<p>3 bits borrowed -> prefix <b>/19</b>, mask 255.255.<b>224</b>.0, block size 32 in the third octet, usable hosts per subnet 2<sup>13</sup> - 2 = <b>8,190</b>. Networks: 172.16.0.0, 172.16.32.0, 172.16.64.0, 172.16.96.0, 172.16.128.0, 172.16.160.0, 172.16.192.0, 172.16.224.0 (all /19).</p>`,
     code: { lang: 'python', run: true, code: `import ipaddress
 for s in ipaddress.ip_network("172.16.0.0/16").subnets(new_prefix=19):
     print(s, s.netmask, "usable", s.num_addresses - 2)` },
-    complexity: `<p>O(subnets).</p>`, followUps: ['How many subnets if we use /26 instead?', 'Which subnet holds 172.16.100.5?']
+    complexity: `<p>O(number of subnets) to list them; O(1) to compute each one.</p>`, followUps: ['How many subnets if we use /26 instead?', 'Which subnet holds 172.16.100.5?']
   }
 });
 practice.push({
@@ -1464,17 +1464,17 @@ for need in sorted([90, 45, 20, 10, 2, 2], reverse=True):
     cur += net.num_addresses
 print("free from", ipaddress.ip_address(cur))` },
     dry: { head: ['Need', 'Prefix', 'Network', 'Usable', 'Next cursor'], rows: [['90', '/25', '10.20.0.0', '126', '128'], ['45', '/26', '10.20.0.128', '62', '192'], ['20', '/27', '10.20.0.192', '30', '224'], ['10', '/28', '10.20.0.224', '14', '240'], ['2', '/30', '10.20.0.240', '2', '244'], ['2', '/30', '10.20.0.244', '2', '248']] },
-    complexity: `<p>O(n log n).</p>`, followUps: ['Where would a new 5-host VLAN go?', 'Could the links be /31?']
+    complexity: `<p>O(n log n) for sorting the needs, then O(n) to place them.</p>`, followUps: ['Where would a new 5-host VLAN go?', 'Could the links be /31?']
   }
 });
 practice.push({
   title: 'Route summarization: when can you not aggregate?', level: 'Medium', tags: ['summarization', 'supernet'], companies: ['Cisco', 'Juniper'],
   statement: `<p>Summarize (a) 192.168.4.0/24 through 192.168.7.0/24 into one route. (b) Can 192.168.2.0/24 through 192.168.5.0/24 become a single prefix? If not, what is the smallest set of routes?</p>`,
   constraints: `Exact coverage, no extra addresses.`,
-  example: `<p>(a) ${H.c('g', '192.168.4.0/22')}</p>`,
+  example: `<p>Four /24s from 4 to 7 collapse into ${H.c('g', '192.168.4.0/22')}</p>`,
   brute: { why: `<p>Taking the first and last network and using the "common prefix" greedily could overshoot: summarizing 2..5 with a /21 would also cover 0, 1, 6 and 7, which are not yours (black-holing traffic or leaking routes).</p>` },
   mcq: { q: 'A single /22 can start only at third-octet values that are...', options: ['any number', 'multiples of 2', 'multiples of 4', 'multiples of 8'], answer: 2, explain: 'A /22 spans 4 third-octet values and must be aligned.' },
-  hints: [`<p>4 blocks = 2 borrowed bits -> /22 needs start divisible by 4.</p>`, `<p>4 is divisible by 4; 2 is not.</p>`, `<p>Split 2..5 into aligned pairs: 2-3 and 4-5.</p>`],
+  hints: [`<p>4 blocks = 2 borrowed bits -> /22 needs start divisible by 4.</p>`, `<p>The start value 4 is divisible by 4, but the start value 2 is not.</p>`, `<p>Split 2..5 into aligned pairs: 2-3 and 4-5.</p>`],
   solution: {
     approach: `<p>(a) third octets 4,5,6,7: aligned (4 divisible by 4) -> <b>192.168.4.0/22</b>. (b) 2,3,4,5: start 2 is not divisible by 4, so no single /22. Smallest exact cover is two /23s: <b>192.168.2.0/23</b> (2-3) and <b>192.168.4.0/23</b> (4-5). A single bigger summary like 192.168.0.0/21 would wrongly include .0, .1, .6, .7.</p>`,
     code: { lang: 'python', run: true, code: `import ipaddress
@@ -1482,7 +1482,7 @@ a = [ipaddress.ip_network("192.168.%d.0/24" % i) for i in range(4, 8)]
 b = [ipaddress.ip_network("192.168.%d.0/24" % i) for i in range(2, 6)]
 print(list(ipaddress.collapse_addresses(a)))
 print(list(ipaddress.collapse_addresses(b)))` },
-    complexity: `<p>O(n).</p>`, followUps: ['What is the null-route trick?', 'Why do ISPs love summarization?']
+    complexity: `<p>O(n) to scan and merge n adjacent prefixes.</p>`, followUps: ['What is the null-route trick?', 'Why do ISPs love summarization?']
   }
 });
 practice.push({
@@ -1492,10 +1492,10 @@ practice.push({
   example: `<p>/48 to /64 = 16 bits = ${H.c('g', '65,536')}.</p>`,
   brute: { why: `<p>Trying to count addresses (2<sup>80</sup>) is pointless; count how many prefix bits are added.</p>` },
   mcq: { q: 'Why is a LAN almost always a /64?', options: ['Because /64 saves addresses', 'SLAAC needs a 64-bit interface identifier', 'IPv6 masks are fixed', 'ARP needs it'], answer: 1, explain: 'SLAAC builds the host part from 64 bits, so smaller LAN prefixes break auto-configuration.' },
-  hints: [`<p>Extra bits = new prefix - old prefix.</p>`, `<p>Count = 2<sup>extra bits</sup>.</p>`, `<p>The 4th group (16 bits) after /48 is the subnet ID.</p>`],
+  hints: [`<p>Extra bits = the new prefix length minus the old prefix length.</p>`, `<p>The count of sub-prefixes is 2<sup>extra bits</sup>, not the address count.</p>`, `<p>The 4th group (16 bits) after /48 is the subnet ID.</p>`],
   solution: {
     approach: `<p>(a) 64 - 48 = 16 bits -> <b>65,536</b>. (b) 48 - 32 = 16 -> <b>65,536</b> sites. (c) 64 - 56 = 8 -> <b>256</b> LANs. (d) the 4th group is the subnet ID: first <b>2001:db8:abcd:0::/64</b> = 2001:db8:abcd::/64, second <b>2001:db8:abcd:1::/64</b>.</p>`,
-    complexity: `<p>O(1).</p>`, followUps: ['How big is the host space in one /64?', 'Why is NAT unnecessary?']
+    complexity: `<p>O(1) time and O(1) space: a few arithmetic steps.</p>`, followUps: ['How big is the host space in one /64?', 'Why is NAT unnecessary?']
   }
 });
 practice.push({
