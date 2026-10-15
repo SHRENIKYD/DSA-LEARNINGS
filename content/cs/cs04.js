@@ -329,7 +329,7 @@
     var rule = mode === 'naive' ? 'everyone grabs the LEFT fork first, then the right' : mode === 'ordered' ? 'everyone grabs the LOWER-numbered fork first' : 'even philosophers go left-then-right, odd ones right-then-left';
     frames.push({ narr: 'Five philosophers, five forks. Each needs <b>two</b> forks (his own and his right neighbour\'s) to eat. Rule here: <b>' + rule + '</b>. Arrows: <code>F→P held</code>, <code>P→F wants</code>.', parts: snap() });
     var dead = false;
-    for (var round = 0; round < 14 && !dead; round++) {
+    for (var round = 0; round < 40 && !dead; round++) {
       var changed = false;
       for (i = 0; i < n; i++) {
         if (status[i] === 'done') continue;
