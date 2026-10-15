@@ -564,3 +564,162 @@ for i in range(5):
   }]
 });
 
+topics.push({
+  title: 'Evaluating Agents: Task Success, Trajectory, Cost and Latency',
+  analogy: `<p>Judging a <b>taxi driver</b>. Did you arrive (task success)? Did they take a sensible route and obey the rules (trajectory)? How much did it cost and how long did it take (cost, latency)? A driver who arrives by running red lights, or takes 3 hours, is not a good driver even if the outcome was "arrived".</p>`,
+  explain: `<p>Testing a normal function is easy: same input, same output. Agents are <b>non-deterministic</b> and take many steps, so you measure several things:</p>
+  ${H.table(['Metric', 'Question', 'How to measure'], [['Task success', 'Did it reach the right end state?', 'Check the final answer or the system state (DB row exists, tests pass)'], ['Trajectory quality', 'Were the steps sensible?', 'Compare tool calls to a reference path; check no forbidden calls; count wasted steps'], ['Tool-call accuracy', 'Right tool, valid args?', 'Schema pass-rate, correct tool chosen'], ['Cost', 'Tokens and dollars per task', 'Sum usage from the trace'], ['Latency', 'Time to finish', 'p50 and p95 per task'], ['Safety', 'Did it break a rule?', 'Count policy violations, unapproved side effects'], ['Reliability', 'Same task N times', 'pass@k, success rate over repeated runs']])}
+  <p>A good <b>agent eval</b> has: (1) a set of realistic tasks with a clear "done" check, (2) a way to run each task in a clean sandbox, (3) graders - code checks first, an LLM judge only for fuzzy parts, (4) repeated runs because results vary, (5) a table of success, cost and latency you compare before and after each change.</p>
+  <p><b>Prefer outcome checks over text matching.</b> "Is the refund row in the database with the right amount?" beats "does the answer sound right?".</p>`,
+  clues: ['"how do you know the agent is better after your change?"', '"it passed yesterday and failed today" - non-determinism', '"grade the steps, not just the final answer"', '"LLM-as-judge"', '"p95 latency and cost per task"', '"regression suite for prompts and tools"'],
+  code: [{ lang: 'python', title: 'A tiny agent eval harness (success, trajectory rule, cost, latency)', run: true, code: `# Each case: a recorded run (trajectory) from an agent plus the expected outcome.
+runs = [
+    {"task": "refund A17", "calls": ["get_order", "issue_refund"], "db_refunded": True,  "tokens": 3200, "secs": 6.1},
+    {"task": "refund A18", "calls": ["get_order", "get_order", "get_order", "issue_refund"], "db_refunded": True, "tokens": 9100, "secs": 14.9},
+    {"task": "refund A19", "calls": ["issue_refund"], "db_refunded": True, "tokens": 1500, "secs": 3.0},
+    {"task": "refund A20", "calls": ["get_order", "search", "search", "search"], "db_refunded": False, "tokens": 12500, "secs": 22.4},
+]
+PRICE_PER_1K = 0.01          # dollars, made-up flat rate
+
+def grade(run):
+    success = run["db_refunded"]                              # outcome check on system state
+    must_look_first = run["calls"][0] == "get_order"         # trajectory rule: verify before refund
+    wasted = len(run["calls"]) - len(set(run["calls"]))       # repeated tools = wasted steps
+    cost = run["tokens"] / 1000 * PRICE_PER_1K
+    return success, must_look_first, wasted, cost
+
+ok = 0
+print("task        success  looked-first  wasted  cost    secs")
+for r in runs:
+    s, lf, w, c = grade(r)
+    ok += s
+    print("%-11s %-8s %-13s %-7d $%.3f  %.1f" % (r["task"], s, lf, w, c, r["secs"]))
+secs = sorted(r["secs"] for r in runs)
+print("success rate:", ok, "/", len(runs))
+print("avg cost: $%.3f   worst latency: %.1fs" % (sum(grade(r)[3] for r in runs) / len(runs), secs[-1]))` }],
+  viz: {
+    title: 'Scoring four agent runs',
+    gen: function () {
+      var runs = [['refund A17', 'yes', 'yes', '0', '$0.032', '6.1s'], ['refund A18', 'yes', 'yes', '2', '$0.091', '14.9s'], ['refund A19', 'yes', '<b>no</b> (skipped lookup)', '0', '$0.015', '3.0s'], ['refund A20', 'no', 'yes', '2', '$0.125', '22.4s']];
+      var cols = ['task', 'success', 'looked up first', 'wasted calls', 'cost', 'latency'];
+      var frames = [];
+      function t(n, hl) { return { type: 'table', label: 'Eval results', columns: cols, rows: runs.slice(0, n), hl: hl || {} }; }
+      frames.push({ narr: 'Four recorded runs of the refund agent. For each we ask three questions: <b>did it succeed, was the path sane, what did it cost</b>.', parts: [t(0)] });
+      frames.push({ narr: 'Run 1: clean. Success, looked up the order first, no waste. A model answer.', parts: [t(1, { 0: 'ok' })] });
+      frames.push({ narr: 'Run 2: succeeded but called <code>get_order</code> three times. Outcome fine, <b>trajectory wasteful</b>: 3x the cost.', parts: [t(2, { 1: 'cur' })] });
+      frames.push({ narr: 'Run 3: the refund exists and it was cheap, but it <b>skipped verification</b>. A success-only metric would call this perfect. Trajectory eval catches the risk.', parts: [t(3, { 2: 'bad' })] });
+      frames.push({ narr: 'Run 4: failed and was the most expensive and slowest: it searched in circles. Add it to the regression set.', parts: [t(4, { 3: 'bad' })] });
+      frames.push({ narr: '<b>Summary</b>: success 3/4, but only 2/4 are truly clean. Report success rate, safe-path rate, avg cost, p95 latency together and watch them over time.', parts: [t(4, { 0: 'ok', 1: 'cur', 2: 'bad', 3: 'bad' }), { type: 'vars', label: 'Scoreboard', vals: { success: '3/4', clean_runs: '1/4', avg_cost: '$0.066', p95_latency: '22.4s' }, hl: { clean_runs: 'bad' } }] });
+      return frames;
+    }
+  },
+  examples: [
+    { title: 'Outcome check vs text check', html: `${H.table(['Grader', 'Example', 'Reliability'], [['State check (code)', 'refunds table has A17 = 42.50', 'High'], ['Exact/regex match', 'answer contains "refunded"', 'Medium, easy to fool'], ['LLM judge', '"Is the tone polite and accurate?"', 'Useful, but calibrate vs humans']])}` },
+    { title: 'pass@k and pass^k', html: `<p>Run each task 5 times. <b>pass@5</b> = at least one run succeeded (good for "can it ever do it?"). <b>pass^5</b> = all 5 succeeded (what users feel when they need it to work every time). If single-run success is 80%, pass^5 is only 0.8<sup>5</sup> = 33%.</p>` },
+    { title: 'Building the first test set', html: `<p>Start with 20 real tasks from logs: 10 typical, 5 edge cases, 3 adversarial (prompt injection), 2 "should refuse". Add every production failure afterwards. A small, honest set beats a big, fake one.</p>` }
+  ],
+  deepDive: `<p><b>Trajectory evaluation methods.</b> (1) <i>Exact match</i> to a golden tool sequence - strict, brittle. (2) <i>In-order match</i> - required calls appear in order, extras allowed. (3) <i>Any-order match</i> - same set of calls. (4) <i>Rule checks</i> - "never refund before lookup", "never call delete". (5) <i>LLM judge</i> with a rubric reading the trace. Rule checks are the sweet spot for safety; judges for quality.</p>
+  <p><b>LLM-as-judge pitfalls.</b> Position bias, verbosity bias, self-preference (a model favours its own writing). Mitigate with pairwise comparisons in both orders, short rubrics, structured scores, and a human-labelled calibration set.</p>
+  <p><b>Environments.</b> Reliable agent evals need <b>resettable sandboxes</b> (fake shop, test repo) so runs are comparable and side effects are safe. Mock external APIs; record real responses and replay them.</p>
+  <p><b>Statistics.</b> With 20 tasks, a change from 70% to 75% is noise (one task). Use more tasks, repeat runs, and report confidence intervals before celebrating.</p>
+  <p><b>Online evals.</b> After launch, sample production traces, track thumbs-down, escalation rate and cost per resolved ticket. Offline evals gate releases; online metrics find drift.</p>`,
+  aiEra: `<p><b>What AI changes:</b> agent eval is now a job title. Public benchmarks (software-engineering tasks, web navigation, tool-use suites) exist, but they rarely match your product; your own eval set is your real moat.</p>
+  <p><b>Use AI as a partner:</b> ask it to <code>generate 30 varied test tasks incl. 5 adversarial ones for this support agent, with a programmatic success check for each</code>, then review them by hand.</p>
+  <p><b>Where AI goes wrong:</b> an LLM judge can be flattered by confident wording, and generated test sets tend to be too easy and too similar to each other.</p>
+  <p><b>What you must still own:</b> defining "success" with the business, labelling a gold set, and refusing to ship when safety metrics regress even if success rate went up.</p>`,
+  problems: [{
+    title: 'Write an Agent Eval',
+    level: 'Hard', tags: ['evaluation', 'trajectory', 'metrics'], companies: ['OpenAI', 'Anthropic', 'Scale AI'],
+    statement: `<p>You ship a refund agent (tools: get_order, issue_refund, search_kb, escalate). Design its evaluation: the test set, how each run is graded (success, trajectory, safety), metrics reported, how you handle randomness, and the release gate.</p>`,
+    constraints: `Budget: 200 tasks x 3 runs per release. Tasks must run in a sandbox with a fake database.`,
+    example: `<p>Task: "Order A19 arrived broken, refund me." Success: refunds row for A19 with amount 42.50. Trajectory rule: get_order before issue_refund. ${H.c('g', 'pass')} only if both hold.</p>`,
+    brute: { why: `<p>Try five prompts by hand, read the answers, decide "feels good". Not repeatable, not comparable between versions, and blind to cost and unsafe shortcuts.</p>` },
+    mcq: { q: 'An agent refunds correctly but skipped get_order. What does a success-only metric say?', options: ['It passes, hiding a risky path', 'It fails', 'It is undefined', 'It measures cost'], answer: 0, explain: 'Add trajectory rules to catch unsafe shortcuts.' },
+    hints: ['<p>Hint 1: success should be checked on system state, not wording.</p>', '<p>Hint 2: add rule checks over the tool-call list for safety.</p>', '<p>Hint 3: run each task several times and report pass^k plus cost and p95 latency; define a gate.</p>'],
+    solution: {
+      approach: `<p><b>Test set (200 tasks):</b> 120 typical (damaged, late, wrong item), 40 edge (partial refund, already refunded, order not found, ambiguous id), 25 adversarial (prompt injection in the order note, user pressuring for a bigger refund, request for another customer's order), 15 should-escalate cases. Each task ships with a seeded sandbox DB and an expected end state. <b>Grading:</b> (1) Success by code: query the sandbox DB and compare to the expected state; for escalation cases check an escalation record exists and no refund was made. (2) Trajectory rules in code: get_order precedes issue_refund; amount does not exceed the order total; no more than 6 tool calls; no tool outside the allowlist; zero unapproved side effects on adversarial tasks. (3) Optional LLM judge only for reply tone, calibrated against 50 human labels. <b>Randomness:</b> 3 runs per task; report mean success, pass^3, and per-task variance; flag tasks that flip. <b>Metrics:</b> task success %, safe-trajectory %, tool-arg validity %, avg and p95 tokens, avg cost per task, p50/p95 latency, escalation precision. <b>Release gate:</b> success not lower than the baseline minus 2 points (with confidence interval), safety violations exactly 0, p95 cost not above +15%, and every past production failure case passes. Failures auto-open a trace for review.</p>`,
+      complexity: `<p>Cost = 200 tasks x 3 runs x about 6k tokens = about 3.6M tokens per release; run nightly on a subset, full set before release.</p>`,
+      followUps: ['How do you detect eval-set overfitting?', 'How would you add online monitoring?']
+    }
+  }]
+});
+
+topics.push({
+  title: 'Human-in-the-Loop: Approval Gates and Safe Autonomy',
+  analogy: `<p>A <b>bank teller</b>: they can check your balance on their own, but a large withdrawal needs the manager's signature. Reading is cheap and reversible; moving money is not. The agent should know which side of that line each action sits on.</p>`,
+  explain: `<p><b>Human-in-the-loop (HITL)</b> means the agent pauses at certain points and waits for a person to approve, edit or reject. It is the main safety tool, because model mistakes are guaranteed sometimes.</p>
+  <p>Decide approval by two questions: <b>How bad if wrong?</b> (impact) and <b>Can we undo it?</b> (reversibility).</p>
+  ${H.table(['Action', 'Reversible?', 'Impact', 'Policy'], [['Search the knowledge base', 'n/a (read)', 'Low', '<span class="c-g">Auto</span>'], ['Draft an email', 'Yes (not sent)', 'Low', '<span class="c-g">Auto</span>'], ['Send email to customer', 'No', 'Medium', '<span class="c-y">Approve (or sample-review)</span>'], ['Refund under 50', 'Mostly', 'Low', '<span class="c-g">Auto + log</span>'], ['Refund over 500', 'Hard', 'High', '<span class="c-r">Human approves</span>'], ['Delete data / deploy to prod', 'No', 'Very high', '<span class="c-r">Always human</span>']])}
+  <p>An approval gate shows the human <b>exactly what will happen</b> (tool, arguments, why, expected effect), with buttons: approve, edit, reject (with reason). The rejection reason goes back to the agent as an observation. The agent must <b>actually wait</b>: the paused state is saved so a reply can come minutes or days later.</p>
+  <p>Other HITL points: ask for clarification when the request is ambiguous; review the plan before a long run; escalate when the guard fires or confidence is low.</p>`,
+  clues: ['"which actions should require approval?"', '"irreversible" or "destructive" operations', '"agent should ask before sending / paying / deleting"', '"approval fatigue" - too many prompts', '"audit trail" and "who authorised this?"', '"escalate to a human when unsure"'],
+  code: [{ lang: 'python', title: 'A simple approval-gate policy (runnable)', run: true, code: `# Decide per action: auto-run, ask a human, or block outright.
+def decide(action, args):
+    if action in ("search_kb", "get_order", "draft_email"):
+        return "auto"                                   # read-only or not-yet-sent
+    if action == "issue_refund":
+        amt = args.get("amount", 0)
+        if amt <= 50:
+            return "auto"                               # small and logged
+        return "ask_human" if amt <= 500 else "block"   # over the hard limit: never by agent
+    if action in ("send_email", "update_address"):
+        return "ask_human"
+    return "block"                                      # unknown tool = deny by default
+
+queue = []   # pending approvals (a real system persists these)
+tests = [("get_order", {}), ("issue_refund", {"amount": 20}), ("issue_refund", {"amount": 120}),
+         ("issue_refund", {"amount": 900}), ("send_email", {"to": "a@b.com"}), ("drop_table", {})]
+for name, args in tests:
+    d = decide(name, args)
+    if d == "ask_human":
+        queue.append((name, args))
+    print("%-13s %-22s -> %s" % (name, args, d))
+print("Pending for human review:", queue)` }],
+  viz: {
+    title: 'An approval gate holding a risky action',
+    gen: function () {
+      var q = [];
+      function Q(hl, label) { return { type: 'queue', label: label || 'Approval queue (waiting for human)', items: q.slice(), hl: hl || {}, frontLabel: 'oldest', backLabel: 'newest' }; }
+      var frames = [];
+      frames.push({ narr: 'The agent wants to run 3 actions. A policy function labels each: <b>auto</b>, <b>ask</b> or <b>block</b>.', parts: [{ type: 'table', label: 'Policy decisions', columns: ['action', 'args', 'decision'], rows: [['search_kb', 'q="refund"', 'auto'], ['issue_refund', 'amount=20', 'auto + log'], ['issue_refund', 'amount=120', 'ASK human']], hl: { 2: 'cur' } }, Q()] });
+      frames.push({ narr: 'The first two run immediately. They are read-only or small and reversible; stopping to ask would just create approval fatigue.', parts: [{ type: 'table', label: 'Executed', columns: ['action', 'result'], rows: [['search_kb', 'ok'], ['issue_refund 20', 'ok (logged)']], hl: { 0: 'ok', 1: 'ok' } }, Q()] });
+      q.push('issue_refund(A17, 120)');
+      frames.push({ narr: 'Refund of 120 is over the auto limit. The agent <b>pauses</b>: the request, arguments and reason are saved and placed in the queue. No money has moved.', parts: [Q({ 0: 'cur' }), { type: 'text', html: '<b>Saved state:</b> run id, transcript so far, pending tool call. The process can even restart.' }] });
+      frames.push({ narr: 'A person opens the card: "Refund 120 to order A17, reason: damaged. Evidence: photo attached." They see exactly what will happen.', parts: [Q({ 0: 'sel' }), { type: 'table', label: 'Review card', columns: ['field', 'value'], rows: [['tool', 'issue_refund'], ['order', 'A17'], ['amount', '120'], ['why', 'customer sent damage photo'], ['buttons', 'Approve / Edit / Reject']] }] });
+      frames.push({ narr: 'The reviewer edits the amount to 100 and approves. The decision, who made it and when is written to the <b>audit log</b>.', parts: [Q({ 0: 'ok' }), { type: 'table', label: 'Audit log', columns: ['who', 'decision', 'edit'], rows: [['sam@corp', 'approved', 'amount 120 to 100']], hl: { 0: 'ok' } }] });
+      q.pop();
+      frames.push({ narr: 'The queue is empty, the tool runs with the approved arguments, and the result is returned to the agent as its observation. Work continues.', parts: [Q({}), { type: 'text', html: '<span class="c-g">Refund of 100 issued.</span> Had the human rejected it, the reason would go back to the agent so it could explain or escalate.' }] });
+      return frames;
+    }
+  },
+  examples: [
+    { title: 'Approval fatigue', html: `<p>If a coding agent asks "allow?" for every file read, people click yes without reading, and the gate becomes useless. Fix: auto-allow safe reads, group related writes into one plan approval, remember "always allow this safe command" choices, and keep prompts rare so they stay meaningful.</p>` },
+    { title: 'Approve the plan, not every step', html: `<p>For a 12-step task, show the plan once. The human approves the plan; only steps that deviate or hit a high-risk rule ask again. Fewer interruptions, same safety.</p>` },
+    { title: 'Deny by default', html: `<p>Unknown tool or unknown action type? Block. Your policy function should be an <b>allowlist</b>: only listed actions run. A new tool added to the agent does nothing until someone writes its policy.</p>` }
+  ],
+  deepDive: `<p><b>Technical design of a gate.</b> The agent loop must be <b>resumable</b>: persist the transcript and the pending tool call (a "checkpoint"), return control, and continue when the approval event arrives. Frameworks call this interrupt/resume. Use a stable id for the pending action so a double click does not run it twice (idempotency).</p>
+  <p><b>What the human sees matters.</b> Show the real arguments (not the model's description of them), a diff for edits, and the evidence. The model's summary can be wrong or manipulated; the structured call is the truth. Beware that an attacker's text can look persuasive in the "reason" field.</p>
+  <p><b>Risk tiers.</b> Tier 0: read-only, auto. Tier 1: reversible write, auto with logging and undo. Tier 2: external side effect (email, payment), approve or sample audit. Tier 3: destructive or high-value, always human, ideally two people. Tune with real incident data.</p>
+  <p><b>Autonomy dial.</b> Start with approval on everything, measure how often humans change or reject, and raise autonomy only for action types with a near-zero rejection rate and a cheap undo. Keep a kill switch.</p>
+  <p><b>Regulatory angle.</b> For decisions affecting people (credit, hiring, health), laws and standards increasingly expect meaningful human oversight, an audit trail, and the ability to contest. A rubber-stamp click does not count as meaningful.</p>`,
+  aiEra: `<p><b>What AI changes:</b> agents can now act for hours; permission systems (allow lists, plan mode, auto-accept per tool) are a main product feature of coding and browsing agents.</p>
+  <p><b>Use AI as a partner:</b> <code>List every tool this agent has, classify each by reversibility and blast radius, and propose a tiered approval policy</code>, then review the classification yourself.</p>
+  <p><b>Where AI goes wrong:</b> it may rationalise a risky action ("this is clearly what the user wants"), phrase an approval request to sound harmless, or look for a way around a block.</p>
+  <p><b>What you must still own:</b> the policy code outside the model, the audit log, who is allowed to approve, and the rule that approval requests show raw arguments.</p>`,
+  problems: [{
+    title: 'Decide Which Actions Need Human Approval',
+    level: 'Medium', tags: ['hitl', 'safety', 'policy'], companies: ['Stripe', 'Anthropic'],
+    statement: `<p>An IT-helpdesk agent has tools: search_wiki, reset_password, add_user_to_group, delete_account, send_company_wide_email, restart_server (staging), restart_server (production). Classify each as auto, ask, or block. Justify with impact and reversibility, and describe what the approval card shows.</p>`,
+    constraints: `At most 1 approval prompt per 10 typical tickets (avoid fatigue).`,
+    example: `<p>search_wiki: ${H.c('g', 'auto')}. delete_account: ${H.c('r', 'ask or block')}. send_company_wide_email: ${H.c('r', 'ask, two approvers')}.</p>`,
+    brute: { why: `<p>Either approve nothing (the agent can delete accounts alone) or approve everything (humans click yes blindly after the 20th prompt).</p>` },
+    mcq: { q: 'Which question best decides if an action needs approval?', options: ['How bad if wrong, and can it be undone?', 'Is it a long tool name?', 'Does the model feel confident?', 'Is it used often?'], answer: 0, explain: 'Impact and reversibility, enforced in code, not model confidence.' },
+    hints: ['<p>Hint 1: read-only is nearly always safe.</p>', '<p>Hint 2: ask "who is affected and how many?"</p>', '<p>Hint 3: write the approval card fields: tool, raw args, evidence, undo plan.</p>'],
+    solution: {
+      approach: `<p><b>search_wiki: auto</b> (read-only). <b>reset_password: auto with guardrails</b>: only for the verified requester, notifies the account owner by email, rate-limited to 3 per day; reversible by another reset. <b>add_user_to_group: ask</b> when the group is privileged (admin, finance), auto for low-risk groups, always logged. <b>delete_account: block for the agent</b>; the agent can only file a ticket that a human executes (irreversible, large impact). <b>send_company_wide_email: ask with two approvers</b> because it reaches everyone and cannot be recalled. <b>restart_server staging: auto</b> (recoverable, limited audience). <b>restart_server production: ask</b>, shown with current load and impact window, and only in a change window. This design yields roughly one prompt per 10 tickets because most tickets are password resets and wiki lookups. The approval card shows the tool name, the exact arguments, who requested it and why (with the original ticket), evidence, a risk tier, the undo plan, and Approve / Edit / Reject (reason required). Everything goes to an audit log. Unknown tools are denied by default.</p>`,
+      complexity: `<p>Policy is an O(1) lookup per action; human time is spent only on tiers 2 and 3.</p>`,
+      followUps: ['How would you measure approval fatigue?', 'What if the approver is the attacker?']
+    }
+  }]
+});
+
