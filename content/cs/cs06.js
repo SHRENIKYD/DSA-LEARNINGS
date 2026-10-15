@@ -376,7 +376,7 @@ for k in (10, 12, 16):
     example: `<p>VA 10000 → page ${H.c('b', '2')}, offset ${H.c('y', '1808')} → frame 3 → PA ${H.c('g', '14096')}.</p>`,
     brute: { why: `<p>Walking a list of "segments of 4096 bytes" and subtracting 4096 until the address fits works, but it is O(page) arithmetic and not how hardware does it. A shift and mask do it in one gate delay.</p>` },
     mcq: { q: 'With 4 KB pages, which part of the address passes through unchanged?', options: ['The page number', 'The offset (low 12 bits)', 'The frame number'], answer: 1, explain: 'Frame and page are the same size, so byte d of the page is byte d of the frame.' },
-    hints: [`<p>Hint 1: 4 KB = 2<sup>12</sup>, so 12 offset bits.</p>`, `<p>Hint 2: page = address ÷ 4096 (integer), offset = remainder.</p>`, `<p>Hint 3: PA = frame × 4096 + offset. For 0x4ABC the page is 4 and the offset 0xABC.</p>`],
+    hints: [`<p>Hint 1: 4 KB = 2<sup>12</sup>, so 12 offset bits. Write the numbers down step by step before moving on.</p>`, `<p>Hint 2: page = address ÷ 4096 (integer), offset = remainder.</p>`, `<p>Hint 3: PA = frame × 4096 + offset. For 0x4ABC the page is 4 and the offset 0xABC.</p>`],
     solution: {
       approach: `<p>For 10000: page = ⌊10000 / 4096⌋ = 2, offset = 10000 - 8192 = 1808; PT[2] = 3 so PA = 3 × 4096 + 1808 = 14096. For 0x4ABC: page = 0x4ABC &gt;&gt; 12 = 4, offset = 0xABC = 2748; PT[4] = 2 so PA = 2 × 4096 + 2748 = 10940 = 0x2ABC. In a 16-bit address, bits 15-12 are the page number and bits 11-0 the offset.</p>`,
       dry: { head: ['Step', 'VA = 10000', 'VA = 0x4ABC'], rows: [['page number', '10000 &gt;&gt; 12 = 2', '0x4ABC &gt;&gt; 12 = 4'], ['offset', '10000 &amp; 0xFFF = 1808', '0xABC = 2748'], ['PT lookup', 'PT[2] = 3', 'PT[4] = 2'], ['PA = f×4096 + d', '12288 + 1808 = <b>14096</b>', '8192 + 2748 = <b>10940 (0x2ABC)</b>']] },
@@ -520,7 +520,7 @@ print(f"2-level: 1 outer + {inner} inner = {(1 + inner) * 4} KB  vs flat 4096 KB
     example: `<p>(a) ${H.c('g', '4 MB')} (b) ${H.c('b', '10 | 10 | 12')} (c) ${H.c('g', '16 KB')} (d) ${H.c('y', '3')}.</p>`,
     brute: { why: `<p>Use the flat 4 MB table for every process. 200 processes → 800 MB of tables, mostly pointing at empty regions - most of that memory is wasted.</p>` },
     mcq: { q: 'Why is each table sized to exactly one page?', options: ['So the OS can allocate tables with ordinary single-frame allocation', 'Because the CPU cannot read larger tables', 'To avoid using the TLB'], answer: 0, explain: 'No contiguous multi-frame chunk is needed, and tables themselves become pageable.' },
-    hints: [`<p>Hint 1: page-number bits = 32 - 12 = 20.</p>`, `<p>Hint 2: entries per table = 4096 / 4 = 1024 = 2<sup>10</sup>, so each level eats 10 bits.</p>`, `<p>Hint 3: 12 MB / 4 KB = 3072 pages; one inner table maps 1024 pages; count tables, multiply by 4 KB.</p>`],
+    hints: [`<p>Hint 1: page-number bits = 32 - 12 = 20. Write the numbers down step by step before moving on.</p>`, `<p>Hint 2: entries per table = 4096 / 4 = 1024 = 2<sup>10</sup>, so each level eats 10 bits.</p>`, `<p>Hint 3: 12 MB / 4 KB = 3072 pages; one inner table maps 1024 pages; count tables, multiply by 4 KB.</p>`],
     solution: {
       approach: `<p>(a) 2<sup>20</sup> pages × 4 B = 4 MB. (b) A page holds 1024 PTEs so each level indexes 10 bits: outer 10, inner 10, offset 12. (c) 12 MB = 3072 pages = 3 inner tables of 1024 entries, plus 1 outer table: 4 tables × 4 KB = 16 KB. (d) On a TLB miss: read outer entry, read inner entry, read the data - 3 accesses. With a TLB hit it is 1 access.</p>`,
       dry: { head: ['Quantity', 'Computation', 'Result'], rows: [['pages', '2^32 / 2^12', '2^20 = 1,048,576'], ['flat table', '2^20 × 4 B', '4 MB'], ['entries per table', '4096 / 4', '1024 (10 bits)'], ['pages used', '12 MB / 4 KB', '3072'], ['inner tables', '3072 / 1024', '3'], ['total', '(1 + 3) × 4 KB', '16 KB'], ['accesses on miss', '2 tables + 1 data', '3']] },
@@ -668,7 +668,7 @@ int main() {
     example: `<p>Hit path 20 + 100 = ${H.c('g', '120')}; miss path 20 + 2×100 + 100 = ${H.c('r', '320')}; EAT = 0.8×120 + 0.2×320 = ${H.c('b', '160 ns')}.</p>`,
     brute: { why: `<p>Assume every access misses (worst case 320 ns). Safe but 2× too pessimistic: it ignores locality and the TLB's whole purpose.</p>` },
     mcq: { q: 'Raising the TLB hit ratio from 90% to 99% mostly helps because…', options: ['TLB lookups get faster', 'fewer expensive page-table walks happen', 'pages get smaller'], answer: 1, explain: 'The miss path costs several memory accesses; each avoided miss saves that whole walk.' },
-    hints: [`<p>Hint 1: two probabilities, two costs.</p>`, `<p>Hint 2: miss cost = TLB time + (levels) memory reads for entries + 1 memory read for data.</p>`, `<p>Hint 3: for (b) write EAT = 120 + (1 - h) × 200 and solve ≤ 130.</p>`],
+    hints: [`<p>Hint 1: two probabilities, two costs. Write the numbers down step by step before moving on.</p>`, `<p>Hint 2: miss cost = TLB time + (levels) memory reads for entries + 1 memory read for data.</p>`, `<p>Hint 3: for (b) write EAT = 120 + (1 - h) × 200 and solve ≤ 130.</p>`],
     solution: {
       approach: `<p>(a) Hit = 20 + 100 = 120 ns. Miss = 20 + 2 × 100 + 100 = 320 ns. EAT = 0.8 × 120 + 0.2 × 320 = 96 + 64 = 160 ns. (b) EAT = h × 120 + (1 - h) × 320 = 320 - 200h ≤ 130 → h ≥ 0.95, i.e. at least 95%. (c) 160 / 100 = 1.6, so 60% slower than the ideal.</p>`,
       dry: { head: ['Path', 'Cost', 'Probability', 'Contribution'], rows: [['TLB hit', '20 + 100 = 120', '0.8', '96'], ['TLB miss', '20 + 200 + 100 = 320', '0.2', '64'], ['<b>EAT</b>', '', '', '<b>160 ns</b>'], ['need EAT ≤ 130', '320 - 200h ≤ 130', 'h ≥ 0.95', '95%']] },
@@ -771,7 +771,7 @@ int main() {
     example: `<p>(3, 852): 852 &lt; 1100 → ${H.c('g', '3200 + 852 = 4052')}.</p>`,
     brute: { why: `<p>Searching all segments for one that "contains" the address is O(segments) and ambiguous. The segment number in the address makes it a direct O(1) row lookup.</p>` },
     mcq: { q: 'The check "offset &lt; limit" is done…', options: ['after adding the base', 'before using the address on the bus', 'only for the stack'], answer: 1, explain: 'Check first (compare the offset with the limit), then add the base; the bad address never reaches memory.' },
-    hints: [`<p>Hint 1: s picks the row.</p>`, `<p>Hint 2: compare offset to that row's limit.</p>`, `<p>Hint 3: physical = base + offset when valid. (2,500): limit is 400 - careful!</p>`],
+    hints: [`<p>Hint 1: s picks the row. Write the numbers down step by step before moving on.</p>`, `<p>Hint 2: compare offset to that row's limit. Write the numbers down step by step before moving on.</p>`, `<p>Hint 3: physical = base + offset when valid. (2,500): limit is 400 - careful!</p>`],
     solution: {
       approach: `<p>(2, 500): S2 has limit 400 and 500 ≥ 400, so it traps. (3, 852): limit 1100, 852 &lt; 1100 → 3200 + 852 = 4052. (0, 1222): limit 1000, 1222 ≥ 1000 → trap. (4, 999): limit 1000, 999 &lt; 1000 → 4700 + 999 = 5699. Always compare against the limit of the segment named in the address, not against another segment.</p>`,
       dry: { head: ['(s, d)', 'limit[s]', 'd &lt; limit?', 'result'], rows: [['(2, 500)', '400', 'no', '<span class="c-r">TRAP</span>'], ['(3, 852)', '1100', 'yes', '4052'], ['(0, 1222)', '1000', 'no', '<span class="c-r">TRAP</span>'], ['(4, 999)', '1000', 'yes', '5699']] },
@@ -945,7 +945,7 @@ int main(int argc, char** argv) {
     example: `<p>(a) ${H.c('r', '8199.8 ns')}, about 41× slower. (b) ${H.c('g', 'p ≤ 2.5 × 10<sup>-6</sup>')}.</p>`,
     brute: { why: `<p>"Add more RAM until faults vanish" - often right in practice but not an answer to the question: the interviewer wants to see you quantify how fast faults hurt.</p>` },
     mcq: { q: 'Which statement about the faulting instruction is true?', options: ['It is skipped after the fault is handled', 'It is restarted from the beginning once the page is in memory', 'It runs in kernel mode'], answer: 1, explain: 'After the OS loads the page, the same instruction is re-executed and now succeeds.' },
-    hints: [`<p>Hint 1: EAT = (1 - p) × ma + p × T.</p>`, `<p>Hint 2: convert 8 ms to ns before substituting.</p>`, `<p>Hint 3: for (b) require EAT ≤ 1.1 × 200 = 220 and solve for p: 200 + p × (T - 200) ≤ 220.</p>`],
+    hints: [`<p>Hint 1: EAT = (1 - p) × ma + p × T. Write the numbers down step by step before moving on.</p>`, `<p>Hint 2: convert 8 ms to ns before substituting. Write the numbers down step by step before moving on.</p>`, `<p>Hint 3: for (b) require EAT ≤ 1.1 × 200 = 220 and solve for p: 200 + p × (T - 200) ≤ 220.</p>`],
     solution: {
       approach: `<p>(a) p = 0.001: EAT = 0.999 × 200 + 0.001 × 8,000,000 = 199.8 + 8000 = 8199.8 ns, about 41× the fault-free 200 ns. (b) Need EAT ≤ 220: 200 + p × (8,000,000 - 200) ≤ 220 → p ≤ 20 / 7,999,800 ≈ 2.5 × 10<sup>-6</sup>, i.e. fewer than one fault per 400,000 accesses. (c) Trap to OS; verify the address is legal; find a free frame (or evict, writing back if dirty); read the page from disk (process blocks); update the page table and mark ready; restart the instruction.</p>`,
       dry: { head: ['Step', 'Calculation', 'Value'], rows: [['(1-p) × ma', '0.999 × 200', '199.8 ns'], ['p × T', '0.001 × 8,000,000', '8000 ns'], ['EAT', '199.8 + 8000', '<b>8199.8 ns</b>'], ['limit for 10%', '220 = 200 + p × 7,999,800', 'p = 2.5e-6'], ['accesses per fault', '1 / 2.5e-6', '400,000']] },
@@ -1444,7 +1444,7 @@ practice.push({
   example: `<p>Offset ${H.c('y', '12 bits')}, page number ${H.c('b', '20 bits')}, entries 2<sup>20</sup>, frames 2<sup>18</sup>.</p>`,
   brute: { why: `<p>Memorising "4 KB means 12 bits" without understanding breaks the moment the page size changes to 8 KB or 64 KB. Derive from the power of two instead.</p>` },
   mcq: { q: 'Doubling the page size (4 KB → 8 KB) on a 32-bit system changes the page-number width to…', options: ['21 bits', '19 bits', '20 bits'], answer: 1, explain: 'Offset grows to 13 bits so the page number shrinks to 32 - 13 = 19 bits.' },
-  hints: [`<p>Hint 1: page size 2<sup>k</sup> → k offset bits.</p>`, `<p>Hint 2: page-number bits = total address bits - k.</p>`, `<p>Hint 3: frames = RAM / page size = 2<sup>30</sup> / 2<sup>12</sup>.</p>`],
+  hints: [`<p>Hint 1: page size 2<sup>k</sup> → k offset bits. Write the numbers down step by step before moving on.</p>`, `<p>Hint 2: page-number bits = total address bits - k.</p>`, `<p>Hint 3: frames = RAM / page size = 2<sup>30</sup> / 2<sup>12</sup>. Write the numbers down step by step before moving on.</p>`],
   solution: {
     approach: `<p>4 KB = 2<sup>12</sup> so the offset is 12 bits. The page number is 32 - 12 = 20 bits, which means 2<sup>20</sup> = 1,048,576 page-table entries in a flat table. Physical RAM of 2<sup>30</sup> bytes divided into 2<sup>12</sup>-byte frames gives 2<sup>18</sup> = 262,144 frames, so a frame number needs 18 bits (a PTE therefore needs at least 18 bits plus valid/protection bits - 4 bytes is plenty).</p>`,
     complexity: `<p>Constant-time arithmetic.</p>`
@@ -1458,11 +1458,11 @@ practice.push({
   example: `<p>2500 → page 2, offset 452 → frame 5 → ${H.c('g', '5572')}. 4100 → page 4 → ${H.c('r', 'invalid')}.</p>`,
   brute: { why: `<p>Subtracting 1024 repeatedly until the address fits - correct but slow and error-prone. Use integer division and remainder.</p>` },
   mcq: { q: '2500 mod 1024 equals…', options: ['452', '476', '2500'], answer: 0, explain: '2500 - 2 × 1024 = 452.' },
-  hints: [`<p>Hint 1: page = ⌊VA / 1024⌋.</p>`, `<p>Hint 2: offset = VA mod 1024.</p>`, `<p>Hint 3: PA = frame × 1024 + offset; check the page is within the table.</p>`],
+  hints: [`<p>Hint 1: page = ⌊VA / 1024⌋. Write the numbers down step by step before moving on.</p>`, `<p>Hint 2: offset = VA mod 1024. Write the numbers down step by step before moving on.</p>`, `<p>Hint 3: PA = frame × 1024 + offset; check the page is within the table.</p>`],
   solution: {
     approach: `<p>For 2500: page = ⌊2500 / 1024⌋ = 2 and offset = 2500 - 2048 = 452. Page 2 maps to frame 5, so PA = 5 × 1024 + 452 = 5572. For 4100: page = ⌊4100 / 1024⌋ = 4, but the table only has pages 0-3, so the MMU raises an invalid-address fault (segmentation fault); no physical address exists.</p>`,
     dry: { head: ['VA', 'page', 'offset', 'frame', 'PA'], rows: [['2500', '2', '452', '5', '5×1024+452 = <b>5572</b>'], ['4100', '4', '4', '<span class="c-r">none</span>', '<span class="c-r">invalid</span>']] },
-    complexity: `<p>O(1).</p>`
+    complexity: `<p>O(1): a few shifts, masks, comparisons and table reads, constant time.</p>`
   }
 });
 
@@ -1473,10 +1473,10 @@ practice.push({
   example: `<p>(a) ${H.c('b', '32,768 frames')}; (b) 13 pages, ${H.c('r', '6,496 bytes')} wasted.</p>`,
   brute: { why: `<p>Guessing "about half a page wasted" - true on average, but a question asks for the exact number for this specific size.</p>` },
   mcq: { q: 'Which fragmentation does paging eliminate?', options: ['External fragmentation', 'Internal fragmentation', 'Both'], answer: 0, explain: 'Any free frame can hold any page, so no hole is too small. The last page of each process may still be partly empty.' },
-  hints: [`<p>Hint 1: 256 MB = 2<sup>28</sup>, 8 KB = 2<sup>13</sup>.</p>`, `<p>Hint 2: pages = ⌈size / page size⌉.</p>`, `<p>Hint 3: waste = pages × page size - size.</p>`],
+  hints: [`<p>Hint 1: 256 MB = 2<sup>28</sup>, 8 KB = 2<sup>13</sup>. Write the numbers down step by step before moving on.</p>`, `<p>Hint 2: pages = ⌈size / page size⌉. Write the numbers down step by step before moving on.</p>`, `<p>Hint 3: waste = pages × page size - size. Write the numbers down step by step before moving on.</p>`],
   solution: {
     approach: `<p>(a) Frames = 2<sup>28</sup> / 2<sup>13</sup> = 2<sup>15</sup> = 32,768. (b) 100,000 / 8192 = 12.2, so the process needs ⌈12.2⌉ = 13 pages = 13 × 8192 = 106,496 bytes. Wasted = 106,496 - 100,000 = 6,496 bytes, all inside the last page - internal fragmentation. Smaller pages would waste less but need larger page tables.</p>`,
-    complexity: `<p>O(1).</p>`
+    complexity: `<p>O(1): a few shifts, masks, comparisons and table reads, constant time.</p>`
   }
 });
 
@@ -1517,11 +1517,11 @@ practice.push({
   example: `<p>Single level: ${H.c('g', '89 ns')}. Two levels: 0.95×85 + 0.05×245 = ${H.c('b', '93 ns')}.</p>`,
   brute: { why: `<p>Using the average of 85 and 165 (125 ns) ignores the 95:5 weighting.</p>` },
   mcq: { q: 'With a 2-level page table, a TLB miss costs (t = TLB, m = memory)…', options: ['t + 2m', 't + 3m', 't + 4m'], answer: 1, explain: 'Two table reads plus the data read: t + 2m + m = t + 3m.' },
-  hints: [`<p>Hint 1: hit = 5 + 80 = 85.</p>`, `<p>Hint 2: miss (1-level) = 5 + 80 + 80 = 165.</p>`, `<p>Hint 3: weight by 0.95 / 0.05.</p>`],
+  hints: [`<p>Hint 1: hit = 5 + 80 = 85. Write the numbers down step by step before moving on.</p>`, `<p>Hint 2: miss (1-level) = 5 + 80 + 80 = 165. Write the numbers down step by step before moving on.</p>`, `<p>Hint 3: weight by 0.95 / 0.05. Write the numbers down step by step before moving on.</p>`],
   solution: {
     approach: `<p>Single level: hit = 5 + 80 = 85 ns, miss = 5 + 80 + 80 = 165 ns, EAT = 0.95 × 85 + 0.05 × 165 = 80.75 + 8.25 = 89 ns (11.25% slower than 80 ns). Two levels: miss = 5 + 80 + 80 + 80 = 245 ns, so EAT = 80.75 + 0.05 × 245 = 80.75 + 12.25 = 93 ns. The TLB hides most of the page-table depth when the hit ratio is high.</p>`,
     dry: { head: ['Path', 'Cost', 'Prob', 'Part'], rows: [['hit', '5+80 = 85', '0.95', '80.75'], ['miss (1-level)', '5+80+80 = 165', '0.05', '8.25'], ['<b>EAT</b>', '', '', '<b>89 ns</b>'], ['miss (2-level)', '5+160+80 = 245', '0.05', '12.25'], ['<b>EAT</b>', '', '', '<b>93 ns</b>']] },
-    complexity: `<p>O(1).</p>`
+    complexity: `<p>O(1): a few shifts, masks, comparisons and table reads, constant time.</p>`
   }
 });
 
@@ -1532,11 +1532,11 @@ practice.push({
   example: `<p>(a) 512 GB flat, ${H.c('b', '4 levels')} (9|9|9|9|12). (b) 1 GB flat, ${H.c('b', '3 levels')} (9|9|9|21).</p>`,
   brute: { why: `<p>Using one flat table in either case: 512 GB or 1 GB of contiguous kernel memory per process.</p>` },
   mcq: { q: 'Using 2 MB pages instead of 4 KB changes the number of TLB entries needed for 1 GB from…', options: ['262,144 to 512', '512 to 262,144', '1024 to 1'], answer: 0, explain: '1 GB / 4 KB = 262,144 entries; 1 GB / 2 MB = 512.' },
-  hints: [`<p>Hint 1: entries per table = page size of the table pages / 8. For 4 KB table pages that is 512, i.e. 9 bits per level.</p>`, `<p>Hint 2: page-number bits = 48 - offset bits.</p>`, `<p>Hint 3: levels = ⌈page-number bits / 9⌉.</p>`],
+  hints: [`<p>Hint 1: entries per table = page size of the table pages / 8. For 4 KB table pages that is 512, i.e. 9 bits per level.</p>`, `<p>Hint 2: page-number bits = 48 - offset bits. Write the numbers down step by step before moving on.</p>`, `<p>Hint 3: levels = ⌈page-number bits / 9⌉. Write the numbers down step by step before moving on.</p>`],
   solution: {
     approach: `<p>(a) Offset 12 bits, page number 36 bits, 2<sup>36</sup> entries × 8 B = 512 GB. Each table has 4096/8 = 512 entries (9 bits), so 36/9 = 4 levels. (b) Offset 21 bits, page number 27 bits, 2<sup>27</sup> × 8 B = 1 GB flat; with 512-entry tables this is 27/9 = 3 levels. (c) 1 GB / 4 KB = 262,144 TLB entries versus 1 GB / 2 MB = 512, so 2 MB pages give a TLB reach 512× larger and one fewer level in every walk - at the cost of internal fragmentation and harder physical allocation.</p>`,
     dry: { head: ['', '4 KB pages', '2 MB pages'], rows: [['offset bits', '12', '21'], ['page-number bits', '36', '27'], ['flat table', '2^36 × 8 = 512 GB', '2^27 × 8 = 1 GB'], ['bits per level', '9', '9'], ['levels', '4', '3'], ['TLB entries for 1 GB', '262,144', '512']] },
-    complexity: `<p>O(1).</p>`
+    complexity: `<p>O(1): a few shifts, masks, comparisons and table reads, constant time.</p>`
   }
 });
 
@@ -1547,11 +1547,11 @@ practice.push({
   example: `<p>FIFO ${H.c('r', '9 → 10')} (anomaly!). LRU ${H.c('g', '10 → 8')}.</p>`,
   brute: { why: `<p>Reasoning "more frames, fewer faults" for both and not tracing FIFO.</p>` },
   mcq: { q: 'The anomaly occurs for FIFO because…', options: ['FIFO\'s contents with n frames are not always a subset of the contents with n+1 frames', 'FIFO is slower', 'FIFO uses reference bits'], answer: 0, explain: 'FIFO does not obey the inclusion (stack) property.' },
-  hints: [`<p>Hint 1: trace FIFO with 3 frames fully, then 4 frames.</p>`, `<p>Hint 2: then LRU for both.</p>`, `<p>Hint 3: compare totals per algorithm.</p>`],
+  hints: [`<p>Hint 1: trace FIFO with 3 frames fully, then 4 frames.</p>`, `<p>Hint 2: then LRU for both. Write the numbers down step by step before moving on.</p>`, `<p>Hint 3: compare totals per algorithm. Write the numbers down step by step before moving on.</p>`],
   solution: {
     approach: `<p>FIFO with 3 frames gives 9 faults and with 4 frames 10 faults, so adding a frame hurt: Belady's anomaly. LRU gives 10 faults with 3 frames and 8 with 4, a monotone improvement, because LRU is a stack algorithm (the set of the n most recently used pages is always contained in the set of the n+1 most recent pages). Key takeaway: the anomaly is a property of FIFO-like policies, not of all policies.</p>`,
     dry: { head: ['Algorithm', '3 frames', '4 frames', 'Verdict'], rows: [['FIFO', '9', '<span class="c-r">10</span>', 'anomaly'], ['LRU', '10', '8', 'monotone'], ['OPT', '7', '6', 'monotone']] },
-    complexity: `<p>O(R × F).</p>`
+    complexity: `<p>O(R × F) with a simple scan of the frames for each reference.</p>`
   }
 });
 
@@ -1562,11 +1562,11 @@ practice.push({
   example: `<p>(0, 199) → ${H.c('g', '699')}; (1, 300) → ${H.c('r', 'trap (300 ≥ 300)')}.</p>`,
   brute: { why: `<p>Allowing offset = limit (off-by-one) lets a program read one byte past its segment. The check must be offset &lt; limit.</p>` },
   mcq: { q: '(3, 10) fails because…', options: ['offset too large', 'segment 3 is not in the table', 'base is 0'], answer: 1, explain: 'The segment number itself is out of range of the segment table.' },
-  hints: [`<p>Hint 1: use s as an index.</p>`, `<p>Hint 2: valid only if d &lt; limit.</p>`, `<p>Hint 3: physical = base + d.</p>`],
+  hints: [`<p>Hint 1: use s as an index. Write the numbers down step by step before moving on.</p>`, `<p>Hint 2: valid only if d &lt; limit. Write the numbers down step by step before moving on.</p>`, `<p>Hint 3: physical = base + d. Write the numbers down step by step before moving on.</p>`],
   solution: {
     approach: `<p>(0, 199): 199 &lt; 200 → 500 + 199 = 699. (1, 300): limit is 300 and 300 is not less than 300 → trap (offset equals the limit, one past the last valid byte). (2, 0): 0 &lt; 500 → 0 + 0 = 0. (2, 499): 499 &lt; 500 → 499. (3, 10): the table has only segments 0-2, so segment 3 is invalid and the segment-table-length check traps before any limit is read.</p>`,
     dry: { head: ['(s,d)', 'check', 'result'], rows: [['(0,199)', '199 &lt; 200', '699'], ['(1,300)', '300 &lt; 300 false', '<span class="c-r">TRAP</span>'], ['(2,0)', '0 &lt; 500', '0'], ['(2,499)', '499 &lt; 500', '499'], ['(3,10)', 's ≥ table size', '<span class="c-r">TRAP</span>']] },
-    complexity: `<p>O(1).</p>`
+    complexity: `<p>O(1): a few shifts, masks, comparisons and table reads, constant time.</p>`
   }
 });
 
@@ -1577,7 +1577,7 @@ practice.push({
   example: `<p>A ${H.c('r', 'needs frames')}; B and D ${H.c('g', 'donate')}; C ${H.c('b', 'unchanged')}.</p>`,
   brute: { why: `<p>Giving every process the same fixed frame count ignores their very different working sets.</p>` },
   mcq: { q: 'If A needs frames and nobody can donate, the best action is to…', options: ['let A thrash', 'suspend a process to free its frames', 'increase the page size'], answer: 1, explain: 'The fault rate shows total demand exceeds supply; lowering multiprogramming is the cure.' },
-  hints: [`<p>Hint 1: compare each rate with the two bounds.</p>`, `<p>Hint 2: above upper → grow; below lower → shrink; between → keep.</p>`, `<p>Hint 3: if the donors cannot cover the demand, suspend a whole process.</p>`],
+  hints: [`<p>Hint 1: compare each rate with the two bounds. Write the numbers down step by step before moving on.</p>`, `<p>Hint 2: above upper → grow; below lower → shrink; between → keep.</p>`, `<p>Hint 3: if the donors cannot cover the demand, suspend a whole process.</p>`],
   solution: {
     approach: `<p>A (15 &gt; 10) is above the upper bound, so it needs more frames. B (1) and D (0.5) are below the lower bound (2), so they have more frames than their working set and can each give up one or more frames to A. C (6) lies between the bounds and keeps its allocation. If B and D cannot supply enough frames (for instance, they are at their minimum), then the combined working sets exceed memory and the OS should suspend (swap out) a process, releasing all its frames. PFF thus acts as a feedback signal that replaces explicit working-set measurement.</p>`,
     dry: { head: ['Process', 'Rate', 'Compared with 2..10', 'Action'], rows: [['A', '15', 'above', 'give frames'], ['B', '1', 'below', 'take a frame'], ['C', '6', 'inside', 'unchanged'], ['D', '0.5', 'below', 'take a frame']] },
@@ -1607,7 +1607,7 @@ practice.push({
   example: `<p>Tables: 1 root + 3 mid + 3 leaf = ${H.c('g', '7 tables = 28 KB')}.</p>`,
   brute: { why: `<p>A flat table for 2<sup>27</sup> pages × 8 B = 1 GB per process for three pages of data.</p>` },
   mcq: { q: 'Each Sv39 root entry covers…', options: ['4 KB', '2 MB', '1 GB'], answer: 2, explain: 'The remaining 30 bits (9+9+12) address 2<sup>30</sup> bytes = 1 GB under each root entry.' },
-  hints: [`<p>Hint 1: 4096 / 8 = 512 entries → 9 bits per level.</p>`, `<p>Hint 2: regions in different 1 GB areas need their own mid and leaf tables.</p>`, `<p>Hint 3: count 1 root + 3 mid + 3 leaf.</p>`],
+  hints: [`<p>Hint 1: 4096 / 8 = 512 entries → 9 bits per level.</p>`, `<p>Hint 2: regions in different 1 GB areas need their own mid and leaf tables.</p>`, `<p>Hint 3: count 1 root + 3 mid + 3 leaf. Write the numbers down step by step before moving on.</p>`],
   solution: {
     approach: `<p>(a) Each table is a 4 KB page holding 512 eight-byte entries, so every level indexes 9 bits: 9 + 9 + 9 + 12 = 39. (b) The root (level 2) always exists: 1 page. Each of the three regions lies under a different root entry, so each needs its own level-1 table (3 pages) and its own level-0 leaf table (3 pages): 7 table pages = 28 KB. (c) A TLB miss does 3 table reads and then 1 data read = 4 memory accesses. (d) A flat table would need 2<sup>27</sup> entries × 8 B = 1 GB, hence the multi-level design's saving of about 99.997%.</p>`,
     dry: { head: ['Level', 'Index bits', 'Tables needed', 'Bytes'], rows: [['root (L2)', '38-30', '1', '4 KB'], ['mid (L1)', '29-21', '3', '12 KB'], ['leaf (L0)', '20-12', '3', '12 KB'], ['<b>total</b>', '', '7', '<b>28 KB</b>']] },
@@ -1622,11 +1622,11 @@ practice.push({
   example: `<p>Without faults ${H.c('b', '114 ns')}; with faults ${H.c('g', '≈ 122 ns')}.</p>`,
   brute: { why: `<p>Ignoring page faults because "a million to one is tiny" - but 8 ms is 80,000 times the memory time, so the faults add as much as the entire TLB-miss penalty.</p>` },
   mcq: { q: 'The fault term p × T = 10<sup>-6</sup> × 8,000,000 ns equals…', options: ['0.8 ns', '8 ns', '80 ns'], answer: 1, explain: '10<sup>-6</sup> × 8 × 10<sup>6</sup> = 8 ns on average per reference.' },
-  hints: [`<p>Hint 1: first compute the translation+access time with the TLB (the "ma").</p>`, `<p>Hint 2: then EAT = (1 - p) × ma + p × T.</p>`, `<p>Hint 3: compare the extra 14 ns (TLB misses) with the extra 8 ns (faults).</p>`],
+  hints: [`<p>Hint 1: first compute the translation+access time with the TLB (the "ma").</p>`, `<p>Hint 2: then EAT = (1 - p) × ma + p × T. Write the numbers down step by step before moving on.</p>`, `<p>Hint 3: compare the extra 14 ns (TLB misses) with the extra 8 ns (faults).</p>`],
   solution: {
     approach: `<p>Memory-access time ma with TLB: hit = 10 + 100 = 110 ns, miss = 10 + 2 × 100 + 100 = 310 ns, so ma = 0.98 × 110 + 0.02 × 310 = 107.8 + 6.2 = 114 ns. Including faults with p = 10<sup>-6</sup> and T = 8,000,000 ns: EAT = (1 - 10<sup>-6</sup>) × 114 + 10<sup>-6</sup> × 8,000,000 ≈ 114 + 8 = 122 ns (about 22% over the ideal 100 ns). Of the 22 ns of overhead, 14 ns comes from the TLB (lookup + misses) and 8 ns from rare page faults; a fault rate ten times higher would double the second part, showing why even 'rare' faults matter.</p>`,
     dry: { head: ['Part', 'Calculation', 'Value'], rows: [['hit', '10 + 100', '110'], ['miss', '10 + 200 + 100', '310'], ['ma', '0.98×110 + 0.02×310', '114 ns'], ['fault part', '1e-6 × 8,000,000', '8 ns'], ['<b>EAT</b>', '≈ 114 + 8', '<b>≈ 122 ns</b>']] },
-    complexity: `<p>O(1).</p>`
+    complexity: `<p>O(1): a few shifts, masks, comparisons and table reads, constant time.</p>`
   }
 });
 
@@ -1637,7 +1637,7 @@ practice.push({
   example: `<p>WS(5) = ${H.c('b', '{1,2,3}')}, WS(9) = ${H.c('b', '{2,4,5}')}, WS(14) = ${H.c('b', '{5,6}')}, WS(20) = ${H.c('b', '{7,8}')}; peak ${H.c('r', '4')}.</p>`,
   brute: { why: `<p>Giving the process as many frames as distinct pages (8) is safe but wasteful - it only ever needs a handful at a time.</p>` },
   mcq: { q: 'A good number of frames for this process is about…', options: ['the peak WSS (4) or slightly above', '1', 'the total number of distinct pages (8)'], answer: 0, explain: 'The peak working-set size is enough to hold any locality; the rest of the pages are only touched in other phases.' },
-  hints: [`<p>Hint 1: take the last 5 references ending at t.</p>`, `<p>Hint 2: remove duplicates; count.</p>`, `<p>Hint 3: phases: {1,2,3,4}, {4,5,6}, {7,8}.</p>`],
+  hints: [`<p>Hint 1: take the last 5 references ending at t. Write the numbers down step by step before moving on.</p>`, `<p>Hint 2: remove duplicates; count. Write the numbers down step by step before moving on.</p>`, `<p>Hint 3: phases: {1,2,3,4}, {4,5,6}, {7,8}. Write the numbers down step by step before moving on.</p>`],
   solution: {
     approach: `<p>Windows: references 1-5 are 1 2 3 1 2 → {1,2,3} (WSS 3); references 5-9 are 2 4 4 4 5 → {2,4,5} (3); references 10-14 are 6 5 6 5 6 → {5,6} (2); references 16-20 are 8 7 8 7 8 → {7,8} (2). The full WSS series is 1 2 3 3 3 4 4 3 3 3 3 3 2 2 3 4 4 3 2 2 with a peak of 4 (at references 6-7 and 16-17, where a window contains two localities). Give the process about 4 frames: it then holds the working set of every phase. The bumps show phase transitions where the old locality overlaps the new one in the window; a shrinking WSS means the program is looping over a small set of pages.</p>`,
     dry: { head: ['t', 'window', 'WS', 'WSS'], rows: [['5', '1 2 3 1 2', '{1,2,3}', '3'], ['9', '2 4 4 4 5', '{2,4,5}', '3'], ['14', '6 5 6 5 6', '{5,6}', '2'], ['20', '8 7 8 7 8', '{7,8}', '2']] },
@@ -1667,7 +1667,7 @@ practice.push({
   example: `<p>262,144 pages; fork copies only ${H.c('b', '≈ 2 MB of page tables')}; 1% writes → ${H.c('r', '≈ 10 MB')} extra.</p>`,
   brute: { why: `<p>Copying all 1 GB at fork time would take hundreds of milliseconds and double memory immediately, even though most pages are never written.</p>` },
   mcq: { q: 'After fork, which pages are copied?', options: ['All of them immediately', 'Only those written by either process, on the first write', 'None, ever'], answer: 1, explain: 'Copy-on-write: share read-only until a write triggers a page copy.' },
-  hints: [`<p>Hint 1: pages = 1 GB / 4 KB.</p>`, `<p>Hint 2: page-table bytes = pages × 8.</p>`, `<p>Hint 3: written pages × 4 KB is the extra memory.</p>`],
+  hints: [`<p>Hint 1: pages = 1 GB / 4 KB. Write the numbers down step by step before moving on.</p>`, `<p>Hint 2: page-table bytes = pages × 8. Write the numbers down step by step before moving on.</p>`, `<p>Hint 3: written pages × 4 KB is the extra memory.</p>`],
   solution: {
     approach: `<p>(a) 1 GB / 4 KB = 262,144 pages. (b) The fork itself copies the page tables, not the data: 262,144 × 8 B = 2 MB (Linux can share even more for some mappings), which takes only milliseconds. All data pages are marked read-only and shared. (c) 1% of pages is about 2,621 pages; each first write takes a protection fault, the kernel allocates a new frame and copies 4 KB, so extra memory ≈ 2,621 × 4 KB ≈ 10.2 MB. (d) Redis forks to snapshot (RDB): while the child writes the snapshot, every page the parent modifies is copied. On a write-heavy server a large fraction of pages gets touched during the save, so memory use can approach 2× the dataset - hence the advice to leave headroom and to watch transparent huge pages, which make each copy 2 MB instead of 4 KB.</p>`,
     dry: { head: ['Quantity', 'Computation', 'Result'], rows: [['pages', '2^30 / 2^12', '262,144'], ['page tables copied', '262,144 × 8 B', '2 MB'], ['pages written', '1% × 262,144', '≈ 2,621'], ['extra memory', '2,621 × 4 KB', '≈ 10.2 MB']] },
