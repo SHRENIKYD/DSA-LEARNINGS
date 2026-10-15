@@ -2747,7 +2747,7 @@ practice.push({
     <li><b>Non-singleton lib</b>: the consumer gets the <b>highest provided version that satisfies its range</b> → <code>'ok'</code>. If none does, it falls back to <b>its own</b> provided copy → <code>'own-copy'</code>. With no own copy → <code>version: null, status: 'error'</code>.</li></ul>
     <p>A lib with no providers gives <code>version: null, status: 'error'</code> for all its consumers.</p>`,
   constraints: `Up to 50 libs, 100 apps. Compare versions numerically.`,
-  example: `<p>react (singleton): shell 18.3.1, cart 18.2.0, old 17.0.2. date-fns (not singleton): shell 3.6.0, old 2.30.0.</p>${H.table(['consumer', 'lib / range', 'result'], [['cart', 'react ^18.2.0', '<span class="c-g">18.3.1 ok</span>'], ['old', 'react ^17.0.0, strict', '<span class="c-r">error</span> (singleton 18.3.1 is outside range)'], ['old', 'date-fns ^2.0.0', '<span class="c-g">2.30.0 ok</span> (highest satisfying)'], ['shell', 'date-fns ^2.0.0', '<span class="c-y">3.6.0 does not satisfy; no own match → own copy 3.6.0</span>']])}`,
+  example: `<p>react (singleton): shell 18.3.1, cart 18.2.0, old 17.0.2. date-fns (not singleton): shell 3.6.0, old 2.30.0.</p>${H.table(['consumer', 'lib / range', 'result'], [['cart', 'react ^18.2.0', '<span class="c-g">18.3.1 ok</span>'], ['old', 'react ^17.0.0, strict', '<span class="c-r">error</span> (singleton 18.3.1 is outside range)'], ['old', 'date-fns ^2.0.0', '<span class="c-g">2.30.0 ok</span> (highest satisfying)'], ['shell', 'date-fns ^4.0.0', '<span class="c-y">nothing provided satisfies ^4 → falls back to its own copy 3.6.0 (own-copy)</span>']])}`,
   brute: {
     why: `<p>Picking "the first registered version" for every consumer depends on load order and silently gives a major-version mismatch; treating every lib as a singleton forces unrelated libraries (like a date helper) into one version and blocks teams from upgrading independently.</p>`,
     code: `function resolveBrute(providers, consumers) {
@@ -2802,7 +2802,7 @@ const consumers = [
   { app: 'cart', lib: 'react', range: '^18.2.0', strict: false },
   { app: 'old', lib: 'react', range: '^17.0.0', strict: true },
   { app: 'old', lib: 'date-fns', range: '^2.0.0', strict: false },
-  { app: 'shell', lib: 'date-fns', range: '^2.0.0', strict: false },
+  { app: 'shell', lib: 'date-fns', range: '^4.0.0', strict: false },
   { app: 'ghost', lib: 'lodash', range: '^4.0.0', strict: false }
 ];
 resolveShared(providers, consumers, { react: { singleton: true }, 'date-fns': { singleton: false } })
