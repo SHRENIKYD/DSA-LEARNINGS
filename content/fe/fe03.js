@@ -2283,7 +2283,7 @@ for (const e of [badge, menu, bar, normal, card]) {
           parts: [{ type: 'table', label: 'Positioning facts', columns: ['Question', 'Answer'], rows: [['B still reserves its space?', info[0]], ['Offsets measured from', info[1]], ['Did C move?', info[2]]], hl: { 1: 'sel' } }]
         });
         frames.push({ narr: 'Scroll test: the page scrolls down by 2 rows. Everything moves up 2 rows' + (mode === 'fixed' ? ' <b>except B</b>, which is fixed to the viewport and stays at the same screen position' : ' - B scrolls along with the page') + '.', parts: [draw(2, b, cRow, ghost)] });
-        frames.push({ narr: 'Remember: <b>relative</b> keeps its space and anchors children; <b>absolute</b> leaves the flow and uses the nearest positioned ancestor; <b>fixed</b> uses the viewport and ignores scrolling; <b>sticky</b> (next visualizer) is a hybrid. Offsets do nothing on <b>static</b>.', parts: [{ type: 'text', html: '<b>Try:</b> <code>relative top:1 left:2</code>, <code>absolute top:0 left:0 anc:static</code>, <code>fixed top:0 left:6</code>' }] });
+        frames.push({ narr: 'Remember: <b>relative</b> keeps its space and anchors children; <b>absolute</b> leaves the flow and uses the nearest positioned ancestor; <b>fixed</b> uses the viewport and ignores scrolling; <b>sticky</b> (next visualizer) is a hybrid. Offsets do nothing on <b>static</b>.', parts: [{ type: 'text', html: '<b>Try:</b> <code>relative top:1 left:2</code>, <code>absolute top:0 left:0 anc:static</code>, <code>fixed top:0 left:5</code>' }] });
         return frames;
       }
     },
@@ -2822,7 +2822,7 @@ practice.push({
     code: { lang: 'js', run: true, code: R`
 // WRONG: maps hue straight onto one channel
 const hslWrong = (h, s, l) => [Math.round(h * 255 / 360), Math.round(s * 2.55), Math.round(l * 2.55)];
-console.log(hslWrong(220, 60, 50)); // [156, 153, 128] - nowhere near [51, 102, 204]
+console.log(hslWrong(220, 60, 50)); // [156, 153, 127] - nowhere near [51, 102, 204]
 ` }
   },
   mcq: { q: 'In HSL, what does lightness 0% always give?', options: ['white', 'black', 'a fully saturated colour', 'transparent'], answer: 1, explain: 'Lightness 0% is black and 100% is white regardless of hue and saturation; pure colours live at 50%.' },
@@ -2878,10 +2878,10 @@ practice.push({
   brute: {
     why: `<p>Resolving every em against the <b>root</b> size (treating em like rem) or every rem against the parent mixes up the two reference points. The error shows up only in nested chains, which is why it survives quick tests.</p>`,
     code: { lang: 'js', run: true, code: R`
-// WRONG: em resolved against the root, so nothing compounds
+// WRONG: em resolved against the root (like rem), so nothing compounds
 function sizesWrong(chain) {
-  const root = parseFloat(chain[0]) / 100 * 16;
-  return chain.map(v => (v === null ? root : parseFloat(v) * root));
+  const root = 16;
+  return chain.map(v => (v === null ? root : v.endsWith('%') ? parseFloat(v) / 100 * root : parseFloat(v) * root));
 }
 console.log(sizesWrong(['100%', '1.5em', '1.5em'])); // [16, 24, 24] - the third should be 36
 ` }
