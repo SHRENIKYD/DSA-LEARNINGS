@@ -811,7 +811,7 @@ print(out_size(32, 5), out_size(32, 5, p=2), out_size(7, 3, s=2))` } },
 # naive: hard-coded top-left window only
 w = [row[0:3] for row in img[0:3]]
 print(w[0][0] + w[0][2] + w[1][1] + w[2][0] + w[2][2])` } },
-    mcq: { q: 'A 7×7 image, 3×3 kernel, stride 1, no padding gives an output of…', options: ['5×5', '7×7', '3×3'], answer: 0, explain: '(7 − 3)/1 + 1 = 5.' },
+    mcq: { q: 'A 7×7 image, 3×3 kernel, stride 1, no padding gives an output of…', options: ['5×5', '7×7', '3×3'], answer: 0, explain: 'Use (7 − 3)/1 + 1 = 5, so the map is 5×5.' },
     hints: [`<p>The kernel only has ones at the four corners and the centre; everything else is 0, so only five pixels of each window matter.</p>`, `<p>For window starting at (r, c) the result is img[r][c] + img[r][c+2] + img[r+1][c+1] + img[r+2][c] + img[r+2][c+2].</p>`, `<p>Loop r and c over 0..2 and compute that sum; the result is a 3×3 grid.</p>`],
     solution: {
       approach: `<p>The kernel is a "plus-shaped corners and centre" pattern: it adds the four window corners and the centre pixel. For each of the 9 window positions (r, c) with r, c in 0..2, compute img[r][c] + img[r][c+2] + img[r+1][c+1] + img[r+2][c] + img[r+2][c+2]. The output is 3×3 because (5 − 3)/1 + 1 = 3. Row 0: window (0,0): 1+0+1+1+1 = 4; (0,1): img[0][1]=2, img[0][3]=1, img[1][2]=2, img[2][1]=0, img[2][3]=2 → 2+1+2+0+2 = 7; (0,2): img[0][2]=0, img[0][4]=3, img[1][3]=3, img[2][2]=1, img[2][4]=0 → 7. The complete map is [[4,7,7],[4,7,6],[4,5,5]]; run the code below to confirm it; remember each output cell depends on only a 3×3 patch, which is the receptive field of that output cell.</p>`,
@@ -1024,7 +1024,7 @@ def softmax(zs):
 for logits in ([2.0, 1.0, 0.1], [0.1, 1.0, 2.0]):
     p = softmax(logits)
     print([round(x, 3) for x in p], "loss", round(-math.log(p[0]), 3))` },
-    complexity: `<p>O(K) for K classes.</p>`, followUps: ['What is the gradient with respect to the logits?', 'Why use log-sum-exp?']
+    complexity: `<p>O(K) time for K classes, O(K) space.</p>`, followUps: ['What is the gradient with respect to the logits?', 'Why use log-sum-exp?']
   }
 });
 
@@ -1280,7 +1280,7 @@ print(reach([(3, 1), (3, 1), (3, 1)]))` } },
 print(receptive_field([(3, 1, 1)] * 3))
 print(receptive_field([(3, 2, 1), (3, 1, 1), (3, 1, 1)]))
 print(receptive_field([(3, 1, 1), (3, 1, 2), (3, 1, 4)]))` },
-    complexity: `<p>O(layers).</p>`, followUps: ['How many 3×3 layers are needed to cover 224 pixels?', 'Why is the effective receptive field smaller than the theoretical one?']
+    complexity: `<p>O(layers) time and O(1) extra space.</p>`, followUps: ['How many 3×3 layers are needed to cover 224 pixels?', 'Why is the effective receptive field smaller than the theoretical one?']
   }
 });
 
@@ -1360,7 +1360,7 @@ Q('Why do deep sigmoid networks suffer from vanishing gradients?', ['The sigmoid
 Q('What does momentum add to plain SGD?', ['A running velocity of past gradients', 'A bigger batch size', 'A second loss function'], 0, 'v = β·v + g accumulates consistent directions and smooths zig-zags, giving faster progress along valleys.');
 Q('Adam keeps which two running statistics per parameter?', ['Mean of gradients and mean of squared gradients', 'The largest weight and the smallest weight', 'Loss and accuracy'], 0, 'm (first moment) gives the direction and s (second moment) scales the step per parameter.');
 Q('Cosine similarity of two embedding vectors equals 0. This means they are…', ['Perpendicular (unrelated direction)', 'Identical', 'Opposite'], 0, 'Cosine is 1 for the same direction, 0 for perpendicular, −1 for opposite.');
-Q('A 5×5 image convolved with a 3×3 kernel (stride 1, no padding) gives an output of size…', ['3×3', '5×5', '7×7', '2×2'], 0, '(5 − 3)/1 + 1 = 3.');
+Q('A 5×5 image convolved with a 3×3 kernel (stride 1, no padding) gives an output of size…', ['3×3', '5×5', '7×7', '2×2'], 0, 'Use (5 − 3)/1 + 1 = 3, giving a 3×3 map.');
 Q('What main advantage does a convolution layer have over a dense layer on images?', ['Weight sharing and local connectivity give far fewer parameters', 'It ignores pixel positions entirely', 'It needs no training'], 0, 'The same small kernel is reused at every position, so the parameter count does not grow with image size, and patterns are learned once.');
 Q('Which is NOT a reason RNNs struggle with long sequences?', ['They use too many attention heads', 'Gradients vanish through many time steps', 'Computation must happen step by step'], 0, 'RNNs have no attention heads. Their problems are vanishing gradients through time, a squeezed fixed-size state, and sequential computation.');
 Q('Why could transformers be trained at much larger scale than RNNs?', ['All positions are processed in parallel on GPUs', 'They use fewer layers', 'They need no data'], 0, 'Self-attention does not depend on a previous time step\'s output, so the whole sequence is processed at once, which uses accelerators well.');
