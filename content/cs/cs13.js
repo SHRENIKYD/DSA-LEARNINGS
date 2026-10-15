@@ -543,7 +543,7 @@ class Resolver:
 
 r = Resolver()
 for t, name in [(0, "www.example.com"), (5, "www.example.com"), (30, "www.example.com"),
-                (400, "www.example.com"), (400, "api.example.com"), (0, "nope.example.com")]:
+                (400, "www.example.com"), (400, "api.example.com"), (401, "nope.example.com")]:
     r.clock = t
     print("t=%ds  resolve %s" % (t, name))
     print("  result:", r.resolve(name))

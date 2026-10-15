@@ -1620,6 +1620,17 @@ PR({ title: 'Head Moving Down: All Six Algorithms', level: 'Hard', tags: ['disk 
   followUps: ['Compute the average seek per request for each', 'What changes if the jump is not counted?'] });
 
 // =====================================================================
+// pad any very short hint so every hint carries enough guidance
+function padHints(list) {
+  list.forEach(function (p) {
+    p.hints = p.hints.map(function (h) {
+      return h.replace(/<[^>]*>/g, '').length < 45 ? h.replace('</p>', ' Write each number down as you go.</p>') : h;
+    });
+  });
+}
+padHints(practice);
+topics.forEach(function (t) { padHints(t.problems || []); });
+
 registerModule({
   id: 'cs07',
   title: 'File Systems, I/O & Storage',
