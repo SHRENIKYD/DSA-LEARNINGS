@@ -1400,7 +1400,7 @@ print(f"cache ~{cache_gb:.0f} GB, egress peak {peak_r*500*8/1e6:.0f} Mbps, app s
     example: `<p>Uploads/day = 500 × 60 × 24 = ${H.c('b', '720,000 hours')} → originals ≈ ${H.c('r', '720 TB/day')}.</p>`,
     brute: { why: `<p>Naive: estimate only originals and forget renditions, thumbnails and replication — under-estimating storage 3–4×. Or size transcoding by the daily average without headroom, so uploads queue for hours during peaks.</p>` },
     mcq: { q: 'Yearly storage for originals + renditions (before replication) is roughly…', options: ['~80 TB', '~800 TB', '~800 PB', '~8 EB'], answer: 2, explain: '720 TB/day × 3 (original + 2× renditions) ≈ 2.2 PB/day × 365 ≈ 790 PB/year.' },
-    hints: [`<p>Hint 1: Hours per day = 500 × 1,440.</p>`, `<p>Hint 2: Storage/day = hours × 1 GB × (1 + 2).</p>`, `<p>Hint 3: Workers = video-hours arriving per hour ÷ hours processed per worker-hour × headroom.</p>`],
+    hints: [`<p>Hint 1: Video-hours uploaded per day = 500 per minute × 1,440 minutes per day.</p>`, `<p>Hint 2: Storage/day = hours × 1 GB × (1 + 2).</p>`, `<p>Hint 3: Workers = video-hours arriving per hour ÷ hours processed per worker-hour × headroom.</p>`],
     solution: {
       approach: `<p><b>Arrival:</b> 500 h/min × 1,440 min = 720,000 h/day = 30,000 h of video per hour.</p>
         <p><b>Storage:</b> originals 720,000 × 1 GB = 720 TB/day; renditions 1.44 PB/day; total ≈ <b>2.2 PB/day</b>, ≈ <b>790 PB/year</b>; with erasure coding (1.5×) ≈ 1.2 EB/year of raw capacity. Tiering matters: most videos get few views after the first weeks — move originals and rare renditions to cold storage, keep popular renditions hot and on CDN.</p>
