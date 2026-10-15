@@ -872,22 +872,22 @@ var files = [
   { v: 2, desc: 'create orders',    sql: 'CREATE TABLE orders(id INT)' },
   { v: 3, desc: 'add status',       sql: 'ALTER TABLE orders ADD status TEXT' }
 ];
-var history = [ { v: 1, sum: checksum(files[0].sql) }, { v: 2, sum: checksum(files[1].sql) } ];
+var applied = [ { v: 1, sum: checksum(files[0].sql) }, { v: 2, sum: checksum(files[1].sql) } ];
 
 function migrate() {
   // 1) validate: applied files must not have changed
-  for (var i = 0; i < history.length; i++) {
-    var f = files.filter(function (x) { return x.v === history[i].v; })[0];
-    if (!f) throw new Error('Applied migration V' + history[i].v + ' is missing from disk');
-    if (checksum(f.sql) !== history[i].sum) throw new Error('Validate failed: checksum mismatch for V' + f.v);
+  for (var i = 0; i < applied.length; i++) {
+    var f = files.filter(function (x) { return x.v === applied[i].v; })[0];
+    if (!f) throw new Error('Applied migration V' + applied[i].v + ' is missing from disk');
+    if (checksum(f.sql) !== applied[i].sum) throw new Error('Validate failed: checksum mismatch for V' + f.v);
   }
   // 2) apply pending in version order
-  var last = history.length ? history[history.length - 1].v : 0;
+  var last = applied.length ? applied[applied.length - 1].v : 0;
   files.filter(function (f) { return f.v > last; }).sort(function (a, b) { return a.v - b.v; }).forEach(function (f) {
     console.log('applying V' + f.v + ' ' + f.desc);
-    history.push({ v: f.v, sum: checksum(f.sql) });
+    applied.push({ v: f.v, sum: checksum(f.sql) });
   });
-  console.log('schema at version', history[history.length - 1].v);
+  console.log('schema at version', applied[applied.length - 1].v);
 }
 
 migrate();                                   // applies V3 only
