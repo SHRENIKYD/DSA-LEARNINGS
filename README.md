@@ -25,6 +25,9 @@ node tools/build.js          # builds ./site
 npx serve site               # or any static server (the SQL runner needs http, not file://)
 ```
 
+## Versioning
+The current version is in `package.json`; every release is a `vX.Y.Z` tag on `main` and is listed in [CHANGELOG.md](CHANGELOG.md). To release: bump `version` in `package.json`, add a CHANGELOG entry, merge to `main`, then tag that commit.
+
 ## Project layout
 | Path | What |
 |---|---|
