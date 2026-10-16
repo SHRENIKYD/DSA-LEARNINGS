@@ -113,9 +113,14 @@ var Auth = (function () {
         el.innerHTML = '<a class="btn acct-in" href="' + esc(loginHref()) + '"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>Sign in to sync progress</a>';
         return;
       }
-      el.innerHTML = '<div class="acct"><span class="acct-av" aria-hidden="true">' + esc((user.email || '?').charAt(0).toUpperCase()) + '</span>' +
+      var meta = user.user_metadata || {}, pic = meta.avatar_url || meta.picture || '';
+      var initial = esc((user.email || '?').charAt(0).toUpperCase());
+      var av = /^https:\/\/[^\s"'<>]+$/.test(pic) ? '<img src="' + esc(pic) + '" alt="" referrerpolicy="no-referrer">' : initial;
+      el.innerHTML = '<div class="acct"><span class="acct-av" aria-hidden="true">' + av + '</span>' +
         '<div class="acct-tx"><div class="acct-em">' + esc(user.email || 'Signed in') + '</div><div class="acct-st ' + esc(status) + '" aria-live="polite">' + esc(LABEL[status] || '') + '</div></div>' +
         '<button class="btn ghost acct-out" type="button">Sign out</button></div>';
+      var img = el.querySelector('.acct-av img');
+      if (img) img.addEventListener('error', function () { if (img.parentNode) img.parentNode.textContent = (user.email || '?').charAt(0).toUpperCase(); });
       el.querySelector('.acct-out').addEventListener('click', function () { signOut().then(function () { location.reload(); }); });
     };
     listeners.push(function (k) { if (k === 'user' || k === 'status') draw(); });
