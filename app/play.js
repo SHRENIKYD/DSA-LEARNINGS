@@ -1,5 +1,5 @@
 var Play = (function () {
-  var XP = { topic: 10, guided: 20, practice: { E: 15, M: 25, H: 40 }, quiz: 30, iv: 15, module: 100, game: 25 };
+  var XP = { topic: 10, guided: 20, practice: { E: 15, M: 25, H: 40 }, quiz: 30, iv: 15, module: 100, game: 25, replay: 5, replaysPerDay: 10 };
   var NAMES = ['Loop Learner', 'Big-O Spotter', 'Pointer Pro', 'Hash Hunter', 'Tree Climber', 'Graph Explorer', 'DP Wizard', 'Interview Ready'];
   var QUESTS = [
     { id: 'topic', icon: '📖', label: 'Finish 1 topic', need: 1, xp: 20 },
@@ -121,8 +121,10 @@ var Play = (function () {
     g.wins++;
     var k = dayKey(now), day = state.days[k] || (state.days[k] = {});
     day.g = (day.g || 0) + 1;
-    if (first) state.bonus = (state.bonus || 0) + XP.game;
-    return first ? XP.game : 0;
+    var xp = first ? XP.game : ((day.r || 0) < XP.replaysPerDay ? XP.replay : 0);
+    if (!first && xp) day.r = (day.r || 0) + 1;
+    state.bonus = (state.bonus || 0) + xp;
+    return xp;
   }
 
   var BADGES = [
@@ -136,6 +138,8 @@ var Play = (function () {
     { id: 'st7', name: '7-Day Streak', fam: 'streak', glyph: '7', color: '#FB923C', test: function (c) { return [Math.min(c.s.days, 7), 7]; }, how: 'Learn 7 days in a row' },
     { id: 'st30', name: '30-Day Streak', fam: 'streak', glyph: '30', color: '#FB923C', test: function (c) { return [Math.min(c.s.days, 30), 30]; }, how: 'Learn 30 days in a row' },
     { id: 'games3', name: 'Game On', fam: 'style', glyph: '▶', color: '#E95420', test: function (c) { return [Math.min(Object.keys(c.g || {}).length, 3), 3]; }, how: 'Win 3 different concept games' },
+    { id: 'games8', name: 'Game Master', fam: 'style', glyph: '🎮', color: '#A3E635', test: function (c) { return [Math.min(Object.keys(c.g || {}).length, 8), 8]; }, how: 'Win all 8 concept games' },
+    { id: 'wins25', name: 'Puzzle Addict', fam: 'style', glyph: '25', color: '#F472B6', test: function (c) { var n = 0; Object.keys(c.g || {}).forEach(function (k) { n += c.g[k].wins || 0; }); return [Math.min(n, 25), 25]; }, how: 'Win 25 puzzles' },
     { id: 'lv5', name: 'Level 5', fam: 'level', glyph: '5', color: '#FDE047', test: function (c) { return [Math.min(c.l.level, 5), 5]; }, how: 'Reach level 5' },
     { id: 'sql', name: 'Query Whisperer', fam: 'track', glyph: 'SQL', color: '#60A5FA', test: trk('sql'), how: 'Finish every SQL module' },
     { id: 'dsa', name: 'DSA Master', fam: 'track', glyph: 'DSA', color: '#22D3EE', test: trk('dsa'), how: 'Finish every DSA module' }

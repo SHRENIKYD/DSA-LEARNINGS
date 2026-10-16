@@ -2,7 +2,18 @@
 
 Versions follow [Semantic Versioning](https://semver.org): MAJOR for breaking changes to progress data or URLs, MINOR for new features or modules, PATCH for fixes. Each release is a `vX.Y.Z` git tag on `main`, and `package.json` holds the current version for both the website and the mobile app. The Android workflow creates the tag and a GitHub Release (with the APK) automatically when a new version reaches `main`.
 
-## [1.2.0] — 2026-10-16
+## [1.3.0] — 2026-10-16
+
+### Added
+- Four new concept games: Two-pointer hunt (DSA 6), Bracket stack (DSA 13), Swap sort (DSA 7) and Bit flipper (DSA 4). Eight games in total.
+- Every play is a new random puzzle: Guess the number picks a new range and size, Big-O race a new N and pair of runners (31 combinations), Rotten oranges a new grid (sometimes one that can never finish), Hash lockers new names and table size, and the new games new strings, arrays, targets and numbers.
+- 🎲 New puzzle and Next puzzle buttons, 🔀 Another game, and 🎲 Surprise me on the Play tab, which never repeats your last game. Today's game on Home changes daily.
+- Replays earn +5 XP (up to 10 a day) after the first +25 XP win. New badges: Game Master (win all 8 games) and Puzzle Addict (25 wins).
+
+### Changed
+- Big-O race hides the step counts until you bet.
+
+ — 2026-10-16
 
 ### Added
 - Read aloud in the app: a 🔊 button on every lesson, module and game screen opens a player that reads the topic paragraph by paragraph (code and visualizers are skipped), highlights and scrolls to what it is reading, and can continue into the next topic.
