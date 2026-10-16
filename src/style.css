@@ -378,6 +378,10 @@ button svg,.btn svg{pointer-events:none}
 .fld input:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
 .fld-hint{margin:-4px 0 0;font-size:13px;color:var(--muted)}
 .auth-submit{width:100%;margin-top:4px}
+.auth-google{width:100%;gap:10px;margin-bottom:14px}
+.auth-google .g-logo{width:20px;height:20px;flex:none}
+.auth-or{display:flex;align-items:center;gap:12px;margin-bottom:14px;color:var(--muted);font-size:13px}
+.auth-or::before,.auth-or::after{content:"";flex:1;height:1px;background:var(--border)}
 .auth-link{align-self:center;min-height:40px}
 .auth-row{display:flex;flex-wrap:wrap;gap:10px}
 .auth-msg{margin:0;padding:10px 12px;border-radius:10px;font-size:14.5px}
