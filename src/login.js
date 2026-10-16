@@ -6,6 +6,7 @@
   var nextRaw = params.get('next') || '';
   var next = /^[A-Za-z0-9_-]+\.html(\?[^#\s]*)?(#[^\s]*)?$/.test(nextRaw) && nextRaw.indexOf('login.html') !== 0 ? nextRaw : 'index.html';
   var here = location.href.split('?')[0].split('#')[0];
+  var oauthReturn = params.has('code');
   var mode = 'in', busy = false;
 
   function show(el, on) { el.hidden = !on; }
@@ -53,6 +54,15 @@
   $('tabIn').addEventListener('click', function () { setMode('in'); });
   $('tabUp').addEventListener('click', function () { setMode('up'); });
   $('authSignOut').addEventListener('click', function () { Auth.signOut().then(function () { location.href = 'login.html'; }); });
+
+  $('authGoogle').addEventListener('click', function () {
+    if (busy) return;
+    clearMsgs();
+    busy = true; $('authGoogle').disabled = true; $('authGoogleTx').textContent = 'Opening Google…';
+    Auth.client.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: here + '?next=' + encodeURIComponent(next) } }).then(function (r) {
+      if (r.error) { busy = false; $('authGoogle').disabled = false; $('authGoogleTx').textContent = 'Continue with Google'; msg($('authErr'), r.error.message); }
+    }, function () { busy = false; $('authGoogle').disabled = false; $('authGoogleTx').textContent = 'Continue with Google'; msg($('authErr'), 'Could not reach the server. Check your connection and try again.'); });
+  });
 
   $('authForm').addEventListener('submit', function (e) {
     e.preventDefault();
@@ -109,5 +119,10 @@
     } else if (k === 'user' && $('resetForm').hidden) view();
   });
   setMode('in');
-  Auth.init().then(function () { if ($('resetForm').hidden) view(); });
+  if (params.get('error_description')) msg($('authErr'), 'Google sign-in failed: ' + params.get('error_description'));
+  Auth.init().then(function (u) {
+    if (!$('resetForm').hidden) return;
+    view();
+    if (u && oauthReturn) { msg($('authInfo'), 'Signed in. Syncing your progress…'); goNext(); }
+  });
 })();
