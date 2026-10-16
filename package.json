@@ -1,0 +1,10 @@
+{
+  "name": "interview-mastery",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Beginner-to-expert interview prep: 13 tracks with visualizers, practice and progress sync.",
+  "repository": "github:SHRENIKYD/DSA-LEARNINGS",
+  "scripts": {
+    "build": "node tools/build.js"
+  }
+}
