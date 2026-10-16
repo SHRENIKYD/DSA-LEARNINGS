@@ -31,6 +31,9 @@ jobs:
     if: github.ref == 'refs/heads/main'
     permissions:
       contents: write
+    env:
+      HAS_UPLOAD_KEY: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+      HAS_PLAY_ACCOUNT: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -48,6 +51,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ vars.SUPABASE_URL || secrets.SUPABASE_URL }}
           SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_PUBLISHABLE_KEY }}
+          CONTACT_EMAIL: ${{ vars.CONTACT_EMAIL }}
         run: node tools/build-app.js
       - run: npx cap sync android
       - name: Build debug APK
@@ -57,6 +61,24 @@ jobs:
         with:
           name: interview-mastery-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+      - name: Build signed release bundle (.aab) for Google Play
+        if: env.HAS_UPLOAD_KEY == 'true'
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          ANDROID_KEYSTORE_FILE="$RUNNER_TEMP/upload.jks" ./gradlew bundleRelease --no-daemon
+          rm -f "$RUNNER_TEMP/upload.jks"
+      - uses: actions/upload-artifact@v4
+        if: env.HAS_UPLOAD_KEY == 'true'
+        with:
+          name: interview-mastery-release-aab
+          path: android/app/build/outputs/bundle/release/app-release.aab
           retention-days: 30
       - name: Tag and release this version
         env:
@@ -76,7 +98,19 @@ jobs:
           release 1.0.0 db7338f7b7e2d598fdbc9cc451f21f852664a97a "v1.0.0 · website launch"
           V=$(node -p "require('./package.json').version")
           cp android/app/build/outputs/apk/debug/app-debug.apk "interview-mastery-v$V-debug.apk"
-          release "$V" "$GITHUB_SHA" "v$V" "interview-mastery-v$V-debug.apk"
+          ASSETS="interview-mastery-v$V-debug.apk"
+          if [ -f android/app/build/outputs/bundle/release/app-release.aab ]; then cp android/app/build/outputs/bundle/release/app-release.aab "interview-mastery-v$V.aab"; ASSETS="$ASSETS interview-mastery-v$V.aab"; fi
+          if git ls-remote --exit-code --tags origin "refs/tags/v$V" >/dev/null; then echo "NEW_RELEASE=false" >> "$GITHUB_ENV"; else echo "NEW_RELEASE=true" >> "$GITHUB_ENV"; fi
+          release "$V" "$GITHUB_SHA" "v$V" $ASSETS
+      - name: Upload to Google Play (internal testing)
+        if: env.HAS_UPLOAD_KEY == 'true' && env.HAS_PLAY_ACCOUNT == 'true' && env.NEW_RELEASE == 'true'
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: io.github.shrenikyd.interviewmastery
+          releaseFiles: android/app/build/outputs/bundle/release/app-release.aab
+          track: internal
+          status: ${{ vars.PLAY_RELEASE_STATUS || 'draft' }}
 
   apk-preview:
     needs: test

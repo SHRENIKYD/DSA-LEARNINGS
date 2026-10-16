@@ -30,13 +30,26 @@
     clearMsgs();
     setBusy(false);
   }
+  var wantDelete = params.get('delete') === '1', deleted = false;
+  function showDelete() {
+    var u = Auth.user();
+    show($('authForms'), false); show($('authSigned'), false); show($('authDelete'), true);
+    $('authTitle').textContent = 'Delete your account';
+    $('authSub').textContent = 'You can always create a new account later, but your progress will not come back.';
+    $('delWho').textContent = (u && u.email) || 'you are signed in to';
+    $('delConfirm').focus();
+  }
   function view() {
     var u = Auth.user();
+    if (deleted) return;
+    if (u && wantDelete) return showDelete();
+    if (!u && wantDelete) { $('authTitle').textContent = 'Delete your account'; $('authSub').textContent = 'Sign in to the account you want to delete. You will confirm on the next screen.'; }
     show($('authSigned'), !!u);
     show($('authForms'), !u);
     if (u) { $('authWho').textContent = u.email || 'your account'; $('authContinue').setAttribute('href', next); $('authTitle').textContent = 'You are signed in'; }
   }
   function goNext() {
+    if (wantDelete) { msg($('authInfo'), ''); return showDelete(); }
     var done = false, go = function () { if (!done) { done = true; location.href = next; } };
     var st = Auth.status();
     if (st === 'synced' || st === 'error') return go();
@@ -87,7 +100,7 @@
       }, offline);
       return;
     }
-    Auth.client.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: here + '?next=' + encodeURIComponent(next) } }).then(function (r) {
+    Auth.client.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: here + '?next=' + encodeURIComponent(next) + (wantDelete ? '&delete=1' : '') } }).then(function (r) {
       if (r.error) { resetGoogle(); msg($('authErr'), r.error.message); }
     }, offline);
   });
@@ -155,6 +168,21 @@
       if (r.error) { msg($('resetErr'), r.error.message); return; }
       location.href = next;
     }, function () { msg($('resetErr'), 'Could not reach the server. Check your connection and try again.'); });
+  });
+
+  $('delConfirm').addEventListener('input', function () { $('delBtn').disabled = this.value.trim().toUpperCase() !== 'DELETE'; });
+  $('delBtn').addEventListener('click', function () {
+    var b = this;
+    if (b.disabled) return;
+    b.disabled = true; b.textContent = 'Deleting…'; msg($('delErr'), '');
+    Auth.deleteAccount().then(function () {
+      deleted = true;
+      show($('authDelete'), false); show($('authDeleted'), true);
+      $('authTitle').textContent = 'Account deleted'; $('authSub').textContent = 'Thanks for learning with us.';
+    }, function (e) {
+      b.disabled = false; b.textContent = 'Delete my account';
+      msg($('delErr'), (e && e.message) || 'Could not delete the account. Check your connection and try again.');
+    });
   });
 
   Auth.on(function (k) {

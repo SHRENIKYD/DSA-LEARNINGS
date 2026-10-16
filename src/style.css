@@ -389,4 +389,14 @@ button svg,.btn svg{pointer-events:none}
 .auth-msg.err{background:var(--r-bg);color:var(--text);border:1px solid var(--r)}
 .auth-msg.ok{background:var(--g-bg);color:var(--text);border:1px solid var(--g)}
 .auth-msg.warn{background:var(--y-bg);color:var(--text);border:1px solid var(--y)}
+.auth-danger{background:var(--r);border-color:var(--r);color:#fff}
+.auth-danger:disabled{opacity:.45}
 .auth-foot{margin:0;text-align:center;color:var(--muted);font-size:14px}
+
+/* privacy policy */
+.legal{width:100%;max-width:760px;display:flex;flex-direction:column;gap:22px}
+.legal h1{font-size:30px}
+.legal h2{margin:18px 0 0;font-size:20px}
+.legal h3{margin:6px 0 0;font-size:16px;color:var(--accent-fg)}
+.legal p,.legal li{line-height:1.6}
+.legal ul{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}

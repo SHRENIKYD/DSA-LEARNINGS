@@ -23,6 +23,20 @@
     <div id="authSigned" hidden>
       <p class="auth-msg ok" role="status">Signed in as <b id="authWho"></b>.</p>
       <div class="auth-row"><a class="btn primary lg" id="authContinue" href="index.html">Continue learning</a><button class="btn lg" type="button" id="authSignOut">Sign out</button></div>
+      <a class="btn ghost auth-link" href="login.html?delete=1">Delete my account</a>
+    </div>
+
+    <div id="authDelete" hidden>
+      <p class="auth-msg warn" role="status">This permanently deletes the account <b id="delWho"></b> and all progress synced to it. It cannot be undone. Progress saved only on other devices stays on those devices.</p>
+      <label class="fld" for="delConfirm"><span>Type DELETE to confirm</span><input id="delConfirm" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false"></label>
+      <div id="delErr" class="auth-msg err" role="alert" hidden></div>
+      <button class="btn lg auth-submit auth-danger" type="button" id="delBtn" disabled>Delete my account</button>
+      <a class="btn ghost auth-link" href="index.html">Keep my account</a>
+    </div>
+
+    <div id="authDeleted" hidden>
+      <p class="auth-msg ok" role="status">Your account and its progress were deleted.</p>
+      <a class="btn primary lg auth-submit" href="index.html">Back to Interview Mastery</a>
     </div>
 
     <div id="authForms">
@@ -56,7 +70,7 @@
       <button class="btn primary lg auth-submit" type="submit">Set new password</button>
     </form>
   </section>
-  <p class="auth-foot"><a href="index.html">Continue without an account</a> — progress stays in this browser only.</p>
+  <p class="auth-foot"><a href="index.html">Continue without an account</a> — progress stays in this browser only. · <a href="privacy.html">Privacy policy</a></p>
 </main>
 <script>
   // Google sign-in from the mobile app returns here (?app=1) in the phone's browser.

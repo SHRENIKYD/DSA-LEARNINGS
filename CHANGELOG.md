@@ -2,7 +2,19 @@
 
 Versions follow [Semantic Versioning](https://semver.org): MAJOR for breaking changes to progress data or URLs, MINOR for new features or modules, PATCH for fixes. Each release is a `vX.Y.Z` git tag on `main`, and `package.json` holds the current version for both the website and the mobile app. The Android workflow creates the tag and a GitHub Release (with the APK) automatically when a new version reaches `main`.
 
-## [1.3.0] — 2026-10-16
+## [1.4.0] — 2026-10-16
+
+### Added
+- Google Play release setup: signed release bundle (.aab) built in CI from GitHub secrets, attached to each GitHub release, and uploaded to the Play internal testing track when a service account is configured. Step-by-step guide in `docs/PLAY_RELEASE.md`.
+- Account deletion: Me → Delete account in the app and `login.html?delete=1` on the web, backed by `supabase/delete-account.sql`. Removes the account and its synced progress.
+- Privacy policy page (`privacy.html`), linked from the login page and the app's Me tab.
+- App icon and splash screens with Bit the mascot, a Play Store icon, a feature graphic, listing text and 1080×1920 screenshots (`store/`).
+
+### Changed
+- The app bundles its fonts, so it makes no requests to Google Fonts and text renders the same offline.
+- Two-pointer hunt never starts with the answer already under the pointers.
+
+ — 2026-10-16
 
 ### Added
 - Four new concept games: Two-pointer hunt (DSA 6), Bracket stack (DSA 13), Swap sort (DSA 7) and Bit flipper (DSA 4). Eight games in total.

@@ -234,10 +234,33 @@
     var set = [['sound', 'Sound effects'], ['haptics', 'Haptics'], ['bit', 'Show Bit, the mascot'], ['motion', 'Confetti and motion']];
     h += '<div class="list">' + set.map(function (s) { return '<label class="set" for="set-' + s[0] + '">' + s[1] + '<input type="checkbox" class="tog" id="set-' + s[0] + '" data-set="' + s[0] + '"' + (play.settings[s[0]] ? ' checked' : '') + '></label>'; }).join('') + '</div>';
     if (Reader.available()) h += '<div class="list"><div class="set">Read aloud<span class="muted">Tap 🔊 on any lesson or game</span></div><div class="set">Reading speed<span class="muted">' + (play.settings.tts.rate || 1) + '× · change it in the player</span></div></div>';
-    h += '<div class="list"><div class="set">Interview Mastery v' + esc(window.IM_VERSION || '') + '<span class="muted">' + S.totals.doneItems + ' / ' + S.totals.items + ' items done</span></div>' + (u ? '<button class="set danger" type="button" id="signOut">Sign out</button>' : '') + '</div>';
+    h += '<div class="list"><div class="set">Interview Mastery v' + esc(window.IM_VERSION || '') + '<span class="muted">' + S.totals.doneItems + ' / ' + S.totals.items + ' items done</span></div>' + '<a class="set" href="privacy.html">Privacy policy<span class="muted">›</span></a>' + (u ? '<button class="set" type="button" id="signOut">Sign out</button><a class="set danger" href="#delete">Delete account<span class="muted">›</span></a>' : '') + '</div>';
     page('me', h);
     Array.prototype.forEach.call(document.querySelectorAll('[data-set]'), function (c) { c.addEventListener('change', function () { play.settings[c.dataset.set] = c.checked; save(); if (c.dataset.set === 'sound') { Sound.enable(c.checked); Sound.play('correct'); } if (c.checked && c.dataset.set === 'haptics') buzz(15); }); });
     var so = $('#signOut'); if (so) so.addEventListener('click', function () { so.disabled = true; Auth.signOut().then(function () { play = Play.emptyState(); play.settings = { haptics: true, bit: true, motion: true }; save(); location.hash = '#home'; location.reload(); }); });
+  }
+
+  function deleteView() {
+    var u = Auth.enabled ? Auth.user() : null;
+    if (!u) { location.replace('#me'); return; }
+    var h = head('Delete account', '#me');
+    h += '<div class="card danger-card"><b class="ttl">This cannot be undone</b><p class="sm">Deleting <b>' + esc(u.email || 'your account') + '</b> removes the account and all progress synced to it, on every device. XP, streak and game wins on this phone are cleared too.</p></div>';
+    h += '<label class="fld" for="delConfirm"><span>Type DELETE to confirm</span><input id="delConfirm" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false"></label>';
+    h += '<p class="g-msg" id="delErr" hidden></p><button class="b3 r" type="button" id="delBtn" disabled>DELETE MY ACCOUNT</button><a class="b3 ghost" href="#me">KEEP MY ACCOUNT</a>';
+    page('me', h);
+    var inp = $('#delConfirm'), btn = $('#delBtn'), err = $('#delErr');
+    inp.addEventListener('input', function () { btn.disabled = inp.value.trim().toUpperCase() !== 'DELETE'; });
+    btn.addEventListener('click', function () {
+      if (btn.disabled) return;
+      btn.disabled = true; btn.textContent = 'DELETING…'; err.hidden = true;
+      Auth.deleteAccount().then(function () {
+        play = Play.emptyState(); play.settings = { haptics: true, bit: true, motion: true, sound: true, tts: { rate: 1, voice: null, cont: true } }; save();
+        page('me', head('Account deleted') + '<div class="card"><b class="ttl">Your account and its progress were deleted.</b><span class="muted sm">You can keep learning without an account, or create a new one any time.</span><a class="b3" href="#home">BACK TO HOME</a></div>');
+      }, function (e) {
+        btn.disabled = false; btn.textContent = 'DELETE MY ACCOUNT';
+        err.textContent = (e && e.message) || 'Could not delete the account. Check your connection and try again.'; err.hidden = false;
+      });
+    });
   }
 
   /* ---------- router ---------- */
@@ -254,6 +277,7 @@
       case 'surprise': { var rg = Games.random(play.lastGame); location.replace('#game/' + rg.id); return; }
       case 'badges': return badgesView();
       case 'me': return me();
+      case 'delete': return deleteView();
       default: return home();
     }
   }

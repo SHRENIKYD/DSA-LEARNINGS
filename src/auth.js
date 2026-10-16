@@ -70,6 +70,19 @@ var Auth = (function () {
     return user ? push() : Promise.resolve();
   }
 
+  // Permanently deletes the signed-in account and its progress (supabase/delete-account.sql), then clears this device.
+  function deleteAccount() {
+    if (!client || !user) return Promise.reject(new Error('Sign in first.'));
+    clearTimeout(timer); timer = null;
+    return client.rpc('delete_my_account').then(function (r) {
+      if (r.error) throw new Error(r.error.message || 'Could not delete the account.');
+      return client.auth.signOut({ scope: 'local' }).catch(function () { });
+    }).then(function () {
+      try { ['imastery.sync', 'imastery.done', 'imastery.last', 'imastery.play'].forEach(function (k) { localStorage.removeItem(k); }); } catch (e) { }
+      user = null; emit('user');
+    });
+  }
+
   function signOut() {
     if (!client) return Promise.resolve();
     var flush = timer ? push() : Promise.resolve();
@@ -128,7 +141,7 @@ var Auth = (function () {
   }
 
   return {
-    enabled: enabled, client: client, init: init, pull: pull, push: push, changed: changed, reset: reset, signOut: signOut, mountAccount: mountAccount,
+    enabled: enabled, client: client, init: init, pull: pull, push: push, changed: changed, reset: reset, signOut: signOut, deleteAccount: deleteAccount, mountAccount: mountAccount,
     user: function () { return user; }, status: function () { return status; },
     on: function (fn) { listeners.push(fn); }
   };

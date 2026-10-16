@@ -35,4 +35,26 @@ for (const t of TRACKS) {
   fs.writeFileSync(f, html);
   pages++;
 }
-console.log('app bundle v' + VERSION + ' → ' + out + ' (' + pages + ' lesson pages with play mode)');
+// Bundle the web fonts (SIL Open Font License) so the app needs no Google Fonts request and renders text offline.
+const FONTS = [['space-grotesk', 'Space Grotesk', [500, 600, 700]], ['source-sans-3', 'Source Sans 3', [400, 500, 600, 700]], ['ibm-plex-mono', 'IBM Plex Mono', [400, 500, 600]]];
+const fontDir = path.join(out, 'fonts');
+fs.mkdirSync(fontDir, { recursive: true });
+let fontCss = '';
+for (const [pkg, family, weights] of FONTS) {
+  const src = path.join(root, 'node_modules', '@fontsource', pkg);
+  for (const w of weights) {
+    const f = pkg + '-latin-' + w + '-normal.woff2';
+    fs.copyFileSync(path.join(src, 'files', f), path.join(fontDir, f));
+    fontCss += '@font-face{font-family:"' + family + '";font-style:normal;font-weight:' + w + ';font-display:swap;src:url(' + f + ') format("woff2")}\n';
+  }
+  fs.copyFileSync(path.join(src, 'LICENSE'), path.join(fontDir, pkg + '-OFL.txt'));
+}
+fs.writeFileSync(path.join(fontDir, 'fonts.css'), fontCss);
+let fontPages = 0;
+for (const f of fs.readdirSync(out).filter((x) => x.endsWith('.html'))) {
+  const file = path.join(out, f), html = fs.readFileSync(file, 'utf8');
+  const next = html.replace(/<link rel="preconnect" href="https:\/\/fonts\.(googleapis|gstatic)\.com"[^>]*>\n?/g, '')
+    .replace(/<link rel="stylesheet" href="https:\/\/fonts\.googleapis\.com\/[^"]*">/g, '<link rel="stylesheet" href="fonts/fonts.css?v=' + V + '">');
+  if (next !== html) { fs.writeFileSync(file, next); fontPages++; }
+}
+console.log('app bundle v' + VERSION + ' → ' + out + ' (' + pages + ' lesson pages with play mode, fonts bundled in ' + fontPages + ' pages)');

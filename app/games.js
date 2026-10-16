@@ -375,8 +375,12 @@ var Games = (function () {
     goal: 'Find two numbers that add up to the target by moving the left or right pointer.',
     learned: 'Because the array is sorted, a sum that is too small can only grow by moving L right, and a sum that is too big can only shrink by moving R left. Each move rules out a whole row of pairs, so one O(N) walk replaces checking all O(N²) pairs.',
     mount: function (el, api) {
-      var n = pick([8, 9, 10]), a = shuffle(range(40)).slice(0, n).sort(function (x, y) { return x - y; });
-      var i0 = rnd(0, Math.floor(n / 2) - 1), j0 = rnd(Math.floor(n / 2), n - 1), T = a[i0] + a[j0], L = 0, R = n - 1, moves = 0, over = false;
+      var n, a, T;
+      do {
+        n = pick([8, 9, 10]); a = shuffle(range(40)).slice(0, n).sort(function (x, y) { return x - y; });
+        T = a[rnd(0, Math.floor(n / 2) - 1)] + a[rnd(Math.floor(n / 2), n - 1)];
+      } while (a[0] + a[n - 1] === T);
+      var L = 0, R = n - 1, moves = 0, over = false;
       var head = h('div', 'g-row'), tg = h('span', 'g-range'), row = h('div', 'g-cells'), ptr = h('div', 'g-ptr'), msg = h('div', 'g-msg'), ch = h('div', 'g-choices');
       var mvL = btn('L →', 'ghost'), mvR = btn('← R', 'ghost');
       row.style.gridTemplateColumns = ptr.style.gridTemplateColumns = 'repeat(' + n + ',1fr)';
