@@ -13,7 +13,7 @@ fs.rmSync(out, { recursive: true, force: true });
 const r = spawnSync(process.execPath, [path.join(__dirname, 'build.js'), out], { stdio: 'inherit', env: process.env });
 if (r.status !== 0) process.exit(r.status || 1);
 
-const FILES = ['play.js', 'games.js', 'app.js', 'bridge.js', 'app.css', 'bridge.css'];
+const FILES = ['play.js', 'games.js', 'sound.js', 'speech.js', 'reader.js', 'app.js', 'bridge.js', 'app.css', 'bridge.css', 'reader.css'];
 const hash = crypto.createHash('sha1');
 for (const f of FILES) hash.update(rd('app/' + f));
 hash.update(VERSION);
@@ -30,8 +30,8 @@ for (const t of TRACKS) {
   const f = path.join(out, t.id + '.html');
   if (!fs.existsSync(f)) continue;
   let html = fs.readFileSync(f, 'utf8');
-  html = html.replace('</head>', '<link rel="stylesheet" href="app/bridge.css?v=' + V + '">\n</head>')
-    .replace('</body>', '<script src="assets/search-index.js?v=' + V + '"></script>\n<script src="app/play.js?v=' + V + '"></script>\n<script src="app/bridge.js?v=' + V + '"></script>\n</body>');
+  html = html.replace('</head>', '<link rel="stylesheet" href="app/bridge.css?v=' + V + '">\n<link rel="stylesheet" href="app/reader.css?v=' + V + '">\n</head>')
+    .replace('</body>', ['assets/search-index.js', 'app/play.js', 'app/sound.js', 'app/speech.js', 'app/reader.js', 'app/bridge.js'].map((f) => '<script src="' + f + '?v=' + V + '"></script>').join('\n') + '\n</body>');
   fs.writeFileSync(f, html);
   pages++;
 }

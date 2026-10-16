@@ -43,6 +43,12 @@
       </form>
     </div>
 
+    <div id="authHandoff" hidden>
+      <p class="auth-msg ok" role="status">Google sign-in worked. Returning you to the Interview Mastery app…</p>
+      <a class="btn primary lg auth-submit" id="authHandoffBtn" href="#">Open the app</a>
+      <p class="fld-hint">If the app does not open, tap the button above. On a computer, close this tab and sign in on the website instead.</p>
+    </div>
+
     <form id="resetForm" hidden novalidate>
       <label class="fld"><span>New password</span><input id="resetPass" type="password" autocomplete="new-password" minlength="8" required></label>
       <p class="fld-hint">At least 8 characters.</p>
@@ -52,6 +58,15 @@
   </section>
   <p class="auth-foot"><a href="index.html">Continue without an account</a> — progress stays in this browser only.</p>
 </main>
+<script>
+  // Google sign-in from the mobile app returns here (?app=1) in the phone's browser.
+  // Hand the code straight back to the app; the app holds the PKCE verifier and finishes the sign-in.
+  (function () {
+    var q = new URLSearchParams(location.search);
+    if (q.get('app') !== '1' || !(q.get('code') || q.get('error'))) return;
+    window.IM_APP_HANDOFF = 'io.github.shrenikyd.interviewmastery://login-callback' + location.search;
+  })();
+</script>
 <script src="assets/config.js?v=@@V@@"></script>
 <script src="vendor/supabase.js?v=@@V@@"></script>
 <script src="assets/auth.js?v=@@V@@"></script>

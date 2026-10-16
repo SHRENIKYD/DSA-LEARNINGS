@@ -5,7 +5,7 @@ var Auth = (function () {
   if (enabled) {
     try {
       client = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseKey, {
-        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' }
+        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: !window.IM_APP_HANDOFF, flowType: 'pkce' }
       });
     } catch (e) { enabled = false; }
   }

@@ -45,6 +45,15 @@
   }
   function validEmail(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); }
 
+  if (window.IM_APP_HANDOFF) {
+    show($('authForms'), false); show($('authSigned'), false); show($('authHandoff'), true);
+    $('authTitle').textContent = 'Back to the app';
+    $('authSub').textContent = 'Finishing your Google sign-in in Interview Mastery.';
+    $('authHandoffBtn').setAttribute('href', window.IM_APP_HANDOFF);
+    setTimeout(function () { location.replace(window.IM_APP_HANDOFF); }, 50);
+    return;
+  }
+
   if (!Auth.enabled) {
     show($('authOff'), true);
     show($('authForms'), false);
@@ -59,6 +68,8 @@
   // (Chrome Custom Tabs / Safari) and come back through the app's deep link.
   var C = window.Capacitor, NATIVE = !!(C && C.isNativePlatform && C.isNativePlatform());
   var APP_CALLBACK = 'io.github.shrenikyd.interviewmastery://login-callback';
+  // Google returns to the public site (already an allowed redirect), which hands the code back to the app.
+  var APP_RETURN = 'https://shrenikyd.github.io/DSA-LEARNINGS/login.html?app=1';
   function plugin(name) { return C && C.Plugins ? C.Plugins[name] : null; }
   function resetGoogle() { busy = false; $('authGoogle').disabled = false; $('authGoogleTx').textContent = 'Continue with Google'; }
   function offline() { resetGoogle(); msg($('authErr'), 'Could not reach the server. Check your connection and try again.'); }
@@ -68,7 +79,7 @@
     clearMsgs();
     busy = true; $('authGoogle').disabled = true; $('authGoogleTx').textContent = 'Opening Google…';
     if (NATIVE) {
-      Auth.client.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: APP_CALLBACK, skipBrowserRedirect: true } }).then(function (r) {
+      Auth.client.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: APP_RETURN, skipBrowserRedirect: true } }).then(function (r) {
         if (r.error || !r.data || !r.data.url) { resetGoogle(); msg($('authErr'), (r.error && r.error.message) || 'Google sign-in is not available right now.'); return; }
         var B = plugin('Browser');
         if (!B) { resetGoogle(); msg($('authErr'), 'This version of the app cannot open Google sign-in. Update the app or use email.'); return; }
