@@ -1,0 +1,99 @@
+name: Android app
+
+on:
+  push:
+    branches: [main, claude/dsa-math-study-portal-weghh9]
+    paths: ['app/**', 'src/**', 'content/**', 'vendor/**', 'android/**', 'tools/**', 'package.json', 'package-lock.json', 'capacitor.config.json', '.github/workflows/android.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Play engine tests
+        run: node tools/play-test.js
+
+  apk:
+    needs: test
+    runs-on: ubuntu-latest
+    environment: github-pages
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - name: Build app bundle
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL || secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_PUBLISHABLE_KEY }}
+        run: node tools/build-app.js
+      - run: npx cap sync android
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: interview-mastery-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+      - name: Tag and release this version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes() { node -e "const s=require('fs').readFileSync('CHANGELOG.md','utf8');const m=s.split(/^## /m).find(x=>x.startsWith('['+process.argv[1]+']'));process.stdout.write(m?m.split('\\n').slice(1).join('\\n').trim():'')" "$1"; }
+          if ! git ls-remote --exit-code --tags origin refs/tags/v1.0.0 >/dev/null; then
+            notes 1.0.0 > notes-1.0.0.md
+            gh release create v1.0.0 --target db7338f97a2c79b5bfdbac2d07d4bb4b8b7d0be8 --title "v1.0.0 · website launch" --notes-file notes-1.0.0.md
+          fi
+          V=$(node -p "require('./package.json').version")
+          if git ls-remote --exit-code --tags origin "refs/tags/v$V" >/dev/null; then echo "v$V is already released"; exit 0; fi
+          cp android/app/build/outputs/apk/debug/app-debug.apk "interview-mastery-v$V-debug.apk"
+          notes "$V" > notes.md
+          gh release create "v$V" "interview-mastery-v$V-debug.apk" --target "$GITHUB_SHA" --title "v$V" --notes-file notes.md
+
+  apk-preview:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref != 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - name: Build app bundle (accounts off)
+        run: node tools/build-app.js
+      - run: npx cap sync android
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: interview-mastery-preview-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14

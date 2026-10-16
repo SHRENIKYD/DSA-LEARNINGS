@@ -55,14 +55,50 @@
   $('tabUp').addEventListener('click', function () { setMode('up'); });
   $('authSignOut').addEventListener('click', function () { Auth.signOut().then(function () { location.href = 'login.html'; }); });
 
+  // In the mobile app Google refuses sign-in inside the app's WebView, so open it in the system browser
+  // (Chrome Custom Tabs / Safari) and come back through the app's deep link.
+  var C = window.Capacitor, NATIVE = !!(C && C.isNativePlatform && C.isNativePlatform());
+  var APP_CALLBACK = 'io.github.shrenikyd.interviewmastery://login-callback';
+  function plugin(name) { return C && C.Plugins ? C.Plugins[name] : null; }
+  function resetGoogle() { busy = false; $('authGoogle').disabled = false; $('authGoogleTx').textContent = 'Continue with Google'; }
+  function offline() { resetGoogle(); msg($('authErr'), 'Could not reach the server. Check your connection and try again.'); }
+
   $('authGoogle').addEventListener('click', function () {
     if (busy) return;
     clearMsgs();
     busy = true; $('authGoogle').disabled = true; $('authGoogleTx').textContent = 'Opening Google…';
+    if (NATIVE) {
+      Auth.client.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: APP_CALLBACK, skipBrowserRedirect: true } }).then(function (r) {
+        if (r.error || !r.data || !r.data.url) { resetGoogle(); msg($('authErr'), (r.error && r.error.message) || 'Google sign-in is not available right now.'); return; }
+        var B = plugin('Browser');
+        if (!B) { resetGoogle(); msg($('authErr'), 'This version of the app cannot open Google sign-in. Update the app or use email.'); return; }
+        B.open({ url: r.data.url });
+      }, offline);
+      return;
+    }
     Auth.client.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: here + '?next=' + encodeURIComponent(next) } }).then(function (r) {
-      if (r.error) { busy = false; $('authGoogle').disabled = false; $('authGoogleTx').textContent = 'Continue with Google'; msg($('authErr'), r.error.message); }
-    }, function () { busy = false; $('authGoogle').disabled = false; $('authGoogleTx').textContent = 'Continue with Google'; msg($('authErr'), 'Could not reach the server. Check your connection and try again.'); });
+      if (r.error) { resetGoogle(); msg($('authErr'), r.error.message); }
+    }, offline);
   });
+
+  function appCallback(url) {
+    if (typeof url !== 'string' || url.indexOf(APP_CALLBACK) !== 0) return;
+    var B = plugin('Browser');
+    if (B && B.close) { try { B.close().catch(function () { }); } catch (e) { } }
+    var q = new URLSearchParams(url.split('?')[1] || ''), code = q.get('code');
+    if (!code) { resetGoogle(); msg($('authErr'), 'Google sign-in failed: ' + (q.get('error_description') || 'no sign-in code came back') + '.'); return; }
+    $('authGoogleTx').textContent = 'Signing in…';
+    Auth.client.auth.exchangeCodeForSession(code).then(function (r) {
+      if (r.error) { resetGoogle(); msg($('authErr'), r.error.message); return; }
+      msg($('authInfo'), 'Signed in. Syncing your progress…');
+      goNext();
+    }, offline);
+  }
+  if (NATIVE) {
+    var A = plugin('App'), B0 = plugin('Browser');
+    if (A && A.addListener) A.addListener('appUrlOpen', function (ev) { appCallback(ev && ev.url); });
+    if (B0 && B0.addListener) B0.addListener('browserFinished', function () { setTimeout(function () { if (busy && $('authGoogleTx').textContent === 'Opening Google…') { resetGoogle(); msg($('authInfo'), 'Google sign-in was cancelled.'); } }, 600); });
+  }
 
   $('authForm').addEventListener('submit', function (e) {
     e.preventDefault();
