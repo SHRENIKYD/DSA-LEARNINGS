@@ -48,7 +48,7 @@ for (const t of TRACKS) {
     fs.writeFileSync(path.join(out, 'content', t.id, pm.id + '.js'), src);
     scripts.push('<script src="content/' + t.id + '/' + pm.id + '.js?v=@@V@@"></script>');
     const href = t.id + '.html#';
-    SI.modules[pm.id] = { items: ctx.App.items(m) };
+    SI.modules[pm.id] = { items: ctx.App.items(m), pl: (m.practice || []).map((p) => String(p.level || 'Medium').charAt(0).toUpperCase()).join('') };
     SI.entries.push({ t: pm.num + '. ' + strip(m.title || pm.title), c: t.short + ' · Module', h: href + pm.id, s: strip(pm.scope).toLowerCase() });
     m.topics.forEach((tp, i) => {
       SI.viz += asList(tp.viz).length;
