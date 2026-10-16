@@ -113,7 +113,9 @@
     }
     h += '<div class="row sb"><b>Daily quests</b><span class="mono muted sm">' + (S.streak.freezesLeft) + ' streak freeze' + (S.streak.freezesLeft === 1 ? '' : 's') + ' left</span></div><div class="quests">' +
       S.quests.map(function (q) { return '<div class="quest' + (q.done ? ' done' : '') + '"><span class="ico" aria-hidden="true">' + q.icon + '</span><span class="tx">' + esc(q.label) + bar(q.have / q.need) + '</span><span class="rw">' + (q.done ? '✓ +' : '+') + q.xp + '</span></div>'; }).join('') + '</div>';
-    var g = Games.list.filter(function (x) { return !(play.games && play.games[x.id]); })[0] || Games.list[0];
+    var pool = Games.list.filter(function (x) { return !(play.games && play.games[x.id]) && x.id !== play.lastGame; });
+    if (!pool.length) pool = Games.list.filter(function (x) { return x.id !== play.lastGame; });
+    var dn = Math.floor(new Date(now().getFullYear(), now().getMonth(), now().getDate()).getTime() / 864e5), g = pool[dn % pool.length];
     h += '<a class="card gamecard" href="#game/' + g.id + '"><span class="kick xp">Today\'s game · ' + esc(g.kicker) + '</span><b class="ttl">' + esc(g.title) + '</b><span class="muted sm">' + esc(g.goal) + '</span><span class="b3 ghost">PLAY · +' + Play.XP.game + ' XP</span></a>';
     page('home', h);
   }
@@ -171,7 +173,8 @@
   }
 
   function playTab() {
-    var h = '<div class="ah"><h1>Play</h1></div><p class="muted sm">60-second games that teach the idea before the lesson does. First win of each game: +' + Play.XP.game + ' XP.</p>';
+    var h = '<div class="ah"><h1>Play</h1></div><p class="muted sm">' + Games.list.length + ' games that teach an idea before the lesson does. Every play is a new random puzzle. First win: +' + Play.XP.game + ' XP, later wins: +' + Play.XP.replay + ' XP.</p>';
+    h += '<a class="card surprise" href="#surprise"><span class="kick xp">🎲 Surprise me</span><b class="ttl">Play a random game</b><span class="muted sm">Never the same as your last one.</span></a>';
     h += Games.list.map(function (g) { var won = play.games && play.games[g.id]; return '<a class="card gamecard" href="#game/' + g.id + '"><span class="kick xp">' + esc(g.kicker) + (won ? ' · won ×' + won.wins : '') + '</span><b class="ttl">' + esc(g.title) + '</b><span class="muted sm">' + esc(g.goal) + '</span></a>'; }).join('');
     h += '<a class="card boss" href="#arena/' + esc(play.track || 'dsa') + '"><span class="kick" style="color:var(--p)">Boss fights</span><b class="ttl">Practice arenas</b><span class="muted sm">Every solved problem is a hit on the module boss.</span></a>';
     page('play', h);
@@ -179,11 +182,19 @@
 
   function game(gid) {
     var g = Games.get(gid); if (!g) return playTab();
-    var h = head(g.title, '#play', true) + '<span class="kick">' + esc(g.kicker) + '</span><p class="goal">' + esc(g.goal) + '</p><div class="game" id="game"></div><div id="learned" hidden></div>';
+    play.lastGame = g.id; save();
+    var won0 = play.games && play.games[g.id] ? play.games[g.id].wins : 0;
+    var h = head(g.title, '#play', true) + '<div class="row sb"><span class="kick">' + esc(g.kicker) + '</span><span class="mono muted sm" id="gWins">' + (won0 ? 'won ×' + won0 : 'new game') + '</span></div><p class="goal">' + esc(g.goal) + '</p><div class="game" id="game"></div><div id="learned" hidden></div>' +
+      '<div class="acts"><button class="b3 ghost" type="button" id="newPuzzle">🎲 NEW PUZZLE</button><a class="b3 ghost" href="#surprise">🔀 ANOTHER GAME</a></div>';
     page('play', h, { noTabs: false });
     wireRead(g.title);
-    var won = false;
-    g.mount($('#game'), {
+    $('#newPuzzle').addEventListener('click', function () { Sound.play('open'); mountGame(g); var sc = $('#scr'); if (sc) sc.scrollTop = 0; });
+    mountGame(g);
+  }
+  function mountGame(g) {
+    var won = false, box = $('#game'), l = $('#learned');
+    box.innerHTML = ''; l.hidden = true; l.innerHTML = '';
+    g.mount(box, {
       tick: function () { buzz(8); Sound.play('tap'); },
       miss: function () { buzz([10, 30, 10]); Sound.play('wrong'); },
       win: function () {
@@ -191,12 +202,13 @@
         var xpBefore = S.xp;
         Play.winGame(play, g.id, now());
         refresh();
-        if (S.xp === xpBefore) toast('Won again!');
+        if (S.xp === xpBefore) toast('Won again! Daily replay XP is used up.');
+        var w = $('#gWins'); if (w) w.textContent = 'won ×' + play.games[g.id].wins;
         if (!won) {
           won = true;
-          var l = $('#learned');
-          l.innerHTML = '<div class="row top">' + BIT + '<div class="speech"><b>What you just discovered:</b> ' + esc(g.learned) + '</div></div><div class="acts"><a class="b3 g" href="' + lessonHref(g.mid) + '">📖 LEARN IT PROPERLY</a></div>';
+          l.innerHTML = '<div class="row top">' + BIT + '<div class="speech"><b>What you just discovered:</b> ' + esc(g.learned) + '</div></div><div class="acts"><button class="b3" type="button" id="nextPuzzle">🎲 NEXT PUZZLE</button><a class="b3 g" href="' + lessonHref(g.mid) + '">📖 LEARN IT</a></div>';
           l.hidden = false;
+          $('#nextPuzzle').addEventListener('click', function () { Sound.play('open'); mountGame(g); var sc = $('#scr'); if (sc) sc.scrollTop = 0; });
           setTimeout(function () { if (l.scrollIntoView) l.scrollIntoView({ behavior: play.settings.motion ? 'smooth' : 'auto', block: 'nearest' }); }, 50);
         }
       }
@@ -239,6 +251,7 @@
       case 'arena': return arena(p[1], p[2]);
       case 'play': return playTab();
       case 'game': return game(p[1]);
+      case 'surprise': { var rg = Games.random(play.lastGame); location.replace('#game/' + rg.id); return; }
       case 'badges': return badgesView();
       case 'me': return me();
       default: return home();

@@ -80,10 +80,14 @@ t('quests complete and pay out once', () => {
   assert.strictEqual(Play.quests(s, day('2026-10-17'))[0].done, false);
 });
 
-t('games: first win pays XP, counts toward quest and streak', () => {
+t('games: first win 25 XP, later wins 5 XP up to 10 a day; counts toward quest and streak', () => {
   const s = Play.emptyState(); s.seen = {};
   assert.strictEqual(Play.winGame(s, 'guess', day('2026-10-16')), 25);
-  assert.strictEqual(Play.winGame(s, 'guess', day('2026-10-16')), 0);
+  assert.strictEqual(Play.winGame(s, 'guess', day('2026-10-16')), 5);
+  for (let i = 0; i < 10; i++) Play.winGame(s, 'race', day('2026-10-16'));  // 1 first win + 9 replays → 10 replays today
+  assert.strictEqual(Play.winGame(s, 'race', day('2026-10-16')), 0);
+  assert.strictEqual(Play.winGame(s, 'race', day('2026-10-17')), 5);
+  assert.strictEqual(s.bonus, 25 + 5 + 25 + 9 * 5 + 5);
   assert.strictEqual(s.games.guess.wins, 2);
   assert.strictEqual(Play.quests(s, day('2026-10-16'))[2].done, true);
   assert.strictEqual(Play.streak(s.days, day('2026-10-16')).days, 1);
@@ -95,6 +99,18 @@ t('summary adds bonus XP and computes badges', () => {
   assert.strictEqual(r.xp, 50);
   assert.strictEqual(r.badges.filter((b) => b.id === 'first')[0].earned, true);
   assert.strictEqual(r.badges.filter((b) => b.id === 'st7')[0].earned, false);
+});
+
+t('games helpers: bracket balance and inversion count', () => {
+  global.document = { createElement() { return {}; } };
+  const G = require('../app/games.js');
+  assert.strictEqual(G.balanced('([]{})'), true);
+  assert.strictEqual(G.balanced('([)]'), false);
+  assert.strictEqual(G.balanced('(('), false);
+  assert.strictEqual(G.inversions([3, 1, 2]), 2);
+  assert.strictEqual(G.inversions([1, 2, 3]), 0);
+  assert.strictEqual(G.list.length, 8);
+  assert.notStrictEqual(G.random('guess').id, 'guess');
 });
 
 console.log(n + ' tests passed');
