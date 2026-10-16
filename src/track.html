@@ -5,19 +5,22 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>@@TITLE@@ — Interview Mastery</title>
 <meta name="description" content="@@DESC@@">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Source+Sans+3:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="assets/style.css?v=@@V@@">
 </head>
 <body>
-<button id="menuBtn" class="btn" type="button" aria-label="Open menu">☰ Menu</button>
+<button id="menuBtn" class="btn" type="button" aria-label="Open menu" aria-controls="sidebar" aria-expanded="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"/></svg>Menu</button>
 <div id="app">
   <aside id="sidebar">
     <div class="side-top">
-      <a class="brand" href="index.html" style="text-decoration:none;color:inherit"><span class="logo">@@ICON@@</span><div>@@TITLE@@<small>Interview Mastery · beginner → expert</small></div></a>
-      <input id="search" type="search" placeholder="Search this track…" autocomplete="off">
-      <div class="side-row"><a class="btn" href="index.html" style="text-align:center;text-decoration:none">🏠 Home</a><button id="themeBtn" class="btn" type="button">🌙 Dark</button></div>
+      <a class="brand" href="index.html"><span class="logo">@@ICON@@</span><div>@@TITLE@@<small>Interview Mastery · beginner → expert</small></div></a>
+      <label class="sbox"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input id="search" aria-label="Search this track" type="search" placeholder="Search this track" autocomplete="off"><kbd>/</kbd></label>
+      <div class="side-row"><a class="btn" href="index.html"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Home</a><button id="themeBtn" class="btn" type="button">Theme</button></div>
       <div class="pwrap"><span id="ptext"></span><div class="pbar"><div id="pfill"></div></div></div>
     </div>
-    <nav id="nav"></nav>
+    <nav id="nav" aria-label="Modules"></nav>
     <div id="results" hidden></div>
   </aside>
   <main id="main"></main>
