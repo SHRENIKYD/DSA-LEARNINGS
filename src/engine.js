@@ -13,7 +13,20 @@ var App = (function () {
   var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
   function asList(x) { return x === undefined || x === null ? [] : (Array.isArray(x) ? x : [x]); }
   function stripTags(s) { return String(s || '').replace(/<[^>]*>/g, ''); }
-  function lvlBadge(l) { var L = LEVELS[l] || LEVELS.B; return '<span class="lvlb lv-' + l + '">' + L.icon + ' ' + L.name + '</span>'; }
+  function lvlBadge(l) { var L = LEVELS[l] || LEVELS.B; return '<span class="lvlb lv-' + l + '">' + L.name + '</span>'; }
+  function dot(l) { return '<span class="dot lv-' + l + '" aria-hidden="true"></span>'; }
+  var ICONS = {
+    play: '<svg class="ic fill" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5l12 7-12 7z"/></svg>',
+    pause: '<svg class="ic fill" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>',
+    prev: '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>',
+    next: '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>',
+    reset: '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>',
+    sun: '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+    moon: '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>',
+    home: '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>',
+    back: '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>',
+    arrow: '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>'
+  };
 
   /* ---------- module item ids (progress) ---------- */
   function topicProblems(t) { return asList(t.problems).concat(asList(t.problem)); }
@@ -109,7 +122,7 @@ var App = (function () {
       s.code = code;
       var runnable = (s.lang === 'sql' && s.db !== undefined) || ((s.lang === 'js' || s.lang === 'javascript' || s.lang === 'python' || s.lang === 'py') && s.run);
       h += '<div class="cpane" data-pane="' + i + '"' + (i ? ' hidden' : '') + '><div class="code-head"><span>' + esc(s.title || (LANGS[s.lang] || LANGS.text).name) + '</span><span class="code-btns">' +
-        (runnable ? '<button class="btn run" type="button" data-lang="' + s.lang + '" data-snip="' + k + '">▶ Run</button><button class="btn edit" type="button">✎ Edit</button>' : '') +
+        (runnable ? '<button class="btn run" type="button" data-lang="' + s.lang + '" data-snip="' + k + '">' + ICONS.play + 'Run</button><button class="btn edit" type="button">Edit</button>' : '') +
         '<button class="btn copy" type="button">Copy</button></span></div><pre><code>' + highlight(code, s.lang) + '</code></pre>' + (runnable ? '<div class="run-out" hidden></div>' : '') + '</div>';
     });
     return h + '</div>';
@@ -362,27 +375,40 @@ var App = (function () {
   var vizRegistry = [];
   function vizHtml(v) {
     var k = vizRegistry.push(v) - 1;
-    return '<div class="viz" data-viz="' + k + '"><div class="viz-head"><b>🎬 ' + esc(v.title || 'Visualizer') + '</b><span class="viz-step"></span></div>' +
-      (v.input !== undefined ? '<div class="viz-in"><span>' + esc(v.inputLabel || 'Input') + ':</span><input type="text" value="' + esc(v.input) + '"><button class="btn" data-act="load" type="button">Load</button></div>' : '') +
-      '<div class="viz-stage"></div><div class="narr"><span class="tag">🗣 Plain-English Step Narrator</span><div class="narr-text"></div></div>' +
-      '<div class="viz-ctrl"><button class="btn" data-act="prev" type="button">◀ Previous Step</button><button class="btn primary" data-act="next" type="button">Next Step ▶</button>' +
-      '<button class="btn" data-act="play" type="button">▶ Auto-Play</button><button class="btn" data-act="reset" type="button">⟲ Reset</button>' +
-      '<select data-act="speed" aria-label="speed"><option value="1800">Slow</option><option value="1100" selected>Normal</option><option value="550">Fast</option></select></div>' +
+    return '<div class="viz" data-viz="' + k + '"><div class="viz-head"><b>' + esc(v.title || 'Visualizer') + '</b><span class="viz-step"></span></div>' +
+      (v.input !== undefined ? '<div class="viz-in"><label>' + esc(v.inputLabel || 'Input') + '</label>' + (/\n/.test(String(v.input))
+        ? '<textarea aria-label="' + esc(v.inputLabel || 'Input') + '" rows="' + Math.min(10, String(v.input).split('\n').length) + '" spellcheck="false">' + esc(v.input) + '</textarea>'
+        : '<input type="text" aria-label="' + esc(v.inputLabel || 'Input') + '" value="' + esc(v.input) + '">') + '<button class="btn" data-act="load" type="button">Load</button></div>' : '') +
+      '<div class="viz-stage"></div><div class="viz-tl" role="group" aria-label="Step timeline"></div>' +
+      '<div class="narr" aria-live="polite"><span class="tag">Narrator</span><div class="narr-prev"></div><div class="narr-text"></div></div>' +
+      '<div class="viz-ctrl"><button class="btn" data-act="prev" type="button" aria-label="Previous step">' + ICONS.prev + 'Prev</button><button class="btn primary" data-act="play" type="button">' + ICONS.play + 'Play</button>' +
+      '<button class="btn" data-act="next" type="button" aria-label="Next step">Next' + ICONS.next + '</button><button class="btn ghost" data-act="reset" type="button">' + ICONS.reset + 'Reset</button>' +
+      '<select data-act="speed" aria-label="Playback speed"><option value="1800">Slow</option><option value="1100" selected>Normal</option><option value="550">Fast</option></select></div>' +
       '<div class="legend"><span class="lg-cur">current / checking</span><span class="lg-ok">new / inserted / match</span><span class="lg-bad">duplicate / removed / conflict</span><span class="lg-win">window / range</span><span class="lg-sel">special / answer</span><span class="lg-done">finished</span></div></div>';
   }
   function mountViz(el) {
     var v = vizRegistry[+el.getAttribute('data-viz')];
     var frames = [], k = 0, timer = null;
-    var stage = $('.viz-stage', el), narr = $('.narr-text', el), step = $('.viz-step', el);
-    var bPrev = $('[data-act=prev]', el), bNext = $('[data-act=next]', el), bPlay = $('[data-act=play]', el), sp = $('[data-act=speed]', el), inp = $('.viz-in input', el);
-    function stop() { if (timer) clearInterval(timer); timer = null; bPlay.textContent = '▶ Auto-Play'; }
+    var stage = $('.viz-stage', el), narr = $('.narr-text', el), prevN = $('.narr-prev', el), step = $('.viz-step', el), tl = $('.viz-tl', el);
+    var bPrev = $('[data-act=prev]', el), bNext = $('[data-act=next]', el), bPlay = $('[data-act=play]', el), sp = $('[data-act=speed]', el), inp = $('.viz-in input, .viz-in textarea', el);
+    function stop() { if (timer) clearInterval(timer); timer = null; bPlay.innerHTML = ICONS.play + 'Play'; }
+    function buildTl() {
+      if (frames.length < 2) { tl.innerHTML = ''; return; }
+      tl.innerHTML = frames.length <= 40
+        ? frames.map(function (_, i) { return '<button type="button" class="tick" data-act="go" data-k="' + i + '" aria-label="Go to step ' + (i + 1) + '"></button>'; }).join('')
+        : '<input type="range" data-act="seek" min="0" max="' + (frames.length - 1) + '" value="0" aria-label="Step">';
+    }
     function draw() {
       var f = frames[k] || { parts: [] };
       stage.innerHTML = asList(f.parts).map(renderPart).join('');
       narr.innerHTML = f.narr || '';
+      prevN.innerHTML = k > 0 && frames[k - 1].narr ? frames[k - 1].narr : '';
       step.textContent = 'Step ' + (k + 1) + ' / ' + frames.length;
       bPrev.disabled = k === 0;
       bNext.disabled = k >= frames.length - 1;
+      $$('.tick', tl).forEach(function (t, i) { t.className = 'tick' + (i === k ? ' on' : i < k ? ' past' : ''); t.setAttribute('aria-pressed', i === k ? 'true' : 'false'); });
+      var rg = $('input[type=range]', tl);
+      if (rg) rg.value = k;
     }
     function load() {
       stop();
@@ -392,18 +418,21 @@ var App = (function () {
       } catch (e) {
         frames = [{ narr: '⚠️ ' + esc(e.message) + (v.inputHint ? ' — ' + esc(v.inputHint) : ''), parts: [] }];
       }
-      k = 0; draw();
+      k = 0; buildTl(); draw();
     }
+    tl.addEventListener('input', function (ev) { if (ev.target.getAttribute('data-act') === 'seek') { stop(); k = +ev.target.value; draw(); } });
     el.addEventListener('click', function (ev) {
-      var a = ev.target.getAttribute('data-act');
-      if (a === 'prev' && k > 0) { stop(); k--; draw(); }
+      var bt = ev.target.closest ? ev.target.closest('[data-act]') : ev.target;
+      var a = bt && bt.getAttribute('data-act');
+      if (a === 'go') { stop(); k = +bt.getAttribute('data-k'); draw(); }
+      else if (a === 'prev' && k > 0) { stop(); k--; draw(); }
       else if (a === 'next' && k < frames.length - 1) { stop(); k++; draw(); }
       else if (a === 'reset') { stop(); k = 0; draw(); }
       else if (a === 'load') load();
       else if (a === 'play') {
         if (timer) { stop(); return; }
         if (k >= frames.length - 1) { k = 0; draw(); }
-        bPlay.textContent = '⏸ Pause';
+        bPlay.innerHTML = ICONS.pause + 'Pause';
         timer = setInterval(function () {
           if (!document.body.contains(el) || k >= frames.length - 1) { stop(); return; }
           k++; draw();
@@ -411,98 +440,101 @@ var App = (function () {
       }
     });
     sp.addEventListener('change', function () { if (timer) { stop(); bPlay.click(); } });
-    if (inp) inp.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') load(); });
+    if (inp) inp.addEventListener('keydown', function (ev) { if (ev.key === 'Enter' && (inp.tagName !== 'TEXTAREA' || ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); load(); } });
     load();
   }
 
   /* ---------- problems, quiz, interview ---------- */
   function mcqHtml(q, cls) {
-    return '<div class="box mcq ' + (cls || '') + '" data-ans="' + q.answer + '"><span class="tag">🤔 What Would You Do?</span><div>' + q.q + '</div><div class="opts">' +
+    return '<div class="box mcq ' + (cls || '') + '" data-ans="' + q.answer + '"><span class="tag">What would you do?</span><div>' + q.q + '</div><div class="opts">' +
       q.options.map(function (o, i) { return '<button class="opt" type="button" data-opt="' + i + '">' + String.fromCharCode(65 + i) + '. ' + o + '</button>'; }).join('') +
       '</div><div class="mcq-fb" hidden></div><template>' + (q.explain || '') + '</template></div>';
   }
   function problemHtml(p, id, practice, lang) {
     var lv = p.level || 'Medium', plang = p.lang || lang;
     var labels = practice
-      ? ['💡 Hint 1 — Math / Observation', '🧰 Hint 2 — Data Structure / Approach', '⚠️ Hint 3 — Pseudocode & Edge Cases']
-      : ['💡 Hint 1 — The "Aha!" Observation', '🧰 Hint 2 — Data Structure & Pointer Choice', '⚠️ Hint 3 — Edge Cases & Plain-English Recipe'];
+      ? ['Hint 1 — Math / observation', 'Hint 2 — Data structure / approach', 'Hint 3 — Pseudocode & edge cases']
+      : ['Hint 1 — The “aha” observation', 'Hint 2 — Data structure & pointer choice', 'Hint 3 — Edge cases & plain-English recipe'];
     var h = '<article class="card problem ' + lv + '" id="' + id + '"><div class="prob-head"><span class="lvl ' + lv + '">' + lv + '</span><h3>' + p.title + '</h3>' + doneBox(id, 'Solved') + '</div>';
-    if (p.tags) h += '<div class="meta">🏷 ' + esc(asList(p.tags).join(' · ')) + (p.companies ? ' · 🏢 ' + esc(asList(p.companies).join(', ')) : '') + '</div>';
+    if (p.tags) h += '<div class="meta">' + esc(asList(p.tags).join(' · ')) + (p.companies ? ' · <b>Asked at</b> ' + esc(asList(p.companies).join(', ')) : '') + '</div>';
     h += '<div class="statement">' + (p.statement || '') + '</div>';
     if (p.constraints) h += '<div class="meta"><b>Constraints:</b> ' + p.constraints + '</div>';
-    if (p.example) h += '<div class="box example"><span class="tag">🎨 Visual Example — why this input gives this output</span>' + p.example + '</div>';
-    if (p.brute) h += '<div class="box brute"><span class="tag">🐢 Brute Force / Naive Approach</span>' + (p.brute.why || '') + codeBlock(p.brute.code, plang, 'Brute force') + '</div>';
+    if (p.example) h += '<div class="box example"><span class="tag">Example — why this input gives this output</span>' + p.example + '</div>';
+    if (p.brute) h += '<div class="box brute"><span class="tag">Brute force / naive approach</span>' + (p.brute.why || '') + codeBlock(p.brute.code, plang, 'Brute force') + '</div>';
     if (p.mcq) h += mcqHtml(p.mcq);
     asList(p.hints).forEach(function (hint, i) {
       h += '<details class="h' + (i + 1) + '"><summary>' + (labels[i] || 'Hint ' + (i + 1)) + '</summary><div class="dbody">' + hint + '</div></details>';
     });
     var s = p.solution || {};
     var sn = [snip(s.code, plang, 'Solution')].concat(asList(s.alt).map(function (a) { return snip(a, plang, 'Solution'); }));
-    h += '<details class="sol"><summary>✅ Full Solution — Annotated Code' + (s.dry ? ', Dry Run' : '') + ' &amp; Complexity</summary><div class="dbody">' +
+    h += '<details class="sol"><summary>Full solution — annotated code' + (s.dry ? ', dry run' : '') + ' &amp; complexity</summary><div class="dbody">' +
       (s.approach ? '<div>' + s.approach + '</div>' : '') + codeTabs(sn) +
-      (s.dry && s.dry.head ? '<h4>🧾 Line-by-line Dry Run</h4>' + H.table(s.dry.head, s.dry.rows || []) : '') +
-      (s.complexity ? '<h4>⏱ Complexity / Trade-offs</h4><div>' + s.complexity + '</div>' : '') +
-      (s.followUps ? '<h4>➕ Interview Follow-ups</h4><ul>' + asList(s.followUps).map(function (f) { return '<li>' + f + '</li>'; }).join('') + '</ul>' : '') + '</div></details>';
+      (s.dry && s.dry.head ? '<h4>Line-by-line dry run</h4>' + H.table(s.dry.head, s.dry.rows || []) : '') +
+      (s.complexity ? '<h4>Complexity / trade-offs</h4><div>' + s.complexity + '</div>' : '') +
+      (s.followUps ? '<h4>Interview follow-ups</h4><ul>' + asList(s.followUps).map(function (f) { return '<li>' + f + '</li>'; }).join('') + '</ul>' : '') + '</div></details>';
     return h + '</article>';
   }
   function topicHtml(m, t, i, lang) {
     var id = m.id + '-t' + i;
-    var h = '<section class="card topic" id="' + id + '"><div class="topic-head"><h2><span class="tnum">' + m.num + '.' + (i + 1) + '</span>' + t.title + '</h2>' + doneBox(id, 'Understood') + '</div>';
-    if (t.analogy) h += '<div class="box analogy"><span class="tag">☕ Start Here — Real-World Analogy</span>' + t.analogy + '</div>';
-    if (t.explain) h += '<div class="layer"><div class="layer-tag lv-B">🟢 The Idea in Plain English</div><div class="explain">' + t.explain + '</div></div>';
-    if (t.clues && t.clues.length) h += '<div class="box clues"><span class="tag">🔍 How Do I Think of This Myself? — Clues in the Question</span><ul>' + t.clues.map(function (c) { return '<li>' + c + '</li>'; }).join('') + '</ul></div>';
-    var hasHow = asList(t.viz).length || asList(t.code).length;
-    if (hasHow) h += '<div class="layer-tag lv-I">🔵 How It Really Works — watch it, then read the code</div>';
+    var hasHow = asList(t.viz).length || asList(t.code).length, probs = topicProblems(t);
+    var layers = [[t.analogy, 'an', 'Analogy'], [t.explain, 'idea', 'Explain'], [t.clues && t.clues.length, 'clues', 'Clues'], [hasHow, 'viz', 'Visualize'],
+      [t.examples && t.examples.length, 'ex', 'Examples'], [t.deepDive, 'deep', 'Deep dive'], [t.aiEra, 'ai', 'AI era'], [probs.length, 'q0', 'Solve it']];
+    var h = '<section class="card topic" id="' + id + '"><div class="topic-head"><h2><span class="tnum">' + m.num + '.' + (i + 1) + '</span>' + t.title + '</h2>' + doneBox(id, 'Understood') + '</div>' +
+      '<nav class="lnav" aria-label="Lesson layers">' + layers.filter(function (L) { return L[0]; }).map(function (L) { return '<a href="#' + id + '-' + L[1] + '">' + L[2] + '</a>'; }).join('') + '</nav>';
+    if (t.analogy) h += '<div class="box analogy" id="' + id + '-an"><span class="tag">Start here — real-world analogy</span>' + t.analogy + '</div>';
+    if (t.explain) h += '<div class="layer" id="' + id + '-idea"><div class="layer-tag lv-B">The idea in plain English</div><div class="explain">' + t.explain + '</div></div>';
+    if (t.clues && t.clues.length) h += '<div class="box clues" id="' + id + '-clues"><span class="tag">How do I think of this myself? — clues in the question</span><ul>' + t.clues.map(function (c) { return '<li>' + c + '</li>'; }).join('') + '</ul></div>';
+    if (hasHow) h += '<div class="layer-tag lv-I" id="' + id + '-viz">How it really works — watch it, then read the code</div>';
     asList(t.viz).forEach(function (v) { h += vizHtml(v); });
     var titles = asList(t.codeTitle);
     asList(t.code).forEach(function (c, j) { h += codeBlock(c, t.lang || lang, titles[j]); });
     if (t.after) h += '<div class="explain">' + t.after + '</div>';
     if (t.examples && t.examples.length) {
-      h += '<div class="layer-tag lv-B">📚 Worked Examples</div><div class="examples">';
+      h += '<div class="layer-tag lv-B" id="' + id + '-ex">Worked examples</div><div class="examples">';
       t.examples.forEach(function (ex, j) {
         h += '<details class="ex"' + (j === 0 ? ' open' : '') + '><summary>Example ' + (j + 1) + ': ' + ex.title + '</summary><div class="dbody">' + (ex.html || '') + codeBlock(ex.code, t.lang || lang, 'Example code') + '</div></details>';
       });
       h += '</div>';
     }
-    if (t.deepDive) h += '<div class="box deep"><span class="tag">🟣 Expert Deep Dive — internals, proofs, edge cases, production reality</span>' + t.deepDive + '</div>';
-    if (t.aiEra) h += '<div class="box ai"><span class="tag">🤖 New School — Working Alongside AI</span>' + t.aiEra + '</div>';
-    topicProblems(t).forEach(function (p, j) {
-      h += '<div class="guided-title">🧩 Guided Problem — Solve It Yourself</div>' + problemHtml(p, id + '-q' + j, false, t.lang || lang);
+    if (t.deepDive) h += '<div class="box deep" id="' + id + '-deep"><span class="tag">Expert deep dive — internals, proofs, edge cases, production reality</span>' + t.deepDive + '</div>';
+    if (t.aiEra) h += '<div class="box ai" id="' + id + '-ai"><span class="tag">New school — working alongside AI</span>' + t.aiEra + '</div>';
+    probs.forEach(function (p, j) {
+      h += '<div class="guided-title">Guided problem — solve it yourself</div>' + problemHtml(p, id + '-q' + j, false, t.lang || lang);
     });
     return h + '</section>';
   }
   function quizHtml(m) {
     var q = m.quiz || [];
     if (!q.length) return '';
-    return '<section class="card" id="' + m.id + '-quiz"><div class="topic-head"><h2>📝 Quick Quiz — ' + q.length + ' questions</h2>' + doneBox(m.id + '-quiz', 'Completed') + '</div><div class="meta">Answer from memory first. Wrong answers show a nudge; right answers explain why.</div>' +
+    return '<section class="card" id="' + m.id + '-quiz"><div class="topic-head"><h2>Quick quiz — ' + q.length + ' questions</h2>' + doneBox(m.id + '-quiz', 'Completed') + '</div><div class="meta">Answer from memory first. Wrong answers show a nudge; right answers explain why.</div>' +
       q.map(function (x, i) { return mcqHtml({ q: '<b>Q' + (i + 1) + '.</b> ' + x.q, options: x.options, answer: x.answer, explain: x.explain }, 'quizq'); }).join('') + '</section>';
   }
   function interviewHtml(m) {
     var iv = m.interview || [];
     if (!iv.length) return '';
-    return '<section class="card" id="' + m.id + '-iv"><div class="topic-head"><h2>🎤 Interview Q&amp;A Bank — ' + iv.length + ' questions</h2>' + doneBox(m.id + '-iv', 'Reviewed') + '</div><div class="meta">Say your answer out loud before opening each one. Then compare structure, not just facts.</div>' +
+    return '<section class="card" id="' + m.id + '-iv"><div class="topic-head"><h2>Interview Q&amp;A bank — ' + iv.length + ' questions</h2>' + doneBox(m.id + '-iv', 'Reviewed') + '</div><div class="meta">Say your answer out loud before opening each one. Then compare structure, not just facts.</div>' +
       iv.map(function (x, i) {
         return '<details class="iv"><summary><span class="ivn">Q' + (i + 1) + '</span> ' + x.q + (x.level ? ' ' + lvlBadge(x.level) : '') + '</summary><div class="dbody">' + x.a +
-          (x.followUps && x.followUps.length ? '<h4>➕ Likely follow-ups</h4><ul>' + x.followUps.map(function (f) { return '<li>' + f + '</li>'; }).join('') + '</ul>' : '') + '</div></details>';
+          (x.followUps && x.followUps.length ? '<h4>Likely follow-ups</h4><ul>' + x.followUps.map(function (f) { return '<li>' + f + '</li>'; }).join('') + '</ul>' : '') + '</div></details>';
       }).join('') + '</section>';
   }
 
   function moduleHtml(m) {
     vizRegistry = []; SNIPS = [];
     var lang = m.lang || TRACK.lang;
-    var h = '<div class="crumb"><a href="#">' + esc(TRACK.title) + '</a> · ' + lvlBadge(m.level) + '</div><h1>' + m.num + '. ' + m.title + '</h1>';
+    var h = '<div class="crumb"><a href="#">' + esc(TRACK.id) + '</a><span>/</span><span>' + (m.num < 10 ? '0' : '') + m.num + '</span>' + lvlBadge(m.level) + '</div><h1>' + m.title + '</h1>';
     h += '<div class="intro">' + (m.intro || '') + '</div>';
-    h += '<div class="box path"><span class="tag">🎯 Learning Path for This Module</span><div class="cx"><b>⏱ Time</b><span>~' + (m.hours || '?') + ' hours including practice</span><b>📋 Before this</b><span>' + (m.prereqs || '—') + '</span><b>🏁 You will be able to</b><ul>' + asList(m.goals).map(function (g) { return '<li>' + g + '</li>'; }).join('') + '</ul></div>' +
+    h += '<div class="box path"><span class="tag">Learning path for this module</span><div class="cx"><b>Time</b><span>~' + (m.hours || '?') + ' hours including practice</span><b>Before this</b><span>' + (m.prereqs || '—') + '</span><b>You will be able to</b><ul>' + asList(m.goals).map(function (g) { return '<li>' + g + '</li>'; }).join('') + '</ul></div>' +
       '<div class="meta">How to study: read each topic’s analogy → explanation → run the visualizer → work the examples → solve the guided problem with hints → quiz → interview Q&amp;A → Practice Arena.</div></div><div class="toc">';
     m.topics.forEach(function (t, i) { h += '<a href="#' + m.id + '-t' + i + '" class="' + (DONE[m.id + '-t' + i] ? 'ok' : '') + '">' + m.num + '.' + (i + 1) + ' ' + stripTags(t.title) + '</a>'; });
-    if (m.quiz && m.quiz.length) h += '<a href="#' + m.id + '-quiz">📝 Quiz</a>';
-    if (m.interview && m.interview.length) h += '<a href="#' + m.id + '-iv">🎤 Interview Q&amp;A</a>';
-    h += '<a href="#' + m.id + '-arena">🏟 Practice Arena</a></div>';
+    if (m.quiz && m.quiz.length) h += '<a href="#' + m.id + '-quiz">Quiz</a>';
+    if (m.interview && m.interview.length) h += '<a href="#' + m.id + '-iv">Interview Q&amp;A</a>';
+    h += '<a href="#' + m.id + '-arena">Practice arena</a></div>';
     m.topics.forEach(function (t, i) { h += topicHtml(m, t, i, lang); });
     h += quizHtml(m) + interviewHtml(m);
     var pr = m.practice || [], cnt = { Easy: 0, Medium: 0, Hard: 0 };
     pr.forEach(function (p) { cnt[p.level] = (cnt[p.level] || 0) + 1; });
-    h += '<div class="arena-head" id="' + m.id + '-arena"><div class="ptag">Module ' + m.num + '</div><h2>🏟 Practice Arena — ' + m.title + '</h2><div class="meta">' + pr.length + ' graded problems · ' +
+    h += '<div class="arena-head" id="' + m.id + '-arena"><div class="ptag">Module ' + m.num + '</div><h2>Practice arena — ' + m.title + '</h2><div class="meta">' + pr.length + ' graded problems · ' +
       '<span class="c-g">' + cnt.Easy + ' Easy warm-ups</span> → <span class="c-y">' + cnt.Medium + ' Medium interview-standard</span> → <span class="c-r">' + cnt.Hard + ' Hard twists</span>. Try each alone first; open hints one at a time.</div></div>';
     pr.forEach(function (p, k) { h += problemHtml(p, m.id + '-p' + k, true, lang); });
     var avail = MODULES, idx = avail.indexOf(m), prev = avail[idx - 1], next = avail[idx + 1];
@@ -519,13 +551,13 @@ var App = (function () {
       var ids = items(m); tot += ids.length; dn += doneOf(ids); probs += (m.practice || []).length; hrs += m.hours || 0;
       m.topics.forEach(function (t) { probs += topicProblems(t).length; viz += asList(t.viz).length; });
     });
-    var h = '<div class="crumb"><a href="index.html">All tracks</a> · Track</div><h1>' + TRACK.icon + ' ' + TRACK.title + '</h1><div class="intro"><p>' + TRACK.desc + '</p></div>' +
-      '<div class="stat-row"><div class="stat"><b>' + MODULES.length + ' / ' + TRACK.modules.length + '</b><span>modules live</span></div><div class="stat"><b>' + probs + '</b><span>guided + practice problems</span></div><div class="stat"><b>' + viz + '</b><span>visualizers</span></div><div class="stat"><b>' + hrs + 'h</b><span>study time (live modules)</span></div><div class="stat"><b>' + (tot ? Math.round(dn / tot * 100) : 0) + '%</b><span>your progress</span></div></div>' +
-      '<div class="box clues"><span class="tag">How to use this track</span><ol style="margin:4px 0 0;padding-left:20px"><li>Go level by level: 🟢 Beginner → 🔵 Intermediate → 🟣 Advanced → 🔴 Expert. Don’t skip levels unless you can solve that level’s Practice Arena Hard problems.</li><li>Inside a module: analogy → explanation → visualizer → worked examples → guided problem (hints one by one) → quiz → interview Q&amp;A → Practice Arena.</li><li>Read the 🤖 AI sections: use AI for hints, tests and reviews — never to skip the thinking.</li><li>Tick checkboxes as you go; progress is saved in this browser.</li></ol></div>';
+    var h = '<div class="track-hero"><div class="crumb"><a href="index.html">tracks</a><span>/</span><span>' + esc(TRACK.id) + '</span></div><h1>' + TRACK.title + '</h1><div class="intro"><p>' + TRACK.desc + '</p></div>' +
+      '<div class="stat-row"><div class="stat"><b>' + MODULES.length + ' / ' + TRACK.modules.length + '</b><span>modules live</span></div><div class="stat"><b>' + probs + '</b><span>guided + practice problems</span></div><div class="stat"><b>' + viz + '</b><span>visualizers</span></div><div class="stat"><b>' + hrs + 'h</b><span>study time (live modules)</span></div><div class="stat"><b>' + (tot ? Math.round(dn / tot * 100) : 0) + '%</b><span>your progress</span></div></div></div>' +
+      '<div class="box clues"><span class="tag">How to use this track</span><ol style="margin:4px 0 0;padding-left:20px"><li>Go level by level: Beginner → Intermediate → Advanced → Expert. Don’t skip levels unless you can solve that level’s Practice Arena Hard problems.</li><li>Inside a module: analogy → explanation → visualizer → worked examples → guided problem (hints one by one) → quiz → interview Q&amp;A → Practice Arena.</li><li>Read the AI-era sections: use AI for hints, tests and reviews — never to skip the thinking.</li><li>Tick checkboxes as you go; progress is saved in this browser.</li></ol></div>';
     ['B', 'I', 'A', 'E'].forEach(function (lv) {
       var ms = TRACK.modules.filter(function (x) { return x.level === lv; });
       if (!ms.length) return;
-      h += '<h2 class="lvh">' + LEVELS[lv].icon + ' ' + LEVELS[lv].name + '</h2><div class="dash-grid">';
+      h += '<h2 class="lvh">' + dot(lv) + LEVELS[lv].name + '</h2><div class="dash-grid">';
       ms.forEach(function (pm) {
         var m = loaded(pm.id);
         if (m) {
@@ -540,11 +572,11 @@ var App = (function () {
     return h;
   }
   function navHtml() {
-    var h = '<a class="nav-back" href="index.html">← All tracks</a><a class="nav-mod' + (!current ? ' active' : '') + '" href="#"><span class="num">' + TRACK.icon + '</span><span>' + TRACK.title + ' overview</span></a>';
+    var h = '<a class="nav-back" href="index.html">' + ICONS.back + 'All tracks</a><a class="nav-mod' + (!current ? ' active' : '') + '" href="#"><span class="num">' + TRACK.icon + '</span><span>' + TRACK.title + ' overview</span></a>';
     ['B', 'I', 'A', 'E'].forEach(function (lv) {
       var ms = TRACK.modules.filter(function (x) { return x.level === lv; });
       if (!ms.length) return;
-      h += '<div class="nav-part">' + LEVELS[lv].icon + ' ' + LEVELS[lv].name + '</div>';
+      h += '<div class="nav-part">' + dot(lv) + LEVELS[lv].name + '</div>';
       ms.forEach(function (pm) {
         var m = loaded(pm.id);
         if (!m) { h += '<div class="nav-mod soon" title="coming soon"><span class="num">' + pm.num + '</span><span>' + esc(pm.title) + '</span><span class="cnt">soon</span></div>'; return; }
@@ -553,9 +585,9 @@ var App = (function () {
         if (act) {
           h += '<div class="nav-sub">';
           m.topics.forEach(function (t, i) { h += '<a href="#' + m.id + '-t' + i + '" class="' + (DONE[m.id + '-t' + i] ? 'ok' : '') + '">' + m.num + '.' + (i + 1) + ' ' + stripTags(t.title) + '</a>'; });
-          if (m.quiz && m.quiz.length) h += '<a href="#' + m.id + '-quiz">📝 Quiz (' + m.quiz.length + ')</a>';
-          if (m.interview && m.interview.length) h += '<a href="#' + m.id + '-iv">🎤 Interview Q&amp;A (' + m.interview.length + ')</a>';
-          h += '<a href="#' + m.id + '-arena">🏟 Practice Arena (' + (m.practice || []).length + ')</a></div>';
+          if (m.quiz && m.quiz.length) h += '<a href="#' + m.id + '-quiz">Quiz (' + m.quiz.length + ')</a>';
+          if (m.interview && m.interview.length) h += '<a href="#' + m.id + '-iv">Interview Q&amp;A (' + m.interview.length + ')</a>';
+          h += '<a href="#' + m.id + '-arena">Practice arena (' + (m.practice || []).length + ')</a></div>';
         }
       });
     });
@@ -611,6 +643,9 @@ var App = (function () {
     }
     var mid = hs.split('-')[0], m = loaded(mid);
     if (!m) { location.hash = ''; return; }
+    var tix = 0, tm = /-t(\d+)/.exec(hs);
+    if (tm) tix = +tm[1];
+    store.set('imastery.last', { track: TRACK.id, trackTitle: TRACK.title, id: m.id, num: m.num, title: stripTags(m.title), topic: tix, topics: m.topics.length, topicTitle: stripTags((m.topics[tix] || {}).title), hash: hs });
     if (current !== m) {
       current = m;
       main.innerHTML = moduleHtml(m);
@@ -622,24 +657,38 @@ var App = (function () {
       var el = document.getElementById(hs);
       if (el) { el.scrollIntoView({ block: 'start' }); el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
     }
+    closeMenu();
+  }
+  function closeMenu() {
     $('#sidebar').classList.remove('open');
+    var mb = $('#menuBtn');
+    if (mb) mb.setAttribute('aria-expanded', 'false');
   }
 
   /* ---------- common chrome ---------- */
   function chrome() {
-    var th = store.get('imastery.theme', null);
-    if (!th) th = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    var th = store.get('imastery.theme', null) === 'light' ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', th);
     var tb = $('#themeBtn');
-    tb.textContent = th === 'dark' ? '☀️ Light' : '🌙 Dark';
+    var label = function (t) { tb.innerHTML = t === 'dark' ? ICONS.sun + 'Light theme' : ICONS.moon + 'Dark theme'; };
+    label(th);
     tb.addEventListener('click', function () {
       var t = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
       document.documentElement.setAttribute('data-theme', t);
       store.set('imastery.theme', t);
-      tb.textContent = t === 'dark' ? '☀️ Light' : '🌙 Dark';
+      label(t);
     });
     var mb = $('#menuBtn');
-    if (mb) mb.addEventListener('click', function () { $('#sidebar').classList.toggle('open'); });
+    if (mb) mb.addEventListener('click', function () { var o = $('#sidebar').classList.toggle('open'); mb.setAttribute('aria-expanded', o ? 'true' : 'false'); if (o) { var s = $('#search') || $('#gsearch'); if (s) s.focus(); } });
+    document.addEventListener('keydown', function (e) {
+      var tag = (e.target.tagName || '').toLowerCase();
+      if (e.key === 'Escape' && $('#sidebar').classList.contains('open')) { closeMenu(); if (mb) mb.focus(); return; }
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable) return;
+      if (e.key === '/' || ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k')) {
+        var s = $('#search') || $('#gsearch');
+        if (s) { e.preventDefault(); if (mb && getComputedStyle(mb).display !== 'none') { $('#sidebar').classList.add('open'); mb.setAttribute('aria-expanded', 'true'); } s.focus(); }
+      }
+    });
     document.addEventListener('change', function (e) {
       var id = e.target.getAttribute && e.target.getAttribute('data-done');
       if (!id) return;
@@ -663,8 +712,8 @@ var App = (function () {
         if (!$('textarea', pane)) {
           var ta2 = document.createElement('textarea'); ta2.className = 'code-edit'; ta2.value = s.code; ta2.spellcheck = false;
           ta2.rows = Math.min(30, s.code.split('\n').length + 2);
-          pr.hidden = true; pr.parentNode.insertBefore(ta2, pr.nextSibling); t.textContent = '↺ Reset';
-        } else { $('textarea', pane).remove(); pr.hidden = false; t.textContent = '✎ Edit'; }
+          pr.hidden = true; pr.parentNode.insertBefore(ta2, pr.nextSibling); t.textContent = 'Reset';
+        } else { $('textarea', pane).remove(); pr.hidden = false; t.textContent = 'Edit'; }
       } else if (t.classList.contains('ctab')) {
         var box = t.closest('.code'), i = t.getAttribute('data-tab');
         $$('.ctab', box).forEach(function (b) { b.classList.toggle('on', b === t); });
@@ -706,28 +755,56 @@ var App = (function () {
   function home() {
     chrome();
     var SI = window.SEARCH_INDEX || { modules: {}, entries: [] };
-    var h = '<div class="hero"><div class="crumb">Interview Mastery</div><h1>Learn CS the old-school way. Work the new-school way — with AI.</h1>' +
-      '<p class="intro">A complete, free, beginner → expert learning path for product-company interviews: DSA, languages, SQL, system design, frontend, backend, GenAI, OS & networks and behavioral. Every concept starts with a real-world analogy, comes alive in a step-by-step visualizer, and ends with graded practice and interview questions.</p>' +
-      '<input id="gsearch" type="search" placeholder="Search every track — e.g. “sliding window”, “CAP theorem”, “event loop”, “RAG”…" autocomplete="off"><div id="gresults" hidden></div></div>';
-    var live = 0, planned = 0, gtot = 0, gdone = 0;
-    TRACKS.forEach(function (t) { planned += t.modules.length; t.modules.forEach(function (pm) { var mi = SI.modules[pm.id]; if (mi) { live++; gtot += mi.items.length; gdone += doneOf(mi.items); } }); });
-    h += '<div class="stat-row"><div class="stat"><b>' + TRACKS.length + '</b><span>tracks</span></div><div class="stat"><b>' + live + ' / ' + planned + '</b><span>modules live</span></div><div class="stat"><b>' + (SI.problems || 0) + '</b><span>problems with hints & solutions</span></div><div class="stat"><b>' + (SI.viz || 0) + '</b><span>visualizers</span></div><div class="stat"><b>' + (gtot ? Math.round(gdone / gtot * 100) : 0) + '%</b><span>your progress</span></div></div>';
-    h += '<h2 class="lvh">🧭 How every module teaches you</h2><div class="steps">' +
-      ['☕ Real-world analogy first', '🟢 Plain-English idea with small numbers', '🔍 Clues in the question (pattern recognition)', '🎬 Step-by-step visualizer with narrator', '📚 Worked examples', '🧩 Guided problem: brute force → MCQ → 3 hints → solution', '🟣 Expert deep dive', '🤖 New school: working alongside AI', '📝 Quiz + 🎤 interview Q&A', '🏟 Practice Arena: 12–20 graded problems'].map(function (s, i) { return '<div class="stepc"><b>' + (i + 1) + '</b>' + s + '</div>'; }).join('') + '</div>';
-    h += '<h2 class="lvh">🗺 Choose your learning path</h2><div class="tbl-wrap"><table class="tbl paths"><thead><tr><th>Goal</th><th>Duration</th><th>Route</th></tr></thead><tbody>' +
-      LEARNING_PATHS.map(function (p) { return '<tr><td><b>' + p.name + '</b></td><td>' + p.time + '</td><td>' + p.route + '</td></tr>'; }).join('') + '</tbody></table></div>';
-    h += '<h2 class="lvh">📚 Tracks</h2><div class="dash-grid tracks">';
+    var live = 0, planned = 0, gtot = 0, gdone = 0, rows = [];
     TRACKS.forEach(function (t) {
       var lv = { B: 0, I: 0, A: 0, E: 0 }, liveN = 0, tt = 0, td = 0;
-      t.modules.forEach(function (pm) { lv[pm.level]++; var mi = SI.modules[pm.id]; if (mi) { liveN++; tt += mi.items.length; td += doneOf(mi.items); } });
-      h += '<a class="mcard trackc" href="' + t.id + '.html"><span class="ticon">' + t.icon + '</span><h3>' + t.title + '</h3><div class="meta">' + t.desc + '</div><div class="meta">' +
-        ['B', 'I', 'A', 'E'].map(function (l) { return lv[l] ? LEVELS[l].icon + ' ' + lv[l] : ''; }).join(' ') + ' · ' + liveN + '/' + t.modules.length + ' live</div><div class="pbar"><div style="width:' + (tt ? td / tt * 100 : 0) + '%"></div></div></a>';
+      t.modules.forEach(function (pm) { lv[pm.level]++; planned++; var mi = SI.modules[pm.id]; if (mi) { live++; liveN++; tt += mi.items.length; td += doneOf(mi.items); } });
+      gtot += tt; gdone += td;
+      rows.push({ t: t, lv: lv, liveN: liveN, tt: tt, td: td });
     });
-    h += '</div><div class="box ai"><span class="tag">🤖 Why “old school + new school”?</span><p>AI can now write the standard solution to most textbook problems in seconds. That makes <b>understanding</b> more valuable, not less: interviewers and teams need people who can recognise the right pattern, judge trade-offs, spot the bug in AI-written code, and design systems AI cannot see the whole of. Every topic here teaches the fundamentals by hand first, then shows how to use AI as a study partner and work tool — and where it fails.</p></div>' +
+    var nav = '<div class="side-sec">Navigate</div><a class="nav-link active" href="index.html" aria-current="page">' + ICONS.home + 'Home</a><div class="side-sec">Tracks</div>' +
+      rows.map(function (r) { return '<a class="tlink" href="' + r.t.id + '.html"><span class="m">' + esc(r.t.icon) + '</span><span class="n">' + esc(r.t.short) + '</span><span class="c">' + r.t.modules.length + '</span></a>'; }).join('');
+    $('#nav').innerHTML = nav;
+
+    var last = store.get('imastery.last', null), h = '<section class="resume">';
+    if (last && last.track && last.id) {
+      h += '<div class="rl"><span class="kicker">Resume · ' + esc(last.track) + ' / module ' + esc(last.num) + (last.topics ? ' / topic ' + (last.topic + 1) + ' of ' + last.topics : '') + '</span><h1>' + esc(last.topicTitle || last.title) + '</h1>' +
+        '<p>' + esc(last.trackTitle) + ' · ' + esc(last.title) + '</p><div class="row" style="flex-wrap:wrap"><a class="btn primary lg" href="' + esc(last.track) + '.html#' + esc(last.hash) + '">' + ICONS.play + 'Resume</a>' +
+        '<a class="btn lg" href="' + esc(last.track) + '.html#' + esc(last.id) + '">Module overview</a></div></div>';
+    } else {
+      h += '<div class="rl"><span class="kicker">' + TRACKS.length + ' tracks · ' + planned + ' modules · beginner → expert</span><h1>Learn CS the old-school way. Work the new-school way — with AI.</h1>' +
+        '<p>Every concept starts with a real-world analogy, comes alive in a step-by-step visualizer, and ends with graded practice and interview questions.</p>' +
+        '<div class="row" style="flex-wrap:wrap"><a class="btn primary lg" href="dsa.html#dsa01">' + ICONS.play + 'Start with DSA module 1</a><a class="btn lg" href="#paths">Pick a learning path</a></div></div>';
+    }
+    h += '<div class="rr"><div class="rstats"><div><b>' + live + '</b><span>modules</span></div><div><b>' + (SI.problems || 0) + '</b><span>problems</span></div><div><b>' + (SI.viz || 0) + '</b><span>visualizers</span></div><div><b>' + (gtot ? Math.round(gdone / gtot * 100) : 0) + '%</b><span>your progress</span></div></div></div></section>';
+
+    h += '<section id="paths"><h2>Learning path</h2><div class="ptabs" role="tablist" aria-label="Choose a learning path">' +
+      LEARNING_PATHS.map(function (p, i) { return '<button type="button" class="ptab" role="tab" id="ptab' + i + '" aria-controls="proute" aria-selected="' + (i === 1 ? 'true' : 'false') + '" data-path="' + i + '">' + esc(p.name) + ' · ' + esc(p.time) + '</button>'; }).join('') +
+      '</div><ol class="route" id="proute" role="tabpanel" aria-labelledby="ptab1"></ol></section>';
+
+    h += '<h2 class="lvh">All tracks</h2><div class="ttable-wrap"><table class="ttable"><thead><tr><th scope="col">Track</th><th scope="col">Modules</th><th scope="col" style="width:30%">Levels</th><th scope="col">Progress</th></tr></thead><tbody>' +
+      rows.map(function (r) {
+        var lvTxt = r.lv.B + ' beginner, ' + r.lv.I + ' intermediate, ' + r.lv.A + ' advanced, ' + r.lv.E + ' expert';
+        return '<tr><td><a href="' + r.t.id + '.html"><span class="tmono">' + esc(r.t.icon) + '</span>' + esc(r.t.title) + '</a></td><td class="mono">' + r.t.modules.length + '</td>' +
+          '<td><div class="lvbar" role="img" aria-label="' + lvTxt + '"><i class="b" style="flex:' + r.lv.B + '"></i><i class="i" style="flex:' + r.lv.I + '"></i><i class="a" style="flex:' + r.lv.A + '"></i><i class="e" style="flex:' + r.lv.E + '"></i></div></td>' +
+          '<td class="mono">' + (r.td ? Math.round(r.td / r.tt * 100) + '%' : 'not started') + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+
+    h += '<h2 class="lvh">How every module teaches you</h2><div class="steps">' +
+      ['Real-world analogy first', 'Plain-English idea with small numbers', 'Clues in the question (pattern recognition)', 'Step-by-step visualizer with narrator', 'Worked examples', 'Guided problem: brute force → MCQ → 3 hints → solution', 'Expert deep dive', 'New school: working alongside AI', 'Quiz + interview Q&A', 'Practice arena: 12–20 graded problems'].map(function (s, i) { return '<div class="stepc"><b>' + (i + 1) + '</b>' + s + '</div>'; }).join('') + '</div>';
+    h += '<div class="box ai"><span class="tag">Why “old school + new school”?</span><p>AI can now write the standard solution to most textbook problems in seconds. That makes <b>understanding</b> more valuable, not less: interviewers and teams need people who can recognise the right pattern, judge trade-offs, spot the bug in AI-written code, and design systems AI cannot see the whole of. Every topic here teaches the fundamentals by hand first, then shows how to use AI as a study partner and work tool — and where it fails.</p></div>' +
       '<div class="row" style="margin-top:20px"><button class="btn" type="button" id="resetProgress">Reset all progress</button></div>';
     $('#main').innerHTML = h;
+
+    var pickPath = function (i) {
+      $$('.ptab').forEach(function (b) { b.setAttribute('aria-selected', b.getAttribute('data-path') === String(i) ? 'true' : 'false'); });
+      $('#proute').setAttribute('aria-labelledby', 'ptab' + i);
+      $('#proute').innerHTML = LEARNING_PATHS[i].route.split(/\s*·\s*|\s*→\s*/).filter(Boolean).map(function (s) { return '<li><span>' + esc(s.replace(/\.$/, '')) + '</span></li>'; }).join('');
+    };
+    $('.ptabs').addEventListener('click', function (e) { var b = e.target.closest('.ptab'); if (b) pickPath(+b.getAttribute('data-path')); });
+    pickPath(1);
     var tmr;
-    $('#gsearch').addEventListener('input', function () { var v = this.value; clearTimeout(tmr); tmr = setTimeout(function () { searchInto(v, SI.entries || [], $('#gresults')); }, 120); });
+    $('#gsearch').addEventListener('input', function () { var v = this.value; clearTimeout(tmr); tmr = setTimeout(function () { searchInto(v, SI.entries || [], $('#gresults'), $('#nav')); }, 120); });
   }
 
   return { track: track, home: home, renderPart: renderPart, highlight: highlight, dedent: dedent, PART: PART, items: items };

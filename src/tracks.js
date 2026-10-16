@@ -6,9 +6,9 @@ var LEVELS = {
 };
 
 var LEARNING_PATHS = [
-  { name: 'Complete path (zero → expert)', time: '9–12 months', route: 'All tracks in level order: every 🟢 Beginner module → every 🔵 Intermediate → every 🟣 Advanced → every 🔴 Expert.' },
-  { name: 'SDE-1 / New grad', time: '12–16 weeks', route: 'One language (🟢🔵) · DSA 1–20 · SQL 1–9 · CS Core 1–6, 10–13 · LLD 1–7 · HLD 1–6 · Behavioral 1–4' },
-  { name: 'SDE-2 / Senior', time: '16–20 weeks', route: 'DSA 8–28 · LLD all · HLD all · SQL 10–15 · Backend or Frontend 🟣🔴 · Behavioral 5' },
+  { name: 'Complete path (zero → expert)', time: '9–12 months', route: 'All tracks in level order: every Beginner module → every Intermediate → every Advanced → every Expert.' },
+  { name: 'SDE-1 / New grad', time: '12–16 weeks', route: 'One language (Beginner + Intermediate) · DSA 1–20 · SQL 1–9 · CS Core 1–6, 10–13 · LLD 1–7 · HLD 1–6 · Behavioral 1–4' },
+  { name: 'SDE-2 / Senior', time: '16–20 weeks', route: 'DSA 8–28 · LLD all · HLD all · SQL 10–15 · Backend or Frontend Advanced + Expert · Behavioral 5' },
   { name: 'Frontend specialist', time: '14 weeks', route: 'JS/TS all · Frontend all · DSA 1–15 · HLD 1–9 · Behavioral' },
   { name: 'Backend specialist', time: '16 weeks', route: 'Java or Python all · Backend all · SQL all · HLD all · DSA 1–20' },
   { name: 'AI engineer', time: '14 weeks', route: 'Python all · GenAI all · Backend 1–9 · HLD 1–13 · DSA 1–15' }
@@ -16,7 +16,7 @@ var LEARNING_PATHS = [
 
 var TRACKS = [
   {
-    id: 'dsa', title: 'DSA + Math for CS', short: 'DSA', icon: '∑', lang: 'java', code: 'required', dry: true,
+    id: 'dsa', title: 'DSA + Math for CS', short: 'DSA', icon: 'DSA', lang: 'java', code: 'required', dry: true,
     desc: 'From counting loop iterations to segment trees, max-flow and advanced DP — every pattern explained with analogies, visualizers and graded problems in Java.',
     modules: [
       ['B', 'Programming Foundations for DSA', 'Java syntax for problem solving, fast input/output (Scanner vs BufferedReader), primitive vs reference types, arrays and strings basics, methods, how memory/stack/heap and references work, reading constraints, writing your first brute-force solutions.'],
@@ -50,7 +50,7 @@ var TRACKS = [
     ]
   },
   {
-    id: 'java', title: 'Java', short: 'Java', icon: '☕', lang: 'java', code: 'required', dry: true,
+    id: 'java', title: 'Java', short: 'Java', icon: 'JAVA', lang: 'java', code: 'required', dry: true,
     desc: 'Java from first program to JVM internals, concurrency and modern Java 21 — with output-prediction questions interviewers love.',
     modules: [
       ['B', 'JDK, JRE, JVM & Java Basics', 'Installing JDK, compile vs run (javac/java), JDK vs JRE vs JVM, main method, primitive types and ranges, type casting, operators, integer overflow, char/Unicode.'],
@@ -70,7 +70,7 @@ var TRACKS = [
     ]
   },
   {
-    id: 'py', title: 'Python', short: 'Python', icon: '🐍', lang: 'python', code: 'required', dry: true,
+    id: 'py', title: 'Python', short: 'Python', icon: 'PY', lang: 'python', code: 'required', dry: true,
     desc: 'Python from basics to CPython internals, asyncio and interview-grade idioms — runnable examples in your browser.',
     modules: [
       ['B', 'Python Setup, Syntax, Types & I/O', 'Installing Python, REPL, variables as names bound to objects, int/float/str/bool/None, dynamic typing, input/print/f-strings, operators, integer precision.'],
@@ -128,7 +128,7 @@ var TRACKS = [
     ]
   },
   {
-    id: 'sql', title: 'SQL + DBMS', short: 'SQL', icon: '🗄', lang: 'sql', code: 'required', dry: false,
+    id: 'sql', title: 'SQL + DBMS', short: 'SQL', icon: 'SQL', lang: 'sql', code: 'required', dry: false,
     desc: 'SQL from your first SELECT to window functions, index internals, MVCC and distributed databases — with a live SQL playground in the browser.',
     modules: [
       ['B', 'Databases & the Relational Model', 'What a database/DBMS is, tables/rows/columns, keys (primary, foreign, candidate), relationships (1-1, 1-N, N-N), SQL language categories (DDL/DML/DQL/DCL/TCL), creating your first tables.'],
@@ -149,7 +149,7 @@ var TRACKS = [
     ]
   },
   {
-    id: 'lld', title: 'Low-Level Design', short: 'LLD', icon: '🧱', lang: 'java', code: 'required', dry: false,
+    id: 'lld', title: 'Low-Level Design', short: 'LLD', icon: 'LLD', lang: 'java', code: 'required', dry: false,
     desc: 'Object-oriented design from SOLID to design patterns and full machine-coding case studies (Parking Lot, BookMyShow, Splitwise, Elevator, Chess…).',
     modules: [
       ['B', 'OOP Modelling & UML', 'Thinking in objects, identifying entities/attributes/behaviours from requirements, class relationships (association, aggregation, composition, inheritance), UML class and sequence diagrams.'],
@@ -167,7 +167,7 @@ var TRACKS = [
     ]
   },
   {
-    id: 'hld', title: 'High-Level System Design', short: 'HLD', icon: '🏗', lang: 'text', code: 'optional', dry: false,
+    id: 'hld', title: 'High-Level System Design', short: 'HLD', icon: 'HLD', lang: 'text', code: 'optional', dry: false,
     desc: 'System design from client-server basics to consensus, distributed storage and 16 expert case studies — animated request flows for every concept.',
     modules: [
       ['B', 'What is System Design? Client-Server & Request Flow', 'Clients, servers, IP/DNS at a glance, request/response lifecycle, monolith basics, functional vs non-functional requirements, latency vs throughput, availability.'],
@@ -189,7 +189,7 @@ var TRACKS = [
     ]
   },
   {
-    id: 'fe', title: 'Frontend Engineering', short: 'Frontend', icon: '🎨', lang: 'js', code: 'required', dry: false,
+    id: 'fe', title: 'Frontend Engineering', short: 'Frontend', icon: 'FE', lang: 'js', code: 'required', dry: false,
     desc: 'HTML, CSS, DOM and React from first page to Fiber internals, performance, security and frontend system design.',
     modules: [
       ['B', 'How the Web Works', 'Browsers, servers, URLs, HTTP request/response, HTML/CSS/JS roles, how a page loads, DevTools tour.'],
@@ -211,7 +211,7 @@ var TRACKS = [
     ]
   },
   {
-    id: 'be', title: 'Backend Engineering', short: 'Backend', icon: '⚙️', lang: 'java', code: 'optional', dry: false,
+    id: 'be', title: 'Backend Engineering', short: 'Backend', icon: 'BE', lang: 'java', code: 'optional', dry: false,
     desc: 'Backend from your first REST API to microservices, Kubernetes, cloud, security and production excellence (Spring Boot + Node.js).',
     modules: [
       ['B', 'How Backends Work & HTTP Basics', 'Client-server, what a backend does, HTTP methods/status codes/headers, JSON, statelessness, web servers vs app servers.'],
@@ -233,7 +233,7 @@ var TRACKS = [
     ]
   },
   {
-    id: 'ai', title: 'GenAI & Working With AI', short: 'GenAI', icon: '🤖', lang: 'python', code: 'optional', dry: false,
+    id: 'ai', title: 'GenAI & Working With AI', short: 'GenAI', icon: 'AI', lang: 'python', code: 'optional', dry: false,
     desc: 'From “what is AI?” to transformer internals, RAG, agents, fine-tuning, LLMOps — and how to thrive as an engineer alongside AI.',
     modules: [
       ['B', 'AI, ML, Deep Learning & GenAI in Plain English', 'History and definitions, supervised/unsupervised/reinforcement learning, what a model is, training vs inference, what generative AI does, limits and myths.'],
@@ -256,7 +256,7 @@ var TRACKS = [
     ]
   },
   {
-    id: 'cs', title: 'CS Core: OS + Networks', short: 'CS Core', icon: '🖥', lang: 'cpp', code: 'optional', dry: false,
+    id: 'cs', title: 'CS Core: OS + Networks', short: 'CS Core', icon: 'CS', lang: 'cpp', code: 'optional', dry: false,
     desc: 'Operating systems and computer networks from first principles to containers, io_uring, QUIC and BGP.',
     modules: [
       ['B', 'What an Operating System Does', 'Role of the OS, kernel vs user mode, system calls, interrupts, booting, monolithic vs microkernel, OS services.'],
@@ -276,7 +276,7 @@ var TRACKS = [
     ]
   },
   {
-    id: 'beh', title: 'Behavioral & Career', short: 'Behavioral', icon: '🗣', lang: 'text', code: 'optional', dry: false,
+    id: 'beh', title: 'Behavioral & Career', short: 'Behavioral', icon: 'BEH', lang: 'text', code: 'optional', dry: false,
     desc: 'Crack the rounds that are not about code: STAR stories, leadership principles, interview communication, senior-level signals and negotiation.',
     modules: [
       ['B', 'Interview Loops, Resume & the STAR Method', 'How product-company loops work (OA, phone screen, onsite rounds), what each round measures, resume that passes screening, LinkedIn, the STAR/CARL frameworks, building a story bank.'],

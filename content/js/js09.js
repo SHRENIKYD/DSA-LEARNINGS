@@ -858,8 +858,8 @@
       const freq = new Map();
       for (const w of words) freq.set(w, (freq.get(w) ?? 0) + 1);
       console.log([...freq]);   // [['the',3],['cat',1],['and',2],['hat',1],['bat',1]]
-      const top = [...freq].sort((x, y) => y[1] - x[1])[0];
-      console.log('most common:', top);          // [ 'the', 3 ]
+      const mostCommon = [...freq].sort((x, y) => y[1] - x[1])[0];
+      console.log('most common:', mostCommon);   // [ 'the', 3 ]
 
       const people = [{ n: 'A', age: 31 }, { n: 'B', age: 25 }, { n: 'C', age: 38 }];
       const byDecade = Map.groupBy ? Map.groupBy(people, p => Math.floor(p.age / 10) * 10) : null;

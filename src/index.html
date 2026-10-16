@@ -5,12 +5,23 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Interview Mastery</title>
 <meta name="description" content="Free beginner-to-expert interview prep: DSA, Java, Python, JS/TS, C++, SQL, system design, frontend, backend, GenAI, OS & networks, behavioral — with visualizers, practice and AI-era guidance.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Source+Sans+3:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="assets/style.css?v=@@V@@">
 </head>
 <body>
-<div class="home-top"><button id="themeBtn" class="btn" type="button">🌙 Dark</button></div>
+<button id="menuBtn" class="btn" type="button" aria-label="Open menu" aria-controls="sidebar" aria-expanded="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"/></svg>Menu</button>
 <div id="app" class="home">
-  <aside id="sidebar"></aside>
+  <aside id="sidebar">
+    <div class="side-top">
+      <a class="brand" href="index.html"><span class="logo">IM</span><div>Interview Mastery<small>beginner → expert</small></div></a>
+      <label class="sbox"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input id="gsearch" aria-label="Search everything" type="search" placeholder="Search everything" autocomplete="off"><kbd>/</kbd></label>
+      <div id="gresults" hidden></div>
+      <div class="side-row"><button id="themeBtn" class="btn" type="button">Theme</button></div>
+    </div>
+    <nav id="nav" aria-label="Tracks"></nav>
+  </aside>
   <main id="main"></main>
 </div>
 <script src="assets/helpers.js?v=@@V@@"></script>
