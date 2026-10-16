@@ -66,9 +66,16 @@ for (const t of TRACKS) {
   t._scripts = scripts;
 }
 
-for (const f of ['helpers.js', 'tracks.js', 'engine.js', 'style.css']) hash.update(rd('src/' + f));
+const ASSETS = ['helpers.js', 'tracks.js', 'engine.js', 'auth.js', 'login.js', 'style.css'];
+const sbUrl = (process.env.SUPABASE_URL || '').trim().replace(/\/+$/, ''), sbKey = (process.env.SUPABASE_PUBLISHABLE_KEY || '').trim();
+const authOn = /^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(sbUrl) && /^[A-Za-z0-9._-]+$/.test(sbKey);
+if ((sbUrl || sbKey) && !authOn) { console.warn('WARN: SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY look invalid — accounts disabled in this build'); warnings++; }
+const configJs = 'window.IM_CONFIG=' + JSON.stringify(authOn ? { supabaseUrl: sbUrl, supabaseKey: sbKey } : {}) + ';';
+for (const f of ASSETS) hash.update(rd('src/' + f));
+hash.update(configJs);
 const V = hash.digest('hex').slice(0, 10);
-for (const f of ['helpers.js', 'tracks.js', 'engine.js', 'style.css']) fs.copyFileSync(path.join(root, 'src', f), path.join(out, 'assets', f));
+for (const f of ASSETS) fs.copyFileSync(path.join(root, 'src', f), path.join(out, 'assets', f));
+fs.writeFileSync(path.join(out, 'assets', 'config.js'), configJs);
 fs.writeFileSync(path.join(out, 'assets', 'search-index.js'), 'window.SEARCH_INDEX=' + JSON.stringify(SI) + ';');
 
 const tpl = rd('src/track.html');
@@ -78,8 +85,9 @@ for (const t of TRACKS) {
   fs.writeFileSync(path.join(out, t.id + '.html'), html);
 }
 fs.writeFileSync(path.join(out, 'index.html'), rd('src/index.html').replace(/@@V@@/g, V));
+fs.writeFileSync(path.join(out, 'login.html'), rd('src/login.html').replace(/@@V@@/g, V));
 fs.writeFileSync(path.join(out, '.nojekyll'), '');
 function H(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 
 const live = Object.keys(SI.modules).length, planned = TRACKS.reduce((a, t) => a + t.modules.length, 0);
-console.log('built ' + out + ' — ' + live + '/' + planned + ' modules live, ' + SI.problems + ' problems, ' + SI.viz + ' visualizers' + (warnings ? ', ' + warnings + ' warning(s)' : ''));
+console.log('built ' + out + ' — ' + live + '/' + planned + ' modules live, ' + SI.problems + ' problems, ' + SI.viz + ' visualizers, accounts ' + (authOn ? 'ON' : 'OFF (set SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY)') + (warnings ? ', ' + warnings + ' warning(s)' : ''));

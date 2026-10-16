@@ -34,8 +34,22 @@ npx serve site               # or any static server (the SQL runner needs http, 
 | `tools/validate.js` | Checks a module: structure, counts, HTML, visualizers, and that code compiles or runs (`--code`) |
 | `tools/e2e.js` | Headless-browser smoke test of the built site |
 | `docs/AUTHORING.md` | How to write a module |
-| `vendor/` | sql.js (MIT) for the in-browser SQL runner |
+| `vendor/` | sql.js (MIT) for the in-browser SQL runner, supabase-js 2.117.2 (MIT) for accounts |
+| `src/auth.js`, `src/login.*` | Accounts: sign-in page and progress sync |
+| `supabase/schema.sql` | Database table + row-level security for per-user progress |
 
 ## Deploy (GitHub Pages)
 The `.github/workflows/pages.yml` workflow builds and deploys the site on every push.
 One-time setup: **Settings → Pages → Build and deployment → Source: GitHub Actions**.
+
+## Accounts and progress sync (Supabase)
+Progress is always saved in the browser. Signing in also saves it to Supabase, so it follows the learner across devices.
+
+One-time setup:
+1. **Create the table:** Supabase dashboard → SQL Editor → paste [`supabase/schema.sql`](supabase/schema.sql) → Run. Row-level security lets each user read and write only their own row.
+2. **Allow redirects:** Authentication → URL Configuration → set **Site URL** to the Pages URL (e.g. `https://<user>.github.io/<repo>/`) and add `https://<user>.github.io/<repo>/login.html` to **Redirect URLs** (used by confirmation and password-reset emails).
+3. **Give the build your project details:** GitHub repo → Settings → Secrets and variables → Actions → **Variables** → add `SUPABASE_URL` (the project URL) and `SUPABASE_PUBLISHABLE_KEY` (the publishable key). Then re-run the Pages workflow.
+
+The publishable key is meant to be used in browsers; data is protected by row-level security, so never put a secret/service-role key here. Without these variables the site builds with accounts turned off.
+
+Local build with accounts: `SUPABASE_URL=... SUPABASE_PUBLISHABLE_KEY=... node tools/build.js`
