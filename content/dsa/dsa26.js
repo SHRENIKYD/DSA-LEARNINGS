@@ -2631,7 +2631,7 @@ class Solution:
     }
 }`
     },
-    mcq: { q: 'Which loop produces a uniformly random permutation?', options: ['for i in 0..n−1: swap(a[i], a[rand(0..n−1)])', 'for i in n−1..1: swap(a[i], a[rand(0..i)])', 'for i in n−1..1: swap(a[i], a[rand(0..i−1)])', 'sort with a random comparator'], answer: 1, explain: 'Fisher–Yates draws j from [0, i] so the number of equally likely runs is n!. Option A gives n^n runs (biased), C is Sattolo (single cycles only), D is biased and may violate the comparator contract.' },
+    mcq: { q: 'Which loop produces a uniformly random permutation?', options: ['for i in 0..n−1: swap(a[i], a[rand(0..n−1)])', 'for i in n−1..1: swap(a[i], a[rand(0..i)])', 'for i in n−1..1: swap(a[i], a[rand(0..i−1)])', 'sort with a random comparator'], answer: 1, explain: 'Fisher–Yates draws j from [0, i] so the number of equally likely runs is n!. Option A gives n^n runs (biased), option C is Sattolo (single cycles only), option D is biased and may violate the comparator contract.' },
     hints: [
       `<p>Hint 1: Keep a pristine copy for reset(); shuffle a fresh copy each time (or shuffle in place and copy back on reset).</p>`,
       `<p>Hint 2: Fill the array from the back: choose which remaining element goes to position i, uniformly among positions 0..i, and swap it there.</p>`,

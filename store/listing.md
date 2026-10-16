@@ -26,7 +26,7 @@ Every concept starts with a real-world analogy, comes alive in a step-by-step vi
 194 modules, about 4,250 practice problems and 2,100 visualizers.
 
 LEARN BY PLAYING
-• 8 concept games that teach the idea before the lesson: binary search, Big-O, two pointers, BFS, hashing, stacks, sorting and bits
+• 26 concept games, new puzzle every play: algorithms (binary search, Big-O, two pointers, BFS, Dijkstra, heaps, DP, trees), SQL, Java, JavaScript, Python and networking
 • A new random puzzle every time you play
 • Track map with a boss fight at the end of each level
 • XP, levels, daily quests, streaks with freezes, and badges

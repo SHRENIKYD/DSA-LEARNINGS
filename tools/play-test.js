@@ -109,8 +109,28 @@ t('games helpers: bracket balance and inversion count', () => {
   assert.strictEqual(G.balanced('(('), false);
   assert.strictEqual(G.inversions([3, 1, 2]), 2);
   assert.strictEqual(G.inversions([1, 2, 3]), 0);
-  assert.strictEqual(G.list.length, 8);
+  assert.strictEqual(G.list.length, 26);
   assert.notStrictEqual(G.random('guess').id, 'guess');
+  assert.strictEqual(new Set(G.list.map((g) => g.id)).size, G.list.length);
+  ['sql', 'java', 'js', 'py', 'cs'].forEach((c) => { assert.ok(G.inCat(c).length >= 1, c); for (let i = 0; i < 20; i++) assert.strictEqual(G.random(null, c).cat, c); });
+  assert.strictEqual(G.inCat('all').length, G.list.length);
+});
+
+t('new game logic: Python slicing and coin change', () => {
+  const G = require('../app/games.js'), a = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+  const S = (s, e, st) => G.pySlice(a, s, e, st).join('');
+  assert.strictEqual(S(1, 4, 1), 'bcd');
+  assert.strictEqual(S(-3, null, 1), 'efg');
+  assert.strictEqual(S(null, -2, 1), 'abcde');
+  assert.strictEqual(S(null, null, -1), 'gfedcba');
+  assert.strictEqual(S(null, null, -2), 'geca');
+  assert.strictEqual(S(5, 1, -1), 'fedc');
+  assert.strictEqual(S(5, 2, 1), '');
+  assert.strictEqual(S(1, null, 2), 'bdf');
+  assert.strictEqual(S(-1, null, 1), 'g');
+  assert.deepStrictEqual(G.minCoins([1, 3, 4], 6), [3, 3]);
+  assert.deepStrictEqual(G.greedyCoins([1, 3, 4], 6), [4, 1, 1]);
+  assert.strictEqual(G.minCoins([1, 5, 6], 10).length, 2);
 });
 
 console.log(n + ' tests passed');
