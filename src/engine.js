@@ -646,6 +646,7 @@ var App = (function () {
     var tix = 0, tm = /-t(\d+)/.exec(hs);
     if (tm) tix = +tm[1];
     store.set('imastery.last', { track: TRACK.id, trackTitle: TRACK.title, id: m.id, num: m.num, title: stripTags(m.title), topic: tix, topics: m.topics.length, topicTitle: stripTags((m.topics[tix] || {}).title), hash: hs });
+    if (window.Auth) Auth.changed('last');
     if (current !== m) {
       current = m;
       main.innerHTML = moduleHtml(m);
@@ -678,6 +679,7 @@ var App = (function () {
       store.set('imastery.theme', t);
       label(t);
     });
+    startAuth();
     var mb = $('#menuBtn');
     if (mb) mb.addEventListener('click', function () { var o = $('#sidebar').classList.toggle('open'); mb.setAttribute('aria-expanded', o ? 'true' : 'false'); if (o) { var s = $('#search') || $('#gsearch'); if (s) s.focus(); } });
     document.addEventListener('keydown', function (e) {
@@ -694,6 +696,7 @@ var App = (function () {
       if (!id) return;
       if (e.target.checked) DONE[id] = 1; else delete DONE[id];
       store.set('imastery.done', DONE);
+      if (window.Auth) Auth.changed();
       e.target.parentNode.classList.toggle('on', e.target.checked);
       $$('a[href="#' + id + '"]').forEach(function (a) { a.classList.toggle('ok', e.target.checked); });
       if (TRACK) updateProgress();
@@ -726,7 +729,10 @@ var App = (function () {
         fb.hidden = false;
         fb.innerHTML = pick === ans ? '<b class="c-g">✔ Correct!</b> ' + $('template', mb2).innerHTML : '<b class="c-r">✘ Not quite — think again and try another option.</b>';
       } else if (t.id === 'resetProgress') {
-        if (confirm('Reset ALL progress checkboxes across every track?')) { DONE = {}; store.set('imastery.done', DONE); location.reload(); }
+        if (confirm('Reset ALL progress checkboxes across every track?' + (window.Auth && Auth.user() ? ' This also clears the copy saved to your account.' : ''))) {
+          DONE = {}; store.set('imastery.done', DONE);
+          (window.Auth ? Auth.reset() : Promise.resolve()).then(function () { location.reload(); });
+        }
       }
     });
   }
@@ -752,8 +758,15 @@ var App = (function () {
   }
 
   /* ---------- home ---------- */
+  var HOME = false;
   function home() {
+    HOME = true;
     chrome();
+    var SI = window.SEARCH_INDEX || { modules: {}, entries: [] }, tmr;
+    $('#gsearch').addEventListener('input', function () { var v = this.value; clearTimeout(tmr); tmr = setTimeout(function () { searchInto(v, SI.entries || [], $('#gresults'), $('#nav')); }, 120); });
+    renderHome();
+  }
+  function renderHome() {
     var SI = window.SEARCH_INDEX || { modules: {}, entries: [] };
     var live = 0, planned = 0, gtot = 0, gdone = 0, rows = [];
     TRACKS.forEach(function (t) {
@@ -803,8 +816,23 @@ var App = (function () {
     };
     $('.ptabs').addEventListener('click', function (e) { var b = e.target.closest('.ptab'); if (b) pickPath(+b.getAttribute('data-path')); });
     pickPath(1);
-    var tmr;
-    $('#gsearch').addEventListener('input', function () { var v = this.value; clearTimeout(tmr); tmr = setTimeout(function () { searchInto(v, SI.entries || [], $('#gresults'), $('#nav')); }, 120); });
+  }
+
+  /* ---------- account sync ---------- */
+  function reloadDone() {
+    DONE = store.get('imastery.done', {}) || {};
+    if (HOME) { var navHidden = $('#nav').hidden; renderHome(); $('#nav').hidden = navHidden; return; }
+    if (!TRACK) return;
+    $$('[data-done]').forEach(function (cb) { var on = !!DONE[cb.getAttribute('data-done')]; cb.checked = on; cb.parentNode.classList.toggle('on', on); });
+    $$('.toc a').forEach(function (a) { var id = (a.getAttribute('href') || '').slice(1); a.classList.toggle('ok', !!DONE[id]); });
+    if (!current) $('#main').innerHTML = trackDashHtml();
+    updateProgress();
+  }
+  function startAuth() {
+    if (!window.Auth) return;
+    Auth.mountAccount($('#account'));
+    Auth.on(function (k) { if (k === 'progress') reloadDone(); });
+    Auth.init();
   }
 
   return { track: track, home: home, renderPart: renderPart, highlight: highlight, dedent: dedent, PART: PART, items: items };

@@ -23,6 +23,9 @@ jobs:
         with:
           node-version: 20
       - name: Build static site
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
         run: node tools/build.js site
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

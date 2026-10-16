@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in — Interview Mastery</title>
+<meta name="description" content="Sign in to Interview Mastery to save and sync your progress across devices.">
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Source+Sans+3:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="assets/style.css?v=@@V@@">
+</head>
+<body class="auth-page">
+<main class="auth-wrap">
+  <a class="brand" href="index.html"><span class="logo">IM</span><div>Interview Mastery<small>beginner → expert</small></div></a>
+  <section class="auth-card" aria-labelledby="authTitle">
+    <h1 id="authTitle">Sign in</h1>
+    <p class="auth-sub" id="authSub">Save your progress and pick up where you left off on any device.</p>
+
+    <div id="authOff" class="auth-msg warn" role="status" hidden>Accounts are not set up on this deployment yet. Your progress is still saved in this browser.</div>
+
+    <div id="authSigned" hidden>
+      <p class="auth-msg ok" role="status">Signed in as <b id="authWho"></b>.</p>
+      <div class="auth-row"><a class="btn primary lg" id="authContinue" href="index.html">Continue learning</a><button class="btn lg" type="button" id="authSignOut">Sign out</button></div>
+    </div>
+
+    <div id="authForms">
+      <div class="auth-tabs" role="tablist" aria-label="Account">
+        <button type="button" role="tab" id="tabIn" aria-selected="true" aria-controls="authForm">Sign in</button>
+        <button type="button" role="tab" id="tabUp" aria-selected="false" aria-controls="authForm">Create account</button>
+      </div>
+      <form id="authForm" role="tabpanel" aria-labelledby="tabIn" novalidate>
+        <label class="fld"><span>Email</span><input id="authEmail" type="email" autocomplete="email" required></label>
+        <label class="fld"><span>Password</span><input id="authPass" type="password" autocomplete="current-password" minlength="8" required></label>
+        <p class="fld-hint" id="passHint" hidden>At least 8 characters.</p>
+        <div id="authErr" class="auth-msg err" role="alert" hidden></div>
+        <div id="authInfo" class="auth-msg ok" role="status" hidden></div>
+        <button class="btn primary lg auth-submit" type="submit" id="authSubmit">Sign in</button>
+        <button class="btn ghost auth-link" type="button" id="authForgot">Forgot password?</button>
+      </form>
+    </div>
+
+    <form id="resetForm" hidden novalidate>
+      <label class="fld"><span>New password</span><input id="resetPass" type="password" autocomplete="new-password" minlength="8" required></label>
+      <p class="fld-hint">At least 8 characters.</p>
+      <div id="resetErr" class="auth-msg err" role="alert" hidden></div>
+      <button class="btn primary lg auth-submit" type="submit">Set new password</button>
+    </form>
+  </section>
+  <p class="auth-foot"><a href="index.html">Continue without an account</a> — progress stays in this browser only.</p>
+</main>
+<script src="assets/config.js?v=@@V@@"></script>
+<script src="vendor/supabase.js?v=@@V@@"></script>
+<script src="assets/auth.js?v=@@V@@"></script>
+<script src="assets/login.js?v=@@V@@"></script>
+</body>
+</html>
