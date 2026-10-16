@@ -1,0 +1,19 @@
+/* Read-aloud player (lesson pages and app screens). */
+.im-reading{outline:2px solid #FDE047;outline-offset:3px;border-radius:6px;background:rgba(253,224,71,.08)!important;scroll-margin:120px}
+body.im-tts-open{padding-bottom:calc(330px + env(safe-area-inset-bottom,0px))}
+.im-tts{position:fixed;left:0;right:0;bottom:calc(58px + env(safe-area-inset-bottom,0px));z-index:59;display:flex;flex-direction:column;gap:10px;padding:14px max(16px,env(safe-area-inset-right,0px)) 14px max(16px,env(safe-area-inset-left,0px));background:#161A23;border-top:1px solid #2E3443;border-radius:18px 18px 0 0;box-shadow:0 -10px 30px rgba(0,0,0,.45);color:#E7E9EE;font:500 14px/1.35 "Source Sans 3",system-ui,sans-serif}
+.im-tts .tt-top{display:flex;align-items:center;gap:8px}
+.im-tts .tt-title{flex:1;min-width:0;font:700 15px/1.25 "Space Grotesk","Source Sans 3",sans-serif;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.im-tts .tt-x{width:36px;height:36px;border-radius:10px;border:1px solid #2E3443;background:#12151C;color:#E7E9EE;font-size:15px;cursor:pointer}
+.im-tts .tt-prog{height:6px;border-radius:3px;background:#0B0D12;overflow:hidden}
+.im-tts .tt-prog i{display:block;height:100%;background:#FDE047;transition:width .3s}
+.im-tts .tt-pos{font:500 12px/1 "IBM Plex Mono",ui-monospace,monospace;color:#A0A6B2}
+.im-tts .tt-ctl{display:grid;grid-template-columns:1fr 1.4fr 1fr;gap:10px}
+.im-tts .tt-ctl button{min-height:48px;border-radius:14px;border:1px solid #2E3443;background:#12151C;color:#E7E9EE;font-size:20px;cursor:pointer;box-shadow:0 3px 0 #07080b}
+.im-tts .tt-ctl .tt-play{background:#22D3EE;border-color:#22D3EE;color:#06222A;box-shadow:0 3px 0 #0891B2}
+.im-tts .tt-row{display:flex;align-items:center;justify-content:space-between;gap:10px;color:#A0A6B2}
+.im-tts .tt-speed{display:flex;gap:4px}
+.im-tts .tt-speed button{min-width:44px;min-height:36px;border-radius:9px;border:1px solid #2E3443;background:#12151C;color:#E7E9EE;font:600 12.5px/1 "IBM Plex Mono",ui-monospace,monospace;cursor:pointer}
+.im-tts .tt-speed button.on{background:#FDE047;border-color:#FDE047;color:#3b2003}
+.im-tts select{flex:1;min-width:0;max-width:65%;min-height:36px;border-radius:9px;border:1px solid #2E3443;background:#12151C;color:#E7E9EE;font:inherit;padding:0 8px}
+.im-tts .tt-cont input{width:22px;height:22px;accent-color:#22D3EE}

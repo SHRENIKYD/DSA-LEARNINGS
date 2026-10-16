@@ -11,6 +11,10 @@
 
   var play = lsGet('imastery.play', null) || Play.emptyState();
   play.settings = play.settings || { haptics: true, bit: true, motion: true };
+  if (play.settings.sound === undefined) play.settings.sound = true;
+  play.settings.tts = play.settings.tts || { rate: 1, voice: null, cont: true };
+  Sound.enable(play.settings.sound);
+  Reader.configure({ rate: play.settings.tts.rate, voice: play.settings.tts.voice, cont: play.settings.tts.cont, motion: play.settings.motion, onSave: function (t) { play.settings.tts = t; save(); } });
   var S = null;
 
   function done() { return lsGet('imastery.done', {}) || {}; }
@@ -40,6 +44,7 @@
 
   var toastT;
   function toast(msg) {
+    Sound.play('xp');
     var t = $('#toast'); t.textContent = msg; t.hidden = false; t.classList.remove('go'); void t.offsetWidth; t.classList.add('go'); buzz(10);
     clearTimeout(toastT); toastT = setTimeout(function () { t.hidden = true; }, 1800);
   }
@@ -51,7 +56,7 @@
     var badge = c.badge ? '<span class="bdg big" style="--bc:' + c.badge.color + '">' + esc(c.badge.glyph) + '</span>' : '<span class="cel-star">★</span>';
     el.innerHTML = '<div class="conf" aria-hidden="true">' + confetti() + '</div><div class="cel-card" role="dialog" aria-modal="true" aria-labelledby="celT">' + badge +
       '<span class="kick xp">' + esc(c.kick) + '</span><h2 id="celT">' + esc(c.title) + '</h2><p class="muted">' + esc(c.sub) + '</p><button class="b3 y" type="button" id="celOk">CONTINUE</button></div>';
-    el.hidden = false; buzz([20, 40, 20]);
+    el.hidden = false; buzz([20, 40, 20]); Sound.play(c.badge ? 'badge' : 'level');
     $('#celOk').addEventListener('click', function () { celQueue.shift(); showCel(); });
     $('#celOk').focus();
   }
@@ -74,7 +79,8 @@
     return /^https:\/\/[^\s"'<>]+$/.test(pic) ? '<img src="' + esc(pic) + '" alt="" referrerpolicy="no-referrer">' : esc((u.email || '?').charAt(0).toUpperCase());
   }
   function bar(p, cls) { return '<div class="xpbar ' + (cls || '') + '"><i style="width:' + Math.round(Math.max(0, Math.min(1, p)) * 100) + '%"></i></div>'; }
-  function head(title, back) { return '<div class="ah">' + (back ? '<a class="back" href="' + back + '" aria-label="Back">‹</a>' : '') + '<h1>' + esc(title) + '</h1></div>'; }
+  function head(title, back, read) { return '<div class="ah">' + (back ? '<a class="back" href="' + back + '" aria-label="Back">‹</a>' : '') + '<h1>' + esc(title) + '</h1>' + (read && Reader.available() ? '<button type="button" class="readbtn sp" id="readBtn" aria-label="Read this screen aloud">🔊</button>' : '') + '</div>'; }
+  function wireRead(title) { var b = $('#readBtn'); if (b) b.addEventListener('click', function () { if (Reader.isOpen()) { Reader.close(); return; } Sound.play('open'); Reader.open($('#scr'), title); }); }
   function tabbar(on) { return '<nav class="tabbar" aria-label="Main">' + TABS.map(function (t) { return '<a href="#' + t[0] + '" class="' + (t[0] === on ? 'on' : '') + '"' + (t[0] === on ? ' aria-current="page"' : '') + '><b aria-hidden="true">' + t[1] + '</b>' + t[2] + '</a>'; }).join('') + '</nav>'; }
   function page(tab, body, opts) {
     opts = opts || {};
@@ -137,7 +143,7 @@
   function moduleView(mid) {
     var x = pmById(mid); if (!x) return map();
     var m = S.totals.modules[mid], pm = x.pm, lv = LV[pm.level], g = Games.forModule(mid);
-    var h = head(x.t.short + ' · Module ' + pm.num, '#map/' + x.t.id);
+    var h = head(x.t.short + ' · Module ' + pm.num, '#map/' + x.t.id, true);
     h += '<div class="card"><span class="kick" style="color:' + lv.c + '">' + esc(lv.name) + '</span><b class="ttl lg">' + esc(pm.title) + '</b><p class="muted sm">' + esc(pm.scope || '') + '</p>';
     if (m) h += '<div class="row sb mono sm"><span>' + m.done + ' / ' + m.total + ' done</span><span class="xp">⚡ ' + m.xp + ' XP</span></div>' + bar(m.done / m.total);
     else h += '<p class="muted sm">This module is still being written.</p>';
@@ -148,6 +154,7 @@
       if (m.practice) h += '<a class="card boss" href="' + lessonHref(mid, '-arena') + '"><div class="row sb"><span class="kick" style="color:var(--p)">Boss · practice arena</span><span aria-hidden="true">⚔</span></div><b class="ttl">' + (m.practice - m.practiceDone) + ' of ' + m.practice + ' problems left</b>' + bar((m.practice - m.practiceDone) / m.practice, 'hp') + '<span class="b3 p">ATTACK</span></a>';
     }
     page('map', h);
+    wireRead(pm.title);
   }
 
   function arena(tid, lvKey) {
@@ -172,12 +179,15 @@
 
   function game(gid) {
     var g = Games.get(gid); if (!g) return playTab();
-    var h = head(g.title, '#play') + '<span class="kick">' + esc(g.kicker) + '</span><p class="goal">' + esc(g.goal) + '</p><div class="game" id="game"></div><div id="learned" hidden></div>';
+    var h = head(g.title, '#play', true) + '<span class="kick">' + esc(g.kicker) + '</span><p class="goal">' + esc(g.goal) + '</p><div class="game" id="game"></div><div id="learned" hidden></div>';
     page('play', h, { noTabs: false });
+    wireRead(g.title);
     var won = false;
     g.mount($('#game'), {
-      tick: function () { buzz(8); },
+      tick: function () { buzz(8); Sound.play('tap'); },
+      miss: function () { buzz([10, 30, 10]); Sound.play('wrong'); },
       win: function () {
+        Sound.play('correct');
         var xpBefore = S.xp;
         Play.winGame(play, g.id, now());
         refresh();
@@ -209,16 +219,18 @@
     else h += '<div class="card"><b class="ttl">Playing offline</b><span class="muted sm">Accounts are not set up in this build. Progress stays on this phone.</span></div>';
     var stats = [['⚡', S.xp.toLocaleString('en-US'), 'total XP'], ['🔥', S.streak.days, 'day streak'], ['✓', S.totals.completeModules, 'modules done']];
     h += '<div class="tiles">' + stats.map(function (s) { return '<div><b>' + s[0] + ' ' + s[1] + '</b><span>' + s[2] + '</span></div>'; }).join('') + '</div>';
-    var set = [['haptics', 'Haptics'], ['bit', 'Show Bit, the mascot'], ['motion', 'Confetti and motion']];
+    var set = [['sound', 'Sound effects'], ['haptics', 'Haptics'], ['bit', 'Show Bit, the mascot'], ['motion', 'Confetti and motion']];
     h += '<div class="list">' + set.map(function (s) { return '<label class="set" for="set-' + s[0] + '">' + s[1] + '<input type="checkbox" class="tog" id="set-' + s[0] + '" data-set="' + s[0] + '"' + (play.settings[s[0]] ? ' checked' : '') + '></label>'; }).join('') + '</div>';
+    if (Reader.available()) h += '<div class="list"><div class="set">Read aloud<span class="muted">Tap 🔊 on any lesson or game</span></div><div class="set">Reading speed<span class="muted">' + (play.settings.tts.rate || 1) + '× · change it in the player</span></div></div>';
     h += '<div class="list"><div class="set">Interview Mastery v' + esc(window.IM_VERSION || '') + '<span class="muted">' + S.totals.doneItems + ' / ' + S.totals.items + ' items done</span></div>' + (u ? '<button class="set danger" type="button" id="signOut">Sign out</button>' : '') + '</div>';
     page('me', h);
-    Array.prototype.forEach.call(document.querySelectorAll('[data-set]'), function (c) { c.addEventListener('change', function () { play.settings[c.dataset.set] = c.checked; save(); if (c.checked && c.dataset.set === 'haptics') buzz(15); }); });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-set]'), function (c) { c.addEventListener('change', function () { play.settings[c.dataset.set] = c.checked; save(); if (c.dataset.set === 'sound') { Sound.enable(c.checked); Sound.play('correct'); } if (c.checked && c.dataset.set === 'haptics') buzz(15); }); });
     var so = $('#signOut'); if (so) so.addEventListener('click', function () { so.disabled = true; Auth.signOut().then(function () { play = Play.emptyState(); play.settings = { haptics: true, bit: true, motion: true }; save(); location.hash = '#home'; location.reload(); }); });
   }
 
   /* ---------- router ---------- */
   function route() {
+    Reader.close();
     var p = (location.hash || '#home').slice(1).split('/');
     if (!S) refresh(true);
     switch (p[0]) {
@@ -233,6 +245,7 @@
     }
   }
 
+  document.addEventListener('click', function (e) { if (e.target.closest && e.target.closest('.tabbar a,.chip,.node,a.card,.back')) Sound.play('tap'); });
   document.documentElement.classList.toggle('calm', !play.settings.motion);
   refresh(true);
   window.addEventListener('hashchange', route);

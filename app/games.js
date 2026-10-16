@@ -29,7 +29,7 @@ var Games = (function () {
         if (g === secret) { over = true; paint(g); msg.className = 'g-msg win'; msg.innerHTML = '<b>Found ' + secret + ' in ' + used + (used === 1 ? ' try' : ' tries') + '!</b>'; go.textContent = 'PLAY AGAIN'; api.win(); return; }
         if (g < secret) lo = Math.max(lo, g + 1); else hi = Math.min(hi, g - 1);
         var mid = Math.floor((lo + hi) / 2);
-        if (used >= 7) { over = true; paint(g); msg.className = 'g-msg'; msg.innerHTML = 'Out of tries, it was <b>' + secret + '</b>. Guess the middle each time and 7 is always enough.'; go.textContent = 'TRY AGAIN'; return; }
+        if (used >= 7) { over = true; paint(g); if (api.miss) api.miss(); msg.className = 'g-msg'; msg.innerHTML = 'Out of tries, it was <b>' + secret + '</b>. Guess the middle each time and 7 is always enough.'; go.textContent = 'TRY AGAIN'; return; }
         msg.innerHTML = '<b>' + (g < secret ? 'Higher' : 'Lower') + '</b> than ' + g + '. ' + (hi - lo + 1) + ' numbers left, the middle is ' + mid + '.';
         paint(g);
       });
@@ -67,7 +67,7 @@ var Games = (function () {
         b.addEventListener('click', function () {
           api.tick();
           if (r.id === 'nl') { b.classList.add('pick'); msg.className = 'g-msg win'; msg.innerHTML = '<b>Right!</b> Now drag N and watch how fast the tortoise falls behind.'; inp.disabled = false; api.win(); }
-          else { b.classList.add('nope'); msg.className = 'g-msg'; msg.innerHTML = '10¹⁰ steps at 10⁸ per second is about <b>100 seconds</b>. Try the other runner.'; }
+          else { b.classList.add('nope'); if (api.miss) api.miss(); msg.className = 'g-msg'; msg.innerHTML = '10¹⁰ steps at 10⁸ per second is about <b>100 seconds</b>. Try the other runner.'; }
         });
         ch.appendChild(b);
       });
@@ -109,7 +109,7 @@ var Games = (function () {
         frontier = next; api.tick(); paint();
         if (!fresh()) {
           if (picked === minute) { msg.className = 'g-msg win'; msg.innerHTML = '<b>Exactly ' + minute + ' minutes.</b> You predicted it.'; api.win(); }
-          else { msg.className = 'g-msg'; msg.innerHTML = 'It took <b>' + minute + ' minutes</b>, not ' + picked + '. The two rings meet in the middle. Reset and watch again.'; }
+          else { if (api.miss) api.miss(); msg.className = 'g-msg'; msg.innerHTML = 'It took <b>' + minute + ' minutes</b>, not ' + picked + '. The two rings meet in the middle. Reset and watch again.'; }
           step.disabled = true;
         }
       });
@@ -149,7 +149,7 @@ var Games = (function () {
         if (ix >= NAMES.length) return;
         var n = NAMES[ix], s = sum(n), want = s % 7, got = +this.dataset.i;
         api.tick();
-        if (got !== want) { msg.className = 'g-msg'; msg.innerHTML = s + ' ÷ 7 = ' + Math.floor(s / 7) + ' remainder <b>' + want + '</b>. Try locker ' + want + '.'; this.classList.add('nope'); var me = this; setTimeout(function () { me.classList.remove('nope'); }, 400); return; }
+        if (got !== want) { if (api.miss) api.miss(); msg.className = 'g-msg'; msg.innerHTML = s + ' ÷ 7 = ' + Math.floor(s / 7) + ' remainder <b>' + want + '</b>. Try locker ' + want + '.'; this.classList.add('nope'); var me = this; setTimeout(function () { me.classList.remove('nope'); }, 400); return; }
         var box = L[want].querySelector('.in'), chip = h('i', '', n);
         var collide = (placed[want] || []).length > 0;
         placed[want] = (placed[want] || []).concat(n);

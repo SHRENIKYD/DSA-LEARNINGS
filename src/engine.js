@@ -701,6 +701,14 @@ var App = (function () {
       $$('a[href="#' + id + '"]').forEach(function (a) { a.classList.toggle('ok', e.target.checked); });
       if (TRACK) updateProgress();
     });
+    document.addEventListener('toggle', function (e) {
+      var d = e.target;
+      if (!d || d.tagName !== 'DETAILS' || !d.open || !d.parentNode) return;
+      var before = d.getBoundingClientRect().top;
+      Array.prototype.forEach.call(d.parentNode.children, function (s) { if (s !== d && s.tagName === 'DETAILS' && s.open) s.open = false; });
+      var shift = d.getBoundingClientRect().top - before;
+      if (shift) window.scrollBy(0, shift);
+    }, true);
     document.addEventListener('click', function (e) {
       var t = e.target;
       if (!t.closest) return;

@@ -2,6 +2,18 @@
 
 Versions follow [Semantic Versioning](https://semver.org): MAJOR for breaking changes to progress data or URLs, MINOR for new features or modules, PATCH for fixes. Each release is a `vX.Y.Z` git tag on `main`, and `package.json` holds the current version for both the website and the mobile app. The Android workflow creates the tag and a GitHub Release (with the APK) automatically when a new version reaches `main`.
 
+## [1.2.0] — 2026-10-16
+
+### Added
+- Read aloud in the app: a 🔊 button on every lesson, module and game screen opens a player that reads the topic paragraph by paragraph (code and visualizers are skipped), highlights and scrolls to what it is reading, and can continue into the next topic.
+- Speech controls: play / pause, previous / next paragraph, speed 0.75×–2×, voice picker (English voices on the device), tap any paragraph to jump there. Settings are remembered. Uses the phone's own text-to-speech engine on Android and iOS.
+- Sound effects: taps, correct and wrong answers (games and quizzes), XP, level-ups and badges, made in code with Web Audio. "Sound effects" switch in Me.
+
+### Fixed
+- Google sign-in in the app left you on the website instead of returning to the app. Google now returns to the website's `login.html?app=1`, an address Supabase already allows, which hands the sign-in code straight back to the app (with an "Open the app" button as a fallback). The handoff page never uses the code itself.
+- Dropdowns (examples, hints, solutions, interview answers) now work like an accordion on the website and in the app: opening one closes the open one next to it, and the page keeps the opened one in place.
+- Track chips on the Boss fights and Map screens were squashed to a thin strip on long lists; screen sections no longer shrink.
+
 ## [1.1.0] — 2026-10-16
 
 ### Added
