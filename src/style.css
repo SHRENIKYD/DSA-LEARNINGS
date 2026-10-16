@@ -96,6 +96,11 @@ h4{font-family:var(--f-head);font-size:15.5px;margin:20px 0 8px}
 .donebox{display:inline-flex;align-items:center;gap:7px;min-height:36px;font-size:13px;color:var(--muted);cursor:pointer;user-select:none;padding:4px 12px;border:1px solid var(--border2);border-radius:999px;background:var(--raised);white-space:nowrap}
 .donebox input{accent-color:var(--g);width:15px;height:15px;margin:0}
 .donebox.on{color:var(--g);border-color:var(--g)}
+.donebox:not(.on){cursor:default;opacity:.7;border-style:dashed}
+.donebox input:disabled{cursor:default}
+.donebox.pop{animation:dpop .5s ease}
+@keyframes dpop{40%{transform:scale(1.12);box-shadow:0 0 0 4px rgba(74,222,128,.3)}}
+.topic-end{height:1px}
 .lnav{display:flex;flex-wrap:wrap;gap:4px;margin:14px 0 4px;padding:4px;border-radius:11px;background:var(--raised);width:fit-content;max-width:100%}
 .lnav a{padding:6px 11px;border-radius:8px;font-size:13.5px;color:var(--muted);text-decoration:none}
 .lnav a:hover{color:var(--text);background:var(--panel)}

@@ -17,6 +17,12 @@
   Reader.configure({ rate: play.settings.tts.rate, voice: play.settings.tts.voice, cont: play.settings.tts.cont, motion: play.settings.motion, onSave: function (t) { play.settings.tts = t; save(); } });
   var S = null;
 
+  function theme() { return lsGet('imastery.theme', null) === 'light' ? 'light' : 'dark'; }
+  function setTheme(t) {
+    lsSet('imastery.theme', t);
+    document.documentElement.setAttribute('data-theme', t);
+    var mc = $('meta[name="theme-color"]'); if (mc) mc.setAttribute('content', t === 'light' ? '#F5F6F8' : '#0B0D12');
+  }
   function done() { return lsGet('imastery.done', {}) || {}; }
   function save() { lsSet('imastery.play', play); }
   function now() { return new Date(); }
@@ -172,10 +178,14 @@
     page('play', h);
   }
 
-  function playTab() {
+  function playTab(cat) {
+    cat = cat && Games.cats.some(function (c) { return c[0] === cat; }) ? cat : (play.gameCat || 'all');
+    play.gameCat = cat; save();
+    var list = Games.inCat(cat);
     var h = '<div class="ah"><h1>Play</h1></div><p class="muted sm">' + Games.list.length + ' games that teach an idea before the lesson does. Every play is a new random puzzle. First win: +' + Play.XP.game + ' XP, later wins: +' + Play.XP.replay + ' XP.</p>';
-    h += '<a class="card surprise" href="#surprise"><span class="kick xp">🎲 Surprise me</span><b class="ttl">Play a random game</b><span class="muted sm">Never the same as your last one.</span></a>';
-    h += Games.list.map(function (g) { var won = play.games && play.games[g.id]; return '<a class="card gamecard" href="#game/' + g.id + '"><span class="kick xp">' + esc(g.kicker) + (won ? ' · won ×' + won.wins : '') + '</span><b class="ttl">' + esc(g.title) + '</b><span class="muted sm">' + esc(g.goal) + '</span></a>'; }).join('');
+    h += '<div class="chips" role="tablist" aria-label="Game topics">' + Games.cats.map(function (c) { var n = Games.inCat(c[0]).length; return '<a role="tab" href="#play/' + c[0] + '" class="chip' + (c[0] === cat ? ' on' : '') + '" aria-selected="' + (c[0] === cat) + '">' + esc(c[1]) + ' · ' + n + '</a>'; }).join('') + '</div>';
+    h += '<a class="card surprise" href="#surprise/' + cat + '"><span class="kick xp">🎲 Surprise me</span><b class="ttl">Play a random ' + (cat === 'all' ? '' : esc(Games.cats.filter(function (c) { return c[0] === cat; })[0][1]) + ' ') + 'game</b><span class="muted sm">Never the same as your last one.</span></a>';
+    h += list.map(function (g) { var won = play.games && play.games[g.id]; return '<a class="card gamecard" href="#game/' + g.id + '"><span class="kick xp">' + esc(g.kicker) + (won ? ' · won ×' + won.wins : '') + '</span><b class="ttl">' + esc(g.title) + '</b><span class="muted sm">' + esc(g.goal) + '</span></a>'; }).join('');
     h += '<a class="card boss" href="#arena/' + esc(play.track || 'dsa') + '"><span class="kick" style="color:var(--p)">Boss fights</span><b class="ttl">Practice arenas</b><span class="muted sm">Every solved problem is a hit on the module boss.</span></a>';
     page('play', h);
   }
@@ -184,8 +194,8 @@
     var g = Games.get(gid); if (!g) return playTab();
     play.lastGame = g.id; save();
     var won0 = play.games && play.games[g.id] ? play.games[g.id].wins : 0;
-    var h = head(g.title, '#play', true) + '<div class="row sb"><span class="kick">' + esc(g.kicker) + '</span><span class="mono muted sm" id="gWins">' + (won0 ? 'won ×' + won0 : 'new game') + '</span></div><p class="goal">' + esc(g.goal) + '</p><div class="game" id="game"></div><div id="learned" hidden></div>' +
-      '<div class="acts"><button class="b3 ghost" type="button" id="newPuzzle">🎲 NEW PUZZLE</button><a class="b3 ghost" href="#surprise">🔀 ANOTHER GAME</a></div>';
+    var h = head(g.title, '#play/' + (play.gameCat || 'all'), true) + '<div class="row sb"><span class="kick">' + esc(g.kicker) + '</span><span class="mono muted sm" id="gWins">' + (won0 ? 'won ×' + won0 : 'new game') + '</span></div><p class="goal">' + esc(g.goal) + '</p><div class="game" id="game"></div><div id="learned" hidden></div>' +
+      '<div class="acts"><button class="b3 ghost" type="button" id="newPuzzle">🎲 NEW PUZZLE</button><a class="b3 ghost" href="#surprise/' + (play.gameCat || 'all') + '">🔀 ANOTHER GAME</a></div>';
     page('play', h, { noTabs: false });
     wireRead(g.title);
     $('#newPuzzle').addEventListener('click', function () { Sound.play('open'); mountGame(g); var sc = $('#scr'); if (sc) sc.scrollTop = 0; });
@@ -232,11 +242,12 @@
     var stats = [['⚡', S.xp.toLocaleString('en-US'), 'total XP'], ['🔥', S.streak.days, 'day streak'], ['✓', S.totals.completeModules, 'modules done']];
     h += '<div class="tiles">' + stats.map(function (s) { return '<div><b>' + s[0] + ' ' + s[1] + '</b><span>' + s[2] + '</span></div>'; }).join('') + '</div>';
     var set = [['sound', 'Sound effects'], ['haptics', 'Haptics'], ['bit', 'Show Bit, the mascot'], ['motion', 'Confetti and motion']];
-    h += '<div class="list">' + set.map(function (s) { return '<label class="set" for="set-' + s[0] + '">' + s[1] + '<input type="checkbox" class="tog" id="set-' + s[0] + '" data-set="' + s[0] + '"' + (play.settings[s[0]] ? ' checked' : '') + '></label>'; }).join('') + '</div>';
+    h += '<div class="list"><label class="set" for="set-theme">Light theme<input type="checkbox" class="tog" id="set-theme"' + (theme() === 'light' ? ' checked' : '') + '></label>' + set.map(function (s) { return '<label class="set" for="set-' + s[0] + '">' + s[1] + '<input type="checkbox" class="tog" id="set-' + s[0] + '" data-set="' + s[0] + '"' + (play.settings[s[0]] ? ' checked' : '') + '></label>'; }).join('') + '</div>';
     if (Reader.available()) h += '<div class="list"><div class="set">Read aloud<span class="muted">Tap 🔊 on any lesson or game</span></div><div class="set">Reading speed<span class="muted">' + (play.settings.tts.rate || 1) + '× · change it in the player</span></div></div>';
     h += '<div class="list"><div class="set">Interview Mastery v' + esc(window.IM_VERSION || '') + '<span class="muted">' + S.totals.doneItems + ' / ' + S.totals.items + ' items done</span></div>' + '<a class="set" href="privacy.html">Privacy policy<span class="muted">›</span></a>' + (u ? '<button class="set" type="button" id="signOut">Sign out</button><a class="set danger" href="#delete">Delete account<span class="muted">›</span></a>' : '') + '</div>';
     page('me', h);
     Array.prototype.forEach.call(document.querySelectorAll('[data-set]'), function (c) { c.addEventListener('change', function () { play.settings[c.dataset.set] = c.checked; save(); if (c.dataset.set === 'sound') { Sound.enable(c.checked); Sound.play('correct'); } if (c.checked && c.dataset.set === 'haptics') buzz(15); }); });
+    $('#set-theme').addEventListener('change', function () { setTheme(this.checked ? 'light' : 'dark'); Sound.play('tap'); });
     var so = $('#signOut'); if (so) so.addEventListener('click', function () { so.disabled = true; Auth.signOut().then(function () { play = Play.emptyState(); play.settings = { haptics: true, bit: true, motion: true }; save(); location.hash = '#home'; location.reload(); }); });
   }
 
@@ -272,9 +283,9 @@
       case 'map': return map(p[1]);
       case 'module': return moduleView(p[1]);
       case 'arena': return arena(p[1], p[2]);
-      case 'play': return playTab();
+      case 'play': return playTab(p[1]);
       case 'game': return game(p[1]);
-      case 'surprise': { var rg = Games.random(play.lastGame); location.replace('#game/' + rg.id); return; }
+      case 'surprise': { var rg = Games.random(play.lastGame, p[1]); location.replace('#game/' + rg.id); return; }
       case 'badges': return badgesView();
       case 'me': return me();
       case 'delete': return deleteView();
@@ -287,7 +298,9 @@
   refresh(true);
   window.addEventListener('hashchange', route);
   route();
-  document.addEventListener('visibilitychange', function () { if (!document.hidden) { refresh(); var p = (location.hash || '#home').slice(1).split('/')[0]; if (p !== 'game') route(); } });
+  setTheme(theme());
+  window.addEventListener('pageshow', function () { setTheme(theme()); });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) { setTheme(theme()); refresh(); var p = (location.hash || '#home').slice(1).split('/')[0]; if (p !== 'game') route(); } });
   if (Auth.enabled) {
     Auth.on(function (k) {
       if (k === 'progress') { refresh(); if ((location.hash || '#home').indexOf('#game') !== 0) route(); }

@@ -194,10 +194,17 @@ var App = (function () {
     }
   }
 
+  var AUTO_HINT = {
+    Understood: 'Ticks itself when you reach the end of this topic with every question in it answered correctly.',
+    Solved: 'Ticks itself when you answer the question correctly and open the full solution.',
+    Completed: 'Ticks itself when every quiz answer is correct.',
+    Reviewed: 'Ticks itself when you have opened every interview question.'
+  };
   function doneBox(id, label) {
-    var on = !!DONE[id];
-    return '<label class="donebox' + (on ? ' on' : '') + '"><input type="checkbox" data-done="' + id + '"' + (on ? ' checked' : '') + '> ' + (label || 'Done') + '</label>';
+    var on = !!DONE[id], hint = AUTO_HINT[label] || '';
+    return '<label class="donebox' + (on ? ' on' : '') + '" title="' + esc(hint) + '"><input type="checkbox" data-done="' + id + '"' + (on ? ' checked' : ' disabled') + ' aria-description="' + esc(hint + ' You can untick it to redo the section.') + '"> ' + (label || 'Done') + '</label>';
   }
+  function setBox(cb, on) { cb.checked = on; cb.disabled = !on; cb.parentNode.classList.toggle('on', on); }
 
   /* ---------- visualizer parts ---------- */
   function lbl(t) { return t ? '<div class="plbl">' + t + '</div>' : ''; }
@@ -445,10 +452,15 @@ var App = (function () {
   }
 
   /* ---------- problems, quiz, interview ---------- */
+  function letter(i) { return String.fromCharCode(65 + i); }
   function mcqHtml(q, cls) {
+    var ord = q.options.map(function (_, i) { return i; }), pos = [];
+    for (var i = ord.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), t = ord[i]; ord[i] = ord[j]; ord[j] = t; }
+    ord.forEach(function (o, k) { pos[o] = k; });
+    var ex = String(q.explain || '').replace(/\b([Oo]ptions?\s+)([A-D])\b/g, function (s, w, c) { var k = pos[c.charCodeAt(0) - 65]; return k === undefined ? s : w + letter(k); });
     return '<div class="box mcq ' + (cls || '') + '" data-ans="' + q.answer + '"><span class="tag">What would you do?</span><div>' + q.q + '</div><div class="opts">' +
-      q.options.map(function (o, i) { return '<button class="opt" type="button" data-opt="' + i + '">' + String.fromCharCode(65 + i) + '. ' + o + '</button>'; }).join('') +
-      '</div><div class="mcq-fb" hidden></div><template>' + (q.explain || '') + '</template></div>';
+      ord.map(function (o, k) { return '<button class="opt" type="button" data-opt="' + o + '">' + letter(k) + '. ' + q.options[o] + '</button>'; }).join('') +
+      '</div><div class="mcq-fb" hidden></div><template>' + ex + '</template></div>';
   }
   function problemHtml(p, id, practice, lang) {
     var lv = p.level || 'Medium', plang = p.lang || lang;
@@ -501,7 +513,7 @@ var App = (function () {
     probs.forEach(function (p, j) {
       h += '<div class="guided-title">Guided problem — solve it yourself</div>' + problemHtml(p, id + '-q' + j, false, t.lang || lang);
     });
-    return h + '</section>';
+    return h + '<div class="topic-end" aria-hidden="true"></div></section>';
   }
   function quizHtml(m) {
     var q = m.quiz || [];
@@ -525,7 +537,7 @@ var App = (function () {
     var h = '<div class="crumb"><a href="#">' + esc(TRACK.id) + '</a><span>/</span><span>' + (m.num < 10 ? '0' : '') + m.num + '</span>' + lvlBadge(m.level) + '</div><h1>' + m.title + '</h1>';
     h += '<div class="intro">' + (m.intro || '') + '</div>';
     h += '<div class="box path"><span class="tag">Learning path for this module</span><div class="cx"><b>Time</b><span>~' + (m.hours || '?') + ' hours including practice</span><b>Before this</b><span>' + (m.prereqs || '—') + '</span><b>You will be able to</b><ul>' + asList(m.goals).map(function (g) { return '<li>' + g + '</li>'; }).join('') + '</ul></div>' +
-      '<div class="meta">How to study: read each topic’s analogy → explanation → run the visualizer → work the examples → solve the guided problem with hints → quiz → interview Q&amp;A → Practice Arena.</div></div><div class="toc">';
+      '<div class="meta">How to study: read each topic’s analogy → explanation → run the visualizer → work the examples → solve the guided problem with hints → quiz → interview Q&amp;A → Practice Arena. Checkmarks tick themselves when you finish a section with the right answers; untick one to redo it.</div></div><div class="toc">';
     m.topics.forEach(function (t, i) { h += '<a href="#' + m.id + '-t' + i + '" class="' + (DONE[m.id + '-t' + i] ? 'ok' : '') + '">' + m.num + '.' + (i + 1) + ' ' + stripTags(t.title) + '</a>'; });
     if (m.quiz && m.quiz.length) h += '<a href="#' + m.id + '-quiz">Quiz</a>';
     if (m.interview && m.interview.length) h += '<a href="#' + m.id + '-iv">Interview Q&amp;A</a>';
@@ -553,7 +565,7 @@ var App = (function () {
     });
     var h = '<div class="track-hero"><div class="crumb"><a href="index.html">tracks</a><span>/</span><span>' + esc(TRACK.id) + '</span></div><h1>' + TRACK.title + '</h1><div class="intro"><p>' + TRACK.desc + '</p></div>' +
       '<div class="stat-row"><div class="stat"><b>' + MODULES.length + ' / ' + TRACK.modules.length + '</b><span>modules live</span></div><div class="stat"><b>' + probs + '</b><span>guided + practice problems</span></div><div class="stat"><b>' + viz + '</b><span>visualizers</span></div><div class="stat"><b>' + hrs + 'h</b><span>study time (live modules)</span></div><div class="stat"><b>' + (tot ? Math.round(dn / tot * 100) : 0) + '%</b><span>your progress</span></div></div></div>' +
-      '<div class="box clues"><span class="tag">How to use this track</span><ol style="margin:4px 0 0;padding-left:20px"><li>Go level by level: Beginner → Intermediate → Advanced → Expert. Don’t skip levels unless you can solve that level’s Practice Arena Hard problems.</li><li>Inside a module: analogy → explanation → visualizer → worked examples → guided problem (hints one by one) → quiz → interview Q&amp;A → Practice Arena.</li><li>Read the AI-era sections: use AI for hints, tests and reviews — never to skip the thinking.</li><li>Tick checkboxes as you go; progress is saved in this browser.</li></ol></div>';
+      '<div class="box clues"><span class="tag">How to use this track</span><ol style="margin:4px 0 0;padding-left:20px"><li>Go level by level: Beginner → Intermediate → Advanced → Expert. Don’t skip levels unless you can solve that level’s Practice Arena Hard problems.</li><li>Inside a module: analogy → explanation → visualizer → worked examples → guided problem (hints one by one) → quiz → interview Q&amp;A → Practice Arena.</li><li>Read the AI-era sections: use AI for hints, tests and reviews — never to skip the thinking.</li><li>Checkmarks tick themselves: a topic when you reach its end with its questions right, a problem when you answer it and open the solution, a quiz when every answer is right. You can untick any to redo it; progress is saved in this browser.</li></ol></div>';
     ['B', 'I', 'A', 'E'].forEach(function (lv) {
       var ms = TRACK.modules.filter(function (x) { return x.level === lv; });
       if (!ms.length) return;
@@ -651,6 +663,7 @@ var App = (function () {
       current = m;
       main.innerHTML = moduleHtml(m);
       $$('.viz', main).forEach(function (el) { try { mountViz(el); } catch (e) { $('.narr-text', el).textContent = 'Visualizer error: ' + e.message; } });
+      watchEnds(main);
       updateProgress();
       if (hs === mid) window.scrollTo(0, 0);
     }
@@ -668,17 +681,22 @@ var App = (function () {
 
   /* ---------- common chrome ---------- */
   function chrome() {
-    var th = store.get('imastery.theme', null) === 'light' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', th);
     var tb = $('#themeBtn');
-    var label = function (t) { tb.innerHTML = t === 'dark' ? ICONS.sun + 'Light theme' : ICONS.moon + 'Dark theme'; };
-    label(th);
+    function apply(t) {
+      document.documentElement.setAttribute('data-theme', t);
+      tb.innerHTML = t === 'dark' ? ICONS.sun + 'Light theme' : ICONS.moon + 'Dark theme';
+      var mc = $('meta[name="theme-color"]'); if (mc) mc.setAttribute('content', t === 'light' ? '#F5F6F8' : '#0B0D12');
+    }
+    function sync() { apply(store.get('imastery.theme', null) === 'light' ? 'light' : 'dark'); }
+    sync();
     tb.addEventListener('click', function () {
       var t = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-      document.documentElement.setAttribute('data-theme', t);
       store.set('imastery.theme', t);
-      label(t);
+      apply(t);
     });
+    window.addEventListener('pageshow', sync);
+    window.addEventListener('storage', function (e) { if (e.key === 'imastery.theme') sync(); });
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) sync(); });
     startAuth();
     var mb = $('#menuBtn');
     if (mb) mb.addEventListener('click', function () { var o = $('#sidebar').classList.toggle('open'); mb.setAttribute('aria-expanded', o ? 'true' : 'false'); if (o) { var s = $('#search') || $('#gsearch'); if (s) s.focus(); } });
@@ -694,16 +712,15 @@ var App = (function () {
     document.addEventListener('change', function (e) {
       var id = e.target.getAttribute && e.target.getAttribute('data-done');
       if (!id) return;
-      if (e.target.checked) DONE[id] = 1; else delete DONE[id];
-      store.set('imastery.done', DONE);
-      if (window.Auth) Auth.changed();
-      e.target.parentNode.classList.toggle('on', e.target.checked);
-      $$('a[href="#' + id + '"]').forEach(function (a) { a.classList.toggle('ok', e.target.checked); });
-      if (TRACK) updateProgress();
+      if (e.target.checked) { setBox(e.target, false); return; }
+      markDone(id, false);
+      var sec = document.getElementById(id);
+      if (sec) resetSection(sec);
     });
     document.addEventListener('toggle', function (e) {
       var d = e.target;
       if (!d || d.tagName !== 'DETAILS' || !d.open || !d.parentNode) return;
+      d._seen = true; progress(d);
       var before = d.getBoundingClientRect().top;
       Array.prototype.forEach.call(d.parentNode.children, function (s) { if (s !== d && s.tagName === 'DETAILS' && s.open) s.open = false; });
       var shift = d.getBoundingClientRect().top - before;
@@ -733,6 +750,7 @@ var App = (function () {
         var b = t.closest('.opt'), mb2 = b.closest('.mcq'), ans = +mb2.getAttribute('data-ans'), pick = +b.getAttribute('data-opt');
         $$('.opt', mb2).forEach(function (o) { o.classList.remove('right', 'wrong'); });
         b.classList.add(pick === ans ? 'right' : 'wrong');
+        if (pick === ans) { mb2._ok = true; progress(mb2); }
         var fb = $('.mcq-fb', mb2);
         fb.hidden = false;
         fb.innerHTML = pick === ans ? '<b class="c-g">✔ Correct!</b> ' + $('template', mb2).innerHTML : '<b class="c-r">✘ Not quite — think again and try another option.</b>';
@@ -743,6 +761,44 @@ var App = (function () {
         }
       }
     });
+  }
+
+  /* ---------- automatic checkmarks: earned by finishing a section, never ticked by hand ---------- */
+  function markDone(id, on) {
+    if (on) DONE[id] = 1; else delete DONE[id];
+    store.set('imastery.done', DONE);
+    if (window.Auth) Auth.changed();
+    $$('[data-done="' + id + '"]').forEach(function (cb) { setBox(cb, on); if (on) { cb.parentNode.classList.remove('pop'); void cb.parentNode.offsetWidth; cb.parentNode.classList.add('pop'); } });
+    $$('a[href="#' + id + '"]').forEach(function (a) { a.classList.toggle('ok', on); });
+    if (TRACK) updateProgress();
+  }
+  function earned(el) {
+    var right = $$('.mcq', el).every(function (q) { return q._ok; });
+    if (el.classList.contains('problem')) return right && !!($('details.sol', el) || {})._seen;
+    if (el.classList.contains('topic')) return right && !!el._end;
+    if (/-quiz$/.test(el.id)) return right;
+    if (/-iv$/.test(el.id)) { var d = $$('details.iv', el); return d.length > 0 && d.every(function (x) { return x._seen; }); }
+    return false;
+  }
+  function progress(node) {
+    [node.closest('article.problem'), node.closest('section')].forEach(function (el) {
+      if (!el || !el.id || DONE[el.id] || !$('[data-done="' + el.id + '"]', el)) return;
+      if (earned(el)) markDone(el.id, true);
+    });
+  }
+  function resetSection(el) {
+    el._end = false;
+    $$('.mcq', el).forEach(function (q) { q._ok = false; $$('.opt', q).forEach(function (o) { o.classList.remove('right', 'wrong'); }); $('.mcq-fb', q).hidden = true; });
+    $$('details', el).forEach(function (d) { d._seen = false; });
+    $$('details.sol, details.iv', el).forEach(function (d) { d.open = false; });
+  }
+  var endObs = null;
+  function watchEnds(root) {
+    var ends = $$('.topic-end', root);
+    if (!('IntersectionObserver' in window)) { ends.forEach(function (s) { s.parentNode._end = true; }); return; }
+    if (endObs) endObs.disconnect();
+    endObs = new IntersectionObserver(function (es) { es.forEach(function (en) { if (en.isIntersecting) { en.target.parentNode._end = true; progress(en.target); } }); });
+    ends.forEach(function (s) { endObs.observe(s); });
   }
 
   function track(id) {
@@ -831,7 +887,7 @@ var App = (function () {
     DONE = store.get('imastery.done', {}) || {};
     if (HOME) { var navHidden = $('#nav').hidden; renderHome(); $('#nav').hidden = navHidden; return; }
     if (!TRACK) return;
-    $$('[data-done]').forEach(function (cb) { var on = !!DONE[cb.getAttribute('data-done')]; cb.checked = on; cb.parentNode.classList.toggle('on', on); });
+    $$('[data-done]').forEach(function (cb) { setBox(cb, !!DONE[cb.getAttribute('data-done')]); });
     $$('.toc a').forEach(function (a) { var id = (a.getAttribute('href') || '').slice(1); a.classList.toggle('ok', !!DONE[id]); });
     if (!current) $('#main').innerHTML = trackDashHtml();
     updateProgress();

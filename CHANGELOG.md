@@ -2,6 +2,21 @@
 
 Versions follow [Semantic Versioning](https://semver.org): MAJOR for breaking changes to progress data or URLs, MINOR for new features or modules, PATCH for fixes. Each release is a `vX.Y.Z` git tag on `main`, and `package.json` holds the current version for both the website and the mobile app. The Android workflow creates the tag and a GitHub Release (with the APK) automatically when a new version reaches `main`.
 
+## [1.5.0] — 2026-10-16
+
+### Added
+- 18 new concept games (26 in total), each a fresh random puzzle every play. Algorithms: Best stretch (Kadane), Prefix sum sprint, Coin change trap, Merge two lists, Tree walk, Heap climb, Dijkstra's pick. SQL: Which rows come back?, Group it up, Join counter. Java: Java output, == or equals?. JavaScript: Event loop order, Coercion quiz. Python: Slice it, Python output. CS & systems: Subnet sprint, LRU cache.
+- Topic filters on the Play tab (Algorithms, SQL, Java, JavaScript, Python, CS & systems); Surprise me and Another game stay within the chosen topic.
+
+### Changed
+- Quiz and problem options are shuffled every time a lesson opens, so the right answer is no longer usually A or B. Explanations that name an option by letter follow the shuffle.
+- Checkmarks tick themselves and can no longer be ticked by hand: a topic when you reach its end with its questions answered correctly, a problem when you answer it correctly and open the full solution, a quiz when every answer is right, the interview bank when every question has been opened. You can untick any checkmark to redo that section.
+- Game Master badge: win 20 different games (was all 8).
+- On tablets, screens and games keep a readable width instead of stretching across the display.
+
+### Fixed
+- Light and dark theme now stay the same on every page. The app's home, games, Play bar and read-aloud player have a light theme (Me → Light theme), lessons and the app share one setting, and a page you return to with Back picks up a theme changed elsewhere.
+
 ## [1.4.0] — 2026-10-16
 
 ### Added

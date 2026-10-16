@@ -17,3 +17,13 @@ body.im-tts-open{padding-bottom:calc(330px + env(safe-area-inset-bottom,0px))}
 .im-tts .tt-speed button.on{background:#FDE047;border-color:#FDE047;color:#3b2003}
 .im-tts select{flex:1;min-width:0;max-width:65%;min-height:36px;border-radius:9px;border:1px solid #2E3443;background:#12151C;color:#E7E9EE;font:inherit;padding:0 8px}
 .im-tts .tt-cont input{width:22px;height:22px;accent-color:#22D3EE}
+:root[data-theme="light"] .im-reading{outline-color:#D97706;background:rgba(245,158,11,.12)!important}
+:root[data-theme="light"] .im-tts{background:#FFFFFF;border-top-color:#D5D8DF;color:#11141B;box-shadow:0 -10px 30px rgba(17,20,27,.15)}
+:root[data-theme="light"] .im-tts .tt-x,:root[data-theme="light"] .im-tts .tt-ctl button,:root[data-theme="light"] .im-tts .tt-speed button,:root[data-theme="light"] .im-tts select{border-color:#D5D8DF;background:#F0F2F5;color:#11141B}
+:root[data-theme="light"] .im-tts .tt-ctl button{box-shadow:0 3px 0 #C9CED8}
+:root[data-theme="light"] .im-tts .tt-ctl .tt-play{background:#0891B2;border-color:#0891B2;color:#FFFFFF;box-shadow:0 3px 0 #0E7490}
+:root[data-theme="light"] .im-tts .tt-prog{background:#E3E5EA}
+:root[data-theme="light"] .im-tts .tt-prog i{background:#D97706}
+:root[data-theme="light"] .im-tts .tt-pos,:root[data-theme="light"] .im-tts .tt-row{color:#555B66}
+:root[data-theme="light"] .im-tts .tt-speed button.on{background:#F59E0B;border-color:#F59E0B;color:#3b2003}
+:root[data-theme="light"] .im-tts .tt-cont input{accent-color:#0891B2}
