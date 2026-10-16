@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="46%" r="60%">
+      <stop offset="0" stop-color="#22D3EE" stop-opacity=".30"/>
+      <stop offset=".55" stop-color="#22D3EE" stop-opacity=".06"/>
+      <stop offset="1" stop-color="#22D3EE" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect id="bg" width="1024" height="1024" fill="#0B0D12"/>
+  <rect width="1024" height="1024" fill="url(#glow)"/>
+  <g id="bit" transform="translate(512 540) scale(10.5) translate(-28 -28)">
+    <rect x="26" y="3" width="4" height="10" rx="2" fill="#22D3EE"/>
+    <circle cx="28" cy="3.5" r="4" fill="#FDE047"/>
+    <rect x="3" y="23" width="7" height="12" rx="3.5" fill="#0891B2"/>
+    <rect x="46" y="23" width="7" height="12" rx="3.5" fill="#0891B2"/>
+    <rect x="9" y="12" width="38" height="32" rx="10" fill="#22D3EE"/>
+    <rect x="14.5" y="18.5" width="27" height="16.5" rx="5.5" fill="#06222A"/>
+    <circle cx="22" cy="26.5" r="3.6" fill="#67E8F9"/>
+    <circle cx="34" cy="26.5" r="3.6" fill="#67E8F9"/>
+    <path d="M23.5 38.6q4.5 3.2 9 0" stroke="#06222A" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+  </g>
+</svg>

@@ -87,6 +87,11 @@ for (const t of TRACKS) {
 }
 fs.writeFileSync(path.join(out, 'index.html'), rd('src/index.html').replace(/@@V@@/g, V));
 fs.writeFileSync(path.join(out, 'login.html'), rd('src/login.html').replace(/@@V@@/g, V));
+const contactEmail = (process.env.CONTACT_EMAIL || '').trim();
+const contact = /^[^\s@<>"]+@[^\s@<>"]+\.[A-Za-z]{2,}$/.test(contactEmail)
+  ? 'Questions or requests: <b>' + H(contactEmail) + '</b>. To delete your account, use the steps above.'
+  : 'Questions: open an issue at <a href="https://github.com/SHRENIKYD/DSA-LEARNINGS/issues">github.com/SHRENIKYD/DSA-LEARNINGS/issues</a>. Issues are public, so do not include personal details there; to delete your account, use the steps above.';
+fs.writeFileSync(path.join(out, 'privacy.html'), rd('src/privacy.html').replace(/@@V@@/g, V).replace('@@CONTACT@@', () => contact));
 fs.writeFileSync(path.join(out, '.nojekyll'), '');
 function H(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 

@@ -242,3 +242,7 @@ p{margin:0}
 .g-lockers.many .g-lk{min-height:100px}
 .g-lockers.many .g-lk .in i{font-size:8.5px}
 .g-lockers.many .g-lk b{font-size:12px}
+.b3.r{background:var(--r);color:#fff;box-shadow:0 4px 0 #991B1B}
+.card.danger-card{border-color:var(--r);background:var(--r-bg)}
+.fld{display:flex;flex-direction:column;gap:6px;font-size:14px;font-weight:600}
+.fld input{min-height:48px;padding:10px 12px;border-radius:12px;border:1px solid var(--border2);background:var(--raised);color:var(--text);font:inherit;font-size:16px;font-weight:600;letter-spacing:.08em}

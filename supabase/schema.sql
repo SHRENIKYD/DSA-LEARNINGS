@@ -37,3 +37,21 @@ $$;
 drop trigger if exists progress_touch on public.progress;
 create trigger progress_touch before insert or update on public.progress
   for each row execute function public.progress_touch();
+
+create or replace function public.delete_my_account() returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  uid uuid := auth.uid();
+begin
+  if uid is null then
+    raise exception 'You must be signed in to delete your account.';
+  end if;
+  delete from auth.users where id = uid;
+end;
+$$;
+
+revoke all on function public.delete_my_account() from public, anon;
+grant execute on function public.delete_my_account() to authenticated;
