@@ -73,7 +73,7 @@ jobs:
             notes "$v" > "notes-$v.md"
             gh release create "v$v" "$@" --verify-tag --title "$title" --notes-file "notes-$v.md"
           }
-          release 1.0.0 db7338f97a2c79b5bfdbac2d07d4bb4b8b7d0be8 "v1.0.0 · website launch"
+          release 1.0.0 db7338f7b7e2d598fdbc9cc451f21f852664a97a "v1.0.0 · website launch"
           V=$(node -p "require('./package.json').version")
           cp android/app/build/outputs/apk/debug/app-debug.apk "interview-mastery-v$V-debug.apk"
           release "$V" "$GITHUB_SHA" "v$V" "interview-mastery-v$V-debug.apk"
