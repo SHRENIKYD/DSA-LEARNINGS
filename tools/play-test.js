@@ -133,4 +133,19 @@ t('new game logic: Python slicing and coin change', () => {
   assert.strictEqual(G.minCoins([1, 5, 6], 10).length, 2);
 });
 
+t('video picker: filters unusable videos and prefers a relevant, popular, trusted one', () => {
+  const V = require('./find-videos.js');
+  assert.strictEqual(V.seconds('PT1H2M3S'), 3723);
+  assert.strictEqual(V.seconds('PT9M'), 540);
+  const base = { embeddable: true, privacy: 'public', live: false, secs: 600, views: 1000, likes: 10, channel: 'Someone', lang: 'en', title: 'random video' };
+  const c = [
+    Object.assign({}, base, { id: 'short', secs: 60, views: 9e7, title: 'Two pointers container most water' }),
+    Object.assign({}, base, { id: 'blocked', embeddable: false, views: 9e7 }),
+    Object.assign({}, base, { id: 'other', views: 2e6, title: 'Learn guitar fast' }),
+    Object.assign({}, base, { id: 'good', views: 3e5, likes: 9000, channel: 'NeetCode', title: 'Container With Most Water - Two Pointers' })
+  ];
+  assert.strictEqual(V.pick(c, 'Container With Most Water (Two Pointers)').id, 'good');
+  assert.strictEqual(V.pick([c[0], c[1]], 'x'), null);
+});
+
 console.log(n + ' tests passed');

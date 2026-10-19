@@ -102,14 +102,14 @@ jobs:
           if [ -f android/app/build/outputs/bundle/release/app-release.aab ]; then cp android/app/build/outputs/bundle/release/app-release.aab "interview-mastery-v$V.aab"; ASSETS="$ASSETS interview-mastery-v$V.aab"; fi
           if git ls-remote --exit-code --tags origin "refs/tags/v$V" >/dev/null; then echo "NEW_RELEASE=false" >> "$GITHUB_ENV"; else echo "NEW_RELEASE=true" >> "$GITHUB_ENV"; fi
           release "$V" "$GITHUB_SHA" "v$V" $ASSETS
-      - name: Upload to Google Play (internal testing)
+      - name: Upload to Google Play (track from the PLAY_TRACK variable, default internal)
         if: env.HAS_UPLOAD_KEY == 'true' && env.HAS_PLAY_ACCOUNT == 'true' && env.NEW_RELEASE == 'true'
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: io.github.shrenikyd.interviewmastery
           releaseFiles: android/app/build/outputs/bundle/release/app-release.aab
-          track: internal
+          track: ${{ vars.PLAY_TRACK || 'internal' }}
           status: ${{ vars.PLAY_RELEASE_STATUS || 'draft' }}
 
   apk-preview:

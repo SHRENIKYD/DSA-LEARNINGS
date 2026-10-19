@@ -486,15 +486,23 @@ var App = (function () {
       (s.followUps ? '<h4>Interview follow-ups</h4><ul>' + asList(s.followUps).map(function (f) { return '<li>' + f + '</li>'; }).join('') + '</ul>' : '') + '</div></details>';
     return h + '</article>';
   }
+  function videoOf(id) { var v = (window.IM_VIDEOS || {})[id]; return v && /^[A-Za-z0-9_-]{11}$/.test(v.id) ? v : null; }
+  function videoHtml(id, v) {
+    var mins = v.secs ? Math.max(1, Math.round(v.secs / 60)) + ' min · ' : '';
+    return '<div class="box vid" id="' + id + '-vid"><span class="tag">Watch it explained</span>' +
+      '<button type="button" class="vid-play" data-vid="' + v.id + '" aria-label="Play video: ' + esc(v.title) + '"><span class="vid-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5l12 7-12 7z"/></svg></span><span class="vid-meta"><b>' + esc(v.title) + '</b><small>' + esc(v.channel) + ' · ' + mins + 'YouTube</small></span></button>' +
+      '<p class="vid-note">Plays from YouTube when you tap it. Picked automatically for this topic.</p></div>';
+  }
   function topicHtml(m, t, i, lang) {
-    var id = m.id + '-t' + i;
+    var id = m.id + '-t' + i, vid = videoOf(id);
     var hasHow = asList(t.viz).length || asList(t.code).length, probs = topicProblems(t);
-    var layers = [[t.analogy, 'an', 'Analogy'], [t.explain, 'idea', 'Explain'], [t.clues && t.clues.length, 'clues', 'Clues'], [hasHow, 'viz', 'Visualize'],
+    var layers = [[t.analogy, 'an', 'Analogy'], [t.explain, 'idea', 'Explain'], [vid, 'vid', 'Video'], [t.clues && t.clues.length, 'clues', 'Clues'], [hasHow, 'viz', 'Visualize'],
       [t.examples && t.examples.length, 'ex', 'Examples'], [t.deepDive, 'deep', 'Deep dive'], [t.aiEra, 'ai', 'AI era'], [probs.length, 'q0', 'Solve it']];
     var h = '<section class="card topic" id="' + id + '"><div class="topic-head"><h2><span class="tnum">' + m.num + '.' + (i + 1) + '</span>' + t.title + '</h2>' + doneBox(id, 'Understood') + '</div>' +
       '<nav class="lnav" aria-label="Lesson layers">' + layers.filter(function (L) { return L[0]; }).map(function (L) { return '<a href="#' + id + '-' + L[1] + '">' + L[2] + '</a>'; }).join('') + '</nav>';
     if (t.analogy) h += '<div class="box analogy" id="' + id + '-an"><span class="tag">Start here — real-world analogy</span>' + t.analogy + '</div>';
     if (t.explain) h += '<div class="layer" id="' + id + '-idea"><div class="layer-tag lv-B">The idea in plain English</div><div class="explain">' + t.explain + '</div></div>';
+    if (vid) h += videoHtml(id, vid);
     if (t.clues && t.clues.length) h += '<div class="box clues" id="' + id + '-clues"><span class="tag">How do I think of this myself? — clues in the question</span><ul>' + t.clues.map(function (c) { return '<li>' + c + '</li>'; }).join('') + '</ul></div>';
     if (hasHow) h += '<div class="layer-tag lv-I" id="' + id + '-viz">How it really works — watch it, then read the code</div>';
     asList(t.viz).forEach(function (v) { h += vizHtml(v); });
@@ -746,6 +754,13 @@ var App = (function () {
         var box = t.closest('.code'), i = t.getAttribute('data-tab');
         $$('.ctab', box).forEach(function (b) { b.classList.toggle('on', b === t); });
         $$('.cpane', box).forEach(function (p) { p.hidden = p.getAttribute('data-pane') !== i; });
+      } else if (t.closest('.vid-play')) {
+        var vb = t.closest('.vid-play'), vidId = vb.getAttribute('data-vid');
+        if (!/^[A-Za-z0-9_-]{11}$/.test(vidId)) return;
+        var fr = document.createElement('div'); fr.className = 'vid-frame';
+        fr.innerHTML = '<iframe src="https://www.youtube-nocookie.com/embed/' + vidId + '?autoplay=1&rel=0&playsinline=1" title="' + esc(vb.querySelector('b').textContent) + '" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>';
+        var ln = document.createElement('a'); ln.className = 'vid-open'; ln.href = 'https://www.youtube.com/watch?v=' + vidId; ln.target = '_blank'; ln.rel = 'noopener'; ln.textContent = 'Open on YouTube';
+        vb.replaceWith(fr); fr.after(ln);
       } else if (t.closest('.opt')) {
         var b = t.closest('.opt'), mb2 = b.closest('.mcq'), ans = +mb2.getAttribute('data-ans'), pick = +b.getAttribute('data-opt');
         $$('.opt', mb2).forEach(function (o) { o.classList.remove('right', 'wrong'); });

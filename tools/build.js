@@ -74,10 +74,16 @@ if ((sbUrl || sbKey) && !authOn) { console.warn('WARN: SUPABASE_URL / SUPABASE_P
 const configJs = 'window.IM_CONFIG=' + JSON.stringify(authOn ? { supabaseUrl: sbUrl, supabaseKey: sbKey } : {}) + ';';
 for (const f of ASSETS) hash.update(rd('src/' + f));
 hash.update(configJs);
+try { hash.update(rd('data/videos.json')); } catch (e) { }
 const V = hash.digest('hex').slice(0, 10);
 for (const f of ASSETS) fs.copyFileSync(path.join(root, 'src', f), path.join(out, 'assets', f));
 fs.writeFileSync(path.join(out, 'assets', 'config.js'), configJs);
 fs.writeFileSync(path.join(out, 'assets', 'search-index.js'), 'window.SEARCH_INDEX=' + JSON.stringify(SI) + ';');
+let VIDS = {};
+try { VIDS = JSON.parse(rd('data/videos.json')).videos || {}; } catch (e) { }
+const vidJs = {};
+Object.keys(VIDS).forEach((k) => { const v = VIDS[k]; if (v && /^[A-Za-z0-9_-]{11}$/.test(v.id || '')) vidJs[k] = { id: v.id, title: String(v.title || '').slice(0, 140), channel: String(v.channel || '').slice(0, 80), secs: +v.secs || 0 }; });
+fs.writeFileSync(path.join(out, 'assets', 'videos.js'), 'window.IM_VIDEOS=' + JSON.stringify(vidJs).replace(/</g, '\\u003c') + ';');
 
 const tpl = rd('src/track.html');
 for (const t of TRACKS) {
@@ -96,4 +102,4 @@ fs.writeFileSync(path.join(out, '.nojekyll'), '');
 function H(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 
 const live = Object.keys(SI.modules).length, planned = TRACKS.reduce((a, t) => a + t.modules.length, 0);
-console.log('built v' + VERSION + ' ' + out + ' — ' + live + '/' + planned + ' modules live, ' + SI.problems + ' problems, ' + SI.viz + ' visualizers, accounts ' + (authOn ? 'ON' : 'OFF (set SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY)') + (warnings ? ', ' + warnings + ' warning(s)' : ''));
+console.log('built v' + VERSION + ' ' + out + ' — ' + live + '/' + planned + ' modules live, ' + SI.problems + ' problems, ' + SI.viz + ' visualizers, ' + Object.keys(vidJs).length + ' videos, accounts ' + (authOn ? 'ON' : 'OFF (set SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY)') + (warnings ? ', ' + warnings + ' warning(s)' : ''));
