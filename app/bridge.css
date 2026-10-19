@@ -18,3 +18,4 @@ body{padding-bottom:calc(64px + env(safe-area-inset-bottom,0px))}
 :root[data-theme="light"] .im-pill.xp{color:#A16207}
 :root[data-theme="light"] .im-pill.lv{color:#0E7490}
 :root[data-theme="light"] .im-listen:focus-visible{outline-color:#0891B2}
+.jnav a[data-page="passport"],.jav{display:none!important}

@@ -28,6 +28,8 @@ var App = (function () {
     arrow: '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>'
   };
 
+  function JI(n) { return window.Journey ? Journey.icon(n, 'ji') : ''; }
+
   /* ---------- module item ids (progress) ---------- */
   function topicProblems(t) { return asList(t.problems).concat(asList(t.problem)); }
   function items(m) {
@@ -467,7 +469,7 @@ var App = (function () {
     var labels = practice
       ? ['Hint 1 — Math / observation', 'Hint 2 — Data structure / approach', 'Hint 3 — Pseudocode & edge cases']
       : ['Hint 1 — The “aha” observation', 'Hint 2 — Data structure & pointer choice', 'Hint 3 — Edge cases & plain-English recipe'];
-    var h = '<article class="card problem ' + lv + '" id="' + id + '"><div class="prob-head"><span class="lvl ' + lv + '">' + lv + '</span><h3>' + p.title + '</h3>' + doneBox(id, 'Solved') + '</div>';
+    var h = '<article class="card problem ' + lv + (practice ? '' : ' treasure') + '" id="' + id + '"><div class="prob-head"><span class="lvl ' + lv + '">' + lv + '</span><h3>' + p.title + '</h3>' + doneBox(id, 'Solved') + '</div>';
     if (p.tags) h += '<div class="meta">' + esc(asList(p.tags).join(' · ')) + (p.companies ? ' · <b>Asked at</b> ' + esc(asList(p.companies).join(', ')) : '') + '</div>';
     h += '<div class="statement">' + (p.statement || '') + '</div>';
     if (p.constraints) h += '<div class="meta"><b>Constraints:</b> ' + p.constraints + '</div>';
@@ -489,18 +491,18 @@ var App = (function () {
   function videoOf(id) { var v = (window.IM_VIDEOS || {})[id]; return v && /^[A-Za-z0-9_-]{11}$/.test(v.id) ? v : null; }
   function videoHtml(id, v) {
     var mins = v.secs ? Math.max(1, Math.round(v.secs / 60)) + ' min · ' : '';
-    return '<div class="box vid" id="' + id + '-vid"><span class="tag">Watch it explained</span>' +
+    return '<div class="box vid" id="' + id + '-vid"><span class="tag">From the watchtower · watch it explained</span>' +
       '<button type="button" class="vid-play" data-vid="' + v.id + '" aria-label="Play video: ' + esc(v.title) + '"><span class="vid-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5l12 7-12 7z"/></svg></span><span class="vid-meta"><b>' + esc(v.title) + '</b><small>' + esc(v.channel) + ' · ' + mins + 'YouTube</small></span></button>' +
       '<p class="vid-note">Plays from YouTube when you tap it. Picked automatically for this topic.</p></div>';
   }
   function topicHtml(m, t, i, lang) {
     var id = m.id + '-t' + i, vid = videoOf(id);
     var hasHow = asList(t.viz).length || asList(t.code).length, probs = topicProblems(t);
-    var layers = [[t.analogy, 'an', 'Analogy'], [t.explain, 'idea', 'Explain'], [vid, 'vid', 'Video'], [t.clues && t.clues.length, 'clues', 'Clues'], [hasHow, 'viz', 'Visualize'],
-      [t.examples && t.examples.length, 'ex', 'Examples'], [t.deepDive, 'deep', 'Deep dive'], [t.aiEra, 'ai', 'AI era'], [probs.length, 'q0', 'Solve it']];
+    var layers = [[t.analogy, 'an', 'Legend'], [t.explain, 'idea', 'Explain'], [vid, 'vid', 'Video'], [t.clues && t.clues.length, 'clues', 'Clues'], [hasHow, 'viz', 'Visualize'],
+      [t.examples && t.examples.length, 'ex', 'Examples'], [t.deepDive, 'deep', 'Deep dive'], [t.aiEra, 'ai', 'AI era'], [probs.length, 'q0', 'Treasure']];
     var h = '<section class="card topic" id="' + id + '"><div class="topic-head"><h2><span class="tnum">' + m.num + '.' + (i + 1) + '</span>' + t.title + '</h2>' + doneBox(id, 'Understood') + '</div>' +
       '<nav class="lnav" aria-label="Lesson layers">' + layers.filter(function (L) { return L[0]; }).map(function (L) { return '<a href="#' + id + '-' + L[1] + '">' + L[2] + '</a>'; }).join('') + '</nav>';
-    if (t.analogy) h += '<div class="box analogy" id="' + id + '-an"><span class="tag">Start here — real-world analogy</span>' + t.analogy + '</div>';
+    if (t.analogy) h += '<div class="box analogy" id="' + id + '-an"><span class="tag">The legend of this place · real-world analogy</span>' + t.analogy + '</div>';
     if (t.explain) h += '<div class="layer" id="' + id + '-idea"><div class="layer-tag lv-B">The idea in plain English</div><div class="explain">' + t.explain + '</div></div>';
     if (vid) h += videoHtml(id, vid);
     if (t.clues && t.clues.length) h += '<div class="box clues" id="' + id + '-clues"><span class="tag">How do I think of this myself? — clues in the question</span><ul>' + t.clues.map(function (c) { return '<li>' + c + '</li>'; }).join('') + '</ul></div>';
@@ -519,20 +521,20 @@ var App = (function () {
     if (t.deepDive) h += '<div class="box deep" id="' + id + '-deep"><span class="tag">Expert deep dive — internals, proofs, edge cases, production reality</span>' + t.deepDive + '</div>';
     if (t.aiEra) h += '<div class="box ai" id="' + id + '-ai"><span class="tag">New school — working alongside AI</span>' + t.aiEra + '</div>';
     probs.forEach(function (p, j) {
-      h += '<div class="guided-title">Guided problem — solve it yourself</div>' + problemHtml(p, id + '-q' + j, false, t.lang || lang);
+      h += '<div class="guided-title">' + JI('chest') + 'Hidden treasure · guided problem — solve it yourself</div>' + problemHtml(p, id + '-q' + j, false, t.lang || lang);
     });
     return h + '<div class="topic-end" aria-hidden="true"></div></section>';
   }
   function quizHtml(m) {
     var q = m.quiz || [];
     if (!q.length) return '';
-    return '<section class="card" id="' + m.id + '-quiz"><div class="topic-head"><h2>Quick quiz — ' + q.length + ' questions</h2>' + doneBox(m.id + '-quiz', 'Completed') + '</div><div class="meta">Answer from memory first. Wrong answers show a nudge; right answers explain why.</div>' +
+    return '<section class="card gate" id="' + m.id + '-quiz"><div class="topic-head"><h2>' + JI('gate') + 'Riddle gate — ' + q.length + ' riddles</h2>' + doneBox(m.id + '-quiz', 'Completed') + '</div><div class="meta">Answer from memory first. Wrong answers show a nudge; right answers explain why. Answer every riddle right and the gate opens by itself.</div>' +
       q.map(function (x, i) { return mcqHtml({ q: '<b>Q' + (i + 1) + '.</b> ' + x.q, options: x.options, answer: x.answer, explain: x.explain }, 'quizq'); }).join('') + '</section>';
   }
   function interviewHtml(m) {
     var iv = m.interview || [];
     if (!iv.length) return '';
-    return '<section class="card" id="' + m.id + '-iv"><div class="topic-head"><h2>Interview Q&amp;A bank — ' + iv.length + ' questions</h2>' + doneBox(m.id + '-iv', 'Reviewed') + '</div><div class="meta">Say your answer out loud before opening each one. Then compare structure, not just facts.</div>' +
+    return '<section class="card tavern" id="' + m.id + '-iv"><div class="topic-head"><h2>' + JI('lantern') + 'Interview tavern — ' + iv.length + ' questions</h2>' + doneBox(m.id + '-iv', 'Reviewed') + '</div><div class="meta">Say your answer out loud before opening each one. Then compare structure, not just facts.</div>' +
       iv.map(function (x, i) {
         return '<details class="iv"><summary><span class="ivn">Q' + (i + 1) + '</span> ' + x.q + (x.level ? ' ' + lvlBadge(x.level) : '') + '</summary><div class="dbody">' + x.a +
           (x.followUps && x.followUps.length ? '<h4>Likely follow-ups</h4><ul>' + x.followUps.map(function (f) { return '<li>' + f + '</li>'; }).join('') + '</ul>' : '') + '</div></details>';
@@ -542,13 +544,13 @@ var App = (function () {
   function moduleHtml(m) {
     vizRegistry = []; SNIPS = [];
     var lang = m.lang || TRACK.lang;
-    var h = '<div class="crumb"><a href="#">' + esc(TRACK.id) + '</a><span>/</span><span>' + (m.num < 10 ? '0' : '') + m.num + '</span>' + lvlBadge(m.level) + '</div><h1>' + m.title + '</h1>';
+    var h = '<div class="crumb"><a href="index.html">World map</a><span>›</span><a href="#">' + esc(TRACK.title) + '</a><span>›</span><span>Place ' + m.num + '</span>' + lvlBadge(m.level) + '</div><h1>' + m.title + '</h1>';
     h += '<div class="intro">' + (m.intro || '') + '</div>';
     h += '<div class="box path"><span class="tag">Learning path for this module</span><div class="cx"><b>Time</b><span>~' + (m.hours || '?') + ' hours including practice</span><b>Before this</b><span>' + (m.prereqs || '—') + '</span><b>You will be able to</b><ul>' + asList(m.goals).map(function (g) { return '<li>' + g + '</li>'; }).join('') + '</ul></div>' +
-      '<div class="meta">How to study: read each topic’s analogy → explanation → run the visualizer → work the examples → solve the guided problem with hints → quiz → interview Q&amp;A → Practice Arena. Checkmarks tick themselves when you finish a section with the right answers; untick one to redo it.</div></div><div class="toc">';
+      '<div class="meta">How to travel: read each landmark’s legend → the idea → run the visualizer → work the examples → dig up the hidden treasure with clues → riddle gate → interview tavern → practice arena. Checkmarks tick themselves when you finish a section with the right answers; untick one to redo it.</div></div><div class="toc">';
     m.topics.forEach(function (t, i) { h += '<a href="#' + m.id + '-t' + i + '" class="' + (DONE[m.id + '-t' + i] ? 'ok' : '') + '">' + m.num + '.' + (i + 1) + ' ' + stripTags(t.title) + '</a>'; });
-    if (m.quiz && m.quiz.length) h += '<a href="#' + m.id + '-quiz">Quiz</a>';
-    if (m.interview && m.interview.length) h += '<a href="#' + m.id + '-iv">Interview Q&amp;A</a>';
+    if (m.quiz && m.quiz.length) h += '<a href="#' + m.id + '-quiz">Riddle gate</a>';
+    if (m.interview && m.interview.length) h += '<a href="#' + m.id + '-iv">Interview tavern</a>';
     h += '<a href="#' + m.id + '-arena">Practice arena</a></div>';
     m.topics.forEach(function (t, i) { h += topicHtml(m, t, i, lang); });
     h += quizHtml(m) + interviewHtml(m);
@@ -558,55 +560,77 @@ var App = (function () {
       '<span class="c-g">' + cnt.Easy + ' Easy warm-ups</span> → <span class="c-y">' + cnt.Medium + ' Medium interview-standard</span> → <span class="c-r">' + cnt.Hard + ' Hard twists</span>. Try each alone first; open hints one at a time.</div></div>';
     pr.forEach(function (p, k) { h += problemHtml(p, m.id + '-p' + k, true, lang); });
     var avail = MODULES, idx = avail.indexOf(m), prev = avail[idx - 1], next = avail[idx + 1];
-    h += '<div class="row" style="justify-content:space-between;margin-top:30px;flex-wrap:wrap;gap:8px">' + (prev ? '<a class="btn" href="#' + prev.id + '">← ' + prev.num + '. ' + prev.title + '</a>' : '<span></span>') +
-      (next ? '<a class="btn primary" href="#' + next.id + '">' + next.num + '. ' + next.title + ' →</a>' : '') + '</div>';
+    h += '<div class="row" style="justify-content:space-between;margin-top:30px;flex-wrap:wrap;gap:8px">' + (prev ? '<a class="btn lg" href="#' + prev.id + '">‹ Place ' + prev.num + ' · ' + prev.title + '</a>' : '<span></span>') +
+      (next ? '<a class="btn primary lg" href="#' + next.id + '">Next place · ' + next.title + ' ›</a>' : '') + '</div>';
     return h;
   }
 
   /* ---------- track dashboard + nav ---------- */
   function loaded(id) { for (var i = 0; i < MODULES.length; i++) if (MODULES[i].id === id) return MODULES[i]; return null; }
+  var ZN = { B: 'Beginner Shore', I: 'Intermediate Forest', A: 'Advanced Peaks', E: 'Expert Summit' }, ZC = { B: 'green', I: 'gold', A: 'clay', E: 'violet' };
+  function region(tid) { return window.Journey ? Journey.regionOf(tid) : { name: 'The world', area: '', color: 'gold' }; }
+  function curPlace() {
+    for (var i = 0; i < MODULES.length; i++) { var ids = items(MODULES[i]); if (doneOf(ids) < ids.length) return MODULES[i]; }
+    return MODULES[MODULES.length - 1] || null;
+  }
+  function stampCard(key, on, how) {
+    if (!window.Journey) return '';
+    var st = Journey.STAMPS.filter(function (x) { return x.key === key; })[0];
+    return '<div class="place guard' + (on ? ' on' : '') + '">' + Journey.stampSvg(st, on) + '<b>' + esc(st.name) + ' stamp</b><span>' + (on ? 'Earned. It is in your passport.' : how) + '</span></div>';
+  }
   function trackDashHtml() {
-    var tot = 0, dn = 0, probs = 0, viz = 0, hrs = 0;
-    MODULES.forEach(function (m) {
-      var ids = items(m); tot += ids.length; dn += doneOf(ids); probs += (m.practice || []).length; hrs += m.hours || 0;
-      m.topics.forEach(function (t) { probs += topicProblems(t).length; viz += asList(t.viz).length; });
-    });
-    var h = '<div class="track-hero"><div class="crumb"><a href="index.html">tracks</a><span>/</span><span>' + esc(TRACK.id) + '</span></div><h1>' + TRACK.title + '</h1><div class="intro"><p>' + TRACK.desc + '</p></div>' +
-      '<div class="stat-row"><div class="stat"><b>' + MODULES.length + ' / ' + TRACK.modules.length + '</b><span>modules live</span></div><div class="stat"><b>' + probs + '</b><span>guided + practice problems</span></div><div class="stat"><b>' + viz + '</b><span>visualizers</span></div><div class="stat"><b>' + hrs + 'h</b><span>study time (live modules)</span></div><div class="stat"><b>' + (tot ? Math.round(dn / tot * 100) : 0) + '%</b><span>your progress</span></div></div></div>' +
-      '<div class="box clues"><span class="tag">How to use this track</span><ol style="margin:4px 0 0;padding-left:20px"><li>Go level by level: Beginner → Intermediate → Advanced → Expert. Don’t skip levels unless you can solve that level’s Practice Arena Hard problems.</li><li>Inside a module: analogy → explanation → visualizer → worked examples → guided problem (hints one by one) → quiz → interview Q&amp;A → Practice Arena.</li><li>Read the AI-era sections: use AI for hints, tests and reviews — never to skip the thinking.</li><li>Checkmarks tick themselves: a topic when you reach its end with its questions right, a problem when you answer it and open the solution, a quiz when every answer is right. You can untick any to redo it; progress is saved in this browser.</li></ol></div>';
+    var R = region(TRACK.id), tot = 0, dn = 0, lm = 0, cur = curPlace(), last = store.get('imastery.last', null);
+    MODULES.forEach(function (m) { var ids = items(m); tot += ids.length; dn += doneOf(ids); lm += m.topics.length; });
+    var p = tot ? Math.round(dn / tot * 100) : 0, mine = last && last.track === TRACK.id && last.hash;
+    var go = mine ? '<a class="btn clay lg" href="#' + esc(last.hash) + '">Continue at place ' + esc(last.num) + '</a>' : cur ? '<a class="btn clay lg" href="#' + cur.id + '">' + (dn ? 'Continue at place ' : 'Start at place ') + cur.num + '</a>' : '';
+    var h = '<section class="land-hero"><div class="lh-l"><span class="kicker c-' + R.color + '">' + esc(R.name) + ' · ' + esc(R.area) + '</span><h1>' + TRACK.title + '</h1><p>' + TRACK.desc + '</p>' +
+      '<p class="muted">' + TRACK.modules.length + ' places from Beginner Shore to Expert Summit · ' + MODULES.length + ' open now · ' + lm + ' landmarks, with a practice arena at the end of each place.</p></div>' +
+      '<div class="lh-r"><div class="jrow"><span>Explored</span><b class="c-gold">' + p + '%</b></div><div class="jbar-p c-gold"><i style="width:' + p + '%"></i></div>' + go + '</div></section>';
+    if (cur) {
+      var ci = -1;
+      cur.topics.forEach(function (_, i) { if (ci < 0 && !DONE[cur.id + '-t' + i]) ci = i; });
+      h += '<section class="here" aria-labelledby="hereH"><span class="kicker">You are here · place ' + cur.num + ' · ' + ZN[cur.level] + '</span><h2 id="hereH">' + cur.title + '</h2><div class="marks">' +
+        cur.topics.map(function (t, i) { var id = cur.id + '-t' + i, d = DONE[id]; return '<a class="mark' + (d ? ' ok' : i === ci ? ' cur' : '') + '" href="#' + id + '"><span class="md">' + (d ? '✓' : i + 1) + '</span><span>' + stripTags(t.title) + '</span></a>'; }).join('') + '</div><div class="here-acts">' +
+        (cur.quiz && cur.quiz.length ? '<a class="btn ink lg" href="#' + cur.id + '-quiz">' + JI('gate') + 'Riddle gate · ' + cur.quiz.length + ' riddles</a>' : '') +
+        '<a class="btn line lg" href="#' + cur.id + '-arena">' + JI('chest') + 'Practice arena · ' + (cur.practice || []).length + ' treasures</a>' +
+        (cur.interview && cur.interview.length ? '<a class="btn line lg" href="#' + cur.id + '-iv">' + JI('lantern') + 'Interview tavern · ' + cur.interview.length + ' questions</a>' : '') + '</div></section>';
+    }
     ['B', 'I', 'A', 'E'].forEach(function (lv) {
       var ms = TRACK.modules.filter(function (x) { return x.level === lv; });
       if (!ms.length) return;
-      h += '<h2 class="lvh">' + dot(lv) + LEVELS[lv].name + '</h2><div class="dash-grid">';
+      var bl = 0, bd = 0, ed = 0;
+      h += '<section class="zone" aria-labelledby="z' + lv + '"><h2 class="zone-h" id="z' + lv + '"><span class="zdot bg-' + ZC[lv] + '" aria-hidden="true"></span>' + ZN[lv] + '<small>' + ms.length + ' places</small></h2><div class="trail">';
       ms.forEach(function (pm) {
         var m = loaded(pm.id);
-        if (m) {
-          var ids = items(m), d = doneOf(ids);
-          h += '<a class="mcard" href="#' + m.id + '"><span class="ptag">Module ' + m.num + ' · ~' + (m.hours || '?') + 'h</span><h3>' + m.title + '</h3><div class="meta">' + m.topics.length + ' topics · ' + (m.practice || []).length + ' practice · ' + (m.interview || []).length + ' interview Qs</div><div class="pbar"><div style="width:' + (ids.length ? d / ids.length * 100 : 0) + '%"></div></div><div class="meta">' + d + ' / ' + ids.length + ' done</div></a>';
-        } else {
-          h += '<div class="mcard soon"><span class="ptag">Module ' + pm.num + ' · coming soon</span><h3>' + esc(pm.title) + '</h3><div class="meta">' + esc(pm.scope) + '</div></div>';
-        }
+        if (!m) { h += '<div class="place soon"><div class="jrow"><span class="pdot">' + pm.num + '</span><span class="ptag2">coming soon</span></div><b>' + esc(pm.title) + '</b><span class="pmeta">' + esc(pm.scope) + '</span></div>'; return; }
+        var ids = items(m), d = doneOf(ids), full = ids.length && d === ids.length, isCur = cur === m && !full, w = ids.length ? Math.round(d / ids.length * 100) : 0;
+        if (lv === 'B') { bl++; if (full) bd++; }
+        if (lv === 'E' && full) ed++;
+        h += '<a class="place' + (full ? ' done' : isCur ? ' cur' : '') + '" href="#' + m.id + '"><div class="jrow"><span class="pdot">' + (full ? '✓' : m.num) + '</span><span class="ptag2">' + (full ? 'cleared' : isCur ? 'you are here' : d ? 'exploring' : 'ahead') + '</span></div><b>' + m.title + '</b><div class="jbar-p"><i style="width:' + w + '%"></i></div><span class="pmeta">' + m.topics.length + ' landmarks · ' + w + '%</span></a>';
       });
-      h += '</div>';
+      if (lv === 'B') h += stampCard('shore', bl > 0 && bd === bl, 'Clear every Beginner place in this land to earn it.');
+      if (lv === 'E') h += stampCard('summit', ed > 0, 'Clear any Expert place to earn it.');
+      h += '</div></section>';
     });
     return h;
   }
   function navHtml() {
-    var h = '<a class="nav-back" href="index.html">' + ICONS.back + 'All tracks</a><a class="nav-mod' + (!current ? ' active' : '') + '" href="#"><span class="num">' + TRACK.icon + '</span><span>' + TRACK.title + ' overview</span></a>';
+    var cur = curPlace();
+    var h = '<a class="nav-back" href="index.html">' + ICONS.back + 'World map</a><a class="nav-mod' + (!current ? ' active' : '') + '" href="#"><span class="num">' + esc(TRACK.icon) + '</span><span>Land overview</span></a>';
     ['B', 'I', 'A', 'E'].forEach(function (lv) {
       var ms = TRACK.modules.filter(function (x) { return x.level === lv; });
       if (!ms.length) return;
-      h += '<div class="nav-part">' + dot(lv) + LEVELS[lv].name + '</div>';
+      h += '<div class="nav-part c-' + ZC[lv] + '">' + ZN[lv] + '</div>';
       ms.forEach(function (pm) {
         var m = loaded(pm.id);
         if (!m) { h += '<div class="nav-mod soon" title="coming soon"><span class="num">' + pm.num + '</span><span>' + esc(pm.title) + '</span><span class="cnt">soon</span></div>'; return; }
-        var ids = items(m), d = doneOf(ids), act = current === m;
-        h += '<a class="nav-mod' + (act ? ' active' : '') + (ids.length && d === ids.length ? ' full' : '') + '" href="#' + m.id + '"><span class="num">' + m.num + '</span><span>' + m.title + '</span><span class="cnt">' + d + '/' + ids.length + '</span></a>';
+        var ids = items(m), d = doneOf(ids), act = current === m, full = ids.length && d === ids.length;
+        h += '<a class="nav-mod' + (act ? ' active' : '') + (full ? ' full' : cur === m ? ' nhere' : '') + '" href="#' + m.id + '"><span class="num">' + (full ? '✓' : m.num) + '</span><span>' + m.title + '</span><span class="cnt">' + (ids.length ? Math.round(d / ids.length * 100) : 0) + '%</span></a>';
         if (act) {
           h += '<div class="nav-sub">';
           m.topics.forEach(function (t, i) { h += '<a href="#' + m.id + '-t' + i + '" class="' + (DONE[m.id + '-t' + i] ? 'ok' : '') + '">' + m.num + '.' + (i + 1) + ' ' + stripTags(t.title) + '</a>'; });
-          if (m.quiz && m.quiz.length) h += '<a href="#' + m.id + '-quiz">Quiz (' + m.quiz.length + ')</a>';
-          if (m.interview && m.interview.length) h += '<a href="#' + m.id + '-iv">Interview Q&amp;A (' + m.interview.length + ')</a>';
+          if (m.quiz && m.quiz.length) h += '<a href="#' + m.id + '-quiz" class="' + (DONE[m.id + '-quiz'] ? 'ok' : '') + '">Riddle gate (' + m.quiz.length + ')</a>';
+          if (m.interview && m.interview.length) h += '<a href="#' + m.id + '-iv" class="' + (DONE[m.id + '-iv'] ? 'ok' : '') + '">Interview tavern (' + m.interview.length + ')</a>';
           h += '<a href="#' + m.id + '-arena">Practice arena (' + (m.practice || []).length + ')</a></div>';
         }
       });
@@ -617,7 +641,7 @@ var App = (function () {
     var tot = 0, dn = 0;
     MODULES.forEach(function (m) { var ids = items(m); tot += ids.length; dn += doneOf(ids); });
     $('#pfill').style.width = (tot ? dn / tot * 100 : 0) + '%';
-    $('#ptext').textContent = TRACK.short + ' progress: ' + dn + ' / ' + tot + ' (' + (tot ? Math.round(dn / tot * 100) : 0) + '%)';
+    $('#ptext').textContent = 'Land explored: ' + (tot ? Math.round(dn / tot * 100) : 0) + '% · ' + dn + ' / ' + tot;
     var nav = $('#nav'), st = nav.scrollTop;
     nav.innerHTML = navHtml();
     nav.scrollTop = st;
@@ -682,6 +706,7 @@ var App = (function () {
     closeMenu();
   }
   function closeMenu() {
+    if (!$('#sidebar')) return;
     $('#sidebar').classList.remove('open');
     var mb = $('#menuBtn');
     if (mb) mb.setAttribute('aria-expanded', 'false');
@@ -692,8 +717,9 @@ var App = (function () {
     var tb = $('#themeBtn');
     function apply(t) {
       document.documentElement.setAttribute('data-theme', t);
-      tb.innerHTML = t === 'dark' ? ICONS.sun + 'Light theme' : ICONS.moon + 'Dark theme';
-      var mc = $('meta[name="theme-color"]'); if (mc) mc.setAttribute('content', t === 'light' ? '#F5F6F8' : '#0B0D12');
+      tb.innerHTML = t === 'dark' ? ICONS.sun : ICONS.moon;
+      tb.setAttribute('aria-label', t === 'dark' ? 'Switch to daylight map' : 'Switch to night map'); tb.title = tb.getAttribute('aria-label');
+      var mc = $('meta[name="theme-color"]'); if (mc) mc.setAttribute('content', t === 'light' ? '#F6F1E4' : '#12263A');
     }
     function sync() { apply(store.get('imastery.theme', null) === 'light' ? 'light' : 'dark'); }
     sync();
@@ -706,15 +732,16 @@ var App = (function () {
     window.addEventListener('storage', function (e) { if (e.key === 'imastery.theme') sync(); });
     document.addEventListener('visibilitychange', function () { if (!document.hidden) sync(); });
     startAuth();
+    if (window.Journey) Journey.bar();
     var mb = $('#menuBtn');
     if (mb) mb.addEventListener('click', function () { var o = $('#sidebar').classList.toggle('open'); mb.setAttribute('aria-expanded', o ? 'true' : 'false'); if (o) { var s = $('#search') || $('#gsearch'); if (s) s.focus(); } });
     document.addEventListener('keydown', function (e) {
       var tag = (e.target.tagName || '').toLowerCase();
-      if (e.key === 'Escape' && $('#sidebar').classList.contains('open')) { closeMenu(); if (mb) mb.focus(); return; }
+      if (e.key === 'Escape' && $('#sidebar') && $('#sidebar').classList.contains('open')) { closeMenu(); if (mb) mb.focus(); return; }
       if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable) return;
       if (e.key === '/' || ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k')) {
         var s = $('#search') || $('#gsearch');
-        if (s) { e.preventDefault(); if (mb && getComputedStyle(mb).display !== 'none') { $('#sidebar').classList.add('open'); mb.setAttribute('aria-expanded', 'true'); } s.focus(); }
+        if (s) { e.preventDefault(); if (mb && $('#sidebar') && getComputedStyle(mb).display !== 'none') { $('#sidebar').classList.add('open'); mb.setAttribute('aria-expanded', 'true'); } s.focus(); }
       }
     });
     document.addEventListener('change', function (e) {
@@ -824,6 +851,7 @@ var App = (function () {
     MODULES.forEach(function (m) { var pm = TRACK.modules[order[m.id]]; m.num = pm.num; m.level = pm.level; if (!m.title) m.title = pm.title; });
     MODULES.sort(function (a, b) { return order[a.id] - order[b.id]; });
     document.title = TRACK.title + ' — Interview Mastery';
+    var ln = $('#landName'); if (ln) { var R = region(TRACK.id); ln.textContent = R.name + ' · ' + TRACK.modules.length + ' places'; }
     chrome();
     buildIndex();
     var tmr;
@@ -842,50 +870,73 @@ var App = (function () {
     HOME = true;
     chrome();
     var SI = window.SEARCH_INDEX || { modules: {}, entries: [] }, tmr;
-    $('#gsearch').addEventListener('input', function () { var v = this.value; clearTimeout(tmr); tmr = setTimeout(function () { searchInto(v, SI.entries || [], $('#gresults'), $('#nav')); }, 120); });
+    $('#gsearch').addEventListener('input', function () { var v = this.value; clearTimeout(tmr); tmr = setTimeout(function () { searchInto(v, SI.entries || [], $('#gresults'), null); }, 120); });
+    document.addEventListener('click', function (e) { if (!e.target.closest('.jsearch')) $('#gresults').hidden = true; });
+    $('#main').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-role]');
+      if (b && window.Journey) { Journey.setDest(b.getAttribute('data-role')); renderHome(); var d = $('#dest'); if (d) d.querySelector('[data-role="' + b.getAttribute('data-role') + '"]').focus(); }
+    });
     renderHome();
   }
   function renderHome() {
-    var SI = window.SEARCH_INDEX || { modules: {}, entries: [] };
-    var live = 0, planned = 0, gtot = 0, gdone = 0, rows = [];
-    TRACKS.forEach(function (t) {
-      var lv = { B: 0, I: 0, A: 0, E: 0 }, liveN = 0, tt = 0, td = 0;
-      t.modules.forEach(function (pm) { lv[pm.level]++; planned++; var mi = SI.modules[pm.id]; if (mi) { live++; liveN++; tt += mi.items.length; td += doneOf(mi.items); } });
-      gtot += tt; gdone += td;
-      rows.push({ t: t, lv: lv, liveN: liveN, tt: tt, td: td });
-    });
-    var nav = '<div class="side-sec">Navigate</div><a class="nav-link active" href="index.html" aria-current="page">' + ICONS.home + 'Home</a><div class="side-sec">Tracks</div>' +
-      rows.map(function (r) { return '<a class="tlink" href="' + r.t.id + '.html"><span class="m">' + esc(r.t.icon) + '</span><span class="n">' + esc(r.t.short) + '</span><span class="c">' + r.t.modules.length + '</span></a>'; }).join('');
-    $('#nav').innerHTML = nav;
-
-    var last = store.get('imastery.last', null), h = '<section class="resume">';
-    if (last && last.track && last.id) {
-      h += '<div class="rl"><span class="kicker">Resume · ' + esc(last.track) + ' / module ' + esc(last.num) + (last.topics ? ' / topic ' + (last.topic + 1) + ' of ' + last.topics : '') + '</span><h1>' + esc(last.topicTitle || last.title) + '</h1>' +
-        '<p>' + esc(last.trackTitle) + ' · ' + esc(last.title) + '</p><div class="row" style="flex-wrap:wrap"><a class="btn primary lg" href="' + esc(last.track) + '.html#' + esc(last.hash) + '">' + ICONS.play + 'Resume</a>' +
-        '<a class="btn lg" href="' + esc(last.track) + '.html#' + esc(last.id) + '">Module overview</a></div></div>';
+    var J = window.Journey, S = J.stats(DONE), last = store.get('imastery.last', null), M = window.IM_MODS || {};
+    var lands = TRACKS.length, R0 = last && last.track ? J.regionOf(last.track) : J.REGIONS[0];
+    var trackBy = {}; TRACKS.forEach(function (t) { trackBy[t.id] = t; });
+    var h = '<section class="whero"><div class="wh-l"><span class="kicker">' + (S.done ? J.pct(S.done, S.items) + '% of the world explored' : 'A new traveller arrives') + '</span>' +
+      '<h1>' + (S.done ? 'Welcome back, traveller' : 'Your journey starts on Foundation Isle') + '</h1>' +
+      '<p>' + lands + ' lands, ' + S.planned + ' places, ' + S.landmarks.toLocaleString('en-US') + ' landmarks. Every lesson is a stop on the map; finish it and the path lights up.</p>';
+    if (last && last.track && last.hash) {
+      h += '<a class="nextstop" href="' + esc(last.track) + '.html#' + esc(last.hash) + '"><span class="kicker">Next stop · place ' + esc(last.num) + ' · ' + esc(last.title) + '</span><b>' + esc(last.topicTitle || last.title) + '</b>' +
+        '<span>' + esc(J.regionOf(last.track).name) + ' · ' + esc(last.trackTitle) + (last.topics ? ' · landmark ' + (last.topic + 1) + ' of ' + last.topics : '') + '</span><span class="sail">' + ICONS.play + 'Set sail</span></a>';
     } else {
-      h += '<div class="rl"><span class="kicker">' + TRACKS.length + ' tracks · ' + planned + ' modules · beginner → expert</span><h1>Learn CS the old-school way. Work the new-school way — with AI.</h1>' +
-        '<p>Every concept starts with a real-world analogy, comes alive in a step-by-step visualizer, and ends with graded practice and interview questions.</p>' +
-        '<div class="row" style="flex-wrap:wrap"><a class="btn primary lg" href="dsa.html#dsa01">' + ICONS.play + 'Start with DSA module 1</a><a class="btn lg" href="#paths">Pick a learning path</a></div></div>';
+      h += '<a class="nextstop" href="dsa.html#dsa01"><span class="kicker">First stop · place 1 · Foundation Isle</span><b>Programming Foundations</b><span>DSA + Math for CS · starts with a real-world legend</span><span class="sail">' + ICONS.play + 'Set sail</span></a>';
     }
-    h += '<div class="rr"><div class="rstats"><div><b>' + live + '</b><span>modules</span></div><div><b>' + (SI.problems || 0) + '</b><span>problems</span></div><div><b>' + (SI.viz || 0) + '</b><span>visualizers</span></div><div><b>' + (gtot ? Math.round(gdone / gtot * 100) : 0) + '%</b><span>your progress</span></div></div></div></section>';
+    h += '</div><div class="wmap" role="group" aria-label="World map"><svg viewBox="0 0 700 470" aria-hidden="true">' +
+      J.REGIONS.map(function (r) { return '<ellipse class="wl" cx="' + r.x + '" cy="' + r.y + '" rx="' + r.rx + '" ry="' + r.ry + '"/>'; }).join('') +
+      '<path class="wroute" d="M130 330 C 220 300, 260 400, 350 395 S 480 330, 560 330 S 620 180, 565 110 S 420 90, 340 140 S 160 60, 100 100"/>' +
+      '</svg>' +
+      J.REGIONS.map(function (r) {
+        var g = S.region[r.key];
+        return '<a class="wlab" href="#r-' + r.key + '" style="left:' + r.lx + '%;top:' + r.ly + '%">' + (r === R0 ? '<span class="where">You are here</span>' : '') + '<b>' + J.icon(r.icon, 'c-' + r.color) + esc(r.name) + '</b><span>' + r.tracks.map(function (t) { return trackBy[t] ? esc(trackBy[t].short) : ''; }).join(' · ') + ' · ' + J.pct(g.done, g.items) + '%</span></a>';
+      }).join('') + '</div></section>';
 
-    h += '<section id="paths"><h2>Learning path</h2><div class="ptabs" role="tablist" aria-label="Choose a learning path">' +
+    var mid = last && last.id && M[last.id] ? last.id : 'dsa01', tid = last && last.id && M[last.id] ? last.track : 'dsa', c = M[mid], steps = [];
+    var tix = last && last.id === mid ? last.topic || 0 : 0, num = last && last.id === mid ? last.num : 1;
+    if (c) {
+      steps.push({ id: mid + '-t' + tix, t: 'Finish the landmark: ' + (last && last.id === mid ? last.topicTitle : 'your first topic'), h: tid + '.html#' + mid + '-t' + tix });
+      if (c[3]) steps.push({ id: mid + '-quiz', t: 'Pass the riddle gate of place ' + num, h: tid + '.html#' + mid + '-quiz' });
+      var k = 0; while (k < c[2] && DONE[mid + '-p' + k]) k++;
+      if (c[2]) steps.push({ id: mid + '-p' + Math.min(k, c[2] - 1), t: k < c[2] ? 'Dig up a treasure: practice problem ' + (k + 1) : 'Every treasure of this place is found', h: tid + '.html#' + mid + '-p' + Math.min(k, c[2] - 1) });
+    }
+    var nx = -1;
+    steps.forEach(function (x, i) { if (nx < 0 && !DONE[x.id]) nx = i; });
+    var list = J.stampsOf(S), got = list.filter(function (x) { return x.on; });
+    h += '<section class="wrow"><div class="jcard"><h2>Today’s expedition</h2><div class="exped">' + steps.map(function (x, i) {
+      var st = DONE[x.id] ? 'done' : i === nx ? 'next' : 'ahead';
+      return '<a class="estep ' + st + '" href="' + esc(x.h) + '"><span class="en">' + (st === 'done' ? '✓' : i + 1) + '</span><span class="et">' + esc(x.t) + '</span><span class="es">' + st + '</span></a>';
+    }).join('') + '</div></div>';
+    h += '<div class="jcard"><h2>Journey log</h2><div class="jlog"><div><b>' + S.places + '</b><span>places cleared</span></div><div><b>' + S.topics.toLocaleString('en-US') + '</b><span>landmarks</span></div><div><b>' + S.problems.toLocaleString('en-US') + '</b><span>treasures found</span></div></div>' +
+      '<a class="jstamps" href="passport.html"><span class="mini">' + (got.length ? got.slice(-4) : list.slice(0, 3)).map(function (x) { return J.stampSvg(x.st, x.on); }).join('') + '</span><span>' + (got.length ? got.length + ' of ' + list.length + ' stamps · open passport ›' : 'Your first stamp lands after one landmark · passport ›') + '</span></a></div>';
+    var D = J.dest(), di = 0, dd = 0, nextP = [];
+    D.tracks.forEach(function (t) { var g = S.track[t]; if (g) { di += g.items; dd += g.done; } });
+    ['B', 'I', 'A', 'E'].forEach(function (lv) { D.tracks.forEach(function (t) { var tr = trackBy[t]; if (!tr) return; tr.modules.forEach(function (pm) { var mm = S.module[pm.id]; if (pm.level === lv && mm && !mm.full && nextP.length < 3) nextP.push(pm.title); }); }); });
+    h += '<div class="jcard dest" id="dest"><div class="droles" role="group" aria-label="Choose a destination">' + J.ROLES.map(function (r) { return '<button type="button" class="drole" data-role="' + r.id + '" aria-pressed="' + (r === D) + '">' + esc(r.name.replace(' role', '')) + '</button>'; }).join('') + '</div>' +
+      J.icon('flag', 'dflag') + '<b class="dname">Destination: ' + esc(D.name) + '</b><span class="dtx">' + J.pct(dd, di) + '% of the route travelled.' + (nextP.length ? ' Next on the route: ' + nextP.map(esc).join(', ') + '.' : '') + '</span><div class="jbar-p c-violet"><i style="width:' + J.pct(dd, di) + '%"></i></div></div></section>';
+
+    h += '<section class="world" aria-labelledby="worldH"><div class="jrow"><h2 id="worldH">The world</h2><span class="muted">' + J.REGIONS.length + ' regions · ' + lands + ' lands</span></div><div class="wgrid">' +
+      J.REGIONS.map(function (r) {
+        return '<div class="jcard region" id="r-' + r.key + '"><span class="kicker c-' + r.color + '">' + J.icon(r.icon) + esc(r.area) + '</span><b class="rname">' + esc(r.name) + '</b>' + r.tracks.filter(function (t) { return trackBy[t]; }).map(function (t) {
+          var g = S.track[t] || { items: 0, done: 0 }, p = J.pct(g.done, g.items);
+          return '<a class="rland" href="' + t + '.html"><span>' + esc(trackBy[t].title) + '</span><span class="jbar-p c-' + r.color + '"><i style="width:' + (p ? Math.max(3, p) : 0) + '%"></i></span><span class="mono">' + p + '%</span></a>';
+        }).join('') + '</div>';
+      }).join('') +
+      (function () { var extra = TRACKS.filter(function (t) { return J.regionOf(t.id).key === 'new'; }); return extra.length ? '<div class="jcard region" id="r-new"><span class="kicker c-sky">' + J.icon('compass') + 'New lands</span><b class="rname">Uncharted</b>' + extra.map(function (t) { var g = S.track[t.id] || { items: 0, done: 0 }, p = J.pct(g.done, g.items); return '<a class="rland" href="' + t.id + '.html"><span>' + esc(t.title) + '</span><span class="jbar-p c-sky"><i style="width:' + p + '%"></i></span><span class="mono">' + p + '%</span></a>'; }).join('') + '</div>' : '<div class="uncharted">Uncharted · new lands appear here as topics are added</div>'; })() +
+      '</div></section>';
+
+    h += '<section id="paths" class="jcard"><h2>Learning routes</h2><div class="ptabs" role="tablist" aria-label="Choose a learning route">' +
       LEARNING_PATHS.map(function (p, i) { return '<button type="button" class="ptab" role="tab" id="ptab' + i + '" aria-controls="proute" aria-selected="' + (i === 1 ? 'true' : 'false') + '" data-path="' + i + '">' + esc(p.name) + ' · ' + esc(p.time) + '</button>'; }).join('') +
       '</div><ol class="route" id="proute" role="tabpanel" aria-labelledby="ptab1"></ol></section>';
-
-    h += '<h2 class="lvh">All tracks</h2><div class="ttable-wrap"><table class="ttable"><thead><tr><th scope="col">Track</th><th scope="col">Modules</th><th scope="col" style="width:30%">Levels</th><th scope="col">Progress</th></tr></thead><tbody>' +
-      rows.map(function (r) {
-        var lvTxt = r.lv.B + ' beginner, ' + r.lv.I + ' intermediate, ' + r.lv.A + ' advanced, ' + r.lv.E + ' expert';
-        return '<tr><td><a href="' + r.t.id + '.html"><span class="tmono">' + esc(r.t.icon) + '</span>' + esc(r.t.title) + '</a></td><td class="mono">' + r.t.modules.length + '</td>' +
-          '<td><div class="lvbar" role="img" aria-label="' + lvTxt + '"><i class="b" style="flex:' + r.lv.B + '"></i><i class="i" style="flex:' + r.lv.I + '"></i><i class="a" style="flex:' + r.lv.A + '"></i><i class="e" style="flex:' + r.lv.E + '"></i></div></td>' +
-          '<td class="mono">' + (r.td ? Math.round(r.td / r.tt * 100) + '%' : 'not started') + '</td></tr>';
-      }).join('') + '</tbody></table></div>';
-
-    h += '<h2 class="lvh">How every module teaches you</h2><div class="steps">' +
-      ['Real-world analogy first', 'Plain-English idea with small numbers', 'Clues in the question (pattern recognition)', 'Step-by-step visualizer with narrator', 'Worked examples', 'Guided problem: brute force → MCQ → 3 hints → solution', 'Expert deep dive', 'New school: working alongside AI', 'Quiz + interview Q&A', 'Practice arena: 12–20 graded problems'].map(function (s, i) { return '<div class="stepc"><b>' + (i + 1) + '</b>' + s + '</div>'; }).join('') + '</div>';
-    h += '<div class="box ai"><span class="tag">Why “old school + new school”?</span><p>AI can now write the standard solution to most textbook problems in seconds. That makes <b>understanding</b> more valuable, not less: interviewers and teams need people who can recognise the right pattern, judge trade-offs, spot the bug in AI-written code, and design systems AI cannot see the whole of. Every topic here teaches the fundamentals by hand first, then shows how to use AI as a study partner and work tool — and where it fails.</p></div>' +
-      '<div class="row" style="margin-top:20px"><button class="btn" type="button" id="resetProgress">Reset all progress</button></div>';
+    h += '<footer class="jfoot">' + (window.IM_VERSION ? '<span>Interview Mastery v' + esc(window.IM_VERSION) + '</span>' : '') + '<a href="privacy.html">Privacy policy</a><a href="https://github.com/SHRENIKYD/DSA-LEARNINGS">Source on GitHub</a><button class="btn ghost" type="button" id="resetProgress">Reset all progress</button></footer>';
     $('#main').innerHTML = h;
 
     var pickPath = function (i) {
@@ -900,7 +951,7 @@ var App = (function () {
   /* ---------- account sync ---------- */
   function reloadDone() {
     DONE = store.get('imastery.done', {}) || {};
-    if (HOME) { var navHidden = $('#nav').hidden; renderHome(); $('#nav').hidden = navHidden; return; }
+    if (HOME) { renderHome(); return; }
     if (!TRACK) return;
     $$('[data-done]').forEach(function (cb) { setBox(cb, !!DONE[cb.getAttribute('data-done')]); });
     $$('.toc a').forEach(function (a) { var id = (a.getAttribute('href') || '').slice(1); a.classList.toggle('ok', !!DONE[id]); });

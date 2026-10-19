@@ -1,7 +1,7 @@
 apply plugin: 'com.android.application'
 
-// App version comes from the repo's package.json (single source of truth).
-def appVersion = new groovy.json.JsonSlurper().parse(rootProject.file('../package.json')).version
+// App version comes from appVersion in the repo's package.json (the website has its own "version").
+def appVersion = new groovy.json.JsonSlurper().parse(rootProject.file('../package.json')).appVersion
 def appVersionCode = appVersion.tokenize('.').collect { it as int }.with { it[0] * 10000 + it[1] * 100 + it[2] }
 
 android {

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<script>(function(){function t(){var v;try{v=JSON.parse(localStorage.getItem('imastery.theme'))}catch(e){}document.documentElement.setAttribute('data-theme',v==='light'?'light':'dark')}t();addEventListener('pageshow',t);addEventListener('storage',function(e){if(e.key==='imastery.theme')t()})})();</script>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Passport — Interview Mastery</title>
+<meta name="description" content="Your Interview Mastery passport: stamps you have earned, lands explored, account and settings.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:wght@500;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="assets/style.css?v=@@V@@">
+</head>
+<body class="jhome">
+@@JBAR@@
+<main class="jmain pp">
+  <div class="pp-main">
+    <section class="pp-head" id="pHead" aria-label="Traveller"></section>
+    <section class="jcard" aria-labelledby="pStampsH">
+      <div class="jrow"><h2 id="pStampsH">Stamps</h2><span class="mono muted" id="pStampsN"></span></div>
+      <p class="muted">Stamps land here by themselves as you travel: finish landmarks, solve treasures, pass riddle gates and clear whole places.</p>
+      <div class="pgrid" id="pStamps"></div>
+    </section>
+    <section class="jcard" aria-labelledby="pLandsH">
+      <h2 id="pLandsH">Lands explored</h2>
+      <div class="plands" id="pLands"></div>
+    </section>
+  </div>
+  <aside class="pp-side">
+    <section class="jcard" aria-labelledby="pSetH">
+      <h2 id="pSetH">Settings</h2>
+      <label class="pset" for="pTheme">Daylight map (light theme)<input type="checkbox" id="pTheme"></label>
+      <label class="pset" for="pDest">Destination<select id="pDest"></select></label>
+    </section>
+    <section class="jcard" aria-labelledby="pAccH">
+      <h2 id="pAccH">Account</h2>
+      <div id="account" class="account" hidden></div>
+      <a class="pset" href="privacy.html">Privacy policy<span aria-hidden="true">›</span></a>
+      <a class="pset danger" id="pDelete" href="login.html?delete=1" hidden>Delete account<span aria-hidden="true">›</span></a>
+    </section>
+  </aside>
+</main>
+<script src="assets/config.js?v=@@V@@"></script>
+<script src="vendor/supabase.js?v=@@V@@"></script>
+<script src="assets/auth.js?v=@@V@@"></script>
+<script src="assets/tracks.js?v=@@V@@"></script>
+<script src="assets/progress-map.js?v=@@V@@"></script>
+<script src="assets/journey.js?v=@@V@@"></script>
+<script>Journey.passport();</script>
+</body>
+</html>

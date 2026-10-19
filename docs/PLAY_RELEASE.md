@@ -35,7 +35,7 @@ Delete `upload.jks.base64` from your computer afterwards (keep `upload.jks` back
 
 ## 4. Build the first release bundle
 
-Bump `version` in `package.json`, run `node tools/version-sync.js`, add a CHANGELOG entry and merge to `main`. The **Android app** workflow then builds `interview-mastery-vX.Y.Z.aab` and attaches it to the GitHub release (and as the `interview-mastery-release-aab` artifact).
+Bump `appVersion` in `package.json` (the app's version; `version` is the website's), run `node tools/version-sync.js`, add a `CHANGELOG-APP.md` entry and merge to `main`. The **Android app** workflow then builds `interview-mastery-app-vX.Y.Z.aab` and attaches it to the `app-vX.Y.Z` GitHub release (and as the `interview-mastery-release-aab` artifact).
 
 ## 5. Create the app in Play Console
 
@@ -89,7 +89,7 @@ Play Console → Testing → **Internal testing** → Create new release → kee
 
 5. Optional repository **Variable** `PLAY_TRACK`: the track CI uploads to — `internal` (default), `alpha` (closed testing), `beta` (open testing) or `production`.
 
-From then on, every new version merged to `main` is built, signed, tagged, released on GitHub and uploaded to that track automatically. With Managed publishing on, approved changes still wait for **Publish changes** in Play Console; turn it off for fully automatic releases. You promote it to closed testing or production in Play Console.
+From then on, every new app version (`appVersion`) merged to `main` is built, signed, tagged, released on GitHub and uploaded to that track automatically. With Managed publishing on, approved changes still wait for **Publish changes** in Play Console; turn it off for fully automatic releases. You promote it to closed testing or production in Play Console.
 
 ## 8. Get production access
 
@@ -98,5 +98,5 @@ New personal developer accounts must run a **closed test** with at least **12 te
 ## Notes
 
 - Google sign-in in the app uses the system browser with Supabase, so it does not depend on the signing key's SHA-1; nothing to add in Google Cloud.
-- `versionCode` comes from `package.json` (`1.4.0` → `10400`). Every Play upload needs a higher version, so bump `version` for each release.
+- `versionCode` comes from `appVersion` in `package.json` (`1.7.0` → `10700`). Every Play upload needs a higher version, so bump `appVersion` for each app release. A website-only change (only `version` bumped) builds the app but does not upload it, because its `app-vX.Y.Z` tag already exists.
 - `node tools/make-icons.js` regenerates the icon, splash screens and store graphics from `store/icon.svg`; `node tools/build-app.js && node tools/store-screens.js` regenerates the screenshots. Both need Playwright with Chromium.
