@@ -17,7 +17,7 @@ var AppUpdates = (function () {
   function message(text) { var n = document.getElementById('updateStatus'); if (n) n.textContent = text; }
   function snooze(tag) { var until = Date.now() + DAY; snoozed[tag] = until; try { localStorage.setItem('imastery.update.' + tag, String(until)); } catch (e) { } }
   function snoozeUntil(tag) { try { return Math.max(snoozed[tag] || 0, Number(localStorage.getItem('imastery.update.' + tag)) || 0); } catch (e) { return snoozed[tag] || 0; } }
-  function safeToShow() { var tab = (location.hash || '#home').slice(1).split('/')[0], cel = document.getElementById('cel'); return !document.hidden && /^(home|map|play|badges|me)$/.test(tab) && (!cel || cel.hidden); }
+  function safeToShow() { var tab = (location.hash || '#home').slice(1).split('/')[0], cel = document.getElementById('cel'); return !document.hidden && /^(home|map|world|passport|expedition|progress|play|badges|me)$/.test(tab) && (!cel || cel.hidden); }
   function show() {
     if (!pending || !safeToShow() || document.getElementById('appUpdateDialog')) return;
     var release = pending; pending = null;

@@ -28,11 +28,13 @@ npx serve site               # or any static server (the SQL runner needs http, 
 ```
 
 ## Mobile app (Android and iOS)
-The app wraps the same lessons in a play mode: XP and levels, daily quests, streaks, a track map with boss fights, badges, and concept games that teach an idea before the lesson does. It is built with [Capacitor](https://capacitorjs.com).
+The app wraps the same lessons in a play mode: XP and levels, daily quests, streaks, an animated six-region island world, track paths with boss fights, a stamp passport, curriculum search, badges, and 34 concept games that teach an idea before the lesson does. It is built with [Capacitor](https://capacitorjs.com).
 
 ```bash
 npm ci
 node tools/play-test.js      # play engine unit tests
+node tools/fun-test.js       # game mechanics, search, world and streak checks
+node tools/app-navigation-test.js # connected app navigation and rewards
 node tools/build-app.js      # builds ./app-www (lessons + play mode)
 npx cap sync                 # copies app-www into android/ and ios/
 npx cap open android         # Android Studio; or: cd android && ./gradlew assembleDebug

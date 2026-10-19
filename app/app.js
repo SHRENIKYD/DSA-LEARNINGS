@@ -92,6 +92,7 @@
     opts = opts || {};
     $('#app').innerHTML = '<main class="scr' + (opts.cls ? ' ' + opts.cls : '') + '" id="scr">' + body + '</main>' + (opts.noTabs ? '' : tabbar(tab));
     $('#scr').scrollTop = 0;
+    if (play.settings.motion && !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) $('#scr').classList.add('screen-enter');
   }
   function lessonHref(mid, anchor) { var x = pmById(mid); return x ? x.t.id + '.html#' + mid + (anchor || '') : '#map'; }
   function nextModule(tid) {
@@ -125,6 +126,7 @@
     h += '<a class="card gamecard" href="#game/' + g.id + '"><span class="kick xp">Today\'s game · ' + esc(g.kicker) + '</span><b class="ttl">' + esc(g.title) + '</b><span class="muted sm">' + esc(g.goal) + '</span><span class="b3 ghost">PLAY · +' + Play.XP.game + ' XP</span></a>';
     var nv = Object.keys(window.IM_VIDEOS || {}).length;
     if (nv) h += '<a class="card vidcard" href="videos.html"><span class="kick">Videos</span><b class="ttl">Watch topics explained</b><span class="muted sm">' + nv.toLocaleString('en-US') + ' topics have a video so far. New ones are added every day.</span><span class="b3 ghost">🎬 OPEN VIDEOS</span></a>';
+    h += '<div class="journey-shortcuts"><a class="card" href="#world"><span>◈</span><b>Explore islands</b><small>Find your next lesson</small></a><a class="card" href="#passport"><span>▧</span><b>Your passport</b><small>Collect your journey</small></a><a class="card" href="#expedition"><span>☀</span><b>Daily quests</b><small>One small victory</small></a><a class="card" href="#search"><span>⌕</span><b>Search lessons</b><small>Every track, one place</small></a></div>';
     page('home', h);
   }
 
@@ -132,6 +134,7 @@
     var t = trackById(tid) || trackById(play.track) || TRACKS[0];
     play.track = t.id; save();
     var h = '<div class="hud"><h1 class="hd">' + esc(t.short) + '</h1><span class="pill fl sp">🔥 ' + S.streak.days + '</span></div>';
+    h += '<a class="muted sm" href="#world">‹ Back to the islands</a>';
     h += '<div class="chips" role="tablist" aria-label="Tracks">' + TRACKS.map(function (x) { var tr = S.totals.tracks[x.id]; return '<a role="tab" href="#map/' + x.id + '" class="chip' + (x.id === t.id ? ' on' : '') + '" aria-selected="' + (x.id === t.id) + '">' + esc(x.short) + (tr && tr.complete ? ' · ' + tr.complete : '') + '</a>'; }).join('') + '</div>';
     var cur = nextModule(t.id), groups = [];
     t.modules.forEach(function (pm) { var g = groups[groups.length - 1]; if (!g || g.lv !== pm.level) groups.push(g = { lv: pm.level, mods: [] }); g.mods.push(pm); });
@@ -207,12 +210,15 @@
   }
   function mountGame(g) {
     var won = false, box = $('#game'), l = $('#learned');
+    box.classList.remove('game-won');
     box.innerHTML = ''; l.hidden = true; l.innerHTML = '';
     g.mount(box, {
       tick: function () { buzz(8); Sound.play('tap'); },
       miss: function () { buzz([10, 30, 10]); Sound.play('wrong'); },
       win: function () {
+        if (won) return;
         Sound.play('correct');
+        box.classList.add('game-won');
         var xpBefore = S.xp;
         Play.winGame(play, g.id, now());
         refresh();
@@ -234,6 +240,7 @@
     var h = '<div class="ah"><h1>Badges</h1><span class="mono muted sm sp">' + e + ' / ' + S.badges.length + '</span></div>';
     h += '<div class="card lvcard"><div class="row sb"><b>Level ' + l.level + ' · ' + esc(l.name) + '</b><span class="mono xp">' + S.xp.toLocaleString('en-US') + ' XP</span></div>' + bar(l.into / l.need) + '<span class="muted sm">' + (l.need - l.into) + ' XP to level ' + (l.level + 1) + '</span></div>';
     h += '<div class="bgrid">' + S.badges.map(function (b) { return '<div class="bg' + (b.earned ? '' : ' lock') + '"><span class="bdg" style="--bc:' + b.color + '">' + (b.earned ? esc(b.glyph) : '🔒') + '</span><b>' + esc(b.name) + '</b><span class="muted">' + (b.earned ? '✓ earned' : esc(b.how)) + '</span>' + (b.earned ? '' : bar(b.have / b.need)) + '</div>'; }).join('') + '</div>';
+    h += '<a class="card" href="#passport"><span class="kick">Traveller’s collection</span><b class="ttl">Open your stamp passport ↗</b><span class="muted sm">A different mark for every milestone.</span></a>';
     page('badges', h);
   }
 
@@ -250,8 +257,9 @@
     if (Reader.available()) h += '<div class="list"><div class="set">Read aloud<span class="muted">Tap 🔊 on any lesson or game</span></div><div class="set">Reading speed<span class="muted">' + (play.settings.tts.rate || 1) + '× · change it in the player</span></div></div>';
     h += '<div class="list"><div class="set">Interview Mastery v' + esc(window.IM_VERSION || '') + '<span class="muted">' + S.totals.doneItems + ' / ' + S.totals.items + ' items done</span></div>' + '<a class="set" href="privacy.html">Privacy policy<span class="muted">›</span></a>' + (u ? '<button class="set" type="button" id="signOut">Sign out</button><a class="set danger" href="#delete">Delete account<span class="muted">›</span></a>' : '') + '</div>';
     h += '<div class="list"><button class="set" type="button" id="checkUpdates">Check for updates<span class="muted">↗</span></button><p class="sm muted" id="updateStatus" role="status" aria-live="polite"></p></div>';
+    h += '<div class="list"><a class="set" href="#progress">Your progress ›</a><a class="set" href="#passport">Stamp passport ›</a><a class="set" href="#welcome">Meet Bit & replay the introduction ›</a></div>';
     page('me', h);
-    Array.prototype.forEach.call(document.querySelectorAll('[data-set]'), function (c) { c.addEventListener('change', function () { play.settings[c.dataset.set] = c.checked; save(); if (c.dataset.set === 'sound') { Sound.enable(c.checked); Sound.play('correct'); } if (c.checked && c.dataset.set === 'haptics') buzz(15); }); });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-set]'), function (c) { c.addEventListener('change', function () { play.settings[c.dataset.set] = c.checked; save(); if (c.dataset.set === 'motion') document.documentElement.classList.toggle('calm', !c.checked); if (c.dataset.set === 'sound') { Sound.enable(c.checked); Sound.play('correct'); } if (c.checked && c.dataset.set === 'haptics') buzz(15); }); });
     $('#set-theme').addEventListener('change', function () { setTheme(this.checked ? 'light' : 'dark'); Sound.play('tap'); });
     var so = $('#signOut'); if (so) so.addEventListener('click', function () { so.disabled = true; Auth.signOut().then(function () { play = Play.emptyState(); play.settings = { haptics: true, bit: true, motion: true }; save(); location.hash = '#home'; location.reload(); }); });
   }
@@ -263,7 +271,6 @@
     h += '<div class="card danger-card"><b class="ttl">This cannot be undone</b><p class="sm">Deleting <b>' + esc(u.email || 'your account') + '</b> removes the account and all progress synced to it, on every device. XP, streak and game wins on this phone are cleared too.</p></div>';
     h += '<label class="fld" for="delConfirm"><span>Type DELETE to confirm</span><input id="delConfirm" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false"></label>';
     h += '<p class="g-msg" id="delErr" hidden></p><button class="b3 r" type="button" id="delBtn" disabled>DELETE MY ACCOUNT</button><a class="b3 ghost" href="#me">KEEP MY ACCOUNT</a>';
-    h += '<div class="list"><button class="set" type="button" id="checkUpdates">Check for updates<span class="muted">↗</span></button><p class="sm muted" id="updateStatus" role="status" aria-live="polite"></p></div>';
     page('me', h);
     var inp = $('#delConfirm'), btn = $('#delBtn'), err = $('#delErr');
     inp.addEventListener('input', function () { btn.disabled = inp.value.trim().toUpperCase() !== 'DELETE'; });
@@ -280,13 +287,53 @@
     });
   }
 
+  /* ---------- explorer experience ---------- */
+  function world(key) {
+    var J = window.Journey, last = lsGet('imastery.last', null);
+    var selected = key || play.region || (last && last.track ? J.regionOf(last.track).key : 'isle');
+    if (J.REGIONS.some(function (r) { return r.key === selected; })) { play.region = selected; save(); }
+    var h = head('Your learning world', null, true) + '<p class="muted sm">Pick an island. Every lesson is a small step forward.</p>' + AppExperience.world(J, J.stats(done()), TRACKS, selected) +
+      '<div class="acts"><a class="b3 ghost" href="#search">⌕ SEARCH LESSONS</a><a class="b3 ghost" href="#passport">▧ YOUR PASSPORT</a></div>';
+    page('map', h); wireRead('Your learning world');
+  }
+  function passportView() {
+    var J = window.Journey, stats = J.stats(done());
+    page('badges', head('Your passport', '#badges', true) + '<section class="passport-book app-passport">' + J.stampCollectionHtml(J.stampsOf(stats)) + '</section>'); wireRead('Your stamp passport');
+  }
+  function searchView() {
+    page('map', head('Search every track', '#map') + '<label class="muted sm" for="appSearch">Topic, module or interview concept</label><input class="app-search" id="appSearch" type="search" placeholder="Try binary search, Python, SQL…" maxlength="160" autocomplete="off"><div id="appSearchResults">' + AppExperience.search(SI.entries, '', TRACKS) + '</div>');
+    $('#appSearch').addEventListener('input', function () { $('#appSearchResults').innerHTML = AppExperience.search(SI.entries, this.value, TRACKS); });
+  }
+  function expeditionView() {
+    var week = AppExperience.week(Play, play.days || {}, now());
+    var h = head('Today’s expedition', '#home', true) + '<div class="card"><div class="row sb"><b>🔥 ' + S.streak.days + '-day streak</b><span class="muted sm">' + S.streak.freezesLeft + ' freezes left</span></div><div class="streak-week">' +
+      week.map(function (d) { return '<div' + (d.today ? ' aria-current="date"' : '') + '><small>' + esc(d.label) + '</small><span class="' + (d.active ? 'active' : '') + '" aria-label="' + d.key + (d.active ? ', activity recorded' : ', no activity') + '">' + (d.active ? '✓' : '·') + '</span></div>'; }).join('') + '</div><p class="muted sm">One small lesson or game today keeps your journey moving.</p></div>';
+    h += S.quests.map(function (q) { var link = q.id === 'game' ? '#play' : q.id === 'solve' ? '#arena/' + (play.track || 'dsa') : '#map'; return '<a class="card quest-detail" href="' + link + '"><div class="row sb"><b>' + q.icon + ' ' + esc(q.label) + '</b><span class="xp mono">+' + q.xp + ' XP</span></div>' + bar(q.have / q.need) + '<span class="muted sm">' + q.have + ' / ' + q.need + (q.claimed ? ' · ✓ reward collected' : q.done ? ' · complete' : ' · keep exploring ›') + '</span></a>'; }).join('');
+    page('home', h); wireRead('Today’s expedition');
+  }
+  function progressView() {
+    page('me', head('Your journey so far', '#me') + '<div class="tiles"><div><b>⚡ ' + S.xp + '</b><span>total XP</span></div><div><b>✓ ' + S.totals.doneItems + '</b><span>activities</span></div><div><b>▶ ' + Object.keys(play.games || {}).length + '</b><span>games discovered</span></div></div>' +
+      '<div class="card"><span class="kick">Your next milestone</span><b class="ttl">Level ' + (S.level.level + 1) + '</b>' + bar(S.level.into / S.level.need) + '<p class="muted sm">' + (S.level.need - S.level.into) + ' XP to go. Every bit of practice counts.</p></div><div class="list"><a class="set" href="#expedition">Daily quests & streak ›</a><a class="set" href="#badges">Achievements ›</a><a class="set" href="#passport">Stamp passport ›</a><a class="set" href="#world">Explore the world ›</a></div>');
+  }
+  function welcomeView() {
+    page('home', '<div class="welcome"><img class="welcome-icon" src="app/icon.png" alt="Interview Mastery"><span class="kick">A little curiosity. A world of possibility.</span><h1>Learn it.<br>Play it.<br>Make it yours.</h1><p class="muted">Explore ' + TRACKS.length + ' tracks and ' + Games.list.length + ' concept games. Understand an idea, try it yourself, then collect the marks of your journey.</p>' + BIT + '<p class="speech">I’m Bit. Let’s turn one small step into a habit.</p><button class="b3" id="beginJourney">LET’S EXPLORE ↗</button><a class="b3 ghost" href="login.html?next=index.html">SIGN IN TO SYNC PROGRESS</a><p class="muted sm">You can start without an account. Your progress stays on this device until you sign in.</p></div>', { noTabs: true });
+    $('#beginJourney').addEventListener('click', function () { lsSet('imastery.welcomed', true); Sound.play('open'); location.hash = '#home'; });
+  }
+
   /* ---------- router ---------- */
   function route() {
     Reader.close();
     var p = (location.hash || '#home').slice(1).split('/');
+    if ((p[0] === 'home' || !p[0]) && !lsGet('imastery.welcomed', false) && !(S && S.totals && S.totals.doneItems) && !Object.keys(play.games || {}).length) return welcomeView();
     if (!S) refresh(true);
     switch (p[0]) {
-      case 'map': return map(p[1]);
+      case 'map': return p[1] ? map(p[1]) : world();
+      case 'world': return world(p[1]);
+      case 'passport': return passportView();
+      case 'search': return searchView();
+      case 'expedition': return expeditionView();
+      case 'progress': return progressView();
+      case 'welcome': return welcomeView();
       case 'module': return moduleView(p[1]);
       case 'arena': return arena(p[1], p[2]);
       case 'play': return playTab(p[1]);
