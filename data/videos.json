@@ -1,4 +1,600 @@
 {
  "v": 1,
- "videos": {}
+ "videos": {
+  "dsa01-t0": {
+   "t": "Java Syntax for Problem Solving",
+   "id": "ngCos392W4w",
+   "title": "5 Simple Steps for Solving Any Recursive Problem",
+   "channel": "Reducible",
+   "secs": 1263
+  },
+  "dsa01-t1": {
+   "t": "Fast Input/Output: Scanner vs BufferedReader",
+   "id": "bwHr9G5VIls",
+   "title": "#83 User Input using BufferedReader and Scanner in Java",
+   "channel": "Telusko",
+   "secs": 709
+  },
+  "dsa01-t2": {
+   "t": "Primitive vs Reference Types, Overflow & Casting",
+   "id": "X0zdAG7gfgs",
+   "title": "Java Tutorial: Variables and Data Types in Java Programming",
+   "channel": "CodeWithHarry",
+   "secs": 1488
+  },
+  "dsa01-t3": {
+   "t": "How Memory Works: Stack, Heap & References",
+   "id": "wJ1L2nSIV1s",
+   "title": "Stack vs Heap Memory in C++",
+   "channel": "The Cherno",
+   "secs": 1171
+  },
+  "dsa01-t4": {
+   "t": "Arrays & Strings Basics",
+   "id": "AT14lCXuMKI",
+   "title": "1.1 Arrays in Data Structure | Declaration, Initialization, Memory representation",
+   "channel": "Jenny's Lectures CS IT",
+   "secs": 1358
+  },
+  "dsa01-t5": {
+   "t": "Methods: Breaking Problems into Small Functions",
+   "id": "qDHPrUSp0Ys",
+   "title": "Lecture 9 - Analysis Of Recursion | DSA Basics For Beginners | Placement Course",
+   "channel": "RUDE LABS",
+   "secs": 642
+  },
+  "dsa01-t6": {
+   "t": "Reading Constraints: The Hidden Hint in Every Problem",
+   "id": "uzo_gpWtvI4",
+   "title": "SOLVE any DSA QUESTION using this 7-STEP Strategy",
+   "channel": "Love Babbar",
+   "secs": 609
+  },
+  "dsa01-t7": {
+   "t": "Writing Your First Brute-Force Solutions",
+   "id": "DKCbsiDBN6c",
+   "title": "6 Introduction to Backtracking - Brute Force Approach",
+   "channel": "Abdul Bari",
+   "secs": 495
+  },
+  "dsa02-t0": {
+   "t": "Counting Loop Iterations (single, nested, triangle, halving, doubling)",
+   "id": null
+  },
+  "dsa02-t1": {
+   "t": "Arithmetic & Geometric Progressions (AP / GP)",
+   "id": "gua96ju_FBk",
+   "title": "Arithmetic Progression and Geometric Progression | Don't Memorise | (GMAT/GRE/CAT/Bank PO/SSC CGL)",
+   "channel": "Sri Chaitanya Academy NEET",
+   "secs": 296
+  },
+  "dsa02-t2": {
+   "t": "Logarithms: log₂ N = How Many Times You Can Halve N",
+   "id": "EhnIktlGrcQ",
+   "title": "Compare the order of growth using limits|DAA|Module 1|Manoj P N",
+   "channel": "Manoj PN",
+   "secs": 414
+  },
+  "dsa02-t3": {
+   "t": "Big-O, Ω (Omega), Θ (Theta) in Plain English",
+   "id": "0oDAlMwTrLo",
+   "title": "Asymptotic Notations 101: Big O, Big Omega, & Theta (Asymptotic Analysis Bootcamp)",
+   "channel": "Back To Back SWE",
+   "secs": 1396
+  },
+  "dsa02-t4": {
+   "t": "Space Complexity: How Much Extra Memory?",
+   "id": "jOMxKsUd6e0",
+   "title": "Time and Space Complexity explained in literally 5 minutes | Big O | Concepts made simple ep -1",
+   "channel": "GeeksforGeeks",
+   "secs": 343
+  },
+  "dsa02-t5": {
+   "t": "Reading Constraints: the 10⁸ Rule and Estimating TLE",
+   "id": "Tpp7o0jQ-8w",
+   "title": "L-4.5: Job Sequencing Algorithm with Example | Greedy Techniques",
+   "channel": "Gate Smashers",
+   "secs": 639
+  },
+  "dsa03-t0": {
+   "t": "Factors (Divisors) in O(√N)",
+   "id": "Ae_Ag_saG9s",
+   "title": "L2. Print all Divisors of a Number | Maths Playlist",
+   "channel": "take U forward",
+   "secs": 550
+  },
+  "dsa03-t1": {
+   "t": "Prime Numbers & the Primality Check",
+   "id": "MJcckSfoYdI",
+   "title": "L3. Check if a Number if Prime or not | Maths Playlist",
+   "channel": "take U forward",
+   "secs": 430
+  },
+  "dsa03-t2": {
+   "t": "Sieve of Eratosthenes (all primes up to N)",
+   "id": "g5Fuxn_AvSk",
+   "title": "L6. Sieve of Eratosthenes | Maths Playlist",
+   "channel": "take U forward",
+   "secs": 1107
+  },
+  "dsa03-t3": {
+   "t": "GCD & LCM — Euclid's Algorithm (with a visual proof)",
+   "id": "yHwneN6zJmU",
+   "title": "GCD - Euclidean Algorithm (Method 1)",
+   "channel": "Neso Academy",
+   "secs": 878
+  },
+  "dsa03-t4": {
+   "t": "Modular Arithmetic: the Rules of \"% m\"",
+   "id": "M42uDLGRSpI",
+   "title": "Modular Arithmetic (Part 1)",
+   "channel": "Neso Academy",
+   "secs": 657
+  },
+  "dsa03-t5": {
+   "t": "Fast Modular Exponentiation (a^b mod m)",
+   "id": "_gYUlvcnjs0",
+   "title": "Modular Exponentiation (Part 1)",
+   "channel": "Neso Academy",
+   "secs": 620
+  },
+  "dsa03-t6": {
+   "t": "Counting Choices: nCr, Factorials & Pascal's Triangle",
+   "id": "pxh__ugRKz8",
+   "title": "Factorials Explained!",
+   "channel": "The Organic Chemistry Tutor",
+   "secs": 677
+  },
+  "dsa03-t7": {
+   "t": "The Pigeonhole Principle (proofs that something MUST exist)",
+   "id": "B2A2pGrDG8I",
+   "title": "What Is the Pigeonhole Principle?",
+   "channel": "Spanning Tree",
+   "secs": 503
+  },
+  "dsa04-t0": {
+   "t": "Binary Representation: Numbers as a Row of Light Switches",
+   "id": "W6mixXsn-Vc",
+   "title": "Breadboard tutorial: How to use a breadboard (for beginners)",
+   "channel": "LeftyMaker",
+   "secs": 256
+  },
+  "dsa04-t1": {
+   "t": "2's Complement: How Negative Numbers Live in Bits",
+   "id": "qQd-ViW7bfk",
+   "title": "L1. Introduction to Bit Manipulation | 1's 2's Compliment | Bit Operators",
+   "channel": "take U forward",
+   "secs": 2343
+  },
+  "dsa04-t2": {
+   "t": "Bitwise Operators: &, |, ^, ~, <<, >> and Java's >>>",
+   "id": "KS15_LEzU5w",
+   "title": "5.9 : Bitwise Operators – Left Shift, Right Shift, NOT — [Abdul Bari] Java Course",
+   "channel": "Hacktrickz",
+   "secs": 651
+  },
+  "dsa04-t3": {
+   "t": "XOR Properties: The Magic Cancel Button",
+   "id": "47u7b2yh7s8",
+   "title": "Lec-3: Types of Logic Gates | Symbols | Truth Tables",
+   "channel": "Gate Smashers",
+   "secs": 539
+  },
+  "dsa04-t4": {
+   "t": "Check, Set, Clear and Toggle the i-th Bit (Masks)",
+   "id": "nff7wZzNdQg",
+   "title": "Bit Manipulation - Part 3 | Check if a bit is set | Toggle/set/clear a bit",
+   "channel": "Nikhil Lohia",
+   "secs": 1095
+  },
+  "dsa04-t5": {
+   "t": "Brian Kernighan's Trick: n & (n − 1) Removes the Lowest Set Bit",
+   "id": null
+  },
+  "dsa04-t6": {
+   "t": "Single Number I: XOR Folding (Pairs Cancel Out)",
+   "id": "WqGb7159h7Q",
+   "title": "L8. XOR of Numbers in a Given Range | Bit Manipulation",
+   "channel": "take U forward",
+   "secs": 578
+  },
+  "dsa04-t7": {
+   "t": "Single Number II: Count Each Bit Column, Take Mod 3",
+   "id": "LpuPe81bc2w",
+   "title": "Binary Numbers and Base Systems as Fast as Possible",
+   "channel": "Techquickie",
+   "secs": 320
+  },
+  "dsa04-t8": {
+   "t": "Single Number III: Two Loners — XOR, Split by a Differing Bit, XOR Again",
+   "id": null
+  },
+  "dsa04-t9": {
+   "t": "Bitmask Subset Enumeration: Every Combination by Counting",
+   "id": "wpWGDHmpbgA",
+   "title": "How to GENERATE SUBSETS using Bit Masking | CP Course | EP 52",
+   "channel": "Luv",
+   "secs": 910
+  },
+  "dsa05-t0": {
+   "t": "1D and 2D Arrays in Java (How They Sit in Memory)",
+   "id": "9dr2mHYYoug",
+   "title": "Learn Java arrays in 9 minutes! 🍎",
+   "channel": "Bro Code",
+   "secs": 549
+  },
+  "dsa05-t1": {
+   "t": "Prefix Sum: Answer Any Range Sum in O(1)",
+   "id": "xbYr9JOC2Lk",
+   "title": "Prefix Sum Array and Range Sum Queries",
+   "channel": "Profound Academy",
+   "secs": 450
+  },
+  "dsa05-t10": {
+   "t": "2D Prefix Sums: Any Rectangle Sum in O(1)",
+   "id": "WibxoqMSMCw",
+   "title": "2D Prefix Sum and Submatrix Sum Queries",
+   "channel": "Profound Academy",
+   "secs": 312
+  },
+  "dsa05-t2": {
+   "t": "Even/Odd Index Prefix Sums: Special Index & Equilibrium Index",
+   "id": "xvNwoz-ufXA",
+   "title": "Count Subarray sum Equals K | Brute - Better -Optimal",
+   "channel": "take U forward",
+   "secs": 1449
+  },
+  "dsa05-t3": {
+   "t": "Carry Forward: Count \"ag\" Pairs & Leaders in an Array",
+   "id": "6mF0r3jQ5lk",
+   "title": "Session 1 - Array - Carry Forward || Count pair \"ag\" in array in O(n) time complexity",
+   "channel": "The Programming Hub",
+   "secs": 1696
+  },
+  "dsa05-t4": {
+   "t": "Kadane's Algorithm: Maximum Subarray Sum",
+   "id": "AHZpyENo7k4",
+   "title": "Kadane's Algorithm | Maximum Subarray Sum | Finding and Printing",
+   "channel": "take U forward",
+   "secs": 1209
+  },
+  "dsa05-t5": {
+   "t": "Contribution Technique: Sum of All Subarray Sums in O(N)",
+   "id": "xvNwoz-ufXA",
+   "title": "Count Subarray sum Equals K | Brute - Better -Optimal",
+   "channel": "take U forward",
+   "secs": 1449
+  },
+  "dsa05-t6": {
+   "t": "Prefix Max & Suffix Max: Trapping Rain Water",
+   "id": "1_5VuquLbXg",
+   "title": "L8. Trapping Rainwater | 2 Approaches | Stack and Queue Playlist",
+   "channel": "take U forward",
+   "secs": 1738
+  },
+  "dsa05-t7": {
+   "t": "Spiral Traversal: Four Shrinking Walls",
+   "id": "Ber2pi2C0j0",
+   "title": "Search a 2D Matrix - Leetcode 74 - Python",
+   "channel": "NeetCode",
+   "secs": 659
+  },
+  "dsa05-t8": {
+   "t": "Rotate a Matrix by 90°: Transpose + Reverse",
+   "id": "Z0R2u6gd3GU",
+   "title": "Rotate Matrix/Image by 90 Degrees | Brute - Optimal",
+   "channel": "take U forward",
+   "secs": 1067
+  },
+  "dsa05-t9": {
+   "t": "Row-Column Sorted Matrix: The Staircase Search",
+   "id": "JXU4Akft7yk",
+   "title": "BS-24. Search in a 2D Matrix - I | Binary Search of 2D",
+   "channel": "take U forward",
+   "secs": 942
+  },
+  "dsa06-t0": {
+   "t": "Opposite-Direction Pointers: 2-Sum on a Sorted Array",
+   "id": "cQ1Oz4ckceM",
+   "title": "TWO SUM II - Amazon Coding Interview Question - Leetcode 167 - Python",
+   "channel": "NeetCode",
+   "secs": 498
+  },
+  "dsa06-t1": {
+   "t": "3-Sum: Fix One Number, Then Two Pointers",
+   "id": "DhFh8Kw7ymk",
+   "title": "3 Sum | Brute -  Better - Optimal with Codes",
+   "channel": "take U forward",
+   "secs": 2305
+  },
+  "dsa06-t2": {
+   "t": "Container With Most Water (Move the Shorter Wall)",
+   "id": "EbkMABpP52U",
+   "title": "Container with Most Water Problem | Brute & Optimal Solution | Two Pointer Approach - Leetcode 11",
+   "channel": "Apna College",
+   "secs": 1920
+  },
+  "dsa06-t3": {
+   "t": "Same-Direction Pointers (Slow & Fast): Remove Duplicates, Move Zeroes",
+   "id": "aayNRwUN3Do",
+   "title": "Move Zeroes - Leetcode 283 - Python",
+   "channel": "NeetCode",
+   "secs": 495
+  },
+  "dsa06-t4": {
+   "t": "Same-Direction Pointers: Pairs with Difference K",
+   "id": "QzZ7nmouLTI",
+   "title": "Two Pointers in 7 minutes | LeetCode Pattern",
+   "channel": "AlgoMasterIO",
+   "secs": 441
+  },
+  "dsa06-t5": {
+   "t": "Fixed-Size Sliding Window: Max Sum of a Subarray of Size K",
+   "id": "5WZl3MMT0Eg",
+   "title": "Maximum Subarray - Amazon Coding Interview Question - Leetcode 53 - Python",
+   "channel": "NeetCode",
+   "secs": 483
+  },
+  "dsa06-t6": {
+   "t": "Variable-Size Sliding Window: Smallest Subarray with Sum ≥ K (Grow / Shrink Template)",
+   "id": null
+  },
+  "dsa06-t7": {
+   "t": "Pattern Picker: Which Pointer Trick Fits?",
+   "id": "6p1m2nCE7jE",
+   "title": "Amazon Behavioral Interview Questions | Leadership Principles Explained",
+   "channel": "Aced (formerly Exponent)",
+   "secs": 727
+  },
+  "dsa07-t0": {
+   "t": "The Three Simple Sorts: Bubble, Selection, Insertion",
+   "id": "nKzEJWbkPbQ",
+   "title": "Insertion Sort Algorithm Made Simple [Sorting Algorithms]",
+   "channel": "Programming with Mosh",
+   "secs": 506
+  },
+  "dsa07-t1": {
+   "t": "Count Sort & Radix Sort (sorting without comparing)",
+   "id": "XiuSW_mEn7g",
+   "title": "Radix Sort Algorithm Introduction in 5 Minutes",
+   "channel": "CS Dojo",
+   "secs": 279
+  },
+  "dsa07-t2": {
+   "t": "Merge Sort: Divide & Conquer (+ Inversion Count)",
+   "id": "AseUmwVNaoY",
+   "title": "Count Inversions in an Array | Brute and Optimal",
+   "channel": "take U forward",
+   "secs": 1457
+  },
+  "dsa07-t3": {
+   "t": "Quick Sort: Partitioning (Lomuto & Hoare), Pivot Choice, Worst Case",
+   "id": "tWCaFVJMUi8",
+   "title": "L-3.1: How Quick Sort Works | Performance of Quick Sort with Example | Divide and Conquer",
+   "channel": "Gate Smashers",
+   "secs": 807
+  },
+  "dsa07-t4": {
+   "t": "Custom Comparators in Java (lambdas, Integer[] vs int[], multiple keys, overflow-safe compare)",
+   "id": null
+  },
+  "dsa07-t5": {
+   "t": "Stable vs Unstable Sorting",
+   "id": "60-rBUCMsFo",
+   "title": "Stable V.S. Unstable Sorting Algorithms",
+   "channel": "Sai Anish Malla",
+   "secs": 266
+  },
+  "dsa07-t6": {
+   "t": "Merging Overlapping Intervals",
+   "id": "IexN60k62jo",
+   "title": "Merge Overlapping Intervals | Brute, Optimal with Precise TC analysis",
+   "channel": "take U forward",
+   "secs": 1355
+  },
+  "dsa07-t7": {
+   "t": "Insert Interval (into a sorted, non-overlapping list)",
+   "id": "xxRE-46OCC8",
+   "title": "L9. Insert Intervals | Greedy Algorithms Playlist",
+   "channel": "take U forward",
+   "secs": 796
+  },
+  "dsa07-t8": {
+   "t": "Meeting Rooms I & II, Minimum Platforms (sweep + min-heap)",
+   "id": "FdzJmTCVyJU",
+   "title": "Meeting Rooms II - Leetcode 253 - Python",
+   "channel": "NeetCode",
+   "secs": 706
+  },
+  "dsa08-t0": {
+   "t": "Inside HashSet & HashMap: Hash Function, hashCode/equals, Buckets, Chaining, Treeify, Load Factor & Rehash",
+   "id": null
+  },
+  "dsa08-t1": {
+   "t": "Frequency Map: Count First, Answer Later (First Non-Repeating, Anagrams, Group Anagrams)",
+   "id": "wiGpQwVHdE0",
+   "title": "Longest Substring Without Repeating Characters - Leetcode 3 - Python",
+   "channel": "NeetCode",
+   "secs": 406
+  },
+  "dsa08-t2": {
+   "t": "Lookup Set & Complement Map: 2-Sum on an Unsorted Array",
+   "id": "KLlXCFG5TnA",
+   "title": "Two Sum - Leetcode 1 - HashMap - Python",
+   "channel": "NeetCode",
+   "secs": 506
+  },
+  "dsa08-t3": {
+   "t": "Window Frequency Map: Distinct Elements in Every Window of Size K",
+   "id": "j48e8ac7r20",
+   "title": "Count Distinct Elements in every Window of size k | HashMap Interview Problems | DSA-One Course #29",
+   "channel": "Anuj Kumar Sharma",
+   "secs": 657
+  },
+  "dsa08-t4": {
+   "t": "Prefix Sum + HashSet: Does a Zero-Sum Subarray Exist?",
+   "id": "xvNwoz-ufXA",
+   "title": "Count Subarray sum Equals K | Brute - Better -Optimal",
+   "channel": "take U forward",
+   "secs": 1449
+  },
+  "dsa08-t5": {
+   "t": "Prefix Sum + HashMap of Counts: Count Subarrays with Sum = K",
+   "id": "xvNwoz-ufXA",
+   "title": "Count Subarray sum Equals K | Brute - Better -Optimal",
+   "channel": "take U forward",
+   "secs": 1449
+  },
+  "dsa08-t6": {
+   "t": "Prefix Sum + First-Index Map: Longest Subarray with Sum 0 / K and Equal 0s & 1s",
+   "id": "xvNwoz-ufXA",
+   "title": "Count Subarray sum Equals K | Brute - Better -Optimal",
+   "channel": "take U forward",
+   "secs": 1449
+  },
+  "dsa08-t7": {
+   "t": "Sliding Window + Hashing: Longest Substring Without Repeats & Minimum Window Substring",
+   "id": "-zSxTJkcdAo",
+   "title": "L3. Longest Substring Without Repeating Characters | 2 Pointers and Sliding Window Playlist",
+   "channel": "take U forward",
+   "secs": 1389
+  },
+  "dsa08-t8": {
+   "t": "HashSet Chain-Start Trick: Longest Consecutive Sequence in O(N)",
+   "id": "oO5uLE7EUlM",
+   "title": "Longest Consecutive Sequence | Google Interview Question | Brute Better Optimal",
+   "channel": "take U forward",
+   "secs": 1391
+  },
+  "dsa09-t0": {
+   "t": "Strings in Java: Immutability, char Arithmetic (c - 'a') and the String Pool",
+   "id": "vCRD36bG8xQ",
+   "title": "Strings | Lecture 12 | Java Placement Series",
+   "channel": "Apna College",
+   "secs": 1567
+  },
+  "dsa09-t1": {
+   "t": "Palindromes: Two-Pointer Check & Valid Palindrome (ignore non-alphanumerics)",
+   "id": "L84y20axpIA",
+   "title": "Valid Palindrome 🔥 Strings | Two Pointer Approach Explained | Python, C++ & Java",
+   "channel": "RisingBrain",
+   "secs": 843
+  },
+  "dsa09-t2": {
+   "t": "StringBuilder Efficiency: Why s += c in a Loop Is O(N²)",
+   "id": "v4J2bEQF6jk",
+   "title": "#29 Multi Dimensional Array in Java",
+   "channel": "Telusko",
+   "secs": 788
+  },
+  "dsa09-t3": {
+   "t": "Longest Palindromic Substring: Expand Around Center (odd & even centers)",
+   "id": "XYQecbcd6_c",
+   "title": "Longest Palindromic Substring - Python - Leetcode 5",
+   "channel": "NeetCode",
+   "secs": 491
+  },
+  "dsa09-t4": {
+   "t": "Polynomial Rolling Hash (Rabin-Karp): formula, rolling update, mod, collisions",
+   "id": null
+  },
+  "dsa09-t5": {
+   "t": "KMP: the LPS (prefix = suffix) Array and Linear-Time Pattern Search",
+   "id": "V5-7GzOfADQ",
+   "title": "9.1 Knuth-Morris-Pratt KMP String Matching Algorithm",
+   "channel": "Abdul Bari",
+   "secs": 1136
+  },
+  "dsa09-t6": {
+   "t": "Z-Algorithm: Z-array, the [L, R] box, and the pattern + \"$\" + text trick",
+   "id": "PAceaOSnxQs",
+   "title": "3.6 Infix to Postfix using Stack | Data Structure and Algorithm",
+   "channel": "Jenny's Lectures CS IT",
+   "secs": 1210
+  },
+  "dsa10-t0": {
+   "t": "Classic Binary Search: Halving the Dictionary",
+   "id": "ft0owvS5tQA",
+   "title": "Top 6 Coding Interview Concepts (Data Structures & Algorithms)",
+   "channel": "NeetCode",
+   "secs": 651
+  },
+  "dsa10-t1": {
+   "t": "First and Last Occurrence (Lower Bound / Upper Bound)",
+   "id": "6zhGS79oQ4k",
+   "title": "BS-2. Implement Lower Bound and Upper Bound | Search Insert Position | Floor and Ceil",
+   "channel": "take U forward",
+   "secs": 1946
+  },
+  "dsa10-t2": {
+   "t": "Search in a Rotated Sorted Array",
+   "id": "5qGrJbHhqFs",
+   "title": "BS-4. Search Element in Rotated Sorted Array - I",
+   "channel": "take U forward",
+   "secs": 998
+  },
+  "dsa10-t3": {
+   "t": "Peak Element: Binary Search Without a Sorted Array",
+   "id": "cXxmbemS6XM",
+   "title": "BS-9. Find Peak Element",
+   "channel": "take U forward",
+   "secs": 1973
+  },
+  "dsa10-t4": {
+   "t": "Searching a Monotonic Function: Integer Square Root",
+   "id": "WjpswYrS2nY",
+   "title": "Nth Root of a Number Using Binary Search",
+   "channel": "take U forward",
+   "secs": 975
+  },
+  "dsa10-t5": {
+   "t": "Binary Search on the Answer: Maximize the Minimum (Aggressive Cows)",
+   "id": "R_Mfw4ew-Vo",
+   "title": "BS-17. Aggressive Cows | Binary Search Hard",
+   "channel": "take U forward",
+   "secs": 1604
+  },
+  "dsa10-t6": {
+   "t": "Binary Search on the Answer: Minimize the Maximum (Painters, Books)",
+   "id": "Z0hwjftStI4",
+   "title": "BS-18. Allocate Books or Book Allocation | Hard Binary Search",
+   "channel": "take U forward",
+   "secs": 1649
+  },
+  "dsa10-t7": {
+   "t": "Koko Eating Bananas & the Monotonic Feasibility Recipe",
+   "id": "qyfekrNni90",
+   "title": "BS-12. Koko Eating Bananas",
+   "channel": "take U forward",
+   "secs": 1264
+  },
+  "dsa11-t0": {
+   "t": "Recursion & the Call Stack: Base Case, Recursive Case, Stack Overflow",
+   "id": "kF656IEsnwQ",
+   "title": "Why Recursion Blows Up: Call Stacks, Stack Overflow, and Memoization",
+   "channel": "Learning Podcasts",
+   "secs": 574
+  },
+  "dsa11-t1": {
+   "t": "Recurrence Trees: Counting the Work of a Recursive Function",
+   "id": "bJg_sv7PV-g",
+   "title": "L-2.9: Recurrence Relation [T(n)= 2T(n/2) +cn] | Recursive Tree method | Algorithm",
+   "channel": "Gate Smashers",
+   "secs": 434
+  },
+  "dsa11-t2": {
+   "t": "Tower of Hanoi",
+   "id": "rf6uf3jNjbo",
+   "title": "Towers of Hanoi: A Complete Recursive Visualization",
+   "channel": "Reducible",
+   "secs": 1273
+  },
+  "dsa11-t3": {
+   "t": "The Backtracking Template: Choose → Explore → Un-choose",
+   "id": "pcKY4hjDrxk",
+   "title": "5.1 Graph Traversals - BFS & DFS -Breadth First Search and Depth First Search",
+   "channel": "Abdul Bari",
+   "secs": 1111
+  }
+ }
 }
