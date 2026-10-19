@@ -595,6 +595,638 @@
    "title": "5.1 Graph Traversals - BFS & DFS -Breadth First Search and Depth First Search",
    "channel": "Abdul Bari",
    "secs": 1111
+  },
+  "dsa11-t4": {
+   "t": "Generating All Subsets / Subsequences (Pick or Not-Pick)",
+   "id": "AxNNVECce8c",
+   "title": "L6. Recursion on Subsequences | Printing Subsequences",
+   "channel": "take U forward",
+   "secs": 1501
+  },
+  "dsa11-t5": {
+   "t": "Permutations: Swap Method, used[] Method & Handling Duplicates",
+   "id": "f2ic2Rsc9pU",
+   "title": "L13. Print all Permutations of a String/Array | Recursion | Approach - 2",
+   "channel": "take U forward",
+   "secs": 1094
+  },
+  "dsa11-t6": {
+   "t": "Combination Sum: Reuse, No-Reuse, Fixed Size & the Start Index",
+   "id": "kyLxTdsT8ws",
+   "title": "6.2 Sum Of Subsets Problem - Backtracking",
+   "channel": "Abdul Bari",
+   "secs": 739
+  },
+  "dsa11-t7": {
+   "t": "N-Queens: Constraint Backtracking with O(1) Safety Checks",
+   "id": "xFv_Hl4B83A",
+   "title": "6.1 N Queens Problem using Backtracking",
+   "channel": "Abdul Bari",
+   "secs": 821
+  },
+  "dsa11-t8": {
+   "t": "Sudoku Solver: Fill, Check, Erase (and Smarter Cell Ordering)",
+   "id": null
+  },
+  "dsa12-t0": {
+   "t": "Singly & Doubly Linked Lists: Nodes, Insert, Delete, Traversal",
+   "id": "N6dOwBde7-M",
+   "title": "Learn Linked Lists in 13 minutes 🔗",
+   "channel": "Bro Code",
+   "secs": 804
+  },
+  "dsa12-t1": {
+   "t": "The Dummy Node Trick (and Gap Pointers)",
+   "id": "bCaAEv-pvLU",
+   "title": "LeetCode #19: Remove Nth Node From End — One Pass with Two Pointers",
+   "channel": "Brute To Best",
+   "secs": 430
+  },
+  "dsa12-t2": {
+   "t": "Fast & Slow Pointers: Finding the Middle",
+   "id": "7LjQ57RqgEc",
+   "title": "L13. Find the middle element of the LinkedList | Multiple Approaches",
+   "channel": "take U forward",
+   "secs": 877
+  },
+  "dsa12-t3": {
+   "t": "Floyd's Cycle Detection: Is There a Loop, and Where Does It Start?",
+   "id": "wjYnzkAhcNk",
+   "title": "Find the Duplicate Number - Floyd's Cycle Detection - Leetcode 287 - Python",
+   "channel": "NeetCode",
+   "secs": 1054
+  },
+  "dsa12-t4": {
+   "t": "Reversing a Linked List In-Place (Iterative & Recursive)",
+   "id": "G0_I-ZF0S38",
+   "title": "Reverse Linked List - Iterative AND Recursive - Leetcode 206 - Python",
+   "channel": "NeetCode",
+   "secs": 667
+  },
+  "dsa12-t5": {
+   "t": "Reversing in Groups of K",
+   "id": "nbI0Hvr9-kY",
+   "title": "Reverse Array in Groups of K DSA ,GeeksforGeeks Interview Prep Arrays Coding Product based company",
+   "channel": "leetcoderhub",
+   "secs": 419
+  },
+  "dsa12-t6": {
+   "t": "Merge Two Sorted Lists",
+   "id": "XIdigk956u0",
+   "title": "Merge Two Sorted Lists - Leetcode 21 - Python",
+   "channel": "NeetCode",
+   "secs": 376
+  },
+  "dsa12-t7": {
+   "t": "LRU Cache: HashMap + Doubly Linked List",
+   "id": "7ABFKPK2hD4",
+   "title": "LRU Cache - Twitch Interview Question - Leetcode 146",
+   "channel": "NeetCode",
+   "secs": 1069
+  },
+  "dsa13-t0": {
+   "t": "Stack (LIFO) vs Queue (FIFO) — and why Java uses ArrayDeque",
+   "id": "nqXaPZi99JI",
+   "title": "Learn Queue data structures in 10 minutes 🎟️",
+   "channel": "Bro Code",
+   "secs": 607
+  },
+  "dsa13-t1": {
+   "t": "Balanced Parentheses — matching brackets with a stack",
+   "id": "xwjS0iZhw4I",
+   "title": "L2. Check for Balanced Parentheses | Stack and Queue",
+   "channel": "take U forward",
+   "secs": 748
+  },
+  "dsa13-t2": {
+   "t": "Min Stack — get the minimum in O(1)",
+   "id": "qkLl7nAwDPo",
+   "title": "Design Min Stack - Amazon Interview Question - Leetcode 155 - Python",
+   "channel": "NeetCode",
+   "secs": 533
+  },
+  "dsa13-t3": {
+   "t": "Infix → Postfix and evaluating Postfix (RPN) with a stack",
+   "id": "PAceaOSnxQs",
+   "title": "3.6 Infix to Postfix using Stack | Data Structure and Algorithm",
+   "channel": "Jenny's Lectures CS IT",
+   "secs": 1210
+  },
+  "dsa13-t4": {
+   "t": "Monotonic Stack — Next Greater Element",
+   "id": "e7XQLtOQM3I",
+   "title": "L5. Next Greater Element | Stack and Queue Playlist",
+   "channel": "take U forward",
+   "secs": 1105
+  },
+  "dsa13-t5": {
+   "t": "Monotonic Stack — Stock Span (previous greater)",
+   "id": "6Izu3F3vibo",
+   "title": "Online Stock Span | Monotonic Stack Explained | Python C++ Java | Brute Force to Optimized O(n)",
+   "channel": "RisingBrain",
+   "secs": 1067
+  },
+  "dsa13-t6": {
+   "t": "Monotonic Stack — Largest Rectangle in Histogram",
+   "id": "zx5Sw9130L0",
+   "title": "LARGEST RECTANGLE IN HISTOGRAM - Leetcode 84 - Python",
+   "channel": "NeetCode",
+   "secs": 1040
+  },
+  "dsa13-t7": {
+   "t": "Queue using Two Stacks — amortized O(1)",
+   "id": "3Et9MrMc02A",
+   "title": "Queue Implementation using Stack | O(1) Push and Pop Operations",
+   "channel": "take U forward",
+   "secs": 680
+  },
+  "dsa13-t8": {
+   "t": "Monotonic Deque — Sliding Window Maximum",
+   "id": "DfljaUwZsOk",
+   "title": "Sliding Window Maximum - Monotonic Queue - Leetcode 239",
+   "channel": "NeetCode",
+   "secs": 946
+  },
+  "dsa14-t0": {
+   "t": "Tree Terminology: Root, Leaf, Depth, Height & Friends",
+   "id": "-LYhq4WZ04s",
+   "title": "DS_32-Tree Terminology in Data Structures | Root, Leaf, Edge, Level & More Explained | DSA using C",
+   "channel": "Sundeep Saradhi Kanthety",
+   "secs": 1812
+  },
+  "dsa14-t1": {
+   "t": "Preorder, Inorder, Postorder (Recursive DFS)",
+   "id": "WLvU5EQVZqY",
+   "title": "Simplest Binary Tree Traversal trick for preorder inorder postorder",
+   "channel": "Techdose",
+   "secs": 435
+  },
+  "dsa14-t10": {
+   "t": "BST Delete: Leaf, One Child, Two Children",
+   "id": "gcULXE7ViZw",
+   "title": "Delete a node from Binary Search Tree",
+   "channel": "mycodeschool",
+   "secs": 1107
+  },
+  "dsa14-t11": {
+   "t": "Validate a BST & Find the K-th Smallest (Inorder Superpowers)",
+   "id": null
+  },
+  "dsa14-t12": {
+   "t": "Construct a Tree from Traversals (Preorder/Postorder + Inorder)",
+   "id": "PoBGyrIWisE",
+   "title": "5.7 Construct Binary Tree from Preorder and Inorder Traversal | Example | Data Structures Tutorials",
+   "channel": "Jenny's Lectures CS IT",
+   "secs": 585
+  },
+  "dsa14-t2": {
+   "t": "Iterative Traversals with an Explicit Stack",
+   "id": null
+  },
+  "dsa14-t3": {
+   "t": "Level Order Traversal (BFS with a Queue)",
+   "id": "EoAsWbO7sqg",
+   "title": "L8. Level Order Traversal of Binary Tree | BFS | C++ | Java",
+   "channel": "take U forward",
+   "secs": 537
+  },
+  "dsa14-t4": {
+   "t": "Left View & Right View",
+   "id": "KV4mRzTjlAk",
+   "title": "L24. Right/Left View of Binary Tree | C++ | Java",
+   "channel": "take U forward",
+   "secs": 808
+  },
+  "dsa14-t5": {
+   "t": "Top View & Bottom View (Horizontal Distance + Map)",
+   "id": "-Cr4I8ZTXgc",
+   "title": "Top View and Bottom View of Binary tree | Iterative Method | Trees",
+   "channel": "Fit Coder",
+   "secs": 883
+  },
+  "dsa14-t6": {
+   "t": "Height & Diameter (Bottom-Up Recursion)",
+   "id": "s2Yyk3qdy3o",
+   "title": "How to solve (almost) any binary tree coding problem",
+   "channel": "Inside code",
+   "secs": 260
+  },
+  "dsa14-t7": {
+   "t": "Balanced Tree Check (Height-Balanced)",
+   "id": "Yt50Jfbd8Po",
+   "title": "L15. Check for Balanced Binary Tree | C++ | Java",
+   "channel": "take U forward",
+   "secs": 750
+  },
+  "dsa14-t8": {
+   "t": "Lowest Common Ancestor (LCA) in a Binary Tree and in a BST",
+   "id": "gs2LMfuOR9k",
+   "title": "Lowest Common Ancestor of a Binary Search Tree - Leetcode 235 - Python",
+   "channel": "NeetCode",
+   "secs": 403
+  },
+  "dsa14-t9": {
+   "t": "BST Search & Insert (and Min, Max, Floor, Ceil)",
+   "id": "KSsk8AhdOZA",
+   "title": "L41. Ceil in a Binary Search Tree | BST | C++ | Java",
+   "channel": "take U forward",
+   "secs": 336
+  },
+  "dsa15-t0": {
+   "t": "Min-Heap & Max-Heap: the array trick, insert (sift-up), extract (sift-down)",
+   "id": "uuot9ItgTEI",
+   "title": "L-3.13: Introduction to Heap Tree with examples | Max Min Heap",
+   "channel": "Gate Smashers",
+   "secs": 465
+  },
+  "dsa15-t1": {
+   "t": "Heapify / Build-Heap in O(N) and Heap Sort",
+   "id": "2DmK_H7IdTo",
+   "title": "Heap sort in 4 minutes",
+   "channel": "Michael Sambol",
+   "secs": 253
+  },
+  "dsa15-t2": {
+   "t": "Java PriorityQueue: min by default, max with reverseOrder / comparator",
+   "id": "ZA2oNhtNk3w",
+   "title": "#95 Comparator vs Comparable in Java",
+   "channel": "Telusko",
+   "secs": 943
+  },
+  "dsa15-t3": {
+   "t": "K Largest / K Smallest Elements (the Top-K pattern)",
+   "id": "YPTqKIgVk-k",
+   "title": "Top K Frequent Elements - Bucket Sort - Leetcode 347 - Python",
+   "channel": "NeetCode",
+   "secs": 793
+  },
+  "dsa15-t4": {
+   "t": "Merge K Sorted Lists (heap of the current heads)",
+   "id": "q5a5OiGbT6Q",
+   "title": "Merge K Sorted Lists - Leetcode 23 - Python",
+   "channel": "NeetCode",
+   "secs": 634
+  },
+  "dsa15-t5": {
+   "t": "Running Median of a Data Stream (two heaps)",
+   "id": "itmhHWaHupI",
+   "title": "Find Median from Data Stream - Heap & Priority Queue - Leetcode 295",
+   "channel": "NeetCode",
+   "secs": 1415
+  },
+  "dsa15-t6": {
+   "t": "Prefix Trees (Tries): insert, search, startsWith, autocomplete",
+   "id": "oobqoCJlHA0",
+   "title": "Implement Trie (Prefix Tree) - Leetcode 208",
+   "channel": "NeetCode",
+   "secs": 1136
+  },
+  "dsa15-t7": {
+   "t": "Maximum XOR Pair (binary trie + greedy opposite bit)",
+   "id": "bTauscvOymA",
+   "title": "XOR Problems in Bit Manipulation | Advanced Bit Manipulation Techniques✅ Java C++ | DSAOne Course #4",
+   "channel": "Anuj Kumar Sharma",
+   "secs": 1121
+  },
+  "dsa16-t0": {
+   "t": "The Greedy Mindset: Greedy Choice Property & Exchange-Argument Proofs",
+   "id": "lfQvPHGtu6Q",
+   "title": "Greedy Algorithms Explained",
+   "channel": "Tech With Tim",
+   "secs": 1068
+  },
+  "dsa16-t1": {
+   "t": "Activity Selection & Interval Scheduling (Earliest End First)",
+   "id": "hVhOeaONg1Y",
+   "title": "Interval Scheduling Maximization (Proof w/ Exchange Argument)",
+   "channel": "Back To Back SWE",
+   "secs": 1220
+  },
+  "dsa16-t2": {
+   "t": "Job Sequencing with Deadlines (Best Profit, Latest Free Slot)",
+   "id": "zPtI8q9gvX8",
+   "title": "3.2 Job Sequencing with Deadlines - Greedy Method",
+   "channel": "Abdul Bari",
+   "secs": 809
+  },
+  "dsa16-t3": {
+   "t": "Fractional Knapsack (Greedy by Value per Kg)",
+   "id": "xZfmHVi7FMg",
+   "title": "Fractional Knapsack Problem using Greedy Method | Example | Data structures and algorithms",
+   "channel": "Jenny's Lectures CS IT",
+   "secs": 716
+  },
+  "dsa16-t4": {
+   "t": "Huffman Coding (Greedy Merging of the Two Smallest)",
+   "id": "co4_ahEDCho",
+   "title": "3.4 Huffman Coding - Greedy Method",
+   "channel": "Abdul Bari",
+   "secs": 1053
+  },
+  "dsa16-t5": {
+   "t": "Minimum Platforms & Meeting Rooms (Sweep-Line Greedy)",
+   "id": "AsGzwR_FWok",
+   "title": "L10. Minimum number of platforms required in a railway station",
+   "channel": "take U forward",
+   "secs": 1090
+  },
+  "dsa16-t6": {
+   "t": "Gas Station / Circular Tour (Reset the Start When the Tank Goes Negative)",
+   "id": "bChW2-3Rdf4",
+   "title": "4 Ultrasonic Cleaner Mistakes You Need To Stop Now!",
+   "channel": "Steve's Small Engine Saloon",
+   "secs": 647
+  },
+  "dsa16-t7": {
+   "t": "Jump Game I & II (Farthest Reach, BFS Levels Without a Queue)",
+   "id": "Gtugy3mRV-A",
+   "title": "Jump Game (LeetCode 55) | Full solution with animations and visuals | Greedy Algorithms",
+   "channel": "Nikhil Lohia",
+   "secs": 1115
+  },
+  "dsa16-t8": {
+   "t": "When Greedy Fails: the Coin Change Counterexample",
+   "id": "v0eQ4nXJjsk",
+   "title": "L-4.1: Introduction to Greedy Techniques With Example | What is Greedy Techniques",
+   "channel": "Gate Smashers",
+   "secs": 452
+  },
+  "dsa17-t0": {
+   "t": "DP Intuition: Overlapping Subproblems + Optimal Substructure",
+   "id": "tyB0ztf0DNY",
+   "title": "DP 1. Introduction to Dynamic Programming | Memoization | Tabulation | Space Optimization Techniques",
+   "channel": "take U forward",
+   "secs": 2031
+  },
+  "dsa17-t1": {
+   "t": "Memoization vs Tabulation vs Space Optimization (Climbing Stairs 3 Ways)",
+   "id": "tyB0ztf0DNY",
+   "title": "DP 1. Introduction to Dynamic Programming | Memoization | Tabulation | Space Optimization Techniques",
+   "channel": "take U forward",
+   "secs": 2031
+  },
+  "dsa17-t2": {
+   "t": "House Robber: the Take-or-Skip Pattern",
+   "id": "GrMBfJNk_NY",
+   "title": "DP 5. Maximum Sum of Non-Adjacent Elements | House Robber | 1-D | DP on Subsequences",
+   "channel": "take U forward",
+   "secs": 1943
+  },
+  "dsa17-t3": {
+   "t": "Coin Change: Minimum Coins and Number of Ways",
+   "id": "H9bfqozjoqs",
+   "title": "Coin Change - Dynamic Programming Bottom Up - Leetcode 322",
+   "channel": "NeetCode",
+   "secs": 1163
+  },
+  "dsa17-t4": {
+   "t": "0/1 Knapsack: Take Each Item at Most Once",
+   "id": "nLmhmB6NzcM",
+   "title": "4.5 0/1 Knapsack - Two Methods - Dynamic Programming",
+   "channel": "Abdul Bari",
+   "secs": 1704
+  },
+  "dsa17-t5": {
+   "t": "Unbounded Knapsack: Reuse Items as Often as You Like (Rod Cutting)",
+   "id": null
+  },
+  "dsa17-t6": {
+   "t": "Longest Common Subsequence (LCS): DP on Two Strings",
+   "id": "sSno9rV8Rhg",
+   "title": "4.9 Longest Common Subsequence (LCS)  - Recursion and Dynamic Programming",
+   "channel": "Abdul Bari",
+   "secs": 1415
+  },
+  "dsa17-t7": {
+   "t": "Edit Distance (Levenshtein): Insert, Delete, Replace",
+   "id": "MiqoA-yF-0M",
+   "title": "Edit Distance Between 2 Strings - The Levenshtein Distance (\"Edit Distance\" on LeetCode)",
+   "channel": "Back To Back SWE",
+   "secs": 976
+  },
+  "dsa17-t8": {
+   "t": "Grid DP: Unique Paths (with Obstacles) and Minimum Path Sum",
+   "id": "TmhpgXScLyY",
+   "title": "DP 9. Unique Paths 2 | DP on Grid with Maze Obstacles",
+   "channel": "take U forward",
+   "secs": 779
+  },
+  "dsa18-t0": {
+   "t": "Longest Increasing Subsequence: O(N²) DP and the O(N log N) “tails” trick",
+   "id": "VTXOwIhnih8",
+   "title": "LIS in O(n log n): Why the Binary Search Trick Actually Works",
+   "channel": "KnowledgeStore",
+   "secs": 542
+  },
+  "dsa18-t1": {
+   "t": "Partition DP: Word Break and Palindrome Partitioning (cut a string into good pieces)",
+   "id": "9h10fqkI7Nk",
+   "title": "38  Palindrome Partitioning Memoized Optimisation",
+   "channel": "Aditya Verma",
+   "secs": 616
+  },
+  "dsa18-t2": {
+   "t": "Interval DP: Matrix Chain Multiplication and Burst Balloons (solve every range, shortest first)",
+   "id": "_H8V5hJUGd0",
+   "title": "DP 53. Palindrome Partitioning - II | Front Partition 🔥",
+   "channel": "take U forward",
+   "secs": 1397
+  },
+  "dsa18-t3": {
+   "t": "DP on Trees: House Robber III and Binary Tree Maximum Path Sum (children report, parent decides)",
+   "id": null
+  },
+  "dsa18-t4": {
+   "t": "State-Machine DP: the Buy/Sell Stock family (cooldown, fee, k transactions)",
+   "id": null
+  },
+  "dsa18-t5": {
+   "t": "DP on Subsequences & Strings: the two-pointer grid family (LPS, SCS, Distinct Subsequences, wildcard/regex)",
+   "id": null
+  },
+  "dsa18-t6": {
+   "t": "Pattern Map: reading a problem and picking the right DP shape (state design checklist)",
+   "id": null
+  },
+  "dsa19-t0": {
+   "t": "Graph Vocabulary & Representations: Edge List, Adjacency Matrix, Adjacency List",
+   "id": "5hPfm_uqXmw",
+   "title": "6.1 Graph Representation in Data Structure(Graph Theory)|Adjacency Matrix and Adjacency List",
+   "channel": "Jenny's Lectures CS IT",
+   "secs": 732
+  },
+  "dsa19-t1": {
+   "t": "BFS: Level-by-Level Search & Shortest Path in an Unweighted Graph",
+   "id": "pcKY4hjDrxk",
+   "title": "5.1 Graph Traversals - BFS & DFS -Breadth First Search and Depth First Search",
+   "channel": "Abdul Bari",
+   "secs": 1111
+  },
+  "dsa19-t2": {
+   "t": "Multi-Source BFS on Grids: Rotting Oranges, Nearest Distance, Spreading Fire",
+   "id": null
+  },
+  "dsa19-t3": {
+   "t": "DFS: Going Deep, Connected Components & Number of Islands",
+   "id": "muncqlKJrH0",
+   "title": "G-8. Number of Islands | Number of Connected Components in Matrix | C++ | Java",
+   "channel": "take U forward",
+   "secs": 1504
+  },
+  "dsa19-t4": {
+   "t": "Cycle Detection: Undirected (parent check) and Directed (three colours)",
+   "id": "AK7BuT5MgU0",
+   "title": "6.8 Cycle detection in Directed Graph |Data Structures and Algorithms Tutorials",
+   "channel": "Jenny's Lectures CS IT",
+   "secs": 636
+  },
+  "dsa19-t5": {
+   "t": "Bipartite Graphs: Two-Colouring with BFS (and the Odd-Cycle Rule)",
+   "id": "GiClUAJMMtw",
+   "title": "Hamiltonian Graph with examples | Hamiltonian Path & Circuit",
+   "channel": "Gate Smashers",
+   "secs": 518
+  },
+  "dsa19-t6": {
+   "t": "Topological Sort: Kahn’s Algorithm (BFS) and DFS Post-Order",
+   "id": "5lZ0iJMrUMk",
+   "title": "G-21. Topological Sort Algorithm | DFS",
+   "channel": "take U forward",
+   "secs": 810
+  },
+  "dsa19-t7": {
+   "t": "Disjoint Set Union (Union-Find): Path Compression + Union by Rank",
+   "id": "aBxjDBC4M1U",
+   "title": "G-46. Disjoint Set | Union by Rank | Union by Size | Path Compression",
+   "channel": "take U forward",
+   "secs": 2535
+  },
+  "dsa20-t0": {
+   "t": "Weighted Graphs, Relaxation & Dijkstra with PriorityQueue",
+   "id": "V6H1qAeB-l4",
+   "title": "G-32. Dijkstra's Algorithm - Using Priority Queue - C++ and Java - Part 1",
+   "channel": "take U forward",
+   "secs": 1362
+  },
+  "dsa20-t1": {
+   "t": "0-1 BFS: Shortest Paths When Every Weight Is 0 or 1",
+   "id": "oNI0rf2P9gE",
+   "title": "4.2 All Pairs Shortest Path (Floyd-Warshall) - Dynamic Programming",
+   "channel": "Abdul Bari",
+   "secs": 853
+  },
+  "dsa20-t2": {
+   "t": "Bellman-Ford: Negative Edges & Negative-Cycle Detection",
+   "id": "FtN3BYH2Zes",
+   "title": "4.4 Bellman Ford Algorithm - Single Source Shortest Path - Dynamic Programming",
+   "channel": "Abdul Bari",
+   "secs": 1032
+  },
+  "dsa20-t3": {
+   "t": "Floyd-Warshall: All-Pairs Shortest Paths with a 3-Loop DP",
+   "id": "oNI0rf2P9gE",
+   "title": "4.2 All Pairs Shortest Path (Floyd-Warshall) - Dynamic Programming",
+   "channel": "Abdul Bari",
+   "secs": 853
+  },
+  "dsa20-t4": {
+   "t": "Minimum Spanning Trees & Prim's Algorithm",
+   "id": "ZtZaR7EcI5Y",
+   "title": "6.5 Prim's Algorithm for Minimum Spanning Tree | Data Structures Tutorials",
+   "channel": "Jenny's Lectures CS IT",
+   "secs": 622
+  },
+  "dsa20-t5": {
+   "t": "Kruskal's MST with Disjoint Set Union (DSU)",
+   "id": "aBxjDBC4M1U",
+   "title": "G-46. Disjoint Set | Union by Rank | Union by Size | Path Compression",
+   "channel": "take U forward",
+   "secs": 2535
+  },
+  "dsa20-t6": {
+   "t": "Shortest-Path Variants: K Stops, Minimum Effort & Multi-Criteria States",
+   "id": null
+  },
+  "dsa21-t0": {
+   "t": "Segment Tree I: Build, Point Update & Range Query",
+   "id": "-dUiRtJ8ot0",
+   "title": "Segment Tree: Build and Query | Live Coding..",
+   "channel": "take U forward",
+   "secs": 1220
+  },
+  "dsa21-t1": {
+   "t": "Segment Tree II: Lazy Propagation for Range Updates",
+   "id": "rwXVCELcrqU",
+   "title": "Lazy Propagation in Segment Tree | Point and Range Updates | Live Coding",
+   "channel": "take U forward",
+   "secs": 1289
+  },
+  "dsa21-t2": {
+   "t": "Fenwick Tree (Binary Indexed Tree): Prefix Sums That Can Change",
+   "id": "QjA58ZhfXn0",
+   "title": "Fenwick Tree or Binary Index Tree (BIT) | Create Sorted Array through Instructions | LeetCode Jan 10",
+   "channel": "Coders Camp",
+   "secs": 1970
+  },
+  "dsa21-t3": {
+   "t": "Sparse Table: O(1) Range Minimum on a Static Array",
+   "id": "0jWeUdxrGm4",
+   "title": "Sparse Table & RMQ (Range Minimum Query)",
+   "channel": "Errichto Algorithms",
+   "secs": 1122
+  },
+  "dsa21-t4": {
+   "t": "Sqrt Decomposition: Cut the Array into √N Blocks",
+   "id": "RQWpF2Gb-gU",
+   "title": "But what is quantum computing?  (Grover's Algorithm)",
+   "channel": "3Blue1Brown",
+   "secs": 2214
+  },
+  "dsa21-t5": {
+   "t": "Mo's Algorithm: Answer Offline Range Queries by Sliding a Window Smartly",
+   "id": null
+  },
+  "dsa21-t6": {
+   "t": "Choosing the Right Range-Query Structure (Decision Guide)",
+   "id": "_L39rN6gz7Y",
+   "title": "Decision and Classification Trees, Clearly Explained!!!",
+   "channel": "StatQuest with Josh Starmer",
+   "secs": 1088
+  },
+  "dsa22-t0": {
+   "t": "Strongly Connected Components (SCC) & Kosaraju's Two-Pass Algorithm",
+   "id": "QlGuaHT1lzA",
+   "title": "Kosaraju's Algorithm | Strongly Connected Components",
+   "channel": "HeadEasyLabs",
+   "secs": 371
+  },
+  "dsa22-t1": {
+   "t": "Tarjan's SCC Algorithm: disc[], low[] and One Single DFS",
+   "id": "vf-cxgUXcMk",
+   "title": "6.2 BFS and DFS Graph Traversals| Breadth First Search and Depth First Search | Data structures",
+   "channel": "Jenny's Lectures CS IT",
+   "secs": 1227
+  },
+  "dsa22-t2": {
+   "t": "Bridges & Articulation Points with Low-Link Values",
+   "id": "qrAub5z8FeA",
+   "title": "G-55. Bridges in Graph - Using Tarjan's Algorithm of time in and low time",
+   "channel": "take U forward",
+   "secs": 1405
+  },
+  "dsa22-t3": {
+   "t": "Euler Paths & Circuits with Hierholzer's Algorithm",
+   "id": "FoiLXsV-bnI",
+   "title": "Euler Graph in Graph Theory | Euler Path & Euler Circuit with examples",
+   "channel": "Gate Smashers",
+   "secs": 405
+  },
+  "dsa22-t4": {
+   "t": "Lowest Common Ancestor (LCA) with Binary Lifting",
+   "id": "_-QHfMDde90",
+   "title": "L27. Lowest Common Ancestor in Binary Tree | LCA | C++ | Java",
+   "channel": "take U forward",
+   "secs": 849
   }
  }
 }
