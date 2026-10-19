@@ -2,6 +2,16 @@
 
 Versions follow [Semantic Versioning](https://semver.org): MAJOR for breaking changes to progress data or URLs, MINOR for new features or modules, PATCH for fixes. Each release is a `vX.Y.Z` git tag on `main`, and `package.json` holds the current version for both the website and the mobile app. The Android workflow creates the tag and a GitHub Release (with the APK) automatically when a new version reaches `main`.
 
+## [1.6.0] — 2026-10-19
+
+### Added
+- YouTube videos in lessons: each topic can show one video under "Watch it explained", with a Video link in the topic's lesson menu. Nothing loads from YouTube until you tap it; it then plays in YouTube's privacy-enhanced player, with an "Open on YouTube" link.
+- `tools/find-videos.js` and the daily **Lesson videos** workflow pick a video per topic with the YouTube Data API (embeddable, public, 3–45 minutes, scored for relevance, popularity and teaching channels) and save them in `data/videos.json`. It covers all topics in about 16 days within the free quota, then re-checks them daily. Setup: `docs/VIDEOS.md`.
+
+### Changed
+- Privacy policy: YouTube listed as a processor when you play a video.
+- Play uploads go to the track named in the repository variable `PLAY_TRACK` (`internal`, `alpha` for closed testing, `beta` for open testing or `production`); internal testing when it is not set.
+
 ## [1.5.0] — 2026-10-16
 
 ### Added

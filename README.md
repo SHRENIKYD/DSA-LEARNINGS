@@ -46,7 +46,7 @@ npx cap open ios             # Xcode (macOS only)
 
 Google sign-in in the app opens Google in the system browser. Google returns to the website's `login.html?app=1` (covered by the site's existing redirect URL in Supabase), and that page hands the code back to the app through the deep link `io.github.shrenikyd.interviewmastery://login-callback`.
 
-Publishing on Google Play: see [docs/PLAY_RELEASE.md](docs/PLAY_RELEASE.md).
+Publishing on Google Play: see [docs/PLAY_RELEASE.md](docs/PLAY_RELEASE.md). Lesson videos: see [docs/VIDEOS.md](docs/VIDEOS.md).
 
 XP and badges are worked out from the progress the website already saves, so they sync with your account. Streaks, quests and game wins are kept on the device for now.
 

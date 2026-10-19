@@ -87,7 +87,9 @@ Play Console → Testing → **Internal testing** → Create new release → kee
 3. GitHub secret `PLAY_SERVICE_ACCOUNT_JSON` = the whole JSON key file.
 4. Until the app's first release is reviewed and live on a track, Play only accepts **draft** uploads, which is the default here. After that, add the repository **Variable** `PLAY_RELEASE_STATUS` = `completed` so each upload goes straight to internal testers.
 
-From then on, every new version merged to `main` is built, signed, tagged, released on GitHub and uploaded to the internal track automatically. You promote it to closed testing or production in Play Console.
+5. Optional repository **Variable** `PLAY_TRACK`: the track CI uploads to — `internal` (default), `alpha` (closed testing), `beta` (open testing) or `production`.
+
+From then on, every new version merged to `main` is built, signed, tagged, released on GitHub and uploaded to that track automatically. With Managed publishing on, approved changes still wait for **Publish changes** in Play Console; turn it off for fully automatic releases. You promote it to closed testing or production in Play Console.
 
 ## 8. Get production access
 
