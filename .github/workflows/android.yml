@@ -21,8 +21,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Play engine tests
-        run: node tools/play-test.js
+      - name: Play engine and update tests
+        run: |
+          node tools/play-test.js
+          node tools/update-test.js
+          node tools/icon-test.js
 
   apk:
     needs: test
@@ -138,3 +141,4 @@ jobs:
           name: interview-mastery-preview-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 14
+

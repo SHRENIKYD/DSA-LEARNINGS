@@ -1,7 +1,7 @@
 {
   "name": "interview-mastery",
   "version": "1.7.0",
-  "appVersion": "1.7.0",
+  "appVersion": "1.7.1",
   "private": true,
   "description": "Beginner-to-expert interview prep: 13 tracks with visualizers, practice and progress sync.",
   "repository": "github:SHRENIKYD/DSA-LEARNINGS",
@@ -10,7 +10,8 @@
     "build:app": "node tools/build-app.js",
     "test:play": "node tools/play-test.js",
     "cap:sync": "node tools/build-app.js && npx cap sync",
-    "version:sync": "node tools/version-sync.js"
+    "version:sync": "node tools/version-sync.js",
+    "test:updates": "node tools/update-test.js"
   },
   "dependencies": {
     "@capacitor-community/text-to-speech": "8.0.2",
