@@ -34,7 +34,7 @@ for (const id of ['recursiontrail', 'cssduel', 'httprescue', 'transactionvault',
 }
 const c = { window: {}, localStorage: { getItem() { return null; } } }; vm.createContext(c); vm.runInContext(fs.readFileSync(__dirname + '/../src/tracks.js', 'utf8') + fs.readFileSync(__dirname + '/../src/journey.js', 'utf8'), c); c.window.TRACKS = c.TRACKS;
 G.list.slice(0, 8).forEach(g => assert(c.TRACKS.find(t => t.id === g.track).modules.some(m => m.id === g.mid), g.id + ' lesson link'));
-const stats = c.Journey.stats({}, {}); const world = E.world(c.Journey, stats, c.TRACKS, 'isle'); assert.equal((world.match(/class="floating-island/g) || []).length, 6); assert.match(world, /href="#map\/dsa"/);
+const stats = c.Journey.stats({}, {}); const world = E.world(c.Journey, stats, c.TRACKS, 'isle'); assert.equal((world.match(/class="floating-island/g) || []).length, 7); assert.match(world, /href="#map\/dsa"/);
 const entries = [{ t: '<b>Binary</b>', c: 'DSA', s: 'search', h: 'dsa.html#dsa10' }, { t: 'Binary', c: 'bad', h: 'javascript:alert(1)' }]; const results = E.search(entries, 'binary', c.TRACKS); assert.match(results, /1 results/); assert.match(results, /&lt;b&gt;Binary/); assert.doesNotMatch(results, /javascript:/);
 assert.match(E.search(entries, '', c.TRACKS), /Search a topic/); assert.match(E.search(entries, 'nothing', c.TRACKS), /No matches/);
 const P = require('../app/play.js'); const week = E.week(P, { '2026-10-19': { g: 1 }, '2026-10-18': { t: 0 } }, new Date(2026, 9, 19, 12)); assert.equal(week.length, 7); assert.equal(week[6].active, true); assert.equal(week[5].active, false);

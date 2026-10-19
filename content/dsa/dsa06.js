@@ -80,13 +80,13 @@
       <h4>The opposite-direction template</h4>
       <p>Start at both ends → look at both values → decide which side can be thrown away → move that pointer inward → repeat while <code>L &lt; R</code>. The same shape solves palindrome checks, reversing an array in place, 3-Sum, 4-Sum, Container With Most Water, squares of a sorted array, and more.</p>`,
     clues: [
-      'The array is <b>sorted</b> (or you are allowed to sort it) → think two pointers before thinking HashMap.',
+      'The array is <b>sorted</b> (or you are allowed to sort it) → think two pointers before thinking of a hash map (<code>HashMap</code> / <code>dict</code> / <code>Map</code> / <code>unordered_map</code>).',
       '"Find a <b>pair</b> / two numbers whose sum equals target" → classic opposite-direction pointers.',
-      '"Use <b>O(1) extra space</b>" or "do it in place" → rules out a HashSet, two pointers fit.',
+      '"Use <b>O(1) extra space</b>" or "do it in place" → rules out a hash set, two pointers fit.',
       '<code>N ≤ 10<sup>5</sup></code> → O(N<sup>2</sup>) pair checking (10<sup>10</sup> steps) is too slow; need O(N) or O(N log N).',
       'Words like "<b>palindrome</b>", "<b>reverse</b>", "from both ends", "closest to target" → pointers walking toward each other.'
     ],
-    code: `
+    code: { lang: 'java', code: `
       // Generic opposite-direction template (here: pair with sum == target in a sorted array)
       int[] pairWithSum(int[] a, int target) {
           int L = 0, R = a.length - 1;          // one finger at each end
@@ -102,6 +102,42 @@
           }
           return new int[]{-1, -1};              // no pair exists
       }`,
+      alt: [
+        { lang: 'python', code: `# Generic opposite-direction template (here: pair with sum == target in a sorted list)
+def pair_with_sum(a, target):
+    L, R = 0, len(a) - 1              # one finger at each end
+    while L < R:                      # stop when the fingers meet
+        s = a[L] + a[R]               # Python ints never overflow
+        if s == target:
+            return [L, R]             # found the pair
+        if s < target:
+            L += 1                    # need a bigger sum -> move the small side up
+        else:
+            R -= 1                    # need a smaller sum -> move the big side down
+    return [-1, -1]                   # no pair exists` },
+        { lang: 'js', code: `// Generic opposite-direction template (here: pair with sum == target in a sorted array)
+function pairWithSum(a, target) {
+  let L = 0, R = a.length - 1;        // one finger at each end
+  while (L < R) {                     // stop when the fingers meet
+    const sum = a[L] + a[R];          // exact while |sum| < 2^53
+    if (sum === target) return [L, R];
+    if (sum < target) L++;            // need a bigger sum
+    else R--;                         // need a smaller sum
+  }
+  return [-1, -1];                    // no pair exists
+}` },
+        { lang: 'cpp', code: `// Generic opposite-direction template (here: pair with sum == target in a sorted array)
+vector<int> pairWithSum(const vector<int>& a, int target) {
+    int L = 0, R = (int)a.size() - 1;      // one finger at each end
+    while (L < R) {                        // stop when the fingers meet
+        long long sum = (long long)a[L] + a[R];   // long long: two big ints can overflow
+        if (sum == target) return {L, R};
+        if (sum < target) L++;             // need a bigger sum
+        else R--;                          // need a smaller sum
+    }
+    return {-1, -1};                       // no pair exists
+}` }
+      ] },
     codeTitle: 'Opposite-direction two-pointer template',
     viz: {
       title: '2-Sum on a sorted array (L and R walk toward each other)',
@@ -195,7 +231,7 @@
       {
         title: 'Same shape, different rule: is this string a palindrome?',
         html: `<p>"racecar": compare the two ends, then walk inward. Any mismatch → not a palindrome. Here nothing is thrown away by a sum rule — <b>both</b> pointers move every step — but the skeleton (start at both ends, move inward, stop when they meet) is identical.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           boolean isPalindrome(String s) {
               int L = 0, R = s.length() - 1;
               while (L < R) {
@@ -204,7 +240,34 @@
                   R--;                                             // shrink from both sides
               }
               return true;                                         // met in the middle with no mismatch
-          }`
+          }`,
+          alt: [
+            { lang: 'python', code: `def is_palindrome(s):
+    L, R = 0, len(s) - 1
+    while L < R:
+        if s[L] != s[R]:
+            return False              # ends differ -> not a palindrome
+        L, R = L + 1, R - 1           # both ends matched, shrink from both sides
+    return True                       # met in the middle with no mismatch` },
+            { lang: 'js', code: `function isPalindrome(s) {
+  let L = 0, R = s.length - 1;
+  while (L < R) {
+    if (s[L] !== s[R]) return false;  // ends differ -> not a palindrome
+    L++;                              // both ends matched,
+    R--;                              // shrink from both sides
+  }
+  return true;                        // met in the middle with no mismatch
+}` },
+            { lang: 'cpp', code: `bool isPalindrome(const string& s) {
+    int L = 0, R = (int)s.size() - 1;
+    while (L < R) {
+        if (s[L] != s[R]) return false;   // ends differ -> not a palindrome
+        L++;                              // both ends matched,
+        R--;                              // shrink from both sides
+    }
+    return true;                          // met in the middle with no mismatch
+}` }
+          ] }
       },
       {
         title: 'Counting variant: how many pairs have sum below target?',
@@ -238,18 +301,18 @@ print(count_pairs_less([5, 1, 3], 100))       # 3 (every pair)`
       <h4>Sorted vs unsorted input</h4>
       <ul>
         <li><b>Already sorted</b> (LeetCode 167): two pointers, O(N) time, O(1) space — the best possible.</li>
-        <li><b>Unsorted and you need the original indices</b> (LeetCode 1): sorting destroys indices. Either sort <code>(value, index)</code> pairs — O(N log N) time, O(N) space — or use a HashMap "value → index" in one pass: O(N) time, O(N) space. In interviews the HashMap is usually expected here; mention the pointer version as the low-memory alternative.</li>
+        <li><b>Unsorted and you need the original indices</b> (LeetCode 1): sorting destroys indices. Either sort <code>(value, index)</code> pairs — O(N log N) time, O(N) space — or use a hash map "value → index" in one pass: O(N) time, O(N) space. In interviews the hash map is usually expected here; mention the pointer version as the low-memory alternative.</li>
       </ul>
       <h4>Production details</h4>
       <ul>
-        <li><b>Overflow:</b> <code>a[L] + a[R]</code> with values near 2·10<sup>9</sup> overflows a Java <code>int</code> silently and makes the loop move the wrong pointer. Compute in <code>long</code>.</li>
-        <li><b>Cache friendliness:</b> both pointers read memory sequentially, which CPUs prefetch well; on large arrays this often beats a HashMap (random memory access, boxing of <code>Integer</code> keys) even though both are O(N).</li>
+        <li><b>Overflow:</b> <code>a[L] + a[R]</code> with values near 2·10<sup>9</sup> overflows a 32-bit integer and makes the loop move the wrong pointer (Java <code>int</code> wraps silently; C++ <code>int</code> overflow is undefined behaviour). Compute in 64 bits: <code>long</code> / <code>long long</code>. Python integers never overflow, and JS numbers are exact up to 2<sup>53</sup>, so this sum is safe there.</li>
+        <li><b>Cache friendliness:</b> both pointers read memory sequentially, which CPUs prefetch well; on large arrays this often beats a hash map (random memory access, and, in Java, boxing of <code>Integer</code> keys) even though both are O(N).</li>
         <li><b>Data that does not fit in memory:</b> if two sorted files are streamed from disk, the same idea works by reading one file forwards and the other backwards — no index needed.</li>
         <li><b>Counting and "closest" variants</b> keep the same walk; only what you do at each step changes (add <code>R - L</code>, or track <code>|sum - target|</code>).</li>
       </ul>`,
-    aiEra: `<p><b>What AI changes:</b> any coding assistant writes 2-Sum in a second, so the interview value moved from <i>typing</i> it to <b>explaining why dropping a number is safe</b> and choosing between the pointer and HashMap versions from the constraints.</p>
+    aiEra: `<p><b>What AI changes:</b> any coding assistant writes 2-Sum in a second, so the interview value moved from <i>typing</i> it to <b>explaining why dropping a number is safe</b> and choosing between the pointer and hash map versions from the constraints.</p>
       <p><b>Use AI as a partner:</b> ask <code>Give me 6 tricky inputs for two-sum on a sorted array (duplicates, negatives, no answer, overflow) — don't solve it</code>, or <code>Write a brute-force checker and a random test loop comparing it with my two-pointer code</code>. That differential test catches off-by-one mistakes in seconds.</p>
-      <p><b>Where AI goes wrong:</b> it often reaches for a HashMap even when the prompt says O(1) space; returns 1-based indices when 0-based are asked (or the reverse); writes <code>while (L &lt;= R)</code> which can pair a cell with itself; forgets <code>long</code> for the sum; and on unsorted input happily runs the pointer loop without sorting.</p>
+      <p><b>Where AI goes wrong:</b> it often reaches for a hash map even when the prompt says O(1) space; returns 1-based indices when 0-based are asked (or the reverse); writes <code>while (L &lt;= R)</code> which can pair a cell with itself; forgets a 64-bit sum in Java or C++; and on unsorted input happily runs the pointer loop without sorting.</p>
       <p><b>What you must still own:</b> spotting "sorted + pair" in the wording, the invariant proof above, the overflow guard, and the trade-off sentence: "pointers are O(1) memory but need sorted data; hashing is O(N) memory but works on any order."</p>`,
     problems: [
       {
@@ -280,8 +343,20 @@ print(count_pairs_less([5, 1, 3], 100))       # 3 (every pair)`
         hints: [
           `<p><b>Aha:</b> in a sorted array, <code>a[L]</code> is the smallest and <code>a[R]</code> the biggest number still "alive". If <code>a[L] + a[R] &gt; target</code>, then <code>a[R]</code> + (anything) is too big → <code>a[R]</code> is out. If the sum is <code>&lt; target</code>, <code>a[L]</code> + (anything) is too small → <code>a[L]</code> is out.</p>`,
           `<p>No extra data structure is needed — just two integer indices. <code>L</code> starts at 0 and only moves right; <code>R</code> starts at N-1 and only moves left. Every step moves exactly one of them.</p>`,
-          `<p><b>Traps:</b> use <code>long</code> for the sum (10<sup>9</sup> + 10<sup>9</sup> overflows <code>int</code>); loop while <code>L &lt; R</code> (not <code>≤</code>, a number cannot pair with itself); remember to return <code>[-1, -1]</code> when the loop ends. <b>Recipe:</b> L = 0, R = n-1 → while L &lt; R: sum = a[L] + a[R]; equal → return; smaller → L++; bigger → R--. → return [-1, -1].</p>`
+          `<p><b>Traps:</b> in Java and C++ use a 64-bit sum (<code>long</code> / <code>long long</code>), because 10<sup>9</sup> + 10<sup>9</sup> overflows a 32-bit <code>int</code>; loop while <code>L &lt; R</code> (not <code>≤</code>, a number cannot pair with itself); remember to return <code>[-1, -1]</code> when the loop ends. <b>Recipe:</b> L = 0, R = n-1 → while L &lt; R: sum = a[L] + a[R]; equal → return; smaller → L++; bigger → R--. → return [-1, -1].</p>`
         ],
+        tests: { sig: 'int[] int -> int[]', fn: 'twoSumSorted', check: '(args, out, exp) => exp[0] === -1 ? out[0] === -1 && out[1] === -1 : Array.isArray(out) && out.length === 2 && out[0] >= 0 && out[0] < out[1] && out[1] < args[0].length && args[0][out[0]] + args[0][out[1]] === args[1]', cases: [
+          [[[2,7,11,15],9], [0,1]],
+          [[[1,2],3], [0,1]],
+          [[[1,2],4], [-1,-1]],
+          [[[-5,-3,0,4,8],1], [1,3]],
+          [[[3,3],6], [0,1]],
+          [[[1,1,1,1],2], [0,1]],
+          [[[1,3,5,7],8], [0,3]],
+          [[[1000000000,1000000000],1000000000], [-1,-1]],
+          [[[-1000000000,-1000000000,5],1000000000], [-1,-1]],
+          [[[-10,-4,0,2,6],-14], [0,1]]
+        ] },
         solution: {
           approach: `<p>Opposite-direction two pointers. Each comparison safely throws away one number, so the pointers meet after at most N - 1 steps.</p>`,
           code: `
@@ -307,6 +382,42 @@ print(count_pairs_less([5, 1, 3], 100))       # 3 (every pair)`
                     System.out.println(ans[0] + " " + ans[1]);   // prints 0 1
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `def two_sum_sorted(a, target):
+    L, R = 0, len(a) - 1
+    while L < R:
+        s = a[L] + a[R]          # Python ints never overflow
+        if s == target:
+            return [L, R]
+        if s < target:
+            L += 1               # need a bigger sum
+        else:
+            R -= 1               # need a smaller sum
+    return [-1, -1]` },
+            { lang: 'js', code: `function twoSumSorted(a, target) {
+  let L = 0, R = a.length - 1;
+  while (L < R) {
+    const sum = a[L] + a[R];     // safe: |sum| <= 2e9 is far below 2^53
+    if (sum === target) return [L, R];
+    if (sum < target) L++;
+    else R--;
+  }
+  return [-1, -1];
+}` },
+            { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> twoSumSorted(const vector<int>& a, int target) {
+        int L = 0, R = (int)a.size() - 1;
+        while (L < R) {
+            long long sum = (long long)a[L] + a[R];   // avoid int overflow
+            if (sum == target) return {L, R};
+            if (sum < target) L++;
+            else R--;
+        }
+        return {-1, -1};
+    }
+};` }
+          ],
           dry: {
             head: ['step', 'L', 'R', 'a[L] + a[R]', 'vs target 9', 'action'],
             rows: [
@@ -447,7 +558,7 @@ print(count_pairs_less([5, 1, 3], 100))       # 3 (every pair)`
         return frames;
       }
     },
-    code: [`
+    code: [{ lang: 'java', code: `
       // Generic k-Sum: fix numbers one by one, finish with a 2-Sum pointer walk.
       // nums must be sorted. Returns all unique k-tuples (by value) summing to target.
       List<List<Integer>> kSum(int[] nums, long target, int start, int k) {
@@ -480,7 +591,83 @@ print(count_pairs_less([5, 1, 3], 100))       # 3 (every pair)`
               }
           }
           return res;
-      }`, {
+      }`,
+      alt: [
+        { lang: 'python', code: `# Generic k-Sum: fix numbers one by one, finish with a 2-Sum pointer walk.
+# nums must be sorted. Returns all unique k-tuples (by value) summing to target.
+def k_sum(nums, target, start, k):
+    n = len(nums)
+    if start >= n or nums[start] * k > target or nums[-1] * k < target:
+        return []                                  # pruning: even smallest/largest choices miss
+    if k == 2:                                     # base case: opposite pointers
+        res, L, R = [], start, n - 1
+        while L < R:
+            s = nums[L] + nums[R]
+            if s < target or (L > start and nums[L] == nums[L - 1]):
+                L += 1                             # too small, or a duplicate left value
+            elif s > target or (R < n - 1 and nums[R] == nums[R + 1]):
+                R -= 1                             # too big, or a duplicate right value
+            else:
+                res.append([nums[L], nums[R]])
+                L, R = L + 1, R - 1
+        return res
+    res = []
+    for i in range(start, n):
+        if i > start and nums[i] == nums[i - 1]:
+            continue                               # same fixed value -> same tuples
+        for rest in k_sum(nums, target - nums[i], i + 1, k - 1):
+            res.append([nums[i]] + rest)           # prepend the fixed number
+    return res` },
+        { lang: 'js', code: `// Generic k-Sum: fix numbers one by one, finish with a 2-Sum pointer walk.
+// nums must be sorted numerically. Returns all unique k-tuples (by value) summing to target.
+function kSum(nums, target, start, k) {
+  const n = nums.length;
+  if (start >= n || nums[start] * k > target || nums[n - 1] * k < target) return [];
+  if (k === 2) {                                   // base case: opposite pointers
+    const res = [];
+    let L = start, R = n - 1;
+    while (L < R) {
+      const sum = nums[L] + nums[R];
+      if (sum < target || (L > start && nums[L] === nums[L - 1])) L++;
+      else if (sum > target || (R < n - 1 && nums[R] === nums[R + 1])) R--;
+      else { res.push([nums[L], nums[R]]); L++; R--; }
+    }
+    return res;
+  }
+  const res = [];
+  for (let i = start; i < n; i++) {
+    if (i > start && nums[i] === nums[i - 1]) continue;   // same fixed value -> same tuples
+    for (const rest of kSum(nums, target - nums[i], i + 1, k - 1)) res.push([nums[i], ...rest]);
+  }
+  return res;
+}` },
+        { lang: 'cpp', code: `// Generic k-Sum: fix numbers one by one, finish with a 2-Sum pointer walk.
+// nums must be sorted. Returns all unique k-tuples (by value) summing to target.
+vector<vector<int>> kSum(const vector<int>& nums, long long target, int start, int k) {
+    vector<vector<int>> res;
+    int n = nums.size();
+    if (start >= n || (long long)nums[start] * k > target || (long long)nums[n - 1] * k < target)
+        return res;                                    // pruning: even smallest/largest choices miss
+    if (k == 2) {                                      // base case: opposite pointers
+        int L = start, R = n - 1;
+        while (L < R) {
+            long long sum = (long long)nums[L] + nums[R];
+            if (sum < target || (L > start && nums[L] == nums[L - 1])) L++;
+            else if (sum > target || (R < n - 1 && nums[R] == nums[R + 1])) R--;
+            else res.push_back({nums[L++], nums[R--]});
+        }
+        return res;
+    }
+    for (int i = start; i < n; i++) {
+        if (i > start && nums[i] == nums[i - 1]) continue;   // same fixed value -> same tuples
+        for (auto& rest : kSum(nums, target - nums[i], i + 1, k - 1)) {
+            rest.insert(rest.begin(), nums[i]);        // prepend the fixed number
+            res.push_back(move(rest));
+        }
+    }
+    return res;
+}` }
+      ] }, {
         lang: 'python', run: true, title: 'Runnable: 3-Sum in Python',
         code: `def three_sum(nums):
     nums = sorted(nums)
@@ -534,7 +721,7 @@ print(three_sum([0, 0, 0, 0]))            # [[0, 0, 0]]`
         title: 'Valid triangle count: fix the LARGEST side instead',
         html: `<p>Three sticks form a triangle when the two shorter ones add to more than the longest. Sort, fix the longest side <code>k</code> from the right, then pointers L = 0, R = k - 1: if <code>a[L] + a[R] &gt; a[k]</code>, every L' from L to R-1 also works → <code>count += R - L</code>, R--; otherwise L++.</p>
           <p>[2, 2, 3, 4]: k = 3 (4): 2 + 3 = 5 &gt; 4 → +2, R = 1: 2 + 2 = 4 not &gt; 4 → L++ stop. k = 2 (3): 2 + 2 = 4 &gt; 3 → +1. Total ${H.c('p', '3')}.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           int triangleNumber(int[] a) {
               Arrays.sort(a);
               int count = 0;
@@ -550,23 +737,61 @@ print(three_sum([0, 0, 0, 0]))            # [[0, 0, 0]]`
                   }
               }
               return count;
-          }`
+          }`,
+          alt: [
+            { lang: 'python', code: `def triangle_number(a):
+    a = sorted(a)
+    count = 0
+    for k in range(len(a) - 1, 1, -1):    # a[k] = longest side
+        L, R = 0, k - 1
+        while L < R:
+            if a[L] + a[R] > a[k]:
+                count += R - L            # a[L..R-1] each pair with a[R]
+                R -= 1
+            else:
+                L += 1                    # a[L] too short even with the biggest partner
+    return count` },
+            { lang: 'js', code: `function triangleNumber(nums) {
+  const a = [...nums].sort((x, y) => x - y);   // numeric sort
+  let count = 0;
+  for (let k = a.length - 1; k >= 2; k--) {    // a[k] = longest side
+    let L = 0, R = k - 1;
+    while (L < R) {
+      if (a[L] + a[R] > a[k]) { count += R - L; R--; }   // a[L..R-1] each pair with a[R]
+      else L++;                                        // a[L] too short
+    }
+  }
+  return count;
+}` },
+            { lang: 'cpp', code: `int triangleNumber(vector<int> a) {
+    sort(a.begin(), a.end());
+    int count = 0;
+    for (int k = (int)a.size() - 1; k >= 2; k--) {    // a[k] = longest side
+        int L = 0, R = k - 1;
+        while (L < R) {
+            if (a[L] + a[R] > a[k]) { count += R - L; R--; }   // a[L..R-1] each pair with a[R]
+            else L++;                                        // a[L] too short
+        }
+    }
+    return count;
+}` }
+          ] }
       }
     ],
     deepDive: `<h4>Why the duplicate rules are correct (and complete)</h4>
       <p>A triplet is defined by its <b>values</b>, and after sorting we always produce it in non-decreasing order (a[i] ≤ a[L] ≤ a[R]). So two equal triplets can only be produced if we use the same value twice in the same role. Skipping a repeated <code>a[i]</code> blocks the first role; skipping repeated <code>a[L]</code>/<code>a[R]</code> after a hit blocks the other two. We never lose a triplet, because the <b>first</b> copy of every value is always tried — and it sees a superset of partners (everything to its right).</p>
       <h4>Can we beat O(N<sup>2</sup>)?</h4>
-      <p>Not in any practical way. The "3SUM conjecture" in fine-grained complexity says no algorithm runs in O(N<sup>2 - ε</sup>); only tiny log-factor speed-ups are known, and many geometry problems are proven "3SUM-hard". If an interviewer asks for O(N log N), they are probing whether you know this. A hash-based version (fix i, 2-Sum with a HashSet) is also O(N<sup>2</sup>) but uses O(N) memory and makes dedupe uglier.</p>
+      <p>Not in any practical way. The "3SUM conjecture" in fine-grained complexity says no algorithm runs in O(N<sup>2 - ε</sup>); only tiny log-factor speed-ups are known, and many geometry problems are proven "3SUM-hard". If an interviewer asks for O(N log N), they are probing whether you know this. A hash-based version (fix i, 2-Sum with a hash set) is also O(N<sup>2</sup>) but uses O(N) memory and makes dedupe uglier.</p>
       <h4>4-Sum and k-Sum in practice</h4>
       <ul>
         <li>k-Sum costs O(N<sup>k-1</sup>): k - 2 nested loops plus one linear walk.</li>
         <li><b>Pruning</b> (in the template above): if <code>nums[start] × k &gt; target</code> even the smallest choices overshoot → stop; if <code>nums[n-1] × k &lt; target</code> even the biggest fall short → skip. Huge real-world speed-ups.</li>
-        <li><b>Overflow:</b> 4-Sum with values up to 10<sup>9</sup> sums to 4·10<sup>9</sup> — beyond <code>int</code>. Use <code>long</code> for target and sums (a classic hidden test case).</li>
-        <li>4-Sum alternative: meet-in-the-middle with a HashMap of pair sums — O(N<sup>2</sup>) time but O(N<sup>2</sup>) memory and painful dedupe; fine for <b>counting</b> (4-Sum II with four arrays).</li>
+        <li><b>Overflow:</b> 4-Sum with values up to 10<sup>9</sup> sums to 4·10<sup>9</sup> — beyond a 32-bit <code>int</code>. Use 64 bits (<code>long</code> / <code>long long</code>) for target and sums in Java and C++ (a classic hidden test case); Python is safe, and JS is exact up to 2<sup>53</sup>.</li>
+        <li>4-Sum alternative: meet-in-the-middle with a hash map of pair sums — O(N<sup>2</sup>) time but O(N<sup>2</sup>) memory and painful dedupe; fine for <b>counting</b> (4-Sum II with four arrays).</li>
       </ul>`,
     aiEra: `<p><b>What AI changes:</b> 3-Sum is one of the most memorised problems on the internet, so assistants produce it perfectly — which means interviewers now ask the <b>variant</b> (closest, smaller, count triangles, 4-Sum with overflow) and expect you to adapt the skeleton live.</p>
       <p><b>Use AI as a partner:</b> <code>List the 5 classic bugs in a 3-Sum implementation and give one input that triggers each</code> — then run them against your code. Or ask it to generate a brute-force O(N<sup>3</sup>) checker with a set of sorted tuples and fuzz both on random small arrays with many duplicates (values in -3..3).</p>
-      <p><b>Where AI goes wrong:</b> it mixes up "skip duplicates" placement (skipping <i>before</i> recording loses [0,0,0]); uses <code>int</code> in 4-Sum; applies the <code>nums[i] &gt; 0 → break</code> shortcut to a version with a non-zero target where it is wrong; or dedupes with a <code>HashSet&lt;List&gt;</code> and calls it O(N<sup>2</sup>) while ignoring the hashing cost.</p>
+      <p><b>Where AI goes wrong:</b> it mixes up "skip duplicates" placement (skipping <i>before</i> recording loses [0,0,0]); uses 32-bit sums in 4-Sum; applies the <code>nums[i] &gt; 0 → break</code> shortcut to a version with a non-zero target where it is wrong; or dedupes with a hash set of triplets (<code>HashSet&lt;List&gt;</code>, a <code>set</code> of tuples) and calls it O(N<sup>2</sup>) while ignoring the hashing cost.</p>
       <p><b>What you must still own:</b> the reduction "fix one → 2-Sum", the dedupe proof, knowing O(N<sup>2</sup>) is essentially optimal, and spotting when an early-break shortcut is valid.</p>`,
     problems: [
       {
@@ -577,7 +802,7 @@ print(three_sum([0, 0, 0, 0]))            # [[0, 0, 0]]`
         constraints: `3 ≤ N ≤ 3000, -10<sup>5</sup> ≤ nums[i] ≤ 10<sup>5</sup>`,
         example: `${H.arr([-1, 0, 1, 2, -1, -4], { label: 'nums' })}${H.arr([-4, -1, -1, 0, 1, 2], { label: 'sorted', hl: { 1: 'p', 2: 'p', 3: 'g', 4: 'g', 5: 'p' } })}<p>Output: ${H.c('p', '[[-1, -1, 2], [-1, 0, 1]]')}</p><p><b>Why:</b> ${H.c('p', '-1 + -1 + 2 = 0')} and ${H.c('g', '-1 + 0 + 1 = 0')}. The second -1 would find <code>[-1, 0, 1]</code> again, so it is skipped — we return each triplet only once.</p>`,
         brute: {
-          why: `<p>Three nested loops try every trio: N<sup>3</sup>/6 ≈ 4.5·10<sup>9</sup> for N = 3000 → TLE. On top of that, removing duplicate triplets needs a HashSet of sorted lists. The wasted work: for a fixed pair (i, j) we scan every k, although in a sorted array the right partner can be found by walking pointers.</p>`,
+          why: `<p>Three nested loops try every trio: N<sup>3</sup>/6 ≈ 4.5·10<sup>9</sup> for N = 3000 → TLE. On top of that, removing duplicate triplets needs a hash set of sorted lists. The wasted work: for a fixed pair (i, j) we scan every k, although in a sorted array the right partner can be found by walking pointers.</p>`,
           code: `
             List<List<Integer>> brute(int[] nums) {
                 Set<List<Integer>> seen = new HashSet<>();
@@ -604,6 +829,18 @@ print(three_sum([0, 0, 0, 0]))            # [[0, 0, 0]]`
           `<p>Sort the array. Outer loop over <code>i</code>; inner opposite pointers <code>L = i + 1</code>, <code>R = n - 1</code>. Sum too small → L++, too big → R--, zero → record and move both.</p>`,
           `<p><b>Traps:</b> (1) skip <code>i</code> when <code>a[i] == a[i-1]</code>; (2) after a hit, skip equal values at L and R before moving; (3) <code>i</code> only goes to <code>n - 3</code>; (4) break when <code>a[i] &gt; 0</code>. <b>Recipe:</b> sort → for i: skip dup / break if positive → L, R walk → on zero: add, skip dups, L++, R--.</p>`
         ],
+        tests: { sig: 'int[] -> list<list<int>>', fn: 'threeSum', cmp: 'sets', cases: [
+          [[[-1,0,1,2,-1,-4]], [[-1,0,1],[-1,-1,2]]],
+          [[[0,0,0,0]], [[0,0,0]]],
+          [[[0,0,0]], [[0,0,0]]],
+          [[[1,2,-2,-1]], []],
+          [[[0,1,1]], []],
+          [[[-2,0,1,1,2]], [[-2,0,2],[-2,1,1]]],
+          [[[3,0,-2,-1,1,2]], [[-2,-1,3],[-2,0,2],[-1,0,1]]],
+          [[[-4,-2,-2,-2,0,1,2,2,2,3,3,4,4,6,6]], [[-4,-2,6],[-4,0,4],[-4,1,3],[-4,2,2],[-2,-2,4],[-2,0,2]]],
+          [[[100000,-100000,0]], [[-100000,0,100000]]],
+          [[[-1,-1,-1,2,2]], [[-1,-1,2]]]
+        ] },
         solution: {
           approach: `<p>Sort, then for each distinct <code>a[i]</code> run a 2-Sum two-pointer walk for target <code>-a[i]</code>, skipping duplicate values at every level.</p>`,
           code: `
@@ -641,6 +878,75 @@ print(three_sum([0, 0, 0, 0]))            # [[0, 0, 0]]`
                     // [[-1, -1, 2], [-1, 0, 1]]
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `def three_sum(nums):
+    nums = sorted(nums)
+    n, res = len(nums), []
+    for i in range(n - 2):
+        if nums[i] > 0:
+            break                              # three positives cannot make 0
+        if i > 0 and nums[i] == nums[i - 1]:
+            continue                           # same fixed value, same triplets
+        L, R = i + 1, n - 1
+        while L < R:
+            s = nums[i] + nums[L] + nums[R]
+            if s == 0:
+                res.append([nums[i], nums[L], nums[R]])
+                while L < R and nums[L] == nums[L + 1]:
+                    L += 1
+                while L < R and nums[R] == nums[R - 1]:
+                    R -= 1
+                L, R = L + 1, R - 1
+            elif s < 0:
+                L += 1
+            else:
+                R -= 1
+    return res` },
+            { lang: 'js', code: `function threeSum(nums) {
+  const a = [...nums].sort((x, y) => x - y);   // numeric comparator, not string order
+  const n = a.length, res = [];
+  for (let i = 0; i < n - 2; i++) {
+    if (a[i] > 0) break;
+    if (i > 0 && a[i] === a[i - 1]) continue;
+    let L = i + 1, R = n - 1;
+    while (L < R) {
+      const sum = a[i] + a[L] + a[R];
+      if (sum === 0) {
+        res.push([a[i], a[L], a[R]]);
+        while (L < R && a[L] === a[L + 1]) L++;
+        while (L < R && a[R] === a[R - 1]) R--;
+        L++; R--;
+      } else if (sum < 0) L++;
+      else R--;
+    }
+  }
+  return res;
+}` },
+            { lang: 'cpp', code: `class Solution {
+public:
+    vector<vector<int>> threeSum(vector<int> nums) {
+        sort(nums.begin(), nums.end());
+        int n = nums.size();
+        vector<vector<int>> res;
+        for (int i = 0; i + 2 < n; i++) {
+            if (nums[i] > 0) break;
+            if (i > 0 && nums[i] == nums[i - 1]) continue;
+            int L = i + 1, R = n - 1;
+            while (L < R) {
+                int sum = nums[i] + nums[L] + nums[R];
+                if (sum == 0) {
+                    res.push_back({nums[i], nums[L], nums[R]});
+                    while (L < R && nums[L] == nums[L + 1]) L++;
+                    while (L < R && nums[R] == nums[R - 1]) R--;
+                    L++; R--;
+                } else if (sum < 0) L++;
+                else R--;
+            }
+        }
+        return res;
+    }
+};` }
+          ],
           dry: {
             head: ['i (a[i])', 'L', 'R', 'a[i] + a[L] + a[R]', 'action'],
             rows: [
@@ -654,7 +960,7 @@ print(three_sum([0, 0, 0, 0]))            # [[0, 0, 0]]`
               ['3 (0)', '4', '5', '0 + 1 + 2 = 3', 'too big → R = 4, loop ends']
             ]
           },
-          complexity: `<p><b>Time O(N<sup>2</sup>):</b> sorting is O(N log N); then for each of the N fixed values the L/R walk takes at most N steps. <b>Space O(1)</b> extra besides the output (Java's sort for <code>int[]</code> uses O(log N) stack).</p>`
+          complexity: `<p><b>Time O(N<sup>2</sup>):</b> sorting is O(N log N); then for each of the N fixed values the L/R walk takes at most N steps. <b>Space O(1)</b> extra besides the output (the library sort may use some extra memory: O(log N) stack for Java's <code>int[]</code> sort and C++ <code>std::sort</code>, up to O(N) for Python's and JS's merge-based sorts).</p>`
         }
       }
     ]
@@ -749,7 +1055,7 @@ print(three_sum([0, 0, 0, 0]))            # [[0, 0, 0]]`
         return frames;
       }
     },
-    code: [`
+    code: [{ lang: 'java', code: `
       // Container With Most Water - with the "skip shorter-or-equal walls" speed-up.
       long maxArea(int[] h) {
           int L = 0, R = h.length - 1;
@@ -763,7 +1069,46 @@ print(three_sum([0, 0, 0, 0]))            # [[0, 0, 0]]`
               while (L < R && h[R] <= level) R--;
           }
           return best;
-      }`, {
+      }`,
+      alt: [
+        { lang: 'python', code: `# Container With Most Water - with the "skip shorter-or-equal walls" speed-up.
+def max_area(h):
+    L, R, best = 0, len(h) - 1, 0
+    while L < R:
+        level = min(h[L], h[R])               # water stops at the shorter wall
+        best = max(best, level * (R - L))
+        # Walls not taller than level cannot beat this container with a narrower width.
+        while L < R and h[L] <= level:
+            L += 1
+        while L < R and h[R] <= level:
+            R -= 1
+    return best` },
+        { lang: 'js', code: `// Container With Most Water - with the "skip shorter-or-equal walls" speed-up.
+function maxArea(h) {
+  let L = 0, R = h.length - 1, best = 0;
+  while (L < R) {
+    const level = Math.min(h[L], h[R]);       // water stops at the shorter wall
+    best = Math.max(best, level * (R - L));
+    // Walls not taller than level cannot beat this container with a narrower width.
+    while (L < R && h[L] <= level) L++;
+    while (L < R && h[R] <= level) R--;
+  }
+  return best;
+}` },
+        { lang: 'cpp', code: `// Container With Most Water - with the "skip shorter-or-equal walls" speed-up.
+long long maxArea(const vector<int>& h) {
+    int L = 0, R = (int)h.size() - 1;
+    long long best = 0;
+    while (L < R) {
+        int level = min(h[L], h[R]);              // water stops at the shorter wall
+        best = max(best, (long long)level * (R - L));
+        // Walls not taller than level cannot beat this container with a narrower width.
+        while (L < R && h[L] <= level) L++;
+        while (L < R && h[R] <= level) R--;
+    }
+    return best;
+}` }
+      ] }, {
         lang: 'python', run: true, title: 'Runnable: compare with brute force on random inputs',
         code: `import random
 
@@ -786,7 +1131,7 @@ for _ in range(500):
     assert max_area(h) == brute(h), h
 print("500 random tests passed; example:", max_area([1, 8, 6, 2, 5, 4, 8, 3, 7]))`
       }],
-    codeTitle: ['Two pointers with skip-ahead (Java)', 'Self-checking version (Python)'],
+    codeTitle: ['Two pointers with skip-ahead', 'Self-checking version (Python)'],
     examples: [
       {
         title: 'The two tallest walls are already at the ends',
@@ -822,18 +1167,18 @@ print("500 random tests passed; example:", max_area([1, 8, 6, 2, 5, 4, 8, 3, 7])
       <h4>Ties and the skip-ahead speed-up</h4>
       <ul>
         <li>When <code>h[L] == h[R]</code>, <b>both</b> walls are finished (any narrower partner keeps the level ≤ h and shrinks the width), so moving both is also correct.</li>
-        <li>After discarding a wall of height <i>x</i>, any next wall with height ≤ current level cannot help either — the Java template jumps over all of them before computing another area. Same O(N), fewer multiplications.</li>
+        <li>After discarding a wall of height <i>x</i>, any next wall with height ≤ current level cannot help either — the template above jumps over all of them before computing another area. Same O(N), fewer multiplications.</li>
       </ul>
       <h4>Edge cases that fail in real submissions</h4>
       <ul>
-        <li>Heights up to 10<sup>9</sup> and N up to 10<sup>5</sup> → area up to 10<sup>14</sup>: use <code>long</code>.</li>
+        <li>Heights up to 10<sup>9</sup> and N up to 10<sup>5</sup> → area up to 10<sup>14</sup>: use a 64-bit integer (<code>long</code> / <code>long long</code>; Python and JS numbers are fine here).</li>
         <li>Zero-height walls are allowed; an all-zero array returns 0.</li>
         <li>N = 2 → exactly one container.</li>
       </ul>
       <p><b>Greedy connection:</b> this is a greedy algorithm with an exchange-style proof ("the discarded wall cannot be in any better answer"). You will see the same reasoning style again in the Greedy module.</p>`,
     aiEra: `<p><b>What AI changes:</b> assistants know this problem by name, so typing it is free. Interviewers compensate by asking <b>"prove that moving the shorter wall never skips the optimum"</b> or by disguising the problem (two antennas, two billboards, "maximise min(a, b) × distance").</p>
       <p><b>Use AI as a partner:</b> ask it to write the brute-force checker and a random test loop (like the runnable Python above); ask <code>give me an input where moving the taller pointer gives a wrong answer</code> to build intuition; ask it to explain the pair-matrix proof back to you and check whether its explanation is actually complete.</p>
-      <p><b>Where AI goes wrong:</b> it sometimes confuses this with Trapping Rain Water and sums water over all bars; claims "moving either pointer on a tie is wrong" (it is fine); forgets <code>long</code> when constraints are raised; or adds a sort (which destroys the positions and the problem).</p>
+      <p><b>Where AI goes wrong:</b> it sometimes confuses this with Trapping Rain Water and sums water over all bars; claims "moving either pointer on a tie is wrong" (it is fine); forgets 64-bit arithmetic when constraints are raised; or adds a sort (which destroys the positions and the problem).</p>
       <p><b>What you must still own:</b> recognising "two walls, min × distance", the elimination proof in plain words, and the difference from Trapping Rain Water.</p>`,
     problems: [
       {
@@ -863,8 +1208,19 @@ print("500 random tests passed; example:", max_area([1, 8, 6, 2, 5, 4, 8, 3, 7])
         hints: [
           `<p><b>Aha:</b> area = <code>min(h[L], h[R]) × (R - L)</code>. If <code>h[L] &lt; h[R]</code>, every container using L with a closer right wall has smaller width and height ≤ <code>h[L]</code> → can't beat the current one. So L is "finished".</p>`,
           `<p>Two indices only: <code>L = 0</code>, <code>R = N - 1</code>, plus a running <code>best</code>. Measure, update best, then move the pointer at the <b>shorter</b> wall inward.</p>`,
-          `<p><b>Traps:</b> move only <b>one</b> pointer per step; on a tie move either (both is also correct but skip it to keep it simple); max area 10<sup>4</sup> × 10<sup>5</sup> = 10<sup>9</sup> fits in <code>int</code>. <b>Recipe:</b> L = 0, R = n-1, best = 0 → while L &lt; R: best = max(best, min(h[L], h[R]) × (R - L)); if h[L] &lt; h[R] then L++ else R-- → return best.</p>`
+          `<p><b>Traps:</b> move only <b>one</b> pointer per step; on a tie move either (both is also correct but skip it to keep it simple); max area 10<sup>4</sup> × 10<sup>5</sup> = 10<sup>9</sup> fits in a 32-bit <code>int</code>. <b>Recipe:</b> L = 0, R = n-1, best = 0 → while L &lt; R: best = max(best, min(h[L], h[R]) × (R - L)); if h[L] &lt; h[R] then L++ else R-- → return best.</p>`
         ],
+        tests: { sig: 'int[] -> int', fn: 'maxArea', cases: [
+          [[[1,8,6,2,5,4,8,3,7]], 49],
+          [[[1,1]], 1],
+          [[[4,3,2,1,4]], 16],
+          [[[1,2,1]], 2],
+          [[[0,0]], 0],
+          [[[0,5]], 0],
+          [[[1,2,3,4,5,6]], 9],
+          [[[2,3,4,5,18,17,6]], 17],
+          [[[10000,1,1,1,10000]], 40000]
+        ] },
         solution: {
           approach: `<p>Start with the widest container and repeatedly discard the shorter wall, keeping the best area seen.</p>`,
           code: `
@@ -889,6 +1245,38 @@ print("500 random tests passed; example:", max_area([1, 8, 6, 2, 5, 4, 8, 3, 7])
                     System.out.println(new Solution().maxArea(new int[]{1, 8, 6, 2, 5, 4, 8, 3, 7}));   // 49
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `def max_area(height):
+    L, R, best = 0, len(height) - 1, 0
+    while L < R:
+        best = max(best, min(height[L], height[R]) * (R - L))
+        if height[L] < height[R]:
+            L += 1          # the shorter wall caps the water; drop it
+        else:
+            R -= 1
+    return best` },
+            { lang: 'js', code: `function maxArea(height) {
+  let L = 0, R = height.length - 1, best = 0;
+  while (L < R) {
+    best = Math.max(best, Math.min(height[L], height[R]) * (R - L));
+    if (height[L] < height[R]) L++;   // move the shorter wall
+    else R--;
+  }
+  return best;
+}` },
+            { lang: 'cpp', code: `class Solution {
+public:
+    int maxArea(const vector<int>& height) {
+        int L = 0, R = (int)height.size() - 1, best = 0;
+        while (L < R) {
+            best = max(best, min(height[L], height[R]) * (R - L));   // <= 1e9, fits int
+            if (height[L] < height[R]) L++;
+            else R--;
+        }
+        return best;
+    }
+};` }
+          ],
           dry: {
             head: ['L', 'R', 'h[L], h[R]', 'min × width', 'area', 'best', 'move'],
             rows: [
@@ -948,7 +1336,7 @@ print("500 random tests passed; example:", max_area([1, 8, 6, 2, 5, 4, 8, 3, 7])
       '"Partition", "remove element", "compact the array", "keep at most two copies" → same read/write template, different keep rule.',
       'Linked-list cousins: "middle of list", "cycle detection" use slow/fast too (covered in the linked list module).'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       // Read/write template: keep only elements that pass the rule, in place.
       int compact(int[] a) {
           int slow = 0;                          // next free slot for a "kept" element
@@ -959,7 +1347,39 @@ print("500 random tests passed; example:", max_area([1, 8, 6, 2, 5, 4, 8, 3, 7])
               }
           }
           return slow;                           // a[0..slow-1] is the answer
-      }`, `
+      }`,
+      alt: [
+        { lang: 'python', code: `# Read/write template: keep only elements that pass the rule, in place.
+def compact(a):
+    slow = 0                          # next free slot for a "kept" element
+    for fast in range(len(a)):
+        if a[fast] % 2 == 0:          # keep rule (example: keep even numbers)
+            a[slow] = a[fast]         # write it into the keep zone
+            slow += 1                 # keep zone grows by one
+    return slow                       # a[:slow] is the answer` },
+        { lang: 'js', code: `// Read/write template: keep only elements that pass the rule, in place.
+function compact(a) {
+  let slow = 0;                       // next free slot for a "kept" element
+  for (let fast = 0; fast < a.length; fast++) {
+    if (a[fast] % 2 === 0) {          // keep rule (example: keep even numbers)
+      a[slow] = a[fast];              // write it into the keep zone
+      slow++;                         // keep zone grows by one
+    }
+  }
+  return slow;                        // a[0..slow-1] is the answer
+}` },
+        { lang: 'cpp', code: `// Read/write template: keep only elements that pass the rule, in place.
+int compact(vector<int>& a) {
+    int slow = 0;                         // next free slot for a "kept" element
+    for (int fast = 0; fast < (int)a.size(); fast++) {
+        if (a[fast] % 2 == 0) {           // keep rule (example: keep even numbers)
+            a[slow] = a[fast];            // write it into the keep zone
+            slow++;                       // keep zone grows by one
+        }
+    }
+    return slow;                          // a[0..slow-1] is the answer
+}` }
+      ] }, { lang: 'java', code: `
       // Move zeroes: keep non-zeros in order, zeros drift to the end via swaps.
       void moveZeroes(int[] a) {
           int slow = 0;                          // where the next non-zero belongs
@@ -971,7 +1391,32 @@ print("500 random tests passed; example:", max_area([1, 8, 6, 2, 5, 4, 8, 3, 7])
                   slow++;
               }
           }
-      }`],
+      }`,
+        alt: [
+          { lang: 'python', code: `# Move zeroes: keep non-zeros in order, zeros drift to the end via swaps.
+def move_zeroes(a):
+    slow = 0                          # where the next non-zero belongs
+    for fast in range(len(a)):
+        if a[fast] != 0:
+            a[slow], a[fast] = a[fast], a[slow]   # tuple swap
+            slow += 1` },
+          { lang: 'js', code: `// Move zeroes: keep non-zeros in order, zeros drift to the end via swaps.
+function moveZeroes(a) {
+  let slow = 0;                       // where the next non-zero belongs
+  for (let fast = 0; fast < a.length; fast++) {
+    if (a[fast] !== 0) {
+      [a[slow], a[fast]] = [a[fast], a[slow]];   // destructuring swap
+      slow++;
+    }
+  }
+}` },
+          { lang: 'cpp', code: `// Move zeroes: keep non-zeros in order, zeros drift to the end via swaps.
+void moveZeroes(vector<int>& a) {
+    int slow = 0;                         // where the next non-zero belongs
+    for (int fast = 0; fast < (int)a.size(); fast++)
+        if (a[fast] != 0) swap(a[slow++], a[fast]);
+}` }
+        ] }],
     codeTitle: ['Generic read/write (slow/fast) template', 'Move zeroes with swaps'],
     viz: [
       {
@@ -1095,7 +1540,7 @@ print("500 random tests passed; example:", max_area([1, 8, 6, 2, 5, 4, 8, 3, 7])
         html: `<p>nums = [1, 1, 1, 2, 2, 3] (sorted). Keep <code>a[fast]</code> if fewer than 2 cells were written so far, or if it differs from <code>a[slow - 2]</code> — the value two places back in the <b>kept</b> zone. If they are equal, we would be writing a third copy.</p>
           ${H.arr([1, 1, 2, 2, 3, 3], { label: 'after (k = 5)', hl: { 0: 'g', 1: 'g', 2: 'g', 3: 'g', 4: 'g', 5: 'm' } })}
           <p>The third 1 is rejected because a[slow - 2] = 1. Replace 2 by any k to keep at most k copies.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           int removeDuplicatesAtMostTwo(int[] a) {
               int slow = 0;                                   // next free slot
               for (int fast = 0; fast < a.length; fast++) {
@@ -1104,12 +1549,34 @@ print("500 random tests passed; example:", max_area([1, 8, 6, 2, 5, 4, 8, 3, 7])
                   }
               }
               return slow;                                    // [1,1,1,2,2,3] -> 5
-          }`
+          }`,
+          alt: [
+            { lang: 'python', code: `def remove_duplicates_at_most_two(a):
+    slow = 0                                  # next free slot
+    for x in a:
+        if slow < 2 or x != a[slow - 2]:      # not a third copy
+            a[slow] = x
+            slow += 1
+    return slow                               # [1,1,1,2,2,3] -> 5` },
+            { lang: 'js', code: `function removeDuplicatesAtMostTwo(a) {
+  let slow = 0;                               // next free slot
+  for (let fast = 0; fast < a.length; fast++) {
+    if (slow < 2 || a[fast] !== a[slow - 2]) a[slow++] = a[fast];   // not a third copy
+  }
+  return slow;                                // [1,1,1,2,2,3] -> 5
+}` },
+            { lang: 'cpp', code: `int removeDuplicatesAtMostTwo(vector<int>& a) {
+    int slow = 0;                             // next free slot
+    for (int fast = 0; fast < (int)a.size(); fast++)
+        if (slow < 2 || a[fast] != a[slow - 2]) a[slow++] = a[fast];   // not a third copy
+    return slow;                              // [1,1,1,2,2,3] -> 5
+}` }
+          ] }
       },
       {
         title: 'Squeeze repeated spaces in a char array',
         html: `<p>"go&nbsp;&nbsp;&nbsp;team&nbsp;&nbsp;now" → "go team now". Keep rule: keep a character unless it is a space <b>and</b> the last written character is also a space. Same template, applied to text — this is how many "normalize whitespace" routines work in C, where strings are just arrays.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           int squeezeSpaces(char[] s) {
               int slow = 0;
               for (int fast = 0; fast < s.length; fast++) {
@@ -1117,7 +1584,33 @@ print("500 random tests passed; example:", max_area([1, 8, 6, 2, 5, 4, 8, 3, 7])
                   if (!dupSpace) s[slow++] = s[fast];   // keep it
               }
               return slow;                              // new logical length
-          }`
+          }`,
+          alt: [
+            { lang: 'python', code: `def squeeze_spaces(s):            # s is a list of characters (Python strings are immutable)
+    slow = 0
+    for c in s:
+        dup_space = c == ' ' and slow > 0 and s[slow - 1] == ' '
+        if not dup_space:
+            s[slow] = c           # keep it
+            slow += 1
+    return slow                   # new logical length` },
+            { lang: 'js', code: `function squeezeSpaces(s) {       // s is an array of characters (JS strings are immutable)
+  let slow = 0;
+  for (let fast = 0; fast < s.length; fast++) {
+    const dupSpace = s[fast] === ' ' && slow > 0 && s[slow - 1] === ' ';
+    if (!dupSpace) s[slow++] = s[fast];   // keep it
+  }
+  return slow;                    // new logical length
+}` },
+            { lang: 'cpp', code: `int squeezeSpaces(string& s) {    // std::string is mutable, so edit it in place
+    int slow = 0;
+    for (int fast = 0; fast < (int)s.size(); fast++) {
+        bool dupSpace = s[fast] == ' ' && slow > 0 && s[slow - 1] == ' ';
+        if (!dupSpace) s[slow++] = s[fast];   // keep it
+    }
+    return slow;                  // new logical length (s.resize(slow) to cut the tail)
+}` }
+          ] }
       },
       {
         title: 'Move zeroes by writing instead of swapping',
@@ -1133,7 +1626,7 @@ print("500 random tests passed; example:", max_area([1, 8, 6, 2, 5, 4, 8, 3, 7])
       <h4>Where you meet it in real code</h4>
       <ul>
         <li>C++ <code>std::remove</code>, <code>std::remove_if</code> and <code>std::unique</code> implement exactly this read/write walk and return the new logical end — the famous <b>erase–remove idiom</b> then trims the tail.</li>
-        <li>Java's <code>ArrayList.removeIf</code> compacts the survivors forward in one pass instead of calling <code>remove(i)</code> in a loop (which would shift the tail every time → O(N<sup>2</sup>)).</li>
+        <li>Java's <code>ArrayList.removeIf</code> compacts the survivors forward in one pass instead of calling <code>remove(i)</code> in a loop (which would shift the tail every time → O(N<sup>2</sup>)). The same trap exists as <code>list.pop(i)</code> / <code>del a[i]</code> in Python and <code>splice</code> in JS; prefer one compacting pass (or a comprehension / <code>filter</code> when extra memory is fine).</li>
         <li>Garbage collectors use "compaction" (sliding live objects to the front of a region) — the same idea at the memory-manager level.</li>
       </ul>
       <h4>Counting writes</h4>
@@ -1173,6 +1666,16 @@ print("500 random tests passed; example:", max_area([1, 8, 6, 2, 5, 4, 8, 3, 7])
           `<p>Two indices in the same array: <code>slow</code> = index of the last kept value, <code>fast</code> = reader. When <code>a[fast] != a[slow]</code>: <code>slow++</code>, <code>a[slow] = a[fast]</code>.</p>`,
           `<p><b>Traps:</b> return <code>slow + 1</code> (a count, not an index); start <code>fast</code> at 1 because a[0] is always kept; an empty array would return 0 (guard it). <b>Recipe:</b> slow = 0 → for fast = 1..n-1: if a[fast] != a[slow] → slow++, a[slow] = a[fast] → return slow + 1.</p>`
         ],
+        tests: { sig: 'int[] -> int', fn: 'removeDuplicates', both: 0, check: '(a, out, exp) => { const k = out[0], want = a[0].filter((v, i) => i === 0 || v !== a[0][i - 1]); return k === exp && JSON.stringify(out[1].slice(0, k)) === JSON.stringify(want); }', cases: [
+          [[[1,1,2,3,3]], 3],
+          [[[1,1,2]], 2],
+          [[[0,0,1,1,1,2,2,3,3,4]], 5],
+          [[[1]], 1],
+          [[[-100,-100,100]], 2],
+          [[[5,5,5,5]], 1],
+          [[[1,2,3]], 3],
+          [[[-3,-1,0,0,2]], 4]
+        ] },
         solution: {
           approach: `<p>Read/write pointers: keep a value only when it differs from the last kept value.</p>`,
           code: `
@@ -1196,6 +1699,35 @@ print("500 random tests passed; example:", max_area([1, 8, 6, 2, 5, 4, 8, 3, 7])
                     System.out.println(k + " " + Arrays.toString(Arrays.copyOf(a, k)));   // 3 [1, 2, 3]
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `def remove_duplicates(nums):
+    if not nums:
+        return 0
+    slow = 0                          # last kept unique value
+    for fast in range(1, len(nums)):
+        if nums[fast] != nums[slow]:
+            slow += 1
+            nums[slow] = nums[fast]
+    return slow + 1` },
+            { lang: 'js', code: `function removeDuplicates(nums) {
+  if (nums.length === 0) return 0;
+  let slow = 0;                       // last kept unique value
+  for (let fast = 1; fast < nums.length; fast++) {
+    if (nums[fast] !== nums[slow]) nums[++slow] = nums[fast];
+  }
+  return slow + 1;
+}` },
+            { lang: 'cpp', code: `class Solution {
+public:
+    int removeDuplicates(vector<int>& nums) {
+        if (nums.empty()) return 0;
+        int slow = 0;                 // last kept unique value
+        for (int fast = 1; fast < (int)nums.size(); fast++)
+            if (nums[fast] != nums[slow]) nums[++slow] = nums[fast];
+        return slow + 1;
+    }
+};` }
+          ],
           dry: {
             head: ['fast', 'a[fast]', 'a[slow] (last kept)', 'action', 'slow', 'array'],
             rows: [
@@ -1242,6 +1774,16 @@ print("500 random tests passed; example:", max_area([1, 8, 6, 2, 5, 4, 8, 3, 7])
           `<p>Read/write pointers. <code>slow</code> = next slot for a non-zero. For every <code>fast</code> with <code>a[fast] != 0</code>: swap <code>a[slow]</code> and <code>a[fast]</code>, then <code>slow++</code>.</p>`,
           `<p><b>Traps:</b> when <code>slow == fast</code> the swap is harmless (same cell); keep the order — never swap two non-zeros past each other; the array may have no zeros or be all zeros. <b>Recipe:</b> slow = 0 → for fast in 0..n-1: if a[fast] != 0 → swap(slow, fast), slow++.</p>`
         ],
+        tests: { sig: 'int[] -> void', fn: 'moveZeroes', mutate: 0, cases: [
+          [[[0,1,0,3,12]], [1,3,12,0,0]],
+          [[[0]], [0]],
+          [[[1]], [1]],
+          [[[0,0,1]], [1,0,0]],
+          [[[1,2,3]], [1,2,3]],
+          [[[-2147483648,0,2147483647]], [-2147483648,2147483647,0]],
+          [[[0,0,0]], [0,0,0]],
+          [[[4,0,-1,0,0,5]], [4,-1,5,0,0,0]]
+        ] },
         solution: {
           approach: `<p>One pass with a write pointer; each non-zero is swapped into the next free front slot.</p>`,
           code: `
@@ -1264,6 +1806,31 @@ print("500 random tests passed; example:", max_area([1, 8, 6, 2, 5, 4, 8, 3, 7])
                     System.out.println(Arrays.toString(a));   // [1, 3, 12, 0, 0]
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `def move_zeroes(nums):
+    slow = 0                          # nums[:slow] are the non-zeros, in order
+    for fast in range(len(nums)):
+        if nums[fast] != 0:
+            nums[slow], nums[fast] = nums[fast], nums[slow]
+            slow += 1` },
+            { lang: 'js', code: `function moveZeroes(nums) {
+  let slow = 0;                       // nums[0..slow-1] are the non-zeros, in order
+  for (let fast = 0; fast < nums.length; fast++) {
+    if (nums[fast] !== 0) {
+      [nums[slow], nums[fast]] = [nums[fast], nums[slow]];
+      slow++;
+    }
+  }
+}` },
+            { lang: 'cpp', code: `class Solution {
+public:
+    void moveZeroes(vector<int>& nums) {
+        int slow = 0;                 // nums[0..slow-1] are the non-zeros, in order
+        for (int fast = 0; fast < (int)nums.size(); fast++)
+            if (nums[fast] != 0) swap(nums[slow++], nums[fast]);
+    }
+};` }
+          ],
           dry: {
             head: ['fast', 'a[fast]', 'action', 'array after', 'slow after'],
             rows: [
@@ -1308,7 +1875,7 @@ print("500 random tests passed; example:", max_area([1, 8, 6, 2, 5, 4, 8, 3, 7])
       ])}
       <p>Answer: <b>2</b> distinct pairs. ${H.c('m', 'Rule to keep i and j apart: whenever i catches up with j, push j to i + 1 (a pair needs two different positions).')}</p>
       <p><b>Why it is O(N):</b> i and j each move only forward and each stop at most N times → at most 2N steps after an O(N log N) sort.</p>
-      <p><b>Other way:</b> a HashSet ("is <code>x + K</code> present?") also works in O(N), but uses O(N) memory. The pointer version is the go-to when the array is already sorted or memory is tight.</p>`,
+      <p><b>Other way:</b> a hash set ("is <code>x + K</code> present?") also works in O(N), but uses O(N) memory. The pointer version is the go-to when the array is already sorted or memory is tight.</p>`,
     clues: [
       '"Count / find pairs with <b>difference</b> exactly K" or "<code>|a[i] - a[j]| = K</code>" → sort + two pointers moving the <b>same</b> direction.',
       '"<b>Distinct / unique</b> pairs" → skip equal values after counting, or count by value not by index.',
@@ -1398,7 +1965,7 @@ print("500 random tests passed; example:", max_area([1, 8, 6, 2, 5, 4, 8, 3, 7])
         return frames;
       }
     },
-    code: [`
+    code: [{ lang: 'java', code: `
       // Count INDEX pairs (i < j) in a sorted array with a[j] - a[i] <= K.
       // For each j, slide i forward until the gap fits; then every i' in [i, j-1] pairs with j.
       long countPairsDiffAtMostK(int[] a, int K) {      // a must be sorted
@@ -1409,8 +1976,37 @@ print("500 random tests passed; example:", max_area([1, 8, 6, 2, 5, 4, 8, 3, 7])
               count += j - i;                           // pairs (i..j-1, j) all have gap <= K
           }
           return count;
-      }`, `
-      // Same question as the guided problem (distinct value pairs with difference k), with a HashMap.
+      }`,
+      alt: [
+        { lang: 'python', code: `# Count INDEX pairs (i < j) in a sorted list with a[j] - a[i] <= K.
+def count_pairs_diff_at_most_k(a, K):
+    count = i = 0
+    for j in range(len(a)):
+        while a[j] - a[i] > K:
+            i += 1                    # gap too big -> back walker steps up
+        count += j - i                # pairs (i..j-1, j) all have gap <= K
+    return count` },
+        { lang: 'js', code: `// Count INDEX pairs (i < j) in a sorted array with a[j] - a[i] <= K.
+function countPairsDiffAtMostK(a, K) {
+  let count = 0, i = 0;
+  for (let j = 0; j < a.length; j++) {
+    while (a[j] - a[i] > K) i++;      // gap too big -> back walker steps up
+    count += j - i;                   // pairs (i..j-1, j) all have gap <= K
+  }
+  return count;
+}` },
+        { lang: 'cpp', code: `// Count INDEX pairs (i < j) in a sorted array with a[j] - a[i] <= K.
+long long countPairsDiffAtMostK(const vector<int>& a, int K) {
+    long long count = 0;
+    int i = 0;
+    for (int j = 0; j < (int)a.size(); j++) {
+        while ((long long)a[j] - a[i] > K) i++;   // gap too big -> back walker steps up
+        count += j - i;                           // pairs (i..j-1, j) all have gap <= K
+    }
+    return count;
+}` }
+      ] }, { lang: 'java', code: `
+      // Same question as the guided problem (distinct value pairs with difference k), with a hash map.
       // O(N) time, O(N) memory, no sorting needed.
       int findPairsHash(int[] nums, int k) {
           Map<Integer, Integer> freq = new HashMap<>();
@@ -1424,8 +2020,40 @@ print("500 random tests passed; example:", max_area([1, 8, 6, 2, 5, 4, 8, 3, 7])
               }
           }
           return count;
-      }`],
-    codeTitle: ['Counting pairs with difference ≤ K (two pointers)', 'Distinct pairs with difference k (HashMap alternative)'],
+      }`,
+        alt: [
+          { lang: 'python', code: `from collections import Counter
+
+# Distinct value pairs with difference k, using a hash map (Counter). O(N), no sort.
+def find_pairs_hash(nums, k):
+    freq = Counter(nums)
+    if k == 0:
+        return sum(1 for c in freq.values() if c >= 2)   # needs two copies of the same value
+    return sum(1 for x in freq if x + k in freq)         # x and x + k both present` },
+          { lang: 'js', code: `// Distinct value pairs with difference k, using a Map. O(N), no sort.
+function findPairsHash(nums, k) {
+  const freq = new Map();
+  for (const x of nums) freq.set(x, (freq.get(x) || 0) + 1);
+  let count = 0;
+  for (const [x, c] of freq) {
+    if (k === 0) { if (c >= 2) count++; }   // needs two copies of the same value
+    else if (freq.has(x + k)) count++;      // x and x + k both present
+  }
+  return count;
+}` },
+          { lang: 'cpp', code: `// Distinct value pairs with difference k, using unordered_map. O(N) on average, no sort.
+int findPairsHash(const vector<int>& nums, int k) {
+    unordered_map<long long, int> freq;
+    for (int x : nums) freq[x]++;
+    int count = 0;
+    for (auto& [x, c] : freq) {
+        if (k == 0) { if (c >= 2) count++; }    // needs two copies of the same value
+        else if (freq.count(x + k)) count++;    // x and x + k both present
+    }
+    return count;
+}` }
+        ] }],
+    codeTitle: ['Counting pairs with difference ≤ K (two pointers)', 'Distinct pairs with difference k (hash map alternative)'],
     examples: [
       {
         title: 'k = 0 means "values that appear at least twice"',
@@ -1453,7 +2081,7 @@ print("500 random tests passed; example:", max_area([1, 8, 6, 2, 5, 4, 8, 3, 7])
         html: `<p>A = [1, 4, 7], B = [2, 3, 9]. One pointer per array; always take the smaller front value and advance only that pointer. Neither pointer ever moves back → O(|A| + |B|). This is the heart of merge sort (Sorting module) and of merging sorted log files.</p>
           ${H.arr([1, 2, 3, 4, 7, 9], { label: 'merged', hl: { 0: 'b', 1: 'g', 2: 'g', 3: 'b', 4: 'b', 5: 'g' } })}
           <p>${H.c('b', 'blue')} came from A, ${H.c('g', 'green')} from B.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           int[] merge(int[] A, int[] B) {
               int[] out = new int[A.length + B.length];
               int i = 0, j = 0, w = 0;
@@ -1463,7 +2091,36 @@ print("500 random tests passed; example:", max_area([1, 8, 6, 2, 5, 4, 8, 3, 7])
               while (i < A.length) out[w++] = A[i++];            // leftovers of A
               while (j < B.length) out[w++] = B[j++];            // leftovers of B
               return out;
-          }`
+          }`,
+          alt: [
+            { lang: 'python', code: `def merge(A, B):
+    out, i, j = [], 0, 0
+    while i < len(A) and j < len(B):
+        if A[i] <= B[j]:              # <= keeps it stable
+            out.append(A[i]); i += 1
+        else:
+            out.append(B[j]); j += 1
+    out.extend(A[i:])                 # leftovers of A
+    out.extend(B[j:])                 # leftovers of B
+    return out` },
+            { lang: 'js', code: `function merge(A, B) {
+  const out = [];
+  let i = 0, j = 0;
+  while (i < A.length && j < B.length) out.push(A[i] <= B[j] ? A[i++] : B[j++]);   // <= keeps it stable
+  while (i < A.length) out.push(A[i++]);   // leftovers of A
+  while (j < B.length) out.push(B[j++]);   // leftovers of B
+  return out;
+}` },
+            { lang: 'cpp', code: `vector<int> merge(const vector<int>& A, const vector<int>& B) {
+    vector<int> out;
+    out.reserve(A.size() + B.size());
+    size_t i = 0, j = 0;
+    while (i < A.size() && j < B.size()) out.push_back(A[i] <= B[j] ? A[i++] : B[j++]);   // <= keeps it stable
+    while (i < A.size()) out.push_back(A[i++]);   // leftovers of A
+    while (j < B.size()) out.push_back(B[j++]);   // leftovers of B
+    return out;
+}` }
+          ] }
       },
       {
         title: 'Absolute difference is the same question',
@@ -1476,12 +2133,12 @@ print("500 random tests passed; example:", max_area([1, 8, 6, 2, 5, 4, 8, 3, 7])
       ${H.table(['method', 'time', 'extra memory', 'when to pick it'], [
         ['sort + two pointers', 'O(N log N)', 'O(1)', 'already sorted, or memory is tight'],
         ['sort + binary search for a[i] + K', 'O(N log N)', 'O(1)', 'easy to write; works for one-off lookups'],
-        ['HashMap of counts', 'O(N) average', 'O(N)', 'unsorted, huge N, memory is fine']
+        ['hash map of counts', 'O(N) average', 'O(N)', 'unsorted, huge N, memory is fine']
       ])}
       <h4>Counting index pairs (not distinct values)</h4>
-      <p>If the question counts <b>index</b> pairs (each copy counts), group equal values: for k &gt; 0 add <code>count(x) × count(x + k)</code>; for k = 0 add <code>c × (c - 1) / 2</code> per value. With pointers, measure the run length of equal values at i and at j and multiply. Results can reach N<sup>2</sup>/2 ≈ 5·10<sup>9</sup> → use <code>long</code>.</p>
-      <p><b>Overflow corner:</b> <code>a[j] - a[i]</code> with values in ±2·10<sup>9</sup> overflows <code>int</code>; compute the difference in <code>long</code>.</p>`,
-    aiEra: `<p><b>What AI changes:</b> assistants usually answer this with the HashMap version. That is fine — but interviewers then ask "now do it in O(1) extra space" or "now count pairs with difference <b>at most</b> K", where the hash trick no longer fits and the sorted two-pointer walk is the clean answer.</p>
+      <p>If the question counts <b>index</b> pairs (each copy counts), group equal values: for k &gt; 0 add <code>count(x) × count(x + k)</code>; for k = 0 add <code>c × (c - 1) / 2</code> per value. With pointers, measure the run length of equal values at i and at j and multiply. Results can reach N<sup>2</sup>/2 ≈ 5·10<sup>9</sup> → use a 64-bit count (<code>long</code> / <code>long long</code>) in Java and C++.</p>
+      <p><b>Overflow corner:</b> <code>a[j] - a[i]</code> with values in ±2·10<sup>9</sup> overflows a 32-bit <code>int</code> in Java and C++; compute the difference in <code>long</code> / <code>long long</code>. Python and JS have no problem at this size.</p>`,
+    aiEra: `<p><b>What AI changes:</b> assistants usually answer this with the hash map version. That is fine — but interviewers then ask "now do it in O(1) extra space" or "now count pairs with difference <b>at most</b> K", where the hash trick no longer fits and the sorted two-pointer walk is the clean answer.</p>
       <p><b>Use AI as a partner:</b> ask it to enumerate the ambiguous parts of the statement (distinct values or index pairs? can k be 0? negative k?) — great practice for clarifying questions. Ask for a brute-force checker over all pairs and fuzz with small values (0..4) so duplicates and k = 0 appear often.</p>
       <p><b>Where AI goes wrong:</b> counts the pair twice for k = 0 or lets an element pair with itself; uses opposite-direction pointers (which cannot decide which way to move); forgets to skip equal values and over-counts distinct pairs; overflows the difference.</p>
       <p><b>What you must still own:</b> the monotone-partner argument, choosing between pointers, binary search and hashing by constraints, and clarifying distinct vs index pairs before coding.</p>`,
@@ -1494,7 +2151,7 @@ print("500 random tests passed; example:", max_area([1, 8, 6, 2, 5, 4, 8, 3, 7])
         constraints: `1 ≤ N ≤ 10<sup>4</sup>, -10<sup>7</sup> ≤ nums[i] ≤ 10<sup>7</sup>, 0 ≤ k ≤ 10<sup>7</sup>`,
         example: `${H.arr([3, 1, 4, 1, 5], { label: 'nums' })}<p>k = 2 → Output: ${H.c('p', '2')}</p><p><b>Why:</b> the pairs are ${H.c('g', '(1, 3)')} and ${H.c('g', '(3, 5)')}. There are two 1s, but (1, 3) is the same pair of values, so it counts once. (4 has no partner 2 or 6.)</p>`,
         brute: {
-          why: `<p>Check every pair <code>(i, j)</code> and put matching value-pairs into a HashSet to remove repeats: N<sup>2</sup>/2 = 5·10<sup>7</sup> checks for N = 10<sup>4</sup> — borderline, and hopeless at 10<sup>5</sup>. The waste: once the array is sorted, for a fixed <code>a[i]</code> the matching partner can only be further right, and later <code>i</code>s need partners even further right — so <code>j</code> never has to go back.</p>`,
+          why: `<p>Check every pair <code>(i, j)</code> and put matching value-pairs into a hash set to remove repeats: N<sup>2</sup>/2 = 5·10<sup>7</sup> checks for N = 10<sup>4</sup> — borderline, and hopeless at 10<sup>5</sup>. The waste: once the array is sorted, for a fixed <code>a[i]</code> the matching partner can only be further right, and later <code>i</code>s need partners even further right — so <code>j</code> never has to go back.</p>`,
           code: `
             int brute(int[] nums, int k) {
                 Set<Long> seen = new HashSet<>();                 // encode pair (x, y) as one long
@@ -1513,9 +2170,20 @@ print("500 random tests passed; example:", max_area([1, 8, 6, 2, 5, 4, 8, 3, 7])
         },
         hints: [
           `<p><b>Aha:</b> after sorting, <code>a[j] - a[i]</code> grows when <code>j</code> moves right and shrinks when <code>i</code> moves right. So there is always exactly one right move: gap too small → j++, too big → i++.</p>`,
-          `<p>No extra structure: sort, then two indices <code>i = 0</code>, <code>j = 1</code> that only move forward, plus a counter. (Alternative: a HashMap of counts — for k = 0 count values seen ≥ 2 times; for k &gt; 0 count values x with x + k present.)</p>`,
-          `<p><b>Traps:</b> (1) <code>i</code> must never equal <code>j</code> — if it catches up, push j forward; this is what makes <code>k = 0</code> work (the pair needs two copies). (2) After a match, skip <b>all</b> copies of a[i] so the same value-pair is not counted again. (3) Use <code>long</code> for the difference if values can be ±2·10<sup>9</sup>. <b>Recipe:</b> sort; while j &lt; n: if i == j → j++; else diff &lt; k → j++; diff &gt; k → i++; else count++, skip copies of a[i], if j ≤ i then j = i + 1.</p>`
+          `<p>No extra structure: sort, then two indices <code>i = 0</code>, <code>j = 1</code> that only move forward, plus a counter. (Alternative: a hash map of counts — for k = 0 count values seen ≥ 2 times; for k &gt; 0 count values x with x + k present.)</p>`,
+          `<p><b>Traps:</b> (1) <code>i</code> must never equal <code>j</code> — if it catches up, push j forward; this is what makes <code>k = 0</code> work (the pair needs two copies). (2) After a match, skip <b>all</b> copies of a[i] so the same value-pair is not counted again. (3) In Java or C++ use a 64-bit difference (<code>long</code> / <code>long long</code>) if values can be ±2·10<sup>9</sup>. <b>Recipe:</b> sort; while j &lt; n: if i == j → j++; else diff &lt; k → j++; diff &gt; k → i++; else count++, skip copies of a[i], if j ≤ i then j = i + 1.</p>`
         ],
+        tests: { sig: 'int[] int -> int', fn: 'findPairs', cases: [
+          [[[3,1,4,1,5],2], 2],
+          [[[1,2,3,4,5],1], 4],
+          [[[1,3,1,5,4],0], 1],
+          [[[1,1,1,2,2],0], 2],
+          [[[1],0], 0],
+          [[[-1,-2,-3],1], 2],
+          [[[-10000000,0,10000000],10000000], 2],
+          [[[1,2,4,4,3,3,0,9,2,3],3], 2],
+          [[[5,5],3], 0]
+        ] },
         solution: {
           approach: `<p>Sort, then walk <code>i</code> (back) and <code>j</code> (front) forward, steering by the size of the gap.</p>`,
           code: `
@@ -1551,6 +2219,65 @@ print("500 random tests passed; example:", max_area([1, 8, 6, 2, 5, 4, 8, 3, 7])
                     System.out.println(new Solution().findPairs(new int[]{1, 1, 1, 2, 2}, 0));        // 2
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `def find_pairs(nums, k):
+    nums = sorted(nums)
+    n, i, j, count = len(nums), 0, 1, 0
+    while j < n:
+        if i == j:                    # a pair needs two different positions
+            j += 1
+            continue
+        diff = nums[j] - nums[i]
+        if diff < k:
+            j += 1
+        elif diff > k:
+            i += 1
+        else:
+            count += 1
+            v = nums[i]
+            while i < n and nums[i] == v:
+                i += 1                # count this value pair only once
+            j = max(j, i + 1)
+    return count` },
+            { lang: 'js', code: `function findPairs(nums, k) {
+  const a = [...nums].sort((x, y) => x - y);
+  const n = a.length;
+  let i = 0, j = 1, count = 0;
+  while (j < n) {
+    if (i === j) { j++; continue; }   // two different positions
+    const diff = a[j] - a[i];
+    if (diff < k) j++;
+    else if (diff > k) i++;
+    else {
+      count++;
+      const v = a[i];
+      while (i < n && a[i] === v) i++;  // count this value pair once
+      if (j <= i) j = i + 1;
+    }
+  }
+  return count;
+}` },
+            { lang: 'cpp', code: `class Solution {
+public:
+    int findPairs(vector<int> nums, int k) {
+        sort(nums.begin(), nums.end());
+        int n = nums.size(), i = 0, j = 1, count = 0;
+        while (j < n) {
+            if (i == j) { j++; continue; }
+            long long diff = (long long)nums[j] - nums[i];
+            if (diff < k) j++;
+            else if (diff > k) i++;
+            else {
+                count++;
+                int v = nums[i];
+                while (i < n && nums[i] == v) i++;
+                if (j <= i) j = i + 1;
+            }
+        }
+        return count;
+    }
+};` }
+          ],
           dry: {
             head: ['i', 'j', 'a[i], a[j]', 'diff', 'vs k = 2', 'action', 'count'],
             rows: [
@@ -1600,7 +2327,7 @@ print("500 random tests passed; example:", max_area([1, 8, 6, 2, 5, 4, 8, 3, 7])
       '<code>N ≤ 10<sup>5</sup></code>, <code>K</code> up to N → O(N·K) could be 10<sup>10</sup>; sliding makes it O(N).',
       'Hidden version: "take K items from the <b>two ends</b>" = leave a <b>middle</b> window of size N - K untouched.'
     ],
-    code: `
+    code: { lang: 'java', code: `
       // Fixed-size window template: best sum among all windows of size k.
       long maxSumOfSizeK(int[] a, int k) {
           long window = 0;
@@ -1613,6 +2340,41 @@ print("500 random tests passed; example:", max_area([1, 8, 6, 2, 5, 4, 8, 3, 7])
           }
           return best;
       }`,
+      alt: [
+        { lang: 'python', code: `# Fixed-size window template: best sum among all windows of size k.
+def max_sum_of_size_k(a, k):
+    window = sum(a[:k])               # first window a[0..k-1]
+    best = window
+    for i in range(k, len(a)):
+        window += a[i]                # element entering on the right
+        window -= a[i - k]            # element leaving on the left
+        best = max(best, window)
+    return best` },
+        { lang: 'js', code: `// Fixed-size window template: best sum among all windows of size k.
+function maxSumOfSizeK(a, k) {
+  let window = 0;
+  for (let i = 0; i < k; i++) window += a[i];   // first window a[0..k-1]
+  let best = window;
+  for (let i = k; i < a.length; i++) {
+    window += a[i];                   // element entering on the right
+    window -= a[i - k];               // element leaving on the left
+    best = Math.max(best, window);
+  }
+  return best;
+}` },
+        { lang: 'cpp', code: `// Fixed-size window template: best sum among all windows of size k.
+long long maxSumOfSizeK(const vector<int>& a, int k) {
+    long long window = 0;
+    for (int i = 0; i < k; i++) window += a[i];   // first window a[0..k-1]
+    long long best = window;
+    for (int i = k; i < (int)a.size(); i++) {
+        window += a[i];                   // element entering on the right
+        window -= a[i - k];               // element leaving on the left
+        best = max(best, window);
+    }
+    return best;
+}` }
+      ] },
     codeTitle: 'Fixed-size sliding window template',
     viz: {
       title: 'Fixed window of size K: add the right, drop the left',
@@ -1685,7 +2447,7 @@ print("500 random tests passed; example:", max_area([1, 8, 6, 2, 5, 4, 8, 3, 7])
       {
         title: 'First negative number in every window (window + queue)',
         html: `<p>a = [-8, 2, 3, -6, 10], K = 2 → answers ${H.c('p', '-8, 0, -6, -6')} (0 = no negative). A sum is not enough here; we keep a <b>queue of indices of negatives</b> inside the window. New negative → add to the back; front index fell out of the window → remove it from the front. The answer for each window is the front of the queue.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           int[] firstNegative(int[] a, int k) {
               int n = a.length;
               int[] out = new int[n - k + 1];
@@ -1696,7 +2458,41 @@ print("500 random tests passed; example:", max_area([1, 8, 6, 2, 5, 4, 8, 3, 7])
                   if (i >= k - 1) out[i - k + 1] = neg.isEmpty() ? 0 : a[neg.peekFirst()];
               }
               return out;
-          }`
+          }`,
+          alt: [
+            { lang: 'python', code: `from collections import deque
+
+def first_negative(a, k):
+    out, neg = [], deque()                # indices of negatives in the window
+    for i, x in enumerate(a):
+        if x < 0:
+            neg.append(i)                 # entering element
+        if neg and neg[0] <= i - k:
+            neg.popleft()                 # left the window
+        if i >= k - 1:
+            out.append(a[neg[0]] if neg else 0)
+    return out` },
+            { lang: 'js', code: `function firstNegative(a, k) {
+  const out = [], neg = [];               // indices of negatives in the window
+  let head = 0;                           // queue front (shift() would be O(n))
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] < 0) neg.push(i);            // entering element
+    if (head < neg.length && neg[head] <= i - k) head++;   // left the window
+    if (i >= k - 1) out.push(head < neg.length ? a[neg[head]] : 0);
+  }
+  return out;
+}` },
+            { lang: 'cpp', code: `vector<int> firstNegative(const vector<int>& a, int k) {
+    vector<int> out;
+    deque<int> neg;                       // indices of negatives in the window
+    for (int i = 0; i < (int)a.size(); i++) {
+        if (a[i] < 0) neg.push_back(i);   // entering element
+        if (!neg.empty() && neg.front() <= i - k) neg.pop_front();   // left the window
+        if (i >= k - 1) out.push_back(neg.empty() ? 0 : a[neg.front()]);
+    }
+    return out;
+}` }
+          ] }
       },
       {
         title: 'Fixed window on a string: most vowels in any K letters',
@@ -1763,8 +2559,18 @@ print(max_vowels("leetcode", 3))    # 2`
         hints: [
           `<p><b>Aha:</b> <code>sum(s+1 .. s+K) = sum(s .. s+K-1) + a[s+K] - a[s]</code>. One add and one subtract turn each window into the next.</p>`,
           `<p>Just one running variable <code>window</code> plus <code>best</code>. The right end <code>i</code> runs from K to N-1; the element leaving is <code>a[i - K]</code>.</p>`,
-          `<p><b>Traps:</b> initialize <code>best</code> with the <b>first window's sum</b>, not 0 (all numbers may be negative); remember the first window must be built before sliding; use <code>long</code> if values can be large. <b>Recipe:</b> window = sum of a[0..K-1]; best = window; for i = K..N-1: window += a[i] - a[i-K]; best = max(best, window).</p>`
+          `<p><b>Traps:</b> initialize <code>best</code> with the <b>first window's sum</b>, not 0 (all numbers may be negative); remember the first window must be built before sliding; use a 64-bit sum (<code>long</code> / <code>long long</code>) if values can be large. <b>Recipe:</b> window = sum of a[0..K-1]; best = window; for i = K..N-1: window += a[i] - a[i-K]; best = max(best, window).</p>`
         ],
+        tests: { sig: 'int[] int -> long', fn: 'maxSumSubarrayOfSizeK', cases: [
+          [[[2,1,5,1,3,2],3], 9],
+          [[[5],1], 5],
+          [[[-1,-2,-3],2], -3],
+          [[[1,2,3],3], 6],
+          [[[2,3,4,1,5],2], 7],
+          [[[-5,0,-2,7],1], 7],
+          [[[10000,10000,-10000,10000],2], 20000],
+          [[[-10000,-10000,-10000],3], -30000]
+        ] },
         solution: {
           approach: `<p>Build the first window, then slide: add the entering element, subtract the leaving one, track the maximum.</p>`,
           code: `
@@ -1787,6 +2593,37 @@ print(max_vowels("leetcode", 3))    # 2`
                     System.out.println(new Solution().maxSumSubarrayOfSizeK(new int[]{2, 1, 5, 1, 3, 2}, 3));   // 9
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `def max_sum_subarray_of_size_k(a, k):
+    window = sum(a[:k])               # first window a[0..k-1]
+    best = window                     # not 0: every value may be negative
+    for i in range(k, len(a)):
+        window += a[i] - a[i - k]     # a[i] enters, a[i-k] leaves
+        best = max(best, window)
+    return best` },
+            { lang: 'js', code: `function maxSumSubarrayOfSizeK(a, k) {
+  let window = 0;
+  for (let i = 0; i < k; i++) window += a[i];
+  let best = window;                  // not 0: every value may be negative
+  for (let i = k; i < a.length; i++) {
+    window += a[i] - a[i - k];        // a[i] enters, a[i-k] leaves
+    best = Math.max(best, window);
+  }
+  return best;
+}` },
+            { lang: 'cpp', code: `class Solution {
+public:
+    long long maxSumSubarrayOfSizeK(const vector<int>& a, int k) {
+        long long window = accumulate(a.begin(), a.begin() + k, 0LL);
+        long long best = window;      // not 0: every value may be negative
+        for (int i = k; i < (int)a.size(); i++) {
+            window += a[i] - a[i - k];
+            best = max(best, window);
+        }
+        return best;
+    }
+};` }
+          ],
           dry: {
             head: ['i', 'enters a[i]', 'leaves a[i-K]', 'window covers', 'window sum', 'best'],
             rows: [
@@ -1830,7 +2667,7 @@ print(max_vowels("leetcode", 3))    # 2`
       ])}
       <h4>Why may we throw away the left element for good?</h4>
       <p>All numbers are <b>positive</b>. When <code>a[L..R]</code> already has sum ≥ K, any longer window that starts at L (ending further right) is <b>longer</b> — never a better "smallest" answer. So L is finished; drop it. And while the sum is &lt; K, shrinking would only make it smaller, so we must grow.</p>
-      <p>${H.c('r', 'Warning:')} this needs <b>non-negative</b> numbers. With negatives, adding an element can <b>decrease</b> the sum and dropping one can <b>increase</b> it, so "grow until good, shrink while good" breaks. For negatives use prefix sums (+ a deque or a HashMap, see other modules).</p>
+      <p>${H.c('r', 'Warning:')} this needs <b>non-negative</b> numbers. With negatives, adding an element can <b>decrease</b> the sum and dropping one can <b>increase</b> it, so "grow until good, shrink while good" breaks. For negatives use prefix sums (+ a deque or a hash map, see other modules).</p>
       <h4>The general grow/shrink template — two flavours</h4>
       ${H.table(['you want…', 'loop shape', 'where you record the answer'], [
         ['<b>shortest</b> good window (sum ≥ K, contains all...)', 'for R: add a[R]; <b>while (good)</b> { record; remove a[L]; L++ }', 'inside the while (window is good)'],
@@ -1845,7 +2682,7 @@ print(max_vowels("leetcode", 3))    # 2`
       '"<b>Contiguous</b> subarray" + "minimum length" / "maximum length" → never fix the size; let the window find it.',
       'Array has <b>negative</b> numbers → this template is NOT safe; switch to prefix sums.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       // Flavour 1: SHORTEST window that is good (here: sum >= target, positive numbers)
       int shortestGood(int[] a, int target) {
           int L = 0, best = Integer.MAX_VALUE;
@@ -1859,7 +2696,44 @@ print(max_vowels("leetcode", 3))    # 2`
               }
           }
           return best == Integer.MAX_VALUE ? 0 : best;
-      }`, `
+      }`,
+      alt: [
+        { lang: 'python', code: `# Flavour 1: SHORTEST window that is good (here: sum >= target, positive numbers)
+def shortest_good(a, target):
+    L, total, best = 0, 0, float('inf')
+    for R, x in enumerate(a):
+        total += x                    # grow: take a[R] in
+        while total >= target:        # window is good -> try to make it shorter
+            best = min(best, R - L + 1)
+            total -= a[L]             # shrink: let a[L] go
+            L += 1
+    return 0 if best == float('inf') else best` },
+        { lang: 'js', code: `// Flavour 1: SHORTEST window that is good (here: sum >= target, positive numbers)
+function shortestGood(a, target) {
+  let L = 0, sum = 0, best = Infinity;
+  for (let R = 0; R < a.length; R++) {
+    sum += a[R];                      // grow: take a[R] in
+    while (sum >= target) {           // window is good -> try to make it shorter
+      best = Math.min(best, R - L + 1);
+      sum -= a[L++];                  // shrink: let a[L] go
+    }
+  }
+  return best === Infinity ? 0 : best;
+}` },
+        { lang: 'cpp', code: `// Flavour 1: SHORTEST window that is good (here: sum >= target, positive numbers)
+int shortestGood(const vector<int>& a, long long target) {
+    int L = 0, best = INT_MAX;
+    long long sum = 0;
+    for (int R = 0; R < (int)a.size(); R++) {
+        sum += a[R];                      // grow: take a[R] in
+        while (sum >= target) {           // window is good -> try to make it shorter
+            best = min(best, R - L + 1);
+            sum -= a[L++];                // shrink: let a[L] go
+        }
+    }
+    return best == INT_MAX ? 0 : best;
+}` }
+      ] }, { lang: 'java', code: `
       // Flavour 2: LONGEST window that is good (here: sum <= limit, non-negative numbers)
       int longestGood(int[] a, int limit) {
           int L = 0, best = 0;
@@ -1873,7 +2747,40 @@ print(max_vowels("leetcode", 3))    # 2`
               best = Math.max(best, R - L + 1);    // window a[L..R] is good here
           }
           return best;
-      }`],
+      }`,
+        alt: [
+          { lang: 'python', code: `# Flavour 2: LONGEST window that is good (here: sum <= limit, non-negative numbers)
+def longest_good(a, limit):
+    L = total = best = 0
+    for R, x in enumerate(a):
+        total += x                    # grow
+        while total > limit:          # window is bad -> shrink until good again
+            total -= a[L]
+            L += 1
+        best = max(best, R - L + 1)   # window a[L..R] is good here
+    return best` },
+          { lang: 'js', code: `// Flavour 2: LONGEST window that is good (here: sum <= limit, non-negative numbers)
+function longestGood(a, limit) {
+  let L = 0, sum = 0, best = 0;
+  for (let R = 0; R < a.length; R++) {
+    sum += a[R];                      // grow
+    while (sum > limit) sum -= a[L++];   // window is bad -> shrink until good again
+    best = Math.max(best, R - L + 1); // window a[L..R] is good here
+  }
+  return best;
+}` },
+          { lang: 'cpp', code: `// Flavour 2: LONGEST window that is good (here: sum <= limit, non-negative numbers)
+int longestGood(const vector<int>& a, long long limit) {
+    int L = 0, best = 0;
+    long long sum = 0;
+    for (int R = 0; R < (int)a.size(); R++) {
+        sum += a[R];                      // grow
+        while (sum > limit) sum -= a[L++];   // window is bad -> shrink until good again
+        best = max(best, R - L + 1);      // window a[L..R] is good here
+    }
+    return best;
+}` }
+        ] }],
     codeTitle: ['Template: shortest good window (shrink WHILE good)', 'Template: longest good window (shrink WHILE bad)'],
     viz: [{
       title: 'Variable window: grow until sum ≥ K, then shrink while it still holds',
@@ -2026,7 +2933,7 @@ print(max_vowels("leetcode", 3))    # 2`
             ['1', '[1, 2]', '2 → [2], [1,2]', '3'],
             ['2', '[3] (dropped 1 and 2)', '1 → [3]', H.c('p', '4')]
           ])}`,
-        code: `
+        code: { lang: 'java', code: `
           long countSumAtMost(int[] a, long S) {       // positive numbers
               long count = 0, sum = 0;
               int L = 0;
@@ -2036,7 +2943,37 @@ print(max_vowels("leetcode", 3))    # 2`
                   count += R - L + 1;                  // all good windows ending at R
               }
               return count;
-          }`
+          }`,
+          alt: [
+            { lang: 'python', code: `def count_sum_at_most(a, S):          # positive numbers
+    count = total = L = 0
+    for R, x in enumerate(a):
+        total += x
+        while total > S:              # shrink while bad
+            total -= a[L]
+            L += 1
+        count += R - L + 1            # all good windows ending at R
+    return count` },
+            { lang: 'js', code: `function countSumAtMost(a, S) {       // positive numbers
+  let count = 0, sum = 0, L = 0;
+  for (let R = 0; R < a.length; R++) {
+    sum += a[R];
+    while (sum > S) sum -= a[L++];    // shrink while bad
+    count += R - L + 1;               // all good windows ending at R
+  }
+  return count;
+}` },
+            { lang: 'cpp', code: `long long countSumAtMost(const vector<int>& a, long long S) {   // positive numbers
+    long long count = 0, sum = 0;
+    int L = 0;
+    for (int R = 0; R < (int)a.size(); R++) {
+        sum += a[R];
+        while (sum > S) sum -= a[L++];    // shrink while bad
+        count += R - L + 1;               // all good windows ending at R
+    }
+    return count;
+}` }
+          ] }
       },
       {
         title: '"Exactly K" = atMost(K) − atMost(K − 1)',
@@ -2053,7 +2990,7 @@ print(max_vowels("leetcode", 3))    # 2`
         <li><b>Shortest flavour:</b> if [L, R] is good, every bigger window containing it is good too (sum ≥ K with positives, "contains all required letters").</li>
         <li><b>Longest / count flavour:</b> if [L, R] is good, every smaller window inside it is good too (sum ≤ S with non-negatives, "at most K zeros", "at most K distinct", product &lt; K with positives).</li>
       </ul>
-      <p>Negative numbers (sums) or zeros (products) break monotonicity, and the window gives wrong answers. Then use prefix sums: with a HashMap for "sum exactly K" (Hashing module) or with a monotonic deque for "shortest sum ≥ K" (LeetCode 862).</p>
+      <p>Negative numbers (sums) or zeros (products) break monotonicity, and the window gives wrong answers. Then use prefix sums: with a hash map for "sum exactly K" (Hashing module) or with a monotonic deque for "shortest sum ≥ K" (LeetCode 862).</p>
       <h4>Amortised O(N) — counted honestly</h4>
       <p>Every index is added once (when R reaches it) and removed at most once (when L passes it). So the total work of all inner <code>while</code> loops together is ≤ N, giving ≤ 2N steps. This "charge each element at most twice" argument is called <b>amortised analysis</b>.</p>
       <h4>Expert tricks</h4>
@@ -2064,7 +3001,7 @@ print(max_vowels("leetcode", 3))    # 2`
       </ul>`,
     aiEra: `<p><b>What AI changes:</b> assistants recognise "minimum size subarray sum" instantly, but they very often apply the same template to arrays with <b>negative numbers</b>, where it silently fails. Checking the monotonicity condition is the human skill that matters now.</p>
       <p><b>Use AI as a partner:</b> ask <code>Is goodness monotone for this condition? Give a counterexample if not</code>; ask it to write the brute-force O(N<sup>2</sup>) version and a random tester that <b>includes negative numbers</b> — watch the window version fail and understand why; ask it to convert your "exactly K" brute force into atMost(K) − atMost(K − 1).</p>
-      <p><b>Where AI goes wrong:</b> records the answer in the wrong place (inside vs after the shrink loop), mixes the shortest and longest flavours, returns <code>Integer.MAX_VALUE</code> instead of 0 when nothing is found, uses <code>if</code> where <code>while</code> is needed for the shortest flavour, and calls the nested loops O(N<sup>2</sup>).</p>
+      <p><b>Where AI goes wrong:</b> records the answer in the wrong place (inside vs after the shrink loop), mixes the shortest and longest flavours, returns the "infinity" sentinel (<code>Integer.MAX_VALUE</code>, <code>INT_MAX</code>, <code>float('inf')</code>, <code>Infinity</code>) instead of 0 when nothing is found, uses <code>if</code> where <code>while</code> is needed for the shortest flavour, and calls the nested loops O(N<sup>2</sup>).</p>
       <p><b>What you must still own:</b> the two flavours and where to record, the monotone-goodness test, the amortised O(N) argument, and the fallback (prefix sums) when the test fails.</p>`,
     problems: [
       {
@@ -2101,8 +3038,18 @@ print(max_vowels("leetcode", 3))    # 2`
         hints: [
           `<p><b>Aha:</b> with positive numbers, extending a window always <b>increases</b> its sum and cutting from the left always <b>decreases</b> it. So "grow until sum ≥ K, then shrink while sum ≥ K" sees every candidate shortest window.</p>`,
           `<p>Two indices <code>L</code> and <code>R</code> plus a running <code>sum</code>. Outer <code>for</code> moves R (grow); inner <code>while (sum ≥ K)</code> records <code>R - L + 1</code>, subtracts <code>a[L]</code>, moves L (shrink).</p>`,
-          `<p><b>Traps:</b> start <code>best</code> at "infinity" (<code>Integer.MAX_VALUE</code>) and return 0 if it never changed; record the length <b>before</b> removing a[L]; use <code>long</code> for the sum if values are big; this only works for positive numbers. <b>Recipe:</b> L = 0, sum = 0, best = ∞ → for R: sum += a[R]; while sum ≥ K: best = min(best, R-L+1); sum -= a[L]; L++ → return best == ∞ ? 0 : best.</p>`
+          `<p><b>Traps:</b> start <code>best</code> at "infinity" (<code>Integer.MAX_VALUE</code> / <code>INT_MAX</code> / <code>float('inf')</code> / <code>Infinity</code>) and return 0 if it never changed; record the length <b>before</b> removing a[L]; use a 64-bit sum if values are big; this only works for positive numbers. <b>Recipe:</b> L = 0, sum = 0, best = ∞ → for R: sum += a[R]; while sum ≥ K: best = min(best, R-L+1); sum -= a[L]; L++ → return best == ∞ ? 0 : best.</p>`
         ],
+        tests: { sig: 'int int[] -> int', fn: 'minSubArrayLen', cases: [
+          [[7,[2,3,1,2,4,3]], 2],
+          [[4,[1,4,4]], 1],
+          [[11,[1,1,1,1,1,1,1,1]], 0],
+          [[15,[1,2,3,4,5]], 5],
+          [[1,[1]], 1],
+          [[1000000000,[10000,10000]], 0],
+          [[6,[2,2,2]], 3],
+          [[10,[1,2,10,1]], 1]
+        ] },
         solution: {
           approach: `<p>Caterpillar window: the right end grows the sum, the left end shrinks it while it stays ≥ K; record the length each time the window is good.</p>`,
           code: `
@@ -2126,6 +3073,43 @@ print(max_vowels("leetcode", 3))    # 2`
                     System.out.println(new Solution().minSubArrayLen(7, new int[]{2, 3, 1, 2, 4, 3}));   // 2
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `def min_sub_array_len(k, a):
+    L, total, best = 0, 0, float('inf')
+    for R, x in enumerate(a):
+        total += x                    # grow
+        while total >= k:             # good: record, then shrink
+            best = min(best, R - L + 1)
+            total -= a[L]
+            L += 1
+    return 0 if best == float('inf') else best` },
+            { lang: 'js', code: `function minSubArrayLen(k, a) {
+  let L = 0, sum = 0, best = Infinity;
+  for (let R = 0; R < a.length; R++) {
+    sum += a[R];                      // grow
+    while (sum >= k) {                // good: record, then shrink
+      best = Math.min(best, R - L + 1);
+      sum -= a[L++];
+    }
+  }
+  return best === Infinity ? 0 : best;
+}` },
+            { lang: 'cpp', code: `class Solution {
+public:
+    int minSubArrayLen(int k, const vector<int>& a) {
+        int L = 0, best = INT_MAX;
+        long long sum = 0;
+        for (int R = 0; R < (int)a.size(); R++) {
+            sum += a[R];
+            while (sum >= k) {
+                best = min(best, R - L + 1);
+                sum -= a[L++];
+            }
+        }
+        return best == INT_MAX ? 0 : best;
+    }
+};` }
+          ],
           dry: {
             head: ['R', 'a[R]', 'sum after grow', 'shrink steps (while sum ≥ 7)', 'L after', 'best'],
             rows: [
@@ -2161,20 +3145,20 @@ print(max_vowels("leetcode", 3))    # 2`
       <h4>Quick decision steps (ask them in this order)</h4>
       <ol>
         <li>Is the answer about a <b>contiguous</b> piece (subarray / substring / consecutive days)? → <b>window</b>. Size given → fixed; size is what you are searching for → variable.</li>
-        <li>Negative numbers + "subarray sum equals / at least K"? → the window is <b>not</b> safe; use prefix sums (+ HashMap or deque) instead.</li>
+        <li>Negative numbers + "subarray sum equals / at least K"? → the window is <b>not</b> safe; use prefix sums (+ hash map or deque) instead.</li>
         <li>Must you rewrite the array <b>in place</b> (remove, move, compact)? → <b>slow / fast</b> read-write pointers.</li>
         <li>Is it about a <b>difference</b> between two values? → sort + same-direction gap pointers.</li>
         <li>Is it about <b>pairs / triplets</b> of values with a sum (not necessarily adjacent)? → sort if allowed, then <b>opposite pointers</b>.</li>
       </ol>
       <p>The visualizer below runs exactly this checklist on any statement you type, so you can test your instinct.</p>
-      <p>${H.c('m', 'Sliding windows that need a HashMap of character counts (longest substring without repeats, minimum window substring) are taught fully in the Hashing module; the grow/shrink skeleton you learned here is exactly the same.')}</p>`,
+      <p>${H.c('m', 'Sliding windows that need a hash map of character counts (longest substring without repeats, minimum window substring) are taught fully in the Hashing module; the grow/shrink skeleton you learned here is exactly the same.')}</p>`,
     clues: [
       '"<b>sorted</b>" + "<b>pair / triplet</b> with sum" → opposite pointers.',
       '"<b>in place</b>" + "remove / move / keep order" → slow &amp; fast pointers.',
       '"<b>difference</b> K" → sort + same-direction pointers (i behind, j ahead).',
       '"<b>contiguous</b>" + "<b>size K</b>" → fixed window; "<b>shortest / longest</b>" + "<b>positive</b> numbers" or "<b>at most K</b>" → variable window.',
       '"<b>exactly K</b>" with a window → count atMost(K) - atMost(K - 1).',
-      '"<b>return the indices</b>" on an <b>unsorted</b> array → sorting would lose them: think HashMap first.'
+      '"<b>return the indices</b>" on an <b>unsorted</b> array → sorting would lose them: think hash map first.'
     ],
     viz: {
       title: 'Clue detector: run the checklist on a problem statement',
@@ -2218,7 +3202,7 @@ print(max_vowels("leetcode", 3))    # 2`
         var answers = {
           FIX: 'Fixed-size sliding window: build the first K, then add a[i] and drop a[i - K]. O(N), O(1) memory.',
           VAR: 'Variable window (grow / shrink): shortest → shrink while good; longest or count → shrink while bad. O(N).',
-          PRE: 'Negatives break the window. Use prefix sums: + HashMap for "sum exactly K", + monotonic deque for "shortest sum ≥ K".',
+          PRE: 'Negatives break the window. Use prefix sums: + hash map for "sum exactly K", + monotonic deque for "shortest sum ≥ K".',
           SF: 'Slow / fast read-write pointers: fast reads every item, slow writes the kept ones. O(N), O(1) memory, stable.',
           GAP: 'Sort, then same-direction gap pointers: gap too small → j++, too big → i++. O(N log N) for the sort, O(N) walk.',
           OPP: 'Opposite-direction pointers (sort first if allowed): too small → L++, too big → R--. Fix extra numbers in outer loops for 3-Sum / 4-Sum.',
@@ -2303,7 +3287,7 @@ print(max_vowels("leetcode", 3))    # 2`
     examples: [
       {
         title: '"Given a sorted array, return two numbers that add up to target, using O(1) memory"',
-        html: `<p>Contiguous? ${H.c('r', 'no')}. In place? ${H.c('r', 'no')} (O(1) memory is a limit, not a rewrite). Difference? ${H.c('r', 'no')}. Pair with a sum? ${H.c('g', 'yes')} → <b>opposite pointers</b>. The word "sorted" confirms it: no sorting cost, no HashMap needed.</p>`
+        html: `<p>Contiguous? ${H.c('r', 'no')}. In place? ${H.c('r', 'no')} (O(1) memory is a limit, not a rewrite). Difference? ${H.c('r', 'no')}. Pair with a sum? ${H.c('g', 'yes')} → <b>opposite pointers</b>. The word "sorted" confirms it: no sorting cost, no hash map needed.</p>`
       },
       {
         title: '"Find the maximum number of fruits you can collect in a row using at most 2 baskets (types)"',
@@ -2322,9 +3306,9 @@ print(max_vowels("leetcode", 3))    # 2`
       <p>Every technique in this module is a way to explore the N × N table of (i, j) pairs <b>without</b> visiting all of it. Each pointer move <b>deletes a whole row or column</b> of that table because of a <b>monotonic</b> fact: sorted order (opposite / gap pointers), "kept items keep their order" (slow/fast), or "goodness is monotone in window size" (variable window). When you cannot name the monotonic fact, the pointer solution is probably wrong.</p>
       <h4>When two clues fight</h4>
       ${H.table(['situation', 'better choice', 'why'], [
-        ['unsorted + "return indices" + pair sum', 'HashMap', 'sorting loses indices; hashing is O(N)'],
+        ['unsorted + "return indices" + pair sum', 'hash map', 'sorting loses indices; hashing is O(N)'],
         ['unsorted + "values only" + O(1) memory', 'sort + opposite pointers', 'O(N log N) time, no extra memory'],
-        ['"subarray sum = K" with negatives', 'prefix sum + HashMap', 'window goodness is not monotone'],
+        ['"subarray sum = K" with negatives', 'prefix sum + hash map', 'window goodness is not monotone'],
         ['"subarray sum ≥ K", positives', 'variable window', 'O(N) and O(1) memory beats prefix + binary search'],
         ['"K-th smallest pair distance"', 'binary search on the answer + two-pointer counting', 'pointers count pairs ≤ d in O(N) for each guess']
       ])}
@@ -2372,8 +3356,21 @@ print(max_vowels("leetcode", 3))    # 2`
     hints: [
       `<p><b>Aha:</b> you never need the cleaned string. Two pointers from both ends can <b>skip</b> junk characters on the fly and compare only the letters/digits they land on.</p>`,
       `<p>Opposite pointers L = 0 and R = n - 1. Inner loops: while L &lt; R and s[L] is not alphanumeric → L++; same for R. Then compare lowercase versions.</p>`,
-      `<p><b>Traps:</b> keep the <code>L &lt; R</code> check inside the skip loops (a string of only symbols); digits count as characters ("0P" is false); compare <code>Character.toLowerCase</code> of both. <b>Recipe:</b> skip junk on both sides → compare → mismatch returns false → L++, R-- → true at the end.</p>`
+      `<p><b>Traps:</b> keep the <code>L &lt; R</code> check inside the skip loops (a string of only symbols); digits count as characters ("0P" is false); compare the lower-case forms of both (<code>Character.toLowerCase</code> / <code>str.lower()</code> / <code>toLowerCase()</code> / <code>tolower</code>); "letter or digit" is <code>Character.isLetterOrDigit</code> / <code>str.isalnum()</code> / <code>/[a-z0-9]/i</code> / <code>isalnum</code>. <b>Recipe:</b> skip junk on both sides → compare → mismatch returns false → L++, R-- → true at the end.</p>`
     ],
+    tests: { sig: 'string -> bool', fn: 'isPalindrome', cases: [
+      [["A man, a plan, a canal: Panama"], true],
+      [["race a car"], false],
+      [[" "], true],
+      [["a."], true],
+      [["0P"], false],
+      [["ab_a"], true],
+      [["Aa"], true],
+      [[".,"], true],
+      [["No 'x' in Nixon"], true],
+      [["12321"], true],
+      [["1a2"], false]
+    ] },
     solution: {
       approach: `<p>Opposite pointers that skip non-alphanumeric characters and compare case-insensitively.</p>`,
       code: `
@@ -2392,18 +3389,43 @@ print(max_vowels("leetcode", 3))    # 2`
                 return true;
             }
         }`,
-      alt: [{ lang: 'python', code: `class Solution:
-    def isPalindrome(self, s: str) -> bool:
-        L, R = 0, len(s) - 1
-        while L < R:
-            while L < R and not s[L].isalnum():
-                L += 1
-            while L < R and not s[R].isalnum():
-                R -= 1
-            if s[L].lower() != s[R].lower():
-                return False
-            L, R = L + 1, R - 1
-        return True` }],
+      alt: [
+        { lang: 'python', code: `def is_palindrome(s):
+    L, R = 0, len(s) - 1
+    while L < R:
+        while L < R and not s[L].isalnum():
+            L += 1                    # skip junk on the left
+        while L < R and not s[R].isalnum():
+            R -= 1                    # skip junk on the right
+        if s[L].lower() != s[R].lower():
+            return False
+        L, R = L + 1, R - 1
+    return True` },
+        { lang: 'js', code: `function isPalindrome(s) {
+  const ok = (c) => /[a-z0-9]/i.test(c);
+  let L = 0, R = s.length - 1;
+  while (L < R) {
+    while (L < R && !ok(s[L])) L++;   // skip junk on the left
+    while (L < R && !ok(s[R])) R--;   // skip junk on the right
+    if (s[L].toLowerCase() !== s[R].toLowerCase()) return false;
+    L++; R--;
+  }
+  return true;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    bool isPalindrome(const string& s) {
+        int L = 0, R = (int)s.size() - 1;
+        while (L < R) {
+            while (L < R && !isalnum((unsigned char)s[L])) L++;
+            while (L < R && !isalnum((unsigned char)s[R])) R--;
+            if (tolower((unsigned char)s[L]) != tolower((unsigned char)s[R])) return false;
+            L++; R--;
+        }
+        return true;
+    }
+};` }
+      ],
       dry: {
         head: ['L', 'R', 's[L] vs s[R]', 'action'],
         rows: [['0', '9', '"r" vs "r" (s = "race a car")', 'match → L=1, R=8'], ['1', '8', '"a" vs "a"', 'match'], ['2', '7', '"c" vs "c"', 'match'], ['3', '5', '"e" vs "a" (R skipped the space at 6)', H.c('r', 'mismatch → false')]]
@@ -2440,8 +3462,18 @@ print(max_vowels("leetcode", 3))    # 2`
     hints: [
       `<p><b>Aha:</b> the largest remaining square is always at L or R. So fill the output from the <b>back</b> (largest first), picking the bigger of the two ends each time.</p>`,
       `<p>Opposite pointers L = 0, R = n - 1, and a write index w = n - 1 that moves left. Compare <code>|nums[L]|</code> with <code>|nums[R]|</code>; write the bigger square at w; move that pointer inward.</p>`,
-      `<p><b>Traps:</b> you need a new output array (writing in place would destroy unread values); loop while <code>L ≤ R</code> so the last element is placed; squares up to 10<sup>8</sup> fit in <code>int</code>. <b>Recipe:</b> for w from n-1 down to 0: if |a[L]| &gt; |a[R]| → out[w] = a[L]², L++ else out[w] = a[R]², R--.</p>`
+      `<p><b>Traps:</b> you need a new output array (writing in place would destroy unread values); loop while <code>L ≤ R</code> so the last element is placed; squares up to 10<sup>8</sup> fit in a 32-bit <code>int</code>. <b>Recipe:</b> for w from n-1 down to 0: if |a[L]| &gt; |a[R]| → out[w] = a[L]², L++ else out[w] = a[R]², R--.</p>`
     ],
+    tests: { sig: 'int[] -> int[]', fn: 'sortedSquares', cases: [
+      [[[-4,-1,0,3,10]], [0,1,9,16,100]],
+      [[[-7,-3,2,3,11]], [4,9,9,49,121]],
+      [[[0]], [0]],
+      [[[-5,-4]], [16,25]],
+      [[[1,2]], [1,4]],
+      [[[-10000,10000]], [100000000,100000000]],
+      [[[-2,-2,1,1]], [1,1,4,4]],
+      [[[-3,-3,-3]], [9,9,9]]
+    ] },
     solution: {
       approach: `<p>Two pointers at the ends pick the larger absolute value; fill the result from the back.</p>`,
       code: `
@@ -2462,6 +3494,41 @@ print(max_vowels("leetcode", 3))    # 2`
                 return out;
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def sorted_squares(nums):
+    n = len(nums)
+    out = [0] * n
+    L, R = 0, n - 1
+    for w in range(n - 1, -1, -1):    # fill the biggest squares first
+        if abs(nums[L]) > abs(nums[R]):
+            out[w] = nums[L] * nums[L]
+            L += 1
+        else:
+            out[w] = nums[R] * nums[R]
+            R -= 1
+    return out` },
+        { lang: 'js', code: `function sortedSquares(nums) {
+  const n = nums.length, out = new Array(n);
+  let L = 0, R = n - 1;
+  for (let w = n - 1; w >= 0; w--) {  // fill the biggest squares first
+    if (Math.abs(nums[L]) > Math.abs(nums[R])) { out[w] = nums[L] * nums[L]; L++; }
+    else { out[w] = nums[R] * nums[R]; R--; }
+  }
+  return out;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> sortedSquares(const vector<int>& nums) {
+        int n = nums.size(), L = 0, R = n - 1;
+        vector<int> out(n);
+        for (int w = n - 1; w >= 0; w--) {
+            if (abs(nums[L]) > abs(nums[R])) { out[w] = nums[L] * nums[L]; L++; }
+            else { out[w] = nums[R] * nums[R]; R--; }
+        }
+        return out;
+    }
+};` }
+      ],
       dry: {
         head: ['w', 'L (val)', 'R (val)', 'bigger |x|', 'out[w]'],
         rows: [['4', '0 (-4)', '4 (10)', '10', '100'], ['3', '0 (-4)', '3 (3)', '-4', '16'], ['2', '1 (-1)', '3 (3)', '3', '9'], ['1', '1 (-1)', '2 (0)', '-1', '1'], ['0', '2 (0)', '2 (0)', '0', '0']]
@@ -2500,9 +3567,19 @@ print(max_vowels("leetcode", 3))    # 2`
     },
     hints: [
       `<p><b>Aha:</b> fixed window size → keep a running sum; moving one step = add the entering element, subtract the leaving one.</p>`,
-      `<p>One <code>long sum</code> and one <code>long best</code>. Build the first window, then for i = k..n-1: sum += nums[i] - nums[i - k].</p>`,
+      `<p>One running <code>sum</code> and one <code>best</code> (64-bit in Java/C++: <code>long</code> / <code>long long</code>). Build the first window, then for i = k..n-1: sum += nums[i] - nums[i - k].</p>`,
       `<p><b>Traps:</b> start <code>best</code> at the first window's sum (all numbers may be negative); divide as <code>(double) best / k</code> to avoid integer division. <b>Recipe:</b> sum = first k → best = sum → slide → return best / k.</p>`
     ],
+    tests: { sig: 'int[] int -> double', fn: 'findMaxAverage', cmp: 'float', cases: [
+      [[[1,12,-5,-6,50,3],4], 12.75],
+      [[[5],1], 5],
+      [[[-1],1], -1],
+      [[[0,4,0,3,2],1], 4],
+      [[[-10000,-10000],2], -10000],
+      [[[1,2,3,4],4], 2.5],
+      [[[3,3,4,3,0],4], 3.25],
+      [[[10000,10000,10000,-10000],3], 10000]
+    ] },
     solution: {
       approach: `<p>Fixed-size sliding window on the sum; convert the best sum to an average at the end.</p>`,
       code: `
@@ -2518,6 +3595,35 @@ print(max_vowels("leetcode", 3))    # 2`
                 return (double) best / k;                     // divide once
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def find_max_average(nums, k):
+    window = best = sum(nums[:k])
+    for i in range(k, len(nums)):
+        window += nums[i] - nums[i - k]
+        best = max(best, window)
+    return best / k                   # divide once, at the end` },
+        { lang: 'js', code: `function findMaxAverage(nums, k) {
+  let sum = 0;
+  for (let i = 0; i < k; i++) sum += nums[i];
+  let best = sum;
+  for (let i = k; i < nums.length; i++) {
+    sum += nums[i] - nums[i - k];
+    best = Math.max(best, sum);
+  }
+  return best / k;                    // divide once, at the end
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    double findMaxAverage(const vector<int>& nums, int k) {
+        long long sum = accumulate(nums.begin(), nums.begin() + k, 0LL), best = sum;
+        for (int i = k; i < (int)nums.size(); i++) {
+            sum += nums[i] - nums[i - k];
+            best = max(best, sum);
+        }
+        return (double)best / k;
+    }
+};` }
+      ],
       dry: {
         head: ['i', 'enters', 'leaves', 'sum', 'best'],
         rows: [['0..3', '1, 12, -5, -6', '—', '2', '2'], ['4', '50', '1', '51', '51'], ['5', '3', '12', '42', '51 → 12.75']]
@@ -2536,7 +3642,7 @@ print(max_vowels("leetcode", 3))    # 2`
     constraints: `0 ≤ m, n ≤ 200, 1 ≤ m + n, -10<sup>9</sup> ≤ values ≤ 10<sup>9</sup>`,
     example: `<p>nums1 = [1, 2, 3, ${H.c('m', '0, 0, 0')}], m = 3; nums2 = [2, 5, 6], n = 3 → ${H.c('p', '[1, 2, 2, 3, 5, 6]')}</p><p><b>Why fill from the back?</b> The empty cells are at the <b>end</b>. Placing the <b>largest</b> remaining value there never overwrites a value of nums1 we still need to read.</p>`,
     brute: {
-      why: `<p>Copy nums2 into the empty tail and call <code>Arrays.sort</code>: O((m + n) log(m + n)). It works but ignores that both inputs are already sorted. Merging from the <b>front</b> in place would overwrite unread values of nums1 or force O(N) shifts per insert.</p>`,
+      why: `<p>Copy nums2 into the empty tail and call the library sort (<code>Arrays.sort</code>, <code>sort()</code>, <code>std::sort</code>): O((m + n) log(m + n)). It works but ignores that both inputs are already sorted. Merging from the <b>front</b> in place would overwrite unread values of nums1 or force O(N) shifts per insert.</p>`,
       code: `
         void brute(int[] nums1, int m, int[] nums2, int n) {
             for (int i = 0; i < n; i++) nums1[m + i] = nums2[i];
@@ -2554,6 +3660,16 @@ print(max_vowels("leetcode", 3))    # 2`
       `<p>Three indices: <code>i = m - 1</code> (end of real nums1 values), <code>j = n - 1</code> (end of nums2), <code>w = m + n - 1</code> (write slot). Write the bigger of nums1[i] and nums2[j] at w.</p>`,
       `<p><b>Traps:</b> loop while <code>j ≥ 0</code> — once nums2 is used up, the rest of nums1 is already in place; if nums1 runs out first, keep copying nums2. <b>Recipe:</b> while j ≥ 0: if i ≥ 0 and nums1[i] &gt; nums2[j] → nums1[w--] = nums1[i--] else nums1[w--] = nums2[j--].</p>`
     ],
+    tests: { sig: 'int[] int int[] int -> void', fn: 'merge', mutate: 0, cases: [
+      [[[1,2,3,0,0,0],3,[2,5,6],3], [1,2,2,3,5,6]],
+      [[[1],1,[],0], [1]],
+      [[[0],0,[1],1], [1]],
+      [[[4,5,6,0,0,0],3,[1,2,3],3], [1,2,3,4,5,6]],
+      [[[-1000000000,0],1,[1000000000],1], [-1000000000,1000000000]],
+      [[[2,2,0,0],2,[2,2],2], [2,2,2,2]],
+      [[[1,3,5,0,0],3,[2,4],2], [1,2,3,4,5]],
+      [[[0,0,0],0,[-3,-2,-1],3], [-3,-2,-1]]
+    ] },
     solution: {
       approach: `<p>Backwards merge with three pointers; the largest remaining element goes to the last free slot.</p>`,
       code: `
@@ -2569,6 +3685,35 @@ print(max_vowels("leetcode", 3))    # 2`
                 }
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def merge(nums1, m, nums2, n):
+    i, j, w = m - 1, n - 1, m + n - 1
+    while j >= 0:                     # until nums2 is fully placed
+        if i >= 0 and nums1[i] > nums2[j]:
+            nums1[w] = nums1[i]
+            i -= 1
+        else:
+            nums1[w] = nums2[j]
+            j -= 1
+        w -= 1` },
+        { lang: 'js', code: `function merge(nums1, m, nums2, n) {
+  let i = m - 1, j = n - 1, w = m + n - 1;
+  while (j >= 0) {                    // until nums2 is fully placed
+    if (i >= 0 && nums1[i] > nums2[j]) nums1[w--] = nums1[i--];
+    else nums1[w--] = nums2[j--];
+  }
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    void merge(vector<int>& nums1, int m, const vector<int>& nums2, int n) {
+        int i = m - 1, j = n - 1, w = m + n - 1;
+        while (j >= 0) {
+            if (i >= 0 && nums1[i] > nums2[j]) nums1[w--] = nums1[i--];
+            else nums1[w--] = nums2[j--];
+        }
+    }
+};` }
+      ],
       dry: {
         head: ['i (val)', 'j (val)', 'w', 'write', 'nums1'],
         rows: [['2 (3)', '2 (6)', '5', '6', '[1,2,3,0,0,6]'], ['2 (3)', '1 (5)', '4', '5', '[1,2,3,0,5,6]'], ['2 (3)', '0 (2)', '3', '3', '[1,2,3,3,5,6]'], ['1 (2)', '0 (2)', '2', '2 (from nums2; tie)', '[1,2,2,3,5,6]'], ['1', '-1', '—', 'stop', H.c('p', '[1,2,2,3,5,6]')]]
@@ -2614,6 +3759,17 @@ print(max_vowels("leetcode", 3))    # 2`
       `<p>Sort; fix i; L = i + 1, R = n - 1; compute sum; update best; sum &lt; target → L++, sum &gt; target → R--, equal → return target immediately.</p>`,
       `<p><b>Traps:</b> initialise best with a real triple (not 0 or MAX_VALUE, which can overflow in <code>best - target</code>); no duplicate skipping is needed for correctness (it only saves time). <b>Recipe:</b> sort → best = first three → for i: pointer walk updating best → return best.</p>`
     ],
+    tests: { sig: 'int[] int -> int', fn: 'threeSumClosest', cases: [
+      [[[-1,2,1,-4],1], 2],
+      [[[0,0,0],1], 0],
+      [[[1,1,1,0],-100], 2],
+      [[[1,1,-1,-1,3],-1], -1],
+      [[[4,0,5,-5,3,3,0,-4,-5],-2], -2],
+      [[[1000,1000,1000],10000], 3000],
+      [[[-1000,-1000,-1000,5],-10000], -3000],
+      [[[1,2,4,8,16,32,64,128],82], 82],
+      [[[-3,-2,-5,3,-4],-1], -2]
+    ] },
     solution: {
       approach: `<p>Sort + fix one + opposite pointers, tracking the closest sum.</p>`,
       code: `
@@ -2636,6 +3792,60 @@ print(max_vowels("leetcode", 3))    # 2`
                 return best;
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def three_sum_closest(nums, target):
+    nums = sorted(nums)
+    n = len(nums)
+    best = nums[0] + nums[1] + nums[2]
+    for i in range(n - 2):
+        L, R = i + 1, n - 1
+        while L < R:
+            s = nums[i] + nums[L] + nums[R]
+            if abs(s - target) < abs(best - target):
+                best = s
+            if s == target:
+                return s
+            if s < target:
+                L += 1
+            else:
+                R -= 1
+    return best` },
+        { lang: 'js', code: `function threeSumClosest(nums, target) {
+  const a = [...nums].sort((x, y) => x - y);
+  const n = a.length;
+  let best = a[0] + a[1] + a[2];
+  for (let i = 0; i < n - 2; i++) {
+    if (i > 0 && a[i] === a[i - 1]) continue;
+    let L = i + 1, R = n - 1;
+    while (L < R) {
+      const sum = a[i] + a[L] + a[R];
+      if (Math.abs(sum - target) < Math.abs(best - target)) best = sum;
+      if (sum === target) return sum;
+      if (sum < target) L++;
+      else R--;
+    }
+  }
+  return best;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int threeSumClosest(vector<int> nums, int target) {
+        sort(nums.begin(), nums.end());
+        int n = nums.size(), best = nums[0] + nums[1] + nums[2];
+        for (int i = 0; i + 2 < n; i++) {
+            int L = i + 1, R = n - 1;
+            while (L < R) {
+                int sum = nums[i] + nums[L] + nums[R];
+                if (abs(sum - target) < abs(best - target)) best = sum;
+                if (sum == target) return sum;
+                if (sum < target) L++;
+                else R--;
+            }
+        }
+        return best;
+    }
+};` }
+      ],
       dry: {
         head: ['i (val)', 'L', 'R', 'sum', '|sum-1|', 'best'],
         rows: [['0 (-4)', '1', '3', '-3', '4', '-3 (start: -4-1+1=-4 → -3 better)'], ['0 (-4)', '2', '3', '-1', '2', '-1'], ['1 (-1)', '2', '3', '2', '1', H.c('p', '2')]]
@@ -2675,6 +3885,16 @@ print(max_vowels("leetcode", 3))    # 2`
       `<p>Pointers <code>low = 0</code>, <code>mid = 0</code>, <code>high = n - 1</code>. nums[mid] == 0 → swap with low, low++, mid++. == 1 → mid++. == 2 → swap with high, high-- (mid stays).</p>`,
       `<p><b>Traps:</b> loop while <code>mid ≤ high</code> (not &lt;); do not advance mid after swapping with high. <b>Recipe:</b> classic Dutch National Flag partition by Dijkstra — the same three-way partition is used by quicksort when there are many equal keys.</p>`
     ],
+    tests: { sig: 'int[] -> void', fn: 'sortColors', mutate: 0, cases: [
+      [[[2,0,2,1,1,0]], [0,0,1,1,2,2]],
+      [[[2,0,1]], [0,1,2]],
+      [[[0]], [0]],
+      [[[1]], [1]],
+      [[[2,2,2]], [2,2,2]],
+      [[[2,1,0]], [0,1,2]],
+      [[[1,0,1,0,2,2,0]], [0,0,0,1,1,2,2]],
+      [[[0,0,1,1,2,2]], [0,0,1,1,2,2]]
+    ] },
     solution: {
       approach: `<p>Three-pointer partition: one pass, every step shrinks the unknown region.</p>`,
       code: `
@@ -2696,6 +3916,40 @@ print(max_vowels("leetcode", 3))    # 2`
                 int t = a[i]; a[i] = a[j]; a[j] = t;
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def sort_colors(nums):
+    low = mid = 0
+    high = len(nums) - 1
+    while mid <= high:                # nums[mid..high] is still unknown
+        if nums[mid] == 0:
+            nums[low], nums[mid] = nums[mid], nums[low]
+            low += 1
+            mid += 1
+        elif nums[mid] == 1:
+            mid += 1
+        else:                         # 2 goes to the back; re-check the new nums[mid]
+            nums[mid], nums[high] = nums[high], nums[mid]
+            high -= 1` },
+        { lang: 'js', code: `function sortColors(nums) {
+  let low = 0, mid = 0, high = nums.length - 1;
+  while (mid <= high) {               // nums[mid..high] is still unknown
+    if (nums[mid] === 0) { [nums[low], nums[mid]] = [nums[mid], nums[low]]; low++; mid++; }
+    else if (nums[mid] === 1) mid++;
+    else { [nums[mid], nums[high]] = [nums[high], nums[mid]]; high--; }
+  }
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    void sortColors(vector<int>& nums) {
+        int low = 0, mid = 0, high = (int)nums.size() - 1;
+        while (mid <= high) {
+            if (nums[mid] == 0) swap(nums[low++], nums[mid++]);
+            else if (nums[mid] == 1) mid++;
+            else swap(nums[mid], nums[high--]);
+        }
+    }
+};` }
+      ],
       dry: {
         head: ['low', 'mid', 'high', 'nums[mid]', 'action', 'array'],
         rows: [['0', '0', '5', '2', 'swap(0,5), high=4', '[0,0,2,1,1,2]'], ['0', '0', '4', '0', 'swap(0,0), low=1, mid=1', '[0,0,2,1,1,2]'], ['1', '1', '4', '0', 'swap(1,1), low=2, mid=2', '[0,0,2,1,1,2]'], ['2', '2', '4', '2', 'swap(2,4), high=3', '[0,0,1,1,2,2]'], ['2', '2', '3', '1', 'mid=3', '[0,0,1,1,2,2]'], ['2', '3', '3', '1', 'mid=4 &gt; high → stop', H.c('p', '[0,0,1,1,2,2]')]]
@@ -2740,6 +3994,16 @@ print(max_vowels("leetcode", 3))    # 2`
       `<p>Read/write pointers: <code>slow</code> = next free slot. For every fast: if <code>slow &lt; 2</code> or <code>nums[fast] != nums[slow - 2]</code> → <code>nums[slow++] = nums[fast]</code>.</p>`,
       `<p><b>Traps:</b> compare with <code>nums[slow - 2]</code>, not <code>nums[fast - 2]</code> (that cell may be overwritten); the first two elements are always kept. <b>Recipe:</b> generalises to "at most k copies" by replacing 2 with k.</p>`
     ],
+    tests: { sig: 'int[] -> int', fn: 'removeDuplicates', both: 0, check: '(a, out, exp) => { const k = out[0], want = []; for (const v of a[0]) if (want.length < 2 || v !== want[want.length - 2]) want.push(v); return k === exp && JSON.stringify(out[1].slice(0, k)) === JSON.stringify(want); }', cases: [
+      [[[1,1,1,2,2,3]], 5],
+      [[[0,0,1,1,1,1,2,3,3]], 7],
+      [[[1]], 1],
+      [[[1,1]], 2],
+      [[[5,5,5,5,5]], 2],
+      [[[1,2,3]], 3],
+      [[[-1,-1,-1,0,0,0,0,1]], 5],
+      [[[-10000,10000,10000,10000]], 3]
+    ] },
     solution: {
       approach: `<p>Read/write template with keep rule "not equal to the value two places back in the kept zone".</p>`,
       code: `
@@ -2754,6 +4018,31 @@ print(max_vowels("leetcode", 3))    # 2`
                 return slow;
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def remove_duplicates(nums):
+    slow = 0                          # next free slot
+    for x in nums:
+        if slow < 2 or x != nums[slow - 2]:
+            nums[slow] = x            # at most the 2nd copy of x
+            slow += 1
+    return slow` },
+        { lang: 'js', code: `function removeDuplicates(nums) {
+  let slow = 0;                       // next free slot
+  for (const x of nums) {
+    if (slow < 2 || x !== nums[slow - 2]) nums[slow++] = x;
+  }
+  return slow;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int removeDuplicates(vector<int>& nums) {
+        int slow = 0;                 // next free slot
+        for (int x : nums)
+            if (slow < 2 || x != nums[slow - 2]) nums[slow++] = x;
+        return slow;
+    }
+};` }
+      ],
       dry: {
         head: ['fast', 'val', 'nums[slow-2]', 'keep?', 'slow after'],
         rows: [['0,1', '0, 0', '—', 'yes (slow &lt; 2)', '2'], ['2,3', '1, 1', '0, 0', 'yes', '4'], ['4', '1', '1', H.c('r', 'no'), '4'], ['5', '1', '1', H.c('r', 'no'), '4'], ['6', '2', '1', 'yes', '5'], ['7,8', '3, 3', '1, 2', 'yes', H.c('p', '7')]]
@@ -2798,6 +4087,16 @@ print(max_vowels("leetcode", 3))    # 2`
       `<p>Variable window with a zero counter: grow R (count zeros), while zeros &gt; k move L forward (uncount zeros), then best = max(best, R - L + 1).</p>`,
       `<p><b>Traps:</b> k = 0 means the longest run of real ones; k ≥ number of zeros means the whole array. Expert variant: use <code>if</code> instead of <code>while</code> — the window never shrinks and the answer is <code>n - L</code>.</p>`
     ],
+    tests: { sig: 'int[] int -> int', fn: 'longestOnes', cases: [
+      [[[1,1,1,0,0,0,1,1,1,1,0],2], 6],
+      [[[0,0,1,1,0,0,1,1,1,0,1,1,0,0,0,1,1,1,1],3], 10],
+      [[[0],0], 0],
+      [[[0],1], 1],
+      [[[1,1,1],0], 3],
+      [[[0,0,0],0], 0],
+      [[[1,0,1],5], 3],
+      [[[1,0,0,1,1,0,1],1], 4]
+    ] },
     solution: {
       approach: `<p>Longest-flavour sliding window that keeps the zero count ≤ k.</p>`,
       code: `
@@ -2815,6 +4114,41 @@ print(max_vowels("leetcode", 3))    # 2`
                 return best;
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def longest_ones(nums, k):
+    L = zeros = best = 0
+    for R, x in enumerate(nums):
+        zeros += x == 0               # grow
+        while zeros > k:              # too many zeros: shrink
+            zeros -= nums[L] == 0
+            L += 1
+        best = max(best, R - L + 1)
+    return best` },
+        { lang: 'js', code: `function longestOnes(nums, k) {
+  let L = 0, zeros = 0, best = 0;
+  for (let R = 0; R < nums.length; R++) {
+    if (nums[R] === 0) zeros++;       // grow
+    while (zeros > k) {               // too many zeros: shrink
+      if (nums[L] === 0) zeros--;
+      L++;
+    }
+    best = Math.max(best, R - L + 1);
+  }
+  return best;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int longestOnes(const vector<int>& nums, int k) {
+        int L = 0, zeros = 0, best = 0;
+        for (int R = 0; R < (int)nums.size(); R++) {
+            if (nums[R] == 0) zeros++;
+            while (zeros > k) if (nums[L++] == 0) zeros--;
+            best = max(best, R - L + 1);
+        }
+        return best;
+    }
+};` }
+      ],
       dry: {
         head: ['R', 'val', 'zeros', 'shrink', 'L', 'len', 'best'],
         rows: [['0..4', '1,1,1,0,0', '2', '—', '0', '5', '5'], ['5', '0', '3', 'drop 1,1,1,0 → zeros 2', '4', '2', '5'], ['6..9', '1,1,1,1', '2', '—', '4', '6', H.c('p', '6')], ['10', '0', '3', 'drop 0 → zeros 2', '5', '6', '6']]
@@ -2860,8 +4194,18 @@ print(max_vowels("leetcode", 3))    # 2`
     hints: [
       `<p><b>Aha:</b> with positive numbers, shrinking a window can only lower its product, so "product &lt; k" is monotone → count flavour of the variable window.</p>`,
       `<p>Keep a running product; grow with <code>prod *= nums[R]</code>; while <code>prod ≥ k</code> divide by <code>nums[L]</code> and move L; then add <code>R - L + 1</code>.</p>`,
-      `<p><b>Traps:</b> if <code>k ≤ 1</code> return 0 immediately (no positive product is &lt; 1, and the shrink loop would run L past R); use <code>long</code> or keep the product below k so it never overflows. <b>Recipe:</b> L = 0, prod = 1 → for R: prod *= a[R]; while prod ≥ k: prod /= a[L++]; count += R - L + 1.</p>`
+      `<p><b>Traps:</b> if <code>k ≤ 1</code> return 0 immediately (no positive product is &lt; 1, and the shrink loop would run L past R); keep the product below k (it then stays under 10<sup>9</sup>) or use 64 bits in Java/C++ so it never overflows. <b>Recipe:</b> L = 0, prod = 1 → for R: prod *= a[R]; while prod ≥ k: prod /= a[L++]; count += R - L + 1.</p>`
     ],
+    tests: { sig: 'int[] int -> int', fn: 'numSubarrayProductLessThanK', cases: [
+      [[[10,5,2,6],100], 8],
+      [[[1,2,3],0], 0],
+      [[[1,1,1],1], 0],
+      [[[1,1,1],2], 6],
+      [[[1000,1000,1000],1000000], 3],
+      [[[5],6], 1],
+      [[[2,3,4],1000000], 6],
+      [[[10,2,1,5,1],10], 8]
+    ] },
     solution: {
       approach: `<p>Count-flavour sliding window: each right end R contributes R - L + 1 subarrays once the window is valid.</p>`,
       code: `
@@ -2878,6 +4222,43 @@ print(max_vowels("leetcode", 3))    # 2`
                 return count;
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def num_subarray_product_less_than_k(nums, k):
+    if k <= 1:
+        return 0                      # no product of positives is < 1
+    prod, L, count = 1, 0, 0
+    for R, x in enumerate(nums):
+        prod *= x                     # grow
+        while prod >= k:              # shrink while bad (exact division)
+            prod //= nums[L]
+            L += 1
+        count += R - L + 1            # every valid subarray ending at R
+    return count` },
+        { lang: 'js', code: `function numSubarrayProductLessThanK(nums, k) {
+  if (k <= 1) return 0;               // no product of positives is < 1
+  let prod = 1, L = 0, count = 0;
+  for (let R = 0; R < nums.length; R++) {
+    prod *= nums[R];                  // < k * 1000 <= 1e9, exact in a Number
+    while (prod >= k) prod /= nums[L++];
+    count += R - L + 1;
+  }
+  return count;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int numSubarrayProductLessThanK(const vector<int>& nums, int k) {
+        if (k <= 1) return 0;
+        long long prod = 1;
+        int L = 0, count = 0;
+        for (int R = 0; R < (int)nums.size(); R++) {
+            prod *= nums[R];
+            while (prod >= k) prod /= nums[L++];
+            count += R - L + 1;
+        }
+        return count;
+    }
+};` }
+      ],
       dry: {
         head: ['R', 'val', 'prod after grow', 'shrink', 'L', 'added', 'count'],
         rows: [['0', '10', '10', '—', '0', '1', '1'], ['1', '5', '50', '—', '0', '2', '3'], ['2', '2', '100', '÷10 → 10', '1', '2', '5'], ['3', '6', '60', '—', '1', '3', H.c('p', '8')]]
@@ -2920,6 +4301,16 @@ print(max_vowels("leetcode", 3))    # 2`
       `<p>Fixed sliding window of size <code>w = N - k</code>: running sum, track the minimum; answer = total - minimum.</p>`,
       `<p><b>Traps:</b> when k == N the window has size 0 — the answer is the total (handle it so you do not slide an empty window); greedy "take the larger end each time" is WRONG: [1, 1000, 2, 3] with k = 2 → greedy takes 3 then 2 = 5, but 1 + 1000 = 1001. <b>Recipe:</b> total = sum; w = n - k; win = sum of first w; min = win; slide; return total - min.</p>`
     ],
+    tests: { sig: 'int[] int -> int', fn: 'maxScore', cases: [
+      [[[1,2,3,4,5,6,1],3], 12],
+      [[[2,2,2],2], 4],
+      [[[9,7,7,9,7,7,9],7], 55],
+      [[[1,1000,1],1], 1],
+      [[[1,79,80,1,1,1,200,1],3], 202],
+      [[[5],1], 5],
+      [[[100,40,17,9,73,75],3], 248],
+      [[[10000,10000,10000,10000],4], 40000]
+    ] },
     solution: {
       approach: `<p>Complement trick + fixed-size window of length N - k.</p>`,
       code: `
@@ -2939,6 +4330,46 @@ print(max_vowels("leetcode", 3))    # 2`
                 return total - minWin;
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def max_score(card_points, k):
+    n = len(card_points)
+    w = n - k                         # size of the middle window we leave
+    total = sum(card_points)
+    if w == 0:
+        return total
+    win = min_win = sum(card_points[:w])
+    for i in range(w, n):
+        win += card_points[i] - card_points[i - w]
+        min_win = min(min_win, win)
+    return total - min_win` },
+        { lang: 'js', code: `function maxScore(cardPoints, k) {
+  const n = cardPoints.length, w = n - k;   // size of the middle window we leave
+  const total = cardPoints.reduce((s, x) => s + x, 0);
+  if (w === 0) return total;
+  let win = 0;
+  for (let i = 0; i < w; i++) win += cardPoints[i];
+  let minWin = win;
+  for (let i = w; i < n; i++) {
+    win += cardPoints[i] - cardPoints[i - w];
+    minWin = Math.min(minWin, win);
+  }
+  return total - minWin;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int maxScore(const vector<int>& cardPoints, int k) {
+        int n = cardPoints.size(), w = n - k;
+        int total = accumulate(cardPoints.begin(), cardPoints.end(), 0);
+        if (w == 0) return total;
+        int win = accumulate(cardPoints.begin(), cardPoints.begin() + w, 0), minWin = win;
+        for (int i = w; i < n; i++) {
+            win += cardPoints[i] - cardPoints[i - w];
+            minWin = min(minWin, win);
+        }
+        return total - minWin;
+    }
+};` }
+      ],
       dry: {
         head: ['window', 'sum', 'min', 'total - min'],
         rows: [['[1,2,3,4]', '10', '10', '12'], ['[2,3,4,5]', '14', '10', '—'], ['[3,4,5,6]', '18', '10', '—'], ['[4,5,6,1]', '16', '10', H.c('p', '12')]]
@@ -2991,6 +4422,17 @@ print(max_vowels("leetcode", 3))    # 2`
       `<p>Sort; L = 0 (lightest), R = n - 1 (heaviest). Each iteration launches one boat with person R; if <code>people[L] + people[R] ≤ limit</code>, L also boards.</p>`,
       `<p><b>Traps:</b> loop while <code>L ≤ R</code> (the last single person still needs a boat); at most two per boat, so do not try to add a third. <b>Proof idea:</b> exchange argument — if an optimal plan pairs the lightest with someone else, swapping partners never increases boats.</p>`
     ],
+    tests: { sig: 'int[] int -> int', fn: 'numRescueBoats', cases: [
+      [[[1,2],3], 1],
+      [[[3,2,2,1],3], 3],
+      [[[3,5,3,4],5], 4],
+      [[[5],5], 1],
+      [[[1,1,1,1],2], 2],
+      [[[2,2],3], 2],
+      [[[2,49,10,7,11,41,47,2,22,6,13,12],50], 7],
+      [[[30000,30000,1],30000], 3],
+      [[[4,1,3,2,5,6],7], 3]
+    ] },
     solution: {
       approach: `<p>Greedy with opposite pointers after sorting: every boat takes the heaviest remaining person, plus the lightest if they fit.</p>`,
       code: `
@@ -3006,6 +4448,40 @@ print(max_vowels("leetcode", 3))    # 2`
                 return boats;
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def num_rescue_boats(people, limit):
+    people = sorted(people)
+    L, R, boats = 0, len(people) - 1, 0
+    while L <= R:
+        if people[L] + people[R] <= limit:
+            L += 1                    # lightest joins the heaviest
+        R -= 1                        # heaviest always leaves on this boat
+        boats += 1
+    return boats` },
+        { lang: 'js', code: `function numRescueBoats(people, limit) {
+  const p = [...people].sort((x, y) => x - y);
+  let L = 0, R = p.length - 1, boats = 0;
+  while (L <= R) {
+    if (p[L] + p[R] <= limit) L++;    // lightest joins the heaviest
+    R--;                              // heaviest always leaves
+    boats++;
+  }
+  return boats;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int numRescueBoats(vector<int> people, int limit) {
+        sort(people.begin(), people.end());
+        int L = 0, R = (int)people.size() - 1, boats = 0;
+        while (L <= R) {
+            if (people[L] + people[R] <= limit) L++;
+            R--;
+            boats++;
+        }
+        return boats;
+    }
+};` }
+      ],
       dry: {
         head: ['L (w)', 'R (w)', 'sum ≤ 3?', 'boat', 'boats'],
         rows: [['0 (1)', '3 (3)', '4 → no', '[3]', '1'], ['0 (1)', '2 (2)', '3 → yes', '[1, 2]', '2'], ['1 (2)', '1 (2)', 'same person', '[2]', H.c('p', '3')]]
@@ -3048,8 +4524,18 @@ print(max_vowels("leetcode", 3))    # 2`
     hints: [
       `<p><b>Aha:</b> exactly(k) = atMost(k) − atMost(k − 1). Each "at most" count is an easy count-flavour window.</p>`,
       `<p>atMost(k): grow R, add 1 if nums[R] is odd; while odd &gt; k shrink L; count += R - L + 1. Call it twice.</p>`,
-      `<p><b>Traps:</b> the answer can reach N<sup>2</sup>/2 ≈ 1.25·10<sup>9</sup> — still fits in <code>int</code> here but use <code>long</code> inside to be safe; atMost(-1) must return 0 (k ≥ 1 so k − 1 ≥ 0 here). <b>Alternative:</b> prefix count of odds + HashMap (same as "subarray sum equals k" on a 0/1 array).</p>`
+      `<p><b>Traps:</b> the answer can reach N<sup>2</sup>/2 ≈ 1.25·10<sup>9</sup> — still fits in a 32-bit <code>int</code> here, but use 64-bit counts (<code>long</code> / <code>long long</code>) inside to be safe; atMost(-1) must return 0 (k ≥ 1 so k − 1 ≥ 0 here). <b>Alternative:</b> prefix count of odds + hash map (same as "subarray sum equals k" on a 0/1 array).</p>`
     ],
+    tests: { sig: 'int[] int -> int', fn: 'numberOfSubarrays', cases: [
+      [[[1,1,2,1,1],3], 2],
+      [[[2,4,6],1], 0],
+      [[[2,2,2,1,2,2,1,2,2,2],2], 16],
+      [[[1],1], 1],
+      [[[2],1], 0],
+      [[[1,1,1],1], 3],
+      [[[1,2,1,2],2], 2],
+      [[[99999,100000,3],3], 0]
+    ] },
     solution: {
       approach: `<p>Exactly-K via two at-most windows.</p>`,
       code: `
@@ -3070,6 +4556,51 @@ print(max_vowels("leetcode", 3))    # 2`
                 return count;
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def number_of_subarrays(nums, k):
+    def at_most(k):
+        if k < 0:
+            return 0
+        count = L = odd = 0
+        for R, x in enumerate(nums):
+            odd += x & 1
+            while odd > k:
+                odd -= nums[L] & 1
+                L += 1
+            count += R - L + 1        # windows ending at R with <= k odds
+        return count
+    return at_most(k) - at_most(k - 1)` },
+        { lang: 'js', code: `function numberOfSubarrays(nums, k) {
+  const atMost = (k) => {
+    if (k < 0) return 0;
+    let count = 0, L = 0, odd = 0;
+    for (let R = 0; R < nums.length; R++) {
+      odd += nums[R] & 1;
+      while (odd > k) odd -= nums[L++] & 1;
+      count += R - L + 1;             // windows ending at R with <= k odds
+    }
+    return count;
+  };
+  return atMost(k) - atMost(k - 1);
+}` },
+        { lang: 'cpp', code: `class Solution {
+    long long atMost(const vector<int>& nums, int k) {
+        if (k < 0) return 0;
+        long long count = 0;
+        int L = 0, odd = 0;
+        for (int R = 0; R < (int)nums.size(); R++) {
+            odd += nums[R] & 1;
+            while (odd > k) odd -= nums[L++] & 1;
+            count += R - L + 1;
+        }
+        return count;
+    }
+public:
+    int numberOfSubarrays(const vector<int>& nums, int k) {
+        return (int)(atMost(nums, k) - atMost(nums, k - 1));
+    }
+};` }
+      ],
       dry: {
         head: ['R', 'odd (k=3)', 'L', '+ (at most 3)', 'odd (k=2)', 'L', '+ (at most 2)'],
         rows: [['0', '1', '0', '1', '1', '0', '1'], ['1', '2', '0', '2', '2', '0', '2'], ['2', '2', '0', '3', '2', '0', '3'], ['3', '3', '0', '4', '3→2', '1', '3'], ['4', '4→3', '1', '4', '3→2', '2', '3'], ['total', '', '', '14', '', '', '12 → answer ' + H.c('p', '14 − 12 = 2')]]
@@ -3113,8 +4644,19 @@ print(max_vowels("leetcode", 3))    # 2`
     hints: [
       `<p><b>Aha:</b> water at i = min(maxLeft, maxRight) − h[i]. You only need the <b>smaller</b> of the two maxima — and whichever side has the lower current wall is guaranteed to be the smaller side.</p>`,
       `<p>Opposite pointers L, R with running <code>leftMax</code>, <code>rightMax</code>. If <code>h[L] &lt; h[R]</code>: update leftMax, add <code>leftMax − h[L]</code>, L++. Else do the same on the right.</p>`,
-      `<p><b>Traps:</b> update the max <b>before</b> adding (so water is never negative); total can reach 2·10<sup>4</sup> × 10<sup>5</sup> = 2·10<sup>9</sup> → use <code>long</code> to be safe; n &lt; 3 traps nothing. <b>Recipe:</b> exactly like Container With Most Water — move the shorter side — but accumulate per bar.</p>`
+      `<p><b>Traps:</b> update the max <b>before</b> adding (so water is never negative); total can reach 2·10<sup>4</sup> × 10<sup>5</sup> = 2·10<sup>9</sup> → close to the 32-bit limit, so use a 64-bit total in Java/C++ to be safe; n &lt; 3 traps nothing. <b>Recipe:</b> exactly like Container With Most Water — move the shorter side — but accumulate per bar.</p>`
     ],
+    tests: { sig: 'int[] -> int', fn: 'trap', cases: [
+      [[[0,1,0,2,1,0,1,3,2,1,2,1]], 6],
+      [[[4,2,0,3,2,5]], 9],
+      [[[1]], 0],
+      [[[5,4,3]], 0],
+      [[[2,0,2]], 2],
+      [[[100000,0,100000]], 100000],
+      [[[3,0,0,2,0,4]], 10],
+      [[[1,2,3,2,1]], 0],
+      [[[0,0,0]], 0]
+    ] },
     solution: {
       approach: `<p>Two pointers moving the lower side inward; that side's running max is the true water level.</p>`,
       code: `
@@ -3137,7 +4679,8 @@ print(max_vowels("leetcode", 3))    # 2`
                 return (int) water;
             }
         }`,
-      alt: [{ lang: 'python', code: `class Solution:
+      alt: [
+        { lang: 'python', code: `class Solution:
     def trap(self, height):
         L, R = 0, len(height) - 1
         left_max = right_max = water = 0
@@ -3150,7 +4693,38 @@ print(max_vowels("leetcode", 3))    # 2`
                 right_max = max(right_max, height[R])
                 water += right_max - height[R]
                 R -= 1
-        return water` }],
+        return water` },
+        { lang: 'js', code: `function trap(height) {
+  let L = 0, R = height.length - 1, leftMax = 0, rightMax = 0, water = 0;
+  while (L < R) {
+    if (height[L] < height[R]) {      // a taller wall waits on the right
+      leftMax = Math.max(leftMax, height[L]);
+      water += leftMax - height[L++];
+    } else {                          // a wall at least this tall waits on the left
+      rightMax = Math.max(rightMax, height[R]);
+      water += rightMax - height[R--];
+    }
+  }
+  return water;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int trap(const vector<int>& height) {
+        int L = 0, R = (int)height.size() - 1, leftMax = 0, rightMax = 0;
+        long long water = 0;
+        while (L < R) {
+            if (height[L] < height[R]) {
+                leftMax = max(leftMax, height[L]);
+                water += leftMax - height[L++];
+            } else {
+                rightMax = max(rightMax, height[R]);
+                water += rightMax - height[R--];
+            }
+        }
+        return (int)water;
+    }
+};` }
+      ],
       dry: {
         head: ['L (h)', 'R (h)', 'lower side', 'max', 'water added', 'total'],
         rows: [['0 (4)', '5 (5)', 'left', 'leftMax 4', '0', '0'], ['1 (2)', '5 (5)', 'left', '4', '2', '2'], ['2 (0)', '5 (5)', 'left', '4', '4', '6'], ['3 (3)', '5 (5)', 'left', '4', '1', '7'], ['4 (2)', '5 (5)', 'left', '4', '2', H.c('p', '9')]]
@@ -3197,8 +4771,19 @@ print(max_vowels("leetcode", 3))    # 2`
     hints: [
       `<p><b>Aha:</b> replace "sum ≥ K" by "window covers t". Keep <code>need[c]</code> = how many more copies of c the window needs, and <code>missing</code> = total characters still needed.</p>`,
       `<p>Grow R: if <code>need[s[R]] &gt; 0</code> then missing--; then need[s[R]]--. While missing == 0: record, then give back s[L]: need[s[L]]++; if it becomes &gt; 0, missing++; L++.</p>`,
-      `<p><b>Traps:</b> duplicates in t ("AA" needs two A's) — the count array handles it; record the start and length, not the substring, inside the loop (substring copies cost O(n)); characters not in t go negative in need[], which is fine. Full HashMap-based treatment is in the Hashing module.</p>`
+      `<p><b>Traps:</b> duplicates in t ("AA" needs two A's) — the count array handles it; record the start and length, not the substring, inside the loop (substring copies cost O(n)); characters not in t go negative in need[], which is fine. Full hash map-based treatment is in the Hashing module.</p>`
     ],
+    tests: { sig: 'string string -> string', fn: 'minWindow', cases: [
+      [["ADOBECODEBANC","ABC"], "BANC"],
+      [["a","a"], "a"],
+      [["a","aa"], ""],
+      [["ab","b"], "b"],
+      [["aa","aa"], "aa"],
+      [["abc","d"], ""],
+      [["bba","ab"], "ba"],
+      [["cabwefgewcwaefgcf","cae"], "cwae"],
+      [["aaflslflsldkalskaaa","aaa"], "aaa"]
+    ] },
     solution: {
       approach: `<p>Shortest-flavour sliding window with a need[] count array and a missing counter.</p>`,
       code: `
@@ -3221,6 +4806,59 @@ print(max_vowels("leetcode", 3))    # 2`
                 return bestLen == Integer.MAX_VALUE ? "" : s.substring(bestL, bestL + bestLen);
             }
         }`,
+      alt: [
+        { lang: 'python', code: `from collections import Counter
+
+def min_window(s, t):
+    need = Counter(t)
+    missing, L = len(t), 0
+    best_l, best_len = 0, float('inf')
+    for R, c in enumerate(s):
+        if need[c] > 0:
+            missing -= 1              # this char was still needed
+        need[c] -= 1                  # grow
+        while missing == 0:           # window covers t: shrink
+            if R - L + 1 < best_len:
+                best_l, best_len = L, R - L + 1
+            need[s[L]] += 1
+            if need[s[L]] > 0:
+                missing += 1
+            L += 1
+    return '' if best_len == float('inf') else s[best_l:best_l + best_len]` },
+        { lang: 'js', code: `function minWindow(s, t) {
+  const need = new Map();
+  for (const c of t) need.set(c, (need.get(c) || 0) + 1);
+  let missing = t.length, L = 0, bestL = 0, bestLen = Infinity;
+  for (let R = 0; R < s.length; R++) {
+    const c = s[R];
+    if ((need.get(c) || 0) > 0) missing--;  // this char was still needed
+    need.set(c, (need.get(c) || 0) - 1);    // grow
+    while (missing === 0) {                 // window covers t: shrink
+      if (R - L + 1 < bestLen) { bestLen = R - L + 1; bestL = L; }
+      const d = s[L++];
+      need.set(d, need.get(d) + 1);
+      if (need.get(d) > 0) missing++;
+    }
+  }
+  return bestLen === Infinity ? '' : s.slice(bestL, bestL + bestLen);
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    string minWindow(const string& s, const string& t) {
+        array<int, 128> need{};
+        for (char c : t) need[c]++;
+        int missing = t.size(), L = 0, bestL = 0, bestLen = INT_MAX;
+        for (int R = 0; R < (int)s.size(); R++) {
+            if (need[s[R]]-- > 0) missing--;
+            while (missing == 0) {
+                if (R - L + 1 < bestLen) { bestLen = R - L + 1; bestL = L; }
+                if (++need[s[L++]] > 0) missing++;
+            }
+        }
+        return bestLen == INT_MAX ? "" : s.substr(bestL, bestLen);
+    }
+};` }
+      ],
       dry: {
         head: ['R (char)', 'missing', 'shrinking records', 'best'],
         rows: [['5 (C)', '0', '"ADOBEC" len 6; drop A → missing 1', '"ADOBEC"'], ['10 (A)', '0', '"DOBECODEBA" shrinks to "CODEBA" (len 6, not shorter); drop C → missing 1', '"ADOBEC"'], ['12 (C)', '0', '"ODEBANC" → "EBANC" len 5 → "BANC" len 4; drop B → missing 1', H.c('p', '"BANC"')]]
@@ -3262,9 +4900,19 @@ print(max_vowels("leetcode", 3))    # 2`
     },
     hints: [
       `<p><b>Aha:</b> exactly(k) = atMost(k) − atMost(k − 1), and "at most k distinct" is monotone (a sub-window has no more distinct values).</p>`,
-      `<p>atMost(k): a count array <code>cnt[value]</code> (values ≤ N, so an int[] works — no HashMap needed) and a <code>distinct</code> counter. Grow R; while distinct &gt; k shrink L; add R − L + 1.</p>`,
-      `<p><b>Traps:</b> increment <code>distinct</code> only when a count goes 0 → 1, decrement only when it goes 1 → 0; reset the count array between the two calls; use <code>long</code> for counts. <b>Alternative:</b> one pass with two left pointers (the "three pointers" trick).</p>`
+      `<p>atMost(k): a count array <code>cnt[value]</code> (values ≤ N, so a plain array of size N + 1 works — no hash map needed) and a <code>distinct</code> counter. Grow R; while distinct &gt; k shrink L; add R − L + 1.</p>`,
+      `<p><b>Traps:</b> increment <code>distinct</code> only when a count goes 0 → 1, decrement only when it goes 1 → 0; reset the count array between the two calls; use 64-bit counts in Java/C++. <b>Alternative:</b> one pass with two left pointers (the "three pointers" trick).</p>`
     ],
+    tests: { sig: 'int[] int -> int', fn: 'subarraysWithKDistinct', cases: [
+      [[[1,2,1,2,3],2], 7],
+      [[[1,2,1,3,4],3], 3],
+      [[[1],1], 1],
+      [[[1,1,1],1], 6],
+      [[[1,2],2], 1],
+      [[[1,2,3],3], 1],
+      [[[2,1,1,2,3,3],2], 7],
+      [[[1,2,3,4],1], 4]
+    ] },
     solution: {
       approach: `<p>Two at-most windows with a counting array.</p>`,
       code: `
@@ -3289,6 +4937,61 @@ print(max_vowels("leetcode", 3))    # 2`
                 return total;
             }
         }`,
+      alt: [
+        { lang: 'python', code: `from collections import defaultdict
+
+def subarrays_with_k_distinct(nums, k):
+    def at_most(k):
+        if k <= 0:
+            return 0
+        cnt = defaultdict(int)
+        total = L = 0
+        for R, x in enumerate(nums):
+            cnt[x] += 1
+            while len(cnt) > k:
+                cnt[nums[L]] -= 1
+                if cnt[nums[L]] == 0:
+                    del cnt[nums[L]]  # a value fully leaves
+                L += 1
+            total += R - L + 1
+        return total
+    return at_most(k) - at_most(k - 1)` },
+        { lang: 'js', code: `function subarraysWithKDistinct(nums, k) {
+  const atMost = (k) => {
+    if (k <= 0) return 0;
+    const cnt = new Map();
+    let total = 0, L = 0;
+    for (let R = 0; R < nums.length; R++) {
+      cnt.set(nums[R], (cnt.get(nums[R]) || 0) + 1);
+      while (cnt.size > k) {
+        const v = nums[L++], c = cnt.get(v) - 1;
+        if (c === 0) cnt.delete(v); else cnt.set(v, c);
+      }
+      total += R - L + 1;
+    }
+    return total;
+  };
+  return atMost(k) - atMost(k - 1);
+}` },
+        { lang: 'cpp', code: `class Solution {
+    long long atMost(const vector<int>& nums, int k) {
+        if (k <= 0) return 0;
+        vector<int> cnt(nums.size() + 1, 0);   // values are 1..N
+        long long total = 0;
+        int L = 0, distinct = 0;
+        for (int R = 0; R < (int)nums.size(); R++) {
+            if (cnt[nums[R]]++ == 0) distinct++;
+            while (distinct > k) if (--cnt[nums[L++]] == 0) distinct--;
+            total += R - L + 1;
+        }
+        return total;
+    }
+public:
+    int subarraysWithKDistinct(const vector<int>& nums, int k) {
+        return (int)(atMost(nums, k) - atMost(nums, k - 1));
+    }
+};` }
+      ],
       dry: {
         head: ['R', 'val', 'atMost(2): L, +', 'running', 'atMost(1): L, +', 'running'],
         rows: [['0', '1', '0, +1', '1', '0, +1', '1'], ['1', '2', '0, +2', '3', '1, +1', '2'], ['2', '1', '0, +3', '6', '2, +1', '3'], ['3', '2', '0, +4', '10', '3, +1', '4'], ['4', '3', '3, +2', '12', '4, +1', '5 → answer ' + H.c('p', '7')]]
@@ -3328,8 +5031,20 @@ print(max_vowels("leetcode", 3))    # 2`
     hints: [
       `<p><b>Aha:</b> subarray (i, j] has sum <code>P[j] − P[i]</code>. For each end j we want the <b>latest</b> start i with <code>P[i] ≤ P[j] − k</code>.</p>`,
       `<p>Keep a deque of start indices with <b>increasing</b> P. For each j: while <code>P[j] − P[front] ≥ k</code> → record <code>j − front</code>, pop front (it can never do better with a later j). While <code>P[j] ≤ P[back]</code> → pop back (dominated). Push j.</p>`,
-      `<p><b>Traps:</b> prefix sums need <code>long</code>; include P[0] = 0 as the first start; return -1 when nothing is found. This is the "fix" for the variable window when negatives appear — expect it as a follow-up after Minimum Size Subarray Sum.</p>`
+      `<p><b>Traps:</b> prefix sums need 64 bits in Java/C++ (<code>long</code> / <code>long long</code>); include P[0] = 0 as the first start; return -1 when nothing is found. This is the "fix" for the variable window when negatives appear — expect it as a follow-up after Minimum Size Subarray Sum.</p>`
     ],
+    tests: { sig: 'int[] int -> int', fn: 'shortestSubarray', cases: [
+      [[[1],1], 1],
+      [[[1,2],4], -1],
+      [[[2,-1,2],3], 3],
+      [[[1,-1,5],5], 1],
+      [[[84,-37,32,40,95],167], 3],
+      [[[-28,81,-20,28,-29],89], 3],
+      [[[-1,-2],1], -1],
+      [[[100000,100000],1000000000], -1],
+      [[[48,99,37,4,-31],140], 2],
+      [[[-100000,3,-100000,3],3], 1]
+    ] },
     solution: {
       approach: `<p>Prefix sums + monotonic deque of candidate starts (increasing prefix values).</p>`,
       code: `
@@ -3352,6 +5067,51 @@ print(max_vowels("leetcode", 3))    # 2`
                 return best == Integer.MAX_VALUE ? -1 : best;
             }
         }`,
+      alt: [
+        { lang: 'python', code: `from collections import deque
+
+def shortest_subarray(nums, k):
+    P = [0]
+    for x in nums:
+        P.append(P[-1] + x)
+    dq = deque()                      # start indices with increasing P
+    best = float('inf')
+    for j, pj in enumerate(P):
+        while dq and pj - P[dq[0]] >= k:
+            best = min(best, j - dq.popleft())
+        while dq and pj <= P[dq[-1]]:
+            dq.pop()                  # dominated: later and not larger
+        dq.append(j)
+    return -1 if best == float('inf') else best` },
+        { lang: 'js', code: `function shortestSubarray(nums, k) {
+  const n = nums.length, P = new Array(n + 1).fill(0);
+  for (let i = 0; i < n; i++) P[i + 1] = P[i] + nums[i];
+  const dq = new Array(n + 1);        // deque as an array with head/tail indices
+  let head = 0, tail = 0, best = Infinity;
+  for (let j = 0; j <= n; j++) {
+    while (head < tail && P[j] - P[dq[head]] >= k) best = Math.min(best, j - dq[head++]);
+    while (head < tail && P[j] <= P[dq[tail - 1]]) tail--;
+    dq[tail++] = j;
+  }
+  return best === Infinity ? -1 : best;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int shortestSubarray(const vector<int>& nums, int k) {
+        int n = nums.size();
+        vector<long long> P(n + 1, 0);
+        for (int i = 0; i < n; i++) P[i + 1] = P[i] + nums[i];
+        deque<int> dq;                // start indices with increasing P
+        int best = INT_MAX;
+        for (int j = 0; j <= n; j++) {
+            while (!dq.empty() && P[j] - P[dq.front()] >= k) { best = min(best, j - dq.front()); dq.pop_front(); }
+            while (!dq.empty() && P[j] <= P[dq.back()]) dq.pop_back();
+            dq.push_back(j);
+        }
+        return best == INT_MAX ? -1 : best;
+    }
+};` }
+      ],
       dry: {
         head: ['j', 'P[j]', 'front checks', 'back pops', 'deque after', 'best'],
         rows: [['0', '0', '—', '—', '[0]', '∞'], ['1', '1', '1 − 0 &lt; 5', '—', '[0, 1]', '∞'], ['2', '0', '0 − 0 &lt; 5', 'pop 1 (P=1), pop 0 (P=0)', '[2]', '∞'], ['3', '5', '5 − P[2]=0 ≥ 5 → len 1', '—', '[3]', H.c('p', '1')]]
@@ -3460,13 +5220,13 @@ print(max_vowels("leetcode", 3))    # 2`
   });
   interview.push({
     level: 'B',
-    q: `2-Sum: when would you use a HashMap instead of two pointers?`,
-    a: `<p>When the array is <b>unsorted</b> and the question asks for <b>original indices</b> (sorting would scramble them), or when you want O(N) time and memory is not a concern. HashMap: O(N) time, O(N) memory, works in one pass even on a stream. Sort + pointers: O(N log N) time, O(1) extra memory (or O(N) if you must keep index pairs). If the input is already sorted, pointers win on both time and memory and are more cache-friendly.</p>`,
+    q: `2-Sum: when would you use a hash map instead of two pointers?`,
+    a: `<p>When the array is <b>unsorted</b> and the question asks for <b>original indices</b> (sorting would scramble them), or when you want O(N) time and memory is not a concern. hash map: O(N) time, O(N) memory, works in one pass even on a stream. Sort + pointers: O(N log N) time, O(1) extra memory (or O(N) if you must keep index pairs). If the input is already sorted, pointers win on both time and memory and are more cache-friendly.</p>`,
     followUps: ['What about 2-Sum on a stream where numbers arrive one by one?', 'Design a class with add(x) and find(target).']
   });
   interview.push({
     level: 'I',
-    q: `How do you avoid duplicate triplets in 3-Sum without using a HashSet?`,
+    q: `How do you avoid duplicate triplets in 3-Sum without using a hash set?`,
     a: `<p>Sort first so equal values are adjacent and every triplet is produced in non-decreasing order. Then: (1) skip a fixed index i if <code>nums[i] == nums[i-1]</code>; (2) after recording a triplet, move L past all copies of <code>nums[L]</code> and R past all copies of <code>nums[R]</code>, then step both inward. Equal triplets could only appear if the same value were used twice in the same role, which these rules block. The first copy of each value is always tried and sees all partners to its right, so nothing is lost.</p>`,
     followUps: ['What breaks if you skip duplicates of L before recording?', 'How would you extend it to 4-Sum, and what overflow risk appears?']
   });
@@ -3497,13 +5257,13 @@ print(max_vowels("leetcode", 3))    # 2`
   interview.push({
     level: 'A',
     q: `When does the sliding window technique fail? What do you use instead?`,
-    a: `<p>It fails when "goodness" is not monotone in window size. Classic case: sums with <b>negative numbers</b> — extending can lower the sum and shrinking can raise it, so the window may stop shrinking too early (e.g. [1, −1, 5], K = 5 gives 3 instead of 1). Products with zeros or negatives have the same problem. Fixes: prefix sums + HashMap for "sum exactly K" (count earlier prefixes equal to pf − K), prefix sums + monotonic deque for "shortest sum ≥ K", or binary search on the answer when a fixed-size check exists.</p>`,
+    a: `<p>It fails when "goodness" is not monotone in window size. Classic case: sums with <b>negative numbers</b> — extending can lower the sum and shrinking can raise it, so the window may stop shrinking too early (e.g. [1, −1, 5], K = 5 gives 3 instead of 1). Products with zeros or negatives have the same problem. Fixes: prefix sums + hash map for "sum exactly K" (count earlier prefixes equal to pf − K), prefix sums + monotonic deque for "shortest sum ≥ K", or binary search on the answer when a fixed-size check exists.</p>`,
     followUps: ['Walk through the monotonic deque solution for LeetCode 862.', 'How would you detect at interview time that monotonicity fails?']
   });
   interview.push({
     level: 'A',
     q: `How do you count subarrays with EXACTLY K distinct values (or exactly K odd numbers)?`,
-    a: `<p>A window cannot count "exactly K" directly, because a valid window can often be extended by elements that do not change the count, so neither "grow" nor "shrink" is clearly right. But "at most K" is monotone: compute <code>atMost(K)</code> with the count flavour (add <code>R − L + 1</code> per right end) and subtract <code>atMost(K − 1)</code>. Two O(N) passes. For bounded values use an int[] count array instead of a HashMap. An alternative one-pass version keeps two left pointers.</p>`,
+    a: `<p>A window cannot count "exactly K" directly, because a valid window can often be extended by elements that do not change the count, so neither "grow" nor "shrink" is clearly right. But "at most K" is monotone: compute <code>atMost(K)</code> with the count flavour (add <code>R − L + 1</code> per right end) and subtract <code>atMost(K − 1)</code>. Two O(N) passes. For bounded values use a plain count array indexed by value instead of a hash map. An alternative one-pass version keeps two left pointers.</p>`,
     followUps: ['Why does R − L + 1 count each subarray exactly once?', 'Write atMost for "at most K zeros".']
   });
   interview.push({
@@ -3537,13 +5297,19 @@ print(max_vowels("leetcode", 3))    # 2`
     goals: [
       'Solve 2-Sum (sorted), 3-Sum, 3-Sum Closest and Container With Most Water in O(N) / O(N<sup>2</sup>) and prove why each pointer move is safe',
       'Rewrite arrays in place with the slow/fast read-write template (remove duplicates, move zeroes, keep at most k copies, sort colors)',
-      'Count or find pairs with difference K using same-direction pointers, and know when a HashMap is the better tool',
+      'Count or find pairs with difference K using same-direction pointers, and know when a hash map is the better tool',
       'Apply the fixed-size window (max sum / average of K, cards from both ends) and the variable grow/shrink window in its shortest, longest and counting flavours',
       'Recognise when a window is NOT valid (negative numbers, non-monotone conditions) and switch to prefix sums, a deque or the atMost(K) − atMost(K − 1) trick',
       'Read a problem statement and pick the right pointer pattern from the clue words in under a minute'
     ],
     prereqs: `DSA 1 (Programming Foundations), DSA 2 (Complexity — the 10<sup>8</sup> operations rule) and DSA 5 (Arrays &amp; Prefix Sums). Comfortable with Java arrays, loops and <code>Arrays.sort</code>.`,
     hours: 10,
+    langNotes: {
+      java: `<p><b>Java:</b> sums of two values near 10<sup>9</sup> overflow <code>int</code> silently, so add in <code>long</code> (<code>(long) a[L] + a[R]</code>). <code>Arrays.sort(int[])</code> is an in-place dual-pivot quicksort; sort a copy if the caller needs the original order or indices. For window counts use an <code>int[]</code> when values are small and a <code>HashMap</code> otherwise (a <code>TreeMap</code> costs O(log N) per step). <code>ArrayDeque</code> is the deque for the monotonic-deque problems; avoid the old <code>Stack</code>/<code>LinkedList</code>. Recursion (the k-Sum template) is fine to about 10k frames.</p>`,
+      python: `<p><b>Python:</b> integers never overflow, so sums and products need no special type. <code>sorted(a)</code> returns a new list and <code>a.sort()</code> sorts in place (both O(N log N), Timsort). Use <code>collections.Counter</code> / <code>defaultdict(int)</code> for window counts and <code>collections.deque</code> for queues: <code>list.pop(0)</code> is O(N). Tuple swaps (<code>a[i], a[j] = a[j], a[i]</code>) make in-place pointer code short. Strings are immutable, so in-place character tricks work on a <code>list</code> of characters. Recursion stops at about 1000 frames by default; the loops in this module are all iterative.</p>`,
+      js: `<p><b>JavaScript:</b> <code>arr.sort()</code> compares as <b>strings</b> (<code>[10, 9, 1].sort()</code> gives <code>[1, 10, 9]</code>), so always pass <code>(x, y) =&gt; x - y</code>, and it sorts in place, so copy first (<code>[...a]</code>) if needed. <code>Number</code> is exact only up to 2<sup>53</sup>; the sums here are far below that, but use <code>BigInt</code> beyond it. <code>arr.shift()</code> is O(N): use a head index for queues and deques. Count with a <code>Map</code> (keeps number keys as numbers) and read <code>map.size</code> for the number of distinct values. Strings are immutable; use an array of characters for in-place edits.</p>`,
+      cpp: `<p><b>C++:</b> signed <code>int</code> overflow is undefined behaviour, so add pairs and build prefix sums in <code>long long</code>. <code>std::sort</code> is in place; take the vector by value when you must not change the caller's data. <code>std::remove_if</code> / <code>std::unique</code> are the library's slow/fast read-write walk (follow with <code>erase</code>). Use <code>array&lt;int,128&gt;</code> or <code>vector&lt;int&gt;</code> counts for small alphabets, <code>unordered_map</code> (O(1) average) rather than <code>map</code> (O(log N)), and <code>deque&lt;int&gt;</code> for the monotonic deque. Cast <code>size()</code> to <code>int</code> before computing <code>size() - 1</code> on a possibly empty vector.</p>`
+    },
     topics: topics,
     practice: practice,
     quiz: quiz,

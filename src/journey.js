@@ -9,7 +9,8 @@ var Journey = (function () {
     { key: 'peaks', name: 'Design Peaks', area: 'System design', tracks: ['lld', 'hld'], color: 'clay', icon: 'mountain', x: 565, y: 110, rx: 110, ry: 65, lx: 68, ly: 12 },
     { key: 'port', name: 'Builder Port', area: 'Engineering', tracks: ['fe', 'be'], color: 'sky', icon: 'anchor', x: 560, y: 330, rx: 120, ry: 80, lx: 70, ly: 62 },
     { key: 'obs', name: 'AI Observatory', area: 'AI', tracks: ['ai'], color: 'violet', icon: 'telescope', x: 350, y: 395, rx: 85, ry: 50, lx: 42, ly: 77 },
-    { key: 'harbor', name: 'Career Harbor', area: 'Career', tracks: ['beh'], color: 'gold', icon: 'scroll', x: 100, y: 100, rx: 78, ry: 50, lx: 4, ly: 10 }
+    { key: 'harbor', name: 'Career Harbor', area: 'Career', tracks: ['beh'], color: 'gold', icon: 'scroll', x: 100, y: 100, rx: 78, ry: 50, lx: 4, ly: 10 },
+    { key: 'cloud', name: 'Cloud Citadel', area: 'Cloud & DevOps', tracks: ['devops'], color: 'sky', icon: 'cloud', x: 345, y: 272, rx: 72, ry: 42, lx: 41, ly: 50 }
   ];
   var NEW_LAND = { key: 'new', name: 'Uncharted', area: 'New lands', tracks: [], color: 'sky', icon: 'compass' };
   var ZONES = { B: 'Beginner Shore', I: 'Intermediate Forest', A: 'Advanced Peaks', E: 'Expert Summit' };
@@ -25,6 +26,7 @@ var Journey = (function () {
   var ICON = {
     ship: '<path d="M3 16h18l-2.5 4.5h-13z"/><path d="M12 3v13"/><path d="M12 4.5l6.5 9H12"/><path d="M12 7l-4.5 6.5H12"/>',
     compass: '<circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/>',
+    cloud: '<path d="M7 18.5h10a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.2 9.8 4.4 4.4 0 0 0 7 18.5z"/><path d="M9.5 14.5h5M12 12v5"/>',
     map: '<path d="M3 6.5l6-3 6 3 6-3v14l-6 3-6-3-6 3z"/><path d="M9 3.5v14M15 6.5v14"/>',
     chest: '<path d="M4 11h16v9H4z"/><path d="M4 11V9.5a8 4.5 0 0 1 16 0V11"/><path d="M10.5 13.5h3v3h-3z"/>',
     crown: '<path d="M3.5 18.5h17"/><path d="M4.5 18.5L3 7.5l5 4 4-6.5 4 6.5 5-4-1.5 11"/>',
@@ -141,7 +143,7 @@ var Journey = (function () {
   function bar(opts) {
     opts = opts || {};
     var here = (location.pathname.split('/').pop() || 'index.html').toLowerCase();
-    var page = here === 'videos.html' ? 'videos' : here === 'passport.html' ? 'passport' : here === 'index.html' || here === '' ? 'home' : 'land';
+    var page = here === 'videos.html' ? 'videos' : here === 'passport.html' ? 'passport' : here === 'route.html' ? 'route' : here === 'index.html' || here === '' ? 'home' : 'land';
     Array.prototype.forEach.call(document.querySelectorAll('.jnav a'), function (a) {
       var on = a.getAttribute('data-page') === page;
       a.classList.toggle('on', on);
@@ -219,9 +221,15 @@ var Journey = (function () {
     window.addEventListener('pageshow', syncTh); window.addEventListener('storage', function () { syncTh(); draw(); });
     syncTh();
     var ds = document.getElementById('pDest');
-    ds.innerHTML = ROLES.map(function (r) { return '<option value="' + r.id + '">' + esc(r.name) + '</option>'; }).join('');
-    ds.value = dest().id;
-    ds.addEventListener('change', function () { set('imastery.dest', ds.value); });
+    if (window.PATHS && window.Learn) {
+      ds.innerHTML = PATHS.ROUTES.map(function (r) { return '<option value="' + r.id + '">' + esc(r.name) + '</option>'; }).join('');
+      ds.value = Learn.pref().id;
+      ds.addEventListener('change', function () { Learn.setPref({ id: ds.value }); });
+    } else {
+      ds.innerHTML = ROLES.map(function (r) { return '<option value="' + r.id + '">' + esc(r.name) + '</option>'; }).join('');
+      ds.value = dest().id;
+      ds.addEventListener('change', function () { set('imastery.dest', ds.value); });
+    }
     draw();
     if (window.Auth) Auth.init();
   }
@@ -229,14 +237,15 @@ var Journey = (function () {
 
   /* Interactive atlas uses the same progress and track registry as the rest of the site. */
   var atlasSelection = null, atlasPaused = false;
-  var ATLAS_POS = { isle: [20, 61], obs: [50, 79], port: [80, 60], peaks: [79, 23], valley: [49, 33], harbor: [18, 20] };
+  var ATLAS_POS = { isle: [20, 61], obs: [50, 79], port: [80, 60], peaks: [79, 23], valley: [49, 33], harbor: [18, 20], cloud: [50, 56] };
   var ATLAS_COPY = {
     isle: 'Build solid foundations in problem solving, algorithms and the core ideas behind every computer.',
     valley: 'Find your voice in code. Explore the languages that turn your ideas into working solutions.',
     peaks: 'See the bigger picture. Design clear, resilient systems, from objects to distributed architecture.',
     port: 'Turn ideas into experiences people can use, from the browser to the services behind it.',
     obs: 'Look beyond the horizon. Understand intelligent systems and learn to build alongside AI.',
-    harbor: 'Bring your story into focus and prepare to communicate your strengths with confidence.'
+    harbor: 'Bring your story into focus and prepare to communicate your strengths with confidence.',
+    cloud: 'Run what you build. Automate infrastructure, ship safely and keep systems healthy at scale.'
   };
   function atlasHtml(s, current, tracks, last) {
     var chosen = REGIONS.filter(function (r) { return r.key === atlasSelection; })[0] || current || REGIONS[0];

@@ -112,10 +112,19 @@ var App = (function () {
   function codeBlock(x, defLang, defTitle) {
     var s = snip(x, defLang, defTitle);
     if (!s) return '';
-    return codeTabs([s]);
+    return codeTabs([s].concat(asList(x && x.alt).map(function (a) { return snip(a, defLang, defTitle); })));
+  }
+  /* ---------- the learner's code language ---------- */
+  var CODE_LANGS = [['java', 'Java'], ['python', 'Python'], ['js', 'JavaScript / TypeScript'], ['cpp', 'C++']];
+  function langPref() { var l = store.get('imastery.lang', null); return CODE_LANGS.some(function (c) { return c[0] === l; }) ? l : null; }
+  function langKey(l) { l = String(l || '').toLowerCase(); return { py: 'python', javascript: 'js', typescript: 'js', ts: 'js', 'c++': 'cpp', c: 'cpp' }[l] || l; }
+  function byPref(list) {
+    var p = langPref();
+    if (!p || list.length < 2) return list;
+    return list.map(function (s, i) { return [s, i]; }).sort(function (a, b) { return ((langKey(a[0].lang) === p ? 0 : 1) - (langKey(b[0].lang) === p ? 0 : 1)) || a[1] - b[1]; }).map(function (x) { return x[0]; });
   }
   function codeTabs(list) {
-    list = list.filter(Boolean);
+    list = byPref(list.filter(Boolean));
     if (!list.length) return '';
     var h = '<div class="code' + (list.length > 1 ? ' tabs' : '') + '">';
     if (list.length > 1) h += '<div class="code-tabs">' + list.map(function (s, i) { return '<button type="button" class="ctab' + (i ? '' : ' on') + '" data-tab="' + i + '">' + esc((LANGS[s.lang] || LANGS.text).name) + '</button>'; }).join('') + '</div>';
@@ -183,8 +192,10 @@ var App = (function () {
       ifr.style.display = 'none';
       var shim = 'var __s=function(t,a){parent.postMessage({tok:"' + tok + '",t:t,a:Array.prototype.map.call(a,function(x){if(typeof x==="string")return x;try{return JSON.stringify(x)}catch(e){return String(x)}}).join(" ")},"*")};' +
         '["log","info","warn","error","table"].forEach(function(k){console[k]=function(){__s(k,arguments)}});' +
+        'var process={stdout:{write:function(t){__s("log",[String(t).replace(/\\n$/,"")]);return true}},stderr:{write:function(t){__s("error",[String(t).replace(/\\n$/,"")]);return true}},argv:["node","main.js"],env:{},exit:function(){}};' +
         'window.onerror=function(m){__s("error",["Uncaught "+m])};window.addEventListener("unhandledrejection",function(e){__s("error",["Unhandled rejection: "+(e.reason&&e.reason.message||e.reason)])});';
-      ifr.srcdoc = '<script>' + shim + '<\/script><script>' + code.replace(/<\/script/gi, '<\\/script') + '<\/script>';
+      // The snippet runs inside a block so its let/const names (top, name, status...) cannot clash with browser globals.
+      ifr.srcdoc = '<script>' + shim + '<\/script><script>{\n' + code.replace(/<\/script/gi, '<\\/script') + '\n}<\/script>';
       var render = function (fin) {
         out.innerHTML = '<pre class="out">' + (lines.length ? lines.map(function (l) { return l.t === 'error' || l.t === 'warn' ? '<span class="c-r">' + esc(l.a) + '</span>' : esc(l.a); }).join('\n') : '<span class="c-m">(no console output yet)</span>') + '</pre>' + (fin ? '<div class="meta">Finished (captured for 3s, including timers & promises).</div>' : '');
       };
@@ -541,13 +552,45 @@ var App = (function () {
       }).join('') + '</section>';
   }
 
+  function routeLang() { return langPref() || (window.Learn ? Learn.pref().lang : 'java'); }
+  function prereqHtml(m) {
+    if (!window.PATHS || !window.Learn) return m.prereqs || '—';
+    var lang = routeLang(), req = PATHS.needs(m.id, lang), rec = PATHS.recs(m.id, lang);
+    var link = function (id) { var mm = Learn.meta(id), st = Learn.status(id, DONE); return '<a class="pq' + (st.satisfied ? ' ok' : '') + '" href="' + Learn.href(id) + '">' + (st.satisfied ? '✓ ' : '') + esc(mm ? mm.title : id) + '</a>'; };
+    var h = req.length ? '<span class="pq-l">Required:</span> ' + req.map(link).join(', ') : 'Nothing required: this is a starting point.';
+    if ((PATHS.NEEDS[m.id] || []).some(function (x) { return x.indexOf('prep:') === 0; })) h += ' <small class="muted">(the ' + esc(Learn.LANG_NAMES[lang]) + ' modules; choose your code language below)</small>';
+    if (rec.length) h += '<br><span class="pq-l">Helpful:</span> ' + rec.map(link).join(', ');
+    var miss = Learn.missing(m.id, lang, DONE);
+    if (miss.length) h += '<div class="pq-miss"><b>Missing first:</b> ' + miss.map(function (id) { var mm = Learn.meta(id); return esc(mm ? mm.title : id); }).join(', ') + '. Already know these? <button class="btn sm" type="button" data-testout="' + m.id + '">Take the readiness check</button></div>';
+    var un = Learn.unlocks(m.id, lang).slice(0, 4);
+    if (un.length) h += '<div class="pq-next"><span class="pq-l">This unlocks:</span> ' + un.map(function (id) { var mm = Learn.meta(id); return '<a href="' + Learn.href(id) + '">' + esc(mm ? mm.title : id) + '</a>'; }).join(', ') + '</div>';
+    var st = Learn.status(m.id, DONE);
+    h += '<div class="pq-st">' + (st.mastered ? '<b class="c-g">★ Mastered</b>: lessons, quiz, practice and checkpoint done.' : '<b>Mastery:</b> finish the lessons and the riddle gate, solve half the practice arena, then pass the ' + esc(ZN[m.level]) + ' checkpoint on the land page' + (st.overdue ? ', and clear the reviews that are due' : '') + '.') + '</div>';
+    return h;
+  }
+  function langBoxHtml(m) {
+    var p = langPref(), notes = m.langNotes || {};
+    var h = '<div class="box lang"><div class="lang-row"><span class="tag">Your code language</span><label class="lang-pick"><span class="sr">Code language</span><select data-langpick>' +
+      '<option value="">Show every language</option>' + CODE_LANGS.map(function (c) { return '<option value="' + c[0] + '"' + (p === c[0] ? ' selected' : '') + '>' + esc(c[1]) + '</option>'; }).join('') + '</select></label></div>';
+    var keys = CODE_LANGS.map(function (c) { return c[0]; }).filter(function (k) { return notes[k] || (k === 'js' && notes.ts); });
+    if (keys.length) {
+      var first = p && keys.indexOf(p) >= 0 ? p : null;
+      if (first) h += '<div class="lang-note"><b>' + esc(CODE_LANGS.filter(function (c) { return c[0] === first; })[0][1]) + ' notes for this module</b>' + (notes[first] || notes.ts) + '</div>';
+      var rest = keys.filter(function (k) { return k !== first; });
+      if (rest.length) h += '<details class="lang-more"><summary>' + (first ? 'Notes for other languages' : 'Language notes: recursion limits, integers and complexity traps') + '</summary><div class="dbody">' +
+        rest.map(function (k) { return '<div class="lang-note"><b>' + esc(CODE_LANGS.filter(function (c) { return c[0] === k; })[0][1]) + '</b>' + (notes[k] || notes.ts) + '</div>'; }).join('') + '</div></details>';
+    }
+    if (m.langExplain) h += '<div class="lang-note lang-explain">' + m.langExplain + '</div>';
+    return h + '</div>';
+  }
   function moduleHtml(m) {
     vizRegistry = []; SNIPS = [];
     var lang = m.lang || TRACK.lang;
     var h = '<div class="crumb"><a href="index.html">World map</a><span>›</span><a href="#">' + esc(TRACK.title) + '</a><span>›</span><span>Place ' + m.num + '</span>' + lvlBadge(m.level) + '</div><h1>' + m.title + '</h1>';
     h += '<div class="intro">' + (m.intro || '') + '</div>';
-    h += '<div class="box path"><span class="tag">Learning path for this module</span><div class="cx"><b>Time</b><span>~' + (m.hours || '?') + ' hours including practice</span><b>Before this</b><span>' + (m.prereqs || '—') + '</span><b>You will be able to</b><ul>' + asList(m.goals).map(function (g) { return '<li>' + g + '</li>'; }).join('') + '</ul></div>' +
+    h += '<div class="box path"><span class="tag">Learning path for this module</span><div class="cx"><b>Time</b><span>~' + (m.hours || '?') + ' hours including practice</span><b>Before this</b><span id="prq-' + m.id + '">' + prereqHtml(m) + '</span><b>You will be able to</b><ul>' + asList(m.goals).map(function (g) { return '<li>' + g + '</li>'; }).join('') + '</ul></div>' +
       '<div class="meta">How to travel: read each landmark’s legend → the idea → run the visualizer → work the examples → dig up the hidden treasure with clues → riddle gate → interview tavern → practice arena. Checkmarks tick themselves when you finish a section with the right answers; untick one to redo it.</div></div><div class="toc">';
+    h = h.replace(/<div class="toc">$/, langBoxHtml(m) + '<div class="toc">');
     m.topics.forEach(function (t, i) { h += '<a href="#' + m.id + '-t' + i + '" class="' + (DONE[m.id + '-t' + i] ? 'ok' : '') + '">' + m.num + '.' + (i + 1) + ' ' + stripTags(t.title) + '</a>'; });
     if (m.quiz && m.quiz.length) h += '<a href="#' + m.id + '-quiz">Riddle gate</a>';
     if (m.interview && m.interview.length) h += '<a href="#' + m.id + '-iv">Interview tavern</a>';
@@ -578,6 +621,18 @@ var App = (function () {
     var st = Journey.STAMPS.filter(function (x) { return x.key === key; })[0];
     return '<div class="place guard' + (on ? ' on' : '') + '">' + Journey.stampSvg(st, on) + '<b>' + esc(st.name) + ' stamp</b><span>' + (on ? 'Earned. It is in your passport.' : how) + '</span></div>';
   }
+  function zoneQuestions(lv) {
+    var qs = [];
+    MODULES.forEach(function (m) { if (m.level !== lv) return; (m.quiz || []).forEach(function (q, i) { if (q && q.options && q.options.length > 1) qs.push({ q: q.q, options: q.options, answer: q.answer, explain: q.explain, section: m.id + '-quiz', mod: m.id, modTitle: stripTags(m.title) }); }); });
+    return qs;
+  }
+  function checkpointCard(lv) {
+    if (!window.Learn) return '';
+    var n = zoneQuestions(lv).length;
+    if (n < 6) return '';
+    var ok = !!DONE['@cp:' + TRACK.id + '-' + lv];
+    return '<div class="place guard cp' + (ok ? ' on' : '') + '">' + Journey.icon('key', 'cp-ic') + '<b>' + esc(ZN[lv]) + ' checkpoint</b><span>' + (ok ? 'Passed. Modules here can count as mastered.' : 'Twelve mixed questions from this zone, no topic labels. 80% passes.') + '</span><button class="btn sm" type="button" data-checkpoint="' + lv + '">' + (ok ? 'Retake' : 'Take the checkpoint') + '</button></div>';
+  }
   function trackDashHtml() {
     var R = region(TRACK.id), tot = 0, dn = 0, lm = 0, cur = curPlace(), last = store.get('imastery.last', null);
     MODULES.forEach(function (m) { var ids = items(m); tot += ids.length; dn += doneOf(ids); lm += m.topics.length; });
@@ -606,8 +661,10 @@ var App = (function () {
         var ids = items(m), d = doneOf(ids), full = ids.length && d === ids.length, isCur = cur === m && !full, w = ids.length ? Math.round(d / ids.length * 100) : 0;
         if (lv === 'B') { bl++; if (full) bd++; }
         if (lv === 'E' && full) ed++;
-        h += '<a class="place' + (full ? ' done' : isCur ? ' cur' : '') + '" href="#' + m.id + '"><div class="jrow"><span class="pdot">' + (full ? '✓' : m.num) + '</span><span class="ptag2">' + (full ? 'cleared' : isCur ? 'you are here' : d ? 'exploring' : 'ahead') + '</span></div><b>' + m.title + '</b><div class="jbar-p"><i style="width:' + w + '%"></i></div><span class="pmeta">' + m.topics.length + ' landmarks · ' + w + '%</span></a>';
+        var mst = window.Learn ? Learn.status(m.id, DONE) : {};
+        h += '<a class="place' + (full ? ' done' : isCur ? ' cur' : '') + (mst.mastered ? ' mastered' : '') + '" href="#' + m.id + '"><div class="jrow"><span class="pdot">' + (mst.mastered ? '★' : full ? '✓' : m.num) + '</span><span class="ptag2">' + (mst.mastered ? 'mastered' : full ? 'cleared' : isCur ? 'you are here' : d ? 'exploring' : 'ahead') + '</span></div><b>' + m.title + '</b><div class="jbar-p"><i style="width:' + w + '%"></i></div><span class="pmeta">' + m.topics.length + ' landmarks · ' + w + '%</span></a>';
       });
+      h += checkpointCard(lv);
       if (lv === 'B') h += stampCard('shore', bl > 0 && bd === bl, 'Clear every Beginner place in this land to earn it.');
       if (lv === 'E') h += stampCard('summit', ed > 0, 'Clear any Expert place to earn it.');
       h += '</div></section>';
@@ -625,7 +682,8 @@ var App = (function () {
         var m = loaded(pm.id);
         if (!m) { h += '<div class="nav-mod soon" title="coming soon"><span class="num">' + pm.num + '</span><span>' + esc(pm.title) + '</span><span class="cnt">soon</span></div>'; return; }
         var ids = items(m), d = doneOf(ids), act = current === m, full = ids.length && d === ids.length;
-        h += '<a class="nav-mod' + (act ? ' active' : '') + (full ? ' full' : cur === m ? ' nhere' : '') + '" href="#' + m.id + '"><span class="num">' + (full ? '✓' : m.num) + '</span><span>' + m.title + '</span><span class="cnt">' + (ids.length ? Math.round(d / ids.length * 100) : 0) + '%</span></a>';
+        var ms2 = window.Learn ? Learn.status(m.id, DONE) : {};
+        h += '<a class="nav-mod' + (act ? ' active' : '') + (full ? ' full' : cur === m ? ' nhere' : '') + (ms2.mastered ? ' mastered' : '') + '" href="#' + m.id + '"' + (ms2.mastered ? ' title="Mastered"' : '') + '><span class="num">' + (ms2.mastered ? '★' : full ? '✓' : m.num) + '</span><span>' + m.title + '</span><span class="cnt">' + (ids.length ? Math.round(d / ids.length * 100) : 0) + '%</span></a>';
         if (act) {
           h += '<div class="nav-sub">';
           m.topics.forEach(function (t, i) { h += '<a href="#' + m.id + '-t' + i + '" class="' + (DONE[m.id + '-t' + i] ? 'ok' : '') + '">' + m.num + '.' + (i + 1) + ' ' + stripTags(t.title) + '</a>'; });
@@ -745,6 +803,12 @@ var App = (function () {
       }
     });
     document.addEventListener('change', function (e) {
+      if (e.target.hasAttribute && e.target.hasAttribute('data-langpick')) {
+        store.set('imastery.lang', e.target.value || null);
+        if (window.Auth) Auth.changed();
+        if (TRACK && current) { var keep = location.hash; current = null; route(); if (location.hash !== keep) location.hash = keep; var sel = $('[data-langpick]'); if (sel) sel.focus(); }
+        return;
+      }
       var id = e.target.getAttribute && e.target.getAttribute('data-done');
       if (!id) return;
       if (e.target.checked) { setBox(e.target, false); return; }
@@ -788,8 +852,15 @@ var App = (function () {
         fr.innerHTML = '<iframe src="https://www.youtube-nocookie.com/embed/' + vidId + '?autoplay=1&rel=0&playsinline=1" title="' + esc(vb.querySelector('b').textContent) + '" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>';
         var ln = document.createElement('a'); ln.className = 'vid-open'; ln.href = 'https://www.youtube.com/watch?v=' + vidId; ln.target = '_blank'; ln.rel = 'noopener'; ln.textContent = 'Open on YouTube';
         vb.replaceWith(fr); fr.after(ln);
+      } else if (t.closest('[data-testout]')) {
+        var tm = t.closest('[data-testout]').getAttribute('data-testout');
+        Learn.readiness(tm, routeLang(), function () { var el2 = document.getElementById('prq-' + tm), mm2 = loaded(tm); if (el2 && mm2) el2.innerHTML = prereqHtml(mm2); });
+      } else if (t.closest('[data-checkpoint]')) {
+        var lvk = t.closest('[data-checkpoint]').getAttribute('data-checkpoint');
+        Learn.checkpoint(TRACK.id, lvk, ZN[lvk], zoneQuestions(lvk), function () { DONE = store.get('imastery.done', {}) || {}; if (!current) { $('#main').innerHTML = trackDashHtml(); } updateProgress(); });
       } else if (t.closest('.opt')) {
         var b = t.closest('.opt'), mb2 = b.closest('.mcq'), ans = +mb2.getAttribute('data-ans'), pick = +b.getAttribute('data-opt');
+        if (pick !== ans && window.Learn && TRACK) { var sec = mb2.closest('section[id]'); if (sec) Learn.remember(sec.id, current ? current.id : sec.id.split('-')[0], (current ? stripTags(current.title) : '') + (/-quiz$/.test(sec.id) ? ' · riddle gate' : '')); }
         $$('.opt', mb2).forEach(function (o) { o.classList.remove('right', 'wrong'); });
         b.classList.add(pick === ans ? 'right' : 'wrong');
         if (pick === ans) { mb2._ok = true; progress(mb2); }
@@ -808,6 +879,7 @@ var App = (function () {
   /* ---------- automatic checkmarks: earned by finishing a section, never ticked by hand ---------- */
   function markDone(id, on) {
     if (on) DONE[id] = 1; else delete DONE[id];
+    if (on && window.Learn && current) { Learn.passed(id); if (/-quiz$/.test(id)) Learn.schedule(id, current.id, stripTags(current.title) + ' · riddle gate'); }
     store.set('imastery.done', DONE);
     if (window.Auth) Auth.changed();
     $$('[data-done="' + id + '"]').forEach(function (cb) { setBox(cb, on); if (on) { cb.parentNode.classList.remove('pop'); void cb.parentNode.offsetWidth; cb.parentNode.classList.add('pop'); } });
@@ -873,10 +945,20 @@ var App = (function () {
     $('#gsearch').addEventListener('input', function () { var v = this.value; clearTimeout(tmr); tmr = setTimeout(function () { searchInto(v, SI.entries || [], $('#gresults'), null); }, 120); });
     document.addEventListener('click', function (e) { if (!e.target.closest('.jsearch')) $('#gresults').hidden = true; });
     $('#main').addEventListener('click', function (e) {
-      var b = e.target.closest('[data-role]');
-      if (b && window.Journey) { Journey.setDest(b.getAttribute('data-role')); renderHome(); var d = $('#dest'); if (d) d.querySelector('[data-role="' + b.getAttribute('data-role') + '"]').focus(); }
+      var b = e.target.closest('[data-route]');
+      if (b && window.Learn) { Learn.setPref({ id: b.getAttribute('data-route') }); renderHome(); var d = $('#dest [data-route="' + b.getAttribute('data-route') + '"]'); if (d) d.focus(); }
     });
     renderHome();
+  }
+  function routeCardHtml() {
+    if (!window.Learn || !window.PATHS) return '';
+    var v = Learn.routeView(), p = v.pref, R = v.sch.plan.route, due = Learn.due();
+    return '<div class="jcard dest" id="dest"><div class="droles" role="radiogroup" aria-label="Choose a route">' + PATHS.ROUTES.map(function (r) { return '<button type="button" role="radio" class="drole" data-route="' + r.id + '" aria-checked="' + (r.id === p.id) + '">' + esc(r.name) + '</button>'; }).join('') + '</div>' +
+      Journey.icon('flag', 'dflag') + '<b class="dname">' + esc(R.name) + '</b><span class="dtx">' + esc(Learn.LANG_NAMES[p.lang]) + ' · ' + p.hours + ' h/week · ' + v.pctHours + '% done · ' + v.mastered + ' of ' + v.core + ' modules mastered · about ' + v.weeksLeft + ' weeks left</span>' +
+      '<div class="jbar-p c-violet"><i style="width:' + v.pctHours + '%"></i></div>' +
+      (v.next.length ? '<ol class="dnext">' + v.next.map(function (n) { return '<li><a href="' + Learn.href(n.id) + '"><b>' + esc(n.meta.title) + '</b><span>' + esc(n.why) + '</span></a></li>'; }).join('') + '</ol>' : '') +
+      (due.length ? '<a class="ddue" href="route.html#rpNextH">' + due.length + ' review' + (due.length === 1 ? '' : 's') + ' due today ›</a>' : '') +
+      '<a class="btn line-v" href="route.html">Open your route plan ›</a></div>';
   }
   function renderHome() {
     var J = window.Journey, S = J.stats(DONE), last = store.get('imastery.last', null), M = window.IM_MODS || {};
@@ -910,11 +992,7 @@ var App = (function () {
     }).join('') + '</div></div>';
     h += '<div class="jcard"><h2>Journey log</h2><div class="jlog"><div><b>' + S.places + '</b><span>places cleared</span></div><div><b>' + S.topics.toLocaleString('en-US') + '</b><span>landmarks</span></div><div><b>' + S.problems.toLocaleString('en-US') + '</b><span>treasures found</span></div></div>' +
       '<a class="jstamps" href="passport.html"><span class="mini">' + (got.length ? got.slice(-4) : list.slice(0, 3)).map(function (x) { return J.stampSvg(x.st, x.on); }).join('') + '</span><span>' + (got.length ? got.length + ' of ' + list.length + ' stamps · open passport ›' : 'Your first stamp lands after one landmark · passport ›') + '</span></a></div>';
-    var D = J.dest(), di = 0, dd = 0, nextP = [];
-    D.tracks.forEach(function (t) { var g = S.track[t]; if (g) { di += g.items; dd += g.done; } });
-    ['B', 'I', 'A', 'E'].forEach(function (lv) { D.tracks.forEach(function (t) { var tr = trackBy[t]; if (!tr) return; tr.modules.forEach(function (pm) { var mm = S.module[pm.id]; if (pm.level === lv && mm && !mm.full && nextP.length < 3) nextP.push(pm.title); }); }); });
-    h += '<div class="jcard dest" id="dest"><div class="droles" role="group" aria-label="Choose a destination">' + J.ROLES.map(function (r) { return '<button type="button" class="drole" data-role="' + r.id + '" aria-pressed="' + (r === D) + '">' + esc(r.name.replace(' role', '')) + '</button>'; }).join('') + '</div>' +
-      J.icon('flag', 'dflag') + '<b class="dname">Destination: ' + esc(D.name) + '</b><span class="dtx">' + J.pct(dd, di) + '% of the route travelled.' + (nextP.length ? ' Next on the route: ' + nextP.map(esc).join(', ') + '.' : '') + '</span><div class="jbar-p c-violet"><i style="width:' + J.pct(dd, di) + '%"></i></div></div></section>';
+    h += routeCardHtml() + '</section>';
 
     h += '<section class="world" aria-labelledby="worldH"><div class="jrow"><h2 id="worldH">The world</h2><span class="muted">' + J.REGIONS.length + ' regions · ' + lands + ' lands</span></div><div class="wgrid">' +
       J.REGIONS.map(function (r) {
@@ -926,20 +1004,27 @@ var App = (function () {
       (function () { var extra = TRACKS.filter(function (t) { return J.regionOf(t.id).key === 'new'; }); return extra.length ? '<div class="jcard region" id="r-new"><span class="kicker c-sky">' + J.icon('compass') + 'New lands</span><b class="rname">Uncharted</b>' + extra.map(function (t) { var g = S.track[t.id] || { items: 0, done: 0 }, p = J.pct(g.done, g.items); return '<a class="rland" href="' + t.id + '.html"><span>' + esc(t.title) + '</span><span class="jbar-p c-sky"><i style="width:' + p + '%"></i></span><span class="mono">' + p + '%</span></a>'; }).join('') + '</div>' : '<div class="uncharted">Uncharted · new lands appear here as topics are added</div>'; })() +
       '</div></section>';
 
-    h += '<section id="paths" class="jcard"><h2>Learning routes</h2><div class="ptabs" role="tablist" aria-label="Choose a learning route">' +
-      LEARNING_PATHS.map(function (p, i) { return '<button type="button" class="ptab" role="tab" id="ptab' + i + '" aria-controls="proute" aria-selected="' + (i === 1 ? 'true' : 'false') + '" data-path="' + i + '">' + esc(p.name) + ' · ' + esc(p.time) + '</button>'; }).join('') +
-      '</div><ol class="route" id="proute" role="tabpanel" aria-labelledby="ptab1"></ol></section>';
+    var RP = window.Learn ? Learn.pref() : { id: 'sde', hours: 10 };
+    h += '<section id="paths" class="jcard"><div class="jrow"><h2>Learning routes</h2><a href="route.html">Plan yours in detail ›</a></div><div class="ptabs" role="tablist" aria-label="Choose a learning route">' +
+      (window.PATHS ? PATHS.ROUTES : []).map(function (r, i) { return '<button type="button" class="ptab" role="tab" id="ptab' + i + '" aria-controls="proute" aria-selected="' + (r.id === RP.id) + '" data-path="' + i + '">' + esc(r.name) + '</button>'; }).join('') +
+      '</div><div id="proute" role="tabpanel"></div></section>';
     h += '<footer class="jfoot">' + (window.IM_VERSION ? '<span>Interview Mastery v' + esc(window.IM_VERSION) + '</span>' : '') + '<a href="privacy.html">Privacy policy</a><a href="https://github.com/SHRENIKYD/DSA-LEARNINGS">Source on GitHub</a><button class="btn ghost" type="button" id="resetProgress">Reset all progress</button></footer>';
     $('#main').innerHTML = h;
     J.mountAtlas(S, trackBy, last);
 
     var pickPath = function (i) {
+      if (!window.PATHS || !window.Learn) return;
+      var r = PATHS.ROUTES[i], pr = Learn.pref(), lang = r.langs.indexOf(pr.lang) >= 0 ? pr.lang : r.langs[0];
+      var hours = {}; Object.keys(window.IM_PATHMETA || {}).forEach(function (k) { hours[k] = window.IM_PATHMETA[k][3]; });
+      var sc = PATHS.schedule(r.id, lang, hours);
       $$('.ptab').forEach(function (b) { b.setAttribute('aria-selected', b.getAttribute('data-path') === String(i) ? 'true' : 'false'); });
       $('#proute').setAttribute('aria-labelledby', 'ptab' + i);
-      $('#proute').innerHTML = LEARNING_PATHS[i].route.split(/\s*·\s*|\s*→\s*/).filter(Boolean).map(function (s) { return '<li><span>' + esc(s.replace(/\.$/, '')) + '</span></li>'; }).join('');
+      $('#proute').innerHTML = '<p class="muted">' + esc(r.blurb) + '</p><ol class="route">' + r.stages.map(function (st) { return '<li><span>' + esc(st.name) + '</span></li>'; }).join('') + '</ol>' +
+        '<p class="pr-time"><b>' + sc.total + ' hours</b> including ' + sc.projects + ' h of projects and ' + sc.revision + ' h of revision: ' + [5, 10, 20, 40].map(function (w) { return '<span' + (w === pr.hours ? ' class="on"' : '') + '>' + sc.weeks[w] + ' weeks at ' + w + ' h/week</span>'; }).join(' · ') + '.</p>' +
+        '<button class="btn" type="button" data-route="' + r.id + '">Make this my route</button>';
     };
     $('.ptabs').addEventListener('click', function (e) { var b = e.target.closest('.ptab'); if (b) pickPath(+b.getAttribute('data-path')); });
-    pickPath(1);
+    pickPath(Math.max(0, (window.PATHS ? PATHS.ROUTES : []).map(function (r) { return r.id; }).indexOf(RP.id)));
   }
 
   /* ---------- account sync ---------- */

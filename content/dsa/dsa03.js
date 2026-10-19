@@ -35,7 +35,7 @@
       ${H.arr([1, 2, 3, 4, 5, 6], { label: 'try i =', hl: { 0: 'g', 1: 'g', 2: 'g', 3: 'g', 4: 'r', 5: 'p' } })}
       <p>${H.c('g', 'green')} = divides 36, ${H.c('r', 'red')} = 5 does not divide 36, ${H.c('p', 'purple')} = 6 pairs with itself, so count it <b>once</b>.</p>
       <p><b>Speed:</b> for N = 10<sup>12</sup> a loop to N would take 10<sup>12</sup> steps (hours). Looping to √N takes only 10<sup>6</sup> steps (a few milliseconds).</p>
-      <p><b>Trap:</b> write the condition as <code>i * i &lt;= n</code> using <code>long</code>, not <code>i &lt;= Math.sqrt(n)</code> (floating-point rounding can be off by one for huge N).</p>`,
+      <p><b>Trap:</b> write the condition as <code>i * i &lt;= n</code> in 64-bit integers (<code>long</code> in Java, <code>long long</code> in C++; Python ints and JS Numbers below 2<sup>53</sup> are exact), not <code>i &lt;= sqrt(n)</code> with a floating-point square root (floating-point rounding can be off by one for huge N).</p>`,
     clues: [
       '"Find / count / list all <b>divisors</b> (factors) of N" → loop i up to √N, take pairs (i, N/i).',
       'A <b>single</b> big number, <code>N ≤ 10<sup>12</sup></code> → √N = 10<sup>6</sup> steps is fine; O(N) is not.',
@@ -43,7 +43,7 @@
       '"Count pairs (a, b) with a × b = N" or "rectangle with area N" → factor pairs.',
       '"Smallest / largest factor other than 1 and N" → first i ≥ 2 that divides N, and its partner N / i.'
     ],
-    code: `
+    code: { lang: 'java', code: `
       List<Long> allFactors(long n) {
           List<Long> small = new ArrayList<>();   // small partners: 1, 2, 3 ... (found in increasing order)
           List<Long> big = new ArrayList<>();     // big partners: n, n/2 ... (found in decreasing order)
@@ -58,7 +58,43 @@
           Collections.reverse(big);               // big partners were collected largest-first
           small.addAll(big);                      // stitch both halves → fully sorted list
           return small;
-      }`,
+      }`, alt: [
+{ lang: 'python', code: `
+def all_factors(n):
+    small, big = [], []
+    i = 1
+    while i * i <= n:                 # stop once i passes the square root
+        if n % i == 0:
+            small.append(i)           # small partners come out in increasing order
+            if i != n // i:
+                big.append(n // i)    # big partner, only if different (perfect squares)
+        i += 1
+    return small + big[::-1]          # big partners were found largest-first
+
+# all_factors(36) -> [1, 2, 3, 4, 6, 9, 12, 18, 36]` },
+{ lang: 'js', code: `
+function allFactors(n) {
+  const small = [], big = [];
+  for (let i = 1; i * i <= n; i++) {   // exact while n < 2^53
+    if (n % i === 0) {
+      small.push(i);                   // small partners in increasing order
+      if (i !== n / i) big.push(n / i); // big partner, only if different
+    }
+  }
+  return small.concat(big.reverse());  // allFactors(36) -> [1, 2, 3, 4, 6, 9, 12, 18, 36]
+}` },
+{ lang: 'cpp', code: `
+vector<long long> allFactors(long long n) {
+    vector<long long> small, big;
+    for (long long i = 1; i <= n / i; i++) {   // overflow-safe form of i * i <= n
+        if (n % i == 0) {
+            small.push_back(i);                // small partners in increasing order
+            if (i != n / i) big.push_back(n / i);
+        }
+    }
+    small.insert(small.end(), big.rbegin(), big.rend());   // big partners reversed
+    return small;
+}` }] },
     codeTitle: 'List all factors in sorted order (O(√N))',
     examples: [
       {
@@ -73,7 +109,7 @@
       {
         title: 'Sum of proper divisors → is 28 a perfect number?',
         html: `<p>A <b>perfect number</b> equals the sum of its factors except itself. For 28: pairs (1, 28), (2, 14), (4, 7). Proper divisors: 1 + 2 + 4 + 7 + 14 = ${H.c('g', '28')} ✓. For 12: 1 + 2 + 3 + 4 + 6 = ${H.c('r', '16')} ✗. Same √N loop, but we <b>add</b> both partners instead of counting them, and skip N itself.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           long sumProperDivisors(long n) {
               if (n == 1) return 0;                 // 1 has no proper divisors
               long sum = 1;                          // 1 divides everything (and its partner n is excluded)
@@ -84,7 +120,44 @@
                   }
               }
               return sum;                            // 28 -> 28, 12 -> 16
-          }`
+          }`, alt: [
+{ lang: 'python', code: `
+def sum_proper_divisors(n):
+    if n == 1:
+        return 0                     # 1 has no proper divisors
+    total = 1                        # 1 divides everything (its partner n is excluded)
+    i = 2
+    while i * i <= n:
+        if n % i == 0:
+            total += i
+            if i != n // i:
+                total += n // i      # big partner, only if different
+        i += 1
+    return total                     # 28 -> 28, 12 -> 16` },
+{ lang: 'js', code: `
+function sumProperDivisors(n) {
+  if (n === 1) return 0;              // 1 has no proper divisors
+  let sum = 1;                        // 1 divides everything (its partner n is excluded)
+  for (let i = 2; i * i <= n; i++) {
+    if (n % i === 0) {
+      sum += i;
+      if (i !== n / i) sum += n / i;  // big partner, only if different
+    }
+  }
+  return sum;                         // 28 -> 28, 12 -> 16
+}` },
+{ lang: 'cpp', code: `
+long long sumProperDivisors(long long n) {
+    if (n == 1) return 0;                    // 1 has no proper divisors
+    long long sum = 1;                       // 1 divides everything (its partner n is excluded)
+    for (long long i = 2; i <= n / i; i++) {
+        if (n % i == 0) {
+            sum += i;
+            if (i != n / i) sum += n / i;    // big partner, only if different
+        }
+    }
+    return sum;                              // 28 -> 28, 12 -> 16
+}` }] }
       },
       {
         title: 'Prime factorization in O(√N): 360 = 2³ × 3² × 5',
@@ -93,7 +166,7 @@
             ['2', '360', '360 → 180 → 90 → 45 (three 2s)', '45'], ['3', '45', '45 → 15 → 5 (two 3s)', '5'], ['4', '5', '4 × 4 = 16 &gt; 5 → stop loop', '5'], ['leftover', '5', H.c('p', '5 &gt; 1, so 5 is itself a prime factor'), '1']
           ])}
           <p>Bonus formula: with N = p<sup>a</sup> × q<sup>b</sup> × r<sup>c</sup>, the number of divisors is <b>(a+1)(b+1)(c+1)</b>. For 360: (3+1)(2+1)(1+1) = ${H.c('g', '24')} divisors — each divisor chooses how many 2s (0..3), 3s (0..2) and 5s (0..1) to use.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           Map<Long, Integer> primeFactors(long n) {
               Map<Long, Integer> f = new TreeMap<>();     // prime -> exponent, sorted
               for (long i = 2; i <= n / i; i++) {         // i <= n / i is i * i <= n without overflow
@@ -104,7 +177,45 @@
               }
               if (n > 1) f.merge(n, 1, Integer::sum);     // whatever is left is one big prime
               return f;                                   // 360 -> {2=3, 3=2, 5=1}
-          }`
+          }`, alt: [
+{ lang: 'python', code: `
+from collections import Counter
+
+def prime_factors(n):
+    f = Counter()                    # prime -> exponent
+    i = 2
+    while i * i <= n:
+        while n % i == 0:            # strip out every copy of i
+            f[i] += 1
+            n //= i
+        i += 1
+    if n > 1:
+        f[n] += 1                    # whatever is left is one big prime
+    return dict(sorted(f.items()))   # 360 -> {2: 3, 3: 2, 5: 1}` },
+{ lang: 'js', code: `
+function primeFactors(n) {
+  const f = new Map();                 // prime -> exponent, in increasing order of prime
+  for (let i = 2; i * i <= n; i++) {
+    while (n % i === 0) {              // strip out every copy of i
+      f.set(i, (f.get(i) || 0) + 1);
+      n /= i;
+    }
+  }
+  if (n > 1) f.set(n, (f.get(n) || 0) + 1);   // whatever is left is one big prime
+  return f;                            // 360 -> Map {2 => 3, 3 => 2, 5 => 1}
+}` },
+{ lang: 'cpp', code: `
+map<long long, int> primeFactors(long long n) {
+    map<long long, int> f;                   // prime -> exponent, sorted
+    for (long long i = 2; i <= n / i; i++) {
+        while (n % i == 0) {                 // strip out every copy of i
+            f[i]++;
+            n /= i;
+        }
+    }
+    if (n > 1) f[n]++;                       // whatever is left is one big prime
+    return f;                                // 360 -> {2:3, 3:2, 5:1}
+}` }] }
       },
       {
         title: 'Count rectangles of area N (factor pairs as answers)',
@@ -221,9 +332,10 @@
         },
         hints: [
           `<p><b>Aha:</b> factors come in pairs <code>(i, N / i)</code>, and the smaller one of each pair is always ≤ √N. So you only need to look at i with <code>i * i ≤ N</code>.</p>`,
-          `<p>No data structure needed — just a <code>long</code> counter. For each i that divides N, add 2 (for i and N / i) … unless they are equal.</p>`,
+          `<p>No data structure needed — just a 64-bit counter (<code>long</code> / <code>long long</code>; a plain int in Python or a Number in JS). For each i that divides N, add 2 (for i and N / i) … unless they are equal.</p>`,
           `<p>Traps: use <code>long</code> for <code>i</code> and the condition <code>i * i &lt;= n</code> (N up to 10<sup>12</sup> doesn't fit in int). Perfect squares (36, 49, 1) need the "add 1" case. N = 1 → answer 1.<br>Recipe: count = 0; for i = 1 while i·i ≤ N: if N % i == 0 → count += (i == N/i ? 1 : 2). Return count.</p>`
         ],
+        tests: { sig: "long -> long", fn: "countFactors", cases: [[[36],9],[[1],1],[[2],2],[[49],3],[[97],2],[[100],9],[[720720],240],[[1000000000000],169],[[963761198400],6720],[[999999999989],2],[[999966000289],3]] },
         solution: {
           approach: `<p>Walk i from 1 to √N; every divisor i brings its partner N / i along.</p>`,
           code: `
@@ -248,6 +360,37 @@
                     System.out.println(new Solution().countFactors(1));   // 1
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `
+def count_factors(n):
+    count = 0
+    i = 1
+    while i * i <= n:          # only walk up to the square root
+        if n % i == 0:
+            count += 1 if i == n // i else 2   # a perfect square pairs with itself
+        i += 1
+    return count` },
+            { lang: 'js', code: `
+function countFactors(n) {
+  // n <= 10^12 < 2^53, so plain Numbers stay exact here
+  let count = 0;
+  for (let i = 1; i * i <= n; i++) {
+    if (n % i === 0) count += i === n / i ? 1 : 2;   // perfect square: count once
+  }
+  return count;
+}` },
+            { lang: 'cpp', code: `
+class Solution {
+public:
+    long long countFactors(long long n) {
+        long long count = 0;
+        for (long long i = 1; i <= n / i; i++) {   // i <= n / i: i * i <= n without overflow
+            if (n % i == 0) count += (i == n / i) ? 1 : 2;
+        }
+        return count;
+    }
+};` }
+          ],
           dry: {
             head: ['i', 'i × i ≤ 36?', '36 % i', 'partner 36 / i', 'count'],
             rows: [
@@ -289,7 +432,7 @@
       '"Can these items be arranged in a rectangle with more than one row?" → is N composite?',
       'Edge words: "1 is neither prime nor composite", "N can be 0 or 1" → handle before the loop.'
     ],
-    code: `
+    code: { lang: 'java', code: `
       boolean isPrime(long n) {
           if (n < 2) return false;            // 0 and 1 are not prime
           if (n < 4) return true;             // 2 and 3 are prime
@@ -298,7 +441,41 @@
               if (n % i == 0) return false;   // found a split → composite
           }
           return true;                        // nothing divided n → prime
-      }`,
+      }`, alt: [
+{ lang: 'python', code: `
+def is_prime(n):
+    if n < 2:
+        return False           # 0 and 1 are not prime
+    if n < 4:
+        return True            # 2 and 3 are prime
+    if n % 2 == 0:
+        return False           # even numbers > 2 are composite
+    i = 3
+    while i * i <= n:          # only odd divisors up to the square root
+        if n % i == 0:
+            return False       # found a split -> composite
+        i += 2
+    return True` },
+{ lang: 'js', code: `
+function isPrime(n) {
+  if (n < 2) return false;            // 0 and 1 are not prime
+  if (n < 4) return true;             // 2 and 3 are prime
+  if (n % 2 === 0) return false;      // even numbers > 2 are composite
+  for (let i = 3; i * i <= n; i += 2) {   // odd divisors up to the square root
+    if (n % i === 0) return false;    // found a split -> composite
+  }
+  return true;
+}` },
+{ lang: 'cpp', code: `
+bool isPrime(long long n) {
+    if (n < 2) return false;            // 0 and 1 are not prime
+    if (n < 4) return true;             // 2 and 3 are prime
+    if (n % 2 == 0) return false;       // even numbers > 2 are composite
+    for (long long i = 3; i <= n / i; i += 2) {   // overflow-safe i * i <= n
+        if (n % i == 0) return false;   // found a split -> composite
+    }
+    return true;
+}` }] },
     codeTitle: 'Trial division (odd numbers only)',
     examples: [
       {
@@ -310,7 +487,7 @@
         html: `<p>Every prime above 3 has the form <b>6k − 1</b> or <b>6k + 1</b> (the others, 6k, 6k+2, 6k+3, 6k+4, are divisible by 2 or 3). So after checking 2 and 3 we only try i = 5, 7, 11, 13, 17, 19 … — <b>2 out of every 6</b> numbers instead of 3 out of 6 with "odd only". Same O(√N), about a third fewer divisions.</p>
           ${H.arr([5, 7, 11, 13, 17, 19, 23, 25], { label: 'candidates i, i+2', hl: { 7: 'y' } })}
           <p>${H.c('y', '25')} is tried even though it is not prime — harmless, just a wasted division.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           boolean isPrime6k(long n) {
               if (n < 2) return false;
               if (n < 4) return true;                       // 2, 3
@@ -319,13 +496,47 @@
                   if (n % i == 0 || n % (i + 2) == 0) return false;
               }
               return true;
-          }`
+          }`, alt: [
+{ lang: 'python', code: `
+def is_prime_6k(n):
+    if n < 2:
+        return False
+    if n < 4:
+        return True                          # 2, 3
+    if n % 2 == 0 or n % 3 == 0:
+        return False
+    i = 5
+    while i * i <= n:                        # i = 6k - 1, and i + 2 = 6k + 1
+        if n % i == 0 or n % (i + 2) == 0:
+            return False
+        i += 6
+    return True` },
+{ lang: 'js', code: `
+function isPrime6k(n) {
+  if (n < 2) return false;
+  if (n < 4) return true;                    // 2, 3
+  if (n % 2 === 0 || n % 3 === 0) return false;
+  for (let i = 5; i * i <= n; i += 6) {      // i = 6k - 1, and i + 2 = 6k + 1
+    if (n % i === 0 || n % (i + 2) === 0) return false;
+  }
+  return true;
+}` },
+{ lang: 'cpp', code: `
+bool isPrime6k(long long n) {
+    if (n < 2) return false;
+    if (n < 4) return true;                          // 2, 3
+    if (n % 2 == 0 || n % 3 == 0) return false;
+    for (long long i = 5; i <= n / i; i += 6) {      // i = 6k - 1, and i + 2 = 6k + 1
+        if (n % i == 0 || n % (i + 2) == 0) return false;
+    }
+    return true;
+}` }] }
       },
       {
         title: 'Next prime ≥ N, and Goldbach for an even number',
         html: `<p>"Find the smallest prime ≥ 90": test 90 ✗, 91 ✗ (7 × 13), 92 ✗, 93 ✗ (3 × 31), 94 ✗, 95 ✗, 96 ✗, ${H.c('g', '97 ✓')}. Primes near N are on average about ln N apart (≈ 28 near 10<sup>12</sup>), so "walk up and test" is fast.</p>
           <p>"Write 28 as a sum of two primes": try p = 2, 3, 5 … and test 28 − p: 28 − 2 = 26 ✗, 28 − 3 = 25 ✗, ${H.c('g', '28 − 5 = 23 ✓')} → 5 + 23. (Goldbach's conjecture says every even number &gt; 2 works; it has been checked far beyond any interview limit.)</p>`,
-        code: `
+        code: { lang: 'java', code: `
           long nextPrime(long n) {
               long x = Math.max(n, 2);
               while (!isPrime(x)) x++;      // gaps between primes are small on average (about ln n)
@@ -336,7 +547,47 @@
               if (n < 2) return false;
               for (long i = 2; i <= n / i; i++) if (n % i == 0) return false;
               return true;
-          }`
+          }`, alt: [
+{ lang: 'python', code: `
+def is_prime(n):
+    if n < 2:
+        return False
+    i = 2
+    while i * i <= n:
+        if n % i == 0:
+            return False
+        i += 1
+    return True
+
+def next_prime(n):
+    x = max(n, 2)
+    while not is_prime(x):    # gaps between primes are small on average (about ln n)
+        x += 1
+    return x                  # next_prime(90) -> 97` },
+{ lang: 'js', code: `
+function isPrime(n) {
+  if (n < 2) return false;
+  for (let i = 2; i * i <= n; i++) if (n % i === 0) return false;
+  return true;
+}
+
+function nextPrime(n) {
+  let x = Math.max(n, 2);
+  while (!isPrime(x)) x++;    // gaps between primes are small on average (about ln n)
+  return x;                   // nextPrime(90) -> 97
+}` },
+{ lang: 'cpp', code: `
+bool isPrime(long long n) {
+    if (n < 2) return false;
+    for (long long i = 2; i <= n / i; i++) if (n % i == 0) return false;
+    return true;
+}
+
+long long nextPrime(long long n) {
+    long long x = max(n, 2LL);
+    while (!isPrime(x)) x++;    // gaps between primes are small on average (about ln n)
+    return x;                   // nextPrime(90) -> 97
+}` }] }
       },
       {
         title: 'Counting the work: why "many queries" breaks trial division',
@@ -344,7 +595,7 @@
       }
     ],
     deepDive: `<p><b>How many primes are there?</b> The <i>prime number theorem</i> says about N / ln N numbers up to N are prime: π(10<sup>6</sup>) = 78,498, π(10<sup>7</sup>) = 664,579, π(10<sup>9</sup>) = 50,847,534. So a random number near N is prime with probability ≈ 1 / ln N — the reason "next prime" searches end quickly.</p>
-      <p><b>Miller–Rabin (when N is up to 10<sup>18</sup> and there are many queries).</b> Instead of searching for a divisor, it checks a property every prime must satisfy (based on Fermat's little theorem, a<sup>p−1</sup> ≡ 1 mod p, plus a square-root check). Each "witness" base costs one fast modular exponentiation, O(log N). Testing the bases 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37 is known to be <b>deterministic for all 64-bit numbers</b>. Java gives you <code>BigInteger.valueOf(n).isProbablePrime(30)</code>; the multiplication must not overflow, so 64-bit implementations use 128-bit products (<code>Math.multiplyHigh</code> or <code>__int128</code> in C++).</p>
+      <p><b>Miller–Rabin (when N is up to 10<sup>18</sup> and there are many queries).</b> Instead of searching for a divisor, it checks a property every prime must satisfy (based on Fermat's little theorem, a<sup>p−1</sup> ≡ 1 mod p, plus a square-root check). Each "witness" base costs one fast modular exponentiation, O(log N). Testing the bases 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37 is known to be <b>deterministic for all 64-bit numbers</b>. Java gives you <code>BigInteger.valueOf(n).isProbablePrime(30)</code> (Python has <code>sympy.isprime</code>; JS and C++ have no built-in); the multiplication must not overflow, so 64-bit implementations use 128-bit products (<code>Math.multiplyHigh</code> or <code>__int128</code> in C++).</p>
       <p><b>Plain Fermat is not enough:</b> Carmichael numbers such as 561 = 3 × 11 × 17 satisfy a<sup>560</sup> ≡ 1 (mod 561) for every a coprime to 561, fooling a naive Fermat test. Miller–Rabin's extra square-root check catches them.</p>
       <p><b>Theory corner:</b> AKS (2002) proved primality is solvable in deterministic polynomial time, but it is far slower in practice than Miller–Rabin. Real systems (OpenSSL key generation) use probabilistic tests with many rounds; the chance of error is smaller than a hardware fault.</p>
       <p><b>Edge cases checklist:</b> 0, 1 (not prime), 2 (only even prime), negative inputs, perfect squares of primes (9, 25, 49, 121 — catch the <code>&lt;</code> vs <code>&lt;=</code> bug), and overflow of <code>i * i</code> near <code>Long.MAX_VALUE</code>.</p>`,
@@ -434,6 +685,7 @@
           `<p>No data structure needed. Loop <code>i</code> while <code>i * i &lt;= n</code>; return false on the first divisor. Check 2 separately, then step by 2 to test only odd i.</p>`,
           `<p>Traps: N = 0 and N = 1 are not prime; N = 2 is prime (the loop never runs); use <code>long</code> for i so <code>i * i</code> does not overflow; use <code>&lt;=</code> not <code>&lt;</code> (perfect squares like 25, 121).<br>Recipe: if n &lt; 2 → false; if n &lt; 4 → true; if even → false; for i = 3, 5, 7 … while i·i ≤ n: if n % i == 0 → false. Return true.</p>`
         ],
+        tests: { sig: "long -> bool", fn: "isPrime", cases: [[[97],true],[[91],false],[[0],false],[[1],false],[[2],true],[[3],true],[[4],false],[[25],false],[[121],false],[[1000000007],true],[[999999999989],true],[[1000000000000],false],[[999966000289],false],[[999999000001],true]] },
         solution: {
           approach: `<p>Trial division up to √N, skipping even numbers after 2.</p>`,
           code: `
@@ -454,6 +706,45 @@
                     System.out.println(s.isPrime(91));    // false (7 x 13)
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `
+def is_prime(n):
+    if n < 2:
+        return False           # 0 and 1 are not prime
+    if n < 4:
+        return True            # 2 and 3
+    if n % 2 == 0:
+        return False
+    i = 3
+    while i * i <= n:          # odd divisors up to the square root
+        if n % i == 0:
+            return False
+        i += 2
+    return True` },
+            { lang: 'js', code: `
+function isPrime(n) {
+  if (n < 2) return false;            // 0 and 1 are not prime
+  if (n < 4) return true;             // 2 and 3
+  if (n % 2 === 0) return false;
+  for (let i = 3; i * i <= n; i += 2) {   // n <= 10^12, so i * i stays exact
+    if (n % i === 0) return false;
+  }
+  return true;
+}` },
+            { lang: 'cpp', code: `
+class Solution {
+public:
+    bool isPrime(long long n) {
+        if (n < 2) return false;          // 0 and 1 are not prime
+        if (n < 4) return true;           // 2 and 3
+        if (n % 2 == 0) return false;
+        for (long long i = 3; i <= n / i; i += 2) {   // overflow-safe form of i * i <= n
+            if (n % i == 0) return false;
+        }
+        return true;
+    }
+};` }
+          ],
           dry: {
             head: ['step', 'check', 'value', 'decision'],
             rows: [
@@ -500,7 +791,7 @@
       '"All primes in a range [L, R]" with R up to 10<sup>12</sup> but R − L ≤ 10<sup>6</sup> → segmented sieve (see Practice).',
       'Time hint: O(N √N) is too slow for N = 10<sup>6</sup>; O(N log log N) fits easily.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       boolean[] sieve(int n) {
           boolean[] isPrime = new boolean[n + 1];
           Arrays.fill(isPrime, true);               // everybody stands up
@@ -513,7 +804,42 @@
               }
           }
           return isPrime;
-      }`, `
+      }`, alt: [
+{ lang: 'python', code: `
+def sieve(n):
+    is_prime = bytearray([1]) * (n + 1)      # everybody stands up
+    is_prime[0] = 0
+    if n >= 1:
+        is_prime[1] = 0                      # 0 and 1 are not prime
+    p = 2
+    while p * p <= n:                        # only p up to the square root cross anything new
+        if is_prime[p]:
+            # slice assignment crosses out p*p, p*p+p, ... in one fast C-level step
+            is_prime[p * p::p] = bytes(len(range(p * p, n + 1, p)))
+        p += 1
+    return is_prime                          # is_prime[x] == 1 means x is prime` },
+{ lang: 'js', code: `
+function sieve(n) {
+  const isPrime = new Uint8Array(n + 1).fill(1);   // everybody stands up
+  isPrime[0] = 0;
+  if (n >= 1) isPrime[1] = 0;                      // 0 and 1 are not prime
+  for (let p = 2; p * p <= n; p++) {               // only p up to the square root
+    if (!isPrime[p]) continue;                     // p was knocked out, skip
+    for (let m = p * p; m <= n; m += p) isPrime[m] = 0;   // smaller multiples already crossed
+  }
+  return isPrime;
+}` },
+{ lang: 'cpp', code: `
+vector<bool> sieve(int n) {
+    vector<bool> isPrime(n + 1, true);          // vector<bool> packs 8 flags per byte
+    isPrime[0] = false;
+    if (n >= 1) isPrime[1] = false;             // 0 and 1 are not prime
+    for (long long p = 2; p * p <= n; p++) {    // long long: p * p must not overflow
+        if (!isPrime[p]) continue;
+        for (long long m = p * p; m <= n; m += p) isPrime[m] = false;
+    }
+    return isPrime;
+}` }] }, { lang: 'java', code: `
       int[] smallestPrimeFactor(int n) {
           int[] spf = new int[n + 1];               // spf[x] = smallest prime dividing x (0 = not set yet)
           for (int i = 2; i <= n; i++) {
@@ -533,13 +859,65 @@
               x /= spf[x];
           }
           return factors;
-      }`],
+      }`, alt: [
+{ lang: 'python', code: `
+def smallest_prime_factor(n):
+    spf = [0] * (n + 1)              # spf[x] = smallest prime dividing x (0 = not set yet)
+    for i in range(2, n + 1):
+        if spf[i] == 0:              # nobody marked i -> i is prime
+            for j in range(i, n + 1, i):
+                if spf[j] == 0:
+                    spf[j] = i       # the first prime to reach j is its smallest factor
+    return spf
+
+def factorize(x, spf):
+    factors = []
+    while x > 1:
+        factors.append(spf[x])       # peel off the smallest prime
+        x //= spf[x]
+    return factors` },
+{ lang: 'js', code: `
+function smallestPrimeFactor(n) {
+  const spf = new Int32Array(n + 1);   // spf[x] = smallest prime dividing x (0 = not set yet)
+  for (let i = 2; i <= n; i++) {
+    if (spf[i] !== 0) continue;        // already marked -> composite
+    for (let j = i; j <= n; j += i) if (spf[j] === 0) spf[j] = i;
+  }
+  return spf;
+}
+
+function factorize(x, spf) {
+  const factors = [];
+  while (x > 1) {
+    factors.push(spf[x]);              // peel off the smallest prime
+    x /= spf[x];
+  }
+  return factors;
+}` },
+{ lang: 'cpp', code: `
+vector<int> smallestPrimeFactor(int n) {
+    vector<int> spf(n + 1, 0);           // spf[x] = smallest prime dividing x (0 = not set yet)
+    for (int i = 2; i <= n; i++) {
+        if (spf[i] != 0) continue;       // already marked -> composite
+        for (int j = i; j <= n; j += i) if (spf[j] == 0) spf[j] = i;
+    }
+    return spf;
+}
+
+vector<int> factorize(int x, const vector<int>& spf) {
+    vector<int> factors;
+    while (x > 1) {
+        factors.push_back(spf[x]);       // peel off the smallest prime
+        x /= spf[x];
+    }
+    return factors;
+}` }] }],
     codeTitle: ['Classic sieve', 'Smallest-prime-factor sieve + fast factorization'],
     examples: [
       {
         title: 'Prefix count of primes → answer "how many primes in [L, R]?" in O(1)',
         html: `<p>Sieve once up to 10<sup>6</sup>, then build <code>cnt[x]</code> = number of primes ≤ x. Each query is <code>cnt[R] − cnt[L − 1]</code>. For [10, 30]: cnt[30] = 10, cnt[9] = 4 (2, 3, 5, 7) → ${H.c('g', '6')} primes (11, 13, 17, 19, 23, 29). This is the Prefix-Sum idea from DSA 5 sitting on top of a sieve.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           int[] primePrefix(int n) {
               boolean[] composite = new boolean[n + 1];        // false = still "maybe prime"
               int[] cnt = new int[n + 1];
@@ -549,7 +927,40 @@
               for (int x = 2; x <= n; x++)
                   cnt[x] = cnt[x - 1] + (composite[x] ? 0 : 1); // running count of primes
               return cnt;                                      // query [L, R]: cnt[R] - cnt[L - 1]
-          }`
+          }`, alt: [
+{ lang: 'python', code: `
+from itertools import accumulate
+
+def prime_prefix(n):
+    composite = bytearray(n + 1)
+    p = 2
+    while p * p <= n:
+        if not composite[p]:
+            composite[p * p::p] = b'\\x01' * len(range(p * p, n + 1, p))
+        p += 1
+    flags = [0, 0] + [1 - composite[x] for x in range(2, n + 1)]
+    return list(accumulate(flags[:n + 1]))   # query [L, R]: cnt[R] - cnt[L - 1]` },
+{ lang: 'js', code: `
+function primePrefix(n) {
+  const composite = new Uint8Array(n + 1);
+  const cnt = new Int32Array(n + 1);
+  for (let p = 2; p * p <= n; p++) {
+    if (composite[p]) continue;
+    for (let m = p * p; m <= n; m += p) composite[m] = 1;
+  }
+  for (let x = 2; x <= n; x++) cnt[x] = cnt[x - 1] + (composite[x] ? 0 : 1);   // running count
+  return cnt;                          // query [L, R]: cnt[R] - cnt[L - 1]
+}` },
+{ lang: 'cpp', code: `
+vector<int> primePrefix(int n) {
+    vector<bool> composite(n + 1, false);
+    vector<int> cnt(n + 1, 0);
+    for (long long p = 2; p * p <= n; p++)
+        if (!composite[p])
+            for (long long m = p * p; m <= n; m += p) composite[m] = true;
+    for (int x = 2; x <= n; x++) cnt[x] = cnt[x - 1] + (composite[x] ? 0 : 1);   // running count
+    return cnt;                          // query [L, R]: cnt[R] - cnt[L - 1]
+}` }] }
       },
       {
         title: 'SPF sieve: factorize 360 in 6 steps',
@@ -563,18 +974,39 @@
       {
         title: 'Divisor-count sieve (all d(x) for x ≤ N in N ln N)',
         html: `<p>Same "walk the multiples" loop, but for <b>every</b> d (not just primes): for d = 1..N, for m = d, 2d, … add 1 to <code>divs[m]</code>. Work = N/1 + N/2 + … ≈ N ln N ≈ 1.4 × 10<sup>7</sup> for N = 10<sup>6</sup>. Result: divs[12] = 6 (1, 2, 3, 4, 6, 12).</p>`,
-        code: `
+        code: { lang: 'java', code: `
           int[] divisorCounts(int n) {
               int[] divs = new int[n + 1];
               for (int d = 1; d <= n; d++)
                   for (int m = d; m <= n; m += d)
                       divs[m]++;          // d divides m
               return divs;
-          }`
+          }`, alt: [
+{ lang: 'python', code: `
+def divisor_counts(n):
+    divs = [0] * (n + 1)
+    for d in range(1, n + 1):
+        for m in range(d, n + 1, d):
+            divs[m] += 1          # d divides m
+    return divs` },
+{ lang: 'js', code: `
+function divisorCounts(n) {
+  const divs = new Int32Array(n + 1);
+  for (let d = 1; d <= n; d++)
+    for (let m = d; m <= n; m += d) divs[m]++;   // d divides m
+  return divs;
+}` },
+{ lang: 'cpp', code: `
+vector<int> divisorCounts(int n) {
+    vector<int> divs(n + 1, 0);
+    for (int d = 1; d <= n; d++)
+        for (int m = d; m <= n; m += d) divs[m]++;   // d divides m
+    return divs;
+}` }] }
       }
     ],
     deepDive: `<p><b>Why N log log N?</b> Prime p does about N/p crossings, so total ≈ N × (1/2 + 1/3 + 1/5 + 1/7 + …). The sum of reciprocals of primes up to N grows like ln ln N (Mertens' theorem), which is about 3 for N = 10<sup>9</sup>. In practice the sieve is limited by <b>memory traffic</b>, not arithmetic.</p>
-      <p><b>Memory tricks.</b> A Java <code>boolean[]</code> uses 1 byte per entry → 10<sup>8</sup> entries = 100 MB (too much for most judges). <code>java.util.BitSet</code> uses 1 bit → 12.5 MB. Sieving <b>only odd numbers</b> halves it again. The <b>segmented sieve</b> processes blocks that fit the CPU cache (e.g. 32 KB), which is how fast libraries like <i>primesieve</i> enumerate primes up to 10<sup>10</sup> in seconds.</p>
+      <p><b>Memory tricks.</b> A Java <code>boolean[]</code>, a Python <code>bytearray</code> or a JS <code>Uint8Array</code> uses 1 byte per entry → 10<sup>8</sup> entries = 100 MB (too much for most judges); a Python <i>list</i> of booleans costs 8 bytes per entry. Java <code>BitSet</code> and C++ <code>vector&lt;bool&gt;</code> / <code>bitset</code> use 1 bit → 12.5 MB. Sieving <b>only odd numbers</b> halves it again. The <b>segmented sieve</b> processes blocks that fit the CPU cache (e.g. 32 KB), which is how fast libraries like <i>primesieve</i> enumerate primes up to 10<sup>10</sup> in seconds.</p>
       <p><b>Linear (Euler) sieve, O(N).</b> Keep a list of primes; for each i, cross out <code>i × p</code> for primes p ≤ spf[i]. Every composite is crossed exactly once — by its smallest prime factor — and you get spf[] for free. Asymptotically better, but in practice similar speed to the classic sieve; its real value is that it also computes multiplicative functions (φ, μ, divisor counts) in one pass.</p>
       <p><b>Classic bugs:</b> forgetting <code>isPrime[0] = isPrime[1] = false</code>; <code>p * p</code> overflowing int when n is near 2<sup>31</sup> (use <code>(long) p * p</code>); off-by-one between "less than N" (LeetCode 204) and "at most N"; allocating <code>new boolean[n]</code> then touching index n.</p>
       <p><b>Rule of thumb from constraints:</b> values ≤ 10<sup>7</sup> → sieve fits easily; values ≤ 10<sup>12</sup> but a window ≤ 10<sup>6</sup> → segmented sieve; single values ≤ 10<sup>18</sup> → Miller–Rabin.</p>`,
@@ -673,6 +1105,7 @@
           `<p>Use a <code>boolean[] isPrime</code> of size N + 1, filled with true. Outer pointer p goes 2, 3, 4 … while p·p ≤ N; if p is still true, inner pointer m walks p·p, p·p + p, … setting false.</p>`,
           `<p>Traps: N &lt; 2 → return 0 (avoid writing isPrime[1] when the array has size 1); mark 0 and 1 as not prime; compare <code>(long) p * p &lt;= n</code>; count only from index 2.<br>Recipe: fill true → set [0],[1] false → for p while p·p ≤ N: if isPrime[p], for m = p·p step p: isPrime[m] = false → count trues.</p>`
         ],
+        tests: { sig: "int -> int", fn: "countPrimes", cases: [[[30],10],[[0],0],[[1],0],[[2],1],[[3],2],[[10],4],[[100],25],[[1000],168],[[10000000],664579]] },
         solution: {
           approach: `<p>Sieve of Eratosthenes, then count the survivors.</p>`,
           code: `
@@ -700,6 +1133,48 @@
                     System.out.println(new Solution().countPrimes(30));  // 10
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `
+def count_primes(n):
+    if n < 2:
+        return 0
+    is_prime = bytearray([1]) * (n + 1)
+    is_prime[0] = is_prime[1] = 0
+    p = 2
+    while p * p <= n:
+        if is_prime[p]:
+            # slice assignment crosses out p*p, p*p+p, ... in one fast step
+            is_prime[p * p::p] = bytes(len(range(p * p, n + 1, p)))
+        p += 1
+    return sum(is_prime)` },
+            { lang: 'js', code: `
+function countPrimes(n) {
+  if (n < 2) return 0;
+  const composite = new Uint8Array(n + 1);   // 1 byte per number, starts all 0
+  composite[0] = composite[1] = 1;
+  for (let p = 2; p * p <= n; p++) {
+    if (composite[p]) continue;
+    for (let m = p * p; m <= n; m += p) composite[m] = 1;
+  }
+  let count = 0;
+  for (let i = 2; i <= n; i++) if (!composite[i]) count++;
+  return count;
+}` },
+            { lang: 'cpp', code: `
+class Solution {
+public:
+    int countPrimes(int n) {
+        if (n < 2) return 0;
+        vector<bool> isPrime(n + 1, true);   // vector<bool> packs 8 flags per byte
+        isPrime[0] = isPrime[1] = false;
+        for (long long p = 2; p * p <= n; p++) {
+            if (!isPrime[p]) continue;
+            for (long long m = p * p; m <= n; m += p) isPrime[m] = false;
+        }
+        return (int) count(isPrime.begin() + 2, isPrime.end(), true);
+    }
+};` }
+          ],
           dry: {
             head: ['p', 'isPrime[p]?', 'inner loop visits', 'newly crossed'],
             rows: [
@@ -751,7 +1226,7 @@
       '"Can you measure exactly X litres with jugs of a and b?" → possible only if X % gcd(a, b) == 0.',
       'Numbers up to 10<sup>18</sup> → Euclid is still only ~90 steps; LCM may overflow → divide before multiplying.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       long gcd(long a, long b) {
           while (b != 0) {          // when b becomes 0, a holds the answer
               long r = a % b;       // remainder = what is left after cutting b-sized squares from a
@@ -767,13 +1242,58 @@
 
       long lcm(long a, long b) {
           return a / gcd(a, b) * b;  // divide FIRST to keep the intermediate value small
-      }`],
+      }`, alt: [
+{ lang: 'python', code: `
+import math
+
+def gcd(a, b):
+    while b:                  # when b becomes 0, a holds the answer
+        a, b = b, a % b       # leftover becomes the small side
+    return a
+
+def gcd_recursive(a, b):
+    return a if b == 0 else gcd_recursive(b, a % b)
+
+def lcm(a, b):
+    return a // gcd(a, b) * b     # Python ints never overflow, but divide first anyway
+
+# Built-ins: math.gcd(48, 18) == 6, math.lcm(4, 6) == 12 (Python 3.9+)` },
+{ lang: 'js', code: `
+function gcd(a, b) {
+  while (b !== 0) [a, b] = [b, a % b];   // when b becomes 0, a holds the answer
+  return a;
+}
+
+function gcdRecursive(a, b) {
+  return b === 0 ? a : gcdRecursive(b, a % b);
+}
+
+function lcm(a, b) {
+  return a / gcd(a, b) * b;   // divide FIRST; past 2^53 switch to BigInt (10n, 0n, ...)
+}` },
+{ lang: 'cpp', code: `
+long long gcdIter(long long a, long long b) {
+    while (b != 0) {          // when b becomes 0, a holds the answer
+        long long r = a % b;
+        a = b;
+        b = r;
+    }
+    return a;
+}
+
+long long gcdRecursive(long long a, long long b) {
+    return b == 0 ? a : gcdRecursive(b, a % b);
+}
+
+long long lcmSafe(long long a, long long b) {
+    return a / gcdIter(a, b) * b;   // divide FIRST; std::gcd / std::lcm also exist in <numeric>
+}` }] }],
     codeTitle: ['Euclid GCD (iterative + recursive) and LCM'],
     examples: [
       {
         title: 'Simplify the fraction 84 / 126',
         html: `<p>gcd(84, 126): 126 % 84 = 42 → gcd(84, 42): 84 % 42 = 0 → <b>42</b>. Divide both: 84 / 42 = 2, 126 / 42 = 3 → ${H.c('g', '2 / 3')}. Any time a question says "reduced fraction", "lowest terms" or "normalize the slope (dy, dx)" (e.g. Max Points on a Line), divide by the gcd.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           String simplify(long num, long den) {
               long g = gcd(Math.abs(num), Math.abs(den));   // gcd works on non-negative values
               num /= g; den /= g;
@@ -781,7 +1301,31 @@
               return num + "/" + den;                        // simplify(84, 126) -> "2/3"
           }
 
-          long gcd(long a, long b) { return b == 0 ? a : gcd(b, a % b); }`
+          long gcd(long a, long b) { return b == 0 ? a : gcd(b, a % b); }`, alt: [
+{ lang: 'python', code: `
+from math import gcd
+
+def simplify(num, den):
+    g = gcd(num, den)                 # math.gcd always returns a non-negative value
+    num, den = num // g, den // g
+    if den < 0:
+        num, den = -num, -den         # keep the sign on top: -2/3, not 2/-3
+    return f"{num}/{den}"             # simplify(84, 126) -> "2/3"` },
+{ lang: 'js', code: `
+function simplify(num, den) {
+  const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b));
+  const g = gcd(Math.abs(num), Math.abs(den));   // gcd on non-negative values
+  num /= g; den /= g;
+  if (den < 0) { num = -num; den = -den; }       // keep the sign on top
+  return num + '/' + den;                        // simplify(84, 126) -> "2/3"
+}` },
+{ lang: 'cpp', code: `
+string simplify(long long num, long long den) {
+    long long g = std::gcd(num, den);              // std::gcd uses absolute values
+    num /= g; den /= g;
+    if (den < 0) { num = -num; den = -den; }       // keep the sign on top
+    return to_string(num) + "/" + to_string(den);  // simplify(84, 126) -> "2/3"
+}` }] }
       },
       {
         title: 'Bus timetable: lcm(4, 6, 10)',
@@ -931,6 +1475,7 @@
           `<p>Two running <code>long</code> variables: <code>g</code> and <code>l</code>, both starting at A[0]. For each next x: <code>g = gcd(g, x)</code>, <code>l = l / gcd(l, x) * x</code>.</p>`,
           `<p>Traps: LCM grows fast — use <code>long</code> and divide before multiplying; a single-element array returns (A[0], A[0]); <code>gcd(x, 0) = x</code> stops the loop.<br>Recipe: g = l = A[0]; for i = 1..N−1: g = gcd(g, A[i]); l = l / gcd(l, A[i]) × A[i]. Return {g, l}. (Bonus: once g hits 1 it can never grow again.)</p>`
         ],
+        tests: { sig: "long[] -> long[]", fn: "gcdAndLcm", cases: [[[[12,18,30]],[6,180]],[[[7]],[7,7]],[[[1,1,1]],[1,1]],[[[5,5,5,5]],[5,5]],[[[2,3,5,7,11,13]],[1,30030]],[[[1000000000,999999999]],[1,"999999999000000000"]],[[[6,10,15]],[1,30]],[[[999999937,999999929]],[1,"999999866000004473"]],[[[16,8,4]],[4,16]]] },
         solution: {
           approach: `<p>Fold Euclid's gcd across the array; derive LCM step by step with "divide first".</p>`,
           code: `
@@ -961,6 +1506,41 @@
                     System.out.println(res[0] + " " + res[1]);   // 6 180
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `
+from math import gcd
+
+def gcd_and_lcm(arr):
+    g = l = arr[0]
+    for x in arr[1:]:
+        g = gcd(g, x)
+        l = l // gcd(l, x) * x      # Python ints never overflow, but divide first anyway
+    return [g, l]` },
+            { lang: 'js', code: `
+function gcdAndLcm(arr) {
+  // the LCM can reach 10^18 > 2^53, so work in BigInt
+  const gcd = (a, b) => { while (b !== 0n) [a, b] = [b, a % b]; return a; };
+  let g = BigInt(arr[0]), l = BigInt(arr[0]);
+  for (let i = 1; i < arr.length; i++) {
+    const x = BigInt(arr[i]);
+    g = gcd(g, x);
+    l = l / gcd(l, x) * x;           // divide first
+  }
+  return [g, l];
+}` },
+            { lang: 'cpp', code: `
+class Solution {
+public:
+    vector<long long> gcdAndLcm(vector<long long>& arr) {
+        long long g = arr[0], l = arr[0];
+        for (size_t i = 1; i < arr.size(); i++) {
+            g = std::gcd(g, arr[i]);                 // <numeric>
+            l = l / std::gcd(l, arr[i]) * arr[i];    // divide first: never exceeds the final LCM
+        }
+        return {g, l};
+    }
+};` }
+          ],
           dry: {
             head: ['i', 'arr[i]', 'g = gcd(g, arr[i])', 'gcd(l, arr[i])', 'l = l / that × arr[i]'],
             rows: [
@@ -991,8 +1571,8 @@
         ['multiply', '<code>(a % m) * (b % m) % m</code>', '(20 × 13) % 7 = 260 % 7 = 1; (6 × 6) % 7 = 36 % 7 = ' + H.c('g', '1')],
         ['divide', H.c('r', 'NOT (a % m) / (b % m)'), 'needs a modular inverse (see below)']
       ])}
-      <p><b>Why "+ m" when subtracting?</b> In Java the sign of <code>%</code> follows the left number: <code>(3 − 7) % 5</code> is ${H.c('r', '-4')}, not 1. After reducing both numbers (so each is between 0 and m − 1) their difference is at least −(m − 1); adding m pushes it back to 0..2m − 1, and one more <code>% m</code> lands in 0..m − 1: <code>(3 − 7 + 5) % 5 = 1</code> ✓. For a raw value x that could be very negative, use <code>((x % m) + m) % m</code>.</p>
-      <p><b>Why <code>long</code> when multiplying?</b> With m = 10<sup>9</sup> + 7, both factors can be about 10<sup>9</sup>; their product is about 10<sup>18</sup>. That overflows <code>int</code> (max ≈ 2.1 × 10<sup>9</sup>) but fits in <code>long</code> (max ≈ 9.2 × 10<sup>18</sup>). Reduce after <b>every</b> multiplication.</p>
+      <p><b>Why "+ m" when subtracting?</b> In Java, C++ and JavaScript the sign of <code>%</code> follows the left number (Python's <code>%</code> is already non-negative when m &gt; 0): <code>(3 − 7) % 5</code> is ${H.c('r', '-4')}, not 1. After reducing both numbers (so each is between 0 and m − 1) their difference is at least −(m − 1); adding m pushes it back to 0..2m − 1, and one more <code>% m</code> lands in 0..m − 1: <code>(3 − 7 + 5) % 5 = 1</code> ✓. For a raw value x that could be very negative, use <code>((x % m) + m) % m</code>.</p>
+      <p><b>Why <code>long</code> when multiplying?</b> With m = 10<sup>9</sup> + 7, both factors can be about 10<sup>9</sup>; their product is about 10<sup>18</sup>. That overflows <code>int</code> (max ≈ 2.1 × 10<sup>9</sup>) but fits in a 64-bit <code>long</code> / C++ <code>long long</code> (max ≈ 9.2 × 10<sup>18</sup>). Python ints never overflow. JS Numbers are exact only up to 2<sup>53</sup> ≈ 9 × 10<sup>15</sup>, so a JS product of two residues needs <code>BigInt</code>. Reduce after <b>every</b> multiplication.</p>
       <p><b>Why division breaks:</b> (12 / 4) % 5 = 3, but (12 % 5) / (4 % 5) = 2 / 4 = ${H.c('r', '0')} ✗. Remainders don't "remember" divisibility. Instead we multiply by the <b>modular inverse</b>: a number x with <code>b · x % m = 1</code> (it plays the role of 1/b on the clock). Mod 5 the inverse of 4 is 4, since 4 × 4 = 16 = 3 × 5 + 1. Then 12 / 4 → (12 % 5) × 4 % 5 = 2 × 4 % 5 = 8 % 5 = ${H.c('g', '3')} ✓.</p>
       <p>When m is <b>prime</b> (like 10<sup>9</sup> + 7) and b is not a multiple of m, <b>Fermat's little theorem</b> gives the inverse: <code>inv(b) = b<sup>m−2</sup> % m</code>. Computing that power quickly is the next topic. An inverse exists only when gcd(b, m) = 1 (e.g. mod 6 the number 2 has no inverse).</p>
       <p><b>Why 10<sup>9</sup> + 7?</b> It is prime (so inverses exist), the sum of two remainders still fits in <code>int</code> (2 × 10<sup>9</sup> + 12 &lt; 2<sup>31</sup> − 1), and the product of two fits in <code>long</code>.</p>`,
@@ -1004,7 +1584,7 @@
       '"Last digit(s) of …" → compute mod 10 / mod 100 / mod 10<sup>k</sup>.',
       '"Clock / circular / day of week after k days" → index = (start + k) % m.'
     ],
-    code: `
+    code: { lang: 'java', code: `
       static final long MOD = 1_000_000_007L;
 
       long addMod(long a, long b) { return (a % MOD + b % MOD) % MOD; }
@@ -1030,20 +1610,102 @@
       long divMod(long a, long b) {                        // a / b under a PRIME modulus, b not divisible by MOD
           long inverse = powMod(b, MOD - 2);               // Fermat: b^(MOD-2) is 1/b on the clock
           return mulMod(a, inverse);
-      }`,
+      }`, alt: [
+{ lang: 'python', code: `
+MOD = 10**9 + 7
+
+def add_mod(a, b):
+    return (a + b) % MOD
+
+def sub_mod(a, b):
+    return (a - b) % MOD          # Python % is never negative for a positive MOD
+
+def mul_mod(a, b):
+    return a * b % MOD            # Python ints never overflow (but reduce to keep them small)
+
+def pow_mod(a, e):
+    return pow(a, e, MOD)         # built-in fast power
+
+def div_mod(a, b):                # a / b under a PRIME modulus, b not divisible by MOD
+    return mul_mod(a, pow(b, MOD - 2, MOD))   # Fermat; pow(b, -1, MOD) also works (3.8+)` },
+{ lang: 'js', code: `
+// BigInt keeps every product exact: two residues multiply to ~10^18, past 2^53.
+const MOD = 1000000007n;
+
+const addMod = (a, b) => (a + b) % MOD;
+const subMod = (a, b) => (((a - b) % MOD) + MOD) % MOD;   // JS % keeps the sign: add MOD
+const mulMod = (a, b) => (a % MOD) * (b % MOD) % MOD;
+
+function powMod(a, e) {                // fast power (next topic)
+  let res = 1n;
+  a %= MOD;
+  while (e > 0n) {
+    if (e & 1n) res = res * a % MOD;
+    a = a * a % MOD;
+    e >>= 1n;
+  }
+  return res;
+}
+
+const divMod = (a, b) => mulMod(a, powMod(b, MOD - 2n));   // prime modulus only
+// usage: subMod(3n, 7n) -> 1000000003n; divMod(12n, 3n) -> 4n` },
+{ lang: 'cpp', code: `
+const long long MOD = 1'000'000'007LL;
+
+long long addMod(long long a, long long b) { return (a % MOD + b % MOD) % MOD; }
+
+long long subMod(long long a, long long b) {
+    return ((a % MOD - b % MOD) % MOD + MOD) % MOD;   // C++ % keeps the sign: add MOD
+}
+
+long long mulMod(long long a, long long b) {
+    return (a % MOD) * (b % MOD) % MOD;               // each factor < MOD -> product fits
+}
+
+long long powMod(long long a, long long e) {          // fast power (next topic)
+    long long res = 1; a %= MOD;
+    while (e > 0) {
+        if (e & 1) res = res * a % MOD;
+        a = a * a % MOD;
+        e >>= 1;
+    }
+    return res;
+}
+
+long long divMod(long long a, long long b) {          // prime modulus, b not divisible by MOD
+    return mulMod(a, powMod(b, MOD - 2));             // Fermat inverse
+}` }] },
     codeTitle: 'Safe modular helpers',
     examples: [
       {
         title: 'A 20-digit number mod 7, one digit at a time',
         html: `<p>"N is given as a string of up to 10<sup>5</sup> digits; return N % 7." You can't store N, but you can read it left to right like a cashier adding up: r = (r × 10 + digit) % m. For "1234": r = 1 → 12 % 7 = 5 → (5·10 + 3) % 7 = 53 % 7 = 4 → (4·10 + 4) % 7 = 44 % 7 = ${H.c('g', '2')}. Check: 1234 = 7 × 176 + 2 ✓. The multiply rule lets us reduce after every digit.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           int bigMod(String digits, int m) {
               long r = 0;
               for (char ch : digits.toCharArray()) {
                   r = (r * 10 + (ch - '0')) % m;   // shift left one decimal place, add digit, reduce
               }
               return (int) r;                      // bigMod("1234", 7) -> 2
-          }`
+          }`, alt: [
+{ lang: 'python', code: `
+def big_mod(digits, m):
+    r = 0
+    for ch in digits:
+        r = (r * 10 + int(ch)) % m   # shift left one decimal place, add digit, reduce
+    return r                          # big_mod("1234", 7) -> 2 (int(digits) % m also works in Python)` },
+{ lang: 'js', code: `
+function bigMod(digits, m) {
+  let r = 0;
+  for (const ch of digits) r = (r * 10 + (ch.charCodeAt(0) - 48)) % m;   // stays below 10 * m
+  return r;                           // bigMod("1234", 7) -> 2
+}` },
+{ lang: 'cpp', code: `
+int bigMod(const string& digits, int m) {
+    long long r = 0;
+    for (char ch : digits) r = (r * 10 + (ch - '0')) % m;   // shift, add digit, reduce
+    return (int) r;                                          // bigMod("1234", 7) -> 2
+}` }] }
       },
       {
         title: 'Negative remainders: Java vs Python',
@@ -1052,7 +1714,7 @@
             ['7 % -3', '1', '-2', 'depends on convention'],
             ['Math.floorMod(-7, 3)', H.c('g', '2'), '—', '2']
           ])}
-          <p>Java truncates toward zero, so the remainder keeps the sign of the left number. Fixes: <code>((x % m) + m) % m</code> or <code>Math.floorMod(x, m)</code>. This bites in "subarray sums divisible by K" with negative numbers and in circular indexing <code>(i - 1) % n</code> when i = 0.</p>`
+          <p>Java, C++ and JS truncate toward zero, so the remainder keeps the sign of the left number. Fixes: <code>((x % m) + m) % m</code> in any language, or Java's <code>Math.floorMod(x, m)</code>; Python's <code>%</code> needs no fix. This bites in "subarray sums divisible by K" with negative numbers and in circular indexing <code>(i - 1) % n</code> when i = 0.</p>`
       },
       {
         title: 'Range sum under mod: prefix[r] − prefix[l − 1]',
@@ -1070,7 +1732,7 @@
       <p><b>Performance.</b> The <code>%</code> instruction is one of the slowest integer operations (tens of cycles). Competitive libraries use Barrett or Montgomery reduction to replace it with multiplications; JIT compilers already do this automatically when m is a compile-time constant (<code>static final</code>), one reason to declare MOD that way.</p>`,
     aiEra: `<p><b>What AI changes:</b> assistants know the "mod 10<sup>9</sup>+7" boilerplate by heart, so writing the helpers is no longer the skill. The skill is <b>auditing</b> modded code: where can a value be negative, where can a product overflow, where did someone compare residues.</p>
       <p><b>Use AI as a partner:</b> paste your DP and ask <code>"List every line where an intermediate value can exceed 2^63 or go negative before the % — don't fix it, just point"</code>. Then fix it yourself and add a test with values near MOD − 1.</p>
-      <p><b>Where AI goes wrong:</b> casting to <code>(int)</code> before the multiplication instead of after, writing <code>(a - b) % MOD</code> in Java, taking <code>Math.max</code> of modded counts, and "dividing" with <code>/</code> under a modulus. It also sometimes uses Fermat inverses with a non-prime modulus (e.g. 10<sup>9</sup>), which silently gives wrong answers.</p>
+      <p><b>Where AI goes wrong:</b> casting to <code>(int)</code> before the multiplication instead of after, writing <code>(a - b) % MOD</code> in Java, C++ or JS, taking <code>Math.max</code> of modded counts, and "dividing" with <code>/</code> under a modulus. It also sometimes uses Fermat inverses with a non-prime modulus (e.g. 10<sup>9</sup>), which silently gives wrong answers.</p>
       <p><b>What you must still own:</b> the congruence reasoning (why the rules work and why division doesn't), and an instinct for overflow from the constraints.</p>`,
     viz: {
       title: 'Clock walk: (a + b) % m and (a − b + m) % m',
@@ -1159,6 +1821,7 @@
           `<p>Keep one running variable <code>pre</code> = (sum of earlier elements) % MOD. For each j: <code>ans = (ans + A[j] % MOD * pre) % MOD</code>, then <code>pre = (pre + A[j]) % MOD</code>. No array needed.</p>`,
           `<p>Traps: update <code>ans</code> <b>before</b> adding A[j] to pre (otherwise you pair A[j] with itself); multiply in <code>long</code>; reduce after every operation; N = 1 → answer 0.<br>Recipe: pre = 0, ans = 0; for each x: x %= MOD; ans = (ans + x·pre) % MOD; pre = (pre + x) % MOD. Return ans.</p>`
         ],
+        tests: { sig: "long[] -> long", fn: "sumPairProducts", cases: [[[[1,2,3,4]],35],[[[5]],0],[[[0,0,0]],0],[[[1000000000,1000000000]],49],[[[1000000000,1000000000,1000000000,1000000000]],294],[[[1,0,7,0,3]],31],[[[3,3,3]],27],[[[1000000000,1,999999999,123456789]],271605009]] },
         solution: {
           approach: `<p>One pass with a running prefix sum, every step reduced mod 10<sup>9</sup> + 7.</p>`,
           code: `
@@ -1180,6 +1843,44 @@
                     System.out.println(new Solution().sumPairProducts(new long[]{1, 2, 3, 4}));  // 35
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `
+MOD = 10**9 + 7
+
+def sum_pair_products(a):
+    pre = ans = 0
+    for x in a:
+        x %= MOD
+        ans = (ans + x * pre) % MOD   # x pairs with every earlier element at once
+        pre = (pre + x) % MOD
+    return ans` },
+            { lang: 'js', code: `
+function sumPairProducts(a) {
+  // x * pre can reach 10^18, far above 2^53, so use BigInt
+  const MOD = 1000000007n;
+  let pre = 0n, ans = 0n;
+  for (const v of a) {
+    const x = BigInt(v) % MOD;
+    ans = (ans + x * pre) % MOD;
+    pre = (pre + x) % MOD;
+  }
+  return Number(ans);
+}` },
+            { lang: 'cpp', code: `
+class Solution {
+public:
+    long long sumPairProducts(vector<long long>& a) {
+        const long long MOD = 1'000'000'007LL;
+        long long pre = 0, ans = 0;
+        for (long long v : a) {
+            long long x = v % MOD;
+            ans = (ans + x * pre) % MOD;   // both < MOD, product < 2^63
+            pre = (pre + x) % MOD;
+        }
+        return ans;
+    }
+};` }
+          ],
           dry: {
             head: ['j', 'A[j]', 'pre before', 'x × pre', 'ans', 'pre after'],
             rows: [
@@ -1220,7 +1921,7 @@
       '"Apply the same step k times" with k huge (Fibonacci, linear recurrences) → squaring trick on matrices.',
       '"Last digit / last k digits of a<sup>b</sup>" → power mod 10<sup>k</sup>.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       long power(long a, long b, long m) {
           long result = 1 % m;          // "1 % m" also handles m == 1 correctly
           long base = a % m;            // base = a^(2^k) for the current bit k
@@ -1232,7 +1933,40 @@
               b >>= 1;                  // drop the bit we just handled
           }
           return result;
-      }`, `
+      }`, alt: [
+{ lang: 'python', code: `
+def power(a, b, m):
+    result = 1 % m          # "1 % m" also handles m == 1 correctly
+    base = a % m            # base = a^(2^k) for the current bit k
+    while b > 0:
+        if b & 1:           # current lowest bit is ON -> this coin is needed
+            result = result * base % m
+        base = base * base % m
+        b >>= 1             # drop the bit we just handled
+    return result           # same as the built-in pow(a, b, m)` },
+{ lang: 'js', code: `
+function power(a, b, m) {
+  // BigInt: base * base exceeds 2^53 once m is around 10^9
+  a = BigInt(a); b = BigInt(b); m = BigInt(m);
+  let result = 1n % m, base = a % m;
+  while (b > 0n) {
+    if (b & 1n) result = result * base % m;   // this bit is ON -> use this coin
+    base = base * base % m;
+    b >>= 1n;
+  }
+  return result;            // power(3, 13, 1000000007) -> 1594323n
+}` },
+{ lang: 'cpp', code: `
+long long power(long long a, long long b, long long m) {
+    long long result = 1 % m;          // "1 % m" also handles m == 1
+    long long base = a % m;
+    while (b > 0) {
+        if (b & 1) result = result * base % m;   // safe while m < ~3 * 10^9
+        base = base * base % m;
+        b >>= 1;
+    }
+    return result;
+}` }] }, { lang: 'java', code: `
       long powerRec(long a, long b, long m) {
           if (b == 0) return 1 % m;               // a^0 = 1
           long half = powerRec(a, b / 2, m);      // solve the half-size problem once
@@ -1242,7 +1976,39 @@
 
       long modInverse(long x, long p) {           // p must be prime and x % p != 0
           return powerRec(x, p - 2, p);           // Fermat's little theorem
-      }`],
+      }`, alt: [
+{ lang: 'python', code: `
+def power_rec(a, b, m):
+    if b == 0:
+        return 1 % m                      # a^0 = 1
+    half = power_rec(a, b // 2, m)        # solve the half-size problem once
+    sq = half * half % m
+    return sq if b % 2 == 0 else sq * (a % m) % m   # odd b needs one extra a
+
+def mod_inverse(x, p):                    # p must be prime and x % p != 0
+    return power_rec(x, p - 2, p)         # Fermat; pow(x, -1, p) is the built-in (3.8+)` },
+{ lang: 'js', code: `
+function powerRec(a, b, m) {               // all BigInt: powerRec(3n, 13n, 1000000007n)
+  if (b === 0n) return 1n % m;             // a^0 = 1
+  const half = powerRec(a, b / 2n, m);     // solve the half-size problem once
+  const sq = half * half % m;
+  return b % 2n === 0n ? sq : sq * (a % m) % m;   // odd b needs one extra a
+}
+
+function modInverse(x, p) {                // p must be prime and x % p != 0
+  return powerRec(x, p - 2n, p);           // Fermat's little theorem
+}` },
+{ lang: 'cpp', code: `
+long long powerRec(long long a, long long b, long long m) {
+    if (b == 0) return 1 % m;                       // a^0 = 1
+    long long half = powerRec(a, b / 2, m);         // solve the half-size problem once
+    long long sq = half * half % m;
+    return (b % 2 == 0) ? sq : sq * (a % m) % m;    // odd b needs one extra a
+}
+
+long long modInverse(long long x, long long p) {    // p must be prime and x % p != 0
+    return powerRec(x, p - 2, p);                   // Fermat's little theorem
+}` }] }],
     codeTitle: ['Iterative binary exponentiation', 'Recursive version + modular inverse'],
     examples: [
       {
@@ -1261,7 +2027,7 @@
       {
         title: 'Fibonacci in O(log n) with the same squaring trick',
         html: `<p>[[1, 1], [1, 0]]<sup>n</sup> = [[F(n+1), F(n)], [F(n), F(n−1)]]. Replace "multiply numbers" with "multiply 2 × 2 matrices" in the fast-power loop and you get F(10<sup>18</sup>) mod p in about 60 matrix multiplications. Fast power works for <b>anything with an associative multiply</b>: matrices, permutations, function composition.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           long[][] mul(long[][] A, long[][] B, long m) {
               long[][] C = new long[2][2];
               for (int i = 0; i < 2; i++)
@@ -1280,7 +2046,61 @@
                   n >>= 1;
               }
               return result[0][1];                          // fib(10, 1_000_000_007) -> 55
-          }`
+          }`, alt: [
+{ lang: 'python', code: `
+def mul(A, B, m):
+    return [[sum(A[i][k] * B[k][j] for k in range(2)) % m for j in range(2)] for i in range(2)]
+
+def fib(n, m):                          # F(0) = 0, F(1) = 1
+    result = [[1, 0], [0, 1]]           # identity matrix = "1"
+    base = [[1, 1], [1, 0]]
+    while n > 0:
+        if n & 1:
+            result = mul(result, base, m)
+        base = mul(base, base, m)
+        n >>= 1
+    return result[0][1]                 # fib(10, 10**9 + 7) -> 55` },
+{ lang: 'js', code: `
+// BigInt matrices: entries below m multiply past 2^53
+function mul(A, B, m) {
+  const C = [[0n, 0n], [0n, 0n]];
+  for (let i = 0; i < 2; i++)
+    for (let j = 0; j < 2; j++)
+      for (let k = 0; k < 2; k++) C[i][j] = (C[i][j] + A[i][k] * B[k][j]) % m;
+  return C;
+}
+
+function fib(n, m) {                    // F(0) = 0, F(1) = 1; n and m are BigInt
+  let result = [[1n, 0n], [0n, 1n]];    // identity matrix = "1"
+  let base = [[1n, 1n], [1n, 0n]];
+  while (n > 0n) {
+    if (n & 1n) result = mul(result, base, m);
+    base = mul(base, base, m);
+    n >>= 1n;
+  }
+  return result[0][1];                  // fib(10n, 1000000007n) -> 55n
+}` },
+{ lang: 'cpp', code: `
+using Mat = array<array<long long, 2>, 2>;
+
+Mat mul(const Mat& A, const Mat& B, long long m) {
+    Mat C{};                                    // all zeros
+    for (int i = 0; i < 2; i++)
+        for (int j = 0; j < 2; j++)
+            for (int k = 0; k < 2; k++) C[i][j] = (C[i][j] + A[i][k] * B[k][j]) % m;
+    return C;
+}
+
+long long fib(long long n, long long m) {       // F(0) = 0, F(1) = 1
+    Mat result{{{1, 0}, {0, 1}}};               // identity matrix = "1"
+    Mat base{{{1, 1}, {1, 0}}};
+    while (n > 0) {
+        if (n & 1) result = mul(result, base, m);
+        base = mul(base, base, m);
+        n >>= 1;
+    }
+    return result[0][1];                        // fib(10, 1000000007) -> 55
+}` }] }
       }
     ],
     deepDive: `<p><b>Fermat's little theorem.</b> For prime p and a not divisible by p: a<sup>p−1</sup> ≡ 1 (mod p). Multiply both sides by a<sup>−1</sup>: a<sup>p−2</sup> ≡ a<sup>−1</sup>. That is why inverse = power. If a ≡ 0 (mod p) there is no inverse and the formula returns 0 — guard against it.</p>
@@ -1368,6 +2188,7 @@
           `<p>Two <code>long</code> variables: <code>result</code> (starts at 1) and <code>base</code> (starts at a % MOD). Read b's bits from the right with <code>b &amp; 1</code> and <code>b &gt;&gt;= 1</code>.</p>`,
           `<p>Traps: reduce a first (a can equal MOD-ish values); <code>result * base</code> and <code>base * base</code> need <code>long</code> and an immediate <code>% MOD</code>; b = 0 → 1; a = 0, b &gt; 0 → 0.<br>Recipe: res = 1; base = a % MOD; while b &gt; 0: if b odd → res = res·base % MOD; base = base·base % MOD; b = b / 2. Return res.</p>`
         ],
+        tests: { sig: "long long -> long", fn: "power", cases: [[[3,13],1594323],[[2,10],1024],[[0,0],1],[[0,5],0],[[5,0],1],[[1,"1000000000000000000"],1],[[1000000007,3],0],[[1000000000,1],1000000000],[[2,"1000000000000000000"],719476260],[[1000000000,"999999999999999999"],820054759],[[123456789,987654321],652541198]] },
         solution: {
           approach: `<p>Iterative binary exponentiation, O(log b).</p>`,
           code: `
@@ -1393,6 +2214,45 @@
                     System.out.println(s.power(2, 10));    // 1024
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `
+MOD = 10**9 + 7
+
+def power(a, b):
+    result, base = 1, a % MOD
+    while b > 0:
+        if b & 1:                    # this bit of b is 1: use this coin
+            result = result * base % MOD
+        base = base * base % MOD     # next coin by squaring
+        b >>= 1
+    return result                    # same as the built-in pow(a, b, MOD)` },
+            { lang: 'js', code: `
+function power(a, b) {
+  // base * base can reach 10^18 > 2^53, so the whole loop runs in BigInt
+  const MOD = 1000000007n;
+  let result = 1n, base = BigInt(a) % MOD, e = BigInt(b);
+  while (e > 0n) {
+    if (e & 1n) result = result * base % MOD;
+    base = base * base % MOD;
+    e >>= 1n;
+  }
+  return Number(result);
+}` },
+            { lang: 'cpp', code: `
+class Solution {
+public:
+    long long power(long long a, long long b) {
+        const long long MOD = 1'000'000'007LL;
+        long long result = 1, base = a % MOD;
+        while (b > 0) {
+            if (b & 1) result = result * base % MOD;   // both < MOD: fits in long long
+            base = base * base % MOD;
+            b >>= 1;
+        }
+        return result;
+    }
+};` }
+          ],
           dry: {
             head: ['round', 'b (binary)', 'b &amp; 1', 'result', 'base after squaring'],
             rows: [
@@ -1441,7 +2301,7 @@
       '"Arrange letters of a word with repeats" → n! / (count₁! × count₂! × …) (multinomial).',
       '"Print row k of Pascal\'s triangle", "binomial coefficients", "coefficients of (x + y)<sup>n</sup>" → Pascal rule.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       long[][] pascal(int n, long mod) {
           long[][] C = new long[n + 1][n + 1];
           for (int i = 0; i <= n; i++) {
@@ -1452,7 +2312,38 @@
               }
           }
           return C;                                      // works for ANY modulus (no division)
-      }`, `
+      }`, alt: [
+{ lang: 'python', code: `
+def pascal(n, mod):
+    C = [[0] * (n + 1) for _ in range(n + 1)]
+    for i in range(n + 1):
+        C[i][0] = 1 % mod                       # one way to choose nothing
+        for j in range(1, i + 1):
+            # last item is either IN (choose j-1 from i-1) or OUT (choose j from i-1)
+            C[i][j] = (C[i - 1][j - 1] + C[i - 1][j]) % mod
+    return C                                    # works for ANY modulus (no division)` },
+{ lang: 'js', code: `
+function pascal(n, mod) {
+  const C = Array.from({ length: n + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 0; i <= n; i++) {
+    C[i][0] = 1 % mod;                          // one way to choose nothing
+    for (let j = 1; j <= i; j++) {
+      C[i][j] = (C[i - 1][j - 1] + C[i - 1][j]) % mod;   // only additions: exact for mod < 2^52
+    }
+  }
+  return C;                                     // works for ANY modulus (no division)
+}` },
+{ lang: 'cpp', code: `
+vector<vector<long long>> pascal(int n, long long mod) {
+    vector<vector<long long>> C(n + 1, vector<long long>(n + 1, 0));
+    for (int i = 0; i <= n; i++) {
+        C[i][0] = 1 % mod;                      // one way to choose nothing
+        for (int j = 1; j <= i; j++) {
+            C[i][j] = (C[i - 1][j - 1] + C[i - 1][j]) % mod;   // IN or OUT
+        }
+    }
+    return C;                                   // works for ANY modulus (no division)
+}` }] }, { lang: 'java', code: `
       static final int MOD = 1_000_000_007;
       static long[] fact, invFact;
 
@@ -1474,7 +2365,68 @@
       static long nCr(int n, int r) {
           if (r < 0 || r > n) return 0;                                        // impossible choice
           return fact[n] * invFact[r] % MOD * invFact[n - r] % MOD;
-      }`, `
+      }`, alt: [
+{ lang: 'python', code: `
+MOD = 10**9 + 7
+
+def precompute(n):
+    fact = [1] * (n + 1)
+    for i in range(1, n + 1):
+        fact[i] = fact[i - 1] * i % MOD                 # i! mod p
+    inv_fact = [1] * (n + 1)
+    inv_fact[n] = pow(fact[n], MOD - 2, MOD)            # one Fermat inverse
+    for i in range(n, 0, -1):
+        inv_fact[i - 1] = inv_fact[i] * i % MOD         # 1/(i-1)! = i / i!
+    return fact, inv_fact
+
+def ncr(n, r, fact, inv_fact):
+    if r < 0 or r > n:
+        return 0                                        # impossible choice
+    return fact[n] * inv_fact[r] % MOD * inv_fact[n - r] % MOD` },
+{ lang: 'js', code: `
+const MOD = 1000000007n;
+// BigInt arrays: every product of two residues is ~10^18, beyond 2^53
+function power(a, e) {
+  let r = 1n;
+  a %= MOD;
+  while (e > 0n) { if (e & 1n) r = r * a % MOD; a = a * a % MOD; e >>= 1n; }
+  return r;
+}
+
+function precompute(n) {
+  const fact = new Array(n + 1).fill(1n), invFact = new Array(n + 1).fill(1n);
+  for (let i = 1; i <= n; i++) fact[i] = fact[i - 1] * BigInt(i) % MOD;      // i! mod p
+  invFact[n] = power(fact[n], MOD - 2n);                                      // one Fermat inverse
+  for (let i = n; i > 0; i--) invFact[i - 1] = invFact[i] * BigInt(i) % MOD;  // 1/(i-1)! = i / i!
+  return { fact, invFact };
+}
+
+function nCr(n, r, { fact, invFact }) {
+  if (r < 0 || r > n) return 0n;                                              // impossible choice
+  return fact[n] * invFact[r] % MOD * invFact[n - r] % MOD;
+}` },
+{ lang: 'cpp', code: `
+const long long MOD = 1'000'000'007LL;
+vector<long long> fact, invFact;
+
+long long power(long long a, long long e) {
+    long long r = 1; a %= MOD;
+    while (e > 0) { if (e & 1) r = r * a % MOD; a = a * a % MOD; e >>= 1; }
+    return r;
+}
+
+void precompute(int n) {
+    fact.assign(n + 1, 1);
+    invFact.assign(n + 1, 1);
+    for (int i = 1; i <= n; i++) fact[i] = fact[i - 1] * i % MOD;       // i! mod p
+    invFact[n] = power(fact[n], MOD - 2);                                // one Fermat inverse
+    for (int i = n; i > 0; i--) invFact[i - 1] = invFact[i] * i % MOD;  // 1/(i-1)! = i / i!
+}
+
+long long nCr(int n, int r) {
+    if (r < 0 || r > n) return 0;                                        // impossible choice
+    return fact[n] * invFact[r] % MOD * invFact[n - r] % MOD;
+}` }] }, { lang: 'java', code: `
       long nCrExact(int n, int r) {           // exact value, safe for n <= 61
           r = Math.min(r, n - r);             // symmetry: fewer steps, smaller numbers
           long res = 1;
@@ -1482,7 +2434,31 @@
               res = res * (n - i) / (i + 1);  // after step i, res = C(n, i + 1): division is always exact
           }
           return res;
-      }`],
+      }`, alt: [
+{ lang: 'python', code: `
+from math import comb
+
+def ncr_exact(n, r):
+    # Python ints are unbounded, so the exact value is just math.comb (any n)
+    return comb(n, r)` },
+{ lang: 'js', code: `
+function nCrExact(n, r) {          // BigInt result: exact for any n
+  r = Math.min(r, n - r);          // symmetry: fewer steps
+  let res = 1n;
+  for (let i = 0; i < r; i++) {
+    res = res * BigInt(n - i) / BigInt(i + 1);   // res = C(n, i + 1): division is exact
+  }
+  return res;
+}` },
+{ lang: 'cpp', code: `
+long long nCrExact(int n, int r) {     // exact value, safe for n <= 61
+    r = min(r, n - r);                 // symmetry: fewer steps, smaller numbers
+    long long res = 1;
+    for (int i = 0; i < r; i++) {
+        res = res * (n - i) / (i + 1); // after step i, res = C(n, i + 1): division is exact
+    }
+    return res;
+}` }] }],
     codeTitle: ['Pascal table (any modulus)', 'Factorials + inverse factorials (prime modulus, O(1) per query)', 'Exact multiplicative formula (small n)'],
     viz: [
       {
@@ -1591,19 +2567,43 @@
       {
         title: 'Anagram count of "BANANA" (multinomial)',
         html: `<p>6 letters: B ×1, A ×3, N ×2. If all letters were different there would be 6! = 720 orders, but swapping the three A's (3! = 6 ways) or the two N's (2! = 2) changes nothing. So 720 / (1! × 3! × 2!) = 720 / 12 = ${H.c('g', '60')}. Under a prime modulus: fact[6] × invFact[1] × invFact[3] × invFact[2].</p>`,
-        code: `
+        code: { lang: 'java', code: `
           long anagrams(String w, long[] fact, long[] invFact, long mod) {
               int[] cnt = new int[26];
               for (char c : w.toCharArray()) cnt[c - 'A']++;
               long res = fact[w.length()];                 // all orders as if letters were distinct
               for (int k : cnt) res = res * invFact[k] % mod; // divide out swaps of identical letters
               return res;                                  // "BANANA" -> 60
-          }`
+          }`, alt: [
+{ lang: 'python', code: `
+from collections import Counter
+
+def anagrams(w, fact, inv_fact, mod):
+    res = fact[len(w)]                       # all orders as if letters were distinct
+    for k in Counter(w).values():
+        res = res * inv_fact[k] % mod        # divide out swaps of identical letters
+    return res                               # "BANANA" -> 60` },
+{ lang: 'js', code: `
+function anagrams(w, fact, invFact, mod) {   // BigInt tables from precompute()
+  const cnt = new Map();
+  for (const c of w) cnt.set(c, (cnt.get(c) || 0) + 1);
+  let res = fact[w.length];                  // all orders as if letters were distinct
+  for (const k of cnt.values()) res = res * invFact[k] % mod;   // divide out swaps
+  return res;                                // "BANANA" -> 60n
+}` },
+{ lang: 'cpp', code: `
+long long anagrams(const string& w, const vector<long long>& fact, const vector<long long>& invFact, long long mod) {
+    int cnt[26] = {0};
+    for (char c : w) cnt[c - 'A']++;
+    long long res = fact[w.size()];                      // all orders as if letters were distinct
+    for (int k : cnt) res = res * invFact[k] % mod;      // divide out swaps of identical letters
+    return res;                                          // "BANANA" -> 60
+}` }] }
       },
       {
         title: 'Row k of Pascal\'s triangle in O(k) without a table',
         html: `<p>C(k, j + 1) = C(k, j) × (k − j) / (j + 1). Row 5: 1 → 1×5/1 = 5 → 5×4/2 = 10 → 10×3/3 = 10 → 10×2/4 = 5 → 5×1/5 = 1. Each division is exact because the left side is a whole number. (Use <code>long</code>; fine for k ≤ 60.)</p>`,
-        code: `
+        code: { lang: 'java', code: `
           List<Long> pascalRow(int k) {
               List<Long> row = new ArrayList<>();
               long c = 1;
@@ -1612,7 +2612,34 @@
                   c = c * (k - j) / (j + 1);    // next coefficient from the current one
               }
               return row;                        // pascalRow(5) -> [1, 5, 10, 10, 5, 1]
-          }`
+          }`, alt: [
+{ lang: 'python', code: `
+def pascal_row(k):
+    row, c = [], 1
+    for j in range(k + 1):
+        row.append(c)
+        c = c * (k - j) // (j + 1)   # next coefficient; Python ints make this exact for any k
+    return row                       # pascal_row(5) -> [1, 5, 10, 10, 5, 1]` },
+{ lang: 'js', code: `
+function pascalRow(k) {
+  const row = [];
+  let c = 1;                         // exact while values stay below 2^53 (k <= ~55)
+  for (let j = 0; j <= k; j++) {
+    row.push(c);
+    c = c * (k - j) / (j + 1);       // next coefficient from the current one
+  }
+  return row;                        // pascalRow(5) -> [1, 5, 10, 10, 5, 1]
+}` },
+{ lang: 'cpp', code: `
+vector<long long> pascalRow(int k) {
+    vector<long long> row;
+    long long c = 1;
+    for (int j = 0; j <= k; j++) {
+        row.push_back(c);
+        c = c * (k - j) / (j + 1);   // next coefficient from the current one
+    }
+    return row;                      // pascalRow(5) -> [1, 5, 10, 10, 5, 1]
+}` }] }
       }
     ],
     deepDive: `<p><b>Why the backward invFact loop works.</b> invFact[i − 1] = 1/(i − 1)! = i / i! = i × invFact[i]. So one Fermat exponentiation (O(log p)) plus N multiplications gives every inverse factorial — total O(N + log p), instead of N separate exponentiations.</p>
@@ -1666,6 +2693,7 @@
           `<p>Precompute two arrays up to the largest n: <code>fact</code> (forward, ×i) and <code>invFact</code> (one Fermat power at the top, then ×i going down). Each query becomes three lookups and two multiplications.</p>`,
           `<p>Traps: r &gt; n or r &lt; 0 → 0; multiply in <code>long</code> and reduce after <b>each</b> multiplication (three factors would overflow); size arrays to max n + 1.<br>Recipe: fact[0] = 1; fact[i] = fact[i−1]·i; invFact[N] = fact[N]<sup>p−2</sup>; invFact[i−1] = invFact[i]·i; answer = fact[n]·invFact[r] % p · invFact[n−r] % p.</p>`
         ],
+        tests: { sig: "int[][] -> long[]", fn: "solve", cases: [[[[[5,2],[10,3],[4,7]]],[10,120,0]],[[[[0,0]]],[1]],[[[[1,0],[1,1],[1,2]]],[1,1,0]],[[[[6,3],[6,0],[6,6]]],[20,1,1]],[[[[1000000,500000],[1000000,1],[1000000,999999]]],[996692777,1000000,1000000]],[[[[100,50],[3,5],[7,2]]],[538992043,0,21]],[[[[2,1]]],[2]]] },
         solution: {
           approach: `<p>Precompute factorials and inverse factorials once in O(N + log p); answer each query in O(1).</p>`,
           code: `
@@ -1711,6 +2739,78 @@
                     System.out.println(Arrays.toString(res));   // [10, 120, 0]
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `
+MOD = 10**9 + 7
+
+def solve(queries):
+    max_n = max([1] + [n for n, _ in queries])
+    fact = [1] * (max_n + 1)
+    for i in range(1, max_n + 1):
+        fact[i] = fact[i - 1] * i % MOD
+    inv_fact = [1] * (max_n + 1)
+    inv_fact[max_n] = pow(fact[max_n], MOD - 2, MOD)     # Fermat, once
+    for i in range(max_n, 0, -1):
+        inv_fact[i - 1] = inv_fact[i] * i % MOD
+    def ncr(n, r):
+        if r < 0 or r > n:
+            return 0
+        return fact[n] * inv_fact[r] % MOD * inv_fact[n - r] % MOD
+    return [ncr(n, r) for n, r in queries]` },
+            { lang: 'js', code: `
+function solve(queries) {
+  const MOD = 1000000007;
+  const M = 1000000007n;
+  // products of two residues reach 10^18 > 2^53: multiply through BigInt
+  const mul = (a, b) => Number(BigInt(a) * BigInt(b) % M);
+  const power = (a, e) => {
+    let r = 1n, x = BigInt(a) % M, k = BigInt(e);
+    while (k > 0n) { if (k & 1n) r = r * x % M; x = x * x % M; k >>= 1n; }
+    return Number(r);
+  };
+  let maxN = 1;
+  for (const [n] of queries) maxN = Math.max(maxN, n);
+  const fact = new Array(maxN + 1).fill(1), invFact = new Array(maxN + 1).fill(1);
+  for (let i = 1; i <= maxN; i++) fact[i] = mul(fact[i - 1], i);
+  invFact[maxN] = power(fact[maxN], MOD - 2);
+  for (let i = maxN; i > 0; i--) invFact[i - 1] = mul(invFact[i], i);
+  return queries.map(([n, r]) => (r < 0 || r > n ? 0 : mul(mul(fact[n], invFact[r]), invFact[n - r])));
+}` },
+            { lang: 'cpp', code: `
+class Solution {
+    static constexpr long long MOD = 1'000'000'007LL;
+    vector<long long> fact, invFact;
+
+    long long power(long long a, long long e) {
+        long long r = 1; a %= MOD;
+        while (e > 0) {
+            if (e & 1) r = r * a % MOD;
+            a = a * a % MOD;
+            e >>= 1;
+        }
+        return r;
+    }
+
+    long long nCr(int n, int r) {
+        if (r < 0 || r > n) return 0;
+        return fact[n] * invFact[r] % MOD * invFact[n - r] % MOD;   // reduce after each multiply
+    }
+
+public:
+    vector<long long> solve(vector<vector<int>>& queries) {
+        int maxN = 1;
+        for (auto& q : queries) maxN = max(maxN, q[0]);
+        fact.assign(maxN + 1, 1);
+        invFact.assign(maxN + 1, 1);
+        for (int i = 1; i <= maxN; i++) fact[i] = fact[i - 1] * i % MOD;
+        invFact[maxN] = power(fact[maxN], MOD - 2);                 // Fermat, once
+        for (int i = maxN; i > 0; i--) invFact[i - 1] = invFact[i] * i % MOD;
+        vector<long long> ans;
+        for (auto& q : queries) ans.push_back(nCr(q[0], q[1]));
+        return ans;
+    }
+};` }
+          ],
           dry: {
             head: ['i', 'fact[i]', 'invFact[i]', 'note'],
             rows: [
@@ -1758,7 +2858,7 @@
       '"Repeatedly apply f(x) on a finite set — does it loop?" (happy number, linked list, PRNG) → a repeat is guaranteed, detect it with a set or Floyd.',
       '"Minimum number to pick to be <b>sure</b> of …" (socks, cards of the same suit) → (boxes × (wanted − 1)) + 1.'
     ],
-    code: `
+    code: { lang: 'java', code: `
       // Returns {l, r} (0-based, inclusive) of a non-empty subarray whose sum is divisible by n = a.length.
       // Pigeonhole guarantees it exists: n + 1 prefix sums but only n remainders.
       int[] divisibleSubarray(int[] a) {
@@ -1776,7 +2876,48 @@
               firstSeen[rem] = j;
           }
           throw new IllegalStateException("impossible by the pigeonhole principle");
-      }`,
+      }`, alt: [
+{ lang: 'python', code: `
+def divisible_subarray(a):
+    """Return [l, r] (0-based, inclusive) of a subarray whose sum is divisible by n = len(a)."""
+    n = len(a)
+    first_seen = [-1] * n            # remainder -> prefix index where it first appeared
+    first_seen[0] = 0                # P0 = 0 (the empty prefix)
+    prefix = 0
+    for j in range(1, n + 1):
+        prefix = (prefix + a[j - 1]) % n
+        if first_seen[prefix] != -1:             # second pigeon in this box!
+            return [first_seen[prefix], j - 1]
+        first_seen[prefix] = j
+    raise AssertionError("impossible by the pigeonhole principle")` },
+{ lang: 'js', code: `
+// Returns [l, r] (0-based, inclusive) of a subarray whose sum is divisible by n = a.length.
+function divisibleSubarray(a) {
+  const n = a.length;
+  const firstSeen = new Int32Array(n).fill(-1);   // remainder -> first prefix index
+  firstSeen[0] = 0;                               // P0 = 0 (the empty prefix)
+  let prefix = 0;
+  for (let j = 1; j <= n; j++) {
+    prefix = (prefix + a[j - 1]) % n;             // non-negative input: no sign fix needed
+    if (firstSeen[prefix] !== -1) return [firstSeen[prefix], j - 1];   // second pigeon!
+    firstSeen[prefix] = j;
+  }
+  throw new Error('impossible by the pigeonhole principle');
+}` },
+{ lang: 'cpp', code: `
+// Returns {l, r} (0-based, inclusive) of a subarray whose sum is divisible by n = a.size().
+vector<int> divisibleSubarray(const vector<int>& a) {
+    int n = a.size();
+    vector<int> firstSeen(n, -1);                 // remainder -> first prefix index
+    firstSeen[0] = 0;                             // P0 = 0 (the empty prefix)
+    long long prefix = 0;
+    for (int j = 1; j <= n; j++) {
+        prefix = (prefix + a[j - 1]) % n;
+        if (firstSeen[prefix] != -1) return {firstSeen[prefix], j - 1};   // second pigeon!
+        firstSeen[prefix] = j;
+    }
+    throw logic_error("impossible by the pigeonhole principle");
+}` }] },
     codeTitle: 'Guaranteed subarray with sum divisible by n',
     viz: [
       {
@@ -1878,7 +3019,7 @@
       {
         title: 'Minimum Time Difference: the 1441-times shortcut',
         html: `<p>LeetCode 539 gives a list of "HH:MM" times. There are only 24 × 60 = <b>1440</b> different minutes in a day. If the list has more than 1440 entries, two must be equal → answer ${H.c('g', '0')} immediately, without sorting. Otherwise use a boolean[1440] bucket array (O(1440)) instead of sorting strings.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           int findMinDifference(List<String> timePoints) {
               if (timePoints.size() > 1440) return 0;            // pigeonhole: a duplicate minute exists
               boolean[] seen = new boolean[1440];
@@ -1894,7 +3035,54 @@
                   prev = m;
               }
               return Math.min(best, 1440 - prev + first);         // wrap around midnight
-          }`
+          }`, alt: [
+{ lang: 'python', code: `
+def find_min_difference(time_points):
+    if len(time_points) > 1440:
+        return 0                                  # pigeonhole: a duplicate minute exists
+    seen = [False] * 1440
+    for t in time_points:
+        m = int(t[:2]) * 60 + int(t[3:])
+        if seen[m]:
+            return 0                              # exact duplicate
+        seen[m] = True
+    mins = [m for m in range(1440) if seen[m]]   # already sorted: bucket order
+    best = min((b - a for a, b in zip(mins, mins[1:])), default=1440)
+    return min(best, 1440 - mins[-1] + mins[0])  # wrap around midnight` },
+{ lang: 'js', code: `
+function findMinDifference(timePoints) {
+  if (timePoints.length > 1440) return 0;          // pigeonhole: a duplicate minute exists
+  const seen = new Uint8Array(1440);
+  for (const t of timePoints) {
+    const m = Number(t.slice(0, 2)) * 60 + Number(t.slice(3));
+    if (seen[m]) return 0;                         // exact duplicate
+    seen[m] = 1;
+  }
+  let first = -1, prev = -1, best = Infinity;
+  for (let m = 0; m < 1440; m++) {
+    if (!seen[m]) continue;
+    if (first === -1) first = m; else best = Math.min(best, m - prev);
+    prev = m;
+  }
+  return Math.min(best, 1440 - prev + first);      // wrap around midnight
+}` },
+{ lang: 'cpp', code: `
+int findMinDifference(const vector<string>& timePoints) {
+    if (timePoints.size() > 1440) return 0;            // pigeonhole: a duplicate minute exists
+    vector<bool> seen(1440, false);
+    for (const string& t : timePoints) {
+        int m = stoi(t.substr(0, 2)) * 60 + stoi(t.substr(3));
+        if (seen[m]) return 0;                         // exact duplicate
+        seen[m] = true;
+    }
+    int first = -1, prev = -1, best = INT_MAX;
+    for (int m = 0; m < 1440; m++) {
+        if (!seen[m]) continue;
+        if (first == -1) first = m; else best = min(best, m - prev);
+        prev = m;
+    }
+    return min(best, 1440 - prev + first);             // wrap around midnight
+}` }] }
       },
       {
         title: 'Find the Duplicate Number (n + 1 values in 1..n)',
@@ -1914,7 +3102,7 @@
       <p><b>Mod-n subset variant.</b> Among any n integers, some non-empty <i>subset</i> (even a contiguous one) has sum divisible by n — our prefix argument. With 2n − 1 integers you can even pick exactly n of them summing to a multiple of n (Erdős–Ginzburg–Ziv) — a classic "expert" curiosity.</p>`,
     aiEra: `<p><b>What AI changes:</b> AI is great at writing the collision-finding code (prefix remainders, Floyd), but the pigeonhole insight is about <b>proving existence</b> and spotting shortcuts — exactly the reasoning interviewers use to separate pattern-matchers from problem-solvers.</p>
       <p><b>Use AI as a partner:</b> ask <code>"Why is a solution guaranteed to exist in this problem? Answer in terms of pigeons and boxes"</code> — then check whether its pigeons/boxes count is actually right. Ask it to generate adversarial inputs that spread values as evenly as possible to test your early-exit logic.</p>
-      <p><b>Where AI goes wrong:</b> it confuses the pigeonhole principle (a certainty) with the birthday paradox (a probability), forgets the empty prefix P₀ (so it counts only n pigeons and the guarantee disappears), mishandles negative numbers in the remainder (Java's <code>%</code>), or adds an unnecessary "return −1" branch that hides a bug.</p>
+      <p><b>Where AI goes wrong:</b> it confuses the pigeonhole principle (a certainty) with the birthday paradox (a probability), forgets the empty prefix P₀ (so it counts only n pigeons and the guarantee disappears), mishandles negative numbers in the remainder (<code>%</code> in Java, C++ and JS can return negatives), or adds an unnecessary "return −1" branch that hides a bug.</p>
       <p><b>What you must still own:</b> counting pigeons and boxes correctly from the problem statement, explaining the guarantee in one sentence, and turning it into an O(n) first-seen array.</p>`,
     problems: [
       {
@@ -1952,6 +3140,7 @@
           `<p>An <code>int[N]</code> "first index where this remainder appeared", initialised to −1, with remainder 0 pre-set to index 0 (the empty prefix). Scan once.</p>`,
           `<p>Traps: include P₀; keep the running sum reduced mod N (or use long); the subarray is from <code>firstSeen[rem]</code> to <code>j − 1</code> in 0-based array indices; N = 1 → [0, 0] (everything is divisible by 1).<br>Recipe: first[0] = 0; P = 0; for j = 1..N: P = (P + A[j−1]) % N; if first[P] ≠ −1 return [first[P], j−1]; first[P] = j.</p>`
         ],
+        tests: { sig: "int[] -> int[]", fn: "divisibleSubarray", check: "(args, out) => { const a = args[0], n = a.length; if (!Array.isArray(out) || out.length !== 2) return false; const l = Number(out[0]), r = Number(out[1]); if (!(0 <= l && l <= r && r < n)) return false; let s = 0; for (let i = l; i <= r; i++) s = (s + a[i]) % n; return s === 0; }", cases: [[[[3,1,4,1,5]],[1,2]],[[[7]],[0,0]],[[[1,1]],[0,1]],[[[2,4,6]],[0,1]],[[[5,5,5,5,5]],[0,0]],[[[1,2,3,4,5,6,7]],[0,5]],[[[1000000000,1000000000,1000000000]],[0,2]],[[[1,1,1,1,1,1,1,1]],[0,7]]] },
         solution: {
           approach: `<p>Pigeonhole on prefix remainders: N + 1 prefixes, N remainders → the first repeat gives the answer in one pass.</p>`,
           code: `
@@ -1978,6 +3167,49 @@
                     System.out.println(res[0] + " " + res[1]);   // 1 2
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `
+def divisible_subarray(a):
+    n = len(a)
+    first_seen = [-1] * n      # remainder -> earliest prefix index
+    first_seen[0] = 0          # empty prefix P0 = 0
+    p = 0
+    for j, x in enumerate(a, 1):
+        p = (p + x) % n
+        if first_seen[p] != -1:
+            return [first_seen[p], j - 1]   # P_j - P_first is a multiple of n
+        first_seen[p] = j
+    return [-1, -1]            # unreachable by pigeonhole` },
+            { lang: 'js', code: `
+function divisibleSubarray(a) {
+  const n = a.length;
+  const firstSeen = new Int32Array(n).fill(-1);   // remainder -> earliest prefix index
+  firstSeen[0] = 0;                               // empty prefix P0 = 0
+  let p = 0;                                      // kept below n, so it stays small and exact
+  for (let j = 1; j <= n; j++) {
+    p = (p + a[j - 1]) % n;
+    if (firstSeen[p] !== -1) return [firstSeen[p], j - 1];
+    firstSeen[p] = j;
+  }
+  return [-1, -1];                                // unreachable by pigeonhole
+}` },
+            { lang: 'cpp', code: `
+class Solution {
+public:
+    vector<int> divisibleSubarray(vector<int>& a) {
+        int n = a.size();
+        vector<int> firstSeen(n, -1);   // remainder -> earliest prefix index
+        firstSeen[0] = 0;               // empty prefix P0 = 0
+        long long p = 0;
+        for (int j = 1; j <= n; j++) {
+            p = (p + a[j - 1]) % n;
+            if (firstSeen[p] != -1) return {firstSeen[p], j - 1};
+            firstSeen[p] = j;
+        }
+        return {-1, -1};                // unreachable by pigeonhole
+    }
+};` }
+          ],
           dry: {
             head: ['j', 'A[j−1]', 'P mod 5', 'firstSeen[rem]', 'action'],
             rows: [
@@ -2021,6 +3253,7 @@
       `<p>Start the sum at 1 (the divisor 1, whose partner num is excluded), then loop i = 2 while i·i ≤ num, adding i and num / i.</p>`,
       `<p>Traps: num = 1 must return false; don't add √num twice for squares; use <code>long</code> for the sum to be safe.<br>Recipe: if num ≤ 1 → false; sum = 1; for i = 2.. while i·i ≤ num: if divides → sum += i (+ num/i if different); return sum == num.</p>`
     ],
+    tests: { sig: "int -> bool", fn: "checkPerfectNumber", cases: [[[28],true],[[7],false],[[1],false],[[6],true],[[496],true],[[8128],true],[[33550336],true],[[12],false],[[2],false],[[100000000],false],[[99999989],false]] },
     solution: {
       approach: `<p>Sum divisor pairs up to √num, excluding num itself.</p>`,
       code: `
@@ -2037,6 +3270,48 @@
                 return sum == num;
             }
         }`,
+      alt: [
+        { lang: 'python', code: `
+def check_perfect_number(num):
+    if num <= 1:
+        return False                 # 1 has no proper divisors
+    total = 1                        # divisor 1 (its partner num is excluded)
+    i = 2
+    while i * i <= num:
+        if num % i == 0:
+            total += i
+            if i != num // i:
+                total += num // i    # big partner, if different
+        i += 1
+    return total == num` },
+        { lang: 'js', code: `
+function checkPerfectNumber(num) {
+  if (num <= 1) return false;          // 1 has no proper divisors
+  let sum = 1;                         // divisor 1 (its partner num is excluded)
+  for (let i = 2; i * i <= num; i++) {
+    if (num % i === 0) {
+      sum += i;
+      if (i !== num / i) sum += num / i;
+    }
+  }
+  return sum === num;
+}` },
+        { lang: 'cpp', code: `
+class Solution {
+public:
+    bool checkPerfectNumber(int num) {
+        if (num <= 1) return false;          // 1 has no proper divisors
+        long long sum = 1;                   // divisor 1 (its partner num is excluded)
+        for (long long i = 2; i * i <= num; i++) {
+            if (num % i == 0) {
+                sum += i;
+                if (i != num / i) sum += num / i;
+            }
+        }
+        return sum == num;
+    }
+};` }
+      ],
       dry: { head: ['i', 'num % i', 'added', 'sum'], rows: [['start', '—', '1', '1'], ['2', '0', '2 + 14', '17'], ['3', '1', '—', '17'], ['4', '0', '4 + 7', '28'], ['5', '3', '—', '28'], ['6', '36 &gt; 28 stop', '—', H.c('g', '28 == 28 → true')]] },
       complexity: `<p><b>Time O(√num)</b> (10<sup>4</sup> steps for 10<sup>8</sup>), <b>space O(1)</b>. Fun fact: only 5 perfect numbers are ≤ 10<sup>8</sup> (6, 28, 496, 8128, 33550336).</p>`
     }
@@ -2068,6 +3343,7 @@
       `<p>When they match, the answer is the prefix of length gcd(len1, len2) — Euclid on the lengths.</p>`,
       `<p>Traps: don't assume the shorter string is the answer ("ABAB" vs "AB" → "AB", but "ABABAB" vs "ABAB" → "AB" not "ABAB").<br>Recipe: if !(s1+s2).equals(s2+s1) return ""; return s1.substring(0, gcd(len1, len2)).</p>`
     ],
+    tests: { sig: "string string -> string", fn: "gcdOfStrings", cases: [[["ABABAB","ABAB"],"AB"],[["ABCABC","ABC"],"ABC"],[["LEET","CODE"],""],[["A","A"],"A"],[["AAAA","AA"],"AA"],[["ABAB","BABA"],""],[["ABCD","ABCDABCD"],"ABCD"],[["AB","ABA"],""],[["ABABABABABAB","ABABABAB"],"ABAB"]] },
     solution: {
       approach: `<p>Concatenation check + gcd of lengths.</p>`,
       code: `
@@ -2082,6 +3358,29 @@
                 return b == 0 ? a : gcd(b, a % b);
             }
         }`,
+      alt: [
+        { lang: 'python', code: `
+from math import gcd
+
+def gcd_of_strings(s1, s2):
+    if s1 + s2 != s2 + s1:
+        return ""                          # no common building block
+    return s1[:gcd(len(s1), len(s2))]      # longest block length = gcd of lengths` },
+        { lang: 'js', code: `
+function gcdOfStrings(s1, s2) {
+  if (s1 + s2 !== s2 + s1) return '';     // no common building block
+  const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b));
+  return s1.slice(0, gcd(s1.length, s2.length));
+}` },
+        { lang: 'cpp', code: `
+class Solution {
+public:
+    string gcdOfStrings(string s1, string s2) {
+        if (s1 + s2 != s2 + s1) return "";                    // no common building block
+        return s1.substr(0, std::gcd(s1.size(), s2.size()));  // longest block length
+    }
+};` }
+      ],
       dry: { head: ['step', 'value'], rows: [['s1 + s2', 'ABABABABAB'], ['s2 + s1', 'ABABABABAB (equal)'], ['gcd(6, 4)', '6 % 4 = 2 → gcd(4, 2) → 4 % 2 = 0 → 2'], ['answer', H.c('g', '"AB"')]] },
       complexity: `<p><b>Time O(n + m)</b> for the concatenation compare plus O(log) for gcd. <b>Space O(n + m)</b> for the concatenated strings.</p>`
     }
@@ -2115,6 +3414,7 @@
       `<p>Three while-loops (or a loop over {2, 3, 5}) dividing n as long as it is divisible.</p>`,
       `<p>Traps: n ≤ 0 → false (0 would loop forever: 0 % 2 == 0 always!); n = 1 → true.<br>Recipe: if n ≤ 0 return false; for p in {2,3,5}: while n % p == 0: n /= p; return n == 1.</p>`
     ],
+    tests: { sig: "int -> bool", fn: "isUgly", cases: [[[60],true],[[14],false],[[0],false],[[-6],false],[[1],true],[[2],true],[[7],false],[[2147483647],false],[[-2147483648],false],[[1073741824],true],[[1162261467],true],[[30],true],[[2125764000],true]] },
     solution: {
       approach: `<p>Strip the allowed primes; check the remainder is 1.</p>`,
       code: `
@@ -2127,6 +3427,35 @@
                 return n == 1;                         // nothing else may be left
             }
         }`,
+      alt: [
+        { lang: 'python', code: `
+def is_ugly(n):
+    if n <= 0:
+        return False             # 0 would loop forever, negatives are never ugly
+    for p in (2, 3, 5):
+        while n % p == 0:
+            n //= p              # remove every copy of an allowed prime
+    return n == 1` },
+        { lang: 'js', code: `
+function isUgly(n) {
+  if (n <= 0) return false;      // 0 would loop forever, negatives are never ugly
+  for (const p of [2, 3, 5]) {
+    while (n % p === 0) n /= p;  // exact: n is divisible by p
+  }
+  return n === 1;
+}` },
+        { lang: 'cpp', code: `
+class Solution {
+public:
+    bool isUgly(int n) {
+        if (n <= 0) return false;      // 0 would loop forever, negatives are never ugly
+        for (int p : {2, 3, 5}) {
+            while (n % p == 0) n /= p;
+        }
+        return n == 1;
+    }
+};` }
+      ],
       dry: { head: ['p', 'n before', 'n after'], rows: [['2', '60', '15'], ['3', '15', '5'], ['5', '5', '1'], ['check', '1', H.c('g', 'true')]] },
       complexity: `<p><b>Time O(log n)</b>: each division shrinks n by at least half. <b>Space O(1)</b>.</p>`,
       followUps: ['Ugly Number II: the n-th ugly number → three pointers merging 2×, 3×, 5× sequences', 'Super Ugly Number with a custom prime list → heap or k pointers']
@@ -2169,6 +3498,7 @@
       `<p>A list of lists; for row i, put 1 at both ends and fill the middle from row i − 1.</p>`,
       `<p>Traps: row 0 is just [1]; values up to C(29, 14) = 77,558,760 fit in int.<br>Recipe: for i in 0..numRows−1: row = []; for j in 0..i: row.add(j == 0 || j == i ? 1 : prev[j−1] + prev[j]).</p>`
     ],
+    tests: { sig: "int -> list<list<int>>", fn: "generate", cases: [[[5],[[1],[1,1],[1,2,1],[1,3,3,1],[1,4,6,4,1]]],[[1],[[1]]],[[2],[[1],[1,1]]],[[3],[[1],[1,1],[1,2,1]]],[[10],[[1],[1,1],[1,2,1],[1,3,3,1],[1,4,6,4,1],[1,5,10,10,5,1],[1,6,15,20,15,6,1],[1,7,21,35,35,21,7,1],[1,8,28,56,70,56,28,8,1],[1,9,36,84,126,126,84,36,9,1]]],[[30],[[1],[1,1],[1,2,1],[1,3,3,1],[1,4,6,4,1],[1,5,10,10,5,1],[1,6,15,20,15,6,1],[1,7,21,35,35,21,7,1],[1,8,28,56,70,56,28,8,1],[1,9,36,84,126,126,84,36,9,1],[1,10,45,120,210,252,210,120,45,10,1],[1,11,55,165,330,462,462,330,165,55,11,1],[1,12,66,220,495,792,924,792,495,220,66,12,1],[1,13,78,286,715,1287,1716,1716,1287,715,286,78,13,1],[1,14,91,364,1001,2002,3003,3432,3003,2002,1001,364,91,14,1],[1,15,105,455,1365,3003,5005,6435,6435,5005,3003,1365,455,105,15,1],[1,16,120,560,1820,4368,8008,11440,12870,11440,8008,4368,1820,560,120,16,1],[1,17,136,680,2380,6188,12376,19448,24310,24310,19448,12376,6188,2380,680,136,17,1],[1,18,153,816,3060,8568,18564,31824,43758,48620,43758,31824,18564,8568,3060,816,153,18,1],[1,19,171,969,3876,11628,27132,50388,75582,92378,92378,75582,50388,27132,11628,3876,969,171,19,1],[1,20,190,1140,4845,15504,38760,77520,125970,167960,184756,167960,125970,77520,38760,15504,4845,1140,190,20,1],[1,21,210,1330,5985,20349,54264,116280,203490,293930,352716,352716,293930,203490,116280,54264,20349,5985,1330,210,21,1],[1,22,231,1540,7315,26334,74613,170544,319770,497420,646646,705432,646646,497420,319770,170544,74613,26334,7315,1540,231,22,1],[1,23,253,1771,8855,33649,100947,245157,490314,817190,1144066,1352078,1352078,1144066,817190,490314,245157,100947,33649,8855,1771,253,23,1],[1,24,276,2024,10626,42504,134596,346104,735471,1307504,1961256,2496144,2704156,2496144,1961256,1307504,735471,346104,134596,42504,10626,2024,276,24,1],[1,25,300,2300,12650,53130,177100,480700,1081575,2042975,3268760,4457400,5200300,5200300,4457400,3268760,2042975,1081575,480700,177100,53130,12650,2300,300,25,1],[1,26,325,2600,14950,65780,230230,657800,1562275,3124550,5311735,7726160,9657700,10400600,9657700,7726160,5311735,3124550,1562275,657800,230230,65780,14950,2600,325,26,1],[1,27,351,2925,17550,80730,296010,888030,2220075,4686825,8436285,13037895,17383860,20058300,20058300,17383860,13037895,8436285,4686825,2220075,888030,296010,80730,17550,2925,351,27,1],[1,28,378,3276,20475,98280,376740,1184040,3108105,6906900,13123110,21474180,30421755,37442160,40116600,37442160,30421755,21474180,13123110,6906900,3108105,1184040,376740,98280,20475,3276,378,28,1],[1,29,406,3654,23751,118755,475020,1560780,4292145,10015005,20030010,34597290,51895935,67863915,77558760,77558760,67863915,51895935,34597290,20030010,10015005,4292145,1560780,475020,118755,23751,3654,406,29,1]]]] },
     solution: {
       approach: `<p>Build each row from the previous one (bottom-up DP).</p>`,
       code: `
@@ -2186,6 +3516,39 @@
                 return rows;
             }
         }`,
+      alt: [
+        { lang: 'python', code: `
+def generate(num_rows):
+    rows = [[1]]
+    for _ in range(num_rows - 1):
+        prev = rows[-1]
+        # Pascal's rule: each inner entry is the sum of the two above it
+        rows.append([1] + [a + b for a, b in zip(prev, prev[1:])] + [1])
+    return rows` },
+        { lang: 'js', code: `
+function generate(numRows) {
+  const rows = [];
+  for (let i = 0; i < numRows; i++) {
+    const row = new Array(i + 1).fill(1);     // edges are 1
+    for (let j = 1; j < i; j++) row[j] = rows[i - 1][j - 1] + rows[i - 1][j];
+    rows.push(row);
+  }
+  return rows;
+}` },
+        { lang: 'cpp', code: `
+class Solution {
+public:
+    vector<vector<int>> generate(int numRows) {
+        vector<vector<int>> rows;
+        for (int i = 0; i < numRows; i++) {
+            vector<int> row(i + 1, 1);                        // edges are 1
+            for (int j = 1; j < i; j++) row[j] = rows[i - 1][j - 1] + rows[i - 1][j];
+            rows.push_back(move(row));
+        }
+        return rows;
+    }
+};` }
+      ],
       dry: { head: ['i', 'built from', 'row'], rows: [['0', '—', '[1]'], ['1', 'edges', '[1, 1]'], ['2', '1+1', '[1, 2, 1]'], ['3', '1+2, 2+1', '[1, 3, 3, 1]'], ['4', '1+3, 3+3, 3+1', '[1, 4, 6, 4, 1]']] },
       complexity: `<p><b>Time O(n²)</b> — one addition per entry, and there are n(n+1)/2 entries. <b>Space O(n²)</b> for the output.</p>`,
       followUps: ['Pascal\'s Triangle II: only row k with O(k) space → update one array from right to left', 'Return row k modulo 10<sup>9</sup>+7 for k up to 10<sup>6</sup> → factorials + inverse factorials']
@@ -2219,6 +3582,7 @@
       `<p>Variables: <code>long e</code> (the exponent, made non-negative), <code>double result = 1</code>, <code>double base = x</code>.</p>`,
       `<p>Traps: Integer.MIN_VALUE; n = 0 → 1.0; x = 0 with n &gt; 0 → 0.<br>Recipe: e = (long) n; if e &lt; 0: x = 1/x, e = −e; while e &gt; 0: if e odd → result *= x; x *= x; e &gt;&gt;= 1.</p>`
     ],
+    tests: { sig: "double int -> double", fn: "myPow", cmp: "float", cases: [[[2,10],1024],[[2,-2],0.25],[[1,-2147483648],1],[[2.1,3],9.261000000000001],[[-2,3],-8],[[-2,4],16],[[0,5],0],[[5,0],1],[[0.5,-3],8],[[1.00001,123456],3.4368447520907104],[[-1,2147483647],-1],[[2,-2147483648],0]] },
     solution: {
       approach: `<p>Iterative fast power on doubles with a widened exponent.</p>`,
       code: `
@@ -2235,6 +3599,47 @@
                 return result;
             }
         }`,
+      alt: [
+        { lang: 'python', code: `
+def my_pow(x, n):
+    e = n
+    if e < 0:
+        x, e = 1 / x, -e          # Python ints never overflow, so -n is safe
+    result = 1.0
+    while e > 0:
+        if e & 1:
+            result *= x
+        x *= x
+        e >>= 1
+    return result` },
+        { lang: 'js', code: `
+function myPow(x, n) {
+  let e = n;                        // a Number holds 2^31 exactly, so -n is safe
+  if (e < 0) { x = 1 / x; e = -e; }
+  let result = 1.0;
+  while (e > 0) {
+    if (e % 2 === 1) result *= x;   // not e & 1: bitwise ops cut to 32 bits and break on 2^31
+    x *= x;
+    e = Math.floor(e / 2);
+  }
+  return result;
+}` },
+        { lang: 'cpp', code: `
+class Solution {
+public:
+    double myPow(double x, int n) {
+        long long e = n;                     // widen first: -INT_MIN overflows an int
+        if (e < 0) { x = 1 / x; e = -e; }
+        double result = 1.0;
+        while (e > 0) {
+            if (e & 1) result *= x;
+            x *= x;
+            e >>= 1;
+        }
+        return result;
+    }
+};` }
+      ],
       dry: { head: ['e (binary)', 'bit', 'result', 'x after squaring'], rows: [['1010', '0', '1', '4'], ['101', '1', '4', '16'], ['10', '0', '4', '256'], ['1', '1', H.c('g', '1024'), '65536']] },
       complexity: `<p><b>Time O(log |n|)</b> — at most 32 rounds. <b>Space O(1)</b>.</p>`
     }
@@ -2264,6 +3669,7 @@
       `<p>Two calls to modular fast power, then one modular multiplication.</p>`,
       `<p>Traps: n is a <code>long</code> (10<sup>15</sup>); ⌈n/2⌉ = (n + 1) / 2; reduce the final product mod p before casting to int.<br>Recipe: return power(5, (n+1)/2) · power(4, n/2) % MOD.</p>`
     ],
+    tests: { sig: "long -> int", fn: "countGoodNumbers", cases: [[[1],5],[[2],20],[[4],400],[[5],2000],[[50],564908303],[[1000000000000000],711414395],[[999999999999999],927853604]] },
     solution: {
       approach: `<p>Product rule + binary exponentiation.</p>`,
       code: `
@@ -2286,6 +3692,43 @@
                 return (int) (power(5, evenSlots) * power(4, oddSlots) % MOD);
             }
         }`,
+      alt: [
+        { lang: 'python', code: `
+MOD = 10**9 + 7
+
+def count_good_numbers(n):
+    # 5 choices at each even index, 4 at each odd index; built-in 3-argument pow is fast power
+    return pow(5, (n + 1) // 2, MOD) * pow(4, n // 2, MOD) % MOD` },
+        { lang: 'js', code: `
+function countGoodNumbers(n) {
+  const MOD = 1000000007n;
+  const power = (a, e) => {          // BigInt: base * base exceeds 2^53
+    let r = 1n;
+    a %= MOD;
+    while (e > 0n) { if (e & 1n) r = r * a % MOD; a = a * a % MOD; e >>= 1n; }
+    return r;
+  };
+  const N = BigInt(n);
+  return Number(power(5n, (N + 1n) / 2n) * power(4n, N / 2n) % MOD);
+}` },
+        { lang: 'cpp', code: `
+class Solution {
+    static constexpr long long MOD = 1'000'000'007LL;
+    long long power(long long a, long long e) {
+        long long r = 1; a %= MOD;
+        while (e > 0) {
+            if (e & 1) r = r * a % MOD;
+            a = a * a % MOD;
+            e >>= 1;
+        }
+        return r;
+    }
+public:
+    int countGoodNumbers(long long n) {
+        return (int) (power(5, (n + 1) / 2) * power(4, n / 2) % MOD);
+    }
+};` }
+      ],
       dry: { head: ['n', 'even slots', 'odd slots', 'answer'], rows: [['1', '1', '0', '5'], ['4', '2', '2', '25 × 16 = 400'], ['5', '3', '2', '125 × 16 = 2000']] },
       complexity: `<p><b>Time O(log n)</b> (≈ 50 squarings each). <b>Space O(1)</b>.</p>`
     }
@@ -2320,6 +3763,7 @@
       `<p>A small helper powMod(x, e) for e ≤ 10 (a simple loop is fine), and one running <code>result</code>.</p>`,
       `<p>Traps: reduce a mod 1337 first (a can be 2<sup>31</sup> − 1); products of two values below 1337 fit in int.<br>Recipe: result = 1; for d in b: result = powMod(result, 10) × powMod(a, d) % 1337.</p>`
     ],
+    tests: { sig: "int int[] -> int", fn: "superPow", cases: [[[2,[3]],8],[[2,[1,0]],1024],[[1,[4,3,3,8,5,2]],1],[[2147483647,[2,0,0]],1198],[[1337,[1]],0],[[2674,[9,9]],0],[[7,[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]],574],[[78267,[1,7,7,4,3,1,7,0,1,4,4,9,2,8,5,0,0,9,3,1]],602]] },
     solution: {
       approach: `<p>Horner's rule in the exponent: one "power 10" and one "power d" per digit.</p>`,
       code: `
@@ -2341,6 +3785,45 @@
                 return result;
             }
         }`,
+      alt: [
+        { lang: 'python', code: `
+def super_pow(a, b):
+    M = 1337
+    result = 1
+    for d in b:
+        # a^(10 * prefix + d) = (a^prefix)^10 * a^d
+        result = pow(result, 10, M) * pow(a, d, M) % M
+    return result` },
+        { lang: 'js', code: `
+function superPow(a, b) {
+  const M = 1337;
+  const powMod = (x, e) => {        // e <= 10 and values < 1337, so Numbers stay exact
+    let r = 1;
+    x %= M;
+    for (let i = 0; i < e; i++) r = r * x % M;
+    return r;
+  };
+  let result = 1;
+  for (const d of b) result = powMod(result, 10) * powMod(a, d) % M;
+  return result;
+}` },
+        { lang: 'cpp', code: `
+class Solution {
+    static constexpr int M = 1337;
+    int powMod(int x, int e) {      // e <= 10, a plain loop is enough
+        int r = 1;
+        x %= M;
+        for (int i = 0; i < e; i++) r = r * x % M;
+        return r;
+    }
+public:
+    int superPow(int a, vector<int>& b) {
+        int result = 1;
+        for (int d : b) result = powMod(result, 10) * powMod(a, d) % M;
+        return result;
+    }
+};` }
+      ],
       dry: { head: ['digit d', 'result¹⁰', 'a^d', 'result'], rows: [['start', '—', '—', '1'], ['1', '1', '2', '2'], ['0', '1024', '1', H.c('g', '1024')]] },
       complexity: `<p><b>Time O(len(b) × 20)</b> multiplications. <b>Space O(1)</b>. (Alternative: since 1337 = 7 × 191, Euler's theorem could shrink the exponent mod φ(1337) = 1140, but only when gcd(a, 1337) = 1 — the digit method needs no such care.)</p>`
     }
@@ -2382,6 +3865,7 @@
       `<p>Just Euclid's gcd plus a capacity check; no simulation needed.</p>`,
       `<p>Traps: target &gt; x + y is impossible no matter what; compute x + y in long if limits were larger.<br>Recipe: return target ≤ x + y &amp;&amp; target % gcd(x, y) == 0.</p>`
     ],
+    tests: { sig: "int int int -> bool", fn: "canMeasureWater", cases: [[[3,5,4],true],[[2,6,5],false],[[1,2,3],true],[[1,1,3],false],[[6,10,16],true],[[6,10,14],true],[[4,6,1],false],[[7,7,7],true],[[1000,999,1999],true],[[1000,999,2000],false],[[13,17,1],true]] },
     solution: {
       approach: `<p>Bézout's identity: reachable iff target ≤ x + y and gcd(x, y) divides target.</p>`,
       code: `
@@ -2395,6 +3879,29 @@
                 return b == 0 ? a : gcd(b, a % b);
             }
         }`,
+      alt: [
+        { lang: 'python', code: `
+from math import gcd
+
+def can_measure_water(x, y, target):
+    if x + y < target:
+        return False                  # both jugs together can't hold it
+    return target % gcd(x, y) == 0    # reachable totals = multiples of the gcd` },
+        { lang: 'js', code: `
+function canMeasureWater(x, y, target) {
+  if (x + y < target) return false;
+  const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b));
+  return target % gcd(x, y) === 0;    // reachable totals = multiples of the gcd
+}` },
+        { lang: 'cpp', code: `
+class Solution {
+public:
+    bool canMeasureWater(int x, int y, int target) {
+        if ((long long) x + y < target) return false;
+        return target % std::gcd(x, y) == 0;   // reachable totals = multiples of the gcd
+    }
+};` }
+      ],
       dry: { head: ['x', 'y', 'target', 'gcd', 'answer'], rows: [['3', '5', '4', '1', H.c('g', 'true')], ['2', '6', '5', '2', H.c('r', 'false (5 % 2 = 1)')], ['1', '2', '3', '1', H.c('g', 'true (fill both)')]] },
       complexity: `<p><b>Time O(log min(x, y))</b>, <b>space O(1)</b> (recursion depth is logarithmic too).</p>`
     }
@@ -2423,12 +3930,13 @@
             return count;
         }`
     },
-    mcq: { q: `In Java, prefix = −1 and k = 5. Which index should you use in the remainder count array?`, options: [`−1 (crash)`, `(−1 % 5 + 5) % 5 = 4`, `1`, `0`], answer: 1, explain: `Java's % keeps the sign, so −1 % 5 = −1. Normalising gives 4, which is correct: −1 and 4 differ by 5, so they are the same remainder class.` },
+    mcq: { q: `In Java, C++ or JS, prefix = −1 and k = 5. Which index should you use in the remainder count array?`, options: [`−1 (crash)`, `(−1 % 5 + 5) % 5 = 4`, `1`, `0`], answer: 1, explain: `Java, C++ and JS % keep the sign, so −1 % 5 = −1 (Python already gives 4). Normalising gives 4, which is correct: −1 and 4 differ by 5, so they are the same remainder class.` },
     hints: [
       `<p><b>Aha:</b> sum(i..j) divisible by k ⇔ P[j+1] ≡ P[i] (mod k). Count pairs of prefixes with equal remainders.</p>`,
       `<p>An <code>int[k]</code> counting how many prefixes so far have each remainder; start with count[0] = 1 for the empty prefix.</p>`,
       `<p>Traps: negative numbers → normalise with ((p % k) + k) % k; add count[r] <b>before</b> incrementing it.<br>Recipe: count[0] = 1; p = 0; for x: p = ((p + x) % k + k) % k; ans += count[p]; count[p]++.</p>`
     ],
+    tests: { sig: "int[] int -> int", fn: "subarraysDivByK", cases: [[[[4,5,0,-2,-3,1],5],7],[[[5],9],0],[[[5],5],1],[[[-1,2,9],2],2],[[[0,0,0],3],6],[[[-10000,-10000,-10000],10000],6],[[[1,-1,1,-1],2],4],[[[7,-3,2,9,-8,4,4],4],11],[[[2,-2,2,-4],6],2]] },
     solution: {
       approach: `<p>Prefix remainders + counting equal pairs (pigeonhole-style boxes).</p>`,
       code: `
@@ -2445,6 +3953,45 @@
                 return result;
             }
         }`,
+      alt: [
+        { lang: 'python', code: `
+def subarrays_div_by_k(nums, k):
+    count = [0] * k
+    count[0] = 1                  # the empty prefix
+    prefix = result = 0
+    for x in nums:
+        prefix = (prefix + x) % k # Python % is already non-negative for k > 0
+        result += count[prefix]
+        count[prefix] += 1
+    return result` },
+        { lang: 'js', code: `
+function subarraysDivByK(nums, k) {
+  const count = new Array(k).fill(0);
+  count[0] = 1;                                // the empty prefix
+  let prefix = 0, result = 0;
+  for (const x of nums) {
+    prefix = (((prefix + x) % k) + k) % k;     // JS % keeps the sign: normalise
+    result += count[prefix];
+    count[prefix]++;
+  }
+  return result;
+}` },
+        { lang: 'cpp', code: `
+class Solution {
+public:
+    int subarraysDivByK(vector<int>& nums, int k) {
+        vector<int> count(k, 0);
+        count[0] = 1;                              // the empty prefix
+        int prefix = 0, result = 0;
+        for (int x : nums) {
+            prefix = ((prefix + x) % k + k) % k;   // C++ % keeps the sign: normalise
+            result += count[prefix];
+            count[prefix]++;
+        }
+        return result;
+    }
+};` }
+      ],
       dry: { head: ['x', 'prefix mod 5', 'count[prefix] before', 'result'], rows: [['4', '4', '0', '0'], ['5', '4', '1', '1'], ['0', '4', '2', '3'], ['−2', '2', '0', '3'], ['−3', '4', '3', '6'], ['1', '0', '1', H.c('g', '7')]] },
       complexity: `<p><b>Time O(N + k)</b>, <b>space O(k)</b>.</p>`,
       followUps: ['Continuous Subarray Sum (length ≥ 2, multiple of k) → store first index per remainder', 'Make Sum Divisible by P (remove the shortest subarray) → remainder map with latest index']
@@ -2481,6 +4028,7 @@
       `<p>A <code>boolean[] composite</code> of size right + 1, then one left-to-right pass keeping the previous prime.</p>`,
       `<p>Traps: 1 is not prime (left may be 1); update only on a strictly smaller gap (keeps the earliest tie); early exit at gap ≤ 2.<br>Recipe: sieve → prev = −1 → for x in [max(left,2), right] if prime: if prev ≠ −1 and gap smaller → record; prev = x.</p>`
     ],
+    tests: { sig: "int int -> int[]", fn: "closestPrimes", cases: [[[10,19],[11,13]],[[4,6],[-1,-1]],[[1,1],[-1,-1]],[[1,2],[-1,-1]],[[1,3],[2,3]],[[2,3],[2,3]],[[19,31],[29,31]],[[24,28],[-1,-1]],[[89,97],[89,97]],[[999900,1000000],[999959,999961]],[[1,10],[2,3]]] },
     solution: {
       approach: `<p>Sieve of Eratosthenes up to right, then a single scan of consecutive primes.</p>`,
       code: `
@@ -2506,6 +4054,72 @@
                 return best;
             }
         }`,
+      alt: [
+        { lang: 'python', code: `
+def closest_primes(left, right):
+    composite = bytearray(right + 1)
+    composite[0] = 1
+    if right >= 1:
+        composite[1] = 1
+    p = 2
+    while p * p <= right:
+        if not composite[p]:
+            composite[p * p::p] = b'\\x01' * len(range(p * p, right + 1, p))
+        p += 1
+    prev, best = -1, [-1, -1]
+    for x in range(max(left, 2), right + 1):
+        if composite[x]:
+            continue
+        if prev != -1 and (best[0] == -1 or x - prev < best[1] - best[0]):
+            best = [prev, x]
+            if x - prev <= 2:
+                return best          # can't be beaten
+        prev = x
+    return best` },
+        { lang: 'js', code: `
+function closestPrimes(left, right) {
+  const composite = new Uint8Array(right + 1);
+  composite[0] = 1;
+  if (right >= 1) composite[1] = 1;
+  for (let p = 2; p * p <= right; p++) {
+    if (composite[p]) continue;
+    for (let m = p * p; m <= right; m += p) composite[m] = 1;
+  }
+  let prev = -1, best = [-1, -1];
+  for (let x = Math.max(left, 2); x <= right; x++) {
+    if (composite[x]) continue;
+    if (prev !== -1 && (best[0] === -1 || x - prev < best[1] - best[0])) {
+      best = [prev, x];
+      if (x - prev <= 2) return best;   // can't be beaten
+    }
+    prev = x;
+  }
+  return best;
+}` },
+        { lang: 'cpp', code: `
+class Solution {
+public:
+    vector<int> closestPrimes(int left, int right) {
+        vector<bool> composite(right + 1, false);
+        composite[0] = true;
+        if (right >= 1) composite[1] = true;
+        for (long long p = 2; p * p <= right; p++)
+            if (!composite[p])
+                for (long long m = p * p; m <= right; m += p) composite[m] = true;
+        int prev = -1;
+        vector<int> best = {-1, -1};
+        for (int x = max(left, 2); x <= right; x++) {
+            if (composite[x]) continue;
+            if (prev != -1 && (best[0] == -1 || x - prev < best[1] - best[0])) {
+                best = {prev, x};
+                if (x - prev <= 2) return best;   // can't be beaten
+            }
+            prev = x;
+        }
+        return best;
+    }
+};` }
+      ],
       dry: { head: ['x (prime)', 'prev', 'gap', 'best'], rows: [['11', '—', '—', '[−1, −1]'], ['13', '11', '2', H.c('g', '[11, 13] → early return')]] },
       complexity: `<p><b>Time O(R log log R)</b> for the sieve + O(R − L) scan. <b>Space O(R)</b>.</p>`
     }
@@ -2533,6 +4147,7 @@
       `<p>Exact multiplicative nCr in <code>long</code>: res = res × (N − i) / (i + 1), with N = m + n − 2 and k = min(m − 1, n − 1).</p>`,
       `<p>Traps: use the smaller k for fewer steps and smaller numbers; multiply before dividing (the division is then exact).<br>Recipe: N = m+n−2; k = min(m−1, n−1); res = 1; for i in 0..k−1: res = res·(N−i)/(i+1); return (int) res.</p>`
     ],
+    tests: { sig: "int int -> int", fn: "uniquePaths", cases: [[[3,7],28],[[3,2],3],[[1,1],1],[[1,100],1],[[100,1],1],[[2,2],2],[[10,10],48620],[[17,18],1166803110],[[16,17],300540195]] },
     solution: {
       approach: `<p>Paths = C(m + n − 2, min(m, n) − 1), computed exactly.</p>`,
       code: `
@@ -2547,6 +4162,31 @@
                 return (int) res;
             }
         }`,
+      alt: [
+        { lang: 'python', code: `
+from math import comb
+
+def unique_paths(m, n):
+    # m - 1 downs and n - 1 rights: choose where the downs go (exact big-int maths)
+    return comb(m + n - 2, m - 1)` },
+        { lang: 'js', code: `
+function uniquePaths(m, n) {
+  const total = m + n - 2, k = Math.min(m - 1, n - 1);
+  let res = 1;                       // stays <= 2 * 10^9 * 200 < 2^53, so Numbers are exact
+  for (let i = 0; i < k; i++) res = res * (total - i) / (i + 1);   // res = C(total, i + 1)
+  return res;
+}` },
+        { lang: 'cpp', code: `
+class Solution {
+public:
+    int uniquePaths(int m, int n) {
+        int total = m + n - 2, k = min(m - 1, n - 1);
+        long long res = 1;
+        for (int i = 0; i < k; i++) res = res * (total - i) / (i + 1);   // exact: res = C(total, i + 1)
+        return (int) res;
+    }
+};` }
+      ],
       dry: { head: ['i', 'res × (8 − i)', '÷ (i + 1)', 'res = C(8, i+1)'], rows: [['0', '1 × 8 = 8', '÷ 1', '8'], ['1', '8 × 7 = 56', '÷ 2', H.c('g', '28')]] },
       complexity: `<p><b>Time O(min(m, n))</b>, <b>space O(1)</b> — versus O(m × n) for the DP table.</p>`,
       followUps: ['Unique Paths II (obstacles) → DP, since the formula no longer applies', 'Answer mod 10<sup>9</sup>+7 for m, n ≤ 10<sup>6</sup> → factorials + inverse factorials']
@@ -2584,6 +4224,7 @@
       `<p>Trial-divide each element (≤ 1000, so √1000 ≈ 31 steps) and add primes to a <code>HashSet</code>.</p>`,
       `<p>Traps: remember the leftover prime after the loop (e.g. 7 or 997); strip each prime fully before moving on.<br>Recipe: for x in nums: for p = 2 while p·p ≤ x: if p | x → add p, divide out; if x &gt; 1 add x. Return set size.</p>`
     ],
+    tests: { sig: "int[] -> int", fn: "distinctPrimeFactors", cases: [[[[2,4,3,7,10,6]],4],[[[2,4,8,16]],1],[[[2]],1],[[[997]],1],[[[1000]],2],[[[997,991,983,977]],4],[[[30,42,1000,999]],5],[[[4,9,25,49,121,169]],6]] },
     solution: {
       approach: `<p>Factorize each element with √x trial division and union the primes.</p>`,
       code: `
@@ -2603,6 +4244,53 @@
                 return primes.size();
             }
         }`,
+      alt: [
+        { lang: 'python', code: `
+def distinct_prime_factors(nums):
+    primes = set()
+    for x in nums:
+        p = 2
+        while p * p <= x:
+            if x % p == 0:
+                primes.add(p)
+                while x % p == 0:
+                    x //= p          # strip every copy of p
+            p += 1
+        if x > 1:
+            primes.add(x)            # leftover prime bigger than the square root
+    return len(primes)` },
+        { lang: 'js', code: `
+function distinctPrimeFactors(nums) {
+  const primes = new Set();
+  for (let x of nums) {
+    for (let p = 2; p * p <= x; p++) {
+      if (x % p === 0) {
+        primes.add(p);
+        while (x % p === 0) x /= p;   // strip every copy of p
+      }
+    }
+    if (x > 1) primes.add(x);         // leftover prime bigger than the square root
+  }
+  return primes.size;
+}` },
+        { lang: 'cpp', code: `
+class Solution {
+public:
+    int distinctPrimeFactors(vector<int>& nums) {
+        unordered_set<int> primes;
+        for (int x : nums) {
+            for (int p = 2; p * p <= x; p++) {
+                if (x % p == 0) {
+                    primes.insert(p);
+                    while (x % p == 0) x /= p;   // strip every copy of p
+                }
+            }
+            if (x > 1) primes.insert(x);         // leftover prime bigger than the square root
+        }
+        return primes.size();
+    }
+};` }
+      ],
       dry: { head: ['value', 'primes found', 'set'], rows: [['2', '2', '{2}'], ['4', '2', '{2}'], ['3', '3', '{2, 3}'], ['7', '7 (leftover)', '{2, 3, 7}'], ['10', '2, 5', '{2, 3, 5, 7}'], ['6', '2, 3', H.c('g', 'size 4')]] },
       complexity: `<p><b>Time O(N √V)</b> ≈ 10<sup>4</sup> × 31. <b>Space O(π(V))</b> ≤ 168 primes below 1000. With many more queries, an SPF sieve up to 1000 makes each factorization O(log V).</p>`
     }
@@ -2638,6 +4326,7 @@
       `<p>Two arrays: a small sieve up to √R, and a boolean window of size R − L + 1 where index i represents the number L + i.</p>`,
       `<p>Traps: compute √R with integer correction (doubles round); start at max(p², ⌈L/p⌉·p) using <code>long</code>; L = 1 → skip 1.<br>Recipe: small primes ← sieve(√R); for p: for m from start to R step p: window[m − L] = composite; collect x ≥ 2 still unmarked.</p>`
     ],
+    tests: { sig: "long long -> list<long>", fn: "primesInRange", cases: [[[10,30],[11,13,17,19,23,29]],[[1,10],[2,3,5,7]],[[1,1],[]],[[2,2],[2]],[[14,16],[]],[[97,97],[97]],[[1000000000000,1000000000100],[1000000000039,1000000000061,1000000000063,1000000000091]],[[999999999900,999999999999],[999999999937,999999999959,999999999961,999999999989]],[[4294967290,4294967320],[4294967291,4294967311]]] },
     solution: {
       approach: `<p>Segmented sieve: base primes up to √R, then mark multiples inside [L, R].</p>`,
       code: `
@@ -2670,6 +4359,72 @@
                 System.out.println(new Solution().primesInRange(10, 30));   // [11, 13, 17, 19, 23, 29]
             }
         }`,
+      alt: [
+        { lang: 'python', code: `
+from math import isqrt
+
+def primes_in_range(L, R):
+    lim = isqrt(R)                     # exact integer square root, no float rounding
+    small = bytearray(lim + 1)         # 1 = composite
+    base = []
+    for i in range(2, lim + 1):
+        if not small[i]:
+            base.append(i)
+            small[i * i::i] = b'\\x01' * len(range(i * i, lim + 1, i))
+    composite = bytearray(R - L + 1)   # composite[x - L]
+    for p in base:
+        start = max(p * p, (L + p - 1) // p * p)   # never cross p itself
+        if start <= R:
+            composite[start - L::p] = b'\\x01' * len(range(start, R + 1, p))
+    return [L + i for i, c in enumerate(composite) if not c and L + i >= 2]` },
+        { lang: 'js', code: `
+function primesInRange(L, R) {
+  // R <= 10^12 < 2^53, so Numbers are exact; window indices are small
+  L = Number(L); R = Number(R);
+  let lim = Math.floor(Math.sqrt(R));
+  while ((lim + 1) * (lim + 1) <= R) lim++;   // fix floating-point rounding
+  while (lim * lim > R) lim--;
+  const small = new Uint8Array(lim + 1), base = [];
+  for (let i = 2; i <= lim; i++) {
+    if (small[i]) continue;
+    base.push(i);
+    for (let j = i * i; j <= lim; j += i) small[j] = 1;
+  }
+  const composite = new Uint8Array(R - L + 1);   // composite[x - L]
+  for (const p of base) {
+    const start = Math.max(p * p, Math.ceil(L / p) * p);   // never cross p itself
+    for (let m = start; m <= R; m += p) composite[m - L] = 1;
+  }
+  const primes = [];
+  for (let x = L; x <= R; x++) if (x >= 2 && !composite[x - L]) primes.push(x);
+  return primes;
+}` },
+        { lang: 'cpp', code: `
+class Solution {
+public:
+    vector<long long> primesInRange(long long L, long long R) {
+        long long lim = (long long) sqrtl((long double) R);
+        while ((lim + 1) * (lim + 1) <= R) lim++;          // fix floating-point rounding
+        while (lim * lim > R) lim--;
+        vector<bool> small(lim + 1, false);
+        vector<long long> base;
+        for (long long i = 2; i <= lim; i++) {
+            if (small[i]) continue;
+            base.push_back(i);
+            for (long long j = i * i; j <= lim; j += i) small[j] = true;
+        }
+        vector<bool> composite(R - L + 1, false);          // composite[x - L]
+        for (long long p : base) {
+            long long start = max(p * p, (L + p - 1) / p * p);   // never cross p itself
+            for (long long m = start; m <= R; m += p) composite[m - L] = true;
+        }
+        vector<long long> primes;
+        for (long long x = L; x <= R; x++)
+            if (x >= 2 && !composite[x - L]) primes.push_back(x);
+        return primes;
+    }
+};` }
+      ],
       dry: { head: ['base prime p', 'start = max(p², ⌈10/p⌉·p)', 'crossed in [10, 30]'], rows: [['2', 'max(4, 10) = 10', '10, 12, …, 30'], ['3', 'max(9, 12) = 12', '12, 15, 18, 21, 24, 27, 30'], ['5', 'max(25, 10) = 25', '25, 30'], ['survivors', '—', H.c('g', '11, 13, 17, 19, 23, 29')]] },
       complexity: `<p><b>Time O(√R log log √R + (R − L) log log R)</b>. <b>Space O(√R + (R − L))</b> ≈ 2 MB instead of 10<sup>12</sup> bytes.</p>`
     }
@@ -2703,6 +4458,7 @@
       `<p>lcm via gcd (divide first); search range [min(a, b), n × min(a, b)] in <code>long</code> (up to 4 × 10<sup>13</sup>).</p>`,
       `<p>Traps: the answer itself is not reduced until the very end; use <code>lo + (hi − lo) / 2</code>; a = b works naturally (lcm = a).<br>Recipe: l = lcm(a,b); lo = min(a,b), hi = n·min(a,b); while lo &lt; hi: mid; if count(mid) ≥ n hi = mid else lo = mid + 1; return lo % MOD.</p>`
     ],
+    tests: { sig: "int int int -> int", fn: "nthMagicalNumber", cases: [[[4,2,3],6],[[5,2,4],10],[[1,2,3],2],[[3,6,4],8],[[1,40000,40000],40000],[[10,7,7],70],[[1000,17,23],10028],[[1000000000,40000,40000],999720007],[[1000000000,2,3],499999993],[[1000000000,39999,40000],999860007]] },
     solution: {
       approach: `<p>LCM + inclusion–exclusion counting + binary search on the answer (DSA 10 pattern).</p>`,
       code: `
@@ -2723,6 +4479,48 @@
                 return y == 0 ? x : gcd(y, x % y);
             }
         }`,
+      alt: [
+        { lang: 'python', code: `
+from math import lcm
+
+def nth_magical_number(n, a, b):
+    l = lcm(a, b)
+    lo, hi = min(a, b), n * min(a, b)   # the n-th multiple of min(a, b) is magical
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if mid // a + mid // b - mid // l >= n:   # inclusion-exclusion count
+            hi = mid
+        else:
+            lo = mid + 1
+    return lo % (10**9 + 7)` },
+        { lang: 'js', code: `
+function nthMagicalNumber(n, a, b) {
+  const gcd = (x, y) => (y === 0 ? x : gcd(y, x % y));
+  const l = a / gcd(a, b) * b;                    // lcm <= 1.6 * 10^9
+  let lo = Math.min(a, b), hi = n * Math.min(a, b);   // <= 4 * 10^13 < 2^53: exact
+  while (lo < hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    const count = Math.floor(mid / a) + Math.floor(mid / b) - Math.floor(mid / l);
+    if (count >= n) hi = mid; else lo = mid + 1;
+  }
+  return lo % 1000000007;
+}` },
+        { lang: 'cpp', code: `
+class Solution {
+public:
+    int nthMagicalNumber(int n, int a, int b) {
+        const long long MOD = 1'000'000'007LL;
+        long long l = (long long) a / std::gcd(a, b) * b;               // lcm, divide first
+        long long lo = min(a, b), hi = (long long) n * min(a, b);
+        while (lo < hi) {
+            long long mid = lo + (hi - lo) / 2;
+            long long count = mid / a + mid / b - mid / l;              // inclusion-exclusion
+            if (count >= n) hi = mid; else lo = mid + 1;
+        }
+        return (int) (lo % MOD);
+    }
+};` }
+      ],
       dry: { head: ['lo', 'hi', 'mid', 'count(mid)', 'move'], rows: [['2', '8', '5', '2 + 1 − 0 = 3', 'lo = 6'], ['6', '8', '7', '3 + 2 − 1 = 4', 'hi = 7'], ['6', '7', '6', '3 + 2 − 1 = 4', 'hi = 6'], ['6', '6', '—', '—', H.c('g', 'answer 6')]] },
       complexity: `<p><b>Time O(log(n · min(a, b)))</b> ≈ 46 iterations. <b>Space O(1)</b>.</p>`,
       followUps: ['Three divisors a, b, c (Ugly Number III) → inclusion–exclusion with 7 terms', 'k divisors → 2<sup>k</sup> − 1 inclusion–exclusion terms over subsets (bitmask)']
@@ -2765,6 +4563,7 @@
       `<p>Precompute fact[] and invFact[] up to s.length once (prime modulus → Fermat inverse), then use them for every word.</p>`,
       `<p>Traps: division must be multiplication by invFact; reduce after each multiplication; s.split(" ") is safe because words are separated by single spaces.<br>Recipe: ans = 1; for word: ans = ans · fact[len] · Π invFact[cnt[c]] (all mod p).</p>`
     ],
+    tests: { sig: "string -> int", fn: "countAnagrams", cases: [[["too hot"],18],[["aa"],1],[["a"],1],[["abc"],6],[["level"],30],[["banana is ok"],240],[["a b c d"],1],[["abcdefghijklmnopqrstuvwxyz"],459042011],[["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaab zzzzzz"],31]] },
     solution: {
       approach: `<p>Product of multinomial coefficients using precomputed factorials and inverse factorials.</p>`,
       code: `
@@ -2799,6 +4598,82 @@
                 return (int) ans;
             }
         }`,
+      alt: [
+        { lang: 'python', code: `
+from collections import Counter
+
+MOD = 10**9 + 7
+
+def count_anagrams(s):
+    n = len(s)
+    fact = [1] * (n + 1)
+    for i in range(1, n + 1):
+        fact[i] = fact[i - 1] * i % MOD
+    inv_fact = [1] * (n + 1)
+    inv_fact[n] = pow(fact[n], MOD - 2, MOD)
+    for i in range(n, 0, -1):
+        inv_fact[i - 1] = inv_fact[i] * i % MOD
+    ans = 1
+    for word in s.split(' '):
+        ans = ans * fact[len(word)] % MOD          # all orders as if letters were distinct
+        for c in Counter(word).values():
+            ans = ans * inv_fact[c] % MOD          # divide out swaps of equal letters
+    return ans` },
+        { lang: 'js', code: `
+function countAnagrams(s) {
+  const M = 1000000007n;
+  const mul = (a, b) => Number(BigInt(a) * BigInt(b) % M);   // exact product past 2^53
+  const power = (a, e) => {
+    let r = 1n, x = BigInt(a) % M, k = BigInt(e);
+    while (k > 0n) { if (k & 1n) r = r * x % M; x = x * x % M; k >>= 1n; }
+    return Number(r);
+  };
+  const n = s.length;
+  const fact = new Array(n + 1).fill(1), invFact = new Array(n + 1).fill(1);
+  for (let i = 1; i <= n; i++) fact[i] = mul(fact[i - 1], i);
+  invFact[n] = power(fact[n], 1000000005);
+  for (let i = n; i > 0; i--) invFact[i - 1] = mul(invFact[i], i);
+  let ans = 1;
+  for (const w of s.split(' ')) {
+    const cnt = new Map();
+    for (const c of w) cnt.set(c, (cnt.get(c) || 0) + 1);
+    ans = mul(ans, fact[w.length]);
+    for (const c of cnt.values()) ans = mul(ans, invFact[c]);
+  }
+  return ans;
+}` },
+        { lang: 'cpp', code: `
+class Solution {
+    static constexpr long long MOD = 1'000'000'007LL;
+    long long power(long long a, long long e) {
+        long long r = 1; a %= MOD;
+        while (e > 0) {
+            if (e & 1) r = r * a % MOD;
+            a = a * a % MOD;
+            e >>= 1;
+        }
+        return r;
+    }
+public:
+    int countAnagrams(string s) {
+        int n = s.size();
+        vector<long long> fact(n + 1, 1), invFact(n + 1, 1);
+        for (int i = 1; i <= n; i++) fact[i] = fact[i - 1] * i % MOD;
+        invFact[n] = power(fact[n], MOD - 2);
+        for (int i = n; i > 0; i--) invFact[i - 1] = invFact[i] * i % MOD;
+        long long ans = 1;
+        stringstream ss(s);
+        string w;
+        while (ss >> w) {
+            int cnt[26] = {0};
+            for (char c : w) cnt[c - 'a']++;
+            ans = ans * fact[w.size()] % MOD;               // all orders as if letters were distinct
+            for (int c : cnt) ans = ans * invFact[c] % MOD; // divide out swaps of equal letters
+        }
+        return (int) ans;
+    }
+};` }
+      ],
       dry: { head: ['word', 'len!', 'letter counts', 'word count', 'ans'], rows: [['too', '6', 't:1, o:2', '6 / 2 = 3', '3'], ['hot', '6', 'h:1, o:1, t:1', '6', H.c('g', '18')]] },
       complexity: `<p><b>Time O(n + log p)</b> (each letter processed once, plus 26 multiplications per word). <b>Space O(n)</b> for the factorial tables.</p>`
     }
@@ -2834,6 +4709,7 @@
       `<p>A <code>boolean[] present</code> indexed by value. For each g walk g, 2g, 3g, … — total work max × (1 + 1/2 + 1/3 + …) ≈ M ln M.</p>`,
       `<p>Traps: start the running gcd at 0 (gcd(0, x) = x); break early once it equals g.<br>Recipe: for g in 1..M: cur = 0; for m = g step g: if present[m]: cur = gcd(cur, m); if cur == g break; if cur == g count++.</p>`
     ],
+    tests: { sig: "int[] -> int", fn: "countDifferentSubsequenceGCDs", names: {"python":"count_different_subsequence_gcds"}, cases: [[[[6,10,3]],5],[[[5,15,40,5,6]],7],[[[1]],1],[[[200000]],1],[[[7,7,7]],1],[[[2,4,8,16]],4],[[[6,10,15]],7],[[[199999,200000]],3],[[[12,18,8,9]],9]] },
     solution: {
       approach: `<p>Iterate over candidate GCDs and their multiples (harmonic-sum loop, like the sieve).</p>`,
       code: `
@@ -2862,6 +4738,68 @@
                 return a;
             }
         }`,
+      alt: [
+        { lang: 'python', code: `
+from math import gcd
+
+def count_different_subsequence_gcds(nums):
+    mx = max(nums)
+    present = bytearray(mx + 1)
+    for x in nums:
+        present[x] = 1
+    count = 0
+    for g in range(1, mx + 1):
+        cur = 0                           # gcd of all present multiples of g
+        for m in range(g, mx + 1, g):
+            if present[m]:
+                cur = gcd(cur, m)
+                if cur == g:
+                    break                 # can't go lower
+        if cur == g:
+            count += 1
+    return count` },
+        { lang: 'js', code: `
+function countDifferentSubsequenceGCDs(nums) {
+  let max = 0;
+  for (const x of nums) max = Math.max(max, x);
+  const present = new Uint8Array(max + 1);
+  for (const x of nums) present[x] = 1;
+  const gcd = (a, b) => { while (b) [a, b] = [b, a % b]; return a; };
+  let count = 0;
+  for (let g = 1; g <= max; g++) {
+    let cur = 0;                          // gcd of all present multiples of g
+    for (let m = g; m <= max; m += g) {
+      if (present[m]) {
+        cur = gcd(cur, m);
+        if (cur === g) break;             // can't go lower
+      }
+    }
+    if (cur === g) count++;
+  }
+  return count;
+}` },
+        { lang: 'cpp', code: `
+class Solution {
+public:
+    int countDifferentSubsequenceGCDs(vector<int>& nums) {
+        int mx = *max_element(nums.begin(), nums.end());
+        vector<bool> present(mx + 1, false);
+        for (int x : nums) present[x] = true;
+        int count = 0;
+        for (int g = 1; g <= mx; g++) {
+            int cur = 0;                          // gcd of all present multiples of g
+            for (int m = g; m <= mx; m += g) {
+                if (present[m]) {
+                    cur = std::gcd(cur, m);
+                    if (cur == g) break;          // can't go lower
+                }
+            }
+            if (cur == g) count++;
+        }
+        return count;
+    }
+};` }
+      ],
       dry: { head: ['g', 'present multiples', 'gcd of them', 'achievable?'], rows: [['1', '3, 6, 10', '1', H.c('g', 'yes')], ['2', '6, 10', '2', H.c('g', 'yes')], ['3', '3, 6', '3', H.c('g', 'yes')], ['4', 'none', '0', 'no'], ['5', '10', '10', 'no'], ['6', '6', '6', H.c('g', 'yes')], ['10', '10', '10', H.c('g', 'yes → total 5')]] },
       complexity: `<p><b>Time O(M log M × log M)</b> (harmonic sum of multiples, each with a gcd), M = 2 × 10<sup>5</sup>. <b>Space O(M)</b>.</p>`
     }
@@ -2892,6 +4830,7 @@
       `<p>A HashMap from g to how many earlier numbers had that g. For each new x, loop over the map's keys (≤ 128) and add counts of compatible keys.</p>`,
       `<p>Traps: multiply g₁·g₂ in <code>long</code>; count only earlier elements (insert after checking) so i &lt; j and no self-pairs; the answer can reach ~5 × 10<sup>9</sup> → <code>long</code>.<br>Recipe: for x: g = gcd(x,k); for (key, c) in map: if g·key % k == 0 → ans += c; map[g]++.</p>`
     ],
+    tests: { sig: "int[] int -> long", fn: "countPairs", cases: [[[[1,2,3,4,5],2],7],[[[1,2,3,4],5],0],[[[7],1],0],[[[5,5],1],1],[[[8,9,6,4],12],4],[[[100000,100000,100000],100000],3],[[[2,3,5,7,6,10,15],30],6],[[[1,1,1],7],0]] },
     solution: {
       approach: `<p>Group numbers by gcd with k; combine groups pairwise (≤ d(k) per element).</p>`,
       code: `
@@ -2913,6 +4852,47 @@
                 return b == 0 ? a : gcd(b, a % b);
             }
         }`,
+      alt: [
+        { lang: 'python', code: `
+from collections import Counter
+from math import gcd
+
+def count_pairs(nums, k):
+    cnt = Counter()                   # gcd(x, k) -> how many seen so far
+    pairs = 0
+    for x in nums:
+        g = gcd(x, k)
+        pairs += sum(c for key, c in cnt.items() if g * key % k == 0)
+        cnt[g] += 1
+    return pairs` },
+        { lang: 'js', code: `
+function countPairs(nums, k) {
+  const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b));
+  const cnt = new Map();              // gcd(x, k) -> how many seen so far
+  let pairs = 0;                      // at most ~5 * 10^9, exact as a Number
+  for (const x of nums) {
+    const g = gcd(x, k);
+    for (const [key, c] of cnt) if (g * key % k === 0) pairs += c;   // g * key <= 10^10: exact
+    cnt.set(g, (cnt.get(g) || 0) + 1);
+  }
+  return pairs;
+}` },
+        { lang: 'cpp', code: `
+class Solution {
+public:
+    long long countPairs(vector<int>& nums, int k) {
+        unordered_map<int, int> cnt;      // gcd(x, k) -> how many seen so far
+        long long pairs = 0;
+        for (int x : nums) {
+            int g = std::gcd(x, k);
+            for (auto& [key, c] : cnt)
+                if ((long long) g * key % k == 0) pairs += c;   // compatible earlier numbers
+            cnt[g]++;
+        }
+        return pairs;
+    }
+};` }
+      ],
       dry: { head: ['x', 'g = gcd(x, 2)', 'map before', 'added', 'pairs'], rows: [['1', '1', '{}', '0', '0'], ['2', '2', '{1:1}', '1 (2·1 even)', '1'], ['3', '1', '{1:1, 2:1}', '1 (with g=2)', '2'], ['4', '2', '{1:2, 2:1}', '3 (all)', '5'], ['5', '1', '{1:2, 2:2}', '2 (with g=2)', H.c('g', '7')]] },
       complexity: `<p><b>Time O(N × d(k) + N log k)</b>, with d(k) ≤ 128 for k ≤ 10<sup>5</sup> → about 1.3 × 10<sup>7</sup> steps. <b>Space O(d(k))</b>.</p>`
     }
@@ -3032,6 +5012,12 @@
   registerModule({
     id: 'dsa03',
     title: 'Number Theory & Modular Arithmetic',
+    langNotes: {
+      java: `<p><b>Java:</b> <code>int</code> overflow wraps silently, so use <code>long</code> for anything that can pass 2.1 × 10<sup>9</sup> (N up to 10<sup>12</sup>, products of two residues mod 10<sup>9</sup>+7) and cast before multiplying: <code>(long) a * b</code>. <code>%</code> keeps the sign of the dividend; use <code>((x % m) + m) % m</code> or <code>Math.floorMod</code>. <code>Math</code> has no gcd (write Euclid or use <code>BigInteger.gcd</code>); <code>BigInteger.modPow</code> / <code>modInverse</code> handle any size. A <code>boolean[]</code> sieve costs 1 byte per number; <code>BitSet</code> costs 1 bit. Recursion depth is about 10k frames, which is plenty for Euclid and fast power (O(log n) deep).</p>`,
+      python: `<p><b>Python:</b> integers never overflow, so products like 10<sup>18</sup> or C(100, 50) are exact, but still reduce mod p after every step to keep numbers small and fast. <code>%</code> is always non-negative for a positive modulus. Built-ins do most of this module: <code>math.gcd</code>, <code>math.lcm</code> (3.9+), <code>math.isqrt</code> (exact square root, no float rounding), <code>math.comb</code>, <code>pow(a, b, m)</code> and <code>pow(a, -1, m)</code> for the inverse (3.8+). For sieves use a <code>bytearray</code> and slice assignment (<code>is_prime[p*p::p] = bytes(...)</code>); a list of booleans is 8× larger and a Python-level inner loop is slow. The default recursion limit is 1000, fine for O(log n) recursion.</p>`,
+      js: `<p><b>JavaScript:</b> a <code>Number</code> is exact only up to 2<sup>53</sup> ≈ 9 × 10<sup>15</sup>. N ≤ 10<sup>12</sup> and i * i ≤ N are safe, but the product of two residues mod 10<sup>9</sup>+7 (≈ 10<sup>18</sup>) is not, so do modular multiplication in <code>BigInt</code> (<code>a * b % 1000000007n</code>) or convert just for the product. <code>%</code> keeps the sign of the dividend, so normalise with <code>((x % m) + m) % m</code>. Bitwise operators (<code>&amp;</code>, <code>&gt;&gt;</code>, <code>|0</code>) cut values to 32 bits, so for big exponents use <code>BigInt</code> bits (<code>e &amp; 1n</code>, <code>e &gt;&gt;= 1n</code>) or <code>e % 2</code> and <code>Math.floor(e / 2)</code>. Use <code>Uint8Array</code> for sieves. There is no built-in gcd. Recursion depth is about 10k frames.</p>`,
+      cpp: `<p><b>C++:</b> signed overflow is undefined behaviour, not a wrap, so use <code>long long</code> and write loop bounds as <code>i &lt;= n / i</code> instead of <code>i * i &lt;= n</code> near 2<sup>63</sup>. Two residues below 10<sup>9</sup>+7 multiply safely in <code>long long</code>; for moduli up to 10<sup>18</sup> use <code>__int128</code>. <code>%</code> keeps the sign of the dividend. <code>std::gcd</code> and <code>std::lcm</code> live in &lt;numeric&gt; (C++17). <code>vector&lt;bool&gt;</code> packs sieve flags at 1 bit each. Avoid <code>sqrt</code> on doubles for exact bounds; correct it with integer checks. The default stack is about 8 MB, far more than log-depth recursion needs.</p>`
+    },
     intro: `<p>This module is the <b>math toolbox</b> every coding interview quietly assumes you own. You will find all <b>factors</b> of a number in √N steps, test and mass-produce <b>primes</b> (trial division and the Sieve of Eratosthenes), compute <b>GCD &amp; LCM</b> with Euclid's 2,300-year-old trick (and <i>see</i> why it works by cutting squares out of a rectangle), keep giant answers small with the <b>modulo rules</b>, raise numbers to huge powers in about 60 steps with <b>fast exponentiation</b>, count choices with <b>nCr and Pascal's Triangle</b>, and prove that answers <i>must</i> exist with the <b>Pigeonhole Principle</b>.</p>
       <p>Every topic starts with an everyday analogy, then small-number tables and step-by-step animations, worked examples, an expert deep dive and a section on working alongside AI. Watch for the <b>Clues in the Question</b>: phrases like "modulo 10<sup>9</sup>+7", "number of ways", "N ≤ 10<sup>12</sup>", "guaranteed to exist" tell you which tool to grab. These tools come back again and again later: hashing (DSA 8 and 9), DP counting (DSA 17 and 18), and the Expert math module (DSA 25).</p>`,
     goals: [

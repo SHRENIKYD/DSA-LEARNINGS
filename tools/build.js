@@ -30,6 +30,8 @@ const SI = { modules: {}, entries: [], problems: 0, viz: 0 };
 let warnings = 0;
 const ALLT = [];
 const MODS = {};
+const PMETA = {}, CHECKS = {};
+const LBIT = { java: 1, python: 2, py: 2, js: 4, ts: 4, javascript: 4, typescript: 4, cpp: 8, 'c++': 8 };
 
 for (const t of TRACKS) {
   const dir = path.join(root, 'content', t.id);
@@ -50,6 +52,21 @@ for (const t of TRACKS) {
     fs.writeFileSync(path.join(out, 'content', t.id, pm.id + '.js'), src);
     scripts.push('<script src="content/' + t.id + '/' + pm.id + '.js?v=@@V@@"></script>');
     const href = t.id + '.html#';
+    {
+      const def = m.lang || t.lang, probs = [];
+      m.topics.forEach((tp) => asList(tp.problems).concat(asList(tp.problem)).forEach((p) => probs.push({ p, l: p.lang || tp.lang || def })));
+      (m.practice || []).forEach((p) => probs.push({ p, l: p.lang || def }));
+      let cover = 15;
+      probs.forEach((x) => {
+        const sol = x.p.solution || {}; let b = 0;
+        const add = (c) => { if (!c) return; const l = (typeof c === 'object' && c.lang) || x.l; b |= LBIT[String(l).toLowerCase()] || 0; };
+        add(sol.code); asList(sol.alt).forEach(add);
+        cover &= b;
+      });
+      const tested = probs.filter((x) => x.p.tests).length;
+      PMETA[pm.id] = [strip(m.title || pm.title), t.id, pm.level, m.hours || 0, (t.id === 'dsa' || t.id === 'lld') ? cover : 15, probs.length, tested, (m.practice || []).length];
+      CHECKS[pm.id] = (m.quiz || []).filter((q) => q && Array.isArray(q.options) && q.options.length >= 2).slice(0, 4).map((q) => [q.q, q.options, q.answer, q.explain || '']);
+    }
     MODS[pm.id] = [m.topics.length, m.topics.map((tp) => asList(tp.problems).concat(asList(tp.problem)).length), (m.practice || []).length, m.quiz && m.quiz.length ? 1 : 0, m.interview && m.interview.length ? 1 : 0];
     SI.modules[pm.id] = { items: ctx.App.items(m), pl: (m.practice || []).map((p) => String(p.level || 'Medium').charAt(0).toUpperCase()).join('') };
     SI.entries.push({ t: pm.num + '. ' + strip(m.title || pm.title), c: t.short + ' · Module', h: href + pm.id, s: strip(pm.scope).toLowerCase() });
@@ -71,7 +88,7 @@ for (const t of TRACKS) {
   t._scripts = scripts;
 }
 
-const ASSETS = ['helpers.js', 'tracks.js', 'engine.js', 'auth.js', 'login.js', 'journey.js', 'style.css'];
+const ASSETS = ['helpers.js', 'tracks.js', 'paths.js', 'learn.js', 'engine.js', 'auth.js', 'login.js', 'journey.js', 'style.css'];
 const sbUrl = (process.env.SUPABASE_URL || '').trim().replace(/\/+$/, ''), sbKey = (process.env.SUPABASE_PUBLISHABLE_KEY || '').trim();
 const authOn = /^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(sbUrl) && /^[A-Za-z0-9._-]+$/.test(sbKey);
 if ((sbUrl || sbKey) && !authOn) { console.warn('WARN: SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY look invalid — accounts disabled in this build'); warnings++; }
@@ -83,6 +100,8 @@ const V = hash.digest('hex').slice(0, 10);
 for (const f of ASSETS) fs.copyFileSync(path.join(root, 'src', f), path.join(out, 'assets', f));
 fs.writeFileSync(path.join(out, 'assets', 'config.js'), configJs);
 fs.writeFileSync(path.join(out, 'assets', 'progress-map.js'), 'window.IM_MODS=' + JSON.stringify(MODS) + ';');
+fs.writeFileSync(path.join(out, 'assets', 'paths-data.js'), 'window.IM_PATHMETA=' + JSON.stringify(PMETA).replace(/</g, '\\u003c') + ';');
+fs.writeFileSync(path.join(out, 'assets', 'checks.js'), 'window.IM_CHECKS=' + JSON.stringify(CHECKS).replace(/<\/script/gi, '<\\/script') + ';');
 fs.writeFileSync(path.join(out, 'assets', 'search-index.js'), 'window.SEARCH_INDEX=' + JSON.stringify(SI) + ';');
 let VIDS = {};
 try { VIDS = JSON.parse(rd('data/videos.json')).videos || {}; } catch (e) { }
@@ -102,6 +121,7 @@ function jbar(o) {
     (o.menu ? '<button id="menuBtn" class="jbtn jmenu" type="button" aria-label="Open the list of places" aria-controls="sidebar" aria-expanded="false">' + IC('<path d="M4 7h16M4 12h16M4 17h10"/>') + '</button>' : '') +
     '<a class="jbrand" href="index.html"><svg class="jlogo" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></svg><span>Interview Mastery</span></a>' +
     '<nav class="jnav" aria-label="Main"><a href="index.html" data-page="home">' + IC('<path d="M3 6.5l6-3 6 3 6-3v14l-6 3-6-3-6 3z"/><path d="M9 3.5v14M15 6.5v14"/>') + '<span>World map</span></a>' +
+    '<a href="route.html" data-page="route">' + IC('<path d="M5 21V4h11l-2 4 2 4H5"/>') + '<span>Your route</span></a>' +
     '<a href="videos.html" data-page="videos">' + IC('<path d="M8 21l4-11 4 11"/><path d="M6 10h12"/><path d="M9 6.5a3 3 0 0 1 6 0"/><path d="M5 4a9 9 0 0 1 14 0"/>') + '<span>Watchtower</span></a>' +
     '<a href="passport.html" data-page="passport">' + IC('<rect x="5" y="3" width="14" height="18" rx="2"/><circle cx="12" cy="10" r="3"/><path d="M9 16h6"/>') + '<span>Passport</span></a></nav>' +
     (o.search ? '<div class="jsearch"><label class="sbox">' + IC('<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>') + '<input id="gsearch" aria-label="Search the world" type="search" placeholder="Search every land, landmark and riddle" autocomplete="off"><kbd>/</kbd></label><div id="gresults" hidden></div></div>' : '<span class="jsp"></span>') +
@@ -119,6 +139,7 @@ fs.writeFileSync(path.join(out, 'index.html'), page('src/index.html', { search: 
 fs.writeFileSync(path.join(out, 'login.html'), rd('src/login.html').replace(/@@V@@/g, V));
 fs.writeFileSync(path.join(out, 'videos.html'), page('src/videos.html'));
 fs.writeFileSync(path.join(out, 'passport.html'), page('src/passport.html'));
+fs.writeFileSync(path.join(out, 'route.html'), page('src/route.html'));
 const contactEmail = (process.env.CONTACT_EMAIL || '').trim();
 const contact = /^[^\s@<>"]+@[^\s@<>"]+\.[A-Za-z]{2,}$/.test(contactEmail)
   ? 'Questions or requests: <b>' + H(contactEmail) + '</b>. To delete your account, use the steps above.'

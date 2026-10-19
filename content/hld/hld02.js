@@ -1805,6 +1805,7 @@ print(served)
   topics.forEach(function (t, i) { (t.problems || []).forEach(function (p, j) { rotateMcq(p.mcq, i + j + 2); }); });
 
   registerModule({
+  langExplain: `<p><b>About the code here.</b> System design is language-neutral, and interviews never require a particular language for it. The short samples are Python (and occasionally Java) only to make an idea concrete, such as an estimate, a hash ring or a rate limiter. Read them like pseudocode; the runnable ones are calculators you can change and re-run.</p>`,
     id: 'hld02',
     title: 'Scalability Basics',
     intro: `<p>Your app works for 100 users. What happens at 100,000? At 10 million? This module is about the first, most important moves every system makes as it grows: <b>bigger machines vs more machines</b>, making servers <b>stateless</b> so they can be copied freely, handling <b>sessions</b> once there is more than one server, spreading traffic with <b>load balancers</b> (round robin, weighted, least connections), hunting down <b>single points of failure</b>, and taking read load off the database with <b>read replicas</b>.</p>

@@ -114,7 +114,7 @@ ${H.table(['operation', 'average', 'worst (all keys collide)'], [['add / put', '
       '"millions of inserts, memory is tight" → pre-size the map, primitive arrays, boxing cost',
       '"attacker controls the keys" → hash flooding, treeify, randomized hashing'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
 // Correct and broken keys side by side — run it and watch the broken one "disappear".
 import java.util.*;
 
@@ -160,7 +160,7 @@ public class HashBasics {
         sized.put("ready", 1);
         System.out.println(sized);
     }
-}`, {
+}`, alt: [{
       lang: 'python', run: true, title: 'Same ideas in Python (runnable): hash(), __eq__/__hash__, buckets',
       code: `class BadPoint:
     def __init__(self, x, y):
@@ -189,8 +189,72 @@ print("hash(42) =", hash(42))               # small ints hash to themselves
 capacity = 16
 for key in [10, 26, 7, 42]:
     print("key", key, "-> bucket", hash(key) & (capacity - 1))`
-    }],
-    codeTitle: ['hashCode/equals contract, collisions and bucket math (Java)', 'Python version (runnable)'],
+    }, { lang: 'js', run: true, code: `// JS Map and Set compare OBJECT keys by identity, not by their fields.
+class Point {
+  constructor(x, y) { this.x = x; this.y = y; }
+}
+const bad = new Set([new Point(1, 2)]);
+console.log('object key found?', bad.has(new Point(1, 2)));     // false: a different object
+
+// Fix: build a value key (string or number) from the fields.
+const key = (p) => p.x + ',' + p.y;
+const good = new Set([key(new Point(1, 2))]);
+console.log('string key found?', good.has(key(new Point(1, 2)))); // true
+
+// Java's String.hashCode is h = 31*h + c in 32 bits: "Aa" and "BB" collide.
+function javaHash(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  return h;
+}
+console.log('Aa ->', javaHash('Aa') + ', BB ->', javaHash('BB'));  // 2112, 2112
+
+// Bucket index the way a HashMap computes it (capacity 16).
+for (const k of [10, 26, 7, 42]) {
+  const spread = k ^ (k >>> 16);
+  console.log('key', k, '-> bucket', spread & 15);
+}` }, { lang: 'cpp', code: `#include <bits/stdc++.h>
+using namespace std;
+
+// unordered_set needs a hash AND operator==. Forget the hash and the code
+// does not compile, so C++ catches the broken contract at build time.
+struct Point {
+    int x, y;
+    bool operator==(const Point& o) const { return x == o.x && y == o.y; }
+};
+struct PointHash {
+    size_t operator()(const Point& p) const {          // equal points -> equal hashes
+        return hash<long long>()(((long long)p.x << 32) ^ (unsigned)p.y);
+    }
+};
+
+int javaHash(const string& s) {                         // h = 31*h + c, 32-bit wrap
+    unsigned h = 0;
+    for (unsigned char c : s) h = 31 * h + c;
+    return (int)h;
+}
+
+int main() {
+    unordered_set<Point, PointHash> good;
+    good.insert({1, 2});
+    cout << boolalpha << "Point found? " << (good.count({1, 2}) > 0) << "\\n";   // true
+
+    // Collisions are legal: different strings, same hash.
+    cout << "Aa -> " << javaHash("Aa") << ", BB -> " << javaHash("BB") << "\\n"; // 2112, 2112
+
+    // Bucket index the way Java's HashMap computes it (capacity 16).
+    for (unsigned key : {10u, 26u, 7u, 42u}) {
+        unsigned spread = key ^ (key >> 16);
+        cout << "key " << key << " -> bucket " << (spread & 15) << "\\n";
+    }
+
+    // Pre-size when you know the count: reserve() avoids rehashing.
+    unordered_map<string, int> sized;
+    sized.reserve(1000);
+    sized["ready"] = 1;
+    cout << "buckets: " << sized.bucket_count() << "\\n";
+}` }] }],
+    codeTitle: 'Key equality/hash contract, collisions and bucket math',
     viz: [{
       title: 'Bucket array: put, get, remove, collisions and resize (mini HashSet, capacity starts at 4)',
       input: '5 9 13 ?9 8 12 -5 3 19 ?5 40 27',
@@ -325,30 +389,60 @@ ${H.table(['key', 'binary', '&amp; 15 (cap 16)', '&amp; 31 (cap 32)', 'moved?'],
       title: '"Aa" and "BB" — a legal collision',
       html: `<p><code>"Aa".hashCode()</code> = 65·31 + 97 = <b>2112</b>. <code>"BB".hashCode()</code> = 66·31 + 66 = <b>2112</b>. Same bucket, different strings. A map with both keys stores two nodes in the same chain; <code>get("BB")</code> walks the chain and uses <code>equals()</code> to pick the right one.</p>
 <p>Because "Aa" and "BB" collide, so do "AaAa", "AaBB", "BBAa", "BBBB" — 2<sup>k</sup> colliding strings of length 2k. Attackers used exactly this trick (hash flooding) against web servers in 2011.</p>`,
-      code: `Map<String, Integer> m = new HashMap<>();
+      code: { lang: 'java', code: `Map<String, Integer> m = new HashMap<>();
 m.put("Aa", 1);
 m.put("BB", 2);
-System.out.println(m.get("Aa") + " " + m.get("BB")); // 1 2 — collision handled by equals()`
+System.out.println(m.get("Aa") + " " + m.get("BB")); // 1 2 — collision handled by equals()`, alt: [{ lang: 'python', code: `m = {"Aa": 1, "BB": 2}
+print(m["Aa"], m["BB"])   # 1 2 — if two keys ever share a bucket, == tells them apart` }, { lang: 'js', code: `const m = new Map([['Aa', 1], ['BB', 2]]);
+console.log(m.get('Aa'), m.get('BB')); // 1 2 — equal hashes are fine, keys are compared too` }, { lang: 'cpp', code: `unordered_map<string, int> m{{"Aa", 1}, {"BB", 2}};
+cout << m["Aa"] << " " << m["BB"] << "\\n"; // 1 2 — same bucket is fine, == tells them apart` }] }
     }, {
       title: 'The mutable key trap',
       html: `<p>Put a key in a set, then change a field used by <code>hashCode()</code>. The object is still physically in the <b>old</b> bucket, but lookups now compute a <b>new</b> bucket — the element is "lost" (contains() says false, yet size() says 1).</p>
 <p><b>Rule:</b> keys must be immutable (String, Integer, records with final fields). Never use a <code>List</code> you will later modify as a key.</p>`,
-      code: `List<Integer> key = new ArrayList<>(List.of(1, 2));
+      code: { lang: 'java', code: `List<Integer> key = new ArrayList<>(List.of(1, 2));
 Set<List<Integer>> set = new HashSet<>();
 set.add(key);
 key.add(3);                                  // hashCode of the list changes
 System.out.println(set.contains(key));        // false — lost in the old bucket
-System.out.println(set.size());               // 1`
+System.out.println(set.size());               // 1`, alt: [{ lang: 'python', code: `key = [1, 2]
+s = set()
+try:
+    s.add(key)                 # lists are mutable, so Python refuses to hash them
+except TypeError as e:
+    print("TypeError:", e)
+s.add(tuple(key))              # store an immutable snapshot instead
+key.append(3)                  # changing the list does not touch the stored tuple
+print(tuple(key) in s)         # False — (1, 2, 3) was never added
+print(len(s))                  # 1` }, { lang: 'js', code: `const key = [1, 2];
+const set = new Set([key]);
+key.push(3);                     // Set keys are object identities, not contents
+console.log(set.has(key));       // true  — same object
+console.log(set.has([1, 2, 3])); // false — equal contents, different object` }, { lang: 'cpp', code: `vector<int> key{1, 2};
+set<vector<int>> s;
+s.insert(key);                   // the set stores a COPY of the key
+key.push_back(3);                // changes only our copy
+cout << s.count(key) << "\\n";    // 0 — {1, 2, 3} is not in the set
+cout << s.size() << "\\n";        // 1` }] }
     }, {
       title: 'Pre-sizing to avoid resizes',
       html: `<p>Inserting 1,000,000 keys into <code>new HashMap&lt;&gt;()</code> triggers resizes at 13, 25, 49, … — about 17 doublings, each re-placing everything already in the map. If you know the count, size it once:</p>
 <ul><li>Java 19+: <code>HashMap.newHashMap(1_000_000)</code> (computes capacity for you).</li>
 <li>Older Java: <code>new HashMap&lt;&gt;((int) (n / 0.75f) + 1)</code>. Note: <code>new HashMap&lt;&gt;(n)</code> is the <i>capacity</i>, not the expected size — a common mistake.</li></ul>`,
-      code: `int n = 1_000_000;
+      code: { lang: 'java', code: `int n = 1_000_000;
 Map<Integer, Integer> a = HashMap.newHashMap(n);           // Java 19+
 Map<Integer, Integer> b = new HashMap<>((int) (n / 0.75f) + 1); // works on any version
 for (int i = 0; i < n; i++) { a.put(i, i); b.put(i, i); }
-System.out.println(a.size() + " " + b.size());`
+System.out.println(a.size() + " " + b.size());`, alt: [{ lang: 'python', code: `n = 1_000_000
+a = {i: i for i in range(n)}   # dict has no size hint; a comprehension builds it in one go
+print(len(a))` }, { lang: 'js', code: `const n = 1000000;
+const a = new Map();                       // Map has no capacity option; it grows itself
+for (let i = 0; i < n; i++) a.set(i, i);
+console.log(a.size);` }, { lang: 'cpp', code: `int n = 1000000;
+unordered_map<int, int> a;
+a.reserve(n);                              // room for n keys: no rehash while filling
+for (int i = 0; i < n; i++) a[i] = i;
+cout << a.size() << "\\n";` }] }
     }, {
       title: 'Choosing the right map',
       html: `${H.table(['need', 'use', 'cost'], [['fast lookup, order does not matter', 'HashMap / HashSet', 'O(1) avg'], ['remember insertion order (or LRU)', 'LinkedHashMap / LinkedHashSet', 'O(1) avg, a bit more memory'], ['sorted keys, floor/ceiling, range queries', 'TreeMap / TreeSet', 'O(log N)'], ['many threads writing', 'ConcurrentHashMap', 'O(1) avg, no null keys/values'], ['keys are small ints 0..K', 'plain int[] / boolean[]', 'O(1) worst case, tiny memory']])}
@@ -411,6 +505,15 @@ System.out.println(a.size() + " " + b.size());`
         `<p><b>Hint 2:</b> Use an array of linked-list heads (<code>Node[] table</code>). Each node stores key, value and next. Two keys in the same bucket simply share the list — compare keys with <code>==</code> (or equals) while walking.</p>`,
         `<p><b>Hint 3 (recipe):</b> index = hash &amp; (cap − 1) with cap a power of two. put: walk the chain, update if found, else add a node and <code>size++</code>; if size &gt; 0.75·cap, double the table and re-insert everything. get: walk, return value or −1. remove: walk with a <code>prev</code> pointer and unlink. Edge cases: removing the head node, updating an existing key must not change size.</p>`
       ],
+      tests: { cls: 'MyHashMap', sigs: { MyHashMap: '', put: 'int int -> void', get: 'int -> int', remove: 'int -> void' }, cases: [
+  {"ops": ["MyHashMap", "put", "put", "put", "get", "get", "put", "get", "remove", "get"], "args": [[], [1, 1], [2, 2], [17, 5], [1], [3], [2, 1], [2], [2], [2]], "out": [null, null, null, null, 1, -1, null, 1, null, -1]},
+  {"ops": ["MyHashMap", "get", "remove", "get"], "args": [[], [0], [0], [0]], "out": [null, -1, null, -1]},
+  {"ops": ["MyHashMap", "put", "put", "get", "get", "get"], "args": [[], [0, 7], [1000000, 1000000], [0], [1000000], [999999]], "out": [null, null, null, 7, 1000000, -1]},
+  {"ops": ["MyHashMap", "put", "put", "remove", "get"], "args": [[], [5, 1], [5, 2], [5], [5]], "out": [null, null, null, null, -1]},
+  {"ops": ["MyHashMap", "put", "put", "put", "remove", "get", "get", "get", "put", "get"], "args": [[], [1, 10], [17, 20], [33, 30], [17], [1], [17], [33], [17, 40], [17]], "out": [null, null, null, null, null, 10, -1, 30, null, 40]},
+  {"ops": ["MyHashMap", "remove", "put", "get"], "args": [[], [3], [3, 0], [3]], "out": [null, null, null, 0]},
+  {"ops": ["MyHashMap", "put", "put", "put", "put", "put", "put", "put", "put", "put", "put", "put", "put", "put", "put", "put", "put", "put", "put", "put", "put", "put", "put", "put", "put", "put", "put", "put", "put", "put", "put", "put", "put", "put", "put", "put", "put", "put", "put", "put", "put", "remove", "remove", "remove", "remove", "remove", "remove", "remove", "remove", "remove", "remove", "remove", "remove", "remove", "remove", "remove", "remove", "remove", "remove", "remove", "remove", "get", "get", "get", "get", "get", "get", "get", "get", "get", "get", "get", "get", "get", "get", "get", "get", "get", "get", "get", "get", "get", "get", "get", "get", "get", "get", "get", "get", "get", "get"], "args": [[], [1, 388404], [19, 132467], [33, 739054], [48, 89323], [65, 259460], [81, 420175], [96, 481436], [115, 475143], [131, 519026], [145, 940928], [163, 93916], [179, 245558], [192, 735221], [210, 545445], [227, 497363], [243, 761268], [256, 695166], [274, 101887], [288, 405137], [307, 112961], [320, 354878], [337, 724881], [352, 521751], [369, 609785], [385, 636188], [400, 565933], [416, 512404], [433, 155407], [451, 764350], [467, 299529], [482, 896573], [499, 141532], [513, 801421], [528, 557641], [546, 736252], [562, 996146], [579, 528085], [593, 323791], [609, 373019], [626, 534554], [672], [73], [519], [558], [225], [352], [249], [12], [302], [351], [225], [273], [34], [433], [260], [385], [305], [426], [179], [673], [405], [679], [164], [385], [579], [131], [451], [427], [295], [96], [513], [152], [194], [348], [352], [1], [215], [593], [433], [123], [227], [145], [96], [131], [81], [400], [466], [48], [114], [4]], "out": [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, -1, -1, -1, -1, 528085, 519026, 764350, -1, -1, 481436, 801421, -1, -1, -1, -1, 388404, -1, 323791, -1, -1, 497363, 940928, 481436, 519026, 420175, 565933, -1, 89323, -1, -1]}
+] },
       solution: {
         approach: `<p><b>Separate chaining with resizing</b> — exactly what <code>java.util.HashMap</code> does (minus treeify). The bucket array starts at 16; each slot holds the head of a singly linked list. A key's bucket is <code>spread(hash) &amp; (capacity − 1)</code>. Because we double the table whenever <code>size &gt; 0.75 × capacity</code>, the average chain length stays below 1, so each call does O(1) expected work.</p>`,
         code: `class MyHashMap {
@@ -479,7 +582,54 @@ System.out.println(a.size() + " " + b.size());`
         }
     }
 }`,
-        alt: [{
+        alt: [{ lang: 'js', code: `class MyHashMap {
+  constructor() {
+    this.table = new Array(16).fill(null);   // heads of bucket chains
+    this.size = 0;
+  }
+  idx(key) {
+    let h = key | 0;
+    h ^= h >>> 16;                           // mix high bits into low bits
+    return h & (this.table.length - 1);
+  }
+  put(key, value) {
+    const i = this.idx(key);
+    for (let n = this.table[i]; n; n = n.next) {
+      if (n.key === key) { n.val = value; return; }   // update only
+    }
+    this.table[i] = { key, val: value, next: this.table[i] };
+    if (++this.size > this.table.length * 0.75) this.resize();
+  }
+  get(key) {
+    for (let n = this.table[this.idx(key)]; n; n = n.next) if (n.key === key) return n.val;
+    return -1;
+  }
+  remove(key) {
+    const i = this.idx(key);
+    let prev = null, cur = this.table[i];
+    while (cur) {
+      if (cur.key === key) {
+        if (prev) prev.next = cur.next; else this.table[i] = cur.next;
+        this.size--;
+        return;
+      }
+      prev = cur;
+      cur = cur.next;
+    }
+  }
+  resize() {
+    const old = this.table;
+    this.table = new Array(old.length * 2).fill(null);
+    for (let head of old) {
+      while (head) {
+        const next = head.next, i = this.idx(head.key);
+        head.next = this.table[i];
+        this.table[i] = head;
+        head = next;
+      }
+    }
+  }
+}` }, {
           lang: 'python', code: `class MyHashMap:
     def __init__(self):
         self.cap = 16
@@ -590,9 +740,10 @@ public:
 <p>The tally sheet is a <b>HashMap&lt;item, count&gt;</b>. Writing a stroke is O(1); reading a row is O(1).</p>`,
     explain: `<p><b>The pattern in one sentence:</b> make one pass to <b>count</b> everything into a map, then make a second pass (over the input or over the map) to <b>answer</b> the question. Two O(N) passes = O(N), instead of re-counting for every element (O(N<sup>2</sup>)).</p>
 
-<h4>The three ways to keep a tally in Java</h4>
+<h4>The ways to keep a tally (Java syntax in the table)</h4>
 ${H.table(['when keys are…', 'use', 'one line'], [['anything (ints, strings, objects)', '<code>HashMap&lt;K,Integer&gt;</code>', '<code>cnt.merge(x, 1, Integer::sum);</code>'], ['lowercase letters a–z', '<code>int[26]</code>', '<code>cnt[c - \'a\']++;</code>'], ['ASCII characters', '<code>int[128]</code>', '<code>cnt[c]++;</code>'], ['small ints 0..K', '<code>int[K+1]</code>', '<code>cnt[x]++;</code>']])}
-<p><code>merge(x, 1, Integer::sum)</code> means: "if x is missing, store 1; otherwise store old + 1". The older style is <code>cnt.put(x, cnt.getOrDefault(x, 0) + 1)</code>.</p>
+<p>In Java, <code>merge(x, 1, Integer::sum)</code> means: "if x is missing, store 1; otherwise store old + 1". The older style is <code>cnt.put(x, cnt.getOrDefault(x, 0) + 1)</code>.</p>
+<p>The same tally in other languages: Python <code>Counter(arr)</code>, or <code>cnt[x] += 1</code> on a <code>defaultdict(int)</code>; JavaScript <code>cnt.set(x, (cnt.get(x) || 0) + 1)</code> on a <code>Map</code>; C++ <code>cnt[x]++</code> on an <code>unordered_map</code> (a missing key starts at 0). A letter array is <code>[0] * 26</code> in Python, <code>new Array(26).fill(0)</code> in JavaScript and <code>array&lt;int, 26&gt;{}</code> in C++.</p>
 
 <h4>Use 1 — first non-repeating element</h4>
 ${H.arr([9, 4, 9, 6, 7, 4], { label: 'arr', hl: { 3: 'g' } })}
@@ -620,7 +771,7 @@ ${H.kv([['aet', '[eat, tea, ate]'], ['ant', '[tan, nat]'], ['abt', '[bat]']], { 
       '"can you build X from the letters of Y" (ransom note) → counts of Y ≥ counts of X',
       'N ≤ 10<sup>5</sup> and nested "count occurrences" loops look tempting → O(N) with a map'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
 import java.util.*;
 import java.util.stream.*;
 
@@ -649,7 +800,7 @@ public class TallyIdioms {
             .collect(Collectors.groupingBy(c -> c, TreeMap::new, Collectors.counting()));
         System.out.println(byChar); // {i=4, m=1, p=2, s=4}
     }
-}`, {
+}`, alt: [{
       lang: 'python', run: true, title: 'Python: Counter does the tally for you (runnable)',
       code: `from collections import Counter, defaultdict
 
@@ -665,8 +816,50 @@ for w in ["eat", "tea", "tan", "ate", "nat", "bat"]:
     groups["".join(sorted(w))].append(w)   # signature -> words
 print("groups:", list(groups.values()))
 print("most common 2 in 'mississippi':", Counter("mississippi").most_common(2))`
-    }],
-    codeTitle: ['Tally idioms in Java', 'Python version (runnable)'],
+    }, { lang: 'js', run: true, code: `const arr = [9, 4, 9, 6, 7, 4];
+
+// 1) Map tally: missing -> 1, present -> old + 1
+const cnt = new Map();
+for (const x of arr) cnt.set(x, (cnt.get(x) || 0) + 1);
+console.log('tally =', Object.fromEntries(cnt));
+
+// 2) Second pass over the ARRAY (keeps the original order)
+console.log('first non-repeating =', arr.find((x) => cnt.get(x) === 1));
+
+// 3) Array of 26 counts for lowercase letters: index = code - 97 ('a')
+const letters = new Array(26).fill(0);
+for (const c of 'banana') letters[c.charCodeAt(0) - 97]++;
+console.log('a=' + letters[0] + ' b=' + letters[1] + ' n=' + letters['n'.charCodeAt(0) - 97]);
+
+// 4) reduce() one-liner, then sort the keys for printing
+const byChar = [...'mississippi'].reduce((m, c) => m.set(c, (m.get(c) || 0) + 1), new Map());
+console.log(Object.fromEntries([...byChar].sort())); // { i: 4, m: 1, p: 2, s: 4 }` }, { lang: 'cpp', code: `#include <bits/stdc++.h>
+using namespace std;
+
+int main() {
+    vector<int> arr = {9, 4, 9, 6, 7, 4};
+
+    // 1) unordered_map tally: operator[] creates a missing key with 0
+    unordered_map<int, int> cnt;
+    for (int x : arr) cnt[x]++;
+    cout << "count of 9 = " << cnt[9] << "\\n";
+
+    // 2) Second pass over the ARRAY (keeps the original order)
+    for (int x : arr)
+        if (cnt[x] == 1) { cout << "first non-repeating = " << x << "\\n"; break; }
+
+    // 3) array<int, 26> tally for lowercase letters: index = c - 'a'
+    array<int, 26> letters{};
+    for (char c : string("banana")) letters[c - 'a']++;
+    cout << "a=" << letters[0] << " b=" << letters[1] << " n=" << letters['n' - 'a'] << "\\n";
+
+    // 4) std::map keeps keys sorted (O(log N) per step)
+    map<char, int> byChar;
+    for (char c : string("mississippi")) byChar[c]++;
+    for (auto& [c, n] : byChar) cout << c << "=" << n << " ";   // i=4 m=1 p=2 s=4
+    cout << "\\n";
+}` }] }],
+    codeTitle: 'Tally idioms',
     viz: [{
       title: 'Tally sheet → first non-repeating element',
       input: '9 4 9 6 7 4',
@@ -744,29 +937,71 @@ print("most common 2 in 'mississippi':", Counter("mississippi").most_common(2))`
       html: `<p>Index = <code>c − 'a'</code>: a → 0, b → 1, n → 13.</p>
 ${H.table(['char', 'index', 'count after'], [['b', '1', 'b=1'], ['a', '0', 'a=1'], ['n', '13', 'n=1'], ['a', '0', 'a=2'], ['n', '13', 'n=2'], ['a', '0', H.c('g', 'a=3')]])}
 <p>Result: a=3, b=1, n=2. An array of 26 ints is a "perfect hash": no collisions, no boxing, fits in one or two cache lines.</p>`,
-      code: `int[] cnt = new int[26];
+      code: { lang: 'java', code: `int[] cnt = new int[26];
 for (char c : "banana".toCharArray()) cnt[c - 'a']++;
-System.out.println(cnt[0] + " " + cnt[1] + " " + cnt['n' - 'a']); // 3 1 2`
+System.out.println(cnt[0] + " " + cnt[1] + " " + cnt['n' - 'a']); // 3 1 2`, alt: [{ lang: 'python', code: `cnt = [0] * 26
+for c in "banana":
+    cnt[ord(c) - ord("a")] += 1
+print(cnt[0], cnt[1], cnt[ord("n") - ord("a")])   # 3 1 2` }, { lang: 'js', code: `const cnt = new Array(26).fill(0);
+for (const c of 'banana') cnt[c.charCodeAt(0) - 97]++;
+console.log(cnt[0], cnt[1], cnt['n'.charCodeAt(0) - 97]); // 3 1 2` }, { lang: 'cpp', code: `array<int, 26> cnt{};
+for (char c : string("banana")) cnt[c - 'a']++;
+cout << cnt[0] << " " << cnt[1] << " " << cnt['n' - 'a'] << "\\n"; // 3 1 2` }] }
     }, {
       title: 'First unique character in a string (LeetCode 387)',
       html: `<p>s = "loveleetcode". Tally: l=2, o=2, v=1, e=4, t=1, c=1, d=1. Second pass over s: l(2) o(2) <b>v(1)</b> → return index <b>2</b>.</p>
 <p>Same two-pass pattern; with only lowercase letters use <code>int[26]</code>.</p>`,
-      code: `int firstUniqChar(String s) {
+      code: { lang: 'java', code: `int firstUniqChar(String s) {
     int[] cnt = new int[26];
     for (int i = 0; i < s.length(); i++) cnt[s.charAt(i) - 'a']++;
     for (int i = 0; i < s.length(); i++) if (cnt[s.charAt(i) - 'a'] == 1) return i;
     return -1;
-}`
+}`, alt: [{ lang: 'python', code: `from collections import Counter
+
+def first_uniq_char(s):
+    cnt = Counter(s)
+    return next((i for i, c in enumerate(s) if cnt[c] == 1), -1)` }, { lang: 'js', code: `function firstUniqChar(s) {
+  const cnt = new Array(26).fill(0);
+  for (let i = 0; i < s.length; i++) cnt[s.charCodeAt(i) - 97]++;
+  for (let i = 0; i < s.length; i++) if (cnt[s.charCodeAt(i) - 97] === 1) return i;
+  return -1;
+}` }, { lang: 'cpp', code: `int firstUniqChar(const string& s) {
+    array<int, 26> cnt{};
+    for (char c : s) cnt[c - 'a']++;
+    for (int i = 0; i < (int)s.size(); i++) if (cnt[s[i] - 'a'] == 1) return i;
+    return -1;
+}` }] }
     }, {
       title: 'Majority element (appears more than N/2 times)',
       html: `<p>arr = [2, 2, 1, 1, 1, 2, 2]. Tally: 2 → 4, 1 → 3. N/2 = 3.5, and 4 &gt; 3.5 → answer <b>2</b>. The frequency map solves it in O(N) time and O(N) space; the Boyer–Moore voting algorithm then improves space to O(1) — a classic interview follow-up.</p>`,
-      code: `int majority(int[] a) {
+      code: { lang: 'java', code: `int majority(int[] a) {
     Map<Integer, Integer> cnt = new HashMap<>();
     for (int x : a) {
         if (cnt.merge(x, 1, Integer::sum) > a.length / 2) return x; // merge returns the new count
     }
     return -1; // problem guarantees a majority exists
-}`
+}`, alt: [{ lang: 'python', code: `from collections import defaultdict
+
+def majority(a):
+    cnt = defaultdict(int)
+    for x in a:
+        cnt[x] += 1
+        if cnt[x] > len(a) // 2:
+            return x
+    return -1   # problem guarantees a majority exists` }, { lang: 'js', code: `function majority(a) {
+  const cnt = new Map();
+  for (const x of a) {
+    const c = (cnt.get(x) || 0) + 1;
+    cnt.set(x, c);
+    if (c > Math.floor(a.length / 2)) return x;
+  }
+  return -1; // problem guarantees a majority exists
+}` }, { lang: 'cpp', code: `int majority(const vector<int>& a) {
+    unordered_map<int, int> cnt;
+    for (int x : a)
+        if (++cnt[x] > (int)a.size() / 2) return x;   // ++ returns the new count
+    return -1; // problem guarantees a majority exists
+}` }] }
     }, {
       title: 'Two arrays equal as multisets?',
       html: `<p>A = [1, 2, 2, 3], B = [2, 3, 1, 2]. One map: +1 for A, −1 for B. All zero → <b>true</b>. Sorting both (O(N log N)) also works, but the map is O(N). This is exactly the anagram check with numbers instead of letters.</p>`
@@ -808,9 +1043,19 @@ System.out.println(cnt[0] + " " + cnt[1] + " " + cnt['n' - 'a']); // 3 1 2`
       },
       hints: [
         `<p><b>Hint 1:</b> The only thing you need to know about a value is "how many times does it appear in the whole array?" Can you compute that once for all values instead of again and again?</p>`,
-        `<p><b>Hint 2:</b> Build a <code>HashMap&lt;Integer,Integer&gt;</code> tally in one pass with <code>merge(x, 1, Integer::sum)</code>. Values go up to 10<sup>9</sup> (and can be negative), so an array tally will not work.</p>`,
+        `<p><b>Hint 2:</b> Build a hash-map tally (value → count) in one pass: <code>merge(x, 1, Integer::sum)</code> in Java, <code>Counter</code> in Python, a <code>Map</code> in JavaScript, <code>unordered_map</code> in C++. Values go up to 10<sup>9</sup> (and can be negative), so an array tally will not work.</p>`,
         `<p><b>Hint 3 (recipe):</b> pass 1: count everything. Pass 2: for x in arr (in order) if count[x] == 1 return x. After the loop return 0. Edge cases: single element → that element; everything repeated → 0.</p>`
       ],
+      tests: { sig: 'int[] -> int', fn: 'firstNonRepeating', cases: [
+  [[[-1, 2, -1, 3, 2]], 3],
+  [[[5]], 5],
+  [[[1, 1, 2, 2]], 0],
+  [[[7, 7, 7, 8]], 8],
+  [[[1000000000, -1000000000, 1000000000]], -1000000000],
+  [[[0, 0, 4, 5, 4]], 5],
+  [[[2, 3, 4]], 2],
+  [[[9, 4, 9, 6, 7, 4]], 6]
+] },
       solution: {
         approach: `<p><b>Two passes with a tally sheet.</b> Pass 1 records how often each value appears. Pass 2 walks the array in its original order and returns the first value whose tally is 1. Each pass is O(N) and each map operation is O(1) on average.</p>`,
         code: `class Solution {
@@ -826,7 +1071,12 @@ System.out.println(cnt[0] + " " + cnt[1] + " " + cnt['n' - 'a']); // 3 1 2`
         return 0; // every element repeats
     }
 }`,
-        alt: [{
+        alt: [{ lang: 'js', code: `function firstNonRepeating(arr) {
+  const count = new Map();                       // pass 1: value -> how many times
+  for (const x of arr) count.set(x, (count.get(x) || 0) + 1);
+  for (const x of arr) if (count.get(x) === 1) return x;   // pass 2: original order
+  return 0;
+}` }, {
           lang: 'python', code: `from collections import Counter
 
 def first_non_repeating(arr):
@@ -898,6 +1148,16 @@ def first_non_repeating(arr):
         `<p><b>Hint 2:</b> Only lowercase letters → a single <code>int[26]</code> is enough. Add for s, subtract for t.</p>`,
         `<p><b>Hint 3 (recipe):</b> if lengths differ return false. For i in 0..n−1: cnt[s[i]−'a']++, cnt[t[i]−'a']−−. Finally return true only if all 26 counts are 0. Unicode follow-up → use a HashMap over code points.</p>`
       ],
+      tests: { sig: 'string string -> bool', fn: 'isAnagram', cases: [
+  [['anagram', 'nagaram'], true],
+  [['rat', 'car'], false],
+  [['a', 'a'], true],
+  [['a', 'ab'], false],
+  [['ab', 'ba'], true],
+  [['aacc', 'ccac'], false],
+  [['zzzz', 'zzzz'], true],
+  [['listen', 'silent'], true]
+] },
       solution: {
         approach: `<p><b>One counting array, +1 / −1.</b> Different lengths → instantly false. Otherwise walk both strings together, incrementing for s and decrementing for t. Any letter that is not perfectly balanced leaves a non-zero count.</p>`,
         code: `class Solution {
@@ -912,7 +1172,24 @@ def first_non_repeating(arr):
         return true;
     }
 }`,
-        alt: [{
+        alt: [{ lang: 'js', code: `function isAnagram(s, t) {
+  if (s.length !== t.length) return false;
+  const cnt = new Array(26).fill(0);              // 'a' -> 0 ... 'z' -> 25
+  for (let i = 0; i < s.length; i++) {
+    cnt[s.charCodeAt(i) - 97]++;                  // s adds
+    cnt[t.charCodeAt(i) - 97]--;                  // t removes
+  }
+  return cnt.every((c) => c === 0);
+}` }, { lang: 'cpp', code: `bool isAnagram(string s, string t) {
+    if (s.size() != t.size()) return false;
+    array<int, 26> cnt{};                          // 'a' -> 0 ... 'z' -> 25
+    for (size_t i = 0; i < s.size(); i++) {
+        cnt[s[i] - 'a']++;                         // s adds
+        cnt[t[i] - 'a']--;                         // t removes
+    }
+    for (int c : cnt) if (c != 0) return false;
+    return true;
+}` }, {
           lang: 'python', code: `from collections import Counter
 
 def is_anagram(s: str, t: str) -> bool:
@@ -990,9 +1267,19 @@ boolean sameLetters(String a, String b) {
       },
       hints: [
         `<p><b>Hint 1:</b> Give every word a label that is the <b>same for all its anagrams</b> and different otherwise. Then grouping is just "put words with the same label together".</p>`,
-        `<p><b>Hint 2:</b> Label = letters sorted, or the 26 counts joined with "#". Use <code>HashMap&lt;String, List&lt;String&gt;&gt;</code> with <code>computeIfAbsent(key, k -&gt; new ArrayList&lt;&gt;())</code>.</p>`,
+        `<p><b>Hint 2:</b> Label = letters sorted, or the 26 counts joined with "#". Use a map from label to a list of words: <code>computeIfAbsent(key, k -&gt; new ArrayList&lt;&gt;())</code> in Java, <code>defaultdict(list)</code> in Python, a <code>Map</code> of arrays in JavaScript, <code>unordered_map&lt;string, vector&lt;string&gt;&gt;</code> in C++.</p>`,
         `<p><b>Hint 3 (recipe):</b> for each word: key = sort(word); map[key].add(word). Return new ArrayList&lt;&gt;(map.values()). Edge cases: empty string "" (key ""), single word, all words identical.</p>`
       ],
+      tests: { sig: 'string[] -> list<list<string>>', fn: 'groupAnagrams', cmp: 'sets', cases: [
+  [[['eat', 'tea', 'tan', 'ate', 'nat', 'bat']], [['eat', 'tea', 'ate'], ['tan', 'nat'], ['bat']]],
+  [[['']], [['']]],
+  [[['a']], [['a']]],
+  [[['abc', 'bca', 'cab', 'xyz']], [['abc', 'bca', 'cab'], ['xyz']]],
+  [[['ab', 'ba', 'ab']], [['ab', 'ba', 'ab']]],
+  [[['', '', 'b', '']], [['', '', ''], ['b']]],
+  [[['ddddddddddg', 'dgggggggggg']], [['ddddddddddg'], ['dgggggggggg']]],
+  [[['abc', 'def', 'ghi']], [['abc'], ['def'], ['ghi']]]
+] },
       solution: {
         approach: `<p><b>Signature → bucket.</b> Each word's sorted letters form a canonical signature. A HashMap from signature to list collects the groups in one pass. Sorting a word of length K costs O(K log K); the counting signature brings that to O(K).</p>`,
         code: `class Solution {
@@ -1007,7 +1294,25 @@ boolean sameLetters(String a, String b) {
         return new ArrayList<>(groups.values());
     }
 }`,
-        alt: [{
+        alt: [{ lang: 'js', code: `function groupAnagrams(strs) {
+  const groups = new Map();                       // sorted letters -> words
+  for (const w of strs) {
+    const key = [...w].sort().join('');           // "tea" -> "aet"
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(w);
+  }
+  return [...groups.values()];
+}` }, { lang: 'cpp', code: `vector<vector<string>> groupAnagrams(vector<string>& strs) {
+    unordered_map<string, vector<string>> groups;   // sorted letters -> words
+    for (const string& w : strs) {
+        string key = w;
+        sort(key.begin(), key.end());               // "tea" -> "aet"
+        groups[key].push_back(w);
+    }
+    vector<vector<string>> res;
+    for (auto& [key, words] : groups) res.push_back(move(words));
+    return res;
+}` }, {
           lang: 'java', title: 'O(K) counting signature', code: `class Solution2 {
     public List<List<String>> groupAnagrams(String[] strs) {
         Map<String, List<String>> groups = new HashMap<>();
@@ -1087,7 +1392,7 @@ ${H.table(['question asks for…', 'store', 'example'], [['yes / no — does a p
       '"you may not use the same element twice" → check BEFORE inserting the current element',
       'Sorting would destroy the original indices you must return → hashing instead of two pointers'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
 import java.util.*;
 
 public class LookupPatterns {
@@ -1126,28 +1431,109 @@ public class LookupPatterns {
         System.out.println(containsDuplicate(new int[]{1, 2, 3, 1}));            // true
         System.out.println(countPairs(new int[]{1, 5, 7, 1, 5}, 6));             // 4
     }
-}`, {
+}`, alt: [{
       lang: 'python', run: true, title: 'Python (runnable)',
       code: `def two_sum(nums, target):
     seen = {}                       # value -> index
     for i, x in enumerate(nums):
         if target - x in seen:
             return [seen[target - x], i]
-        seen[x] = i
+        seen[x] = i                 # insert AFTER checking
     return []
+
+def contains_duplicate(nums):
+    seen = set()
+    for x in nums:
+        if x in seen:
+            return True
+        seen.add(x)
+    return False
 
 def count_pairs(nums, k):
     freq, pairs = {}, 0
     for x in nums:
-        pairs += freq.get(k - x, 0)
+        pairs += freq.get(k - x, 0)  # every earlier partner makes a pair
         freq[x] = freq.get(x, 0) + 1
     return pairs
 
-print(two_sum([11, 2, 15, 7], 9))      # [1, 3]
-print(two_sum([3, 3], 6))              # [0, 1]
-print(count_pairs([1, 5, 7, 1, 5], 6)) # 4`
-    }],
-    codeTitle: ['Lookup patterns in Java', 'Python version (runnable)'],
+print(two_sum([11, 2, 15, 7], 9))         # [1, 3]
+print(two_sum([3, 3], 6))                 # [0, 1]
+print(contains_duplicate([1, 2, 3, 1]))   # True
+print(count_pairs([1, 5, 7, 1, 5], 6))    # 4`
+    }, { lang: 'js', run: true, code: `// 2-Sum returning indices: value -> index of where we saw it
+function twoSum(nums, target) {
+  const seen = new Map();
+  for (let i = 0; i < nums.length; i++) {
+    const need = target - nums[i];
+    if (seen.has(need)) return [seen.get(need), i];   // partner seen earlier
+    seen.set(nums[i], i);                             // insert AFTER checking
+  }
+  return [];
+}
+
+// Contains Duplicate: a Set remembers every value seen so far
+function containsDuplicate(nums) {
+  const seen = new Set();
+  for (const x of nums) {
+    if (seen.has(x)) return true;
+    seen.add(x);
+  }
+  return false;
+}
+
+// Count pairs (i < j) with nums[i] + nums[j] == k, duplicates allowed
+function countPairs(nums, k) {
+  const freq = new Map();
+  let pairs = 0;
+  for (const x of nums) {
+    pairs += freq.get(k - x) || 0;                    // every earlier partner makes a pair
+    freq.set(x, (freq.get(x) || 0) + 1);
+  }
+  return pairs;
+}
+
+console.log(twoSum([11, 2, 15, 7], 9));          // [ 1, 3 ]
+console.log(containsDuplicate([1, 2, 3, 1]));    // true
+console.log(countPairs([1, 5, 7, 1, 5], 6));     // 4` }, { lang: 'cpp', code: `#include <bits/stdc++.h>
+using namespace std;
+
+// 2-Sum returning indices: value -> index of where we saw it
+vector<int> twoSum(const vector<int>& nums, int target) {
+    unordered_map<int, int> seen;
+    for (int i = 0; i < (int)nums.size(); i++) {
+        auto it = seen.find(target - nums[i]);
+        if (it != seen.end()) return {it->second, i};   // partner seen earlier
+        seen[nums[i]] = i;                              // insert AFTER checking
+    }
+    return {};
+}
+
+// Contains Duplicate: insert().second is false if the value was already present
+bool containsDuplicate(const vector<int>& nums) {
+    unordered_set<int> seen;
+    for (int x : nums) if (!seen.insert(x).second) return true;
+    return false;
+}
+
+// Count pairs (i < j) with nums[i] + nums[j] == k, duplicates allowed
+long long countPairs(const vector<int>& nums, int k) {
+    unordered_map<int, int> freq;
+    long long pairs = 0;
+    for (int x : nums) {
+        auto it = freq.find(k - x);
+        if (it != freq.end()) pairs += it->second;     // every earlier partner makes a pair
+        freq[x]++;
+    }
+    return pairs;
+}
+
+int main() {
+    auto r = twoSum({11, 2, 15, 7}, 9);
+    cout << "[" << r[0] << ", " << r[1] << "]\\n";                       // [1, 3]
+    cout << boolalpha << containsDuplicate({1, 2, 3, 1}) << "\\n";       // true
+    cout << countPairs({1, 5, 7, 1, 5}, 6) << "\\n";                     // 4
+}` }] }],
+    codeTitle: 'Lookup patterns',
     viz: [{
       title: '2-Sum with a HashMap (value → index), check before insert',
       input: '11 2 15 7 | 9',
@@ -1220,14 +1606,34 @@ print(count_pairs([1, 5, 7, 1, 5], 6)) # 4`
     }, {
       title: 'Pair with difference K',
       html: `<p>arr = [5, 20, 3, 2, 50, 80], K = 78. For each x, ask whether <b>x − 78</b> or <b>x + 78</b> was seen. At x = 80: 80 − 78 = 2 is in the set → pair (2, 80). Careful with K = 0: you then need the same value <b>twice</b>, so use a count map instead of a set.</p>`,
-      code: `boolean pairWithDiff(int[] a, int k) {
+      code: { lang: 'java', code: `boolean pairWithDiff(int[] a, int k) {
     Set<Integer> seen = new HashSet<>();
     for (int x : a) {
         if (seen.contains(x - k) || seen.contains(x + k)) return true;
         seen.add(x);
     }
     return false;
-}`
+}`, alt: [{ lang: 'python', code: `def pair_with_diff(a, k):
+    seen = set()
+    for x in a:
+        if x - k in seen or x + k in seen:
+            return True
+        seen.add(x)
+    return False` }, { lang: 'js', code: `function pairWithDiff(a, k) {
+  const seen = new Set();
+  for (const x of a) {
+    if (seen.has(x - k) || seen.has(x + k)) return true;
+    seen.add(x);
+  }
+  return false;
+}` }, { lang: 'cpp', code: `bool pairWithDiff(const vector<int>& a, int k) {
+    unordered_set<int> seen;
+    for (int x : a) {
+        if (seen.count(x - k) || seen.count(x + k)) return true;
+        seen.insert(x);
+    }
+    return false;
+}` }] }
     }, {
       title: 'Sorted input? Then two pointers beat hashing on memory',
       html: `<p>If the array is already <b>sorted</b> (LeetCode 167), use two pointers L and R: sum too small → L++, too big → R−−. O(N) time, <b>O(1)</b> extra space. If it is unsorted and you must return original indices, sorting would scramble them (or cost O(N log N) plus index bookkeeping) — that is when the HashMap wins.</p>
@@ -1268,9 +1674,19 @@ ${H.table(['input', 'best approach', 'time', 'space'], [['unsorted, return indic
       },
       hints: [
         `<p><b>Hint 1:</b> For a fixed nums[i], the partner is not a mystery — it must be exactly <code>target − nums[i]</code>. The only question is "have I already seen that value, and where?"</p>`,
-        `<p><b>Hint 2:</b> Keep a <code>HashMap&lt;Integer,Integer&gt;</code> from value → index of everything to the left of i. One lookup per element.</p>`,
+        `<p><b>Hint 2:</b> Keep a hash map (<code>HashMap</code> / <code>dict</code> / <code>Map</code> / <code>unordered_map</code>) from value → index of everything to the left of i. One lookup per element.</p>`,
         `<p><b>Hint 3 (recipe):</b> for i in 0..N−1: need = target − nums[i]; if map has need → return [map[need], i]; else map[nums[i]] = i. Check BEFORE inserting so you never use the same element twice; duplicates like [3,3] work naturally.</p>`
       ],
+      tests: { sig: 'int[] int -> int[]', fn: 'twoSum', cmp: 'set', cases: [
+  [[[2, 7, 11, 15], 9], [0, 1]],
+  [[[11, 2, 15, 7], 9], [1, 3]],
+  [[[3, 3], 6], [0, 1]],
+  [[[3, 2, 4], 6], [1, 2]],
+  [[[-1, -2, -3, -4, -5], -8], [2, 4]],
+  [[[0, 4, 3, 0], 0], [0, 3]],
+  [[[1000000000, -1000000000, 5], 0], [0, 1]],
+  [[[1000000000, -1000000000, 7, -7, 2], -999999998], [1, 4]]
+] },
       solution: {
         approach: `<p><b>One pass, complement lookup.</b> The map remembers every value seen so far and its index. For each new element we ask for the complement in O(1); the first hit is the answer. This turns the O(N) inner search of the brute force into a single hash lookup.</p>`,
         code: `class Solution {
@@ -1285,7 +1701,15 @@ ${H.table(['input', 'best approach', 'time', 'space'], [['unsorted, return indic
         return new int[0];                               // problem guarantees we never get here
     }
 }`,
-        alt: [{
+        alt: [{ lang: 'js', code: `function twoSum(nums, target) {
+  const seen = new Map();                 // value -> index (earlier indices only)
+  for (let i = 0; i < nums.length; i++) {
+    const need = target - nums[i];
+    if (seen.has(need)) return [seen.get(need), i];
+    seen.set(nums[i], i);
+  }
+  return [];
+}` }, {
           lang: 'python', code: `def two_sum(nums, target):
     seen = {}
     for i, x in enumerate(nums):
@@ -1352,9 +1776,9 @@ ${H.table(['window', 'values', 'distinct'], [['0..3', '1 2 1 3', '3'], ['1..4', 
 </ol>
 ${H.table(['step', 'in', 'out', 'map after', 'distinct'], [['build 0..3', '1, 2, 1, 3', '—', '{1:2, 2:1, 3:1}', '3'], ['slide to 1..4', '4', '1', '{1:1, 2:1, 3:1, 4:1}', '4'], ['slide to 2..5', '2', '2', '{1:1, 2:1, 3:1, 4:1}', '4'], ['slide to 3..6', '3', H.c('r', '1 → 0, delete'), '{2:1, 3:2, 4:1}', '3']])}
 
-<h4>The neat Java idiom for "decrement and delete at zero"</h4>
+<h4>"Decrement and delete at zero" in each language</h4>
 <pre>cnt.computeIfPresent(out, (key, v) -&gt; v == 1 ? null : v - 1);</pre>
-<p>Returning <code>null</code> from the function removes the key. One lookup, no leftover zero rows.</p>
+<p>In Java, returning <code>null</code> from the function removes the key. One lookup, no leftover zero rows. Python: <code>cnt[out] -= 1</code>, then <code>del cnt[out]</code> when it reaches 0. JavaScript: <code>cnt.delete(out)</code> when the count would reach 0, else <code>cnt.set(out, c - 1)</code>. C++: <code>if (--cnt[out] == 0) cnt.erase(out);</code>.</p>
 
 <p><b>This is the foundation</b> of every "sliding window + hashing" problem later in the module (longest substring without repeats, minimum window substring, at most K distinct, find all anagrams): the window keeps a frequency map that is updated in O(1) per step.</p>`,
     clues: [
@@ -1365,7 +1789,7 @@ ${H.table(['step', 'in', 'out', 'map after', 'distinct'], [['build 0..3', '1, 2,
       'N up to 10<sup>5</sup>–10<sup>6</sup> and K large → O(N·K) recount is too slow, need O(N)',
       '"unique visitors in the last K minutes" (system design) → same idea; at huge scale use HyperLogLog'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
 import java.util.*;
 
 public class WindowDistinct {
@@ -1399,7 +1823,7 @@ public class WindowDistinct {
         System.out.println(containsNearbyDuplicate(new int[]{1, 2, 3, 1}, 3));   // true
         System.out.println(containsNearbyDuplicate(new int[]{1, 2, 3, 1, 2, 3}, 2)); // false
     }
-}`, {
+}`, alt: [{
       lang: 'python', run: true, title: 'Python (runnable)',
       code: `from collections import defaultdict
 
@@ -1416,10 +1840,81 @@ def distinct_in_windows(arr, k):
             res.append(len(cnt))
     return res
 
-print(distinct_in_windows([1, 2, 1, 3, 4, 2, 3], 4))   # [3, 4, 4, 3]
-print(distinct_in_windows([1, 1, 1, 1], 2))            # [1, 1, 1]`
-    }],
-    codeTitle: ['Window frequency map in Java', 'Python version (runnable)'],
+def contains_nearby_duplicate(a, k):
+    window = set()                        # holds at most k latest values
+    for i, x in enumerate(a):
+        if x in window:
+            return True                   # same value inside the window
+        window.add(x)
+        if len(window) > k:
+            window.remove(a[i - k])       # keep only the last k
+    return False
+
+print(distinct_in_windows([1, 2, 1, 3, 4, 2, 3], 4))       # [3, 4, 4, 3]
+print(distinct_in_windows([1, 1, 1, 1], 2))                # [1, 1, 1]
+print(contains_nearby_duplicate([1, 2, 3, 1], 3))          # True
+print(contains_nearby_duplicate([1, 2, 3, 1, 2, 3], 2))    # False`
+    }, { lang: 'js', run: true, code: `// Distinct count of every window of size k. O(N) average.
+function distinctInWindows(arr, k) {
+  const cnt = new Map();
+  const res = [];
+  for (let i = 0; i < arr.length; i++) {
+    cnt.set(arr[i], (cnt.get(arr[i]) || 0) + 1);       // 1) element enters
+    if (i >= k) {
+      const out = arr[i - k];                          // 2) element leaves
+      const c = cnt.get(out) - 1;
+      if (c === 0) cnt.delete(out); else cnt.set(out, c);   // delete at 0
+    }
+    if (i >= k - 1) res.push(cnt.size);                // 3) window complete: answer
+  }
+  return res;
+}
+
+// Contains Duplicate II: is there i != j with a[i] == a[j] and |i - j| <= k ?
+function containsNearbyDuplicate(a, k) {
+  const window = new Set();                            // holds at most k latest values
+  for (let i = 0; i < a.length; i++) {
+    if (window.has(a[i])) return true;
+    window.add(a[i]);
+    if (window.size > k) window.delete(a[i - k]);      // keep only the last k
+  }
+  return false;
+}
+
+console.log(distinctInWindows([1, 2, 1, 3, 4, 2, 3], 4));      // [ 3, 4, 4, 3 ]
+console.log(containsNearbyDuplicate([1, 2, 3, 1], 3));         // true
+console.log(containsNearbyDuplicate([1, 2, 3, 1, 2, 3], 2));   // false` }, { lang: 'cpp', code: `#include <bits/stdc++.h>
+using namespace std;
+
+// Distinct count of every window of size k. O(N) average.
+vector<int> distinctInWindows(const vector<int>& arr, int k) {
+    unordered_map<int, int> cnt;
+    vector<int> res;
+    for (int i = 0; i < (int)arr.size(); i++) {
+        cnt[arr[i]]++;                                          // 1) element enters
+        if (i >= k && --cnt[arr[i - k]] == 0) cnt.erase(arr[i - k]);   // 2) leaves; erase at 0
+        if (i >= k - 1) res.push_back(cnt.size());              // 3) window complete: answer
+    }
+    return res;
+}
+
+// Contains Duplicate II: is there i != j with a[i] == a[j] and |i - j| <= k ?
+bool containsNearbyDuplicate(const vector<int>& a, int k) {
+    unordered_set<int> window;                                  // at most k latest values
+    for (int i = 0; i < (int)a.size(); i++) {
+        if (!window.insert(a[i]).second) return true;
+        if ((int)window.size() > k) window.erase(a[i - k]);     // keep only the last k
+    }
+    return false;
+}
+
+int main() {
+    for (int d : distinctInWindows({1, 2, 1, 3, 4, 2, 3}, 4)) cout << d << " ";   // 3 4 4 3
+    cout << "\\n" << boolalpha;
+    cout << containsNearbyDuplicate({1, 2, 3, 1}, 3) << "\\n";         // true
+    cout << containsNearbyDuplicate({1, 2, 3, 1, 2, 3}, 2) << "\\n";   // false
+}` }] }],
+    codeTitle: 'Window frequency map',
     viz: [{
       title: 'Slide the window: add (green), remove/erase (red), answer = number of keys',
       input: '1 2 1 3 4 2 3 | 4',
@@ -1489,7 +1984,7 @@ ${H.table(['window', 'map', 'distinct'], [['asha ben asha', '{asha:2, ben:1}', '
     }, {
       title: 'Small value range → int array instead of a map',
       html: `<p>If values are in 0..10<sup>5</sup>, use <code>int[] cnt</code> plus a variable <code>distinct</code>: when a count goes 0 → 1, <code>distinct++</code>; when it goes 1 → 0, <code>distinct−−</code>. No hashing, no boxing, and you do not even need <code>size()</code>.</p>`,
-      code: `List<Integer> distinctSmallRange(int[] a, int k, int maxVal) {
+      code: { lang: 'java', code: `List<Integer> distinctSmallRange(int[] a, int k, int maxVal) {
     int[] cnt = new int[maxVal + 1];
     int distinct = 0;
     List<Integer> res = new ArrayList<>();
@@ -1499,7 +1994,38 @@ ${H.table(['window', 'map', 'distinct'], [['asha ben asha', '{asha:2, ben:1}', '
         if (i >= k - 1) res.add(distinct);
     }
     return res;
-}`
+}`, alt: [{ lang: 'python', code: `def distinct_small_range(a, k, max_val):
+    cnt, distinct, res = [0] * (max_val + 1), 0, []
+    for i, x in enumerate(a):
+        if cnt[x] == 0:
+            distinct += 1                  # 0 -> 1: a new distinct value
+        cnt[x] += 1
+        if i >= k:
+            cnt[a[i - k]] -= 1
+            if cnt[a[i - k]] == 0:
+                distinct -= 1              # 1 -> 0: value fully left
+        if i >= k - 1:
+            res.append(distinct)
+    return res` }, { lang: 'js', code: `function distinctSmallRange(a, k, maxVal) {
+  const cnt = new Int32Array(maxVal + 1);
+  let distinct = 0;
+  const res = [];
+  for (let i = 0; i < a.length; i++) {
+    if (cnt[a[i]]++ === 0) distinct++;                 // 0 -> 1: a new distinct value
+    if (i >= k && --cnt[a[i - k]] === 0) distinct--;   // 1 -> 0: value fully left
+    if (i >= k - 1) res.push(distinct);
+  }
+  return res;
+}` }, { lang: 'cpp', code: `vector<int> distinctSmallRange(const vector<int>& a, int k, int maxVal) {
+    vector<int> cnt(maxVal + 1, 0), res;
+    int distinct = 0;
+    for (int i = 0; i < (int)a.size(); i++) {
+        if (cnt[a[i]]++ == 0) distinct++;              // 0 -> 1: a new distinct value
+        if (i >= k && --cnt[a[i - k]] == 0) distinct--; // 1 -> 0: value fully left
+        if (i >= k - 1) res.push_back(distinct);
+    }
+    return res;
+}` }] }
     }],
     deepDive: `<p><b>Invariant.</b> After processing index i (once i ≥ K − 1), the map contains exactly the multiset of arr[i−K+1..i], with no zero-count keys. Therefore <code>size()</code> equals the distinct count. Forgetting to delete zero-count keys breaks the invariant silently — <code>size()</code> keeps growing.</p>
 <p><b>Cost.</b> Every element is added once and removed once: 2N map operations → O(N) average time, O(K) space (the map never holds more than K keys). The brute force recounts each window from scratch: O(N·K), which is 10<sup>10</sup> for N = 10<sup>5</sup>, K = 10<sup>5</sup>/2.</p>
@@ -1536,9 +2062,19 @@ ${H.table(['window', 'map', 'distinct'], [['asha ben asha', '{asha:2, ben:1}', '
       },
       hints: [
         `<p><b>Hint 1:</b> Neighbouring windows differ by exactly two elements: one enters on the right, one leaves on the left. Update, don't rebuild.</p>`,
-        `<p><b>Hint 2:</b> A set cannot handle duplicates leaving; keep a <code>HashMap&lt;value, count&gt;</code> of the current window. Distinct count = number of keys.</p>`,
+        `<p><b>Hint 2:</b> A set cannot handle duplicates leaving; keep a hash map value → count of the current window. Distinct count = number of keys.</p>`,
         `<p><b>Hint 3 (recipe):</b> for i in 0..N−1: cnt[arr[i]]++; if i ≥ K: decrement cnt[arr[i−K]] and delete it at 0; if i ≥ K−1: append cnt.size(). Edge cases: K = 1 (all ones), K = N (one answer), all equal values.</p>`
       ],
+      tests: { sig: 'int[] int -> list<int>', fn: 'countDistinct', cases: [
+  [[[1, 2, 1, 3, 4, 2, 3], 4], [3, 4, 4, 3]],
+  [[[5], 1], [1]],
+  [[[1, 2, 3], 3], [3]],
+  [[[4, 4, 4, 4], 2], [1, 1, 1]],
+  [[[1, 2, 3, 4], 1], [1, 1, 1, 1]],
+  [[[1, 2, 1, 2, 1], 3], [2, 2, 2]],
+  [[[1, 1, 2, 2, 3, 3], 2], [1, 2, 1, 2, 1]],
+  [[[100000, 1, 100000, 1], 2], [2, 2, 2]]
+] },
       solution: {
         approach: `<p><b>Sliding window with a frequency map.</b> Add the entering element, remove the leaving one (deleting the key when its count hits 0), and read the map's size. Each element causes O(1) map work twice, so the whole scan is linear.</p>`,
         code: `class Solution {
@@ -1556,7 +2092,20 @@ ${H.table(['window', 'map', 'distinct'], [['asha ben asha', '{asha:2, ben:1}', '
         return res;
     }
 }`,
-        alt: [{
+        alt: [{ lang: 'js', code: `function countDistinct(arr, k) {
+  const cnt = new Map();                  // value -> copies inside the window
+  const res = [];
+  for (let i = 0; i < arr.length; i++) {
+    cnt.set(arr[i], (cnt.get(arr[i]) || 0) + 1);     // enter
+    if (i >= k) {
+      const out = arr[i - k];                        // leave
+      const c = cnt.get(out) - 1;
+      if (c === 0) cnt.delete(out); else cnt.set(out, c);
+    }
+    if (i >= k - 1) res.push(cnt.size);
+  }
+  return res;
+}` }, {
           lang: 'python', code: `from collections import defaultdict
 
 def count_distinct(arr, k):
@@ -1632,7 +2181,7 @@ ${H.table(['i', 'arr[i]', 'pf', 'set before', 'in set?'], [['—', '—', '0 (se
 long pf = 0;
 for (int x : a) { pf += x; if (!seen.add(pf)) return true; }
 return false;</pre>
-<p><code>seen.add(pf)</code> returns <b>false</b> when pf was already present — the repeat check and the insert in one call. Use <code>long</code>: 10<sup>5</sup> values of 10<sup>9</sup> sum to 10<sup>14</sup>, far beyond int.</p>
+<p>In Java, <code>seen.add(pf)</code> returns <b>false</b> when pf was already present — the repeat check and the insert in one call. C++ has the same trick: <code>seen.insert(pf).second</code> is false on a repeat. In Python and JavaScript, check <code>pf in seen</code> / <code>seen.has(pf)</code> first, then add. Use a 64-bit integer (<code>long</code> in Java, <code>long long</code> in C++): 10<sup>5</sup> values of 10<sup>9</sup> sum to 10<sup>14</sup>, far beyond a 32-bit int. Python integers never overflow, and a JavaScript <code>Number</code> is exact up to 2<sup>53</sup>, which is enough here.</p>
 
 <h4>The family this unlocks</h4>
 ${H.table(['question', 'store in the hash', 'topic'], [['zero-sum subarray exists?', 'HashSet of prefix sums, seed {0}', 'this one'], ['how many subarrays sum to K?', 'HashMap prefix → count, seed {0:1}', 'next topic'], ['longest subarray with sum 0 / K?', 'HashMap prefix → first index, seed {0:−1}', 'topic 7'], ['equal 0s and 1s', 'turn 0 into −1, then "longest sum 0"', 'topic 7']])}`,
@@ -1644,7 +2193,7 @@ ${H.table(['question', 'store in the hash', 'topic'], [['zero-sum subarray exist
       'N ≤ 10<sup>5</sup>, |a[i]| ≤ 10<sup>9</sup> → O(N) and use long for the running sum',
       '"subarray sum divisible by K" → repeated prefix sum <b>mod K</b> (same idea)'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
 import java.util.*;
 
 public class ZeroSum {
@@ -1680,7 +2229,7 @@ public class ZeroSum {
         System.out.println(Arrays.toString(findZeroSum(new int[]{4, 2, -3, 1, 6}))); // [1, 3]
         System.out.println(Arrays.toString(findZeroSum(new int[]{1, -1})));         // [0, 1]
     }
-}`, {
+}`, alt: [{
       lang: 'python', run: true, title: 'Python (runnable)',
       code: `def has_zero_sum(a):
     seen, pf = {0}, 0           # seed: the empty prefix has sum 0
@@ -1691,10 +2240,80 @@ public class ZeroSum {
         seen.add(pf)
     return False
 
+def find_zero_sum(a):
+    first_at, pf = {0: -1}, 0   # pf = 0 "happened" before index 0
+    for i, x in enumerate(a):
+        pf += x
+        if pf in first_at:
+            return [first_at[pf] + 1, i]   # a[prev+1..i] sums to 0
+        first_at[pf] = i
+    return None
+
 for arr in ([4, 2, -3, 1, 6], [1, 2, 3], [1, -1], [3, 0, 5], [-3, 2, 3, 1, 6]):
-    print(arr, "->", has_zero_sum(arr))`
-    }],
-    codeTitle: ['Zero-sum subarray in Java (exists + find)', 'Python version (runnable)'],
+    print(arr, "->", has_zero_sum(arr))
+print(find_zero_sum([4, 2, -3, 1, 6]))   # [1, 3]
+print(find_zero_sum([1, -1]))            # [0, 1]`
+    }, { lang: 'js', run: true, code: `// true if some non-empty contiguous subarray sums to 0
+function hasZeroSum(a) {
+  const seen = new Set([0]);         // balance before any element (empty prefix)
+  let pf = 0;
+  for (const x of a) {
+    pf += x;                         // running balance
+    if (seen.has(pf)) return true;   // this balance appeared before
+    seen.add(pf);
+  }
+  return false;
+}
+
+// Variant: return [l, r] of one zero-sum subarray (or null)
+function findZeroSum(a) {
+  const firstAt = new Map([[0, -1]]); // pf = 0 "happened" before index 0
+  let pf = 0;
+  for (let i = 0; i < a.length; i++) {
+    pf += a[i];
+    if (firstAt.has(pf)) return [firstAt.get(pf) + 1, i];   // a[prev+1..i] sums to 0
+    firstAt.set(pf, i);
+  }
+  return null;
+}
+
+console.log(hasZeroSum([4, 2, -3, 1, 6]));    // true
+console.log(hasZeroSum([1, 2, 3]));           // false
+console.log(findZeroSum([4, 2, -3, 1, 6]));   // [ 1, 3 ]
+console.log(findZeroSum([1, -1]));            // [ 0, 1 ]` }, { lang: 'cpp', code: `#include <bits/stdc++.h>
+using namespace std;
+
+// true if some non-empty contiguous subarray sums to 0
+bool hasZeroSum(const vector<int>& a) {
+    unordered_set<long long> seen{0};   // balance before any element (empty prefix)
+    long long pf = 0;
+    for (int x : a) {
+        pf += x;                                     // running balance
+        if (!seen.insert(pf).second) return true;    // this balance appeared before
+    }
+    return false;
+}
+
+// Variant: return {l, r} of one zero-sum subarray, or nullopt
+optional<pair<int, int>> findZeroSum(const vector<int>& a) {
+    unordered_map<long long, int> firstAt{{0, -1}};  // pf = 0 "happened" before index 0
+    long long pf = 0;
+    for (int i = 0; i < (int)a.size(); i++) {
+        pf += a[i];
+        auto it = firstAt.find(pf);
+        if (it != firstAt.end()) return make_pair(it->second + 1, i);   // a[prev+1..i] sums to 0
+        firstAt[pf] = i;
+    }
+    return nullopt;
+}
+
+int main() {
+    cout << boolalpha << hasZeroSum({4, 2, -3, 1, 6}) << "\\n";   // true
+    cout << hasZeroSum({1, 2, 3}) << "\\n";                       // false
+    auto r = findZeroSum({4, 2, -3, 1, 6});
+    if (r) cout << "[" << r->first << ", " << r->second << "]\\n"; // [1, 3]
+}` }] }],
+    codeTitle: 'Zero-sum subarray (exists + find)',
     viz: [{
       title: 'Running balance as bars + HashSet: spot the repeated balance',
       input: '4 2 -3 1 6',
@@ -1754,7 +2373,7 @@ for arr in ([4, 2, -3, 1, 6], [1, 2, 3], [1, -1], [3, 0, 5], [-3, 2, 3, 1, 6]):
     }, {
       title: 'Starts at index 0 — why the seed matters',
       html: `<p>arr = [−3, 2, 1, 6]: balances −3, −1, <b>0</b>, 6. Without the seed {0}, no balance repeats and you would wrongly answer false. With the seed, pf = 0 at index 2 matches the "before the start" balance → subarray [0..2] = [−3, 2, 1].</p>`,
-      code: `boolean hasZeroSum(int[] a) {
+      code: { lang: 'java', code: `boolean hasZeroSum(int[] a) {
     Set<Long> seen = new HashSet<>();
     seen.add(0L);                       // remove this line and the answer below becomes false
     long pf = 0;
@@ -1764,7 +2383,33 @@ for arr in ([4, 2, -3, 1, 6], [1, 2, 3], [1, -1], [3, 0, 5], [-3, 2, 3, 1, 6]):
 
 void demo() {
     System.out.println(hasZeroSum(new int[]{-3, 2, 1, 6})); // true only because of seen.add(0L)
-}`
+}`, alt: [{ lang: 'python', code: `def has_zero_sum(a):
+    seen = {0}                       # remove the 0 and the answer below becomes False
+    pf = 0
+    for x in a:
+        pf += x
+        if pf in seen:
+            return True
+        seen.add(pf)
+    return False
+
+print(has_zero_sum([-3, 2, 1, 6]))   # True only because of the seed 0` }, { lang: 'js', code: `function hasZeroSum(a) {
+  const seen = new Set([0]);          // remove the 0 and the answer below becomes false
+  let pf = 0;
+  for (const x of a) { pf += x; if (seen.has(pf)) return true; seen.add(pf); }
+  return false;
+}
+
+console.log(hasZeroSum([-3, 2, 1, 6])); // true only because of the seed 0` }, { lang: 'cpp', code: `bool hasZeroSum(const vector<int>& a) {
+    unordered_set<long long> seen{0};    // remove the 0 and the answer below becomes false
+    long long pf = 0;
+    for (int x : a) { pf += x; if (!seen.insert(pf).second) return true; }
+    return false;
+}
+
+void demo() {
+    cout << boolalpha << hasZeroSum({-3, 2, 1, 6}) << "\\n"; // true only because of the seed 0
+}` }] }
     }, {
       title: 'Bank statement in real life',
       html: `${H.table(['day', 'transaction', 'balance'], [['start', '—', '₹1000'], ['Mon', '+500', '₹1500'], ['Tue', '−200', '₹1300'], ['Wed', '−300', H.c('r', '₹1000')], ['Thu', '+100', '₹1100']])}
@@ -1808,9 +2453,20 @@ void demo() {
       },
       hints: [
         `<p><b>Hint 1:</b> Sum of l..r = pf[r] − pf[l−1]. When is that 0? Exactly when two running balances are equal.</p>`,
-        `<p><b>Hint 2:</b> Keep a <code>HashSet&lt;Long&gt;</code> of balances seen so far. At each index, if the new balance is already in it, you are done.</p>`,
+        `<p><b>Hint 2:</b> Keep a hash set of balances seen so far (64-bit values: <code>long</code> in Java, <code>long long</code> in C++). At each index, if the new balance is already in it, you are done.</p>`,
         `<p><b>Hint 3 (recipe):</b> seen = {0}; pf = 0; for x in arr: pf += x; if pf in seen → true; add pf. Return false. Edge cases: subarray starting at 0 (seed), a single 0 element, long overflow.</p>`
       ],
+      tests: { sig: 'int[] -> bool', fn: 'findsum', names: { python: 'find_sum' }, cases: [
+  [[[4, 2, -3, 1, 6]], true],
+  [[[4, 2, 0, 1, 6]], true],
+  [[[1, 2, 3]], false],
+  [[[0]], true],
+  [[[5]], false],
+  [[[-3, 3]], true],
+  [[[1000000000, 1000000000, 1000000000, 1000000000, 1000000000]], false],
+  [[[2, -1, 2]], false],
+  [[[1000000000, 1000000000, -1000000000, -1000000000]], true]
+] },
       solution: {
         approach: `<p><b>Repeated running balance.</b> Walk once, maintaining the prefix sum. A HashSet remembers every balance so far (seeded with 0 for the empty prefix). The first repeat proves that the elements between the two occurrences cancel out.</p>`,
         code: `class Solution {
@@ -1825,7 +2481,16 @@ void demo() {
         return false;
     }
 }`,
-        alt: [{
+        alt: [{ lang: 'js', code: `function findsum(arr) {
+  const seen = new Set([0]);              // empty prefix
+  let pf = 0;                             // stays below 2^53 here (1e14 max)
+  for (const x of arr) {
+    pf += x;
+    if (seen.has(pf)) return true;        // balance repeated -> zero-sum stretch
+    seen.add(pf);
+  }
+  return false;
+}` }, {
           lang: 'python', code: `def find_sum(arr):
     seen, pf = {0}, 0
     for x in arr:
@@ -1905,7 +2570,7 @@ ${H.table(['i', 'x', 'pf', 'need pf − 7', 'cnt[need]', 'total', 'subarray(s) f
       '"count subarrays with equal number of 0s and 1s / odd and even" → map ±1 to 0 and count sum 0',
       '"number of submatrices that sum to target" → fix row pair, then this pattern on column sums'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
 import java.util.*;
 
 public class CountSumK {
@@ -1941,7 +2606,7 @@ public class CountSumK {
         System.out.println(countSubarrays(new int[]{0, 0, 0}, 0));                 // 6
         System.out.println(countXorK(new int[]{4, 2, 2, 6, 4}, 6));                // 4
     }
-}`, {
+}`, alt: [{
       lang: 'python', run: true, title: 'Python (runnable)',
       code: `from collections import defaultdict
 
@@ -1955,11 +2620,82 @@ def count_subarrays(a, k):
         cnt[pf] += 1            # then record
     return total
 
+def count_xor_k(a, k):
+    cnt = defaultdict(int)
+    cnt[0] = 1
+    px = total = 0
+    for x in a:
+        px ^= x                 # prefix XOR
+        total += cnt[px ^ k]    # px ^ earlier == k  <=>  earlier == px ^ k
+        cnt[px] += 1
+    return total
+
 print(count_subarrays([3, 4, 7, 2, -3, 1, 4, 2], 7))  # 4
 print(count_subarrays([1, -1, 0], 0))                 # 3
-print(count_subarrays([0, 0, 0], 0))                  # 6`
-    }],
-    codeTitle: ['Count subarrays with sum K (and XOR K) in Java', 'Python version (runnable)'],
+print(count_subarrays([0, 0, 0], 0))                  # 6
+print(count_xor_k([4, 2, 2, 6, 4], 6))                # 4`
+    }, { lang: 'js', run: true, code: `function countSubarrays(a, k) {
+  const cnt = new Map([[0, 1]]);            // the empty prefix, seen once
+  let pf = 0, total = 0;
+  for (const x of a) {
+    pf += x;
+    total += cnt.get(pf - k) || 0;          // every earlier balance pf-k starts a valid subarray
+    cnt.set(pf, (cnt.get(pf) || 0) + 1);    // record this balance AFTER querying
+  }
+  return total;
+}
+
+// Same pattern, XOR version: number of subarrays whose XOR equals k
+function countXorK(a, k) {
+  const cnt = new Map([[0, 1]]);
+  let px = 0, total = 0;
+  for (const x of a) {
+    px ^= x;                                // prefix XOR
+    total += cnt.get(px ^ k) || 0;          // px ^ earlier == k  <=>  earlier == px ^ k
+    cnt.set(px, (cnt.get(px) || 0) + 1);
+  }
+  return total;
+}
+
+console.log(countSubarrays([3, 4, 7, 2, -3, 1, 4, 2], 7)); // 4
+console.log(countSubarrays([1, 1, 1], 2));                 // 2
+console.log(countSubarrays([0, 0, 0], 0));                 // 6
+console.log(countXorK([4, 2, 2, 6, 4], 6));                // 4` }, { lang: 'cpp', code: `#include <bits/stdc++.h>
+using namespace std;
+
+long long countSubarrays(const vector<int>& a, int k) {
+    unordered_map<long long, int> cnt{{0, 1}};   // the empty prefix, seen once
+    long long pf = 0, total = 0;
+    for (int x : a) {
+        pf += x;
+        auto it = cnt.find(pf - k);
+        if (it != cnt.end()) total += it->second; // every earlier balance pf-k starts a valid subarray
+        cnt[pf]++;                                // record this balance AFTER querying
+    }
+    return total;
+}
+
+// Same pattern, XOR version: number of subarrays whose XOR equals k
+long long countXorK(const vector<int>& a, int k) {
+    unordered_map<int, int> cnt{{0, 1}};
+    int px = 0;
+    long long total = 0;
+    for (int x : a) {
+        px ^= x;                                  // prefix XOR
+        auto it = cnt.find(px ^ k);               // px ^ earlier == k  <=>  earlier == px ^ k
+        if (it != cnt.end()) total += it->second;
+        cnt[px]++;
+    }
+    return total;
+}
+
+int main() {
+    cout << countSubarrays({3, 4, 7, 2, -3, 1, 4, 2}, 7) << "\\n";   // 4
+    cout << countSubarrays({1, 1, 1}, 2) << "\\n";                   // 2
+    cout << countSubarrays({0, 0, 0}, 0) << "\\n";                   // 6
+    cout << countXorK({4, 2, 2, 6, 4}, 6) << "\\n";                  // 4
+}` }] }],
+    codeTitle: 'Count subarrays with sum K (and XOR K)',
     viz: [{
       title: 'Count subarrays with sum K: balance → count tally',
       input: '3 4 7 2 -3 1 4 2 | 7',
@@ -2023,7 +2759,7 @@ print(count_subarrays([0, 0, 0], 0))                  # 6`
     }],
     deepDive: `<p><b>Correctness.</b> For each end index r, the valid starts l are exactly those with P<sub>l−1</sub> = P<sub>r</sub> − K and −1 ≤ l−1 &lt; r. When we process r, the map contains P<sub>−1</sub>..P<sub>r−1</sub> with multiplicities (query-before-insert), so <code>cnt[P<sub>r</sub> − K]</code> is exactly the number of subarrays ending at r. Summing over r counts each subarray once.</p>
 <p><b>Overflow.</b> The answer can reach N(N+1)/2 ≈ 5·10<sup>9</sup> for N = 10<sup>5</sup> (e.g. all zeros, K = 0) → use <code>long total</code>. The prefix sums themselves need <code>long</code> when |a[i]| ≤ 10<sup>9</sup>. LeetCode 560 has N ≤ 2·10<sup>4</sup> and |a[i]| ≤ 1000, so int happens to work there — do not rely on that in a different problem.</p>
-<p><b>Mod variant pitfalls.</b> In Java, <code>-7 % 5 == -2</code>, not 3. Normalize with <code>((pf % k) + k) % k</code>, or track the remainder incrementally. For "continuous subarray sum multiple of K with length ≥ 2" (LeetCode 523) store the <b>first index</b> of each remainder instead of a count and check <code>i − first ≥ 2</code>.</p>
+<p><b>Mod variant pitfalls.</b> In Java, JavaScript and C++, <code>-7 % 5 == -2</code>, not 3 (Python's <code>%</code> already gives 3). Normalize with <code>((pf % k) + k) % k</code>, or track the remainder incrementally. For "continuous subarray sum multiple of K with length ≥ 2" (LeetCode 523) store the <b>first index</b> of each remainder instead of a count and check <code>i − first ≥ 2</code>.</p>
 <p><b>2D extension.</b> "Number of submatrices that sum to target" (LeetCode 1074): fix a pair of rows (top, bottom) — O(R<sup>2</sup>) pairs — compress the columns between them into a 1D array of column sums, and run this exact algorithm on it in O(C). Total O(R<sup>2</sup>·C). Always loop over the smaller dimension squared.</p>
 <p><b>Performance.</b> <code>HashMap&lt;Long,Integer&gt;</code> boxes everything. In tight loops with up to 10<sup>6</sup> elements this is fine (tens of ms). For 10<sup>7</sup>+ consider sorting the prefix sums with their indices and counting equal pairs with a "seen-so-far" sweep (O(N log N), cache-friendly), or a primitive long→int open-addressing map.</p>`,
     aiEra: `<p><b>What AI changes:</b> LeetCode 560 is a famous problem, so generated code is usually right for the base case. The skill that matters now is <b>adapting</b>: divisible-by-K with negative numbers, XOR instead of sum, 2D matrices, "at least length 2" — the places where copy-pasted solutions quietly fail.</p>
@@ -2059,9 +2795,20 @@ print(count_subarrays([0, 0, 0], 0))                  # 6`
       },
       hints: [
         `<p><b>Hint 1:</b> For a fixed right end r, the subarray l..r sums to k exactly when pf[l−1] = pf[r] − k. So the question becomes "how many earlier balances equal pf[r] − k?"</p>`,
-        `<p><b>Hint 2:</b> Keep a <code>HashMap&lt;balance, count&gt;</code> of all balances seen so far. Seed it with {0: 1}.</p>`,
+        `<p><b>Hint 2:</b> Keep a hash map balance → count of all balances seen so far. Seed it with {0: 1}.</p>`,
         `<p><b>Hint 3 (recipe):</b> pf = 0, total = 0, cnt = {0:1}. For x: pf += x; total += cnt.get(pf − k, 0); cnt[pf]++. Query <b>before</b> you record. Edge cases: k = 0, all zeros, negatives, answers bigger than int (use long in general).</p>`
       ],
+      tests: { sig: 'int[] int -> int', fn: 'subarraySum', cases: [
+  [[[3, 4, 7, 2, -3, 1, 4, 2], 7], 4],
+  [[[1, 1, 1], 2], 2],
+  [[[1], 1], 1],
+  [[[1], 0], 0],
+  [[[0, 0, 0], 0], 6],
+  [[[1, -1, 0], 0], 3],
+  [[[-1, -1, 1], 0], 1],
+  [[[1, 2, 3], 3], 2],
+  [[new Array(1000).fill(0), 0], 500500]
+] },
       solution: {
         approach: `<p><b>Tally of balances.</b> Every subarray ending at r corresponds to one earlier balance equal to pf[r] − k. The map counts how many times each balance has appeared, so a single lookup tells us how many subarrays end at r. Summing over all r gives the answer in one pass.</p>`,
         code: `class Solution {
@@ -2077,7 +2824,16 @@ print(count_subarrays([0, 0, 0], 0))                  # 6`
         return total;
     }
 }`,
-        alt: [{
+        alt: [{ lang: 'js', code: `function subarraySum(nums, k) {
+  const cnt = new Map([[0, 1]]);          // empty prefix seen once
+  let pf = 0, total = 0;
+  for (const x of nums) {
+    pf += x;
+    total += cnt.get(pf - k) || 0;        // stretches ending here with sum k
+    cnt.set(pf, (cnt.get(pf) || 0) + 1);  // record after querying
+  }
+  return total;
+}` }, {
           lang: 'python', code: `from collections import defaultdict
 
 def subarray_sum(nums, k):
@@ -2158,7 +2914,7 @@ ${H.arr([-1, 0, 1, 0, 1, 2, 3, 2], { label: 'balance', hl: { 3: 'r' } })}
 <p>Balance 0 appears at index 3 and in the seed (index −1) → length 3 − (−1) = <b>4</b>: [0, 1, 1, 0].</p>
 
 <h4>Cheat sheet: same skeleton, different value</h4>
-${H.table(['question', 'map value', 'seed', 'update rule'], [['exists?', '(set)', '{0}', 'add every pf'], ['how many?', 'count', '{0: 1}', 'cnt[pf]++ after query'], ['longest?', 'first index', '{0: −1}', 'putIfAbsent(pf, i)'], ['shortest?', 'last index', '{0: −1}', 'put(pf, i) — overwrite']])}`,
+${H.table(['question', 'map value', 'seed', 'update rule'], [['exists?', '(set)', '{0}', 'add every pf'], ['how many?', 'count', '{0: 1}', 'cnt[pf]++ after query'], ['longest?', 'first index', '{0: −1}', 'store pf → i only if pf is new'], ['shortest?', 'last index', '{0: −1}', 'put(pf, i) — overwrite']])}`,
     clues: [
       '"longest / maximum length subarray with sum K (or 0)" → prefix sum + map of FIRST index',
       '"equal number of 0s and 1s" / "balanced" / "same count of X and Y" → map one side to −1, find longest sum 0',
@@ -2167,7 +2923,7 @@ ${H.table(['question', 'map value', 'seed', 'update rule'], [['exists?', '(set)'
       '"longest well-performing interval" (hours &gt; 8 vs ≤ 8) → ±1 transform + first-index map',
       '"shortest subarray with sum K" (no negatives involved in the trick) → keep the LAST index instead'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
 import java.util.*;
 
 public class LongestSumK {
@@ -2205,7 +2961,7 @@ public class LongestSumK {
         System.out.println(longestSumK(new int[]{10, 5, 2, 7, 1, -10}, 15));        // 6
         System.out.println(findMaxLength(new int[]{0, 1, 1, 0, 1, 1, 1, 0}));       // 4
     }
-}`, {
+}`, alt: [{
       lang: 'python', run: true, title: 'Python (runnable)',
       code: `def longest_sum_k(a, k):
     first, pf, best = {0: -1}, 0, 0
@@ -2222,8 +2978,67 @@ def find_max_length(nums):
 print(longest_sum_k([15, -2, 2, -8, 1, 7, 10, 23], 0))  # 5
 print(longest_sum_k([10, 5, 2, 7, 1, -10], 15))         # 6
 print(find_max_length([0, 1, 1, 0, 1, 1, 1, 0]))        # 4`
-    }],
-    codeTitle: ['Longest sum K and equal 0s/1s in Java', 'Python version (runnable)'],
+    }, { lang: 'js', run: true, code: `// Longest subarray with sum exactly k (negatives allowed). Works for k = 0 too.
+function longestSumK(a, k) {
+  const first = new Map([[0, -1]]);          // empty prefix "ends" at index -1
+  let pf = 0, best = 0;
+  for (let i = 0; i < a.length; i++) {
+    pf += a[i];
+    if (first.has(pf - k)) best = Math.max(best, i - first.get(pf - k));   // a[j+1..i] sums to k
+    if (!first.has(pf)) first.set(pf, i);    // keep the EARLIEST index -> longest answers
+  }
+  return best;
+}
+
+// Contiguous Array: longest subarray with equal 0s and 1s
+function findMaxLength(nums) {
+  const first = new Map([[0, -1]]);
+  let bal = 0, best = 0;
+  for (let i = 0; i < nums.length; i++) {
+    bal += nums[i] === 1 ? 1 : -1;           // 1 -> +1, 0 -> -1
+    if (first.has(bal)) best = Math.max(best, i - first.get(bal));
+    else first.set(bal, i);
+  }
+  return best;
+}
+
+console.log(longestSumK([15, -2, 2, -8, 1, 7, 10, 23], 0)); // 5
+console.log(longestSumK([10, 5, 2, 7, 1, -10], 15));        // 6
+console.log(findMaxLength([0, 1, 1, 0, 1, 1, 1, 0]));       // 4` }, { lang: 'cpp', code: `#include <bits/stdc++.h>
+using namespace std;
+
+// Longest subarray with sum exactly k (negatives allowed). Works for k = 0 too.
+int longestSumK(const vector<int>& a, long long k) {
+    unordered_map<long long, int> first{{0, -1}};   // empty prefix "ends" at index -1
+    long long pf = 0;
+    int best = 0;
+    for (int i = 0; i < (int)a.size(); i++) {
+        pf += a[i];
+        auto it = first.find(pf - k);
+        if (it != first.end()) best = max(best, i - it->second);   // a[j+1..i] sums to k
+        first.emplace(pf, i);                         // no-op if present: keeps the EARLIEST
+    }
+    return best;
+}
+
+// Contiguous Array: longest subarray with equal 0s and 1s
+int findMaxLength(const vector<int>& nums) {
+    unordered_map<int, int> first{{0, -1}};
+    int bal = 0, best = 0;
+    for (int i = 0; i < (int)nums.size(); i++) {
+        bal += nums[i] == 1 ? 1 : -1;                // 1 -> +1, 0 -> -1
+        auto [it, inserted] = first.try_emplace(bal, i);
+        if (!inserted) best = max(best, i - it->second);
+    }
+    return best;
+}
+
+int main() {
+    cout << longestSumK({15, -2, 2, -8, 1, 7, 10, 23}, 0) << "\\n";   // 5
+    cout << longestSumK({10, 5, 2, 7, 1, -10}, 15) << "\\n";          // 6
+    cout << findMaxLength({0, 1, 1, 0, 1, 1, 1, 0}) << "\\n";         // 4
+}` }] }],
+    codeTitle: 'Longest sum K and equal 0s/1s',
     viz: [{
       title: 'Longest subarray with sum K: map balance → FIRST index',
       input: '10 5 2 7 1 -10 | 15',
@@ -2289,7 +3104,7 @@ print(find_max_length([0, 1, 1, 0, 1, 1, 1, 0]))        # 4`
     }, {
       title: 'All positives? Two pointers is enough (and O(1) space)',
       html: `<p>If every element is <b>positive</b>, prefix sums strictly increase, so a sliding window works: grow right, shrink left while sum &gt; K, record when sum == K. O(N) time, O(1) space. As soon as zeros or negatives are allowed, use the map.</p>`,
-      code: `int longestSumKPositive(int[] a, long k) {   // only valid if all a[i] > 0
+      code: { lang: 'java', code: `int longestSumKPositive(int[] a, long k) {   // only valid if all a[i] > 0
     int best = 0, l = 0;
     long sum = 0;
     for (int r = 0; r < a.length; r++) {
@@ -2298,7 +3113,33 @@ print(find_max_length([0, 1, 1, 0, 1, 1, 1, 0]))        # 4`
         if (sum == k) best = Math.max(best, r - l + 1);
     }
     return best;
-}`
+}`, alt: [{ lang: 'python', code: `def longest_sum_k_positive(a, k):   # only valid if all a[i] > 0
+    best = l = total = 0
+    for r, x in enumerate(a):
+        total += x
+        while total > k and l <= r:
+            total -= a[l]
+            l += 1
+        if total == k:
+            best = max(best, r - l + 1)
+    return best` }, { lang: 'js', code: `function longestSumKPositive(a, k) {   // only valid if all a[i] > 0
+  let best = 0, l = 0, sum = 0;
+  for (let r = 0; r < a.length; r++) {
+    sum += a[r];
+    while (sum > k && l <= r) sum -= a[l++];
+    if (sum === k) best = Math.max(best, r - l + 1);
+  }
+  return best;
+}` }, { lang: 'cpp', code: `int longestSumKPositive(const vector<int>& a, long long k) {   // only valid if all a[i] > 0
+    int best = 0, l = 0;
+    long long sum = 0;
+    for (int r = 0; r < (int)a.size(); r++) {
+        sum += a[r];
+        while (sum > k && l <= r) sum -= a[l++];
+        if (sum == k) best = max(best, r - l + 1);
+    }
+    return best;
+}` }] }
     }, {
       title: 'Longest Well-Performing Interval (a ±1 cousin)',
       html: `<p>hours = [9, 9, 6, 0, 6, 6, 9]: a day is "tiring" if hours &gt; 8 (+1) else −1. Want the longest interval with <b>positive</b> sum. Trick: if balance &gt; 0, the whole prefix works (i + 1); otherwise look up the first index of <b>balance − 1</b>. Answer 3 ([9, 9, 6]). Same first-index map, a slightly different lookup.</p>`
@@ -2343,6 +3184,16 @@ print(find_max_length([0, 1, 1, 0, 1, 1, 1, 0]))        # 4`
         `<p><b>Hint 2:</b> HashMap from balance → first index where it occurred. Seed balance 0 → index −1.</p>`,
         `<p><b>Hint 3 (recipe):</b> for i: pf += a[i]; if pf in map → best = max(best, i − map[pf]); else map[pf] = i. Never overwrite. Edge cases: whole array sums to 0 (seed gives length N), no zero-sum (0), single 0 element (length 1).</p>`
       ],
+      tests: { sig: 'int[] -> int', fn: 'maxLen', cases: [
+  [[[15, -2, 2, -8, 1, 7, 10, 23]], 5],
+  [[[1, 2, 3]], 0],
+  [[[0]], 1],
+  [[[5]], 0],
+  [[[-1, 1, -1, 1]], 4],
+  [[[3, 0, 0, -3]], 4],
+  [[[1, 0, -1, 0, 2]], 4],
+  [[[1000, -1000, 1000]], 2]
+] },
       solution: {
         approach: `<p><b>First-occurrence map of running balances.</b> When the current balance has been seen before, the elements after its first occurrence up to here sum to 0. Measuring against the first occurrence always gives the longest such stretch ending here; the overall answer is the max over all ends.</p>`,
         code: `class Solution {
@@ -2359,7 +3210,26 @@ print(find_max_length([0, 1, 1, 0, 1, 1, 1, 0]))        # 4`
         return best;
     }
 }`,
-        alt: [{
+        alt: [{ lang: 'js', code: `function maxLen(arr) {
+  const first = new Map([[0, -1]]);       // balance 0 before the array starts
+  let pf = 0, best = 0;
+  arr.forEach((x, i) => {
+    pf += x;
+    if (first.has(pf)) best = Math.max(best, i - first.get(pf));   // arr[j+1..i] sums to 0
+    else first.set(pf, i);                                          // only the first time
+  });
+  return best;
+}` }, { lang: 'cpp', code: `int maxLen(vector<int>& arr) {
+    unordered_map<long long, int> first{{0, -1}};   // balance 0 before the array starts
+    long long pf = 0;
+    int best = 0;
+    for (int i = 0; i < (int)arr.size(); i++) {
+        pf += arr[i];
+        auto [it, inserted] = first.try_emplace(pf, i);   // keeps the first index only
+        if (!inserted) best = max(best, i - it->second);  // arr[j+1..i] sums to 0
+    }
+    return best;
+}` }, {
           lang: 'python', code: `def max_len(arr):
     first, pf, best = {0: -1}, 0, 0
     for i, x in enumerate(arr):
@@ -2415,13 +3285,23 @@ print(find_max_length([0, 1, 1, 0, 1, 1, 1, 0]))        # 4`
         q: 'You adapt the zero-sum code "if (found) measure; <b>else</b> insert" to K = 5 by looking up pf − 5. On arr = [5, 1, 4], what happens?',
         options: ['At i = 0, pf − 5 = 0 is found so pf = 5 is never stored; at i = 2 (pf = 10) the subarray [1, 4] is missed → answer 1 instead of 2', 'It works perfectly — the else-branch shortcut is always fine', 'It counts an empty subarray and returns 3', 'It throws a NullPointerException'],
         answer: 0,
-        explain: 'For K ≠ 0 the lookup key (pf − k) and the insert key (pf) are different, so you must ALWAYS putIfAbsent(pf, i), not only when the lookup fails.'
+        explain: 'For K ≠ 0 the lookup key (pf − k) and the insert key (pf) are different, so you must ALWAYS store pf → i when pf is new (putIfAbsent in Java, setdefault in Python, emplace in C++), not only when the lookup fails.'
       },
       hints: [
         `<p><b>Hint 1:</b> Sum of j+1..i = pf[i] − pf[j] = k ⇔ pf[j] = pf[i] − k. The longest one ending at i uses the earliest such j.</p>`,
         `<p><b>Hint 2:</b> Map balance → first index, seeded with {0: −1}. Use <code>long</code> for the running sum to be safe.</p>`,
-        `<p><b>Hint 3 (recipe):</b> for i: pf += a[i]; if map has pf − k → best = max(best, i − map[pf − k]); map.putIfAbsent(pf, i). Edge cases: whole array (seed), k = 0, negatives and zeros (balances repeat → never overwrite).</p>`
+        `<p><b>Hint 3 (recipe):</b> for i: pf += a[i]; if map has pf − k → best = max(best, i − map[pf − k]); store pf → i only if pf is not in the map yet. Edge cases: whole array (seed), k = 0, negatives and zeros (balances repeat → never overwrite).</p>`
       ],
+      tests: { sig: 'int[] int -> int', fn: 'longestSubarray', cases: [
+  [[[10, 5, 2, 7, 1, -10], 15], 6],
+  [[[-5, 8, -14, 2, 4, 12], -5], 5],
+  [[[1, 2, 3], 10], 0],
+  [[[5], 5], 1],
+  [[[0, 0, 0], 0], 3],
+  [[[-100000, 100000, -100000], -100000], 3],
+  [[[1, -1, 5, -2, 3], 3], 4],
+  [[[2, 0, 0, 3], 3], 3]
+] },
       solution: {
         approach: `<p><b>First-index map with a shifted lookup.</b> Same skeleton as the zero-sum version, but the partner balance is pf − k. The map holds the first index of each balance so every measured length is the longest possible for that end.</p>`,
         code: `class Solution {
@@ -2439,7 +3319,16 @@ print(find_max_length([0, 1, 1, 0, 1, 1, 1, 0]))        # 4`
         return best;
     }
 }`,
-        alt: [{
+        alt: [{ lang: 'js', code: `function longestSubarray(arr, k) {
+  const first = new Map([[0, -1]]);       // balance -> earliest index
+  let pf = 0, best = 0;
+  arr.forEach((x, i) => {
+    pf += x;
+    if (first.has(pf - k)) best = Math.max(best, i - first.get(pf - k));   // arr[j+1..i] sums to k
+    if (!first.has(pf)) first.set(pf, i);                                  // keep the earliest
+  });
+  return best;
+}` }, {
           lang: 'python', code: `def longest_subarray(arr, k):
     first, pf, best = {0: -1}, 0, 0
     for i, x in enumerate(arr):
@@ -2511,6 +3400,16 @@ print(find_max_length([0, 1, 1, 0, 1, 1, 1, 0]))        # 4`
         `<p><b>Hint 2:</b> That is "longest subarray with sum 0" after mapping 0 → −1. Map balance → first index, seed {0: −1}.</p>`,
         `<p><b>Hint 3 (recipe):</b> bal = 0; for i: bal += (nums[i] == 1 ? 1 : −1); if bal in map → best = max(best, i − map[bal]) else map[bal] = i. Bonus: bal is in [−N, N], so an int array of size 2N+1 works instead of a map.</p>`
       ],
+      tests: { sig: 'int[] -> int', fn: 'findMaxLength', cases: [
+  [[[0, 1, 1, 0, 1, 1, 1, 0]], 4],
+  [[[0, 1]], 2],
+  [[[0, 1, 0]], 2],
+  [[[0]], 0],
+  [[[1, 1, 1]], 0],
+  [[[0, 0, 1, 0, 0, 0, 1, 1]], 6],
+  [[[1, 0, 1, 0, 1, 0]], 6],
+  [[[1, 1, 0, 0, 0, 1]], 6]
+] },
       solution: {
         approach: `<p><b>±1 balance + first-index map.</b> Map each 1 to +1 and each 0 to −1. A balanced subarray has net 0, i.e. equal balances at its two ends. Keep the first index of each balance; the longest gap between equal balances is the answer.</p>`,
         code: `class Solution {
@@ -2527,7 +3426,30 @@ print(find_max_length([0, 1, 1, 0, 1, 1, 1, 0]))        # 4`
         return best;
     }
 }`,
-        alt: [{
+        alt: [{ lang: 'js', code: `function findMaxLength(nums) {
+  const n = nums.length;
+  const first = new Int32Array(2 * n + 1).fill(-2);   // index = balance + n; -2 = not seen
+  first[n] = -1;                                       // balance 0 before index 0
+  let bal = 0, best = 0;
+  for (let i = 0; i < n; i++) {
+    bal += nums[i] === 1 ? 1 : -1;                     // +1 for a 1, -1 for a 0
+    if (first[bal + n] !== -2) best = Math.max(best, i - first[bal + n]);
+    else first[bal + n] = i;
+  }
+  return best;
+}` }, { lang: 'cpp', code: `int findMaxLength(vector<int>& nums) {
+    int n = nums.size();
+    vector<int> first(2 * n + 1, INT_MIN);   // index = balance + n; INT_MIN = not seen
+    first[n] = -1;                           // balance 0 before index 0
+    int bal = 0, best = 0;
+    for (int i = 0; i < n; i++) {
+        bal += nums[i] == 1 ? 1 : -1;        // +1 for a 1, -1 for a 0
+        int& f = first[bal + n];
+        if (f != INT_MIN) best = max(best, i - f);
+        else f = i;
+    }
+    return best;
+}` }, {
           lang: 'java', title: 'Array instead of HashMap (balance offset by N)', code: `class SolutionArray {
     public int findMaxLength(int[] nums) {
         int n = nums.length;
@@ -2620,7 +3542,7 @@ ${H.table(['event', 'window', 'length', 'best'], [['first valid at right = 5', '
       'N up to 10<sup>5</sup> and O(N<sup>2</sup>) substrings would TLE → two pointers that only move forward',
       '"characters can be any ASCII" → int[128] (or a HashMap for Unicode)'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
 import java.util.*;
 
 public class WindowHashing {
@@ -2659,17 +3581,31 @@ public class WindowHashing {
         System.out.println(lengthOfLongestSubstringSet("pwwkew"));   // 3
         System.out.println(longestAtMostKDistinct("eceba", 2));      // 3 ("ece")
     }
-}`, {
+}`, alt: [{
       lang: 'python', run: true, title: 'Python (runnable): both problems',
-      code: `from collections import Counter
+      code: `from collections import Counter, defaultdict
 
-def longest_unique(s):
-    last, left, best = {}, 0, 0
+def length_of_longest_substring_set(s):
+    window, left, best = set(), 0, 0
     for right, c in enumerate(s):
-        if c in last and last[c] >= left:
-            left = last[c] + 1          # jump past the previous copy
-        last[c] = right
+        while c in window:              # duplicate inside: shrink from the left
+            window.remove(s[left])
+            left += 1
+        window.add(c)
         best = max(best, right - left + 1)
+    return best
+
+def longest_at_most_k_distinct(s, k):
+    cnt, left, best = defaultdict(int), 0, 0
+    for right, c in enumerate(s):
+        cnt[c] += 1                     # expand
+        while len(cnt) > k:             # invalid: too many distinct
+            d = s[left]
+            cnt[d] -= 1
+            if cnt[d] == 0:
+                del cnt[d]
+            left += 1
+        best = max(best, right - left + 1)   # valid window
     return best
 
 def min_window(s, t):
@@ -2688,11 +3624,79 @@ def min_window(s, t):
             left += 1
     return "" if best[0] == float("inf") else s[best[1]:best[2]]
 
-print(longest_unique("abcabcbb"), longest_unique("abba"), longest_unique("pwwkew"))  # 3 2 3
-print(min_window("ADOBECODEBANC", "ABC"))   # BANC
-print(repr(min_window("a", "aa")))          # ''`
-    }],
-    codeTitle: ['Set-based window and the general at-most-K template (Java)', 'Python (runnable)'],
+print(length_of_longest_substring_set("abcabcbb"))   # 3
+print(length_of_longest_substring_set("pwwkew"))     # 3
+print(longest_at_most_k_distinct("eceba", 2))        # 3 ("ece")
+print(min_window("ADOBECODEBANC", "ABC"))            # BANC
+print(repr(min_window("a", "aa")))                   # ''`
+    }, { lang: 'js', run: true, code: `// Longest substring without repeating characters — Set + shrink
+function lengthOfLongestSubstringSet(s) {
+  const window = new Set();
+  let left = 0, best = 0;
+  for (let right = 0; right < s.length; right++) {
+    const c = s[right];
+    while (window.has(c)) window.delete(s[left++]);   // duplicate inside: shrink from the left
+    window.add(c);
+    best = Math.max(best, right - left + 1);
+  }
+  return best;
+}
+
+// Longest substring with at most k distinct characters — the general template
+function longestAtMostKDistinct(s, k) {
+  const cnt = new Map();
+  let left = 0, best = 0;
+  for (let right = 0; right < s.length; right++) {
+    cnt.set(s[right], (cnt.get(s[right]) || 0) + 1);  // expand
+    while (cnt.size > k) {                            // invalid: too many distinct
+      const d = s[left++];
+      const c = cnt.get(d) - 1;
+      if (c === 0) cnt.delete(d); else cnt.set(d, c);
+    }
+    best = Math.max(best, right - left + 1);          // valid window
+  }
+  return best;
+}
+
+console.log(lengthOfLongestSubstringSet('abcabcbb')); // 3
+console.log(lengthOfLongestSubstringSet('pwwkew'));   // 3
+console.log(longestAtMostKDistinct('eceba', 2));      // 3 ("ece")` }, { lang: 'cpp', code: `#include <bits/stdc++.h>
+using namespace std;
+
+// Longest substring without repeating characters — unordered_set + shrink
+int lengthOfLongestSubstringSet(const string& s) {
+    unordered_set<char> window;
+    int left = 0, best = 0;
+    for (int right = 0; right < (int)s.size(); right++) {
+        char c = s[right];
+        while (window.count(c)) window.erase(s[left++]);   // duplicate inside: shrink from the left
+        window.insert(c);
+        best = max(best, right - left + 1);
+    }
+    return best;
+}
+
+// Longest substring with at most k distinct characters — the general template
+int longestAtMostKDistinct(const string& s, int k) {
+    unordered_map<char, int> cnt;
+    int left = 0, best = 0;
+    for (int right = 0; right < (int)s.size(); right++) {
+        cnt[s[right]]++;                                   // expand
+        while ((int)cnt.size() > k) {                      // invalid: too many distinct
+            char d = s[left++];
+            if (--cnt[d] == 0) cnt.erase(d);
+        }
+        best = max(best, right - left + 1);                // valid window
+    }
+    return best;
+}
+
+int main() {
+    cout << lengthOfLongestSubstringSet("abcabcbb") << "\\n";   // 3
+    cout << lengthOfLongestSubstringSet("pwwkew") << "\\n";     // 3
+    cout << longestAtMostKDistinct("eceba", 2) << "\\n";        // 3 ("ece")
+}` }] }],
+    codeTitle: 'Set-based window and the general at-most-K template',
     viz: [{
       title: 'Longest substring without repeats: HashSet window (add = green, removal = red)',
       input: 'abcabcbb',
@@ -2785,7 +3789,7 @@ ${H.arr(['p', 'w', 'w', 'k', 'e', 'w'], { label: 's', hl: { 2: 'g', 3: 'g', 4: '
     }, {
       title: 'Find all anagrams of p in s (fixed-size window)',
       html: `<p>s = "cbaebabacd", p = "abc". Slide a window of length 3 with a count map; whenever it equals p's counts, record the start. Answer [0, 6] ("cba", "bac"). A neat trick: keep a <code>matches</code> counter of letters whose counts agree, so each slide is O(1) instead of comparing 26 counts.</p>`,
-      code: `List<Integer> findAnagrams(String s, String p) {
+      code: { lang: 'java', code: `List<Integer> findAnagrams(String s, String p) {
     List<Integer> res = new ArrayList<>();
     if (p.length() > s.length()) return res;
     int[] need = new int[26], win = new int[26];
@@ -2796,7 +3800,43 @@ ${H.arr(['p', 'w', 'w', 'k', 'e', 'w'], { label: 's', hl: { 2: 'g', 3: 'g', 4: '
         if (i >= p.length() - 1 && Arrays.equals(win, need)) res.add(i - p.length() + 1);
     }
     return res;
-}`
+}`, alt: [{ lang: 'python', code: `def find_anagrams(s, p):
+    res, m = [], len(p)
+    if m > len(s):
+        return res
+    need, win = [0] * 26, [0] * 26
+    for c in p:
+        need[ord(c) - 97] += 1
+    for i, c in enumerate(s):
+        win[ord(c) - 97] += 1                    # enter
+        if i >= m:
+            win[ord(s[i - m]) - 97] -= 1         # leave
+        if i >= m - 1 and win == need:           # list == compares element by element
+            res.append(i - m + 1)
+    return res` }, { lang: 'js', code: `function findAnagrams(s, p) {
+  const res = [], m = p.length;
+  if (m > s.length) return res;
+  const need = new Array(26).fill(0), win = new Array(26).fill(0);
+  for (const c of p) need[c.charCodeAt(0) - 97]++;
+  for (let i = 0; i < s.length; i++) {
+    win[s.charCodeAt(i) - 97]++;                             // enter
+    if (i >= m) win[s.charCodeAt(i - m) - 97]--;             // leave
+    if (i >= m - 1 && win.every((v, j) => v === need[j])) res.push(i - m + 1);
+  }
+  return res;
+}` }, { lang: 'cpp', code: `vector<int> findAnagrams(const string& s, const string& p) {
+    vector<int> res;
+    int m = p.size();
+    if (m > (int)s.size()) return res;
+    array<int, 26> need{}, win{};
+    for (char c : p) need[c - 'a']++;
+    for (int i = 0; i < (int)s.size(); i++) {
+        win[s[i] - 'a']++;                                   // enter
+        if (i >= m) win[s[i - m] - 'a']--;                   // leave
+        if (i >= m - 1 && win == need) res.push_back(i - m + 1);   // array == compares all 26
+    }
+    return res;
+}` }] }
     }],
     deepDive: `<p><b>Amortized proof.</b> In both algorithms each index enters the window once (when <code>right</code> passes it) and leaves at most once (when <code>left</code> passes it). Hash operations are O(1) average, so total time is O(N) (plus O(|t|) to build the need map). Space is O(Σ) — the alphabet size — not O(N).</p>
 <p><b>Set version vs jump version.</b> The set version may touch a character twice (add + remove); the jump version touches each once but needs the <code>max(left, last + 1)</code> guard because it never deletes stale entries. With a fixed alphabet use <code>int[128]</code> filled with −1 for "last index" — fastest in practice. For Unicode, iterate code points and use a <code>HashMap&lt;Integer,Integer&gt;</code>.</p>
@@ -2838,6 +3878,17 @@ ${H.arr(['p', 'w', 'w', 'k', 'e', 'w'], { label: 's', hl: { 2: 'g', 3: 'g', 4: '
         `<p><b>Hint 2:</b> Keep the window's characters in a HashSet (shrink one by one) or a map char → last index (jump directly).</p>`,
         `<p><b>Hint 3 (recipe):</b> left = 0; for right: c = s[right]; if c in last and last[c] ≥ left → left = last[c] + 1; last[c] = right; best = max(best, right − left + 1). Edge cases: empty string, all same char, spaces/symbols (use a map or int[128]).</p>`
       ],
+      tests: { sig: 'string -> int', fn: 'lengthOfLongestSubstring', cases: [
+  [['abcabcbb'], 3],
+  [['bbbbb'], 1],
+  [['pwwkew'], 3],
+  [[''], 0],
+  [[' '], 1],
+  [['abba'], 2],
+  [['dvdf'], 3],
+  [['a1!a 1'], 4],
+  [['tmmzuxt'], 5]
+] },
       solution: {
         approach: `<p><b>Sliding window with a last-index map.</b> The window [left..right] always holds unique characters. On a repeat whose previous index is inside the window, jump left just past it. Each character is processed once, so the scan is linear.</p>`,
         code: `class Solution {
@@ -2854,7 +3905,17 @@ ${H.arr(['p', 'w', 'w', 'k', 'e', 'w'], { label: 's', hl: { 2: 'g', 3: 'g', 4: '
         return best;
     }
 }`,
-        alt: [{
+        alt: [{ lang: 'js', code: `function lengthOfLongestSubstring(s) {
+  const last = new Map();                 // char -> last index seen
+  let left = 0, best = 0;
+  for (let right = 0; right < s.length; right++) {
+    const c = s[right];
+    if (last.has(c) && last.get(c) >= left) left = last.get(c) + 1;   // duplicate inside: jump
+    last.set(c, right);
+    best = Math.max(best, right - left + 1);
+  }
+  return best;
+}` }, {
           lang: 'java', title: 'int[128] instead of a HashMap (fastest)', code: `class SolutionArray {
     public int lengthOfLongestSubstring(String s) {
         int[] last = new int[128];
@@ -2955,6 +4016,17 @@ boolean covers(int[] have, int[] need) {
         `<p><b>Hint 2:</b> Keep a <b>need</b> tally from t and a single integer <b>missing</b> = number of required characters not yet in the window. That makes "is it valid?" an O(1) check.</p>`,
         `<p><b>Hint 3 (recipe):</b> for right: if need[c] &gt; 0 → missing−−; need[c]−−. while missing == 0: record [left..right]; need[s[left]]++; if need[s[left]] &gt; 0 → missing++; left++. Return the best or "". Edge cases: |t| &gt; |s|, duplicates in t, case sensitivity.</p>`
       ],
+      tests: { sig: 'string string -> string', fn: 'minWindow', cases: [
+  [['ADOBECODEBANC', 'ABC'], 'BANC'],
+  [['a', 'a'], 'a'],
+  [['a', 'aa'], ''],
+  [['aa', 'aa'], 'aa'],
+  [['ab', 'b'], 'b'],
+  [['bba', 'ab'], 'ba'],
+  [['aAbB', 'AB'], 'AbB'],
+  [['cabwefgewcwaefgcf', 'cae'], 'cwae'],
+  [['abc', 'd'], '']
+] },
       solution: {
         approach: `<p><b>Expand–shrink window with a need map.</b> The need map starts as t's tally. Taking a character decrements it; a positive value before decrementing means it fulfilled a requirement (missing−−). When missing hits 0, the window covers t: record it, then give characters back from the left until a requirement breaks. Both pointers only move forward → O(|s| + |t|).</p>`,
         code: `class Solution {
@@ -2980,7 +4052,35 @@ boolean covers(int[] have, int[] need) {
         return bestLen == Integer.MAX_VALUE ? "" : s.substring(bestLeft, bestLeft + bestLen);
     }
 }`,
-        alt: [{
+        alt: [{ lang: 'js', code: `function minWindow(s, t) {
+  const need = new Map();                 // char -> how many more we need (negative = surplus)
+  for (const c of t) need.set(c, (need.get(c) || 0) + 1);
+  let missing = t.length, left = 0, bestLeft = 0, bestLen = Infinity;
+  for (let right = 0; right < s.length; right++) {
+    const c = s[right];
+    if ((need.get(c) || 0) > 0) missing--;          // fills a requirement
+    need.set(c, (need.get(c) || 0) - 1);
+    while (missing === 0) {                         // window covers t: shrink
+      if (right - left + 1 < bestLen) { bestLen = right - left + 1; bestLeft = left; }
+      const d = s[left++];
+      need.set(d, need.get(d) + 1);                 // give d back
+      if (need.get(d) > 0) missing++;               // lost a required copy
+    }
+  }
+  return bestLen === Infinity ? '' : s.slice(bestLeft, bestLeft + bestLen);
+}` }, { lang: 'cpp', code: `string minWindow(string s, string t) {
+    array<int, 128> need{};                 // char -> how many more we need (negative = surplus)
+    for (char c : t) need[c]++;
+    int missing = t.size(), left = 0, bestLeft = 0, bestLen = INT_MAX;
+    for (int right = 0; right < (int)s.size(); right++) {
+        if (need[s[right]]-- > 0) missing--;          // fills a requirement
+        while (missing == 0) {                        // window covers t: shrink
+            if (right - left + 1 < bestLen) { bestLen = right - left + 1; bestLeft = left; }
+            if (++need[s[left++]] > 0) missing++;     // lost a required copy
+        }
+    }
+    return bestLen == INT_MAX ? "" : s.substr(bestLeft, bestLen);
+}` }, {
           lang: 'java', title: 'int[128] version (same logic, faster)', code: `class SolutionArray {
     public String minWindow(String s, String t) {
         int[] need = new int[128];
@@ -3082,7 +4182,7 @@ for (int x : set)                       // iterate the SET (duplicates gone)
       'N ≤ 10<sup>5</sup> with values up to ±10<sup>9</sup> → cannot use a boolean array, need a set',
       '"merge adjacent ranges" / "connected numbers" → union-find is an alternative'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
 import java.util.*;
 
 public class LongestConsecutive {
@@ -3126,12 +4226,12 @@ public class LongestConsecutive {
         System.out.println(longestConsecutive(new int[]{0, 3, 7, 2, 5, 8, 4, 6, 0, 1})); // 9
         System.out.println(Arrays.toString(streamingLongest(new int[]{5, 1, 3, 2, 4}))); // [1, 1, 1, 3, 5]
     }
-}`, {
+}`, alt: [{
       lang: 'python', run: true, title: 'Python (runnable)',
       code: `def longest_consecutive(nums):
-    s = set(nums)
+    s = set(nums)                   # duplicates collapse
     best = 0
-    for x in s:
+    for x in s:                     # iterate the SET, not nums
         if x - 1 not in s:          # chain start
             length = 1
             while x + length in s:
@@ -3139,11 +4239,100 @@ public class LongestConsecutive {
             best = max(best, length)
     return best
 
+def streaming_longest(stream):
+    run_len, best, after = {}, 0, []   # endpoints of each run -> run length
+    for x in stream:
+        if x not in run_len:
+            left = run_len.get(x - 1, 0)    # run ending at x-1
+            right = run_len.get(x + 1, 0)   # run starting at x+1
+            length = left + 1 + right
+            run_len[x] = length             # mark x as seen
+            run_len[x - left] = length      # new left endpoint
+            run_len[x + right] = length     # new right endpoint
+            best = max(best, length)
+        after.append(best)
+    return after
+
 print(longest_consecutive([100, 4, 200, 1, 3, 2]))         # 4
 print(longest_consecutive([0, 3, 7, 2, 5, 8, 4, 6, 0, 1])) # 9
-print(longest_consecutive([]))                             # 0`
-    }],
-    codeTitle: ['Chain-start trick and the streaming boundary map (Java)', 'Python version (runnable)'],
+print(longest_consecutive([]))                             # 0
+print(streaming_longest([5, 1, 3, 2, 4]))                  # [1, 1, 1, 3, 5]`
+    }, { lang: 'js', run: true, code: `function longestConsecutive(nums) {
+  const set = new Set(nums);                 // duplicates collapse
+  let best = 0;
+  for (const x of set) {                     // iterate the SET, not nums
+    if (set.has(x - 1)) continue;            // not a chain start
+    let len = 1;
+    while (set.has(x + len)) len++;          // walk the chain forward
+    best = Math.max(best, len);
+  }
+  return best;
+}
+
+// Streaming version: the map holds, for the ENDPOINTS of each run, its length.
+function streamingLongest(stream) {
+  const runLen = new Map();
+  let best = 0;
+  const after = [];
+  for (const x of stream) {
+    if (!runLen.has(x)) {
+      const left = runLen.get(x - 1) || 0;   // run ending at x-1
+      const right = runLen.get(x + 1) || 0;  // run starting at x+1
+      const len = left + 1 + right;
+      runLen.set(x, len);                    // mark x as seen
+      runLen.set(x - left, len);             // new left endpoint
+      runLen.set(x + right, len);            // new right endpoint
+      best = Math.max(best, len);
+    }
+    after.push(best);
+  }
+  return after;
+}
+
+console.log(longestConsecutive([100, 4, 200, 1, 3, 2]));         // 4
+console.log(longestConsecutive([0, 3, 7, 2, 5, 8, 4, 6, 0, 1])); // 9
+console.log(streamingLongest([5, 1, 3, 2, 4]));                  // [ 1, 1, 1, 3, 5 ]` }, { lang: 'cpp', code: `#include <bits/stdc++.h>
+using namespace std;
+
+int longestConsecutive(const vector<int>& nums) {
+    unordered_set<int> s(nums.begin(), nums.end());   // duplicates collapse
+    int best = 0;
+    for (int x : s) {                                 // iterate the SET, not nums
+        if (s.count(x - 1)) continue;                 // not a chain start
+        int len = 1;
+        while (s.count(x + len)) len++;               // walk the chain forward
+        best = max(best, len);
+    }
+    return best;
+}
+
+// Streaming version: the map holds, for the ENDPOINTS of each run, its length.
+vector<int> streamingLongest(const vector<int>& stream) {
+    unordered_map<int, int> runLen;
+    int best = 0;
+    vector<int> after;
+    for (int x : stream) {
+        if (!runLen.count(x)) {
+            int left = runLen.count(x - 1) ? runLen[x - 1] : 0;    // run ending at x-1
+            int right = runLen.count(x + 1) ? runLen[x + 1] : 0;   // run starting at x+1
+            int len = left + 1 + right;
+            runLen[x] = len;                          // mark x as seen
+            runLen[x - left] = len;                   // new left endpoint
+            runLen[x + right] = len;                  // new right endpoint
+            best = max(best, len);
+        }
+        after.push_back(best);
+    }
+    return after;
+}
+
+int main() {
+    cout << longestConsecutive({100, 4, 200, 1, 3, 2}) << "\\n";          // 4
+    cout << longestConsecutive({0, 3, 7, 2, 5, 8, 4, 6, 0, 1}) << "\\n";  // 9
+    for (int b : streamingLongest({5, 1, 3, 2, 4})) cout << b << " ";    // 1 1 1 3 5
+    cout << "\\n";
+}` }] }],
+    codeTitle: 'Chain-start trick and the streaming boundary map',
     viz: [{
       title: 'Build the VIP set, then count only from chain starts',
       input: '100 4 200 1 3 2',
@@ -3212,7 +4401,7 @@ print(longest_consecutive([]))                             # 0`
     }, {
       title: 'Return the actual sequence, not just its length',
       html: `<p>Remember the start of the best chain; the sequence is <code>start, start + 1, …, start + best − 1</code>. For [100, 4, 200, 1, 3, 2] → start 1 → [1, 2, 3, 4].</p>`,
-      code: `List<Integer> longestRun(int[] nums) {
+      code: { lang: 'java', code: `List<Integer> longestRun(int[] nums) {
     Set<Integer> set = new HashSet<>();
     for (int x : nums) set.add(x);
     int best = 0, bestStart = 0;
@@ -3225,7 +4414,40 @@ print(longest_consecutive([]))                             # 0`
     List<Integer> run = new ArrayList<>();
     for (int i = 0; i < best; i++) run.add(bestStart + i);
     return run;
-}`
+}`, alt: [{ lang: 'python', code: `def longest_run(nums):
+    s = set(nums)
+    best, best_start = 0, 0
+    for x in s:
+        if x - 1 in s:
+            continue
+        length = 1
+        while x + length in s:
+            length += 1
+        if length > best:
+            best, best_start = length, x
+    return list(range(best_start, best_start + best))` }, { lang: 'js', code: `function longestRun(nums) {
+  const set = new Set(nums);
+  let best = 0, bestStart = 0;
+  for (const x of set) {
+    if (set.has(x - 1)) continue;
+    let len = 1;
+    while (set.has(x + len)) len++;
+    if (len > best) { best = len; bestStart = x; }
+  }
+  return Array.from({ length: best }, (_, i) => bestStart + i);
+}` }, { lang: 'cpp', code: `vector<int> longestRun(const vector<int>& nums) {
+    unordered_set<int> s(nums.begin(), nums.end());
+    int best = 0, bestStart = 0;
+    for (int x : s) {
+        if (s.count(x - 1)) continue;
+        int len = 1;
+        while (s.count(x + len)) len++;
+        if (len > best) { best = len; bestStart = x; }
+    }
+    vector<int> run(best);
+    iota(run.begin(), run.end(), bestStart);
+    return run;
+}` }] }
     }, {
       title: 'Sorting alternative (O(N log N), often fine in practice)',
       html: `<p>Sort [100, 4, 200, 1, 3, 2] → [1, 2, 3, 4, 100, 200]. Scan: equal neighbours → skip; neighbour + 1 → extend; otherwise reset. Longest = 4. Sorting uses no extra hash memory and, for N = 10<sup>5</sup>, is often just as fast as hashing — but it does not meet a strict O(N) requirement.</p>
@@ -3274,6 +4496,16 @@ boolean containsLinear(int[] a, int target) {
         `<p><b>Hint 2:</b> Counting forward from every number repeats work. Only start counting from numbers that have <b>no predecessor</b> (x − 1 absent).</p>`,
         `<p><b>Hint 3 (recipe):</b> set = all nums; for x in set: if x−1 not in set: len = 1; while x+len in set: len++; best = max(best, len). Iterate the set (not nums) so duplicates do not trigger repeated walks. Edge cases: empty array → 0, all duplicates → 1.</p>`
       ],
+      tests: { sig: 'int[] -> int', fn: 'longestConsecutive', cases: [
+  [[[100, 4, 200, 1, 3, 2]], 4],
+  [[[0, 3, 7, 2, 5, 8, 4, 6, 0, 1]], 9],
+  [[[]], 0],
+  [[[5]], 1],
+  [[[1, 2, 0, 1]], 3],
+  [[[-1000000000, 1000000000]], 1],
+  [[[-3, -2, -1, 0, 1]], 5],
+  [[[9, 1, 4, 7, 3, -1, 0, 5, 8, -1, 6]], 7]
+] },
       solution: {
         approach: `<p><b>HashSet + chain-start check.</b> Load all values into a set. A value whose predecessor is absent starts a chain; walk forward from it while successors are present. Each chain is walked once from its front, so total work is linear.</p>`,
         code: `class Solution {
@@ -3290,7 +4522,17 @@ boolean containsLinear(int[] a, int target) {
         return best;
     }
 }`,
-        alt: [{
+        alt: [{ lang: 'js', code: `function longestConsecutive(nums) {
+  const set = new Set(nums);
+  let best = 0;
+  for (const x of set) {
+    if (set.has(x - 1)) continue;         // not the front of a chain
+    let len = 1;
+    while (set.has(x + len)) len++;       // walk this chain once
+    best = Math.max(best, len);
+  }
+  return best;
+}` }, {
           lang: 'python', code: `def longest_consecutive(nums):
     s = set(nums)
     best = 0
@@ -3363,6 +4605,16 @@ boolean containsLinear(int[] a, int target) {
       `<p><b>Hint 2:</b> Count magazine letters in <code>int[26]</code>, then spend them for each note letter.</p>`,
       `<p><b>Hint 3:</b> If any count goes below zero, the magazine ran out → false. Quick reject: note longer than magazine.</p>`
     ],
+    tests: { sig: 'string string -> bool', fn: 'canConstruct', cases: [
+  [['aa', 'aab'], true],
+  [['aa', 'ab'], false],
+  [['a', 'b'], false],
+  [['abc', 'cba'], true],
+  [['zz', 'z'], false],
+  [['aab', 'baa'], true],
+  [['abcd', 'dcbaxyz'], true],
+  [['a', 'a'], true]
+] },
     solution: {
       approach: `<p>Tally the magazine, then walk the note decrementing. A negative count means the note needs a letter the magazine cannot supply.</p>`,
       code: `class Solution {
@@ -3376,7 +4628,22 @@ boolean containsLinear(int[] a, int target) {
         return true;
     }
 }`,
-      alt: [{ lang: 'python', code: `from collections import Counter
+      alt: [{ lang: 'js', code: `function canConstruct(ransomNote, magazine) {
+  if (ransomNote.length > magazine.length) return false;
+  const cnt = new Array(26).fill(0);
+  for (const ch of magazine) cnt[ch.charCodeAt(0) - 97]++;
+  for (const ch of ransomNote) {
+    if (--cnt[ch.charCodeAt(0) - 97] < 0) return false;   // ran out of this letter
+  }
+  return true;
+}` }, { lang: 'cpp', code: `bool canConstruct(string ransomNote, string magazine) {
+    if (ransomNote.size() > magazine.size()) return false;
+    array<int, 26> cnt{};
+    for (char c : magazine) cnt[c - 'a']++;
+    for (char c : ransomNote)
+        if (--cnt[c - 'a'] < 0) return false;   // ran out of this letter
+    return true;
+}` }, { lang: 'python', code: `from collections import Counter
 
 def can_construct(note, magazine):
     return not (Counter(note) - Counter(magazine))   # leftover need -> impossible` }],
@@ -3411,6 +4678,15 @@ def can_construct(note, magazine):
       `<p><b>Hint 2:</b> Tally the smaller array into a map, then walk the other array and "spend" counts.</p>`,
       `<p><b>Hint 3:</b> For x in nums2: if cnt[x] &gt; 0 → output x, cnt[x]−−. Follow-up: sorted inputs → two pointers, O(1) extra space.</p>`
     ],
+    tests: { sig: 'int[] int[] -> int[]', fn: 'intersect', cmp: 'set', cases: [
+  [[[1, 2, 2, 1], [2, 2]], [2, 2]],
+  [[[4, 9, 5], [9, 4, 9, 8, 4]], [4, 9]],
+  [[[1], [2]], []],
+  [[[0], [0]], [0]],
+  [[[1, 1, 1], [1, 1]], [1, 1]],
+  [[[1000, 0, 1000], [1000, 1000, 1000, 0]], [0, 1000, 1000]],
+  [[[3, 1, 2], [1, 1]], [1]]
+] },
     solution: {
       approach: `<p>Count the first array, then spend counts while scanning the second. Each output value is emitted at most as many times as both arrays allow.</p>`,
       code: `class Solution {
@@ -3428,7 +4704,27 @@ def can_construct(note, magazine):
         return out;
     }
 }`,
-      alt: [{ lang: 'python', code: `from collections import Counter
+      alt: [{ lang: 'js', code: `function intersect(nums1, nums2) {
+  if (nums1.length > nums2.length) return intersect(nums2, nums1);   // tally the smaller one
+  const cnt = new Map();
+  for (const x of nums1) cnt.set(x, (cnt.get(x) || 0) + 1);
+  const res = [];
+  for (const x of nums2) {
+    const c = cnt.get(x) || 0;
+    if (c > 0) { res.push(x); cnt.set(x, c - 1); }                    // spend one copy
+  }
+  return res;
+}` }, { lang: 'cpp', code: `vector<int> intersect(vector<int>& nums1, vector<int>& nums2) {
+    if (nums1.size() > nums2.size()) return intersect(nums2, nums1);   // tally the smaller one
+    unordered_map<int, int> cnt;
+    for (int x : nums1) cnt[x]++;
+    vector<int> res;
+    for (int x : nums2) {
+        auto it = cnt.find(x);
+        if (it != cnt.end() && it->second > 0) { res.push_back(x); it->second--; }   // spend one copy
+    }
+    return res;
+}` }, { lang: 'python', code: `from collections import Counter
 
 def intersect(nums1, nums2):
     return list((Counter(nums1) & Counter(nums2)).elements())   # & = min of counts` }],
@@ -3462,6 +4758,17 @@ def intersect(nums1, nums2):
       `<p><b>Hint 2:</b> One direction is not enough — also record which s-character already owns each t-character.</p>`,
       `<p><b>Hint 3:</b> Neat trick: map both strings to "index of first occurrence" patterns and compare, e.g. "egg" → [0,1,1], "add" → [0,1,1].</p>`
     ],
+    tests: { sig: 'string string -> bool', fn: 'isIsomorphic', cases: [
+  [['egg', 'add'], true],
+  [['foo', 'bar'], false],
+  [['badc', 'baba'], false],
+  [['paper', 'title'], true],
+  [['a', 'a'], true],
+  [['ab', 'aa'], false],
+  [['aa', 'ab'], false],
+  [['13', '42'], true],
+  [['a b', 'c d'], true]
+] },
     solution: {
       approach: `<p>Two maps enforce a one-to-one mapping: <code>s→t</code> catches one letter mapping to two, <code>t→s</code> catches two letters mapping to one.</p>`,
       code: `class Solution {
@@ -3476,7 +4783,27 @@ def intersect(nums1, nums2):
         return true;
     }
 }`,
-      alt: [{ lang: 'python', code: `def is_isomorphic(s, t):
+      alt: [{ lang: 'js', code: `function isIsomorphic(s, t) {
+  const st = new Map(), ts = new Map();   // s-char -> t-char and back
+  for (let i = 0; i < s.length; i++) {
+    const a = s[i], b = t[i];
+    if (st.has(a) && st.get(a) !== b) return false;   // a already maps elsewhere
+    if (ts.has(b) && ts.get(b) !== a) return false;   // b already owned by another char
+    st.set(a, b);
+    ts.set(b, a);
+  }
+  return true;
+}` }, { lang: 'cpp', code: `bool isIsomorphic(string s, string t) {
+    array<int, 256> st, ts;                 // char -> mapped char, -1 = none yet
+    st.fill(-1);
+    ts.fill(-1);
+    for (size_t i = 0; i < s.size(); i++) {
+        unsigned char a = s[i], b = t[i];
+        if (st[a] == -1 && ts[b] == -1) { st[a] = b; ts[b] = a; }   // new pair
+        else if (st[a] != b || ts[b] != a) return false;            // clashes with a pair
+    }
+    return true;
+}` }, { lang: 'python', code: `def is_isomorphic(s, t):
     st, ts = {}, {}
     for a, b in zip(s, t):
         if st.setdefault(a, b) != b or ts.setdefault(b, a) != a:
@@ -3517,6 +4844,17 @@ int digitSquareSum(int n) {
       `<p><b>Hint 2:</b> Store visited numbers in a HashSet; stop at 1 or at a repeat.</p>`,
       `<p><b>Hint 3:</b> Follow-up with O(1) memory: Floyd's slow/fast pointers on the sequence (DSA 12).</p>`
     ],
+    tests: { sig: 'int -> bool', fn: 'isHappy', cases: [
+  [[19], true],
+  [[2], false],
+  [[1], true],
+  [[7], true],
+  [[2147483647], false],
+  [[4], false],
+  [[100], true],
+  [[10], true],
+  [[1111111], true]
+] },
     solution: {
       approach: `<p>Walk the sequence while remembering every value in a HashSet. Reaching 1 → happy; meeting a remembered value → cycle → not happy.</p>`,
       code: `class Solution {
@@ -3534,7 +4872,28 @@ int digitSquareSum(int n) {
         return s;
     }
 }`,
-      alt: [{ lang: 'python', code: `def is_happy(n):
+      alt: [{ lang: 'js', code: `function isHappy(n) {
+  const next = (x) => {
+    let s = 0;
+    for (; x > 0; x = Math.floor(x / 10)) s += (x % 10) ** 2;
+    return s;
+  };
+  const seen = new Set();
+  while (n !== 1 && !seen.has(n)) {       // a repeat means a cycle
+    seen.add(n);
+    n = next(n);
+  }
+  return n === 1;
+}` }, { lang: 'cpp', code: `bool isHappy(int n) {
+    auto next = [](int x) {
+        int s = 0;
+        for (; x > 0; x /= 10) s += (x % 10) * (x % 10);
+        return s;
+    };
+    unordered_set<int> seen;
+    while (n != 1 && seen.insert(n).second) n = next(n);   // insert fails on a repeat -> cycle
+    return n == 1;
+}` }, { lang: 'python', code: `def is_happy(n):
     seen = set()
     while n != 1 and n not in seen:
         seen.add(n)
@@ -3573,6 +4932,15 @@ int digitSquareSum(int n) {
       `<p><b>Hint 2:</b> Instead of sorting by count, drop each value into bucket[count] (counts are 1..N).</p>`,
       `<p><b>Hint 3:</b> Walk buckets from N down to 1, collecting values until you have k. Alternative: a min-heap of size k (O(N log k)).</p>`
     ],
+    tests: { sig: 'int[] int -> int[]', fn: 'topKFrequent', cmp: 'set', cases: [
+  [[[1, 1, 1, 2, 2, 3], 2], [1, 2]],
+  [[[1], 1], [1]],
+  [[[4, 4, -1, -1, -1, 7], 1], [-1]],
+  [[[5, 6, 7], 3], [5, 6, 7]],
+  [[[3, 0, 1, 0], 1], [0]],
+  [[[2, 2, 3, 3, 3, 1, 1, 1, 1], 2], [1, 3]],
+  [[[-5, -5, -5, 0, 0, 9], 2], [-5, 0]]
+] },
     solution: {
       approach: `<p><b>Tally + bucket sort by frequency.</b> Bucket i holds the values that occur exactly i times. Reading buckets from high to low yields the most frequent values first in O(N) total.</p>`,
       code: `class Solution {
@@ -3600,7 +4968,32 @@ int digitSquareSum(int n) {
         return res;
     }
 }`,
-      alt: [{ lang: 'python', code: `from collections import Counter
+      alt: [{ lang: 'js', code: `function topKFrequent(nums, k) {
+  const cnt = new Map();
+  for (const x of nums) cnt.set(x, (cnt.get(x) || 0) + 1);
+  const bucket = Array.from({ length: nums.length + 1 }, () => []);   // bucket[f] = values with frequency f
+  for (const [v, f] of cnt) bucket[f].push(v);
+  const res = [];
+  for (let f = nums.length; f >= 1 && res.length < k; f--) {
+    for (const v of bucket[f]) {
+      if (res.length === k) break;
+      res.push(v);
+    }
+  }
+  return res;
+}` }, { lang: 'cpp', code: `vector<int> topKFrequent(vector<int>& nums, int k) {
+    unordered_map<int, int> cnt;
+    for (int x : nums) cnt[x]++;
+    vector<vector<int>> bucket(nums.size() + 1);   // bucket[f] = values with frequency f
+    for (auto& [v, f] : cnt) bucket[f].push_back(v);
+    vector<int> res;
+    for (int f = nums.size(); f >= 1 && (int)res.size() < k; f--)
+        for (int v : bucket[f]) {
+            if ((int)res.size() == k) break;
+            res.push_back(v);
+        }
+    return res;
+}` }, { lang: 'python', code: `from collections import Counter
 
 def top_k_frequent(nums, k):
     return [v for v, _ in Counter(nums).most_common(k)]   # heap-based, O(N log k)` }],
@@ -3629,12 +5022,22 @@ def top_k_frequent(nums, k):
     return count;
 }`
     },
-    mcq: { q: 'pf = −7 and k = 5. Which remainder must you store so it matches pf = 3?', options: ['3, using ((pf % k) + k) % k', '−2, Java\'s raw −7 % 5', '7', '2'], answer: 0, explain: '−7 and 3 differ by 10, a multiple of 5, so they must land in the same bucket. Java gives −7 % 5 = −2, so normalize to 3.' },
+    mcq: { q: 'pf = −7 and k = 5. Which remainder must you store so it matches pf = 3?', options: ['3, using ((pf % k) + k) % k', '−2, the raw −7 % 5 of Java, JS or C++', '7', '2'], answer: 0, explain: '−7 and 3 differ by 10, a multiple of 5, so they must land in the same bucket. Java, JS and C++ give −7 % 5 = −2 (Python gives 3), so normalize to 3.' },
     hints: [
       `<p><b>Hint 1:</b> sum(l..r) divisible by k ⇔ pf[r] ≡ pf[l−1] (mod k).</p>`,
       `<p><b>Hint 2:</b> Tally remainders (an <code>int[k]</code> is enough) seeded with remainder 0 → 1.</p>`,
       `<p><b>Hint 3:</b> For each prefix: r = ((pf % k) + k) % k; answer += cnt[r]; cnt[r]++. Normalize negatives!</p>`
     ],
+    tests: { sig: 'int[] int -> int', fn: 'subarraysDivByK', cases: [
+  [[[4, 5, 0, -2, -3, 1], 5], 7],
+  [[[5], 9], 0],
+  [[[5], 5], 1],
+  [[[0, 0], 2], 3],
+  [[[-1, 2, 9], 2], 2],
+  [[[-10000, 10000], 10000], 3],
+  [[[2, -2, 2, -4], 6], 2],
+  [[[1, 2, 3, 4, 5], 3], 7]
+] },
     solution: {
       approach: `<p><b>Prefix-remainder tally.</b> Two prefixes with equal remainders bound a subarray whose sum is a multiple of k. Counting earlier equal remainders at each step counts every such subarray once.</p>`,
       code: `class Solution {
@@ -3650,7 +5053,26 @@ def top_k_frequent(nums, k):
         return total;
     }
 }`,
-      alt: [{ lang: 'python', code: `def subarrays_div_by_k(nums, k):
+      alt: [{ lang: 'js', code: `function subarraysDivByK(nums, k) {
+  const cnt = new Array(k).fill(0);       // remainder -> how many prefixes had it
+  cnt[0] = 1;                             // empty prefix
+  let pf = 0, total = 0;
+  for (const x of nums) {
+    pf = (((pf + x) % k) + k) % k;        // JS % keeps the sign: normalise to 0..k-1
+    total += cnt[pf];
+    cnt[pf]++;
+  }
+  return total;
+}` }, { lang: 'cpp', code: `int subarraysDivByK(vector<int>& nums, int k) {
+    vector<int> cnt(k, 0);                // remainder -> how many prefixes had it
+    cnt[0] = 1;                           // empty prefix
+    int pf = 0, total = 0;
+    for (int x : nums) {
+        pf = ((pf + x) % k + k) % k;      // C++ % keeps the sign: normalise to 0..k-1
+        total += cnt[pf]++;
+    }
+    return total;
+}` }, { lang: 'python', code: `def subarrays_div_by_k(nums, k):
     cnt = [0] * k
     cnt[0] = 1
     pf = total = 0
@@ -3690,6 +5112,19 @@ def top_k_frequent(nums, k):
       `<p><b>Hint 2:</b> Map remainder → FIRST index, seeded with {0: −1}.</p>`,
       `<p><b>Hint 3:</b> At i: rem = pf % k; if rem in map and i − map[rem] ≥ 2 → true; else if rem not in map → map[rem] = i. Keep pf as a remainder to avoid overflow.</p>`
     ],
+    tests: { sig: 'int[] int -> bool', fn: 'checkSubarraySum', cases: [
+  [[[23, 2, 4, 6, 7], 6], true],
+  [[[23, 2, 6, 4, 7], 13], false],
+  [[[5, 0, 0], 3], true],
+  [[[0], 1], false],
+  [[[1, 0], 2], false],
+  [[[0, 0], 7], true],
+  [[[1, 2, 12], 6], false],
+  [[[1000000000, 1000000000], 2147483647], false],
+  [[[1000000000, 1000000000], 2000000000], true],
+  [[[1, 1], 2], true],
+  [[[6], 6], false]
+] },
     solution: {
       approach: `<p>Track prefix remainders with their earliest index. A repeated remainder at distance ≥ 2 proves a valid subarray.</p>`,
       code: `class Solution {
@@ -3709,7 +5144,28 @@ def top_k_frequent(nums, k):
         return false;
     }
 }`,
-      alt: [{ lang: 'python', code: `def check_subarray_sum(nums, k):
+      alt: [{ lang: 'js', code: `function checkSubarraySum(nums, k) {
+  const first = new Map([[0, -1]]);       // remainder -> earliest prefix index
+  let rem = 0;
+  for (let i = 0; i < nums.length; i++) {
+    rem = (rem + nums[i]) % k;            // below 2^53, so Number is exact
+    if (first.has(rem)) {
+      if (i - first.get(rem) >= 2) return true;   // length at least 2
+    } else {
+      first.set(rem, i);
+    }
+  }
+  return false;
+}` }, { lang: 'cpp', code: `bool checkSubarraySum(vector<int>& nums, int k) {
+    unordered_map<long long, int> first{{0, -1}};   // remainder -> earliest prefix index
+    long long rem = 0;
+    for (int i = 0; i < (int)nums.size(); i++) {
+        rem = (rem + nums[i]) % k;                  // long long avoids overflow before %
+        auto [it, inserted] = first.try_emplace(rem, i);
+        if (!inserted && i - it->second >= 2) return true;   // length at least 2
+    }
+    return false;
+}` }, { lang: 'python', code: `def check_subarray_sum(nums, k):
     first, rem = {0: -1}, 0
     for i, x in enumerate(nums):
         rem = (rem + x) % k
@@ -3752,6 +5208,16 @@ def top_k_frequent(nums, k):
       `<p><b>Hint 2:</b> Now count subarrays with sum exactly k: prefix count of odds + tally {0: 1}.</p>`,
       `<p><b>Hint 3:</b> Prefix odd-counts lie in 0..N, so an <code>int[N + 1]</code> replaces the map. Alternative: atMost(k) − atMost(k − 1) with a sliding window.</p>`
     ],
+    tests: { sig: 'int[] int -> int', fn: 'numberOfSubarrays', cases: [
+  [[[1, 1, 2, 1, 1], 3], 2],
+  [[[2, 4, 6], 1], 0],
+  [[[2, 2, 2, 1, 2, 2, 1, 2, 2, 2], 2], 16],
+  [[[1], 1], 1],
+  [[[2], 1], 0],
+  [[[1, 3, 5], 2], 2],
+  [[[1, 1, 1, 1], 1], 4],
+  [[[7, 2, 9, 4, 6, 5], 3], 1]
+] },
     solution: {
       approach: `<p><b>Odd-count prefix + tally.</b> Let odd = number of odd values so far. Each earlier prefix with odd − k odds starts a nice subarray ending here.</p>`,
       code: `class Solution {
@@ -3767,7 +5233,27 @@ def top_k_frequent(nums, k):
         return total;
     }
 }`,
-      alt: [{ lang: 'python', code: `def number_of_subarrays(nums, k):
+      alt: [{ lang: 'js', code: `function numberOfSubarrays(nums, k) {
+  const cnt = new Array(nums.length + 1).fill(0);   // prefix odd count -> how many prefixes
+  cnt[0] = 1;
+  let odd = 0, total = 0;
+  for (const x of nums) {
+    odd += x & 1;                                    // 1 if odd
+    if (odd >= k) total += cnt[odd - k];
+    cnt[odd]++;
+  }
+  return total;
+}` }, { lang: 'cpp', code: `int numberOfSubarrays(vector<int>& nums, int k) {
+    vector<int> cnt(nums.size() + 1, 0);   // prefix odd count -> how many prefixes
+    cnt[0] = 1;
+    int odd = 0, total = 0;
+    for (int x : nums) {
+        odd += x & 1;                       // 1 if odd
+        if (odd >= k) total += cnt[odd - k];
+        cnt[odd]++;
+    }
+    return total;
+}` }, { lang: 'python', code: `def number_of_subarrays(nums, k):
     cnt = [0] * (len(nums) + 1)
     cnt[0] = 1
     odd = total = 0
@@ -3809,6 +5295,17 @@ def top_k_frequent(nums, k):
       `<p><b>Hint 2:</b> Keep a count map of the window; valid ⇔ map.size() ≤ k.</p>`,
       `<p><b>Hint 3:</b> Expand right; while size &gt; k, decrement s[left] (delete at 0) and left++; update best. k = 0 → answer 0.</p>`
     ],
+    tests: { sig: 'string int -> int', fn: 'lengthOfLongestSubstringKDistinct', cases: [
+  [['eceba', 2], 3],
+  [['aa', 1], 2],
+  [['a', 0], 0],
+  [['abc', 0], 0],
+  [['abaccc', 2], 4],
+  [['abcabc', 3], 6],
+  [['abcdef', 1], 1],
+  [['aabbccdd', 2], 4],
+  [['x', 50], 1]
+] },
     solution: {
       approach: `<p>The general window-with-map template: the map's size is the number of distinct characters inside, shrink while it exceeds k.</p>`,
       code: `class Solution {
@@ -3826,7 +5323,32 @@ def top_k_frequent(nums, k):
         return best;
     }
 }`,
-      alt: [{ lang: 'python', code: `from collections import defaultdict
+      alt: [{ lang: 'js', code: `function lengthOfLongestSubstringKDistinct(s, k) {
+  const cnt = new Map();                  // char -> copies in the window
+  let left = 0, best = 0;
+  for (let right = 0; right < s.length; right++) {
+    cnt.set(s[right], (cnt.get(s[right]) || 0) + 1);
+    while (cnt.size > k) {                // too many distinct: shrink
+      const d = s[left++];
+      const c = cnt.get(d) - 1;
+      if (c === 0) cnt.delete(d); else cnt.set(d, c);
+    }
+    best = Math.max(best, right - left + 1);
+  }
+  return best;
+}` }, { lang: 'cpp', code: `int lengthOfLongestSubstringKDistinct(string s, int k) {
+    unordered_map<char, int> cnt;           // char -> copies in the window
+    int left = 0, best = 0;
+    for (int right = 0; right < (int)s.size(); right++) {
+        cnt[s[right]]++;
+        while ((int)cnt.size() > k) {       // too many distinct: shrink
+            char d = s[left++];
+            if (--cnt[d] == 0) cnt.erase(d);
+        }
+        best = max(best, right - left + 1);
+    }
+    return best;
+}` }, { lang: 'python', code: `from collections import defaultdict
 
 def length_of_longest_substring_k_distinct(s, k):
     cnt, left, best = defaultdict(int), 0, 0
@@ -3867,6 +5389,15 @@ def length_of_longest_substring_k_distinct(s, k):
       `<p><b>Hint 2:</b> Tally all n<sup>2</sup> sums of A and B in a map sum → count.</p>`,
       `<p><b>Hint 3:</b> For every c + d, add count[−(c + d)]. That is 2-Sum where each "number" is a pair sum.</p>`
     ],
+    tests: { sig: 'int[] int[] int[] int[] -> int', fn: 'fourSumCount', cases: [
+  [[[1, 2], [-2, -1], [-1, 2], [0, 2]], 2],
+  [[[0], [0], [0], [0]], 1],
+  [[[1], [1], [1], [1]], 0],
+  [[[0, 0], [0, 0], [0, 0], [0, 0]], 16],
+  [[[268435456], [268435456], [-268435456], [-268435456]], 1],
+  [[[-1, -1], [-1, 1], [-1, 1], [1, -1]], 6],
+  [[[1, -1, 0], [0, 1, -1], [2, -2, 0], [0, 0, 1]], 14]
+] },
     solution: {
       approach: `<p><b>Meet in the middle with a counting map.</b> n<sup>2</sup> sums from the first half go into a tally; n<sup>2</sup> lookups from the second half count matching tuples.</p>`,
       code: `class Solution {
@@ -3878,7 +5409,22 @@ def length_of_longest_substring_k_distinct(s, k):
         return count;
     }
 }`,
-      alt: [{ lang: 'python', code: `from collections import Counter
+      alt: [{ lang: 'js', code: `function fourSumCount(A, B, C, D) {
+  const ab = new Map();                   // a + b -> how many pairs
+  for (const a of A) for (const b of B) ab.set(a + b, (ab.get(a + b) || 0) + 1);
+  let count = 0;
+  for (const c of C) for (const d of D) count += ab.get(-(c + d)) || 0;
+  return count;
+}` }, { lang: 'cpp', code: `int fourSumCount(vector<int>& A, vector<int>& B, vector<int>& C, vector<int>& D) {
+    unordered_map<int, int> ab;             // a + b -> how many pairs (|a + b| <= 2^29)
+    for (int a : A) for (int b : B) ab[a + b]++;
+    int count = 0;
+    for (int c : C) for (int d : D) {
+        auto it = ab.find(-(c + d));
+        if (it != ab.end()) count += it->second;
+    }
+    return count;
+}` }, { lang: 'python', code: `from collections import Counter
 
 def four_sum_count(A, B, C, D):
     ab = Counter(a + b for a in A for b in B)
@@ -3919,6 +5465,16 @@ def four_sum_count(A, B, C, D):
       `<p><b>Hint 2:</b> Edge positions in a row are prefix sums of its widths (skip the last one).</p>`,
       `<p><b>Hint 3:</b> Tally every edge position across rows; answer = rows − (largest tally). No edges at all → rows.</p>`
     ],
+    tests: { sig: 'list<list<int>> -> int', fn: 'leastBricks', cases: [
+  [[[[1, 2, 2, 1], [3, 1, 2], [1, 3, 2], [2, 4], [3, 1, 2], [1, 3, 1, 1]]], 2],
+  [[[[1], [1], [1]]], 3],
+  [[[[3]]], 1],
+  [[[[1, 1], [2], [1, 1]]], 1],
+  [[[[2, 1], [1, 2]]], 1],
+  [[[[1, 1, 1], [1, 1, 1]]], 0],
+  [[[[5, 5], [5, 5], [10]]], 1],
+  [[[[2147483646, 1], [1, 2147483646]]], 1]
+] },
     solution: {
       approach: `<p><b>Tally edge positions.</b> The best line goes through the most common inner edge position. Prefix sums give each row's edges; a HashMap counts them.</p>`,
       code: `class Solution {
@@ -3935,7 +5491,31 @@ def four_sum_count(A, B, C, D):
         return wall.size() - most;
     }
 }`,
-      alt: [{ lang: 'python', code: `from collections import Counter
+      alt: [{ lang: 'js', code: `function leastBricks(wall) {
+  const edges = new Map();                // position -> rows with an edge there
+  let most = 0;
+  for (const row of wall) {
+    let pos = 0;
+    for (let i = 0; i < row.length - 1; i++) {   // skip the last brick: outer edge
+      pos += row[i];
+      const c = (edges.get(pos) || 0) + 1;
+      edges.set(pos, c);
+      most = Math.max(most, c);
+    }
+  }
+  return wall.length - most;
+}` }, { lang: 'cpp', code: `int leastBricks(vector<vector<int>>& wall) {
+    unordered_map<long long, int> edges;    // position -> rows with an edge there
+    int most = 0;
+    for (auto& row : wall) {
+        long long pos = 0;
+        for (size_t i = 0; i + 1 < row.size(); i++) {   // skip the last brick: outer edge
+            pos += row[i];
+            most = max(most, ++edges[pos]);
+        }
+    }
+    return (int)wall.size() - most;
+}` }, { lang: 'python', code: `from collections import Counter
 from itertools import accumulate
 
 def least_bricks(wall):
@@ -3976,6 +5556,16 @@ def least_bricks(wall):
       `<p><b>Hint 2:</b> In atMost(k), after shrinking so the window [left..right] has ≤ k distinct, every subarray ending at right and starting in [left..right] is valid: add right − left + 1.</p>`,
       `<p><b>Hint 3:</b> Answer = atMost(k) − atMost(k − 1). Use a count map, delete keys at 0. atMost(0) returns 0.</p>`
     ],
+    tests: { sig: 'int[] int -> int', fn: 'subarraysWithKDistinct', cases: [
+  [[[1, 2, 1, 2, 3], 2], 7],
+  [[[1, 2, 1, 3, 4], 3], 3],
+  [[[1], 1], 1],
+  [[[1, 1, 1], 1], 6],
+  [[[1, 2, 3], 3], 1],
+  [[[1, 2], 1], 2],
+  [[[2, 1, 2, 1, 2], 2], 10],
+  [[[1, 2, 1, 2, 1], 1], 5]
+] },
     solution: {
       approach: `<p><b>atMost difference.</b> Two runs of the window-with-map template. Each run is O(N), and the subtraction isolates the windows with exactly k distinct integers.</p>`,
       code: `class Solution {
@@ -3997,7 +5587,41 @@ def least_bricks(wall):
         return res;
     }
 }`,
-      alt: [{ lang: 'python', code: `from collections import defaultdict
+      alt: [{ lang: 'js', code: `function subarraysWithKDistinct(nums, k) {
+  // number of subarrays with at most m distinct values
+  const atMost = (m) => {
+    const cnt = new Map();
+    let left = 0, res = 0;
+    for (let right = 0; right < nums.length; right++) {
+      cnt.set(nums[right], (cnt.get(nums[right]) || 0) + 1);
+      while (cnt.size > m) {
+        const y = nums[left++];
+        const c = cnt.get(y) - 1;
+        if (c === 0) cnt.delete(y); else cnt.set(y, c);
+      }
+      res += right - left + 1;            // subarrays ending at right
+    }
+    return res;
+  };
+  return atMost(k) - atMost(k - 1);
+}` }, { lang: 'cpp', code: `class Solution {
+    // number of subarrays with at most m distinct values (values are 1..N)
+    int atMost(const vector<int>& a, int m) {
+        vector<int> cnt(a.size() + 1, 0);
+        int left = 0, distinct = 0, res = 0;
+        for (int right = 0; right < (int)a.size(); right++) {
+            if (cnt[a[right]]++ == 0) distinct++;
+            while (distinct > m)
+                if (--cnt[a[left++]] == 0) distinct--;
+            res += right - left + 1;          // subarrays ending at right
+        }
+        return res;
+    }
+public:
+    int subarraysWithKDistinct(vector<int>& nums, int k) {
+        return atMost(nums, k) - atMost(nums, k - 1);
+    }
+};` }, { lang: 'python', code: `from collections import defaultdict
 
 def subarrays_with_k_distinct(nums, k):
     def at_most(k):
@@ -4049,6 +5673,17 @@ def subarrays_with_k_distinct(nums, k):
       `<p><b>Hint 2:</b> For each top row, extend bottom row by row, keeping col[c] = sum of matrix[top..bottom][c].</p>`,
       `<p><b>Hint 3:</b> On col[], run the topic-6 algorithm: prefix sums + tally {0: 1}, add cnt[pf − target]. Total O(R<sup>2</sup>·C); loop over the smaller dimension squared.</p>`
     ],
+    tests: { sig: 'int[][] int -> int', fn: 'numSubmatrixSumTarget', cases: [
+  [[[[0, 1, 0], [1, 1, 1], [0, 1, 0]], 0], 4],
+  [[[[1, -1], [-1, 1]], 0], 5],
+  [[[[904]], 0], 0],
+  [[[[5]], 5], 1],
+  [[[[0, 0], [0, 0]], 0], 9],
+  [[[[1, 2, 3]], 3], 2],
+  [[[[1], [2], [3]], 3], 2],
+  [[[[1000, 1000], [1000, 1000]], 4000], 1],
+  [[[[-1, -1], [-1, -1]], -2], 4]
+] },
     solution: {
       approach: `<p><b>Row-pair compression + prefix-sum tally.</b> O(R<sup>2</sup>) row pairs; for each, the column-sum array is updated in O(C) and scanned with a counting map in O(C).</p>`,
       code: `class Solution {
@@ -4071,7 +5706,41 @@ def subarrays_with_k_distinct(nums, k):
         return count;
     }
 }`,
-      alt: [{ lang: 'python', code: `from collections import defaultdict
+      alt: [{ lang: 'js', code: `function numSubmatrixSumTarget(matrix, target) {
+  const R = matrix.length, C = matrix[0].length;
+  let count = 0;
+  for (let top = 0; top < R; top++) {
+    const col = new Array(C).fill(0);     // column sums of rows top..bottom
+    for (let bottom = top; bottom < R; bottom++) {
+      for (let c = 0; c < C; c++) col[c] += matrix[bottom][c];
+      const cnt = new Map([[0, 1]]);      // 1D: count subarrays with sum = target
+      let pf = 0;
+      for (const v of col) {
+        pf += v;
+        count += cnt.get(pf - target) || 0;
+        cnt.set(pf, (cnt.get(pf) || 0) + 1);
+      }
+    }
+  }
+  return count;
+}` }, { lang: 'cpp', code: `int numSubmatrixSumTarget(vector<vector<int>>& matrix, int target) {
+    int R = matrix.size(), C = matrix[0].size(), count = 0;
+    for (int top = 0; top < R; top++) {
+        vector<int> col(C, 0);                  // column sums of rows top..bottom
+        for (int bottom = top; bottom < R; bottom++) {
+            for (int c = 0; c < C; c++) col[c] += matrix[bottom][c];
+            unordered_map<int, int> cnt{{0, 1}}; // 1D: count subarrays with sum = target
+            int pf = 0;
+            for (int v : col) {
+                pf += v;
+                auto it = cnt.find(pf - target);
+                if (it != cnt.end()) count += it->second;
+                cnt[pf]++;
+            }
+        }
+    }
+    return count;
+}` }, { lang: 'python', code: `from collections import defaultdict
 
 def num_submatrix_sum_target(matrix, target):
     R, C, count = len(matrix), len(matrix[0]), 0
@@ -4124,6 +5793,17 @@ def num_submatrix_sum_target(matrix, target):
       `<p><b>Hint 2:</b> For each offset, slide a window over chunks with a count map (like minimum window, but the "characters" are words).</p>`,
       `<p><b>Hint 3:</b> Unknown chunk → reset the window. A chunk whose count exceeds its need → shrink from the left until it fits. Window holds W words → record left, then drop the leftmost word.</p>`
     ],
+    tests: { sig: 'string string[] -> list<int>', fn: 'findSubstring', cmp: 'set', cases: [
+  [['barfoothefoobarman', ['foo', 'bar']], [0, 9]],
+  [['wordgoodgoodgoodbestword', ['word', 'good', 'best', 'word']], []],
+  [['barfoofoobarthefoobarman', ['bar', 'foo', 'the']], [6, 9, 12]],
+  [['a', ['a']], [0]],
+  [['a', ['b']], []],
+  [['aaaa', ['aa', 'aa']], [0]],
+  [['ab', ['abc']], []],
+  [['aaa', ['a', 'a']], [0, 1]],
+  [['lingmindraboofooowingdingbarrwingmonkeypoundcake', ['fooo', 'barr', 'wing', 'ding', 'wing']], [13]]
+] },
     solution: {
       approach: `<p><b>L interleaved word-level sliding windows.</b> Each offset processes every chunk once as it enters and at most once as it leaves, with O(1) map work per chunk plus O(L) to cut the substring.</p>`,
       code: `class Solution {
@@ -4159,7 +5839,52 @@ def num_submatrix_sum_target(matrix, target):
         return res;
     }
 }`,
-      alt: [{ lang: 'python', code: `from collections import Counter, defaultdict
+      alt: [{ lang: 'js', code: `function findSubstring(s, words) {
+  const L = words[0].length, W = words.length, res = [];
+  if (s.length < L * W) return res;
+  const need = new Map();
+  for (const w of words) need.set(w, (need.get(w) || 0) + 1);
+  for (let off = 0; off < L; off++) {
+    const win = new Map();
+    let left = off, used = 0;                       // used = words in the window
+    const drop = () => {                            // remove the leftmost word
+      const x = s.slice(left, left + L);
+      win.set(x, win.get(x) - 1);
+      used--;
+      left += L;
+    };
+    for (let right = off; right + L <= s.length; right += L) {
+      const w = s.slice(right, right + L);
+      if (!need.has(w)) { win.clear(); used = 0; left = right + L; continue; }
+      win.set(w, (win.get(w) || 0) + 1);
+      used++;
+      while (win.get(w) > need.get(w)) drop();      // too many copies of w
+      if (used === W) { res.push(left); drop(); }   // exact match: slide by one word
+    }
+  }
+  return res;
+}` }, { lang: 'cpp', code: `vector<int> findSubstring(string s, vector<string>& words) {
+    vector<int> res;
+    int L = words[0].size(), W = words.size(), n = s.size();
+    if (n < L * W) return res;
+    unordered_map<string, int> need;
+    for (auto& w : words) need[w]++;
+    for (int off = 0; off < L; off++) {
+        unordered_map<string, int> win;
+        int left = off, used = 0;                       // used = words in the window
+        auto drop = [&]() { win[s.substr(left, L)]--; used--; left += L; };
+        for (int right = off; right + L <= n; right += L) {
+            string w = s.substr(right, L);
+            auto it = need.find(w);
+            if (it == need.end()) { win.clear(); used = 0; left = right + L; continue; }
+            win[w]++;
+            used++;
+            while (win[w] > it->second) drop();         // too many copies of w
+            if (used == W) { res.push_back(left); drop(); }   // exact match: slide by one word
+        }
+    }
+    return res;
+}` }, { lang: 'python', code: `from collections import Counter, defaultdict
 
 def find_substring(s, words):
     L, W = len(words[0]), len(words)
@@ -4214,6 +5939,16 @@ def find_substring(s, words):
       `<p><b>Hint 2:</b> Group by slope with a HashMap; the biggest group + 1 (the anchor) is the best line through that anchor.</p>`,
       `<p><b>Hint 3:</b> Key = (dy/g, dx/g) with g = gcd(|dy|, |dx|), sign normalized so dx &gt; 0 (or dx = 0 and dy &gt; 0). Pack into one long. Answer = max over anchors.</p>`
     ],
+    tests: { sig: 'int[][] -> int', fn: 'maxPoints', cases: [
+  [[[[1, 1], [2, 2], [3, 3]]], 3],
+  [[[[1, 1], [3, 2], [5, 3], [4, 1], [2, 3], [1, 4]]], 4],
+  [[[[0, 0]]], 1],
+  [[[[0, 0], [5, 7]]], 2],
+  [[[[0, 0], [0, 1], [0, 2], [1, 5]]], 3],
+  [[[[0, 0], [1, 0], [2, 0], [3, 1]]], 3],
+  [[[[-10000, -10000], [10000, 10000], [0, 0], [1, 2]]], 3],
+  [[[[1, 2], [2, 4], [3, 1], [-1, -2], [5, 0]]], 3]
+] },
     solution: {
       approach: `<p><b>Anchor + slope tally.</b> For each anchor i, normalize the direction to every later point j and count equal directions. Exact integer keys avoid floating-point errors; O(N<sup>2</sup>) pairs overall.</p>`,
       code: `class Solution {
@@ -4240,7 +5975,45 @@ def find_substring(s, words):
 
     private int gcd(int a, int b) { return b == 0 ? a : gcd(b, a % b); }
 }`,
-      alt: [{ lang: 'python', code: `from math import gcd
+      alt: [{ lang: 'js', code: `function maxPoints(points) {
+  const n = points.length;
+  if (n <= 2) return n;
+  const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b));
+  let best = 0;
+  for (let i = 0; i < n; i++) {
+    const slopes = new Map();             // "dx,dy" -> count
+    let local = 0;
+    for (let j = i + 1; j < n; j++) {
+      let dx = points[j][0] - points[i][0], dy = points[j][1] - points[i][1];
+      const g = gcd(Math.abs(dx), Math.abs(dy));   // distinct points, so g > 0
+      dx /= g; dy /= g;
+      if (dx < 0 || (dx === 0 && dy < 0)) { dx = -dx; dy = -dy; }   // one sign per direction
+      const key = dx + ',' + dy;
+      const c = (slopes.get(key) || 0) + 1;
+      slopes.set(key, c);
+      local = Math.max(local, c);
+    }
+    best = Math.max(best, local + 1);     // + the anchor itself
+  }
+  return best;
+}` }, { lang: 'cpp', code: `int maxPoints(vector<vector<int>>& points) {
+    int n = points.size();
+    if (n <= 2) return n;
+    int best = 0;
+    for (int i = 0; i < n; i++) {
+        map<pair<int, int>, int> slopes;   // normalised direction -> count
+        int local = 0;
+        for (int j = i + 1; j < n; j++) {
+            int dx = points[j][0] - points[i][0], dy = points[j][1] - points[i][1];
+            int g = gcd(abs(dx), abs(dy));  // distinct points, so g > 0
+            dx /= g; dy /= g;
+            if (dx < 0 || (dx == 0 && dy < 0)) { dx = -dx; dy = -dy; }   // one sign per direction
+            local = max(local, ++slopes[{dx, dy}]);
+        }
+        best = max(best, local + 1);        // + the anchor itself
+    }
+    return best;
+}` }, { lang: 'python', code: `from math import gcd
 from collections import defaultdict
 
 def max_points(points):
@@ -4273,7 +6046,7 @@ def max_points(points):
   quiz.push({ q: 'With default settings (capacity 16, load factor 0.75), the first resize happens when inserting the…', options: ['13th distinct key', '16th distinct key', '12th distinct key', '17th distinct key'], answer: 0, explain: 'Threshold = 16 × 0.75 = 12. Java resizes when size becomes greater than 12, i.e. after inserting the 13th key.' });
   quiz.push({ q: 'When does a Java 8+ HashMap bucket turn into a red-black tree?', options: ['When its chain grows past 8 nodes AND the table has at least 64 buckets (otherwise it resizes)', 'Whenever two keys collide', 'When the map holds more than 64 keys', 'Never — only TreeMap uses trees'], answer: 0, explain: 'TREEIFY_THRESHOLD = 8 and MIN_TREEIFY_CAPACITY = 64. Small tables are resized instead, which usually spreads the chain out.' });
   quiz.push({ q: '"Aa" and "BB" have the same <code>hashCode()</code> (2112). Putting both in a HashSet results in…', options: ['Both stored in the same bucket; equals() tells them apart; size() = 2', 'The second one overwrites the first', 'An exception: duplicate hash', 'Only one stored, size() = 1'], answer: 0, explain: 'Equal hashCodes only mean the same bucket. Equality is decided by equals(), so both strings are kept.' });
-  quiz.push({ q: 'Why do prefix-sum + hashing solutions use <code>long</code> for the running sum in Java when N ≤ 10<sup>5</sup> and |a[i]| ≤ 10<sup>9</sup>?', options: ['The running sum can reach 10<sup>14</sup>, far beyond int\'s ~2.1·10<sup>9</sup>', 'HashMap does not accept Integer keys', 'long lookups are faster', 'To allow negative numbers'], answer: 0, explain: '10<sup>5</sup> × 10<sup>9</sup> = 10<sup>14</sup>. An int overflows silently and produces wrong matches.' });
+  quiz.push({ q: 'Why do prefix-sum + hashing solutions use a 64-bit <code>long</code> (C++ <code>long long</code>) for the running sum in Java or C++ when N ≤ 10<sup>5</sup> and |a[i]| ≤ 10<sup>9</sup>?', options: ['The running sum can reach 10<sup>14</sup>, far beyond int\'s ~2.1·10<sup>9</sup>', 'HashMap does not accept Integer keys', 'long lookups are faster', 'To allow negative numbers'], answer: 0, explain: '10<sup>5</sup> × 10<sup>9</sup> = 10<sup>14</sup>. An int overflows silently and produces wrong matches.' });
   quiz.push({ q: 'Count subarrays with sum K: what must the map contain before the loop starts?', options: ['{0: 1}', '{0: −1}', '{} (empty)', '{K: 1}'], answer: 0, explain: 'The empty prefix (sum 0) has occurred once, so subarrays starting at index 0 are counted. {0: −1} is the seed for "longest" problems that store indices.' });
   quiz.push({ q: 'Longest subarray with sum K: a balance that is already in the map shows up again. You should…', options: ['Keep the existing (earliest) index — never overwrite', 'Overwrite it with the current index', 'Delete it', 'Store both indices in a list'], answer: 0, explain: 'The earliest index gives the longest future subarray. Overwriting would make answers shorter (that is the "shortest" variant).' });
   quiz.push({ q: 'Why can\'t you solve "count subarrays with sum K" using a sliding window when the array contains negatives?', options: ['Adding an element can decrease the sum, so "shrink when the sum is too big" is no longer correct (no monotonicity)', 'Sliding windows cannot count', 'Negative numbers cannot be stored in a HashMap', 'It works fine with negatives'], answer: 0, explain: 'Sliding window needs monotone sums (all non-negative values). Prefix sum + hashing works for any integers.' });
@@ -4283,7 +6056,7 @@ def max_points(points):
   quiz.push({ q: 'Two Sum: you check for the complement <i>before</i> inserting the current element because…', options: ['Otherwise an element can pair with itself (e.g. target 6, x = 3 at one index)', 'Inserting first is slower', 'HashMap.put fails on duplicates', 'The order never matters'], answer: 0, explain: 'Check-then-insert keeps the invariant "map contains only earlier indices", so i ≠ j automatically and real duplicates like [3, 3] still work.' });
   quiz.push({ q: 'Which structure gives sorted iteration and floor/ceiling queries, at O(log N) per operation?', options: ['TreeMap', 'HashMap', 'LinkedHashMap', 'HashSet'], answer: 0, explain: 'TreeMap is a red-black tree ordered by key. HashMap has no order; LinkedHashMap keeps insertion order.' });
   quiz.push({ q: 'Minimum window substring keeps a counter <code>missing</code>. When you remove s[left] and need[s[left]] becomes 1, you…', options: ['Increase missing — the window no longer covers t — and stop shrinking', 'Decrease missing', 'Record a new best window', 'Reset the whole map'], answer: 0, explain: 'A positive need means a required character is now missing. The window is invalid, so you go back to expanding right.' });
-  quiz.push({ q: 'Subarray sums divisible by 5: in Java, prefix sum −7 and prefix sum 3 should…', options: ['Share remainder 3 after normalizing ((−7 % 5) + 5) % 5', 'Have different remainders (−2 and 3)', 'Both be ignored', 'Cause an exception'], answer: 0, explain: '−7 − 3 = −10 is a multiple of 5, so they must match. Java\'s −7 % 5 is −2, which must be normalized.' });
+  quiz.push({ q: 'Subarray sums divisible by 5: in Java, JS or C++, prefix sum −7 and prefix sum 3 should…', options: ['Share remainder 3 after normalizing ((−7 % 5) + 5) % 5', 'Have different remainders (−2 and 3)', 'Both be ignored', 'Cause an exception'], answer: 0, explain: '−7 − 3 = −10 is a multiple of 5, so they must match. In Java, JS and C++ −7 % 5 is −2 (Python gives 3), which must be normalized.' });
 
   /* =====================================================================
      INTERVIEW Q&A
@@ -4369,7 +6142,7 @@ def max_points(points):
     id: 'dsa08',
     title: 'Hashing Masterclass (HashSet & HashMap)',
     intro: `<p>Hashing is the single most useful trick in coding interviews. A <b>HashSet</b> answers "have I seen this before?" and a <b>HashMap</b> answers "how many / where / which partner?" — both in <b>O(1) time on average</b>. That one superpower turns dozens of O(N<sup>2</sup>) brute-force solutions into clean O(N) ones, and it is hiding inside caches, database joins, deduplication pipelines and compilers.</p>
-<p>We start by <b>opening the box</b>: how Java turns a key into a bucket (hashCode, spreading, masking), why <code>equals()</code> and <code>hashCode()</code> must agree, how collisions are chained, when a chain becomes a red-black tree, and why the 0.75 load factor and doubling resize keep everything O(1) amortized — and when it all collapses to O(N).</p>
+<p>We start by <b>opening the box</b>: how a hash table turns a key into a bucket (hashCode, spreading, masking), with Java's <code>HashMap</code> as the worked example (Python's <code>dict</code>, JavaScript's <code>Map</code> and C++'s <code>unordered_map</code> use the same ideas), why equality and the hash must agree (<code>equals()</code>/<code>hashCode()</code> in Java, <code>__eq__</code>/<code>__hash__</code> in Python, <code>operator==</code> plus a hash functor in C++), how collisions are chained, when a chain becomes a red-black tree, and why the 0.75 load factor and doubling resize keep everything O(1) amortized — and when it all collapses to O(N).</p>
 <p>Then we master the patterns that appear again and again, each with a real-life picture you will remember in the interview room:</p>
 <ul>
 <li><b>Frequency map</b> — the shopkeeper's tally sheet: first non-repeating element, valid anagram, group anagrams.</li>
@@ -4383,13 +6156,19 @@ def max_points(points):
     goals: [
       'Explain exactly how a Java HashMap stores and finds a key: hashCode → spread → bucket index → chain/tree walk with equals(), load factor 0.75, doubling resize, treeify at 8 (capacity ≥ 64).',
       'State and defend the complexity: O(1) average, O(1) amortized insert, O(N) worst case with a bad hash (O(log N) after treeify), and write correct hashCode/equals for custom keys.',
-      'Pick the right tool from the wording: HashSet vs HashMap vs int[26] vs LinkedHashMap vs TreeMap, and value = count / first index / last index / list.',
+      'Pick the right tool from the wording: hash set vs hash map vs a plain count array (int[26]) vs an insertion-ordered map (LinkedHashMap, Python dict, JS Map) vs a sorted map (TreeMap, std::map), and value = count / first index / last index / list.',
       'Solve every prefix-sum + hashing problem (zero-sum exists, count sum K, longest sum 0/K, equal 0s and 1s, divisible by K) in O(N) with the correct seed ({0} or 0 → −1).',
       'Write the sliding-window-with-a-map template from memory and apply it to longest substring without repeats and minimum window substring.',
       'Solve longest consecutive sequence in O(N) using the "only start counting at a chain start" trick and prove the O(N) bound.'
     ],
     prereqs: `<p>DSA 1 (Java foundations: arrays, strings, <code>List</code>/<code>Map</code> basics), DSA 2 (Big-O and constraint reading), DSA 5 (<b>Prefix Sums</b> — essential for topics 5–7) and DSA 6 (<b>Two Pointers &amp; Sliding Window</b> — essential for topic 8). Bit basics from DSA 4 help with the <code>&amp; (capacity − 1)</code> bucket math.</p>`,
     hours: 16,
+    langNotes: {
+      java: `<p><b>Java:</b> <code>HashMap</code>/<code>HashSet</code> give O(1) average lookups; <code>TreeMap</code> keeps keys sorted at O(log N), and <code>LinkedHashMap</code> keeps insertion order. Keys and values are boxed (<code>Integer</code>, <code>Long</code>), so compare counts with <code>.equals()</code> or unbox them: <code>==</code> on two <code>Integer</code> objects only works below 128. A custom key needs both <code>equals()</code> and <code>hashCode()</code> (a <code>record</code> writes them for you), and must not change while it sits in a map. <code>int</code> overflow wraps silently, so build prefix sums in <code>long</code> and use <code>Set&lt;Long&gt;</code> / <code>Map&lt;Long, Integer&gt;</code> (seed with <code>0L</code>). <code>-7 % 5</code> is <code>-2</code>: normalise with <code>((x % k) + k) % k</code>. <code>merge</code>, <code>getOrDefault</code>, <code>computeIfAbsent</code> and <code>putIfAbsent</code> are the tally helpers. Recursion is fine to about 10k frames, but every solution here is iterative.</p>`,
+      python: `<p><b>Python:</b> <code>dict</code> and <code>set</code> are hash tables with O(1) average operations, and a <code>dict</code> keeps insertion order. <code>collections.Counter</code> tallies in one call (<code>Counter(s) == Counter(t)</code> checks an anagram, <code>most_common(k)</code> gives the top k) and <code>defaultdict(int)</code> / <code>defaultdict(list)</code> skip the "missing key" check. Keys must be hashable: use a <code>tuple</code> or <code>frozenset</code>, not a <code>list</code>; a class that defines <code>__eq__</code> must also define <code>__hash__</code>. Integers never overflow, and <code>%</code> with a positive k is never negative (<code>-7 % 5 == 3</code>), so no normalising is needed. <code>str</code> hashes are randomised per process. There is no built-in sorted map: use <code>sorted()</code>, <code>bisect</code> or a third-party <code>SortedList</code>. Recursion stops at about 1000 frames; the loops in this module are iterative.</p>`,
+      js: `<p><b>JavaScript:</b> use <code>Map</code> and <code>Set</code>, not plain objects: a <code>Map</code> keeps number keys as numbers, has <code>size</code>, keeps insertion order and has no inherited keys. Object and array keys are compared by <b>identity</b>, so <code>new Set([[1, 2]]).has([1, 2])</code> is false; build a string key such as <code>x + ',' + y</code> instead. A tally is <code>m.set(x, (m.get(x) || 0) + 1)</code>; delete keys whose count reaches 0 so <code>size</code> stays the distinct count. <code>Number</code> is exact only up to 2<sup>53</sup> (prefix sums here stay far below that; use <code>BigInt</code> beyond it). <code>%</code> keeps the sign of the dividend (<code>-7 % 5 === -2</code>), so normalise with <code>((x % k) + k) % k</code>. <code>sort()</code> compares as strings unless you pass <code>(a, b) =&gt; a - b</code>. There is no built-in sorted map or heap. Recursion depth is about 10k frames.</p>`,
+      cpp: `<p><b>C++:</b> <code>unordered_map</code>/<code>unordered_set</code> are O(1) on average; <code>map</code>/<code>set</code> are sorted trees at O(log N). <code>m[x]</code> inserts a missing key with value 0, which is perfect for tallies (<code>cnt[x]++</code>) but adds junk keys if you only meant to look: use <code>find</code> or <code>count</code> for read-only checks. <code>insert(x).second</code> is false when x was already there. A custom key needs <code>operator==</code> and a hash functor; <code>pair</code> has no default hash, so pack it into a <code>long long</code> or use a <code>map</code>. Signed overflow is undefined behaviour, so keep prefix sums in <code>long long</code>; <code>%</code> keeps the sign of the dividend. <code>reserve(n)</code> avoids rehashing. On judges with anti-hash tests, add a random-seeded hash (splitmix64). Stack depth is about 8 MB.</p>`
+    },
     topics: topics,
     practice: practice,
     quiz: quiz,

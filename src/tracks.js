@@ -5,15 +5,6 @@ var LEVELS = {
   E: { name: 'Expert', icon: '🔴', color: 'r' }
 };
 
-var LEARNING_PATHS = [
-  { name: 'Complete path (zero → expert)', time: '9–12 months', route: 'All tracks in level order: every Beginner module → every Intermediate → every Advanced → every Expert.' },
-  { name: 'SDE-1 / New grad', time: '12–16 weeks', route: 'One language (Beginner + Intermediate) · DSA 1–20 · SQL 1–9 · CS Core 1–6, 10–13 · LLD 1–7 · HLD 1–6 · Behavioral 1–4' },
-  { name: 'SDE-2 / Senior', time: '16–20 weeks', route: 'DSA 8–28 · LLD all · HLD all · SQL 10–15 · Backend or Frontend Advanced + Expert · Behavioral 5' },
-  { name: 'Frontend specialist', time: '14 weeks', route: 'JS/TS all · Frontend all · DSA 1–15 · HLD 1–9 · Behavioral' },
-  { name: 'Backend specialist', time: '16 weeks', route: 'Java or Python all · Backend all · SQL all · HLD all · DSA 1–20' },
-  { name: 'AI engineer', time: '14 weeks', route: 'Python all · GenAI all · Backend 1–9 · HLD 1–13 · DSA 1–15' }
-];
-
 var TRACKS = [
   {
     id: 'dsa', title: 'DSA + Math for CS', short: 'DSA', icon: 'DSA', lang: 'java', code: 'required', dry: true,
@@ -212,7 +203,7 @@ var TRACKS = [
   },
   {
     id: 'be', title: 'Backend Engineering', short: 'Backend', icon: 'BE', lang: 'java', code: 'optional', dry: false,
-    desc: 'Backend from your first REST API to microservices, Kubernetes, cloud, security and production excellence (Spring Boot + Node.js).',
+    desc: 'Backend from your first REST API to microservices, Kubernetes, cloud, security and production excellence (Spring Boot, Node.js and Python with FastAPI).',
     modules: [
       ['B', 'How Backends Work & HTTP Basics', 'Client-server, what a backend does, HTTP methods/status codes/headers, JSON, statelessness, web servers vs app servers.'],
       ['B', 'Your First REST API (Spring Boot & Node.js)', 'Project setup, routing/controllers, request/response bodies, validation, error handling, layered architecture (controller-service-repository), testing with curl/Postman.'],
@@ -229,7 +220,12 @@ var TRACKS = [
       ['E', 'DevOps: Docker, Kubernetes, CI/CD & IaC', 'Containers and images, Dockerfile best practices, Kubernetes (pods, deployments, services, ingress, config/secrets, autoscaling), CI/CD pipelines, blue-green/canary, Terraform basics.'],
       ['E', 'Cloud Architecture', 'AWS core (EC2, S3, RDS, DynamoDB, SQS/SNS, Lambda, API Gateway, VPC, IAM), serverless trade-offs, multi-AZ/multi-region, cost awareness, well-architected pillars.'],
       ['E', 'Security Engineering', 'OWASP Top 10 in depth, input validation, secrets management, TLS/mTLS, zero trust, rate limiting/abuse prevention, supply-chain security, audit logging.'],
-      ['E', 'Observability & Production Excellence', 'Structured logging, metrics (RED/USE), distributed tracing (OpenTelemetry), alerting, incident response, postmortems, SRE practices, feature flags and safe deploys.']
+      ['E', 'Observability & Production Excellence', 'Structured logging, metrics (RED/USE), distributed tracing (OpenTelemetry), alerting, incident response, postmortems, SRE practices, feature flags and safe deploys.'],
+      ['I', 'Python Backend I: FastAPI Fundamentals', 'Project layout, routing, path/query/body parameters, Pydantic models and validation, response models, status codes and error handlers, dependency injection, async vs sync endpoints, OpenAPI docs, running with Uvicorn.'],
+      ['I', 'Python Backend II: Databases with SQLAlchemy & Alembic', 'Engine, sessions and the unit of work, ORM models and relationships, queries in SQLAlchemy 2.0 style, N+1 and eager loading, transactions, Alembic migrations, connection pooling, repository pattern, async database access.'],
+      ['I', 'Python Backend III: Auth, Security & Configuration', 'Password hashing (argon2/bcrypt), OAuth2 password flow with JWT in FastAPI, scopes and roles, CORS, settings from environment with pydantic-settings, secrets handling, rate limiting, input validation and the OWASP checks for Python APIs.'],
+      ['A', 'Python Backend IV: Testing & Quality for APIs', 'pytest fixtures and parametrize, TestClient and httpx AsyncClient, test databases and transactions per test, factories, mocking external services, contract tests, coverage, type checking with mypy, linting and formatting with ruff, CI pipelines.'],
+      ['A', 'Python Backend V: Async Workers, Caching & Deployment', 'Background tasks, task queues (Celery, RQ, arq), Redis caching patterns, idempotent jobs and retries, Docker images for Python apps, Gunicorn/Uvicorn workers, structured logging and metrics, Django overview and when to choose it.'],
     ]
   },
   {
@@ -252,7 +248,10 @@ var TRACKS = [
       ['A', 'LLM System Design & LLMOps', 'Designing a chatbot/RAG product at scale, model selection, latency and cost optimization, caching (semantic cache), streaming, rate limits, observability, A/B testing prompts.'],
       ['E', 'Transformer Internals Deep Dive', 'Attention math (Q, K, V, scaling, masking), multi-head attention, positional encodings (RoPE), KV cache, quantization, scaling laws, mixture of experts, long-context techniques.'],
       ['E', 'AI-Augmented Software Engineering', 'Working with coding agents day to day, spec-driven development, reviewing and testing AI-written code, AI for debugging/refactoring/docs, AI in interviews (what is allowed, what is tested), productivity without skill atrophy.'],
-      ['E', 'The Future of Software Careers with AI', 'What gets automated vs what gains value, T-shaped skills, system thinking and product sense, ethics and regulation, building a learning habit, career roadmap for the next 5 years.']
+      ['E', 'The Future of Software Careers with AI', 'What gets automated vs what gains value, T-shaped skills, system thinking and product sense, ethics and regulation, building a learning habit, career roadmap for the next 5 years.'],
+      ['B', 'Linear Algebra for Machine Learning', 'Vectors, dot products and cosine similarity, matrices as transformations, matrix multiplication, transpose and inverse, linear systems, eigenvectors intuition, SVD and PCA, how embeddings and attention use these ideas, all in plain Python.'],
+      ['B', 'Probability & Statistics for Machine Learning', 'Random variables, distributions (Bernoulli, binomial, normal), expectation and variance, Bayes rule, conditional probability, sampling, confidence intervals, hypothesis tests and A/B tests, entropy and cross-entropy, softmax probabilities.'],
+      ['I', 'Calculus & Optimization for Machine Learning', 'Derivatives and the chain rule, partial derivatives and gradients, gradient descent and learning rates, loss functions (MSE, cross-entropy), backpropagation by hand, momentum and Adam, overfitting and regularisation, convexity intuition.'],
     ]
   },
   {
@@ -273,6 +272,30 @@ var TRACKS = [
       ['I', 'TCP & UDP Deep Dive', 'UDP use-cases, TCP 3-way handshake and teardown, sequence/ack numbers, flow control (sliding window), congestion control (slow start, AIMD), retransmission, TIME_WAIT.'],
       ['A', 'Application Layer: HTTP, TLS, DNS, WebSockets', 'HTTP/1.1 vs HTTP/2 vs HTTP/3, keep-alive, TLS handshake and certificates, DNS resolution in depth, WebSockets/SSE, what happens when you type a URL.'],
       ['E', 'Advanced Networking: QUIC, BGP, Load Balancing & Security', 'QUIC internals, BGP and internet routing, anycast, load balancer internals (ECMP, consistent hashing), firewalls, VPNs, DDoS mitigation.']
+    ]
+  },
+  {
+    id: 'devops', title: 'Cloud & DevOps', short: 'DevOps', icon: 'OPS', lang: 'bash', code: 'optional', dry: false,
+    desc: 'From Linux and networking to Terraform, Kubernetes, observability and multi-region architecture: the path from cloud support to DevOps, SRE and cloud architect roles.',
+    modules: [
+      ['B', 'Linux for the Cloud', 'Filesystem layout and navigation, permissions and ownership (chmod, chown, umask), users and groups, processes and services (ps, top, kill, systemctl), text tools (grep, sed, awk, cut, sort), package managers, SSH and keys.'],
+      ['B', 'Bash Scripting for Operations', 'Variables, quoting, exit codes, conditionals and loops, functions, arguments, pipes and redirection, set -euo pipefail, traps, cron jobs, log rotation scripts, writing safe idempotent scripts.'],
+      ['B', 'Networking for Cloud Engineers', 'TCP/IP model in practice, DNS records and resolution, HTTP/HTTPS and TLS certificates, ports, CIDR and subnet maths, public vs private networks, NAT, firewalls and security groups, troubleshooting with dig, curl, ss and traceroute.'],
+      ['B', 'Git & Collaboration Workflows', 'Commits, branches, merging and rebasing, resolving conflicts, pull requests and code review, GitHub and GitLab basics, tags and releases, .gitignore and secrets hygiene, trunk-based vs Git flow.'],
+      ['B', 'Cloud Fundamentals I: Compute & Storage', 'Regions and availability zones, the shared responsibility model, virtual machines (EC2, Azure VMs), images and instance types, object storage (S3, Blob), block vs file storage, pricing and the free tier, AWS first with Azure equivalents.'],
+      ['B', 'Cloud Fundamentals II: Identity & Networks', 'IAM users, groups, roles and policies, least privilege, MFA and access keys, VPC/VNet design, subnets, route tables, internet and NAT gateways, security groups vs network ACLs, a two-tier network from scratch.'],
+      ['I', 'Python for Automation', 'Scripts with argparse and logging, calling REST APIs, JSON and YAML handling, AWS automation with boto3 (pagination, waiters, error handling), idempotency, testing scripts, packaging a CLI, a short look at Go for tooling.'],
+      ['I', 'Containers with Docker', 'Images vs containers, writing Dockerfiles, layers and caching, multi-stage builds, small and secure images, volumes and networks, docker-compose for local stacks, registries, debugging containers.'],
+      ['I', 'Infrastructure as Code with Terraform', 'Declarative infrastructure, providers and resources, variables and outputs, state and remote backends with locking, plan and apply, modules, workspaces and environments, importing resources, drift and policy checks.'],
+      ['I', 'Configuration Management with Ansible', 'Inventory, ad-hoc commands, playbooks, tasks and handlers, idempotent modules, variables and facts, templates with Jinja2, roles and Galaxy, vault for secrets, Ansible vs Terraform.'],
+      ['I', 'CI/CD Pipelines', 'Continuous integration and delivery, GitHub Actions workflows, jobs and runners, caching and artifacts, GitLab CI and Jenkins equivalents, environments and approvals, blue-green and canary deploys, rollbacks, pipeline security.'],
+      ['I', 'Managed Cloud Services', 'Managed databases (RDS/PostgreSQL), backups and read replicas, load balancers (ALB/NLB), auto-scaling groups and health checks, serverless functions (Lambda, Azure Functions), queues and events, choosing managed vs self-hosted.'],
+      ['A', 'Kubernetes Core', 'Cluster architecture, Pods, ReplicaSets and Deployments, Services and Ingress controllers, ConfigMaps and Secrets, probes, resource requests and limits, namespaces, kubectl workflows, running locally with kind or minikube.'],
+      ['A', 'Helm & Day-2 Kubernetes Operations', 'Helm charts, values and releases, upgrades and rollbacks, HorizontalPodAutoscaler, rolling updates, StatefulSets and persistent volumes, RBAC, network policies, cluster upgrades and troubleshooting.'],
+      ['A', 'Observability & Monitoring', 'Metrics, logs and traces, Prometheus scraping and PromQL, Grafana dashboards, alerting rules and on-call, the ELK/EFK stack, OpenTelemetry, SLIs and SLOs, commercial tools such as Datadog.'],
+      ['A', 'DevSecOps & Cloud Security', 'Secrets management with HashiCorp Vault, static analysis and dependency scanning in pipelines, container image scanning, least-privilege IAM design, security groups and network segmentation, audit logs, compliance basics.'],
+      ['E', 'Advanced Cloud Architecture', 'Microservices on the cloud, service meshes (Istio), disaster recovery strategies (backup and restore, pilot light, warm standby, multi-site), RTO and RPO, multi-region deployments, cost optimisation, the Well-Architected Framework.'],
+      ['E', 'SRE Practice & Capstone', 'Error budgets, incident response and postmortems, capacity planning, toil reduction, chaos engineering, a capstone that provisions and runs a three-tier app end to end, DevOps and SRE interview preparation.'],
     ]
   },
   {

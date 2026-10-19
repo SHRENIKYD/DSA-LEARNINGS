@@ -57,7 +57,7 @@
       'The interviewer asks "<b>Why does that work?</b>" or "<b>Can you prove it?</b>" → they want an exchange argument or a stays-ahead argument, not "it seems right".',
       'Weights + times ("minimize Σ weight × finish time") → sort by the ratio <code>time / weight</code> (Smith\'s rule), proven by swapping neighbours.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       // The greedy template: 1) pick a key you can PROVE is safe, 2) sort (or heap) by it,
       // 3) one pass that locks choices in and never undoes them.
       long minTotalWaiting(int[] durations) {
@@ -69,7 +69,34 @@
               clock += x;                        // cashier is busy for x more minutes
           }
           return total;
-      }`, `
+      }`, alt: [{ lang: 'python', code: `# The greedy template: 1) pick a key you can PROVE is safe, 2) sort (or heap) by it,
+# 3) one pass that locks choices in and never undoes them.
+def min_total_waiting(durations):
+    total = clock = 0                  # Python ints never overflow
+    for x in sorted(durations):        # shortest job first; sorted() leaves the input alone
+        total += clock                 # this customer waited 'clock' minutes
+        clock += x                     # cashier is busy for x more minutes
+    return total` }, { lang: 'js', code: `// The greedy template: 1) pick a key you can PROVE is safe, 2) sort (or heap) by it,
+// 3) one pass that locks choices in and never undoes them.
+function minTotalWaiting(durations) {
+  const d = [...durations].sort((a, b) => a - b);   // copy; a comparator, or sort() compares strings
+  let total = 0, clock = 0;
+  for (const x of d) {
+    total += clock;                    // this customer waited 'clock' minutes
+    clock += x;                        // cashier is busy for x more minutes
+  }
+  return total;
+}` }, { lang: 'cpp', code: `// The greedy template: 1) pick a key you can PROVE is safe, 2) sort (or heap) by it,
+// 3) one pass that locks choices in and never undoes them.
+long long minTotalWaiting(vector<int> d) {      // by value: sorting the copy keeps the caller's data
+    sort(d.begin(), d.end());                   // shortest job first
+    long long total = 0, clock = 0;             // long long: totals can exceed 2^31
+    for (int x : d) {
+        total += clock;
+        clock += x;
+    }
+    return total;
+}` }] }, { lang: 'java', code: `
       // Smith's rule: minimize sum of weight[i] * finishTime[i].
       // Put job a before job b when time[a] / weight[a] < time[b] / weight[b].
       // Cross-multiply (no doubles, no division by zero) and use long to avoid overflow.
@@ -84,7 +111,44 @@
               cost += (long) weight[i] * clock;  // pay weight x finish time
           }
           return cost;
-      }`],
+      }`, alt: [{ lang: 'python', code: `# Smith's rule: minimize sum of weight[i] * finishTime[i].
+# Job a goes before job b when time[a] / weight[a] < time[b] / weight[b].
+from functools import cmp_to_key
+
+def min_weighted_completion(time, weight):
+    # cross-multiply: exact, no floats, no division by zero
+    order = sorted(range(len(time)), key=cmp_to_key(lambda a, b: time[a] * weight[b] - time[b] * weight[a]))
+    clock = cost = 0
+    for i in order:
+        clock += time[i]               # job i finishes at 'clock'
+        cost += weight[i] * clock      # pay weight x finish time
+    return cost` }, { lang: 'js', code: `// Smith's rule: minimize sum of weight[i] * finishTime[i].
+// Job a goes before job b when time[a] / weight[a] < time[b] / weight[b].
+function minWeightedCompletion(time, weight) {
+  // cross-multiply: exact for products below 2^53, no division by zero
+  const order = time.map((_, i) => i).sort((a, b) => time[a] * weight[b] - time[b] * weight[a]);
+  let clock = 0, cost = 0;
+  for (const i of order) {
+    clock += time[i];                  // job i finishes at 'clock'
+    cost += weight[i] * clock;         // pay weight x finish time
+  }
+  return cost;
+}` }, { lang: 'cpp', code: `// Smith's rule: minimize sum of weight[i] * finishTime[i].
+// Job a goes before job b when time[a] / weight[a] < time[b] / weight[b].
+long long minWeightedCompletion(const vector<int>& time, const vector<int>& weight) {
+    vector<int> order(time.size());
+    iota(order.begin(), order.end(), 0);
+    // cross-multiply in long long: exact and overflow-free
+    sort(order.begin(), order.end(), [&](int a, int b) {
+        return (long long) time[a] * weight[b] < (long long) time[b] * weight[a];
+    });
+    long long clock = 0, cost = 0;
+    for (int i : order) {
+        clock += time[i];                          // job i finishes at 'clock'
+        cost += (long long) weight[i] * clock;     // pay weight x finish time
+    }
+    return cost;
+}` }] }],
     codeTitle: ['Shortest Job First (the cleanest greedy)', 'Weighted version: Smith\'s rule with an exact comparator'],
     viz: {
       title: 'Exchange argument live: fix every "long before short" pair by swapping neighbours',
@@ -127,7 +191,7 @@
           { type: 'table', label: 'contribution of each job', columns: ['position i', 'duration', 'jobs behind (n−1−i)', 'adds'], rows: cur.map(function (x, k) { return [k, x, nC - 1 - k, x * (nC - 1 - k)]; }) },
           { type: 'vars', vals: { total: total(cur) }, hl: { total: 'ok' } }
         ] });
-        frames.push({ narr: 'No inversions left → the order is sorted ascending, which is exactly what the greedy "shortest first" produces in one <code>Arrays.sort</code>. Final total = <b>' + total(cur) + '</b>. ' + (swaps ? 'We needed ' + swaps + ' swaps and every one helped — that is the whole exchange-argument proof.' : 'Your input was already sorted: greedy order, nothing to fix.'), parts: [
+        frames.push({ narr: 'No inversions left → the order is sorted ascending, which is exactly what the greedy "shortest first" produces in one sort. Final total = <b>' + total(cur) + '</b>. ' + (swaps ? 'We needed ' + swaps + ' swaps and every one helped — that is the whole exchange-argument proof.' : 'Your input was already sorted: greedy order, nothing to fix.'), parts: [
           bar(cur, (function () { var h = {}; cur.forEach(function (_, k) { h[k] = 'sel'; }); return h; })(), 'optimal order = sorted ascending'), { type: 'vars', vals: { totalWait: total(cur), swaps: swaps }, hl: { totalWait: 'sel' } },
           { type: 'code', label: 'the greedy that the proof justifies', lang: 'java', code: 'Arrays.sort(d);\nfor (int x : d) { total += clock; clock += x; }', hl: { 1: 'ok', 2: 'ok' } }
         ] });
@@ -176,9 +240,9 @@
       <p>A <b>matroid</b> is a family of "allowed" sets with two rules: (a) any subset of an allowed set is allowed, (b) <b>exchange</b>: if A is allowed and bigger than allowed B, some element of A can be added to B keeping it allowed. The <b>Rado–Edmonds theorem</b>: "sort by weight, add an element if the set stays allowed" is optimal for <i>every</i> weight function <b>exactly</b> when the structure is a matroid. Examples: forests of a graph (graphic matroid → Kruskal's MST), sets of jobs that can all meet their deadlines (scheduling matroid → job sequencing), "any k items" (uniform matroid → top-k). 0/1 knapsack is <i>not</i> a matroid, which is why greedy fails there.</p>
       <h4>4. Comparators: the silent killer</h4>
       <ul>
-        <li><code>(a, b) -&gt; a - b</code> overflows for values near ±2·10<sup>9</sup> and sorts wrongly. Use <code>Integer.compare</code> / <code>Long.compare</code>.</li>
-        <li>Ratio keys: compare <code>a/b</code> vs <code>c/d</code> as <code>(long) a·d</code> vs <code>(long) c·b</code> (positive denominators) — exact, no floating point ties.</li>
-        <li>The comparator must be <b>transitive</b>. Java's TimSort may throw <code>IllegalArgumentException: Comparison method violates its general contract!</code> when it is not. Exchange-derived rules like "a before b if a+b &gt; b+a" (Largest Number) are transitive, but you should know why before relying on them.</li>
+        <li>A "subtract" comparator <code>a - b</code> overflows 32-bit ints for values near ±2·10<sup>9</sup> and sorts wrongly in Java (and is undefined behaviour in C++). Use <code>Integer.compare</code> / <code>Long.compare</code> in Java and <code>&lt;</code> in C++. Python keys and JS <code>a - b</code> are safe here because their numbers do not wrap.</li>
+        <li>Ratio keys: compare <code>a/b</code> vs <code>c/d</code> as <code>a·d</code> vs <code>c·b</code> in 64-bit integers (<code>long</code> / <code>long long</code>; Python ints are unbounded) (positive denominators) — exact, no floating point ties.</li>
+        <li>The comparator must be <b>transitive</b>. If it is not, Java's TimSort may throw <code>IllegalArgumentException: Comparison method violates its general contract!</code>, C++ <code>std::sort</code> has undefined behaviour (it can read out of bounds), and Python or JS quietly return a wrong order. Exchange-derived rules like "a before b if a+b &gt; b+a" (Largest Number) are transitive, but you should know why before relying on them.</li>
         <li>Ties: your proof must work for <i>any</i> tie order, or your code must break ties exactly the way the proof assumes.</li>
       </ul>
       <h4>5. When exact greedy does not exist: approximation</h4>
@@ -201,7 +265,7 @@
         tags: ['greedy', 'sorting', 'exchange argument'],
         companies: ['Amazon', 'Google', 'Microsoft'],
         statement: `<p>A database must run <code>N</code> queries one after another. Query <code>i</code> takes <code>durations[i]</code> seconds. The <b>waiting time</b> of a query is the total time spent before it <i>starts</i> (the first query waits 0). You may run the queries in any order. Return the <b>minimum possible total waiting time</b>.</p>`,
-        constraints: `1 ≤ N ≤ 10<sup>5</sup>, 1 ≤ durations[i] ≤ 10<sup>4</sup> (answer may exceed 2<sup>31</sup> → use long)`,
+        constraints: `1 ≤ N ≤ 10<sup>5</sup>, 1 ≤ durations[i] ≤ 10<sup>4</sup> (answer may exceed 2<sup>31</sup> → use a 64-bit integer)`,
         example: `${H.arr([3, 2, 1, 2, 6], { label: 'durations' })}${H.arr([1, 2, 2, 3, 6], { label: 'best order', hl: { 0: 'g', 1: 'g', 2: 'g', 3: 'g', 4: 'g' } })}
           <p>Output <b>17</b>. In sorted order the waits are ${H.c('g', '0, 1, 3, 5, 8')} → 0 + 1 + 3 + 5 + 8 = 17. Any order where a longer query runs just before a shorter one can be improved by swapping them, so sorted ascending is optimal.</p>`,
         brute: {
@@ -235,8 +299,19 @@
         hints: [
           `<p><b>Aha:</b> compare two neighbours a, b. Swapping them changes the total waiting by exactly <code>b − a</code>, nothing else moves. So a longer query should never sit directly before a shorter one.</p>`,
           `<p>An order with no "longer before shorter" neighbours is simply <b>sorted ascending</b>. So: sort, then simulate a clock. Equivalent formula: in sorted order, <code>durations[i]</code> is waited for by the <code>N − 1 − i</code> queries behind it.</p>`,
-          `<p>Edge cases: N = 1 → 0; use <code>long</code> for the total (10<sup>5</sup> queries × 10<sup>4</sup> s × 10<sup>5</sup> waiters ≈ 10<sup>14</sup>). Recipe: sort → total = 0, clock = 0 → for each d: total += clock; clock += d → return total.</p>`
+          `<p>Edge cases: N = 1 → 0; use a 64-bit total (<code>long</code> / <code>long long</code>; Python ints never overflow and a JS Number is exact up to 2<sup>53</sup>) (10<sup>5</sup> queries × 10<sup>4</sup> s × 10<sup>5</sup> waiters ≈ 10<sup>14</sup>). Recipe: sort → total = 0, clock = 0 → for each d: total += clock; clock += d → return total.</p>`
         ],
+        tests: { sig: 'int[] -> long', fn: 'minimumWaitingTime', cases: [
+          [[[3, 2, 1, 2, 6]], 17],
+          [[[5]], 0],
+          [[[1, 1]], 1],
+          [[[4, 3, 2, 1]], 10],
+          [[[7, 7, 7, 7]], 42],
+          [[[1, 10000, 2, 9999, 3]], 10015],
+          [[[10000, 1]], 1],
+          [[{$rep: 10000, n: 100000}], 49999500000000],
+          [[{$range: [10000, 0, -1]}], 166666665000]
+        ] },
         solution: {
           approach: `<p>Sort ascending (Shortest Job First), then add up each query's start time. The adjacent-swap exchange argument proves no order beats it.</p>`,
           code: `
@@ -265,7 +340,23 @@
     # d[i] is waited for by the n - 1 - i queries behind it
     return sum(x * (n - 1 - i) for i, x in enumerate(d))
 
-print(minimum_waiting_time([3, 2, 1, 2, 6]))  # 17`, run: true }],
+print(minimum_waiting_time([3, 2, 1, 2, 6]))  # 17`, run: true }, { lang: 'js', code: `function minimumWaitingTime(durations) {
+  const d = Float64Array.from(durations).sort();   // numeric sort, caller's array untouched
+  const n = d.length;
+  let total = 0;
+  // d[i] is waited for by the n - 1 - i queries behind it
+  for (let i = 0; i < n; i++) total += d[i] * (n - 1 - i);
+  return total;                                    // ≤ 5·10^13 < 2^53, so Number is exact
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    long long minimumWaitingTime(vector<int> durations) {     // by value: a private copy to sort
+        sort(durations.begin(), durations.end());               // shortest first
+        long long total = 0, n = durations.size();
+        for (long long i = 0; i < n; i++)
+            total += (long long) durations[i] * (n - 1 - i);    // waited for by everyone behind it
+        return total;
+    }
+};` }],
           dry: {
             head: ['i', 'sorted d[i]', 'queries behind (n−1−i)', 'adds', 'total'],
             rows: [
@@ -317,7 +408,7 @@ print(minimum_waiting_time([3, 2, 1, 2, 6]))  # 17`, run: true }],
       '<code>N ≤ 10<sup>5</sup></code> with intervals → expect sort O(N log N) + one pass, not DP over subsets.',
       'Intervals carry a <b>value / weight / profit</b> → greedy is no longer safe; think weighted interval scheduling DP.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       // Greedy template: sort by the "safe" key (END time), then one pass, never undo.
       int maxNonOverlapping(int[][] intervals) {
           // intervals[i] = {start, end}; Integer.compare avoids the overflow of a[1] - b[1]
@@ -331,7 +422,38 @@ print(minimum_waiting_time([3, 2, 1, 2, 6]))  # 17`, run: true }],
               }
           }
           return count;
-      }`, `
+      }`, alt: [{ lang: 'python', code: `# Greedy template: sort by the "safe" key (END time), then one pass, never undo.
+def max_non_overlapping(intervals):
+    count, last_end = 0, float('-inf')      # the room is free at the very beginning
+    for s, e in sorted(intervals, key=lambda it: it[1]):
+        if s >= last_end:                   # starts after (or exactly when) the last one ended
+            count += 1                      # lock it in
+            last_end = e                    # room busy until this end
+    return count` }, { lang: 'js', code: `// Greedy template: sort by the "safe" key (END time), then one pass, never undo.
+function maxNonOverlapping(intervals) {
+  const a = [...intervals].sort((x, y) => x[1] - y[1]);   // by end time
+  let count = 0, lastEnd = -Infinity;                     // the room is free at the very beginning
+  for (const [s, e] of a) {
+    if (s >= lastEnd) {                // starts after (or exactly when) the last one ended
+      count++;                         // lock it in
+      lastEnd = e;                     // room busy until this end
+    }
+  }
+  return count;
+}` }, { lang: 'cpp', code: `// Greedy template: sort by the "safe" key (END time), then one pass, never undo.
+int maxNonOverlapping(vector<vector<int>> intervals) {
+    // compare with <, never a[1] - b[1] (overflow near 2^31)
+    sort(intervals.begin(), intervals.end(), [](auto& a, auto& b) { return a[1] < b[1]; });
+    int count = 0;
+    long long lastEnd = LLONG_MIN;           // the room is free at the very beginning
+    for (auto& it : intervals) {
+        if (it[0] >= lastEnd) {              // starts after (or exactly when) the last one ended
+            count++;
+            lastEnd = it[1];
+        }
+    }
+    return count;
+}` }] }, { lang: 'java', code: `
       // LC 452: balloons are CLOSED intervals [s, e]; an arrow at x bursts all with s <= x <= e.
       // Shoot at the end of the earliest-ending balloon; touching balloons share that arrow.
       int findMinArrowShots(int[][] points) {
@@ -345,7 +467,40 @@ print(minimum_waiting_time([3, 2, 1, 2, 6]))  # 17`, run: true }],
               }
           }
           return arrows;
-      }`],
+      }`, alt: [{ lang: 'python', code: `# LC 452: balloons are CLOSED intervals [s, e]; an arrow at x bursts all with s <= x <= e.
+# Shoot at the end of the earliest-ending balloon; touching balloons share that arrow.
+def find_min_arrow_shots(points):
+    arrows, arrow_at = 0, float('-inf')     # no arrow yet
+    for s, e in sorted(points, key=lambda p: p[1]):
+        if s > arrow_at:                    # this balloon is not hit by the last arrow
+            arrows += 1
+            arrow_at = e                    # shoot as far right as possible: its end
+    return arrows` }, { lang: 'js', code: `// LC 452: balloons are CLOSED intervals [s, e]; an arrow at x bursts all with s <= x <= e.
+// Shoot at the end of the earliest-ending balloon; touching balloons share that arrow.
+function findMinArrowShots(points) {
+  const p = [...points].sort((a, b) => a[1] - b[1]);
+  let arrows = 0, arrowAt = -Infinity;      // no arrow yet
+  for (const [s, e] of p) {
+    if (s > arrowAt) {                      // this balloon is not hit by the last arrow
+      arrows++;
+      arrowAt = e;                          // shoot as far right as possible: its end
+    }
+  }
+  return arrows;
+}` }, { lang: 'cpp', code: `// LC 452: balloons are CLOSED intervals [s, e]; an arrow at x bursts all with s <= x <= e.
+// Shoot at the end of the earliest-ending balloon; touching balloons share that arrow.
+int findMinArrowShots(vector<vector<int>> points) {
+    sort(points.begin(), points.end(), [](auto& a, auto& b) { return a[1] < b[1]; });
+    int arrows = 0;
+    long long arrowAt = LLONG_MIN;           // no arrow yet
+    for (auto& p : points) {
+        if (p[0] > arrowAt) {                // not hit by the last arrow
+            arrows++;
+            arrowAt = p[1];                  // shoot at its end
+        }
+    }
+    return arrows;
+}` }] }],
     codeTitle: ['Max non-overlapping intervals', 'Same template, closed intervals: minimum arrows'],
     viz: {
       title: 'Activity selection on meetings sorted by end time',
@@ -442,13 +597,13 @@ print(minimum_waiting_time([3, 2, 1, 2, 6]))  # 17`, run: true }],
       <ul>
         <li><b>Latest start first</b> (scan from the right) is the mirror image and equally correct.</li>
         <li>If the input is already sorted by end, the algorithm is O(N) and O(1) space — say this when the interviewer hints the data "arrives sorted".</li>
-        <li><b>k rooms, maximize meetings:</b> sort by end; keep a <code>TreeMap</code> of rooms' free times; for each meeting, give it the room whose free time is the <i>largest value ≤ start</i> (<code>floorKey</code>); if none, skip. O(N log k). Same exchange argument, one level up.</li>
+        <li><b>k rooms, maximize meetings:</b> sort by end; keep a sorted map of rooms' free times (<code>TreeMap</code> / <code>SortedList</code> / <code>std::multimap</code>); for each meeting, give it the room whose free time is the <i>largest value ≤ start</i> (<code>floorKey</code> / <code>bisect</code> / <code>prev(upper_bound)</code>); if none, skip. O(N log k). Same exchange argument, one level up.</li>
         <li><b>Weighted</b>: DP. <b>Each meeting needs a room and you want the fewest rooms</b>: interval partitioning / sweep line (Minimum Platforms).</li>
       </ul>
       <h4>3. Production reality</h4>
-      <p>Calendar schedulers, ad-slot allocation and CPU reservation systems use exactly this "earliest deadline/finish first" idea. In real data, endpoints are timestamps — compare with <code>long</code>, keep time zones normalized (UTC), and define inclusive/exclusive ends explicitly in the API (half-open <code>[start, end)</code> intervals avoid most off-by-one bugs, which is why most calendar APIs use them).</p>
+      <p>Calendar schedulers, ad-slot allocation and CPU reservation systems use exactly this "earliest deadline/finish first" idea. In real data, endpoints are timestamps — compare them as 64-bit integers, keep time zones normalized (UTC), and define inclusive/exclusive ends explicitly in the API (half-open <code>[start, end)</code> intervals avoid most off-by-one bugs, which is why most calendar APIs use them).</p>
       <h4>4. Complexity</h4>
-      <p>O(N log N) sort + O(N) sweep. Sorting <code>int[][]</code> with a lambda boxes nothing but has comparator overhead; for 10<sup>6</sup> intervals, packing <code>(end &lt;&lt; 32) | index</code> into a <code>long[]</code> and using primitive <code>Arrays.sort</code> is a well-known 2–3× speed trick.</p>`,
+      <p>O(N log N) sort + O(N) sweep. Sorting pairs with a comparator has overhead; for 10<sup>6</sup> intervals, packing <code>(end &lt;&lt; 32) | index</code> into one 64-bit integer per interval and sorting plain numbers (primitive <code>Arrays.sort</code> on a <code>long[]</code> in Java) is a well-known 2–3× speed trick.</p>`,
     aiEra: `<p><b>What AI changes:</b> "non-overlapping intervals" is one of the most memorised LeetCode patterns, so assistants nail the template instantly. The bugs they still make are about the <b>problem's exact rules</b>: sorting by start instead of end, using <code>≥</code> where the problem needs <code>&gt;</code> (meetings vs balloons), forgetting that GFG-style "N meetings" problems often treat touching as overlapping, and overflowing with <code>a[1] - b[1]</code> comparators on values near 2<sup>31</sup>.</p>
       <p><b>Use AI as a partner:</b> <code>List every boundary rule this statement implies: are ends inclusive? can a meeting start when another ends? can start == end?</code> and <code>Generate 6 edge-case interval sets (touching, nested, identical, single, negative coordinates, Integer.MIN/MAX) with expected outputs.</code></p>
       <p><b>Where AI goes wrong:</b> it happily applies this greedy to <i>weighted</i> interval problems ("maximize total profit of non-overlapping jobs") where it is simply wrong — a perfect thing to test it on.</p>
@@ -491,6 +646,17 @@ print(minimum_waiting_time([3, 2, 1, 2, 6]))  # 17`, run: true }],
           `<p>Sort meeting indices by <code>end</code>. Keep one variable <code>lastEnd</code> = end time of the last meeting you booked. No DP table needed — just a counter.</p>`,
           `<p>Traps: sort the <i>indices</i> (or pairs) so start and end stay together; decide <code>≥</code> vs <code>&gt;</code> from the statement (here touching is allowed → <code>≥</code>); start <code>lastEnd</code> below every start time. Recipe: sort by end → for each meeting: if start ≥ lastEnd → count++, lastEnd = end → return count.</p>`
         ],
+        tests: { sig: 'int[] int[] -> int', fn: 'maxMeetings', cases: [
+          [[[1, 3, 0, 5, 8, 5], [2, 4, 6, 7, 9, 9]], 4],
+          [[[0], [1]], 1],
+          [[[1, 2, 3], [2, 3, 4]], 3],
+          [[[0, 1, 3], [10, 2, 4]], 2],
+          [[[1, 4, 6], [5, 7, 10]], 2],
+          [[[5, 5, 5], [6, 6, 6]], 1],
+          [[[0, 0, 999999999], [1000000000, 1, 1000000000]], 2],
+          [[{$range: [0, 100000, 1]}, {$range: [1, 100001, 1]}], 100000],
+          [[{$rep: 0, n: 100000}, {$rep: 1000000000, n: 100000}], 1]
+        ] },
         solution: {
           approach: `<p>Sort by end time, sweep once, book a meeting whenever it starts at or after the last booked meeting ends.</p>`,
           code: `
@@ -546,9 +712,36 @@ print(minimum_waiting_time([3, 2, 1, 2, 6]))  # 17`, run: true }],
             last_end = e
     return count
 
-print(max_meetings([1, 3, 0, 5, 8, 5], [2, 4, 6, 7, 9, 9]))  # 4`, run: true }],
+print(max_meetings([1, 3, 0, 5, 8, 5], [2, 4, 6, 7, 9, 9]))  # 4`, run: true }, { lang: 'js', code: `function maxMeetings(start, end) {
+  // indices sorted by END time
+  const order = start.map((_, i) => i).sort((x, y) => end[x] - end[y]);
+  let count = 0, lastEnd = -Infinity;
+  for (const i of order) {
+    if (start[i] >= lastEnd) {     // touching is allowed
+      count++;
+      lastEnd = end[i];
+    }
+  }
+  return count;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int maxMeetings(vector<int>& start, vector<int>& end) {
+        vector<pair<int, int>> m;                       // (end, start): sorts by end time
+        for (size_t i = 0; i < start.size(); i++) m.push_back({end[i], start[i]});
+        sort(m.begin(), m.end());
+        int count = 0;
+        long long lastEnd = LLONG_MIN;
+        for (auto& [e, s] : m) {
+            if (s >= lastEnd) {                         // touching is allowed
+                count++;
+                lastEnd = e;
+            }
+        }
+        return count;
+    }
+};` }],
           complexity: `<p><b>Time O(N log N)</b>: sorting dominates; the sweep looks at each meeting once (O(N)). <b>Space O(N)</b> for the index array (O(1) extra if you may sort the input pairs in place).</p>`,
-          followUps: ['Return the indices of the chosen meetings, not just the count.', 'GFG variant: a meeting may NOT start exactly when another ends (strict). Which single character changes?', 'Two rooms instead of one: maximize the meetings held (TreeMap of room free times).', 'Meetings have profits: why does the greedy break, and what is the O(N log N) DP?']
+          followUps: ['Return the indices of the chosen meetings, not just the count.', 'GFG variant: a meeting may NOT start exactly when another ends (strict). Which single character changes?', 'Two rooms instead of one: maximize the meetings held (a sorted map of room free times).', 'Meetings have profits: why does the greedy break, and what is the O(N log N) DP?']
         }
       }
     ]
@@ -585,7 +778,7 @@ print(max_meetings([1, 3, 0, 5, 8, 5], [2, 4, 6, 7, 9, 9]))  # 4`, run: true }],
       '"Maximize count of tasks finished before their deadlines" with <b>varying durations</b> → different greedy: sort by deadline + max-heap of durations (Course Schedule III).',
       '"Deadline" + "penalty for missing it" + unit tasks → same structure (minimize lost penalty = maximize kept profit).'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       // O(N log N + N * alpha(N)): DSU where find(t) = latest free slot <= t (0 means "no slot").
       int[] parent;
 
@@ -615,7 +808,69 @@ print(max_meetings([1, 3, 0, 5, 8, 5], [2, 4, 6, 7, 9, 9]))  # 4`, run: true }],
               }
           }
           return new int[]{count, total};
-      }`, `
+      }`, alt: [{ lang: 'python', code: `# O(N log N + N * alpha(N)): DSU where find(t) = latest free slot <= t (0 means "no slot").
+def job_sequencing(deadline, profit):
+    n = len(deadline)
+    max_d = min(max(deadline), n)          # never need more than n slots
+    parent = list(range(max_d + 1))
+
+    def find(t):                           # path halving
+        while parent[t] != t:
+            parent[t] = parent[parent[t]]
+            t = parent[t]
+        return t
+
+    count = total = 0
+    for i in sorted(range(n), key=lambda i: -profit[i]):   # richest first
+        slot = find(min(deadline[i], max_d))               # latest free slot <= deadline
+        if slot > 0:                       # slot 0 is the "no room left" sentinel
+            count += 1
+            total += profit[i]
+            parent[slot] = slot - 1        # slot used: next search falls to slot - 1
+    return [count, total]` }, { lang: 'js', code: `// O(N log N + N * alpha(N)): DSU where find(t) = latest free slot <= t (0 means "no slot").
+function jobSequencing(deadline, profit) {
+  const n = deadline.length;
+  const maxD = Math.min(Math.max(...deadline), n);      // never need more than n slots
+  const parent = Array.from({ length: maxD + 1 }, (_, t) => t);
+  const find = (t) => {                                 // path halving
+    while (parent[t] !== t) { parent[t] = parent[parent[t]]; t = parent[t]; }
+    return t;
+  };
+  const order = deadline.map((_, i) => i).sort((a, b) => profit[b] - profit[a]);   // richest first
+  let count = 0, total = 0;
+  for (const i of order) {
+    const slot = find(Math.min(deadline[i], maxD));     // latest free slot <= deadline
+    if (slot > 0) {                                     // slot 0 is the "no room left" sentinel
+      count++;
+      total += profit[i];
+      parent[slot] = slot - 1;                          // next search falls to slot - 1
+    }
+  }
+  return [count, total];
+}` }, { lang: 'cpp', code: `// O(N log N + N * alpha(N)): DSU where find(t) = latest free slot <= t (0 means "no slot").
+vector<int> jobSequencing(const vector<int>& deadline, const vector<int>& profit) {
+    int n = deadline.size();
+    int maxD = min(*max_element(deadline.begin(), deadline.end()), n);   // never need more than n slots
+    vector<int> parent(maxD + 1);
+    iota(parent.begin(), parent.end(), 0);
+    auto find = [&](int t) {                       // path halving
+        while (parent[t] != t) { parent[t] = parent[parent[t]]; t = parent[t]; }
+        return t;
+    };
+    vector<int> order(n);
+    iota(order.begin(), order.end(), 0);
+    sort(order.begin(), order.end(), [&](int a, int b) { return profit[a] > profit[b]; });   // richest first
+    int count = 0, total = 0;
+    for (int i : order) {
+        int slot = find(min(deadline[i], maxD));   // latest free slot <= deadline
+        if (slot > 0) {                            // slot 0 is the "no room left" sentinel
+            count++;
+            total += profit[i];
+            parent[slot] = slot - 1;
+        }
+    }
+    return {count, total};
+}` }] }, { lang: 'java', code: `
       // Alternative: sort by DEADLINE, keep chosen profits in a min-heap.
       // If we hold more jobs than the current deadline allows, drop the cheapest one.
       int maxProfitHeap(int[] deadline, int[] profit) {
@@ -633,7 +888,79 @@ print(max_meetings([1, 3, 0, 5, 8, 5], [2, 4, 6, 7, 9, 9]))  # 4`, run: true }],
               }
           }
           return total;
-      }`],
+      }`, alt: [{ lang: 'python', code: `# Alternative: sort by DEADLINE, keep chosen profits in a min-heap.
+# If we hold more jobs than the current deadline allows, drop the cheapest one.
+import heapq
+
+def max_profit_heap(deadline, profit):
+    chosen, total = [], 0                  # heapq is a min-heap: exactly what we need
+    for d, p in sorted(zip(deadline, profit)):
+        heapq.heappush(chosen, p)
+        total += p
+        if len(chosen) > d:                # too many jobs for d slots
+            total -= heapq.heappop(chosen) # give up the least profitable one
+    return total` }, { lang: 'js', code: `// JS has no built-in heap: a small binary min-heap with a comparator.
+class MinHeap {
+  constructor(cmp = (a, b) => a - b) { this.a = []; this.cmp = cmp; }
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {                                // sift up
+      const p = (i - 1) >> 1;
+      if (this.cmp(a[i], a[p]) >= 0) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {                                   // sift down
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.cmp(a[l], a[m]) < 0) m = l;
+        if (r < a.length && this.cmp(a[r], a[m]) < 0) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+// Alternative: sort by DEADLINE, keep chosen profits in a min-heap.
+// If we hold more jobs than the current deadline allows, drop the cheapest one.
+function maxProfitHeap(deadline, profit) {
+  const order = deadline.map((_, i) => i).sort((a, b) => deadline[a] - deadline[b]);
+  const chosen = new MinHeap();            // min-heap of profits
+  let total = 0;
+  for (const i of order) {
+    chosen.push(profit[i]);
+    total += profit[i];
+    if (chosen.size() > deadline[i]) total -= chosen.pop();   // drop the cheapest
+  }
+  return total;
+}` }, { lang: 'cpp', code: `// Alternative: sort by DEADLINE, keep chosen profits in a min-heap.
+// If we hold more jobs than the current deadline allows, drop the cheapest one.
+int maxProfitHeap(const vector<int>& deadline, const vector<int>& profit) {
+    vector<pair<int, int>> jobs;                       // (deadline, profit)
+    for (size_t i = 0; i < deadline.size(); i++) jobs.push_back({deadline[i], profit[i]});
+    sort(jobs.begin(), jobs.end());
+    priority_queue<int, vector<int>, greater<int>> chosen;   // greater<> turns it into a MIN-heap
+    int total = 0;
+    for (auto [d, p] : jobs) {
+        chosen.push(p);
+        total += p;
+        if ((int) chosen.size() > d) { total -= chosen.top(); chosen.pop(); }   // drop the cheapest
+    }
+    return total;
+}` }] }],
     codeTitle: ['Profit-first greedy with DSU "latest free slot"', 'Deadline-first greedy with a min-heap (same answer)'],
     viz: {
       title: 'Job sequencing: richest job first, parked in the latest free slot',
@@ -791,6 +1118,17 @@ print(max_meetings([1, 3, 0, 5, 8, 5], [2, 4, 6, 7, 9, 9]))  # 4`, run: true }],
           `<p>Process jobs by profit (descending) and put each one in the <b>latest free slot ≤ its deadline</b>. To find that slot fast, use DSU: <code>find(t)</code> returns the latest free slot ≤ t, and after using slot s set <code>parent[s] = s − 1</code>. Slot 0 means "nothing free".</p>`,
           `<p>Edge cases: many jobs with the same deadline (only d of them can fit), deadlines larger than N (clamp), ties in profit (any order works). Recipe: sort indices by profit desc → parent[t] = t → for each job: s = find(min(d, N)); if s &gt; 0 → count++, profit += p, parent[s] = s − 1 → return [count, profit].</p>`
         ],
+        tests: { sig: 'int[] int[] -> int[]', fn: 'jobSequencing', cases: [
+          [[[4, 1, 1, 1], [20, 10, 40, 30]], [2, 60]],
+          [[[2, 1, 2, 1, 3], [100, 19, 27, 25, 15]], [3, 142]],
+          [[[1], [7]], [1, 7]],
+          [[[1, 1, 1], [5, 5, 5]], [1, 5]],
+          [[[2, 1], [50, 40]], [2, 90]],
+          [[[3, 3, 3], [1, 2, 3]], [3, 6]],
+          [[[2, 2, 1, 3, 3, 1], [10, 20, 30, 40, 50, 60]], [3, 150]],
+          [[{$range: [1, 100001, 1]}, {$rep: 500, n: 100000}], [100000, 50000000]],
+          [[{$rep: 1, n: 100000}, {$concat: [[1], {$rep: 500, n: 99999}]}], [1, 500]]
+        ] },
         solution: {
           approach: `<p>Richest job first; place it in the latest free slot not after its deadline (DSU makes the search near O(1)); skip it if none is free. The exchange argument proves the profit order; the latest-slot rule keeps the chosen set feasible without blocking tighter deadlines.</p>`,
           code: `
@@ -853,7 +1191,48 @@ print(max_meetings([1, 3, 0, 5, 8, 5], [2, 4, 6, 7, 9, 9]))  # 4`, run: true }],
     return [count, total]
 
 print(job_sequencing([4, 1, 1, 1], [20, 10, 40, 30]))          # [2, 60]
-print(job_sequencing([2, 1, 2, 1, 3], [100, 19, 27, 25, 15]))  # [3, 142]`, run: true }],
+print(job_sequencing([2, 1, 2, 1, 3], [100, 19, 27, 25, 15]))  # [3, 142]`, run: true }, { lang: 'js', code: `function jobSequencing(deadline, profit) {
+  const n = deadline.length;
+  const parent = Int32Array.from({ length: n + 1 }, (_, t) => t);   // find(t) = latest free slot <= t
+  const find = (t) => {
+    while (parent[t] !== t) { parent[t] = parent[parent[t]]; t = parent[t]; }
+    return t;
+  };
+  const order = deadline.map((_, i) => i).sort((a, b) => profit[b] - profit[a]);   // richest first
+  let count = 0, total = 0;
+  for (const i of order) {
+    const slot = find(Math.min(deadline[i], n));
+    if (slot === 0) continue;          // no free slot before the deadline
+    count++;
+    total += profit[i];
+    parent[slot] = slot - 1;           // slot used: point left
+  }
+  return [count, total];
+}` }, { lang: 'cpp', code: `class Solution {
+    vector<int> parent;                         // parent chain leads to the latest free slot <= t
+    int find(int t) {
+        while (parent[t] != t) { parent[t] = parent[parent[t]]; t = parent[t]; }
+        return t;
+    }
+public:
+    vector<int> jobSequencing(vector<int>& deadline, vector<int>& profit) {
+        int n = deadline.size();
+        parent.resize(n + 1);
+        iota(parent.begin(), parent.end(), 0);  // slot 0 = "nothing free"
+        vector<int> order(n);
+        iota(order.begin(), order.end(), 0);
+        sort(order.begin(), order.end(), [&](int a, int b) { return profit[a] > profit[b]; });
+        int count = 0, total = 0;
+        for (int i : order) {
+            int slot = find(min(deadline[i], n));
+            if (slot == 0) continue;
+            count++;
+            total += profit[i];
+            parent[slot] = slot - 1;
+        }
+        return {count, total};
+    }
+};` }],
           dry: {
             head: ['job (profit, deadline)', 'find(min(d, 4))', 'slot', 'action', 'parent change', 'count / profit'],
             rows: [
@@ -888,7 +1267,7 @@ print(job_sequencing([2, 1, 2, 1, 3], [100, 19, 27, 25, 15]))  # [3, 142]`, run:
       <p>${H.c('r', 'Careful:')} the moment items <b>cannot be cut</b> (0/1 knapsack) this breaks. Same items, W = 50: ratio greedy takes items 0 + 1 = 160, then item 2 (30 kg) no longer fits into the 20 kg left; but items 1 + 2 = <b>220</b>. Whole items need DP (DSA 17).</p>
       <p><b>Three things to get right in code:</b></p>
       <ul>
-        <li>Sort by ratio <b>descending</b>; compare <code>v1/w1</code> vs <code>v2/w2</code> as <code>(long) v1·w2</code> vs <code>(long) v2·w1</code> (exact, no rounding).</li>
+        <li>Sort by ratio <b>descending</b>; compare <code>v1/w1</code> vs <code>v2/w2</code> as <code>v1·w2</code> vs <code>v2·w1</code> in 64-bit integers (exact, no rounding).</li>
         <li>The answer is a <b>double</b>: <code>(double) value * left / weight</code> — cast <i>before</i> dividing.</li>
         <li>Stop as soon as the bag is full.</li>
       </ul>`,
@@ -899,7 +1278,7 @@ print(job_sequencing([2, 1, 2, 1, 3], [100, 19, 27, 25, 15]))  # [3, 142]`, run:
       '<code>N ≤ 10<sup>5</sup></code>, capacity up to 10<sup>9</sup> → a DP over capacity is impossible, sort-by-ratio is O(N log N).',
       '"Maximum units on a truck", "load boxes with the most units per box first" → same greedy with whole boxes but <b>equal size</b> boxes (integral version that still works because every box weighs 1).'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       // Fractional knapsack: highest value-per-weight first, cut only the last item.
       double fractionalKnapsack(int[] val, int[] wt, long capacity) {
           int n = val.length;
@@ -915,7 +1294,50 @@ print(job_sequencing([2, 1, 2, 1, 3], [100, 19, 27, 25, 15]))  # [3, 142]`, run:
               else { total += (double) val[i] * left / wt[i]; left = 0; }  // take a slice
           }
           return total;
-      }`, {
+      }`, alt: [{ lang: 'python', code: `# Fractional knapsack: highest value-per-weight first, cut only the last item.
+from functools import cmp_to_key
+
+def fractional_knapsack(val, wt, capacity):
+    # val[y]/wt[y] vs val[x]/wt[x] by cross multiplication (exact, no floats)
+    order = sorted(range(len(val)), key=cmp_to_key(lambda x, y: val[y] * wt[x] - val[x] * wt[y]))
+    total, left = 0.0, capacity
+    for i in order:
+        if left == 0:
+            break                                    # bag is full
+        if wt[i] <= left:                            # take it all
+            total += val[i]
+            left -= wt[i]
+        else:                                        # take a slice
+            total += val[i] * left / wt[i]
+            left = 0
+    return total` }, { lang: 'js', code: `// Fractional knapsack: highest value-per-weight first, cut only the last item.
+function fractionalKnapsack(val, wt, capacity) {
+  // val[y]/wt[y] vs val[x]/wt[x] by cross multiplication (exact while products stay below 2^53)
+  const order = val.map((_, i) => i).sort((x, y) => val[y] * wt[x] - val[x] * wt[y]);
+  let total = 0, left = capacity;
+  for (const i of order) {
+    if (left === 0) break;                                      // bag is full
+    if (wt[i] <= left) { total += val[i]; left -= wt[i]; }      // take it all
+    else { total += val[i] * left / wt[i]; left = 0; }          // take a slice
+  }
+  return total;
+}` }, { lang: 'cpp', code: `// Fractional knapsack: highest value-per-weight first, cut only the last item.
+double fractionalKnapsack(const vector<int>& val, const vector<int>& wt, long long capacity) {
+    vector<int> order(val.size());
+    iota(order.begin(), order.end(), 0);
+    // val[x]/wt[x] > val[y]/wt[y] by cross multiplication in long long (exact)
+    sort(order.begin(), order.end(), [&](int x, int y) {
+        return (long long) val[x] * wt[y] > (long long) val[y] * wt[x];
+    });
+    double total = 0;
+    long long left = capacity;
+    for (int i : order) {
+        if (left == 0) break;                                           // bag is full
+        if (wt[i] <= left) { total += val[i]; left -= wt[i]; }          // take it all
+        else { total += (double) val[i] * left / wt[i]; left = 0; }     // take a slice
+    }
+    return total;
+}` }] }, {
       lang: 'python', run: true, title: 'Python: greedy vs the 0/1 trap on the same items', code: `def fractional(items, cap):
     # items: list of (value, weight); best value per kg first
     total = 0.0
@@ -941,7 +1363,7 @@ def zero_one_brute(items, cap):
 items = [(60, 10), (100, 20), (120, 30)]
 print("fractional greedy:", fractional(items, 50))    # 240.0
 print("0/1 true best:   ", zero_one_brute(items, 50)) # 220 (items 1 and 2)` }],
-    codeTitle: ['Fractional knapsack (Java)', 'Fractional vs 0/1 on the same data (runnable)'],
+    codeTitle: ['Fractional knapsack', 'Fractional vs 0/1 on the same data (runnable)'],
     viz: {
       title: 'Filling the bag: best value-per-kg first, slice the last one',
       input: '60/10 100/20 120/30 | 50',
@@ -1036,8 +1458,8 @@ print("0/1 true best:   ", zero_one_brute(items, 50)) # 220 (items 1 and 2)` }],
       <p>You only need the "cut point": the ratio r* such that items with ratio &gt; r* all fit and the item at r* is cut. Find it with a quickselect-style partition on ratios (weighted median): each round partitions around a pivot ratio and recurses into one side → expected O(N). Rarely needed in interviews, but it is a great "can you beat N log N?" follow-up answer.</p>
       <h4>3. Precision</h4>
       <ul>
-        <li>Sorting by <code>double</code> ratios can mis-order items whose ratios differ in the 15th digit; cross multiplication with <code>long</code> is exact (values ≤ 10<sup>9</sup> → products ≤ 10<sup>18</sup> &lt; 9.2·10<sup>18</sup>).</li>
-        <li>Accumulate whole items as <code>long</code> and add the single fractional part at the end to avoid summing many rounding errors.</li>
+        <li>Sorting by floating-point ratios can mis-order items whose ratios differ in the 15th digit; cross multiplication in 64-bit integers is exact (values ≤ 10<sup>9</sup> → products ≤ 10<sup>18</sup> &lt; 9.2·10<sup>18</sup>).</li>
+        <li>Accumulate whole items as an integer and add the single fractional part at the end to avoid summing many rounding errors.</li>
         <li>If the output must be an exact fraction, keep numerator/denominator separately.</li>
       </ul>
       <h4>4. Where it is used for real</h4>
@@ -1090,9 +1512,20 @@ print("0/1 true best:   ", zero_one_brute(items, 50)) # 220 (items 1 and 2)` }],
         },
         hints: [
           `<p><b>Aha:</b> one kilo of item A is worth <code>val[A]/wt[A]</code>. Any kilo of a lower ratio item sitting in the bag while a higher ratio kilo is left outside can be swapped for profit → take highest ratio first.</p>`,
-          `<p>Sort item indices by ratio, descending. Compare ratios without division using cross multiplication: <code>a/b &gt; c/d ⇔ a·d &gt; c·b</code> (use <code>long</code>). Keep <code>left</code> = remaining capacity.</p>`,
-          `<p>Traps: the answer is a <code>double</code>; cast before dividing (<code>(double) val * left / wt</code>) or you lose the fraction; stop once <code>left == 0</code>. Recipe: sort by ratio → for each item: if wt ≤ left take it all, else take <code>left/wt</code> of it and stop.</p>`
+          `<p>Sort item indices by ratio, descending. Compare ratios without division using cross multiplication: <code>a/b &gt; c/d ⇔ a·d &gt; c·b</code> (use 64-bit integers in Java and C++). Keep <code>left</code> = remaining capacity.</p>`,
+          `<p>Traps: the answer is a floating-point number; in Java and C++ cast before dividing (<code>(double) val * left / wt</code>) or integer division drops the fraction (Python and JS <code>/</code> already keep it); stop once <code>left == 0</code>. Recipe: sort by ratio → for each item: if wt ≤ left take it all, else take <code>left/wt</code> of it and stop.</p>`
         ],
+        tests: { sig: 'int[] int[] int -> double', fn: 'fractionalKnapsack', cmp: 'float', cases: [
+          [[[60, 100, 120], [10, 20, 30], 50], 240],
+          [[[10, 20], [5, 10], 100], 30],
+          [[[500, 100], [30, 1], 1], 100],
+          [[[7], [3], 1], 2.3333333333333335],
+          [[[99999, 100000], [100000, 99999], 100000], 100000.99999],
+          [[[1, 2, 3], [1, 1, 1], 2], 5],
+          [[[5, 5], [2, 4], 3], 6.25],
+          [[{$rep: 100000, n: 100000}, {$rep: 1, n: 100000}, 1000000000], 10000000000],
+          [[{$rep: 100000, n: 100000}, {$rep: 100000, n: 100000}, 1000000000], 1000000000]
+        ] },
         solution: {
           approach: `<p>Sort by value-per-weight descending; take whole items while they fit, then a fraction of the next one.</p>`,
           code: `
@@ -1136,6 +1569,50 @@ print("0/1 true best:   ", zero_one_brute(items, 50)) # 220 (items 1 and 2)` }],
               ['2', '120 / 30', '4', '30 ≤ 20 ✘', '20/30', '+80', '0', '<span class="c-p">240</span>']
             ]
           },
+          alt: [{ lang: 'python', code: `from functools import cmp_to_key
+
+def fractional_knapsack(val, wt, capacity):
+    # highest value per kg first; compare v1/w1 vs v2/w2 exactly by cross-multiplying
+    order = sorted(range(len(val)), key=cmp_to_key(lambda x, y: val[y] * wt[x] - val[x] * wt[y]))
+    total, left = 0.0, capacity
+    for i in order:
+        if left == 0:
+            break                       # bag is full
+        if wt[i] <= left:               # whole item fits
+            total += val[i]
+            left -= wt[i]
+        else:                           # take the slice that fits
+            total += val[i] * left / wt[i]
+            left = 0
+    return total` }, { lang: 'js', code: `function fractionalKnapsack(val, wt, capacity) {
+  // best value per kg first; products ≤ 10^10 are exact in a Number
+  const order = val.map((_, i) => i).sort((x, y) => val[y] * wt[x] - val[x] * wt[y]);
+  let total = 0, left = capacity;
+  for (const i of order) {
+    if (left === 0) break;                    // bag is full
+    if (wt[i] <= left) { total += val[i]; left -= wt[i]; }   // take it all
+    else { total += val[i] * left / wt[i]; left = 0; }       // take a slice
+  }
+  return total;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    double fractionalKnapsack(vector<int>& val, vector<int>& wt, int capacity) {
+        vector<int> order(val.size());
+        iota(order.begin(), order.end(), 0);
+        // val[x]/wt[x] > val[y]/wt[y] by cross multiplication in long long (no overflow, no rounding)
+        sort(order.begin(), order.end(), [&](int x, int y) {
+            return (long long) val[x] * wt[y] > (long long) val[y] * wt[x];
+        });
+        double total = 0;
+        long long left = capacity;
+        for (int i : order) {
+            if (left == 0) break;
+            if (wt[i] <= left) { total += val[i]; left -= wt[i]; }
+            else { total += (double) val[i] * left / wt[i]; left = 0; }
+        }
+        return total;
+    }
+};` }],
           complexity: `<p><b>Time O(N log N)</b> for the sort, then one O(N) pass. <b>Space O(N)</b> for the index array.</p>`,
           followUps: ['Items cannot be cut any more: what changes, and what is the DP?', 'Can you do it in expected O(N) without fully sorting (weighted-median partition)?', 'Return the exact answer as a reduced fraction.', 'Each item can be taken in multiple copies, still divisible: does anything change?']
         }
@@ -1163,13 +1640,13 @@ print("0/1 true best:   ", zero_one_brute(items, 50)) # 220 (items 1 and 2)` }],
     clues: [
       '"<b>Minimum total cost to merge / combine</b> piles, ropes, files", cost = sum of the two merged → Huffman (min-heap, always merge two smallest).',
       '"Shortest <b>prefix-free</b> / variable-length binary code", "compress text using character frequencies" → Huffman tree.',
-      'Repeatedly "take the two smallest, put their sum back" → <code>PriorityQueue</code>, O(N log N).',
+      'Repeatedly "take the two smallest, put their sum back" → a min-heap (<code>PriorityQueue</code> / <code>heapq</code> / <code>priority_queue</code> with <code>greater</code>), O(N log N).',
       'Contrast: if only <b>adjacent</b> piles can be merged, greedy fails → interval DP (DSA 18, interval DP: "minimum cost to merge stones").'
 ,
       '"<b>Connect N ropes</b> with minimum cost" / "<b>minimum cost to connect sticks</b>" (LC 1167) → literally the Huffman cost computation.',
       '"Merge K <b>sorted files</b> two at a time, cost = total size read" → optimal merge pattern = Huffman.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       // "Connect ropes" / optimal merge pattern: total = sum of all merges (= Huffman total bits)
       long minMergeCost(int[] sizes) {
           PriorityQueue<Long> pq = new PriorityQueue<>();
@@ -1181,7 +1658,76 @@ print("0/1 true best:   ", zero_one_brute(items, 50)) # 220 (items 1 and 2)` }],
               pq.add(a + b);                       // merged pile goes back
           }
           return cost;
-      }`, `
+      }`, alt: [{ lang: 'python', code: `# "Connect ropes" / optimal merge pattern: total = sum of all merges (= Huffman total bits)
+import heapq
+
+def min_merge_cost(sizes):
+    pq = list(sizes)
+    heapq.heapify(pq)                      # O(N) build
+    cost = 0
+    while len(pq) > 1:
+        a = heapq.heappop(pq)              # two smallest
+        b = heapq.heappop(pq)
+        cost += a + b                      # pay for this merge
+        heapq.heappush(pq, a + b)          # merged pile goes back
+    return cost` }, { lang: 'js', code: `// JS has no built-in heap: a small binary min-heap with a comparator.
+class MinHeap {
+  constructor(cmp = (a, b) => a - b) { this.a = []; this.cmp = cmp; }
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {                                // sift up
+      const p = (i - 1) >> 1;
+      if (this.cmp(a[i], a[p]) >= 0) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {                                   // sift down
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.cmp(a[l], a[m]) < 0) m = l;
+        if (r < a.length && this.cmp(a[r], a[m]) < 0) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+// "Connect ropes" / optimal merge pattern: total = sum of all merges (= Huffman total bits)
+function minMergeCost(sizes) {
+  const pq = new MinHeap();
+  for (const s of sizes) pq.push(s);
+  let cost = 0;
+  while (pq.size() > 1) {
+    const a = pq.pop(), b = pq.pop();      // two smallest
+    cost += a + b;                         // pay for this merge
+    pq.push(a + b);                        // merged pile goes back
+  }
+  return cost;
+}` }, { lang: 'cpp', code: `// "Connect ropes" / optimal merge pattern: total = sum of all merges (= Huffman total bits)
+long long minMergeCost(const vector<int>& sizes) {
+    priority_queue<long long, vector<long long>, greater<long long>> pq(sizes.begin(), sizes.end());   // min-heap
+    long long cost = 0;
+    while (pq.size() > 1) {
+        long long a = pq.top(); pq.pop();          // two smallest
+        long long b = pq.top(); pq.pop();
+        cost += a + b;                             // pay for this merge
+        pq.push(a + b);                            // merged pile goes back
+    }
+    return cost;
+}` }] }, { lang: 'java', code: `
       // O(N) after sorting: two queues instead of a heap.
       // Leaves come from 'sorted'; merged nodes are created in non-decreasing order,
       // so the front of each queue is its smallest element.
@@ -1201,7 +1747,60 @@ print("0/1 true best:   ", zero_one_brute(items, 50)) # 220 (items 1 and 2)` }],
       long takeSmallest(ArrayDeque<Long> q1, ArrayDeque<Long> q2) {
           if (q2.isEmpty() || (!q1.isEmpty() && q1.peek() <= q2.peek())) return q1.poll();
           return q2.poll();
-      }`],
+      }`, alt: [{ lang: 'python', code: `# O(N) after sorting: two queues instead of a heap.
+# Leaves come from 'sorted_w'; merged nodes are created in non-decreasing order,
+# so the front of each queue is its smallest element.
+from collections import deque
+
+def huffman_cost_sorted(sorted_w):
+    leaves, merged = deque(sorted_w), deque()
+
+    def take_smallest():
+        if not merged or (leaves and leaves[0] <= merged[0]):
+            return leaves.popleft()
+        return merged.popleft()
+
+    cost = 0
+    while len(leaves) + len(merged) > 1:
+        a = take_smallest()
+        b = take_smallest()
+        cost += a + b
+        merged.append(a + b)               # always >= every earlier merged value
+    return cost` }, { lang: 'js', code: `// O(N) after sorting: two queues instead of a heap.
+// Leaves come from 'sorted'; merged nodes are created in non-decreasing order,
+// so the front of each queue is its smallest element. Head indices avoid O(N) shift().
+function huffmanCostSorted(sorted) {
+  const merged = [];
+  let li = 0, mi = 0, cost = 0;
+  const takeSmallest = () =>
+    mi === merged.length || (li < sorted.length && sorted[li] <= merged[mi]) ? sorted[li++] : merged[mi++];
+  while ((sorted.length - li) + (merged.length - mi) > 1) {
+    const a = takeSmallest(), b = takeSmallest();
+    cost += a + b;
+    merged.push(a + b);                    // always >= every earlier merged value
+  }
+  return cost;
+}` }, { lang: 'cpp', code: `// O(N) after sorting: two queues instead of a heap.
+// Leaves come from 'sorted'; merged nodes are created in non-decreasing order,
+// so the front of each queue is its smallest element.
+long long huffmanCostSorted(const vector<long long>& sorted) {
+    queue<long long> leaves, merged;
+    for (long long x : sorted) leaves.push(x);
+    auto takeSmallest = [&]() {
+        queue<long long>& q = merged.empty() || (!leaves.empty() && leaves.front() <= merged.front()) ? leaves : merged;
+        long long v = q.front();
+        q.pop();
+        return v;
+    };
+    long long cost = 0;
+    while (leaves.size() + merged.size() > 1) {
+        long long a = takeSmallest();
+        long long b = takeSmallest();
+        cost += a + b;
+        merged.push(a + b);                // always >= every earlier merged value
+    }
+    return cost;
+}` }] }],
     codeTitle: ['Huffman cost = "connect ropes" (heap)', 'Linear-time Huffman when frequencies are already sorted'],
     viz: {
       title: 'Huffman: keep merging the two smallest',
@@ -1297,8 +1896,9 @@ print("0/1 true best:   ", zero_one_brute(items, 50)) # 220 (items 1 and 2)` }],
         level: 'Medium',
         tags: ['greedy', 'heap', 'tree'],
         companies: ['Amazon', 'Google', 'Microsoft', 'Goldman Sachs'],
-        statement: `<p>You are given <code>N</code> distinct characters and how often each appears in a text. Build an optimal prefix-free binary code (Huffman code). Return the <b>minimum total number of bits</b> needed to encode the text, and fill a map with each character's code.</p>`,
-        constraints: `2 ≤ N ≤ 10<sup>5</sup>, 1 ≤ freq[i] ≤ 10<sup>9</sup> (answer fits in <code>long</code>)`,
+        statement: `<p>You are given <code>N</code> distinct characters and how often each appears in a text. Build an optimal prefix-free binary code (Huffman code). Return the <b>minimum total number of bits</b> needed to encode the text, and fill a map with each character's code.</p>
+          <p>Ties in the heap may give different codes; any optimal prefix-free code is correct, but the total is always the same.</p>`,
+        constraints: `2 ≤ N ≤ 10<sup>5</sup>, 1 ≤ freq[i] ≤ 10<sup>9</sup> (answer fits in a 64-bit integer)`,
         example: `${H.arr(['a:5', 'b:9', 'c:12', 'd:13', 'e:16', 'f:45'], { label: 'freq', hl: { 0: 'r', 1: 'r', 5: 'g' } })}
           <p>Output: <b>224</b> bits. Codes: ${H.c('g', 'f = 0')} (1 bit, most frequent), c = 100, d = 101, e = 111, ${H.c('r', 'a = 1100, b = 1101')} (4 bits, rarest). Check: 45·1 + 12·3 + 13·3 + 16·3 + 5·4 + 9·4 = 45 + 36 + 39 + 48 + 20 + 36 = 224.</p>`,
         brute: {
@@ -1327,9 +1927,42 @@ print("0/1 true best:   ", zero_one_brute(items, 50)) # 220 (items 1 and 2)` }],
         },
         hints: [
           `<p><b>Aha:</b> total bits = ∑ freq × depth = sum of the weights of all merged (internal) nodes. Each merge adds its weight once, so merge the two cheapest each time.</p>`,
-          `<p>Use a <code>PriorityQueue&lt;Node&gt;</code> ordered by frequency. A <code>Node</code> holds <code>freq</code>, a character (for leaves) and <code>left</code>/<code>right</code> children. After the merges, one DFS from the root assigns codes (append "0" going left, "1" going right).</p>`,
-          `<p>Traps: sum can exceed int → use <code>long</code>; with only one distinct character give it the code "0" (length 1); ties in the heap may change individual codes but never the total. Recipe: push leaves → while size &gt; 1: a = poll, b = poll, total += a+b, push parent(a,b) → DFS for codes → return total.</p>`
+          `<p>Use a min-heap of nodes ordered by frequency (in Python push <code>(freq, id, node)</code> tuples so nodes are never compared). A <code>Node</code> holds <code>freq</code>, a character (for leaves) and <code>left</code>/<code>right</code> children. After the merges, one DFS from the root assigns codes (append "0" going left, "1" going right).</p>`,
+          `<p>Traps: the sum can exceed 32 bits → use a 64-bit integer; with only one distinct character give it the code "0" (length 1); ties in the heap may change individual codes but never the total. Recipe: push leaves → while size &gt; 1: a = poll, b = poll, total += a+b, push parent(a,b) → DFS for codes → return total.</p>`
         ],
+        tests: { sig: 'char[] int[] -> list<string>', fn: 'huffmanCodes', check: "(args, out, exp) => { const f = args[1]; if (!Array.isArray(out) || out.length !== f.length + 1 || out[0] !== String(exp)) return false; const codes = out.slice(1); if (!codes.every((c) => /^[01]+$/.test(c))) return false; let bits = 0; codes.forEach((c, i) => { bits += f[i] * c.length; }); if (bits !== exp) return false; return codes.every((a, i) => codes.every((b, j) => i === j || !b.startsWith(a))); }", harness: { java: `class Check {
+    // [total bits, code of chars[0], code of chars[1], ...]
+    static List<String> huffmanCodes(char[] chars, int[] freq) {
+        Map<Character, String> codes = new HashMap<>();
+        long total = new Solution().huffman(chars, freq, codes);
+        List<String> out = new ArrayList<>();
+        out.add(String.valueOf(total));
+        for (char c : chars) out.add(codes.get(c));
+        return out;
+    }
+}`, python: `def huffman_codes(chars, freq):
+    codes = {}
+    total = huffman(chars, freq, codes)
+    return [str(total)] + [codes[c] for c in chars]`, js: `function huffmanCodes(chars, freq) {
+  const codes = new Map();
+  const total = huffman(chars, freq, codes);
+  return [String(total), ...chars.map((c) => codes.get(c))];
+}`, cpp: `vector<string> huffmanCodes(vector<char> chars, vector<int> freq) {
+    unordered_map<char, string> codes;
+    long long total = huffman(chars, freq, codes);
+    vector<string> out{to_string(total)};
+    for (char c : chars) out.push_back(codes[c]);
+    return out;
+}` }, cases: [
+          [[["a", "b", "c", "d", "e", "f"], [5, 9, 12, 13, 16, 45]], 224],
+          [[["a", "b"], [1, 1]], 2],
+          [[["x", "y"], [1000000000, 1]], 1000000001],
+          [[["a", "b", "c", "d"], [1, 1, 1, 1]], 8],
+          [[["a", "b", "c", "d", "e"], [1, 2, 4, 8, 16]], 56],
+          [[["p", "q", "r", "s"], [4, 7, 9, 20]], 71],
+          [[["a", "b", "c"], [3, 3, 3]], 15],
+          [[["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"], {$rep: 1000000000, n: 26}], 124000000000]
+        ] },
         solution: {
           approach: `<p>Min-heap of nodes; merge the two smallest N−1 times; total bits = sum of merged weights; DFS assigns codes.</p>`,
           code: `
@@ -1390,6 +2023,116 @@ print("0/1 true best:   ", zero_one_brute(items, 50)) # 220 (items 1 and 2)` }],
               ['5', 'f:45', '55', '100', '<span class="c-p">224</span>', '100 (root)']
             ]
           },
+          alt: [{ lang: 'python', code: `import heapq
+from itertools import count
+
+def huffman(chars, freq, codes):
+    """Returns the total bits and fills codes {char: bit string}."""
+    tick = count()                        # tie-breaker: older node first, never compares nodes
+    # heap entries: (weight, id, node); a node is a char (leaf) or a (left, right) tuple
+    heap = [(f, next(tick), c) for c, f in zip(chars, freq)]
+    heapq.heapify(heap)
+    total = 0
+    while len(heap) > 1:
+        fa, _, a = heapq.heappop(heap)    # smallest -> left (bit 0)
+        fb, _, b = heapq.heappop(heap)    # 2nd smallest -> right (bit 1)
+        total += fa + fb                  # every char below gains one bit
+        heapq.heappush(heap, (fa + fb, next(tick), (a, b)))
+    stack = [(heap[0][2], '')]            # iterative DFS: no recursion limit worries
+    while stack:
+        node, path = stack.pop()
+        if isinstance(node, tuple):
+            stack.append((node[0], path + '0'))
+            stack.append((node[1], path + '1'))
+        else:
+            codes[node] = path or '0'     # single-character edge case
+    return total` }, { lang: 'js', code: `// JS has no built-in heap: a small binary min-heap with a comparator.
+class MinHeap {
+  constructor(cmp = (a, b) => a - b) { this.a = []; this.cmp = cmp; }
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {                                // sift up
+      const p = (i - 1) >> 1;
+      if (this.cmp(a[i], a[p]) >= 0) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {                                   // sift down
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.cmp(a[l], a[m]) < 0) m = l;
+        if (r < a.length && this.cmp(a[r], a[m]) < 0) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+// Returns the total bits and fills the Map codes (char -> bit string).
+function huffman(chars, freq, codes) {
+  let id = 0;
+  const heap = new MinHeap((a, b) => a.freq - b.freq || a.id - b.id);   // ties: older node first
+  chars.forEach((ch, i) => heap.push({ freq: freq[i], ch, id: id++, left: null, right: null }));
+  let total = 0;                       // ≤ 1.7·10^15 < 2^53: exact in a Number
+  while (heap.size() > 1) {
+    const a = heap.pop(), b = heap.pop();
+    total += a.freq + b.freq;          // every char below gains one bit
+    heap.push({ freq: a.freq + b.freq, ch: null, id: id++, left: a, right: b });
+  }
+  const stack = [[heap.pop(), '']];
+  while (stack.length) {
+    const [node, path] = stack.pop();
+    if (node.left === null) codes.set(node.ch, path || '0');   // leaf; single char gets "0"
+    else stack.push([node.left, path + '0'], [node.right, path + '1']);
+  }
+  return total;
+}` }, { lang: 'cpp', code: `struct HuffNode {
+    long long freq; char ch; int id; HuffNode* left; HuffNode* right;
+};
+
+// DFS: going left appends 0, going right appends 1
+void assignCodes(HuffNode* node, const string& path, unordered_map<char, string>& codes) {
+    if (!node->left) { codes[node->ch] = path.empty() ? "0" : path; return; }   // single char gets "0"
+    assignCodes(node->left, path + "0", codes);
+    assignCodes(node->right, path + "1", codes);
+}
+
+// Returns the total bits and fills codes (char -> bit string).
+long long huffman(vector<char>& chars, vector<int>& freq, unordered_map<char, string>& codes) {
+    deque<HuffNode> pool;                                 // owns every node; stable addresses, freed automatically
+    auto cmp = [](HuffNode* a, HuffNode* b) {             // priority_queue is a MAX-heap: invert the order
+        return a->freq != b->freq ? a->freq > b->freq : a->id > b->id;
+    };
+    priority_queue<HuffNode*, vector<HuffNode*>, decltype(cmp)> pq(cmp);
+    int id = 0;
+    for (size_t i = 0; i < chars.size(); i++) {
+        pool.push_back({freq[i], chars[i], id++, nullptr, nullptr});
+        pq.push(&pool.back());
+    }
+    long long total = 0;
+    while (pq.size() > 1) {
+        HuffNode* a = pq.top(); pq.pop();                 // smallest -> left
+        HuffNode* b = pq.top(); pq.pop();                 // 2nd smallest -> right
+        pool.push_back({a->freq + b->freq, 0, id++, a, b});
+        total += a->freq + b->freq;                       // every char below gains one bit
+        pq.push(&pool.back());
+    }
+    assignCodes(pq.top(), "", codes);
+    return total;
+}` }],
           complexity: `<p><b>Time O(N log N)</b>: N−1 merges, each does two polls and one add on a heap of size ≤ N (log N each). The DFS is O(N). <b>Space O(N)</b> for the heap and the 2N−1 tree nodes.</p>`,
           followUps: ['Encode and then decode a full string with your codes.', 'Frequencies arrive already sorted: make it O(N) with two queues.', 'Codes may be at most L bits long (length-limited Huffman): what breaks?', 'Ternary code (digits 0, 1, 2): how many dummy zero-frequency symbols do you add?']
         }
@@ -1427,7 +2170,7 @@ print("0/1 true best:   ", zero_one_brute(items, 50)) # 220 (items 1 and 2)` }],
       'Times are small integers (0..2359, ≤ 10<sup>6</sup>) → difference array: <code>diff[start]++</code>, <code>diff[end]--</code>, prefix sum.',
       'Watch for "arrival equal to departure" wording → decides <code>&lt;=</code> vs <code>&lt;</code>.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       // Two sorted arrays + two pointers. GFG rule: arrival == departure needs a NEW platform.
       int findPlatform(int[] arr, int[] dep) {
           int[] a = arr.clone(), d = dep.clone();
@@ -1445,7 +2188,44 @@ print("0/1 true best:   ", zero_one_brute(items, 50)) # 220 (items 1 and 2)` }],
               }
           }
           return best;
-      }`, `
+      }`, alt: [{ lang: 'python', code: `# Two sorted arrays + two pointers. GFG rule: arrival == departure needs a NEW platform.
+def find_platform(arr, dep):
+    a, d = sorted(arr), sorted(dep)
+    i = j = in_use = best = 0
+    while i < len(a):                  # once all trains arrived, the count only falls
+        if a[i] <= d[j]:               # next event is an arrival (ties: arrival first)
+            in_use += 1
+            best = max(best, in_use)
+            i += 1
+        else:                          # next event is a departure
+            in_use -= 1
+            j += 1
+    return best` }, { lang: 'js', code: `// Two sorted arrays + two pointers. GFG rule: arrival == departure needs a NEW platform.
+function findPlatform(arr, dep) {
+  const a = [...arr].sort((x, y) => x - y), d = [...dep].sort((x, y) => x - y);
+  let i = 0, j = 0, inUse = 0, best = 0;
+  while (i < a.length) {               // once all trains arrived, the count only falls
+    if (a[i] <= d[j]) {                // arrival first on ties
+      inUse++;
+      best = Math.max(best, inUse);
+      i++;
+    } else {                           // a departure
+      inUse--;
+      j++;
+    }
+  }
+  return best;
+}` }, { lang: 'cpp', code: `// Two sorted arrays + two pointers. GFG rule: arrival == departure needs a NEW platform.
+int findPlatform(vector<int> a, vector<int> d) {     // copies: the caller's order is kept
+    sort(a.begin(), a.end());
+    sort(d.begin(), d.end());
+    int n = a.size(), i = 0, j = 0, inUse = 0, best = 0;
+    while (i < n) {                                  // once all trains arrived, the count only falls
+        if (a[i] <= d[j]) { inUse++; best = max(best, inUse); i++; }   // arrival first on ties
+        else { inUse--; j++; }                                          // a departure
+    }
+    return best;
+}` }] }, { lang: 'java', code: `
       // Meeting Rooms II with a min-heap of end times (also tells you which room to reuse).
       // LeetCode rule: a meeting may start exactly when another ends in the same room.
       int minMeetingRooms(int[][] intervals) {
@@ -1456,7 +2236,73 @@ print("0/1 true best:   ", zero_one_brute(items, 50)) # 220 (items 1 and 2)` }],
               ends.add(m[1]);                                               // this meeting occupies a room
           }
           return ends.size();                                               // rooms ever opened
-      }`, `
+      }`, alt: [{ lang: 'python', code: `# Meeting Rooms II with a min-heap of end times (also tells you which room to reuse).
+# LeetCode rule: a meeting may start exactly when another ends in the same room.
+import heapq
+
+def min_meeting_rooms(intervals):
+    ends = []                                  # end times of busy rooms
+    for s, e in sorted(intervals):             # by start
+        if ends and ends[0] <= s:
+            heapq.heapreplace(ends, e)         # reuse the room that frees first
+        else:
+            heapq.heappush(ends, e)            # open a new room
+    return len(ends)                           # rooms ever opened` }, { lang: 'js', code: `// JS has no built-in heap: a small binary min-heap with a comparator.
+class MinHeap {
+  constructor(cmp = (a, b) => a - b) { this.a = []; this.cmp = cmp; }
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {                                // sift up
+      const p = (i - 1) >> 1;
+      if (this.cmp(a[i], a[p]) >= 0) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {                                   // sift down
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.cmp(a[l], a[m]) < 0) m = l;
+        if (r < a.length && this.cmp(a[r], a[m]) < 0) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+// Meeting Rooms II with a min-heap of end times (also tells you which room to reuse).
+// LeetCode rule: a meeting may start exactly when another ends in the same room.
+function minMeetingRooms(intervals) {
+  const sorted = [...intervals].sort((x, y) => x[0] - y[0]);   // by start
+  const ends = new MinHeap();                                   // end times of busy rooms
+  for (const [s, e] of sorted) {
+    if (ends.size() > 0 && ends.peek() <= s) ends.pop();        // reuse the room that frees first
+    ends.push(e);                                               // this meeting occupies a room
+  }
+  return ends.size();                                           // rooms ever opened
+}` }, { lang: 'cpp', code: `// Meeting Rooms II with a min-heap of end times (also tells you which room to reuse).
+// LeetCode rule: a meeting may start exactly when another ends in the same room.
+int minMeetingRooms(vector<vector<int>> intervals) {
+    sort(intervals.begin(), intervals.end());                    // by start
+    priority_queue<int, vector<int>, greater<int>> ends;         // min-heap of end times
+    for (auto& m : intervals) {
+        if (!ends.empty() && ends.top() <= m[0]) ends.pop();     // reuse the room that frees first
+        ends.push(m[1]);
+    }
+    return ends.size();                                          // rooms ever opened
+}` }] }, { lang: 'java', code: `
       // Difference array when times are small (here minutes 0..1440): O(N + T)
       int peakConcurrent(int[] start, int[] end) {          // half-open [start, end)
           int[] diff = new int[1442];
@@ -1464,7 +2310,29 @@ print("0/1 true best:   ", zero_one_brute(items, 50)) # 220 (items 1 and 2)` }],
           int run = 0, best = 0;
           for (int t = 0; t < diff.length; t++) { run += diff[t]; best = Math.max(best, run); }
           return best;
-      }`],
+      }`, alt: [{ lang: 'python', code: `# Difference array when times are small (here minutes 0..1440): O(N + T)
+from itertools import accumulate
+
+def peak_concurrent(start, end):           # half-open [start, end)
+    diff = [0] * 1442
+    for s, e in zip(start, end):
+        diff[s] += 1
+        diff[e] -= 1
+    return max(accumulate(diff))           # running sum = meetings in progress` }, { lang: 'js', code: `// Difference array when times are small (here minutes 0..1440): O(N + T)
+function peakConcurrent(start, end) {     // half-open [start, end)
+  const diff = new Int32Array(1442);
+  for (let i = 0; i < start.length; i++) { diff[start[i]]++; diff[end[i]]--; }
+  let run = 0, best = 0;
+  for (const x of diff) { run += x; best = Math.max(best, run); }
+  return best;
+}` }, { lang: 'cpp', code: `// Difference array when times are small (here minutes 0..1440): O(N + T)
+int peakConcurrent(const vector<int>& start, const vector<int>& end) {   // half-open [start, end)
+    vector<int> diff(1442, 0);
+    for (size_t i = 0; i < start.size(); i++) { diff[start[i]]++; diff[end[i]]--; }
+    int run = 0, best = 0;
+    for (int x : diff) { run += x; best = max(best, run); }
+    return best;
+}` }] }],
     codeTitle: ['Minimum platforms: sort both, two pointers', 'Meeting Rooms II: min-heap of end times', 'Difference array for small time ranges'],
     viz: {
       title: 'Sweep line: walk arrival and departure events in time order',
@@ -1550,20 +2418,20 @@ print("0/1 true best:   ", zero_one_brute(items, 50)) # 220 (items 1 and 2)` }],
         ['two sorted arrays + two pointers', 'O(N log N)', 'O(N)', 'only the count is needed'],
         ['min-heap of end times', 'O(N log N)', 'O(N)', 'you must assign rooms / stream meetings online in start order'],
         ['difference array', 'O(N + T)', 'O(T)', 'times are small integers (minutes in a day, km ≤ 1000)'],
-        ['TreeMap&lt;time, delta&gt;', 'O(N log N)', 'O(N)', 'intervals are added/removed dynamically (My Calendar III)']
+        ['sorted map time → delta (<code>TreeMap</code> / <code>SortedDict</code> / <code>std::map</code>)', 'O(N log N)', 'O(N)', 'intervals are added/removed dynamically (My Calendar III)']
       ])}
       <h4>4. Edge cases that bite</h4>
       <ul>
         <li><b>Overnight trains</b> (arrive 23:50, depart 00:10): normalise to minutes since a reference and add 24·60 to departures that are smaller than arrivals, or split into two intervals.</li>
         <li><b>Departure equal to arrival of the same train</b>: a zero-length visit still needs a platform under the GFG rule.</li>
-        <li>Very large times (epoch milliseconds) → use <code>long</code> and never a difference array.</li>
+        <li>Very large times (epoch milliseconds) → use 64-bit integers and never a difference array.</li>
       </ul>
       <h4>5. Production reality</h4>
       <p>The same sweep sizes connection pools ("peak concurrent requests"), computes license usage peaks, finds the busiest minute in logs, and checks Kubernetes resource overcommit. At scale it becomes a streaming problem: events arrive roughly in time order, so a heap of active end times with a bounded out-of-order window replaces the global sort.</p>`,
     aiEra: `<p><b>What AI changes:</b> "Meeting Rooms II" and "Minimum Platforms" are memorised; assistants will produce either the heap or the two-pointer version instantly. Their typical slip is the <b>tie rule</b>: they give the LeetCode (<code>&lt;</code>) version to a GFG (<code>&lt;=</code>) problem or vice versa, and both look "obviously right".</p>
       <p><b>Use AI as a partner:</b> <code>Restate the boundary rule in this problem in one sentence, then give 3 test cases where arrival == departure, with expected outputs.</code> For real-world logs: <code>Write a SQL/stream query that computes peak concurrent sessions per day from (session_start, session_end) rows</code> — then check its tie handling with the same eyes.</p>
       <p><b>Where AI goes wrong:</b> sorting intervals by end for this problem (that is activity selection, a different question), forgetting overnight wrap-around, and using a difference array sized by epoch timestamps.</p>
-      <p><b>What you must still own:</b> the "answer = max overlap" insight, the interval-partitioning proof, and choosing between count-only (two pointers) vs assignment (heap) vs dynamic (TreeMap) from the follow-up the interviewer asks.</p>`,
+      <p><b>What you must still own:</b> the "answer = max overlap" insight, the interval-partitioning proof, and choosing between count-only (two pointers) vs assignment (heap) vs dynamic (sorted map) from the follow-up the interviewer asks.</p>`,
     problems: [
       {
         title: 'Minimum Platforms',
@@ -1599,6 +2467,17 @@ print("0/1 true best:   ", zero_one_brute(items, 50)) # 220 (items 1 and 2)` }],
           `<p>Sort <code>arr</code> and <code>dep</code> separately. Walk them with two pointers like merging two sorted lists: an arrival adds 1, a departure subtracts 1, track the max.</p>`,
           `<p>Tie rule: arrival equal to departure needs a new platform → treat the arrival first (<code>arr[i] &lt;= dep[j]</code>). Stop when all arrivals are processed. Recipe: sort both → i = j = 0, cur = best = 0 → while i &lt; n: if arr[i] &lt;= dep[j] {cur++; best = max; i++} else {cur--; j++} → return best.</p>`
         ],
+        tests: { sig: 'int[] int[] -> int', fn: 'findPlatform', cases: [
+          [[[900, 940, 950, 1100, 1500, 1800], [910, 1200, 1120, 1130, 1900, 2000]], 3],
+          [[[900, 1000], [1000, 1100]], 2],
+          [[[900], [900]], 1],
+          [[[0, 0, 0], [2359, 2359, 2359]], 3],
+          [[[900, 1100, 1235], [1000, 1200, 1240]], 1],
+          [[[1000, 900], [1100, 1000]], 2],
+          [[[100, 200, 300, 400], [2359, 250, 350, 450]], 2],
+          [[{$rep: 0, n: 50000}, {$rep: 2359, n: 50000}], 50000],
+          [[{$range: [0, 2000, 1]}, {$range: [1, 2001, 1]}], 2]
+        ] },
         solution: {
           approach: `<p>Sweep line with two sorted arrays: process events in time order, arrivals before departures on ties, and keep the peak of the running count. The interval-partitioning argument proves that the peak number of platforms is also enough.</p>`,
           code: `
@@ -1645,7 +2524,33 @@ print("0/1 true best:   ", zero_one_brute(items, 50)) # 220 (items 1 and 2)` }],
             j += 1
     return best
 
-print(find_platform([900, 940, 950, 1100, 1500, 1800], [910, 1200, 1120, 1130, 1900, 2000]))  # 3`, run: true }],
+print(find_platform([900, 940, 950, 1100, 1500, 1800], [910, 1200, 1120, 1130, 1900, 2000]))  # 3`, run: true }, { lang: 'js', code: `function findPlatform(arr, dep) {
+  const a = Int32Array.from(arr).sort(), d = Int32Array.from(dep).sort();   // typed arrays sort numerically
+  let i = 0, j = 0, inUse = 0, best = 0;
+  while (i < a.length) {
+    if (a[i] <= d[j]) {          // arrival first, also on ties
+      inUse++;
+      best = Math.max(best, inUse);
+      i++;
+    } else {                     // a departure frees a platform
+      inUse--;
+      j++;
+    }
+  }
+  return best;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int findPlatform(vector<int> arr, vector<int> dep) {     // copies: sorting does not touch the caller
+        sort(arr.begin(), arr.end());
+        sort(dep.begin(), dep.end());
+        int i = 0, j = 0, inUse = 0, best = 0, n = arr.size();
+        while (i < n) {
+            if (arr[i] <= dep[j]) { inUse++; best = max(best, inUse); i++; }   // arrival first on ties
+            else { inUse--; j++; }
+        }
+        return best;
+    }
+};` }],
           dry: {
             head: ['a[i]', 'd[j]', 'event', 'inUse', 'best'],
             rows: [
@@ -1662,7 +2567,7 @@ print(find_platform([900, 940, 950, 1100, 1500, 1800], [910, 1200, 1120, 1130, 1
             ]
           },
           complexity: `<p><b>Time O(N log N)</b> for the two sorts; the sweep is O(N). <b>Space O(N)</b> for the copies (O(1) extra if sorting in place is allowed). With times ≤ 2359 a difference array gives O(N + 2400).</p>`,
-          followUps: ['Return which platform each train uses (min-heap of (departure, platformId)).', 'Trains can run past midnight (depart 00:10 after arriving 23:50).', 'Same-instant arrival and departure CAN share a platform: change one character.', 'Trains are added and cancelled live; answer the peak after every change (TreeMap of deltas or segment tree).']
+          followUps: ['Return which platform each train uses (min-heap of (departure, platformId)).', 'Trains can run past midnight (depart 00:10 after arriving 23:50).', 'Same-instant arrival and departure CAN share a platform: change one character.', 'Trains are added and cancelled live; answer the peak after every change (a sorted map of deltas or a segment tree).']
         }
       }
     ]
@@ -1699,7 +2604,7 @@ print(find_platform([900, 940, 950, 1100, 1500, 1800], [910, 1200, 1120, 1130, 1
       '<code>N ≤ 10<sup>5</sup></code> on a circle → the O(N²) "try every start" will TLE; expect O(N).',
       '"Minimum <b>initial fuel</b> needed to complete the loop from station 0" → answer = max(0, −(lowest prefix sum)), the same prefix-sum idea.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       // LC 134: one pass, O(N) time, O(1) space.
       int canCompleteCircuit(int[] gas, int[] cost) {
           long total = 0;     // sum of all gains: decides if ANY start works
@@ -1715,7 +2620,48 @@ print(find_platform([900, 940, 950, 1100, 1500, 1800], [910, 1200, 1120, 1130, 1
               }
           }
           return total >= 0 ? start : -1;
-      }`, `
+      }`, alt: [{ lang: 'python', code: `# LC 134: one pass, O(N) time, O(1) space.
+def can_complete_circuit(gas, cost):
+    total = 0      # sum of all gains: decides if ANY start works
+    tank = 0       # fuel since the current candidate start
+    start = 0
+    for i, (g, c) in enumerate(zip(gas, cost)):
+        total += g - c
+        tank += g - c
+        if tank < 0:           # cannot reach station i+1 from 'start'...
+            start = i + 1      # ...nor from any station between start and i
+            tank = 0           # begin again, empty tank, at i+1
+    return start if total >= 0 else -1` }, { lang: 'js', code: `// LC 134: one pass, O(N) time, O(1) space.
+function canCompleteCircuit(gas, cost) {
+  let total = 0;     // sum of all gains: decides if ANY start works
+  let tank = 0;      // fuel since the current candidate start
+  let start = 0;
+  for (let i = 0; i < gas.length; i++) {
+    const gain = gas[i] - cost[i];
+    total += gain;
+    tank += gain;
+    if (tank < 0) {          // cannot reach station i+1 from 'start'...
+      start = i + 1;         // ...nor from any station between start and i
+      tank = 0;              // begin again, empty tank, at i+1
+    }
+  }
+  return total >= 0 ? start : -1;
+}` }, { lang: 'cpp', code: `// LC 134: one pass, O(N) time, O(1) space.
+int canCompleteCircuit(const vector<int>& gas, const vector<int>& cost) {
+    long long total = 0;     // sum of all gains: decides if ANY start works
+    long long tank = 0;      // fuel since the current candidate start
+    int start = 0;
+    for (int i = 0; i < (int) gas.size(); i++) {
+        int gain = gas[i] - cost[i];
+        total += gain;
+        tank += gain;
+        if (tank < 0) {      // cannot reach i+1 from 'start', nor from anything in between
+            start = i + 1;
+            tank = 0;
+        }
+    }
+    return total >= 0 ? start : -1;
+}` }] }, { lang: 'java', code: `
       // Same answer via prefix sums: start right after the LOWEST running sum.
       int startAfterMinPrefix(int[] gas, int[] cost) {
           long run = 0, low = 0, total = 0;
@@ -1726,7 +2672,34 @@ print(find_platform([900, 940, 950, 1100, 1500, 1800], [910, 1200, 1120, 1130, 1
               if (run < low) { low = run; start = i + 1; }   // new lowest point
           }
           return total < 0 ? -1 : start % gas.length;
-      }`],
+      }`, alt: [{ lang: 'python', code: `# Same answer via prefix sums: start right after the LOWEST running sum.
+from itertools import accumulate
+
+def start_after_min_prefix(gas, cost):
+    run = list(accumulate(g - c for g, c in zip(gas, cost)))
+    if run[-1] < 0:
+        return -1
+    low = min(0, min(run))
+    if low == 0:
+        return 0                                   # the running sum never dips below 0
+    return (run.index(low) + 1) % len(gas)         # first time the lowest point is hit` }, { lang: 'js', code: `// Same answer via prefix sums: start right after the LOWEST running sum.
+function startAfterMinPrefix(gas, cost) {
+  let run = 0, low = 0, start = 0;
+  for (let i = 0; i < gas.length; i++) {
+    run += gas[i] - cost[i];
+    if (run < low) { low = run; start = i + 1; }   // new lowest point
+  }
+  return run < 0 ? -1 : start % gas.length;        // run ends as the total
+}` }, { lang: 'cpp', code: `// Same answer via prefix sums: start right after the LOWEST running sum.
+int startAfterMinPrefix(const vector<int>& gas, const vector<int>& cost) {
+    long long run = 0, low = 0;
+    int start = 0, n = gas.size();
+    for (int i = 0; i < n; i++) {
+        run += gas[i] - cost[i];
+        if (run < low) { low = run; start = i + 1; }   // new lowest point
+    }
+    return run < 0 ? -1 : start % n;                   // run ends as the total
+}` }] }],
     codeTitle: ['Greedy reset (the interview version)', 'Prefix-sum view of the same idea'],
     viz: {
       title: 'Gas station: drive, and jump the start past every failed stretch',
@@ -1800,7 +2773,7 @@ print(find_platform([900, 940, 950, 1100, 1500, 1800], [910, 1200, 1120, 1130, 1
       <h4>2. Proof that the last candidate works (when total ≥ 0)</h4>
       <p>Let P(i) = gain[0] + … + gain[i−1], P(0) = 0, P(N) = total ≥ 0. The algorithm's final start s is the index right after the lowest P (the last reset happens at the minimum). Driving from s, the tank when you reach station j is P(j) − P(s) for j ≥ s, and P(N) − P(s) + P(j) for j &lt; s (after wrapping). Both are ≥ 0 because P(s) is the minimum and P(N) ≥ 0. ∎</p>
       <h4>3. Overflow and types</h4>
-      <p>With N = 10<sup>5</sup> and gains up to ±10<sup>4</sup>, sums fit in int (10<sup>9</sup>) — but in the general version with gas up to 10<sup>9</sup>, use <code>long</code>. A cheap habit that never hurts.</p>
+      <p>With N = 10<sup>5</sup> and gains up to ±10<sup>4</sup>, sums fit in a 32-bit int (10<sup>9</sup>) — but in the general version with gas up to 10<sup>9</sup>, use a 64-bit integer (Python and JS do not need to care at this size). A cheap habit that never hurts.</p>
       <h4>4. Related problems that share the idea</h4>
       <ul>
         <li><b>Maximum circular subarray sum</b> (Kadane): the best circular segment = total − (minimum subarray), the same "lowest point" thinking.</li>
@@ -1852,6 +2825,18 @@ print(find_platform([900, 940, 950, 1100, 1500, 1800], [910, 1200, 1120, 1130, 1
           `<p><b>Aha 2:</b> keep a running tank from the current candidate start. When it drops below 0 at station i, none of the stations from the candidate to i can be the start → candidate = i + 1, tank = 0.</p>`,
           `<p>Edge cases: N = 1 (gas ≥ cost → 0), total exactly 0 (still valid), the candidate never needs to wrap because the total check covers it. Recipe: total = tank = start = 0 → for i: g = gas[i] − cost[i]; total += g; tank += g; if tank &lt; 0 {start = i + 1; tank = 0} → return total ≥ 0 ? start : −1.</p>`
         ],
+        tests: { sig: 'int[] int[] -> int', fn: 'canCompleteCircuit', cases: [
+          [[[1, 2, 3, 4, 5], [3, 4, 5, 1, 2]], 3],
+          [[[2, 3, 4], [3, 4, 3]], -1],
+          [[[5], [4]], 0],
+          [[[3], [4]], -1],
+          [[[1, 0, 7], [0, 6, 1]], 2],
+          [[[5, 1, 2, 3, 4], [4, 4, 1, 5, 1]], 4],
+          [[[4, 6, 7, 4], [6, 5, 3, 5]], 1],
+          [[[10000, 0], [0, 10000]], 0],
+          [[{$concat: [{$rep: 0, n: 50000}, {$rep: 1, n: 50000}]}, {$concat: [{$rep: 1, n: 50000}, {$rep: 0, n: 50000}]}], 50000],
+          [[{$rep: 10000, n: 100000}, {$concat: [{$rep: 10000, n: 99999}, [10001]]}], -1]
+        ] },
         solution: {
           approach: `<p>One pass. The total gain decides whether any start works; a running tank finds the only candidate by skipping every station that belongs to a failed stretch.</p>`,
           code: `
@@ -1887,7 +2872,32 @@ print(find_platform([900, 940, 950, 1100, 1500, 1800], [910, 1200, 1120, 1130, 1
     return start if total >= 0 else -1
 
 print(can_complete_circuit([1, 2, 3, 4, 5], [3, 4, 5, 1, 2]))  # 3
-print(can_complete_circuit([2, 3, 4], [3, 4, 3]))              # -1`, run: true }],
+print(can_complete_circuit([2, 3, 4], [3, 4, 3]))              # -1`, run: true }, { lang: 'js', code: `function canCompleteCircuit(gas, cost) {
+  let total = 0, tank = 0, start = 0;
+  for (let i = 0; i < gas.length; i++) {
+    const gain = gas[i] - cost[i];
+    total += gain;               // balance of the whole loop
+    tank += gain;                // balance since the current candidate
+    if (tank < 0) {              // candidate..i all fail
+      start = i + 1;
+      tank = 0;
+    }
+  }
+  return total >= 0 ? start : -1;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int canCompleteCircuit(vector<int>& gas, vector<int>& cost) {
+        long long total = 0, tank = 0;
+        int start = 0;
+        for (int i = 0; i < (int) gas.size(); i++) {
+            int gain = gas[i] - cost[i];
+            total += gain;
+            tank += gain;
+            if (tank < 0) { start = i + 1; tank = 0; }   // every station start..i fails
+        }
+        return total >= 0 ? start : -1;
+    }
+};` }],
           dry: {
             head: ['i', 'gain', 'total', 'tank', 'tank &lt; 0?', 'start'],
             rows: [
@@ -1930,7 +2940,7 @@ print(can_complete_circuit([2, 3, 4], [3, 4, 3]))              # -1`, run: true 
       'Each landing has a <b>score / cost</b> (Jump Game VI) → DP (with a monotonic deque), greedy fails.',
       '<code>N ≤ 10<sup>4</sup></code> or 10<sup>5</sup> and an O(N²) DP feels natural → there is likely an O(N) greedy.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       // LC 55 Jump Game: can we reach the last index?
       boolean canJump(int[] nums) {
           int reach = 0;                               // farthest index we can stand on so far
@@ -1940,7 +2950,34 @@ print(can_complete_circuit([2, 3, 4], [3, 4, 3]))              # -1`, run: true 
               if (reach >= nums.length - 1) return true;
           }
           return true;
-      }`, `
+      }`, alt: [{ lang: 'python', code: `# LC 55 Jump Game: can we reach the last index?
+def can_jump(nums):
+    reach = 0                              # farthest index we can stand on so far
+    for i, x in enumerate(nums):
+        if i > reach:
+            return False                   # index i is unreachable -> so is the end
+        reach = max(reach, i + x)          # standing on i extends our reach
+        if reach >= len(nums) - 1:
+            return True
+    return True` }, { lang: 'js', code: `// LC 55 Jump Game: can we reach the last index?
+function canJump(nums) {
+  let reach = 0;                               // farthest index we can stand on so far
+  for (let i = 0; i < nums.length; i++) {
+    if (i > reach) return false;               // index i is unreachable -> so is the end
+    reach = Math.max(reach, i + nums[i]);      // standing on i extends our reach
+    if (reach >= nums.length - 1) return true;
+  }
+  return true;
+}` }, { lang: 'cpp', code: `// LC 55 Jump Game: can we reach the last index?
+bool canJump(const vector<int>& nums) {
+    int reach = 0, n = nums.size();            // farthest index we can stand on so far
+    for (int i = 0; i < n; i++) {
+        if (i > reach) return false;           // index i is unreachable -> so is the end
+        reach = max(reach, i + nums[i]);
+        if (reach >= n - 1) return true;
+    }
+    return true;
+}` }] }, { lang: 'java', code: `
       // LC 45 Jump Game II: minimum jumps (the end is guaranteed reachable).
       int jump(int[] nums) {
           int jumps = 0;
@@ -1955,7 +2992,47 @@ print(can_complete_circuit([2, 3, 4], [3, 4, 3]))              # -1`, run: true 
               }
           }
           return jumps;
-      }`],
+      }`, alt: [{ lang: 'python', code: `# LC 45 Jump Game II: minimum jumps (the end is guaranteed reachable).
+def jump(nums):
+    jumps = 0
+    cur_end = 0        # last index reachable with 'jumps' jumps (current BFS level)
+    farthest = 0       # farthest index reachable with 'jumps + 1' jumps
+    for i in range(len(nums) - 1):         # no need to jump FROM the last index
+        farthest = max(farthest, i + nums[i])
+        if i == cur_end:                   # finished scanning this level
+            jumps += 1                     # must take another jump
+            cur_end = farthest             # next level ends here
+            if cur_end >= len(nums) - 1:
+                break
+    return jumps` }, { lang: 'js', code: `// LC 45 Jump Game II: minimum jumps (the end is guaranteed reachable).
+function jump(nums) {
+  let jumps = 0;
+  let curEnd = 0;      // last index reachable with 'jumps' jumps (current BFS level)
+  let farthest = 0;    // farthest index reachable with 'jumps + 1' jumps
+  for (let i = 0; i < nums.length - 1; i++) {   // no need to jump FROM the last index
+    farthest = Math.max(farthest, i + nums[i]);
+    if (i === curEnd) {                         // finished scanning this level
+      jumps++;
+      curEnd = farthest;
+      if (curEnd >= nums.length - 1) break;
+    }
+  }
+  return jumps;
+}` }, { lang: 'cpp', code: `// LC 45 Jump Game II: minimum jumps (the end is guaranteed reachable).
+int jump(const vector<int>& nums) {
+    int n = nums.size(), jumps = 0;
+    int curEnd = 0;      // last index reachable with 'jumps' jumps (current BFS level)
+    int farthest = 0;    // farthest index reachable with 'jumps + 1' jumps
+    for (int i = 0; i < n - 1; i++) {          // no need to jump FROM the last index
+        farthest = max(farthest, i + nums[i]);
+        if (i == curEnd) {                     // finished scanning this level
+            jumps++;
+            curEnd = farthest;
+            if (curEnd >= n - 1) break;
+        }
+    }
+    return jumps;
+}` }] }],
     codeTitle: ['Jump Game I: farthest reach', 'Jump Game II: BFS levels with two variables'],
     viz: {
       title: 'Jump Game II: grow the reachable window one jump at a time',
@@ -2098,6 +3175,17 @@ print(can_complete_circuit([2, 3, 4], [3, 4, 3]))              # -1`, run: true 
           `<p>Keep <code>curEnd</code> (end of the range reachable with the current number of jumps) and <code>farthest</code> (max of <code>i + nums[i]</code> seen so far). When <code>i == curEnd</code>, you must jump: <code>jumps++</code>, <code>curEnd = farthest</code>.</p>`,
           `<p>Loop only to <code>n − 2</code> (you never jump from the last index), so n = 1 returns 0. Recipe: jumps = curEnd = farthest = 0 → for i in 0..n−2: farthest = max(farthest, i + nums[i]); if i == curEnd {jumps++; curEnd = farthest} → return jumps.</p>`
         ],
+        tests: { sig: 'int[] -> int', fn: 'jump', cases: [
+          [[[2, 3, 1, 1, 4]], 2],
+          [[[2, 3, 0, 1, 4]], 2],
+          [[[0]], 0],
+          [[[1, 1, 1, 1]], 3],
+          [[[5, 0, 0, 0, 0, 0]], 1],
+          [[[1, 2]], 1],
+          [[[1, 4, 0, 0, 0, 1]], 2],
+          [[{$rep: 1, n: 10000}], 9999],
+          [[{$rep: 1000, n: 10000}], 10]
+        ] },
         solution: {
           approach: `<p>Implicit BFS: each "level" is a contiguous window of indices reachable with the same number of jumps. Scan the window, track the farthest index the next level reaches, and count a jump each time the scan crosses the window end. Greedy stays ahead because it computes the true farthest reach after every number of jumps.</p>`,
           code: `
@@ -2133,7 +3221,32 @@ print(can_complete_circuit([2, 3, 4], [3, 4, 3]))              # -1`, run: true 
     return jumps
 
 print(jump([2, 3, 1, 1, 4]))  # 2
-print(jump([1, 1, 1, 1]))     # 3`, run: true }],
+print(jump([1, 1, 1, 1]))     # 3`, run: true }, { lang: 'js', code: `function jump(nums) {
+  let jumps = 0, curEnd = 0, farthest = 0;
+  for (let i = 0; i < nums.length - 1; i++) {    // never jump from the last index
+    farthest = Math.max(farthest, i + nums[i]);
+    if (i === curEnd) {                          // end of the current BFS level
+      jumps++;
+      curEnd = farthest;
+      if (curEnd >= nums.length - 1) break;
+    }
+  }
+  return jumps;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int jump(vector<int>& nums) {
+        int n = nums.size(), jumps = 0, curEnd = 0, farthest = 0;
+        for (int i = 0; i < n - 1; i++) {          // never jump from the last index
+            farthest = max(farthest, i + nums[i]);
+            if (i == curEnd) {                     // end of this BFS level
+                jumps++;
+                curEnd = farthest;
+                if (curEnd >= n - 1) break;
+            }
+        }
+        return jumps;
+    }
+};` }],
           dry: {
             head: ['i', 'nums[i]', 'i + nums[i]', 'farthest', 'i == curEnd?', 'jumps', 'curEnd'],
             rows: [
@@ -2181,7 +3294,7 @@ print(jump([1, 1, 1, 1]))     # 3`, run: true }],
       '"Return -1 if it is impossible" with coins → greedy may wrongly report impossible (coins {3,4}, amount 6).',
       'Standard currency (1, 2, 5, 10, …) is "canonical": greedy happens to work — but the problem will rarely promise that.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       // Looks right, but is WRONG for coins like {1, 3, 4}: returns 3 for amount 6 (best is 2)
       int greedyCoins(int[] coins, int amount) {
           Integer[] c = new Integer[coins.length];
@@ -2195,7 +3308,33 @@ print(jump([1, 1, 1, 1]))     # 3`, run: true }],
               }
           }
           return amount == 0 ? count : -1;              // may even say -1 when an answer exists
-      }`, {
+      }`, alt: [{ lang: 'python', code: `# Looks right, but is WRONG for coins like {1, 3, 4}: returns 3 for amount 6 (best is 2)
+def greedy_coins(coins, amount):
+    count = 0
+    for coin in sorted(coins, reverse=True):   # biggest coin first
+        count += amount // coin                # take this coin as long as it fits
+        amount %= coin
+    return count if amount == 0 else -1        # may even say -1 when an answer exists` }, { lang: 'js', code: `// Looks right, but is WRONG for coins like {1, 3, 4}: returns 3 for amount 6 (best is 2)
+function greedyCoins(coins, amount) {
+  const c = [...coins].sort((a, b) => b - a);  // biggest coin first
+  let count = 0;
+  for (const coin of c) {
+    while (amount >= coin) {                   // take this coin as long as it fits
+      amount -= coin;
+      count++;
+    }
+  }
+  return amount === 0 ? count : -1;            // may even say -1 when an answer exists
+}` }, { lang: 'cpp', code: `// Looks right, but is WRONG for coins like {1, 3, 4}: returns 3 for amount 6 (best is 2)
+int greedyCoins(vector<int> coins, int amount) {
+    sort(coins.rbegin(), coins.rend());        // biggest coin first
+    int count = 0;
+    for (int coin : coins) {
+        count += amount / coin;                // take this coin as long as it fits
+        amount %= coin;
+    }
+    return amount == 0 ? count : -1;           // may even say -1 when an answer exists
+}` }] }, {
       lang: 'python', run: true, title: 'Stress test: is greedy safe for this coin system? (runnable)', code: `import random
 
 def greedy(coins, amount):
@@ -2377,6 +3516,18 @@ print("random coin systems where greedy breaks:", fails, "of 300")`
           `<p>Bottom-up DP: <code>dp[0] = 0</code>, <code>dp[a] = min over coins c ≤ a of dp[a − c] + 1</code>. Use a sentinel like <code>amount + 1</code> for "impossible" (you never need more than <code>amount</code> coins of value ≥ 1).</p>`,
           `<p>Edge cases: amount 0 → 0; unreachable amounts stay at the sentinel → −1; huge coins (2<sup>31</sup> − 1) must not overflow <code>a − c</code> (check <code>c ≤ a</code> first). Recipe: fill dp[1..amount] with amount + 1 → for a: for c: if c ≤ a → dp[a] = min(dp[a], dp[a − c] + 1) → answer dp[amount] &gt; amount ? −1 : dp[amount].</p>`
         ],
+        tests: { sig: 'int[] int -> int', fn: 'coinChange', cases: [
+          [[[1, 3, 4], 6], 2],
+          [[[3, 4], 6], 2],
+          [[[2], 3], -1],
+          [[[1, 2, 5], 11], 3],
+          [[[1], 0], 0],
+          [[[2147483647], 2], -1],
+          [[[1, 2147483647], 3], 3],
+          [[[186, 419, 83, 408], 6249], 20],
+          [[[1], 10000], 10000],
+          [[[7, 2147483647], 10000], -1]
+        ] },
         solution: {
           approach: `<p>Unbounded-knapsack style DP over amounts 0..amount. Each amount takes the best of "last coin = c" for every coin. This is the fix for the failed greedy: instead of committing to one first choice, it evaluates every choice once and reuses the answers.</p>`,
           code: `
@@ -2417,7 +3568,27 @@ print("random coin systems where greedy breaks:", fails, "of 300")`
 
 print(coin_change([1, 3, 4], 6))   # 2
 print(coin_change([3, 4], 6))      # 2
-print(coin_change([2], 3))         # -1`, run: true }],
+print(coin_change([2], 3))         # -1`, run: true }, { lang: 'js', code: `function coinChange(coins, amount) {
+  const INF = amount + 1;                    // more coins than could ever be needed
+  const dp = new Int32Array(amount + 1).fill(INF);
+  dp[0] = 0;
+  for (let a = 1; a <= amount; a++) {
+    for (const c of coins) {
+      if (c <= a && dp[a - c] + 1 < dp[a]) dp[a] = dp[a - c] + 1;   // last coin = c
+    }
+  }
+  return dp[amount] > amount ? -1 : dp[amount];
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int coinChange(vector<int>& coins, int amount) {
+        vector<int> dp(amount + 1, amount + 1);      // amount + 1 = "impossible"
+        dp[0] = 0;
+        for (int a = 1; a <= amount; a++)
+            for (int c : coins)
+                if (c <= a) dp[a] = min(dp[a], dp[a - c] + 1);   // c <= a first: no overflow
+        return dp[amount] > amount ? -1 : dp[amount];
+    }
+};` }],
           dry: {
             head: ['a', 'try c = 1', 'try c = 3', 'try c = 4', 'dp[a]'],
             rows: [
@@ -2480,6 +3651,17 @@ print(coin_change([2], 3))         # -1`, run: true }],
       `<p>Sort both arrays. Walk cookies from small to large with a pointer on children: if the cookie satisfies the current child, move to the next child; either way move to the next cookie.</p>`,
       `<p>Edge cases: no cookies → 0; more cookies than children → stop when all children are content. Recipe: sort g, sort s → child = 0 → for each cookie: if child &lt; g.length and s[cookie] ≥ g[child] → child++ → return child.</p>`
     ],
+    tests: { sig: 'int[] int[] -> int', fn: 'findContentChildren', cases: [
+      [[[1, 2, 3], [1, 1]], 1],
+      [[[1, 2], [1, 2, 3]], 2],
+      [[[1], []], 0],
+      [[[5], [4]], 0],
+      [[[2, 2, 2], [2, 2]], 2],
+      [[[10, 9, 8, 7], [5, 6, 7, 8]], 2],
+      [[[2147483647, 1], [2147483647]], 1],
+      [[{$range: [1, 30001, 1]}, {$rep: 2147483647, n: 30000}], 30000],
+      [[{$rep: 2, n: 30000}, {$rep: 1, n: 30000}], 0]
+    ] },
     solution: {
       approach: `<p>Sort children by greed and cookies by size; match each cookie, smallest first, to the least greedy child it can satisfy. Exchange argument: if an optimal answer gives the least greedy child a bigger cookie, swap it for the smallest sufficient cookie — nobody becomes unhappy.</p>`,
       code: `
@@ -2508,6 +3690,32 @@ print(coin_change([2], 3))         # -1`, run: true }],
         head: ['cookie', 'child greed', 'cookie ≥ greed?', 'content'],
         rows: [['1', '1', '<span class="c-g">yes</span>', '1'], ['2', '2', '<span class="c-g">yes</span>', '2'], ['3', '— (all done)', '', '<span class="c-p">2</span>']]
       },
+      alt: [{ lang: 'python', code: `def find_content_children(g, s):
+    greed, size = sorted(g), sorted(s)
+    child = 0
+    for cookie in size:
+        if child == len(greed):
+            break
+        if cookie >= greed[child]:     # smallest cookie that pleases this child
+            child += 1
+    return child` }, { lang: 'js', code: `function findContentChildren(g, s) {
+  const greed = Float64Array.from(g).sort(), size = Float64Array.from(s).sort();   // numeric sorts
+  let child = 0;
+  for (let c = 0; c < size.length && child < greed.length; c++) {
+    if (size[c] >= greed[child]) child++;   // otherwise this cookie is too small for everyone left
+  }
+  return child;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int findContentChildren(vector<int> g, vector<int> s) {
+        sort(g.begin(), g.end());
+        sort(s.begin(), s.end());
+        size_t child = 0;
+        for (size_t c = 0; c < s.size() && child < g.size(); c++)
+            if (s[c] >= g[child]) child++;
+        return child;
+    }
+};` }],
       complexity: `<p><b>Time O(N log N + M log M)</b> for the two sorts, O(N + M) for the scan. <b>Space O(N + M)</b> for the copies.</p>`,
       followUps: ['Each child may take up to two cookies whose total size ≥ greed.', 'Return which cookie each content child receives.']
     }
@@ -2556,6 +3764,18 @@ print(coin_change([2], 3))         # -1`, run: true }],
       `<p>Count only <code>fives</code> and <code>tens</code> ($20s are never given as change). For a $20, prefer $10 + $5; fall back to three $5s.</p>`,
       `<p>Edge cases: the first customer pays $10 or $20 → false immediately. Recipe: for each bill: 5 → fives++; 10 → need a five; 20 → if tens &gt; 0 and fives &gt; 0 use them, else if fives ≥ 3 use three, else false → true.</p>`
     ],
+    tests: { sig: 'int[] -> bool', fn: 'lemonadeChange', cases: [
+      [[[5, 5, 5, 10, 20]], true],
+      [[[5, 5, 10, 10, 20]], false],
+      [[[5]], true],
+      [[[10]], false],
+      [[[20]], false],
+      [[[5, 10, 5, 20]], true],
+      [[[5, 5, 5, 20]], true],
+      [[[5, 5, 10, 20, 5, 5, 5, 20]], true],
+      [[{$concat: [{$rep: 5, n: 50000}, {$rep: 10, n: 50000}]}], true],
+      [[{$concat: [{$rep: 5, n: 3}, {$rep: 20, n: 1}, {$rep: 5, n: 49998}, {$rep: 10, n: 49998}, [10]]}], false]
+    ] },
     solution: {
       approach: `<p>Simulate with two counters, always giving change with the largest bill possible. Exchange argument: any successful plan that pays a $20 with three $5s while a $10 was available can swap to $10 + $5 and still succeed, because it now holds an extra $5 instead of a $10 — and a $5 can do everything a $10 can.</p>`,
       code: `
@@ -2583,6 +3803,51 @@ print(coin_change([2], 3))         # -1`, run: true }],
                 System.out.println(s.lemonadeChange(new int[]{5, 5, 10, 10, 20}));  // false
             }
         }`,
+      alt: [{ lang: 'python', code: `def lemonade_change(bills):
+    fives = tens = 0
+    for b in bills:
+        if b == 5:
+            fives += 1
+        elif b == 10:
+            if fives == 0:
+                return False
+            fives -= 1
+            tens += 1
+        elif tens and fives:           # $20: prefer $10 + $5, keep the flexible $5s
+            tens -= 1
+            fives -= 1
+        elif fives >= 3:
+            fives -= 3
+        else:
+            return False
+    return True` }, { lang: 'js', code: `function lemonadeChange(bills) {
+  let fives = 0, tens = 0;
+  for (const b of bills) {
+    if (b === 5) fives++;
+    else if (b === 10) {
+      if (fives === 0) return false;
+      fives--; tens++;
+    } else if (tens > 0 && fives > 0) { tens--; fives--; }   // $10 + $5 first
+    else if (fives >= 3) fives -= 3;
+    else return false;
+  }
+  return true;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    bool lemonadeChange(vector<int>& bills) {
+        int fives = 0, tens = 0;
+        for (int b : bills) {
+            if (b == 5) fives++;
+            else if (b == 10) {
+                if (fives == 0) return false;
+                fives--; tens++;
+            } else if (tens > 0 && fives > 0) { tens--; fives--; }
+            else if (fives >= 3) fives -= 3;
+            else return false;
+        }
+        return true;
+    }
+};` }],
       complexity: `<p><b>Time O(N)</b>, <b>Space O(1)</b>.</p>`,
       followUps: ['Prices and bills are arbitrary (e.g. coins 1, 3, 4): is greedy change still safe? (No — see the coin change topic.)', 'Return the index of the first customer you cannot serve.']
     }
@@ -2624,6 +3889,16 @@ print(coin_change([2], 3))         # -1`, run: true }],
       `<p>Sort box types by unitsPerBox descending, then take <code>min(left, numberOfBoxes)</code> boxes of each type until the truck is full.</p>`,
       `<p>Edge cases: truckSize larger than all boxes → take everything. Recipe: sort by units desc → for each type: take = min(left, count); units += take × perBox; left -= take; stop at 0.</p>`
     ],
+    tests: { sig: 'int[][] int -> int', fn: 'maximumUnits', cases: [
+      [[[[1, 3], [2, 2], [3, 1]], 4], 8],
+      [[[[5, 10], [2, 5], [4, 7], [3, 9]], 10], 91],
+      [[[[1, 1]], 1], 1],
+      [[[[2, 5]], 10], 10],
+      [[[[3, 4], [3, 4]], 5], 20],
+      [[[[1, 1], [1, 1000]], 1], 1000],
+      [[{$rep: [1000, 1000], n: 1000}, 1000000], 1000000000],
+      [[{$rep: [1000, 1000], n: 1000}, 999999], 999999000]
+    ] },
     solution: {
       approach: `<p>Sort types by units per box (descending) and fill the truck greedily. Exchange argument: any loaded box with fewer units than an unloaded box can be swapped for it, slot count unchanged, units not lower.</p>`,
       code: `
@@ -2649,6 +3924,38 @@ print(coin_change([2], 3))         # -1`, run: true }],
                 System.out.println(s.maximumUnits(new int[][]{{5, 10}, {2, 5}, {4, 7}, {3, 9}}, 10));   // 91
             }
         }`,
+      alt: [{ lang: 'python', code: `def maximum_units(box_types, truck_size):
+    units, left = 0, truck_size
+    for count, per_box in sorted(box_types, key=lambda t: -t[1]):   # most units per box first
+        if left == 0:
+            break
+        take = min(left, count)
+        units += take * per_box
+        left -= take
+    return units` }, { lang: 'js', code: `function maximumUnits(boxTypes, truckSize) {
+  const b = [...boxTypes].sort((x, y) => y[1] - x[1]);   // most units per box first
+  let units = 0, left = truckSize;
+  for (const [count, perBox] of b) {
+    if (left === 0) break;
+    const take = Math.min(left, count);
+    units += take * perBox;
+    left -= take;
+  }
+  return units;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int maximumUnits(vector<vector<int>> boxTypes, int truckSize) {
+        sort(boxTypes.begin(), boxTypes.end(), [](auto& x, auto& y) { return x[1] > y[1]; });
+        int units = 0, left = truckSize;
+        for (auto& t : boxTypes) {
+            if (left == 0) break;
+            int take = min(left, t[0]);
+            units += take * t[1];               // ≤ 10^9 in total: fits in int
+            left -= take;
+        }
+        return units;
+    }
+};` }],
       complexity: `<p><b>Time O(T log T)</b> for T box types; or O(T + 1000) with counting sort on unitsPerBox ≤ 1000. <b>Space O(T)</b>.</p>`,
       followUps: ['Boxes now have different sizes (weights): which problem is it, and is greedy still correct?', 'Use a counting sort since unitsPerBox ≤ 1000.']
     }
@@ -2685,6 +3992,17 @@ print(coin_change([2], 3))         # -1`, run: true }],
       `<p>So collect every positive daily difference and skip every negative one. No need to find valleys and peaks explicitly.</p>`,
       `<p>Edge cases: a single day or always-falling prices → 0. Recipe: profit = 0 → for i from 1: if prices[i] &gt; prices[i − 1] → profit += prices[i] − prices[i − 1] → return profit.</p>`
     ],
+    tests: { sig: 'int[] -> int', fn: 'maxProfit', cases: [
+      [[[7, 1, 5, 3, 6, 4]], 7],
+      [[[1, 2, 3, 4, 5]], 4],
+      [[[7, 6, 4, 3, 1]], 0],
+      [[[5]], 0],
+      [[[0, 10000]], 10000],
+      [[[3, 3, 3]], 0],
+      [[[2, 1, 2, 0, 1]], 2],
+      [[{$concat: [{$range: [0, 10001, 1]}, {$range: [9999, -1, -1]}, {$range: [1, 10001, 1]}]}], 20000],
+      [[{$range: [10000, 0, -1]}], 0]
+    ] },
     solution: {
       approach: `<p>Bank every upward step. Any optimal set of trades consists of rising stretches, whose profit equals the sum of the positive daily differences inside them; adding every positive difference can only be ≥ that, and it is always achievable (buy at each valley, sell at each peak).</p>`,
       code: `
@@ -2706,6 +4024,23 @@ print(coin_change([2], 3))         # -1`, run: true }],
                 System.out.println(s.maxProfit(new int[]{7, 6, 4, 3, 1}));     // 0
             }
         }`,
+      alt: [{ lang: 'python', code: `def max_profit(prices):
+    # bank every day-to-day rise
+    return sum(max(0, b - a) for a, b in zip(prices, prices[1:]))` }, { lang: 'js', code: `function maxProfit(prices) {
+  let profit = 0;
+  for (let i = 1; i < prices.length; i++) {
+    if (prices[i] > prices[i - 1]) profit += prices[i] - prices[i - 1];   // bank every rise
+  }
+  return profit;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int maxProfit(vector<int>& prices) {
+        int profit = 0;
+        for (size_t i = 1; i < prices.size(); i++)
+            profit += max(0, prices[i] - prices[i - 1]);   // bank every rise
+        return profit;
+    }
+};` }],
       complexity: `<p><b>Time O(N)</b>, <b>Space O(1)</b>.</p>`,
       followUps: ['Each transaction has a fee (LC 714): greedy breaks — use the two-state DP.', 'At most k transactions (LC 188): DP.', 'Cooldown of one day after selling (LC 309).']
     }
@@ -2748,8 +4083,18 @@ print(coin_change([2], 3))         # -1`, run: true }],
     hints: [
       `<p><b>Aha:</b> "fewest removals" = N − "most intervals you can keep without overlap" = activity selection.</p>`,
       `<p>Sort by end. Keep an interval if its start ≥ the end of the last kept one; otherwise it is removed.</p>`,
-      `<p>Touching is allowed → use <code>≥</code>. Use <code>Integer.compare</code> in the comparator. Recipe: sort by end → kept = 0, lastEnd = −∞ → for each: if start ≥ lastEnd {kept++; lastEnd = end} → return N − kept.</p>`
+      `<p>Touching is allowed → use <code>≥</code>. Compare ends without subtracting in Java and C++ (<code>Integer.compare</code>, <code>&lt;</code>). Recipe: sort by end → kept = 0, lastEnd = −∞ → for each: if start ≥ lastEnd {kept++; lastEnd = end} → return N − kept.</p>`
     ],
+    tests: { sig: 'int[][] -> int', fn: 'eraseOverlapIntervals', cases: [
+      [[[[1, 2], [2, 3], [3, 4], [1, 3]]], 1],
+      [[[[1, 2], [1, 2], [1, 2]]], 2],
+      [[[[1, 2], [2, 3]]], 0],
+      [[[[0, 5]]], 0],
+      [[[[-50000, 50000], [-1, 0], [0, 1]]], 1],
+      [[[[1, 100], [11, 22], [1, 11], [2, 12]]], 2],
+      [[[[-5, -3], [-4, -2], [-3, -1]]], 1],
+      [[{$rep: [-50000, 50000], n: 100000}], 99999]
+    ] },
     solution: {
       approach: `<p>Activity selection with earliest end first; answer is the number of intervals skipped. The "greedy stays ahead" proof from the Activity Selection topic applies unchanged.</p>`,
       code: `
@@ -2776,6 +4121,30 @@ print(coin_change([2], 3))         # -1`, run: true }],
                 System.out.println(s.eraseOverlapIntervals(new int[][]{{1, 2}, {1, 2}, {1, 2}}));          // 2
             }
         }`,
+      alt: [{ lang: 'python', code: `def erase_overlap_intervals(intervals):
+    kept, last_end = 0, float('-inf')
+    for s, e in sorted(intervals, key=lambda it: it[1]):   # earliest end first
+        if s >= last_end:              # touching is fine
+            kept += 1
+            last_end = e
+    return len(intervals) - kept` }, { lang: 'js', code: `function eraseOverlapIntervals(intervals) {
+  const a = [...intervals].sort((x, y) => x[1] - y[1]);   // earliest end first
+  let kept = 0, lastEnd = -Infinity;
+  for (const [s, e] of a) {
+    if (s >= lastEnd) { kept++; lastEnd = e; }
+  }
+  return a.length - kept;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int eraseOverlapIntervals(vector<vector<int>> intervals) {
+        sort(intervals.begin(), intervals.end(), [](auto& x, auto& y) { return x[1] < y[1]; });
+        int kept = 0;
+        long long lastEnd = LLONG_MIN;
+        for (auto& it : intervals)
+            if (it[0] >= lastEnd) { kept++; lastEnd = it[1]; }
+        return intervals.size() - kept;
+    }
+};` }],
       complexity: `<p><b>Time O(N log N)</b>, <b>Space O(N)</b> for the copy (or O(log N) sorting in place).</p>`,
       followUps: ['Return which intervals to remove.', 'Each interval has a removal cost; minimize total cost (weighted → DP).']
     }
@@ -2810,15 +4179,25 @@ print(coin_change([2], 3))         # -1`, run: true }],
     },
     mcq: {
       q: 'Why is the comparator <code>(a, b) -&gt; a[1] - b[1]</code> dangerous in this problem?',
-      options: ['It sorts by start instead of end', 'Coordinates go down to −2<sup>31</sup> and up to 2<sup>31</sup> − 1, so the subtraction can overflow and sort wrongly', 'It is slower than Integer.compare', 'It is not stable'],
+      options: ['It sorts by start instead of end', 'Coordinates go down to −2<sup>31</sup> and up to 2<sup>31</sup> − 1, so the subtraction can overflow and sort wrongly', 'It is slower than a library compare function', 'It is not stable'],
       answer: 1,
-      explain: 'For example 2^31−1 − (−2^31) overflows int and becomes negative. LeetCode includes exactly such a test. Use Integer.compare(a[1], b[1]).'
+      explain: 'For example 2^31−1 − (−2^31) overflows a 32-bit int and becomes negative. LeetCode includes exactly such a test. In Java use Integer.compare(a[1], b[1]); in C++ use a[1] < b[1]. In Python and JS the subtraction cannot overflow at this size.'
     },
     hints: [
       `<p><b>Aha:</b> some arrow must burst the balloon that ends first; shooting at its <b>right end</b> also hits as many other balloons as possible.</p>`,
       `<p>Sort by end. Keep the position of the last arrow; a balloon needs a new arrow only if its start is <b>strictly greater</b> than that position (touching balloons share it).</p>`,
-      `<p>Overflow traps: use <code>Integer.compare</code> and a <code>long</code> initial arrow position below every start. Recipe: sort by end → arrows = 0, at = −∞ → for each: if start &gt; at {arrows++; at = end} → return arrows.</p>`
+      `<p>Overflow traps (Java and C++): compare without subtracting, and start the arrow position below every possible start (a 64-bit minimum, or −∞ in Python and JS). Recipe: sort by end → arrows = 0, at = −∞ → for each: if start &gt; at {arrows++; at = end} → return arrows.</p>`
     ],
+    tests: { sig: 'int[][] -> int', fn: 'findMinArrowShots', cases: [
+      [[[[10, 16], [2, 8], [1, 6], [7, 12]]], 2],
+      [[[[1, 2], [3, 4], [5, 6], [7, 8]]], 4],
+      [[[[1, 2], [2, 3], [3, 4], [4, 5]]], 2],
+      [[[[-2147483648, 2147483647]]], 1],
+      [[[[-2147483648, -2147483647], [2147483646, 2147483647]]], 2],
+      [[[[1, 10], [2, 3], [4, 5]]], 2],
+      [[[[0, 0], [0, 0]]], 1],
+      [[{$rep: [-2147483648, 2147483647], n: 100000}], 1]
+    ] },
     solution: {
       approach: `<p>Earliest end first, closed intervals. The first arrow at the smallest end bursts every balloon that starts by then; any solution's first arrow can be moved right to that end without missing anything (exchange argument).</p>`,
       code: `
@@ -2846,6 +4225,32 @@ print(coin_change([2], 3))         # -1`, run: true }],
                 System.out.println(s.findMinArrowShots(new int[][]{{-2147483648, 2147483647}}));         // 1
             }
         }`,
+      alt: [{ lang: 'python', code: `def find_min_arrow_shots(points):
+    arrows, at = 0, float('-inf')
+    for s, e in sorted(points, key=lambda p: p[1]):   # earliest end first
+        if s > at:                     # not reached by the last arrow
+            arrows += 1
+            at = e                     # shoot at this balloon's right end
+    return arrows` }, { lang: 'js', code: `function findMinArrowShots(points) {
+  // x[1] - y[1] is safe here: ±2^31 differences are exact in a Number
+  const p = [...points].sort((x, y) => x[1] - y[1]);
+  let arrows = 0, at = -Infinity;
+  for (const [s, e] of p) {
+    if (s > at) { arrows++; at = e; }
+  }
+  return arrows;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int findMinArrowShots(vector<vector<int>> points) {
+        // compare with <, never a - b: that overflows int for ±2^31
+        sort(points.begin(), points.end(), [](auto& a, auto& b) { return a[1] < b[1]; });
+        int arrows = 0;
+        long long at = LLONG_MIN;
+        for (auto& b : points)
+            if (b[0] > at) { arrows++; at = b[1]; }
+        return arrows;
+    }
+};` }],
       complexity: `<p><b>Time O(N log N)</b>, <b>Space O(N)</b> for the copy.</p>`,
       followUps: ['Return the arrow positions.', 'Balloons are 2D rectangles and arrows are vertical lines: does anything change?']
     }
@@ -2889,6 +4294,17 @@ print(coin_change([2], 3))         # -1`, run: true }],
       `<p>Precompute <code>last[c]</code>. Scan with <code>end = max(end, last[s[i]])</code>; when <code>i == end</code>, close the part.</p>`,
       `<p>Edge cases: one letter repeated ("aaaa" → [4]); all distinct ("abc" → [1,1,1]). Recipe: last[] → start = end = 0 → for i: end = max(end, last[s[i]]); if i == end {add end − start + 1; start = i + 1} → return sizes.</p>`
     ],
+    tests: { sig: 'string -> list<int>', fn: 'partitionLabels', cases: [
+      [["ababcbacadefegdehijhklij"], [9, 7, 8]],
+      [["eccbbbbdec"], [10]],
+      [["a"], [1]],
+      [["abc"], [1, 1, 1]],
+      [["aaaa"], [4]],
+      [["abca"], [4]],
+      [["ababcdcde"], [4, 4, 1]],
+      [[{$concat: [{$rep: "ab", n: 250}]}], [500]],
+      [[{$concat: [{$rep: "abcdefghijklmnopqrstuvwxy", n: 20}]}], [500]]
+    ] },
     solution: {
       approach: `<p>Interval-merging greedy: each letter defines an interval [first, last]; parts are the merged groups. Scanning and extending <code>end</code> builds the groups in one pass; closing a part as soon as possible maximizes the count.</p>`,
       code: `
@@ -2916,6 +4332,38 @@ print(coin_change([2], 3))         # -1`, run: true }],
                 System.out.println(sol.partitionLabels("eccbbbbdec"));                // [10]
             }
         }`,
+      alt: [{ lang: 'python', code: `def partition_labels(s):
+    last = {c: i for i, c in enumerate(s)}    # last occurrence of each letter
+    sizes, start, end = [], 0, 0
+    for i, c in enumerate(s):
+        end = max(end, last[c])               # the part must reach here
+        if i == end:                          # every letter so far ends by i
+            sizes.append(end - start + 1)
+            start = i + 1
+    return sizes` }, { lang: 'js', code: `function partitionLabels(s) {
+  const last = new Map();
+  for (let i = 0; i < s.length; i++) last.set(s[i], i);   // last occurrence
+  const sizes = [];
+  let start = 0, end = 0;
+  for (let i = 0; i < s.length; i++) {
+    end = Math.max(end, last.get(s[i]));
+    if (i === end) { sizes.push(end - start + 1); start = i + 1; }
+  }
+  return sizes;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> partitionLabels(string s) {
+        int last[26] = {};
+        for (int i = 0; i < (int) s.size(); i++) last[s[i] - 'a'] = i;
+        vector<int> sizes;
+        int start = 0, end = 0;
+        for (int i = 0; i < (int) s.size(); i++) {
+            end = max(end, last[s[i] - 'a']);
+            if (i == end) { sizes.push_back(end - start + 1); start = i + 1; }
+        }
+        return sizes;
+    }
+};` }],
       complexity: `<p><b>Time O(N)</b>, <b>Space O(1)</b> (26 counters).</p>`,
       followUps: ['Return the parts as strings.', 'Minimize the size of the largest part instead (different problem: binary search + check).']
     }
@@ -2963,6 +4411,17 @@ print(coin_change([2], 3))         # -1`, run: true }],
       `<p>The final row holds every task that also has frequency maxF (<code>countMax</code>). So the skeleton length is <code>(maxF − 1)·(n + 1) + countMax</code>.</p>`,
       `<p>If there are so many different tasks that idle slots disappear, the answer is just <code>tasks.length</code>. Recipe: count → maxF, countMax → return max(tasks.length, (maxF − 1)(n + 1) + countMax).</p>`
     ],
+    tests: { sig: 'char[] int -> int', fn: 'leastInterval', cases: [
+      [[["A", "A", "A", "B", "B", "B"], 2], 8],
+      [[["A", "A", "A", "B", "B", "B"], 0], 6],
+      [[["A", "A", "A", "A", "B", "B", "B", "B", "C"], 3], 14],
+      [[["A"], 100], 1],
+      [[["A", "B", "C", "D", "E"], 4], 5],
+      [[["A", "A", "A", "B", "B", "B", "C", "C", "C", "D", "D", "E"], 2], 12],
+      [[["A", "A", "A", "A", "A", "A", "B", "C", "D", "E", "F", "G"], 2], 16],
+      [[{$rep: "A", n: 10000}, 100], 1009900],
+      [[{$concat: [{$rep: "A", n: 385}, {$rep: "B", n: 385}, {$rep: "C", n: 385}, {$rep: "D", n: 385}, {$rep: "E", n: 385}, {$rep: "F", n: 385}, {$rep: "G", n: 385}, {$rep: "H", n: 385}, {$rep: "I", n: 385}, {$rep: "J", n: 385}, {$rep: "K", n: 385}, {$rep: "L", n: 385}, {$rep: "M", n: 385}, {$rep: "N", n: 385}, {$rep: "O", n: 385}, {$rep: "P", n: 385}, {$rep: "Q", n: 384}, {$rep: "R", n: 384}, {$rep: "S", n: 384}, {$rep: "T", n: 384}, {$rep: "U", n: 384}, {$rep: "V", n: 384}, {$rep: "W", n: 384}, {$rep: "X", n: 384}, {$rep: "Y", n: 384}, {$rep: "Z", n: 384}]}, 25], 10000]
+    ] },
     solution: {
       approach: `<p>Counting greedy. The lower bound <code>(maxF − 1)(n + 1) + countMax</code> comes from the most frequent tasks; filling the gaps with the remaining tasks round-robin achieves it whenever there are enough idle slots, otherwise no idling is needed at all and the answer is the number of tasks.</p>`,
       code: `
@@ -2985,6 +4444,29 @@ print(coin_change([2], 3))         # -1`, run: true }],
                 System.out.println(s.leastInterval("AAAABBBBC".toCharArray(), 3));     // 14
             }
         }`,
+      alt: [{ lang: 'python', code: `from collections import Counter
+
+def least_interval(tasks, n):
+    freq = Counter(tasks)
+    max_f = max(freq.values())
+    count_max = sum(1 for f in freq.values() if f == max_f)
+    # (max_f - 1) blocks of length n + 1, plus a last row of the most frequent tasks
+    return max(len(tasks), (max_f - 1) * (n + 1) + count_max)` }, { lang: 'js', code: `function leastInterval(tasks, n) {
+  const freq = new Array(26).fill(0);
+  for (const t of tasks) freq[t.charCodeAt(0) - 65]++;
+  const maxF = Math.max(...freq);
+  const countMax = freq.filter((f) => f === maxF).length;
+  return Math.max(tasks.length, (maxF - 1) * (n + 1) + countMax);
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int leastInterval(vector<char>& tasks, int n) {
+        int freq[26] = {};
+        for (char t : tasks) freq[t - 'A']++;
+        int maxF = *max_element(freq, freq + 26);
+        int countMax = count(freq, freq + 26, maxF);
+        return max((int) tasks.size(), (maxF - 1) * (n + 1) + countMax);
+    }
+};` }],
       complexity: `<p><b>Time O(N)</b>, <b>Space O(1)</b> (26 counters).</p>`,
       followUps: ['Output an actual valid schedule (max-heap + cooldown queue).', 'Tasks must run in the given order (LC 2365): simulate with a map of next allowed times.']
     }
@@ -3030,6 +4512,17 @@ print(coin_change([2], 3))         # -1`, run: true }],
       `<p>Sort, put pointers at both ends. If <code>p[i] + p[j] ≤ limit</code>, both board (i++); the heaviest always boards (j−−); count a boat.</p>`,
       `<p>Loop while <code>i ≤ j</code> so a single person left in the middle still gets a boat. Recipe: sort → i = 0, j = n − 1 → while i ≤ j: if p[i] + p[j] ≤ limit → i++; j−−; boats++ → return boats.</p>`
     ],
+    tests: { sig: 'int[] int -> int', fn: 'numRescueBoats', cases: [
+      [[[3, 2, 2, 1], 3], 3],
+      [[[3, 5, 3, 4], 5], 4],
+      [[[1, 2], 3], 1],
+      [[[5], 5], 1],
+      [[[1, 1, 1, 1], 2], 2],
+      [[[2, 4, 1, 3, 5], 5], 3],
+      [[[3, 3, 3], 6], 2],
+      [[{$rep: 30000, n: 50000}, 30000], 50000],
+      [[{$rep: 15000, n: 50000}, 30000], 25000]
+    ] },
     solution: {
       approach: `<p>Two pointers on sorted weights: the heaviest person H always leaves now, taking the lightest L along when they fit.</p>
         <p><b>Exchange argument.</b> If H + L &gt; limit, H cannot share with anyone, so every plan sends H alone — same as greedy. If H + L ≤ limit, take any optimal plan where L is not with H. If H's boat-mate is X and L's is Y, swap L and X: (H, L) fits because L ≤ X, and (X, Y) fits because Y ≤ H gives X + Y ≤ X + H ≤ limit. If H or L was alone, moving L into H's boat leaves the others alone — still valid. The boat count never increases, so some optimal plan matches greedy's first boat; repeat on the rest.</p>`,
@@ -3056,6 +4549,36 @@ print(coin_change([2], 3))         # -1`, run: true }],
                 System.out.println(s.numRescueBoats(new int[]{1, 2}, 3));        // 1
             }
         }`,
+      alt: [{ lang: 'python', code: `def num_rescue_boats(people, limit):
+    p = sorted(people)
+    i, j, boats = 0, len(p) - 1, 0
+    while i <= j:
+        if p[i] + p[j] <= limit:   # lightest rides with the heaviest
+            i += 1
+        j -= 1                     # heaviest always leaves on this boat
+        boats += 1
+    return boats` }, { lang: 'js', code: `function numRescueBoats(people, limit) {
+  const p = Int32Array.from(people).sort();   // numeric sort
+  let i = 0, j = p.length - 1, boats = 0;
+  while (i <= j) {
+    if (p[i] + p[j] <= limit) i++;
+    j--;
+    boats++;
+  }
+  return boats;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int numRescueBoats(vector<int> people, int limit) {
+        sort(people.begin(), people.end());
+        int i = 0, j = people.size() - 1, boats = 0;
+        while (i <= j) {
+            if (people[i] + people[j] <= limit) i++;
+            j--;
+            boats++;
+        }
+        return boats;
+    }
+};` }],
       complexity: `<p><b>Time O(N log N)</b> (counting sort makes it O(N + limit)). <b>Space O(N)</b> for the copy.</p>`,
       followUps: ['Boats can carry up to 3 people: why does the two-pointer greedy stop being obviously correct?', 'Weights ≤ 3·10<sup>4</sup>: replace the sort with counting sort.']
     }
@@ -3095,6 +4618,16 @@ print(coin_change([2], 3))         # -1`, run: true }],
       `<p>Sort by <code>a − b</code> ascending; the first n go to A, the rest to B.</p>`,
       `<p>Exchange check: if someone with a larger a − b is in A while someone with a smaller one is in B, swapping them lowers the cost. Recipe: sort by a − b → sum a for first half, b for second half.</p>`
     ],
+    tests: { sig: 'int[][] -> int', fn: 'twoCitySchedCost', cases: [
+      [[[[10, 20], [30, 200], [400, 50], [30, 20]]], 110],
+      [[[[1, 2], [3, 4]]], 5],
+      [[[[259, 770], [448, 54], [926, 667], [184, 139], [840, 118], [577, 469]]], 1859],
+      [[[[515, 563], [451, 713], [537, 709], [343, 819], [855, 779], [457, 60], [650, 359], [631, 42]]], 3086],
+      [[[[5, 5], [5, 5]]], 10],
+      [[[[1000, 1], [1000, 1]]], 1001],
+      [[{$rep: [1000, 1], n: 100}], 50050],
+      [[{$concat: [{$rep: [1, 1000], n: 50}, {$rep: [1000, 1], n: 50}]}], 100]
+    ] },
     solution: {
       approach: `<p>Rewrite the cost as Σb + Σ<sub>A</sub>(a − b); choose the n smallest differences. A swap of a wrongly placed pair changes the total by (smaller diff − larger diff) ≤ 0, so the sorted split is optimal.</p>`,
       code: `
@@ -3115,6 +4648,24 @@ print(coin_change([2], 3))         # -1`, run: true }],
                 System.out.println(s.twoCitySchedCost(new int[][]{{10, 20}, {30, 200}, {400, 50}, {30, 20}}));  // 110
             }
         }`,
+      alt: [{ lang: 'python', code: `def two_city_sched_cost(costs):
+    c = sorted(costs, key=lambda x: x[0] - x[1])   # most "A-friendly" first
+    n = len(c) // 2
+    return sum(a for a, _ in c[:n]) + sum(b for _, b in c[n:])` }, { lang: 'js', code: `function twoCitySchedCost(costs) {
+  const c = [...costs].sort((x, y) => (x[0] - x[1]) - (y[0] - y[1]));
+  const n = c.length / 2;
+  let total = 0;
+  c.forEach(([a, b], i) => { total += i < n ? a : b; });
+  return total;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int twoCitySchedCost(vector<vector<int>> costs) {
+        sort(costs.begin(), costs.end(), [](auto& x, auto& y) { return x[0] - x[1] < y[0] - y[1]; });
+        int n = costs.size() / 2, total = 0;
+        for (int i = 0; i < (int) costs.size(); i++) total += i < n ? costs[i][0] : costs[i][1];
+        return total;
+    }
+};` }],
       complexity: `<p><b>Time O(N log N)</b> (quickselect on the differences gives O(N)). <b>Space O(N)</b>.</p>`,
       followUps: ['Three cities with n people each: greedy no longer works — min-cost flow or DP.', 'City A can take at most k people (not exactly n).']
     }
@@ -3164,6 +4715,18 @@ print(coin_change([2], 3))         # -1`, run: true }],
       `<p>Convert to strings and sort with the comparator <code>(a, b) -&gt; (b + a).compareTo(a + b)</code>. This ordering is transitive (it is equivalent to comparing a / (10<sup>len(a)</sup> − 1)), so sorting is valid.</p>`,
       `<p>Edge case: all zeros → "0", not "000". Recipe: map to strings → sort with the concat comparator → if first is "0" return "0" → join.</p>`
     ],
+    tests: { sig: 'int[] -> string', fn: 'largestNumber', cases: [
+      [[[10, 2]], "210"],
+      [[[3, 30, 34, 5, 9]], "9534330"],
+      [[[0, 0]], "0"],
+      [[[0]], "0"],
+      [[[1000000000, 1]], "11000000000"],
+      [[[121, 12]], "12121"],
+      [[[8308, 8308, 830]], "83088308830"],
+      [[[432, 43243]], "43243432"],
+      [[{$rep: 0, n: 100}], "0"],
+      [[{$rep: 1000000000, n: 100}], {$rep: "1000000000", n: 100}]
+    ] },
     solution: {
       approach: `<p>Custom comparator from an adjacent-swap exchange argument: put a before b when a + b &gt; b + a. Any arrangement violating this for a neighbouring pair can be improved by swapping that pair, so the sorted order is optimal.</p>`,
       code: `
@@ -3187,6 +4750,28 @@ print(coin_change([2], 3))         # -1`, run: true }],
                 System.out.println(sol.largestNumber(new int[]{0, 0}));             // 0
             }
         }`,
+      alt: [{ lang: 'python', code: `from functools import cmp_to_key
+
+def largest_number(nums):
+    s = [str(x) for x in nums]
+    # a goes first when a + b > b + a
+    s.sort(key=cmp_to_key(lambda a, b: (b + a > a + b) - (b + a < a + b)))
+    return '0' if s[0] == '0' else ''.join(s)` }, { lang: 'js', code: `function largestNumber(nums) {
+  const s = nums.map(String);
+  s.sort((a, b) => (b + a > a + b ? 1 : b + a < a + b ? -1 : 0));   // a first if a+b > b+a
+  return s[0] === '0' ? '0' : s.join('');
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    string largestNumber(vector<int>& nums) {
+        vector<string> s;
+        for (int x : nums) s.push_back(to_string(x));
+        sort(s.begin(), s.end(), [](const string& a, const string& b) { return a + b > b + a; });
+        if (s[0] == "0") return "0";                  // all numbers were zero
+        string out;
+        for (auto& x : s) out += x;
+        return out;
+    }
+};` }],
       complexity: `<p><b>Time O(N log N · L)</b> where L ≤ 10 is the digit length (each comparison builds strings of length ≤ 2L). <b>Space O(N · L)</b>.</p>`,
       followUps: ['Smallest number instead (watch out for leading zeros).', 'Prove the comparator is transitive.']
     }
@@ -3235,6 +4820,15 @@ print(coin_change([2], 3))         # -1`, run: true }],
       `<p>Sort by height descending, and for equal heights by k ascending. Insert each person into a list at index k.</p>`,
       `<p>Equal heights: [5,0] must be inserted before [5,2] (both count each other). Recipe: sort (h desc, k asc) → list.add(k, person) for each → toArray.</p>`
     ],
+    tests: { sig: 'int[][] -> int[][]', fn: 'reconstructQueue', cases: [
+      [[[[7, 0], [4, 4], [7, 1], [5, 0], [6, 1], [5, 2]]], [[5, 0], [7, 0], [5, 2], [6, 1], [4, 4], [7, 1]]],
+      [[[[6, 0], [5, 0], [4, 0], [3, 2], [2, 2], [1, 4]]], [[4, 0], [5, 0], [2, 2], [3, 2], [1, 4], [6, 0]]],
+      [[[[1, 0]]], [[1, 0]]],
+      [[[[5, 0], [5, 1], [5, 2]]], [[5, 0], [5, 1], [5, 2]]],
+      [[[[1, 1], [2, 0]]], [[2, 0], [1, 1]]],
+      [[[[0, 0], [1000000, 0], [0, 1]]], [[0, 0], [0, 1], [1000000, 0]]],
+      [[[[9, 0], [7, 0], [1, 2]]], [[7, 0], [9, 0], [1, 2]]]
+    ] },
     solution: {
       approach: `<p>Sort tallest first (ties by k ascending) and insert each person at index k. When a person is inserted, everyone already in the list is at least as tall, so exactly k of them must be in front — index k. Later (shorter) insertions do not affect anyone's count.</p>`,
       code: `
@@ -3255,6 +4849,26 @@ print(coin_change([2], 3))         # -1`, run: true }],
                 System.out.println(Arrays.deepToString(q));   // [[5, 0], [7, 0], [5, 2], [6, 1], [4, 4], [7, 1]]
             }
         }`,
+      alt: [{ lang: 'python', code: `def reconstruct_queue(people):
+    queue = []
+    for h, k in sorted(people, key=lambda p: (-p[0], p[1])):   # tallest first, then smaller k
+        queue.insert(k, [h, k])     # exactly k taller-or-equal people in front
+    return queue` }, { lang: 'js', code: `function reconstructQueue(people) {
+  const p = [...people].sort((a, b) => b[0] - a[0] || a[1] - b[1]);   // tallest first, then smaller k
+  const queue = [];
+  for (const person of p) queue.splice(person[1], 0, person);         // insert at index k
+  return queue;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    vector<vector<int>> reconstructQueue(vector<vector<int>> people) {
+        sort(people.begin(), people.end(), [](auto& a, auto& b) {
+            return a[0] != b[0] ? a[0] > b[0] : a[1] < b[1];         // tallest first, then smaller k
+        });
+        vector<vector<int>> queue;
+        for (auto& p : people) queue.insert(queue.begin() + p[1], p);  // insert at index k
+        return queue;
+    }
+};` }],
       complexity: `<p><b>Time O(N²)</b> in the worst case because of list insertions (N ≤ 2000 → fine); a Fenwick tree over empty slots (insert shortest first) gives O(N log N). <b>Space O(N)</b>.</p>`,
       followUps: ['Make it O(N log N) with a BIT / segment tree of free positions.', 'Validate a given queue in O(N log N).']
     }
@@ -3303,6 +4917,18 @@ print(coin_change([2], 3))         # -1`, run: true }],
       `<p>Pass 1 (left → right): if r[i] &gt; r[i−1], c[i] = c[i−1] + 1. Pass 2 (right → left): if r[i] &gt; r[i+1], c[i] = max(c[i], c[i+1] + 1).</p>`,
       `<p>Each c[i] ends as the max of the two "slope lengths" ending at i — the smallest value satisfying both rules. Equal ratings impose nothing. Recipe: fill 1 → pass 1 → pass 2 with max → sum.</p>`
     ],
+    tests: { sig: 'int[] -> int', fn: 'candy', cases: [
+      [[[1, 0, 2]], 5],
+      [[[1, 2, 2]], 4],
+      [[[1, 3, 4, 5, 2]], 11],
+      [[[5]], 1],
+      [[[3, 3, 3]], 3],
+      [[[5, 4, 3, 2, 1]], 15],
+      [[[1, 2, 87, 87, 87, 2, 1]], 13],
+      [[[0, 20000, 0]], 4],
+      [[{$range: [0, 20000, 1]}], 200010000],
+      [[{$concat: [{$range: [0, 10000, 1]}, {$range: [10000, 0, -1]}]}], 100010001]
+    ] },
     solution: {
       approach: `<p>Two greedy passes. After pass 1, c[i] = length of the increasing run ending at i from the left — the minimum to satisfy left rules. Pass 2 computes the same from the right and keeps the max. Every child needs at least both values, and the max satisfies both rules, so the total is minimal.</p>`,
       code: `
@@ -3333,6 +4959,30 @@ print(coin_change([2], 3))         # -1`, run: true }],
         head: ['i', 'rating', 'after pass 1', 'after pass 2'],
         rows: [['0', '1', '1', '1'], ['1', '3', '2', '2'], ['2', '4', '3', '3'], ['3', '5', '4', '4'], ['4', '2', '1', '1 → total <span class="c-p">11</span>']]
       },
+      alt: [{ lang: 'python', code: `def candy(ratings):
+    n = len(ratings)
+    c = [1] * n                                 # everyone gets at least one
+    for i in range(1, n):                       # beat the LEFT neighbour
+        if ratings[i] > ratings[i - 1]:
+            c[i] = c[i - 1] + 1
+    for i in range(n - 2, -1, -1):              # beat the RIGHT neighbour
+        if ratings[i] > ratings[i + 1]:
+            c[i] = max(c[i], c[i + 1] + 1)
+    return sum(c)` }, { lang: 'js', code: `function candy(ratings) {
+  const n = ratings.length, c = new Array(n).fill(1);
+  for (let i = 1; i < n; i++) if (ratings[i] > ratings[i - 1]) c[i] = c[i - 1] + 1;
+  for (let i = n - 2; i >= 0; i--) if (ratings[i] > ratings[i + 1]) c[i] = Math.max(c[i], c[i + 1] + 1);
+  return c.reduce((s, x) => s + x, 0);
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int candy(vector<int>& ratings) {
+        int n = ratings.size();
+        vector<int> c(n, 1);
+        for (int i = 1; i < n; i++) if (ratings[i] > ratings[i - 1]) c[i] = c[i - 1] + 1;
+        for (int i = n - 2; i >= 0; i--) if (ratings[i] > ratings[i + 1]) c[i] = max(c[i], c[i + 1] + 1);
+        return accumulate(c.begin(), c.end(), 0);
+    }
+};` }],
       complexity: `<p><b>Time O(N)</b>, <b>Space O(N)</b>. An O(1)-space one-pass version counts up-slopes and down-slopes, but the two-pass version is what interviewers expect first.</p>`,
       followUps: ['Children sit in a circle.', 'Do it with O(1) extra space (slope counting).']
     }
@@ -3373,6 +5023,17 @@ print(coin_change([2], 3))         # -1`, run: true }],
       `<p>Sort projects by required capital. Each round, push every newly affordable project's profit into a <b>max-heap</b>, then pop the top.</p>`,
       `<p>Stop early if the heap is empty (stuck). Recipe: sort indices by capital → for round in 1..k: while next affordable → push profit; if heap empty → break; w += poll → return w.</p>`
     ],
+    tests: { sig: 'int int int[] int[] -> int', fn: 'findMaximizedCapital', cases: [
+      [[2, 0, [1, 2, 3], [0, 1, 1]], 4],
+      [[3, 0, [1, 2, 3], [0, 1, 2]], 6],
+      [[1, 0, [1], [1]], 0],
+      [[1, 5, [0], [0]], 5],
+      [[10, 0, [1, 2, 3], [0, 1, 2]], 6],
+      [[2, 1000000000, [10000, 1], [1000000000, 0]], 1000010001],
+      [[2, 1, [1, 2, 3, 100], [1, 1, 2, 4]], 6],
+      [[100000, 0, {$rep: 10000, n: 100000}, {$rep: 0, n: 100000}], 1000000000],
+      [[100000, 0, {$rep: 10000, n: 100000}, {$rep: 1, n: 100000}], 0]
+    ] },
     solution: {
       approach: `<p>Two-structure greedy: a pointer over projects sorted by capital "unlocks" projects as w grows; a max-heap gives the best unlocked profit each round. Exchange argument: if an optimal sequence starts with a smaller affordable profit, swapping in the largest affordable one leaves capital at least as high at every later step.</p>`,
       code: `
@@ -3402,6 +5063,81 @@ print(coin_change([2], 3))         # -1`, run: true }],
                 System.out.println(s.findMaximizedCapital(3, 0, new int[]{1, 2, 3}, new int[]{0, 1, 2}));  // 6
             }
         }`,
+      alt: [{ lang: 'python', code: `import heapq
+
+def find_maximized_capital(k, w, profits, capital):
+    projects = sorted(zip(capital, profits))   # cheapest to start first
+    affordable = []                            # max-heap via negated profits
+    nxt = 0
+    for _ in range(k):
+        while nxt < len(projects) and projects[nxt][0] <= w:
+            heapq.heappush(affordable, -projects[nxt][1])   # unlocked forever
+            nxt += 1
+        if not affordable:
+            break                              # cannot start anything
+        w -= heapq.heappop(affordable)         # best project we can do now
+    return w` }, { lang: 'js', code: `// JS has no built-in heap: a small binary min-heap with a comparator.
+class MinHeap {
+  constructor(cmp = (a, b) => a - b) { this.a = []; this.cmp = cmp; }
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {                                // sift up
+      const p = (i - 1) >> 1;
+      if (this.cmp(a[i], a[p]) >= 0) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {                                   // sift down
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.cmp(a[l], a[m]) < 0) m = l;
+        if (r < a.length && this.cmp(a[r], a[m]) < 0) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+function findMaximizedCapital(k, w, profits, capital) {
+  const order = profits.map((_, i) => i).sort((a, b) => capital[a] - capital[b]);   // cheapest first
+  const affordable = new MinHeap((a, b) => b - a);   // reversed comparator = max-heap of profits
+  let next = 0;
+  for (let round = 0; round < k; round++) {
+    while (next < order.length && capital[order[next]] <= w) affordable.push(profits[order[next++]]);
+    if (affordable.size() === 0) break;
+    w += affordable.pop();
+  }
+  return w;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int findMaximizedCapital(int k, int w, vector<int>& profits, vector<int>& capital) {
+        vector<pair<int, int>> projects;                  // (capital, profit)
+        for (size_t i = 0; i < profits.size(); i++) projects.push_back({capital[i], profits[i]});
+        sort(projects.begin(), projects.end());
+        priority_queue<int> affordable;                   // max-heap by default
+        size_t next = 0;
+        for (int round = 0; round < k; round++) {
+            while (next < projects.size() && projects[next].first <= w) affordable.push(projects[next++].second);
+            if (affordable.empty()) break;
+            w += affordable.top();
+            affordable.pop();
+        }
+        return w;
+    }
+};` }],
       complexity: `<p><b>Time O(N log N + k log N)</b>: sorting plus at most N pushes and k pops. <b>Space O(N)</b>.</p>`,
       followUps: ['Projects can lose money (negative profits): what breaks?', 'Each project also takes time and you have a deadline.']
     }
@@ -3447,6 +5183,17 @@ print(coin_change([2], 3))         # -1`, run: true }],
       `<p><b>Aha 2:</b> scan courses by lastDay, keep the taken durations in a <b>max-heap</b> and the total time. If total &gt; current lastDay, remove the longest taken course.</p>`,
       `<p>The heap size is the answer. Removing the longest keeps the count as high as possible and the time as low as possible. Recipe: sort by lastDay → for each: push duration, time += duration; if time &gt; lastDay → time −= poll → return heap size.</p>`
     ],
+    tests: { sig: 'int[][] -> int', fn: 'scheduleCourse', cases: [
+      [[[[100, 200], [200, 1300], [1000, 1250], [2000, 3200]]], 3],
+      [[[[3, 2], [4, 3]]], 0],
+      [[[[1, 2]]], 1],
+      [[[[1, 1]]], 1],
+      [[[[2, 1]]], 0],
+      [[[[5, 5], [4, 6], [2, 6]]], 2],
+      [[[[7, 17], [3, 12], [10, 20], [9, 10], [5, 20], [10, 19], [4, 18]]], 4],
+      [[{$rep: [1, 10000], n: 10000}], 10000],
+      [[{$rep: [2, 10000], n: 10000}], 5000]
+    ] },
     solution: {
       approach: `<p>Earliest-deadline order plus "drop the longest when late" (Moore–Hodgson). Invariant: after each course, the heap holds a maximum-size feasible set among the courses seen, and among those the one with the smallest total time. Dropping the longest preserves both.</p>`,
       code: `
@@ -3478,6 +5225,74 @@ print(coin_change([2], 3))         # -1`, run: true }],
         head: ['course (by lastDay)', 'push', 'time', 'late?', 'heap'],
         rows: [['100, 200', '100', '100', 'no', '{100}'], ['1000, 1250', '1000', '1100', 'no', '{1000, 100}'], ['200, 1300', '200', '1300', 'no', '{1000, 200, 100}'], ['2000, 3200', '2000', '3300 → drop 2000 → 1300', '<span class="c-r">yes</span>', 'size <span class="c-p">3</span>']]
       },
+      alt: [{ lang: 'python', code: `import heapq
+
+def schedule_course(courses):
+    taken, time = [], 0                       # max-heap of durations (negated)
+    for duration, last_day in sorted(courses, key=lambda c: c[1]):   # earliest deadline first
+        heapq.heappush(taken, -duration)
+        time += duration
+        if time > last_day:                   # late: give up the longest course so far
+            time += heapq.heappop(taken)
+    return len(taken)` }, { lang: 'js', code: `// JS has no built-in heap: a small binary min-heap with a comparator.
+class MinHeap {
+  constructor(cmp = (a, b) => a - b) { this.a = []; this.cmp = cmp; }
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {                                // sift up
+      const p = (i - 1) >> 1;
+      if (this.cmp(a[i], a[p]) >= 0) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {                                   // sift down
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.cmp(a[l], a[m]) < 0) m = l;
+        if (r < a.length && this.cmp(a[r], a[m]) < 0) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+function scheduleCourse(courses) {
+  const c = [...courses].sort((a, b) => a[1] - b[1]);   // earliest deadline first
+  const taken = new MinHeap((a, b) => b - a);           // max-heap of durations
+  let time = 0;
+  for (const [duration, lastDay] of c) {
+    taken.push(duration);
+    time += duration;
+    if (time > lastDay) time -= taken.pop();            // drop the longest course so far
+  }
+  return taken.size();
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int scheduleCourse(vector<vector<int>> courses) {
+        sort(courses.begin(), courses.end(), [](auto& a, auto& b) { return a[1] < b[1]; });
+        priority_queue<int> taken;                          // longest on top
+        int time = 0;
+        for (auto& c : courses) {
+            taken.push(c[0]);
+            time += c[0];
+            if (time > c[1]) { time -= taken.top(); taken.pop(); }
+        }
+        return taken.size();
+    }
+};` }],
       complexity: `<p><b>Time O(N log N)</b>, <b>Space O(N)</b>.</p>`,
       followUps: ['Courses have different values: maximize total value (no longer greedy — DP over time).', 'Return the actual course order.']
     }
@@ -3519,8 +5334,19 @@ print(coin_change([2], 3))         # -1`, run: true }],
     hints: [
       `<p><b>Aha:</b> drive as far as you can. Only when you cannot go further do you need a stop — and you may pretend you stopped at any station you already passed.</p>`,
       `<p>Push the fuel of every station within reach into a <b>max-heap</b>. While <code>reach &lt; target</code>: add newly reachable stations, then pop the largest fuel (one more stop). If the heap is empty, return −1.</p>`,
-      `<p>Use <code>long</code> for reach (fuel sums can exceed 2<sup>31</sup>). Recipe: reach = startFuel, stops = 0 → while reach &lt; target: push stations with pos ≤ reach; if heap empty → −1; reach += poll; stops++ → return stops.</p>`
+      `<p>Keep reach in a 64-bit integer: it can approach 2·10<sup>9</sup>, right next to the 32-bit limit. Recipe: reach = startFuel, stops = 0 → while reach &lt; target: push stations with pos ≤ reach; if heap empty → −1; reach += poll; stops++ → return stops.</p>`
     ],
+    tests: { sig: 'int int int[][] -> int', fn: 'minRefuelStops', cases: [
+      [[100, 10, [[10, 60], [20, 30], [30, 30], [60, 40]]], 2],
+      [[100, 1, [[10, 100]]], -1],
+      [[1, 1, []], 0],
+      [[100, 50, []], -1],
+      [[100, 50, [[50, 50]]], 1],
+      [[1000000000, 1, [[1, 999999999]]], 1],
+      [[100, 25, [[25, 25], [50, 25], [75, 25]]], 3],
+      [[1000, 299, [[13, 21], [26, 115], [100, 47], [225, 99], [299, 141], [444, 198], [608, 190], [636, 157], [647, 255], [841, 123]]], 4],
+      [[1000000000, 1000000000, []], 0]
+    ] },
     solution: {
       approach: `<p>Lazy, retroactive greedy with a max-heap: each forced stop takes the largest fuel among stations already passed. Stays-ahead proof: after k stops, greedy's reach is the maximum reach possible with any k stops (it is the startFuel plus the k largest fuels among reachable stations), so it reaches the target with the fewest stops. An O(N²) DP (<code>dp[k]</code> = farthest reach with k stops) is the standard alternative.</p>`,
       code: `
@@ -3549,6 +5375,81 @@ print(coin_change([2], 3))         # -1`, run: true }],
                 System.out.println(s.minRefuelStops(1, 1, new int[][]{}));                                        // 0
             }
         }`,
+      alt: [{ lang: 'python', code: `import heapq
+
+def min_refuel_stops(target, start_fuel, stations):
+    passed = []                # max-heap (negated) of fuel at stations we drove past
+    reach, stops, i = start_fuel, 0, 0
+    while reach < target:
+        while i < len(stations) and stations[i][0] <= reach:
+            heapq.heappush(passed, -stations[i][1])
+            i += 1
+        if not passed:
+            return -1          # stuck
+        reach -= heapq.heappop(passed)   # stop at the best station we passed
+        stops += 1
+    return stops` }, { lang: 'js', code: `// JS has no built-in heap: a small binary min-heap with a comparator.
+class MinHeap {
+  constructor(cmp = (a, b) => a - b) { this.a = []; this.cmp = cmp; }
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {                                // sift up
+      const p = (i - 1) >> 1;
+      if (this.cmp(a[i], a[p]) >= 0) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {                                   // sift down
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.cmp(a[l], a[m]) < 0) m = l;
+        if (r < a.length && this.cmp(a[r], a[m]) < 0) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+function minRefuelStops(target, startFuel, stations) {
+  const passed = new MinHeap((a, b) => b - a);   // max-heap of fuel we could have taken
+  let reach = startFuel, stops = 0, i = 0;
+  while (reach < target) {
+    while (i < stations.length && stations[i][0] <= reach) passed.push(stations[i++][1]);
+    if (passed.size() === 0) return -1;
+    reach += passed.pop();
+    stops++;
+  }
+  return stops;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int minRefuelStops(int target, int startFuel, vector<vector<int>>& stations) {
+        priority_queue<int> passed;            // max-heap of fuel at passed stations
+        long long reach = startFuel;
+        int stops = 0;
+        size_t i = 0;
+        while (reach < target) {
+            while (i < stations.size() && stations[i][0] <= reach) passed.push(stations[i++][1]);
+            if (passed.empty()) return -1;
+            reach += passed.top();
+            passed.pop();
+            stops++;
+        }
+        return stops;
+    }
+};` }],
       complexity: `<p><b>Time O(N log N)</b>: each station is pushed and popped at most once. <b>Space O(N)</b>.</p>`,
       followUps: ['Write the O(N²) DP and compare.', 'The tank has a maximum capacity: what changes?', 'Each stop costs money proportional to the fuel taken.']
     }
@@ -3625,10 +5526,10 @@ print(coin_change([2], 3))         # -1`, run: true }],
       explain: 'With profits, earliest end can sacrifice one very valuable interval for two cheap ones. It needs DP with binary search.'
     },
     {
-      q: 'Why is <code>Arrays.sort(a, (x, y) -&gt; x[1] - y[1])</code> risky for interval problems with values in [−2<sup>31</sup>, 2<sup>31</sup> − 1]?',
+      q: 'In Java or C++, why is the comparator <code>x[1] - y[1]</code> risky for interval problems with values in [−2<sup>31</sup>, 2<sup>31</sup> − 1]?',
       options: ['It is O(N²)', 'The subtraction can overflow, producing a wrong sign and a wrong order', 'It is not stable', 'It sorts in descending order'],
       answer: 1,
-      explain: 'E.g. 2147483647 − (−2147483648) overflows to −1. Always use Integer.compare / Long.compare.'
+      explain: 'E.g. 2147483647 − (−2147483648) overflows to −1 in a 32-bit int. Use Integer.compare / Long.compare in Java and plain < in C++. Python and JS numbers do not wrap, so the subtraction is safe there.'
     },
     {
       q: 'Smith\'s rule: to minimize Σ weight × finish time on one machine, order jobs by…',
@@ -3715,9 +5616,9 @@ print(coin_change([2], 3))         # -1`, run: true }],
       followUps: ['Show that the job-sequencing feasibility family has the exchange property.', 'What is the intersection of two matroids, and why is greedy not enough there?']
     },
     {
-      q: 'Your greedy uses a custom comparator. What can go wrong in Java?',
+      q: 'Your greedy uses a custom comparator. What can go wrong (Java first, then other languages)?',
       level: 'A',
-      a: `<p>Three things. (1) <b>Overflow:</b> <code>(a, b) -&gt; a - b</code> breaks for values near ±2<sup>31</sup>; use <code>Integer.compare</code>. (2) <b>Precision:</b> comparing <code>double</code> ratios can mis-order close values; for v<sub>1</sub>/w<sub>1</sub> vs v<sub>2</sub>/w<sub>2</sub> compare <code>(long) v1 * w2</code> with <code>(long) v2 * w1</code>. Casting a double difference to int (<code>(int)(r2 - r1)</code>) is a classic bug — 0.7 becomes 0. (3) <b>Contract violations:</b> a comparator that is not transitive or not consistent can make TimSort throw <code>IllegalArgumentException: Comparison method violates its general contract!</code> or silently produce a wrong order. Exchange-derived rules (like Largest Number's a+b vs b+a) must be shown transitive. Also make sure the proof holds for any tie order, or break ties explicitly.</p>`,
+      a: `<p>Three things. (1) <b>Overflow:</b> <code>(a, b) -&gt; a - b</code> breaks for values near ±2<sup>31</sup>; use <code>Integer.compare</code>. (2) <b>Precision:</b> comparing <code>double</code> ratios can mis-order close values; for v<sub>1</sub>/w<sub>1</sub> vs v<sub>2</sub>/w<sub>2</sub> compare <code>(long) v1 * w2</code> with <code>(long) v2 * w1</code>. Casting a double difference to int (<code>(int)(r2 - r1)</code>) is a classic bug — 0.7 becomes 0. (3) <b>Contract violations:</b> a comparator that is not transitive or not consistent can make TimSort throw <code>IllegalArgumentException: Comparison method violates its general contract!</code> or silently produce a wrong order. In other languages: C++ <code>std::sort</code> with a broken comparator is undefined behaviour and <code>a - b</code> overflow is too, so return <code>a &lt; b</code>; Python keys and JS <code>a - b</code> cannot overflow, but JS <code>sort()</code> with no comparator compares numbers as strings. Exchange-derived rules (like Largest Number's a+b vs b+a) must be shown transitive. Also make sure the proof holds for any tie order, or break ties explicitly.</p>`,
       followUps: ['Prove the Largest Number comparator is transitive.', 'Why does Java use TimSort for objects and dual-pivot quicksort for primitives?']
     },
     {
@@ -3752,6 +5653,12 @@ print(coin_change([2], 3))         # -1`, run: true }],
     ],
     prereqs: `<p><b>DSA 7 (Sorting &amp; Intervals)</b> — custom comparators, merging intervals. <b>DSA 15 (Heaps)</b> — <code>PriorityQueue</code> for Huffman, meeting rooms and job sequencing. Helpful: <b>DSA 5 (Prefix Sums)</b> for the gas-station proof and <b>DSA 11 (Recursion)</b> for the brute forces. DSU (union-find) appears once as an optional speed-up and is taught fully in DSA 19.</p>`,
     hours: 14,
+    langNotes: {
+      java: `<p><b>Java:</b> greedy code is mostly "sort by a key, then one pass". Sorting <code>int[][]</code> or <code>Integer[]</code> with a lambda needs a safe comparator: <code>Integer.compare(a[1], b[1])</code>, never <code>a[1] - b[1]</code>, because <code>int</code> overflow wraps silently (balloon coordinates reach ±2<sup>31</sup>), and a comparator that breaks transitivity can make TimSort throw <code>IllegalArgumentException</code>. Compare ratios by cross-multiplying in <code>long</code>, and keep totals such as waiting time, Huffman bits or weighted cost in <code>long</code>. <code>PriorityQueue</code> is a <b>min</b>-heap; pass <code>Collections.reverseOrder()</code> for the max-heaps in IPO, Course Schedule III and refuelling. <code>Arrays.sort</code> on <code>int[]</code> sorts primitives in place (dual-pivot quicksort), so <code>clone()</code> first if the caller's array must stay as it was. Recursion is fine to about 10<sup>4</sup> frames; the only recursion here is the Huffman code DFS, whose depth stays below about 45 because frequencies are at most 10<sup>9</sup>.</p>`,
+      python: `<p><b>Python:</b> <code>sorted(items, key=...)</code> is stable and returns a new list, so the caller's data is untouched; for pairwise rules like Largest Number or exact ratio comparison, wrap a comparator with <code>functools.cmp_to_key</code>. Integers never overflow, so <code>a - b</code> in a comparator is always safe and cross-multiplied ratios stay exact. <code>/</code> always gives a float and <code>//</code> floors. <code>heapq</code> is a <b>min-heap only</b>: push negated values for the max-heaps (IPO, Course Schedule III, refuelling), and push <code>(freq, counter, node)</code> tuples for Huffman so nodes are never compared on ties. <code>collections.Counter</code> does the Task Scheduler counts. <code>list.insert(k, x)</code> is O(N), fine for Queue Reconstruction's N ≤ 2000. <code>list.pop(0)</code> is also O(N): use <code>deque.popleft()</code> for the two-queue Huffman. Recursion stops at <b>1000</b> frames, which is why the Huffman code assignment here uses an explicit stack.</p>`,
+      js: `<p><b>JavaScript:</b> <code>array.sort()</code> with no comparator compares <b>as strings</b> (<code>[10, 9, 1]</code> becomes <code>[1, 10, 9]</code>), so always pass <code>(a, b) =&gt; a - b</code>, or sort a typed array (<code>Int32Array.from(a).sort()</code> is numeric). <code>sort</code> works in place, so spread first (<code>[...a].sort(...)</code>) to keep the input. Numbers are doubles: <code>a - b</code> cannot overflow at these sizes and cross products up to 10<sup>10</sup> are exact, but integers are exact only up to 2<sup>53</sup> (Huffman totals here stay below 2·10<sup>15</sup>; use <code>BigInt</code> past 2<sup>53</sup>). <code>/</code> gives fractions, so use <code>Math.floor</code> for integer division. There is <b>no built-in heap</b>: Huffman, IPO, Course Schedule III, refuelling and the lesson code include the same small <code>MinHeap</code> class (<code>push</code>, <code>pop</code>, <code>peek</code>, <code>size</code>, with a comparator); pass <code>(a, b) =&gt; b - a</code> to get a max-heap. <code>array.shift()</code> is O(N), so move a head index instead. Recursion is fine to about 10<sup>4</sup> frames.</p>`,
+      cpp: `<p><b>C++:</b> <code>sort</code> takes a "less than" comparator: return <code>a[1] &lt; b[1]</code>, never <code>a[1] - b[1]</code>, because signed overflow is undefined behaviour, and a comparator that is not a strict weak ordering (for example <code>&lt;=</code>) is also undefined behaviour and can crash. Use <code>long long</code> for totals and for cross-multiplied ratios (<code>(long long) v1 * w2</code>), and cast to <code>double</code> before dividing in fractional knapsack. <code>priority_queue</code> is a <b>max</b>-heap by default (perfect for IPO, Course Schedule III and refuelling); use <code>priority_queue&lt;T, vector&lt;T&gt;, greater&lt;T&gt;&gt;</code> for the min-heaps in Huffman and Meeting Rooms. Taking a <code>vector</code> by value gives the function its own copy to sort; take it by reference when you must not copy. Huffman nodes live in a <code>deque</code> pool, so their addresses stay valid and they are freed automatically. The default stack is about 8 MB, far more than the shallow Huffman DFS needs.</p>`
+    },
     topics: topics,
     practice: practice,
     quiz: quiz,

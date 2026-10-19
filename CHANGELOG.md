@@ -4,6 +4,29 @@ Versions follow [Semantic Versioning](https://semver.org): MAJOR for breaking ch
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.8.0] — 2026-10-19 · Phase 1 of 3
+
+Full release notes: [docs/RELEASE_PHASE1.md](docs/RELEASE_PHASE1.md).
+
+### Added
+- Career routes (software engineer, Python backend, frontend, Java backend, AI application engineer, systems, Cloud & DevOps) in prerequisite order, for Java, Python, JavaScript/TypeScript or C++. Schedules at 5, 10, 20 or 40 hours a week, including revision and project time. A new route page (`route.html`) and a "Your route" card on the home page.
+- Prerequisites on every module page: what is required, what helps, what is missing, a "test out" readiness check and what the module unlocks.
+- Mastery: a module counts only when the quiz, lessons, half the practice and a checkpoint or readiness check are done, with no overdue reviews. Mixed zone checkpoints and spaced review (1, 3, 7 and 21 days) are included.
+- DSA modules 1–17: all 418 problems have tested solutions in Java, Python, JavaScript and C++ (1,672 language runs). Lesson code has a tab for each language, and every module has language notes. Your chosen language is shown first.
+- New content (20 modules): Python Backend I–V (FastAPI, SQLAlchemy and Alembic, auth and security, testing, workers and deployment); Linear Algebra, Probability & Statistics, and Calculus & Optimization for ML; and Cloud & DevOps modules 1–12, a new track and the 7th region, "Cloud Citadel".
+- A Passport stamp for the new region (17 in total).
+
+### Fixed
+- 9 Java tree solutions and the recursive Reverse String crashed with a stack overflow at sizes their constraints allow. They no longer recurse deeply.
+- Python solutions whose names did not match the problem (so they could never run) were renamed and are now tested.
+- Problem statements and constraints: Maximum Product Subarray (overflow), Reverse Bits, Number Complement, Sum of Two Integers, Tower of Hanoi, Huffman codes and a refuelling hint. Two arithmetic slips in maths explanations were also corrected.
+- The blockchain example in the backend security lesson now uses real SHA-256, and the MCP streaming example follows the real session lifecycle.
+- The browser "Run" button runs JavaScript inside its own block, so variables named like browser globals (`top`) work. `process.stdout.write` prints too.
+
+### Changed
+- Wording that assumed Java now names the equivalent in each language, and single-language modules explain their choice.
+- Published study-time estimates were corrected; they were 3–5 times too short.
+
 ## [1.7.0] — 2026-10-19
 
 ### Added

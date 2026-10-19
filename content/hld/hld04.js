@@ -1846,6 +1846,7 @@ server {
   );
 
   registerModule({
+  langExplain: `<p><b>About the code here.</b> System design is language-neutral, and interviews never require a particular language for it. The short samples are Python (and occasionally Java) only to make an idea concrete, such as an estimate, a hash ring or a rate limiter. Read them like pseudocode; the runnable ones are calculators you can change and re-run.</p>`,
     id: 'hld04',
     title: 'DNS, CDN, Proxies & Load Balancing',
     intro: `<p>Before a single line of your application code runs, a user\'s request has already passed through a whole <b>edge layer</b>: DNS turned a name into an address, a CDN may have answered from a server a few kilometres away, proxies terminated TLS and checked the request, and load balancers chose a region and then a server — skipping any that health checks marked as sick.</p>

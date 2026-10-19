@@ -106,7 +106,7 @@
       'Your brute-force recursion has <b>parameters that repeat</b> (same (i, j) reached by different paths) → add a memo table.',
       'Constraints: <code>N ≤ 30</code> hints exponential brute force is fine; <code>N ≤ 1000–5000</code> hints O(N<sup>2</sup>) DP; <code>N ≤ 10<sup>5</sup></code> hints O(N) or O(N·K) DP with small K.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       // Plain recursion: asks the same fib(k) again and again -> about 1.6^n calls
       long fibSlow(int n) {
           if (n < 2) return n;                    // base cases: fib(0)=0, fib(1)=1
@@ -123,7 +123,53 @@
           memo[n] = fibMemo(n - 1) + fibMemo(n - 2);
           known[n] = true;                        // write it down before returning
           return memo[n];
-      }`, { lang: 'python', run: true, title: 'Count the calls yourself (Python, runnable)', code: `calls = 0
+      }`, alt: [{ lang: 'python', code: `# Plain recursion: asks the same fib(k) again and again -> about 1.6^n calls
+def fib_slow(n):
+    if n < 2:                                 # base cases: fib(0)=0, fib(1)=1
+        return n
+    return fib_slow(n - 1) + fib_slow(n - 2)  # two calls, and they overlap
+
+# Same recursion + a notebook (memo). Each fib(k) is computed once -> O(n)
+memo = {}                                     # n -> fib(n); Python ints never overflow
+
+def fib_memo(n):
+    if n < 2:
+        return n
+    if n in memo:                             # already in the notebook: reuse!
+        return memo[n]
+    memo[n] = fib_memo(n - 1) + fib_memo(n - 2)   # write it down before returning
+    return memo[n]
+
+# The same notebook, built in: @functools.cache on fib_slow makes it O(n) too.` }, { lang: 'js', code: `// Plain recursion: asks the same fib(k) again and again -> about 1.6^n calls
+function fibSlow(n) {
+  if (n < 2) return n;                        // base cases: fib(0)=0, fib(1)=1
+  return fibSlow(n - 1) + fibSlow(n - 2);     // two calls, and they overlap
+}
+
+// Same recursion + a notebook (memo). Each fib(k) is computed once -> O(n).
+// BigInt keeps it exact: a Number is exact only up to fib(78).
+const memo = new Map();                       // n -> fib(n)
+
+function fibMemo(n) {
+  if (n < 2) return BigInt(n);
+  if (memo.has(n)) return memo.get(n);        // already in the notebook: reuse!
+  const v = fibMemo(n - 1) + fibMemo(n - 2);
+  memo.set(n, v);                             // write it down before returning
+  return v;
+}` }, { lang: 'cpp', code: `// Plain recursion: asks the same fib(k) again and again -> about 1.6^n calls
+long long fibSlow(int n) {
+    if (n < 2) return n;                      // base cases: fib(0)=0, fib(1)=1
+    return fibSlow(n - 1) + fibSlow(n - 2);   // two calls, and they overlap
+}
+
+// Same recursion + a notebook (memo). Each fib(k) is computed once -> O(n)
+vector<long long> memo(91, -1);               // -1 = not computed; fib(90) fits in long long
+
+long long fibMemo(int n) {
+    if (n < 2) return n;
+    if (memo[n] != -1) return memo[n];        // already in the notebook: reuse!
+    return memo[n] = fibMemo(n - 1) + fibMemo(n - 2);   // write it down before returning
+}` }] }, { lang: 'python', run: true, title: 'Count the calls yourself (Python, runnable)', code: `calls = 0
 
 def fib_slow(n):
     global calls
@@ -150,7 +196,7 @@ for n in (10, 20, 25):
     print("n =", n, "fib =", fib_slow(n), "plain calls =", calls,
           "| memo fib =", fib_memo(n), "memo calls =", memo_calls)
 ` }],
-    codeTitle: ['Same recursion, with and without a notebook (Java)', 'Count the calls yourself (Python, runnable)'],
+    codeTitle: ['Same recursion, with and without a notebook', 'Count the calls yourself (Python, runnable)'],
     viz: {
       title: 'fib(n): recursion tree (repeats in red) vs memo notebook vs bottom-up',
       input: '5',
@@ -234,7 +280,7 @@ for n in (10, 20, 25):
     examples: [
       { title: 'Overlap or not? Merge sort vs Fibonacci', html: `<p><b>Merge sort</b> splits [8,3,5,1] into [8,3] and [5,1]. Those halves never meet again — every subproblem is unique. A memo table would never get a hit, so it is <b>divide &amp; conquer</b>, not DP.</p><p><b>Fibonacci</b> asks fib(3) from both fib(5) and fib(4). Same question, many askers → memo gets hits → <b>DP</b>.</p>` },
       { title: 'Optimal substructure fails: longest simple path', html: `<p>Shortest path has optimal substructure. <b>Longest simple path</b> (no repeated vertex) does not: in a triangle A–B–C, the longest simple path A→C is A→B→C, but its piece A→B (length 1) is not the longest A→B path (A→C→B, length 2). Glueing "best pieces" together would reuse C — illegal. So there is no clean DP for it on general graphs (it is NP-hard). Lesson: before writing a DP, check that the best answer really is built from best sub-answers <i>independently</i>.</p>` },
-      { title: 'Writing the recipe for "count binary strings of length n with no two adjacent 1s"', html: `<p><b>State:</b> end0[i] = strings of length i ending in 0, end1[i] = ending in 1.<br><b>Transition (last character):</b> end0[i] = end0[i-1] + end1[i-1] (a 0 can follow anything); end1[i] = end0[i-1] (a 1 only after a 0).<br><b>Base:</b> end0[1] = 1, end1[1] = 1.<br><b>Answer:</b> end0[n] + end1[n].</p>${H.table(['i', 'end0', 'end1', 'total'], [['1', '1', '1', '2'], ['2', '2', '1', '3'], ['3', '3', '2', '5'], ['4', '5', '3', H.c('g', '8')]])}<p>Fibonacci again, hiding in a word problem. Many "count" problems are Fibonacci in disguise.</p>`, code: `long countNoAdjacentOnes(int n) {
+      { title: 'Writing the recipe for "count binary strings of length n with no two adjacent 1s"', html: `<p><b>State:</b> end0[i] = strings of length i ending in 0, end1[i] = ending in 1.<br><b>Transition (last character):</b> end0[i] = end0[i-1] + end1[i-1] (a 0 can follow anything); end1[i] = end0[i-1] (a 1 only after a 0).<br><b>Base:</b> end0[1] = 1, end1[1] = 1.<br><b>Answer:</b> end0[n] + end1[n].</p>${H.table(['i', 'end0', 'end1', 'total'], [['1', '1', '1', '2'], ['2', '2', '1', '3'], ['3', '3', '2', '5'], ['4', '5', '3', H.c('g', '8')]])}<p>Fibonacci again, hiding in a word problem. Many "count" problems are Fibonacci in disguise.</p>`, code: { lang: 'java', code: `long countNoAdjacentOnes(int n) {
     long end0 = 1, end1 = 1;          // length 1: "0" and "1"
     for (int i = 2; i <= n; i++) {
         long new0 = end0 + end1;       // append 0 to anything
@@ -243,14 +289,34 @@ for n in (10, 20, 25):
         end1 = new1;
     }
     return end0 + end1;
-}` },
+}`, alt: [{ lang: 'python', code: `def count_no_adjacent_ones(n):
+    end0, end1 = 1, 1                 # length 1: "0" and "1"
+    for _ in range(2, n + 1):
+        # append 0 to anything; append 1 only after a 0
+        end0, end1 = end0 + end1, end0
+    return end0 + end1` }, { lang: 'js', code: `function countNoAdjacentOnes(n) {
+  let end0 = 1, end1 = 1;             // length 1: "0" and "1"
+  for (let i = 2; i <= n; i++) {
+    [end0, end1] = [end0 + end1, end0];   // append 0 to anything; 1 only after a 0
+  }
+  return end0 + end1;
+}` }, { lang: 'cpp', code: `long long countNoAdjacentOnes(int n) {
+    long long end0 = 1, end1 = 1;     // length 1: "0" and "1"
+    for (int i = 2; i <= n; i++) {
+        long long new0 = end0 + end1; // append 0 to anything
+        long long new1 = end0;        // append 1 only after a 0
+        end0 = new0;
+        end1 = new1;
+    }
+    return end0 + end1;
+}` }] } },
       { title: 'Spotting the repeated state in a brute force', html: `<p>Brute force for "min cost to reach stair n" is <code>solve(i) = cost[i] + min(solve(i-1), solve(i-2))</code>. Its <b>only parameter</b> is <code>i</code>, and i ranges over 0..n. So at most n+1 different calls exist, yet the plain recursion makes ~1.6<sup>n</sup> calls. "Few distinct parameter values, many calls" is the exact moment to add a memo.</p>` }
     ],
     deepDive: `<p><b>Why "dynamic programming"?</b> Richard Bellman coined it in the 1950s; "programming" meant <i>planning/tabulating</i> (like a TV programme schedule), and "dynamic" sounded impressive to funding committees. The name tells you nothing — the idea is "solve each distinct subproblem once".</p>
       <p><b>The subproblem graph.</b> Every DP is a <i>directed acyclic graph</i> (DAG): nodes are states, edges go from a state to the states it depends on. Memoization is DFS over this DAG; tabulation is processing nodes in a topological order. Total time = (number of states) × (work per state). For fib: n states × O(1). This one formula estimates every DP in this module: knapsack = N·W states × O(1); LCS = n·m × O(1); coin change = amount × coins.</p>
       <p><b>Why it must be acyclic.</b> If state A depends on B and B on A, neither can be finished first — memoization would loop forever. Problems with cycles (shortest path with arbitrary edges) need graph algorithms like Dijkstra/Bellman–Ford instead; Bellman–Ford is itself a DP over "number of edges used", which breaks the cycle by adding a dimension.</p>
       <p><b>Correctness proof shape.</b> DP proofs are induction: "assume all smaller states hold the correct answer; the transition considers every possible last choice; therefore this state is correct". If your transition misses a possible last choice, the proof (and the code) breaks.</p>
-      <p><b>Exponential → polynomial.</b> Plain fib calls grow like φ<sup>n</sup> with φ ≈ 1.618 (the golden ratio). fib(n) itself also grows like φ<sup>n</sup>, which is why fib(93) overflows a signed 64-bit long — real interview answers often need <code>% 1_000_000_007</code> or BigInteger.</p>
+      <p><b>Exponential → polynomial.</b> Plain fib calls grow like φ<sup>n</sup> with φ ≈ 1.618 (the golden ratio). fib(n) itself also grows like φ<sup>n</sup>, which is why fib(93) overflows a signed 64-bit integer (Java <code>long</code>, C++ <code>long long</code>) — real interview answers often need <code>% 1_000_000_007</code> or big integers (Java <code>BigInteger</code>, JS <code>BigInt</code>; Python ints never overflow).</p>
       <p><b>Even faster than O(n):</b> Fibonacci-like linear recurrences can be solved in O(log n) with 2×2 matrix fast exponentiation (DSA 3 modular power, applied to matrices). Worth mentioning as a follow-up; rarely required.</p>`,
     aiEra: `<p><b>What AI changes:</b> any assistant will write memoized Fibonacci instantly, so "can you code DP" is no longer the signal. Interviewers now probe whether you can <b>find the state</b> in a messy word problem and <b>justify</b> that subproblems overlap and that optimal substructure holds.</p>
       <p><b>Use AI as a partner:</b> ask <code>Here is my brute-force recursion. List its parameters and estimate how many distinct calls exist vs total calls. Do not give me the DP.</code> That trains the exact recognition skill you need. Or ask for 3 counting problems that are "Fibonacci in disguise" and solve them yourself.</p>
@@ -259,13 +325,16 @@ for n in (10, 20, 25):
     problems: [{
       title: 'Fibonacci Number', level: 'Easy', tags: ['dp', '1d dp', 'recursion'], companies: ['Amazon', 'Adobe', 'Apple'],
       statement: `<p>The Fibonacci numbers are F(0) = 0, F(1) = 1 and F(n) = F(n−1) + F(n−2) for n &gt; 1. Given <code>n</code>, return F(n).</p>`,
-      constraints: `0 ≤ n ≤ 30 (follow-up: n ≤ 90 with long, or n up to 10<sup>18</sup> modulo 10<sup>9</sup>+7)`,
+      constraints: `0 ≤ n ≤ 30 (follow-up: n ≤ 90 with a 64-bit integer, or n up to 10<sup>18</sup> modulo 10<sup>9</sup>+7)`,
       example: `<p>Input <code>n = 6</code> → Output <b>8</b>.</p>${H.arr([0, 1, 1, 2, 3, 5, 8], { label: 'F', hl: { 4: 'b', 5: 'b', 6: 'g' } })}<p>${H.c('g', 'F(6) = 8')} because ${H.c('b', 'F(5) + F(4) = 5 + 3')}.</p>`,
       brute: { why: `<p>Direct recursion recomputes the same F(k) over and over: about 1.6<sup>n</sup> calls. n = 30 is ~2.7 million calls (ok), but n = 50 is ~4·10<sup>10</sup> calls (TLE). The waste: F(n−2) is computed inside F(n−1) <i>and</i> again directly.</p>`, code: `int fib(int n) {
     if (n < 2) return n;              // F(0)=0, F(1)=1
     return fib(n - 1) + fib(n - 2);   // overlapping calls -> exponential
 }` },
       mcq: { q: 'To compute F(n) bottom-up, how many earlier values do you need to keep at any moment?', options: ['All n values', 'Just the last two', 'Just the last one', 'log n values'], answer: 1, explain: 'F(i) only reads F(i−1) and F(i−2), so two variables are enough → O(1) space.' },
+      tests: { sig: 'int -> int', fn: 'fib', cases: [
+        [[0], 0], [[1], 1], [[2], 1], [[6], 8], [[10], 55], [[20], 6765], [[30], 832040]
+      ] },
       hints: [`<p>Hint 1: F(i) only depends on F(i−1) and F(i−2). If you compute them in increasing order, they are ready when you need them.</p>`, `<p>Hint 2: a dp array of size n+1 works; then notice you only ever look one and two cells back → replace the array with two variables <code>prev2</code>, <code>prev1</code>.</p>`, `<p>Hint 3: handle n = 0 and n = 1 first (return n). Recipe: prev2 = 0, prev1 = 1; repeat n−1 times: cur = prev1 + prev2, shift prev2 = prev1, prev1 = cur; return prev1.</p>`],
       solution: {
         approach: `<p>Bottom-up with two rolling variables. Each loop step slides a two-number "window" one position forward along the Fibonacci sequence.</p>`,
@@ -288,7 +357,14 @@ for n in (10, 20, 25):
         prev2, prev1 = 0, 1
         for _ in range(2, n + 1):
             prev2, prev1 = prev1, prev1 + prev2
-        return prev1` }, { lang: 'cpp', code: `class Solution {
+        return prev1` }, { lang: 'js', code: `function fib(n) {
+  if (n < 2) return n;                // F(0)=0, F(1)=1
+  let prev2 = 0, prev1 = 1;           // F(i-2), F(i-1)
+  for (let i = 2; i <= n; i++) {
+    [prev2, prev1] = [prev1, prev1 + prev2];   // slide the window forward
+  }
+  return prev1;
+}` }, { lang: 'cpp', code: `class Solution {
 public:
     int fib(int n) {
         if (n < 2) return n;
@@ -303,7 +379,7 @@ public:
 };` }],
         dry: { head: ['i', 'prev2 (F(i-2))', 'prev1 (F(i-1))', 'cur = F(i)'], rows: [['2', '0', '1', '1'], ['3', '1', '1', '2'], ['4', '1', '2', '3'], ['5', '2', '3', '5'], ['6', '3', '5', H.c('g', '8')]] },
         complexity: `<p>Time O(n), space O(1). Memoized recursion is also O(n) time but O(n) space for the memo plus O(n) recursion stack.</p>`,
-        followUps: ['n up to 10<sup>18</sup> modulo 10<sup>9</sup>+7 → 2×2 matrix fast exponentiation, O(log n).', 'Return the first n Fibonacci numbers as a list.', 'Why does fib(93) overflow a Java long?']
+        followUps: ['n up to 10<sup>18</sup> modulo 10<sup>9</sup>+7 → 2×2 matrix fast exponentiation, O(log n).', 'Return the first n Fibonacci numbers as a list.', 'Why does fib(93) overflow a 64-bit integer (Java <code>long</code>, C++ <code>long long</code>), and what happens in Python and JS instead?']
       }
     }]
   });
@@ -327,7 +403,7 @@ public:
         ['storage', 'memo array/map + call stack', 'dp array', 'only the cells still needed'],
         ['extra space', 'O(n) memo + O(n) stack', 'O(n)', H.c('g', 'O(1)')],
         ['computes', 'only states actually reached', 'every state in the table', 'every state'],
-        ['risk', 'StackOverflowError for deep recursion', 'must get the fill order right', 'can overwrite a value you still need'],
+        ['risk', 'stack overflow for deep recursion (Java <code>StackOverflowError</code>, Python <code>RecursionError</code>, JS <code>RangeError</code>, C++ crash)', 'must get the fill order right', 'can overwrite a value you still need'],
         ['when to pick', 'state space sparse or order hard to see', 'default in interviews', 'after tabulation works, as a follow-up']
       ])}
       <h4>How to turn one into the next</h4>
@@ -342,10 +418,10 @@ public:
       '"You can take <b>1 or 2</b> (or 1, 2 or 3) steps" → ways(i) = sum of ways(i − step) over allowed steps.',
       '"Return it <b>modulo 10<sup>9</sup>+7</b>" → counting DP whose answer explodes; take mod at each addition.',
       'Follow-up "<b>can you do it in O(1) space?</b>" → the transition reads only a fixed number of previous states → rolling variables.',
-      '<code>n ≤ 10<sup>5</sup></code> with recursion in Java → deep recursion may overflow the stack; prefer tabulation.',
+      '<code>n ≤ 10<sup>5</sup></code> with top-down recursion → the call stack may overflow (Python stops at 1000 frames by default, Java and JS at roughly 10<sup>4</sup>); prefer tabulation.',
       '<code>n ≤ 10<sup>18</sup></code> → not a loop at all; linear recurrence → matrix exponentiation O(log n).'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       // 1) TOP-DOWN: recursion + memo. memo[i] == 0 means "not computed yet"
       //    (safe here because every real answer is >= 1).
       int climbMemo(int i, int[] memo) {
@@ -374,7 +450,83 @@ public:
               oneBack = cur;
           }
           return oneBack;                          // n = 0 or 1 -> loop skipped -> 1
-      }`, { lang: 'python', run: true, title: 'All three in Python (runnable)', code: `from functools import lru_cache
+      }`, alt: [{ lang: 'python', code: `from functools import cache
+
+# 1) TOP-DOWN: recursion + memo. @cache is Python's built-in notebook.
+@cache
+def climb_memo(i):
+    if i <= 1:                                # ways(0) = ways(1) = 1
+        return 1
+    return climb_memo(i - 1) + climb_memo(i - 2)
+
+# 2) BOTTOM-UP: fill dp[] from small to big.
+def climb_tab(n):
+    dp = [1, 1] + [0] * max(0, n - 1)         # base cases; dp[1] exists even when n = 0
+    for i in range(2, n + 1):
+        dp[i] = dp[i - 1] + dp[i - 2]         # last move was 1 step or 2 steps
+    return dp[n]
+
+# 3) SPACE-OPTIMIZED: keep only the last two cells.
+def climb_o1(n):
+    two_back, one_back = 1, 1                 # ways(i-2), ways(i-1) for i = 2
+    for _ in range(2, n + 1):
+        two_back, one_back = one_back, one_back + two_back   # slide the window
+    return one_back                           # n = 0 or 1 -> loop skipped -> 1` }, { lang: 'js', code: `// 1) TOP-DOWN: recursion + memo. memo[i] === 0 means "not computed yet"
+//    (safe here because every real answer is >= 1).
+function climbMemo(i, memo) {
+  if (i <= 1) return 1;                       // ways(0) = ways(1) = 1
+  if (memo[i] !== 0) return memo[i];          // notebook hit
+  return (memo[i] = climbMemo(i - 1, memo) + climbMemo(i - 2, memo));
+}
+// call it as climbMemo(n, new Array(n + 1).fill(0))
+
+// 2) BOTTOM-UP: fill dp[] from small to big.
+function climbTab(n) {
+  const dp = new Array(n + 2).fill(0);        // n+2 so dp[1] exists even when n = 0
+  dp[0] = 1;                                  // base cases
+  dp[1] = 1;
+  for (let i = 2; i <= n; i++) {
+    dp[i] = dp[i - 1] + dp[i - 2];            // last move was 1 step or 2 steps
+  }
+  return dp[n];
+}
+
+// 3) SPACE-OPTIMIZED: keep only the last two cells.
+function climbO1(n) {
+  let twoBack = 1, oneBack = 1;               // ways(i-2), ways(i-1) for i = 2
+  for (let i = 2; i <= n; i++) {
+    [twoBack, oneBack] = [oneBack, oneBack + twoBack];   // slide the window
+  }
+  return oneBack;                             // n = 0 or 1 -> loop skipped -> 1
+}` }, { lang: 'cpp', code: `// 1) TOP-DOWN: recursion + memo. memo[i] == 0 means "not computed yet"
+//    (safe here because every real answer is >= 1).
+int climbMemo(int i, vector<int>& memo) {     // pass the memo by reference, not a copy
+    if (i <= 1) return 1;                     // ways(0) = ways(1) = 1
+    if (memo[i] != 0) return memo[i];         // notebook hit
+    return memo[i] = climbMemo(i - 1, memo) + climbMemo(i - 2, memo);
+}
+
+// 2) BOTTOM-UP: fill dp[] from small to big.
+int climbTab(int n) {
+    vector<int> dp(n + 2, 0);                 // n+2 so dp[1] exists even when n = 0
+    dp[0] = 1;                                // base cases
+    dp[1] = 1;
+    for (int i = 2; i <= n; i++) {
+        dp[i] = dp[i - 1] + dp[i - 2];        // last move was 1 step or 2 steps
+    }
+    return dp[n];
+}
+
+// 3) SPACE-OPTIMIZED: keep only the last two cells.
+int climbO1(int n) {
+    int twoBack = 1, oneBack = 1;             // ways(i-2), ways(i-1) for i = 2
+    for (int i = 2; i <= n; i++) {
+        int cur = oneBack + twoBack;
+        twoBack = oneBack;                    // slide the window
+        oneBack = cur;
+    }
+    return oneBack;                           // n = 0 or 1 -> loop skipped -> 1
+}` }] }, { lang: 'python', run: true, title: 'All three in Python (runnable)', code: `from functools import lru_cache
 
 @lru_cache(maxsize=None)          # Python's built-in memo notebook
 def climb_memo(i):
@@ -395,7 +547,7 @@ def climb_o1(n):
 for n in (1, 2, 3, 5, 10, 45):
     print(n, climb_memo(n), climb_tab(n), climb_o1(n))
 ` }],
-    codeTitle: ['Climbing stairs: memo → table → two variables (Java)', 'All three in Python (runnable)'],
+    codeTitle: ['Climbing stairs: memo → table → two variables', 'All three in Python (runnable)'],
     viz: {
       title: 'Climbing stairs three ways: call stack + memo, dp table, sticky note',
       input: '6',
@@ -454,15 +606,33 @@ for n in (1, 2, 3, 5, 10, 45):
       }
     },
     examples: [
-      { title: 'Steps of 1, 2 or 3 (Tribonacci stairs)', html: `<p>ways(i) = ways(i−1) + ways(i−2) + ways(i−3), bases ways(0) = 1, negative index = 0.</p>${H.table(['i', '0', '1', '2', '3', '4', '5'], [['ways', '1', '1', '2', '4', '7', H.c('g', '13')]])}<p>ways(4) = 4 + 2 + 1 = 7. Space optimization now needs <b>three</b> variables — the sticky note grows with the number of allowed step sizes.</p>`, code: `int ways123(int n) {
+      { title: 'Steps of 1, 2 or 3 (Tribonacci stairs)', html: `<p>ways(i) = ways(i−1) + ways(i−2) + ways(i−3), bases ways(0) = 1, negative index = 0.</p>${H.table(['i', '0', '1', '2', '3', '4', '5'], [['ways', '1', '1', '2', '4', '7', H.c('g', '13')]])}<p>ways(4) = 4 + 2 + 1 = 7. Space optimization now needs <b>three</b> variables — the sticky note grows with the number of allowed step sizes.</p>`, code: { lang: 'java', code: `int ways123(int n) {
     int[] dp = new int[n + 1];
     dp[0] = 1;
     for (int i = 1; i <= n; i++)
         for (int step = 1; step <= 3; step++)
             if (i - step >= 0) dp[i] += dp[i - step];
     return dp[n];
-}` },
-      { title: 'Arbitrary allowed steps + modulo', html: `<p>Allowed steps = {1, 3, 5}, n up to 10<sup>5</sup>, answer mod 10<sup>9</sup>+7. Same transition, sum over allowed steps, and take <code>% MOD</code> after every addition so the int never overflows (10<sup>9</sup>+7 + 10<sup>9</sup>+7 still fits in a long; use long for the sum).</p>`, code: `int waysSteps(int n, int[] steps) {
+}`, alt: [{ lang: 'python', code: `def ways123(n):
+    dp = [1] + [0] * n
+    for i in range(1, n + 1):
+        dp[i] = sum(dp[i - step] for step in (1, 2, 3) if i - step >= 0)
+    return dp[n]` }, { lang: 'js', code: `function ways123(n) {
+  const dp = new Array(n + 1).fill(0);
+  dp[0] = 1;
+  for (let i = 1; i <= n; i++)
+    for (let step = 1; step <= 3; step++)
+      if (i - step >= 0) dp[i] += dp[i - step];
+  return dp[n];
+}` }, { lang: 'cpp', code: `int ways123(int n) {
+    vector<int> dp(n + 1, 0);
+    dp[0] = 1;
+    for (int i = 1; i <= n; i++)
+        for (int step = 1; step <= 3; step++)
+            if (i - step >= 0) dp[i] += dp[i - step];
+    return dp[n];
+}` }] } },
+      { title: 'Arbitrary allowed steps + modulo', html: `<p>Allowed steps = {1, 3, 5}, n up to 10<sup>5</sup>, answer mod 10<sup>9</sup>+7. Same transition, sum over allowed steps, and take <code>% MOD</code> after every addition so the int never overflows (10<sup>9</sup>+7 + 10<sup>9</sup>+7 still fits in a long; use long for the sum).</p>`, code: { lang: 'java', code: `int waysSteps(int n, int[] steps) {
     final int MOD = 1_000_000_007;
     long[] dp = new long[n + 1];
     dp[0] = 1;
@@ -470,13 +640,35 @@ for n in (1, 2, 3, 5, 10, 45):
         for (int s : steps)
             if (i - s >= 0) dp[i] = (dp[i] + dp[i - s]) % MOD;
     return (int) dp[n];
-}` },
-      { title: 'Why the memo sentinel matters', html: `<p>Using <code>0</code> to mean "not computed" works for climbing stairs because every answer is ≥ 1. In <b>min-cost</b> problems a real answer can be 0, so a 0 sentinel would make you recompute (correct but slow) — or worse, in some codes return a wrong cached 0. Fix: fill memo with <code>-1</code> via <code>Arrays.fill(memo, -1)</code>, or use <code>Integer[]</code> with <code>null</code>, or a separate <code>boolean[] seen</code>.</p>` },
-      { title: 'Top-down wins when most states are never visited', html: `<p>f(0) = 1 and f(k) = f(⌊k/2⌋) + f(⌊k/3⌋), asked for n = 10<sup>12</sup>. A bottom-up table of 10<sup>12</sup> cells is impossible, but starting from n the recursion only ever reaches numbers of the form ⌊n / (2<sup>a</sup>·3<sup>b</sup>)⌋ — a few hundred distinct states. A top-down memo in a HashMap touches only those. Rule: if the reachable states are a tiny slice of the full table, memoize with a HashMap instead of tabulating.</p>` }
+}`, alt: [{ lang: 'python', code: `def ways_steps(n, steps):
+    MOD = 1_000_000_007
+    dp = [1] + [0] * n
+    for i in range(1, n + 1):
+        # Python ints never overflow, but % MOD keeps them small and fast
+        dp[i] = sum(dp[i - s] for s in steps if i - s >= 0) % MOD
+    return dp[n]` }, { lang: 'js', code: `function waysSteps(n, steps) {
+  const MOD = 1_000_000_007;
+  const dp = new Array(n + 1).fill(0);
+  dp[0] = 1;
+  for (let i = 1; i <= n; i++)
+    for (const s of steps)
+      if (i - s >= 0) dp[i] = (dp[i] + dp[i - s]) % MOD;   // sum < 2^31, exact as a Number
+  return dp[n];
+}` }, { lang: 'cpp', code: `int waysSteps(int n, const vector<int>& steps) {
+    const int MOD = 1'000'000'007;
+    vector<long long> dp(n + 1, 0);
+    dp[0] = 1;
+    for (int i = 1; i <= n; i++)
+        for (int s : steps)
+            if (i - s >= 0) dp[i] = (dp[i] + dp[i - s]) % MOD;
+    return (int) dp[n];
+}` }] } },
+      { title: 'Why the memo sentinel matters', html: `<p>Using <code>0</code> to mean "not computed" works for climbing stairs because every answer is ≥ 1. In <b>min-cost</b> problems a real answer can be 0, so a 0 sentinel would make you recompute (correct but slow) — or worse, in some codes return a wrong cached 0. Fix: fill the memo with <code>-1</code> (Java <code>Arrays.fill(memo, -1)</code>, Python <code>[-1] * (n + 1)</code>, JS <code>new Array(n + 1).fill(-1)</code>, C++ <code>vector&lt;long long&gt; memo(n + 1, -1)</code>), or use "no value" as unknown (<code>null</code> / <code>None</code> / <code>undefined</code>), or keep a separate <code>seen</code> array.</p>` },
+      { title: 'Top-down wins when most states are never visited', html: `<p>f(0) = 1 and f(k) = f(⌊k/2⌋) + f(⌊k/3⌋), asked for n = 10<sup>12</sup>. A bottom-up table of 10<sup>12</sup> cells is impossible, but starting from n the recursion only ever reaches numbers of the form ⌊n / (2<sup>a</sup>·3<sup>b</sup>)⌋ — a few hundred distinct states. A top-down memo in a hash map (<code>HashMap</code> / <code>dict</code> or <code>@cache</code> / <code>Map</code> / <code>unordered_map</code>) touches only those. Rule: if the reachable states are a tiny slice of the full table, memoize with a hash map instead of tabulating.</p>` }
     ],
-    deepDive: `<p><b>Stack depth in Java.</b> Each recursive call uses a stack frame (tens of bytes to ~100 bytes). The default thread stack (often 512 KB–1 MB) usually survives depth ~10<sup>4</sup> but fails around 10<sup>5</sup>. Options: tabulate, run the solver in <code>new Thread(null, task, "dp", 1 &lt;&lt; 26)</code> with a bigger stack (competitive programming trick), or convert to an explicit stack. Python's default recursion limit is 1000 — <code>sys.setrecursionlimit</code> helps but the C stack can still crash.</p>
+    deepDive: `<p><b>Stack depth.</b> Each recursive call uses a stack frame (tens of bytes to ~100 bytes). In Java the default thread stack (often 512 KB–1 MB) usually survives depth ~10<sup>4</sup> but fails around 10<sup>5</sup>; JS (Node) also fails near 10<sup>4</sup>; C++ gets about 8 MB on Linux (roughly 10<sup>5</sup> small frames). Python stops at 1000 frames by default — <code>sys.setrecursionlimit</code> helps, but deep recursion also needs a bigger C stack (<code>threading.stack_size</code> plus a thread) or it can still crash. Options in every language: tabulate, convert to an explicit stack, or (Java) run the solver in <code>new Thread(null, task, "dp", 1 &lt;&lt; 26)</code> with a bigger stack (competitive programming trick).</p>
       <p><b>Pull vs push DP.</b> "Pull" (what we wrote): dp[i] = combine of dp[earlier]. "Push": for each i, add dp[i] into dp[i+1] and dp[i+2]. Both are valid; push is handy when it is easier to list where a state <i>goes</i> than where it <i>came from</i> (e.g. "from i you can jump to these positions").</p>
-      <p><b>Memo containers.</b> Array &gt; HashMap by 5–20× in Java (no hashing, no boxing). Use HashMap&lt;Long, Long&gt; only when states are sparse or huge; encode a pair (i, j) into one long key <code>i * M + j</code> rather than building strings like <code>i + "," + j</code> (slow, allocation heavy).</p>
+      <p><b>Memo containers.</b> A plain array beats a hash map by 5–20× (no hashing; in Java no boxing either). Use a hash map (<code>HashMap&lt;Long, Long&gt;</code> / <code>dict</code> / <code>Map</code> / <code>unordered_map</code>) only when states are sparse or huge; encode a pair (i, j) into one integer key <code>i * M + j</code> rather than building strings like <code>i + "," + j</code> (slow, allocation heavy). In Python a tuple key <code>(i, j)</code> or <code>@functools.cache</code> is the idiomatic shortcut.</p>
       <p><b>Cache behavior.</b> Tabulation walks memory in order → CPU prefetching makes it fast. Memoization jumps around and pays function-call overhead. For the same O(n) bound tabulation is often 2–5× faster in practice.</p>
       <p><b>Space optimization pitfall:</b> you lose the full table, so you can no longer <b>reconstruct</b> the actual path/choices. If the follow-up asks "print the sequence", keep the table (or store parent pointers).</p>
       <p><b>O(log n):</b> [ways(i), ways(i−1)] = [[1,1],[1,0]] × [ways(i−1), ways(i−2)], so ways(n) comes from the matrix raised to the power n−1 using fast exponentiation.</p>`,
@@ -495,6 +687,9 @@ for n in (1, 2, 3, 5, 10, 45):
     return count(i + 1, n) + count(i + 2, n);
 }` },
       mcq: { q: 'You stand on step i. Which statement gives the correct recurrence?', options: ['ways(i) = ways(i−1) × ways(i−2)', 'ways(i) = ways(i−1) + ways(i−2)', 'ways(i) = 2 × ways(i−1)', 'ways(i) = ways(i−1) + 1'], answer: 1, explain: 'The last move was either a 1-step (from i−1) or a 2-step (from i−2). These two groups are disjoint and cover everything, so we add.' },
+      tests: { sig: 'int -> int', fn: 'climbStairs', cases: [
+        [[1], 1], [[2], 2], [[3], 3], [[4], 5], [[5], 8], [[10], 89], [[45], 1836311903]
+      ] },
       hints: [`<p>Hint 1: Do not think about the first move; think about the <b>last</b> move into step n. It was a 1-step or a 2-step.</p>`, `<p>Hint 2: That gives ways(n) = ways(n−1) + ways(n−2) — Fibonacci shifted by one. A dp array or two rolling variables is enough.</p>`, `<p>Hint 3: Bases: ways(0) = 1, ways(1) = 1. Recipe: a = 1, b = 1; for i = 2..n: c = a + b, a = b, b = c; return b. n = 1 returns 1 without entering the loop.</p>`],
       solution: {
         approach: `<p>Bottom-up Fibonacci with two variables. <code>prev2</code> = ways to reach step i−2, <code>prev1</code> = ways to reach step i−1.</p>`,
@@ -510,11 +705,28 @@ for n in (1, 2, 3, 5, 10, 45):
     }
 }`,
         alt: [{ lang: 'python', code: `class Solution:
-    def climbStairs(self, n: int) -> int:
-        prev2, prev1 = 1, 1
+    def climb_stairs(self, n: int) -> int:
+        prev2, prev1 = 1, 1                  # ways(0), ways(1)
         for _ in range(2, n + 1):
-            prev2, prev1 = prev1, prev1 + prev2
-        return prev1` }],
+            prev2, prev1 = prev1, prev1 + prev2   # last move: 1-step or 2-step
+        return prev1` }, { lang: 'js', code: `function climbStairs(n) {
+  let prev2 = 1, prev1 = 1;            // ways(0), ways(1)
+  for (let i = 2; i <= n; i++) {
+    [prev2, prev1] = [prev1, prev1 + prev2];   // last move: 1-step or 2-step
+  }
+  return prev1;                        // ways(n)
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int climbStairs(int n) {
+        int prev2 = 1, prev1 = 1;            // ways(0), ways(1)
+        for (int i = 2; i <= n; i++) {
+            int cur = prev1 + prev2;         // last move: 1-step or 2-step
+            prev2 = prev1;
+            prev1 = cur;
+        }
+        return prev1;                        // ways(n); n <= 45 fits in int
+    }
+};` }],
         dry: { head: ['i', 'prev2 = ways(i-2)', 'prev1 = ways(i-1)', 'cur = ways(i)'], rows: [['2', '1', '1', '2'], ['3', '1', '2', '3'], ['4', '2', '3', H.c('g', '5')]] },
         complexity: `<p>Time O(n), space O(1).</p>`,
         followUps: ['Steps can be any size from a given set → sum over the set (O(n·k)).', 'Some stairs are broken (cannot be stepped on) → dp[broken] = 0.', 'Each stair has a cost → Min Cost Climbing Stairs (min instead of +).']
@@ -556,7 +768,7 @@ for n in (1, 2, 3, 5, 10, 45):
       '<code>N ≤ 10<sup>5</sup></code>, values ≥ 0, "O(1) extra space?" → two rolling variables.',
       'A choice at i "<b>blocks</b>" the next k positions → take branch reads dp[i−k−1].'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       // dp[i] = best loot using houses 0..i only.
       int rob(int[] a) {
           int n = a.length;
@@ -581,7 +793,72 @@ for n in (1, 2, 3, 5, 10, 45):
               prev1 = cur;
           }
           return prev1;
-      }`, { lang: 'python', run: true, title: 'With reconstruction: which houses? (Python, runnable)', code: `def rob_with_houses(a):
+      }`, alt: [{ lang: 'python', code: `# dp[i] = best loot using houses 0..i only.
+def rob(a):
+    n = len(a)
+    if n == 1:
+        return a[0]
+    dp = [0] * n
+    dp[0] = a[0]
+    dp[1] = max(a[0], a[1])
+    for i in range(2, n):
+        skip = dp[i - 1]                      # leave house i alone
+        take = dp[i - 2] + a[i]               # rob i, so i-1 is forbidden
+        dp[i] = max(skip, take)
+    return dp[n - 1]
+
+# Same idea, O(1) space: prev2 = dp[i-2], prev1 = dp[i-1].
+def rob_o1(a):
+    prev2 = prev1 = 0                         # "best before any house" = 0
+    for x in a:
+        prev2, prev1 = prev1, max(prev1, prev2 + x)
+    return prev1` }, { lang: 'js', code: `// dp[i] = best loot using houses 0..i only.
+function rob(a) {
+  const n = a.length;
+  if (n === 1) return a[0];
+  const dp = new Array(n).fill(0);
+  dp[0] = a[0];
+  dp[1] = Math.max(a[0], a[1]);
+  for (let i = 2; i < n; i++) {
+    const skip = dp[i - 1];                   // leave house i alone
+    const take = dp[i - 2] + a[i];            // rob i, so i-1 is forbidden
+    dp[i] = Math.max(skip, take);
+  }
+  return dp[n - 1];
+}
+
+// Same idea, O(1) space: prev2 = dp[i-2], prev1 = dp[i-1].
+function robO1(a) {
+  let prev2 = 0, prev1 = 0;                   // "best before any house" = 0
+  for (const x of a) {
+    [prev2, prev1] = [prev1, Math.max(prev1, prev2 + x)];
+  }
+  return prev1;
+}` }, { lang: 'cpp', code: `// dp[i] = best loot using houses 0..i only.
+int rob(const vector<int>& a) {
+    int n = a.size();
+    if (n == 1) return a[0];
+    vector<int> dp(n);
+    dp[0] = a[0];
+    dp[1] = max(a[0], a[1]);
+    for (int i = 2; i < n; i++) {
+        int skip = dp[i - 1];                 // leave house i alone
+        int take = dp[i - 2] + a[i];          // rob i, so i-1 is forbidden
+        dp[i] = max(skip, take);
+    }
+    return dp[n - 1];
+}
+
+// Same idea, O(1) space: prev2 = dp[i-2], prev1 = dp[i-1].
+int robO1(const vector<int>& a) {
+    int prev2 = 0, prev1 = 0;                 // "best before any house" = 0
+    for (int x : a) {
+        int cur = max(prev1, prev2 + x);
+        prev2 = prev1;
+        prev1 = cur;
+    }
+    return prev1;
+}` }] }, { lang: 'python', run: true, title: 'With reconstruction: which houses? (Python, runnable)', code: `def rob_with_houses(a):
     n = len(a)
     dp = [0] * (n + 1)          # dp[i] = best using the first i houses (shifted by one)
     for i in range(1, n + 1):
@@ -601,7 +878,7 @@ print(rob_with_houses([2, 7, 9, 3, 1]))   # (12, [0, 2, 4])
 print(rob_with_houses([2, 1, 1, 2]))      # (4, [0, 3])
 print(rob_with_houses([5, 6, 5]))         # (10, [0, 2])
 ` }],
-    codeTitle: ['House Robber: table and O(1) versions (Java)', 'With reconstruction (Python, runnable)'],
+    codeTitle: ['House Robber: table and O(1) versions', 'With reconstruction (Python, runnable)'],
     viz: {
       title: 'House Robber: each cell compares "skip" (dp[i-1]) with "rob" (dp[i-2] + a[i])',
       input: '2 7 9 3 1',
@@ -659,7 +936,7 @@ print(rob_with_houses([5, 6, 5]))         # (10, [0, 2])
     examples: [
       { title: 'Greedy trap [5, 6, 5]', html: `<p>Greedy "richest first" takes 6, blocking both 5s → 6. DP: dp = [5, 6, max(6, 5+5) = ${H.c('g', '10')}]. Lesson: a big single value can be worse than two medium ones it blocks.</p>` },
       { title: 'Not just "every other house" [2, 1, 1, 2]', html: `<p>Even indices: 2 + 1 = 3. Odd indices: 1 + 2 = 3. Optimal: houses 0 and 3 = <b>4</b> — the gap between robbed houses can be 2 or more. dp = [2, 2, 3, ${H.c('g', '4')}].</p>` },
-      { title: 'House Robber II (circular street)', html: `<p>First and last house are now neighbours. They cannot both be robbed, so the answer is <code>max(rob(a[0..n-2]), rob(a[1..n-1]))</code>. Example [2, 3, 2]: rob([2,3]) = 3, rob([3,2]) = 3 → <b>3</b> (not 4). Single house n = 1 is a special case: return a[0].</p>`, code: `int robCircle(int[] a) {
+      { title: 'House Robber II (circular street)', html: `<p>First and last house are now neighbours. They cannot both be robbed, so the answer is <code>max(rob(a[0..n-2]), rob(a[1..n-1]))</code>. Example [2, 3, 2]: rob([2,3]) = 3, rob([3,2]) = 3 → <b>3</b> (not 4). Single house n = 1 is a special case: return a[0].</p>`, code: { lang: 'java', code: `int robCircle(int[] a) {
     int n = a.length;
     if (n == 1) return a[0];
     return Math.max(robRange(a, 0, n - 2), robRange(a, 1, n - 1));
@@ -672,7 +949,41 @@ int robRange(int[] a, int lo, int hi) {
         prev1 = cur;
     }
     return prev1;
-}` },
+}`, alt: [{ lang: 'python', code: `def rob_range(a, lo, hi):
+    prev2 = prev1 = 0
+    for x in a[lo:hi + 1]:
+        prev2, prev1 = prev1, max(prev1, prev2 + x)
+    return prev1
+
+def rob_circle(a):
+    n = len(a)
+    if n == 1:
+        return a[0]
+    return max(rob_range(a, 0, n - 2), rob_range(a, 1, n - 1))` }, { lang: 'js', code: `function robRange(a, lo, hi) {
+  let prev2 = 0, prev1 = 0;
+  for (let i = lo; i <= hi; i++) [prev2, prev1] = [prev1, Math.max(prev1, prev2 + a[i])];
+  return prev1;
+}
+
+function robCircle(a) {
+  const n = a.length;
+  if (n === 1) return a[0];
+  return Math.max(robRange(a, 0, n - 2), robRange(a, 1, n - 1));
+}` }, { lang: 'cpp', code: `int robRange(const vector<int>& a, int lo, int hi) {
+    int prev2 = 0, prev1 = 0;
+    for (int i = lo; i <= hi; i++) {
+        int cur = max(prev1, prev2 + a[i]);
+        prev2 = prev1;
+        prev1 = cur;
+    }
+    return prev1;
+}
+
+int robCircle(const vector<int>& a) {     // robRange is defined first: C++ needs it declared
+    int n = a.size();
+    if (n == 1) return a[0];
+    return max(robRange(a, 0, n - 2), robRange(a, 1, n - 1));
+}` }] } },
       { title: 'Delete and Earn reduces to House Robber', html: `<p>nums = [2, 2, 3, 3, 3, 4]. Taking a value x earns x but deletes all x−1 and x+1. Build points[v] = v × count(v): points = [0, 0, 4, 9, 4] for v = 0..4. Adjacent <i>values</i> conflict exactly like adjacent houses → House Robber on points → max(4 + 4, 9) = <b>9</b>.</p>` }
     ],
     deepDive: `<p><b>Two-state view (state machine).</b> Another way to write it: <code>robbed[i]</code> = best if house i is robbed, <code>free[i]</code> = best if it is not. Then robbed[i] = free[i−1] + a[i], free[i] = max(robbed[i−1], free[i−1]). This "state machine DP" generalises to stock buy/sell with cooldown (DSA 18) — the same idea with more states.</p>
@@ -696,6 +1007,11 @@ int robRange(int[] a, int lo, int hi) {
     return Math.max(skip, take);
 }` },
       mcq: { q: 'In dp[i] = max(dp[i−1], dp[i−2] + nums[i]), why dp[i−2] in the rob branch?', options: ['Because robbing i forbids house i−1, so only houses 0..i−2 remain usable', 'Because we must skip exactly one house every time', 'Because dp[i−1] is always smaller', 'It is a typo; it should be dp[i−1]'], answer: 0, explain: 'Robbing house i blocks i−1; the best you can add from the rest is the best plan for 0..i−2.' },
+      tests: { sig: 'int[] -> int', fn: 'rob', cases: [
+        [[[2, 7, 9, 3, 1]], 12], [[[1, 2, 3, 1]], 4], [[[5]], 5], [[[2, 1]], 2], [[[0, 0, 0]], 0],
+        [[[2, 1, 1, 2]], 4], [[[5, 6, 5]], 10],
+        [[{ $rep: 400, n: 100 }], 20000], [[{ $rep: 400, n: 99 }], 20000]
+      ] },
       hints: [`<p>Hint 1: Look at the last house i. Either you rob it or you don't. Those are the only two possibilities.</p>`, `<p>Hint 2: dp[i] = best for houses 0..i = max(dp[i−1], dp[i−2] + nums[i]). Only two previous values matter → two variables.</p>`, `<p>Hint 3: Start with prev2 = 0, prev1 = 0 ("no houses yet") and loop over every house: cur = max(prev1, prev2 + x); prev2 = prev1; prev1 = cur. This handles n = 1 automatically.</p>`],
       solution: {
         approach: `<p>Take-or-skip DP with two rolling variables. <code>prev1</code> = best up to the previous house, <code>prev2</code> = best up to the house before that.</p>`,
@@ -715,7 +1031,13 @@ int robRange(int[] a, int lo, int hi) {
         prev2 = prev1 = 0
         for x in nums:
             prev2, prev1 = prev1, max(prev1, prev2 + x)
-        return prev1` }, { lang: 'cpp', code: `class Solution {
+        return prev1` }, { lang: 'js', code: `function rob(nums) {
+  let prev2 = 0, prev1 = 0;                       // best before the first house
+  for (const x of nums) {
+    [prev2, prev1] = [prev1, Math.max(prev1, prev2 + x)];   // skip x vs rob x
+  }
+  return prev1;
+}` }, { lang: 'cpp', code: `class Solution {
 public:
     int rob(vector<int>& nums) {
         int prev2 = 0, prev1 = 0;
@@ -779,7 +1101,7 @@ public:
       '"<b>infinite number of each kind</b> of coin" → unbounded (same coin reusable) → inner loop goes forward / same row.',
       '<code>amount ≤ 10<sup>4</sup></code>, <code>coins ≤ 12</code> → O(amount × coins) ≈ 1.2·10<sup>5</sup> — trivial.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       // Minimum coins (LeetCode 322). dp[a] = fewest coins summing to a.
       int coinChange(int[] coins, int amount) {
           int INF = amount + 1;                  // more coins than could ever be needed
@@ -818,7 +1140,106 @@ public:
               }
           }
           return ways[target];
-      }`, { lang: 'python', run: true, title: 'Combinations vs permutations: see the loop order matter (Python, runnable)', code: `def combos(coins, amount):
+      }`, alt: [{ lang: 'python', code: `# Minimum coins (LeetCode 322). dp[a] = fewest coins summing to a.
+def coin_change(coins, amount):
+    INF = amount + 1                          # more coins than could ever be needed
+    dp = [0] + [INF] * amount                 # zero coins make amount 0
+    for a in range(1, amount + 1):
+        for c in coins:
+            if c <= a and dp[a - c] + 1 < dp[a]:
+                dp[a] = dp[a - c] + 1         # last coin handed over is c
+    return -1 if dp[amount] == INF else dp[amount]
+
+# Number of COMBINATIONS (LeetCode 518): coins outer, amounts inner.
+def change(amount, coins):
+    ways = [1] + [0] * amount                 # one way to make 0: take nothing
+    for c in coins:                           # decide coin types one at a time
+        for a in range(c, amount + 1):
+            ways[a] += ways[a - c]            # add "at least one more coin c"
+    return ways[amount]
+
+# Number of ORDERED SEQUENCES (LeetCode 377): amounts outer, coins inner.
+def combination_sum4(nums, target):
+    ways = [1] + [0] * target
+    for a in range(1, target + 1):
+        for c in nums:
+            if c <= a:
+                ways[a] += ways[a - c]        # last element of the sequence is c
+    return ways[target]` }, { lang: 'js', code: `// Minimum coins (LeetCode 322). dp[a] = fewest coins summing to a.
+function coinChange(coins, amount) {
+  const INF = amount + 1;                     // more coins than could ever be needed
+  const dp = new Array(amount + 1).fill(INF);
+  dp[0] = 0;                                  // zero coins make amount 0
+  for (let a = 1; a <= amount; a++) {
+    for (const c of coins) {
+      if (c <= a && dp[a - c] + 1 < dp[a]) {
+        dp[a] = dp[a - c] + 1;                // last coin handed over is c
+      }
+    }
+  }
+  return dp[amount] === INF ? -1 : dp[amount];
+}
+
+// Number of COMBINATIONS (LeetCode 518): coins outer, amounts inner.
+function change(amount, coins) {
+  const ways = new Array(amount + 1).fill(0);
+  ways[0] = 1;                                // one way to make 0: take nothing
+  for (const c of coins) {                    // decide coin types one at a time
+    for (let a = c; a <= amount; a++) {
+      ways[a] += ways[a - c];                 // add "at least one more coin c"
+    }
+  }
+  return ways[amount];
+}
+
+// Number of ORDERED SEQUENCES (LeetCode 377): amounts outer, coins inner.
+function combinationSum4(nums, target) {
+  const ways = new Array(target + 1).fill(0);
+  ways[0] = 1;
+  for (let a = 1; a <= target; a++) {
+    for (const c of nums) {
+      if (c <= a) ways[a] += ways[a - c];     // last element of the sequence is c
+    }
+  }
+  return ways[target];
+}` }, { lang: 'cpp', code: `// Minimum coins (LeetCode 322). dp[a] = fewest coins summing to a.
+int coinChange(const vector<int>& coins, int amount) {
+    const int INF = amount + 1;               // more coins than could ever be needed
+    vector<int> dp(amount + 1, INF);
+    dp[0] = 0;                                // zero coins make amount 0
+    for (int a = 1; a <= amount; a++) {
+        for (int c : coins) {
+            if (c <= a && dp[a - c] + 1 < dp[a]) {
+                dp[a] = dp[a - c] + 1;        // last coin handed over is c
+            }
+        }
+    }
+    return dp[amount] == INF ? -1 : dp[amount];
+}
+
+// Number of COMBINATIONS (LeetCode 518): coins outer, amounts inner.
+long long change(int amount, const vector<int>& coins) {
+    vector<long long> ways(amount + 1, 0);
+    ways[0] = 1;                              // one way to make 0: take nothing
+    for (int c : coins) {                     // decide coin types one at a time
+        for (int a = c; a <= amount; a++) {
+            ways[a] += ways[a - c];           // add "at least one more coin c"
+        }
+    }
+    return ways[amount];
+}
+
+// Number of ORDERED SEQUENCES (LeetCode 377): amounts outer, coins inner.
+long long combinationSum4(const vector<int>& nums, int target) {
+    vector<long long> ways(target + 1, 0);
+    ways[0] = 1;
+    for (int a = 1; a <= target; a++) {
+        for (int c : nums) {
+            if (c <= a) ways[a] += ways[a - c];   // last element of the sequence is c
+        }
+    }
+    return ways[target];
+}` }] }, { lang: 'python', run: true, title: 'Combinations vs permutations: see the loop order matter (Python, runnable)', code: `def combos(coins, amount):
     ways = [1] + [0] * amount
     for c in coins:                 # coin outer -> each pile counted once
         for a in range(c, amount + 1):
@@ -847,7 +1268,7 @@ print("ordered sequences:", perms([1, 2, 5], 5))               # 9
 print("min coins for 6 with 1,3,4:", min_coins([1, 3, 4], 6))  # 2
 print("min coins for 3 with 2:", min_coins([2], 3))            # -1
 ` }],
-    codeTitle: ['Min coins, combinations, permutations (Java)', 'Loop order experiment (Python, runnable)'],
+    codeTitle: ['Min coins, combinations, permutations', 'Loop order experiment (Python, runnable)'],
     viz: [{
       title: 'Min coins: dp[a] looks back at dp[a − c] for every coin c',
       input: '1 3 4 | 6',
@@ -932,10 +1353,10 @@ print("min coins for 3 with 2:", min_coins([2], 3))            # -1
       }
     }],
     examples: [
-      { title: 'Impossible amount → −1', html: `<p>coins = [2], amount = 3. dp = [0, ∞, 1, ∞]. dp[3] = 1 + dp[1] = ∞ → return <b>−1</b>. Using <code>Integer.MAX_VALUE</code> as ∞ and then doing <code>+ 1</code> overflows to a negative number and returns garbage — that is why we use <code>amount + 1</code> as ∞ (no answer can need more than <code>amount</code> coins when the smallest coin is 1).</p>` },
+      { title: 'Impossible amount → −1', html: `<p>coins = [2], amount = 3. dp = [0, ∞, 1, ∞]. dp[3] = 1 + dp[1] = ∞ → return <b>−1</b>. Using the largest int (Java <code>Integer.MAX_VALUE</code>, C++ <code>INT_MAX</code>) as ∞ and then doing <code>+ 1</code> overflows to a negative number (Java wraps; in C++ it is undefined behaviour) and returns garbage — that is why we use <code>amount + 1</code> as ∞ (no answer can need more than <code>amount</code> coins when the smallest coin is 1).</p>` },
       { title: 'Combinations vs permutations, by hand', html: `<p>coins {1, 2}, amount 3.</p>${H.table(['loop order', 'what is counted', 'answer'], [['coin outer', '{1,1,1}, {1,2}', H.c('g', '2')], ['amount outer', '1+1+1, 1+2, 2+1', H.c('b', '3')]])}<p>With coin-outer, once you move to coin 2 you can never add a 1 after a 2 → each pile is built in one fixed order (all 1s, then all 2s) → counted once.</p>` },
       { title: 'Amount 0', html: `<p>coins = [1], amount = 0 → min coins = <b>0</b>, number of ways = <b>1</b> (the empty pile). Interviewers check this: dp[0] = 0 for min, ways[0] = 1 for counting.</p>` },
-      { title: 'Perfect Squares is coin change in disguise', html: `<p>"Fewest perfect squares summing to n" (LC 279): the coins are 1, 4, 9, 16, … ≤ n. n = 12 → 4 + 4 + 4 = <b>3</b> (greedy 9 + 1 + 1 + 1 = 4 squares is wrong). Same dp, O(n√n).</p>`, code: `int numSquares(int n) {
+      { title: 'Perfect Squares is coin change in disguise', html: `<p>"Fewest perfect squares summing to n" (LC 279): the coins are 1, 4, 9, 16, … ≤ n. n = 12 → 4 + 4 + 4 = <b>3</b> (greedy 9 + 1 + 1 + 1 = 4 squares is wrong). Same dp, O(n√n).</p>`, code: { lang: 'java', code: `int numSquares(int n) {
     int[] dp = new int[n + 1];
     Arrays.fill(dp, n + 1);
     dp[0] = 0;
@@ -943,17 +1364,38 @@ print("min coins for 3 with 2:", min_coins([2], 3))            # -1
         for (int s = 1; s * s <= a; s++)
             dp[a] = Math.min(dp[a], dp[a - s * s] + 1);
     return dp[n];
-}` }
+}`, alt: [{ lang: 'python', code: `def num_squares(n):
+    dp = [0] + [n + 1] * n
+    for a in range(1, n + 1):
+        s = 1
+        while s * s <= a:
+            dp[a] = min(dp[a], dp[a - s * s] + 1)
+            s += 1
+    return dp[n]` }, { lang: 'js', code: `function numSquares(n) {
+  const dp = new Array(n + 1).fill(n + 1);
+  dp[0] = 0;
+  for (let a = 1; a <= n; a++)
+    for (let s = 1; s * s <= a; s++)
+      dp[a] = Math.min(dp[a], dp[a - s * s] + 1);
+  return dp[n];
+}` }, { lang: 'cpp', code: `int numSquares(int n) {
+    vector<int> dp(n + 1, n + 1);
+    dp[0] = 0;
+    for (int a = 1; a <= n; a++)
+        for (int s = 1; s * s <= a; s++)
+            dp[a] = min(dp[a], dp[a - s * s] + 1);
+    return dp[n];
+}` }] } }
     ],
     deepDive: `<p><b>Why the loop order decides combinations vs permutations.</b> Coin-outer processes coin types in a fixed order, so every multiset is generated exactly once, as "all coins of type 1, then all of type 2, …". Amount-outer lets the last coin be any type at every step, so every arrangement is generated. Mixing them up is the #1 bug on this topic.</p>
-      <p><b>Overflow.</b> LC 518 promises the answer fits in a 32-bit int, but intermediate cells can still overflow in some inputs for LC 377 (which is why some solutions use <code>long</code> or skip values over Integer.MAX_VALUE). In exam settings answers are taken mod 10<sup>9</sup>+7.</p>
+      <p><b>Overflow.</b> LC 518 promises the answer fits in a 32-bit int, but intermediate cells can still overflow in some inputs for LC 377 (which is why some solutions use a 64-bit integer or cap values at the int maximum; Python ints never overflow, and JS numbers stay exact only up to 2<sup>53</sup>). In exam settings answers are taken mod 10<sup>9</sup>+7.</p>
       <p><b>Complexity.</b> Both are O(amount × #coins) time and O(amount) space. This is <i>pseudo-polynomial</i>: polynomial in the <b>value</b> of amount, exponential in its number of bits. Amount = 10<sup>9</sup> would need a different idea (e.g. BFS with pruning for small answers, or math for canonical coin systems).</p>
       <p><b>BFS view of min coins.</b> Amounts are nodes; each coin is an edge of weight 1. Min coins = shortest path from 0 to amount — BFS solves it too and can stop early, but the dp is simpler and has the same worst case.</p>
       <p><b>When greedy is optimal.</b> Coin systems where greedy always works are called <i>canonical</i> (₹1, 2, 5, 10, 20 … and US 1, 5, 10, 25 are). Kozen &amp; Zaks showed that if greedy fails, a counterexample exists below c<sub>max</sub> + c<sub>second max</sub>, and Pearson gave an O(n<sup>3</sup>) test for canonicity. In interviews: assume arbitrary coins → DP.</p>
       <p><b>Reconstruction.</b> Keep <code>last[a]</code> = the coin that achieved dp[a]; walk a → a − last[a] until 0 to print the coins (the visualizer does this).</p>`,
     aiEra: `<p><b>What AI changes:</b> assistants know LC 322/518/377 by heart, so the interviewer's real test becomes: "Here is a slightly different wording — do you count piles or sequences? Is the coin reusable?" That reading skill is yours.</p>
       <p><b>Use AI as a partner:</b> paste the problem wording and ask <code>Is this order-sensitive? Quote the exact sentence that decides it.</code> Then generate random tests and compare your DP against a brute-force enumerator the AI writes.</p>
-      <p><b>Where AI goes wrong:</b> swapping the loop order (answering 9 instead of 4), using <code>Integer.MAX_VALUE</code> as ∞ and overflowing on +1, applying greedy for "real-looking" coin sets, and forgetting amount = 0.</p>
+      <p><b>Where AI goes wrong:</b> swapping the loop order (answering 9 instead of 4), using the largest int as ∞ and overflowing on +1, applying greedy for "real-looking" coin sets, and forgetting amount = 0.</p>
       <p><b>What you must still own:</b> the combinations-vs-permutations argument, the ∞ sentinel choice, the pseudo-polynomial caveat, and turning disguised wordings (perfect squares, minimum stamps, ribbon cutting) into this exact table.</p>`,
     problems: [{
       title: 'Coin Change (minimum coins)', level: 'Medium', tags: ['dp', 'unbounded knapsack', 'coin change'], companies: ['Amazon', 'Google', 'Microsoft', 'Goldman Sachs', 'Uber'],
@@ -971,7 +1413,12 @@ print("min coins for 3 with 2:", min_coins([2], 3))            # -1
     }
     return best;   // MAX_VALUE means impossible; caller converts to -1
 }` },
-      mcq: { q: 'Which initial value is the safest "∞" for dp[a] in Java?', options: ['Integer.MAX_VALUE', 'amount + 1', '0', '-1'], answer: 1, explain: 'No valid answer needs more than amount coins (all coins ≥ 1), so amount + 1 means impossible — and dp + 1 never overflows. MAX_VALUE + 1 wraps to a negative number.' },
+      mcq: { q: 'Which initial value is the safest "∞" for dp[a]?', options: ['The largest int (Integer.MAX_VALUE / INT_MAX)', 'amount + 1', '0', '-1'], answer: 1, explain: 'No valid answer needs more than amount coins (all coins ≥ 1), so amount + 1 means impossible — and dp + 1 never overflows. The largest int + 1 wraps to a negative number in Java (and is undefined behaviour in C++).' },
+      tests: { sig: 'int[] int -> int', fn: 'coinChange', cases: [
+        [[[1, 2, 5], 11], 3], [[[2], 3], -1], [[[1], 0], 0], [[[1, 3, 4], 6], 2],
+        [[[186, 419, 83, 408], 6249], 20], [[[2147483647], 2], -1], [[[7, 2147483647], 0], 0],
+        [[[1, 2, 5], 10000], 2000], [[[3, 7], 10000], 1432]
+      ] },
       hints: [`<p>Hint 1: Think about the <b>last</b> coin you hand over. If it is c, the rest is the best way to pay a − c.</p>`, `<p>Hint 2: dp[a] = 1 + min(dp[a − c]) over coins c ≤ a; dp[0] = 0; fill a = 1..amount in increasing order.</p>`, `<p>Hint 3: Fill dp with amount + 1 as ∞. At the end return dp[amount] &gt; amount ? −1 : dp[amount]. amount = 0 returns 0. Coins larger than amount are simply skipped (also avoids int overflow with huge coins).</p>`],
       solution: {
         approach: `<p>Unbounded "min" DP over amounts. Each amount looks back at amount − c for every coin and keeps the smallest count + 1.</p>`,
@@ -990,14 +1437,22 @@ print("min coins for 3 with 2:", min_coins([2], 3))            # -1
     }
 }`,
         alt: [{ lang: 'python', code: `class Solution:
-    def coinChange(self, coins, amount):
-        INF = amount + 1
+    def coin_change(self, coins, amount):
+        INF = amount + 1                          # impossible marker
         dp = [0] + [INF] * amount
         for a in range(1, amount + 1):
-            for c in coins:
-                if c <= a and dp[a - c] + 1 < dp[a]:
-                    dp[a] = dp[a - c] + 1
-        return -1 if dp[amount] > amount else dp[amount]` }, { lang: 'cpp', code: `class Solution {
+            dp[a] = min((dp[a - c] + 1 for c in coins if c <= a), default=INF)
+        return -1 if dp[amount] > amount else dp[amount]` }, { lang: 'js', code: `function coinChange(coins, amount) {
+  const INF = amount + 1;                         // impossible marker
+  const dp = new Array(amount + 1).fill(INF);
+  dp[0] = 0;
+  for (let a = 1; a <= amount; a++) {
+    for (const c of coins) {
+      if (c <= a) dp[a] = Math.min(dp[a], dp[a - c] + 1);   // last coin is c
+    }
+  }
+  return dp[amount] > amount ? -1 : dp[amount];
+}` }, { lang: 'cpp', code: `class Solution {
 public:
     int coinChange(vector<int>& coins, int amount) {
         vector<int> dp(amount + 1, amount + 1);
@@ -1053,7 +1508,7 @@ public:
       '<code>W ≤ 10<sup>9</sup></code> but values small → flip it: dp over <b>value</b> = min weight to reach that value.',
       '<code>N ≤ 40</code> and huge W → meet-in-the-middle (split items into two halves of 2<sup>20</sup> subsets each).'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       // 0/1 knapsack, full table. dp[i][c] = best value from first i items, capacity c.
       int knapsack(int[] wt, int[] val, int W) {
           int n = wt.length;
@@ -1079,7 +1534,71 @@ public:
               }
           }
           return dp[W];
-      }`, { lang: 'python', run: true, title: 'Knapsack + which items were packed (Python, runnable)', code: `def knapsack(wt, val, W):
+      }`, alt: [{ lang: 'python', code: `# 0/1 knapsack, full table. dp[i][c] = best value from first i items, capacity c.
+def knapsack(wt, val, W):
+    n = len(wt)
+    dp = [[0] * (W + 1) for _ in range(n + 1)]   # row 0 and column 0 are all 0
+    for i in range(1, n + 1):
+        w, v = wt[i - 1], val[i - 1]          # the i-th item
+        for c in range(W + 1):
+            dp[i][c] = dp[i - 1][c]           # skip item i
+            if w <= c:
+                dp[i][c] = max(dp[i][c], dp[i - 1][c - w] + v)   # take it once
+    return dp[n][W]
+
+# Same thing in one list: capacity loop runs BACKWARDS so each item is used once.
+def knapsack_1d(wt, val, W):
+    dp = [0] * (W + 1)
+    for w, v in zip(wt, val):
+        for c in range(W, w - 1, -1):         # right-to-left!
+            dp[c] = max(dp[c], dp[c - w] + v)
+    return dp[W]` }, { lang: 'js', code: `// 0/1 knapsack, full table. dp[i][c] = best value from first i items, capacity c.
+function knapsack(wt, val, W) {
+  const n = wt.length;
+  const dp = Array.from({ length: n + 1 }, () => new Array(W + 1).fill(0));   // row 0 / col 0 = 0
+  for (let i = 1; i <= n; i++) {
+    const w = wt[i - 1], v = val[i - 1];      // the i-th item
+    for (let c = 0; c <= W; c++) {
+      dp[i][c] = dp[i - 1][c];                // skip item i
+      if (w <= c) dp[i][c] = Math.max(dp[i][c], dp[i - 1][c - w] + v);   // take it once
+    }
+  }
+  return dp[n][W];
+}
+
+// Same thing in one array: capacity loop runs BACKWARDS so each item is used once.
+function knapsack1D(wt, val, W) {
+  const dp = new Array(W + 1).fill(0);
+  for (let i = 0; i < wt.length; i++) {
+    for (let c = W; c >= wt[i]; c--) {        // right-to-left!
+      dp[c] = Math.max(dp[c], dp[c - wt[i]] + val[i]);
+    }
+  }
+  return dp[W];
+}` }, { lang: 'cpp', code: `// 0/1 knapsack, full table. dp[i][c] = best value from first i items, capacity c.
+int knapsack(const vector<int>& wt, const vector<int>& val, int W) {
+    int n = wt.size();
+    vector<vector<int>> dp(n + 1, vector<int>(W + 1, 0));   // row 0 and column 0 are all 0
+    for (int i = 1; i <= n; i++) {
+        int w = wt[i - 1], v = val[i - 1];    // the i-th item
+        for (int c = 0; c <= W; c++) {
+            dp[i][c] = dp[i - 1][c];          // skip item i
+            if (w <= c) dp[i][c] = max(dp[i][c], dp[i - 1][c - w] + v);   // take it once
+        }
+    }
+    return dp[n][W];
+}
+
+// Same thing in one array: capacity loop runs BACKWARDS so each item is used once.
+int knapsack1D(const vector<int>& wt, const vector<int>& val, int W) {
+    vector<int> dp(W + 1, 0);
+    for (size_t i = 0; i < wt.size(); i++) {
+        for (int c = W; c >= wt[i]; c--) {    // right-to-left!
+            dp[c] = max(dp[c], dp[c - wt[i]] + val[i]);
+        }
+    }
+    return dp[W];
+}` }] }, { lang: 'python', run: true, title: 'Knapsack + which items were packed (Python, runnable)', code: `def knapsack(wt, val, W):
     n = len(wt)
     dp = [[0] * (W + 1) for _ in range(n + 1)]
     for i in range(1, n + 1):
@@ -1099,7 +1618,7 @@ public:
 print(knapsack([1, 3, 4, 5], [1, 4, 5, 7], 7))     # (9, [1, 2])
 print(knapsack([10, 20, 30], [60, 100, 120], 50))  # (220, [1, 2])
 ` }],
-    codeTitle: ['0/1 knapsack: 2D table and 1D backward loop (Java)', 'With item reconstruction (Python, runnable)'],
+    codeTitle: ['0/1 knapsack: 2D table and 1D backward loop', 'With item reconstruction (Python, runnable)'],
     viz: [{
       title: '0/1 knapsack table: each cell reads the cell above (skip) and the cell above-left by w (take)',
       input: '7 | 1:1 3:4 4:5 5:7',
@@ -1174,19 +1693,38 @@ print(knapsack([10, 20, 30], [60, 100, 120], 50))  # (220, [1, 2])
     }],
     examples: [
       { title: 'Classic textbook instance', html: `<p>W = 50, items (10 kg, ₹60), (20 kg, ₹100), (30 kg, ₹120). Ratio-greedy takes 10 + 20 = ₹160 then cannot fit 30. DP: 20 + 30 = 50 kg → <b>₹220</b>. (Fractional knapsack would get ₹240 by cutting the 30-kg item — but here items are indivisible.)</p>` },
-      { title: 'Subset sum = boolean knapsack', html: `<p>"Is there a subset of [3, 34, 4, 12, 5, 2] with sum 9?" Weight = value = the number; dp[c] = can we hit exactly c. <code>dp[c] |= dp[c − x]</code>, backwards. 4 + 5 = 9 → <b>true</b>. Partition Equal Subset Sum = subset sum with target total/2 (odd total → false immediately).</p>`, code: `boolean subsetSum(int[] a, int target) {
+      { title: 'Subset sum = boolean knapsack', html: `<p>"Is there a subset of [3, 34, 4, 12, 5, 2] with sum 9?" Weight = value = the number; dp[c] = can we hit exactly c. <code>dp[c] |= dp[c − x]</code>, backwards. 4 + 5 = 9 → <b>true</b>. Partition Equal Subset Sum = subset sum with target total/2 (odd total → false immediately).</p>`, code: { lang: 'java', code: `boolean subsetSum(int[] a, int target) {
     boolean[] can = new boolean[target + 1];
     can[0] = true;                         // empty subset makes 0
     for (int x : a)
         for (int c = target; c >= x; c--)  // backwards: each number once
             can[c] = can[c] || can[c - x];
     return can[target];
-}` },
+}`, alt: [{ lang: 'python', code: `def subset_sum(a, target):
+    can = [True] + [False] * target          # empty subset makes 0
+    for x in a:
+        for c in range(target, x - 1, -1):   # backwards: each number once
+            can[c] = can[c] or can[c - x]
+    return can[target]` }, { lang: 'js', code: `function subsetSum(a, target) {
+  const can = new Array(target + 1).fill(false);
+  can[0] = true;                             // empty subset makes 0
+  for (const x of a)
+    for (let c = target; c >= x; c--)        // backwards: each number once
+      can[c] = can[c] || can[c - x];
+  return can[target];
+}` }, { lang: 'cpp', code: `bool subsetSum(const vector<int>& a, int target) {
+    vector<bool> can(target + 1, false);
+    can[0] = true;                           // empty subset makes 0
+    for (int x : a)
+        for (int c = target; c >= x; c--)    // backwards: each number once
+            can[c] = can[c] || can[c - x];
+    return can[target];
+}` }] } },
       { title: 'Counting subsets: Target Sum', html: `<p>nums = [1,1,1,1,1], target 3: choose a + or − for each. If P = sum of "+" numbers, then P − (total − P) = target → P = (total + target)/2 = 4. Count subsets summing to 4 → C(5,4) = <b>5</b>. Same backward loop with <code>ways[c] += ways[c − x]</code>. If (total + target) is odd or |target| &gt; total → 0.</p>` },
       { title: 'Huge capacity, small values: flip the DP', html: `<p>n = 100, W = 10<sup>9</sup>, each value ≤ 1000. A W-wide table is impossible. Instead <code>minW[val]</code> = least weight achieving total value exactly val (size ≤ 100 × 1000 = 10<sup>5</sup>). Answer = largest val with minW[val] ≤ W. Same 0/1 backward loop, roles of weight and value swapped.</p>` }
     ],
     deepDive: `<p><b>Pseudo-polynomial, NP-hard.</b> O(n·W) looks polynomial, but W is a <i>number</i> written with log₂W bits; doubling the bits squares W. The 0/1 knapsack decision problem is NP-complete (weakly), so no algorithm polynomial in the bit-size is known. The DP is fast exactly when W (or total value) is small.</p>
-      <p><b>Bitset speed-up for subset sum.</b> For the boolean version, the whole row update is <code>bits |= bits &lt;&lt; x</code>. With <code>java.util.BitSet</code> or C++ <code>std::bitset</code> that processes 64 capacities per machine word: O(n·W/64). A classic trick for partition problems with sums up to 10<sup>6</sup>.</p>
+      <p><b>Bitset speed-up for subset sum.</b> For the boolean version, the whole row update is <code>bits |= bits &lt;&lt; x</code>. With Java <code>java.util.BitSet</code>, C++ <code>std::bitset</code> or a Python int used as a bitset (<code>bits |= bits &lt;&lt; x</code>) that processes 64 capacities per machine word: O(n·W/64). A classic trick for partition problems with sums up to 10<sup>6</sup>.</p>
       <p><b>Reconstruction needs the 2D table</b> (or one bit per (i, c) "taken" flag). The 1D array forgets which items made each value. Hirschberg-style divide &amp; conquer can reconstruct in O(W) memory at ~2× time.</p>
       <p><b>Meet in the middle.</b> When n ≤ 40 and W is huge: enumerate the 2<sup>20</sup> subsets of each half, sort one half by weight with a running best value, and binary-search the complement for each subset of the other half → O(2<sup>n/2</sup>·n).</p>
       <p><b>Approximation.</b> In practice (cloud bin packing, ad budgets) people use the FPTAS: scale values down by a factor, run the value-indexed DP, and get within (1 − ε) of optimal in polynomial time. Solvers like OR-Tools use branch-and-bound with LP relaxation bounds (the fractional greedy gives the bound!).</p>
@@ -1208,6 +1746,12 @@ print(knapsack([10, 20, 30], [60, 100, 120], 50))  # (220, [1, 2])
     return Math.max(skip, take);
 }` },
       mcq: { q: 'In the 1D version you loop capacity from small to large by mistake. What happens?', options: ['Nothing, same answer', 'Items can be counted more than once (it becomes unbounded knapsack)', 'It throws an exception', 'It returns 0'], answer: 1, explain: 'dp[c − w] was already updated with item i in this sweep, so taking it again reuses the same item.' },
+      tests: { sig: 'int int[] int[] -> int', fn: 'knapSack', names: { python: 'knapsack' }, cases: [
+        [[7, [1, 3, 4, 5], [1, 4, 5, 7]], 9], [[50, [10, 20, 30], [60, 100, 120]], 220], [[1, [2], [5]], 0],
+        [[4, [4], [10]], 10], [[10, [5, 5, 5], [10, 10, 10]], 20], [[5, [1, 1, 1, 1, 1, 1], [1, 2, 3, 4, 5, 6]], 20],
+        [[1000, { $rep: 1, n: 1000 }, { $rep: 1000, n: 1000 }], 1000000],
+        [[1000, { $rep: 1000, n: 1000 }, { $rep: 1000, n: 1000 }], 1000]
+      ] },
       hints: [`<p>Hint 1: The recursion best(i, cap) has only two changing parameters. Different take/skip histories reach the same (i, cap) — memoize on it.</p>`, `<p>Hint 2: Table dp[i][c] = max(dp[i−1][c], dp[i−1][c−w] + v). Both arrows go to the row above because the item can't be reused.</p>`, `<p>Hint 3: Shrink to one array and loop c from W down to w. Recipe: dp[0..W] = 0; for each item: for c = W..w: dp[c] = max(dp[c], dp[c−w] + v); return dp[W].</p>`],
       solution: {
         approach: `<p>Item-by-item DP over capacities using one array swept right-to-left, so every read of <code>dp[c − w]</code> still holds the value from before this item.</p>`,
@@ -1223,12 +1767,20 @@ print(knapsack([10, 20, 30], [60, 100, 120], 50))  # (220, [1, 2])
     }
 }`,
         alt: [{ lang: 'python', code: `class Solution:
-    def knapSack(self, W, wt, val):
-        dp = [0] * (W + 1)
+    def knapsack(self, W, wt, val):
+        dp = [0] * (W + 1)                        # dp[c] = best value with capacity c
         for w, v in zip(wt, val):
-            for c in range(W, w - 1, -1):
+            for c in range(W, w - 1, -1):         # backwards = each item once
                 dp[c] = max(dp[c], dp[c - w] + v)
-        return dp[W]` }, { lang: 'cpp', code: `class Solution {
+        return dp[W]` }, { lang: 'js', code: `function knapSack(W, wt, val) {
+  const dp = new Array(W + 1).fill(0);            // dp[c] = best value with capacity c
+  for (let i = 0; i < wt.length; i++) {
+    for (let c = W; c >= wt[i]; c--) {            // backwards = each item once
+      dp[c] = Math.max(dp[c], dp[c - wt[i]] + val[i]);
+    }
+  }
+  return dp[W];
+}` }, { lang: 'cpp', code: `class Solution {
 public:
     int knapSack(int W, vector<int>& wt, vector<int>& val) {
         vector<int> dp(W + 1, 0);
@@ -1276,7 +1828,7 @@ public:
       '"minimum cost to buy <b>at least</b> X units" with bundle offers reusable → unbounded min DP (careful: "at least" means cap at X).',
       'Same constraint shapes as 0/1 knapsack: <code>W ≤ 10<sup>4</sup></code>, item types ≤ 100 → O(n·W).'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       // Unbounded knapsack (each item type reusable). 1D, capacity loop FORWARDS.
       int unboundedKnapsack(int[] wt, int[] val, int W) {
           int[] dp = new int[W + 1];                 // dp[c] = best value with capacity c
@@ -1297,7 +1849,61 @@ public:
               }
           }
           return best[n];
-      }`, { lang: 'python', run: true, title: 'Rod cutting with the actual cuts (Python, runnable)', code: `def cut_rod(price, n):
+      }`, alt: [{ lang: 'python', code: `# Unbounded knapsack (each item type reusable). 1D, capacity loop FORWARDS.
+def unbounded_knapsack(wt, val, W):
+    dp = [0] * (W + 1)                        # dp[c] = best value with capacity c
+    for w, v in zip(wt, val):
+        for c in range(w, W + 1):             # forwards: dp[c - w] may already use this item
+            dp[c] = max(dp[c], dp[c - w] + v)
+    return dp[W]
+
+# Rod cutting: price[k] = price of a piece of length k+1. Last-piece formulation.
+def cut_rod(price, n):
+    best = [0] * (n + 1)                      # best[0] = 0: empty rod earns nothing
+    for length in range(1, n + 1):
+        for piece in range(1, min(length, len(price)) + 1):
+            best[length] = max(best[length], price[piece - 1] + best[length - piece])
+    return best[n]` }, { lang: 'js', code: `// Unbounded knapsack (each item type reusable). 1D, capacity loop FORWARDS.
+function unboundedKnapsack(wt, val, W) {
+  const dp = new Array(W + 1).fill(0);        // dp[c] = best value with capacity c
+  for (let i = 0; i < wt.length; i++) {
+    for (let c = wt[i]; c <= W; c++) {        // forwards: dp[c - w] may already use item i
+      dp[c] = Math.max(dp[c], dp[c - wt[i]] + val[i]);
+    }
+  }
+  return dp[W];
+}
+
+// Rod cutting: price[k] = price of a piece of length k+1. Last-piece formulation.
+function cutRod(price, n) {
+  const best = new Array(n + 1).fill(0);      // best[0] = 0: empty rod earns nothing
+  for (let len = 1; len <= n; len++) {
+    for (let piece = 1; piece <= len && piece <= price.length; piece++) {
+      best[len] = Math.max(best[len], price[piece - 1] + best[len - piece]);
+    }
+  }
+  return best[n];
+}` }, { lang: 'cpp', code: `// Unbounded knapsack (each item type reusable). 1D, capacity loop FORWARDS.
+int unboundedKnapsack(const vector<int>& wt, const vector<int>& val, int W) {
+    vector<int> dp(W + 1, 0);                 // dp[c] = best value with capacity c
+    for (size_t i = 0; i < wt.size(); i++) {
+        for (int c = wt[i]; c <= W; c++) {    // forwards: dp[c - w] may already use item i
+            dp[c] = max(dp[c], dp[c - wt[i]] + val[i]);
+        }
+    }
+    return dp[W];
+}
+
+// Rod cutting: price[k] = price of a piece of length k+1. Last-piece formulation.
+int cutRod(const vector<int>& price, int n) {
+    vector<int> best(n + 1, 0);               // best[0] = 0: empty rod earns nothing
+    for (int len = 1; len <= n; len++) {
+        for (int piece = 1; piece <= len && piece <= (int) price.size(); piece++) {
+            best[len] = max(best[len], price[piece - 1] + best[len - piece]);
+        }
+    }
+    return best[n];
+}` }] }, { lang: 'python', run: true, title: 'Rod cutting with the actual cuts (Python, runnable)', code: `def cut_rod(price, n):
     best = [0] * (n + 1)
     first_cut = [0] * (n + 1)          # which piece to cut first for this length
     for length in range(1, n + 1):
@@ -1315,7 +1921,7 @@ print(cut_rod([1, 5, 8, 9], 4))                     # (10, [2, 2])
 print(cut_rod([1, 5, 8, 9, 10, 17, 17, 20], 8))     # (22, [2, 6])
 print(cut_rod([3, 5, 8, 9, 10, 17, 17, 20], 8))     # (24, [1, 1, 1, 1, 1, 1, 1, 1])
 ` }],
-    codeTitle: ['Unbounded knapsack and rod cutting (Java)', 'Rod cutting with reconstruction (Python, runnable)'],
+    codeTitle: ['Unbounded knapsack and rod cutting', 'Rod cutting with reconstruction (Python, runnable)'],
     viz: {
       title: 'Unbounded table: "take" reads the SAME row (item still available), "skip" reads the row above',
       input: '8 | 1:1 2:5 3:8 4:9',
@@ -1361,14 +1967,35 @@ print(cut_rod([3, 5, 8, 9, 10, 17, 17, 20], 8))     # (24, [1, 1, 1, 1, 1, 1, 1,
     },
     examples: [
       { title: 'CLRS rod of length 8', html: `<p>Prices for lengths 1..8: 1, 5, 8, 9, 10, 17, 17, 20. Best for length 8 = <b>22</b>: cut 2 + 6 (5 + 17). Selling the whole rod gives only 20; four 2 m pieces give 20.</p>` },
-      { title: 'Integer Break (LC 343)', html: `<p>Break n (≥ 2) into at least two positive parts maximizing the product. dp[i] = max over j of max(j, dp[j]) × max(i−j, dp[i−j]) — the max(j, dp[j]) allows "do not break this part further". n = 10 → 3 + 3 + 4 → <b>36</b>. (Math shortcut: use as many 3s as possible — a nice follow-up.)</p>`, code: `int integerBreak(int n) {
+      { title: 'Integer Break (LC 343)', html: `<p>Break n (≥ 2) into at least two positive parts maximizing the product. dp[i] = max over j of max(j, dp[j]) × max(i−j, dp[i−j]) — the max(j, dp[j]) allows "do not break this part further". n = 10 → 3 + 3 + 4 → <b>36</b>. (Math shortcut: use as many 3s as possible — a nice follow-up.)</p>`, code: { lang: 'java', code: `int integerBreak(int n) {
     int[] dp = new int[n + 1];
     dp[1] = 1;
     for (int i = 2; i <= n; i++)
         for (int j = 1; j < i; j++)
             dp[i] = Math.max(dp[i], Math.max(j, dp[j]) * Math.max(i - j, dp[i - j]));
     return dp[n];
-}` },
+}`, alt: [{ lang: 'python', code: `def integer_break(n):
+    dp = [0] * (n + 1)
+    dp[1] = 1
+    for i in range(2, n + 1):
+        for j in range(1, i):
+            # max(j, dp[j]): a part may also stay unbroken
+            dp[i] = max(dp[i], max(j, dp[j]) * max(i - j, dp[i - j]))
+    return dp[n]` }, { lang: 'js', code: `function integerBreak(n) {
+  const dp = new Array(n + 1).fill(0);
+  dp[1] = 1;
+  for (let i = 2; i <= n; i++)
+    for (let j = 1; j < i; j++)
+      dp[i] = Math.max(dp[i], Math.max(j, dp[j]) * Math.max(i - j, dp[i - j]));
+  return dp[n];
+}` }, { lang: 'cpp', code: `int integerBreak(int n) {
+    vector<int> dp(n + 1, 0);
+    dp[1] = 1;
+    for (int i = 2; i <= n; i++)
+        for (int j = 1; j < i; j++)
+            dp[i] = max(dp[i], max(j, dp[j]) * max(i - j, dp[i - j]));
+    return dp[n];
+}` }] } },
       { title: 'Minimum cost to get at least X (bundles)', html: `<p>Packs of 3 cans for ₹5 or 5 cans for ₹7; you need <b>at least</b> 12 cans. Exactly 12 cans costs ₹20 (3+3+3+3), but 5+5+3 = 13 cans costs only <b>₹19</b>. An exact-amount DP would never look at 13. Fix: dp[x] = min cost for at least x cans, transition <code>dp[x] = min(dp[max(0, x − size)] + price)</code>. The clamp to 0 is the whole trick.</p>` },
       { title: 'Coin change is unbounded knapsack', html: `<p>Min coins: weight = coin value, "value" = 1 coin, minimize instead of maximize, exact capacity. Number of combinations: same forward loop with + instead of max. If you understood the forward-loop rule here, you understand why LC 518's inner loop goes forward.</p>` }
     ],
@@ -1394,7 +2021,12 @@ print(cut_rod([3, 5, 8, 9, 10, 17, 17, 20], 8))     # (24, [1, 1, 1, 1, 1, 1, 1,
     return best;
 }` },
       mcq: { q: 'Which statement about rod cutting\'s 1D dp is correct?', options: ['best[len] = max over piece of price[piece−1] + best[len − piece]', 'best[len] = best[len−1] + price[0]', 'It needs a backward loop like 0/1 knapsack', 'It cannot be done in less than O(2ⁿ)'], answer: 0, explain: 'Choose the last (or first) piece; the remainder is an independent smaller rod. Pieces are reusable, so no backward loop is needed.' },
-      hints: [`<p>Hint 1: The only thing that matters about a partly-cut rod is its remaining length. That is your state.</p>`, `<p>Hint 2: best[len] = max(price[p−1] + best[len−p]) for p = 1..len; best[0] = 0. This is unbounded knapsack with weight = piece length.</p>`, `<p>Hint 3: Fill len = 1..n in increasing order (O(n²) = 10<sup>6</sup>). Use long if prices × count could exceed 2·10<sup>9</sup> (here 1000 × 10<sup>5</sup> = 10<sup>8</sup>, int is fine).</p>`],
+      tests: { sig: 'int[] -> int', fn: 'cutRod', cases: [
+        [[[1, 5, 8, 9]], 10], [[[1, 5, 8, 9, 10, 17, 17, 20]], 22], [[[3, 5, 8, 9, 10, 17, 17, 20]], 24],
+        [[[2]], 2], [[[1, 1]], 2], [[[1, 10]], 10], [[[10, 1, 1]], 30],
+        [[{ $rep: 100000, n: 1000 }], 100000000], [[{ $range: [1, 1001] }], 1000]
+      ] },
+      hints: [`<p>Hint 1: The only thing that matters about a partly-cut rod is its remaining length. That is your state.</p>`, `<p>Hint 2: best[len] = max(price[p−1] + best[len−p]) for p = 1..len; best[0] = 0. This is unbounded knapsack with weight = piece length.</p>`, `<p>Hint 3: Fill len = 1..n in increasing order (O(n²) = 10<sup>6</sup>). Use a 64-bit integer if prices × count could exceed 2·10<sup>9</sup> (here 1000 × 10<sup>5</sup> = 10<sup>8</sup>, int is fine).</p>`],
       solution: {
         approach: `<p>Last-piece DP: for each length, try every possible piece as the last cut and add the best price of the remainder (already computed, since it is shorter).</p>`,
         code: `class Solution {
@@ -1410,13 +2042,32 @@ print(cut_rod([3, 5, 8, 9, 10, 17, 17, 20], 8))     # (24, [1, 1, 1, 1, 1, 1, 1,
     }
 }`,
         alt: [{ lang: 'python', code: `class Solution:
-    def cutRod(self, price):
+    def cut_rod(self, price):
         n = len(price)
-        best = [0] * (n + 1)
+        best = [0] * (n + 1)                      # best[0] = 0
         for length in range(1, n + 1):
-            for piece in range(1, length + 1):
-                best[length] = max(best[length], price[piece - 1] + best[length - piece])
-        return best[n]` }],
+            # try every piece as the last cut; the rest is a shorter, solved rod
+            best[length] = max(price[p - 1] + best[length - p] for p in range(1, length + 1))
+        return best[n]` }, { lang: 'js', code: `function cutRod(price) {
+  const n = price.length;
+  const best = new Array(n + 1).fill(0);          // best[0] = 0
+  for (let len = 1; len <= n; len++) {
+    for (let piece = 1; piece <= len; piece++) {
+      best[len] = Math.max(best[len], price[piece - 1] + best[len - piece]);
+    }
+  }
+  return best[n];
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int cutRod(vector<int>& price) {
+        int n = price.size();
+        vector<int> best(n + 1, 0);               // best[0] = 0
+        for (int len = 1; len <= n; len++)
+            for (int piece = 1; piece <= len; piece++)
+                best[len] = max(best[len], price[piece - 1] + best[len - piece]);
+        return best[n];                           // at most 1000 * 1e5 = 1e8, fits in int
+    }
+};` }],
         dry: { head: ['len', 'best candidates (piece + rest)', 'best[len]'], rows: [['1', '1+0', '1'], ['2', '1+1, 5+0', '5'], ['3', '1+5, 5+1, 8+0', '8'], ['4', '1+8, 5+5, 8+1, 9', '10'], ['5', '1+10, 5+8, 8+5, 9+1, 10', '13'], ['6', '…, 17+0', '17'], ['7', '1+17, 5+13, 8+10, …', '18'], ['8', '5+17 (piece 2 + best[6])', H.c('g', '22')]] },
         complexity: `<p>Time O(n²), space O(n).</p>`,
         followUps: ['Print the cuts (store the best first piece per length).', 'Each cut costs a fixed fee c → subtract c per cut.', 'Only certain lengths are allowed → loop over the allowed list.']
@@ -1461,7 +2112,7 @@ print(cut_rod([3, 5, 8, 9, 10, 17, 17, 20], 8))     # (24, [1, 1, 1, 1, 1, 1, 1,
       '"<b>shortest common supersequence</b>" → n + m − LCS (and rebuild it from the table).',
       'Two strings with <code>n, m ≤ 1000–5000</code> → O(n·m) table expected; contiguous ("substring") wording → reset to 0 on mismatch instead.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       // LCS length. dp[i][j] = LCS of s1[0..i-1] and s2[0..j-1].
       int lcs(String s1, String s2) {
           int n = s1.length(), m = s2.length();
@@ -1493,7 +2144,88 @@ print(cut_rod([3, 5, 8, 9, 10, 17, 17, 20], 8))     # (24, [1, 1, 1, 1, 1, 1, 1,
               }
           }
           return sb.reverse().toString();
-      }`, { lang: 'python', run: true, title: 'LCS with two rolling rows + the string itself (Python, runnable)', code: `def lcs_len_two_rows(s1, s2):
+      }`, alt: [{ lang: 'python', code: `# LCS length. dp[i][j] = LCS of s1[:i] and s2[:j].
+def lcs_table(s1, s2):
+    n, m = len(s1), len(s2)
+    dp = [[0] * (m + 1) for _ in range(n + 1)]   # row 0 / col 0 = empty prefix = 0
+    for i in range(1, n + 1):
+        for j in range(1, m + 1):
+            if s1[i - 1] == s2[j - 1]:
+                dp[i][j] = 1 + dp[i - 1][j - 1]  # use the matching pair (diagonal)
+            else:
+                dp[i][j] = max(dp[i - 1][j], dp[i][j - 1])   # drop one char
+    return dp                                 # dp[n][m] is the LCS length
+
+# Rebuild one actual LCS string by walking back from dp[n][m].
+def lcs_string(s1, s2, dp):
+    out, i, j = [], len(s1), len(s2)
+    while i > 0 and j > 0:
+        if s1[i - 1] == s2[j - 1]:
+            out.append(s1[i - 1])             # part of the LCS
+            i -= 1
+            j -= 1
+        elif dp[i - 1][j] >= dp[i][j - 1]:
+            i -= 1                            # came from above
+        else:
+            j -= 1                            # came from the left
+    return "".join(reversed(out))` }, { lang: 'js', code: `// LCS length. dp[i][j] = LCS of s1[0..i-1] and s2[0..j-1].
+function lcsTable(s1, s2) {
+  const n = s1.length, m = s2.length;
+  const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));   // empty prefix = 0
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= m; j++) {
+      if (s1[i - 1] === s2[j - 1]) dp[i][j] = 1 + dp[i - 1][j - 1];   // use the matching pair
+      else dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);           // drop one char
+    }
+  }
+  return dp;                                  // dp[n][m] is the LCS length
+}
+
+// Rebuild one actual LCS string by walking back from dp[n][m].
+function lcsString(s1, s2, dp) {
+  const out = [];
+  let i = s1.length, j = s2.length;
+  while (i > 0 && j > 0) {
+    if (s1[i - 1] === s2[j - 1]) {
+      out.push(s1[i - 1]);                    // part of the LCS
+      i--; j--;
+    } else if (dp[i - 1][j] >= dp[i][j - 1]) {
+      i--;                                    // came from above
+    } else {
+      j--;                                    // came from the left
+    }
+  }
+  return out.reverse().join('');
+}` }, { lang: 'cpp', code: `// LCS length. dp[i][j] = LCS of s1[0..i-1] and s2[0..j-1].
+vector<vector<int>> lcsTable(const string& s1, const string& s2) {
+    int n = s1.size(), m = s2.size();
+    vector<vector<int>> dp(n + 1, vector<int>(m + 1, 0));   // empty prefix = 0
+    for (int i = 1; i <= n; i++) {
+        for (int j = 1; j <= m; j++) {
+            if (s1[i - 1] == s2[j - 1]) dp[i][j] = 1 + dp[i - 1][j - 1];   // use the matching pair
+            else dp[i][j] = max(dp[i - 1][j], dp[i][j - 1]);              // drop one char
+        }
+    }
+    return dp;                                // dp[n][m] is the LCS length
+}
+
+// Rebuild one actual LCS string by walking back from dp[n][m].
+string lcsString(const string& s1, const string& s2, const vector<vector<int>>& dp) {
+    string out;
+    int i = s1.size(), j = s2.size();
+    while (i > 0 && j > 0) {
+        if (s1[i - 1] == s2[j - 1]) {
+            out += s1[i - 1];                 // part of the LCS
+            i--; j--;
+        } else if (dp[i - 1][j] >= dp[i][j - 1]) {
+            i--;                              // came from above
+        } else {
+            j--;                              // came from the left
+        }
+    }
+    reverse(out.begin(), out.end());
+    return out;
+}` }] }, { lang: 'python', run: true, title: 'LCS with two rolling rows + the string itself (Python, runnable)', code: `def lcs_len_two_rows(s1, s2):
     prev = [0] * (len(s2) + 1)              # row i-1
     for ch in s1:
         cur = [0] * (len(s2) + 1)           # row i
@@ -1528,7 +2260,7 @@ print(lcs_len_two_rows("abcde", "ace"), lcs_string("abcde", "ace"))        # 3 a
 print(lcs_len_two_rows("AGGTAB", "GXTXAYB"), lcs_string("AGGTAB", "GXTXAYB"))  # 4 GTAB
 print(lcs_len_two_rows("abc", "def"), repr(lcs_string("abc", "def")))      # 0 ''
 ` }],
-    codeTitle: ['LCS length + reconstruction (Java)', 'Two-row version and reconstruction (Python, runnable)'],
+    codeTitle: ['LCS length + reconstruction', 'Two-row version and reconstruction (Python, runnable)'],
     viz: {
       title: 'LCS table: match → diagonal + 1, mismatch → max(up, left); then trace the arrows back',
       input: 'abcde ace',
@@ -1581,7 +2313,7 @@ print(lcs_len_two_rows("abc", "def"), repr(lcs_string("abc", "def")))      # 0 '
       { title: 'GeeksforGeeks classic: AGGTAB vs GXTXAYB', html: `<p>LCS = <b>"GTAB"</b>, length 4. Note the answer string need not be unique: for "abc" vs "acb" both "ab" and "ac" are LCSs of length 2 — the tie-break in the walk-back decides which one you print.</p>` },
       { title: 'Delete Operation for Two Strings (LC 583)', html: `<p>"sea" → "eat": minimum deletions from both to make them equal. Keep the LCS "ea" (length 2) and delete everything else: (3 − 2) + (3 − 2) = <b>2</b>. Formula n + m − 2·LCS. With different insert/delete costs this becomes edit distance (next topic).</p>` },
       { title: 'Longest Palindromic Subsequence = LCS(s, reverse(s))', html: `<p>s = "bbbab", reverse = "babbb", LCS = "bbbb" → <b>4</b>. Why: a palindrome reads the same both ways, so a palindromic subsequence of s is common to s and its reverse (and the longest common one can be chosen to be a palindrome).</p>` },
-      { title: 'Substring vs subsequence (do not mix them up)', html: `<p><b>Longest common substring</b> (contiguous): on mismatch, the run breaks → <code>dp[i][j] = 0</code>; on match <code>dp[i][j] = dp[i−1][j−1] + 1</code>; answer = max over all cells (not the corner). "abcdxyz" vs "xyzabcd" → substring "abcd" (4); the LCS is also 4 here, but for "abcde" vs "ace" the substring answer is just 1.</p>`, code: `int longestCommonSubstring(String a, String b) {
+      { title: 'Substring vs subsequence (do not mix them up)', html: `<p><b>Longest common substring</b> (contiguous): on mismatch, the run breaks → <code>dp[i][j] = 0</code>; on match <code>dp[i][j] = dp[i−1][j−1] + 1</code>; answer = max over all cells (not the corner). "abcdxyz" vs "xyzabcd" → substring "abcd" (4); the LCS is also 4 here, but for "abcde" vs "ace" the substring answer is just 1.</p>`, code: { lang: 'java', code: `int longestCommonSubstring(String a, String b) {
     int[][] dp = new int[a.length() + 1][b.length() + 1];
     int best = 0;
     for (int i = 1; i <= a.length(); i++)
@@ -1591,7 +2323,36 @@ print(lcs_len_two_rows("abc", "def"), repr(lcs_string("abc", "def")))      # 0 '
                 best = Math.max(best, dp[i][j]);
             }                                      // else stays 0: the run is broken
     return best;
-}` }
+}`, alt: [{ lang: 'python', code: `def longest_common_substring(a, b):
+    dp = [[0] * (len(b) + 1) for _ in range(len(a) + 1)]
+    best = 0
+    for i in range(1, len(a) + 1):
+        for j in range(1, len(b) + 1):
+            if a[i - 1] == b[j - 1]:
+                dp[i][j] = dp[i - 1][j - 1] + 1
+                best = max(best, dp[i][j])
+            # else stays 0: the run is broken
+    return best` }, { lang: 'js', code: `function longestCommonSubstring(a, b) {
+  const dp = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
+  let best = 0;
+  for (let i = 1; i <= a.length; i++)
+    for (let j = 1; j <= b.length; j++)
+      if (a[i - 1] === b[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1] + 1;
+        best = Math.max(best, dp[i][j]);
+      }                                        // else stays 0: the run is broken
+  return best;
+}` }, { lang: 'cpp', code: `int longestCommonSubstring(const string& a, const string& b) {
+    vector<vector<int>> dp(a.size() + 1, vector<int>(b.size() + 1, 0));
+    int best = 0;
+    for (size_t i = 1; i <= a.size(); i++)
+        for (size_t j = 1; j <= b.size(); j++)
+            if (a[i - 1] == b[j - 1]) {
+                dp[i][j] = dp[i - 1][j - 1] + 1;
+                best = max(best, dp[i][j]);
+            }                                  // else stays 0: the run is broken
+    return best;
+}` }] } }
     ],
     deepDive: `<p><b>Space.</b> Each row reads only the row above and itself → two rows O(min(n, m)) (put the shorter string on the columns). With a single row plus one saved "diagonal" variable it is one array. Reconstruction needs the full table, or <b>Hirschberg's algorithm</b>: divide &amp; conquer that finds the middle crossing point using forward and backward two-row passes → O(n·m) time, O(n + m) space. That is how diff tools handle large files.</p>
       <p><b>Lower bounds.</b> Under the Strong Exponential Time Hypothesis there is no O((nm)<sup>1−ε</sup>) algorithm for LCS (Abboud–Backurs–Vassilevska Williams 2015, Bringmann–Künnemann). So O(n·m) — with bit-parallel tricks giving O(n·m/64) — is essentially the end of the road for general strings.</p>
@@ -1613,6 +2374,13 @@ print(lcs_len_two_rows("abc", "def"), repr(lcs_string("abc", "def")))      # 0 '
     return Math.max(f(a, b, i + 1, j), f(a, b, i, j + 1));
 }` },
       mcq: { q: 'text1[i−1] ≠ text2[j−1]. Which cells can give dp[i][j]?', options: ['Only the diagonal dp[i−1][j−1]', 'max(dp[i−1][j], dp[i][j−1])', 'dp[i−1][j−1] + 1', 'Always 0'], answer: 1, explain: 'At least one of the two last characters is not part of the LCS, so drop one of them and take the better result.' },
+      tests: { sig: 'string string -> int', fn: 'longestCommonSubsequence', cases: [
+        [['abcde', 'ace'], 3], [['abc', 'abc'], 3], [['abc', 'def'], 0], [['a', 'a'], 1], [['a', 'b'], 0],
+        [['aggtab', 'gxtxayb'], 4], [['bsbininm', 'jmjkbkjkv'], 1],
+        [[{ $rep: 'a', n: 1000 }, { $rep: 'a', n: 1000 }], 1000],
+        [[{ $rep: 'ab', n: 500 }, { $rep: 'ba', n: 500 }], 999],
+        [[{ $rep: 'a', n: 1000 }, { $rep: 'b', n: 1000 }], 0]
+      ] },
       hints: [`<p>Hint 1: Compare only the <b>last</b> characters of the two prefixes. Either they match (great, use them) or at least one of them is useless.</p>`, `<p>Hint 2: dp[i][j] over prefixes with an extra 0 row/column. Match → diag + 1; else max(up, left).</p>`, `<p>Hint 3: Fill rows top-to-bottom, columns left-to-right; answer dp[n][m]. For O(m) memory keep two rows (prev, cur) — swap them after each row.</p>`],
       solution: {
         approach: `<p>Prefix DP over both strings, implemented with two rolling rows to use O(m) memory.</p>`,
@@ -1632,15 +2400,27 @@ print(lcs_len_two_rows("abc", "def"), repr(lcs_string("abc", "def")))      # 0 '
     }
 }`,
         alt: [{ lang: 'python', code: `class Solution:
-    def longestCommonSubsequence(self, text1, text2):
+    def longest_common_subsequence(self, text1, text2):
         m = len(text2)
-        prev = [0] * (m + 1)
+        prev = [0] * (m + 1)                       # row i-1
         for a in text1:
-            cur = [0] * (m + 1)
+            cur = [0] * (m + 1)                    # row i
             for j in range(1, m + 1):
                 cur[j] = prev[j - 1] + 1 if a == text2[j - 1] else max(prev[j], cur[j - 1])
             prev = cur
-        return prev[m]` }, { lang: 'cpp', code: `class Solution {
+        return prev[m]` }, { lang: 'js', code: `function longestCommonSubsequence(text1, text2) {
+  const m = text2.length;
+  let prev = new Int32Array(m + 1), cur = new Int32Array(m + 1);   // rows i-1 and i
+  for (let i = 1; i <= text1.length; i++) {
+    const a = text1[i - 1];
+    for (let j = 1; j <= m; j++) {
+      cur[j] = a === text2[j - 1] ? prev[j - 1] + 1          // diagonal + 1
+                                  : Math.max(prev[j], cur[j - 1]);   // up or left
+    }
+    [prev, cur] = [cur, prev];                                // row i becomes "previous"
+  }
+  return prev[m];
+}` }, { lang: 'cpp', code: `class Solution {
 public:
     int longestCommonSubsequence(string text1, string text2) {
         int n = text1.size(), m = text2.size();
@@ -1699,7 +2479,7 @@ public:
       'Different <b>costs</b> per operation ("insert costs 2, delete 3") → same grid, weighted arrows.',
       '<code>word lengths ≤ 500</code> → O(n·m) = 2.5·10<sup>5</sup> cells, intended.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       // Levenshtein distance. dp[i][j] = min ops: word1[0..i-1] -> word2[0..j-1].
       int minDistance(String word1, String word2) {
           int n = word1.length(), m = word2.length();
@@ -1719,7 +2499,57 @@ public:
               }
           }
           return dp[n][m];
-      }`, { lang: 'python', run: true, title: 'Edit distance + the actual list of edits (Python, runnable)', code: `def edit_script(a, b):
+      }`, alt: [{ lang: 'python', code: `# Levenshtein distance. dp[i][j] = min ops: word1[:i] -> word2[:j].
+def min_distance(word1, word2):
+    n, m = len(word1), len(word2)
+    dp = [[0] * (m + 1) for _ in range(n + 1)]
+    for i in range(n + 1):
+        dp[i][0] = i                          # delete everything
+    for j in range(m + 1):
+        dp[0][j] = j                          # insert everything
+    for i in range(1, n + 1):
+        for j in range(1, m + 1):
+            if word1[i - 1] == word2[j - 1]:
+                dp[i][j] = dp[i - 1][j - 1]   # free: chars already match
+            else:
+                dp[i][j] = 1 + min(dp[i - 1][j - 1],   # replace
+                                   dp[i - 1][j],       # delete
+                                   dp[i][j - 1])       # insert
+    return dp[n][m]` }, { lang: 'js', code: `// Levenshtein distance. dp[i][j] = min ops: word1[0..i-1] -> word2[0..j-1].
+function minDistance(word1, word2) {
+  const n = word1.length, m = word2.length;
+  const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  for (let i = 0; i <= n; i++) dp[i][0] = i;  // delete everything
+  for (let j = 0; j <= m; j++) dp[0][j] = j;  // insert everything
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= m; j++) {
+      if (word1[i - 1] === word2[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1];          // free: chars already match
+      } else {
+        const replace = dp[i - 1][j - 1], del = dp[i - 1][j], insert = dp[i][j - 1];
+        dp[i][j] = 1 + Math.min(replace, del, insert);
+      }
+    }
+  }
+  return dp[n][m];
+}` }, { lang: 'cpp', code: `// Levenshtein distance. dp[i][j] = min ops: word1[0..i-1] -> word2[0..j-1].
+int minDistance(const string& word1, const string& word2) {
+    int n = word1.size(), m = word2.size();
+    vector<vector<int>> dp(n + 1, vector<int>(m + 1, 0));
+    for (int i = 0; i <= n; i++) dp[i][0] = i;   // delete everything
+    for (int j = 0; j <= m; j++) dp[0][j] = j;   // insert everything
+    for (int i = 1; i <= n; i++) {
+        for (int j = 1; j <= m; j++) {
+            if (word1[i - 1] == word2[j - 1]) {
+                dp[i][j] = dp[i - 1][j - 1];  // free: chars already match
+            } else {
+                int replace = dp[i - 1][j - 1], del = dp[i - 1][j], insert = dp[i][j - 1];
+                dp[i][j] = 1 + min({replace, del, insert});
+            }
+        }
+    }
+    return dp[n][m];
+}` }] }, { lang: 'python', run: true, title: 'Edit distance + the actual list of edits (Python, runnable)', code: `def edit_script(a, b):
     n, m = len(a), len(b)
     dp = [[0] * (m + 1) for _ in range(n + 1)]
     for i in range(n + 1):
@@ -1748,7 +2578,7 @@ print(edit_script("horse", "ros"))
 print(edit_script("intention", "execution"))
 print(edit_script("", "abc"))
 ` }],
-    codeTitle: ['Levenshtein distance (Java)', 'Distance + edit script (Python, runnable)'],
+    codeTitle: ['Levenshtein distance', 'Distance + edit script (Python, runnable)'],
     viz: {
       title: 'Edit distance table: three arrows (↖ replace/match, ↑ delete, ← insert) and the cheapest path back',
       input: 'horse ros',
@@ -1807,7 +2637,7 @@ print(edit_script("", "abc"))
     examples: [
       { title: 'intention → execution = 5', html: `<p>LeetCode's second sample. One script: delete <b>t</b> (inention), replace <b>i→e</b> (enention), replace <b>n→x</b> (exention), replace <b>n→c</b> (exection), insert <b>u</b> (execution). 5 operations; the table proves no 4-step script exists.</p>` },
       { title: 'Empty strings', html: `<p>"" → "abc" = <b>3</b> inserts; "abc" → "" = <b>3</b> deletes; "" → "" = 0. These are exactly the base row and column — if your base cases are right, these tests pass for free.</p>` },
-      { title: 'One Edit Distance in O(n) without a table', html: `<p>"Are s and t exactly one edit apart?" Walk both strings until the first mismatch. If lengths are equal, the rest must match after skipping one char in both (replace). If t is one longer, the rest of s must equal the rest of t after skipping t's char (insert). Anything else → false. O(n) time, O(1) space — a common follow-up that tests whether you <i>over-engineer</i>.</p>`, code: `boolean isOneEditDistance(String s, String t) {
+      { title: 'One Edit Distance in O(n) without a table', html: `<p>"Are s and t exactly one edit apart?" Walk both strings until the first mismatch. If lengths are equal, the rest must match after skipping one char in both (replace). If t is one longer, the rest of s must equal the rest of t after skipping t's char (insert). Anything else → false. O(n) time, O(1) space — a common follow-up that tests whether you <i>over-engineer</i>.</p>`, code: { lang: 'java', code: `boolean isOneEditDistance(String s, String t) {
     if (s.length() > t.length()) return isOneEditDistance(t, s);  // make s the shorter
     if (t.length() - s.length() > 1) return false;
     for (int i = 0; i < s.length(); i++) {
@@ -1818,7 +2648,37 @@ print(edit_script("", "abc"))
         }
     }
     return s.length() + 1 == t.length();   // all equal so far: only an extra last char is ok
-}` },
+}`, alt: [{ lang: 'python', code: `def is_one_edit_distance(s, t):
+    if len(s) > len(t):
+        return is_one_edit_distance(t, s)    # make s the shorter
+    if len(t) - len(s) > 1:
+        return False
+    for i, (a, b) in enumerate(zip(s, t)):
+        if a != b:
+            if len(s) == len(t):
+                return s[i + 1:] == t[i + 1:]   # replace
+            return s[i:] == t[i + 1:]           # insert into s
+    return len(s) + 1 == len(t)              # all equal so far: only an extra last char is ok` }, { lang: 'js', code: `function isOneEditDistance(s, t) {
+  if (s.length > t.length) return isOneEditDistance(t, s);   // make s the shorter
+  if (t.length - s.length > 1) return false;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] !== t[i]) {
+      if (s.length === t.length) return s.slice(i + 1) === t.slice(i + 1);   // replace
+      return s.slice(i) === t.slice(i + 1);                                  // insert into s
+    }
+  }
+  return s.length + 1 === t.length;          // all equal so far: only an extra last char is ok
+}` }, { lang: 'cpp', code: `bool isOneEditDistance(const string& s, const string& t) {
+    if (s.size() > t.size()) return isOneEditDistance(t, s);   // make s the shorter
+    if (t.size() - s.size() > 1) return false;
+    for (size_t i = 0; i < s.size(); i++) {
+        if (s[i] != t[i]) {
+            if (s.size() == t.size()) return s.compare(i + 1, string::npos, t, i + 1) == 0;   // replace
+            return s.compare(i, string::npos, t, i + 1) == 0;                              // insert into s
+        }
+    }
+    return s.size() + 1 == t.size();           // all equal so far: only an extra last char is ok
+}` }] } },
       { title: 'Weighted costs', html: `<p>Insert costs 1, delete costs 1, replace costs 2: then replace is never better than delete + insert, and the answer becomes n + m − 2·LCS. "kitten" → "sitting": Levenshtein = <b>3</b> (k→s, e→i, insert g); with replace = 2 it is 5. Same grid; just put the costs on the arrows.</p>` }
     ],
     deepDive: `<p><b>Why the three arrows are complete.</b> Look at an optimal edit script for the last characters. Either word1's last char is deleted (↑), or word2's last char was inserted (←), or the two last characters end up aligned with each other — free if equal, one replace if not (↖). There is no fourth possibility, so the min over three arrows is exact (induction on i + j).</p>
@@ -1844,6 +2704,13 @@ print(edit_script("", "abc"))
                         f(a, b, i, j - 1)));      // insert
 }` },
       mcq: { q: 'Which cell corresponds to INSERTING word2[j−1] at the end of the current word1 prefix?', options: ['dp[i−1][j−1]', 'dp[i−1][j]', 'dp[i][j−1]', 'dp[i][j]'], answer: 2, explain: 'After inserting word2[j−1], that char is matched; what remains is converting word1[0..i−1] into word2[0..j−2] → dp[i][j−1].' },
+      tests: { sig: 'string string -> int', fn: 'minDistance', cases: [
+        [['horse', 'ros'], 3], [['intention', 'execution'], 5], [['', ''], 0], [['', 'abc'], 3], [['abc', ''], 3],
+        [['a', 'a'], 0], [['kitten', 'sitting'], 3], [['ab', 'ba'], 2], [['abc', 'yabd'], 2],
+        [[{ $rep: 'a', n: 500 }, { $rep: 'b', n: 500 }], 500],
+        [[{ $rep: 'a', n: 500 }, { $rep: 'a', n: 499 }], 1],
+        [[{ $rep: 'a', n: 500 }, ''], 500]
+      ] },
       hints: [`<p>Hint 1: Only the last characters matter. If they are equal, they cost nothing. If not, the last operation was a replace, a delete or an insert.</p>`, `<p>Hint 2: dp[i][j] over prefixes; equal → dp[i−1][j−1]; else 1 + min(↖, ↑, ←). Base dp[i][0] = i, dp[0][j] = j.</p>`, `<p>Hint 3: Watch empty strings (the base cases handle them). For O(m) memory: one row plus a variable holding the old diagonal value before you overwrite it.</p>`],
       solution: {
         approach: `<p>Prefix DP with three transitions, using a single row plus a saved diagonal for O(m) memory.</p>`,
@@ -1869,19 +2736,52 @@ print(edit_script("", "abc"))
     }
 }`,
         alt: [{ lang: 'python', code: `class Solution:
-    def minDistance(self, word1, word2):
+    def min_distance(self, word1, word2):
         m = len(word2)
-        dp = list(range(m + 1))
+        dp = list(range(m + 1))                    # row 0: insert j chars
         for i in range(1, len(word1) + 1):
-            diag, dp[0] = dp[0], i
+            diag, dp[0] = dp[0], i                 # old dp[i-1][0]; dp[i][0] = i deletes
             for j in range(1, m + 1):
-                up = dp[j]
+                up = dp[j]                         # old dp[i-1][j]
                 if word1[i - 1] == word2[j - 1]:
-                    dp[j] = diag
+                    dp[j] = diag                   # match: free
                 else:
-                    dp[j] = 1 + min(diag, up, dp[j - 1])
+                    dp[j] = 1 + min(diag, up, dp[j - 1])   # replace, delete, insert
                 diag = up
-        return dp[m]` }],
+        return dp[m]` }, { lang: 'js', code: `function minDistance(word1, word2) {
+  const m = word2.length;
+  const dp = Array.from({ length: m + 1 }, (_, j) => j);   // row 0: insert j chars
+  for (let i = 1; i <= word1.length; i++) {
+    let diag = dp[0];                              // old dp[i-1][0]
+    dp[0] = i;                                     // delete i chars
+    for (let j = 1; j <= m; j++) {
+      const up = dp[j];                            // old dp[i-1][j]
+      dp[j] = word1[i - 1] === word2[j - 1]
+        ? diag                                     // match: free
+        : 1 + Math.min(diag, up, dp[j - 1]);       // replace, delete, insert
+      diag = up;
+    }
+  }
+  return dp[m];
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int minDistance(string word1, string word2) {
+        int n = word1.size(), m = word2.size();
+        vector<int> dp(m + 1);
+        iota(dp.begin(), dp.end(), 0);             // row 0: insert j chars
+        for (int i = 1; i <= n; i++) {
+            int diag = dp[0];                      // old dp[i-1][0]
+            dp[0] = i;                             // delete i chars
+            for (int j = 1; j <= m; j++) {
+                int up = dp[j];                    // old dp[i-1][j]
+                if (word1[i - 1] == word2[j - 1]) dp[j] = diag;          // match: free
+                else dp[j] = 1 + min({diag, up, dp[j - 1]});             // replace, delete, insert
+                diag = up;
+            }
+        }
+        return dp[m];
+    }
+};` }],
         dry: { head: ['i (word1 char)', 'row dp[i][0..3] for "" r o s', 'note'], rows: [['0', '0 1 2 3', 'base: inserts'], ['1 (h)', '1 1 2 3', 'h→r replace = 1'], ['2 (o)', '2 2 1 2', 'o==o: copy diag 1'], ['3 (r)', '3 2 2 2', 'r vs s: min(1, 2, 2) + 1 = 2'], ['4 (s)', '4 3 3 2', 's==s: diag 2'], ['5 (e)', '5 4 4 3', H.c('g', 'delete e: up 2 + 1 = 3')]] },
         complexity: `<p>Time O(n·m) = 2.5·10<sup>5</sup>; space O(m) (keep the full table to print the edit script).</p>`,
         followUps: ['Return the list of edits.', 'Is the distance ≤ k? (banded DP, O(n·k))', 'Allow swapping adjacent characters (Damerau–Levenshtein).']
@@ -1916,7 +2816,7 @@ print(edit_script("", "abc"))
       '"must have at least 1 health at every step" (Dungeon Game) → fill <b>backwards</b> from the bottom-right.',
       '<code>m, n ≤ 100–200</code> → O(m·n) table; "O(n) extra space?" → one row array.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       // Unique Paths II: grid[r][c] == 1 means blocked. One row of dp is enough.
       int uniquePathsWithObstacles(int[][] grid) {
           int m = grid.length, n = grid[0].length;
@@ -1946,7 +2846,84 @@ print(edit_script("", "abc"))
               }
           }
           return g[m - 1][n - 1];
-      }`, { lang: 'python', run: true, title: 'Paths, obstacle paths, min path + route (Python, runnable)', code: `from math import comb
+      }`, alt: [{ lang: 'python', code: `import math
+
+# Unique Paths II: grid[r][c] == 1 means blocked. One row of dp is enough.
+def unique_paths_with_obstacles(grid):
+    n = len(grid[0])
+    dp = [0] * n                              # dp[c] = paths to (current row, c)
+    dp[0] = 0 if grid[0][0] == 1 else 1       # blocked start -> 0 paths
+    for row in grid:
+        for c in range(n):
+            if row[c] == 1:
+                dp[c] = 0                     # nobody can stand here
+            elif c > 0:
+                dp[c] += dp[c - 1]            # from above (old dp[c]) + from left
+    return dp[-1]
+
+# Minimum Path Sum: reuse the grid itself as the dp table (modifies input).
+def min_path_sum(g):
+    m, n = len(g), len(g[0])
+    for r in range(m):
+        for c in range(n):
+            if r == 0 and c == 0:
+                continue                      # start: cost is its own value
+            up = g[r - 1][c] if r > 0 else math.inf
+            left = g[r][c - 1] if c > 0 else math.inf
+            g[r][c] += min(up, left)          # cheapest way in + this toll
+    return g[m - 1][n - 1]` }, { lang: 'js', code: `// Unique Paths II: grid[r][c] === 1 means blocked. One row of dp is enough.
+function uniquePathsWithObstacles(grid) {
+  const n = grid[0].length;
+  const dp = new Array(n).fill(0);            // dp[c] = paths to (current row, c)
+  dp[0] = grid[0][0] === 1 ? 0 : 1;           // blocked start -> 0 paths
+  for (const row of grid) {
+    for (let c = 0; c < n; c++) {
+      if (row[c] === 1) dp[c] = 0;            // nobody can stand here
+      else if (c > 0) dp[c] += dp[c - 1];     // from above (old dp[c]) + from left
+    }
+  }
+  return dp[n - 1];
+}
+
+// Minimum Path Sum: reuse the grid itself as the dp table (modifies input).
+function minPathSum(g) {
+  const m = g.length, n = g[0].length;
+  for (let r = 0; r < m; r++) {
+    for (let c = 0; c < n; c++) {
+      if (r === 0 && c === 0) continue;       // start: cost is its own value
+      const up = r > 0 ? g[r - 1][c] : Infinity;
+      const left = c > 0 ? g[r][c - 1] : Infinity;
+      g[r][c] += Math.min(up, left);          // cheapest way in + this toll
+    }
+  }
+  return g[m - 1][n - 1];
+}` }, { lang: 'cpp', code: `// Unique Paths II: grid[r][c] == 1 means blocked. One row of dp is enough.
+int uniquePathsWithObstacles(const vector<vector<int>>& grid) {
+    int n = grid[0].size();
+    vector<long long> dp(n, 0);               // dp[c] = paths to (current row, c)
+    dp[0] = grid[0][0] == 1 ? 0 : 1;          // blocked start -> 0 paths
+    for (const auto& row : grid) {
+        for (int c = 0; c < n; c++) {
+            if (row[c] == 1) dp[c] = 0;       // nobody can stand here
+            else if (c > 0) dp[c] = min<long long>(dp[c] + dp[c - 1], INT_MAX);   // above + left, capped
+        }
+    }
+    return (int) dp[n - 1];
+}
+
+// Minimum Path Sum: reuse the grid itself as the dp table (modifies input, so take it by reference).
+int minPathSum(vector<vector<int>>& g) {
+    int m = g.size(), n = g[0].size();
+    for (int r = 0; r < m; r++) {
+        for (int c = 0; c < n; c++) {
+            if (r == 0 && c == 0) continue;   // start: cost is its own value
+            int up   = r > 0 ? g[r - 1][c] : INT_MAX;
+            int left = c > 0 ? g[r][c - 1] : INT_MAX;
+            g[r][c] += min(up, left);         // one of them is always a real cell
+        }
+    }
+    return g[m - 1][n - 1];
+}` }] }, { lang: 'python', run: true, title: 'Paths, obstacle paths, min path + route (Python, runnable)', code: `from math import comb
 
 def unique_paths(m, n):
     row = [1] * n
@@ -1993,7 +2970,7 @@ print(unique_paths(3, 7), comb(8, 2))                                  # 28 28
 print(paths_with_obstacles([[0, 0, 0], [0, 1, 0], [0, 0, 0]]))          # 2
 print(min_path([[1, 3, 1], [1, 5, 1], [4, 2, 1]]))                      # (7, [1, 3, 1, 1, 1])
 ` }],
-    codeTitle: ['Unique Paths II (1 row) and Minimum Path Sum (in place) — Java', 'All three + route reconstruction (Python, runnable)'],
+    codeTitle: ['Unique Paths II (1 row) and Minimum Path Sum (in place)', 'All three + route reconstruction (Python, runnable)'],
     viz: [{
       title: 'Counting paths with obstacles: each cell = from above + from the left (blocked cells stay 0)',
       input: '0 0 0 0 / 0 1 0 0 / 0 0 0 1 / 1 0 0 0',
@@ -2082,27 +3059,46 @@ print(min_path([[1, 3, 1], [1, 5, 1], [4, 2, 1]]))                      # (7, [1
       }
     }],
     examples: [
-      { title: 'Unique Paths has a formula', html: `<p>Without obstacles, every route is (m−1) downs and (n−1) rights in some order → <b>C(m+n−2, m−1)</b>. m = 3, n = 7 → C(8, 2) = <b>28</b>. Good to mention, but the DP generalises to obstacles and costs while the formula does not. To compute C(n, k) without overflow, multiply and divide step by step in a long: <code>res = res * (n − k + i) / i</code>.</p>` },
+      { title: 'Unique Paths has a formula', html: `<p>Without obstacles, every route is (m−1) downs and (n−1) rights in some order → <b>C(m+n−2, m−1)</b>. m = 3, n = 7 → C(8, 2) = <b>28</b>. Good to mention, but the DP generalises to obstacles and costs while the formula does not. To compute C(n, k) without overflow, multiply and divide step by step in a 64-bit integer: <code>res = res * (n − k + i) / i</code> (Python has <code>math.comb</code>).</p>` },
       { title: 'Obstacle in the first row', html: `<p>Grid [[0, 1, 0], [0, 0, 0]]: cell (0,2) is <b>0</b> (the obstacle blocks the only way in along the top row), not 1. A common bug is initialising the whole first row to 1. Answer: only the route down-then-right → <b>1</b>.</p>` },
-      { title: 'Triangle (LC 120) — grid DP on a triangle, bottom-up', html: `<p>[[2], [3,4], [6,5,7], [4,1,8,3]], move to adjacent index below. Go <b>bottom-up</b>: start with the last row as dp and for each row above set <code>dp[j] = tri[i][j] + min(dp[j], dp[j+1])</code>. Rows: [4,1,8,3] → [7,6,10] → [9,10] → [<b>11</b>] (2+3+5+1). Bottom-up means no edge cases for the triangle's edges.</p>`, code: `int minimumTotal(List<List<Integer>> tri) {
+      { title: 'Triangle (LC 120) — grid DP on a triangle, bottom-up', html: `<p>[[2], [3,4], [6,5,7], [4,1,8,3]], move to adjacent index below. Go <b>bottom-up</b>: start with the last row as dp and for each row above set <code>dp[j] = tri[i][j] + min(dp[j], dp[j+1])</code>. Rows: [4,1,8,3] → [7,6,10] → [9,10] → [<b>11</b>] (2+3+5+1). Bottom-up means no edge cases for the triangle's edges.</p>`, code: { lang: 'java', code: `int minimumTotal(List<List<Integer>> tri) {
     int n = tri.size();
     int[] dp = new int[n + 1];                      // extra 0 below the last row
     for (int i = n - 1; i >= 0; i--)
         for (int j = 0; j <= i; j++)
             dp[j] = tri.get(i).get(j) + Math.min(dp[j], dp[j + 1]);
     return dp[0];
-}` },
+}`, alt: [{ lang: 'python', code: `def minimum_total(tri):
+    dp = [0] * (len(tri) + 1)                # extra 0 below the last row
+    for row in reversed(tri):
+        for j, v in enumerate(row):
+            dp[j] = v + min(dp[j], dp[j + 1])
+    return dp[0]` }, { lang: 'js', code: `function minimumTotal(tri) {
+  const n = tri.length;
+  const dp = new Array(n + 1).fill(0);       // extra 0 below the last row
+  for (let i = n - 1; i >= 0; i--)
+    for (let j = 0; j <= i; j++)
+      dp[j] = tri[i][j] + Math.min(dp[j], dp[j + 1]);
+  return dp[0];
+}` }, { lang: 'cpp', code: `int minimumTotal(const vector<vector<int>>& tri) {
+    int n = tri.size();
+    vector<int> dp(n + 1, 0);                // extra 0 below the last row
+    for (int i = n - 1; i >= 0; i--)
+        for (int j = 0; j <= i; j++)
+            dp[j] = tri[i][j] + min(dp[j], dp[j + 1]);
+    return dp[0];
+}` }] } },
       { title: 'Dungeon Game: why some grids are filled backwards', html: `<p>The knight needs health ≥ 1 at every cell. A forward DP would have to remember both "current health" and "minimum seen so far" — two numbers that trade off. Backwards, <code>need[r][c] = max(1, min(need[r+1][c], need[r][c+1]) − dungeon[r][c])</code> is a single number: the minimum health needed when <i>entering</i> (r, c). Rule: fill in the direction where the future is a single number.</p>` }
     ],
     deepDive: `<p><b>Why right/down makes it a DP.</b> With only right/down moves, every path visits cells in increasing (r + c) order — the grid is a DAG and row-major order is a topological order. Allow up/left moves and cycles appear; then "cheapest path" needs Dijkstra (non-negative tolls) or BFS (unit costs) — DSA 19–20.</p>
       <p><b>One-row memory.</b> In <code>dp[c] += dp[c−1]</code>, before the update dp[c] still holds the row above (from above), and dp[c−1] already holds the current row (from the left). That is why the single array works without copying — the same trick as the unbounded knapsack forward loop. Choose the shorter dimension for the row: O(min(m, n)) memory.</p>
-      <p><b>Overflow.</b> Unique Paths for a 100 × 100 grid is C(198, 99) ≈ 2.3·10<sup>58</sup> — huge. LeetCode guarantees answers ≤ 2·10<sup>9</sup>; otherwise use mod 10<sup>9</sup>+7 or BigInteger.</p>
+      <p><b>Overflow.</b> Unique Paths for a 100 × 100 grid is C(198, 99) ≈ 2.3·10<sup>58</sup> — huge. LeetCode guarantees answers ≤ 2·10<sup>9</sup>; otherwise use mod 10<sup>9</sup>+7 or big integers (<code>BigInteger</code> / Python int / <code>BigInt</code>).</p>
       <p><b>Cherry Pickup / two walkers.</b> When two people walk simultaneously (or go there and back), the state becomes (step, r1, r2) since c = step − r — a 3D DP in O(n<sup>3</sup>). That is a DP II/III pattern built on this grid foundation.</p>
       <p><b>Counting with modulo and obstacles at scale.</b> For a huge grid (10<sup>5</sup> × 10<sup>5</sup>) with only k ≤ 3000 obstacles, count paths via inclusion–exclusion over obstacles sorted by position: ways(start → o<sub>i</sub> avoiding earlier obstacles) using C(·,·) with precomputed factorials → O(k<sup>2</sup>) — a classic competitive-programming upgrade (AtCoder DP contest "Grid 2").</p>
       <p><b>Production:</b> seam carving (content-aware image resizing) is minimum path sum over an energy grid, moving down with three choices (down-left, down, down-right). Dynamic time warping for comparing speech/time series is the same grid with min over three neighbours.</p>`,
     aiEra: `<p><b>What AI changes:</b> grid DP is the easiest DP for an assistant to write. Interviewers therefore use twists: obstacles on the first row, blocked start, four-directional movement (no longer DP!), backward fill (Dungeon Game), or "print the route".</p>
       <p><b>Use AI as a partner:</b> ask for tricky grids: <code>Give me 6 small obstacle grids that break naive first-row initialisation</code>, and run them against your code. Ask it to compare DP vs Dijkstra on a grid with 4-way movement and explain why DP fails there.</p>
-      <p><b>Where AI goes wrong:</b> initialising the first row/column to 1 regardless of obstacles, forgetting that the start cell can be blocked, modifying the input grid when the caller still needs it, and using Integer.MAX_VALUE + toll (overflow) at edges.</p>
+      <p><b>Where AI goes wrong:</b> initialising the first row/column to 1 regardless of obstacles, forgetting that the start cell can be blocked, modifying the input grid when the caller still needs it, and using the largest int + toll (overflow in Java and C++) at edges.</p>
       <p><b>What you must still own:</b> the DAG argument (why right/down allows DP and 4-way doesn't), the choice of fill direction, and the one-row memory trick's correctness.</p>`,
     problems: [{
       title: 'Unique Paths II (with obstacles)', level: 'Medium', tags: ['dp', 'grid dp', 'counting'], companies: ['Amazon', 'Google', 'Bloomberg'],
@@ -2116,6 +3112,15 @@ print(min_path([[1, 3, 1], [1, 5, 1], [4, 2, 1]]))                      # (7, [1
     return count(g, r + 1, c) + count(g, r, c + 1);   // down or right
 }` },
       mcq: { q: 'The first row is [0, 0, 1, 0]. What are the path counts for that row?', options: ['1 1 1 1', '1 1 0 0', '1 1 0 1', '0 0 0 0'], answer: 1, explain: 'In row 0 the only way in is from the left. The obstacle gives 0 and every cell after it inherits 0.' },
+      tests: { sig: 'int[][] -> int', fn: 'uniquePathsWithObstacles', cases: [
+        [[[[0, 0, 0], [0, 1, 0], [0, 0, 0]]], 2], [[[[0, 1], [0, 0]]], 1], [[[[1]]], 0], [[[[0]]], 1],
+        [[[[0, 0], [0, 1]]], 0], [[[[1, 0]]], 0], [[[[0, 1, 0], [0, 0, 0]]], 1], [[[[0], [0], [0]]], 1],
+        // 17 x 18 open grid: C(33, 16) paths, close to the int limit
+        [[{ $rep: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], n: 17 }], 1166803110],
+        // 100 x 100: a wall in column 98 (below row 0). Cells left of it get astronomically large counts,
+        // but they never reach the goal, so the answer is 1 (along the top row, then straight down).
+        [[{ $concat: [[new Array(100).fill(0)], { $rep: new Array(98).fill(0).concat([1, 0]), n: 99 }] }], 1]
+      ] },
       hints: [`<p>Hint 1: The last move into a cell came from above or from the left. Obstacles contribute 0.</p>`, `<p>Hint 2: paths[r][c] = 0 if blocked, else paths[r−1][c] + paths[r][c−1] (missing neighbours count 0). Start = 1 if open.</p>`, `<p>Hint 3: One array dp of length n: for each row, for each c: if blocked dp[c] = 0 else if c &gt; 0 dp[c] += dp[c−1]. Initialise dp[0] = 1 only if the start is open. Return dp[n−1].</p>`],
       solution: {
         approach: `<p>Row-by-row counting DP in one array: before the update, dp[c] is "from above"; dp[c−1] is "from the left" (already updated for this row).</p>`,
@@ -2134,17 +3139,45 @@ print(min_path([[1, 3, 1], [1, 5, 1], [4, 2, 1]]))                      # (7, [1
     }
 }`,
         alt: [{ lang: 'python', code: `class Solution:
-    def uniquePathsWithObstacles(self, obstacleGrid):
-        n = len(obstacleGrid[0])
+    def unique_paths_with_obstacles(self, obstacle_grid):
+        n = len(obstacle_grid[0])
         dp = [0] * n
-        dp[0] = 0 if obstacleGrid[0][0] else 1
-        for row in obstacleGrid:
+        dp[0] = 0 if obstacle_grid[0][0] else 1
+        for row in obstacle_grid:
             for c in range(n):
                 if row[c]:
-                    dp[c] = 0
+                    dp[c] = 0                      # blocked cell
                 elif c:
-                    dp[c] += dp[c - 1]
-        return dp[-1]` }],
+                    dp[c] += dp[c - 1]             # above + left
+        return dp[-1]` }, { lang: 'js', code: `function uniquePathsWithObstacles(obstacleGrid) {
+  const n = obstacleGrid[0].length;
+  const dp = new Array(n).fill(0);
+  dp[0] = obstacleGrid[0][0] === 1 ? 0 : 1;
+  for (const row of obstacleGrid) {
+    for (let c = 0; c < n; c++) {
+      if (row[c] === 1) dp[c] = 0;                 // blocked cell
+      else if (c > 0) dp[c] += dp[c - 1];          // above + left
+    }
+  }
+  // Cells that never reach the goal may grow past 2^53 and lose precision,
+  // but every cell that feeds the goal is <= the answer, so the answer stays exact.
+  return dp[n - 1];
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int uniquePathsWithObstacles(vector<vector<int>>& obstacleGrid) {
+        int n = obstacleGrid[0].size();
+        vector<long long> dp(n, 0);
+        dp[0] = obstacleGrid[0][0] == 1 ? 0 : 1;
+        for (auto& row : obstacleGrid) {
+            for (int c = 0; c < n; c++) {
+                if (row[c] == 1) dp[c] = 0;                    // blocked cell
+                else if (c > 0)                                // above + left, capped:
+                    dp[c] = min<long long>(dp[c] + dp[c - 1], INT_MAX);
+            }   // a capped cell can never feed an answer that fits in int, and the cap avoids overflow
+        }
+        return (int) dp[n - 1];
+    }
+};` }],
         dry: { head: ['row', 'grid row', 'dp after the row'], rows: [['0', '0 0 0', '1 1 1'], ['1', '0 1 0', '1 0 1'], ['2', '0 0 0', '1 1 ' + H.c('g', '2')]] },
         complexity: `<p>Time O(m·n), space O(n).</p>`,
         followUps: ['Minimum Path Sum on the same grid.', 'Robot can also move diagonally down-right → add a third term.', 'Count paths modulo 10<sup>9</sup>+7 on a 10<sup>5</sup> × 10<sup>5</sup> grid with few obstacles (combinatorics + inclusion–exclusion).']
@@ -2161,6 +3194,12 @@ print(min_path([[1, 3, 1], [1, 5, 1], [4, 2, 1]]))                      # (7, [1
     return g[r][c] + Math.min(up, left);              // exponential without memo
 }` },
       mcq: { q: 'How should the first row be filled?', options: ['All zeros', 'Copy the grid values', 'Running (prefix) sums of the row, since it is reachable only from the left', 'All infinity'], answer: 2, explain: 'Cells in row 0 can only be entered from the left, so their cost is the sum of everything before them plus themselves.' },
+      tests: { sig: 'int[][] -> int', fn: 'minPathSum', cases: [
+        [[[[1, 3, 1], [1, 5, 1], [4, 2, 1]]], 7], [[[[1, 2, 3], [4, 5, 6]]], 12], [[[[0]]], 0], [[[[5]]], 5],
+        [[[[1, 2], [1, 1]]], 3], [[[[1], [2], [3]]], 6],
+        [[{ $rep: new Array(200).fill(200), n: 200 }], 79800],
+        [[{ $rep: new Array(200).fill(0), n: 200 }], 0]
+      ] },
       hints: [`<p>Hint 1: The cheapest way into (r, c) is via the cheaper of its two possible predecessors.</p>`, `<p>Hint 2: cost[r][c] = grid[r][c] + min(cost[r−1][c], cost[r][c−1]); edges have only one predecessor.</p>`, `<p>Hint 3: Use one row array: dp[c] = grid[r][c] + min(dp[c] (above), dp[c−1] (left)), treating missing neighbours as +∞. Start dp[0] with grid[0][0] and build the first row as prefix sums.</p>`],
       solution: {
         approach: `<p>Grid DP with "min" instead of "+", stored in a single row array.</p>`,
@@ -2180,15 +3219,39 @@ print(min_path([[1, 3, 1], [1, 5, 1], [4, 2, 1]]))                      # (7, [1
     }
 }`,
         alt: [{ lang: 'python', code: `class Solution:
-    def minPathSum(self, grid):
+    def min_path_sum(self, grid):
         n = len(grid[0])
-        dp = [float("inf")] * n
+        dp = [float("inf")] * n                    # +inf = "no row above yet"
         dp[0] = 0
         for row in grid:
-            dp[0] += row[0]
+            dp[0] += row[0]                        # first column: only from above
             for c in range(1, n):
-                dp[c] = min(dp[c], dp[c - 1]) + row[c]
-        return dp[-1]` }],
+                dp[c] = min(dp[c], dp[c - 1]) + row[c]   # cheaper of above / left
+        return dp[-1]` }, { lang: 'js', code: `function minPathSum(grid) {
+  const n = grid[0].length;
+  const dp = new Array(n).fill(Infinity);          // Infinity = "no row above yet"
+  dp[0] = 0;
+  for (const row of grid) {
+    dp[0] += row[0];                               // first column: only from above
+    for (let c = 1; c < n; c++) {
+      dp[c] = Math.min(dp[c], dp[c - 1]) + row[c]; // cheaper of above / left
+    }
+  }
+  return dp[n - 1];
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int minPathSum(vector<vector<int>>& grid) {
+        int n = grid[0].size();
+        vector<int> dp(n, INT_MAX);                // INT_MAX = "no row above yet"
+        dp[0] = 0;
+        for (auto& row : grid) {
+            dp[0] += row[0];                       // first column: only from above
+            for (int c = 1; c < n; c++)
+                dp[c] = min(dp[c], dp[c - 1]) + row[c];   // dp[c - 1] is finite, so no overflow
+        }
+        return dp[n - 1];
+    }
+};` }],
         dry: { head: ['row', 'grid row', 'dp after the row'], rows: [['0', '1 3 1', '1 4 5'], ['1', '1 5 1', '2 7 6'], ['2', '4 2 1', '6 8 ' + H.c('g', '7')]] },
         complexity: `<p>Time O(m·n) = 4·10<sup>4</sup>; space O(n).</p>`,
         followUps: ['Print the path (keep the full table and walk back).', 'Maximum gold instead of minimum cost.', 'Movement in 4 directions → Dijkstra.']
@@ -2210,6 +3273,9 @@ print(min_path([[1, 3, 1], [1, 5, 1], [4, 2, 1]]))                      # (7, [1
     return trib(n - 1) + trib(n - 2) + trib(n - 3);
 }` },
     mcq: { q: 'How many rolling variables does the O(1)-space solution need?', options: ['1', '2', '3', 'n'], answer: 2, explain: 'Each term reads the previous three terms.' },
+    tests: { sig: 'int -> int', fn: 'tribonacci', cases: [
+      [[0], 0], [[1], 1], [[2], 1], [[3], 2], [[4], 4], [[25], 1389537], [[37], 2082876103]
+    ] },
     hints: [`<p>Hint 1: Exactly like Fibonacci, but each term looks three steps back instead of two.</p>`, `<p>Hint 2: Keep a = T(i−3), b = T(i−2), c = T(i−1) and slide them forward each step.</p>`, `<p>Hint 3: Return n directly for n = 0 and 1 for n = 1 or 2; otherwise loop i = 3..n computing d = a + b + c then shift.</p>`],
     solution: {
       approach: `<p>Bottom-up with a three-number sliding window.</p>`,
@@ -2225,6 +3291,33 @@ print(min_path([[1, 3, 1], [1, 5, 1], [4, 2, 1]]))                      # (7, [1
         return c;
     }
 }`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def tribonacci(self, n: int) -> int:
+        if n == 0:
+            return 0
+        a, b, c = 0, 1, 1                      # T(i-3), T(i-2), T(i-1)
+        for _ in range(3, n + 1):
+            a, b, c = b, c, a + b + c          # slide the window
+        return c` }, { lang: 'js', code: `function tribonacci(n) {
+  if (n === 0) return 0;
+  let a = 0, b = 1, c = 1;                     // T(i-3), T(i-2), T(i-1)
+  for (let i = 3; i <= n; i++) {
+    [a, b, c] = [b, c, a + b + c];             // slide the window
+  }
+  return c;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int tribonacci(int n) {
+        if (n == 0) return 0;
+        if (n <= 2) return 1;
+        int a = 0, b = 1, c = 1;               // T(i-3), T(i-2), T(i-1)
+        for (int i = 3; i <= n; i++) {
+            int d = a + b + c;                 // n <= 37 keeps this inside int
+            a = b; b = c; c = d;               // slide the window
+        }
+        return c;
+    }
+};` }],
       dry: { head: ['i', 'a', 'b', 'c', 'd'], rows: [['3', '0', '1', '1', '2'], ['4', '1', '1', '2', H.c('g', '4')]] },
       complexity: `<p>Time O(n), space O(1).</p>`
     }
@@ -2241,6 +3334,10 @@ print(min_path([[1, 3, 1], [1, 5, 1], [4, 2, 1]]))                      # (7, [1
 }
 int minCost(int[] cost) { return Math.min(from(cost, 0), from(cost, 1)); }` },
     mcq: { q: 'Let dp[i] = min cost to <i>stand on</i> position i (before paying cost[i]). What is dp[i]?', options: ['min(dp[i−1] + cost[i−1], dp[i−2] + cost[i−2])', 'dp[i−1] + dp[i−2]', 'cost[i] + cost[i−1]', 'max(dp[i−1], dp[i−2])'], answer: 0, explain: 'You arrived from i−1 (paying cost[i−1]) or from i−2 (paying cost[i−2]). dp[0] = dp[1] = 0 because you may start on either for free.' },
+    tests: { sig: 'int[] -> int', fn: 'minCostClimbingStairs', cases: [
+      [[[10, 15, 20]], 15], [[[1, 100, 1, 1, 1, 100, 1, 1, 100, 1]], 6], [[[0, 0]], 0], [[[5, 3]], 3],
+      [[[1, 2, 3]], 2], [[{ $rep: 999, n: 20 }], 9990], [[{ $rep: 999, n: 1000 }], 499500]
+    ] },
     hints: [`<p>Hint 1: It is Climbing Stairs with min instead of +: how did you arrive at position i, and what did that last step cost?</p>`, `<p>Hint 2: dp[i] = min(dp[i−1] + cost[i−1], dp[i−2] + cost[i−2]), dp[0] = dp[1] = 0, answer dp[n] (the top).</p>`, `<p>Hint 3: Only two previous values are needed → two variables. Be careful: the top is index n, one past the last stair.</p>`],
     solution: {
       approach: `<p>dp over positions 0..n where n is the top; two rolling variables.</p>`,
@@ -2256,11 +3353,28 @@ int minCost(int[] cost) { return Math.min(from(cost, 0), from(cost, 1)); }` },
     }
 }`,
       alt: [{ lang: 'python', code: `class Solution:
-    def minCostClimbingStairs(self, cost):
-        two, one = 0, 0
+    def min_cost_climbing_stairs(self, cost):
+        two, one = 0, 0                        # dp[i-2], dp[i-1]; dp[0] = dp[1] = 0
         for i in range(2, len(cost) + 1):
             two, one = one, min(one + cost[i - 1], two + cost[i - 2])
-        return one` }],
+        return one                             # dp[n] = cost to reach the top` }, { lang: 'js', code: `function minCostClimbingStairs(cost) {
+  let twoBack = 0, oneBack = 0;                // dp[i-2], dp[i-1]; dp[0] = dp[1] = 0
+  for (let i = 2; i <= cost.length; i++) {
+    [twoBack, oneBack] = [oneBack, Math.min(oneBack + cost[i - 1], twoBack + cost[i - 2])];
+  }
+  return oneBack;                              // dp[n] = cost to reach the top
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int minCostClimbingStairs(vector<int>& cost) {
+        int twoBack = 0, oneBack = 0;          // dp[i-2], dp[i-1]; dp[0] = dp[1] = 0
+        for (size_t i = 2; i <= cost.size(); i++) {
+            int cur = min(oneBack + cost[i - 1], twoBack + cost[i - 2]);
+            twoBack = oneBack;
+            oneBack = cur;
+        }
+        return oneBack;                        // dp[n] = cost to reach the top
+    }
+};` }],
       dry: { head: ['i', 'from i-1', 'from i-2', 'dp[i]'], rows: [['2 (cost=[10,15,20])', '0 + 15', '0 + 10', '10'], ['3 (top)', '10 + 20 = 30', '0 + 15 = 15', H.c('g', '15')]] },
       complexity: `<p>Time O(n), space O(1).</p>`,
       followUps: ['Allow jumps of 1..k stairs → O(n·k), or O(n) with a monotonic deque.']
@@ -2272,12 +3386,19 @@ int minCost(int[] cost) { return Math.min(from(cost, 0), from(cost, 1)); }` },
     statement: `<p>Given <code>numRows</code>, return the first numRows rows of Pascal's triangle. Each number is the sum of the two numbers directly above it; the edges are 1.</p>`,
     constraints: `1 ≤ numRows ≤ 30`,
     example: `<p>numRows = 5 →</p>${H.arr([1], { idx: false })}${H.arr([1, 1], { idx: false })}${H.arr([1, 2, 1], { idx: false })}${H.arr([1, 3, 3, 1], { idx: false, hl: { 1: 'b', 2: 'b' } })}${H.arr([1, 4, 6, 4, 1], { idx: false, hl: { 2: 'g' } })}<p>${H.c('g', '6')} = ${H.c('b', '3 + 3')}. Entry j of row i is C(i, j).</p>`,
-    brute: { why: `<p>Compute each entry C(i, j) independently with factorials: 30! overflows long, and recomputing factorials per entry is wasteful (O(n) per entry). Or recursively C(i, j) = C(i−1, j−1) + C(i−1, j) without memo → exponential.</p>`, code: `long C(int n, int k) {
+    brute: { why: `<p>Compute each entry C(i, j) independently with factorials: 30! overflows a 64-bit integer, and recomputing factorials per entry is wasteful (O(n) per entry). Or recursively C(i, j) = C(i−1, j−1) + C(i−1, j) without memo → exponential.</p>`, code: `long C(int n, int k) {
     if (k == 0 || k == n) return 1;
     return C(n - 1, k - 1) + C(n - 1, k);      // exponential without memo
 }` },
     mcq: { q: 'Which DP relation builds row i from row i−1?', options: ['row[i][j] = row[i−1][j−1] + row[i−1][j]', 'row[i][j] = row[i−1][j] × 2', 'row[i][j] = row[i][j−1] + 1', 'row[i][j] = i × j'], answer: 0, explain: 'Pascal\'s rule: C(i, j) = C(i−1, j−1) + C(i−1, j) — choose item i or not.' },
-    hints: [`<p>Hint 1: Each row depends only on the row above it, like a 2D DP table filled row by row.</p>`, `<p>Hint 2: Start every row with 1, fill the middle with sums of the two above, end with 1.</p>`, `<p>Hint 3: Row i has i+1 entries; handle row 0 = [1] as the base. Use List&lt;List&lt;Integer&gt;&gt; and read the previous row with get(i−1).</p>`],
+    tests: { sig: 'int -> list<list<int>>', fn: 'generate', cases: [
+      [[1], [[1]]], [[2], [[1], [1, 1]]], [[3], [[1], [1, 1], [1, 2, 1]]],
+      [[5], [[1], [1, 1], [1, 2, 1], [1, 3, 3, 1], [1, 4, 6, 4, 1]]],
+      [[6], [[1], [1, 1], [1, 2, 1], [1, 3, 3, 1], [1, 4, 6, 4, 1], [1, 5, 10, 10, 5, 1]]],
+      // 30 rows: the middle of the last row is C(29, 14) = 77558760
+      [[30], [[1],[1,1],[1,2,1],[1,3,3,1],[1,4,6,4,1],[1,5,10,10,5,1],[1,6,15,20,15,6,1],[1,7,21,35,35,21,7,1],[1,8,28,56,70,56,28,8,1],[1,9,36,84,126,126,84,36,9,1],[1,10,45,120,210,252,210,120,45,10,1],[1,11,55,165,330,462,462,330,165,55,11,1],[1,12,66,220,495,792,924,792,495,220,66,12,1],[1,13,78,286,715,1287,1716,1716,1287,715,286,78,13,1],[1,14,91,364,1001,2002,3003,3432,3003,2002,1001,364,91,14,1],[1,15,105,455,1365,3003,5005,6435,6435,5005,3003,1365,455,105,15,1],[1,16,120,560,1820,4368,8008,11440,12870,11440,8008,4368,1820,560,120,16,1],[1,17,136,680,2380,6188,12376,19448,24310,24310,19448,12376,6188,2380,680,136,17,1],[1,18,153,816,3060,8568,18564,31824,43758,48620,43758,31824,18564,8568,3060,816,153,18,1],[1,19,171,969,3876,11628,27132,50388,75582,92378,92378,75582,50388,27132,11628,3876,969,171,19,1],[1,20,190,1140,4845,15504,38760,77520,125970,167960,184756,167960,125970,77520,38760,15504,4845,1140,190,20,1],[1,21,210,1330,5985,20349,54264,116280,203490,293930,352716,352716,293930,203490,116280,54264,20349,5985,1330,210,21,1],[1,22,231,1540,7315,26334,74613,170544,319770,497420,646646,705432,646646,497420,319770,170544,74613,26334,7315,1540,231,22,1],[1,23,253,1771,8855,33649,100947,245157,490314,817190,1144066,1352078,1352078,1144066,817190,490314,245157,100947,33649,8855,1771,253,23,1],[1,24,276,2024,10626,42504,134596,346104,735471,1307504,1961256,2496144,2704156,2496144,1961256,1307504,735471,346104,134596,42504,10626,2024,276,24,1],[1,25,300,2300,12650,53130,177100,480700,1081575,2042975,3268760,4457400,5200300,5200300,4457400,3268760,2042975,1081575,480700,177100,53130,12650,2300,300,25,1],[1,26,325,2600,14950,65780,230230,657800,1562275,3124550,5311735,7726160,9657700,10400600,9657700,7726160,5311735,3124550,1562275,657800,230230,65780,14950,2600,325,26,1],[1,27,351,2925,17550,80730,296010,888030,2220075,4686825,8436285,13037895,17383860,20058300,20058300,17383860,13037895,8436285,4686825,2220075,888030,296010,80730,17550,2925,351,27,1],[1,28,378,3276,20475,98280,376740,1184040,3108105,6906900,13123110,21474180,30421755,37442160,40116600,37442160,30421755,21474180,13123110,6906900,3108105,1184040,376740,98280,20475,3276,378,28,1],[1,29,406,3654,23751,118755,475020,1560780,4292145,10015005,20030010,34597290,51895935,67863915,77558760,77558760,67863915,51895935,34597290,20030010,10015005,4292145,1560780,475020,118755,23751,3654,406,29,1]]]
+    ] },
+    hints: [`<p>Hint 1: Each row depends only on the row above it, like a 2D DP table filled row by row.</p>`, `<p>Hint 2: Start every row with 1, fill the middle with sums of the two above, end with 1.</p>`, `<p>Hint 3: Row i has i+1 entries; handle row 0 = [1] as the base. Keep a list of rows (<code>List&lt;List&lt;Integer&gt;&gt;</code> / list of lists / array of arrays / <code>vector&lt;vector&lt;int&gt;&gt;</code>) and read the previous row, row i−1.</p>`],
     solution: {
       approach: `<p>Build row by row; middle entries are sums of the two entries above.</p>`,
       code: `class Solution {
@@ -2294,6 +3415,34 @@ int minCost(int[] cost) { return Math.min(from(cost, 0), from(cost, 1)); }` },
         return rows;
     }
 }`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def generate(self, num_rows: int) -> list[list[int]]:
+        rows = [[1]]                           # row 0
+        for _ in range(1, num_rows):
+            prev = rows[-1]
+            # edges are 1; each middle entry is the sum of the two above it
+            rows.append([1] + [a + b for a, b in zip(prev, prev[1:])] + [1])
+        return rows` }, { lang: 'js', code: `function generate(numRows) {
+  const rows = [[1]];                          // row 0
+  for (let i = 1; i < numRows; i++) {
+    const prev = rows[i - 1], row = [1];       // left edge
+    for (let j = 1; j < i; j++) row.push(prev[j - 1] + prev[j]);
+    row.push(1);                               // right edge
+    rows.push(row);
+  }
+  return rows;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    vector<vector<int>> generate(int numRows) {
+        vector<vector<int>> rows;
+        for (int i = 0; i < numRows; i++) {
+            vector<int> row(i + 1, 1);         // edges are 1
+            for (int j = 1; j < i; j++) row[j] = rows[i - 1][j - 1] + rows[i - 1][j];
+            rows.push_back(move(row));
+        }
+        return rows;
+    }
+};` }],
       dry: { head: ['i', 'row'], rows: [['0', '1'], ['1', '1 1'], ['2', '1 2 1'], ['3', '1 3 3 1'], ['4', H.c('g', '1 4 6 4 1')]] },
       complexity: `<p>Time O(numRows<sup>2</sup>), space O(numRows<sup>2</sup>) for the output.</p>`,
       followUps: ['Return only row k using O(k) space (update right-to-left, like 0/1 knapsack).', 'nCr mod p for large n → factorials + modular inverse (DSA 3).']
@@ -2315,6 +3464,11 @@ int minCost(int[] cost) { return Math.min(from(cost, 0), from(cost, 1)); }` },
     return ans;
 }` },
     mcq: { q: 'Why is ans[i] = ans[i &gt;&gt; 1] + (i &amp; 1) valid DP?', options: ['i &gt;&gt; 1 &lt; i so it is already computed, and it has the same bits except the last one', 'Because of 2\'s complement', 'Because popcount is multiplicative', 'It only works for powers of two'], answer: 0, explain: 'Dropping the last bit gives a smaller number already in the table; add back the dropped bit.' },
+    // check: compares against an independent popcount (binary string), so the big case needs no literal
+    tests: { sig: 'int -> int[]', fn: 'countBits', check: '(args, out) => Array.isArray(out) && out.length === args[0] + 1 && out.every((v, i) => v === i.toString(2).split("").filter((ch) => ch === "1").length)', cases: [
+      [[0], [0]], [[1], [0, 1]], [[2], [0, 1, 1]], [[5], [0, 1, 1, 2, 1, 2]],
+      [[16], [0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4, 1]], [[100000], null]
+    ] },
     hints: [`<p>Hint 1: Look for a smaller number whose bit count is already known and differs from i in a predictable way.</p>`, `<p>Hint 2: i &gt;&gt; 1 removes the last bit: ans[i] = ans[i &gt;&gt; 1] + (i &amp; 1). Alternatively ans[i] = ans[i &amp; (i − 1)] + 1 (drop the lowest set bit).</p>`, `<p>Hint 3: Base ans[0] = 0; fill i = 1..n in increasing order — every dependency is smaller than i.</p>`],
     solution: {
       approach: `<p>1D DP where each number's answer comes from a strictly smaller number.</p>`,
@@ -2327,6 +3481,26 @@ int minCost(int[] cost) { return Math.min(from(cost, 0), from(cost, 1)); }` },
         return ans;
     }
 }`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def count_bits(self, n: int) -> list[int]:
+        ans = [0] * (n + 1)                    # ans[0] = 0
+        for i in range(1, n + 1):
+            ans[i] = ans[i >> 1] + (i & 1)     # same bits as i // 2, plus the last bit
+        return ans` }, { lang: 'js', code: `function countBits(n) {
+  const ans = new Array(n + 1).fill(0);        // ans[0] = 0
+  for (let i = 1; i <= n; i++) {
+    ans[i] = ans[i >> 1] + (i & 1);            // same bits as i / 2, plus the last bit
+  }
+  return ans;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> countBits(int n) {
+        vector<int> ans(n + 1, 0);             // ans[0] = 0
+        for (int i = 1; i <= n; i++)
+            ans[i] = ans[i >> 1] + (i & 1);    // same bits as i / 2, plus the last bit
+        return ans;
+    }
+};` }],
       dry: { head: ['i', 'i>>1', 'i&1', 'ans[i]'], rows: [['1', '0', '1', '1'], ['2', '1', '0', '1'], ['3', '1', '1', '2'], ['4', '2', '0', '1'], ['5', '2', '1', H.c('g', '2')]] },
       complexity: `<p>Time O(n), space O(n) for the output.</p>`
     }
@@ -2348,6 +3522,10 @@ int minCost(int[] cost) { return Math.min(from(cost, 0), from(cost, 1)); }` },
     return Math.max(skip, take);
 }` },
     mcq: { q: 'How do you break the circle?', options: ['Solve the line twice: without the last house, and without the first house; take the max', 'Always skip house 0', 'Rob every other house', 'Double the array'], answer: 0, explain: 'First and last can\'t both be robbed, so at least one of them is excluded; each case is a plain line problem.' },
+    tests: { sig: 'int[] -> int', fn: 'rob', cases: [
+      [[[2, 3, 2]], 3], [[[1, 2, 3, 1]], 4], [[[1, 2, 3]], 3], [[[5]], 5], [[[1, 2]], 2], [[[0]], 0],
+      [[[200, 3, 140, 20, 10]], 340], [[{ $rep: 1000, n: 100 }], 50000], [[{ $rep: 1000, n: 99 }], 49000]
+    ] },
     hints: [`<p>Hint 1: The only new conflict is between house 0 and house n−1. At least one of them is not robbed.</p>`, `<p>Hint 2: Answer = max(robLine(0..n−2), robLine(1..n−1)), each solved with the two-variable House Robber.</p>`, `<p>Hint 3: Special case n = 1 → nums[0] (both ranges would be empty otherwise).</p>`],
     solution: {
       approach: `<p>Reduce the circle to two line problems.</p>`,
@@ -2367,6 +3545,41 @@ int minCost(int[] cost) { return Math.min(from(cost, 0), from(cost, 1)); }` },
         return prev1;
     }
 }`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def rob(self, nums):
+        def line(houses):                      # plain House Robber on a straight street
+            prev2 = prev1 = 0
+            for x in houses:
+                prev2, prev1 = prev1, max(prev1, prev2 + x)
+            return prev1
+        if len(nums) == 1:
+            return nums[0]
+        return max(line(nums[:-1]), line(nums[1:]))   # drop the last house, or the first` }, { lang: 'js', code: `function rob(nums) {
+  const n = nums.length;
+  if (n === 1) return nums[0];
+  const line = (lo, hi) => {                   // plain House Robber on nums[lo..hi]
+    let prev2 = 0, prev1 = 0;
+    for (let i = lo; i <= hi; i++) [prev2, prev1] = [prev1, Math.max(prev1, prev2 + nums[i])];
+    return prev1;
+  };
+  return Math.max(line(0, n - 2), line(1, n - 1));   // drop the last house, or the first
+}` }, { lang: 'cpp', code: `class Solution {
+    int line(const vector<int>& a, int lo, int hi) {   // plain House Robber on a[lo..hi]
+        int prev2 = 0, prev1 = 0;
+        for (int i = lo; i <= hi; i++) {
+            int cur = max(prev1, prev2 + a[i]);
+            prev2 = prev1;
+            prev1 = cur;
+        }
+        return prev1;
+    }
+public:
+    int rob(vector<int>& nums) {
+        int n = nums.size();
+        if (n == 1) return nums[0];
+        return max(line(nums, 0, n - 2), line(nums, 1, n - 1));   // drop the last house, or the first
+    }
+};` }],
       dry: { head: ['range', 'houses', 'best'], rows: [['0..n-2', '1 2 3', '4 (1 + 3)'], ['1..n-1', '2 3 1', '3'], ['answer', '', H.c('g', '4')]] },
       complexity: `<p>Time O(n), space O(1).</p>`
     }
@@ -2384,6 +3597,12 @@ int minCost(int[] cost) { return Math.min(from(cost, 0), from(cost, 1)); }` },
          + ways(coins, i + 1, left);           // move on to the next coin type
 }` },
     mcq: { q: 'Which loop order counts each combination exactly once?', options: ['for coin { for a = coin..amount }', 'for a { for coin }', 'Either, they are identical', 'for a = amount down to coin'], answer: 0, explain: 'Coins outer means coin types are added in a fixed order, so each multiset is built once. Amount outer counts orderings (LC 377).' },
+    tests: { sig: 'int int[] -> int', fn: 'change', cases: [
+      [[5, [1, 2, 5]], 4], [[3, [2]], 0], [[10, [10]], 1], [[0, [7]], 1], [[0, [1, 2]], 1], [[4, [1, 2, 3]], 4],
+      [[500, [1, 2, 5]], 12701], [[5000, [5000]], 1],
+      // 300 even coins, odd amount: the answer is 0, but the even cells overflow 64 bits along the way
+      [[4999, { $range: [2, 602, 2] }], 0]
+    ] },
     hints: [`<p>Hint 1: To avoid counting 1+2 and 2+1 twice, decide coin types one at a time in a fixed order.</p>`, `<p>Hint 2: ways[a] += ways[a − c] with coins in the outer loop and amounts going up in the inner loop (unbounded → forwards).</p>`, `<p>Hint 3: ways[0] = 1 (empty combination). amount = 0 → 1. Answer ways[amount].</p>`],
     solution: {
       approach: `<p>1D unbounded counting DP with coins as the outer loop.</p>`,
@@ -2397,6 +3616,33 @@ int minCost(int[] cost) { return Math.min(from(cost, 0), from(cost, 1)); }` },
         return ways[amount];
     }
 }`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def change(self, amount, coins):
+        ways = [1] + [0] * amount              # one way to make 0: take nothing
+        for c in coins:                        # coin types one at a time
+            for a in range(c, amount + 1):
+                ways[a] += ways[a - c]
+        return ways[amount]` }, { lang: 'js', code: `function change(amount, coins) {
+  const ways = new Array(amount + 1).fill(0);
+  ways[0] = 1;                                 // one way to make 0: take nothing
+  for (const c of coins) {                     // coin types one at a time
+    for (let a = c; a <= amount; a++) ways[a] += ways[a - c];
+  }
+  // cells that cannot lead to amount may lose precision past 2^53; the answer itself is exact
+  return ways[amount];
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int change(int amount, vector<int>& coins) {
+        // unsigned arithmetic wraps (defined behaviour); the true answer fits in int,
+        // so the wrapped sum still ends on the right value
+        vector<unsigned long long> ways(amount + 1, 0);
+        ways[0] = 1;                           // one way to make 0: take nothing
+        for (int c : coins)                    // coin types one at a time
+            for (int a = c; a <= amount; a++)
+                ways[a] += ways[a - c];
+        return (int) ways[amount];
+    }
+};` }],
       dry: { head: ['after coin', 'ways[0..5]'], rows: [['(start)', '1 0 0 0 0 0'], ['1', '1 1 1 1 1 1'], ['2', '1 1 2 2 3 3'], ['5', '1 1 2 2 3 ' + H.c('g', '4')]] },
       complexity: `<p>Time O(amount × coins) = 1.5·10<sup>6</sup>; space O(amount).</p>`
     }
@@ -2414,7 +3660,13 @@ int minCost(int[] cost) { return Math.min(from(cost, 0), from(cost, 1)); }` },
     return total;
 }` },
     mcq: { q: 'This is just which earlier problem with arbitrary step sizes?', options: ['Climbing Stairs', '0/1 Knapsack', 'Edit Distance', 'House Robber'], answer: 0, explain: 'ways(t) = Σ ways(t − step) over allowed steps — exactly climbing stairs where steps = nums.' },
-    hints: [`<p>Hint 1: Think about the LAST number in the sequence. If it is x, the rest is any sequence summing to target − x.</p>`, `<p>Hint 2: dp[t] = Σ dp[t − x] for x in nums, x ≤ t; dp[0] = 1. Loop t outer, nums inner.</p>`, `<p>Hint 3: Intermediate dp values can exceed int even when the final answer fits; in Java the wrapped values don't matter for the final result when it fits, but use long with a cap (or mod) to be safe.</p>`],
+    tests: { sig: 'int[] int -> int', fn: 'combinationSum4', cases: [
+      [[[1, 2, 3], 4], 7], [[[9], 3], 0], [[[1], 1], 1], [[[2], 4], 1], [[[1, 2], 10], 89],
+      [[[1, 2], 45], 1836311903], [[[4, 2, 1], 32], 39882198],
+      // 200 even numbers, odd target: the answer is 0, but the even cells get astronomically large
+      [[{ $range: [2, 402, 2] }, 999], 0]
+    ] },
+    hints: [`<p>Hint 1: Think about the LAST number in the sequence. If it is x, the rest is any sequence summing to target − x.</p>`, `<p>Hint 2: dp[t] = Σ dp[t − x] for x in nums, x ≤ t; dp[0] = 1. Loop t outer, nums inner.</p>`, `<p>Hint 3: Intermediate dp values can exceed a 32-bit int (even 64 bits) even when the final answer fits. Cap each cell at the int maximum: a capped cell can never feed an answer that fits. Use a 64-bit integer for the cap in Java and C++ (signed overflow is undefined behaviour in C++); Python ints never overflow; JS numbers are exact only up to 2<sup>53</sup>, so cap there too.</p>`],
     solution: {
       approach: `<p>Amount-outer counting DP (permutations).</p>`,
       code: `class Solution {
@@ -2429,6 +3681,32 @@ int minCost(int[] cost) { return Math.min(from(cost, 0), from(cost, 1)); }` },
         return (int) dp[target];
     }
 }`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def combination_sum4(self, nums, target):
+        dp = [1] + [0] * target                # dp[0] = 1: the empty sequence
+        for t in range(1, target + 1):
+            dp[t] = sum(dp[t - x] for x in nums if x <= t)   # last number is x
+        return dp[target]                      # Python ints never overflow` }, { lang: 'js', code: `function combinationSum4(nums, target) {
+  const CAP = 2 ** 31 - 1;                     // a capped cell can never feed an answer that fits
+  const dp = new Array(target + 1).fill(0);
+  dp[0] = 1;                                   // the empty sequence
+  for (let t = 1; t <= target; t++) {
+    for (const x of nums) {
+      if (x <= t) dp[t] = Math.min(CAP, dp[t] + dp[t - x]);   // last number is x
+    }
+  }
+  return dp[target];
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int combinationSum4(vector<int>& nums, int target) {
+        vector<long long> dp(target + 1, 0);
+        dp[0] = 1;                             // the empty sequence
+        for (int t = 1; t <= target; t++)
+            for (int x : nums)
+                if (x <= t) dp[t] = min<long long>(INT_MAX, dp[t] + dp[t - x]);   // cap: no overflow
+        return (int) dp[target];
+    }
+};` }],
       dry: { head: ['t', 'dp[t-1]', 'dp[t-2]', 'dp[t-3]', 'dp[t]'], rows: [['1', '1', '—', '—', '1'], ['2', '1', '1', '—', '2'], ['3', '2', '1', '1', '4'], ['4', '4', '2', '1', H.c('g', '7')]] },
       complexity: `<p>Time O(target × n) = 2·10<sup>5</sup>; space O(target).</p>`,
       followUps: ['Negative numbers allowed? Then infinitely many sequences may exist — you must cap the length.']
@@ -2446,6 +3724,11 @@ int minCost(int[] cost) { return Math.min(from(cost, 0), from(cost, 1)); }` },
     return can(a, i + 1, left - a[i]) || can(a, i + 1, left);
 }` },
     mcq: { q: 'The total is 23. What do you return?', options: ['false immediately', 'Run subset sum for 11', 'Run subset sum for 12', 'true'], answer: 0, explain: 'Two equal integer halves need an even total.' },
+    tests: { sig: 'int[] -> bool', fn: 'canPartition', cases: [
+      [[[1, 5, 11, 5]], true], [[[1, 2, 3, 5]], false], [[[1]], false], [[[2, 2]], true], [[[1, 1, 1, 1]], true],
+      [[[3, 3, 3, 4, 5]], true], [[[2, 2, 3, 5]], false],
+      [[{ $rep: 100, n: 200 }], true], [[{ $concat: [{ $rep: 100, n: 199 }, [98]] }], false]
+    ] },
     hints: [`<p>Hint 1: If two halves are equal, each is total/2. So the question is "is there a subset with sum total/2?"</p>`, `<p>Hint 2: Boolean 0/1 knapsack: can[s] |= can[s − x], looping s from target down to x (each number once).</p>`, `<p>Hint 3: Odd total → false. can[0] = true. Early exit as soon as can[target] becomes true.</p>`],
     solution: {
       approach: `<p>Subset-sum DP over reachable sums, backward loop.</p>`,
@@ -2466,6 +3749,39 @@ int minCost(int[] cost) { return Math.min(from(cost, 0), from(cost, 1)); }` },
         return can[target];
     }
 }`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def can_partition(self, nums):
+        total = sum(nums)
+        if total % 2:
+            return False                       # odd total: no equal halves
+        target = total // 2
+        reach = 1                              # bit s set = some subset sums to s (bitset)
+        for x in nums:
+            reach |= reach << x                # take x or not, each number once
+        return (reach >> target) & 1 == 1` }, { lang: 'js', code: `function canPartition(nums) {
+  const total = nums.reduce((a, b) => a + b, 0);
+  if (total % 2 === 1) return false;           // odd total: no equal halves
+  const target = total / 2;
+  const can = new Uint8Array(target + 1);
+  can[0] = 1;                                  // empty subset makes 0
+  for (const x of nums) {
+    for (let s = target; s >= x; s--) {        // backwards: each number once
+      if (can[s - x]) can[s] = 1;
+    }
+    if (can[target]) return true;
+  }
+  return can[target] === 1;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    bool canPartition(vector<int>& nums) {
+        int total = accumulate(nums.begin(), nums.end(), 0);
+        if (total % 2 == 1) return false;      // odd total: no equal halves
+        bitset<10001> reach;                   // bit s = some subset sums to s
+        reach[0] = 1;
+        for (int x : nums) reach |= reach << x;   // take x or not, each number once
+        return reach[total / 2];
+    }
+};` }],
       dry: { head: ['after x', 'reachable sums ≤ 11'], rows: [['1', '{0, 1}'], ['5', '{0, 1, 5, 6}'], ['11', '{0, 1, 5, 6, ' + H.c('g', '11') + '} → true']] },
       complexity: `<p>Time O(n × total/2) ≤ 200 × 10 000 = 2·10<sup>6</sup>; space O(total). BitSet version: O(n·total/64).</p>`
     }
@@ -2481,6 +3797,11 @@ int minCost(int[] cost) { return Math.min(from(cost, 0), from(cost, 1)); }` },
     return count(a, i + 1, sum + a[i], target) + count(a, i + 1, sum - a[i], target);
 }` },
     mcq: { q: 'With P = sum of "+" numbers and total = sum of all, which is true?', options: ['P = (total + target) / 2', 'P = total − target', 'P = target / 2', 'P = total'], answer: 0, explain: 'P − (total − P) = target ⇒ 2P = total + target.' },
+    tests: { sig: 'int[] int -> int', fn: 'findTargetSumWays', cases: [
+      [[[1, 1, 1, 1, 1], 3], 5], [[[1], 1], 1], [[[1], 2], 0], [[[0, 0, 0], 0], 8], [[[1, 0], 1], 2],
+      [[[1000], -1000], 1], [[[2, 3], 0], 0],
+      [[{ $rep: 0, n: 20 }, 0], 1048576], [[{ $rep: 50, n: 20 }, 1000], 1], [[{ $rep: 50, n: 20 }, 0], 184756]
+    ] },
     hints: [`<p>Hint 1: Split the numbers into a plus group P and a minus group. Write an equation linking P, total and target.</p>`, `<p>Hint 2: P = (total + target)/2 → count subsets with that sum: ways[s] += ways[s − x], s going down.</p>`, `<p>Hint 3: If total + target is odd or |target| &gt; total → 0. Zeros are handled naturally: each 0 doubles the count (both signs).</p>`],
     solution: {
       approach: `<p>Algebra turns signs into a subset-count problem → counting 0/1 knapsack.</p>`,
@@ -2498,6 +3819,39 @@ int minCost(int[] cost) { return Math.min(from(cost, 0), from(cost, 1)); }` },
         return ways[p];
     }
 }`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def find_target_sum_ways(self, nums, target):
+        total = sum(nums)
+        if abs(target) > total or (total + target) % 2:
+            return 0
+        p = (total + target) // 2              # sum of the "+" group
+        ways = [1] + [0] * p
+        for x in nums:
+            for s in range(p, x - 1, -1):      # each number used once
+                ways[s] += ways[s - x]
+        return ways[p]` }, { lang: 'js', code: `function findTargetSumWays(nums, target) {
+  const total = nums.reduce((a, b) => a + b, 0);
+  if (Math.abs(target) > total || (total + target) % 2 !== 0) return 0;
+  const p = (total + target) / 2;              // sum of the "+" group
+  const ways = new Array(p + 1).fill(0);
+  ways[0] = 1;
+  for (const x of nums) {
+    for (let s = p; s >= x; s--) ways[s] += ways[s - x];   // each number used once
+  }
+  return ways[p];
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int findTargetSumWays(vector<int>& nums, int target) {
+        int total = accumulate(nums.begin(), nums.end(), 0);
+        if (abs(target) > total || (total + target) % 2 != 0) return 0;
+        int p = (total + target) / 2;          // sum of the "+" group
+        vector<int> ways(p + 1, 0);
+        ways[0] = 1;
+        for (int x : nums)
+            for (int s = p; s >= x; s--) ways[s] += ways[s - x];   // each number used once
+        return ways[p];                        // at most 2^20, fits in int
+    }
+};` }],
       dry: { head: ['after x', 'ways[0..4]'], rows: [['1', '1 1 0 0 0'], ['1', '1 2 1 0 0'], ['1', '1 3 3 1 0'], ['1', '1 4 6 4 1'], ['1', '1 5 10 10 ' + H.c('g', '5')]] },
       complexity: `<p>Time O(n × P), space O(P).</p>`
     }
@@ -2515,6 +3869,9 @@ int minCost(int[] cost) { return Math.min(from(cost, 0), from(cost, 1)); }` },
     return best;
 }` },
     mcq: { q: 'This is coin change (min coins) with which coins?', options: ['All perfect squares ≤ n', 'Only 1 and 4', 'All primes', 'Powers of two'], answer: 0, explain: 'Each square can be reused any number of times — unbounded min-coin DP.' },
+    tests: { sig: 'int -> int', fn: 'numSquares', cases: [
+      [[1], 1], [[2], 2], [[3], 3], [[4], 1], [[7], 4], [[12], 3], [[13], 2], [[43], 3], [[9999], 4], [[10000], 1]
+    ] },
     hints: [`<p>Hint 1: Treat each perfect square as a coin you may use any number of times.</p>`, `<p>Hint 2: dp[a] = 1 + min dp[a − s²] for all s² ≤ a; dp[0] = 0.</p>`, `<p>Hint 3: There are only √n coins, so O(n√n) ≈ 10<sup>6</sup>. (Math follow-up: Lagrange — every number is a sum of at most 4 squares.)</p>`],
     solution: {
       approach: `<p>Unbounded min DP over amounts with square "coins".</p>`,
@@ -2529,6 +3886,35 @@ int minCost(int[] cost) { return Math.min(from(cost, 0), from(cost, 1)); }` },
         return dp[n];
     }
 }`,
+      alt: [{ lang: 'python', code: `import math
+
+class Solution:
+    def num_squares(self, n: int) -> int:
+        squares = [s * s for s in range(1, math.isqrt(n) + 1)]   # the "coins"
+        dp = [0] + [n] * n                     # n ones always work, so n is a safe "infinity"
+        for a in range(1, n + 1):
+            for sq in squares:
+                if sq > a:
+                    break
+                if dp[a - sq] + 1 < dp[a]:
+                    dp[a] = dp[a - sq] + 1
+        return dp[n]` }, { lang: 'js', code: `function numSquares(n) {
+  const dp = new Array(n + 1).fill(n);         // n ones always work, so n is a safe "infinity"
+  dp[0] = 0;
+  for (let a = 1; a <= n; a++) {
+    for (let s = 1; s * s <= a; s++) dp[a] = Math.min(dp[a], dp[a - s * s] + 1);
+  }
+  return dp[n];
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int numSquares(int n) {
+        vector<int> dp(n + 1, n);              // n ones always work, so n is a safe "infinity"
+        dp[0] = 0;
+        for (int a = 1; a <= n; a++)
+            for (int s = 1; s * s <= a; s++) dp[a] = min(dp[a], dp[a - s * s] + 1);
+        return dp[n];
+    }
+};` }],
       dry: { head: ['a', 'options', 'dp[a]'], rows: [['4', 'dp[3]+1 = 4, dp[0]+1 = 1', '1'], ['8', 'dp[7]+1 = 5, dp[4]+1 = 2', '2'], ['12', 'dp[11]+1 = 4, dp[8]+1 = 3, dp[3]+1 = 4', H.c('g', '3')]] },
       complexity: `<p>Time O(n√n), space O(n).</p>`
     }
@@ -2546,6 +3932,10 @@ int minCost(int[] cost) { return Math.min(from(cost, 0), from(cost, 1)); }` },
     return Math.max(lps(s, i + 1, j), lps(s, i, j - 1));
 }` },
     mcq: { q: 'Which reduction gives the LPS length?', options: ['LCS(s, reverse(s))', 'Edit distance(s, reverse(s))', 'Longest common substring of s and reverse(s)', 'n − number of distinct letters'], answer: 0, explain: 'A palindromic subsequence is common to s and its reverse; the LCS of the two has the max length.' },
+    tests: { sig: 'string -> int', fn: 'longestPalindromeSubseq', cases: [
+      [['bbbab'], 4], [['cbbd'], 2], [['a'], 1], [['ab'], 1], [['aaaa'], 4], [['abcde'], 1], [['agbdba'], 5],
+      [[{ $rep: 'a', n: 1000 }], 1000], [[{ $rep: 'ab', n: 500 }], 999]
+    ] },
     hints: [`<p>Hint 1: A palindrome reads the same forwards and backwards. What is common between s and reverse(s)?</p>`, `<p>Hint 2: Answer = LCS(s, reverse(s)) using the standard O(n²) table (two rows enough).</p>`, `<p>Hint 3: Alternative interval DP: dp[i][j] = 2 + dp[i+1][j−1] if s[i] == s[j], else max(dp[i+1][j], dp[i][j−1]); fill i from n−1 down.</p>`],
     solution: {
       approach: `<p>LCS of s with its reverse, two rolling rows.</p>`,
@@ -2564,6 +3954,41 @@ int minCost(int[] cost) { return Math.min(from(cost, 0), from(cost, 1)); }` },
         return prev[n];
     }
 }`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def longest_palindrome_subseq(self, s: str) -> int:
+        t = s[::-1]                            # LPS(s) = LCS(s, reverse(s))
+        n = len(s)
+        prev = [0] * (n + 1)
+        for a in s:
+            cur = [0] * (n + 1)
+            for j in range(1, n + 1):
+                cur[j] = prev[j - 1] + 1 if a == t[j - 1] else max(prev[j], cur[j - 1])
+            prev = cur
+        return prev[n]` }, { lang: 'js', code: `function longestPalindromeSubseq(s) {
+  const t = [...s].reverse().join('');         // LPS(s) = LCS(s, reverse(s))
+  const n = s.length;
+  let prev = new Int32Array(n + 1), cur = new Int32Array(n + 1);
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= n; j++) {
+      cur[j] = s[i - 1] === t[j - 1] ? prev[j - 1] + 1 : Math.max(prev[j], cur[j - 1]);
+    }
+    [prev, cur] = [cur, prev];
+  }
+  return prev[n];
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int longestPalindromeSubseq(string s) {
+        string t(s.rbegin(), s.rend());        // LPS(s) = LCS(s, reverse(s))
+        int n = s.size();
+        vector<int> prev(n + 1, 0), cur(n + 1, 0);
+        for (int i = 1; i <= n; i++) {
+            for (int j = 1; j <= n; j++)
+                cur[j] = s[i - 1] == t[j - 1] ? prev[j - 1] + 1 : max(prev[j], cur[j - 1]);
+            swap(prev, cur);                   // O(1): swaps the buffers, no copy
+        }
+        return prev[n];
+    }
+};` }],
       dry: { head: ['s', 'reverse', 'LCS'], rows: [['bbbab', 'babbb', H.c('g', 'bbbb → 4')], ['cbbd', 'dbbc', 'bb → 2']] },
       complexity: `<p>Time O(n²) = 10<sup>6</sup>, space O(n).</p>`,
       followUps: ['Minimum insertions to make s a palindrome = n − LPS (see Hard practice).']
@@ -2580,6 +4005,13 @@ int minCost(int[] cost) { return Math.min(from(cost, 0), from(cost, 1)); }` },
     return t.get(i).get(j) + Math.min(best(t, i + 1, j), best(t, i + 1, j + 1));
 }` },
     mcq: { q: 'Why is bottom-up nicer than top-down here?', options: ['No edge cases: every cell has exactly two children below, and the answer ends in one cell', 'It uses less time asymptotically', 'Top-down is wrong', 'Negative numbers break top-down'], answer: 0, explain: 'Going up, dp[j] = val + min(dp[j], dp[j+1]) works for every cell, and the final answer is dp[0].' },
+    tests: { sig: 'list<list<int>> -> int', fn: 'minimumTotal', cases: [
+      [[[[2], [3, 4], [6, 5, 7], [4, 1, 8, 3]]], 11], [[[[-10]]], -10], [[[[1], [2, 3]]], 3],
+      [[[[-1], [2, 3], [1, -1, -3]]], -1], [[[[0], [0, 0]]], 0],
+      // 200 rows of -10000: every path has 200 cells, so -2 000 000
+      [[Array.from({ length: 200 }, (_, i) => ({ $rep: -10000, n: i + 1 }))], -2000000],
+      [[Array.from({ length: 200 }, (_, i) => ({ $rep: 10000, n: i + 1 }))], 2000000]
+    ] },
     hints: [`<p>Hint 1: The best path from a cell to the bottom depends only on the two cells below it.</p>`, `<p>Hint 2: Start from the bottom row and move up: dp[j] = tri[i][j] + min(dp[j], dp[j+1]).</p>`, `<p>Hint 3: Use an array of size rows + 1 filled with 0 so the bottom row needs no special case; answer dp[0].</p>`],
     solution: {
       approach: `<p>Bottom-up DP in one array.</p>`,
@@ -2593,6 +4025,29 @@ int minCost(int[] cost) { return Math.min(from(cost, 0), from(cost, 1)); }` },
         return dp[0];
     }
 }`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def minimum_total(self, triangle):
+        dp = [0] * (len(triangle) + 1)         # zeros below the last row
+        for row in reversed(triangle):         # bottom-up
+            for j, v in enumerate(row):
+                dp[j] = v + min(dp[j], dp[j + 1])
+        return dp[0]` }, { lang: 'js', code: `function minimumTotal(triangle) {
+  const n = triangle.length;
+  const dp = new Array(n + 1).fill(0);         // zeros below the last row
+  for (let i = n - 1; i >= 0; i--) {           // bottom-up
+    for (let j = 0; j <= i; j++) dp[j] = triangle[i][j] + Math.min(dp[j], dp[j + 1]);
+  }
+  return dp[0];
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int minimumTotal(vector<vector<int>>& triangle) {
+        int n = triangle.size();
+        vector<int> dp(n + 1, 0);              // zeros below the last row
+        for (int i = n - 1; i >= 0; i--)       // bottom-up
+            for (int j = 0; j <= i; j++) dp[j] = triangle[i][j] + min(dp[j], dp[j + 1]);
+        return dp[0];
+    }
+};` }],
       dry: { head: ['row', 'dp after processing'], rows: [['4 1 8 3', '4 1 8 3'], ['6 5 7', '7 6 10'], ['3 4', '9 10'], ['2', H.c('g', '11')]] },
       complexity: `<p>Time O(rows²), space O(rows).</p>`
     }
@@ -2614,7 +4069,14 @@ int minCost(int[] cost) { return Math.min(from(cost, 0), from(cost, 1)); }` },
     return res;
 }` },
     mcq: { q: 'dp[i][j] = ways to form t[0..j−1] from s[0..i−1]. If s[i−1] == t[j−1], dp[i][j] = ?', options: ['dp[i−1][j] + dp[i−1][j−1]', 'dp[i−1][j−1] only', 'max(dp[i−1][j], dp[i][j−1])', 'dp[i][j−1] + 1'], answer: 0, explain: 'Either ignore s[i−1] (dp[i−1][j]) or use it to match t[j−1] (dp[i−1][j−1]). Counting → add.' },
-    hints: [`<p>Hint 1: Same prefix-grid as LCS, but you <b>count</b> ways instead of maximising. Look at s's last character.</p>`, `<p>Hint 2: dp[i][j] = dp[i−1][j] (skip s[i−1]) + (s[i−1] == t[j−1] ? dp[i−1][j−1] : 0). Base dp[i][0] = 1 (empty t), dp[0][j&gt;0] = 0.</p>`, `<p>Hint 3: One array over j, updated from j = m down to 1 so dp[j−1] is still the previous row. Use long; intermediate values can exceed int even when the answer fits.</p>`],
+    tests: { sig: 'string string -> int', fn: 'numDistinct', cases: [
+      [['rabbbit', 'rabbit'], 3], [['babgbag', 'bag'], 5], [['a', 'a'], 1], [['a', 'b'], 0], [['abc', 'abcd'], 0],
+      [['aaa', 'a'], 3],
+      // C(1000, 998) = 499500, while middle cells reach C(1000, 500), far past 64 bits
+      [[{ $rep: 'a', n: 1000 }, { $rep: 'a', n: 998 }], 499500],
+      [[{ $rep: 'a', n: 1000 }, { $concat: [{ $rep: 'a', n: 500 }, 'c'] }], 0]
+    ] },
+    hints: [`<p>Hint 1: Same prefix-grid as LCS, but you <b>count</b> ways instead of maximising. Look at s's last character.</p>`, `<p>Hint 2: dp[i][j] = dp[i−1][j] (skip s[i−1]) + (s[i−1] == t[j−1] ? dp[i−1][j−1] : 0). Base dp[i][0] = 1 (empty t), dp[0][j&gt;0] = 0.</p>`, `<p>Hint 3: One array over j, updated from j = m down to 1 so dp[j−1] is still the previous row. Intermediate values can exceed even 64 bits when the answer fits, so cap each cell at the int maximum (a capped cell never feeds an answer that fits); Python ints never overflow.</p>`],
     solution: {
       approach: `<p>Counting DP on prefixes, compressed into one array iterated right-to-left.</p>`,
       code: `class Solution {
@@ -2631,6 +4093,39 @@ int minCost(int[] cost) { return Math.min(from(cost, 0), from(cost, 1)); }` },
         return (int) dp[m];
     }
 }`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def num_distinct(self, s: str, t: str) -> int:
+        m = len(t)
+        dp = [1] + [0] * m                     # empty t: one way (pick nothing)
+        for i, c in enumerate(s, 1):
+            for j in range(min(i, m), 0, -1):  # backwards: dp[j-1] is still row i-1
+                if c == t[j - 1]:
+                    dp[j] += dp[j - 1]
+        return dp[m]                           # Python ints never overflow` }, { lang: 'js', code: `function numDistinct(s, t) {
+  const m = t.length, CAP = 2 ** 31 - 1;       // a capped cell can never feed an answer that fits
+  const dp = new Array(m + 1).fill(0);
+  dp[0] = 1;                                   // empty t: one way (pick nothing)
+  for (let i = 1; i <= s.length; i++) {
+    const c = s[i - 1];
+    for (let j = Math.min(i, m); j >= 1; j--) {   // backwards: dp[j-1] is still row i-1
+      if (c === t[j - 1]) dp[j] = Math.min(CAP, dp[j] + dp[j - 1]);
+    }
+  }
+  return dp[m];
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int numDistinct(string s, string t) {
+        int m = t.size();
+        vector<long long> dp(m + 1, 0);
+        dp[0] = 1;                             // empty t: one way (pick nothing)
+        for (size_t i = 1; i <= s.size(); i++) {
+            char c = s[i - 1];
+            for (int j = min((int) i, m); j >= 1; j--)   // backwards: dp[j-1] is still row i-1
+                if (c == t[j - 1]) dp[j] = min<long long>(INT_MAX, dp[j] + dp[j - 1]);   // cap: no overflow
+        }
+        return (int) dp[m];
+    }
+};` }],
       dry: { head: ['s char', 'dp over t = "" r a b b i t'], rows: [['r', '1 1 0 0 0 0 0'], ['a', '1 1 1 0 0 0 0'], ['b', '1 1 1 1 0 0 0'], ['b', '1 1 1 2 1 0 0'], ['b', '1 1 1 3 3 0 0'], ['i', '1 1 1 3 3 3 0'], ['t', '1 1 1 3 3 3 ' + H.c('g', '3')]] },
       complexity: `<p>Time O(|s|·|t|) = 10<sup>6</sup>; space O(|t|).</p>`
     }
@@ -2648,6 +4143,13 @@ int minCost(int[] cost) { return Math.min(from(cost, 0), from(cost, 1)); }` },
     return i == small.length();     // brute force would call this on 26^L candidates
 }` },
     mcq: { q: 'Length of the shortest common supersequence?', options: ['n + m − LCS', 'n + m', 'max(n, m)', 'LCS'], answer: 0, explain: 'Shared LCS characters are written once; every other character of both strings must appear.' },
+    // any shortest answer is accepted: check the length and that both strings are subsequences of the output
+    tests: { sig: 'string string -> string', fn: 'shortestCommonSupersequence', check: '(args, out, exp) => { const sub = (a, b) => { let i = 0; for (const ch of b) if (i < a.length && a[i] === ch) i++; return i === a.length; }; return typeof out === "string" && out.length === exp.length && sub(args[0], out) && sub(args[1], out); }', cases: [
+      [['abac', 'cab'], 'cabac'], [['aaaaaaaa', 'aaaaaaaa'], 'aaaaaaaa'], [['a', 'b'], 'ab'], [['abc', 'abc'], 'abc'],
+      [['geek', 'eke'], 'geeke'], [['bbbaaaba', 'bbababbb'], 'bbabaaababb'],
+      [[{ $rep: 'a', n: 1000 }, { $rep: 'b', n: 1000 }], { $concat: [{ $rep: 'a', n: 1000 }, { $rep: 'b', n: 1000 }] }],
+      [[{ $rep: 'ab', n: 500 }, { $rep: 'ba', n: 500 }], { $concat: ['b', { $rep: 'ab', n: 500 }] }]
+    ] },
     hints: [`<p>Hint 1: Characters in the LCS can be shared; all the others must be written separately. So length = n + m − LCS.</p>`, `<p>Hint 2: Build the LCS table, then walk back from (n, m): on match emit the char and go diagonal; otherwise emit the char of the direction you leave (the bigger neighbour) and move.</p>`, `<p>Hint 3: When one index reaches 0, emit the remaining prefix of the other string. Reverse the result at the end.</p>`],
     solution: {
       approach: `<p>LCS table + reconstruction that also emits the non-LCS characters in order.</p>`,
@@ -2671,6 +4173,60 @@ int minCost(int[] cost) { return Math.min(from(cost, 0), from(cost, 1)); }` },
         return sb.reverse().toString();
     }
 }`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def shortest_common_supersequence(self, a: str, b: str) -> str:
+        n, m = len(a), len(b)
+        dp = [[0] * (m + 1) for _ in range(n + 1)]     # LCS table
+        for i in range(1, n + 1):
+            for j in range(1, m + 1):
+                dp[i][j] = dp[i - 1][j - 1] + 1 if a[i - 1] == b[j - 1] else max(dp[i - 1][j], dp[i][j - 1])
+        out, i, j = [], n, m
+        while i and j:
+            if a[i - 1] == b[j - 1]:
+                out.append(a[i - 1]); i -= 1; j -= 1   # shared
+            elif dp[i - 1][j] >= dp[i][j - 1]:
+                out.append(a[i - 1]); i -= 1           # only in a
+            else:
+                out.append(b[j - 1]); j -= 1           # only in b
+        out.extend(reversed(a[:i]))                    # leftovers (built backwards)
+        out.extend(reversed(b[:j]))
+        return "".join(reversed(out))` }, { lang: 'js', code: `function shortestCommonSupersequence(a, b) {
+  const n = a.length, m = b.length;
+  const dp = Array.from({ length: n + 1 }, () => new Int32Array(m + 1));   // LCS table
+  for (let i = 1; i <= n; i++)
+    for (let j = 1; j <= m; j++)
+      dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] + 1 : Math.max(dp[i - 1][j], dp[i][j - 1]);
+  const out = [];
+  let i = n, j = m;
+  while (i > 0 && j > 0) {
+    if (a[i - 1] === b[j - 1]) { out.push(a[i - 1]); i--; j--; }        // shared
+    else if (dp[i - 1][j] >= dp[i][j - 1]) out.push(a[--i]);           // only in a
+    else out.push(b[--j]);                                             // only in b
+  }
+  while (i > 0) out.push(a[--i]);
+  while (j > 0) out.push(b[--j]);
+  return out.reverse().join('');               // join once: no O(n^2) string building
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    string shortestCommonSupersequence(string a, string b) {
+        int n = a.size(), m = b.size();
+        vector<vector<int>> dp(n + 1, vector<int>(m + 1, 0));   // LCS table
+        for (int i = 1; i <= n; i++)
+            for (int j = 1; j <= m; j++)
+                dp[i][j] = a[i - 1] == b[j - 1] ? dp[i - 1][j - 1] + 1 : max(dp[i - 1][j], dp[i][j - 1]);
+        string out;
+        int i = n, j = m;
+        while (i > 0 && j > 0) {
+            if (a[i - 1] == b[j - 1]) { out += a[i - 1]; i--; j--; }     // shared
+            else if (dp[i - 1][j] >= dp[i][j - 1]) out += a[--i];        // only in a
+            else out += b[--j];                                          // only in b
+        }
+        while (i > 0) out += a[--i];
+        while (j > 0) out += b[--j];
+        reverse(out.begin(), out.end());
+        return out;
+    }
+};` }],
       dry: { head: ['(i, j)', 'compare', 'action', 'emitted so far (backwards)'], rows: [['(4,3)', 'c vs b', 'up ≥ left → emit c', 'c'], ['(3,3)', 'a vs b', 'up ≥ left → emit a', 'ca'], ['(2,3)', 'b vs b', 'match → emit b', 'cab'], ['(1,2)', 'a vs a', 'match → emit a', 'caba'], ['(0,1)', '—', 'emit rest of str2: c', 'cabac'], ['done', '', 'reverse', H.c('g', '"cabac"')]] },
       complexity: `<p>Time O(n·m), space O(n·m) for reconstruction.</p>`,
       followUps: ['Prove the result has length n + m − LCS.', 'Return the lexicographically smallest SCS (needs more careful tie-breaking).']
@@ -2691,6 +4247,13 @@ int minCost(int[] cost) { return Math.min(from(cost, 0), from(cost, 1)); }` },
     return Math.max(1, best - d[r][c]);          // exponential without memo
 }` },
     mcq: { q: 'Why fill this grid from the bottom-right?', options: ['Because "minimum health needed from here on" is a single number that depends only on the future', 'Because it is faster', 'Because the start cell is negative', 'It does not matter'], answer: 0, explain: 'Forward you must track both current health and the worst dip; backward one number (health needed on entering) captures everything.' },
+    tests: { sig: 'int[][] -> int', fn: 'calculateMinimumHP', cases: [
+      [[[[-2, -3, 3], [-5, -10, 1], [10, 30, -5]]], 7], [[[[0]]], 1], [[[[100]]], 1], [[[[-200]]], 201],
+      [[[[1, -3, 3], [0, -2, 0], [-3, -3, -3]]], 3], [[[[0, 0, 0], [1, 1, -1]]], 1], [[[[-3, 5]]], 4],
+      [[[[2], [-5], [1]]], 4],
+      [[{ $rep: new Array(200).fill(-1000), n: 200 }], 399001],
+      [[{ $rep: new Array(200).fill(1000), n: 200 }], 1]
+    ] },
     hints: [`<p>Hint 1: Define need[r][c] = minimum health required when <i>entering</i> cell (r, c) so that you can still finish alive.</p>`, `<p>Hint 2: need[r][c] = max(1, min(need[r+1][c], need[r][c+1]) − dungeon[r][c]). Fill from the bottom-right backwards.</p>`, `<p>Hint 3: Pad with a row and column of +∞, except the two cells next to the princess set to 1 so the formula works at the goal. Answer need[0][0].</p>`],
     solution: {
       approach: `<p>Backward grid DP on "health needed on entry", one row array.</p>`,
@@ -2709,6 +4272,42 @@ int minCost(int[] cost) { return Math.min(from(cost, 0), from(cost, 1)); }` },
         return need[0];
     }
 }`,
+      alt: [{ lang: 'python', code: `import math
+
+class Solution:
+    def calculate_minimum_hp(self, dungeon):
+        n = len(dungeon[0])
+        need = [math.inf] * (n + 1)            # padding: +inf blocks moves off the grid
+        need[n - 1] = 1                        # "after" the princess you need 1
+        for row in reversed(dungeon):
+            for c in range(n - 1, -1, -1):
+                nxt = min(need[c], need[c + 1])    # below (old need[c]) or right
+                need[c] = max(1, nxt - row[c])
+        return need[0]` }, { lang: 'js', code: `function calculateMinimumHP(dungeon) {
+  const m = dungeon.length, n = dungeon[0].length;
+  const need = new Array(n + 1).fill(Infinity);   // padding: blocks moves off the grid
+  need[n - 1] = 1;                             // "after" the princess you need 1
+  for (let r = m - 1; r >= 0; r--) {
+    for (let c = n - 1; c >= 0; c--) {
+      const next = Math.min(need[c], need[c + 1]);   // below (old need[c]) or right
+      need[c] = Math.max(1, next - dungeon[r][c]);
+    }
+  }
+  return need[0];
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int calculateMinimumHP(vector<vector<int>>& dungeon) {
+        int m = dungeon.size(), n = dungeon[0].size();
+        vector<int> need(n + 1, INT_MAX);      // padding: blocks moves off the grid
+        need[n - 1] = 1;                       // "after" the princess you need 1
+        for (int r = m - 1; r >= 0; r--)
+            for (int c = n - 1; c >= 0; c--) {
+                int next = min(need[c], need[c + 1]);   // always finite: one neighbour is real
+                need[c] = max(1, next - dungeon[r][c]);
+            }
+        return need[0];
+    }
+};` }],
       dry: { head: ['cell', 'min(next)', 'value', 'need'], rows: [['(2,2)', '1', '−5', '6'], ['(1,2)', '6', '1', '5'], ['(0,2)', '5', '3', '2'], ['(0,1)', 'min(11, 2) = 2', '−3', '5'], ['(0,0)', 'min(6, 5) = 5', '−2', H.c('g', '7')]] },
       complexity: `<p>Time O(m·n), space O(n).</p>`
     }
@@ -2725,6 +4324,10 @@ int minCost(int[] cost) { return Math.min(from(cost, 0), from(cost, 1)); }` },
     return 1 + Math.min(f(s, i + 1, j), f(s, i, j - 1));
 }` },
     mcq: { q: 'Minimum insertions equals…', options: ['n − LPS(s) = n − LCS(s, reverse(s))', 'number of distinct letters', 'edit distance(s, reverse(s))', 'n / 2'], answer: 0, explain: 'Keep the longest palindromic subsequence; every other character needs a mirrored partner inserted.' },
+    tests: { sig: 'string -> int', fn: 'minInsertions', cases: [
+      [['zzazz'], 0], [['mbadm'], 2], [['leetcode'], 5], [['a'], 0], [['ab'], 1], [['abc'], 2], [['race'], 3],
+      [[{ $rep: 'a', n: 500 }], 0], [[{ $rep: 'ab', n: 250 }], 1], [[{ $rep: 'abcdefghij', n: 50 }], 401]
+    ] },
     hints: [`<p>Hint 1: Characters that already form a palindromic subsequence need no help. Every other character needs one inserted twin.</p>`, `<p>Hint 2: Answer = n − LPS, and LPS = LCS(s, reverse(s)).</p>`, `<p>Hint 3: Two-row LCS keeps memory at O(n). Check: "mbadm" → LPS "mam"/"mbm" (3) → 5 − 3 = 2.</p>`],
     solution: {
       approach: `<p>Reduce to LCS with the reversed string.</p>`,
@@ -2743,6 +4346,39 @@ int minCost(int[] cost) { return Math.min(from(cost, 0), from(cost, 1)); }` },
         return n - prev[n];                          // n - LPS
     }
 }`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def min_insertions(self, s: str) -> int:
+        r, n = s[::-1], len(s)
+        prev = [0] * (n + 1)                   # LCS(s, reverse(s)) = LPS, two rows
+        for a in s:
+            cur = [0] * (n + 1)
+            for j in range(1, n + 1):
+                cur[j] = prev[j - 1] + 1 if a == r[j - 1] else max(prev[j], cur[j - 1])
+            prev = cur
+        return n - prev[n]                     # n - LPS` }, { lang: 'js', code: `function minInsertions(s) {
+  const n = s.length, r = [...s].reverse().join('');
+  let prev = new Int32Array(n + 1), cur = new Int32Array(n + 1);   // LCS(s, reverse(s)) = LPS
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= n; j++) {
+      cur[j] = s[i - 1] === r[j - 1] ? prev[j - 1] + 1 : Math.max(prev[j], cur[j - 1]);
+    }
+    [prev, cur] = [cur, prev];
+  }
+  return n - prev[n];                          // n - LPS
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int minInsertions(string s) {
+        int n = s.size();
+        string r(s.rbegin(), s.rend());
+        vector<int> prev(n + 1, 0), cur(n + 1, 0);   // LCS(s, reverse(s)) = LPS
+        for (int i = 1; i <= n; i++) {
+            for (int j = 1; j <= n; j++)
+                cur[j] = s[i - 1] == r[j - 1] ? prev[j - 1] + 1 : max(prev[j], cur[j - 1]);
+            swap(prev, cur);
+        }
+        return n - prev[n];                    // n - LPS
+    }
+};` }],
       dry: { head: ['s', 'LPS', 'answer'], rows: [['zzazz', '5', '0'], ['mbadm', '3', H.c('g', '2')], ['leetcode', '3 ("eee"/"ete")', '5']] },
       complexity: `<p>Time O(n²) = 2.5·10<sup>5</sup>, space O(n).</p>`
     }
@@ -2754,7 +4390,7 @@ int minCost(int[] cost) { return Math.min(from(cost, 0), from(cost, 1)); }` },
   quiz.push({ q: 'Which pair of properties makes a problem a good fit for dynamic programming?', options: ['Overlapping subproblems + optimal substructure', 'Sorted input + binary search', 'Greedy choice + matroid', 'Independent subproblems + merging'], answer: 0, explain: 'Repeated subproblems make a memo useful; optimal substructure makes combining best sub-answers correct. Independent subproblems = divide &amp; conquer.' });
   quiz.push({ q: 'Merge sort splits an array into halves recursively. Why is it not DP?', options: ['Its subproblems never repeat, so memoizing gains nothing', 'It has no recursion', 'It lacks optimal substructure', 'It runs in O(n log n)'], answer: 0, explain: 'Each half is a distinct subarray; no subproblem is solved twice, so there is nothing to cache.' });
   quiz.push({ q: 'A DP has n·m states and each state does O(k) work. Total time?', options: ['O(n·m·k)', 'O(n + m + k)', 'O(n·m)', 'O(k<sup>n</sup>)'], answer: 0, explain: 'Time = number of states × work per state — the universal DP estimate.' });
-  quiz.push({ q: 'In the 1D 0/1 knapsack, the capacity loop runs from W down to w because…', options: ['dp[c − w] must still hold the value from before this item', 'it is faster', 'Java requires it', 'otherwise dp[0] changes'], answer: 0, explain: 'Going upward would read an already-updated dp[c − w], i.e. use the same item twice (unbounded behaviour).' });
+  quiz.push({ q: 'In the 1D 0/1 knapsack, the capacity loop runs from W down to w because…', options: ['dp[c − w] must still hold the value from before this item', 'it is faster', 'the compiler requires it', 'otherwise dp[0] changes'], answer: 0, explain: 'Going upward would read an already-updated dp[c − w], i.e. use the same item twice (unbounded behaviour).' });
   quiz.push({ q: 'coins = {1, 2, 5}, amount = 5. "Amount outer, coins inner" counting gives 9. What does it count?', options: ['Ordered sequences (permutations)', 'Combinations (multisets)', 'Minimum coins', 'Subsets of distinct coins'], answer: 0, explain: 'With amount outer, the last coin can be any type at every step, so 1+2+2 and 2+1+2 are separate. Coin-outer would give 4.' });
   quiz.push({ q: 'Coins {1, 3, 4}, amount 6. Greedy (largest coin first) uses 3 coins. What is optimal?', options: ['2 (3 + 3)', '3', '1', '6'], answer: 0, explain: 'dp[6] = 1 + min(dp[5], dp[3], dp[2]) = 1 + 1 = 2. Greedy is only safe for canonical coin systems.' });
   quiz.push({ q: 'House Robber on [2, 1, 1, 2] returns…', options: ['4', '3', '2', '6'], answer: 0, explain: 'Rob houses 0 and 3 (gap of two houses). "Every other house" only reaches 3.' });
@@ -2769,7 +4405,7 @@ int minCost(int[] cost) { return Math.min(from(cost, 0), from(cost, 1)); }` },
   // INTERVIEW Q&A
   // =====================================================================
   interview.push({ level: 'B', q: 'What is dynamic programming, in plain words?', a: `<p>DP is solving a problem by breaking it into smaller versions of itself, solving each distinct smaller version <b>once</b>, storing the answer, and reusing it. It applies when (1) the same subproblems appear many times (overlapping subproblems) and (2) the best answer is built from best answers of subproblems (optimal substructure). Example: fib(n) with a memo goes from ~1.6<sup>n</sup> calls to O(n).</p>`, followUps: ['How is DP different from divide &amp; conquer?', 'How is it different from greedy?'] });
-  interview.push({ level: 'B', q: 'Memoization vs tabulation — which do you prefer?', a: `<p><b>Memoization</b> (top-down) = recursion + cache; easy to write from the brute force and only computes reachable states, but pays function-call overhead and risks stack overflow at depth ~10<sup>4</sup>–10<sup>5</sup> in Java. <b>Tabulation</b> (bottom-up) = loops in dependency order; no recursion, cache-friendly, and makes space optimization obvious. I usually derive the recurrence top-down, then write it bottom-up for the final answer, unless the state space is sparse (then top-down with a HashMap).</p>`, followUps: ['When is top-down strictly better?', 'How do you avoid stack overflow in Java?'] });
+  interview.push({ level: 'B', q: 'Memoization vs tabulation — which do you prefer?', a: `<p><b>Memoization</b> (top-down) = recursion + cache; easy to write from the brute force and only computes reachable states, but pays function-call overhead and risks stack overflow on deep recursion (about 1000 frames in Python by default, ~10<sup>4</sup> in Java and JS). <b>Tabulation</b> (bottom-up) = loops in dependency order; no recursion, cache-friendly, and makes space optimization obvious. I usually derive the recurrence top-down, then write it bottom-up for the final answer, unless the state space is sparse (then top-down with a hash map).</p>`, followUps: ['When is top-down strictly better?', 'How do you avoid stack overflow in your language?'] });
   interview.push({ level: 'B', q: 'Walk me through how you design a DP solution from scratch.', a: `<p>Five steps: (1) <b>State</b> — say in one sentence what dp[...] means; (2) <b>transition</b> — look at the last decision and combine sub-answers with +, min/max or OR; (3) <b>base cases</b>; (4) <b>order</b> — fill so dependencies are ready; (5) <b>answer</b> location. Then complexity = states × work per state, then space optimization if each row depends only on the previous one. I validate with a tiny hand-filled table before coding.</p>`, followUps: ['What if you can\'t find the state?', 'How do you test a DP?'] });
   interview.push({ level: 'I', q: 'Climbing Stairs: why does ways(n) = ways(n−1) + ways(n−2) not double count?', a: `<p>Split all valid step sequences by their <b>last move</b>. Sequences ending with a 1-step are in bijection with sequences reaching n−1; those ending with a 2-step with sequences reaching n−2. The two groups are disjoint (different last moves) and cover everything, so adding them counts each sequence exactly once. This "partition by last choice" argument is how to justify any counting DP.</p>`, followUps: ['Steps from a set S?', 'What if some stairs are broken?'] });
   interview.push({ level: 'I', q: 'Why does greedy fail for coin change and when does it work?', a: `<p>Greedy commits to the largest coin without considering what it leaves behind. With {1, 3, 4} and 6, taking 4 forces 1 + 1 (3 coins), while 3 + 3 uses 2. Greedy is optimal only for <b>canonical</b> coin systems (real currencies are designed that way). DP checks every possible last coin: dp[a] = 1 + min dp[a − c], O(amount × coins). If a greedy fails, a counterexample exists below the sum of the two largest coins, which gives a quick test.</p>`, followUps: ['How do you prove greedy is safe for {1, 5, 10, 25}?', 'Return the coins, not just the count.'] });
@@ -2778,7 +4414,7 @@ int minCost(int[] cost) { return Math.min(from(cost, 0), from(cost, 1)); }` },
   interview.push({ level: 'I', q: 'What changes between 0/1 and unbounded knapsack?', a: `<p>Only where the "take" arrow points. 0/1: take → dp[i−1][c − w] (item consumed). Unbounded: take → dp[i][c − w] (item still available, can be taken again). In 1D form that becomes the loop direction: backward for 0/1, forward for unbounded. Coin change, rod cutting and perfect squares are unbounded; subset sum, partition and target sum are 0/1.</p>`, followUps: ['Bounded knapsack (each item k times)?', 'Does loop order matter for max value in unbounded knapsack?'] });
   interview.push({ level: 'I', q: 'How do you reconstruct the actual LCS string, and what memory does it need?', a: `<p>Fill the full (n+1)×(m+1) table, then walk back from (n, m): if the characters match, emit it and go diagonal; otherwise move to the larger of up/left (ties broken consistently). Reverse the collected characters. This needs the whole table, O(n·m) memory. If memory is tight, Hirschberg's algorithm recovers the string in O(n + m) space by divide &amp; conquer with forward/backward two-row passes, at about twice the time.</p>`, followUps: ['How would you print all LCSs?', 'LCS when one string has distinct characters?'] });
   interview.push({ level: 'A', q: 'Edit distance: justify the three transitions and give the space-optimized version.', a: `<p>Consider the last characters of the two prefixes in an optimal alignment: either word1's last char is deleted (dp[i−1][j] + 1), word2's last char is inserted (dp[i][j−1] + 1), or they are aligned — free if equal (dp[i−1][j−1]) else a replace (+1). These cases are exhaustive, so min over them is exact. Space: one row plus a variable saving the old diagonal before overwrite → O(m). For "distance ≤ k" questions compute only a diagonal band of width 2k+1 → O(n·k).</p>`, followUps: ['Add adjacent transposition (Damerau).', 'How do search engines do fuzzy matching at scale?'] });
-  interview.push({ level: 'A', q: 'How would you handle a DP whose table does not fit in memory?', a: `<p>Options: (1) <b>rolling arrays</b> when a row depends only on the previous one(s); (2) <b>change the state</b> — index by value instead of weight, or compress coordinates; (3) <b>top-down with a HashMap</b> if only a sparse set of states is reachable; (4) <b>Hirschberg / divide &amp; conquer</b> to reconstruct answers in linear space; (5) <b>bitsets</b> for boolean DPs (64 states per word). I'd first measure: states × bytes per state, e.g. 10<sup>4</sup> × 10<sup>4</sup> ints = 400 MB — too much, so rolling rows.</p>`, followUps: ['When does rolling the array lose information?', 'How do you pack a pair (i, j) into one long key?'] });
+  interview.push({ level: 'A', q: 'How would you handle a DP whose table does not fit in memory?', a: `<p>Options: (1) <b>rolling arrays</b> when a row depends only on the previous one(s); (2) <b>change the state</b> — index by value instead of weight, or compress coordinates; (3) <b>top-down with a hash map</b> if only a sparse set of states is reachable; (4) <b>Hirschberg / divide &amp; conquer</b> to reconstruct answers in linear space; (5) <b>bitsets</b> for boolean DPs (64 states per word). I'd first measure: states × bytes per state, e.g. 10<sup>4</sup> × 10<sup>4</sup> ints = 400 MB — too much, so rolling rows.</p>`, followUps: ['When does rolling the array lose information?', 'How do you pack a pair (i, j) into one 64-bit key?'] });
   interview.push({ level: 'A', q: 'Unique Paths with obstacles vs Dungeon Game — why does one fill forward and the other backward?', a: `<p>In Unique Paths, the number of ways to reach a cell depends only on the past (cells above/left), so forward works. In Dungeon Game, the answer for a prefix depends on two numbers — current health and the lowest dip so far — that trade off, so a forward table can't pick one value per cell. Backward, "minimum health needed when entering this cell" is a single number determined by the future: need = max(1, min(next) − cell). Rule: fill in the direction where the remaining problem is summarised by one value.</p>`, followUps: ['Could binary search on the initial health work?', 'What if moves can go in 4 directions?'] });
   interview.push({ level: 'E', q: 'Is 0/1 knapsack polynomial? What do production systems do for large instances?', a: `<p>O(n·W) is <b>pseudo-polynomial</b>: polynomial in the numeric value W but exponential in its bit-length, and 0/1 knapsack is (weakly) NP-hard. In production: if W or total value is small, the DP; otherwise <b>branch-and-bound</b> with the fractional (greedy) relaxation as an upper bound, <b>FPTAS</b> by scaling values to get a (1 − ε) approximation, <b>meet-in-the-middle</b> for n ≤ 40, or an ILP/CP solver (OR-Tools, Gurobi). Cutting-stock and ad-budget allocation use column generation with knapsack DPs as subproblems.</p>`, followUps: ['Explain the FPTAS scaling idea.', 'How would you parallelise the DP?'] });
   interview.push({ level: 'E', q: 'An AI assistant gave you a DP that passes the samples. How do you verify it before shipping?', a: `<p>(1) Re-derive the state and transition myself and check the code matches them line by line (loop direction, base cases, sentinel values). (2) Write a brute-force enumerator for tiny inputs and run a randomized <b>stress test</b> comparing both for thousands of cases, including edge cases (empty input, n = 1, zeros, impossible targets, max values for overflow). (3) Check complexity against constraints (states × work). (4) For reconstruction, verify the output independently (e.g. the printed LCS is a subsequence of both strings). AI often gets loop order, sentinels and overflow wrong — exactly what stress tests catch.</p>`, followUps: ['How do you choose random test sizes?', 'What invariants would you assert inside the DP?'] });
@@ -2813,6 +4449,12 @@ int minCost(int[] cost) { return Math.min(from(cost, 0), from(cost, 1)); }` },
     ],
     prereqs: `<p>DSA 11 (Recursion &amp; Backtracking — recursion trees, the call stack, pick/not-pick), DSA 2 (Time/Space Complexity), DSA 5 (Arrays &amp; Prefix Sums). DSA 16 (Greedy) helps for the "why greedy fails" comparisons. Comfortable with 2D arrays in Java.</p>`,
     hours: 16,
+    langNotes: {
+      java: `<p><b>Java:</b> <code>int</code> overflow wraps silently, and DP counts grow fast: fib(47) already passes 2<sup>31</sup>, fib(93) passes <code>long</code>. Use <code>long</code> for counts, take <code>% 1_000_000_007</code> when asked, and cap cells with <code>Math.min(Integer.MAX_VALUE, …)</code> when an answer "fits in int" but other cells do not (Combination Sum IV, Distinct Subsequences). Never use <code>Integer.MAX_VALUE</code> as ∞ and then add 1: it wraps to a negative number; use <code>amount + 1</code> or a value like 10<sup>9</sup>. <code>new int[n]</code> is zero-filled, so set a sentinel with <code>Arrays.fill(memo, -1)</code> when 0 is a real answer. Top-down recursion overflows the default stack around 10<sup>4</sup>–10<sup>5</sup> frames (<code>StackOverflowError</code>): tabulate for big n. A <code>HashMap&lt;Long, Long&gt;</code> memo boxes every value and is 5–20× slower than an array; use it only for sparse states.</p>`,
+      python: `<p><b>Python:</b> ints never overflow, so counting DPs (coin change ways, distinct subsequences) need no caps — but huge numbers get slower, so still take <code>% MOD</code> when the problem asks. <code>@functools.cache</code> (or <code>lru_cache</code>) turns a recursive brute force into memoization in one line, but recursion stops at <b>1000 frames</b> (<code>RecursionError</code>): for n in the thousands, tabulate, or raise <code>sys.setrecursionlimit</code> and run the code in a thread with a bigger <code>threading.stack_size</code>. Build tables with <code>[[0] * (m + 1) for _ in range(n + 1)]</code>; <code>[[0] * (m + 1)] * (n + 1)</code> repeats <b>one</b> row object. Plain loops run about 10<sup>7</sup> simple steps per second, so an O(n·W) table of 10<sup>7</sup> cells is slow: keep only two rows, and use built-ins (<code>max</code>, <code>min</code>, <code>sum</code> over a generator). A Python int also works as a fast bitset for subset sum: <code>reach |= reach &lt;&lt; x</code>. <code>float("inf")</code> / <code>math.inf</code> is a safe ∞ for min-DPs.</p>`,
+      js: `<p><b>JavaScript:</b> every number is a double, exact only up to 2<sup>53</sup> (≈ 9·10<sup>15</sup>): fib(78) is the last exact Fibonacci number, so use <code>BigInt</code> (<code>1n</code>, <code>a + b</code>) for big exact counts or take <code>% MOD</code> after every addition. When an answer fits in 32 bits but other cells explode, cap cells with <code>Math.min(2 ** 31 - 1, …)</code>. <code>Infinity</code> is a safe ∞ for min-DPs (<code>Infinity + 1</code> is still <code>Infinity</code>). Build tables with <code>Array.from({ length: n + 1 }, () =&gt; new Array(m + 1).fill(0))</code>; <code>new Array(n).fill(row)</code> shares one row. <code>Int32Array</code> rows are compact and fast for small integers. Recursion depth is about 10<sup>4</sup> frames (<code>RangeError: Maximum call stack size exceeded</code>), so tabulate for big n. A <code>Map</code> memo needs a primitive key: encode (i, j) as <code>i * M + j</code>, not an array.</p>`,
+      cpp: `<p><b>C++:</b> signed overflow is <b>undefined behaviour</b>, not a wrap, so DP counts need care: use <code>long long</code>, take <code>% MOD</code>, or cap cells with <code>min&lt;long long&gt;(INT_MAX, …)</code> when only the final answer is promised to fit; <code>unsigned long long</code> wraps legally modulo 2<sup>64</sup> if you prefer that. Never add 1 to <code>INT_MAX</code> used as ∞. <code>vector&lt;int&gt; dp(n + 1, -1)</code> sets the memo sentinel in one line, and a 2D table is <code>vector&lt;vector&lt;int&gt;&gt; dp(n + 1, vector&lt;int&gt;(m + 1))</code>. Pass the memo and the input <b>by reference</b> (<code>vector&lt;int&gt;&amp;</code>) to recursive helpers, or every call copies them. <code>swap(prev, cur)</code> switches two DP rows in O(1). <code>std::bitset</code> makes subset sum 64× faster (<code>reach |= reach &lt;&lt; x</code>). The stack is about 8 MB on Linux, so very deep memoized recursion can crash: tabulate.</p>`
+    },
     topics: topics,
     practice: practice,
     quiz: quiz,

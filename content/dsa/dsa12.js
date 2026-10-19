@@ -58,7 +58,7 @@ ${H.table(['Where', 'What you do (singly)', 'Cost'], [
   ['Tail', 'walk to the <b>second-last</b> node, set its next = null', 'O(N) (even with a tail pointer, because you cannot go backward in a singly list)'],
   ['Position p', 'walk to prev (node before p), then prev.next = prev.next.next (skip the victim)', 'O(p)']
 ])}
-<p>Delete 20 from ${H.c('m', '10 → 20 → 30')}: prev = 10, then <code>10.next = 20.next</code> = 30. Node 20 is no longer reachable, so Java's garbage collector throws it away.</p>
+<p>Delete 20 from ${H.c('m', '10 → 20 → 30')}: prev = 10, then <code>10.next = 20.next</code> = 30. Node 20 is no longer reachable, so the garbage collector frees it (Java, Python, JS). In C++ nothing is automatic: you <code>delete</code> the node yourself.</p>
 ${chain([10, 30], { 0: 'y' })}
 
 <h4>5. Doubly linked list: what changes</h4>
@@ -82,7 +82,7 @@ ${H.table(['Question', 'Array / ArrayList', 'Linked List'], [
       '"Do it in <b>O(1) extra space</b>" on a list → change links in place instead of copying into an array.',
       'Any time the head might change (insert at front, delete first node) → be ready for the <b>dummy node</b> trick (next topic).'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
 class SinglyLinkedList {
     // One "coach" of the train: a value plus a hook to the next coach
     static class Node {
@@ -174,7 +174,246 @@ class SinglyLinkedList {
         list.deleteLast();      // 5 -> 20
         list.print();
     }
-}`, `
+}`,
+      alt: [
+        { lang: 'python', run: true, code: `class SinglyLinkedList:
+    class Node:                            # one "coach": a value plus a hook to the next coach
+        __slots__ = ("val", "next")
+        def __init__(self, val, nxt=None):
+            self.val, self.next = val, nxt
+
+    def __init__(self):
+        self.head = None                   # first node (None when the list is empty)
+        self.size = 0                      # how many nodes we currently have
+
+    def __str__(self):                     # traversal: follow next until we fall off the end
+        parts, curr = [], self.head
+        while curr:
+            parts.append(str(curr.val))
+            curr = curr.next               # jump to the next clue
+        return " -> ".join(parts + ["None"])
+
+    def add_first(self, val):              # O(1): new node hooks onto the old head
+        self.head = self.Node(val, self.head)
+        self.size += 1
+
+    def add_last(self, val):               # O(N) without a tail pointer
+        node = self.Node(val)
+        if self.head is None:
+            self.head = node
+        else:
+            curr = self.head
+            while curr.next:               # stop ON the last node
+                curr = curr.next
+            curr.next = node
+        self.size += 1
+
+    def insert_at(self, pos, val):         # the new node ends up at index pos
+        if not 0 <= pos <= self.size:
+            raise IndexError(f"bad position {pos}")
+        if pos == 0:                       # head changes: special case
+            self.add_first(val)
+            return
+        prev = self.head
+        for _ in range(pos - 1):           # stop just BEFORE the spot
+            prev = prev.next
+        prev.next = self.Node(val, prev.next)   # new node grabs the rest FIRST, then prev points to it
+        self.size += 1
+
+    def delete_first(self):                # O(1)
+        if self.head:
+            self.head = self.head.next
+            self.size -= 1
+
+    def delete_last(self):                 # O(N): we need the SECOND-last node
+        if self.head is None:
+            return
+        if self.head.next is None:         # only one node
+            self.head = None
+        else:
+            curr = self.head
+            while curr.next.next:
+                curr = curr.next
+            curr.next = None
+        self.size -= 1
+
+    def delete_at(self, pos):
+        if not 0 <= pos < self.size:
+            raise IndexError(f"bad position {pos}")
+        if pos == 0:                       # head changes: special case
+            self.delete_first()
+            return
+        prev = self.head
+        for _ in range(pos - 1):
+            prev = prev.next
+        prev.next = prev.next.next         # skip the victim; Python frees it when nothing points to it
+        self.size -= 1
+
+lst = SinglyLinkedList()
+lst.add_last(10); lst.add_last(30)
+lst.add_first(5)                           # 5 -> 10 -> 30
+lst.insert_at(2, 20)                       # 5 -> 10 -> 20 -> 30
+print(lst)
+lst.delete_at(1)                           # 5 -> 20 -> 30
+lst.delete_last()                          # 5 -> 20
+print(lst)` },
+        { lang: 'js', run: true, code: `class Node {                       // one "coach": a value plus a hook to the next coach
+  constructor(val, next = null) { this.val = val; this.next = next; }
+}
+
+class SinglyLinkedList {
+  constructor() {
+    this.head = null;                // first node (null when the list is empty)
+    this.size = 0;                   // how many nodes we currently have
+  }
+
+  toString() {                       // traversal: follow next until we fall off the end
+    const parts = [];
+    for (let curr = this.head; curr !== null; curr = curr.next) parts.push(curr.val);
+    return parts.concat('null').join(' -> ');
+  }
+
+  addFirst(val) {                    // O(1): new node hooks onto the old head
+    this.head = new Node(val, this.head);
+    this.size++;
+  }
+
+  addLast(val) {                     // O(N) without a tail pointer
+    const node = new Node(val);
+    if (this.head === null) this.head = node;
+    else {
+      let curr = this.head;
+      while (curr.next !== null) curr = curr.next;   // stop ON the last node
+      curr.next = node;
+    }
+    this.size++;
+  }
+
+  insertAt(pos, val) {               // the new node ends up at index pos
+    if (pos < 0 || pos > this.size) throw new RangeError('bad position ' + pos);
+    if (pos === 0) { this.addFirst(val); return; }   // head changes: special case
+    let prev = this.head;
+    for (let i = 0; i < pos - 1; i++) prev = prev.next;   // stop just BEFORE the spot
+    prev.next = new Node(val, prev.next);   // new node grabs the rest FIRST, then prev points to it
+    this.size++;
+  }
+
+  deleteFirst() {                    // O(1)
+    if (this.head === null) return;
+    this.head = this.head.next;
+    this.size--;
+  }
+
+  deleteLast() {                     // O(N): we need the SECOND-last node
+    if (this.head === null) return;
+    if (this.head.next === null) this.head = null;   // only one node
+    else {
+      let curr = this.head;
+      while (curr.next.next !== null) curr = curr.next;
+      curr.next = null;
+    }
+    this.size--;
+  }
+
+  deleteAt(pos) {
+    if (pos < 0 || pos >= this.size) throw new RangeError('bad position ' + pos);
+    if (pos === 0) { this.deleteFirst(); return; }   // head changes: special case
+    let prev = this.head;
+    for (let i = 0; i < pos - 1; i++) prev = prev.next;
+    prev.next = prev.next.next;      // skip the victim; the garbage collector frees it
+    this.size--;
+  }
+}
+
+const list = new SinglyLinkedList();
+list.addLast(10); list.addLast(30);
+list.addFirst(5);                    // 5 -> 10 -> 30
+list.insertAt(2, 20);                // 5 -> 10 -> 20 -> 30
+console.log(String(list));
+list.deleteAt(1);                    // 5 -> 20 -> 30
+list.deleteLast();                   // 5 -> 20
+console.log(String(list));` },
+        { lang: 'cpp', code: `class SinglyLinkedList {
+    struct Node {                          // one "coach": a value plus a hook to the next coach
+        int val;
+        Node* next;
+        Node(int v, Node* n = nullptr) : val(v), next(n) {}
+    };
+    Node* head = nullptr;                  // first node (nullptr when the list is empty)
+    int size = 0;
+
+public:
+    ~SinglyLinkedList() {                  // no garbage collector: free every node
+        while (head) deleteFirst();
+    }
+
+    void print() const {                   // traversal: follow next until we fall off the end
+        for (Node* curr = head; curr; curr = curr->next) cout << curr->val << " -> ";
+        cout << "null\\n";
+    }
+
+    void addFirst(int val) {               // O(1): new node hooks onto the old head
+        head = new Node(val, head);
+        size++;
+    }
+
+    void addLast(int val) {                // O(N) without a tail pointer
+        Node** slot = &head;               // the pointer we will overwrite
+        while (*slot) slot = &(*slot)->next;
+        *slot = new Node(val);
+        size++;
+    }
+
+    void insertAt(int pos, int val) {      // the new node ends up at index pos
+        if (pos < 0 || pos > size) throw out_of_range("bad position " + to_string(pos));
+        if (pos == 0) { addFirst(val); return; }   // head changes: special case
+        Node* prev = head;
+        for (int i = 0; i < pos - 1; i++) prev = prev->next;   // stop just BEFORE the spot
+        prev->next = new Node(val, prev->next);   // grab the rest FIRST, then prev points to it
+        size++;
+    }
+
+    void deleteFirst() {                   // O(1)
+        if (!head) return;
+        Node* old = head;
+        head = head->next;
+        delete old;
+        size--;
+    }
+
+    void deleteLast() {                    // O(N): we need the SECOND-last node
+        if (!head) return;
+        if (!head->next) { deleteFirst(); return; }   // only one node
+        Node* curr = head;
+        while (curr->next->next) curr = curr->next;
+        delete curr->next;
+        curr->next = nullptr;
+        size--;
+    }
+
+    void deleteAt(int pos) {
+        if (pos < 0 || pos >= size) throw out_of_range("bad position " + to_string(pos));
+        if (pos == 0) { deleteFirst(); return; }   // head changes: special case
+        Node* prev = head;
+        for (int i = 0; i < pos - 1; i++) prev = prev->next;
+        Node* victim = prev->next;
+        prev->next = victim->next;         // skip the victim...
+        delete victim;                     // ...and free it ourselves
+        size--;
+    }
+};
+
+int main() {
+    SinglyLinkedList list;
+    list.addLast(10); list.addLast(30);
+    list.addFirst(5);                      // 5 -> 10 -> 30
+    list.insertAt(2, 20);                  // 5 -> 10 -> 20 -> 30
+    list.print();
+    list.deleteAt(1);                      // 5 -> 20 -> 30
+    list.deleteLast();                     // 5 -> 20
+    list.print();
+}` }
+      ] }, { lang: 'java', code: `
 class DoublyLinkedList {
     // A coach with hooks on BOTH ends
     static class DNode {
@@ -252,9 +491,191 @@ class DoublyLinkedList {
         d.removeLast();                              // 1 9 2
         System.out.println(d.forward() + " | " + d.backward());   // 1 9 2 | 2 9 1
     }
-}`],
+}`,
+      alt: [
+        { lang: 'python', run: true, code: `class DNode:                               # a coach with hooks on BOTH ends
+    __slots__ = ("val", "prev", "next")
+    def __init__(self, val):
+        self.val, self.prev, self.next = val, None, None
+
+class DoublyLinkedList:
+    def __init__(self):
+        self.head = self.tail = None           # both None when empty
+        self.size = 0
+
+    def add_first(self, val):                  # O(1) at the front
+        node = DNode(val)
+        if self.head is None:
+            self.head = self.tail = node
+        else:
+            node.next, self.head.prev = self.head, node   # new <-> old head
+            self.head = node
+        self.size += 1
+
+    def add_last(self, val):                   # O(1) at the back thanks to the tail pointer
+        node = DNode(val)
+        if self.tail is None:
+            self.head = self.tail = node
+        else:
+            self.tail.next, node.prev = node, self.tail
+            self.tail = node
+        self.size += 1
+
+    def insert_after(self, at, val):           # O(1) next to a node we already hold
+        if at is self.tail:
+            self.add_last(val)
+            return
+        node = DNode(val)
+        node.prev, node.next = at, at.next     # the new node's two hooks first
+        at.next.prev = node                    # then the neighbours point to it
+        at.next = node
+        self.size += 1
+
+    def remove(self, node):                    # O(1): the node knows both neighbours
+        if node.prev: node.prev.next = node.next
+        else:         self.head = node.next
+        if node.next: node.next.prev = node.prev
+        else:         self.tail = node.prev
+        node.prev = node.next = None           # fully unhook it
+        self.size -= 1
+
+    def remove_last(self):                     # O(1), unlike singly lists
+        if self.tail:
+            self.remove(self.tail)
+
+    def forward(self):
+        out, c = [], self.head
+        while c:
+            out.append(c.val); c = c.next
+        return out
+
+    def backward(self):
+        out, c = [], self.tail
+        while c:
+            out.append(c.val); c = c.prev
+        return out
+
+d = DoublyLinkedList()
+d.add_last(2); d.add_last(3); d.add_first(1)   # 1 2 3
+d.insert_after(d.head, 9)                       # 1 9 2 3
+d.remove_last()                                 # 1 9 2
+print(*d.forward(), "|", *d.backward())         # 1 9 2 | 2 9 1` },
+        { lang: 'js', run: true, code: `class DNode {                          // a coach with hooks on BOTH ends
+  constructor(val) { this.val = val; this.prev = null; this.next = null; }
+}
+
+class DoublyLinkedList {
+  constructor() { this.head = null; this.tail = null; this.size = 0; }
+
+  addFirst(val) {                      // O(1) at the front
+    const node = new DNode(val);
+    if (this.head === null) this.head = this.tail = node;
+    else {
+      node.next = this.head;           // new node -> old head
+      this.head.prev = node;           // old head <- new node
+      this.head = node;
+    }
+    this.size++;
+  }
+
+  addLast(val) {                       // O(1) at the back thanks to the tail pointer
+    const node = new DNode(val);
+    if (this.tail === null) this.head = this.tail = node;
+    else {
+      this.tail.next = node;
+      node.prev = this.tail;
+      this.tail = node;
+    }
+    this.size++;
+  }
+
+  insertAfter(at, val) {               // O(1) next to a node we already hold
+    if (at === this.tail) { this.addLast(val); return; }
+    const node = new DNode(val);
+    node.prev = at;                    // the new node's two hooks first
+    node.next = at.next;
+    at.next.prev = node;               // then the neighbours point to it
+    at.next = node;
+    this.size++;
+  }
+
+  remove(node) {                       // O(1): the node knows both neighbours
+    if (node.prev !== null) node.prev.next = node.next; else this.head = node.next;
+    if (node.next !== null) node.next.prev = node.prev; else this.tail = node.prev;
+    node.prev = node.next = null;      // fully unhook it
+    this.size--;
+  }
+
+  removeLast() { if (this.tail !== null) this.remove(this.tail); }   // O(1), unlike singly lists
+
+  forward() { const out = []; for (let c = this.head; c; c = c.next) out.push(c.val); return out.join(' '); }
+  backward() { const out = []; for (let c = this.tail; c; c = c.prev) out.push(c.val); return out.join(' '); }
+}
+
+const d = new DoublyLinkedList();
+d.addLast(2); d.addLast(3); d.addFirst(1);   // 1 2 3
+d.insertAfter(d.head, 9);                    // 1 9 2 3
+d.removeLast();                              // 1 9 2
+console.log(d.forward() + ' | ' + d.backward());   // 1 9 2 | 2 9 1` },
+        { lang: 'cpp', code: `class DoublyLinkedList {
+public:
+    struct DNode {                             // a coach with hooks on BOTH ends
+        int val;
+        DNode *prev = nullptr, *next = nullptr;
+        DNode(int v) : val(v) {}
+    };
+    DNode *head = nullptr, *tail = nullptr;    // both nullptr when empty
+    int size = 0;
+
+    ~DoublyLinkedList() { while (tail) removeLast(); }   // free every node
+
+    void addFirst(int val) {                   // O(1) at the front
+        DNode* node = new DNode(val);
+        if (!head) head = tail = node;
+        else { node->next = head; head->prev = node; head = node; }
+        size++;
+    }
+
+    void addLast(int val) {                    // O(1) at the back thanks to the tail pointer
+        DNode* node = new DNode(val);
+        if (!tail) head = tail = node;
+        else { tail->next = node; node->prev = tail; tail = node; }
+        size++;
+    }
+
+    void insertAfter(DNode* at, int val) {     // O(1) next to a node we already hold
+        if (at == tail) { addLast(val); return; }
+        DNode* node = new DNode(val);
+        node->prev = at;                       // the new node's two hooks first
+        node->next = at->next;
+        at->next->prev = node;                 // then the neighbours point to it
+        at->next = node;
+        size++;
+    }
+
+    void remove(DNode* node) {                 // O(1): the node knows both neighbours
+        (node->prev ? node->prev->next : head) = node->next;
+        (node->next ? node->next->prev : tail) = node->prev;
+        delete node;                           // unhooked, so free it
+        size--;
+    }
+
+    void removeLast() { if (tail) remove(tail); }   // O(1), unlike singly lists
+
+    string forward() const { string s; for (DNode* c = head; c; c = c->next) s += to_string(c->val) + " "; return s; }
+    string backward() const { string s; for (DNode* c = tail; c; c = c->prev) s += to_string(c->val) + " "; return s; }
+};
+
+int main() {
+    DoublyLinkedList d;
+    d.addLast(2); d.addLast(3); d.addFirst(1);   // 1 2 3
+    d.insertAfter(d.head, 9);                    // 1 9 2 3
+    d.removeLast();                              // 1 9 2
+    cout << d.forward() << "| " << d.backward() << "\\n";   // 1 9 2 | 2 9 1
+}` }
+      ] }],
     codeTitle: ['Singly linked list from scratch (insert/delete at head, tail, position + traversal)', 'Doubly linked list from scratch (O(1) remove of any node you hold)'],
-    after: `<p><b>Common bugs to watch for:</b> (1) forgetting the empty-list case (<code>head == null</code>); (2) relinking in the wrong order and losing the rest of the chain; (3) calling <code>curr.next.next</code> when <code>curr.next</code> might be null → NullPointerException; (4) in a DLL, fixing <code>next</code> but forgetting <code>prev</code>. The dummy node trick in the next topic removes most "is it the head?" special cases.</p>`
+    after: `<p><b>Common bugs to watch for:</b> (1) forgetting the empty-list case (<code>head == null</code>); (2) relinking in the wrong order and losing the rest of the chain; (3) calling <code>curr.next.next</code> when <code>curr.next</code> might be null → a null-pointer crash (Java <code>NullPointerException</code>, Python <code>AttributeError</code>, JS <code>TypeError</code>, C++ undefined behaviour); (4) in a DLL, fixing <code>next</code> but forgetting <code>prev</code>. The dummy node trick in the next topic removes most "is it the head?" special cases.</p>`
   });
 
   // =====================================================================
@@ -283,7 +704,7 @@ ${H.table(['Without dummy', 'With dummy'], [
       '"n-th from the <b>end</b>" + "in <b>one pass</b>" → two pointers with a fixed gap.',
       'You keep writing <code>if (head == null)</code> or <code>if (prev == null)</code> branches → a dummy usually deletes them.'
     ],
-    code: `
+    code: { lang: 'java', code: `
 ListNode removeAll(ListNode head, int target) {
     ListNode dummy = new ListNode(0, head);   // signboard in front of the real head
     ListNode prev = dummy;                    // prev always sits BEFORE the node we inspect
@@ -296,6 +717,41 @@ ListNode removeAll(ListNode head, int target) {
     }
     return dummy.next;                        // the (possibly new) real head
 }`,
+      alt: [
+        { lang: 'python', code: `def remove_all(head, target):
+    dummy = prev = ListNode(0, head)          # signboard in front of the real head
+    while prev.next:                          # prev always sits BEFORE the node we inspect
+        if prev.next.val == target:
+            prev.next = prev.next.next        # skip it (works even for the real head)
+        else:
+            prev = prev.next                  # only move forward when we did NOT delete
+    return dummy.next                         # the (possibly new) real head` },
+        { lang: 'js', code: `function removeAll(head, target) {
+  const dummy = new ListNode(0, head);      // signboard in front of the real head
+  let prev = dummy;                         // prev always sits BEFORE the node we inspect
+  while (prev.next !== null) {
+    if (prev.next.val === target) prev.next = prev.next.next;   // skip it (even the real head)
+    else prev = prev.next;                  // only move forward when we did NOT delete
+  }
+  return dummy.next;                        // the (possibly new) real head
+}` },
+        { lang: 'cpp', code: `struct ListNode { int val; ListNode* next; ListNode(int x = 0, ListNode* n = nullptr) : val(x), next(n) {} };
+
+ListNode* removeAll(ListNode* head, int target) {
+    ListNode dummy(0, head);                  // signboard in front of the real head (on the stack)
+    ListNode* prev = &dummy;                  // prev always sits BEFORE the node we inspect
+    while (prev->next) {
+        if (prev->next->val == target) {
+            ListNode* gone = prev->next;
+            prev->next = gone->next;          // skip it (works even for the real head)
+            delete gone;
+        } else {
+            prev = prev->next;                // only move forward when we did NOT delete
+        }
+    }
+    return dummy.next;                        // the (possibly new) real head
+}` }
+      ] },
     codeTitle: 'Dummy node: remove every node equal to target (no head special case)',
     viz: [{
       title: 'Insert & delete by position with a dummy node',
@@ -355,7 +811,7 @@ ListNode removeAll(ListNode head, int target) {
             var dv = disp(), dn = seqNext(dv.length);
             dn[pos] = pos + 2 < dv.length ? pos + 2 : -1;
             hl = obj(pos + 1, 'bad'); hl[pos] = 'cur';
-            frames.push({ narr: '<code>prev.next = prev.next.next</code>: prev now skips over ' + vals[pos] + '. Nobody points to it any more, so Java\'s garbage collector will throw it away.', parts: [
+            frames.push({ narr: '<code>prev.next = prev.next.next</code>: prev now skips over ' + vals[pos] + '. Nobody points to it any more, so the garbage collector frees it (in C++ you would <code>delete</code> it yourself).', parts: [
               { type: 'list', label: 'dummy + list (mid-delete)', values: dv, next: dn, ptr: obj(pos, 'prev'), hl: hl }
             ] });
             vals.splice(pos, 1);
@@ -437,6 +893,16 @@ ListNode removeNthFromEnd(ListNode head, int n) {
         `<p>No extra data structure: one <b>dummy</b> node + two pointers <code>fast</code>, <code>slow</code> starting at the dummy. Move fast n + 1 steps; then move both one step at a time until fast is null.</p>`,
         `<p>Traps: removing the <b>head</b> (n == size) — the dummy handles it because slow simply stays on the dummy; returning <code>head</code> instead of <code>dummy.next</code> would return the deleted node. Recipe: dummy → head; fast = slow = dummy; repeat n+1 times fast = fast.next; while fast != null move both; slow.next = slow.next.next; return dummy.next.</p>`
       ],
+      tests: { sig: 'ListNode int -> ListNode', fn: 'removeNthFromEnd', cases: [
+        [[[1, 2, 3, 4, 5], 2], [1, 2, 3, 5]],
+        [[[1], 1], []],
+        [[[1, 2], 2], [2]],
+        [[[1, 2], 1], [1]],
+        [[[1, 2, 3], 3], [2, 3]],
+        [[[0, 100, 0, 100], 4], [100, 0, 100]],
+        [[[3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42, 45, 48, 51, 54, 57, 60, 63, 66, 69, 72, 75, 78, 81, 84, 87, 90], 15], [3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42, 45, 51, 54, 57, 60, 63, 66, 69, 72, 75, 78, 81, 84, 87, 90]],
+        [[[3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42, 45, 48, 51, 54, 57, 60, 63, 66, 69, 72, 75, 78, 81, 84, 87, 90], 1], [3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42, 45, 48, 51, 54, 57, 60, 63, 66, 69, 72, 75, 78, 81, 84, 87]]
+      ] },
       solution: {
         approach: `<p>Dummy node + a gap of n + 1 between fast and slow. One pass, no special cases.</p>`,
         code: `
@@ -462,6 +928,52 @@ class Solution {
         return dummy.next;   // may differ from head if we removed the head
     }
 }`,
+        alt: [
+          { lang: 'python', code: `class Solution:
+    def remove_nth_from_end(self, head, n):
+        dummy = ListNode(0, head)        # signboard before the head
+        fast = slow = dummy
+        for _ in range(n + 1):           # phase 1: n nodes sit strictly between them
+            fast = fast.next
+        while fast:                      # phase 2: move both until fast falls off
+            fast, slow = fast.next, slow.next
+        slow.next = slow.next.next       # slow is just BEFORE the victim
+        return dummy.next                # may differ from head` },
+          { lang: 'js', code: `function removeNthFromEnd(head, n) {
+  const dummy = new ListNode(0, head);   // signboard before the head
+  let fast = dummy, slow = dummy;
+  for (let i = 0; i <= n; i++) fast = fast.next;   // phase 1: gap of n + 1
+  while (fast !== null) {                // phase 2: move both until fast falls off
+    fast = fast.next;
+    slow = slow.next;
+  }
+  slow.next = slow.next.next;            // slow is just BEFORE the victim
+  return dummy.next;                     // may differ from head
+}` },
+          { lang: 'cpp', code: `// LeetCode provides this node type; it is spelled out so the snippet compiles on its own.
+struct ListNode {
+    int val; ListNode* next;
+    ListNode(int x = 0, ListNode* n = nullptr) : val(x), next(n) {}
+};
+
+class Solution {
+public:
+    ListNode* removeNthFromEnd(ListNode* head, int n) {
+        ListNode dummy(0, head);              // on the stack: nothing to free
+        ListNode* fast = &dummy;
+        ListNode* slow = &dummy;
+        for (int i = 0; i <= n; i++) fast = fast->next;   // phase 1: gap of n + 1
+        while (fast) {                        // phase 2: move both until fast falls off
+            fast = fast->next;
+            slow = slow->next;
+        }
+        ListNode* victim = slow->next;        // slow is just BEFORE the victim
+        slow->next = victim->next;
+        delete victim;
+        return dummy.next;                    // may differ from head
+    }
+};` }
+        ],
         dry: {
           head: ['step', 'fast on', 'slow on', 'what happened'],
           rows: [
@@ -562,8 +1074,17 @@ ListNode middleNode(ListNode head) {
       hints: [
         `<p>If one pointer moves twice as fast as another, when the fast one has covered the whole list the slow one has covered <b>half</b> of it.</p>`,
         `<p>Two pointers, both start at <code>head</code>: <code>slow = slow.next</code>, <code>fast = fast.next.next</code> each round. No array, no counting.</p>`,
-        `<p>Trap: check <b>both</b> <code>fast != null</code> (even length) and <code>fast.next != null</code> (odd length) before jumping, otherwise you get a NullPointerException. Recipe: slow = fast = head; while fast != null and fast.next != null: slow = slow.next, fast = fast.next.next; return slow.</p>`
+        `<p>Trap: check <b>both</b> <code>fast != null</code> (even length) and <code>fast.next != null</code> (odd length) before jumping, otherwise you follow a null pointer and crash. Recipe: slow = fast = head; while fast != null and fast.next != null: slow = slow.next, fast = fast.next.next; return slow.</p>`
       ],
+      tests: { sig: 'ListNode -> ListNode', fn: 'middleNode', cases: [
+        [[[1, 2, 3, 4, 5]], [3, 4, 5]],
+        [[[1, 2, 3, 4, 5, 6]], [4, 5, 6]],
+        [[[1]], [1]],
+        [[[1, 2]], [2]],
+        [[[7, 7, 7]], [7, 7]],
+        [[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100]], [51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100]],
+        [[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99]], [50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99]]
+      ] },
       solution: {
         approach: `<p>Tortoise and hare: one pass, two pointers, the slow one lands on the middle.</p>`,
         code: `
@@ -579,6 +1100,41 @@ class Solution {
         return slow;
     }
 }`,
+        alt: [
+          { lang: 'python', code: `class Solution:
+    def middle_node(self, head):
+        slow = fast = head
+        while fast and fast.next:        # fast needs two nodes ahead to jump
+            slow = slow.next             # 1 step
+            fast = fast.next.next        # 2 steps
+        return slow                      # halfway (second middle if even)` },
+          { lang: 'js', code: `function middleNode(head) {
+  let slow = head, fast = head;
+  while (fast !== null && fast.next !== null) {   // fast needs two nodes ahead
+    slow = slow.next;            // 1 step
+    fast = fast.next.next;       // 2 steps
+  }
+  return slow;                   // halfway (second middle if even)
+}` },
+          { lang: 'cpp', code: `// LeetCode provides this node type; it is spelled out so the snippet compiles on its own.
+struct ListNode {
+    int val; ListNode* next;
+    ListNode(int x = 0, ListNode* n = nullptr) : val(x), next(n) {}
+};
+
+class Solution {
+public:
+    ListNode* middleNode(ListNode* head) {
+        ListNode* slow = head;
+        ListNode* fast = head;
+        while (fast && fast->next) {     // fast needs two nodes ahead
+            slow = slow->next;           // 1 step
+            fast = fast->next->next;     // 2 steps
+        }
+        return slow;                     // halfway (second middle if even)
+    }
+};` }
+        ],
         dry: {
           head: ['round', 'slow', 'fast', 'fast != null &amp;&amp; fast.next != null?'],
           rows: [
@@ -695,6 +1251,30 @@ ListNode detectCycle(ListNode head) {
         `<p>Only two pointers (no HashSet). Phase 1: slow 1 step, fast 2 steps until equal or fast hits null. Phase 2: one pointer from head, one from the meeting node, both 1 step until equal.</p>`,
         `<p>Traps: empty list or single node without a loop (check <code>fast != null &amp;&amp; fast.next != null</code>); compare <b>references</b> not values; in phase 2 move at speed 1, not 2; if the loop starts at the head (a = 0) phase 2 returns immediately. Recipe: run phase 1; if no meeting → null; p = head; while p != slow: p = p.next, slow = slow.next; return p.</p>`
       ],
+      // The test format cannot describe a cycle, so tests.harness has a test-only cycleInfo builder
+      // that builds the list like the judge does (tail -> index pos) and returns
+      // [hasCycle ? 1 : 0, index of the node detectCycle returned, or -1].
+      tests: { sig: 'int[] int -> int[]', fn: 'cycleInfo', harness: {
+        java: "class Check {\n    // build vals with the tail linked back to index pos (-1 = no cycle)\n    static int[] cycleInfo(int[] vals, int pos) {\n        ListNode[] nodes = new ListNode[vals.length];\n        for (int i = 0; i < vals.length; i++) nodes[i] = new ListNode(vals[i]);\n        for (int i = 0; i + 1 < vals.length; i++) nodes[i].next = nodes[i + 1];\n        if (pos >= 0) nodes[vals.length - 1].next = nodes[pos];\n        ListNode head = vals.length > 0 ? nodes[0] : null;\n        Solution s = new Solution();\n        ListNode start = s.detectCycle(head);\n        int idx = -1;\n        for (int i = 0; i < nodes.length; i++) if (nodes[i] == start) idx = i;\n        return new int[]{s.hasCycle(head) ? 1 : 0, idx};\n    }\n}",
+        python: "def cycle_info(vals, pos):\n    nodes = [ListNode(v) for v in vals]\n    for a, b in zip(nodes, nodes[1:]):\n        a.next = b\n    if pos >= 0:\n        nodes[-1].next = nodes[pos]\n    head = nodes[0] if nodes else None\n    s = Solution()\n    start = s.detect_cycle(head)\n    return [int(s.has_cycle(head)), next((i for i, n in enumerate(nodes) if n is start), -1)]",
+        js: "function cycleInfo(vals, pos) {\n  const nodes = vals.map((v) => new ListNode(v));\n  for (let i = 0; i + 1 < nodes.length; i++) nodes[i].next = nodes[i + 1];\n  if (pos >= 0) nodes[nodes.length - 1].next = nodes[pos];\n  const head = nodes.length ? nodes[0] : null, s = new Solution();\n  const start = s.detectCycle(head);\n  return [s.hasCycle(head) ? 1 : 0, nodes.indexOf(start)];\n}",
+        cpp: "vector<int> cycleInfo(vector<int>& vals, int pos) {\n    int n = vals.size();\n    vector<ListNode> nodes(vals.begin(), vals.end());\n    for (int i = 0; i + 1 < n; i++) nodes[i].next = &nodes[i + 1];\n    if (pos >= 0) nodes[n - 1].next = &nodes[pos];\n    ListNode* head = n ? &nodes[0] : nullptr;\n    ListNode* start = detectCycle(head);\n    int idx = -1;\n    for (int i = 0; i < n; i++) if (&nodes[i] == start) idx = i;\n    return {hasCycle(head) ? 1 : 0, idx};\n}"
+      }, cases: [
+        [[[3, 2, 0, -4], 1], [1, 1]],
+        [[[1, 2], 0], [1, 0]],
+        [[[1], -1], [0, -1]],
+        [[[], -1], [0, -1]],
+        [[[1], 0], [1, 0]],
+        [[[1, 2], -1], [0, -1]],
+        [[[1, 2, 3, 4, 5, 6], 5], [1, 5]],
+        [[[5, 5, 5, 5], 2], [1, 2]],
+        [[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 8], [1, 8]],
+        [[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10], -1], [0, -1]],
+        // 10^4 nodes (largest input)
+        [[{ $range: [0, 10000] }, 0], [1, 0]],
+        [[{ $range: [0, 10000] }, 9999], [1, 9999]],
+        [[{ $range: [0, 10000] }, -1], [0, -1]]
+      ] },
       solution: {
         approach: `<p>Floyd: phase 1 detects the loop with speeds 1 and 2; phase 2 uses a = kc − b to walk to the start.</p>`,
         code: `
@@ -731,6 +1311,81 @@ class Solution {
         return null;   // no cycle
     }
 }`,
+        alt: [
+          { lang: 'python', code: `class Solution:
+    def has_cycle(self, head):
+        slow = fast = head
+        while fast and fast.next:
+            slow, fast = slow.next, fast.next.next
+            if slow is fast:                 # same node object: fast lapped slow
+                return True
+        return False                         # fast reached the end
+
+    def detect_cycle(self, head):
+        slow = fast = head
+        while fast and fast.next:            # phase 1: meet inside the loop
+            slow, fast = slow.next, fast.next.next
+            if slow is fast:
+                p = head                     # phase 2: a = k*c - b
+                while p is not slow:
+                    p, slow = p.next, slow.next
+                return p
+        return None                          # no cycle` },
+          { lang: 'js', code: `class Solution {
+  hasCycle(head) {
+    let slow = head, fast = head;
+    while (fast !== null && fast.next !== null) {
+      slow = slow.next;
+      fast = fast.next.next;
+      if (slow === fast) return true;      // same node: fast lapped slow
+    }
+    return false;                          // fast reached the end
+  }
+
+  detectCycle(head) {
+    let slow = head, fast = head;
+    while (fast !== null && fast.next !== null) {   // phase 1: meet inside the loop
+      slow = slow.next;
+      fast = fast.next.next;
+      if (slow === fast) {
+        let p = head;                      // phase 2: a = k*c - b
+        while (p !== slow) { p = p.next; slow = slow.next; }
+        return p;
+      }
+    }
+    return null;                           // no cycle
+  }
+}` },
+          { lang: 'cpp', code: `// LeetCode provides this node type; it is spelled out so the snippet compiles on its own.
+struct ListNode {
+    int val; ListNode* next;
+    ListNode(int x = 0, ListNode* n = nullptr) : val(x), next(n) {}
+};
+
+bool hasCycle(ListNode* head) {
+    ListNode *slow = head, *fast = head;
+    while (fast && fast->next) {
+        slow = slow->next;
+        fast = fast->next->next;
+        if (slow == fast) return true;     // same address: fast lapped slow
+    }
+    return false;                          // fast reached the end
+}
+
+ListNode* detectCycle(ListNode* head) {
+    ListNode *slow = head, *fast = head;
+    while (fast && fast->next) {           // phase 1: meet inside the loop
+        slow = slow->next;
+        fast = fast->next->next;
+        if (slow == fast) {
+            ListNode* p = head;            // phase 2: a = k*c - b
+            while (p != slow) { p = p->next; slow = slow->next; }
+            return p;
+        }
+    }
+    return nullptr;                        // no cycle
+}` }
+        ],
         dry: {
           head: ['phase', 'slow', 'fast / p', 'note (list 3 → 2 → 0 → -4 → back to 2)'],
           rows: [
@@ -781,7 +1436,7 @@ ${H.table(['call', 'what it does on the way back up', 'list now'], [
       '"Palindrome list", "reorder list", "add two numbers stored forwards" → reverse the second half (or both lists) as a helper step.',
       '"Can you do it <b>recursively</b> too?" → reverse the rest, then <code>head.next.next = head; head.next = null</code>.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
 ListNode reverseIterative(ListNode head) {
     ListNode prev = null;       // the new tail must point to null
     ListNode curr = head;
@@ -792,7 +1447,40 @@ ListNode reverseIterative(ListNode head) {
         curr = next;                 //    curr steps forward
     }
     return prev;                     // prev is the old last node = new head
-}`, `
+}`,
+      alt: [
+        { lang: 'python', code: `def reverse_iterative(head):
+    prev, curr = None, head          # the new tail must point to None
+    while curr:
+        nxt = curr.next              # 1) remember the rest of the list
+        curr.next = prev             # 2) flip this arrow backwards
+        prev, curr = curr, nxt       # 3) both step forward
+    return prev                      # prev is the old last node = new head` },
+        { lang: 'js', code: `function reverseIterative(head) {
+  let prev = null;                   // the new tail must point to null
+  let curr = head;
+  while (curr !== null) {
+    const next = curr.next;          // 1) remember the rest of the list
+    curr.next = prev;                // 2) flip this arrow backwards
+    prev = curr;                     // 3) prev steps forward
+    curr = next;                     //    curr steps forward
+  }
+  return prev;                       // prev is the old last node = new head
+}` },
+        { lang: 'cpp', code: `struct ListNode { int val; ListNode* next; ListNode(int x = 0, ListNode* n = nullptr) : val(x), next(n) {} };
+
+ListNode* reverseIterative(ListNode* head) {
+    ListNode* prev = nullptr;          // the new tail must point to nullptr
+    ListNode* curr = head;
+    while (curr) {
+        ListNode* next = curr->next;   // 1) remember the rest of the list
+        curr->next = prev;             // 2) flip this arrow backwards
+        prev = curr;                   // 3) prev steps forward
+        curr = next;                   //    curr steps forward
+    }
+    return prev;                       // prev is the old last node = new head
+}` }
+      ] }, { lang: 'java', code: `
 ListNode reverseRecursive(ListNode head) {
     // Base case: empty list or one node is already reversed
     if (head == null || head.next == null) return head;
@@ -802,7 +1490,38 @@ ListNode reverseRecursive(ListNode head) {
     head.next.next = head;
     head.next = null;            // head becomes the new tail
     return newHead;              // same new head is passed all the way up
-}`],
+}`,
+      alt: [
+        { lang: 'python', code: `def reverse_recursive(head):
+    # Base case: empty list or one node is already reversed
+    if head is None or head.next is None:
+        return head
+    # Reverse everything after head (one stack frame per node: Python stops near 1000)
+    new_head = reverse_recursive(head.next)
+    head.next.next = head        # hang head after the LAST node of the reversed part
+    head.next = None             # head becomes the new tail
+    return new_head              # same new head is passed all the way up` },
+        { lang: 'js', code: `function reverseRecursive(head) {
+  // Base case: empty list or one node is already reversed
+  if (head === null || head.next === null) return head;
+  // Reverse everything after head; newHead is the old last node
+  const newHead = reverseRecursive(head.next);
+  head.next.next = head;       // hang head after the LAST node of the reversed part
+  head.next = null;            // head becomes the new tail
+  return newHead;              // same new head is passed all the way up
+}` },
+        { lang: 'cpp', code: `struct ListNode { int val; ListNode* next; ListNode(int x = 0, ListNode* n = nullptr) : val(x), next(n) {} };
+
+ListNode* reverseRecursive(ListNode* head) {
+    // Base case: empty list or one node is already reversed
+    if (!head || !head->next) return head;
+    // Reverse everything after head; newHead is the old last node
+    ListNode* newHead = reverseRecursive(head->next);
+    head->next->next = head;     // hang head after the LAST node of the reversed part
+    head->next = nullptr;        // head becomes the new tail
+    return newHead;              // same new head is passed all the way up
+}` }
+      ] }],
     codeTitle: ['Iterative reversal (O(1) space)', 'Recursive reversal (O(N) call stack)'],
     viz: {
       title: 'Iterative reversal: prev / curr / next, one arrow at a time',
@@ -863,6 +1582,15 @@ ListNode reverseList(ListNode head) {
         `<p>Three pointers: <code>prev</code> (head of reversed part, starts null), <code>curr</code> (node being flipped), <code>next</code> (saved rest of the list). No extra structure needed.</p>`,
         `<p>Traps: return <code>prev</code>, not <code>head</code> (head is now the tail); empty list → loop never runs, prev = null is correct; in recursion don't forget <code>head.next = null</code> or you create a 2-node cycle. Recipe: prev = null, curr = head; while curr: next = curr.next; curr.next = prev; prev = curr; curr = next; return prev.</p>`
       ],
+      tests: { sig: 'ListNode -> ListNode', fn: 'reverseList', cases: [
+        [[[1, 2, 3, 4, 5]], [5, 4, 3, 2, 1]],
+        [[[]], []],
+        [[[1]], [1]],
+        [[[1, 2]], [2, 1]],
+        [[[-5000, 5000, 0]], [0, 5000, -5000]],
+        [[[3, 3, 1]], [1, 3, 3]],
+        [[{ $range: [-2500, 2500] }], { $range: [2499, -2501, -1] }]   // 5000 nodes (largest input)
+      ] },
       solution: {
         approach: `<p>Iterative prev/curr/next for O(1) space; recursive version included for the follow-up.</p>`,
         code: `
@@ -888,6 +1616,77 @@ class Solution {
         return newHead;
     }
 }`,
+        alt: [
+          { lang: 'python', code: `class Solution:
+    # Iterative: O(N) time, O(1) space
+    def reverse_list(self, head):
+        prev, curr = None, head
+        while curr:
+            # right side is evaluated first: save the rest, flip, step forward
+            curr.next, prev, curr = prev, curr, curr.next
+        return prev                                   # new head
+
+    # Recursive: O(N) call stack, so only for short lists (Python stops near 1000 frames)
+    def reverse_list_recursive(self, head):
+        if head is None or head.next is None:
+            return head
+        new_head = self.reverse_list_recursive(head.next)
+        head.next.next = head                         # the node after head points back
+        head.next = None                              # head is the new tail
+        return new_head` },
+          { lang: 'js', code: `class Solution {
+  // Iterative: O(N) time, O(1) space
+  reverseList(head) {
+    let prev = null, curr = head;
+    while (curr !== null) {
+      const next = curr.next;    // save the rest
+      curr.next = prev;          // flip the arrow
+      prev = curr;               // move prev forward
+      curr = next;               // move curr forward
+    }
+    return prev;                 // new head
+  }
+
+  // Recursive: O(N) call stack
+  reverseListRecursive(head) {
+    if (head === null || head.next === null) return head;
+    const newHead = this.reverseListRecursive(head.next);
+    head.next.next = head;       // the node after head points back
+    head.next = null;            // head is the new tail
+    return newHead;
+  }
+}` },
+          { lang: 'cpp', code: `// LeetCode provides this node type; it is spelled out so the snippet compiles on its own.
+struct ListNode {
+    int val; ListNode* next;
+    ListNode(int x = 0, ListNode* n = nullptr) : val(x), next(n) {}
+};
+
+class Solution {
+public:
+    // Iterative: O(N) time, O(1) space
+    ListNode* reverseList(ListNode* head) {
+        ListNode* prev = nullptr;
+        ListNode* curr = head;
+        while (curr) {
+            ListNode* next = curr->next;   // save the rest
+            curr->next = prev;             // flip the arrow
+            prev = curr;                   // move prev forward
+            curr = next;                   // move curr forward
+        }
+        return prev;                       // new head
+    }
+
+    // Recursive: O(N) call stack
+    ListNode* reverseListRecursive(ListNode* head) {
+        if (!head || !head->next) return head;
+        ListNode* newHead = reverseListRecursive(head->next);
+        head->next->next = head;           // the node after head points back
+        head->next = nullptr;              // head is the new tail
+        return newHead;
+    }
+};` }
+        ],
         dry: {
           head: ['round', 'curr', 'next saved', 'curr.next set to', 'prev after', 'reversed part'],
           rows: [
@@ -1030,6 +1829,22 @@ ListNode reverseKGroup(ListNode head, int k) {
         `<p>Use a <b>dummy</b> + <code>groupPrev</code>. Helper <code>getKth(groupPrev, k)</code> walks k steps (returns null if the list ends). Reverse with prev/curr/next where prev starts at <code>groupNext = kth.next</code> and the loop runs while <code>curr != groupNext</code>.</p>`,
         `<p>Traps: stop when kth is null (do not reverse the short tail); remember <code>oldFirst = groupPrev.next</code> <b>before</b> rewiring; return <code>dummy.next</code>. Recipe: loop { kth = getKth(groupPrev,k); if null break; groupNext = kth.next; reverse from groupPrev.next until groupNext with prev = groupNext; oldFirst = groupPrev.next; groupPrev.next = kth; groupPrev = oldFirst; }.</p>`
       ],
+      tests: { sig: 'ListNode int -> ListNode', fn: 'reverseKGroup', cases: [
+        [[[1, 2, 3, 4, 5], 2], [2, 1, 4, 3, 5]],
+        [[[1, 2, 3, 4, 5], 3], [3, 2, 1, 4, 5]],
+        [[[1, 2, 3, 4, 5], 1], [1, 2, 3, 4, 5]],
+        [[[1, 2, 3, 4, 5], 5], [5, 4, 3, 2, 1]],
+        [[[1], 1], [1]],
+        [[[1, 2, 3, 4, 5, 6, 7, 8], 3], [3, 2, 1, 6, 5, 4, 7, 8]],
+        [[[1, 2, 3, 4, 5, 6], 2], [2, 1, 4, 3, 6, 5]],
+        [[[1, 2], 2], [2, 1]],
+        [[[0, 1000, 0, 1000, 7], 4], [1000, 0, 1000, 0, 7]],
+        // n = 5000 (largest input): values 0..999 five times
+        [[{ $concat: [{ $range: [0, 1000] }, { $range: [0, 1000] }, { $range: [0, 1000] }, { $range: [0, 1000] }, { $range: [0, 1000] }] }, 5000], { $concat: [{ $range: [999, -1, -1] }, { $range: [999, -1, -1] }, { $range: [999, -1, -1] }, { $range: [999, -1, -1] }, { $range: [999, -1, -1] }] }],
+        [[{ $concat: [{ $range: [0, 1000] }, { $range: [0, 1000] }, { $range: [0, 1000] }, { $range: [0, 1000] }, { $range: [0, 1000] }] }, 1000], { $concat: [{ $range: [999, -1, -1] }, { $range: [999, -1, -1] }, { $range: [999, -1, -1] }, { $range: [999, -1, -1] }, { $range: [999, -1, -1] }] }],
+        [[{ $concat: [{ $range: [0, 1000] }, { $range: [0, 1000] }, { $range: [0, 1000] }, { $range: [0, 1000] }, { $range: [0, 1000] }] }, 2500], { $concat: [{ $range: [499, -1, -1] }, { $range: [999, -1, -1] }, { $range: [999, -1, -1] }, { $range: [999, -1, -1] }, { $range: [999, -1, -1] }, { $range: [999, 499, -1] }] }],
+        [[{ $concat: [{ $range: [0, 1000] }, { $range: [0, 1000] }, { $range: [0, 1000] }, { $range: [0, 1000] }, { $range: [0, 1000] }] }, 1], { $concat: [{ $range: [0, 1000] }, { $range: [0, 1000] }, { $range: [0, 1000] }, { $range: [0, 1000] }, { $range: [0, 1000] }] }]
+      ] },
       solution: {
         approach: `<p>Dummy + groupPrev; for each full block: find kth, reverse the block in place with prev starting at groupNext, hook groupPrev to kth, jump groupPrev to the old first node.</p>`,
         code: `
@@ -1069,6 +1884,87 @@ class Solution {
         return node;
     }
 }`,
+        alt: [
+          { lang: 'python', code: `class Solution:
+    def reverse_k_group(self, head, k):
+        dummy = ListNode(0, head)
+        group_prev = dummy                       # node just before the current group
+        while True:
+            kth = self._get_kth(group_prev, k)   # last node of this group
+            if kth is None:                      # fewer than k nodes left: leave them
+                break
+            group_next = kth.next                # first node after the group
+            prev, curr = group_next, group_prev.next
+            while curr is not group_next:        # flip; old first ends up -> group_next
+                curr.next, prev, curr = prev, curr, curr.next
+            old_first = group_prev.next          # now the LAST node of the group
+            group_prev.next = kth                # hook the front
+            group_prev = old_first               # step to just before the next group
+        return dummy.next
+
+    @staticmethod
+    def _get_kth(node, k):
+        while node and k > 0:                    # None means the list ran out first
+            node, k = node.next, k - 1
+        return node` },
+          { lang: 'js', code: `function reverseKGroup(head, k) {
+  const dummy = new ListNode(0, head);
+  let groupPrev = dummy;                     // node just before the current group
+  while (true) {
+    let kth = groupPrev;
+    for (let i = 0; i < k && kth !== null; i++) kth = kth.next;   // last node of the group
+    if (kth === null) break;                 // fewer than k nodes left: leave them
+    const groupNext = kth.next;              // first node after the group
+    let prev = groupNext, curr = groupPrev.next;
+    while (curr !== groupNext) {             // flip; old first ends up -> groupNext
+      const next = curr.next;
+      curr.next = prev;
+      prev = curr;
+      curr = next;
+    }
+    const oldFirst = groupPrev.next;         // now the LAST node of the group
+    groupPrev.next = kth;                    // hook the front
+    groupPrev = oldFirst;                    // step to just before the next group
+  }
+  return dummy.next;
+}` },
+          { lang: 'cpp', code: `// LeetCode provides this node type; it is spelled out so the snippet compiles on its own.
+struct ListNode {
+    int val; ListNode* next;
+    ListNode(int x = 0, ListNode* n = nullptr) : val(x), next(n) {}
+};
+
+class Solution {
+public:
+    ListNode* reverseKGroup(ListNode* head, int k) {
+        ListNode dummy(0, head);
+        ListNode* groupPrev = &dummy;            // node just before the current group
+        while (true) {
+            ListNode* kth = getKth(groupPrev, k);   // last node of this group
+            if (!kth) break;                     // fewer than k nodes left: leave them
+            ListNode* groupNext = kth->next;     // first node after the group
+            ListNode* prev = groupNext;
+            ListNode* curr = groupPrev->next;
+            while (curr != groupNext) {          // flip; old first ends up -> groupNext
+                ListNode* next = curr->next;
+                curr->next = prev;
+                prev = curr;
+                curr = next;
+            }
+            ListNode* oldFirst = groupPrev->next;   // now the LAST node of the group
+            groupPrev->next = kth;               // hook the front
+            groupPrev = oldFirst;                // step to just before the next group
+        }
+        return dummy.next;
+    }
+
+private:
+    static ListNode* getKth(ListNode* node, int k) {
+        while (node && k-- > 0) node = node->next;   // nullptr: the list ran out first
+        return node;
+    }
+};` }
+        ],
         dry: {
           head: ['group', 'groupPrev', 'kth', 'groupNext', 'list after hooking', 'groupPrev →'],
           rows: [
@@ -1112,7 +2008,7 @@ ${H.table(['l1 front', 'l2 front', 'take', 'merged so far'], [
       '"Merge <b>k</b> sorted lists" → same compare-the-fronts idea with a min-heap of k fronts, or merge pairs.',
       'Building any result list node by node → dummy + tail avoids the empty-result special case.'
     ],
-    code: `
+    code: { lang: 'java', code: `
 ListNode mergeRecursive(ListNode l1, ListNode l2) {
     if (l1 == null) return l2;          // nothing left in l1: the rest is l2
     if (l2 == null) return l1;
@@ -1124,6 +2020,40 @@ ListNode mergeRecursive(ListNode l1, ListNode l2) {
         return l2;
     }
 }`,
+      alt: [
+        { lang: 'python', code: `def merge_recursive(l1, l2):
+    if l1 is None:                      # nothing left in l1: the rest is l2
+        return l2
+    if l2 is None:
+        return l1
+    if l1.val <= l2.val:
+        l1.next = merge_recursive(l1.next, l2)   # l1 is smallest; merge the rest after it
+        return l1
+    l2.next = merge_recursive(l1, l2.next)
+    return l2` },
+        { lang: 'js', code: `function mergeRecursive(l1, l2) {
+  if (l1 === null) return l2;         // nothing left in l1: the rest is l2
+  if (l2 === null) return l1;
+  if (l1.val <= l2.val) {
+    l1.next = mergeRecursive(l1.next, l2);   // l1 is smallest; merge the rest after it
+    return l1;
+  }
+  l2.next = mergeRecursive(l1, l2.next);
+  return l2;
+}` },
+        { lang: 'cpp', code: `struct ListNode { int val; ListNode* next; ListNode(int x = 0, ListNode* n = nullptr) : val(x), next(n) {} };
+
+ListNode* mergeRecursive(ListNode* l1, ListNode* l2) {
+    if (!l1) return l2;                 // nothing left in l1: the rest is l2
+    if (!l2) return l1;
+    if (l1->val <= l2->val) {
+        l1->next = mergeRecursive(l1->next, l2);   // l1 is smallest; merge the rest after it
+        return l1;
+    }
+    l2->next = mergeRecursive(l1, l2->next);
+    return l2;
+}` }
+      ] },
     codeTitle: 'Recursive merge (O(N + M) call stack)',
     viz: {
       title: 'Merging two sorted lists with a dummy + tail',
@@ -1189,6 +2119,15 @@ ListNode mergeTwoLists(ListNode list1, ListNode list2) {
         `<p>Use a <b>dummy</b> node and a <code>tail</code> pointer for the result. Two pointers <code>l1</code>, <code>l2</code> walk the inputs; each step re-hooks the smaller front node after tail.</p>`,
         `<p>Traps: one or both lists empty (the dummy handles it); use <code>&lt;=</code> for ties; do not forget to attach the leftover list at the end. Recipe: dummy, tail = dummy; while l1 and l2: take smaller, tail.next = it, advance it, tail = tail.next; tail.next = (l1 != null ? l1 : l2); return dummy.next.</p>`
       ],
+      tests: { sig: 'ListNode ListNode -> ListNode', fn: 'mergeTwoLists', cases: [
+        [[[1, 2, 4], [1, 3, 4]], [1, 1, 2, 3, 4, 4]],
+        [[[], []], []],
+        [[[], [0]], [0]],
+        [[[5], []], [5]],
+        [[[1, 2, 3], [10, 20]], [1, 2, 3, 10, 20]],
+        [[[-100, 0, 100], [-100, -50]], [-100, -100, -50, 0, 100]],
+        [[[2, 2], [2]], [2, 2, 2]]
+      ] },
       solution: {
         approach: `<p>Dummy + tail; compare fronts; attach the leftover list with a single link.</p>`,
         code: `
@@ -1214,6 +2153,56 @@ class Solution {
         return dummy.next;
     }
 }`,
+        alt: [
+          { lang: 'python', code: `class Solution:
+    def merge_two_lists(self, list1, list2):
+        dummy = tail = ListNode(0)            # fake head + last node so far
+        while list1 and list2:
+            if list1.val <= list2.val:        # ties go to list1 (stable)
+                tail.next, list1 = list1, list1.next
+            else:
+                tail.next, list2 = list2, list2.next
+            tail = tail.next
+        tail.next = list1 or list2            # leftovers are already sorted
+        return dummy.next` },
+          { lang: 'js', code: `function mergeTwoLists(list1, list2) {
+  const dummy = new ListNode(0);         // fake head of the merged list
+  let tail = dummy;                      // last node so far
+  while (list1 !== null && list2 !== null) {
+    if (list1.val <= list2.val) {        // ties go to list1 (stable)
+      tail.next = list1;
+      list1 = list1.next;
+    } else {
+      tail.next = list2;
+      list2 = list2.next;
+    }
+    tail = tail.next;
+  }
+  tail.next = list1 !== null ? list1 : list2;   // leftovers are already sorted
+  return dummy.next;
+}` },
+          { lang: 'cpp', code: `// LeetCode provides this node type; it is spelled out so the snippet compiles on its own.
+struct ListNode {
+    int val; ListNode* next;
+    ListNode(int x = 0, ListNode* n = nullptr) : val(x), next(n) {}
+};
+
+class Solution {
+public:
+    ListNode* mergeTwoLists(ListNode* list1, ListNode* list2) {
+        ListNode dummy;                        // fake head on the stack
+        ListNode* tail = &dummy;
+        while (list1 && list2) {
+            ListNode*& smaller = (list1->val <= list2->val) ? list1 : list2;   // ties: list1
+            tail->next = smaller;
+            smaller = smaller->next;           // advances list1 or list2 through the reference
+            tail = tail->next;
+        }
+        tail->next = list1 ? list1 : list2;    // leftovers are already sorted
+        return dummy.next;
+    }
+};` }
+        ],
         dry: {
           head: ['step', 'list1 front', 'list2 front', 'attach', 'merged'],
           rows: [
@@ -1271,7 +2260,7 @@ ${H.table(['helper', 'pointer work', 'cost'], [
       '"Remove an arbitrary element in O(1) given a handle" → store the <b>node</b> (not the value) in the map.',
       'Follow-up "make it thread-safe" or "evict by frequency" → locks / LinkedHashMap / LFU with frequency buckets.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
 class LRUCache {
     // One entry in the recency list. It stores the KEY too, so that when we
     // evict it from the list we know which key to delete from the map.
@@ -1344,7 +2333,179 @@ class LRUCache {
         c.put(4, 4);                    // evicts key 1
         System.out.println(c.get(1) + " " + c.get(3) + " " + c.get(4));   // -1 3 4
     }
-}`, `
+}`,
+      alt: [
+        { lang: 'python', run: true, code: `class Node:
+    # It stores the KEY too, so eviction knows which map entry to delete.
+    __slots__ = ("key", "val", "prev", "next")
+    def __init__(self, key=0, val=0):
+        self.key, self.val, self.prev, self.next = key, val, None, None
+
+class LRUCache:
+    def __init__(self, capacity):
+        self.capacity = capacity
+        self.map = {}                          # key -> its node
+        self.head, self.tail = Node(), Node()  # sentinels: head.next = MOST recent, tail.prev = LEAST
+        self.head.next, self.tail.prev = self.tail, self.head
+
+    def get(self, key):
+        node = self.map.get(key)
+        if node is None:
+            return -1                          # miss
+        self._move_to_front(node)              # a read counts as a "use"
+        return node.val
+
+    def put(self, key, value):
+        node = self.map.get(key)
+        if node:                               # existing key: update + mark as used
+            node.val = value
+            self._move_to_front(node)
+            return
+        if len(self.map) == self.capacity:     # full: evict the least recently used
+            lru = self.tail.prev
+            self._unlink(lru)
+            del self.map[lru.key]              # this is why the node keeps its key
+        node = Node(key, value)
+        self._add_front(node)
+        self.map[key] = node
+
+    def _unlink(self, n):                      # neighbours shake hands with each other
+        n.prev.next, n.next.prev = n.next, n.prev
+
+    def _add_front(self, n):                   # right after the head sentinel
+        n.prev, n.next = self.head, self.head.next
+        self.head.next.prev = n
+        self.head.next = n
+
+    def _move_to_front(self, n):
+        self._unlink(n)
+        self._add_front(n)
+
+c = LRUCache(2)
+c.put(1, 1); c.put(2, 2)
+print(c.get(1))                         # 1  (order now: 1, 2)
+c.put(3, 3)                             # evicts key 2
+print(c.get(2))                         # -1
+c.put(4, 4)                             # evicts key 1
+print(c.get(1), c.get(3), c.get(4))     # -1 3 4` },
+        { lang: 'js', run: true, code: `class Node {
+  // It stores the KEY too, so eviction knows which map entry to delete.
+  constructor(key = 0, val = 0) { this.key = key; this.val = val; this.prev = null; this.next = null; }
+}
+
+class LRUCache {
+  constructor(capacity) {
+    this.capacity = capacity;
+    this.map = new Map();                  // key -> its node
+    this.head = new Node();                // sentinel: head.next = MOST recent
+    this.tail = new Node();                // sentinel: tail.prev = LEAST recent
+    this.head.next = this.tail;            // empty cache: the two sentinels hold hands
+    this.tail.prev = this.head;
+  }
+
+  get(key) {
+    const node = this.map.get(key);
+    if (node === undefined) return -1;     // miss
+    this.moveToFront(node);                // a read counts as a "use"
+    return node.val;
+  }
+
+  put(key, value) {
+    const node = this.map.get(key);
+    if (node !== undefined) {              // existing key: update + mark as used
+      node.val = value;
+      this.moveToFront(node);
+      return;
+    }
+    if (this.map.size === this.capacity) { // full: evict the least recently used
+      const lru = this.tail.prev;
+      this.unlink(lru);
+      this.map.delete(lru.key);            // this is why the node keeps its key
+    }
+    const fresh = new Node(key, value);
+    this.addFront(fresh);
+    this.map.set(key, fresh);
+  }
+
+  unlink(n) { n.prev.next = n.next; n.next.prev = n.prev; }   // neighbours shake hands
+
+  addFront(n) {                            // right after the head sentinel
+    n.next = this.head.next;
+    n.prev = this.head;
+    this.head.next.prev = n;
+    this.head.next = n;
+  }
+
+  moveToFront(n) { this.unlink(n); this.addFront(n); }
+}
+
+const c = new LRUCache(2);
+c.put(1, 1); c.put(2, 2);
+console.log(c.get(1));                     // 1  (order now: 1, 2)
+c.put(3, 3);                               // evicts key 2
+console.log(c.get(2));                     // -1
+c.put(4, 4);                               // evicts key 1
+console.log(c.get(1), c.get(3), c.get(4)); // -1 3 4` },
+        { lang: 'cpp', code: `class LRUCache {
+    // It stores the KEY too, so eviction knows which map entry to delete.
+    struct Node {
+        int key, val;
+        Node *prev = nullptr, *next = nullptr;
+        Node(int k, int v) : key(k), val(v) {}
+    };
+
+    int capacity;
+    unordered_map<int, Node*> map;           // key -> its node
+    Node head{0, 0}, tail{0, 0};             // sentinels: head.next = MOST recent, tail.prev = LEAST
+
+    void unlink(Node* n) { n->prev->next = n->next; n->next->prev = n->prev; }
+    void addFront(Node* n) {                 // right after the head sentinel
+        n->next = head.next;
+        n->prev = &head;
+        head.next->prev = n;
+        head.next = n;
+    }
+    void moveToFront(Node* n) { unlink(n); addFront(n); }
+
+public:
+    explicit LRUCache(int capacity) : capacity(capacity) { head.next = &tail; tail.prev = &head; }
+    ~LRUCache() { for (auto& [k, n] : map) delete n; }   // no garbage collector: free the nodes
+
+    int get(int key) {
+        auto it = map.find(key);
+        if (it == map.end()) return -1;      // miss
+        moveToFront(it->second);             // a read counts as a "use"
+        return it->second->val;
+    }
+
+    void put(int key, int value) {
+        if (auto it = map.find(key); it != map.end()) {   // existing key: update + mark as used
+            it->second->val = value;
+            moveToFront(it->second);
+            return;
+        }
+        if ((int)map.size() == capacity) {   // full: evict the least recently used
+            Node* lru = tail.prev;
+            unlink(lru);
+            map.erase(lru->key);             // this is why the node keeps its key
+            delete lru;
+        }
+        Node* fresh = new Node(key, value);
+        addFront(fresh);
+        map[key] = fresh;
+    }
+};
+
+int main() {
+    LRUCache c(2);
+    c.put(1, 1); c.put(2, 2);
+    cout << c.get(1) << "\\n";               // 1  (order now: 1, 2)
+    c.put(3, 3);                             // evicts key 2
+    cout << c.get(2) << "\\n";               // -1
+    c.put(4, 4);                             // evicts key 1
+    cout << c.get(1) << " " << c.get(3) << " " << c.get(4) << "\\n";   // -1 3 4
+}` }
+      ] }, { lang: 'java', code: `
 // The "I know my library" answer: LinkedHashMap already IS a HashMap + doubly linked list.
 class LRUCacheLHM extends LinkedHashMap<Integer, Integer> {
     private final int capacity;
@@ -1367,7 +2528,82 @@ class LRUCacheLHM extends LinkedHashMap<Integer, Integer> {
     protected boolean removeEldestEntry(Map.Entry<Integer, Integer> eldest) {
         return size() > capacity;
     }
-}`, {
+}`,
+      alt: [
+        { lang: 'python', code: `from collections import OrderedDict
+
+# The "I know my library" answer: OrderedDict is a dict + doubly linked list (full demo below).
+class LRUCacheOD(OrderedDict):
+    def __init__(self, capacity):
+        super().__init__()
+        self.capacity = capacity
+
+    def get(self, key):
+        if key not in self:
+            return -1
+        self.move_to_end(key)                 # O(1): now the most recent
+        return self[key]
+
+    def put(self, key, value):
+        self[key] = value
+        self.move_to_end(key)
+        if len(self) > self.capacity:
+            self.popitem(last=False)          # O(1): drop the least recent (front)` },
+        { lang: 'js', run: true, code: `// The "I know my library" answer: a Map remembers insertion order, so
+// delete + set moves a key to the end, and keys().next() is the oldest key.
+class LRUCacheMap {
+  constructor(capacity) { this.capacity = capacity; this.map = new Map(); }
+
+  get(key) {
+    if (!this.map.has(key)) return -1;
+    const v = this.map.get(key);
+    this.map.delete(key);                    // re-insert = mark as most recent
+    this.map.set(key, v);
+    return v;
+  }
+
+  put(key, value) {
+    this.map.delete(key);
+    this.map.set(key, value);
+    if (this.map.size > this.capacity) this.map.delete(this.map.keys().next().value);   // oldest
+  }
+}
+
+const c = new LRUCacheMap(2);
+c.put(1, 1); c.put(2, 2); c.get(1); c.put(3, 3);
+console.log([...c.map.keys()]);              // [ 1, 3 ]  (2 was evicted)` },
+        { lang: 'cpp', code: `// The "I know my library" answer: std::list is a doubly linked list, and splice()
+// moves a node to the front in O(1) without copying it or invalidating iterators.
+class LRUCacheSTL {
+    int capacity;
+    list<pair<int, int>> items;                          // front = most recent
+    unordered_map<int, list<pair<int, int>>::iterator> where;
+
+public:
+    explicit LRUCacheSTL(int capacity) : capacity(capacity) {}
+
+    int get(int key) {
+        auto it = where.find(key);
+        if (it == where.end()) return -1;
+        items.splice(items.begin(), items, it->second);  // O(1) move to front
+        return it->second->second;
+    }
+
+    void put(int key, int value) {
+        if (auto it = where.find(key); it != where.end()) {
+            it->second->second = value;
+            items.splice(items.begin(), items, it->second);
+            return;
+        }
+        if ((int)items.size() == capacity) {             // evict the back = least recent
+            where.erase(items.back().first);
+            items.pop_back();
+        }
+        items.emplace_front(key, value);
+        where[key] = items.begin();
+    }
+};` }
+      ] }, {
       lang: 'python', run: true, title: 'Python: OrderedDict is also a hash map + doubly linked list (runnable)', code: `from collections import OrderedDict
 
 class LRUCache:
@@ -1397,7 +2633,7 @@ c.put(4, 4)            # evicts 1
 print(c.get(1), c.get(3), c.get(4))   # -1 3 4
 print(list(c.data.items()))           # [(3, 3), (4, 4)] least -> most recent`
     }],
-    codeTitle: ['LRU cache from scratch: HashMap + DLL with two sentinels', 'Java shortcut: LinkedHashMap in access order', 'Python shortcut: OrderedDict'],
+    codeTitle: ['LRU cache from scratch: HashMap + DLL with two sentinels', 'Library shortcut: Java LinkedHashMap (access order), JS Map, C++ std::list + splice', 'Python shortcut: OrderedDict'],
     viz: {
       title: 'LRU cache step by step: the map finds the node, the list keeps the order',
       input: '2 | put 1 1, put 2 2, get 1, put 3 3, get 2, put 4 4, get 1, get 3, get 4',
@@ -1571,9 +2807,18 @@ class LRUCache {
       },
       hints: [
         `<p>Order matters and changes on every access, and you also need instant lookup. One structure cannot do both — combine a <b>lookup</b> structure with an <b>ordering</b> structure that supports O(1) removal from the middle.</p>`,
-        `<p><code>HashMap&lt;Integer, Node&gt;</code> + a doubly linked list with <b>head/tail sentinels</b>. Helpers: <code>unlink(node)</code>, <code>addFront(node)</code>. Store <b>key and value</b> in each node.</p>`,
+        `<p>A hash map from key to node (<code>HashMap</code> / <code>dict</code> / <code>Map</code> / <code>unordered_map</code>) + a doubly linked list with <b>head/tail sentinels</b>. Helpers: <code>unlink(node)</code>, <code>addFront(node)</code>. Store <b>key and value</b> in each node.</p>`,
         `<p>Edge cases: put on an existing key (update + move, no eviction), capacity 1, get of a missing key (no change). Recipe — get: node = map.get(k); null → -1; moveToFront; return val. put: exists → update, moveToFront, return; full → lru = tail.prev, unlink, map.remove(lru.key); create, addFront, map.put.</p>`
       ],
+      tests: { cls: 'LRUCache', sigs: { LRUCache: 'int', get: 'int -> int', put: 'int int -> void' }, cases: [
+        { ops: ['LRUCache', 'put', 'put', 'get', 'put', 'get', 'put', 'get', 'get', 'get'], args: [[2], [1, 1], [2, 2], [1], [3, 3], [2], [4, 4], [1], [3], [4]], out: [null, null, null, 1, null, -1, null, -1, 3, 4] },
+        { ops: ['LRUCache', 'put', 'put', 'put', 'get', 'get'], args: [[2], [1, 1], [2, 2], [2, 99], [1], [2]], out: [null, null, null, null, 1, 99] },
+        { ops: ['LRUCache', 'put', 'put', 'get', 'get'], args: [[1], [1, 1], [2, 2], [1], [2]], out: [null, null, null, -1, 2] },
+        { ops: ['LRUCache', 'get', 'put', 'get'], args: [[1], [5], [5, 0], [5]], out: [null, -1, null, 0] },
+        { ops: ['LRUCache', 'put', 'put', 'put', 'get', 'put', 'get', 'get'], args: [[2], [1, 1], [1, 2], [1, 3], [1], [2, 2], [1], [2]], out: [null, null, null, null, 3, null, 3, 2] },
+        { ops: ['LRUCache', 'put', 'put', 'put', 'get', 'put', 'get', 'get', 'get', 'put', 'get'], args: [[3], [1, 10], [2, 20], [3, 30], [1], [4, 40], [2], [3], [1], [5, 50], [4]], out: [null, null, null, null, 10, null, -1, 30, 10, null, -1] },
+        { ops: ['LRUCache', 'put', 'get', 'put', 'get', 'get'], args: [[2], [10000, 100000], [10000], [0, 0], [0], [10000]], out: [null, null, 100000, null, 0, 100000] }
+      ] },
       solution: {
         approach: `<p>HashMap from key to DLL node; DLL ordered by recency with sentinels; every operation = one map access + at most two O(1) list surgeries.</p>`,
         code: `
@@ -1672,7 +2917,121 @@ class LRUCache:
             del self.map[lru.key]
         n = Node(key, value)
         self._add_front(n)
-        self.map[key] = n` }],
+        self.map[key] = n` },
+        { lang: 'js', code: `class Node {
+  constructor(key = 0, val = 0) { this.key = key; this.val = val; this.prev = null; this.next = null; }
+}
+
+class LRUCache {
+  constructor(capacity) {
+    this.capacity = capacity;
+    this.map = new Map();                          // key -> node
+    this.head = new Node();                        // sentinel: head.next = most recent
+    this.tail = new Node();                        // sentinel: tail.prev = least recent
+    this.head.next = this.tail;
+    this.tail.prev = this.head;
+  }
+
+  get(key) {
+    const n = this.map.get(key);
+    if (n === undefined) return -1;
+    this.unlink(n);                                // move to front = most recently used
+    this.addFront(n);
+    return n.val;
+  }
+
+  put(key, value) {
+    let n = this.map.get(key);
+    if (n !== undefined) {                         // 1) existing key: update, refresh recency
+      n.val = value;
+      this.unlink(n);
+      this.addFront(n);
+      return;
+    }
+    if (this.map.size === this.capacity) {         // 2) new key and full: evict LRU
+      const lru = this.tail.prev;
+      this.unlink(lru);
+      this.map.delete(lru.key);
+    }
+    n = new Node(key, value);                      // 3) insert as most recent
+    this.addFront(n);
+    this.map.set(key, n);
+  }
+
+  unlink(n) {
+    n.prev.next = n.next;
+    n.next.prev = n.prev;
+  }
+
+  addFront(n) {
+    n.next = this.head.next;
+    n.prev = this.head;
+    this.head.next.prev = n;
+    this.head.next = n;
+  }
+}` },
+        { lang: 'cpp', code: `class LRUCache {
+    struct Node {
+        int key, val;
+        Node *prev = nullptr, *next = nullptr;
+        Node(int k, int v) : key(k), val(v) {}
+    };
+
+    int capacity;
+    unordered_map<int, Node*> map;           // key -> its node
+    Node head{0, 0}, tail{0, 0};             // sentinels live inside the object
+
+    void unlink(Node* n) {
+        n->prev->next = n->next;
+        n->next->prev = n->prev;
+    }
+
+    void addFront(Node* n) {
+        n->next = head.next;
+        n->prev = &head;
+        head.next->prev = n;
+        head.next = n;
+    }
+
+public:
+    LRUCache(int capacity) : capacity(capacity) {
+        head.next = &tail;
+        tail.prev = &head;
+    }
+
+    ~LRUCache() {
+        for (auto& [k, n] : map) delete n;   // free every real node
+    }
+
+    int get(int key) {
+        auto it = map.find(key);
+        if (it == map.end()) return -1;
+        Node* n = it->second;
+        unlink(n);                           // move to front = most recently used
+        addFront(n);
+        return n->val;
+    }
+
+    void put(int key, int value) {
+        auto it = map.find(key);
+        if (it != map.end()) {               // 1) existing key: update, refresh recency
+            Node* n = it->second;
+            n->val = value;
+            unlink(n);
+            addFront(n);
+            return;
+        }
+        if ((int)map.size() == capacity) {   // 2) new key and full: evict LRU
+            Node* lru = tail.prev;
+            unlink(lru);
+            map.erase(lru->key);
+            delete lru;
+        }
+        Node* n = new Node(key, value);      // 3) insert as most recent
+        addFront(n);
+        map[key] = n;
+    }
+};` }],
         dry: {
           head: ['op', 'returns', 'list after (MRU → LRU)', 'map keys'],
           rows: [
@@ -1761,7 +3120,7 @@ class LRUCache:
             if (P === 0) {
               frames.push({ narr: '<b>Delete position 0 = delete the head</b> (special case without a dummy). There is no node before it, so instead we move head forward: <code>head = head.next</code>.', parts: [view(vals, { ptr: hp(), hl: { 0: 'bad' } }), V(op)] });
               var gone = vals.shift();
-              frames.push({ narr: 'Node ' + gone + ' is unreachable now, so Java\'s garbage collector reclaims it. O(1).', parts: [view(vals, { ptr: hp(), hl: obj(0, 'ok') }), V(op)] });
+              frames.push({ narr: 'Node ' + gone + ' is unreachable now, so the garbage collector reclaims it (in C++ you <code>delete</code> it). O(1).', parts: [view(vals, { ptr: hp(), hl: obj(0, 'ok') }), V(op)] });
               return;
             }
             for (i = 0; i <= P - 1; i++) {
@@ -1871,9 +3230,9 @@ class LRUCache:
     }],
     examples: [
       {
-        title: 'Front inserts: ArrayList vs LinkedList',
-        html: `<p>Insert 100,000 numbers at the <b>front</b>. <code>ArrayList.add(0, x)</code> shifts every existing element each time → about 5·10<sup>9</sup> element moves in total (O(N<sup>2</sup>)). <code>LinkedList.addFirst(x)</code> is two pointer writes each → O(N). But reading by index flips the picture: <code>linked.get(i)</code> inside a loop is O(N<sup>2</sup>) — always use the iterator (for-each) on a linked list.</p>`,
-        code: `List<Integer> arr = new ArrayList<>();
+        title: 'Front inserts: dynamic array vs linked list',
+        html: `<p>Insert 100,000 numbers at the <b>front</b>. A dynamic array (<code>ArrayList.add(0, x)</code>, Python <code>list.insert(0, x)</code>, JS <code>array.unshift(x)</code>, C++ <code>vector.insert(v.begin(), x)</code>) shifts every existing element each time → about 5·10<sup>9</sup> element moves in total (O(N<sup>2</sup>)). A linked list's add-at-front (<code>LinkedList.addFirst</code>, C++ <code>list.push_front</code>) is two pointer writes each → O(N). But reading by index flips the picture: <code>linked.get(i)</code> inside a loop is O(N<sup>2</sup>) — always walk a linked list with its iterator (for-each).</p>`,
+        code: { lang: 'java', code: `List<Integer> arr = new ArrayList<>();
 LinkedList<Integer> linked = new LinkedList<>();
 for (int i = 0; i < 100_000; i++) {
     arr.add(0, i);          // shifts every existing element: O(N) each
@@ -1882,12 +3241,45 @@ for (int i = 0; i < 100_000; i++) {
 long sum = 0;
 for (int i = 0; i < arr.size(); i++) sum += arr.get(i);   // O(1) per get on an array
 for (int x : linked) sum += x;                             // iterator: O(1) per step
-System.out.println(sum);`
+System.out.println(sum);`,
+        alt: [
+          { lang: 'python', code: `from collections import deque
+
+arr, front = [], deque()
+for i in range(100_000):
+    arr.insert(0, i)        # shifts every existing element: O(N) each
+    front.appendleft(i)     # deque (a linked list of blocks): O(1) each
+total = sum(arr) + sum(front)   # walking each one in order is O(1) per step
+print(total)` },
+          { lang: 'js', code: `// JS has no built-in linked list: arrays are the default, so build nodes yourself.
+class Node { constructor(val, next = null) { this.val = val; this.next = next; } }
+
+const arr = [];
+let head = null;
+for (let i = 0; i < 100000; i++) {
+  arr.unshift(i);           // shifts every existing element: O(N) each
+  head = new Node(i, head); // two pointer writes: O(1) each
+}
+let sum = 0;
+for (let i = 0; i < arr.length; i++) sum += arr[i];   // O(1) per index on an array
+for (let c = head; c !== null; c = c.next) sum += c.val;   // O(1) per step on a list
+console.log(sum);` },
+          { lang: 'cpp', code: `vector<int> arr;
+list<int> linked;                       // std::list is a doubly linked list
+for (int i = 0; i < 100000; i++) {
+    arr.insert(arr.begin(), i);         // shifts every existing element: O(N) each
+    linked.push_front(i);               // two pointer writes: O(1) each
+}
+long long sum = 0;
+for (size_t i = 0; i < arr.size(); i++) sum += arr[i];   // O(1) per index on a vector
+for (int x : linked) sum += x;                           // iterator: O(1) per step
+cout << sum << "\\n";` }
+        ] }
       },
       {
         title: 'Delete the first node with a given value (no dummy yet)',
         html: `<p>List ${H.c('m', '7 → 3 → 7 → 9')}, delete value 7. The first 7 is the <b>head</b>, which has no node before it, so the code needs its own branch: return <code>head.next</code>. For any other position we stop on the node <b>before</b> the target and skip it. Count the special cases: empty list, head match, not found — the next topic deletes most of them.</p>`,
-        code: `
+        code: { lang: 'java', code: `
 ListNode deleteValue(ListNode head, int target) {
     if (head == null) return null;               // empty list
     if (head.val == target) return head.next;    // special case: the head itself goes
@@ -1895,23 +3287,90 @@ ListNode deleteValue(ListNode head, int target) {
     while (prev.next != null && prev.next.val != target) prev = prev.next;
     if (prev.next != null) prev.next = prev.next.next;   // found: skip it
     return head;                                 // head did not change
-}`
+}`,
+        alt: [
+          { lang: 'python', code: `def delete_value(head, target):
+    if head is None:                             # empty list
+        return None
+    if head.val == target:                       # special case: the head itself goes
+        return head.next
+    prev = head
+    while prev.next and prev.next.val != target:
+        prev = prev.next
+    if prev.next:                                # found: skip it
+        prev.next = prev.next.next
+    return head                                  # head did not change` },
+          { lang: 'js', code: `function deleteValue(head, target) {
+  if (head === null) return null;                // empty list
+  if (head.val === target) return head.next;     // special case: the head itself goes
+  let prev = head;
+  while (prev.next !== null && prev.next.val !== target) prev = prev.next;
+  if (prev.next !== null) prev.next = prev.next.next;   // found: skip it
+  return head;                                   // head did not change
+}` },
+          { lang: 'cpp', code: `struct ListNode { int val; ListNode* next; ListNode(int x = 0, ListNode* n = nullptr) : val(x), next(n) {} };
+
+ListNode* deleteValue(ListNode* head, int target) {
+    if (!head) return nullptr;                   // empty list
+    if (head->val == target) {                   // special case: the head itself goes
+        ListNode* rest = head->next;
+        delete head;
+        return rest;
+    }
+    ListNode* prev = head;
+    while (prev->next && prev->next->val != target) prev = prev->next;
+    if (prev->next) {                            // found: skip it and free it
+        ListNode* gone = prev->next;
+        prev->next = gone->next;
+        delete gone;
+    }
+    return head;                                 // head did not change
+}` }
+        ] }
       },
       {
-        title: 'Java\'s LinkedList is a doubly linked list',
-        html: `<p><code>java.util.LinkedList</code> keeps <code>first</code> and <code>last</code> pointers and nodes with <code>prev</code>/<code>next</code>. So <code>addFirst/addLast/removeFirst/removeLast/peekLast</code> are O(1), and <code>ListIterator.remove()</code> is O(1) because the iterator is already holding the node. <code>get(i)</code> walks from whichever end is closer — still O(N).</p>`,
-        code: `LinkedList<Integer> list = new LinkedList<>(List.of(1, 2, 3, 4, 5, 6));
+        title: 'Built-in linked lists (Java LinkedList, C++ std::list)',
+        html: `<p><code>java.util.LinkedList</code> and C++ <code>std::list</code> are doubly linked lists: they keep pointers to the first and last nodes, and every node has <code>prev</code>/<code>next</code>. So adding or removing at either end is O(1), and removing through an iterator is O(1) because the iterator is already holding the node. Getting the i-th item still walks the list — O(N). Python and JavaScript have no linked list in the standard library: Python's <code>collections.deque</code> is a linked list of fixed-size blocks (O(1) at both ends, but O(N) in the middle), and in JS you write your own node class.</p>`,
+        code: { lang: 'java', code: `LinkedList<Integer> list = new LinkedList<>(List.of(1, 2, 3, 4, 5, 6));
 ListIterator<Integer> it = list.listIterator();
 while (it.hasNext()) {
     if (it.next() % 2 == 0) it.remove();   // O(1): the iterator holds the node
 }
 System.out.println(list);                  // [1, 3, 5]
-System.out.println(list.peekLast());       // 5, O(1) thanks to the tail pointer`
+System.out.println(list.peekLast());       // 5, O(1) thanks to the tail pointer`,
+        alt: [
+          { lang: 'python', run: true, code: `from collections import deque
+
+d = deque([1, 2, 3, 4, 5, 6])   # a linked list of blocks: fast at both ends
+d.appendleft(0)                 # O(1)
+d.pop()                         # O(1): removes 6
+d.remove(3)                     # O(N): has to search the middle
+print(list(d), d[-1])           # [0, 1, 2, 4, 5] 5` },
+          { lang: 'js', run: true, code: `// No built-in linked list in JS: removing through a node you hold is still O(1) if you keep prev.
+class Node { constructor(val, next = null) { this.val = val; this.next = next; } }
+let head = [6, 5, 4, 3, 2, 1].reduce((next, v) => new Node(v, next), null);
+
+const dummy = new Node(0, head);
+for (let prev = dummy; prev.next !== null; ) {
+  if (prev.next.val % 2 === 0) prev.next = prev.next.next;   // O(1): we hold the node before it
+  else prev = prev.next;
+}
+const out = [];
+for (let c = dummy.next; c !== null; c = c.next) out.push(c.val);
+console.log(out);                              // [ 1, 3, 5 ]` },
+          { lang: 'cpp', code: `list<int> lst = {1, 2, 3, 4, 5, 6};
+for (auto it = lst.begin(); it != lst.end(); ) {
+    if (*it % 2 == 0) it = lst.erase(it);    // O(1): the iterator holds the node
+    else ++it;
+}
+for (int x : lst) cout << x << ' ';          // 1 3 5
+cout << "| back = " << lst.back() << "\\n";   // 5, O(1) thanks to the tail pointer` }
+        ] }
       },
       {
         title: 'Helper you will write in every practice session: array → list',
         html: `<p>LeetCode builds the input list for you, but when you test locally you need a builder. Using a <b>dummy + tail</b> means no "is it the first node?" check. Building is O(N); printing is the traversal loop from the topic code.</p>`,
-        code: `
+        code: { lang: 'java', code: `
 ListNode build(int[] a) {
     ListNode dummy = new ListNode(0), tail = dummy;
     for (int x : a) {
@@ -1919,11 +3378,39 @@ ListNode build(int[] a) {
         tail = tail.next;              // and step onto it
     }
     return dummy.next;                 // real head (null if a is empty)
-}`
+}`,
+        alt: [
+          { lang: 'python', code: `def build(a):
+    dummy = tail = ListNode(0)
+    for x in a:
+        tail.next = ListNode(x)        # hang a new node after the current tail
+        tail = tail.next               # and step onto it
+    return dummy.next                  # real head (None if a is empty)` },
+          { lang: 'js', code: `function build(a) {
+  const dummy = new ListNode(0);
+  let tail = dummy;
+  for (const x of a) {
+    tail.next = new ListNode(x);       // hang a new node after the current tail
+    tail = tail.next;                  // and step onto it
+  }
+  return dummy.next;                   // real head (null if a is empty)
+}` },
+          { lang: 'cpp', code: `struct ListNode { int val; ListNode* next; ListNode(int x = 0, ListNode* n = nullptr) : val(x), next(n) {} };
+
+ListNode* build(const vector<int>& a) {
+    ListNode dummy;                    // on the stack: nothing to free
+    ListNode* tail = &dummy;
+    for (int x : a) {
+        tail->next = new ListNode(x);  // hang a new node after the current tail
+        tail = tail->next;             // and step onto it
+    }
+    return dummy.next;                 // real head (nullptr if a is empty)
+}` }
+        ] }
       }
     ],
     deepDive: `<h4>What a node really costs</h4>
-<p>On a 64-bit JVM with compressed references, a <code>ListNode{int val; ListNode next;}</code> is about <b>24 bytes</b> (12-byte object header + 4-byte int + 4-byte reference = 20, padded to a multiple of 8), versus <b>4 bytes</b> per element in an <code>int[]</code>. <code>LinkedList&lt;Integer&gt;</code> is worse: a 24-byte node <b>plus</b> a 16-byte boxed Integer per element. Memory is 5–10× an array.</p>
+<p>On a 64-bit JVM with compressed references, a <code>ListNode{int val; ListNode next;}</code> is about <b>24 bytes</b> (12-byte object header + 4-byte int + 4-byte reference = 20, padded to a multiple of 8), versus <b>4 bytes</b> per element in an <code>int[]</code>. <code>LinkedList&lt;Integer&gt;</code> is worse: a 24-byte node <b>plus</b> a 16-byte boxed Integer per element. Memory is 5–10× an array. Other languages pay too: a Python node object (even with <code>__slots__</code>) is roughly 48 bytes plus the int object it points to; a C++ <code>struct { int val; ListNode* next; }</code> is 16 bytes plus the allocator's bookkeeping for every <code>new</code>.</p>
 <h4>Pointer chasing and the CPU cache</h4>
 <p>Arrays are one contiguous block, so the CPU prefetches the next elements for free. List nodes can be scattered across the heap; each <code>curr = curr.next</code> may be a cache miss (~100 ns from RAM vs ~1 ns from L1). That is why in practice <code>ArrayList</code> and <code>ArrayDeque</code> beat <code>LinkedList</code> even for many workloads where Big-O says the list should win. Big-O counts steps; hardware charges different prices per step.</p>
 <h4>Where linked lists genuinely win</h4>
@@ -1970,6 +3457,17 @@ void deleteNode(ListNode node) {
         `<p>Two lines, no loop: copy the next node's value into X, then unlink the next node with <code>X.next = X.next.next</code>.</p>`,
         `<p>Why the "not the tail" guarantee matters: the tail has no successor to copy from. Real-world catch: other code holding a reference to the <b>successor</b> node now holds a detached node — the trick changes node identity, which is fine for this puzzle but not for caches keyed by node.</p>`
       ],
+      // The harness can only hand over the first node, so every case deletes the head node
+      // (the code never looks behind the node, so its position does not matter).
+      tests: { sig: 'ListNode -> void', fn: 'deleteNode', mutate: 0, cases: [
+        [[[4, 5, 1, 9]], [5, 1, 9]],
+        [[[1, 2]], [2]],
+        [[[-1000, 1000]], [1000]],
+        [[[1, 2, 3]], [2, 3]],
+        [[[0, -5, 7, 8, 9]], [-5, 7, 8, 9]],
+        [[[10, 20, 30, 40, 50, 60]], [20, 30, 40, 50, 60]],
+        [[{ $range: [-500, 500] }], { $range: [-499, 500] }]   // 1000 nodes (largest input)
+      ] },
       solution: {
         approach: `<p>Turn X into a copy of its successor and remove the successor instead. Values come out exactly as if X were deleted.</p>`,
         code: `
@@ -1981,6 +3479,33 @@ class Solution {
         next.next = null;            // optional: detach the removed node completely
     }
 }`,
+        alt: [
+          { lang: 'python', code: `class Solution:
+    def delete_node(self, node):
+        nxt = node.next          # exists: node is not the tail
+        node.val = nxt.val       # node takes over its successor's value...
+        node.next = nxt.next     # ...and the successor is skipped` },
+          { lang: 'js', code: `function deleteNode(node) {
+  const next = node.next;      // exists: node is not the tail
+  node.val = next.val;         // node takes over its successor's value...
+  node.next = next.next;       // ...and the successor is skipped
+}` },
+          { lang: 'cpp', code: `// LeetCode provides this node type; it is spelled out so the snippet compiles on its own.
+struct ListNode {
+    int val; ListNode* next;
+    ListNode(int x = 0, ListNode* n = nullptr) : val(x), next(n) {}
+};
+
+class Solution {
+public:
+    void deleteNode(ListNode* node) {
+        ListNode* next = node->next;   // exists: node is not the tail
+        node->val = next->val;         // node takes over its successor's value...
+        node->next = next->next;       // ...and the successor is skipped
+        delete next;                   // C++ has no garbage collector: free it
+    }
+};` }
+        ],
         dry: {
           head: ['step', 'list (by values)', 'note'],
           rows: [
@@ -2017,7 +3542,7 @@ ${H.table(['prev on', 'prev.next', 'action', 'list after D'], [
       {
         title: 'Two dummies: Partition List around x',
         html: `<p>Rearrange so all nodes &lt; x come before nodes ≥ x, keeping the original order inside each group. List ${H.c('m', '1 → 4 → 3 → 2 → 5 → 2')}, x = 3 → ${H.c('g', '1 → 2 → 2')} → ${H.c('b', '4 → 3 → 5')}. Build two lists with two dummies, then glue. The line <code>ge.next = null</code> matters: node 5 still points to the last 2, and without the cut you would create a cycle.</p>`,
-        code: `
+        code: { lang: 'java', code: `
 ListNode partition(ListNode head, int x) {
     ListNode lessDummy = new ListNode(0), less = lessDummy;
     ListNode geDummy = new ListNode(0), ge = geDummy;
@@ -2028,7 +3553,46 @@ ListNode partition(ListNode head, int x) {
     ge.next = null;              // cut the old link, or we may create a cycle
     less.next = geDummy.next;    // glue: small part, then big part
     return lessDummy.next;
-}`
+}`,
+        alt: [
+          { lang: 'python', code: `def partition(head, x):
+    less_dummy = less = ListNode(0)
+    ge_dummy = ge = ListNode(0)
+    c = head
+    while c:
+        if c.val < x:
+            less.next = less = c       # append to the "small" list
+        else:
+            ge.next = ge = c           # append to the "big" list
+        c = c.next
+    ge.next = None                     # cut the old link, or we may create a cycle
+    less.next = ge_dummy.next          # glue: small part, then big part
+    return less_dummy.next` },
+          { lang: 'js', code: `function partition(head, x) {
+  const lessDummy = new ListNode(0), geDummy = new ListNode(0);
+  let less = lessDummy, ge = geDummy;
+  for (let c = head; c !== null; c = c.next) {
+    if (c.val < x) { less.next = c; less = c; }   // append to the "small" list
+    else { ge.next = c; ge = c; }                 // append to the "big" list
+  }
+  ge.next = null;              // cut the old link, or we may create a cycle
+  less.next = geDummy.next;    // glue: small part, then big part
+  return lessDummy.next;
+}` },
+          { lang: 'cpp', code: `struct ListNode { int val; ListNode* next; ListNode(int x = 0, ListNode* n = nullptr) : val(x), next(n) {} };
+
+ListNode* partition(ListNode* head, int x) {
+    ListNode lessDummy, geDummy;               // two signboards on the stack
+    ListNode *less = &lessDummy, *ge = &geDummy;
+    for (ListNode* c = head; c; c = c->next) {
+        if (c->val < x) { less->next = c; less = c; }   // append to the "small" list
+        else            { ge->next = c;   ge = c; }     // append to the "big" list
+    }
+    ge->next = nullptr;              // cut the old link, or we may create a cycle
+    less->next = geDummy.next;       // glue: small part, then big part
+    return lessDummy.next;
+}` }
+        ] }
       },
       {
         title: 'Remove N-th from end when N = length (the head goes)',
@@ -2073,7 +3637,7 @@ ListNode partition(ListNode head, int x) {
       {
         title: 'Delete the middle node (stop one node EARLY)',
         html: `<p>To delete the middle you need the node <b>before</b> it. Trick: start <code>fast</code> two nodes ahead (<code>head.next.next</code>) so slow finishes one step earlier. List ${H.c('m', '1 → 2 → 3 → 4 → 5')}: slow stops on 2, and <code>2.next = 2.next.next</code> removes 3. A one-node list returns null.</p>`,
-        code: `
+        code: { lang: 'java', code: `
 ListNode deleteMiddle(ListNode head) {
     if (head.next == null) return null;           // one node: the middle IS the head
     ListNode slow = head, fast = head.next.next;  // fast starts 2 ahead -> slow stops BEFORE the middle
@@ -2083,12 +3647,46 @@ ListNode deleteMiddle(ListNode head) {
     }
     slow.next = slow.next.next;                   // skip the middle node
     return head;
-}`
+}`,
+        alt: [
+          { lang: 'python', code: `def delete_middle(head):
+    if head.next is None:                         # one node: the middle IS the head
+        return None
+    slow, fast = head, head.next.next             # fast starts 2 ahead -> slow stops BEFORE the middle
+    while fast and fast.next:
+        slow, fast = slow.next, fast.next.next
+    slow.next = slow.next.next                    # skip the middle node
+    return head` },
+          { lang: 'js', code: `function deleteMiddle(head) {
+  if (head.next === null) return null;          // one node: the middle IS the head
+  let slow = head, fast = head.next.next;       // fast starts 2 ahead -> slow stops BEFORE the middle
+  while (fast !== null && fast.next !== null) {
+    slow = slow.next;
+    fast = fast.next.next;
+  }
+  slow.next = slow.next.next;                   // skip the middle node
+  return head;
+}` },
+          { lang: 'cpp', code: `struct ListNode { int val; ListNode* next; ListNode(int x = 0, ListNode* n = nullptr) : val(x), next(n) {} };
+
+ListNode* deleteMiddle(ListNode* head) {
+    if (!head->next) { delete head; return nullptr; }   // one node: the middle IS the head
+    ListNode *slow = head, *fast = head->next->next;    // slow stops BEFORE the middle
+    while (fast && fast->next) {
+        slow = slow->next;
+        fast = fast->next->next;
+    }
+    ListNode* mid = slow->next;
+    slow->next = mid->next;                             // skip the middle node
+    delete mid;
+    return head;
+}` }
+        ] }
       },
       {
         title: 'Split a list into two halves (first-middle version)',
         html: `<p>Merge sort on a list starts by cutting it in half. Use the <b>first middle</b> so that a 2-node list splits into 1 + 1 (with the second-middle rule, slow would land on node 2 and the first half would keep both nodes → infinite recursion).</p>`,
-        code: `
+        code: { lang: 'java', code: `
 ListNode splitHalf(ListNode head) {          // head != null; returns the second half
     ListNode slow = head, fast = head;
     while (fast.next != null && fast.next.next != null) {
@@ -2098,7 +3696,37 @@ ListNode splitHalf(ListNode head) {          // head != null; returns the second
     ListNode second = slow.next;              // 1-2-3-4-5-6: slow = 3, second = 4
     slow.next = null;                         // cut: first half ends at slow
     return second;
-}`
+}`,
+        alt: [
+          { lang: 'python', code: `def split_half(head):                        # head is not None; returns the second half
+    slow = fast = head
+    while fast.next and fast.next.next:       # first middle
+        slow, fast = slow.next, fast.next.next
+    second, slow.next = slow.next, None       # 1-2-3-4-5-6: slow = 3, second = 4; cut after slow
+    return second` },
+          { lang: 'js', code: `function splitHalf(head) {                  // head !== null; returns the second half
+  let slow = head, fast = head;
+  while (fast.next !== null && fast.next.next !== null) {   // first middle
+    slow = slow.next;
+    fast = fast.next.next;
+  }
+  const second = slow.next;                 // 1-2-3-4-5-6: slow = 3, second = 4
+  slow.next = null;                         // cut: first half ends at slow
+  return second;
+}` },
+          { lang: 'cpp', code: `struct ListNode { int val; ListNode* next; ListNode(int x = 0, ListNode* n = nullptr) : val(x), next(n) {} };
+
+ListNode* splitHalf(ListNode* head) {         // head != nullptr; returns the second half
+    ListNode *slow = head, *fast = head;
+    while (fast->next && fast->next->next) {  // first middle
+        slow = slow->next;
+        fast = fast->next->next;
+    }
+    ListNode* second = slow->next;            // 1-2-3-4-5-6: slow = 3, second = 4
+    slow->next = nullptr;                     // cut: first half ends at slow
+    return second;
+}` }
+        ] }
       },
       {
         title: 'Two nodes: which middle?',
@@ -2130,7 +3758,7 @@ ListNode splitHalf(ListNode head) {          // head != null; returns the second
       {
         title: 'Hidden linked list: Happy Number',
         html: `<p>Repeatedly replace n by the sum of the squares of its digits; n is happy if this reaches 1. The sequence <code>n → f(n) → f(f(n))</code> is a linked list where <code>next = f(x)</code>. It either reaches 1 (and stays: f(1) = 1) or falls into a loop like 4 → 16 → 37 → 58 → 89 → 145 → 42 → 20 → 4. Floyd detects which, with O(1) memory.</p>`,
-        code: `
+        code: { lang: 'java', code: `
 int digitSquareSum(int n) {
     int s = 0;
     while (n > 0) { int d = n % 10; s += d * d; n /= 10; }
@@ -2144,17 +3772,79 @@ boolean isHappy(int n) {
         fast = digitSquareSum(digitSquareSum(fast)); // 2 steps
     }
     return fast == 1;                              // reached 1, or met in a loop
-}`
+}`,
+        alt: [
+          { lang: 'python', run: true, code: `def digit_square_sum(n):
+    return sum(int(d) ** 2 for d in str(n))
+
+def is_happy(n):
+    slow, fast = n, digit_square_sum(n)            # "next" is f(x)
+    while fast != 1 and slow != fast:
+        slow = digit_square_sum(slow)              # 1 step
+        fast = digit_square_sum(digit_square_sum(fast))   # 2 steps
+    return fast == 1                               # reached 1, or met in a loop
+
+print(is_happy(19), is_happy(2))                   # True False` },
+          { lang: 'js', run: true, code: `function digitSquareSum(n) {
+  let s = 0;
+  while (n > 0) { const d = n % 10; s += d * d; n = Math.floor(n / 10); }   // plain / gives a fraction
+  return s;
+}
+
+function isHappy(n) {
+  let slow = n, fast = digitSquareSum(n);          // "next" is f(x)
+  while (fast !== 1 && slow !== fast) {
+    slow = digitSquareSum(slow);                   // 1 step
+    fast = digitSquareSum(digitSquareSum(fast));   // 2 steps
+  }
+  return fast === 1;                               // reached 1, or met in a loop
+}
+
+console.log(isHappy(19), isHappy(2));              // true false` },
+          { lang: 'cpp', code: `int digitSquareSum(int n) {
+    int s = 0;
+    while (n > 0) { int d = n % 10; s += d * d; n /= 10; }
+    return s;
+}
+
+bool isHappy(int n) {
+    int slow = n, fast = digitSquareSum(n);        // "next" is f(x)
+    while (fast != 1 && slow != fast) {
+        slow = digitSquareSum(slow);               // 1 step
+        fast = digitSquareSum(digitSquareSum(fast));   // 2 steps
+    }
+    return fast == 1;                              // reached 1, or met in a loop
+}` }
+        ] }
       },
       {
         title: 'Bonus: length of the loop',
         html: `<p>Once slow and fast meet, they are both <b>inside</b> the loop. Keep one there and walk the other until it returns: the number of steps is the loop length c. For 3 → 2 → 0 → -4 → (2), meeting at -4: -4 → 2 → 0 → -4 is <b>3</b> steps.</p>`,
-        code: `
+        code: { lang: 'java', code: `
 int cycleLength(ListNode meet) {      // meet = a node known to be inside the loop
     int len = 1;
     for (ListNode c = meet.next; c != meet; c = c.next) len++;
     return len;
-}`
+}`,
+        alt: [
+          { lang: 'python', code: `def cycle_length(meet):              # meet = a node known to be inside the loop
+    length, c = 1, meet.next
+    while c is not meet:              # identity, not equal values
+        length, c = length + 1, c.next
+    return length` },
+          { lang: 'js', code: `function cycleLength(meet) {         // meet = a node known to be inside the loop
+  let len = 1;
+  for (let c = meet.next; c !== meet; c = c.next) len++;
+  return len;
+}` },
+          { lang: 'cpp', code: `struct ListNode { int val; ListNode* next; ListNode(int x = 0, ListNode* n = nullptr) : val(x), next(n) {} };
+
+int cycleLength(ListNode* meet) {     // meet = a node known to be inside the loop
+    int len = 1;
+    for (ListNode* c = meet->next; c != meet; c = c->next) len++;
+    return len;
+}` }
+        ] }
       },
       {
         title: 'Self-loop: one node pointing to itself',
@@ -2195,12 +3885,12 @@ int cycleLength(ListNode meet) {      // meet = a node known to be inside the lo
   ['2', 'rev(2)', '4', '3.next = 2, 2.next = null'],
   ['3', 'rev(3)', '4', '4.next = 3, 3.next = null'],
   ['4', 'rev(4)', '4', H.c('y', 'base case: 4.next is null')]
-])}<p>For N nodes there are N frames on the stack at the deepest point. With 10<sup>5</sup>–10<sup>6</sup> nodes this throws <code>StackOverflowError</code> on a default JVM stack, so production code uses the iterative loop.</p>`
+])}<p>For N nodes there are N frames on the stack at the deepest point. With 10<sup>5</sup>–10<sup>6</sup> nodes this overflows the default stack (Java <code>StackOverflowError</code>, JS <code>RangeError</code>, a C++ crash; Python already stops at about 1000 frames with <code>RecursionError</code>), so production code uses the iterative loop.</p>`
       },
       {
         title: 'Reversing a doubly linked list: swap each node\'s two arrows',
         html: `<p>In a DLL every node already knows both neighbours, so reversal = swap <code>next</code> and <code>prev</code> on every node, then the old tail is the new head. Careful: after the swap, the "next node to visit" is in <code>prev</code> — save it first.</p>`,
-        code: `
+        code: { lang: 'java', code: `
 static class DNode { int val; DNode prev, next; DNode(int v) { val = v; } }
 
 static DNode reverseDLL(DNode head) {
@@ -2213,7 +3903,45 @@ static DNode reverseDLL(DNode head) {
         curr = tmp;              // continue with the old next
     }
     return last;                 // old tail = new head
-}`
+}`,
+        alt: [
+          { lang: 'python', code: `class DNode:
+    def __init__(self, val):
+        self.val, self.prev, self.next = val, None, None
+
+def reverse_dll(head):
+    curr, last = head, None
+    while curr:
+        nxt = curr.next                          # save the forward link before swapping
+        curr.next, curr.prev = curr.prev, nxt    # swap the two arrows of this node
+        last, curr = curr, nxt                   # continue with the old next
+    return last                                  # old tail = new head` },
+          { lang: 'js', code: `class DNode { constructor(val) { this.val = val; this.prev = null; this.next = null; } }
+
+function reverseDLL(head) {
+  let curr = head, last = null;
+  while (curr !== null) {
+    const tmp = curr.next;       // save the forward link before swapping
+    curr.next = curr.prev;       // swap the two arrows of this node
+    curr.prev = tmp;
+    last = curr;
+    curr = tmp;                  // continue with the old next
+  }
+  return last;                   // old tail = new head
+}` },
+          { lang: 'cpp', code: `struct DNode { int val; DNode* prev = nullptr; DNode* next = nullptr; DNode(int v) : val(v) {} };
+
+DNode* reverseDLL(DNode* head) {
+    DNode* last = nullptr;
+    for (DNode* curr = head; curr; ) {
+        DNode* tmp = curr->next;            // save the forward link before swapping
+        swap(curr->next, curr->prev);       // swap the two arrows of this node
+        last = curr;
+        curr = tmp;                         // continue with the old next
+    }
+    return last;                            // old tail = new head
+}` }
+        ] }
       },
       {
         title: 'Reversal as a helper: Add Two Numbers II',
@@ -2222,8 +3950,8 @@ static DNode reverseDLL(DNode head) {
     ],
     deepDive: `<h4>Loop invariant (the proof)</h4>
 <p>Before each iteration: <code>prev</code> is the head of a correctly reversed list of all nodes already visited, and <code>curr</code> is the head of the untouched remainder; together they contain every node exactly once. One iteration moves exactly one node from the remainder to the front of the reversed part, so the invariant holds. When curr is null, the remainder is empty and prev heads the full reversal. Termination: the remainder shrinks by one each round.</p>
-<h4>Recursion depth in Java</h4>
-<p>Each frame of the recursive version holds a few references plus bookkeeping; with the default thread stack (commonly 512 KB–1 MB, set by <code>-Xss</code>) you get on the order of 10<sup>4</sup>–10<sup>5</sup> frames. LeetCode's 5000 nodes is fine; a million is not. Java has <b>no tail-call elimination</b>, so even a tail-recursive <code>rev(curr, prev)</code> helper still grows the stack (Scala's <code>@tailrec</code> or Kotlin's <code>tailrec</code> would turn it into a loop).</p>
+<h4>Recursion depth</h4>
+<p>Each frame of the recursive version holds a few references plus bookkeeping; with the default thread stack (commonly 512 KB–1 MB, set by <code>-Xss</code>) you get on the order of 10<sup>4</sup>–10<sup>5</sup> frames. LeetCode's 5000 nodes is fine; a million is not. Java has <b>no tail-call elimination</b>, so even a tail-recursive <code>rev(curr, prev)</code> helper still grows the stack (Scala's <code>@tailrec</code> or Kotlin's <code>tailrec</code> would turn it into a loop). Other languages: Python's default limit is about <b>1000</b> frames (and CPython never removes tail calls), so the recursive version fails on lists longer than that; JS engines allow roughly 10<sup>4</sup> frames; C++ gets an 8 MB stack on Linux by default (about 10<sup>5</sup> small frames), and an optimising compiler <i>may</i> turn tail recursion into a loop, but you cannot rely on it.</p>
 <h4>Functional / immutable lists</h4>
 <p>In Haskell, Scala or Clojure lists are immutable, so "reverse" builds a <b>new</b> list by prepending each element (a fold): O(N) time and O(N) new cells. Old versions stay valid — useful for undo/history, but different memory behaviour from in-place reversal.</p>
 <h4>Building blocks you will reuse</h4>
@@ -2255,7 +3983,7 @@ static DNode reverseDLL(DNode head) {
       {
         title: 'Recursive version (shorter, O(N/k) stack)',
         html: `<p>"Check that k nodes exist; reverse the rest of the list recursively; then reverse my k nodes <b>onto</b> that result." The recursive result plays the role of <code>groupNext</code>: it is where our group's old first node must point. Depth is N/k, so it is safe for big k but not for k = 1 with a huge list.</p>`,
-        code: `
+        code: { lang: 'java', code: `
 ListNode reverseKGroupRec(ListNode head, int k) {
     ListNode check = head;
     for (int i = 0; i < k; i++) {             // are there k nodes?
@@ -2271,7 +3999,54 @@ ListNode reverseKGroupRec(ListNode head, int k) {
         curr = next;
     }
     return prev;                               // new first node of this group
-}`
+}`,
+        alt: [
+          { lang: 'python', code: `def reverse_k_group_rec(head, k):
+    check = head
+    for _ in range(k):                         # are there k nodes?
+        if check is None:
+            return head                        # no: leave this short tail as it is
+        check = check.next
+    prev = reverse_k_group_rec(check, k)       # the rest, already fixed
+    curr = head
+    for _ in range(k):                         # flip exactly k nodes onto prev
+        curr.next, prev, curr = prev, curr, curr.next
+    return prev                                # new first node of this group` },
+          { lang: 'js', code: `function reverseKGroupRec(head, k) {
+  let check = head;
+  for (let i = 0; i < k; i++) {              // are there k nodes?
+    if (check === null) return head;         // no: leave this short tail as it is
+    check = check.next;
+  }
+  let prev = reverseKGroupRec(check, k);     // the rest, already fixed
+  let curr = head;
+  for (let i = 0; i < k; i++) {              // flip exactly k nodes onto prev
+    const next = curr.next;
+    curr.next = prev;
+    prev = curr;
+    curr = next;
+  }
+  return prev;                               // new first node of this group
+}` },
+          { lang: 'cpp', code: `struct ListNode { int val; ListNode* next; ListNode(int x = 0, ListNode* n = nullptr) : val(x), next(n) {} };
+
+ListNode* reverseKGroupRec(ListNode* head, int k) {
+    ListNode* check = head;
+    for (int i = 0; i < k; i++) {             // are there k nodes?
+        if (!check) return head;               // no: leave this short tail as it is
+        check = check->next;
+    }
+    ListNode* prev = reverseKGroupRec(check, k);   // the rest, already fixed
+    ListNode* curr = head;
+    for (int i = 0; i < k; i++) {             // flip exactly k nodes onto prev
+        ListNode* next = curr->next;
+        curr->next = prev;
+        prev = curr;
+        curr = next;
+    }
+    return prev;                               // new first node of this group
+}` }
+        ] }
       },
       {
         title: 'Variant: also reverse the short leftover',
@@ -2310,7 +4085,7 @@ ListNode reverseKGroupRec(ListNode head, int k) {
       {
         title: 'Contrast: merging two sorted ARRAYS needs a new buffer',
         html: `<p>Same two-pointer idea, but arrays cannot be re-linked: you must copy into an output array of size N + M (O(N + M) extra memory). Lists merge <b>in place</b> by re-hooking nodes — this is the reason merge sort is the natural sort for linked lists.</p>`,
-        code: `
+        code: { lang: 'java', code: `
 int[] mergeArrays(int[] a, int[] b) {
     int[] out = new int[a.length + b.length];   // arrays need a new buffer
     int i = 0, j = 0, k = 0;
@@ -2318,7 +4093,31 @@ int[] mergeArrays(int[] a, int[] b) {
     while (i < a.length) out[k++] = a[i++];      // copy leftovers one by one
     while (j < b.length) out[k++] = b[j++];
     return out;
-}`
+}`,
+        alt: [
+          { lang: 'python', code: `def merge_arrays(a, b):
+    out, i, j = [], 0, 0                         # arrays need a new buffer
+    while i < len(a) and j < len(b):
+        if a[i] <= b[j]:
+            out.append(a[i]); i += 1
+        else:
+            out.append(b[j]); j += 1
+    return out + a[i:] + b[j:]                   # copy the leftovers
+# (heapq.merge(a, b) does the same lazily)` },
+          { lang: 'js', code: `function mergeArrays(a, b) {
+  const out = new Array(a.length + b.length);  // arrays need a new buffer
+  let i = 0, j = 0, k = 0;
+  while (i < a.length && j < b.length) out[k++] = a[i] <= b[j] ? a[i++] : b[j++];
+  while (i < a.length) out[k++] = a[i++];      // copy leftovers one by one
+  while (j < b.length) out[k++] = b[j++];
+  return out;
+}` },
+          { lang: 'cpp', code: `vector<int> mergeArrays(const vector<int>& a, const vector<int>& b) {
+    vector<int> out(a.size() + b.size());        // arrays need a new buffer
+    merge(a.begin(), a.end(), b.begin(), b.end(), out.begin());   // std::merge is stable too
+    return out;
+}` }
+        ] }
       },
       {
         title: 'Ties and stability',
@@ -2374,6 +4173,19 @@ ListNode removeElements(ListNode head, int val) {
       `<p>Dummy node pointing to head; a single pointer <code>prev</code> that always sits <b>before</b> the node being checked.</p>`,
       `<p>Loop while <code>prev.next != null</code>: if it matches, skip it (prev stays); else prev = prev.next. Return <code>dummy.next</code>. Test: all nodes match, none match, empty list.</p>`
     ],
+    tests: { sig: 'ListNode int -> ListNode', fn: 'removeElements', cases: [
+      [[[1, 2, 6, 3, 4, 5, 6], 6], [1, 2, 3, 4, 5]],
+      [[[7, 7, 1, 7, 2], 7], [1, 2]],
+      [[[], 1], []],
+      [[[7, 7, 7, 7], 7], []],
+      [[[1, 2, 3], 0], [1, 2, 3]],
+      [[[5], 5], []],
+      [[[1, 2, 2, 1], 2], [1, 1]],
+      [[[50, 1, 50], 50], [1]],
+      // 10^4 nodes (largest input)
+      [[{ $concat: [{ $rep: 7, n: 5000 }, { $rep: 1, n: 5000 }] }, 7], { $rep: 1, n: 5000 }],
+      [[{ $rep: 50, n: 10000 }, 50], []]
+    ] },
     solution: {
       approach: `<p>Dummy + prev; skip matches in place; advance only when the next node is kept.</p>`,
       code: `
@@ -2388,6 +4200,49 @@ class Solution {
         return dummy.next;
     }
 }`,
+      alt: [
+        { lang: 'python', code: `class Solution:
+    def remove_elements(self, head, val):
+        dummy = prev = ListNode(0, head)
+        while prev.next:
+            if prev.next.val == val:
+                prev.next = prev.next.next     # drop it, stay put
+            else:
+                prev = prev.next               # keep it, move on
+        return dummy.next` },
+        { lang: 'js', code: `function removeElements(head, val) {
+  const dummy = new ListNode(0, head);
+  let prev = dummy;
+  while (prev.next !== null) {
+    if (prev.next.val === val) prev.next = prev.next.next;   // drop it, stay put
+    else prev = prev.next;                                   // keep it, move on
+  }
+  return dummy.next;
+}` },
+        { lang: 'cpp', code: `// LeetCode provides this node type; it is spelled out so the snippet compiles on its own.
+struct ListNode {
+    int val; ListNode* next;
+    ListNode(int x = 0, ListNode* n = nullptr) : val(x), next(n) {}
+};
+
+class Solution {
+public:
+    ListNode* removeElements(ListNode* head, int val) {
+        ListNode dummy(0, head);
+        ListNode* prev = &dummy;
+        while (prev->next) {
+            if (prev->next->val == val) {      // drop it, stay put
+                ListNode* gone = prev->next;
+                prev->next = gone->next;
+                delete gone;
+            } else {
+                prev = prev->next;             // keep it, move on
+            }
+        }
+        return dummy.next;
+    }
+};` }
+      ],
       complexity: `<p><b>Time O(N)</b> — each node is examined once. <b>Space O(1)</b> — one dummy and one pointer.</p>`,
       followUps: ['Do it recursively: head.next = removeElements(head.next, val); return head.val == val ? head.next : head.', 'What is the recursion depth for 10<sup>4</sup> nodes, and is it safe?']
     }
@@ -2420,6 +4275,14 @@ ListNode deleteDuplicates(ListNode head) {
       `<p>One pointer <code>curr</code>. If <code>curr.next.val == curr.val</code>, unlink curr.next; otherwise move curr forward.</p>`,
       `<p>Do not advance after unlinking — a run like 1 → 1 → 1 needs two unlinks from the same curr. Stop when curr or curr.next is null.</p>`
     ],
+    tests: { sig: 'ListNode -> ListNode', fn: 'deleteDuplicates', cases: [
+      [[[1, 1, 2]], [1, 2]],
+      [[[1, 1, 2, 3, 3]], [1, 2, 3]],
+      [[[]], []],
+      [[[5]], [5]],
+      [[[-100, -100, -100]], [-100]],
+      [[[-3, -1, 0, 0, 2, 2, 2, 100]], [-3, -1, 0, 2, 100]]
+    ] },
     solution: {
       approach: `<p>Single pointer; compare with the next node; unlink equal neighbours.</p>`,
       code: `
@@ -2433,6 +4296,47 @@ class Solution {
         return head;
     }
 }`,
+      alt: [
+        { lang: 'python', code: `class Solution:
+    def delete_duplicates(self, head):
+        curr = head
+        while curr and curr.next:
+            if curr.next.val == curr.val:
+                curr.next = curr.next.next     # drop the copy, stay put
+            else:
+                curr = curr.next               # new value: move on
+        return head` },
+        { lang: 'js', code: `function deleteDuplicates(head) {
+  let curr = head;
+  while (curr !== null && curr.next !== null) {
+    if (curr.next.val === curr.val) curr.next = curr.next.next;   // drop the copy
+    else curr = curr.next;                                        // new value: move on
+  }
+  return head;
+}` },
+        { lang: 'cpp', code: `// LeetCode provides this node type; it is spelled out so the snippet compiles on its own.
+struct ListNode {
+    int val; ListNode* next;
+    ListNode(int x = 0, ListNode* n = nullptr) : val(x), next(n) {}
+};
+
+class Solution {
+public:
+    ListNode* deleteDuplicates(ListNode* head) {
+        ListNode* curr = head;
+        while (curr && curr->next) {
+            if (curr->next->val == curr->val) {   // drop the copy, stay put
+                ListNode* copy = curr->next;
+                curr->next = copy->next;
+                delete copy;
+            } else {
+                curr = curr->next;                // new value: move on
+            }
+        }
+        return head;
+    }
+};` }
+      ],
       complexity: `<p><b>Time O(N)</b>, <b>Space O(1)</b>.</p>`,
       followUps: ['Remove ALL nodes that have duplicates (see "Remove Duplicates II").', 'What if the list is unsorted and you must use O(1) memory? (O(N²) compare-all, or sort first.)']
     }
@@ -2462,6 +4366,27 @@ ListNode getIntersectionNode(ListNode headA, ListNode headB) {
       `<p>Two pointers. When one reaches the end of its list, restart it at the head of the <b>other</b> list. Compare references at every step.</p>`,
       `<p>Loop <code>while (a != b)</code>: <code>a = (a == null) ? headB : a.next</code>, same for b. If there is no intersection, both become null at the same time after m + n steps, so the loop ends with null.</p>`
     ],
+    // The test format cannot share nodes between two lists, so tests.harness has a test-only
+    // intersectIndex builder: A = a + shared, B = b + shared (the same shared nodes).
+    // It returns the index in A of the node found, or -1 for null.
+    tests: { sig: 'int[] int[] int[] -> int', fn: 'intersectIndex', harness: {
+        java: "class Check {\n    // A = a + shared, B = b + shared (the same nodes); index in A of the answer, -1 = null\n    static int intersectIndex(int[] a, int[] b, int[] shared) {\n        ListNode common = build(shared, null);\n        ListNode headA = build(a, common), headB = build(b, common);\n        ListNode hit = new Solution().getIntersectionNode(headA, headB);\n        int i = 0;\n        for (ListNode c = headA; c != null; c = c.next, i++) if (c == hit) return i;\n        return -1;\n    }\n    static ListNode build(int[] vals, ListNode tail) {\n        for (int i = vals.length - 1; i >= 0; i--) tail = new ListNode(vals[i], tail);\n        return tail;\n    }\n}",
+        python: "def intersect_index(a, b, shared):\n    def build(vals, tail):\n        for v in reversed(vals):\n            tail = ListNode(v, tail)\n        return tail\n    common = build(shared, None)\n    head_a = build(a, common)\n    hit = Solution().get_intersection_node(head_a, build(b, common))\n    c, i = head_a, 0\n    while c:\n        if c is hit:\n            return i\n        c, i = c.next, i + 1\n    return -1",
+        js: "function intersectIndex(a, b, shared) {\n  const build = (vals, tail) => vals.reduceRight((next, v) => new ListNode(v, next), tail);\n  const common = build(shared, null), headA = build(a, common);\n  const hit = new Solution().getIntersectionNode(headA, build(b, common));\n  let i = 0;\n  for (let c = headA; c !== null; c = c.next, i++) if (c === hit) return i;\n  return -1;\n}",
+        cpp: "int intersectIndex(vector<int>& a, vector<int>& b, vector<int>& shared) {\n    auto build = [](const vector<int>& vals, ListNode* tail) {\n        for (auto it = vals.rbegin(); it != vals.rend(); ++it) tail = new ListNode(*it, tail);\n        return tail;\n    };\n    ListNode* common = build(shared, nullptr);\n    ListNode* headA = build(a, common);\n    ListNode* hit = getIntersectionNode(headA, build(b, common));\n    int i = 0;\n    for (ListNode* c = headA; c; c = c->next, i++) if (c == hit) return i;\n    return -1;\n}"
+      }, cases: [
+      [[[4, 1], [5, 6, 1], [8, 4, 5]], 2],
+      [[[1, 9, 1], [3], [2, 4]], 3],
+      [[[2, 6, 4], [1, 5], []], -1],
+      [[[], [1, 2], [3]], 0],
+      [[[1], [], [1]], 1],
+      [[[], [], [7]], 0],
+      [[[1, 2, 3], [4, 5], []], -1],
+      [[[1, 1, 1], [1], [1, 1]], 3],
+      // lists of 3*10^4 nodes (largest input)
+      [[{ $range: [0, 20000] }, { $rep: 5, n: 20000 }, { $range: [0, 10000] }], 20000],
+      [[{ $range: [0, 30000] }, { $range: [0, 30000] }, []], -1]
+    ] },
     solution: {
       approach: `<p>Switch heads at the end to equalise path lengths; meet at the first shared node or at null.</p>`,
       code: `
@@ -2475,6 +4400,39 @@ class Solution {
         return a;                              // the meeting node, or null
     }
 }`,
+      alt: [
+        { lang: 'python', code: `class Solution:
+    def get_intersection_node(self, head_a, head_b):
+        a, b = head_a, head_b
+        while a is not b:                          # compares node identity
+            a = a.next if a else head_b            # finished A? continue on B
+            b = b.next if b else head_a            # finished B? continue on A
+        return a                                   # the meeting node, or None` },
+        { lang: 'js', code: `class Solution {
+  getIntersectionNode(headA, headB) {
+    let a = headA, b = headB;
+    while (a !== b) {                          // compares node identity
+      a = a === null ? headB : a.next;         // finished A? continue on B
+      b = b === null ? headA : b.next;         // finished B? continue on A
+    }
+    return a;                                  // the meeting node, or null
+  }
+}` },
+        { lang: 'cpp', code: `// LeetCode provides this node type; it is spelled out so the snippet compiles on its own.
+struct ListNode {
+    int val; ListNode* next;
+    ListNode(int x = 0, ListNode* n = nullptr) : val(x), next(n) {}
+};
+
+ListNode* getIntersectionNode(ListNode* headA, ListNode* headB) {
+    ListNode *a = headA, *b = headB;
+    while (a != b) {                           // compares addresses
+        a = a ? a->next : headB;               // finished A? continue on B
+        b = b ? b->next : headA;               // finished B? continue on A
+    }
+    return a;                                  // the meeting node, or nullptr
+}` }
+      ],
       complexity: `<p><b>Time O(m + n)</b> — each pointer walks at most both lists once. <b>Space O(1)</b>.</p>`,
       followUps: ['Alternative: compute both lengths, advance the longer list by the difference, then walk together.', 'How would you detect the intersection if the lists could contain cycles?']
     }
@@ -2505,6 +4463,22 @@ boolean isPalindrome(ListNode head) {
       `<p>Fast &amp; slow to find the middle; reverse from slow to the end; compare the two halves node by node.</p>`,
       `<p>Odd lengths: the middle node ends up in the second half and is compared with nothing extra — compare while the reversed pointer is non-null. Be polite: reverse the second half back before returning.</p>`
     ],
+    // both: 0 -> the answer is [returned value, the list after the call], so the restore step is checked too.
+    tests: { sig: 'ListNode -> bool', fn: 'isPalindrome', both: 0, cases: [
+      [[[1, 2, 2, 1]], [true, [1, 2, 2, 1]]],
+      [[[1, 2]], [false, [1, 2]]],
+      [[[1]], [true, [1]]],
+      [[[1, 2, 1]], [true, [1, 2, 1]]],
+      [[[1, 2, 3, 1]], [false, [1, 2, 3, 1]]],
+      [[[9, 9]], [true, [9, 9]]],
+      [[[0, 0, 1]], [false, [0, 0, 1]]],
+      [[[1, 2, 3, 2, 1]], [true, [1, 2, 3, 2, 1]]],
+      [[[1, 0, 0, 1, 0]], [false, [1, 0, 0, 1, 0]]],
+      // 10^5 nodes (largest input)
+      [[{ $concat: [{ $rep: 1, n: 49999 }, [2, 2], { $rep: 1, n: 49999 }] }], [true, { $concat: [{ $rep: 1, n: 49999 }, [2, 2], { $rep: 1, n: 49999 }] }]],
+      [[{ $concat: [{ $rep: 3, n: 50000 }, [4], { $rep: 3, n: 49999 }] }], [false, { $concat: [{ $rep: 3, n: 50000 }, [4], { $rep: 3, n: 49999 }] }]],
+      [[{ $concat: [{ $range: [0, 10] }, { $rep: 5, n: 99980 }, { $range: [9, -1, -1] }] }], [true, { $concat: [{ $range: [0, 10] }, { $rep: 5, n: 99980 }, { $range: [9, -1, -1] }] }]]
+    ] },
     solution: {
       approach: `<p>Middle → reverse second half → compare → restore.</p>`,
       code: `
@@ -2535,6 +4509,89 @@ class Solution {
         return prev;
     }
 }`,
+      alt: [
+        { lang: 'python', code: `class Solution:
+    def is_palindrome(self, head):
+        slow = fast = head
+        while fast and fast.next:                 # slow -> (second) middle
+            slow, fast = slow.next, fast.next.next
+        second = self._reverse(slow)              # reversed second half
+        a, b, ok = head, second, True
+        while b:
+            if a.val != b.val:
+                ok = False
+                break
+            a, b = a.next, b.next
+        self._reverse(second)                     # restore the input
+        return ok
+
+    @staticmethod
+    def _reverse(node):
+        prev = None
+        while node:
+            node.next, prev, node = prev, node, node.next
+        return prev` },
+        { lang: 'js', code: `function reverse(head) {
+  let prev = null;
+  while (head !== null) {
+    const next = head.next;
+    head.next = prev;
+    prev = head;
+    head = next;
+  }
+  return prev;
+}
+
+function isPalindrome(head) {
+  let slow = head, fast = head;
+  while (fast !== null && fast.next !== null) {   // slow -> (second) middle
+    slow = slow.next;
+    fast = fast.next.next;
+  }
+  const second = reverse(slow);                   // reversed second half
+  let ok = true;
+  for (let a = head, b = second; b !== null; a = a.next, b = b.next) {
+    if (a.val !== b.val) { ok = false; break; }
+  }
+  reverse(second);                                // restore the input
+  return ok;
+}` },
+        { lang: 'cpp', code: `// LeetCode provides this node type; it is spelled out so the snippet compiles on its own.
+struct ListNode {
+    int val; ListNode* next;
+    ListNode(int x = 0, ListNode* n = nullptr) : val(x), next(n) {}
+};
+
+class Solution {
+public:
+    bool isPalindrome(ListNode* head) {
+        ListNode *slow = head, *fast = head;
+        while (fast && fast->next) {              // slow -> (second) middle
+            slow = slow->next;
+            fast = fast->next->next;
+        }
+        ListNode* second = reverse(slow);         // reversed second half
+        bool ok = true;
+        for (ListNode *a = head, *b = second; b; a = a->next, b = b->next) {
+            if (a->val != b->val) { ok = false; break; }
+        }
+        reverse(second);                          // restore the input
+        return ok;
+    }
+
+private:
+    static ListNode* reverse(ListNode* head) {
+        ListNode* prev = nullptr;
+        while (head) {
+            ListNode* next = head->next;
+            head->next = prev;
+            prev = head;
+            head = next;
+        }
+        return prev;
+    }
+};` }
+      ],
       complexity: `<p><b>Time O(N)</b> (find middle, reverse, compare, restore — each linear). <b>Space O(1)</b>.</p>`,
       followUps: ['Why does the first half still reach the middle node after reversal (it still points into the reversed part)?', 'Is restoring the list important in a multi-threaded program?']
     }
@@ -2571,6 +4628,18 @@ ListNode addTwoNumbers(ListNode l1, ListNode l2) {
       `<p>Dummy + tail for the result; loop while <code>l1 != null || l2 != null || carry != 0</code>.</p>`,
       `<p>Each step: sum = carry + (l1 digit or 0) + (l2 digit or 0); new node sum % 10; carry = sum / 10; advance whichever lists are not null. Different lengths and the final carry are handled by the loop condition.</p>`
     ],
+    tests: { sig: 'ListNode ListNode -> ListNode', fn: 'addTwoNumbers', cases: [
+      [[[2, 4, 3], [5, 6, 4]], [7, 0, 8]],
+      [[[0], [0]], [0]],
+      [[[9, 9, 9, 9, 9, 9, 9], [9, 9, 9, 9]], [8, 9, 9, 9, 0, 0, 0, 1]],
+      [[[9, 9], [1]], [0, 0, 1]],
+      [[[1], [9, 9, 9]], [0, 0, 0, 1]],
+      [[[1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1], [5, 6, 4]], [6, 6, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]],
+      [[[9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9], [9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9]], [8, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 1]],
+      // 100 digits each (largest input, far past a 64-bit integer)
+      [[[9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9], [9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9]], [8, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 1]],
+      [[[9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9], [1]], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]]
+    ] },
     solution: {
       approach: `<p>Grade-school addition with a carry, building the answer with dummy + tail.</p>`,
       code: `
@@ -2589,6 +4658,58 @@ class Solution {
         return dummy.next;
     }
 }`,
+      alt: [
+        { lang: 'python', code: `class Solution:
+    def add_two_numbers(self, l1, l2):
+        dummy = tail = ListNode(0)
+        carry = 0
+        while l1 or l2 or carry:
+            if l1:
+                carry += l1.val
+                l1 = l1.next
+            if l2:
+                carry += l2.val
+                l2 = l2.next
+            carry, digit = divmod(carry, 10)      # carry is 0 or 1 again
+            tail.next = tail = ListNode(digit)    # attach, then step onto it
+        return dummy.next` },
+        { lang: 'js', code: `function addTwoNumbers(l1, l2) {
+  const dummy = new ListNode(0);
+  let tail = dummy, carry = 0;
+  while (l1 !== null || l2 !== null || carry !== 0) {
+    let sum = carry;
+    if (l1 !== null) { sum += l1.val; l1 = l1.next; }
+    if (l2 !== null) { sum += l2.val; l2 = l2.next; }
+    tail.next = new ListNode(sum % 10);   // digit to write
+    tail = tail.next;
+    carry = Math.floor(sum / 10);         // 0 or 1 (plain / would give a fraction)
+  }
+  return dummy.next;
+}` },
+        { lang: 'cpp', code: `// LeetCode provides this node type; it is spelled out so the snippet compiles on its own.
+struct ListNode {
+    int val; ListNode* next;
+    ListNode(int x = 0, ListNode* n = nullptr) : val(x), next(n) {}
+};
+
+class Solution {
+public:
+    ListNode* addTwoNumbers(ListNode* l1, ListNode* l2) {
+        ListNode dummy;
+        ListNode* tail = &dummy;
+        int carry = 0;
+        while (l1 || l2 || carry) {
+            int sum = carry;
+            if (l1) { sum += l1->val; l1 = l1->next; }
+            if (l2) { sum += l2->val; l2 = l2->next; }
+            tail->next = new ListNode(sum % 10);   // digit to write
+            tail = tail->next;
+            carry = sum / 10;                      // 0 or 1
+        }
+        return dummy.next;
+    }
+};` }
+      ],
       complexity: `<p><b>Time O(max(m, n))</b>. <b>Space O(1)</b> extra besides the output list (max(m, n) + 1 nodes).</p>`,
       followUps: ['Digits stored most-significant first (Add Two Numbers II): reverse both, or use two stacks.', 'Subtract instead of add — how do you handle the borrow and leading zeros?']
     }
@@ -2621,6 +4742,16 @@ ListNode oddEvenList(ListNode head) {
       `<p>Pointers <code>odd = head</code>, <code>even = head.next</code>, <code>evenHead = even</code>. Advance them leapfrog style.</p>`,
       `<p>Loop while <code>even != null &amp;&amp; even.next != null</code>: odd.next = even.next; odd = odd.next; even.next = odd.next; even = even.next. Finally odd.next = evenHead. Handle head == null first.</p>`
     ],
+    tests: { sig: 'ListNode -> ListNode', fn: 'oddEvenList', cases: [
+      [[[1, 2, 3, 4, 5]], [1, 3, 5, 2, 4]],
+      [[[2, 1, 3, 5, 6, 4, 7]], [2, 3, 6, 7, 1, 5, 4]],
+      [[[]], []],
+      [[[1]], [1]],
+      [[[1, 2]], [1, 2]],
+      [[[-1000000, 1000000, 0]], [-1000000, 0, 1000000]],
+      [[[1, 2, 3, 4]], [1, 3, 2, 4]],
+      [[{ $range: [0, 10000] }], { $concat: [{ $range: [0, 10000, 2] }, { $range: [1, 10000, 2] }] }]   // 10^4 nodes
+    ] },
     solution: {
       approach: `<p>Weave two chains in place, then append the even chain to the odd chain.</p>`,
       code: `
@@ -2638,6 +4769,55 @@ class Solution {
         return head;
     }
 }`,
+      alt: [
+        { lang: 'python', code: `class Solution:
+    def odd_even_list(self, head):
+        if head is None:
+            return None
+        odd, even = head, head.next
+        even_head = even
+        while even and even.next:
+            odd.next = even.next     # next odd node
+            odd = odd.next
+            even.next = odd.next     # next even node
+            even = even.next
+        odd.next = even_head         # glue: odds then evens
+        return head` },
+        { lang: 'js', code: `function oddEvenList(head) {
+  if (head === null) return null;
+  let odd = head, even = head.next;
+  const evenHead = even;
+  while (even !== null && even.next !== null) {
+    odd.next = even.next;      // next odd node
+    odd = odd.next;
+    even.next = odd.next;      // next even node
+    even = even.next;
+  }
+  odd.next = evenHead;         // glue: odds then evens
+  return head;
+}` },
+        { lang: 'cpp', code: `// LeetCode provides this node type; it is spelled out so the snippet compiles on its own.
+struct ListNode {
+    int val; ListNode* next;
+    ListNode(int x = 0, ListNode* n = nullptr) : val(x), next(n) {}
+};
+
+class Solution {
+public:
+    ListNode* oddEvenList(ListNode* head) {
+        if (!head) return nullptr;
+        ListNode *odd = head, *even = head->next, *evenHead = even;
+        while (even && even->next) {
+            odd->next = even->next;    // next odd node
+            odd = odd->next;
+            even->next = odd->next;    // next even node
+            even = even->next;
+        }
+        odd->next = evenHead;          // glue: odds then evens
+        return head;
+    }
+};` }
+      ],
       dry: { head: ['step', 'odd chain', 'even chain'], rows: [['start', '2', '1'], ['1', '2 → 3', '1 → 5'], ['2', '2 → 3 → 6', '1 → 5 → 4'], ['3', '2 → 3 → 6 → 7', '1 → 5 → 4 → null'], ['glue', '<span class="c-g">2 → 3 → 6 → 7 → 1 → 5 → 4</span>', '—']] },
       complexity: `<p><b>Time O(N)</b>, <b>Space O(1)</b>.</p>`
     }
@@ -2667,6 +4847,14 @@ ListNode swapPairs(ListNode head) {
       `<p>Dummy node + <code>prev</code>. For each pair: a = prev.next, b = a.next; rewire; then prev = a (a is now second in the pair).</p>`,
       `<p>Stop when fewer than two nodes remain: <code>while (prev.next != null &amp;&amp; prev.next.next != null)</code>. Read b.next before overwriting it.</p>`
     ],
+    tests: { sig: 'ListNode -> ListNode', fn: 'swapPairs', cases: [
+      [[[1, 2, 3, 4]], [2, 1, 4, 3]],
+      [[[]], []],
+      [[[1]], [1]],
+      [[[1, 2, 3]], [2, 1, 3]],
+      [[[1, 2, 3, 4, 5, 6]], [2, 1, 4, 3, 6, 5]],
+      [[[5, 5]], [5, 5]]
+    ] },
     solution: {
       approach: `<p>Dummy + prev; three pointer writes per pair; prev jumps to the node that moved second.</p>`,
       code: `
@@ -2683,6 +4871,49 @@ class Solution {
         return dummy.next;
     }
 }`,
+      alt: [
+        { lang: 'python', code: `class Solution:
+    def swap_pairs(self, head):
+        dummy = prev = ListNode(0, head)
+        while prev.next and prev.next.next:
+            a, b = prev.next, prev.next.next
+            prev.next, a.next, b.next = b, b.next, a   # prev -> b, a -> rest, b -> a
+            prev = a                                    # a is now second in the pair
+        return dummy.next` },
+        { lang: 'js', code: `function swapPairs(head) {
+  const dummy = new ListNode(0, head);
+  let prev = dummy;
+  while (prev.next !== null && prev.next.next !== null) {
+    const a = prev.next, b = a.next;
+    prev.next = b;         // prev -> b
+    a.next = b.next;       // a -> rest
+    b.next = a;            // b -> a
+    prev = a;              // a is now the second node of the pair
+  }
+  return dummy.next;
+}` },
+        { lang: 'cpp', code: `// LeetCode provides this node type; it is spelled out so the snippet compiles on its own.
+struct ListNode {
+    int val; ListNode* next;
+    ListNode(int x = 0, ListNode* n = nullptr) : val(x), next(n) {}
+};
+
+class Solution {
+public:
+    ListNode* swapPairs(ListNode* head) {
+        ListNode dummy(0, head);
+        ListNode* prev = &dummy;
+        while (prev->next && prev->next->next) {
+            ListNode *a = prev->next, *b = a->next;
+            prev->next = b;        // prev -> b
+            a->next = b->next;     // a -> rest
+            b->next = a;           // b -> a
+            prev = a;              // a is now the second node of the pair
+        }
+        return dummy.next;
+    }
+};` }
+      ],
       complexity: `<p><b>Time O(N)</b>, <b>Space O(1)</b>.</p>`,
       followUps: ['Generalise to k (Reverse Nodes in k-Group).', 'Recursive version: swapPairs(head) = b with b.next = a and a.next = swapPairs(rest).']
     }
@@ -2714,6 +4945,15 @@ ListNode reverseBetween(ListNode head, int left, int right) {
       `<p>Dummy; walk <code>pre</code> left − 1 steps; <code>curr = pre.next</code>. Repeat right − left times: pull the node after curr and insert it right after pre.</p>`,
       `<p>Loop body: move = curr.next; curr.next = move.next; move.next = pre.next; pre.next = move. curr never moves but ends as the sublist's tail. Return dummy.next (left = 1 changes the head).</p>`
     ],
+    tests: { sig: 'ListNode int int -> ListNode', fn: 'reverseBetween', cases: [
+      [[[1, 2, 3, 4, 5], 2, 4], [1, 4, 3, 2, 5]],
+      [[[5], 1, 1], [5]],
+      [[[3, 5], 1, 2], [5, 3]],
+      [[[1, 2, 3, 4, 5], 1, 5], [5, 4, 3, 2, 1]],
+      [[[1, 2, 3, 4, 5], 3, 3], [1, 2, 3, 4, 5]],
+      [[[1, 2, 3, 4, 5], 4, 5], [1, 2, 3, 5, 4]],
+      [[[-500, 0, 500], 1, 2], [0, -500, 500]]
+    ] },
     solution: {
       approach: `<p>Dummy + "head insertion": repeatedly pull the next node to the front of the sublist.</p>`,
       code: `
@@ -2731,6 +4971,55 @@ class Solution {
         return dummy.next;
     }
 }`,
+      alt: [
+        { lang: 'python', code: `class Solution:
+    def reverse_between(self, head, left, right):
+        dummy = pre = ListNode(0, head)
+        for _ in range(left - 1):        # pre = node before position left
+            pre = pre.next
+        curr = pre.next                  # will end up as the sublist's tail
+        for _ in range(right - left):
+            move = curr.next             # node to bring to the front
+            curr.next = move.next        # unlink it
+            move.next = pre.next         # put it before the current sublist head
+            pre.next = move              # ...and hook it after pre
+        return dummy.next` },
+        { lang: 'js', code: `function reverseBetween(head, left, right) {
+  const dummy = new ListNode(0, head);
+  let pre = dummy;
+  for (let i = 1; i < left; i++) pre = pre.next;   // pre = node before position left
+  const curr = pre.next;                           // will end up as the sublist's tail
+  for (let i = 0; i < right - left; i++) {
+    const move = curr.next;      // node to bring to the front
+    curr.next = move.next;       // unlink it
+    move.next = pre.next;        // put it before the current sublist head
+    pre.next = move;             // ...and hook it after pre
+  }
+  return dummy.next;
+}` },
+        { lang: 'cpp', code: `// LeetCode provides this node type; it is spelled out so the snippet compiles on its own.
+struct ListNode {
+    int val; ListNode* next;
+    ListNode(int x = 0, ListNode* n = nullptr) : val(x), next(n) {}
+};
+
+class Solution {
+public:
+    ListNode* reverseBetween(ListNode* head, int left, int right) {
+        ListNode dummy(0, head);
+        ListNode* pre = &dummy;
+        for (int i = 1; i < left; i++) pre = pre->next;   // node before position left
+        ListNode* curr = pre->next;                       // ends as the sublist's tail
+        for (int i = 0; i < right - left; i++) {
+            ListNode* move = curr->next;   // node to bring to the front
+            curr->next = move->next;       // unlink it
+            move->next = pre->next;        // put it before the current sublist head
+            pre->next = move;              // ...and hook it after pre
+        }
+        return dummy.next;
+    }
+};` }
+      ],
       dry: { head: ['step', 'list (left=2, right=4)'], rows: [['start', '1 → [2 → 3 → 4] → 5'], ['move 3', '1 → [3 → 2 → 4] → 5'], ['move 4', '1 → <span class="c-g">[4 → 3 → 2]</span> → 5']] },
       complexity: `<p><b>Time O(N)</b> (walk to left, then right − left moves). <b>Space O(1)</b>.</p>`
     }
@@ -2767,6 +5056,18 @@ void reorderList(ListNode head) {
       `<p>Three helpers you already know: middle (first-middle variant), reverse, and an alternating merge.</p>`,
       `<p>Cut after the middle (<code>slow.next = null</code>) so the first half ends; reverse the second half; then weave: save both nexts, link a → b → (a's old next), advance both. The first half is equal or one longer, so stop when the second half runs out.</p>`
     ],
+    // check: compares with the expected list, or (expected null, for the 5*10^4 case) with a brute-force
+    // front/back interleave computed from the input.
+    tests: { sig: 'ListNode -> void', fn: 'reorderList', mutate: 0, check: '(args, out, exp) => { const a = args[0], r = []; for (let i = 0, j = a.length - 1; i <= j; ) { r.push(a[i++]); if (i <= j) r.push(a[j--]); } return JSON.stringify(out) === JSON.stringify(exp === null ? r : exp); }', cases: [
+      [[[1, 2, 3, 4]], [1, 4, 2, 3]],
+      [[[1, 2, 3, 4, 5]], [1, 5, 2, 4, 3]],
+      [[[1]], [1]],
+      [[[1, 2]], [1, 2]],
+      [[[1, 2, 3]], [1, 3, 2]],
+      [[[1, 2, 3, 4, 5, 6]], [1, 6, 2, 5, 3, 4]],
+      [[[1000, 1, 1000]], [1000, 1000, 1]],
+      [[{ $range: [1, 50001] }], null]   // 5*10^4 nodes (largest input)
+    ] },
     solution: {
       approach: `<p>Split at the first middle, reverse the second half, interleave.</p>`,
       code: `
@@ -2796,6 +5097,81 @@ class Solution {
         return prev;
     }
 }`,
+      alt: [
+        { lang: 'python', code: `class Solution:
+    def reorder_list(self, head):
+        if head is None or head.next is None:
+            return
+        slow = fast = head
+        while fast.next and fast.next.next:      # first middle
+            slow, fast = slow.next, fast.next.next
+        second, prev = slow.next, None
+        slow.next = None                         # first half ends at slow
+        while second:                            # reverse the second half
+            second.next, prev, second = prev, second, second.next
+        first, second = head, prev
+        while second:                            # weave
+            n1, n2 = first.next, second.next
+            first.next, second.next = second, n1
+            first, second = n1, n2` },
+        { lang: 'js', code: `function reorderList(head) {
+  if (head === null || head.next === null) return;
+  let slow = head, fast = head;
+  while (fast.next !== null && fast.next.next !== null) {   // first middle
+    slow = slow.next;
+    fast = fast.next.next;
+  }
+  let prev = null, curr = slow.next;
+  slow.next = null;                       // first half ends at slow
+  while (curr !== null) {                 // reverse the second half
+    const nx = curr.next;
+    curr.next = prev;
+    prev = curr;
+    curr = nx;
+  }
+  let first = head, second = prev;
+  while (second !== null) {               // weave
+    const n1 = first.next, n2 = second.next;
+    first.next = second;
+    second.next = n1;
+    first = n1;
+    second = n2;
+  }
+}` },
+        { lang: 'cpp', code: `// LeetCode provides this node type; it is spelled out so the snippet compiles on its own.
+struct ListNode {
+    int val; ListNode* next;
+    ListNode(int x = 0, ListNode* n = nullptr) : val(x), next(n) {}
+};
+
+class Solution {
+public:
+    void reorderList(ListNode* head) {
+        if (!head || !head->next) return;
+        ListNode *slow = head, *fast = head;
+        while (fast->next && fast->next->next) {   // first middle
+            slow = slow->next;
+            fast = fast->next->next;
+        }
+        ListNode* second = reverse(slow->next);
+        slow->next = nullptr;                      // first half ends at slow
+        for (ListNode* first = head; second; ) {   // weave
+            ListNode *n1 = first->next, *n2 = second->next;
+            first->next = second;
+            second->next = n1;
+            first = n1;
+            second = n2;
+        }
+    }
+
+private:
+    static ListNode* reverse(ListNode* h) {
+        ListNode* prev = nullptr;
+        while (h) { ListNode* nx = h->next; h->next = prev; prev = h; h = nx; }
+        return prev;
+    }
+};` }
+      ],
       complexity: `<p><b>Time O(N)</b>, <b>Space O(1)</b>.</p>`
     }
   });
@@ -2828,6 +5204,16 @@ ListNode deleteDuplicates(ListNode head) {
       `<p>Dummy + <code>prev</code> (last node definitely kept) + <code>curr</code> scanning. Detect a run by <code>curr.next != null &amp;&amp; curr.next.val == curr.val</code>.</p>`,
       `<p>If a run: skip to its last node, then <code>prev.next = curr.next</code> (prev stays). Else: <code>prev = prev.next</code>. Always <code>curr = prev.next</code> afterwards.</p>`
     ],
+    tests: { sig: 'ListNode -> ListNode', fn: 'deleteDuplicates', cases: [
+      [[[1, 2, 3, 3, 4, 4, 5]], [1, 2, 5]],
+      [[[1, 1, 1, 2, 3]], [2, 3]],
+      [[[]], []],
+      [[[1, 1]], []],
+      [[[1]], [1]],
+      [[[1, 2, 2]], [1]],
+      [[[-100, -100, 0, 100, 100]], [0]],
+      [[[1, 2, 3]], [1, 2, 3]]
+    ] },
     solution: {
       approach: `<p>Dummy + prev; skip whole runs of equal values; advance prev only past unique nodes.</p>`,
       code: `
@@ -2848,6 +5234,64 @@ class Solution {
         return dummy.next;
     }
 }`,
+      alt: [
+        { lang: 'python', code: `class Solution:
+    def delete_duplicates(self, head):
+        dummy = prev = ListNode(0, head)
+        curr = head
+        while curr:
+            if curr.next and curr.next.val == curr.val:
+                dup = curr.val
+                while curr and curr.val == dup:   # skip the whole run
+                    curr = curr.next
+                prev.next = curr                  # cut it out
+            else:
+                prev, curr = curr, curr.next      # unique: keep it
+        return dummy.next` },
+        { lang: 'js', code: `function deleteDuplicates(head) {
+  const dummy = new ListNode(0, head);
+  let prev = dummy, curr = head;
+  while (curr !== null) {
+    if (curr.next !== null && curr.next.val === curr.val) {
+      const dup = curr.val;
+      while (curr !== null && curr.val === dup) curr = curr.next;   // skip the whole run
+      prev.next = curr;                                            // cut it out
+    } else {
+      prev = curr;                 // unique: keep it
+      curr = curr.next;
+    }
+  }
+  return dummy.next;
+}` },
+        { lang: 'cpp', code: `// LeetCode provides this node type; it is spelled out so the snippet compiles on its own.
+struct ListNode {
+    int val; ListNode* next;
+    ListNode(int x = 0, ListNode* n = nullptr) : val(x), next(n) {}
+};
+
+class Solution {
+public:
+    ListNode* deleteDuplicates(ListNode* head) {
+        ListNode dummy(0, head);
+        ListNode *prev = &dummy, *curr = head;
+        while (curr) {
+            if (curr->next && curr->next->val == curr->val) {
+                int dup = curr->val;
+                while (curr && curr->val == dup) {   // skip (and free) the whole run
+                    ListNode* gone = curr;
+                    curr = curr->next;
+                    delete gone;
+                }
+                prev->next = curr;                   // cut it out
+            } else {
+                prev = curr;                         // unique: keep it
+                curr = curr->next;
+            }
+        }
+        return dummy.next;
+    }
+};` }
+      ],
       complexity: `<p><b>Time O(N)</b>, <b>Space O(1)</b>.</p>`
     }
   });
@@ -2878,6 +5322,21 @@ ListNode sortList(ListNode head) {
       `<p>Base case: 0 or 1 node. Otherwise split at the <b>first</b> middle (so 2 nodes split into 1 + 1), sort both halves, merge.</p>`,
       `<p>Recursion depth is only log₂N ≈ 16. For true O(1) space, do bottom-up: merge runs of size 1, 2, 4, … walking the list each round.</p>`
     ],
+    tests: { sig: 'ListNode -> ListNode', fn: 'sortList', cases: [
+      [[[4, 2, 1, 3]], [1, 2, 3, 4]],
+      [[[-1, 5, 3, 4, 0]], [-1, 0, 3, 4, 5]],
+      [[[]], []],
+      [[[1]], [1]],
+      [[[2, 1]], [1, 2]],
+      [[[3, 3, 1, 1]], [1, 1, 3, 3]],
+      [[[100000, -100000, 0]], [-100000, 0, 100000]],
+      [[[1, 2, 3, 4]], [1, 2, 3, 4]],
+      [[[5, 4, 3, 2, 1]], [1, 2, 3, 4, 5]],
+      // 5*10^4 nodes (largest input): an O(N^2) sort would be far too slow
+      [[{ $range: [50000, 0, -1] }], { $range: [1, 50001] }],
+      [[{ $concat: [{ $range: [25000, 50000] }, { $range: [0, 25000] }] }], { $range: [0, 50000] }],
+      [[{ $concat: [{ $rep: 100000, n: 25000 }, { $rep: -100000, n: 25000 }] }], { $concat: [{ $rep: -100000, n: 25000 }, { $rep: 100000, n: 25000 }] }]
+    ] },
     solution: {
       approach: `<p>Top-down merge sort: split with fast &amp; slow, recurse, merge with dummy + tail.</p>`,
       code: `
@@ -2905,6 +5364,85 @@ class Solution {
         return dummy.next;
     }
 }`,
+      alt: [
+        { lang: 'python', code: `class Solution:
+    def sort_list(self, head):
+        if head is None or head.next is None:
+            return head
+        slow = fast = head
+        while fast.next and fast.next.next:      # first middle
+            slow, fast = slow.next, fast.next.next
+        right, slow.next = slow.next, None       # cut into two lists
+        return self._merge(self.sort_list(head), self.sort_list(right))
+
+    @staticmethod
+    def _merge(a, b):
+        dummy = tail = ListNode(0)
+        while a and b:
+            if a.val <= b.val:                   # <= keeps it stable
+                tail.next, a = a, a.next
+            else:
+                tail.next, b = b, b.next
+            tail = tail.next
+        tail.next = a or b
+        return dummy.next` },
+        { lang: 'js', code: `function merge(a, b) {
+  const dummy = new ListNode(0);
+  let tail = dummy;
+  while (a !== null && b !== null) {
+    if (a.val <= b.val) { tail.next = a; a = a.next; }   // <= keeps it stable
+    else { tail.next = b; b = b.next; }
+    tail = tail.next;
+  }
+  tail.next = a !== null ? a : b;
+  return dummy.next;
+}
+
+function sortList(head) {
+  if (head === null || head.next === null) return head;
+  let slow = head, fast = head;
+  while (fast.next !== null && fast.next.next !== null) {   // first middle
+    slow = slow.next;
+    fast = fast.next.next;
+  }
+  const right = slow.next;
+  slow.next = null;                                         // cut into two lists
+  return merge(sortList(head), sortList(right));
+}` },
+        { lang: 'cpp', code: `// LeetCode provides this node type; it is spelled out so the snippet compiles on its own.
+struct ListNode {
+    int val; ListNode* next;
+    ListNode(int x = 0, ListNode* n = nullptr) : val(x), next(n) {}
+};
+
+class Solution {
+public:
+    ListNode* sortList(ListNode* head) {
+        if (!head || !head->next) return head;
+        ListNode *slow = head, *fast = head;
+        while (fast->next && fast->next->next) {   // first middle
+            slow = slow->next;
+            fast = fast->next->next;
+        }
+        ListNode* right = slow->next;
+        slow->next = nullptr;                      // cut into two lists
+        return merge(sortList(head), sortList(right));
+    }
+
+private:
+    static ListNode* merge(ListNode* a, ListNode* b) {
+        ListNode dummy;
+        ListNode* tail = &dummy;
+        while (a && b) {
+            if (a->val <= b->val) { tail->next = a; a = a->next; }   // <= keeps it stable
+            else { tail->next = b; b = b->next; }
+            tail = tail->next;
+        }
+        tail->next = a ? a : b;
+        return dummy.next;
+    }
+};` }
+      ],
       complexity: `<p><b>Time O(N log N)</b>: log N levels, O(N) merging per level. <b>Space O(log N)</b> recursion (O(1) with the bottom-up variant).</p>`
     }
   });
@@ -2944,6 +5482,23 @@ class Solution {
       `<p>Interweave: insert each copy right after its original. Then "copy of X" = <code>X.next</code>, so randoms can be set in one pass.</p>`,
       `<p>Three passes: (1) weave copies in; (2) <code>c.next.random = (c.random == null) ? null : c.random.next</code>; (3) unweave, restoring the original next pointers and linking the copies to each other. Handle head == null.</p>`
     ],
+    // The test format has no random pointers, so tests.harness has a test-only copyCheck builder:
+    // rand[i] is the index node i's random points to (-1 = null). It returns one row
+    // [val, random index inside the COPY] per copied node, then [original unchanged ? 1 : 0, copy reuses an original node ? 1 : 0].
+    tests: { sig: 'int[] int[] -> int[][]', fn: 'copyCheck', harness: {
+        java: "class Check {\n    // rand[i] = index of node i's random (-1 = null). One row {val, random index in the COPY} per copied node,\n    // then {1 if the original is unchanged, 1 if the copy reuses an original node}.\n    static int[][] copyCheck(int[] vals, int[] rand) {\n        int n = vals.length;\n        Node[] orig = new Node[n];\n        for (int i = 0; i < n; i++) orig[i] = new Node(vals[i]);\n        for (int i = 0; i < n; i++) {\n            orig[i].next = i + 1 < n ? orig[i + 1] : null;\n            orig[i].random = rand[i] >= 0 ? orig[rand[i]] : null;\n        }\n        List<Node> copies = new ArrayList<>();\n        for (Node c = new Solution().copyRandomList(n > 0 ? orig[0] : null); c != null && copies.size() <= n; c = c.next) copies.add(c);\n        List<Node> origList = Arrays.asList(orig);\n        int[][] out = new int[copies.size() + 1][];\n        boolean shares = false, intact = true;\n        for (int i = 0; i < copies.size(); i++) {\n            Node c = copies.get(i);\n            if (origList.contains(c)) shares = true;\n            int r = copies.indexOf(c.random);\n            out[i] = new int[]{c.val, c.random == null ? -1 : (r < 0 ? -2 : r)};\n        }\n        for (int i = 0; i < n; i++) {\n            if (orig[i].next != (i + 1 < n ? orig[i + 1] : null)) intact = false;\n            if (orig[i].random != (rand[i] >= 0 ? orig[rand[i]] : null)) intact = false;\n        }\n        out[copies.size()] = new int[]{intact ? 1 : 0, shares ? 1 : 0};\n        return out;\n    }\n}",
+        python: "def copy_check(vals, rand):\n    orig = [Node(v) for v in vals]\n    for i, node in enumerate(orig):\n        node.next = orig[i + 1] if i + 1 < len(orig) else None\n        node.random = orig[rand[i]] if rand[i] >= 0 else None\n    copies, c = [], Solution().copy_random_list(orig[0] if orig else None)\n    while c and len(copies) <= len(orig):\n        copies.append(c)\n        c = c.next\n    pos = {id(x): i for i, x in enumerate(copies)}\n    orig_ids = {id(x) for x in orig}\n    rows = [[x.val, -1 if x.random is None else pos.get(id(x.random), -2)] for x in copies]\n    intact = all(node.next is (orig[i + 1] if i + 1 < len(orig) else None) and\n                 node.random is (orig[rand[i]] if rand[i] >= 0 else None) for i, node in enumerate(orig))\n    shares = any(id(x) in orig_ids for x in copies)\n    return rows + [[int(intact), int(shares)]]",
+        js: "function copyCheck(vals, rand) {\n  const n = vals.length, orig = vals.map((v) => new Node(v));\n  const expNext = (i) => (i + 1 < n ? orig[i + 1] : null), expRand = (i) => (rand[i] >= 0 ? orig[rand[i]] : null);\n  orig.forEach((node, i) => { node.next = expNext(i); node.random = expRand(i); });\n  const copies = [];\n  for (let c = new Solution().copyRandomList(n ? orig[0] : null); c !== null && copies.length <= n; c = c.next) copies.push(c);\n  const rows = copies.map((c) => [c.val, c.random === null ? -1 : (copies.indexOf(c.random) < 0 ? -2 : copies.indexOf(c.random))]);\n  const intact = orig.every((node, i) => node.next === expNext(i) && node.random === expRand(i));\n  const shares = copies.some((c) => orig.includes(c));\n  return rows.concat([[intact ? 1 : 0, shares ? 1 : 0]]);\n}",
+        cpp: "vector<vector<int>> copyCheck(vector<int>& vals, vector<int>& rand) {\n    int n = vals.size();\n    vector<Node*> orig;\n    for (int v : vals) orig.push_back(new Node(v));\n    auto expNext = [&](int i) { return i + 1 < n ? orig[i + 1] : nullptr; };\n    auto expRand = [&](int i) { return rand[i] >= 0 ? orig[rand[i]] : nullptr; };\n    for (int i = 0; i < n; i++) { orig[i]->next = expNext(i); orig[i]->random = expRand(i); }\n    vector<Node*> copies;\n    for (Node* c = copyRandomList(n ? orig[0] : nullptr); c && (int)copies.size() <= n; c = c->next) copies.push_back(c);\n    vector<vector<int>> out;\n    bool shares = false, intact = true;\n    for (Node* c : copies) {\n        if (find(orig.begin(), orig.end(), c) != orig.end()) shares = true;\n        auto it = find(copies.begin(), copies.end(), c->random);\n        out.push_back({c->val, !c->random ? -1 : (it == copies.end() ? -2 : int(it - copies.begin()))});\n    }\n    for (int i = 0; i < n; i++)\n        if (orig[i]->next != expNext(i) || orig[i]->random != expRand(i)) intact = false;\n    out.push_back({intact ? 1 : 0, shares ? 1 : 0});\n    return out;\n}"
+      }, cases: [
+      [[[7, 13, 11, 10, 1], [-1, 0, 4, 2, 0]], [[7, -1], [13, 0], [11, 4], [10, 2], [1, 0], [1, 0]]],
+      [[[], []], [[1, 0]]],
+      [[[1], [0]], [[1, 0], [1, 0]]],
+      [[[1], [-1]], [[1, -1], [1, 0]]],
+      [[[1, 2], [1, 1]], [[1, 1], [2, 1], [1, 0]]],
+      [[[3, 3, 3], [-1, 0, -1]], [[3, -1], [3, 0], [3, -1], [1, 0]]],
+      [[[5, 5], [1, 0]], [[5, 1], [5, 0], [1, 0]]]
+    ] },
     solution: {
       approach: `<p>Interweave copies to get an O(1)-memory original→copy mapping, fix randoms, then split the two lists. (A HashMap&lt;Node, Node&gt; version is equally accepted and simpler; it uses O(N) extra memory.)</p>`,
       code: `
@@ -2972,6 +5527,70 @@ class Solution {
         return newHead;
     }
 }`,
+      alt: [
+        { lang: 'python', code: `class Node:
+    def __init__(self, x, next=None, random=None):
+        self.val, self.next, self.random = x, next, random
+
+class Solution:
+    def copy_random_list(self, head):
+        if head is None:
+            return None
+        c = head                                 # 1) weave: A -> A' -> B -> B' -> ...
+        while c:
+            c.next = Node(c.val, c.next)
+            c = c.next.next
+        c = head                                 # 2) the copy of X.random is X.random.next
+        while c:
+            if c.random:
+                c.next.random = c.random.next
+            c = c.next.next
+        new_head, c = head.next, head            # 3) unweave both lists
+        while c:
+            copy = c.next
+            c.next = copy.next                   # original skips its copy
+            copy.next = copy.next.next if copy.next else None
+            c = c.next
+        return new_head` },
+        { lang: 'js', code: `class Node {
+  constructor(val, next = null, random = null) { this.val = val; this.next = next; this.random = random; }
+}
+
+class Solution {
+  copyRandomList(head) {
+    if (head === null) return null;
+    for (let c = head; c !== null; c = c.next.next) c.next = new Node(c.val, c.next);   // 1) weave
+    for (let c = head; c !== null; c = c.next.next) {                                  // 2) randoms
+      if (c.random !== null) c.next.random = c.random.next;
+    }
+    const newHead = head.next;
+    for (let c = head; c !== null; c = c.next) {                                       // 3) unweave
+      const copy = c.next;
+      c.next = copy.next;                                    // original skips its copy
+      copy.next = copy.next !== null ? copy.next.next : null;
+    }
+    return newHead;
+  }
+}` },
+        { lang: 'cpp', code: `struct Node {
+    int val; Node* next; Node* random;
+    Node(int v, Node* n = nullptr) : val(v), next(n), random(nullptr) {}
+};
+
+Node* copyRandomList(Node* head) {
+    if (!head) return nullptr;
+    for (Node* c = head; c; c = c->next->next) c->next = new Node(c->val, c->next);   // 1) weave
+    for (Node* c = head; c; c = c->next->next)                                        // 2) randoms
+        if (c->random) c->next->random = c->random->next;
+    Node* newHead = head->next;
+    for (Node* c = head; c; c = c->next) {                                            // 3) unweave
+        Node* copy = c->next;
+        c->next = copy->next;                                 // original skips its copy
+        copy->next = copy->next ? copy->next->next : nullptr;
+    }
+    return newHead;
+}` }
+      ],
       complexity: `<p><b>Time O(N)</b> (three linear passes). <b>Space O(1)</b> extra besides the N new nodes (HashMap version: O(N)).</p>`,
       followUps: ['Deep-copy a general graph (Clone Graph) — why do you need a visited map there?', 'Why must step 3 restore the original list?']
     }
@@ -3000,6 +5619,20 @@ int findDuplicate(int[] nums) {
       `<p>Start at index 0 (nothing points to it, so it is a true "head" outside the cycle). Run Floyd: slow = nums[slow], fast = nums[nums[fast]].</p>`,
       `<p>Phase 2 as in Linked List Cycle II: reset one pointer to the start, move both one step at a time; they meet at the cycle entrance, which is the duplicate value.</p>`
     ],
+    tests: { sig: 'int[] -> int', fn: 'findDuplicate', cases: [
+      [[[1, 3, 4, 2, 2]], 2],
+      [[[3, 1, 3, 4, 2]], 3],
+      [[[1, 1]], 1],
+      [[[3, 3, 3, 3]], 3],
+      [[[2, 2, 2, 2, 2]], 2],
+      [[[1, 4, 4, 2, 4]], 4],
+      [[[2, 5, 9, 6, 9, 3, 8, 9, 7, 1]], 9],
+      [[[1, 2, 3, 4, 5, 6, 7, 8, 9, 1]], 1],
+      // n = 10^5 (largest input): 1..n plus one repeated value
+      [[{ $concat: [{ $range: [1, 100001] }, [50000]] }], 50000],
+      [[{ $rep: 7, n: 100001 }], 7],
+      [[{ $concat: [[100000], { $range: [1, 100001] }] }], 100000]
+    ] },
     solution: {
       approach: `<p>Floyd's cycle detection on the implicit list i → nums[i]; the cycle start is the duplicate.</p>`,
       code: `
@@ -3018,6 +5651,48 @@ class Solution {
         return p;                              // cycle entrance = duplicate value
     }
 }`,
+      alt: [
+        { lang: 'python', code: `class Solution:
+    def find_duplicate(self, nums):
+        slow = fast = 0
+        while True:                            # phase 1: meet inside the cycle
+            slow, fast = nums[slow], nums[nums[fast]]
+            if slow == fast:
+                break
+        p = 0                                  # phase 2: from the head (index 0)
+        while p != slow:
+            p, slow = nums[p], nums[slow]
+        return p                               # cycle entrance = duplicate value` },
+        { lang: 'js', code: `function findDuplicate(nums) {
+  let slow = 0, fast = 0;
+  do {                                   // phase 1: meet inside the cycle
+    slow = nums[slow];
+    fast = nums[nums[fast]];
+  } while (slow !== fast);
+  let p = 0;                             // phase 2: from the head (index 0)
+  while (p !== slow) {
+    p = nums[p];
+    slow = nums[slow];
+  }
+  return p;                              // cycle entrance = duplicate value
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int findDuplicate(vector<int>& nums) {
+        int slow = 0, fast = 0;
+        do {                                   // phase 1: meet inside the cycle
+            slow = nums[slow];
+            fast = nums[nums[fast]];
+        } while (slow != fast);
+        int p = 0;                             // phase 2: from the head (index 0)
+        while (p != slow) {
+            p = nums[p];
+            slow = nums[slow];
+        }
+        return p;                              // cycle entrance = duplicate value
+    }
+};` }
+      ],
       dry: { head: ['phase', 'slow', 'fast / p', 'note (nums = 1 3 4 2 2)'], rows: [['1', '1', '3', ''], ['1', '3', '4', 'fast: 3 → 2 → 4'], ['1', '2', '4', 'fast: 4 → 2 → 4'], ['1', '4', '4', '<span class="c-r">meet</span>'], ['2', '2', 'p = 1', 'p from 0'], ['2', '4', 'p = 3', ''], ['2', '2', 'p = 2', '<span class="c-g">equal → 2</span>']] },
       complexity: `<p><b>Time O(N)</b>, <b>Space O(1)</b>, array untouched.</p>`,
       followUps: ['Binary search on the value range (count how many ≤ mid) gives O(N log N) with O(1) space — compare.', 'Why would Floyd fail if the values could be 0?']
@@ -3057,9 +5732,19 @@ ListNode mergeTwo(ListNode a, ListNode b) {
     mcq: { q: 'What does the min-heap hold at any moment?', options: ['All N nodes', 'At most k nodes: the current front of each non-empty list', 'Only the k smallest values overall', 'The list heads in their original order'], answer: 1, explain: 'Each list contributes only its current front; after popping a node we push its next. So the heap has ≤ k entries, and each push/pop is O(log k).' },
     hints: [
       `<p>Generalise "compare the two fronts" to "pick the smallest of k fronts". Which structure returns the minimum of k items quickly and supports inserting a replacement?</p>`,
-      `<p><code>PriorityQueue&lt;ListNode&gt;</code> ordered by val. Seed it with every non-null head; dummy + tail for the result.</p>`,
+      `<p>A min-heap of nodes ordered by val: Java <code>PriorityQueue&lt;ListNode&gt;</code>, Python <code>heapq</code> with <code>(val, index, node)</code> tuples, C++ <code>priority_queue</code> with a "greater" comparator (it is a max-heap by default), JS a small hand-written <code>MinHeap</code>. Seed it with every non-null head; dummy + tail for the result.</p>`,
       `<p>Loop: poll the smallest node, attach it to tail, push its <code>next</code> if not null. Skip null lists (k may be 0 or lists may be empty). Alternative: divide &amp; conquer pairwise merging, also O(N log k).</p>`
     ],
+    tests: { sig: 'ListNode[] -> ListNode', fn: 'mergeKLists', cases: [
+      [[[[1, 4, 5], [1, 3, 4], [2, 6]]], [1, 1, 2, 3, 4, 4, 5, 6]],
+      [[[]], []],
+      [[[[]]], []],
+      [[[[], [1]]], [1]],
+      [[[[5]]], [5]],
+      [[[[-10000, 10000], [-10000], [0, 0]]], [-10000, -10000, 0, 0, 10000]],
+      [[[[3], [2], [1]]], [1, 2, 3]],
+      [[[{ $range: [0, 10000, 2] }, { $range: [1, 10000, 2] }]], { $range: [0, 10000] }]   // N = 10^4 nodes in total (largest input)
+    ] },
     solution: {
       approach: `<p>Min-heap of the k fronts; each node is pushed and popped once.</p>`,
       code: `
@@ -3080,18 +5765,89 @@ class Solution {
       alt: [{ lang: 'python', code: `import heapq
 
 class Solution:
-    def mergeKLists(self, lists):
-        heap = []
-        for i, node in enumerate(lists):
-            if node:
-                heapq.heappush(heap, (node.val, i, node))   # i breaks ties (nodes are not comparable)
+    def merge_k_lists(self, lists):
+        heap = [(node.val, i, node) for i, node in enumerate(lists) if node]   # i breaks ties (nodes are not comparable)
+        heapq.heapify(heap)                                                    # k fronts, O(k)
         dummy = tail = ListNode(0)
         while heap:
-            _, i, node = heapq.heappop(heap)
+            _, i, node = heapq.heappop(heap)           # O(log k)
             tail.next = tail = node
             if node.next:
-                heapq.heappush(heap, (node.next.val, i, node.next))
-        return dummy.next` }],
+                heapq.heappush(heap, (node.next.val, i, node.next))   # its list's new front
+        return dummy.next` },
+      { lang: 'js', code: `// JS has no built-in heap: a small binary min-heap with a comparator.
+class MinHeap {
+  constructor(cmp = (a, b) => a - b) { this.a = []; this.cmp = cmp; }
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {                                // sift up
+      const p = (i - 1) >> 1;
+      if (this.cmp(a[i], a[p]) >= 0) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {                                   // sift down
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.cmp(a[l], a[m]) < 0) m = l;
+        if (r < a.length && this.cmp(a[r], a[m]) < 0) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+function mergeKLists(lists) {
+  const heap = new MinHeap((x, y) => x.val - y.val);
+  for (const head of lists) if (head !== null) heap.push(head);   // k fronts
+  const dummy = new ListNode(0);
+  let tail = dummy;
+  while (heap.size() > 0) {
+    const smallest = heap.pop();                 // O(log k)
+    tail.next = smallest;
+    tail = smallest;
+    if (smallest.next !== null) heap.push(smallest.next);   // its list's new front
+  }
+  return dummy.next;
+}` },
+      { lang: 'cpp', code: `// LeetCode provides this node type; it is spelled out so the snippet compiles on its own.
+struct ListNode {
+    int val; ListNode* next;
+    ListNode(int x = 0, ListNode* n = nullptr) : val(x), next(n) {}
+};
+
+class Solution {
+public:
+    ListNode* mergeKLists(vector<ListNode*>& lists) {
+        // priority_queue is a MAX-heap by default: "greater val = lower priority" makes it a min-heap
+        auto cmp = [](ListNode* a, ListNode* b) { return a->val > b->val; };
+        priority_queue<ListNode*, vector<ListNode*>, decltype(cmp)> pq(cmp);
+        for (ListNode* head : lists) if (head) pq.push(head);   // k fronts
+        ListNode dummy;
+        ListNode* tail = &dummy;
+        while (!pq.empty()) {
+            ListNode* smallest = pq.top();       // O(log k)
+            pq.pop();
+            tail->next = smallest;
+            tail = smallest;
+            if (smallest->next) pq.push(smallest->next);   // its list's new front
+        }
+        return dummy.next;
+    }
+};` }],
       complexity: `<p><b>Time O(N log k)</b>: N pushes and pops on a heap of size ≤ k. <b>Space O(k)</b> for the heap (the output reuses the input nodes).</p>`,
       followUps: ['Divide &amp; conquer: merge lists[i] with lists[i + step] for step = 1, 2, 4, … — O(N log k) time, O(1) extra space.', 'The lists are huge files on disk (external merge sort): what changes?']
     }
@@ -3140,9 +5896,18 @@ class LFUCache {
     mcq: { q: 'How can eviction find "lowest count, then least recent" in O(1)?', options: ['Sort keys on every call', 'Keep a bucket (recency-ordered list) per count plus the current minimum count', 'A TreeMap of counts only', 'A single LRU list'], answer: 1, explain: 'Bucket[c] is an LRU-ordered list of keys with count c. minFreq tells which bucket to evict from, and its oldest key is the victim. Counts only increase by 1, so minFreq is easy to maintain.' },
     hints: [
       `<p>It is "many LRU caches, one per use count". Inside one count, the order is recency — exactly the LRU list you already built.</p>`,
-      `<p>Maps: key → value, key → count, count → <code>LinkedHashSet&lt;key&gt;</code> (a hash set that remembers insertion order — itself a hash table + doubly linked list). Plus an int <code>minFreq</code>.</p>`,
+      `<p>Maps: key → value, key → count, count → an insertion-ordered set of keys (Java <code>LinkedHashSet</code>, Python <code>OrderedDict</code>, JS <code>Set</code>, C++ <code>std::list</code> plus stored iterators) — itself a hash table + doubly linked list. Plus an int <code>minFreq</code>.</p>`,
       `<p>touch(key): remove from bucket[c]; if that bucket empties and c == minFreq, minFreq++; add to bucket[c+1]. New key: evict the first element of bucket[minFreq] if full, then insert with count 1 and set minFreq = 1. Update before evict for existing keys.</p>`
     ],
+    tests: { cls: 'LFUCache', sigs: { LFUCache: 'int', get: 'int -> int', put: 'int int -> void' }, cases: [
+      { ops: ['LFUCache', 'put', 'put', 'get', 'put', 'get', 'get', 'put', 'get', 'get', 'get'], args: [[2], [1, 1], [2, 2], [1], [3, 3], [2], [3], [4, 4], [1], [3], [4]], out: [null, null, null, 1, null, -1, 3, null, -1, 3, 4] },
+      { ops: ['LFUCache', 'put', 'put', 'get', 'get'], args: [[1], [1, 1], [2, 2], [1], [2]], out: [null, null, null, -1, 2] },
+      { ops: ['LFUCache', 'put', 'put', 'put', 'put', 'get', 'get', 'get'], args: [[2], [1, 1], [2, 2], [1, 10], [3, 3], [1], [2], [3]], out: [null, null, null, null, null, 10, -1, 3] },
+      { ops: ['LFUCache', 'get', 'put', 'get'], args: [[1], [7], [7, 1000000000], [7]], out: [null, -1, null, 1000000000] },
+      { ops: ['LFUCache', 'put', 'put', 'put', 'put', 'get', 'get', 'get', 'get'], args: [[3], [1, 1], [2, 2], [3, 3], [4, 4], [1], [2], [3], [4]], out: [null, null, null, null, null, -1, 2, 3, 4] },
+      { ops: ['LFUCache', 'put', 'put', 'get', 'get', 'put', 'get', 'get', 'get'], args: [[2], [1, 1], [2, 2], [2], [2], [3, 3], [1], [2], [3]], out: [null, null, null, 2, 2, null, -1, 2, 3] },
+      { ops: ['LFUCache', 'put', 'put', 'put', 'get', 'get', 'put', 'get', 'get', 'get', 'get'], args: [[3], [2, 2], [1, 1], [3, 3], [2], [1], [4, 4], [3], [4], [1], [2]], out: [null, null, null, null, 2, 1, null, -1, 4, 1, 2] }
+    ] },
     solution: {
       approach: `<p>Frequency buckets, each an insertion-ordered set (LRU within the same count), plus minFreq. Every operation is a constant number of hash operations.</p>`,
       code: `
@@ -3195,6 +5960,150 @@ class LFUCache {
         buckets.computeIfAbsent(c + 1, f -> new LinkedHashSet<>()).add(key);   // newest in its bucket
     }
 }`,
+      alt: [
+        { lang: 'python', code: `from collections import defaultdict, OrderedDict
+
+class LFUCache:
+    def __init__(self, capacity: int):
+        self.cap = capacity
+        self.min_freq = 0
+        self.vals = {}                                  # key -> value
+        self.freq = {}                                  # key -> use count
+        self.buckets = defaultdict(OrderedDict)         # count -> keys, oldest first
+
+    def _touch(self, key):                              # move key from bucket[c] to bucket[c + 1]
+        c = self.freq[key]
+        del self.buckets[c][key]
+        if not self.buckets[c]:
+            del self.buckets[c]
+            if self.min_freq == c:
+                self.min_freq = c + 1                   # the key itself now lives in c + 1
+        self.freq[key] = c + 1
+        self.buckets[c + 1][key] = None                 # newest in its bucket
+
+    def get(self, key: int) -> int:
+        if key not in self.vals:
+            return -1
+        self._touch(key)
+        return self.vals[key]
+
+    def put(self, key: int, value: int) -> None:
+        if self.cap <= 0:
+            return
+        if key in self.vals:                            # existing: update + count a use
+            self.vals[key] = value
+            self._touch(key)
+            return
+        if len(self.vals) == self.cap:                  # evict: least frequent, then least recent
+            bucket = self.buckets[self.min_freq]
+            victim, _ = bucket.popitem(last=False)      # oldest key in the lowest bucket
+            if not bucket:
+                del self.buckets[self.min_freq]
+            del self.vals[victim], self.freq[victim]
+        self.vals[key] = value
+        self.freq[key] = 1
+        self.buckets[1][key] = None
+        self.min_freq = 1                               # a brand-new key has the lowest count` },
+        { lang: 'js', code: `class LFUCache {
+  constructor(capacity) {
+    this.capacity = capacity;
+    this.minFreq = 0;
+    this.vals = new Map();        // key -> value
+    this.freq = new Map();        // key -> use count
+    this.buckets = new Map();     // count -> Set of keys (a Set keeps insertion order: oldest first)
+  }
+
+  touch(key) {                    // move key from bucket[c] to bucket[c + 1]
+    const c = this.freq.get(key), set = this.buckets.get(c);
+    set.delete(key);
+    if (set.size === 0) {
+      this.buckets.delete(c);
+      if (this.minFreq === c) this.minFreq = c + 1;   // the key itself now lives in c + 1
+    }
+    this.freq.set(key, c + 1);
+    if (!this.buckets.has(c + 1)) this.buckets.set(c + 1, new Set());
+    this.buckets.get(c + 1).add(key);                 // newest in its bucket
+  }
+
+  get(key) {
+    if (!this.vals.has(key)) return -1;
+    this.touch(key);
+    return this.vals.get(key);
+  }
+
+  put(key, value) {
+    if (this.capacity <= 0) return;
+    if (this.vals.has(key)) {                         // existing: update + count a use
+      this.vals.set(key, value);
+      this.touch(key);
+      return;
+    }
+    if (this.vals.size === this.capacity) {           // evict: least frequent, then least recent
+      const set = this.buckets.get(this.minFreq);
+      const victim = set.values().next().value;       // oldest key in the lowest bucket
+      set.delete(victim);
+      if (set.size === 0) this.buckets.delete(this.minFreq);
+      this.vals.delete(victim);
+      this.freq.delete(victim);
+    }
+    this.vals.set(key, value);
+    this.freq.set(key, 1);
+    if (!this.buckets.has(1)) this.buckets.set(1, new Set());
+    this.buckets.get(1).add(key);
+    this.minFreq = 1;                                 // a brand-new key has the lowest count
+  }
+}` },
+        { lang: 'cpp', code: `class LFUCache {
+    struct Entry { int val, freq; list<int>::iterator pos; };
+    int capacity, minFreq = 0;
+    unordered_map<int, Entry> data;                   // key -> value, count, place in its bucket
+    unordered_map<int, list<int>> buckets;            // count -> keys, oldest at the front
+
+    void touch(int key) {                             // move key from bucket[c] to bucket[c + 1]
+        Entry& e = data[key];
+        int c = e.freq;
+        list<int>& from = buckets[c];
+        list<int>& to = buckets[c + 1];
+        to.splice(to.end(), from, e.pos);             // O(1): relink the list node, no copy
+        if (from.empty()) {
+            buckets.erase(c);
+            if (minFreq == c) minFreq = c + 1;        // the key itself now lives in c + 1
+        }
+        e.freq = c + 1;                               // e.pos stays valid after splice
+    }
+
+public:
+    LFUCache(int capacity) : capacity(capacity) {}
+
+    int get(int key) {
+        auto it = data.find(key);
+        if (it == data.end()) return -1;
+        touch(key);
+        return it->second.val;
+    }
+
+    void put(int key, int value) {
+        if (capacity <= 0) return;
+        auto it = data.find(key);
+        if (it != data.end()) {                       // existing: update + count a use
+            it->second.val = value;
+            touch(key);
+            return;
+        }
+        if ((int)data.size() == capacity) {           // evict: least frequent, then least recent
+            list<int>& lowest = buckets[minFreq];
+            int victim = lowest.front();              // oldest key in the lowest bucket
+            lowest.pop_front();
+            if (lowest.empty()) buckets.erase(minFreq);
+            data.erase(victim);
+        }
+        list<int>& ones = buckets[1];
+        ones.push_back(key);
+        data[key] = {value, 1, prev(ones.end())};
+        minFreq = 1;                                  // a brand-new key has the lowest count
+    }
+};` }
+      ],
       complexity: `<p><b>Time O(1)</b> average per call (hash map/set operations; LinkedHashSet removal is O(1) via its internal doubly linked list). <b>Space O(capacity)</b>.</p>`,
       followUps: ['Implement the buckets as your own doubly linked lists instead of LinkedHashSet.', 'LFU never forgets old popularity — how do real caches (TinyLFU) age the counts?']
     }
@@ -3235,6 +6144,14 @@ class TextEditor {
       `<p>Doubly linked list of characters with a head sentinel; field <code>cur</code> = the node just left of the cursor (sentinel at the start). Moving left/right is following prev/next.</p>`,
       `<p>addText: insert each char after cur and advance cur. deleteText: while k-- &gt; 0 and cur is not the sentinel, unlink cur and step to cur.prev. To report, walk back from cur at most 10 nodes and reverse the collected characters.</p>`
     ],
+    tests: { cls: 'TextEditor', sigs: { TextEditor: '', addText: 'string -> void', deleteText: 'int -> int', cursorLeft: 'int -> string', cursorRight: 'int -> string' }, cases: [
+      { ops: ['TextEditor', 'addText', 'deleteText', 'addText', 'cursorRight', 'cursorLeft', 'deleteText', 'cursorLeft', 'cursorRight'], args: [[], ['leetcode'], [4], ['practice'], [3], [8], [10], [2], [6]], out: [null, null, 4, null, 'etpractice', 'leet', 4, '', 'practi'] },
+      { ops: ['TextEditor', 'deleteText', 'cursorLeft', 'cursorRight'], args: [[], [5], [3], [3]], out: [null, 0, '', ''] },
+      { ops: ['TextEditor', 'addText', 'cursorLeft', 'addText', 'cursorRight', 'cursorLeft'], args: [[], ['ac'], [1], ['b'], [5], [40]], out: [null, null, 'a', null, 'abc', ''] },
+      { ops: ['TextEditor', 'addText', 'cursorLeft', 'deleteText', 'cursorRight'], args: [[], ['abcdefghijklmnop'], [3], [2], [1]], out: [null, null, 'defghijklm', 2, 'cdefghijkn'] },
+      { ops: ['TextEditor', 'addText', 'addText', 'cursorLeft', 'deleteText', 'cursorRight', 'addText', 'cursorLeft'], args: [[], ['xyz'], ['xyz'], [3], [1], [40], ['q'], [1]], out: [null, null, null, 'xyz', 1, 'xyxyz', null, 'xyxyz'] },
+      { ops: ['TextEditor', 'addText', 'deleteText', 'deleteText', 'addText', 'cursorRight'], args: [[], ['a'], [1], [1], ['bc'], [1]], out: [null, null, 1, 0, null, 'bc'] }
+    ] },
     solution: {
       approach: `<p>Doubly linked list + sentinel + cursor node; every operation touches only O(k) nodes (and at most 10 for the report).</p>`,
       code: `
@@ -3287,6 +6204,136 @@ class TextEditor {
         return sb.reverse().toString();
     }
 }`,
+      alt: [
+        { lang: 'python', code: `class Node:
+    __slots__ = ("ch", "prev", "next")
+    def __init__(self, ch, prev=None, nxt=None):
+        self.ch, self.prev, self.next = ch, prev, nxt
+
+class TextEditor:
+    def __init__(self):
+        self.head = Node("#")                  # sentinel: "start of text"
+        self.cur = self.head                   # the cursor sits right AFTER this node
+
+    def addText(self, text: str) -> None:
+        for ch in text:
+            n = Node(ch, self.cur, self.cur.next)
+            if self.cur.next:
+                self.cur.next.prev = n
+            self.cur.next = n
+            self.cur = n                       # typing moves the cursor forward
+
+    def deleteText(self, k: int) -> int:
+        deleted = 0
+        while deleted < k and self.cur is not self.head:   # remove the char left of the cursor
+            left = self.cur.prev
+            left.next = self.cur.next
+            if self.cur.next:
+                self.cur.next.prev = left
+            self.cur = left
+            deleted += 1
+        return deleted
+
+    def cursorLeft(self, k: int) -> str:
+        while k > 0 and self.cur is not self.head:
+            self.cur, k = self.cur.prev, k - 1
+        return self._left_text()
+
+    def cursorRight(self, k: int) -> str:
+        while k > 0 and self.cur.next:
+            self.cur, k = self.cur.next, k - 1
+        return self._left_text()
+
+    def _left_text(self):                      # last min(10, len) chars left of the cursor
+        out, n = [], self.cur
+        while n is not self.head and len(out) < 10:
+            out.append(n.ch)
+            n = n.prev
+        return "".join(reversed(out))` },
+        { lang: 'js', code: `class Node {
+  constructor(ch, prev = null, next = null) { this.ch = ch; this.prev = prev; this.next = next; }
+}
+
+class TextEditor {
+  constructor() {
+    this.head = new Node('#');           // sentinel: "start of text"
+    this.cur = this.head;                // the cursor sits right AFTER this node
+  }
+
+  addText(text) {
+    for (const ch of text) {
+      const n = new Node(ch, this.cur, this.cur.next);
+      if (this.cur.next !== null) this.cur.next.prev = n;
+      this.cur.next = n;
+      this.cur = n;                      // typing moves the cursor forward
+    }
+  }
+
+  deleteText(k) {
+    let deleted = 0;
+    while (deleted < k && this.cur !== this.head) {   // remove the char left of the cursor
+      const left = this.cur.prev;
+      left.next = this.cur.next;
+      if (this.cur.next !== null) this.cur.next.prev = left;
+      this.cur = left;
+      deleted++;
+    }
+    return deleted;
+  }
+
+  cursorLeft(k) {
+    while (k-- > 0 && this.cur !== this.head) this.cur = this.cur.prev;
+    return this.leftText();
+  }
+
+  cursorRight(k) {
+    while (k-- > 0 && this.cur.next !== null) this.cur = this.cur.next;
+    return this.leftText();
+  }
+
+  leftText() {                           // last min(10, len) chars left of the cursor
+    const out = [];
+    for (let n = this.cur; n !== this.head && out.length < 10; n = n.prev) out.push(n.ch);
+    return out.reverse().join('');
+  }
+}` },
+        { lang: 'cpp', code: `class TextEditor {
+    // std::list is a doubly linked list; the cursor is an iterator to the char just RIGHT of it
+    list<char> text;
+    list<char>::iterator cur = text.end();
+
+    string leftText() {                      // last min(10, len) chars left of the cursor
+        string out;
+        for (auto it = cur; it != text.begin() && out.size() < 10; ) out += *--it;
+        reverse(out.begin(), out.end());
+        return out;
+    }
+
+public:
+    void addText(string s) {
+        for (char c : s) text.insert(cur, c);    // O(1) insert before the cursor; cur stays valid
+    }
+
+    int deleteText(int k) {
+        int deleted = 0;
+        while (deleted < k && cur != text.begin()) {
+            cur = text.erase(prev(cur));         // erase the char left of the cursor
+            deleted++;
+        }
+        return deleted;
+    }
+
+    string cursorLeft(int k) {
+        while (k-- > 0 && cur != text.begin()) --cur;
+        return leftText();
+    }
+
+    string cursorRight(int k) {
+        while (k-- > 0 && cur != text.end()) ++cur;
+        return leftText();
+    }
+};` }
+      ],
       complexity: `<p><b>Time O(k)</b> per call (plus ≤ 10 steps for the report), independent of text length. <b>Space O(total characters)</b> — one node per character, which is heavy; the alternative "two stacks" design (left of cursor, right of cursor) has the same complexity with less memory.</p>`,
       followUps: ['Implement it with two ArrayDeques (left stack, right stack) and compare memory.', 'Real editors use gap buffers, piece tables or ropes — what does each optimise?']
     }
@@ -3318,7 +6365,7 @@ class TextEditor {
     {
       q: 'When would you choose a linked list over an array (or ArrayList)?', level: 'B',
       a: `<p>Choose by the <b>operations</b>. Arrays give O(1) access by index, compact memory and great cache behaviour; inserting or deleting in the middle shifts elements (O(N)). Linked lists give O(1) insert/delete <b>at a node you already hold</b> (or at the ends), and grow without copying, but access by index is O(N), each node carries pointer overhead, and walking the list causes cache misses.</p>
-<p>So: lots of indexing, sorting or binary search → array. Frequent add/remove at the ends or at known positions, or the need to move items around by handle (LRU cache, task schedulers, undo history) → linked list. In Java, <code>ArrayList</code>/<code>ArrayDeque</code> win most real benchmarks; reach for a linked structure when the O(1) handle-based removal is truly needed.</p>`,
+<p>So: lots of indexing, sorting or binary search → array. Frequent add/remove at the ends or at known positions, or the need to move items around by handle (LRU cache, task schedulers, undo history) → linked list. Dynamic arrays and array-backed deques (<code>ArrayList</code>/<code>ArrayDeque</code>, Python <code>list</code>/<code>deque</code>, JS arrays, C++ <code>vector</code>/<code>deque</code>) win most real benchmarks; reach for a linked structure when the O(1) handle-based removal is truly needed.</p>`,
       followUps: ['Why is LinkedList.get(i) in a loop a hidden O(N²)?', 'What is a cache miss and why does it hurt linked lists?']
     },
     {
@@ -3342,7 +6389,7 @@ class TextEditor {
     {
       q: 'Reverse a singly linked list. Give the iterative and the recursive versions and compare them.', level: 'I',
       a: `<p><b>Iterative:</b> <code>prev = null, curr = head</code>; loop: <code>next = curr.next; curr.next = prev; prev = curr; curr = next;</code> return prev. Invariant: prev heads the reversed prefix, curr heads the untouched suffix. O(N) time, O(1) space.</p>
-<p><b>Recursive:</b> if head or head.next is null return head; <code>newHead = reverse(head.next); head.next.next = head; head.next = null; return newHead;</code>. Also O(N) time, but O(N) stack frames — a 10<sup>6</sup>-node list can throw <code>StackOverflowError</code>, and Java has no tail-call elimination. Prefer iterative in production; show recursive to demonstrate understanding.</p>`,
+<p><b>Recursive:</b> if head or head.next is null return head; <code>newHead = reverse(head.next); head.next.next = head; head.next = null; return newHead;</code>. Also O(N) time, but O(N) stack frames — a 10<sup>6</sup>-node list overflows the stack (Python fails past about 1000 nodes), and Java, Python and JS do not remove tail calls. Prefer iterative in production; show recursive to demonstrate understanding.</p>`,
       followUps: ['What happens if you forget head.next = null in the recursive version?', 'How would you reverse only positions left..right?']
     },
     {
@@ -3360,7 +6407,7 @@ class TextEditor {
     {
       q: 'Design an LRU cache with O(1) get and put.', level: 'A',
       a: `<p>Combine a <b>HashMap&lt;key, Node&gt;</b> with a <b>doubly linked list</b> ordered by recency, with head and tail sentinels (head side = most recent). get: look up the node; if present, unlink it and add it after head, return its value. put: if the key exists, update and move to front; otherwise, if full, evict <code>tail.prev</code> — unlink it and remove its <b>key</b> from the map (that is why nodes store keys) — then create the node, add to front, put into the map.</p>
-<p>Each call = one hash operation + a constant number of pointer writes → O(1) average; space O(capacity). In Java, <code>LinkedHashMap(16, 0.75f, true)</code> with <code>removeEldestEntry</code> gives the same in a few lines; in Python, <code>OrderedDict</code> with <code>move_to_end</code>/<code>popitem(last=False)</code>.</p>`,
+<p>Each call = one hash operation + a constant number of pointer writes → O(1) average; space O(capacity). In Java, <code>LinkedHashMap(16, 0.75f, true)</code> with <code>removeEldestEntry</code> gives the same in a few lines; in Python, <code>OrderedDict</code> with <code>move_to_end</code>/<code>popitem(last=False)</code>; in JS, a <code>Map</code> (delete + set moves a key to the end, <code>keys().next()</code> is the oldest); in C++, a <code>std::list</code> plus an <code>unordered_map</code> of iterators, using <code>splice</code> to move a node to the front.</p>`,
       followUps: ['What is the bug if you check capacity before checking whether the key exists?', 'How would you add TTL expiry?', 'How does LFU differ?']
     },
     {
@@ -3372,7 +6419,7 @@ class TextEditor {
     {
       q: 'Why is java.util.LinkedList often slower than ArrayList, even for insert-heavy code?', level: 'A',
       a: `<p>Big-O hides constants. Each LinkedList element costs a node object (~24 bytes) plus a boxed Integer (~16 bytes), allocated separately and scattered across the heap, so traversal is pointer chasing with frequent cache misses and more GC work. ArrayList stores references contiguously; shifting elements uses <code>System.arraycopy</code>, a fast block memory move, so an O(N) shift of thousands of elements is still cheap.</p>
-<p>Also, "O(1) insert in the middle" assumes you are already <b>at</b> the position; finding it is O(N) on a list. Use a linked list when you hold handles to nodes (iterators, map values) and must remove/move them in O(1); otherwise ArrayList or ArrayDeque usually wins.</p>`,
+<p>Also, "O(1) insert in the middle" assumes you are already <b>at</b> the position; finding it is O(N) on a list. Use a linked list when you hold handles to nodes (iterators, map values) and must remove/move them in O(1); otherwise ArrayList or ArrayDeque usually wins. The same holds outside Java: C++ <code>std::vector</code> usually beats <code>std::list</code>, and Python's <code>list</code>/<code>deque</code> beat a hand-made node chain.</p>`,
       followUps: ['How would you measure it fairly (JMH)?', 'When does ArrayDeque beat LinkedList as a queue?']
     },
     {
@@ -3416,6 +6463,12 @@ class TextEditor {
     ],
     prereqs: `<p>DSA 1 (Java syntax, references, stack vs heap), DSA 2 (Big-O), DSA 6 (Two Pointers — the same "two indices" thinking moves onto nodes), DSA 8 (Hashing — needed for the LRU cache), and DSA 11 (Recursion — for the recursive reversal and merge).</p>`,
     hours: 14,
+    langNotes: {
+      java: `<p><b>Java:</b> nodes are objects on the heap and variables hold references, so <code>slow == fast</code> compares <b>identity</b> (exactly what Floyd and the intersection problem need); never use <code>.val</code> or <code>equals</code> there. Unlinked nodes are freed by the garbage collector. Following a <code>null</code> reference throws <code>NullPointerException</code>, so check <code>fast != null &amp;&amp; fast.next != null</code> in that order. Recursion is fine to about 10<sup>4</sup> frames (more with <code>-Xss</code>) and there is no tail-call removal, so prefer loops for reversal and merging on long lists. <code>java.util.LinkedList</code> is doubly linked but <code>get(i)</code> is O(N); <code>LinkedHashMap(cap, 0.75f, true)</code> + <code>removeEldestEntry</code> is a ready-made LRU, and <code>LinkedHashSet</code> keeps insertion order for LFU buckets. <code>PriorityQueue</code> is a min-heap: pass <code>(a, b) -&gt; Integer.compare(a.val, b.val)</code>, never <code>a.val - b.val</code> (it can overflow).</p>`,
+      python: `<p><b>Python:</b> compare nodes with <code>is</code> / <code>is not</code> (identity); <code>==</code> would call <code>__eq__</code> if a node class defines one. Tuple assignment such as <code>curr.next, prev, curr = prev, curr, curr.next</code> evaluates the whole right side first, which makes reversal short, but the targets are assigned left to right, so order them with care. Recursion stops at about <b>1000</b> frames by default, so recursive reversal or merge fails on longer lists: use the loops (or <code>sys.setrecursionlimit</code> together with <code>threading.stack_size</code>). There is no linked list in the standard library: <code>collections.deque</code> is a linked list of blocks (O(1) at both ends, O(N) in the middle), and <code>OrderedDict</code> (<code>move_to_end</code>, <code>popitem(last=False)</code>) is a ready-made LRU. <code>heapq</code> is a min-heap only and cannot compare nodes, so push <code>(val, index, node)</code> tuples. Integers never overflow, so digit-by-digit addition is only needed because the task asks for it. <code>list.pop(0)</code> is O(N); use a <code>deque</code>.</p>`,
+      js: `<p><b>JavaScript:</b> objects are compared by reference with <code>===</code>, which is what cycle and intersection checks need. There is no built-in linked list: you write a small <code>class ListNode</code>. A <code>Map</code> (and a <code>Set</code>) remembers insertion order, so delete + set moves a key to the end and <code>map.keys().next().value</code> is the oldest key: a ready-made LRU, and an LFU bucket. There is <b>no built-in heap</b>: Merge k Sorted Lists includes a small <code>MinHeap</code> class (<code>push</code>, <code>pop</code>, <code>peek</code>, <code>size</code>, with a comparator). <code>/</code> gives fractions, so use <code>Math.floor(sum / 10)</code> for a carry; <code>Number</code> is exact only to 2<sup>53</sup> (use <code>BigInt</code> past that). Reading a field of <code>null</code> throws <code>TypeError</code>. <code>array.shift()</code> and <code>unshift()</code> are O(N). Recursion is fine to about 10<sup>4</sup> frames.</p>`,
+      cpp: `<p><b>C++:</b> nodes are <code>ListNode*</code> pointers, compared by address; <code>-&gt;</code> follows a pointer, and following <code>nullptr</code> is undefined behaviour (often a crash), so test <code>fast &amp;&amp; fast-&gt;next</code> first. There is no garbage collector: <code>delete</code> nodes you unlink (as the solutions do), or use <code>unique_ptr</code> in real code. A dummy node can live on the stack (<code>ListNode dummy(0, head);</code>, then use <code>&amp;dummy</code>), so there is nothing to free. <code>std::list</code> is a doubly linked list whose iterators stay valid; <code>splice</code> moves nodes in O(1), which gives an LRU or LFU with <code>unordered_map</code> of iterators. <code>priority_queue</code> is a <b>max</b>-heap: pass a "greater" comparator for a min-heap. The default stack is about 8 MB, so recursion on 10<sup>5</sup>-node lists is risky; signed overflow is undefined behaviour, so use <code>long long</code> where sums can grow.</p>`
+    },
     topics: topics,
     practice: practice,
     quiz: quiz,

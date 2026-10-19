@@ -1875,6 +1875,7 @@ print(f"after : p99 <= {after_lat} ms, availability {after_av:.4%}")` },
   );
 
   registerModule({
+  langExplain: `<p><b>About the code here.</b> System design is language-neutral, and interviews never require a particular language for it. The short samples are Python (and occasionally Java) only to make an idea concrete, such as an estimate, a hash ring or a rate limiter. Read them like pseudocode; the runnable ones are calculators you can change and re-run.</p>`,
     id: 'hld01',
     title: 'What is System Design? Client-Server & Request Flow',
     lang: 'text',

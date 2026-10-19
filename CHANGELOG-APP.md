@@ -2,6 +2,23 @@
 
 Versions follow [Semantic Versioning](https://semver.org). The app's version is `appVersion` in `package.json`; it sets the Android `versionName` and `versionCode` (`1.7.0` → `10700`) and, through `node tools/version-sync.js`, the iOS project. The Android workflow tags each new one as `app-vX.Y.Z` on `main`, publishes a GitHub Release with the APK and bundle, and uploads it to Google Play. Up to 1.6.1 the app and website shared one version; that history is in [CHANGELOG.md](CHANGELOG.md).
 
+## [1.9.0] — 2026-10-19 · Phase 1 of 3
+
+Full release notes: [docs/RELEASE_PHASE1.md](docs/RELEASE_PHASE1.md).
+
+### Added
+- A "Your route" card on the home screen shows your route, language and hours per week, the percentage done, modules mastered, weeks left and what to study next with the reason. It opens the route plan.
+- The Cloud Citadel island (Cloud & DevOps track) on the map, and its passport stamp.
+- Lessons inside the app include the website's Phase 1 content: four-language tabs in DSA 1–17, prerequisites and readiness checks, and the new Python backend, maths for ML and Cloud & DevOps modules.
+
+### Changed
+- The app's own screens use the website's story-journey look: the night and daylight palettes, Bricolage Grotesque headings, Atkinson Hyperlegible body text, and IBM Plex Mono for numbers.
+- The resume card is a paper "next stop" card. In the module path, the current place is clay, cleared places are green and the boss is violet, on a sea-coloured trail. Levels are named Beginner Shore, Intermediate Forest, Advanced Peaks and Expert Summit.
+- The islands map has a sea background, land-coloured islands with region-coloured icons, a gold route, and the archipelago label moved to the bottom corner.
+- The tab bar has line icons with a highlighted pill on the open tab. The Map tab is now called World.
+- Bit, the lesson-page bottom bar, the read-aloud player and the confetti use the journey colours, and follow the light theme automatically.
+- The launch background and status-bar colour match the new palette.
+
 ## [1.8.0] — 2026-10-19
 
 ### Added

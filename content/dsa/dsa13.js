@@ -34,14 +34,14 @@
   // TOPIC 1 — Stack (LIFO) vs Queue (FIFO) in Java
   // =====================================================================
   topics.push({
-    title: 'Stack (LIFO) vs Queue (FIFO) — and why Java uses ArrayDeque',
+    title: 'Stack (LIFO) vs Queue (FIFO) — and which container to use',
     analogy: `<p><b>Stack = a pile of plates</b> in a kitchen. You always put a clean plate on <b>top</b>, and you always take the plate from the <b>top</b>. The plate you put last is the first one you use. That is <b>LIFO</b>: <i>Last In, First Out</i>.</p>
       <p><b>Queue = the line at a movie ticket counter.</b> New people join at the <b>back</b>, the person at the <b>front</b> gets served first. Whoever came first leaves first. That is <b>FIFO</b>: <i>First In, First Out</i>.</p>`,
     explain: `<p>Both are just lists where you are <b>only allowed to touch the ends</b>. That small rule is exactly what makes them powerful: every add/remove is <b>O(1)</b>, and the order things come out tells you something useful (most recent first, or oldest first).</p>
       ${H.arr([3, 5, 8], { label: 'stack (top is right)', hl: { 2: 'y' }, ptr: { 2: 'top' } })}
       ${H.arr([3, 5, 8], { label: 'queue (front is left)', hl: { 0: 'y' }, ptr: { 0: 'front', 2: 'back' } })}
       <p>Put in 3, then 5, then 8. The stack gives them back as ${H.c('y', '8, 5, 3')} (newest first). The queue gives them back as ${H.c('y', '3, 5, 8')} (oldest first).</p>
-      <h4>The Java cheat sheet</h4>
+      <h4>The cheat sheet (Java names)</h4>
       ${H.table(['What you want', 'Stack style (ArrayDeque)', 'Queue style (ArrayDeque)', 'If empty...'], [
         ['add', '<code>push(x)</code> → goes on top', '<code>offer(x)</code> → joins the back', '—'],
         ['remove', '<code>pop()</code> → removes top', '<code>poll()</code> → removes front', 'pop() throws, poll() returns null'],
@@ -50,7 +50,15 @@
         ['size', '<code>size()</code>', '<code>size()</code>', '—']
       ])}
       <p>Declare them as <code>Deque&lt;Integer&gt; st = new ArrayDeque&lt;&gt;();</code> and <code>Queue&lt;Integer&gt; q = new ArrayDeque&lt;&gt;();</code>. A <b>Deque</b> ("deck", double-ended queue) lets you work at both ends: <code>offerFirst / offerLast / pollFirst / pollLast / peekFirst / peekLast</code>. We need that later for the sliding window.</p>
-      <h4>Why NOT the old <code>Stack</code> class?</h4>
+      <h4>The same tools in other languages</h4>
+      ${H.table(['language', 'stack', 'queue', 'both ends (deque)'], [
+        ['Java', '<code>ArrayDeque</code>: push / pop / peek', '<code>ArrayDeque</code>: offer / poll / peek', '<code>ArrayDeque</code>: offerFirst / pollLast …'],
+        ['Python', '<code>list</code>: append / pop / <code>[-1]</code>', '<code>collections.deque</code>: append / popleft', '<code>deque</code>: appendleft / pop …'],
+        ['JavaScript', 'array: push / pop / <code>[length - 1]</code>', 'array + head index (<code>shift()</code> is O(n))', 'no built-in; head/tail indices over an array'],
+        ['C++', '<code>std::stack</code> (or <code>vector</code>)', '<code>std::queue</code>: push / front / pop', '<code>std::deque</code>: push_front / pop_back …']
+      ])}
+      <p>Empty behaviour differs too: Java <code>poll()</code> returns <code>null</code>, Python <code>[].pop()</code> raises <code>IndexError</code>, JS <code>[].pop()</code> quietly returns <code>undefined</code>, and C++ <code>top()</code>/<code>pop()</code> on an empty container is undefined behaviour. In every language: check for empty first.</p>
+      <h4>Java only: why NOT the old <code>Stack</code> class?</h4>
       <ul>
         <li><code>java.util.Stack</code> is from Java 1.0 and extends <code>Vector</code>. Every method is <b>synchronized</b> (it takes a lock each call) → slower for no benefit in single-threaded code.</li>
         <li>It lets you do <code>get(i)</code>, <code>add(index, x)</code>, <code>remove(index)</code> — touching the middle breaks the "only the top" idea and invites bugs.</li>
@@ -65,11 +73,11 @@
     clues: [
       '"Most recent", "undo", "go back", "matching / nested" → <b>stack</b> (LIFO).',
       '"In the order they arrived", "first come first served", "level by level" → <b>queue</b> (FIFO).',
-      'Need to add/remove at <b>both ends</b> (e.g. a sliding window) → <b>Deque</b> (ArrayDeque).',
-      'You see <code>Stack&lt;Integer&gt;</code> in old code → in interviews prefer <code>Deque&lt;Integer&gt; st = new ArrayDeque&lt;&gt;()</code>.',
+      'Need to add/remove at <b>both ends</b> (e.g. a sliding window) → <b>deque</b> (<code>ArrayDeque</code> / <code>collections.deque</code> / <code>std::deque</code>; in JS an array with head and tail indices).',
+      'Java: you see <code>Stack&lt;Integer&gt;</code> in old code → in interviews prefer <code>Deque&lt;Integer&gt; st = new ArrayDeque&lt;&gt;()</code>.',
       'Recursion that might go 10<sup>5</sup> deep (stack overflow risk) → simulate it with your own explicit stack.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
 import java.util.*;
 
 class StackQueueDemo {
@@ -121,7 +129,116 @@ class StackQueueDemo {
         int x = a.peek(), y = b.peek();                  // or unbox to int first
         System.out.println(wrong + " " + right + " " + (x == y));
     }
-}`, `
+}`,
+      alt: [{ lang: 'python', run: true, code: `from collections import deque
+
+# ---------- STACK (LIFO) with a list ----------
+stack = []
+stack.append(3)                  # [3]        top = 3
+stack.append(5)                  # [3, 5]     top = 5
+stack.append(8)                  # [3, 5, 8]  top = 8
+print(stack[-1])                 # 8 -> look at the top, do NOT remove
+print(stack.pop())               # 8 -> remove the top
+print(stack.pop())               # 5
+print(len(stack))                # 1 -> only 3 is left
+
+# ---------- QUEUE (FIFO) with collections.deque ----------
+queue = deque()
+queue.append(3)                  # front [3] back
+queue.append(5)                  # front [3, 5] back
+queue.append(8)                  # front [3, 5, 8] back
+print(queue[0])                  # 3 -> the oldest item (front)
+print(queue.popleft())           # 3 -> O(1); list.pop(0) would be O(n)
+print(queue.popleft())           # 5
+
+# ---------- DEQUE: work at BOTH ends ----------
+dq = deque()
+dq.append(1)                     # [1]
+dq.append(2)                     # [1, 2]
+dq.appendleft(0)                 # [0, 1, 2]
+print(dq[0], dq[-1])             # 0 2
+dq.pop()                         # [0, 1]
+dq.popleft()                     # [1]
+
+# ---------- Safe empty handling ----------
+empty = []
+print(empty[-1] if empty else None)   # None: guard before peeking
+if empty:                             # ALWAYS guard pop(): [].pop() raises IndexError
+    empty.pop()
+
+# ---------- Value vs identity ----------
+a, b = [1000], [int("1000")]
+print(a[-1] is b[-1], a[-1] == b[-1])  # False True: compare values with ==, never "is"` }, { lang: 'js', run: true, code: `// ---------- STACK (LIFO) with an array ----------
+const stack = [];
+stack.push(3);                                // [3]        top = 3
+stack.push(5);                                // [3, 5]     top = 5
+stack.push(8);                                // [3, 5, 8]  top = 8
+console.log(stack[stack.length - 1]);         // 8 -> look at the top, do NOT remove
+console.log(stack.pop());                     // 8 -> remove the top
+console.log(stack.pop());                     // 5
+console.log(stack.length);                    // 1 -> only 3 is left
+
+// ---------- QUEUE (FIFO): array + head index ----------
+// array.shift() is O(n), so a queue keeps a head pointer instead.
+const queue = [];
+let head = 0;
+queue.push(3);                                // front [3] back
+queue.push(5);                                // front [3, 5] back
+queue.push(8);                                // front [3, 5, 8] back
+console.log(queue[head]);                     // 3 -> the oldest item (front)
+console.log(queue[head++]);                   // 3 -> remove the front in O(1)
+console.log(queue[head++]);                   // 5
+
+// ---------- Both ends: fine for small arrays ----------
+const dq = [1, 2];
+dq.unshift(0);                                // [0, 1, 2] (unshift is O(n))
+console.log(dq[0], dq[dq.length - 1]);        // 0 2
+dq.pop();                                     // [0, 1]
+dq.shift();                                   // [1]
+
+// ---------- Safe empty handling ----------
+const empty = [];
+console.log(empty.pop());                     // undefined: no exception, so check length
+console.log(empty[empty.length - 1]);         // undefined
+
+// ---------- Value vs reference ----------
+const a = [1000], b = [1000];
+console.log(a[0] === b[0], a === b);          // true false: numbers by value, arrays by reference` }, { lang: 'cpp', code: `int main() {
+    // ---------- STACK (LIFO) ----------
+    stack<int> st;
+    st.push(3);                                  // top = 3
+    st.push(5);                                  // top = 5
+    st.push(8);                                  // top = 8
+    cout << st.top() << "\\n";                    // 8 -> look at the top, do NOT remove
+    st.pop();                                    // pop() returns void: read top() first
+    cout << st.top() << "\\n";                    // 5
+    st.pop();
+    cout << st.size() << "\\n";                   // 1 -> only 3 is left
+
+    // ---------- QUEUE (FIFO) ----------
+    queue<int> q;
+    q.push(3);                                   // front [3] back
+    q.push(5);                                   // front [3, 5] back
+    q.push(8);                                   // front [3, 5, 8] back
+    cout << q.front() << "\\n";                   // 3 -> the oldest item (front)
+    q.pop();                                     // remove the front
+    cout << q.front() << "\\n";                   // 5
+
+    // ---------- DEQUE: work at BOTH ends in O(1) ----------
+    deque<int> dq;
+    dq.push_back(1);                             // [1]
+    dq.push_back(2);                             // [1, 2]
+    dq.push_front(0);                            // [0, 1, 2]
+    cout << dq.front() << " " << dq.back() << "\\n";   // 0 2
+    dq.pop_back();                               // [0, 1]
+    dq.pop_front();                              // [1]
+
+    // ---------- Safe empty handling ----------
+    stack<int> empty;
+    if (!empty.empty()) empty.pop();             // top()/pop() on an empty stack is undefined behaviour
+    cout << boolalpha << empty.empty() << "\\n";  // true
+    return 0;
+}` }] }, { lang: 'java', code: `
 import java.util.*;
 
 class LegacyStackWarning {
@@ -139,7 +256,37 @@ class LegacyStackWarning {
         st.push(2);
         System.out.println(st.peek()); // 2
     }
-}`],
+}`,
+      alt: [{ lang: 'python', run: true, code: `import queue
+
+# queue.LifoQueue is a thread-safe stack: every call takes a lock (slow for one thread).
+old = queue.LifoQueue()
+old.put(1)
+old.put(2)
+print(old.get())        # 2
+
+# For algorithms use a plain list: append = push, pop() = pop, [-1] = peek.
+st = []
+st.append(1)
+st.append(2)
+middle = st[0]          # legal on a list, but it breaks the "only the top" idea
+print(middle, st[-1])   # 1 2` }, { lang: 'js', run: true, code: `// JS has no Stack class: an array is the stack. It also allows middle access,
+// so stick to push / pop / [length - 1] to keep the LIFO idea.
+const st = [];
+st.push(1);
+st.push(2);
+const middle = st[0];                       // legal, but breaks the "only the top" rule
+console.log(middle, st[st.length - 1]);     // 1 2` }, { lang: 'cpp', code: `int main() {
+    // A vector allows middle access; std::stack is an adaptor that hides it.
+    vector<int> v{1, 2};
+    cout << v[0] << " " << v.back() << "\\n";   // 1 2: middle access is legal on a vector
+
+    stack<int> st;                              // only push / pop / top / size / empty
+    st.push(1);
+    st.push(2);
+    cout << st.top() << "\\n";                   // 2
+    return 0;
+}` }] }],
     codeTitle: ['Stack, Queue and Deque with ArrayDeque', 'Legacy Stack vs ArrayDeque'],
     examples: [
       {
@@ -158,19 +305,33 @@ class LegacyStackWarning {
         html: `<p>Push every character of <code>"CODE"</code>, then pop them all: you get <code>"EDOC"</code>. Each character is pushed once and popped once → 2N steps → O(N) time, O(N) extra space. This "push everything, pop everything" move is the simplest way to <b>reverse</b> any sequence — and it is exactly what the call stack does when recursion "unwinds".</p>
           ${H.arr(['C', 'O', 'D', 'E'], { label: 'push order', hl: { 3: 'g' } })}
           ${H.arr(['E', 'D', 'O', 'C'], { label: 'pop order', hl: { 0: 'g' } })}`,
-        code: `String reverse(String s) {
+        code: { lang: 'java', code: `String reverse(String s) {
     Deque<Character> st = new ArrayDeque<>();
     for (char c : s.toCharArray()) st.push(c);      // C, O, D, E -> E on top
     StringBuilder sb = new StringBuilder();
     while (!st.isEmpty()) sb.append(st.pop());      // E, D, O, C
     return sb.toString();
-}`
+}`,
+      alt: [{ lang: 'python', code: `def reverse(s: str) -> str:
+    st = list(s)                                   # C, O, D, E -> E on top
+    return ''.join(st.pop() for _ in range(len(st)))   # E, D, O, C` }, { lang: 'js', code: `function reverse(s) {
+  const st = [...s];                      // C, O, D, E -> E on top
+  let out = '';
+  while (st.length) out += st.pop();      // E, D, O, C
+  return out;
+}` }, { lang: 'cpp', code: `string reverseWord(const string& s) {
+    stack<char> st;
+    for (char c : s) st.push(c);          // C, O, D, E -> E on top
+    string out;
+    while (!st.empty()) { out += st.top(); st.pop(); }   // E, D, O, C
+    return out;
+}` }] }
       },
       {
         title: 'Explicit stack instead of recursion (DFS without StackOverflowError)',
-        html: `<p>A recursive DFS on a 10<sup>5</sup>-long chain can crash with <code>StackOverflowError</code> because every call uses a frame on the thread's call stack (often only ~512 KB–1 MB). Replace the hidden call stack with your <b>own</b> <code>ArrayDeque</code> on the heap: push the start, then loop "pop one, push its unvisited neighbours". Same order idea, no crash.</p>
+        html: `<p>A recursive DFS on a 10<sup>5</sup>-long chain can crash (Java <code>StackOverflowError</code>, Python <code>RecursionError</code> after ~1000 frames, JS <code>RangeError</code>, a C++ segfault) because every call uses a frame on the thread's call stack. Replace the hidden call stack with your <b>own</b> stack on the heap: push the start, then loop "pop one, push its unvisited neighbours". Same order idea, no crash.</p>
           <p>Swap the stack for a queue and the <b>same loop</b> becomes BFS (level by level). That one-word change — <code>pop()</code> vs <code>poll()</code> — is the cleanest demonstration of LIFO vs FIFO you will ever see.</p>`,
-        code: `List<Integer> dfsOrder(List<List<Integer>> adj, int start) {
+        code: { lang: 'java', code: `List<Integer> dfsOrder(List<List<Integer>> adj, int start) {
     List<Integer> order = new ArrayList<>();
     boolean[] seen = new boolean[adj.size()];
     Deque<Integer> st = new ArrayDeque<>();
@@ -183,11 +344,45 @@ class LegacyStackWarning {
         for (int v : adj.get(u)) if (!seen[v]) st.push(v);
     }
     return order;
-}`
+}`,
+      alt: [{ lang: 'python', code: `def dfs_order(adj: list[list[int]], start: int) -> list[int]:
+    order, seen = [], [False] * len(adj)
+    st = [start]                       # our own stack lives on the heap: no recursion limit
+    while st:
+        u = st.pop()                   # LIFO -> goes deep first
+        if seen[u]:
+            continue
+        seen[u] = True
+        order.append(u)
+        st.extend(v for v in adj[u] if not seen[v])
+    return order` }, { lang: 'js', code: `function dfsOrder(adj, start) {
+  const order = [], seen = new Array(adj.length).fill(false);
+  const st = [start];                    // our own stack: no call-stack overflow
+  while (st.length) {
+    const u = st.pop();                  // LIFO -> goes deep first
+    if (seen[u]) continue;
+    seen[u] = true;
+    order.push(u);
+    for (const v of adj[u]) if (!seen[v]) st.push(v);
+  }
+  return order;
+}` }, { lang: 'cpp', code: `vector<int> dfsOrder(const vector<vector<int>>& adj, int start) {
+    vector<int> order;
+    vector<bool> seen(adj.size(), false);
+    vector<int> st{start};               // our own stack on the heap: no 8 MB limit
+    while (!st.empty()) {
+        int u = st.back(); st.pop_back(); // LIFO -> goes deep first
+        if (seen[u]) continue;
+        seen[u] = true;
+        order.push_back(u);
+        for (int v : adj[u]) if (!seen[v]) st.push_back(v);
+    }
+    return order;
+}` }] }
       },
       {
         title: 'Picking the right method name (exception vs special value)',
-        html: `<p>Java gives every queue operation in two flavours. Mixing them up is a classic bug source:</p>
+        html: `<p>Java gives every queue operation in two flavours (Python and C++ have one flavour each: Python raises, C++ is undefined on empty; JS returns <code>undefined</code>). Mixing them up is a classic bug source:</p>
           ${H.table(['operation', 'throws if it fails', 'returns special value'], [
             ['insert at back', '<code>add(x)</code> / <code>addLast(x)</code>', '<code>offer(x)</code> → false'],
             ['remove front', '<code>remove()</code> / <code>pop()</code>', '<code>poll()</code> → null'],
@@ -366,9 +561,18 @@ class MyStackTwoQueues {
       },
       hints: [
         `<p>Aha: a queue gives you the <b>oldest</b> item. If, right after every push, you move all the older items behind the new one, the newest item ends up at the <b>front</b> — so the queue front is always the stack top.</p>`,
-        `<p>One <code>Queue&lt;Integer&gt;</code> is enough. <code>push(x)</code>: <code>offer(x)</code>, then repeat <code>size - 1</code> times: <code>offer(poll())</code>. Now <code>pop()</code> = <code>poll()</code>, <code>top()</code> = <code>peek()</code>.</p>`,
+        `<p>One queue is enough (<code>ArrayDeque</code> / <code>deque</code> / <code>std::queue</code>; in JS an array with a head index). <code>push(x)</code>: <code>offer(x)</code>, then repeat <code>size - 1</code> times: <code>offer(poll())</code>. Now <code>pop()</code> = <code>poll()</code>, <code>top()</code> = <code>peek()</code>.</p>`,
         `<p>Edge cases: rotating <code>size - 1</code> times (not <code>size</code>, which would undo the work); a single element needs zero rotations; <code>empty()</code> = <code>q.isEmpty()</code>. Recipe: push → offer, rotate n-1; pop → poll; top → peek; empty → isEmpty. Push becomes O(N), everything else O(1).</p>`
       ],
+      tests: { cls: "MyStack", sigs: {"MyStack":"","push":"int -> void","pop":"-> int","top":"-> int","empty":"-> bool"}, cases: [
+        {"ops":["MyStack","push","push","top","pop","empty"],"args":[[],[1],[2],[],[],[]],"out":[null,null,null,2,2,false]},
+        {"ops":["MyStack","empty"],"args":[[],[]],"out":[null,true]},
+        {"ops":["MyStack","push","top","pop","empty"],"args":[[],[9],[],[],[]],"out":[null,null,9,9,true]},
+        {"ops":["MyStack","push","push","push","pop","pop","pop","empty"],"args":[[],[1],[2],[3],[],[],[],[]],"out":[null,null,null,null,3,2,1,true]},
+        {"ops":["MyStack","push","push","pop","push","top","pop","top"],"args":[[],[4],[5],[],[6],[],[],[]],"out":[null,null,null,5,null,6,6,4]},
+        {"ops":["MyStack","push","push","push","top","pop","top","empty"],"args":[[],[7],[7],[7],[],[],[],[]],"out":[null,null,null,null,7,7,7,false]},
+        {"ops":["MyStack","push","push","push","push","push","push","pop","pop","pop","pop","pop","pop","empty"],"args":[[],[1],[2],[3],[4],[5],[6],[],[],[],[],[],[],[]],"out":[null,null,null,null,null,null,null,6,5,4,3,2,1,true]}
+      ] },
       solution: {
         approach: `<p>Pay the O(N) cost <b>once at push time</b> by rotating the queue so the newest element sits at the front. Reads (<code>top</code>) and removals (<code>pop</code>) become O(1). Choose this when pops/tops are more frequent than pushes; choose the two-queue version when pushes dominate.</p>`,
         code: `
@@ -408,6 +612,66 @@ class MyStack {
             ['pop()', '—', '—', '1', '<span class="c-p">2</span>']
           ]
         },
+        alt: [{ lang: 'python', code: `from collections import deque
+
+
+class MyStack:
+    def __init__(self):
+        self.q = deque()                 # left end of q = top of the stack
+
+    def push(self, x: int) -> None:
+        self.q.append(x)                 # newest goes to the back...
+        for _ in range(len(self.q) - 1):
+            self.q.append(self.q.popleft())   # ...then every older item walks behind it
+
+    def pop(self) -> int:
+        return self.q.popleft()          # front = newest = stack top
+
+    def top(self) -> int:
+        return self.q[0]
+
+    def empty(self) -> bool:
+        return not self.q` }, { lang: 'js', code: `// A tiny FIFO queue: array + head index (array.shift() would be O(n)).
+class Queue {
+  constructor() { this.items = []; this.head = 0; }
+  offer(x) { this.items.push(x); }
+  poll() {
+    const x = this.items[this.head++];
+    if (this.head * 2 > this.items.length) { this.items = this.items.slice(this.head); this.head = 0; }
+    return x;
+  }
+  peek() { return this.items[this.head]; }
+  size() { return this.items.length - this.head; }
+  isEmpty() { return this.size() === 0; }
+}
+
+class MyStack {
+  constructor() { this.q = new Queue(); }        // front of q = top of the stack
+
+  push(x) {
+    this.q.offer(x);                             // newest goes to the back...
+    for (let i = 0; i < this.q.size() - 1; i++) {
+      this.q.offer(this.q.poll());               // ...then every older item walks behind it
+    }
+  }
+
+  pop() { return this.q.poll(); }                // front = newest = stack top
+  top() { return this.q.peek(); }
+  empty() { return this.q.isEmpty(); }
+}` }, { lang: 'cpp', code: `class MyStack {
+    queue<int> q;                        // front of q = top of the stack
+public:
+    void push(int x) {
+        q.push(x);                       // newest goes to the back...
+        for (size_t i = 0; i + 1 < q.size(); i++) {
+            q.push(q.front());           // ...then every older item walks behind it
+            q.pop();
+        }
+    }
+    int pop() { int x = q.front(); q.pop(); return x; }   // front = newest = stack top
+    int top() { return q.front(); }
+    bool empty() { return q.empty(); }
+};` }],
         complexity: `<p><b>push O(N)</b> (N - 1 rotations), <b>pop / top / empty O(1)</b>. Space O(N). Unlike the queue-from-two-stacks trick, these simple queue designs have <b>no</b> amortized O(1) version: with one or two queues some operation pays O(N) each time (nothing is "moved once and done"), you only choose which one.</p>`,
         followUps: ['Which version would you choose if the workload is 90% push?', 'How would you add getMin() in O(1) to this stack?', 'Why is queue-from-two-stacks amortized O(1) while this design is not? (Hint: does any element get moved only once?)']
       }
@@ -444,7 +708,7 @@ class MyStack {
       '"Minimum additions/removals to make valid", "longest valid parentheses", "score of parentheses" → same stack idea (often store <b>indices</b>).',
       'HTML/XML tag matching, undo of nested operations → same pattern.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
 import java.util.*;
 
 class Brackets {
@@ -479,7 +743,93 @@ class Brackets {
         System.out.println(isValidSingleType("(()())")); // true
         System.out.println(isValidSingleType("())(")); // false
     }
-}`, { lang: 'python', run: true, title: 'Same idea in Python (runnable)', code: `def is_valid(s):
+}`,
+      alt: [{ lang: 'python', run: true, code: `PARTNER = {')': '(', ']': '[', '}': '{'}     # each closer -> the opener it needs
+
+
+def is_valid(s: str) -> bool:
+    st = []
+    for ch in s:
+        if ch in '([{':
+            st.append(ch)                        # opener: wait for a partner
+        elif ch in PARTNER:
+            if not st or st.pop() != PARTNER[ch]:
+                return False                     # nothing open, or wrong type
+    return not st                                # any other char is ignored
+
+
+def is_valid_single_type(s: str) -> bool:
+    balance = 0                                  # only '(' and ')': a counter is enough
+    for ch in s:
+        if ch == '(':
+            balance += 1
+        elif ch == ')':
+            balance -= 1
+            if balance < 0:
+                return False                     # closed more than opened
+    return balance == 0
+
+
+print(is_valid("a*(b+[c-d])"))       # True  (letters are ignored)
+print(is_valid("{[}]"))              # False
+print(is_valid_single_type("(()())"))  # True
+print(is_valid_single_type("())("))  # False` }, { lang: 'js', run: true, code: `const PARTNER = new Map([[')', '('], [']', '['], ['}', '{']]);   // closer -> opener
+
+function isValid(s) {
+  const st = [];
+  for (const ch of s) {
+    if (ch === '(' || ch === '[' || ch === '{') st.push(ch);       // opener: wait
+    else if (PARTNER.has(ch)) {
+      if (st.length === 0 || st.pop() !== PARTNER.get(ch)) return false;
+    }                                                              // other chars: ignore
+  }
+  return st.length === 0;
+}
+
+// Only '(' and ')': a counter replaces the stack -> O(1) extra space
+function isValidSingleType(s) {
+  let balance = 0;
+  for (const ch of s) {
+    if (ch === '(') balance++;
+    else if (ch === ')' && --balance < 0) return false;            // closed more than opened
+  }
+  return balance === 0;
+}
+
+console.log(isValid('a*(b+[c-d])'));       // true  (letters are ignored)
+console.log(isValid('{[}]'));              // false
+console.log(isValidSingleType('(()())'));  // true
+console.log(isValidSingleType('())('));    // false` }, { lang: 'cpp', code: `// Map each closer to the opener it needs. Easy to extend with '<' '>' later.
+const unordered_map<char, char> PARTNER{{')', '('}, {']', '['}, {'}', '{'}};
+
+bool isValid(const string& s) {
+    string st;                                     // a string works as a char stack
+    for (char ch : s) {
+        if (ch == '(' || ch == '[' || ch == '{') st.push_back(ch);   // opener: wait
+        else if (auto it = PARTNER.find(ch); it != PARTNER.end()) {
+            if (st.empty() || st.back() != it->second) return false;
+            st.pop_back();
+        }                                          // any other char: ignore it
+    }
+    return st.empty();
+}
+
+// Only '(' and ')': a counter replaces the stack -> O(1) extra space
+bool isValidSingleType(const string& s) {
+    int balance = 0;
+    for (char ch : s) {
+        if (ch == '(') balance++;
+        else if (ch == ')' && --balance < 0) return false;   // closed more than opened
+    }
+    return balance == 0;
+}
+
+int main() {
+    cout << boolalpha << isValid("a*(b+[c-d])") << "\\n";    // true
+    cout << isValid("{[}]") << "\\n";                        // false
+    cout << isValidSingleType("(()())") << "\\n";            // true
+    cout << isValidSingleType("())(") << "\\n";              // false
+}` }] }, { lang: 'python', run: true, title: 'Same idea in Python (runnable)', code: `def is_valid(s):
     partner = {')': '(', ']': '[', '}': '{'}
     st = []
     for ch in s:
@@ -492,7 +842,7 @@ class Brackets {
 
 for t in ["()[]{}", "([)]", "{[()()]}", "((", "))"]:
     print(t, is_valid(t))` }],
-    codeTitle: ['Map-based checker + counter shortcut (Java)'],
+    codeTitle: ['Map-based checker + counter shortcut'],
     examples: [
       {
         title: 'Valid nested example: {[()()]}',
@@ -516,7 +866,7 @@ for t in ["()[]{}", "([)]", "{[()()]}", "((", "))"]:
         html: `<p>Use the counter idea and count the repairs: when balance would go below 0, we need an extra <code>(</code> (count it, keep balance at 0). At the end, every unclosed <code>(</code> needs a <code>)</code>.</p>
           ${H.table(['char', 'balance', 'extra ( needed'], [['(', '1', '0'], [')', '0', '0'], [')', '0 (would be -1)', '<span class="c-r">1</span>'], ['(', '1', '1'], ['(', '2', '1']])}
           <p>Answer = 1 (extra opens) + 2 (final balance) = <b>3</b>. This is LeetCode 921 and runs in O(N) time, O(1) space.</p>`,
-        code: `int minAddToMakeValid(String s) {
+        code: { lang: 'java', code: `int minAddToMakeValid(String s) {
     int balance = 0, extraOpens = 0;
     for (char c : s.toCharArray()) {
         if (c == '(') balance++;
@@ -524,7 +874,33 @@ for t in ["()[]{}", "([)]", "{[()()]}", "((", "))"]:
         else extraOpens++;                 // unmatched ) -> must add a ( before it
     }
     return extraOpens + balance;           // plus a ) for every still-open (
-}`
+}`,
+      alt: [{ lang: 'python', code: `def min_add_to_make_valid(s: str) -> int:
+    balance = extra_opens = 0
+    for c in s:
+        if c == '(':
+            balance += 1
+        elif balance > 0:
+            balance -= 1           # this ) closes an earlier (
+        else:
+            extra_opens += 1       # unmatched ) -> must add a ( before it
+    return extra_opens + balance   # plus a ) for every still-open (` }, { lang: 'js', code: `function minAddToMakeValid(s) {
+  let balance = 0, extraOpens = 0;
+  for (const c of s) {
+    if (c === '(') balance++;
+    else if (balance > 0) balance--;   // this ) closes an earlier (
+    else extraOpens++;                 // unmatched ) -> must add a ( before it
+  }
+  return extraOpens + balance;         // plus a ) for every still-open (
+}` }, { lang: 'cpp', code: `int minAddToMakeValid(const string& s) {
+    int balance = 0, extraOpens = 0;
+    for (char c : s) {
+        if (c == '(') balance++;
+        else if (balance > 0) balance--;   // this ) closes an earlier (
+        else extraOpens++;                 // unmatched ) -> must add a ( before it
+    }
+    return extraOpens + balance;           // plus a ) for every still-open (
+}` }] }
       },
       {
         title: 'Store indices to find WHERE it breaks',
@@ -535,7 +911,7 @@ for t in ["()[]{}", "([)]", "{[()()]}", "((", "))"]:
     ],
     deepDive: `<p><b>Why a stack is the right tool (and the theory behind it).</b> Balanced brackets form a <i>context-free</i> language (the Dyck language). Regular expressions cannot match arbitrarily deep nesting because they have no memory of depth; a stack is exactly the extra memory a <b>pushdown automaton</b> needs. Every parser for JSON, HTML, Java or SQL contains this idea, usually inside a recursive-descent parser where the call stack plays the role of your explicit stack.</p>
       <p><b>Correctness proof sketch.</b> Invariant: after processing a prefix, the stack holds exactly the unmatched openers of that prefix, in order of appearance. A closer can only legally close the most recent unmatched opener (otherwise two pairs would cross, like <code>([)]</code>). So comparing with the top is both necessary and sufficient, and the string is valid iff no comparison fails and the final stack is empty.</p>
-      <p><b>Performance details.</b> <code>Deque&lt;Character&gt;</code> boxes every char (Java caches <code>Character</code> values 0–127, so ASCII brackets do not allocate, but there is still indirection). A <code>char[] st = new char[n]; int top = 0;</code> is faster and trivially O(N) space. Early exits: odd length → false; if the stack ever holds more than <code>n - i</code> openers it can never be closed in time.</p>
+      <p><b>Performance details.</b> In Java, <code>Deque&lt;Character&gt;</code> boxes every char (Java caches <code>Character</code> values 0–127, so ASCII brackets do not allocate, but there is still indirection). A <code>char[] st = new char[n]; int top = 0;</code> is faster and trivially O(N) space. Early exits: odd length → false; if the stack ever holds more than <code>n - i</code> openers it can never be closed in time.</p>
       <p><b>Variants you should recognise:</b> wildcard <code>*</code> that can be <code>(</code>, <code>)</code> or empty (LeetCode 678) — greedy with a <i>range</i> of possible balances <code>[lo, hi]</code>; score of parentheses (LC 856) — the stack stores partial scores; generate all valid strings (LC 22) — backtracking where <code>close ≤ open ≤ n</code>; reverse substrings in brackets (LC 1190) — stack of StringBuilders or a "wormhole" pair index trick.</p>`,
     aiEra: `<p><b>What AI changes:</b> "valid parentheses" is the most memorised interview problem in existence; every model writes it flawlessly, and interviewers know that. Expect them to jump straight to a <b>twist</b>: wildcards, minimum removals, reporting positions, streaming input, or extending to HTML tags. Your value is adapting the invariant, not reciting the code.</p>
       <p><b>Use AI as a partner:</b> <code>"Generate 10 tricky bracket strings including empty-stack closers, leftovers, and crossing pairs, with expected answers"</code> — then run your solution against them. Or ask it to <code>"explain the Dyck-language view of this problem in 5 lines"</code> to deepen your understanding.</p>
@@ -643,9 +1019,24 @@ boolean isValidBrute(String s) {
       },
       hints: [
         `<p>Aha: a closing bracket must always match the <b>most recent opener that is still open</b>. "Most recent" = last in → first out.</p>`,
-        `<p>Use <code>Deque&lt;Character&gt; st = new ArrayDeque&lt;&gt;()</code>. Push openers. On a closer, compare it with <code>st.pop()</code>. A small map (or a switch) tells you which opener each closer needs.</p>`,
+        `<p>Use a stack of characters (<code>ArrayDeque</code> / <code>list</code> / array / <code>std::string</code> or <code>std::stack</code>). Push openers. On a closer, compare it with <code>st.pop()</code>. A small map (or a switch) tells you which opener each closer needs.</p>`,
         `<p>Traps: a closer when the stack is <b>empty</b> (e.g. <code>")("</code>) → false, don't call pop on empty; the stack must be <b>empty at the end</b> (e.g. <code>"(("</code>); odd length → instantly false. Recipe: for each ch: if opener → push; else if empty or pop() ≠ partner(ch) → false. Return st.isEmpty().</p>`
       ],
+      tests: { sig: "string -> bool", fn: "isValid", cases: [
+        [["()"],true],
+        [["()[]{}"],true],
+        [["(]"],false],
+        [["([)]"],false],
+        [["{[]}"],true],
+        [["("],false],
+        [[")"],false],
+        [["(("],false],
+        [[")("],false],
+        [["(()"],false],
+        [["{[()()]}"],true],
+        [["([]{})"],true],
+        [["]"],false]
+      ] },
       solution: {
         approach: `<p>One left-to-right scan; the stack holds openers still waiting for a partner.</p>`,
         code: `
@@ -688,6 +1079,47 @@ class Solution {
             ['end', '—', '[ ]', 'stack empty', '<span class="c-g">true</span>']
           ]
         },
+        alt: [{ lang: 'python', code: `class Solution:
+    def is_valid(self, s: str) -> bool:
+        if len(s) % 2:                       # odd length can never pair up
+            return False
+        partner = {')': '(', ']': '[', '}': '{'}
+        st = []                              # openers waiting for a partner
+        for ch in s:
+            if ch in partner:                # closer: must match the latest opener
+                if not st or st.pop() != partner[ch]:
+                    return False
+            else:
+                st.append(ch)                # opener: wait on the stack
+        return not st                        # leftovers were never closed` }, { lang: 'js', code: `function isValid(s) {
+  if (s.length % 2 === 1) return false;          // odd length can never pair up
+  const partner = { ')': '(', ']': '[', '}': '{' };
+  const st = [];                                 // openers waiting for a partner
+  for (const ch of s) {
+    if (ch in partner) {                         // closer: must match the latest opener
+      if (st.length === 0 || st.pop() !== partner[ch]) return false;
+    } else {
+      st.push(ch);                               // opener: wait on the stack
+    }
+  }
+  return st.length === 0;                        // leftovers were never closed
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    bool isValid(const string& s) {
+        if (s.size() % 2 == 1) return false;     // odd length can never pair up
+        string st;                               // a string works as a stack of chars
+        for (char ch : s) {
+            if (ch == '(' || ch == '[' || ch == '{') {
+                st.push_back(ch);                // opener: wait on the stack
+            } else {
+                char need = ch == ')' ? '(' : ch == ']' ? '[' : '{';
+                if (st.empty() || st.back() != need) return false;
+                st.pop_back();                   // matched pair
+            }
+        }
+        return st.empty();                       // leftovers were never closed
+    }
+};` }],
         complexity: `<p><b>Time O(N)</b>: each character is looked at once and pushed/popped at most once. <b>Space O(N)</b>: in the worst case (all openers, like <code>((((</code>) every character sits on the stack.</p>`
       }
     }]
@@ -715,7 +1147,7 @@ class Solution {
       '"O(1) per operation" in a design problem → precompute the answer at push time and save it.',
       'Queue with getMin → build it from two min-stacks (combine Topic 8 with this one).'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
 import java.util.*;
 
 // Space-saving variant: a second stack that only stores "new record lows".
@@ -745,7 +1177,86 @@ class MinStackTwoStacks {
         s.pop();
         System.out.println(s.getMin()); // 5
     }
-}`, `
+}`,
+      alt: [{ lang: 'python', run: true, code: `class MinStackTwoStacks:
+    """Space-saving variant: a second stack that only stores "new record lows"."""
+
+    def __init__(self):
+        self.vals = []
+        self.mins = []                            # top = current minimum
+
+    def push(self, x: int) -> None:
+        self.vals.append(x)
+        if not self.mins or x <= self.mins[-1]:   # <= keeps duplicate minimums
+            self.mins.append(x)
+
+    def pop(self) -> None:
+        if self.vals.pop() == self.mins[-1]:      # ints compare by value with ==
+            self.mins.pop()
+
+    def top(self) -> int:
+        return self.vals[-1]
+
+    def get_min(self) -> int:
+        return self.mins[-1]
+
+
+s = MinStackTwoStacks()
+for x in (5, 2, 2, 9):
+    s.push(x)
+print(s.get_min())   # 2
+s.pop(); s.pop()     # removes 9, then one of the 2s
+print(s.get_min())   # 2 (the duplicate kept it alive)
+s.pop()
+print(s.get_min())   # 5` }, { lang: 'js', run: true, code: `// Space-saving variant: a second stack that only stores "new record lows".
+class MinStackTwoStacks {
+  constructor() { this.vals = []; this.mins = []; }       // mins top = current minimum
+
+  push(x) {
+    this.vals.push(x);
+    const m = this.mins;
+    if (m.length === 0 || x <= m[m.length - 1]) m.push(x);   // <= keeps duplicate minimums
+  }
+
+  pop() {
+    if (this.vals.pop() === this.mins[this.mins.length - 1]) this.mins.pop();
+  }
+
+  top() { return this.vals[this.vals.length - 1]; }
+  getMin() { return this.mins[this.mins.length - 1]; }
+}
+
+const s = new MinStackTwoStacks();
+[5, 2, 2, 9].forEach((x) => s.push(x));
+console.log(s.getMin());   // 2
+s.pop(); s.pop();          // removes 9, then one of the 2s
+console.log(s.getMin());   // 2 (the duplicate kept it alive)
+s.pop();
+console.log(s.getMin());   // 5` }, { lang: 'cpp', code: `// Space-saving variant: a second stack that only stores "new record lows".
+class MinStackTwoStacks {
+    stack<int> vals, mins;                       // mins.top() = current minimum
+public:
+    void push(int x) {
+        vals.push(x);
+        if (mins.empty() || x <= mins.top()) mins.push(x);   // <= keeps duplicate minimums
+    }
+    void pop() {
+        if (vals.top() == mins.top()) mins.pop();
+        vals.pop();
+    }
+    int top() { return vals.top(); }
+    int getMin() { return mins.top(); }
+};
+
+int main() {
+    MinStackTwoStacks s;
+    for (int x : {5, 2, 2, 9}) s.push(x);
+    cout << s.getMin() << "\\n";   // 2
+    s.pop(); s.pop();             // removes 9, then one of the 2s
+    cout << s.getMin() << "\\n";   // 2 (the duplicate kept it alive)
+    s.pop();
+    cout << s.getMin() << "\\n";   // 5
+}` }] }, { lang: 'java', code: `
 import java.util.*;
 
 // O(1) extra space trick: store an "encoded" value when a new minimum arrives.
@@ -781,7 +1292,106 @@ class MinStackEncoded {
         s.pop(); s.pop();
         System.out.println(s.getMin() + " " + s.top());  // 5 5
     }
-}`],
+}`,
+      alt: [{ lang: 'python', run: true, code: `class MinStackEncoded:
+    """O(1) extra space: store an "encoded" value when a new minimum arrives."""
+
+    def __init__(self):
+        self.st = []
+        self.min = 0
+
+    def push(self, x: int) -> None:
+        if not self.st:
+            self.st.append(x)
+            self.min = x
+        elif x >= self.min:
+            self.st.append(x)
+        else:
+            self.st.append(2 * x - self.min)   # encoded value < x flags "min changed here"
+            self.min = x                       # Python ints never overflow
+
+    def pop(self) -> None:
+        t = self.st.pop()
+        if t < self.min:
+            self.min = 2 * self.min - t        # decode: recover the previous minimum
+
+    def top(self) -> int:
+        t = self.st[-1]
+        return self.min if t < self.min else t  # a flagged entry means the real value is min
+
+    def get_min(self) -> int:
+        return self.min
+
+
+s = MinStackEncoded()
+for x in (5, 3, 7, 1):
+    s.push(x)
+print(s.get_min(), s.top())   # 1 1
+s.pop()
+print(s.get_min(), s.top())   # 3 7
+s.pop(); s.pop()
+print(s.get_min(), s.top())   # 5 5` }, { lang: 'js', run: true, code: `// O(1) extra space: store an "encoded" value when a new minimum arrives.
+// 2x - min stays far below 2^53 for 32-bit inputs, so Number is exact here.
+class MinStackEncoded {
+  constructor() { this.st = []; this.min = 0; }
+
+  push(x) {
+    if (this.st.length === 0) { this.st.push(x); this.min = x; return; }
+    if (x >= this.min) { this.st.push(x); return; }
+    this.st.push(2 * x - this.min);       // encoded value < x flags "min changed here"
+    this.min = x;
+  }
+
+  pop() {
+    const t = this.st.pop();
+    if (t < this.min) this.min = 2 * this.min - t;   // decode: recover the previous minimum
+  }
+
+  top() {
+    const t = this.st[this.st.length - 1];
+    return t < this.min ? this.min : t;   // a flagged entry means the real value is min
+  }
+
+  getMin() { return this.min; }
+}
+
+const s = new MinStackEncoded();
+[5, 3, 7, 1].forEach((x) => s.push(x));
+console.log(s.getMin(), s.top());   // 1 1
+s.pop();
+console.log(s.getMin(), s.top());   // 3 7
+s.pop(); s.pop();
+console.log(s.getMin(), s.top());   // 5 5` }, { lang: 'cpp', code: `// O(1) extra space trick: store an "encoded" value when a new minimum arrives.
+class MinStackEncoded {
+    stack<long long> st;                 // long long: 2x - min overflows int near +-2^31
+    long long mn = 0;
+public:
+    void push(int x) {
+        if (st.empty()) { st.push(x); mn = x; return; }
+        if (x >= mn) { st.push(x); return; }
+        st.push(2LL * x - mn);           // encoded value < x flags "min changed here"
+        mn = x;
+    }
+    void pop() {
+        long long t = st.top(); st.pop();
+        if (t < mn) mn = 2 * mn - t;     // decode: recover the previous minimum
+    }
+    int top() {
+        long long t = st.top();
+        return (int)(t < mn ? mn : t);   // a flagged entry means the real value is min
+    }
+    int getMin() { return (int)mn; }
+};
+
+int main() {
+    MinStackEncoded s;
+    for (int x : {5, 3, 7, 1}) s.push(x);
+    cout << s.getMin() << " " << s.top() << "\\n";   // 1 1
+    s.pop();
+    cout << s.getMin() << " " << s.top() << "\\n";   // 3 7
+    s.pop(); s.pop();
+    cout << s.getMin() << " " << s.top() << "\\n";   // 5 5
+}` }] }],
     codeTitle: ['Two-stack variant (stores only record lows)', 'Encoded O(1)-extra-space variant (uses long)'],
     examples: [
       {
@@ -807,7 +1417,7 @@ class MinStackEncoded {
           ['pop', 'removes -1', '2·1 - (-1) = <b>3</b>', 'decode previous min'],
           ['pop', 'removes 7', '3', 'normal'],
           ['pop', 'removes 1', '2·3 - 1 = <b>5</b>', 'decode again']
-        ])}<p>Why does it work? When x &lt; min, the stored value <code>2x - min = x - (min - x)</code> is <b>less than x</b>, the new min. Normal entries are always ≥ min. So "stored &lt; min" is an unambiguous flag, and <code>2·min - stored</code> recovers the old min. Use <code>long</code>: <code>2x - min</code> overflows int for values near ±2<sup>31</sup>.</p>`
+        ])}<p>Why does it work? When x &lt; min, the stored value <code>2x - min = x - (min - x)</code> is <b>less than x</b>, the new min. Normal entries are always ≥ min. So "stored &lt; min" is an unambiguous flag, and <code>2·min - stored</code> recovers the old min. Use a 64-bit type (<code>long</code> / <code>long long</code>): <code>2x - min</code> overflows a 32-bit int for values near ±2<sup>31</sup>. Python ints never overflow, and JS numbers are exact here because the values stay far below 2<sup>53</sup>.</p>`
       }
     ],
     deepDive: `<p><b>Three designs, one invariant.</b> Every Min Stack keeps "minimum of the elements at or below each position" available in O(1). (1) Pairs: simplest, 2N ints. (2) Two stacks: the min stack only grows on new record lows (≤), so for random data it stays tiny (expected O(log N) entries for a random permutation, since record lows of a random sequence are rare), worst case N for a decreasing input. (3) Encoding: O(1) extra memory beyond the values but needs <code>long</code> and is harder to explain — mention it as a follow-up, do not lead with it.</p>
@@ -900,9 +1510,18 @@ class MinStackBrute {
       },
       hints: [
         `<p>Aha: the minimum of the stack only depends on <b>what is below</b> the top. When you push <code>x</code>, the new min is <code>min(x, oldMin)</code>, and when you pop you want <code>oldMin</code> back — so <b>save it</b> at push time.</p>`,
-        `<p>Use <code>Deque&lt;int[]&gt;</code> where each entry is <code>{value, minSoFar}</code>. Or two <code>Deque&lt;Integer&gt;</code>: values, and mins (push to mins when <code>x ≤ mins.peek()</code>; on pop, pop mins too if the popped value equals <code>mins.peek()</code>).</p>`,
-        `<p>Traps: with the two-stack version use <code>≤</code> (not <code>&lt;</code>) so duplicate minimums are kept; compare <code>Integer</code> objects with <code>.equals</code> or unbox first. Recipe: push → newMin = empty ? x : min(x, top.min); push {x, newMin}. pop → pop. top → peek()[0]. getMin → peek()[1].</p>`
+        `<p>Use one stack whose entries are pairs <code>{value, minSoFar}</code> (<code>int[]</code> / tuple / two parallel arrays / <code>pair&lt;int,int&gt;</code>). Or two stacks: values, and mins (push to mins when <code>x ≤ mins.peek()</code>; on pop, pop mins too if the popped value equals <code>mins.peek()</code>).</p>`,
+        `<p>Traps: with the two-stack version use <code>≤</code> (not <code>&lt;</code>) so duplicate minimums are kept; in Java, compare <code>Integer</code> objects with <code>.equals</code> or unbox first (Python, JS and C++ compare numbers by value). Recipe: push → newMin = empty ? x : min(x, top.min); push {x, newMin}. pop → pop. top → peek()[0]. getMin → peek()[1].</p>`
       ],
+      tests: { cls: "MinStack", sigs: {"MinStack":"","push":"int -> void","pop":"-> void","top":"-> int","getMin":"-> int"}, cases: [
+        {"ops":["MinStack","push","push","push","getMin","pop","top","getMin"],"args":[[],[-2],[0],[-3],[],[],[],[]],"out":[null,null,null,null,-3,null,0,-2]},
+        {"ops":["MinStack","push","getMin","top"],"args":[[],[5],[],[]],"out":[null,null,5,5]},
+        {"ops":["MinStack","push","push","push","push","getMin","pop","getMin","pop","getMin"],"args":[[],[2],[2],[1],[1],[],[],[],[],[]],"out":[null,null,null,null,null,1,null,1,null,2]},
+        {"ops":["MinStack","push","push","getMin","top","pop","getMin"],"args":[[],[2147483647],[-2147483648],[],[],[],[]],"out":[null,null,null,-2147483648,-2147483648,null,2147483647]},
+        {"ops":["MinStack","push","push","push","getMin","pop","getMin","pop","getMin"],"args":[[],[1],[2],[3],[],[],[],[],[]],"out":[null,null,null,null,1,null,1,null,1]},
+        {"ops":["MinStack","push","push","push","getMin","pop","getMin","pop","getMin"],"args":[[],[3],[2],[1],[],[],[],[],[]],"out":[null,null,null,null,1,null,2,null,3]},
+        {"ops":["MinStack","push","push","pop","push","getMin","top"],"args":[[],[0],[-1],[],[4],[],[]],"out":[null,null,null,null,null,0,4]}
+      ] },
       solution: {
         approach: `<p>Each stack entry carries its own "minimum of everything at or below me".</p>`,
         code: `
@@ -950,6 +1569,47 @@ class MinStack {
             ['getMin()', 'read top[1]', 'unchanged', '<span class="c-p">-2</span>']
           ]
         },
+        alt: [{ lang: 'python', code: `class MinStack:
+    def __init__(self):
+        self.st = []                        # each entry: (value, min of it and everything below)
+
+    def push(self, val: int) -> None:
+        low = min(val, self.st[-1][1]) if self.st else val
+        self.st.append((val, low))          # remember the new minimum with the value
+
+    def pop(self) -> None:
+        self.st.pop()                       # the entry below already knows its own minimum
+
+    def top(self) -> int:
+        return self.st[-1][0]
+
+    def getMin(self) -> int:
+        return self.st[-1][1]               # min saved at push time -> O(1)` }, { lang: 'js', code: `class MinStack {
+  constructor() {
+    this.vals = [];                         // the values
+    this.mins = [];                         // mins[i] = minimum of vals[0..i]
+  }
+
+  push(val) {
+    const n = this.mins.length;
+    this.vals.push(val);
+    this.mins.push(n === 0 ? val : Math.min(val, this.mins[n - 1]));
+  }
+
+  pop() { this.vals.pop(); this.mins.pop(); }   // the entry below already knows its min
+  top() { return this.vals[this.vals.length - 1]; }
+  getMin() { return this.mins[this.mins.length - 1]; }   // saved at push time -> O(1)
+}` }, { lang: 'cpp', code: `class MinStack {
+    vector<pair<int, int>> st;              // {value, min of it and everything below}
+public:
+    void push(int val) {
+        int low = st.empty() ? val : min(val, st.back().second);
+        st.push_back({val, low});           // remember the new minimum with the value
+    }
+    void pop() { st.pop_back(); }           // the entry below already knows its minimum
+    int top() { return st.back().first; }
+    int getMin() { return st.back().second; }   // min saved at push time -> O(1)
+};` }],
         complexity: `<p><b>Time O(1)</b> for every operation: each one touches only the top entry. <b>Space O(N)</b>: two ints per element instead of one (still linear).</p>`
       }
     }]
@@ -992,10 +1652,10 @@ class MinStack {
       '"Evaluate reverse Polish notation", "postfix expression" → stack of numbers, pop two on each operator.',
       '"Basic calculator", "evaluate the expression string with + - * / and parentheses" → operator stack + operand stack (or convert to postfix first).',
       '"Convert infix to postfix / prefix" → Shunting-Yard with precedence.',
-      'Result must truncate toward zero → Java integer division <code>/</code> already does that.',
+      'Result must truncate toward zero → Java and C++ integer <code>/</code> already do that; Python <code>//</code> rounds <b>down</b> (use <code>int(a / b)</code> or fix the sign); JS needs <code>Math.trunc(a / b)</code>.',
       'Prefix (Polish) evaluation → same as postfix but scan <b>right to left</b>, and the first pop is the <b>left</b> operand.'
     ],
-    code: `
+    code: { lang: 'java', code: `
 import java.util.*;
 
 class ExpressionBasics {
@@ -1056,6 +1716,145 @@ class ExpressionBasics {
         System.out.println(evalPostfix("3 4 2 * + 5 -".split(" ")));             // 6
     }
 }`,
+      alt: [{ lang: 'python', run: true, code: `PREC = {'+': 1, '-': 1, '*': 2, '/': 2, '^': 3}   # bigger number = do it earlier
+
+
+def infix_to_postfix(s: str) -> str:
+    """"a+b*(c-d)" -> "abcd-*+" (operands are single letters or digits)."""
+    out, ops = [], []
+    for ch in s:
+        if ch.isalnum():
+            out.append(ch)                       # operands go straight to the output
+        elif ch == '(':
+            ops.append(ch)
+        elif ch == ')':
+            while ops[-1] != '(':
+                out.append(ops.pop())
+            ops.pop()                            # discard the '('
+        else:
+            # pop operators that must run BEFORE ch ('^' is right-associative)
+            while ops and ops[-1] != '(' and (PREC[ops[-1]] > PREC[ch] or
+                                              (PREC[ops[-1]] == PREC[ch] and ch != '^')):
+                out.append(ops.pop())
+            ops.append(ch)
+    out.extend(reversed(ops))                    # flush remaining operators
+    return ''.join(out)
+
+
+def eval_postfix(tokens: list[str]) -> int:
+    st = []
+    for t in tokens:
+        if t in ('+', '-', '*', '/'):
+            b, a = st.pop(), st.pop()            # FIRST pop = RIGHT operand
+            if t == '+': st.append(a + b)
+            elif t == '-': st.append(a - b)
+            elif t == '*': st.append(a * b)
+            else:
+                q = abs(a) // abs(b)             # truncate toward zero (// alone floors)
+                st.append(q if (a < 0) == (b < 0) else -q)
+        else:
+            st.append(int(t))                    # a number (may be negative like "-7")
+    return st.pop()
+
+
+print(infix_to_postfix("a+b*(c-d)"))             # abcd-*+
+print(eval_postfix("3 4 2 * + 5 -".split()))     # 6` }, { lang: 'js', run: true, code: `const PREC = { '+': 1, '-': 1, '*': 2, '/': 2, '^': 3 };   // bigger number = do it earlier
+
+// "a+b*(c-d)" -> "abcd-*+"   (operands are single letters or digits)
+function infixToPostfix(s) {
+  let out = '';
+  const ops = [];
+  for (const ch of s) {
+    if (/[A-Za-z0-9]/.test(ch)) {
+      out += ch;                                 // operands go straight to the output
+    } else if (ch === '(') {
+      ops.push(ch);
+    } else if (ch === ')') {
+      while (ops[ops.length - 1] !== '(') out += ops.pop();
+      ops.pop();                                 // discard the '('
+    } else {
+      // pop operators that must run BEFORE ch ('^' is right-associative)
+      while (ops.length && ops[ops.length - 1] !== '(' &&
+             (PREC[ops[ops.length - 1]] > PREC[ch] ||
+              (PREC[ops[ops.length - 1]] === PREC[ch] && ch !== '^'))) {
+        out += ops.pop();
+      }
+      ops.push(ch);
+    }
+  }
+  while (ops.length) out += ops.pop();           // flush remaining operators
+  return out;
+}
+
+// tokens like ["3","4","2","*","+"] -> 11
+function evalPostfix(tokens) {
+  const st = [];
+  for (const t of tokens) {
+    if ('+-*/'.includes(t) && t.length === 1) {
+      const b = st.pop(), a = st.pop();          // FIRST pop = RIGHT operand
+      st.push(t === '+' ? a + b : t === '-' ? a - b : t === '*' ? a * b : Math.trunc(a / b));
+    } else {
+      st.push(Number(t));                        // a number (may be negative like "-7")
+    }
+  }
+  return st.pop();
+}
+
+console.log(infixToPostfix('a+b*(c-d)'));        // abcd-*+
+console.log(evalPostfix('3 4 2 * + 5 -'.split(' ')));   // 6` }, { lang: 'cpp', code: `// precedence: bigger number = do it earlier
+int prec(char op) {
+    if (op == '+' || op == '-') return 1;
+    if (op == '*' || op == '/') return 2;
+    if (op == '^') return 3;
+    return -1;                                     // '(' is never popped by an operator
+}
+
+// "a+b*(c-d)" -> "abcd-*+"   (operands are single letters or digits)
+string infixToPostfix(const string& s) {
+    string out, ops;                               // ops: a string used as a char stack
+    for (char ch : s) {
+        if (isalnum((unsigned char)ch)) {
+            out += ch;                             // operands go straight to the output
+        } else if (ch == '(') {
+            ops.push_back(ch);
+        } else if (ch == ')') {
+            while (ops.back() != '(') { out += ops.back(); ops.pop_back(); }
+            ops.pop_back();                        // discard the '('
+        } else {
+            // pop operators that must run BEFORE ch ('^' is right-associative)
+            while (!ops.empty() && ops.back() != '(' &&
+                   (prec(ops.back()) > prec(ch) || (prec(ops.back()) == prec(ch) && ch != '^'))) {
+                out += ops.back(); ops.pop_back();
+            }
+            ops.push_back(ch);
+        }
+    }
+    while (!ops.empty()) { out += ops.back(); ops.pop_back(); }   // flush the rest
+    return out;
+}
+
+// tokens like {"3","4","2","*","+"} -> 11
+long long evalPostfix(const vector<string>& tokens) {
+    vector<long long> st;
+    for (const string& t : tokens) {
+        if (t == "+" || t == "-" || t == "*" || t == "/") {
+            long long b = st.back(); st.pop_back();   // FIRST pop = RIGHT operand
+            long long a = st.back(); st.pop_back();   // second pop = left operand
+            if (t == "+") st.push_back(a + b);
+            else if (t == "-") st.push_back(a - b);
+            else if (t == "*") st.push_back(a * b);
+            else st.push_back(a / b);                  // truncates toward zero
+        } else {
+            st.push_back(stoll(t));                    // a number (may be negative like "-7")
+        }
+    }
+    return st.back();
+}
+
+int main() {
+    cout << infixToPostfix("a+b*(c-d)") << "\\n";                                 // abcd-*+
+    cout << evalPostfix({"3", "4", "2", "*", "+", "5", "-"}) << "\\n";            // 6
+}` }] },
     codeTitle: 'Infix → postfix and postfix evaluation',
     examples: [
       {
@@ -1067,7 +1866,7 @@ class ExpressionBasics {
       },
       {
         title: 'Operand order matters: "7 2 -" and "7 2 /"',
-        html: `<p>Pop gives <b>b = 2</b> first (top), then <b>a = 7</b>. Compute <code>a - b = 5</code> and <code>a / b = 3</code>. If you write <code>b - a</code> you get <span class="c-r">-5</span> — the single most common bug in RPN code. Java's <code>/</code> truncates toward zero: <code>-7 / 2 = -3</code> (not -4), which matches what LeetCode 150 expects.</p>`
+        html: `<p>Pop gives <b>b = 2</b> first (top), then <b>a = 7</b>. Compute <code>a - b = 5</code> and <code>a / b = 3</code>. If you write <code>b - a</code> you get <span class="c-r">-5</span> — the single most common bug in RPN code. Java's and C++'s <code>/</code> truncate toward zero: <code>-7 / 2 = -3</code> (not -4), which matches what LeetCode 150 expects. Python's <code>-7 // 2</code> is <span class="c-r">-4</span> (it floors), so use <code>int(a / b)</code>; in JS write <code>Math.trunc(a / b)</code>.</p>`
       },
       {
         title: 'Right-associative power: a^b^c',
@@ -1078,7 +1877,7 @@ class ExpressionBasics {
       {
         title: 'Prefix (Polish) evaluation: "- + 2 3 4"',
         html: `<p>Scan <b>right to left</b>. Push 4, 3, 2. Then <code>+</code>: pop <b>a = 2</b> (first pop is now the LEFT operand), pop b = 3 → 5. Then <code>-</code>: pop a = 5, pop b = 4 → <b>1</b>. Infix: <code>(2 + 3) - 4 = 1</code>.</p>`,
-        code: `long evalPrefix(String[] t) {
+        code: { lang: 'java', code: `long evalPrefix(String[] t) {
     Deque<Long> st = new ArrayDeque<>();
     for (int i = t.length - 1; i >= 0; i--) {
         String s = t[i];
@@ -1093,7 +1892,47 @@ class ExpressionBasics {
         } else st.push(Long.parseLong(s));
     }
     return st.pop();
-}`
+}`,
+      alt: [{ lang: 'python', code: `def eval_prefix(t: list[str]) -> int:
+    st = []
+    for s in reversed(t):                      # scan right to left
+        if s in ('+', '-', '*', '/'):
+            a, b = st.pop(), st.pop()          # right-to-left: first pop is the LEFT operand
+            if s == '+': st.append(a + b)
+            elif s == '-': st.append(a - b)
+            elif s == '*': st.append(a * b)
+            else:
+                q = abs(a) // abs(b)           # truncate toward zero
+                st.append(q if (a < 0) == (b < 0) else -q)
+        else:
+            st.append(int(s))
+    return st.pop()` }, { lang: 'js', code: `function evalPrefix(t) {
+  const st = [];
+  for (let i = t.length - 1; i >= 0; i--) {    // scan right to left
+    const s = t[i];
+    if (s.length === 1 && '+-*/'.includes(s)) {
+      const a = st.pop(), b = st.pop();        // right-to-left: first pop is the LEFT operand
+      st.push(s === '+' ? a + b : s === '-' ? a - b : s === '*' ? a * b : Math.trunc(a / b));
+    } else st.push(Number(s));
+  }
+  return st.pop();
+}` }, { lang: 'cpp', code: `long long evalPrefix(const vector<string>& t) {
+    vector<long long> st;
+    for (int i = (int)t.size() - 1; i >= 0; i--) {   // scan right to left
+        const string& s = t[i];
+        if (s.size() == 1 && string("+-*/").find(s[0]) != string::npos) {
+            long long a = st.back(); st.pop_back();   // right-to-left: first pop is the LEFT operand
+            long long b = st.back(); st.pop_back();
+            switch (s[0]) {
+                case '+': st.push_back(a + b); break;
+                case '-': st.push_back(a - b); break;
+                case '*': st.push_back(a * b); break;
+                default:  st.push_back(a / b);
+            }
+        } else st.push_back(stoll(s));
+    }
+    return st.back();
+}` }] }
       }
     ],
     deepDive: `<p><b>Why postfix exists.</b> Postfix (Reverse Polish Notation, popularised by HP calculators and the Forth/PostScript languages) is what compilers effectively produce: the JVM itself is a <b>stack machine</b>. <code>a + b * c</code> compiles to bytecode like <code>iload a; iload b; iload c; imul; iadd</code> — literally postfix evaluated on the operand stack of the current frame. Python's bytecode and WebAssembly are stack machines too.</p>
@@ -1253,9 +2092,22 @@ int evalRPNBrute(String[] tokens) {
       },
       hints: [
         `<p>Aha: in postfix, an operator always applies to the <b>two most recent unused values</b>. "Most recent" → a stack.</p>`,
-        `<p>Use <code>Deque&lt;Integer&gt;</code>. Number → push. Operator → <code>b = pop()</code>, <code>a = pop()</code>, push <code>a op b</code>. The answer is the single value left.</p>`,
-        `<p>Traps: <code>"-11"</code> is a number, not an operator — check for operators by exact string match (or length 1), not by the first character; operand order for - and /; Java <code>/</code> already truncates toward zero. Recipe: for t in tokens: if t is one of + - * /: b=pop, a=pop, push(apply); else push(parseInt(t)). return pop().</p>`
+        `<p>Use a stack of numbers. Number → push. Operator → <code>b = pop()</code>, <code>a = pop()</code>, push <code>a op b</code>. The answer is the single value left.</p>`,
+        `<p>Traps: <code>"-11"</code> is a number, not an operator — check for operators by exact string match (or length 1), not by the first character; operand order for - and /; truncate toward zero (automatic in Java and C++, <code>int(a / b)</code> in Python, <code>Math.trunc</code> in JS). Recipe: for t in tokens: if t is one of + - * /: b=pop, a=pop, push(apply); else push(parseInt(t)). return pop().</p>`
       ],
+      tests: { sig: "string[] -> int", fn: "evalRPN", cases: [
+        [[["2","1","+","3","*"]],9],
+        [[["4","13","5","/","+"]],6],
+        [[["10","6","9","3","+","-11","*","/","*","17","+","5","+"]],22],
+        [[["5"]],5],
+        [[["-11"]],-11],
+        [[["7","-2","/"]],-3],
+        [[["-7","2","/"]],-3],
+        [[["0","3","/"]],0],
+        [[["10","3","-"]],7],
+        [[["200","200","*","200","*","200","*"]],1600000000],
+        [[["-200","200","*","200","*","200","*"]],-1600000000]
+      ] },
       solution: {
         approach: `<p>Single left-to-right scan with a stack of numbers; each operator consumes the top two and pushes its result.</p>`,
         code: `
@@ -1283,7 +2135,39 @@ class Solution {
         System.out.println(s.evalRPN(new String[]{"10", "6", "9", "3", "+", "-11", "*", "/", "*", "17", "+", "5", "+"})); // 22
     }
 }`,
-        alt: [{ lang: 'python', code: `def eval_rpn(tokens):
+        alt: [{ lang: 'js', code: `function evalRPN(tokens) {
+  const st = [];
+  for (const t of tokens) {
+    if (t === '+' || t === '-' || t === '*' || t === '/') {
+      const b = st.pop(), a = st.pop();          // first pop is the RIGHT operand
+      if (t === '+') st.push(a + b);
+      else if (t === '-') st.push(a - b);
+      else if (t === '*') st.push(a * b);
+      else st.push(Math.trunc(a / b));           // truncate toward zero (not Math.floor)
+    } else {
+      st.push(Number(t));                        // "-11" is a number, not an operator
+    }
+  }
+  return st.pop();
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int evalRPN(const vector<string>& tokens) {
+        vector<long long> st;                    // long long: no overflow while combining
+        for (const string& t : tokens) {
+            if (t == "+" || t == "-" || t == "*" || t == "/") {
+                long long b = st.back(); st.pop_back();   // first pop is the RIGHT operand
+                long long a = st.back(); st.pop_back();
+                if (t == "+") st.push_back(a + b);
+                else if (t == "-") st.push_back(a - b);
+                else if (t == "*") st.push_back(a * b);
+                else st.push_back(a / b);        // C++ division truncates toward zero
+            } else {
+                st.push_back(stoll(t));          // handles "-11" too
+            }
+        }
+        return (int)st.back();
+    }
+};` }, { lang: 'python', code: `def eval_rpn(tokens):
     st = []
     for t in tokens:
         if t in ('+', '-', '*', '/'):
@@ -1338,7 +2222,7 @@ print(eval_rpn(["4", "13", "5", "/", "+"]))  # 6`, run: true }],
       '<code>N ≤ 10<sup>5</sup></code> and the naive answer is "for each i scan right" (O(N<sup>2</sup>)) → monotonic stack makes it O(N).',
       '"Circular array" next greater → loop <code>i</code> from 0 to 2N-1 and use <code>i % n</code>.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
 import java.util.*;
 
 class MonotonicFamily {
@@ -1383,7 +2267,125 @@ class MonotonicFamily {
         System.out.println(Arrays.toString(prevSmallerIndex(a)));     // [-1, 0, -1, 2, 2]
         System.out.println(Arrays.toString(nextGreaterCircular(new int[]{1, 2, 1}))); // [2, -1, 2]
     }
-}`, { lang: 'python', run: true, title: 'Daily Temperatures in Python (runnable)', code: `def daily_temperatures(t):
+}`,
+      alt: [{ lang: 'python', run: true, code: `def next_greater(a):
+    """Next Greater to the right (value), -1 if none. Stack: indices, values decreasing."""
+    res, st = [-1] * len(a), []
+    for i, x in enumerate(a):
+        while st and a[st[-1]] < x:
+            res[st.pop()] = x
+        st.append(i)
+    return res
+
+
+def prev_smaller_index(a):
+    """Previous Smaller to the left (index), -1 if none. Stack: indices, values increasing."""
+    res, st = [], []
+    for i, x in enumerate(a):
+        while st and a[st[-1]] >= x:     # not strictly smaller -> useless
+            st.pop()
+        res.append(st[-1] if st else -1)
+        st.append(i)
+    return res
+
+
+def next_greater_circular(a):
+    """Walk the array twice, push only on the first lap."""
+    n = len(a)
+    res, st = [-1] * n, []
+    for i in range(2 * n):
+        x = a[i % n]
+        while st and a[st[-1]] < x:
+            res[st.pop()] = x
+        if i < n:
+            st.append(i)
+    return res
+
+
+a = [4, 5, 2, 10, 8]
+print(next_greater(a))                   # [5, 10, 10, -1, -1]
+print(prev_smaller_index(a))             # [-1, 0, -1, 2, 2]
+print(next_greater_circular([1, 2, 1]))  # [2, -1, 2]` }, { lang: 'js', run: true, code: `const top = (st) => st[st.length - 1];
+
+// Next Greater to the right (value), -1 if none. Stack: indices, values decreasing.
+function nextGreater(a) {
+  const res = new Array(a.length).fill(-1), st = [];
+  for (let i = 0; i < a.length; i++) {
+    while (st.length && a[top(st)] < a[i]) res[st.pop()] = a[i];
+    st.push(i);
+  }
+  return res;
+}
+
+// Previous Smaller to the left (index), -1 if none. Stack: indices, values increasing.
+function prevSmallerIndex(a) {
+  const res = [], st = [];
+  for (let i = 0; i < a.length; i++) {
+    while (st.length && a[top(st)] >= a[i]) st.pop();   // not strictly smaller -> useless
+    res.push(st.length ? top(st) : -1);
+    st.push(i);
+  }
+  return res;
+}
+
+// Next Greater in a CIRCULAR array: walk the array twice, push only on the first lap.
+function nextGreaterCircular(a) {
+  const n = a.length, res = new Array(n).fill(-1), st = [];
+  for (let i = 0; i < 2 * n; i++) {
+    const x = a[i % n];
+    while (st.length && a[top(st)] < x) res[st.pop()] = x;
+    if (i < n) st.push(i);
+  }
+  return res;
+}
+
+const a = [4, 5, 2, 10, 8];
+console.log(nextGreater(a));                 // [ 5, 10, 10, -1, -1 ]
+console.log(prevSmallerIndex(a));            // [ -1, 0, -1, 2, 2 ]
+console.log(nextGreaterCircular([1, 2, 1])); // [ 2, -1, 2 ]` }, { lang: 'cpp', code: `// Next Greater to the right (value), -1 if none. Stack: indices, values decreasing.
+vector<int> nextGreater(const vector<int>& a) {
+    vector<int> res(a.size(), -1), st;
+    for (int i = 0; i < (int)a.size(); i++) {
+        while (!st.empty() && a[st.back()] < a[i]) { res[st.back()] = a[i]; st.pop_back(); }
+        st.push_back(i);
+    }
+    return res;
+}
+
+// Previous Smaller to the left (index), -1 if none. Stack: indices, values increasing.
+vector<int> prevSmallerIndex(const vector<int>& a) {
+    vector<int> res(a.size()), st;
+    for (int i = 0; i < (int)a.size(); i++) {
+        while (!st.empty() && a[st.back()] >= a[i]) st.pop_back();   // not strictly smaller
+        res[i] = st.empty() ? -1 : st.back();
+        st.push_back(i);
+    }
+    return res;
+}
+
+// Next Greater in a CIRCULAR array: walk the array twice, push only on the first lap.
+vector<int> nextGreaterCircular(const vector<int>& a) {
+    int n = a.size();
+    vector<int> res(n, -1), st;
+    for (int i = 0; i < 2 * n; i++) {
+        int x = a[i % n];
+        while (!st.empty() && a[st.back()] < x) { res[st.back()] = x; st.pop_back(); }
+        if (i < n) st.push_back(i);
+    }
+    return res;
+}
+
+void print(const vector<int>& v) {
+    for (int x : v) cout << x << " ";
+    cout << "\\n";
+}
+
+int main() {
+    vector<int> a{4, 5, 2, 10, 8};
+    print(nextGreater(a));                   // 5 10 10 -1 -1
+    print(prevSmallerIndex(a));              // -1 0 -1 2 2
+    print(nextGreaterCircular({1, 2, 1}));   // 2 -1 2
+}` }] }, { lang: 'python', run: true, title: 'Daily Temperatures in Python (runnable)', code: `def daily_temperatures(t):
     ans = [0] * len(t)
     st = []                                  # indices of days still waiting, temps decreasing
     for i, x in enumerate(t):
@@ -1394,7 +2396,7 @@ class MonotonicFamily {
     return ans
 
 print(daily_temperatures([73, 74, 75, 71, 69, 72, 76, 73]))  # [1, 1, 4, 2, 1, 1, 0, 0]` }],
-    codeTitle: ['The monotonic family in one class (Java)'],
+    codeTitle: ['The monotonic family in one place'],
     examples: [
       {
         title: 'Daily Temperatures: answer is a DISTANCE',
@@ -1422,7 +2424,7 @@ print(daily_temperatures([73, 74, 75, 71, 69, 72, 76, 73]))  # [1, 1, 4, 2, 1, 1
       <p><b>Why the stack is monotonic.</b> Invariant: the stack holds exactly the indices that have not yet found their next greater element. If index j sits above index i on the stack (j &gt; i) and a[j] &gt; a[i], then j would have popped i when it arrived. So values must be non-increasing from bottom to top. The invariant also gives correctness: when x pops i, x is the <b>first</b> greater element after i, because every element between i and x was ≤ a[i] (otherwise it would have popped i earlier).</p>
       <p><b>Both answers in one pass.</b> When x pops i, x is the next greater of i; at the same moment, after popping, the new top is the previous greater-or-equal of x. Many solutions (sum of subarray minimums, largest rectangle) collect left and right boundaries in a single scan this way.</p>
       <p><b>Right-to-left variant.</b> Scanning from the right, keep candidates for "next greater": pop everything ≤ a[i] (they are hidden behind a[i]), then the top is the answer for i, then push i. Same O(N), sometimes easier to reason about because the answer is read immediately.</p>
-      <p><b>Performance:</b> with N = 10<sup>6</sup>, using an <code>int[]</code> as the stack instead of <code>ArrayDeque&lt;Integer&gt;</code> avoids a million boxed objects and is typically 3–5× faster in Java.</p>`,
+      <p><b>Performance:</b> with N = 10<sup>6</sup>, using an <code>int[]</code> as the stack instead of <code>ArrayDeque&lt;Integer&gt;</code> avoids a million boxed objects and is typically 3–5× faster in Java. The same idea elsewhere: a <code>vector&lt;int&gt;</code> in C++, an <code>Int32Array</code> with a top index in JS. In Python a plain <code>list</code> is already the fastest stack.</p>`,
     aiEra: `<p><b>What AI changes:</b> assistants recognise "next greater element" instantly and produce the monotonic stack. The interview signal has moved to <b>pattern transfer</b>: can you see that "days until warmer", "car fleets", "visible people in a queue", "remove K digits" and "132 pattern" are all the same tool in disguise, and pick the right pop condition and stack order?</p>
       <p><b>Use AI as a partner:</b> <code>"Give me 5 problems that secretly reduce to previous-smaller-element, without naming the technique"</code> — then practise spotting it. Or <code>"Explain the potential-function proof that this loop is O(N)"</code> to prepare for the "isn't that O(N²)?" follow-up.</p>
       <p><b>Where AI goes wrong:</b> mixing up strict and non-strict comparisons (wrong answers on duplicates), storing values when distances are needed, forgetting the second lap for circular arrays, or claiming O(N²) because of the nested loop. Test duplicates and strictly increasing/decreasing arrays first.</p>
@@ -1506,9 +2508,20 @@ int[] nextGreaterBrute(int[] a) {
       },
       hints: [
         `<p>Aha: if a number <code>x</code> arrives and is bigger than some earlier waiting numbers, <code>x</code> is the answer for <b>all</b> of them at once — they are finished and can leave. Whoever is still waiting must be at least as big as everything that came after them, so the waiting numbers always form a <b>decreasing</b> sequence.</p>`,
-        `<p>Use <code>Deque&lt;Integer&gt;</code> of <b>indices</b>. For each <code>i</code>: while the stack is not empty and <code>a[st.peek()] &lt; a[i]</code> → <code>ans[st.pop()] = a[i]</code>. Then <code>st.push(i)</code>.</p>`,
+        `<p>Use a stack of <b>indices</b>. For each <code>i</code>: while the stack is not empty and <code>a[top] &lt; a[i]</code> → pop the top and set <code>ans[top] = a[i]</code>. Then push <code>i</code>.</p>`,
         `<p>Traps: fill <code>ans</code> with <code>-1</code> first (leftovers never get popped); "strictly greater" means use <code>&lt;</code> in the while, so equal values keep waiting; store indices, not values, so you know <i>where</i> to write. Recipe: ans = all -1; for i in 0..n-1: pop smaller tops and give them a[i]; push i.</p>`
       ],
+      tests: { sig: "int[] -> int[]", fn: "nextGreater", cases: [
+        [[[4,5,2,10,8]],[5,10,10,-1,-1]],
+        [[[5]],[-1]],
+        [[[2,2,2]],[-1,-1,-1]],
+        [[[2,2,3]],[3,3,-1]],
+        [[[1,2,3,4]],[2,3,4,-1]],
+        [[[4,3,2,1]],[-1,-1,-1,-1]],
+        [[[-1000000000,1000000000,-5,0,-5]],[1000000000,-1,0,-1,-1]],
+        [[[6,8,0,1,3]],[8,-1,1,3,-1]],
+        [[{"$range":[100000,0,-1]}],{"$rep":-1,"n":100000}]
+      ] },
       solution: {
         approach: `<p>Left-to-right scan with a decreasing stack of indices still waiting for an answer.</p>`,
         code: `
@@ -1546,6 +2559,40 @@ class Solution {
             ['end', '—', 'indices 3, 4 stay → -1', '3:10, 4:8', '<span class="c-p">[5,10,10,-1,-1]</span>']
           ]
         },
+        alt: [{ lang: 'python', code: `class Solution:
+    def next_greater(self, a: list[int]) -> list[int]:
+        ans = [-1] * len(a)                 # default: no greater element
+        st = []                             # indices waiting, values decreasing
+        for i, x in enumerate(a):
+            while st and a[st[-1]] < x:     # x answers every smaller waiting element
+                ans[st.pop()] = x
+            st.append(i)                    # now x waits for its own answer
+        return ans` }, { lang: 'js', code: `function nextGreater(a) {
+  const ans = new Array(a.length).fill(-1);   // default: no greater element
+  const st = [];                              // indices waiting, values decreasing
+  for (let i = 0; i < a.length; i++) {
+    while (st.length && a[st[st.length - 1]] < a[i]) {
+      ans[st.pop()] = a[i];                   // a[i] answers every smaller waiting element
+    }
+    st.push(i);                               // now a[i] waits for its own answer
+  }
+  return ans;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> nextGreater(const vector<int>& a) {
+        int n = a.size();
+        vector<int> ans(n, -1);                  // default: no greater element
+        vector<int> st;                          // indices waiting, values decreasing
+        for (int i = 0; i < n; i++) {
+            while (!st.empty() && a[st.back()] < a[i]) {
+                ans[st.back()] = a[i];           // a[i] answers every smaller waiting element
+                st.pop_back();
+            }
+            st.push_back(i);                     // now a[i] waits for its own answer
+        }
+        return ans;
+    }
+};` }],
         complexity: `<p><b>Time O(N)</b>: every index is pushed once and popped at most once, so the inner while runs at most N times <i>in total</i> (≈ 2N operations). <b>Space O(N)</b>: the stack (e.g. a fully decreasing array keeps everyone waiting) plus the answer array.</p>`
       }
     }]
@@ -1653,7 +2700,7 @@ class Solution {
       }
     },
     after: `<p><b>Online version</b> (LeetCode 901 — <code>StockSpanner.next(price)</code>, prices arrive one per call, no array): store pairs <code>(price, span)</code>. On a new price, pop every pair with price ≤ today and <b>add their spans</b> to today's span (they already "swallowed" the days behind them).</p>`,
-    code: `
+    code: { lang: 'java', code: `
 import java.util.*;
 
 class StockSpanner {
@@ -1674,6 +2721,52 @@ class StockSpanner {
         for (int p : prices) System.out.print(s.next(p) + " ");   // 1 1 1 2 1 4 6
     }
 }`,
+      alt: [{ lang: 'python', run: true, code: `class StockSpanner:
+    def __init__(self):
+        self.st = []                          # (price, span), prices strictly decreasing
+
+    def next(self, price: int) -> int:
+        span = 1                              # today counts
+        while self.st and self.st[-1][0] <= price:
+            span += self.st.pop()[1]          # absorb the days that day already covered
+        self.st.append((price, span))
+        return span
+
+
+s = StockSpanner()
+print(*(s.next(p) for p in [100, 80, 60, 70, 60, 75, 85]))   # 1 1 1 2 1 4 6` }, { lang: 'js', run: true, code: `class StockSpanner {
+  constructor() { this.st = []; }             // [price, span], prices strictly decreasing
+
+  next(price) {
+    let span = 1;                             // today counts
+    while (this.st.length && this.st[this.st.length - 1][0] <= price) {
+      span += this.st.pop()[1];               // absorb the days that day already covered
+    }
+    this.st.push([price, span]);
+    return span;
+  }
+}
+
+const s = new StockSpanner();
+console.log([100, 80, 60, 70, 60, 75, 85].map((p) => s.next(p)).join(' '));   // 1 1 1 2 1 4 6` }, { lang: 'cpp', code: `class StockSpanner {
+    vector<pair<int, int>> st;                // {price, span}, prices strictly decreasing
+public:
+    int next(int price) {
+        int span = 1;                         // today counts
+        while (!st.empty() && st.back().first <= price) {
+            span += st.back().second;         // absorb the days that day already covered
+            st.pop_back();
+        }
+        st.push_back({price, span});
+        return span;
+    }
+};
+
+int main() {
+    StockSpanner s;
+    for (int p : {100, 80, 60, 70, 60, 75, 85}) cout << s.next(p) << " ";   // 1 1 1 2 1 4 6
+    cout << "\\n";
+}` }] },
     codeTitle: 'Online StockSpanner (LeetCode 901)',
     problems: [{
       title: 'Stock Span Problem',
@@ -1705,9 +2798,19 @@ int[] spanBrute(int[] price) {
       },
       hints: [
         `<p>Aha: the span stops at the first <b>taller</b> day to the left, so <code>span[i] = i - (index of previous greater)</code>. If no taller day exists, use index <code>-1</code>.</p>`,
-        `<p>Keep a <code>Deque&lt;Integer&gt;</code> of indices with <b>strictly decreasing</b> prices. For day <code>i</code>: pop while <code>price[top] ≤ price[i]</code>; then the top (if any) is the previous greater. Push <code>i</code>.</p>`,
+        `<p>Keep a stack of indices with <b>strictly decreasing</b> prices. For day <code>i</code>: pop while <code>price[top] ≤ price[i]</code>; then the top (if any) is the previous greater. Push <code>i</code>.</p>`,
         `<p>Traps: use <code>≤</code> (equal prices are included in the span, so they must be popped); empty stack → span is <code>i + 1</code>, not 1. Recipe: for i: pop smaller-or-equal; prev = empty ? -1 : peek; span[i] = i - prev; push i.</p>`
       ],
+      tests: { sig: "int[] -> int[]", fn: "calculateSpan", cases: [
+        [[[100,80,60,70,60,75,85]],[1,1,1,2,1,4,6]],
+        [[[7]],[1]],
+        [[[10,20,30,40]],[1,2,3,4]],
+        [[[90,70,50,30]],[1,1,1,1]],
+        [[[5,5,5,5]],[1,2,3,4]],
+        [[[1000000000,1,1000000000]],[1,1,3]],
+        [[[3,1,2,1,3]],[1,1,2,1,5]],
+        [[{"$range":[1,100001,1]}],{"$range":[1,100001,1]}]
+      ] },
       solution: {
         approach: `<p>Previous-greater-element with a strictly decreasing stack of indices.</p>`,
         code: `
@@ -1747,6 +2850,40 @@ class Solution {
             ['6', '85', '<span class="c-r">5:75, 1:80</span>', '0', '<span class="c-g">6</span>', '0:100, 6:85']
           ]
         },
+        alt: [{ lang: 'python', code: `class Solution:
+    def calculate_span(self, price: list[int]) -> list[int]:
+        span = []
+        st = []                                   # indices, prices strictly decreasing
+        for i, p in enumerate(price):
+            while st and price[st[-1]] <= p:      # inside today's span, can never block later
+                st.pop()
+            prev_greater = st[-1] if st else -1   # first taller day on the left
+            span.append(i - prev_greater)
+            st.append(i)
+        return span` }, { lang: 'js', code: `function calculateSpan(price) {
+  const span = new Array(price.length);
+  const st = [];                                  // indices, prices strictly decreasing
+  for (let i = 0; i < price.length; i++) {
+    while (st.length && price[st[st.length - 1]] <= price[i]) st.pop();
+    const prevGreater = st.length ? st[st.length - 1] : -1;   // first taller day on the left
+    span[i] = i - prevGreater;
+    st.push(i);
+  }
+  return span;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> calculateSpan(const vector<int>& price) {
+        int n = price.size();
+        vector<int> span(n), st;                  // st: indices, prices strictly decreasing
+        for (int i = 0; i < n; i++) {
+            while (!st.empty() && price[st.back()] <= price[i]) st.pop_back();
+            int prevGreater = st.empty() ? -1 : st.back();   // first taller day on the left
+            span[i] = i - prevGreater;
+            st.push_back(i);
+        }
+        return span;
+    }
+};` }],
         complexity: `<p><b>Time O(N)</b>: each day is pushed once and popped at most once, so all the while-loops together do at most N pops. <b>Space O(N)</b> for the stack (a strictly decreasing price list keeps every day on it).</p>`
       }
     }]
@@ -1779,7 +2916,7 @@ class Solution {
       '"Sum of subarray minimums", "max of (min × length)" → same left/right smaller boundaries.',
       '<code>N ≤ 10<sup>5</sup></code> and O(N<sup>2</sup>) expand-from-each-bar is too slow → monotonic stack O(N).'
     ],
-    code: `
+    code: { lang: 'java', code: `
 import java.util.*;
 
 class HistogramTwoPass {
@@ -1811,6 +2948,72 @@ class HistogramTwoPass {
         System.out.println(largestRectangle(new int[]{2, 4}));               // 4
     }
 }`,
+      alt: [{ lang: 'python', run: true, code: `def largest_rectangle(h: list[int]) -> int:
+    """Easier to explain version: compute both boundaries explicitly, then one formula."""
+    n = len(h)
+    left, right, st = [-1] * n, [n] * n, []
+    for i in range(n):                       # previous strictly smaller
+        while st and h[st[-1]] >= h[i]:
+            st.pop()
+        if st:
+            left[i] = st[-1]
+        st.append(i)
+    st = []
+    for i in range(n - 1, -1, -1):           # next strictly smaller
+        while st and h[st[-1]] >= h[i]:
+            st.pop()
+        if st:
+            right[i] = st[-1]
+        st.append(i)
+    return max(h[i] * (right[i] - left[i] - 1) for i in range(n))
+
+
+print(largest_rectangle([2, 1, 5, 6, 2, 3]))   # 10
+print(largest_rectangle([2, 4]))               # 4` }, { lang: 'js', run: true, code: `// Easier to explain version: compute both boundaries explicitly, then one formula.
+function largestRectangle(h) {
+  const n = h.length, left = new Array(n).fill(-1), right = new Array(n).fill(n);
+  let st = [];
+  for (let i = 0; i < n; i++) {                       // previous strictly smaller
+    while (st.length && h[st[st.length - 1]] >= h[i]) st.pop();
+    if (st.length) left[i] = st[st.length - 1];
+    st.push(i);
+  }
+  st = [];
+  for (let i = n - 1; i >= 0; i--) {                  // next strictly smaller
+    while (st.length && h[st[st.length - 1]] >= h[i]) st.pop();
+    if (st.length) right[i] = st[st.length - 1];
+    st.push(i);
+  }
+  let best = 0;
+  for (let i = 0; i < n; i++) best = Math.max(best, h[i] * (right[i] - left[i] - 1));
+  return best;
+}
+
+console.log(largestRectangle([2, 1, 5, 6, 2, 3]));   // 10
+console.log(largestRectangle([2, 4]));               // 4` }, { lang: 'cpp', code: `// Easier to explain version: compute both boundaries explicitly, then one formula.
+long long largestRectangle(const vector<int>& h) {
+    int n = h.size();
+    vector<int> left(n, -1), right(n, n), st;
+    for (int i = 0; i < n; i++) {                     // previous strictly smaller
+        while (!st.empty() && h[st.back()] >= h[i]) st.pop_back();
+        if (!st.empty()) left[i] = st.back();
+        st.push_back(i);
+    }
+    st.clear();
+    for (int i = n - 1; i >= 0; i--) {                // next strictly smaller
+        while (!st.empty() && h[st.back()] >= h[i]) st.pop_back();
+        if (!st.empty()) right[i] = st.back();
+        st.push_back(i);
+    }
+    long long best = 0;
+    for (int i = 0; i < n; i++) best = max(best, 1LL * h[i] * (right[i] - left[i] - 1));   // 64-bit
+    return best;
+}
+
+int main() {
+    cout << largestRectangle({2, 1, 5, 6, 2, 3}) << "\\n";   // 10
+    cout << largestRectangle({2, 4}) << "\\n";               // 4
+}` }] },
     codeTitle: 'Two-pass version (left/right smaller arrays)',
     examples: [
       {
@@ -1838,7 +3041,7 @@ class HistogramTwoPass {
     ],
     deepDive: `<p><b>Why every candidate is checked.</b> The optimal rectangle has some shortest bar <code>m</code>. It cannot extend past the nearest strictly smaller bar on either side, and extending to them is always allowed. So the optimal area equals <code>h[m] × (right[m] − left[m] − 1)</code> for some m — checking all N bars covers it. The one-pass stack computes exactly these boundaries: <code>i</code> is the first bar ≤ on the right, the new top is the nearest strictly smaller on the left.</p>
       <p><b>The duplicates subtlety.</b> Popping on <code>≥</code> means an equal bar to the right is treated as a wall, which underestimates the width for earlier equal bars. That is fine: among a run of equal-height bars, the last one popped sees the whole run. If you pop on <code>&gt;</code> instead, equal bars stay on the stack and the earliest one gets the full width. Either choice is correct as long as one bar of each equal group measures the full width — a good point to make aloud.</p>
-      <p><b>Overflow.</b> With heights up to 10<sup>4</sup> and N up to 10<sup>5</sup> the area fits in int (10<sup>9</sup> &lt; 2.1·10<sup>9</sup>), but with heights up to 10<sup>9</sup> you need <code>long</code>. Mention it before the interviewer does.</p>
+      <p><b>Overflow.</b> With heights up to 10<sup>4</sup> and N up to 10<sup>5</sup> the area fits in int (10<sup>9</sup> &lt; 2.1·10<sup>9</sup>), but with heights up to 10<sup>9</sup> you need <code>long</code> / <code>long long</code> (Python ints never overflow; JS numbers are exact up to 2<sup>53</sup>). Mention it before the interviewer does.</p>
       <p><b>Related problems using the same boundaries:</b> Maximal Rectangle (per-row histograms, O(R·C)); Sum of Subarray Minimums (each a[i] is the min of <code>(i − left) × (right − i)</code> subarrays — careful with duplicates: use strict on one side and non-strict on the other to avoid double counting); Maximum Score of a Good Subarray; Trapping Rain Water (stack-based variant pops a "valley" floor and measures water between its walls).</p>
       <p><b>Alternatives:</b> divide and conquer around the minimum (O(N log N) with a segment tree for range-min, O(N²) worst case without), or a sparse table. The stack is optimal: O(N) time, and you cannot do better since every bar must be read.</p>`,
     aiEra: `<p><b>What AI changes:</b> Largest Rectangle is a famous "hard" problem; an assistant writes the sentinel version in seconds. What it cannot do for you in the interview room is <b>explain</b> why the popped bar's left wall is the new top, why the sentinel is needed, and why duplicates do not break correctness. Those explanations are what the interviewer grades.</p>
@@ -1924,8 +3127,23 @@ int largestRectangleBrute(int[] h) {
       hints: [
         `<p>Aha: the best rectangle has the height of some bar <code>i</code> (its shortest bar). For that bar, width = distance between the <b>nearest shorter bar on the left</b> and the <b>nearest shorter bar on the right</b>, minus one.</p>`,
         `<p>Keep a stack of indices with <b>increasing</b> heights. When <code>h[i] ≤ h[top]</code>, pop <code>top</code>: right wall = <code>i</code>, left wall = new top (or -1). Compute <code>h[top] × (i - left - 1)</code>.</p>`,
-        `<p>Traps: bars still on the stack at the end must be measured — loop <code>i</code> up to <code>n</code> with height 0 at <code>i == n</code>; empty stack → left = -1 (rectangle reaches index 0); use <code>long</code> or check that 10<sup>4</sup> × 10<sup>5</sup> = 10<sup>9</sup> fits in int (it does, barely). Recipe: for i in 0..n: cur = (i==n ? 0 : h[i]); while stack and h[top] ≥ cur: pop, measure; push i.</p>`
+        `<p>Traps: bars still on the stack at the end must be measured — loop <code>i</code> up to <code>n</code> with height 0 at <code>i == n</code>; empty stack → left = -1 (rectangle reaches index 0); use a 64-bit type (<code>long</code> / <code>long long</code>) or check that 10<sup>4</sup> × 10<sup>5</sup> = 10<sup>9</sup> fits in a 32-bit int (it does, barely). Recipe: for i in 0..n: cur = (i==n ? 0 : h[i]); while stack and h[top] ≥ cur: pop, measure; push i.</p>`
       ],
+      tests: { sig: "int[] -> int", fn: "largestRectangleArea", cases: [
+        [[[2,1,5,6,2,3]],10],
+        [[[2,4]],4],
+        [[[0]],0],
+        [[[5]],5],
+        [[[3,3,3]],9],
+        [[[1,2,3,4,5]],9],
+        [[[5,4,3,2,1]],9],
+        [[[4,0,4]],4],
+        [[[10000,10000,10000]],30000],
+        [[[0,0,0]],0],
+        [[[6,2,5,4,5,1,6]],12],
+        [[{"$rep":10000,"n":100000}],1000000000],
+        [[{"$range":[10000,0,-1]}],25005000]
+      ] },
       solution: {
         approach: `<p>Increasing stack; each bar is measured at the moment it is popped (when its right wall appears).</p>`,
         code: `
@@ -1964,6 +3182,47 @@ class Solution {
             ['6 (sentinel)', '0', '<span class="c-r">5</span> → (4, 1, 3); <span class="c-r">4</span> → (1, 4, 8); <span class="c-r">1</span> → (-1, 6, 6)', '<span class="c-p">10</span>', '6 (sentinel)']
           ]
         },
+        alt: [{ lang: 'python', code: `class Solution:
+    def largest_rectangle_area(self, heights: list[int]) -> int:
+        best = 0
+        st = []                                   # indices, heights increasing
+        for i, cur in enumerate(heights + [0]):   # height-0 sentinel flushes the stack
+            while st and heights[st[-1]] >= cur:
+                top = st.pop()                    # this bar cannot stretch past i
+                left = st[-1] if st else -1       # nearest smaller bar on the left
+                best = max(best, heights[top] * (i - left - 1))
+            st.append(i)
+        return best` }, { lang: 'js', code: `function largestRectangleArea(heights) {
+  const n = heights.length, st = [];             // st: indices, heights increasing
+  let best = 0;
+  for (let i = 0; i <= n; i++) {
+    const cur = i === n ? 0 : heights[i];        // height-0 sentinel flushes the stack
+    while (st.length && heights[st[st.length - 1]] >= cur) {
+      const top = st.pop();                      // this bar cannot stretch past i
+      const left = st.length ? st[st.length - 1] : -1;   // nearest smaller bar on the left
+      best = Math.max(best, heights[top] * (i - left - 1));
+    }
+    st.push(i);
+  }
+  return best;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int largestRectangleArea(const vector<int>& heights) {
+        int n = heights.size();
+        long long best = 0;                      // 64-bit area is safe for any input size
+        vector<int> st;                          // indices, heights increasing
+        for (int i = 0; i <= n; i++) {
+            int cur = (i == n) ? 0 : heights[i]; // height-0 sentinel flushes the stack
+            while (!st.empty() && heights[st.back()] >= cur) {
+                int top = st.back(); st.pop_back();       // this bar cannot stretch past i
+                int left = st.empty() ? -1 : st.back();   // nearest smaller bar on the left
+                best = max(best, 1LL * heights[top] * (i - left - 1));
+            }
+            st.push_back(i);
+        }
+        return (int)best;
+    }
+};` }],
         complexity: `<p><b>Time O(N)</b>: each index is pushed once and popped once; every pop does O(1) work. <b>Space O(N)</b> for the stack (an increasing histogram keeps every bar on it until the end).</p>`
       }
     }]
@@ -1998,7 +3257,7 @@ class Solution {
       'The reverse ("implement a stack using queues") → one queue, rotate it after each push (push O(N)).',
       '"Queue with getMin/getMax" → two Min Stacks combined with this trick.'
     ],
-    code: `
+    code: { lang: 'java', code: `
 import java.util.*;
 
 // Queue with O(1) amortized getMin: two stacks where every entry stores {value, minSoFar}.
@@ -2037,6 +3296,100 @@ class MinQueue {
         System.out.println(q.getMin()); // 1
     }
 }`,
+      alt: [{ lang: 'python', run: true, code: `class MinQueue:
+    """Queue with O(1) amortized get_min: two stacks of (value, min_so_far)."""
+
+    def __init__(self):
+        self.inbox, self.outbox = [], []
+
+    @staticmethod
+    def _push(st, x):
+        st.append((x, min(x, st[-1][1]) if st else x))
+
+    def offer(self, x: int) -> None:
+        self._push(self.inbox, x)
+
+    def poll(self) -> int:
+        if not self.outbox:
+            while self.inbox:
+                self._push(self.outbox, self.inbox.pop()[0])   # re-compute mins while moving
+        return self.outbox.pop()[0]
+
+    def get_min(self) -> int:
+        return min(st[-1][1] for st in (self.inbox, self.outbox) if st)   # min of both halves
+
+
+q = MinQueue()
+for x in (4, 2, 7):
+    q.offer(x)
+print(q.get_min())   # 2
+q.poll()             # removes 4
+q.poll()             # removes 2
+print(q.get_min())   # 7
+q.offer(1)
+print(q.get_min())   # 1` }, { lang: 'js', run: true, code: `// Queue with O(1) amortized getMin: two stacks where every entry stores [value, minSoFar].
+class MinQueue {
+  constructor() { this.in = []; this.out = []; }
+
+  static pushWithMin(st, x) {
+    st.push([x, st.length ? Math.min(x, st[st.length - 1][1]) : x]);
+  }
+
+  offer(x) { MinQueue.pushWithMin(this.in, x); }
+
+  poll() {
+    if (this.out.length === 0) {
+      while (this.in.length) MinQueue.pushWithMin(this.out, this.in.pop()[0]);   // re-compute mins
+    }
+    return this.out.pop()[0];
+  }
+
+  getMin() {
+    const tops = [this.in, this.out].filter((st) => st.length).map((st) => st[st.length - 1][1]);
+    return Math.min(...tops);                 // min of both halves
+  }
+}
+
+const q = new MinQueue();
+[4, 2, 7].forEach((x) => q.offer(x));
+console.log(q.getMin());   // 2
+q.poll();                  // removes 4
+q.poll();                  // removes 2
+console.log(q.getMin());   // 7
+q.offer(1);
+console.log(q.getMin());   // 1` }, { lang: 'cpp', code: `// Queue with O(1) amortized getMin: two stacks where every entry stores {value, minSoFar}.
+class MinQueue {
+    vector<pair<int, int>> in, out;
+    static void pushWithMin(vector<pair<int, int>>& st, int x) {
+        st.push_back({x, st.empty() ? x : min(x, st.back().second)});
+    }
+public:
+    void offer(int x) { pushWithMin(in, x); }
+    int poll() {
+        if (out.empty()) {
+            while (!in.empty()) { pushWithMin(out, in.back().first); in.pop_back(); }   // re-compute mins
+        }
+        int x = out.back().first;
+        out.pop_back();
+        return x;
+    }
+    int getMin() {
+        if (in.empty()) return out.back().second;
+        if (out.empty()) return in.back().second;
+        return min(in.back().second, out.back().second);   // min of both halves
+    }
+};
+
+int main() {
+    MinQueue q;
+    for (int x : {4, 2, 7}) q.offer(x);
+    cout << q.getMin() << "\\n";   // 2
+    q.poll();                     // removes 4
+    q.poll();                     // removes 2
+    cout << q.getMin() << "\\n";   // 7
+    q.offer(1);
+    cout << q.getMin() << "\\n";   // 1
+}` }] },
     codeTitle: 'Bonus: Min Queue = two Min Stacks',
     examples: [
       {
@@ -2063,7 +3416,7 @@ class MinQueue {
       <p><b>Why amortized ≠ average-case.</b> Average-case depends on random inputs; amortized is a <b>worst-case guarantee over any sequence</b>: no matter what an adversary does, N operations cost O(N) total. The only thing it does not bound is a single operation's latency.</p>
       <p><b>The opposite direction.</b> A stack from queues (Topic 1's guided problem) has no such trick with one or two queues: rotating moves every element on every push, so nothing is "moved once and done".</p>
       <p><b>Generalisation: two-stack aggregates.</b> If each stack entry stores an aggregate (min, max, gcd, sum of an associative operation) of the entries below it, the queue can answer the aggregate of the whole window as <code>combine(in.agg, out.agg)</code>. This gives O(1) amortized sliding-window min/max/gcd for any associative operation — even non-invertible ones like gcd where prefix sums do not work. Streaming engines use this "two-stacks" trick for sliding window aggregations.</p>
-      <p><b>Java reality check:</b> in production you would just use <code>ArrayDeque</code> as the queue. The two-stack design matters for interviews, immutable/functional data structures, and aggregate windows.</p>`,
+      <p><b>Reality check:</b> in production you would just use the library queue (<code>ArrayDeque</code>, <code>collections.deque</code>, <code>std::queue</code>). The two-stack design matters for interviews, immutable/functional data structures, and aggregate windows.</p>`,
     aiEra: `<p><b>What AI changes:</b> any assistant can implement MyQueue in seconds; the classic follow-up "what does amortized mean and prove it" is what interviewers actually listen for. With AI writing boilerplate, being able to give a crisp accounting or potential argument is a differentiator.</p>
       <p><b>Use AI as a partner:</b> <code>"Simulate 20 random queue operations on my two-stack queue and a reference ArrayDeque and print where they differ"</code>; <code>"Explain the banker's queue and why persistence breaks naive amortization"</code> for a deeper dive.</p>
       <p><b>Where AI goes wrong:</b> transferring on every pop, forgetting that <code>peek()</code> needs the transfer too, checking only one stack in <code>empty()</code>, or describing amortized cost as "average over random inputs".</p>
@@ -2160,9 +3513,17 @@ class MyQueueSlow {
       },
       hints: [
         `<p>Aha: pouring one stack into another <b>reverses</b> the order. A reversed stack has the <b>oldest</b> item on top — exactly the queue front.</p>`,
-        `<p>Two <code>Deque&lt;Integer&gt;</code>: <code>in</code> for pushes, <code>out</code> for pops/peeks. Only when <code>out</code> is empty, pour <b>all</b> of <code>in</code> into it.</p>`,
+        `<p>Two stacks: <code>in</code> for pushes, <code>out</code> for pops/peeks. Only when <code>out</code> is empty, pour <b>all</b> of <code>in</code> into it.</p>`,
         `<p>Traps: never transfer while <code>out</code> still has items (breaks the order); <code>empty()</code> must check <b>both</b> stacks; peek also needs the transfer step. Recipe: push → in.push(x). pop/peek → if out empty: while in not empty out.push(in.pop()); then out.pop()/out.peek(). empty → in.isEmpty() &amp;&amp; out.isEmpty().</p>`
       ],
+      tests: { cls: "MyQueue", sigs: {"MyQueue":"","push":"int -> void","pop":"-> int","peek":"-> int","empty":"-> bool"}, cases: [
+        {"ops":["MyQueue","push","push","peek","pop","push","pop","empty","pop"],"args":[[],[1],[2],[],[],[3],[],[],[]],"out":[null,null,null,1,1,null,2,false,3]},
+        {"ops":["MyQueue","empty"],"args":[[],[]],"out":[null,true]},
+        {"ops":["MyQueue","push","peek","pop","empty"],"args":[[],[9],[],[],[]],"out":[null,null,9,9,true]},
+        {"ops":["MyQueue","push","push","push","push","pop","pop","pop","pop","empty"],"args":[[],[1],[2],[3],[4],[],[],[],[],[]],"out":[null,null,null,null,null,1,2,3,4,true]},
+        {"ops":["MyQueue","push","push","pop","push","push","pop","peek","pop","pop","empty"],"args":[[],[1],[2],[],[3],[4],[],[],[],[],[]],"out":[null,null,null,1,null,null,2,3,3,4,true]},
+        {"ops":["MyQueue","push","push","push","peek","pop","peek","empty"],"args":[[],[5],[5],[6],[],[],[],[]],"out":[null,null,null,null,5,5,5,false]}
+      ] },
       solution: {
         approach: `<p>Lazy transfer: <code>out</code> is refilled only when it runs dry, so every element moves once.</p>`,
         code: `
@@ -2223,6 +3584,58 @@ class MyQueue {
             ['pop()', '', '', '<span class="c-y">out empty → transfer 3</span>, out.pop', '<span class="c-p">3</span>']
           ]
         },
+        alt: [{ lang: 'python', code: `class MyQueue:
+    def __init__(self):
+        self.inbox = []                 # newest on top (end of the list)
+        self.outbox = []                # oldest on top
+
+    def push(self, x: int) -> None:
+        self.inbox.append(x)            # O(1): new items always go to the inbox
+
+    def _shift(self) -> None:
+        if not self.outbox:             # refill only when empty, or the order breaks
+            while self.inbox:
+                self.outbox.append(self.inbox.pop())
+
+    def pop(self) -> int:
+        self._shift()
+        return self.outbox.pop()        # front of the queue
+
+    def peek(self) -> int:
+        self._shift()
+        return self.outbox[-1]
+
+    def empty(self) -> bool:
+        return not self.inbox and not self.outbox   # items may hide in either stack` }, { lang: 'js', code: `class MyQueue {
+  constructor() {
+    this.in = [];                       // newest on top (end of the array)
+    this.out = [];                      // oldest on top
+  }
+
+  push(x) { this.in.push(x); }          // O(1): new items always go to "in"
+
+  shift() {                             // refill only when empty, or the order breaks
+    if (this.out.length === 0) {
+      while (this.in.length) this.out.push(this.in.pop());
+    }
+  }
+
+  pop() { this.shift(); return this.out.pop(); }               // front of the queue
+  peek() { this.shift(); return this.out[this.out.length - 1]; }
+  empty() { return this.in.length === 0 && this.out.length === 0; }
+}` }, { lang: 'cpp', code: `class MyQueue {
+    stack<int> in, out;                 // in: newest on top, out: oldest on top
+    void shiftIfNeeded() {
+        if (out.empty()) {              // refill only when empty, or the order breaks
+            while (!in.empty()) { out.push(in.top()); in.pop(); }
+        }
+    }
+public:
+    void push(int x) { in.push(x); }    // O(1): new items always go to "in"
+    int pop() { shiftIfNeeded(); int x = out.top(); out.pop(); return x; }
+    int peek() { shiftIfNeeded(); return out.top(); }
+    bool empty() { return in.empty() && out.empty(); }   // items may hide in either stack
+};` }],
         complexity: `<p><b>push O(1)</b>. <b>pop/peek amortized O(1)</b>: a single call can move many items, but each item is moved from <code>in</code> to <code>out</code> <b>at most once</b> in its life, so N operations do at most ~4N stack steps. <b>Space O(N)</b> for the items.</p>`
       }
     }]
@@ -2249,7 +3662,7 @@ class MyQueue {
         ['[-3 5 3]', '4:5, 5:3', '5'], ['[5 3 6]', '6:6', '6'], ['[3 6 7]', '7:7', '7']
       ])}
       <p><b>Why O(N)?</b> Every index enters the deque once and leaves it at most once (from the front or the back) → ≤ 2N deque operations, compared to O(N·K) for re-scanning each window.</p>
-      <p>Use <code>Deque&lt;Integer&gt; dq = new ArrayDeque&lt;&gt;()</code> with <code>peekFirst / pollFirst / peekLast / pollLast / offerLast</code>. For a <b>sliding window minimum</b>, flip the comparison (keep values increasing).</p>`,
+      <p>Containers: Java <code>ArrayDeque</code> (<code>peekFirst / pollFirst / peekLast / pollLast / offerLast</code>), Python <code>collections.deque</code> (<code>dq[0] / popleft / dq[-1] / pop / append</code>), C++ <code>std::deque</code> (<code>front / pop_front / back / pop_back / push_back</code>); JS has no deque, but each index enters only once, so an array with a <code>head</code> pointer works. For a <b>sliding window minimum</b>, flip the comparison (keep values increasing).</p>`,
     clues: [
       '"<b>Maximum (or minimum) in every window of size K</b>", "sliding window max".',
       'Window <b>slides by one</b> and you need the max/min each time — a heap gives O(N log N), a monotonic deque gives O(N).',
@@ -2257,7 +3670,7 @@ class MyQueue {
       '"Shortest subarray with sum ≥ K" with negatives, "constrained subsequence sum", "jump game VI" → DP + monotonic deque.',
       '<code>N ≤ 10<sup>5</sup>, K ≤ N</code> → O(N·K) can be 10<sup>10</sup>; need O(N).'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
 import java.util.*;
 
 class DequeWindows {
@@ -2298,7 +3711,120 @@ class DequeWindows {
         System.out.println(longestSubarray(new int[]{10, 1, 2, 4, 7, 2}, 5));          // 4
         System.out.println(Arrays.toString(windowMin(new int[]{4, 2, 12, 3, 8, 1}, 3)));  // [2, 2, 3, 1]
     }
-}`, { lang: 'python', run: true, title: 'Sliding window maximum in Python (runnable)', code: `from collections import deque
+}`,
+      alt: [{ lang: 'python', run: true, code: `from collections import deque
+
+
+def longest_subarray(a, limit):
+    """Longest subarray with max - min <= limit: one deque for max, one for min."""
+    max_d, min_d = deque(), deque()
+    left = best = 0
+    for right, x in enumerate(a):
+        while max_d and a[max_d[-1]] < x:
+            max_d.pop()
+        while min_d and a[min_d[-1]] > x:
+            min_d.pop()
+        max_d.append(right)
+        min_d.append(right)
+        while a[max_d[0]] - a[min_d[0]] > limit:   # window invalid -> shrink
+            left += 1
+            if max_d[0] < left:
+                max_d.popleft()
+            if min_d[0] < left:
+                min_d.popleft()
+        best = max(best, right - left + 1)
+    return best
+
+
+def window_min(a, k):
+    """Sliding window MINIMUM: same as maximum with the comparison flipped."""
+    dq, res = deque(), []                         # values increasing front -> back
+    for i, x in enumerate(a):
+        if dq and dq[0] <= i - k:
+            dq.popleft()
+        while dq and a[dq[-1]] >= x:
+            dq.pop()
+        dq.append(i)
+        if i >= k - 1:
+            res.append(a[dq[0]])
+    return res
+
+
+print(longest_subarray([8, 2, 4, 7], 4))          # 2
+print(longest_subarray([10, 1, 2, 4, 7, 2], 5))   # 4
+print(window_min([4, 2, 12, 3, 8, 1], 3))         # [2, 2, 3, 1]` }, { lang: 'js', run: true, code: `// Longest subarray where (max - min) <= limit: one decreasing deque for max, one increasing for min.
+// Each index enters a deque once, so arrays with a head pointer work as deques.
+function longestSubarray(a, limit) {
+  const maxD = [], minD = [];
+  let maxH = 0, minH = 0, left = 0, best = 0;
+  for (let right = 0; right < a.length; right++) {
+    while (maxD.length > maxH && a[maxD[maxD.length - 1]] < a[right]) maxD.pop();
+    while (minD.length > minH && a[minD[minD.length - 1]] > a[right]) minD.pop();
+    maxD.push(right);
+    minD.push(right);
+    while (a[maxD[maxH]] - a[minD[minH]] > limit) {   // window invalid -> shrink
+      left++;
+      if (maxD[maxH] < left) maxH++;
+      if (minD[minH] < left) minH++;
+    }
+    best = Math.max(best, right - left + 1);
+  }
+  return best;
+}
+
+// Sliding window MINIMUM: same as maximum with the comparison flipped.
+function windowMin(a, k) {
+  const dq = [], res = [];                    // values increasing front -> back
+  let head = 0;
+  for (let i = 0; i < a.length; i++) {
+    if (dq.length > head && dq[head] <= i - k) head++;
+    while (dq.length > head && a[dq[dq.length - 1]] >= a[i]) dq.pop();
+    dq.push(i);
+    if (i >= k - 1) res.push(a[dq[head]]);
+  }
+  return res;
+}
+
+console.log(longestSubarray([8, 2, 4, 7], 4));           // 2
+console.log(longestSubarray([10, 1, 2, 4, 7, 2], 5));    // 4
+console.log(windowMin([4, 2, 12, 3, 8, 1], 3));          // [ 2, 2, 3, 1 ]` }, { lang: 'cpp', code: `// Longest subarray where (max - min) <= limit: one decreasing deque for max, one increasing for min.
+int longestSubarray(const vector<int>& a, int limit) {
+    deque<int> maxD, minD;
+    int left = 0, best = 0;
+    for (int right = 0; right < (int)a.size(); right++) {
+        while (!maxD.empty() && a[maxD.back()] < a[right]) maxD.pop_back();
+        while (!minD.empty() && a[minD.back()] > a[right]) minD.pop_back();
+        maxD.push_back(right);
+        minD.push_back(right);
+        while (a[maxD.front()] - a[minD.front()] > limit) {   // window invalid -> shrink
+            left++;
+            if (maxD.front() < left) maxD.pop_front();
+            if (minD.front() < left) minD.pop_front();
+        }
+        best = max(best, right - left + 1);
+    }
+    return best;
+}
+
+// Sliding window MINIMUM: same as maximum with the comparison flipped.
+vector<int> windowMin(const vector<int>& a, int k) {
+    deque<int> dq;                                  // values increasing front -> back
+    vector<int> res;
+    for (int i = 0; i < (int)a.size(); i++) {
+        if (!dq.empty() && dq.front() <= i - k) dq.pop_front();
+        while (!dq.empty() && a[dq.back()] >= a[i]) dq.pop_back();
+        dq.push_back(i);
+        if (i >= k - 1) res.push_back(a[dq.front()]);
+    }
+    return res;
+}
+
+int main() {
+    cout << longestSubarray({8, 2, 4, 7}, 4) << "\\n";           // 2
+    cout << longestSubarray({10, 1, 2, 4, 7, 2}, 5) << "\\n";    // 4
+    for (int x : windowMin({4, 2, 12, 3, 8, 1}, 3)) cout << x << " ";   // 2 2 3 1
+    cout << "\\n";
+}` }] }, { lang: 'python', run: true, title: 'Sliding window maximum in Python (runnable)', code: `from collections import deque
 
 def max_sliding_window(nums, k):
     dq, res = deque(), []          # indices, values decreasing front -> back
@@ -2313,7 +3839,7 @@ def max_sliding_window(nums, k):
     return res
 
 print(max_sliding_window([1, 3, -1, -3, 5, 3, 6, 7], 3))  # [3, 3, 5, 5, 6, 7]` }],
-    codeTitle: ['Two deques (max − min ≤ limit) + window minimum (Java)'],
+    codeTitle: ['Two deques (max − min ≤ limit) + window minimum'],
     examples: [
       {
         title: 'k = 1 and k = N (edge cases)',
@@ -2338,7 +3864,7 @@ print(max_sliding_window([1, 3, -1, -3, 5, 3, 6, 7], 3))  # [3, 3, 5, 5, 6, 7]` 
       <p><b>Complexity.</b> Each index is added once and removed once (either expired from the front or dominated at the back) → at most 2N deque operations → O(N) time, O(k) extra space. This beats a heap (O(N log k)) and a balanced tree/<code>TreeMap</code> with counts (O(N log k)), and a sparse table (O(N log N) preprocessing, O(1) query — useful only when windows have arbitrary sizes).</p>
       <p><b>Monotonic deque + DP.</b> Many DP recurrences look like <code>dp[i] = a[i] + max(dp[i-k..i-1])</code> (Jump Game VI, Constrained Subsequence Sum). The inner max over a sliding range is exactly sliding window maximum, so the DP drops from O(N·k) to O(N). Shortest Subarray with Sum ≥ K (with negatives) uses an <b>increasing</b> deque of prefix sums: pop the front while it forms a valid answer (it can only get longer later), pop the back while it is ≥ the current prefix (dominated). This family is called "monotone queue optimisation".</p>
       <p><b>Ties.</b> Popping with <code>≤</code> keeps only the newest copy of equal values, which stays in the window longest — correct and slightly smaller deques. Popping with <code>&lt;</code> also works because the expiry check uses indices.</p>
-      <p><b>Java details:</b> use <code>ArrayDeque&lt;Integer&gt;</code> with <code>peekFirst/pollFirst/peekLast/pollLast/offerLast</code>; for maximum speed, a plain <code>int[] dq</code> with <code>head</code> and <code>tail</code> indices (no wrap needed because each index enters once) removes all boxing.</p>`,
+      <p><b>Container details:</b> in Java use <code>ArrayDeque&lt;Integer&gt;</code> with <code>peekFirst/pollFirst/peekLast/pollLast/offerLast</code>; for maximum speed, a plain <code>int[] dq</code> with <code>head</code> and <code>tail</code> indices (no wrap needed because each index enters once) removes all boxing.</p>`,
     aiEra: `<p><b>What AI changes:</b> sliding window maximum is a well-known hard problem and every model produces the deque solution. Interviewers increasingly test whether you can <b>reuse</b> the deque inside something else — two deques for max − min, a deque of prefix sums for "shortest subarray with sum ≥ K", or a deque inside a DP transition.</p>
       <p><b>Use AI as a partner:</b> <code>"Give me a DP problem whose transition is a sliding window max, but don't tell me which one"</code>, or ask it to <code>"write a brute-force O(N·k) checker and fuzz my deque solution with random arrays including duplicates and negatives"</code>.</p>
       <p><b>Where AI goes wrong:</b> storing values instead of indices (cannot detect expiry), using <code>while</code> for expiry but with <code>&lt;</code> instead of <code>≤ i − k</code> (off-by-one), answering before the first window is full, and using a heap without removing expired elements.</p>
@@ -2424,9 +3950,20 @@ int[] maxSlidingWindowBrute(int[] nums, int k) {
       },
       hints: [
         `<p>Aha: if <code>j &lt; i</code> and <code>a[j] ≤ a[i]</code>, then <code>a[j]</code> can <b>never</b> be the maximum of any future window — <code>a[i]</code> is at least as big and stays longer. So we can throw <code>j</code> away for good.</p>`,
-        `<p>Use <code>Deque&lt;Integer&gt;</code> of indices with values decreasing from front to back. Front = current max. Remove from the <b>front</b> when the index leaves the window; remove from the <b>back</b> when beaten by the newcomer.</p>`,
-        `<p>Traps: store <b>indices</b> (you need them to detect expiry); the expiry test is <code>dq.peekFirst() ≤ i - k</code>; only record answers when <code>i ≥ k - 1</code>; result length is <code>n - k + 1</code>. Recipe: for i: drop expired front; pop back while a[back] ≤ a[i]; offerLast(i); if i ≥ k-1: res[i-k+1] = a[front].</p>`
+        `<p>Use a deque of indices with values decreasing from front to back. Front = current max. Remove from the <b>front</b> when the index leaves the window; remove from the <b>back</b> when beaten by the newcomer.</p>`,
+        `<p>Traps: store <b>indices</b> (you need them to detect expiry); the expiry test is <code>front ≤ i - k</code>; only record answers when <code>i ≥ k - 1</code>; result length is <code>n - k + 1</code>. Recipe: for i: drop expired front; pop back while a[back] ≤ a[i]; offerLast(i); if i ≥ k-1: res[i-k+1] = a[front].</p>`
       ],
+      tests: { sig: "int[] int -> int[]", fn: "maxSlidingWindow", cases: [
+        [[[1,3,-1,-3,5,3,6,7],3],[3,3,5,5,6,7]],
+        [[[1],1],[1]],
+        [[[4,2,7],1],[4,2,7]],
+        [[[4,2,7],3],[7]],
+        [[[9,8,7,6,5],2],[9,8,7,6]],
+        [[[-10000,-10000,-9999],2],[-10000,-9999]],
+        [[[2,2,2,2],2],[2,2,2]],
+        [[[1,3,1,2,0,5],3],[3,3,2,5]],
+        [[{"$range":[0,100000,1]},50000],{"$range":[49999,100000,1]}]
+      ] },
       solution: {
         approach: `<p>Monotonic (decreasing) deque of indices; the front is the max of the current window.</p>`,
         code: `
@@ -2474,6 +4011,46 @@ class Solution {
             ['7', '7', '—', '<span class="c-r">6:6</span>', '7:7', '<span class="c-p">[3,3,5,5,6,7]</span>']
           ]
         },
+        alt: [{ lang: 'python', code: `from collections import deque
+
+
+class Solution:
+    def max_sliding_window(self, nums: list[int], k: int) -> list[int]:
+        dq, res = deque(), []              # indices, values decreasing front -> back
+        for i, x in enumerate(nums):
+            if dq and dq[0] <= i - k:      # 1) the front fell out of the window
+                dq.popleft()
+            while dq and nums[dq[-1]] <= x:
+                dq.pop()                   # 2) beaten by a newer, bigger value
+            dq.append(i)                   # 3) the newcomer joins at the back
+            if i >= k - 1:
+                res.append(nums[dq[0]])    # 4) the front holds the window max
+        return res` }, { lang: 'js', code: `function maxSlidingWindow(nums, k) {
+  // Each index enters once, so a plain array with a head pointer is a fine deque.
+  const dq = new Int32Array(nums.length);
+  let head = 0, tail = 0;                      // live part is dq[head..tail-1]
+  const res = [];
+  for (let i = 0; i < nums.length; i++) {
+    if (head < tail && dq[head] <= i - k) head++;                   // front left the window
+    while (head < tail && nums[dq[tail - 1]] <= nums[i]) tail--;    // dominated at the back
+    dq[tail++] = i;
+    if (i >= k - 1) res.push(nums[dq[head]]);                       // front = window max
+  }
+  return res;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> maxSlidingWindow(const vector<int>& nums, int k) {
+        deque<int> dq;                           // indices, values decreasing front -> back
+        vector<int> res;
+        for (int i = 0; i < (int)nums.size(); i++) {
+            if (!dq.empty() && dq.front() <= i - k) dq.pop_front();          // expired
+            while (!dq.empty() && nums[dq.back()] <= nums[i]) dq.pop_back(); // dominated
+            dq.push_back(i);
+            if (i >= k - 1) res.push_back(nums[dq.front()]);                 // window max
+        }
+        return res;
+    }
+};` }],
         complexity: `<p><b>Time O(N)</b>: each index is offered once and polled at most once (front or back) → at most 2N deque operations. <b>Space O(k)</b>: the deque only holds indices inside the current window (plus the O(N - k + 1) output).</p>`
       }
     }]
@@ -2510,11 +4087,22 @@ String apply(String s) {
     mcq: { q: 'Which structure naturally models "backspace deletes the most recently typed character"?', options: ['Queue', 'Stack', 'HashSet', 'Sorted array'], answer: 1, explain: 'Backspace removes the newest character first: last in, first out.' },
     hints: [
       `<p>Aha: typing pushes a character, backspace pops the newest one. The final text is whatever is left on the stack, from bottom to top.</p>`,
-      `<p>A <code>StringBuilder</code> is a perfect char stack: <code>append</code> = push, <code>deleteCharAt(length - 1)</code> = pop. Build both strings, then compare.</p>`,
+      `<p>A growable string is a perfect char stack: Java <code>StringBuilder</code> (<code>append</code> / <code>deleteCharAt(length - 1)</code>), a Python <code>list</code> joined at the end, a JS array, or a C++ <code>std::string</code> (<code>push_back</code> / <code>pop_back</code>). Build both strings, then compare.</p>`,
       `<p>Edge cases: <code>#</code> on an empty editor does nothing (check length &gt; 0); strings like <code>"##a"</code>. Follow-up: O(1) extra space by walking both strings from the <b>end</b> with a "skip" counter.</p>`
     ],
+    tests: { sig: "string string -> bool", fn: "backspaceCompare", cases: [
+      [["ab#c","ad#c"],true],
+      [["a#c","b"],false],
+      [["ab##","c#d#"],true],
+      [["a##c","#a#c"],true],
+      [["###","#"],true],
+      [["bxj##tw","bxo#j##tw"],true],
+      [["y#fo##f","y#f#o##f"],true],
+      [["abc","abd"],false],
+      [["a","aa#"],true]
+    ] },
     solution: {
-      approach: `<p>Simulate the editor with a stack (StringBuilder) for each string and compare the results.</p>`,
+      approach: `<p>Simulate the editor with a character stack for each string and compare the results.</p>`,
       code: `
 class Solution {
     private String type(String s) {
@@ -2536,6 +4124,38 @@ class Solution {
     }
 }`,
       dry: { head: ['char of "ab#c"', 'action', 'stack'], rows: [['a', 'push', 'a'], ['b', 'push', 'ab'], ['#', 'pop', 'a'], ['c', 'push', '<span class="c-g">ac</span>']] },
+      alt: [{ lang: 'python', code: `class Solution:
+    def backspace_compare(self, s: str, t: str) -> bool:
+        def typed(text: str) -> str:
+            st = []                          # a list is the character stack
+            for c in text:
+                if c != '#':
+                    st.append(c)             # type a character = push
+                elif st:
+                    st.pop()                 # backspace = pop (ignored when empty)
+            return ''.join(st)
+        return typed(s) == typed(t)` }, { lang: 'js', code: `function backspaceCompare(s, t) {
+  const typed = (text) => {
+    const st = [];                         // array as a character stack
+    for (const c of text) {
+      if (c !== '#') st.push(c);           // type a character = push
+      else st.pop();                       // backspace = pop (pop on [] is harmless)
+    }
+    return st.join('');
+  };
+  return typed(s) === typed(t);
+}` }, { lang: 'cpp', code: `class Solution {
+    static string typed(const string& text) {
+        string st;                           // std::string as a character stack
+        for (char c : text) {
+            if (c != '#') st.push_back(c);   // type a character = push
+            else if (!st.empty()) st.pop_back();   // backspace = pop
+        }
+        return st;
+    }
+public:
+    bool backspaceCompare(const string& s, const string& t) { return typed(s) == typed(t); }
+};` }],
       complexity: `<p><b>Time O(N + M)</b>, <b>space O(N + M)</b> for the two builders. The two-pointer-from-the-end version keeps O(N + M) time with O(1) space.</p>`,
       followUps: ['Do it in O(1) extra space.', 'What if the editor also supports an "undo" command?']
     }
@@ -2570,9 +4190,21 @@ String removeDuplicatesBrute(String s) {
     mcq: { q: 'The stack holds <code>c a</code> (a on top). The next letter is <code>a</code>. What happens?', options: ['Push a → c a a', 'Pop a → c', 'Pop both → empty', 'Ignore the new a'], answer: 1, explain: 'The new letter equals the top, so the pair cancels: pop the top and do not push the new letter.' },
     hints: [
       `<p>Aha: the only letter that can pair with the next one is the <b>last surviving</b> letter — the top of a stack.</p>`,
-      `<p>Use a <code>StringBuilder</code> as the stack: if the last char equals the current one, delete it; otherwise append.</p>`,
+      `<p>Use a growable string as the stack (<code>StringBuilder</code> / list / array / <code>std::string</code>): if the last char equals the current one, delete it; otherwise append.</p>`,
       `<p>Edge cases: everything cancels (<code>"abba"</code> → ""), no duplicates at all. Recipe: for c in s: if sb not empty and last == c → delete last, else append c. Return sb.</p>`
     ],
+    tests: { sig: "string -> string", fn: "removeDuplicates", cases: [
+      [["abbaca"],"ca"],
+      [["azxxzy"],"ay"],
+      [["a"],"a"],
+      [["aa"],""],
+      [["abba"],""],
+      [["aaa"],"a"],
+      [["abc"],"abc"],
+      [["aabbccd"],"d"],
+      [[{"$rep":"a","n":100000}],""],
+      [[{"$concat":[{"$rep":"ab","n":50000},"c"]}],{"$concat":[{"$rep":"ab","n":50000},"c"]}]
+    ] },
     solution: {
       approach: `<p>One pass; the builder holds the letters that survived so far, and each new letter either cancels the top or is pushed.</p>`,
       code: `
@@ -2592,6 +4224,32 @@ class Solution {
     }
 }`,
       dry: { head: ['char', 'top before', 'action', 'stack'], rows: [['a', '—', 'push', 'a'], ['b', 'a', 'push', 'ab'], ['b', 'b', '<span class="c-r">pop</span>', 'a'], ['a', 'a', '<span class="c-r">pop</span>', '(empty)'], ['c', '—', 'push', 'c'], ['a', 'c', 'push', '<span class="c-g">ca</span>']] },
+      alt: [{ lang: 'python', code: `class Solution:
+    def remove_duplicates(self, s: str) -> str:
+        st = []
+        for c in s:
+            if st and st[-1] == c:
+                st.pop()                 # pair cancels
+            else:
+                st.append(c)             # survives for now
+        return ''.join(st)` }, { lang: 'js', code: `function removeDuplicates(s) {
+  const st = [];
+  for (const c of s) {
+    if (st.length && st[st.length - 1] === c) st.pop();   // pair cancels
+    else st.push(c);                                      // survives for now
+  }
+  return st.join('');
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    string removeDuplicates(const string& s) {
+        string st;
+        for (char c : s) {
+            if (!st.empty() && st.back() == c) st.pop_back();   // pair cancels
+            else st.push_back(c);                               // survives for now
+        }
+        return st;
+    }
+};` }],
       complexity: `<p><b>Time O(N)</b>: each letter is pushed once and popped at most once. <b>Space O(N)</b> for the builder.</p>`,
       followUps: ['Remove groups of K equal adjacent letters (LeetCode 1209): store (char, count) pairs.']
     }
@@ -2625,11 +4283,20 @@ int[] nextGreaterElementBrute(int[] nums1, int[] nums2) {
     mcq: { q: 'Why can we store answers in a <code>HashMap</code> keyed by value?', options: ['Because the values are distinct', 'Because nums2 is sorted', 'Because HashMap is faster than arrays', 'We cannot'], answer: 0, explain: 'Distinct values mean each value has exactly one position in nums2, so value → next greater is well defined.' },
     hints: [
       `<p>Aha: compute the next greater element for <b>every</b> value of <code>nums2</code> once, then answer queries by lookup.</p>`,
-      `<p>Monotonic decreasing stack over <code>nums2</code>; when <code>x</code> pops <code>y</code>, record <code>map.put(y, x)</code>.</p>`,
-      `<p>Values left on the stack have no greater element → use <code>getOrDefault(v, -1)</code>. Recipe: for x in nums2: while top &lt; x: map[pop] = x; push x. Then res[i] = map.getOrDefault(nums1[i], -1).</p>`
+      `<p>Monotonic decreasing stack over <code>nums2</code>; when <code>x</code> pops <code>y</code>, record <code>next[y] = x</code> in a hash map.</p>`,
+      `<p>Values left on the stack have no greater element → look them up with a default of -1 (<code>getOrDefault</code> / <code>dict.get(v, -1)</code>). Recipe: for x in nums2: while top &lt; x: map[pop] = x; push x. Then res[i] = map[nums1[i]] or -1.</p>`
     ],
+    tests: { sig: "int[] int[] -> int[]", fn: "nextGreaterElement", cases: [
+      [[[4,1,2],[1,3,4,2]],[-1,3,-1]],
+      [[[2,4],[1,2,3,4]],[3,-1]],
+      [[[5],[5]],[-1]],
+      [[[0],[0,10000]],[10000]],
+      [[[3,2,1],[3,2,1]],[-1,-1,-1]],
+      [[[1,3,5,2,4],[6,5,4,3,2,1,7]],[7,7,7,7,7]],
+      [[[1,2,3],[1,2,3]],[2,3,-1]]
+    ] },
     solution: {
-      approach: `<p>Monotonic stack on nums2 + HashMap from value to its next greater value.</p>`,
+      approach: `<p>Monotonic stack on nums2 + a hash map (<code>HashMap</code> / <code>dict</code> / <code>Map</code> / <code>unordered_map</code>) from value to its next greater value.</p>`,
       code: `
 import java.util.*;
 
@@ -2650,6 +4317,39 @@ class Solution {
         System.out.println(Arrays.toString(new Solution().nextGreaterElement(new int[]{4, 1, 2}, new int[]{1, 3, 4, 2})));   // [-1, 3, -1]
     }
 }`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def next_greater_element(self, nums1: list[int], nums2: list[int]) -> list[int]:
+        nxt = {}                              # value -> its next greater value in nums2
+        st = []                               # values, decreasing bottom -> top
+        for x in nums2:
+            while st and st[-1] < x:
+                nxt[st.pop()] = x
+            st.append(x)
+        return [nxt.get(x, -1) for x in nums1]` }, { lang: 'js', code: `function nextGreaterElement(nums1, nums2) {
+  const next = new Map();                 // value -> its next greater value in nums2
+  const st = [];                          // values, decreasing bottom -> top
+  for (const x of nums2) {
+    while (st.length && st[st.length - 1] < x) next.set(st.pop(), x);
+    st.push(x);
+  }
+  return nums1.map((x) => (next.has(x) ? next.get(x) : -1));
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> nextGreaterElement(const vector<int>& nums1, const vector<int>& nums2) {
+        unordered_map<int, int> next;           // value -> its next greater value in nums2
+        vector<int> st;                         // values, decreasing bottom -> top
+        for (int x : nums2) {
+            while (!st.empty() && st.back() < x) { next[st.back()] = x; st.pop_back(); }
+            st.push_back(x);
+        }
+        vector<int> res;
+        for (int x : nums1) {
+            auto it = next.find(x);
+            res.push_back(it == next.end() ? -1 : it->second);
+        }
+        return res;
+    }
+};` }],
       complexity: `<p><b>Time O(N + M)</b>: one monotonic pass over nums2 plus O(1) lookups. <b>Space O(N)</b> for the map and stack.</p>`,
       followUps: ['What if values are not distinct? (Map by index instead.)']
     }
@@ -2686,6 +4386,16 @@ int[] dailyTemperaturesBrute(int[] t) {
       `<p>Decreasing stack of indices. When day <code>i</code> is warmer than the top day <code>j</code>, pop and set <code>ans[j] = i - j</code>.</p>`,
       `<p>Strictly warmer → pop while <code>t[top] &lt; t[i]</code> (equal temperatures keep waiting). Days left on the stack keep 0. Optimisation: temperatures are bounded (30..100), so a right-to-left "next occurrence" array also works.</p>`
     ],
+    tests: { sig: "int[] -> int[]", fn: "dailyTemperatures", cases: [
+      [[[73,74,75,71,69,72,76,73]],[1,1,4,2,1,1,0,0]],
+      [[[30,40,50,60]],[1,1,1,0]],
+      [[[30,60,90]],[1,1,0]],
+      [[[50]],[0]],
+      [[[70,70,70]],[0,0,0]],
+      [[[100,90,80,30]],[0,0,0,0]],
+      [[[55,38,53,81,61,93,97,32,43,78]],[3,1,1,2,1,1,0,1,1,0]],
+      [[{"$concat":[{"$rep":99,"n":99999},[100]]}],{"$concat":[{"$range":[99999,0,-1]},[0]]}]
+    ] },
     solution: {
       approach: `<p>Monotonic decreasing stack of indices; each pop fills one answer with the distance.</p>`,
       code: `
@@ -2712,6 +4422,43 @@ class Solution {
     }
 }`,
       dry: { head: ['i', 't[i]', 'popped → ans', 'stack (indices)'], rows: [['0', '73', '—', '0'], ['1', '74', '0 → 1', '1'], ['2', '75', '1 → 1', '2'], ['3', '71', '—', '2 3'], ['4', '69', '—', '2 3 4'], ['5', '72', '4 → 1, 3 → 2', '2 5'], ['6', '76', '5 → 1, 2 → <span class="c-g">4</span>', '6'], ['7', '73', '—', '6 7']] },
+      alt: [{ lang: 'python', code: `class Solution:
+    def daily_temperatures(self, t: list[int]) -> list[int]:
+        ans = [0] * len(t)
+        st = []                              # indices of days still waiting, temps decreasing
+        for i, x in enumerate(t):
+            while st and t[st[-1]] < x:      # today is warmer than those waiting days
+                j = st.pop()
+                ans[j] = i - j               # distance, so the stack stores indices
+            st.append(i)
+        return ans                           # remaining days keep 0` }, { lang: 'js', code: `function dailyTemperatures(t) {
+  const n = t.length;
+  const ans = new Array(n).fill(0);
+  const st = new Int32Array(n);            // typed array as a fixed-size stack
+  let top = 0;
+  for (let i = 0; i < n; i++) {
+    while (top > 0 && t[st[top - 1]] < t[i]) {
+      const j = st[--top];                 // day j finally sees a warmer day
+      ans[j] = i - j;
+    }
+    st[top++] = i;
+  }
+  return ans;                              // remaining days keep 0
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> dailyTemperatures(const vector<int>& t) {
+        int n = t.size();
+        vector<int> ans(n, 0), st;             // st: indices, temperatures decreasing
+        for (int i = 0; i < n; i++) {
+            while (!st.empty() && t[st.back()] < t[i]) {
+                ans[st.back()] = i - st.back();   // day finally sees a warmer day
+                st.pop_back();
+            }
+            st.push_back(i);
+        }
+        return ans;                            // remaining days keep 0
+    }
+};` }],
       complexity: `<p><b>Time O(N)</b> (each index pushed and popped once), <b>space O(N)</b>.</p>`
     }
   });
@@ -2745,6 +4492,16 @@ int[] nextGreaterCircularBrute(int[] a) {
       `<p>Loop <code>i</code> from 0 to <code>2n − 1</code>, use <code>x = a[i % n]</code>; pop smaller tops and give them x; push <code>i</code> only if <code>i &lt; n</code>.</p>`,
       `<p>Fill the result with -1 first; the global maximum (and equal copies) will never be popped. Duplicates: strictly greater → pop while <code>a[top] &lt; x</code>.</p>`
     ],
+    tests: { sig: "int[] -> int[]", fn: "nextGreaterElements", cases: [
+      [[[1,2,1]],[2,-1,2]],
+      [[[1,2,3,4,3]],[2,3,4,-1,4]],
+      [[[5]],[-1]],
+      [[[3,3,3]],[-1,-1,-1]],
+      [[[5,4,3,2,1]],[-1,5,5,5,5]],
+      [[[-1000000000,1000000000,0]],[1000000000,-1,1000000000]],
+      [[[1,5,3,6,8]],[5,6,6,8,-1]],
+      [[{"$rep":7,"n":10000}],{"$rep":-1,"n":10000}]
+    ] },
     solution: {
       approach: `<p>Monotonic stack over a doubled (virtual) array.</p>`,
       code: `
@@ -2768,6 +4525,40 @@ class Solution {
         System.out.println(Arrays.toString(new Solution().nextGreaterElements(new int[]{1, 2, 3, 4, 3})));   // [2, 3, 4, -1, 4]
     }
 }`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def next_greater_elements(self, a: list[int]) -> list[int]:
+        n = len(a)
+        res = [-1] * n
+        st = []
+        for i in range(2 * n):               # two laps simulate the wrap-around
+            x = a[i % n]
+            while st and a[st[-1]] < x:
+                res[st.pop()] = x
+            if i < n:
+                st.append(i)                 # each index waits only once
+        return res` }, { lang: 'js', code: `function nextGreaterElements(a) {
+  const n = a.length;
+  const res = new Array(n).fill(-1);
+  const st = [];
+  for (let i = 0; i < 2 * n; i++) {        // two laps simulate the wrap-around
+    const x = a[i % n];
+    while (st.length && a[st[st.length - 1]] < x) res[st.pop()] = x;
+    if (i < n) st.push(i);                 // each index waits only once
+  }
+  return res;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> nextGreaterElements(const vector<int>& a) {
+        int n = a.size();
+        vector<int> res(n, -1), st;
+        for (int i = 0; i < 2 * n; i++) {       // two laps simulate the wrap-around
+            int x = a[i % n];
+            while (!st.empty() && a[st.back()] < x) { res[st.back()] = x; st.pop_back(); }
+            if (i < n) st.push_back(i);         // each index waits only once
+        }
+        return res;
+    }
+};` }],
       complexity: `<p><b>Time O(N)</b>: 2N iterations, each index pushed once and popped at most once. <b>Space O(N)</b>.</p>`
     }
   });
@@ -2815,8 +4606,19 @@ boolean isValid(String s) {
     hints: [
       `<p>Aha: a bracket must be removed only if it is <b>unmatched</b>. A ) is unmatched if no ( is open when it arrives; a ( is unmatched if it is still open at the end.</p>`,
       `<p>Push <b>indices</b> of ( on a stack. On ): pop if possible, otherwise mark this ) for removal. At the end, mark every index still on the stack.</p>`,
-      `<p>Build the answer with a <code>StringBuilder</code>, skipping marked indices (a <code>boolean[]</code>). Avoid <code>deleteCharAt</code> in a loop — that is O(N<sup>2</sup>).</p>`
+      `<p>Build the answer in one pass, skipping marked indices (a boolean array or a set). Avoid deleting characters from the middle of a string in a loop — that is O(N<sup>2</sup>) in every language.</p>`
     ],
+    tests: { sig: "string -> string", fn: "minRemoveToMakeValid", check: "(args, out, exp) => { if (typeof out !== 'string' || out.length !== exp.length) return false; let b = 0; for (const c of out) { if (c === '(') b++; else if (c === ')' && --b < 0) return false; } if (b !== 0) return false; const s = args[0]; let i = 0; for (const c of s) if (i < out.length && out[i] === c) i++; if (i !== out.length) return false; const letters = (x) => x.replace(/[()]/g, ''); return letters(out) === letters(s); }", cases: [
+      [["lee(t(c)o)de)"],"lee(t(co)de)"],
+      [["a)b(c)d"],"ab(c)d"],
+      [["))(("],""],
+      [["(a(b(c)d)"],"a(b(c)d)"],
+      [["abc"],"abc"],
+      [["("],""],
+      [[")"],""],
+      [["()"],"()"],
+      [[")(a)("],"(a)"]
+    ] },
     solution: {
       approach: `<p>Stack of indices finds every unmatched bracket in one pass; a second pass copies the rest.</p>`,
       code: `
@@ -2846,6 +4648,49 @@ class Solution {
         System.out.println(new Solution().minRemoveToMakeValid("a)b(c)d"));         // ab(c)d
     }
 }`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def min_remove_to_make_valid(self, s: str) -> str:
+        drop = set()
+        open_idx = []                        # indices of unmatched '('
+        for i, c in enumerate(s):
+            if c == '(':
+                open_idx.append(i)
+            elif c == ')':
+                if open_idx:
+                    open_idx.pop()           # matched pair
+                else:
+                    drop.add(i)              # nothing to close
+        drop.update(open_idx)                # never closed
+        return ''.join(c for i, c in enumerate(s) if i not in drop)` }, { lang: 'js', code: `function minRemoveToMakeValid(s) {
+  const chars = [...s];
+  const open = [];                         // indices of unmatched '('
+  for (let i = 0; i < chars.length; i++) {
+    if (chars[i] === '(') open.push(i);
+    else if (chars[i] === ')') {
+      if (open.length) open.pop();         // matched pair
+      else chars[i] = '';                  // nothing to close: drop it
+    }
+  }
+  for (const i of open) chars[i] = '';     // never closed: drop it
+  return chars.join('');
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    string minRemoveToMakeValid(const string& s) {
+        vector<bool> drop(s.size(), false);
+        vector<int> open;                       // indices of unmatched '('
+        for (int i = 0; i < (int)s.size(); i++) {
+            if (s[i] == '(') open.push_back(i);
+            else if (s[i] == ')') {
+                if (!open.empty()) open.pop_back();   // matched pair
+                else drop[i] = true;                  // nothing to close
+            }
+        }
+        for (int i : open) drop[i] = true;      // never closed
+        string res;
+        for (int i = 0; i < (int)s.size(); i++) if (!drop[i]) res += s[i];
+        return res;
+    }
+};` }],
       complexity: `<p><b>Time O(N)</b>, <b>space O(N)</b> for the stack and marks. Minimality: each removed bracket is provably unmatched in every valid subsequence.</p>`,
       followUps: ['Return ALL valid strings with the minimum removals (LeetCode 301, BFS/backtracking).', 'Do it with O(1) extra space besides the output (two counter passes).']
     }
@@ -2890,6 +4735,19 @@ int[] asteroidBrute(int[] asteroids) {
       `<p>Stack of survivors. For a negative <code>a</code>: while the top is positive and smaller than <code>|a|</code>, pop it. Then handle the equal case (pop, a dies) and the bigger case (a dies).</p>`,
       `<p>Use an <code>alive</code> flag for the current asteroid. Push only if it survives. Positive asteroids are always pushed (they move away from everything on the left).</p>`
     ],
+    tests: { sig: "int[] -> int[]", fn: "asteroidCollision", cases: [
+      [[[5,10,-5]],[5,10]],
+      [[[8,-8]],[]],
+      [[[10,2,-5]],[10]],
+      [[[-2,-1,1,2]],[-2,-1,1,2]],
+      [[[1,-2,-2,-2]],[-2,-2,-2]],
+      [[[1000,-1000]],[]],
+      [[[-1000,1000]],[-1000,1000]],
+      [[[1,2,3,-10]],[-10]],
+      [[[3,-1,-2]],[3]],
+      [[[-5,5]],[-5,5]],
+      [[{"$concat":[{"$rep":1,"n":9999},[-1000]]}],[-1000]]
+    ] },
     solution: {
       approach: `<p>Stack of surviving asteroids; each incoming left-mover fights the stack top until it dies or the top is no longer a right-mover.</p>`,
       code: `
@@ -2918,6 +4776,50 @@ class Solution {
     }
 }`,
       dry: { head: ['a', 'fight', 'stack after'], rows: [['10', '—', '10'], ['2', '—', '10 2'], ['-5', '<span class="c-r">2 pops</span>; 10 &gt; 5 → -5 dies', '<span class="c-g">10</span>']] },
+      alt: [{ lang: 'python', code: `class Solution:
+    def asteroid_collision(self, asteroids: list[int]) -> list[int]:
+        st = []                              # survivors; the end of the list is the rightmost
+        for a in asteroids:
+            alive = True
+            while alive and a < 0 and st and st[-1] > 0:
+                if st[-1] < -a:
+                    st.pop()                 # top explodes, a keeps flying
+                elif st[-1] == -a:
+                    st.pop()                 # both explode
+                    alive = False
+                else:
+                    alive = False            # a explodes
+            if alive:
+                st.append(a)
+        return st` }, { lang: 'js', code: `function asteroidCollision(asteroids) {
+  const st = [];                           // survivors; the end of the array is the rightmost
+  for (const a of asteroids) {
+    let alive = true;
+    while (alive && a < 0 && st.length && st[st.length - 1] > 0) {
+      const top = st[st.length - 1];
+      if (top < -a) st.pop();              // top explodes, a keeps flying
+      else if (top === -a) { st.pop(); alive = false; }   // both explode
+      else alive = false;                  // a explodes
+    }
+    if (alive) st.push(a);
+  }
+  return st;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> asteroidCollision(const vector<int>& asteroids) {
+        vector<int> st;                         // survivors; back() is the rightmost
+        for (int a : asteroids) {
+            bool alive = true;
+            while (alive && a < 0 && !st.empty() && st.back() > 0) {
+                if (st.back() < -a) st.pop_back();                          // top explodes
+                else if (st.back() == -a) { st.pop_back(); alive = false; } // both explode
+                else alive = false;                                         // a explodes
+            }
+            if (alive) st.push_back(a);
+        }
+        return st;
+    }
+};` }],
       complexity: `<p><b>Time O(N)</b>: each asteroid is pushed and popped at most once. <b>Space O(N)</b>.</p>`
     }
   });
@@ -2950,9 +4852,19 @@ String decodeBrute(String s) {
     mcq: { q: 'When we read <code>[</code>, what must we save before starting a fresh inner string?', options: ['Nothing', 'Only the count k', 'The count k and the string built so far', 'The index of ['], answer: 2, explain: 'After the inner part is finished we need to repeat it k times and append it to the outer string we were building — both must be restored.' },
     hints: [
       `<p>Aha: brackets nest, so the most recently opened <code>[</code> closes first — a stack of "where was I?" states.</p>`,
-      `<p>Two stacks: counts and outer <code>StringBuilder</code>s. On <code>[</code> push (k, current) and reset; on <code>]</code> pop them and append <code>current × k</code> to the outer builder.</p>`,
+      `<p>Two stacks: counts and outer strings built so far. On <code>[</code> push (k, current) and reset; on <code>]</code> pop them and append <code>current × k</code> to the outer builder.</p>`,
       `<p>Multi-digit counts like <code>"12[a]"</code>: build <code>k = k * 10 + digit</code>. Reset k after pushing. Letters just append to the current builder.</p>`
     ],
+    tests: { sig: "string -> string", fn: "decodeString", cases: [
+      [["3[a]2[bc]"],"aaabcbc"],
+      [["3[a2[c]]"],"accaccacc"],
+      [["2[abc]3[cd]ef"],"abcabccdcdcdef"],
+      [["abc"],"abc"],
+      [["10[a]"],"aaaaaaaaaa"],
+      [["2[2[2[a]]]"],"aaaaaaaa"],
+      [["1[x]"],"x"],
+      [["ab3[c]d"],"abcccd"]
+    ] },
     solution: {
       approach: `<p>Stack of (repeat count, outer string) frames — the explicit version of a recursive descent parser.</p>`,
       code: `
@@ -2990,6 +4902,63 @@ class Solution {
     }
 }`,
       dry: { head: ['char', 'action', 'cur', 'stacks (count, outer)'], rows: [['3', 'k=3', '""', '—'], ['[', 'push (3, "")', '""', '(3,"")'], ['a', 'append', 'a', '(3,"")'], ['2', 'k=2', 'a', '(3,"")'], ['[', 'push (2, "a")', '""', '(3,"") (2,"a")'], ['c', 'append', 'c', '…'], [']', 'pop (2,"a") → "a"+"cc"', 'acc', '(3,"")'], [']', 'pop (3,"") → "" + "acc"×3', '<span class="c-g">accaccacc</span>', '—']] },
+      alt: [{ lang: 'python', code: `class Solution:
+    def decode_string(self, s: str) -> str:
+        st = []                              # frames of (repeat count, outer parts)
+        cur, k = [], 0
+        for c in s:
+            if c.isdigit():
+                k = k * 10 + int(c)          # multi-digit count
+            elif c == '[':
+                st.append((k, cur))          # remember the count and what came before
+                cur, k = [], 0
+            elif c == ']':
+                times, outer = st.pop()
+                outer.append(''.join(cur) * times)
+                cur = outer                  # continue the outer level
+            else:
+                cur.append(c)
+        return ''.join(cur)` }, { lang: 'js', code: `function decodeString(s) {
+  const st = [];                           // frames of [repeat count, outer string]
+  let cur = '', k = 0;
+  for (const c of s) {
+    if (c >= '0' && c <= '9') {
+      k = k * 10 + Number(c);              // multi-digit count
+    } else if (c === '[') {
+      st.push([k, cur]);                   // remember the count and what came before
+      cur = ''; k = 0;
+    } else if (c === ']') {
+      const [times, outer] = st.pop();
+      cur = outer + cur.repeat(times);     // continue the outer level
+    } else {
+      cur += c;
+    }
+  }
+  return cur;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    string decodeString(const string& s) {
+        vector<pair<int, string>> st;           // frames of (repeat count, outer string)
+        string cur;
+        int k = 0;
+        for (char c : s) {
+            if (isdigit((unsigned char)c)) {
+                k = k * 10 + (c - '0');         // multi-digit count
+            } else if (c == '[') {
+                st.push_back({k, move(cur)});   // remember the count and what came before
+                cur.clear(); k = 0;
+            } else if (c == ']') {
+                auto [times, outer] = move(st.back());
+                st.pop_back();
+                for (int i = 0; i < times; i++) outer += cur;
+                cur = move(outer);              // continue the outer level
+            } else {
+                cur += c;
+            }
+        }
+        return cur;
+    }
+};` }],
       complexity: `<p><b>Time O(output length)</b> (each output character is written a bounded number of times per nesting level), <b>space O(output length)</b>.</p>`
     }
   });
@@ -3024,8 +4993,21 @@ String removeKdigitsBrute(String num, int k) {
     hints: [
       `<p>Aha: to minimise a number, its <b>leftmost</b> digits matter most. If a digit is bigger than the one after it, removing it always makes the number smaller.</p>`,
       `<p>Keep an <b>increasing</b> stack of digits. While <code>k &gt; 0</code> and the top is bigger than the current digit, pop (k--). Then push.</p>`,
-      `<p>If k is still &gt; 0 at the end (e.g. "12345"), remove from the end. Strip leading zeros. Empty → "0". Use a <code>StringBuilder</code> as the stack.</p>`
+      `<p>If k is still &gt; 0 at the end (e.g. "12345"), remove from the end. Strip leading zeros. Empty → "0". A growable string (or a list of digits) works as the stack.</p>`
     ],
+    tests: { sig: "string int -> string", fn: "removeKdigits", cases: [
+      [["1432219",3],"1219"],
+      [["10200",1],"200"],
+      [["10",2],"0"],
+      [["9",1],"0"],
+      [["12345",2],"123"],
+      [["112",1],"11"],
+      [["100",1],"0"],
+      [["1111",2],"11"],
+      [["54321",2],"321"],
+      [["10001",4],"0"],
+      [[{"$rep":"9","n":100000},99999],"9"]
+    ] },
     solution: {
       approach: `<p>Greedy with a monotonic increasing stack: every pop removes a "peak" digit, the most valuable removal available.</p>`,
       code: `
@@ -3053,6 +5035,42 @@ class Solution {
     }
 }`,
       dry: { head: ['digit', 'pops (k after)', 'stack'], rows: [['1', '—', '1'], ['4', '—', '14'], ['3', '<span class="c-r">4</span> (2)', '13'], ['2', '<span class="c-r">3</span> (1)', '12'], ['2', '—', '122'], ['1', '<span class="c-r">2</span> (0)', '121'], ['9', '—', '<span class="c-g">1219</span>']] },
+      alt: [{ lang: 'python', code: `class Solution:
+    def remove_kdigits(self, num: str, k: int) -> str:
+        st = []                              # digits, non-decreasing bottom -> top
+        for c in num:
+            while k and st and st[-1] > c:
+                st.pop()                     # a bigger digit before a smaller one goes
+                k -= 1
+            st.append(c)
+        if k:
+            del st[-k:]                      # still need removals: cut the largest tail
+        return ''.join(st).lstrip('0') or '0'` }, { lang: 'js', code: `function removeKdigits(num, k) {
+  const st = [];                           // digits, non-decreasing bottom -> top
+  for (const c of num) {
+    while (k > 0 && st.length && st[st.length - 1] > c) {
+      st.pop();                            // a bigger digit before a smaller one goes
+      k--;
+    }
+    st.push(c);
+  }
+  st.length -= k;                          // still need removals: cut the largest tail
+  let i = 0;
+  while (i < st.length - 1 && st[i] === '0') i++;   // strip leading zeros
+  return st.length ? st.slice(i).join('') : '0';
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    string removeKdigits(const string& num, int k) {
+        string st;                              // digits, non-decreasing bottom -> top
+        for (char c : num) {
+            while (k > 0 && !st.empty() && st.back() > c) { st.pop_back(); k--; }
+            st.push_back(c);
+        }
+        st.resize(st.size() - k);               // still need removals: cut the largest tail
+        size_t i = st.find_first_not_of('0');
+        return i == string::npos ? "0" : st.substr(i);
+    }
+};` }],
       complexity: `<p><b>Time O(N)</b>, <b>space O(N)</b>.</p>`,
       followUps: ['Make the number as LARGE as possible instead.', 'Remove Duplicate Letters / Smallest Subsequence of Distinct Characters (LC 316/1081).']
     }
@@ -3085,8 +5103,18 @@ int sumSubarrayMinsBrute(int[] arr) {
     hints: [
       `<p>Aha (contribution technique): instead of summing per subarray, ask for each element how many subarrays it is the minimum of, and add <code>a[i] × count</code>.</p>`,
       `<p>count = <code>(i − left[i]) × (right[i] − i)</code> where left = previous <b>strictly</b> smaller index and right = next smaller-<b>or-equal</b> index. Two monotonic stack passes.</p>`,
-      `<p>Duplicates: strict on one side, non-strict on the other, so each subarray is counted exactly once. Use <code>long</code> and take mod. Default left = -1, right = n.</p>`
+      `<p>Duplicates: strict on one side, non-strict on the other, so each subarray is counted exactly once. Use 64-bit arithmetic (<code>long</code> / <code>long long</code>; JS numbers are exact here, Python never overflows) and take the mod. Default left = -1, right = n.</p>`
     ],
+    tests: { sig: "int[] -> int", fn: "sumSubarrayMins", cases: [
+      [[[3,1,2,4]],17],
+      [[[11,81,94,43,3]],444],
+      [[[1]],1],
+      [[[2,2,2]],12],
+      [[[1,2,3,4]],20],
+      [[[4,3,2,1]],20],
+      [[[30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000,30000]],354499993],
+      [[{"$rep":30000,"n":30000}],449905500]
+    ] },
     solution: {
       approach: `<p>Nearest smaller boundaries with monotonic stacks + contribution counting.</p>`,
       code: `
@@ -3122,6 +5150,72 @@ class Solution {
     }
 }`,
       dry: { head: ['i', 'a[i]', 'left', 'right', 'count', 'contribution'], rows: [['0', '3', '-1', '1', '1×1 = 1', '3'], ['1', '1', '-1', '4', '2×3 = 6', '6'], ['2', '2', '1', '4', '1×2 = 2', '4'], ['3', '4', '2', '4', '1×1 = 1', '4'], ['', '', '', '', 'total', '<span class="c-g">17</span>']] },
+      alt: [{ lang: 'python', code: `class Solution:
+    def sum_subarray_mins(self, arr: list[int]) -> int:
+        MOD = 10**9 + 7
+        n = len(arr)
+        left, right = [-1] * n, [n] * n
+        st = []
+        for i, x in enumerate(arr):              # previous STRICTLY smaller
+            while st and arr[st[-1]] >= x:
+                st.pop()
+            if st:
+                left[i] = st[-1]
+            st.append(i)
+        st = []
+        for i in range(n - 1, -1, -1):           # next smaller OR EQUAL
+            while st and arr[st[-1]] > arr[i]:
+                st.pop()
+            if st:
+                right[i] = st[-1]
+            st.append(i)
+        # arr[i] is the minimum of (i - left) * (right - i) subarrays
+        return sum(x * (i - left[i]) * (right[i] - i) for i, x in enumerate(arr)) % MOD` }, { lang: 'js', code: `function sumSubarrayMins(arr) {
+  const MOD = 1_000_000_007, n = arr.length;
+  const left = new Array(n).fill(-1), right = new Array(n).fill(n);
+  let st = [];
+  for (let i = 0; i < n; i++) {                       // previous STRICTLY smaller
+    while (st.length && arr[st[st.length - 1]] >= arr[i]) st.pop();
+    if (st.length) left[i] = st[st.length - 1];
+    st.push(i);
+  }
+  st = [];
+  for (let i = n - 1; i >= 0; i--) {                  // next smaller OR EQUAL
+    while (st.length && arr[st[st.length - 1]] > arr[i]) st.pop();
+    if (st.length) right[i] = st[st.length - 1];
+    st.push(i);
+  }
+  let sum = 0;
+  for (let i = 0; i < n; i++) {
+    // count * value <= 9e8 * 3e4 < 2^53, so Number stays exact before the mod
+    sum = (sum + arr[i] * (i - left[i]) * (right[i] - i)) % MOD;
+  }
+  return sum;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int sumSubarrayMins(const vector<int>& arr) {
+        const long long MOD = 1'000'000'007LL;
+        int n = arr.size();
+        vector<int> left(n, -1), right(n, n), st;
+        for (int i = 0; i < n; i++) {                     // previous STRICTLY smaller
+            while (!st.empty() && arr[st.back()] >= arr[i]) st.pop_back();
+            if (!st.empty()) left[i] = st.back();
+            st.push_back(i);
+        }
+        st.clear();
+        for (int i = n - 1; i >= 0; i--) {                // next smaller OR EQUAL
+            while (!st.empty() && arr[st.back()] > arr[i]) st.pop_back();
+            if (!st.empty()) right[i] = st.back();
+            st.push_back(i);
+        }
+        long long sum = 0;
+        for (int i = 0; i < n; i++) {
+            long long count = 1LL * (i - left[i]) * (right[i] - i);   // subarrays with min arr[i]
+            sum = (sum + arr[i] * count) % MOD;
+        }
+        return (int)sum;
+    }
+};` }],
       complexity: `<p><b>Time O(N)</b>, <b>space O(N)</b>. Max product 3·10<sup>4</sup> × 9·10<sup>8</sup> ≈ 2.7·10<sup>13</sup> fits in a long.</p>`,
       followUps: ['Sum of subarray ranges (max − min) — LC 2104.', 'Why would strict comparisons on both sides double-count [2, 2]?']
     }
@@ -3158,6 +5252,14 @@ class MyCircularQueueSlow {
       `<p>Store <code>int[] data</code>, <code>head</code> and <code>size</code>. Insert at <code>(head + size) % k</code>; remove by <code>head = (head + 1) % k</code>; rear at <code>(head + size − 1) % k</code>.</p>`,
       `<p>Keeping <code>size</code> avoids the classic "head == tail: empty or full?" ambiguity (the alternative is wasting one slot). Check full/empty before enQueue/deQueue.</p>`
     ],
+    tests: { cls: "MyCircularQueue", sigs: {"MyCircularQueue":"int","enQueue":"int -> bool","deQueue":"-> bool","Front":"-> int","Rear":"-> int","isEmpty":"-> bool","isFull":"-> bool"}, cases: [
+      {"ops":["MyCircularQueue","enQueue","enQueue","enQueue","enQueue","Rear","isFull","deQueue","enQueue","Rear"],"args":[[3],[1],[2],[3],[4],[],[],[],[4],[]],"out":[null,true,true,true,false,3,true,true,true,4]},
+      {"ops":["MyCircularQueue","isEmpty","Front","Rear","deQueue"],"args":[[1],[],[],[],[]],"out":[null,true,-1,-1,false]},
+      {"ops":["MyCircularQueue","enQueue","isFull","enQueue","Front","Rear","deQueue","isEmpty","Front"],"args":[[1],[7],[],[8],[],[],[],[],[]],"out":[null,true,true,false,7,7,true,true,-1]},
+      {"ops":["MyCircularQueue","enQueue","enQueue","deQueue","enQueue","enQueue","deQueue","enQueue","Front","Rear","isFull"],"args":[[3],[1],[2],[],[3],[4],[],[5],[],[],[]],"out":[null,true,true,true,true,true,true,true,3,5,true]},
+      {"ops":["MyCircularQueue","enQueue","enQueue","deQueue","deQueue","deQueue","isEmpty","enQueue","Front","Rear"],"args":[[2],[0],[1000],[],[],[],[],[6],[],[]],"out":[null,true,true,true,true,false,true,true,6,6]},
+      {"ops":["MyCircularQueue","enQueue","Rear","Rear","deQueue","enQueue","Rear","deQueue","Front","deQueue","deQueue","Front"],"args":[[8],[3],[],[],[],[9],[],[],[],[],[],[]],"out":[null,true,3,3,true,true,9,true,-1,false,false,-1]}
+    ] },
     solution: {
       approach: `<p>Array + head index + size: every operation is a couple of arithmetic steps.</p>`,
       code: `
@@ -3192,6 +5294,86 @@ class MyCircularQueue {
         System.out.println(q.Rear() + " " + q.deQueue() + " " + q.enQueue(4) + " " + q.Rear());          // 3 true true 4
     }
 }`,
+      alt: [{ lang: 'python', code: `class MyCircularQueue:
+    def __init__(self, k: int):
+        self.data = [0] * k
+        self.head = 0
+        self.size = 0
+
+    def enQueue(self, value: int) -> bool:
+        if self.isFull():
+            return False
+        self.data[(self.head + self.size) % len(self.data)] = value   # first free slot
+        self.size += 1
+        return True
+
+    def deQueue(self) -> bool:
+        if self.isEmpty():
+            return False
+        self.head = (self.head + 1) % len(self.data)   # just move the front forward
+        self.size -= 1
+        return True
+
+    def Front(self) -> int:
+        return -1 if self.isEmpty() else self.data[self.head]
+
+    def Rear(self) -> int:
+        return -1 if self.isEmpty() else self.data[(self.head + self.size - 1) % len(self.data)]
+
+    def isEmpty(self) -> bool:
+        return self.size == 0
+
+    def isFull(self) -> bool:
+        return self.size == len(self.data)` }, { lang: 'js', code: `class MyCircularQueue {
+  constructor(k) {
+    this.data = new Int32Array(k);
+    this.head = 0;
+    this.size = 0;
+  }
+
+  enQueue(value) {
+    if (this.isFull()) return false;
+    this.data[(this.head + this.size) % this.data.length] = value;   // first free slot
+    this.size++;
+    return true;
+  }
+
+  deQueue() {
+    if (this.isEmpty()) return false;
+    this.head = (this.head + 1) % this.data.length;   // just move the front forward
+    this.size--;
+    return true;
+  }
+
+  Front() { return this.isEmpty() ? -1 : this.data[this.head]; }
+  Rear() { return this.isEmpty() ? -1 : this.data[(this.head + this.size - 1) % this.data.length]; }
+  isEmpty() { return this.size === 0; }
+  isFull() { return this.size === this.data.length; }
+}` }, { lang: 'cpp', code: `class MyCircularQueue {
+    vector<int> data;
+    int head = 0, size = 0;
+public:
+    explicit MyCircularQueue(int k) : data(k) {}
+
+    bool enQueue(int value) {
+        if (isFull()) return false;
+        data[(head + size) % data.size()] = value;   // first free slot after the last element
+        size++;
+        return true;
+    }
+
+    bool deQueue() {
+        if (isEmpty()) return false;
+        head = (head + 1) % data.size();             // just move the front forward
+        size--;
+        return true;
+    }
+
+    int Front() { return isEmpty() ? -1 : data[head]; }
+    int Rear() { return isEmpty() ? -1 : data[(head + size - 1) % data.size()]; }
+    bool isEmpty() { return size == 0; }
+    bool isFull() { return size == (int)data.size(); }
+};` }],
       complexity: `<p><b>All operations O(1)</b>, <b>space O(k)</b>. This is the same circular-buffer idea used inside <code>ArrayDeque</code>, Linux kernel ring buffers and network card queues.</p>`,
       followUps: ['Make it thread-safe for one producer and one consumer (lock-free ring buffer).', 'Design a circular DEQUE (LC 641).']
     }
@@ -3233,8 +5415,19 @@ boolean go(int[] pu, int[] po, int i, int j, Deque<Integer> st) {
     hints: [
       `<p>Aha: simulate the real stack. Push values in order; whenever the top is the next value that must be popped, pop it.</p>`,
       `<p>Keep a pointer <code>j</code> into <code>popped</code>. After each push: <code>while top == popped[j]</code> → pop, j++.</p>`,
-      `<p>Answer: did we pop everything (<code>j == n</code>, equivalently the stack is empty)? Compare <code>st.peek()</code> (Integer) with an <code>int</code> so Java unboxes, or use an <code>int[]</code> stack.</p>`
+      `<p>Answer: did we pop everything (<code>j == n</code>, equivalently the stack is empty)? In Java, compare <code>st.peek()</code> (Integer) with an <code>int</code> so it unboxes, or use an <code>int[]</code> stack; other languages compare numbers by value.</p>`
     ],
+    tests: { sig: "int[] int[] -> bool", fn: "validateStackSequences", cases: [
+      [[[1,2,3,4,5],[4,5,3,2,1]],true],
+      [[[1,2,3,4,5],[4,3,5,1,2]],false],
+      [[[1],[1]],true],
+      [[[1,2],[1,2]],true],
+      [[[1,2],[2,1]],true],
+      [[[1,2,3],[3,1,2]],false],
+      [[[2,1,0],[1,2,0]],true],
+      [[[1,2,3,4],[1,2,3,4]],true],
+      [[{"$range":[0,1000,1]},{"$range":[999,-1,-1]}],true]
+    ] },
     solution: {
       approach: `<p>Greedy simulation of the stack.</p>`,
       code: `
@@ -3259,6 +5452,40 @@ class Solution {
         System.out.println(new Solution().validateStackSequences(new int[]{1, 2, 3, 4, 5}, new int[]{4, 3, 5, 1, 2}));   // false
     }
 }`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def validate_stack_sequences(self, pushed: list[int], popped: list[int]) -> bool:
+        st, j = [], 0
+        for x in pushed:
+            st.append(x)
+            while st and st[-1] == popped[j]:    # pop greedily whenever the top is due
+                st.pop()
+                j += 1
+        return j == len(popped)` }, { lang: 'js', code: `function validateStackSequences(pushed, popped) {
+  const st = [];
+  let j = 0;
+  for (const x of pushed) {
+    st.push(x);
+    while (st.length && st[st.length - 1] === popped[j]) {   // pop greedily when due
+      st.pop();
+      j++;
+    }
+  }
+  return j === popped.length;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    bool validateStackSequences(const vector<int>& pushed, const vector<int>& popped) {
+        stack<int> st;
+        size_t j = 0;
+        for (int x : pushed) {
+            st.push(x);
+            while (!st.empty() && st.top() == popped[j]) {   // pop greedily when due
+                st.pop();
+                j++;
+            }
+        }
+        return j == popped.size();
+    }
+};` }],
       complexity: `<p><b>Time O(N)</b>, <b>space O(N)</b>.</p>`
     }
   });
@@ -3296,8 +5523,18 @@ int maximalRectangleBrute(char[][] m) {
     hints: [
       `<p>Aha: fix the <b>bottom row</b> of the rectangle. The 1s above each column form a histogram; the best rectangle with that bottom is the largest rectangle in that histogram.</p>`,
       `<p>Maintain <code>int[] heights</code> across rows (add 1 or reset to 0) and call the O(C) monotonic-stack histogram routine for each row.</p>`,
-      `<p>Total O(R·C). Reuse the sentinel trick (height 0 at index C). Use <code>char</code> comparisons with <code>'1'</code>, not ints.</p>`
+      `<p>Total O(R·C). Reuse the sentinel trick (height 0 at index C). Compare cells with the character <code>'1'</code> (a one-letter string in Python and JS), not the number 1.</p>`
     ],
+    tests: { sig: "char[][] -> int", fn: "maximalRectangle", cases: [
+      [[[["1","0","1","0","0"],["1","0","1","1","1"],["1","1","1","1","1"],["1","0","0","1","0"]]],6],
+      [[[["0"]]],0],
+      [[[["1"]]],1],
+      [[[["1","1","1","1"],["1","1","1","1"],["1","1","1","1"]]],12],
+      [[[["1","0","1","1","1"]]],3],
+      [[[["1"],["1"],["0"],["1"]]],2],
+      [[[["0","1"],["1","0"]]],1],
+      [[[["0","1","1","0"],["1","1","1","1"],["0","1","1","1"]]],6]
+    ] },
     solution: {
       approach: `<p>Row-by-row histograms + Largest Rectangle in Histogram (Topic 7).</p>`,
       code: `
@@ -3335,6 +5572,78 @@ class Solution {
         System.out.println(new Solution().maximalRectangle(m));   // 6
     }
 }`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def maximal_rectangle(self, matrix: list[list[str]]) -> int:
+        if not matrix:
+            return 0
+        h = [0] * len(matrix[0])
+        best = 0
+        for row in matrix:
+            # bar height = consecutive '1's ending at this row
+            h = [v + 1 if c == '1' else 0 for v, c in zip(h, row)]
+            best = max(best, self._largest(h))
+        return best
+
+    @staticmethod
+    def _largest(h: list[int]) -> int:
+        best, st = 0, []                       # increasing stack of indices
+        for i, cur in enumerate(h + [0]):      # height-0 sentinel flushes the stack
+            while st and h[st[-1]] >= cur:
+                top = st.pop()
+                left = st[-1] if st else -1
+                best = max(best, h[top] * (i - left - 1))
+            st.append(i)
+        return best` }, { lang: 'js', code: `function maximalRectangle(matrix) {
+  if (matrix.length === 0) return 0;
+  const cols = matrix[0].length;
+  const h = new Array(cols).fill(0);
+  const largest = () => {
+    const st = [];                         // increasing stack of indices
+    let best = 0;
+    for (let i = 0; i <= cols; i++) {
+      const cur = i === cols ? 0 : h[i];   // height-0 sentinel flushes the stack
+      while (st.length && h[st[st.length - 1]] >= cur) {
+        const top = st.pop();
+        const left = st.length ? st[st.length - 1] : -1;
+        best = Math.max(best, h[top] * (i - left - 1));
+      }
+      st.push(i);
+    }
+    return best;
+  };
+  let best = 0;
+  for (const row of matrix) {
+    for (let c = 0; c < cols; c++) h[c] = row[c] === '1' ? h[c] + 1 : 0;
+    best = Math.max(best, largest());
+  }
+  return best;
+}` }, { lang: 'cpp', code: `class Solution {
+    static int largest(const vector<int>& h) {
+        int n = h.size(), best = 0;
+        vector<int> st;                          // increasing stack of indices
+        for (int i = 0; i <= n; i++) {
+            int cur = i == n ? 0 : h[i];         // height-0 sentinel flushes the stack
+            while (!st.empty() && h[st.back()] >= cur) {
+                int top = st.back(); st.pop_back();
+                int left = st.empty() ? -1 : st.back();
+                best = max(best, h[top] * (i - left - 1));
+            }
+            st.push_back(i);
+        }
+        return best;
+    }
+public:
+    int maximalRectangle(const vector<vector<char>>& matrix) {
+        if (matrix.empty()) return 0;
+        vector<int> h(matrix[0].size(), 0);
+        int best = 0;
+        for (const auto& row : matrix) {
+            for (size_t c = 0; c < h.size(); c++) h[c] = row[c] == '1' ? h[c] + 1 : 0;
+            best = max(best, largest(h));
+        }
+        return best;
+    }
+};` }],
       complexity: `<p><b>Time O(R·C)</b>, <b>space O(C)</b>.</p>`,
       followUps: ['Largest SQUARE of 1s (DP, LC 221).', 'Count all submatrices of 1s (LC 1504) with the same histogram + stack idea.']
     }
@@ -3368,6 +5677,18 @@ int trapBrute(int[] h) {
       `<p>Decreasing stack of indices. While <code>h[top] &lt; h[i]</code>: pop the floor; if the stack is empty there is no left wall (break); else add <code>(i − left − 1) × (min(h[left], h[i]) − h[floor])</code>.</p>`,
       `<p>Equal heights give a 0-height layer — harmless. The stack approach is O(N) time and space; the two-pointer approach is O(1) space — mention both.</p>`
     ],
+    tests: { sig: "int[] -> int", fn: "trap", cases: [
+      [[[0,1,0,2,1,0,1,3,2,1,2,1]],6],
+      [[[4,2,0,3,2,5]],9],
+      [[[1]],0],
+      [[[3,0,3]],3],
+      [[[1,2,3,4]],0],
+      [[[5,0,0,0,5]],15],
+      [[[100000,0,100000]],100000],
+      [[[2,2,2]],0],
+      [[[5,4,1,2]],1],
+      [[{"$concat":[[100000],{"$rep":0,"n":19998},[100000]]}],1999800000]
+    ] },
     solution: {
       approach: `<p>Monotonic decreasing stack; each pop measures one horizontal layer of water above the popped floor.</p>`,
       code: `
@@ -3396,6 +5717,50 @@ class Solution {
         System.out.println(new Solution().trap(new int[]{4, 2, 0, 3, 2, 5}));                     // 9
     }
 }`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def trap(self, height: list[int]) -> int:
+        st, water = [], 0                       # indices, heights decreasing
+        for i, h in enumerate(height):
+            while st and height[st[-1]] < h:
+                floor = st.pop()                # bottom of the valley
+                if not st:
+                    break                       # no left wall: water would spill
+                left = st[-1]
+                level = min(height[left], h) - height[floor]
+                water += (i - left - 1) * level
+            st.append(i)
+        return water` }, { lang: 'js', code: `function trap(height) {
+  const st = [];                          // indices, heights decreasing
+  let water = 0;
+  for (let i = 0; i < height.length; i++) {
+    while (st.length && height[st[st.length - 1]] < height[i]) {
+      const floor = st.pop();             // bottom of the valley
+      if (!st.length) break;              // no left wall: water would spill
+      const left = st[st.length - 1];
+      const level = Math.min(height[left], height[i]) - height[floor];
+      water += (i - left - 1) * level;
+    }
+    st.push(i);
+  }
+  return water;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int trap(const vector<int>& height) {
+        vector<int> st;                          // indices, heights decreasing
+        long long water = 0;                     // 64-bit sum: no overflow worries
+        for (int i = 0; i < (int)height.size(); i++) {
+            while (!st.empty() && height[st.back()] < height[i]) {
+                int floor = st.back(); st.pop_back();   // bottom of the valley
+                if (st.empty()) break;                  // no left wall: water would spill
+                int left = st.back();
+                long long level = min(height[left], height[i]) - height[floor];
+                water += (i - left - 1) * level;
+            }
+            st.push_back(i);
+        }
+        return (int)water;
+    }
+};` }],
       complexity: `<p><b>Time O(N)</b>, <b>space O(N)</b>. Two-pointer version: O(N) time, O(1) space.</p>`,
       followUps: ['Trapping Rain Water II on a 2D grid (min-heap from the borders, LC 407).', 'Prove the two-pointer version correct.']
     }
@@ -3445,6 +5810,20 @@ long evalFlat(String e) {                    // only digits, '+' and '-'
       `<p>Keep <code>result</code>, <code>sign</code>, <code>num</code>. On <code>(</code>: push result and sign, reset. On <code>)</code>: finish the inner result, then <code>result = popSign × result + popResult</code>.</p>`,
       `<p>Multi-digit numbers: <code>num = num*10 + d</code>. Spaces: skip. Unary minus is handled automatically because result starts at 0 ("-x" = "0 - x"). Pop order: sign was pushed last, so pop it first.</p>`
     ],
+    tests: { sig: "string -> int", fn: "calculate", cases: [
+      [["1 + 1"],2],
+      [[" 2-1 + 2 "],3],
+      [["(1+(4+5+2)-3)+(6+8)"],23],
+      [["- (3 + (4 + 5))"],-12],
+      [["-2+ 1"],-1],
+      [["2147483647"],2147483647],
+      [["1-(     -2)"],3],
+      [["-(-(-5))"],-5],
+      [["0"],0],
+      [["(7)-(0)+(4)"],11],
+      [[{"$concat":[{"$rep":"1+","n":100000},"1"]}],100001],
+      [[{"$concat":[{"$rep":"(","n":50000},"7",{"$rep":")","n":50000}]}],7]
+    ] },
     solution: {
       approach: `<p>Single pass with a stack of (result, sign) frames for each open parenthesis.</p>`,
       code: `
@@ -3485,6 +5864,73 @@ class Solution {
     }
 }`,
       dry: { head: ['char', 'result', 'sign', 'num', 'stack'], rows: [['-', '0', '-1', '0', '—'], ['(', '0', '1', '0', '0, -1'], ['3', '0', '1', '3', '0, -1'], ['+', '3', '1', '0', '0, -1'], ['(', '0', '1', '0', '0, -1, 3, 1'], ['4 + 5', '4', '1', '5', '…'], [')', '9 → ×1 +3 = 12', '1', '0', '0, -1'], [')', '12 → ×(-1) + 0 = <span class="c-g">-12</span>', '1', '0', '—']] },
+      alt: [{ lang: 'python', code: `class Solution:
+    def calculate(self, s: str) -> int:
+        st = []                                # saved (result, sign) for each open '('
+        result, sign, num = 0, 1, 0
+        for c in s:
+            if c.isdigit():
+                num = num * 10 + int(c)
+            elif c in '+-':
+                result += sign * num           # close the previous number
+                num = 0
+                sign = 1 if c == '+' else -1
+            elif c == '(':
+                st.append((result, sign))      # save the outer state
+                result, sign = 0, 1
+            elif c == ')':
+                result += sign * num           # finish the inner expression
+                num = 0
+                outer, outer_sign = st.pop()
+                result = outer + outer_sign * result
+        return result + sign * num             # spaces were ignored` }, { lang: 'js', code: `function calculate(s) {
+  const st = [];                           // saved [result, sign] for each open '('
+  let result = 0, sign = 1, num = 0;
+  for (const c of s) {
+    if (c >= '0' && c <= '9') {
+      num = num * 10 + (c.charCodeAt(0) - 48);
+    } else if (c === '+' || c === '-') {
+      result += sign * num;                // close the previous number
+      num = 0;
+      sign = c === '+' ? 1 : -1;
+    } else if (c === '(') {
+      st.push([result, sign]);             // save the outer state
+      result = 0; sign = 1;
+    } else if (c === ')') {
+      result += sign * num;                // finish the inner expression
+      num = 0;
+      const [outer, outerSign] = st.pop();
+      result = outer + outerSign * result;
+    }                                      // spaces are ignored
+  }
+  return result + sign * num;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int calculate(const string& s) {
+        vector<pair<long long, int>> st;        // saved {result, sign} for each open '('
+        long long result = 0, num = 0;
+        int sign = 1;
+        for (char c : s) {
+            if (isdigit((unsigned char)c)) {
+                num = num * 10 + (c - '0');
+            } else if (c == '+' || c == '-') {
+                result += sign * num;           // close the previous number
+                num = 0;
+                sign = c == '+' ? 1 : -1;
+            } else if (c == '(') {
+                st.push_back({result, sign});   // save the outer state
+                result = 0; sign = 1;
+            } else if (c == ')') {
+                result += sign * num;           // finish the inner expression
+                num = 0;
+                auto [outer, outerSign] = st.back();
+                st.pop_back();
+                result = outer + outerSign * result;
+            }                                   // spaces are ignored
+        }
+        return (int)(result + sign * num);
+    }
+};` }],
       complexity: `<p><b>Time O(N)</b>, <b>space O(depth of nesting)</b>.</p>`,
       followUps: ['Add * and / (Basic Calculator II / III): apply * and / immediately, push signed terms.', 'Support variables and return a simplified polynomial (LC 770).']
     }
@@ -3520,6 +5966,19 @@ int longestValidBrute(String s) {
       `<p><code>(</code> → push i. <code>)</code> → pop; if the stack becomes empty, push i as the new barrier; else the current valid length is <code>i − peek()</code>.</p>`,
       `<p>Alternative O(1) space: two counter scans (left→right and right→left). DP also works: <code>dp[i]</code> = longest valid ending at i.</p>`
     ],
+    tests: { sig: "string -> int", fn: "longestValidParentheses", cases: [
+      [[")()())"],4],
+      [["(()"],2],
+      [[""],0],
+      [["()(())"],6],
+      [["()(()"],2],
+      [["(((("],0],
+      [["))))"],0],
+      [["(()())"],6],
+      [[")("],0],
+      [["()"],2],
+      [[{"$rep":"()","n":15000}],30000]
+    ] },
     solution: {
       approach: `<p>Stack of indices with a barrier at the bottom; every match measures the run back to the nearest barrier or unmatched (.</p>`,
       code: `
@@ -3548,6 +6007,49 @@ class Solution {
     }
 }`,
       dry: { head: ['i', 'char', 'action', 'stack', 'best'], rows: [['0', ')', 'pop -1 → empty → push 0', '0', '0'], ['1', '(', 'push', '0 1', '0'], ['2', ')', 'pop 1 → len 2 − 0 = 2', '0', '2'], ['3', '(', 'push', '0 3', '2'], ['4', ')', 'pop 3 → len 4 − 0 = 4', '0', '<span class="c-g">4</span>'], ['5', ')', 'pop 0 → empty → push 5', '5', '4']] },
+      alt: [{ lang: 'python', code: `class Solution:
+    def longest_valid_parentheses(self, s: str) -> int:
+        st = [-1]                             # barrier before index 0
+        best = 0
+        for i, c in enumerate(s):
+            if c == '(':
+                st.append(i)
+            else:
+                st.pop()                      # match the latest '(' (or remove the barrier)
+                if not st:
+                    st.append(i)              # unmatched ')' becomes the new barrier
+                else:
+                    best = max(best, i - st[-1])
+        return best` }, { lang: 'js', code: `function longestValidParentheses(s) {
+  const st = [-1];                        // barrier before index 0
+  let best = 0;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === '(') {
+      st.push(i);
+    } else {
+      st.pop();                           // match the latest '(' (or remove the barrier)
+      if (!st.length) st.push(i);         // unmatched ')' becomes the new barrier
+      else best = Math.max(best, i - st[st.length - 1]);
+    }
+  }
+  return best;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int longestValidParentheses(const string& s) {
+        vector<int> st{-1};                      // barrier before index 0
+        int best = 0;
+        for (int i = 0; i < (int)s.size(); i++) {
+            if (s[i] == '(') {
+                st.push_back(i);
+            } else {
+                st.pop_back();                   // match the latest '(' (or remove the barrier)
+                if (st.empty()) st.push_back(i); // unmatched ')' becomes the new barrier
+                else best = max(best, i - st.back());
+            }
+        }
+        return best;
+    }
+};` }],
       complexity: `<p><b>Time O(N)</b>, <b>space O(N)</b> (O(1) with the two-scan counter method).</p>`
     }
   });
@@ -3577,8 +6079,21 @@ int shortestSubarrayBrute(int[] nums, int k) {
     hints: [
       `<p>Aha: with prefix sums, we need <code>pre[j] − pre[i] ≥ k</code> with the largest i &lt; j. Some i's are dominated and can be discarded forever.</p>`,
       `<p>Increasing deque of prefix indices. For each j: (1) while <code>pre[j] − pre[front] ≥ k</code>, record <code>j − front</code> and poll the front (it can only give longer answers later); (2) while <code>pre[back] ≥ pre[j]</code>, poll the back; (3) offer j.</p>`,
-      `<p>Use <code>long</code> prefix sums. Include index 0 (pre[0] = 0). Answer -1 if nothing was recorded.</p>`
+      `<p>Use 64-bit prefix sums (they reach 10<sup>10</sup>; JS doubles are exact there). Include index 0 (pre[0] = 0). Answer -1 if nothing was recorded.</p>`
     ],
+    tests: { sig: "int[] int -> int", fn: "shortestSubarray", cases: [
+      [[[1],1],1],
+      [[[1,2],4],-1],
+      [[[2,-1,2],3],3],
+      [[[84,-37,32,40,95],167],3],
+      [[[-28,81,-20,28,-29],89],3],
+      [[[-100000,100000],100000],1],
+      [[[5,-100000,5],10],-1],
+      [[[17,85,93,-45,-21],150],2],
+      [[[1,1,1,1],4],4],
+      [[{"$rep":100000,"n":100000},1000000000],10000],
+      [[{"$concat":[[-100000],{"$rep":1,"n":99999}]},99999],99999]
+    ] },
     solution: {
       approach: `<p>Monotonic increasing deque over prefix sums: front pops record answers, back pops remove dominated starts.</p>`,
       code: `
@@ -3610,6 +6125,54 @@ class Solution {
     }
 }`,
       dry: { head: ['j', 'pre[j]', 'front pops (answer)', 'back pops', 'deque'], rows: [['0', '0', '—', '—', '0'], ['1', '2', '—', '—', '0 1'], ['2', '1', '—', '1 (2 ≥ 1)', '0 2'], ['3', '3', '0 → len 3', '—', '<span class="c-g">2 3</span>']] },
+      alt: [{ lang: 'python', code: `from collections import deque
+from itertools import accumulate
+
+
+class Solution:
+    def shortest_subarray(self, nums: list[int], k: int) -> int:
+        pre = [0, *accumulate(nums)]            # pre[j] = sum of nums[0..j-1]
+        dq = deque()                            # prefix indices, pre[] increasing
+        best = len(nums) + 1
+        for j, p in enumerate(pre):
+            while dq and p - pre[dq[0]] >= k:
+                best = min(best, j - dq.popleft())   # a later j would only be longer
+            while dq and pre[dq[-1]] >= p:
+                dq.pop()                        # dominated start
+            dq.append(j)
+        return best if best <= len(nums) else -1` }, { lang: 'js', code: `function shortestSubarray(nums, k) {
+  const n = nums.length;
+  const pre = new Float64Array(n + 1);      // sums reach 1e10: exact in a double
+  for (let i = 0; i < n; i++) pre[i + 1] = pre[i] + nums[i];
+  const dq = new Int32Array(n + 1);         // each index enters once: head/tail pointers
+  let head = 0, tail = 0, best = n + 1;
+  for (let j = 0; j <= n; j++) {
+    while (head < tail && pre[j] - pre[dq[head]] >= k) {
+      best = Math.min(best, j - dq[head++]);   // a later j would only be longer
+    }
+    while (head < tail && pre[dq[tail - 1]] >= pre[j]) tail--;   // dominated start
+    dq[tail++] = j;
+  }
+  return best <= n ? best : -1;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int shortestSubarray(const vector<int>& nums, int k) {
+        int n = nums.size();
+        vector<long long> pre(n + 1, 0);         // long long: sums reach 1e10
+        for (int i = 0; i < n; i++) pre[i + 1] = pre[i] + nums[i];
+        deque<int> dq;                           // prefix indices, pre[] increasing
+        int best = n + 1;
+        for (int j = 0; j <= n; j++) {
+            while (!dq.empty() && pre[j] - pre[dq.front()] >= k) {
+                best = min(best, j - dq.front());   // a later j would only be longer
+                dq.pop_front();
+            }
+            while (!dq.empty() && pre[dq.back()] >= pre[j]) dq.pop_back();   // dominated
+            dq.push_back(j);
+        }
+        return best <= n ? best : -1;
+    }
+};` }],
       complexity: `<p><b>Time O(N)</b> (each index enters and leaves the deque once), <b>space O(N)</b>.</p>`,
       followUps: ['Why does the plain sliding window fail with negative numbers?', 'Constrained Subsequence Sum (LC 1425) — DP + monotonic deque.']
     }
@@ -3657,10 +6220,10 @@ class Solution {
     id: 'dsa13',
     title: 'Stacks & Queues',
     intro: `<p>Stacks and queues are the simplest data structures with the biggest pay-off in interviews. A <b>stack</b> (pile of plates, newest first) and a <b>queue</b> (ticket line, oldest first) only let you touch their ends — and that one restriction turns many O(N<sup>2</sup>) brute forces into clean O(N) scans.</p>
-      <p>In this module you will start with Java's <code>ArrayDeque</code> and why it replaced the old <code>Stack</code> class, then use stacks for <b>bracket matching</b>, <b>min stack</b> design and <b>expression evaluation</b> (infix → postfix, RPN). Next comes the star of the module: the <b>monotonic stack</b> — next greater element, stock span and the famous largest rectangle in a histogram — where you will watch elements get <span class="c-r">popped (red)</span> and <span class="c-g">pushed (green)</span> step by step. Finally you will build a <b>queue from two stacks</b> (and learn what <i>amortized O(1)</i> really means) and the <b>monotonic deque</b> for sliding window maximum.</p>
+      <p>In this module you will start with the right container in each language (Java's <code>ArrayDeque</code> and why it replaced the old <code>Stack</code> class, Python's <code>list</code> and <code>deque</code>, JS arrays, C++ <code>stack</code>/<code>queue</code>/<code>deque</code>), then use stacks for <b>bracket matching</b>, <b>min stack</b> design and <b>expression evaluation</b> (infix → postfix, RPN). Next comes the star of the module: the <b>monotonic stack</b> — next greater element, stock span and the famous largest rectangle in a histogram — where you will watch elements get <span class="c-r">popped (red)</span> and <span class="c-g">pushed (green)</span> step by step. Finally you will build a <b>queue from two stacks</b> (and learn what <i>amortized O(1)</i> really means) and the <b>monotonic deque</b> for sliding window maximum.</p>
       <p>Every topic opens with an everyday analogy, then a visualizer, worked examples, an expert deep dive and a section on working alongside AI. The Practice Arena mixes classic and disguised problems so you learn to <b>spot</b> the pattern from the wording.</p>`,
     goals: [
-      'Use <code>ArrayDeque</code> correctly as a stack, a queue and a deque, and explain why it beats <code>Stack</code> and <code>LinkedList</code>',
+      'Use a stack, a queue and a deque correctly in your language (<code>ArrayDeque</code> / <code>list</code> + <code>deque</code> / arrays / <code>std::stack</code>, <code>queue</code>, <code>deque</code>) and explain their empty-container and performance traps',
       'Solve bracket-matching, min-stack and expression-evaluation problems (RPN, infix → postfix) with a clear invariant',
       'Recognise next/previous greater/smaller questions and solve them in O(N) with a monotonic stack, including stock span and largest rectangle in a histogram',
       'Build a queue from two stacks and prove amortized O(1) with the "each element moves once" argument',
@@ -3669,6 +6232,12 @@ class Solution {
     ],
     prereqs: `DSA 1 (Programming Foundations), DSA 2 (Time/Space Complexity), DSA 5 (Arrays & Prefix Sums) and DSA 6 (Two Pointers & Sliding Window). DSA 12 (Linked Lists) helps for the "how is it stored" deep dives but is not required.`,
     hours: 14,
+    langNotes: {
+      java: `<p><b>Java:</b> use <code>ArrayDeque</code> for stacks (<code>push/pop/peek</code>), queues (<code>offer/poll/peek</code>) and deques (<code>offerFirst/pollLast</code> …); avoid the legacy synchronized <code>Stack</code> and node-heavy <code>LinkedList</code>. <code>ArrayDeque</code> rejects <code>null</code>; <code>poll/peek</code> return <code>null</code> on empty while <code>pop/remove</code> throw. Compare boxed <code>Integer</code> values with <code>.equals</code> or unbox first: <code>==</code> only works for -128..127. <code>int</code> overflow wraps silently, so use <code>long</code> for areas, sums and the encoded Min Stack. Integer <code>/</code> truncates toward zero, as RPN expects. Deep recursion overflows after roughly 10<sup>4</sup> frames: use an explicit stack. For hot loops an <code>int[]</code> with a <code>top</code> index avoids boxing. <code>PriorityQueue</code> is a min-heap.</p>`,
+      python: `<p><b>Python:</b> a <code>list</code> is the stack (<code>append</code>, <code>pop()</code>, <code>[-1]</code>). For a queue or deque use <code>collections.deque</code> (<code>append</code>, <code>popleft</code>, <code>appendleft</code>, <code>pop</code>), because <code>list.pop(0)</code> is O(n). <code>[].pop()</code> raises <code>IndexError</code>, so check for empty first. Ints never overflow. But <code>//</code> rounds <b>down</b> (<code>-7 // 2 == -4</code>), so truncate toward zero with <code>int(a / b)</code> or fix the sign by hand. Recursion stops at about 1000 frames: use an explicit stack, or <code>sys.setrecursionlimit</code> together with <code>threading.stack_size</code>. Build strings in a list and <code>"".join</code> them. <code>heapq</code> is a min-heap only (negate values for a max-heap). Compare numbers with <code>==</code>, never <code>is</code>.</p>`,
+      js: `<p><b>JavaScript:</b> an array is the stack (<code>push</code>, <code>pop</code>, <code>a[a.length - 1]</code>). <code>shift()</code> and <code>unshift()</code> are O(n), so build queues and monotonic deques from an array (or <code>Int32Array</code>) with a <code>head</code> index. Each index enters once, so it never needs to wrap. <code>[].pop()</code> quietly returns <code>undefined</code> instead of throwing. <code>Number</code> is exact only up to 2<sup>53</sup>; use <code>BigInt</code> past that. Division gives fractions, so RPN needs <code>Math.trunc(a / b)</code>. <code>%</code> keeps the dividend's sign, and <code>|0</code> truncates to 32 bits. <code>sort()</code> compares strings unless you pass <code>(a, b) =&gt; a - b</code>. Recursion depth is about 10<sup>4</sup> frames. <b>There is no built-in heap</b>: write a small <code>MinHeap</code> when you need one (this module's solutions do not).</p>`,
+      cpp: `<p><b>C++:</b> <code>std::stack</code> and <code>std::queue</code> are adaptors over <code>deque</code>. A <code>vector</code> (<code>push_back/back/pop_back</code>) is often the simplest stack, and <code>std::deque</code> gives O(1) at both ends. <code>pop()</code> returns <code>void</code>, so read <code>top()</code>/<code>front()</code> first. Calling them on an empty container is <b>undefined behaviour</b>, not an exception. Signed overflow is also undefined behaviour: use <code>long long</code> for areas, prefix sums and the encoded Min Stack. <code>/</code> truncates toward zero. The default stack is about 8 MB, so very deep recursion can crash: prefer an explicit stack. Pass containers by <code>const&amp;</code>. <code>map</code> is O(log n), <code>unordered_map</code> O(1) on average, and <code>priority_queue</code> is a <b>max</b>-heap.</p>`
+    },
     topics: topics,
     practice: practice,
     quiz: quiz,

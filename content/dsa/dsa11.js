@@ -626,7 +626,7 @@
       ])}
       <p>Going <b>down</b> (steps 1–4) we only <i>ask</i>. Coming back <b>up</b> (steps 5–7) we actually <i>multiply</i>. Code written <b>before</b> the recursive call runs on the way down; code written <b>after</b> it runs on the way back up (that is why printing after the call prints in reverse!).</p>
       <h4>Stack overflow</h4>
-      <p>The call stack has a fixed size (Java's default is roughly 512 KB–1 MB per thread → usually around <b>10<sup>4</sup> to 10<sup>5</sup></b> simple frames). If the recursion is too deep, or the base case is missing / never reached, frames pile up until Java throws <span class="c-r"><code>StackOverflowError</code></span>.</p>
+      <p>The call stack has a fixed size. Java and JavaScript usually manage around <b>10<sup>4</sup></b> simple frames by default, C++ gets an 8 MB stack on Linux (often only 1 MB on Windows), and Python stops at a recursion limit of <b>1000</b> frames. If the recursion is too deep, or the base case is missing / never reached, frames pile up until the program fails: <span class="c-r"><code>StackOverflowError</code></span> in Java, <code>RecursionError</code> in Python, <code>RangeError</code> in JavaScript, and a plain crash (segmentation fault) in C++.</p>
       ${H.table(['bug', 'what goes wrong'], [
         ['No base case', 'fact(1) calls fact(0), fact(-1), fact(-2)… forever'],
         ['Input does not shrink', 'f(n) calls f(n) again → never ends'],
@@ -638,10 +638,10 @@
       'The problem is defined in terms of a <b>smaller copy of itself</b>: "f(n) depends on f(n-1)", factorial, power, Fibonacci, "sum of digits".',
       'Nested / self-similar structure: trees, folders inside folders, brackets inside brackets → recursion fits naturally.',
       '"Print in <b>reverse</b>" or "process after the children are done" → put the work <b>after</b> the recursive call.',
-      'Depth ≈ N with <code>N ≤ 10<sup>4</sup></code> is usually safe; <code>N ≈ 10<sup>6</sup></code> with one call per step → risk of <b>StackOverflowError</b>, prefer a loop.',
+      'Depth ≈ N with <code>N ≤ 10<sup>4</sup></code> is usually safe; <code>N ≈ 10<sup>6</sup></code> with one call per step → risk of a <b>stack overflow</b> (Python already stops at 1000 frames), prefer a loop.',
       'Exponent up to 10<sup>9</sup> or 2<sup>31</sup> ("compute x<sup>n</sup>") → halve the problem each call: O(log n) depth.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       class RecursionBasics {
           // Factorial: n! = n * (n-1)!, base case 0! = 1! = 1
           static long fact(int n) {
@@ -673,7 +673,100 @@
               countDown(3);                    // 3 2 1
               countUp(3);                      // 1 2 3
           }
-      }`, `
+      }`,
+      alt: [
+        { lang: 'python', run: true, code: `def fact(n):
+    if n <= 1:                      # BASE CASE: the smallest doll
+        return 1
+    return n * fact(n - 1)          # RECURSIVE CASE: shrink n, trust the answer
+
+
+def fib(n):
+    if n <= 1:                      # fib(0) = 0, fib(1) = 1
+        return n
+    return fib(n - 1) + fib(n - 2)  # left call finishes completely before the right one starts
+
+
+def count_down(n):                  # prints n, n-1, ..., 1
+    if n == 0:
+        return
+    print(n, end=" ")               # work BEFORE the call -> runs on the way DOWN
+    count_down(n - 1)
+
+
+def count_up(n):                    # prints 1, 2, ..., n
+    if n == 0:
+        return
+    count_up(n - 1)
+    print(n, end=" ")               # work AFTER the call -> runs on the way back UP
+
+
+print(fact(5))                      # 120
+print(fib(6))                       # 8
+count_down(3)                       # 3 2 1
+count_up(3)                         # 1 2 3
+print()` },
+        { lang: 'js', run: true, code: `// Factorial: n! = n * (n-1)!, base case 0! = 1! = 1
+function fact(n) {
+  if (n <= 1) return 1;                  // BASE CASE: the smallest doll
+  return n * fact(n - 1);                // RECURSIVE CASE (exact up to 18!; use BigInt beyond)
+}
+
+// Fibonacci: two calls per frame
+function fib(n) {
+  if (n <= 1) return n;                  // fib(0) = 0, fib(1) = 1
+  return fib(n - 1) + fib(n - 2);        // left call finishes completely before the right one starts
+}
+
+// Head vs tail work: same calls, different print order
+function countDown(n, out = []) {        // collects n, n-1, ..., 1
+  if (n === 0) return out;
+  out.push(n);                           // work BEFORE the call -> runs on the way DOWN
+  return countDown(n - 1, out);
+}
+function countUp(n, out = []) {          // collects 1, 2, ..., n
+  if (n === 0) return out;
+  countUp(n - 1, out);
+  out.push(n);                           // work AFTER the call -> runs on the way back UP
+  return out;
+}
+
+console.log(fact(5));                    // 120
+console.log(fib(6));                     // 8
+console.log(countDown(3).join(' '));     // 3 2 1
+console.log(countUp(3).join(' '));       // 1 2 3` },
+        { lang: 'cpp', code: `// Factorial: n! = n * (n-1)!, base case 0! = 1! = 1
+long long fact(int n) {
+    if (n <= 1) return 1;                // BASE CASE: the smallest doll
+    return n * fact(n - 1);              // RECURSIVE CASE: shrink n, trust the answer
+}
+
+// Fibonacci: fib(n) = fib(n-1) + fib(n-2); two calls per frame
+int fib(int n) {
+    if (n <= 1) return n;                // fib(0) = 0, fib(1) = 1
+    return fib(n - 1) + fib(n - 2);      // left call finishes completely before the right one starts
+}
+
+// Head vs tail work: same calls, different print order
+void countDown(int n) {                  // prints n, n-1, ..., 1
+    if (n == 0) return;
+    cout << n << ' ';                    // work BEFORE the call -> runs on the way DOWN
+    countDown(n - 1);
+}
+void countUp(int n) {                    // prints 1, 2, ..., n
+    if (n == 0) return;
+    countUp(n - 1);
+    cout << n << ' ';                    // work AFTER the call -> runs on the way back UP
+}
+
+int main() {
+    cout << fact(5) << '\\n';             // 120
+    cout << fib(6) << '\\n';              // 8
+    countDown(3);                        // 3 2 1
+    countUp(3);                          // 1 2 3
+    cout << '\\n';
+}` }
+      ] }, { lang: 'java', code: `
       class OverflowDemo {
           // BUG on purpose: no base case, so every call makes another call forever.
           static int depth = 0;
@@ -690,7 +783,57 @@
                   System.out.println("Stack overflowed after about " + depth + " frames");
               }
           }
-      }`],
+      }`,
+        alt: [
+          { lang: 'python', run: true, code: `import sys
+
+depth = 0
+
+
+def no_base(n):
+    # BUG on purpose: no base case, so every call makes another call forever.
+    global depth
+    depth += 1
+    no_base(n - 1)                  # never stops
+
+
+try:
+    no_base(5)
+except RecursionError:
+    # CPython stops at sys.getrecursionlimit() frames (1000 by default).
+    print("Stack overflowed after about", depth, "frames; the limit is", sys.getrecursionlimit())` },
+          { lang: 'js', run: true, code: `// BUG on purpose: no base case, so every call makes another call forever.
+let depth = 0;
+function noBase(n) {
+  depth++;
+  noBase(n - 1);                         // never stops
+}
+
+try {
+  noBase(5);
+} catch (e) {
+  // V8 throws RangeError ("Maximum call stack size exceeded"), usually after ~10k frames.
+  console.log(e instanceof RangeError, 'stack overflowed after about ' + depth + ' frames');
+}` },
+          { lang: 'cpp', code: `// BUG on purpose: no base case, so every call makes another call forever.
+// In C++ a stack overflow is NOT an exception you can catch: the program
+// crashes (usually "Segmentation fault"), so main below never calls it.
+long long depthReached = 0;
+void noBase(int n) {
+    depthReached++;
+    noBase(n - 1);                       // never stops
+}
+
+// The fix: a base case that every call moves toward.
+int withBase(int n) {
+    if (n <= 0) return 0;                // base case
+    return 1 + withBase(n - 1);
+}
+
+int main() {
+    cout << withBase(100000) << '\\n';    // 100000 small frames fit in a typical 8 MB stack
+}` }
+        ] }],
     codeTitle: ['Base case, recursive case, head vs tail work', 'What a stack overflow looks like'],
     viz: [{
       title: 'Call stack push / pop for factorial and Fibonacci',
@@ -709,7 +852,7 @@
         html: `<p><code>digitSum(4721)</code>: the last digit is <code>4721 % 10 = 1</code>, the rest is <code>4721 / 10 = 472</code>. So digitSum(4721) = 1 + digitSum(472). Base case: a number below 10 is its own digit sum.</p>
           ${H.table(['call', 'last digit', 'rest', 'returns'], [['digitSum(4721)', '1', '472', H.c('p', '1 + 13 = 14')], ['digitSum(472)', '2', '47', '2 + 11 = 13'], ['digitSum(47)', '7', '4', '7 + 4 = 11'], ['digitSum(4)', '—', '—', H.c('g', '4 (base)')]])}
           <p>Depth = number of digits ≈ log₁₀N, so even N = 2·10<sup>9</sup> needs only 10 frames.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           class DigitSum {
               static int digitSum(int n) {
                   if (n < 10) return n;                 // base case: single digit
@@ -718,13 +861,34 @@
               public static void main(String[] args) {
                   System.out.println(digitSum(4721));   // 14
               }
-          }`
+          }`,
+          alt: [
+            { lang: 'python', run: true, code: `def digit_sum(n):
+    if n < 10:
+        return n                    # base case: single digit
+    return n % 10 + digit_sum(n // 10)   # last digit + sum of the rest
+
+
+print(digit_sum(4721))              # 14` },
+            { lang: 'js', run: true, code: `function digitSum(n) {
+  if (n < 10) return n;                          // base case: single digit
+  return (n % 10) + digitSum(Math.floor(n / 10)); // last digit + sum of the rest
+}
+console.log(digitSum(4721));                     // 14` },
+            { lang: 'cpp', code: `int digitSum(int n) {
+    if (n < 10) return n;                // base case: single digit
+    return n % 10 + digitSum(n / 10);    // last digit + sum of the rest
+}
+int main() {
+    cout << digitSum(4721) << '\\n';      // 14
+}` }
+          ] }
       },
       {
         title: 'Is it a palindrome? — two ends move inwards',
         html: `<p>"racecar": compare the first and last characters; if they match, the answer is whatever the <b>inside</b> ("aceca") says. Base case: 0 or 1 characters left → palindrome. Pass indices <code>(l, r)</code> instead of creating substrings — <code>substring</code> copies characters and would turn O(N) into O(N<sup>2</sup>).</p>
           ${H.arr(['r', 'a', 'c', 'e', 'c', 'a', 'r'], { hl: { 0: 'g', 6: 'g', 3: 'p' }, ptr: { 0: 'l', 6: 'r' } })}`,
-        code: `
+        code: { lang: 'java', code: `
           class Pal {
               static boolean isPal(String s, int l, int r) {
                   if (l >= r) return true;                       // base: empty or one char
@@ -735,12 +899,40 @@
                   System.out.println(isPal("racecar", 0, 6));    // true
                   System.out.println(isPal("abca", 0, 3));       // false
               }
-          }`
+          }`,
+          alt: [
+            { lang: 'python', run: true, code: `def is_pal(s, l, r):
+    if l >= r:
+        return True                 # base: empty or one char
+    if s[l] != s[r]:
+        return False                # early exit: mismatch
+    return is_pal(s, l + 1, r - 1)  # the inside decides
+
+
+print(is_pal("racecar", 0, 6))      # True
+print(is_pal("abca", 0, 3))         # False` },
+            { lang: 'js', run: true, code: `function isPal(s, l, r) {
+  if (l >= r) return true;                       // base: empty or one char
+  if (s[l] !== s[r]) return false;               // early exit: mismatch
+  return isPal(s, l + 1, r - 1);                 // the inside decides
+}
+console.log(isPal('racecar', 0, 6));             // true
+console.log(isPal('abca', 0, 3));                // false` },
+            { lang: 'cpp', code: `bool isPal(const string& s, int l, int r) {   // const& : no copy per call
+    if (l >= r) return true;                   // base: empty or one char
+    if (s[l] != s[r]) return false;            // early exit: mismatch
+    return isPal(s, l + 1, r - 1);             // the inside decides
+}
+int main() {
+    cout << boolalpha << isPal("racecar", 0, 6) << '\\n';   // true
+    cout << boolalpha << isPal("abca", 0, 3) << '\\n';      // false
+}` }
+          ] }
       },
       {
         title: 'Reverse an array in place with recursion',
         html: `<p>Swap the two ends, then reverse the middle. [1, 2, 3, 4, 5] → swap 1 and 5 → [5, 2, 3, 4, 1] → reverse(1, 3) → swap 2 and 4 → [5, 4, 3, 2, 1] → reverse(2, 2) is the base case. This is the same "shrink from both ends" shape as the palindrome check — recursion is often just a loop in disguise, which is why interviewers ask you to convert one into the other.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           class Rev {
               static void reverse(int[] a, int l, int r) {
                   if (l >= r) return;                 // base: 0 or 1 elements left
@@ -752,7 +944,38 @@
                   reverse(a, 0, a.length - 1);
                   System.out.println(Arrays.toString(a)); // [5, 4, 3, 2, 1]
               }
-          }`
+          }`,
+          alt: [
+            { lang: 'python', run: true, code: `def reverse(a, l, r):
+    if l >= r:
+        return                      # base: 0 or 1 elements left
+    a[l], a[r] = a[r], a[l]         # fix the two ends
+    reverse(a, l + 1, r - 1)        # trust recursion for the middle
+
+
+a = [1, 2, 3, 4, 5]
+reverse(a, 0, len(a) - 1)
+print(a)                            # [5, 4, 3, 2, 1]` },
+            { lang: 'js', run: true, code: `function reverse(a, l, r) {
+  if (l >= r) return;                            // base: 0 or 1 elements left
+  [a[l], a[r]] = [a[r], a[l]];                   // fix the two ends
+  reverse(a, l + 1, r - 1);                      // trust recursion for the middle
+}
+const a = [1, 2, 3, 4, 5];
+reverse(a, 0, a.length - 1);
+console.log(a);                                  // [ 5, 4, 3, 2, 1 ]` },
+            { lang: 'cpp', code: `void reverseRange(vector<int>& a, int l, int r) {
+    if (l >= r) return;                  // base: 0 or 1 elements left
+    swap(a[l], a[r]);                    // fix the two ends
+    reverseRange(a, l + 1, r - 1);       // trust recursion for the middle
+}
+int main() {
+    vector<int> a = {1, 2, 3, 4, 5};
+    reverseRange(a, 0, (int)a.size() - 1);
+    for (int x : a) cout << x << ' ';    // 5 4 3 2 1
+    cout << '\\n';
+}` }
+          ] }
       },
       {
         title: 'Same function in Python — and Python\'s much lower depth limit',
@@ -774,10 +997,11 @@ except RecursionError as e:
     ],
     deepDive: `<h4>What exactly is inside a stack frame?</h4>
       <p>In the JVM each method call pushes a frame holding: the <b>local variable array</b> (parameters + locals; <code>long</code>/<code>double</code> take two slots), the <b>operand stack</b> used while evaluating expressions, and a reference back to the caller's frame and its <b>return address</b>. The frame size is fixed at compile time. Objects you create live on the <b>heap</b>; the frame only holds the reference — so passing a <code>List</code> into recursion shares one list across all frames (which is exactly why backtracking must "un-choose").</p>
-      <h4>How deep can Java go?</h4>
+      <h4>How deep can each language go?</h4>
       <p>The default thread stack is set by <code>-Xss</code> (commonly 512 KB–1 MB on 64-bit JVMs). A tiny frame (one <code>int</code>) allows roughly 10–20 thousand calls before the JIT kicks in, often more after JIT compiles the method (compiled frames are smaller). Never rely on an exact number. Workarounds for deep recursion: (1) rewrite as a loop, (2) use an explicit <code>ArrayDeque</code> stack, (3) run the recursion in a <code>new Thread(null, task, "big", 1L &lt;&lt; 26)</code> with a 64 MB stack (a common competitive-programming trick).</p>
-      <h4>Tail recursion — Java does NOT optimise it</h4>
-      <p>A call is a <b>tail call</b> when it is the very last thing the function does (<code>return helper(n - 1, acc * n)</code>). Scheme, Scala (<code>@tailrec</code>) and Kotlin (<code>tailrec</code>) turn that into a jump, so the stack never grows. The JVM (including Java 21+) does not do this, nor does CPython. So in Java, tail-recursive code still costs O(depth) stack — convert it to a loop if depth can be large.</p>
+      <p><b>Other languages:</b> Python counts frames instead of bytes: <code>sys.setrecursionlimit(10**6)</code> raises the limit, and for really deep DFS also run the work in a <code>threading.Thread</code> after <code>threading.stack_size(512 * 1024 * 1024)</code>, or the interpreter itself can crash. JavaScript (V8) allows roughly 10 thousand frames; <code>node --stack-size=...</code> changes it, but an explicit array stack is the portable fix. C++ has no limit check at all: past the OS stack (<code>ulimit -s</code>, usually 8 MB) the program simply crashes, so estimate depth × frame size before recursing deeply.</p>
+      <h4>Tail recursion — do not count on it being optimised</h4>
+      <p>A call is a <b>tail call</b> when it is the very last thing the function does (<code>return helper(n - 1, acc * n)</code>). Scheme, Scala (<code>@tailrec</code>) and Kotlin (<code>tailrec</code>) turn that into a jump, so the stack never grows. The JVM (including Java 21+) does not do this, nor does CPython. JavaScript's specification allows proper tail calls, but V8 (Chrome, Node) does not implement them. C++ compilers often turn tail calls into jumps at <code>-O2</code>, but the language does not guarantee it. So tail-recursive code still costs O(depth) stack in practice — convert it to a loop if depth can be large.</p>
       <h4>Proof of correctness = induction</h4>
       <p>Recursion is mathematical induction run backwards: prove the base case is right, then prove "if the smaller call is right, my combination step is right". This is the formal version of the "leap of faith" — you never need to trace all the calls in your head.</p>
       <h4>Recursion vs iteration cost</h4>
@@ -792,7 +1016,7 @@ except RecursionError as e:
         level: 'Easy',
         tags: ['recursion', 'base case'],
         statement: `<p>Given a non-negative integer <code>N</code>, return <code>N!</code> = 1 × 2 × … × N using <b>recursion</b>. By definition <code>0! = 1</code>.</p>`,
-        constraints: `0 ≤ N ≤ 20 (20! = 2,432,902,008,176,640,000 still fits in a Java <code>long</code>; 21! does not)`,
+        constraints: `0 ≤ N ≤ 20 (20! = 2,432,902,008,176,640,000 still fits in a signed 64-bit integer — <code>long</code> / <code>long long</code>; 21! does not. Python ints never overflow; JavaScript needs <code>BigInt</code> because 19! is past 2<sup>53</sup>)`,
         example: `<p>Input: <b>N = 5</b> → Output: ${H.c('p', '<b>120</b>')}</p>
           ${H.table(['call', 'asks for', 'gets back', 'returns'], [
             ['fact(5)', 'fact(4)', '24', H.c('p', '5 × 24 = 120')],
@@ -817,13 +1041,23 @@ except RecursionError as e:
           q: `You wrote <code>long fact(int n) { return n * fact(n - 1); }</code> with <b>no</b> if-statement. What happens for <code>fact(3)</code>?`,
           options: ['Returns 6', 'Returns 0 because it eventually multiplies by 0', 'Calls go 3, 2, 1, 0, -1, -2 … until StackOverflowError', 'Compile error'],
           answer: 2,
-          explain: `Nothing ever stops the calls: there is no base case, so it keeps calling with smaller and smaller (negative) n. It never returns at all, so it never gets to multiply by 0 — the stack fills up and Java throws StackOverflowError.`
+          explain: `Nothing ever stops the calls: there is no base case, so it keeps calling with smaller and smaller (negative) n. It never returns at all, so it never gets to multiply by 0 — the stack fills up and the program dies with a stack overflow (StackOverflowError in Java, RecursionError in Python, RangeError in JavaScript, a crash in C++).`
         },
         hints: [
           `<p><b>Aha:</b> N! = N × (N − 1)!. The big problem is "N times the answer to a smaller problem". The smallest problem you just know: 0! = 1! = 1.</p>`,
           `<p>No data structure needed — the <b>call stack</b> itself remembers each pending "N × ?" for you. Each frame stores its own <code>n</code>.</p>`,
-          `<p>Traps: use <code>long</code> (13! already overflows <code>int</code>); handle <code>n = 0</code> (use <code>n &lt;= 1</code> as the base case). Recipe: if n ≤ 1 return 1; else return n × fact(n − 1).</p>`
+          `<p>Traps: use a 64-bit integer (<code>long</code> / <code>long long</code>; <code>BigInt</code> in JavaScript, plain ints in Python) because 13! already overflows a 32-bit <code>int</code>; handle <code>n = 0</code> (use <code>n &lt;= 1</code> as the base case). Recipe: if n ≤ 1 return 1; else return n × fact(n − 1).</p>`
         ],
+        tests: { sig: 'int -> long', fn: 'factorial', cases: [
+          [[0],1],
+          [[1],1],
+          [[2],2],
+          [[5],120],
+          [[12],479001600],
+          [[13],6227020800],
+          [[19],"121645100408832000"],
+          [[20],"2432902008176640000"]
+        ] },
         solution: {
           approach: `<p>Base case n ≤ 1 → 1. Otherwise multiply n by the factorial of n − 1.</p>`,
           code: `
@@ -840,6 +1074,23 @@ except RecursionError as e:
                     System.out.println(new Solution().factorial(5));  // 120
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `def factorial(n: int) -> int:
+    if n <= 1:
+        return 1                    # base case: 0! = 1! = 1
+    return n * factorial(n - 1)     # Python ints never overflow, so 20! is exact` },
+            { lang: 'js', code: `function factorial(n) {
+  if (n <= 1) return 1n;                 // base case; BigInt because 19! is past 2^53
+  return BigInt(n) * factorial(n - 1);   // leap of faith on (n-1)!
+}` },
+            { lang: 'cpp', code: `class Solution {
+public:
+    long long factorial(int n) {
+        if (n <= 1) return 1;                 // base case: 0! = 1! = 1
+        return n * factorial(n - 1);          // long long: 20! < 2^63, 21! is not
+    }
+};` }
+          ],
           dry: {
             head: ['frame', 'n', 'base case?', 'smaller (returned by child)', 'returns'],
             rows: [
@@ -889,8 +1140,23 @@ except RecursionError as e:
         hints: [
           `<p><b>Aha:</b> x<sup>n</sup> = (x<sup>n/2</sup>)<sup>2</sup> when n is even, and x × (x<sup>n/2</sup>)<sup>2</sup> when n is odd (integer division). So each call halves n.</p>`,
           `<p>Store the half result in a local variable <code>half</code> and multiply it by itself — call the recursion <b>once</b>, not twice. Depth becomes about log₂n ≈ 31.</p>`,
-          `<p>Traps: n = −2<sup>31</sup> → <code>-n</code> overflows int, so copy n into a <code>long</code> first. Negative n → compute with x = 1/x and positive n. Recipe: N = (long) n; if N &lt; 0 { x = 1/x; N = −N; } return fast(x, N); fast: if N == 0 return 1; half = fast(x, N/2); return N even ? half·half : half·half·x.</p>`
+          `<p>Traps: n = −2<sup>31</sup> → <code>-n</code> overflows int, so copy n into a 64-bit integer first (<code>long</code> / <code>long long</code>; Python and JavaScript numbers have no such trap). Negative n → compute with x = 1/x and positive n. Recipe: N = (long) n; if N &lt; 0 { x = 1/x; N = −N; } return fast(x, N); fast: if N == 0 return 1; half = fast(x, N/2); return N even ? half·half : half·half·x.</p>`
         ],
+        tests: { sig: 'double int -> double', fn: 'myPow', cmp: "float", cases: [
+          [[2.0,10],1024.0],
+          [[2.1,3],9.261000000000001],
+          [[2.0,-2],0.25],
+          [[1.0,-2147483648],1.0],
+          [[-1.0,-2147483648],1.0],
+          [[2.0,-2147483648],0.0],
+          [[-2.0,3],-8.0],
+          [[0.5,-3],8.0],
+          [[34.00515,-3],2.543114507074558e-05],
+          [[1.00001,123456],3.4368447520907104],
+          [[0.0,5],0.0],
+          [[-99.999999999,0],1.0],
+          [[1.00000001,2147483647],2120327154.9839377]
+        ] },
         solution: {
           approach: `<p>Divide and conquer: compute x<sup>N/2</sup> once, square it, multiply one extra x if N is odd.</p>`,
           code: `
@@ -922,6 +1188,42 @@ except RecursionError as e:
                     System.out.println(s.myPow(2.0, -2));  // 0.25
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `def my_pow(x: float, n: int) -> float:
+    if n < 0:                       # x^-n = (1/x)^n; Python ints have no -2^31 trap
+        x, n = 1 / x, -n
+
+    def fast(e: int) -> float:
+        if e == 0:
+            return 1.0              # base case: anything^0 = 1
+        half = fast(e // 2)         # ONE recursive call on half the exponent
+        return half * half if e % 2 == 0 else half * half * x
+
+    return fast(n)` },
+            { lang: 'js', code: `function myPow(x, n) {
+  if (n < 0) { x = 1 / x; n = -n; }      // -(-2^31) is still exact in a JS number
+  const fast = (e) => {
+    if (e === 0) return 1;               // base case
+    const half = fast(Math.floor(e / 2)); // ONE call on half the exponent
+    return e % 2 === 0 ? half * half : half * half * x;
+  };
+  return fast(n);
+}` },
+            { lang: 'cpp', code: `class Solution {
+public:
+    double myPow(double x, int n) {
+        long long N = n;                      // -(-2^31) does not fit in int
+        if (N < 0) { x = 1 / x; N = -N; }
+        return fastPow(x, N);
+    }
+private:
+    double fastPow(double x, long long N) {
+        if (N == 0) return 1.0;               // base case
+        double half = fastPow(x, N / 2);      // ONE call on half the exponent
+        return N % 2 == 0 ? half * half : half * half * x;
+    }
+};` }
+          ],
           dry: {
             head: ['call', 'N', 'N / 2', 'half (from child)', 'N % 2', 'returns'],
             rows: [
@@ -976,7 +1278,7 @@ except RecursionError as e:
       'Constraint hints: <b>N ≤ 10</b> → n! is OK; <b>N ≤ 20</b> → 2<sup>n</sup> is OK; <b>N ≤ 10<sup>5</sup></b> → you need n log n.',
       'Same sub-call appears many times in the tree (fib(2) again and again) → a sign that <b>memoization / DP</b> will help later.'
     ],
-    code: `
+    code: { lang: 'java', code: `
       class RecurrenceExamples {
           // T(n) = T(n-1) + 1  -> O(n)
           static int sumTo(int n) {
@@ -1013,6 +1315,94 @@ except RecursionError as e:
               System.out.println(mergeWork(8));        // 32 = 8 * 3 (merges) + 8 (leaves)
           }
       }`,
+      alt: [
+        { lang: 'python', run: true, code: `def sum_to(n):                      # T(n) = T(n-1) + 1  -> O(n)
+    return 0 if n == 0 else n + sum_to(n - 1)
+
+
+def count_halvings(n):              # T(n) = T(n/2) + 1  -> O(log n)
+    return 0 if n <= 1 else 1 + count_halvings(n // 2)
+
+
+calls = 0
+
+
+def double_tree(n):                 # T(n) = 2T(n-1) + 1 -> O(2^n): count the calls
+    global calls
+    calls += 1
+    if n == 0:
+        return
+    double_tree(n - 1)
+    double_tree(n - 1)
+
+
+def merge_work(n):                  # T(n) = 2T(n/2) + n -> O(n log n): total "work"
+    if n <= 1:
+        return 1
+    return merge_work(n // 2) + merge_work(n - n // 2) + n   # two halves + linear merge
+
+
+print(sum_to(10))                   # 55
+print(count_halvings(1024))         # 10
+double_tree(4)
+print(calls)                        # 31 = 2^5 - 1 (levels n..0)
+print(merge_work(8))                # 32 = 8 * 3 (merges) + 8 (leaves)` },
+        { lang: 'js', run: true, code: `// T(n) = T(n-1) + 1  -> O(n)
+const sumTo = (n) => (n === 0 ? 0 : n + sumTo(n - 1));
+
+// T(n) = T(n/2) + 1  -> O(log n)
+const countHalvings = (n) => (n <= 1 ? 0 : 1 + countHalvings(Math.floor(n / 2)));
+
+// T(n) = 2T(n-1) + 1 -> O(2^n): count the calls to see the doubling
+let calls = 0;
+function doubleTree(n) {
+  calls++;
+  if (n === 0) return;
+  doubleTree(n - 1);
+  doubleTree(n - 1);
+}
+
+// T(n) = 2T(n/2) + n -> O(n log n): returns total "work" done
+function mergeWork(n) {
+  if (n <= 1) return 1;
+  const half = Math.floor(n / 2);
+  return mergeWork(half) + mergeWork(n - half) + n;   // two halves + linear merge
+}
+
+console.log(sumTo(10));            // 55
+console.log(countHalvings(1024));  // 10
+doubleTree(4);
+console.log(calls);                // 31 = 2^5 - 1 (levels n..0)
+console.log(mergeWork(8));         // 32 = 8 * 3 (merges) + 8 (leaves)` },
+        { lang: 'cpp', code: `// T(n) = T(n-1) + 1  -> O(n)
+int sumTo(int n) { return n == 0 ? 0 : n + sumTo(n - 1); }
+
+// T(n) = T(n/2) + 1  -> O(log n)
+int countHalvings(int n) { return n <= 1 ? 0 : 1 + countHalvings(n / 2); }
+
+// T(n) = 2T(n-1) + 1 -> O(2^n): count the calls to see the doubling
+long long calls = 0;
+void doubleTree(int n) {
+    calls++;
+    if (n == 0) return;
+    doubleTree(n - 1);
+    doubleTree(n - 1);
+}
+
+// T(n) = 2T(n/2) + n -> O(n log n): returns total "work" done
+long long mergeWork(int n) {
+    if (n <= 1) return 1;
+    return mergeWork(n / 2) + mergeWork(n - n / 2) + n;   // two halves + linear merge
+}
+
+int main() {
+    cout << sumTo(10) << '\\n';           // 55
+    cout << countHalvings(1024) << '\\n'; // 10
+    doubleTree(4);
+    cout << calls << '\\n';               // 31 = 2^5 - 1 (levels n..0)
+    cout << mergeWork(8) << '\\n';        // 32 = 8 * 3 (merges) + 8 (leaves)
+}` }
+      ] },
     codeTitle: 'Each recurrence shape as real code',
     viz: [
       {
@@ -1035,7 +1425,7 @@ except RecursionError as e:
         html: `<p>Each call throws away half the array and does O(1) work (one comparison). Tree = a single chain: n → n/2 → n/4 → … → 1. Number of levels = log₂n + 1.</p>
           ${H.table(['n', '1024', '10<sup>6</sup>', '10<sup>9</sup>'], [['levels ≈ log₂n', '10', '20', '30']])}
           <p>Answer: <b>O(log n)</b> time and O(log n) stack for the recursive version (O(1) for the loop version).</p>`,
-        code: `
+        code: { lang: 'java', code: `
           class BS {
               static int search(int[] a, int lo, int hi, int x) {
                   if (lo > hi) return -1;                    // base: empty range
@@ -1047,7 +1437,39 @@ except RecursionError as e:
               public static void main(String[] args) {
                   System.out.println(search(new int[]{1, 3, 5, 7, 9, 11}, 0, 5, 9)); // 4
               }
-          }`
+          }`,
+          alt: [
+            { lang: 'python', run: true, code: `def search(a, lo, hi, x):
+    if lo > hi:
+        return -1                   # base: empty range
+    mid = (lo + hi) // 2            # Python ints cannot overflow
+    if a[mid] == x:
+        return mid
+    if a[mid] < x:
+        return search(a, mid + 1, hi, x)   # ONE call on half
+    return search(a, lo, mid - 1, x)
+
+
+print(search([1, 3, 5, 7, 9, 11], 0, 5, 9))   # 4` },
+            { lang: 'js', run: true, code: `function search(a, lo, hi, x) {
+  if (lo > hi) return -1;                        // base: empty range
+  const mid = lo + Math.floor((hi - lo) / 2);    // integer middle
+  if (a[mid] === x) return mid;
+  if (a[mid] < x) return search(a, mid + 1, hi, x); // ONE call on half
+  return search(a, lo, mid - 1, x);
+}
+console.log(search([1, 3, 5, 7, 9, 11], 0, 5, 9)); // 4` },
+            { lang: 'cpp', code: `int search(const vector<int>& a, int lo, int hi, int x) {
+    if (lo > hi) return -1;                          // base: empty range
+    int mid = lo + (hi - lo) / 2;                    // overflow-safe middle
+    if (a[mid] == x) return mid;
+    if (a[mid] < x) return search(a, mid + 1, hi, x); // ONE call on half
+    return search(a, lo, mid - 1, x);
+}
+int main() {
+    cout << search({1, 3, 5, 7, 9, 11}, 0, 5, 9) << '\\n';   // 4
+}` }
+          ] }
       },
       {
         title: 'Same code shape, very different cost: one call vs two calls',
@@ -1112,7 +1534,7 @@ print(fib_memo(90), fib_memo.cache_info().misses, "distinct computations")` }
         tags: ['recursion', 'recurrence tree', 'memoization'],
         companies: ['Amazon', 'Adobe'],
         statement: `<p>The Fibonacci numbers are F(0) = 0, F(1) = 1 and F(n) = F(n − 1) + F(n − 2) for n &gt; 1. Given <code>n</code>, return <b>F(n)</b>. Then explain, using the recursion tree, why the naive recursive version is slow and how to fix it.</p>`,
-        constraints: `0 ≤ n ≤ 90 (F(90) ≈ 2.9 × 10<sup>18</sup> fits in a <code>long</code>)`,
+        constraints: `0 ≤ n ≤ 90 (F(90) ≈ 2.9 × 10<sup>18</sup> fits in a signed 64-bit integer; in JavaScript use <code>BigInt</code>, since F(79) is already past 2<sup>53</sup>)`,
         example: `<p>Input <b>n = 6</b> → Output ${H.c('p', '<b>8</b>')}</p>
           ${H.arr([0, 1, 1, 2, 3, 5, 8], { label: 'F', hl: { 6: 'p', 4: 'g', 5: 'g' } })}
           <p>Why: F(6) = F(5) + F(4) = 5 + 3 = 8. The naive tree for n = 6 makes 25 calls; F(2) alone is recomputed 5 times.</p>`,
@@ -1132,9 +1554,19 @@ print(fib_memo(90), fib_memo.cache_info().misses, "distinct computations")` }
         },
         hints: [
           `<p><b>Aha:</b> the tree has exponentially many nodes but only n + 1 different labels (fib(0)..fib(n)). Repeated labels = repeated work.</p>`,
-          `<p>Keep a <code>long[] memo</code> of size n + 1 filled with −1. Before computing fib(k), check memo[k]; after computing, store it. Or drop recursion and loop with two variables.</p>`,
-          `<p>Traps: use <code>long</code> (F(47) overflows <code>int</code>); handle n = 0 and n = 1; do not use 0 as "not computed" since F(0) = 0. Recipe: if k ≤ 1 return k; if memo[k] != −1 return it; memo[k] = f(k−1) + f(k−2); return memo[k].</p>`
+          `<p>Keep a memo array of size n + 1 filled with −1 (or a hash map: <code>dict</code> / <code>Map</code>; in Python <code>@lru_cache</code> does it for you). Before computing fib(k), check memo[k]; after computing, store it. Or drop recursion and loop with two variables.</p>`,
+          `<p>Traps: use a 64-bit integer (F(47) overflows a 32-bit <code>int</code>; JavaScript needs <code>BigInt</code>); handle n = 0 and n = 1; do not use 0 as "not computed" since F(0) = 0. Recipe: if k ≤ 1 return k; if memo[k] != −1 return it; memo[k] = f(k−1) + f(k−2); return memo[k].</p>`
         ],
+        tests: { sig: 'int -> long', fn: 'fib', cases: [
+          [[0],0],
+          [[1],1],
+          [[2],1],
+          [[6],8],
+          [[10],55],
+          [[47],2971215073],
+          [[50],12586269025],
+          [[90],"2880067194370816120"]
+        ] },
         solution: {
           approach: `<p>Memoized recursion: same recursive shape, but every distinct state is computed once. Then the O(1)-space loop is the "bottom-up" version of the same idea.</p>`,
           code: `
@@ -1173,13 +1605,41 @@ print(fib_memo(90), fib_memo.cache_info().misses, "distinct computations")` }
                     System.out.println(s.fibLoop(90)); // 2880067194370816120
                 }
             }`,
-          alt: [{ lang: 'python', code: `from functools import lru_cache
+          alt: [
+            { lang: 'python', code: `from functools import lru_cache
 
-@lru_cache(maxsize=None)
+
 def fib(n: int) -> int:
-    return n if n <= 1 else fib(n - 1) + fib(n - 2)
+    @lru_cache(maxsize=None)        # memo: each k is computed once
+    def go(k: int) -> int:
+        return k if k <= 1 else go(k - 1) + go(k - 2)
 
-print(fib(6), fib(90))`, run: true }],
+    return go(n)` },
+            { lang: 'js', code: `function fib(n) {
+  const memo = new Map();                // k -> F(k) as BigInt (F(90) > 2^53)
+  const go = (k) => {
+    if (k <= 1) return BigInt(k);
+    if (memo.has(k)) return memo.get(k);
+    const v = go(k - 1) + go(k - 2);
+    memo.set(k, v);
+    return v;
+  };
+  return go(n);
+}` },
+            { lang: 'cpp', code: `class Solution {
+public:
+    long long fib(int n) {
+        vector<long long> memo(n + 1, -1);    // -1 = not computed yet
+        return go(n, memo);
+    }
+private:
+    long long go(int k, vector<long long>& memo) {
+        if (k <= 1) return k;
+        if (memo[k] != -1) return memo[k];
+        return memo[k] = go(k - 1, memo) + go(k - 2, memo);
+    }
+};` }
+          ],
           dry: {
             head: ['call', 'memo hit?', 'computes', 'memo after'],
             rows: [
@@ -1225,7 +1685,7 @@ print(fib(6), fib(90))`, run: true }],
       <p>And it is the <b>minimum</b>: the biggest disk must move at least once, and before that happens all other n − 1 disks must be sitting on the helper peg — which by itself takes Moves(n − 1).</p>`,
     clues: [
       '"Move all disks / rings / plates from one rod to another, <b>one at a time</b>, never larger on smaller".',
-      '"Find the <b>minimum number of moves</b>" → answer is 2<sup>n</sup> − 1 (use <code>long</code> or <code>(1L &lt;&lt; n) - 1</code>).',
+      '"Find the <b>minimum number of moves</b>" → answer is 2<sup>n</sup> − 1 (use 64-bit math: <code>(1L &lt;&lt; n) - 1</code> in Java, <code>(1LL &lt;&lt; n) - 1</code> in C++, <code>2 ** n - 1</code> in Python, <code>2n ** BigInt(n) - 1n</code> in JavaScript once n in JavaScript once n &gt; 53)gt; 53).',
       '"<b>Print all the moves</b>" with N ≤ 16–20 → recursive 3-step plan; output size itself is 2<sup>n</sup> − 1.',
       'Any problem where "to do the big thing I first move everything above it out of the way" → same 3-step recursion.'
     ],
@@ -1235,7 +1695,7 @@ print(fib(6), fib(90))`, run: true }],
       inputLabel: 'number of disks (1-6)',
       gen: genHanoi
     },
-    code: `
+    code: { lang: 'java', code: `
       class Hanoi {
           static long moves = 0;
 
@@ -1253,6 +1713,52 @@ print(fib(6), fib(90))`, run: true }],
               System.out.println("moves = " + moves + " (2^3 - 1 = " + ((1L << 3) - 1) + ")");
           }
       }`,
+      alt: [
+        { lang: 'python', run: true, code: `moves = 0
+
+
+def hanoi(n, frm, to, via):
+    # Move n disks from 'frm' to 'to' using 'via' as the helper peg.
+    global moves
+    if n == 0:
+        return                      # base case: nothing to move
+    hanoi(n - 1, frm, via, to)      # 1) park n-1 disks on the helper
+    moves += 1
+    print(f"disk {n}: {frm} -> {to}")   # 2) biggest disk
+    hanoi(n - 1, via, to, frm)      # 3) bring n-1 disks on top of it
+
+
+hanoi(3, "A", "C", "B")
+print(f"moves = {moves} (2^3 - 1 = {(1 << 3) - 1})")` },
+        { lang: 'js', run: true, code: `let moves = 0;
+
+// Move n disks from 'from' to 'to' using 'via' as the helper peg.
+function hanoi(n, from, to, via) {
+  if (n === 0) return;                   // base case: nothing to move
+  hanoi(n - 1, from, via, to);           // 1) park n-1 disks on the helper
+  moves++;
+  console.log(\`disk \${n}: \${from} -> \${to}\`);   // 2) biggest disk
+  hanoi(n - 1, via, to, from);           // 3) bring n-1 disks on top of it
+}
+
+hanoi(3, 'A', 'C', 'B');
+console.log(\`moves = \${moves} (2^3 - 1 = \${2 ** 3 - 1})\`);` },
+        { lang: 'cpp', code: `long long moves = 0;
+
+// Move n disks from 'from' to 'to' using 'via' as the helper peg.
+void hanoi(int n, char from, char to, char via) {
+    if (n == 0) return;                  // base case: nothing to move
+    hanoi(n - 1, from, via, to);         // 1) park n-1 disks on the helper
+    moves++;
+    cout << "disk " << n << ": " << from << " -> " << to << '\\n';   // 2) biggest disk
+    hanoi(n - 1, via, to, from);         // 3) bring n-1 disks on top of it
+}
+
+int main() {
+    hanoi(3, 'A', 'C', 'B');
+    cout << "moves = " << moves << " (2^3 - 1 = " << ((1LL << 3) - 1) << ")\\n";
+}` }
+      ] },
     codeTitle: 'Tower of Hanoi in 6 lines',
     examples: [
       {
@@ -1264,7 +1770,7 @@ print(fib(6), fib(90))`, run: true }],
         title: 'Which disk moves at step k? (no recursion needed)',
         html: `<p>A beautiful pattern: at move number k (1-based), the disk that moves is <b>1 + (number of trailing zero bits of k)</b>. Moves 1..7: disk 1, 2, 1, 3, 1, 2, 1 — exactly the "ruler sequence". Disk 1 moves every other step; disk n moves exactly once, in the middle (step 2<sup>n−1</sup>).</p>
           ${H.table(['k', '1', '2', '3', '4', '5', '6', '7'], [['binary', '001', '010', '011', '100', '101', '110', '111'], ['disk', '1', '2', '1', H.c('p', '3'), '1', '2', '1']])}`,
-        code: `
+        code: { lang: 'java', code: `
           class WhichDisk {
               public static void main(String[] args) {
                   for (int k = 1; k <= 7; k++) {
@@ -1272,7 +1778,26 @@ print(fib(6), fib(90))`, run: true }],
                       System.out.print(disk + " ");                     // 1 2 1 3 1 2 1
                   }
               }
-          }`
+          }`,
+          alt: [
+            { lang: 'python', run: true, code: `for k in range(1, 8):
+    disk = (k & -k).bit_length()    # 1 + trailing zero bits of k: the ruler sequence
+    print(disk, end=" ")            # 1 2 1 3 1 2 1
+print()` },
+            { lang: 'js', run: true, code: `const disks = [];
+for (let k = 1; k <= 7; k++) {
+  const disk = 32 - Math.clz32(k & -k);  // 1 + trailing zero bits of k: the ruler sequence
+  disks.push(disk);
+}
+console.log(disks.join(' '));            // 1 2 1 3 1 2 1` },
+            { lang: 'cpp', code: `int main() {
+    for (unsigned k = 1; k <= 7; k++) {
+        int disk = countr_zero(k) + 1;   // C++20 <bit>: trailing zeros -> ruler sequence
+        cout << disk << ' ';             // 1 2 1 3 1 2 1
+    }
+    cout << '\\n';
+}` }
+          ] }
       },
       {
         title: 'Iterative Hanoi (for when recursion is banned)',
@@ -1280,7 +1805,7 @@ print(fib(6), fib(90))`, run: true }],
       },
       {
         title: 'Counting moves for big n without printing',
-        html: `<p>"How many moves for n = 40?" Do not simulate — use the closed form <code>(1L &lt;&lt; n) - 1</code> = 1,099,511,627,775. For n ≥ 63 even a <code>long</code> overflows (2<sup>63</sup> − 1 is the max), so use <code>BigInteger.ONE.shiftLeft(n).subtract(BigInteger.ONE)</code>. Recognising "the output is exponential" tells you the interviewer wants the formula, not the list.</p>`
+        html: `<p>"How many moves for n = 40?" Do not simulate — use the closed form <code>(1L &lt;&lt; n) - 1</code> = 1,099,511,627,775. For n ≥ 63 even a <code>long</code> overflows (2<sup>63</sup> − 1 is the max), so use <code>BigInteger.ONE.shiftLeft(n).subtract(BigInteger.ONE)</code> in Java (Python ints and JavaScript <code>BigInt</code> handle it directly; C++ needs <code>unsigned __int128</code> or a big-number library). Recognising "the output is exponential" tells you the interviewer wants the formula, not the list.</p>`
       }
     ],
     deepDive: `<h4>Proof that 2<sup>n</sup> − 1 is optimal</h4>
@@ -1304,7 +1829,7 @@ print(fib(6), fib(90))`, run: true }],
         title: 'Tower of Hanoi — print every move',
         level: 'Medium',
         tags: ['recursion', 'divide and conquer'],
-        statement: `<p>There are <code>N</code> disks of different sizes stacked on rod <b>A</b> (largest at the bottom). Move the entire stack to rod <b>C</b> using rod <b>B</b> as a helper. Only one disk can move at a time, and a disk can never be placed on a smaller disk. Return the list of moves in order, formatted like <code>"move disk 1 from A to C"</code>, and the total number of moves.</p>`,
+        statement: `<p>There are <code>N</code> disks of different sizes stacked on rod <b>A</b> (largest at the bottom). Move the entire stack to rod <b>C</b> using rod <b>B</b> as a helper. Only one disk can move at a time, and a disk can never be placed on a smaller disk. Return the list of moves in order, formatted like <code>"move disk 1 from A to C"</code>. The total number of moves is the length of that list.</p>`,
         constraints: `1 ≤ N ≤ 16 (the output itself has 2<sup>N</sup> − 1 lines)`,
         example: `<p>Input: <b>N = 2</b> → Output (3 moves):</p>
           ${H.table(['#', 'move'], [['1', 'move disk 1 from A to ' + H.c('y', 'B')], ['2', H.c('p', 'move disk 2 from A to C')], ['3', 'move disk 1 from B to C']])}
@@ -1357,9 +1882,18 @@ print(fib(6), fib(90))`, run: true }],
         },
         hints: [
           `<p><b>Aha:</b> the biggest disk is "invisible" to the smaller ones (anything can sit on it). So: move n − 1 out of the way, move the biggest, move n − 1 back on top. Moves(n) = 2·Moves(n − 1) + 1.</p>`,
-          `<p>Write <code>solve(n, from, to, via, list)</code>. The two recursive calls just <b>rotate the roles</b> of the rods: first <code>(n−1, from, via, to)</code>, then <code>(n−1, via, to, from)</code>. Collect moves in a <code>List&lt;String&gt;</code>.</p>`,
-          `<p>Traps: do not mix up the rod order in the second call; count with <code>long</code> if N can be large (2<sup>63</sup>); base case n == 0 → return (or n == 1 → one move). Recipe: if n == 0 return; solve(n−1, from, via, to); add "move disk n from → to"; solve(n−1, via, to, from).</p>`
+          `<p>Write <code>solve(n, from, to, via, list)</code>. The two recursive calls just <b>rotate the roles</b> of the rods: first <code>(n−1, from, via, to)</code>, then <code>(n−1, via, to, from)</code>. Collect the moves in one shared list of strings.</p>`,
+          `<p>Traps: do not mix up the rod order in the second call; count with a 64-bit integer if N can be large (2<sup>63</sup>); base case n == 0 → return (or n == 1 → one move). Recipe: if n == 0 return; solve(n−1, from, via, to); add "move disk n from → to"; solve(n−1, via, to, from).</p>`
         ],
+        tests: { sig: 'int -> list<string>', fn: 'hanoi', check: "(a, out, exp) => { if (!Array.isArray(out) || out.length !== exp) return false; const pegs = { A: [], B: [], C: [] }; for (let d = a[0]; d >= 1; d--) pegs.A.push(d); for (const m of out) { const w = String(m).split(' '); if (w.length !== 7 || w[0] !== 'move' || w[1] !== 'disk' || w[3] !== 'from' || w[5] !== 'to') return false; const d = +w[2], f = pegs[w[4]], g = pegs[w[6]]; if (!f || !g || f === g || f[f.length - 1] !== d || (g.length && g[g.length - 1] < d)) return false; g.push(f.pop()); } return pegs.C.length === a[0]; }", cases: [
+          [[1],1],
+          [[2],3],
+          [[3],7],
+          [[4],15],
+          [[7],127],
+          [[10],1023],
+          [[16],65535]
+        ] },
         solution: {
           approach: `<p>Three-step recursion: park n − 1 on the helper, move the biggest, bring n − 1 back on top.</p>`,
           code: `
@@ -1387,6 +1921,46 @@ print(fib(6), fib(90))`, run: true }],
                     System.out.println("total = " + m.size());   // 7
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `def hanoi(n: int) -> list[str]:
+    moves = []
+
+    def solve(k: int, frm: str, to: str, via: str) -> None:
+        if k == 0:
+            return                              # nothing to move
+        solve(k - 1, frm, via, to)              # 1) park k-1 disks on the helper
+        moves.append(f"move disk {k} from {frm} to {to}")   # 2) biggest disk
+        solve(k - 1, via, to, frm)              # 3) bring them back on top
+
+    solve(n, "A", "C", "B")
+    return moves                                # len(moves) == 2**n - 1` },
+            { lang: 'js', code: `function hanoi(n) {
+  const moves = [];
+  const solve = (k, from, to, via) => {
+    if (k === 0) return;                 // nothing to move
+    solve(k - 1, from, via, to);         // 1) park k-1 disks on the helper
+    moves.push(\`move disk \${k} from \${from} to \${to}\`);   // 2) biggest disk
+    solve(k - 1, via, to, from);         // 3) bring them back on top
+  };
+  solve(n, 'A', 'C', 'B');
+  return moves;                          // moves.length === 2^n - 1
+}` },
+            { lang: 'cpp', code: `class Solution {
+public:
+    vector<string> hanoi(int n) {
+        vector<string> moves;
+        solve(n, 'A', 'C', 'B', moves);
+        return moves;                         // moves.size() == 2^n - 1
+    }
+private:
+    void solve(int n, char from, char to, char via, vector<string>& moves) {
+        if (n == 0) return;                   // nothing to move
+        solve(n - 1, from, via, to, moves);   // 1) park n-1 disks on the helper
+        moves.push_back("move disk " + to_string(n) + " from " + from + " to " + to);
+        solve(n - 1, via, to, from, moves);   // 3) bring them back on top
+    }
+};` }
+          ],
           dry: {
             head: ['call', 'what it does', 'move added'],
             rows: [
@@ -1425,14 +1999,14 @@ print(fib(6), fib(90))`, run: true }],
         CHOOSE   (apply it to state)
         EXPLORE  backtrack(state)
         UN-CHOOSE (undo exactly what CHOOSE did)</pre>
-      <p>Tiny example — all binary strings of length 2. The <b>same</b> StringBuilder is reused, so un-choosing is essential:</p>
+      <p>Tiny example — all binary strings of length 2. The <b>same</b> builder (a Java <code>StringBuilder</code>, a Python list of characters, a JavaScript array, a C++ <code>string</code>) is reused, so un-choosing is essential:</p>
       ${H.table(['step', 'action', 'sb'], [
         ['1', 'choose 0', '"0"'], ['2', 'choose 0', H.c('g', '"00" → save')], ['3', 'un-choose', '"0"'], ['4', 'choose 1', H.c('g', '"01" → save')], ['5', 'un-choose, un-choose', '""'],
         ['6', 'choose 1', '"1"'], ['7', 'choose 0', H.c('g', '"10" → save')], ['8', 'un-choose', '"1"'], ['9', 'choose 1', H.c('g', '"11" → save')]
       ])}
       <h4>Two golden rules</h4>
       <ul>
-        <li><b>Save a copy</b>: <code>res.add(new ArrayList&lt;&gt;(cur))</code>. Adding <code>cur</code> itself stores a <i>reference</i> to a list you keep changing — at the end every saved entry would be the same (empty) list.</li>
+        <li><b>Save a copy</b>: <code>res.add(new ArrayList&lt;&gt;(cur))</code> in Java, <code>res.append(cur[:])</code> in Python, <code>res.push([...cur])</code> in JavaScript (C++ <code>res.push_back(cur)</code> already copies the vector). Adding <code>cur</code> itself stores a <i>reference</i> to a list you keep changing — at the end every saved entry would be the same (empty) list.</li>
         <li><b>Undo exactly what you did</b>: if you added to a list, remove the last element; if you marked <code>used[i] = true</code>, set it back to false; if you swapped, swap back; if you wrote on a board, erase it.</li>
       </ul>
       <h4>How expensive is it?</h4>
@@ -1444,7 +2018,7 @@ print(fib(6), fib(90))`, run: true }],
       '"Count the number of ways" with tiny N and no obvious formula → backtracking (later upgraded with memo/DP).',
       'Words like <b>valid</b>, <b>place</b>, <b>fill</b>, <b>partition into</b>, <b>no two … attack / repeat</b> → constraint search with pruning.'
     ],
-    code: `
+    code: { lang: 'java', code: `
       import java.util.*;
 
       class BinaryStrings {
@@ -1467,6 +2041,59 @@ print(fib(6), fib(90))`, run: true }],
               System.out.println(res);           // [000, 001, 010, 011, 100, 101, 110, 111]
           }
       }`,
+      alt: [
+        { lang: 'python', run: true, code: `res = []
+
+
+def backtrack(n, sb):
+    if len(sb) == n:                # GOAL: complete answer
+        res.append("".join(sb))     # save a COPY (join makes a new string)
+        return
+    for ch in "01":                 # CHOICES at this level
+        sb.append(ch)               # CHOOSE
+        backtrack(n, sb)            # EXPLORE
+        sb.pop()                    # UN-CHOOSE (undo exactly the append)
+
+
+backtrack(3, [])
+print(res)                          # ['000', '001', '010', '011', '100', '101', '110', '111']` },
+        { lang: 'js', run: true, code: `const res = [];
+
+function backtrack(n, sb) {
+  if (sb.length === n) {                 // GOAL: complete answer
+    res.push(sb.join(''));               // save a COPY (join makes a new string)
+    return;
+  }
+  for (const ch of ['0', '1']) {         // CHOICES at this level
+    sb.push(ch);                         // CHOOSE
+    backtrack(n, sb);                    // EXPLORE
+    sb.pop();                            // UN-CHOOSE (undo exactly the push)
+  }
+}
+
+backtrack(3, []);
+console.log(res.join(', '));             // 000, 001, 010, 011, 100, 101, 110, 111` },
+        { lang: 'cpp', code: `vector<string> res;
+
+void backtrack(int n, string& sb) {
+    if ((int)sb.size() == n) {           // GOAL: complete answer
+        res.push_back(sb);               // push_back copies the string
+        return;
+    }
+    for (char ch = '0'; ch <= '1'; ch++) {   // CHOICES at this level
+        sb.push_back(ch);                // CHOOSE
+        backtrack(n, sb);                // EXPLORE
+        sb.pop_back();                   // UN-CHOOSE (undo exactly the push)
+    }
+}
+
+int main() {
+    string sb;
+    backtrack(3, sb);
+    for (const string& s : res) cout << s << ' ';   // 000 001 010 011 100 101 110 111
+    cout << '\\n';
+}` }
+      ] },
     codeTitle: 'Template in action: all binary strings of length n',
     viz: {
       title: 'Generate parentheses: choose → explore → un-choose with pruning',
@@ -1479,7 +2106,7 @@ print(fib(6), fib(90))`, run: true }],
         title: 'Copy vs reference — the #1 backtracking bug',
         html: `<p>Same algorithm, one-word difference:</p>
           ${H.table(['line at the goal', 'result for subsets of [1,2]'], [['res.add(cur)', H.c('r', '[[], [], [], []] — 4 references to one list that ends empty')], ['res.add(new ArrayList&lt;&gt;(cur))', H.c('g', '[[1, 2], [1], [2], []]')]])}
-          <p>With a <code>StringBuilder</code>, <code>sb.toString()</code> already makes a new String, so it is safe. With an <code>int[]</code> path, use <code>path.clone()</code> or <code>Arrays.copyOf</code>.</p>`
+          <p>With a <code>StringBuilder</code>, <code>sb.toString()</code> already makes a new String, so it is safe (so do <code>"".join(sb)</code> in Python and <code>sb.join('')</code> in JavaScript). With an <code>int[]</code> path, use <code>path.clone()</code> or <code>Arrays.copyOf</code>.</p>`
       },
       {
         title: 'Undo must mirror do — four flavours',
@@ -1489,7 +2116,7 @@ print(fib(6), fib(90))`, run: true }],
       {
         title: 'Letter Combinations of a Phone Number — template with a map of choices',
         html: `<p>Digits "23" → 2 = abc, 3 = def. Level i = digit i; choices = the letters of that digit. 3 × 3 = 9 strings: ad, ae, af, bd, be, bf, cd, ce, cf. State = (index, StringBuilder). Goal = index == digits.length().</p>`,
-        code: `
+        code: { lang: 'java', code: `
           class Phone {
               static final String[] KEYS = {"", "", "abc", "def", "ghi", "jkl", "mno", "pqrs", "tuv", "wxyz"};
 
@@ -1507,7 +2134,57 @@ print(fib(6), fib(90))`, run: true }],
                   bt("23", 0, new StringBuilder(), res);
                   System.out.println(res);   // [ad, ae, af, bd, be, bf, cd, ce, cf]
               }
-          }`
+          }`,
+          alt: [
+            { lang: 'python', run: true, code: `KEYS = ["", "", "abc", "def", "ghi", "jkl", "mno", "pqrs", "tuv", "wxyz"]
+
+
+def bt(digits, i, sb, res):
+    if i == len(digits):            # goal
+        res.append("".join(sb))
+        return
+    for ch in KEYS[int(digits[i])]: # choices
+        sb.append(ch)               # choose
+        bt(digits, i + 1, sb, res)  # explore
+        sb.pop()                    # un-choose
+
+
+res = []
+bt("23", 0, [], res)
+print(res)                          # ['ad', 'ae', 'af', 'bd', 'be', 'bf', 'cd', 'ce', 'cf']` },
+            { lang: 'js', run: true, code: `const KEYS = ['', '', 'abc', 'def', 'ghi', 'jkl', 'mno', 'pqrs', 'tuv', 'wxyz'];
+
+function bt(digits, i, sb, res) {
+  if (i === digits.length) { res.push(sb.join('')); return; }   // goal
+  for (const ch of KEYS[Number(digits[i])]) {                   // choices
+    sb.push(ch);                         // choose
+    bt(digits, i + 1, sb, res);          // explore
+    sb.pop();                            // un-choose
+  }
+}
+
+const res = [];
+bt('23', 0, [], res);
+console.log(res.join(', '));             // ad, ae, af, bd, be, bf, cd, ce, cf` },
+            { lang: 'cpp', code: `const vector<string> KEYS = {"", "", "abc", "def", "ghi", "jkl", "mno", "pqrs", "tuv", "wxyz"};
+
+void bt(const string& digits, int i, string& sb, vector<string>& res) {
+    if (i == (int)digits.size()) { res.push_back(sb); return; }   // goal
+    for (char ch : KEYS[digits[i] - '0']) {                      // choices
+        sb.push_back(ch);                // choose
+        bt(digits, i + 1, sb, res);      // explore
+        sb.pop_back();                   // un-choose
+    }
+}
+
+int main() {
+    vector<string> res;
+    string sb;
+    bt("23", 0, sb, res);
+    for (const string& s : res) cout << s << ' ';   // ad ae af bd be bf cd ce cf
+    cout << '\\n';
+}` }
+          ] }
       },
       {
         title: 'Return-boolean flavour: stop at the first solution',
@@ -1580,9 +2257,17 @@ print(fib(6), fib(90))`, run: true }],
         },
         hints: [
           `<p><b>Aha:</b> a prefix stays fixable exactly when <code>open ≤ n</code> and <code>close ≤ open</code>. So never generate a prefix that breaks either rule.</p>`,
-          `<p>Backtrack with (StringBuilder sb, int open, int close). Two choices per level: add "(" if open &lt; n; add ")" if close &lt; open.</p>`,
+          `<p>Backtrack with (a shared builder sb, open, close). Two choices per level: add "(" if open &lt; n; add ")" if close &lt; open.</p>`,
           `<p>Edge cases: the goal is length 2n (then close == open == n automatically). Remember to delete the last char after each recursive call. Recipe: if len == 2n save; if open &lt; n {append '('; bt(open+1); delete} if close &lt; open {append ')'; bt(close+1); delete}.</p>`
         ],
+        tests: { sig: 'int -> list<string>', fn: 'generateParenthesis', check: "(a, out, exp) => { if (!Array.isArray(out)) return false; const ok = (s) => { if (typeof s !== 'string' || s.length !== 2 * a[0]) return false; let b = 0; for (const ch of s) { if (ch === '(') b++; else if (ch === ')') b--; else return false; if (b < 0) return false; } return b === 0; }; if (new Set(out).size !== out.length || !out.every(ok)) return false; return Array.isArray(exp) ? out.length === exp.length && exp.every((s) => out.includes(s)) : out.length === exp; }", cases: [
+          [[1],["()"]],
+          [[2],["(())","()()"]],
+          [[3],["((()))","(()())","(())()","()(())","()()()"]],
+          [[4],["(((())))","((()()))","((())())","((()))()","(()(()))","(()()())","(()())()","(())(())","(())()()","()((()))","()(()())","()(())()","()()(())","()()()()"]],
+          [[6],132],
+          [[8],1430]
+        ] },
         solution: {
           approach: `<p>Backtracking that only ever builds valid prefixes. Every leaf reached is an answer, so no filtering is needed.</p>`,
           code: `
@@ -1617,20 +2302,51 @@ print(fib(6), fib(90))`, run: true }],
                     // [((())), (()()), (())(), ()(()), ()()()]
                 }
             }`,
-          alt: [{ lang: 'python', run: true, code: `def generate_parenthesis(n):
-    res, sb = [], []
-    def bt(open_, close):
-        if len(sb) == 2 * n:
-            res.append("".join(sb))
-            return
-        if open_ < n:
-            sb.append("("); bt(open_ + 1, close); sb.pop()
-        if close < open_:
-            sb.append(")"); bt(open_, close + 1); sb.pop()
-    bt(0, 0)
-    return res
+          alt: [
+            { lang: 'python', code: `def generate_parenthesis(n: int) -> list[str]:
+    res, sb = [], []                    # sb: one shared list of characters
 
-print(generate_parenthesis(3))` }],
+    def bt(open_: int, close: int) -> None:
+        if len(sb) == 2 * n:
+            res.append("".join(sb))     # join makes a fresh string
+            return
+        if open_ < n:                   # a '(' is still available
+            sb.append("(")
+            bt(open_ + 1, close)
+            sb.pop()                    # un-choose
+        if close < open_:               # a ')' has a partner to close
+            sb.append(")")
+            bt(open_, close + 1)
+            sb.pop()
+
+    bt(0, 0)
+    return res` },
+            { lang: 'js', code: `function generateParenthesis(n) {
+  const res = [], sb = [];               // sb: one shared array of characters
+  const bt = (open, close) => {
+    if (sb.length === 2 * n) { res.push(sb.join('')); return; }
+    if (open < n) { sb.push('('); bt(open + 1, close); sb.pop(); }
+    if (close < open) { sb.push(')'); bt(open, close + 1); sb.pop(); }
+  };
+  bt(0, 0);
+  return res;
+}` },
+            { lang: 'cpp', code: `class Solution {
+public:
+    vector<string> generateParenthesis(int n) {
+        vector<string> res;
+        string sb;
+        bt(n, 0, 0, sb, res);
+        return res;
+    }
+private:
+    void bt(int n, int open, int close, string& sb, vector<string>& res) {
+        if ((int)sb.size() == 2 * n) { res.push_back(sb); return; }   // push_back copies
+        if (open < n) { sb.push_back('('); bt(n, open + 1, close, sb, res); sb.pop_back(); }
+        if (close < open) { sb.push_back(')'); bt(n, open, close + 1, sb, res); sb.pop_back(); }
+    }
+};` }
+          ],
           dry: {
             head: ['sb', 'open', 'close', 'allowed next', 'event'],
             rows: [
@@ -1674,7 +2390,7 @@ print(generate_parenthesis(3))` }],
       '"Each element can be <b>chosen or not</b>" — e.g. "count subsequences with sum K", "split into two groups".',
       '"The solution set must not contain <b>duplicate subsets</b>" → sort + skip equal neighbours (Subsets II).'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       import java.util.*;
 
       class SubsetStyles {
@@ -1723,7 +2439,125 @@ print(generate_parenthesis(3))` }],
               System.out.println(r2);   // [[], [1], [1, 2], [1, 2, 3], [1, 3], [2], [2, 3], [3]]
               System.out.println(bitmask(a));
           }
-      }`],
+      }`,
+      alt: [
+        { lang: 'python', run: true, code: `def pick_not_pick(nums, i, cur, res):        # style 1: answers at the leaves
+    if i == len(nums):
+        res.append(cur[:])                   # copy!
+        return
+    cur.append(nums[i])                      # pick
+    pick_not_pick(nums, i + 1, cur, res)
+    cur.pop()                                # un-pick
+    pick_not_pick(nums, i + 1, cur, res)     # not pick
+
+
+def loop_style(nums, start, cur, res):       # style 2: every node is an answer
+    res.append(cur[:])
+    for j in range(start, len(nums)):
+        cur.append(nums[j])
+        loop_style(nums, j + 1, cur, res)
+        cur.pop()
+
+
+def bitmask(nums):                           # style 3: no recursion
+    n = len(nums)
+    return [[nums[j] for j in range(n) if mask >> j & 1] for mask in range(1 << n)]
+
+
+a = [1, 2, 3]
+r1, r2 = [], []
+pick_not_pick(a, 0, [], r1)
+loop_style(a, 0, [], r2)
+print(r1)          # [[1, 2, 3], [1, 2], [1, 3], [1], [2, 3], [2], [3], []]
+print(r2)          # [[], [1], [1, 2], [1, 2, 3], [1, 3], [2], [2, 3], [3]]
+print(bitmask(a))` },
+        { lang: 'js', run: true, code: `// Style 1: pick / not-pick (answers at the leaves)
+function pickNotPick(nums, i, cur, res) {
+  if (i === nums.length) { res.push([...cur]); return; }   // copy!
+  cur.push(nums[i]);                     // pick
+  pickNotPick(nums, i + 1, cur, res);
+  cur.pop();                             // un-pick
+  pickNotPick(nums, i + 1, cur, res);    // not pick
+}
+
+// Style 2: for-loop (every node is an answer)
+function loopStyle(nums, start, cur, res) {
+  res.push([...cur]);
+  for (let j = start; j < nums.length; j++) {
+    cur.push(nums[j]);
+    loopStyle(nums, j + 1, cur, res);
+    cur.pop();
+  }
+}
+
+// Style 3: bitmask (no recursion)
+function bitmask(nums) {
+  const res = [];
+  for (let mask = 0; mask < 1 << nums.length; mask++) {
+    res.push(nums.filter((_, j) => (mask >> j) & 1));   // bit j on -> pick nums[j]
+  }
+  return res;
+}
+
+const a = [1, 2, 3], r1 = [], r2 = [];
+pickNotPick(a, 0, [], r1);
+loopStyle(a, 0, [], r2);
+console.log(JSON.stringify(r1));   // [[1,2,3],[1,2],[1,3],[1],[2,3],[2],[3],[]]
+console.log(JSON.stringify(r2));   // [[],[1],[1,2],[1,2,3],[1,3],[2],[2,3],[3]]
+console.log(JSON.stringify(bitmask(a)));` },
+        { lang: 'cpp', code: `using VVI = vector<vector<int>>;
+
+// Style 1: pick / not-pick (answers at the leaves)
+void pickNotPick(const vector<int>& nums, int i, vector<int>& cur, VVI& res) {
+    if (i == (int)nums.size()) { res.push_back(cur); return; }   // copy!
+    cur.push_back(nums[i]);              // pick
+    pickNotPick(nums, i + 1, cur, res);
+    cur.pop_back();                      // un-pick
+    pickNotPick(nums, i + 1, cur, res);  // not pick
+}
+
+// Style 2: for-loop (every node is an answer)
+void loopStyle(const vector<int>& nums, int start, vector<int>& cur, VVI& res) {
+    res.push_back(cur);
+    for (int j = start; j < (int)nums.size(); j++) {
+        cur.push_back(nums[j]);
+        loopStyle(nums, j + 1, cur, res);
+        cur.pop_back();
+    }
+}
+
+// Style 3: bitmask (no recursion)
+VVI bitmask(const vector<int>& nums) {
+    int n = nums.size();
+    VVI res;
+    for (int mask = 0; mask < (1 << n); mask++) {
+        vector<int> sub;
+        for (int j = 0; j < n; j++)
+            if (mask & (1 << j)) sub.push_back(nums[j]);   // bit j on -> pick nums[j]
+        res.push_back(sub);
+    }
+    return res;
+}
+
+void print(const VVI& v) {
+    for (const auto& s : v) {
+        cout << '[';
+        for (size_t i = 0; i < s.size(); i++) cout << (i ? "," : "") << s[i];
+        cout << "] ";
+    }
+    cout << '\\n';
+}
+
+int main() {
+    vector<int> a = {1, 2, 3}, cur;
+    VVI r1, r2;
+    pickNotPick(a, 0, cur, r1);
+    loopStyle(a, 0, cur, r2);
+    print(r1);   // [1,2,3] [1,2] [1,3] [1] [2,3] [2] [3] []
+    print(r2);   // [] [1] [1,2] [1,2,3] [1,3] [2] [2,3] [3]
+    print(bitmask(a));
+}` }
+      ] }],
     codeTitle: ['Three ways to generate all subsets'],
     viz: {
       title: 'Subsets: pick / not-pick decision tree',
@@ -1737,7 +2571,7 @@ print(generate_parenthesis(3))` }],
         html: `<p>nums = [1, 2, 2]. Plain pick/not-pick produces [1,2] twice (using the first 2 or the second 2). Fix: <b>sort</b>, then in the for-loop style <b>skip</b> nums[j] when <code>j &gt; start &amp;&amp; nums[j] == nums[j−1]</code> — "at the same level, only the first copy of a value may start a branch".</p>
           ${H.arr([1, 2, 2], { hl: { 2: 'r' }, ptr: { 1: 'j−1', 2: 'j' } })}
           <p>Result: ${H.chips(['[]', '[1]', '[1,2]', '[1,2,2]', '[2]', '[2,2]'])} — 6 instead of 8.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           class SubsetsII {
               static void bt(int[] a, int start, List<Integer> cur, List<List<Integer>> res) {
                   res.add(new ArrayList<>(cur));                  // every node is an answer
@@ -1755,7 +2589,59 @@ print(generate_parenthesis(3))` }],
                   bt(a, 0, new ArrayList<>(), res);
                   System.out.println(res);  // [[], [1], [1, 2], [1, 2, 2], [2], [2, 2]]
               }
-          }`
+          }`,
+          alt: [
+            { lang: 'python', run: true, code: `def bt(a, start, cur, res):
+    res.append(cur[:])                       # every node is an answer
+    for j in range(start, len(a)):
+        if j > start and a[j] == a[j - 1]:
+            continue                         # same value at same level -> skip
+        cur.append(a[j])
+        bt(a, j + 1, cur, res)
+        cur.pop()
+
+
+a = sorted([2, 1, 2])                        # duplicates must be adjacent
+res = []
+bt(a, 0, [], res)
+print(res)                                   # [[], [1], [1, 2], [1, 2, 2], [2], [2, 2]]` },
+            { lang: 'js', run: true, code: `function bt(a, start, cur, res) {
+  res.push([...cur]);                              // every node is an answer
+  for (let j = start; j < a.length; j++) {
+    if (j > start && a[j] === a[j - 1]) continue;  // same value at same level -> skip
+    cur.push(a[j]);
+    bt(a, j + 1, cur, res);
+    cur.pop();
+  }
+}
+
+const a = [2, 1, 2].sort((x, y) => x - y);         // duplicates must be adjacent
+const res = [];
+bt(a, 0, [], res);
+console.log(JSON.stringify(res));                  // [[],[1],[1,2],[1,2,2],[2],[2,2]]` },
+            { lang: 'cpp', code: `void bt(const vector<int>& a, int start, vector<int>& cur, vector<vector<int>>& res) {
+    res.push_back(cur);                              // every node is an answer
+    for (int j = start; j < (int)a.size(); j++) {
+        if (j > start && a[j] == a[j - 1]) continue; // same value at same level -> skip
+        cur.push_back(a[j]);
+        bt(a, j + 1, cur, res);
+        cur.pop_back();
+    }
+}
+
+int main() {
+    vector<int> a = {2, 1, 2}, cur;
+    sort(a.begin(), a.end());                        // duplicates must be adjacent
+    vector<vector<int>> res;
+    bt(a, 0, cur, res);
+    for (const auto& s : res) {
+        cout << '[';
+        for (size_t i = 0; i < s.size(); i++) cout << (i ? "," : "") << s[i];
+        cout << "] ";                                // [] [1] [1,2] [1,2,2] [2] [2,2]
+    }
+    cout << '\\n';
+}` }
+          ] }
       },
       {
         title: 'All subsequences of a string',
@@ -1776,7 +2662,7 @@ print(subsequences("abc"))  # ['abc', 'ab', 'ac', 'a', 'bc', 'b', 'c', '']` }
       {
         title: 'Count subsequences with sum K (count, do not list)',
         html: `<p>arr = [1, 2, 1], K = 2 → subsequences [1,1] and [2] → <b>2</b>. When you only need a <b>count</b>, return numbers instead of collecting lists: f(i, sum) = f(i+1, sum + a[i]) + f(i+1, sum). The base case returns 1 if sum == K else 0. (If all numbers are positive, prune when sum &gt; K.) The state (i, sum) can repeat across paths — that is your hint that DP will later make this O(n·K).</p>`,
-        code: `
+        code: { lang: 'java', code: `
           class CountK {
               static int count(int[] a, int i, int sum, int k) {
                   if (i == a.length) return sum == k ? 1 : 0;   // one finished subsequence
@@ -1786,7 +2672,30 @@ print(subsequences("abc"))  # ['abc', 'ab', 'ac', 'a', 'bc', 'b', 'c', '']` }
               public static void main(String[] args) {
                   System.out.println(count(new int[]{1, 2, 1}, 0, 0, 2)); // 2
               }
-          }`
+          }`,
+          alt: [
+            { lang: 'python', run: true, code: `def count(a, i, total, k):
+    if i == len(a):
+        return 1 if total == k else 0        # one finished subsequence
+    return count(a, i + 1, total + a[i], k) + count(a, i + 1, total, k)   # pick + skip
+
+
+print(count([1, 2, 1], 0, 0, 2))             # 2` },
+            { lang: 'js', run: true, code: `function count(a, i, sum, k) {
+  if (i === a.length) return sum === k ? 1 : 0;    // one finished subsequence
+  return count(a, i + 1, sum + a[i], k)            // pick a[i]
+       + count(a, i + 1, sum, k);                  // skip a[i]
+}
+console.log(count([1, 2, 1], 0, 0, 2));            // 2` },
+            { lang: 'cpp', code: `int countK(const vector<int>& a, int i, int sum, int k) {
+    if (i == (int)a.size()) return sum == k ? 1 : 0; // one finished subsequence
+    return countK(a, i + 1, sum + a[i], k)          // pick a[i]
+         + countK(a, i + 1, sum, k);                // skip a[i]
+}
+int main() {
+    cout << countK({1, 2, 1}, 0, 0, 2) << '\\n';     // 2
+}` }
+          ] }
       },
       {
         title: 'Subsets of size exactly k (Combinations)',
@@ -1841,9 +2750,17 @@ print(subsequences("abc"))  # ['abc', 'ab', 'ac', 'a', 'bc', 'b', 'c', '']` }
         },
         hints: [
           `<p><b>Aha:</b> every element faces one yes/no decision. n independent yes/no decisions = 2<sup>n</sup> outcomes = a binary decision tree whose leaves are the subsets.</p>`,
-          `<p>Use one shared <code>List&lt;Integer&gt; cur</code> (the bag so far) and an index <code>i</code> (which element we are deciding about). Result: <code>List&lt;List&lt;Integer&gt;&gt;</code>. Pick → add, recurse, remove; skip → recurse.</p>`,
-          `<p>Traps: save <code>new ArrayList&lt;&gt;(cur)</code>, not cur; remove by <b>index</b> <code>cur.remove(cur.size() - 1)</code> (calling remove(Integer) by value would be a different method); remember the empty subset. Recipe: f(i): if i == n → save copy, return; add nums[i]; f(i+1); remove last; f(i+1).</p>`
+          `<p>Use one shared list <code>cur</code> (the bag so far) and an index <code>i</code> (which element we are deciding about). The result is a list of lists. Pick → add, recurse, remove; skip → recurse.</p>`,
+          `<p>Traps: save a copy of cur (<code>new ArrayList&lt;&gt;(cur)</code>, <code>cur[:]</code>, <code>[...cur]</code>), not cur itself; remove the <b>last</b> element (<code>pop()</code> / <code>pop_back()</code>; in Java <code>cur.remove(cur.size() - 1)</code>, because <code>remove(Integer)</code> would remove by value); remember the empty subset. Recipe: f(i): if i == n → save copy, return; add nums[i]; f(i+1); remove last; f(i+1).</p>`
         ],
+        tests: { sig: 'int[] -> list<list<int>>', fn: 'subsets', check: "(a, out, exp) => { if (!Array.isArray(out)) return false; const key = (s) => JSON.stringify([...s].sort((x, y) => x - y)); const keys = out.map(key); if (new Set(keys).size !== keys.length) return false; if (!out.every((s) => Array.isArray(s) && new Set(s).size === s.length && s.every((x) => a[0].includes(x)))) return false; if (!Array.isArray(exp)) return out.length === exp; const want = new Set(exp.map(key)); return keys.length === want.size && keys.every((x) => want.has(x)); }", cases: [
+          [[[1,2,3]],[[],[1],[2],[3],[1,2],[1,3],[2,3],[1,2,3]]],
+          [[[0]],[[],[0]]],
+          [[[5,-3]],[[],[5],[-3],[5,-3]]],
+          [[[-10,10,0,1]],[[],[-10],[10],[0],[1],[-10,10],[-10,0],[-10,1],[10,0],[10,1],[0,1],[-10,10,0],[-10,10,1],[-10,0,1],[10,0,1],[-10,10,0,1]]],
+          [[[7,3,9]],[[],[7],[3],[9],[7,3],[7,9],[3,9],[7,3,9]]],
+          [[[1,2,3,4,5,6,7,8,9,10]],1024]
+        ] },
         solution: {
           approach: `<p>Pick / not-pick recursion with one shared list and a copy at each leaf.</p>`,
           code: `
@@ -1872,6 +2789,51 @@ print(subsequences("abc"))  # ['abc', 'ab', 'ac', 'a', 'bc', 'b', 'c', '']` }
                     // [[1, 2, 3], [1, 2], [1, 3], [1], [2, 3], [2], [3], []]
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `def subsets(nums: list[int]) -> list[list[int]]:
+    res, cur = [], []
+
+    def build(i: int) -> None:
+        if i == len(nums):
+            res.append(cur[:])          # save a COPY of the bag
+            return
+        cur.append(nums[i])             # pick nums[i]
+        build(i + 1)
+        cur.pop()                       # un-pick
+        build(i + 1)                    # skip nums[i]
+
+    build(0)
+    return res` },
+            { lang: 'js', code: `function subsets(nums) {
+  const res = [], cur = [];
+  const build = (i) => {
+    if (i === nums.length) { res.push([...cur]); return; }   // save a COPY
+    cur.push(nums[i]);                   // pick nums[i]
+    build(i + 1);
+    cur.pop();                           // un-pick
+    build(i + 1);                        // skip nums[i]
+  };
+  build(0);
+  return res;
+}` },
+            { lang: 'cpp', code: `class Solution {
+public:
+    vector<vector<int>> subsets(vector<int>& nums) {
+        vector<vector<int>> res;
+        vector<int> cur;
+        build(nums, 0, cur, res);
+        return res;
+    }
+private:
+    void build(const vector<int>& nums, int i, vector<int>& cur, vector<vector<int>>& res) {
+        if (i == (int)nums.size()) { res.push_back(cur); return; }   // copy of the bag
+        cur.push_back(nums[i]);               // pick
+        build(nums, i + 1, cur, res);
+        cur.pop_back();                       // un-pick
+        build(nums, i + 1, cur, res);         // skip
+    }
+};` }
+          ],
           dry: {
             head: ['#', 'path of decisions (1? 2? 3?)', 'cur at leaf i = 3', 'res size after'],
             rows: [
@@ -1905,7 +2867,7 @@ print(subsequences("abc"))  # ['abc', 'ab', 'ac', 'a', 'bc', 'b', 'c', '']` }
       ${H.table(['i', 'swap(i, j)', 'array', 'meaning'], [['0', 'j = 0', '[1 | 2,3]', '1 fixed in slot 0'], ['1', 'j = 2', '[1,3 | 2]', '3 fixed in slot 1'], ['2', 'j = 2', H.c('g', '[1,3,2]'), 'complete → save'], ['back', 'swap back', '[1,2,3]', 'restore for the next j']])}
       <h4>Duplicates (Permutations II)</h4>
       <p>Input [1, 1, 2] has only 3!/2! = <b>3</b> distinct permutations: [1,1,2], [1,2,1], [2,1,1]. Fix with the used[] method: <b>sort</b>, then skip index i when <code>nums[i] == nums[i−1] &amp;&amp; !used[i−1]</code>. In words: identical copies must be placed in left-to-right order, so the second "1" may only be used after the first "1" is already in the arrangement. Each distinct permutation is then built in exactly one way.</p>
-      <p>With the swap method, keep a small <code>HashSet</code> per level: do not swap the same <b>value</b> into position i twice.</p>`,
+      <p>With the swap method, keep a small hash set per level: do not swap the same <b>value</b> into position i twice.</p>`,
     clues: [
       '"Return <b>all possible permutations</b>", "all <b>arrangements</b> / orderings", "all anagrams of a string".',
       '<b>N ≤ 8–10</b> → n! (40,320 – 3.6 million) is affordable; the constraint is telling you to enumerate.',
@@ -1913,7 +2875,7 @@ print(subsequences("abc"))  # ['abc', 'ab', 'ac', 'a', 'bc', 'b', 'c', '']` }
       '"Next permutation" / "k-th permutation" → do NOT enumerate; use the lexicographic algorithm or factorial number system.',
       '"Arrange so that adjacent elements satisfy …" (beautiful arrangement, squareful arrays) → permutation backtracking with a prune at each placement.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       import java.util.*;
 
       class Permutations {
@@ -1956,7 +2918,97 @@ print(subsequences("abc"))  # ['abc', 'ab', 'ac', 'a', 'bc', 'b', 'c', '']` }
               System.out.println(r1); // [[1, 2, 3], [1, 3, 2], [2, 1, 3], [2, 3, 1], [3, 1, 2], [3, 2, 1]]
               System.out.println(r2); // [[1, 2, 3], [1, 3, 2], [2, 1, 3], [2, 3, 1], [3, 2, 1], [3, 1, 2]]
           }
-      }`],
+      }`,
+      alt: [
+        { lang: 'python', run: true, code: `def by_used(a, used, cur, res):              # method 1: used[] builds a fresh list
+    if len(cur) == len(a):
+        res.append(cur[:])
+        return
+    for i in range(len(a)):
+        if used[i]:
+            continue                         # already placed
+        used[i] = True; cur.append(a[i])     # choose
+        by_used(a, used, cur, res)           # explore
+        used[i] = False; cur.pop()           # un-choose
+
+
+def by_swap(a, i, res):                      # method 2: the list itself is the state
+    if i == len(a):
+        res.append(a[:])
+        return
+    for j in range(i, len(a)):
+        a[i], a[j] = a[j], a[i]              # choose: put a[j] into slot i
+        by_swap(a, i + 1, res)
+        a[i], a[j] = a[j], a[i]              # un-choose: restore order
+
+
+a = [1, 2, 3]
+r1, r2 = [], []
+by_used(a, [False] * 3, [], r1)
+by_swap(a, 0, r2)
+print(r1)   # [[1, 2, 3], [1, 3, 2], [2, 1, 3], [2, 3, 1], [3, 1, 2], [3, 2, 1]]
+print(r2)   # [[1, 2, 3], [1, 3, 2], [2, 1, 3], [2, 3, 1], [3, 2, 1], [3, 1, 2]]` },
+        { lang: 'js', run: true, code: `// Method 1: used[] -- builds a fresh array, lexicographic order on sorted input
+function byUsed(a, used, cur, res) {
+  if (cur.length === a.length) { res.push([...cur]); return; }
+  for (let i = 0; i < a.length; i++) {
+    if (used[i]) continue;                 // already placed
+    used[i] = true; cur.push(a[i]);        // choose
+    byUsed(a, used, cur, res);             // explore
+    used[i] = false; cur.pop();            // un-choose
+  }
+}
+
+// Method 2: swap -- the array itself is the state
+function bySwap(a, i, res) {
+  if (i === a.length) { res.push([...a]); return; }
+  for (let j = i; j < a.length; j++) {
+    [a[i], a[j]] = [a[j], a[i]];           // choose: put a[j] into slot i
+    bySwap(a, i + 1, res);                 // explore the remaining slots
+    [a[i], a[j]] = [a[j], a[i]];           // un-choose: restore order
+  }
+}
+
+const a = [1, 2, 3], r1 = [], r2 = [];
+byUsed(a, [false, false, false], [], r1);
+bySwap(a, 0, r2);
+console.log(JSON.stringify(r1)); // [[1,2,3],[1,3,2],[2,1,3],[2,3,1],[3,1,2],[3,2,1]]
+console.log(JSON.stringify(r2)); // [[1,2,3],[1,3,2],[2,1,3],[2,3,1],[3,2,1],[3,1,2]]` },
+        { lang: 'cpp', code: `using VVI = vector<vector<int>>;
+
+// Method 1: used[] -- builds a fresh vector, lexicographic order on sorted input
+void byUsed(const vector<int>& a, vector<bool>& used, vector<int>& cur, VVI& res) {
+    if (cur.size() == a.size()) { res.push_back(cur); return; }
+    for (int i = 0; i < (int)a.size(); i++) {
+        if (used[i]) continue;               // already placed
+        used[i] = true; cur.push_back(a[i]); // choose
+        byUsed(a, used, cur, res);           // explore
+        used[i] = false; cur.pop_back();     // un-choose
+    }
+}
+
+// Method 2: swap -- the vector itself is the state
+void bySwap(vector<int>& a, int i, VVI& res) {
+    if (i == (int)a.size()) { res.push_back(a); return; }
+    for (int j = i; j < (int)a.size(); j++) {
+        swap(a[i], a[j]);                    // choose: put a[j] into slot i
+        bySwap(a, i + 1, res);               // explore the remaining slots
+        swap(a[i], a[j]);                    // un-choose: restore order
+    }
+}
+
+int main() {
+    vector<int> a = {1, 2, 3}, cur;
+    vector<bool> used(3, false);
+    VVI r1, r2;
+    byUsed(a, used, cur, r1);
+    bySwap(a, 0, r2);
+    for (const VVI* r : {&r1, &r2}) {
+        for (const auto& p : *r) { for (int x : p) cout << x; cout << ' '; }
+        cout << '\\n';    // 123 132 213 231 312 321  /  123 132 213 231 321 312
+    }
+}` }
+      ] }],
     codeTitle: ['used[] method vs swap method'],
     viz: [{
       title: 'Permutations by swapping into each slot',
@@ -1999,7 +3051,7 @@ print(unique_perms("aab"))   # ['aab', 'aba', 'baa']` }
       {
         title: 'k-th permutation without generating all of them',
         html: `<p>n = 4, k = 9 (1-based). There are 3! = 6 permutations starting with each first digit. (k−1) / 6 = 8 / 6 = 1 → first digit is the 2nd smallest = <b>2</b>; remaining k' = 8 % 6 = 2. Next block size 2! = 2: 2 / 2 = 1 → 2nd smallest of {1,3,4} = <b>3</b>; k' = 0 → then 1, 4. Answer <b>2314</b>. O(n<sup>2</sup>) instead of O(n · n!). Clue: "return the k-th permutation".</p>`,
-        code: `
+        code: { lang: 'java', code: `
           class KthPerm {
               static String getPermutation(int n, int k) {
                   List<Integer> nums = new ArrayList<>();
@@ -2019,7 +3071,55 @@ print(unique_perms("aab"))   # ['aab', 'aba', 'baa']` }
               public static void main(String[] args) {
                   System.out.println(getPermutation(4, 9)); // 2314
               }
-          }`
+          }`,
+          alt: [
+            { lang: 'python', run: true, code: `from math import factorial
+
+
+def get_permutation(n, k):
+    nums = list(range(1, n + 1))
+    k -= 1                                   # to 0-based
+    out = []
+    for i in range(n, 0, -1):
+        block = factorial(i - 1)             # perms per choice of this digit
+        idx, k = divmod(k, block)
+        out.append(str(nums.pop(idx)))       # remove by index
+    return "".join(out)
+
+
+print(get_permutation(4, 9))                 # 2314` },
+            { lang: 'js', run: true, code: `function getPermutation(n, k) {
+  const nums = [], fact = [1];
+  for (let i = 1; i <= n; i++) { nums.push(i); fact[i] = fact[i - 1] * i; }
+  k--;                                     // to 0-based
+  let out = '';
+  for (let i = n; i >= 1; i--) {
+    const block = fact[i - 1];             // perms per choice of this digit
+    const idx = Math.floor(k / block);
+    out += nums.splice(idx, 1)[0];         // remove by index
+    k %= block;
+  }
+  return out;
+}
+console.log(getPermutation(4, 9));         // 2314` },
+            { lang: 'cpp', code: `string getPermutation(int n, int k) {
+    vector<int> nums, fact(n + 1, 1);
+    for (int i = 1; i <= n; i++) { nums.push_back(i); fact[i] = fact[i - 1] * i; }
+    k--;                                     // to 0-based
+    string out;
+    for (int i = n; i >= 1; i--) {
+        int block = fact[i - 1];             // perms per choice of this digit
+        int idx = k / block;
+        out += char('0' + nums[idx]);
+        nums.erase(nums.begin() + idx);      // remove by index
+        k %= block;
+    }
+    return out;
+}
+int main() {
+    cout << getPermutation(4, 9) << '\\n';    // 2314
+}` }
+          ] }
       },
       {
         title: 'Next permutation (in place, O(n))',
@@ -2085,6 +3185,16 @@ print(unique_perms("aab"))   # ['aab', 'aba', 'baa']` }
           `<p>Sort nums, use <code>boolean[] used</code> and a list <code>cur</code>. Skip index i if <code>used[i]</code>, or if <code>i &gt; 0 &amp;&amp; nums[i] == nums[i−1] &amp;&amp; !used[i−1]</code>.</p>`,
           `<p>Edge cases: all elements equal → exactly one permutation; length 1. Recipe: sort; bt(): if cur.size() == n save copy; for i: skip rules; used[i] = true, add; bt(); used[i] = false, remove last.</p>`
         ],
+        tests: { sig: 'int[] -> list<list<int>>', fn: 'permuteUnique', check: "(a, out, exp) => { if (!Array.isArray(out)) return false; const k = (p) => JSON.stringify(p); const srt = (p) => JSON.stringify([...p].sort((x, y) => x - y)); const base = srt(a[0]); const keys = out.map(k); if (new Set(keys).size !== keys.length || !out.every((p) => Array.isArray(p) && srt(p) === base)) return false; if (!Array.isArray(exp)) return out.length === exp; const want = new Set(exp.map(k)); return keys.length === want.size && keys.every((x) => want.has(x)); }", cases: [
+          [[[1,1,2]],[[1,1,2],[1,2,1],[2,1,1]]],
+          [[[1,2,3]],[[1,2,3],[1,3,2],[2,1,3],[2,3,1],[3,1,2],[3,2,1]]],
+          [[[5]],[[5]]],
+          [[[2,2,2,2]],[[2,2,2,2]]],
+          [[[-1,0,-1,0]],[[-1,-1,0,0],[-1,0,-1,0],[-1,0,0,-1],[0,-1,-1,0],[0,-1,0,-1],[0,0,-1,-1]]],
+          [[[1,1,1,1,1,1,1,2]],[[1,1,1,1,1,1,1,2],[1,1,1,1,1,1,2,1],[1,1,1,1,1,2,1,1],[1,1,1,1,2,1,1,1],[1,1,1,2,1,1,1,1],[1,1,2,1,1,1,1,1],[1,2,1,1,1,1,1,1],[2,1,1,1,1,1,1,1]]],
+          [[[3,1,2,1]],[[1,1,2,3],[1,1,3,2],[1,2,1,3],[1,2,3,1],[1,3,1,2],[1,3,2,1],[2,1,1,3],[2,1,3,1],[2,3,1,1],[3,1,1,2],[3,1,2,1],[3,2,1,1]]],
+          [[[10,-10,0,1,2,3,4,5]],40320]
+        ] },
         solution: {
           approach: `<p>used[] backtracking on the sorted array with the "left copy first" rule — every unique permutation is generated exactly once, no Set needed.</p>`,
           code: `
@@ -2119,23 +3229,65 @@ print(unique_perms("aab"))   # ['aab', 'aba', 'baa']` }
                     // [[1, 1, 2], [1, 2, 1], [2, 1, 1]]
                 }
             }`,
-          alt: [{ lang: 'python', run: true, code: `def permute_unique(nums):
-    nums.sort()
-    res, cur, used = [], [], [False] * len(nums)
-    def bt():
-        if len(cur) == len(nums):
+          alt: [
+            { lang: 'python', code: `def permute_unique(nums: list[int]) -> list[list[int]]:
+    a = sorted(nums)                    # equal values become neighbours
+    res, cur, used = [], [], [False] * len(a)
+
+    def bt() -> None:
+        if len(cur) == len(a):
             res.append(cur[:])
             return
-        for i in range(len(nums)):
-            if used[i] or (i > 0 and nums[i] == nums[i - 1] and not used[i - 1]):
-                continue
-            used[i] = True; cur.append(nums[i])
-            bt()
-            cur.pop(); used[i] = False
-    bt()
-    return res
+        for i, x in enumerate(a):
+            if used[i] or (i > 0 and x == a[i - 1] and not used[i - 1]):
+                continue                # used already, or a duplicate branch
+            used[i] = True
+            cur.append(x)               # choose
+            bt()                        # explore
+            cur.pop()                   # un-choose
+            used[i] = False
 
-print(permute_unique([1, 1, 2]))` }],
+    bt()
+    return res` },
+            { lang: 'js', code: `function permuteUnique(nums) {
+  const a = [...nums].sort((x, y) => x - y);   // numeric comparator, not string order
+  const used = new Array(a.length).fill(false), cur = [], res = [];
+  const bt = () => {
+    if (cur.length === a.length) { res.push([...cur]); return; }
+    for (let i = 0; i < a.length; i++) {
+      if (used[i]) continue;                                   // already in cur
+      if (i > 0 && a[i] === a[i - 1] && !used[i - 1]) continue; // duplicate branch
+      used[i] = true; cur.push(a[i]);    // choose
+      bt();                              // explore
+      cur.pop(); used[i] = false;        // un-choose
+    }
+  };
+  bt();
+  return res;
+}` },
+            { lang: 'cpp', code: `class Solution {
+public:
+    vector<vector<int>> permuteUnique(vector<int>& nums) {
+        sort(nums.begin(), nums.end());       // equal values become neighbours
+        vector<vector<int>> res;
+        vector<int> cur;
+        vector<bool> used(nums.size(), false);
+        bt(nums, used, cur, res);
+        return res;
+    }
+private:
+    void bt(const vector<int>& a, vector<bool>& used, vector<int>& cur, vector<vector<int>>& res) {
+        if (cur.size() == a.size()) { res.push_back(cur); return; }
+        for (int i = 0; i < (int)a.size(); i++) {
+            if (used[i]) continue;
+            if (i > 0 && a[i] == a[i - 1] && !used[i - 1]) continue;   // duplicate branch
+            used[i] = true; cur.push_back(a[i]);        // choose
+            bt(a, used, cur, res);                      // explore
+            cur.pop_back(); used[i] = false;            // un-choose
+        }
+    }
+};` }
+          ],
           dry: {
             head: ['cur', 'used', 'i tried', 'decision'],
             rows: [
@@ -2192,7 +3344,7 @@ print(permute_unique([1, 1, 2]))` }],
       '"Combinations of <b>k numbers</b> from 1–9" → add a size check (Combination Sum III).',
       '"Return the <b>number</b> of combinations" (not the list) → that is Coin Change II: switch to DP; "order matters" counts → Combination Sum IV (also DP).'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       import java.util.*;
 
       class CombinationSum {
@@ -2220,7 +3372,72 @@ print(permute_unique([1, 1, 2]))` }],
               System.out.println(new CombinationSum().combinationSum(new int[]{2, 3, 6, 7}, 7));
               // [[2, 2, 3], [7]]
           }
-      }`, `
+      }`,
+      alt: [
+        { lang: 'python', run: true, code: `def combination_sum(candidates, target):
+    c = sorted(candidates)                   # enables the 'break' prune
+    res, cur = [], []
+
+    def bt(start, rem):
+        if rem == 0:                         # goal: exact sum
+            res.append(cur[:])
+            return
+        for i in range(start, len(c)):
+            if c[i] > rem:
+                break                        # sorted: everything after is too big
+            cur.append(c[i])                 # choose c[i]
+            bt(i, rem - c[i])                # i (not i + 1): reuse allowed
+            cur.pop()                        # un-choose
+
+    bt(0, target)
+    return res
+
+
+print(combination_sum([2, 3, 6, 7], 7))      # [[2, 2, 3], [7]]` },
+        { lang: 'js', run: true, code: `function combinationSum(candidates, target) {
+  const c = [...candidates].sort((x, y) => x - y);   // enables the 'break' prune
+  const res = [], cur = [];
+  const bt = (start, rem) => {
+    if (rem === 0) { res.push([...cur]); return; }   // goal: exact sum
+    for (let i = start; i < c.length; i++) {
+      if (c[i] > rem) break;               // sorted: everything after is too big
+      cur.push(c[i]);                      // choose c[i]
+      bt(i, rem - c[i]);                   // i (not i + 1): reuse allowed
+      cur.pop();                           // un-choose
+    }
+  };
+  bt(0, target);
+  return res;
+}
+console.log(JSON.stringify(combinationSum([2, 3, 6, 7], 7)));   // [[2,2,3],[7]]` },
+        { lang: 'cpp', code: `class CombinationSum {
+public:
+    vector<vector<int>> combinationSum(vector<int> candidates, int target) {
+        sort(candidates.begin(), candidates.end());   // enables the 'break' prune
+        vector<vector<int>> res;
+        vector<int> cur;
+        bt(candidates, 0, target, cur, res);
+        return res;
+    }
+private:
+    void bt(const vector<int>& c, int start, int rem, vector<int>& cur, vector<vector<int>>& res) {
+        if (rem == 0) { res.push_back(cur); return; }   // goal: exact sum
+        for (int i = start; i < (int)c.size(); i++) {
+            if (c[i] > rem) break;           // sorted: everything after is too big
+            cur.push_back(c[i]);             // choose c[i]
+            bt(c, i, rem - c[i], cur, res);  // i (not i+1): reuse allowed
+            cur.pop_back();                  // un-choose
+        }
+    }
+};
+
+int main() {
+    for (const auto& s : CombinationSum().combinationSum({2, 3, 6, 7}, 7)) {
+        for (int x : s) cout << x << ' ';
+        cout << '\\n';                        // 2 2 3 / 7
+    }
+}` }
+      ] }, { lang: 'java', code: `
       import java.util.*;
 
       class CombinationSum2 {
@@ -2247,7 +3464,79 @@ print(permute_unique([1, 1, 2]))` }],
               System.out.println(new CombinationSum2().combinationSum2(new int[]{10, 1, 2, 7, 6, 1, 5}, 8));
               // [[1, 1, 6], [1, 2, 5], [1, 7], [2, 6]]
           }
-      }`],
+      }`,
+        alt: [
+          { lang: 'python', run: true, code: `def combination_sum2(c, target):
+    # Each number used at most once; input may contain duplicates.
+    c = sorted(c)
+    res, cur = [], []
+
+    def bt(start, rem):
+        if rem == 0:
+            res.append(cur[:])
+            return
+        for i in range(start, len(c)):
+            if i > start and c[i] == c[i - 1]:
+                continue                     # same value at same level -> skip
+            if c[i] > rem:
+                break
+            cur.append(c[i])
+            bt(i + 1, rem - c[i])            # i + 1: no reuse
+            cur.pop()
+
+    bt(0, target)
+    return res
+
+
+print(combination_sum2([10, 1, 2, 7, 6, 1, 5], 8))   # [[1, 1, 6], [1, 2, 5], [1, 7], [2, 6]]` },
+          { lang: 'js', run: true, code: `// Each number used at most once; input may contain duplicates.
+function combinationSum2(candidates, target) {
+  const c = [...candidates].sort((x, y) => x - y);
+  const res = [], cur = [];
+  const bt = (start, rem) => {
+    if (rem === 0) { res.push([...cur]); return; }
+    for (let i = start; i < c.length; i++) {
+      if (i > start && c[i] === c[i - 1]) continue;  // same value at same level -> skip
+      if (c[i] > rem) break;
+      cur.push(c[i]);
+      bt(i + 1, rem - c[i]);               // i + 1: no reuse
+      cur.pop();
+    }
+  };
+  bt(0, target);
+  return res;
+}
+console.log(JSON.stringify(combinationSum2([10, 1, 2, 7, 6, 1, 5], 8)));   // [[1,1,6],[1,2,5],[1,7],[2,6]]` },
+          { lang: 'cpp', code: `class CombinationSum2 {
+public:
+    // Each number used at most once; input may contain duplicates.
+    vector<vector<int>> combinationSum2(vector<int> c, int target) {
+        sort(c.begin(), c.end());
+        vector<vector<int>> res;
+        vector<int> cur;
+        bt(c, 0, target, cur, res);
+        return res;
+    }
+private:
+    void bt(const vector<int>& c, int start, int rem, vector<int>& cur, vector<vector<int>>& res) {
+        if (rem == 0) { res.push_back(cur); return; }
+        for (int i = start; i < (int)c.size(); i++) {
+            if (i > start && c[i] == c[i - 1]) continue;   // same value at same level -> skip
+            if (c[i] > rem) break;
+            cur.push_back(c[i]);
+            bt(c, i + 1, rem - c[i], cur, res);  // i + 1: no reuse
+            cur.pop_back();
+        }
+    }
+};
+
+int main() {
+    for (const auto& s : CombinationSum2().combinationSum2({10, 1, 2, 7, 6, 1, 5}, 8)) {
+        for (int x : s) cout << x << ' ';
+        cout << '\\n';                        // 1 1 6 / 1 2 5 / 1 7 / 2 6
+    }
+}` }
+        ] }],
     codeTitle: ['Combination Sum (reuse allowed)', 'Combination Sum II (use once, duplicates in input)'],
     viz: {
       title: 'Combination Sum search with start index and break-pruning',
@@ -2263,7 +3552,7 @@ print(permute_unique([1, 1, 2]))` }],
       {
         title: 'Combination Sum III: k = 3 numbers from 1–9 summing to 9',
         html: `<p>Answers: [1,2,6], [1,3,5], [2,3,4]. Two prunes: stop when <code>cur.size() == k</code> (whether or not the sum matched), and break when <code>i &gt; rem</code>. The search space is at most C(9, k) ≤ 126 nodes — tiny.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           class Comb3 {
               static void bt(int k, int start, int rem, List<Integer> cur, List<List<Integer>> res) {
                   if (cur.size() == k) {                 // size reached: check the sum
@@ -2281,7 +3570,55 @@ print(permute_unique([1, 1, 2]))` }],
                   bt(3, 1, 9, new ArrayList<>(), res);
                   System.out.println(res);   // [[1, 2, 6], [1, 3, 5], [2, 3, 4]]
               }
-          }`
+          }`,
+          alt: [
+            { lang: 'python', run: true, code: `def bt(k, start, rem, cur, res):
+    if len(cur) == k:                        # size reached: check the sum
+        if rem == 0:
+            res.append(cur[:])
+        return
+    for d in range(start, min(9, rem) + 1):
+        cur.append(d)
+        bt(k, d + 1, rem - d, cur, res)      # digits used once
+        cur.pop()
+
+
+res = []
+bt(3, 1, 9, [], res)
+print(res)                                   # [[1, 2, 6], [1, 3, 5], [2, 3, 4]]` },
+            { lang: 'js', run: true, code: `function bt(k, start, rem, cur, res) {
+  if (cur.length === k) {                  // size reached: check the sum
+    if (rem === 0) res.push([...cur]);
+    return;
+  }
+  for (let d = start; d <= 9 && d <= rem; d++) {
+    cur.push(d);
+    bt(k, d + 1, rem - d, cur, res);       // digits used once
+    cur.pop();
+  }
+}
+const res = [];
+bt(3, 1, 9, [], res);
+console.log(JSON.stringify(res));          // [[1,2,6],[1,3,5],[2,3,4]]` },
+            { lang: 'cpp', code: `void bt(int k, int start, int rem, vector<int>& cur, vector<vector<int>>& res) {
+    if ((int)cur.size() == k) {              // size reached: check the sum
+        if (rem == 0) res.push_back(cur);
+        return;
+    }
+    for (int d = start; d <= 9 && d <= rem; d++) {
+        cur.push_back(d);
+        bt(k, d + 1, rem - d, cur, res);     // digits used once
+        cur.pop_back();
+    }
+}
+int main() {
+    vector<vector<int>> res;
+    vector<int> cur;
+    bt(3, 1, 9, cur, res);
+    for (const auto& s : res) { for (int x : s) cout << x; cout << ' '; }   // 126 135 234
+    cout << '\\n';
+}` }
+          ] }
       },
       {
         title: 'Listing vs counting: Coin Change II',
@@ -2359,6 +3696,16 @@ print(change(500, [1, 2, 5, 10]))  # large count, computed instantly` }
           `<p>Sort candidates. bt(start, rem, cur): loop i from start; recurse with (i, rem − c[i]). Save a copy when rem == 0.</p>`,
           `<p>Prune: if c[i] &gt; rem then <b>break</b> (sorted). Recipe: if rem == 0 save; for i in start..n−1: if c[i] &gt; rem break; add; bt(i, rem − c[i]); remove last.</p>`
         ],
+        tests: { sig: 'int[] int -> list<list<int>>', fn: 'combinationSum', cmp: "sets", cases: [
+          [[[2,3,6,7],7],[[7],[2,2,3]]],
+          [[[2,3,5],8],[[3,5],[2,3,3],[2,2,2,2]]],
+          [[[2],1],[]],
+          [[[7],7],[[7]]],
+          [[[3,2],6],[[2,2,2],[3,3]]],
+          [[[8,7,4,3],11],[[3,4,4],[4,7],[3,8]]],
+          [[[5,10,40],40],[[40],[10,10,10,10],[5,5,10,10,10],[5,5,5,5,10,10],[5,5,5,5,5,5,10],[5,5,5,5,5,5,5,5]]],
+          [[[40],40],[[40]]]
+        ] },
         solution: {
           approach: `<p>Sorted candidates + start index + break-prune. Each node is a partial multiset; the start index forbids going back, the break stops at the first candidate that is too big.</p>`,
           code: `
@@ -2390,6 +3737,60 @@ print(change(500, [1, 2, 5, 10]))  # large count, computed instantly` }
                     System.out.println(new Solution().combinationSum(new int[]{2, 3, 5}, 8));    // [[2, 2, 2, 2], [2, 3, 3], [3, 5]]
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `def combination_sum(candidates: list[int], target: int) -> list[list[int]]:
+    c = sorted(candidates)              # enables the 'break' prune
+    res, cur = [], []
+
+    def bt(start: int, rem: int) -> None:
+        if rem == 0:
+            res.append(cur[:])          # exact hit: save a copy
+            return
+        for i in range(start, len(c)):
+            if c[i] > rem:
+                break                   # too big, and so is everything after
+            cur.append(c[i])
+            bt(i, rem - c[i])           # same i = reuse allowed
+            cur.pop()
+
+    bt(0, target)
+    return res` },
+            { lang: 'js', code: `function combinationSum(candidates, target) {
+  const c = [...candidates].sort((x, y) => x - y);
+  const res = [], cur = [];
+  const bt = (start, rem) => {
+    if (rem === 0) { res.push([...cur]); return; }
+    for (let i = start; i < c.length; i++) {
+      if (c[i] > rem) break;             // sorted: everything after is too big
+      cur.push(c[i]);
+      bt(i, rem - c[i]);                 // same i = reuse allowed
+      cur.pop();
+    }
+  };
+  bt(0, target);
+  return res;
+}` },
+            { lang: 'cpp', code: `class Solution {
+public:
+    vector<vector<int>> combinationSum(vector<int>& candidates, int target) {
+        sort(candidates.begin(), candidates.end());     // enables the 'break' prune
+        vector<vector<int>> res;
+        vector<int> cur;
+        bt(candidates, 0, target, cur, res);
+        return res;
+    }
+private:
+    void bt(const vector<int>& c, int start, int rem, vector<int>& cur, vector<vector<int>>& res) {
+        if (rem == 0) { res.push_back(cur); return; }
+        for (int i = start; i < (int)c.size(); i++) {
+            if (c[i] > rem) break;            // too big, and so is everything after
+            cur.push_back(c[i]);
+            bt(c, i, rem - c[i], cur, res);   // same i = reuse allowed
+            cur.pop_back();
+        }
+    }
+};` }
+          ],
           dry: {
             head: ['cur', 'start', 'rem', 'loop', 'result'],
             rows: [
@@ -2437,7 +3838,7 @@ print(change(500, [1, 2, 5, 10]))  # large count, computed instantly` }
       'Diagonal conflicts → index diagonals by <b>r − c</b> and <b>r + c</b>; never scan the board.',
       '"Count only" with N up to ~15 → bitmask N-Queens (three ints instead of arrays).'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       import java.util.*;
 
       class NQueens {
@@ -2473,7 +3874,87 @@ print(change(500, [1, 2, 5, 10]))  # large count, computed instantly` }
               // [.Q.., ...Q, Q..., ..Q.]
               // [..Q., Q..., ...Q, .Q..]
           }
-      }`, `
+      }`,
+      alt: [
+        { lang: 'python', run: true, code: `def solve_n_queens(n):
+    res = []
+    board = [["."] * n for _ in range(n)]
+    cols, diag, anti = [False] * n, [False] * (2 * n - 1), [False] * (2 * n - 1)
+
+    def place(r):
+        if r == n:                                   # every row has a queen
+            res.append(["".join(row) for row in board])   # copy the board
+            return
+        for c in range(n):
+            d, a = r - c + n - 1, r + c              # diagonal ids
+            if cols[c] or diag[d] or anti[a]:
+                continue                             # attacked -> prune
+            board[r][c] = "Q"
+            cols[c] = diag[d] = anti[a] = True       # choose
+            place(r + 1)                             # explore next row
+            board[r][c] = "."
+            cols[c] = diag[d] = anti[a] = False      # un-choose
+
+    place(0)
+    return res
+
+
+for b in solve_n_queens(4):
+    print(b)          # ['.Q..', '...Q', 'Q...', '..Q.'] then ['..Q.', 'Q...', '...Q', '.Q..']` },
+        { lang: 'js', run: true, code: `function solveNQueens(n) {
+  const res = [];
+  const board = Array.from({ length: n }, () => new Array(n).fill('.'));
+  const cols = new Array(n).fill(false), diag = new Array(2 * n - 1).fill(false), anti = new Array(2 * n - 1).fill(false);
+  const place = (r) => {
+    if (r === n) { res.push(board.map((row) => row.join(''))); return; }   // copy the board
+    for (let c = 0; c < n; c++) {
+      const d = r - c + n - 1, a = r + c;            // diagonal ids
+      if (cols[c] || diag[d] || anti[a]) continue;   // attacked -> prune
+      board[r][c] = 'Q';
+      cols[c] = diag[d] = anti[a] = true;            // choose
+      place(r + 1);                                  // explore next row
+      board[r][c] = '.';
+      cols[c] = diag[d] = anti[a] = false;           // un-choose
+    }
+  };
+  place(0);
+  return res;
+}
+for (const b of solveNQueens(4)) console.log(b.join(' '));
+// .Q.. ...Q Q... ..Q.
+// ..Q. Q... ...Q .Q..` },
+        { lang: 'cpp', code: `class NQueens {
+public:
+    vector<vector<string>> solveNQueens(int n) {
+        vector<vector<string>> res;
+        vector<string> board(n, string(n, '.'));
+        vector<bool> cols(n), diag(2 * n - 1), anti(2 * n - 1);
+        place(0, n, board, cols, diag, anti, res);
+        return res;
+    }
+private:
+    void place(int r, int n, vector<string>& board, vector<bool>& cols, vector<bool>& diag,
+               vector<bool>& anti, vector<vector<string>>& res) {
+        if (r == n) { res.push_back(board); return; }       // every row has a queen: copy
+        for (int c = 0; c < n; c++) {
+            int d = r - c + n - 1, a = r + c;               // diagonal ids
+            if (cols[c] || diag[d] || anti[a]) continue;    // attacked -> prune
+            board[r][c] = 'Q';
+            cols[c] = diag[d] = anti[a] = true;             // choose
+            place(r + 1, n, board, cols, diag, anti, res);  // explore next row
+            board[r][c] = '.';
+            cols[c] = diag[d] = anti[a] = false;            // un-choose
+        }
+    }
+};
+
+int main() {
+    for (const auto& b : NQueens().solveNQueens(4)) {
+        for (const string& row : b) cout << row << ' ';
+        cout << '\\n';    // .Q.. ...Q Q... ..Q.  /  ..Q. Q... ...Q .Q..
+    }
+}` }
+      ] }, { lang: 'java', code: `
       class NQueensBits {
           // Count solutions with bitmasks: bit c set = column c (or the diagonal hitting column c in this row) is attacked.
           static int count(int n, int row, int cols, int diag, int anti) {
@@ -2495,7 +3976,63 @@ print(change(500, [1, 2, 5, 10]))  # large count, computed instantly` }
               for (int n = 1; n <= 10; n++) System.out.print(count(n, 0, 0, 0, 0) + " ");
               // 1 0 0 2 10 4 40 92 352 724
           }
-      }`],
+      }`,
+        alt: [
+          { lang: 'python', run: true, code: `def count(n, row=0, cols=0, diag=0, anti=0):
+    # bit c set = column c (or a diagonal hitting column c in this row) is attacked
+    if row == n:
+        return 1
+    full = (1 << n) - 1
+    free = full & ~(cols | diag | anti)              # safe columns in this row
+    total = 0
+    while free:
+        bit = free & -free                           # lowest safe column
+        free -= bit
+        total += count(n, row + 1, cols | bit,
+                       ((diag | bit) << 1) & full,   # diagonals shift left (mask: Python ints grow)
+                       (anti | bit) >> 1)            # anti-diagonals shift right
+    return total
+
+
+print(*(count(n) for n in range(1, 11)))             # 1 0 0 2 10 4 40 92 352 724` },
+          { lang: 'js', run: true, code: `// Count solutions with bitmasks: bit c set = column c (or the diagonal hitting column c in this row) is attacked.
+function count(n, row, cols, diag, anti) {
+  if (row === n) return 1;
+  const full = (1 << n) - 1;
+  let free = full & ~(cols | diag | anti);           // safe columns in this row
+  let total = 0;
+  while (free !== 0) {
+    const bit = free & -free;                        // lowest safe column
+    free -= bit;
+    total += count(n, row + 1, cols | bit,
+                   ((diag | bit) << 1) & full,       // diagonals shift left for the next row
+                   (anti | bit) >> 1);               // anti-diagonals shift right
+  }
+  return total;
+}
+const counts = [];
+for (let n = 1; n <= 10; n++) counts.push(count(n, 0, 0, 0, 0));
+console.log(counts.join(' '));                       // 1 0 0 2 10 4 40 92 352 724` },
+          { lang: 'cpp', code: `// Count solutions with bitmasks: bit c set = column c (or the diagonal hitting column c in this row) is attacked.
+int countQueens(int n, int row, int cols, int diag, int anti) {
+    if (row == n) return 1;
+    int full = (1 << n) - 1;
+    int free = full & ~(cols | diag | anti);         // safe columns in this row
+    int total = 0;
+    while (free != 0) {
+        int bit = free & -free;                      // lowest safe column
+        free -= bit;
+        total += countQueens(n, row + 1, cols | bit,
+                             ((diag | bit) << 1) & full,   // diagonals shift left for the next row
+                             (anti | bit) >> 1);           // anti-diagonals shift right
+    }
+    return total;
+}
+int main() {
+    for (int n = 1; n <= 10; n++) cout << countQueens(n, 0, 0, 0, 0) << ' ';
+    cout << '\\n';                                    // 1 0 0 2 10 4 40 92 352 724
+}` }
+        ] }],
     codeTitle: ['N-Queens with O(1) checks (all boards)', 'N-Queens II with bitmasks (count only)'],
     viz: {
       title: 'N-Queens: place, detect conflict, backtrack',
@@ -2520,7 +4057,7 @@ print(change(500, [1, 2, 5, 10]))  # large count, computed instantly` }
       {
         title: 'Validating a given board (the reverse question)',
         html: `<p>"Is this placement valid?" — no backtracking at all: scan each queen and insert its column, r − c and r + c into three HashSets; any repeat means an attack. O(N) for N queens. Interviewers sometimes ask this first as a warm-up.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           class ValidQueens {
               static boolean valid(int[] colOfRow) {             // colOfRow[r] = column of the queen in row r
                   Set<Integer> cols = new HashSet<>(), d = new HashSet<>(), a = new HashSet<>();
@@ -2534,7 +4071,43 @@ print(change(500, [1, 2, 5, 10]))  # large count, computed instantly` }
                   System.out.println(valid(new int[]{1, 3, 0, 2})); // true
                   System.out.println(valid(new int[]{0, 2, 1, 3})); // false
               }
-          }`
+          }`,
+          alt: [
+            { lang: 'python', run: true, code: `def valid(col_of_row):                       # col_of_row[r] = column of the queen in row r
+    cols, d, a = set(), set(), set()
+    for r, c in enumerate(col_of_row):
+        if c in cols or r - c in d or r + c in a:
+            return False
+        cols.add(c); d.add(r - c); a.add(r + c)
+    return True
+
+
+print(valid([1, 3, 0, 2]))                   # True
+print(valid([0, 2, 1, 3]))                   # False` },
+            { lang: 'js', run: true, code: `function valid(colOfRow) {                 // colOfRow[r] = column of the queen in row r
+  const cols = new Set(), d = new Set(), a = new Set();
+  for (let r = 0; r < colOfRow.length; r++) {
+    const c = colOfRow[r];
+    if (cols.has(c) || d.has(r - c) || a.has(r + c)) return false;
+    cols.add(c); d.add(r - c); a.add(r + c);
+  }
+  return true;
+}
+console.log(valid([1, 3, 0, 2]));          // true
+console.log(valid([0, 2, 1, 3]));          // false` },
+            { lang: 'cpp', code: `bool valid(const vector<int>& colOfRow) {            // colOfRow[r] = column of the queen in row r
+    unordered_set<int> cols, d, a;
+    for (int r = 0; r < (int)colOfRow.size(); r++) {
+        int c = colOfRow[r];
+        if (!cols.insert(c).second || !d.insert(r - c).second || !a.insert(r + c).second) return false;
+    }
+    return true;
+}
+int main() {
+    cout << boolalpha << valid({1, 3, 0, 2}) << '\\n';   // true
+    cout << boolalpha << valid({0, 2, 1, 3}) << '\\n';   // false
+}` }
+          ] }
       }
     ],
     deepDive: `<h4>How big is the search really?</h4>
@@ -2606,6 +4179,16 @@ print(change(500, [1, 2, 5, 10]))  # large count, computed instantly` }
           `<p>Track attacked columns and diagonals in three boolean arrays: <code>cols[c]</code>, <code>diag[r − c + n − 1]</code>, <code>anti[r + c]</code> (sizes n, 2n − 1, 2n − 1) for O(1) checks.</p>`,
           `<p>Edge cases: n = 1 (one board), n = 2, 3 (empty list). Copy the board into Strings when r == n. Recipe: place(r): if r == n record; for c: if any of the 3 marked continue; mark + put Q; place(r+1); unmark + remove Q.</p>`
         ],
+        tests: { sig: 'int -> list<list<string>>', fn: 'solveNQueens', check: "(a, out, exp) => { const n = a[0]; if (!Array.isArray(out)) return false; const ok = (b) => { if (!Array.isArray(b) || b.length !== n) return false; const cs = new Set(), d1 = new Set(), d2 = new Set(); for (let r = 0; r < n; r++) { const row = b[r]; if (typeof row !== 'string' || row.length !== n || row.split('').filter((ch) => ch === 'Q').length !== 1 || /[^Q.]/.test(row)) return false; const c = row.indexOf('Q'); cs.add(c); d1.add(r - c); d2.add(r + c); } return cs.size === n && d1.size === n && d2.size === n; }; const keys = out.map((b) => JSON.stringify(b)); if (new Set(keys).size !== keys.length || !out.every(ok)) return false; if (!Array.isArray(exp)) return out.length === exp; const want = new Set(exp.map((b) => JSON.stringify(b))); return keys.length === want.size && keys.every((x) => want.has(x)); }", cases: [
+          [[1],[["Q"]]],
+          [[2],[]],
+          [[3],[]],
+          [[4],[[".Q..","...Q","Q...","..Q."],["..Q.","Q...","...Q",".Q.."]]],
+          [[5],[["Q....","..Q..","....Q",".Q...","...Q."],["Q....","...Q.",".Q...","....Q","..Q.."],[".Q...","...Q.","Q....","..Q..","....Q"],[".Q...","....Q","..Q..","Q....","...Q."],["..Q..","Q....","...Q.",".Q...","....Q"],["..Q..","....Q",".Q...","...Q.","Q...."],["...Q.","Q....","..Q..","....Q",".Q..."],["...Q.",".Q...","....Q","..Q..","Q...."],["....Q",".Q...","...Q.","Q....","..Q.."],["....Q","..Q..","Q....","...Q.",".Q..."]]],
+          [[6],[[".Q....","...Q..",".....Q","Q.....","..Q...","....Q."],["..Q...",".....Q",".Q....","....Q.","Q.....","...Q.."],["...Q..","Q.....","....Q.",".Q....",".....Q","..Q..."],["....Q.","..Q...","Q.....",".....Q","...Q..",".Q...."]]],
+          [[8],92],
+          [[9],352]
+        ] },
         solution: {
           approach: `<p>Row-by-row backtracking with three O(1) conflict arrays; each complete placement is copied into the answer.</p>`,
           code: `
@@ -2652,6 +4235,76 @@ print(change(500, [1, 2, 5, 10]))  # large count, computed instantly` }
                     System.out.println(new Solution().solveNQueens(8).size());   // 92
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `def solve_n_queens(n: int) -> list[list[str]]:
+    res = []
+    board = [["."] * n for _ in range(n)]
+    cols, diag, anti = set(), set(), set()     # attacked column, r - c, r + c
+
+    def place(r: int) -> None:
+        if r == n:
+            res.append(["".join(row) for row in board])   # copy the board
+            return
+        for c in range(n):
+            if c in cols or r - c in diag or r + c in anti:
+                continue                                  # attacked
+            board[r][c] = "Q"
+            cols.add(c); diag.add(r - c); anti.add(r + c)            # choose
+            place(r + 1)                                             # explore
+            board[r][c] = "."
+            cols.remove(c); diag.remove(r - c); anti.remove(r + c)   # un-choose
+
+    place(0)
+    return res` },
+            { lang: 'js', code: `function solveNQueens(n) {
+  const res = [];
+  const board = Array.from({ length: n }, () => new Array(n).fill('.'));
+  const cols = new Array(n).fill(false);
+  const diag = new Array(2 * n - 1).fill(false);   // index r - c + n - 1
+  const anti = new Array(2 * n - 1).fill(false);   // index r + c
+  const place = (r) => {
+    if (r === n) { res.push(board.map((row) => row.join(''))); return; }
+    for (let c = 0; c < n; c++) {
+      const d = r - c + n - 1, a = r + c;
+      if (cols[c] || diag[d] || anti[a]) continue;  // attacked
+      board[r][c] = 'Q'; cols[c] = diag[d] = anti[a] = true;    // choose
+      place(r + 1);                                             // explore
+      board[r][c] = '.'; cols[c] = diag[d] = anti[a] = false;   // un-choose
+    }
+  };
+  place(0);
+  return res;
+}` },
+            { lang: 'cpp', code: `class Solution {
+public:
+    vector<vector<string>> solveNQueens(int n) {
+        this->n = n;
+        board.assign(n, string(n, '.'));
+        cols.assign(n, false);
+        diag.assign(2 * n - 1, false);        // r - c + n - 1
+        anti.assign(2 * n - 1, false);        // r + c
+        res.clear();
+        place(0);
+        return res;
+    }
+private:
+    int n = 0;
+    vector<string> board;
+    vector<bool> cols, diag, anti;
+    vector<vector<string>> res;
+
+    void place(int r) {
+        if (r == n) { res.push_back(board); return; }   // copies every row
+        for (int c = 0; c < n; c++) {
+            int d = r - c + n - 1, a = r + c;
+            if (cols[c] || diag[d] || anti[a]) continue;  // attacked
+            board[r][c] = 'Q'; cols[c] = diag[d] = anti[a] = true;    // choose
+            place(r + 1);                                             // explore
+            board[r][c] = '.'; cols[c] = diag[d] = anti[a] = false;   // un-choose
+        }
+    }
+};` }
+          ],
           dry: {
             head: ['row r', 'columns tried', 'safe col', 'marks set', 'event'],
             rows: [
@@ -2707,7 +4360,7 @@ print(change(500, [1, 2, 5, 10]))  # large count, computed instantly` }
       'Any grid-filling / assignment puzzle (KenKen, crossword fill, map colouring, exam timetabling) with <b>constraints between cells</b> → constraint-satisfaction backtracking.',
       '"Return any one solution" → make the recursion return <b>boolean</b> and stop on the first true.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       class SudokuSolver {
           private final boolean[][] rows = new boolean[9][10];
           private final boolean[][] cols = new boolean[9][10];
@@ -2753,7 +4406,121 @@ print(change(500, [1, 2, 5, 10]))  # large count, computed instantly` }
               for (char[] row : board) System.out.println(new String(row));
               // 534678912 / 672195348 / 198342567 / 859761423 / 426853791 / 713924856 / 961537284 / 287419635 / 345286179
           }
-      }`],
+      }`,
+      alt: [
+        { lang: 'python', run: true, code: `def solve_sudoku(board):
+    rows = [[False] * 10 for _ in range(9)]
+    cols = [[False] * 10 for _ in range(9)]
+    boxes = [[False] * 10 for _ in range(9)]
+
+    def mark(r, c, d, v):
+        rows[r][d] = cols[c][d] = boxes[r // 3 * 3 + c // 3][d] = v
+
+    for r in range(9):
+        for c in range(9):
+            if board[r][c] != ".":
+                mark(r, c, int(board[r][c]), True)   # record givens
+
+    def solve(pos):
+        while pos < 81 and board[pos // 9][pos % 9] != ".":
+            pos += 1                                 # skip filled cells
+        if pos == 81:
+            return True                              # no empty cell: solved
+        r, c = divmod(pos, 9)
+        box = r // 3 * 3 + c // 3
+        for d in range(1, 10):
+            if rows[r][d] or cols[c][d] or boxes[box][d]:
+                continue                             # clash
+            board[r][c] = str(d)
+            mark(r, c, d, True)                      # choose
+            if solve(pos + 1):
+                return True                          # explore; keep answer on success
+            mark(r, c, d, False)                     # un-choose
+            board[r][c] = "."
+        return False                                 # dead end: caller retries
+
+    solve(0)
+
+
+p = ["53..7....", "6..195...", ".98....6.", "8...6...3", "4..8.3..1",
+     "7...2...6", ".6....28.", "...419..5", "....8..79"]
+board = [list(row) for row in p]
+solve_sudoku(board)
+for row in board:
+    print("".join(row))
+# 534678912 / 672195348 / 198342567 / 859761423 / 426853791 / 713924856 / 961537284 / 287419635 / 345286179` },
+        { lang: 'js', run: true, code: `function solveSudoku(board) {
+  const used = () => Array.from({ length: 9 }, () => new Array(10).fill(false));
+  const rows = used(), cols = used(), boxes = used();
+  const boxOf = (r, c) => Math.floor(r / 3) * 3 + Math.floor(c / 3);
+  const mark = (r, c, d, v) => { rows[r][d] = cols[c][d] = boxes[boxOf(r, c)][d] = v; };
+  for (let r = 0; r < 9; r++)
+    for (let c = 0; c < 9; c++)
+      if (board[r][c] !== '.') mark(r, c, Number(board[r][c]), true);   // record givens
+  const solve = (pos) => {
+    while (pos < 81 && board[Math.floor(pos / 9)][pos % 9] !== '.') pos++;   // skip filled cells
+    if (pos === 81) return true;                     // no empty cell: solved
+    const r = Math.floor(pos / 9), c = pos % 9, box = boxOf(r, c);
+    for (let d = 1; d <= 9; d++) {
+      if (rows[r][d] || cols[c][d] || boxes[box][d]) continue;   // clash
+      board[r][c] = String(d);
+      mark(r, c, d, true);                           // choose
+      if (solve(pos + 1)) return true;               // explore; keep answer on success
+      mark(r, c, d, false);                          // un-choose
+      board[r][c] = '.';
+    }
+    return false;                                    // dead end: caller retries
+  };
+  solve(0);
+}
+
+const p = ['53..7....', '6..195...', '.98....6.', '8...6...3', '4..8.3..1',
+           '7...2...6', '.6....28.', '...419..5', '....8..79'];
+const board = p.map((row) => row.split(''));
+solveSudoku(board);
+for (const row of board) console.log(row.join(''));
+// 534678912 / 672195348 / 198342567 / 859761423 / 426853791 / 713924856 / 961537284 / 287419635 / 345286179` },
+        { lang: 'cpp', code: `class SudokuSolver {
+public:
+    void solveSudoku(vector<vector<char>>& board) {
+        for (int r = 0; r < 9; r++)
+            for (int c = 0; c < 9; c++)
+                if (board[r][c] != '.') mark(r, c, board[r][c] - '0', true);   // record givens
+        solve(board, 0);
+    }
+private:
+    bool rows[9][10] = {}, cols[9][10] = {}, boxes[9][10] = {};
+
+    bool solve(vector<vector<char>>& b, int pos) {
+        while (pos < 81 && b[pos / 9][pos % 9] != '.') pos++;   // skip filled cells
+        if (pos == 81) return true;                            // no empty cell: solved
+        int r = pos / 9, c = pos % 9, box = (r / 3) * 3 + c / 3;
+        for (int d = 1; d <= 9; d++) {
+            if (rows[r][d] || cols[c][d] || boxes[box][d]) continue;   // clash
+            b[r][c] = char('0' + d);
+            mark(r, c, d, true);                               // choose
+            if (solve(b, pos + 1)) return true;                // explore; keep answer on success
+            mark(r, c, d, false);                              // un-choose
+            b[r][c] = '.';
+        }
+        return false;                                          // dead end: caller retries
+    }
+
+    void mark(int r, int c, int d, bool v) {
+        rows[r][d] = cols[c][d] = boxes[(r / 3) * 3 + c / 3][d] = v;
+    }
+};
+
+int main() {
+    vector<string> p = {"53..7....", "6..195...", ".98....6.", "8...6...3", "4..8.3..1",
+                        "7...2...6", ".6....28.", "...419..5", "....8..79"};
+    vector<vector<char>> board;
+    for (const string& row : p) board.emplace_back(row.begin(), row.end());
+    SudokuSolver().solveSudoku(board);
+    for (const auto& row : board) cout << string(row.begin(), row.end()) << '\\n';
+    // 534678912 / 672195348 / 198342567 / 859761423 / 426853791 / 713924856 / 961537284 / 287419635 / 345286179
+}` }
+      ] }],
     codeTitle: ['Sudoku solver with O(1) row/column/box checks'],
     viz: {
       title: 'Mini 4×4 Sudoku: try digit, detect clash, erase',
@@ -2765,7 +4532,7 @@ print(change(500, [1, 2, 5, 10]))  # large count, computed instantly` }
       {
         title: 'Valid Sudoku (check only, no solving)',
         html: `<p>LeetCode 36: is a partially filled board consistent? One pass: for each filled cell, insert the strings "5 in row 0", "5 in col 3", "5 in box 1" into a <code>HashSet</code>; if any insert fails, it is invalid. O(81) — no recursion. Note: a valid board might still be <b>unsolvable</b>; the question only asks about the current digits.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           class ValidSudoku {
               static boolean isValid(char[][] b) {
                   Set<String> seen = new HashSet<>();
@@ -2784,11 +4551,63 @@ print(change(500, [1, 2, 5, 10]))  # large count, computed instantly` }
                   b[0][0] = '5'; b[1][1] = '5';                // same box -> invalid
                   System.out.println(isValid(b));              // false
               }
-          }`
+          }`,
+          alt: [
+            { lang: 'python', run: true, code: `def is_valid(b):
+    seen = set()
+    for r in range(9):
+        for c in range(9):
+            d = b[r][c]
+            if d == ".":
+                continue
+            keys = (d + " in row " + str(r), d + " in col " + str(c), d + " in box " + str(r // 3) + "-" + str(c // 3))
+            if any(k in seen for k in keys):
+                return False
+            seen.update(keys)
+    return True
+
+
+b = [["."] * 9 for _ in range(9)]
+b[0][0] = "5"; b[1][1] = "5"                 # same box -> invalid
+print(is_valid(b))                           # False` },
+            { lang: 'js', run: true, code: `function isValid(b) {
+  const seen = new Set();
+  for (let r = 0; r < 9; r++)
+    for (let c = 0; c < 9; c++) {
+      const d = b[r][c];
+      if (d === '.') continue;
+      const keys = [d + ' in row ' + r, d + ' in col ' + c, d + ' in box ' + Math.floor(r / 3) + '-' + Math.floor(c / 3)];
+      if (keys.some((k) => seen.has(k))) return false;
+      keys.forEach((k) => seen.add(k));
+    }
+  return true;
+}
+const b = Array.from({ length: 9 }, () => new Array(9).fill('.'));
+b[0][0] = '5'; b[1][1] = '5';              // same box -> invalid
+console.log(isValid(b));                   // false` },
+            { lang: 'cpp', code: `bool isValid(const vector<vector<char>>& b) {
+    unordered_set<string> seen;
+    for (int r = 0; r < 9; r++)
+        for (int c = 0; c < 9; c++) {
+            char d = b[r][c];
+            if (d == '.') continue;
+            string k1 = string(1, d) + " in row " + to_string(r);
+            string k2 = string(1, d) + " in col " + to_string(c);
+            string k3 = string(1, d) + " in box " + to_string(r / 3) + "-" + to_string(c / 3);
+            if (!seen.insert(k1).second || !seen.insert(k2).second || !seen.insert(k3).second) return false;
+        }
+    return true;
+}
+int main() {
+    vector<vector<char>> b(9, vector<char>(9, '.'));
+    b[0][0] = '5'; b[1][1] = '5';                    // same box -> invalid
+    cout << boolalpha << isValid(b) << '\\n';         // false
+}` }
+          ] }
       },
       {
         title: 'Bitmask candidates: which digits can go here?',
-        html: `<p>Store <code>rowMask[r]</code>, <code>colMask[c]</code>, <code>boxMask[b]</code> as 9-bit ints (bit d−1 = digit d used). Free digits = <code>~(rowMask[r] | colMask[c] | boxMask[b]) &amp; 0x1FF</code>. <code>Integer.bitCount</code> gives how many options the cell has — which powers the MRV heuristic below.</p>
+        html: `<p>Store <code>rowMask[r]</code>, <code>colMask[c]</code>, <code>boxMask[b]</code> as 9-bit ints (bit d−1 = digit d used). Free digits = <code>~(rowMask[r] | colMask[c] | boxMask[b]) &amp; 0x1FF</code>. A popcount (<code>Integer.bitCount</code>, Python <code>int.bit_count()</code>, C++ <code>__builtin_popcount</code>) gives how many options the cell has — which powers the MRV heuristic below.</p>
           ${H.bits(0b101100110, 9, { label: 'used (green = free digit slots)', hl: { 0: 'g', 3: 'g', 4: 'g', 7: 'g' } })}
           <p>Used digits {2, 3, 6, 7, 9} → free = {1, 4, 5, 8} → 4 candidates.</p>`
       },
@@ -2825,7 +4644,7 @@ print(change(500, [1, 2, 5, 10]))  # large count, computed instantly` }
         level: 'Hard',
         tags: ['backtracking', 'matrix', 'constraint satisfaction'],
         companies: ['Uber', 'Microsoft', 'Amazon', 'Snap'],
-        statement: `<p>Write a program to solve a Sudoku puzzle by filling the empty cells (<code>'.'</code>) of a 9×9 <code>char[][] board</code> <b>in place</b>. Each of the digits 1–9 must occur exactly once in each row, each column and each of the nine 3×3 sub-boxes. The input has exactly one solution.</p>`,
+        statement: `<p>Write a program to solve a Sudoku puzzle by filling the empty cells (<code>'.'</code>) of a 9×9 grid of characters <code>board</code> <b>in place</b>. Each of the digits 1–9 must occur exactly once in each row, each column and each of the nine 3×3 sub-boxes. The input has exactly one solution.</p>`,
         constraints: `board.length == 9, board[i].length == 9, board[i][j] is a digit or '.', exactly one solution`,
         example: `<p>Input row 0: <code>5 3 . . 7 . . . .</code> (plus 8 more rows, see the code above) → Output row 0: <code>5 3 ${H.c('g', '4 6')} 7 ${H.c('g', '8 9 1 2')}</code>.</p>
           <p>Why (0, 2) = 4: row 0 already has {3,5,7}, column 2 has {8}, box 0 has {3,5,6,8,9}; candidates are {1,2,4}. The solver tries 1 and 2 first, and only 4 survives the deeper checks.</p>`,
@@ -2866,6 +4685,15 @@ print(change(500, [1, 2, 5, 10]))  # large count, computed instantly` }
           `<p>Precompute <code>rows[9][10]</code>, <code>cols[9][10]</code>, <code>boxes[9][10]</code> from the givens; box = (r/3)*3 + c/3. Recursion returns boolean.</p>`,
           `<p>Edge cases: givens must be marked before solving; on success return true without erasing. Recipe: find next '.' from pos; none → true; for d: if free → write+mark; if solve(next) return true; unmark+erase; return false.</p>`
         ],
+        tests: { sig: 'char[][] -> void', fn: 'solveSudoku', mutate: 0, cases: [
+          [[[["5","3",".",".","7",".",".",".","."],["6",".",".","1","9","5",".",".","."],[".","9","8",".",".",".",".","6","."],["8",".",".",".","6",".",".",".","3"],["4",".",".","8",".","3",".",".","1"],["7",".",".",".","2",".",".",".","6"],[".","6",".",".",".",".","2","8","."],[".",".",".","4","1","9",".",".","5"],[".",".",".",".","8",".",".","7","9"]]],[["5","3","4","6","7","8","9","1","2"],["6","7","2","1","9","5","3","4","8"],["1","9","8","3","4","2","5","6","7"],["8","5","9","7","6","1","4","2","3"],["4","2","6","8","5","3","7","9","1"],["7","1","3","9","2","4","8","5","6"],["9","6","1","5","3","7","2","8","4"],["2","8","7","4","1","9","6","3","5"],["3","4","5","2","8","6","1","7","9"]]],
+          [[[[".",".","9","7","4","8",".",".","."],["7",".",".",".",".",".",".",".","."],[".","2",".","1",".","9",".",".","."],[".",".","7",".",".",".","2","4","."],[".","6","4",".","1",".","5","9","."],[".","9","8",".",".",".","3",".","."],[".",".",".","8",".","3",".","2","."],[".",".",".",".",".",".",".",".","6"],[".",".",".","2","7","5","9",".","."]]],[["5","1","9","7","4","8","6","3","2"],["7","8","3","6","5","2","4","1","9"],["4","2","6","1","3","9","8","7","5"],["3","5","7","9","8","6","2","4","1"],["2","6","4","3","1","7","5","9","8"],["1","9","8","5","2","4","3","6","7"],["9","7","5","8","6","3","1","2","4"],["8","3","2","4","9","1","7","5","6"],["6","4","1","2","7","5","9","8","3"]]],
+          [[[["8",".",".",".",".",".",".",".","."],[".",".","3","6",".",".",".",".","."],[".","7",".",".","9",".","2",".","."],[".","5",".",".",".","7",".",".","."],[".",".",".",".","4","5","7",".","."],[".",".",".","1",".",".",".","3","."],[".",".","1",".",".",".",".","6","8"],[".",".","8","5",".",".",".","1","."],[".","9",".",".",".",".","4",".","."]]],[["8","1","2","7","5","3","6","4","9"],["9","4","3","6","8","2","1","7","5"],["6","7","5","4","9","1","2","8","3"],["1","5","4","2","3","7","8","9","6"],["3","6","9","8","4","5","7","2","1"],["2","8","7","1","6","9","5","3","4"],["5","2","1","9","7","4","3","6","8"],["4","3","8","5","2","6","9","1","7"],["7","9","6","3","1","8","4","5","2"]]],
+          [[[[".",".",".",".",".",".",".","1","."],["4",".",".",".",".",".",".",".","."],[".","2",".",".",".",".",".",".","."],[".",".",".",".","5",".","4",".","7"],[".",".","8",".",".",".","3",".","."],[".",".","1",".","9",".",".",".","."],["3",".",".","4",".",".","2",".","."],[".","5",".","1",".",".",".",".","."],[".",".",".","8",".","6",".",".","."]]],[["6","9","3","7","8","4","5","1","2"],["4","8","7","5","1","2","9","3","6"],["1","2","5","9","6","3","8","7","4"],["9","3","2","6","5","1","4","8","7"],["5","6","8","2","4","7","3","9","1"],["7","4","1","3","9","8","6","2","5"],["3","1","9","4","7","5","2","6","8"],["8","5","6","1","2","9","7","4","3"],["2","7","4","8","3","6","1","5","9"]]],
+          [[[["5","3","4","6","7","8","9","1","2"],["6","7","2","1","9","5","3","4","8"],["1","9","8","3","4","2","5","6","7"],["8","5","9","7","6","1","4","2","3"],["4","2","6","8","5","3","7","9","1"],["7","1","3","9","2","4","8","5","6"],["9","6","1","5","3","7","2","8","4"],["2","8","7","4","1","9","6","3","5"],["3","4","5","2","8","6","1","7","9"]]],[["5","3","4","6","7","8","9","1","2"],["6","7","2","1","9","5","3","4","8"],["1","9","8","3","4","2","5","6","7"],["8","5","9","7","6","1","4","2","3"],["4","2","6","8","5","3","7","9","1"],["7","1","3","9","2","4","8","5","6"],["9","6","1","5","3","7","2","8","4"],["2","8","7","4","1","9","6","3","5"],["3","4","5","2","8","6","1","7","9"]]],
+          [[[["5","3","4","6","7","8","9","1","2"],["6","7","2","1","9","5","3","4","8"],["1","9","8","3","4","2","5","6","7"],["8","5","9","7","6","1","4","2","3"],["4","2","6","8",".","3","7","9","1"],["7","1","3","9","2","4","8","5","6"],["9","6","1","5","3","7","2","8","4"],["2","8","7","4","1","9","6","3","5"],["3","4","5","2","8","6","1","7","9"]]],[["5","3","4","6","7","8","9","1","2"],["6","7","2","1","9","5","3","4","8"],["1","9","8","3","4","2","5","6","7"],["8","5","9","7","6","1","4","2","3"],["4","2","6","8","5","3","7","9","1"],["7","1","3","9","2","4","8","5","6"],["9","6","1","5","3","7","2","8","4"],["2","8","7","4","1","9","6","3","5"],["3","4","5","2","8","6","1","7","9"]]],
+          [[[["5","3","4","6","7","8","9","1","2"],["6","7","2","1","9","5","3","4","8"],["1","9","8","3","4","2","5","6","7"],["8","5","9","7","6","1","4","2","3"],["4","2","6","8","5","3","7","9","1"],["7","1","3","9","2","4","8","5","6"],["9","6","1","5","3","7","2","8","4"],["2","8","7","4","1","9","6","3","5"],["3","4","5","2","8","6","1","7","."]]],[["5","3","4","6","7","8","9","1","2"],["6","7","2","1","9","5","3","4","8"],["1","9","8","3","4","2","5","6","7"],["8","5","9","7","6","1","4","2","3"],["4","2","6","8","5","3","7","9","1"],["7","1","3","9","2","4","8","5","6"],["9","6","1","5","3","7","2","8","4"],["2","8","7","4","1","9","6","3","5"],["3","4","5","2","8","6","1","7","9"]]]
+        ] },
         solution: {
           approach: `<p>Cell-by-cell backtracking with O(1) used-tables and a boolean return that freezes the board at the first full solution. Optional upgrade: choose the empty cell with the fewest candidates (MRV) using bitmasks.</p>`,
           code: `
@@ -2919,40 +4747,113 @@ print(change(500, [1, 2, 5, 10]))  # large count, computed instantly` }
                     for (char[] row : b) System.out.println(new String(row));
                 }
             }`,
-          alt: [{ lang: 'python', run: true, code: `def solve_sudoku(board):
-    rows = [set() for _ in range(9)]
-    cols = [set() for _ in range(9)]
-    boxes = [set() for _ in range(9)]
+          alt: [
+            { lang: 'python', code: `def solve_sudoku(board: list[list[str]]) -> None:
+    rows, cols, boxes = [0] * 9, [0] * 9, [0] * 9   # bit d-1 set = digit d used
     empty = []
     for r in range(9):
         for c in range(9):
-            d = board[r][c]
-            if d == '.':
+            if board[r][c] == ".":
                 empty.append((r, c))
             else:
-                rows[r].add(d); cols[c].add(d); boxes[r // 3 * 3 + c // 3].add(d)
+                bit = 1 << (int(board[r][c]) - 1)
+                rows[r] |= bit; cols[c] |= bit; boxes[r // 3 * 3 + c // 3] |= bit
 
-    def bt(k):
-        if k == len(empty):
-            return True
-        r, c = empty[k]
+    def free(r: int, c: int) -> int:
+        return ~(rows[r] | cols[c] | boxes[r // 3 * 3 + c // 3]) & 0x1FF
+
+    def solve() -> bool:
+        if not empty:
+            return True                         # every cell filled
+        # MRV: take the empty cell with the fewest legal digits
+        k = min(range(len(empty)), key=lambda i: free(*empty[i]).bit_count())
+        empty[k], empty[-1] = empty[-1], empty[k]
+        r, c = empty.pop()
         b = r // 3 * 3 + c // 3
-        for d in "123456789":
-            if d in rows[r] or d in cols[c] or d in boxes[b]:
-                continue
-            board[r][c] = d; rows[r].add(d); cols[c].add(d); boxes[b].add(d)
-            if bt(k + 1):
-                return True
-            board[r][c] = '.'; rows[r].remove(d); cols[c].remove(d); boxes[b].remove(d)
+        cand = free(r, c)
+        while cand:
+            bit = cand & -cand                  # lowest candidate digit
+            cand ^= bit
+            board[r][c] = str(bit.bit_length())
+            rows[r] |= bit; cols[c] |= bit; boxes[b] |= bit      # choose
+            if solve():
+                return True                     # keep the board on success
+            rows[r] ^= bit; cols[c] ^= bit; boxes[b] ^= bit      # un-choose
+        board[r][c] = "."
+        empty.append((r, c))                    # dead end: give the cell back
         return False
 
-    bt(0)
+    solve()` },
+            { lang: 'js', code: `function solveSudoku(board) {
+  const rows = new Array(9).fill(0), cols = new Array(9).fill(0), boxes = new Array(9).fill(0);
+  const box = (r, c) => Math.floor(r / 3) * 3 + Math.floor(c / 3);
+  const bits = (x) => { let k = 0; for (; x; x &= x - 1) k++; return k; };
+  const flip = (r, c, bit) => { rows[r] ^= bit; cols[c] ^= bit; boxes[box(r, c)] ^= bit; };
+  for (let r = 0; r < 9; r++)
+    for (let c = 0; c < 9; c++)
+      if (board[r][c] !== '.') flip(r, c, 1 << (board[r][c].charCodeAt(0) - 49));
+  const solve = () => {
+    let bestR = -1, bestC = -1, bestFree = 0, bestCount = 10;
+    for (let r = 0; r < 9; r++)          // MRV: the empty cell with the fewest options
+      for (let c = 0; c < 9; c++) {
+        if (board[r][c] !== '.') continue;
+        const free = ~(rows[r] | cols[c] | boxes[box(r, c)]) & 0x1FF;
+        const cnt = bits(free);
+        if (cnt < bestCount) { bestCount = cnt; bestR = r; bestC = c; bestFree = free; }
+      }
+    if (bestR === -1) return true;       // no empty cell: solved
+    for (let free = bestFree; free; ) {
+      const bit = free & -free;          // lowest candidate digit
+      free -= bit;
+      board[bestR][bestC] = String(31 - Math.clz32(bit) + 1);
+      flip(bestR, bestC, bit);           // choose
+      if (solve()) return true;          // keep the board on success
+      flip(bestR, bestC, bit);           // un-choose
+      board[bestR][bestC] = '.';
+    }
+    return false;
+  };
+  solve();
+}` },
+            { lang: 'cpp', code: `class Solution {
+public:
+    void solveSudoku(vector<vector<char>>& board) {
+        for (int r = 0; r < 9; r++)
+            for (int c = 0; c < 9; c++)
+                if (board[r][c] != '.') flip(r, c, board[r][c] - '1');
+        solve(board);
+    }
+private:
+    array<int, 9> rowMask{}, colMask{}, boxMask{};   // bit d = digit d+1 used
 
-p = ["53..7....", "6..195...", ".98....6.", "8...6...3", "4..8.3..1",
-     "7...2...6", ".6....28.", "...419..5", "....8..79"]
-board = [list(row) for row in p]
-solve_sudoku(board)
-print("\\n".join("".join(row) for row in board))` }],
+    void flip(int r, int c, int d) {
+        int bit = 1 << d;
+        rowMask[r] ^= bit; colMask[c] ^= bit; boxMask[(r / 3) * 3 + c / 3] ^= bit;
+    }
+
+    bool solve(vector<vector<char>>& b) {
+        int bestR = -1, bestC = -1, bestFree = 0, bestCount = 10;
+        for (int r = 0; r < 9; r++)           // MRV: the empty cell with the fewest options
+            for (int c = 0; c < 9; c++) {
+                if (b[r][c] != '.') continue;
+                int free = ~(rowMask[r] | colMask[c] | boxMask[(r / 3) * 3 + c / 3]) & 0x1FF;
+                int cnt = __builtin_popcount(free);
+                if (cnt < bestCount) { bestCount = cnt; bestR = r; bestC = c; bestFree = free; }
+            }
+        if (bestR == -1) return true;         // no empty cell: solved
+        while (bestFree) {
+            int d = __builtin_ctz(bestFree);  // lowest candidate digit
+            bestFree &= bestFree - 1;
+            b[bestR][bestC] = char('1' + d);
+            flip(bestR, bestC, d);            // choose
+            if (solve(b)) return true;        // keep the board on success
+            flip(bestR, bestC, d);            // un-choose
+            b[bestR][bestC] = '.';
+        }
+        return false;
+    }
+};` }
+          ],
           dry: {
             head: ['step', 'cell (MRV pick)', 'candidates', 'action'],
             rows: [
@@ -2977,7 +4878,7 @@ print("\\n".join("".join(row) for row in board))` }],
     level: 'Easy',
     tags: ['recursion', 'two pointers'],
     companies: ['Microsoft', 'Apple'],
-    statement: `<p>Write a function that reverses a string given as a <code>char[] s</code>. Do it <b>in place</b> (O(1) extra memory apart from recursion) and solve it <b>recursively</b>.</p>`,
+    statement: `<p>Write a function that reverses a string given as an array of characters <code>s</code>. Do it <b>in place</b> (O(1) extra memory apart from recursion) and solve it <b>recursively</b>.</p>`,
     constraints: `1 ≤ s.length ≤ 10<sup>5</sup>; printable ASCII characters`,
     example: `${H.arr(['h', 'e', 'l', 'l', 'o'], { label: 's', hl: { 0: 'g', 4: 'g' }, ptr: { 0: 'l', 4: 'r' } })}
       <p>Output: ${H.arr(['o', 'l', 'l', 'e', 'h'])}</p>
@@ -2994,27 +4895,44 @@ print("\\n".join("".join(row) for row in board))` }],
       q: `Recursive reverse with (l, r) indices on n = 10<sup>5</sup> characters: how deep does the call stack get?`,
       options: ['10<sup>5</sup>', '5 × 10<sup>4</sup> (n / 2)', 'log₂n ≈ 17', '1'],
       answer: 1,
-      explain: `Each call handles two characters (l and r) and moves both inwards, so there are about n / 2 = 50,000 frames — usually fine in Java, but a loop is safer for much larger inputs.`
+      explain: `Each call handles two characters (l and r) and moves both inwards, so there are about n / 2 = 50,000 frames. That is more than a default Java or JavaScript stack holds (roughly 10<sup>4</sup> frames) and far past Python's limit of 1000, so this simple version fails at the maximum size. The solution below keeps the recursion but splits the work in halves, so the depth drops to about log₂(n / 2) ≈ 16.`
     },
     hints: [
       `<p><b>Aha:</b> reversing = swap the outermost pair + reverse the inside. The inside is the same problem, two characters shorter.</p>`,
       `<p>Pass two indices <code>l</code> and <code>r</code> instead of creating substrings — the array itself is the state.</p>`,
-      `<p>Base case: <code>l &gt;= r</code> (0 or 1 characters left). Recipe: if l ≥ r return; swap s[l], s[r]; recurse(l + 1, r − 1).</p>`
+      `<p>Base case: <code>l &gt;= r</code> (0 or 1 characters left). Recipe: if l ≥ r return; swap s[l], s[r]; recurse(l + 1, r − 1). Trap: that is n / 2 frames deep, which overflows the default stack for n = 10<sup>5</sup>. Fix: number the pairs 0..n/2 − 1 (pair i = s[i] and s[n − 1 − i]) and recurse on the two halves of that range, so the depth is only O(log n).</p>`
     ],
+    tests: { sig: 'char[] -> void', fn: 'reverseString', mutate: 0, cases: [
+      [[["h","e","l","l","o"]],["o","l","l","e","h"]],
+      [[["H","a","n","n","a","h"]],["h","a","n","n","a","H"]],
+      [[["a"]],["a"]],
+      [[["a","b"]],["b","a"]],
+      [[["A"," ","m","a","n",","," ","a"," ","p","l","a","n","!"]],["!","n","a","l","p"," ","a"," ",",","n","a","m"," ","A"]],
+      [[[" "," ","x"," "," ","y"]],["y"," "," ","x"," "," "]],
+      [[["r","a","c","e","c","a","r"]],["r","a","c","e","c","a","r"]],
+      [[Array.from({ length: 6001 }, (_, i) => String.fromCharCode(97 + i % 26))], Array.from({ length: 6001 }, (_, i) => String.fromCharCode(97 + (6000 - i) % 26))]
+    ] },
     solution: {
-      approach: `<p>Two-pointer recursion: swap ends, recurse on the middle. Same logic as the iterative two-pointer loop, written as recursion.</p>`,
+      approach: `<p>The swaps are independent: pair i is s[i] and s[n − 1 − i], for i from 0 to n/2 − 1. "Swap ends, recurse on the middle" handles one pair per call, so it needs n / 2 frames and overflows the default stack at n = 10<sup>5</sup>. Instead, recurse on the <b>range of pairs</b>: one pair → swap it; otherwise split the range in half and recurse on each half. Same n / 2 swaps, still in place, but the depth is only about log₂(n / 2).</p>`,
       code: `
         class Solution {
             public void reverseString(char[] s) {
-                helper(s, 0, s.length - 1);
+                swapPairs(s, 0, s.length / 2);     // pairs 0 .. n/2 - 1
             }
 
-            private void helper(char[] s, int l, int r) {
-                if (l >= r) return;            // base: nothing or one char in the middle
-                char t = s[l];                 // swap the outer pair
-                s[l] = s[r];
-                s[r] = t;
-                helper(s, l + 1, r - 1);       // the inside is the same problem
+            // Pair i = s[i] and s[n - 1 - i]. Swap every pair in [lo, hi).
+            private void swapPairs(char[] s, int lo, int hi) {
+                if (hi - lo <= 0) return;          // base: no pairs (n = 0 or 1)
+                if (hi - lo == 1) {                // base: one pair -> swap it
+                    int j = s.length - 1 - lo;
+                    char t = s[lo];
+                    s[lo] = s[j];
+                    s[j] = t;
+                    return;
+                }
+                int mid = (lo + hi) >>> 1;         // split the pairs in half
+                swapPairs(s, lo, mid);             // depth is only log2(n / 2),
+                swapPairs(s, mid, hi);             // so n = 10^5 needs about 16 frames
             }
 
             public static void main(String[] args) {
@@ -3023,8 +4941,56 @@ print("\\n".join("".join(row) for row in board))` }],
                 System.out.println(new String(s));   // olleh
             }
         }`,
-      dry: { head: ['call', 'l', 'r', 'swap', 's after'], rows: [['1', '0', '4', 'h ↔ o', 'oellh'], ['2', '1', '3', 'e ↔ l', 'olleh'], ['3', '2', '2', H.c('g', 'base case'), 'olleh']] },
-      complexity: `<p><b>Time O(n)</b> — n/2 swaps. <b>Space O(n)</b> stack (n/2 frames); the iterative version is O(1).</p>`,
+      alt: [
+        { lang: 'python', code: `def reverse_string(s: list[str]) -> None:
+    n = len(s)
+
+    def swap_pairs(lo: int, hi: int) -> None:
+        # pair i = s[i] and s[n - 1 - i]; swap every pair in [lo, hi)
+        if hi - lo <= 0:
+            return                      # no pairs (n = 0 or 1)
+        if hi - lo == 1:
+            s[lo], s[n - 1 - lo] = s[n - 1 - lo], s[lo]
+            return
+        mid = (lo + hi) // 2            # split the pairs: depth is only log2(n / 2),
+        swap_pairs(lo, mid)             # far below Python's 1000-frame limit
+        swap_pairs(mid, hi)
+
+    swap_pairs(0, n // 2)` },
+        { lang: 'js', code: `function reverseString(s) {
+  const n = s.length;
+  // pair i = s[i] and s[n - 1 - i]; swap every pair in [lo, hi)
+  const swapPairs = (lo, hi) => {
+    if (hi - lo <= 0) return;            // no pairs (n = 0 or 1)
+    if (hi - lo === 1) {
+      const j = n - 1 - lo;
+      [s[lo], s[j]] = [s[j], s[lo]];
+      return;
+    }
+    const mid = (lo + hi) >>> 1;         // split the pairs: depth log2(n / 2), not n / 2
+    swapPairs(lo, mid);
+    swapPairs(mid, hi);
+  };
+  swapPairs(0, Math.floor(n / 2));
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    void reverseString(vector<char>& s) {
+        swapPairs(s, 0, (int)s.size() / 2);   // pairs 0 .. n/2 - 1
+    }
+private:
+    // pair i = s[i] and s[n - 1 - i]; swap every pair in [lo, hi)
+    void swapPairs(vector<char>& s, int lo, int hi) {
+        if (hi - lo <= 0) return;             // no pairs (n = 0 or 1)
+        if (hi - lo == 1) { swap(s[lo], s[s.size() - 1 - lo]); return; }
+        int mid = lo + (hi - lo) / 2;         // split the pairs: depth log2(n / 2)
+        swapPairs(s, lo, mid);
+        swapPairs(s, mid, hi);
+    }
+};` }
+      ],
+      dry: { head: ['call', 'pairs [lo, hi)', 'action', 's after'], rows: [['swapPairs(0, 2)', '[0, 2)', 'two pairs → split at mid = 1', 'hello'], ['swapPairs(0, 1)', '[0, 1)', 'one pair: s[0] h ↔ s[4] o', 'oellh'], ['swapPairs(1, 2)', '[1, 2)', 'one pair: s[1] e ↔ s[3] l', 'olleh'], ['done', '—', H.c('g', "middle 'l' (index 2) never moves"), H.c('p', 'olleh')]] },
+      complexity: `<p><b>Time O(n)</b>: n/2 swaps plus about n/2 internal calls. <b>Space O(log n)</b> stack (about 16 frames for n = 10<sup>5</sup>), versus O(n) for the one-pair-per-call version; the iterative two-pointer loop is O(1).</p>`,
       followUps: ['Reverse only the vowels', 'Reverse words in a sentence', 'Reverse a linked list recursively']
     }
   });
@@ -3060,9 +5026,18 @@ print("\\n".join("".join(row) for row in board))` }],
     },
     hints: [
       `<p><b>Aha:</b> the only forbidden move is placing a 1 immediately after a 1. Decide character by character and check just the previous one.</p>`,
-      `<p>Backtrack with a <code>char[]</code> or StringBuilder of the current prefix. Choices per position: '0' always; '1' only if the previous char is not '1'.</p>`,
+      `<p>Backtrack with a character array or string builder holding the current prefix. Choices per position: '0' always; '1' only if the previous char is not '1'.</p>`,
       `<p>Try '0' before '1' to get lexicographic order. Recipe: if len == n save; append '0', recurse, delete; if len == 0 or last != '1': append '1', recurse, delete.</p>`
     ],
+    tests: { sig: 'int -> list<string>', fn: 'generate', check: "(a, out, exp) => { if (!Array.isArray(out)) return false; if (Array.isArray(exp)) return JSON.stringify(out) === JSON.stringify(exp); if (out.length !== exp) return false; for (let i = 0; i < out.length; i++) { const s = out[i]; if (typeof s !== 'string' || s.length !== a[0] || /[^01]/.test(s) || s.includes('11')) return false; if (i && !(out[i - 1] < s)) return false; } return true; }", cases: [
+      [[1],["0","1"]],
+      [[2],["00","01","10"]],
+      [[3],["000","001","010","100","101"]],
+      [[4],["0000","0001","0010","0100","0101","1000","1001","1010"]],
+      [[5],["00000","00001","00010","00100","00101","01000","01001","01010","10000","10001","10010","10100","10101"]],
+      [[12],377],
+      [[20],17711]
+    ] },
     solution: {
       approach: `<p>Backtracking with a one-character look-back prune. Every leaf is valid, so the work is proportional to the output.</p>`,
       code: `
@@ -3094,6 +5069,54 @@ print("\\n".join("".join(row) for row in board))` }],
                 System.out.println(new Solution().generate(3));   // [000, 001, 010, 100, 101]
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def generate(n: int) -> list[str]:
+    res, sb = [], []
+
+    def bt() -> None:
+        if len(sb) == n:
+            res.append("".join(sb))
+            return
+        sb.append("0")                  # '0' is always safe
+        bt()
+        sb.pop()
+        if not sb or sb[-1] != "1":     # '1' only after a '0' (or at the start)
+            sb.append("1")
+            bt()
+            sb.pop()
+
+    bt()
+    return res` },
+        { lang: 'js', code: `function generate(n) {
+  const res = [], sb = [];
+  const bt = () => {
+    if (sb.length === n) { res.push(sb.join('')); return; }
+    sb.push('0'); bt(); sb.pop();        // '0' is always safe
+    if (sb.length === 0 || sb[sb.length - 1] !== '1') {
+      sb.push('1'); bt(); sb.pop();      // '1' only after a '0' (or at the start)
+    }
+  };
+  bt();
+  return res;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    vector<string> generate(int n) {
+        vector<string> res;
+        string sb;
+        bt(n, sb, res);
+        return res;
+    }
+private:
+    void bt(int n, string& sb, vector<string>& res) {
+        if ((int)sb.size() == n) { res.push_back(sb); return; }
+        sb.push_back('0'); bt(n, sb, res); sb.pop_back();          // '0' is always safe
+        if (sb.empty() || sb.back() != '1') {                     // '1' only after a '0'
+            sb.push_back('1'); bt(n, sb, res); sb.pop_back();
+        }
+    }
+};` }
+      ],
       dry: { head: ['prefix', 'last char', 'allowed', 'event'], rows: [['""', '—', '0, 1', 'try 0'], ['"00"', '0', '0, 1', '→ 000, 001 saved'], ['"01"', '1', '0 only', '→ 010 saved'], ['"1"', '1', '0 only', '→ 100, 101 saved']] },
       complexity: `<p><b>Time O(n · F(n+2))</b> ≈ O(n · 1.618<sup>n</sup>): one O(n) copy per answer. <b>Space O(n)</b> recursion + builder.</p>`,
       followUps: ['Only count them (it is Fibonacci — DP in O(n))', 'No three consecutive 1s', 'Count integers ≤ N without consecutive 1s (digit DP)']
@@ -3134,6 +5157,16 @@ print("\\n".join("".join(row) for row in board))` }],
       `<p>f(i, xr) = f(i + 1, xr ^ nums[i]) + f(i + 1, xr); base case i == n returns xr.</p>`,
       `<p>Expert shortcut: every bit that appears in at least one number is set in exactly half of the 2<sup>n</sup> subsets' XORs, so the answer is (OR of all nums) × 2<sup>n−1</sup>. Recipe for recursion: if i == n return xr; return f(i+1, xr ^ a[i]) + f(i+1, xr).</p>`
     ],
+    tests: { sig: 'int[] -> int', fn: 'subsetXORSum', cases: [
+      [[[1,3]],6],
+      [[[5,1,6]],28],
+      [[[3,4,5,6,7,8]],480],
+      [[[1]],1],
+      [[[20,20,20,20,20,20,20,20,20,20,20,20]],40960],
+      [[[1,2,3,4,5,6,7,8,9,10,11,12]],30720],
+      [[[2,2]],4],
+      [[[16,8,4,2,1]],496]
+    ] },
     solution: {
       approach: `<p>Pick/not-pick recursion returning the sum of leaf XORs; plus an O(n) formula as a follow-up.</p>`,
       code: `
@@ -3161,6 +5194,30 @@ print("\\n".join("".join(row) for row in board))` }],
                 System.out.println(s.formula(new int[]{5, 1, 6}));        // 28
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def subset_xor_sum(nums: list[int]) -> int:
+    def f(i: int, xr: int) -> int:
+        if i == len(nums):
+            return xr                   # one finished subset: its XOR total
+        return f(i + 1, xr ^ nums[i]) + f(i + 1, xr)   # pick + skip
+
+    return f(0, 0)` },
+        { lang: 'js', code: `function subsetXORSum(nums) {
+  const f = (i, xr) => (i === nums.length ? xr : f(i + 1, xr ^ nums[i]) + f(i + 1, xr));
+  return f(0, 0);                        // pick + skip at every index
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int subsetXORSum(vector<int>& nums) {
+        return f(nums, 0, 0);
+    }
+private:
+    int f(const vector<int>& a, int i, int xr) {
+        if (i == (int)a.size()) return xr;    // one finished subset
+        return f(a, i + 1, xr ^ a[i]) + f(a, i + 1, xr);   // pick + skip
+    }
+};` }
+      ],
       dry: { head: ['path (1? 3?)', 'xr at leaf', 'running sum'], rows: [['pick, pick', '1^3 = 2', '2'], ['pick, skip', '1', '3'], ['skip, pick', '3', '6'], ['skip, skip', '0', H.c('p', '6')]] },
       complexity: `<p>Recursion: <b>O(2<sup>n</sup>)</b> time, <b>O(n)</b> stack. Formula: O(n) time, O(1) space.</p>`,
       followUps: ['Sum of subset sums (each element appears in 2<sup>n−1</sup> subsets)', 'Count subsets with XOR equal to K', 'Maximum subset XOR (linear basis — expert)']
@@ -3199,6 +5256,15 @@ print("\\n".join("".join(row) for row in board))` }],
       `<p>Values: LEDs 0–3 add 1, 2, 4, 8 to hours; LEDs 4–9 add 1, 2, 4, 8, 16, 32 to minutes. Backtrack(start, k, h, m) with a start index so each set is built once.</p>`,
       `<p>Prune when h &gt; 11 or m &gt; 59 (values only grow). Recipe: if k == 0 save formatted time; for i from start..9: add its value, if still valid recurse(i+1, k−1), (values passed by copy, so no undo).</p>`
     ],
+    tests: { sig: 'int -> list<string>', fn: 'readBinaryWatch', cmp: "set", cases: [
+      [[0],["0:00"]],
+      [[1],["0:01","0:02","0:04","0:08","0:16","0:32","1:00","2:00","4:00","8:00"]],
+      [[2],["0:03","0:05","0:06","0:09","0:10","0:12","0:17","0:18","0:20","0:24","0:33","0:34","0:36","0:40","0:48","1:01","1:02","1:04","1:08","1:16","1:32","2:01","2:02","2:04","2:08","2:16","2:32","3:00","4:01","4:02","4:04","4:08","4:16","4:32","5:00","6:00","8:01","8:02","8:04","8:08","8:16","8:32","9:00","10:00"]],
+      [[5],["0:31","0:47","0:55","0:59","1:15","1:23","1:27","1:29","1:30","1:39","1:43","1:45","1:46","1:51","1:53","1:54","1:57","1:58","2:15","2:23","2:27","2:29","2:30","2:39","2:43","2:45","2:46","2:51","2:53","2:54","2:57","2:58","3:07","3:11","3:13","3:14","3:19","3:21","3:22","3:25","3:26","3:28","3:35","3:37","3:38","3:41","3:42","3:44","3:49","3:50","3:52","3:56","4:15","4:23","4:27","4:29","4:30","4:39","4:43","4:45","4:46","4:51","4:53","4:54","4:57","4:58","5:07","5:11","5:13","5:14","5:19","5:21","5:22","5:25","5:26","5:28","5:35","5:37","5:38","5:41","5:42","5:44","5:49","5:50","5:52","5:56","6:07","6:11","6:13","6:14","6:19","6:21","6:22","6:25","6:26","6:28","6:35","6:37","6:38","6:41","6:42","6:44","6:49","6:50","6:52","6:56","7:03","7:05","7:06","7:09","7:10","7:12","7:17","7:18","7:20","7:24","7:33","7:34","7:36","7:40","7:48","8:15","8:23","8:27","8:29","8:30","8:39","8:43","8:45","8:46","8:51","8:53","8:54","8:57","8:58","9:07","9:11","9:13","9:14","9:19","9:21","9:22","9:25","9:26","9:28","9:35","9:37","9:38","9:41","9:42","9:44","9:49","9:50","9:52","9:56","10:07","10:11","10:13","10:14","10:19","10:21","10:22","10:25","10:26","10:28","10:35","10:37","10:38","10:41","10:42","10:44","10:49","10:50","10:52","10:56","11:03","11:05","11:06","11:09","11:10","11:12","11:17","11:18","11:20","11:24","11:33","11:34","11:36","11:40","11:48"]],
+      [[8],["7:31","7:47","7:55","7:59","11:31","11:47","11:55","11:59"]],
+      [[9],[]],
+      [[10],[]]
+    ] },
     solution: {
       approach: `<p>Combinations backtracking over the 10 LEDs with a start index, carrying hour and minute as int parameters (immutable state = no un-choose needed) and pruning invalid times.</p>`,
       code: `
@@ -3230,6 +5296,62 @@ print("\\n".join("".join(row) for row in board))` }],
                 System.out.println(new Solution().readBinaryWatch(1));
             }
         }`,
+      alt: [
+        { lang: 'python', code: `VAL = [1, 2, 4, 8, 1, 2, 4, 8, 16, 32]   # first 4 LEDs = hours, last 6 = minutes
+
+
+def read_binary_watch(turned_on: int) -> list[str]:
+    res = []
+
+    def bt(start: int, k: int, h: int, m: int) -> None:
+        if k == 0:
+            res.append(f"{h}:{m:02d}")
+            return
+        for i in range(start, 10):
+            nh, nm = (h + VAL[i], m) if i < 4 else (h, m + VAL[i])
+            if nh <= 11 and nm <= 59:   # prune invalid times
+                bt(i + 1, k - 1, nh, nm)
+
+    bt(0, turned_on, 0, 0)
+    return res` },
+        { lang: 'js', code: `function readBinaryWatch(turnedOn) {
+  const VAL = [1, 2, 4, 8, 1, 2, 4, 8, 16, 32];   // first 4 LEDs = hours
+  const res = [];
+  const bt = (start, k, h, m) => {
+    if (k === 0) { res.push(h + ':' + String(m).padStart(2, '0')); return; }
+    for (let i = start; i < 10; i++) {
+      const nh = i < 4 ? h + VAL[i] : h, nm = i < 4 ? m : m + VAL[i];
+      if (nh > 11 || nm > 59) continue;  // invalid time: prune
+      bt(i + 1, k - 1, nh, nm);
+    }
+  };
+  bt(0, turnedOn, 0, 0);
+  return res;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    vector<string> readBinaryWatch(int turnedOn) {
+        vector<string> res;
+        bt(0, turnedOn, 0, 0, res);
+        return res;
+    }
+private:
+    static constexpr int VAL[10] = {1, 2, 4, 8, 1, 2, 4, 8, 16, 32};   // first 4 = hours
+
+    void bt(int start, int k, int h, int m, vector<string>& res) {
+        if (k == 0) {
+            res.push_back(to_string(h) + ":" + (m < 10 ? "0" : "") + to_string(m));
+            return;
+        }
+        for (int i = start; i < 10; i++) {
+            int nh = h, nm = m;
+            (i < 4 ? nh : nm) += VAL[i];
+            if (nh > 11 || nm > 59) continue; // invalid time: prune
+            bt(i + 1, k - 1, nh, nm, res);
+        }
+    }
+};` }
+      ],
       dry: { head: ['LEDs chosen', 'h', 'm', 'event'], rows: [['{hour-1}', '1', '0', H.c('g', '"1:00"')], ['{hour-8}', '8', '0', H.c('g', '"8:00"')], ['{min-32}', '0', '32', H.c('g', '"0:32"')], ['{hour-4, hour-8} (k=2)', '12', '0', H.c('r', 'pruned')]] },
       complexity: `<p><b>Time O(C(10, k))</b> ≤ 252 sets — effectively O(1). <b>Space O(k)</b> recursion depth.</p>`,
       followUps: ['Solve it with a 720-iteration bit-count loop and compare clarity', 'Generalise to a 24-hour watch with 5 hour LEDs']
@@ -3268,8 +5390,19 @@ print("\\n".join("".join(row) for row in board))` }],
     hints: [
       `<p><b>Aha:</b> the rows form a binary tree: parent symbol p makes children (p, 1 − p). The k-th symbol only depends on its parent ⌈k/2⌉ in row n − 1.</p>`,
       `<p>Recurse on (n − 1, (k + 1) / 2); if k is odd return the parent, else return 1 − parent. Depth n ≤ 30.</p>`,
-      `<p>Base case n == 1 → 0. Bonus: the answer equals the parity of the number of 1-bits in k − 1, i.e. <code>Integer.bitCount(k - 1) &amp; 1</code>.</p>`
+      `<p>Base case n == 1 → 0. Bonus: the answer equals the parity of the number of 1-bits in k − 1, i.e. <code>Integer.bitCount(k - 1) &amp; 1</code> (Python <code>(k - 1).bit_count() &amp; 1</code>, C++ <code>__builtin_popcount(k - 1) &amp; 1</code>).</p>`
     ],
+    tests: { sig: 'int int -> int', fn: 'kthGrammar', cases: [
+      [[1,1],0],
+      [[2,1],0],
+      [[2,2],1],
+      [[4,5],1],
+      [[5,11],0],
+      [[20,524288],1],
+      [[30,1],0],
+      [[30,536870912],1],
+      [[30,357913941],0]
+    ] },
     solution: {
       approach: `<p>Recurse up the implicit binary tree: one call per row, flipping on right children.</p>`,
       code: `
@@ -3286,6 +5419,26 @@ print("\\n".join("".join(row) for row in board))` }],
                 System.out.println(Integer.bitCount(5 - 1) & 1); // 1 (closed form)
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def kth_grammar(n: int, k: int) -> int:
+    if n == 1:
+        return 0                                # row 1 is "0"
+    parent = kth_grammar(n - 1, (k + 1) // 2)   # the symbol that produced position k
+    return parent if k % 2 == 1 else 1 - parent # left child same, right child flipped` },
+        { lang: 'js', code: `function kthGrammar(n, k) {
+  if (n === 1) return 0;                               // row 1 is "0"
+  const parent = kthGrammar(n - 1, Math.floor((k + 1) / 2));
+  return k % 2 === 1 ? parent : 1 - parent;            // right child is flipped
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int kthGrammar(int n, int k) {
+        if (n == 1) return 0;                             // row 1 is "0"
+        int parent = kthGrammar(n - 1, (k + 1) / 2);      // the symbol that produced k
+        return k % 2 == 1 ? parent : 1 - parent;          // right child is flipped
+    }
+};` }
+      ],
       dry: { head: ['call', 'k odd?', 'parent value', 'returns'], rows: [['(1, 1)', '—', '—', H.c('g', '0 (base)')], ['(2, 2)', 'no (right child)', '0', '1 − 0 = 1'], ['(3, 3)', 'yes (left child)', '1', '1'], ['(4, 5)', 'yes (left child)', '1', H.c('p', '1')]] },
       complexity: `<p><b>Time O(n)</b>, <b>Space O(n)</b> stack (or O(1) with the bit-count formula).</p>`,
       followUps: ['Prove the bitCount formula', 'Return the count of 1s in the first k symbols of row n']
@@ -3325,6 +5478,16 @@ print("\\n".join("".join(row) for row in board))` }],
       `<p>bt(start, cur): for i from start to n: add i, bt(i + 1), remove.</p>`,
       `<p>Prune: the loop only needs to go up to <code>n − (k − cur.size()) + 1</code>. Recipe: if size == k save copy; for i in start..n−(k−size)+1: add; bt(i+1); remove.</p>`
     ],
+    tests: { sig: 'int int -> list<list<int>>', fn: 'combine', cmp: "sets", cases: [
+      [[4,2],[[1,2],[1,3],[1,4],[2,3],[2,4],[3,4]]],
+      [[1,1],[[1]]],
+      [[3,3],[[1,2,3]]],
+      [[5,1],[[1],[2],[3],[4],[5]]],
+      [[5,4],[[1,2,3,4],[1,2,3,5],[1,2,4,5],[1,3,4,5],[2,3,4,5]]],
+      [[20,20],[[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]]],
+      [[20,1],[[1],[2],[3],[4],[5],[6],[7],[8],[9],[10],[11],[12],[13],[14],[15],[16],[17],[18],[19],[20]]],
+      [[6,3],[[1,2,3],[1,2,4],[1,2,5],[1,2,6],[1,3,4],[1,3,5],[1,3,6],[1,4,5],[1,4,6],[1,5,6],[2,3,4],[2,3,5],[2,3,6],[2,4,5],[2,4,6],[2,5,6],[3,4,5],[3,4,6],[3,5,6],[4,5,6]]]
+    ] },
     solution: {
       approach: `<p>Start-index backtracking with an upper-bound prune so every visited node can still complete.</p>`,
       code: `
@@ -3354,6 +5517,56 @@ print("\\n".join("".join(row) for row in board))` }],
                 System.out.println(new Solution().combine(4, 2)); // [[1, 2], [1, 3], [1, 4], [2, 3], [2, 4], [3, 4]]
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def combine(n: int, k: int) -> list[list[int]]:
+    res, cur = [], []
+
+    def bt(start: int) -> None:
+        if len(cur) == k:
+            res.append(cur[:])
+            return
+        need = k - len(cur)
+        for i in range(start, n - need + 2):    # leave room for the remaining picks
+            cur.append(i)
+            bt(i + 1)
+            cur.pop()
+
+    bt(1)
+    return res` },
+        { lang: 'js', code: `function combine(n, k) {
+  const res = [], cur = [];
+  const bt = (start) => {
+    if (cur.length === k) { res.push([...cur]); return; }
+    const need = k - cur.length;
+    for (let i = start; i <= n - need + 1; i++) {      // leave room for the rest
+      cur.push(i);
+      bt(i + 1);
+      cur.pop();
+    }
+  };
+  bt(1);
+  return res;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    vector<vector<int>> combine(int n, int k) {
+        vector<vector<int>> res;
+        vector<int> cur;
+        bt(n, k, 1, cur, res);
+        return res;
+    }
+private:
+    void bt(int n, int k, int start, vector<int>& cur, vector<vector<int>>& res) {
+        if ((int)cur.size() == k) { res.push_back(cur); return; }
+        int need = k - (int)cur.size();
+        for (int i = start; i <= n - need + 1; i++) {     // leave room for the rest
+            cur.push_back(i);
+            bt(n, k, i + 1, cur, res);
+            cur.pop_back();
+        }
+    }
+};` }
+      ],
       dry: { head: ['cur', 'start', 'loop range', 'event'], rows: [['[]', '1', '1..3', 'pick 1'], ['[1]', '2', '2..4', '[1,2] [1,3] [1,4]'], ['[]', '1', 'i = 2', '[2,3] [2,4]'], ['[]', '1', 'i = 3', '[3,4]; i = 4 excluded by prune']] },
       complexity: `<p><b>Time O(k · C(n, k))</b>, <b>Space O(k)</b> recursion + cur.</p>`,
       followUps: ['Iterative lexicographic generation', 'Combination Sum III (k digits summing to n)']
@@ -3394,6 +5607,15 @@ print("\\n".join("".join(row) for row in board))` }],
       `<p>Sort, then use the for-loop style (every node is an answer) with a start index.</p>`,
       `<p>Skip <code>j &gt; start &amp;&amp; nums[j] == nums[j−1]</code>. Recipe: save copy of cur; for j from start: skip rule; add; bt(j+1); remove last.</p>`
     ],
+    tests: { sig: 'int[] -> list<list<int>>', fn: 'subsetsWithDup', cmp: "sets", cases: [
+      [[[1,2,2]],[[],[1],[1,2],[1,2,2],[2],[2,2]]],
+      [[[0]],[[],[0]]],
+      [[[4,4,4,1,4]],[[],[1],[1,4],[1,4,4],[1,4,4,4],[1,4,4,4,4],[4],[4,4],[4,4,4],[4,4,4,4]]],
+      [[[-1,1,-1]],[[],[-1],[-1,-1],[-1,-1,1],[-1,1],[1]]],
+      [[[2,2,2,2,2,2,2,2,2,2]],[[],[2],[2,2],[2,2,2],[2,2,2,2],[2,2,2,2,2],[2,2,2,2,2,2],[2,2,2,2,2,2,2],[2,2,2,2,2,2,2,2],[2,2,2,2,2,2,2,2,2],[2,2,2,2,2,2,2,2,2,2]]],
+      [[[3,1,2]],[[],[1],[1,2],[1,2,3],[1,3],[2],[2,3],[3]]],
+      [[[1,1,2,2]],[[],[1],[1,1],[1,1,2],[1,1,2,2],[1,2],[1,2,2],[2],[2,2]]]
+    ] },
     solution: {
       approach: `<p>Sorted for-loop backtracking with same-level duplicate skipping; each distinct multiset subset is generated exactly once.</p>`,
       code: `
@@ -3422,6 +5644,58 @@ print("\\n".join("".join(row) for row in board))` }],
                 // [[], [1], [1, 2], [1, 2, 2], [2], [2, 2]]
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def subsets_with_dup(nums: list[int]) -> list[list[int]]:
+    a = sorted(nums)
+    res, cur = [], []
+
+    def bt(start: int) -> None:
+        res.append(cur[:])                      # every node is a subset
+        for j in range(start, len(a)):
+            if j > start and a[j] == a[j - 1]:
+                continue                        # same value at this level: skip
+            cur.append(a[j])
+            bt(j + 1)
+            cur.pop()
+
+    bt(0)
+    return res` },
+        { lang: 'js', code: `function subsetsWithDup(nums) {
+  const a = [...nums].sort((x, y) => x - y);
+  const res = [], cur = [];
+  const bt = (start) => {
+    res.push([...cur]);                                // every node is a subset
+    for (let j = start; j < a.length; j++) {
+      if (j > start && a[j] === a[j - 1]) continue;    // same value at this level
+      cur.push(a[j]);
+      bt(j + 1);
+      cur.pop();
+    }
+  };
+  bt(0);
+  return res;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    vector<vector<int>> subsetsWithDup(vector<int>& nums) {
+        sort(nums.begin(), nums.end());
+        vector<vector<int>> res;
+        vector<int> cur;
+        bt(nums, 0, cur, res);
+        return res;
+    }
+private:
+    void bt(const vector<int>& a, int start, vector<int>& cur, vector<vector<int>>& res) {
+        res.push_back(cur);                               // every node is a subset
+        for (int j = start; j < (int)a.size(); j++) {
+            if (j > start && a[j] == a[j - 1]) continue;  // same value at this level
+            cur.push_back(a[j]);
+            bt(a, j + 1, cur, res);
+            cur.pop_back();
+        }
+    }
+};` }
+      ],
       dry: { head: ['cur', 'start', 'j', 'event'], rows: [['[]', '0', '—', 'save []'], ['[1]', '1', '1 then 2', 'save [1], [1,2], [1,2,2]; j = 2 at start 1 skipped'], ['[]', '0', '1', 'save [2], [2,2]'], ['[]', '0', '2', H.c('r', 'skip (equal to j = 1 at the same level)')]] },
       complexity: `<p><b>Time O(n · 2<sup>n</sup>)</b> worst case, <b>Space O(n)</b> recursion (excluding output).</p>`,
       followUps: ['Count distinct subsets using value frequencies (product of (count + 1))', 'Subsets of size k with duplicates']
@@ -3460,9 +5734,18 @@ print("\\n".join("".join(row) for row in board))` }],
     },
     hints: [
       `<p><b>Aha:</b> walk left to right; at a letter branch into lower/upper, at a digit just move on.</p>`,
-      `<p>Mutate one <code>char[]</code> in place: set lower, recurse, set upper, recurse. Restoring is implicit because both branches overwrite the same slot.</p>`,
+      `<p>Mutate one character array in place (strings are immutable in Java, Python and JavaScript): set lower, recurse, set upper, recurse. Restoring is implicit because both branches overwrite the same slot.</p>`,
       `<p>Base case i == n → add <code>new String(chars)</code>. Recipe: if digit → f(i+1); else c[i]=lower; f(i+1); c[i]=upper; f(i+1).</p>`
     ],
+    tests: { sig: 'string -> list<string>', fn: 'letterCasePermutation', cmp: "set", cases: [
+      [["a1b2"],["A1B2","A1b2","a1B2","a1b2"]],
+      [["3z4"],["3Z4","3z4"]],
+      [["1"],["1"]],
+      [["C"],["C","c"]],
+      [["12345"],["12345"]],
+      [["aB"],["AB","Ab","aB","ab"]],
+      [["Zz9y"],["ZZ9Y","ZZ9y","Zz9Y","Zz9y","zZ9Y","zZ9y","zz9Y","zz9y"]]
+    ] },
     solution: {
       approach: `<p>Pick-one-of-two recursion on letters only, mutating a char array.</p>`,
       code: `
@@ -3494,6 +5777,51 @@ print("\\n".join("".join(row) for row in board))` }],
                 System.out.println(new Solution().letterCasePermutation("a1b2")); // [a1b2, a1B2, A1b2, A1B2]
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def letter_case_permutation(s: str) -> list[str]:
+    res, c = [], list(s)                        # strings are immutable: edit a list
+
+    def f(i: int) -> None:
+        if i == len(c):
+            res.append("".join(c))
+            return
+        if c[i].isdigit():
+            f(i + 1)                            # digits have one choice
+            return
+        c[i] = c[i].lower()
+        f(i + 1)                                # branch 1: lowercase
+        c[i] = c[i].upper()
+        f(i + 1)                                # branch 2: uppercase
+
+    f(0)
+    return res` },
+        { lang: 'js', code: `function letterCasePermutation(s) {
+  const res = [], c = s.split('');                     // strings are immutable
+  const f = (i) => {
+    if (i === c.length) { res.push(c.join('')); return; }
+    if (c[i] >= '0' && c[i] <= '9') { f(i + 1); return; }   // digit: one choice
+    c[i] = c[i].toLowerCase(); f(i + 1);
+    c[i] = c[i].toUpperCase(); f(i + 1);
+  };
+  f(0);
+  return res;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    vector<string> letterCasePermutation(string s) {
+        vector<string> res;
+        f(s, 0, res);                         // s is our own copy: edit it in place
+        return res;
+    }
+private:
+    void f(string& c, int i, vector<string>& res) {
+        if (i == (int)c.size()) { res.push_back(c); return; }
+        if (isdigit((unsigned char)c[i])) { f(c, i + 1, res); return; }   // one choice
+        c[i] = (char)tolower((unsigned char)c[i]); f(c, i + 1, res);
+        c[i] = (char)toupper((unsigned char)c[i]); f(c, i + 1, res);
+    }
+};` }
+      ],
       dry: { head: ['i', 'char', 'branches', 'strings below'], rows: [['0', 'a', 'a / A', '2 subtrees'], ['1', '1', 'digit: 1 branch', '—'], ['2', 'b', 'b / B', '2 leaves each'], ['4', '—', 'base', H.c('g', '4 strings total')]] },
       complexity: `<p><b>Time O(n · 2<sup>L</sup>)</b>, <b>Space O(n)</b> recursion + char array.</p>`,
       followUps: ['Letter Combinations of a Phone Number', 'Generalised abbreviations of a word']
@@ -3542,6 +5870,15 @@ print("\\n".join("".join(row) for row in board))` }],
       `<p>Precompute <code>boolean[][] pal</code> with DP: pal[i][j] = s[i]==s[j] &amp;&amp; (j − i &lt; 2 || pal[i+1][j−1]) to make checks O(1).</p>`,
       `<p>Goal: i == n → save copy. Recipe: for e in i..n−1: if pal[i][e]: add s.substring(i, e+1); bt(e+1); remove last.</p>`
     ],
+    tests: { sig: 'string -> list<list<string>>', fn: 'partition', check: "(a, out, exp) => { if (!Array.isArray(out)) return false; const k = (p) => JSON.stringify(p); const got = out.map(k).sort(), want = exp.map(k).sort(); return got.length === want.length && got.every((x, i) => x === want[i]); }", cases: [
+      [["aab"],[["aa","b"],["a","a","b"]]],
+      [["a"],[["a"]]],
+      [["aba"],[["aba"],["a","b","a"]]],
+      [["aaaa"],[["aaaa"],["a","aaa"],["aa","aa"],["a","a","aa"],["aaa","a"],["a","aa","a"],["aa","a","a"],["a","a","a","a"]]],
+      [["abc"],[["a","b","c"]]],
+      [["racecar"],[["racecar"],["r","aceca","r"],["r","a","cec","a","r"],["r","a","c","e","c","a","r"]]],
+      [["abbab"],[["a","b","bab"],["abba","b"],["a","bb","a","b"],["a","b","b","a","b"]]]
+    ] },
     solution: {
       approach: `<p>Backtracking over the end of the next piece, with an O(n²) palindrome table for O(1) pruning checks.</p>`,
       code: `
@@ -3576,6 +5913,71 @@ print("\\n".join("".join(row) for row in board))` }],
                 System.out.println(new Solution().partition("aab"));   // [[a, a, b], [aa, b]]
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def partition(s: str) -> list[list[str]]:
+    n = len(s)
+    pal = [[False] * n for _ in range(n)]
+    for i in range(n - 1, -1, -1):
+        for j in range(i, n):
+            pal[i][j] = s[i] == s[j] and (j - i < 2 or pal[i + 1][j - 1])
+    res, cur = [], []
+
+    def bt(i: int) -> None:
+        if i == n:
+            res.append(cur[:])
+            return
+        for e in range(i, n):
+            if pal[i][e]:                       # piece s[i..e] must be a palindrome
+                cur.append(s[i:e + 1])
+                bt(e + 1)
+                cur.pop()
+
+    bt(0)
+    return res` },
+        { lang: 'js', code: `function partition(s) {
+  const n = s.length;
+  const pal = Array.from({ length: n }, () => new Array(n).fill(false));
+  for (let i = n - 1; i >= 0; i--)
+    for (let j = i; j < n; j++)
+      pal[i][j] = s[i] === s[j] && (j - i < 2 || pal[i + 1][j - 1]);
+  const res = [], cur = [];
+  const bt = (i) => {
+    if (i === n) { res.push([...cur]); return; }
+    for (let e = i; e < n; e++) {
+      if (!pal[i][e]) continue;          // piece s[i..e] must be a palindrome
+      cur.push(s.slice(i, e + 1));
+      bt(e + 1);
+      cur.pop();
+    }
+  };
+  bt(0);
+  return res;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    vector<vector<string>> partition(string s) {
+        int n = s.size();
+        vector<vector<bool>> pal(n, vector<bool>(n, false));
+        for (int i = n - 1; i >= 0; i--)
+            for (int j = i; j < n; j++)
+                pal[i][j] = s[i] == s[j] && (j - i < 2 || pal[i + 1][j - 1]);
+        vector<vector<string>> res;
+        vector<string> cur;
+        bt(s, 0, pal, cur, res);
+        return res;
+    }
+private:
+    void bt(const string& s, int i, const vector<vector<bool>>& pal, vector<string>& cur, vector<vector<string>>& res) {
+        if (i == (int)s.size()) { res.push_back(cur); return; }
+        for (int e = i; e < (int)s.size(); e++) {
+            if (!pal[i][e]) continue;         // piece s[i..e] must be a palindrome
+            cur.push_back(s.substr(i, e - i + 1));
+            bt(s, e + 1, pal, cur, res);
+            cur.pop_back();
+        }
+    }
+};` }
+      ],
       dry: { head: ['i', 'cur', 'end e tried', 'event'], rows: [['0', '[]', '0 ("a")', 'palindrome → choose'], ['1', '[a]', '1 ("a")', 'choose → [a,a] → e=2 "b" → ' + H.c('g', 'save [a,a,b]')], ['1', '[a]', '2 ("ab")', H.c('r', 'not palindrome')], ['0', '[]', '1 ("aa")', 'choose → "b" → ' + H.c('g', 'save [aa,b]')], ['0', '[]', '2 ("aab")', H.c('r', 'not palindrome')]] },
       complexity: `<p><b>Time O(n · 2<sup>n</sup>)</b> worst case (e.g. "aaaa…"), table O(n²). <b>Space O(n²)</b> for the table + O(n) recursion.</p>`,
       followUps: ['Palindrome Partitioning II: minimum cuts (DP, Hard)', 'Count partitions instead of listing (DP)']
@@ -3623,6 +6025,18 @@ print("\\n".join("".join(row) for row in board))` }],
       `<p>dfs(r, c, i): out of bounds or board[r][c] != word[i] → false; i == L − 1 → true. Mark the cell, try 4 neighbours with i + 1, restore.</p>`,
       `<p>Prunes: if the board has fewer copies of some letter than the word needs → false immediately; search from the rarer end (reverse the word if its last letter is rarer). Recipe: mark '#'; found = any neighbour dfs; restore; return found.</p>`
     ],
+    tests: { sig: 'char[][] string -> bool', fn: 'exist', cases: [
+      [[[["A","B","C","E"],["S","F","C","S"],["A","D","E","E"]],"ABCCED"],true],
+      [[[["A","B","C","E"],["S","F","C","S"],["A","D","E","E"]],"SEE"],true],
+      [[[["A","B","C","E"],["S","F","C","S"],["A","D","E","E"]],"ABCB"],false],
+      [[[["a"]],"a"],true],
+      [[[["a"]],"b"],false],
+      [[[["a","b"],["c","d"]],"abdc"],true],
+      [[[["a","b"],["c","d"]],"abcd"],false],
+      [[[["a","a"]],"aaa"],false],
+      [[[["C","A","A"],["A","A","A"],["B","C","D"]],"AAB"],true],
+      [[[["A","B","C","E"],["S","F","E","S"],["A","D","E","E"]],"ABCESEEEFS"],true]
+    ] },
     solution: {
       approach: `<p>Grid backtracking: mark the cell as visited by overwriting it, explore 4 directions for the next letter, restore on return. Returns boolean and stops at the first success.</p>`,
       code: `
@@ -3659,6 +6073,58 @@ print("\\n".join("".join(row) for row in board))` }],
                 System.out.println(s.exist(b, "ABCB"));     // false
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def exist(board: list[list[str]], word: str) -> bool:
+    R, C = len(board), len(board[0])
+
+    def dfs(r: int, c: int, i: int) -> bool:
+        if not (0 <= r < R and 0 <= c < C) or board[r][c] != word[i]:
+            return False                        # off the grid, mismatch or visited ('#')
+        if i == len(word) - 1:
+            return True
+        saved, board[r][c] = board[r][c], "#"   # choose: mark visited
+        found = any(dfs(r + dr, c + dc, i + 1) for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)))
+        board[r][c] = saved                     # un-choose
+        return found
+
+    return any(dfs(r, c, 0) for r in range(R) for c in range(C))` },
+        { lang: 'js', code: `function exist(board, word) {
+  const R = board.length, C = board[0].length;
+  const dfs = (r, c, i) => {
+    if (r < 0 || c < 0 || r >= R || c >= C || board[r][c] !== word[i]) return false;
+    if (i === word.length - 1) return true;
+    const saved = board[r][c];
+    board[r][c] = '#';                   // choose: mark visited
+    const found = dfs(r + 1, c, i + 1) || dfs(r - 1, c, i + 1) || dfs(r, c + 1, i + 1) || dfs(r, c - 1, i + 1);
+    board[r][c] = saved;                 // un-choose
+    return found;
+  };
+  for (let r = 0; r < R; r++)
+    for (let c = 0; c < C; c++)
+      if (dfs(r, c, 0)) return true;
+  return false;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    bool exist(vector<vector<char>>& board, string word) {
+        for (int r = 0; r < (int)board.size(); r++)
+            for (int c = 0; c < (int)board[0].size(); c++)
+                if (dfs(board, word, r, c, 0)) return true;
+        return false;
+    }
+private:
+    bool dfs(vector<vector<char>>& b, const string& w, int r, int c, int i) {
+        if (r < 0 || c < 0 || r >= (int)b.size() || c >= (int)b[0].size() || b[r][c] != w[i]) return false;
+        if (i == (int)w.size() - 1) return true;
+        char saved = b[r][c];
+        b[r][c] = '#';                        // choose: mark visited
+        bool found = dfs(b, w, r + 1, c, i + 1) || dfs(b, w, r - 1, c, i + 1)
+                  || dfs(b, w, r, c + 1, i + 1) || dfs(b, w, r, c - 1, i + 1);
+        b[r][c] = saved;                      // un-choose
+        return found;
+    }
+};` }
+      ],
       dry: { head: ['cell', 'letter needed', 'match?', 'event'], rows: [['(0,0)', 'A', 'yes', 'mark, go on'], ['(0,1)', 'B', 'yes', 'mark'], ['(0,2)', 'C', 'yes', 'mark'], ['(1,2)', 'C', 'yes', 'mark'], ['(2,2)', 'E', 'yes', 'mark'], ['(2,1)', 'D', 'yes, last letter', H.c('g', 'true — unwind, restoring cells')]] },
       complexity: `<p><b>Time O(m · n · 3<sup>L</sup>)</b>: from each start, every step has at most 3 new directions. <b>Space O(L)</b> recursion depth.</p>`,
       followUps: ['Word Search II: many words (Trie + backtracking, Hard)', 'Count all paths spelling the word']
@@ -3704,6 +6170,17 @@ print("\\n".join("".join(row) for row in board))` }],
       `<p>Sort descending (big numbers fail fast) and place each number into a bucket whose sum + x ≤ target.</p>`,
       `<p>Symmetry prune: skip a bucket with the same current sum as a bucket already tried for this number; in particular, once an empty bucket fails, break. Recipe: bt(i): if i == n return true; for b: if bucket[b]+x ≤ target and not a repeated sum: add; if bt(i+1) return true; remove; if bucket[b] == 0 break.</p>`
     ],
+    tests: { sig: 'int[] int -> bool', fn: 'canPartitionKSubsets', cases: [
+      [[[4,3,2,3,5,2,1],4],true],
+      [[[1,2,3,4],3],false],
+      [[[5],1],true],
+      [[[1,1,1,1],4],true],
+      [[[2,2,2,2,3,4,5],4],false],
+      [[[10,10,10,7,7,7,7,7,7,6,6,6],3],true],
+      [[[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16],8],true],
+      [[[10000,10000,10000,10000,10000,10000,10000,10000,10000,10000,10000,10000,10000,10000,10000,10000],16],true],
+      [[[3,3,10,2,6,5,10,6,8,3,2,1,6,10,7,2],6],false]
+    ] },
     solution: {
       approach: `<p>Bucket-filling backtracking with three prunes: divisibility, descending order, and skipping equivalent buckets.</p>`,
       code: `
@@ -3742,6 +6219,80 @@ print("\\n".join("".join(row) for row in board))` }],
                 System.out.println(new Solution().canPartitionKSubsets(new int[]{1, 2, 3, 4}, 3));          // false
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def can_partition_k_subsets(nums: list[int], k: int) -> bool:
+    total = sum(nums)
+    if total % k:
+        return False
+    target = total // k
+    a = sorted(nums, reverse=True)              # big numbers fail fast
+    if a[0] > target:
+        return False
+    bucket = [0] * k
+
+    def bt(i: int) -> bool:
+        if i == len(a):
+            return True
+        x, tried = a[i], set()
+        for b in range(k):
+            if bucket[b] + x > target or bucket[b] in tried:
+                continue                        # overflow, or an equivalent bucket
+            tried.add(bucket[b])
+            bucket[b] += x                      # choose
+            if bt(i + 1):
+                return True
+            bucket[b] -= x                      # un-choose
+        return False
+
+    return bt(0)` },
+        { lang: 'js', code: `function canPartitionKSubsets(nums, k) {
+  const total = nums.reduce((x, y) => x + y, 0);
+  if (total % k !== 0) return false;
+  const target = total / k;
+  const a = [...nums].sort((x, y) => y - x);           // descending: big ones fail fast
+  if (a[0] > target) return false;
+  const bucket = new Array(k).fill(0);
+  const bt = (i) => {
+    if (i === a.length) return true;
+    const tried = new Set();
+    for (let b = 0; b < k; b++) {
+      if (bucket[b] + a[i] > target || tried.has(bucket[b])) continue;   // overflow or equivalent
+      tried.add(bucket[b]);
+      bucket[b] += a[i];                 // choose
+      if (bt(i + 1)) return true;
+      bucket[b] -= a[i];                 // un-choose
+    }
+    return false;
+  };
+  return bt(0);
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    bool canPartitionKSubsets(vector<int>& nums, int k) {
+        int sum = accumulate(nums.begin(), nums.end(), 0);
+        if (sum % k != 0) return false;
+        target = sum / k;
+        sort(nums.rbegin(), nums.rend());     // descending: big numbers fail fast
+        if (nums[0] > target) return false;
+        vector<int> bucket(k, 0);
+        return bt(nums, 0, bucket);
+    }
+private:
+    int target = 0;
+
+    bool bt(const vector<int>& a, int i, vector<int>& bucket) {
+        if (i == (int)a.size()) return true;
+        unordered_set<int> tried;             // bucket sums already tried for a[i]
+        for (int& b : bucket) {
+            if (b + a[i] > target || !tried.insert(b).second) continue;
+            b += a[i];                        // choose
+            if (bt(a, i + 1, bucket)) return true;
+            b -= a[i];                        // un-choose
+        }
+        return false;
+    }
+};` }
+      ],
       dry: { head: ['x (desc)', 'buckets before', 'placed in', 'buckets after'], rows: [['5', '[0,0,0,0]', 'b0', '[5,0,0,0]'], ['4', '[5,0,0,0]', 'b1 (b0 full)', '[5,4,0,0]'], ['3', '[5,4,0,0]', 'b2', '[5,4,3,0]'], ['3', '[5,4,3,0]', 'b3 (b2 would be 6)', '[5,4,3,3]'], ['2, 2, 1', '…', 'b2, b3, b1', H.c('g', '[5,5,5,5] → true')]] },
       complexity: `<p><b>Time O(k<sup>n</sup>)</b> worst case but heavily pruned; the bitmask-DP alternative is O(n · 2<sup>n</sup>). <b>Space O(n)</b> recursion + O(k) buckets.</p>`,
       followUps: ['Matchsticks to Square (k = 4)', 'Bitmask DP version: dp[mask] = fill of the current bucket', 'Fair distribution of cookies (minimise the max)']
@@ -3786,6 +6337,17 @@ print("\\n".join("".join(row) for row in board))` }],
       `<p>free = full &amp; ~(cols | d | a); iterate bits with <code>bit = free &amp; -free</code>; next row uses (d | bit) &lt;&lt; 1 and (a | bit) &gt;&gt; 1.</p>`,
       `<p>Symmetry: in row 0 only try columns 0..n/2−1, double; if n is odd add the count for the middle column. Edge: n = 1 → 1.</p>`
     ],
+    tests: { sig: 'int -> int', fn: 'totalNQueens', cases: [
+      [[1],1],
+      [[2],0],
+      [[3],0],
+      [[4],2],
+      [[5],10],
+      [[6],4],
+      [[8],92],
+      [[9],352],
+      [[10],724]
+    ] },
     solution: {
       approach: `<p>Bitmask backtracking (no arrays, no undo) plus left-right mirror symmetry for a 2× speed-up.</p>`,
       code: `
@@ -3825,6 +6387,72 @@ print("\\n".join("".join(row) for row in board))` }],
                 // 1 0 0 2 10 4 40 92 352 724
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def total_n_queens(n: int) -> int:
+    full = (1 << n) - 1
+
+    def count(cols: int, d: int, a: int) -> int:
+        if cols == full:
+            return 1                            # n queens placed
+        free = full & ~(cols | d | a)
+        total = 0
+        while free:
+            bit = free & -free                  # lowest safe column
+            free ^= bit
+            total += count(cols | bit, ((d | bit) << 1) & full, (a | bit) >> 1)
+        return total
+
+    first = lambda bit: count(bit, (bit << 1) & full, bit >> 1)
+    total = 2 * sum(first(1 << c) for c in range(n // 2))   # left half, mirrored
+    if n % 2:
+        total += first(1 << (n // 2))                       # middle column once
+    return total` },
+        { lang: 'js', code: `function totalNQueens(n) {
+  const full = (1 << n) - 1;
+  const count = (cols, d, a) => {
+    if (cols === full) return 1;         // n queens placed
+    let free = full & ~(cols | d | a), total = 0;
+    while (free) {
+      const bit = free & -free;          // lowest safe column
+      free -= bit;
+      total += count(cols | bit, ((d | bit) << 1) & full, (a | bit) >> 1);
+    }
+    return total;
+  };
+  const first = (bit) => count(bit, (bit << 1) & full, bit >> 1);
+  let total = 0;
+  for (let c = 0; c < Math.floor(n / 2); c++) total += first(1 << c);
+  total *= 2;                            // mirror images
+  if (n % 2 === 1) total += first(1 << Math.floor(n / 2));   // middle column once
+  return total;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int totalNQueens(int n) {
+        full = (1 << n) - 1;
+        int total = 0;
+        for (int c = 0; c < n / 2; c++) total += first(1 << c);   // left half of row 0
+        total *= 2;                                              // mirror images
+        if (n % 2 == 1) total += first(1 << (n / 2));            // middle column once
+        return total;
+    }
+private:
+    int full = 0;
+
+    int first(int bit) { return count(bit, (bit << 1) & full, bit >> 1); }
+
+    int count(int cols, int d, int a) {
+        if (cols == full) return 1;           // n queens placed
+        int free = full & ~(cols | d | a), total = 0;
+        while (free) {
+            int bit = free & -free;           // lowest safe column
+            free -= bit;
+            total += count(cols | bit, ((d | bit) << 1) & full, (a | bit) >> 1);
+        }
+        return total;
+    }
+};` }
+      ],
       dry: { head: ['n', 'left-half count', '× 2', 'middle col', 'total'], rows: [['4', '1 (col 1)', '2', '—', H.c('p', '2')], ['5', '4 (cols 0, 1)', '8', '+2', H.c('p', '10')], ['1', '0', '0', '+1', H.c('p', '1')]] },
       complexity: `<p><b>Time O(n!)</b> upper bound, about half the nodes of plain bitmask search; each node O(1) bit ops. <b>Space O(n)</b> recursion.</p>`,
       followUps: ['Use all 8 board symmetries (rotations too) — harder bookkeeping', 'Count solutions with some queens pre-placed']
@@ -3883,11 +6511,23 @@ print("\\n".join("".join(row) for row in board))` }],
     },
     hints: [
       `<p><b>Aha:</b> at each position choose the next operand (num[i..j]) and the operator in front of it; carry the running <b>value</b> and the <b>last operand</b> so * can be fixed up in O(1).</p>`,
-      `<p>For "*": new value = value − last + last × cur, new last = last × cur. For "+": value + cur, last = cur. For "−": value − cur, last = −cur. Use <code>long</code> to avoid overflow.</p>`,
+      `<p>For "*": new value = value − last + last × cur, new last = last × cur. For "+": value + cur, last = cur. For "−": value − cur, last = −cur. Use a 64-bit integer (<code>long</code> / <code>long long</code>) to avoid overflow; Python ints and JavaScript numbers are exact at this size.</p>`,
       `<p>Leading zeros: if num[i] == '0', only the single-digit operand "0" is allowed (break after j == i). The first operand has no operator in front. Recipe: if i == n: if value == target save; for j in i..n−1: cur = parse(i..j); if i == 0 recurse(first) else recurse with +, −, *.</p>`
     ],
+    tests: { sig: 'string int -> list<string>', fn: 'addOperators', cmp: "set", cases: [
+      [["123",6],["1*2*3","1+2+3"]],
+      [["232",8],["2*3+2","2+3*2"]],
+      [["105",5],["1*0+5","10-5"]],
+      [["00",0],["0*0","0+0","0-0"]],
+      [["3456237490",9191],[]],
+      [["2147483648",-2147483648],[]],
+      [["2147483647",2147483647],["2147483647"]],
+      [["1",1],["1"]],
+      [["999999999",81],["9+9+9+9+9+9+9+9+9","999-9*99-9-9-9","999-9-9*99-9-9","999-9-9-9*99-9","999-9-9-9-9*99","999-9-9-9-99*9","999-9-9-99*9-9","999-9-99*9-9-9","999-99*9-9-9-9"]],
+      [["10009",9],["1*0*0*0+9","1*0*0+0+9","1*0*0-0+9","1*0+0*0+9","1*0+0+0+9","1*0+0-0+9","1*0-0*0+9","1*0-0+0+9","1*0-0-0+9","10*0*0+9","10*0+0+9","10*0-0+9","100*0+9"]]
+    ] },
     solution: {
-      approach: `<p>Backtracking over operand boundaries and operators, with (value, last) state for O(1) precedence handling and a StringBuilder that is truncated back with <code>setLength</code> for un-choose.</p>`,
+      approach: `<p>Backtracking over operand boundaries and operators, with (value, last) state for O(1) precedence handling and a string builder that is cut back to its old length for un-choose (<code>setLength</code> in Java, <code>resize</code> in C++; in Python and JavaScript passing a new string per call is simpler).</p>`,
       code: `
         import java.util.*;
 
@@ -3933,6 +6573,81 @@ print("\\n".join("".join(row) for row in board))` }],
                 System.out.println(s.addOperators("105", 5));   // [1*0+5, 10-5]
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def add_operators(num: str, target: int) -> list[str]:
+    res, n = [], len(num)
+
+    def bt(i: int, expr: str, value: int, last: int) -> None:
+        if i == n:
+            if value == target:
+                res.append(expr)
+            return
+        for j in range(i, n):
+            if j > i and num[i] == "0":
+                break                           # no operand with a leading zero
+            s = num[i:j + 1]
+            cur = int(s)
+            if i == 0:
+                bt(j + 1, s, cur, cur)          # first operand: no operator
+            else:
+                bt(j + 1, expr + "+" + s, value + cur, cur)
+                bt(j + 1, expr + "-" + s, value - cur, -cur)
+                bt(j + 1, expr + "*" + s, value - last + last * cur, last * cur)
+
+    bt(0, "", 0, 0)
+    return res` },
+        { lang: 'js', code: `function addOperators(num, target) {
+  const res = [], n = num.length;
+  const bt = (i, expr, value, last) => {
+    if (i === n) { if (value === target) res.push(expr); return; }
+    for (let j = i; j < n; j++) {
+      if (j > i && num[i] === '0') break;   // no operand with a leading zero
+      const s = num.slice(i, j + 1), cur = Number(s);   // values stay far below 2^53
+      if (i === 0) {
+        bt(j + 1, s, cur, cur);          // first operand: no operator
+      } else {
+        bt(j + 1, expr + '+' + s, value + cur, cur);
+        bt(j + 1, expr + '-' + s, value - cur, -cur);
+        bt(j + 1, expr + '*' + s, value - last + last * cur, last * cur);
+      }
+    }
+  };
+  bt(0, '', 0, 0);
+  return res;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    vector<string> addOperators(string num, int target) {
+        vector<string> res;
+        string expr;
+        bt(num, target, 0, 0, 0, expr, res);
+        return res;
+    }
+private:
+    void bt(const string& num, long long target, int i, long long value, long long last, string& expr, vector<string>& res) {
+        if (i == (int)num.size()) {
+            if (value == target) res.push_back(expr);
+            return;
+        }
+        size_t len = expr.size();             // remember for un-choose
+        long long cur = 0;
+        for (int j = i; j < (int)num.size(); j++) {
+            if (j > i && num[i] == '0') break; // no operand with a leading zero
+            cur = cur * 10 + (num[j] - '0');  // long long: "9999999999" overflows int
+            string operand = num.substr(i, j - i + 1);
+            if (i == 0) {
+                expr += operand;
+                bt(num, target, j + 1, cur, cur, expr, res);
+                expr.resize(len);
+            } else {
+                expr += "+" + operand; bt(num, target, j + 1, value + cur, cur, expr, res); expr.resize(len);
+                expr += "-" + operand; bt(num, target, j + 1, value - cur, -cur, expr, res); expr.resize(len);
+                expr += "*" + operand; bt(num, target, j + 1, value - last + last * cur, last * cur, expr, res); expr.resize(len);
+            }
+        }
+    }
+};` }
+      ],
       dry: { head: ['expression so far', 'value', 'last', 'next step'], rows: [['"1"', '1', '1', 'append +2 / −2 / *2'], ['"1*2"', '1 − 1 + 1·2 = 2', '2', 'append *3'], ['"1*2*3"', '2 − 2 + 2·3 = 6', '6', H.c('g', 'i == n, 6 == target → save')], ['"1+2+3"', '6', '3', H.c('g', 'save')], ['"12-3"', '9', '−3', H.c('r', '9 ≠ 6')]] },
       complexity: `<p><b>Time O(n · 4<sup>n</sup>)</b>: each gap has 4 options and building each string costs O(n). <b>Space O(n)</b> recursion + builder.</p>`,
       followUps: ['Add division with integer truncation', 'Allow parentheses (Different Ways to Add Parentheses)', 'Return only the count']
@@ -3983,6 +6698,17 @@ print("\\n".join("".join(row) for row in board))` }],
       `<p>dfs(i, open, rmL, rmR, sb): for a bracket either delete it (if its quota &gt; 0) or keep it (")" only if open &gt; 0). Letters are always kept.</p>`,
       `<p>Collect results in a Set (simplest). Optional upgrade — de-duplicate without a Set: when deleting, skip a bracket equal to the previous character if that previous one was kept at the same position (only delete the first of a run). Save at i == n when rmL == rmR == open == 0.</p>`
     ],
+    tests: { sig: 'string -> list<string>', fn: 'removeInvalidParentheses', cmp: "set", cases: [
+      [["()())()"],["(())()","()()()"]],
+      [["(a)())()"],["(a())()","(a)()()"]],
+      [[")("],[""]],
+      [["x("],["x"]],
+      [["(((("],[""]],
+      [["()"],["()"]],
+      [["(()"],["()"]],
+      [["))a((b)"],["a(b)"]],
+      [["(((k()(("],["(k)","k()"]]
+    ] },
     solution: {
       approach: `<p>Compute minimal removal counts, then DFS with keep/delete choices bounded by the quotas and a balance check; a Set collects unique results (simple and safe given ≤ 20 brackets).</p>`,
       code: `
@@ -4033,6 +6759,86 @@ print("\\n".join("".join(row) for row in board))` }],
                 System.out.println(sol.removeInvalidParentheses(")("));      // []  (one empty string)
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def remove_invalid_parentheses(s: str) -> list[str]:
+    rm_l = rm_r = 0
+    for ch in s:                                # minimal removals
+        if ch == "(":
+            rm_l += 1
+        elif ch == ")":
+            if rm_l:
+                rm_l -= 1
+            else:
+                rm_r += 1
+    res, sb = set(), []
+
+    def dfs(i: int, open_: int, rm_l: int, rm_r: int) -> None:
+        if rm_l < 0 or rm_r < 0 or open_ < 0:
+            return
+        if i == len(s):
+            if rm_l == rm_r == open_ == 0:
+                res.add("".join(sb))
+            return
+        ch = s[i]
+        if ch == "(":
+            dfs(i + 1, open_, rm_l - 1, rm_r)   # delete it
+        elif ch == ")":
+            dfs(i + 1, open_, rm_l, rm_r - 1)   # delete it
+        sb.append(ch)                           # keep it
+        dfs(i + 1, open_ + (ch == "(") - (ch == ")"), rm_l, rm_r)
+        sb.pop()
+
+    dfs(0, 0, rm_l, rm_r)
+    return list(res)` },
+        { lang: 'js', code: `function removeInvalidParentheses(s) {
+  let rmL = 0, rmR = 0;
+  for (const ch of s) {                  // minimal removals
+    if (ch === '(') rmL++;
+    else if (ch === ')') { if (rmL > 0) rmL--; else rmR++; }
+  }
+  const res = new Set(), sb = [];
+  const dfs = (i, open, rmL, rmR) => {
+    if (rmL < 0 || rmR < 0 || open < 0) return;
+    if (i === s.length) { if (rmL === 0 && rmR === 0 && open === 0) res.add(sb.join('')); return; }
+    const ch = s[i];
+    if (ch === '(') dfs(i + 1, open, rmL - 1, rmR);        // delete it
+    else if (ch === ')') dfs(i + 1, open, rmL, rmR - 1);   // delete it
+    sb.push(ch);                                           // keep it
+    dfs(i + 1, open + (ch === '(' ? 1 : ch === ')' ? -1 : 0), rmL, rmR);
+    sb.pop();
+  };
+  dfs(0, 0, rmL, rmR);
+  return [...res];
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    vector<string> removeInvalidParentheses(string s) {
+        int rmL = 0, rmR = 0;
+        for (char ch : s) {                   // minimal removals
+            if (ch == '(') rmL++;
+            else if (ch == ')') { if (rmL > 0) rmL--; else rmR++; }
+        }
+        unordered_set<string> res;
+        string sb;
+        dfs(s, 0, 0, rmL, rmR, sb, res);
+        return vector<string>(res.begin(), res.end());
+    }
+private:
+    void dfs(const string& s, int i, int open, int rmL, int rmR, string& sb, unordered_set<string>& res) {
+        if (rmL < 0 || rmR < 0 || open < 0) return;
+        if (i == (int)s.size()) {
+            if (rmL == 0 && rmR == 0 && open == 0) res.insert(sb);
+            return;
+        }
+        char ch = s[i];
+        if (ch == '(') dfs(s, i + 1, open, rmL - 1, rmR, sb, res);        // delete it
+        else if (ch == ')') dfs(s, i + 1, open, rmL, rmR - 1, sb, res);   // delete it
+        sb.push_back(ch);                                                 // keep it
+        dfs(s, i + 1, open + (ch == '(') - (ch == ')'), rmL, rmR, sb, res);
+        sb.pop_back();
+    }
+};` }
+      ],
       dry: { head: ['scan char', 'rmL', 'rmR', 'note'], rows: [['(', '1', '0', ''], [')', '0', '0', 'matched'], ['(', '1', '0', ''], [')', '0', '0', 'matched'], [')', '0', H.c('r', '1'), 'unmatched → must delete one ")"'], ['()', '0', '1', 'final quotas: rmL = 0, rmR = 1']] },
       complexity: `<p><b>Time O(2<sup>b</sup> · n)</b> worst case for b brackets (≤ 20), heavily cut by quotas and the open ≥ 0 check. <b>Space O(n)</b> recursion + builder (excluding results).</p>`,
       followUps: ['BFS level-by-level alternative (first level with a valid string)', 'Minimum Remove to Make Valid Parentheses (return one, O(n), Medium)']
@@ -4075,9 +6881,19 @@ print("\\n".join("".join(row) for row in board))` }],
     },
     hints: [
       `<p><b>Aha:</b> the state is just the start index of the remaining suffix; different prefixes reach the same suffix.</p>`,
-      `<p>Return, for each i, the list of sentences of s[i..]; cache in a <code>Map&lt;Integer, List&lt;String&gt;&gt;</code>. Use a HashSet for the dictionary and limit word lengths to the max word length.</p>`,
+      `<p>Return, for each i, the list of sentences of s[i..]; cache in a hash map from index to sentences (<code>HashMap</code> / <code>dict</code> or <code>@lru_cache</code> / <code>Map</code> / <code>unordered_map</code>). Use a hash set for the dictionary and limit word lengths to the max word length.</p>`,
       `<p>Base case: i == n → list containing "" (one empty sentence). Combine: for each word w = s[i..j) in dict, for each tail in solve(j): w + (tail empty ? "" : " " + tail).</p>`
     ],
+    tests: { sig: 'string list<string> -> list<string>', fn: 'wordBreak', cmp: "set", cases: [
+      [["catsanddog",["cat","cats","and","sand","dog"]],["cat sand dog","cats and dog"]],
+      [["pineapplepenapple",["apple","pen","applepen","pine","pineapple"]],["pine apple pen apple","pine applepen apple","pineapple pen apple"]],
+      [["catsandog",["cats","dog","sand","and","cat"]],[]],
+      [["a",["a"]],["a"]],
+      [["a",["b"]],[]],
+      [["aaaa",["a","aa"]],["a a a a","a a aa","a aa a","aa a a","aa aa"]],
+      [["aaaaaaaaaaaaaaaaaaab",["a","aa","aaa","aaaa"]],[]],
+      [["abcd",["abcd","a","bcd","ab","cd","b","c","d"]],["a b c d","a b cd","a bcd","ab c d","ab cd","abcd"]]
+    ] },
     solution: {
       approach: `<p>Top-down backtracking with memoization on the suffix start; dead suffixes are cached as empty lists, so the exponential failure case disappears. The remaining cost is the size of the output itself.</p>`,
       code: `
@@ -4118,6 +6934,72 @@ print("\\n".join("".join(row) for row in board))` }],
                 // [] instantly thanks to memoization
             }
         }`,
+      alt: [
+        { lang: 'python', code: `from functools import lru_cache
+
+
+def word_break(s: str, word_dict: list[str]) -> list[str]:
+    words = set(word_dict)
+    max_len = max(map(len, word_dict))
+
+    @lru_cache(maxsize=None)                    # memo on the suffix start
+    def solve(i: int) -> list[str]:
+        if i == len(s):
+            return [""]                         # one way to split nothing
+        out = []
+        for j in range(i + 1, min(len(s), i + max_len) + 1):
+            w = s[i:j]
+            if w in words:
+                out.extend(w if not t else w + " " + t for t in solve(j))
+        return out
+
+    return solve(0)` },
+        { lang: 'js', code: `function wordBreak(s, wordDict) {
+  const dict = new Set(wordDict);
+  const maxLen = Math.max(...wordDict.map((w) => w.length));
+  const memo = new Map();                // suffix start -> its sentences
+  const solve = (i) => {
+    if (memo.has(i)) return memo.get(i);
+    if (i === s.length) return [''];     // one way to split nothing
+    const out = [];
+    for (let j = i + 1; j <= Math.min(s.length, i + maxLen); j++) {
+      const w = s.slice(i, j);
+      if (!dict.has(w)) continue;        // prune: not a word
+      for (const tail of solve(j)) out.push(tail ? w + ' ' + tail : w);
+    }
+    memo.set(i, out);
+    return out;
+  };
+  return solve(0);
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    vector<string> wordBreak(string s, vector<string>& wordDict) {
+        dict = unordered_set<string>(wordDict.begin(), wordDict.end());
+        maxLen = 0;
+        for (const string& w : wordDict) maxLen = max(maxLen, (int)w.size());
+        memo.clear();
+        return solve(s, 0);
+    }
+private:
+    unordered_set<string> dict;
+    int maxLen = 0;
+    unordered_map<int, vector<string>> memo;  // suffix start -> its sentences
+
+    vector<string> solve(const string& s, int i) {
+        if (i == (int)s.size()) return {""};  // one way to split nothing
+        auto it = memo.find(i);
+        if (it != memo.end()) return it->second;
+        vector<string> out;
+        for (int j = i + 1; j <= min((int)s.size(), i + maxLen); j++) {
+            string w = s.substr(i, j - i);
+            if (!dict.count(w)) continue;     // prune: not a word
+            for (const string& tail : solve(s, j)) out.push_back(tail.empty() ? w : w + " " + tail);
+        }
+        return memo[i] = out;
+    }
+};` }
+      ],
       dry: { head: ['i (suffix)', 'words tried', 'tails', 'memo[i]'], rows: [['7 ("dog")', 'dog', '[""]', '["dog"]'], ['4 ("anddog")', 'and', 'memo[7] = ["dog"]', '["and dog"]'], ['3 ("sanddog")', 'sand', 'memo[7]', '["sand dog"]'], ['0', 'cat → memo[3], cats → memo[4]', '—', H.c('g', '["cat sand dog", "cats and dog"]')]] },
       complexity: `<p><b>Time O(n · L + output size)</b> roughly — each suffix computed once (n states × up to L word checks, L = max word length), plus building the sentences, which can be exponential in the worst case but is bounded by the output. <b>Space</b>: memo of all suffix sentences + O(n) recursion.</p>`,
       followUps: ['Word Break I: just true/false (DP, Medium)', 'Count the sentences without listing them', 'Use a Trie for the dictionary when it is large']
@@ -4307,7 +7189,7 @@ print("\\n".join("".join(row) for row in board))` }],
       <p>In this module you will first see what really happens in memory (the <b>call stack</b>), learn to read the cost of any recursive function from its <b>recursion tree</b>, and solve the Tower of Hanoi. Then you will learn one template — <b>choose → explore → un-choose</b> — and apply it to subsets (pick / not-pick), permutations (swap and used[], with duplicates), combination sums, N-Queens and Sudoku. Every topic has a step-by-step visualizer: watch the stack grow and shrink, the tree branch, and queens get placed and lifted.</p>
       <p>Why it matters: backtracking questions are a staple of FAANG-style interviews (Subsets, Permutations, Combination Sum, Generate Parentheses, Word Search, N-Queens), and the recursion tree is the mental model you will reuse for Divide &amp; Conquer, Trees, Graph DFS and Dynamic Programming.</p>`,
     goals: [
-      'Trace any recursive function on the <b>call stack</b>: predict output order, stack depth and when <code>StackOverflowError</code> happens.',
+      'Trace any recursive function on the <b>call stack</b>: predict output order, stack depth and when a stack overflow happens.',
       'Turn recursive code into a <b>recurrence</b> and solve it with a recursion tree, unrolling or the Master Theorem (O(log n), O(n log n), O(2<sup>n</sup>), O(n!)).',
       'Solve Tower of Hanoi and prove why it needs exactly 2<sup>n</sup> − 1 moves.',
       'Apply the <b>choose → explore → un-choose</b> template to subsets, permutations (with duplicates) and combination sums without producing duplicate answers.',
@@ -4316,6 +7198,12 @@ print("\\n".join("".join(row) for row in board))` }],
     ],
     prereqs: `DSA 1 (Programming Foundations: methods, stack vs heap, references), DSA 2 (Time/Space Complexity, AP/GP and logarithms) and DSA 4 (Bit Manipulation, for bitmask subsets and N-Queens bitmasks). Comfort with Java <code>ArrayList</code> and arrays.`,
     hours: 14,
+    langNotes: {
+      java: `<p><b>Java:</b> the default thread stack holds roughly 10<sup>4</sup> simple frames, so recursion 10<sup>5</sup>–10<sup>6</sup> deep throws <code>StackOverflowError</code>; use a loop, an <code>ArrayDeque</code> stack, or a <code>new Thread(null, task, "big", 1L &lt;&lt; 26)</code>. The JVM never removes tail calls. <code>int</code> overflow wraps silently (13!, F(47), 2<sup>31</sup>), so use <code>long</code> and copy n into a <code>long</code> before negating. Backtracking pitfalls: save <code>new ArrayList&lt;&gt;(cur)</code>, not <code>cur</code>; undo with <code>cur.remove(cur.size() - 1)</code> (an <code>int</code> argument removes by index, an <code>Integer</code> by value); <code>StringBuilder.setLength(len)</code> undoes several appends at once. Strings are immutable, so edit a <code>char[]</code> in place.</p>`,
+      python: `<p><b>Python:</b> the recursion limit is <b>1000</b> frames, which plain recursion on n = 10<sup>4</sup> already exceeds. Raise it with <code>sys.setrecursionlimit(10**6)</code>, and for very deep DFS run the work in a <code>threading.Thread</code> after <code>threading.stack_size(512 * 1024 * 1024)</code>, or write the loop with an explicit stack. CPython never removes tail calls. Integers never overflow, so 20!, F(90) and 2<sup>64</sup> are exact. Save copies with <code>cur[:]</code> or <code>list(cur)</code>; undo with <code>cur.pop()</code> (O(1) at the end; <code>pop(0)</code> is O(n)). <code>"".join(parts)</code> builds strings in O(n), while <code>s += ch</code> in a loop can be O(n²). <code>functools.lru_cache</code> memoizes a recursive function in one line, and <code>itertools.permutations</code> / <code>combinations</code> / <code>product</code> make great brute-force checkers.</p>`,
+      js: `<p><b>JavaScript:</b> V8 allows roughly 10<sup>4</sup> frames before <code>RangeError: Maximum call stack size exceeded</code>, and it does not perform tail-call optimisation, so use an explicit array stack for deep searches. <code>Number</code> is exact only up to 2<sup>53</sup>: 19! and F(79) are past it, so use <code>BigInt</code> (<code>1n</code>, <code>BigInt(n)</code>). Bit tricks (<code>&amp;</code>, <code>|</code>, <code>&lt;&lt;</code>, <code>x &amp; -x</code>) work on 32-bit signed ints, which is fine for masks up to 31 bits; <code>Math.clz32</code> finds the highest set bit. <code>arr.sort()</code> compares as strings, so pass <code>(a, b) =&gt; a - b</code>. Save copies with <code>[...cur]</code>, undo with <code>cur.pop()</code> (<code>shift()</code> is O(n)), and build strings with an array plus <code>join('')</code>.</p>`,
+      cpp: `<p><b>C++:</b> the main thread usually has an 8 MB stack (1 MB on Windows) and there is no exception on overflow: the program just crashes, so estimate depth × frame size. Pass vectors and strings by reference (<code>vector&lt;int&gt;&amp; cur</code>, <code>const string&amp; s</code>); passing by value copies them on every call and silently makes backtracking slower. <code>res.push_back(cur)</code> copies the current vector, which is exactly the snapshot you need. Signed overflow is undefined behaviour, so use <code>long long</code> for factorials, Fibonacci and expression values. Handy built-ins: <code>__builtin_popcount</code>, <code>__builtin_ctz</code> / <code>std::countr_zero</code>, and <code>std::next_permutation</code> (iterates permutations in lexicographic order and skips duplicates of a sorted range). Use <code>unordered_set</code> / <code>unordered_map</code> (O(1) average) rather than <code>set</code> / <code>map</code> (O(log n)) for seen-sets and memo tables.</p>`
+    },
     topics: topics,
     practice: practice,
     quiz: quiz,

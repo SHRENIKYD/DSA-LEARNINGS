@@ -14,11 +14,11 @@ vm.runInContext(fs.readFileSync(path.join(root, 'app/app.js'), 'utf8'), ctx, { f
 assert.match(nodes['#app'].innerHTML, /LET’S EXPLORE/, 'new travellers see onboarding');
 nodes['#beginJourney'].events.click(); events.hashchange(); assert.match(nodes['#app'].innerHTML, /Explore islands/); assert.equal(JSON.parse(storage['imastery.welcomed']), true);
 function go(hash) { ctx.location.hash = hash; events.hashchange(); return nodes['#app'].innerHTML; }
-assert.equal((go('#world').match(/class="floating-island/g) || []).length, 6);
+assert.equal((go('#world').match(/class="floating-island/g) || []).length, 7);
 assert.match(go('#world/peaks'), /Design Peaks/); assert.match(nodes['#app'].innerHTML, /#map\/lld/);
 assert.match(go('#map/dsa'), /Programming Foundations/);
 assert.match(go('#module/dsa01'), /Programming Foundations/);
-assert.match(go('#passport'), /Your stamp passport/); assert.match(nodes['#app'].innerHTML, /0 of 16 collected/);
+assert.match(go('#passport'), /Your stamp passport/); assert.match(nodes['#app'].innerHTML, /0 of 17 collected/);
 go('#search'); nodes['#appSearch'].value = 'binary'; nodes['#appSearch'].events.input.call(nodes['#appSearch']); assert.match(nodes['#appSearchResults'].innerHTML, /dsa.html#dsa10/);
 assert.match(go('#expedition'), /Today’s expedition/);
 assert.match(go('#progress'), /Your journey so far/);
@@ -29,5 +29,5 @@ go('#game/rewardtest'); gameApi.win(); const once = storage['imastery.play']; ga
 assert.match(go('#expedition'), /reward collected/);
 storage['imastery.done'] = JSON.stringify({ 'dsa01-t0': true }); // A lesson tick is persisted by the existing lesson engine.
 // Rebuild the passport directly against changed progress, as the route does.
-assert.match(go('#passport'), /1 of 16 collected/);
+assert.match(go('#passport'), /1 of 17 collected/);
 console.log('PASS: actual app startup, onboarding, home/world/track/module/search/passport/quest/progress/play/badge/settings routes, live stamps, game win deduplication and quest integration');

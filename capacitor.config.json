@@ -2,12 +2,12 @@
   "appId": "io.github.shrenikyd.interviewmastery",
   "appName": "Interview Mastery",
   "webDir": "app-www",
-  "backgroundColor": "#0B0D12",
+  "backgroundColor": "#12263A",
   "android": {
-    "backgroundColor": "#0B0D12"
+    "backgroundColor": "#12263A"
   },
   "ios": {
-    "backgroundColor": "#0B0D12",
+    "backgroundColor": "#12263A",
     "contentInset": "never"
   },
   "plugins": {

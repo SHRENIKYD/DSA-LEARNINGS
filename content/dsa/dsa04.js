@@ -48,12 +48,12 @@
       ${H.table(['decimal', 'binary', 'decimal', 'binary'], [['0', '0000', '8', '1000'], ['1', '0001', '9', '1001'], ['2', '0010', '10', '1010'], ['3', '0011', '11', '1011'], ['4', '0100', '12', '1100'], ['5', '0101', '13', '1101'], ['6', '0110', '14', '1110'], ['7', '0111', '15', '1111']])}
       <h4>Facts that matter in interviews</h4>
       <ul>
-        <li>A Java <code>int</code> has <b>32</b> switches (bits 0..31). A <code>long</code> has <b>64</b>.</li>
+        <li>A 32-bit <code>int</code> (Java, C++, and the numbers JavaScript's bit operators work on) has <b>32</b> switches (bits 0..31). A 64-bit <code>long</code> / <code>long long</code> has <b>64</b>. Python ints have no fixed width: they grow as needed.</li>
         <li>A number N needs about <b>⌊log₂N⌋ + 1</b> bits. 10<sup>9</sup> needs only <b>30</b> bits (2<sup>30</sup> ≈ 1.07·10<sup>9</sup>). So "loop over every bit" is just ~30 steps, basically free.</li>
         <li><b>Powers of two</b> have exactly one switch ON: 1 = 1, 2 = 10, 4 = 100, 8 = 1000.</li>
         <li><b>2<sup>k</sup> − 1</b> is k switches all ON: 7 = 111, 15 = 1111. Handy as a "mask".</li>
         <li>Odd numbers always have bit 0 ON, even numbers have it OFF.</li>
-        <li>Java helpers: <code>Integer.toBinaryString(13)</code> → "1101", <code>Integer.parseInt("1101", 2)</code> → 13, literal <code>0b1101</code> = 13, <code>Integer.bitCount(13)</code> → 3 switches ON.</li>
+        <li>Built-in helpers: Java <code>Integer.toBinaryString(13)</code> → "1101", <code>Integer.parseInt("1101", 2)</code> → 13, <code>Integer.bitCount(13)</code> → 3 switches ON. Python <code>bin(13)</code> → "0b1101", <code>int("1101", 2)</code>, <code>(13).bit_count()</code>. JavaScript <code>(13).toString(2)</code>, <code>parseInt("1101", 2)</code>. C++ <code>bitset&lt;8&gt;(13)</code>, <code>stoi("1101", nullptr, 2)</code>, <code>std::popcount</code>. The literal <code>0b1101</code> = 13 works in all four.</li>
       </ul>`,
     clues: [
       'The question says <b>"binary representation"</b>, "bits", "number of 1s", or "bit at position i" → think switches, not decimal digits.',
@@ -62,7 +62,7 @@
       '"For each bit position, count how many numbers have it" → solve the problem one bit column at a time, then add <code>count × 2<sup>bit</sup></code>.',
       'Tiny N like <code>N ≤ 20</code> next to "choose / any combination" → an int of N bits can describe a whole on/off choice (bitmask).'
     ],
-    code: `
+    code: { lang: 'java', code: `
       class BinaryDemo {
           // Decimal -> binary by repeated halving.
           static String toBinary(int n) {
@@ -92,8 +92,79 @@
               System.out.println(0b1101);                       // binary literal: 13
               System.out.println(Integer.bitCount(13));         // 3 bits are ON
           }
-      }`,
-    codeTitle: 'Converting both ways (by hand and with Java built-ins)',
+      }`, alt: [{ lang: 'python', run: true, code: `def to_binary(n):
+    if n == 0:
+        return "0"                    # 0 has no ON switches
+    bits = []
+    while n > 0:
+        bits.append(str(n % 2))       # remainder = the current lowest bit
+        n //= 2                       # drop that bit
+    return "".join(reversed(bits))    # remainders come out lowest bit first
+
+def to_decimal(s):
+    val = 0
+    for ch in s:
+        val = val * 2 + int(ch)       # slide left (x2) and add the new bit
+    return val
+
+print(to_binary(13))          # 1101
+print(to_decimal("1101"))     # 13
+print(bin(13))                # built-in: 0b1101
+print(format(13, "b"))        # built-in without the prefix: 1101
+print(int("1101", 2))         # built-in: 13
+print(0b1101)                 # binary literal: 13
+print((13).bit_count())       # 3 bits are ON (Python 3.10+)` },
+  { lang: 'js', run: true, code: `function toBinary(n) {
+  if (n === 0) return '0';            // 0 has no ON switches
+  let s = '';
+  while (n > 0) {
+    s = (n % 2) + s;                  // remainder = the current lowest bit, put in front
+    n = Math.floor(n / 2);            // drop that bit
+  }
+  return s;
+}
+
+function toDecimal(s) {
+  let val = 0;
+  for (const ch of s) val = val * 2 + Number(ch);   // slide left (x2) and add the new bit
+  return val;
+}
+
+console.log(toBinary(13));            // 1101
+console.log(toDecimal('1101'));       // 13
+console.log((13).toString(2));        // built-in: 1101
+console.log(parseInt('1101', 2));     // built-in: 13
+console.log(0b1101);                  // binary literal: 13
+// JS has no popcount built-in; see the Kernighan topic for a 3-line loop` },
+  { lang: 'cpp', code: `#include <bits/stdc++.h>
+using namespace std;
+
+string toBinary(int n) {
+    if (n == 0) return "0";               // 0 has no ON switches
+    string s;
+    while (n > 0) {
+        s += char('0' + n % 2);           // remainder = the current lowest bit
+        n /= 2;                           // drop that bit
+    }
+    reverse(s.begin(), s.end());          // remainders come out lowest bit first
+    return s;
+}
+
+int toDecimal(const string& s) {
+    int val = 0;
+    for (char ch : s) val = val * 2 + (ch - '0');   // slide left (x2) and add the new bit
+    return val;
+}
+
+int main() {
+    cout << toBinary(13) << '\\n';              // 1101
+    cout << toDecimal("1101") << '\\n';         // 13
+    cout << bitset<8>(13) << '\\n';             // built-in, fixed width: 00001101
+    cout << stoi("1101", nullptr, 2) << '\\n';  // built-in: 13
+    cout << 0b1101 << '\\n';                    // binary literal: 13
+    cout << popcount(13u) << '\\n';             // C++20 <bit>: 3 bits are ON
+}` }] },
+    codeTitle: 'Converting both ways (by hand and with built-ins)',
     examples: [
       {
         title: 'Decimal → binary by hand: 37',
@@ -107,15 +178,22 @@
         html: `<p>Walk the bits from the <b>left</b>. Each step: double what you have (slide everything one place left), then add the new bit.</p>
           ${H.table(['bit read', 'value = value × 2 + bit'], [['1', '0 × 2 + 1 = 1'], ['0', '1 × 2 + 0 = 2'], ['1', '2 × 2 + 1 = 5'], ['1', '5 × 2 + 1 = 11'], ['0', '11 × 2 + 0 = 22'], ['1', '22 × 2 + 1 = <b>45</b>']])}
           <p>Check with place values: 32 + 8 + 4 + 1 = 45 ✔. This is exactly what <code>Integer.parseInt(s, 2)</code> does inside.</p>`,
-        code: `System.out.println(Integer.parseInt("101101", 2)); // 45`
+        code: { lang: 'java', code: `System.out.println(Integer.parseInt("101101", 2)); // 45`, alt: [{ lang: 'python', run: true, code: `print(int("101101", 2))  # 45` },
+  { lang: 'js', run: true, code: `console.log(parseInt('101101', 2)); // 45` },
+  { lang: 'cpp', code: `cout << stoi("101101", nullptr, 2) << '\\n'; // 45` }] }
       },
       {
         title: 'How many bits does a number need? (int or long?)',
-        html: `<p>A positive N needs <b>⌊log₂N⌋ + 1</b> bits. In Java that is <code>32 - Integer.numberOfLeadingZeros(n)</code>.</p>
+        html: `<p>A positive N needs <b>⌊log₂N⌋ + 1</b> bits. In code: Java <code>32 - Integer.numberOfLeadingZeros(n)</code>, Python <code>n.bit_length()</code>, JavaScript <code>32 - Math.clz32(n)</code>, C++ <code>std::bit_width(unsigned(n))</code>.</p>
           ${H.table(['N', 'bits needed', 'fits in'], [['255', '8', 'byte (unsigned) / int'], ['10<sup>5</sup>', '17', 'int'], ['10<sup>9</sup>', '30', 'int (max ≈ 2.1·10<sup>9</sup>)'], ['10<sup>18</sup>', '60', '<span class="c-y">long only</span> (max ≈ 9.2·10<sup>18</sup>)']])}
           <p>So when constraints say values up to 10<sup>9</sup>, a "for every bit" loop needs only 30 rounds; when sums can reach 10<sup>18</sup>, switch to <code>long</code>.</p>`,
-        code: `int n = 1_000_000_000;
-System.out.println(32 - Integer.numberOfLeadingZeros(n)); // 30`
+        code: { lang: 'java', code: `int n = 1_000_000_000;
+System.out.println(32 - Integer.numberOfLeadingZeros(n)); // 30`, alt: [{ lang: 'python', run: true, code: `n = 1_000_000_000
+print(n.bit_length())  # 30` },
+  { lang: 'js', run: true, code: `const n = 1000000000;
+console.log(32 - Math.clz32(n)); // 30 (clz32 = count leading zeros of the 32-bit value)` },
+  { lang: 'cpp', code: `unsigned n = 1'000'000'000;
+cout << bit_width(n) << '\\n'; // 30 (C++20 <bit>)` }] }
       },
       {
         title: 'Hex is just binary in groups of 4',
@@ -198,7 +276,7 @@ System.out.println(32 - Integer.numberOfLeadingZeros(n)); // 30`
     title: "2's Complement: How Negative Numbers Live in Bits",
     analogy: `<p>Think of an old car <b>odometer</b> with only 3 wheels. It reads <b>000</b>. Now drive backwards by 1 km: the wheels roll back to <b>999</b>. So on this odometer, "999" really behaves like <b>−1</b>, "998" like −2, and so on. Add 1 to 999 and it rolls over to 000, exactly like −1 + 1 = 0.</p>
       <p>Computers do the same with switches. With 8 switches, 0000 0000 minus 1 rolls back to <b>1111 1111</b>, and that pattern <b>means −1</b>. That rolling-over idea is called <b>2's complement</b>.</p>`,
-    explain: `<p>A computer has no minus sign key, only switches. Java stores <code>int</code> using <b>2's complement</b>: the <b>leftmost</b> bit (bit 31 for int, bit 7 in our 8-bit drawings) is the <b>sign bit</b>. Its price tag is <b>negative</b>: in 8 bits it is worth <b>−128</b> instead of +128. All the other bits keep their normal positive values.</p>
+    explain: `<p>A computer has no minus sign key, only switches. Java, C++ (guaranteed since C++20) and JavaScript's bit operators all store integers using <b>2's complement</b>: the <b>leftmost</b> bit (bit 31 for int, bit 7 in our 8-bit drawings) is the <b>sign bit</b>. Its price tag is <b>negative</b>: in 8 bits it is worth <b>−128</b> instead of +128. All the other bits keep their normal positive values.</p>
       ${H.table(['8-bit pattern', 'sign bit worth', 'rest', 'value'], [['0000 0101', '0', '4 + 1', '<b>5</b>'], ['0111 1111', '0', '64+32+16+8+4+2+1', '<b>127</b> (largest)'], ['1111 1111', '<span class="c-r">−128</span>', '127', '<b>−1</b>'], ['1111 1011', '<span class="c-r">−128</span>', '123', '<b>−5</b>'], ['1000 0000', '<span class="c-r">−128</span>', '0', '<b>−128</b> (smallest)']])}
       <h4>The recipe: −x = ~x + 1 (flip every switch, then add 1)</h4>
       ${H.bits(5, 8, { label: 'x = 5', hl: {} })}
@@ -221,7 +299,7 @@ System.out.println(32 - Integer.numberOfLeadingZeros(n)); // 30`
       'Formula hints like <code>~x</code> or "bitwise NOT" → <code>~x = -x - 1</code>.',
       'Code reads bits <code>(x &gt;&gt; i) &amp; 1</code> for i = 0..31 on negatives → bit 31 is the sign bit and is 1 for negatives.'
     ],
-    code: `
+    code: { lang: 'java', code: `
       class TwosComplementDemo {
           public static void main(String[] args) {
               int x = 5;
@@ -243,8 +321,59 @@ System.out.println(32 - Integer.numberOfLeadingZeros(n)); // 30`
               int n = 12;                                         // 1100
               System.out.println(n & -n);                         // 4 (binary 100)
           }
-      }`,
-    codeTitle: 'Seeing 2\'s complement in Java',
+      }`, alt: [{ lang: 'python', run: true, code: `x = 5
+print(~x)                         # -6 (~x == -x - 1 holds in Python too)
+print(~x + 1)                     # -5
+print(~x + 1 == -x)               # True
+print(bin(-5))                    # -0b101: Python shows a minus sign, not the bits
+print(format(-5 & 0xFFFFFFFF, "032b"))  # 11111111111111111111111111111011 (mask to see 32 bits)
+print(format(-1 & 0xFFFFFFFF, "032b"))  # 32 ones
+
+def to_int32(v):                  # imitate a 32-bit int: keep 32 bits, then read bit 31 as the sign
+    v &= 0xFFFFFFFF
+    return v - (1 << 32) if v >= 1 << 31 else v
+
+INT_MAX, INT_MIN = 2**31 - 1, -2**31
+print(INT_MAX + 1)                # 2147483648: Python ints never roll over
+print(to_int32(INT_MAX + 1) == INT_MIN)  # True: what a 32-bit int would do
+print(abs(INT_MIN))               # 2147483648, no trap in Python
+
+n = 12                            # 1100
+print(n & -n)                     # 4 (binary 100)` },
+  { lang: 'js', run: true, code: `const x = 5;
+console.log(~x);                       // -6 (bitwise ops use 32-bit ints)
+console.log(~x + 1);                   // -5
+console.log(~x + 1 === -x);            // true
+console.log((-5 >>> 0).toString(2));   // 11111111111111111111111111111011
+console.log((-1 >>> 0).toString(2));   // 32 ones
+
+// Numbers are doubles, so + does NOT roll over; | 0 forces the 32-bit wrap
+const big = 2147483647;
+console.log(big + 1);                  // 2147483648
+console.log((big + 1) | 0);            // -2147483648
+console.log(-(-2147483648) | 0);       // -2147483648, same trap as Java's -MIN_VALUE
+
+const n = 12;                          // 1100
+console.log(n & -n);                   // 4 (binary 100)` },
+  { lang: 'cpp', code: `#include <bits/stdc++.h>
+using namespace std;
+
+int main() {
+    int x = 5;
+    cout << ~x << '\\n';                 // -6 (two's complement is guaranteed since C++20)
+    cout << (~x + 1) << '\\n';           // -5
+    cout << bitset<32>(-5) << '\\n';     // 11111111111111111111111111111011
+    cout << bitset<32>(-1) << '\\n';     // 32 ones
+
+    // INT_MAX + 1 on int is undefined behaviour (not a wrap!). Wrap on purpose with unsigned:
+    int big = INT_MAX;
+    cout << static_cast<int>(static_cast<unsigned>(big) + 1u) << '\\n';  // -2147483648
+    cout << llabs(static_cast<long long>(INT_MIN)) << '\\n';            // 2147483648, safe in long long
+
+    int n = 12;                         // 1100
+    cout << (n & -n) << '\\n';           // 4 (binary 100)
+}` }] },
+    codeTitle: 'Seeing 2\'s complement in code',
     examples: [
       {
         title: 'Read a negative 8-bit pattern: 1111 0110',
@@ -254,28 +383,50 @@ System.out.println(32 - Integer.numberOfLeadingZeros(n)); // 30`
       },
       {
         title: 'Overflow: the odometer rolls over',
-        html: `<p><code>Integer.MAX_VALUE</code> = 0111…1 (31 ones). Add 1 and the carry runs into the sign bit: 1000…0 = <code>Integer.MIN_VALUE</code>. Java does <b>not</b> warn you.</p>
+        html: `<p><code>Integer.MAX_VALUE</code> = 0111…1 (31 ones). Add 1 and the carry runs into the sign bit: 1000…0 = <code>Integer.MIN_VALUE</code>. Java does <b>not</b> warn you. JavaScript only wraps when you force 32 bits (<code>| 0</code>); in C++ signed overflow is undefined behaviour; Python ints never overflow at all.</p>
           ${H.table(['expression', 'result'], [['MAX_VALUE + 1', '<span class="c-r">−2147483648</span>'], ['Math.abs(MIN_VALUE)', '<span class="c-r">−2147483648</span> (still negative!)'], ['Math.addExact(MAX_VALUE, 1)', 'throws ArithmeticException'], ['(long) MAX_VALUE + 1', '<span class="c-g">2147483648</span>']])}
           <p>Rule of thumb: if a sum or product of ints can pass ~2·10<sup>9</sup>, cast to <code>long</code> <b>before</b> the operation.</p>`,
-        code: `int big = Integer.MAX_VALUE;
+        code: { lang: 'java', code: `int big = Integer.MAX_VALUE;
 System.out.println(big + 1);          // -2147483648
 System.out.println((long) big + 1);   // 2147483648
-try { Math.addExact(big, 1); } catch (ArithmeticException e) { System.out.println("overflow caught"); }`
+try { Math.addExact(big, 1); } catch (ArithmeticException e) { System.out.println("overflow caught"); }`, alt: [{ lang: 'python', run: true, code: `big = 2**31 - 1
+print(big + 1)                              # 2147483648: Python ints never overflow
+print((big + 1 + 2**31) % 2**32 - 2**31)    # -2147483648: what a 32-bit int would hold` },
+  { lang: 'js', run: true, code: `const big = 2147483647;
+console.log(big + 1);          // 2147483648: a Number does not wrap
+console.log((big + 1) | 0);    // -2147483648: | 0 squeezes it into 32 bits` },
+  { lang: 'cpp', code: `int big = INT_MAX;
+cout << static_cast<long long>(big) + 1 << '\\n';      // 2147483648
+int r;
+if (__builtin_add_overflow(big, 1, &r)) cout << "overflow caught\\n";   // GCC/Clang check; big + 1 itself is UB` }] }
       },
       {
         title: 'Signed bytes in Java: (byte) 200',
         html: `<p>200 = 1100 1000. Squeezed into a signed byte, bit 7 becomes the sign bit worth −128: −128 + 64 + 8 = <b>−56</b>. To get the "raw" 0..255 value back, AND with 0xFF: the int −56 is 1111…1100 1000, and <code>&amp; 0xFF</code> keeps only the last 8 switches → 200.</p>`,
-        code: `byte b = (byte) 200;
+        code: { lang: 'java', code: `byte b = (byte) 200;
 System.out.println(b);          // -56
-System.out.println(b & 0xFF);   // 200`
+System.out.println(b & 0xFF);   // 200`, alt: [{ lang: 'python', run: true, code: `b = int.from_bytes(bytes([200]), "big", signed=True)   # read the byte as signed
+print(b)          # -56
+print(b & 0xFF)   # 200` },
+  { lang: 'js', run: true, code: `const b = new Int8Array([200])[0];   // a signed byte
+console.log(b);          // -56
+console.log(b & 0xFF);   // 200` },
+  { lang: 'cpp', code: `int8_t b = static_cast<int8_t>(200);
+cout << int(b) << '\\n';        // -56
+cout << (b & 0xFF) << '\\n';    // 200` }] }
       },
       {
         title: 'Widening copies the sign bit (sign extension)',
         html: `<p>Turning a byte −1 (1111 1111) into an int gives 32 ones (still −1), not 0000…1111 1111 (255). Java "smears" the sign bit into all the new places so the value stays the same. The same thing happens int → long. That is why <code>(long) x &amp; 0xFFFFFFFFL</code> is the standard way to read an int as unsigned (0..4294967295).</p>`,
-        code: `int x = -1;
+        code: { lang: 'java', code: `int x = -1;
 long asUnsigned = x & 0xFFFFFFFFL;
 System.out.println(asUnsigned);                 // 4294967295
-System.out.println(Integer.toUnsignedString(x)); // 4294967295`
+System.out.println(Integer.toUnsignedString(x)); // 4294967295`, alt: [{ lang: 'python', run: true, code: `x = -1
+print(x & 0xFFFFFFFF)   # 4294967295: the 32 raw bits read as unsigned` },
+  { lang: 'js', run: true, code: `const x = -1;
+console.log(x >>> 0);   // 4294967295: >>> 0 reads the 32 bits as unsigned` },
+  { lang: 'cpp', code: `int x = -1;
+cout << static_cast<uint32_t>(x) << '\\n';   // 4294967295` }] }
       }
     ],
     deepDive: `<h4>Why 2's complement won</h4>
@@ -361,19 +512,19 @@ System.out.println(Integer.toUnsignedString(x)); // 4294967295`
       <ul>
         <li><b>x &lt;&lt; k</b> = x · 2<sup>k</sup> (as long as nothing important falls off the left end — otherwise it overflows).</li>
         <li><b>x &gt;&gt; k</b> = ⌊x / 2<sup>k</sup>⌋. "Arithmetic" shift: it copies the sign bit, so negatives stay negative.</li>
-        <li><b>x &gt;&gt;&gt; k</b> (Java only) = "unsigned" or "logical" shift: always fills with zeros. For non-negative x it is the same as &gt;&gt;. Use it when you treat the int as 32 raw switches (e.g. Reverse Bits) or for the overflow-safe middle <code>(lo + hi) &gt;&gt;&gt; 1</code>.</li>
-        <li><b>Trap 1:</b> for <code>int</code>, Java only uses the last 5 bits of the shift amount, so <code>1 &lt;&lt; 32 == 1</code> and <code>1 &lt;&lt; 31</code> is negative. Use <code>1L &lt;&lt; k</code> for 64-bit masks.</li>
+        <li><b>x &gt;&gt;&gt; k</b> (Java and JavaScript; in C++ shift an <code>unsigned</code> value; in Python mask with <code>&amp; 0xFFFFFFFF</code> first, then use &gt;&gt;) = "unsigned" or "logical" shift: always fills with zeros. For non-negative x it is the same as &gt;&gt;. Use it when you treat the int as 32 raw switches (e.g. Reverse Bits) or for the overflow-safe middle <code>(lo + hi) &gt;&gt;&gt; 1</code>.</li>
+        <li><b>Trap 1:</b> for <code>int</code>, Java only uses the last 5 bits of the shift amount, so <code>1 &lt;&lt; 32 == 1</code> and <code>1 &lt;&lt; 31</code> is negative. Use <code>1L &lt;&lt; k</code> for 64-bit masks. JavaScript behaves the same way (use BigInt past bit 31); in C++ a shift by 32 or more is undefined behaviour (use <code>1ULL &lt;&lt; k</code>); Python has no limit.</li>
         <li><b>Trap 2 (precedence):</b> <code>==</code> binds tighter than <code>&amp;</code>. Always write <code>(x &amp; 1) == 0</code> with brackets.</li>
         <li><b>Quick tricks:</b> <code>(x &amp; 1) == 1</code> → odd; <code>x &gt;&gt; 1</code> → halve; <code>1 &lt;&lt; k</code> → 2<sup>k</sup>; <code>(1 &lt;&lt; k) - 1</code> → k ones.</li>
       </ul>`,
     clues: [
       '"Multiply / divide by a <b>power of 2</b>" or "2<sup>k</sup>" → shifts <code>&lt;&lt;</code> and <code>&gt;&gt;</code>.',
-      '"Treat as <b>unsigned 32-bit</b>", "reverse the bits", "count bits of a negative number" → use Java\'s <code>&gt;&gt;&gt;</code> so zeros fill in and the loop ends.',
+      '"Treat as <b>unsigned 32-bit</b>", "reverse the bits", "count bits of a negative number" → use an unsigned shift (<code>&gt;&gt;&gt;</code> in Java/JavaScript, an unsigned type in C++, <code>&amp; 0xFFFFFFFF</code> then <code>&gt;&gt;</code> in Python) so zeros fill in and the loop ends.',
       '"Both / all have this property" → AND; "at least one / any" → OR; "differ / odd number of times / cancel" → XOR.',
       '"Check odd or even" with huge counts → <code>(n &amp; 1)</code> instead of <code>n % 2</code> (also safe for negatives).',
       '"Binary search with very large lo and hi" → <code>(lo + hi) &gt;&gt;&gt; 1</code> avoids the overflow of <code>lo + hi</code>.'
     ],
-    code: `
+    code: { lang: 'java', code: `
       class OperatorsDemo {
           public static void main(String[] args) {
               int a = 12, b = 10;              // 1100 and 1010
@@ -400,7 +551,64 @@ System.out.println(Integer.toUnsignedString(x)); // 4294967295`
               boolean odd = (x & 1) == 1;      // brackets needed: == binds tighter than &
               System.out.println(odd);         // true
           }
-      }`,
+      }`, alt: [{ lang: 'python', run: true, code: `a, b = 12, 10                  # 1100 and 1010
+print(a & b, a | b, a ^ b)     # 8 14 6
+print(~a)                      # -13
+
+print(3 << 2)                  # 12 = 3 * 4
+print(13 >> 1)                 # 6
+print(-16 >> 2)                # -4: >> keeps the sign, like Java
+print(-7 >> 1)                 # -4: rounds toward minus infinity
+print(-7 // 2)                 # -4: Python's // also floors (Java's -7 / 2 is -3)
+print(int(-7 / 2))             # -3: truncate toward zero
+print((-16 & 0xFFFFFFFF) >> 28)  # 15: no >>> in Python, so mask to 32 bits first
+
+print(1 << 32)                 # 4294967296: no 32-bit limit, the shift is not taken mod 32
+
+x = 7
+print((x & 1) == 1)            # True (in Python & binds tighter than ==, but brackets are clearer)` },
+  { lang: 'js', run: true, code: `const a = 12, b = 10;          // 1100 and 1010
+console.log(a & b, a | b, a ^ b); // 8 14 6
+console.log(~a);                // -13
+
+console.log(3 << 2);            // 12
+console.log(13 >> 1);           // 6
+console.log(-16 >> 2);          // -4: sign bit copied in
+console.log(-7 >> 1);           // -4: rounds toward minus infinity
+console.log(Math.trunc(-7 / 2)); // -3: plain -7 / 2 is -3.5 in JS
+console.log(-16 >>> 28);        // 15: zeros come in from the left
+
+console.log(1 << 32);           // 1: shift count uses only its last 5 bits, like Java
+console.log(2 ** 32);           // 4294967296: use ** or BigInt (1n << 32n) for big values
+
+const lo = 2000000000, hi = 2100000000;
+console.log((lo + hi) >>> 1);   // 2050000000 (the sum is exact as a Number; >>> reads it as unsigned)
+
+const x = 7;
+console.log((x & 1) === 1);     // true (brackets needed: === binds tighter than &)` },
+  { lang: 'cpp', code: `#include <bits/stdc++.h>
+using namespace std;
+
+int main() {
+    int a = 12, b = 10;                                // 1100 and 1010
+    cout << (a & b) << ' ' << (a | b) << ' ' << (a ^ b) << '\\n';   // 8 14 6
+    cout << ~a << '\\n';                                // -13
+
+    cout << (3 << 2) << ' ' << (13 >> 1) << '\\n';      // 12 6
+    cout << (-16 >> 2) << ' ' << (-7 >> 1) << '\\n';    // -4 -4 (arithmetic shift, guaranteed since C++20)
+    cout << -7 / 2 << '\\n';                            // -3: division rounds toward zero
+    cout << (static_cast<uint32_t>(-16) >> 28) << '\\n'; // 15: an unsigned shift is Java's >>>
+
+    // 1 << 32 on a 32-bit int is undefined behaviour; use a 64-bit type
+    cout << (1ULL << 32) << '\\n';                      // 4294967296
+
+    int lo = 2000000000, hi = 2100000000;
+    int mid = lo + (hi - lo) / 2;                      // lo + hi would overflow (undefined)
+    cout << mid << '\\n';                               // 2050000000
+
+    int x = 7;
+    cout << boolalpha << ((x & 1) == 1) << '\\n';       // true (without brackets: x & (1 == 1))
+}` }] },
     codeTitle: 'Every operator on small numbers',
     examples: [
       {
@@ -416,22 +624,41 @@ System.out.println(Integer.toUnsignedString(x)); // 4294967295`
         html: `<p>A colour packs three bytes into one int: <code>0x12AB34</code> → red 0x12, green 0xAB, blue 0x34. Slide the wanted byte down to the bottom, then cut away everything above it.</p>
           ${H.table(['channel', 'expression', 'value'], [['red', '(c &gt;&gt;&gt; 16) &amp; 0xFF', '18'], ['green', '(c &gt;&gt;&gt; 8) &amp; 0xFF', '171'], ['blue', 'c &amp; 0xFF', '52']])}
           <p>Packing goes the other way: <code>(r &lt;&lt; 16) | (g &lt;&lt; 8) | b</code>.</p>`,
-        code: `int c = 0x12AB34;
+        code: { lang: 'java', code: `int c = 0x12AB34;
 int r = (c >>> 16) & 0xFF, g = (c >>> 8) & 0xFF, b = c & 0xFF;
 System.out.println(r + " " + g + " " + b);              // 18 171 52
-System.out.println(((r << 16) | (g << 8) | b) == c);    // true`
+System.out.println(((r << 16) | (g << 8) | b) == c);    // true`, alt: [{ lang: 'python', run: true, code: `c = 0x12AB34
+r, g, b = (c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF   # c >= 0, so >> is safe
+print(r, g, b)                                    # 18 171 52
+print(((r << 16) | (g << 8) | b) == c)            # True` },
+  { lang: 'js', run: true, code: `const c = 0x12AB34;
+const r = (c >>> 16) & 0xFF, g = (c >>> 8) & 0xFF, b = c & 0xFF;
+console.log(r, g, b);                             // 18 171 52
+console.log(((r << 16) | (g << 8) | b) === c);    // true` },
+  { lang: 'cpp', code: `uint32_t c = 0x12AB34;
+uint32_t r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, b = c & 0xFF;   // unsigned: >> fills with 0
+cout << r << ' ' << g << ' ' << b << '\\n';                          // 18 171 52
+cout << boolalpha << (((r << 16) | (g << 8) | b) == c) << '\\n';     // true` }] }
       },
       {
         title: 'The precedence trap: x &amp; 1 == 0',
-        html: `<p>In Java <code>==</code> is evaluated <b>before</b> <code>&amp;</code>. So <code>x &amp; 1 == 0</code> means <code>x &amp; (1 == 0)</code> → int &amp; boolean → <span class="c-r">compile error</span>. In C++ it compiles and silently computes <code>x &amp; 0</code> = 0 — a wrong answer with no warning. Always bracket: <code>(x &amp; 1) == 0</code>.</p>
+        html: `<p>In Java <code>==</code> is evaluated <b>before</b> <code>&amp;</code>. So <code>x &amp; 1 == 0</code> means <code>x &amp; (1 == 0)</code> → int &amp; boolean → <span class="c-r">compile error</span>. In C++ and JavaScript it compiles and silently computes <code>x &amp; (1 == 0)</code> — a wrong answer with no warning. Python is the odd one out: there <code>&amp;</code> binds tighter than <code>==</code>, so it happens to work. Always bracket: <code>(x &amp; 1) == 0</code>.</p>
           ${H.table(['you write', 'Java reads it as', 'result'], [['x &amp; 1 == 0', 'x &amp; (1 == 0)', '<span class="c-r">does not compile</span>'], ['(x &amp; 1) == 0', '(x &amp; 1) == 0', '<span class="c-g">true for even x</span>']])}`
       },
       {
         title: '&amp;&amp; vs &amp; on booleans',
         html: `<p>On booleans, <code>&amp;</code> and <code>|</code> are also allowed but they <b>always evaluate both sides</b>. <code>&amp;&amp;</code> and <code>||</code> stop early. So <code>i &lt; n &amp;&amp; a[i] &gt; 0</code> is safe, but <code>i &lt; n &amp; a[i] &gt; 0</code> can throw <code>ArrayIndexOutOfBoundsException</code> when i == n.</p>`,
-        code: `int[] a = {5};
+        code: { lang: 'java', code: `int[] a = {5};
 int i = 1;
-System.out.println(i < a.length && a[i] > 0); // false, right side skipped`
+System.out.println(i < a.length && a[i] > 0); // false, right side skipped`, alt: [{ lang: 'python', run: true, code: `a = [5]
+i = 1
+print(i < len(a) and a[i] > 0)   # False, right side skipped (Python's & on bools does not short-circuit either)` },
+  { lang: 'js', run: true, code: `const a = [5];
+const i = 1;
+console.log(i < a.length && a[i] > 0); // false, right side skipped` },
+  { lang: 'cpp', code: `vector<int> a = {5};
+size_t i = 1;
+cout << boolalpha << (i < a.size() && a[i] > 0) << '\\n';   // false, a[1] is never read` }] }
       }
     ],
     deepDive: `<h4>How shifts really behave in Java</h4>
@@ -530,7 +757,7 @@ System.out.println(i < a.length && a[i] > 0); // false, right side skipped`
       '"Toggle", "flip", "odd number of times", "parity" → XOR.',
       '"Number of positions where two numbers <b>differ</b>" → <code>bitCount(a ^ b)</code>.'
     ],
-    code: `
+    code: { lang: 'java', code: `
       class XorFacts {
           // XOR of all numbers 1..n in O(1) using the repeating pattern of period 4.
           static int xorUpTo(int n) {
@@ -565,7 +792,71 @@ System.out.println(i < a.length && a[i] > 0); // false, right side skipped`
               System.out.println(rangeXor(px, 1, 3)); // 7^1^7 = 1
               System.out.println(xorUpTo(4));         // 4
           }
-      }`,
+      }`, alt: [{ lang: 'python', run: true, code: `from itertools import accumulate
+from operator import xor
+
+def xor_up_to(n):
+    return [n, 1, n + 1, 0][n % 4]     # pattern of period 4
+
+def range_xor(px, l, r):
+    return px[r + 1] ^ px[l]           # the common prefix cancels itself
+
+a, b = 5, 3
+print(a ^ a, a ^ 0, a ^ b ^ a)         # 0 5 3
+
+a ^= b; b ^= a; a ^= b                 # XOR swap (in Python just write a, b = b, a)
+print(a, b)                            # 3 5
+
+arr = [4, 7, 1, 7]
+px = [0, *accumulate(arr, xor)]        # px[i] = arr[0] ^ ... ^ arr[i-1]
+print(range_xor(px, 1, 3))             # 7^1^7 = 1
+print(xor_up_to(4))                    # 4` },
+  { lang: 'js', run: true, code: `function xorUpTo(n) {
+  return [n, 1, n + 1, 0][n % 4];      // pattern of period 4
+}
+
+function rangeXor(px, l, r) {
+  return px[r + 1] ^ px[l];            // the common prefix cancels itself
+}
+
+let a = 5, b = 3;
+console.log(a ^ a, a ^ 0, a ^ b ^ a);  // 0 5 3
+
+a ^= b; b ^= a; a ^= b;                // XOR swap (in JS: [a, b] = [b, a])
+console.log(a, b);                     // 3 5
+
+const arr = [4, 7, 1, 7];
+const px = [0];
+for (const x of arr) px.push(px[px.length - 1] ^ x);
+console.log(rangeXor(px, 1, 3));       // 1
+console.log(xorUpTo(4));               // 4` },
+  { lang: 'cpp', code: `#include <bits/stdc++.h>
+using namespace std;
+
+int xorUpTo(int n) {
+    switch (n % 4) {                   // pattern of period 4
+        case 0: return n;
+        case 1: return 1;
+        case 2: return n + 1;
+        default: return 0;
+    }
+}
+
+int rangeXor(const vector<int>& px, int l, int r) {
+    return px[r + 1] ^ px[l];          // the common prefix cancels itself
+}
+
+int main() {
+    int a = 5, b = 3;
+    cout << (a ^ a) << ' ' << (a ^ 0) << ' ' << (a ^ b ^ a) << '\\n';   // 0 5 3
+    a ^= b; b ^= a; a ^= b;            // XOR swap (in real code: std::swap(a, b))
+    cout << a << ' ' << b << '\\n';     // 3 5
+
+    vector<int> arr = {4, 7, 1, 7}, px(arr.size() + 1, 0);
+    for (size_t i = 0; i < arr.size(); ++i) px[i + 1] = px[i] ^ arr[i];
+    cout << rangeXor(px, 1, 3) << '\\n'; // 1
+    cout << xorUpTo(4) << '\\n';         // 4
+}` }] },
     codeTitle: 'XOR rules in code: pattern, prefix XOR, swap',
     examples: [
       {
@@ -573,10 +864,22 @@ System.out.println(i < a.length && a[i] > 0); // false, right side skipped`
         html: `<p>nums = [3, 0, 1] holds n = 3 values from 0..3, one is missing. XOR all <b>indexes 0..n</b> together with all <b>values</b>: every present number appears twice (once as an index, once as a value) and cancels.</p>
           ${H.table(['source', 'numbers'], [['0..3', '0, 1, 2, 3'], ['nums', '3, 0, 1'], ['twins cancel', '0, 1, 3 → gone'], ['left over', '<span class="c-p">2</span>']])}
           <p>Answer <b>2</b>. Unlike the "sum formula" n(n+1)/2 − sum, XOR can never overflow.</p>`,
-        code: `int[] nums = {3, 0, 1};
+        code: { lang: 'java', code: `int[] nums = {3, 0, 1};
 int x = nums.length;                       // start with n itself
 for (int i = 0; i < nums.length; i++) x ^= i ^ nums[i];
-System.out.println(x);                      // 2`
+System.out.println(x);                      // 2`, alt: [{ lang: 'python', run: true, code: `nums = [3, 0, 1]
+x = len(nums)                  # start with n itself
+for i, v in enumerate(nums):
+    x ^= i ^ v
+print(x)                       # 2` },
+  { lang: 'js', run: true, code: `const nums = [3, 0, 1];
+let x = nums.length;           // start with n itself
+nums.forEach((v, i) => { x ^= i ^ v; });
+console.log(x);                // 2` },
+  { lang: 'cpp', code: `vector<int> nums = {3, 0, 1};
+int x = nums.size();           // start with n itself
+for (int i = 0; i < (int)nums.size(); ++i) x ^= i ^ nums[i];
+cout << x << '\\n';             // 2` }] }
       },
       {
         title: 'XOR of 1..n without a loop',
@@ -593,11 +896,23 @@ System.out.println(x);                      // 2`
       },
       {
         title: 'Find the extra letter (two strings)',
-        html: `<p>t is s with one extra letter shuffled in: s = "abcd", t = "abcde". XOR every char of both strings — matched letters cancel, the extra one remains: <b>'e'</b>. Chars are just 16-bit numbers in Java, so XOR works directly.</p>`,
-        code: `String s = "abcd", t = "abcde";
+        html: `<p>t is s with one extra letter shuffled in: s = "abcd", t = "abcde". XOR every char of both strings — matched letters cancel, the extra one remains: <b>'e'</b>. Chars are just numbers in Java and C++, so XOR works directly; in Python use <code>ord</code>/<code>chr</code>, in JavaScript <code>charCodeAt</code>/<code>String.fromCharCode</code>.</p>`,
+        code: { lang: 'java', code: `String s = "abcd", t = "abcde";
 char x = 0;
 for (char ch : (s + t).toCharArray()) x ^= ch;
-System.out.println(x); // e`
+System.out.println(x); // e`, alt: [{ lang: 'python', run: true, code: `from functools import reduce
+
+s, t = "abcd", "abcde"
+x = reduce(lambda acc, ch: acc ^ ord(ch), s + t, 0)   # chars become numbers with ord()
+print(chr(x))                                         # e` },
+  { lang: 'js', run: true, code: `const s = 'abcd', t = 'abcde';
+let x = 0;
+for (const ch of s + t) x ^= ch.charCodeAt(0);   // chars become numbers with charCodeAt
+console.log(String.fromCharCode(x));             // e` },
+  { lang: 'cpp', code: `string s = "abcd", t = "abcde";
+char x = 0;
+for (char ch : s + t) x ^= ch;   // a char is a small integer in C++
+cout << x << '\\n';               // e` }] }
       }
     ],
     deepDive: `<h4>XOR is "addition without carry"</h4>
@@ -667,7 +982,7 @@ System.out.println(x); // e`
       </ul>
       <p>Every other switch is protected by the cardboard, so nothing else changes.</p>`,
     explain: `<p>The mask with only bit i ON is <code>1 &lt;&lt; i</code>. Then each job is one operator:</p>
-      ${H.table(['job', 'Java', 'why it works'], [
+      ${H.table(['job', 'code', 'why it works'], [
         ['check bit i', '<code>(n &gt;&gt; i) &amp; 1</code> or <code>(n &amp; (1 &lt;&lt; i)) != 0</code>', '&amp; with the mask wipes every other column; what is left is nonzero only if bit i was ON'],
         ['set bit i (make 1)', '<code>n | (1 &lt;&lt; i)</code>', 'x | 1 = 1 and x | 0 = x: only column i is forced on'],
         ['clear bit i (make 0)', '<code>n &amp; ~(1 &lt;&lt; i)</code>', '~mask is all ones except column i; x &amp; 1 = x, x &amp; 0 = 0'],
@@ -696,7 +1011,7 @@ System.out.println(x); // e`
       'State of <code>N ≤ 20</code> on/off items in DP (bitmask DP) → checking/setting bit i of the mask is the core move.',
       '"Odd / even" → just check bit 0: <code>(n &amp; 1)</code>.'
     ],
-    code: `
+    code: { lang: 'java', code: `
       class BitOps {
           static boolean isSet(int n, int i)  { return ((n >> i) & 1) == 1; }  // peek through the hole
           static int setBit(int n, int i)     { return n | (1 << i); }         // force ON
@@ -715,7 +1030,56 @@ System.out.println(x); // e`
               big |= 1L << 40;                           // long mask needs 1L
               System.out.println(Long.numberOfTrailingZeros(big)); // 40
           }
-      }`,
+      }`, alt: [{ lang: 'python', run: true, code: `def is_set(n, i):    return ((n >> i) & 1) == 1   # peek through the hole
+def set_bit(n, i):   return n | (1 << i)          # force ON
+def clear_bit(n, i): return n & ~(1 << i)         # force OFF
+def toggle_bit(n, i): return n ^ (1 << i)         # flip
+
+n = 13                                            # 1101
+print(is_set(n, 1))                               # False
+print(is_set(n, 2))                               # True
+print(set_bit(n, 1))                              # 15 (1111)
+print(clear_bit(n, 2))                            # 9  (1001)
+print(toggle_bit(n, 0))                           # 12 (1100)
+
+big = 0
+big |= 1 << 40                                    # no 1L needed: Python ints grow as needed
+print((big & -big).bit_length() - 1)              # 40 (index of the lowest ON bit)` },
+  { lang: 'js', run: true, code: `const isSet = (n, i) => ((n >> i) & 1) === 1;   // peek through the hole
+const setBit = (n, i) => n | (1 << i);            // force ON
+const clearBit = (n, i) => n & ~(1 << i);         // force OFF
+const toggleBit = (n, i) => n ^ (1 << i);         // flip
+
+const n = 13;                                     // 1101
+console.log(isSet(n, 1));                         // false
+console.log(isSet(n, 2));                         // true
+console.log(setBit(n, 1));                        // 15 (1111)
+console.log(clearBit(n, 2));                      // 9  (1001)
+console.log(toggleBit(n, 0));                     // 12 (1100)
+
+// Bitwise ops are 32-bit: 1 << 40 is really 1 << 8. Use BigInt past bit 31.
+let big = 0n;
+big |= 1n << 40n;
+console.log(big.toString(2).length - 1);          // 40` },
+  { lang: 'cpp', code: `#include <bits/stdc++.h>
+using namespace std;
+
+bool isSet(int n, int i)   { return (n >> i) & 1; }    // peek through the hole
+int setBit(int n, int i)   { return n | (1 << i); }    // force ON
+int clearBit(int n, int i) { return n & ~(1 << i); }   // force OFF
+int toggleBit(int n, int i){ return n ^ (1 << i); }    // flip
+
+int main() {
+    int n = 13;                                        // 1101
+    cout << boolalpha << isSet(n, 1) << ' ' << isSet(n, 2) << '\\n';   // false true
+    cout << setBit(n, 1) << '\\n';                      // 15 (1111)
+    cout << clearBit(n, 2) << '\\n';                    // 9  (1001)
+    cout << toggleBit(n, 0) << '\\n';                   // 12 (1100)
+
+    uint64_t big = 0;
+    big |= 1ULL << 40;                                 // 64-bit mask needs 1ULL (1 << 40 is undefined)
+    cout << countr_zero(big) << '\\n';                  // 40
+}` }] },
     codeTitle: 'The four mask operations',
     examples: [
       {
@@ -723,21 +1087,47 @@ System.out.println(x); // e`
         html: `<p>READ = 1 (bit 0), WRITE = 2 (bit 1), EXEC = 4 (bit 2). A user with read + exec has <code>perms = READ | EXEC = 5</code> (101).</p>
           ${H.table(['action', 'expression', 'result'], [['can write?', '(5 &amp; WRITE) != 0', '<span class="c-r">false</span>'], ['grant write', '5 | WRITE', '7 (111)'], ['revoke exec', '7 &amp; ~EXEC', '3 (011)'], ['flip read', '3 ^ READ', '2 (010)']])}
           <p>This is the same idea as Linux <code>chmod 755</code>: 7 = rwx, 5 = r-x.</p>`,
-        code: `final int READ = 1, WRITE = 2, EXEC = 4;
+        code: { lang: 'java', code: `final int READ = 1, WRITE = 2, EXEC = 4;
 int perms = READ | EXEC;
 System.out.println((perms & WRITE) != 0); // false
 perms |= WRITE;                            // 7
 perms &= ~EXEC;                            // 3
-System.out.println(perms);                 // 3`
+System.out.println(perms);                 // 3`, alt: [{ lang: 'python', run: true, code: `READ, WRITE, EXEC = 1, 2, 4
+perms = READ | EXEC
+print((perms & WRITE) != 0)   # False
+perms |= WRITE                # 7
+perms &= ~EXEC                # 3
+print(perms)                  # 3` },
+  { lang: 'js', run: true, code: `const READ = 1, WRITE = 2, EXEC = 4;
+let perms = READ | EXEC;
+console.log((perms & WRITE) !== 0); // false
+perms |= WRITE;                     // 7
+perms &= ~EXEC;                     // 3
+console.log(perms);                 // 3` },
+  { lang: 'cpp', code: `constexpr int READ = 1, WRITE = 2, EXEC = 4;
+int perms = READ | EXEC;
+cout << boolalpha << ((perms & WRITE) != 0) << '\\n';  // false
+perms |= WRITE;                                        // 7
+perms &= ~EXEC;                                        // 3
+cout << perms << '\\n';                                 // 3` }] }
       },
       {
         title: 'Letters of a word as a 26-bit set',
         html: `<p>Give letter <code>c</code> the bit <code>c - 'a'</code>. "bad" → bits 1, 0, 3 → mask 1011 = 11. "feed" → bits 5, 4, 3 → mask 11 1000 = 56. Do the words share a letter? <code>11 &amp; 56 = 8 ≠ 0</code> → yes, they share 'd' (bit 3). One AND replaces a nested loop over the letters.</p>
           ${H.bits(11, 8, { label: 'bad', hl: { 3: 'r' } })}
           ${H.bits(56, 8, { label: 'feed', hl: { 3: 'r' } })}`,
-        code: `int mask = 0;
+        code: { lang: 'java', code: `int mask = 0;
 for (char c : "bad".toCharArray()) mask |= 1 << (c - 'a');
-System.out.println(mask); // 11`
+System.out.println(mask); // 11`, alt: [{ lang: 'python', run: true, code: `mask = 0
+for c in "bad":
+    mask |= 1 << (ord(c) - ord("a"))
+print(mask)  # 11` },
+  { lang: 'js', run: true, code: `let mask = 0;
+for (const c of 'bad') mask |= 1 << (c.charCodeAt(0) - 97);   // 97 = 'a'
+console.log(mask); // 11` },
+  { lang: 'cpp', code: `int mask = 0;
+for (char c : string("bad")) mask |= 1 << (c - 'a');
+cout << mask << '\\n'; // 11` }] }
       },
       {
         title: 'Set bit i to a given value v (0 or 1)',
@@ -839,7 +1229,7 @@ System.out.println(mask); // 11`
       '"How many bits differ between a and b" → <code>bitCount(a ^ b)</code> using this loop.',
       'Count bits for every number 0..n → <code>bits[i] = bits[i &amp; (i - 1)] + 1</code> (DP on the Kernighan step).'
     ],
-    code: `
+    code: { lang: 'java', code: `
       class KernighanDemo {
           static int countBits(int n) {
               int count = 0;
@@ -855,7 +1245,48 @@ System.out.println(mask); // 11`
               System.out.println(Integer.bitCount(44));   // 3 (built-in)
               System.out.println(44 & -44);               // 4 (only the lowest ON bit kept)
           }
-      }`,
+      }`, alt: [{ lang: 'python', run: true, code: `def count_bits(n):
+    n &= 0xFFFFFFFF          # without this, a negative n never reaches 0
+    count = 0
+    while n:
+        n &= n - 1           # switch off the lowest ON bit
+        count += 1           # one breath per lit candle
+    return count
+
+print(count_bits(44))        # 3
+print(count_bits(-1))        # 32
+print((44).bit_count())      # 3 (built-in, Python 3.10+)
+print(44 & -44)              # 4 (only the lowest ON bit kept)` },
+  { lang: 'js', run: true, code: `function countBits(n) {
+  let count = 0;
+  while (n !== 0) {          // & works on 32-bit ints, so -1 ends after 32 rounds
+    n &= n - 1;              // switch off the lowest ON bit
+    count++;
+  }
+  return count;
+}
+
+console.log(countBits(44));  // 3
+console.log(countBits(-1));  // 32
+console.log(44 & -44);       // 4 (only the lowest ON bit kept)` },
+  { lang: 'cpp', code: `#include <bits/stdc++.h>
+using namespace std;
+
+int countBits(uint32_t n) {    // unsigned: n - 1 never overflows
+    int count = 0;
+    while (n) {
+        n &= n - 1;            // switch off the lowest ON bit
+        ++count;
+    }
+    return count;
+}
+
+int main() {
+    cout << countBits(44) << '\\n';    // 3
+    cout << countBits(-1) << '\\n';    // 32 (-1 converts to 0xFFFFFFFF)
+    cout << popcount(44u) << '\\n';    // 3 (C++20 <bit>)
+    cout << (44 & -44) << '\\n';       // 4
+}` }] },
     codeTitle: 'Kernighan loop',
     examples: [
       {
@@ -863,30 +1294,69 @@ System.out.println(mask); // 11`
         html: `<p><code>i &amp; (i − 1)</code> is i with one fewer ON bit, and it is <b>smaller</b> than i, so its answer is already known: <code>bits[i] = bits[i &amp; (i − 1)] + 1</code>.</p>
           ${H.table(['i', 'binary', 'i &amp; (i − 1)', 'bits[i]'], [['0', '000', '–', '0'], ['1', '001', '0', '0 + 1 = 1'], ['2', '010', '0', '0 + 1 = 1'], ['3', '011', '2', '1 + 1 = 2'], ['4', '100', '0', '0 + 1 = 1'], ['5', '101', '4', '1 + 1 = 2'], ['6', '110', '4', '1 + 1 = 2'], ['7', '111', '6', '2 + 1 = 3']])}
           <p>O(n) total instead of O(n log n).</p>`,
-        code: `int n = 7;
+        code: { lang: 'java', code: `int n = 7;
 int[] bits = new int[n + 1];
 for (int i = 1; i <= n; i++) bits[i] = bits[i & (i - 1)] + 1;
-System.out.println(Arrays.toString(bits)); // [0, 1, 1, 2, 1, 2, 2, 3]`
+System.out.println(Arrays.toString(bits)); // [0, 1, 1, 2, 1, 2, 2, 3]`, alt: [{ lang: 'python', run: true, code: `n = 7
+bits = [0] * (n + 1)
+for i in range(1, n + 1):
+    bits[i] = bits[i & (i - 1)] + 1
+print(bits)  # [0, 1, 1, 2, 1, 2, 2, 3]` },
+  { lang: 'js', run: true, code: `const n = 7;
+const bits = new Array(n + 1).fill(0);
+for (let i = 1; i <= n; i++) bits[i] = bits[i & (i - 1)] + 1;
+console.log(bits); // [0, 1, 1, 2, 1, 2, 2, 3]` },
+  { lang: 'cpp', code: `int n = 7;
+vector<int> bits(n + 1, 0);
+for (int i = 1; i <= n; ++i) bits[i] = bits[i & (i - 1)] + 1;
+for (int b : bits) cout << b << ' ';   // 0 1 1 2 1 2 2 3` }] }
       },
       {
         title: 'Power of four',
         html: `<p>Powers of four (1, 4, 16, 64…) are powers of two whose single ON bit sits at an <b>even</b> position. The mask <code>0x55555555</code> = 0101…0101 has every even position ON.</p>
           ${H.table(['n', 'power of 2?', 'n &amp; 0x55555555', 'power of 4?'], [['16 (bit 4)', 'yes', '16 ≠ 0', '<span class="c-g">yes</span>'], ['8 (bit 3)', 'yes', '0', '<span class="c-r">no</span>'], ['12', 'no', '–', '<span class="c-r">no</span>']])}`,
-        code: `int n = 16;
+        code: { lang: 'java', code: `int n = 16;
 boolean powerOfFour = n > 0 && (n & (n - 1)) == 0 && (n & 0x55555555) != 0;
-System.out.println(powerOfFour); // true`
+System.out.println(powerOfFour); // true`, alt: [{ lang: 'python', run: true, code: `n = 16
+power_of_four = n > 0 and (n & (n - 1)) == 0 and (n & 0x55555555) != 0
+print(power_of_four)  # True` },
+  { lang: 'js', run: true, code: `const n = 16;
+const powerOfFour = n > 0 && (n & (n - 1)) === 0 && (n & 0x55555555) !== 0;
+console.log(powerOfFour); // true` },
+  { lang: 'cpp', code: `int n = 16;
+bool powerOfFour = n > 0 && (n & (n - 1)) == 0 && (n & 0x55555555) != 0;
+cout << boolalpha << powerOfFour << '\\n'; // true` }] }
       },
       {
         title: 'Visit only the ON bits of a mask',
         html: `<p>m = 22 (10110). Repeat: <code>low = m &amp; -m</code> (isolate lowest ON bit), use it, then <code>m &amp;= m - 1</code> (remove it).</p>
           ${H.table(['m', 'm &amp; -m', 'bit index', 'm &amp; (m − 1)'], [['10110 (22)', '00010 (2)', '1', '10100 (20)'], ['10100 (20)', '00100 (4)', '2', '10000 (16)'], ['10000 (16)', '10000 (16)', '4', '0 → stop']])}
           <p>3 rounds for 3 ON bits. <code>Integer.numberOfTrailingZeros(low)</code> turns the isolated bit into its index.</p>`,
-        code: `int m = 22;
+        code: { lang: 'java', code: `int m = 22;
 while (m != 0) {
     int low = m & -m;
     System.out.print(Integer.numberOfTrailingZeros(low) + " "); // 1 2 4
     m &= m - 1;
-}`
+}`, alt: [{ lang: 'python', run: true, code: `m = 22
+while m:
+    low = m & -m
+    print(low.bit_length() - 1, end=" ")   # 1 2 4
+    m &= m - 1
+print()` },
+  { lang: 'js', run: true, code: `let m = 22;
+const out = [];
+while (m !== 0) {
+  const low = m & -m;
+  out.push(31 - Math.clz32(low));   // index of the isolated bit
+  m &= m - 1;
+}
+console.log(out.join(' '));         // 1 2 4` },
+  { lang: 'cpp', code: `unsigned m = 22;
+while (m) {
+    unsigned low = m & (0u - m);          // unsigned negate is well defined
+    cout << countr_zero(low) << ' ';      // 1 2 4
+    m &= m - 1;
+}` }] }
       },
       {
         title: 'Round up to the next power of two',
@@ -978,8 +1448,9 @@ while (m != 0) {
         hints: [
           `<p><b>Aha:</b> <code>n - 1</code> flips the lowest 1 and everything to its right. So <code>n &amp; (n - 1)</code> removes exactly one ON bit. Count how many times you can do that before n becomes 0.</p>`,
           `<p>No data structure needed: just one <code>int count</code> and the loop <code>while (n != 0) { n &amp;= n - 1; count++; }</code>.</p>`,
-          `<p>Traps: negative n is fine with this loop (−1 needs 32 rounds and <code>Integer.MIN_VALUE - 1</code> wraps to MAX, then MIN &amp; MAX = 0). Do not use <code>n &gt;&gt;= 1</code> in a <code>while (n != 0)</code> loop for negatives (infinite). Recipe: count = 0 → while n ≠ 0: n = n &amp; (n − 1), count++ → return count.</p>`
+          `<p>Traps: negative n is fine with this loop (−1 needs 32 rounds and <code>Integer.MIN_VALUE - 1</code> wraps to MAX, then MIN &amp; MAX = 0). In Python mask with <code>n &amp;= 0xFFFFFFFF</code> first; in C++ copy n into an <code>unsigned</code> so n − 1 cannot overflow. Do not use <code>n &gt;&gt;= 1</code> in a <code>while (n != 0)</code> loop for negatives (infinite). Recipe: count = 0 → while n ≠ 0: n = n &amp; (n − 1), count++ → return count.</p>`
         ],
+        tests: { sig: 'int -> int', fn: 'hammingWeight', cases: [[[44], 3], [[0], 0], [[1], 1], [[-1], 32], [[-2147483648], 1], [[2147483647], 31], [[11], 3], [[-3], 31]] },
         solution: {
           approach: `<p>Brian Kernighan's loop: each round deletes the lowest ON bit, so the number of rounds equals the number of ON bits.</p>`,
           code: `
@@ -999,6 +1470,35 @@ while (m != 0) {
                     System.out.println(s.hammingWeight(-1));   // 32
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `def hamming_weight(n):
+    n &= 0xFFFFFFFF          # Python ints are unbounded: keep only the 32 bits
+    count = 0
+    while n:
+        n &= n - 1           # remove the lowest set bit
+        count += 1
+    return count             # built-in: (n & 0xFFFFFFFF).bit_count()` },
+            { lang: 'js', code: `function hammingWeight(n) {
+  let count = 0;
+  while (n !== 0) {
+    n &= n - 1;            // & works on 32-bit ints, so -1 has 32 ones
+    count++;
+  }
+  return count;
+}` },
+            { lang: 'cpp', code: `class Solution {
+public:
+    int hammingWeight(int n) {
+        uint32_t u = static_cast<uint32_t>(n);  // unsigned: u - 1 never overflows
+        int count = 0;
+        while (u) {
+            u &= u - 1;                         // remove the lowest set bit
+            ++count;
+        }
+        return count;                           // built-in: std::popcount(u)
+    }
+};` }
+          ],
           dry: {
             head: ['round', 'n before', 'n − 1', 'n &amp; (n − 1)', 'count'],
             rows: [
@@ -1038,6 +1538,7 @@ while (m != 0) {
           `<p>Kernighan's step <code>n &amp; (n - 1)</code> removes one ON switch. If the result is 0, there was exactly one. No loop, no extra memory.</p>`,
           `<p>Traps: 0 has zero ON switches and <code>0 &amp; -1 = 0</code> → would pass wrongly. <code>Integer.MIN_VALUE</code> (1 followed by 31 zeros) also has one ON switch but is negative. Recipe: return <code>n &gt; 0 &amp;&amp; (n &amp; (n - 1)) == 0</code>.</p>`
         ],
+        tests: { sig: 'int -> bool', fn: 'isPowerOfTwo', cases: [[[16], true], [[6], false], [[0], false], [[1], true], [[-8], false], [[-2147483648], false], [[1073741824], true], [[2147483647], false], [[3], false]] },
         solution: {
           approach: `<p>One ON bit ⇔ removing the lowest ON bit leaves 0. Guard with n &gt; 0.</p>`,
           code: `
@@ -1055,6 +1556,22 @@ while (m != 0) {
                     System.out.println(s.isPowerOfTwo(0));  // false
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `def is_power_of_two(n):
+    # n > 0 rules out 0 and negatives; n & (n - 1) removes the only ON bit
+    return n > 0 and n & (n - 1) == 0` },
+            { lang: 'js', code: `function isPowerOfTwo(n) {
+  // n > 0 rules out 0 and negatives; n & (n - 1) removes the only ON bit
+  return n > 0 && (n & (n - 1)) === 0;
+}` },
+            { lang: 'cpp', code: `class Solution {
+public:
+    bool isPowerOfTwo(int n) {
+        // n > 0 is checked first, so n - 1 can never overflow
+        return n > 0 && (n & (n - 1)) == 0;   // C++20 also has std::has_single_bit
+    }
+};` }
+          ],
           dry: {
             head: ['n', 'binary', 'n − 1', 'n &amp; (n − 1)', 'n &gt; 0', 'answer'],
             rows: [
@@ -1092,9 +1609,18 @@ while (m != 0) {
       {
         title: 'Negative numbers work too',
         html: `<p>nums = [−3, 5, −3]. −3 ^ 5 is some strange negative number, but XOR-ing −3 again cancels it exactly: the result is <b>5</b>. XOR does not care about "sign" — it just compares 32 columns, and the sign bit is one more column.</p>`,
-        code: `int res = 0;
+        code: { lang: 'java', code: `int res = 0;
 for (int x : new int[]{-3, 5, -3}) res ^= x;
-System.out.println(res); // 5`
+System.out.println(res); // 5`, alt: [{ lang: 'python', run: true, code: `res = 0
+for x in [-3, 5, -3]:
+    res ^= x          # negatives are fine: Python XORs them as if they had endless leading 1s
+print(res)            # 5` },
+  { lang: 'js', run: true, code: `let res = 0;
+for (const x of [-3, 5, -3]) res ^= x;
+console.log(res); // 5` },
+  { lang: 'cpp', code: `int res = 0;
+for (int x : {-3, 5, -3}) res ^= x;
+cout << res << '\\n'; // 5` }] }
       },
       {
         title: 'The value that appears an odd number of times',
@@ -1109,9 +1635,21 @@ System.out.println(res); // 5`
         title: 'HashSet version vs XOR version',
         html: `${H.table(['approach', 'time', 'extra space', 'note'], [['nested loops', 'O(N<sup>2</sup>)', 'O(1)', 'too slow for 3·10<sup>4</sup>'], ['sort, then scan pairs', 'O(N log N)', 'O(1)–O(N)', 'modifies input'], ['HashSet add/remove', 'O(N)', '<span class="c-r">O(N)</span>', 'breaks the space rule'], ['XOR fold', 'O(N)', '<span class="c-g">O(1)</span>', 'needs the "pairs" promise']])}
           <p>The HashSet trick (add if absent, remove if present) is literally a slow XOR — it toggles membership.</p>`,
-        code: `Set<Integer> seen = new HashSet<>();
+        code: { lang: 'java', code: `Set<Integer> seen = new HashSet<>();
 for (int x : new int[]{4, 1, 2, 1, 2}) if (!seen.add(x)) seen.remove(x);
-System.out.println(seen); // [4]`
+System.out.println(seen); // [4]`, alt: [{ lang: 'python', run: true, code: `seen = set()
+for x in [4, 1, 2, 1, 2]:
+    seen ^= {x}        # symmetric difference = toggle membership, a slow XOR
+print(seen)            # {4}` },
+  { lang: 'js', run: true, code: `const seen = new Set();
+for (const x of [4, 1, 2, 1, 2]) {
+  if (seen.has(x)) seen.delete(x); else seen.add(x);   // toggle membership
+}
+console.log([...seen]); // [4]` },
+  { lang: 'cpp', code: `unordered_set<int> seen;
+for (int x : {4, 1, 2, 1, 2})
+    if (!seen.insert(x).second) seen.erase(x);   // toggle membership
+for (int x : seen) cout << x << '\\n';             // 4` }] }
       }
     ],
     deepDive: `<h4>Correctness proof (column view)</h4>
@@ -1133,8 +1671,17 @@ nums = [4, 1, 2, 1, 2]
 print(reduce(xor, nums, 0))  # 4
 
 # negative values are fine too
-print(reduce(xor, [-3, 5, -3], 0))  # 5` }],
-    codeTitle: ['Python one-liner with reduce'],
+print(reduce(xor, [-3, 5, -3], 0))  # 5`, alt: [
+      { lang: 'java', code: `int[] nums = {4, 1, 2, 1, 2};
+System.out.println(Arrays.stream(nums).reduce(0, (a, b) -> a ^ b));        // 4
+System.out.println(Arrays.stream(new int[]{-3, 5, -3}).reduce(0, (a, b) -> a ^ b)); // 5` },
+      { lang: 'js', run: true, code: `const nums = [4, 1, 2, 1, 2];
+console.log(nums.reduce((a, b) => a ^ b, 0));          // 4
+console.log([-3, 5, -3].reduce((a, b) => a ^ b, 0));   // 5` },
+      { lang: 'cpp', code: `vector<int> nums = {4, 1, 2, 1, 2};
+cout << accumulate(nums.begin(), nums.end(), 0, bit_xor<int>()) << '\\n';   // 4` }
+    ] }],
+    codeTitle: ['One-line XOR fold with reduce'],
     viz: {
       title: 'XOR folding: twins cancel, the single survives',
       input: '4 1 2 1 2',
@@ -1208,6 +1755,7 @@ print(reduce(xor, [-3, 5, -3], 0))  # 5` }],
           `<p>No HashMap, no sort: keep a single <code>int res = 0</code> and do <code>res ^= x</code> for every x.</p>`,
           `<p>Traps: start res at <b>0</b>, not at nums[0] twice. Negatives are fine (XOR works on all 32 bits). N = 1 → the loop returns nums[0]. Recipe: res = 0 → for each x: res ^= x → return res.</p>`
         ],
+        tests: { sig: 'int[] -> int', fn: 'singleNumber', cases: [[[[4, 1, 2, 1, 2]], 4], [[[1]], 1], [[[2, 2, 1]], 1], [[[-3, 5, -3]], 5], [[[30000, -30000, 30000]], -30000], [[[0, 7, 7]], 0], [[[-1, -1, -2]], -2]] },
         solution: {
           approach: `<p>Fold the array with XOR; all pairs vanish, the single number remains.</p>`,
           code: `
@@ -1224,6 +1772,26 @@ print(reduce(xor, [-3, 5, -3], 0))  # 5` }],
                     System.out.println(new Solution().singleNumber(new int[]{4, 1, 2, 1, 2})); // 4
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `from functools import reduce
+from operator import xor
+
+def single_number(nums):
+    # twin pairs cancel (x ^ x = 0); negatives are fine, no masking needed
+    return reduce(xor, nums, 0)` },
+            { lang: 'js', code: `function singleNumber(nums) {
+  // twin pairs cancel (x ^ x = 0), the unpaired value is left
+  return nums.reduce((res, x) => res ^ x, 0);
+}` },
+            { lang: 'cpp', code: `class Solution {
+public:
+    int singleNumber(const vector<int>& nums) {
+        int res = 0;
+        for (int x : nums) res ^= x;   // twin pairs cancel
+        return res;
+    }
+};` }
+          ],
           dry: {
             head: ['i', 'x', 'res before', 'res ^ x (binary)', 'res'],
             rows: [
@@ -1261,7 +1829,7 @@ print(reduce(xor, [-3, 5, -3], 0))  # 5` }],
       'Values are 32-bit ints (maybe negative) → loop bit = 0..31 and rebuild with <code>ans |= 1 &lt;&lt; bit</code>.',
       'Any "<b>per-bit</b> contribution / count" problem (sum of XORs, total Hamming distance) uses the same column-by-column view.'
     ],
-    code: `
+    code: { lang: 'java', code: `
       class SingleNumberIIOnePass {
           // ones = columns whose count % 3 == 1, twos = columns whose count % 3 == 2
           public int singleNumber(int[] nums) {
@@ -1272,7 +1840,37 @@ print(reduce(xor, [-3, 5, -3], 0))  # 5` }],
               }                                 // a third copy clears the column from both
               return ones;                     // the single number's bits are left in ones
           }
-      }`,
+      }`, alt: [{ lang: 'python', code: `class SingleNumberIIOnePass:
+    # ones = columns whose count % 3 == 1, twos = columns whose count % 3 == 2
+    def single_number(self, nums):
+        ones = twos = 0
+        for x in nums:
+            ones = (ones ^ x) & ~twos
+            twos = (twos ^ x) & ~ones
+        return ones   # Python keeps the sign: a negative single comes back negative` },
+  { lang: 'js', code: `class SingleNumberIIOnePass {
+  // ones = columns whose count % 3 == 1, twos = columns whose count % 3 == 2
+  singleNumber(nums) {
+    let ones = 0, twos = 0;
+    for (const x of nums) {
+      ones = (ones ^ x) & ~twos;
+      twos = (twos ^ x) & ~ones;
+    }
+    return ones;
+  }
+}` },
+  { lang: 'cpp', code: `class SingleNumberIIOnePass {
+public:
+    // ones = columns whose count % 3 == 1, twos = columns whose count % 3 == 2
+    int singleNumber(const vector<int>& nums) {
+        int ones = 0, twos = 0;
+        for (int x : nums) {
+            ones = (ones ^ x) & ~twos;
+            twos = (twos ^ x) & ~ones;
+        }
+        return ones;
+    }
+};` }] },
     codeTitle: 'Bonus: one-pass ones/twos version',
     examples: [
       {
@@ -1284,14 +1882,40 @@ print(reduce(xor, [-3, 5, -3], 0))  # 5` }],
       {
         title: 'Generalise: every value k times except one',
         html: `<p>Every value appears <b>5</b> times except one: [9, 9, 9, 9, 9, 6]. Column counts of 9 (1001) are multiples of 5; 6 (0110) adds 1 to bits 1 and 2. Use <code>count % 5</code>: bits 1 and 2 survive → <b>6</b>. Just change the 3 into k.</p>`,
-        code: `int[] nums = {9, 9, 9, 9, 9, 6};
+        code: { lang: 'java', code: `int[] nums = {9, 9, 9, 9, 9, 6};
 int k = 5, ans = 0;
 for (int bit = 0; bit < 32; bit++) {
     int cnt = 0;
     for (int x : nums) cnt += (x >> bit) & 1;
     if (cnt % k != 0) ans |= 1 << bit;
 }
-System.out.println(ans); // 6`
+System.out.println(ans); // 6`, alt: [{ lang: 'python', run: true, code: `nums = [9, 9, 9, 9, 9, 6]
+k, ans = 5, 0
+for bit in range(32):
+    cnt = sum((x >> bit) & 1 for x in nums)
+    if cnt % k:
+        ans |= 1 << bit
+if ans >= 1 << 31:          # Python does not wrap: turn bit 31 back into a sign
+    ans -= 1 << 32
+print(ans)                  # 6` },
+  { lang: 'js', run: true, code: `const nums = [9, 9, 9, 9, 9, 6];
+const k = 5;
+let ans = 0;
+for (let bit = 0; bit < 32; bit++) {
+  let cnt = 0;
+  for (const x of nums) cnt += (x >> bit) & 1;
+  if (cnt % k !== 0) ans |= 1 << bit;
+}
+console.log(ans); // 6` },
+  { lang: 'cpp', code: `vector<int> nums = {9, 9, 9, 9, 9, 6};
+int k = 5;
+uint32_t ans = 0;
+for (int bit = 0; bit < 32; ++bit) {
+    int cnt = 0;
+    for (int x : nums) cnt += (static_cast<uint32_t>(x) >> bit) & 1u;
+    if (cnt % k != 0) ans |= 1u << bit;
+}
+cout << static_cast<int>(ans) << '\\n'; // 6` }] }
       },
       {
         title: 'Tracing the ones/twos trick on [2, 2, 3, 2]',
@@ -1317,7 +1941,7 @@ System.out.println(ans); // 6`
       <p>"Sum of XOR over all pairs", "total Hamming distance", "AND/OR of all subarrays" — whenever operations act column by column, solve each column separately (often with counts of 0s and 1s) and add <code>contribution × 2<sup>bit</sup></code>.</p>`,
     aiEra: `<p><b>What AI changes:</b> assistants love to paste the ones/twos one-liner. It is correct, but few candidates can explain it — and the interviewer will ask. The counting version is easier to derive, explain and extend.</p>
       <p><b>Use AI as a partner:</b> <code>Derive the ones/twos update from a 3-state counter truth table, step by step</code>, then trace it yourself on [2, 2, 3, 2]. Ask for the k = 5 generalisation and check it against brute force.</p>
-      <p><b>Where AI goes wrong:</b> looping bits 0..30 (loses negative answers), writing <code>ones = ones ^ x &amp; ~twos</code> without brackets (&amp; binds tighter than ^ in Java), and swapping the order of the two updates.</p>
+      <p><b>Where AI goes wrong:</b> looping bits 0..30 (loses negative answers), writing <code>ones = ones ^ x &amp; ~twos</code> without brackets (&amp; binds tighter than ^ in Java, C++, JavaScript and Python alike), and swapping the order of the two updates.</p>
       <p><b>What you must still own:</b> the column-count argument — it is the general tool; the two-int trick is a bonus.</p>`,
     viz: {
       title: 'Bit-count grid: total per column, then % 3',
@@ -1394,8 +2018,9 @@ System.out.println(ans); // 6`
         hints: [
           `<p><b>Aha:</b> look at one bit column. Each triplet adds 0 or 3 to that column's count. The single number adds 0 or 1. So <code>count % 3</code> is the single number's bit in that column.</p>`,
           `<p>Two loops: outer over bit positions 0..31, inner over the array counting <code>(x &gt;&gt; bit) &amp; 1</code>. If <code>count % 3 != 0</code>, switch that bit ON in the answer with <code>ans |= (1 &lt;&lt; bit)</code>.</p>`,
-          `<p>Traps: go all the way to bit <b>31</b> so a negative answer gets its sign bit. Use <code>&gt;&gt;</code> then <code>&amp; 1</code> (the &amp; 1 removes any copied sign bits). Recipe: ans = 0; for bit 0..31 { cnt = 0; for x: cnt += (x &gt;&gt; bit) &amp; 1; if cnt % 3 ≠ 0: ans |= 1 &lt;&lt; bit } return ans.</p>`
+          `<p>Traps: go all the way to bit <b>31</b> so a negative answer gets its sign bit (in Python, which has no 32-bit wrap, subtract 2<sup>32</sup> when bit 31 is ON). Use <code>&gt;&gt;</code> then <code>&amp; 1</code> (the &amp; 1 removes any copied sign bits). Recipe: ans = 0; for bit 0..31 { cnt = 0; for x: cnt += (x &gt;&gt; bit) &amp; 1; if cnt % 3 ≠ 0: ans |= 1 &lt;&lt; bit } return ans.</p>`
         ],
+        tests: { sig: 'int[] -> int', fn: 'singleNumber', cases: [[[[2, 2, 3, 2]], 3], [[[0, 1, 0, 1, 0, 1, 99]], 99], [[[-2, -2, 1, -2]], 1], [[[7]], 7], [[[-2147483648, 5, 5, 5]], -2147483648], [[[2147483647, 2147483647, 2147483647, -4]], -4], [[[-4, 7, 7, 7]], -4], [[[0, 0, 0, -1]], -1]] },
         solution: {
           approach: `<p>Count ON bits per column, keep columns where the count is not a multiple of 3.</p>`,
           code: `
@@ -1419,6 +2044,37 @@ System.out.println(ans); // 6`
                     System.out.println(new Solution().singleNumber(new int[]{-2, -2, 1, -2})); // 1
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `def single_number(nums):
+    ans = 0
+    for bit in range(32):
+        count = sum((x >> bit) & 1 for x in nums)   # >> on a negative keeps the sign, & 1 reads one bit
+        if count % 3:
+            ans |= 1 << bit
+    # Python has no 32-bit wrap: if bit 31 is ON, the answer is negative
+    return ans - (1 << 32) if ans >= 1 << 31 else ans` },
+            { lang: 'js', code: `function singleNumber(nums) {
+  let ans = 0;
+  for (let bit = 0; bit < 32; bit++) {
+    let count = 0;
+    for (const x of nums) count += (x >> bit) & 1;
+    if (count % 3 !== 0) ans |= 1 << bit;   // 1 << 31 is negative in JS, which is what we want
+  }
+  return ans;                               // | keeps ans a signed 32-bit int
+}` },
+            { lang: 'cpp', code: `class Solution {
+public:
+    int singleNumber(const vector<int>& nums) {
+        uint32_t ans = 0;                       // unsigned: 1u << 31 is well defined
+        for (int bit = 0; bit < 32; ++bit) {
+            int count = 0;
+            for (int x : nums) count += (static_cast<uint32_t>(x) >> bit) & 1u;
+            if (count % 3 != 0) ans |= 1u << bit;
+        }
+        return static_cast<int>(ans);           // C++20: wraps to the signed value
+    }
+};` }
+          ],
           dry: {
             head: ['bit', 'bits of 2, 2, 3, 2', 'count', 'count % 3', 'ans'],
             rows: [
@@ -1459,7 +2115,7 @@ System.out.println(ans); // 6`
       'You have <code>a ^ b</code> and need a and b separately → "isolate a bit where they differ": <code>x &amp; -x</code>.',
       'Any problem that says "group the numbers by bit i" → twins always stay together, which is what makes group-wise XOR safe.'
     ],
-    code: `
+    code: { lang: 'java', code: `
       class SingleNumberIIIDemo {
           static int[] twoSingles(int[] nums) {
               int xr = 0;
@@ -1475,14 +2131,57 @@ System.out.println(ans); // 6`
           public static void main(String[] args) {
               System.out.println(Arrays.toString(twoSingles(new int[]{1, 2, 1, 3, 2, 5}))); // [3, 5]
           }
-      }`,
-    codeTitle: 'Core pattern (Java)',
+      }`, alt: [{ lang: 'python', run: true, code: `def two_singles(nums):
+    xr = 0
+    for x in nums:
+        xr ^= x                  # pairs cancel -> xr = a ^ b (not 0)
+    diff = xr & -xr              # lowest bit where a and b differ
+    a = b = 0
+    for x in nums:
+        if x & diff:
+            a ^= x               # pile 1: that bit ON
+        else:
+            b ^= x               # pile 2: that bit OFF
+    return [a, b]
+
+print(two_singles([1, 2, 1, 3, 2, 5]))  # [3, 5]` },
+  { lang: 'js', run: true, code: `function twoSingles(nums) {
+  const xr = nums.reduce((acc, x) => acc ^ x, 0);   // a ^ b
+  const diff = xr & -xr;                           // lowest bit where a and b differ
+  let a = 0, b = 0;
+  for (const x of nums) {
+    if ((x & diff) !== 0) a ^= x; else b ^= x;
+  }
+  return [a, b];
+}
+
+console.log(twoSingles([1, 2, 1, 3, 2, 5])); // [3, 5]` },
+  { lang: 'cpp', code: `#include <bits/stdc++.h>
+using namespace std;
+
+pair<int, int> twoSingles(const vector<int>& nums) {
+    uint32_t xr = 0;
+    for (int x : nums) xr ^= static_cast<uint32_t>(x);   // a ^ b
+    uint32_t diff = xr & (0u - xr);                       // lowest differing bit, no signed overflow
+    int a = 0, b = 0;
+    for (int x : nums) {
+        if (static_cast<uint32_t>(x) & diff) a ^= x;
+        else b ^= x;
+    }
+    return {a, b};
+}
+
+int main() {
+    auto [a, b] = twoSingles({1, 2, 1, 3, 2, 5});
+    cout << a << ' ' << b << '\\n';   // 3 5
+}` }] },
+    codeTitle: 'Core pattern',
     examples: [
       {
         title: 'Two missing numbers from 1..n',
         html: `<p>n = 6, arr = [1, 3, 4, 6] (2 and 5 are missing). XOR every value 1..6 <b>and</b> every array value: present numbers appear twice and cancel, leaving 2 ^ 5 = 7 (111). Lowest ON bit = 1. Split all of 1..6 and arr by bit 0:</p>
           ${H.table(['pile', 'numbers XORed', 'result'], [['bit 0 ON', '1,3,5 (range) + 1,3 (arr)', '<span class="c-p">5</span>'], ['bit 0 OFF', '2,4,6 (range) + 4,6 (arr)', '<span class="c-p">2</span>']])}`,
-        code: `int n = 6;
+        code: { lang: 'java', code: `int n = 6;
 int[] arr = {1, 3, 4, 6};
 int xr = 0;
 for (int v = 1; v <= n; v++) xr ^= v;
@@ -1490,7 +2189,34 @@ for (int v : arr) xr ^= v;            // xr = 2 ^ 5
 int diff = xr & -xr, a = 0, b = 0;
 for (int v = 1; v <= n; v++) { if ((v & diff) != 0) a ^= v; else b ^= v; }
 for (int v : arr) { if ((v & diff) != 0) a ^= v; else b ^= v; }
-System.out.println(a + " " + b);     // 5 2`
+System.out.println(a + " " + b);     // 5 2`, alt: [{ lang: 'python', run: true, code: `n, arr = 6, [1, 3, 4, 6]
+both = list(range(1, n + 1)) + arr
+xr = 0
+for v in both:
+    xr ^= v                      # xr = 2 ^ 5
+diff, a, b = xr & -xr, 0, 0
+for v in both:
+    if v & diff:
+        a ^= v
+    else:
+        b ^= v
+print(a, b)                      # 5 2` },
+  { lang: 'js', run: true, code: `const n = 6, arr = [1, 3, 4, 6];
+const both = [...Array.from({ length: n }, (_, i) => i + 1), ...arr];
+const xr = both.reduce((acc, v) => acc ^ v, 0);   // 2 ^ 5
+const diff = xr & -xr;
+let a = 0, b = 0;
+for (const v of both) { if (v & diff) a ^= v; else b ^= v; }
+console.log(a, b);                                // 5 2` },
+  { lang: 'cpp', code: `int n = 6;
+vector<int> arr = {1, 3, 4, 6};
+int xr = 0;
+for (int v = 1; v <= n; ++v) xr ^= v;
+for (int v : arr) xr ^= v;                 // xr = 2 ^ 5
+int diff = xr & -xr, a = 0, b = 0;         // xr > 0 here, so -xr cannot overflow
+for (int v = 1; v <= n; ++v) (v & diff ? a : b) ^= v;
+for (int v : arr) (v & diff ? a : b) ^= v;
+cout << a << ' ' << b << '\\n';             // 5 2` }] }
       },
       {
         title: 'Negative numbers and Integer.MIN_VALUE',
@@ -1607,8 +2333,9 @@ System.out.println(a + " " + b);     // 5 2`
         hints: [
           `<p><b>Aha:</b> XOR-all gives <code>a ^ b</code>, which is not 0. Any ON bit of it is a column where a and b <b>differ</b> — use it to separate them.</p>`,
           `<p>Isolate one such bit with <code>diff = xr &amp; -xr</code>. Make a second pass: numbers with <code>(x &amp; diff) != 0</code> go into one XOR accumulator, the rest into another. Twins always go to the same accumulator.</p>`,
-          `<p>Traps: compare with <code>!= 0</code>, not <code>== 1</code>; <code>xr &amp; -xr</code> is fine even when xr is Integer.MIN_VALUE. Recipe: xr = XOR all → diff = xr &amp; −xr → a = b = 0 → for x: if (x &amp; diff) ≠ 0 then a ^= x else b ^= x → return [a, b].</p>`
+          `<p>Traps: compare with <code>!= 0</code>, not <code>== 1</code>; <code>xr &amp; -xr</code> is fine even when xr is Integer.MIN_VALUE in Java and JavaScript (in C++ compute it on <code>unsigned</code>, because <code>-INT_MIN</code> overflows). Recipe: xr = XOR all → diff = xr &amp; −xr → a = b = 0 → for x: if (x &amp; diff) ≠ 0 then a ^= x else b ^= x → return [a, b].</p>`
         ],
+        tests: { sig: 'int[] -> int[]', fn: 'singleNumber', cmp: 'set', cases: [[[[1, 2, 1, 3, 2, 5]], [3, 5]], [[[-1, 0]], [-1, 0]], [[[0, 1]], [0, 1]], [[[0, -2147483648]], [-2147483648, 0]], [[[2147483647, -2147483648, 4, 4]], [-2147483648, 2147483647]], [[[2, 1, 2, 3, 4, 1]], [3, 4]], [[[-5, -5, -7, 8, 9, 9]], [-7, 8]]] },
         solution: {
           approach: `<p>Fold everything to get a ^ b, split the array by one bit where a and b differ, and fold each half. Each half is "Single Number I".</p>`,
           code: `
@@ -1643,7 +2370,31 @@ System.out.println(a + " " + b);     // 5 2`
             b ^= x
     return [a, b]
 
-print(single_number([1, 2, 1, 3, 2, 5]))  # [3, 5]`, run: true }],
+print(single_number([1, 2, 1, 3, 2, 5]))  # [3, 5]`, run: true },
+            { lang: 'js', code: `function singleNumber(nums) {
+  const xr = nums.reduce((acc, x) => acc ^ x, 0);   // a ^ b
+  const diff = xr & -xr;                           // lowest differing bit (fine for -2^31 too)
+  let a = 0, b = 0;
+  for (const x of nums) {
+    if ((x & diff) !== 0) a ^= x;                  // pile with that bit ON
+    else b ^= x;                                   // pile with that bit OFF
+  }
+  return [a, b];
+}` },
+            { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> singleNumber(const vector<int>& nums) {
+        uint32_t xr = 0;
+        for (int x : nums) xr ^= static_cast<uint32_t>(x);   // a ^ b
+        uint32_t diff = xr & (0u - xr);   // unsigned negate: -INT_MIN would be undefined for int
+        int a = 0, b = 0;
+        for (int x : nums) {
+            if (static_cast<uint32_t>(x) & diff) a ^= x;
+            else b ^= x;
+        }
+        return {a, b};
+    }
+};` }],
           dry: {
             head: ['x', 'x &amp; diff (diff = 2)', 'pile', 'a', 'b'],
             rows: [
@@ -1693,7 +2444,7 @@ print(single_number([1, 2, 1, 3, 2, 5]))  # [3, 5]`, run: true }],
       'n ≤ 40 with subset sums → <b>meet in the middle</b>: enumerate 2<sup>20</sup> masks of each half, then combine with sorting/binary search.',
       '"Visited set of at most 16–20 nodes" (TSP, shortest path visiting all nodes) → the visited set is a mask (bitmask DP).'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       class SubsetMasks {
           // All subsets of nums using masks 0 .. 2^n - 1
           static List<List<Integer>> subsets(int[] nums) {
@@ -1721,7 +2472,50 @@ print(single_number([1, 2, 1, 3, 2, 5]))  # [3, 5]`, run: true }],
               System.out.println(subsets(new int[]{1, 2, 3}));  // [[], [1], [2], [1, 2], [3], [1, 3], [2, 3], [1, 2, 3]]
               System.out.println(submasks(0b1011));              // [11, 10, 9, 8, 3, 2, 1, 0]
           }
-      }`, { lang: 'python', title: 'Same in Python (runnable)', run: true, code: `def subsets(nums):
+      }`, alt: [{ lang: 'js', run: true, code: `function subsets(nums) {
+  const all = [];
+  for (let mask = 0; mask < (1 << nums.length); mask++) {   // 2^n patterns
+    all.push(nums.filter((_, j) => (mask >> j) & 1));       // bit j ON -> take item j
+  }
+  return all;
+}
+
+function submasks(m) {
+  const out = [];
+  for (let s = m; s > 0; s = (s - 1) & m) out.push(s);
+  out.push(0);                                              // the empty submask
+  return out;
+}
+
+console.log(JSON.stringify(subsets([1, 2, 3]))); // [[],[1],[2],[1,2],[3],[1,3],[2,3],[1,2,3]]
+console.log(submasks(0b1011));                   // [11, 10, 9, 8, 3, 2, 1, 0]` },
+  { lang: 'cpp', code: `#include <bits/stdc++.h>
+using namespace std;
+
+vector<vector<int>> subsets(const vector<int>& nums) {
+    int n = nums.size();
+    vector<vector<int>> all;
+    for (int mask = 0; mask < (1 << n); ++mask) {          // 2^n patterns
+        vector<int> cur;
+        for (int j = 0; j < n; ++j)
+            if ((mask >> j) & 1) cur.push_back(nums[j]);   // bit j ON -> take item j
+        all.push_back(cur);
+    }
+    return all;
+}
+
+vector<int> submasks(int m) {
+    vector<int> out;
+    for (int s = m; s > 0; s = (s - 1) & m) out.push_back(s);
+    out.push_back(0);                                      // the empty submask
+    return out;
+}
+
+int main() {
+    cout << subsets({1, 2, 3}).size() << '\\n';             // 8
+    for (int s : submasks(0b1011)) cout << s << ' ';       // 11 10 9 8 3 2 1 0
+    cout << '\\n';
+}` }, { lang: 'python', title: 'Same in Python (runnable)', run: true, code: `def subsets(nums):
     n = len(nums)
     return [[nums[j] for j in range(n) if mask >> j & 1] for mask in range(1 << n)]
 
@@ -1733,8 +2527,8 @@ def submasks(m):
     return out + [0]
 
 print(subsets([1, 2, 3]))
-print(submasks(0b1011))  # [11, 10, 9, 8, 3, 2, 1, 0]` }],
-    codeTitle: ['All subsets and all submasks (Java)', 'Python version'],
+print(submasks(0b1011))  # [11, 10, 9, 8, 3, 2, 1, 0]` }] }],
+    codeTitle: ['All subsets and all submasks'],
     examples: [
       {
         title: 'Subset sum by brute-force masks',
@@ -1745,14 +2539,34 @@ print(submasks(0b1011))  # [11, 10, 9, 8, 3, 2, 1, 0]` }],
       {
         title: 'Split into two teams with minimum difference',
         html: `<p>Strengths [5, 2, 8, 3] (total 18). For each mask, team A = mask, team B = the complement <code>full ^ mask</code> (full = 1111). Difference = |2·sumA − total|. Mask 0101 → {5, 8} = 13 vs 5 → diff 8. Mask 0110 → {2, 8} = 10 vs 8 → diff <b>2</b>. Mask 0011 → {5, 2} = 7 vs 11 → diff 4. Best: <b>2</b>. Tip: masks m and full ^ m describe the same split, so you can stop at half.</p>`,
-        code: `int[] s = {5, 2, 8, 3};
+        code: { lang: 'java', code: `int[] s = {5, 2, 8, 3};
 int n = s.length, total = 18, best = Integer.MAX_VALUE;
 for (int mask = 0; mask < (1 << n); mask++) {
     int sumA = 0;
     for (int j = 0; j < n; j++) if ((mask >> j & 1) == 1) sumA += s[j];
     best = Math.min(best, Math.abs(2 * sumA - total));
 }
-System.out.println(best); // 2`
+System.out.println(best); // 2`, alt: [{ lang: 'python', run: true, code: `s = [5, 2, 8, 3]
+n, total = len(s), sum(s)
+best = min(abs(2 * sum(s[j] for j in range(n) if mask >> j & 1) - total) for mask in range(1 << n))
+print(best)  # 2` },
+  { lang: 'js', run: true, code: `const s = [5, 2, 8, 3];
+const n = s.length, total = 18;
+let best = Infinity;
+for (let mask = 0; mask < (1 << n); mask++) {
+  let sumA = 0;
+  for (let j = 0; j < n; j++) if ((mask >> j) & 1) sumA += s[j];
+  best = Math.min(best, Math.abs(2 * sumA - total));
+}
+console.log(best); // 2` },
+  { lang: 'cpp', code: `vector<int> s = {5, 2, 8, 3};
+int n = s.size(), total = 18, best = INT_MAX;
+for (int mask = 0; mask < (1 << n); ++mask) {
+    int sumA = 0;
+    for (int j = 0; j < n; ++j) if ((mask >> j) & 1) sumA += s[j];
+    best = min(best, abs(2 * sumA - total));
+}
+cout << best << '\\n'; // 2` }] }
       },
       {
         title: 'Submasks of 1011 step by step',
@@ -1890,6 +2704,7 @@ System.out.println(best); // 2`
           `<p>Outer loop <code>mask</code> from 0 to <code>(1 &lt;&lt; n) − 1</code>; inner loop j from 0 to n − 1 adds <code>nums[j]</code> when <code>(mask &gt;&gt; j) &amp; 1</code> is 1.</p>`,
           `<p>Edge cases: mask 0 gives the empty subset (must be included); n is small (≤ 10) so 1 &lt;&lt; n is safe. Recipe: result = [] → for mask in 0..2<sup>n</sup>−1: cur = [] → for j in 0..n−1: if bit j of mask is 1, add nums[j] → add cur to result.</p>`
         ],
+        tests: { sig: 'int[] -> list<list<int>>', fn: 'subsets', cmp: 'sets', cases: [[[[1, 2, 3]], [[], [1], [2], [3], [1, 2], [1, 3], [2, 3], [1, 2, 3]]], [[[0]], [[], [0]]], [[[-1, 5]], [[], [-1], [5], [-1, 5]]], [[[4, -10, 10, 0]], [[], [4], [-10], [10], [0], [4, -10], [4, 10], [4, 0], [-10, 10], [-10, 0], [10, 0], [4, -10, 10], [4, -10, 0], [4, 10, 0], [-10, 10, 0], [4, -10, 10, 0]]], [[[1, 2, 3, 4, 5]], [[], [1], [2], [3], [4], [5], [1, 2], [1, 3], [1, 4], [1, 5], [2, 3], [2, 4], [2, 5], [3, 4], [3, 5], [4, 5], [1, 2, 3], [1, 2, 4], [1, 2, 5], [1, 3, 4], [1, 3, 5], [1, 4, 5], [2, 3, 4], [2, 3, 5], [2, 4, 5], [3, 4, 5], [1, 2, 3, 4], [1, 2, 3, 5], [1, 2, 4, 5], [1, 3, 4, 5], [2, 3, 4, 5], [1, 2, 3, 4, 5]]], [[[7, 8, 9]], [[], [7], [8], [9], [7, 8], [7, 9], [8, 9], [7, 8, 9]]]] },
         solution: {
           approach: `<p>Count masks from 0 to 2<sup>n</sup> − 1 and decode each mask's ON bits into a list. Every subset corresponds to exactly one mask, so there are no duplicates and nothing is missed.</p>`,
           code: `
@@ -1913,6 +2728,34 @@ System.out.println(best); // 2`
                     System.out.println(new Solution().subsets(new int[]{1, 2, 3}));
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `def subsets(nums):
+    n = len(nums)
+    # one mask per subset; bit j ON -> take nums[j]
+    return [[nums[j] for j in range(n) if mask >> j & 1] for mask in range(1 << n)]` },
+            { lang: 'js', code: `function subsets(nums) {
+  const n = nums.length, result = [];
+  for (let mask = 0; mask < (1 << n); mask++) {   // one mask per subset
+    result.push(nums.filter((_, j) => (mask >> j) & 1));
+  }
+  return result;
+}` },
+            { lang: 'cpp', code: `class Solution {
+public:
+    vector<vector<int>> subsets(const vector<int>& nums) {
+        int n = nums.size();
+        vector<vector<int>> result;
+        result.reserve(1 << n);
+        for (int mask = 0; mask < (1 << n); ++mask) {   // one mask per subset
+            vector<int> cur;
+            for (int j = 0; j < n; ++j)
+                if ((mask >> j) & 1) cur.push_back(nums[j]);
+            result.push_back(move(cur));
+        }
+        return result;
+    }
+};` }
+          ],
           dry: {
             head: ['mask', 'binary', 'bits ON', 'subset added'],
             rows: [
@@ -1966,6 +2809,7 @@ System.out.println(best); // 2`
       `<p>Single int accumulator. Neat trick: start with <code>res = n</code> and in one loop do <code>res ^= i ^ nums[i]</code> — this covers indexes 0..n−1 plus n itself.</p>`,
       `<p>Edge cases: the missing number can be 0 or n — the XOR handles both. Recipe: res = n → for i in 0..n−1: res ^= i ^ nums[i] → return res.</p>`
     ],
+    tests: { sig: 'int[] -> int', fn: 'missingNumber', cases: [[[[3, 0, 1]], 2], [[[0, 1]], 2], [[[9, 6, 4, 2, 3, 5, 7, 0, 1]], 8], [[[0]], 1], [[[1]], 0], [[[1, 2, 3, 4]], 0], [[[0, 1, 2, 3]], 4]] },
     solution: {
       approach: `<p>XOR the range and the array together; twins cancel and the missing number is left.</p>`,
       code: `
@@ -1983,6 +2827,26 @@ System.out.println(best); // 2`
                 System.out.println(new Solution().missingNumber(new int[]{9,6,4,2,3,5,7,0,1})); // 8
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def missing_number(nums):
+    res = len(nums)                  # include n itself
+    for i, x in enumerate(nums):
+        res ^= i ^ x                 # index i and value x
+    return res                       # all present values cancelled` },
+        { lang: 'js', code: `function missingNumber(nums) {
+  let res = nums.length;             // include n itself
+  nums.forEach((x, i) => { res ^= i ^ x; });
+  return res;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int missingNumber(const vector<int>& nums) {
+        int res = nums.size();               // include n itself
+        for (int i = 0; i < (int)nums.size(); ++i) res ^= i ^ nums[i];
+        return res;
+    }
+};` }
+      ],
       dry: {
         head: ['i', 'nums[i]', 'i ^ nums[i]', 'res'],
         rows: [['start', '–', '–', '3'], ['0', '3', '3', '3 ^ 3 = 0'], ['1', '0', '1', '0 ^ 1 = 1'], ['2', '1', '3', '1 ^ 3 = <span class="c-p">2</span>']]
@@ -2019,9 +2883,10 @@ System.out.println(best); // 2`
     },
     hints: [
       `<p><b>Aha:</b> "positions where bits differ" is the definition of XOR. So the differing positions are the ON bits of <code>x ^ y</code>.</p>`,
-      `<p>Count ON bits of <code>x ^ y</code> with Kernighan's loop (<code>z &amp;= z - 1</code>) or <code>Integer.bitCount</code>.</p>`,
+      `<p>Count ON bits of <code>x ^ y</code> with Kernighan's loop (<code>z &amp;= z - 1</code>) or a built-in popcount (<code>Integer.bitCount</code> / <code>int.bit_count</code> / <code>std::popcount</code>).</p>`,
       `<p>Edge cases: x == y → 0. Recipe: z = x ^ y → count = 0 → while z ≠ 0: z &amp;= z − 1, count++ → return count.</p>`
     ],
+    tests: { sig: 'int int -> int', fn: 'hammingDistance', cases: [[[1, 4], 2], [[3, 1], 1], [[0, 0], 0], [[0, 2147483647], 31], [[2147483647, 2147483647], 0], [[7, 8], 4], [[1073741824, 1], 2]] },
     solution: {
       approach: `<p>XOR, then count set bits.</p>`,
       code: `
@@ -2039,6 +2904,24 @@ System.out.println(best); // 2`
                 System.out.println(new Solution().hammingDistance(1, 4)); // 2
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def hamming_distance(x, y):
+    return (x ^ y).bit_count()   # 1s mark differing columns (Python 3.10+; else bin(x ^ y).count("1"))` },
+        { lang: 'js', code: `function hammingDistance(x, y) {
+  let z = x ^ y, count = 0;      // 1s mark differing columns
+  while (z !== 0) {
+    z &= z - 1;                  // remove one differing column
+    count++;
+  }
+  return count;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int hammingDistance(int x, int y) {
+        return std::popcount(static_cast<uint32_t>(x ^ y));   // C++20 <bit>; __builtin_popcount before that
+    }
+};` }
+      ],
       dry: {
         head: ['step', 'z (binary)', 'count'],
         rows: [['x ^ y', '101', '0'], ['z &amp;= z − 1', '100', '1'], ['z &amp;= z − 1', '000', '<span class="c-p">2</span>']]
@@ -2053,7 +2936,7 @@ System.out.println(best); // 2`
     level: 'Easy',
     tags: ['masks', 'XOR'],
     companies: ['Cloudera', 'Amazon'],
-    statement: `<p>The <b>complement</b> of a positive integer flips every bit of its binary representation <b>without leading zeros</b>. Given <code>num</code>, return its complement. (Note: Java's <code>~num</code> also flips the leading zeros and gives a negative number — not what we want.)</p>`,
+    statement: `<p>The <b>complement</b> of a positive integer flips every bit of its binary representation <b>without leading zeros</b>. Given <code>num</code>, return its complement. (Note: the bitwise NOT <code>~num</code> also flips the leading zeros and gives a negative number in every language — not what we want.)</p>`,
     constraints: `1 ≤ num ≤ 2<sup>31</sup> − 1`,
     example: `${H.bits(5, 3, { label: 'num = 5' })}${H.bits(7, 3, { label: 'mask = 111', hl: { 2: 'y', 1: 'y', 0: 'y' } })}${H.bits(2, 3, { label: '5 ^ 7 = 2', hl: { 1: 'g' } })}<p>Output <b>${H.c('p', '2')}</b>: 101 → 010. XOR with an all-ones mask of the same length flips exactly the meaningful bits.</p>`,
     brute: {
@@ -2074,9 +2957,10 @@ System.out.println(best); // 2`
     },
     hints: [
       `<p><b>Aha:</b> XOR with 1 flips a bit. So XOR with a mask of all ones <b>exactly as long as num</b> flips just the meaningful bits.</p>`,
-      `<p>Mask = <code>(Integer.highestOneBit(num) &lt;&lt; 1) − 1</code>. For num = 5: highestOneBit = 4, 8 − 1 = 7 = 111.</p>`,
+      `<p>Mask = <code>(Integer.highestOneBit(num) &lt;&lt; 1) − 1</code>. For num = 5: highestOneBit = 4, 8 − 1 = 7 = 111. Same idea elsewhere: Python <code>(1 &lt;&lt; num.bit_length()) - 1</code>, JavaScript <code>0xFFFFFFFF &gt;&gt;&gt; Math.clz32(num)</code>, C++ <code>(std::bit_floor(u) &lt;&lt; 1) - 1</code> on an unsigned u.</p>`,
       `<p>Edge case: num ≥ 2<sup>30</sup>: highestOneBit &lt;&lt; 1 = 2<sup>31</sup> overflows to MIN_VALUE, and MIN_VALUE − 1 = MAX_VALUE = 31 ones — still the right mask. Recipe: mask = (highestOneBit(num) &lt;&lt; 1) − 1 → return num ^ mask.</p>`
     ],
+    tests: { sig: 'int -> int', fn: 'findComplement', cases: [[[5], 2], [[1], 0], [[10], 5], [[7], 0], [[8], 7], [[2147483647], 0], [[1073741824], 1073741823], [[1073741829], 1073741818]] },
     solution: {
       approach: `<p>Build an all-ones mask covering num's bit length and XOR.</p>`,
       code: `
@@ -2093,6 +2977,24 @@ System.out.println(best); // 2`
                 System.out.println(s.findComplement(Integer.MAX_VALUE));   // 0
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def find_complement(num):
+    mask = (1 << num.bit_length()) - 1   # e.g. 5 -> 111; no overflow in Python
+    return num ^ mask` },
+        { lang: 'js', code: `function findComplement(num) {
+  // Math.clz32 counts leading zeros of the 32-bit value; >>> keeps the mask unsigned
+  const mask = 0xFFFFFFFF >>> Math.clz32(num);   // e.g. 5 -> 111
+  return num ^ mask;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int findComplement(int num) {
+        uint32_t u = num;
+        uint32_t mask = (std::bit_floor(u) << 1) - 1;   // unsigned, so 2^31 does not overflow
+        return static_cast<int>(u ^ mask);
+    }
+};` }
+      ],
       dry: {
         head: ['num', 'highestOneBit', 'mask', 'num ^ mask'],
         rows: [['5 (101)', '4', '7 (111)', '<span class="c-p">2</span> (010)'], ['10 (1010)', '8', '15 (1111)', '<span class="c-p">5</span> (0101)'], ['1 (1)', '1', '1', '<span class="c-p">0</span>']]
@@ -2134,6 +3036,7 @@ System.out.println(best); // 2`
       `<p>One array, fill left to right: <code>ans[i] = ans[i &gt;&gt; 1] + (i &amp; 1)</code>. (Alternative: <code>ans[i] = ans[i &amp; (i − 1)] + 1</code>.)</p>`,
       `<p>Edge cases: n = 0 → [0]. Recipe: ans = new int[n + 1] → for i = 1..n: ans[i] = ans[i &gt;&gt; 1] + (i &amp; 1) → return ans.</p>`
     ],
+    tests: { sig: 'int -> int[]', fn: 'countBits', cases: [[[5], [0, 1, 1, 2, 1, 2]], [[0], [0]], [[1], [0, 1]], [[2], [0, 1, 1]], [[8], [0, 1, 1, 2, 1, 2, 2, 3, 1]], [[16], [0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4, 1]]] },
     solution: {
       approach: `<p>Bottom-up DP using the shift relation.</p>`,
       code: `
@@ -2150,6 +3053,26 @@ System.out.println(best); // 2`
                 System.out.println(Arrays.toString(new Solution().countBits(5))); // [0, 1, 1, 2, 1, 2]
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def count_bits(n):
+    ans = [0] * (n + 1)
+    for i in range(1, n + 1):
+        ans[i] = ans[i >> 1] + (i & 1)   # drop bit 0, then add it back
+    return ans` },
+        { lang: 'js', code: `function countBits(n) {
+  const ans = new Array(n + 1).fill(0);
+  for (let i = 1; i <= n; i++) ans[i] = ans[i >> 1] + (i & 1);   // drop bit 0, add it back
+  return ans;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> countBits(int n) {
+        vector<int> ans(n + 1, 0);
+        for (int i = 1; i <= n; ++i) ans[i] = ans[i >> 1] + (i & 1);   // drop bit 0, add it back
+        return ans;
+    }
+};` }
+      ],
       dry: {
         head: ['i', 'binary', 'i &gt;&gt; 1', 'i &amp; 1', 'ans[i]'],
         rows: [['1', '1', '0', '1', '0 + 1 = 1'], ['2', '10', '1', '0', '1 + 0 = 1'], ['3', '11', '1', '1', '1 + 1 = 2'], ['4', '100', '2', '0', '1 + 0 = 1'], ['5', '101', '2', '1', '1 + 1 = <span class="c-p">2</span>']]
@@ -2164,7 +3087,7 @@ System.out.println(best); // 2`
     level: 'Easy',
     tags: ['shifts', 'unsigned'],
     companies: ['Apple', 'Airbnb'],
-    statement: `<p>Reverse the bits of a 32-bit integer: bit 0 swaps with bit 31, bit 1 with bit 30, and so on. In Java the input and output are <code>int</code>, so a result with bit 31 ON prints as a negative number.</p>`,
+    statement: `<p>Reverse the bits of a 32-bit integer: bit 0 swaps with bit 31, bit 1 with bit 30, and so on. The input and output are <b>signed 32-bit</b> ints, so a result with bit 31 ON is returned as a negative number (for example 1 → −2147483648). Python has unbounded ints, so a Python solution must convert the 32-bit result back to its signed value.</p>`,
     constraints: `Input is any 32-bit pattern. Called many times → keep it fast.`,
     example: `<p>Input 00000010100101000001111010011100 (43261596)<br>Output 00111001011110000010100101000000 (<b>${H.c('p', '964176192')}</b>). Read the input backwards and you get the output.</p>`,
     brute: {
@@ -2184,9 +3107,10 @@ System.out.println(best); // 2`
     },
     hints: [
       `<p><b>Aha:</b> peel bits off the <b>right</b> end of n and push them onto the right end of the result — the first bit peeled ends up on the far left after 32 pushes.</p>`,
-      `<p>Loop exactly 32 times: <code>res = (res &lt;&lt; 1) | (n &amp; 1); n &gt;&gt;&gt;= 1;</code>.</p>`,
+      `<p>Loop exactly 32 times: <code>res = (res &lt;&lt; 1) | (n &amp; 1); n &gt;&gt;&gt;= 1;</code>. (C++: do it on <code>uint32_t</code>. Python: start with <code>n &amp;= 0xFFFFFFFF</code>, use <code>&gt;&gt;</code>, and turn a result ≥ 2<sup>31</sup> back into a negative number.)</p>`,
       `<p>Edge case: always run all 32 iterations, even if n becomes 0 early — the remaining shifts are what move the bits already in res up to their correct high positions. Recipe: res = 0 → repeat 32: res = res &lt;&lt; 1 | (n &amp; 1), n &gt;&gt;&gt;= 1 → return res. Built-in: <code>Integer.reverse(n)</code>.</p>`
     ],
+    tests: { sig: 'int -> int', fn: 'reverseBits', cases: [[[43261596], 964176192], [[-3], -1073741825], [[0], 0], [[1], -2147483648], [[-1], -1], [[-2147483648], 1], [[2147483647], -2], [[2], 1073741824]] },
     solution: {
       approach: `<p>Shift bits out of n from the right and into res from the right, 32 times.</p>`,
       code: `
@@ -2205,6 +3129,34 @@ System.out.println(best); // 2`
                 System.out.println(Integer.reverse(43261596));            // same, built-in
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def reverse_bits(n):
+    n &= 0xFFFFFFFF                      # read the input as 32 raw bits
+    res = 0
+    for _ in range(32):
+        res = (res << 1) | (n & 1)       # append n's lowest bit to res
+        n >>= 1                          # n is non-negative now, so >> fills with 0
+    return res - (1 << 32) if res >> 31 else res   # back to a signed 32-bit value` },
+        { lang: 'js', code: `function reverseBits(n) {
+  let res = 0;
+  for (let i = 0; i < 32; i++) {
+    res = (res << 1) | (n & 1);   // << and | keep res a signed 32-bit int
+    n >>>= 1;                     // unsigned shift: zeros come in
+  }
+  return res;                     // use res >>> 0 if you want the unsigned value
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int reverseBits(int n) {
+        uint32_t u = n, res = 0;          // unsigned: >> always fills with 0
+        for (int i = 0; i < 32; ++i) {
+            res = (res << 1) | (u & 1u);
+            u >>= 1;
+        }
+        return static_cast<int>(res);
+    }
+};` }
+      ],
       dry: {
         head: ['iteration', 'n &amp; 1', 'res (low bits shown)', 'note'],
         rows: [['1', '0', '0', 'n = …11100 → bit 0 is 0'], ['2', '0', '00', ''], ['3', '1', '001', 'first 1 enters'], ['4', '1', '0011', ''], ['…', '…', '…', '32 rounds total'], ['32', '0', '<span class="c-p">964176192</span>', 'first bit read is now bit 31']]
@@ -2220,7 +3172,7 @@ System.out.println(best); // 2`
     tags: ['XOR', 'AND', 'carry'],
     companies: ['Meta', 'Hulu', 'Amazon'],
     statement: `<p>Return <code>a + b</code> without using the operators <code>+</code> or <code>-</code> (also no <code>++</code>/<code>--</code>). Negative numbers must work.</p>`,
-    constraints: `−1000 ≤ a, b ≤ 1000 (but your method should work for any int, wrapping like Java's +).`,
+    constraints: `−1000 ≤ a, b ≤ 1000 (but your method should work for any 32-bit int, wrapping like 32-bit signed addition: 2147483647 + 1 = −2147483648).`,
     example: `<p>a = 2 (010), b = 3 (011) → <b>${H.c('p', '5')}</b>.</p>${H.table(['round', 'a ^ b (sum without carry)', '(a &amp; b) &lt;&lt; 1 (carry)'], [['1', '001', '100'], ['2', '101', '000 → stop']])}<p>XOR adds each column ignoring carries; AND finds columns that produce a carry, shifted one place left. Repeat until no carry is left.</p>`,
     brute: {
       why: `<p>A ripple-carry adder: walk the 32 columns one at a time, compute the column's sum bit and carry with XOR/AND, and build the result. It is correct and always 32 steps, but it processes one column at a time. The optimal loop handles <b>all columns in parallel</b> each round and stops as soon as the carry dies (often after 1–2 rounds).</p>`,
@@ -2245,8 +3197,9 @@ System.out.println(best); // 2`
     hints: [
       `<p><b>Aha:</b> a + b = (a ^ b) + ((a &amp; b) &lt;&lt; 1). XOR is the sum without carries, the AND-shift is the carries. That is again an addition — so repeat.</p>`,
       `<p>Loop: <code>while (b != 0) { int carry = (a &amp; b) &lt;&lt; 1; a ^= b; b = carry; }</code>. Each round pushes carries at least one column left, so it ends within 32 rounds.</p>`,
-      `<p>Negatives: in Java, ints wrap modulo 2<sup>32</sup>, so the loop works unchanged (a carry out of bit 31 just disappears). In Python you must mask with 0xFFFFFFFF or it loops forever. Recipe: while b ≠ 0: carry = (a &amp; b) &lt;&lt; 1, a = a ^ b, b = carry → return a.</p>`
+      `<p>Negatives: in Java and with JavaScript's bit operators, ints wrap modulo 2<sup>32</sup>, so the loop works unchanged (a carry out of bit 31 just disappears). In C++ use <code>unsigned</code> so the wrap is well defined. In Python you must mask with 0xFFFFFFFF or it loops forever. Recipe: while b ≠ 0: carry = (a &amp; b) &lt;&lt; 1, a = a ^ b, b = carry → return a.</p>`
     ],
+    tests: { sig: 'int int -> int', fn: 'getSum', cases: [[[2, 3], 5], [[-2, 3], 1], [[-5, -7], -12], [[0, 0], 0], [[1000, -1000], 0], [[-1000, -1000], -2000], [[2147483647, 1], -2147483648], [[-2147483648, -1], 2147483647], [[-1, 1], 0]] },
     solution: {
       approach: `<p>Repeat "sum without carry + carry" until there is no carry.</p>`,
       code: `
@@ -2276,7 +3229,27 @@ System.out.println(best); // 2`
     a &= MASK
     return a if a <= MAX else ~(a ^ MASK)  # convert back to a signed value
 
-print(get_sum(2, 3), get_sum(-2, 3), get_sum(-5, -7))  # 5 1 -12` }],
+print(get_sum(2, 3), get_sum(-2, 3), get_sum(-5, -7))  # 5 1 -12` },
+        { lang: 'js', code: `function getSum(a, b) {
+  while (b !== 0) {
+    const carry = (a & b) << 1;   // bitwise ops wrap at 32 bits, like Java
+    a ^= b;                       // add without carries
+    b = carry;
+  }
+  return a;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int getSum(int a, int b) {
+        uint32_t x = a, y = b;          // unsigned: shifting a carry out of bit 31 is well defined
+        while (y != 0) {
+            uint32_t carry = (x & y) << 1;
+            x ^= y;                     // add without carries
+            y = carry;
+        }
+        return static_cast<int>(x);
+    }
+};` }],
       dry: {
         head: ['round', 'a', 'b', 'carry = (a &amp; b) &lt;&lt; 1', 'new a = a ^ b'],
         rows: [['1', '010 (2)', '011 (3)', '100 (4)', '001 (1)'], ['2', '001 (1)', '100 (4)', '000', '101 (5)'], ['end', '<span class="c-p">5</span>', '0', '–', '–']]
@@ -2316,6 +3289,7 @@ print(get_sum(2, 3), get_sum(-2, 3), get_sum(-5, -7))  # 5 1 -12` }],
       `<p>Option A: shift both right until they are equal, counting shifts, then shift back. Option B: <code>while (right &gt; left) right &amp;= right - 1;</code> — keep removing right's lowest 1 until it is not above left.</p>`,
       `<p>Edge cases: left == right → that number; left = 0 → 0. Recipe (B): while right &gt; left: right = right &amp; (right − 1) → return right.</p>`
     ],
+    tests: { sig: 'int int -> int', fn: 'rangeBitwiseAnd', cases: [[[5, 7], 4], [[0, 0], 0], [[1, 2147483647], 0], [[12, 15], 12], [[2147483647, 2147483647], 2147483647], [[6, 6], 6], [[1073741824, 1073742824], 1073741824], [[26, 30], 24], [[0, 1], 0]] },
     solution: {
       approach: `<p>Strip the lowest set bits of right until it is ≤ left; what remains is the common prefix.</p>`,
       code: `
@@ -2333,6 +3307,23 @@ print(get_sum(2, 3), get_sum(-2, 3), get_sum(-5, -7))  # 5 1 -12` }],
                 System.out.println(s.rangeBitwiseAnd(1, Integer.MAX_VALUE));    // 0
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def range_bitwise_and(left, right):
+    while right > left:
+        right &= right - 1   # drop right's lowest ON bit
+    return right             # only the shared prefix is left` },
+        { lang: 'js', code: `function rangeBitwiseAnd(left, right) {
+  while (right > left) right &= right - 1;   // drop right's lowest ON bit
+  return right;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int rangeBitwiseAnd(int left, int right) {
+        while (right > left) right &= right - 1;   // right >= 1 here, so right - 1 is safe
+        return right;
+    }
+};` }
+      ],
       dry: {
         head: ['right', 'right &gt; left (5)?', 'right &amp; (right − 1)'],
         rows: [['7 (111)', 'yes', '6 (110)'], ['6 (110)', 'yes', '4 (100)'], ['4 (100)', '<span class="c-r">no</span> → stop', '<span class="c-p">return 4</span>']]
@@ -2370,8 +3361,9 @@ print(get_sum(2, 3), get_sum(-2, 3), get_sum(-5, -7))  # 5 1 -12` }],
     hints: [
       `<p><b>Aha:</b> think per column, not per pair. In one column, a pair contributes 1 exactly when it is a (1, 0) pair.</p>`,
       `<p>For each bit 0..30: count ones k with <code>(x &gt;&gt; bit) &amp; 1</code>, add <code>(long) k * (N - k)</code>.</p>`,
-      `<p>Overflow: k·(N − k) can reach 2.5·10<sup>9</sup> per column — use long. Recipe: total = 0 → for bit 0..30: k = count of numbers with that bit → total += k·(N − k) → return total.</p>`
+      `<p>Overflow: k·(N − k) can reach 2.5·10<sup>9</sup> per column — use a 64-bit integer (<code>long</code> / <code>long long</code>; Python ints and JavaScript Numbers are exact at this size). Recipe: total = 0 → for bit 0..30: k = count of numbers with that bit → total += k·(N − k) → return total.</p>`
     ],
+    tests: { sig: 'int[] -> long', fn: 'totalHammingDistance', cases: [[[[4, 14, 2]], 6], [[[4, 14, 4]], 4], [[[7]], 0], [[[0, 0]], 0], [[[1000000000, 0]], 13], [[[1, 2, 3, 4, 5, 6, 7, 8]], 55]] },
     solution: {
       approach: `<p>Contribution technique on bits: each column contributes ones × zeros.</p>`,
       code: `
@@ -2391,6 +3383,36 @@ print(get_sum(2, 3), get_sum(-2, 3), get_sum(-5, -7))  # 5 1 -12` }],
                 System.out.println(new Solution().totalHammingDistance(new int[]{4, 14, 2})); // 6
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def total_hamming_distance(nums):
+    n, total = len(nums), 0
+    for bit in range(31):                         # values <= 1e9 < 2^30
+        ones = sum((x >> bit) & 1 for x in nums)
+        total += ones * (n - ones)                # (1,0) pairs in this column
+    return total` },
+        { lang: 'js', code: `function totalHammingDistance(nums) {
+  const n = nums.length;
+  let total = 0;                                  // stays far below 2^53, so Number is exact
+  for (let bit = 0; bit < 31; bit++) {
+    let ones = 0;
+    for (const x of nums) ones += (x >> bit) & 1;
+    total += ones * (n - ones);                   // (1,0) pairs in this column
+  }
+  return total;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    long long totalHammingDistance(const vector<int>& nums) {
+        long long n = nums.size(), total = 0;
+        for (int bit = 0; bit < 31; ++bit) {
+            long long ones = 0;
+            for (int x : nums) ones += (x >> bit) & 1;   // x >= 0 here
+            total += ones * (n - ones);                  // long long: no overflow
+        }
+        return total;
+    }
+};` }
+      ],
       dry: {
         head: ['bit', 'bits of 4, 14, 2', 'ones', 'ones·(3 − ones)', 'total'],
         rows: [['0', '0, 0, 0', '0', '0', '0'], ['1', '0, 1, 1', '2', '2', '2'], ['2', '1, 1, 0', '2', '2', '4'], ['3', '0, 1, 0', '1', '2', '<span class="c-p">6</span>']]
@@ -2434,6 +3456,7 @@ print(get_sum(2, 3), get_sum(-2, 3), get_sum(-5, -7))  # 5 1 -12` }],
       `<p>Per column with bits x, y, z: if z == 1 → cost 1 when x == y == 0, else 0. If z == 0 → cost x + y.</p>`,
       `<p>Loop 31 columns (or while any of a, b, c is non-zero, shifting right). Recipe: flips = 0 → for bit 0..30: x, y, z = bits → flips += z == 1 ? ((x | y) == 0 ? 1 : 0) : x + y → return flips.</p>`
     ],
+    tests: { sig: 'int int int -> int', fn: 'minFlips', cases: [[[2, 6, 5], 3], [[4, 2, 7], 1], [[1, 2, 3], 0], [[1, 1, 1], 0], [[1000000000, 1000000000, 1], 27], [[8, 3, 5], 3], [[7, 7, 1], 4]] },
     solution: {
       approach: `<p>Independent per-bit case analysis.</p>`,
       code: `
@@ -2455,6 +3478,34 @@ print(get_sum(2, 3), get_sum(-2, 3), get_sum(-5, -7))  # 5 1 -12` }],
                 System.out.println(new Solution().minFlips(2, 6, 5)); // 3
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def min_flips(a, b, c):
+    flips = 0
+    for bit in range(31):
+        x, y, z = (a >> bit) & 1, (b >> bit) & 1, (c >> bit) & 1
+        if z:
+            flips += 1 if (x | y) == 0 else 0     # need at least one 1
+        else:
+            flips += x + y                        # every 1 must go
+    return flips` },
+        { lang: 'js', code: `function minFlips(a, b, c) {
+  let flips = 0;
+  for (let bit = 0; bit < 31; bit++) {
+    const x = (a >> bit) & 1, y = (b >> bit) & 1, z = (c >> bit) & 1;
+    if (z === 1) flips += (x | y) === 0 ? 1 : 0;   // need at least one 1
+    else flips += x + y;                            // every 1 must go
+  }
+  return flips;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int minFlips(int a, int b, int c) {
+        // branch-free: columns where (a | b) != c, plus the extra flip when c is 0 but both are 1
+        return std::popcount(static_cast<uint32_t>((a | b) ^ c))
+             + std::popcount(static_cast<uint32_t>(a & b & ~c));
+    }
+};` }
+      ],
       dry: {
         head: ['bit', 'x', 'y', 'z', 'add', 'flips'],
         rows: [['0', '0', '0', '1', '1', '1'], ['1', '1', '1', '0', '2', '3'], ['2', '0', '1', '1', '0', '<span class="c-p">3</span>']]
@@ -2496,8 +3547,9 @@ print(get_sum(2, 3), get_sum(-2, 3), get_sum(-5, -7))  # 5 1 -12` }],
     hints: [
       `<p><b>Aha:</b> only <b>which</b> letters a word uses matters, and there are only 26 letters — a 26-bit mask per word.</p>`,
       `<p>Precompute <code>mask[i] |= 1 &lt;&lt; (c - 'a')</code> for each word. Then for each pair, one AND tells you if they share a letter.</p>`,
-      `<p>Optimisation: words with the same mask — keep only the longest (a HashMap mask → max length). Recipe: build masks → for i &lt; j: if (mask[i] &amp; mask[j]) == 0, best = max(best, len[i]·len[j]) → return best.</p>`
+      `<p>Optimisation: words with the same mask — keep only the longest (a hash map mask → max length: <code>HashMap</code> / <code>dict</code> / <code>Map</code> / <code>unordered_map</code>). Recipe: build masks → for i &lt; j: if (mask[i] &amp; mask[j]) == 0, best = max(best, len[i]·len[j]) → return best.</p>`
     ],
+    tests: { sig: 'string[] -> int', fn: 'maxProduct', cases: [[[['abcw', 'baz', 'foo', 'bar', 'xtfn', 'abcdef']], 16], [[['a', 'ab', 'abc', 'd', 'cd', 'bcd', 'abcd']], 4], [[['a', 'aa', 'aaa', 'aaaa']], 0], [[['a', 'b']], 1], [[['abc', 'abc']], 0], [[['zzzz', 'yyy', 'zy']], 12]] },
     solution: {
       approach: `<p>One 26-bit mask per word, then O(1) pair checks.</p>`,
       code: `
@@ -2521,6 +3573,45 @@ print(get_sum(2, 3), get_sum(-2, 3), get_sum(-5, -7))  # 5 1 -12` }],
                 System.out.println(new Solution().maxProduct(w)); // 16
             }
         }`,
+      alt: [
+        { lang: 'python', code: `from itertools import combinations
+
+def max_product(words):
+    best = {}                                    # letter mask -> longest word with that mask
+    for w in words:
+        m = 0
+        for ch in w:
+            m |= 1 << (ord(ch) - ord('a'))
+        best[m] = max(best.get(m, 0), len(w))
+    return max((la * lb for (ma, la), (mb, lb) in combinations(best.items(), 2) if ma & mb == 0), default=0)` },
+        { lang: 'js', code: `function maxProduct(words) {
+  const masks = words.map((w) => {
+    let m = 0;
+    for (const ch of w) m |= 1 << (ch.charCodeAt(0) - 97);   // letter set of the word
+    return m;
+  });
+  let best = 0;
+  for (let i = 0; i < words.length; i++)
+    for (let j = i + 1; j < words.length; j++)
+      if ((masks[i] & masks[j]) === 0) best = Math.max(best, words[i].length * words[j].length);
+  return best;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int maxProduct(const vector<string>& words) {
+        int n = words.size();
+        vector<int> mask(n, 0);
+        for (int i = 0; i < n; ++i)
+            for (char c : words[i]) mask[i] |= 1 << (c - 'a');   // letter set of word i
+        int best = 0;
+        for (int i = 0; i < n; ++i)
+            for (int j = i + 1; j < n; ++j)
+                if ((mask[i] & mask[j]) == 0)
+                    best = max(best, (int)(words[i].size() * words[j].size()));
+        return best;
+    }
+};` }
+      ],
       dry: {
         head: ['pair', 'masks AND', 'disjoint?', 'product', 'best'],
         rows: [['abcw, baz', 'a,b shared', 'no', '–', '0'], ['abcw, foo', '0', 'yes', '12', '12'], ['abcw, xtfn', '0', 'yes', '16', '16'], ['baz, xtfn', '0', 'yes', '12', '16'], ['…', '…', '…', '…', '<span class="c-p">16</span>']]
@@ -2573,6 +3664,7 @@ print(get_sum(2, 3), get_sum(-2, 3), get_sum(-5, -7))  # 5 1 -12` }],
       `<p>Formula: <code>gray(i) = i ^ (i &gt;&gt; 1)</code> for i = 0 .. 2<sup>n</sup> − 1.</p>`,
       `<p>Alternative "reflect" construction: take the (n−1)-bit list, then append it reversed with the top bit set. Recipe: res = [] → for i in 0..2<sup>n</sup>−1: res.add(i ^ (i &gt;&gt; 1)) → return res.</p>`
     ],
+    tests: { sig: 'int -> list<int>', fn: 'grayCode', check: '(args, out) => { const n = args[0], size = 1 << n; if (!Array.isArray(out) || out.length !== size || out[0] !== 0 || new Set(out).size !== size) return false; const one = (x) => x !== 0 && (x & (x - 1)) === 0; return out.every((v, i) => Number.isInteger(v) && v >= 0 && v < size && one(v ^ out[(i + 1) % size])); }', cases: [[[1], [0, 1]], [[2], [0, 1, 3, 2]], [[3], [0, 1, 3, 2, 6, 7, 5, 4]], [[4], [0, 1, 3, 2, 6, 7, 5, 4, 12, 13, 15, 14, 10, 11, 9, 8]], [[5], [0, 1, 3, 2, 6, 7, 5, 4, 12, 13, 15, 14, 10, 11, 9, 8, 24, 25, 27, 26, 30, 31, 29, 28, 20, 21, 23, 22, 18, 19, 17, 16]], [[16], null]] },
     solution: {
       approach: `<p>Use the binary-reflected Gray code formula.</p>`,
       code: `
@@ -2589,6 +3681,21 @@ print(get_sum(2, 3), get_sum(-2, 3), get_sum(-5, -7))  # 5 1 -12` }],
                 System.out.println(new Solution().grayCode(3)); // [0, 1, 3, 2, 6, 7, 5, 4]
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def gray_code(n):
+    return [i ^ (i >> 1) for i in range(1 << n)]   # neighbours differ in exactly one bit` },
+        { lang: 'js', code: `function grayCode(n) {
+  return Array.from({ length: 1 << n }, (_, i) => i ^ (i >> 1));   // neighbours differ in one bit
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> grayCode(int n) {
+        vector<int> res(1 << n);
+        for (int i = 0; i < (1 << n); ++i) res[i] = i ^ (i >> 1);   // neighbours differ in one bit
+        return res;
+    }
+};` }
+      ],
       dry: {
         head: ['i', 'i (bin)', 'i &gt;&gt; 1', 'gray', 'bit flipped from previous'],
         rows: [['0', '000', '000', '000 (0)', '–'], ['1', '001', '000', '001 (1)', 'bit 0'], ['2', '010', '001', '011 (3)', 'bit 1'], ['3', '011', '001', '010 (2)', 'bit 0'], ['4', '100', '010', '110 (6)', 'bit 2']]
@@ -2630,6 +3737,7 @@ print(get_sum(2, 3), get_sum(-2, 3), get_sum(-5, -7))  # 5 1 -12` }],
       `<p>Build <code>px</code> of length N + 1 with px[0] = 0, then each query is <code>px[r + 1] ^ px[l]</code>.</p>`,
       `<p>Edge case: l == r → px[r + 1] ^ px[r] = arr[r]. Recipe: px[i + 1] = px[i] ^ arr[i] → for each query: ans = px[r + 1] ^ px[l].</p>`
     ],
+    tests: { sig: 'int[] int[][] -> int[]', fn: 'xorQueries', cases: [[[[1, 3, 4, 8], [[0, 1], [1, 2], [0, 3], [3, 3]]], [2, 7, 14, 8]], [[[4, 8, 2, 10], [[2, 3], [1, 3], [0, 0], [0, 3]]], [8, 0, 4, 4]], [[[5], [[0, 0]]], [5]], [[[1000000000, 1000000000], [[0, 1], [1, 1]]], [0, 1000000000]], [[[1, 1, 1, 1, 1], [[0, 4], [1, 4], [2, 2]]], [1, 0, 1]], [[[7, 3, 9], [[0, 2], [0, 0], [1, 2], [2, 2]]], [13, 7, 10, 9]]] },
     solution: {
       approach: `<p>Prefix XOR array, O(1) per query.</p>`,
       code: `
@@ -2650,6 +3758,30 @@ print(get_sum(2, 3), get_sum(-2, 3), get_sum(-5, -7))  # 5 1 -12` }],
                 System.out.println(Arrays.toString(new Solution().xorQueries(new int[]{1, 3, 4, 8}, qs))); // [2, 7, 14, 8]
             }
         }`,
+      alt: [
+        { lang: 'python', code: `from itertools import accumulate
+from operator import xor
+
+def xor_queries(arr, queries):
+    px = [0, *accumulate(arr, xor)]                 # px[i] = arr[0] ^ ... ^ arr[i-1]
+    return [px[r + 1] ^ px[l] for l, r in queries]  # shared prefix cancels` },
+        { lang: 'js', code: `function xorQueries(arr, queries) {
+  const px = new Int32Array(arr.length + 1);       // prefix XOR
+  for (let i = 0; i < arr.length; i++) px[i + 1] = px[i] ^ arr[i];
+  return queries.map(([l, r]) => px[r + 1] ^ px[l]);
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> xorQueries(const vector<int>& arr, const vector<vector<int>>& queries) {
+        vector<int> px(arr.size() + 1, 0);           // prefix XOR
+        for (size_t i = 0; i < arr.size(); ++i) px[i + 1] = px[i] ^ arr[i];
+        vector<int> ans;
+        ans.reserve(queries.size());
+        for (const auto& q : queries) ans.push_back(px[q[1] + 1] ^ px[q[0]]);
+        return ans;
+    }
+};` }
+      ],
       dry: {
         head: ['query', 'px[r + 1]', 'px[l]', 'answer'],
         rows: [['[0, 1]', 'px[2] = 2', 'px[0] = 0', '2'], ['[1, 2]', 'px[3] = 6', 'px[1] = 1', '7'], ['[0, 3]', 'px[4] = 14', 'px[0] = 0', '14'], ['[3, 3]', 'px[4] = 14', 'px[3] = 6', '<span class="c-p">8</span>']]
@@ -2689,6 +3821,7 @@ print(get_sum(2, 3), get_sum(-2, 3), get_sum(-5, -7))  # 5 1 -12` }],
       `<p>A product is odd exactly when both factors are odd. "Count of ones in arr1 is odd" is exactly bit b of <code>XOR(arr1)</code>. So answer bit b = bit b of XOR(arr1) AND bit b of XOR(arr2).</p>`,
       `<p>All columns at once: <code>return xor(arr1) &amp; xor(arr2)</code>. Recipe: x1 = XOR of arr1 → x2 = XOR of arr2 → return x1 &amp; x2.</p>`
     ],
+    tests: { sig: 'int[] int[] -> int', fn: 'getXORSum', cases: [[[[1, 2, 3], [6, 5]], 0], [[[12], [4]], 4], [[[1, 2], [3]], 3], [[[0], [1000000000]], 0], [[[1000000000], [1000000000]], 1000000000], [[[5, 5], [7]], 0], [[[7, 1, 9, 4], [3, 8, 6]], 9]] },
     solution: {
       approach: `<p>Use the distributive law of AND over XOR (bitwise multiplication over addition mod 2).</p>`,
       code: `
@@ -2706,6 +3839,27 @@ print(get_sum(2, 3), get_sum(-2, 3), get_sum(-5, -7))  # 5 1 -12` }],
                 System.out.println(s.getXORSum(new int[]{1, 2}, new int[]{3}));       // 3
             }
         }`,
+      alt: [
+        { lang: 'python', code: `from functools import reduce
+from operator import xor
+
+def get_xor_sum(arr1, arr2):
+    # per column: odd * odd = odd, so AND the two XOR-parities
+    return reduce(xor, arr1, 0) & reduce(xor, arr2, 0)` },
+        { lang: 'js', code: `function getXORSum(arr1, arr2) {
+  const x1 = arr1.reduce((acc, a) => acc ^ a, 0);   // parity of ones per column
+  const x2 = arr2.reduce((acc, b) => acc ^ b, 0);
+  return x1 & x2;                                   // odd * odd = odd, per column
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int getXORSum(const vector<int>& arr1, const vector<int>& arr2) {
+        int x1 = accumulate(arr1.begin(), arr1.end(), 0, bit_xor<int>());   // parity per column
+        int x2 = accumulate(arr2.begin(), arr2.end(), 0, bit_xor<int>());
+        return x1 & x2;                                                     // odd * odd = odd
+    }
+};` }
+      ],
       dry: {
         head: ['bit', 'ones in [1,2,3]', 'ones in [6,5]', 'pairs with both = product', 'parity'],
         rows: [['0', '2 (1, 3)', '1 (5)', '2', '0'], ['1', '2 (2, 3)', '1 (6)', '2', '0'], ['2', '0', '2 (6, 5)', '0', '0'], ['answer', 'x1 = 0', 'x2 = 3', '–', '<span class="c-p">0 &amp; 3 = 0</span>']]
@@ -2758,6 +3912,7 @@ print(get_sum(2, 3), get_sum(-2, 3), get_sum(-5, -7))  # 5 1 -12` }],
       `<p>So n sits at some position i in the Gray sequence (gray(i) = n), and the minimum number of moves to reach 0 (position 0) is i. Inverse Gray code: <code>i = n ^ (n &gt;&gt; 1) ^ (n &gt;&gt; 2) ^ …</code>.</p>`,
       `<p>Recursive view: if the top bit of n is k, f(n) = (2<sup>k+1</sup> − 1) − f(n ^ 2<sup>k</sup>). Recipe (iterative): ans = 0 → while n ≠ 0: ans ^= n, n &gt;&gt;= 1 → return ans.</p>`
     ],
+    tests: { sig: 'int -> int', fn: 'minimumOneBitOperations', cases: [[[3], 2], [[6], 4], [[0], 0], [[1], 1], [[2], 3], [[4], 7], [[8], 15], [[1023], 682]] },
     solution: {
       approach: `<p>The state graph is a single path ordered by Gray code. The distance from n to 0 is n's index in that order, which is the prefix XOR of n's shifts.</p>`,
       code: `
@@ -2777,14 +3932,30 @@ print(get_sum(2, 3), get_sum(-2, 3), get_sum(-5, -7))  # 5 1 -12` }],
                 System.out.println(s.minimumOneBitOperations(6)); // 4
             }
         }`,
-      alt: [{ lang: 'python', run: true, code: `def min_ops(n):
+      alt: [{ lang: 'python', run: true, code: `def minimum_one_bit_operations(n):
     # recursive form: top bit k costs 2^(k+1) - 1, minus the work already "done" by the rest
     if n == 0:
         return 0
     k = n.bit_length() - 1
-    return (1 << (k + 1)) - 1 - min_ops(n ^ (1 << k))
+    return (1 << (k + 1)) - 1 - minimum_one_bit_operations(n ^ (1 << k))
 
-print([min_ops(n) for n in range(9)])  # [0, 1, 3, 2, 7, 6, 4, 5, 15]` }],
+print([minimum_one_bit_operations(n) for n in range(9)])  # [0, 1, 3, 2, 7, 6, 4, 5, 15]` },
+        { lang: 'js', code: `function minimumOneBitOperations(n) {
+  let ans = 0;
+  while (n !== 0) {
+    ans ^= n;        // inverse Gray code: XOR of n, n>>1, n>>2, ...
+    n >>>= 1;        // n >= 0, so >>> and >> agree here
+  }
+  return ans;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int minimumOneBitOperations(int n) {
+        int ans = 0;
+        for (; n != 0; n >>= 1) ans ^= n;   // inverse Gray code (n >= 0, so >> is safe)
+        return ans;
+    }
+};` }],
       dry: {
         head: ['n', 'ans ^= n', 'ans', 'n &gt;&gt;= 1'],
         rows: [['110 (6)', '000 ^ 110', '110 (6)', '011'], ['011 (3)', '110 ^ 011', '101 (5)', '001'], ['001 (1)', '101 ^ 001', '100 (4)', '000'], ['0', 'stop', '<span class="c-p">4</span>', '–']]
@@ -2825,6 +3996,7 @@ print([min_ops(n) for n in range(9)])  # [0, 1, 3, 2, 7, 6, 4, 5, 15]` }],
       `<p>For each z, the good x values are the submasks of <code>comp = ~z &amp; 0xFFFF</code>. Walk them with <code>s = (s - 1) &amp; comp</code>, adding <code>cnt[s]</code>, and don't forget s = 0.</p>`,
       `<p>Cost: N<sup>2</sup> + N × (submasks of comp) ≤ 10<sup>6</sup> + 1000 × 65,536 ≈ 6.6·10<sup>7</sup>. Recipe: cnt[x &amp; y]++ for all pairs → for z: s = comp; loop { total += cnt[s]; if s == 0 break; s = (s − 1) &amp; comp } → return total.</p>`
     ],
+    tests: { sig: 'int[] -> int', fn: 'countTriplets', cases: [[[[2, 1, 3]], 12], [[[0, 0, 0]], 27], [[[1]], 0], [[[0]], 1], [[[65535, 1, 2]], 12], [[[65535]], 0], [[[1, 2, 4, 8]], 60], [[[3, 5, 6, 7]], 6]] },
     solution: {
       approach: `<p>Group pairs by their AND value, then for each third element sum the counts over all submasks of its complement.</p>`,
       code: `
@@ -2850,6 +4022,52 @@ print([min_ops(n) for n in range(9)])  # [0, 1, 3, 2, 7, 6, 4, 5, 15]` }],
                 System.out.println(new Solution().countTriplets(new int[]{0, 0, 0})); // 27
             }
         }`,
+      alt: [
+        { lang: 'python', code: `from collections import Counter
+
+def count_triplets(nums):
+    cnt = Counter(x & y for x in nums for y in nums)   # ordered pairs by AND value
+    total = 0
+    for z in nums:
+        comp = ~z & 0xFFFF                              # bits z does NOT have (16-bit window)
+        s = comp
+        while True:
+            total += cnt[s]                             # pair-AND s is disjoint from z
+            if s == 0:
+                break
+            s = (s - 1) & comp
+    return total` },
+        { lang: 'js', code: `function countTriplets(nums) {
+  const cnt = new Int32Array(1 << 16);
+  for (const x of nums) for (const y of nums) cnt[x & y]++;   // ordered pairs by AND value
+  let total = 0;
+  for (const z of nums) {
+    const comp = ~z & 0xFFFF;                                 // bits z does NOT have
+    for (let s = comp; ; s = (s - 1) & comp) {
+      total += cnt[s];
+      if (s === 0) break;                                     // include the empty submask, then stop
+    }
+  }
+  return total;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int countTriplets(const vector<int>& nums) {
+        vector<int> cnt(1 << 16, 0);
+        for (int x : nums)
+            for (int y : nums) ++cnt[x & y];         // ordered pairs by AND value
+        int total = 0;
+        for (int z : nums) {
+            int comp = ~z & 0xFFFF;                  // bits z does NOT have
+            for (int s = comp; ; s = (s - 1) & comp) {
+                total += cnt[s];
+                if (s == 0) break;                   // include the empty submask, then stop
+            }
+        }
+        return total;
+    }
+};` }
+      ],
       dry: {
         head: ['z', 'needed: x &amp; z = 0', 'x values present', 'cnt sum', 'total'],
         rows: [['2 (10)', 'x ⊆ …01', '0, 1', '2 + 3 = 5', '5'], ['1 (01)', 'x ⊆ …10', '0, 2', '2 + 3 = 5', '10'], ['3 (11)', 'x ⊆ …00', '0', '2', '<span class="c-p">12</span>']]
@@ -2888,9 +4106,10 @@ print([min_ops(n) for n in range(9)])  # [0, 1, 3, 2, 7, 6, 4, 5, 15]` }],
     },
     hints: [
       `<p><b>Aha:</b> map skills to bits (≤ 16) and each person to a skill mask. Now the question is: fewest masks whose OR is the full mask.</p>`,
-      `<p>DP over skill masks: <code>size[mask]</code> = fewest people reaching exactly mask, <code>team[mask]</code> = those people as a <code>long</code> bitmask (people ≤ 60). For each person p and each reachable mask: relax <code>mask | pm[p]</code>.</p>`,
+      `<p>DP over skill masks: <code>size[mask]</code> = fewest people reaching exactly mask, <code>team[mask]</code> = those people as a 64-bit bitmask (people ≤ 60): <code>long</code> / <code>uint64_t</code>, a plain Python int, or a <code>BigInt</code> in JavaScript, because 32-bit JS bit operators cannot hold 60 bits. For each person p and each reachable mask: relax <code>mask | pm[p]</code>.</p>`,
       `<p>Start size[0] = 0, others ∞. Answer = team[full]; decode its ON bits into indexes. Recipe: for p in people: for mask in 0..full: if reachable and size[mask] + 1 &lt; size[mask | pm] → update size and team (team[mask] | 1L &lt;&lt; p).</p>`
     ],
+    tests: { sig: 'string[] list<list<string>> -> int[]', fn: 'smallestSufficientTeam', check: '(args, out, expected) => { const [req, people] = args; if (!Array.isArray(out) || out.length !== expected.length || new Set(out).size !== out.length) return false; if (!out.every((i) => Number.isInteger(i) && i >= 0 && i < people.length)) return false; const have = new Set(); out.forEach((i) => people[i].forEach((s) => have.add(s))); return req.every((s) => have.has(s)); }', cases: [[[['java', 'nodejs', 'reactjs'], [['java'], ['nodejs'], ['nodejs', 'reactjs']]], [0, 2]], [[['algorithms', 'math', 'java', 'reactjs', 'csharp', 'aws'], [['algorithms', 'math', 'java'], ['algorithms', 'math', 'reactjs'], ['java', 'csharp', 'aws'], ['reactjs', 'csharp'], ['csharp', 'math'], ['aws', 'java']]], [1, 2]], [[['a'], [['a']]], [0]], [[['a', 'b'], [[], ['a'], ['b'], ['a', 'b']]], [3]], [[['a', 'b', 'c', 'd'], [['a'], ['b'], ['c'], ['d'], ['a', 'b'], ['c', 'd']]], [4, 5]], [[['x', 'y', 'z'], [['x'], ['y'], ['z']]], [0, 1, 2]]] },
     solution: {
       approach: `<p>Bitmask DP over the 2<sup>16</sup> skill sets, storing the team as a 64-bit people mask.</p>`,
       code: `
@@ -2934,6 +4153,75 @@ print([min_ops(n) for n in range(9)])  # [0, 1, 3, 2, 7, 6, 4, 5, 15]` }],
                 System.out.println(Arrays.toString(new Solution().smallestSufficientTeam(req, people))); // [0, 2]
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def smallest_sufficient_team(req_skills, people):
+    idx = {s: i for i, s in enumerate(req_skills)}
+    full = (1 << len(req_skills)) - 1
+    # dp: skill mask -> smallest team (as a people bitmask; Python ints have no 64-bit limit)
+    dp = {0: 0}
+    for p, skills in enumerate(people):
+        pm = 0
+        for s in skills:
+            pm |= 1 << idx[s]
+        if pm == 0:
+            continue                                   # useless person
+        for mask, team in list(dp.items()):            # snapshot: use person p once per pass
+            nm, nt = mask | pm, team | (1 << p)
+            if nm not in dp or nt.bit_count() < dp[nm].bit_count():
+                dp[nm] = nt
+    t = dp[full]
+    return [i for i in range(len(people)) if t >> i & 1]` },
+        { lang: 'js', code: `function smallestSufficientTeam(reqSkills, people) {
+  const id = new Map(reqSkills.map((s, i) => [s, i]));
+  const full = (1 << reqSkills.length) - 1;
+  const size = new Array(full + 1).fill(Infinity);
+  const team = new Array(full + 1).fill(0n);       // BigInt: up to 60 people do not fit in 32 bits
+  size[0] = 0;
+  people.forEach((skills, p) => {
+    let pm = 0;
+    for (const s of skills) pm |= 1 << id.get(s);
+    if (pm === 0) return;                          // useless person
+    for (let mask = 0; mask <= full; mask++) {
+      if (size[mask] === Infinity) continue;       // not reachable
+      const nm = mask | pm;
+      if (size[mask] + 1 < size[nm]) {
+        size[nm] = size[mask] + 1;
+        team[nm] = team[mask] | (1n << BigInt(p)); // add person p
+      }
+    }
+  });
+  const res = [];
+  for (let p = 0; p < people.length; p++) if ((team[full] >> BigInt(p)) & 1n) res.push(p);
+  return res;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> smallestSufficientTeam(const vector<string>& reqSkills, const vector<vector<string>>& people) {
+        int m = reqSkills.size(), full = (1 << m) - 1;
+        unordered_map<string, int> id;
+        for (int i = 0; i < m; ++i) id[reqSkills[i]] = i;
+        vector<int> size(full + 1, INT_MAX);
+        vector<uint64_t> team(full + 1, 0);              // people bitmask: 60 people fit in 64 bits
+        size[0] = 0;
+        for (int p = 0; p < (int)people.size(); ++p) {
+            int pm = 0;
+            for (const string& s : people[p]) pm |= 1 << id[s];
+            if (pm == 0) continue;                       // useless person
+            for (int mask = 0; mask <= full; ++mask) {
+                if (size[mask] == INT_MAX) continue;     // not reachable
+                int nm = mask | pm;
+                if (size[mask] + 1 < size[nm]) {
+                    size[nm] = size[mask] + 1;
+                    team[nm] = team[mask] | (1ULL << p); // 1ULL: shifting a plain 1 past 31 is undefined
+                }
+            }
+        }
+        vector<int> res;
+        for (uint64_t t = team[full]; t; t &= t - 1) res.push_back(std::countr_zero(t));
+        return res;
+    }
+};` }
+      ],
       dry: {
         head: ['person (mask)', 'updates', 'size[111]'],
         rows: [['0 (001)', '000 → 001 {0}', '∞'], ['1 (010)', '000 → 010 {1}; 001 → 011 {0,1}', '∞'], ['2 (110)', '000 → 110 {2}; 001 → 111 {0,2}; 011 → 111 size 3 (no)', '<span class="c-p">2 → [0, 2]</span>']]
@@ -3113,11 +4401,11 @@ print([min_ops(n) for n in range(9)])  # [0, 1, 3, 2, 7, 6, 4, 5, 15]` }],
     id: 'dsa04',
     title: 'Bit Manipulation',
     intro: `<p>Every number inside a computer is just a row of <b>on/off switches</b>. Bit manipulation means working with those switches directly — and it turns some scary-looking problems into one-line answers. "Find the number without a twin" becomes a single XOR loop. "Is this a power of two?" becomes one AND. "List every combination of 20 items" becomes counting from 0 to 2<sup>20</sup>.</p>
-      <p>In this module you will learn to read binary like a second language, understand how Java stores negative numbers (2's complement), master every operator (<code>&amp; | ^ ~ &lt;&lt; &gt;&gt; &gt;&gt;&gt;</code>), use XOR's "cancel-out" superpower, flip individual bits with masks, count bits with Brian Kernighan's trick, crack the whole <b>Single Number I / II / III</b> family, and enumerate subsets with bitmasks — the gateway to bitmask DP later in the course.</p>
+      <p>In this module you will learn to read binary like a second language, understand how computers store negative numbers (2's complement), master every operator (<code>&amp; | ^ ~ &lt;&lt; &gt;&gt; &gt;&gt;&gt;</code>), use XOR's "cancel-out" superpower, flip individual bits with masks, count bits with Brian Kernighan's trick, crack the whole <b>Single Number I / II / III</b> family, and enumerate subsets with bitmasks — the gateway to bitmask DP later in the course.</p>
       <p>Interviewers love this topic because the solutions are short but the <b>reasoning</b> is precise: you must explain why the trick works, and you must not fall into the traps (sign bits, overflow, operator precedence). Every topic has a visualizer — type your own numbers and watch the switches flip.</p>`,
     goals: [
       'Convert between decimal and binary by hand, and estimate how many bits a value needs (10<sup>9</sup> → 30 bits, 10<sup>18</sup> → 60 bits)',
-      'Explain 2\'s complement, predict <code>~x</code>, overflow and the difference between <code>&gt;&gt;</code> and <code>&gt;&gt;&gt;</code> in Java',
+      'Explain 2\'s complement, predict <code>~x</code>, overflow and the difference between arithmetic and unsigned right shifts (<code>&gt;&gt;</code> vs <code>&gt;&gt;&gt;</code>, and their C++ and Python equivalents)',
       'Check, set, clear and toggle any bit with masks, and use an int as a compact set of up to 32 items',
       'Use <code>n &amp; (n − 1)</code> and <code>n &amp; -n</code> to count bits, test powers of two and isolate the lowest set bit',
       'Solve Single Number I, II and III in O(N) time and O(1) space and prove each solution correct',
@@ -3125,6 +4413,12 @@ print([min_ops(n) for n in range(9)])  # [0, 1, 3, 2, 7, 6, 4, 5, 15]` }],
     ],
     prereqs: `DSA 1 (Programming Foundations for DSA) for Java basics and DSA 2 (Math Foundations &amp; Time/Space Complexity) for powers of two, logarithms and the 10<sup>8</sup>-operations-per-second rule. DSA 3 (Number Theory) helps but is not required.`,
     hours: 10,
+    langNotes: {
+      java: `<p><b>Java:</b> <code>int</code> is exactly 32 bits and <code>long</code> 64 bits, both 2's complement, and overflow <b>wraps silently</b> (<code>Integer.MAX_VALUE + 1 == Integer.MIN_VALUE</code>, <code>Math.abs(Integer.MIN_VALUE)</code> is still negative). <code>&gt;&gt;</code> copies the sign bit, <code>&gt;&gt;&gt;</code> fills with zeros — use it for "treat as 32 raw bits" loops. The shift count is taken mod 32 for int (<code>1 &lt;&lt; 32 == 1</code>), so write <code>1L &lt;&lt; k</code> for 64-bit masks. <code>==</code> binds tighter than <code>&amp;</code>: always write <code>(x &amp; 1) == 0</code>. <code>byte</code> is signed: read raw bytes with <code>b &amp; 0xFF</code>. Built-ins compile to single CPU instructions: <code>Integer.bitCount</code>, <code>numberOfTrailingZeros</code>, <code>highestOneBit</code>, <code>reverse</code>.</p>`,
+      python: `<p><b>Python:</b> ints are <b>unbounded</b> and never overflow, and a negative number acts as if it had infinitely many 1s on the left. So loops like <code>while n: n &gt;&gt;= 1</code> or the carry loop in "Sum of Two Integers" <b>never end</b> for negatives. Wherever 32-bit behaviour is intended, mask with <code>n &amp; 0xFFFFFFFF</code>, and convert back with <code>x - (1 &lt;&lt; 32) if x &gt;= 1 &lt;&lt; 31 else x</code>. There is no <code>&gt;&gt;&gt;</code>: mask first, then <code>&gt;&gt;</code>. <code>bin(-5)</code> prints <code>-0b101</code>, not the 2's complement bits. Handy built-ins: <code>int.bit_count()</code> (3.10+), <code>int.bit_length()</code>, <code>int(s, 2)</code>, <code>format(x, "032b")</code>. Unlike Java, <code>&amp;</code> binds tighter than <code>==</code>, but brackets still help readers.</p>`,
+      js: `<p><b>JavaScript:</b> <code>Number</code> is a double, but every bitwise operator first converts its operands to a <b>signed 32-bit int</b>: <code>~</code> <code>&amp;</code> <code>|</code> <code>^</code> <code>&lt;&lt;</code> <code>&gt;&gt;</code> give signed results, and <code>&gt;&gt;&gt;</code> gives an unsigned one (<code>-1 &gt;&gt;&gt; 0</code> is 4294967295). Plain <code>+</code> does <b>not</b> wrap (<code>2147483647 + 1</code> is 2147483648); <code>| 0</code> forces the 32-bit wrap. Shift counts are taken mod 32 (<code>1 &lt;&lt; 32</code> is 1), so masks past bit 31 need <code>BigInt</code> (<code>1n &lt;&lt; 40n</code>), e.g. for a 60-person team mask. Numbers are exact only up to 2<sup>53</sup>. There is no popcount built-in; <code>Math.clz32</code> counts leading zeros. Like Java, <code>===</code> binds tighter than <code>&amp;</code>.</p>`,
+      cpp: `<p><b>C++:</b> since C++20, <code>int</code> is guaranteed 2's complement and <code>&gt;&gt;</code> on a negative value is an arithmetic (sign-copying) shift, but <b>signed overflow is still undefined behaviour</b>: <code>INT_MAX + 1</code>, <code>-INT_MIN</code> and <code>x &amp; -x</code> on <code>INT_MIN</code> are bugs. Shifting by a negative amount or by ≥ the bit width (<code>1 &lt;&lt; 32</code>, <code>1 &lt;&lt; 40</code>) is also undefined. When you want wrap-around or a logical shift (Java's <code>&gt;&gt;&gt;</code>), use <code>uint32_t</code> / <code>uint64_t</code> and <code>1ULL &lt;&lt; k</code>. <code>==</code> binds tighter than <code>&amp;</code>, and <code>x &amp; 1 == 0</code> compiles silently to the wrong thing. <code>&lt;bit&gt;</code> gives <code>std::popcount</code>, <code>countr_zero</code>, <code>bit_width</code>, <code>bit_floor</code> (on unsigned types).</p>`
+    },
     topics: topics,
     practice: practice,
     quiz: quiz,
