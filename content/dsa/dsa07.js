@@ -31,7 +31,7 @@
         <li><b>Selection friend</b> scans the whole messy part, <b>selects the shortest book</b>, and puts it in the first empty spot. Repeat for the next spot.</li>
         <li><b>Insertion friend</b> sorts like you sort <b>playing cards in your hand</b>: pick up the next card, slide it left past every bigger card, and drop it into its place.</li>
       </ul>`,
-    explain: `<p>All three are <b>O(N<sup>2</sup>)</b> in the worst case — for N = 10<sup>5</sup> that is 10<sup>10</sup> steps (way too slow). You still must know them because (1) interviewers ask "how does it work / is it stable?", (2) <b>insertion sort is the fastest sort for tiny or almost-sorted arrays</b> (Java's own sort uses it for small pieces), and (3) their ideas (neighbour swaps, picking the minimum, shifting) show up in many problems.</p>
+    explain: `<p>All three are <b>O(N<sup>2</sup>)</b> in the worst case — for N = 10<sup>5</sup> that is 10<sup>10</sup> steps (way too slow). You still must know them because (1) interviewers ask "how does it work / is it stable?", (2) <b>insertion sort is the fastest sort for tiny or almost-sorted arrays</b> (the library sorts of Java, Python and C++ use it for small pieces), and (3) their ideas (neighbour swaps, picking the minimum, shifting) show up in many problems.</p>
       <h4>1. Bubble sort — "big ones float to the end"</h4>
       <p>Compare <code>a[j]</code> with <code>a[j+1]</code>; if the left one is bigger, swap. One full pass pushes the <b>largest</b> value to the last position. Next pass can stop one place earlier.</p>
       ${H.table(['pass', 'array after the pass', 'locked at the end'], [
@@ -68,7 +68,7 @@
       '"Minimize the number of <b>writes/swaps</b>" → selection sort idea (at most N − 1 swaps) or cycle placement.',
       '"Explain the passes / show the array after k passes of bubble sort" → after pass k, the k largest are locked at the end.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       // Bubble sort with the "no swaps → stop early" trick.
       void bubbleSort(int[] a) {
           int n = a.length;
@@ -83,7 +83,48 @@
               }
               if (!swapped) break;                // a clean pass means already sorted
           }
-      }`, `
+      }`,
+      alt: [
+        { lang: 'python', code: `# Bubble sort with the "no swaps -> stop early" trick.
+def bubble_sort(a):
+    n = len(a)
+    for p in range(n - 1):
+        swapped = False
+        for j in range(n - 1 - p):              # the last p items are locked in place
+            if a[j] > a[j + 1]:                 # neighbours in the wrong order
+                a[j], a[j + 1] = a[j + 1], a[j]
+                swapped = True
+        if not swapped:                         # a clean pass means already sorted
+            break` },
+        { lang: 'js', code: `// Bubble sort with the "no swaps -> stop early" trick.
+function bubbleSort(a) {
+  const n = a.length;
+  for (let pass = 0; pass < n - 1; pass++) {
+    let swapped = false;
+    for (let j = 0; j < n - 1 - pass; j++) {  // the last 'pass' items are locked in place
+      if (a[j] > a[j + 1]) {                  // neighbours in the wrong order
+        [a[j], a[j + 1]] = [a[j + 1], a[j]];
+        swapped = true;
+      }
+    }
+    if (!swapped) break;                      // a clean pass means already sorted
+  }
+}` },
+        { lang: 'cpp', code: `// Bubble sort with the "no swaps -> stop early" trick.
+void bubbleSort(vector<int>& a) {
+    int n = a.size();
+    for (int pass = 0; pass < n - 1; pass++) {
+        bool swapped = false;
+        for (int j = 0; j < n - 1 - pass; j++) {  // the last 'pass' items are locked in place
+            if (a[j] > a[j + 1]) {                // neighbours in the wrong order
+                swap(a[j], a[j + 1]);
+                swapped = true;
+            }
+        }
+        if (!swapped) break;                      // a clean pass means already sorted
+    }
+}` }
+      ] }, { lang: 'java', code: `
       // Selection sort: put the smallest remaining value at position i.
       void selectionSort(int[] a) {
           int n = a.length;
@@ -96,7 +137,32 @@
                   int t = a[i]; a[i] = a[minIdx]; a[minIdx] = t;
               }
           }
-      }`, `
+      }`,
+      alt: [
+        { lang: 'python', code: `# Selection sort: put the smallest remaining value at position i.
+def selection_sort(a):
+    n = len(a)
+    for i in range(n - 1):
+        m = min(range(i, n), key=a.__getitem__)  # index of the smallest in a[i:]
+        if m != i:                               # one swap per position at most
+            a[i], a[m] = a[m], a[i]` },
+        { lang: 'js', code: `// Selection sort: put the smallest remaining value at position i.
+function selectionSort(a) {
+  const n = a.length;
+  for (let i = 0; i < n - 1; i++) {
+    let minIdx = i;                           // best candidate so far
+    for (let j = i + 1; j < n; j++) if (a[j] < a[minIdx]) minIdx = j;
+    if (minIdx !== i) [a[i], a[minIdx]] = [a[minIdx], a[i]];   // one swap per position at most
+  }
+}` },
+        { lang: 'cpp', code: `// Selection sort: put the smallest remaining value at position i.
+void selectionSort(vector<int>& a) {
+    for (auto it = a.begin(); it != a.end(); ++it) {
+        auto m = min_element(it, a.end());       // smallest remaining value
+        if (m != it) iter_swap(it, m);           // one swap per position at most
+    }
+}` }
+      ] }, { lang: 'java', code: `
       // Insertion sort: grow a sorted prefix like cards in your hand.
       void insertionSort(int[] a) {
           for (int i = 1; i < a.length; i++) {
@@ -109,7 +175,40 @@
               }
               a[j + 1] = key;                     // drop the card into the gap
           }
-      }`],
+      }`,
+      alt: [
+        { lang: 'python', code: `# Insertion sort: grow a sorted prefix like cards in your hand.
+def insertion_sort(a):
+    for i in range(1, len(a)):
+        key, j = a[i], i - 1                    # the new card we picked up
+        while j >= 0 and a[j] > key:            # strictly bigger -> equal keys keep order (stable)
+            a[j + 1] = a[j]                     # shift one step right
+            j -= 1
+        a[j + 1] = key                          # drop the card into the gap` },
+        { lang: 'js', code: `// Insertion sort: grow a sorted prefix like cards in your hand.
+function insertionSort(a) {
+  for (let i = 1; i < a.length; i++) {
+    const key = a[i];                         // the new card we picked up
+    let j = i - 1;
+    while (j >= 0 && a[j] > key) {            // strictly bigger -> stable
+      a[j + 1] = a[j];
+      j--;
+    }
+    a[j + 1] = key;                           // drop the card into the gap
+  }
+}` },
+        { lang: 'cpp', code: `// Insertion sort: grow a sorted prefix like cards in your hand.
+void insertionSort(vector<int>& a) {
+    for (int i = 1; i < (int)a.size(); i++) {
+        int key = a[i], j = i - 1;              // the new card we picked up
+        while (j >= 0 && a[j] > key) {          // strictly bigger -> stable
+            a[j + 1] = a[j];
+            j--;
+        }
+        a[j + 1] = key;                         // drop the card into the gap
+    }
+}` }
+      ] }],
     codeTitle: ['Bubble sort (early exit)', 'Selection sort', 'Insertion sort'],
     viz: [
       {
@@ -263,7 +362,7 @@
         title: 'Number of bubble-sort swaps = number of inversions',
         html: `<p>Input [3, 1, 2]. Inversions (pairs where the bigger number is on the left): ${H.c('r', '(3,1)')} and ${H.c('r', '(3,2)')} → 2.</p>
           <p>Bubble pass 1: 3 &gt; 1 swap → [1, 3, 2]; 3 &gt; 2 swap → [1, 2, 3]. Pass 2: no swaps → stop. Swaps = <b>2</b>. Each adjacent swap fixes <b>exactly one</b> inverted pair and breaks no other pair, so the counts always match. Interview phrase: "minimum adjacent swaps to sort" = inversion count.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           int bubbleSwaps(int[] a) {
               int swaps = 0;
               for (int pass = 0; pass < a.length - 1; pass++) {
@@ -278,7 +377,54 @@
                   if (!swapped) break;
               }
               return swaps;                        // bubbleSwaps(new int[]{3, 1, 2}) == 2
-          }`
+          }`,
+          alt: [
+            { lang: 'python', run: true, code: `def bubble_swaps(a):
+    swaps = 0
+    for p in range(len(a) - 1):
+        swapped = False
+        for j in range(len(a) - 1 - p):
+            if a[j] > a[j + 1]:
+                a[j], a[j + 1] = a[j + 1], a[j]
+                swaps += 1               # every swap removes exactly one inversion
+                swapped = True
+        if not swapped:
+            break
+    return swaps
+
+print(bubble_swaps([3, 1, 2]))  # 2` },
+            { lang: 'js', run: true, code: `function bubbleSwaps(a) {
+  let swaps = 0;
+  for (let pass = 0; pass < a.length - 1; pass++) {
+    let swapped = false;
+    for (let j = 0; j < a.length - 1 - pass; j++) {
+      if (a[j] > a[j + 1]) {
+        [a[j], a[j + 1]] = [a[j + 1], a[j]];
+        swaps++;                         // every swap removes exactly one inversion
+        swapped = true;
+      }
+    }
+    if (!swapped) break;
+  }
+  return swaps;
+}
+console.log(bubbleSwaps([3, 1, 2]));     // 2` },
+            { lang: 'cpp', code: `int bubbleSwaps(vector<int> a) {
+    int swaps = 0;
+    for (int pass = 0; pass + 1 < (int)a.size(); pass++) {
+        bool swapped = false;
+        for (int j = 0; j + 1 < (int)a.size() - pass; j++) {
+            if (a[j] > a[j + 1]) {
+                swap(a[j], a[j + 1]);
+                swaps++;                 // every swap removes exactly one inversion
+                swapped = true;
+            }
+        }
+        if (!swapped) break;
+    }
+    return swaps;                        // bubbleSwaps({3, 1, 2}) == 2
+}` }
+          ] }
       },
       {
         title: 'Selection sort does the fewest writes',
@@ -326,6 +472,16 @@
           `<p>Plain insertion sort: <code>key = a[i]</code>, shift bigger items right while <code>j &gt;= 0 &amp;&amp; a[j] &gt; key</code>, drop key at <code>j + 1</code>. The while-loop runs at most K times per key.</p>`,
           `<p>Edge cases: K = 0 means already sorted (0 shifts); N = 1 nothing to do; use <code>&gt;</code> (not ≥) to keep equal values stable. Recipe: for i = 1..N−1: key = a[i]; j = i−1; while j ≥ 0 and a[j] &gt; key: a[j+1] = a[j], j−− ; a[j+1] = key. (For large K, a min-heap of size K + 1 gives O(N log K) — Heaps module.)</p>`
         ],
+        tests: { sig: 'int[] int -> void', fn: 'sortKSorted', mutate: 0, cases: [
+          [[[6, 5, 3, 2, 8, 10, 9], 3], [2, 3, 5, 6, 8, 9, 10]],
+          [[[1], 0], [1]],
+          [[[1, 2, 3], 0], [1, 2, 3]],
+          [[[2, 1], 1], [1, 2]],
+          [[[3, 3, 1, 1], 2], [1, 1, 3, 3]],
+          [[[-5, -10, 0, 0, 7], 1], [-10, -5, 0, 0, 7]],
+          [[[1000000000, -1000000000], 1], [-1000000000, 1000000000]],
+          [[[4, 3, 2, 1], 3], [1, 2, 3, 4]]
+        ] },
         solution: {
           approach: `<p>Insertion sort, whose inner loop is bounded by K thanks to the promise → O(N·K).</p>`,
           code: `
@@ -349,7 +505,43 @@
                     System.out.println(Arrays.toString(a)); // [2, 3, 5, 6, 8, 9, 10]
                 }
             }`,
-          alt: [{ lang: 'python', code: `def sort_k_sorted(a, k):\n    for i in range(1, len(a)):\n        key, j = a[i], i - 1\n        while j >= 0 and a[j] > key:   # at most k shifts\n            a[j + 1] = a[j]\n            j -= 1\n        a[j + 1] = key\n    return a\n\nprint(sort_k_sorted([6, 5, 3, 2, 8, 10, 9], 3))`, run: true }],
+          alt: [
+            { lang: 'python', run: true, code: `def sort_k_sorted(a, k):
+    for i in range(1, len(a)):
+        key, j = a[i], i - 1
+        while j >= 0 and a[j] > key:   # at most k shifts (K-sorted promise)
+            a[j + 1] = a[j]
+            j -= 1
+        a[j + 1] = key                 # drop into the gap
+
+nums = [6, 5, 3, 2, 8, 10, 9]
+sort_k_sorted(nums, 3)
+print(nums)  # [2, 3, 5, 6, 8, 9, 10]` },
+            { lang: 'js', code: `function sortKSorted(a, k) {
+  for (let i = 1; i < a.length; i++) {
+    const key = a[i];                  // next card to place
+    let j = i - 1;
+    while (j >= 0 && a[j] > key) {     // at most k shifts (K-sorted promise)
+      a[j + 1] = a[j];
+      j--;
+    }
+    a[j + 1] = key;                    // drop into the gap
+  }
+}` },
+            { lang: 'cpp', code: `class Solution {
+public:
+    void sortKSorted(vector<int>& a, int k) {
+        for (int i = 1; i < (int)a.size(); i++) {
+            int key = a[i], j = i - 1;          // next card to place
+            while (j >= 0 && a[j] > key) {      // at most k shifts (K-sorted promise)
+                a[j + 1] = a[j];
+                j--;
+            }
+            a[j + 1] = key;                     // drop into the gap
+        }
+    }
+};` }
+          ],
           dry: {
             head: ['i', 'key', 'items shifted right', 'shifts', 'array after'],
             rows: [
@@ -406,7 +598,7 @@
       '"<b>Frequency</b> of each value" or "how many elements ≤ x" → a count array + prefix sums (the same machinery).',
       'Values can be up to 10<sup>9</sup> with no digit trick allowed → count sort is <span class="c-r">NOT</span> usable (the count array would be gigantic).'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       // Stable counting sort: returns a new sorted array, values must be in 0..k.
       int[] stableCountSort(int[] a, int k) {
           int[] cnt = new int[k + 1];
@@ -417,7 +609,43 @@
               out[--cnt[a[i]]] = a[i];                // last free slot for this value
           }
           return out;
-      }`, `
+      }`,
+      alt: [
+        { lang: 'python', code: `# Stable counting sort: returns a new sorted list, values must be in 0..k.
+from itertools import accumulate
+
+def stable_count_sort(a, k):
+    cnt = [0] * (k + 1)
+    for x in a:
+        cnt[x] += 1                             # 1) count each value
+    pos = list(accumulate(cnt))                 # 2) prefix: how many items are <= v
+    out = [0] * len(a)
+    for x in reversed(a):                       # 3) right-to-left keeps equal items in order
+        pos[x] -= 1
+        out[pos[x]] = x                         # last free slot for this value
+    return out` },
+        { lang: 'js', code: `// Stable counting sort: returns a new sorted array, values must be in 0..k.
+function stableCountSort(a, k) {
+  const cnt = new Int32Array(k + 1);
+  for (const x of a) cnt[x]++;                          // 1) count each value
+  for (let v = 1; v <= k; v++) cnt[v] += cnt[v - 1];    // 2) prefix: how many items are <= v
+  const out = new Array(a.length);
+  for (let i = a.length - 1; i >= 0; i--) {             // 3) right-to-left keeps equal items in order
+    out[--cnt[a[i]]] = a[i];                            // last free slot for this value
+  }
+  return out;
+}` },
+        { lang: 'cpp', code: `// Stable counting sort: returns a new sorted vector, values must be in 0..k.
+vector<int> stableCountSort(const vector<int>& a, int k) {
+    vector<int> cnt(k + 1, 0);
+    for (int x : a) cnt[x]++;                              // 1) count each value
+    partial_sum(cnt.begin(), cnt.end(), cnt.begin());      // 2) prefix: how many items are <= v
+    vector<int> out(a.size());
+    for (int i = (int)a.size() - 1; i >= 0; i--)           // 3) right-to-left keeps order
+        out[--cnt[a[i]]] = a[i];                           // last free slot for this value
+    return out;
+}` }
+      ] }, { lang: 'java', code: `
       // LSD radix sort for non-negative ints, base 10.
       void radixSort(int[] a) {
           if (a.length == 0) return;
@@ -434,7 +662,50 @@
               }
               System.arraycopy(out, 0, a, 0, a.length);              // copy back for the next digit
           }
-      }`],
+      }`,
+      alt: [
+        { lang: 'python', code: `# LSD radix sort for non-negative ints, base 10.
+def radix_sort(a):
+    if not a:
+        return a
+    exp, mx = 1, max(a)
+    while mx // exp > 0:                            # exp = 1, 10, 100, ... picks each digit
+        buckets = [[] for _ in range(10)]
+        for x in a:
+            buckets[x // exp % 10].append(x)        # append keeps arrival order: stable
+        a[:] = [x for b in buckets for x in b]      # collect buckets 0..9
+        exp *= 10
+    return a` },
+        { lang: 'js', code: `// LSD radix sort for non-negative ints, base 10.
+function radixSort(a) {
+  if (a.length === 0) return;
+  const max = Math.max(...a);
+  const out = new Array(a.length);
+  for (let exp = 1; Math.floor(max / exp) > 0; exp *= 10) {   // ones, tens, hundreds ...
+    const cnt = new Int32Array(10);
+    for (const x of a) cnt[Math.floor(x / exp) % 10]++;        // count digits
+    for (let d = 1; d < 10; d++) cnt[d] += cnt[d - 1];         // prefix sums
+    for (let i = a.length - 1; i >= 0; i--) {                  // stable placement
+      out[--cnt[Math.floor(a[i] / exp) % 10]] = a[i];
+    }
+    for (let i = 0; i < a.length; i++) a[i] = out[i];          // copy back for the next digit
+  }
+}` },
+        { lang: 'cpp', code: `// LSD radix sort for non-negative ints, base 10.
+void radixSort(vector<int>& a) {
+    if (a.empty()) return;
+    int mx = *max_element(a.begin(), a.end());
+    vector<int> out(a.size());
+    for (long long exp = 1; mx / exp > 0; exp *= 10) {      // long long: exp may pass 2^31
+        array<int, 10> cnt{};
+        for (int x : a) cnt[x / exp % 10]++;                  // count digits
+        for (int d = 1; d < 10; d++) cnt[d] += cnt[d - 1];    // prefix sums
+        for (int i = (int)a.size() - 1; i >= 0; i--)          // stable placement
+            out[--cnt[a[i] / exp % 10]] = a[i];
+        a.swap(out);                                          // out becomes the input of the next pass
+    }
+}` }
+      ] }],
     codeTitle: ['Stable count sort (prefix-sum version)', 'Radix sort (LSD, base 10)'],
     viz: [
       {
@@ -535,7 +806,7 @@
           ${H.arr([0, 0, 1, 2, 2, 3], { label: 'output', hl: { 0: 'g', 1: 'g', 2: 'g', 3: 'g', 4: 'g', 5: 'g' } })}
           <p>Why: writing each value as many times as it was counted, from small to big, gives exactly the sorted order.</p>`,
         brute: {
-          why: `<p>Any O(N<sup>2</sup>) sort (bubble/selection/insertion) does ~10<sup>12</sup> steps for N = 10<sup>6</sup> → far too slow. Even <code>Arrays.sort</code> (O(N log N) ≈ 2·10<sup>7</sup>) works, but it ignores the gift in the question: values are <b>tiny</b>. The wasted work is comparing items whose order we could read straight off their value.</p>`,
+          why: `<p>Any O(N<sup>2</sup>) sort (bubble/selection/insertion) does ~10<sup>12</sup> steps for N = 10<sup>6</sup> → far too slow. Even the library sort (<code>Arrays.sort</code> / <code>sorted</code> / <code>arr.sort</code> / <code>std::sort</code>, O(N log N) ≈ 2·10<sup>7</sup>) works, but it ignores the gift in the question: values are <b>tiny</b>. The wasted work is comparing items whose order we could read straight off their value.</p>`,
           code: `
             int[] brute(int[] a) {
                 int[] b = a.clone();
@@ -556,9 +827,18 @@
         },
         hints: [
           `<p><b>Aha:</b> with values in 0..K you never need to compare two items. If you know <b>how many</b> 0s, 1s, 2s… there are, the sorted array is just "all the 0s, then all the 1s, then …".</p>`,
-          `<p>Use an <code>int[] cnt = new int[K + 1]</code>. Pass 1: <code>cnt[x]++</code> for each x. Pass 2: a write pointer <code>w</code>; for v from 0 to K, write v into <code>out[w++]</code> exactly <code>cnt[v]</code> times.</p>`,
+          `<p>Use a count array of size K + 1, all zeros (<code>new int[K + 1]</code> / <code>[0] * (K + 1)</code> / <code>new Int32Array(K + 1)</code> / <code>vector&lt;int&gt;(K + 1)</code>). Pass 1: <code>cnt[x]++</code> for each x. Pass 2: a write pointer <code>w</code>; for v from 0 to K, write v into <code>out[w++]</code> exactly <code>cnt[v]</code> times.</p>`,
           `<p>Traps: size must be <b>K + 1</b> (value K needs index K); if values can be negative, shift everything by <code>-min</code>; if K is huge (10<sup>9</sup>) this idea fails — use a normal sort. Recipe: cnt = zeros(K+1) → count → w = 0 → for v in 0..K: repeat cnt[v] times: out[w++] = v → return out.</p>`
         ],
+        tests: { sig: 'int[] int -> int[]', fn: 'countSort', cases: [
+          [[[2, 0, 3, 2, 1, 0], 3], [0, 0, 1, 2, 2, 3]],
+          [[[0], 0], [0]],
+          [[[5], 5], [5]],
+          [[[1, 1, 1], 1], [1, 1, 1]],
+          [[[3, 2, 1, 0], 3], [0, 1, 2, 3]],
+          [[[0, 10, 5, 10, 0], 10], [0, 0, 5, 10, 10]],
+          [[[7, 7, 0], 1000], [0, 7, 7]]
+        ] },
         solution: {
           approach: `<p>Tally every value in a count array, then rebuild the array by walking the counts from 0 to K.</p>`,
           code: `
@@ -583,6 +863,38 @@
                     System.out.println(Arrays.toString(r)); // [0, 0, 1, 2, 2, 3]
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `def count_sort(a, k):
+    cnt = [0] * (k + 1)              # cnt[v] = how many times v appears
+    for x in a:
+        cnt[x] += 1                  # the value itself is the index
+    out = []
+    for v, c in enumerate(cnt):      # small values first
+        out.extend([v] * c)          # write v as many times as we saw it
+    return out` },
+            { lang: 'js', code: `function countSort(a, k) {
+  const cnt = new Int32Array(k + 1);   // cnt[v] = how many times v appears
+  for (const x of a) cnt[x]++;         // the value itself is the index
+  const out = new Array(a.length);
+  let w = 0;                           // next free position in out
+  for (let v = 0; v <= k; v++) {
+    for (let c = 0; c < cnt[v]; c++) out[w++] = v;
+  }
+  return out;
+}` },
+            { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> countSort(const vector<int>& a, int k) {
+        vector<int> cnt(k + 1, 0);           // cnt[v] = how many times v appears
+        for (int x : a) cnt[x]++;            // the value itself is the index
+        vector<int> out;
+        out.reserve(a.size());
+        for (int v = 0; v <= k; v++)
+            out.insert(out.end(), cnt[v], v); // write v cnt[v] times
+        return out;
+    }
+};` }
+          ],
           dry: {
             head: ['phase', 'step', 'value', 'cnt[0..3]', 'out so far'],
             rows: [
@@ -617,7 +929,7 @@
         html: `<p>Input [−3, 1, −1, 0]. min = −3, so use index <code>v − min</code> = v + 3:</p>
           ${H.table(['value v', '−3', '−1', '0', '1'], [['index v + 3', '0', '2', '3', '4']])}
           <p>Count array size = max − min + 1 = 5. Write back value = index + min → [−3, −1, 0, 1]. Cost O(N + range), where range = max − min.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           int[] countSortWithNegatives(int[] a) {
               int min = Integer.MAX_VALUE, max = Integer.MIN_VALUE;
               for (int x : a) { min = Math.min(min, x); max = Math.max(max, x); }
@@ -627,7 +939,39 @@
               for (int i = 0; i < cnt.length; i++)
                   while (cnt[i]-- > 0) a[w++] = i + min; // shift back
               return a;
-          }`
+          }`,
+          alt: [
+            { lang: 'python', run: true, code: `def count_sort_with_negatives(a):
+    lo, hi = min(a), max(a)
+    cnt = [0] * (hi - lo + 1)                # assumes the range fits in memory
+    for x in a:
+        cnt[x - lo] += 1                     # shift so the smallest value maps to 0
+    return [i + lo for i, c in enumerate(cnt) for _ in range(c)]   # shift back
+
+print(count_sort_with_negatives([-3, 1, -1, 0]))  # [-3, -1, 0, 1]` },
+            { lang: 'js', run: true, code: `function countSortWithNegatives(a) {
+  let min = Infinity, max = -Infinity;
+  for (const x of a) { min = Math.min(min, x); max = Math.max(max, x); }
+  const cnt = new Int32Array(max - min + 1);   // assumes the range fits in memory
+  for (const x of a) cnt[x - min]++;           // shift so the smallest value maps to 0
+  let w = 0;
+  for (let i = 0; i < cnt.length; i++) {
+    while (cnt[i]-- > 0) a[w++] = i + min;     // shift back
+  }
+  return a;
+}
+console.log(countSortWithNegatives([-3, 1, -1, 0]));   // [ -3, -1, 0, 1 ]` },
+            { lang: 'cpp', code: `vector<int> countSortWithNegatives(vector<int> a) {
+    auto [mnIt, mxIt] = minmax_element(a.begin(), a.end());
+    int mn = *mnIt, mx = *mxIt;
+    vector<int> cnt(mx - mn + 1, 0);          // assumes the range fits in memory
+    for (int x : a) cnt[x - mn]++;            // shift so the smallest value maps to 0
+    int w = 0;
+    for (int i = 0; i < (int)cnt.size(); i++)
+        while (cnt[i]-- > 0) a[w++] = i + mn; // shift back
+    return a;
+}` }
+          ] }
       },
       {
         title: 'Stable count sort of records (students by mark)',
@@ -654,8 +998,8 @@
     deepDive: `<p><b>Why comparison sorts cannot beat N log N.</b> A comparison sort is a decision tree: each comparison is a yes/no branch, and each leaf is one possible output order. There are N! orders, so the tree needs at least N! leaves, hence height ≥ log₂(N!) ≈ N log₂N − 1.44N. Counting/radix sorts escape this bound because they never compare two items — they use the <b>value as an array index</b>, which is extra information a comparison cannot give.</p>
       <p><b>Choosing the radix (base).</b> Base 10 is for teaching. Real radix sorts use base 256 (one byte per pass): a 32-bit int needs 4 passes with 256 counters each; a 64-bit long needs 8. Base 2<sup>16</sup> halves the passes but the 65,536-entry count array no longer fits the fastest CPU cache, so it can be slower. <b>Signed ints:</b> flip the sign bit (<code>x ^ 0x80000000</code>) before extracting digits so negatives sort before positives. <b>MSD radix</b> (most significant digit first) recurses into buckets and is the basis of fast string sorts; <b>bucket sort</b> spreads uniformly distributed floats into N buckets for expected O(N).</p>
       <p><b>When it loses.</b> Count sort with a range of 10<sup>9</sup> needs 4 GB of counters. Radix sort on 10 numbers is slower than insertion sort (constant overhead). It also needs O(N) extra space for the output buffer and is awkward with custom comparators. <b>Production reality:</b> the JDK's <code>Arrays.sort</code> switches to counting sort for large <code>byte[]</code>, <code>char[]</code> and <code>short[]</code> arrays (tiny value ranges); databases and GPU libraries use radix sort for integer keys; suffix-array construction uses repeated radix passes.</p>`,
-    aiEra: `<p><b>What AI changes:</b> an assistant will happily answer "sort this" with <code>Arrays.sort</code>. Recognising that the <b>value range is tiny</b> (ages, marks, ASCII letters, colours) and switching to O(N + K) is still your job — it is a constraint-reading skill, not a typing skill.</p>
-      <p><b>Use AI as a partner:</b> <code>Benchmark count sort vs Arrays.sort for 10^7 ints in [0, 100] and [0, 10^9]; explain the difference</code> — then read the numbers yourself. Ask it to generate radix-sort traces for you to verify by hand, or to explain why the right-to-left loop makes count sort stable.</p>
+    aiEra: `<p><b>What AI changes:</b> an assistant will happily answer "sort this" with the library sort (<code>Arrays.sort</code>, <code>sorted</code>, <code>std::sort</code>). Recognising that the <b>value range is tiny</b> (ages, marks, ASCII letters, colours) and switching to O(N + K) is still your job — it is a constraint-reading skill, not a typing skill.</p>
+      <p><b>Use AI as a partner:</b> <code>Benchmark count sort vs the built-in sort for 10^7 ints in [0, 100] and [0, 10^9]; explain the difference</code> — then read the numbers yourself. Ask it to generate radix-sort traces for you to verify by hand, or to explain why the right-to-left loop makes count sort stable.</p>
       <p><b>Where AI goes wrong:</b> count array sized K instead of K + 1 (index out of bounds), forgetting negatives, a left-to-right placement loop with <code>--cnt</code> that silently breaks stability (and therefore radix sort), or using <code>x / exp % 10</code> with an <code>int exp</code> that overflows past 10<sup>9</sup>. <b>What you must still own:</b> the N log N lower-bound argument, knowing when O(N + K) is actually better, and why stability is the engine of radix sort.</p>`
   });
 
@@ -700,7 +1044,7 @@
       '"Merge K sorted arrays/lists", "external sorting of a huge file" → the merge step.',
       'N ≤ 10<sup>5</sup> and the brute force checks all pairs (O(N<sup>2</sup>)) → think divide &amp; conquer to get N log N.'
     ],
-    code: `
+    code: { lang: 'java', code: `
       // Merge sort: sorts a[lo..hi] using a shared temp array.
       void mergeSort(int[] a, int lo, int hi, int[] tmp) {
           if (lo >= hi) return;                    // 0 or 1 element: already sorted
@@ -717,6 +1061,55 @@
           while (j <= hi) tmp[k++] = a[j++];        // leftovers from the right half
           for (k = lo; k <= hi; k++) a[k] = tmp[k]; // copy the merged run back
       }`,
+      alt: [
+        { lang: 'python', code: `# Merge sort: sorts a[lo..hi] using a shared temp list.
+def merge_sort(a, lo, hi, tmp):
+    if lo >= hi:                             # 0 or 1 element: already sorted
+        return
+    mid = (lo + hi) // 2
+    merge_sort(a, lo, mid, tmp)              # sort the left half
+    merge_sort(a, mid + 1, hi, tmp)          # sort the right half
+    i, j, k = lo, mid + 1, lo                # two pointers + write pointer
+    while i <= mid and j <= hi:
+        if a[i] <= a[j]:                     # "<=" takes the LEFT one on ties -> stable
+            tmp[k] = a[i]; i += 1
+        else:
+            tmp[k] = a[j]; j += 1
+        k += 1
+    rest = a[i:mid + 1] + a[j:hi + 1]        # leftovers from whichever half remains
+    tmp[k:hi + 1] = rest
+    a[lo:hi + 1] = tmp[lo:hi + 1]            # copy the merged run back
+
+# usage: a = [5, 2, 4]; merge_sort(a, 0, len(a) - 1, [0] * len(a))` },
+        { lang: 'js', code: `// Merge sort: sorts a[lo..hi] using a shared temp array.
+function mergeSort(a, lo, hi, tmp) {
+  if (lo >= hi) return;                      // 0 or 1 element: already sorted
+  const mid = lo + ((hi - lo) >> 1);
+  mergeSort(a, lo, mid, tmp);                // sort the left half
+  mergeSort(a, mid + 1, hi, tmp);            // sort the right half
+  let i = lo, j = mid + 1, k = lo;           // two pointers + write pointer
+  while (i <= mid && j <= hi) {
+    tmp[k++] = a[i] <= a[j] ? a[i++] : a[j++];   // "<=" takes the LEFT one on ties -> stable
+  }
+  while (i <= mid) tmp[k++] = a[i++];        // leftovers from the left half
+  while (j <= hi) tmp[k++] = a[j++];         // leftovers from the right half
+  for (k = lo; k <= hi; k++) a[k] = tmp[k];  // copy the merged run back
+}` },
+        { lang: 'cpp', code: `// Merge sort: sorts a[lo..hi] using a shared temp vector.
+void mergeSort(vector<int>& a, int lo, int hi, vector<int>& tmp) {
+    if (lo >= hi) return;                      // 0 or 1 element: already sorted
+    int mid = lo + (hi - lo) / 2;              // safe middle (no overflow)
+    mergeSort(a, lo, mid, tmp);
+    mergeSort(a, mid + 1, hi, tmp);
+    int i = lo, j = mid + 1, k = lo;
+    while (i <= mid && j <= hi)
+        tmp[k++] = a[i] <= a[j] ? a[i++] : a[j++];   // ties take the left -> stable
+    while (i <= mid) tmp[k++] = a[i++];
+    while (j <= hi) tmp[k++] = a[j++];
+    copy(tmp.begin() + lo, tmp.begin() + hi + 1, a.begin() + lo);
+    // (the library does the merge step as std::inplace_merge, and the whole sort as std::stable_sort)
+}` }
+      ] },
     codeTitle: 'Merge sort (top-down)',
     viz: {
       title: 'Merge sort: split, then merge with two pointers (and count inversions)',
@@ -821,6 +1214,16 @@
           `<p>Recursive function <code>sort(lo, hi)</code>: <code>mid = lo + (hi - lo) / 2</code>, sort the left half, sort the right half, then merge with pointers <code>i = lo</code>, <code>j = mid + 1</code> into a <b>temp array</b>, and copy back.</p>`,
           `<p>Traps: base case <code>lo &gt;= hi</code> (not <code>lo &gt; hi</code> only — otherwise infinite recursion on size 1); do not forget the <b>leftover loops</b> after one pile runs out; allocate the temp array <b>once</b>, not inside every call. Recipe: if lo ≥ hi return → mid → sort left → sort right → merge with i, j, k → copy tmp[lo..hi] back.</p>`
         ],
+        tests: { sig: 'int[] -> int[]', fn: 'sortArray', cases: [
+          [[[5, 2, 4, 1]], [1, 2, 4, 5]],
+          [[[1]], [1]],
+          [[[2, 1]], [1, 2]],
+          [[[-1000000000, 1000000000, 0, -1000000000]], [-1000000000, -1000000000, 0, 1000000000]],
+          [[[5, 4, 3, 2, 1]], [1, 2, 3, 4, 5]],
+          [[[1, 2, 3, 4]], [1, 2, 3, 4]],
+          [[[3, 3, 3]], [3, 3, 3]],
+          [[[9, -3, 5, -3, 0, 12, 7]], [-3, -3, 0, 5, 7, 9, 12]]
+        ] },
         solution: {
           approach: `<p>Top-down divide &amp; conquer with one shared temp array for merging.</p>`,
           code: `
@@ -858,6 +1261,67 @@
                     System.out.println(Arrays.toString(new Solution().sortArray(new int[]{5, 2, 4, 1})));
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `def sort_array(a):
+    tmp = [0] * len(a)                       # allocated once, reused by every merge
+
+    def sort(lo, hi):
+        if lo >= hi:                         # size 0 or 1 -> already sorted
+            return
+        mid = (lo + hi) // 2
+        sort(lo, mid)                        # conquer left half
+        sort(mid + 1, hi)                    # conquer right half
+        i, j, k = lo, mid + 1, lo
+        while i <= mid and j <= hi:
+            if a[i] <= a[j]:                 # tie -> left first (stable)
+                tmp[k] = a[i]; i += 1
+            else:
+                tmp[k] = a[j]; j += 1
+            k += 1
+        tmp[k:hi + 1] = a[i:mid + 1] if i <= mid else a[j:hi + 1]   # leftovers
+        a[lo:hi + 1] = tmp[lo:hi + 1]        # copy merged run back
+
+    sort(0, len(a) - 1)
+    return a` },
+            { lang: 'js', code: `function sortArray(a) {
+  const tmp = new Array(a.length);         // allocated once, reused by every merge
+  const sort = (lo, hi) => {
+    if (lo >= hi) return;                  // size 0 or 1 -> already sorted
+    const mid = (lo + hi) >> 1;
+    sort(lo, mid);
+    sort(mid + 1, hi);
+    let i = lo, j = mid + 1, k = lo;
+    while (i <= mid && j <= hi) tmp[k++] = a[i] <= a[j] ? a[i++] : a[j++]; // tie -> left (stable)
+    while (i <= mid) tmp[k++] = a[i++];    // left leftovers
+    while (j <= hi) tmp[k++] = a[j++];     // right leftovers
+    for (k = lo; k <= hi; k++) a[k] = tmp[k];
+  };
+  sort(0, a.length - 1);
+  return a;
+}` },
+            { lang: 'cpp', code: `class Solution {
+    vector<int> tmp;
+
+    void sort(vector<int>& a, int lo, int hi) {
+        if (lo >= hi) return;                         // size 0 or 1 -> already sorted
+        int mid = lo + (hi - lo) / 2;
+        sort(a, lo, mid);
+        sort(a, mid + 1, hi);
+        int i = lo, j = mid + 1, k = lo;
+        while (i <= mid && j <= hi) tmp[k++] = a[i] <= a[j] ? a[i++] : a[j++]; // tie -> left
+        while (i <= mid) tmp[k++] = a[i++];
+        while (j <= hi) tmp[k++] = a[j++];
+        copy(tmp.begin() + lo, tmp.begin() + hi + 1, a.begin() + lo);
+    }
+
+public:
+    vector<int> sortArray(vector<int> a) {
+        tmp.assign(a.size(), 0);                      // allocated once
+        sort(a, 0, (int)a.size() - 1);
+        return a;
+    }
+};` }
+          ],
           dry: {
             head: ['#', 'call / action', 'details', 'array after'],
             rows: [
@@ -902,6 +1366,18 @@
           `<p>Do a normal merge sort. In the merge, when <code>a[j]</code> (right) is strictly smaller than <code>a[i]</code> (left), add <code>mid - i + 1</code> — the count of items still waiting in the left half — to a <code>long</code> counter.</p>`,
           `<p>Traps: use <code>long</code> (answer can be ~5·10<sup>9</sup>); on <b>equal</b> values take the left one first (<code>&lt;=</code>) — equal values are <b>not</b> an inversion; the array gets sorted as a side effect (clone it if the caller needs the original). Recipe: count(lo,hi): if lo ≥ hi return 0 → c = count(left) + count(right) → merge, adding mid − i + 1 whenever the right top is smaller → return c.</p>`
         ],
+        tests: { sig: 'int[] -> long', fn: 'countInversions', cases: [
+          [[[2, 4, 1, 3, 5]], 3],
+          [[[1]], 0],
+          [[[1, 2, 3]], 0],
+          [[[3, 2, 1]], 3],
+          [[[2, 2, 2]], 0],
+          [[[8, 4, 2, 1]], 6],
+          [[[1000000000, 1, 1000000000, 1]], 3],
+          [[[5, 1, 5, 1, 5]], 3],
+          [[{ $range: [70000, 0, -1] }], 2449965000],
+          [[{ $range: [100000, 0, -1] }], 4999950000]
+        ] },
         solution: {
           approach: `<p>Merge sort; every time a right-half item is placed before the remaining left-half items, those remaining items each form one inversion with it.</p>`,
           code: `
@@ -937,6 +1413,71 @@
                     System.out.println(new Solution().countInversions(new int[]{2, 4, 1, 3, 5})); // 3
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `def count_inversions(arr):
+    a = list(arr)                            # keep the caller's list untouched
+
+    def count(lo, hi):                       # sorts a[lo..hi], returns its inversions
+        if lo >= hi:
+            return 0
+        mid = (lo + hi) // 2
+        c = count(lo, mid) + count(mid + 1, hi)
+        merged, i, j = [], lo, mid + 1
+        while i <= mid and j <= hi:
+            if a[i] <= a[j]:
+                merged.append(a[i]); i += 1  # left item is fine, no inversion
+            else:
+                c += mid - i + 1             # a[j] is smaller than all of a[i..mid]
+                merged.append(a[j]); j += 1
+        merged += a[i:mid + 1] + a[j:hi + 1]
+        a[lo:hi + 1] = merged
+        return c                             # Python ints never overflow
+
+    return count(0, len(a) - 1)` },
+            { lang: 'js', code: `function countInversions(arr) {
+  const a = arr.slice();                     // keep the caller's array untouched
+  const tmp = new Array(a.length);
+  const count = (lo, hi) => {
+    if (lo >= hi) return 0;
+    const mid = (lo + hi) >> 1;
+    let c = count(lo, mid) + count(mid + 1, hi);   // up to ~5e9: still exact in a Number
+    let i = lo, j = mid + 1, k = lo;
+    while (i <= mid && j <= hi) {
+      if (a[i] <= a[j]) tmp[k++] = a[i++];
+      else { c += mid - i + 1; tmp[k++] = a[j++]; } // a[j] beats all of a[i..mid]
+    }
+    while (i <= mid) tmp[k++] = a[i++];
+    while (j <= hi) tmp[k++] = a[j++];
+    for (k = lo; k <= hi; k++) a[k] = tmp[k];
+    return c;
+  };
+  return count(0, a.length - 1);
+}` },
+            { lang: 'cpp', code: `class Solution {
+    vector<int> tmp;
+
+    long long count(vector<int>& a, int lo, int hi) {
+        if (lo >= hi) return 0;
+        int mid = lo + (hi - lo) / 2;
+        long long c = count(a, lo, mid) + count(a, mid + 1, hi);
+        int i = lo, j = mid + 1, k = lo;
+        while (i <= mid && j <= hi) {
+            if (a[i] <= a[j]) tmp[k++] = a[i++];
+            else { c += mid - i + 1; tmp[k++] = a[j++]; }   // a[j] beats all of a[i..mid]
+        }
+        while (i <= mid) tmp[k++] = a[i++];
+        while (j <= hi) tmp[k++] = a[j++];
+        copy(tmp.begin() + lo, tmp.begin() + hi + 1, a.begin() + lo);
+        return c;
+    }
+
+public:
+    long long countInversions(vector<int> a) {        // by value: caller's copy untouched
+        tmp.assign(a.size(), 0);
+        return count(a, 0, (int)a.size() - 1);
+    }
+};` }
+          ],
           dry: {
             head: ['merge', 'left pile', 'right pile', 'what happens', 'added', 'total'],
             rows: [
@@ -983,7 +1524,7 @@
         title: 'Bottom-up (iterative) merge sort — no recursion at all',
         html: `<p>Instead of splitting top-down, merge runs of width 1, then 2, then 4, … until one run covers the array. Same O(N log N), but no recursion stack — handy when recursion depth is a concern, and it is how merge sort is written for linked lists and external files.</p>
           ${H.table(['width', 'runs after this round (input 5 2 4 6 1 3)'], [['1', '[2 5] [4 6] [1 3]'], ['2', '[2 4 5 6] [1 3]'], ['4', '<span class="c-g">[1 2 3 4 5 6]</span>']])}`,
-        code: `
+        code: { lang: 'java', code: `
           class BottomUp {
               static void sort(int[] a) {
                   int n = a.length;
@@ -1011,7 +1552,57 @@
                   sort(a);
                   System.out.println(Arrays.toString(a)); // [1, 2, 3, 4, 5, 6]
               }
-          }`
+          }`,
+          alt: [
+            { lang: 'python', run: true, code: `def bottom_up_sort(a):
+    n, width = len(a), 1
+    while width < n:                                  # run size doubles each round
+        for lo in range(0, n - width, 2 * width):
+            mid, hi = lo + width - 1, min(lo + 2 * width - 1, n - 1)
+            if a[mid] <= a[mid + 1]:
+                continue                              # already in order: skip
+            left, right, out = a[lo:mid + 1], a[mid + 1:hi + 1], []
+            i = j = 0
+            while i < len(left) and j < len(right):
+                if left[i] <= right[j]:
+                    out.append(left[i]); i += 1
+                else:
+                    out.append(right[j]); j += 1
+            a[lo:hi + 1] = out + left[i:] + right[j:]
+        width *= 2
+
+a = [5, 2, 4, 6, 1, 3]
+bottom_up_sort(a)
+print(a)  # [1, 2, 3, 4, 5, 6]` },
+            { lang: 'js', run: true, code: `function bottomUpSort(a) {
+  const n = a.length, tmp = new Array(n);
+  for (let width = 1; width < n; width *= 2) {                 // run size doubles each round
+    for (let lo = 0; lo < n - width; lo += 2 * width) {
+      const mid = lo + width - 1, hi = Math.min(lo + 2 * width - 1, n - 1);
+      if (a[mid] <= a[mid + 1]) continue;                      // already in order: skip
+      let i = lo, j = mid + 1, k = lo;
+      while (i <= mid && j <= hi) tmp[k++] = a[i] <= a[j] ? a[i++] : a[j++];
+      while (i <= mid) tmp[k++] = a[i++];
+      while (j <= hi) tmp[k++] = a[j++];
+      for (k = lo; k <= hi; k++) a[k] = tmp[k];
+    }
+  }
+}
+const a = [5, 2, 4, 6, 1, 3];
+bottomUpSort(a);
+console.log(a);   // [1, 2, 3, 4, 5, 6]` },
+            { lang: 'cpp', code: `int main() {
+    vector<int> a = {5, 2, 4, 6, 1, 3};
+    int n = a.size();
+    for (int width = 1; width < n; width *= 2)                 // run size doubles each round
+        for (int lo = 0; lo < n - width; lo += 2 * width) {
+            int mid = lo + width, hi = min(lo + 2 * width, n);  // [lo, mid) and [mid, hi)
+            inplace_merge(a.begin() + lo, a.begin() + mid, a.begin() + hi);   // library merge step
+        }
+    for (int x : a) cout << x << ' ';                          // 1 2 3 4 5 6
+    cout << '\\n';
+}` }
+          ] }
       }
     ],
     deepDive: `<p><b>The recurrence.</b> T(N) = 2·T(N/2) + c·N. Unroll it: level k has 2<sup>k</sup> pieces of size N/2<sup>k</sup>, total work c·N per level, log₂N levels → <b>Θ(N log N)</b> in best, average and worst case (the master theorem's "balanced" case). Merge sort makes at most N⌈log₂N⌉ − N + 1 comparisons, very close to the information-theoretic lower bound — that is why it is the default when comparisons are expensive (comparing objects, strings).</p>
@@ -1057,7 +1648,7 @@
         ['<b>random</b> index', 'O(N log N) expected', 'O(N log N) expected'],
         ['median of three (first, mid, last)', 'O(N log N)', 'O(N log N)']
       ])}
-      <p><b>Many duplicates?</b> Lomuto with all-equal values also becomes O(N<sup>2</sup>). Fix: <b>3-way partition</b> (&lt; pivot | = pivot | &gt; pivot) — the Dutch National Flag idea. <b>Summary:</b> average O(N log N), worst O(N<sup>2</sup>), extra space O(log N) for recursion, <b>not stable</b>. Java's <code>Arrays.sort(int[])</code> is a tuned dual-pivot quick sort.</p>`,
+      <p><b>Many duplicates?</b> Lomuto with all-equal values also becomes O(N<sup>2</sup>). Fix: <b>3-way partition</b> (&lt; pivot | = pivot | &gt; pivot) — the Dutch National Flag idea. <b>Summary:</b> average O(N log N), worst O(N<sup>2</sup>), extra space O(log N) for recursion, <b>not stable</b>. Java's <code>Arrays.sort(int[])</code> is a tuned dual-pivot quick sort, and C++ <code>std::sort</code> is introsort (quick sort with a heap-sort fallback). Python and JavaScript use the merge-based TimSort instead.</p>`,
     clues: [
       '"Find the <b>Kth smallest / largest</b>" (no full sort needed) → quickselect, average O(N).',
       '"Sort <b>in place</b> with O(1)/O(log N) extra space" → quick sort (merge sort needs O(N) extra).',
@@ -1066,7 +1657,7 @@
       '"Input may already be sorted" or "adversarial tests" → never use a fixed first/last pivot; pick a <b>random</b> pivot.',
       '"Top K items in any order" → partition around the Kth position, then take one side.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       // Quick sort with Lomuto partition and a RANDOM pivot (avoids the sorted-input worst case).
       static final Random RNG = new Random();
 
@@ -1092,7 +1683,67 @@
           return i;
       }
 
-      void swap(int[] a, int x, int y) { int t = a[x]; a[x] = a[y]; a[y] = t; }`, `
+      void swap(int[] a, int x, int y) { int t = a[x]; a[x] = a[y]; a[y] = t; }`,
+      alt: [
+        { lang: 'python', code: `# Quick sort with Lomuto partition and a RANDOM pivot (avoids the sorted-input worst case).
+import random
+
+def quick_sort(a, lo, hi):
+    if lo >= hi:
+        return
+    p = lomuto(a, lo, hi)              # pivot is now at its final index p
+    quick_sort(a, lo, p - 1)           # everything smaller
+    quick_sort(a, p + 1, hi)           # everything bigger or equal
+
+def lomuto(a, lo, hi):
+    r = random.randint(lo, hi)
+    a[r], a[hi] = a[hi], a[r]          # move the random pivot to the end
+    pivot, i = a[hi], lo               # i = next slot for an item smaller than pivot
+    for j in range(lo, hi):
+        if a[j] < pivot:
+            a[i], a[j] = a[j], a[i]
+            i += 1
+    a[i], a[hi] = a[hi], a[i]          # drop the pivot right after the small items
+    return i` },
+        { lang: 'js', code: `// Quick sort with Lomuto partition and a RANDOM pivot (avoids the sorted-input worst case).
+function quickSort(a, lo, hi) {
+  if (lo >= hi) return;
+  const p = lomuto(a, lo, hi);       // pivot is now at its final index p
+  quickSort(a, lo, p - 1);           // everything smaller
+  quickSort(a, p + 1, hi);           // everything bigger or equal
+}
+
+function lomuto(a, lo, hi) {
+  const r = lo + Math.floor(Math.random() * (hi - lo + 1));
+  [a[r], a[hi]] = [a[hi], a[r]];     // move the random pivot to the end
+  const pivot = a[hi];
+  let i = lo;                        // next slot for an item smaller than pivot
+  for (let j = lo; j < hi; j++) {
+    if (a[j] < pivot) { [a[i], a[j]] = [a[j], a[i]]; i++; }
+  }
+  [a[i], a[hi]] = [a[hi], a[i]];     // drop the pivot right after the small items
+  return i;
+}` },
+        { lang: 'cpp', code: `// Quick sort with Lomuto partition and a RANDOM pivot (avoids the sorted-input worst case).
+mt19937 rng(random_device{}());
+
+int lomuto(vector<int>& a, int lo, int hi) {
+    int r = uniform_int_distribution<int>(lo, hi)(rng);
+    swap(a[r], a[hi]);                 // move the random pivot to the end
+    int pivot = a[hi], i = lo;         // i = next slot for an item smaller than pivot
+    for (int j = lo; j < hi; j++)
+        if (a[j] < pivot) swap(a[i++], a[j]);
+    swap(a[i], a[hi]);                 // drop the pivot right after the small items
+    return i;
+}
+
+void quickSort(vector<int>& a, int lo, int hi) {
+    if (lo >= hi) return;
+    int p = lomuto(a, lo, hi);         // pivot is now at its final index p
+    quickSort(a, lo, p - 1);
+    quickSort(a, p + 1, hi);
+}` }
+      ] }, { lang: 'java', code: `
       // Quick sort with Hoare partition (two pointers from both ends).
       void quickSortHoare(int[] a, int lo, int hi) {
           if (lo >= hi) return;
@@ -1110,7 +1761,66 @@
               if (i >= j) return j;               // pointers crossed: split point found
               int t = a[i]; a[i] = a[j]; a[j] = t; // fix both wrong-side items at once
           }
-      }`],
+      }`,
+      alt: [
+        { lang: 'python', code: `# Quick sort with Hoare partition (two pointers from both ends).
+def quick_sort_hoare(a, lo, hi):
+    if lo >= hi:
+        return
+    p = hoare(a, lo, hi)
+    quick_sort_hoare(a, lo, p)         # NOTE: p is included on the left side
+    quick_sort_hoare(a, p + 1, hi)
+
+def hoare(a, lo, hi):
+    pivot = a[(lo + hi) // 2]          # (lower) middle value as pivot
+    i, j = lo - 1, hi + 1
+    while True:
+        i += 1
+        while a[i] < pivot:            # find a big item on the left side
+            i += 1
+        j -= 1
+        while a[j] > pivot:            # find a small item on the right side
+            j -= 1
+        if i >= j:
+            return j                   # pointers crossed: split point found
+        a[i], a[j] = a[j], a[i]        # fix both wrong-side items at once` },
+        { lang: 'js', code: `// Quick sort with Hoare partition (two pointers from both ends).
+function quickSortHoare(a, lo, hi) {
+  if (lo >= hi) return;
+  const p = hoare(a, lo, hi);
+  quickSortHoare(a, lo, p);          // NOTE: p is included on the left side
+  quickSortHoare(a, p + 1, hi);
+}
+
+function hoare(a, lo, hi) {
+  const pivot = a[lo + ((hi - lo) >> 1)];   // (lower) middle value as pivot
+  let i = lo - 1, j = hi + 1;
+  while (true) {
+    do { i++; } while (a[i] < pivot);       // find a big item on the left side
+    do { j--; } while (a[j] > pivot);       // find a small item on the right side
+    if (i >= j) return j;                   // pointers crossed: split point found
+    [a[i], a[j]] = [a[j], a[i]];            // fix both wrong-side items at once
+  }
+}` },
+        { lang: 'cpp', code: `// Quick sort with Hoare partition (two pointers from both ends).
+int hoare(vector<int>& a, int lo, int hi) {
+    int pivot = a[lo + (hi - lo) / 2];        // (lower) middle value as pivot
+    int i = lo - 1, j = hi + 1;
+    while (true) {
+        do { i++; } while (a[i] < pivot);     // find a big item on the left side
+        do { j--; } while (a[j] > pivot);     // find a small item on the right side
+        if (i >= j) return j;                 // pointers crossed: split point found
+        swap(a[i], a[j]);                     // fix both wrong-side items at once
+    }
+}
+
+void quickSortHoare(vector<int>& a, int lo, int hi) {
+    if (lo >= hi) return;
+    int p = hoare(a, lo, hi);
+    quickSortHoare(a, lo, p);                 // NOTE: p is included on the left side
+    quickSortHoare(a, p + 1, hi);
+}` }
+      ] }],
     codeTitle: ['Lomuto partition + random pivot', 'Hoare partition'],
     viz: [
       {
@@ -1250,6 +1960,16 @@
           `<p>Loop with <code>lo</code>, <code>hi</code> and <code>target = k - 1</code>. Use Lomuto partition (pointer <code>i</code> = next slot for small items, <code>j</code> scans). Move <code>lo = p + 1</code> or <code>hi = p - 1</code> after each partition.</p>`,
           `<p>Traps: k is 1-based (target = k − 1); with a fixed last-element pivot a sorted input becomes O(N<sup>2</sup>) — use the middle or a random index and swap it to the end first; work on a copy if the input must not change. Recipe: target = k−1 → while lo ≤ hi: p = partition(lo, hi) → if p == target return a[p] → else shrink lo or hi.</p>`
         ],
+        tests: { sig: 'int[] int -> int', fn: 'kthSmallest', cases: [
+          [[[7, 10, 4, 3, 20, 15], 3], 7],
+          [[[1], 1], 1],
+          [[[5, 5, 5], 2], 5],
+          [[[-1, -5, 3], 1], -5],
+          [[[1, 2, 3, 4, 5], 5], 5],
+          [[[5, 4, 3, 2, 1], 1], 1],
+          [[[1000000000, -1000000000, 0], 2], 0],
+          [[[3, 1, 2, 3, 1], 4], 3]
+        ] },
         solution: {
           approach: `<p>Quickselect: Lomuto partition with the middle element as pivot (swapped to the end), keep only the side that contains index k − 1. For adversarial inputs replace the middle index with a random one.</p>`,
           code: `
@@ -1289,6 +2009,60 @@
                     System.out.println(new Solution().kthSmallest(new int[]{7, 10, 4, 3, 20, 15}, 3)); // 7
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `def kth_smallest(arr, k):
+    a = list(arr)                            # do not disturb the caller's list
+    lo, hi, target = 0, len(a) - 1, k - 1    # 0-based position we want
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        a[mid], a[hi] = a[hi], a[mid]        # move the middle pivot to the end
+        pivot, i = a[hi], lo                 # i = next slot for an item < pivot
+        for j in range(lo, hi):
+            if a[j] < pivot:
+                a[i], a[j] = a[j], a[i]
+                i += 1
+        a[i], a[hi] = a[hi], a[i]            # pivot lands at its final index i
+        if i == target:
+            return a[i]
+        if i < target:
+            lo = i + 1                       # answer is among the bigger items
+        else:
+            hi = i - 1                       # answer is among the smaller items
+    raise ValueError("k out of range")` },
+            { lang: 'js', code: `function kthSmallest(arr, k) {
+  const a = arr.slice();                     // do not disturb the caller's array
+  const swap = (x, y) => { const t = a[x]; a[x] = a[y]; a[y] = t; };
+  let lo = 0, hi = a.length - 1;
+  const target = k - 1;                      // 0-based position we want
+  while (lo <= hi) {
+    swap((lo + hi) >> 1, hi);                // move the middle pivot to the end
+    const pivot = a[hi];
+    let i = lo;                              // next slot for an item < pivot
+    for (let j = lo; j < hi; j++) if (a[j] < pivot) swap(i++, j);
+    swap(i, hi);                             // pivot lands at its final index i
+    if (i === target) return a[i];
+    if (i < target) lo = i + 1; else hi = i - 1;
+  }
+  throw new Error('k out of range');
+}` },
+            { lang: 'cpp', code: `class Solution {
+public:
+    // (the library one-liner is std::nth_element(a.begin(), a.begin() + k - 1, a.end()))
+    int kthSmallest(vector<int> a, int k) {     // by value: caller's vector untouched
+        int lo = 0, hi = (int)a.size() - 1, target = k - 1;
+        while (lo <= hi) {
+            swap(a[lo + (hi - lo) / 2], a[hi]);  // move the middle pivot to the end
+            int pivot = a[hi], i = lo;           // i = next slot for an item < pivot
+            for (int j = lo; j < hi; j++)
+                if (a[j] < pivot) swap(a[i++], a[j]);
+            swap(a[i], a[hi]);                   // pivot lands at its final index i
+            if (i == target) return a[i];
+            if (i < target) lo = i + 1; else hi = i - 1;
+        }
+        throw invalid_argument("k out of range");
+    }
+};` }
+          ],
           dry: {
             head: ['round', 'lo..hi', 'pivot (middle)', 'scan result', 'array after partition', 'p', 'decision'],
             rows: [
@@ -1323,7 +2097,7 @@
             ['2', '3', '3', '1', '= 1: i++ → i &gt; gt, stop', '<span class="c-g">0 0 1 1 2 2</span>']
           ])}
           <p>One pass, O(1) space. In quick sort, the whole "= pivot" block is finished in one go, so an array of all-equal values costs O(N) instead of O(N<sup>2</sup>).</p>`,
-        code: `
+        code: { lang: 'java', code: `
           // 3-way partition (Dijkstra's Dutch National Flag) — sorts 0/1/2 in one pass.
           void sortColors(int[] a) {
               int lt = 0, i = 0, gt = a.length - 1;   // a[0..lt-1] = 0, a[lt..i-1] = 1, a[gt+1..] = 2
@@ -1338,7 +2112,43 @@
                       i++;                             // a 1 is already in the middle zone
                   }
               }
-          }`
+          }`,
+          alt: [
+            { lang: 'python', run: true, code: `# 3-way partition (Dijkstra's Dutch National Flag): sorts 0/1/2 in one pass.
+def sort_colors(a):
+    lt, i, gt = 0, 0, len(a) - 1   # a[:lt] = 0, a[lt:i] = 1, a[gt+1:] = 2
+    while i <= gt:
+        if a[i] == 0:
+            a[lt], a[i] = a[i], a[lt]
+            lt += 1; i += 1
+        elif a[i] == 2:
+            a[gt], a[i] = a[i], a[gt]
+            gt -= 1                # the swapped-in value is not checked yet
+        else:
+            i += 1                 # a 1 is already in the middle zone
+
+colors = [2, 0, 2, 1, 1, 0]
+sort_colors(colors)
+print(colors)  # [0, 0, 1, 1, 2, 2]` },
+            { lang: 'js', code: `// 3-way partition (Dijkstra's Dutch National Flag): sorts 0/1/2 in one pass.
+function sortColors(a) {
+  let lt = 0, i = 0, gt = a.length - 1;    // a[0..lt-1] = 0, a[lt..i-1] = 1, a[gt+1..] = 2
+  while (i <= gt) {
+    if (a[i] === 0) { [a[lt], a[i]] = [a[i], a[lt]]; lt++; i++; }
+    else if (a[i] === 2) { [a[gt], a[i]] = [a[i], a[gt]]; gt--; }   // re-check the new a[i]
+    else i++;                              // a 1 is already in the middle zone
+  }
+}` },
+            { lang: 'cpp', code: `// 3-way partition (Dijkstra's Dutch National Flag): sorts 0/1/2 in one pass.
+void sortColors(vector<int>& a) {
+    int lt = 0, i = 0, gt = (int)a.size() - 1;   // a[0..lt-1] = 0, a[lt..i-1] = 1, a[gt+1..] = 2
+    while (i <= gt) {
+        if (a[i] == 0) swap(a[lt++], a[i++]);
+        else if (a[i] == 2) swap(a[gt--], a[i]);   // re-check the new a[i]
+        else i++;                                  // a 1 is already in the middle zone
+    }
+}` }
+          ] }
       },
       {
         title: 'All-equal input breaks plain Lomuto',
@@ -1348,7 +2158,7 @@
       {
         title: 'K-th largest via quickselect',
         html: `<p>K-th largest in N items = the item at 0-based sorted index <b>N − K</b>. For [3, 2, 1, 5, 6, 4] and K = 2: N − K = 4 → sorted [1, 2, 3, 4, <b>5</b>, 6] → answer 5. Quickselect partitions, checks which side index 4 is on, and only continues there: expected N + N/2 + N/4 + … ≈ <b>2N</b> steps.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           int kthLargest(int[] nums, int k) {
               int target = nums.length - k;            // index in ascending order
               int lo = 0, hi = nums.length - 1;
@@ -1363,7 +2173,53 @@
                   if (p == target) return nums[p];
                   if (p < target) lo = p + 1; else hi = p - 1;
               }
-          }`
+          }`,
+          alt: [
+            { lang: 'python', run: true, code: `import random
+
+def kth_largest(nums, k):
+    target = len(nums) - k                     # index in ascending order
+    lo, hi = 0, len(nums) - 1
+    rnd = random.Random(7)
+    while True:
+        r = rnd.randint(lo, hi)                # random pivot -> expected O(N)
+        nums[r], nums[hi] = nums[hi], nums[r]
+        p = lo
+        for j in range(lo, hi):
+            if nums[j] < nums[hi]:
+                nums[p], nums[j] = nums[j], nums[p]
+                p += 1
+        nums[p], nums[hi] = nums[hi], nums[p]
+        if p == target:
+            return nums[p]
+        if p < target:
+            lo = p + 1
+        else:
+            hi = p - 1
+
+print(kth_largest([3, 2, 1, 5, 6, 4], 2))  # 5
+# (library shortcut: heapq.nlargest(k, nums)[-1], O(N log k))` },
+            { lang: 'js', code: `function kthLargest(nums, k) {
+  const target = nums.length - k;            // index in ascending order
+  let lo = 0, hi = nums.length - 1;
+  while (true) {
+    const r = lo + Math.floor(Math.random() * (hi - lo + 1));   // random pivot
+    [nums[r], nums[hi]] = [nums[hi], nums[r]];
+    let p = lo;
+    for (let j = lo; j < hi; j++) {
+      if (nums[j] < nums[hi]) { [nums[p], nums[j]] = [nums[j], nums[p]]; p++; }
+    }
+    [nums[p], nums[hi]] = [nums[hi], nums[p]];
+    if (p === target) return nums[p];
+    if (p < target) lo = p + 1; else hi = p - 1;
+  }
+}` },
+            { lang: 'cpp', code: `int kthLargest(vector<int> nums, int k) {
+    // std::nth_element is introselect: quickselect with a worst-case fallback
+    nth_element(nums.begin(), nums.begin() + (nums.size() - k), nums.end());
+    return nums[nums.size() - k];            // the item at ascending index N - k
+}` }
+          ] }
       }
     ],
     deepDive: `<p><b>Average case, precisely.</b> With a random pivot, quick sort makes about <b>2N ln N ≈ 1.39 N log₂N</b> comparisons on average — ~39% more than merge sort — yet it is usually faster in practice: it works in place, scans memory sequentially (cache-friendly), and its inner loop is tiny. The O(N<sup>2</sup>) worst case needs consistently terrible pivots; with random pivots its probability is astronomically small, but with a <b>fixed</b> rule an attacker can craft "killer" inputs (McIlroy's anti-quicksort adversary), which matters for servers sorting user-supplied data.</p>
@@ -1379,8 +2235,8 @@
   // TOPIC 5: Custom Comparators in Java
   // =====================================================================
   topics.push({
-    title: 'Custom Comparators in Java (lambdas, Integer[] vs int[], multiple keys, overflow-safe compare)',
-    analogy: `<p>A sorting machine at a post office does not know <b>your</b> rule. It only asks one question again and again: <b>"Here are two letters, A and B — which one goes first?"</b> You hand the machine a little <b>rule card</b> that answers that question: "the one with the smaller PIN first; if PINs are equal, the heavier one first". That rule card is a <b>Comparator</b>. The machine (Java's sort) does all the rest.</p>`,
+    title: 'Custom Comparators (lambdas, key functions, multiple keys, overflow-safe compare)',
+    analogy: `<p>A sorting machine at a post office does not know <b>your</b> rule. It only asks one question again and again: <b>"Here are two letters, A and B — which one goes first?"</b> You hand the machine a little <b>rule card</b> that answers that question: "the one with the smaller PIN first; if PINs are equal, the heavier one first". That rule card is a <b>Comparator</b>. The machine (your language's built-in sort) does all the rest.</p>`,
     explain: `<p>A <code>Comparator&lt;T&gt;</code> is a function <code>compare(a, b)</code> that returns:</p>
       ${H.table(['return value', 'meaning'], [
         ['<b>negative</b> (e.g. -1)', '<code>a</code> goes <b>before</b> <code>b</code>'],
@@ -1395,6 +2251,14 @@
         ['<code>List&lt;T&gt;</code>', '<code>Collections.sort(list, cmp)</code> or <code>list.sort(cmp)</code>', '<span class="c-g">yes</span>', 'TimSort', '<span class="c-g">yes</span>']
       ])}
       <p>So to sort an <code>int[]</code> in <b>descending</b> order you either box it into <code>Integer[]</code> and pass <code>Collections.reverseOrder()</code>, or sort ascending and reverse the array yourself (faster, no boxing).</p>
+      <h4>The same rule card in other languages</h4>
+      ${H.table(['language', 'how you pass the rule', 'descending', 'stable?'], [
+        ['Java', '<code>Comparator</code> returning negative / 0 / positive', '<code>Collections.reverseOrder()</code> (objects only)', 'objects: yes · <code>int[]</code>: n/a'],
+        ['Python', '<code>key=</code> function (tuples give several keys); <code>functools.cmp_to_key</code> for a two-argument rule', '<code>reverse=True</code> or a negated key', 'yes, always'],
+        ['JavaScript', '<code>(a, b) =&gt;</code> negative / 0 / positive. With <b>no</b> comparator, numbers are sorted <b>as strings</b>', 'swap a and b', 'yes (since ES2019)'],
+        ['C++', 'a <code>bool</code> "less than" function: <code>(a, b)</code> returns true if a goes first. Use <code>&lt;</code>, never <code>&lt;=</code>', '<code>greater&lt;int&gt;()</code>', '<code>std::sort</code> no · <code>std::stable_sort</code> yes']
+      ])}
+      <p>The ideas below (multi-key rules, the overflow trap, the contract) apply in every language; only the spelling changes.</p>
       <h4>The overflow trap: never write <code>(a, b) -&gt; a - b</code></h4>
       ${H.table(['a', 'b', 'a − b in int', 'says', 'truth'], [
         ['-2,000,000,000', '1,000,000,000', '<span class="c-r">+1,294,967,296</span> (overflowed!)', 'a is bigger', 'a is smaller'],
@@ -1410,12 +2274,12 @@
     clues: [
       '"Sort by <b>X</b>, and if X ties, by <b>Y</b>" → multi-key comparator (<code>thenComparing</code> or an if-chain).',
       '"Arrange numbers/strings to form the <b>largest/smallest</b> number" → comparator on concatenation <code>(b+a).compareTo(a+b)</code>.',
-      '"Sort intervals/pairs/points by start, end, distance…" → <code>Arrays.sort(int[][], (x, y) -&gt; Integer.compare(x[0], y[0]))</code>.',
-      '"Sort in <b>descending</b> order" with an <code>int[]</code> → box to <code>Integer[]</code> + <code>Collections.reverseOrder()</code>, or sort and reverse.',
-      'Values up to ±10<sup>9</sup> or long values → <b>Integer.compare / Long.compare</b>, never <code>a - b</code>.',
-      '"Keep the original order for equal elements" → you need a <b>stable</b> sort: object arrays / lists in Java are stable.'
+      '"Sort intervals/pairs/points by start, end, distance…" → sort with a comparator or key on that field (Java <code>Arrays.sort(iv, (x, y) -&gt; Integer.compare(x[0], y[0]))</code>, Python <code>key=lambda x: x[0]</code>).',
+      '"Sort in <b>descending</b> order" → Java <code>int[]</code>: box to <code>Integer[]</code> + <code>Collections.reverseOrder()</code>, or sort and reverse; Python <code>reverse=True</code>; JS <code>(a, b) =&gt; b - a</code>; C++ <code>greater&lt;int&gt;()</code>.',
+      'Values up to ±10<sup>9</sup> or long values → compare, never subtract (<code>Integer.compare</code> / <code>Long.compare</code> in Java, <code>&lt;</code> in C++); Python ints never overflow.',
+      '"Keep the original order for equal elements" → you need a <b>stable</b> sort: Java object sorts, Python <code>sorted</code>, JS <code>Array.prototype.sort</code> and C++ <code>std::stable_sort</code> are stable.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       // 1) Primitive int[]: ascending only, no comparator.
       int[] a = {5, 1, 4};
       Arrays.sort(a);                                        // [1, 4, 5]
@@ -1444,7 +2308,73 @@
       // 6) Overflow-safe compare for big values.
       long[] big = {-2_000_000_000L, 1_000_000_000L};
       Long[] boxed = {big[0], big[1]};
-      Arrays.sort(boxed, (x, y) -> Long.compare(x, y));               // never (int)(x - y)`, `
+      Arrays.sort(boxed, (x, y) -> Long.compare(x, y));               // never (int)(x - y)`,
+      alt: [
+        { lang: 'python', run: true, code: `from functools import cmp_to_key
+
+# 1) Ascending: sorted() returns a new list, .sort() sorts in place.
+a = [5, 1, 4]
+a.sort()                                          # [1, 4, 5]
+
+# 2) Descending: no boxing issue in Python, just reverse=True.
+b = sorted([5, 1, 4], reverse=True)               # [5, 4, 1]
+
+# 3) Pairs / intervals: a key function returning a tuple = several keys at once.
+iv = [[3, 5], [1, 4], [1, 2]]
+iv.sort(key=lambda x: (x[0], x[1]))               # [[1, 2], [1, 4], [3, 5]]
+
+# 4) Words by length (stable: ties keep their order).
+words = ["pear", "fig", "apple"]
+words.sort(key=len)                               # ['fig', 'pear', 'apple']
+
+# 5) A real two-argument comparator, when a key is awkward.
+nums = [-2_000_000_000, 1_000_000_000]
+nums.sort(key=cmp_to_key(lambda x, y: (x > y) - (x < y)))   # ints never overflow in Python
+print(a, b, iv, words, nums)` },
+        { lang: 'js', run: true, code: `// 1) Numbers: ALWAYS pass a comparator. The default sort compares as strings.
+const a = [5, 1, 10, 4];
+console.log([...a].sort());                        // [1, 10, 4, 5]  <- string order!
+a.sort((x, y) => x - y);                           // [1, 4, 5, 10]
+
+// 2) Descending: swap the roles.
+const b = [5, 1, 4].sort((x, y) => y - x);         // [5, 4, 1]
+
+// 3) Typed arrays sort numerically by default and avoid object overhead.
+const c = Int32Array.from([5, 1, 4]).sort();       // Int32Array [1, 4, 5]
+
+// 4) Intervals by start, then by end.
+const iv = [[3, 5], [1, 4], [1, 2]];
+iv.sort((x, y) => x[0] - y[0] || x[1] - y[1]);     // [[1,2],[1,4],[3,5]]
+
+// 5) Strings: compare with < / > (or localeCompare for human-language order).
+const words = ['pear', 'fig', 'apple'];
+words.sort((p, q) => p.length - q.length);         // stable: ['fig', 'pear', 'apple']
+
+// 6) x - y is exact for Numbers up to 2^53; for BigInt use comparisons.
+const big = [3n, -2n, 1n].sort((x, y) => (x < y ? -1 : x > y ? 1 : 0));
+console.log(a, b, c, iv, words, big);` },
+        { lang: 'cpp', code: `// 1) Ascending.
+vector<int> a = {5, 1, 4};
+sort(a.begin(), a.end());                                  // 1 4 5
+
+// 2) Descending: pass greater<int>() (or sort, then reverse).
+vector<int> b = {5, 1, 4};
+sort(b.begin(), b.end(), greater<int>());                  // 5 4 1
+
+// 3) Intervals: vectors / pairs already compare start first, then end.
+vector<vector<int>> iv = {{3, 5}, {1, 4}, {1, 2}};
+sort(iv.begin(), iv.end());                                // {1,2} {1,4} {3,5}
+
+// 4) Words by length; stable_sort keeps ties in input order (sort does not).
+vector<string> words = {"pear", "fig", "apple"};
+stable_sort(words.begin(), words.end(),
+            [](const string& p, const string& q) { return p.size() < q.size(); });
+
+// 5) A C++ comparator answers "does x go BEFORE y?" with a bool: use <, never <=,
+//    and never subtract (signed overflow is undefined behaviour).
+vector<long long> big = {-2000000000LL, 1000000000LL};
+sort(big.begin(), big.end(), [](long long x, long long y) { return x < y; });` }
+      ] }, { lang: 'java', code: `
       // Multiple keys with a small record type.
       class Student {
           String name; int marks;
@@ -1469,7 +2399,60 @@
               });
               System.out.println(list); // [Anu:92, Bob:92, Ravi:80, Zoe:80]
           }
-      }`],
+      }`,
+      alt: [
+        { lang: 'python', run: true, code: `from dataclasses import dataclass
+
+@dataclass
+class Student:
+    name: str
+    marks: int
+
+students = [Student("Ravi", 80), Student("Anu", 92), Student("Zoe", 80), Student("Bob", 92)]
+
+# Way 1: one key tuple. Negate the number to get "marks high -> low".
+students.sort(key=lambda s: (-s.marks, s.name))
+
+# Way 2: two stable passes, secondary key first.
+students.sort(key=lambda s: s.name)
+students.sort(key=lambda s: s.marks, reverse=True)   # reverse=True keeps ties stable too
+
+print([f"{s.name}:{s.marks}" for s in students])     # ['Anu:92', 'Bob:92', 'Ravi:80', 'Zoe:80']` },
+        { lang: 'js', run: true, code: `class Student {
+  constructor(name, marks) { this.name = name; this.marks = marks; }
+  toString() { return this.name + ':' + this.marks; }
+}
+
+const list = [new Student('Ravi', 80), new Student('Anu', 92),
+              new Student('Zoe', 80), new Student('Bob', 92)];
+
+list.sort((x, y) => {
+  if (x.marks !== y.marks) return y.marks - x.marks;        // bigger marks first
+  return x.name < y.name ? -1 : x.name > y.name ? 1 : 0;    // tie -> alphabetical
+});
+console.log(list.join(', '));   // Anu:92, Bob:92, Ravi:80, Zoe:80` },
+        { lang: 'cpp', code: `struct Student {
+    string name;
+    int marks;
+};
+
+int main() {
+    vector<Student> list = {{"Ravi", 80}, {"Anu", 92}, {"Zoe", 80}, {"Bob", 92}};
+
+    // Way 1: compare tuples; the minus sign flips marks to high -> low.
+    sort(list.begin(), list.end(), [](const Student& x, const Student& y) {
+        return make_tuple(-x.marks, x.name) < make_tuple(-y.marks, y.name);
+    });
+
+    // Way 2: the if-chain (same result).
+    sort(list.begin(), list.end(), [](const Student& x, const Student& y) {
+        if (x.marks != y.marks) return x.marks > y.marks;   // bigger marks first
+        return x.name < y.name;                             // tie -> alphabetical
+    });
+
+    for (const auto& s : list) cout << s.name << ':' << s.marks << ' ';   // Anu:92 Bob:92 Ravi:80 Zoe:80
+}` }
+      ] }],
     codeTitle: ['Everyday sorting recipes', 'Sort by several keys'],
     problems: [
       {
@@ -1516,9 +2499,20 @@
         },
         hints: [
           `<p><b>Aha:</b> for any two pieces a and b, only two local orders exist: <code>a+b</code> or <code>b+a</code>. Put first whichever makes the glued string bigger. Since both glued strings have equal length, comparing them as strings is the same as comparing them as numbers.</p>`,
-          `<p>Convert the ints to a <code>String[]</code> (strings can take a comparator), then <code>Arrays.sort(s, (a, b) -&gt; (b + a).compareTo(a + b))</code> — note b+a first to get "bigger first". Glue with a <code>StringBuilder</code>.</p>`,
+          `<p>Convert the ints to strings, then sort them with the rule "a first if a+b &gt; b+a" (Java <code>Arrays.sort(s, (a, b) -&gt; (b + a).compareTo(a + b))</code> — note b+a first to get "bigger first"; Python <code>cmp_to_key</code>; C++ <code>[](a, b) { return a + b &gt; b + a; }</code>). Glue the pieces with a string builder or <code>join</code>.</p>`,
           `<p>Trap: input like [0, 0] gives "00" — the answer must be <b>"0"</b>; after sorting, if the first string is "0" then everything is 0. Recipe: to strings → sort with the glue rule → if s[0] is "0" return "0" → append all → return.</p>`
         ],
+        tests: { sig: 'int[] -> string', fn: 'largestNumber', cases: [
+          [[[3, 30, 34, 5, 9]], '9534330'],
+          [[[10, 2]], '210'],
+          [[[0, 0]], '0'],
+          [[[0]], '0'],
+          [[[1]], '1'],
+          [[[1000000000, 9]], '91000000000'],
+          [[[121, 12]], '12121'],
+          [[[0, 1, 0]], '100'],
+          [[[432, 43243]], '43243432']
+        ] },
         solution: {
           approach: `<p>Sort the numbers as strings with the comparator "b+a vs a+b", then concatenate.</p>`,
           code: `
@@ -1543,6 +2537,37 @@
                     System.out.println(new Solution().largestNumber(new int[]{3, 30, 34, 5, 9})); // 9534330
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `from functools import cmp_to_key
+
+def largest_number(nums):
+    s = [str(x) for x in nums]
+    # a goes first when a+b > b+a; cmp must be negative for "a first"
+    s.sort(key=cmp_to_key(lambda a, b: (b + a > a + b) - (b + a < a + b)))
+    return "0" if s[0] == "0" else "".join(s)   # all zeros: avoid "000"` },
+            { lang: 'js', code: `function largestNumber(nums) {
+  const s = nums.map(String);
+  // a goes first when a+b is bigger; equal-length digit strings compare like numbers
+  s.sort((a, b) => {
+    const ab = a + b, ba = b + a;
+    return ab > ba ? -1 : ab < ba ? 1 : 0;     // plain string compare, no locale rules
+  });
+  return s[0] === '0' ? '0' : s.join('');      // all zeros: avoid "000"
+}` },
+            { lang: 'cpp', code: `class Solution {
+public:
+    string largestNumber(const vector<int>& nums) {
+        vector<string> s;
+        for (int x : nums) s.push_back(to_string(x));
+        // strict weak ordering: a before b when a+b is bigger than b+a
+        sort(s.begin(), s.end(), [](const string& a, const string& b) { return a + b > b + a; });
+        if (s[0] == "0") return "0";                  // all zeros: avoid "000"
+        string out;
+        for (const string& x : s) out += x;
+        return out;
+    }
+};` }
+          ],
           dry: {
             head: ['pair (a, b)', 'a + b', 'b + a', 'winner goes first'],
             rows: [
@@ -1652,20 +2677,46 @@
       {
         title: 'Strings by length, then alphabetically',
         html: `<p>Input ["bb", "a", "ccc", "ab"]. Rule: shorter first; same length → A to Z. Output ${H.arr(['a', 'ab', 'bb', 'ccc'], { hl: { 1: 'g', 2: 'g' } })} — "ab" and "bb" tie on length 2, so the second key decides.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           List<String> w = new ArrayList<>(List.of("bb", "a", "ccc", "ab"));
           w.sort(Comparator.comparingInt(String::length).thenComparing(Comparator.naturalOrder()));
-          System.out.println(w); // [a, ab, bb, ccc]`
+          System.out.println(w); // [a, ab, bb, ccc]`,
+          alt: [
+            { lang: 'python', run: true, code: `w = ["bb", "a", "ccc", "ab"]
+w.sort(key=lambda s: (len(s), s))    # length first, then alphabetical
+print(w)  # ['a', 'ab', 'bb', 'ccc']` },
+            { lang: 'js', run: true, code: `const w = ['bb', 'a', 'ccc', 'ab'];
+w.sort((p, q) => p.length - q.length || (p < q ? -1 : p > q ? 1 : 0));
+console.log(w);   // [ 'a', 'ab', 'bb', 'ccc' ]` },
+            { lang: 'cpp', code: `vector<string> w = {"bb", "a", "ccc", "ab"};
+sort(w.begin(), w.end(), [](const string& p, const string& q) {
+    return make_pair(p.size(), p) < make_pair(q.size(), q);   // length, then alphabetical
+});
+// w = {"a", "ab", "bb", "ccc"}` }
+          ] }
       },
       {
         title: 'Points by distance from the origin (overflow-safe)',
         html: `<p>Points (3,3), (−2,2), (5,−1). Compare squared distances (no square root needed): 18, 8, 26 → order (−2,2), (3,3), (5,−1). With coordinates up to 10<sup>5</sup>, x² + y² can reach 2·10<sup>10</sup> — more than an int — so compute in <b>long</b> and compare with <code>Long.compare</code>.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           int[][] pts = {{3, 3}, {-2, 2}, {5, -1}};
           Arrays.sort(pts, (p, q) -> Long.compare(
                   (long) p[0] * p[0] + (long) p[1] * p[1],
                   (long) q[0] * q[0] + (long) q[1] * q[1]));
-          System.out.println(Arrays.deepToString(pts)); // [[-2, 2], [3, 3], [5, -1]]`
+          System.out.println(Arrays.deepToString(pts)); // [[-2, 2], [3, 3], [5, -1]]`,
+          alt: [
+            { lang: 'python', run: true, code: `pts = [[3, 3], [-2, 2], [5, -1]]
+pts.sort(key=lambda p: p[0] * p[0] + p[1] * p[1])   # squared distance; no overflow in Python
+print(pts)  # [[-2, 2], [3, 3], [5, -1]]` },
+            { lang: 'js', run: true, code: `const pts = [[3, 3], [-2, 2], [5, -1]];
+const d = (p) => p[0] * p[0] + p[1] * p[1];   // up to 2e10: still exact in a Number
+pts.sort((p, q) => d(p) - d(q));
+console.log(JSON.stringify(pts));             // [[-2,2],[3,3],[5,-1]]` },
+            { lang: 'cpp', code: `vector<array<int, 2>> pts = {{3, 3}, {-2, 2}, {5, -1}};
+auto d = [](const array<int, 2>& p) { return 1LL * p[0] * p[0] + 1LL * p[1] * p[1]; };  // long long
+sort(pts.begin(), pts.end(), [&](const auto& p, const auto& q) { return d(p) < d(q); });
+// pts = {{-2, 2}, {3, 3}, {5, -1}}` }
+          ] }
       },
       {
         title: 'Descending int[] without boxing',
@@ -1715,16 +2766,16 @@
         ['Quick sort', '<span class="c-r">no</span>', 'partition swaps items across far distances'],
         ['Heap sort', '<span class="c-r">no</span>', 'heap moves items up/down the tree']
       ])}
-      <p><b>In Java:</b> <code>Arrays.sort(Object[])</code>, <code>Collections.sort</code> and <code>List.sort</code> use TimSort → <b>stable</b>. <code>Arrays.sort(int[])</code> is quick-sort based (not stable) — but for primitives nobody can tell. <b>Making any sort stable:</b> add the original index as a final tie-breaker key.</p>
+      <p><b>In the libraries:</b> Java's <code>Arrays.sort(Object[])</code>, <code>Collections.sort</code> and <code>List.sort</code> use TimSort → <b>stable</b>; <code>Arrays.sort(int[])</code> is quick-sort based (not stable), but for primitives nobody can tell. Python's <code>sorted</code> / <code>list.sort</code> and JavaScript's <code>Array.prototype.sort</code> are stable. C++ <code>std::sort</code> is <b>not</b> stable; use <code>std::stable_sort</code>. <b>Making any sort stable:</b> add the original index as a final tie-breaker key.</p>
       <p><b>Why it matters — sorting by two keys in two passes:</b> sort by the <b>secondary</b> key first, then <b>stable-sort</b> by the primary key. Ties on the primary key keep the secondary order. (That is exactly how radix sort works digit by digit.)</p>`,
     clues: [
       '"If two items are equal, keep them in their <b>original order</b>" / "in the order they appear in input" → stable sort required.',
-      '"Sort by key A; for ties, keep input order" → Java object sort (TimSort) or add the index as a tie-breaker.',
+      '"Sort by key A; for ties, keep input order" → a stable library sort (Java object sort, Python <code>sorted</code>, JS <code>sort</code>, C++ <code>stable_sort</code>) or add the index as a tie-breaker.',
       '"Sort by multiple keys" done as several passes → each pass after the first must be <b>stable</b>.',
       '"Which of these sorts is stable?" theory question → bubble, insertion, merge, counting, radix: yes; selection, quick, heap: no.',
       'Radix sort or "sort by digits/characters from the right" → the inner sort must be stable.'
     ],
-    code: `
+    code: { lang: 'java', code: `
       // Make ANY sort stable: break ties by the original index.
       class Item {
           int key; String tag; int idx;
@@ -1746,6 +2797,42 @@
               for (Item it : items) System.out.print(it.tag + " "); // 1D 3S 5H 5S
           }
       }`,
+      alt: [
+        { lang: 'python', run: true, code: `# Make ANY sort stable: break ties by the original index.
+tags = ["5H", "3S", "5S", "1D"]
+keys = [5, 3, 5, 1]
+items = [(k, i, t) for i, (k, t) in enumerate(zip(keys, tags))]   # (key, original index, tag)
+
+# Python's sort is already stable; the index tie-breaker makes even an
+# unstable algorithm (e.g. a hand-written quick sort) give the same order.
+items.sort(key=lambda it: (it[0], it[1]))
+print(" ".join(t for _, _, t in items))   # 1D 3S 5H 5S` },
+        { lang: 'js', run: true, code: `// Make ANY sort stable: break ties by the original index.
+const tags = ['5H', '3S', '5S', '1D'];
+const keys = [5, 3, 5, 1];
+const items = keys.map((key, idx) => ({ key, tag: tags[idx], idx }));
+
+// Array.prototype.sort is stable since ES2019; the idx tie-breaker also works
+// for any unstable algorithm such as a hand-written quick sort.
+items.sort((x, y) => x.key - y.key || x.idx - y.idx);
+console.log(items.map((it) => it.tag).join(' '));   // 1D 3S 5H 5S` },
+        { lang: 'cpp', code: `// Make ANY sort stable: break ties by the original index.
+struct Item { int key; string tag; int idx; };
+
+int main() {
+    vector<string> tags = {"5H", "3S", "5S", "1D"};
+    vector<int> keys = {5, 3, 5, 1};
+    vector<Item> items;
+    for (int i = 0; i < (int)keys.size(); i++) items.push_back({keys[i], tags[i], i});
+
+    // std::sort is NOT stable, but with the index as the last key no two items tie.
+    // (std::stable_sort on the key alone gives the same result.)
+    sort(items.begin(), items.end(), [](const Item& x, const Item& y) {
+        return tie(x.key, x.idx) < tie(y.key, y.idx);
+    });
+    for (const auto& it : items) cout << it.tag << ' ';   // 1D 3S 5H 5S
+}` }
+      ] },
     codeTitle: 'Stability by tie-breaking on the original index'
   });
 
@@ -1845,7 +2932,7 @@ print(by_dept)  # [('ben', 'HR'), ('dev', 'HR'), ('asha', 'IT'), ('cara', 'IT')]
         title: 'Making selection sort stable: shift instead of swap',
         html: `<p>The instability came from the long-distance <b>swap</b>. Instead, take the minimum out and <b>shift</b> the block a[i..m−1] one step right, then put the minimum at i. Nobody jumps over anybody → stable. Price: up to O(N) moves per step (still O(N<sup>2</sup>) overall, but more writes).</p>
           ${H.arr(['5♥', '5♠', '3♦', '1♣'], { label: 'before step 0' })}${H.arr(['1♣', '5♥', '5♠', '3♦'], { label: 'after step 0 (shifted)', hl: { 0: 'g', 1: 'b', 2: 'b' } })}`,
-        code: `
+        code: { lang: 'java', code: `
           void stableSelectionSort(int[] key) {
               for (int i = 0; i < key.length - 1; i++) {
                   int m = i;
@@ -1854,17 +2941,40 @@ print(by_dept)  # [('ben', 'HR'), ('dev', 'HR'), ('asha', 'IT'), ('cara', 'IT')]
                   for (int j = m; j > i; j--) key[j] = key[j - 1];   // shift, do not swap
                   key[i] = min;
               }
-          }`
+          }`,
+          alt: [
+            { lang: 'python', code: `def stable_selection_sort(key):
+    for i in range(len(key) - 1):
+        m = min(range(i, len(key)), key=key.__getitem__)   # first smallest
+        key.insert(i, key.pop(m))        # take it out and shift the block right: no jump-over` },
+            { lang: 'js', code: `function stableSelectionSort(key) {
+  for (let i = 0; i < key.length - 1; i++) {
+    let m = i;
+    for (let j = i + 1; j < key.length; j++) if (key[j] < key[m]) m = j;
+    const min = key[m];
+    for (let j = m; j > i; j--) key[j] = key[j - 1];   // shift, do not swap
+    key[i] = min;
+  }
+}` },
+            { lang: 'cpp', code: `void stableSelectionSort(vector<int>& key) {
+    for (auto it = key.begin(); it != key.end(); ++it) {
+        auto m = min_element(it, key.end());           // first smallest
+        rotate(it, m, m + 1);                          // shift the block right, put min at it
+    }
+}` }
+          ] }
       },
       {
-        title: 'Java: which calls are stable?',
+        title: 'Which library calls are stable?',
         html: `${H.table(['call', 'stable?'], [
             ['<code>Arrays.sort(int[])</code>', 'not stable (dual-pivot quick sort) — invisible for primitives'],
             ['<code>Arrays.sort(T[], cmp)</code>, <code>List.sort</code>, <code>Collections.sort</code>', '<span class="c-g">guaranteed stable</span> (TimSort)'],
             ['<code>stream.sorted()</code> on an ordered stream', '<span class="c-g">stable</span>'],
+            ['Python <code>sorted</code> / <code>list.sort</code>', '<span class="c-g">guaranteed stable</span>'],
+            ['JavaScript <code>Array.prototype.sort</code>', '<span class="c-g">stable</span> (required since ES2019)'],
             ['C++ <code>std::sort</code> / <code>std::stable_sort</code>', 'no / yes']
           ])}
-          <p>So in Java, sorting records by one key with <code>list.sort</code> is safe for "keep input order on ties".</p>`
+          <p>So sorting records by one key with Java's <code>list.sort</code>, Python's <code>sorted</code>, JavaScript's <code>sort</code> or C++ <code>std::stable_sort</code> is safe for "keep input order on ties". Plain C++ <code>std::sort</code> is not.</p>`
       }
     ],
     deepDive: `<p><b>Formal definition.</b> A sort is stable if for every i &lt; j with key(a[i]) == key(a[j]), a[i] appears before a[j] in the output. Equivalently: a stable sort by key k gives the same result as an unstable sort by the pair (k, original index). That is why "add the index as a final tie-breaker" turns any sort stable — at the cost of storing N indices.</p>
@@ -1886,7 +2996,7 @@ print(by_dept)  # [('ben', 'HR'), ('dev', 'HR'), ('asha', 'IT'), ('cara', 'IT')]
           <p>Output: [${H.c('g', '"let1 art can"')}, ${H.c('g', '"let3 art zero"')}, ${H.c('g', '"let2 own kit dig"')}, ${H.c('b', '"dig1 8 1 5 1"')}, ${H.c('b', '"dig2 3 6"')}]</p>
           <p>Why: letter-logs sorted by content ("art can" &lt; "art zero" &lt; "own kit dig"); digit-logs stay in input order (dig1 came before dig2) — that last rule is a <b>stability</b> requirement.</p>`,
         brute: {
-          why: `<p>Split into two lists, bubble-sort the letter-logs with hand-written string comparisons, then append the digit-logs. Correct, but O(N<sup>2</sup>·L) and lots of fiddly code. The waste: Java already has a stable O(N log N) sort — we only need to describe the rule.</p>`,
+          why: `<p>Split into two lists, bubble-sort the letter-logs with hand-written string comparisons, then append the digit-logs. Correct, but O(N<sup>2</sup>·L) and lots of fiddly code. The waste: every mainstream language already has a stable O(N log N) sort — we only need to describe the rule.</p>`,
           code: `
             String[] brute(String[] logs) {
                 List<String> let = new ArrayList<>(), dig = new ArrayList<>();
@@ -1907,17 +3017,26 @@ print(by_dept)  # [('ben', 'HR'), ('dev', 'HR'), ('asha', 'IT'), ('cara', 'IT')]
         },
         mcq: {
           q: 'Your comparator returns 0 for any two digit-logs. Why does that keep them in their original order?',
-          options: ['Because 0 means "sort by identifier"', 'Because Arrays.sort on objects is stable: ties keep input order', 'It does not — you must sort digit-logs by index explicitly', 'Because digit-logs are always already sorted'],
+          options: ['Because 0 means "sort by identifier"', 'Because the library sort is stable (Java object sort, Python sorted, JS sort, C++ stable_sort): ties keep input order', 'It does not — you must sort digit-logs by index explicitly', 'Because digit-logs are always already sorted'],
           answer: 1,
-          explain: 'Arrays.sort(Object[], Comparator) uses TimSort, which is guaranteed stable. A comparator result of 0 means "tie", and a stable sort never reorders ties.'
+          explain: 'Java Arrays.sort(Object[], Comparator) uses TimSort, which is guaranteed stable, and so are Python sorted and JavaScript Array.prototype.sort. (C++ std::sort is not: use std::stable_sort.) A comparator result of 0 means "tie", and a stable sort never reorders ties.'
         },
         hints: [
           `<p><b>Aha:</b> rule 3 ("digit-logs keep their order") is just <b>stability</b>. If the comparator says "two digit-logs are equal", a stable sort leaves them alone.</p>`,
           `<p>Write one comparator: find the first space; look at the next character to decide letter vs digit. Letter vs letter → compare contents, then identifiers. Letter vs digit → letter first (−1). Digit vs letter → +1. Digit vs digit → 0. Use <code>Arrays.sort(logs, cmp)</code> (stable TimSort).</p>`,
           `<p>Traps: identifiers can contain digits ("let1") — only the first character <b>after the space</b> tells the type; tie on content must fall back to the identifier; do not use an unstable hand-written quick sort. Recipe: split at first space → classify → 4 cases → return.</p>`
         ],
+        tests: { sig: 'string[] -> string[]', fn: 'reorderLogFiles', cases: [
+          [[['dig1 8 1 5 1', 'let1 art can', 'dig2 3 6', 'let2 own kit dig', 'let3 art zero']], ['let1 art can', 'let3 art zero', 'let2 own kit dig', 'dig1 8 1 5 1', 'dig2 3 6']],
+          [[['a1 9 2 3 1', 'g1 act car', 'zo4 4 7', 'ab1 off key dog', 'a8 act zoo']], ['g1 act car', 'a8 act zoo', 'ab1 off key dog', 'a1 9 2 3 1', 'zo4 4 7']],
+          [[['x 1']], ['x 1']],
+          [[['b art', 'a art', 'c 1']], ['a art', 'b art', 'c 1']],
+          [[['d2 5', 'd1 3', 'd3 0']], ['d2 5', 'd1 3', 'd3 0']],
+          [[['dig1 8', 'let1 abc']], ['let1 abc', 'dig1 8']],
+          [[['let2 a', 'let10 a', 'x9 b a']], ['let10 a', 'let2 a', 'x9 b a']]
+        ] },
         solution: {
-          approach: `<p>One comparator encoding rules 1 and 2; rule 3 comes for free from TimSort's stability.</p>`,
+          approach: `<p>One comparator encoding rules 1 and 2; rule 3 comes for free from the stability of the library sort (Java's TimSort, Python's <code>sorted</code>, JavaScript's <code>Array.prototype.sort</code>, C++ <code>std::stable_sort</code>).</p>`,
           code: `
             class Solution {
                 public String[] reorderLogFiles(String[] logs) {
@@ -1943,6 +3062,48 @@ print(by_dept)  # [('ben', 'HR'), ('dev', 'HR'), ('asha', 'IT'), ('cara', 'IT')]
                     // [let1 art can, let3 art zero, let2 own kit dig, dig1 8 1 5 1, dig2 3 6]
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `def reorder_log_files(logs):
+    def key(log):
+        ident, rest = log.split(" ", 1)
+        if rest[0].isdigit():
+            return (1,)                  # all digit-logs tie -> stable sort keeps input order
+        return (0, rest, ident)          # letter-logs: by content, then identifier
+    return sorted(logs, key=key)` },
+            { lang: 'js', code: `function reorderLogFiles(logs) {
+  const split = (s) => { const i = s.indexOf(' '); return [s.slice(0, i), s.slice(i + 1)]; };
+  const isDigit = (c) => c >= '0' && c <= '9';
+  // Array.prototype.sort is stable (ES2019+), so tied digit-logs keep input order
+  return logs.slice().sort((a, b) => {
+    const [ia, ra] = split(a), [ib, rb] = split(b);
+    const da = isDigit(ra[0]), db = isDigit(rb[0]);
+    if (!da && !db) {
+      if (ra !== rb) return ra < rb ? -1 : 1;       // by content
+      return ia < ib ? -1 : ia > ib ? 1 : 0;        // then identifier
+    }
+    if (!da) return -1;                             // letter before digit
+    if (!db) return 1;
+    return 0;                                       // both digit: tie
+  });
+}` },
+            { lang: 'cpp', code: `class Solution {
+public:
+    vector<string> reorderLogFiles(vector<string> logs) {
+        // std::sort is NOT stable; stable_sort keeps tied digit-logs in input order
+        stable_sort(logs.begin(), logs.end(), [](const string& a, const string& b) {
+            size_t sa = a.find(' '), sb = b.find(' ');
+            bool da = isdigit((unsigned char)a[sa + 1]), db = isdigit((unsigned char)b[sb + 1]);
+            if (!da && !db) {
+                int c = a.compare(sa + 1, string::npos, b, sb + 1, string::npos);   // by content
+                if (c != 0) return c < 0;
+                return a.substr(0, sa) < b.substr(0, sb);                         // then identifier
+            }
+            return !da && db;                    // letter before digit; digit vs digit is a tie
+        });
+        return logs;
+    }
+};` }
+          ],
           dry: {
             head: ['compare(a, b)', 'types', 'rule used', 'result'],
             rows: [
@@ -2119,9 +3280,19 @@ print(by_dept)  # [('ben', 'HR'), ('dev', 'HR'), ('asha', 'IT'), ('cara', 'IT')]
         },
         hints: [
           `<p><b>Aha:</b> once the intervals are sorted by start, an interval can only overlap the <b>most recent</b> merged block — overlap test is just <code>cur.start ≤ last.end</code>.</p>`,
-          `<p>Sort with <code>Arrays.sort(intervals, (x, y) -&gt; Integer.compare(x[0], y[0]))</code>. Keep a <code>List&lt;int[]&gt;</code> result; look only at its last element.</p>`,
+          `<p>Sort by start (Java <code>Arrays.sort(intervals, (x, y) -&gt; Integer.compare(x[0], y[0]))</code>, Python <code>sorted(intervals)</code>, JS <code>(x, y) =&gt; x[0] - y[0]</code>, C++ <code>sort</code> on vectors). Keep a growable result list; look only at its last element.</p>`,
           `<p>Traps: use <code>max</code> for the new end (swallowed intervals); touching counts as overlap here (≤, not &lt;); copy the interval when adding so you do not modify the input by accident. Recipe: sort by start → for each cur: if result empty or cur.start &gt; last.end → add a copy; else last.end = max(last.end, cur.end) → convert the list to int[][].</p>`
         ],
+        tests: { sig: 'int[][] -> int[][]', fn: 'merge', cases: [
+          [[[[8, 10], [1, 3], [15, 18], [2, 6], [9, 12]]], [[1, 6], [8, 12], [15, 18]]],
+          [[[[1, 4], [4, 5]]], [[1, 5]]],
+          [[[[1, 4]]], [[1, 4]]],
+          [[[[1, 10], [2, 5], [3, 4]]], [[1, 10]]],
+          [[[[2, 3], [5, 6], [1, 10]]], [[1, 10]]],
+          [[[[0, 0], [0, 0]]], [[0, 0]]],
+          [[[[1, 2], [3, 4]]], [[1, 2], [3, 4]]],
+          [[[[5, 6], [1, 2]]], [[1, 2], [5, 6]]]
+        ] },
         solution: {
           approach: `<p>Sort by start; sweep once, either extending the last block or opening a new one.</p>`,
           code: `
@@ -2148,6 +3319,38 @@ print(by_dept)  # [('ben', 'HR'), ('dev', 'HR'), ('asha', 'IT'), ('cara', 'IT')]
                     System.out.println(Arrays.deepToString(new Solution().merge(in))); // [[1, 6], [8, 12], [15, 18]]
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `def merge(intervals):
+    res = []
+    for s, e in sorted(intervals):           # 1) sort by start (tuples compare start first)
+        if not res or s > res[-1][1]:
+            res.append([s, e])               # no overlap -> open a new block
+        else:
+            res[-1][1] = max(res[-1][1], e)  # overlap -> stretch (max handles swallowed)
+    return res` },
+            { lang: 'js', code: `function merge(intervals) {
+  const sorted = intervals.slice().sort((x, y) => x[0] - y[0]);   // numeric comparator!
+  const res = [];
+  for (const [s, e] of sorted) {
+    const last = res[res.length - 1];
+    if (!last || s > last[1]) res.push([s, e]);   // no overlap -> new block
+    else last[1] = Math.max(last[1], e);          // overlap -> stretch
+  }
+  return res;
+}` },
+            { lang: 'cpp', code: `class Solution {
+public:
+    vector<vector<int>> merge(vector<vector<int>> intervals) {
+        sort(intervals.begin(), intervals.end());          // vectors compare start first
+        vector<vector<int>> res;
+        for (const auto& cur : intervals) {
+            if (res.empty() || cur[0] > res.back()[1]) res.push_back(cur);   // new block
+            else res.back()[1] = max(res.back()[1], cur[1]);                 // stretch
+        }
+        return res;
+    }
+};` }
+          ],
           dry: {
             head: ['cur', 'last block', 'cur.start ≤ last.end?', 'action', 'result'],
             rows: [
@@ -2167,7 +3370,7 @@ print(by_dept)  # [('ben', 'HR'), ('dev', 'HR'), ('asha', 'IT'), ('cara', 'IT')]
 
   // ---------- TOPIC 7 extras ----------
   Object.assign(topics[topics.length - 1], {
-    code: [`
+    code: [{ lang: 'java', code: `
       // Merge overlapping intervals: sort by start, then one sweep.
       int[][] merge(int[][] intervals) {
           Arrays.sort(intervals, (x, y) -> Integer.compare(x[0], y[0]));
@@ -2181,7 +3384,38 @@ print(by_dept)  # [('ben', 'HR'), ('dev', 'HR'), ('asha', 'IT'), ('cara', 'IT')]
               }
           }
           return res.toArray(new int[0][]);
-      }`, { lang: 'python', run: true, title: 'Same idea in Python (runnable)', code: `def merge(intervals):
+      }`,
+      alt: [
+        { lang: 'python', code: `# Merge overlapping intervals: sort by start, then one sweep.
+def merge(intervals):
+    res = []
+    for s, e in sorted(intervals, key=lambda x: x[0]):
+        if not res or s > res[-1][1]:
+            res.append([s, e])                    # gap -> new block
+        else:
+            res[-1][1] = max(res[-1][1], e)       # overlap -> stretch (max!)
+    return res` },
+        { lang: 'js', code: `// Merge overlapping intervals: sort by start, then one sweep.
+function merge(intervals) {
+  const res = [];
+  for (const [s, e] of [...intervals].sort((x, y) => x[0] - y[0])) {
+    const last = res[res.length - 1];
+    if (!last || s > last[1]) res.push([s, e]);   // gap -> new block
+    else last[1] = Math.max(last[1], e);          // overlap -> stretch (max!)
+  }
+  return res;
+}` },
+        { lang: 'cpp', code: `// Merge overlapping intervals: sort by start, then one sweep.
+vector<vector<int>> merge(vector<vector<int>> intervals) {
+    sort(intervals.begin(), intervals.end());
+    vector<vector<int>> res;
+    for (const auto& cur : intervals) {
+        if (res.empty() || cur[0] > res.back()[1]) res.push_back(cur);   // gap -> new block
+        else res.back()[1] = max(res.back()[1], cur[1]);                 // overlap -> stretch (max!)
+    }
+    return res;
+}` }
+      ] }, { lang: 'python', run: true, title: 'Same idea in Python (runnable)', code: `def merge(intervals):
     intervals.sort(key=lambda x: x[0])          # 1) sort by start
     res = []
     for s, e in intervals:
@@ -2192,7 +3426,7 @@ print(by_dept)  # [('ben', 'HR'), ('dev', 'HR'), ('asha', 'IT'), ('cara', 'IT')]
     return res
 
 print(merge([[8, 10], [1, 3], [15, 18], [2, 6], [9, 12]]))  # [[1, 6], [8, 12], [15, 18]]` }],
-    codeTitle: ['Merge intervals (Java)', 'Merge intervals (Python, runnable)'],
+    codeTitle: ['Merge intervals (sort + sweep)', 'Merge intervals (Python, runnable)'],
     examples: [
       {
         title: 'Swallowed intervals need max()',
@@ -2211,7 +3445,7 @@ print(merge([[8, 10], [1, 3], [15, 18], [2, 6], [9, 12]]))  # [[1, 6], [8, 12], 
       {
         title: 'Total time covered = merge, then add lengths',
         html: `<p>Watch-history segments [1,3] [2,6] [8,10] (minutes). Merged: [1,6] [8,10]. Covered = (6 − 1) + (10 − 8) = <b>7 minutes</b>. Adding raw lengths would give 2 + 4 + 2 = 8 — double-counting the overlap 2..3.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           long coveredLength(int[][] iv) {
               Arrays.sort(iv, (x, y) -> Integer.compare(x[0], y[0]));
               long total = 0;
@@ -2221,7 +3455,41 @@ print(merge([[8, 10], [1, 3], [15, 18], [2, 6], [9, 12]]))  # [[1, 6], [8, 12], 
                   else e = Math.max(e, cur[1]);                              // extend block
               }
               return total + (e - s);                                        // last block
-          }`
+          }`,
+          alt: [
+            { lang: 'python', run: true, code: `def covered_length(iv):
+    iv = sorted(iv)
+    total, (s, e) = 0, iv[0]
+    for cs, ce in iv:
+        if cs > e:                       # close block
+            total += e - s
+            s, e = cs, ce
+        else:                            # extend block
+            e = max(e, ce)
+    return total + (e - s)               # last block
+
+print(covered_length([[1, 3], [2, 6], [8, 10]]))  # 7` },
+            { lang: 'js', run: true, code: `function coveredLength(iv) {
+  const a = [...iv].sort((x, y) => x[0] - y[0]);
+  let total = 0, [s, e] = a[0];
+  for (const [cs, ce] of a) {
+    if (cs > e) { total += e - s; s = cs; e = ce; }   // close block
+    else e = Math.max(e, ce);                         // extend block
+  }
+  return total + (e - s);                             // last block
+}
+console.log(coveredLength([[1, 3], [2, 6], [8, 10]]));   // 7` },
+            { lang: 'cpp', code: `long long coveredLength(vector<vector<int>> iv) {
+    sort(iv.begin(), iv.end());
+    long long total = 0;
+    int s = iv[0][0], e = iv[0][1];
+    for (const auto& cur : iv) {
+        if (cur[0] > e) { total += e - s; s = cur[0]; e = cur[1]; }   // close block
+        else e = max(e, cur[1]);                                       // extend block
+    }
+    return total + (e - s);                                            // last block
+}` }
+          ] }
       },
       {
         title: 'Unsorted input is where people slip',
@@ -2303,7 +3571,7 @@ print(merge([[8, 10], [1, 3], [15, 18], [2, 6], [9, 12]]))  # [[1, 6], [8, 12], 
       '"Many inserts and queries over time" (data stream of intervals) → TreeMap&lt;start, end&gt; with floor/ceiling lookups, O(log N) amortised each.',
       '"Find the free slots" / "first time a new meeting of length L fits" → walk the sorted busy list and look at the gaps between blocks.'
     ],
-    code: `
+    code: { lang: 'java', code: `
       // Insert newIv into a sorted, non-overlapping list (closed intervals; touching ones merge).
       int[][] insert(int[][] intervals, int[] newIv) {
           List<int[]> res = new ArrayList<>();
@@ -2326,6 +3594,47 @@ print(merge([[8, 10], [1, 3], [15, 18], [2, 6], [9, 12]]))  # [[1, 6], [8, 12], 
           }
           return res.toArray(new int[0][]);
       }`,
+      alt: [
+        { lang: 'python', code: `# Insert new_iv into a sorted, non-overlapping list (closed intervals; touching ones merge).
+def insert(intervals, new_iv):
+    res, i, n = [], 0, len(intervals)
+    s, e = new_iv
+    while i < n and intervals[i][1] < s:      # phase 1: blocks that end before the new one starts
+        res.append(intervals[i]); i += 1
+    while i < n and intervals[i][0] <= e:     # phase 2: blocks that overlap -> absorb them
+        s, e = min(s, intervals[i][0]), max(e, intervals[i][1])
+        i += 1
+    res.append([s, e])                        # the fused block, added exactly once
+    return res + intervals[i:]                # phase 3: blocks that start after it ends` },
+        { lang: 'js', code: `// Insert newIv into a sorted, non-overlapping list (closed intervals; touching ones merge).
+function insert(intervals, newIv) {
+  const res = [], n = intervals.length;
+  let [s, e] = newIv, i = 0;
+  while (i < n && intervals[i][1] < s) res.push(intervals[i++]);   // phase 1: before
+  while (i < n && intervals[i][0] <= e) {                           // phase 2: absorb
+    s = Math.min(s, intervals[i][0]);
+    e = Math.max(e, intervals[i][1]);
+    i++;
+  }
+  res.push([s, e]);                                                 // fused block, once
+  while (i < n) res.push(intervals[i++]);                           // phase 3: after
+  return res;
+}` },
+        { lang: 'cpp', code: `// Insert newIv into a sorted, non-overlapping list (closed intervals; touching ones merge).
+vector<vector<int>> insert(const vector<vector<int>>& intervals, vector<int> newIv) {
+    vector<vector<int>> res;
+    size_t i = 0, n = intervals.size();
+    while (i < n && intervals[i][1] < newIv[0]) res.push_back(intervals[i++]);   // phase 1
+    while (i < n && intervals[i][0] <= newIv[1]) {                               // phase 2
+        newIv[0] = min(newIv[0], intervals[i][0]);
+        newIv[1] = max(newIv[1], intervals[i][1]);
+        i++;
+    }
+    res.push_back(newIv);                                                        // fused, once
+    res.insert(res.end(), intervals.begin() + i, intervals.end());               // phase 3
+    return res;
+}` }
+      ] },
     codeTitle: 'Insert interval — three phases',
     viz: {
       title: 'Insert interval: copy before, fuse the overlap, copy after',
@@ -2466,6 +3775,16 @@ print(insert([[1, 2], [3, 5], [6, 7], [8, 10], [12, 16]], [4, 8]))  # [[1, 2], [
           `<p>One index <code>i</code> and three while-loops. Loop 1: <code>end &lt; new.start</code> → copy. Loop 2: <code>start ≤ new.end</code> → widen the new interval with min/max. Then add it. Loop 3: copy the rest.</p>`,
           `<p>Edge cases: empty input (just return [new]); new interval before everything or after everything; new interval swallowing all; touching endpoints. Recipe: i = 0 → copy while ends &lt; s → absorb while starts ≤ e → add [s,e] → copy rest → toArray.</p>`
         ],
+        tests: { sig: 'int[][] int[] -> int[][]', fn: 'insert', cases: [
+          [[[[1, 3], [6, 9]], [2, 5]], [[1, 5], [6, 9]]],
+          [[[[1, 2], [3, 5], [6, 7], [8, 10], [12, 16]], [4, 8]], [[1, 2], [3, 10], [12, 16]]],
+          [[[], [5, 7]], [[5, 7]]],
+          [[[[3, 4]], [1, 2]], [[1, 2], [3, 4]]],
+          [[[[1, 2]], [3, 4]], [[1, 2], [3, 4]]],
+          [[[[1, 5]], [5, 7]], [[1, 7]]],
+          [[[[2, 3], [4, 5], [7, 9]], [1, 10]], [[1, 10]]],
+          [[[[1, 2], [5, 6]], [3, 4]], [[1, 2], [3, 4], [5, 6]]]
+        ] },
         solution: {
           approach: `<p>Three-phase linear walk; the new interval is widened while it overlaps and added exactly once.</p>`,
           code: `
@@ -2496,6 +3815,50 @@ print(insert([[1, 2], [3, 5], [6, 7], [8, 10], [12, 16]], [4, 8]))  # [[1, 2], [
                     System.out.println(Arrays.deepToString(r)); // [[1, 2], [3, 10], [12, 16]]
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `def insert(intervals, new_interval):
+    res, i, n = [], 0, len(intervals)
+    s, e = new_interval
+    while i < n and intervals[i][1] < s:         # 1) completely before
+        res.append(intervals[i]); i += 1
+    while i < n and intervals[i][0] <= e:        # 2) overlapping -> absorb
+        s = min(s, intervals[i][0])
+        e = max(e, intervals[i][1])
+        i += 1
+    res.append([s, e])                           # fused block, once
+    res.extend(intervals[i:])                    # 3) completely after
+    return res` },
+            { lang: 'js', code: `function insert(intervals, newInterval) {
+  const res = [], n = intervals.length;
+  let [s, e] = newInterval, i = 0;
+  while (i < n && intervals[i][1] < s) res.push(intervals[i++]);   // 1) before
+  while (i < n && intervals[i][0] <= e) {                           // 2) overlap -> absorb
+    s = Math.min(s, intervals[i][0]);
+    e = Math.max(e, intervals[i][1]);
+    i++;
+  }
+  res.push([s, e]);                                                 // fused block, once
+  while (i < n) res.push(intervals[i++]);                           // 3) after
+  return res;
+}` },
+            { lang: 'cpp', code: `class Solution {
+public:
+    vector<vector<int>> insert(const vector<vector<int>>& intervals, const vector<int>& newInterval) {
+        vector<vector<int>> res;
+        size_t i = 0, n = intervals.size();
+        int s = newInterval[0], e = newInterval[1];
+        while (i < n && intervals[i][1] < s) res.push_back(intervals[i++]);   // 1) before
+        while (i < n && intervals[i][0] <= e) {                               // 2) absorb
+            s = min(s, intervals[i][0]);
+            e = max(e, intervals[i][1]);
+            i++;
+        }
+        res.push_back({s, e});                                                // fused, once
+        while (i < n) res.push_back(intervals[i++]);                          // 3) after
+        return res;
+    }
+};` }
+          ],
           dry: {
             head: ['i', 'interval', 'test', 'phase', '[s, e]', 'res'],
             rows: [
@@ -2545,7 +3908,7 @@ print(insert([[1, 2], [3, 5], [6, 7], [8, 10], [12, 16]], [4, 8]))  # [[1, 2], [
       '"Assign each meeting to a room and return which room hosts the most meetings" → heap of (end, roomId) + heap of free room ids (Meeting Rooms III).',
       'Times are small integers (≤ 10<sup>6</sup>) → a difference array + prefix sum gives max overlap in O(N + T) without sorting.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       // Meeting Rooms I: can one person attend all meetings? (half-open: [s, e))
       boolean canAttendAll(int[][] m) {
           Arrays.sort(m, (x, y) -> Integer.compare(x[0], y[0]));
@@ -2553,7 +3916,25 @@ print(insert([[1, 2], [3, 5], [6, 7], [8, 10], [12, 16]], [4, 8]))  # [[1, 2], [
               if (m[i][0] < m[i - 1][1]) return false;   // starts before the previous one ends
           }
           return true;
-      }`, `
+      }`,
+      alt: [
+        { lang: 'python', code: `# Meeting Rooms I: can one person attend all meetings? (half-open: [s, e))
+def can_attend_all(m):
+    m = sorted(m)
+    return all(m[i][0] >= m[i - 1][1] for i in range(1, len(m)))` },
+        { lang: 'js', code: `// Meeting Rooms I: can one person attend all meetings? (half-open: [s, e))
+function canAttendAll(m) {
+  const s = [...m].sort((x, y) => x[0] - y[0]);
+  return s.every((cur, i) => i === 0 || cur[0] >= s[i - 1][1]);
+}` },
+        { lang: 'cpp', code: `// Meeting Rooms I: can one person attend all meetings? (half-open: [s, e))
+bool canAttendAll(vector<vector<int>> m) {
+    sort(m.begin(), m.end());
+    for (size_t i = 1; i < m.size(); i++)
+        if (m[i][0] < m[i - 1][1]) return false;   // starts before the previous one ends
+    return true;
+}` }
+      ] }, { lang: 'java', code: `
       // Meeting Rooms II with a min-heap of end times.
       int minRooms(int[][] m) {
           Arrays.sort(m, (x, y) -> Integer.compare(x[0], y[0]));     // by start
@@ -2565,7 +3946,69 @@ print(insert([[1, 2], [3, 5], [6, 7], [8, 10], [12, 16]], [4, 8]))  # [[1, 2], [
               ends.offer(mt[1]);                                      // this meeting occupies a room until mt[1]
           }
           return ends.size();                                         // rooms ever needed at once
-      }`, `
+      }`,
+      alt: [
+        { lang: 'python', code: `# Meeting Rooms II with a min-heap of end times (heapq is a min-heap).
+import heapq
+
+def min_rooms(m):
+    ends = []                                    # end times of busy rooms
+    for s, e in sorted(m):                       # by start
+        if ends and ends[0] <= s:
+            heapq.heapreplace(ends, e)           # earliest room is free -> reuse it
+        else:
+            heapq.heappush(ends, e)              # open a new room
+    return len(ends)                             # rooms ever needed at once` },
+        { lang: 'js', code: `// Meeting Rooms II with a min-heap of end times.
+// JS has no built-in heap: the module's small MinHeap class.
+class MinHeap {
+  constructor(cmp = (a, b) => a - b) { this.a = []; this.cmp = cmp; }
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a; a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {                                   // sift up
+      const p = (i - 1) >> 1;
+      if (this.cmp(a[i], a[p]) >= 0) break;
+      [a[i], a[p]] = [a[p], a[i]]; i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      for (let i = 0; ;) {                            // sift down
+        const l = 2 * i + 1, r = l + 1; let m = i;
+        if (l < a.length && this.cmp(a[l], a[m]) < 0) m = l;
+        if (r < a.length && this.cmp(a[r], a[m]) < 0) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]]; i = m;
+      }
+    }
+    return top;
+  }
+}
+
+function minRooms(m) {
+  const ends = new MinHeap();                         // end times of busy rooms
+  for (const [s, e] of [...m].sort((x, y) => x[0] - y[0])) {
+    if (ends.size() && ends.peek() <= s) ends.pop();  // earliest room is free -> reuse it
+    ends.push(e);                                     // this meeting occupies a room until e
+  }
+  return ends.size();                                 // rooms ever needed at once
+}` },
+        { lang: 'cpp', code: `// Meeting Rooms II with a min-heap of end times.
+int minRooms(vector<vector<int>> m) {
+    sort(m.begin(), m.end());                                   // by start
+    priority_queue<int, vector<int>, greater<int>> ends;        // greater<> -> MIN-heap
+    for (const auto& mt : m) {
+        if (!ends.empty() && ends.top() <= mt[0]) ends.pop();   // earliest room is free -> reuse it
+        ends.push(mt[1]);
+    }
+    return (int)ends.size();                                    // rooms ever needed at once
+}` }
+      ] }, { lang: 'java', code: `
       // Meeting Rooms II with two sorted arrays (no heap).
       int minRoomsTwoPointers(int[][] m) {
           int n = m.length;
@@ -2579,7 +4022,45 @@ print(insert([[1, 2], [3, 5], [6, 7], [8, 10], [12, 16]], [4, 8]))  # [[1, 2], [
               else rooms++;                   // everyone is still busy → need a new room
           }
           return rooms;
-      }`],
+      }`,
+      alt: [
+        { lang: 'python', code: `# Meeting Rooms II with two sorted lists (no heap).
+def min_rooms_two_pointers(m):
+    st = sorted(s for s, _ in m)
+    en = sorted(e for _, e in m)
+    rooms = j = 0
+    for s in st:
+        if s >= en[j]:
+            j += 1                    # some meeting ended by now -> reuse its room
+        else:
+            rooms += 1                # everyone is still busy -> need a new room
+    return rooms` },
+        { lang: 'js', code: `// Meeting Rooms II with two sorted arrays (no heap).
+function minRoomsTwoPointers(m) {
+  const st = Int32Array.from(m, (x) => x[0]).sort();   // typed arrays sort numerically
+  const en = Int32Array.from(m, (x) => x[1]).sort();
+  let rooms = 0, j = 0;
+  for (const s of st) {
+    if (s >= en[j]) j++;              // some meeting ended by now -> reuse its room
+    else rooms++;                     // everyone is still busy -> need a new room
+  }
+  return rooms;
+}` },
+        { lang: 'cpp', code: `// Meeting Rooms II with two sorted arrays (no heap).
+int minRoomsTwoPointers(const vector<vector<int>>& m) {
+    vector<int> st, en;
+    for (const auto& x : m) { st.push_back(x[0]); en.push_back(x[1]); }
+    sort(st.begin(), st.end());
+    sort(en.begin(), en.end());
+    int rooms = 0;
+    size_t j = 0;
+    for (int s : st) {
+        if (s >= en[j]) j++;          // some meeting ended by now -> reuse its room
+        else rooms++;                 // everyone is still busy -> need a new room
+    }
+    return rooms;
+}` }
+      ] }],
     codeTitle: ['Meeting Rooms I', 'Meeting Rooms II — min-heap', 'Meeting Rooms II — two sorted arrays'],
     viz: {
       title: 'Meeting rooms: reuse the room that frees up first',
@@ -2659,7 +4140,7 @@ print(insert([[1, 2], [3, 5], [6, 7], [8, 10], [12, 16]], [4, 8]))  # [[1, 2], [
             ['arrive', '1500', '1', '3'], ['arrive', '1800', '2', '3'], ['depart', '1900', '1', '3'], ['depart', '2000', '0', '3']
           ])}
           <p>Answer <b>3</b>.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           int minPlatforms(int[] arr, int[] dep) {
               int[] a = arr.clone(), d = dep.clone();
               Arrays.sort(a);
@@ -2670,7 +4151,42 @@ print(insert([[1, 2], [3, 5], [6, 7], [8, 10], [12, 16]], [4, 8]))  # [[1, 2], [
                   else { cur--; j++; }                                           // a train has left
               }
               return best;
-          }`
+          }`,
+          alt: [
+            { lang: 'python', run: true, code: `def min_platforms(arr, dep):
+    a, d = sorted(arr), sorted(dep)
+    i = j = cur = best = 0
+    while i < len(a):
+        if a[i] <= d[j]:              # arrival first on ties: train needs a platform
+            cur += 1; i += 1
+            best = max(best, cur)
+        else:                         # a train has left
+            cur -= 1; j += 1
+    return best
+
+print(min_platforms([900, 940, 950, 1100, 1500, 1800], [910, 1200, 1120, 1130, 1900, 2000]))  # 3` },
+            { lang: 'js', run: true, code: `function minPlatforms(arr, dep) {
+  const a = Int32Array.from(arr).sort(), d = Int32Array.from(dep).sort();
+  let i = 0, j = 0, cur = 0, best = 0;
+  while (i < a.length) {
+    if (a[i] <= d[j]) { cur++; i++; best = Math.max(best, cur); }   // arrival first on ties
+    else { cur--; j++; }                                            // a train has left
+  }
+  return best;
+}
+console.log(minPlatforms([900, 940, 950, 1100, 1500, 1800], [910, 1200, 1120, 1130, 1900, 2000]));   // 3` },
+            { lang: 'cpp', code: `int minPlatforms(vector<int> a, vector<int> d) {
+    sort(a.begin(), a.end());
+    sort(d.begin(), d.end());
+    size_t i = 0, j = 0;
+    int cur = 0, best = 0;
+    while (i < a.size()) {
+        if (a[i] <= d[j]) { cur++; i++; best = max(best, cur); }   // arrival first on ties
+        else { cur--; j++; }                                        // a train has left
+    }
+    return best;
+}` }
+          ] }
       },
       {
         title: 'Sweep line with +1 / −1 events',
@@ -2692,7 +4208,7 @@ print(min_rooms([[1, 5], [5, 10], [10, 15]]))    # 1` }
       }
     ],
     deepDive: `<p><b>Why max overlap is the exact answer.</b> Lower bound: at the instant when k meetings run together, they need k different rooms. Upper bound: the greedy (process by start, reuse any free room) never opens room k+1 unless k rooms are busy at that start time — i.e. k+1 meetings overlap at that moment. So greedy = max overlap = optimal. In graph terms, intervals form an <b>interval graph</b>, whose chromatic number equals its maximum clique, and greedy colouring by start time is optimal.</p>
-      <p><b>Three implementations, one complexity.</b> Heap: O(N log N) time, O(N) heap. Two sorted arrays: O(N log N) for the two sorts, then O(N), no heap — usually fastest in Java (primitive arrays). Sweep events: O(N log N), naturally extends to weighted demands ("each meeting needs c chairs") and to "how many intervals cover point x". If times are small integers, a <b>difference array</b> (diff[s]++, diff[e]−−, prefix sum) gives O(N + T) with no sort at all.</p>
+      <p><b>Three implementations, one complexity.</b> Heap: O(N log N) time, O(N) heap. Two sorted arrays: O(N log N) for the two sorts, then O(N), no heap — usually fastest in practice (plain integer arrays, no heap objects). Sweep events: O(N log N), naturally extends to weighted demands ("each meeting needs c chairs") and to "how many intervals cover point x". If times are small integers, a <b>difference array</b> (diff[s]++, diff[e]−−, prefix sum) gives O(N + T) with no sort at all.</p>
       <p><b>Harder follow-ups.</b> <i>Meeting Rooms III</i>: rooms are numbered, a meeting takes the lowest-numbered free room, and if none is free it is <b>delayed</b> until the earliest room frees (keeping its duration) — use two heaps: free room ids, and (end time, room id) for busy rooms; use <code>long</code> for delayed end times. <i>Online booking</i> ("My Calendar I/II/III"): keep a <code>TreeMap</code> of boundary deltas and recompute the running max, or a segment tree with lazy propagation for O(log T) per booking.</p>
       <p><b>Production reality.</b> Calendar systems store half-open UTC timestamps; recurring events are expanded into instances within a query window before sweeping; resource schedulers (Kubernetes bin-packing, cloud capacity planning, CPU scheduling) are multi-dimensional versions of "minimum rooms" and are usually NP-hard, so they use heuristics built on exactly these greedy ideas.</p>`,
     aiEra: `<p><b>What AI changes:</b> Meeting Rooms II is a famous problem, so assistants recall it well — and also recall the <b>wrong tie rule</b> for your variant. Real requirements are fuzzy ("buffer 5 minutes between meetings", "rooms have capacities", "some meetings can be moved"), and translating them into intervals, tie rules and the right greedy is your job.</p>
@@ -2735,6 +4251,16 @@ print(min_rooms([[1, 5], [5, 10], [10, 15]]))    # 1` }
           `<p>Sort by start. Keep a min-heap of end times of rooms in use. For each meeting: if the smallest end ≤ this start, pop it (room freed); push this meeting's end. The heap size at the end is the answer. (Or: sort starts and ends separately and use two pointers.)</p>`,
           `<p>Edge cases: back-to-back meetings (use ≤ so the room is reused), a single meeting (1 room), identical meetings (each needs its own room). Recipe: sort by start → heap = [] → for each: if heap and heap.peek ≤ start: poll → offer end → return heap.size.</p>`
         ],
+        tests: { sig: 'int[][] -> int', fn: 'minMeetingRooms', cases: [
+          [[[[0, 30], [5, 10], [15, 20]]], 2],
+          [[[[1, 5], [5, 10]]], 1],
+          [[[[7, 10]]], 1],
+          [[[[1, 10], [2, 9], [3, 8], [4, 7]]], 4],
+          [[[[1, 5], [1, 5], [1, 5]]], 3],
+          [[[[1, 5], [5, 10], [10, 15]]], 1],
+          [[[[0, 1000000], [999999, 1000000]]], 2],
+          [[[[9, 10], [4, 9], [4, 17]]], 2]
+        ] },
         solution: {
           approach: `<p>Greedy by start time with a min-heap of end times: always reuse the room that frees earliest, open a new one only when none is free.</p>`,
           code: `
@@ -2756,19 +4282,71 @@ print(min_rooms([[1, 5], [5, 10], [10, 15]]))    # 1` }
                     System.out.println(new Solution().minMeetingRooms(new int[][]{{1, 5}, {5, 10}}));            // 1
                 }
             }`,
-          alt: [{ lang: 'python', run: true, code: `import heapq
+          alt: [
+            { lang: 'python', run: true, code: `import heapq
 
 def min_meeting_rooms(intervals):
-    intervals.sort(key=lambda x: x[0])
     ends = []                                   # min-heap of end times
-    for s, e in intervals:
+    for s, e in sorted(intervals):              # by start
         if ends and ends[0] <= s:
             heapq.heapreplace(ends, e)          # reuse: pop earliest end, push this end
         else:
             heapq.heappush(ends, e)             # new room
     return len(ends)
 
-print(min_meeting_rooms([[0, 30], [5, 10], [15, 20]]))  # 2` }],
+print(min_meeting_rooms([[0, 30], [5, 10], [15, 20]]))  # 2` },
+            { lang: 'js', code: `// JS has no built-in heap: a small binary min-heap (same class across this module).
+class MinHeap {
+  constructor(cmp = (a, b) => a - b) { this.a = []; this.cmp = cmp; }
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a; a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {                                   // sift up
+      const p = (i - 1) >> 1;
+      if (this.cmp(a[i], a[p]) >= 0) break;
+      [a[i], a[p]] = [a[p], a[i]]; i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      for (let i = 0; ;) {                            // sift down
+        const l = 2 * i + 1, r = l + 1; let m = i;
+        if (l < a.length && this.cmp(a[l], a[m]) < 0) m = l;
+        if (r < a.length && this.cmp(a[r], a[m]) < 0) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]]; i = m;
+      }
+    }
+    return top;
+  }
+}
+
+function minMeetingRooms(intervals) {
+  const sorted = intervals.slice().sort((x, y) => x[0] - y[0]);   // by start
+  const ends = new MinHeap();                                    // busy rooms' end times
+  for (const [s, e] of sorted) {
+    if (ends.size() && ends.peek() <= s) ends.pop();             // earliest room is free -> reuse
+    ends.push(e);                                                // room busy until e
+  }
+  return ends.size();
+}` },
+            { lang: 'cpp', code: `class Solution {
+public:
+    int minMeetingRooms(vector<vector<int>> intervals) {
+        sort(intervals.begin(), intervals.end());                  // by start
+        priority_queue<int, vector<int>, greater<int>> ends;       // MIN-heap (default is max)
+        for (const auto& m : intervals) {
+            if (!ends.empty() && ends.top() <= m[0]) ends.pop();   // reuse the earliest-free room
+            ends.push(m[1]);
+        }
+        return (int)ends.size();
+    }
+};` }
+          ],
           dry: {
             head: ['meeting', 'heap before', 'peek ≤ start?', 'action', 'heap after', 'size'],
             rows: [
@@ -2813,9 +4391,19 @@ print(min_meeting_rooms([[0, 30], [5, 10], [15, 20]]))  # 2` }],
     },
     hints: [
       `<p><b>Aha:</b> sort by start time; then a clash, if any, shows up between two <b>consecutive</b> meetings.</p>`,
-      `<p><code>Arrays.sort(m, (x, y) -&gt; Integer.compare(x[0], y[0]))</code>, then one loop from i = 1 comparing <code>m[i][0]</code> with <code>m[i-1][1]</code>.</p>`,
+      `<p>Sort by start (Java <code>Arrays.sort(m, (x, y) -&gt; Integer.compare(x[0], y[0]))</code>, Python <code>sorted(m)</code>), then one loop from i = 1 comparing <code>m[i][0]</code> with <code>m[i-1][1]</code>.</p>`,
       `<p>Edge cases: empty or single meeting → true; back-to-back [1,5) [5,8) → true (use strict &lt;). Recipe: sort → for i ≥ 1: if start[i] &lt; end[i−1] return false → return true.</p>`
     ],
+    tests: { sig: 'int[][] -> bool', fn: 'canAttendMeetings', cases: [
+      [[[[0, 30], [5, 10], [15, 20]]], false],
+      [[[[7, 10], [2, 4]]], true],
+      [[[]], true],
+      [[[[1, 5]]], true],
+      [[[[1, 5], [5, 8]]], true],
+      [[[[1, 5], [4, 8]]], false],
+      [[[[5, 8], [1, 5], [8, 9]]], true],
+      [[[[1, 2], [1, 2]]], false]
+    ] },
     solution: {
       approach: `<p>Sort by start; check neighbours.</p>`,
       code: `
@@ -2833,6 +4421,27 @@ print(min_meeting_rooms([[0, 30], [5, 10], [15, 20]]))  # 2` }],
                 System.out.println(new Solution().canAttendMeetings(new int[][]{{7, 10}, {2, 4}}));            // true
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def can_attend_meetings(m):
+    m = sorted(m)                                     # by start
+    return all(m[i][0] >= m[i - 1][1] for i in range(1, len(m)))   # nobody starts before the previous ends` },
+        { lang: 'js', code: `function canAttendMeetings(m) {
+  const s = m.slice().sort((x, y) => x[0] - y[0]);    // by start (numeric comparator)
+  for (let i = 1; i < s.length; i++) {
+    if (s[i][0] < s[i - 1][1]) return false;          // starts before previous ends
+  }
+  return true;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    bool canAttendMeetings(vector<vector<int>> m) {
+        sort(m.begin(), m.end());                         // by start
+        for (size_t i = 1; i < m.size(); i++)
+            if (m[i][0] < m[i - 1][1]) return false;      // starts before previous ends
+        return true;
+    }
+};` }
+      ],
       dry: { head: ['i', 'previous', 'current', 'start &lt; prev end?'], rows: [['1', '[2,4)', '[7,10)', '7 &lt; 4? no'], ['end', '', '', '<span class="c-g">true</span>']] },
       complexity: `<p><b>Time O(N log N)</b> for the sort, O(N) check. <b>Space O(log N)</b>–O(N) for the sort.</p>`
     }
@@ -2867,9 +4476,18 @@ print(min_meeting_rooms([[0, 30], [5, 10], [15, 20]]))  # 2` }],
     },
     hints: [
       `<p><b>Aha:</b> you never need the whole sorted array at once — just generate expected[i] on the fly from the counts while scanning heights.</p>`,
-      `<p><code>int[] cnt = new int[101]</code>. Then a pointer <code>h</code> over heights 1..100: skip heights whose count is 0; compare with heights[i]; decrement cnt[h].</p>`,
+      `<p>A count array of size 101 (heights 0..100). Then a pointer <code>h</code> over heights 1..100: skip heights whose count is 0; compare with heights[i]; decrement cnt[h].</p>`,
       `<p>Edge cases: all equal → 0; strictly decreasing → nearly all differ. Recipe: count → h = 1 → for i: while cnt[h] == 0: h++ → if heights[i] != h: ans++ → cnt[h]−−.</p>`
     ],
+    tests: { sig: 'int[] -> int', fn: 'heightChecker', cases: [
+      [[[1, 1, 4, 2, 1, 3]], 3],
+      [[[5, 1, 2, 3, 4]], 5],
+      [[[1, 2, 3, 4, 5]], 0],
+      [[[1]], 0],
+      [[[2, 2, 2]], 0],
+      [[[100, 1]], 2],
+      [[[3, 1, 2]], 3]
+    ] },
     solution: {
       approach: `<p>Counting sort generated lazily while comparing.</p>`,
       code: `
@@ -2890,6 +4508,45 @@ print(min_meeting_rooms([[0, 30], [5, 10], [15, 20]]))  # 2` }],
                 System.out.println(new Solution().heightChecker(new int[]{1, 1, 4, 2, 1, 3})); // 3
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def height_checker(heights):
+    cnt = [0] * 101
+    for x in heights:
+        cnt[x] += 1
+    ans, h = 0, 1
+    for x in heights:
+        while cnt[h] == 0:          # next height in sorted order
+            h += 1
+        if x != h:
+            ans += 1
+        cnt[h] -= 1
+    return ans` },
+        { lang: 'js', code: `function heightChecker(heights) {
+  const cnt = new Int32Array(101);
+  for (const x of heights) cnt[x]++;
+  let ans = 0, h = 1;
+  for (const x of heights) {
+    while (cnt[h] === 0) h++;       // next height in sorted order
+    if (x !== h) ans++;
+    cnt[h]--;
+  }
+  return ans;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int heightChecker(const vector<int>& heights) {
+        array<int, 101> cnt{};
+        for (int x : heights) cnt[x]++;
+        int ans = 0, h = 1;
+        for (int x : heights) {
+            while (cnt[h] == 0) h++;    // next height in sorted order
+            if (x != h) ans++;
+            cnt[h]--;
+        }
+        return ans;
+    }
+};` }
+      ],
       complexity: `<p><b>Time O(N + 100)</b>, <b>space O(100)</b>.</p>`
     }
   });
@@ -2933,6 +4590,14 @@ print(min_meeting_rooms([[0, 30], [5, 10], [15, 20]]))  # 2` }],
       `<p><code>cnt[1001]</code>. For each v in arr2: write v cnt[v] times, set cnt[v] = 0. Then for v = 0..1000: write v cnt[v] times.</p>`,
       `<p>Edge cases: arr2 contains every value (no tail); duplicates in arr1. Recipe: count → arr2 pass → zero those counts → 0..1000 pass.</p>`
     ],
+    tests: { sig: 'int[] int[] -> int[]', fn: 'relativeSortArray', cases: [
+      [[[2, 3, 1, 3, 2, 4, 6, 7, 9, 2, 19], [2, 1, 4, 3, 9, 6]], [2, 2, 2, 1, 4, 3, 3, 9, 6, 7, 19]],
+      [[[28, 6, 22, 8, 44, 17], [22, 28, 8, 6]], [22, 28, 8, 6, 17, 44]],
+      [[[1], [1]], [1]],
+      [[[5, 4, 3], [3]], [3, 4, 5]],
+      [[[0, 1000, 0, 1000], [1000]], [1000, 1000, 0, 0]],
+      [[[2, 1, 2], [2, 1]], [2, 2, 1]]
+    ] },
     solution: {
       approach: `<p>Counting sort with two output phases.</p>`,
       code: `
@@ -2957,6 +4622,46 @@ print(min_meeting_rooms([[0, 30], [5, 10], [15, 20]]))  # 2` }],
                 System.out.println(Arrays.toString(r)); // [2, 2, 2, 1, 4, 3, 3, 9, 6, 7, 19]
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def relative_sort_array(arr1, arr2):
+    cnt = [0] * 1001
+    for x in arr1:
+        cnt[x] += 1
+    out = []
+    for v in arr2:                   # custom order first
+        out += [v] * cnt[v]
+        cnt[v] = 0
+    for v in range(1001):            # leftovers ascending
+        out += [v] * cnt[v]
+    return out` },
+        { lang: 'js', code: `function relativeSortArray(arr1, arr2) {
+  const cnt = new Int32Array(1001);
+  for (const x of arr1) cnt[x]++;
+  const out = [];
+  for (const v of arr2) {                 // custom order first
+    for (; cnt[v] > 0; cnt[v]--) out.push(v);
+  }
+  for (let v = 0; v <= 1000; v++) {       // leftovers ascending
+    for (; cnt[v] > 0; cnt[v]--) out.push(v);
+  }
+  return out;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> relativeSortArray(const vector<int>& arr1, const vector<int>& arr2) {
+        array<int, 1001> cnt{};
+        for (int x : arr1) cnt[x]++;
+        vector<int> out;
+        for (int v : arr2) {                       // custom order first
+            out.insert(out.end(), cnt[v], v);
+            cnt[v] = 0;
+        }
+        for (int v = 0; v <= 1000; v++)            // leftovers ascending
+            out.insert(out.end(), cnt[v], v);
+        return out;
+    }
+};` }
+      ],
       complexity: `<p><b>Time O(N + M + 1001)</b>, <b>space O(1001)</b> plus the output.</p>`
     }
   });
@@ -2970,7 +4675,7 @@ print(min_meeting_rooms([[0, 30], [5, 10], [15, 20]]))  # 2` }],
     constraints: `0 ≤ m, n ≤ 200, 1 ≤ m + n, −10<sup>9</sup> ≤ values ≤ 10<sup>9</sup>`,
     example: `${H.arr([1, 2, 3, 0, 0, 0], { label: 'nums1 (m = 3)', hl: { 3: 'm', 4: 'm', 5: 'm' } })}${H.arr([2, 5, 6], { label: 'nums2 (n = 3)' })}${H.arr([1, 2, 2, 3, 5, 6], { label: 'result', hl: { 4: 'g', 5: 'g' } })}<p>Filling from the <b>back</b> means we never overwrite an unread nums1 value.</p>`,
     brute: {
-      why: `<p>Copy nums2 into the empty tail and call <code>Arrays.sort</code>: O((m+n) log(m+n)). It ignores that both parts are already sorted — a single merge is linear.</p>`,
+      why: `<p>Copy nums2 into the empty tail and call the library sort: O((m+n) log(m+n)). It ignores that both parts are already sorted — a single merge is linear.</p>`,
       code: `
         void brute(int[] nums1, int m, int[] nums2, int n) {
             for (int i = 0; i < n; i++) nums1[m + i] = nums2[i];
@@ -2988,6 +4693,15 @@ print(min_meeting_rooms([[0, 30], [5, 10], [15, 20]]))  # 2` }],
       `<p>Pointers i = m − 1, j = n − 1, k = m + n − 1. While j ≥ 0: put the larger of nums1[i] (if i ≥ 0) and nums2[j] at k.</p>`,
       `<p>Edge cases: m = 0 (copy all of nums2); n = 0 (nothing to do); leftover nums1 items are already in place. Recipe: while j ≥ 0: if i ≥ 0 and nums1[i] &gt; nums2[j]: nums1[k−−] = nums1[i−−] else nums1[k−−] = nums2[j−−].</p>`
     ],
+    tests: { sig: 'int[] int int[] int -> void', fn: 'merge', mutate: 0, cases: [
+      [[[1, 2, 3, 0, 0, 0], 3, [2, 5, 6], 3], [1, 2, 2, 3, 5, 6]],
+      [[[1], 1, [], 0], [1]],
+      [[[0], 0, [1], 1], [1]],
+      [[[4, 5, 6, 0, 0, 0], 3, [1, 2, 3], 3], [1, 2, 3, 4, 5, 6]],
+      [[[1, 2, 3, 0, 0], 3, [4, 5], 2], [1, 2, 3, 4, 5]],
+      [[[-1000000000, 0, 0], 1, [-1000000000, 1000000000], 2], [-1000000000, -1000000000, 1000000000]],
+      [[[2, 2, 0, 0], 2, [2, 2], 2], [2, 2, 2, 2]]
+    ] },
     solution: {
       approach: `<p>Backward merge with three pointers.</p>`,
       code: `
@@ -3006,6 +4720,30 @@ print(min_meeting_rooms([[0, 30], [5, 10], [15, 20]]))  # 2` }],
                 System.out.println(Arrays.toString(a)); // [1, 2, 2, 3, 5, 6]
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def merge(nums1, m, nums2, n):
+    i, j, k = m - 1, n - 1, m + n - 1
+    while j >= 0:                                # once nums2 is used up we are done
+        if i >= 0 and nums1[i] > nums2[j]:
+            nums1[k] = nums1[i]; i -= 1
+        else:
+            nums1[k] = nums2[j]; j -= 1
+        k -= 1` },
+        { lang: 'js', code: `function merge(nums1, m, nums2, n) {
+  let i = m - 1, j = n - 1, k = m + n - 1;
+  while (j >= 0) {                               // once nums2 is used up we are done
+    nums1[k--] = i >= 0 && nums1[i] > nums2[j] ? nums1[i--] : nums2[j--];
+  }
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    void merge(vector<int>& nums1, int m, const vector<int>& nums2, int n) {
+        int i = m - 1, j = n - 1, k = m + n - 1;
+        while (j >= 0)                           // once nums2 is used up we are done
+            nums1[k--] = (i >= 0 && nums1[i] > nums2[j]) ? nums1[i--] : nums2[j--];
+    }
+};` }
+      ],
       dry: { head: ['i', 'j', 'k', 'compare', 'nums1'], rows: [['2', '2', '5', '3 vs 6 → 6', '1 2 3 0 0 6'], ['2', '1', '4', '3 vs 5 → 5', '1 2 3 0 5 6'], ['2', '0', '3', '3 vs 2 → 3', '1 2 3 3 5 6'], ['1', '0', '2', '2 vs 2 → 2 (nums2)', '<span class="c-g">1 2 2 3 5 6</span>']] },
       complexity: `<p><b>Time O(m + n)</b>, <b>space O(1)</b>.</p>`
     }
@@ -3042,6 +4780,15 @@ print(min_meeting_rooms([[0, 30], [5, 10], [15, 20]]))  # 2` }],
       `<p>If a[i] == 0: swap with a[lt], lt++, i++. If a[i] == 2: swap with a[gt], gt−− (i stays). If 1: i++. Stop when i &gt; gt.</p>`,
       `<p>Edge cases: all one colour; length 1; already sorted. Recipe: lt = 0, i = 0, gt = n−1 → while i ≤ gt → 3 cases.</p>`
     ],
+    tests: { sig: 'int[] -> void', fn: 'sortColors', mutate: 0, cases: [
+      [[[2, 0, 2, 1, 1, 0]], [0, 0, 1, 1, 2, 2]],
+      [[[2, 0, 1]], [0, 1, 2]],
+      [[[0]], [0]],
+      [[[1]], [1]],
+      [[[2, 2, 2]], [2, 2, 2]],
+      [[[0, 0, 1, 1]], [0, 0, 1, 1]],
+      [[[1, 2, 0, 2, 1, 0, 0]], [0, 0, 0, 1, 1, 2, 2]]
+    ] },
     solution: {
       approach: `<p>Dijkstra's 3-way partition with pivot value 1.</p>`,
       code: `
@@ -3063,6 +4810,38 @@ print(min_meeting_rooms([[0, 30], [5, 10], [15, 20]]))  # 2` }],
                 System.out.println(Arrays.toString(a)); // [0, 0, 1, 1, 2, 2]
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def sort_colors(a):
+    lt, i, gt = 0, 0, len(a) - 1
+    while i <= gt:
+        if a[i] == 0:                            # grow the 0-zone
+            a[lt], a[i] = a[i], a[lt]
+            lt += 1; i += 1
+        elif a[i] == 2:                          # grow the 2-zone, re-check a[i]
+            a[i], a[gt] = a[gt], a[i]
+            gt -= 1
+        else:
+            i += 1                               # 1 stays in the middle` },
+        { lang: 'js', code: `function sortColors(a) {
+  let lt = 0, i = 0, gt = a.length - 1;
+  while (i <= gt) {
+    if (a[i] === 0) { [a[lt], a[i]] = [a[i], a[lt]]; lt++; i++; }   // grow the 0-zone
+    else if (a[i] === 2) { [a[i], a[gt]] = [a[gt], a[i]]; gt--; }    // grow the 2-zone, re-check a[i]
+    else i++;                                                         // 1 stays in the middle
+  }
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    void sortColors(vector<int>& a) {
+        int lt = 0, i = 0, gt = (int)a.size() - 1;
+        while (i <= gt) {
+            if (a[i] == 0) swap(a[lt++], a[i++]);      // grow the 0-zone
+            else if (a[i] == 2) swap(a[i], a[gt--]);   // grow the 2-zone, re-check a[i]
+            else i++;                                  // 1 stays in the middle
+        }
+    }
+};` }
+      ],
       dry: { head: ['lt', 'i', 'gt', 'a[i]', 'array after'], rows: [['0', '0', '5', '2', '0 0 2 1 1 2'], ['0', '0', '4', '0', '0 0 2 1 1 2'], ['1', '1', '4', '0', '0 0 2 1 1 2'], ['2', '2', '4', '2', '0 0 1 1 2 2'], ['2', '2', '3', '1', '…i = 4 &gt; gt → <span class="c-g">done</span>']] },
       complexity: `<p><b>Time O(N)</b> — each step either advances i or shrinks gt. <b>Space O(1)</b>.</p>`
     }
@@ -3077,7 +4856,7 @@ print(min_meeting_rooms([[0, 30], [5, 10], [15, 20]]))  # 2` }],
     constraints: `1 ≤ k ≤ N ≤ 10<sup>5</sup>, −10<sup>4</sup> ≤ nums[i] ≤ 10<sup>4</sup> (many duplicates possible)`,
     example: `<p>[3,2,3,1,2,4,5,5,6], k = 4 → sorted descending 6, 5, 5, ${H.c('p', '4')}, 3, 3, 2, 2, 1 → output <b>4</b>.</p>`,
     brute: {
-      why: `<p><code>Arrays.sort</code> then index N − k: O(N log N). It orders everything when only one position matters.</p>`,
+      why: `<p>Sort a copy with the library sort, then index N − k: O(N log N). It orders everything when only one position matters.</p>`,
       code: `
         int brute(int[] nums, int k) {
             int[] b = nums.clone();
@@ -3096,6 +4875,16 @@ print(min_meeting_rooms([[0, 30], [5, 10], [15, 20]]))  # 2` }],
       `<p>Use a <b>random</b> pivot and a <b>3-way</b> partition (&lt; | = | &gt;). If the target index falls inside the "= pivot" block, the pivot is the answer.</p>`,
       `<p>Edge cases: k = 1 (max), k = N (min), heavy duplicates, adversarial sorted input. Recipe: target = N − k → loop: random pivot → 3-way partition → move lo/hi or return.</p>`
     ],
+    tests: { sig: 'int[] int -> int', fn: 'findKthLargest', cases: [
+      [[[3, 2, 1, 5, 6, 4], 2], 5],
+      [[[3, 2, 3, 1, 2, 4, 5, 5, 6], 4], 4],
+      [[[1], 1], 1],
+      [[[7, 7, 7, 7], 3], 7],
+      [[[-10000, 10000], 1], 10000],
+      [[[-10000, 10000], 2], -10000],
+      [[[2, 1], 2], 1],
+      [[[5, 3, 5, 1], 2], 5]
+    ] },
     solution: {
       approach: `<p>Iterative quickselect with random pivot and Dutch-flag partition: expected O(N) even with duplicates.</p>`,
       code: `
@@ -3126,6 +4915,67 @@ print(min_meeting_rooms([[0, 30], [5, 10], [15, 20]]))  # 2` }],
                 System.out.println(new Solution().findKthLargest(new int[]{3, 2, 3, 1, 2, 4, 5, 5, 6}, 4)); // 4
             }
         }`,
+      alt: [
+        { lang: 'python', code: `import random
+
+def find_kth_largest(nums, k):
+    a = list(nums)
+    target = len(a) - k                          # index in ascending order
+    lo, hi = 0, len(a) - 1
+    while True:
+        pivot = a[random.randint(lo, hi)]
+        lt, i, gt = lo, lo, hi
+        while i <= gt:                           # 3-way partition of a[lo..hi]
+            if a[i] < pivot:
+                a[lt], a[i] = a[i], a[lt]; lt += 1; i += 1
+            elif a[i] > pivot:
+                a[i], a[gt] = a[gt], a[i]; gt -= 1
+            else:
+                i += 1
+        if target < lt:                          # [lo..lt-1] < pivot
+            hi = lt - 1
+        elif target > gt:                        # [gt+1..hi] > pivot
+            lo = gt + 1
+        else:
+            return pivot                         # target is inside the == pivot block` },
+        { lang: 'js', code: `function findKthLargest(nums, k) {
+  const a = nums.slice();
+  const target = a.length - k;                   // index in ascending order
+  let lo = 0, hi = a.length - 1;
+  while (true) {
+    const pivot = a[lo + Math.floor(Math.random() * (hi - lo + 1))];
+    let lt = lo, i = lo, gt = hi;
+    while (i <= gt) {                            // 3-way partition of a[lo..hi]
+      if (a[i] < pivot) { [a[lt], a[i]] = [a[i], a[lt]]; lt++; i++; }
+      else if (a[i] > pivot) { [a[i], a[gt]] = [a[gt], a[i]]; gt--; }
+      else i++;
+    }
+    if (target < lt) hi = lt - 1;
+    else if (target > gt) lo = gt + 1;
+    else return pivot;
+  }
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int findKthLargest(vector<int> a, int k) {
+        static mt19937 rng(12345);
+        int target = (int)a.size() - k;          // index in ascending order
+        int lo = 0, hi = (int)a.size() - 1;
+        while (true) {
+            int pivot = a[uniform_int_distribution<int>(lo, hi)(rng)];
+            int lt = lo, i = lo, gt = hi;
+            while (i <= gt) {                    // 3-way partition of a[lo..hi]
+                if (a[i] < pivot) swap(a[lt++], a[i++]);
+                else if (a[i] > pivot) swap(a[i], a[gt--]);
+                else i++;
+            }
+            if (target < lt) hi = lt - 1;
+            else if (target > gt) lo = gt + 1;
+            else return pivot;
+        }
+    }
+};` }
+      ],
       complexity: `<p><b>Expected time O(N)</b>, worst O(N<sup>2</sup>) with vanishing probability. <b>Space O(1)</b>. Alternative: a min-heap of size k gives O(N log k) and works on streams.</p>`
     }
   });
@@ -3164,6 +5014,15 @@ print(min_meeting_rooms([[0, 30], [5, 10], [15, 20]]))  # 2` }],
       `<p>Start <code>fast = head.next</code> so that for 2 nodes the split is 1 + 1 (otherwise infinite recursion). Merge with a dummy head node.</p>`,
       `<p>Edge cases: empty or single node; duplicates. Recipe: if head or head.next null → return head; slow/fast → right = slow.next; slow.next = null → merge(sort(head), sort(right)).</p>`
     ],
+    tests: { sig: 'ListNode -> ListNode', fn: 'sortList', cases: [
+      [[[4, 2, 1, 3]], [1, 2, 3, 4]],
+      [[[-1, 5, 3, 4, 0]], [-1, 0, 3, 4, 5]],
+      [[[]], []],
+      [[[1]], [1]],
+      [[[2, 1]], [1, 2]],
+      [[[3, 3, 1, 1]], [1, 1, 3, 3]],
+      [[[-100000, 100000, 0]], [-100000, 0, 100000]]
+    ] },
     solution: {
       approach: `<p>Top-down merge sort on nodes; O(log N) recursion stack.</p>`,
       code: `
@@ -3196,6 +5055,72 @@ print(min_meeting_rooms([[0, 30], [5, 10], [15, 20]]))  # 2` }],
                 for (ListNode p = new Solution().sortList(h); p != null; p = p.next) System.out.print(p.val + " ");
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def sort_list(head):
+    if head is None or head.next is None:
+        return head
+    slow, fast = head, head.next             # fast starts one ahead -> even split
+    while fast and fast.next:
+        slow, fast = slow.next, fast.next.next
+    right, slow.next = slow.next, None       # cut into two lists
+    a, b = sort_list(head), sort_list(right)
+    dummy = tail = ListNode(0)
+    while a and b:
+        if a.val <= b.val:                   # <= keeps it stable
+            tail.next, a = a, a.next
+        else:
+            tail.next, b = b, b.next
+        tail = tail.next
+    tail.next = a or b                       # append the leftovers
+    return dummy.next` },
+        { lang: 'js', code: `function sortList(head) {
+  if (!head || !head.next) return head;
+  let slow = head, fast = head.next;         // fast starts one ahead -> even split
+  while (fast && fast.next) { slow = slow.next; fast = fast.next.next; }
+  const right = slow.next;
+  slow.next = null;                          // cut into two lists
+  let a = sortList(head), b = sortList(right);
+  const dummy = new ListNode(0);
+  let tail = dummy;
+  while (a && b) {
+    if (a.val <= b.val) { tail.next = a; a = a.next; }   // <= keeps it stable
+    else { tail.next = b; b = b.next; }
+    tail = tail.next;
+  }
+  tail.next = a || b;                        // append the leftovers
+  return dummy.next;
+}` },
+        { lang: 'cpp', code: `// LeetCode provides this node type; it is spelled out so the snippet compiles on its own.
+struct ListNode {
+    int val; ListNode* next;
+    ListNode(int x = 0, ListNode* n = nullptr) : val(x), next(n) {}
+};
+
+class Solution {
+    ListNode* merge(ListNode* a, ListNode* b) {
+        ListNode dummy(0);                       // on the stack: nothing to free
+        ListNode* tail = &dummy;
+        while (a && b) {
+            if (a->val <= b->val) { tail->next = a; a = a->next; }   // <= keeps it stable
+            else { tail->next = b; b = b->next; }
+            tail = tail->next;
+        }
+        tail->next = a ? a : b;                  // append the leftovers
+        return dummy.next;
+    }
+
+public:
+    ListNode* sortList(ListNode* head) {
+        if (!head || !head->next) return head;
+        ListNode* slow = head;
+        ListNode* fast = head->next;             // fast starts one ahead -> even split
+        while (fast && fast->next) { slow = slow->next; fast = fast->next->next; }
+        ListNode* right = slow->next;
+        slow->next = nullptr;                    // cut into two lists
+        return merge(sortList(head), sortList(right));
+    }
+};` }
+      ],
       complexity: `<p><b>Time O(N log N)</b>. <b>Space O(log N)</b> recursion (a bottom-up version reaches O(1)).</p>`
     }
   });
@@ -3233,8 +5158,17 @@ print(min_meeting_rooms([[0, 30], [5, 10], [15, 20]]))  # 2` }],
     hints: [
       `<p><b>Aha:</b> "remove the fewest" = "keep the most non-overlapping intervals" = activity selection.</p>`,
       `<p>Sort by end. Track <code>lastEnd</code>. If <code>start ≥ lastEnd</code> keep it (lastEnd = end), else it must be removed.</p>`,
-      `<p>Edge cases: touching is fine (≥), identical intervals (keep one), negative coordinates (use Integer.compare). Recipe: sort by end → kept = 0, lastEnd = −∞ → loop → return N − kept.</p>`
+      `<p>Edge cases: touching is fine (≥), identical intervals (keep one), negative coordinates (compare, do not subtract, in Java and C++). Recipe: sort by end → kept = 0, lastEnd = −∞ → loop → return N − kept.</p>`
     ],
+    tests: { sig: 'int[][] -> int', fn: 'eraseOverlapIntervals', cases: [
+      [[[[1, 2], [2, 3], [3, 4], [1, 3]]], 1],
+      [[[[1, 2], [1, 2], [1, 2]]], 2],
+      [[[[1, 2], [2, 3]]], 0],
+      [[[[1, 100], [11, 22], [1, 11], [2, 12]]], 2],
+      [[[[0, 1]]], 0],
+      [[[[-50000, 50000], [-3, -1], [-1, 0]]], 1],
+      [[[[1, 5], [2, 3], [3, 4], [4, 6]]], 1]
+    ] },
     solution: {
       approach: `<p>Greedy activity selection by earliest finish time.</p>`,
       code: `
@@ -3256,6 +5190,35 @@ print(min_meeting_rooms([[0, 30], [5, 10], [15, 20]]))  # 2` }],
                 System.out.println(new Solution().eraseOverlapIntervals(new int[][]{{1, 2}, {2, 3}, {3, 4}, {1, 3}})); // 1
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def erase_overlap_intervals(iv):
+    kept, last_end = 0, float("-inf")
+    for s, e in sorted(iv, key=lambda x: x[1]):   # by end
+        if s >= last_end:                          # fits after the last kept interval
+            kept += 1
+            last_end = e
+    return len(iv) - kept` },
+        { lang: 'js', code: `function eraseOverlapIntervals(iv) {
+  const sorted = iv.slice().sort((x, y) => x[1] - y[1]);   // by end
+  let kept = 0, lastEnd = -Infinity;
+  for (const [s, e] of sorted) {
+    if (s >= lastEnd) { kept++; lastEnd = e; }             // fits after the last kept one
+  }
+  return iv.length - kept;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int eraseOverlapIntervals(vector<vector<int>> iv) {
+        sort(iv.begin(), iv.end(), [](const vector<int>& x, const vector<int>& y) { return x[1] < y[1]; });
+        int kept = 0;
+        long long lastEnd = LLONG_MIN;
+        for (const auto& cur : iv) {
+            if (cur[0] >= lastEnd) { kept++; lastEnd = cur[1]; }   // fits after the last kept one
+        }
+        return (int)iv.size() - kept;
+    }
+};` }
+      ],
       dry: { head: ['sorted by end', 'start ≥ lastEnd?', 'kept', 'lastEnd'], rows: [['[1,2]', 'yes', '1', '2'], ['[2,3]', '2 ≥ 2 yes', '2', '3'], ['[1,3]', '1 ≥ 3 <span class="c-r">no</span> → remove', '2', '3'], ['[3,4]', '3 ≥ 3 yes', '3', '4']] },
       complexity: `<p><b>Time O(N log N)</b>, <b>space O(log N)</b>–O(N) for the sort.</p>`
     }
@@ -3293,9 +5256,18 @@ print(min_meeting_rooms([[0, 30], [5, 10], [15, 20]]))  # 2` }],
     },
     hints: [
       `<p><b>Aha:</b> shoot each arrow as far right as possible while still hitting the balloon that ends first — at its end.</p>`,
-      `<p>Sort by end (with <code>Integer.compare</code>!). arrows = 1, pos = first end. For each balloon: if start &gt; pos → new arrow at its end.</p>`,
+      `<p>Sort by end (compare, never subtract: Java <code>Integer.compare</code>, C++ <code>&lt;</code>). arrows = 1, pos = first end. For each balloon: if start &gt; pos → new arrow at its end.</p>`,
       `<p>Edge cases: touching balloons ([1,2], [2,3]) share an arrow (inclusive); extreme int values. Recipe: sort by end → pos = p[0][1] → count starts &gt; pos.</p>`
     ],
+    tests: { sig: 'int[][] -> int', fn: 'findMinArrowShots', cases: [
+      [[[[10, 16], [2, 8], [1, 6], [7, 12]]], 2],
+      [[[[1, 2], [3, 4], [5, 6], [7, 8]]], 4],
+      [[[[1, 2], [2, 3], [3, 4], [4, 5]]], 2],
+      [[[[1, 2]]], 1],
+      [[[[-2147483646, -2147483645], [2147483646, 2147483647]]], 2],
+      [[[[-2147483648, 2147483647], [0, 0]]], 1],
+      [[[[3, 9], [7, 12], [3, 8], [6, 8], [9, 10], [2, 9], [0, 9], [3, 9], [0, 6], [2, 8]]], 2]
+    ] },
     solution: {
       approach: `<p>Greedy by earliest end; same shape as activity selection but with inclusive ends.</p>`,
       code: `
@@ -3317,6 +5289,37 @@ print(min_meeting_rooms([[0, 30], [5, 10], [15, 20]]))  # 2` }],
                 System.out.println(new Solution().findMinArrowShots(new int[][]{{10, 16}, {2, 8}, {1, 6}, {7, 12}})); // 2
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def find_min_arrow_shots(points):
+    points = sorted(points, key=lambda p: p[1])   # by end (no overflow in Python)
+    arrows, pos = 1, points[0][1]                 # first arrow at the earliest end
+    for s, e in points:
+        if s > pos:                               # this balloon starts after the arrow
+            arrows += 1
+            pos = e
+    return arrows` },
+        { lang: 'js', code: `function findMinArrowShots(points) {
+  // x - y is exact for 32-bit values in a JS Number (no int overflow), but compare anyway
+  const p = points.slice().sort((x, y) => (x[1] < y[1] ? -1 : x[1] > y[1] ? 1 : 0));
+  let arrows = 1, pos = p[0][1];                  // first arrow at the earliest end
+  for (const [s, e] of p) {
+    if (s > pos) { arrows++; pos = e; }           // missed -> new arrow at its end
+  }
+  return arrows;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int findMinArrowShots(vector<vector<int>> points) {
+        // compare with <, never a[1] - b[1] (signed overflow is undefined behaviour)
+        sort(points.begin(), points.end(), [](const vector<int>& a, const vector<int>& b) { return a[1] < b[1]; });
+        int arrows = 1, pos = points[0][1];       // first arrow at the earliest end
+        for (const auto& b : points) {
+            if (b[0] > pos) { arrows++; pos = b[1]; }   // missed -> new arrow
+        }
+        return arrows;
+    }
+};` }
+      ],
       complexity: `<p><b>Time O(N log N)</b>, <b>space O(log N)</b>–O(N) for the sort.</p>`
     }
   });
@@ -3354,6 +5357,16 @@ print(min_meeting_rooms([[0, 30], [5, 10], [15, 20]]))  # 2` }],
       `<p>Two pointers i, j. Add the overlap if lo ≤ hi. Then advance whichever interval has the smaller end.</p>`,
       `<p>Edge cases: one list empty; single-point overlaps ([5,5]); identical ends (advance either — or both). Recipe: while i &lt; N and j &lt; M: lo, hi → add → advance smaller end.</p>`
     ],
+    tests: { sig: 'int[][] int[][] -> int[][]', fn: 'intervalIntersection', cases: [
+      [[[[0, 2], [5, 10], [13, 23], [24, 25]], [[1, 5], [8, 12], [15, 24], [25, 26]]], [[1, 2], [5, 5], [8, 10], [15, 23], [24, 24], [25, 25]]],
+      [[[], [[1, 2]]], []],
+      [[[[1, 3], [5, 9]], []], []],
+      [[[[1, 7]], [[3, 10]]], [[3, 7]]],
+      [[[[0, 5]], [[5, 10]]], [[5, 5]]],
+      [[[[1, 2]], [[3, 4]]], []],
+      [[[[0, 1000000000]], [[0, 1000000000]]], [[0, 1000000000]]],
+      [[[[1, 5], [8, 12]], [[2, 3], [4, 9], [11, 15]]], [[2, 3], [4, 5], [8, 9], [11, 12]]]
+    ] },
     solution: {
       approach: `<p>Merge-style two-pointer sweep.</p>`,
       code: `
@@ -3377,6 +5390,43 @@ print(min_meeting_rooms([[0, 30], [5, 10], [15, 20]]))  # 2` }],
                 System.out.println(Arrays.deepToString(r));
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def interval_intersection(a, b):
+    res, i, j = [], 0, 0
+    while i < len(a) and j < len(b):
+        lo = max(a[i][0], b[j][0])
+        hi = min(a[i][1], b[j][1])
+        if lo <= hi:
+            res.append([lo, hi])             # they overlap
+        if a[i][1] < b[j][1]:                # drop the one that ends first
+            i += 1
+        else:
+            j += 1
+    return res` },
+        { lang: 'js', code: `function intervalIntersection(a, b) {
+  const res = [];
+  let i = 0, j = 0;
+  while (i < a.length && j < b.length) {
+    const lo = Math.max(a[i][0], b[j][0]), hi = Math.min(a[i][1], b[j][1]);
+    if (lo <= hi) res.push([lo, hi]);        // they overlap
+    if (a[i][1] < b[j][1]) i++; else j++;    // drop the one that ends first
+  }
+  return res;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    vector<vector<int>> intervalIntersection(const vector<vector<int>>& a, const vector<vector<int>>& b) {
+        vector<vector<int>> res;
+        size_t i = 0, j = 0;
+        while (i < a.size() && j < b.size()) {
+            int lo = max(a[i][0], b[j][0]), hi = min(a[i][1], b[j][1]);
+            if (lo <= hi) res.push_back({lo, hi});   // they overlap
+            if (a[i][1] < b[j][1]) i++; else j++;    // drop the one that ends first
+        }
+        return res;
+    }
+};` }
+      ],
       complexity: `<p><b>Time O(N + M)</b>, <b>space O(1)</b> besides the output.</p>`
     }
   });
@@ -3416,6 +5466,15 @@ print(min_meeting_rooms([[0, 30], [5, 10], [15, 20]]))  # 2` }],
       `<p>In the merge, when you take a left index i, add <code>(j − (mid + 1))</code> = number of right elements already taken (all smaller) to <code>count[idx[i]]</code>. Ties: take left first.</p>`,
       `<p>Edge cases: duplicates (strictly smaller → ties are not counted), N = 1, all equal. Recipe: idx = 0..N−1 → mergeSort(idx by nums) with the credit rule → return counts.</p>`
     ],
+    tests: { sig: 'int[] -> list<int>', fn: 'countSmaller', cases: [
+      [[[5, 2, 6, 1]], [2, 1, 1, 0]],
+      [[[-1]], [0]],
+      [[[-1, -1]], [0, 0]],
+      [[[1, 2, 3]], [0, 0, 0]],
+      [[[3, 2, 1]], [2, 1, 0]],
+      [[[2, 0, 1]], [2, 0, 0]],
+      [[[-10000, 10000, 0, 0]], [0, 2, 0, 0]]
+    ] },
     solution: {
       approach: `<p>Merge sort over indices; credit each left element with the right elements that jumped ahead of it.</p>`,
       code: `
@@ -3455,6 +5514,77 @@ print(min_meeting_rooms([[0, 30], [5, 10], [15, 20]]))  # 2` }],
                 System.out.println(new Solution().countSmaller(new int[]{5, 2, 6, 1})); // [2, 1, 1, 0]
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def count_smaller(nums):
+    n = len(nums)
+    cnt = [0] * n
+    idx = list(range(n))                     # merge sort indices, ordered by value
+
+    def sort(lo, hi):
+        if lo >= hi:
+            return
+        mid = (lo + hi) // 2
+        sort(lo, mid)
+        sort(mid + 1, hi)
+        merged, i, j = [], lo, mid + 1
+        while i <= mid:
+            if j <= hi and nums[idx[j]] < nums[idx[i]]:
+                merged.append(idx[j]); j += 1          # right is smaller -> goes first
+            else:
+                cnt[idx[i]] += j - (mid + 1)           # right items already taken are smaller
+                merged.append(idx[i]); i += 1
+        merged += idx[j:hi + 1]
+        idx[lo:hi + 1] = merged
+
+    sort(0, n - 1)
+    return cnt` },
+        { lang: 'js', code: `function countSmaller(nums) {
+  const n = nums.length;
+  const cnt = new Array(n).fill(0), tmp = new Array(n);
+  const idx = Array.from({ length: n }, (_, i) => i);   // merge sort indices by value
+  const sort = (lo, hi) => {
+    if (lo >= hi) return;
+    const mid = (lo + hi) >> 1;
+    sort(lo, mid);
+    sort(mid + 1, hi);
+    let i = lo, j = mid + 1, k = lo;
+    while (i <= mid) {
+      if (j <= hi && nums[idx[j]] < nums[idx[i]]) tmp[k++] = idx[j++];   // right is smaller
+      else { cnt[idx[i]] += j - (mid + 1); tmp[k++] = idx[i++]; }        // credit the left item
+    }
+    while (j <= hi) tmp[k++] = idx[j++];
+    for (k = lo; k <= hi; k++) idx[k] = tmp[k];
+  };
+  sort(0, n - 1);
+  return cnt;
+}` },
+        { lang: 'cpp', code: `class Solution {
+    vector<int> cnt, idx, tmp;
+
+    void sort(const vector<int>& a, int lo, int hi) {
+        if (lo >= hi) return;
+        int mid = lo + (hi - lo) / 2;
+        sort(a, lo, mid);
+        sort(a, mid + 1, hi);
+        int i = lo, j = mid + 1, k = lo;
+        while (i <= mid) {
+            if (j <= hi && a[idx[j]] < a[idx[i]]) tmp[k++] = idx[j++];      // right is smaller
+            else { cnt[idx[i]] += j - (mid + 1); tmp[k++] = idx[i++]; }     // credit the left item
+        }
+        while (j <= hi) tmp[k++] = idx[j++];
+        copy(tmp.begin() + lo, tmp.begin() + hi + 1, idx.begin() + lo);
+    }
+
+public:
+    vector<int> countSmaller(const vector<int>& nums) {
+        int n = nums.size();
+        cnt.assign(n, 0); tmp.assign(n, 0); idx.resize(n);
+        iota(idx.begin(), idx.end(), 0);         // merge sort indices by value
+        sort(nums, 0, n - 1);
+        return cnt;
+    }
+};` }
+      ],
       dry: { head: ['merge', 'left (values)', 'right (values)', 'credits'], rows: [['(0,0,1)', '[5]', '[2]', '2 goes first; 5 gets +1'], ['(2,2,3)', '[6]', '[1]', '1 goes first; 6 gets +1'], ['(0,1,3)', '[2,5]', '[1,6]', '1 first; 2 gets +1, 5 gets +1; 6 last'], ['totals', '', '', '<span class="c-p">5:2, 2:1, 6:1, 1:0</span>']] },
       complexity: `<p><b>Time O(N log N)</b>, <b>space O(N)</b>. (A Fenwick tree over compressed values is the other classic solution — Range Query module.)</p>`
     }
@@ -3490,6 +5620,17 @@ print(min_meeting_rooms([[0, 30], [5, 10], [15, 20]]))  # 2` }],
       `<p>Before merging: for each i in the left half, move pointer j (monotonic!) through the right half while <code>a[i] &gt; 2L * a[j]</code>; add <code>j − (mid + 1)</code>.</p>`,
       `<p>Edge cases: negatives (still fine: sorted halves keep the pointer monotonic), overflow (use 2L), result fits int for N ≤ 5·10<sup>4</sup> but use long to be safe. Recipe: count left + right → two-pointer count → merge.</p>`
     ],
+    tests: { sig: 'int[] -> int', fn: 'reversePairs', cases: [
+      [[[1, 3, 2, 3, 1]], 2],
+      [[[2, 4, 3, 5, 1]], 3],
+      [[[1]], 0],
+      [[[2147483647, 2147483647, 2147483647, 2147483647, 2147483647, 2147483647]], 0],
+      [[[-5, -5]], 1],
+      [[[5, 4, 3, 2, 1]], 4],
+      [[[-2147483648, -1]], 0],
+      [[[2147483647, 1073741823]], 1],
+      [[[2147483647, 1073741824]], 0]
+    ] },
     solution: {
       approach: `<p>Merge sort with a separate linear counting pass before each merge.</p>`,
       code: `
@@ -3519,6 +5660,64 @@ print(min_meeting_rooms([[0, 30], [5, 10], [15, 20]]))  # 2` }],
                 System.out.println(new Solution().reversePairs(new int[]{2, 4, 3, 5, 1})); // 3
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def reverse_pairs(nums):
+    a = list(nums)
+
+    def sort(lo, hi):
+        if lo >= hi:
+            return 0
+        mid = (lo + hi) // 2
+        c = sort(lo, mid) + sort(mid + 1, hi)
+        j = mid + 1
+        for i in range(lo, mid + 1):             # both halves sorted -> j only moves right
+            while j <= hi and a[i] > 2 * a[j]:   # Python ints: 2 * a[j] cannot overflow
+                j += 1
+            c += j - (mid + 1)
+        a[lo:hi + 1] = sorted(a[lo:hi + 1])      # merge (Timsort merges the two runs in linear time)
+        return c
+
+    return sort(0, len(a) - 1)` },
+        { lang: 'js', code: `function reversePairs(nums) {
+  const a = nums.slice(), tmp = new Array(a.length);
+  const sort = (lo, hi) => {
+    if (lo >= hi) return 0;
+    const mid = (lo + hi) >> 1;
+    let c = sort(lo, mid) + sort(mid + 1, hi);
+    let j = mid + 1;
+    for (let i = lo; i <= mid; i++) {          // both halves sorted -> j only moves right
+      while (j <= hi && a[i] > 2 * a[j]) j++;  // 2 * a[j] is exact in a Number
+      c += j - (mid + 1);
+    }
+    let i = lo, k = lo; j = mid + 1;           // ordinary merge
+    while (i <= mid && j <= hi) tmp[k++] = a[i] <= a[j] ? a[i++] : a[j++];
+    while (i <= mid) tmp[k++] = a[i++];
+    while (j <= hi) tmp[k++] = a[j++];
+    for (k = lo; k <= hi; k++) a[k] = tmp[k];
+    return c;
+  };
+  return sort(0, a.length - 1);
+}` },
+        { lang: 'cpp', code: `class Solution {
+    long long sort(vector<int>& a, int lo, int hi) {
+        if (lo >= hi) return 0;
+        int mid = lo + (hi - lo) / 2;
+        long long c = sort(a, lo, mid) + sort(a, mid + 1, hi);
+        int j = mid + 1;
+        for (int i = lo; i <= mid; i++) {                   // j only moves right
+            while (j <= hi && (long long)a[i] > 2LL * a[j]) j++;   // long long: no overflow
+            c += j - (mid + 1);
+        }
+        inplace_merge(a.begin() + lo, a.begin() + mid + 1, a.begin() + hi + 1);   // ordinary merge
+        return c;
+    }
+
+public:
+    int reversePairs(vector<int> nums) {
+        return (int)sort(nums, 0, (int)nums.size() - 1);
+    }
+};` }
+      ],
       complexity: `<p><b>Time O(N log N)</b> — the counting pass is linear per level. <b>Space O(N)</b>.</p>`
     }
   });
@@ -3532,7 +5731,7 @@ print(min_meeting_rooms([[0, 30], [5, 10], [15, 20]]))  # 2` }],
     constraints: `1 ≤ N ≤ 10<sup>5</sup>, 0 ≤ nums[i] ≤ 10<sup>9</sup>`,
     example: `<p>[3, 6, 9, 1] → sorted 1, 3, 6, 9 → gaps 2, ${H.c('g', '3')}, ${H.c('g', '3')} → <b>3</b>.</p>`,
     brute: {
-      why: `<p><code>Arrays.sort</code> + one scan is O(N log N) — correct and simple, but the problem explicitly demands linear time. Values fit in 32 bits, so a 4-pass base-256 radix sort is linear.</p>`,
+      why: `<p>A library sort + one scan is O(N log N) — correct and simple, but the problem explicitly demands linear time. Values fit in 32 bits, so a 4-pass base-256 radix sort is linear.</p>`,
       code: `
         int brute(int[] nums) {
             if (nums.length < 2) return 0;
@@ -3554,6 +5753,16 @@ print(min_meeting_rooms([[0, 30], [5, 10], [15, 20]]))  # 2` }],
       `<p>For shift = 0, 8, 16, 24: stable counting sort on <code>(x &gt;&gt;&gt; shift) &amp; 255</code> using prefix sums and a right-to-left placement into a buffer; swap buffers.</p>`,
       `<p>Edge cases: N &lt; 2 → 0; all equal → 0. Recipe: radix sort → scan adjacent differences → max. (Bucket alternative: N−1 buckets of width ⌈(max−min)/(N−1)⌉; the answer is between buckets, never inside one.)</p>`
     ],
+    tests: { sig: 'int[] -> int', fn: 'maximumGap', cases: [
+      [[[3, 6, 9, 1]], 3],
+      [[[10]], 0],
+      [[[1, 1, 1]], 0],
+      [[[1, 1000000000]], 999999999],
+      [[[0, 0, 5]], 5],
+      [[[100, 3, 2, 1]], 97],
+      [[[1, 10000000, 0]], 9999999],
+      [[[256, 65536, 16777216, 0]], 16711680]
+    ] },
     solution: {
       approach: `<p>LSD radix sort with 8-bit digits, then a linear scan.</p>`,
       code: `
@@ -3578,6 +5787,51 @@ print(min_meeting_rooms([[0, 30], [5, 10], [15, 20]]))  # 2` }],
                 System.out.println(new Solution().maximumGap(new int[]{3, 6, 9, 1})); // 3
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def maximum_gap(nums):
+    if len(nums) < 2:
+        return 0
+    a = list(nums)
+    for shift in (0, 8, 16, 24):             # LSD radix sort, one byte per pass
+        buckets = [[] for _ in range(256)]
+        for x in a:
+            buckets[(x >> shift) & 255].append(x)   # appending keeps each pass stable
+        a = [x for b in buckets for x in b]
+    return max(a[i] - a[i - 1] for i in range(1, len(a)))` },
+        { lang: 'js', code: `function maximumGap(nums) {
+  const n = nums.length;
+  if (n < 2) return 0;
+  let a = Int32Array.from(nums), buf = new Int32Array(n);
+  for (let shift = 0; shift < 32; shift += 8) {
+    const cnt = new Int32Array(257);
+    for (const x of a) cnt[((x >>> shift) & 255) + 1]++;     // count digits (shifted by 1)
+    for (let d = 0; d < 256; d++) cnt[d + 1] += cnt[d];      // cnt[d] = first slot for digit d
+    for (const x of a) buf[cnt[(x >>> shift) & 255]++] = x;  // left to right: stable
+    [a, buf] = [buf, a];                                      // swap roles
+  }
+  let best = 0;
+  for (let i = 1; i < n; i++) best = Math.max(best, a[i] - a[i - 1]);
+  return best;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int maximumGap(const vector<int>& nums) {
+        int n = nums.size();
+        if (n < 2) return 0;
+        vector<unsigned> a(nums.begin(), nums.end()), buf(n);
+        for (int shift = 0; shift < 32; shift += 8) {
+            array<int, 257> cnt{};
+            for (unsigned x : a) cnt[((x >> shift) & 255) + 1]++;    // count digits (shifted by 1)
+            for (int d = 0; d < 256; d++) cnt[d + 1] += cnt[d];      // first slot for digit d
+            for (unsigned x : a) buf[cnt[(x >> shift) & 255]++] = x; // left to right: stable
+            a.swap(buf);
+        }
+        unsigned best = 0;
+        for (int i = 1; i < n; i++) best = max(best, a[i] - a[i - 1]);
+        return (int)best;
+    }
+};` }
+      ],
       complexity: `<p><b>Time O(4·(N + 256)) = O(N)</b>, <b>space O(N)</b>. (Stable here because each slot pointer starts at the digit's <b>first</b> position and items are placed left to right — the mirror image of the right-to-left version.)</p>`
     }
   });
@@ -3625,6 +5879,15 @@ print(min_meeting_rooms([[0, 30], [5, 10], [15, 20]]))  # 2` }],
       `<p>Flatten all intervals, sort by start, sweep keeping the current block end; whenever a start is greater than the current end, the range [end, start] is free.</p>`,
       `<p>Edge cases: touching blocks ([1,3] and [3,5]) leave no gap (use &gt;, not ≥); one employee; nested intervals (use max for the end). Recipe: flatten → sort → end = first end → for each: if start &gt; end add [end, start]; end = max(end, cur end).</p>`
     ],
+    tests: { sig: 'list<list<int[]>> -> list<int[]>', fn: 'employeeFreeTime', cases: [
+      [[[[[1, 2], [5, 6]], [[1, 3]], [[4, 10]]]], [[3, 4]]],
+      [[[[[1, 3], [6, 7]], [[2, 4]], [[2, 5], [9, 12]]]], [[5, 6], [7, 9]]],
+      [[[[[1, 2]]]], []],
+      [[[[[1, 3]], [[3, 5]]]], []],
+      [[[[[1, 2], [4, 5], [9, 10]]]], [[2, 4], [5, 9]]],
+      [[[[[0, 100000000]], [[5, 6]]]], []],
+      [[[[[1, 10]], [[2, 3], [12, 13]]]], [[10, 12]]]
+    ] },
     solution: {
       approach: `<p>Merge all busy intervals and report the gaps. (A K-way merge with a heap avoids the global sort, giving O(N log K).)</p>`,
       code: `
@@ -3650,6 +5913,41 @@ print(min_meeting_rooms([[0, 30], [5, 10], [15, 20]]))  # 2` }],
                 for (int[] f : new Solution().employeeFreeTime(s)) System.out.println(Arrays.toString(f)); // [3, 4]
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def employee_free_time(schedule):
+    busy = sorted(iv for emp in schedule for iv in emp)   # flatten, sort by start
+    free, end = [], busy[0][1]
+    for s, e in busy:
+        if s > end:
+            free.append([end, s])            # a gap nobody covers
+        end = max(end, e)                    # extend the busy block
+    return free` },
+        { lang: 'js', code: `function employeeFreeTime(schedule) {
+  const busy = schedule.flat().sort((x, y) => x[0] - y[0]);   // flatten, sort by start
+  const free = [];
+  let end = busy[0][1];
+  for (const [s, e] of busy) {
+    if (s > end) free.push([end, s]);        // a gap nobody covers
+    end = Math.max(end, e);                  // extend the busy block
+  }
+  return free;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    vector<vector<int>> employeeFreeTime(const vector<vector<vector<int>>>& schedule) {
+        vector<vector<int>> busy;
+        for (const auto& emp : schedule) busy.insert(busy.end(), emp.begin(), emp.end());
+        sort(busy.begin(), busy.end());                       // by start
+        vector<vector<int>> free;
+        int end = busy[0][1];
+        for (const auto& cur : busy) {
+            if (cur[0] > end) free.push_back({end, cur[0]});  // a gap nobody covers
+            end = max(end, cur[1]);                           // extend the busy block
+        }
+        return free;
+    }
+};` }
+      ],
       complexity: `<p><b>Time O(N log N)</b> for N total intervals (O(N log K) with a K-way heap merge). <b>Space O(N)</b>.</p>`
     }
   });
@@ -3714,8 +6012,8 @@ print(min_meeting_rooms([[0, 30], [5, 10], [15, 20]]))  # 2` }],
       followUps: ['How would you find the top k elements, not just the k-th?', 'What changes if the data is a stream of 10<sup>9</sup> numbers?', 'Prove the expected O(N) bound informally.']
     },
     {
-      q: 'How do custom comparators work in Java, and what are the common bugs?', level: 'B',
-      a: `<p><code>compare(a, b)</code> returns negative if a goes first, positive if b goes first, 0 for a tie. Primitive arrays (<code>int[]</code>) cannot take a comparator — box to <code>Integer[]</code> or sort and reverse. Multi-key: compare the first key; only if equal, compare the next (or <code>comparingInt(...).thenComparing(...)</code>). Bugs: <b>subtraction overflow</b> (<code>a - b</code> with large values — use <code>Integer.compare</code>), comparators that violate the contract (random results → "Comparison method violates its general contract!"), <code>reversed()</code> applying to the whole chain, and comparators inconsistent with equals inside a TreeSet, which silently drops "equal" elements.</p>`,
+      q: 'How do custom comparators work (Java first, then other languages), and what are the common bugs?', level: 'B',
+      a: `<p><code>compare(a, b)</code> returns negative if a goes first, positive if b goes first, 0 for a tie. Primitive arrays (<code>int[]</code>) cannot take a comparator — box to <code>Integer[]</code> or sort and reverse. Multi-key: compare the first key; only if equal, compare the next (or <code>comparingInt(...).thenComparing(...)</code>). Bugs: <b>subtraction overflow</b> (<code>a - b</code> with large values — use <code>Integer.compare</code>), comparators that violate the contract (random results → "Comparison method violates its general contract!"), <code>reversed()</code> applying to the whole chain, and comparators inconsistent with equals inside a TreeSet, which silently drops "equal" elements. Elsewhere: Python prefers a <code>key=</code> function (a tuple for several keys, <code>cmp_to_key</code> for a two-argument rule); JavaScript's default sort compares numbers as strings, so always pass a comparator; a C++ comparator is a strict "less than" that returns a <code>bool</code> (<code>&lt;=</code> breaks it).</p>`,
       followUps: ['How would you sort strings to form the largest number?', 'Comparable vs Comparator?', 'How do you sort a 2D array by column 1 descending, then column 0 ascending?']
     },
     {
@@ -3740,7 +6038,7 @@ print(min_meeting_rooms([[0, 30], [5, 10], [15, 20]]))  # 2` }],
     },
     {
       q: 'Which sorting algorithm does Java use internally, and why different ones?', level: 'A',
-      a: `<p><code>Arrays.sort</code> on <b>primitives</b> uses a dual-pivot quick sort (with insertion sort for tiny ranges, and special handling such as counting sort for large byte/short/char arrays): fast, in place, and stability is irrelevant because equal primitives are indistinguishable. On <b>objects</b> (<code>Arrays.sort(T[])</code>, <code>Collections.sort</code>, <code>List.sort</code>) it uses <b>TimSort</b>: stable (required for objects), O(N) on already sorted or reverse-sorted input, O(N log N) worst case, but needs up to N/2 extra references. <code>Arrays.parallelSort</code> uses a parallel merge-based approach for large arrays.</p>`,
+      a: `<p><code>Arrays.sort</code> on <b>primitives</b> uses a dual-pivot quick sort (with insertion sort for tiny ranges, and special handling such as counting sort for large byte/short/char arrays): fast, in place, and stability is irrelevant because equal primitives are indistinguishable. On <b>objects</b> (<code>Arrays.sort(T[])</code>, <code>Collections.sort</code>, <code>List.sort</code>) it uses <b>TimSort</b>: stable (required for objects), O(N) on already sorted or reverse-sorted input, O(N log N) worst case, but needs up to N/2 extra references. <code>Arrays.parallelSort</code> uses a parallel merge-based approach for large arrays. For comparison: Python uses TimSort (Powersort merge policy since 3.11) for everything; V8 (Node, Chrome) uses TimSort for <code>Array.prototype.sort</code>; C++ <code>std::sort</code> is introsort (quick sort + heap sort fallback + insertion sort, not stable) and <code>std::stable_sort</code> is a merge sort.</p>`,
       followUps: ['What is a "run" in TimSort?', 'Why can a comparator bug crash TimSort but not quick sort on int[]?', 'How does Python sort?']
     },
     {
@@ -3757,17 +6055,23 @@ print(min_meeting_rooms([[0, 30], [5, 10], [15, 20]]))  # 2` }],
     id: 'dsa07',
     title: 'Sorting Algorithms & Intervals',
     intro: `<p>Sorting is the quiet superpower behind a huge number of interview problems: once data is in order, duplicates sit next to each other, overlaps become neighbours, and binary search and two pointers start working. In this module you will build every classic sort <b>by hand</b> — bubble, selection and insertion for intuition, counting and radix sort that beat N log N, merge sort (plus its famous inversion-count trick) and quick sort with Lomuto and Hoare partitioning and quickselect.</p>
-      <p>Then you will learn to bend Java's built-in sorts to your will with <b>custom comparators</b>, understand <b>stability</b> and why it matters for real records, and finish with the most common sorting application in interviews: <b>intervals</b> — merging, inserting, and the meeting rooms family. Every topic has an analogy, a step-by-step visualizer you can feed your own input, worked examples, clues that tell you which idea a question wants, and a look at how AI tools change the game.</p>`,
+      <p>Then you will learn to bend your language's built-in sorts to your will with <b>custom comparators</b>, understand <b>stability</b> and why it matters for real records, and finish with the most common sorting application in interviews: <b>intervals</b> — merging, inserting, and the meeting rooms family. Every topic has an analogy, a step-by-step visualizer you can feed your own input, worked examples, clues that tell you which idea a question wants, and a look at how AI tools change the game.</p>`,
     goals: [
       'Trace bubble, selection, insertion, merge and quick sort by hand and state each one\'s best/worst complexity, space and stability',
       'Use counting sort and radix sort when the value range is small, and explain why comparison sorts cannot beat O(N log N)',
       'Count inversions (and reverse pairs / smaller-after-self) by modifying merge sort in O(N log N)',
       'Partition with Lomuto, Hoare and 3-way (Dutch flag) and find the k-th smallest/largest with quickselect in expected O(N)',
-      'Write correct, overflow-safe, multi-key Java comparators and choose between int[], Integer[] and List sorts',
+      'Write correct, overflow-safe, multi-key comparators (or key functions) in your language and know which built-in sorts are stable',
       'Solve merge intervals, insert interval, meeting rooms I/II and minimum platforms, with the right endpoint convention'
     ],
     prereqs: `DSA 2 (Math Foundations &amp; Time/Space Complexity) for N log N reasoning, DSA 5 (Arrays &amp; Prefix Sums) for count/prefix arrays, and DSA 6 (Two Pointers) for the merge and partition steps. Basic Java recursion helps for merge and quick sort.`,
     hours: 14,
+    langNotes: {
+      java: `<p><b>Java:</b> <code>Arrays.sort(int[])</code> is an unstable dual-pivot quick sort and takes no comparator; object sorts (<code>Arrays.sort(T[], cmp)</code>, <code>List.sort</code>, <code>Collections.sort</code>) are a stable TimSort. To sort an <code>int[]</code> descending, sort and reverse, or box to <code>Integer[]</code>. <code>int</code> overflow wraps silently: write comparators with <code>Integer.compare</code> / <code>Long.compare</code> (never <code>a - b</code>) and count inversions in a <code>long</code>. <code>PriorityQueue</code> is a min-heap (pass <code>Comparator.reverseOrder()</code> for a max-heap). Recursion is fine to about 10k frames: merge sort is only log₂N deep, but quick sort with a bad pivot can be N deep, so use random pivots.</p>`,
+      python: `<p><b>Python:</b> <code>sorted()</code> (new list) and <code>list.sort()</code> (in place) are a stable TimSort; pass a <code>key=</code> function (a tuple such as <code>(-marks, name)</code> gives several keys at once) and use <code>functools.cmp_to_key</code> only for a true two-argument rule like "Largest Number". Integers never overflow, so <code>a - b</code> and inversion counts are safe. <code>heapq</code> is a min-heap only: negate values for a max-heap. Recursion stops at about 1000 frames by default: merge sort is only log₂N deep, but a worst-case quick sort is N deep, so prefer random pivots or loops (or <code>sys.setrecursionlimit</code> with <code>threading.stack_size</code>). <code>list.pop(0)</code> and <code>list.insert(0, x)</code> are O(N); slicing makes copies.</p>`,
+      js: `<p><b>JavaScript:</b> <code>arr.sort()</code> with no comparator compares <b>as strings</b> (<code>[10, 9, 1].sort()</code> gives <code>[1, 10, 9]</code>), so always pass <code>(a, b) =&gt; a - b</code>, or use a typed array (<code>Int32Array</code>), which sorts numerically. The sort is stable (ES2019+) and in place, so copy first (<code>[...a]</code>) when the caller's order matters. <code>Number</code> is exact to 2<sup>53</sup>: <code>a - b</code> is safe for 32-bit values and inversion counts up to ~5·10<sup>9</sup>, but use <code>BigInt</code> beyond that; <code>|0</code> truncates to 32 bits. There is <b>no built-in heap</b>: this module's heap solutions include a small <code>MinHeap</code> class (<code>push</code>, <code>pop</code>, <code>peek</code>, <code>size</code>, with a comparator). <code>array.shift()</code> is O(N). Recursion is fine to about 10k frames.</p>`,
+      cpp: `<p><b>C++:</b> <code>std::sort</code> is an unstable introsort; use <code>std::stable_sort</code> when ties must keep their order (log files, multi-pass sorts). A comparator is a strict "less than" returning <code>bool</code>: use <code>&lt;</code>, never <code>&lt;=</code> (that breaks the strict weak ordering and can crash), and never subtract, since signed overflow is undefined behaviour; use <code>long long</code> for counts and squared distances. <code>vector</code>s and <code>pair</code>s already compare lexicographically, so <code>sort</code> on intervals sorts by start, then end. <code>priority_queue</code> is a <b>max</b>-heap: use <code>priority_queue&lt;int, vector&lt;int&gt;, greater&lt;int&gt;&gt;</code> for the min-heap of end times. Handy library pieces: <code>nth_element</code> (quickselect), <code>inplace_merge</code> (the merge step), <code>partial_sum</code> (prefix counts). The default stack is about 8 MB.</p>`
+    },
     topics: topics,
     practice: practice,
     quiz: quiz,

@@ -625,6 +625,7 @@ iv('How do you use AI tools to prepare for interviews without hurting yourself?'
 iv('Describe a time your priorities changed mid-project.', 'I', '<p>I explain how I noticed (a customer signal or data), told stakeholders early, stopped low-value work, and reset the plan with a new checkpoint. I stress that I shared what we would not do, preserved team morale by explaining why, and documented the lesson.</p>', ['How did the team react?', 'What signal told you to change?']);
 
 registerModule({
+  langExplain: `<p><b>About the code here.</b> The few samples are optional Python helpers you can run in the page, such as a resume-bullet checker or a story-bank matrix. Nothing in the behavioural rounds depends on a programming language, so skip them if you like.</p>`,
   id: 'beh03',
   title: 'Behavioral Bank II: Leadership, Ownership & Ambiguity',
   intro: '<p>This module covers the "senior" half of behavioral interviews: leading when you have no title, acting like an owner, moving forward in fog, choosing what to do first (and what to refuse), obsessing over the customer, and mapping your stories to the Amazon-style leadership principles. Everything uses simple language, real analogies, weak-versus-strong answers, and runnable Python tools to practise.</p>',

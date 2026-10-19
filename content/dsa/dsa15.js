@@ -87,7 +87,7 @@
       'Constraints like <code>N, Q ≤ 10<sup>5</sup></code> with "insert" + "get min" operations → each must be O(log N) → heap.',
       '"Implement a priority queue / heap from scratch" → array with parent <code>(i-1)/2</code>, children <code>2i+1</code>, <code>2i+2</code>.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       // Max-heap version: identical to min-heap, only the comparisons are flipped.
       class MaxHeap {
           private int[] a = new int[16];   // the tree, stored level by level
@@ -119,7 +119,127 @@
               }
               return top;
           }
-      }`],
+      }`, alt: [
+      { lang: 'python', run: true, code: `class MaxHeap:
+    def __init__(self):
+        self.a = []                       # the tree, stored level by level
+
+    def insert(self, x):
+        a = self.a
+        a.append(x)                       # 1) put the new value at the end
+        i = len(a) - 1
+        while i > 0 and a[i] > a[(i - 1) // 2]:   # 2) bigger than parent? (max-heap)
+            p = (i - 1) // 2
+            a[i], a[p] = a[p], a[i]       # swap child and parent
+            i = p                         # keep bubbling up
+
+    def extract_max(self):
+        a = self.a
+        if not a:
+            raise IndexError("heap is empty")
+        top = a[0]                        # the answer: largest value
+        last = a.pop()
+        if a:
+            a[0] = last                   # move the last element to the root
+            i = 0
+            while True:
+                l, r, big = 2 * i + 1, 2 * i + 2, i
+                if l < len(a) and a[l] > a[big]:
+                    big = l               # pick the BIGGER child
+                if r < len(a) and a[r] > a[big]:
+                    big = r
+                if big == i:
+                    break                 # parent already biggest: done
+                a[i], a[big] = a[big], a[i]
+                i = big                   # keep sinking down
+        return top
+
+
+h = MaxHeap()
+for x in [5, 3, 8, 1]:
+    h.insert(x)
+print(h.extract_max(), h.extract_max())   # 8 5
+` },
+      { lang: 'js', run: true, code: `class MaxHeap {
+  constructor() { this.a = []; }          // the tree, stored level by level
+
+  insert(x) {
+    const a = this.a;
+    a.push(x);                            // 1) put the new value at the end
+    let i = a.length - 1;
+    while (i > 0 && a[i] > a[(i - 1) >> 1]) {   // 2) bigger than parent? (max-heap)
+      const p = (i - 1) >> 1;
+      [a[i], a[p]] = [a[p], a[i]];        // swap child and parent
+      i = p;                              // keep bubbling up
+    }
+  }
+
+  extractMax() {
+    const a = this.a;
+    if (!a.length) throw new Error('heap is empty');
+    const top = a[0], last = a.pop();     // the answer: largest value
+    if (a.length) {
+      a[0] = last;                        // move the last element to the root
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let big = i;
+        if (l < a.length && a[l] > a[big]) big = l;   // pick the BIGGER child
+        if (r < a.length && a[r] > a[big]) big = r;
+        if (big === i) break;             // parent already biggest: done
+        [a[i], a[big]] = [a[big], a[i]];
+        i = big;                          // keep sinking down
+      }
+    }
+    return top;
+  }
+}
+
+const h = new MaxHeap();
+for (const x of [5, 3, 8, 1]) h.insert(x);
+console.log(h.extractMax(), h.extractMax());  // 8 5
+` },
+      { lang: 'cpp', code: `// Max-heap version: identical to min-heap, only the comparisons are flipped.
+class MaxHeap {
+    vector<int> a;                        // the tree, stored level by level
+
+public:
+    void insert(int x) {
+        a.push_back(x);                   // 1) put the new value at the end
+        size_t i = a.size() - 1;
+        while (i > 0 && a[i] > a[(i - 1) / 2]) {   // 2) bigger than parent? (max-heap)
+            swap(a[i], a[(i - 1) / 2]);   // swap child and parent
+            i = (i - 1) / 2;              // keep bubbling up
+        }
+    }
+
+    int extractMax() {
+        if (a.empty()) throw out_of_range("heap is empty");
+        int top = a[0];                   // the answer: largest value
+        a[0] = a.back();                  // move the last element to the root
+        a.pop_back();
+        size_t i = 0, n = a.size();
+        while (true) {
+            size_t l = 2 * i + 1, r = l + 1, big = i;
+            if (l < n && a[l] > a[big]) big = l;   // pick the BIGGER child
+            if (r < n && a[r] > a[big]) big = r;
+            if (big == i) break;          // parent already biggest: done
+            swap(a[i], a[big]);
+            i = big;                      // keep sinking down
+        }
+        return top;
+    }
+};
+
+int main() {
+    MaxHeap h;
+    for (int x : {5, 3, 8, 1}) h.insert(x);
+    int first = h.extractMax();
+    int second = h.extractMax();
+    cout << first << " " << second << endl;   // 8 5
+}
+` }
+    ] }],
     codeTitle: ['Max-heap: same code, comparisons flipped'],
     examples: [
       {
@@ -292,6 +412,17 @@
           `<p>Use an <code>int[]</code> plus a <code>size</code> counter. Insert: write at <code>a[size]</code>, then <b>sift-up</b> (swap with parent while smaller). Extract: save <code>a[0]</code>, move <code>a[size-1]</code> to index 0, then <b>sift-down</b> (swap with the smaller child while bigger).</p>`,
           `<p>Traps: return -1 on empty heap; check <code>l &lt; size</code> and <code>r &lt; size</code> before reading children; grow the array when full. Recipe: insert → place at end, bubble up. extractMin → take root, last → root, size--, sink down choosing the smaller child.</p>`
         ],
+        tests: { cls: 'MinHeap', sigs: { MinHeap: '', insert: 'int -> void', getMin: '-> int', extractMin: '-> int', size: '-> int' }, cases: [
+          { ops: ['MinHeap', 'insert', 'insert', 'insert', 'insert', 'getMin', 'extractMin', 'getMin'], args: [[], [5], [3], [8], [1], [], [], []], out: [null, null, null, null, null, 1, 1, 3] },
+          { ops: ['MinHeap', 'getMin', 'extractMin', 'size'], args: [[], [], [], []], out: [null, -1, -1, 0] },
+          { ops: ['MinHeap', 'insert', 'extractMin', 'extractMin', 'getMin', 'size', 'insert', 'size', 'getMin'], args: [[], [7], [], [], [], [], [4], [], []], out: [null, null, 7, -1, -1, 0, null, 1, 4] },
+          { ops: ['MinHeap', 'insert', 'insert', 'insert', 'insert', 'size', 'extractMin', 'extractMin', 'extractMin', 'extractMin', 'extractMin', 'size'], args: [[], [2], [2], [1], [1], [], [], [], [], [], [], []], out: [null, null, null, null, null, 4, 1, 1, 2, 2, -1, 0] },
+          { ops: ['MinHeap', 'insert', 'insert', 'insert', 'getMin', 'extractMin', 'getMin', 'extractMin', 'getMin', 'extractMin', 'getMin'], args: [[], [1000000000], [-1000000000], [0], [], [], [], [], [], [], []], out: [null, null, null, null, -1000000000, -1000000000, 0, 0, 1000000000, 1000000000, -1] },
+          { ops: ['MinHeap', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'insert', 'size', 'extractMin', 'extractMin', 'extractMin', 'extractMin', 'extractMin', 'extractMin', 'extractMin', 'extractMin', 'extractMin', 'extractMin', 'extractMin', 'extractMin', 'extractMin', 'extractMin', 'extractMin', 'extractMin', 'extractMin', 'extractMin', 'extractMin', 'extractMin', 'extractMin', 'size'],
+            args: [[], [20], [19], [18], [17], [16], [15], [14], [13], [12], [11], [10], [9], [8], [7], [6], [5], [4], [3], [2], [1], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], []],
+            out: [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 20, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, -1, 0] },
+          { ops: ['MinHeap', 'insert', 'insert', 'extractMin', 'insert', 'insert', 'extractMin', 'insert', 'getMin', 'extractMin', 'extractMin', 'extractMin', 'size'], args: [[], [9], [4], [], [6], [1], [], [8], [], [], [], [], []], out: [null, null, null, 4, null, null, 1, null, 6, 6, 8, 9, 0] }
+        ] },
         solution: {
           approach: `<p>Array-backed complete binary tree. Sift-up after insert, sift-down after extract. Each walks a single path of height log₂N.</p>`,
           code: `
@@ -351,6 +482,129 @@
                     System.out.println(h.getMin());     // 3
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `class MinHeap:
+    def __init__(self):
+        self.a = []                       # heap stored level by level
+
+    def insert(self, x):
+        a = self.a
+        a.append(x)                       # new value goes to the next free spot
+        i = len(a) - 1
+        while i > 0 and a[i] < a[(i - 1) // 2]:   # smaller than its parent: bubble up
+            p = (i - 1) // 2
+            a[i], a[p] = a[p], a[i]
+            i = p
+
+    def getMin(self):
+        return self.a[0] if self.a else -1        # root is the minimum
+
+    def extractMin(self):
+        a = self.a
+        if not a:
+            return -1
+        top = a[0]                        # answer
+        last = a.pop()                    # remove the last slot
+        if a:
+            a[0] = last                   # last value moves to the root
+            i, n = 0, len(a)
+            while True:                   # sink it, always towards the smaller child
+                l, r, small = 2 * i + 1, 2 * i + 2, i
+                if l < n and a[l] < a[small]:
+                    small = l
+                if r < n and a[r] < a[small]:
+                    small = r
+                if small == i:
+                    break
+                a[i], a[small] = a[small], a[i]
+                i = small
+        return top
+
+    def size(self):
+        return len(self.a)
+` },
+            { lang: 'js', code: `class MinHeap {
+  constructor() {
+    this.a = [];                          // heap stored level by level
+  }
+
+  insert(x) {
+    const a = this.a;
+    a.push(x);                            // next free spot
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;             // parent index
+      if (a[i] >= a[p]) break;            // parent already smaller: done
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+
+  getMin() {
+    return this.a.length ? this.a[0] : -1;
+  }
+
+  extractMin() {
+    const a = this.a;
+    if (!a.length) return -1;
+    const top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;                        // last value moves to the root
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let small = i;
+        if (l < a.length && a[l] < a[small]) small = l;
+        if (r < a.length && a[r] < a[small]) small = r;
+        if (small === i) break;           // no child is smaller
+        [a[i], a[small]] = [a[small], a[i]];
+        i = small;
+      }
+    }
+    return top;
+  }
+
+  size() {
+    return this.a.length;
+  }
+}
+` },
+            { lang: 'cpp', code: `class MinHeap {
+    vector<int> a;                        // heap stored level by level
+
+public:
+    void insert(int x) {
+        a.push_back(x);                   // next free spot
+        size_t i = a.size() - 1;
+        while (i > 0 && a[i] < a[(i - 1) / 2]) {   // smaller than parent: bubble up
+            swap(a[i], a[(i - 1) / 2]);
+            i = (i - 1) / 2;
+        }
+    }
+
+    int getMin() const { return a.empty() ? -1 : a[0]; }
+
+    int extractMin() {
+        if (a.empty()) return -1;
+        int top = a[0];
+        a[0] = a.back();                  // last value moves to the root
+        a.pop_back();
+        size_t i = 0, n = a.size();
+        while (true) {
+            size_t l = 2 * i + 1, r = l + 1, small = i;
+            if (l < n && a[l] < a[small]) small = l;
+            if (r < n && a[r] < a[small]) small = r;
+            if (small == i) break;        // no child is smaller
+            swap(a[i], a[small]);
+            i = small;
+        }
+        return top;
+    }
+
+    int size() const { return (int)a.size(); }
+};
+` }
+          ],
           dry: {
             head: ['operation', 'array before fix', 'sift steps', 'array after', 'returns'],
             rows: [
@@ -401,9 +655,9 @@
       '"Sort in-place, O(1) extra space, guaranteed O(N log N) worst case" → heap sort.',
       'You get <b>all N items up front</b> (not one at a time) → build the heap in one go (O(N)) instead of N inserts.',
       '"Is this array a valid heap?" → check every <code>i</code>: <code>a[i] ≤ a[2i+1]</code> and <code>a[i] ≤ a[2i+2]</code>.',
-      'Java: <code>new PriorityQueue&lt;&gt;(collection)</code> also builds in O(N) internally.'
+      'Library bulk builds are O(N) too: Java <code>new PriorityQueue&lt;&gt;(collection)</code>, Python <code>heapq.heapify(list)</code>, C++ <code>make_heap</code> or <code>priority_queue(first, last)</code>.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       class HeapSort {
           // Sorts ascending using a max-heap built in place.
           static void heapSort(int[] a) {
@@ -436,7 +690,94 @@
               heapSort(a);
               System.out.println(Arrays.toString(a));   // [1, 3, 4, 5, 10]
           }
-      }`],
+      }`, alt: [
+      { lang: 'python', run: true, code: `def sift_down(a, i, size):
+    """Sink a[i] down inside a[0..size-1] (max-heap version)."""
+    while True:
+        l, r, big = 2 * i + 1, 2 * i + 2, i
+        if l < size and a[l] > a[big]:
+            big = l
+        if r < size and a[r] > a[big]:
+            big = r
+        if big == i:
+            return                        # already bigger than its children
+        a[i], a[big] = a[big], a[i]
+        i = big
+
+
+def heap_sort(a):
+    n = len(a)
+    for i in range(n // 2 - 1, -1, -1):   # 1) build max-heap bottom-up
+        sift_down(a, i, n)
+    for end in range(n - 1, 0, -1):       # 2) move the max to the end, shrink, repair
+        a[0], a[end] = a[end], a[0]
+        sift_down(a, 0, end)
+
+
+a = [4, 10, 3, 5, 1]
+heap_sort(a)
+print(a)                                  # [1, 3, 4, 5, 10]
+# Library shortcut: heapq.heapify(list) is the same O(N) bottom-up build (min-heap).
+` },
+      { lang: 'js', run: true, code: `// Sink a[i] down inside a[0..size-1] (max-heap version).
+function siftDown(a, i, size) {
+  for (;;) {
+    const l = 2 * i + 1, r = l + 1;
+    let big = i;
+    if (l < size && a[l] > a[big]) big = l;
+    if (r < size && a[r] > a[big]) big = r;
+    if (big === i) return;                // already bigger than its children
+    [a[i], a[big]] = [a[big], a[i]];
+    i = big;
+  }
+}
+
+function heapSort(a) {
+  const n = a.length;
+  for (let i = (n >> 1) - 1; i >= 0; i--) siftDown(a, i, n);  // 1) build max-heap bottom-up
+  for (let end = n - 1; end > 0; end--) {                     // 2) max to the end, repair root
+    [a[0], a[end]] = [a[end], a[0]];
+    siftDown(a, 0, end);
+  }
+}
+
+const a = [4, 10, 3, 5, 1];
+heapSort(a);
+console.log(a);                           // [ 1, 3, 4, 5, 10 ]
+` },
+      { lang: 'cpp', code: `// Sink a[i] down inside a[0..size-1] (max-heap version).
+void siftDown(vector<int>& a, int i, int size) {
+    while (true) {
+        int l = 2 * i + 1, r = 2 * i + 2, big = i;
+        if (l < size && a[l] > a[big]) big = l;
+        if (r < size && a[r] > a[big]) big = r;
+        if (big == i) return;             // already bigger than its children
+        swap(a[i], a[big]);
+        i = big;
+    }
+}
+
+void heapSort(vector<int>& a) {
+    int n = a.size();
+    for (int i = n / 2 - 1; i >= 0; i--) siftDown(a, i, n);   // 1) build max-heap bottom-up
+    for (int end = n - 1; end > 0; end--) {                   // 2) max to the end, repair root
+        swap(a[0], a[end]);
+        siftDown(a, 0, end);
+    }
+}
+
+int main() {
+    vector<int> a = {4, 10, 3, 5, 1};
+    heapSort(a);
+    for (int x : a) cout << x << " ";     // 1 3 4 5 10
+    cout << endl;
+    // The STL has the same building blocks: make_heap (O(N) build) + sort_heap.
+    vector<int> b = {4, 10, 3, 5, 1};
+    make_heap(b.begin(), b.end());
+    sort_heap(b.begin(), b.end());
+}
+` }
+    ] }],
     codeTitle: ['Build-heap (O(N)) + Heap Sort (O(N log N), in place)'],
     examples: [
       {
@@ -537,7 +878,8 @@
   topics.push({
     title: 'Java PriorityQueue: min by default, max with reverseOrder / comparator',
     analogy: `<p>Back to the hospital: Java already gives you a ready-made nurse called <code>PriorityQueue</code>. You hand her patients (<code>offer</code>), ask who is next (<code>peek</code>), or send the next one in (<code>poll</code>). By default she calls the <b>smallest</b> number first (like “ticket #1 first”). If you want the <b>biggest</b> first (most serious injury score), you just give her a different rule card — a <b>comparator</b>.</p>`,
-    explain: `<p><code>PriorityQueue</code> is a binary heap stored in an array — exactly what you built above.</p>
+    explain: `<p>Every mainstream language ships this structure: Java <code>PriorityQueue</code> (min-heap), Python <code>heapq</code> (min-heap functions over a plain list), C++ <code>priority_queue</code> (a <b>max</b>-heap by default). JavaScript has none built in, so the JS code in this module carries a small <code>MinHeap</code> class with a comparator. This topic uses Java's names; the code tabs show the same ideas in each language.</p>
+      <p><code>PriorityQueue</code> is a binary heap stored in an array — exactly what you built above.</p>
       ${H.table(['method', 'what it does', 'cost'], [
         ['<code>offer(x)</code> / <code>add(x)</code>', 'insert (sift-up)', 'O(log N)'],
         ['<code>poll()</code>', 'remove and return the top, <code>null</code> if empty', 'O(log N)'],
@@ -572,7 +914,7 @@
       'Items are pairs / objects (point, frequency, list node) → custom comparator on the field that decides priority.',
       'Values near ±2·10<sup>9</sup> → never use <code>b - a</code> in a comparator (overflow) → use <code>Integer.compare</code> / <code>Long.compare</code>.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       // 1) Min-heap (default): smallest comes out first
       PriorityQueue<Integer> minHeap = new PriorityQueue<>();
       minHeap.offer(5); minHeap.offer(2); minHeap.offer(8);
@@ -599,8 +941,119 @@
       PriorityQueue<Integer> built = new PriorityQueue<>(Arrays.asList(9, 4, 7, 1));
       StringBuilder sb = new StringBuilder();
       while (!built.isEmpty()) sb.append(built.poll()).append(' ');
-      System.out.println(sb);               // 1 4 7 9`,
-      `
+      System.out.println(sb);               // 1 4 7 9`, alt: [
+      { lang: 'python', run: true, code: `import heapq
+
+# 1) Min-heap (heapq's only kind): smallest comes out first
+min_heap = []
+for x in (5, 2, 8):
+    heapq.heappush(min_heap, x)
+print(min_heap[0])                        # 2  (peek = index 0)
+
+# 2) Max-heap: push negatives, negate again when reading
+max_heap = []
+for x in (5, 2, 8):
+    heapq.heappush(max_heap, -x)
+print(-heapq.heappop(max_heap))           # 8
+
+# 3) Pairs: tuples compare field by field, so (value, index) gives ties by index
+pq = []
+heapq.heappush(pq, (7, 0))
+heapq.heappush(pq, (3, 1))
+heapq.heappush(pq, (3, 0))
+value, index = heapq.heappop(pq)          # (3, 0)
+print(value, "at", index)
+
+# 4) Build from a whole list in O(N), then drain in sorted order
+built = [9, 4, 7, 1]
+heapq.heapify(built)
+print(*[heapq.heappop(built) for _ in range(len(built))])   # 1 4 7 9
+` },
+      { lang: 'js', run: true, code: `// JavaScript has no built-in heap, so lessons and solutions carry this small class.
+class MinHeap {
+  constructor(less = (a, b) => a < b) { this.a = []; this.less = less; }  // less(a, b): a comes out first
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (!this.less(a[i], a[p])) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.less(a[l], a[m])) m = l;
+        if (r < a.length && this.less(a[r], a[m])) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+// 1) Min-heap (default comparator): smallest comes out first
+const minHeap = new MinHeap();
+[5, 2, 8].forEach((x) => minHeap.push(x));
+console.log(minHeap.peek());              // 2
+
+// 2) Max-heap: flip the comparator
+const maxHeap = new MinHeap((a, b) => a > b);
+[5, 2, 8].forEach((x) => maxHeap.push(x));
+console.log(maxHeap.pop());               // 8
+
+// 3) Pairs [value, index], ordered by value, ties by index
+const pq = new MinHeap((x, y) => (x[0] !== y[0] ? x[0] < y[0] : x[1] < y[1]));
+pq.push([7, 0]); pq.push([3, 1]); pq.push([3, 0]);
+const top = pq.pop();                     // [3, 0]
+console.log(top[0] + ' at ' + top[1]);
+
+// 4) Drain in sorted order
+const built = new MinHeap();
+[9, 4, 7, 1].forEach((x) => built.push(x));
+const out = [];
+while (built.size()) out.push(built.pop());
+console.log(out.join(' '));               // 1 4 7 9
+` },
+      { lang: 'cpp', code: `int main() {
+    // 1) Min-heap: C++ priority_queue is a MAX-heap by default, so pass greater<int>
+    priority_queue<int, vector<int>, greater<int>> minHeap;
+    minHeap.push(5); minHeap.push(2); minHeap.push(8);
+    cout << minHeap.top() << endl;        // 2
+
+    // 2) Max-heap: the default
+    priority_queue<int> maxHeap;
+    maxHeap.push(5); maxHeap.push(2); maxHeap.push(8);
+    cout << maxHeap.top() << endl;        // 8
+    maxHeap.pop();                        // pop() returns nothing; read top() first
+
+    // 3) Pairs {value, index}: pairs compare field by field; greater<> makes the smallest come first
+    priority_queue<pair<int, int>, vector<pair<int, int>>, greater<>> pq;
+    pq.push({7, 0}); pq.push({3, 1}); pq.push({3, 0});
+    auto [value, index] = pq.top();       // {3, 0}
+    cout << value << " at " << index << endl;
+
+    // 4) Build from a whole range in O(N), then drain in sorted order
+    vector<int> v = {9, 4, 7, 1};
+    priority_queue<int, vector<int>, greater<int>> built(v.begin(), v.end());
+    while (!built.empty()) { cout << built.top() << ' '; built.pop(); }   // 1 4 7 9
+    cout << endl;
+}
+` }
+    ] },
+      { lang: 'java', code: `
       // Custom objects: a patient with a severity score; most severe first.
       class Patient {
           String name; int severity;
@@ -618,7 +1071,90 @@
                   System.out.println(er.poll().name);  // heart attack, broken arm, cut finger
               }
           }
-      }`],
+      }`, alt: [
+      { lang: 'python', run: true, code: `import heapq
+from dataclasses import dataclass, field
+
+
+@dataclass(order=True)
+class Patient:
+    sort_key: int = field(init=False, repr=False)   # heapq compares this field only
+    name: str = field(compare=False)
+    severity: int = field(compare=False)
+
+    def __post_init__(self):
+        self.sort_key = -self.severity    # negate: most severe comes out first
+
+
+er = []
+heapq.heappush(er, Patient("cut finger", 2))
+heapq.heappush(er, Patient("heart attack", 10))
+heapq.heappush(er, Patient("broken arm", 6))
+while er:
+    print(heapq.heappop(er).name)         # heart attack, broken arm, cut finger
+` },
+      { lang: 'js', run: true, code: `class MinHeap {
+  constructor(less = (a, b) => a < b) { this.a = []; this.less = less; }  // less(a, b): a comes out first
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (!this.less(a[i], a[p])) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.less(a[l], a[m])) m = l;
+        if (r < a.length && this.less(a[r], a[m])) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+// Custom objects: most severe patient first.
+const er = new MinHeap((p, q) => p.severity > q.severity);
+er.push({ name: 'cut finger', severity: 2 });
+er.push({ name: 'heart attack', severity: 10 });
+er.push({ name: 'broken arm', severity: 6 });
+while (er.size()) console.log(er.pop().name);   // heart attack, broken arm, cut finger
+` },
+      { lang: 'cpp', code: `// Custom objects: a patient with a severity score; most severe first.
+struct Patient {
+    string name;
+    int severity;
+};
+
+int main() {
+    // priority_queue puts on top the element that is NOT "less" than the others,
+    // so "a < b when a.severity < b.severity" keeps the most severe on top.
+    auto lessSevere = [](const Patient& a, const Patient& b) { return a.severity < b.severity; };
+    priority_queue<Patient, vector<Patient>, decltype(lessSevere)> er(lessSevere);
+    er.push({"cut finger", 2});
+    er.push({"heart attack", 10});
+    er.push({"broken arm", 6});
+    while (!er.empty()) {
+        cout << er.top().name << endl;    // heart attack, broken arm, cut finger
+        er.pop();
+    }
+}
+` }
+    ] }],
     codeTitle: ['PriorityQueue cheat-sheet', 'Comparator on your own class (emergency room)'],
     viz: {
       title: 'PriorityQueue offer / poll with a min or max comparator',
@@ -669,13 +1205,42 @@
         title: 'Comparator that sorts by frequency, then by value',
         html: `<p>Counts: ${H.kv([['4', 3], ['1', 3], ['7', 1]], { label: 'freq' })} We want the <b>most frequent first</b>, ties broken by the <b>smaller value</b>.</p>
           <p>Comparator: <code>(a, b) -&gt; f.get(a).equals(f.get(b)) ? Integer.compare(a, b) : Integer.compare(f.get(b), f.get(a))</code>. Poll order: ${H.c('p', '1, 4, 7')} — 1 and 4 both appear 3 times, 1 is smaller so it wins the tie.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           Map<Integer, Integer> f = new HashMap<>(Map.of(4, 3, 1, 3, 7, 1));
           PriorityQueue<Integer> pq = new PriorityQueue<>((a, b) ->
               f.get(a).equals(f.get(b)) ? Integer.compare(a, b)        // tie → smaller value first
                                         : Integer.compare(f.get(b), f.get(a))); // higher count first
           pq.addAll(f.keySet());
-          while (!pq.isEmpty()) System.out.print(pq.poll() + " ");      // 1 4 7`
+          while (!pq.isEmpty()) System.out.print(pq.poll() + " ");      // 1 4 7`, alt: [
+          { lang: 'python', run: true, code: `import heapq
+
+f = {4: 3, 1: 3, 7: 1}
+# tuple (-count, value): higher count first, and on a tie the smaller value first
+pq = [(-cnt, v) for v, cnt in f.items()]
+heapq.heapify(pq)
+print(*[heapq.heappop(pq)[1] for _ in range(len(pq))])   # 1 4 7
+` },
+          { lang: 'js', run: true, code: `// No heap needed to show the ordering rule: the same comparator drives Array.sort.
+const f = new Map([[4, 3], [1, 3], [7, 1]]);
+const order = [...f.keys()].sort((a, b) =>
+  f.get(a) === f.get(b) ? a - b           // tie: smaller value first
+                        : f.get(b) - f.get(a));  // higher count first (small numbers, no overflow)
+console.log(order.join(' '));             // 1 4 7
+` },
+          { lang: 'cpp', code: `int main() {
+    map<int, int> f = {{4, 3}, {1, 3}, {7, 1}};
+    // comparator returns true when a should come out LATER (priority_queue keeps the "largest" on top)
+    auto later = [&](int a, int b) {
+        return f[a] != f[b] ? f[a] < f[b]   // lower count comes later
+                            : a > b;        // tie: bigger value comes later
+    };
+    priority_queue<int, vector<int>, decltype(later)> pq(later);
+    for (auto& [v, cnt] : f) pq.push(v);
+    while (!pq.empty()) { cout << pq.top() << ' '; pq.pop(); }   // 1 4 7
+    cout << endl;
+}
+` }
+        ] }
       },
       {
         title: 'The b - a overflow trap, with real numbers',
@@ -733,9 +1298,20 @@
         },
         hints: [
           `<p>Each turn only needs “the biggest” and “the second biggest”. That is two polls from a max-heap.</p>`,
-          `<p><code>PriorityQueue&lt;Integer&gt; pq = new PriorityQueue&lt;&gt;(Collections.reverseOrder())</code>; add all stones; while size &gt; 1: y = poll, x = poll, if y != x offer y - x.</p>`,
+          `<p>Use a max-heap: Java <code>new PriorityQueue&lt;&gt;(Collections.reverseOrder())</code>, Python <code>heapq</code> with negated weights, C++ <code>priority_queue&lt;int&gt;</code> (max by default), JS a heap class with a “bigger first” comparator. Add all stones; while size &gt; 1: y = pop, x = pop, if y != x push y - x.</p>`,
           `<p>Edge cases: equal stones vanish (offer nothing); a single stone from the start is the answer; an empty heap at the end means return 0. Recipe: heapify all → loop while size ≥ 2 → return isEmpty ? 0 : peek.</p>`
         ],
+        tests: { sig: 'int[] -> int', fn: 'lastStoneWeight', cases: [
+          [[[2, 7, 4, 1, 8, 1]], 1],
+          [[[1]], 1],
+          [[[2, 2]], 0],
+          [[[10, 4]], 6],
+          [[[3, 7, 2]], 2],
+          [[[1, 1, 1]], 1],
+          [[[9, 3, 1000, 1000, 2]], 4],
+          [[{ $rep: 1000, n: 99999 }], 1000],
+          [[{ $rep: 1000, n: 100000 }], 0]
+        ] },
         solution: {
           approach: `<p>Max-heap simulation. Each smash = 2 polls + at most 1 offer.</p>`,
           code: `
@@ -755,6 +1331,78 @@
                     System.out.println(new Solution().lastStoneWeight(new int[]{2, 7, 4, 1, 8, 1})); // 1
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `import heapq
+
+def last_stone_weight(stones):
+    heap = [-s for s in stones]           # heapq is a min-heap, so store negatives
+    heapq.heapify(heap)                   # O(N) build
+    while len(heap) > 1:
+        y = -heapq.heappop(heap)          # heaviest
+        x = -heapq.heappop(heap)          # second heaviest
+        if y != x:
+            heapq.heappush(heap, -(y - x))  # leftover goes back in
+    return -heap[0] if heap else 0
+` },
+            { lang: 'js', code: `class MinHeap {
+  constructor(less = (a, b) => a < b) { this.a = []; this.less = less; }  // less(a, b): a comes out first
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (!this.less(a[i], a[p])) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.less(a[l], a[m])) m = l;
+        if (r < a.length && this.less(a[r], a[m])) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+function lastStoneWeight(stones) {
+  const pq = new MinHeap((a, b) => a > b);  // "bigger first" turns it into a max-heap
+  for (const s of stones) pq.push(s);
+  while (pq.size() > 1) {
+    const y = pq.pop();                     // heaviest
+    const x = pq.pop();                     // second heaviest
+    if (y !== x) pq.push(y - x);            // leftover goes back in
+  }
+  return pq.size() ? pq.peek() : 0;
+}
+` },
+            { lang: 'cpp', code: `class Solution {
+public:
+    int lastStoneWeight(vector<int>& stones) {
+        priority_queue<int> pq(stones.begin(), stones.end());  // max-heap by default, O(N) build
+        while (pq.size() > 1) {
+            int y = pq.top(); pq.pop();       // heaviest
+            int x = pq.top(); pq.pop();       // second heaviest
+            if (y != x) pq.push(y - x);       // leftover goes back in
+        }
+        return pq.empty() ? 0 : pq.top();
+    }
+};
+` }
+          ],
           dry: {
             head: ['turn', 'heap (sorted view)', 'y', 'x', 'push back'],
             rows: [
@@ -799,7 +1447,7 @@
       'Data arrives as a <b>stream</b> / too big for memory → keep only K items in a heap.',
       'K is much smaller than N (e.g. N = 10<sup>6</sup>, K = 10) → O(N log K) is nearly linear.'
     ],
-    code: `
+    code: { lang: 'java', code: `
       // K smallest elements: MAX-heap of size K (top = the biggest of the small ones)
       int[] kSmallest(int[] a, int k) {
           PriorityQueue<Integer> maxHeap = new PriorityQueue<>(Collections.reverseOrder());
@@ -810,7 +1458,84 @@
           int[] res = new int[maxHeap.size()];
           for (int i = res.length - 1; i >= 0; i--) res[i] = maxHeap.poll(); // fill from the back → ascending
           return res;
-      }`,
+      }`, alt: [
+      { lang: 'python', run: true, code: `import heapq
+
+# K smallest elements: MAX-heap of size K (negatives, because heapq is a min-heap)
+def k_smallest(a, k):
+    max_heap = []
+    for x in a:
+        heapq.heappush(max_heap, -x)
+        if len(max_heap) > k:
+            heapq.heappop(max_heap)       # throw out the largest: it can't be in the K smallest
+    return sorted(-v for v in max_heap)   # ascending
+
+
+print(k_smallest([7, 10, 4, 3, 20, 15], 3))   # [3, 4, 7]
+# One-liner with the same O(N log K) idea: heapq.nsmallest(3, a)
+` },
+      { lang: 'js', run: true, code: `class MinHeap {
+  constructor(less = (a, b) => a < b) { this.a = []; this.less = less; }  // less(a, b): a comes out first
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (!this.less(a[i], a[p])) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.less(a[l], a[m])) m = l;
+        if (r < a.length && this.less(a[r], a[m])) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+// K smallest elements: MAX-heap of size K (top = the biggest of the small ones)
+function kSmallest(a, k) {
+  const maxHeap = new MinHeap((x, y) => x > y);
+  for (const x of a) {
+    maxHeap.push(x);
+    if (maxHeap.size() > k) maxHeap.pop();          // throw out the largest
+  }
+  const res = new Array(maxHeap.size());
+  for (let i = res.length - 1; i >= 0; i--) res[i] = maxHeap.pop();  // fill from the back
+  return res;
+}
+
+console.log(kSmallest([7, 10, 4, 3, 20, 15], 3));  // [ 3, 4, 7 ]
+` },
+      { lang: 'cpp', code: `// K smallest elements: MAX-heap of size K (C++ priority_queue is a max-heap by default)
+vector<int> kSmallest(const vector<int>& a, int k) {
+    priority_queue<int> maxHeap;
+    for (int x : a) {
+        maxHeap.push(x);
+        if ((int)maxHeap.size() > k) maxHeap.pop();   // throw out the largest
+    }
+    vector<int> res(maxHeap.size());
+    for (int i = (int)res.size() - 1; i >= 0; i--) { res[i] = maxHeap.top(); maxHeap.pop(); }
+    return res;                                       // ascending
+}
+// Library alternative: std::partial_sort or std::nth_element on a copy.
+` }
+    ] },
     codeTitle: 'Mirror pattern: K smallest with a max-heap',
     examples: [
       {
@@ -827,7 +1552,7 @@
         title: 'K closest points to the origin',
         html: `<p>Points (1,3), (-2,2), (5,8), (0,1), K = 2. Squared distances: 10, 8, 89, 1 (no square root needed — it keeps the order and avoids doubles).</p>
           <p>“Closest” = “smallest distance” → <b>max-heap</b> of size 2 on distance. After all points: ${H.c('p', '{(-2,2) d=8, (0,1) d=1}')}. The far point (5,8) was rejected immediately because 89 ≥ top.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           int[][] kClosest(int[][] pts, int k) {
               // max-heap on squared distance: the farthest kept point is on top
               PriorityQueue<int[]> pq = new PriorityQueue<>((a, b) ->
@@ -837,7 +1562,72 @@
                   if (pq.size() > k) pq.poll();   // drop the farthest
               }
               return pq.toArray(new int[0][]);
-          }`
+          }`, alt: [
+          { lang: 'python', code: `import heapq
+
+def k_closest(pts, k):
+    # nsmallest keeps a bounded heap of size k on the squared distance
+    return heapq.nsmallest(k, pts, key=lambda p: p[0] * p[0] + p[1] * p[1])
+` },
+          { lang: 'js', code: `class MinHeap {
+  constructor(less = (a, b) => a < b) { this.a = []; this.less = less; }  // less(a, b): a comes out first
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (!this.less(a[i], a[p])) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.less(a[l], a[m])) m = l;
+        if (r < a.length && this.less(a[r], a[m])) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+function kClosest(pts, k) {
+  const d = (p) => p[0] * p[0] + p[1] * p[1];    // exact: at most about 2·10^8 here
+  const pq = new MinHeap((a, b) => d(a) > d(b)); // farthest kept point on top
+  for (const p of pts) {
+    pq.push(p);
+    if (pq.size() > k) pq.pop();                 // drop the farthest
+  }
+  return pq.a.slice();
+}
+` },
+          { lang: 'cpp', code: `vector<vector<int>> kClosest(vector<vector<int>>& pts, int k) {
+    auto d = [](const vector<int>& p) { return (long long)p[0] * p[0] + (long long)p[1] * p[1]; };
+    // comparator "a below b if a is closer" keeps the farthest kept point on top
+    auto closer = [&](const vector<int>& a, const vector<int>& b) { return d(a) < d(b); };
+    priority_queue<vector<int>, vector<vector<int>>, decltype(closer)> pq(closer);
+    for (auto& p : pts) {
+        pq.push(p);
+        if ((int)pq.size() > k) pq.pop();         // drop the farthest
+    }
+    vector<vector<int>> res;
+    while (!pq.empty()) { res.push_back(pq.top()); pq.pop(); }
+    return res;
+}
+` }
+        ] }
       },
       {
         title: 'Top-K frequent words: count first, then heap',
@@ -929,9 +1719,21 @@
         },
         hints: [
           `<p>The k-th largest is the <b>smallest</b> member of the “top k club”. If you keep exactly the k largest numbers, the answer is the minimum among them.</p>`,
-          `<p>Use <code>PriorityQueue&lt;Integer&gt;</code> (a min-heap). For each number: <code>offer</code> it; if size becomes k + 1, <code>poll</code> (removes the smallest, which cannot be in the top k).</p>`,
+          `<p>Use a min-heap (Java <code>PriorityQueue&lt;Integer&gt;</code>, Python <code>heapq</code>, C++ <code>priority_queue</code> with <code>greater&lt;int&gt;</code>, JS a small heap class). For each number: push it; if size becomes k + 1, pop (removes the smallest, which cannot be in the top k).</p>`,
           `<p>Traps: duplicates count separately (k-th largest, not distinct) — the heap handles that naturally. Do not use a max-heap of size k (that keeps the k smallest!). Recipe: for x in nums → offer x; if size &gt; k → poll. Return peek.</p>`
         ],
+        tests: { sig: 'int[] int -> int', fn: 'findKthLargest', cases: [
+          [[[3, 2, 1, 5, 6, 4], 2], 5],
+          [[[3, 2, 3, 1, 2, 4, 5, 5, 6], 4], 4],
+          [[[1], 1], 1],
+          [[[7, 7, 7, 7], 3], 7],
+          [[[-1, -5, -3], 3], -5],
+          [[[10000, -10000, 0], 1], 10000],
+          [[[2, 1], 2], 1],
+          [[{ $range: [-10000, 10001] }, 1], 10000],
+          [[{ $range: [-10000, 10001] }, 20001], -10000],
+          [[{ $range: [10000, -10001, -1] }, 10001], 0]
+        ] },
         solution: {
           approach: `<p>Min-heap of size k. After the scan its top is the k-th largest.</p>`,
           code: `
@@ -951,6 +1753,73 @@
                     System.out.println(new Solution().findKthLargest(new int[]{3, 2, 1, 5, 6, 4}, 2)); // 5
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `import heapq
+
+def find_kth_largest(nums, k):
+    heap = []                             # min-heap: the top-k club
+    for x in nums:
+        heapq.heappush(heap, x)           # try x in the club
+        if len(heap) > k:
+            heapq.heappop(heap)           # kick out the weakest
+    return heap[0]                        # weakest of the top k = k-th largest
+` },
+            { lang: 'js', code: `class MinHeap {
+  constructor(less = (a, b) => a < b) { this.a = []; this.less = less; }  // less(a, b): a comes out first
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (!this.less(a[i], a[p])) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.less(a[l], a[m])) m = l;
+        if (r < a.length && this.less(a[r], a[m])) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+function findKthLargest(nums, k) {
+  const heap = new MinHeap();             // min-heap: the top-k club
+  for (const x of nums) {
+    heap.push(x);
+    if (heap.size() > k) heap.pop();      // kick out the weakest
+  }
+  return heap.peek();                     // weakest of the top k = k-th largest
+}
+` },
+            { lang: 'cpp', code: `class Solution {
+public:
+    int findKthLargest(vector<int>& nums, int k) {
+        priority_queue<int, vector<int>, greater<int>> heap;  // greater<int> makes it a min-heap
+        for (int x : nums) {
+            heap.push(x);
+            if ((int)heap.size() > k) heap.pop();             // kick out the weakest
+        }
+        return heap.top();                                    // k-th largest
+    }
+};
+` }
+          ],
           dry: {
             head: ['x', 'after offer', 'size &gt; k?', 'heap after', 'peek'],
             rows: [
@@ -999,6 +1868,16 @@
           `<p>Min-heap of size k: offer each number, poll when size exceeds k. At the end, poll everything — that gives ascending order.</p>`,
           `<p>Traps: polling gives <b>ascending</b> order, but we need descending → fill the result array from the back. Recipe: heap; for x → offer, if size &gt; k poll; res = new int[k]; for i = k-1 down to 0: res[i] = poll.</p>`
         ],
+        tests: { sig: 'int[] int -> list<int>', fn: 'kLargest', cases: [
+          [[[1, 23, 12, 9, 30, 2, 50], 3], [50, 30, 23]],
+          [[[5], 1], [5]],
+          [[[4, 1, 3], 3], [4, 3, 1]],
+          [[[9, 8, 7, 6], 2], [9, 8]],
+          [[[1000000, 1, 500000], 1], [1000000]],
+          [[[3, 1, 2], 2], [3, 2]],
+          [[{ $range: [1, 100001] }, 3], [100000, 99999, 99998]],
+          [[{ $range: [1, 100001] }, 100000], { $range: [100000, 0, -1] }]
+        ] },
         solution: {
           approach: `<p>Top-K min-heap, then drain it backwards into the result.</p>`,
           code: `
@@ -1020,6 +1899,78 @@
                     System.out.println(new Solution().kLargest(new int[]{1, 23, 12, 9, 30, 2, 50}, 3)); // [50, 30, 23]
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `import heapq
+
+def k_largest(arr, k):
+    heap = []                             # min-heap of the k largest so far
+    for x in arr:
+        heapq.heappush(heap, x)
+        if len(heap) > k:
+            heapq.heappop(heap)           # drop the smallest of k + 1
+    # popping gives increasing order; reverse it for decreasing order
+    return [heapq.heappop(heap) for _ in range(len(heap))][::-1]
+` },
+            { lang: 'js', code: `class MinHeap {
+  constructor(less = (a, b) => a < b) { this.a = []; this.less = less; }  // less(a, b): a comes out first
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (!this.less(a[i], a[p])) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.less(a[l], a[m])) m = l;
+        if (r < a.length && this.less(a[r], a[m])) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+function kLargest(arr, k) {
+  const heap = new MinHeap();
+  for (const x of arr) {
+    heap.push(x);
+    if (heap.size() > k) heap.pop();      // drop the smallest of k + 1
+  }
+  const res = new Array(k);
+  for (let i = k - 1; i >= 0; i--) res[i] = heap.pop();  // smallest goes to the back
+  return res;
+}
+` },
+            { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> kLargest(vector<int>& arr, int k) {
+        priority_queue<int, vector<int>, greater<int>> heap;  // min-heap of the k largest
+        for (int x : arr) {
+            heap.push(x);
+            if ((int)heap.size() > k) heap.pop();             // drop the smallest of k + 1
+        }
+        vector<int> res(k);
+        for (int i = k - 1; i >= 0; i--) { res[i] = heap.top(); heap.pop(); }  // fill from the back
+        return res;
+    }
+};
+` }
+          ],
           dry: {
             head: ['x', 'heap after offer', 'poll?', 'heap after'],
             rows: [
@@ -1064,7 +2015,7 @@
       'Total nodes N up to 10<sup>4</sup>–10<sup>5</sup> and K up to 10<sup>4</sup> → O(N·K) too slow, need O(N log K).',
       '"External sorting" / "merge sorted chunks from disk" → K-way merge with a heap.'
     ],
-    code: `
+    code: { lang: 'java', code: `
       // Merge K sorted ARRAYS: heap stores {value, which array, index inside it}
       int[] mergeKArrays(int[][] arrs) {
           PriorityQueue<int[]> pq = new PriorityQueue<>((x, y) -> Integer.compare(x[0], y[0]));
@@ -1082,7 +2033,89 @@
               if (pos < arrs[arr].length) pq.offer(new int[]{arrs[arr][pos], arr, pos}); // next in same array
           }
           return res;
-      }`,
+      }`, alt: [
+      { lang: 'python', run: true, code: `import heapq
+
+# Merge K sorted ARRAYS: heap stores (value, which array, index inside it)
+def merge_k_arrays(arrs):
+    heap = [(a[0], i, 0) for i, a in enumerate(arrs) if a]   # front of each array
+    heapq.heapify(heap)
+    res = []
+    while heap:
+        v, i, pos = heapq.heappop(heap)   # smallest front
+        res.append(v)
+        if pos + 1 < len(arrs[i]):
+            heapq.heappush(heap, (arrs[i][pos + 1], i, pos + 1))   # next in same array
+    return res
+
+
+print(merge_k_arrays([[1, 9], [2, 3, 4, 10], [5]]))   # [1, 2, 3, 4, 5, 9, 10]
+# The standard library already does this lazily: list(heapq.merge(*arrs))
+` },
+      { lang: 'js', run: true, code: `class MinHeap {
+  constructor(less = (a, b) => a < b) { this.a = []; this.less = less; }  // less(a, b): a comes out first
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (!this.less(a[i], a[p])) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.less(a[l], a[m])) m = l;
+        if (r < a.length && this.less(a[r], a[m])) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+// Merge K sorted ARRAYS: heap stores [value, which array, index inside it]
+function mergeKArrays(arrs) {
+  const pq = new MinHeap((x, y) => x[0] < y[0]);
+  arrs.forEach((a, i) => { if (a.length) pq.push([a[0], i, 0]); });   // front of each array
+  const res = [];
+  while (pq.size()) {
+    const [v, i, pos] = pq.pop();         // smallest front
+    res.push(v);
+    if (pos + 1 < arrs[i].length) pq.push([arrs[i][pos + 1], i, pos + 1]);  // next in same array
+  }
+  return res;
+}
+
+console.log(mergeKArrays([[1, 9], [2, 3, 4, 10], [5]]).join(' '));   // 1 2 3 4 5 9 10
+` },
+      { lang: 'cpp', code: `// Merge K sorted ARRAYS: heap stores {value, which array, index inside it}
+vector<int> mergeKArrays(const vector<vector<int>>& arrs) {
+    priority_queue<tuple<int, int, int>, vector<tuple<int, int, int>>, greater<>> pq;  // min-heap
+    for (int i = 0; i < (int)arrs.size(); i++)
+        if (!arrs[i].empty()) pq.push({arrs[i][0], i, 0});   // front of each array
+    vector<int> res;
+    while (!pq.empty()) {
+        auto [v, i, pos] = pq.top(); pq.pop();               // smallest front
+        res.push_back(v);
+        if (pos + 1 < (int)arrs[i].size()) pq.push({arrs[i][pos + 1], i, pos + 1});
+    }
+    return res;
+}
+` }
+    ] },
     codeTitle: 'Same idea for K sorted arrays',
     examples: [
       {
@@ -1208,9 +2241,19 @@
         },
         hints: [
           `<p>The globally smallest remaining node is always one of the K current heads, because each list is sorted.</p>`,
-          `<p><code>PriorityQueue&lt;ListNode&gt;</code> ordered by <code>val</code>. Push all non-null heads. Repeatedly poll the smallest, attach it to the tail of a dummy-headed result, and push <code>node.next</code> if not null.</p>`,
+          `<p>A min-heap of nodes ordered by <code>val</code> (Java <code>PriorityQueue&lt;ListNode&gt;</code> with a comparator; Python tuples <code>(val, i, node)</code> because nodes cannot be compared; C++ <code>priority_queue</code> with a comparator; JS a heap class). Push all non-null heads. Repeatedly poll the smallest, attach it to the tail of a dummy-headed result, and push <code>node.next</code> if not null.</p>`,
           `<p>Traps: some lists can be <code>null</code> (or the array empty) → skip nulls when seeding the heap; use <code>Integer.compare</code> in the comparator. Recipe: dummy, tail = dummy; seed heap; while heap not empty: n = poll; tail.next = n; tail = n; if n.next != null push n.next. Return dummy.next.</p>`
         ],
+        tests: { sig: 'ListNode[] -> ListNode', fn: 'mergeKLists', cases: [
+          [[[[1, 4, 5], [1, 3, 4], [2, 6]]], [1, 1, 2, 3, 4, 4, 5, 6]],
+          [[[]], []],
+          [[[[]]], []],
+          [[[[], [1]]], [1]],
+          [[[[-10000, 0, 10000]]], [-10000, 0, 10000]],
+          [[[[5], [3], [4], [1], [2]]], [1, 2, 3, 4, 5]],
+          [[[[1, 1, 1], [1, 1], [-3, 2]]], [-3, 1, 1, 1, 1, 1, 2]],
+          [[[{ $range: [-10000, 10000, 4] }, { $range: [-9998, 10000, 4] }]], { $range: [-10000, 10000, 2] }]
+        ] },
         solution: {
           approach: `<p>Min-heap of current heads, dummy node for the result.</p>`,
           code: `
@@ -1235,6 +2278,96 @@
                     return dummy.next;
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `import heapq
+
+def merge_k_lists(lists):
+    # (value, list index, node): the index breaks ties, because nodes cannot be compared
+    heap = [(head.val, i, head) for i, head in enumerate(lists) if head]
+    heapq.heapify(heap)
+    dummy = tail = ListNode(0)            # fake head: no special first case
+    while heap:
+        _, i, node = heapq.heappop(heap)  # smallest of all fronts
+        tail.next = tail = node           # attach to the answer and move the tail
+        if node.next:
+            heapq.heappush(heap, (node.next.val, i, node.next))  # that list's next front
+    tail.next = None
+    return dummy.next
+` },
+            { lang: 'js', code: `class MinHeap {
+  constructor(less = (a, b) => a < b) { this.a = []; this.less = less; }  // less(a, b): a comes out first
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (!this.less(a[i], a[p])) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.less(a[l], a[m])) m = l;
+        if (r < a.length && this.less(a[r], a[m])) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+function mergeKLists(lists) {
+  const pq = new MinHeap((a, b) => a.val < b.val);  // ordered by node value
+  for (const head of lists) if (head) pq.push(head); // seed with each list's front
+  const dummy = new ListNode(0);
+  let tail = dummy;
+  while (pq.size()) {
+    const node = pq.pop();                // smallest of all fronts
+    tail.next = node;
+    tail = node;
+    if (node.next) pq.push(node.next);    // that list's next front
+  }
+  tail.next = null;
+  return dummy.next;
+}
+` },
+            { lang: 'cpp', code: `// LeetCode-style node (the judge provides the same definition)
+struct ListNode { int val; ListNode* next; ListNode(int x = 0, ListNode* n = nullptr) : val(x), next(n) {} };
+
+class Solution {
+public:
+    ListNode* mergeKLists(vector<ListNode*>& lists) {
+        // priority_queue is a max-heap, so "a comes later if a.val > b.val" gives a min-heap
+        auto later = [](ListNode* a, ListNode* b) { return a->val > b->val; };
+        priority_queue<ListNode*, vector<ListNode*>, decltype(later)> pq(later);
+        for (ListNode* head : lists)
+            if (head) pq.push(head);          // seed with each list's front
+        ListNode dummy(0);
+        ListNode* tail = &dummy;
+        while (!pq.empty()) {
+            ListNode* node = pq.top(); pq.pop();  // smallest of all fronts
+            tail->next = node;
+            tail = node;
+            if (node->next) pq.push(node->next);  // that list's next front
+        }
+        tail->next = nullptr;
+        return dummy.next;
+    }
+};
+` }
+          ],
           dry: {
             head: ['step', 'poll', 'push', 'heap after', 'result'],
             rows: [
@@ -1309,7 +2442,112 @@ mf = MedianFinder()
 for x in [5, 15, 1, 3, 8, 7, 9, 10]:
     mf.add(x)
     print("added", x, "-> median", mf.median())
-` }, `
+`, alt: [
+      { lang: 'java', code: `class MedianFinder {
+    private final PriorityQueue<Integer> low = new PriorityQueue<>(Collections.reverseOrder()); // smaller half
+    private final PriorityQueue<Integer> high = new PriorityQueue<>();                          // bigger half
+
+    void add(int x) {
+        low.offer(x);                        // 1) into the small half
+        high.offer(low.poll());              // 2) its biggest moves right
+        if (high.size() > low.size()) low.offer(high.poll());   // 3) keep low >= high in size
+    }
+
+    double median() {
+        if (low.size() > high.size()) return low.peek();
+        return ((long) low.peek() + high.peek()) / 2.0;   // widen before adding
+    }
+
+    public static void main(String[] args) {
+        MedianFinder mf = new MedianFinder();
+        for (int x : new int[]{5, 15, 1, 3, 8, 7, 9, 10}) {
+            mf.add(x);
+            System.out.println("added " + x + " -> median " + mf.median());
+        }
+    }
+}
+` },
+      { lang: 'js', run: true, code: `class MinHeap {
+  constructor(less = (a, b) => a < b) { this.a = []; this.less = less; }  // less(a, b): a comes out first
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (!this.less(a[i], a[p])) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.less(a[l], a[m])) m = l;
+        if (r < a.length && this.less(a[r], a[m])) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+class MedianFinder {
+  constructor() {
+    this.low = new MinHeap((a, b) => a > b);   // smaller half, biggest on top
+    this.high = new MinHeap();                 // bigger half, smallest on top
+  }
+  add(x) {
+    this.low.push(x);                          // 1) into the small half
+    this.high.push(this.low.pop());            // 2) its biggest moves right
+    if (this.high.size() > this.low.size()) this.low.push(this.high.pop());  // 3) rebalance
+  }
+  median() {
+    if (this.low.size() > this.high.size()) return this.low.peek();
+    return (this.low.peek() + this.high.peek()) / 2;
+  }
+}
+
+const mf = new MedianFinder();
+for (const x of [5, 15, 1, 3, 8, 7, 9, 10]) {
+  mf.add(x);
+  console.log('added', x, '-> median', mf.median());
+}
+` },
+      { lang: 'cpp', code: `class MedianFinder {
+    priority_queue<int> low;                              // smaller half (max-heap is the default)
+    priority_queue<int, vector<int>, greater<int>> high;  // bigger half (min-heap)
+
+public:
+    void add(int x) {
+        low.push(x);                          // 1) into the small half
+        high.push(low.top()); low.pop();      // 2) its biggest moves right
+        if (high.size() > low.size()) { low.push(high.top()); high.pop(); }   // 3) rebalance
+    }
+    double median() const {
+        if (low.size() > high.size()) return low.top();
+        return ((long long)low.top() + high.top()) / 2.0;
+    }
+};
+
+int main() {
+    MedianFinder mf;
+    for (int x : {5, 15, 1, 3, 8, 7, 9, 10}) {
+        mf.add(x);
+        cout << "added " << x << " -> median " << mf.median() << endl;
+    }
+}
+` }
+    ] }, { lang: 'java', code: `
       // Sliding-window median building block: two heaps + lazy deletion counts.
       class WindowMedian {
           PriorityQueue<Integer> low = new PriorityQueue<>(Collections.reverseOrder()); // smaller half
@@ -1345,7 +2583,157 @@ for x in [5, 15, 1, 3, 8, 7, 9, 10]:
                   delayed.merge(v, -1, Integer::sum);
               }
           }
-      }`],
+      }`, alt: [
+      { lang: 'python', code: `import heapq
+from collections import defaultdict
+
+
+class WindowMedian:
+    """Two heaps + lazy deletion counts."""
+
+    def __init__(self):
+        self.low = []                     # smaller half, stored as negatives (max-heap)
+        self.high = []                    # bigger half (min-heap)
+        self.delayed = defaultdict(int)   # value -> how many copies to delete later
+        self.low_size = self.high_size = 0   # sizes WITHOUT the delayed values
+
+    def add(self, x):
+        if not self.low or x <= -self.low[0]:
+            heapq.heappush(self.low, -x); self.low_size += 1
+        else:
+            heapq.heappush(self.high, x); self.high_size += 1
+        self._balance()
+
+    def remove(self, x):
+        self.delayed[x] += 1              # remember; delete when it reaches a top
+        if x <= -self.low[0]:
+            self.low_size -= 1
+            if x == -self.low[0]:
+                self._prune(self.low, -1)
+        else:
+            self.high_size -= 1
+            if self.high and x == self.high[0]:
+                self._prune(self.high, 1)
+        self._balance()
+
+    def median(self):
+        if self.low_size > self.high_size:
+            return float(-self.low[0])
+        return (-self.low[0] + self.high[0]) / 2
+
+    def _balance(self):
+        if self.low_size > self.high_size + 1:
+            heapq.heappush(self.high, -heapq.heappop(self.low))
+            self.low_size -= 1; self.high_size += 1
+            self._prune(self.low, -1)
+        elif self.low_size < self.high_size:
+            heapq.heappush(self.low, -heapq.heappop(self.high))
+            self.high_size -= 1; self.low_size += 1
+            self._prune(self.high, 1)
+
+    def _prune(self, heap, sign):         # pop tops that were deleted earlier
+        while heap and self.delayed[sign * heap[0]] > 0:
+            self.delayed[sign * heapq.heappop(heap)] -= 1
+` },
+      { lang: 'js', code: `class MinHeap {
+  constructor(less = (a, b) => a < b) { this.a = []; this.less = less; }  // less(a, b): a comes out first
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (!this.less(a[i], a[p])) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.less(a[l], a[m])) m = l;
+        if (r < a.length && this.less(a[r], a[m])) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+// Sliding-window median building block: two heaps + lazy deletion counts.
+class WindowMedian {
+  constructor() {
+    this.low = new MinHeap((a, b) => a > b);  // smaller half
+    this.high = new MinHeap();                // bigger half
+    this.delayed = new Map();                 // value -> how many copies to delete later
+    this.lowSize = 0; this.highSize = 0;      // sizes WITHOUT the delayed values
+  }
+  add(x) {
+    if (!this.low.size() || x <= this.low.peek()) { this.low.push(x); this.lowSize++; }
+    else { this.high.push(x); this.highSize++; }
+    this.balance();
+  }
+  remove(x) {
+    this.delayed.set(x, (this.delayed.get(x) || 0) + 1);  // delete when it reaches a top
+    if (x <= this.low.peek()) { this.lowSize--; if (x === this.low.peek()) this.prune(this.low); }
+    else { this.highSize--; if (this.high.size() && x === this.high.peek()) this.prune(this.high); }
+    this.balance();
+  }
+  median() {
+    return this.lowSize > this.highSize ? this.low.peek() : (this.low.peek() + this.high.peek()) / 2;
+  }
+  balance() {
+    if (this.lowSize > this.highSize + 1) { this.high.push(this.low.pop()); this.lowSize--; this.highSize++; this.prune(this.low); }
+    else if (this.lowSize < this.highSize) { this.low.push(this.high.pop()); this.highSize--; this.lowSize++; this.prune(this.high); }
+  }
+  prune(h) {                                  // pop tops that were deleted earlier
+    while (h.size() && (this.delayed.get(h.peek()) || 0) > 0) {
+      const v = h.pop();
+      this.delayed.set(v, this.delayed.get(v) - 1);
+    }
+  }
+}
+` },
+      { lang: 'cpp', code: `// In C++ a multiset can erase one exact copy in O(log N), so no lazy deletion is needed:
+// keep two sorted halves directly.
+class WindowMedian {
+    multiset<int> low, high;              // low: smaller half, high: bigger half
+
+    void balance() {
+        if (low.size() > high.size() + 1) { high.insert(*prev(low.end())); low.erase(prev(low.end())); }
+        else if (low.size() < high.size()) { low.insert(*high.begin()); high.erase(high.begin()); }
+    }
+
+public:
+    void add(int x) {
+        if (low.empty() || x <= *prev(low.end())) low.insert(x);
+        else high.insert(x);
+        balance();
+    }
+
+    void remove(int x) {
+        auto it = low.find(x);
+        if (it != low.end()) low.erase(it);   // erase ONE copy, not all of them
+        else high.erase(high.find(x));
+        balance();
+    }
+
+    double median() const {
+        if (low.size() > high.size()) return *prev(low.end());
+        return ((double)*prev(low.end()) + *high.begin()) / 2.0;
+    }
+};
+` }
+    ] }],
     codeTitle: ['Python version (runnable)', 'Sliding window median helper: lazy deletion'],
     examples: [
       {
@@ -1370,12 +2758,12 @@ for x in [5, 15, 1, 3, 8, 7, 9, 10]:
       {
         title: 'Sliding window median (window 3) on [1, 3, -1, -3, 5]',
         html: `${H.table(['window', 'sorted window', 'median'], [['[1, 3, -1]', '-1, 1, 3', '1'], ['[3, -1, -3]', '-3, -1, 3', '-1'], ['[-1, -3, 5]', '-3, -1, 5', H.c('p', '-1')]])}
-          <p>Each slide = add the new value + remove the leaving one. Java's PriorityQueue cannot remove an arbitrary value fast, so we <b>delay</b> the delete: record it in a map and throw it away only when it reaches a heap top (the second code tab).</p>`
+          <p>Each slide = add the new value + remove the leaving one. A library binary heap (Java <code>PriorityQueue</code>, Python <code>heapq</code>, C++ <code>priority_queue</code>) cannot remove an arbitrary value fast, so we <b>delay</b> the delete: record it in a map and throw it away only when it reaches a heap top (the second code tab).</p>`
       }
     ],
     deepDive: `<p><b>Invariants and proof.</b> (1) max(low) ≤ min(high); (2) |low| - |high| ∈ {0, 1}. The 3-step add keeps both: pushing x into low and moving low's maximum to high guarantees (1) whatever x is; the optional move back fixes (2) and preserves (1) because it moves the smallest of high, which is ≥ everything in low. With both invariants, low holds exactly the ⌈n/2⌉ smallest values, so its top is the lower median.</p>
       <p><b>Cheaper add:</b> the 3-step version always does 2–3 heap operations. A branchy version compares x with <code>low.peek()</code>, pushes to the correct side, then rebalances only if sizes break — usually 1–2 operations. Both are O(log N); interviewers accept either if you state the invariants.</p>
-      <p><b>Alternatives:</b> an order-statistic tree (balanced BST with subtree sizes) supports insert, delete and k-th in O(log N) — what you need for sliding window median without lazy deletion. Java has no built-in one; <code>TreeMap&lt;Integer, Integer&gt;</code> with counts plus two size counters works. If values are small integers (e.g. 0..100), a counting array + Fenwick tree gives O(log V) median and supports deletes trivially.</p>
+      <p><b>Alternatives:</b> an order-statistic tree (balanced BST with subtree sizes) supports insert, delete and k-th in O(log N) — what you need for sliding window median without lazy deletion. Java has no built-in one; <code>TreeMap&lt;Integer, Integer&gt;</code> with counts plus two size counters works. C++ <code>multiset</code> erases one exact copy in O(log N), so two multisets (or one with an iterator to the middle) need no lazy deletion; Python needs the third-party <code>sortedcontainers.SortedList</code> or the heap trick. If values are small integers (e.g. 0..100), a counting array + Fenwick tree gives O(log V) median and supports deletes trivially.</p>
       <p><b>Lazy deletion details:</b> sizes must count only “live” items; after every operation that can expose a deleted value at a top, prune it. Heaps can grow with dead entries, but each value is pushed and popped at most once, so total work stays O(N log N).</p>
       <p><b>Production reality:</b> exact medians over billions of events per minute do not fit in memory. Monitoring systems use mergeable sketches (t-digest, KLL, HDR histograms) that answer percentiles with small relative error in kilobytes of memory.</p>`,
     aiEra: `<p><b>What AI changes:</b> Find Median from Data Stream is so famous that any assistant produces the two-heap solution instantly. In an interview the signal is whether you can <b>state and defend the invariants</b>, handle the follow-ups (sliding window, percentiles, deletes) and talk about scale.</p>
@@ -1459,9 +2847,18 @@ for x in [5, 15, 1, 3, 8, 7, 9, 10]:
         },
         hints: [
           `<p>The median only depends on the <b>boundary</b> between the smaller half and the bigger half: the largest value on the left and the smallest value on the right.</p>`,
-          `<p><code>low</code> = max-heap (<code>Collections.reverseOrder()</code>), <code>high</code> = min-heap. Keep <code>low.size()</code> equal to <code>high.size()</code> or one more. Add: push to low, move low's top to high, and if high got bigger, move high's top back to low.</p>`,
+          `<p><code>low</code> = max-heap (Java <code>Collections.reverseOrder()</code>, Python <code>heapq</code> with negated values, C++ default <code>priority_queue</code>), <code>high</code> = min-heap. Keep <code>low.size()</code> equal to <code>high.size()</code> or one more. Add: push to low, move low's top to high, and if high got bigger, move high's top back to low.</p>`,
           `<p>Traps: divide by <code>2.0</code> (not 2) to get a double; with values up to 10<sup>5</sup> the sum fits in int, but use <code>long</code> or <code>2.0</code> casting if values could be near 2·10<sup>9</sup>. Recipe: addNum → low.offer(x); high.offer(low.poll()); if high.size() &gt; low.size() → low.offer(high.poll()). findMedian → odd ? low.peek() : (low.peek() + high.peek()) / 2.0.</p>`
         ],
+        tests: { cls: 'MedianFinder', sigs: { MedianFinder: '', addNum: 'int -> void', findMedian: '-> double' }, cmp: 'float', cases: [
+          { ops: ['MedianFinder', 'addNum', 'addNum', 'findMedian', 'addNum', 'findMedian'], args: [[], [1], [2], [], [3], []], out: [null, null, null, 1.5, null, 2.0] },
+          { ops: ['MedianFinder', 'addNum', 'findMedian'], args: [[], [-7], []], out: [null, null, -7.0] },
+          { ops: ['MedianFinder', 'addNum', 'addNum', 'addNum', 'addNum', 'addNum', 'findMedian', 'addNum', 'findMedian', 'addNum', 'findMedian', 'addNum', 'findMedian'], args: [[], [5], [15], [1], [3], [8], [], [7], [], [9], [], [10], []], out: [null, null, null, null, null, null, 5.0, null, 6.0, null, 7.0, null, 7.5] },
+          { ops: ['MedianFinder', 'addNum', 'addNum', 'addNum', 'findMedian', 'addNum', 'findMedian'], args: [[], [4], [4], [4], [], [4], []], out: [null, null, null, null, 4.0, null, 4.0] },
+          { ops: ['MedianFinder', 'addNum', 'addNum', 'findMedian', 'addNum', 'findMedian', 'addNum', 'findMedian'], args: [[], [100000], [-100000], [], [100000], [], [100000], []], out: [null, null, null, 0.0, null, 100000.0, null, 100000.0] },
+          { ops: ['MedianFinder', 'addNum', 'addNum', 'addNum', 'addNum', 'addNum', 'addNum', 'findMedian', 'addNum', 'findMedian'], args: [[], [6], [5], [4], [3], [2], [1], [], [0], []], out: [null, null, null, null, null, null, null, 3.5, null, 3.0] },
+          { ops: ['MedianFinder', 'addNum', 'addNum', 'findMedian', 'addNum', 'findMedian', 'addNum', 'findMedian'], args: [[], [-1], [-2], [], [-3], [], [-4], []], out: [null, null, null, -1.5, null, -2.0, null, -2.5] }
+        ] },
         solution: {
           approach: `<p>Two heaps split at the middle; tops give the median.</p>`,
           code: `
@@ -1492,6 +2889,97 @@ for x in [5, 15, 1, 3, 8, 7, 9, 10]:
                     System.out.println(mf.findMedian());  // 2.0
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `import heapq
+
+class MedianFinder:
+    def __init__(self):
+        self.low = []                     # smaller half as a max-heap: store negatives
+        self.high = []                    # bigger half, min-heap
+
+    def addNum(self, num):
+        heapq.heappush(self.low, -num)                          # 1) small half first
+        heapq.heappush(self.high, -heapq.heappop(self.low))     # 2) its biggest moves right
+        if len(self.high) > len(self.low):                      # 3) keep low as big or one bigger
+            heapq.heappush(self.low, -heapq.heappop(self.high))
+
+    def findMedian(self):
+        if len(self.low) > len(self.high):
+            return float(-self.low[0])    # odd count
+        return (-self.low[0] + self.high[0]) / 2   # even count; Python ints never overflow
+` },
+            { lang: 'js', code: `class MinHeap {
+  constructor(less = (a, b) => a < b) { this.a = []; this.less = less; }  // less(a, b): a comes out first
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (!this.less(a[i], a[p])) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.less(a[l], a[m])) m = l;
+        if (r < a.length && this.less(a[r], a[m])) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+class MedianFinder {
+  constructor() {
+    this.low = new MinHeap((a, b) => a > b);  // smaller half, biggest on top
+    this.high = new MinHeap();                // bigger half, smallest on top
+  }
+
+  addNum(num) {
+    this.low.push(num);                       // 1) small half first
+    this.high.push(this.low.pop());           // 2) its biggest moves right
+    if (this.high.size() > this.low.size()) this.low.push(this.high.pop());  // 3) rebalance
+  }
+
+  findMedian() {
+    if (this.low.size() > this.high.size()) return this.low.peek();
+    return (this.low.peek() + this.high.peek()) / 2;  // / always gives a fraction in JS
+  }
+}
+` },
+            { lang: 'cpp', code: `class MedianFinder {
+    priority_queue<int> low;                              // smaller half, max-heap (C++ default)
+    priority_queue<int, vector<int>, greater<int>> high;  // bigger half, min-heap
+
+public:
+    void addNum(int num) {
+        low.push(num);                        // 1) small half first
+        high.push(low.top()); low.pop();      // 2) its biggest moves right
+        if (high.size() > low.size()) {       // 3) keep low as big or one bigger
+            low.push(high.top()); high.pop();
+        }
+    }
+
+    double findMedian() {
+        if (low.size() > high.size()) return low.top();
+        return ((long long)low.top() + high.top()) / 2.0;   // widen before adding
+    }
+};
+` }
+          ],
           dry: {
             head: ['call', 'after step 1 (low += x)', 'after step 2 (move to high)', 'after step 3 (rebalance)', 'result'],
             rows: [
@@ -1535,7 +3023,7 @@ for x in [5, 15, 1, 3, 8, 7, 9, 10]:
       '"Longest common prefix", "longest word built one letter at a time", "replace words with their root" → walk a trie.',
       'Many words (10<sup>4</sup>–10<sup>5</sup>) and many prefix queries → trie gives O(length) per query.'
     ],
-    code: `
+    code: { lang: 'java', code: `
       class TrieNode {
           TrieNode[] child = new TrieNode[26];
           boolean isEnd;
@@ -1582,7 +3070,143 @@ for x in [5, 15, 1, 3, 8, 7, 9, 10]:
               for (String w : new String[]{"car", "cat", "cart", "dog", "do"}) ac.insert(w);
               System.out.println(ac.suggest("ca"));   // [car, cart, cat]
           }
-      }`,
+      }`, alt: [
+      { lang: 'python', run: true, code: `class Autocomplete:
+    END = '$'                             # key that marks "a word ends here"
+
+    def __init__(self):
+        self.root = {}                    # node = dict: letter -> child node
+
+    def insert(self, w):
+        node = self.root
+        for ch in w:
+            node = node.setdefault(ch, {})
+        node[Autocomplete.END] = True
+
+    def suggest(self, prefix):
+        """All stored words that start with prefix, in alphabetical order."""
+        node = self.root
+        for ch in prefix:
+            node = node.get(ch)
+            if node is None:
+                return []                 # no word has this prefix
+        out = []
+        self._collect(node, list(prefix), out)
+        return out
+
+    def _collect(self, node, path, out):  # depth = word length, far below the 1000-frame limit
+        if Autocomplete.END in node:
+            out.append(''.join(path))     # a full word ends here
+        for ch in sorted(k for k in node if k != Autocomplete.END):
+            path.append(ch)               # go down letter ch
+            self._collect(node[ch], path, out)
+            path.pop()                    # come back up (backtrack)
+
+
+ac = Autocomplete()
+for w in ["car", "cat", "cart", "dog", "do"]:
+    ac.insert(w)
+print(ac.suggest("ca"))                   # ['car', 'cart', 'cat']
+` },
+      { lang: 'js', run: true, code: `class TrieNode {
+  constructor() {
+    this.child = new Array(26).fill(null);  // child[c] = next node for letter 'a' + c
+    this.isEnd = false;
+  }
+}
+
+class Autocomplete {
+  constructor() { this.root = new TrieNode(); }
+
+  insert(w) {
+    let cur = this.root;
+    for (const ch of w) {
+      const c = ch.charCodeAt(0) - 97;
+      if (!cur.child[c]) cur.child[c] = new TrieNode();
+      cur = cur.child[c];
+    }
+    cur.isEnd = true;
+  }
+
+  // All stored words that start with prefix, in alphabetical order.
+  suggest(prefix) {
+    let cur = this.root;
+    for (const ch of prefix) {
+      cur = cur.child[ch.charCodeAt(0) - 97];
+      if (!cur) return [];                // no word has this prefix
+    }
+    const out = [], path = [...prefix];
+    const collect = (node) => {
+      if (node.isEnd) out.push(path.join(''));   // a full word ends here
+      for (let c = 0; c < 26; c++) {
+        if (node.child[c]) {
+          path.push(String.fromCharCode(97 + c)); // go down letter c
+          collect(node.child[c]);
+          path.pop();                             // come back up (backtrack)
+        }
+      }
+    };
+    collect(cur);
+    return out;
+  }
+}
+
+const ac = new Autocomplete();
+for (const w of ['car', 'cat', 'cart', 'dog', 'do']) ac.insert(w);
+console.log(ac.suggest('ca'));            // [ 'car', 'cart', 'cat' ]
+` },
+      { lang: 'cpp', code: `struct TrieNode {
+    array<unique_ptr<TrieNode>, 26> child;
+    bool isEnd = false;
+};
+
+class Autocomplete {
+    TrieNode root;
+
+    void collect(const TrieNode* node, string& path, vector<string>& out) const {
+        if (node->isEnd) out.push_back(path);       // a full word ends here
+        for (int c = 0; c < 26; c++) {
+            if (node->child[c]) {
+                path.push_back(char('a' + c));      // go down letter c
+                collect(node->child[c].get(), path, out);
+                path.pop_back();                    // come back up (backtrack)
+            }
+        }
+    }
+
+public:
+    void insert(const string& w) {
+        TrieNode* cur = &root;
+        for (char ch : w) {
+            auto& next = cur->child[ch - 'a'];
+            if (!next) next = make_unique<TrieNode>();
+            cur = next.get();
+        }
+        cur->isEnd = true;
+    }
+
+    // All stored words that start with prefix, in alphabetical order.
+    vector<string> suggest(const string& prefix) const {
+        const TrieNode* cur = &root;
+        for (char ch : prefix) {
+            cur = cur->child[ch - 'a'].get();
+            if (!cur) return {};                    // no word has this prefix
+        }
+        vector<string> out;
+        string path = prefix;
+        collect(cur, path, out);
+        return out;
+    }
+};
+
+int main() {
+    Autocomplete ac;
+    for (string w : {"car", "cat", "cart", "dog", "do"}) ac.insert(w);
+    for (const string& s : ac.suggest("ca")) cout << s << " ";   // car cart cat
+    cout << endl;
+}
+` }
+    ] },
     codeTitle: 'Autocomplete: walk to the prefix, then DFS for all words below',
     examples: [
       {
@@ -1590,7 +3214,7 @@ for x in [5, 15, 1, 3, 8, 7, 9, 10]:
         html: `<p>Add a counter <code>pass</code> to every node: “how many inserted words walk through me”. Insert apple, app, apt, bat:</p>
           ${H.table(['node', 'pass', 'isEnd'], [['a', '3', 'no'], ['ap', '3', 'no'], ['app', '2', 'yes'], ['apt', '1', 'yes'], ['b', '1', 'no']])}
           <p><code>countPrefix("ap")</code> = ${H.c('p', '3')} in O(length of prefix) — no DFS needed. This is how “how many contacts start with …” questions are answered.</p>`,
-        code: `
+        code: { lang: 'java', code: `
           class CountTrie {
               CountTrie[] kid = new CountTrie[26];
               int pass, end;                       // words passing through / ending here
@@ -1614,7 +3238,89 @@ for x in [5, 15, 1, 3, 8, 7, 9, 10]:
                   }
                   return cur.pass;
               }
-          }`
+          }`, alt: [
+          { lang: 'python', run: true, code: `class CountTrie:
+    def __init__(self):
+        self.kid = {}                     # letter -> CountTrie
+        self.passes = 0                   # words passing through this node
+        self.end = 0                      # words ending here
+
+    def insert(self, w):
+        cur = self
+        for ch in w:
+            cur = cur.kid.setdefault(ch, CountTrie())
+            cur.passes += 1               # one more word goes through this node
+        cur.end += 1
+
+    def count_prefix(self, p):
+        cur = self
+        for ch in p:
+            cur = cur.kid.get(ch)
+            if cur is None:
+                return 0
+        return cur.passes
+
+
+t = CountTrie()
+for w in ["apple", "app", "apt", "bat"]:
+    t.insert(w)
+print(t.count_prefix("ap"))               # 3
+` },
+          { lang: 'js', run: true, code: `class CountTrie {
+  constructor() {
+    this.kid = new Map();                 // letter -> CountTrie
+    this.pass = 0;                        // words passing through this node
+    this.end = 0;                         // words ending here
+  }
+  insert(w) {
+    let cur = this;
+    for (const ch of w) {
+      if (!cur.kid.has(ch)) cur.kid.set(ch, new CountTrie());
+      cur = cur.kid.get(ch);
+      cur.pass++;                         // one more word goes through this node
+    }
+    cur.end++;
+  }
+  countPrefix(p) {
+    let cur = this;
+    for (const ch of p) {
+      cur = cur.kid.get(ch);
+      if (!cur) return 0;
+    }
+    return cur.pass;
+  }
+}
+
+const t = new CountTrie();
+['apple', 'app', 'apt', 'bat'].forEach((w) => t.insert(w));
+console.log(t.countPrefix('ap'));         // 3
+` },
+          { lang: 'cpp', code: `struct CountTrie {
+    array<unique_ptr<CountTrie>, 26> kid;
+    int pass = 0, end = 0;                // words passing through / ending here
+
+    void insert(const string& w) {
+        CountTrie* cur = this;
+        for (char ch : w) {
+            auto& next = cur->kid[ch - 'a'];
+            if (!next) next = make_unique<CountTrie>();
+            cur = next.get();
+            cur->pass++;                  // one more word goes through this node
+        }
+        cur->end++;
+    }
+
+    int countPrefix(const string& p) const {
+        const CountTrie* cur = this;
+        for (char ch : p) {
+            cur = cur->kid[ch - 'a'].get();
+            if (!cur) return 0;
+        }
+        return cur->pass;
+    }
+};
+` }
+        ] }
       },
       {
         title: 'Longest common prefix of [flower, flow, flight]',
@@ -1765,6 +3471,15 @@ for x in [5, 15, 1, 3, 8, 7, 9, 10]:
           `<p>Define <code>TrieNode { TrieNode[] child = new TrieNode[26]; boolean isEnd; }</code>. Index of letter <code>ch</code> is <code>ch - 'a'</code>. Write a helper <code>walk(s)</code> that returns the node at the end of the path, or <code>null</code> if a letter is missing.</p>`,
           `<p>Traps: <code>search</code> must check <code>isEnd</code> (a prefix is not a word); <code>startsWith</code> must NOT check it; inserting the same word twice should be harmless. Recipe: insert → for each char create-if-missing, move; set isEnd. search → node = walk(word); return node != null &amp;&amp; node.isEnd. startsWith → walk(prefix) != null.</p>`
         ],
+        tests: { cls: 'Trie', sigs: { Trie: '', insert: 'string -> void', search: 'string -> bool', startsWith: 'string -> bool' }, cases: [
+          { ops: ['Trie', 'insert', 'search', 'search', 'startsWith', 'insert', 'search'], args: [[], ['apple'], ['apple'], ['app'], ['app'], ['app'], ['app']], out: [null, null, true, false, true, null, true] },
+          { ops: ['Trie', 'search', 'startsWith', 'insert', 'search', 'startsWith', 'search'], args: [[], ['a'], ['a'], ['a'], ['a'], ['a'], ['aa']], out: [null, false, false, null, true, true, false] },
+          { ops: ['Trie', 'insert', 'insert', 'insert', 'search', 'startsWith', 'search', 'search', 'startsWith', 'startsWith'], args: [[], ['car'], ['cart'], ['cat'], ['ca'], ['ca'], ['cart'], ['carts'], ['cartz'], ['d']], out: [null, null, null, null, false, true, true, false, false, false] },
+          { ops: ['Trie', 'insert', 'insert', 'search', 'search', 'startsWith', 'startsWith'], args: [[], ['abc'], ['abc'], ['abc'], ['ab'], ['abc'], ['abcd']], out: [null, null, null, true, false, true, false] },
+          { ops: ['Trie', 'insert', 'insert', 'search', 'search', 'startsWith', 'search'], args: [[], ['zzz'], ['z'], ['zz'], ['z'], ['zz'], ['zzz']], out: [null, null, null, false, true, true, true] },
+          { ops: ['Trie', 'insert', 'insert', 'insert', 'startsWith', 'search', 'search', 'startsWith', 'search'], args: [[], ['hello'], ['help'], ['world'], ['hel'], ['hel'], ['help'], ['wor'], ['word']], out: [null, null, null, null, true, false, true, true, false] },
+          { ops: ['Trie', 'insert', 'search', 'search', 'startsWith', 'startsWith'], args: [[], [{ $rep: 'a', n: 2000 }], [{ $rep: 'a', n: 2000 }], [{ $rep: 'a', n: 1999 }], [{ $rep: 'a', n: 1999 }], [{ $concat: [{ $rep: 'a', n: 1999 }, 'b'] }]], out: [null, null, true, false, true, false] }
+        ] },
         solution: {
           approach: `<p>26-way tree; shared helper walks a string down the tree.</p>`,
           code: `
@@ -1817,6 +3532,114 @@ for x in [5, 15, 1, 3, 8, 7, 9, 10]:
                     System.out.println(t.search("app"));      // true
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `class Trie:
+    END = '$'                             # key that marks "a word ends here"
+
+    def __init__(self):
+        self.root = {}                    # each node is a dict: letter -> child node
+
+    def insert(self, word):
+        node = self.root
+        for ch in word:
+            node = node.setdefault(ch, {})  # create the branch if missing, then step down
+        node[Trie.END] = True             # mark the word's last letter
+
+    def search(self, word):
+        node = self._walk(word)
+        return node is not None and Trie.END in node   # must be a full word
+
+    def startsWith(self, prefix):
+        return self._walk(prefix) is not None          # path existing is enough
+
+    def _walk(self, s):
+        node = self.root
+        for ch in s:
+            node = node.get(ch)
+            if node is None:
+                return None               # some letter is missing
+        return node
+` },
+            { lang: 'js', code: `class TrieNode {
+  constructor() {
+    this.child = new Map();               // letter -> TrieNode
+    this.isEnd = false;                   // true if a word finishes here
+  }
+}
+
+class Trie {
+  constructor() {
+    this.root = new TrieNode();
+  }
+
+  insert(word) {
+    let cur = this.root;
+    for (const ch of word) {
+      if (!cur.child.has(ch)) cur.child.set(ch, new TrieNode());  // create missing branch
+      cur = cur.child.get(ch);
+    }
+    cur.isEnd = true;
+  }
+
+  search(word) {
+    const node = this.walk(word);
+    return node !== null && node.isEnd;   // must be a full word
+  }
+
+  startsWith(prefix) {
+    return this.walk(prefix) !== null;    // path existing is enough
+  }
+
+  walk(s) {
+    let cur = this.root;
+    for (const ch of s) {
+      cur = cur.child.get(ch);
+      if (!cur) return null;
+    }
+    return cur;
+  }
+}
+` },
+            { lang: 'cpp', code: `struct TrieNode {
+    array<unique_ptr<TrieNode>, 26> child;  // child[c] = next node for letter 'a' + c
+    bool isEnd = false;                     // true if a word finishes here
+};
+
+class Trie {
+    TrieNode root;
+
+    // Follow s from the root; nullptr if some letter is missing.
+    const TrieNode* walk(const string& s) const {
+        const TrieNode* cur = &root;
+        for (char ch : s) {
+            cur = cur->child[ch - 'a'].get();
+            if (!cur) return nullptr;
+        }
+        return cur;
+    }
+
+public:
+    void insert(const string& word) {
+        TrieNode* cur = &root;
+        for (char ch : word) {
+            auto& next = cur->child[ch - 'a'];
+            if (!next) next = make_unique<TrieNode>();  // create missing branch
+            cur = next.get();
+        }
+        cur->isEnd = true;
+    }
+
+    bool search(const string& word) const {
+        const TrieNode* node = walk(word);
+        return node && node->isEnd;       // must be a full word
+    }
+
+    bool startsWith(const string& prefix) const {
+        return walk(prefix) != nullptr;   // path existing is enough
+    }
+};
+` }
+          ],
           dry: {
             head: ['call', 'walk', 'node reached', 'isEnd there', 'returns'],
             rows: [
@@ -1845,7 +3668,7 @@ for x in [5, 15, 1, 3, 8, 7, 9, 10]:
       ${H.bits(28, 5, { label: '5 ^ 25', hl: { 4: 'g', 3: 'g', 2: 'g' } })}
       <p><b>Key fact:</b> a 1 in a higher bit beats everything below it (16 &gt; 15). So to maximise <code>x ^ y</code>, make the <b>highest bit</b> differ if at all possible, then the next one, and so on — a greedy choice that is always safe.</p>
       <h4>Binary trie</h4>
-      <p>Insert every number as its bits from the highest (bit 30 for Java <code>int</code>s ≥ 0) down to bit 0. Each node has just 2 children: <code>[0]</code> and <code>[1]</code>. A root-to-leaf path spells a number.</p>
+      <p>Insert every number as its bits from the highest (bit 30 for non-negative 32-bit <code>int</code>s) down to bit 0. Each node has just 2 children: <code>[0]</code> and <code>[1]</code>. A root-to-leaf path spells a number.</p>
       <h4>Query for the best partner of x</h4>
       <p>Walk down from the top bit. At bit <code>b</code>, x has bit <code>t</code>. We <b>want</b> the opposite bit <code>1 - t</code>:</p>
       <ul><li>If that child exists → go there, and this bit of the XOR becomes ${H.c('g', '1')}.</li><li>Otherwise → we are forced to take the same bit; this XOR bit is ${H.c('r', '0')}.</li></ul>
@@ -1865,7 +3688,7 @@ for x in [5, 15, 1, 3, 8, 7, 9, 10]:
       '"Max XOR with an element ≤ m" for many queries → sort queries by m, insert numbers <b>offline</b> as m grows.',
       'Any "make the high bits differ / match" question → think bit by bit from the top, greedy works because 2<sup>b</sup> &gt; 2<sup>b-1</sup> + … + 1.'
     ],
-    code: `
+    code: { lang: 'java', code: `
       // Maximum XOR of a SUBARRAY: prefix XOR p[j] ^ p[i] = xor of a[i..j-1].
       // Insert prefixes into a binary trie and ask each new prefix for its best partner.
       int maxSubarrayXor(int[] a) {
@@ -1893,7 +3716,98 @@ for x in [5, 15, 1, 3, 8, 7, 9, 10]:
               }
           }
           return best;
-      }`,
+      }`, alt: [
+      { lang: 'python', run: true, code: `# Maximum XOR of a SUBARRAY: prefix XOR p[j] ^ p[i] = xor of a[i..j-1].
+# Insert prefixes into a binary trie and ask each new prefix for its best partner.
+def max_subarray_xor(a, top=30):
+    kids = [[0, 0]]                       # flat trie: node -> [child0, child1]; 0 = none
+
+    def insert(v):
+        node = 0
+        for b in range(top, -1, -1):
+            bit = (v >> b) & 1
+            if not kids[node][bit]:
+                kids[node][bit] = len(kids)
+                kids.append([0, 0])
+            node = kids[node][bit]
+
+    insert(0)                             # the empty prefix, so subarrays starting at 0 count
+    best = pref = 0
+    for x in a:
+        pref ^= x
+        node = xr = 0
+        for b in range(top, -1, -1):      # query: greedily take the opposite bit
+            bit = (pref >> b) & 1
+            if kids[node][bit ^ 1]:
+                xr |= 1 << b
+                node = kids[node][bit ^ 1]
+            else:
+                node = kids[node][bit]
+        best = max(best, xr)
+        insert(pref)
+    return best
+
+
+print(max_subarray_xor([1, 2, 3, 4]))     # 7
+` },
+      { lang: 'js', run: true, code: `// Maximum XOR of a SUBARRAY: prefix XOR p[j] ^ p[i] = xor of a[i..j-1].
+function maxSubarrayXor(a) {
+  const kids = new Int32Array(((a.length + 1) * 31 + 1) * 2);   // flat trie: node*2 + bit -> child
+  let nodes = 1;
+  const insert = (v) => {
+    let cur = 0;
+    for (let b = 30; b >= 0; b--) {
+      const bit = (v >> b) & 1;
+      if (!kids[cur * 2 + bit]) kids[cur * 2 + bit] = nodes++;
+      cur = kids[cur * 2 + bit];
+    }
+  };
+  insert(0);                              // the empty prefix
+  let best = 0, pref = 0;
+  for (const x of a) {
+    pref ^= x;
+    let cur = 0, xr = 0;
+    for (let b = 30; b >= 0; b--) {       // query: greedily take the opposite bit
+      const want = ((pref >> b) & 1) ^ 1;
+      if (kids[cur * 2 + want]) { xr |= 1 << b; cur = kids[cur * 2 + want]; }
+      else cur = kids[cur * 2 + (want ^ 1)];
+    }
+    best = Math.max(best, xr);
+    insert(pref);
+  }
+  return best;
+}
+
+console.log(maxSubarrayXor([1, 2, 3, 4]));   // 7
+` },
+      { lang: 'cpp', code: `// Maximum XOR of a SUBARRAY: prefix XOR p[j] ^ p[i] = xor of a[i..j-1].
+int maxSubarrayXor(const vector<int>& a) {
+    vector<array<int, 2>> kids(1, {0, 0});    // flat trie: node -> {child0, child1}, 0 = none
+    auto insert = [&](int v) {
+        int cur = 0;
+        for (int b = 30; b >= 0; b--) {
+            int bit = (v >> b) & 1;
+            if (!kids[cur][bit]) { kids[cur][bit] = (int)kids.size(); kids.push_back({0, 0}); }
+            cur = kids[cur][bit];
+        }
+    };
+    insert(0);                                // the empty prefix
+    int best = 0, pref = 0;
+    for (int x : a) {
+        pref ^= x;
+        int cur = 0, xr = 0;
+        for (int b = 30; b >= 0; b--) {       // query: greedily take the opposite bit
+            int bit = (pref >> b) & 1;
+            if (kids[cur][bit ^ 1]) { xr |= 1 << b; cur = kids[cur][bit ^ 1]; }
+            else cur = kids[cur][bit];
+        }
+        best = max(best, xr);
+        insert(pref);
+    }
+    return best;
+}
+` }
+    ] },
     codeTitle: 'Variation: maximum XOR subarray with a flat-array binary trie',
     examples: [
       {
@@ -1914,7 +3828,7 @@ for x in [5, 15, 1, 3, 8, 7, 9, 10]:
       }
     ],
     deepDive: `<p><b>Why greedy is correct:</b> bit b contributes 2<sup>b</sup>, while all lower bits together contribute at most 2<sup>b</sup> - 1. So any partner that makes bit b of the XOR equal to 1 beats every partner that does not, regardless of lower bits. Walking down the trie, the set of numbers below the current node is exactly the set of candidates that agree with the decisions made so far; taking the opposite branch whenever it exists is therefore optimal at each level.</p>
-      <p><b>Bit width:</b> for non-negative Java ints use bits 30..0 (bit 31 is the sign bit and is 0). For values up to 10<sup>9</sup>, 30 bits suffice (2<sup>30</sup> ≈ 1.07·10<sup>9</sup>). For <code>long</code> use 62..0. If negatives can appear, shift every value by adding 2<sup>31</sup> (as long) or treat the sign bit carefully, because two's complement flips its meaning.</p>
+      <p><b>Bit width:</b> for non-negative 32-bit ints (Java/C++ <code>int</code>, JS bit operators) use bits 30..0 (bit 31 is the sign bit and is 0). Python ints have no fixed width, so <code>max(nums).bit_length()</code> tells you how many bits to walk. For values up to 10<sup>9</sup>, 30 bits suffice (2<sup>30</sup> ≈ 1.07·10<sup>9</sup>). For <code>long</code> use 62..0. If negatives can appear, shift every value by adding 2<sup>31</sup> (as long) or treat the sign bit carefully, because two's complement flips its meaning.</p>
       <p><b>Memory:</b> object nodes with <code>TrieNode[2]</code> cost ~32+ bytes each; N = 2·10<sup>5</sup> numbers × 31 levels ≈ 6.2 million nodes → hundreds of MB. The <b>flat array</b> (<code>int[nodes][2]</code> or two <code>int[]</code> arrays) shown in the code tab is the safe choice. An alternative with no trie at all builds the answer bit by bit using a HashSet of prefixes (<code>(x &gt;&gt; b)</code>) and the identity a ^ b = c ⇔ a ^ c = b — also O(N · 31).</p>
       <p><b>Deletions:</b> keep a <code>count</code> per node (how many numbers pass through) and decrement on delete; during a query treat a child with count 0 as missing. This supports sliding windows and “max XOR with a range of elements”. A <b>persistent</b> binary trie (new path per insert, sharing the rest) answers “max XOR with any element in a[l..r]” online.</p>`,
     aiEra: `<p><b>What AI changes:</b> the binary trie trick is well known to models, so recall is not the bottleneck. What interviewers probe is whether you can <b>explain</b> why greedy works (the 2<sup>b</sup> &gt; sum of lower bits argument) and adapt the structure: prefix XORs, offline sorting, deletions with counts, memory limits.</p>
@@ -2034,6 +3948,16 @@ for x in [5, 15, 1, 3, 8, 7, 9, 10]:
           `<p>Build a binary trie: node with <code>child[2]</code>. Insert each number from bit 30 down to 0. For each x, walk down preferring the child <code>1 - bit</code>; if missing, take <code>bit</code>. Add <code>1 &lt;&lt; b</code> to the XOR whenever you got the opposite bit.</p>`,
           `<p>Traps: use bit 30 as the top for non-negative ints (bit 31 is the sign); insert <b>all</b> numbers before querying (or insert-then-query each, both work since x ^ x = 0 is harmless); single-element array → answer 0. Recipe: insert all; best = 0; for x: node = root, xr = 0; for b = 30..0: t = bit, if node.child[1-t] → xr |= 1&lt;&lt;b, go there; else go child[t]. best = max(best, xr).</p>`
         ],
+        tests: { sig: 'int[] -> int', fn: 'findMaximumXOR', cases: [
+          [[[3, 10, 5, 25, 2, 8]], 28],
+          [[[0]], 0],
+          [[[14, 70, 53, 83, 49, 91, 36, 80, 92, 51, 66, 70]], 127],
+          [[[2147483647, 0]], 2147483647],
+          [[[2147483647, 1073741824]], 1073741823],
+          [[[8, 1, 2, 12]], 14],
+          [[[5, 5]], 0],
+          [[{ $range: [0, 100000] }], 131071]
+        ] },
         solution: {
           approach: `<p>Binary trie of all numbers; greedy query per number.</p>`,
           code: `
@@ -2079,6 +4003,87 @@ for x in [5, 15, 1, 3, 8, 7, 9, 10]:
                     System.out.println(new Solution().findMaximumXOR(new int[]{3, 10, 5, 25, 2, 8})); // 28
                 }
             }`,
+          alt: [
+            { lang: 'python', code: `def find_maximum_xor(nums):
+    top = max(nums).bit_length()          # only as many bits as the biggest number needs
+    kids = [[0, 0]]                       # flat trie: node -> [child for bit 0, child for bit 1]; 0 = none
+    for x in nums:                        # 1) insert every number, highest bit first
+        node = 0
+        for b in range(top - 1, -1, -1):
+            bit = (x >> b) & 1
+            if not kids[node][bit]:
+                kids[node][bit] = len(kids)
+                kids.append([0, 0])
+            node = kids[node][bit]
+    best = 0
+    for x in nums:                        # 2) greedy walk towards opposite bits
+        node = xr = 0
+        for b in range(top - 1, -1, -1):
+            bit = (x >> b) & 1
+            if kids[node][bit ^ 1]:
+                xr |= 1 << b              # this XOR bit becomes 1
+                node = kids[node][bit ^ 1]
+            else:
+                node = kids[node][bit]    # forced: same bit
+        best = max(best, xr)
+    return best
+` },
+            { lang: 'js', code: `function findMaximumXOR(nums) {
+  const TOP = 30;                                         // highest bit for non-negative 32-bit ints
+  const kids = new Int32Array((nums.length * 31 + 1) * 2); // flat trie: node*2 + bit -> child, 0 = none
+  let nodes = 1;
+  for (const x of nums) {                                 // 1) insert every number
+    let cur = 0;
+    for (let b = TOP; b >= 0; b--) {
+      const bit = (x >> b) & 1;
+      if (!kids[cur * 2 + bit]) kids[cur * 2 + bit] = nodes++;
+      cur = kids[cur * 2 + bit];
+    }
+  }
+  let best = 0;
+  for (const x of nums) {                                 // 2) greedy opposite-bit walk
+    let cur = 0, xr = 0;
+    for (let b = TOP; b >= 0; b--) {
+      const want = ((x >> b) & 1) ^ 1;
+      if (kids[cur * 2 + want]) { xr |= 1 << b; cur = kids[cur * 2 + want]; }
+      else cur = kids[cur * 2 + (want ^ 1)];
+    }
+    best = Math.max(best, xr);
+  }
+  return best;
+}
+` },
+            { lang: 'cpp', code: `class Solution {
+public:
+    int findMaximumXOR(vector<int>& nums) {
+        const int TOP = 30;                       // highest bit for non-negative int
+        vector<array<int, 2>> kids(1, {0, 0});    // flat trie: node -> {child0, child1}, 0 = none
+        for (int x : nums) {                      // 1) insert every number
+            int cur = 0;
+            for (int b = TOP; b >= 0; b--) {
+                int bit = (x >> b) & 1;
+                if (!kids[cur][bit]) {
+                    kids[cur][bit] = (int)kids.size();
+                    kids.push_back({0, 0});
+                }
+                cur = kids[cur][bit];
+            }
+        }
+        int best = 0;
+        for (int x : nums) {                      // 2) greedy opposite-bit walk
+            int cur = 0, xr = 0;
+            for (int b = TOP; b >= 0; b--) {
+                int bit = (x >> b) & 1;
+                if (kids[cur][bit ^ 1]) { xr |= 1 << b; cur = kids[cur][bit ^ 1]; }
+                else cur = kids[cur][bit];
+            }
+            best = max(best, xr);
+        }
+        return best;
+    }
+};
+` }
+          ],
           dry: {
             head: ['x', 'binary (5 low bits)', 'greedy path ends at', 'x ^ partner', 'best'],
             rows: [
@@ -2131,6 +4136,15 @@ for x in [5, 15, 1, 3, 8, 7, 9, 10]:
       `<p>Min-heap of size k. In <code>add</code>: offer, and if size &gt; k poll. Return <code>peek()</code>.</p>`,
       `<p>Edge case: the constructor may receive fewer than k numbers — do not poll below k. Recipe: constructor calls add for each num (ignoring the return); add → offer; if size &gt; k poll; return peek.</p>`
     ],
+    tests: { cls: 'KthLargest', sigs: { KthLargest: 'int int[]', add: 'int -> int' }, cases: [
+      { ops: ['KthLargest', 'add', 'add', 'add', 'add', 'add'], args: [[3, [4, 5, 8, 2]], [3], [5], [10], [9], [4]], out: [null, 4, 5, 5, 8, 8] },
+      { ops: ['KthLargest', 'add', 'add', 'add', 'add', 'add'], args: [[1, []], [-3], [-2], [-4], [0], [4]], out: [null, -3, -2, -2, 0, 4] },
+      { ops: ['KthLargest', 'add', 'add', 'add', 'add', 'add'], args: [[2, [0]], [-1], [1], [-2], [-4], [3]], out: [null, -1, 0, 0, 0, 1] },
+      { ops: ['KthLargest', 'add', 'add', 'add', 'add', 'add'], args: [[3, [5, 5]], [5], [5], [1], [6], [6]], out: [null, 5, 5, 5, 5, 5] },
+      { ops: ['KthLargest', 'add', 'add'], args: [[1, [10000]], [-10000], [10000]], out: [null, 10000, 10000] },
+      { ops: ['KthLargest', 'add', 'add', 'add', 'add'], args: [[4, [9, 1, 8, 2, 7, 3]], [6], [0], [10], [5]], out: [null, 6, 6, 7, 7] },
+      { ops: ['KthLargest', 'add', 'add'], args: [[1, { $range: [-10000, 10001] }], [-10000], [10000]], out: [null, 10000, 10000] }
+    ] },
     solution: {
       approach: `<p>Min-heap of the k largest values; its top is the k-th largest.</p>`,
       code: `
@@ -2156,6 +4170,87 @@ for x in [5, 15, 1, 3, 8, 7, 9, 10]:
                 System.out.println(kl.add(10));  // 5
             }
         }`,
+      alt: [
+        { lang: 'python', code: `import heapq
+
+class KthLargest:
+    def __init__(self, k, nums):
+        self.k = k
+        self.heap = []                    # min-heap of the k largest values
+        for x in nums:
+            self.add(x)
+
+    def add(self, val):
+        heapq.heappush(self.heap, val)
+        if len(self.heap) > self.k:
+            heapq.heappop(self.heap)      # drop the weakest of k + 1
+        return self.heap[0]               # k-th largest
+` },
+        { lang: 'js', code: `class MinHeap {
+  constructor(less = (a, b) => a < b) { this.a = []; this.less = less; }  // less(a, b): a comes out first
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (!this.less(a[i], a[p])) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.less(a[l], a[m])) m = l;
+        if (r < a.length && this.less(a[r], a[m])) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+class KthLargest {
+  constructor(k, nums) {
+    this.k = k;
+    this.heap = new MinHeap();            // min-heap of the k largest values
+    for (const x of nums) this.add(x);
+  }
+
+  add(val) {
+    this.heap.push(val);
+    if (this.heap.size() > this.k) this.heap.pop();  // drop the weakest of k + 1
+    return this.heap.peek();                          // k-th largest
+  }
+}
+` },
+        { lang: 'cpp', code: `class KthLargest {
+    priority_queue<int, vector<int>, greater<int>> heap;  // min-heap of the k largest
+    int k;
+
+public:
+    KthLargest(int k, const vector<int>& nums) : k(k) {
+        for (int x : nums) add(x);
+    }
+
+    int add(int val) {
+        heap.push(val);
+        if ((int)heap.size() > k) heap.pop();   // drop the weakest of k + 1
+        return heap.top();                      // k-th largest
+    }
+};
+` }
+      ],
       dry: {
         head: ['call', 'heap after offer', 'poll?', 'heap', 'return'],
         rows: [
@@ -2205,6 +4300,21 @@ for x in [5, 15, 1, 3, 8, 7, 9, 10]:
       `<p>Loop i from 0 to n/2 - 1. Compare a[i] with a[2i+1], and with a[2i+2] if it exists.</p>`,
       `<p>Edge cases: N = 1 is a heap; the last parent may have only a left child; equal values are fine (use &gt; to detect a violation). Recipe: for i in 0..n/2-1: if a[i] &gt; a[l] or (r &lt; n and a[i] &gt; a[r]) return false; return true.</p>`
     ],
+    tests: { sig: 'int[] -> bool', fn: 'isMinHeap', cases: [
+      [[[1, 3, 2, 7, 4, 2]], true],
+      [[[2, 5, 1]], false],
+      [[[1]], true],
+      [[[5, 5, 5]], true],
+      [[[1, 2]], true],
+      [[[2, 1]], false],
+      [[[1, 2, 3, 4, 0]], false],
+      [[[-1000000000, 1000000000]], true],
+      [[[1, 4, 2, 7, 5, 3]], true],
+      [[[1, 4, 2, 3, 5, 1]], false],
+      [[{ $range: [0, 100000] }], true],
+      [[{ $range: [100000, 0, -1] }], false],
+      [[{ $concat: [{ $rep: 5, n: 99999 }, [4]] }], false]
+    ] },
     solution: {
       approach: `<p>Check every parent against its children; leaves are skipped.</p>`,
       code: `
@@ -2224,6 +4334,30 @@ for x in [5, 15, 1, 3, 8, 7, 9, 10]:
                 System.out.println(new Solution().isMinHeap(new int[]{2, 5, 1}));          // false
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def is_min_heap(a):
+    # same rule seen from the child side: every child is >= its parent (i - 1) // 2
+    return all(a[(i - 1) // 2] <= a[i] for i in range(1, len(a)))
+` },
+        { lang: 'js', code: `function isMinHeap(a) {
+  const n = a.length;
+  for (let i = 0; i <= (n >> 1) - 1; i++) {   // only non-leaf nodes
+    const l = 2 * i + 1, r = l + 1;
+    if (a[i] > a[l]) return false;            // left child always exists here
+    if (r < n && a[i] > a[r]) return false;   // right child may be missing
+  }
+  return true;
+}
+` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    bool isMinHeap(vector<int>& a) {
+        // std::is_heap checks a max-heap by default; greater<int>() flips it to a min-heap
+        return is_heap(a.begin(), a.end(), greater<int>());
+    }
+};
+` }
+      ],
       dry: {
         head: ['i', 'a[i]', 'left (idx: val)', 'right (idx: val)', 'ok?'],
         rows: [
@@ -2268,6 +4402,16 @@ for x in [5, 15, 1, 3, 8, 7, 9, 10]:
       `<p>Min-heap: repeatedly poll the two smallest, add their sum to the cost, offer the sum back.</p>`,
       `<p>Edge cases: one rope → cost 0; use <code>long</code> for both the heap values and the cost. Recipe: heap of longs; while size &gt; 1: a = poll, b = poll, cost += a + b, offer a + b.</p>`
     ],
+    tests: { sig: 'int[] -> long', fn: 'minCost', cases: [
+      [[[4, 3, 2, 6]], 29],
+      [[[5]], 0],
+      [[[1, 2]], 3],
+      [[[1, 1, 1, 1]], 8],
+      [[[1000000, 1000000, 1000000]], 5000000],
+      [[[8, 4, 6, 12]], 58],
+      [[[2, 2, 3, 3, 9, 1]], 45],
+      [[{ $rep: 1000000, n: 131072 }], 2228224000000]
+    ] },
     solution: {
       approach: `<p>Greedy with a min-heap (Huffman-style merging).</p>`,
       code: `
@@ -2288,6 +4432,82 @@ for x in [5, 15, 1, 3, 8, 7, 9, 10]:
                 System.out.println(new Solution().minCost(new int[]{4, 3, 2, 6})); // 29
             }
         }`,
+      alt: [
+        { lang: 'python', code: `import heapq
+
+def min_cost(ropes):
+    heap = list(ropes)
+    heapq.heapify(heap)                   # O(N) build
+    cost = 0                              # Python ints never overflow
+    while len(heap) > 1:
+        a = heapq.heappop(heap)           # two shortest ropes
+        b = heapq.heappop(heap)
+        cost += a + b                     # pay for this join
+        heapq.heappush(heap, a + b)       # the new rope goes back in
+    return cost
+` },
+        { lang: 'js', code: `class MinHeap {
+  constructor(less = (a, b) => a < b) { this.a = []; this.less = less; }  // less(a, b): a comes out first
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (!this.less(a[i], a[p])) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.less(a[l], a[m])) m = l;
+        if (r < a.length && this.less(a[r], a[m])) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+function minCost(ropes) {
+  const pq = new MinHeap();
+  for (const x of ropes) pq.push(x);
+  let cost = 0;                           // stays far below 2^53, so Number is exact here
+  while (pq.size() > 1) {
+    const a = pq.pop(), b = pq.pop();     // two shortest ropes
+    cost += a + b;
+    pq.push(a + b);
+  }
+  return cost;
+}
+` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    long long minCost(vector<int>& ropes) {
+        priority_queue<long long, vector<long long>, greater<long long>> pq(ropes.begin(), ropes.end());
+        long long cost = 0;                   // the total passes 2^31, so long long
+        while (pq.size() > 1) {
+            long long a = pq.top(); pq.pop();  // two shortest ropes
+            long long b = pq.top(); pq.pop();
+            cost += a + b;
+            pq.push(a + b);
+        }
+        return cost;
+    }
+};
+` }
+      ],
       dry: {
         head: ['round', 'heap before', 'join', 'cost so far', 'heap after'],
         rows: [
@@ -2329,16 +4549,20 @@ for x in [5, 15, 1, 3, 8, 7, 9, 10]:
       `<p>Store <code>childCount</code> (or count non-null children) and <code>isEnd</code>. Walk while the node has exactly one child and is not an end.</p>`,
       `<p>Edge cases: an empty string in the input → answer ""; one word → the word itself. Recipe: insert all; node = root; sb = ""; while node.count == 1 and !node.isEnd: take the single child, append its letter.</p>`
     ],
+    tests: { sig: 'string[] -> string', fn: 'longestCommonPrefix', cases: [
+      [[['flower', 'flow', 'flight']], 'fl'],
+      [[['dog', 'racecar', 'car']], ''],
+      [[['a']], 'a'],
+      [[['', 'b']], ''],
+      [[['ab', 'a']], 'a'],
+      [[['abc', 'abc']], 'abc'],
+      [[['interview', 'internet', 'interval', 'internal']], 'inter'],
+      [[[{ $rep: 'z', n: 200 }, { $rep: 'z', n: 200 }, { $concat: [{ $rep: 'z', n: 199 }, 'y'] }]], { $rep: 'z', n: 199 }]
+    ] },
     solution: {
       approach: `<p>Build a trie; walk down the single-child chain.</p>`,
       code: `
         class Solution {
-            static class Node {
-                Node[] kid = new Node[26];
-                int count;        // how many distinct children
-                boolean isEnd;
-            }
-
             public String longestCommonPrefix(String[] strs) {
                 Node root = new Node();
                 for (String s : strs) {
@@ -2362,10 +4586,82 @@ for x in [5, 15, 1, 3, 8, 7, 9, 10]:
                 return sb.toString();
             }
 
+            static class Node {
+                Node[] kid = new Node[26];
+                int count;        // how many distinct children
+                boolean isEnd;
+            }
+
             public static void main(String[] args) {
                 System.out.println(new Solution().longestCommonPrefix(new String[]{"flower", "flow", "flight"})); // fl
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def longest_common_prefix(strs):
+    END = '$'                             # marks "a word ends here"
+    root = {}
+    for s in strs:                        # build the trie (dict of dicts)
+        node = root
+        for ch in s:
+            node = node.setdefault(ch, {})
+        node[END] = True                  # "" marks the root itself, so the answer becomes ""
+    prefix, node = [], root
+    while len(node) == 1 and END not in node:   # exactly one child and no word ends here
+        (ch, node), = node.items()        # the only child
+        prefix.append(ch)
+    return ''.join(prefix)
+` },
+        { lang: 'js', code: `function longestCommonPrefix(strs) {
+  const root = { kids: new Map(), isEnd: false };
+  for (const s of strs) {                       // build the trie
+    let cur = root;
+    for (const ch of s) {
+      if (!cur.kids.has(ch)) cur.kids.set(ch, { kids: new Map(), isEnd: false });
+      cur = cur.kids.get(ch);
+    }
+    cur.isEnd = true;                           // an empty word marks the root, so the answer is ""
+  }
+  let prefix = '', cur = root;
+  while (cur.kids.size === 1 && !cur.isEnd) {   // single child, no word ends here
+    const [ch, next] = cur.kids.entries().next().value;
+    prefix += ch;
+    cur = next;
+  }
+  return prefix;
+}
+` },
+        { lang: 'cpp', code: `class Solution {
+    struct Node {
+        array<unique_ptr<Node>, 26> kid;
+        int count = 0;                    // how many distinct children
+        bool isEnd = false;
+    };
+
+public:
+    string longestCommonPrefix(vector<string>& strs) {
+        Node root;
+        for (const string& s : strs) {
+            Node* cur = &root;
+            for (char ch : s) {
+                auto& next = cur->kid[ch - 'a'];
+                if (!next) { next = make_unique<Node>(); cur->count++; }
+                cur = next.get();
+            }
+            cur->isEnd = true;            // an empty word marks the root, so the answer is ""
+        }
+        string prefix;
+        const Node* cur = &root;
+        while (cur->count == 1 && !cur->isEnd) {
+            int c = 0;
+            while (!cur->kid[c]) c++;     // the only child
+            prefix += char('a' + c);
+            cur = cur->kid[c].get();
+        }
+        return prefix;
+    }
+};
+` }
+      ],
       dry: {
         head: ['node', 'children', 'isEnd', 'action', 'prefix'],
         rows: [
@@ -2407,6 +4703,15 @@ for x in [5, 15, 1, 3, 8, 7, 9, 10]:
       `<p>Min-heap of map keys ordered by <code>Integer.compare(f.get(a), f.get(b))</code>; offer each key, poll when size &gt; k.</p>`,
       `<p>Bonus O(N): bucket sort — <code>List[] bucket</code> indexed by count (0..N); walk from N down and collect until you have k. Recipe for heap: count → for each key offer, if size &gt; k poll → drain into array.</p>`
     ],
+    tests: { sig: 'int[] int -> int[]', fn: 'topKFrequent', cmp: 'set', cases: [
+      [[[1, 1, 1, 2, 2, 3], 2], [1, 2]],
+      [[[1], 1], [1]],
+      [[[-1, -1, -2, 3, 3, 3], 2], [3, -1]],
+      [[[4, 4, 5, 6, 6, 6], 3], [6, 4, 5]],
+      [[[10000, -10000, 10000], 1], [10000]],
+      [[[7, 8, 8, 9, 9, 9, 7, 9, 7], 2], [9, 7]],
+      [[{ $concat: [{ $rep: 7, n: 50000 }, { $rep: -3, n: 30000 }, { $range: [-10000, 10000] }] }, 2], [7, -3]]
+    ] },
     solution: {
       approach: `<p>HashMap counts + min-heap of size k on counts.</p>`,
       code: `
@@ -2433,10 +4738,75 @@ for x in [5, 15, 1, 3, 8, 7, 9, 10]:
 from collections import Counter
 
 def top_k_frequent(nums, k):
-    # heapq.nlargest keeps a size-k heap internally: O(N log k)
-    return heapq.nlargest(k, Counter(nums).keys(), key=Counter(nums).get)
+    count = Counter(nums)                 # value -> frequency, counted once
+    # heapq.nlargest keeps a size-k heap internally: O(D log k)
+    return heapq.nlargest(k, count, key=count.get)
 
-print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))`, run: true }],
+print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))`, run: true },
+        { lang: 'js', code: `class MinHeap {
+  constructor(less = (a, b) => a < b) { this.a = []; this.less = less; }  // less(a, b): a comes out first
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (!this.less(a[i], a[p])) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.less(a[l], a[m])) m = l;
+        if (r < a.length && this.less(a[r], a[m])) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+function topKFrequent(nums, k) {
+  const f = new Map();
+  for (const x of nums) f.set(x, (f.get(x) || 0) + 1);      // value -> count
+  const pq = new MinHeap((a, b) => f.get(a) < f.get(b));    // min-heap by count
+  for (const key of f.keys()) {
+    pq.push(key);
+    if (pq.size() > k) pq.pop();                            // evict the least frequent
+  }
+  const res = new Array(k);
+  for (let i = k - 1; i >= 0; i--) res[i] = pq.pop();       // most frequent first
+  return res;
+}
+` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> topKFrequent(vector<int>& nums, int k) {
+        unordered_map<int, int> f;
+        for (int x : nums) f[x]++;                               // value -> count
+        // pairs compare by count first; greater<> makes it a min-heap
+        priority_queue<pair<int, int>, vector<pair<int, int>>, greater<>> pq;
+        for (auto& [val, cnt] : f) {
+            pq.push({cnt, val});
+            if ((int)pq.size() > k) pq.pop();                    // evict the least frequent
+        }
+        vector<int> res(k);
+        for (int i = k - 1; i >= 0; i--) { res[i] = pq.top().second; pq.pop(); }
+        return res;
+    }
+};
+` }],
       dry: {
         head: ['key (count)', 'heap after offer', 'poll?', 'heap'],
         rows: [
@@ -2474,6 +4844,15 @@ print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))`, run: true }],
       `<p>Comparator on squared distance, descending: <code>Integer.compare(d(b), d(a))</code>. Offer each point; poll when size &gt; k.</p>`,
       `<p>Max squared distance here is 2·10<sup>8</sup> — fits in int; for bigger coordinates use long. Recipe: max-heap; for p: offer, if size &gt; k poll; return heap contents.</p>`
     ],
+    tests: { sig: 'int[][] int -> int[][]', fn: 'kClosest', check: "(a, out, exp) => { const d = (p) => p[0] * p[0] + p[1] * p[1]; if (!Array.isArray(out) || out.length !== a[1]) return false; const pool = a[0].map((p) => p.join(',')); for (const p of out) { if (!Array.isArray(p) || p.length !== 2) return false; const i = pool.indexOf(p.join(',')); if (i < 0) return false; pool.splice(i, 1); } const od = out.map(d).sort((x, y) => x - y), ed = exp.map(d).sort((x, y) => x - y); return od.every((v, i) => v === ed[i]); }", cases: [
+      [[[[3, 3], [5, -1], [-2, 4]], 2], [[3, 3], [-2, 4]]],
+      [[[[1, 3], [-2, 2]], 1], [[-2, 2]]],
+      [[[[1, 1]], 1], [[1, 1]]],
+      [[[[10000, 10000], [-10000, -10000], [0, 0]], 1], [[0, 0]]],
+      [[[[0, 1], [1, 0], [2, 2], [-1, 0]], 3], [[0, 1], [1, 0], [-1, 0]]],
+      [[[[2, 2], [2, 2], [3, 3]], 2], [[2, 2], [2, 2]]],
+      [[[[5, 5], [-4, 6], [1, -9]], 3], [[5, 5], [-4, 6], [1, -9]]]
+    ] },
     solution: {
       approach: `<p>Max-heap of size k on squared distance.</p>`,
       code: `
@@ -2496,6 +4875,72 @@ print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))`, run: true }],
                 for (int[] p : r) System.out.println(Arrays.toString(p));
             }
         }`,
+      alt: [
+        { lang: 'python', code: `import heapq
+
+def k_closest(points, k):
+    # nsmallest keeps a bounded heap internally: O(N log k); x*x + y*y avoids square roots
+    return heapq.nsmallest(k, points, key=lambda p: p[0] * p[0] + p[1] * p[1])
+` },
+        { lang: 'js', code: `class MinHeap {
+  constructor(less = (a, b) => a < b) { this.a = []; this.less = less; }  // less(a, b): a comes out first
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (!this.less(a[i], a[p])) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.less(a[l], a[m])) m = l;
+        if (r < a.length && this.less(a[r], a[m])) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+function kClosest(points, k) {
+  const d = (p) => p[0] * p[0] + p[1] * p[1];        // squared distance
+  const pq = new MinHeap((a, b) => d(a) > d(b));     // farthest on top
+  for (const p of points) {
+    pq.push(p);
+    if (pq.size() > k) pq.pop();                     // drop the farthest
+  }
+  return pq.a.slice();                               // any order is accepted
+}
+` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    vector<vector<int>> kClosest(vector<vector<int>>& points, int k) {
+        priority_queue<pair<int, int>> pq;            // {squared distance, index}: max-heap, farthest on top
+        for (int i = 0; i < (int)points.size(); i++) {
+            pq.push({points[i][0] * points[i][0] + points[i][1] * points[i][1], i});
+            if ((int)pq.size() > k) pq.pop();         // drop the farthest
+        }
+        vector<vector<int>> res;
+        while (!pq.empty()) { res.push_back(points[pq.top().second]); pq.pop(); }
+        return res;
+    }
+};
+` }
+      ],
       dry: {
         head: ['point (d²)', 'heap after offer (by d²)', 'poll?', 'heap'],
         rows: [
@@ -2534,6 +4979,15 @@ print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))`, run: true }],
       `<p>Min-heap of size k + 1: push elements; whenever size exceeds k, poll and write to the next output slot.</p>`,
       `<p>Drain the remaining heap at the end. Recipe: w = 0; for x in a: offer x; if size &gt; k: a[w++] = poll. While heap not empty: a[w++] = poll. Writing back into the same array is safe because w never passes the read index.</p>`
     ],
+    tests: { sig: 'int[] int -> void', fn: 'sortK', mutate: 0, cases: [
+      [[[6, 5, 3, 2, 8, 10, 9], 3], [2, 3, 5, 6, 8, 9, 10]],
+      [[[1], 0], [1]],
+      [[[1, 2, 3], 0], [1, 2, 3]],
+      [[[3, 2, 1], 2], [1, 2, 3]],
+      [[[2, 1, 4, 3, 6, 5], 1], [1, 2, 3, 4, 5, 6]],
+      [[[-5, -9, 0, -9], 2], [-9, -9, -5, 0]],
+      [[{ $range: [100000, 0, -1] }, 99999], { $range: [1, 100001] }]
+    ] },
     solution: {
       approach: `<p>Sliding min-heap of k + 1 elements; poll gives the next sorted value.</p>`,
       code: `
@@ -2554,6 +5008,78 @@ print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))`, run: true }],
                 System.out.println(Arrays.toString(a));    // [2, 3, 5, 6, 8, 9, 10]
             }
         }`,
+      alt: [
+        { lang: 'python', code: `import heapq
+
+def sort_k(a, k):
+    heap, w = [], 0                       # w = next position to fill
+    for x in a:                           # iterating a while writing behind the reader is safe
+        heapq.heappush(heap, x)
+        if len(heap) > k:
+            a[w] = heapq.heappop(heap)    # smallest of the window is final
+            w += 1
+    while heap:                           # flush the rest
+        a[w] = heapq.heappop(heap)
+        w += 1
+` },
+        { lang: 'js', code: `class MinHeap {
+  constructor(less = (a, b) => a < b) { this.a = []; this.less = less; }  // less(a, b): a comes out first
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (!this.less(a[i], a[p])) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.less(a[l], a[m])) m = l;
+        if (r < a.length && this.less(a[r], a[m])) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+function sortK(a, k) {
+  const pq = new MinHeap();
+  let w = 0;                              // next position to fill
+  for (let i = 0; i < a.length; i++) {
+    pq.push(a[i]);
+    if (pq.size() > k) a[w++] = pq.pop(); // smallest of the window is final
+  }
+  while (pq.size()) a[w++] = pq.pop();    // flush the rest
+}
+` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    void sortK(vector<int>& a, int k) {
+        priority_queue<int, vector<int>, greater<int>> pq;   // min-heap window of k + 1
+        size_t w = 0;                                        // next position to fill
+        for (size_t i = 0; i < a.size(); i++) {
+            pq.push(a[i]);
+            if ((int)pq.size() > k) { a[w++] = pq.top(); pq.pop(); }
+        }
+        while (!pq.empty()) { a[w++] = pq.top(); pq.pop(); } // flush the rest
+    }
+};
+` }
+      ],
       dry: {
         head: ['read', 'heap after offer', 'poll → write', 'output so far'],
         rows: [
@@ -2597,14 +5123,22 @@ print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))`, run: true }],
     hints: [
       `<p>Put the roots in a trie; then each word only needs one walk from the root.</p>`,
       `<p>For a word, walk letter by letter. If you hit a node with <code>isEnd</code>, output the prefix so far. If a child is missing, output the whole word.</p>`,
-      `<p>Use a StringBuilder for the output (strings are immutable). Recipe: build trie; for each word: cur = root; for i: cur = cur.child[c]; if null → whole word; if cur.isEnd → word[0..i]; append.</p>`
+      `<p>Build the output without repeated string concatenation (strings are immutable): <code>StringBuilder</code> in Java, <code>' '.join(...)</code> in Python, an array plus <code>join(' ')</code> in JS, <code>string::append</code> in C++. Recipe: build trie; for each word: cur = root; for i: cur = cur.child[c]; if null → whole word; if cur.isEnd → word[0..i]; append.</p>`
     ],
+    tests: { sig: 'list<string> string -> string', fn: 'replaceWords', cases: [
+      [[['cat', 'bat', 'rat'], 'the cattle was rattled by the battery'], 'the cat was rat by the bat'],
+      [[['a', 'b', 'c'], 'aadsfasf absbs bbab cadsfafs'], 'a a b c'],
+      [[['catt', 'cat', 'bat', 'rat'], 'the cattle was rattled by the battery'], 'the cat was rat by the bat'],
+      [[['a', 'aa', 'aaa'], 'aaaa aa a b'], 'a a a b'],
+      [[['xyz'], 'hello world'], 'hello world'],
+      [[['go'], 'go'], 'go'],
+      [[['ab', 'abc'], 'abcd ab abx b'], 'ab ab ab b'],
+      [[['cat'], { $concat: [{ $rep: 'cattle ', n: 100000 }, 'end'] }], { $concat: [{ $rep: 'cat ', n: 100000 }, 'end'] }]
+    ] },
     solution: {
       approach: `<p>Trie of roots + one walk per word, stopping at the first end marker.</p>`,
       code: `
         class Solution {
-            static class Node { Node[] kid = new Node[26]; boolean isEnd; }
-
             public String replaceWords(List<String> roots, String sentence) {
                 Node root = new Node();
                 for (String r : roots) {                       // build the trie of roots
@@ -2634,11 +5168,93 @@ print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))`, run: true }],
                 return w;
             }
 
+            static class Node { Node[] kid = new Node[26]; boolean isEnd; }
+
             public static void main(String[] args) {
                 System.out.println(new Solution().replaceWords(List.of("cat", "bat", "rat"),
                     "the cattle was rattled by the battery")); // the cat was rat by the bat
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def replace_words(roots, sentence):
+    END = '$'                             # marks "a root ends here"
+    trie = {}
+    for r in roots:                       # build the trie of roots
+        node = trie
+        for ch in r:
+            node = node.setdefault(ch, {})
+        node[END] = True
+
+    def shortest_root(w):
+        node = trie
+        for i, ch in enumerate(w):
+            node = node.get(ch)
+            if node is None:
+                return w                  # no root matches
+            if END in node:
+                return w[:i + 1]          # first (shortest) root
+        return w
+
+    return ' '.join(shortest_root(w) for w in sentence.split(' '))  # join is O(total length)
+` },
+        { lang: 'js', code: `function replaceWords(roots, sentence) {
+  const root = { kids: new Map(), isEnd: false };
+  for (const r of roots) {                // build the trie of roots
+    let cur = root;
+    for (const ch of r) {
+      if (!cur.kids.has(ch)) cur.kids.set(ch, { kids: new Map(), isEnd: false });
+      cur = cur.kids.get(ch);
+    }
+    cur.isEnd = true;
+  }
+  const shortestRoot = (w) => {
+    let cur = root;
+    for (let i = 0; i < w.length; i++) {
+      cur = cur.kids.get(w[i]);
+      if (!cur) return w;                 // no root matches
+      if (cur.isEnd) return w.slice(0, i + 1);  // first (shortest) root
+    }
+    return w;
+  };
+  return sentence.split(' ').map(shortestRoot).join(' ');  // build once with join
+}
+` },
+        { lang: 'cpp', code: `class Solution {
+    struct Node {
+        array<unique_ptr<Node>, 26> kid;
+        bool isEnd = false;
+    };
+
+public:
+    string replaceWords(vector<string>& roots, string sentence) {
+        Node root;
+        for (const string& r : roots) {               // build the trie of roots
+            Node* cur = &root;
+            for (char ch : r) {
+                auto& next = cur->kid[ch - 'a'];
+                if (!next) next = make_unique<Node>();
+                cur = next.get();
+            }
+            cur->isEnd = true;
+        }
+        string out, w;
+        istringstream in(sentence);
+        while (in >> w) {
+            if (!out.empty()) out += ' ';
+            const Node* cur = &root;
+            size_t len = w.size();                    // default: keep the whole word
+            for (size_t i = 0; i < w.size(); i++) {
+                cur = cur->kid[w[i] - 'a'].get();
+                if (!cur) break;                      // no root matches
+                if (cur->isEnd) { len = i + 1; break; }  // first (shortest) root
+            }
+            out.append(w, 0, len);
+        }
+        return out;
+    }
+};
+` }
+      ],
       dry: {
         head: ['word', 'walk', 'stops because', 'output'],
         rows: [
@@ -2679,6 +5295,17 @@ print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))`, run: true }],
       `<p>Heap of int[]{value, row, col}. Seed with column 0 of every row (or only the first k rows). Poll k - 1 times, each time pushing (row, col + 1) if it exists. The top is the answer.</p>`,
       `<p>Use <code>Integer.compare</code> (values reach ±10<sup>9</sup>). Alternative O(n log(max - min)): binary search on the value and count elements ≤ mid with a staircase walk from the bottom-left corner.</p>`
     ],
+    tests: { sig: 'int[][] int -> int', fn: 'kthSmallest', cases: [
+      [[[[1, 5, 9], [10, 11, 13], [12, 13, 15]], 8], 13],
+      [[[[-5]], 1], -5],
+      [[[[1, 2], [1, 3]], 2], 1],
+      [[[[1, 2], [3, 4]], 4], 4],
+      [[[[-1000000000, 0], [0, 1000000000]], 4], 1000000000],
+      [[[[1, 3, 5], [6, 7, 12], [11, 14, 14]], 6], 11],
+      [[[[2, 2], [2, 2]], 3], 2],
+      [[{ $rep: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244, 245, 246, 247, 248, 249, 250, 251, 252, 253, 254, 255, 256, 257, 258, 259, 260, 261, 262, 263, 264, 265, 266, 267, 268, 269, 270, 271, 272, 273, 274, 275, 276, 277, 278, 279, 280, 281, 282, 283, 284, 285, 286, 287, 288, 289, 290, 291, 292, 293, 294, 295, 296, 297, 298, 299], n: 300 }, 45000], 149],
+      [[{ $rep: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244, 245, 246, 247, 248, 249, 250, 251, 252, 253, 254, 255, 256, 257, 258, 259, 260, 261, 262, 263, 264, 265, 266, 267, 268, 269, 270, 271, 272, 273, 274, 275, 276, 277, 278, 279, 280, 281, 282, 283, 284, 285, 286, 287, 288, 289, 290, 291, 292, 293, 294, 295, 296, 297, 298, 299], n: 300 }, 90000], 299]
+    ] },
     solution: {
       approach: `<p>K-way merge over rows with a min-heap; stop at the k-th poll.</p>`,
       code: `
@@ -2700,6 +5327,80 @@ print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))`, run: true }],
                 System.out.println(new Solution().kthSmallest(m, 8));   // 13
             }
         }`,
+      alt: [
+        { lang: 'python', code: `import heapq
+
+def kth_smallest(m, k):
+    n = len(m)
+    heap = [(m[r][0], r, 0) for r in range(min(n, k))]   # row heads; tuples compare by value first
+    heapq.heapify(heap)
+    for _ in range(k - 1):                # throw away the k - 1 smallest
+        _, r, c = heapq.heappop(heap)
+        if c + 1 < n:
+            heapq.heappush(heap, (m[r][c + 1], r, c + 1))  # next in the same row
+    return heap[0][0]
+` },
+        { lang: 'js', code: `class MinHeap {
+  constructor(less = (a, b) => a < b) { this.a = []; this.less = less; }  // less(a, b): a comes out first
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (!this.less(a[i], a[p])) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.less(a[l], a[m])) m = l;
+        if (r < a.length && this.less(a[r], a[m])) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+function kthSmallest(m, k) {
+  const n = m.length;
+  const pq = new MinHeap((a, b) => a[0] < b[0]);   // entries: [value, row, col]
+  for (let r = 0; r < Math.min(n, k); r++) pq.push([m[r][0], r, 0]);
+  for (let i = 0; i < k - 1; i++) {                // throw away the k - 1 smallest
+    const [, r, c] = pq.pop();
+    if (c + 1 < n) pq.push([m[r][c + 1], r, c + 1]);
+  }
+  return pq.peek()[0];
+}
+` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int kthSmallest(vector<vector<int>>& m, int k) {
+        int n = m.size();
+        // tuple {value, row, col}; greater<> turns the default max-heap into a min-heap
+        priority_queue<tuple<int, int, int>, vector<tuple<int, int, int>>, greater<>> pq;
+        for (int r = 0; r < min(n, k); r++) pq.push({m[r][0], r, 0});
+        for (int i = 0; i < k - 1; i++) {         // throw away the k - 1 smallest
+            auto [v, r, c] = pq.top(); pq.pop();
+            if (c + 1 < n) pq.push({m[r][c + 1], r, c + 1});
+        }
+        return get<0>(pq.top());
+    }
+};
+` }
+      ],
       dry: {
         head: ['poll #', 'polled (r, c)', 'push', 'heap values after'],
         rows: [
@@ -2755,6 +5456,17 @@ print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))`, run: true }],
       `<p>Min-heap of {value, list, index} plus a variable <code>curMax</code>. Each step: record [top, curMax] if better; poll the top; push its successor and update curMax.</p>`,
       `<p>Stop as soon as the polled list has no next element — after that some list cannot be represented. Recipe: seed heads, curMax = max head; loop: top = poll; update best; if top is last in its list break; push next; curMax = max(curMax, next).</p>`
     ],
+    tests: { sig: 'list<list<int>> -> int[]', fn: 'smallestRange', cases: [
+      [[[[4, 10, 15, 24, 26], [0, 9, 12, 20], [5, 18, 22, 30]]], [20, 24]],
+      [[[[1, 2, 3], [1, 2, 3], [1, 2, 3]]], [1, 1]],
+      [[[[5, 8]]], [5, 5]],
+      [[[[10], [11]]], [10, 11]],
+      [[[[-100000], [100000]]], [-100000, 100000]],
+      [[[[1, 5], [3, 7]]], [1, 3]],
+      [[[[-5, -1, 6], [-3, 4], [0, 2, 8]]], [-3, 0]],
+      [[{ $rep: [-100000, 0, 100000], n: 3500 }], [-100000, -100000]],
+      [[{ $concat: [{ $rep: [1, 2, 3], n: 3499 }, [[100000]]] }], [3, 100000]]
+    ] },
     solution: {
       approach: `<p>K-way merge with a heap of current fronts, tracking the maximum: a sliding window over the merged order that always holds one element per list.</p>`,
       code: `
@@ -2785,6 +5497,98 @@ print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))`, run: true }],
                 System.out.println(Arrays.toString(new Solution().smallestRange(in))); // [20, 24]
             }
         }`,
+      alt: [
+        { lang: 'python', code: `import heapq
+
+def smallest_range(nums):
+    heap = [(lst[0], i, 0) for i, lst in enumerate(nums)]   # (value, list, index)
+    heapq.heapify(heap)
+    cur_max = max(lst[0] for lst in nums)
+    best = [heap[0][0], cur_max]
+    while True:
+        v, i, j = heapq.heappop(heap)     # current minimum
+        if cur_max - v < best[1] - best[0]:
+            best = [v, cur_max]           # strictly smaller only, so ties keep the smaller start
+        if j + 1 == len(nums[i]):
+            return best                   # this list is exhausted
+        nv = nums[i][j + 1]
+        heapq.heappush(heap, (nv, i, j + 1))
+        cur_max = max(cur_max, nv)
+` },
+        { lang: 'js', code: `class MinHeap {
+  constructor(less = (a, b) => a < b) { this.a = []; this.less = less; }  // less(a, b): a comes out first
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (!this.less(a[i], a[p])) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.less(a[l], a[m])) m = l;
+        if (r < a.length && this.less(a[r], a[m])) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+function smallestRange(nums) {
+  const pq = new MinHeap((a, b) => a[0] < b[0]);   // entries: [value, list, index]
+  let curMax = -Infinity;
+  nums.forEach((lst, i) => { pq.push([lst[0], i, 0]); curMax = Math.max(curMax, lst[0]); });
+  let bestLo = 0, bestHi = Infinity;
+  for (;;) {
+    const [v, i, j] = pq.pop();                    // current minimum
+    if (curMax - v < bestHi - bestLo) { bestLo = v; bestHi = curMax; }
+    if (j + 1 === nums[i].length) break;           // this list is exhausted
+    const nv = nums[i][j + 1];
+    pq.push([nv, i, j + 1]);
+    curMax = Math.max(curMax, nv);
+  }
+  return [bestLo, bestHi];
+}
+` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> smallestRange(vector<vector<int>>& nums) {
+        // {value, list, index}; greater<> turns the default max-heap into a min-heap
+        priority_queue<tuple<int, int, int>, vector<tuple<int, int, int>>, greater<>> pq;
+        int curMax = INT_MIN;
+        for (int i = 0; i < (int)nums.size(); i++) {
+            pq.push({nums[i][0], i, 0});
+            curMax = max(curMax, nums[i][0]);
+        }
+        int bestLo = 0, bestHi = INT_MAX;
+        while (true) {
+            auto [v, i, j] = pq.top(); pq.pop();          // current minimum
+            if ((long long)curMax - v < (long long)bestHi - bestLo) { bestLo = v; bestHi = curMax; }
+            if (j + 1 == (int)nums[i].size()) break;      // this list is exhausted
+            int nv = nums[i][j + 1];
+            pq.push({nv, i, j + 1});
+            curMax = max(curMax, nv);
+        }
+        return {bestLo, bestHi};
+    }
+};
+` }
+      ],
       dry: {
         head: ['heap (values)', 'min', 'max', 'range', 'best', 'advance'],
         rows: [
@@ -2825,12 +5629,25 @@ print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))`, run: true }],
             return res;
         }`
     },
-    mcq: { q: 'Java PriorityQueue.remove(Object) is O(k). How do you delete the outgoing element in O(log k) amortized?', options: ['Lazy deletion: count it in a map and discard it when it reaches a heap top', 'Rebuild both heaps every step', 'Use a HashSet instead of heaps', 'Sort the heap array'], answer: 0, explain: 'Keep "to delete" counts and fix the live sizes; dead values are popped only when they surface at a top. Each value is pushed and popped once overall.' },
+    mcq: { q: 'Removing an arbitrary value from a library heap (Java PriorityQueue.remove(Object), Python list.remove + heapify) is O(k). How do you delete the outgoing element in O(log k) amortized?', options: ['Lazy deletion: count it in a map and discard it when it reaches a heap top', 'Rebuild both heaps every step', 'Use a HashSet instead of heaps', 'Sort the heap array'], answer: 0, explain: 'Keep "to delete" counts and fix the live sizes; dead values are popped only when they surface at a top. Each value is pushed and popped once overall.' },
     hints: [
       `<p>Reuse “median from data stream”: low = max-heap, high = min-heap, low has the same size or one more.</p>`,
       `<p>Removal is the hard part: decrement the live size of the heap the value belongs to (decide with <code>x ≤ low.peek()</code>), record it in a <code>delayed</code> map, and prune tops.</p>`,
-      `<p>Overflow: values reach ±2<sup>31</sup>, so average with <code>((double) a + b) / 2</code>. Also, <code>Collections.reverseOrder()</code> is safe; a subtraction comparator is not. Recipe per step: add new; remove old; balance; prune; record median.</p>`
+      `<p>Overflow: values reach ±2<sup>31</sup>, so average with <code>((double) a + b) / 2</code>. (Python ints never overflow; JS numbers hold the sum exactly; in Java and C++ widen before adding.) In Java, <code>Collections.reverseOrder()</code> is safe; a subtraction comparator is not. Recipe per step: add new; remove old; balance; prune; record median.</p>`
     ],
+    tests: { sig: 'int[] int -> double[]', fn: 'medianSlidingWindow', cmp: 'float', cases: [
+      [[[1, 3, -1, -3, 5, 3, 6, 7], 3], [1.0, -1.0, -1.0, 3.0, 5.0, 6.0]],
+      [[[5, 2, 9], 1], [5.0, 2.0, 9.0]],
+      [[[4, 1, 7, 3], 4], [3.5]],
+      [[[1, 2, 3, 4], 2], [1.5, 2.5, 3.5]],
+      [[[1, 1, 1, 1], 2], [1.0, 1.0, 1.0]],
+      [[[2147483647, 2147483647], 2], [2147483647.0]],
+      [[[-2147483648, -2147483648, -2147483648], 2], [-2147483648.0, -2147483648.0]],
+      [[[1, 2, 3, 4, 2, 3, 1, 4, 2], 3], [2.0, 3.0, 3.0, 3.0, 2.0, 3.0, 2.0]],
+      [[[2147483647, -2147483648, 0, 2147483647], 2], [-0.5, -1073741824.0, 1073741823.5]],
+      [[{ $range: [0, 100000] }, 50001], { $range: [25000, 75000] }],
+      [[{ $rep: 7, n: 100000 }, 4], { $rep: 7, n: 99997 }]
+    ] },
     solution: {
       approach: `<p>Two heaps + lazy deletion with live-size counters.</p>`,
       code: `
@@ -2883,6 +5700,141 @@ print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))`, run: true }],
                 System.out.println(Arrays.toString(new Solution().medianSlidingWindow(new int[]{1, 3, -1, -3, 5, 3, 6, 7}, 3)));
             }
         }`,
+      alt: [
+        { lang: 'python', code: `import heapq
+from collections import defaultdict
+
+def median_sliding_window(nums, k):
+    low, high = [], []                    # low: smaller half as negatives (max-heap), high: min-heap
+    dead = defaultdict(int)               # value -> copies waiting to be deleted
+    sizes = [0, 0]                        # live counts of low and high
+
+    def prune(heap, sign):                # pop tops that were deleted earlier
+        while heap and dead[sign * heap[0]]:
+            dead[sign * heap[0]] -= 1
+            heapq.heappop(heap)
+
+    def balance():
+        if sizes[0] > sizes[1] + 1:
+            heapq.heappush(high, -heapq.heappop(low)); sizes[0] -= 1; sizes[1] += 1; prune(low, -1)
+        elif sizes[0] < sizes[1]:
+            heapq.heappush(low, -heapq.heappop(high)); sizes[1] -= 1; sizes[0] += 1; prune(high, 1)
+
+    res = []
+    for i, x in enumerate(nums):
+        if not low or x <= -low[0]:       # add
+            heapq.heappush(low, -x); sizes[0] += 1
+        else:
+            heapq.heappush(high, x); sizes[1] += 1
+        balance()
+        if i >= k:                        # remove the value leaving the window, lazily
+            y = nums[i - k]
+            dead[y] += 1
+            if y <= -low[0]:
+                sizes[0] -= 1
+                if y == -low[0]:
+                    prune(low, -1)
+            else:
+                sizes[1] -= 1
+                if y == high[0]:
+                    prune(high, 1)
+            balance()
+        if i >= k - 1:                    # Python ints never overflow, so the sum is safe
+            res.append(float(-low[0]) if k % 2 else (-low[0] + high[0]) / 2)
+    return res
+` },
+        { lang: 'js', code: `class MinHeap {
+  constructor(less = (a, b) => a < b) { this.a = []; this.less = less; }  // less(a, b): a comes out first
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (!this.less(a[i], a[p])) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.less(a[l], a[m])) m = l;
+        if (r < a.length && this.less(a[r], a[m])) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+function medianSlidingWindow(nums, k) {
+  const low = new MinHeap((a, b) => a > b);   // smaller half, biggest on top
+  const high = new MinHeap();                 // bigger half, smallest on top
+  const dead = new Map();                     // value -> copies waiting to be deleted
+  let lowSize = 0, highSize = 0;              // live counts
+
+  const prune = (h) => {                      // pop tops that were deleted earlier
+    while (h.size() && (dead.get(h.peek()) || 0) > 0) {
+      const v = h.pop();
+      dead.set(v, dead.get(v) - 1);
+    }
+  };
+  const balance = () => {
+    if (lowSize > highSize + 1) { high.push(low.pop()); lowSize--; highSize++; prune(low); }
+    else if (lowSize < highSize) { low.push(high.pop()); highSize--; lowSize++; prune(high); }
+  };
+
+  const res = [];
+  for (let i = 0; i < nums.length; i++) {
+    const x = nums[i];
+    if (!low.size() || x <= low.peek()) { low.push(x); lowSize++; }
+    else { high.push(x); highSize++; }
+    balance();
+    if (i >= k) {
+      const y = nums[i - k];
+      dead.set(y, (dead.get(y) || 0) + 1);
+      if (y <= low.peek()) { lowSize--; if (y === low.peek()) prune(low); }
+      else { highSize--; if (y === high.peek()) prune(high); }
+      balance();
+    }
+    // a Number holds the sum of two 32-bit ints exactly, so no overflow here
+    if (i >= k - 1) res.push(k % 2 ? low.peek() : (low.peek() + high.peek()) / 2);
+  }
+  return res;
+}
+` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    vector<double> medianSlidingWindow(vector<int>& nums, int k) {
+        // A multiset is a sorted multiset with O(log k) insert and erase,
+        // so one iterator can point at the middle of the window the whole time.
+        multiset<int> win(nums.begin(), nums.begin() + k);
+        auto mid = next(win.begin(), k / 2);           // upper middle element
+        vector<double> res;
+        for (int i = k;; i++) {
+            // odd k: *mid twice; even k: the two middle values. Sum in double: no overflow.
+            res.push_back(((double)*mid + *prev(mid, 1 - k % 2)) / 2.0);
+            if (i == (int)nums.size()) break;
+            win.insert(nums[i]);                       // equal values go after existing ones
+            if (nums[i] < *mid) mid--;                 // new value landed left of mid
+            if (nums[i - k] <= *mid) mid++;            // leaving value is left of (or at) mid
+            win.erase(win.lower_bound(nums[i - k]));   // erase exactly one copy
+        }
+        return res;
+    }
+};
+` }
+      ],
       dry: {
         head: ['i', 'add', 'remove', 'live low | high', 'median'],
         rows: [
@@ -2941,12 +5893,19 @@ print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))`, run: true }],
       `<p>Store the full word at its end node (<code>node.word</code>). When the DFS reaches a node with a word, add it and set <code>node.word = null</code> to avoid duplicates.</p>`,
       `<p>Optimisations: mark visited cells with '#' and restore; prune trie leaves after a word is found (decrement a child count) so later DFS does not re-enter dead branches. Recipe: build trie; for each cell dfs(r, c, root): ch = board; next = node.kid[ch]; if null return; if next.word → add; mark; recurse 4 ways; unmark.</p>`
     ],
+    tests: { sig: 'char[][] string[] -> list<string>', fn: 'findWords', cmp: 'set', cases: [
+      [[[['o', 'a', 'a', 'n'], ['e', 't', 'a', 'e'], ['i', 'h', 'k', 'r'], ['i', 'f', 'l', 'v']], ['oath', 'pea', 'eat', 'rain']], ['oath', 'eat']],
+      [[[['a', 'b'], ['c', 'd']], ['abcb']], []],
+      [[[['a']], ['a']], ['a']],
+      [[[['a', 'b'], ['c', 'd']], ['abdc', 'abcd', 'acdb', 'ab', 'dcba', 'bd']], ['abdc', 'acdb', 'ab', 'bd']],
+      [[[['o', 'a', 'a', 'n'], ['e', 't', 'a', 'e'], ['i', 'h', 'k', 'r'], ['i', 'f', 'l', 'v']], ['oath', 'oat', 'oa', 'eta', 'kale']], ['oath', 'oat', 'oa', 'eta']],
+      [[[['a', 'a']], ['aaa', 'aa', 'a']], ['aa', 'a']],
+      [[[['a', 'a', 'a', 'a', 'a'], ['a', 'a', 'a', 'a', 'a'], ['a', 'a', 'a', 'a', 'a'], ['a', 'a', 'a', 'a', 'a'], ['a', 'a', 'a', 'a', 'a']], ['aaaaaaaaaa', 'aaaaaaaaab', 'b']], ['aaaaaaaaaa']]
+    ] },
     solution: {
       approach: `<p>Trie of all words + backtracking DFS from every cell, pruned by the trie.</p>`,
       code: `
         class Solution {
-            static class Node { Node[] kid = new Node[26]; String word; }
-
             private final List<String> res = new ArrayList<>();
 
             public List<String> findWords(char[][] board, String[] words) {
@@ -2979,11 +5938,113 @@ print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))`, run: true }],
                 b[r][c] = ch;                                     // un-choose
             }
 
+            static class Node { Node[] kid = new Node[26]; String word; }
+
             public static void main(String[] args) {
                 char[][] board = {{'o', 'a', 'a', 'n'}, {'e', 't', 'a', 'e'}, {'i', 'h', 'k', 'r'}, {'i', 'f', 'l', 'v'}};
                 System.out.println(new Solution().findWords(board, new String[]{"oath", "pea", "eat", "rain"}));
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def find_words(board, words):
+    WORD = '$'                            # key that stores the full word at its end node
+    trie = {}
+    for w in words:                       # build the trie (dict of dicts)
+        node = trie
+        for ch in w:
+            node = node.setdefault(ch, {})
+        node[WORD] = w
+    rows, cols, res = len(board), len(board[0]), []
+
+    def dfs(r, c, parent):
+        ch = board[r][c]
+        node = parent.get(ch)
+        if node is None:
+            return                        # no word continues: prune
+        if WORD in node:
+            res.append(node.pop(WORD))    # found; popping avoids duplicates
+        board[r][c] = '#'                 # choose
+        for nr, nc in ((r + 1, c), (r - 1, c), (r, c + 1), (r, c - 1)):
+            if 0 <= nr < rows and 0 <= nc < cols and board[nr][nc] != '#':
+                dfs(nr, nc, node)         # explore (depth is at most the word length)
+        board[r][c] = ch                  # un-choose
+        if not node:
+            del parent[ch]                # branch is used up: never walk it again
+
+    for r in range(rows):
+        for c in range(cols):
+            dfs(r, c, trie)
+    return res
+` },
+        { lang: 'js', code: `function findWords(board, words) {
+  const newNode = () => ({ kids: new Map(), word: null });
+  const root = newNode();
+  for (const w of words) {                // build the trie
+    let cur = root;
+    for (const ch of w) {
+      if (!cur.kids.has(ch)) cur.kids.set(ch, newNode());
+      cur = cur.kids.get(ch);
+    }
+    cur.word = w;                         // full word stored at its end
+  }
+  const rows = board.length, cols = board[0].length, res = [];
+  const dfs = (r, c, node) => {
+    if (r < 0 || c < 0 || r >= rows || c >= cols) return;
+    const ch = board[r][c];
+    if (ch === '#') return;               // already on the path
+    const next = node.kids.get(ch);
+    if (!next) return;                    // no word continues: prune
+    if (next.word !== null) { res.push(next.word); next.word = null; }  // no duplicates
+    board[r][c] = '#';                    // choose
+    dfs(r + 1, c, next); dfs(r - 1, c, next);
+    dfs(r, c + 1, next); dfs(r, c - 1, next);
+    board[r][c] = ch;                     // un-choose
+  };
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++) dfs(r, c, root);
+  return res;
+}
+` },
+        { lang: 'cpp', code: `class Solution {
+    struct Node {
+        array<unique_ptr<Node>, 26> kid;
+        string word;                      // non-empty at the end of a word
+    };
+    vector<string> res;
+
+    void dfs(vector<vector<char>>& b, int r, int c, Node* node) {
+        if (r < 0 || c < 0 || r >= (int)b.size() || c >= (int)b[0].size()) return;
+        char ch = b[r][c];
+        if (ch == '#') return;            // already on the path
+        Node* next = node->kid[ch - 'a'].get();
+        if (!next) return;                // no word continues: prune
+        if (!next->word.empty()) { res.push_back(next->word); next->word.clear(); }  // no duplicates
+        b[r][c] = '#';                    // choose
+        dfs(b, r + 1, c, next); dfs(b, r - 1, c, next);
+        dfs(b, r, c + 1, next); dfs(b, r, c - 1, next);
+        b[r][c] = ch;                     // un-choose
+    }
+
+public:
+    vector<string> findWords(vector<vector<char>>& board, vector<string>& words) {
+        Node root;
+        for (const string& w : words) {   // build the trie
+            Node* cur = &root;
+            for (char ch : w) {
+                auto& next = cur->kid[ch - 'a'];
+                if (!next) next = make_unique<Node>();
+                cur = next.get();
+            }
+            cur->word = w;
+        }
+        for (int r = 0; r < (int)board.size(); r++)
+            for (int c = 0; c < (int)board[0].size(); c++)
+                dfs(board, r, c, &root);
+        return res;
+    }
+};
+` }
+      ],
       dry: {
         head: ['start cell', 'path', 'trie node', 'result'],
         rows: [
@@ -3026,6 +6087,15 @@ print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))`, run: true }],
       `<p>Sort nums. Sort query indices by m. Pointer j inserts nums[j] into a binary trie while nums[j] ≤ m. Then run the greedy opposite-bit query.</p>`,
       `<p>If nothing is inserted yet, answer -1. Values ≤ 10<sup>9</sup> &lt; 2<sup>30</sup>, so bits 29..0 suffice (30..0 is also safe). Use a flat array trie sized (N · 31 + 1) × 2 to avoid millions of objects.</p>`
     ],
+    tests: { sig: 'int[] int[][] -> int[]', fn: 'maximizeXor', cases: [
+      [[[0, 1, 2, 3, 4], [[3, 1], [1, 3], [5, 6]]], [3, 3, 7]],
+      [[[5, 2, 4, 6, 6, 3], [[12, 4], [8, 1], [6, 3]]], [15, -1, 5]],
+      [[[7], [[1, 6], [1, 7]]], [-1, 6]],
+      [[[1000000000], [[0, 1000000000], [1000000000, 999999999]]], [1000000000, -1]],
+      [[[0, 536870912], [[1000000000, 1000000000], [0, 0]]], [1000000000, 0]],
+      [[[3, 3, 3], [[3, 3], [0, 2], [4, 1000000000]]], [0, -1, 7]],
+      [[{ $range: [0, 100000] }, [[0, 99999], [99999, 99999], [131071, 5], [65536, 65535]]], [99999, 131071, 131071, 131071]]
+    ] },
     solution: {
       approach: `<p>Offline: sort nums and queries by m; incremental binary trie; greedy query.</p>`,
       code: `
@@ -3067,6 +6137,102 @@ print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))`, run: true }],
                     new int[][]{{3, 1}, {1, 3}, {5, 6}})));   // [3, 3, 7]
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def maximize_xor(nums, queries):
+    nums = sorted(nums)
+    order = sorted(range(len(queries)), key=lambda i: queries[i][1])   # answer queries by m
+    TOP = 30                              # values <= 10^9 < 2^30
+    kids = [[0, 0]]                       # flat trie: node -> [child0, child1]; 0 = none
+    ans = [-1] * len(queries)
+    j = 0
+    for qi in order:
+        x, m = queries[qi]
+        while j < len(nums) and nums[j] <= m:    # insert newly allowed numbers
+            node = 0
+            for b in range(TOP, -1, -1):
+                bit = (nums[j] >> b) & 1
+                if not kids[node][bit]:
+                    kids[node][bit] = len(kids)
+                    kids.append([0, 0])
+                node = kids[node][bit]
+            j += 1
+        if j == 0:
+            continue                      # nothing allowed: stays -1
+        node = xr = 0
+        for b in range(TOP, -1, -1):      # greedy opposite bit
+            bit = (x >> b) & 1
+            if kids[node][bit ^ 1]:
+                xr |= 1 << b
+                node = kids[node][bit ^ 1]
+            else:
+                node = kids[node][bit]
+        ans[qi] = xr
+    return ans
+` },
+        { lang: 'js', code: `function maximizeXor(nums, queries) {
+  const sorted = [...nums].sort((a, b) => a - b);          // numeric comparator, not string order
+  const order = queries.map((_, i) => i).sort((a, b) => queries[a][1] - queries[b][1]);  // by m
+  const kids = new Int32Array((sorted.length * 31 + 1) * 2); // flat trie: node*2 + bit -> child
+  let nodes = 1, j = 0;
+  const ans = new Array(queries.length).fill(-1);
+  for (const id of order) {
+    const [x, m] = queries[id];
+    while (j < sorted.length && sorted[j] <= m) {           // insert newly allowed numbers
+      let cur = 0;
+      for (let b = 30; b >= 0; b--) {
+        const bit = (sorted[j] >> b) & 1;
+        if (!kids[cur * 2 + bit]) kids[cur * 2 + bit] = nodes++;
+        cur = kids[cur * 2 + bit];
+      }
+      j++;
+    }
+    if (j === 0) continue;                                  // nothing allowed: stays -1
+    let cur = 0, xr = 0;
+    for (let b = 30; b >= 0; b--) {                         // greedy opposite bit
+      const want = ((x >> b) & 1) ^ 1;
+      if (kids[cur * 2 + want]) { xr |= 1 << b; cur = kids[cur * 2 + want]; }
+      else cur = kids[cur * 2 + (want ^ 1)];
+    }
+    ans[id] = xr;
+  }
+  return ans;
+}
+` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> maximizeXor(vector<int>& nums, vector<vector<int>>& queries) {
+        sort(nums.begin(), nums.end());
+        vector<int> order(queries.size());
+        iota(order.begin(), order.end(), 0);
+        sort(order.begin(), order.end(), [&](int a, int b) { return queries[a][1] < queries[b][1]; });  // by m
+        vector<array<int, 2>> kids(1, {0, 0});   // flat trie: node -> {child0, child1}, 0 = none
+        vector<int> ans(queries.size(), -1);
+        size_t j = 0;
+        for (int id : order) {
+            int x = queries[id][0], m = queries[id][1];
+            while (j < nums.size() && nums[j] <= m) {   // insert newly allowed numbers
+                int cur = 0;
+                for (int b = 30; b >= 0; b--) {
+                    int bit = (nums[j] >> b) & 1;
+                    if (!kids[cur][bit]) { kids[cur][bit] = (int)kids.size(); kids.push_back({0, 0}); }
+                    cur = kids[cur][bit];
+                }
+                j++;
+            }
+            if (j == 0) continue;                       // nothing allowed: stays -1
+            int cur = 0, xr = 0;
+            for (int b = 30; b >= 0; b--) {             // greedy opposite bit
+                int bit = (x >> b) & 1;
+                if (kids[cur][bit ^ 1]) { xr |= 1 << b; cur = kids[cur][bit ^ 1]; }
+                else cur = kids[cur][bit];
+            }
+            ans[id] = xr;
+        }
+        return ans;
+    }
+};
+` }
+      ],
       dry: {
         head: ['query (x, m)', 'inserted now', 'trie holds', 'greedy partner', 'answer'],
         rows: [
@@ -3103,13 +6269,13 @@ print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))`, run: true }],
     { q: 'Walk me through insert and extract-min.', level: 'B', a: `<p><b>Insert:</b> place the value at the end (keeps the shape), then <b>sift up</b>: while it is smaller than its parent, swap. <b>Extract-min:</b> save the root, move the last element to the root, shrink, then <b>sift down</b>: swap with the <b>smaller</b> child while larger than it. Choosing the smaller child guarantees the new parent is ≤ its sibling. Both walk one root-to-leaf path → O(log N).</p>`, followUps: ['Why the smaller child and not the left child?', 'How would you implement decrease-key?'] },
     { q: 'Prove that build-heap is O(N).', level: 'I', a: `<p>Bottom-up heapify calls sift-down on indices n/2-1 down to 0. A node at height h sinks at most h levels, and there are at most ⌈N/2<sup>h+1</sup>⌉ nodes of height h. Total work ≤ ∑ N/2<sup>h+1</sup> · h = (N/2) ∑ h/2<sup>h</sup> ≤ (N/2) · 2 = N. Intuition: half the nodes are leaves doing nothing, a quarter move one level, and only the root can move log N levels. Top-down inserts would be O(N log N) because the many leaves would take the long trips.</p>`, followUps: ['Why go from n/2-1 down to 0 and not upward?', 'Where does Java use this internally?'] },
     { q: 'Kth largest element: compare the approaches.', level: 'I', a: `<p><b>Sort:</b> O(N log N), trivial. <b>Min-heap of size K:</b> O(N log K) time, O(K) memory, works on streams — my default. <b>Heapify all + K polls:</b> O(N + K log N). <b>Quickselect:</b> O(N) average, O(N<sup>2</sup>) worst case (mitigated with random pivots or introselect), in place but mutates the array. <b>Counting:</b> O(N + range) when values are small. I would code the heap and mention quickselect as the optimisation, discussing whether mutating input or worst-case guarantees matter.</p>`, followUps: ['Implement quickselect with Lomuto partitioning.', 'What if the data is spread over 100 machines?'] },
-    { q: 'How do you make a max-heap in Java, and what are the comparator pitfalls?', level: 'B', a: `<p><code>new PriorityQueue&lt;&gt;(Collections.reverseOrder())</code> or <code>new PriorityQueue&lt;&gt;((a, b) -&gt; Integer.compare(b, a))</code>. Pitfalls: <code>b - a</code> overflows; iteration and <code>toString</code> are in heap order, not sorted; <code>remove(Object)</code>/<code>contains</code> are O(N); objects whose priority field changes while inside the queue corrupt the heap; ties come out in no guaranteed order — add a tie-breaker (e.g. a sequence number) if order matters; <code>poll()</code> returns null when empty, which crashes on unboxing.</p>`, followUps: ['How do you do multi-key ordering?', 'Which queue would you use across threads?'] },
+    { q: 'How do you make a max-heap in Java, and what are the comparator pitfalls?', level: 'B', a: `<p><code>new PriorityQueue&lt;&gt;(Collections.reverseOrder())</code> or <code>new PriorityQueue&lt;&gt;((a, b) -&gt; Integer.compare(b, a))</code>. Pitfalls: <code>b - a</code> overflows; iteration and <code>toString</code> are in heap order, not sorted; <code>remove(Object)</code>/<code>contains</code> are O(N); objects whose priority field changes while inside the queue corrupt the heap; ties come out in no guaranteed order — add a tie-breaker (e.g. a sequence number) if order matters; <code>poll()</code> returns null when empty, which crashes on unboxing. Other languages: Python pushes <code>-x</code> (or <code>(-key, item)</code> tuples) into <code>heapq</code>; C++ <code>priority_queue&lt;int&gt;</code> is already a max-heap; JS needs its own heap class with a “bigger first” comparator.</p>`, followUps: ['How do you do multi-key ordering?', 'Which queue would you use across threads?'] },
     { q: 'Merge K sorted lists — explain both optimal solutions.', level: 'I', a: `<p><b>Heap of heads:</b> push all non-null heads into a min-heap; repeatedly poll the smallest, append it to a dummy-headed result, and push its next node. Heap size ≤ K → O(N log K) time, O(K) space. <b>Divide and conquer:</b> merge lists pairwise in rounds (like merge sort); log K rounds, each touching all N nodes → O(N log K), O(1) extra if iterative. Merging one by one is O(N·K). The same K-way merge powers external sorting and LSM compaction.</p>`, followUps: ['How would you merge K sorted files that do not fit in memory?', 'What is a loser tree?'] },
     { q: 'Design a data structure for the median of a data stream.', level: 'I', a: `<p>Two heaps: <code>low</code> max-heap for the smaller half, <code>high</code> min-heap for the larger half, with invariants max(low) ≤ min(high) and size(low) ∈ {size(high), size(high)+1}. Add: push to low, move low's top to high, and if high is larger move its top back. Median: low's top if the count is odd, else the average of both tops (computed in long/double to avoid overflow). Add is O(log N), median O(1).</p>`, followUps: ['How do you support deletions (sliding window)?', 'What if 99% of numbers are in 0..100?', 'Exact p99 over billions of events?'] },
     { q: 'What is a trie and when would you choose it over a HashSet?', level: 'B', a: `<p>A trie is a tree where each edge is a character and each node marks whether a word ends there. Insert/search/startsWith are O(L) for a word of length L, independent of how many words are stored. A HashSet also gives O(L) exact lookups with less memory, so I choose a trie when I need <b>prefix</b> operations (autocomplete, counting words with a prefix), <b>longest-prefix match</b> (routing tables, replace words), sorted traversal, or pruning a search (Word Search II).</p>`, followUps: ['How much memory does a 26-array trie use?', 'What is a radix tree?'] },
     { q: 'How would you build autocomplete returning the top 5 suggestions by popularity?', level: 'A', a: `<p>Trie of queries with a popularity count at word ends. Naive: walk to the prefix node, DFS its subtree, keep a min-heap of size 5 — O(P + subtree size), too slow for short prefixes like "a". Better: precompute at every node a list of its top-5 completions (merged bottom-up) so a query is O(P). Updates re-propagate along the path. At scale: shard by prefix, cache hot prefixes, rebuild the trie offline from logs periodically, and blend with personalisation/ML ranking. Sizes are bounded by storing only the top K per node.</p>`, followUps: ['How do you handle typos?', 'How often do you rebuild, and how do you deploy the new trie?'] },
     { q: 'Explain maximum XOR of two numbers using a binary trie.', level: 'A', a: `<p>Insert every number as a 31-bit path (bit 30 to 0) into a trie with children 0/1. For each x, walk from the top and prefer the child with the opposite bit; if it exists, that XOR bit becomes 1, else take the same bit. Greedy is correct because 2<sup>b</sup> exceeds the sum of all lower bits. Total O(N · 31) time, O(N · 31) nodes — use a flat <code>int[][2]</code> array to keep memory reasonable. Variants: max XOR subarray (prefix XORs), max XOR with element ≤ m (offline sorting), deletions (counts per node).</p>`, followUps: ['How do you handle negative numbers?', 'Can you do it without a trie (HashSet of prefixes)?'] },
-    { q: 'How does Dijkstra use a priority queue, and why lazy deletion?', level: 'A', a: `<p>Dijkstra repeatedly takes the unvisited vertex with the smallest tentative distance — a min-heap keyed by distance. Java's PriorityQueue has no decrease-key, so when we find a shorter distance we simply push a new (dist, node) pair. When polling, we skip entries whose distance is larger than the best known (stale entries). The heap may hold up to E entries, giving O(E log E) = O(E log V). An indexed heap with decrease-key gives O(E log V) with less memory; Fibonacci heaps give O(E + V log V) theoretically but are slow in practice.</p>`, followUps: ['What breaks with negative edges?', 'When is a plain array O(V²) Dijkstra better?'] },
+    { q: 'How does Dijkstra use a priority queue, and why lazy deletion?', level: 'A', a: `<p>Dijkstra repeatedly takes the unvisited vertex with the smallest tentative distance — a min-heap keyed by distance. Library heaps (Java <code>PriorityQueue</code>, Python <code>heapq</code>, C++ <code>priority_queue</code>) have no decrease-key, so when we find a shorter distance we simply push a new (dist, node) pair. When polling, we skip entries whose distance is larger than the best known (stale entries). The heap may hold up to E entries, giving O(E log E) = O(E log V). An indexed heap with decrease-key gives O(E log V) with less memory; Fibonacci heaps give O(E + V log V) theoretically but are slow in practice.</p>`, followUps: ['What breaks with negative edges?', 'When is a plain array O(V²) Dijkstra better?'] },
     { q: 'You need to schedule tasks by priority, but equal-priority tasks must run FIFO. How?', level: 'I', a: `<p>PriorityQueue is not stable, so add a monotonically increasing sequence number at insertion time and compare by (priority, sequence). Comparator: <code>Comparator.comparingInt((Task t) -&gt; t.priority).thenComparingLong(t -&gt; t.seq)</code>. This is how many job schedulers and event loops (timers with the same deadline) guarantee fairness. For multi-threaded producers use <code>PriorityBlockingQueue</code> with the same comparator and an <code>AtomicLong</code> counter.</p>`, followUps: ['How would you add aging so low-priority tasks do not starve?', 'How do delayed tasks (DelayQueue) work?'] },
     { q: 'In the AI era, where do heaps and tries show up in real systems?', level: 'E', a: `<p><b>Heaps:</b> top-k retrieval in vector search (keep the k best similarity scores while scanning or traversing an HNSW graph uses bounded heaps), top-k/top-p token sampling, request schedulers in LLM inference servers (priority and fairness queues), timers, Dijkstra/A* in routing and agent planning, K-way merges in LSM-based storage. <b>Tries:</b> tokenizer vocabularies with longest-match lookup, constrained/grammar decoding (mask tokens not allowed by a trie of valid outputs), autocomplete and search suggestions, IP routing. Knowing the complexity lets you judge AI-generated code that silently uses O(N) operations inside hot loops.</p>`, followUps: ['How would you constrain an LLM to output only valid product IDs?', 'Why does HNSW keep two heaps during search?'] }
   );
@@ -3131,17 +6297,23 @@ print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))`, run: true }],
     id: 'dsa15',
     title: 'Heaps (PriorityQueue) & Tries',
     intro: `<p>Some questions only ever ask “<b>what is the most important thing right now?</b>” — the smallest, the largest, the cheapest, the most urgent. Sorting everything again and again is wasteful. A <b>heap</b> keeps just enough order to answer that question in O(1) and to accept new items in O(log N). Other questions are all about <b>beginnings of words</b> — autocomplete, “starts with”, longest prefix. A <b>trie</b> answers those in time proportional to the word length, no matter how many words you store.</p>
-      <p>In this module you will build a heap by hand (tree and array side by side), learn why heapify is O(N), sort with a heap, master Java's <code>PriorityQueue</code> and comparators, and then apply the famous patterns: <b>Top-K</b>, <b>merge K sorted lists</b>, <b>running median with two heaps</b>, the <b>trie</b> for prefixes, and the <b>binary trie</b> for maximum XOR. Every topic has a visualizer, worked examples and interview clues.</p>`,
+      <p>In this module you will build a heap by hand (tree and array side by side), learn why heapify is O(N), sort with a heap, master your language's priority queue (Java <code>PriorityQueue</code>, Python <code>heapq</code>, C++ <code>priority_queue</code>, or a small JS heap class) and its ordering rules, and then apply the famous patterns: <b>Top-K</b>, <b>merge K sorted lists</b>, <b>running median with two heaps</b>, the <b>trie</b> for prefixes, and the <b>binary trie</b> for maximum XOR. Every topic has a visualizer, worked examples and interview clues.</p>`,
     goals: [
       'Draw any heap as a tree and as an array, and perform sift-up / sift-down by hand in O(log N)',
       'Explain why bottom-up heapify is O(N) and implement heap sort in place',
-      'Use Java PriorityQueue confidently: min vs max, safe comparators, multi-key ordering, and which methods are O(N)',
+      'Use a library priority queue confidently (Java PriorityQueue, Python heapq, C++ priority_queue, a JS heap class): min vs max, safe comparators, multi-key ordering, and which operations are O(N)',
       'Recognise and code the Top-K, K-way merge and two-heap (running median) patterns from the wording of a question',
       'Implement a trie with insert / search / startsWith / autocomplete and extend nodes with counters',
       'Solve maximum-XOR problems with a binary trie and prove the greedy bit choice'
     ],
     prereqs: `DSA 4 (Bit Manipulation) for the XOR topic, DSA 7 (Sorting) for heap sort comparisons, DSA 8 (Hashing) for frequency maps, DSA 12 (Linked Lists) for merge K lists, and DSA 14 (Trees) for tree vocabulary.`,
     hours: 14,
+    langNotes: {
+      java: `<p><b>Java:</b> <code>PriorityQueue</code> is a <b>min</b>-heap; pass <code>Collections.reverseOrder()</code> or <code>(a, b) -&gt; Integer.compare(b, a)</code> for a max-heap. Never write <code>(a, b) -&gt; b - a</code>: it overflows near ±2<sup>31</sup>. <code>poll()</code>/<code>peek()</code> return <code>null</code> when empty (unboxing that into an <code>int</code> throws), iteration and <code>toString()</code> show heap order, not sorted order, and <code>remove(Object)</code>/<code>contains</code> are O(N). <code>new PriorityQueue&lt;&gt;(collection)</code> builds in O(N). <code>int</code> overflow wraps silently, so use <code>long</code> for rope costs and widen before averaging two medians. Recursion (trie DFS) is safe for word-length depth; the default stack holds about 10<sup>4</sup> frames. Object tries cost ~100+ bytes per node, so use a flat <code>int[][2]</code> for big binary tries.</p>`,
+      python: `<p><b>Python:</b> <code>heapq</code> is a set of <b>min</b>-heap functions over a plain list: <code>heappush</code>, <code>heappop</code>, <code>heapify</code> (O(N)), <code>heap[0]</code> to peek. For a max-heap push <code>-x</code>; for priorities push tuples such as <code>(dist, i, item)</code>, adding an index so ties never compare items that cannot be compared (list nodes, dicts). <code>heapq.nlargest</code>/<code>nsmallest</code> give Top-K in one line and <code>heapq.merge</code> merges sorted inputs lazily. There is no built-in sorted multiset, so sliding-window median uses two heaps with lazy deletion. Integers never overflow. A dict of dicts (with a marker key like <code>'$'</code>) is the idiomatic trie. Recursion stops at <b>1000</b> frames by default; trie DFS here is only word-length deep, but for deeper searches use an explicit stack or <code>sys.setrecursionlimit</code>. <code>list.pop(0)</code> is O(N).</p>`,
+      js: `<p><b>JavaScript:</b> there is <b>no built-in heap</b>. Every JS solution in this module carries the same small <code>MinHeap</code> class (<code>push</code>, <code>pop</code>, <code>peek</code>, <code>size</code>) whose constructor takes <code>less(a, b)</code>; pass <code>(a, b) =&gt; a &gt; b</code> for a max-heap and compare fields for pairs or nodes. <code>arr.sort()</code> without a comparator sorts as strings, so always pass <code>(a, b) =&gt; a - b</code>. <code>Number</code> is exact up to 2<sup>53</sup>, enough for rope costs here; past that use <code>BigInt</code>. Bit operators work on 32-bit signed ints, which is fine for 31-bit binary tries; an <code>Int32Array</code> makes a compact flat trie. <code>array.shift()</code> is O(N), and V8 allows roughly 10<sup>4</sup> recursive frames.</p>`,
+      cpp: `<p><b>C++:</b> <code>priority_queue</code> is a <b>max</b>-heap by default, the opposite of Java; use <code>priority_queue&lt;int, vector&lt;int&gt;, greater&lt;int&gt;&gt;</code> for a min-heap. Its comparator returns true when the first argument should come out <b>later</b>. <code>pop()</code> returns nothing, so read <code>top()</code> first; pairs and tuples compare field by field. <code>make_heap</code>/<code>sort_heap</code>/<code>is_heap</code> work on any vector. <code>multiset</code> erases one exact copy with <code>s.erase(s.find(x))</code> in O(log N), which makes sliding-window median easy (<code>s.erase(x)</code> would remove <b>all</b> copies). Signed overflow is undefined behaviour, so use <code>long long</code> for sums and averages. Own trie nodes with <code>unique_ptr</code> or a flat <code>vector&lt;array&lt;int, 2&gt;&gt;</code>; the default stack is about 8 MB.</p>`
+    },
     topics: topics,
     practice: practice,
     quiz: quiz,

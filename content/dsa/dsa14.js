@@ -1,6 +1,16 @@
 (function () {
   var topics = [], practice = [], quiz = [], interview = [];
 
+  // Level order of a chain 0, 1, ..., n-1 where each node hangs on the left ('l') or right ('r'). Used by big test cases.
+  // f(i) gives node i's value (default: i).
+  function m14chain(n, side, f) {
+    f = f || function (i) { return i; };
+    var out = [f(0)];
+    for (var i = 1; i < n; i++) { if (side === 'l') out.push(f(i), null); else out.push(null, f(i)); }
+    if (side === 'l') out.pop();
+    return out;
+  }
+
   /* ---------- shared helpers for the tree visualizers ---------- */
   var NUL = /^(null|nil|none|n|#|x|-)$/i;
 
@@ -119,7 +129,7 @@ ${H.table(['Word', 'Plain meaning', 'In the picture'], [
 <li><b>Balanced</b>: height stays around log₂N. With N = 10<sup>6</sup> that is only about 20 levels!</li>
 </ul>
 <p><b>Binary Search Tree (BST)</b> is a binary tree with an ordering rule: everything in the <b>left</b> subtree is <b>smaller</b> than the node, everything in the <b>right</b> subtree is <b>bigger</b>. We use it in the second half of this module.</p>
-<p>In Java a node is just a small object with a value and two links:</p>`,
+<p>In code a node is just a small object with a value and two links (a class in Java, Python and JavaScript, a struct in C++):</p>`,
     clues: [
       '"Given the <b>root</b> of a binary tree…" → you get a <code>TreeNode</code>; think recursion (solve left, solve right, combine) or BFS (level by level).',
       '"<b>depth</b> / <b>level</b> / <b>distance from root</b>" → counted top-down (pass depth as a parameter, or BFS level count).',
@@ -128,7 +138,7 @@ ${H.table(['Word', 'Plain meaning', 'In the picture'], [
       '<code>N ≤ 10<sup>5</sup></code> nodes and the tree may be <b>skewed</b> → recursion depth can be 10<sup>5</sup>; consider an iterative version with your own stack.',
       'Tree input in LeetCode style like <code>[1,null,2,3]</code> → level order, <code>null</code> = missing child.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
 // The standard node used in almost every tree problem.
 class TreeNode {
     int val;            // the data stored in this box
@@ -183,7 +193,124 @@ class BuildTree {
         TreeNode root = build(new Integer[]{1, 2, 3, 4, 5, null, 6});
         System.out.println(count(root) + " nodes, " + leaves(root) + " leaves"); // 6 nodes, 3 leaves
     }
-}`],
+}`, alt: [{ lang: 'python', run: true, code: `from collections import deque
+
+# The standard node used in almost every tree problem.
+class TreeNode:
+    def __init__(self, val=0, left=None, right=None):
+        self.val = val          # the data stored in this box
+        self.left = left        # link to the left child (None if none)
+        self.right = right      # link to the right child (None if none)
+
+def build(a):
+    # Build a tree from LeetCode-style level order, e.g. [1, None, 2, 3].
+    # None means "no child here". Children of None slots are NOT listed.
+    if not a or a[0] is None:
+        return None
+    root = TreeNode(a[0])
+    q = deque([root])           # parents waiting for children
+    i = 1                       # next value to hand out
+    while q and i < len(a):
+        parent = q.popleft()
+        if i < len(a) and a[i] is not None:      # give a left child
+            parent.left = TreeNode(a[i])
+            q.append(parent.left)
+        i += 1
+        if i < len(a) and a[i] is not None:      # give a right child
+            parent.right = TreeNode(a[i])
+            q.append(parent.right)
+        i += 1
+    return root
+
+def count(n):
+    # me (1) + everyone on the left + everyone on the right
+    return 0 if n is None else 1 + count(n.left) + count(n.right)
+
+def leaves(n):
+    if n is None:
+        return 0
+    if n.left is None and n.right is None:       # no children -> a leaf
+        return 1
+    return leaves(n.left) + leaves(n.right)
+
+root = build([1, 2, 3, 4, 5, None, 6])
+print(count(root), "nodes,", leaves(root), "leaves")   # 6 nodes, 3 leaves
+` }, { lang: 'js', run: true, code: `// The standard node used in almost every tree problem.
+class TreeNode {
+  constructor(val = 0, left = null, right = null) {
+    this.val = val;       // the data stored in this box
+    this.left = left;     // link to the left child (null if none)
+    this.right = right;   // link to the right child (null if none)
+  }
+}
+
+// Build a tree from LeetCode-style level order, e.g. [1, null, 2, 3].
+// null means "no child here". Children of null slots are NOT listed.
+function build(a) {
+  if (!a.length || a[0] === null) return null;
+  const root = new TreeNode(a[0]);
+  const q = [root];                   // parents waiting for children
+  let head = 0, i = 1;                // read index instead of shift(), which is O(n)
+  while (head < q.length && i < a.length) {
+    const parent = q[head++];
+    if (i < a.length && a[i] !== null) { parent.left = new TreeNode(a[i]); q.push(parent.left); }
+    i++;
+    if (i < a.length && a[i] !== null) { parent.right = new TreeNode(a[i]); q.push(parent.right); }
+    i++;
+  }
+  return root;
+}
+
+// me (1) + everyone on the left + everyone on the right
+const count = (n) => (n ? 1 + count(n.left) + count(n.right) : 0);
+
+function leaves(n) {
+  if (!n) return 0;
+  if (!n.left && !n.right) return 1;  // no children -> a leaf
+  return leaves(n.left) + leaves(n.right);
+}
+
+const root = build([1, 2, 3, 4, 5, null, 6]);
+console.log(count(root) + ' nodes, ' + leaves(root) + ' leaves');   // 6 nodes, 3 leaves
+` }, { lang: 'cpp', code: `// The standard node used in almost every tree problem.
+struct TreeNode {
+    int val;            // the data stored in this box
+    TreeNode* left;     // link to the left child (nullptr if none)
+    TreeNode* right;    // link to the right child (nullptr if none)
+    TreeNode(int v = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(v), left(l), right(r) {}
+};
+
+// Build a tree from LeetCode-style level order. nullopt means "no child here".
+TreeNode* build(const vector<optional<int>>& a) {
+    if (a.empty() || !a[0]) return nullptr;
+    TreeNode* root = new TreeNode(*a[0]);
+    queue<TreeNode*> q;                 // parents waiting for children
+    q.push(root);
+    size_t i = 1;                       // next value to hand out
+    while (!q.empty() && i < a.size()) {
+        TreeNode* parent = q.front(); q.pop();
+        if (i < a.size() && a[i]) { parent->left = new TreeNode(*a[i]); q.push(parent->left); }
+        i++;
+        if (i < a.size() && a[i]) { parent->right = new TreeNode(*a[i]); q.push(parent->right); }
+        i++;
+    }
+    return root;
+}
+
+// me (1) + everyone on the left + everyone on the right
+int count(TreeNode* n) { return n ? 1 + count(n->left) + count(n->right) : 0; }
+
+int leaves(TreeNode* n) {
+    if (!n) return 0;
+    if (!n->left && !n->right) return 1;    // no children -> a leaf
+    return leaves(n->left) + leaves(n->right);
+}
+
+int main() {
+    TreeNode* root = build({1, 2, 3, 4, 5, nullopt, 6});
+    cout << count(root) << " nodes, " << leaves(root) << " leaves\\n";   // 6 nodes, 3 leaves
+}
+` }] }],
     codeTitle: ['TreeNode + build from level order + counting'],
     viz: {
       title: 'Tour of tree words',
@@ -273,7 +400,7 @@ ${H.table(['Shape', 'Height', 'Cost to walk root → deepest leaf'], [
       {
         title: 'Depth goes down, height comes up — compute both',
         html: `<p>Depth is passed <b>down</b> as a parameter (the parent knows its own depth and adds 1). Height comes <b>up</b> as a return value (children answer first). For node 2 in the picture above: depth = ${H.c('b', '1')}, height = ${H.c('p', '2')}.</p>`,
-        code: `
+        code: { lang: 'java', code: `
 class DepthHeight {
     // DEPTH: top-down. The caller tells me my depth.
     static void printDepths(TreeNode n, int depth) {
@@ -296,7 +423,76 @@ class DepthHeight {
         printDepths(root, 0);
         System.out.println("height of tree = " + height(root));   // 3
     }
-}`
+}`, alt: [{ lang: 'python', run: true, code: `class TreeNode:
+    def __init__(self, val=0, left=None, right=None):
+        self.val, self.left, self.right = val, left, right
+
+# DEPTH: top-down. The caller tells me my depth.
+def print_depths(n, depth=0):
+    if n is None:
+        return
+    print(n.val, "is at depth", depth)
+    print_depths(n.left, depth + 1)      # my children are one level deeper
+    print_depths(n.right, depth + 1)
+
+# HEIGHT: bottom-up. My children tell me their heights.
+def height(n):
+    if n is None:
+        return 0                         # empty spot has height 0
+    return 1 + max(height(n.left), height(n.right))
+
+root = TreeNode(1, TreeNode(2, TreeNode(4), TreeNode(5)), TreeNode(3, None, TreeNode(6)))
+print_depths(root)
+print("height of tree =", height(root))  # 3
+` }, { lang: 'js', run: true, code: `class TreeNode {
+  constructor(val = 0, left = null, right = null) { this.val = val; this.left = left; this.right = right; }
+}
+
+// DEPTH: top-down. The caller tells me my depth.
+function printDepths(n, depth = 0) {
+  if (!n) return;
+  console.log(n.val + ' is at depth ' + depth);
+  printDepths(n.left, depth + 1);    // my children are one level deeper
+  printDepths(n.right, depth + 1);
+}
+
+// HEIGHT: bottom-up. My children tell me their heights.
+function height(n) {
+  if (!n) return 0;                  // empty spot has height 0
+  return 1 + Math.max(height(n.left), height(n.right));
+}
+
+const root = new TreeNode(1, new TreeNode(2, new TreeNode(4), new TreeNode(5)), new TreeNode(3, null, new TreeNode(6)));
+printDepths(root);
+console.log('height of tree = ' + height(root));   // 3
+` }, { lang: 'cpp', code: `// TreeNode as defined in the first lesson
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int v = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(v), left(l), right(r) {}
+};
+
+// DEPTH: top-down. The caller tells me my depth.
+void printDepths(TreeNode* n, int depth) {
+    if (!n) return;
+    cout << n->val << " is at depth " << depth << '\\n';
+    printDepths(n->left, depth + 1);     // my children are one level deeper
+    printDepths(n->right, depth + 1);
+}
+
+// HEIGHT: bottom-up. My children tell me their heights.
+int height(TreeNode* n) {
+    if (!n) return 0;                    // empty spot has height 0
+    return 1 + max(height(n->left), height(n->right));
+}
+
+int main() {
+    TreeNode* root = new TreeNode(1, new TreeNode(2, new TreeNode(4), new TreeNode(5)),
+                                     new TreeNode(3, nullptr, new TreeNode(6)));
+    printDepths(root, 0);
+    cout << "height of tree = " << height(root) << '\\n';   // 3
+}
+` }] }
       },
       {
         title: 'Complete trees fit in an array (no pointers needed)',
@@ -313,8 +509,8 @@ ${H.arr([1, 2, 3, 4, 5, 6, 7], { label: 'tree stored by levels', hl: { 1: 'b', 3
 <li>A tree with N nodes has exactly <b>N + 1 null child links</b> (2N slots, N − 1 used). A recursive traversal therefore makes 2N + 1 calls in total — still O(N).</li>
 <li>The number of different binary tree <b>shapes</b> with N nodes is the Catalan number C<sub>N</sub>: 1, 1, 2, 5, 14, 42… (N = 3 gives 5 shapes). That is why "how many structurally unique BSTs" is a DP problem.</li>
 </ul>
-<p><b>Memory reality:</b> a Java <code>TreeNode</code> costs about 24 bytes (12-byte object header + 4-byte int + two 4-byte compressed references), so 10<sup>6</sup> nodes ≈ 24 MB before the values. Nodes are scattered around the heap, so walking a tree is "pointer chasing" with many cache misses — one reason databases use wide <b>B-trees</b> (hundreds of children per node, one disk page per node) instead of binary trees, and why heaps use the array layout.</p>
-<p><b>N-ary trees</b> (folders, the DOM, JSON) store <code>List&lt;Node&gt; children</code>. Every idea in this module carries over: preorder = parent before children, postorder = children before parent, BFS = level by level. A classic trick turns any N-ary tree into a binary tree: <b>left-child, right-sibling</b>.</p>`,
+<p><b>Memory reality:</b> a Java <code>TreeNode</code> costs about 24 bytes (12-byte object header + 4-byte int + two 4-byte compressed references), so 10<sup>6</sup> nodes ≈ 24 MB before the values. A C++ node (an int plus two 8-byte pointers) is also about 24 bytes; a Python node object is several times bigger, and JavaScript objects sit in between. Nodes are scattered around the heap, so walking a tree is "pointer chasing" with many cache misses — one reason databases use wide <b>B-trees</b> (hundreds of children per node, one disk page per node) instead of binary trees, and why heaps use the array layout.</p>
+<p><b>N-ary trees</b> (folders, the DOM, JSON) store a list of children (<code>List&lt;Node&gt;</code> in Java, a <code>list</code> in Python, an array in JavaScript, <code>vector&lt;Node*&gt;</code> in C++). Every idea in this module carries over: preorder = parent before children, postorder = children before parent, BFS = level by level. A classic trick turns any N-ary tree into a binary tree: <b>left-child, right-sibling</b>.</p>`,
     aiEra: `<p><b>What AI changes:</b> boilerplate is free. An assistant writes the <code>TreeNode</code> class, a level-order builder and a pretty printer in seconds, and can draw ASCII trees for your test cases. Use that time on thinking, not typing.</p>
 <p><b>Use AI as a partner:</b> <code>Give me 6 tricky binary trees for testing (empty, single node, skewed left, skewed right, perfect, zig-zag) in LeetCode array format, and draw each one</code>. Then predict depth/height yourself before checking.</p>
 <p><b>Where AI goes wrong:</b> height definitions. Some sources count <b>edges</b> (leaf = 0, empty = −1), LeetCode's "maximum depth" counts <b>nodes</b> (leaf = 1). Generated code often mixes the two and is off by one. It also confuses "complete" and "full" and quietly assumes the tree is balanced when quoting O(log N).</p>
@@ -352,7 +548,7 @@ ${H.table(['Order', 'Rule', 'Output', 'When to use'], [
       '"<b>Copy</b>, <b>clone</b>, <b>serialize</b> the tree" or "<b>root-to-leaf path</b>" → preorder (decide at the node, then go down).',
       'Each node visited once → <b>O(N)</b> time; recursion uses <b>O(h)</b> stack space (h = height).'
     ],
-    code: `
+    code: { lang: 'java', code: `
 class Traversals {
     // PREORDER: Me, Left, Right
     static void preorder(TreeNode node, List<Integer> out) {
@@ -391,7 +587,118 @@ class Traversals {
         preorder(root, a); inorder(root, b); postorder(root, c);
         System.out.println(a + " " + b + " " + c); // [1,2,4,5,3,6] [4,2,5,1,3,6] [4,5,2,6,3,1]
     }
-}`,
+}`, alt: [{ lang: 'python', run: true, code: `class TreeNode:
+    def __init__(self, val=0, left=None, right=None):
+        self.val, self.left, self.right = val, left, right
+
+# PREORDER: Me, Left, Right
+def preorder(node, out):
+    if node is None:
+        return                       # empty spot: nothing to do
+    out.append(node.val)             # 1) write me down FIRST
+    preorder(node.left, out)         # 2) then my whole left side
+    preorder(node.right, out)        # 3) then my whole right side
+
+# INORDER: Left, Me, Right   (BST -> sorted order)
+def inorder(node, out):
+    if node is None:
+        return
+    inorder(node.left, out)
+    out.append(node.val)             # me IN the middle
+    inorder(node.right, out)
+
+# POSTORDER: Left, Right, Me   (children report before the parent)
+def postorder(node, out):
+    if node is None:
+        return
+    postorder(node.left, out)
+    postorder(node.right, out)
+    out.append(node.val)             # write me down LAST
+
+# Tree:      1
+#          /   \\
+#         2     3
+#        / \\     \\
+#       4   5     6
+root = TreeNode(1, TreeNode(2, TreeNode(4), TreeNode(5)), TreeNode(3, None, TreeNode(6)))
+a, b, c = [], [], []
+preorder(root, a); inorder(root, b); postorder(root, c)
+print(a, b, c)   # [1, 2, 4, 5, 3, 6] [4, 2, 5, 1, 3, 6] [4, 5, 2, 6, 3, 1]
+` }, { lang: 'js', run: true, code: `class TreeNode {
+  constructor(val = 0, left = null, right = null) { this.val = val; this.left = left; this.right = right; }
+}
+
+// PREORDER: Me, Left, Right
+function preorder(node, out) {
+  if (!node) return;              // empty spot: nothing to do
+  out.push(node.val);             // 1) write me down FIRST
+  preorder(node.left, out);       // 2) then my whole left side
+  preorder(node.right, out);      // 3) then my whole right side
+}
+
+// INORDER: Left, Me, Right   (BST -> sorted order)
+function inorder(node, out) {
+  if (!node) return;
+  inorder(node.left, out);
+  out.push(node.val);             // me IN the middle
+  inorder(node.right, out);
+}
+
+// POSTORDER: Left, Right, Me   (children report before the parent)
+function postorder(node, out) {
+  if (!node) return;
+  postorder(node.left, out);
+  postorder(node.right, out);
+  out.push(node.val);             // write me down LAST
+}
+
+const root = new TreeNode(1, new TreeNode(2, new TreeNode(4), new TreeNode(5)), new TreeNode(3, null, new TreeNode(6)));
+const a = [], b = [], c = [];
+preorder(root, a); inorder(root, b); postorder(root, c);
+console.log(a.join(','), b.join(','), c.join(','));   // 1,2,4,5,3,6 4,2,5,1,3,6 4,5,2,6,3,1
+` }, { lang: 'cpp', code: `// TreeNode as defined in the first lesson
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int v = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(v), left(l), right(r) {}
+};
+
+// PREORDER: Me, Left, Right
+void preorder(TreeNode* node, vector<int>& out) {
+    if (!node) return;               // empty spot: nothing to do
+    out.push_back(node->val);        // 1) write me down FIRST
+    preorder(node->left, out);       // 2) then my whole left side
+    preorder(node->right, out);      // 3) then my whole right side
+}
+
+// INORDER: Left, Me, Right   (BST -> sorted order)
+void inorder(TreeNode* node, vector<int>& out) {
+    if (!node) return;
+    inorder(node->left, out);
+    out.push_back(node->val);        // me IN the middle
+    inorder(node->right, out);
+}
+
+// POSTORDER: Left, Right, Me   (children report before the parent)
+void postorder(TreeNode* node, vector<int>& out) {
+    if (!node) return;
+    postorder(node->left, out);
+    postorder(node->right, out);
+    out.push_back(node->val);        // write me down LAST
+}
+
+int main() {
+    TreeNode* root = new TreeNode(1, new TreeNode(2, new TreeNode(4), new TreeNode(5)),
+                                     new TreeNode(3, nullptr, new TreeNode(6)));
+    vector<int> a, b, c;             // passed by reference: one shared list each
+    preorder(root, a); inorder(root, b); postorder(root, c);
+    for (auto* v : {&a, &b, &c}) {
+        for (int x : *v) cout << x << ' ';
+        cout << "| ";
+    }
+    cout << '\\n';                    // 1 2 4 5 3 6 | 4 2 5 1 3 6 | 4 5 2 6 3 1 |
+}
+` }] },
     codeTitle: 'All three recursive traversals',
     viz: {
       title: 'Recursive traversal with the call stack',
@@ -483,16 +790,35 @@ print('value =', evaluate(tree))   # 20` }
       {
         title: 'Sum of all nodes — postorder in one line',
         html: `<p>"My subtree's total = my value + left total + right total". Children answer first, so it is postorder thinking. For the tree 1, 2, 3, 4, 5, null, 6 the answer is 1 + (2 + 4 + 5) + (3 + 6) = ${H.c('g', '21')}.</p>`,
-        code: `
+        code: { lang: 'java', code: `
 int sum(TreeNode n) {
     if (n == null) return 0;                    // empty subtree adds nothing
     return n.val + sum(n.left) + sum(n.right);  // me + whole left + whole right
-}`
+}`, alt: [{ lang: 'python', code: `def tree_sum(n):
+    if n is None:
+        return 0                                     # empty subtree adds nothing
+    return n.val + tree_sum(n.left) + tree_sum(n.right)   # me + whole left + whole right
+` }, { lang: 'js', code: `function sum(n) {
+  if (!n) return 0;                                  // empty subtree adds nothing
+  return n.val + sum(n.left) + sum(n.right);         // me + whole left + whole right
+}
+` }, { lang: 'cpp', code: `// TreeNode as defined in the first lesson
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int v = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(v), left(l), right(r) {}
+};
+
+long long sum(TreeNode* n) {
+    if (!n) return 0;                                // empty subtree adds nothing
+    return n->val + sum(n->left) + sum(n->right);    // me + whole left + whole right
+}
+` }] }
       },
       {
         title: 'All root-to-leaf paths — preorder with "undo"',
         html: `<p>Preorder decides at a node <b>before</b> going down, so it is perfect for carrying a path. Add the node, go down, and <b>remove</b> it when you come back (backtracking). For the tree 1 → (2 → 4, 5), (3 → 6) the paths are ${H.c('g', '1→2→4, 1→2→5, 1→3→6')}.</p>`,
-        code: `
+        code: { lang: 'java', code: `
 class Paths {
     static void paths(TreeNode n, List<Integer> path, List<List<Integer>> out) {
         if (n == null) return;
@@ -505,24 +831,63 @@ class Paths {
         }
         path.remove(path.size() - 1);                      // un-choose: step back up
     }
-}`
+}`, alt: [{ lang: 'python', code: `def paths(n, path, out):
+    if n is None:
+        return
+    path.append(n.val)                               # choose: step onto this node
+    if n.left is None and n.right is None:
+        out.append(path.copy())                      # a leaf ends a path -> save a COPY
+    else:
+        paths(n.left, path, out)                     # explore
+        paths(n.right, path, out)
+    path.pop()                                       # un-choose: step back up
+` }, { lang: 'js', code: `function paths(n, path, out) {
+  if (!n) return;
+  path.push(n.val);                                  // choose: step onto this node
+  if (!n.left && !n.right) {
+    out.push([...path]);                             // a leaf ends a path -> save a COPY
+  } else {
+    paths(n.left, path, out);                        // explore
+    paths(n.right, path, out);
+  }
+  path.pop();                                        // un-choose: step back up
+}
+` }, { lang: 'cpp', code: `// TreeNode as defined in the first lesson
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int v = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(v), left(l), right(r) {}
+};
+
+void paths(TreeNode* n, vector<int>& path, vector<vector<int>>& out) {
+    if (!n) return;
+    path.push_back(n->val);                          // choose: step onto this node
+    if (!n->left && !n->right) {
+        out.push_back(path);                         // a leaf ends a path -> push_back copies it
+    } else {
+        paths(n->left, path, out);                   // explore
+        paths(n->right, path, out);
+    }
+    path.pop_back();                                 // un-choose: step back up
+}
+` }] }
       }
     ],
     deepDive: `<p><b>Why O(N):</b> every node is entered exactly once, plus one quick call for each of the N + 1 null links, so 2N + 1 calls of O(1) work each.</p>
-<p><b>Why O(h) space and when it bites:</b> the call stack holds one frame per node on the current root-to-node path. Java's default thread stack (often 512 KB–1 MB) fits roughly 10,000–20,000 simple frames, so a skewed tree of 10<sup>5</sup> nodes can throw <code>StackOverflowError</code>. Fixes: (1) go iterative (next topic), (2) run the work in a thread with a bigger stack: <code>new Thread(null, task, "big", 1 &lt;&lt; 26).start()</code>, (3) choose an algorithm that is naturally iterative (BFS). Java does <b>not</b> do tail-call elimination, so "make it tail recursive" does not help.</p>
+<p><b>Why O(h) space and when it bites:</b> the call stack holds one frame per node on the current root-to-node path. Default limits are small in every language: Java's thread stack (often 512 KB–1 MB) fits roughly 10,000–20,000 simple frames (then <code>StackOverflowError</code>), Node.js about 10,000 (<code>RangeError</code>), Python stops at 1,000 frames by default (<code>RecursionError</code>), and C++ gets about 8 MB before it simply crashes. So a skewed tree of 10<sup>5</sup> nodes is a problem everywhere. Fixes: (1) go iterative (next topic), (2) give recursion more room: a Java thread with a bigger stack (<code>new Thread(null, task, "big", 1 &lt;&lt; 26).start()</code>), or Python's <code>sys.setrecursionlimit</code> together with <code>threading.stack_size</code>, (3) choose an algorithm that is naturally iterative (BFS). Java, Python and Node do <b>not</b> eliminate tail calls, so "make it tail recursive" does not help.</p>
 <p><b>Which order to choose — a decision rule:</b> if the node needs information <b>from its parent</b> (depth, path so far, allowed range) → pass it down = preorder style. If the node needs information <b>from its children</b> (height, size, sum, "is balanced") → return it up = postorder style. Many hard problems use <b>both</b>: parameters going down and return values coming up.</p>
 <p><b>Uniqueness:</b> one traversal alone does not identify a tree (preorder 1 2 could be "2 is left child" or "2 is right child"). Inorder + preorder (or + postorder) does, with distinct values — see the construction topic. Including <code>null</code> markers in a preorder makes it unique on its own; that is how trees are serialized.</p>
 <p><b>Morris traversal</b> gets inorder/preorder in O(1) extra space by temporarily pointing each predecessor's empty right link back to the current node ("threads"), then removing it. It is a great "can you do it without extra space?" follow-up, but it mutates the tree while running, so it is not safe for concurrent readers.</p>`,
     aiEra: `<p><b>What AI changes:</b> all three traversals are one-liners an assistant will autocomplete before you finish typing the method name. The interview value moved from "can you write it" to "do you know <b>which</b> one the problem needs and why".</p>
 <p><b>Use AI as a partner:</b> <code>Here is my tree problem. Without solving it, tell me whether the node needs info from its parent, from its children, or both.</code> — then check if you agree. Or ask it to produce a call-stack trace for a 6-node tree and compare with your hand trace.</p>
-<p><b>Where AI goes wrong:</b> it happily writes recursion for inputs of 10<sup>5</sup> nodes without mentioning stack depth, forgets to copy the list when saving a path (<code>out.add(path)</code> instead of <code>new ArrayList&lt;&gt;(path)</code>), and forgets the "undo" step in backtracking, so every path ends up identical.</p>
+<p><b>Where AI goes wrong:</b> it happily writes recursion for inputs of 10<sup>5</sup> nodes without mentioning stack depth, forgets to copy the list when saving a path (<code>out.add(path)</code> instead of <code>new ArrayList&lt;&gt;(path)</code>; <code>path.copy()</code> in Python, <code>[...path]</code> in JavaScript), and forgets the "undo" step in backtracking, so every path ends up identical.</p>
 <p><b>What you must still own:</b> tracing a recursion by hand on a whiteboard, explaining O(h) stack space, and picking pre/in/post order from the wording in under a minute.</p>`
   });
   /* ===================== TOPIC 3: Iterative traversals ===================== */
   topics.push({
     title: 'Iterative Traversals with an Explicit Stack',
     analogy: `<p>You are exploring a big <b>office building</b> floor by floor, always taking the <b>left</b> corridor first. To find your way back you drop a <b>sticky note at every door</b> you pass, stacking them in your pocket. When you hit a dead end, you pull the <b>top</b> sticky note (the most recent door) and continue from there. That pocket pile is a <b>stack</b>, and it is exactly what recursion was secretly doing for you.</p>`,
-    explain: `<p>Recursion uses the computer's <b>call stack</b>. If the tree is skewed with 10<sup>5</sup> nodes, that stack may overflow (<code>StackOverflowError</code>). The fix: keep your <b>own</b> <code>Deque&lt;TreeNode&gt;</code> and do the same work in a loop.</p>
+    explain: `<p>Recursion uses the computer's <b>call stack</b>. If the tree is skewed with 10<sup>5</sup> nodes, that stack may overflow (<code>StackOverflowError</code> in Java, <code>RecursionError</code> in Python, <code>RangeError</code> in JavaScript, a crash in C++). The fix: keep your <b>own</b> stack (<code>ArrayDeque</code> in Java, a list in Python, an array in JavaScript, <code>std::stack</code> in C++) and do the same work in a loop.</p>
 <p><b>Iterative inorder</b> (the most asked one) in plain words:</p>
 <ol>
 <li><b>Slide left:</b> while <code>cur</code> is not null, push it and move to <code>cur.left</code>. (Everything pushed is "waiting for its left side to finish".)</li>
@@ -541,12 +906,12 @@ ${H.table(['Step', 'Action', 'stack (bottom → top)', 'output'], [
 <p><b>Iterative postorder</b> (two stacks): do a "Me, Right, Left" walk using stack 1 and drop every popped node onto stack 2. Stack 2 popped from top gives "Left, Right, Me" = postorder, because reversing "Me, Right, Left" gives exactly that.</p>`,
     clues: [
       '"Do it <b>without recursion</b>" / "<b>iteratively</b>" → explicit <code>Deque</code> used as a stack.',
-      'Tree depth may reach <code>10<sup>5</sup></code> (skewed / "linked-list-like" tree) → recursion risks StackOverflowError; go iterative.',
+      'Tree depth may reach <code>10<sup>5</sup></code> (skewed / "linked-list-like" tree) → recursion risks a stack overflow; go iterative.',
       '"<b>BST iterator</b>" / "next smallest" / "pause and resume the traversal" → iterative inorder (the stack remembers where you stopped).',
       '"Stop early when you find the k-th / first bad node" → iterative loop makes early exit easy.',
       'Need postorder iteratively → two stacks, or reverse of a (Me, Right, Left) preorder.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
 class IterativeTraversals {
     // PREORDER (Me, Left, Right)
     static List<Integer> preorder(TreeNode root) {
@@ -595,7 +960,129 @@ class IterativeTraversals {
         while (!s2.isEmpty()) out.add(s2.pop().val); // reversed -> Left, Right, Me
         return out;
     }
-}`],
+}`, alt: [{ lang: 'python', code: `# PREORDER (Me, Left, Right)
+def preorder(root):
+    out, stack = [], [root] if root else []
+    while stack:
+        n = stack.pop()
+        out.append(n.val)                    # Me
+        if n.right:
+            stack.append(n.right)            # pushed first -> comes out later
+        if n.left:
+            stack.append(n.left)             # pushed last  -> comes out next
+    return out
+
+# INORDER (Left, Me, Right)
+def inorder(root):
+    out, stack, cur = [], [], root
+    while cur or stack:
+        while cur:                           # slide all the way left
+            stack.append(cur)
+            cur = cur.left
+        cur = stack.pop()                    # leftmost unfinished node
+        out.append(cur.val)                  # Me
+        cur = cur.right                      # now handle its right subtree
+    return out
+
+# POSTORDER (Left, Right, Me): collect Me, Right, Left, then reverse
+def postorder(root):
+    out, stack = [], [root] if root else []
+    while stack:
+        n = stack.pop()
+        out.append(n.val)
+        if n.left:
+            stack.append(n.left)
+        if n.right:
+            stack.append(n.right)
+    return out[::-1]                         # the reversed list plays the second stack
+` }, { lang: 'js', code: `// PREORDER (Me, Left, Right)
+function preorder(root) {
+  const out = [], stack = root ? [root] : [];
+  while (stack.length) {
+    const n = stack.pop();
+    out.push(n.val);                         // Me
+    if (n.right) stack.push(n.right);        // pushed first -> comes out later
+    if (n.left) stack.push(n.left);          // pushed last  -> comes out next
+  }
+  return out;
+}
+
+// INORDER (Left, Me, Right)
+function inorder(root) {
+  const out = [], stack = [];
+  let cur = root;
+  while (cur || stack.length) {
+    while (cur) { stack.push(cur); cur = cur.left; }   // slide all the way left
+    cur = stack.pop();                       // leftmost unfinished node
+    out.push(cur.val);                       // Me
+    cur = cur.right;                         // now handle its right subtree
+  }
+  return out;
+}
+
+// POSTORDER (Left, Right, Me): collect Me, Right, Left, then reverse
+function postorder(root) {
+  const out = [], stack = root ? [root] : [];
+  while (stack.length) {
+    const n = stack.pop();
+    out.push(n.val);
+    if (n.left) stack.push(n.left);
+    if (n.right) stack.push(n.right);
+  }
+  return out.reverse();                      // the reversed array plays the second stack
+}
+` }, { lang: 'cpp', code: `// TreeNode as defined in the first lesson
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int v = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(v), left(l), right(r) {}
+};
+
+// PREORDER (Me, Left, Right)
+vector<int> preorder(TreeNode* root) {
+    vector<int> out;
+    if (!root) return out;
+    stack<TreeNode*> st;
+    st.push(root);
+    while (!st.empty()) {
+        TreeNode* n = st.top(); st.pop();
+        out.push_back(n->val);                   // Me
+        if (n->right) st.push(n->right);         // pushed first -> comes out later
+        if (n->left) st.push(n->left);           // pushed last  -> comes out next
+    }
+    return out;
+}
+
+// INORDER (Left, Me, Right)
+vector<int> inorder(TreeNode* root) {
+    vector<int> out;
+    stack<TreeNode*> st;
+    TreeNode* cur = root;
+    while (cur || !st.empty()) {
+        while (cur) { st.push(cur); cur = cur->left; }   // slide all the way left
+        cur = st.top(); st.pop();                // leftmost unfinished node
+        out.push_back(cur->val);                 // Me
+        cur = cur->right;                        // now handle its right subtree
+    }
+    return out;
+}
+
+// POSTORDER (Left, Right, Me) with two stacks
+vector<int> postorder(TreeNode* root) {
+    vector<int> out;
+    if (!root) return out;
+    stack<TreeNode*> s1, s2;
+    s1.push(root);
+    while (!s1.empty()) {
+        TreeNode* n = s1.top(); s1.pop();
+        s2.push(n);                              // collect in Me, Right, Left order
+        if (n->left) s1.push(n->left);
+        if (n->right) s1.push(n->right);
+    }
+    while (!s2.empty()) { out.push_back(s2.top()->val); s2.pop(); }   // reversed -> Left, Right, Me
+    return out;
+}
+` }] }],
     codeTitle: ['Iterative preorder, inorder, postorder'],
     viz: [{
       title: 'Iterative inorder: slide left, pop, turn right',
@@ -700,7 +1187,7 @@ class IterativeTraversals {
 </pre><p>Input: <code>root = [1,2,3,4,5]</code> → Output: ${H.c('g', '[4, 2, 5, 1, 3]')}</p>
 <p><b>Why:</b> before writing 1 we must finish its whole left side (4, 2, 5). Inside that side, before writing 2 we finish its left (4). So 4 first, then 2, then 2's right (5), then ${H.c('y', '1')}, then 3.</p>`,
       brute: {
-        why: `<p>The "obvious" answer is plain recursion. It is O(N), but with a <b>skewed</b> tree of 10<sup>5</sup> nodes the recursion goes 10<sup>5</sup> calls deep and Java's default stack can overflow. A truly brute force alternative without recursion — repeatedly scanning for "the leftmost node not yet printed" from the root — costs O(N·h), i.e. O(N<sup>2</sup>) on a skewed tree, because we walk the same path again and again.</p>`,
+        why: `<p>The "obvious" answer is plain recursion. It is O(N), but with a <b>skewed</b> tree of 10<sup>5</sup> nodes the recursion goes 10<sup>5</sup> calls deep and a default call stack can overflow (Python already stops at 1,000). A truly brute force alternative without recursion — repeatedly scanning for "the leftmost node not yet printed" from the root — costs O(N·h), i.e. O(N<sup>2</sup>) on a skewed tree, because we walk the same path again and again.</p>`,
         code: `
           List<Integer> inorderRecursive(TreeNode root) {
               List<Integer> out = new ArrayList<>();
@@ -722,9 +1209,29 @@ class IterativeTraversals {
       },
       hints: [
         `<p><b>Aha:</b> the first node inorder writes is the <b>leftmost</b> node. Every node you pass on the way down to it is "waiting" for its left side. Those waiting nodes are finished in reverse order of arrival → last-in, first-out → a <b>stack</b>.</p>`,
-        `<p>Use <code>Deque&lt;TreeNode&gt; st = new ArrayDeque&lt;&gt;()</code> and a pointer <code>cur</code>. Inner loop: push <code>cur</code>, go <code>cur = cur.left</code>. When it becomes null: <code>cur = st.pop()</code>, record it, then <code>cur = cur.right</code>.</p>`,
+        `<p>Use a stack (<code>ArrayDeque</code> in Java, a list in Python, an array in JavaScript, <code>std::stack</code> in C++) and a pointer <code>cur</code>. Inner loop: push <code>cur</code>, go <code>cur = cur.left</code>. When it becomes null: <code>cur = st.pop()</code>, record it, then <code>cur = cur.right</code>.</p>`,
         `<p><b>Traps:</b> the outer loop condition must be <code>cur != null || !st.isEmpty()</code> (both!) — after popping the root, the stack is empty but its right subtree is still to do. Empty tree → return empty list. <b>Recipe:</b> cur = root; while (cur or stack): slide left pushing; pop → add val; cur = popped.right.</p>`
       ],
+      tests: { sig: 'TreeNode int -> list<int>', fn: 'judge', harness: {
+        java: "class Check {\n    // n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\n    // Built here because a tree this deep is too big to write out as a test literal.\n    static TreeNode chain(int n, java.util.function.IntUnaryOperator val) {\n        TreeNode root = null;\n        for (int i = Math.abs(n) - 1; i >= 0; i--) {\n            TreeNode t = new TreeNode(val.applyAsInt(i));\n            if (n > 0) t.right = root; else t.left = root;\n            root = t;\n        }\n        return root;\n    }\n\n    static List<Integer> judge(TreeNode root, int n) {\n        if (n != 0) root = chain(n, i -> (i % 201) - 100);\n        return new Solution().inorderTraversal(root);\n    }\n}",
+        python: "# n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\ndef _chain(n, val):\n    root = None\n    for i in range(abs(n) - 1, -1, -1):\n        t = TreeNode(val(i))\n        if n > 0:\n            t.right = root\n        else:\n            t.left = root\n        root = t\n    return root\n\ndef judge(root, n):\n    if n:\n        root = _chain(n, lambda i: (i % 201) - 100)\n    return Solution().inorder_traversal(root)",
+        js: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nfunction chain__(n, val) {\n  let root = null;\n  for (let i = Math.abs(n) - 1; i >= 0; i--) {\n    const t = new TreeNode(val(i));\n    if (n > 0) t.right = root; else t.left = root;\n    root = t;\n  }\n  return root;\n}\n\nfunction judge(root, n) {\n  if (n) root = chain__(n, (i) => (i % 201) - 100);\n  return inorderTraversal(root);\n}",
+        cpp: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nTreeNode* chain__(int n, function<int(int)> val) {\n    TreeNode* root = nullptr;\n    for (int i = abs(n) - 1; i >= 0; i--) {\n        TreeNode* t = new TreeNode(val(i));\n        if (n > 0) t->right = root; else t->left = root;\n        root = t;\n    }\n    return root;\n}\n\nvector<int> judge(TreeNode* root, int n) {\n    if (n) root = chain__(n, [](int i) { return (i % 201) - 100; });\n    return Solution().inorderTraversal(root);\n}"
+      }, cases: [
+        [[[1,2,3,4,5],0],[4,2,5,1,3]],
+        [[[],0],[]],
+        [[[1],0],[1]],
+        [[[1,null,2,3],0],[1,3,2]],
+        [[[3,9,20,null,null,15,7],0],[9,3,15,20,7]],
+        [[[-5,-5,0,null,7,7,-100],0],[-5,7,-5,7,0,-100]],
+        [[[1,2,3,4,null,null,5,6,null,null,7],0],[6,4,2,1,3,5,7]],
+        [[[71,90,-48,-41,null,-77,null,null,null,20,null,-79],0],[-41,90,71,-79,20,-77,-48]],
+        [[[-100,-34,-70,-5,null,72,null,null,null,-98,43,null,58,null,-92,null,-23],0],[-5,-34,-100,-98,58,-23,72,43,-92,-70]],
+        [[[-38,-79,-77,77,39,-62,null,null,null,5,null,null,56],0],[77,-79,5,39,-38,-62,56,-77]],
+        [[[-100,-99,null,-98,null,-97,null,-96,null,-95,null,-94,null,-93,null,-92,null,-91,null,-90,null,-89,null,-88,null,-87,null,-86,null,-85,null,-84,null,-83,null,-82,null,-81,null,-80,null,-79,null,-78,null,-77,null,-76,null,-75,null,-74,null,-73,null,-72,null,-71,null,-70,null,-69,null,-68,null,-67,null,-66,null,-65,null,-64,null,-63,null,-62,null,-61,null,-60,null,-59,null,-58,null,-57,null,-56,null,-55,null,-54,null,-53,null,-52,null,-51,null,-50,null,-49,null,-48,null,-47,null,-46,null,-45,null,-44,null,-43,null,-42,null,-41,null,-40,null,-39,null,-38,null,-37,null,-36,null,-35,null,-34,null,-33,null,-32,null,-31,null,-30,null,-29,null,-28,null,-27,null,-26,null,-25,null,-24,null,-23,null,-22,null,-21,null,-20,null,-19,null,-18,null,-17,null,-16,null,-15,null,-14,null,-13,null,-12,null,-11,null,-10,null,-9,null,-8,null,-7,null,-6,null,-5,null,-4,null,-3,null,-2,null,-1,null,0,null,1,null,2,null,3,null,4,null,5,null,6,null,7,null,8,null,9,null,10,null,11,null,12,null,13,null,14,null,15,null,16,null,17,null,18,null,19,null,20,null,21,null,22,null,23,null,24,null,25,null,26,null,27,null,28,null,29,null,30,null,31,null,32,null,33,null,34,null,35,null,36,null,37,null,38,null,39,null,40,null,41,null,42,null,43,null,44,null,45,null,46,null,47,null,48,null,49,null,50,null,51,null,52,null,53,null,54,null,55,null,56,null,57,null,58,null,59,null,60,null,61,null,62,null,63,null,64,null,65,null,66,null,67,null,68,null,69,null,70,null,71,null,72,null,73,null,74,null,75,null,76,null,77,null,78,null,79,null,80,null,81,null,82,null,83,null,84,null,85,null,86,null,87,null,88,null,89,null,90,null,91,null,92,null,93,null,94,null,95,null,96,null,97,null,98,null,99,null,100,null,-100,null,-99,null,-98,null,-97,null,-96,null,-95,null,-94,null,-93,null,-92,null,-91,null,-90,null,-89,null,-88,null,-87,null,-86,null,-85,null,-84,null,-83,null,-82,null,-81,null,-80,null,-79,null,-78,null,-77,null,-76,null,-75,null,-74,null,-73,null,-72,null,-71,null,-70,null,-69,null,-68,null,-67,null,-66,null,-65,null,-64,null,-63,null,-62,null,-61,null,-60,null,-59,null,-58,null,-57,null,-56,null,-55,null,-54,null,-53,null,-52,null,-51,null,-50,null,-49,null,-48,null,-47,null,-46,null,-45,null,-44,null,-43,null,-42,null,-41,null,-40,null,-39,null,-38,null,-37,null,-36,null,-35,null,-34,null,-33,null,-32,null,-31,null,-30,null,-29,null,-28,null,-27,null,-26,null,-25,null,-24,null,-23,null,-22,null,-21,null,-20,null,-19,null,-18,null,-17,null,-16,null,-15,null,-14,null,-13,null,-12,null,-11,null,-10,null,-9,null,-8,null,-7,null,-6,null,-5,null,-4,null,-3,null,-2,null,-1,null,0,null,1,null,2,null,3,null,4,null,5,null,6,null,7,null,8,null,9,null,10,null,11,null,12,null,13,null,14,null,15,null,16,null,17,null,18,null,19,null,20,null,21,null,22,null,23,null,24,null,25,null,26,null,27,null,28,null,29,null,30,null,31,null,32,null,33,null,34,null,35,null,36,null,37,null,38,null,39,null,40,null,41,null,42,null,43,null,44,null,45,null,46,null,47,null,48,null,49,null,50,null,51,null,52,null,53,null,54,null,55,null,56,null,57,null,58,null,59,null,60,null,61,null,62,null,63,null,64,null,65,null,66,null,67,null,68,null,69,null,70,null,71,null,72,null,73,null,74,null,75,null,76,null,77,null,78,null,79,null,80,null,81,null,82,null,83,null,84,null,85,null,86,null,87,null,88,null,89,null,90,null,91,null,92,null,93,null,94,null,95,null,96,null,97,null,98,null,99,null,100,null,-100,null,-99,null,-98,null,-97,null,-96,null,-95,null,-94,null,-93,null,-92,null,-91,null,-90,null,-89,null,-88,null,-87,null,-86,null,-85,null,-84,null,-83,null,-82,null,-81,null,-80,null,-79,null,-78,null,-77,null,-76,null,-75,null,-74,null,-73,null,-72,null,-71,null,-70,null,-69,null,-68,null,-67,null,-66,null,-65,null,-64,null,-63,null,-62,null,-61,null,-60,null,-59,null,-58,null,-57,null,-56,null,-55,null,-54,null,-53,null,-52,null,-51,null,-50,null,-49,null,-48,null,-47,null,-46,null,-45,null,-44,null,-43,null,-42,null,-41,null,-40,null,-39,null,-38,null,-37,null,-36,null,-35,null,-34,null,-33,null,-32,null,-31,null,-30,null,-29,null,-28,null,-27,null,-26,null,-25,null,-24,null,-23,null,-22,null,-21,null,-20,null,-19,null,-18,null,-17,null,-16,null,-15,null,-14,null,-13,null,-12,null,-11,null,-10,null,-9,null,-8,null,-7,null,-6,null,-5,null,-4,null,-3,null,-2,null,-1,null,0,null,1,null,2,null,3,null,4,null,5,null,6,null,7,null,8,null,9,null,10,null,11,null,12,null,13,null,14,null,15,null,16,null,17,null,18,null,19,null,20,null,21,null,22,null,23,null,24,null,25,null,26,null,27,null,28,null,29,null,30,null,31,null,32,null,33,null,34,null,35,null,36,null,37,null,38,null,39,null,40,null,41,null,42,null,43,null,44,null,45,null,46,null,47,null,48,null,49,null,50,null,51,null,52,null,53,null,54,null,55,null,56,null,57,null,58,null,59,null,60,null,61,null,62,null,63,null,64,null,65,null,66,null,67,null,68,null,69,null,70,null,71,null,72,null,73,null,74,null,75,null,76,null,77,null,78,null,79,null,80,null,81,null,82,null,83,null,84,null,85,null,86,null,87,null,88,null,89,null,90,null,91,null,92,null,93,null,94,null,95,null,96,null,97,null,98,null,99,null,100,null,-100,null,-99,null,-98,null,-97,null,-96,null,-95,null,-94,null,-93,null,-92,null,-91,null,-90,null,-89,null,-88,null,-87,null,-86,null,-85,null,-84,null,-83,null,-82,null,-81,null,-80,null,-79,null,-78,null,-77,null,-76,null,-75,null,-74,null,-73,null,-72,null,-71,null,-70,null,-69,null,-68,null,-67,null,-66,null,-65,null,-64,null,-63,null,-62,null,-61,null,-60,null,-59,null,-58,null,-57,null,-56,null,-55,null,-54,null,-53,null,-52,null,-51,null,-50,null,-49,null,-48,null,-47,null,-46,null,-45,null,-44,null,-43,null,-42,null,-41,null,-40,null,-39,null,-38,null,-37,null,-36,null,-35,null,-34,null,-33,null,-32,null,-31,null,-30,null,-29,null,-28,null,-27,null,-26,null,-25,null,-24,null,-23,null,-22,null,-21,null,-20,null,-19,null,-18,null,-17,null,-16,null,-15,null,-14,null,-13,null,-12,null,-11,null,-10,null,-9,null,-8,null,-7,null,-6,null,-5,null,-4,null,-3,null,-2,null,-1,null,0,null,1,null,2,null,3,null,4,null,5,null,6,null,7,null,8,null,9,null,10,null,11,null,12,null,13,null,14,null,15,null,16,null,17,null,18,null,19,null,20,null,21,null,22,null,23,null,24,null,25,null,26,null,27,null,28,null,29,null,30,null,31,null,32,null,33,null,34,null,35,null,36,null,37,null,38,null,39,null,40,null,41,null,42,null,43,null,44,null,45,null,46,null,47,null,48,null,49,null,50,null,51,null,52,null,53,null,54,null,55,null,56,null,57,null,58,null,59,null,60,null,61,null,62,null,63,null,64,null,65,null,66,null,67,null,68,null,69,null,70,null,71,null,72,null,73,null,74,null,75,null,76,null,77,null,78,null,79,null,80,null,81,null,82,null,83,null,84,null,85,null,86,null,87,null,88,null,89,null,90,null,91,null,92,null,93,null,94,null,95,null,96,null,97,null,98,null,99,null,100,null,-100,null,-99,null,-98,null,-97,null,-96,null,-95,null,-94,null,-93,null,-92,null,-91,null,-90,null,-89,null,-88,null,-87,null,-86,null,-85,null,-84,null,-83,null,-82,null,-81,null,-80,null,-79,null,-78,null,-77,null,-76,null,-75,null,-74,null,-73,null,-72,null,-71,null,-70,null,-69,null,-68,null,-67,null,-66,null,-65,null,-64,null,-63,null,-62,null,-61,null,-60,null,-59,null,-58,null,-57,null,-56,null,-55,null,-54,null,-53,null,-52,null,-51,null,-50,null,-49,null,-48,null,-47,null,-46,null,-45,null,-44,null,-43,null,-42,null,-41,null,-40,null,-39,null,-38,null,-37,null,-36,null,-35,null,-34,null,-33,null,-32,null,-31,null,-30,null,-29,null,-28,null,-27,null,-26,null,-25,null,-24,null,-23,null,-22,null,-21,null,-20,null,-19,null,-18,null,-17,null,-16,null,-15,null,-14,null,-13,null,-12,null,-11,null,-10,null,-9,null,-8,null,-7,null,-6,null,-5,null,-4,null,-3,null,-2,null,-1,null,0,null,1,null,2,null,3,null,4,null,5,null,6,null,7,null,8,null,9,null,10,null,11,null,12,null,13,null,14,null,15,null,16,null,17,null,18,null,19,null,20,null,21,null,22,null,23,null,24,null,25,null,26,null,27,null,28,null,29,null,30,null,31,null,32,null,33,null,34,null,35,null,36,null,37,null,38,null,39,null,40,null,41,null,42,null,43,null,44,null,45,null,46,null,47,null,48,null,49,null,50,null,51,null,52,null,53,null,54,null,55,null,56,null,57,null,58,null,59,null,60,null,61,null,62,null,63,null,64,null,65,null,66,null,67,null,68,null,69,null,70,null,71,null,72,null,73,null,74,null,75,null,76,null,77,null,78,null,79,null,80,null,81,null,82,null,83,null,84,null,85,null,86,null,87,null,88,null,89,null,90,null,91,null,92,null,93,null,94,null,95],0],[95,94,93,92,91,90,89,88,87,86,85,84,83,82,81,80,79,78,77,76,75,74,73,72,71,70,69,68,67,66,65,64,63,62,61,60,59,58,57,56,55,54,53,52,51,50,49,48,47,46,45,44,43,42,41,40,39,38,37,36,35,34,33,32,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0,-1,-2,-3,-4,-5,-6,-7,-8,-9,-10,-11,-12,-13,-14,-15,-16,-17,-18,-19,-20,-21,-22,-23,-24,-25,-26,-27,-28,-29,-30,-31,-32,-33,-34,-35,-36,-37,-38,-39,-40,-41,-42,-43,-44,-45,-46,-47,-48,-49,-50,-51,-52,-53,-54,-55,-56,-57,-58,-59,-60,-61,-62,-63,-64,-65,-66,-67,-68,-69,-70,-71,-72,-73,-74,-75,-76,-77,-78,-79,-80,-81,-82,-83,-84,-85,-86,-87,-88,-89,-90,-91,-92,-93,-94,-95,-96,-97,-98,-99,-100,100,99,98,97,96,95,94,93,92,91,90,89,88,87,86,85,84,83,82,81,80,79,78,77,76,75,74,73,72,71,70,69,68,67,66,65,64,63,62,61,60,59,58,57,56,55,54,53,52,51,50,49,48,47,46,45,44,43,42,41,40,39,38,37,36,35,34,33,32,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0,-1,-2,-3,-4,-5,-6,-7,-8,-9,-10,-11,-12,-13,-14,-15,-16,-17,-18,-19,-20,-21,-22,-23,-24,-25,-26,-27,-28,-29,-30,-31,-32,-33,-34,-35,-36,-37,-38,-39,-40,-41,-42,-43,-44,-45,-46,-47,-48,-49,-50,-51,-52,-53,-54,-55,-56,-57,-58,-59,-60,-61,-62,-63,-64,-65,-66,-67,-68,-69,-70,-71,-72,-73,-74,-75,-76,-77,-78,-79,-80,-81,-82,-83,-84,-85,-86,-87,-88,-89,-90,-91,-92,-93,-94,-95,-96,-97,-98,-99,-100,100,99,98,97,96,95,94,93,92,91,90,89,88,87,86,85,84,83,82,81,80,79,78,77,76,75,74,73,72,71,70,69,68,67,66,65,64,63,62,61,60,59,58,57,56,55,54,53,52,51,50,49,48,47,46,45,44,43,42,41,40,39,38,37,36,35,34,33,32,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0,-1,-2,-3,-4,-5,-6,-7,-8,-9,-10,-11,-12,-13,-14,-15,-16,-17,-18,-19,-20,-21,-22,-23,-24,-25,-26,-27,-28,-29,-30,-31,-32,-33,-34,-35,-36,-37,-38,-39,-40,-41,-42,-43,-44,-45,-46,-47,-48,-49,-50,-51,-52,-53,-54,-55,-56,-57,-58,-59,-60,-61,-62,-63,-64,-65,-66,-67,-68,-69,-70,-71,-72,-73,-74,-75,-76,-77,-78,-79,-80,-81,-82,-83,-84,-85,-86,-87,-88,-89,-90,-91,-92,-93,-94,-95,-96,-97,-98,-99,-100,100,99,98,97,96,95,94,93,92,91,90,89,88,87,86,85,84,83,82,81,80,79,78,77,76,75,74,73,72,71,70,69,68,67,66,65,64,63,62,61,60,59,58,57,56,55,54,53,52,51,50,49,48,47,46,45,44,43,42,41,40,39,38,37,36,35,34,33,32,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0,-1,-2,-3,-4,-5,-6,-7,-8,-9,-10,-11,-12,-13,-14,-15,-16,-17,-18,-19,-20,-21,-22,-23,-24,-25,-26,-27,-28,-29,-30,-31,-32,-33,-34,-35,-36,-37,-38,-39,-40,-41,-42,-43,-44,-45,-46,-47,-48,-49,-50,-51,-52,-53,-54,-55,-56,-57,-58,-59,-60,-61,-62,-63,-64,-65,-66,-67,-68,-69,-70,-71,-72,-73,-74,-75,-76,-77,-78,-79,-80,-81,-82,-83,-84,-85,-86,-87,-88,-89,-90,-91,-92,-93,-94,-95,-96,-97,-98,-99,-100,100,99,98,97,96,95,94,93,92,91,90,89,88,87,86,85,84,83,82,81,80,79,78,77,76,75,74,73,72,71,70,69,68,67,66,65,64,63,62,61,60,59,58,57,56,55,54,53,52,51,50,49,48,47,46,45,44,43,42,41,40,39,38,37,36,35,34,33,32,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0,-1,-2,-3,-4,-5,-6,-7,-8,-9,-10,-11,-12,-13,-14,-15,-16,-17,-18,-19,-20,-21,-22,-23,-24,-25,-26,-27,-28,-29,-30,-31,-32,-33,-34,-35,-36,-37,-38,-39,-40,-41,-42,-43,-44,-45,-46,-47,-48,-49,-50,-51,-52,-53,-54,-55,-56,-57,-58,-59,-60,-61,-62,-63,-64,-65,-66,-67,-68,-69,-70,-71,-72,-73,-74,-75,-76,-77,-78,-79,-80,-81,-82,-83,-84,-85,-86,-87,-88,-89,-90,-91,-92,-93,-94,-95,-96,-97,-98,-99,-100]],
+        [[[100,null,99,null,98,null,97,null,96,null,95,null,94,null,93,null,92,null,91,null,90,null,89,null,88,null,87,null,86,null,85,null,84,null,83,null,82,null,81,null,80,null,79,null,78,null,77,null,76,null,75,null,74,null,73,null,72,null,71,null,70,null,69,null,68,null,67,null,66,null,65,null,64,null,63,null,62,null,61,null,60,null,59,null,58,null,57,null,56,null,55,null,54,null,53,null,52,null,51,null,50,null,49,null,48,null,47,null,46,null,45,null,44,null,43,null,42,null,41,null,40,null,39,null,38,null,37,null,36,null,35,null,34,null,33,null,32,null,31,null,30,null,29,null,28,null,27,null,26,null,25,null,24,null,23,null,22,null,21,null,20,null,19,null,18,null,17,null,16,null,15,null,14,null,13,null,12,null,11,null,10,null,9,null,8,null,7,null,6,null,5,null,4,null,3,null,2,null,1,null,0,null,-1,null,-2,null,-3,null,-4,null,-5,null,-6,null,-7,null,-8,null,-9,null,-10,null,-11,null,-12,null,-13,null,-14,null,-15,null,-16,null,-17,null,-18,null,-19,null,-20,null,-21,null,-22,null,-23,null,-24,null,-25,null,-26,null,-27,null,-28,null,-29,null,-30,null,-31,null,-32,null,-33,null,-34,null,-35,null,-36,null,-37,null,-38,null,-39,null,-40,null,-41,null,-42,null,-43,null,-44,null,-45,null,-46,null,-47,null,-48,null,-49,null,-50,null,-51,null,-52,null,-53,null,-54,null,-55,null,-56,null,-57,null,-58,null,-59,null,-60,null,-61,null,-62,null,-63,null,-64,null,-65,null,-66,null,-67,null,-68,null,-69,null,-70,null,-71,null,-72,null,-73,null,-74,null,-75,null,-76,null,-77,null,-78,null,-79,null,-80,null,-81,null,-82,null,-83,null,-84,null,-85,null,-86,null,-87,null,-88,null,-89,null,-90,null,-91,null,-92,null,-93,null,-94,null,-95,null,-96,null,-97,null,-98,null,-99,null,-100,null,100,null,99,null,98,null,97,null,96,null,95,null,94,null,93,null,92,null,91,null,90,null,89,null,88,null,87,null,86,null,85,null,84,null,83,null,82,null,81,null,80,null,79,null,78,null,77,null,76,null,75,null,74,null,73,null,72,null,71,null,70,null,69,null,68,null,67,null,66,null,65,null,64,null,63,null,62,null,61,null,60,null,59,null,58,null,57,null,56,null,55,null,54,null,53,null,52,null,51,null,50,null,49,null,48,null,47,null,46,null,45,null,44,null,43,null,42,null,41,null,40,null,39,null,38,null,37,null,36,null,35,null,34,null,33,null,32,null,31,null,30,null,29,null,28,null,27,null,26,null,25,null,24,null,23,null,22,null,21,null,20,null,19,null,18,null,17,null,16,null,15,null,14,null,13,null,12,null,11,null,10,null,9,null,8,null,7,null,6,null,5,null,4,null,3,null,2,null,1,null,0,null,-1,null,-2,null,-3,null,-4,null,-5,null,-6,null,-7,null,-8,null,-9,null,-10,null,-11,null,-12,null,-13,null,-14,null,-15,null,-16,null,-17,null,-18,null,-19,null,-20,null,-21,null,-22,null,-23,null,-24,null,-25,null,-26,null,-27,null,-28,null,-29,null,-30,null,-31,null,-32,null,-33,null,-34,null,-35,null,-36,null,-37,null,-38,null,-39,null,-40,null,-41,null,-42,null,-43,null,-44,null,-45,null,-46,null,-47,null,-48,null,-49,null,-50,null,-51,null,-52,null,-53,null,-54,null,-55,null,-56,null,-57,null,-58,null,-59,null,-60,null,-61,null,-62,null,-63,null,-64,null,-65,null,-66,null,-67,null,-68,null,-69,null,-70,null,-71,null,-72,null,-73,null,-74,null,-75,null,-76,null,-77,null,-78,null,-79,null,-80,null,-81,null,-82,null,-83,null,-84,null,-85,null,-86,null,-87,null,-88,null,-89,null,-90,null,-91,null,-92,null,-93,null,-94,null,-95,null,-96,null,-97,null,-98,null,-99,null,-100,null,100,null,99,null,98,null,97,null,96,null,95,null,94,null,93,null,92,null,91,null,90,null,89,null,88,null,87,null,86,null,85,null,84,null,83,null,82,null,81,null,80,null,79,null,78,null,77,null,76,null,75,null,74,null,73,null,72,null,71,null,70,null,69,null,68,null,67,null,66,null,65,null,64,null,63,null,62,null,61,null,60,null,59,null,58,null,57,null,56,null,55,null,54,null,53,null,52,null,51,null,50,null,49,null,48,null,47,null,46,null,45,null,44,null,43,null,42,null,41,null,40,null,39,null,38,null,37,null,36,null,35,null,34,null,33,null,32,null,31,null,30,null,29,null,28,null,27,null,26,null,25,null,24,null,23,null,22,null,21,null,20,null,19,null,18,null,17,null,16,null,15,null,14,null,13,null,12,null,11,null,10,null,9,null,8,null,7,null,6,null,5,null,4,null,3,null,2,null,1,null,0,null,-1,null,-2,null,-3,null,-4,null,-5,null,-6,null,-7,null,-8,null,-9,null,-10,null,-11,null,-12,null,-13,null,-14,null,-15,null,-16,null,-17,null,-18,null,-19,null,-20,null,-21,null,-22,null,-23,null,-24,null,-25,null,-26,null,-27,null,-28,null,-29,null,-30,null,-31,null,-32,null,-33,null,-34,null,-35,null,-36,null,-37,null,-38,null,-39,null,-40,null,-41,null,-42,null,-43,null,-44,null,-45,null,-46,null,-47,null,-48,null,-49,null,-50,null,-51,null,-52,null,-53,null,-54,null,-55,null,-56,null,-57,null,-58,null,-59,null,-60,null,-61,null,-62,null,-63,null,-64,null,-65,null,-66,null,-67,null,-68,null,-69,null,-70,null,-71,null,-72,null,-73,null,-74,null,-75,null,-76,null,-77,null,-78,null,-79,null,-80,null,-81,null,-82,null,-83,null,-84,null,-85,null,-86,null,-87,null,-88,null,-89,null,-90,null,-91,null,-92,null,-93,null,-94,null,-95,null,-96,null,-97,null,-98,null,-99,null,-100,null,100,null,99,null,98,null,97,null,96,null,95,null,94,null,93,null,92,null,91,null,90,null,89,null,88,null,87,null,86,null,85,null,84,null,83,null,82,null,81,null,80,null,79,null,78,null,77,null,76,null,75,null,74,null,73,null,72,null,71,null,70,null,69,null,68,null,67,null,66,null,65,null,64,null,63,null,62,null,61,null,60,null,59,null,58,null,57,null,56,null,55,null,54,null,53,null,52,null,51,null,50,null,49,null,48,null,47,null,46,null,45,null,44,null,43,null,42,null,41,null,40,null,39,null,38,null,37,null,36,null,35,null,34,null,33,null,32,null,31,null,30,null,29,null,28,null,27,null,26,null,25,null,24,null,23,null,22,null,21,null,20,null,19,null,18,null,17,null,16,null,15,null,14,null,13,null,12,null,11,null,10,null,9,null,8,null,7,null,6,null,5,null,4],0],[100,99,98,97,96,95,94,93,92,91,90,89,88,87,86,85,84,83,82,81,80,79,78,77,76,75,74,73,72,71,70,69,68,67,66,65,64,63,62,61,60,59,58,57,56,55,54,53,52,51,50,49,48,47,46,45,44,43,42,41,40,39,38,37,36,35,34,33,32,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0,-1,-2,-3,-4,-5,-6,-7,-8,-9,-10,-11,-12,-13,-14,-15,-16,-17,-18,-19,-20,-21,-22,-23,-24,-25,-26,-27,-28,-29,-30,-31,-32,-33,-34,-35,-36,-37,-38,-39,-40,-41,-42,-43,-44,-45,-46,-47,-48,-49,-50,-51,-52,-53,-54,-55,-56,-57,-58,-59,-60,-61,-62,-63,-64,-65,-66,-67,-68,-69,-70,-71,-72,-73,-74,-75,-76,-77,-78,-79,-80,-81,-82,-83,-84,-85,-86,-87,-88,-89,-90,-91,-92,-93,-94,-95,-96,-97,-98,-99,-100,100,99,98,97,96,95,94,93,92,91,90,89,88,87,86,85,84,83,82,81,80,79,78,77,76,75,74,73,72,71,70,69,68,67,66,65,64,63,62,61,60,59,58,57,56,55,54,53,52,51,50,49,48,47,46,45,44,43,42,41,40,39,38,37,36,35,34,33,32,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0,-1,-2,-3,-4,-5,-6,-7,-8,-9,-10,-11,-12,-13,-14,-15,-16,-17,-18,-19,-20,-21,-22,-23,-24,-25,-26,-27,-28,-29,-30,-31,-32,-33,-34,-35,-36,-37,-38,-39,-40,-41,-42,-43,-44,-45,-46,-47,-48,-49,-50,-51,-52,-53,-54,-55,-56,-57,-58,-59,-60,-61,-62,-63,-64,-65,-66,-67,-68,-69,-70,-71,-72,-73,-74,-75,-76,-77,-78,-79,-80,-81,-82,-83,-84,-85,-86,-87,-88,-89,-90,-91,-92,-93,-94,-95,-96,-97,-98,-99,-100,100,99,98,97,96,95,94,93,92,91,90,89,88,87,86,85,84,83,82,81,80,79,78,77,76,75,74,73,72,71,70,69,68,67,66,65,64,63,62,61,60,59,58,57,56,55,54,53,52,51,50,49,48,47,46,45,44,43,42,41,40,39,38,37,36,35,34,33,32,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0,-1,-2,-3,-4,-5,-6,-7,-8,-9,-10,-11,-12,-13,-14,-15,-16,-17,-18,-19,-20,-21,-22,-23,-24,-25,-26,-27,-28,-29,-30,-31,-32,-33,-34,-35,-36,-37,-38,-39,-40,-41,-42,-43,-44,-45,-46,-47,-48,-49,-50,-51,-52,-53,-54,-55,-56,-57,-58,-59,-60,-61,-62,-63,-64,-65,-66,-67,-68,-69,-70,-71,-72,-73,-74,-75,-76,-77,-78,-79,-80,-81,-82,-83,-84,-85,-86,-87,-88,-89,-90,-91,-92,-93,-94,-95,-96,-97,-98,-99,-100,100,99,98,97,96,95,94,93,92,91,90,89,88,87,86,85,84,83,82,81,80,79,78,77,76,75,74,73,72,71,70,69,68,67,66,65,64,63,62,61,60,59,58,57,56,55,54,53,52,51,50,49,48,47,46,45,44,43,42,41,40,39,38,37,36,35,34,33,32,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4]],
+        [[[],-100000],Array.from({ length: 100000 }, (_, k) => ((99999 - k) % 201) - 100)]
+      ] },
       solution: {
         approach: `<p>Simulate the recursion: the stack holds nodes whose left side is in progress. Slide left, pop, record, turn right.</p>`,
         code: `
@@ -749,6 +1256,57 @@ class IterativeTraversals {
                   return out;
               }
           }`,
+        alt: [{ lang: 'python', code: `class Solution:
+    def inorder_traversal(self, root):
+        out, stack, cur = [], [], root      # stack = nodes waiting for their left side
+        while cur or stack:
+            while cur:                       # slide left, remembering the path
+                stack.append(cur)
+                cur = cur.left
+            cur = stack.pop()                # its left side is done -> write it
+            out.append(cur.val)
+            cur = cur.right                  # then do its right subtree
+        return out
+` }, { lang: 'js', code: `function inorderTraversal(root) {
+  const out = [], stack = [];   // stack = nodes waiting for their left side
+  let cur = root;
+  while (cur || stack.length) {
+    while (cur) {               // slide left, remembering the path
+      stack.push(cur);
+      cur = cur.left;
+    }
+    cur = stack.pop();          // its left side is done -> write it
+    out.push(cur.val);
+    cur = cur.right;            // then do its right subtree
+  }
+  return out;
+}
+` }, { lang: 'cpp', code: `// LeetCode-style node (the judge normally provides it)
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int x = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(x), left(l), right(r) {}
+};
+
+class Solution {
+public:
+    vector<int> inorderTraversal(TreeNode* root) {
+        vector<int> out;
+        stack<TreeNode*> st;                 // nodes waiting for their left side
+        TreeNode* cur = root;
+        while (cur || !st.empty()) {
+            while (cur) {                    // slide left, remembering the path
+                st.push(cur);
+                cur = cur->left;
+            }
+            cur = st.top(); st.pop();        // its left side is done -> write it
+            out.push_back(cur->val);
+            cur = cur->right;                // then do its right subtree
+        }
+        return out;
+    }
+};
+` }],
         dry: {
           head: ['step', 'action', 'stack (bottom→top)', 'cur after', 'output'],
           rows: [
@@ -781,7 +1339,7 @@ ${H.table(['pop', 'write', 'push', 'stack after (bottom → top)'], [
       {
         title: 'Postorder with ONE stack (the "last visited" trick)',
         html: `<p>Slide left like inorder, but when you reach a node, only write it if its right side is empty <b>or</b> was just finished (<code>top.right == last</code>). Otherwise go right first. This is the version interviewers ask for when you mention the two-stack trick.</p>`,
-        code: `
+        code: { lang: 'java', code: `
 List<Integer> postorderOneStack(TreeNode root) {
     List<Integer> out = new ArrayList<>();
     Deque<TreeNode> st = new ArrayDeque<>();
@@ -797,12 +1355,65 @@ List<Integer> postorderOneStack(TreeNode root) {
         }
     }
     return out;
-}`
+}`, alt: [{ lang: 'python', code: `def postorder_one_stack(root):
+    out, stack = [], []
+    cur, last = root, None                   # last = node written most recently
+    while cur or stack:
+        while cur:                           # slide left
+            stack.append(cur)
+            cur = cur.left
+        top = stack[-1]
+        if top.right and top.right is not last:
+            cur = top.right                  # right side not done yet -> go there
+        else:
+            out.append(top.val)              # both sides done -> write me
+            last = stack.pop()
+    return out
+` }, { lang: 'js', code: `function postorderOneStack(root) {
+  const out = [], stack = [];
+  let cur = root, last = null;               // last = node written most recently
+  while (cur || stack.length) {
+    while (cur) { stack.push(cur); cur = cur.left; }   // slide left
+    const top = stack[stack.length - 1];
+    if (top.right && top.right !== last) {
+      cur = top.right;                       // right side not done yet -> go there
+    } else {
+      out.push(top.val);                     // both sides done -> write me
+      last = stack.pop();
+    }
+  }
+  return out;
+}
+` }, { lang: 'cpp', code: `// TreeNode as defined in the first lesson
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int v = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(v), left(l), right(r) {}
+};
+
+vector<int> postorderOneStack(TreeNode* root) {
+    vector<int> out;
+    stack<TreeNode*> st;
+    TreeNode *cur = root, *last = nullptr;   // last = node written most recently
+    while (cur || !st.empty()) {
+        while (cur) { st.push(cur); cur = cur->left; }   // slide left
+        TreeNode* top = st.top();
+        if (top->right && top->right != last) {
+            cur = top->right;                // right side not done yet -> go there
+        } else {
+            out.push_back(top->val);         // both sides done -> write me
+            last = top;
+            st.pop();
+        }
+    }
+    return out;
+}
+` }] }
       },
       {
         title: 'Morris inorder: O(1) extra space',
         html: `<p>No stack at all. Before going left, find the <b>predecessor</b> (rightmost node of the left subtree) and make its right pointer point back to the current node, like leaving a rope to climb back up. The second time you arrive you remove the rope and write the node. Each edge is walked at most a few times → still O(N).</p>`,
-        code: `
+        code: { lang: 'java', code: `
 List<Integer> morrisInorder(TreeNode root) {
     List<Integer> out = new ArrayList<>();
     TreeNode cur = root;
@@ -824,17 +1435,86 @@ List<Integer> morrisInorder(TreeNode root) {
         }
     }
     return out;
-}`
+}`, alt: [{ lang: 'python', code: `def morris_inorder(root):
+    out, cur = [], root
+    while cur:
+        if cur.left is None:                 # nothing on the left: write and go right
+            out.append(cur.val)
+            cur = cur.right
+        else:
+            pred = cur.left                  # find rightmost node of the left subtree
+            while pred.right and pred.right is not cur:
+                pred = pred.right
+            if pred.right is None:           # first visit: leave a rope back to cur
+                pred.right = cur
+                cur = cur.left
+            else:                            # second visit: left side done
+                pred.right = None            # remove the rope (restore the tree)
+                out.append(cur.val)
+                cur = cur.right
+    return out
+` }, { lang: 'js', code: `function morrisInorder(root) {
+  const out = [];
+  let cur = root;
+  while (cur) {
+    if (!cur.left) {                         // nothing on the left: write and go right
+      out.push(cur.val);
+      cur = cur.right;
+    } else {
+      let pred = cur.left;                   // find rightmost node of the left subtree
+      while (pred.right && pred.right !== cur) pred = pred.right;
+      if (!pred.right) {                     // first visit: leave a rope back to cur
+        pred.right = cur;
+        cur = cur.left;
+      } else {                               // second visit: left side done
+        pred.right = null;                   // remove the rope (restore the tree)
+        out.push(cur.val);
+        cur = cur.right;
+      }
+    }
+  }
+  return out;
+}
+` }, { lang: 'cpp', code: `// TreeNode as defined in the first lesson
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int v = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(v), left(l), right(r) {}
+};
+
+vector<int> morrisInorder(TreeNode* root) {
+    vector<int> out;
+    TreeNode* cur = root;
+    while (cur) {
+        if (!cur->left) {                    // nothing on the left: write and go right
+            out.push_back(cur->val);
+            cur = cur->right;
+        } else {
+            TreeNode* pred = cur->left;      // find rightmost node of the left subtree
+            while (pred->right && pred->right != cur) pred = pred->right;
+            if (!pred->right) {              // first visit: leave a rope back to cur
+                pred->right = cur;
+                cur = cur->left;
+            } else {                         // second visit: left side done
+                pred->right = nullptr;       // remove the rope (restore the tree)
+                out.push_back(cur->val);
+                cur = cur->right;
+            }
+        }
+    }
+    return out;
+}
+` }] }
       }
     ],
-    deepDive: `<p><b>Use <code>ArrayDeque</code>, not <code>Stack</code>.</b> <code>java.util.Stack</code> extends the old synchronized <code>Vector</code>: every push/pop takes a lock. <code>ArrayDeque</code> is a resizable circular array, faster and the officially recommended stack. Remember it <b>refuses null</b>, so never push a null child — check first.</p>
+    deepDive: `<p><b>Pick a fast stack.</b> Python: a plain list (<code>append</code> / <code>pop</code>). JavaScript: an array (<code>push</code> / <code>pop</code>). C++: <code>std::stack</code> or a <code>vector</code>. Java: use <code>ArrayDeque</code>, not <code>Stack</code>: <code>java.util.Stack</code> extends the old synchronized <code>Vector</code>: every push/pop takes a lock. <code>ArrayDeque</code> is a resizable circular array, faster and the officially recommended stack. Remember it <b>refuses null</b>, so never push a null child — check first.</p>
 <p><b>Space:</b> the explicit stack still holds up to h nodes (O(h)), but it lives on the <b>heap</b>, which is measured in gigabytes instead of the thread stack's ~1 MB. That is the real reason iterative versions survive 10<sup>5</sup>-deep skewed trees.</p>
 <p><b>One template for all three orders:</b> push pairs <code>(node, visited)</code>. When you pop an unvisited node, push its parts back in reverse of the desired order, marking the node itself as visited — e.g. for inorder push (right, false), (node, true), (left, false). When you pop a visited node, write it. Slower by a constant, but you only memorise one loop.</p>
 <p><b>Iterators:</b> the iterative inorder is exactly what a "BST iterator" or a database <b>range scan</b> does: the stack is the iterator's saved state, <code>next()</code> runs one pop + slide-left, and the amortised cost per call is O(1) (each node is pushed and popped once over the whole iteration) with O(h) memory.</p>
 <p><b>Morris trade-offs:</b> O(1) space and O(N) time, but it writes to the tree (temporarily), so it is not allowed on read-only or shared trees, and a crash halfway leaves the tree corrupted.</p>`,
     aiEra: `<p><b>What AI changes:</b> converting recursion into a loop with an explicit stack is a mechanical refactor that assistants do well, so you can ask for it and spend your effort on verifying it.</p>
 <p><b>Use AI as a partner:</b> <code>Convert this recursive postorder to an iterative one with ONE stack and explain what the stack holds at each step for the tree [1,2,3,4,5].</code> Then trace it yourself — the explanation is often wrong even when the code is right.</p>
-<p><b>Where AI goes wrong:</b> the outer condition <code>cur != null || !st.isEmpty()</code> is frequently written with only one half, which silently drops the right subtree of the root; postorder one-stack versions often loop forever because <code>last</code> is not updated; and generated code sometimes uses <code>Stack</code> or pushes null into <code>ArrayDeque</code> (NullPointerException).</p>
+<p><b>Where AI goes wrong:</b> the outer condition <code>cur != null || !st.isEmpty()</code> is frequently written with only one half, which silently drops the right subtree of the root; postorder one-stack versions often loop forever because <code>last</code> is not updated; and generated Java code sometimes uses <code>Stack</code> or pushes null into <code>ArrayDeque</code> (NullPointerException).</p>
 <p><b>What you must still own:</b> being able to say what the stack <b>means</b> ("nodes whose left side is in progress") — that invariant is what lets you write any variant (k-th smallest, iterator, early exit) on the spot.</p>`
   });
   /* ===================== TOPIC 4: Level order BFS ===================== */
@@ -949,9 +1629,22 @@ ${H.table(['level', 'queue at start', 'size', 'taken out', 'added to back'], [
       },
       hints: [
         `<p><b>Aha:</b> if you process nodes in the order you discover them, you automatically go level by level — parents are discovered before children. "First discovered, first processed" = FIFO = <b>queue</b>.</p>`,
-        `<p>Use <code>Queue&lt;TreeNode&gt; q = new ArrayDeque&lt;&gt;()</code>. Outer loop per level: <code>size = q.size()</code>; inner loop <code>size</code> times: <code>poll()</code>, add value to the row, <code>offer</code> non-null left then right.</p>`,
-        `<p><b>Traps:</b> empty tree → return empty list (do not put null in the queue — <code>ArrayDeque</code> throws on null). Add left before right to keep left-to-right order. <b>Recipe:</b> q = [root]; while q: size; row = []; repeat size: n = poll; row.add; push kids; res.add(row).</p>`
+        `<p>Use a queue (<code>ArrayDeque</code> in Java, <code>collections.deque</code> in Python, <code>std::queue</code> in C++; in JavaScript an array with a read index, because <code>shift()</code> is O(n)). Outer loop per level: <code>size = q.size()</code>; inner loop <code>size</code> times: take the front node, add its value to the row, add its non-null left then right child to the back.</p>`,
+        `<p><b>Traps:</b> empty tree → return empty list (do not put null in the queue — Java's <code>ArrayDeque</code> even throws on it). Add left before right to keep left-to-right order. <b>Recipe:</b> q = [root]; while q: size; row = []; repeat size: n = poll; row.add; push kids; res.add(row).</p>`
       ],
+      tests: { sig: 'TreeNode -> list<list<int>>', fn: 'levelOrder', cases: [
+        [[[1,2,3,4,5]],[[1],[2,3],[4,5]]],
+        [[[]],[]],
+        [[[1]],[[1]]],
+        [[[1,null,2,3]],[[1],[2],[3]]],
+        [[[3,9,20,null,null,15,7]],[[3],[9,20],[15,7]]],
+        [[[-5,-5,0,null,7,7,-100]],[[-5],[-5,0],[7,7,-100]]],
+        [[[1,2,3,4,null,null,5,6,null,null,7]],[[1],[2,3],[4,5],[6,7]]],
+        [[[-79,-60,-61,null,-87,null,-100,null,-10]],[[-79],[-60,-61],[-87,-100],[-10]]],
+        [[[-51,87,56,-70,71,null,null,null,null,null,-77,null,90,null,-82]],[[-51],[87,56],[-70,71],[-77],[90],[-82]]],
+        [[[18,null,-59,-30,null,-26,null,null,77]],[[18],[-59],[-30],[-26],[77]]],
+        [[[0,1,null,2,null,3,null,4,null,5,null,6,null,7,null,8,null,9,null,10,null,11,null,12,null,13,null,14,null,15,null,16,null,17,null,18,null,19,null,20,null,21,null,22,null,23,null,24,null,25,null,26,null,27,null,28,null,29,null,30,null,31,null,32,null,33,null,34,null,35,null,36,null,37,null,38,null,39,null,40,null,41,null,42,null,43,null,44,null,45,null,46,null,47,null,48,null,49,null,50,null,51,null,52,null,53,null,54,null,55,null,56,null,57,null,58,null,59,null,60,null,61,null,62,null,63,null,64,null,65,null,66,null,67,null,68,null,69,null,70,null,71,null,72,null,73,null,74,null,75,null,76,null,77,null,78,null,79,null,80,null,81,null,82,null,83,null,84,null,85,null,86,null,87,null,88,null,89,null,90,null,91,null,92,null,93,null,94,null,95,null,96,null,97,null,98,null,99,null,100,null,101,null,102,null,103,null,104,null,105,null,106,null,107,null,108,null,109,null,110,null,111,null,112,null,113,null,114,null,115,null,116,null,117,null,118,null,119,null,120,null,121,null,122,null,123,null,124,null,125,null,126,null,127,null,128,null,129,null,130,null,131,null,132,null,133,null,134,null,135,null,136,null,137,null,138,null,139,null,140,null,141,null,142,null,143,null,144,null,145,null,146,null,147,null,148,null,149,null,150,null,151,null,152,null,153,null,154,null,155,null,156,null,157,null,158,null,159,null,160,null,161,null,162,null,163,null,164,null,165,null,166,null,167,null,168,null,169,null,170,null,171,null,172,null,173,null,174,null,175,null,176,null,177,null,178,null,179,null,180,null,181,null,182,null,183,null,184,null,185,null,186,null,187,null,188,null,189,null,190,null,191,null,192,null,193,null,194,null,195,null,196,null,197,null,198,null,199,null,200,null,201,null,202,null,203,null,204,null,205,null,206,null,207,null,208,null,209,null,210,null,211,null,212,null,213,null,214,null,215,null,216,null,217,null,218,null,219,null,220,null,221,null,222,null,223,null,224,null,225,null,226,null,227,null,228,null,229,null,230,null,231,null,232,null,233,null,234,null,235,null,236,null,237,null,238,null,239,null,240,null,241,null,242,null,243,null,244,null,245,null,246,null,247,null,248,null,249,null,250,null,251,null,252,null,253,null,254,null,255,null,256,null,257,null,258,null,259,null,260,null,261,null,262,null,263,null,264,null,265,null,266,null,267,null,268,null,269,null,270,null,271,null,272,null,273,null,274,null,275,null,276,null,277,null,278,null,279,null,280,null,281,null,282,null,283,null,284,null,285,null,286,null,287,null,288,null,289,null,290,null,291,null,292,null,293,null,294,null,295,null,296,null,297,null,298,null,299]],[[0],[1],[2],[3],[4],[5],[6],[7],[8],[9],[10],[11],[12],[13],[14],[15],[16],[17],[18],[19],[20],[21],[22],[23],[24],[25],[26],[27],[28],[29],[30],[31],[32],[33],[34],[35],[36],[37],[38],[39],[40],[41],[42],[43],[44],[45],[46],[47],[48],[49],[50],[51],[52],[53],[54],[55],[56],[57],[58],[59],[60],[61],[62],[63],[64],[65],[66],[67],[68],[69],[70],[71],[72],[73],[74],[75],[76],[77],[78],[79],[80],[81],[82],[83],[84],[85],[86],[87],[88],[89],[90],[91],[92],[93],[94],[95],[96],[97],[98],[99],[100],[101],[102],[103],[104],[105],[106],[107],[108],[109],[110],[111],[112],[113],[114],[115],[116],[117],[118],[119],[120],[121],[122],[123],[124],[125],[126],[127],[128],[129],[130],[131],[132],[133],[134],[135],[136],[137],[138],[139],[140],[141],[142],[143],[144],[145],[146],[147],[148],[149],[150],[151],[152],[153],[154],[155],[156],[157],[158],[159],[160],[161],[162],[163],[164],[165],[166],[167],[168],[169],[170],[171],[172],[173],[174],[175],[176],[177],[178],[179],[180],[181],[182],[183],[184],[185],[186],[187],[188],[189],[190],[191],[192],[193],[194],[195],[196],[197],[198],[199],[200],[201],[202],[203],[204],[205],[206],[207],[208],[209],[210],[211],[212],[213],[214],[215],[216],[217],[218],[219],[220],[221],[222],[223],[224],[225],[226],[227],[228],[229],[230],[231],[232],[233],[234],[235],[236],[237],[238],[239],[240],[241],[242],[243],[244],[245],[246],[247],[248],[249],[250],[251],[252],[253],[254],[255],[256],[257],[258],[259],[260],[261],[262],[263],[264],[265],[266],[267],[268],[269],[270],[271],[272],[273],[274],[275],[276],[277],[278],[279],[280],[281],[282],[283],[284],[285],[286],[287],[288],[289],[290],[291],[292],[293],[294],[295],[296],[297],[298],[299]]]
+      ] },
       solution: {
         approach: `<p>BFS with a queue; the size snapshot cuts the stream into levels.</p>`,
         code: `
@@ -975,6 +1668,66 @@ ${H.table(['level', 'queue at start', 'size', 'taken out', 'added to back'], [
                   return res;
               }
           }`,
+        alt: [{ lang: 'python', code: `from collections import deque
+
+class Solution:
+    def level_order(self, root):
+        if root is None:
+            return []
+        res, q = [], deque([root])
+        while q:
+            row = []
+            for _ in range(len(q)):          # size snapshot = this level only
+                n = q.popleft()              # O(1), unlike list.pop(0)
+                row.append(n.val)
+                if n.left:
+                    q.append(n.left)
+                if n.right:
+                    q.append(n.right)
+            res.append(row)
+        return res
+` }, { lang: 'js', code: `function levelOrder(root) {
+  const res = [];
+  let level = root ? [root] : [];   // one array per level: no O(n) shift()
+  while (level.length) {
+    res.push(level.map((n) => n.val));
+    const next = [];
+    for (const n of level) {
+      if (n.left) next.push(n.left);
+      if (n.right) next.push(n.right);
+    }
+    level = next;
+  }
+  return res;
+}
+` }, { lang: 'cpp', code: `// LeetCode-style node (the judge normally provides it)
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int x = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(x), left(l), right(r) {}
+};
+
+class Solution {
+public:
+    vector<vector<int>> levelOrder(TreeNode* root) {
+        vector<vector<int>> res;
+        if (!root) return res;
+        queue<TreeNode*> q;
+        q.push(root);
+        while (!q.empty()) {
+            int size = q.size();             // nodes on THIS level only
+            vector<int>& row = res.emplace_back();
+            while (size--) {
+                TreeNode* n = q.front(); q.pop();
+                row.push_back(n->val);
+                if (n->left) q.push(n->left);
+                if (n->right) q.push(n->right);
+            }
+        }
+        return res;
+    }
+};
+` }],
         dry: {
           head: ['level', 'size', 'polled (in order)', 'offered', 'queue after level', 'row'],
           rows: [
@@ -990,13 +1743,13 @@ ${H.table(['level', 'queue at start', 'size', 'taken out', 'added to back'], [
     examples: [
       {
         title: 'Zigzag level order — flip every other row',
-        html: `<p>Same BFS, but on odd levels reverse the row (or add values at the front of a <code>LinkedList</code>). Tree <code>[3,9,20,null,null,15,7]</code>:</p>
+        html: `<p>Same BFS, but on odd levels reverse the row (or add values at the front of a deque). Tree <code>[3,9,20,null,null,15,7]</code>:</p>
 ${H.table(['level', 'BFS row', 'direction', 'saved'], [
   ['0', '[3]', '→', H.c('g', '[3]')],
   ['1', '[9, 20]', '←', H.c('g', '[20, 9]')],
   ['2', '[15, 7]', '→', H.c('g', '[15, 7]')]
 ])}`,
-        code: `
+        code: { lang: 'java', code: `
 List<List<Integer>> zigzag(TreeNode root) {
     List<List<Integer>> res = new ArrayList<>();
     if (root == null) return res;
@@ -1016,12 +1769,74 @@ List<List<Integer>> zigzag(TreeNode root) {
         leftToRight = !leftToRight;
     }
     return res;
-}`
+}`, alt: [{ lang: 'python', code: `from collections import deque
+
+def zigzag(root):
+    res = []
+    if root is None:
+        return res
+    q = deque([root])
+    left_to_right = True
+    while q:
+        row = deque()
+        for _ in range(len(q)):
+            n = q.popleft()
+            if left_to_right:
+                row.append(n.val)
+            else:
+                row.appendleft(n.val)        # flip cheaply: O(1) at the front of a deque
+            if n.left:
+                q.append(n.left)
+            if n.right:
+                q.append(n.right)
+        res.append(list(row))
+        left_to_right = not left_to_right
+    return res
+` }, { lang: 'js', code: `function zigzag(root) {
+  const res = [];
+  let level = root ? [root] : [];
+  let leftToRight = true;
+  while (level.length) {
+    const row = level.map((n) => n.val);
+    res.push(leftToRight ? row : row.reverse());   // reverse the finished row (unshift would be O(n) each)
+    level = level.flatMap((n) => [n.left, n.right].filter(Boolean));
+    leftToRight = !leftToRight;
+  }
+  return res;
+}
+` }, { lang: 'cpp', code: `// TreeNode as defined in the first lesson
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int v = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(v), left(l), right(r) {}
+};
+
+vector<vector<int>> zigzag(TreeNode* root) {
+    vector<vector<int>> res;
+    if (!root) return res;
+    queue<TreeNode*> q;
+    q.push(root);
+    bool leftToRight = true;
+    while (!q.empty()) {
+        int size = q.size();
+        deque<int> row;
+        for (int i = 0; i < size; i++) {
+            TreeNode* n = q.front(); q.pop();
+            if (leftToRight) row.push_back(n->val); else row.push_front(n->val);   // flip cheaply
+            if (n->left) q.push(n->left);
+            if (n->right) q.push(n->right);
+        }
+        res.emplace_back(row.begin(), row.end());
+        leftToRight = !leftToRight;
+    }
+    return res;
+}
+` }] }
       },
       {
         title: 'Minimum depth — BFS stops at the first leaf',
         html: `<p>For <code>[3,9,20,null,null,15,7]</code> the nearest leaf is ${H.c('g', '9')} at level 1, so the minimum depth is ${H.c('g', '2')} nodes. BFS meets 9 in the second round and returns immediately; it never touches 15 or 7. On a huge tree whose shallowest leaf is near the top, this saves almost all the work. DFS would have to explore every path to be sure.</p>`,
-        code: `
+        code: { lang: 'java', code: `
 int minDepth(TreeNode root) {
     if (root == null) return 0;
     Queue<TreeNode> q = new ArrayDeque<>();
@@ -1038,12 +1853,68 @@ int minDepth(TreeNode root) {
         depth++;
     }
     return depth;
-}`
+}`, alt: [{ lang: 'python', code: `from collections import deque
+
+def min_depth(root):
+    if root is None:
+        return 0
+    q, depth = deque([root]), 1
+    while q:
+        for _ in range(len(q)):
+            n = q.popleft()
+            if n.left is None and n.right is None:
+                return depth                 # first leaf = nearest leaf
+            if n.left:
+                q.append(n.left)
+            if n.right:
+                q.append(n.right)
+        depth += 1
+    return depth
+` }, { lang: 'js', code: `function minDepth(root) {
+  if (!root) return 0;
+  let level = [root], depth = 1;
+  while (level.length) {
+    const next = [];
+    for (const n of level) {
+      if (!n.left && !n.right) return depth;   // first leaf = nearest leaf
+      if (n.left) next.push(n.left);
+      if (n.right) next.push(n.right);
+    }
+    level = next;
+    depth++;
+  }
+  return depth;
+}
+` }, { lang: 'cpp', code: `// TreeNode as defined in the first lesson
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int v = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(v), left(l), right(r) {}
+};
+
+int minDepth(TreeNode* root) {
+    if (!root) return 0;
+    queue<TreeNode*> q;
+    q.push(root);
+    int depth = 1;
+    while (!q.empty()) {
+        int size = q.size();
+        for (int i = 0; i < size; i++) {
+            TreeNode* n = q.front(); q.pop();
+            if (!n->left && !n->right) return depth;   // first leaf = nearest leaf
+            if (n->left) q.push(n->left);
+            if (n->right) q.push(n->right);
+        }
+        depth++;
+    }
+    return depth;
+}
+` }] }
       },
       {
         title: 'Per-level statistics: average and maximum',
         html: `<p>Inside the level loop keep a running <code>sum</code> and <code>max</code>. For <code>[3,9,20,null,null,15,7]</code>: averages ${H.c('g', '[3.0, 14.5, 11.0]')}, maxima ${H.c('p', '[3, 20, 15]')}. Use a <code>long</code> or <code>double</code> for the sum — values up to 2<sup>31</sup> − 1 overflow an <code>int</code> when added.</p>`,
-        code: `
+        code: { lang: 'java', code: `
 List<Double> averageOfLevels(TreeNode root) {
     List<Double> res = new ArrayList<>();
     Queue<TreeNode> q = new ArrayDeque<>();
@@ -1060,13 +1931,53 @@ List<Double> averageOfLevels(TreeNode root) {
         res.add((double) sum / size);
     }
     return res;
-}`
+}`, alt: [{ lang: 'python', code: `def average_of_levels(root):
+    res, level = [], [root] if root else []
+    while level:
+        res.append(sum(n.val for n in level) / len(level))   # Python ints never overflow
+        level = [c for n in level for c in (n.left, n.right) if c]
+    return res
+` }, { lang: 'js', code: `function averageOfLevels(root) {
+  const res = [];
+  let level = root ? [root] : [];
+  while (level.length) {
+    const sum = level.reduce((s, n) => s + n.val, 0);   // exact while sums stay below 2^53
+    res.push(sum / level.length);
+    level = level.flatMap((n) => [n.left, n.right].filter(Boolean));
+  }
+  return res;
+}
+` }, { lang: 'cpp', code: `// TreeNode as defined in the first lesson
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int v = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(v), left(l), right(r) {}
+};
+
+vector<double> averageOfLevels(TreeNode* root) {
+    vector<double> res;
+    queue<TreeNode*> q;
+    if (root) q.push(root);
+    while (!q.empty()) {
+        int size = q.size();
+        long long sum = 0;                   // long long: avoid int overflow
+        for (int i = 0; i < size; i++) {
+            TreeNode* n = q.front(); q.pop();
+            sum += n->val;
+            if (n->left) q.push(n->left);
+            if (n->right) q.push(n->right);
+        }
+        res.push_back((double)sum / size);
+    }
+    return res;
+}
+` }] }
       }
     ],
     deepDive: `<p><b>Memory: BFS vs DFS.</b> BFS keeps one whole level in the queue: for a perfect tree the last level holds (N + 1) / 2 nodes, so BFS space is O(N) on wide trees. DFS keeps one path: O(h) — tiny on a bushy tree but O(N) on a skewed one. So: wide and shallow → DFS is lighter; deep and thin → BFS is lighter.</p>
 <p><b>Levels with DFS too:</b> pass <code>depth</code> down and do <code>if (depth == res.size()) res.add(new ArrayList&lt;&gt;()); res.get(depth).add(val);</code>. Visiting left before right keeps each row left-to-right. Handy when the interviewer says "now do it recursively".</p>
-<p><b>Other ways to mark level boundaries:</b> push a <code>null</code> marker after each level (works with <code>LinkedList</code>, not <code>ArrayDeque</code>), or keep two lists <code>current</code> and <code>next</code> and swap. The size snapshot is the cleanest.</p>
-<p><b>Completeness check:</b> run BFS and enqueue children even when they are null (use <code>LinkedList</code>). A tree is <b>complete</b> exactly when, after the first null you dequeue, every remaining entry is also null.</p>
+<p><b>Other ways to mark level boundaries:</b> push a <code>null</code> marker after each level (in Java that needs <code>LinkedList</code>, because <code>ArrayDeque</code> refuses null), or keep two lists <code>current</code> and <code>next</code> and swap. The size snapshot is the cleanest.</p>
+<p><b>Completeness check:</b> run BFS and enqueue children even when they are null (in Java use <code>LinkedList</code>; Python's <code>deque</code>, JavaScript arrays and <code>std::queue</code> accept nulls). A tree is <b>complete</b> exactly when, after the first null you dequeue, every remaining entry is also null.</p>
 <p><b>Width with positions:</b> give the root position 0 and children <code>2p + 1</code> / <code>2p + 2</code>. The width of a level is <code>last − first + 1</code>. On deep skewed trees positions explode past 2<sup>63</sup>, so re-base each level (subtract the first position of the level) — a classic follow-up.</p>
 <p><b>Why "breadth-first" matters later:</b> on an unweighted graph BFS finds shortest paths because it reaches everything at distance d before anything at distance d + 1. Trees are the gentle introduction; Graphs I reuses the exact same loop plus a visited set.</p>`,
     aiEra: `<p><b>What AI changes:</b> the BFS skeleton is the most autocompleted loop in interview prep. Expect any assistant to write it perfectly; the variations (zigzag, right view, averages, min depth) are one-line changes it also handles.</p>
@@ -1190,6 +2101,23 @@ ${H.table(['visit (left-first)', 'depth', 'ans.size()', 'new depth?', 'ans'], [
         `<p>BFS: queue + <code>size</code> snapshot; record the node when <code>i == 0</code> (left) or <code>i == size - 1</code> (right). DFS alternative: pass <code>depth</code>; if <code>depth == ans.size()</code> add the node; recurse left-first for left view, right-first for right view.</p>`,
         `<p><b>Traps:</b> empty tree → empty list; do not "walk only the right edge" (the hidden-deeper-node case). <b>Recipe (right view, BFS):</b> q=[root]; while q: size; for i in 0..size-1: n=poll; if i==size-1 add n.val; offer kids.</p>`
       ],
+      tests: { sig: 'TreeNode -> list<list<int>>', fn: 'judge', harness: {
+        java: "class Check {\n    static List<List<Integer>> judge(TreeNode root) {\n        Solution s = new Solution();\n        return List.of(s.rightSideView(root), s.leftSideView(root));\n    }\n}",
+        python: "def judge(root):\n    s = Solution()\n    return [s.right_side_view(root), s.left_side_view(root)]",
+        js: "function judge(root) {\n  const s = new Solution();\n  return [s.rightSideView(root), s.leftSideView(root)];\n}",
+        cpp: "vector<vector<int>> judge(TreeNode* root) {\n    Solution s;\n            return {s.rightSideView(root), s.leftSideView(root)};\n}"
+      }, cases: [
+        [[[1,2,3,null,5,null,4]],[[1,3,4],[1,2,5]]],
+        [[[]],[[],[]]],
+        [[[7]],[[7],[7]]],
+        [[[1,2]],[[1,2],[1,2]]],
+        [[[1,null,3]],[[1,3],[1,3]]],
+        [[[1,2,3,4]],[[1,3,4],[1,2,4]]],
+        [[[1,2,3,null,5,6,null,8]],[[1,3,6,8],[1,2,5,8]]],
+        [[[-57,-86,11,-100,25,-50,53,null,-41,null,null,null,null,-98,null,99,null,null,null,null,23,null,-31]],[[-57,11,53,-98,99,23,-31],[-57,-86,-100,-41,99,23,-31]]],
+        [[[84,null,22,-31,11,null,null,null,19,-79,null,-63,-20,null,null,-84,null,-66,null,58,62]],[[84,22,11,19,-79,-20,-84,-66,62],[84,22,-31,19,-79,-63,-84,-66,58]]],
+        [[[0,1,null,2,null,3,null,4,null,5,null,6,null,7,null,8,null,9,null,10,null,11,null,12,null,13,null,14,null,15,null,16,null,17,null,18,null,19,null,20,null,21,null,22,null,23,null,24,null,25,null,26,null,27,null,28,null,29,null,30,null,31,null,32,null,33,null,34,null,35,null,36,null,37,null,38,null,39,null,40,null,41,null,42,null,43,null,44,null,45,null,46,null,47,null,48,null,49,null,50,null,51,null,52,null,53,null,54,null,55,null,56,null,57,null,58,null,59,null,60,null,61,null,62,null,63,null,64,null,65,null,66,null,67,null,68,null,69,null,70,null,71,null,72,null,73,null,74,null,75,null,76,null,77,null,78,null,79,null,80,null,81,null,82,null,83,null,84,null,85,null,86,null,87,null,88,null,89,null,90,null,91,null,92,null,93,null,94,null,95,null,96,null,97,null,98,null,99,null,0,null,1,null,2,null,3,null,4,null,5,null,6,null,7,null,8,null,9,null,10,null,11,null,12,null,13,null,14,null,15,null,16,null,17,null,18,null,19,null,20,null,21,null,22,null,23,null,24,null,25,null,26,null,27,null,28,null,29,null,30,null,31,null,32,null,33,null,34,null,35,null,36,null,37,null,38,null,39,null,40,null,41,null,42,null,43,null,44,null,45,null,46,null,47,null,48,null,49,null,50,null,51,null,52,null,53,null,54,null,55,null,56,null,57,null,58,null,59,null,60,null,61,null,62,null,63,null,64,null,65,null,66,null,67,null,68,null,69,null,70,null,71,null,72,null,73,null,74,null,75,null,76,null,77,null,78,null,79,null,80,null,81,null,82,null,83,null,84,null,85,null,86,null,87,null,88,null,89,null,90,null,91,null,92,null,93,null,94,null,95,null,96,null,97,null,98,null,99]],[[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99],[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99]]]
+      ] },
       solution: {
         approach: `<p>BFS for the right view; DFS with depth for the left view (both shown).</p>`,
         code: `
@@ -1225,6 +2153,95 @@ ${H.table(['visit (left-first)', 'depth', 'ans.size()', 'new depth?', 'ans'], [
                   dfs(n.right, depth + 1, ans);            // (swap these two for right view)
               }
           }`,
+        alt: [{ lang: 'python', code: `class Solution:
+    # RIGHT VIEW with BFS: last node of each level
+    def right_side_view(self, root):
+        ans, level = [], [root] if root else []
+        while level:
+            ans.append(level[-1].val)
+            level = [c for n in level for c in (n.left, n.right) if c]
+        return ans
+
+    # LEFT VIEW with DFS: first node reached at each new depth
+    def left_side_view(self, root):
+        ans, stack = [], [(root, 0)] if root else []
+        while stack:                         # iterative preorder, left before right
+            n, depth = stack.pop()
+            if depth == len(ans):
+                ans.append(n.val)            # first time at this depth
+            if n.right:
+                stack.append((n.right, depth + 1))
+            if n.left:
+                stack.append((n.left, depth + 1))   # pushed last -> popped first
+        return ans
+` }, { lang: 'js', code: `class Solution {
+  // RIGHT VIEW with BFS: last node of each level
+  rightSideView(root) {
+    const ans = [];
+    let level = root ? [root] : [];
+    while (level.length) {
+      ans.push(level[level.length - 1].val);
+      level = level.flatMap((n) => [n.left, n.right].filter(Boolean));
+    }
+    return ans;
+  }
+
+  // LEFT VIEW with DFS: first node reached at each new depth
+  leftSideView(root) {
+    const ans = [];
+    const dfs = (n, depth) => {
+      if (!n) return;
+      if (depth === ans.length) ans.push(n.val);   // first time at this depth
+      dfs(n.left, depth + 1);                      // left first -> leftmost wins
+      dfs(n.right, depth + 1);
+    };
+    dfs(root, 0);
+    return ans;
+  }
+}
+` }, { lang: 'cpp', code: `// LeetCode-style node (the judge normally provides it)
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int x = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(x), left(l), right(r) {}
+};
+
+class Solution {
+public:
+    // RIGHT VIEW with BFS: last node of each level
+    vector<int> rightSideView(TreeNode* root) {
+        vector<int> ans;
+        if (!root) return ans;
+        queue<TreeNode*> q;
+        q.push(root);
+        while (!q.empty()) {
+            int size = q.size();
+            for (int i = 0; i < size; i++) {
+                TreeNode* n = q.front(); q.pop();
+                if (i == size - 1) ans.push_back(n->val);   // last on this level
+                if (n->left) q.push(n->left);
+                if (n->right) q.push(n->right);
+            }
+        }
+        return ans;
+    }
+
+    // LEFT VIEW with DFS: first node reached at each new depth
+    vector<int> leftSideView(TreeNode* root) {
+        vector<int> ans;
+        dfs(root, 0, ans);
+        return ans;
+    }
+
+private:
+    void dfs(TreeNode* n, int depth, vector<int>& ans) {
+        if (!n) return;
+        if (depth == (int)ans.size()) ans.push_back(n->val);   // first time at this depth
+        dfs(n->left, depth + 1, ans);                          // left first -> leftmost wins
+        dfs(n->right, depth + 1, ans);
+    }
+};
+` }],
         dry: {
           head: ['level', 'size', 'nodes in order', 'i == 0 (left)', 'i == size−1 (right)'],
           rows: [
@@ -1257,7 +2274,7 @@ ${H.table(['visit (left-first)', 'depth', 'ans.size()', 'new depth?', 'ans'], [
       {
         title: 'DFS right view with the depth == size check',
         html: `<p>Visit right child first. The first node to arrive at each new depth is the rightmost on that level. For the tree above: visit 1 (depth 0, new) → 3 (depth 1, new) → back to 2 (depth 1, not new) → 4 (depth 2, new). Answer ${H.c('p', '[1, 3, 4]')}.</p>`,
-        code: `
+        code: { lang: 'java', code: `
 class RightView {
     List<Integer> rightSideView(TreeNode root) {
         List<Integer> ans = new ArrayList<>();
@@ -1270,7 +2287,54 @@ class RightView {
         dfs(n.right, depth + 1, ans);              // right first -> rightmost arrives first
         dfs(n.left, depth + 1, ans);
     }
-}`
+}`, alt: [{ lang: 'python', code: `def right_side_view(root):
+    ans = []
+
+    def dfs(n, depth):
+        if n is None:
+            return
+        if depth == len(ans):
+            ans.append(n.val)                # first visitor of this depth
+        dfs(n.right, depth + 1)              # right first -> rightmost arrives first
+        dfs(n.left, depth + 1)
+
+    dfs(root, 0)
+    return ans
+` }, { lang: 'js', code: `function rightSideView(root) {
+  const ans = [];
+  const dfs = (n, depth) => {
+    if (!n) return;
+    if (depth === ans.length) ans.push(n.val);   // first visitor of this depth
+    dfs(n.right, depth + 1);                     // right first -> rightmost arrives first
+    dfs(n.left, depth + 1);
+  };
+  dfs(root, 0);
+  return ans;
+}
+` }, { lang: 'cpp', code: `// TreeNode as defined in the first lesson
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int v = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(v), left(l), right(r) {}
+};
+
+class RightView {
+public:
+    vector<int> rightSideView(TreeNode* root) {
+        vector<int> ans;
+        dfs(root, 0, ans);
+        return ans;
+    }
+
+private:
+    void dfs(TreeNode* n, int depth, vector<int>& ans) {
+        if (!n) return;
+        if (depth == (int)ans.size()) ans.push_back(n->val);   // first visitor of this depth
+        dfs(n->right, depth + 1, ans);                         // right first -> rightmost arrives first
+        dfs(n->left, depth + 1, ans);
+    }
+};
+` }] }
       }
     ],
     deepDive: `<p><b>Why does <code>depth == ans.size()</code> work?</b> <code>ans</code> holds exactly one value for each depth 0 … ans.size() − 1 already seen. DFS goes deeper one level at a time, so the first time it reaches a new depth d, ans.size() is exactly d. Any later node at depth d sees ans.size() &gt; d and is ignored. Because we visit the preferred side first, the first arrival is the leftmost (or rightmost) node at that depth — a short induction on the visiting order.</p>
@@ -1296,7 +2360,7 @@ class RightView {
             (0)   (0)
 </pre>
 <p>Column 0 holds <b>1, 5 and 6</b>. From the top you see ${H.c('g', '1')}; from the bottom you see the last one at the lowest level, ${H.c('p', '6')} (5 and 6 are on the same level; by convention the one that comes later in level order wins).</p>
-<p><b>Recipe:</b> BFS with a queue of <code>(node, hd)</code> pairs plus a <code>TreeMap&lt;hd, value&gt;</code> (TreeMap keeps columns sorted left to right).</p>
+<p><b>Recipe:</b> BFS with a queue of <code>(node, hd)</code> pairs plus a map from hd to value whose columns come out sorted left to right (<code>TreeMap</code> in Java, <code>std::map</code> in C++; in Python or JavaScript use a <code>dict</code> / <code>Map</code> and sort its keys at the end).</p>
 <ul>
 <li><b>Top view:</b> put <code>hd → value</code> <b>only if hd is not in the map yet</b> (first arrival = highest, because BFS reaches upper levels first).</li>
 <li><b>Bottom view:</b> <b>always overwrite</b> <code>hd → value</code> (last arrival = lowest).</li>
@@ -1315,8 +2379,8 @@ ${H.table(['BFS order', 'hd', 'top map', 'bottom map'], [
     clues: [
       '"<b>top view</b>" / "visible from above" → first node per hd in BFS order.',
       '"<b>bottom view</b>" / "visible from below" → last node per hd in BFS order (overwrite).',
-      '"<b>vertical</b> order / columns / horizontal distance" → (node, hd) pairs + <code>TreeMap</code> sorted by hd.',
-      'Output "from leftmost column to rightmost" → sorted keys → <code>TreeMap</code>, or track <code>minHd</code> and shift into an array.',
+      '"<b>vertical</b> order / columns / horizontal distance" → (node, hd) pairs + a map sorted by hd (<code>TreeMap</code> / <code>std::map</code>, or sort the keys at the end).',
+      'Output "from leftmost column to rightmost" → sorted keys → an ordered map, or track <code>minHd</code> and shift into an array.',
       'Ties at the same level and column → the problem states the rule (usually: later in level order wins for bottom view).'
     ],
     viz: {
@@ -1416,11 +2480,27 @@ ${H.table(['BFS order', 'hd', 'top map', 'bottom map'], [
       },
       hints: [
         `<p><b>Aha:</b> give every node a column number: root 0, left = hd − 1, right = hd + 1. Top view = topmost node per column, bottom view = bottommost node per column.</p>`,
-        `<p>BFS with two parallel queues (<code>Queue&lt;TreeNode&gt;</code> and <code>Queue&lt;Integer&gt;</code> for hd) and a <code>TreeMap&lt;Integer,Integer&gt;</code>. Top: <code>putIfAbsent(hd, val)</code>. Bottom: <code>put(hd, val)</code>. Finally read <code>map.values()</code> — already sorted by hd.</p>`,
+        `<p>BFS over (node, hd) pairs and a map hd → value (<code>TreeMap</code> / <code>std::map</code> keep it sorted; in Python or JavaScript sort the keys at the end). Top: write only if hd is new (<code>putIfAbsent</code> / <code>setdefault</code> / <code>try_emplace</code>). Bottom: always overwrite. Finally read the values in column order.</p>`,
         `<p><b>Traps:</b> plain DFS gives wrong answers for the top view (a deep node can arrive first) unless you also compare depths. hd can be negative — that is why we use a map, not an array index. <b>Recipe:</b> enqueue (root, 0); while queue: poll (n, hd); update map; enqueue (left, hd−1), (right, hd+1); return map values.</p>`
       ],
+      tests: { sig: 'TreeNode -> list<list<int>>', fn: 'judge', harness: {
+        java: "class Check {\n    static List<List<Integer>> judge(TreeNode root) {\n        Solution s = new Solution();\n        return List.of(s.topView(root), s.bottomView(root));\n    }\n}",
+        python: "def judge(root):\n    s = Solution()\n    return [s.top_view(root), s.bottom_view(root)]",
+        js: "function judge(root) {\n  const s = new Solution();\n  return [s.topView(root), s.bottomView(root)];\n}",
+        cpp: "vector<vector<int>> judge(TreeNode* root) {\n    Solution s;\n            return {s.topView(root), s.bottomView(root)};\n}"
+      }, cases: [
+        [[[20,8,22,5,3,null,25,null,null,10,14]],[[5,8,20,22,25],[5,10,3,14,25]]],
+        [[[1]],[[1],[1]]],
+        [[[1,2,3]],[[2,1,3],[2,1,3]]],
+        [[[1,2,3,null,4,5]],[[2,1,3],[2,5,3]]],
+        [[[1,2,null,3,null,4]],[[4,3,2,1],[4,3,2,1]]],
+        [[[1,2,3,4,5,6,7]],[[4,2,1,3,7],[4,2,6,3,7]]],
+        [[[1,2,3,null,4,null,null,null,5,null,6]],[[2,1,3,6],[2,4,5,6]]],
+        [[[39,50,32,43,26,36,49,null,91,null,null,5,null,38,null,47,null,18,null,null,null,null,null,null,28]],[[43,50,39,32,49],[18,28,36,38,49]]],
+        [[[1,null,25,null,95,52,75,81,88,null,77,24,null,null,null,null,76,85,null,null,98,32]],[[32,85,24,1,25,95,75,77,76,98],[32,85,24,81,52,88,75,77,76,98]]]
+      ] },
       solution: {
-        approach: `<p>BFS with (node, hd) and a TreeMap: putIfAbsent for top, put for bottom.</p>`,
+        approach: `<p>BFS with (node, hd) and an ordered column map: keep the first value for the top view, overwrite for the bottom view.</p>`,
         code: `
           class Solution {
               public List<Integer> topView(TreeNode root) { return view(root, true); }
@@ -1445,8 +2525,79 @@ ${H.table(['BFS order', 'hd', 'top map', 'bottom map'], [
                   return res;
               }
           }`,
+        alt: [{ lang: 'python', code: `from collections import deque
+
+class Solution:
+    def top_view(self, root):
+        return self._view(root, top=True)
+
+    def bottom_view(self, root):
+        return self._view(root, top=False)
+
+    def _view(self, root, top):
+        if root is None:
+            return []
+        col = {}                             # hd -> visible value
+        q = deque([(root, 0)])
+        while q:                             # BFS: higher rows come first
+            n, hd = q.popleft()
+            if not top or hd not in col:
+                col[hd] = n.val              # top keeps the first, bottom the last
+            if n.left:
+                q.append((n.left, hd - 1))
+            if n.right:
+                q.append((n.right, hd + 1))
+        return [col[hd] for hd in sorted(col)]
+` }, { lang: 'js', code: `class Solution {
+  topView(root) { return this.view(root, true); }
+  bottomView(root) { return this.view(root, false); }
+
+  view(root, top) {
+    if (!root) return [];
+    const col = new Map();                  // hd -> visible value
+    const q = [[root, 0]];
+    for (let i = 0; i < q.length; i++) {    // BFS with a read index instead of shift()
+      const [n, hd] = q[i];
+      if (!top || !col.has(hd)) col.set(hd, n.val);   // top keeps the first, bottom the last
+      if (n.left) q.push([n.left, hd - 1]);
+      if (n.right) q.push([n.right, hd + 1]);
+    }
+    return [...col.keys()].sort((a, b) => a - b).map((hd) => col.get(hd));
+  }
+}
+` }, { lang: 'cpp', code: `// LeetCode-style node (the judge normally provides it)
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int x = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(x), left(l), right(r) {}
+};
+
+class Solution {
+public:
+    vector<int> topView(TreeNode* root) { return view(root, true); }
+    vector<int> bottomView(TreeNode* root) { return view(root, false); }
+
+private:
+    vector<int> view(TreeNode* root, bool top) {
+        vector<int> res;
+        if (!root) return res;
+        map<int, int> col;                          // hd -> visible value, sorted by hd
+        queue<pair<TreeNode*, int>> q;
+        q.push({root, 0});
+        while (!q.empty()) {
+            auto [n, hd] = q.front(); q.pop();
+            if (top) col.try_emplace(hd, n->val);   // first (highest) one stays
+            else col[hd] = n->val;                  // last (lowest) one wins
+            if (n->left) q.push({n->left, hd - 1});
+            if (n->right) q.push({n->right, hd + 1});
+        }
+        for (auto& [hd, v] : col) res.push_back(v);  // leftmost column first
+        return res;
+    }
+};
+` }],
         dry: {
-          head: ['BFS node', 'hd', 'top map (putIfAbsent)', 'bottom map (put)'],
+          head: ['BFS node', 'hd', 'top map (first one stays)', 'bottom map (put)'],
           rows: [
             ['20', '0', H.c('g', '0→20'), '0→20'],
             ['8', '−1', H.c('g', '−1→8'), '−1→8'],
@@ -1459,7 +2610,7 @@ ${H.table(['BFS order', 'hd', 'top map', 'bottom map'], [
             ['result', '', H.c('p', '[5, 8, 20, 22, 25]'), H.c('p', '[5, 10, 3, 14, 25]')]
           ]
         },
-        complexity: `<p><b>Time O(N log N)</b>: each of the N nodes does one TreeMap operation costing O(log C) where C = number of columns (≤ N). Using a HashMap plus tracking min/max hd brings it to O(N). <b>Space O(N)</b> for the queues and the map.</p>`
+        complexity: `<p><b>Time O(N log N)</b>: each of the N nodes does one ordered-map operation costing O(log C) where C = number of columns (≤ N). Using a hash map plus tracking min/max hd brings it to O(N). <b>Space O(N)</b> for the queues and the map.</p>`
       }
     }],
     after: `<p><b>Related:</b> <i>Vertical Order Traversal</i> uses the same (node, hd) idea but keeps <b>all</b> nodes of each column (sorted by level, then value) instead of just the top or bottom one.</p>`,
@@ -1487,12 +2638,12 @@ ${H.table(['hd', 'nodes (top → bottom)', 'top view', 'bottom view'], [
             \\
              5 (+1)
 </pre>
-<p>Preorder DFS visits 1, 2, 4, ${H.c('r', '5')}, 3. Node 5 (depth 3) reaches column +1 <b>before</b> node 3 (depth 1). With <code>putIfAbsent</code> the DFS answer is [2, 1, ${H.c('r', '5')}] — wrong. BFS visits by level (1, 2, 3, 4, 5) so column +1 gets ${H.c('g', '3')} first: correct top view ${H.c('g', '[2, 1, 3]')}. Try it in the visualizer with <code>1 2 3 null 4 null null null null null 5 | top</code>.</p>`
+<p>Preorder DFS visits 1, 2, 4, ${H.c('r', '5')}, 3. Node 5 (depth 3) reaches column +1 <b>before</b> node 3 (depth 1). With "first one stays" the DFS answer is [2, 1, ${H.c('r', '5')}] — wrong. BFS visits by level (1, 2, 3, 4, 5) so column +1 gets ${H.c('g', '3')} first: correct top view ${H.c('g', '[2, 1, 3]')}. Try it in the visualizer with <code>1 2 3 null 4 null null null null null 5 | top</code>.</p>`
       },
       {
         title: 'Vertical order traversal — keep the whole column',
         html: `<p>Instead of one node per column, keep a list per column (BFS order gives top-to-bottom). For the perfect tree 1..7: ${H.c('g', '[[4], [2], [1, 5, 6], [3], [7]]')}. LeetCode 987 adds a tie rule (same row and column → sort by value), which needs (row, col, value) triples and a sort.</p>`,
-        code: `
+        code: { lang: 'java', code: `
 List<List<Integer>> verticalOrder(TreeNode root) {
     List<List<Integer>> res = new ArrayList<>();
     if (root == null) return res;
@@ -1512,7 +2663,66 @@ List<List<Integer>> verticalOrder(TreeNode root) {
     }
     for (int hd = minHd; hd <= maxHd; hd++) res.add(cols.get(hd));   // every hd in range exists
     return res;
-}`
+}`, alt: [{ lang: 'python', code: `from collections import defaultdict, deque
+
+def vertical_order(root):
+    if root is None:
+        return []
+    cols = defaultdict(list)                 # hd -> values, top to bottom
+    q = deque([(root, 0)])
+    while q:
+        n, hd = q.popleft()
+        cols[hd].append(n.val)
+        if n.left:
+            q.append((n.left, hd - 1))
+        if n.right:
+            q.append((n.right, hd + 1))
+    # every hd between min and max exists, so a range walk is enough (no sorting)
+    return [cols[hd] for hd in range(min(cols), max(cols) + 1)]
+` }, { lang: 'js', code: `function verticalOrder(root) {
+  if (!root) return [];
+  const cols = new Map();                    // hd -> values, top to bottom
+  const q = [[root, 0]];
+  let minHd = 0, maxHd = 0;                  // track the range -> no sorting needed
+  for (let i = 0; i < q.length; i++) {       // read index instead of shift()
+    const [n, hd] = q[i];
+    if (!cols.has(hd)) cols.set(hd, []);
+    cols.get(hd).push(n.val);
+    minHd = Math.min(minHd, hd);
+    maxHd = Math.max(maxHd, hd);
+    if (n.left) q.push([n.left, hd - 1]);
+    if (n.right) q.push([n.right, hd + 1]);
+  }
+  const res = [];
+  for (let hd = minHd; hd <= maxHd; hd++) res.push(cols.get(hd));   // every hd in range exists
+  return res;
+}
+` }, { lang: 'cpp', code: `// TreeNode as defined in the first lesson
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int v = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(v), left(l), right(r) {}
+};
+
+vector<vector<int>> verticalOrder(TreeNode* root) {
+    vector<vector<int>> res;
+    if (!root) return res;
+    unordered_map<int, vector<int>> cols;    // hd -> values, top to bottom
+    queue<pair<TreeNode*, int>> q;
+    q.push({root, 0});
+    int minHd = 0, maxHd = 0;                // track the range -> no ordered map needed
+    while (!q.empty()) {
+        auto [n, hd] = q.front(); q.pop();
+        cols[hd].push_back(n->val);
+        minHd = min(minHd, hd);
+        maxHd = max(maxHd, hd);
+        if (n->left) q.push({n->left, hd - 1});
+        if (n->right) q.push({n->right, hd + 1});
+    }
+    for (int hd = minHd; hd <= maxHd; hd++) res.push_back(move(cols[hd]));   // every hd in range exists
+    return res;
+}
+` }] }
       }
     ],
     deepDive: `<p><b>Every column between min and max is non-empty.</b> Moving from a parent to a child changes hd by exactly 1, so the set of columns used is a contiguous range [minHd, maxHd]. That is why the code above can loop from minHd to maxHd without null checks, and why you can replace the map by an array of size 2N + 1 with offset N (hd + N is always in [0, 2N]). Result: O(N) instead of O(N log N).</p>
@@ -1520,7 +2730,7 @@ List<List<Integer>> verticalOrder(TreeNode root) {
 <p><b>DFS can work</b> if you store <code>(depth, value)</code> per column and replace only when the new depth is smaller (top) or larger-or-equal (bottom). But "equal depth" ties then depend on DFS order, which may differ from the level-order rule the problem states. BFS gives the expected tie behaviour for free.</p>
 <p><b>Ties in the bottom view:</b> GeeksforGeeks' version says "if two nodes share column and level, take the later one in level order" — BFS + <code>put</code> does that. LeetCode 987 (vertical order) instead sorts ties by value. Always ask which rule applies.</p>
 <p><b>Real world:</b> this is a projection — the same idea as computing a skyline or which buildings are visible from the air, and as z-buffering in graphics (keep the nearest object per pixel).</p>`,
-    aiEra: `<p><b>What AI changes:</b> top/bottom views are classic GfG problems, so assistants produce working BFS + TreeMap code immediately. Your edge is knowing the subtle DFS failure and the O(N) array optimisation.</p>
+    aiEra: `<p><b>What AI changes:</b> top/bottom views are classic GfG problems, so assistants produce working BFS + ordered-map code immediately. Your edge is knowing the subtle DFS failure and the O(N) array optimisation.</p>
 <p><b>Use AI as a partner:</b> <code>Write a brute-force top view that sorts (hd, depth, value) triples, then generate 200 random trees and compare it with my BFS version.</code> Differential testing against a slow-but-obvious version is the best way to trust generated code.</p>
 <p><b>Where AI goes wrong:</b> recursive DFS solutions for the top view that pass simple tests but fail the "deep node reaches a column first" case, inconsistent tie rules in the bottom view, and array offsets that are too small (using N/2 instead of N).</p>
 <p><b>What you must still own:</b> explaining <b>why</b> BFS order guarantees "first = highest", and asking the tie-breaking question before coding.</p>`
@@ -1627,32 +2837,148 @@ ${H.table(['node (postorder)', 'left h', 'right h', 'height = 1+max', 'path thro
         `<p>Write one recursive <code>int height(TreeNode n)</code> that returns <code>1 + max(lh, rh)</code> and, before returning, updates a field <code>best = max(best, lh + rh)</code>. No extra data structure needed.</p>`,
         `<p><b>Traps:</b> diameter counts <b>edges</b> (not nodes); reset <code>best = 0</code> before each call; a single node has diameter 0. <b>Recipe:</b> height(null)=0; lh=height(left); rh=height(right); best=max(best,lh+rh); return 1+max(lh,rh). Max depth = height(root); diameter = best.</p>`
       ],
+      tests: { sig: 'TreeNode int -> int[]', fn: 'judge', harness: {
+        java: "class Check {\n    // n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\n    // Built here because a tree this deep is too big to write out as a test literal.\n    static TreeNode chain(int n, java.util.function.IntUnaryOperator val) {\n        TreeNode root = null;\n        for (int i = Math.abs(n) - 1; i >= 0; i--) {\n            TreeNode t = new TreeNode(val.applyAsInt(i));\n            if (n > 0) t.right = root; else t.left = root;\n            root = t;\n        }\n        return root;\n    }\n\n    static int[] judge(TreeNode root, int n) {\n        if (n != 0) root = chain(n, i -> 1);\n        Solution s = new Solution();\n        return new int[]{s.maxDepth(root), s.diameterOfBinaryTree(root)};\n    }\n}",
+        python: "# n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\ndef _chain(n, val):\n    root = None\n    for i in range(abs(n) - 1, -1, -1):\n        t = TreeNode(val(i))\n        if n > 0:\n            t.right = root\n        else:\n            t.left = root\n        root = t\n    return root\n\ndef judge(root, n):\n    if n:\n        root = _chain(n, lambda i: 1)\n    s = Solution()\n    return [s.max_depth(root), s.diameter_of_binary_tree(root)]",
+        js: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nfunction chain__(n, val) {\n  let root = null;\n  for (let i = Math.abs(n) - 1; i >= 0; i--) {\n    const t = new TreeNode(val(i));\n    if (n > 0) t.right = root; else t.left = root;\n    root = t;\n  }\n  return root;\n}\n\nfunction judge(root, n) {\n  if (n) root = chain__(n, (i) => 1);\n  const s = new Solution();\n  return [s.maxDepth(root), s.diameterOfBinaryTree(root)];\n}",
+        cpp: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nTreeNode* chain__(int n, function<int(int)> val) {\n    TreeNode* root = nullptr;\n    for (int i = abs(n) - 1; i >= 0; i--) {\n        TreeNode* t = new TreeNode(val(i));\n        if (n > 0) t->right = root; else t->left = root;\n        root = t;\n    }\n    return root;\n}\n\nvector<int> judge(TreeNode* root, int n) {\n    if (n) root = chain__(n, [](int i) { return 1; });\n    Solution s;\n            return {s.maxDepth(root), s.diameterOfBinaryTree(root)};\n}"
+      }, cases: [
+        [[[1,2,3,4,5],0],[3,3]],
+        [[[1],0],[1,0]],
+        [[[1,2],0],[2,1]],
+        [[[1,null,2,null,3],0],[3,2]],
+        [[[1,2,null,3,4,5,null,null,6,7,null,null,8],0],[5,6]],
+        [[[3,9,20,null,null,15,7],0],[3,3]],
+        [[[12,-12,95,86,null,-100,null,null,-17,-9,null,null,-67,null,null,null,-11,47,null,-59,47,null,null,null,27,null,-13,null,-89],0],[11,13]],
+        [[[26,-35,41,null,null,-7,-99,-20,null,10,null,null,null,-41,38,-2,null,-85,null,69,-61,null,null,-36,-14],0],[8,8]],
+        [[[1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1],0],[400,399]],
+        [[[],10000],[10000,9999]],
+        [[[],-10000],[10000,9999]]
+      ] },
       solution: {
-        approach: `<p>One postorder pass returns heights upward and records the best "left height + right height" on the way.</p>`,
+        approach: `<p>One postorder pass returns heights upward and records the best "left height + right height" on the way. The code runs that postorder with a loop instead of recursion: it lists the nodes parents-first with a stack, then walks the list backwards, so every child is finished before its parent. A skewed tree of 10<sup>4</sup> nodes would otherwise need 10<sup>4</sup> nested calls, which can overflow the call stack.</p>`,
         code: `
           class Solution {
-              private int best;   // longest path (in edges) found so far
-
               public int maxDepth(TreeNode root) {
                   if (root == null) return 0;
-                  return 1 + Math.max(maxDepth(root.left), maxDepth(root.right));
+                  Queue<TreeNode> q = new ArrayDeque<>();
+                  q.offer(root);
+                  int depth = 0;
+                  while (!q.isEmpty()) {                       // one loop turn per level
+                      depth++;
+                      for (int i = q.size(); i > 0; i--) {
+                          TreeNode n = q.poll();
+                          if (n.left != null) q.offer(n.left);
+                          if (n.right != null) q.offer(n.right);
+                      }
+                  }
+                  return depth;
               }
 
               public int diameterOfBinaryTree(TreeNode root) {
-                  best = 0;
-                  height(root);
+                  List<TreeNode> order = new ArrayList<>();    // parents before children
+                  Deque<TreeNode> st = new ArrayDeque<>();
+                  st.push(root);
+                  while (!st.isEmpty()) {
+                      TreeNode n = st.pop();
+                      order.add(n);
+                      if (n.left != null) st.push(n.left);
+                      if (n.right != null) st.push(n.right);
+                  }
+                  Map<TreeNode, Integer> height = new HashMap<>();   // height in nodes
+                  int best = 0;                                // longest path (in edges) found so far
+                  for (int i = order.size() - 1; i >= 0; i--) {      // backwards: children first (postorder)
+                      TreeNode n = order.get(i);
+                      int lh = height.getOrDefault(n.left, 0);
+                      int rh = height.getOrDefault(n.right, 0);
+                      best = Math.max(best, lh + rh);          // longest path that bends at n
+                      height.put(n, 1 + Math.max(lh, rh));     // what my parent needs
+                  }
                   return best;
               }
-
-              // Returns the height in nodes; updates 'best' as a side effect.
-              private int height(TreeNode n) {
-                  if (n == null) return 0;
-                  int lh = height(n.left);         // children answer first (postorder)
-                  int rh = height(n.right);
-                  best = Math.max(best, lh + rh);  // longest path that bends at n
-                  return 1 + Math.max(lh, rh);     // what my parent needs
-              }
           }`,
+        alt: [{ lang: 'python', code: `class Solution:
+    def max_depth(self, root):
+        depth, level = 0, [root] if root else []
+        while level:                         # count levels with BFS (no recursion limit)
+            depth += 1
+            level = [c for n in level for c in (n.left, n.right) if c]
+        return depth
+
+    def diameter_of_binary_tree(self, root):
+        # postorder without recursion: reversed (me, right, left) order = children before parents
+        order, stack = [], [root] if root else []
+        while stack:
+            n = stack.pop()
+            order.append(n)
+            stack.extend(c for c in (n.left, n.right) if c)
+        height, best = {None: 0}, 0          # height in nodes; None = empty spot
+        for n in reversed(order):
+            lh, rh = height[n.left], height[n.right]
+            best = max(best, lh + rh)        # longest path that bends at n
+            height[n] = 1 + max(lh, rh)
+        return best
+` }, { lang: 'js', code: `class Solution {
+  // BFS level count: no recursion, so a 10^4-deep tree is fine
+  maxDepth(root) {
+    let depth = 0, level = root ? [root] : [];
+    while (level.length) {
+      depth++;
+      level = level.flatMap((n) => [n.left, n.right].filter(Boolean));
+    }
+    return depth;
+  }
+
+  diameterOfBinaryTree(root) {
+    // postorder without recursion: reversed (me, right, left) order = children before parents
+    const order = [], stack = root ? [root] : [];
+    while (stack.length) {
+      const n = stack.pop();
+      order.push(n);
+      if (n.left) stack.push(n.left);
+      if (n.right) stack.push(n.right);
+    }
+    const height = new Map();                   // node -> height in nodes
+    const h = (n) => (n ? height.get(n) : 0);
+    let best = 0;
+    for (let i = order.length - 1; i >= 0; i--) {
+      const n = order[i], lh = h(n.left), rh = h(n.right);
+      best = Math.max(best, lh + rh);           // longest path that bends at n
+      height.set(n, 1 + Math.max(lh, rh));
+    }
+    return best;
+  }
+}
+` }, { lang: 'cpp', code: `// LeetCode-style node (the judge normally provides it)
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int x = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(x), left(l), right(r) {}
+};
+
+class Solution {
+public:
+    int maxDepth(TreeNode* root) {
+        if (!root) return 0;
+        return 1 + max(maxDepth(root->left), maxDepth(root->right));
+    }
+
+    int diameterOfBinaryTree(TreeNode* root) {
+        int best = 0;
+        height(root, best);
+        return best;
+    }
+
+private:
+    // Returns the height in nodes; updates best (passed by reference).
+    int height(TreeNode* n, int& best) {
+        if (!n) return 0;
+        int lh = height(n->left, best), rh = height(n->right, best);
+        best = max(best, lh + rh);           // longest path that bends at n
+        return 1 + max(lh, rh);
+    }
+};
+` }],
         dry: {
           head: ['node (postorder)', 'lh', 'rh', 'lh + rh', 'best', 'returns'],
           rows: [
@@ -1663,7 +2989,7 @@ ${H.table(['node (postorder)', 'left h', 'right h', 'height = 1+max', 'path thro
             ['1', '2', '1', '3', H.c('p', '3'), H.c('g', '3 = max depth')]
           ]
         },
-        complexity: `<p><b>Time O(N)</b>: each node is visited exactly once and does O(1) work. <b>Space O(h)</b> for the recursion stack (log N if balanced, N if skewed).</p>`
+        complexity: `<p><b>Time O(N)</b>: each node is visited exactly once and does O(1) work. <b>Space O(N)</b> for the node list and the height map. The recursive form needs O(h) call stack instead: log N if balanced, but N on a skewed tree, which is what overflows.</p>`
       }
     }],
     examples: [
@@ -1692,7 +3018,7 @@ ${H.table(['Convention', 'empty', 'leaf', 'this tree', 'used by'], [
       {
         title: 'Same skeleton, new question: maximum path sum',
         html: `<p>Replace "height" by "best downward sum" and "lh + rh" by "node + left gain + right gain". Negative branches are dropped with <code>max(0, …)</code>. For the tree <code>[-10, 9, 20, null, null, 15, 7]</code>: at 20 the path 15 → 20 → 7 sums to ${H.c('g', '42')}, the answer.</p>`,
-        code: `
+        code: { lang: 'java', code: `
 class MaxPathSum {
     int best = Integer.MIN_VALUE;
     int maxPathSum(TreeNode root) { gain(root); return best; }
@@ -1704,7 +3030,57 @@ class MaxPathSum {
         best = Math.max(best, n.val + l + r);  // path that bends at n
         return n.val + Math.max(l, r);         // parent may continue only one side
     }
-}`
+}`, alt: [{ lang: 'python', code: `def max_path_sum(root):
+    best = float('-inf')
+
+    # best sum of a path that starts at n and goes DOWN (what the parent can use)
+    def gain(n):
+        nonlocal best
+        if n is None:
+            return 0
+        l = max(0, gain(n.left))             # ignore a branch that would lower the sum
+        r = max(0, gain(n.right))
+        best = max(best, n.val + l + r)      # path that bends at n
+        return n.val + max(l, r)             # parent may continue only one side
+
+    gain(root)
+    return best
+` }, { lang: 'js', code: `function maxPathSum(root) {
+  let best = -Infinity;
+  // best sum of a path that starts at n and goes DOWN (what the parent can use)
+  const gain = (n) => {
+    if (!n) return 0;
+    const l = Math.max(0, gain(n.left));     // ignore a branch that would lower the sum
+    const r = Math.max(0, gain(n.right));
+    best = Math.max(best, n.val + l + r);    // path that bends at n
+    return n.val + Math.max(l, r);           // parent may continue only one side
+  };
+  gain(root);
+  return best;
+}
+` }, { lang: 'cpp', code: `// TreeNode as defined in the first lesson
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int v = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(v), left(l), right(r) {}
+};
+
+class MaxPathSum {
+    int best = INT_MIN;
+
+    // best sum of a path that starts at n and goes DOWN (what the parent can use)
+    int gain(TreeNode* n) {
+        if (!n) return 0;
+        int l = max(0, gain(n->left));       // ignore a branch that would lower the sum
+        int r = max(0, gain(n->right));
+        best = max(best, n->val + l + r);    // path that bends at n
+        return n->val + max(l, r);           // parent may continue only one side
+    }
+
+public:
+    int maxPathSum(TreeNode* root) { gain(root); return best; }
+};
+` }] }
       }
     ],
     deepDive: `<p><b>Why the one-pass version is O(N):</b> each node is visited once and does O(1) work after its children return. The brute version calls <code>height()</code> (O(size of subtree)) at every node; the sum of subtree sizes equals the sum of depths, which is Θ(N log N) for a balanced tree and Θ(N<sup>2</sup>) for a chain.</p>
@@ -1714,7 +3090,7 @@ class MaxPathSum {
 <p><b>Overflow:</b> path sums of 3·10<sup>4</sup> nodes with values up to 1000 fit in an <code>int</code>, but always check: N × max|value| must stay below 2.1·10<sup>9</sup>, else use <code>long</code>.</p>`,
     aiEra: `<p><b>What AI changes:</b> height and diameter are among the most-memorised snippets; an assistant writes them flawlessly. Interviews now push on the <b>pattern</b>: "solve max path sum / longest univalue path using the same idea".</p>
 <p><b>Use AI as a partner:</b> <code>Give me 5 problems that use "return downward value, update global with both sides" and only show the recurrence for each.</code> Then write the code yourself.</p>
-<p><b>Where AI goes wrong:</b> mixing edge and node conventions (returning diameter + 1), initialising <code>best = 0</code> for max path sum (wrong when every value is negative — must start at <code>Integer.MIN_VALUE</code>), and returning <code>val + l + r</code> to the parent (a path cannot fork).</p>
+<p><b>Where AI goes wrong:</b> mixing edge and node conventions (returning diameter + 1), initialising <code>best = 0</code> for max path sum (wrong when every value is negative — start at the smallest value: <code>Integer.MIN_VALUE</code>, <code>-inf</code>, <code>-Infinity</code> or <code>INT_MIN</code>), and returning <code>val + l + r</code> to the parent (a path cannot fork).</p>
 <p><b>What you must still own:</b> the reason the parent may only take one side, and the O(N) vs O(N<sup>2</sup>) argument.</p>`
   });
   /* ===================== TOPIC 8: Balanced tree ===================== */
@@ -1829,6 +3205,25 @@ ${H.table(['node', 'lh', 'rh', '|lh−rh|', 'returns'], [
         `<p>No extra data structure. Return an <code>int</code>: the height when balanced, or <code>−1</code> as a "broken" signal. Check for −1 right after each child call so you stop early.</p>`,
         `<p><b>Traps:</b> empty tree is balanced (return 0, not −1); the −1 must be passed up even if the current node itself looks fine. <b>Recipe:</b> check(null)=0; lh=check(left), if −1 return −1; rh=check(right), if −1 return −1; if |lh−rh|&gt;1 return −1; return 1+max. Answer = check(root) != −1.</p>`
       ],
+      tests: { sig: 'TreeNode int -> bool', fn: 'judge', harness: {
+        java: "class Check {\n    // n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\n    // Built here because a tree this deep is too big to write out as a test literal.\n    static TreeNode chain(int n, java.util.function.IntUnaryOperator val) {\n        TreeNode root = null;\n        for (int i = Math.abs(n) - 1; i >= 0; i--) {\n            TreeNode t = new TreeNode(val.applyAsInt(i));\n            if (n > 0) t.right = root; else t.left = root;\n            root = t;\n        }\n        return root;\n    }\n\n    static boolean judge(TreeNode root, int n) {\n        if (n != 0) root = chain(n, i -> 0);\n        return new Solution().isBalanced(root);\n    }\n}",
+        python: "# n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\ndef _chain(n, val):\n    root = None\n    for i in range(abs(n) - 1, -1, -1):\n        t = TreeNode(val(i))\n        if n > 0:\n            t.right = root\n        else:\n            t.left = root\n        root = t\n    return root\n\ndef judge(root, n):\n    if n:\n        root = _chain(n, lambda i: 0)\n    return Solution().is_balanced(root)",
+        js: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nfunction chain__(n, val) {\n  let root = null;\n  for (let i = Math.abs(n) - 1; i >= 0; i--) {\n    const t = new TreeNode(val(i));\n    if (n > 0) t.right = root; else t.left = root;\n    root = t;\n  }\n  return root;\n}\n\nfunction judge(root, n) {\n  if (n) root = chain__(n, (i) => 0);\n  return isBalanced(root);\n}",
+        cpp: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nTreeNode* chain__(int n, function<int(int)> val) {\n    TreeNode* root = nullptr;\n    for (int i = abs(n) - 1; i >= 0; i--) {\n        TreeNode* t = new TreeNode(val(i));\n        if (n > 0) t->right = root; else t->left = root;\n        root = t;\n    }\n    return root;\n}\n\nbool judge(TreeNode* root, int n) {\n    if (n) root = chain__(n, [](int i) { return 0; });\n    return Solution().isBalanced(root);\n}"
+      }, cases: [
+        [[[1,2,2,3,3,null,null,4,4],0],false],
+        [[[3,9,20,null,null,15,7],0],true],
+        [[[],0],true],
+        [[[1],0],true],
+        [[[1,2],0],true],
+        [[[1,null,2,null,3],0],false],
+        [[[1,2,2,3,null,null,3,4,null,null,4],0],false],
+        [[[1,2,3,4,5,6,null,8],0],true],
+        [[[4,2,6,1,3,5,7],0],true],
+        [[[0,1,3,4,2,null,5,null,7,null,null,8,6,null,9],0],false],
+        [[[],-5000],false],
+        [[[],5000],false]
+      ] },
       solution: {
         approach: `<p>Bottom-up height with a −1 sentinel meaning "unbalanced somewhere below".</p>`,
         code: `
@@ -1848,6 +3243,56 @@ ${H.table(['node', 'lh', 'rh', '|lh−rh|', 'returns'], [
                   return 1 + Math.max(lh, rh);         // balanced: report my height
               }
           }`,
+        alt: [{ lang: 'python', code: `class Solution:
+    def is_balanced(self, root):
+        # children before parents: reverse a (me, right, left) walk instead of recursing
+        order, stack = [], [root] if root else []
+        while stack:
+            n = stack.pop()
+            order.append(n)
+            stack.extend(c for c in (n.left, n.right) if c)
+        height = {None: 0}
+        for n in reversed(order):
+            lh, rh = height[n.left], height[n.right]
+            if abs(lh - rh) > 1:
+                return False                 # I am the broken one
+            height[n] = 1 + max(lh, rh)
+        return True
+` }, { lang: 'js', code: `function isBalanced(root) {
+  // height if balanced, otherwise -1
+  const check = (n) => {
+    if (!n) return 0;
+    const lh = check(n.left);
+    if (lh < 0) return -1;
+    const rh = check(n.right);
+    if (rh < 0 || Math.abs(lh - rh) > 1) return -1;
+    return 1 + Math.max(lh, rh);
+  };
+  return check(root) >= 0;
+}
+` }, { lang: 'cpp', code: `// LeetCode-style node (the judge normally provides it)
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int x = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(x), left(l), right(r) {}
+};
+
+class Solution {
+public:
+    bool isBalanced(TreeNode* root) { return check(root) != -1; }
+
+private:
+    // Returns height if balanced, otherwise -1.
+    int check(TreeNode* n) {
+        if (!n) return 0;
+        int lh = check(n->left);
+        if (lh == -1) return -1;
+        int rh = check(n->right);
+        if (rh == -1 || abs(lh - rh) > 1) return -1;
+        return 1 + max(lh, rh);
+    }
+};
+` }],
         dry: {
           head: ['call (postorder)', 'lh', 'rh', '|lh − rh|', 'returns'],
           rows: [
@@ -1902,13 +3347,13 @@ ${H.arr([1, 2, 4, 7, 12, 20, 33, 54], { label: 'N(h) for h = 1..8' })}
 <li><b>Weight-balanced</b>: compares subtree <b>sizes</b> instead of heights.</li>
 <li><b>B-trees</b>: all leaves at exactly the same depth, with many keys per node — what databases and file systems use.</li>
 </ul>
-<p><b>Why the −1 sentinel is safe:</b> real heights are ≥ 0, so −1 can never be confused with a valid answer. It also gives <b>early exit</b>: once any subtree is broken, every ancestor returns immediately after one comparison. In languages with nullable types you could return <code>Optional</code>/<code>null</code>; in Java a sentinel int is the fastest.</p>
+<p><b>Why the −1 sentinel is safe:</b> real heights are ≥ 0, so −1 can never be confused with a valid answer. It also gives <b>early exit</b>: once any subtree is broken, every ancestor returns immediately after one comparison. In languages with nullable types you could return <code>Optional</code>/<code>null</code>; but a sentinel int is the fastest in every language.</p>
 <p><b>Rebalancing intuition:</b> when an insert makes a node's difference 2, a <b>rotation</b> (a constant number of pointer swaps) lifts the heavy child up and pushes the node down, restoring the rule while keeping BST order. You don't need to code AVL rotations in most interviews, but you should know they exist and cost O(1) each, O(log N) per insert overall.</p>
 <p><b>"Make it balanced" follow-up</b> (LeetCode 1382): do an inorder walk to get a sorted list, then rebuild by always picking the middle element as the root — O(N) time, perfectly balanced.</p>`,
     aiEra: `<p><b>What AI changes:</b> AI writes the O(N) check instantly. What interviewers now probe is <b>your understanding</b>: why balance gives O(log N), and how real libraries keep trees balanced.</p>
 <p><b>Use AI as a partner:</b> <code>Explain a left-right AVL rotation using a 3-node example and draw before/after</code>, then redraw it from memory. Or ask for random trees and compare the brute O(N<sup>2</sup>) check with your O(N) version on 1,000 cases.</p>
 <p><b>Where AI goes wrong:</b> returning <code>false</code> from inside a height function (mixing types), forgetting to propagate the −1 from a child, checking only at the root, or claiming that "balanced" means "complete".</p>
-<p><b>What you must still own:</b> the definition (every node, not just the root), the sentinel trick, and being able to say which balanced trees power <code>TreeMap</code> and databases.</p>`
+<p><b>What you must still own:</b> the definition (every node, not just the root), the sentinel trick, and being able to say which balanced trees power library ordered maps (<code>TreeMap</code>, <code>std::map</code>) and databases.</p>`
   });
   /* ===================== TOPIC 9: LCA ===================== */
   topics.push({
@@ -1953,7 +3398,7 @@ ${H.table(['BST walk for p = 3, q = 5', 'compare', 'move'], [
       '"<b>distance between two nodes</b>" → depth(p) + depth(q) − 2·depth(LCA).',
       'Nodes have <b>parent pointers</b> → it becomes "intersection of two linked lists" (walk up both).'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
 class LCA {
     // Plain binary tree: O(N) time, O(h) stack
     static TreeNode lcaBinaryTree(TreeNode node, TreeNode p, TreeNode q) {
@@ -1974,7 +3419,73 @@ class LCA {
         }
         return null;
     }
-}`],
+}`, alt: [{ lang: 'python', code: `# Plain binary tree: O(N) time, O(h) stack
+def lca_binary_tree(node, p, q):
+    if node is None or node is p or node is q:
+        return node                          # nothing, or found one
+    left = lca_binary_tree(node.left, p, q)
+    right = lca_binary_tree(node.right, p, q)
+    if left and right:
+        return node                          # p and q on different sides
+    return left or right                     # pass up whatever was found
+
+# BST: O(h) time, O(1) space
+def lca_bst(root, p, q):
+    cur = root
+    while cur:
+        if p.val < cur.val and q.val < cur.val:
+            cur = cur.left                   # both smaller
+        elif p.val > cur.val and q.val > cur.val:
+            cur = cur.right                  # both bigger
+        else:
+            return cur                       # split point
+    return None
+` }, { lang: 'js', code: `// Plain binary tree: O(N) time, O(h) stack
+function lcaBinaryTree(node, p, q) {
+  if (!node || node === p || node === q) return node;   // nothing, or found one
+  const left = lcaBinaryTree(node.left, p, q);
+  const right = lcaBinaryTree(node.right, p, q);
+  if (left && right) return node;                       // p and q on different sides
+  return left || right;                                 // pass up whatever was found
+}
+
+// BST: O(h) time, O(1) space
+function lcaBST(root, p, q) {
+  let cur = root;
+  while (cur) {
+    if (p.val < cur.val && q.val < cur.val) cur = cur.left;          // both smaller
+    else if (p.val > cur.val && q.val > cur.val) cur = cur.right;    // both bigger
+    else return cur;                                                 // split point
+  }
+  return null;
+}
+` }, { lang: 'cpp', code: `// TreeNode as defined in the first lesson
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int v = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(v), left(l), right(r) {}
+};
+
+// Plain binary tree: O(N) time, O(h) stack
+TreeNode* lcaBinaryTree(TreeNode* node, TreeNode* p, TreeNode* q) {
+    if (!node || node == p || node == q) return node;   // nothing, or found one
+    TreeNode* left = lcaBinaryTree(node->left, p, q);
+    TreeNode* right = lcaBinaryTree(node->right, p, q);
+    if (left && right) return node;                     // p and q on different sides
+    return left ? left : right;                         // pass up whatever was found
+}
+
+// BST: O(h) time, O(1) space
+TreeNode* lcaBST(TreeNode* root, TreeNode* p, TreeNode* q) {
+    TreeNode* cur = root;
+    while (cur) {
+        if (p->val < cur->val && q->val < cur->val) cur = cur->left;          // both smaller
+        else if (p->val > cur->val && q->val > cur->val) cur = cur->right;    // both bigger
+        else return cur;                                                      // split point
+    }
+    return nullptr;
+}
+` }] }],
     codeTitle: ['LCA: binary tree (recursive) and BST (iterative)'],
     viz: [{
       title: 'LCA in a binary tree: what each subtree reports',
@@ -2112,19 +3623,102 @@ class LCA {
         `<p>No extra structure: recursion returns a <code>TreeNode</code>. Return the node itself if it is p or q; otherwise combine left and right results: both non-null → me; one non-null → that one; none → null.</p>`,
         `<p><b>Traps:</b> compare nodes by reference (<code>node == p</code>), not just value, unless values are unique; do not keep searching below p once found. Deep skewed trees can overflow the stack (10<sup>5</sup>) — fine in most judges, else use parent map + set. <b>Recipe:</b> if null/p/q return node; L = rec(left); R = rec(right); return L&amp;&amp;R ? node : (L != null ? L : R).</p>`
       ],
+      tests: { sig: 'TreeNode int int int -> int', fn: 'judge', harness: {
+        java: "class Check {\n    // n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\n    // Built here because a tree this deep is too big to write out as a test literal.\n    static TreeNode chain(int n, java.util.function.IntUnaryOperator val) {\n        TreeNode root = null;\n        for (int i = Math.abs(n) - 1; i >= 0; i--) {\n            TreeNode t = new TreeNode(val.applyAsInt(i));\n            if (n > 0) t.right = root; else t.left = root;\n            root = t;\n        }\n        return root;\n    }\n\n    static TreeNode find(TreeNode root, int v) {\n        Deque<TreeNode> st = new ArrayDeque<>();\n        st.push(root);\n        while (!st.isEmpty()) {\n            TreeNode t = st.pop();\n            if (t.val == v) return t;\n            if (t.left != null) st.push(t.left);\n            if (t.right != null) st.push(t.right);\n        }\n        return null;\n    }\n\n    static int judge(TreeNode root, int p, int q, int n) {\n        if (n != 0) root = chain(n, i -> i);\n        // the judge passes the real nodes of this tree, so find them first\n        return new Solution().lowestCommonAncestor(root, find(root, p), find(root, q)).val;\n    }\n}",
+        python: "# n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\ndef _chain(n, val):\n    root = None\n    for i in range(abs(n) - 1, -1, -1):\n        t = TreeNode(val(i))\n        if n > 0:\n            t.right = root\n        else:\n            t.left = root\n        root = t\n    return root\n\ndef _find(root, v):\n    st = [root]\n    while st:\n        t = st.pop()\n        if t.val == v:\n            return t\n        st.extend(c for c in (t.left, t.right) if c)\n\ndef judge(root, p, q, n):\n    if n:\n        root = _chain(n, lambda i: i)\n    return Solution().lowest_common_ancestor(root, _find(root, p), _find(root, q)).val",
+        js: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nfunction chain__(n, val) {\n  let root = null;\n  for (let i = Math.abs(n) - 1; i >= 0; i--) {\n    const t = new TreeNode(val(i));\n    if (n > 0) t.right = root; else t.left = root;\n    root = t;\n  }\n  return root;\n}\n\nfunction find__(root, v) {\n  const st = [root];\n  while (st.length) {\n    const t = st.pop();\n    if (t.val === v) return t;\n    if (t.left) st.push(t.left);\n    if (t.right) st.push(t.right);\n  }\n  return null;\n}\n\nfunction judge(root, p, q, n) {\n  if (n) root = chain__(n, (i) => i);\n  return lowestCommonAncestor(root, find__(root, p), find__(root, q)).val;\n}",
+        cpp: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nTreeNode* chain__(int n, function<int(int)> val) {\n    TreeNode* root = nullptr;\n    for (int i = abs(n) - 1; i >= 0; i--) {\n        TreeNode* t = new TreeNode(val(i));\n        if (n > 0) t->right = root; else t->left = root;\n        root = t;\n    }\n    return root;\n}\n\nTreeNode* find__(TreeNode* root, int v) {\n    vector<TreeNode*> st{root};\n    while (!st.empty()) {\n        TreeNode* t = st.back(); st.pop_back();\n        if (t->val == v) return t;\n        if (t->left) st.push_back(t->left);\n        if (t->right) st.push_back(t->right);\n    }\n    return nullptr;\n}\n\nint judge(TreeNode* root, int p, int q, int n) {\n    if (n) root = chain__(n, [](int i) { return i; });\n    return Solution().lowestCommonAncestor(root, find__(root, p), find__(root, q))->val;\n}"
+      }, cases: [
+        [[[3,5,1,6,2,0,8,null,null,7,4],6,4,0],5],
+        [[[3,5,1,6,2,0,8,null,null,7,4],5,1,0],3],
+        [[[3,5,1,6,2,0,8,null,null,7,4],5,4,0],5],
+        [[[3,5,1,6,2,0,8,null,null,7,4],7,8,0],3],
+        [[[1,2],1,2,0],1],
+        [[[1,2],2,1,0],1],
+        [[[-1,0,3,-2,4,null,null,8],8,4,0],0],
+        [[[0,1,null,2,null,3,null,4,null,5,null,6,null,7,null,8,null,9,null,10,null,11,null,12,null,13,null,14,null,15,null,16,null,17,null,18,null,19,null,20,null,21,null,22,null,23,null,24,null,25,null,26,null,27,null,28,null,29,null,30,null,31,null,32,null,33,null,34,null,35,null,36,null,37,null,38,null,39,null,40,null,41,null,42,null,43,null,44,null,45,null,46,null,47,null,48,null,49,null,50,null,51,null,52,null,53,null,54,null,55,null,56,null,57,null,58,null,59,null,60,null,61,null,62,null,63,null,64,null,65,null,66,null,67,null,68,null,69,null,70,null,71,null,72,null,73,null,74,null,75,null,76,null,77,null,78,null,79,null,80,null,81,null,82,null,83,null,84,null,85,null,86,null,87,null,88,null,89,null,90,null,91,null,92,null,93,null,94,null,95,null,96,null,97,null,98,null,99,null,100,null,101,null,102,null,103,null,104,null,105,null,106,null,107,null,108,null,109,null,110,null,111,null,112,null,113,null,114,null,115,null,116,null,117,null,118,null,119,null,120,null,121,null,122,null,123,null,124,null,125,null,126,null,127,null,128,null,129,null,130,null,131,null,132,null,133,null,134,null,135,null,136,null,137,null,138,null,139,null,140,null,141,null,142,null,143,null,144,null,145,null,146,null,147,null,148,null,149,null,150,null,151,null,152,null,153,null,154,null,155,null,156,null,157,null,158,null,159,null,160,null,161,null,162,null,163,null,164,null,165,null,166,null,167,null,168,null,169,null,170,null,171,null,172,null,173,null,174,null,175,null,176,null,177,null,178,null,179,null,180,null,181,null,182,null,183,null,184,null,185,null,186,null,187,null,188,null,189,null,190,null,191,null,192,null,193,null,194,null,195,null,196,null,197,null,198,null,199,null,200,null,201,null,202,null,203,null,204,null,205,null,206,null,207,null,208,null,209,null,210,null,211,null,212,null,213,null,214,null,215,null,216,null,217,null,218,null,219,null,220,null,221,null,222,null,223,null,224,null,225,null,226,null,227,null,228,null,229,null,230,null,231,null,232,null,233,null,234,null,235,null,236,null,237,null,238,null,239,null,240,null,241,null,242,null,243,null,244,null,245,null,246,null,247,null,248,null,249,null,250,null,251,null,252,null,253,null,254,null,255,null,256,null,257,null,258,null,259,null,260,null,261,null,262,null,263,null,264,null,265,null,266,null,267,null,268,null,269,null,270,null,271,null,272,null,273,null,274,null,275,null,276,null,277,null,278,null,279,null,280,null,281,null,282,null,283,null,284,null,285,null,286,null,287,null,288,null,289,null,290,null,291,null,292,null,293,null,294,null,295,null,296,null,297,null,298,null,299],299,150,0],150],
+        [[[-32,-25,39,null,null,-45,21,-44,10,8,-47,null,-21,24,-38,-14,null,null,15],8,24,0],39],
+        [[[],99999,50000,-100000],50000],
+        [[[],0,99999,-100000],0]
+      ] },
       solution: {
-        approach: `<p>Postorder "report what you found"; the first node that gets reports from both sides is the LCA.</p>`,
+        approach: `<p>Postorder "report what you found"; the first node that gets reports from both sides is the LCA. Written recursively it is five lines, but a skewed tree of 10<sup>5</sup> nodes would need 10<sup>5</sup> nested calls and overflow the call stack. So the code makes the same reports with a loop: list the nodes parents-first with a stack, then walk that list backwards so every child reports before its parent.</p>`,
         code: `
           class Solution {
               public TreeNode lowestCommonAncestor(TreeNode root, TreeNode p, TreeNode q) {
-                  // Base: empty spot -> found nothing; p or q -> found a target
-                  if (root == null || root == p || root == q) return root;
-                  TreeNode left = lowestCommonAncestor(root.left, p, q);   // what is on my left?
-                  TreeNode right = lowestCommonAncestor(root.right, p, q); // what is on my right?
-                  if (left != null && right != null) return root;  // one on each side -> I am the LCA
-                  return (left != null) ? left : right;            // pass up the one that was found (or null)
+                  List<TreeNode> order = new ArrayList<>();          // parents before children
+                  Deque<TreeNode> st = new ArrayDeque<>();
+                  st.push(root);
+                  while (!st.isEmpty()) {
+                      TreeNode n = st.pop();
+                      order.add(n);
+                      if (n.left != null) st.push(n.left);
+                      if (n.right != null) st.push(n.right);
+                  }
+                  Map<TreeNode, TreeNode> report = new HashMap<>();  // what each subtree found (absent = nothing)
+                  for (int i = order.size() - 1; i >= 0; i--) {      // backwards: children report first
+                      TreeNode n = order.get(i);
+                      if (n == p || n == q) { report.put(n, n); continue; }   // found a target
+                      TreeNode left = report.get(n.left);            // what is on my left?
+                      TreeNode right = report.get(n.right);          // what is on my right?
+                      if (left != null && right != null) report.put(n, n);   // one on each side -> I am the LCA
+                      else report.put(n, left != null ? left : right);       // pass up the one found (or null)
+                  }
+                  return report.get(root);
               }
           }`,
+        alt: [{ lang: 'python', code: `class Solution:
+    def lowest_common_ancestor(self, root, p, q):
+        order, stack = [], [root]            # parents before children
+        while stack:
+            n = stack.pop()
+            order.append(n)
+            stack.extend(c for c in (n.left, n.right) if c)
+        report = {None: None}                # what each subtree found
+        for n in reversed(order):            # children report first
+            if n is p or n is q:
+                report[n] = n                # found a target
+                continue
+            left, right = report[n.left], report[n.right]
+            report[n] = n if left and right else (left or right)   # both sides -> I am the LCA
+        return report[root]
+` }, { lang: 'js', code: `function lowestCommonAncestor(root, p, q) {
+  const order = [], stack = [root];              // parents before children
+  while (stack.length) {
+    const n = stack.pop();
+    order.push(n);
+    if (n.left) stack.push(n.left);
+    if (n.right) stack.push(n.right);
+  }
+  const report = new Map();                      // what each subtree found (absent = nothing)
+  const got = (n) => (n ? report.get(n) : null);
+  for (let i = order.length - 1; i >= 0; i--) {  // children report first
+    const n = order[i];
+    if (n === p || n === q) { report.set(n, n); continue; }   // found a target
+    const left = got(n.left), right = got(n.right);
+    report.set(n, left && right ? n : (left || right));      // both sides -> I am the LCA
+  }
+  return report.get(root);
+}
+` }, { lang: 'cpp', code: `// LeetCode-style node (the judge normally provides it)
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int x = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(x), left(l), right(r) {}
+};
+
+class Solution {
+public:
+    TreeNode* lowestCommonAncestor(TreeNode* root, TreeNode* p, TreeNode* q) {
+        // empty spot -> found nothing; p or q itself -> found a target
+        if (!root || root == p || root == q) return root;
+        TreeNode* left = lowestCommonAncestor(root->left, p, q);
+        TreeNode* right = lowestCommonAncestor(root->right, p, q);
+        if (left && right) return root;      // one target on each side
+        return left ? left : right;
+    }
+};
+` }],
         dry: {
           head: ['node', 'left reports', 'right reports', 'returns', 'reason'],
           rows: [
@@ -2139,7 +3733,7 @@ class LCA {
             ['3', '5', 'null', H.c('p', '5'), 'pass up → final answer 5']
           ]
         },
-        complexity: `<p><b>Time O(N)</b>: in the worst case every node is visited once. <b>Space O(h)</b> for recursion. For a <b>BST</b>, the comparison walk is O(h) time and O(1) space.</p>`
+        complexity: `<p><b>Time O(N)</b>: every node is listed once and reports once. <b>Space O(N)</b> for the list and the report map (the recursive version needs O(h) call stack, which is N on a skewed tree). For a <b>BST</b>, the comparison walk is O(h) time and O(1) space.</p>`
       }
     }],
     examples: [
@@ -2150,7 +3744,7 @@ class LCA {
       {
         title: 'Distance between two nodes using the LCA',
         html: `<p><code>dist(p, q) = depth(p) + depth(q) − 2 · depth(LCA)</code>. For p = 6, q = 4: depth(6) = 2, depth(4) = 3, LCA = 5 with depth 1 → 2 + 3 − 2 = ${H.c('g', '3')} edges (6 → 5 → 2 → 4). The two paths from the root share the part above the LCA, and we subtract it twice.</p>`,
-        code: `
+        code: { lang: 'java', code: `
 class Distance {
     int dist(TreeNode root, TreeNode p, TreeNode q) {
         TreeNode lca = lca(root, p, q);
@@ -2168,12 +3762,74 @@ class Distance {
         int l = depth(n.left, target, d + 1);
         return l != -1 ? l : depth(n.right, target, d + 1);
     }
-}`
+}`, alt: [{ lang: 'python', code: `def dist(root, p, q):
+    def lca(n):
+        if n is None or n is p or n is q:
+            return n
+        l, r = lca(n.left), lca(n.right)
+        return n if l and r else (l or r)
+
+    # edges from n down to target, or -1 if target is not below n
+    def depth(n, target, d):
+        if n is None:
+            return -1
+        if n is target:
+            return d
+        l = depth(n.left, target, d + 1)
+        return l if l != -1 else depth(n.right, target, d + 1)
+
+    a = lca(root)
+    return depth(a, p, 0) + depth(a, q, 0)   # walk down from the LCA
+` }, { lang: 'js', code: `function dist(root, p, q) {
+  const lca = (n) => {
+    if (!n || n === p || n === q) return n;
+    const l = lca(n.left), r = lca(n.right);
+    return l && r ? n : (l || r);
+  };
+  // edges from n down to target, or -1 if target is not below n
+  const depth = (n, target, d) => {
+    if (!n) return -1;
+    if (n === target) return d;
+    const l = depth(n.left, target, d + 1);
+    return l !== -1 ? l : depth(n.right, target, d + 1);
+  };
+  const a = lca(root);
+  return depth(a, p, 0) + depth(a, q, 0);    // walk down from the LCA
+}
+` }, { lang: 'cpp', code: `// TreeNode as defined in the first lesson
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int v = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(v), left(l), right(r) {}
+};
+
+class Distance {
+public:
+    int dist(TreeNode* root, TreeNode* p, TreeNode* q) {
+        TreeNode* a = lca(root, p, q);
+        return depth(a, p, 0) + depth(a, q, 0);   // walk down from the LCA
+    }
+
+private:
+    TreeNode* lca(TreeNode* n, TreeNode* p, TreeNode* q) {
+        if (!n || n == p || n == q) return n;
+        TreeNode *l = lca(n->left, p, q), *r = lca(n->right, p, q);
+        return (l && r) ? n : (l ? l : r);
+    }
+    // edges from n down to target, or -1 if target is not below n
+    int depth(TreeNode* n, TreeNode* target, int d) {
+        if (!n) return -1;
+        if (n == target) return d;
+        int l = depth(n->left, target, d + 1);
+        return l != -1 ? l : depth(n->right, target, d + 1);
+    }
+};
+` }] }
       },
       {
         title: 'With parent pointers it becomes "intersection of two lists"',
         html: `<p>If every node knows its parent, walk up from p storing every ancestor in a set, then walk up from q until you hit one in the set. Or use the two-pointer trick from Linked Lists: when a pointer reaches the root's parent (null), restart it at the other node; both travel the same total distance and meet at the LCA. O(h) time.</p>`,
-        code: `
+        code: { lang: 'java', code: `
 class Node { int val; Node left, right, parent; }
 
 class ParentLCA {
@@ -2185,7 +3841,40 @@ class ParentLCA {
         }
         return a;
     }
-}`
+}`, alt: [{ lang: 'python', code: `class Node:
+    def __init__(self, val, parent=None):
+        self.val, self.parent = val, parent
+        self.left = self.right = None
+
+def lca(p, q):
+    a, b = p, q
+    while a is not b:                        # each pointer walks depth(p) + depth(q) steps max
+        a = q if a is None else a.parent
+        b = p if b is None else b.parent
+    return a
+` }, { lang: 'js', code: `class Node {
+  constructor(val, parent = null) { this.val = val; this.parent = parent; this.left = null; this.right = null; }
+}
+
+function lca(p, q) {
+  let a = p, b = q;
+  while (a !== b) {                          // each pointer walks depth(p) + depth(q) steps max
+    a = a === null ? q : a.parent;
+    b = b === null ? p : b.parent;
+  }
+  return a;
+}
+` }, { lang: 'cpp', code: `struct Node { int val; Node *left = nullptr, *right = nullptr, *parent = nullptr; };
+
+Node* lca(Node* p, Node* q) {
+    Node *a = p, *b = q;
+    while (a != b) {                         // each pointer walks depth(p) + depth(q) steps max
+        a = a ? a->parent : q;
+        b = b ? b->parent : p;
+    }
+    return a;
+}
+` }] }
       },
       {
         title: 'BST shortcut on numbers',
@@ -2240,11 +3929,11 @@ ${H.table(['search 60', 'compare', 'move'], [
     clues: [
       '"Given a <b>BST</b>…" → use the ordering: one comparison tells you which half to ignore; aim for <b>O(h)</b>, not O(N).',
       '"<b>search</b> / <b>insert</b> / <b>closest value</b> / floor / ceil in a BST" → single root-to-leaf walk, remember the best candidate.',
-      '"<b>sorted</b> order" + "tree" → inorder of a BST; "<b>dynamic</b> sorted set with inserts" → BST / <code>TreeMap</code>.',
+      '"<b>sorted</b> order" + "tree" → inorder of a BST; "<b>dynamic</b> sorted set with inserts" → BST / ordered map (<code>TreeMap</code>, <code>std::map</code>).',
       '"Values are inserted in <b>increasing</b> order" → warning: plain BST degenerates into a linked list (h = N).',
-      'Need predecessor / successor / range queries with updates in Java → <code>TreeMap</code> / <code>TreeSet</code> (red-black tree, O(log N) guaranteed).'
+      'Need predecessor / successor / range queries with updates → a library ordered set or map: <code>TreeMap</code> / <code>TreeSet</code> in Java, <code>std::map</code> / <code>std::set</code> in C++ (red-black trees, O(log N) guaranteed). Python and JavaScript have none built in: use <code>sortedcontainers.SortedList</code>, or a sorted array with binary search when updates are rare.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
 class BST {
     TreeNode root;
 
@@ -2313,7 +4002,186 @@ class BST {
         System.out.println(t.floor(65) + " " + t.ceil(65)); // 60 70
         System.out.println(t.min() + " " + t.max());       // 20 80
     }
-}`, { lang: 'python', run: true, title: 'Same BST in Python (runnable)', code: `class Node:
+}`, alt: [{ lang: 'python', run: true, code: `class TreeNode:
+    def __init__(self, val=0, left=None, right=None):
+        self.val, self.left, self.right = val, left, right
+
+class BST:
+    def __init__(self):
+        self.root = None
+
+    # SEARCH (iterative): O(h) time, O(1) space
+    def search(self, key):
+        cur = self.root
+        while cur and cur.val != key:
+            cur = cur.left if key < cur.val else cur.right   # throw away half each step
+        return cur                                           # None if not found
+
+    # INSERT (recursive): returns the (possibly new) root of this subtree
+    def insert(self, node, key):
+        if node is None:
+            return TreeNode(key)                             # fell off -> new leaf here
+        if key < node.val:
+            node.left = self.insert(node.left, key)
+        elif key > node.val:
+            node.right = self.insert(node.right, key)
+        return node                                          # duplicate: ignored (a BST "set")
+
+    def min(self):
+        c = self.root
+        while c.left:
+            c = c.left
+        return c.val
+
+    def max(self):
+        c = self.root
+        while c.right:
+            c = c.right
+        return c.val
+
+    # FLOOR: largest value <= x, or None if none
+    def floor(self, x):
+        best, cur = None, self.root
+        while cur:
+            if cur.val == x:
+                return x
+            if cur.val < x:
+                best, cur = cur.val, cur.right               # candidate, try bigger
+            else:
+                cur = cur.left                               # too big, go smaller
+        return best
+
+    # CEIL: smallest value >= x, or None if none
+    def ceil(self, x):
+        best, cur = None, self.root
+        while cur:
+            if cur.val == x:
+                return x
+            if cur.val > x:
+                best, cur = cur.val, cur.left                # candidate, try smaller
+            else:
+                cur = cur.right
+        return best
+
+t = BST()
+for v in [50, 30, 70, 20, 40, 60, 80]:
+    t.root = t.insert(t.root, v)
+print(t.search(60) is not None)       # True
+print(t.floor(65), t.ceil(65))        # 60 70
+print(t.min(), t.max())               # 20 80
+` }, { lang: 'js', run: true, code: `class TreeNode {
+  constructor(val = 0, left = null, right = null) { this.val = val; this.left = left; this.right = right; }
+}
+
+class BST {
+  constructor() { this.root = null; }
+
+  // SEARCH (iterative): O(h) time, O(1) space
+  search(key) {
+    let cur = this.root;
+    while (cur && cur.val !== key) cur = key < cur.val ? cur.left : cur.right;   // throw away half
+    return cur;                                         // null if not found
+  }
+
+  // INSERT (recursive): returns the (possibly new) root of this subtree
+  insert(node, key) {
+    if (!node) return new TreeNode(key);                // fell off -> new leaf here
+    if (key < node.val) node.left = this.insert(node.left, key);
+    else if (key > node.val) node.right = this.insert(node.right, key);
+    return node;                                        // duplicate: ignored (a BST "set")
+  }
+
+  min() { let c = this.root; while (c.left) c = c.left; return c.val; }
+  max() { let c = this.root; while (c.right) c = c.right; return c.val; }
+
+  // FLOOR: largest value <= x, or null if none
+  floor(x) {
+    let best = null, cur = this.root;
+    while (cur) {
+      if (cur.val === x) return x;
+      if (cur.val < x) { best = cur.val; cur = cur.right; }   // candidate, try bigger
+      else cur = cur.left;                                    // too big, go smaller
+    }
+    return best;
+  }
+
+  // CEIL: smallest value >= x, or null if none
+  ceil(x) {
+    let best = null, cur = this.root;
+    while (cur) {
+      if (cur.val === x) return x;
+      if (cur.val > x) { best = cur.val; cur = cur.left; }    // candidate, try smaller
+      else cur = cur.right;
+    }
+    return best;
+  }
+}
+
+const t = new BST();
+for (const v of [50, 30, 70, 20, 40, 60, 80]) t.root = t.insert(t.root, v);
+console.log(t.search(60) !== null);            // true
+console.log(t.floor(65) + ' ' + t.ceil(65));   // 60 70
+console.log(t.min() + ' ' + t.max());          // 20 80
+` }, { lang: 'cpp', code: `// TreeNode as defined in the first lesson
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int v = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(v), left(l), right(r) {}
+};
+
+class BST {
+public:
+    TreeNode* root = nullptr;
+
+    // SEARCH (iterative): O(h) time, O(1) space
+    TreeNode* search(int key) {
+        TreeNode* cur = root;
+        while (cur && cur->val != key) cur = key < cur->val ? cur->left : cur->right;   // throw away half
+        return cur;                                          // nullptr if not found
+    }
+
+    // INSERT (recursive): returns the (possibly new) root of this subtree
+    TreeNode* insert(TreeNode* node, int key) {
+        if (!node) return new TreeNode(key);                 // fell off -> new leaf here
+        if (key < node->val) node->left = insert(node->left, key);
+        else if (key > node->val) node->right = insert(node->right, key);
+        return node;                                         // duplicate: ignored (a BST "set")
+    }
+
+    int minVal() { TreeNode* c = root; while (c->left) c = c->left; return c->val; }
+    int maxVal() { TreeNode* c = root; while (c->right) c = c->right; return c->val; }
+
+    // FLOOR: largest value <= x, or nullopt if none
+    optional<int> floor(int x) {
+        optional<int> best;
+        for (TreeNode* cur = root; cur;) {
+            if (cur->val == x) return x;
+            if (cur->val < x) { best = cur->val; cur = cur->right; }   // candidate, try bigger
+            else cur = cur->left;                                      // too big, go smaller
+        }
+        return best;
+    }
+
+    // CEIL: smallest value >= x, or nullopt if none
+    optional<int> ceil(int x) {
+        optional<int> best;
+        for (TreeNode* cur = root; cur;) {
+            if (cur->val == x) return x;
+            if (cur->val > x) { best = cur->val; cur = cur->left; }    // candidate, try smaller
+            else cur = cur->right;
+        }
+        return best;
+    }
+};
+
+int main() {
+    BST t;
+    for (int v : {50, 30, 70, 20, 40, 60, 80}) t.root = t.insert(t.root, v);
+    cout << boolalpha << (t.search(60) != nullptr) << '\\n';     // true
+    cout << *t.floor(65) << ' ' << *t.ceil(65) << '\\n';         // 60 70
+    cout << t.minVal() << ' ' << t.maxVal() << '\\n';            // 20 80
+}
+` }] }, { lang: 'python', run: true, title: 'Same BST in Python (runnable)', code: `class Node:
     def __init__(self, val):
         self.val, self.left, self.right = val, None, None
 
@@ -2350,7 +4218,7 @@ chain = None
 for v in range(1, 8):                     # sorted inserts -> a chain
     chain = insert(chain, v)
 print('height bushy =', height(root), ' height sorted-insert =', height(chain))` }],
-    codeTitle: ['BST search, insert, min/max, floor/ceil (Java)', 'Runnable Python version'],
+    codeTitle: ['BST search, insert, min/max, floor/ceil', 'Runnable Python version'],
     viz: {
       title: 'Build a BST by inserting, then search it',
       input: '50 30 70 20 40 60 80 | 65',
@@ -2440,27 +4308,63 @@ ${H.table(['search', 'path', 'comparisons', 'result'], [
         html: `<p>Walk for 65 in the same BST: at 50 (≤ 65 → floor candidate ${H.c('b', '50')}, go right), at 70 (≥ 65 → ceil candidate ${H.c('p', '70')}, go left), at 60 (≤ 65 → floor candidate ${H.c('b', '60')}, go right), fall off. Floor(65) = ${H.c('b', '60')}, ceil(65) = ${H.c('p', '70')}. The answer is always one of the nodes on the search path.</p>`
       },
       {
-        title: 'In real Java code: TreeMap / TreeSet',
-        html: `<p>You rarely hand-roll a BST in production. <code>TreeSet</code>/<code>TreeMap</code> are red-black trees with every operation above built in and O(log N) guaranteed.</p>`,
-        code: `
+        title: 'In real code: the library ordered set (TreeSet, std::set, …)',
+        html: `<p>You rarely hand-roll a BST in production. Java's <code>TreeSet</code>/<code>TreeMap</code> and C++'s <code>std::set</code>/<code>std::map</code> are red-black trees with every operation above built in and O(log N) guaranteed. Python has no built-in one (use <code>bisect</code> on a sorted list, or the third-party <code>sortedcontainers</code>), and neither does JavaScript (a sorted array plus binary search). The tabs below show each.</p>`,
+        code: { lang: 'java', code: `
 TreeSet<Integer> set = new TreeSet<>(List.of(50, 30, 70, 20, 40, 60, 80));
 System.out.println(set.floor(65));      // 60  (largest <= 65)
 System.out.println(set.ceiling(65));    // 70  (smallest >= 65)
 System.out.println(set.lower(60));      // 50  (strictly smaller)
 System.out.println(set.higher(60));     // 70  (strictly bigger)
 System.out.println(set.first() + " " + set.last());      // 20 80
-System.out.println(set.subSet(30, true, 60, true));      // [30, 40, 50, 60] range query`
+System.out.println(set.subSet(30, true, 60, true));      // [30, 40, 50, 60] range query`, alt: [{ lang: 'python', run: true, code: `from bisect import bisect_left, bisect_right
+
+# Python has no built-in balanced BST; a sorted list + bisect answers the same queries.
+# (Inserts into a list are O(n); the third-party sortedcontainers.SortedList makes them fast.)
+s = sorted([50, 30, 70, 20, 40, 60, 80])
+print(s[bisect_right(s, 65) - 1])          # 60  floor: largest <= 65
+print(s[bisect_left(s, 65)])               # 70  ceiling: smallest >= 65
+print(s[bisect_left(s, 60) - 1])           # 50  lower: strictly smaller
+print(s[bisect_right(s, 60)])              # 70  higher: strictly bigger
+print(s[0], s[-1])                         # 20 80
+print(s[bisect_left(s, 30):bisect_right(s, 60)])   # [30, 40, 50, 60] range query
+` }, { lang: 'js', run: true, code: `// JavaScript has no built-in ordered set: keep a sorted array and binary search it.
+const s = [50, 30, 70, 20, 40, 60, 80].sort((a, b) => a - b);   // numeric comparator!
+// first index whose value is >= x (or > x when strict)
+function lowerBound(a, x, strict = false) {
+  let lo = 0, hi = a.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (strict ? a[mid] <= x : a[mid] < x) lo = mid + 1; else hi = mid;
+  }
+  return lo;
+}
+console.log(s[lowerBound(s, 65, true) - 1]);   // 60  floor: largest <= 65
+console.log(s[lowerBound(s, 65)]);             // 70  ceiling: smallest >= 65
+console.log(s[lowerBound(s, 60) - 1]);         // 50  lower: strictly smaller
+console.log(s[lowerBound(s, 60, true)]);       // 70  higher: strictly bigger
+console.log(s[0] + ' ' + s[s.length - 1]);     // 20 80
+console.log(s.slice(lowerBound(s, 30), lowerBound(s, 60, true)));   // [30, 40, 50, 60] range query
+` }, { lang: 'cpp', code: `// std::set is a red-black tree: every query below is O(log n).
+set<int> s{50, 30, 70, 20, 40, 60, 80};
+cout << *prev(s.upper_bound(65)) << '\\n';   // 60  floor: largest <= 65
+cout << *s.lower_bound(65) << '\\n';         // 70  ceiling: smallest >= 65
+cout << *prev(s.lower_bound(60)) << '\\n';   // 50  lower: strictly smaller
+cout << *s.upper_bound(60) << '\\n';         // 70  higher: strictly bigger
+cout << *s.begin() << ' ' << *s.rbegin() << '\\n';   // 20 80
+for (auto it = s.lower_bound(30); it != s.upper_bound(60); ++it) cout << *it << ' ';   // 30 40 50 60
+` }] }
       }
     ],
     deepDive: `<p><b>Expected vs worst height:</b> for N keys inserted in random order, the expected depth of a node is about 2 ln N ≈ 1.39 log₂N and the expected height about 4.311 ln N ≈ 2.99 log₂N. Sorted or nearly sorted input gives height N, so every operation becomes O(N) — the same as a linked list.</p>
 <p><b>Self-balancing trees fix the worst case</b> by rotating after inserts/deletes: <b>AVL</b> (strict, faster lookups), <b>red-black</b> (looser, fewer rotations; Java <code>TreeMap</code>, C++ <code>std::map</code>), <b>treaps</b> and <b>skip lists</b> (randomised; Redis sorted sets use a skip list), <b>splay trees</b> (recently used keys move to the top). On disk, <b>B-trees / B+ trees</b> store hundreds of keys per node so a lookup costs 3–4 disk reads even for billions of rows — every SQL index you will create is one.</p>
 <p><b>Duplicates:</b> pick a policy and say it: ignore (set semantics), keep a <b>count</b> field in the node (multiset — best), or send equal keys consistently to one side (e.g. right) — but then "left &lt; node ≤ right" changes how search and validation must work.</p>
 <p><b>Recursive vs iterative:</b> the recursive insert is elegant (<code>node.left = insert(node.left, key)</code> re-links on the way back up) but uses O(h) stack; the iterative version keeps a <code>parent</code> pointer and uses O(1) extra space — matters when h can be 10<sup>5</sup>.</p>
-<p><b>BST vs HashMap:</b> hashing gives O(1) average lookups but no order. Choose a BST/TreeMap when you need sorted iteration, floor/ceil, k-th smallest, or range queries ("all keys between 30 and 60") — hashing cannot answer those without scanning everything.</p>`,
-    aiEra: `<p><b>What AI changes:</b> nobody hand-writes BST insert at work; you call <code>TreeMap</code>. Interviews still ask it because it proves you understand O(h) and the ordering invariant — and AI makes it trivial to generate tests for your version.</p>
+<p><b>BST vs hash map:</b> hashing (<code>HashMap</code> / <code>dict</code> / <code>Map</code> / <code>unordered_map</code>) gives O(1) average lookups but no order. Choose a BST / ordered map when you need sorted iteration, floor/ceil, k-th smallest, or range queries ("all keys between 30 and 60") — hashing cannot answer those without scanning everything.</p>`,
+    aiEra: `<p><b>What AI changes:</b> nobody hand-writes BST insert at work; you call the library's ordered map (<code>TreeMap</code>, <code>std::map</code>). Interviews still ask it because it proves you understand O(h) and the ordering invariant — and AI makes it trivial to generate tests for your version.</p>
 <p><b>Use AI as a partner:</b> <code>Generate 20 random insert sequences and, for each, the expected inorder output and height, so I can test my BST.</code> Or ask: <code>Which java.util.TreeMap method answers "largest key strictly less than x"?</code> (<code>lowerKey</code>).</p>
 <p><b>Where AI goes wrong:</b> claiming BST operations are "O(log N)" without the word <b>balanced</b>, forgetting to re-link (<code>insert(node.left, key)</code> without assigning the result, so the new node is lost), and silently allowing duplicates on both sides, which breaks search.</p>
-<p><b>What you must still own:</b> the invariant (whole subtrees, not just children), the O(h) argument with the sorted-input worst case, and knowing when to reach for <code>TreeMap</code> vs <code>HashMap</code> in an answer.</p>`,
+<p><b>What you must still own:</b> the invariant (whole subtrees, not just children), the O(h) argument with the sorted-input worst case, and knowing when to reach for an ordered map vs a hash map in an answer.</p>`,
     problems: [{
       title: 'Insert into a Binary Search Tree',
       level: 'Medium',
@@ -2507,22 +4411,44 @@ System.out.println(set.subSet(30, true, 60, true));      // [30, 40, 50, 60] ran
         `<p>No extra data structure. Recursively: <code>if (node == null) return new TreeNode(val)</code>; otherwise recurse into the correct side and <b>assign</b> the result back (<code>node.left = insert(node.left, val)</code>). Iteratively: walk with a <code>parent</code> pointer.</p>`,
         `<p><b>Traps:</b> empty tree → the new node is the root; forgetting to assign the recursive result loses the node. <b>Recipe:</b> insert(n): if n null → new node; if val &lt; n.val → n.left = insert(n.left) else n.right = insert(n.right); return n.</p>`
       ],
+      tests: { sig: 'TreeNode int int -> TreeNode', fn: 'judge', check: "(args, out, exp) => { if (!Array.isArray(out)) out = []; const L = [], R = [], ok = out.length === 0 || out[0] !== null; const nodes = []; if (out.length && out[0] !== null) nodes.push(0); let i = 1; for (let k = 0; k < nodes.length && i < out.length; k++) { const p = nodes[k]; if (i < out.length && out[i] !== null) { L[p] = i; nodes.push(i); } i++; if (i < out.length && out[i] !== null) { R[p] = i; nodes.push(i); } i++; } const seq = []; const st = []; let x = nodes.length ? 0 : undefined; while (x !== undefined || st.length) { while (x !== undefined) { st.push(x); x = L[x]; } x = st.pop(); seq.push(out[x]); x = R[x]; } return ok && JSON.stringify(seq) === JSON.stringify(exp); }", harness: {
+        java: "class Check {\n    // n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\n    // Built here because a tree this deep is too big to write out as a test literal.\n    static TreeNode chain(int n, java.util.function.IntUnaryOperator val) {\n        TreeNode root = null;\n        for (int i = Math.abs(n) - 1; i >= 0; i--) {\n            TreeNode t = new TreeNode(val.applyAsInt(i));\n            if (n > 0) t.right = root; else t.left = root;\n            root = t;\n        }\n        return root;\n    }\n\n    static TreeNode judge(TreeNode root, int val, int n) {\n        if (n != 0) root = chain(n, i -> i);\n        return new Solution().insertIntoBST(root, val);\n    }\n}",
+        python: "# n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\ndef _chain(n, val):\n    root = None\n    for i in range(abs(n) - 1, -1, -1):\n        t = TreeNode(val(i))\n        if n > 0:\n            t.right = root\n        else:\n            t.left = root\n        root = t\n    return root\n\ndef judge(root, val, n):\n    if n:\n        root = _chain(n, lambda i: i)\n    return Solution().insert_into_bst(root, val)",
+        js: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nfunction chain__(n, val) {\n  let root = null;\n  for (let i = Math.abs(n) - 1; i >= 0; i--) {\n    const t = new TreeNode(val(i));\n    if (n > 0) t.right = root; else t.left = root;\n    root = t;\n  }\n  return root;\n}\n\nfunction judge(root, val, n) {\n  if (n) root = chain__(n, (i) => i);\n  return insertIntoBST(root, val);\n}",
+        cpp: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nTreeNode* chain__(int n, function<int(int)> val) {\n    TreeNode* root = nullptr;\n    for (int i = abs(n) - 1; i >= 0; i--) {\n        TreeNode* t = new TreeNode(val(i));\n        if (n > 0) t->right = root; else t->left = root;\n        root = t;\n    }\n    return root;\n}\n\nTreeNode* judge(TreeNode* root, int val, int n) {\n    if (n) root = chain__(n, [](int i) { return i; });\n    return Solution().insertIntoBST(root, val);\n}"
+      }, cases: [
+        [[[4,2,7,1,3],5,0],[1,2,3,4,5,7]],
+        [[[],5,0],[5]],
+        [[[40,20,60,10,30,50,70],25,0],[10,20,25,30,40,50,60,70]],
+        [[[5],3,0],[3,5]],
+        [[[5],8,0],[5,8]],
+        [[[4,2,7,1,3,null,null,null,null,null,null],0,0],[0,1,2,3,4,7]],
+        [[[-100000000,null,100000000],0,0],[-100000000,0,100000000]],
+        [[[10,5,15,3,7,12,18],100000000,0],[3,5,7,10,12,15,18,100000000]],
+        [[[],10000,10000],{'$range': [0,10001]}],
+        [[[],-1,10000],{'$range': [-1,10000]}]
+      ] },
       solution: {
-        approach: `<p>Walk down like a search; at the null link create the node; re-link on the way back up.</p>`,
+        approach: `<p>Walk down like a search, remembering the last node you stood on; when the next link is empty, hang the new node there. A loop is enough (no recursion), so a skewed tree of 10<sup>4</sup> nodes cannot overflow the call stack.</p>`,
         code: `
           class Solution {
               public TreeNode insertIntoBST(TreeNode root, int val) {
-                  if (root == null) return new TreeNode(val);   // the empty spot: new leaf
-                  if (val < root.val) {
-                      root.left = insertIntoBST(root.left, val);   // belongs on the smaller side
-                  } else {
-                      root.right = insertIntoBST(root.right, val); // belongs on the bigger side
+                  TreeNode fresh = new TreeNode(val);
+                  if (root == null) return fresh;               // empty tree: the new node is the root
+                  TreeNode cur = root;
+                  while (true) {
+                      if (val < cur.val) {                      // belongs on the smaller side
+                          if (cur.left == null) { cur.left = fresh; return root; }    // empty spot: new leaf
+                          cur = cur.left;
+                      } else {                                  // belongs on the bigger side
+                          if (cur.right == null) { cur.right = fresh; return root; }
+                          cur = cur.right;
+                      }
                   }
-                  return root;                                     // this subtree's root is unchanged
               }
           }`,
         alt: [{ lang: 'python', code: `class Solution:
-    def insertIntoBST(self, root, val):
+    def insert_into_bst(self, root, val):
         new = TreeNode(val)
         if root is None:
             return new
@@ -2537,18 +4463,47 @@ System.out.println(set.subSet(30, true, 60, true));      // [30, 40, 50, 60] ran
                 if cur.right is None:
                     cur.right = new
                     return root
-                cur = cur.right` }],
+                cur = cur.right` }, { lang: 'js', code: `function insertIntoBST(root, val) {
+  const node = new TreeNode(val);
+  if (!root) return node;
+  let cur = root;
+  for (;;) {                         // iterative: O(1) extra space
+    if (val < cur.val) {
+      if (!cur.left) { cur.left = node; return root; }
+      cur = cur.left;
+    } else {
+      if (!cur.right) { cur.right = node; return root; }
+      cur = cur.right;
+    }
+  }
+}
+` }, { lang: 'cpp', code: `// LeetCode-style node (the judge normally provides it)
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int x = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(x), left(l), right(r) {}
+};
+
+class Solution {
+public:
+    TreeNode* insertIntoBST(TreeNode* root, int val) {
+        // walk a pointer to the empty link where val belongs
+        TreeNode** link = &root;
+        while (*link) link = val < (*link)->val ? &(*link)->left : &(*link)->right;
+        *link = new TreeNode(val);
+        return root;
+    }
+};
+` }],
         dry: {
-          head: ['call', 'compare', 'action', 'returns'],
+          head: ['cur', 'compare', 'next link', 'action'],
           rows: [
-            ['insert(4, 5)', '5 &gt; 4', '4.right = insert(7, 5)', '4'],
-            ['insert(7, 5)', '5 &lt; 7', '7.left = insert(null, 5)', '7'],
-            ['insert(null, 5)', '—', H.c('g', 'create node 5'), H.c('g', 'node 5')],
-            ['back at 7', '—', '7.left = 5', '7'],
-            ['back at 4', '—', '4.right = 7 (unchanged)', H.c('p', 'root 4')]
+            ['4', '5 &gt; 4', '4.right = 7', 'move to 7'],
+            ['7', '5 &lt; 7', '7.left = null', H.c('g', 'create node 5 as 7.left')],
+            ['—', '—', '—', H.c('p', 'return root 4 → [4,2,7,1,3,5]')]
           ]
         },
-        complexity: `<p><b>Time O(h)</b>: one comparison per level — O(log N) if balanced, O(N) if skewed. <b>Space O(h)</b> for the recursion, or <b>O(1)</b> with the iterative version.</p>`,
+        complexity: `<p><b>Time O(h)</b>: one comparison per level — O(log N) if balanced, O(N) if skewed. <b>Space O(1)</b>: the loop keeps only <code>cur</code> (the recursive version needs O(h) call stack).</p>`,
         followUps: ['What if duplicates are allowed? (store a count, or send equal keys right consistently)', 'Keep the tree balanced after many inserts (AVL / red-black rotations)', 'Insert a whole sorted array so the tree is balanced (pick the middle as root)']
       }
     }]
@@ -2610,7 +4565,7 @@ ${H.table(['Case', 'Example', 'What to do', 'Result'], [
       '"Delete is called many times / tree must stay fast" → mention self-balancing trees or lazy deletion.',
       '"Trim the BST to [low, high]" → same re-link pattern, deleting whole subtrees at once.'
     ],
-    code: `
+    code: { lang: 'java', code: `
 class BSTDelete {
     // Returns the root of this subtree after deleting key (if present).
     static TreeNode deleteNode(TreeNode node, int key) {
@@ -2651,7 +4606,121 @@ class BSTDelete {
         if (v < n.val) n.left = insert(n.left, v); else n.right = insert(n.right, v);
         return n;
     }
-}`,
+}`, alt: [{ lang: 'python', run: true, code: `class TreeNode:
+    def __init__(self, val=0, left=None, right=None):
+        self.val, self.left, self.right = val, left, right
+
+# Returns the root of this subtree after deleting key (if present).
+def delete_node(node, key):
+    if node is None:
+        return None                          # key not found: nothing changes
+    if key < node.val:
+        node.left = delete_node(node.left, key)      # it lives on the left
+    elif key > node.val:
+        node.right = delete_node(node.right, key)    # it lives on the right
+    else:
+        if node.left is None:
+            return node.right                # case 1 (both None) or case 2 (only right)
+        if node.right is None:
+            return node.left                 # case 2 (only left)
+        succ = node.right                    # case 3: min of the right subtree
+        while succ.left:
+            succ = succ.left
+        node.val = succ.val                  # copy successor into this chair
+        node.right = delete_node(node.right, succ.val)   # remove its old copy
+    return node
+
+def insert(n, v):
+    if n is None:
+        return TreeNode(v)
+    if v < n.val:
+        n.left = insert(n.left, v)
+    else:
+        n.right = insert(n.right, v)
+    return n
+
+def inorder(n):
+    return inorder(n.left) + [n.val] + inorder(n.right) if n else []
+
+root = None
+for v in [50, 30, 70, 20, 40, 60, 80, 65]:
+    root = insert(root, v)
+root = delete_node(root, 50)                 # two children
+print("root=%d inorder=%s" % (root.val, inorder(root)))   # root=60 inorder=[20, 30, 40, 60, 65, 70, 80]
+` }, { lang: 'js', run: true, code: `class TreeNode {
+  constructor(val = 0, left = null, right = null) { this.val = val; this.left = left; this.right = right; }
+}
+
+// Returns the root of this subtree after deleting key (if present).
+function deleteNode(node, key) {
+  if (!node) return null;                          // key not found: nothing changes
+  if (key < node.val) node.left = deleteNode(node.left, key);         // it lives on the left
+  else if (key > node.val) node.right = deleteNode(node.right, key);  // it lives on the right
+  else {
+    if (!node.left) return node.right;             // case 1 (both null) or case 2 (only right)
+    if (!node.right) return node.left;             // case 2 (only left)
+    let succ = node.right;                         // case 3: min of the right subtree
+    while (succ.left) succ = succ.left;
+    node.val = succ.val;                           // copy successor into this chair
+    node.right = deleteNode(node.right, succ.val); // remove its old copy
+  }
+  return node;
+}
+
+function insert(n, v) {
+  if (!n) return new TreeNode(v);
+  if (v < n.val) n.left = insert(n.left, v); else n.right = insert(n.right, v);
+  return n;
+}
+const inorder = (n) => (n ? [...inorder(n.left), n.val, ...inorder(n.right)] : []);
+
+let root = null;
+for (const v of [50, 30, 70, 20, 40, 60, 80, 65]) root = insert(root, v);
+root = deleteNode(root, 50);                       // two children
+console.log('root=' + root.val + ' inorder=' + inorder(root).join(' '));   // root=60 inorder=20 30 40 60 65 70 80
+` }, { lang: 'cpp', code: `// TreeNode as defined in the first lesson
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int v = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(v), left(l), right(r) {}
+};
+
+// Returns the root of this subtree after deleting key (if present).
+TreeNode* deleteNode(TreeNode* node, int key) {
+    if (!node) return nullptr;                            // key not found: nothing changes
+    if (key < node->val) node->left = deleteNode(node->left, key);          // it lives on the left
+    else if (key > node->val) node->right = deleteNode(node->right, key);   // it lives on the right
+    else {
+        if (!node->left) { TreeNode* r = node->right; delete node; return r; }   // case 1 or 2
+        if (!node->right) { TreeNode* l = node->left; delete node; return l; }   // case 2
+        TreeNode* succ = node->right;                     // case 3: min of the right subtree
+        while (succ->left) succ = succ->left;
+        node->val = succ->val;                            // copy successor into this chair
+        node->right = deleteNode(node->right, succ->val); // remove its old copy
+    }
+    return node;
+}
+
+TreeNode* insert(TreeNode* n, int v) {
+    if (!n) return new TreeNode(v);
+    if (v < n->val) n->left = insert(n->left, v); else n->right = insert(n->right, v);
+    return n;
+}
+
+void inorder(TreeNode* n, ostream& out) {
+    if (!n) return;
+    inorder(n->left, out); out << n->val << ' '; inorder(n->right, out);
+}
+
+int main() {
+    TreeNode* root = nullptr;
+    for (int v : {50, 30, 70, 20, 40, 60, 80, 65}) root = insert(root, v);
+    root = deleteNode(root, 50);                          // two children
+    cout << "root=" << root->val << " inorder=";
+    inorder(root, cout);
+    cout << '\\n';                                         // root=60 inorder=20 30 40 60 65 70 80
+}
+` }] },
     codeTitle: 'Recursive BST delete with the inorder successor',
     viz: {
       title: 'Delete step by step (with the call stack)',
@@ -2762,7 +4831,7 @@ class BSTDelete {
       {
         title: 'Predecessor version (mirror image)',
         html: `<p>Instead of the minimum on the right, use the <b>maximum on the left</b> (go left once, then right all the way). For deleting 50 that is ${H.c('p', '40')}. Both are correct; some implementations alternate between them to avoid always shrinking the same side.</p>`,
-        code: `
+        code: { lang: 'java', code: `
 TreeNode deleteWithPredecessor(TreeNode node, int key) {
     if (node == null) return null;
     if (key < node.val) node.left = deleteWithPredecessor(node.left, key);
@@ -2776,7 +4845,60 @@ TreeNode deleteWithPredecessor(TreeNode node, int key) {
         node.left = deleteWithPredecessor(node.left, pred.val);
     }
     return node;
-}`
+}`, alt: [{ lang: 'python', code: `def delete_with_predecessor(node, key):
+    if node is None:
+        return None
+    if key < node.val:
+        node.left = delete_with_predecessor(node.left, key)
+    elif key > node.val:
+        node.right = delete_with_predecessor(node.right, key)
+    else:
+        if node.left is None:
+            return node.right
+        if node.right is None:
+            return node.left
+        pred = node.left                     # max of the left subtree
+        while pred.right:
+            pred = pred.right
+        node.val = pred.val
+        node.left = delete_with_predecessor(node.left, pred.val)
+    return node
+` }, { lang: 'js', code: `function deleteWithPredecessor(node, key) {
+  if (!node) return null;
+  if (key < node.val) node.left = deleteWithPredecessor(node.left, key);
+  else if (key > node.val) node.right = deleteWithPredecessor(node.right, key);
+  else {
+    if (!node.left) return node.right;
+    if (!node.right) return node.left;
+    let pred = node.left;                    // max of the left subtree
+    while (pred.right) pred = pred.right;
+    node.val = pred.val;
+    node.left = deleteWithPredecessor(node.left, pred.val);
+  }
+  return node;
+}
+` }, { lang: 'cpp', code: `// TreeNode as defined in the first lesson
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int v = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(v), left(l), right(r) {}
+};
+
+TreeNode* deleteWithPredecessor(TreeNode* node, int key) {
+    if (!node) return nullptr;
+    if (key < node->val) node->left = deleteWithPredecessor(node->left, key);
+    else if (key > node->val) node->right = deleteWithPredecessor(node->right, key);
+    else {
+        if (!node->left) return node->right;
+        if (!node->right) return node->left;
+        TreeNode* pred = node->left;         // max of the left subtree
+        while (pred->right) pred = pred->right;
+        node->val = pred->val;
+        node->left = deleteWithPredecessor(node->left, pred->val);
+    }
+    return node;
+}
+` }] }
       }
     ],
     deepDive: `<p><b>Copy value vs move node:</b> the code above copies the successor's value into the node. That is fine in interviews, but in real systems a node may carry a big payload or be referenced from elsewhere (an iterator, a handle). Then you <b>splice</b> the successor node itself into place by re-linking pointers instead of copying data. Java's <code>TreeMap</code> copies key/value into the entry; most C++ implementations relink nodes so iterators stay valid.</p>
@@ -2834,38 +4956,123 @@ TreeNode deleteWithPredecessor(TreeNode node, int key) {
         `<p>Write <code>TreeNode deleteNode(node, key)</code> that returns the new root of the subtree; recurse left/right by comparison and re-link: <code>node.left = deleteNode(node.left, key)</code>. Successor: <code>s = node.right; while (s.left != null) s = s.left;</code></p>`,
         `<p><b>Traps:</b> key missing → return the tree unchanged; deleting the root → return value is the new root; after copying the successor's value, delete <b>that value</b> from <code>node.right</code> (not the original key). <b>Recipe:</b> null → null; compare and recurse; found: no left → return right; no right → return left; else copy min of right, delete it from right.</p>`
       ],
+      tests: { sig: 'TreeNode int int -> TreeNode', fn: 'judge', check: "(args, out, exp) => { if (!Array.isArray(out)) out = []; const L = [], R = [], ok = out.length === 0 || out[0] !== null; const nodes = []; if (out.length && out[0] !== null) nodes.push(0); let i = 1; for (let k = 0; k < nodes.length && i < out.length; k++) { const p = nodes[k]; if (i < out.length && out[i] !== null) { L[p] = i; nodes.push(i); } i++; if (i < out.length && out[i] !== null) { R[p] = i; nodes.push(i); } i++; } const seq = []; const st = []; let x = nodes.length ? 0 : undefined; while (x !== undefined || st.length) { while (x !== undefined) { st.push(x); x = L[x]; } x = st.pop(); seq.push(out[x]); x = R[x]; } return ok && JSON.stringify(seq) === JSON.stringify(exp); }", harness: {
+        java: "class Check {\n    // n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\n    // Built here because a tree this deep is too big to write out as a test literal.\n    static TreeNode chain(int n, java.util.function.IntUnaryOperator val) {\n        TreeNode root = null;\n        for (int i = Math.abs(n) - 1; i >= 0; i--) {\n            TreeNode t = new TreeNode(val.applyAsInt(i));\n            if (n > 0) t.right = root; else t.left = root;\n            root = t;\n        }\n        return root;\n    }\n\n    static TreeNode judge(TreeNode root, int key, int n) {\n        if (n != 0) root = chain(n, i -> i);\n        return new Solution().deleteNode(root, key);\n    }\n}",
+        python: "# n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\ndef _chain(n, val):\n    root = None\n    for i in range(abs(n) - 1, -1, -1):\n        t = TreeNode(val(i))\n        if n > 0:\n            t.right = root\n        else:\n            t.left = root\n        root = t\n    return root\n\ndef judge(root, key, n):\n    if n:\n        root = _chain(n, lambda i: i)\n    return Solution().delete_node(root, key)",
+        js: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nfunction chain__(n, val) {\n  let root = null;\n  for (let i = Math.abs(n) - 1; i >= 0; i--) {\n    const t = new TreeNode(val(i));\n    if (n > 0) t.right = root; else t.left = root;\n    root = t;\n  }\n  return root;\n}\n\nfunction judge(root, key, n) {\n  if (n) root = chain__(n, (i) => i);\n  return deleteNode(root, key);\n}",
+        cpp: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nTreeNode* chain__(int n, function<int(int)> val) {\n    TreeNode* root = nullptr;\n    for (int i = abs(n) - 1; i >= 0; i--) {\n        TreeNode* t = new TreeNode(val(i));\n        if (n > 0) t->right = root; else t->left = root;\n        root = t;\n    }\n    return root;\n}\n\nTreeNode* judge(TreeNode* root, int key, int n) {\n    if (n) root = chain__(n, [](int i) { return i; });\n    return Solution().deleteNode(root, key);\n}"
+      }, cases: [
+        [[[5,3,6,2,4,null,7],3,0],[2,4,5,6,7]],
+        [[[5,3,6,2,4,null,7],0,0],[2,3,4,5,6,7]],
+        [[[],0,0],[]],
+        [[[5],5,0],[]],
+        [[[5,3,6,2,4,null,7],5,0],[2,3,4,6,7]],
+        [[[5,3,6,2,4,null,7],7,0],[2,3,4,5,6]],
+        [[[50,30,70,20,40,60,80,null,null,35,45,55,65],30,0],[20,35,40,45,50,55,60,65,70,80]],
+        [[[2,1],2,0],[1]],
+        [[[1,null,2],1,0],[2]],
+        [[[-100000,null,100000],100000,0],[-100000]],
+        [[[],9999,10000],{'$range': [0,9999]}],
+        [[[],0,10000],{'$range': [1,10000]}],
+        [[[],5000,10000],{'$concat': [{'$range': [0,5000]},{'$range': [5001,10000]}]}]
+      ] },
       solution: {
-        approach: `<p>Recursive search with re-linking; three cases at the target; two-children case reduced to an easy delete via the inorder successor.</p>`,
+        approach: `<p>Search for the key while remembering its parent; three cases at the target; the two-children case is reduced to an easy delete via the inorder successor (copy its value, then remove the successor, which has no left child). A loop does the walking, so a skewed tree of 10<sup>4</sup> nodes cannot overflow the call stack the way the recursive version can.</p>`,
         code: `
           class Solution {
               public TreeNode deleteNode(TreeNode root, int key) {
-                  if (root == null) return null;                      // not found
-                  if (key < root.val) {
-                      root.left = deleteNode(root.left, key);
-                  } else if (key > root.val) {
-                      root.right = deleteNode(root.right, key);
-                  } else {
-                      if (root.left == null) return root.right;       // leaf or only-right child
-                      if (root.right == null) return root.left;       // only-left child
-                      TreeNode succ = root.right;                     // two children:
-                      while (succ.left != null) succ = succ.left;     //   min of right subtree
-                      root.val = succ.val;                            //   take its value
-                      root.right = deleteNode(root.right, succ.val);  //   remove the old copy
+                  TreeNode parent = null, cur = root;
+                  while (cur != null && cur.val != key) {         // search, remembering the parent
+                      parent = cur;
+                      cur = key < cur.val ? cur.left : cur.right;
                   }
+                  if (cur == null) return root;                   // not found
+                  if (cur.left != null && cur.right != null) {    // two children:
+                      TreeNode sp = cur, succ = cur.right;        //   min of the right subtree
+                      while (succ.left != null) { sp = succ; succ = succ.left; }
+                      cur.val = succ.val;                         //   take its value
+                      parent = sp; cur = succ;                    //   now remove the successor (no left child)
+                  }
+                  TreeNode child = cur.left != null ? cur.left : cur.right;   // leaf or one child
+                  if (parent == null) return child;               // we removed the root
+                  if (parent.left == cur) parent.left = child; else parent.right = child;
                   return root;
               }
           }`,
+        alt: [{ lang: 'python', code: `class Solution:
+    def delete_node(self, root, key):
+        parent, cur = None, root
+        while cur and cur.val != key:        # search, remembering the parent
+            parent, cur = cur, (cur.left if key < cur.val else cur.right)
+        if cur is None:
+            return root                      # key not found
+        if cur.left and cur.right:           # two children: copy the successor's value,
+            sp, succ = cur, cur.right        # then delete the successor node instead
+            while succ.left:
+                sp, succ = succ, succ.left
+            cur.val = succ.val
+            parent, cur = sp, succ           # the successor has no left child
+        child = cur.left or cur.right        # now cur has at most one child
+        if parent is None:
+            return child                     # we removed the root
+        if parent.left is cur:
+            parent.left = child
+        else:
+            parent.right = child
+        return root
+` }, { lang: 'js', code: `function deleteNode(root, key) {
+  let parent = null, cur = root;
+  while (cur && cur.val !== key) {               // search, remembering the parent
+    parent = cur;
+    cur = key < cur.val ? cur.left : cur.right;
+  }
+  if (!cur) return root;                         // key not found
+  if (cur.left && cur.right) {                   // two children: copy the successor's value,
+    let sp = cur, succ = cur.right;              // then delete the successor node instead
+    while (succ.left) { sp = succ; succ = succ.left; }
+    cur.val = succ.val;
+    parent = sp; cur = succ;                     // the successor has no left child
+  }
+  const child = cur.left || cur.right;           // now cur has at most one child
+  if (!parent) return child;                     // we removed the root
+  if (parent.left === cur) parent.left = child; else parent.right = child;
+  return root;
+}
+` }, { lang: 'cpp', code: `// LeetCode-style node (the judge normally provides it)
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int x = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(x), left(l), right(r) {}
+};
+
+class Solution {
+public:
+    TreeNode* deleteNode(TreeNode* root, int key) {
+        if (!root) return nullptr;                       // not found
+        if (key < root->val) root->left = deleteNode(root->left, key);
+        else if (key > root->val) root->right = deleteNode(root->right, key);
+        else {
+            if (!root->left) { TreeNode* r = root->right; delete root; return r; }
+            if (!root->right) { TreeNode* l = root->left; delete root; return l; }
+            TreeNode* succ = root->right;                // two children:
+            while (succ->left) succ = succ->left;        //   min of the right subtree
+            root->val = succ->val;                       //   take its value
+            root->right = deleteNode(root->right, succ->val);
+        }
+        return root;
+    }
+};
+` }],
         dry: {
-          head: ['call', 'situation', 'action', 'returns'],
+          head: ['step', 'situation', 'action', 'parent / cur'],
           rows: [
-            ['del(5, 3)', '3 &lt; 5', '5.left = del(3, 3)', '5'],
-            ['del(3, 3)', 'found, two children', 'successor = 4; copy 4; 3→4', '…'],
-            ['del(4, 4) (right of new 4)', 'found, leaf', 'return null', 'null'],
-            ['back in node (now 4)', '4.right = null', 'return node 4', '4'],
-            ['back at 5', '5.left = 4', 'return 5', H.c('p', 'root 5 → [5,4,6,2,null,null,7]')]
+            ['search', '3 &lt; 5', 'go left', '5 / 3'],
+            ['found 3', 'two children', 'successor = 4 (right once, no left); copy 4 into the node', '3 → now 4'],
+            ['switch target', 'remove the old 4', 'parent = node (now 4), cur = old 4 (a leaf)', '4 / 4'],
+            ['unlink', 'old 4 has no child', 'parent.right = null', H.c('p', 'root 5 → [5,4,6,2,null,null,7]')]
           ]
         },
-        complexity: `<p><b>Time O(h)</b>: one walk to the key plus one walk to the successor in the same subtree. <b>Space O(h)</b> recursion (an iterative version with parent pointers is O(1)).</p>`,
+        complexity: `<p><b>Time O(h)</b>: one walk to the key plus one walk to the successor in the same subtree. <b>Space O(1)</b>: the loop keeps two pointers (the recursive version needs O(h) call stack).</p>`,
         followUps: ['Do it iteratively with O(1) extra space', 'Delete all nodes outside [low, high] (Trim a BST)', 'Delete when duplicates are stored with a count field']
       }
     }]
@@ -2901,12 +5108,12 @@ ${H.table(['BST from 5 3 6 2 4 1, k = 3', 'inorder so far', 'count'], [
 ])}`,
     clues: [
       '"Determine if it is a <b>valid BST</b>" → range (lo, hi) passed down, or strictly increasing inorder.',
-      'Values can be <code>Integer.MIN_VALUE</code> / <code>MAX_VALUE</code> → use <code>long</code> bounds or nullable bounds, never ±2<sup>31</sup> sentinels.',
+      'Values can be the 32-bit extremes (−2<sup>31</sup> and 2<sup>31</sup> − 1) → use 64-bit bounds (<code>long</code> / <code>long long</code>), infinite bounds (Python / JavaScript) or "no bound" nulls, never ±2<sup>31</sup> sentinels.',
       '"<b>k-th smallest</b> / k-th largest in a BST" → inorder (or reverse inorder) with a counter and early stop.',
       '"Two nodes were <b>swapped by mistake</b>" / "minimum difference between any two nodes" → inorder neighbours.',
       '"BST is <b>modified often</b> and k-th is asked often" → store subtree sizes in each node → O(h) per query.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
 class InorderPowers {
     // VALIDATE with ranges. Long bounds so Integer.MIN_VALUE / MAX_VALUE nodes are fine.
     static boolean isValidBST(TreeNode root) {
@@ -2942,7 +5149,114 @@ class InorderPowers {
         }
         throw new IllegalArgumentException("k is larger than the number of nodes");
     }
-}`, `
+}`, alt: [{ lang: 'python', code: `import math
+
+# VALIDATE with ranges. Infinite bounds, so any int value fits inside at the start.
+def is_valid_bst(root):
+    def valid(n, lo, hi):
+        if n is None:
+            return True                          # empty tree is a valid BST
+        if not lo < n.val < hi:
+            return False                         # breaks a rule from some ancestor
+        return valid(n.left, lo, n.val) and valid(n.right, n.val, hi)
+    return valid(root, -math.inf, math.inf)
+
+# VALIDATE with inorder: values must be strictly increasing.
+def is_valid_inorder(root):
+    def inorder(n):                              # generator: yields values in sorted order
+        if n:
+            yield from inorder(n.left)
+            yield n.val
+            yield from inorder(n.right)
+    vals = list(inorder(root))
+    return all(a < b for a, b in zip(vals, vals[1:]))
+
+# K-TH SMALLEST: iterative inorder, stop at the k-th pop.
+def kth_smallest(root, k):
+    stack, cur = [], root
+    while cur or stack:
+        while cur:
+            stack.append(cur)
+            cur = cur.left
+        cur = stack.pop()
+        k -= 1
+        if k == 0:
+            return cur.val                       # this is the k-th in sorted order
+        cur = cur.right
+    raise ValueError("k is larger than the number of nodes")
+` }, { lang: 'js', code: `// VALIDATE with ranges. Infinite bounds, so any value fits inside at the start.
+function isValidBST(root) {
+  const valid = (n, lo, hi) => {
+    if (!n) return true;                         // empty tree is a valid BST
+    if (n.val <= lo || n.val >= hi) return false; // breaks a rule from some ancestor
+    return valid(n.left, lo, n.val) && valid(n.right, n.val, hi);
+  };
+  return valid(root, -Infinity, Infinity);
+}
+
+// VALIDATE with inorder: values must be strictly increasing.
+function isValidInorder(root) {
+  let prev = null;                               // null = nothing seen yet
+  const inorder = (n) => {
+    if (!n) return true;
+    if (!inorder(n.left)) return false;
+    if (prev !== null && n.val <= prev) return false;   // not strictly increasing
+    prev = n.val;
+    return inorder(n.right);
+  };
+  return inorder(root);
+}
+
+// K-TH SMALLEST: iterative inorder, stop at the k-th pop.
+function kthSmallest(root, k) {
+  const stack = [];
+  let cur = root;
+  while (cur || stack.length) {
+    while (cur) { stack.push(cur); cur = cur.left; }
+    cur = stack.pop();
+    if (--k === 0) return cur.val;               // this is the k-th in sorted order
+    cur = cur.right;
+  }
+  throw new RangeError('k is larger than the number of nodes');
+}
+` }, { lang: 'cpp', code: `// TreeNode as defined in the first lesson
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int v = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(v), left(l), right(r) {}
+};
+
+// VALIDATE with ranges. long long bounds so INT_MIN / INT_MAX nodes are fine.
+bool valid(TreeNode* n, long long lo, long long hi) {
+    if (!n) return true;                             // empty tree is a valid BST
+    if (n->val <= lo || n->val >= hi) return false;  // breaks a rule from some ancestor
+    return valid(n->left, lo, n->val) && valid(n->right, n->val, hi);
+}
+bool isValidBST(TreeNode* root) { return valid(root, LLONG_MIN, LLONG_MAX); }
+
+// VALIDATE with inorder: values must be strictly increasing.
+bool inorderCheck(TreeNode* n, optional<int>& prev) {    // empty optional = nothing seen yet
+    if (!n) return true;
+    if (!inorderCheck(n->left, prev)) return false;
+    if (prev && n->val <= *prev) return false;           // not strictly increasing
+    prev = n->val;
+    return inorderCheck(n->right, prev);
+}
+bool isValidInorder(TreeNode* root) { optional<int> prev; return inorderCheck(root, prev); }
+
+// K-TH SMALLEST: iterative inorder, stop at the k-th pop.
+int kthSmallest(TreeNode* root, int k) {
+    stack<TreeNode*> st;
+    TreeNode* cur = root;
+    while (cur || !st.empty()) {
+        while (cur) { st.push(cur); cur = cur->left; }
+        cur = st.top(); st.pop();
+        if (--k == 0) return cur->val;                   // this is the k-th in sorted order
+        cur = cur->right;
+    }
+    throw invalid_argument("k is larger than the number of nodes");
+}
+` }] }, { lang: 'java', code: `
 // FOLLOW-UP: k-th smallest in O(h) when the tree changes often.
 // Every node stores the size of its subtree ("order-statistic tree").
 class SizedNode {
@@ -2978,7 +5292,107 @@ class OrderStatisticBST {
         System.out.println(kth(root, 3));   // 3
         System.out.println(kth(root, 6));   // 6
     }
-}`],
+}`, alt: [{ lang: 'python', run: true, code: `# FOLLOW-UP: k-th smallest in O(h) when the tree changes often.
+# Every node stores the size of its subtree ("order-statistic tree").
+class SizedNode:
+    def __init__(self, val):
+        self.val, self.size = val, 1         # size = nodes in this subtree, including me
+        self.left = self.right = None
+
+def size(n):
+    return n.size if n else 0
+
+def insert(n, v):
+    if n is None:
+        return SizedNode(v)
+    if v < n.val:
+        n.left = insert(n.left, v)
+    else:
+        n.right = insert(n.right, v)
+    n.size = 1 + size(n.left) + size(n.right)   # keep sizes up to date on the way up
+    return n
+
+def kth(n, k):                               # k is 1-based
+    while n:
+        left_count = size(n.left)
+        if k == left_count + 1:
+            return n.val                     # exactly left_count smaller values -> me
+        if k <= left_count:
+            n = n.left                       # answer is among the smaller values
+        else:
+            k -= left_count + 1              # skip the left side and me
+            n = n.right
+    raise IndexError("k out of range")
+
+root = None
+for v in [5, 3, 6, 2, 4, 1]:
+    root = insert(root, v)
+print(kth(root, 3))   # 3
+print(kth(root, 6))   # 6
+` }, { lang: 'js', run: true, code: `// FOLLOW-UP: k-th smallest in O(h) when the tree changes often.
+// Every node stores the size of its subtree ("order-statistic tree").
+class SizedNode {
+  constructor(val) { this.val = val; this.size = 1; this.left = null; this.right = null; }
+}
+const size = (n) => (n ? n.size : 0);
+
+function insert(n, v) {
+  if (!n) return new SizedNode(v);
+  if (v < n.val) n.left = insert(n.left, v); else n.right = insert(n.right, v);
+  n.size = 1 + size(n.left) + size(n.right);   // keep sizes up to date on the way up
+  return n;
+}
+
+// k is 1-based
+function kth(n, k) {
+  while (n) {
+    const leftCount = size(n.left);
+    if (k === leftCount + 1) return n.val;     // exactly leftCount smaller values -> me
+    if (k <= leftCount) n = n.left;            // answer is among the smaller values
+    else { k -= leftCount + 1; n = n.right; }  // skip the left side and me
+  }
+  throw new RangeError('k out of range');
+}
+
+let root = null;
+for (const v of [5, 3, 6, 2, 4, 1]) root = insert(root, v);
+console.log(kth(root, 3));   // 3
+console.log(kth(root, 6));   // 6
+` }, { lang: 'cpp', code: `// FOLLOW-UP: k-th smallest in O(h) when the tree changes often.
+// Every node stores the size of its subtree ("order-statistic tree").
+struct SizedNode {
+    int val, size = 1;                       // size = nodes in this subtree, including me
+    SizedNode *left = nullptr, *right = nullptr;
+    explicit SizedNode(int v) : val(v) {}
+};
+
+int size(SizedNode* n) { return n ? n->size : 0; }
+
+SizedNode* insert(SizedNode* n, int v) {
+    if (!n) return new SizedNode(v);
+    if (v < n->val) n->left = insert(n->left, v); else n->right = insert(n->right, v);
+    n->size = 1 + size(n->left) + size(n->right);   // keep sizes up to date on the way up
+    return n;
+}
+
+// k is 1-based
+int kth(SizedNode* n, int k) {
+    while (n) {
+        int leftCount = size(n->left);
+        if (k == leftCount + 1) return n->val;     // exactly leftCount smaller values -> me
+        if (k <= leftCount) n = n->left;           // answer is among the smaller values
+        else { k -= leftCount + 1; n = n->right; } // skip the left side and me
+    }
+    throw out_of_range("k out of range");
+}
+
+int main() {
+    SizedNode* root = nullptr;
+    for (int v : {5, 3, 6, 2, 4, 1}) root = insert(root, v);
+    cout << kth(root, 3) << '\\n';   // 3
+    cout << kth(root, 6) << '\\n';   // 6
+}
+` }] }],
     codeTitle: ['Validate BST (two ways) + k-th smallest', 'Follow-up: subtree sizes for O(h) k-th queries'],
     viz: [{
       title: 'Validate with ranges passed down',
@@ -3074,7 +5488,7 @@ class OrderStatisticBST {
     examples: [
       {
         title: 'Extreme values: [2147483647] and [-2147483648, null, 2147483647]',
-        html: `<p>A single node with value Integer.MAX_VALUE is a valid BST. If your code starts with <code>hi = Integer.MAX_VALUE</code> and checks <code>val &lt; hi</code>, it wrongly says ${H.c('r', 'false')}. Use <code>long</code> bounds (<code>Long.MIN_VALUE</code>/<code>Long.MAX_VALUE</code>) or <code>Integer</code> bounds where <code>null</code> means "no limit". The second tree is valid too: MAX is right of MIN.</p>`
+        html: `<p>A single node with value 2<sup>31</sup> − 1 (Java <code>Integer.MAX_VALUE</code>, C++ <code>INT_MAX</code>) is a valid BST. If your code starts with <code>hi = Integer.MAX_VALUE</code> and checks <code>val &lt; hi</code>, it wrongly says ${H.c('r', 'false')}. Use 64-bit bounds (<code>Long.MIN_VALUE</code> / <code>LLONG_MIN</code>), bounds where <code>null</code> means "no limit", or <code>-inf</code> / <code>-Infinity</code> in Python / JavaScript. The second tree is valid too: MAX is right of MIN.</p>`
       },
       {
         title: 'Duplicates: [2, 2, 2] is NOT valid (strict BST)',
@@ -3083,7 +5497,7 @@ class OrderStatisticBST {
       {
         title: 'K-th LARGEST = reverse inorder (right, me, left)',
         html: `<p>Mirror the walk: slide <b>right</b>, pop, go <b>left</b>. For the BST of 5 3 6 2 4 1 the reverse inorder is 6 5 4 3 2 1, so the 2nd largest is ${H.c('g', '5')}. Equivalent: k-th largest = (N − k + 1)-th smallest, but that needs N first.</p>`,
-        code: `
+        code: { lang: 'java', code: `
 int kthLargest(TreeNode root, int k) {
     Deque<TreeNode> st = new ArrayDeque<>();
     TreeNode cur = root;
@@ -3094,7 +5508,48 @@ int kthLargest(TreeNode root, int k) {
         cur = cur.left;                                            // then go LEFT
     }
     return -1;   // k larger than the tree
-}`
+}`, alt: [{ lang: 'python', code: `def kth_largest(root, k):
+    stack, cur = [], root
+    while cur or stack:
+        while cur:                           # slide RIGHT
+            stack.append(cur)
+            cur = cur.right
+        cur = stack.pop()
+        k -= 1
+        if k == 0:
+            return cur.val
+        cur = cur.left                       # then go LEFT
+    return -1                                # k larger than the tree
+` }, { lang: 'js', code: `function kthLargest(root, k) {
+  const stack = [];
+  let cur = root;
+  while (cur || stack.length) {
+    while (cur) { stack.push(cur); cur = cur.right; }   // slide RIGHT
+    cur = stack.pop();
+    if (--k === 0) return cur.val;
+    cur = cur.left;                                      // then go LEFT
+  }
+  return -1;                                             // k larger than the tree
+}
+` }, { lang: 'cpp', code: `// TreeNode as defined in the first lesson
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int v = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(v), left(l), right(r) {}
+};
+
+int kthLargest(TreeNode* root, int k) {
+    stack<TreeNode*> st;
+    TreeNode* cur = root;
+    while (cur || !st.empty()) {
+        while (cur) { st.push(cur); cur = cur->right; }  // slide RIGHT
+        cur = st.top(); st.pop();
+        if (--k == 0) return cur->val;
+        cur = cur->left;                                 // then go LEFT
+    }
+    return -1;                                           // k larger than the tree
+}
+` }] }
       },
       {
         title: 'Recover a BST where two nodes were swapped',
@@ -3153,21 +5608,49 @@ int kthLargest(TreeNode root, int k) {
         `<p>Recursive helper <code>valid(node, lo, hi)</code> with <code>long</code> bounds. Left child gets (lo, node.val); right child gets (node.val, hi). Alternatively: iterative inorder and compare with the previous value.</p>`,
         `<p><b>Traps:</b> values equal to ±2<sup>31</sup> (use long or null bounds); duplicates are invalid (use <code>&lt;=</code>/<code>&gt;=</code> for the failure test). <b>Recipe:</b> null → true; if val ≤ lo or val ≥ hi → false; return valid(left, lo, val) &amp;&amp; valid(right, val, hi).</p>`
       ],
+      tests: { sig: 'TreeNode int -> bool', fn: 'judge', harness: {
+        java: "class Check {\n    // n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\n    // Built here because a tree this deep is too big to write out as a test literal.\n    static TreeNode chain(int n, java.util.function.IntUnaryOperator val) {\n        TreeNode root = null;\n        for (int i = Math.abs(n) - 1; i >= 0; i--) {\n            TreeNode t = new TreeNode(val.applyAsInt(i));\n            if (n > 0) t.right = root; else t.left = root;\n            root = t;\n        }\n        return root;\n    }\n\n    static boolean judge(TreeNode root, int n) {\n        if (n != 0) root = chain(n, i -> i);\n        return new Solution().isValidBST(root);\n    }\n}",
+        python: "# n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\ndef _chain(n, val):\n    root = None\n    for i in range(abs(n) - 1, -1, -1):\n        t = TreeNode(val(i))\n        if n > 0:\n            t.right = root\n        else:\n            t.left = root\n        root = t\n    return root\n\ndef judge(root, n):\n    if n:\n        root = _chain(n, lambda i: i)\n    return Solution().is_valid_bst(root)",
+        js: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nfunction chain__(n, val) {\n  let root = null;\n  for (let i = Math.abs(n) - 1; i >= 0; i--) {\n    const t = new TreeNode(val(i));\n    if (n > 0) t.right = root; else t.left = root;\n    root = t;\n  }\n  return root;\n}\n\nfunction judge(root, n) {\n  if (n) root = chain__(n, (i) => i);\n  return isValidBST(root);\n}",
+        cpp: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nTreeNode* chain__(int n, function<int(int)> val) {\n    TreeNode* root = nullptr;\n    for (int i = abs(n) - 1; i >= 0; i--) {\n        TreeNode* t = new TreeNode(val(i));\n        if (n > 0) t->right = root; else t->left = root;\n        root = t;\n    }\n    return root;\n}\n\nbool judge(TreeNode* root, int n) {\n    if (n) root = chain__(n, [](int i) { return i; });\n    return Solution().isValidBST(root);\n}"
+      }, cases: [
+        [[[5,1,4,null,null,3,6],0],false],
+        [[[5,1,6,null,null,3,7],0],false],
+        [[[2,1,3],0],true],
+        [[[1],0],true],
+        [[[2,2,2],0],false],
+        [[[1,1],0],false],
+        [[[2147483647],0],true],
+        [[[-2147483647,null,2147483647],0],true],
+        [[[2147483647,2147483646],0],true],
+        [[[10,5,15,null,null,6,20],0],false],
+        [[[3,1,5,0,2,4,6],0],true],
+        [[[-455,-930,559,-974,-881,389,700,null,-964,null,-586,-140,429,613,978,null,null,-765,-467,-174,123,427,516,null,null,931,null,-839,-624,null,null,-385,null,110,326,394,null,null,null,794,null,null,-837,-726,null,-439,null,56,null,301,365,null,398,773,null,null,null,null,null,null,null,null,null,126,311,null,null,null,null,null,null,null,251,null,313,177],0],true],
+        [[[],10000],true],
+        [[[],-10000],false]
+      ] },
       solution: {
-        approach: `<p>Pass the allowed open interval down; fail as soon as a node falls outside it.</p>`,
+        approach: `<p>Pass the allowed open interval down; fail as soon as a node falls outside it. The code keeps its own stack of (node, lo, hi) instead of recursing, because a skewed tree of 10<sup>4</sup> nodes would otherwise overflow the call stack.</p>`,
         code: `
           class Solution {
+              // one pending check: this node must fit strictly inside (lo, hi)
+              private record Frame(TreeNode node, long lo, long hi) {}
+
               public boolean isValidBST(TreeNode root) {
-                  return valid(root, Long.MIN_VALUE, Long.MAX_VALUE);
-              }
-              private boolean valid(TreeNode n, long lo, long hi) {
-                  if (n == null) return true;
-                  if (n.val <= lo || n.val >= hi) return false;   // outside the allowed window
-                  return valid(n.left, lo, n.val) && valid(n.right, n.val, hi);
+                  Deque<Frame> st = new ArrayDeque<>();
+                  st.push(new Frame(root, Long.MIN_VALUE, Long.MAX_VALUE));   // long: int extremes still fit
+                  while (!st.isEmpty()) {
+                      Frame f = st.pop();
+                      TreeNode n = f.node();
+                      if (n.val <= f.lo() || n.val >= f.hi()) return false;   // outside the allowed window
+                      if (n.left != null) st.push(new Frame(n.left, f.lo(), n.val));    // left: below me
+                      if (n.right != null) st.push(new Frame(n.right, n.val, f.hi()));  // right: above me
+                  }
+                  return true;
               }
           }`,
         alt: [{ lang: 'python', code: `class Solution:
-    def isValidBST(self, root):
+    def is_valid_bst(self, root):
         stack, prev, cur = [], None, root
         while cur or stack:
             while cur:                       # slide left
@@ -3178,18 +5661,47 @@ int kthLargest(TreeNode root, int k) {
                 return False                 # inorder must be strictly increasing
             prev = cur.val
             cur = cur.right
-        return True` }],
+        return True` }, { lang: 'js', code: `function isValidBST(root) {
+  // explicit stack of [node, lo, hi]: every node must sit strictly inside (lo, hi)
+  const stack = root ? [[root, -Infinity, Infinity]] : [];
+  while (stack.length) {
+    const [n, lo, hi] = stack.pop();
+    if (n.val <= lo || n.val >= hi) return false;   // outside the allowed window
+    if (n.left) stack.push([n.left, lo, n.val]);
+    if (n.right) stack.push([n.right, n.val, hi]);
+  }
+  return true;
+}
+` }, { lang: 'cpp', code: `// LeetCode-style node (the judge normally provides it)
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int x = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(x), left(l), right(r) {}
+};
+
+class Solution {
+public:
+    bool isValidBST(TreeNode* root) { return valid(root, LLONG_MIN, LLONG_MAX); }
+
+private:
+    // long long bounds, so INT_MIN / INT_MAX values are still inside the window
+    bool valid(TreeNode* n, long long lo, long long hi) {
+        if (!n) return true;
+        if (n->val <= lo || n->val >= hi) return false;
+        return valid(n->left, lo, n->val) && valid(n->right, n->val, hi);
+    }
+};
+` }],
         dry: {
-          head: ['call', 'lo', 'hi', 'check', 'result'],
+          head: ['step', 'lo', 'hi', 'check', 'result'],
           rows: [
-            ['valid(5)', '−∞', '+∞', '−∞ &lt; 5 &lt; +∞', H.c('g', 'ok, recurse')],
-            ['valid(1)', '−∞', '5', '1 inside', H.c('g', 'ok, leaf → true')],
-            ['valid(6)', '5', '+∞', '6 inside', H.c('g', 'ok, recurse')],
-            ['valid(3)', '5', '6', H.c('r', '3 ≤ 5'), H.c('r', 'false')],
-            ['back at 6 → 5', '', '', 'left of 6 failed', H.c('r', 'false (answer)')]
+            ['pop 5', '−∞', '+∞', '−∞ &lt; 5 &lt; +∞', H.c('g', 'ok, push 1 (−∞, 5) and 6 (5, +∞)')],
+            ['pop 6', '5', '+∞', '6 inside', H.c('g', 'ok, push 3 (5, 6) and 7 (6, +∞)')],
+            ['pop 7', '6', '+∞', '7 inside', H.c('g', 'ok, leaf')],
+            ['pop 3', '5', '6', H.c('r', '3 ≤ 5'), H.c('r', 'false (answer)')]
           ]
         },
-        complexity: `<p><b>Time O(N)</b>: each node is checked once (often fewer with early exit). <b>Space O(h)</b> recursion or explicit stack.</p>`,
+        complexity: `<p><b>Time O(N)</b>: each node is checked once (often fewer with early exit). <b>Space O(N)</b> worst case for the explicit stack (O(h) for the recursive form, which is N on a skewed tree).</p>`,
         followUps: ['Allow duplicates on the left (left ≤ node &lt; right)', 'Return the size of the largest subtree that is a valid BST', 'Recover a BST in which exactly two nodes were swapped']
       }
     }, {
@@ -3236,6 +5748,16 @@ int kthLargest(TreeNode root, int k) {
         `<p>Use the iterative inorder (stack + slide left) and decrement k on every pop; return when it hits 0. This stops early instead of building a full list.</p>`,
         `<p><b>Traps:</b> k is 1-based; don't collect all values first. Follow-up: store subtree sizes so each query is O(h). <b>Recipe:</b> cur = root; loop: slide left pushing; pop; if --k == 0 return val; cur = popped.right.</p>`
       ],
+      tests: { sig: 'TreeNode int -> int', fn: 'kthSmallest', cases: [
+        [[[5,3,6,2,4,null,null,1],3],3],
+        [[[3,1,4,null,2],1],1],
+        [[[1],1],1],
+        [[[5,3,6,2,4,null,null,1],6],6],
+        [[[2,1,3],2],2],
+        [[[0,null,10000],2],10000],
+        [[[4982,901,8329,681,2335,6076,9259,433,null,2282,3956,6030,7402,8992,9626,74,null,1213,2333,2392,4300,5609,null,6107,7951,8380,9159,null,null,null,null,924,1858,null,null,null,3464,4133,4778,null,5836,null,6436,7790,8307,8371,8597,null,null,null,1157,1521,2072,3268,3502,null,4145,4431,null,null,null,null,null,null,7818,null,null,null,null,8467,null,934,null,null,null,null,2274,2432,null,null,null,null,null,null,null,null,null,null,8472,null,null,2152,null,null,2798],37],7790],
+        [[[10000,9999,null,9998,null,9997,null,9996,null,9995,null,9994,null,9993,null,9992,null,9991,null,9990,null,9989,null,9988,null,9987,null,9986,null,9985,null,9984,null,9983,null,9982,null,9981,null,9980,null,9979,null,9978,null,9977,null,9976,null,9975,null,9974,null,9973,null,9972,null,9971,null,9970,null,9969,null,9968,null,9967,null,9966,null,9965,null,9964,null,9963,null,9962,null,9961,null,9960,null,9959,null,9958,null,9957,null,9956,null,9955,null,9954,null,9953,null,9952,null,9951,null,9950,null,9949,null,9948,null,9947,null,9946,null,9945,null,9944,null,9943,null,9942,null,9941,null,9940,null,9939,null,9938,null,9937,null,9936,null,9935,null,9934,null,9933,null,9932,null,9931,null,9930,null,9929,null,9928,null,9927,null,9926,null,9925,null,9924,null,9923,null,9922,null,9921,null,9920,null,9919,null,9918,null,9917,null,9916,null,9915,null,9914,null,9913,null,9912,null,9911,null,9910,null,9909,null,9908,null,9907,null,9906,null,9905,null,9904,null,9903,null,9902,null,9901,null,9900,null,9899,null,9898,null,9897,null,9896,null,9895,null,9894,null,9893,null,9892,null,9891,null,9890,null,9889,null,9888,null,9887,null,9886,null,9885,null,9884,null,9883,null,9882,null,9881,null,9880,null,9879,null,9878,null,9877,null,9876,null,9875,null,9874,null,9873,null,9872,null,9871,null,9870,null,9869,null,9868,null,9867,null,9866,null,9865,null,9864,null,9863,null,9862,null,9861,null,9860,null,9859,null,9858,null,9857,null,9856,null,9855,null,9854,null,9853,null,9852,null,9851,null,9850,null,9849,null,9848,null,9847,null,9846,null,9845,null,9844,null,9843,null,9842,null,9841,null,9840,null,9839,null,9838,null,9837,null,9836,null,9835,null,9834,null,9833,null,9832,null,9831,null,9830,null,9829,null,9828,null,9827,null,9826,null,9825,null,9824,null,9823,null,9822,null,9821,null,9820,null,9819,null,9818,null,9817,null,9816,null,9815,null,9814,null,9813,null,9812,null,9811,null,9810,null,9809,null,9808,null,9807,null,9806,null,9805,null,9804,null,9803,null,9802,null,9801,null,9800,null,9799,null,9798,null,9797,null,9796,null,9795,null,9794,null,9793,null,9792,null,9791,null,9790,null,9789,null,9788,null,9787,null,9786,null,9785,null,9784,null,9783,null,9782,null,9781,null,9780,null,9779,null,9778,null,9777,null,9776,null,9775,null,9774,null,9773,null,9772,null,9771,null,9770,null,9769,null,9768,null,9767,null,9766,null,9765,null,9764,null,9763,null,9762,null,9761,null,9760,null,9759,null,9758,null,9757,null,9756,null,9755,null,9754,null,9753,null,9752,null,9751,null,9750,null,9749,null,9748,null,9747,null,9746,null,9745,null,9744,null,9743,null,9742,null,9741,null,9740,null,9739,null,9738,null,9737,null,9736,null,9735,null,9734,null,9733,null,9732,null,9731,null,9730,null,9729,null,9728,null,9727,null,9726,null,9725,null,9724,null,9723,null,9722,null,9721,null,9720,null,9719,null,9718,null,9717,null,9716,null,9715,null,9714,null,9713,null,9712,null,9711,null,9710,null,9709,null,9708,null,9707,null,9706,null,9705,null,9704,null,9703,null,9702,null,9701,null,9700,null,9699,null,9698,null,9697,null,9696,null,9695,null,9694,null,9693,null,9692,null,9691,null,9690,null,9689,null,9688,null,9687,null,9686,null,9685,null,9684,null,9683,null,9682,null,9681,null,9680,null,9679,null,9678,null,9677,null,9676,null,9675,null,9674,null,9673,null,9672,null,9671,null,9670,null,9669,null,9668,null,9667,null,9666,null,9665,null,9664,null,9663,null,9662,null,9661,null,9660,null,9659,null,9658,null,9657,null,9656,null,9655,null,9654,null,9653,null,9652,null,9651,null,9650,null,9649,null,9648,null,9647,null,9646,null,9645,null,9644,null,9643,null,9642,null,9641,null,9640,null,9639,null,9638,null,9637,null,9636,null,9635,null,9634,null,9633,null,9632,null,9631,null,9630,null,9629,null,9628,null,9627,null,9626,null,9625,null,9624,null,9623,null,9622,null,9621,null,9620,null,9619,null,9618,null,9617,null,9616,null,9615,null,9614,null,9613,null,9612,null,9611,null,9610,null,9609,null,9608,null,9607,null,9606,null,9605,null,9604,null,9603,null,9602,null,9601,null,9600,null,9599,null,9598,null,9597,null,9596,null,9595,null,9594,null,9593,null,9592,null,9591,null,9590,null,9589,null,9588,null,9587,null,9586,null,9585,null,9584,null,9583,null,9582,null,9581,null,9580,null,9579,null,9578,null,9577,null,9576,null,9575,null,9574,null,9573,null,9572,null,9571,null,9570,null,9569,null,9568,null,9567,null,9566,null,9565,null,9564,null,9563,null,9562,null,9561,null,9560,null,9559,null,9558,null,9557,null,9556,null,9555,null,9554,null,9553,null,9552,null,9551,null,9550,null,9549,null,9548,null,9547,null,9546,null,9545,null,9544,null,9543,null,9542,null,9541,null,9540,null,9539,null,9538,null,9537,null,9536,null,9535,null,9534,null,9533,null,9532,null,9531,null,9530,null,9529,null,9528,null,9527,null,9526,null,9525,null,9524,null,9523,null,9522,null,9521,null,9520,null,9519,null,9518,null,9517,null,9516,null,9515,null,9514,null,9513,null,9512,null,9511,null,9510,null,9509,null,9508,null,9507,null,9506,null,9505,null,9504,null,9503,null,9502,null,9501],1],9501]
+      ] },
       solution: {
         approach: `<p>Iterative inorder with a countdown; stop at the k-th pop.</p>`,
         code: `
@@ -3255,6 +5777,51 @@ int kthLargest(TreeNode root, int k) {
                   return -1;                         // unreachable when 1 <= k <= n
               }
           }`,
+        alt: [{ lang: 'python', code: `class Solution:
+    def kth_smallest(self, root, k):
+        stack, cur = [], root
+        while True:
+            while cur:                       # smallest unvisited values are down-left
+                stack.append(cur)
+                cur = cur.left
+            cur = stack.pop()
+            k -= 1
+            if k == 0:
+                return cur.val               # k-th value in sorted order
+            cur = cur.right
+` }, { lang: 'js', code: `function kthSmallest(root, k) {
+  const stack = [];
+  let cur = root;
+  while (cur || stack.length) {
+    while (cur) { stack.push(cur); cur = cur.left; }   // smallest values are down-left
+    cur = stack.pop();
+    if (--k === 0) return cur.val;                     // k-th value in sorted order
+    cur = cur.right;
+  }
+  return -1;                                           // unreachable when 1 <= k <= n
+}
+` }, { lang: 'cpp', code: `// LeetCode-style node (the judge normally provides it)
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int x = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(x), left(l), right(r) {}
+};
+
+class Solution {
+public:
+    int kthSmallest(TreeNode* root, int k) {
+        stack<TreeNode*> st;
+        TreeNode* cur = root;
+        while (cur || !st.empty()) {
+            while (cur) { st.push(cur); cur = cur->left; }   // smallest values are down-left
+            cur = st.top(); st.pop();
+            if (--k == 0) return cur->val;                  // k-th value in sorted order
+            cur = cur->right;
+        }
+        return -1;                                          // unreachable when 1 <= k <= n
+    }
+};
+` }],
         dry: {
           head: ['step', 'stack (bottom→top)', 'pop', 'k after', 'next cur'],
           rows: [
@@ -3290,7 +5857,7 @@ ${H.table(['step', 'next preorder value = root', 'inorder window', 'left part', 
          /  \\
         15    7
 </pre>
-<p><b>Recipe:</b> keep a pointer into preorder. <code>build(lo, hi)</code> builds the subtree whose inorder values are <code>in[lo..hi]</code>: take the next preorder value as the root, find its index <code>m</code> in inorder (a <b>HashMap</b> makes this O(1)), build the left from <code>in[lo..m−1]</code>, then the right from <code>in[m+1..hi]</code>. The left must be built first, because preorder lists the whole left subtree before the right one.</p>
+<p><b>Recipe:</b> keep a pointer into preorder. <code>build(lo, hi)</code> builds the subtree whose inorder values are <code>in[lo..hi]</code>: take the next preorder value as the root, find its index <code>m</code> in inorder (a <b>hash map</b> — <code>HashMap</code> / <code>dict</code> / <code>Map</code> / <code>unordered_map</code> — makes this O(1)), build the left from <code>in[lo..m−1]</code>, then the right from <code>in[m+1..hi]</code>. The left must be built first, because preorder lists the whole left subtree before the right one.</p>
 <ul>
 <li><b>Postorder + inorder:</b> the root is the <b>last</b> value. Read postorder from the end, and build the <b>right</b> subtree first (backwards postorder is Me, Right, Left).</li>
 <li><b>Preorder + postorder:</b> not unique in general (a single child could be left or right) — only unique for full binary trees.</li>
@@ -3298,12 +5865,12 @@ ${H.table(['step', 'next preorder value = root', 'inorder window', 'left part', 
 </ul>`,
     clues: [
       '"<b>Construct</b> / <b>build</b> / reconstruct the binary tree from its <b>preorder and inorder</b> (or inorder and postorder)" → root from pre/post, split by inorder index.',
-      '"All values are <b>unique</b>" → you can map value → inorder index with a HashMap (O(1) lookups).',
+      '"All values are <b>unique</b>" → you can map value → inorder index with a hash map (O(1) lookups).',
       'N up to 3000 or more → avoid linear search for the root and array copies (O(N<sup>2</sup>)); use indices + map → O(N).',
       '"Construct BST from <b>preorder</b>" → only one traversal needed; use an upper-bound recursion, O(N).',
       '"<b>Serialize / deserialize</b>" → preorder with null markers is enough by itself.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
 class BuildTrees {
     // ---------- preorder + inorder ----------
     private int preIdx;                          // next preorder value to use as a root
@@ -3356,7 +5923,147 @@ class BuildTrees {
         root.right = buildB(pre, bound);         // right values only need to be < my bound
         return root;
     }
-}`],
+}`, alt: [{ lang: 'python', code: `# ---------- preorder + inorder ----------
+def build_pre_in(preorder, inorder):
+    pos = {v: i for i, v in enumerate(inorder)}  # value -> index in inorder
+    it = iter(preorder)                          # next preorder value = next root
+    def build(lo, hi):                           # subtree whose inorder values are inorder[lo..hi]
+        if lo > hi:
+            return None                          # empty window -> no subtree
+        root = TreeNode(next(it))
+        m = pos[root.val]                        # split point in inorder
+        root.left = build(lo, m - 1)             # left FIRST: preorder lists it next
+        root.right = build(m + 1, hi)
+        return root
+    return build(0, len(inorder) - 1)
+
+# ---------- inorder + postorder ----------
+def build_in_post(inorder, postorder):
+    pos = {v: i for i, v in enumerate(inorder)}
+    it = reversed(postorder)                     # root is the LAST postorder value
+    def build(lo, hi):
+        if lo > hi:
+            return None
+        root = TreeNode(next(it))
+        m = pos[root.val]
+        root.right = build(m + 1, hi)            # RIGHT first: backwards postorder = Me, Right, Left
+        root.left = build(lo, m - 1)
+        return root
+    return build(0, len(inorder) - 1)
+
+# ---------- BST from preorder only, O(N) ----------
+def bst_from_preorder(pre):
+    i = 0
+    def build(bound):                            # uses values while they are < bound
+        nonlocal i
+        if i == len(pre) or pre[i] > bound:
+            return None
+        root = TreeNode(pre[i])
+        i += 1
+        root.left = build(root.val)              # left values must be < root
+        root.right = build(bound)                # right values only need to be < my bound
+        return root
+    return build(float('inf'))
+` }, { lang: 'js', code: `// ---------- preorder + inorder ----------
+function buildPreIn(preorder, inorder) {
+  const pos = new Map(inorder.map((v, i) => [v, i]));   // value -> index in inorder
+  let pre = 0;                                          // next preorder value = next root
+  const build = (lo, hi) => {                           // subtree for inorder[lo..hi]
+    if (lo > hi) return null;                           // empty window -> no subtree
+    const root = new TreeNode(preorder[pre++]);
+    const m = pos.get(root.val);                        // split point in inorder
+    root.left = build(lo, m - 1);                       // left FIRST: preorder lists it next
+    root.right = build(m + 1, hi);
+    return root;
+  };
+  return build(0, inorder.length - 1);
+}
+
+// ---------- inorder + postorder ----------
+function buildInPost(inorder, postorder) {
+  const pos = new Map(inorder.map((v, i) => [v, i]));
+  let post = postorder.length - 1;                      // root is the LAST postorder value
+  const build = (lo, hi) => {
+    if (lo > hi) return null;
+    const root = new TreeNode(postorder[post--]);
+    const m = pos.get(root.val);
+    root.right = build(m + 1, hi);                      // RIGHT first: backwards postorder = Me, Right, Left
+    root.left = build(lo, m - 1);
+    return root;
+  };
+  return build(0, inorder.length - 1);
+}
+
+// ---------- BST from preorder only, O(N) ----------
+function bstFromPreorder(pre) {
+  let i = 0;
+  const build = (bound) => {                            // uses values while they are < bound
+    if (i === pre.length || pre[i] > bound) return null;
+    const root = new TreeNode(pre[i++]);
+    root.left = build(root.val);                        // left values must be < root
+    root.right = build(bound);                          // right values only need to be < my bound
+    return root;
+  };
+  return build(Infinity);
+}
+` }, { lang: 'cpp', code: `// TreeNode as defined in the first lesson
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int v = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(v), left(l), right(r) {}
+};
+
+class BuildTrees {
+    unordered_map<int, int> inPos;               // value -> index in inorder
+    int idx = 0;                                 // next value to use as a root
+
+    // builds the subtree whose inorder values are inorder[lo..hi]
+    TreeNode* buildPI(const vector<int>& pre, int lo, int hi) {
+        if (lo > hi) return nullptr;             // empty window -> no subtree
+        TreeNode* root = new TreeNode(pre[idx++]);
+        int m = inPos[root->val];                // split point in inorder
+        root->left = buildPI(pre, lo, m - 1);    // left FIRST: preorder lists it next
+        root->right = buildPI(pre, m + 1, hi);
+        return root;
+    }
+    TreeNode* buildIP(const vector<int>& post, int lo, int hi) {
+        if (lo > hi) return nullptr;
+        TreeNode* root = new TreeNode(post[idx--]);
+        int m = inPos[root->val];
+        root->right = buildIP(post, m + 1, hi);  // RIGHT first: backwards postorder = Me, Right, Left
+        root->left = buildIP(post, lo, m - 1);
+        return root;
+    }
+    // builds a subtree using values while they are < bound
+    TreeNode* buildB(const vector<int>& pre, int bound) {
+        if (idx == (int)pre.size() || pre[idx] > bound) return nullptr;
+        TreeNode* root = new TreeNode(pre[idx++]);
+        root->left = buildB(pre, root->val);     // left values must be < root
+        root->right = buildB(pre, bound);        // right values only need to be < my bound
+        return root;
+    }
+    void index(const vector<int>& inorder) {
+        inPos.clear();
+        for (int i = 0; i < (int)inorder.size(); i++) inPos[inorder[i]] = i;
+    }
+
+public:
+    TreeNode* buildPreIn(const vector<int>& preorder, const vector<int>& inorder) {
+        index(inorder);
+        idx = 0;
+        return buildPI(preorder, 0, (int)inorder.size() - 1);
+    }
+    TreeNode* buildInPost(const vector<int>& inorder, const vector<int>& postorder) {
+        index(inorder);
+        idx = (int)postorder.size() - 1;         // root is the LAST postorder value
+        return buildIP(postorder, 0, (int)inorder.size() - 1);
+    }
+    TreeNode* bstFromPreorder(const vector<int>& pre) {
+        idx = 0;
+        return buildB(pre, INT_MAX);
+    }
+};
+` }] }],
     codeTitle: ['Build from preorder+inorder, inorder+postorder, and a BST from preorder'],
     viz: {
       title: 'Rebuild the tree from preorder + inorder',
@@ -3450,7 +6157,7 @@ class BuildTrees {
       {
         title: 'BST from preorder only: [8, 5, 1, 7, 10, 12]',
         html: `<p>Use an upper bound. 8 is the root (bound ∞). Left of 8 takes values &lt; 8: 5, then left of 5 takes &lt; 5: 1; 7 is not &lt; 5 so it becomes 5's right (bound 8). 10 is not &lt; 8, so the left side of 8 is finished; 10 becomes 8's right, and 12 becomes 10's right. Result ${H.c('g', '[8, 5, 10, 1, 7, null, 12]')}. Each value is read once → O(N).</p>`,
-        code: `
+        code: { lang: 'java', code: `
 class BstFromPre {
     static int i = 0;
     static TreeNode build(int[] pre, int bound) {
@@ -3464,7 +6171,64 @@ class BstFromPre {
         TreeNode root = build(new int[]{8, 5, 1, 7, 10, 12}, Integer.MAX_VALUE);
         System.out.println(root.val + " " + root.left.val + " " + root.right.val);  // 8 5 10
     }
-}`
+}`, alt: [{ lang: 'python', run: true, code: `class TreeNode:
+    def __init__(self, val=0, left=None, right=None):
+        self.val, self.left, self.right = val, left, right
+
+def build(pre):
+    i = 0
+    def go(bound):
+        nonlocal i
+        if i == len(pre) or pre[i] > bound:
+            return None                      # value belongs to an ancestor's right side
+        root = TreeNode(pre[i])
+        i += 1
+        root.left = go(root.val)             # children on the left must be < root
+        root.right = go(bound)
+        return root
+    return go(float('inf'))
+
+root = build([8, 5, 1, 7, 10, 12])
+print(root.val, root.left.val, root.right.val)   # 8 5 10
+` }, { lang: 'js', run: true, code: `class TreeNode {
+  constructor(val = 0, left = null, right = null) { this.val = val; this.left = left; this.right = right; }
+}
+
+function build(pre) {
+  let i = 0;
+  const go = (bound) => {
+    if (i === pre.length || pre[i] > bound) return null;   // value belongs to an ancestor's right side
+    const root = new TreeNode(pre[i++]);
+    root.left = go(root.val);                              // children on the left must be < root
+    root.right = go(bound);
+    return root;
+  };
+  return go(Infinity);
+}
+
+const root = build([8, 5, 1, 7, 10, 12]);
+console.log(root.val + ' ' + root.left.val + ' ' + root.right.val);   // 8 5 10
+` }, { lang: 'cpp', code: `// TreeNode as defined in the first lesson
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int v = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(v), left(l), right(r) {}
+};
+
+int i = 0;
+TreeNode* build(const vector<int>& pre, int bound) {
+    if (i == (int)pre.size() || pre[i] > bound) return nullptr;   // value belongs to an ancestor's right side
+    TreeNode* root = new TreeNode(pre[i++]);
+    root->left = build(pre, root->val);                           // children on the left must be < root
+    root->right = build(pre, bound);
+    return root;
+}
+
+int main() {
+    TreeNode* root = build({8, 5, 1, 7, 10, 12}, INT_MAX);
+    cout << root->val << ' ' << root->left->val << ' ' << root->right->val << '\\n';   // 8 5 10
+}
+` }] }
       }
     ],
     deepDive: `<p><b>Why it is O(N):</b> each preorder value creates exactly one node, the map lookup is O(1), and empty windows return immediately (N + 1 of them). The naive version that scans inorder for the root (O(N) per node) and copies sub-arrays (<code>Arrays.copyOfRange</code>) is O(N<sup>2</sup>) for skewed trees — 9·10<sup>6</sup> operations for N = 3000, and far worse memory churn.</p>
@@ -3473,7 +6237,7 @@ class BstFromPre {
 <p><b>Iterative O(N) build</b> (no recursion, no map): walk preorder with a stack; keep pushing as left children until the stack top equals the next inorder value, then pop while it matches and attach the next preorder value as a right child. Useful when depth can reach 10<sup>5</sup>.</p>
 <p><b>Serialization:</b> a single preorder with explicit null markers (<code>1,2,#,#,3,4,#,#,5,#,#</code>) is uniquely decodable — this is how LeetCode, Protocol Buffers' nested messages, and many config formats store trees. Level order with nulls (LeetCode's display format) is also unique.</p>
 <p><b>Other pairs:</b> level order + inorder works too (the root is the first level-order value; filter level order into left/right lists), but naïve filtering costs O(N<sup>2</sup>).</p>`,
-    aiEra: `<p><b>What AI changes:</b> "build tree from preorder and inorder" is a staple; assistants output the HashMap solution. The interview has moved toward explaining <b>why</b> the left subtree is built first, why pre + post is ambiguous, and handling deep trees.</p>
+    aiEra: `<p><b>What AI changes:</b> "build tree from preorder and inorder" is a staple; assistants output the hash-map solution. The interview has moved toward explaining <b>why</b> the left subtree is built first, why pre + post is ambiguous, and handling deep trees.</p>
 <p><b>Use AI as a partner:</b> <code>Write a test that generates random trees with distinct values, computes preorder/inorder, rebuilds, and compares the serialized trees.</code> Round-trip tests are the gold standard for any encode/decode code, including the serializers you will write in system design.</p>
 <p><b>Where AI goes wrong:</b> building the right subtree first in the preorder version (or left first in the postorder one), using a shared preorder index but slicing arrays at the same time (double bookkeeping), and claiming pre + post always works.</p>
 <p><b>What you must still own:</b> the window/index reasoning (how many nodes go left), the O(N) vs O(N<sup>2</sup>) difference, and the uniqueness conditions.</p>`,
@@ -3507,9 +6271,20 @@ class BstFromPre {
       },
       hints: [
         `<p><b>Aha:</b> preorder's first value is always the root; inorder splits the remaining values into "left of root" and "right of root". Then the same thing happens recursively inside each side.</p>`,
-        `<p>Use a <code>HashMap&lt;Integer, Integer&gt;</code> from value to inorder index and a single field <code>preIdx</code> that walks preorder. <code>build(lo, hi)</code> works only with inorder indices — no array copies.</p>`,
+        `<p>Use a hash map from value to inorder index and a single counter <code>preIdx</code> that walks preorder. <code>build(lo, hi)</code> works only with inorder indices — no array copies.</p>`,
         `<p><b>Traps:</b> build the <b>left</b> subtree before the right (preorder order); stop when <code>lo &gt; hi</code>; reset <code>preIdx</code> per call of the main method. <b>Recipe:</b> map; preIdx = 0; build(lo, hi): if lo &gt; hi null; root = pre[preIdx++]; m = map[root]; root.left = build(lo, m−1); root.right = build(m+1, hi).</p>`
       ],
+      tests: { sig: 'int[] int[] -> TreeNode', fn: 'buildTree', cases: [
+        [[[3,9,20,15,7],[9,3,15,20,7]],[3,9,20,null,null,15,7]],
+        [[[-1],[-1]],[-1]],
+        [[[1,2],[2,1]],[1,2]],
+        [[[1,2],[1,2]],[1,null,2]],
+        [[[1,2,4,5,3,6,7],[4,2,5,1,6,3,7]],[1,2,3,4,5,6,7]],
+        [[[1,2,3,4,5],[5,4,3,2,1]],[1,2,null,3,null,4,null,5]],
+        [[[-631,1772,2884,2396,-1277,-818,2324,2993,-201],[1772,2884,2396,-631,2993,2324,-201,-818,-1277]],[-631,1772,-1277,null,2884,-818,null,null,2396,2324,null,null,null,2993,-201]],
+        [[[-2240,-2241,1278,-1945,-1790,380,-1320,-1170,-2129,-2107,210,-1898,2542,1127,32,-1437],[-1790,-1945,1278,-1320,380,-2241,-2129,-1170,-2240,1127,2542,-1898,32,210,-1437,-2107]],[-2240,-2241,-2107,1278,-1170,210,null,-1945,380,-2129,null,-1898,-1437,-1790,null,-1320,null,null,null,2542,32,null,null,null,null,null,null,1127]],
+        [[{'$range': [0,3000]},{'$range': [2999,-1,-1]}],m14chain(3000, 'l')]
+      ] },
       solution: {
         approach: `<p>Divide and conquer on inorder windows, consuming preorder left to right; O(1) split lookups via a map.</p>`,
         code: `
@@ -3534,8 +6309,11 @@ class BstFromPre {
                   return root;
               }
           }`,
-        alt: [{ lang: 'python', code: `class Solution:
-    def buildTree(self, preorder, inorder):
+        alt: [{ lang: 'python', code: `import sys
+
+class Solution:
+    def build_tree(self, preorder, inorder):
+        sys.setrecursionlimit(max(1000, 2 * len(inorder) + 100))   # a skewed tree recurses n deep
         pos = {v: i for i, v in enumerate(inorder)}
         it = iter(preorder)                  # consumes preorder left to right
 
@@ -3549,7 +6327,45 @@ class BstFromPre {
             node.right = build(m + 1, hi)
             return node
 
-        return build(0, len(inorder) - 1)` }],
+        return build(0, len(inorder) - 1)` }, { lang: 'js', code: `function buildTree(preorder, inorder) {
+  const pos = new Map(inorder.map((v, i) => [v, i]));
+  let pre = 0;                                   // next root in preorder
+  const build = (lo, hi) => {
+    if (lo > hi) return null;
+    const node = new TreeNode(preorder[pre++]);
+    const m = pos.get(node.val);                 // where it splits the window
+    node.left = build(lo, m - 1);                // left subtree comes next in preorder
+    node.right = build(m + 1, hi);
+    return node;
+  };
+  return build(0, inorder.length - 1);
+}
+` }, { lang: 'cpp', code: `// LeetCode-style node (the judge normally provides it)
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int x = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(x), left(l), right(r) {}
+};
+
+class Solution {
+public:
+    TreeNode* buildTree(vector<int>& preorder, vector<int>& inorder) {
+        unordered_map<int, int> pos;
+        for (int i = 0; i < (int)inorder.size(); i++) pos[inorder[i]] = i;
+        int pre = 0;
+        // a recursive lambda: it receives itself as the first argument
+        auto build = [&](auto&& self, int lo, int hi) -> TreeNode* {
+            if (lo > hi) return nullptr;
+            TreeNode* node = new TreeNode(preorder[pre++]);   // next root in preorder
+            int m = pos[node->val];
+            node->left = self(self, lo, m - 1);
+            node->right = self(self, m + 1, hi);
+            return node;
+        };
+        return build(build, 0, (int)inorder.size() - 1);
+    }
+};
+` }],
         dry: {
           head: ['call build(lo, hi)', 'preIdx → root', 'm', 'left window', 'right window'],
           rows: [
@@ -3595,6 +6411,17 @@ class BstFromPre {
       `<p>No data structure needed: recurse on pairs <code>(p, q)</code>. Handle the null cases first: both null → true; one null → false.</p>`,
       `<p><b>Recipe:</b> if both null return true; if one null or values differ return false; return same(p.left, q.left) &amp;&amp; same(p.right, q.right). The <code>&amp;&amp;</code> stops at the first mismatch.</p>`
     ],
+    tests: { sig: 'TreeNode TreeNode -> bool', fn: 'isSameTree', cases: [
+      [[[1,2,3],[1,2,3]],true],
+      [[[1,2],[1,null,2]],false],
+      [[[1,2,1],[1,1,2]],false],
+      [[[],[]],true],
+      [[[],[0]],false],
+      [[[0],[0]],true],
+      [[[1,2,3,4],[1,2,3,null,4]],false],
+      [[[-10000,10000],[-10000,10000]],true],
+      [[[1,null,2,3],[1,null,2,null,3]],false]
+    ] },
     solution: {
       approach: `<p>Walk both trees in lockstep; any shape or value difference returns false immediately.</p>`,
       code: `
@@ -3606,6 +6433,32 @@ class BstFromPre {
                 return isSameTree(p.left, q.left) && isSameTree(p.right, q.right);
             }
         }`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def is_same_tree(self, p, q):
+        if p is None or q is None:
+            return p is q                    # both empty -> True, one empty -> False
+        return (p.val == q.val
+                and self.is_same_tree(p.left, q.left)
+                and self.is_same_tree(p.right, q.right))
+` }, { lang: 'js', code: `function isSameTree(p, q) {
+  if (!p || !q) return p === q;      // both empty -> true, one empty -> false
+  return p.val === q.val && isSameTree(p.left, q.left) && isSameTree(p.right, q.right);
+}
+` }, { lang: 'cpp', code: `// LeetCode-style node (the judge normally provides it)
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int x = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(x), left(l), right(r) {}
+};
+
+class Solution {
+public:
+    bool isSameTree(TreeNode* p, TreeNode* q) {
+        if (!p || !q) return p == q;         // both empty -> true, one empty -> false
+        return p->val == q->val && isSameTree(p->left, q->left) && isSameTree(p->right, q->right);
+    }
+};
+` }],
       dry: { head: ['pair', 'check', 'result'], rows: [['(1, 1)', 'values equal', 'recurse'], ['(2, null)', 'one side null', H.c('r', 'false')], ['back at (1, 1)', 'left failed', H.c('r', 'false (short-circuit)')]] },
       complexity: `<p><b>Time O(min(N, M))</b> — stops at the first difference. <b>Space O(h)</b> recursion.</p>`,
       followUps: ['Is q a subtree of p? (Subtree of Another Tree)', 'Are the trees equal up to swapping children at any node? (Flip Equivalent)']
@@ -3647,6 +6500,17 @@ class BstFromPre {
       `<p>Write <code>isMirror(a, b)</code> on two nodes at once — like Same Tree but crossing the children. An iterative version puts pairs into a queue.</p>`,
       `<p><b>Recipe:</b> isMirror(a, b): both null → true; one null → false; return a.val == b.val &amp;&amp; isMirror(a.left, b.right) &amp;&amp; isMirror(a.right, b.left). Answer = isMirror(root.left, root.right).</p>`
     ],
+    tests: { sig: 'TreeNode -> bool', fn: 'isSymmetric', cases: [
+      [[[1,2,2,3,4,4,3]],true],
+      [[[1,2,2,null,3,null,3]],false],
+      [[[1]],true],
+      [[[1,2]],false],
+      [[[1,2,2]],true],
+      [[[1,2,2,2,null,2]],false],
+      [[[1,2,3]],false],
+      [[[-100,5,5,null,-7,-7,null]],true],
+      [[[1,2,2,3,null,null,3,4,null,null,4]],true]
+    ] },
     solution: {
       approach: `<p>Compare the two halves as mirror images, crossing outer and inner children.</p>`,
       code: `
@@ -3665,7 +6529,7 @@ class BstFromPre {
       alt: [{ lang: 'python', code: `from collections import deque
 
 class Solution:
-    def isSymmetric(self, root):
+    def is_symmetric(self, root):
         q = deque([(root.left, root.right)])
         while q:
             a, b = q.popleft()
@@ -3675,7 +6539,35 @@ class Solution:
                 return False
             q.append((a.left, b.right))      # outer
             q.append((a.right, b.left))      # inner
-        return True` }],
+        return True` }, { lang: 'js', code: `function isSymmetric(root) {
+  const mirror = (a, b) => {
+    if (!a || !b) return a === b;
+    return a.val === b.val
+      && mirror(a.left, b.right)     // outer pair
+      && mirror(a.right, b.left);    // inner pair
+  };
+  return !root || mirror(root.left, root.right);
+}
+` }, { lang: 'cpp', code: `// LeetCode-style node (the judge normally provides it)
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int x = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(x), left(l), right(r) {}
+};
+
+class Solution {
+public:
+    bool isSymmetric(TreeNode* root) { return !root || mirror(root->left, root->right); }
+
+private:
+    bool mirror(TreeNode* a, TreeNode* b) {
+        if (!a || !b) return a == b;
+        return a->val == b->val
+            && mirror(a->left, b->right)     // outer pair
+            && mirror(a->right, b->left);    // inner pair
+    }
+};
+` }],
       dry: { head: ['pair (a, b)', 'values', 'next pairs'], rows: [['(2, 2)', 'equal', '(3,3) outer, (4,4) inner'], ['(3, 3)', 'equal', '(null,null) ×2'], ['(4, 4)', 'equal', H.c('g', 'all matched → true')]] },
       complexity: `<p><b>Time O(N)</b>, <b>space O(h)</b> recursive or O(W) with the queue.</p>`,
       followUps: ['Make the tree symmetric by inverting one half', 'Check symmetry of an N-ary tree']
@@ -3714,6 +6606,19 @@ class Solution:
       `<p>No extra structure for recursion; or use a queue (BFS) to visit every node iteratively and swap its children.</p>`,
       `<p><b>Traps:</b> save one child in a temp variable before overwriting. Avoid naive inorder (it swaps one subtree twice). <b>Recipe:</b> if null return; swap(left, right); invert(left); invert(right); return root.</p>`
     ],
+    tests: { sig: 'TreeNode -> TreeNode', fn: 'invertTree', cases: [
+      [[[4,2,7,1,3,6,9]],[4,7,2,9,6,3,1]],
+      [[[1,2,3,4,5]],[1,3,2,null,null,5,4]],
+      [[[]],[]],
+      [[[1]],[1]],
+      [[[1,null,2,3]],[1,2,null,null,3]],
+      [[[3,9,20,null,null,15,7]],[3,20,9,7,15]],
+      [[[-5,-5,0,null,7,7,-100]],[-5,0,-5,-100,7,7]],
+      [[[1,2,3,4,null,null,5,6,null,null,7]],[1,3,2,5,null,null,4,7,null,null,6]],
+      [[[-21,22,-43,62,-3,null,53,null,null,84,-53,-48,-39,null,null,null,null,12,12,-18,null,-42]],[-21,-43,22,53,null,-3,62,-39,-48,-53,84,null,null,null,-18,12,12,null,null,null,null,null,null,null,null,null,-42]],
+      [[[-43,64,-62,null,-30,48,77,null,39,-72,43,null,26,null,null,4,null,null,41,null,-63]],[-43,-62,64,77,48,-30,null,26,null,43,-72,39,null,-63,null,41,null,null,4]],
+      [[[-61,-58,-58,-49,-83]],[-61,-58,-58,null,null,-83,-49]]
+    ] },
     solution: {
       approach: `<p>Swap children at every node (preorder); return the same root.</p>`,
       code: `
@@ -3728,6 +6633,36 @@ class Solution:
                 return root;
             }
         }`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def invert_tree(self, root):
+        if root:
+            # tuple assignment swaps the two (already mirrored) children
+            root.left, root.right = self.invert_tree(root.right), self.invert_tree(root.left)
+        return root
+` }, { lang: 'js', code: `function invertTree(root) {
+  if (!root) return null;
+  // destructuring swaps the two (already mirrored) children
+  [root.left, root.right] = [invertTree(root.right), invertTree(root.left)];
+  return root;
+}
+` }, { lang: 'cpp', code: `// LeetCode-style node (the judge normally provides it)
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int x = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(x), left(l), right(r) {}
+};
+
+class Solution {
+public:
+    TreeNode* invertTree(TreeNode* root) {
+        if (!root) return nullptr;
+        swap(root->left, root->right);       // swap my two children
+        invertTree(root->left);              // then mirror each side
+        invertTree(root->right);
+        return root;
+    }
+};
+` }],
       dry: { head: ['node', 'before (L, R)', 'after (L, R)'], rows: [['4', '(2, 7)', '(7, 2)'], ['7', '(6, 9)', '(9, 6)'], ['2', '(1, 3)', H.c('g', '(3, 1)')]] },
       complexity: `<p><b>Time O(N)</b>, <b>space O(h)</b> (O(W) with BFS).</p>`,
       followUps: ['Do it iteratively with a queue', 'Invert only the nodes at odd levels (LeetCode 2415)']
@@ -3770,6 +6705,26 @@ class Solution:
       `<p>Plain preorder recursion with an extra parameter; no list needed. Values can be negative, so you cannot stop early when the sum "gets too big".</p>`,
       `<p><b>Recipe:</b> if null return false; rem = target − val; if leaf return rem == 0; return go(left, rem) || go(right, rem). Empty tree → false.</p>`
     ],
+    tests: { sig: 'TreeNode int int -> bool', fn: 'judge', harness: {
+      java: "class Check {\n    // n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\n    // Built here because a tree this deep is too big to write out as a test literal.\n    static TreeNode chain(int n, java.util.function.IntUnaryOperator val) {\n        TreeNode root = null;\n        for (int i = Math.abs(n) - 1; i >= 0; i--) {\n            TreeNode t = new TreeNode(val.applyAsInt(i));\n            if (n > 0) t.right = root; else t.left = root;\n            root = t;\n        }\n        return root;\n    }\n\n    static boolean judge(TreeNode root, int target, int n) {\n        if (n != 0) root = chain(n, i -> i % 2 == 0 ? 1 : -1);\n        return new Solution().hasPathSum(root, target);\n    }\n}",
+      python: "# n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\ndef _chain(n, val):\n    root = None\n    for i in range(abs(n) - 1, -1, -1):\n        t = TreeNode(val(i))\n        if n > 0:\n            t.right = root\n        else:\n            t.left = root\n        root = t\n    return root\n\ndef judge(root, target, n):\n    if n:\n        root = _chain(n, lambda i: 1 if i % 2 == 0 else -1)\n    return Solution().has_path_sum(root, target)",
+      js: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nfunction chain__(n, val) {\n  let root = null;\n  for (let i = Math.abs(n) - 1; i >= 0; i--) {\n    const t = new TreeNode(val(i));\n    if (n > 0) t.right = root; else t.left = root;\n    root = t;\n  }\n  return root;\n}\n\nfunction judge(root, target, n) {\n  if (n) root = chain__(n, (i) => i % 2 == 0 ? 1 : -1);\n  return hasPathSum(root, target);\n}",
+      cpp: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nTreeNode* chain__(int n, function<int(int)> val) {\n    TreeNode* root = nullptr;\n    for (int i = abs(n) - 1; i >= 0; i--) {\n        TreeNode* t = new TreeNode(val(i));\n        if (n > 0) t->right = root; else t->left = root;\n        root = t;\n    }\n    return root;\n}\n\nbool judge(TreeNode* root, int target, int n) {\n    if (n) root = chain__(n, [](int i) { return i % 2 == 0 ? 1 : -1; });\n    return Solution().hasPathSum(root, target);\n}"
+    }, cases: [
+      [[[5,4,8,11,null,13,4,7,2,null,null,null,1],22,0],true],
+      [[[5,4,8,11,null,13,4,7,2,null,null,null,1],26,0],true],
+      [[[5,4,8,11,null,13,4,7,2,null,null,null,1],18,0],true],
+      [[[5,4,8,11,null,13,4,7,2,null,null,null,1],27,0],true],
+      [[[1,2],1,0],false],
+      [[[1,2],3,0],true],
+      [[[],0,0],false],
+      [[[-3],-3,0],true],
+      [[[1,-2,-3,1,3,-2,null,-1],-1,0],true],
+      [[[0,1,1],0,0],false],
+      [[[-1000,1000],0,0],true],
+      [[[],0,-5000],true],
+      [[[],1,5000],false]
+    ] },
     solution: {
       approach: `<p>Top-down DFS carrying the remaining target; test only at leaves.</p>`,
       code: `
@@ -3781,9 +6736,42 @@ class Solution:
                 return hasPathSum(root.left, rem) || hasPathSum(root.right, rem);
             }
         }`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def has_path_sum(self, root, target_sum):
+        stack = [(root, target_sum)] if root else []   # (node, what the rest of the path must add)
+        while stack:
+            n, rem = stack.pop()
+            rem -= n.val
+            if n.left is None and n.right is None and rem == 0:
+                return True                  # a leaf closes a matching path
+            stack.extend((c, rem) for c in (n.left, n.right) if c)
+        return False
+` }, { lang: 'js', code: `function hasPathSum(root, targetSum) {
+  if (!root) return false;
+  const rem = targetSum - root.val;
+  if (!root.left && !root.right) return rem === 0;   // leaf: the path ends here
+  return hasPathSum(root.left, rem) || hasPathSum(root.right, rem);
+}
+` }, { lang: 'cpp', code: `// LeetCode-style node (the judge normally provides it)
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int x = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(x), left(l), right(r) {}
+};
+
+class Solution {
+public:
+    bool hasPathSum(TreeNode* root, int targetSum) {
+        if (!root) return false;
+        int rem = targetSum - root->val;
+        if (!root->left && !root->right) return rem == 0;   // leaf: the path ends here
+        return hasPathSum(root->left, rem) || hasPathSum(root->right, rem);
+    }
+};
+` }],
       dry: { head: ['node', 'remaining after node', 'leaf?', 'result'], rows: [['5', '17', 'no', 'recurse'], ['4', '13', 'no', 'recurse'], ['11', '2', 'no', 'recurse'], ['7', '−5', 'yes', H.c('r', 'false')], ['2', '0', 'yes', H.c('g', 'true')]] },
       complexity: `<p><b>Time O(N)</b>, <b>space O(h)</b>.</p>`,
-      followUps: ['Return all such paths (Path Sum II, backtracking)', 'Count paths that start anywhere and go down (Path Sum III, prefix sums + HashMap)']
+      followUps: ['Return all such paths (Path Sum II, backtracking)', 'Count paths that start anywhere and go down (Path Sum III, prefix sums + hash map)']
     }
   });
 
@@ -3815,6 +6803,17 @@ class Solution:
       `<p>Divide and conquer on index ranges: <code>build(lo, hi)</code> returns the root for <code>nums[lo..hi]</code>. No copying of sub-arrays.</p>`,
       `<p><b>Recipe:</b> if lo &gt; hi return null; mid = (lo + hi) &gt;&gt;&gt; 1; node = nums[mid]; node.left = build(lo, mid−1); node.right = build(mid+1, hi). Use <code>&gt;&gt;&gt; 1</code> to avoid overflow habits.</p>`
     ],
+    tests: { sig: 'int[] -> TreeNode', fn: 'sortedArrayToBST', check: "(args, out, exp) => { if (!Array.isArray(out) || !out.length || out[0] === null) return false; const L = [], R = [], nodes = [0]; let i = 1; for (let k = 0; k < nodes.length && i < out.length; k++) { const p = nodes[k]; if (i < out.length && out[i] !== null) { L[p] = i; nodes.push(i); } i++; if (i < out.length && out[i] !== null) { R[p] = i; nodes.push(i); } i++; } const seq = []; let bal = true; const h = (x) => { if (x === undefined) return 0; const a = h(L[x]); seq.push(out[x]); const b = h(R[x]); if (Math.abs(a - b) > 1) bal = false; return 1 + Math.max(a, b); }; h(0); return bal && JSON.stringify(seq) === JSON.stringify(exp); }", cases: [
+      [[[-10,-3,0,5,9]],[-10,-3,0,5,9]],
+      [[[1,3]],[1,3]],
+      [[[7]],[7]],
+      [[[-10000,10000]],[-10000,10000]],
+      [[[1,2,3,4,5,6,7]],[1,2,3,4,5,6,7]],
+      [[[1,2,3,4,5,6,7,8]],[1,2,3,4,5,6,7,8]],
+      [[[-500,-499,-498,-497,-496,-495,-494,-493,-492,-491,-490,-489,-488,-487,-486,-485,-484,-483,-482,-481,-480,-479,-478,-477,-476,-475,-474,-473,-472,-471,-470,-469,-468,-467,-466,-465,-464,-463,-462,-461,-460,-459,-458,-457,-456,-455,-454,-453,-452,-451,-450,-449,-448,-447,-446,-445,-444,-443,-442,-441,-440,-439,-438,-437,-436,-435,-434,-433,-432,-431,-430,-429,-428,-427,-426,-425,-424,-423,-422,-421,-420,-419,-418,-417,-416,-415,-414,-413,-412,-411,-410,-409,-408,-407,-406,-405,-404,-403,-402,-401,-400,-399,-398,-397,-396,-395,-394,-393,-392,-391,-390,-389,-388,-387,-386,-385,-384,-383,-382,-381,-380,-379,-378,-377,-376,-375,-374,-373,-372,-371,-370,-369,-368,-367,-366,-365,-364,-363,-362,-361,-360,-359,-358,-357,-356,-355,-354,-353,-352,-351,-350,-349,-348,-347,-346,-345,-344,-343,-342,-341,-340,-339,-338,-337,-336,-335,-334,-333,-332,-331,-330,-329,-328,-327,-326,-325,-324,-323,-322,-321,-320,-319,-318,-317,-316,-315,-314,-313,-312,-311,-310,-309,-308,-307,-306,-305,-304,-303,-302,-301,-300,-299,-298,-297,-296,-295,-294,-293,-292,-291,-290,-289,-288,-287,-286,-285,-284,-283,-282,-281,-280,-279,-278,-277,-276,-275,-274,-273,-272,-271,-270,-269,-268,-267,-266,-265,-264,-263,-262,-261,-260,-259,-258,-257,-256,-255,-254,-253,-252,-251,-250,-249,-248,-247,-246,-245,-244,-243,-242,-241,-240,-239,-238,-237,-236,-235,-234,-233,-232,-231,-230,-229,-228,-227,-226,-225,-224,-223,-222,-221,-220,-219,-218,-217,-216,-215,-214,-213,-212,-211,-210,-209,-208,-207,-206,-205,-204,-203,-202,-201,-200,-199,-198,-197,-196,-195,-194,-193,-192,-191,-190,-189,-188,-187,-186,-185,-184,-183,-182,-181,-180,-179,-178,-177,-176,-175,-174,-173,-172,-171,-170,-169,-168,-167,-166,-165,-164,-163,-162,-161,-160,-159,-158,-157,-156,-155,-154,-153,-152,-151,-150,-149,-148,-147,-146,-145,-144,-143,-142,-141,-140,-139,-138,-137,-136,-135,-134,-133,-132,-131,-130,-129,-128,-127,-126,-125,-124,-123,-122,-121,-120,-119,-118,-117,-116,-115,-114,-113,-112,-111,-110,-109,-108,-107,-106,-105,-104,-103,-102,-101,-100,-99,-98,-97,-96,-95,-94,-93,-92,-91,-90,-89,-88,-87,-86,-85,-84,-83,-82,-81,-80,-79,-78,-77,-76,-75,-74,-73,-72,-71,-70,-69,-68,-67,-66,-65,-64,-63,-62,-61,-60,-59,-58,-57,-56,-55,-54,-53,-52,-51,-50,-49,-48,-47,-46,-45,-44,-43,-42,-41,-40,-39,-38,-37,-36,-35,-34,-33,-32,-31,-30,-29,-28,-27,-26,-25,-24,-23,-22,-21,-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255,256,257,258,259,260,261,262,263,264,265,266,267,268,269,270,271,272,273,274,275,276,277,278,279,280,281,282,283,284,285,286,287,288,289,290,291,292,293,294,295,296,297,298,299,300,301,302,303,304,305,306,307,308,309,310,311,312,313,314,315,316,317,318,319,320,321,322,323,324,325,326,327,328,329,330,331,332,333,334,335,336,337,338,339,340,341,342,343,344,345,346,347,348,349,350,351,352,353,354,355,356,357,358,359,360,361,362,363,364,365,366,367,368,369,370,371,372,373,374,375,376,377,378,379,380,381,382,383,384,385,386,387,388,389,390,391,392,393,394,395,396,397,398,399,400,401,402,403,404,405,406,407,408,409,410,411,412,413,414,415,416,417,418,419,420,421,422,423,424,425,426,427,428,429,430,431,432,433,434,435,436,437,438,439,440,441,442,443,444,445,446,447,448,449,450,451,452,453,454,455,456,457,458,459,460,461,462,463,464,465,466,467,468,469,470,471,472,473,474,475,476,477,478,479,480,481,482,483,484,485,486,487,488,489,490,491,492,493,494,495,496,497,498,499,500,501,502,503,504,505,506,507,508,509,510,511,512,513,514,515,516,517,518,519,520,521,522]],[-500,-499,-498,-497,-496,-495,-494,-493,-492,-491,-490,-489,-488,-487,-486,-485,-484,-483,-482,-481,-480,-479,-478,-477,-476,-475,-474,-473,-472,-471,-470,-469,-468,-467,-466,-465,-464,-463,-462,-461,-460,-459,-458,-457,-456,-455,-454,-453,-452,-451,-450,-449,-448,-447,-446,-445,-444,-443,-442,-441,-440,-439,-438,-437,-436,-435,-434,-433,-432,-431,-430,-429,-428,-427,-426,-425,-424,-423,-422,-421,-420,-419,-418,-417,-416,-415,-414,-413,-412,-411,-410,-409,-408,-407,-406,-405,-404,-403,-402,-401,-400,-399,-398,-397,-396,-395,-394,-393,-392,-391,-390,-389,-388,-387,-386,-385,-384,-383,-382,-381,-380,-379,-378,-377,-376,-375,-374,-373,-372,-371,-370,-369,-368,-367,-366,-365,-364,-363,-362,-361,-360,-359,-358,-357,-356,-355,-354,-353,-352,-351,-350,-349,-348,-347,-346,-345,-344,-343,-342,-341,-340,-339,-338,-337,-336,-335,-334,-333,-332,-331,-330,-329,-328,-327,-326,-325,-324,-323,-322,-321,-320,-319,-318,-317,-316,-315,-314,-313,-312,-311,-310,-309,-308,-307,-306,-305,-304,-303,-302,-301,-300,-299,-298,-297,-296,-295,-294,-293,-292,-291,-290,-289,-288,-287,-286,-285,-284,-283,-282,-281,-280,-279,-278,-277,-276,-275,-274,-273,-272,-271,-270,-269,-268,-267,-266,-265,-264,-263,-262,-261,-260,-259,-258,-257,-256,-255,-254,-253,-252,-251,-250,-249,-248,-247,-246,-245,-244,-243,-242,-241,-240,-239,-238,-237,-236,-235,-234,-233,-232,-231,-230,-229,-228,-227,-226,-225,-224,-223,-222,-221,-220,-219,-218,-217,-216,-215,-214,-213,-212,-211,-210,-209,-208,-207,-206,-205,-204,-203,-202,-201,-200,-199,-198,-197,-196,-195,-194,-193,-192,-191,-190,-189,-188,-187,-186,-185,-184,-183,-182,-181,-180,-179,-178,-177,-176,-175,-174,-173,-172,-171,-170,-169,-168,-167,-166,-165,-164,-163,-162,-161,-160,-159,-158,-157,-156,-155,-154,-153,-152,-151,-150,-149,-148,-147,-146,-145,-144,-143,-142,-141,-140,-139,-138,-137,-136,-135,-134,-133,-132,-131,-130,-129,-128,-127,-126,-125,-124,-123,-122,-121,-120,-119,-118,-117,-116,-115,-114,-113,-112,-111,-110,-109,-108,-107,-106,-105,-104,-103,-102,-101,-100,-99,-98,-97,-96,-95,-94,-93,-92,-91,-90,-89,-88,-87,-86,-85,-84,-83,-82,-81,-80,-79,-78,-77,-76,-75,-74,-73,-72,-71,-70,-69,-68,-67,-66,-65,-64,-63,-62,-61,-60,-59,-58,-57,-56,-55,-54,-53,-52,-51,-50,-49,-48,-47,-46,-45,-44,-43,-42,-41,-40,-39,-38,-37,-36,-35,-34,-33,-32,-31,-30,-29,-28,-27,-26,-25,-24,-23,-22,-21,-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255,256,257,258,259,260,261,262,263,264,265,266,267,268,269,270,271,272,273,274,275,276,277,278,279,280,281,282,283,284,285,286,287,288,289,290,291,292,293,294,295,296,297,298,299,300,301,302,303,304,305,306,307,308,309,310,311,312,313,314,315,316,317,318,319,320,321,322,323,324,325,326,327,328,329,330,331,332,333,334,335,336,337,338,339,340,341,342,343,344,345,346,347,348,349,350,351,352,353,354,355,356,357,358,359,360,361,362,363,364,365,366,367,368,369,370,371,372,373,374,375,376,377,378,379,380,381,382,383,384,385,386,387,388,389,390,391,392,393,394,395,396,397,398,399,400,401,402,403,404,405,406,407,408,409,410,411,412,413,414,415,416,417,418,419,420,421,422,423,424,425,426,427,428,429,430,431,432,433,434,435,436,437,438,439,440,441,442,443,444,445,446,447,448,449,450,451,452,453,454,455,456,457,458,459,460,461,462,463,464,465,466,467,468,469,470,471,472,473,474,475,476,477,478,479,480,481,482,483,484,485,486,487,488,489,490,491,492,493,494,495,496,497,498,499,500,501,502,503,504,505,506,507,508,509,510,511,512,513,514,515,516,517,518,519,520,521,522]],
+      [[[-3,-2,-1,0]],[-3,-2,-1,0]],
+      [[{'$range': [-10000,10000,2]}],{'$range': [-10000,10000,2]}]
+    ] },
     solution: {
       approach: `<p>Middle element as root, recurse on both halves.</p>`,
       code: `
@@ -3831,6 +6830,42 @@ class Solution:
                 return node;
             }
         }`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def sorted_array_to_bst(self, nums):
+        def build(lo, hi):
+            if lo > hi:
+                return None
+            mid = (lo + hi) // 2             # middle -> balanced halves
+            return TreeNode(nums[mid], build(lo, mid - 1), build(mid + 1, hi))
+
+        return build(0, len(nums) - 1)
+` }, { lang: 'js', code: `function sortedArrayToBST(nums) {
+  const build = (lo, hi) => {
+    if (lo > hi) return null;
+    const mid = (lo + hi) >> 1;                      // middle -> balanced halves
+    return new TreeNode(nums[mid], build(lo, mid - 1), build(mid + 1, hi));
+  };
+  return build(0, nums.length - 1);
+}
+` }, { lang: 'cpp', code: `// LeetCode-style node (the judge normally provides it)
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int x = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(x), left(l), right(r) {}
+};
+
+class Solution {
+public:
+    TreeNode* sortedArrayToBST(vector<int>& nums) { return build(nums, 0, (int)nums.size() - 1); }
+
+private:
+    TreeNode* build(const vector<int>& a, int lo, int hi) {
+        if (lo > hi) return nullptr;
+        int mid = lo + (hi - lo) / 2;        // middle -> balanced halves
+        return new TreeNode(a[mid], build(a, lo, mid - 1), build(a, mid + 1, hi));
+    }
+};
+` }],
       dry: { head: ['range', 'mid', 'root'], rows: [['[0..4]', '2', '0'], ['[0..1]', '0', '−10 (right child −3)'], ['[3..4]', '3', H.c('g', '5 (right child 9)')]] },
       complexity: `<p><b>Time O(n)</b>, <b>space O(log n)</b> recursion (the result tree is balanced).</p>`,
       followUps: ['Same from a sorted linked list (slow/fast pointer or inorder simulation)', 'Balance an existing BST (inorder → this)']
@@ -3846,7 +6881,7 @@ class Solution:
     constraints: `0 ≤ nodes ≤ 2000, −100 ≤ Node.val ≤ 100`,
     example: `<p><code>root = [3,9,20,null,null,15,7]</code> → ${H.c('g', '[[3], [20, 9], [15, 7]]')}. Level 1 is [9, 20] in normal order and is reversed because it is an odd level.</p>`,
     brute: {
-      why: `<p>Run normal level order, then call <code>Collections.reverse</code> on every odd level. Still O(N) overall, but it does an extra pass per level and is the version interviewers ask you to improve ("can you produce each row in the right order directly?").</p>`,
+      why: `<p>Run normal level order, then reverse every odd level (<code>Collections.reverse</code> / <code>row[::-1]</code> / <code>reverse()</code> / <code>std::reverse</code>). Still O(N) overall, but it does an extra pass per level and is the version interviewers ask you to improve ("can you produce each row in the right order directly?").</p>`,
       code: `
         List<List<Integer>> zigzagBrute(TreeNode root) {
             List<List<Integer>> res = new ArrayList<>();
@@ -3871,9 +6906,21 @@ class Solution:
     mcq: { q: 'To avoid reversing, how can you build an odd level row directly?', options: ['Visit children right-to-left in the queue', 'Add each value at the FRONT of a deque/LinkedList on odd levels', 'Sort the row', 'Use a stack instead of a queue for the whole BFS'], answer: 1, explain: 'Keep the queue in normal order (so the next levels stay correct) and only change where values are placed in the row: addFirst on odd levels.' },
     hints: [
       `<p><b>Aha:</b> the visiting order of BFS doesn't need to change — only the order in which each level is <b>written</b> alternates.</p>`,
-      `<p>Standard BFS with the size snapshot plus a boolean <code>leftToRight</code>. Use a <code>LinkedList</code>/<code>Deque</code> for the row and <code>addLast</code> or <code>addFirst</code> depending on the flag.</p>`,
+      `<p>Standard BFS with the size snapshot plus a boolean <code>leftToRight</code>. Use a deque for the row (<code>LinkedList</code> in Java, <code>collections.deque</code> in Python, <code>std::deque</code> in C++) and add at the back or the front depending on the flag. In JavaScript fill the row, then reverse it (<code>unshift</code> is O(n)).</p>`,
       `<p><b>Traps:</b> don't change the order children are enqueued (that scrambles deeper levels). Empty tree → empty list. <b>Recipe:</b> BFS; per level make a deque row; addLast if leftToRight else addFirst; flip the flag after each level.</p>`
     ],
+    tests: { sig: 'TreeNode -> list<list<int>>', fn: 'zigzagLevelOrder', cases: [
+      [[[1,2,3,4,5]],[[1],[3,2],[4,5]]],
+      [[[]],[]],
+      [[[1]],[[1]]],
+      [[[1,null,2,3]],[[1],[2],[3]]],
+      [[[3,9,20,null,null,15,7]],[[3],[20,9],[15,7]]],
+      [[[-5,-5,0,null,7,7,-100]],[[-5],[0,-5],[7,7,-100]]],
+      [[[1,2,3,4,null,null,5,6,null,null,7]],[[1],[3,2],[4,5],[7,6]]],
+      [[[18,72,null,-55,-72,null,28,null,34,null,null,null,-24]],[[18],[72],[-55,-72],[34,28],[-24]]],
+      [[[-83,-35,-79,null,57,null,-52,null,-7]],[[-83],[-79,-35],[57,-52],[-7]]],
+      [[[97,-95,-86,83,null,null,null,null,-87]],[[97],[-86,-95],[83],[-87]]]
+    ] },
     solution: {
       approach: `<p>BFS with level snapshots; alternate between addLast and addFirst when building each row.</p>`,
       code: `
@@ -3899,6 +6946,54 @@ class Solution:
                 return res;
             }
         }`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def zigzag_level_order(self, root):
+        res, level = [], [root] if root else []
+        while level:
+            vals = [n.val for n in level]
+            res.append(vals if len(res) % 2 == 0 else vals[::-1])   # odd levels reversed
+            level = [c for n in level for c in (n.left, n.right) if c]
+        return res
+` }, { lang: 'js', code: `function zigzagLevelOrder(root) {
+  const res = [];
+  let level = root ? [root] : [];
+  while (level.length) {
+    const vals = level.map((n) => n.val);
+    res.push(res.length % 2 === 0 ? vals : vals.reverse());   // odd levels reversed
+    level = level.flatMap((n) => [n.left, n.right].filter(Boolean));
+  }
+  return res;
+}
+` }, { lang: 'cpp', code: `// LeetCode-style node (the judge normally provides it)
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int x = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(x), left(l), right(r) {}
+};
+
+class Solution {
+public:
+    vector<vector<int>> zigzagLevelOrder(TreeNode* root) {
+        vector<vector<int>> res;
+        if (!root) return res;
+        queue<TreeNode*> q;
+        q.push(root);
+        while (!q.empty()) {
+            int size = q.size();
+            vector<int> row(size);
+            bool leftToRight = res.size() % 2 == 0;
+            for (int i = 0; i < size; i++) {
+                TreeNode* n = q.front(); q.pop();
+                row[leftToRight ? i : size - 1 - i] = n->val;   // write straight into place
+                if (n->left) q.push(n->left);
+                if (n->right) q.push(n->right);
+            }
+            res.push_back(move(row));
+        }
+        return res;
+    }
+};
+` }],
       dry: { head: ['level', 'BFS order', 'flag', 'row'], rows: [['0', '3', '→', '[3]'], ['1', '9, 20', '←', H.c('g', '[20, 9]')], ['2', '15, 7', '→', '[15, 7]']] },
       complexity: `<p><b>Time O(N)</b>, <b>space O(W)</b> for the queue.</p>`,
       followUps: ['Two-stack version without a queue', 'Spiral order of a matrix — the same alternating idea']
@@ -3941,6 +7036,17 @@ class Solution:
       `<p>BFS with a parallel queue of positions (use <code>long</code>). For each level remember the first position and subtract it from every position on that level before computing children.</p>`,
       `<p><b>Recipe:</b> q = [(root, 0)]; per level: first = position of front; for each node p' = p − first; push (left, 2p'+1), (right, 2p'+2); best = max(best, lastP' + 1).</p>`
     ],
+    tests: { sig: 'TreeNode -> int', fn: 'widthOfBinaryTree', cases: [
+      [[[1,3,2,5,3,null,9]],4],
+      [[[1,3,2,5,null,null,9,6,null,7]],7],
+      [[[1,3,2,5]],2],
+      [[[1]],1],
+      [[[1,2,3,4,5,6,7]],4],
+      [[[1,2,null,3,null,4]],1],
+      [[[0,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,0,null,1,2]],2],
+      [[[0,null,0,1,null,null,2,3,null,null,4,5,null,null,6,7,null,null,8,9,null,null,10,11,null,null,12,13,null,null,14,15,null,null,16,17,null,null,18,19,null,null,20,21,null,null,22,23,null,null,24,25,null,null,26,27,null,null,28,29,null,null,30,31,null,null,32,33,null,null,34,35,null,null,36,37,null,null,38,39,null,null,40,41,null,null,42,43,null,null,44,45,null,null,46,47,null,null,48,49,null,null,50,51,null,null,52,53,null,null,54,55,null,null,56,57,null,null,58,59,null,null,60,61,null,null,62,63,null,null,64,65,null,null,66,67,null,null,68,69]],1],
+      [[[1,2,3,-1,null,null,-2,-1,null,null,-2,-1,null,null,-2,-1,null,null,-2,-1,null,null,-2,-1,null,null,-2,-1,null,null,-2,-1,null,null,-2,-1,null,null,-2,-1,null,null,-2,-1,null,null,-2,-1,null,null,-2,-1,null,null,-2,-1,null,null,-2,-1,null,null,-2,-1,null,null,-2,-1,null,null,-2,-1,null,null,-2,-1,null,null,-2,-1,null,null,-2,-1,null,null,-2,-1,null,null,-2,-1,null,null,-2,-1,null,null,-2,-1,null,null,-2,-1,null,null,-2,-1,null,null,-2,-1,null,null,-2,-1,null,null,-2]],1073741824]
+    ] },
     solution: {
       approach: `<p>BFS with heap-style positions, re-based per level.</p>`,
       code: `
@@ -3965,6 +7071,62 @@ class Solution:
                 return (int) best;
             }
         }`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def width_of_binary_tree(self, root):
+        best, level = 0, [(root, 0)]         # (node, position in a complete tree)
+        while level:
+            first = level[0][1]
+            best = max(best, level[-1][1] - first + 1)
+            # re-base on the first position so numbers stay small
+            level = [(c, 2 * (p - first) + k)
+                     for n, p in level
+                     for k, c in ((1, n.left), (2, n.right)) if c]
+        return best
+` }, { lang: 'js', code: `function widthOfBinaryTree(root) {
+  let best = 0;
+  let level = [[root, 0]];                 // [node, position in a complete tree]
+  while (level.length) {
+    const first = level[0][1];
+    best = Math.max(best, level[level.length - 1][1] - first + 1);
+    const next = [];
+    for (const [n, p] of level) {
+      const q = p - first;                 // re-base so numbers stay far below 2^53
+      if (n.left) next.push([n.left, 2 * q + 1]);
+      if (n.right) next.push([n.right, 2 * q + 2]);
+    }
+    level = next;
+  }
+  return best;
+}
+` }, { lang: 'cpp', code: `// LeetCode-style node (the judge normally provides it)
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int x = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(x), left(l), right(r) {}
+};
+
+class Solution {
+public:
+    int widthOfBinaryTree(TreeNode* root) {
+        long long best = 0;
+        queue<pair<TreeNode*, long long>> q;     // (node, position in a complete tree)
+        q.push({root, 0});
+        while (!q.empty()) {
+            int size = q.size();
+            long long first = q.front().second, last = 0;
+            for (int i = 0; i < size; i++) {
+                auto [n, p0] = q.front(); q.pop();
+                long long p = p0 - first;        // re-base: the level starts at 0
+                last = p;
+                if (n->left) q.push({n->left, 2 * p + 1});
+                if (n->right) q.push({n->right, 2 * p + 2});
+            }
+            best = max(best, last + 1);
+        }
+        return (int)best;
+    }
+};
+` }],
       dry: { head: ['level', 'positions (re-based)', 'width'], rows: [['0', '1@0', '1'], ['1', '3@0, 2@1', '2'], ['2', '5@0, 3@1, 9@3', H.c('g', '4')]] },
       complexity: `<p><b>Time O(N)</b>, <b>space O(W)</b>.</p>`,
       followUps: ['Do it with DFS by storing the first position seen at each depth', 'Why must positions be 64-bit even after re-basing?']
@@ -4004,22 +7166,91 @@ class Solution:
       `<p>Preorder DFS with a parameter <code>maxSoFar</code>; return the count of good nodes in the subtree (or use a counter field).</p>`,
       `<p><b>Traps:</b> equal values count as good (≥, not &gt;); for 10<sup>5</sup>-deep chains consider an iterative stack of (node, max) pairs. <b>Recipe:</b> go(n, mx): if null 0; good = n.val ≥ mx; mx2 = max(mx, n.val); return (good?1:0) + go(left, mx2) + go(right, mx2).</p>`
     ],
+    tests: { sig: 'TreeNode int -> int', fn: 'judge', harness: {
+      java: "class Check {\n    // n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\n    // Built here because a tree this deep is too big to write out as a test literal.\n    static TreeNode chain(int n, java.util.function.IntUnaryOperator val) {\n        TreeNode root = null;\n        for (int i = Math.abs(n) - 1; i >= 0; i--) {\n            TreeNode t = new TreeNode(val.applyAsInt(i));\n            if (n > 0) t.right = root; else t.left = root;\n            root = t;\n        }\n        return root;\n    }\n\n    static int judge(TreeNode root, int n) {\n        if (n != 0) root = chain(n, i -> (i * 7919) % 20001 - 10000);\n        return new Solution().goodNodes(root);\n    }\n}",
+      python: "# n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\ndef _chain(n, val):\n    root = None\n    for i in range(abs(n) - 1, -1, -1):\n        t = TreeNode(val(i))\n        if n > 0:\n            t.right = root\n        else:\n            t.left = root\n        root = t\n    return root\n\ndef judge(root, n):\n    if n:\n        root = _chain(n, lambda i: (i * 7919) % 20001 - 10000)\n    return Solution().good_nodes(root)",
+      js: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nfunction chain__(n, val) {\n  let root = null;\n  for (let i = Math.abs(n) - 1; i >= 0; i--) {\n    const t = new TreeNode(val(i));\n    if (n > 0) t.right = root; else t.left = root;\n    root = t;\n  }\n  return root;\n}\n\nfunction judge(root, n) {\n  if (n) root = chain__(n, (i) => (i * 7919) % 20001 - 10000);\n  return goodNodes(root);\n}",
+      cpp: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nTreeNode* chain__(int n, function<int(int)> val) {\n    TreeNode* root = nullptr;\n    for (int i = abs(n) - 1; i >= 0; i--) {\n        TreeNode* t = new TreeNode(val(i));\n        if (n > 0) t->right = root; else t->left = root;\n        root = t;\n    }\n    return root;\n}\n\nint judge(TreeNode* root, int n) {\n    if (n) root = chain__(n, [](int i) { return (i * 7919) % 20001 - 10000; });\n    return Solution().goodNodes(root);\n}"
+    }, cases: [
+      [[[3,1,4,3,null,1,5],0],4],
+      [[[3,3,null,4,2],0],3],
+      [[[1],0],1],
+      [[[-10000],0],1],
+      [[[5,4,3,2,1],0],1],
+      [[[2,null,4,10,8,null,null,4],0],4],
+      [[[0,0,0,0],0],4],
+      [[[-2049,-6595,2277,null,-7825,null,3419,null,null,null,-432,-4630,-6887,9934,-6067,2562,null,-1500,null,null,8647,null,1673,null,null,null,8069],0],5],
+      [[[0,0,null,1,null,1,null,2,null,2,null,3,null,3,null,4,null,4,null,5,null,5,null,6,null,6,null,7,null,7,null,8,null,8,null,9,null,9,null,10,null,10,null,11,null,11,null,12,null,12,null,13,null,13,null,14,null,14,null,15,null,15,null,16,null,16,null,17,null,17,null,18,null,18,null,19,null,19,null,20,null,20,null,21,null,21,null,22,null,22,null,23,null,23,null,24,null,24,null,25,null,25,null,26,null,26,null,27,null,27,null,28,null,28,null,29,null,29,null,30,null,30,null,31,null,31,null,32,null,32,null,33,null,33,null,34,null,34,null,35,null,35,null,36,null,36,null,37,null,37,null,38,null,38,null,39,null,39,null,40,null,40,null,41,null,41,null,42,null,42,null,43,null,43,null,44,null,44,null,45,null,45,null,46,null,46,null,47,null,47,null,48,null,48,null,49,null,49,null,50,null,50,null,51,null,51,null,52,null,52,null,53,null,53,null,54,null,54,null,55,null,55,null,56,null,56,null,57,null,57,null,58,null,58,null,59,null,59,null,60,null,60,null,61,null,61,null,62,null,62,null,63,null,63,null,64,null,64,null,65,null,65,null,66,null,66,null,67,null,67,null,68,null,68,null,69,null,69,null,70,null,70,null,71,null,71,null,72,null,72,null,73,null,73,null,74,null,74,null,75,null,75,null,76,null,76,null,77,null,77,null,78,null,78,null,79,null,79,null,80,null,80,null,81,null,81,null,82,null,82,null,83,null,83,null,84,null,84,null,85,null,85,null,86,null,86,null,87,null,87,null,88,null,88,null,89,null,89,null,90,null,90,null,91,null,91,null,92,null,92,null,93,null,93,null,94,null,94,null,95,null,95,null,96,null,96,null,97,null,97,null,98,null,98,null,99,null,99,null,100,null,100,null,101,null,101,null,102,null,102,null,103,null,103,null,104,null,104,null,105,null,105,null,106,null,106,null,107,null,107,null,108,null,108,null,109,null,109,null,110,null,110,null,111,null,111,null,112,null,112,null,113,null,113,null,114,null,114,null,115,null,115,null,116,null,116,null,117,null,117,null,118,null,118,null,119,null,119,null,120,null,120,null,121,null,121,null,122,null,122,null,123,null,123,null,124,null,124,null,125,null,125,null,126,null,126,null,127,null,127,null,128,null,128,null,129,null,129,null,130,null,130,null,131,null,131,null,132,null,132,null,133,null,133,null,134,null,134,null,135,null,135,null,136,null,136,null,137,null,137,null,138,null,138,null,139,null,139,null,140,null,140,null,141,null,141,null,142,null,142,null,143,null,143,null,144,null,144,null,145,null,145,null,146,null,146,null,147,null,147,null,148,null,148,null,149,null,149,null,150,null,150,null,151,null,151,null,152,null,152,null,153,null,153,null,154,null,154,null,155,null,155,null,156,null,156,null,157,null,157,null,158,null,158,null,159,null,159,null,160,null,160,null,161,null,161,null,162,null,162,null,163,null,163,null,164,null,164,null,165,null,165,null,166,null,166,null,167,null,167,null,168,null,168,null,169,null,169,null,170,null,170,null,171,null,171,null,172,null,172,null,173,null,173,null,174,null,174,null,175,null,175,null,176,null,176,null,177,null,177,null,178,null,178,null,179,null,179,null,180,null,180,null,181,null,181,null,182,null,182,null,183,null,183,null,184,null,184,null,185,null,185,null,186,null,186,null,187,null,187,null,188,null,188,null,189,null,189,null,190,null,190,null,191,null,191,null,192,null,192,null,193,null,193,null,194,null,194,null,195,null,195,null,196,null,196,null,197,null,197,null,198,null,198,null,199,null,199,null,200,null,200,null,201,null,201,null,202,null,202,null,203,null,203,null,204,null,204,null,205,null,205,null,206,null,206,null,207,null,207,null,208,null,208,null,209,null,209,null,210,null,210,null,211,null,211,null,212,null,212,null,213,null,213,null,214,null,214,null,215,null,215,null,216,null,216,null,217,null,217,null,218,null,218,null,219,null,219,null,220,null,220,null,221,null,221,null,222,null,222,null,223,null,223,null,224,null,224,null,225,null,225,null,226,null,226,null,227,null,227,null,228,null,228,null,229,null,229,null,230,null,230,null,231,null,231,null,232,null,232,null,233,null,233,null,234,null,234,null,235,null,235,null,236,null,236,null,237,null,237,null,238,null,238,null,239,null,239,null,240,null,240,null,241,null,241,null,242,null,242,null,243,null,243,null,244,null,244,null,245,null,245,null,246,null,246,null,247,null,247,null,248,null,248,null,249,null,249],0],500],
+      [[[],-100000],14]
+    ] },
     solution: {
       approach: `<p>Top-down DFS carrying the path maximum.</p>`,
       code: `
         class Solution {
             public int goodNodes(TreeNode root) {
-                return count(root, Integer.MIN_VALUE);
-            }
-            private int count(TreeNode n, int maxSoFar) {
-                if (n == null) return 0;
-                int good = n.val >= maxSoFar ? 1 : 0;       // nobody above me is bigger
-                int mx = Math.max(maxSoFar, n.val);          // new max for my children
-                return good + count(n.left, mx) + count(n.right, mx);
+                // explicit stacks instead of recursion: the tree can be a 10^5-deep chain
+                Deque<TreeNode> nodes = new ArrayDeque<>();
+                Deque<Integer> maxAbove = new ArrayDeque<>();   // largest value on the path above each node
+                nodes.push(root); maxAbove.push(Integer.MIN_VALUE);
+                int good = 0;
+                while (!nodes.isEmpty()) {
+                    TreeNode n = nodes.pop();
+                    int maxSoFar = maxAbove.pop();
+                    if (n.val >= maxSoFar) good++;               // nobody above me is bigger
+                    int mx = Math.max(maxSoFar, n.val);          // new max for my children
+                    if (n.left != null) { nodes.push(n.left); maxAbove.push(mx); }
+                    if (n.right != null) { nodes.push(n.right); maxAbove.push(mx); }
+                }
+                return good;
             }
         }`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def good_nodes(self, root):
+        count, stack = 0, [(root, root.val)]  # (node, max value above it)
+        while stack:
+            n, mx = stack.pop()
+            if n.val >= mx:
+                count += 1                   # nobody above is bigger
+            mx = max(mx, n.val)
+            stack.extend((c, mx) for c in (n.left, n.right) if c)
+        return count
+` }, { lang: 'js', code: `function goodNodes(root) {
+  let count = 0;
+  const stack = [[root, root.val]];        // [node, max value above it]
+  while (stack.length) {
+    const [n, mx] = stack.pop();
+    if (n.val >= mx) count++;              // nobody above is bigger
+    const m = Math.max(mx, n.val);
+    if (n.left) stack.push([n.left, m]);
+    if (n.right) stack.push([n.right, m]);
+  }
+  return count;
+}
+` }, { lang: 'cpp', code: `// LeetCode-style node (the judge normally provides it)
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int x = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(x), left(l), right(r) {}
+};
+
+class Solution {
+public:
+    int goodNodes(TreeNode* root) {
+        int count = 0;
+        vector<pair<TreeNode*, int>> st{{root, root->val}};   // (node, max value above it)
+        while (!st.empty()) {
+            auto [n, mx] = st.back(); st.pop_back();
+            if (n->val >= mx) count++;                        // nobody above is bigger
+            int m = max(mx, n->val);
+            if (n->left) st.push_back({n->left, m});
+            if (n->right) st.push_back({n->right, m});
+        }
+        return count;
+    }
+};
+` }],
       dry: { head: ['node', 'maxSoFar', 'good?', 'max passed down'], rows: [['3 (root)', '−∞', H.c('g', 'yes'), '3'], ['1', '3', H.c('r', 'no'), '3'], ['3 (under 1)', '3', H.c('g', 'yes'), '3'], ['4', '3', H.c('g', 'yes'), '4'], ['1 (under 4)', '4', H.c('r', 'no'), '4'], ['5', '4', H.c('g', 'yes → total 4'), '5']] },
-      complexity: `<p><b>Time O(N)</b>, <b>space O(h)</b>.</p>`,
+      complexity: `<p><b>Time O(N)</b>, <b>space O(N)</b> worst case for the stacks. A recursive version is shorter but needs O(h) call stack, which overflows on a 10<sup>5</sup>-deep chain.</p>`,
       followUps: ['Return the good nodes themselves', 'Count nodes equal to the average of their subtree (bottom-up instead of top-down)']
     }
   });
@@ -4047,9 +7278,18 @@ class Solution:
     mcq: { q: 'Why is next() O(1) amortised even though one call may push many nodes?', options: ['Because the tree is balanced', 'Because every node is pushed once and popped once over the whole iteration', 'Because ArrayDeque is O(1)', 'It is actually O(log N) per call'], answer: 1, explain: 'Total work across all N calls is O(N) (one push and one pop per node), so the average per call is O(1), even if a single call slides down a long left chain.' },
     hints: [
       `<p><b>Aha:</b> an iterative inorder can be <b>paused</b>: its stack is the complete saved state. next() = one step of that loop.</p>`,
-      `<p>Keep <code>Deque&lt;TreeNode&gt;</code>. Helper <code>pushLeft(n)</code> pushes n and all its left descendants. Constructor: pushLeft(root). next(): pop, then pushLeft(popped.right).</p>`,
+      `<p>Keep a stack of nodes. Helper <code>pushLeft(n)</code> pushes n and all its left descendants. Constructor: pushLeft(root). next(): pop, then pushLeft(popped.right).</p>`,
       `<p><b>Recipe:</b> hasNext = !stack.isEmpty(); next: node = pop(); pushLeft(node.right); return node.val. Space stays O(h) because the stack holds one path.</p>`
     ],
+    tests: { cls: 'BSTIterator', sigs: {BSTIterator: "TreeNode",next: "-> int",hasNext: "-> bool"}, cases: [
+      {ops: ["BSTIterator","next","next","hasNext","next","next","next","hasNext"],args: [[[7,3,15,null,null,9,20]],[],[],[],[],[],[],[]],out: [null,3,7,true,9,15,20,false]},
+      {ops: ["BSTIterator","hasNext","next","hasNext"],args: [[[1]],[],[],[]],out: [null,true,1,false]},
+      {ops: ["BSTIterator","hasNext","next","hasNext","next","hasNext"],args: [[[2,1]],[],[],[],[],[]],out: [null,true,1,true,2,false]},
+      {ops: ["BSTIterator","next","next","next","hasNext"],args: [[[1,null,2,null,3]],[],[],[],[]],out: [null,1,2,3,false]},
+      {ops: ["BSTIterator","hasNext","next","next","next","next","next","next","next","next","next","hasNext"],args: [[[50,30,70,20,40,60,80,null,null,35,null,null,65]],[],[],[],[],[],[],[],[],[],[],[]],out: [null,true,20,30,35,40,50,60,65,70,80,false]},
+      {ops: ["BSTIterator","next","next","next","next","next","next","next","next","next","next","hasNext","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","hasNext"],args: [[[516,138,733,-175,405,732,816,-372,-132,394,null,702,null,null,null,-787,-260,-165,-107,244,null,527,null,-975,-621,null,-213,null,null,null,77,null,379,null,null,null,null,null,-601,null,null,-18,null,312]],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[]],out: [null,-975,-787,-621,-601,-372,-260,-213,-175,-165,-132,true,-107,-18,77,138,244,312,379,394,405,516,527,702,732,733,816,false]},
+      {ops: ["BSTIterator","hasNext","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","next","hasNext"],args: [[[200,199,null,198,null,197,null,196,null,195,null,194,null,193,null,192,null,191,null,190,null,189,null,188,null,187,null,186,null,185,null,184,null,183,null,182,null,181,null,180,null,179,null,178,null,177,null,176,null,175,null,174,null,173,null,172,null,171,null,170,null,169,null,168,null,167,null,166,null,165,null,164,null,163,null,162,null,161,null,160,null,159,null,158,null,157,null,156,null,155,null,154,null,153,null,152,null,151,null,150,null,149,null,148,null,147,null,146,null,145,null,144,null,143,null,142,null,141,null,140,null,139,null,138,null,137,null,136,null,135,null,134,null,133,null,132,null,131,null,130,null,129,null,128,null,127,null,126,null,125,null,124,null,123,null,122,null,121,null,120,null,119,null,118,null,117,null,116,null,115,null,114,null,113,null,112,null,111,null,110,null,109,null,108,null,107,null,106,null,105,null,104,null,103,null,102,null,101,null,100,null,99,null,98,null,97,null,96,null,95,null,94,null,93,null,92,null,91,null,90,null,89,null,88,null,87,null,86,null,85,null,84,null,83,null,82,null,81,null,80,null,79,null,78,null,77,null,76,null,75,null,74,null,73,null,72,null,71,null,70,null,69,null,68,null,67,null,66,null,65,null,64,null,63,null,62,null,61,null,60,null,59,null,58,null,57,null,56,null,55,null,54,null,53,null,52,null,51,null,50,null,49,null,48,null,47,null,46,null,45,null,44,null,43,null,42,null,41,null,40,null,39,null,38,null,37,null,36,null,35,null,34,null,33,null,32,null,31,null,30,null,29,null,28,null,27,null,26,null,25,null,24,null,23,null,22,null,21,null,20,null,19,null,18,null,17,null,16,null,15,null,14,null,13,null,12,null,11,null,10,null,9,null,8,null,7,null,6,null,5,null,4,null,3,null,2,null,1]],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[],[]],out: [null,true,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,false]}
+    ] },
     solution: {
       approach: `<p>Controlled iterative inorder: the stack holds the leftmost path of the unvisited part.</p>`,
       code: `
@@ -4070,6 +7310,69 @@ class Solution:
 
             public boolean hasNext() { return !st.isEmpty(); }
         }`,
+      alt: [{ lang: 'python', code: `class BSTIterator:
+    def __init__(self, root):
+        self.stack = []
+        self._push_left(root)
+
+    def _push_left(self, n):
+        while n:                             # smallest values end up on top
+            self.stack.append(n)
+            n = n.left
+
+    def next(self):
+        n = self.stack.pop()
+        self._push_left(n.right)             # its successors
+        return n.val
+
+    def hasNext(self):
+        return bool(self.stack)
+` }, { lang: 'js', code: `class BSTIterator {
+  constructor(root) {
+    this.stack = [];
+    this.pushLeft(root);
+  }
+
+  pushLeft(n) {
+    for (; n; n = n.left) this.stack.push(n);   // smallest values end up on top
+  }
+
+  next() {
+    const n = this.stack.pop();
+    this.pushLeft(n.right);                      // its successors
+    return n.val;
+  }
+
+  hasNext() {
+    return this.stack.length > 0;
+  }
+}
+` }, { lang: 'cpp', code: `// LeetCode-style node (the judge normally provides it)
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int x = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(x), left(l), right(r) {}
+};
+
+class BSTIterator {
+    stack<TreeNode*> st;
+
+    void pushLeft(TreeNode* n) {
+        for (; n; n = n->left) st.push(n);   // smallest values end up on top
+    }
+
+public:
+    BSTIterator(TreeNode* root) { pushLeft(root); }
+
+    int next() {
+        TreeNode* n = st.top(); st.pop();
+        pushLeft(n->right);                  // its successors
+        return n->val;
+    }
+
+    bool hasNext() { return !st.empty(); }
+};
+` }],
       dry: { head: ['call', 'stack before (top last)', 'returns', 'stack after'], rows: [['init', '—', '—', '[7, 3]'], ['next', '[7, 3]', '3', '[7]'], ['next', '[7]', '7', '[15, 9]'], ['next', '[15, 9]', '9', '[15]'], ['next', '[15]', '15', '[20]'], ['next', '[20]', '20', H.c('g', '[ ] → hasNext false')]] },
       complexity: `<p><b>next(): O(1) amortised</b>, O(h) worst for one call. <b>hasNext(): O(1)</b>. <b>Space O(h)</b>.</p>`,
       followUps: ['Add a prev() method (two stacks or store visited values)', 'Two Sum IV on a BST in O(h) space with a forward and a backward iterator']
@@ -4101,9 +7404,20 @@ class Solution:
     mcq: { q: 'Reading postorder from the END with one shared index, which subtree must you build first?', options: ['Left', 'Right', 'Either', 'Whichever window is larger'], answer: 1, explain: 'Postorder is Left, Right, Me. Backwards it is Me, Right, Left — so after the root the next values belong to the RIGHT subtree.' },
     hints: [
       `<p><b>Aha:</b> postorder's <b>last</b> element is the root. Inorder splits the rest into left and right, exactly like the preorder version.</p>`,
-      `<p>HashMap value → inorder index; a field <code>postIdx</code> starting at n − 1 and moving left; <code>build(lo, hi)</code> on inorder windows.</p>`,
+      `<p>A hash map value → inorder index; a counter <code>postIdx</code> starting at n − 1 and moving left; <code>build(lo, hi)</code> on inorder windows.</p>`,
       `<p><b>Traps:</b> build <b>right before left</b>. <b>Recipe:</b> if lo &gt; hi null; root = post[postIdx--]; m = map[root]; root.right = build(m+1, hi); root.left = build(lo, m−1).</p>`
     ],
+    tests: { sig: 'int[] int[] -> TreeNode', fn: 'buildTree', cases: [
+      [[[9,3,15,20,7],[9,15,7,20,3]],[3,9,20,null,null,15,7]],
+      [[[-1],[-1]],[-1]],
+      [[[2,1],[2,1]],[1,2]],
+      [[[1,2],[2,1]],[1,null,2]],
+      [[[4,2,5,1,6,3,7],[4,5,2,6,7,3,1]],[1,2,3,4,5,6,7]],
+      [[[5,4,3,2,1],[5,4,3,2,1]],[1,2,null,3,null,4,null,5]],
+      [[[1772,2884,2396,-631,2993,2324,-201,-818,-1277],[2396,2884,1772,2993,-201,2324,-818,-1277,-631]],[-631,1772,-1277,null,2884,-818,null,null,2396,2324,null,null,null,2993,-201]],
+      [[[-1790,-1945,1278,-1320,380,-2241,-2129,-1170,-2240,1127,2542,-1898,32,210,-1437,-2107],[-1790,-1945,-1320,380,1278,-2129,-1170,-2241,1127,2542,32,-1898,-1437,210,-2107,-2240]],[-2240,-2241,-2107,1278,-1170,210,null,-1945,380,-2129,null,-1898,-1437,-1790,null,-1320,null,null,null,2542,32,null,null,null,null,null,null,1127]],
+      [[{'$range': [0,3000]},{'$range': [2999,-1,-1]}],m14chain(3000, 'r')]
+    ] },
     solution: {
       approach: `<p>Mirror of the preorder construction: consume postorder from the end, right subtree first.</p>`,
       code: `
@@ -4126,6 +7440,62 @@ class Solution:
                 return root;
             }
         }`,
+      alt: [{ lang: 'python', code: `import sys
+
+class Solution:
+    def build_tree(self, inorder, postorder):
+        sys.setrecursionlimit(max(1000, 2 * len(inorder) + 100))   # a skewed tree recurses n deep
+        pos = {v: i for i, v in enumerate(inorder)}
+        post = list(postorder)               # pop() from the end: roots in Me, Right, Left order
+
+        def build(lo, hi):
+            if lo > hi:
+                return None
+            node = TreeNode(post.pop())
+            m = pos[node.val]
+            node.right = build(m + 1, hi)    # right first!
+            node.left = build(lo, m - 1)
+            return node
+
+        return build(0, len(inorder) - 1)
+` }, { lang: 'js', code: `function buildTree(inorder, postorder) {
+  const pos = new Map(inorder.map((v, i) => [v, i]));
+  let post = postorder.length - 1;               // last unused postorder value
+  const build = (lo, hi) => {
+    if (lo > hi) return null;
+    const node = new TreeNode(postorder[post--]);
+    const m = pos.get(node.val);
+    node.right = build(m + 1, hi);               // right first!
+    node.left = build(lo, m - 1);
+    return node;
+  };
+  return build(0, inorder.length - 1);
+}
+` }, { lang: 'cpp', code: `// LeetCode-style node (the judge normally provides it)
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int x = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(x), left(l), right(r) {}
+};
+
+class Solution {
+public:
+    TreeNode* buildTree(vector<int>& inorder, vector<int>& postorder) {
+        unordered_map<int, int> pos;
+        for (int i = 0; i < (int)inorder.size(); i++) pos[inorder[i]] = i;
+        int post = (int)postorder.size() - 1;      // last unused postorder value
+        auto build = [&](auto&& self, int lo, int hi) -> TreeNode* {
+            if (lo > hi) return nullptr;
+            TreeNode* node = new TreeNode(postorder[post--]);
+            int m = pos[node->val];
+            node->right = self(self, m + 1, hi);   // right first!
+            node->left = self(self, lo, m - 1);
+            return node;
+        };
+        return build(build, 0, (int)inorder.size() - 1);
+    }
+};
+` }],
       dry: { head: ['build(lo, hi)', 'root (postIdx)', 'm', 'then'], rows: [['(0, 4)', '3 (4)', '1', 'right (2, 4)'], ['(2, 4)', '20 (3)', '3', 'right (4, 4)'], ['(4, 4)', '7 (2)', '4', 'leaf'], ['(2, 2)', '15 (1)', '2', 'leaf'], ['(0, 0)', '9 (0)', '0', H.c('g', 'leaf → done')]] },
       complexity: `<p><b>Time O(n)</b>, <b>space O(n)</b> for the map + O(h) recursion.</p>`,
       followUps: ['Construct from preorder + postorder of a FULL binary tree', 'Why is the pair (preorder, postorder) not enough in general?']
@@ -4173,6 +7543,23 @@ class Solution:
       `<p>One DFS fills <code>Map&lt;TreeNode, TreeNode&gt; parent</code>. Then BFS from the target with a <code>visited</code> set, expanding left, right and parent; stop after k levels.</p>`,
       `<p><b>Traps:</b> without <code>visited</code> you bounce between a child and its parent forever; k = 0 → [target]. <b>Recipe:</b> map parents; queue = [target]; repeat k times: expand one whole level; the queue is the answer.</p>`
     ],
+    tests: { sig: 'TreeNode int int -> list<int>', fn: 'judge', cmp: 'set', harness: {
+      java: "class Check {\n    static TreeNode find(TreeNode root, int v) {\n        Deque<TreeNode> st = new ArrayDeque<>();\n        st.push(root);\n        while (!st.isEmpty()) {\n            TreeNode t = st.pop();\n            if (t.val == v) return t;\n            if (t.left != null) st.push(t.left);\n            if (t.right != null) st.push(t.right);\n        }\n        return null;\n    }\n\n    static List<Integer> judge(TreeNode root, int target, int k) {\n        // the judge passes the real target node of this tree, so find it first\n        return new Solution().distanceK(root, find(root, target), k);\n    }\n}",
+      python: "def _find(root, v):\n    st = [root]\n    while st:\n        t = st.pop()\n        if t.val == v:\n            return t\n        st.extend(c for c in (t.left, t.right) if c)\n\ndef judge(root, target, k):\n    return Solution().distance_k(root, _find(root, target), k)",
+      js: "function find__(root, v) {\n  const st = [root];\n  while (st.length) {\n    const t = st.pop();\n    if (t.val === v) return t;\n    if (t.left) st.push(t.left);\n    if (t.right) st.push(t.right);\n  }\n  return null;\n}\n\nfunction judge(root, target, k) {\n  return distanceK(root, find__(root, target), k);\n}",
+      cpp: "TreeNode* find__(TreeNode* root, int v) {\n    vector<TreeNode*> st{root};\n    while (!st.empty()) {\n        TreeNode* t = st.back(); st.pop_back();\n        if (t->val == v) return t;\n        if (t->left) st.push_back(t->left);\n        if (t->right) st.push_back(t->right);\n    }\n    return nullptr;\n}\n\nvector<int> judge(TreeNode* root, int target, int k) {\n    return Solution().distanceK(root, find__(root, target), k);\n}"
+    }, cases: [
+      [[[3,5,1,6,2,0,8,null,null,7,4],5,2],[1,4,7]],
+      [[[3,5,1,6,2,0,8,null,null,7,4],5,0],[5]],
+      [[[3,5,1,6,2,0,8,null,null,7,4],7,3],[3,6]],
+      [[[3,5,1,6,2,0,8,null,null,7,4],3,1],[1,5]],
+      [[[3,5,1,6,2,0,8,null,null,7,4],6,4],[0,8]],
+      [[[3,5,1,6,2,0,8,null,null,7,4],3,1000],[]],
+      [[[1],1,3],[]],
+      [[[1],1,0],[1]],
+      [[[0,1,null,3,2],2,1],[1]],
+      [[[491,390,185,212,451,249,277,null,null,318,null,99,114,446,22,32,null,425,293,null,null,378,272,null,null,null,323,null,419,null,51],185,3],[212,272,293,378,425,451]]
+    ] },
     solution: {
       approach: `<p>Parent map + level-limited BFS from the target.</p>`,
       code: `
@@ -4203,6 +7590,82 @@ class Solution:
                 linkParents(n.right, n, parent);
             }
         }`,
+      alt: [{ lang: 'python', code: `from collections import defaultdict, deque
+
+class Solution:
+    def distance_k(self, root, target, k):
+        graph = defaultdict(list)
+        stack = [(root, None)]
+        while stack:                         # turn the tree into an undirected graph
+            n, parent = stack.pop()
+            if parent:
+                graph[n].append(parent)
+                graph[parent].append(n)
+            stack.extend((c, n) for c in (n.left, n.right) if c)
+        seen, level = {target}, [target]
+        for _ in range(k):                   # expand k whole rings
+            nxt = []
+            for n in level:
+                for nb in graph[n]:
+                    if nb not in seen:
+                        seen.add(nb)
+                        nxt.append(nb)
+            level = nxt
+        return [n.val for n in level]
+` }, { lang: 'js', code: `function distanceK(root, target, k) {
+  const parent = new Map();                      // node -> parent (object keys work in a Map)
+  const stack = [root];
+  parent.set(root, null);
+  while (stack.length) {
+    const n = stack.pop();
+    for (const c of [n.left, n.right]) if (c) { parent.set(c, n); stack.push(c); }
+  }
+  const seen = new Set([target]);
+  let level = [target];
+  for (let d = 0; d < k && level.length; d++) {  // expand k whole rings
+    const next = [];
+    for (const n of level) {
+      for (const nb of [n.left, n.right, parent.get(n)]) {
+        if (nb && !seen.has(nb)) { seen.add(nb); next.push(nb); }
+      }
+    }
+    level = next;
+  }
+  return level.map((n) => n.val);
+}
+` }, { lang: 'cpp', code: `// LeetCode-style node (the judge normally provides it)
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int x = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(x), left(l), right(r) {}
+};
+
+class Solution {
+public:
+    vector<int> distanceK(TreeNode* root, TreeNode* target, int k) {
+        unordered_map<TreeNode*, TreeNode*> parent;
+        vector<TreeNode*> st{root};
+        parent[root] = nullptr;
+        while (!st.empty()) {                      // link every node to its parent
+            TreeNode* n = st.back(); st.pop_back();
+            for (TreeNode* c : {n->left, n->right})
+                if (c) { parent[c] = n; st.push_back(c); }
+        }
+        unordered_set<TreeNode*> seen{target};
+        vector<TreeNode*> level{target};
+        for (int d = 0; d < k && !level.empty(); d++) {   // expand k whole rings
+            vector<TreeNode*> next;
+            for (TreeNode* n : level)
+                for (TreeNode* nb : {n->left, n->right, parent[n]})
+                    if (nb && seen.insert(nb).second) next.push_back(nb);
+            level = move(next);
+        }
+        vector<int> res;
+        for (TreeNode* n : level) res.push_back(n->val);
+        return res;
+    }
+};
+` }],
       dry: { head: ['round', 'queue after round', 'distance'], rows: [['start', '[5]', '0'], ['1', '[6, 2, 3]', '1'], ['2', H.c('g', '[7, 4, 1]'), '2 → answer']] },
       complexity: `<p><b>Time O(N)</b>, <b>space O(N)</b> for the parent map, visited set and queue.</p>`,
       followUps: ['Solve without a parent map (DFS returning distance to target)', 'Amount of time for a fire/infection to spread from a node to the whole tree']
@@ -4241,6 +7704,17 @@ class Solution:
       `<p>Inorder walk with a <code>prev</code> pointer. At the first drop record <code>first = prev</code>; at every drop record <code>second = cur</code>. Swap their values at the end.</p>`,
       `<p><b>Traps:</b> adjacent swapped nodes produce only ONE drop — the rule above still works because second is set at that drop. Compare nodes, not just values. <b>Recipe:</b> inorder; if prev != null &amp;&amp; prev.val &gt; cur.val: if first == null first = prev; second = cur; then swap values.</p>`
     ],
+    tests: { sig: 'TreeNode -> void', fn: 'recoverTree', mutate: 0, cases: [
+      [[[1,3,null,null,2]],[3,1,null,null,2]],
+      [[[3,1,4,null,null,2]],[2,1,4,null,null,3]],
+      [[[2,null,1]],[1,null,2]],
+      [[[1,2]],[2,1]],
+      [[[5,3,8,9,4,7,1]],[5,3,8,1,4,7,9]],
+      [[[4,3,8,1,5,7,9]],[5,3,8,1,4,7,9]],
+      [[[0,2147483647,-2147483647]],[0,-2147483647,2147483647]],
+      [[[-8472,-9713,-5844,null,null,-6260,4609,-6429,-6023,3909,5600,null,null,null,null,-3990,4124,4834,8865,-4130,2297,4039,4404,null,null,8529,9306,null,-4122,564,3227,null,null,null,null,6154,8843,null,null,null,null,18,null,null,3464,6082,null,null,null,-418,20,null,null,null,null,null,null,null,855]],[-8472,-9713,-5844,null,null,-6260,4609,-6429,-6023,3909,5600,null,null,null,null,-3990,4124,4834,8865,-4130,2297,4039,4404,null,null,8529,9306,null,-4122,855,3227,null,null,null,null,6154,8843,null,null,null,null,18,null,null,3464,6082,null,null,null,-418,20,null,null,null,null,null,null,null,564]],
+      [[[999,null,1,null,2,null,3,null,4,null,5,null,6,null,7,null,8,null,9,null,10,null,11,null,12,null,13,null,14,null,15,null,16,null,17,null,18,null,19,null,20,null,21,null,22,null,23,null,24,null,25,null,26,null,27,null,28,null,29,null,30,null,31,null,32,null,33,null,34,null,35,null,36,null,37,null,38,null,39,null,40,null,41,null,42,null,43,null,44,null,45,null,46,null,47,null,48,null,49,null,50,null,51,null,52,null,53,null,54,null,55,null,56,null,57,null,58,null,59,null,60,null,61,null,62,null,63,null,64,null,65,null,66,null,67,null,68,null,69,null,70,null,71,null,72,null,73,null,74,null,75,null,76,null,77,null,78,null,79,null,80,null,81,null,82,null,83,null,84,null,85,null,86,null,87,null,88,null,89,null,90,null,91,null,92,null,93,null,94,null,95,null,96,null,97,null,98,null,99,null,100,null,101,null,102,null,103,null,104,null,105,null,106,null,107,null,108,null,109,null,110,null,111,null,112,null,113,null,114,null,115,null,116,null,117,null,118,null,119,null,120,null,121,null,122,null,123,null,124,null,125,null,126,null,127,null,128,null,129,null,130,null,131,null,132,null,133,null,134,null,135,null,136,null,137,null,138,null,139,null,140,null,141,null,142,null,143,null,144,null,145,null,146,null,147,null,148,null,149,null,150,null,151,null,152,null,153,null,154,null,155,null,156,null,157,null,158,null,159,null,160,null,161,null,162,null,163,null,164,null,165,null,166,null,167,null,168,null,169,null,170,null,171,null,172,null,173,null,174,null,175,null,176,null,177,null,178,null,179,null,180,null,181,null,182,null,183,null,184,null,185,null,186,null,187,null,188,null,189,null,190,null,191,null,192,null,193,null,194,null,195,null,196,null,197,null,198,null,199,null,200,null,201,null,202,null,203,null,204,null,205,null,206,null,207,null,208,null,209,null,210,null,211,null,212,null,213,null,214,null,215,null,216,null,217,null,218,null,219,null,220,null,221,null,222,null,223,null,224,null,225,null,226,null,227,null,228,null,229,null,230,null,231,null,232,null,233,null,234,null,235,null,236,null,237,null,238,null,239,null,240,null,241,null,242,null,243,null,244,null,245,null,246,null,247,null,248,null,249,null,250,null,251,null,252,null,253,null,254,null,255,null,256,null,257,null,258,null,259,null,260,null,261,null,262,null,263,null,264,null,265,null,266,null,267,null,268,null,269,null,270,null,271,null,272,null,273,null,274,null,275,null,276,null,277,null,278,null,279,null,280,null,281,null,282,null,283,null,284,null,285,null,286,null,287,null,288,null,289,null,290,null,291,null,292,null,293,null,294,null,295,null,296,null,297,null,298,null,299,null,300,null,301,null,302,null,303,null,304,null,305,null,306,null,307,null,308,null,309,null,310,null,311,null,312,null,313,null,314,null,315,null,316,null,317,null,318,null,319,null,320,null,321,null,322,null,323,null,324,null,325,null,326,null,327,null,328,null,329,null,330,null,331,null,332,null,333,null,334,null,335,null,336,null,337,null,338,null,339,null,340,null,341,null,342,null,343,null,344,null,345,null,346,null,347,null,348,null,349,null,350,null,351,null,352,null,353,null,354,null,355,null,356,null,357,null,358,null,359,null,360,null,361,null,362,null,363,null,364,null,365,null,366,null,367,null,368,null,369,null,370,null,371,null,372,null,373,null,374,null,375,null,376,null,377,null,378,null,379,null,380,null,381,null,382,null,383,null,384,null,385,null,386,null,387,null,388,null,389,null,390,null,391,null,392,null,393,null,394,null,395,null,396,null,397,null,398,null,399,null,400,null,401,null,402,null,403,null,404,null,405,null,406,null,407,null,408,null,409,null,410,null,411,null,412,null,413,null,414,null,415,null,416,null,417,null,418,null,419,null,420,null,421,null,422,null,423,null,424,null,425,null,426,null,427,null,428,null,429,null,430,null,431,null,432,null,433,null,434,null,435,null,436,null,437,null,438,null,439,null,440,null,441,null,442,null,443,null,444,null,445,null,446,null,447,null,448,null,449,null,450,null,451,null,452,null,453,null,454,null,455,null,456,null,457,null,458,null,459,null,460,null,461,null,462,null,463,null,464,null,465,null,466,null,467,null,468,null,469,null,470,null,471,null,472,null,473,null,474,null,475,null,476,null,477,null,478,null,479,null,480,null,481,null,482,null,483,null,484,null,485,null,486,null,487,null,488,null,489,null,490,null,491,null,492,null,493,null,494,null,495,null,496,null,497,null,498,null,499,null,500,null,501,null,502,null,503,null,504,null,505,null,506,null,507,null,508,null,509,null,510,null,511,null,512,null,513,null,514,null,515,null,516,null,517,null,518,null,519,null,520,null,521,null,522,null,523,null,524,null,525,null,526,null,527,null,528,null,529,null,530,null,531,null,532,null,533,null,534,null,535,null,536,null,537,null,538,null,539,null,540,null,541,null,542,null,543,null,544,null,545,null,546,null,547,null,548,null,549,null,550,null,551,null,552,null,553,null,554,null,555,null,556,null,557,null,558,null,559,null,560,null,561,null,562,null,563,null,564,null,565,null,566,null,567,null,568,null,569,null,570,null,571,null,572,null,573,null,574,null,575,null,576,null,577,null,578,null,579,null,580,null,581,null,582,null,583,null,584,null,585,null,586,null,587,null,588,null,589,null,590,null,591,null,592,null,593,null,594,null,595,null,596,null,597,null,598,null,599,null,600,null,601,null,602,null,603,null,604,null,605,null,606,null,607,null,608,null,609,null,610,null,611,null,612,null,613,null,614,null,615,null,616,null,617,null,618,null,619,null,620,null,621,null,622,null,623,null,624,null,625,null,626,null,627,null,628,null,629,null,630,null,631,null,632,null,633,null,634,null,635,null,636,null,637,null,638,null,639,null,640,null,641,null,642,null,643,null,644,null,645,null,646,null,647,null,648,null,649,null,650,null,651,null,652,null,653,null,654,null,655,null,656,null,657,null,658,null,659,null,660,null,661,null,662,null,663,null,664,null,665,null,666,null,667,null,668,null,669,null,670,null,671,null,672,null,673,null,674,null,675,null,676,null,677,null,678,null,679,null,680,null,681,null,682,null,683,null,684,null,685,null,686,null,687,null,688,null,689,null,690,null,691,null,692,null,693,null,694,null,695,null,696,null,697,null,698,null,699,null,700,null,701,null,702,null,703,null,704,null,705,null,706,null,707,null,708,null,709,null,710,null,711,null,712,null,713,null,714,null,715,null,716,null,717,null,718,null,719,null,720,null,721,null,722,null,723,null,724,null,725,null,726,null,727,null,728,null,729,null,730,null,731,null,732,null,733,null,734,null,735,null,736,null,737,null,738,null,739,null,740,null,741,null,742,null,743,null,744,null,745,null,746,null,747,null,748,null,749,null,750,null,751,null,752,null,753,null,754,null,755,null,756,null,757,null,758,null,759,null,760,null,761,null,762,null,763,null,764,null,765,null,766,null,767,null,768,null,769,null,770,null,771,null,772,null,773,null,774,null,775,null,776,null,777,null,778,null,779,null,780,null,781,null,782,null,783,null,784,null,785,null,786,null,787,null,788,null,789,null,790,null,791,null,792,null,793,null,794,null,795,null,796,null,797,null,798,null,799,null,800,null,801,null,802,null,803,null,804,null,805,null,806,null,807,null,808,null,809,null,810,null,811,null,812,null,813,null,814,null,815,null,816,null,817,null,818,null,819,null,820,null,821,null,822,null,823,null,824,null,825,null,826,null,827,null,828,null,829,null,830,null,831,null,832,null,833,null,834,null,835,null,836,null,837,null,838,null,839,null,840,null,841,null,842,null,843,null,844,null,845,null,846,null,847,null,848,null,849,null,850,null,851,null,852,null,853,null,854,null,855,null,856,null,857,null,858,null,859,null,860,null,861,null,862,null,863,null,864,null,865,null,866,null,867,null,868,null,869,null,870,null,871,null,872,null,873,null,874,null,875,null,876,null,877,null,878,null,879,null,880,null,881,null,882,null,883,null,884,null,885,null,886,null,887,null,888,null,889,null,890,null,891,null,892,null,893,null,894,null,895,null,896,null,897,null,898,null,899,null,900,null,901,null,902,null,903,null,904,null,905,null,906,null,907,null,908,null,909,null,910,null,911,null,912,null,913,null,914,null,915,null,916,null,917,null,918,null,919,null,920,null,921,null,922,null,923,null,924,null,925,null,926,null,927,null,928,null,929,null,930,null,931,null,932,null,933,null,934,null,935,null,936,null,937,null,938,null,939,null,940,null,941,null,942,null,943,null,944,null,945,null,946,null,947,null,948,null,949,null,950,null,951,null,952,null,953,null,954,null,955,null,956,null,957,null,958,null,959,null,960,null,961,null,962,null,963,null,964,null,965,null,966,null,967,null,968,null,969,null,970,null,971,null,972,null,973,null,974,null,975,null,976,null,977,null,978,null,979,null,980,null,981,null,982,null,983,null,984,null,985,null,986,null,987,null,988,null,989,null,990,null,991,null,992,null,993,null,994,null,995,null,996,null,997,null,998,null,0]],[0,null,1,null,2,null,3,null,4,null,5,null,6,null,7,null,8,null,9,null,10,null,11,null,12,null,13,null,14,null,15,null,16,null,17,null,18,null,19,null,20,null,21,null,22,null,23,null,24,null,25,null,26,null,27,null,28,null,29,null,30,null,31,null,32,null,33,null,34,null,35,null,36,null,37,null,38,null,39,null,40,null,41,null,42,null,43,null,44,null,45,null,46,null,47,null,48,null,49,null,50,null,51,null,52,null,53,null,54,null,55,null,56,null,57,null,58,null,59,null,60,null,61,null,62,null,63,null,64,null,65,null,66,null,67,null,68,null,69,null,70,null,71,null,72,null,73,null,74,null,75,null,76,null,77,null,78,null,79,null,80,null,81,null,82,null,83,null,84,null,85,null,86,null,87,null,88,null,89,null,90,null,91,null,92,null,93,null,94,null,95,null,96,null,97,null,98,null,99,null,100,null,101,null,102,null,103,null,104,null,105,null,106,null,107,null,108,null,109,null,110,null,111,null,112,null,113,null,114,null,115,null,116,null,117,null,118,null,119,null,120,null,121,null,122,null,123,null,124,null,125,null,126,null,127,null,128,null,129,null,130,null,131,null,132,null,133,null,134,null,135,null,136,null,137,null,138,null,139,null,140,null,141,null,142,null,143,null,144,null,145,null,146,null,147,null,148,null,149,null,150,null,151,null,152,null,153,null,154,null,155,null,156,null,157,null,158,null,159,null,160,null,161,null,162,null,163,null,164,null,165,null,166,null,167,null,168,null,169,null,170,null,171,null,172,null,173,null,174,null,175,null,176,null,177,null,178,null,179,null,180,null,181,null,182,null,183,null,184,null,185,null,186,null,187,null,188,null,189,null,190,null,191,null,192,null,193,null,194,null,195,null,196,null,197,null,198,null,199,null,200,null,201,null,202,null,203,null,204,null,205,null,206,null,207,null,208,null,209,null,210,null,211,null,212,null,213,null,214,null,215,null,216,null,217,null,218,null,219,null,220,null,221,null,222,null,223,null,224,null,225,null,226,null,227,null,228,null,229,null,230,null,231,null,232,null,233,null,234,null,235,null,236,null,237,null,238,null,239,null,240,null,241,null,242,null,243,null,244,null,245,null,246,null,247,null,248,null,249,null,250,null,251,null,252,null,253,null,254,null,255,null,256,null,257,null,258,null,259,null,260,null,261,null,262,null,263,null,264,null,265,null,266,null,267,null,268,null,269,null,270,null,271,null,272,null,273,null,274,null,275,null,276,null,277,null,278,null,279,null,280,null,281,null,282,null,283,null,284,null,285,null,286,null,287,null,288,null,289,null,290,null,291,null,292,null,293,null,294,null,295,null,296,null,297,null,298,null,299,null,300,null,301,null,302,null,303,null,304,null,305,null,306,null,307,null,308,null,309,null,310,null,311,null,312,null,313,null,314,null,315,null,316,null,317,null,318,null,319,null,320,null,321,null,322,null,323,null,324,null,325,null,326,null,327,null,328,null,329,null,330,null,331,null,332,null,333,null,334,null,335,null,336,null,337,null,338,null,339,null,340,null,341,null,342,null,343,null,344,null,345,null,346,null,347,null,348,null,349,null,350,null,351,null,352,null,353,null,354,null,355,null,356,null,357,null,358,null,359,null,360,null,361,null,362,null,363,null,364,null,365,null,366,null,367,null,368,null,369,null,370,null,371,null,372,null,373,null,374,null,375,null,376,null,377,null,378,null,379,null,380,null,381,null,382,null,383,null,384,null,385,null,386,null,387,null,388,null,389,null,390,null,391,null,392,null,393,null,394,null,395,null,396,null,397,null,398,null,399,null,400,null,401,null,402,null,403,null,404,null,405,null,406,null,407,null,408,null,409,null,410,null,411,null,412,null,413,null,414,null,415,null,416,null,417,null,418,null,419,null,420,null,421,null,422,null,423,null,424,null,425,null,426,null,427,null,428,null,429,null,430,null,431,null,432,null,433,null,434,null,435,null,436,null,437,null,438,null,439,null,440,null,441,null,442,null,443,null,444,null,445,null,446,null,447,null,448,null,449,null,450,null,451,null,452,null,453,null,454,null,455,null,456,null,457,null,458,null,459,null,460,null,461,null,462,null,463,null,464,null,465,null,466,null,467,null,468,null,469,null,470,null,471,null,472,null,473,null,474,null,475,null,476,null,477,null,478,null,479,null,480,null,481,null,482,null,483,null,484,null,485,null,486,null,487,null,488,null,489,null,490,null,491,null,492,null,493,null,494,null,495,null,496,null,497,null,498,null,499,null,500,null,501,null,502,null,503,null,504,null,505,null,506,null,507,null,508,null,509,null,510,null,511,null,512,null,513,null,514,null,515,null,516,null,517,null,518,null,519,null,520,null,521,null,522,null,523,null,524,null,525,null,526,null,527,null,528,null,529,null,530,null,531,null,532,null,533,null,534,null,535,null,536,null,537,null,538,null,539,null,540,null,541,null,542,null,543,null,544,null,545,null,546,null,547,null,548,null,549,null,550,null,551,null,552,null,553,null,554,null,555,null,556,null,557,null,558,null,559,null,560,null,561,null,562,null,563,null,564,null,565,null,566,null,567,null,568,null,569,null,570,null,571,null,572,null,573,null,574,null,575,null,576,null,577,null,578,null,579,null,580,null,581,null,582,null,583,null,584,null,585,null,586,null,587,null,588,null,589,null,590,null,591,null,592,null,593,null,594,null,595,null,596,null,597,null,598,null,599,null,600,null,601,null,602,null,603,null,604,null,605,null,606,null,607,null,608,null,609,null,610,null,611,null,612,null,613,null,614,null,615,null,616,null,617,null,618,null,619,null,620,null,621,null,622,null,623,null,624,null,625,null,626,null,627,null,628,null,629,null,630,null,631,null,632,null,633,null,634,null,635,null,636,null,637,null,638,null,639,null,640,null,641,null,642,null,643,null,644,null,645,null,646,null,647,null,648,null,649,null,650,null,651,null,652,null,653,null,654,null,655,null,656,null,657,null,658,null,659,null,660,null,661,null,662,null,663,null,664,null,665,null,666,null,667,null,668,null,669,null,670,null,671,null,672,null,673,null,674,null,675,null,676,null,677,null,678,null,679,null,680,null,681,null,682,null,683,null,684,null,685,null,686,null,687,null,688,null,689,null,690,null,691,null,692,null,693,null,694,null,695,null,696,null,697,null,698,null,699,null,700,null,701,null,702,null,703,null,704,null,705,null,706,null,707,null,708,null,709,null,710,null,711,null,712,null,713,null,714,null,715,null,716,null,717,null,718,null,719,null,720,null,721,null,722,null,723,null,724,null,725,null,726,null,727,null,728,null,729,null,730,null,731,null,732,null,733,null,734,null,735,null,736,null,737,null,738,null,739,null,740,null,741,null,742,null,743,null,744,null,745,null,746,null,747,null,748,null,749,null,750,null,751,null,752,null,753,null,754,null,755,null,756,null,757,null,758,null,759,null,760,null,761,null,762,null,763,null,764,null,765,null,766,null,767,null,768,null,769,null,770,null,771,null,772,null,773,null,774,null,775,null,776,null,777,null,778,null,779,null,780,null,781,null,782,null,783,null,784,null,785,null,786,null,787,null,788,null,789,null,790,null,791,null,792,null,793,null,794,null,795,null,796,null,797,null,798,null,799,null,800,null,801,null,802,null,803,null,804,null,805,null,806,null,807,null,808,null,809,null,810,null,811,null,812,null,813,null,814,null,815,null,816,null,817,null,818,null,819,null,820,null,821,null,822,null,823,null,824,null,825,null,826,null,827,null,828,null,829,null,830,null,831,null,832,null,833,null,834,null,835,null,836,null,837,null,838,null,839,null,840,null,841,null,842,null,843,null,844,null,845,null,846,null,847,null,848,null,849,null,850,null,851,null,852,null,853,null,854,null,855,null,856,null,857,null,858,null,859,null,860,null,861,null,862,null,863,null,864,null,865,null,866,null,867,null,868,null,869,null,870,null,871,null,872,null,873,null,874,null,875,null,876,null,877,null,878,null,879,null,880,null,881,null,882,null,883,null,884,null,885,null,886,null,887,null,888,null,889,null,890,null,891,null,892,null,893,null,894,null,895,null,896,null,897,null,898,null,899,null,900,null,901,null,902,null,903,null,904,null,905,null,906,null,907,null,908,null,909,null,910,null,911,null,912,null,913,null,914,null,915,null,916,null,917,null,918,null,919,null,920,null,921,null,922,null,923,null,924,null,925,null,926,null,927,null,928,null,929,null,930,null,931,null,932,null,933,null,934,null,935,null,936,null,937,null,938,null,939,null,940,null,941,null,942,null,943,null,944,null,945,null,946,null,947,null,948,null,949,null,950,null,951,null,952,null,953,null,954,null,955,null,956,null,957,null,958,null,959,null,960,null,961,null,962,null,963,null,964,null,965,null,966,null,967,null,968,null,969,null,970,null,971,null,972,null,973,null,974,null,975,null,976,null,977,null,978,null,979,null,980,null,981,null,982,null,983,null,984,null,985,null,986,null,987,null,988,null,989,null,990,null,991,null,992,null,993,null,994,null,995,null,996,null,997,null,998,null,999]]
+    ] },
     solution: {
       approach: `<p>Find the inversion(s) in the inorder sequence and swap the two offending nodes' values.</p>`,
       code: `
@@ -4263,6 +7737,66 @@ class Solution:
                 inorder(n.right);
             }
         }`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def recover_tree(self, root):
+        first = second = prev = None
+        stack, cur = [], root
+        while stack or cur:                  # iterative inorder
+            while cur:
+                stack.append(cur)
+                cur = cur.left
+            cur = stack.pop()
+            if prev and prev.val > cur.val:  # a drop in sorted order
+                if first is None:
+                    first = prev             # first drop: the bigger one
+                second = cur                 # last drop: the smaller one
+            prev = cur
+            cur = cur.right
+        first.val, second.val = second.val, first.val
+` }, { lang: 'js', code: `function recoverTree(root) {
+  let first = null, second = null, prev = null;
+  const stack = [];
+  let cur = root;
+  while (cur || stack.length) {                  // iterative inorder
+    while (cur) { stack.push(cur); cur = cur.left; }
+    cur = stack.pop();
+    if (prev && prev.val > cur.val) {            // a drop in sorted order
+      if (!first) first = prev;                  // first drop: the bigger one
+      second = cur;                              // last drop: the smaller one
+    }
+    prev = cur;
+    cur = cur.right;
+  }
+  [first.val, second.val] = [second.val, first.val];
+}
+` }, { lang: 'cpp', code: `// LeetCode-style node (the judge normally provides it)
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int x = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(x), left(l), right(r) {}
+};
+
+class Solution {
+    TreeNode *first = nullptr, *second = nullptr, *prev = nullptr;
+
+    void inorder(TreeNode* n) {
+        if (!n) return;
+        inorder(n->left);
+        if (prev && prev->val > n->val) {    // a drop in the sorted order
+            if (!first) first = prev;        // first drop: the bigger one is wrong
+            second = n;                      // last drop: the smaller one is wrong
+        }
+        prev = n;
+        inorder(n->right);
+    }
+
+public:
+    void recoverTree(TreeNode* root) {
+        inorder(root);
+        swap(first->val, second->val);       // swap back
+    }
+};
+` }],
       dry: { head: ['inorder pair (prev, cur)', 'drop?', 'first', 'second'], rows: [['(3, 2)', H.c('r', 'yes'), '3', '2'], ['(2, 1)', H.c('r', 'yes'), '3', '1'], ['end', '—', '3', H.c('g', '1 → swap values')]] },
       complexity: `<p><b>Time O(N)</b>, <b>space O(h)</b> (O(1) with Morris inorder).</p>`,
       followUps: ['Do it in O(1) space with Morris traversal', 'What if more than two nodes might be misplaced? (sort-and-rewrite becomes necessary)']
@@ -4294,29 +7828,116 @@ class Solution:
     hints: [
       `<p><b>Aha:</b> every path has a highest node. At that node the best path = node + best downward gain on the left + best downward gain on the right — but a gain below 0 should be skipped (use 0).</p>`,
       `<p>Postorder helper <code>gain(n)</code> returns n.val + max(0, gain(left), gain(right))… more precisely n.val + max(l, r) with l, r clipped at 0; it updates a field <code>best</code> with n.val + l + r.</p>`,
-      `<p><b>Traps:</b> initialise <code>best = Integer.MIN_VALUE</code> (all-negative trees); never return the forked sum. <b>Recipe:</b> gain(null)=0; l=max(0,gain(left)); r=max(0,gain(right)); best=max(best,val+l+r); return val+max(l,r).</p>`
+      `<p><b>Traps:</b> initialise <code>best</code> to the smallest possible value (<code>Integer.MIN_VALUE</code> / <code>-inf</code> / <code>-Infinity</code> / <code>INT_MIN</code>) or to the root's value (all-negative trees); never return the forked sum. <b>Recipe:</b> gain(null)=0; l=max(0,gain(left)); r=max(0,gain(right)); best=max(best,val+l+r); return val+max(l,r).</p>`
     ],
+    tests: { sig: 'TreeNode int -> int', fn: 'judge', harness: {
+      java: "class Check {\n    // n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\n    // Built here because a tree this deep is too big to write out as a test literal.\n    static TreeNode chain(int n, java.util.function.IntUnaryOperator val) {\n        TreeNode root = null;\n        for (int i = Math.abs(n) - 1; i >= 0; i--) {\n            TreeNode t = new TreeNode(val.applyAsInt(i));\n            if (n > 0) t.right = root; else t.left = root;\n            root = t;\n        }\n        return root;\n    }\n\n    static int judge(TreeNode root, int n) {\n        if (n != 0) root = chain(n, i -> (i * 37) % 2001 - 1000);\n        return new Solution().maxPathSum(root);\n    }\n}",
+      python: "# n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\ndef _chain(n, val):\n    root = None\n    for i in range(abs(n) - 1, -1, -1):\n        t = TreeNode(val(i))\n        if n > 0:\n            t.right = root\n        else:\n            t.left = root\n        root = t\n    return root\n\ndef judge(root, n):\n    if n:\n        root = _chain(n, lambda i: (i * 37) % 2001 - 1000)\n    return Solution().max_path_sum(root)",
+      js: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nfunction chain__(n, val) {\n  let root = null;\n  for (let i = Math.abs(n) - 1; i >= 0; i--) {\n    const t = new TreeNode(val(i));\n    if (n > 0) t.right = root; else t.left = root;\n    root = t;\n  }\n  return root;\n}\n\nfunction judge(root, n) {\n  if (n) root = chain__(n, (i) => (i * 37) % 2001 - 1000);\n  return maxPathSum(root);\n}",
+      cpp: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nTreeNode* chain__(int n, function<int(int)> val) {\n    TreeNode* root = nullptr;\n    for (int i = abs(n) - 1; i >= 0; i--) {\n        TreeNode* t = new TreeNode(val(i));\n        if (n > 0) t->right = root; else t->left = root;\n        root = t;\n    }\n    return root;\n}\n\nint judge(TreeNode* root, int n) {\n    if (n) root = chain__(n, [](int i) { return (i * 37) % 2001 - 1000; });\n    return Solution().maxPathSum(root);\n}"
+    }, cases: [
+      [[[1,2,3],0],6],
+      [[[-10,9,20,null,null,15,7],0],42],
+      [[[-3],0],-3],
+      [[[2,-1],0],2],
+      [[[-2,-1],0],-1],
+      [[[5,4,8,11,null,13,4,7,2,null,null,null,1],0],48],
+      [[[-1000,-1000,-1000],0],-1000],
+      [[[1,-2,3],0],4],
+      [[[537,633,100,33,-932,710,299,null,612,null,722,null,-584,null,239,null,780,265,-165,null,null,null,621,null,null,null,null,null,-276,null,52,-640,-656,null,null,-631,-479,79,null,null,null,949,-872,null,null,null,460],0],3906],
+      [[[1000,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000,null,1000],0],300000],
+      [[[],-30000],17254],
+      [[[],30000],17254]
+    ] },
     solution: {
       approach: `<p>One postorder pass: return the best one-sided gain, record the best two-sided path.</p>`,
       code: `
         class Solution {
-            private int best;
-
             public int maxPathSum(TreeNode root) {
-                best = Integer.MIN_VALUE;      // answer may be negative
-                gain(root);
+                // postorder without recursion (3 * 10^4 nested calls would overflow the stack):
+                // list nodes parents-first, then walk the list backwards so children come first
+                List<TreeNode> order = new ArrayList<>();
+                Deque<TreeNode> st = new ArrayDeque<>();
+                st.push(root);
+                while (!st.isEmpty()) {
+                    TreeNode n = st.pop();
+                    order.add(n);
+                    if (n.left != null) st.push(n.left);
+                    if (n.right != null) st.push(n.right);
+                }
+                Map<TreeNode, Integer> gain = new HashMap<>();  // best downward path starting at a node
+                int best = Integer.MIN_VALUE;                   // answer may be negative
+                for (int i = order.size() - 1; i >= 0; i--) {
+                    TreeNode n = order.get(i);
+                    int l = Math.max(0, gain.getOrDefault(n.left, 0));    // drop a branch that hurts
+                    int r = Math.max(0, gain.getOrDefault(n.right, 0));
+                    best = Math.max(best, n.val + l + r);       // path bending at n
+                    gain.put(n, n.val + Math.max(l, r));        // parent can use only one side
+                }
                 return best;
             }
-            private int gain(TreeNode n) {
-                if (n == null) return 0;
-                int l = Math.max(0, gain(n.left));    // drop a branch that hurts
-                int r = Math.max(0, gain(n.right));
-                best = Math.max(best, n.val + l + r); // path bending at n
-                return n.val + Math.max(l, r);        // parent can use only one side
-            }
         }`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def max_path_sum(self, root):
+        order, stack = [], [root]            # parents before children
+        while stack:
+            n = stack.pop()
+            order.append(n)
+            stack.extend(c for c in (n.left, n.right) if c)
+        gain, best = {None: 0}, root.val     # best downward path from a node
+        for n in reversed(order):            # children before parents
+            left = max(0, gain[n.left])      # drop a branch that hurts
+            right = max(0, gain[n.right])
+            best = max(best, n.val + left + right)   # path bending at n
+            gain[n] = n.val + max(left, right)       # parent can use one side only
+        return best
+` }, { lang: 'js', code: `function maxPathSum(root) {
+  const order = [], stack = [root];              // parents before children
+  while (stack.length) {
+    const n = stack.pop();
+    order.push(n);
+    if (n.left) stack.push(n.left);
+    if (n.right) stack.push(n.right);
+  }
+  const gain = new Map();                        // best downward path from a node
+  const g = (n) => (n ? gain.get(n) : 0);
+  let best = -Infinity;                          // the answer may be negative
+  for (let i = order.length - 1; i >= 0; i--) {  // children before parents
+    const n = order[i];
+    const l = Math.max(0, g(n.left));            // drop a branch that hurts
+    const r = Math.max(0, g(n.right));
+    best = Math.max(best, n.val + l + r);        // path bending at n
+    gain.set(n, n.val + Math.max(l, r));         // parent can use one side only
+  }
+  return best;
+}
+` }, { lang: 'cpp', code: `// LeetCode-style node (the judge normally provides it)
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int x = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(x), left(l), right(r) {}
+};
+
+class Solution {
+    int best = INT_MIN;                      // the answer may be negative
+
+    int gain(TreeNode* n) {
+        if (!n) return 0;
+        int l = max(0, gain(n->left));       // drop a branch that hurts
+        int r = max(0, gain(n->right));
+        best = max(best, n->val + l + r);    // path bending at n
+        return n->val + max(l, r);           // parent can use one side only
+    }
+
+public:
+    int maxPathSum(TreeNode* root) {
+        gain(root);
+        return best;
+    }
+};
+` }],
       dry: { head: ['node', 'l', 'r', 'val+l+r', 'best', 'returns'], rows: [['9', '0', '0', '9', '9', '9'], ['15', '0', '0', '15', '15', '15'], ['7', '0', '0', '7', '15', '7'], ['20', '15', '7', '42', H.c('g', '42'), '35'], ['−10', '9', '35', '34', H.c('g', '42'), '25']] },
-      complexity: `<p><b>Time O(N)</b>, <b>space O(h)</b>.</p>`,
+      complexity: `<p><b>Time O(N)</b>, <b>space O(N)</b> for the node list and the gain map. The recursive form needs only O(h), but h can be 3·10<sup>4</sup> here, which overflows a default call stack.</p>`,
       followUps: ['Return the path itself, not just the sum', 'Longest path with the same value (Longest Univalue Path)', 'Max path sum between two LEAVES only']
     }
   });
@@ -4350,64 +7971,154 @@ class Solution:
     mcq: { q: 'Why is a single preorder WITH null markers enough to rebuild the tree?', options: ['Because preorder is always sorted', 'Because each marker tells the decoder exactly where a subtree ends, so recursion knows when to stop', 'Because values are unique', 'It is not enough; inorder is also required'], answer: 1, explain: 'The decoder reads a value, then recursively reads a whole left subtree (ending when its markers are consumed), then a right subtree. No ambiguity remains, even with repeated values.' },
     hints: [
       `<p><b>Aha:</b> traversals are ambiguous only because missing children are invisible. Write the missing children down (<code>#</code>) and one preorder is enough.</p>`,
-      `<p>Serialize with recursive preorder into a <code>StringBuilder</code>. Deserialize by splitting on commas into a queue of tokens and consuming them with the same recursion shape.</p>`,
+      `<p>Serialize with recursive preorder into a string builder (<code>StringBuilder</code>; a list joined once in Python / JavaScript; <code>std::string</code> with <code>+=</code> in C++). Deserialize by splitting on commas into a queue of tokens and consuming them with the same recursion shape.</p>`,
       `<p><b>Traps:</b> negative numbers and multi-digit values (use a separator), the empty tree ("#,"), deep trees (recursion depth — an iterative BFS format avoids it). <b>Recipe:</b> ser(n): null → "#,"; else val + "," + ser(left) + ser(right). des(): t = poll; "#" → null; node(t); node.left = des(); node.right = des().</p>`
     ],
+    tests: { sig: 'TreeNode int -> TreeNode', fn: 'judge', harness: {
+      java: "class Check {\n    // n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\n    // Built here because a tree this deep is too big to write out as a test literal.\n    static TreeNode chain(int n, java.util.function.IntUnaryOperator val) {\n        TreeNode root = null;\n        for (int i = Math.abs(n) - 1; i >= 0; i--) {\n            TreeNode t = new TreeNode(val.applyAsInt(i));\n            if (n > 0) t.right = root; else t.left = root;\n            root = t;\n        }\n        return root;\n    }\n\n    static TreeNode judge(TreeNode root, int n) {\n        if (n != 0) root = chain(n, i -> (i % 2001) - 1000);\n        Codec ser = new Codec(), deser = new Codec();   // the judge round-trips through two instances\n        return deser.deserialize(ser.serialize(root));\n    }\n}",
+      python: "# n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\ndef _chain(n, val):\n    root = None\n    for i in range(abs(n) - 1, -1, -1):\n        t = TreeNode(val(i))\n        if n > 0:\n            t.right = root\n        else:\n            t.left = root\n        root = t\n    return root\n\ndef judge(root, n):\n    if n:\n        root = _chain(n, lambda i: (i % 2001) - 1000)\n    return Codec().deserialize(Codec().serialize(root))",
+      js: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nfunction chain__(n, val) {\n  let root = null;\n  for (let i = Math.abs(n) - 1; i >= 0; i--) {\n    const t = new TreeNode(val(i));\n    if (n > 0) t.right = root; else t.left = root;\n    root = t;\n  }\n  return root;\n}\n\nfunction judge(root, n) {\n  if (n) root = chain__(n, (i) => (i % 2001) - 1000);\n  return new Codec().deserialize(new Codec().serialize(root));\n}",
+      cpp: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nTreeNode* chain__(int n, function<int(int)> val) {\n    TreeNode* root = nullptr;\n    for (int i = abs(n) - 1; i >= 0; i--) {\n        TreeNode* t = new TreeNode(val(i));\n        if (n > 0) t->right = root; else t->left = root;\n        root = t;\n    }\n    return root;\n}\n\nTreeNode* judge(TreeNode* root, int n) {\n    if (n) root = chain__(n, [](int i) { return (i % 2001) - 1000; });\n    Codec ser, deser;\n        return deser.deserialize(ser.serialize(root));\n}"
+    }, cases: [
+      [[[1,2,3,null,null,4,5],0],[1,2,3,null,null,4,5]],
+      [[[],0],[]],
+      [[[1],0],[1]],
+      [[[-1000,1000],0],[-1000,1000]],
+      [[[1,1,1,null,1],0],[1,1,1,null,1]],
+      [[[1,null,2,null,3],0],[1,null,2,null,3]],
+      [[[-242,652,162,116,767,421,140,875,750,-615,-449,null,null,-160,-249,-1000,98,null,-960,-649,817,null,null,null,337,null,null,null,null,602,null,null,709,140,null,null,910,null,null,null,null,712,238,-734,null,null,null,-990,-348,815,138],0],[-242,652,162,116,767,421,140,875,750,-615,-449,null,null,-160,-249,-1000,98,null,-960,-649,817,null,null,null,337,null,null,null,null,602,null,null,709,140,null,null,910,null,null,null,null,712,238,-734,null,null,null,-990,-348,815,138]],
+      [[[],10000],m14chain(10000, 'r', (i) => (i % 2001) - 1000)]
+    ] },
     solution: {
-      approach: `<p>Preorder with null markers; the decoder mirrors the encoder's recursion.</p>`,
+      approach: `<p>Preorder with null markers; the decoder reads the tokens in the same preorder, each one filling the newest empty link. Both directions use an explicit stack instead of recursion, so a 10<sup>4</sup>-deep tree cannot overflow the call stack.</p>`,
       code: `
         public class Codec {
+            // Same preorder-with-# format as the recursive version, but with explicit stacks:
+            // a 10^4-deep tree would overflow the call stack.
             public String serialize(TreeNode root) {
                 StringBuilder sb = new StringBuilder();
-                ser(root, sb);
+                List<TreeNode> st = new ArrayList<>();      // ArrayList can hold null (ArrayDeque cannot)
+                st.add(root);
+                while (!st.isEmpty()) {
+                    TreeNode n = st.remove(st.size() - 1);
+                    if (n == null) { sb.append("#,"); continue; }   // marker keeps the shape
+                    sb.append(n.val).append(',');
+                    st.add(n.right);                        // pushed first -> written after the left side
+                    st.add(n.left);
+                }
                 return sb.toString();
             }
-            private void ser(TreeNode n, StringBuilder sb) {
-                if (n == null) { sb.append("#,"); return; }   // marker keeps the shape
-                sb.append(n.val).append(',');
-                ser(n.left, sb);
-                ser(n.right, sb);
-            }
+
+            // an empty link waiting for its subtree: parent's left or right slot
+            private record Slot(TreeNode parent, boolean left) {}
 
             public TreeNode deserialize(String data) {
-                Deque<String> tokens = new ArrayDeque<>(Arrays.asList(data.split(",")));
-                return des(tokens);
-            }
-            private TreeNode des(Deque<String> t) {
-                String s = t.poll();
-                if (s.equals("#")) return null;               // empty subtree ends here
-                TreeNode n = new TreeNode(Integer.parseInt(s));
-                n.left = des(t);                              // same order as ser()
-                n.right = des(t);
-                return n;
+                TreeNode holder = new TreeNode(0);          // the real root hangs at holder.left
+                Deque<Slot> slots = new ArrayDeque<>();
+                slots.push(new Slot(holder, true));
+                for (String s : data.split(",")) {
+                    Slot slot = slots.pop();                // preorder: the next token fills the newest slot
+                    TreeNode n = s.equals("#") ? null : new TreeNode(Integer.parseInt(s));
+                    if (slot.left()) slot.parent().left = n; else slot.parent().right = n;
+                    if (n != null) {                        // its two children come next: left first
+                        slots.push(new Slot(n, false));
+                        slots.push(new Slot(n, true));
+                    }
+                }
+                return holder.left;
             }
         }`,
       alt: [{ lang: 'python', code: `class Codec:
+    # preorder with '#' markers, using explicit stacks (no recursion limit)
     def serialize(self, root):
-        out = []
-        def ser(n):
+        out, stack = [], [root]
+        while stack:
+            n = stack.pop()
             if n is None:
-                out.append('#')
-                return
+                out.append('#')              # marker keeps the shape
+                continue
             out.append(str(n.val))
-            ser(n.left)
-            ser(n.right)
-        ser(root)
+            stack.append(n.right)            # pushed first -> written after the left side
+            stack.append(n.left)
         return ','.join(out)
 
     def deserialize(self, data):
-        it = iter(data.split(','))
-        def des():
-            s = next(it)
-            if s == '#':
-                return None
-            node = TreeNode(int(s))
-            node.left = des()
-            node.right = des()
-            return node
-        return des()` }],
+        holder = TreeNode(0)                 # the real root hangs at holder.left
+        slots = [(holder, 'left')]           # empty links waiting for a subtree
+        for s in data.split(','):
+            parent, side = slots.pop()       # preorder: the next token fills the newest slot
+            node = None if s == '#' else TreeNode(int(s))
+            setattr(parent, side, node)
+            if node:
+                slots.append((node, 'right'))   # its left child comes next, then its right
+                slots.append((node, 'left'))
+        return holder.left
+` }, { lang: 'js', code: `class Codec {
+  // preorder with '#' markers, using explicit stacks (no call-stack overflow on deep trees)
+  serialize(root) {
+    const out = [], stack = [root];
+    while (stack.length) {
+      const n = stack.pop();
+      if (!n) { out.push('#'); continue; }       // marker keeps the shape
+      out.push(String(n.val));
+      stack.push(n.right, n.left);               // left on top -> written first
+    }
+    return out.join(',');                        // join once instead of += in a loop
+  }
+
+  deserialize(data) {
+    const holder = new TreeNode(0);              // the real root hangs at holder.left
+    const slots = [[holder, 'left']];            // empty links waiting for a subtree
+    for (const s of data.split(',')) {
+      const [parent, side] = slots.pop();        // preorder: the next token fills the newest slot
+      const node = s === '#' ? null : new TreeNode(Number(s));
+      parent[side] = node;
+      if (node) slots.push([node, 'right'], [node, 'left']);
+    }
+    return holder.left;
+  }
+}
+` }, { lang: 'cpp', code: `// LeetCode-style node (the judge normally provides it)
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int x = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(x), left(l), right(r) {}
+};
+
+class Codec {
+public:
+    string serialize(TreeNode* root) {
+        string out;
+        ser(root, out);
+        return out;
+    }
+
+    TreeNode* deserialize(string data) {
+        istringstream in(data);
+        return des(in);
+    }
+
+private:
+    void ser(TreeNode* n, string& out) {
+        if (!n) { out += "#,"; return; }     // marker keeps the shape
+        out += to_string(n->val) + ",";
+        ser(n->left, out);
+        ser(n->right, out);
+    }
+
+    TreeNode* des(istringstream& in) {
+        string s;
+        getline(in, s, ',');                 // next token
+        if (s == "#") return nullptr;        // empty subtree ends here
+        TreeNode* n = new TreeNode(stoi(s));
+        n->left = des(in);                   // same order as ser()
+        n->right = des(in);
+        return n;
+    }
+};
+` }],
       dry: { head: ['token read', 'action', 'building'], rows: [['1', 'new node 1, read its left', '1'], ['2', 'node 2 = 1.left', '1 → 2'], ['#, #', '2 has no children', 'back to 1'], ['3', 'node 3 = 1.right', '1 → 3'], ['4 #, #', '4 = 3.left (leaf)', '…'], ['5 #, #', '5 = 3.right (leaf)', H.c('g', 'done')]] },
-      complexity: `<p><b>Time O(N)</b> both ways, <b>space O(N)</b> for the string/tokens plus O(h) recursion.</p>`,
+      complexity: `<p><b>Time O(N)</b> both ways, <b>space O(N)</b> for the string, the tokens and the explicit stacks. The recursive form is shorter but needs O(h) call stack, which overflows on a 10<sup>4</sup>-deep tree.</p>`,
       followUps: ['Use a compact binary format (e.g. varints) for huge trees', 'Serialize a BST without null markers (preorder alone suffices)', 'Serialize an N-ary tree (store child counts)']
     }
   });
@@ -4452,6 +8163,17 @@ class Solution:
       `<p>Any traversal collects the triples (DFS passing row and col). Sort with a comparator on the three fields, then group consecutive equal columns.</p>`,
       `<p><b>Traps:</b> ties at the same row and column; columns are negative (don't index arrays directly without an offset). <b>Recipe:</b> collect triples; sort by (col, row, val); walk the sorted list, starting a new group when col changes.</p>`
     ],
+    tests: { sig: 'TreeNode -> list<list<int>>', fn: 'verticalTraversal', cases: [
+      [[[1,2,3,4,5,6,7]],[[4],[2],[1,5,6],[3],[7]]],
+      [[[3,9,20,null,null,15,7]],[[9],[3,15],[20],[7]]],
+      [[[1,2,3,4,6,5,7]],[[4],[2],[1,5,6],[3],[7]]],
+      [[[0]],[[0]]],
+      [[[1,2]],[[2],[1]]],
+      [[[3,1,4,0,2,2]],[[0],[1],[3,2,2],[4]]],
+      [[[1000,0,1000,null,5,5]],[[0],[1000,5,5],[1000]]],
+      [[[7,12,8,16,null,17,16,11,7,6,13,11,12,null,null,null,null,null,8,null,17,null,13,16,1,null,null,null,null,null,12,null,null,null,null,null,6,5]],[[11],[16],[12,6,7],[7,17,8],[8,11,13],[16,13,16,17],[12,12,5],[1,6]]],
+      [[[5,8,9,null,null,9,16,15,19,16,null,17,8,null,null,null,null,2,10,2,null,null,null,3,18,null,null,17,19,null,3,null,null,null,15,null,null,null,4]],[[2,17],[17,3],[8,15,2,10,19],[5,9,8,18,15],[9,16,19,3,4],[16]]]
+    ] },
     solution: {
       approach: `<p>Coordinates + one global sort + grouping by column.</p>`,
       code: `
@@ -4477,6 +8199,69 @@ class Solution:
                 dfs(n.right, row + 1, col + 1, out);
             }
         }`,
+      alt: [{ lang: 'python', code: `from itertools import groupby
+
+class Solution:
+    def vertical_traversal(self, root):
+        cells, stack = [], [(root, 0, 0)]    # (node, row, col)
+        while stack:
+            n, row, col = stack.pop()
+            cells.append((col, row, n.val))
+            if n.left:
+                stack.append((n.left, row + 1, col - 1))
+            if n.right:
+                stack.append((n.right, row + 1, col + 1))
+        cells.sort()                         # by col, then row, then value
+        return [[v for _, _, v in grp] for _, grp in groupby(cells, key=lambda c: c[0])]
+` }, { lang: 'js', code: `function verticalTraversal(root) {
+  const cells = [];                              // [col, row, val]
+  const dfs = (n, row, col) => {
+    if (!n) return;
+    cells.push([col, row, n.val]);
+    dfs(n.left, row + 1, col - 1);
+    dfs(n.right, row + 1, col + 1);
+  };
+  dfs(root, 0, 0);
+  cells.sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]);   // numeric comparator
+  const res = [];
+  let prevCol = null;
+  for (const [col, , val] of cells) {
+    if (col !== prevCol) { res.push([]); prevCol = col; }   // new column
+    res[res.length - 1].push(val);
+  }
+  return res;
+}
+` }, { lang: 'cpp', code: `// LeetCode-style node (the judge normally provides it)
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int x = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(x), left(l), right(r) {}
+};
+
+class Solution {
+public:
+    vector<vector<int>> verticalTraversal(TreeNode* root) {
+        vector<tuple<int, int, int>> cells;           // (col, row, val)
+        dfs(root, 0, 0, cells);
+        sort(cells.begin(), cells.end());             // tuples compare col, row, val in order
+        vector<vector<int>> res;
+        int prevCol = INT_MIN;
+        for (auto& [col, row, val] : cells) {
+            if (col != prevCol) { res.emplace_back(); prevCol = col; }   // new column
+            res.back().push_back(val);
+        }
+        return res;
+    }
+
+private:
+    void dfs(TreeNode* n, int row, int col, vector<tuple<int, int, int>>& out) {
+        if (!n) return;
+        out.emplace_back(col, row, n->val);
+        dfs(n->left, row + 1, col - 1, out);
+        dfs(n->right, row + 1, col + 1, out);
+    }
+};
+` }],
       dry: { head: ['sorted triple (col, row, val)', 'group'], rows: [['(−2, 2, 4)', '[4]'], ['(−1, 1, 2)', '[2]'], ['(0, 0, 1), (0, 2, 5), (0, 2, 6)', H.c('g', '[1, 5, 6]')], ['(1, 1, 3)', '[3]'], ['(2, 2, 7)', '[7]']] },
       complexity: `<p><b>Time O(N log N)</b> for the sort, <b>space O(N)</b>.</p>`,
       followUps: ['The simpler LeetCode 314 version (ties by left-to-right order) in O(N) with BFS', 'Top and bottom views from the same coordinates']
@@ -4515,31 +8300,133 @@ class Solution:
       `<p>Return an <code>int[]{isBST, min, max, sum}</code>. Empty subtree: {1, +∞, −∞, 0} so that leaves pass the comparison automatically. Keep a global <code>best</code> starting at 0.</p>`,
       `<p><b>Traps:</b> the answer is at least 0; a non-BST child makes the parent non-BST even if the parent's own comparison passes; strict inequalities (duplicates are not allowed). <b>Recipe:</b> L, R = post(children); if L.ok &amp;&amp; R.ok &amp;&amp; L.max &lt; v &lt; R.min → sum = L.sum + R.sum + v, best = max(best, sum), return {1, min(L.min, v), max(R.max, v), sum}; else return {0, …}.</p>`
     ],
+    tests: { sig: 'TreeNode int -> int', fn: 'judge', harness: {
+      java: "class Check {\n    // n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\n    // Built here because a tree this deep is too big to write out as a test literal.\n    static TreeNode chain(int n, java.util.function.IntUnaryOperator val) {\n        TreeNode root = null;\n        for (int i = Math.abs(n) - 1; i >= 0; i--) {\n            TreeNode t = new TreeNode(val.applyAsInt(i));\n            if (n > 0) t.right = root; else t.left = root;\n            root = t;\n        }\n        return root;\n    }\n\n    static int judge(TreeNode root, int n) {\n        if (n != 0) root = chain(n, i -> i - 20000);\n        return new Solution().maxSumBST(root);\n    }\n}",
+      python: "# n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\ndef _chain(n, val):\n    root = None\n    for i in range(abs(n) - 1, -1, -1):\n        t = TreeNode(val(i))\n        if n > 0:\n            t.right = root\n        else:\n            t.left = root\n        root = t\n    return root\n\ndef judge(root, n):\n    if n:\n        root = _chain(n, lambda i: i - 20000)\n    return Solution().max_sum_bst(root)",
+      js: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nfunction chain__(n, val) {\n  let root = null;\n  for (let i = Math.abs(n) - 1; i >= 0; i--) {\n    const t = new TreeNode(val(i));\n    if (n > 0) t.right = root; else t.left = root;\n    root = t;\n  }\n  return root;\n}\n\nfunction judge(root, n) {\n  if (n) root = chain__(n, (i) => i - 20000);\n  return maxSumBST(root);\n}",
+      cpp: "// n > 0: right-leaning chain of n nodes, n < 0: left-leaning; node i (0 = root) holds val(i).\nTreeNode* chain__(int n, function<int(int)> val) {\n    TreeNode* root = nullptr;\n    for (int i = abs(n) - 1; i >= 0; i--) {\n        TreeNode* t = new TreeNode(val(i));\n        if (n > 0) t->right = root; else t->left = root;\n        root = t;\n    }\n    return root;\n}\n\nint judge(TreeNode* root, int n) {\n    if (n) root = chain__(n, [](int i) { return i - 20000; });\n    return Solution().maxSumBST(root);\n}"
+    }, cases: [
+      [[[1,4,3,2,4,2,5,null,null,null,null,null,null,4,6],0],20],
+      [[[4,3,null,1,2],0],2],
+      [[[-4,-2,-5],0],0],
+      [[[2,1,3],0],6],
+      [[[5,4,8,3,null,6,3],0],7],
+      [[[1],0],1],
+      [[[-40000],0],0],
+      [[[40000,39999,null,39998],0],119997],
+      [[[1,null,10,-5,20],0],25],
+      [[[-1,-34,-12,null,-13,-49,37,null,-2,null,31,-1,null,6,-22,null,13,35,32,28,null,18,-47,null,null,null,39,17,null,null,null,null,null,null,null,null,null,23],0],74],
+      [[[700,-9306,37723,-39720,-2240,33197,39622,null,-28519,-3622,497,25588,34648,37780,39751,-36397,-24609,-3738,null,-322,null,20630,28600,null,34712,null,null,null,null,-36488,null,null,-10720,-3952,null,null,null,6715,21478,27349,30300,null,null,null,null,-12540,-10670,-5068,null,1959,13095,null,24045,27119,null,30131,30515,-18383,null,null,null,null,null,null,null,null,null,null,24721,null,null,null,null,null,null,-20815],0],569678],
+      [[[],40000],199990000]
+    ] },
     solution: {
       approach: `<p>Postorder "tree DP": each subtree returns (isBST, min, max, sum); combine in O(1).</p>`,
       code: `
         class Solution {
-            private int best;
-
             public int maxSumBST(TreeNode root) {
-                best = 0;                      // empty BST has sum 0
-                post(root);
+                // postorder without recursion (the tree can be 4 * 10^4 deep):
+                // list nodes parents-first, then walk backwards so children come first
+                List<TreeNode> order = new ArrayList<>();
+                Deque<TreeNode> st = new ArrayDeque<>();
+                st.push(root);
+                while (!st.isEmpty()) {
+                    TreeNode n = st.pop();
+                    order.add(n);
+                    if (n.left != null) st.push(n.left);
+                    if (n.right != null) st.push(n.right);
+                }
+                int[] empty = {1, Integer.MAX_VALUE, Integer.MIN_VALUE, 0};   // {isBST, min, max, sum}
+                Map<TreeNode, int[]> info = new HashMap<>();
+                int best = 0;                                // empty BST has sum 0
+                for (int i = order.size() - 1; i >= 0; i--) {
+                    TreeNode n = order.get(i);
+                    int[] L = n.left == null ? empty : info.get(n.left);
+                    int[] R = n.right == null ? empty : info.get(n.right);
+                    if (L[0] == 1 && R[0] == 1 && L[2] < n.val && n.val < R[1]) {
+                        int sum = L[3] + R[3] + n.val;
+                        best = Math.max(best, sum);
+                        info.put(n, new int[]{1, Math.min(L[1], n.val), Math.max(R[2], n.val), sum});
+                    } else {
+                        info.put(n, new int[]{0, 0, 0, 0});  // not a BST: values no longer matter
+                    }
+                }
                 return best;
             }
-            // returns {isBST (1/0), min, max, sum}
-            private int[] post(TreeNode n) {
-                if (n == null) return new int[]{1, Integer.MAX_VALUE, Integer.MIN_VALUE, 0};
-                int[] L = post(n.left), R = post(n.right);
-                if (L[0] == 1 && R[0] == 1 && L[2] < n.val && n.val < R[1]) {
-                    int sum = L[3] + R[3] + n.val;
-                    best = Math.max(best, sum);
-                    return new int[]{1, Math.min(L[1], n.val), Math.max(R[2], n.val), sum};
-                }
-                return new int[]{0, 0, 0, 0};  // not a BST: values no longer matter
-            }
         }`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def max_sum_bst(self, root):
+        order, stack = [], [root]            # parents before children
+        while stack:
+            n = stack.pop()
+            order.append(n)
+            stack.extend(c for c in (n.left, n.right) if c)
+        info = {None: (True, float('inf'), float('-inf'), 0)}   # (is_bst, min, max, sum)
+        best = 0                             # the empty BST has sum 0
+        for n in reversed(order):            # children before parents
+            lb, lmin, lmax, lsum = info[n.left]
+            rb, rmin, rmax, rsum = info[n.right]
+            if lb and rb and lmax < n.val < rmin:
+                total = lsum + rsum + n.val
+                best = max(best, total)
+                info[n] = (True, min(lmin, n.val), max(rmax, n.val), total)
+            else:
+                info[n] = (False, 0, 0, 0)   # not a BST: the rest no longer matters
+        return best
+` }, { lang: 'js', code: `function maxSumBST(root) {
+  const order = [], stack = [root];              // parents before children
+  while (stack.length) {
+    const n = stack.pop();
+    order.push(n);
+    if (n.left) stack.push(n.left);
+    if (n.right) stack.push(n.right);
+  }
+  const EMPTY = { ok: true, min: Infinity, max: -Infinity, sum: 0 };
+  const info = new Map();
+  const get = (n) => (n ? info.get(n) : EMPTY);
+  let best = 0;                                  // the empty BST has sum 0
+  for (let i = order.length - 1; i >= 0; i--) {  // children before parents
+    const n = order[i], L = get(n.left), R = get(n.right);
+    if (L.ok && R.ok && L.max < n.val && n.val < R.min) {
+      const sum = L.sum + R.sum + n.val;
+      best = Math.max(best, sum);
+      info.set(n, { ok: true, min: Math.min(L.min, n.val), max: Math.max(R.max, n.val), sum });
+    } else {
+      info.set(n, { ok: false, min: 0, max: 0, sum: 0 });   // not a BST: the rest no longer matters
+    }
+  }
+  return best;
+}
+` }, { lang: 'cpp', code: `// LeetCode-style node (the judge normally provides it)
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int x = 0, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(x), left(l), right(r) {}
+};
+
+class Solution {
+    struct Info { bool bst; int lo, hi, sum; };
+    int best = 0;                            // the empty BST has sum 0
+
+    Info post(TreeNode* n) {
+        if (!n) return {true, INT_MAX, INT_MIN, 0};
+        Info L = post(n->left), R = post(n->right);
+        if (L.bst && R.bst && L.hi < n->val && n->val < R.lo) {
+            int sum = L.sum + R.sum + n->val;
+            best = max(best, sum);
+            return {true, min(L.lo, n->val), max(R.hi, n->val), sum};
+        }
+        return {false, 0, 0, 0};             // not a BST: the rest no longer matters
+    }
+
+public:
+    int maxSumBST(TreeNode* root) {
+        post(root);
+        return best;
+    }
+};
+` }],
       dry: { head: ['subtree root', 'children BST?', 'leftMax &lt; val &lt; rightMin', 'sum', 'best'], rows: [['4 (under 5)', 'yes (leaves)', 'yes', '4', '4'], ['6', 'yes', 'yes', '6', '6'], ['5', 'yes', '4 &lt; 5 &lt; 6', '15', '15'], ['2 (under 3)', 'yes', 'yes', '2', '15'], ['3', 'yes', '2 &lt; 3 &lt; 4', H.c('g', '20'), H.c('g', '20')], ['4 (under 1)', 'yes', H.c('r', '4 &lt; 4 fails'), '—', '20'], ['1', H.c('r', 'no'), '—', '—', H.c('g', '20')]] },
-      complexity: `<p><b>Time O(N)</b>, <b>space O(h)</b>.</p>`,
+      complexity: `<p><b>Time O(N)</b>, <b>space O(N)</b> for the node list and the info map. The recursive form needs O(h) call stack instead, and h can reach 4·10<sup>4</sup> here.</p>`,
       followUps: ['Return the SIZE of the largest BST subtree instead of the sum', 'Largest BST when duplicates are allowed on one side']
     }
   });
@@ -4549,9 +8436,9 @@ class Solution:
     { q: 'For the tree 1 → (2 → 4, 5), (3 → null, 6), what is the <b>postorder</b>?', options: ['1 2 4 5 3 6', '4 2 5 1 3 6', '4 5 2 6 3 1', '1 2 3 4 5 6'], answer: 2, explain: 'Postorder = Left, Right, Me: finish 2\'s subtree (4, 5, then 2), then 3\'s subtree (6, then 3), then the root 1.' },
     { q: 'Which traversal of a BST gives the values in sorted (increasing) order?', options: ['Preorder', 'Inorder', 'Postorder', 'Level order'], answer: 1, explain: 'Inorder visits Left (all smaller), Me, Right (all bigger), so a BST comes out sorted.' },
     { q: 'In BFS level order, why do we save <code>size = q.size()</code> before processing a level?', options: ['To count all nodes', 'So children added during the level are not processed as part of it', 'Because the queue cannot be read while modified', 'To detect cycles'], answer: 1, explain: 'Children of this level are appended to the back. The snapshot tells you exactly how many nodes belong to the current level.' },
-    { q: 'Recursive DFS on a skewed tree with 10<sup>5</sup> nodes in Java most likely…', options: ['Runs fine in O(log N) stack', 'May throw StackOverflowError because the recursion depth is 10<sup>5</sup>', 'Runs in O(N<sup>2</sup>) time', 'Uses O(1) memory'], answer: 1, explain: 'Stack depth equals the height. A chain of 10<sup>5</sup> nodes means 10<sup>5</sup> frames, which can exceed the default thread stack. Use an explicit stack or BFS.' },
+    { q: 'Recursive DFS on a skewed tree with 10<sup>5</sup> nodes, using the language\'s default call stack, most likely…', options: ['Runs fine in O(log N) stack', 'Overflows the call stack (StackOverflowError, RecursionError, RangeError) because the recursion depth is 10<sup>5</sup>', 'Runs in O(N<sup>2</sup>) time', 'Uses O(1) memory'], answer: 1, explain: 'Stack depth equals the height. A chain of 10<sup>5</sup> nodes means 10<sup>5</sup> frames, which can exceed the default thread stack. Use an explicit stack or BFS.' },
     { q: 'Right view of the tree 1 → (2 → 4, null), 3: what is it?', options: ['[1, 3]', '[1, 3, 4]', '[1, 2, 4]', '[1, 2, 3, 4]'], answer: 1, explain: 'One node per level, the last one: level 0 → 1, level 1 → 3, level 2 → 4 (the only node there, even though it is on the left).' },
-    { q: 'Top view with BFS uses <code>putIfAbsent(hd, val)</code>. Why does that give the TOPMOST node per column?', options: ['Because TreeMap sorts by value', 'Because BFS reaches higher levels before lower ones, so the first node seen in a column is the highest', 'Because left children are visited first', 'It does not; you must sort by depth'], answer: 1, explain: 'BFS processes level 0, then 1, then 2… The first arrival in a column is at the smallest depth. (A plain DFS does not have this guarantee.)' },
+    { q: 'Top view with BFS keeps only the first value seen per column (<code>putIfAbsent</code> / <code>setdefault</code>). Why does that give the TOPMOST node per column?', options: ['Because TreeMap sorts by value', 'Because BFS reaches higher levels before lower ones, so the first node seen in a column is the highest', 'Because left children are visited first', 'It does not; you must sort by depth'], answer: 1, explain: 'BFS processes level 0, then 1, then 2… The first arrival in a column is at the smallest depth. (A plain DFS does not have this guarantee.)' },
     { q: 'At node X, left height = 4 and right height = 2 (heights in nodes). Which statement is true?', options: ['X is balanced', 'The longest path bending at X has 6 edges', 'X violates the height-balance rule, and the longest path bending at X has 6 edges', 'The diameter of the whole tree is exactly 6'], answer: 2, explain: '|4 − 2| = 2 &gt; 1 → unbalanced. Path bending at X = 4 + 2 = 6 edges. The tree\'s diameter is at least 6 but could be larger elsewhere.' },
     { q: 'In the recursive LCA, the left call returns null and the right call returns node 7. What does the current node return?', options: ['null', 'Itself', 'Node 7', 'The root'], answer: 2, explain: 'Only the right side found something, so pass that finding (7 — either a target or the LCA already found below) upward unchanged.' },
     { q: 'In a BST, LCA(p = 3, q = 9) when the current node is 6. What do you do?', options: ['Go left', 'Go right', 'Return 6 — p and q are on different sides', 'Search both sides'], answer: 2, explain: '3 &lt; 6 &lt; 9: the two values split here, so no deeper node can contain both. 6 is the LCA.' },
@@ -4606,7 +8493,7 @@ class Solution:
     },
     {
       q: 'How do you validate a BST? What are the common bugs?', level: 'I',
-      a: `<p>Pass an open interval down: <code>valid(node, lo, hi)</code> requires <code>lo &lt; val &lt; hi</code>; the left child gets <code>(lo, val)</code> and the right child <code>(val, hi)</code>. Equivalently, an inorder walk must be strictly increasing. Common bugs: comparing a node only with its children (fails on [5,1,6,null,null,3,7], where 3 sits in 5's right subtree); using <code>Integer.MIN_VALUE/MAX_VALUE</code> as sentinels when nodes can hold those values (use long or null bounds); allowing duplicates when the definition is strict; and a static <code>prev</code> not reset between calls. Both approaches are O(N) time and O(h) space.</p>`,
+      a: `<p>Pass an open interval down: <code>valid(node, lo, hi)</code> requires <code>lo &lt; val &lt; hi</code>; the left child gets <code>(lo, val)</code> and the right child <code>(val, hi)</code>. Equivalently, an inorder walk must be strictly increasing. Common bugs: comparing a node only with its children (fails on [5,1,6,null,null,3,7], where 3 sits in 5's right subtree); using the 32-bit extremes (<code>Integer.MIN_VALUE</code> / <code>INT_MIN</code>) as sentinels when nodes can hold those values (use 64-bit, infinite or null bounds); allowing duplicates when the definition is strict; and a static <code>prev</code> not reset between calls. Both approaches are O(N) time and O(h) space.</p>`,
       followUps: ['Prove that strictly increasing inorder implies a valid BST.', 'Find the largest BST subtree of a binary tree.']
     },
     {
@@ -4616,13 +8503,13 @@ class Solution:
     },
     {
       q: 'Build a binary tree from its preorder and inorder traversals. Why is it O(N)?', level: 'A',
-      a: `<p>The first preorder value is the root; its position m in inorder splits the remaining values into the left subtree (positions before m) and right subtree (after m). I keep a global preorder index and a HashMap from value to inorder index, and recurse on inorder windows: <code>build(lo, hi)</code> takes the next preorder value as root, builds the left from <code>lo..m−1</code> first (preorder lists it next), then the right from <code>m+1..hi</code>. Each value creates one node with an O(1) map lookup, and no arrays are copied, so it is O(N) time and O(N) space. Linear search plus array slicing would be O(N<sup>2</sup>). It requires distinct values; postorder + inorder works the same way from the back, building the right subtree first.</p>`,
+      a: `<p>The first preorder value is the root; its position m in inorder splits the remaining values into the left subtree (positions before m) and right subtree (after m). I keep a global preorder index and a hash map from value to inorder index, and recurse on inorder windows: <code>build(lo, hi)</code> takes the next preorder value as root, builds the left from <code>lo..m−1</code> first (preorder lists it next), then the right from <code>m+1..hi</code>. Each value creates one node with an O(1) map lookup, and no arrays are copied, so it is O(N) time and O(N) space. Linear search plus array slicing would be O(N<sup>2</sup>). It requires distinct values; postorder + inorder works the same way from the back, building the right subtree first.</p>`,
       followUps: ['Why not preorder + postorder?', 'Build a BST from preorder alone in O(N).']
     },
     {
-      q: 'Why are Java\'s TreeMap operations O(log N) when a BST can degrade to O(N)?', level: 'A',
-      a: `<p>A plain BST's cost is O(h), and inserting sorted keys makes h = N. <code>TreeMap</code> is a <b>red-black tree</b>: every node is coloured red or black with rules (no two reds in a row, the same number of black nodes on every root-to-null path) that force the longest path to be at most twice the shortest, so h ≤ 2 log₂(N + 1). After each insert or delete it restores the rules with recolouring and at most a few <b>rotations</b> (O(1) pointer changes each). That guarantees O(log N) for get, put, remove, floorKey, ceilingKey and friends. AVL trees are stricter (faster lookups, more rotations); B-trees are the disk-friendly cousin used by databases.</p>`,
-      followUps: ['When would you choose HashMap over TreeMap?', 'What is a rotation and why does it keep BST order?']
+      q: 'Why are library ordered maps (Java\'s TreeMap, C++\'s std::map) O(log N) when a BST can degrade to O(N)?', level: 'A',
+      a: `<p>A plain BST's cost is O(h), and inserting sorted keys makes h = N. <code>TreeMap</code> and <code>std::map</code> are <b>red-black trees</b>: every node is coloured red or black with rules (no two reds in a row, the same number of black nodes on every root-to-null path) that force the longest path to be at most twice the shortest, so h ≤ 2 log₂(N + 1). After each insert or delete it restores the rules with recolouring and at most a few <b>rotations</b> (O(1) pointer changes each). That guarantees O(log N) for get, put, remove, floorKey, ceilingKey and friends. AVL trees are stricter (faster lookups, more rotations); B-trees are the disk-friendly cousin used by databases.</p>`,
+      followUps: ['When would you choose a hash map over an ordered map?', 'What is a rotation and why does it keep BST order?']
     },
     {
       q: 'Design serialization for a binary tree that may contain duplicate values.', level: 'A',
@@ -4631,7 +8518,7 @@ class Solution:
     },
     {
       q: 'Your tree code works on small tests but crashes in production on large inputs. What do you check?', level: 'E',
-      a: `<p>First, <b>recursion depth</b>: real data is often skewed (sorted inserts, linked chains), so recursive DFS can throw <code>StackOverflowError</code>; I switch to an explicit stack or BFS, or run the work in a thread with a larger stack. Second, <b>balance</b>: an unbalanced BST turns O(log N) into O(N); I would use <code>TreeMap</code> or a self-balancing tree. Third, <b>memory</b>: BFS on a wide tree holds ~N/2 nodes, and object-per-node trees cost ~24+ bytes each plus poor cache locality — arrays or B-trees may be better. Fourth, <b>numeric overflow</b> in sums or position indices (use long, re-base positions). Finally, I add property-based tests (random trees vs a brute-force oracle) so these cases are caught before production.</p>`,
+      a: `<p>First, <b>recursion depth</b>: real data is often skewed (sorted inserts, linked chains), so recursive DFS can overflow the call stack (<code>StackOverflowError</code>, <code>RecursionError</code>, <code>RangeError</code>); I switch to an explicit stack or BFS, or run the work in a thread with a larger stack. Second, <b>balance</b>: an unbalanced BST turns O(log N) into O(N); I would use the library ordered map (<code>TreeMap</code>, <code>std::map</code>) or a self-balancing tree. Third, <b>memory</b>: BFS on a wide tree holds ~N/2 nodes, and object-per-node trees cost ~24+ bytes each plus poor cache locality — arrays or B-trees may be better. Fourth, <b>numeric overflow</b> in sums or position indices (use long, re-base positions). Finally, I add property-based tests (random trees vs a brute-force oracle) so these cases are caught before production.</p>`,
       followUps: ['How do you test tree code with random inputs?', 'When would you store a tree in an array instead of nodes?']
     }
   );
@@ -4650,6 +8537,12 @@ class Solution:
     ],
     prereqs: `<p>DSA 11 (Recursion &amp; Backtracking) for call stacks and recursive thinking, and DSA 13 (Stacks &amp; Queues) for <code>ArrayDeque</code> as a stack and as a queue. DSA 8 (Hashing) helps for the HashMap tricks in views and tree construction.</p>`,
     hours: 16,
+    langNotes: {
+      java: `<p><b>Java:</b> a recursive tree walk uses one stack frame per level, and the default thread stack holds roughly 10,000 simple frames, so a skewed tree of 10<sup>4</sup>–10<sup>5</sup> nodes throws <code>StackOverflowError</code>. That is why several solutions here use an explicit <code>ArrayDeque</code> stack or a "list parents-first, then walk it backwards" loop (or run recursion in a <code>new Thread(null, task, "big", 1 &lt;&lt; 26)</code>). <code>ArrayDeque</code> refuses <code>null</code>, so check children before pushing (use an <code>ArrayList</code> as the stack when you need null markers, as in the serializer). Compare nodes with <code>==</code> (identity), values with <code>==</code> on <code>int</code>. <code>TreeMap</code> / <code>TreeSet</code> are red-black trees with <code>floorKey</code> / <code>ceilingKey</code> in O(log N). <code>int</code> overflow wraps silently: BST bounds use <code>long</code> (<code>Long.MIN_VALUE</code>) so nodes holding <code>Integer.MIN_VALUE</code> stay valid, and width positions use <code>long</code> plus re-basing.</p>`,
+      python: `<p><b>Python:</b> recursion stops at <b>1,000 frames</b> by default (<code>RecursionError</code>), far below the 10<sup>4</sup>–10<sup>5</sup>-deep skewed trees these constraints allow. So most Python solutions here are iterative (a list as the stack, or "reversed preorder = children before parents" with a dict of results); the tree builders raise the limit with <code>sys.setrecursionlimit</code> instead, because their depth is at most n = 3000 (for deeper recursion, also run it in a thread made after <code>threading.stack_size(...)</code>). Use <code>collections.deque</code> for BFS: <code>list.pop(0)</code> is O(n). Compare nodes with <code>is</code> (identity), not <code>==</code>. There is no built-in balanced BST: use <code>bisect</code> on a sorted list (O(n) inserts) or the third-party <code>sortedcontainers.SortedList</code>; for columns, collect into a <code>dict</code> and sort the keys. Integers never overflow, and <code>float('inf')</code> makes clean BST bounds. Join strings once (<code>','.join(parts)</code>) instead of <code>+=</code> in a loop.</p>`,
+      js: `<p><b>JavaScript:</b> Node's default call stack fits roughly 10,000 simple frames, then throws <code>RangeError: Maximum call stack size exceeded</code>, so deep-tree solutions here use an array as an explicit stack. For BFS, never <code>shift()</code> (it is O(n)): keep a read index into the array, or build the next level as a new array. <code>sort()</code> compares as strings unless you pass a comparator, so vertical order sorts with <code>(a, b) =&gt; a[0] - b[0] || a[1] - b[1] || a[2] - b[2]</code>. A <code>Map</code> accepts node objects as keys (parent links, results per node) and keeps insertion order but does not sort; there is no built-in ordered set, so use a sorted array with binary search. Compare nodes with <code>===</code>. <code>Number</code> is exact up to 2<sup>53</sup>, which covers every sum here; width positions are re-based each level so they stay small. Use <code>-Infinity</code> / <code>Infinity</code> as BST bounds, and build strings with an array plus <code>join</code>.</p>`,
+      cpp: `<p><b>C++:</b> the default stack is about 8 MB, so recursion on a 10<sup>5</sup>-deep chain usually survives but is not guaranteed (bigger frames or sanitizers shrink it); an explicit <code>std::stack</code> or <code>vector</code> is always safe. Nodes are raw pointers: compare them with <code>==</code>, test for <code>nullptr</code>, and remember that whoever <code>new</code>s a node owns it (production code would use <code>unique_ptr</code> or an arena). <code>std::map</code> / <code>std::set</code> are red-black trees (O(log n), sorted keys, <code>lower_bound</code> / <code>upper_bound</code>, <code>prev</code> for floor); <code>unordered_map</code> is O(1) on average but unordered. Signed overflow is undefined behaviour: BST bounds use <code>long long</code> (<code>LLONG_MIN</code>) and width positions use <code>long long</code> with re-basing. Sorting <code>tuple&lt;int, int, int&gt;</code> gives column, row, value order for free.</p>`
+    },
     topics: topics,
     practice: practice,
     quiz: quiz,

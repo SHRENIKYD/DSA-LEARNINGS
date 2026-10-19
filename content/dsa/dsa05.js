@@ -36,10 +36,10 @@
   function heads(n, start) { var h = []; for (var i = 0; i < n; i++) h.push(String(i + (start || 0))); return h; }
 
   // =====================================================================
-  // TOPIC 1 — 1D and 2D arrays in Java
+  // TOPIC 1 — 1D and 2D arrays
   // =====================================================================
   topics.push({
-    title: '1D and 2D Arrays in Java (How They Sit in Memory)',
+    title: '1D and 2D Arrays (How They Sit in Memory)',
     analogy: `<p>Think of a <b>school corridor with numbered lockers</b> standing shoulder to shoulder: locker 0, locker 1, locker 2... If you know the locker number you walk <b>straight</b> to it. You never open lockers 0 to 6 to reach locker 7. That is a <b>1D array</b>.</p>
       <p>Now think of an <b>apartment building</b>: floor number + flat number ("floor 2, flat 3"). That is a <b>2D array</b>: a row number and a column number.</p>`,
     explain: `<p><b>What is an array?</b> It is a row of boxes of the <b>same type</b> placed <b>right next to each other</b> in memory. Because the boxes touch each other, the computer finds box <code>i</code> with one small calculation:</p>
@@ -48,25 +48,25 @@
       ${H.table(['index i', 'value', 'address = 1000 + 4·i'], [['0', '7', '1000'], ['1', '3', '1004'], ['2', '9', '1008'], ['3', '4', '1012']])}
       <p>That one multiplication is why reading <code>a[i]</code> is <b>O(1)</b> — the same speed for index 2 or index 2,000,000.</p>
       ${H.arr([7, 3, 9, 4], { label: 'int[] a', hl: { 2: 'y' }, ptr: { 2: 'a[2]' } })}
-      <h4>Java facts you must know</h4>
+      <h4>Facts you must know (in your language)</h4>
       <ul>
-        <li><code>int[] a = new int[5];</code> creates 5 boxes, all filled with <b>0</b> (booleans start <code>false</code>, objects start <code>null</code>).</li>
-        <li>Size is <b>fixed</b> once created. <code>a.length</code> (a field, no brackets) gives the size.</li>
-        <li>Valid indices are <code>0</code> to <code>length - 1</code>. Touching <code>a[length]</code> throws <code>ArrayIndexOutOfBoundsException</code>.</li>
+        <li><b>Creating N zeros:</b> Java <code>new int[5]</code> (all <b>0</b>; booleans start <code>false</code>, objects <code>null</code>), Python <code>[0] * 5</code>, JS <code>new Array(5).fill(0)</code>, C++ <code>vector&lt;int&gt; a(5)</code>.</li>
+        <li><b>Size:</b> Java <code>a.length</code> (a field, no brackets), Python <code>len(a)</code>, JS <code>a.length</code>, C++ <code>a.size()</code>. A Java array has a <b>fixed</b> size; Python lists, JS arrays and C++ vectors can grow at the end.</li>
+        <li>Valid indices are <code>0</code> to <code>length - 1</code>. Touching <code>a[length]</code> throws in Java (<code>ArrayIndexOutOfBoundsException</code>) and Python (<code>IndexError</code>), quietly gives <code>undefined</code> in JS, and is undefined behaviour in C++.</li>
       </ul>
       <h4>2D arrays: rows and columns</h4>
-      <p><code>int[][] g = new int[3][4];</code> means <b>3 rows</b>, <b>4 columns</b>. <code>g.length</code> = number of rows (3), <code>g[0].length</code> = number of columns (4).</p>
+      <p>A grid with <b>3 rows</b> and <b>4 columns</b>: Java <code>new int[3][4]</code>, Python <code>[[0] * 4 for _ in range(3)]</code>, JS <code>Array.from({length: 3}, () =&gt; new Array(4).fill(0))</code>, C++ <code>vector&lt;vector&lt;int&gt;&gt; g(3, vector&lt;int&gt;(4))</code>. The number of rows is <code>g.length</code> / <code>len(g)</code> / <code>g.size()</code> (3); the number of columns is the length of row 0 (4).</p>
       <p>In maths (and in C) a matrix is stored <b>row-major</b>: row 0 first, then row 1, then row 2, all in one long line. Cell <code>(r, c)</code> lives at flat position <code>r × COLS + c</code>:</p>
       ${H.table(['cell (r,c)', 'r × 4 + c', 'flat index'], [['(0,0)', '0·4+0', '0'], ['(0,3)', '0·4+3', '3'], ['(1,0)', '1·4+0', '<span class="c-y">4</span>'], ['(2,1)', '2·4+1', '9']])}
-      <p>In <b>Java</b>, a 2D array is really an <b>array of arrays</b>: <code>g</code> holds 3 references, and each reference points to its own row of 4 ints. Each row's ints are next to each other, so walking <b>row by row</b> (outer loop on <code>r</code>, inner loop on <code>c</code>) is the fast, cache-friendly order. Because rows are separate objects, Java also allows <b>jagged</b> arrays where rows have different lengths.</p>`,
+      <p>In <b>Java, Python and JS</b> (and a C++ <code>vector</code> of vectors), a 2D array is really an <b>array of arrays</b>: <code>g</code> holds 3 references, and each reference points to its own row of 4 ints. (A built-in C++ array <code>int g[3][4]</code> is one true row-major block.) Each row's ints are next to each other, so walking <b>row by row</b> (outer loop on <code>r</code>, inner loop on <code>c</code>) is the fast, cache-friendly order. Because rows are separate objects, rows may also have different lengths (<b>jagged</b> arrays).</p>`,
     clues: [
       '"Given an array of N integers" / "access the i-th element" → arrays give O(1) access by index.',
-      '"Given an N × M matrix / grid" → <code>int[][]</code>; rows = <code>g.length</code>, cols = <code>g[0].length</code>.',
+      '"Given an N × M matrix / grid" → a 2D array (list of lists); rows = number of rows of <code>g</code>, cols = length of <code>g[0]</code>.',
       '"Flatten the matrix" / "treat the grid as one list" / "binary search on a sorted matrix" → use <code>index = r × M + c</code>, and back: <code>r = index / M</code>, <code>c = index % M</code>.',
-      '<code>N ≤ 10<sup>6</sup></code> numbers → an <code>int[]</code> (4 MB) fits easily; sums of many values may need <code>long</code>.',
-      '"Rows of different lengths" (e.g. Pascal\'s triangle) → jagged array <code>new int[n][]</code>.'
+      '<code>N ≤ 10<sup>6</sup></code> numbers → a 32-bit int array (4 MB) fits easily; sums of many values may need a 64-bit integer (<code>long</code> / <code>long long</code>).',
+      '"Rows of different lengths" (e.g. Pascal\'s triangle) → a jagged array: build each row with its own length.'
     ],
-    code: `
+    code: { lang: 'java', code: `
       class ArrayBasics {
           public static void main(String[] args) {
               // ---- 1D array: 5 boxes side by side, all start at 0 ----
@@ -95,7 +95,79 @@
               for (int i = 0; i < 3; i++) tri[i] = new int[i + 1];  // lengths 1, 2, 3
               System.out.println(Arrays.toString(b) + " " + Arrays.deepToString(g) + " " + tri[2].length);
           }
-      }`,
+      }`, alt: [
+        { lang: 'python', run: true, code: `# ---- 1D: a Python list is a dynamic array of references ----
+a = [0] * 5                          # 5 slots, all 0
+a[0] = 7                             # O(1): jump straight to slot 0
+b = [3, 1, 4, 1, 5]
+print(len(b))                        # 5
+
+# ---- 2D: 3 rows, 4 columns, one new list per row ----
+rows, cols = 3, 4
+g = [[0] * cols for _ in range(rows)]   # NOT [[0] * cols] * rows: that repeats ONE row object
+for r in range(rows):                # row by row = cache friendly
+    for c in range(cols):
+        g[r][c] = r * cols + c       # the row-major "flat index" of (r, c)
+
+# ---- Going back from a flat index to (row, col) ----
+flat = 9
+r, c = divmod(flat, cols)            # 9 // 4 = 2, 9 % 4 = 1 -> (2, 1)
+print(f"{r},{c} holds {g[r][c]}")
+
+# ---- Jagged: each row can have a different length ----
+tri = [[0] * (i + 1) for i in range(3)]   # lengths 1, 2, 3
+print(b, g, len(tri[2]))` },
+        { lang: 'js', run: true, code: `// ---- 1D: a JS array (typed arrays like Int32Array are fixed-size and packed) ----
+const a = new Array(5).fill(0);      // 5 slots, all 0
+a[0] = 7;                            // O(1): jump straight to slot 0
+const b = [3, 1, 4, 1, 5];
+console.log(b.length);               // 5
+
+// ---- 2D: 3 rows, 4 columns, one new array per row ----
+const rows = 3, cols = 4;
+const g = Array.from({ length: rows }, () => new Array(cols).fill(0));  // not new Array(rows).fill(row): that shares one row
+for (let r = 0; r < rows; r++) {     // row by row = cache friendly
+  for (let c = 0; c < cols; c++) {
+    g[r][c] = r * cols + c;          // the row-major "flat index" of (r, c)
+  }
+}
+
+// ---- Going back from a flat index to (row, col) ----
+const flat = 9;
+const r = Math.floor(flat / cols), c = flat % cols;   // 9 / 4 -> 2, 9 % 4 = 1 -> (2, 1)
+console.log(\`\${r},\${c} holds \${g[r][c]}\`);
+
+// ---- Jagged: each row can have a different length ----
+const tri = Array.from({ length: 3 }, (_, i) => new Array(i + 1).fill(0));  // lengths 1, 2, 3
+console.log(JSON.stringify(b), JSON.stringify(g), tri[2].length);` },
+        { lang: 'cpp', code: `int main() {
+    // ---- 1D: vector<int> is a growable array; int a[5] would be a fixed one ----
+    vector<int> a(5, 0);                 // 5 boxes, all 0
+    a[0] = 7;                            // O(1): jump straight to box 0 (no bounds check; a.at(i) checks)
+    vector<int> b = {3, 1, 4, 1, 5};
+    cout << b.size() << "\\n";            // 5
+
+    // ---- 2D: 3 rows, 4 columns ----
+    int rows = 3, cols = 4;
+    vector<vector<int>> g(rows, vector<int>(cols, 0));   // each row is its own vector
+    for (int r = 0; r < rows; r++)       // row by row = cache friendly
+        for (int c = 0; c < cols; c++)
+            g[r][c] = r * cols + c;      // the row-major "flat index" of (r, c)
+    int fixed[3][4] = {};                // a built-in 2D array is ONE block, truly row-major
+    fixed[2][1] = 9;
+
+    // ---- Going back from a flat index to (row, col) ----
+    int flat = 9;
+    int r = flat / cols, c = flat % cols;   // 9 / 4 = 2, 9 % 4 = 1 -> (2, 1)
+    cout << r << "," << c << " holds " << g[r][c] << " " << fixed[2][1] << "\\n";
+
+    // ---- Jagged: each row can have a different length ----
+    vector<vector<int>> tri(3);
+    for (int i = 0; i < 3; i++) tri[i].assign(i + 1, 0);   // lengths 1, 2, 3
+    cout << tri[2].size() << "\\n";
+    return 0;
+}` }
+      ] },
     codeTitle: 'Declaring, filling and walking 1D / 2D arrays',
     viz: {
       title: 'Row-major layout: where each matrix cell lands in one long line',
@@ -138,37 +210,81 @@
           { type: 'array', label: 'flat memory', values: placed.slice(), hl: one(last, 'sel') },
           { type: 'vars', vals: { index: last, 'row = index / COLS': Math.floor(last / C), 'col = index % COLS': last % C } }
         ] });
-        var javaParts = [{ type: 'text', html: '<b>Java reality:</b> <code>g</code> is an array of ' + R + ' references. Each reference points to its own row array below. Values inside a row are side by side; different rows may live in different places.' }];
+        var javaParts = [{ type: 'text', html: '<b>Java / Python / JS reality:</b> <code>g</code> is an array of ' + R + ' references. Each reference points to its own row array below. Values inside a row are side by side; different rows may live in different places.' }];
         for (r = 0; r < R; r++) javaParts.push({ type: 'array', label: 'g[' + r + ']', values: grid[r].slice() });
-        frames.push({ narr: 'In Java, <code>int[][]</code> is an <b>array of arrays</b>. That is why rows can even have different lengths (jagged arrays), and why looping row by row is the fast direction.', parts: javaParts });
+        frames.push({ narr: 'In Java, Python and JS a 2D array is an <b>array of arrays</b> (a C++ <code>int g[R][C]</code> is one flat block instead). That is why rows can even have different lengths (jagged arrays), and why looping row by row is the fast direction.', parts: javaParts });
         return frames;
       }
     },
     examples: [
-      { title: 'Default values and the off-by-one trap', html: `<p><code>int[] a = new int[4];</code> gives ${H.arr([0, 0, 0, 0], { label: 'a' })} The valid indices are 0, 1, 2, 3. A loop written as <code>for (i = 0; i &lt;= a.length; i++)</code> runs <b>five</b> times and the fifth time touches <code>a[4]</code> → ${H.c('r', 'ArrayIndexOutOfBoundsException')}. Always loop with <code>i &lt; a.length</code>. Other defaults: <code>double</code> → 0.0, <code>boolean</code> → false, <code>char</code> → '\\u0000', <code>String</code>/objects → null (so <code>new String[3]</code> holds three nulls, and calling <code>.length()</code> on one crashes).</p>`, code: `int[] a = new int[4];
+      { title: 'Default values and the off-by-one trap', html: `<p><code>int[] a = new int[4];</code> gives ${H.arr([0, 0, 0, 0], { label: 'a' })} The valid indices are 0, 1, 2, 3. A loop written as <code>for (i = 0; i &lt;= a.length; i++)</code> runs <b>five</b> times and the fifth time touches <code>a[4]</code> → ${H.c('r', 'ArrayIndexOutOfBoundsException')}. Always loop with <code>i &lt; a.length</code> (Python: <code>range(len(a))</code>). Python raises <code>IndexError</code>, JS silently returns <code>undefined</code>, C++ has undefined behaviour. Java defaults: <code>double</code> → 0.0, <code>boolean</code> → false, <code>char</code> → '\\u0000', <code>String</code>/objects → null (so <code>new String[3]</code> holds three nulls, and calling <code>.length()</code> on one crashes).</p>`, code: { lang: 'java', code: `int[] a = new int[4];
 for (int i = 0; i < a.length; i++) a[i] = i * i;   // 0 1 4 9 — never i <= a.length
 String[] names = new String[3];                      // [null, null, null]
-System.out.println(Arrays.toString(a) + " " + Arrays.toString(names));` },
-      { title: 'Arrays are references: copying is not cloning', html: `<p><code>int[] b = a;</code> does <b>not</b> copy the boxes — both names now point to the <b>same</b> array, like two people holding keys to one locker row. Change <code>b[0]</code> and <code>a[0]</code> changes too. To get a real copy use <code>a.clone()</code> or <code>Arrays.copyOf(a, a.length)</code>.</p>
+System.out.println(Arrays.toString(a) + " " + Arrays.toString(names));`, alt: [
+        { lang: 'python', run: true, code: `a = [0] * 4
+for i in range(len(a)):          # range(len(a)) stops at len(a) - 1
+    a[i] = i * i                 # 0 1 4 9
+names = [None] * 3               # [None, None, None]
+print(a, names)
+try:
+    a[4] = 1                     # one past the end
+except IndexError as e:
+    print("IndexError:", e)
+print(a[-1])                     # 9: negative indices count from the end in Python` },
+        { lang: 'js', run: true, code: `const a = new Array(4).fill(0);
+for (let i = 0; i < a.length; i++) a[i] = i * i;   // 0 1 4 9, never i <= a.length
+const names = new Array(3).fill(null);             // [null, null, null]
+console.log(JSON.stringify(a), JSON.stringify(names));
+console.log(a[4]);   // undefined: JS does not throw, the bug just hides` },
+        { lang: 'cpp', code: `vector<int> a(4);                         // value-initialised: all 0
+for (size_t i = 0; i < a.size(); i++) a[i] = i * i;   // 0 1 4 9, never i <= a.size()
+vector<string> names(3);                  // three empty strings
+int raw[4];                               // a plain local array is NOT zeroed: garbage values
+cout << a[3] << " " << names[0].size() << "\\n";
+// a[4] is undefined behaviour (no exception); a.at(4) throws std::out_of_range` }
+      ] } },
+      { title: 'Arrays are references: copying is not cloning', html: `<p><code>int[] b = a;</code> does <b>not</b> copy the boxes — both names now point to the <b>same</b> array, like two people holding keys to one locker row. Change <code>b[0]</code> and <code>a[0]</code> changes too. To get a real copy use <code>a.clone()</code> or <code>Arrays.copyOf(a, a.length)</code> in Java, <code>a.copy()</code> or <code>a[:]</code> in Python, <code>[...a]</code> in JS. (C++ is the opposite: <code>vector&lt;int&gt; b = a;</code> <b>does</b> copy, and you write <code>auto&amp; b = a;</code> to share.)</p>
         ${H.table(['code', 'a after', 'b after', 'why'], [['int[] b = a; b[0] = 99;', H.c('r', '[99, 2, 3]'), '[99, 2, 3]', 'same object'], ['int[] b = a.clone(); b[0] = 99;', H.c('g', '[1, 2, 3]'), '[99, 2, 3]', 'separate object']])}
-        <p>For a 2D array, <code>g.clone()</code> copies only the outer array of row references — the rows are still shared (a <b>shallow</b> copy). Copy each row to get a deep copy.</p>`, code: `int[] a = {1, 2, 3};
+        <p>For a 2D array, <code>g.clone()</code> (Python <code>g[:]</code>, JS <code>[...g]</code>) copies only the outer array of row references — the rows are still shared (a <b>shallow</b> copy). Copy each row to get a deep copy.</p>`, code: { lang: 'java', code: `int[] a = {1, 2, 3};
 int[] alias = a;          // same array, two names
 int[] copy = a.clone();   // brand-new array with the same values
 alias[0] = 99;
-System.out.println(a[0] + " " + copy[0]);   // 99 1` },
+System.out.println(a[0] + " " + copy[0]);   // 99 1`, alt: [
+        { lang: 'python', run: true, code: `a = [1, 2, 3]
+alias = a              # same list, two names
+copy = a.copy()        # new list with the same values (also a[:] or list(a))
+alias[0] = 99
+print(a[0], copy[0])   # 99 1
+g = [[1, 2], [3, 4]]
+deep = [row[:] for row in g]   # copy each row; copy.deepcopy(g) also works` },
+        { lang: 'js', run: true, code: `const a = [1, 2, 3];
+const alias = a;            // same array, two names
+const copy = [...a];        // new array with the same values (also a.slice())
+alias[0] = 99;
+console.log(a[0], copy[0]); // 99 1
+const g = [[1, 2], [3, 4]];
+const deep = g.map((row) => [...row]);   // copy each row (or structuredClone(g))` },
+        { lang: 'cpp', code: `vector<int> a = {1, 2, 3};
+vector<int>& alias = a;     // a reference: same vector, two names
+vector<int> copy = a;       // plain assignment COPIES a vector in C++
+alias[0] = 99;
+cout << a[0] << " " << copy[0] << "\\n";   // 99 1
+// passing vector<int> by value copies it too; pass const vector<int>& to avoid that` }
+      ] } },
       { title: 'Flat index ↔ (row, col) in a 3 × 4 grid', html: `<p>Flat index 7 in a grid with 4 columns: row = 7 / 4 = <b>1</b>, col = 7 % 4 = <b>3</b>. Back again: 1 × 4 + 3 = 7 ✔. This is how "Search a 2D Matrix" binary-searches a whole matrix as if it were one sorted list of 12 numbers, and how BFS on a grid can store a cell as one <code>int</code> instead of a pair.</p>
         ${H.table(['flat', 'row = flat / 4', 'col = flat % 4'], [['0', '0', '0'], ['5', '1', '1'], ['7', '1', H.c('y', '3')], ['11', '2', '3']])}` },
       { title: 'Walking order matters for speed', html: `<p>Summing a 2000 × 2000 matrix row by row (<code>g[r][c]</code> with c in the inner loop) reads memory in a straight line, so the CPU cache pre-loads the next numbers for free. Swapping the loops (r in the inner loop) jumps to a different row array on every step; on typical hardware this is several times slower even though both are O(R × C). Big-O is the same — real time is not.</p>` }
     ],
-    deepDive: `<h4>Why O(1) access really works</h4><p>The address formula <code>base + i × size</code> is one multiply and one add, done by the CPU in a single instruction. That is why arrays are the backbone of almost every other structure: heaps, hash tables, dynamic arrays (<code>ArrayList</code>), and even graphs stored as adjacency arrays.</p>
-      <h4>Java memory picture</h4><ul><li>The array <b>object</b> lives on the heap with a small header (about 16 bytes: class pointer, length). The variable <code>a</code> on the stack holds only a reference.</li><li><code>int[]</code> of 10<sup>6</sup> elements ≈ 4 MB. <code>Integer[]</code> of 10<sup>6</sup> elements ≈ 4 MB of references <b>plus</b> 16 MB of boxed objects scattered around the heap — slower and bigger. Prefer primitive arrays in DSA code.</li><li><code>int[][] g = new int[1000][1000]</code> creates 1001 objects (outer + 1000 rows). A single flat <code>int[1000 * 1000]</code> indexed by <code>r * C + c</code> is one object and can be faster for huge grids.</li></ul>
-      <h4>Insert / delete cost</h4><p>Arrays have a fixed size, so "inserting" at index i means shifting everything after i one step right: O(N). That is why <code>ArrayList.add(0, x)</code> is O(N) while <code>add(x)</code> at the end is O(1) amortized (it doubles capacity when full; the total copying over N appends is at most about 2N).</p>
+    deepDive: `<h4>Why O(1) access really works</h4><p>The address formula <code>base + i × size</code> is one multiply and one add, done by the CPU in a single instruction. That is why arrays are the backbone of almost every other structure: heaps, hash tables, dynamic arrays (<code>ArrayList</code> / Python <code>list</code> / JS <code>Array</code> / C++ <code>vector</code>), and even graphs stored as adjacency arrays.</p>
+      <h4>Memory picture (Java)</h4><ul><li>The array <b>object</b> lives on the heap with a small header (about 16 bytes: class pointer, length). The variable <code>a</code> on the stack holds only a reference.</li><li><code>int[]</code> of 10<sup>6</sup> elements ≈ 4 MB. <code>Integer[]</code> of 10<sup>6</sup> elements ≈ 4 MB of references <b>plus</b> 16 MB of boxed objects scattered around the heap — slower and bigger. Prefer primitive arrays in DSA code.</li><li><code>int[][] g = new int[1000][1000]</code> creates 1001 objects (outer + 1000 rows). A single flat <code>int[1000 * 1000]</code> indexed by <code>r * C + c</code> is one object and can be faster for huge grids.</li></ul>
+      <h4>Other languages</h4><ul><li><b>Python:</b> a <code>list</code> stores references to int objects (about 28 bytes each plus an 8-byte slot), so 10<sup>6</sup> ints cost ~36 MB. <code>array('i')</code> or NumPy store raw 4-byte values.</li><li><b>JS:</b> engines keep small-integer arrays packed, but mixing types or leaving holes makes them slower; <code>Int32Array</code> / <code>Float64Array</code> are fixed-size raw buffers.</li><li><b>C++:</b> <code>vector&lt;int&gt;</code> is one contiguous block with no per-element header; <code>vector&lt;vector&lt;int&gt;&gt;</code> is one block per row, like Java.</li></ul>
+      <h4>Insert / delete cost</h4><p>Arrays have a fixed size, so "inserting" at index i means shifting everything after i one step right: O(N). That is why inserting at the front (<code>list.add(0, x)</code>, <code>list.insert(0, x)</code>, <code>arr.unshift(x)</code>, <code>v.insert(v.begin(), x)</code>) is O(N) while appending at the end is O(1) amortized (it doubles capacity when full; the total copying over N appends is at most about 2N).</p>
       <h4>Reversal tricks</h4><p>Many in-place array problems reduce to reversing parts: rotate right by k = reverse all, reverse first k, reverse the rest. Each reverse is a two-pointer swap loop, O(N) time and O(1) space.</p>
-      <h4>Limits</h4><p>Java array length is an <code>int</code>, so at most about 2<sup>31</sup> − 1 elements (in practice a bit less). <code>new int[n]</code> with negative n throws <code>NegativeArraySizeException</code>.</p>`,
-    aiEra: `<p><b>What AI changes:</b> an assistant writes array boilerplate (reading input, nested loops, <code>Arrays.toString</code>) instantly, so you no longer get credit for typing loops. Interviewers now probe <b>understanding</b>: why is access O(1), what does <code>b = a</code> share, why is a column-wise walk slower?</p>
-      <p><b>Use AI as a partner:</b> ask <code>Give me 6 tricky inputs for an array rotation function (k = 0, k &gt; n, n = 1, negatives), don't solve it</code>, or <code>Explain what this Java line allocates on the heap</code>. Generating edge cases is where AI saves you real time.</p>
-      <p><b>Where AI goes wrong:</b> it mixes up <code>a.length</code> / <code>s.length()</code> / <code>list.size()</code>, writes <code>&lt;=</code> loop bounds, forgets <code>k %= n</code>, or "copies" arrays with plain assignment. It also confuses rows and columns on non-square grids.</p>
-      <p><b>What you must still own:</b> drawing the indices by hand for a 2 × 3 grid, spotting aliasing bugs, and choosing <code>long</code> when values add up past 2.1 × 10<sup>9</sup>.</p>`,
+      <h4>Limits</h4><p>In Java an array length is an <code>int</code>, so at most about 2<sup>31</sup> − 1 elements (in practice a bit less). <code>new int[n]</code> with negative n throws <code>NegativeArraySizeException</code>.</p>`,
+    aiEra: `<p><b>What AI changes:</b> an assistant writes array boilerplate (reading input, nested loops, printing an array) instantly, so you no longer get credit for typing loops. Interviewers now probe <b>understanding</b>: why is access O(1), what does <code>b = a</code> share, why is a column-wise walk slower?</p>
+      <p><b>Use AI as a partner:</b> ask <code>Give me 6 tricky inputs for an array rotation function (k = 0, k &gt; n, n = 1, negatives), don't solve it</code>, or <code>Explain what this line allocates on the heap</code>. Generating edge cases is where AI saves you real time.</p>
+      <p><b>Where AI goes wrong:</b> it mixes up <code>a.length</code> / <code>s.length()</code> / <code>list.size()</code> / <code>len(a)</code>, writes <code>&lt;=</code> loop bounds, forgets <code>k %= n</code>, or "copies" arrays with plain assignment. It also confuses rows and columns on non-square grids.</p>
+      <p><b>What you must still own:</b> drawing the indices by hand for a 2 × 3 grid, spotting aliasing bugs, and choosing a 64-bit integer when values add up past 2.1 × 10<sup>9</sup>.</p>`,
     problems: [{
       title: 'Rotate Array to the Right by K Steps',
       level: 'Medium',
@@ -201,6 +317,17 @@ System.out.println(a[0] + " " + copy[0]);   // 99 1` },
         `<p>Write a helper <code>reverse(A, lo, hi)</code> using two pointers that swap and walk inward. Call it three times. No extra array needed.</p>`,
         `<p><b>Traps:</b> k can be larger than N → do <code>k %= n</code> first (k = 0 after that means nothing to do). Rotating left is the mirror: reverse first k, reverse rest, reverse all.<br><b>Recipe:</b> k %= n; reverse(0, n−1); reverse(0, k−1); reverse(k, n−1).</p>`
       ],
+      tests: { sig: 'int[] int -> void', fn: 'rotate', mutate: 0, cases: [
+        [[[1, 2, 3, 4, 5, 6, 7], 3], [5, 6, 7, 1, 2, 3, 4]],
+        [[[1, 2, 3, 4, 5, 6, 7], 10], [5, 6, 7, 1, 2, 3, 4]],
+        [[[1], 0], [1]],
+        [[[1], 5], [1]],
+        [[[1, 2], 1], [2, 1]],
+        [[[-1, -100, 3, 99], 2], [3, 99, -1, -100]],
+        [[[1, 2, 3], 3], [1, 2, 3]],
+        [[[2147483647, -2147483648, 0], 1000000000], [0, 2147483647, -2147483648]],
+        [[[1, 2, 3, 4, 5, 6], 4], [3, 4, 5, 6, 1, 2]]
+      ] },
       solution: {
         approach: `<p>Three reversals: whole array, then the first k, then the last N − k. Each element is swapped at most twice, so it is O(N) time and O(1) space.</p>`,
         code: `
@@ -229,7 +356,8 @@ System.out.println(a[0] + " " + copy[0]);   // 99 1` },
                   System.out.println(Arrays.toString(A));   // [5, 6, 7, 1, 2, 3, 4]
               }
           }`,
-        alt: [{ lang: 'python', code: `def rotate(a, k):
+        alt: [
+          { lang: 'python', code: `def rotate(a, k):
     n = len(a)
     k %= n
     def rev(lo, hi):
@@ -243,7 +371,28 @@ System.out.println(a[0] + " " + copy[0]);   // 99 1` },
 
 arr = [1, 2, 3, 4, 5, 6, 7]
 rotate(arr, 3)
-print(arr)` }],
+print(arr)` },
+          { lang: 'js', code: `function rotate(A, k) {
+  const n = A.length;
+  k %= n;                                   // a full circle changes nothing
+  const reverse = (lo, hi) => {
+    for (; lo < hi; lo++, hi--) [A[lo], A[hi]] = [A[hi], A[lo]];
+  };
+  reverse(0, n - 1);                        // whole array
+  reverse(0, k - 1);                        // first k back in order
+  reverse(k, n - 1);                        // the rest back in order
+}` },
+          { lang: 'cpp', code: `class Solution {
+public:
+    void rotate(vector<int>& A, int k) {
+        int n = A.size();
+        k %= n;                                  // a full circle changes nothing
+        reverse(A.begin(), A.end());             // whole array
+        reverse(A.begin(), A.begin() + k);       // first k back in order
+        reverse(A.begin() + k, A.end());         // the rest back in order
+    }
+};` }
+        ],
         dry: {
           head: ['step', 'operation', 'array after'],
           rows: [
@@ -278,7 +427,7 @@ print(arr)` }],
       ])}
       <p><b>Why it is a big deal:</b> building <code>pf</code> costs N steps <b>once</b>. After that, every query is <b>one subtraction</b>. With N = Q = 10<sup>5</sup>, plain loops need up to 10<sup>10</sup> steps; prefix sums need about 2 × 10<sup>5</sup>.</p>
       <p><b>Neat trick — the padded version:</b> make <code>pf</code> of size <code>N + 1</code> with <code>pf[0] = 0</code> and <code>pf[i+1] = pf[i] + A[i]</code>. Then <code>sum(L..R) = pf[R+1] − pf[L]</code> with no special case for <code>L = 0</code>.</p>
-      <p><b>Overflow warning:</b> 10<sup>5</sup> numbers of size 10<sup>9</sup> add up to 10<sup>14</sup>, far above the <code>int</code> limit (about 2.1 × 10<sup>9</sup>). Store <code>pf</code> as <code>long[]</code>.</p>`,
+      <p><b>Overflow warning:</b> 10<sup>5</sup> numbers of size 10<sup>9</sup> add up to 10<sup>14</sup>, far above the 32-bit <code>int</code> limit (about 2.1 × 10<sup>9</sup>). Store <code>pf</code> as 64-bit integers: <code>long[]</code> in Java, <code>vector&lt;long long&gt;</code> in C++. Python ints never overflow, and a JS <code>Number</code> is exact up to 2<sup>53</sup> ≈ 9 × 10<sup>15</sup> (beyond that use <code>BigInt</code>). In the rest of this module, "use <code>long</code>" means "use a 64-bit integer".</p>`,
     clues: [
       '"Answer <b>Q queries</b>, each asking the sum from L to R" → build prefix sums once, answer each query in O(1).',
       '<code>N, Q ≤ 10<sup>5</sup></code> → O(N·Q) = 10<sup>10</sup> is too slow; you need O(N + Q).',
@@ -286,7 +435,7 @@ print(arr)` }],
       '"Sum of a <b>contiguous</b> subarray / range / window" appears again and again → precompute running totals.',
       '"Total in a range of days / overs / indices" in a story problem → it is a range-sum query in disguise.'
     ],
-    code: `
+    code: { lang: 'java', code: `
       long[] buildPrefix(int[] A) {
           long[] pf = new long[A.length + 1];   // pf[0] = 0 means "sum of nothing"
           for (int i = 0; i < A.length; i++) {
@@ -297,7 +446,38 @@ print(arr)` }],
 
       long rangeSum(long[] pf, int L, int R) { // inclusive L..R, 0-indexed
           return pf[R + 1] - pf[L];             // "up to R" minus "before L"
-      }`,
+      }`, alt: [
+        { lang: 'python', code: `def build_prefix(a):
+    pf = [0] * (len(a) + 1)        # pf[0] = 0 means "sum of nothing"
+    for i, x in enumerate(a):
+        pf[i + 1] = pf[i] + x      # new total = old total + one new number
+    return pf                      # same as [0, *itertools.accumulate(a)]
+
+def range_sum(pf, l, r):           # inclusive l..r, 0-indexed
+    return pf[r + 1] - pf[l]       # "up to r" minus "before l"` },
+        { lang: 'js', code: `function buildPrefix(A) {
+  const pf = new Array(A.length + 1).fill(0);   // pf[0] = 0 means "sum of nothing"
+  for (let i = 0; i < A.length; i++) {
+    pf[i + 1] = pf[i] + A[i];                   // exact while totals stay below 2^53
+  }
+  return pf;
+}
+
+function rangeSum(pf, L, R) {   // inclusive L..R, 0-indexed
+  return pf[R + 1] - pf[L];     // "up to R" minus "before L"
+}` },
+        { lang: 'cpp', code: `vector<long long> buildPrefix(const vector<int>& A) {
+    vector<long long> pf(A.size() + 1, 0);   // pf[0] = 0 means "sum of nothing"
+    for (size_t i = 0; i < A.size(); i++) {
+        pf[i + 1] = pf[i] + A[i];            // long long: totals can pass 2^31
+    }
+    return pf;                               // or partial_sum into pf.begin() + 1
+}
+
+long long rangeSum(const vector<long long>& pf, int L, int R) {   // inclusive L..R
+    return pf[R + 1] - pf[L];                // "up to R" minus "before L"
+}` }
+      ] },
     codeTitle: 'Padded prefix sum (no special case for L = 0)',
     viz: {
       title: 'Build the prefix sum bars, then answer a range query',
@@ -354,22 +534,62 @@ print(arr)` }],
     },
     examples: [
       { title: 'Negative numbers are fine', html: `<p>A = [5, −2, 3, −4]. pf = [5, 3, 6, 2]. Sum of indices 1..3 = pf[3] − pf[0] = 2 − 5 = <b>−3</b>. Check: −2 + 3 − 4 = −3 ✔. Prefix sums never assume positive values — the subtraction works for any integers. (Contrast: sliding window <i>does</i> need positives, which you will see in the next module.)</p>${H.arr([5, -2, 3, -4], { label: 'A', hl: { 1: 'b', 2: 'b', 3: 'b' } })}${H.arr([5, 3, 6, 2], { label: 'pf', hl: { 0: 'r', 3: 'g' } })}` },
-      { title: 'Average rainfall over any range of days', html: `<p>Rain per day: [4, 0, 7, 3, 1, 5]. "Average rain from day 2 to day 5" = sum(2..5) / 4. With padded prefix P = [0, 4, 4, 11, 14, 15, 20]: sum = P[6] − P[2] = 20 − 4 = 16, average = <b>4.0</b>. Any "average / mean of a range" question is a range sum divided by the length <code>R − L + 1</code>.</p>`, code: `int[] rain = {4, 0, 7, 3, 1, 5};
+      { title: 'Average rainfall over any range of days', html: `<p>Rain per day: [4, 0, 7, 3, 1, 5]. "Average rain from day 2 to day 5" = sum(2..5) / 4. With padded prefix P = [0, 4, 4, 11, 14, 15, 20]: sum = P[6] − P[2] = 20 − 4 = 16, average = <b>4.0</b>. Any "average / mean of a range" question is a range sum divided by the length <code>R − L + 1</code>.</p>`, code: { lang: 'java', code: `int[] rain = {4, 0, 7, 3, 1, 5};
 long[] P = new long[rain.length + 1];
 for (int i = 0; i < rain.length; i++) P[i + 1] = P[i] + rain[i];
 int L = 2, R = 5;
 double avg = (double) (P[R + 1] - P[L]) / (R - L + 1);
-System.out.println(avg);   // 4.0` },
+System.out.println(avg);   // 4.0`, alt: [
+        { lang: 'python', run: true, code: `from itertools import accumulate
+rain = [4, 0, 7, 3, 1, 5]
+P = [0, *accumulate(rain)]
+L, R = 2, 5
+print((P[R + 1] - P[L]) / (R - L + 1))   # 4.0 (/ is true division in Python)` },
+        { lang: 'js', run: true, code: `const rain = [4, 0, 7, 3, 1, 5];
+const P = [0];
+for (const x of rain) P.push(P[P.length - 1] + x);
+const L = 2, R = 5;
+console.log((P[R + 1] - P[L]) / (R - L + 1));   // 4 (every JS number is a double)` },
+        { lang: 'cpp', code: `vector<int> rain = {4, 0, 7, 3, 1, 5};
+vector<long long> P(rain.size() + 1, 0);
+for (size_t i = 0; i < rain.size(); i++) P[i + 1] = P[i] + rain[i];
+int L = 2, R = 5;
+double avg = (double)(P[R + 1] - P[L]) / (R - L + 1);   // cast first, or integer division truncates
+cout << avg << "\\n";   // 4` }
+      ] } },
       { title: 'Range update in O(1) with a difference array (the reverse trick)', html: `<p>Prefix sums turn "many range <b>queries</b>" into O(1). The mirror trick, a <b>difference array</b>, turns "many range <b>updates</b>" into O(1): to add v to every cell in L..R, do <code>D[L] += v; D[R+1] −= v;</code>. After all updates, one prefix-sum pass over D rebuilds the final array.</p>
         ${H.table(['update', 'D after'], [['start', '[0, 0, 0, 0, 0, 0]'], ['+3 on 1..3', '[0, <span class="c-g">3</span>, 0, 0, <span class="c-r">−3</span>, 0]'], ['+2 on 2..4', '[0, 3, <span class="c-g">2</span>, 0, −3, <span class="c-r">−2</span>]'], ['prefix sum of D', '<b>[0, 3, 5, 5, 2, 0]</b>']])}
-        <p>Classic uses: "car pooling", "corporate flight bookings", "how many meetings are running at each minute".</p>`, code: `int n = 5;
+        <p>Classic uses: "car pooling", "corporate flight bookings", "how many meetings are running at each minute".</p>`, code: { lang: 'java', code: `int n = 5;
 long[] D = new long[n + 1];                  // one extra slot so R + 1 never overflows
 int[][] updates = {{1, 3, 3}, {2, 4, 2}};    // {L, R, value}
 for (int[] u : updates) { D[u[0]] += u[2]; D[u[1] + 1] -= u[2]; }
 long run = 0;
 long[] result = new long[n];
 for (int i = 0; i < n; i++) { run += D[i]; result[i] = run; }
-System.out.println(Arrays.toString(result));  // [0, 3, 5, 5, 2]` },
+System.out.println(Arrays.toString(result));  // [0, 3, 5, 5, 2]`, alt: [
+        { lang: 'python', run: true, code: `from itertools import accumulate
+n = 5
+D = [0] * (n + 1)                    # one extra slot so R + 1 is always valid
+for L, R, v in [(1, 3, 3), (2, 4, 2)]:
+    D[L] += v
+    D[R + 1] -= v
+print(list(accumulate(D[:n])))       # [0, 3, 5, 5, 2]` },
+        { lang: 'js', run: true, code: `const n = 5;
+const D = new Array(n + 1).fill(0);  // one extra slot so R + 1 is always valid
+for (const [L, R, v] of [[1, 3, 3], [2, 4, 2]]) { D[L] += v; D[R + 1] -= v; }
+const result = [];
+let run = 0;
+for (let i = 0; i < n; i++) { run += D[i]; result.push(run); }
+console.log(JSON.stringify(result));  // [0,3,5,5,2]` },
+        { lang: 'cpp', code: `int n = 5;
+vector<long long> D(n + 1, 0);              // one extra slot so R + 1 is always valid
+vector<array<int, 3>> updates = {{1, 3, 3}, {2, 4, 2}};   // {L, R, value}
+for (auto& [L, R, v] : updates) { D[L] += v; D[R + 1] -= v; }
+vector<long long> result(n);
+partial_sum(D.begin(), D.begin() + n, result.begin());   // [0, 3, 5, 5, 2]
+for (long long x : result) cout << x << " ";
+cout << "\\n";` }
+      ] } },
       { title: 'Counting with prefix sums (not just adding)', html: `<p>"How many vowels are in s[L..R]?" Build <code>cnt[i+1] = cnt[i] + (s[i] is a vowel ? 1 : 0)</code>. For s = "interview" (i n t e r v i e w): cnt = [0, 1, 1, 1, 2, 2, 2, 3, 4, 4]. Vowels in 2..6 ("tervi") = cnt[7] − cnt[2] = 3 − 1 = <b>2</b> (e and i) ✔. A prefix <b>count</b> is just a prefix sum over a 0/1 array — the same trick answers "how many even numbers / how many 'X' cells / how many days above 30°C in a range". Always verify the table on a tiny case by hand; off-by-one errors hide here.</p>` }
     ],
     deepDive: `<h4>Padded vs unpadded</h4><p>Unpadded <code>pf[i] = A[0..i]</code> needs the special case <code>L == 0</code>. Padded <code>P[i] = A[0..i−1]</code> (size N+1, P[0] = 0) gives the clean formula <code>sum(L..R) = P[R+1] − P[L]</code>. Pick one convention per program and never mix them; most bugs here are mixing.</p>
@@ -378,14 +598,14 @@ System.out.println(Arrays.toString(result));  // [0, 3, 5, 5, 2]` },
       <h4>Overflow and precision</h4><p>Sum of 10<sup>5</sup> values up to 10<sup>9</sup> is 10<sup>14</sup> → <code>long</code>. With mod arithmetic, compute <code>(P[R+1] − P[L] + MOD) % MOD</code> because the difference can go negative. With doubles, subtracting two huge nearly-equal prefix totals loses precision (catastrophic cancellation) — real analytics systems use Kahan summation or integers (cents, not dollars).</p>
       <h4>Production reality</h4><p>Databases expose prefix sums as window functions: <code>SUM(x) OVER (ORDER BY day)</code> is a running total. Time-series stores keep cumulative counters (Prometheus counters are prefix sums; <code>rate()</code> subtracts two of them). Image processing calls the 2D version an <i>integral image</i>.</p>`,
     aiEra: `<p><b>What AI changes:</b> AI will happily write "loop from L to R" per query. It compiles and passes tiny tests, but times out on N = Q = 10<sup>5</sup>. Your job is to read the constraints and say "precompute".</p>
-      <p><b>Use AI as a partner:</b> <code>Generate a random test harness that compares my prefix-sum answers with brute force on 1000 random arrays</code> — a stress test catches off-by-one bugs in seconds. Or ask it to convert your Java prefix sum into a SQL window function to see the same idea elsewhere.</p>
-      <p><b>Where AI goes wrong:</b> mixing padded and unpadded indices (<code>pf[R] − pf[L]</code> silently drops A[L]), using <code>int[]</code> for totals, forgetting the <code>+ MOD</code> before <code>% MOD</code>, or suggesting prefix sums for range <b>max</b>.</p>
+      <p><b>Use AI as a partner:</b> <code>Generate a random test harness that compares my prefix-sum answers with brute force on 1000 random arrays</code> — a stress test catches off-by-one bugs in seconds. Or ask it to convert your prefix sum into a SQL window function to see the same idea elsewhere.</p>
+      <p><b>Where AI goes wrong:</b> mixing padded and unpadded indices (<code>pf[R] − pf[L]</code> silently drops A[L]), using 32-bit ints for totals, forgetting the <code>+ MOD</code> before <code>% MOD</code>, or suggesting prefix sums for range <b>max</b>.</p>
       <p><b>What you must still own:</b> spotting "static array + many range queries" in the wording, choosing the index convention, and proving the formula on a 3-element example out loud.</p>`,
     problems: [{
       title: 'Range Sum Query (Static Array)',
       level: 'Easy',
       tags: ['prefix sum', 'queries'],
-      statement: `<p>You are given an integer array <code>A</code> of size <code>N</code> and <code>Q</code> queries. Each query is a pair <code>[L, R]</code> (0-indexed, inclusive). For every query return the sum <code>A[L] + A[L+1] + ... + A[R]</code>. Return all answers as a <code>long[]</code>.</p>`,
+      statement: `<p>You are given an integer array <code>A</code> of size <code>N</code> and <code>Q</code> queries. Each query is a pair <code>[L, R]</code> (0-indexed, inclusive). For every query return the sum <code>A[L] + A[L+1] + ... + A[R]</code>. Return all answers as an array of 64-bit integers (<code>long[]</code> in Java, a list in Python/JS, <code>vector&lt;long long&gt;</code> in C++).</p>`,
       constraints: `1 ≤ N, Q ≤ 10<sup>5</sup>, −10<sup>9</sup> ≤ A[i] ≤ 10<sup>9</sup>, 0 ≤ L ≤ R &lt; N`,
       example: `${H.arr([3, 1, 4, 1, 5, 9], { label: 'A', hl: { 1: 'b', 2: 'b', 3: 'b', 4: 'b' } })}
         <p>Queries: <code>[1,4]</code>, <code>[0,2]</code>, <code>[3,5]</code> → Output: <b>[11, 8, 15]</b></p>
@@ -411,9 +631,18 @@ System.out.println(Arrays.toString(result));  // [0, 3, 5, 5, 2]` },
       },
       hints: [
         `<p><b>Aha:</b> sum(L..R) = (sum of 0..R) − (sum of 0..L−1). If you already know every "sum from the start", each query is <b>one subtraction</b>: <code>pf[R] − pf[L−1]</code>.</p>`,
-        `<p>Build a <code>long[] pf</code> in one left-to-right pass: <code>pf[i] = pf[i−1] + A[i]</code>. Then loop over the queries and compute each answer from two array lookups. No extra data structure needed.</p>`,
+        `<p>Build a 64-bit prefix array <code>pf</code> in one left-to-right pass: <code>pf[i] = pf[i−1] + A[i]</code>. Then loop over the queries and compute each answer from two array lookups. No extra data structure needed.</p>`,
         `<p><b>Traps:</b> (1) <code>L = 0</code> → there is no <code>pf[−1]</code>, answer is <code>pf[R]</code> (or use the padded size-N+1 array). (2) Use <code>long</code>: 10<sup>5</sup> × 10<sup>9</sup> overflows <code>int</code>. (3) Negative numbers are fine — subtraction still works.<br><b>Recipe:</b> pf[0] = A[0]; for i = 1..N−1: pf[i] = pf[i−1] + A[i]. For each query: ans = (L == 0) ? pf[R] : pf[R] − pf[L−1].</p>`
       ],
+      tests: { sig: 'int[] int[][] -> long[]', fn: 'rangeSum', cases: [
+        [[[3, 1, 4, 1, 5, 9], [[1, 4], [0, 2], [3, 5]]], [11, 8, 15]],
+        [[[7], [[0, 0]]], [7]],
+        [[[5, -2, 3, -4], [[1, 3], [0, 0], [3, 3], [0, 3]]], [-3, 5, -4, 2]],
+        [[[1000000000, 1000000000, 1000000000, 1000000000, 1000000000, 1000000000], [[0, 5], [2, 4]]], [6000000000, 3000000000]],
+        [[[-1000000000, -1000000000, -1000000000, -1000000000, -1000000000], [[0, 4], [1, 1]]], [-5000000000, -1000000000]],
+        [[[0, 0, 0], [[0, 2], [1, 2]]], [0, 0]],
+        [[[1, 2, 3, 4], [[0, 3], [1, 2], [2, 2], [0, 0]]], [10, 5, 3, 1]]
+      ] },
       solution: {
         approach: `<p>Precompute running totals once (O(N)); answer every query with one subtraction (O(1)).</p>`,
         code: `
@@ -440,6 +669,29 @@ System.out.println(Arrays.toString(result));  // [0, 3, 5, 5, 2]` },
                   System.out.println(Arrays.toString(new Solution().rangeSum(A, qs))); // [11, 8, 15]
               }
           }`,
+        alt: [
+          { lang: 'python', code: `from itertools import accumulate
+
+def range_sum(a, queries):
+    pf = [0, *accumulate(a)]          # padded: pf[i] = sum of a[0..i-1]
+    return [pf[r + 1] - pf[l] for l, r in queries]` },
+          { lang: 'js', code: `function rangeSum(A, queries) {
+  const pf = new Array(A.length + 1).fill(0);   // padded: pf[i] = sum of A[0..i-1]
+  for (let i = 0; i < A.length; i++) pf[i + 1] = pf[i] + A[i];   // totals stay below 2^53
+  return queries.map(([L, R]) => pf[R + 1] - pf[L]);
+}` },
+          { lang: 'cpp', code: `class Solution {
+public:
+    vector<long long> rangeSum(vector<int>& A, vector<vector<int>>& queries) {
+        vector<long long> pf(A.size() + 1, 0);   // padded: pf[i] = sum of A[0..i-1]
+        for (size_t i = 0; i < A.size(); i++) pf[i + 1] = pf[i] + A[i];
+        vector<long long> ans;
+        ans.reserve(queries.size());
+        for (auto& q : queries) ans.push_back(pf[q[1] + 1] - pf[q[0]]);
+        return ans;
+    }
+};` }
+        ],
         dry: {
           head: ['step', 'what', 'computation', 'result'],
           rows: [
@@ -491,7 +743,7 @@ System.out.println(Arrays.toString(result));  // [0, 3, 5, 5, 2]` },
       '"Left sum equals right sum" / "pivot index" / "equilibrium index" → <code>pf[i−1] == total − pf[i]</code>.',
       '<code>N ≤ 10<sup>5</sup></code> and "for each index" → O(N<sup>2</sup>) rebuild is too slow; O(N) prefix approach needed.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       long[][] evenOddPrefix(int[] A) {
           int n = A.length;
           long[] pfE = new long[n], pfO = new long[n];
@@ -502,7 +754,40 @@ System.out.println(Arrays.toString(result));  // [0, 3, 5, 5, 2]` },
               pfO[i] = prevO + (i % 2 == 1 ? A[i] : 0);   // add only if i is odd
           }
           return new long[][]{pfE, pfO};
-      }`, `
+      }`, alt: [
+        { lang: 'python', code: `def even_odd_prefix(a):
+    pf_e, pf_o = [], []
+    e = o = 0
+    for i, x in enumerate(a):
+        if i % 2 == 0:
+            e += x                 # add only if i is even
+        else:
+            o += x                 # add only if i is odd
+        pf_e.append(e)
+        pf_o.append(o)
+    return pf_e, pf_o` },
+        { lang: 'js', code: `function evenOddPrefix(A) {
+  const pfE = [], pfO = [];
+  let e = 0, o = 0;
+  A.forEach((x, i) => {
+    if (i % 2 === 0) e += x;   // add only if i is even
+    else o += x;               // add only if i is odd
+    pfE.push(e);
+    pfO.push(o);
+  });
+  return [pfE, pfO];
+}` },
+        { lang: 'cpp', code: `pair<vector<long long>, vector<long long>> evenOddPrefix(const vector<int>& A) {
+    int n = A.size();
+    vector<long long> pfE(n), pfO(n);
+    for (int i = 0; i < n; i++) {
+        long long prevE = i ? pfE[i - 1] : 0, prevO = i ? pfO[i - 1] : 0;
+        pfE[i] = prevE + (i % 2 == 0 ? A[i] : 0);   // add only if i is even
+        pfO[i] = prevO + (i % 2 == 1 ? A[i] : 0);   // add only if i is odd
+    }
+    return {pfE, pfO};
+}` }
+      ] }, { lang: 'java', code: `
       int equilibriumIndex(int[] A) {
           long total = 0;
           for (int x : A) total += x;
@@ -513,7 +798,35 @@ System.out.println(Arrays.toString(result));  // [0, 3, 5, 5, 2]` },
               left += A[i];                     // carry the left sum forward
           }
           return -1;                            // no such index
-      }`],
+      }`, alt: [
+        { lang: 'python', code: `def equilibrium_index(a):
+    total, left = sum(a), 0          # left = sum of a[0..i-1]
+    for i, x in enumerate(a):
+        if left == total - left - x: # right = sum of a[i+1..]
+            return i                 # first balancing index
+        left += x                    # carry the left sum forward
+    return -1                        # no such index` },
+        { lang: 'js', code: `function equilibriumIndex(A) {
+  const total = A.reduce((s, x) => s + x, 0);
+  let left = 0;                          // sum of A[0..i-1]
+  for (let i = 0; i < A.length; i++) {
+    const right = total - left - A[i];   // sum of A[i+1..n-1]
+    if (left === right) return i;        // first balancing index
+    left += A[i];                        // carry the left sum forward
+  }
+  return -1;                             // no such index
+}` },
+        { lang: 'cpp', code: `int equilibriumIndex(const vector<int>& A) {
+    long long total = accumulate(A.begin(), A.end(), 0LL);   // 0LL, or the sum is done in int
+    long long left = 0;                       // sum of A[0..i-1]
+    for (int i = 0; i < (int)A.size(); i++) {
+        long long right = total - left - A[i];   // sum of A[i+1..n-1]
+        if (left == right) return i;          // first balancing index
+        left += A[i];                         // carry the left sum forward
+    }
+    return -1;                                // no such index
+}` }
+      ] }],
     codeTitle: ['Building even and odd prefix sums', 'Equilibrium (pivot) index with one running sum'],
     viz: {
       title: 'Special index: remove i, the right side flips teams',
@@ -568,13 +881,33 @@ System.out.println(Arrays.toString(result));  // [0, 3, 5, 5, 2]` },
       { title: 'Sum of even-index values inside a range', html: `<p>A = [3, 8, 1, 6, 4, 2]. Question: sum of values at <b>even indices</b> between L = 1 and R = 4 → indices 2 and 4 → 1 + 4 = <b>5</b>. With pfE = [3, 3, 4, 4, 8, 8]: answer = pfE[4] − pfE[0] = 8 − 3 = 5 ✔. The same "upto R minus before L" formula works on the filtered array.</p>${H.arr([3, 8, 1, 6, 4, 2], { label: 'A', hl: { 2: 'g', 4: 'g', 1: 'm', 3: 'm' } })}${H.arr([3, 3, 4, 4, 8, 8], { label: 'pfE', hl: { 0: 'r', 4: 'g' } })}` },
       { title: 'Equilibrium index at the very edge', html: `<p>A = [2, −2, 5]. At index 2: left = 2 + (−2) = 0, right = nothing = 0 → <b>2</b> is an equilibrium index. At index 0 of [5, 3, −3]: left = 0, right = 3 − 3 = 0 → index <b>0</b> works. Edges are valid answers; code that starts its loop at 1 or stops at N − 2 misses them.</p>` },
       { title: 'Special index when N = 1', html: `<p>A = [7]. Removing index 0 leaves an empty array: even sum 0, odd sum 0 → equal, so the count is <b>1</b>. The formula: leftE = leftO = 0, rightE = pfE[0] − pfE[0] = 0, rightO = 0 → newEven = newOdd = 0 ✔. Good formulas handle tiny inputs without special cases — test N = 1 and N = 2 every time.</p>` },
-      { title: 'Alternating sum of a range', html: `<p>"Compute A[L] − A[L+1] + A[L+2] − …" for many queries. Build one array <code>S[i+1] = S[i] + (i even ? A[i] : −A[i])</code>. For a range starting at an even L the answer is S[R+1] − S[L]; for an odd L, negate it. A = [5, 1, 4, 2]: S = [0, 5, 4, 8, 6]. Query 1..3 = −(S[4] − S[1]) = −(6 − 5) = <b>−1</b>; check 1 − 4 + 2 = −1 ✔.</p>`, code: `int[] A = {5, 1, 4, 2};
+      { title: 'Alternating sum of a range', html: `<p>"Compute A[L] − A[L+1] + A[L+2] − …" for many queries. Build one array <code>S[i+1] = S[i] + (i even ? A[i] : −A[i])</code>. For a range starting at an even L the answer is S[R+1] − S[L]; for an odd L, negate it. A = [5, 1, 4, 2]: S = [0, 5, 4, 8, 6]. Query 1..3 = −(S[4] − S[1]) = −(6 − 5) = <b>−1</b>; check 1 − 4 + 2 = −1 ✔.</p>`, code: { lang: 'java', code: `int[] A = {5, 1, 4, 2};
 long[] S = new long[A.length + 1];
 for (int i = 0; i < A.length; i++) S[i + 1] = S[i] + (i % 2 == 0 ? A[i] : -A[i]);
 int L = 1, R = 3;
 long raw = S[R + 1] - S[L];
 long alt = (L % 2 == 0) ? raw : -raw;   // flip sign if the range starts on an odd index
-System.out.println(alt);                // -1` }
+System.out.println(alt);                // -1`, alt: [
+        { lang: 'python', run: true, code: `A = [5, 1, 4, 2]
+S = [0]
+for i, x in enumerate(A):
+    S.append(S[-1] + (x if i % 2 == 0 else -x))
+L, R = 1, 3
+raw = S[R + 1] - S[L]
+print(raw if L % 2 == 0 else -raw)   # -1 (flip sign if the range starts on an odd index)` },
+        { lang: 'js', run: true, code: `const A = [5, 1, 4, 2];
+const S = [0];
+A.forEach((x, i) => S.push(S[i] + (i % 2 === 0 ? x : -x)));
+const L = 1, R = 3;
+const raw = S[R + 1] - S[L];
+console.log(L % 2 === 0 ? raw : -raw);   // -1 (flip sign if the range starts on an odd index)` },
+        { lang: 'cpp', code: `vector<int> A = {5, 1, 4, 2};
+vector<long long> S(A.size() + 1, 0);
+for (size_t i = 0; i < A.size(); i++) S[i + 1] = S[i] + (i % 2 == 0 ? A[i] : -A[i]);
+int L = 1, R = 3;
+long long raw = S[R + 1] - S[L];
+cout << (L % 2 == 0 ? raw : -raw) << "\\n";   // -1` }
+      ] } }
     ],
     deepDive: `<h4>Why the parity flip is correct</h4><p>After deleting index i, every j &gt; i moves to j − 1. Since j and j − 1 always have different parity, the whole right block swaps teams together, and the left block (j &lt; i) is untouched. That gives exactly four independent quantities — leftE, leftO, rightE, rightO — each readable in O(1) from two prefix arrays.</p>
       <h4>One array instead of two</h4><p>You can store a single signed prefix <code>S[i+1] = S[i] + (i even ? A[i] : −A[i])</code>. Then "evenSum − oddSum" of any range is ±(S[R+1] − S[L]). For the special-index question, newEven − newOdd = (leftE − leftO) + (rightO − rightE) = S[i] − (S[N] − S[i+1]), so index i is special exactly when <code>S[i] + S[i+1] == S[N]</code>. Check on [2, 1, 6, 4]: S = [0, 2, 1, 7, 3]; at i = 1, S[1] + S[2] = 2 + 1 = 3 = S[4] ✔. Elegant, but two arrays are easier to explain under pressure, so lead with those.</p>
@@ -625,9 +958,20 @@ System.out.println(alt);                // -1` }
       },
       hints: [
         `<p><b>Aha:</b> after deleting i, <code>newEven = (evens left of i) + (odds right of i)</code> and <code>newOdd = (odds left of i) + (evens right of i)</code>, because the right side flips parity.</p>`,
-        `<p>Precompute two <code>long[]</code> prefix arrays: <code>pfE</code> (adds A[j] only when j is even) and <code>pfO</code> (only when j is odd). Then "left" = <code>pf[i−1]</code> and "right" = <code>pf[N−1] − pf[i]</code> for each team — all O(1).</p>`,
+        `<p>Precompute two 64-bit prefix arrays: <code>pfE</code> (adds A[j] only when j is even) and <code>pfO</code> (only when j is odd). Then "left" = <code>pf[i−1]</code> and "right" = <code>pf[N−1] − pf[i]</code> for each team — all O(1).</p>`,
         `<p><b>Traps:</b> i = 0 has no <code>pf[−1]</code> → treat left sums as 0. Use <code>long</code>. N = 1: removing the only element leaves 0 = 0 → special (formula gives that automatically).<br><b>Recipe:</b> build pfE, pfO. For each i: lE, lO = (i == 0 ? 0 : pfE[i−1], pfO[i−1]); rE = pfE[N−1] − pfE[i]; rO = pfO[N−1] − pfO[i]; if lE + rO == lO + rE → count++.</p>`
       ],
+      tests: { sig: 'int[] -> int', fn: 'countSpecial', cases: [
+        [[[2, 1, 6, 4]], 1],
+        [[[7]], 1],
+        [[[1, 1]], 0],
+        [[[1, 1, 1]], 3],
+        [[[0, 0, 0, 0]], 4],
+        [[[2, -1, -1, 2]], 0],
+        [[[-5, 5, -5, 5, -5]], 1],
+        [[[1, -1, 2, -1, 3, 2, 3, 2, 2, 1, -3, 3, 0, 3, -2, 2, -3, -2, -3, -1, 0, 3, -2, 0, 1, -3, 1, -2, -3, 2, -2, 0, -1, -2, 3, 3, 0, -2, 3, 3]], 0],
+        [[[100000, -100000, 100000]], 1]
+      ] },
       solution: {
         approach: `<p>Two prefix arrays (even-index and odd-index). For each candidate i, combine "left unchanged" with "right swapped" in O(1).</p>`,
         code: `
@@ -658,6 +1002,52 @@ System.out.println(alt);                // -1` }
                   System.out.println(new Solution().countSpecial(new int[]{2, 1, 6, 4})); // 1
               }
           }`,
+        alt: [
+          { lang: 'python', code: `def count_special(a):
+    n = len(a)
+    pe, po = [0] * (n + 1), [0] * (n + 1)      # padded even / odd prefix sums
+    for i, x in enumerate(a):
+        pe[i + 1] = pe[i] + (x if i % 2 == 0 else 0)
+        po[i + 1] = po[i] + (x if i % 2 == 1 else 0)
+    count = 0
+    for i in range(n):
+        right_e, right_o = pe[n] - pe[i + 1], po[n] - po[i + 1]
+        # left keeps its parity, the right side swaps
+        if pe[i] + right_o == po[i] + right_e:
+            count += 1
+    return count` },
+          { lang: 'js', code: `function countSpecial(A) {
+  const n = A.length;
+  const pe = new Array(n + 1).fill(0), po = new Array(n + 1).fill(0);   // padded even / odd sums
+  for (let i = 0; i < n; i++) {
+    pe[i + 1] = pe[i] + (i % 2 === 0 ? A[i] : 0);
+    po[i + 1] = po[i] + (i % 2 === 1 ? A[i] : 0);
+  }
+  let count = 0;
+  for (let i = 0; i < n; i++) {
+    const rightE = pe[n] - pe[i + 1], rightO = po[n] - po[i + 1];
+    if (pe[i] + rightO === po[i] + rightE) count++;   // right side swaps parity
+  }
+  return count;
+}` },
+          { lang: 'cpp', code: `class Solution {
+public:
+    int countSpecial(vector<int>& A) {
+        int n = A.size();
+        vector<long long> pe(n + 1, 0), po(n + 1, 0);   // padded even / odd sums
+        for (int i = 0; i < n; i++) {
+            pe[i + 1] = pe[i] + (i % 2 == 0 ? A[i] : 0);
+            po[i + 1] = po[i] + (i % 2 == 1 ? A[i] : 0);
+        }
+        int count = 0;
+        for (int i = 0; i < n; i++) {
+            long long rightE = pe[n] - pe[i + 1], rightO = po[n] - po[i + 1];
+            if (pe[i] + rightO == po[i] + rightE) count++;   // right side swaps parity
+        }
+        return count;
+    }
+};` }
+        ],
         dry: {
           head: ['i', 'leftE', 'leftO', 'rightE', 'rightO', 'newEven', 'newOdd', 'special?'],
           rows: [
@@ -701,6 +1091,16 @@ System.out.println(alt);                // -1` }
         `<p>No array needed at all: compute <code>total</code> once, then walk left to right carrying a single <code>long left</code> (the carry-forward idea). After checking i, add A[i] to left.</p>`,
         `<p><b>Traps:</b> index 0 has left = 0 and the last index has right = 0 — both are valid pivots. Use <code>long</code> for sums. Return the <b>first</b> match.<br><b>Recipe:</b> total = sum(A); left = 0; for i in 0..N−1: right = total − left − A[i]; if left == right return i; left += A[i]. Return −1.</p>`
       ],
+      tests: { sig: 'int[] -> int', fn: 'pivotIndex', cases: [
+        [[[1, 7, 3, 6, 5, 6]], 3],
+        [[[1, 2, 3]], -1],
+        [[[2, 1, -1]], 0],
+        [[[2, -2, 5]], 2],
+        [[[0, 0, 0]], 0],
+        [[[5]], 0],
+        [[[-1, -1, -1, -1, -1, 0]], 2],
+        [[[1000000000, 1000000000, -1000000000, 1000000000, 1000000000]], 1]
+      ] },
       solution: {
         approach: `<p>Total sum once; then one sweep with a running left sum. Right sum is derived by subtraction.</p>`,
         code: `
@@ -721,6 +1121,36 @@ System.out.println(alt);                // -1` }
                   System.out.println(new Solution().pivotIndex(new int[]{1, 7, 3, 6, 5, 6})); // 3
               }
           }`,
+        alt: [
+          { lang: 'python', code: `def pivot_index(a):
+    total, left = sum(a), 0
+    for i, x in enumerate(a):
+        if left == total - left - x:     # right sum = total - left - a[i]
+            return i
+        left += x
+    return -1` },
+          { lang: 'js', code: `function pivotIndex(A) {
+  const total = A.reduce((s, x) => s + x, 0);   // at most 1e14: exact in a Number
+  let left = 0;
+  for (let i = 0; i < A.length; i++) {
+    if (left === total - left - A[i]) return i;
+    left += A[i];
+  }
+  return -1;
+}` },
+          { lang: 'cpp', code: `class Solution {
+public:
+    int pivotIndex(vector<int>& A) {
+        long long total = accumulate(A.begin(), A.end(), 0LL);   // 0LL: sum in 64 bits
+        long long left = 0;
+        for (int i = 0; i < (int)A.size(); i++) {
+            if (left == total - left - A[i]) return i;
+            left += A[i];
+        }
+        return -1;
+    }
+};` }
+        ],
         dry: {
           head: ['i', 'A[i]', 'left', 'right = 28 − left − A[i]', 'equal?'],
           rows: [
@@ -760,7 +1190,7 @@ System.out.println(alt);                // -1` }
       '<code>N ≤ 10<sup>5</sup></code> with a pair-counting story → O(N<sup>2</sup>) brute force times out; carry forward makes it O(N).',
       'Answer may be huge ("return modulo 10<sup>9</sup>+7") → the pair count can reach N<sup>2</sup>/4; use <code>long</code>.'
     ],
-    code: `
+    code: { lang: 'java', code: `
       // Left-to-right flavour: carry how many 'a' we have passed
       long countAGLeftToRight(String s) {
           long aCount = 0, pairs = 0;
@@ -770,7 +1200,35 @@ System.out.println(alt);                // -1` }
               else if (ch == 'g') pairs += aCount;  // every earlier 'a' pairs with this 'g'
           }
           return pairs;
-      }`,
+      }`, alt: [
+        { lang: 'python', code: `# Left-to-right flavour: carry how many 'a' we have passed
+def count_ag_left_to_right(s):
+    a_count = pairs = 0
+    for ch in s:
+        if ch == 'a':
+            a_count += 1           # remember this 'a' for future g's
+        elif ch == 'g':
+            pairs += a_count       # every earlier 'a' pairs with this 'g'
+    return pairs` },
+        { lang: 'js', code: `// Left-to-right flavour: carry how many 'a' we have passed
+function countAGLeftToRight(s) {
+  let aCount = 0, pairs = 0;
+  for (const ch of s) {
+    if (ch === 'a') aCount++;              // remember this 'a' for future g's
+    else if (ch === 'g') pairs += aCount;  // every earlier 'a' pairs with this 'g'
+  }
+  return pairs;
+}` },
+        { lang: 'cpp', code: `// Left-to-right flavour: carry how many 'a' we have passed
+long long countAGLeftToRight(const string& s) {
+    long long aCount = 0, pairs = 0;
+    for (char ch : s) {
+        if (ch == 'a') aCount++;               // remember this 'a' for future g's
+        else if (ch == 'g') pairs += aCount;   // every earlier 'a' pairs with this 'g'
+    }
+    return pairs;
+}` }
+      ] },
     codeTitle: 'Same idea in the other direction',
     viz: [{
       title: 'Count "ag" pairs: carry the number of g\'s from the right',
@@ -840,22 +1298,71 @@ System.out.println(alt);                // -1` }
     examples: [
       { title: 'Best time to buy and sell a stock once', html: `<p>Prices: [7, 1, 5, 3, 6, 4]. Carry <code>minSoFar</code> (cheapest day before today). Each day, profit if sold today = price − minSoFar.</p>
         ${H.table(['day', 'price', 'minSoFar (before)', 'sell today', 'best'], [['0', '7', '—', '—', '0'], ['1', '1', '7', '−6', '0'], ['2', '5', '1', '4', '4'], ['3', '3', '1', '2', '4'], ['4', '6', '1', H.c('g', '5'), H.c('p', '5')], ['5', '4', '1', '3', '5']])}
-        <p>Answer <b>5</b> (buy at 1, sell at 6). Carry forward turned "check every buy/sell pair" (O(N<sup>2</sup>)) into one pass.</p>`, code: `int[] p = {7, 1, 5, 3, 6, 4};
+        <p>Answer <b>5</b> (buy at 1, sell at 6). Carry forward turned "check every buy/sell pair" (O(N<sup>2</sup>)) into one pass.</p>`, code: { lang: 'java', code: `int[] p = {7, 1, 5, 3, 6, 4};
 int minSoFar = Integer.MAX_VALUE, best = 0;
 for (int x : p) {
     if (minSoFar != Integer.MAX_VALUE) best = Math.max(best, x - minSoFar);  // sell today?
     minSoFar = Math.min(minSoFar, x);                             // then remember today as a buy option
 }
-System.out.println(best);   // 5` },
+System.out.println(best);   // 5`, alt: [
+        { lang: 'python', run: true, code: `p = [7, 1, 5, 3, 6, 4]
+min_so_far, best = float('inf'), 0
+for x in p:
+    best = max(best, x - min_so_far)   # sell today? (inf on day 0 gives a negative, ignored)
+    min_so_far = min(min_so_far, x)    # then remember today as a buy option
+print(best)   # 5` },
+        { lang: 'js', run: true, code: `const p = [7, 1, 5, 3, 6, 4];
+let minSoFar = Infinity, best = 0;
+for (const x of p) {
+  best = Math.max(best, x - minSoFar);   // sell today? (Infinity on day 0 gives -Infinity, ignored)
+  minSoFar = Math.min(minSoFar, x);      // then remember today as a buy option
+}
+console.log(best);   // 5` },
+        { lang: 'cpp', code: `vector<int> p = {7, 1, 5, 3, 6, 4};
+int minSoFar = INT_MAX, best = 0;
+for (int x : p) {
+    if (minSoFar != INT_MAX) best = max(best, x - minSoFar);   // sell today? (skip day 0: nothing bought yet)
+    minSoFar = min(minSoFar, x);                             // then remember today as a buy option
+}
+cout << best << "\\n";   // 5` }
+      ] } },
       { title: 'Count pairs i &lt; j with A[i] &gt; A[j] where values are only 0 or 1', html: `<p>A = [1, 0, 1, 1, 0, 0]. A "bad pair" is a 1 before a 0. Walk left to right carrying <code>ones</code>; at every 0 add <code>ones</code>. Ones before index 1 → 1; before index 4 → 3; before index 5 → 3. Total <b>7</b>. That is also the number of adjacent swaps needed to sort a 0/1 array (a sneak peek of inversion counting, done for general values in the Sorting module).</p>` },
       { title: 'Closest "a" to every position (carry the last seen index)', html: `<p>For each index of s = "baxab", how far is the nearest earlier 'a'? Carry <code>lastA</code> (−1 means none yet): b → none, a → 0, x → 1, a → 0, b → 1. Carrying an <b>index</b> instead of a count is the same idea; doing a second pass from the right and taking the min gives "nearest 'a' on either side" (LeetCode 821, Shortest Distance to a Character).</p>` },
-      { title: 'Minimum distance between an "a" and a "b"', html: `<p>"Smallest distance between any 'a' and any 'b'": walk once, carry <code>lastA</code> and <code>lastB</code>. Whenever you see one letter and the other has been seen, update <code>ans = min(ans, i − lastOther)</code>. For [a, x, x, b, x, a, b]: pairs (0,3) = 3, (3,5) = 2, (5,6) = 1 → answer <b>1</b>. One pass, two carried indices.</p>`, code: `char[] s = {'a', 'x', 'x', 'b', 'x', 'a', 'b'};
+      { title: 'Minimum distance between an "a" and a "b"', html: `<p>"Smallest distance between any 'a' and any 'b'": walk once, carry <code>lastA</code> and <code>lastB</code>. Whenever you see one letter and the other has been seen, update <code>ans = min(ans, i − lastOther)</code>. For [a, x, x, b, x, a, b]: pairs (0,3) = 3, (3,5) = 2, (5,6) = 1 → answer <b>1</b>. One pass, two carried indices.</p>`, code: { lang: 'java', code: `char[] s = {'a', 'x', 'x', 'b', 'x', 'a', 'b'};
 int lastA = -1, lastB = -1, ans = Integer.MAX_VALUE;
 for (int i = 0; i < s.length; i++) {
     if (s[i] == 'a') { lastA = i; if (lastB != -1) ans = Math.min(ans, i - lastB); }
     else if (s[i] == 'b') { lastB = i; if (lastA != -1) ans = Math.min(ans, i - lastA); }
 }
-System.out.println(ans);   // 1` }
+System.out.println(ans);   // 1`, alt: [
+        { lang: 'python', run: true, code: `s = "axxbxab"
+last_a = last_b = -1
+ans = float('inf')
+for i, ch in enumerate(s):
+    if ch == 'a':
+        last_a = i
+        if last_b != -1:
+            ans = min(ans, i - last_b)
+    elif ch == 'b':
+        last_b = i
+        if last_a != -1:
+            ans = min(ans, i - last_a)
+print(ans)   # 1` },
+        { lang: 'js', run: true, code: `const s = 'axxbxab';
+let lastA = -1, lastB = -1, ans = Infinity;
+for (let i = 0; i < s.length; i++) {
+  if (s[i] === 'a') { lastA = i; if (lastB !== -1) ans = Math.min(ans, i - lastB); }
+  else if (s[i] === 'b') { lastB = i; if (lastA !== -1) ans = Math.min(ans, i - lastA); }
+}
+console.log(ans);   // 1` },
+        { lang: 'cpp', code: `string s = "axxbxab";
+int lastA = -1, lastB = -1, ans = INT_MAX;
+for (int i = 0; i < (int)s.size(); i++) {
+    if (s[i] == 'a') { lastA = i; if (lastB != -1) ans = min(ans, i - lastB); }
+    else if (s[i] == 'b') { lastB = i; if (lastA != -1) ans = min(ans, i - lastA); }
+}
+cout << ans << "\\n";   // 1` }
+      ] } }
     ],
     deepDive: `<h4>The general shape</h4><p>Carry forward is a tiny state machine: <code>state = f(state, A[i])</code>, and the answer is read from the state (or accumulated) at every step. Kadane, prefix sums, running max/min, "last seen index", and even many DP problems are this exact shape. If you can name the state in one sentence ("the cheapest price so far", "number of g's to my right"), you have an O(N) one-pass algorithm with O(1) memory.</p>
       <h4>Why the pair-count formula is correct</h4><p>Every valid pair (i, j) is counted exactly once — at the moment the scan reaches its 'a' (right-to-left version), because that 'g' was already counted in gCount and the 'a' is visited only once. No pair is counted twice, none is missed: that is the whole proof.</p>
@@ -899,6 +1406,16 @@ System.out.println(ans);   // 1` }
         `<p>No data structure needed — just one <code>long gCount</code> carried while walking right-to-left (or one <code>aCount</code> while walking left-to-right and adding at each 'g').</p>`,
         `<p><b>Traps:</b> the count can reach (N/2)<sup>2</sup> = 2.5 × 10<sup>9</sup> &gt; int max → use <code>long</code> (or take mod 10<sup>9</sup>+7 if asked). Characters other than 'a'/'g' are ignored.<br><b>Recipe:</b> gCount = 0, ans = 0; for i from N−1 down to 0: if S[i] == 'g' gCount++; else if S[i] == 'a' ans += gCount. Return ans.</p>`
       ],
+      tests: { sig: 'string -> long', fn: 'countAG', cases: [
+        [['abegag'], 3],
+        [['a'], 0],
+        [['g'], 0],
+        [['ga'], 0],
+        [['aaggg'], 6],
+        [['agagag'], 6],
+        [['xyz'], 0],
+        [['a'.repeat(300) + 'g'.repeat(300)], 90000]
+      ] },
       solution: {
         approach: `<p>Walk right-to-left carrying the number of g's seen; each 'a' adds that number.</p>`,
         code: `
@@ -921,6 +1438,35 @@ System.out.println(ans);   // 1` }
                   System.out.println(new Solution().countAG("abegag")); // 3
               }
           }`,
+        alt: [
+          { lang: 'python', code: `def count_ag(s):
+    g_count = pairs = 0
+    for ch in reversed(s):          # walk right to left
+        if ch == 'g':
+            g_count += 1
+        elif ch == 'a':
+            pairs += g_count        # pairs with every 'g' on its right
+    return pairs` },
+          { lang: 'js', code: `function countAG(s) {
+  let gCount = 0, pairs = 0;
+  for (let i = s.length - 1; i >= 0; i--) {
+    if (s[i] === 'g') gCount++;
+    else if (s[i] === 'a') pairs += gCount;   // pairs with every 'g' on its right
+  }
+  return pairs;
+}` },
+          { lang: 'cpp', code: `class Solution {
+public:
+    long long countAG(const string& s) {
+        long long gCount = 0, pairs = 0;
+        for (auto it = s.rbegin(); it != s.rend(); ++it) {
+            if (*it == 'g') gCount++;
+            else if (*it == 'a') pairs += gCount;   // pairs with every 'g' on its right
+        }
+        return pairs;
+    }
+};` }
+        ],
         dry: {
           head: ['i', 'S[i]', 'action', 'gCount', 'pairs'],
           rows: [
@@ -966,8 +1512,19 @@ System.out.println(ans);   // 1` }
       hints: [
         `<p><b>Aha:</b> A[i] is a leader ⇔ A[i] &gt; max(A[i+1..N−1]). So you only need "the max of everything to the right" — one number.</p>`,
         `<p>Walk from the right, carrying <code>maxRight</code>. If A[i] &gt; maxRight, add A[i] to a list and set maxRight = A[i]. The list is built right-to-left, so reverse it at the end.</p>`,
-        `<p><b>Traps:</b> starting maxRight at <code>Integer.MIN_VALUE</code> breaks if the last element IS <code>Integer.MIN_VALUE</code> (strict &gt; fails) → use <code>long</code> with <code>Long.MIN_VALUE</code>. "Strictly greater" means equal values are not leaders (in [5, 5] only the last 5 is).<br><b>Recipe:</b> maxRight = −∞; for i = N−1..0: if A[i] &gt; maxRight → add, maxRight = A[i]. Reverse and return.</p>`
+        `<p><b>Traps:</b> starting maxRight at <code>Integer.MIN_VALUE</code> breaks if the last element IS <code>Integer.MIN_VALUE</code> (strict &gt; fails) → use <code>long</code> with <code>Long.MIN_VALUE</code> (Python <code>float('-inf')</code>, JS <code>-Infinity</code>, C++ <code>LLONG_MIN</code>). "Strictly greater" means equal values are not leaders (in [5, 5] only the last 5 is).<br><b>Recipe:</b> maxRight = −∞; for i = N−1..0: if A[i] &gt; maxRight → add, maxRight = A[i]. Reverse and return.</p>`
       ],
+      tests: { sig: 'int[] -> list<int>', fn: 'leaders', cases: [
+        [[[16, 17, 4, 3, 5, 2]], [17, 5, 2]],
+        [[[5]], [5]],
+        [[[1, 2, 3]], [3]],
+        [[[3, 2, 1]], [3, 2, 1]],
+        [[[2, 2, 2]], [2]],
+        [[[-2147483648]], [-2147483648]],
+        [[[-2147483648, -2147483648]], [-2147483648]],
+        [[[-1, -5, -3, -4]], [-1, -3, -4]],
+        [[[2147483647, 0, 2147483647]], [2147483647]]
+      ] },
       solution: {
         approach: `<p>Right-to-left scan, carrying the running maximum of the suffix.</p>`,
         code: `
@@ -989,6 +1546,41 @@ System.out.println(ans);   // 1` }
                   System.out.println(new Solution().leaders(new int[]{16, 17, 4, 3, 5, 2})); // [17, 5, 2]
               }
           }`,
+        alt: [
+          { lang: 'python', code: `def leaders(a):
+    res, max_right = [], float('-inf')
+    for x in reversed(a):
+        if x > max_right:           # beats everyone on its right
+            res.append(x)
+            max_right = x
+    return res[::-1]                # collected right to left` },
+          { lang: 'js', code: `function leaders(A) {
+  const res = [];
+  let maxRight = -Infinity;
+  for (let i = A.length - 1; i >= 0; i--) {
+    if (A[i] > maxRight) {          // beats everyone on its right
+      res.push(A[i]);
+      maxRight = A[i];
+    }
+  }
+  return res.reverse();             // collected right to left
+}` },
+          { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> leaders(vector<int>& A) {
+        vector<int> res;
+        long long maxRight = LLONG_MIN;   // below every int, so the last element always wins
+        for (int i = (int)A.size() - 1; i >= 0; i--) {
+            if (A[i] > maxRight) {
+                res.push_back(A[i]);
+                maxRight = A[i];
+            }
+        }
+        reverse(res.begin(), res.end());
+        return res;
+    }
+};` }
+        ],
         dry: {
           head: ['i', 'A[i]', 'maxRight before', 'A[i] &gt; maxRight?', 'res (right→left)'],
           rows: [
@@ -1040,7 +1632,7 @@ System.out.println(ans);   // 1` }
       '"Max profit window", "best streak", "max gain over consecutive days" in a story → max subarray sum in disguise.',
       '"Maximum sum <b>rectangle</b> in a matrix" or "circular array" → Kadane plus a twist (see Practice).'
     ],
-    code: `
+    code: { lang: 'java', code: `
       int[] kadaneWithIndices(int[] A) {
           long cur = A[0], best = A[0];
           int start = 0, bestL = 0, bestR = 0;
@@ -1058,7 +1650,38 @@ System.out.println(ans);   // 1` }
               }
           }
           return new int[]{bestL, bestR};   // the best subarray is A[bestL..bestR]
-      }`,
+      }`, alt: [
+        { lang: 'python', code: `def kadane_with_indices(a):
+    cur = best = a[0]
+    start = best_l = best_r = 0
+    for i in range(1, len(a)):
+        if cur < 0:              # old run is baggage: start fresh at i
+            cur, start = a[i], i
+        else:
+            cur += a[i]          # extend the run
+        if cur > best:           # new record: remember where it is
+            best, best_l, best_r = cur, start, i
+    return best_l, best_r        # the best subarray is a[best_l..best_r]` },
+        { lang: 'js', code: `function kadaneWithIndices(A) {
+  let cur = A[0], best = A[0], start = 0, bestL = 0, bestR = 0;
+  for (let i = 1; i < A.length; i++) {
+    if (cur < 0) { cur = A[i]; start = i; }   // old run is baggage: start fresh at i
+    else cur += A[i];                         // extend the run
+    if (cur > best) { best = cur; bestL = start; bestR = i; }   // new record
+  }
+  return [bestL, bestR];   // the best subarray is A[bestL..bestR]
+}` },
+        { lang: 'cpp', code: `pair<int, int> kadaneWithIndices(const vector<int>& A) {
+    long long cur = A[0], best = A[0];
+    int start = 0, bestL = 0, bestR = 0;
+    for (int i = 1; i < (int)A.size(); i++) {
+        if (cur < 0) { cur = A[i]; start = i; }   // old run is baggage: start fresh at i
+        else cur += A[i];                         // extend the run
+        if (cur > best) { best = cur; bestL = start; bestR = i; }   // new record
+    }
+    return {bestL, bestR};   // the best subarray is A[bestL..bestR]
+}` }
+      ] },
     codeTitle: 'Kadane that also returns where the best subarray is',
     viz: {
       title: 'Kadane: running sum vs best so far',
@@ -1098,13 +1721,34 @@ System.out.println(ans);   // 1` }
       { title: 'Returning the subarray itself', html: `<p>A = [2, −5, 3, 1, −1, 4]. Track <code>start</code> when you restart, and save <code>(start, i)</code> on every new record. Restart happens at index 2 (cur was −3). Records: 2 (0..0), 3 (2..2), 4 (2..3), 7 (2..5). Answer <b>7</b> from A[2..5] = [3, 1, −1, 4].</p>
         ${H.table(['i', 'A[i]', 'cur', 'start', 'best (L..R)'], [['0', '2', '2', '0', '2 (0..0)'], ['1', '−5', '−3', '0', '2'], ['2', '3', H.c('g', '3 (fresh)'), '2', '3 (2..2)'], ['3', '1', '4', '2', '4 (2..3)'], ['4', '−1', '3', '2', '4'], ['5', '4', '7', '2', H.c('p', '7 (2..5)')]])}` },
       { title: 'Maximum sum with one circular wrap', html: `<p>A = [5, −3, 5] in a circle. Normal Kadane gives 7 (5 + −3 + 5). But wrapping around, [5, 5] (last then first) gives <b>10</b>. Trick: best wrap = total − (minimum subarray sum) = 7 − (−3) = 10. Answer = max(normal, wrap), except when all numbers are negative (then the min subarray is the whole array and the wrap would be empty) — see the Practice problem "Maximum Sum Circular Subarray".</p>` },
-      { title: 'Minimum subarray sum = Kadane on the flipped array', html: `<p>To find the <b>smallest</b> sum, either flip every sign and run Kadane (then flip the answer), or replace max with min. A = [3, −4, 2, −3, −1, 7]: min run is [−4, 2, −3, −1] = <b>−6</b>.</p>`, code: `int[] A = {3, -4, 2, -3, -1, 7};
+      { title: 'Minimum subarray sum = Kadane on the flipped array', html: `<p>To find the <b>smallest</b> sum, either flip every sign and run Kadane (then flip the answer), or replace max with min. A = [3, −4, 2, −3, −1, 7]: min run is [−4, 2, −3, −1] = <b>−6</b>.</p>`, code: { lang: 'java', code: `int[] A = {3, -4, 2, -3, -1, 7};
 long cur = A[0], worst = A[0];
 for (int i = 1; i < A.length; i++) {
     cur = Math.min(A[i], cur + A[i]);   // same recurrence, min instead of max
     worst = Math.min(worst, cur);
 }
-System.out.println(worst);   // -6` }
+System.out.println(worst);   // -6`, alt: [
+        { lang: 'python', run: true, code: `A = [3, -4, 2, -3, -1, 7]
+cur = worst = A[0]
+for x in A[1:]:
+    cur = min(x, cur + x)      # same recurrence, min instead of max
+    worst = min(worst, cur)
+print(worst)   # -6` },
+        { lang: 'js', run: true, code: `const A = [3, -4, 2, -3, -1, 7];
+let cur = A[0], worst = A[0];
+for (let i = 1; i < A.length; i++) {
+  cur = Math.min(A[i], cur + A[i]);   // same recurrence, min instead of max
+  worst = Math.min(worst, cur);
+}
+console.log(worst);   // -6` },
+        { lang: 'cpp', code: `vector<int> A = {3, -4, 2, -3, -1, 7};
+long long cur = A[0], worst = A[0];
+for (size_t i = 1; i < A.size(); i++) {
+    cur = min<long long>(A[i], cur + A[i]);   // same recurrence, min instead of max
+    worst = min(worst, cur);
+}
+cout << worst << "\\n";   // -6` }
+      ] } }
     ],
     deepDive: `<h4>Kadane is the simplest dynamic programming</h4><p>Define <code>dp[i]</code> = best sum of a subarray <b>ending at i</b>. Then <code>dp[i] = A[i] + max(dp[i−1], 0)</code> and the answer is <code>max(dp)</code>. Because dp[i] only needs dp[i−1], the array collapses to one variable — the classic DP "space optimisation" you will see again in the DP modules.</p>
       <h4>Proof sketch</h4><p>Any optimal subarray ends at some index j. The best subarray ending at j is either [A[j]] alone or extends the best subarray ending at j − 1 (if a worse one ending at j − 1 were used, swapping in the better one would increase the total — contradiction). So taking max over all j finds the global optimum.</p>
@@ -1149,6 +1793,16 @@ System.out.println(worst);   // -6` }
         `<p>No array needed: carry two <code>long</code> variables — <code>cur</code> (best ending here) and <code>best</code> (best anywhere so far). Update both in one left-to-right pass.</p>`,
         `<p><b>Traps:</b> all-negative input → initialise <code>best = A[0]</code>, not 0 (answer for [−3, −1] is −1). Use <code>long</code>: 10<sup>5</sup> × 10<sup>9</sup> overflows int.<br><b>Recipe:</b> cur = best = A[0]; for i = 1..N−1: cur = max(A[i], cur + A[i]); best = max(best, cur). Return best.</p>`
       ],
+      tests: { sig: 'int[] -> long', fn: 'maxSubArray', cases: [
+        [[[-2, 1, -3, 4, -1, 2, 1, -5, 4]], 6],
+        [[[-3]], -3],
+        [[[-5, -2, -8]], -2],
+        [[[1000000000, 1000000000, 1000000000, 1000000000, 1000000000]], 5000000000],
+        [[[1, -1, 1, -1, 1]], 1],
+        [[[5, 4, -1, 7, 8]], 23],
+        [[[0]], 0],
+        [[[-1000000000, -1000000000]], -1000000000]
+      ] },
       solution: {
         approach: `<p>Kadane's algorithm: carry "best sum ending here" and "best sum seen", one pass.</p>`,
         code: `
@@ -1169,6 +1823,33 @@ System.out.println(worst);   // -6` }
                   System.out.println(new Solution().maxSubArray(A)); // 6
               }
           }`,
+        alt: [
+          { lang: 'python', code: `def max_sub_array(a):
+    cur = best = a[0]                  # a[0], not 0: handles all-negative input
+    for x in a[1:]:
+        cur = max(x, cur + x)          # extend the run or start fresh
+        best = max(best, cur)
+    return best` },
+          { lang: 'js', code: `function maxSubArray(A) {
+  let cur = A[0], best = A[0];        // A[0], not 0: handles all-negative input
+  for (let i = 1; i < A.length; i++) {
+    cur = Math.max(A[i], cur + A[i]); // extend the run or start fresh
+    best = Math.max(best, cur);
+  }
+  return best;
+}` },
+          { lang: 'cpp', code: `class Solution {
+public:
+    long long maxSubArray(vector<int>& A) {
+        long long cur = A[0], best = A[0];        // A[0], not 0: handles all-negative input
+        for (size_t i = 1; i < A.size(); i++) {
+            cur = max<long long>(A[i], cur + A[i]);   // extend the run or start fresh
+            best = max(best, cur);
+        }
+        return best;
+    }
+};` }
+        ],
         dry: {
           head: ['i', 'A[i]', 'cur = max(A[i], cur + A[i])', 'best'],
           rows: [
@@ -1246,7 +1927,7 @@ System.out.println(worst);   // -6` }
     after: `<p><b>Same trick in 2D — sum of all submatrix sums:</b> cell (i, j) of an N × M matrix is inside <code>(i+1)(j+1)</code> choices of top-left corner and <code>(N−i)(M−j)</code> choices of bottom-right corner, so it contributes <code>A[i][j] × (i+1)(j+1)(N−i)(M−j)</code>. For [[1, 1], [1, 1]] each cell appears in 1·1·2·2 = 4 submatrices → total 16.</p>`,
     examples: [
       { title: 'Hill-shaped counts for N = 5', html: `<p>count(i) = (i+1)(N−i): ${H.table(['i', '0', '1', '2', '3', '4'], [['starts', '1', '2', '3', '4', '5'], ['ends', '5', '4', '3', '2', '1'], ['count', '5', '8', H.c('p', '9'), '8', '5']])} The counts add up to 35 = 1·5 + 2·4 + 3·3 + 4·2 + 5·1, and the sum of all subarray <b>lengths</b> for N = 5 is also 35 — two ways to count the same thing. Sanity checks like this catch formula slips.</p>` },
-      { title: 'Sum of all odd-length subarrays', html: `<p>Only odd-length subarrays count. For index i with L = i + 1 starts and R = N − i ends, a subarray has odd length when the number of elements on the left of i and on the right of i are both even or both odd. That gives <code>oddCount(i) = ⌈L/2⌉·⌈R/2⌉ + ⌊L/2⌋·⌊R/2⌋</code>. A = [1, 4, 2, 5, 3]: odd counts = 3, 4, 5, 4, 3 → 1·3 + 4·4 + 2·5 + 5·4 + 3·3 = <b>58</b> (LeetCode 1588).</p>`, code: `int[] A = {1, 4, 2, 5, 3};
+      { title: 'Sum of all odd-length subarrays', html: `<p>Only odd-length subarrays count. For index i with L = i + 1 starts and R = N − i ends, a subarray has odd length when the number of elements on the left of i and on the right of i are both even or both odd. That gives <code>oddCount(i) = ⌈L/2⌉·⌈R/2⌉ + ⌊L/2⌋·⌊R/2⌋</code>. A = [1, 4, 2, 5, 3]: odd counts = 3, 4, 5, 4, 3 → 1·3 + 4·4 + 2·5 + 5·4 + 3·3 = <b>58</b> (LeetCode 1588).</p>`, code: { lang: 'java', code: `int[] A = {1, 4, 2, 5, 3};
 int n = A.length;
 long total = 0;
 for (int i = 0; i < n; i++) {
@@ -1254,7 +1935,33 @@ for (int i = 0; i < n; i++) {
     long odd = ((L + 1) / 2) * ((R + 1) / 2) + (L / 2) * (R / 2);
     total += A[i] * odd;
 }
-System.out.println(total);   // 58` },
+System.out.println(total);   // 58`, alt: [
+        { lang: 'python', run: true, code: `A = [1, 4, 2, 5, 3]
+n = len(A)
+total = 0
+for i, x in enumerate(A):
+    L, R = i + 1, n - i                          # choices of start / end
+    odd = ((L + 1) // 2) * ((R + 1) // 2) + (L // 2) * (R // 2)
+    total += x * odd
+print(total)   # 58` },
+        { lang: 'js', run: true, code: `const A = [1, 4, 2, 5, 3];
+const n = A.length;
+let total = 0;
+for (let i = 0; i < n; i++) {
+  const L = i + 1, R = n - i;                   // choices of start / end
+  const odd = Math.floor((L + 1) / 2) * Math.floor((R + 1) / 2) + Math.floor(L / 2) * Math.floor(R / 2);
+  total += A[i] * odd;
+}
+console.log(total);   // 58` },
+        { lang: 'cpp', code: `vector<int> A = {1, 4, 2, 5, 3};
+long long n = A.size(), total = 0;
+for (long long i = 0; i < n; i++) {
+    long long L = i + 1, R = n - i;              // choices of start / end
+    long long odd = ((L + 1) / 2) * ((R + 1) / 2) + (L / 2) * (R / 2);
+    total += A[i] * odd;
+}
+cout << total << "\\n";   // 58` }
+      ] } },
       { title: 'Sum of all submatrix sums (2D contribution)', html: `<p>Matrix [[1, 2], [3, 4]] (N = M = 2). Cell (i, j) is inside (i+1)(j+1)(N−i)(M−j) submatrices — every corner cell of a 2 × 2 grid is inside 1·1·2·2 = 4 of the 9 submatrices. Total = 4 × (1 + 2 + 3 + 4) = <b>40</b>. Listing all 9 submatrices by hand confirms it.</p>` },
       { title: 'Number of subarrays where A[i] is the maximum (preview)', html: `<p>The contribution idea scales: "sum of max of every subarray" = ∑ A[i] × (number of subarrays where A[i] is the max). That count is (distance to previous greater) × (distance to next greater), found with a monotonic stack (Stacks module). A = [3, 1, 2]: 3 is max in 3 subarrays, 1 in 1, 2 in 2 → 3·3 + 1·1 + 2·2 = <b>14</b>. Check: [3]=3, [1]=1, [2]=2, [3,1]=3, [1,2]=2, [3,1,2]=3 → 14 ✔.</p>` }
     ],
@@ -1301,6 +2008,15 @@ System.out.println(total);   // 58` },
         `<p>No data structure needed. One loop over i, one <code>long total</code>. (i+1) = number of possible left ends, (N−i) = number of possible right ends.</p>`,
         `<p><b>Traps:</b> <code>A[i] * (i+1) * (N−i)</code> in <code>int</code> overflows (10<sup>4</sup> × 5·10<sup>4</sup> × 5·10<sup>4</sup> = 2.5·10<sup>13</sup>) → cast to <code>long</code> <b>before</b> multiplying. Watch 0-indexing: with 1-indexed positions the formula is i × (N − i + 1).<br><b>Recipe:</b> total = 0; for i in 0..N−1: total += (long) A[i] × (i + 1) × (N − i). Return total.</p>`
       ],
+      tests: { sig: 'int[] -> long', fn: 'subarraySumTotal', cases: [
+        [[[1, 2, 3]], 20],
+        [[[5]], 5],
+        [[[1, 1]], 4],
+        [[[10000, 10000, 10000]], 100000],
+        [[[3, 1, 4, 1, 5]], 92],
+        [[[2, 7, 1, 8, 2, 8]], 258],
+        [[Array(1000).fill(10000)], 1671670000000]
+      ] },
       solution: {
         approach: `<p>Each A[i] is counted in (i+1)(N−i) subarrays; add A[i] times that count.</p>`,
         code: `
@@ -1321,6 +2037,30 @@ System.out.println(total);   // 58` },
                   System.out.println(new Solution().subarraySumTotal(new int[]{1, 2, 3})); // 20
               }
           }`,
+        alt: [
+          { lang: 'python', code: `def subarray_sum_total(a):
+    n = len(a)
+    # a[i] sits in (i + 1) * (n - i) subarrays
+    return sum(x * (i + 1) * (n - i) for i, x in enumerate(a))` },
+          { lang: 'js', code: `function subarraySumTotal(A) {
+  const n = BigInt(A.length);
+  let total = 0n;                     // BigInt: the answer can pass 2^53
+  A.forEach((x, i) => {
+    const k = BigInt(i);
+    total += BigInt(x) * (k + 1n) * (n - k);   // starts * ends subarrays hold A[i]
+  });
+  return total;
+}` },
+          { lang: 'cpp', code: `class Solution {
+public:
+    long long subarraySumTotal(vector<int>& A) {
+        long long n = A.size(), total = 0;
+        for (long long i = 0; i < n; i++)
+            total += A[i] * (i + 1) * (n - i);   // starts * ends subarrays hold A[i]
+        return total;
+    }
+};` }
+        ],
         dry: {
           head: ['i', 'A[i]', 'starts = i+1', 'ends = N−i', 'count', 'A[i] × count', 'total'],
           rows: [
@@ -1365,7 +2105,7 @@ System.out.println(total);   // 58` },
       '<code>N ≤ 10<sup>5</sup></code> → O(N<sup>2</sup>) "scan both sides for each bar" is too slow; O(N) with helper arrays.',
       '"Without extra space" → two-pointer version that moves the side with the smaller max.'
     ],
-    code: `
+    code: { lang: 'java', code: `
       long trapTwoPointers(int[] h) {
           int L = 0, R = h.length - 1;
           int leftMax = 0, rightMax = 0;
@@ -1382,7 +2122,42 @@ System.out.println(total);   // 58` },
               }
           }
           return water;
-      }`,
+      }`, alt: [
+        { lang: 'python', code: `def trap_two_pointers(h):
+    L, R = 0, len(h) - 1
+    left_max = right_max = water = 0
+    while L < R:
+        left_max = max(left_max, h[L])
+        right_max = max(right_max, h[R])
+        if left_max <= right_max:      # left wall is the limiting one for bar L
+            water += left_max - h[L]
+            L += 1
+        else:                          # right wall is the limiting one for bar R
+            water += right_max - h[R]
+            R -= 1
+    return water` },
+        { lang: 'js', code: `function trapTwoPointers(h) {
+  let L = 0, R = h.length - 1, leftMax = 0, rightMax = 0, water = 0;
+  while (L < R) {
+    leftMax = Math.max(leftMax, h[L]);
+    rightMax = Math.max(rightMax, h[R]);
+    if (leftMax <= rightMax) { water += leftMax - h[L]; L++; }   // left wall limits bar L
+    else { water += rightMax - h[R]; R--; }                      // right wall limits bar R
+  }
+  return water;
+}` },
+        { lang: 'cpp', code: `long long trapTwoPointers(const vector<int>& h) {
+    int L = 0, R = (int)h.size() - 1, leftMax = 0, rightMax = 0;
+    long long water = 0;
+    while (L < R) {
+        leftMax = max(leftMax, h[L]);
+        rightMax = max(rightMax, h[R]);
+        if (leftMax <= rightMax) { water += leftMax - h[L]; L++; }   // left wall limits bar L
+        else { water += rightMax - h[R]; R--; }                      // right wall limits bar R
+    }
+    return water;
+}` }
+      ] },
     codeTitle: 'Bonus: two-pointer version with O(1) extra space',
     viz: {
       title: 'Rain water: prefix max, suffix max, then fill',
@@ -1443,7 +2218,7 @@ System.out.println(total);   // 58` },
     examples: [
       { title: 'A simple valley', html: `<p>h = [3, 0, 2, 0, 4]. LMax = [3, 3, 3, 3, 4], RMax = [4, 4, 4, 4, 4]. Water = [0, 3, 1, 3, 0] → <b>7</b>. The middle bar of height 2 is under water too: the level is 3 (the shorter outer wall), so it holds 1 unit on top.</p>${H.arr([3, 0, 2, 0, 4], { label: 'h', hl: { 1: 'b', 2: 'b', 3: 'b' } })}` },
       { title: 'No water when the bars only go up (or only down)', html: `<p>h = [1, 2, 3, 4]: for every bar, LMax[i] = h[i], so min(LMax, RMax) − h = 0 → <b>0</b>. Same for a strictly decreasing array (RMax[i] = h[i]). Water needs a wall on <b>both</b> sides. A "V" or "U" shape somewhere is required.</p>` },
-      { title: 'Product of array except self (prefix × suffix, the same two-pass idea)', html: `<p>A = [1, 2, 3, 4]. Prefix products (before i): [1, 1, 2, 6]. Suffix products (after i): [24, 12, 4, 1]. Multiply: <b>[24, 12, 8, 6]</b>. No division needed, so zeros are handled. This "left pass + right pass, combine per index" pattern is the backbone of rain water, candy distribution and many more.</p>`, code: `int[] A = {1, 2, 3, 4};
+      { title: 'Product of array except self (prefix × suffix, the same two-pass idea)', html: `<p>A = [1, 2, 3, 4]. Prefix products (before i): [1, 1, 2, 6]. Suffix products (after i): [24, 12, 4, 1]. Multiply: <b>[24, 12, 8, 6]</b>. No division needed, so zeros are handled. This "left pass + right pass, combine per index" pattern is the backbone of rain water, candy distribution and many more.</p>`, code: { lang: 'java', code: `int[] A = {1, 2, 3, 4};
 int n = A.length;
 int[] out = new int[n];
 out[0] = 1;
@@ -1453,7 +2228,32 @@ for (int i = n - 1; i >= 0; i--) {                            // multiply by pro
     out[i] *= right;
     right *= A[i];
 }
-System.out.println(Arrays.toString(out));   // [24, 12, 8, 6]` },
+System.out.println(Arrays.toString(out));   // [24, 12, 8, 6]`, alt: [
+        { lang: 'python', run: true, code: `A = [1, 2, 3, 4]
+n = len(A)
+out = [1] * n
+for i in range(1, n):
+    out[i] = out[i - 1] * A[i - 1]   # product of everything before i
+right = 1
+for i in range(n - 1, -1, -1):       # multiply by product of everything after i
+    out[i] *= right
+    right *= A[i]
+print(out)   # [24, 12, 8, 6]` },
+        { lang: 'js', run: true, code: `const A = [1, 2, 3, 4];
+const n = A.length, out = new Array(n).fill(1);
+for (let i = 1; i < n; i++) out[i] = out[i - 1] * A[i - 1];   // product of everything before i
+let right = 1;
+for (let i = n - 1; i >= 0; i--) { out[i] *= right; right *= A[i]; }   // times everything after i
+console.log(JSON.stringify(out));   // [24,12,8,6]` },
+        { lang: 'cpp', code: `vector<int> A = {1, 2, 3, 4};
+int n = A.size();
+vector<int> out(n, 1);
+for (int i = 1; i < n; i++) out[i] = out[i - 1] * A[i - 1];   // product of everything before i
+int right = 1;
+for (int i = n - 1; i >= 0; i--) { out[i] *= right; right *= A[i]; }   // times everything after i
+for (int x : out) cout << x << " ";   // 24 12 8 6
+cout << "\\n";` }
+      ] } },
       { title: 'Two-pointer run on [4, 2, 0, 3, 2, 5]', html: `${H.table(['L', 'R', 'leftMax', 'rightMax', 'move', 'water added', 'total'], [['0', '5', '4', '5', 'L (4 ≤ 5)', '0', '0'], ['1', '5', '4', '5', 'L', '4 − 2 = 2', '2'], ['2', '5', '4', '5', 'L', '4 − 0 = 4', '6'], ['3', '5', '4', '5', 'L', '4 − 3 = 1', '7'], ['4', '5', '4', '5', 'L', '4 − 2 = 2', H.c('p', '9')]])}<p>Answer <b>9</b>. Every time, the left max (4) is the smaller wall, so bar L's water is decided by it — whatever lies between, the right side has at least a 5.</p>` }
     ],
     deepDive: `<h4>Why the two-pointer version is correct</h4><p>Suppose leftMax ≤ rightMax. For bar L, the true right wall is max(h[L..N−1]) ≥ rightMax ≥ leftMax, so min(leftMax, trueRight) = leftMax — we know bar L's exact water <b>without</b> knowing the full right side. Moving L is safe. The symmetric argument holds for R. Each step settles one bar → O(N) time, O(1) space.</p>
@@ -1494,9 +2294,20 @@ System.out.println(Arrays.toString(out));   // [24, 12, 8, 6]` },
       },
       hints: [
         `<p><b>Aha:</b> water on bar i = <code>min(max of h[0..i], max of h[i..N−1]) − h[i]</code>. Total = sum of that over all i.</p>`,
-        `<p>Precompute <code>int[] LMax</code> (prefix max, left → right) and <code>int[] RMax</code> (suffix max, right → left). Then one more pass adds up water. (Or two pointers with two running maxes for O(1) space.)</p>`,
+        `<p>Precompute an array <code>LMax</code> (prefix max, left → right) and an array <code>RMax</code> (suffix max, right → left). Then one more pass adds up water. (Or two pointers with two running maxes for O(1) space.)</p>`,
         `<p><b>Traps:</b> bars at the ends never hold water (formula gives 0 automatically if LMax/RMax include h[i]). Total can reach 10<sup>5</sup> × 10<sup>5</sup> = 10<sup>10</sup> → use <code>long</code>. N &lt; 3 → answer 0.<br><b>Recipe:</b> LMax[0] = h[0]; LMax[i] = max(LMax[i−1], h[i]). RMax[N−1] = h[N−1]; RMax[i] = max(RMax[i+1], h[i]). ans = ∑ (min(LMax[i], RMax[i]) − h[i]).</p>`
       ],
+      tests: { sig: 'int[] -> long', fn: 'trap', cases: [
+        [[[0, 1, 0, 2, 1, 0, 1, 3, 2, 1, 2, 1]], 6],
+        [[[5]], 0],
+        [[[4, 2, 0, 3, 2, 5]], 9],
+        [[[1, 2, 3, 4]], 0],
+        [[[4, 3, 2, 1]], 0],
+        [[[5, 0, 5]], 5],
+        [[[2, 0, 2, 0, 2]], 4],
+        [[[100000, 0, 0, 0, 0, 0, 100000]], 500000],
+        [[[3, 3, 3]], 0]
+      ] },
       solution: {
         approach: `<p>Prefix max + suffix max arrays, then water[i] = min(LMax[i], RMax[i]) − h[i].</p>`,
         code: `
@@ -1525,6 +2336,38 @@ System.out.println(Arrays.toString(out));   // [24, 12, 8, 6]` },
                   System.out.println(new Solution().trap(h)); // 6
               }
           }`,
+        alt: [
+          { lang: 'python', code: `from itertools import accumulate
+
+def trap(h):
+    l_max = list(accumulate(h, max))                 # tallest wall in 0..i
+    r_max = list(accumulate(reversed(h), max))[::-1] # tallest wall in i..n-1
+    return sum(min(l, r) - x for l, r, x in zip(l_max, r_max, h))` },
+          { lang: 'js', code: `function trap(h) {
+  const n = h.length, lMax = new Array(n), rMax = new Array(n);
+  lMax[0] = h[0];
+  for (let i = 1; i < n; i++) lMax[i] = Math.max(lMax[i - 1], h[i]);
+  rMax[n - 1] = h[n - 1];
+  for (let i = n - 2; i >= 0; i--) rMax[i] = Math.max(rMax[i + 1], h[i]);
+  let water = 0;
+  for (let i = 0; i < n; i++) water += Math.min(lMax[i], rMax[i]) - h[i];
+  return water;
+}` },
+          { lang: 'cpp', code: `class Solution {
+public:
+    long long trap(vector<int>& h) {
+        int n = h.size();
+        vector<int> lMax(n), rMax(n);
+        lMax[0] = h[0];
+        for (int i = 1; i < n; i++) lMax[i] = max(lMax[i - 1], h[i]);
+        rMax[n - 1] = h[n - 1];
+        for (int i = n - 2; i >= 0; i--) rMax[i] = max(rMax[i + 1], h[i]);
+        long long water = 0;                         // up to 1e10
+        for (int i = 0; i < n; i++) water += min(lMax[i], rMax[i]) - h[i];
+        return water;
+    }
+};` }
+        ],
         dry: {
           head: ['i', 'h[i]', 'LMax', 'RMax', 'min', 'water', 'total'],
           rows: [
@@ -1571,7 +2414,7 @@ System.out.println(Arrays.toString(out));   // [24, 12, 8, 6]` },
       '"Rotate the rings / shift each layer by k" → treat each ring as a 1D list extracted with one spiral lap.',
       'Non-square input (R ≠ C) in the examples → watch the single-row / single-column middle; the two guard checks are mandatory.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       List<Integer> spiralOrder(int[][] g) {
           List<Integer> out = new ArrayList<>();
           int top = 0, bottom = g.length - 1;
@@ -1591,7 +2434,61 @@ System.out.println(Arrays.toString(out));   // [24, 12, 8, 6]` },
               }
           }
           return out;
-      }`, {
+      }`, alt: [
+        { lang: 'python', code: `def spiral_order(g):
+    out = []
+    top, bottom, left, right = 0, len(g) - 1, 0, len(g[0]) - 1
+    while top <= bottom and left <= right:
+        out.extend(g[top][left:right + 1])                    # → top row
+        top += 1                                              # top row is done
+        out.extend(g[r][right] for r in range(top, bottom + 1))   # ↓ right column
+        right -= 1                                            # right column is done
+        if top <= bottom:                                     # a bottom row still exists
+            out.extend(reversed(g[bottom][left:right + 1]))   # ← bottom row
+            bottom -= 1
+        if left <= right:                                     # a left column still exists
+            out.extend(g[r][left] for r in range(bottom, top - 1, -1))   # ↑ left column
+            left += 1
+    return out` },
+        { lang: 'js', code: `function spiralOrder(g) {
+  const out = [];
+  let top = 0, bottom = g.length - 1, left = 0, right = g[0].length - 1;
+  while (top <= bottom && left <= right) {
+    for (let c = left; c <= right; c++) out.push(g[top][c]);       // → top row
+    top++;                                                         // top row is done
+    for (let r = top; r <= bottom; r++) out.push(g[r][right]);     // ↓ right column
+    right--;                                                       // right column is done
+    if (top <= bottom) {                                           // a bottom row still exists
+      for (let c = right; c >= left; c--) out.push(g[bottom][c]);  // ← bottom row
+      bottom--;
+    }
+    if (left <= right) {                                           // a left column still exists
+      for (let r = bottom; r >= top; r--) out.push(g[r][left]);    // ↑ left column
+      left++;
+    }
+  }
+  return out;
+}` },
+        { lang: 'cpp', code: `vector<int> spiralOrder(const vector<vector<int>>& g) {
+    vector<int> out;
+    int top = 0, bottom = (int)g.size() - 1, left = 0, right = (int)g[0].size() - 1;
+    while (top <= bottom && left <= right) {
+        for (int c = left; c <= right; c++) out.push_back(g[top][c]);       // → top row
+        top++;                                                              // top row is done
+        for (int r = top; r <= bottom; r++) out.push_back(g[r][right]);     // ↓ right column
+        right--;                                                            // right column is done
+        if (top <= bottom) {                                                // a bottom row still exists
+            for (int c = right; c >= left; c--) out.push_back(g[bottom][c]); // ← bottom row
+            bottom--;
+        }
+        if (left <= right) {                                                // a left column still exists
+            for (int r = bottom; r >= top; r--) out.push_back(g[r][left]);   // ↑ left column
+            left++;
+        }
+    }
+    return out;
+}` }
+      ] }, {
       lang: 'python', run: true, title: 'Same four-wall walk in Python (runnable)', code: `def spiral(g):
     out = []
     top, bottom, left, right = 0, len(g) - 1, 0, len(g[0]) - 1
@@ -1615,7 +2512,7 @@ System.out.println(Arrays.toString(out));   // [24, 12, 8, 6]` },
 print(spiral([[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12]]))
 print(spiral([[1], [2], [3]]))
 print(spiral([[1, 2, 3]]))` }],
-    codeTitle: ['Spiral order with four walls (Java)', 'Python version with edge-case tests'],
+    codeTitle: ['Spiral order with four walls', 'Python version with edge-case tests'],
     viz: {
       title: 'Spiral walk: watch the four walls close in',
       input: '1 2 3 4; 5 6 7 8; 9 10 11 12',
@@ -1668,7 +2565,7 @@ print(spiral([[1, 2, 3]]))` }],
     examples: [
       { title: 'A single row and a single column', html: `<p>[[1, 2, 3]] → <b>[1, 2, 3]</b>. After → the top wall moves to 1 &gt; bottom 0, so the ← and ↑ walks must be skipped. [[1], [2], [3]] → <b>[1, 2, 3]</b>: → takes 1, ↓ takes 2, 3, then right becomes −1 &lt; left, so ↑ is skipped. Without the guards you would output [1, 2, 3, 2] or similar duplicates.</p>` },
       { title: 'Odd square: the centre cell', html: `<p>3 × 3 [[1,2,3],[4,5,6],[7,8,9]] → 1 2 3 6 9 8 7 4 then the second lap has top = bottom = left = right = 1, so → takes <b>5</b>, and every other walk is empty. Output: <b>1 2 3 6 9 8 7 4 5</b>.</p>${H.table(['', 'c0', 'c1', 'c2'], [['r0', '1', '2', '3'], ['r1', '4', H.c('p', '5'), '6'], ['r2', '7', '8', '9']])}` },
-      { title: 'Spiral Matrix II: fill instead of read', html: `<p>To build an N × N matrix with 1..N<sup>2</sup> in spiral order, run the exact same walls but <b>write</b> a counter. N = 3 gives [[1, 2, 3], [8, 9, 4], [7, 6, 5]].</p>`, code: `int n = 3, val = 1;
+      { title: 'Spiral Matrix II: fill instead of read', html: `<p>To build an N × N matrix with 1..N<sup>2</sup> in spiral order, run the exact same walls but <b>write</b> a counter. N = 3 gives [[1, 2, 3], [8, 9, 4], [7, 6, 5]].</p>`, code: { lang: 'java', code: `int n = 3, val = 1;
 int[][] g = new int[n][n];
 int top = 0, bottom = n - 1, left = 0, right = n - 1;
 while (top <= bottom && left <= right) {
@@ -1679,7 +2576,52 @@ while (top <= bottom && left <= right) {
     if (top <= bottom) { for (int c = right; c >= left; c--) g[bottom][c] = val++; bottom--; }
     if (left <= right) { for (int r = bottom; r >= top; r--) g[r][left] = val++; left++; }
 }
-System.out.println(Arrays.deepToString(g));   // [[1, 2, 3], [8, 9, 4], [7, 6, 5]]` },
+System.out.println(Arrays.deepToString(g));   // [[1, 2, 3], [8, 9, 4], [7, 6, 5]]`, alt: [
+        { lang: 'python', run: true, code: `n, val = 3, 1
+g = [[0] * n for _ in range(n)]
+top, bottom, left, right = 0, n - 1, 0, n - 1
+while top <= bottom and left <= right:
+    for c in range(left, right + 1):
+        g[top][c] = val; val += 1
+    top += 1
+    for r in range(top, bottom + 1):
+        g[r][right] = val; val += 1
+    right -= 1
+    if top <= bottom:
+        for c in range(right, left - 1, -1):
+            g[bottom][c] = val; val += 1
+        bottom -= 1
+    if left <= right:
+        for r in range(bottom, top - 1, -1):
+            g[r][left] = val; val += 1
+        left += 1
+print(g)   # [[1, 2, 3], [8, 9, 4], [7, 6, 5]]` },
+        { lang: 'js', run: true, code: `const n = 3;
+let val = 1;
+const g = Array.from({ length: n }, () => new Array(n).fill(0));
+let top = 0, bottom = n - 1, left = 0, right = n - 1;
+while (top <= bottom && left <= right) {
+  for (let c = left; c <= right; c++) g[top][c] = val++;
+  top++;
+  for (let r = top; r <= bottom; r++) g[r][right] = val++;
+  right--;
+  if (top <= bottom) { for (let c = right; c >= left; c--) g[bottom][c] = val++; bottom--; }
+  if (left <= right) { for (let r = bottom; r >= top; r--) g[r][left] = val++; left++; }
+}
+console.log(JSON.stringify(g));   // [[1,2,3],[8,9,4],[7,6,5]]` },
+        { lang: 'cpp', code: `int n = 3, val = 1;
+vector<vector<int>> g(n, vector<int>(n, 0));
+int top = 0, bottom = n - 1, left = 0, right = n - 1;
+while (top <= bottom && left <= right) {
+    for (int c = left; c <= right; c++) g[top][c] = val++;
+    top++;
+    for (int r = top; r <= bottom; r++) g[r][right] = val++;
+    right--;
+    if (top <= bottom) { for (int c = right; c >= left; c--) g[bottom][c] = val++; bottom--; }
+    if (left <= right) { for (int r = bottom; r >= top; r--) g[r][left] = val++; left++; }
+}
+for (auto& row : g) { for (int x : row) cout << x << " "; cout << "\\n"; }` }
+      ] } },
       { title: 'Direction-vector version (simulation)', html: `<p>Another style: keep <code>dr = {0, 1, 0, −1}</code>, <code>dc = {1, 0, −1, 0}</code> and a <code>visited</code> grid; step forward and turn right whenever the next cell is outside or already visited. It is easy to write and generalises to "walk until blocked" puzzles, but it costs O(R × C) extra memory for <code>visited</code>. The wall version is O(1) extra and is the one interviewers expect as the optimal answer.</p>` }
     ],
     deepDive: `<h4>Counting the laps</h4><p>Each lap removes 2 rows and 2 columns, so there are ⌈min(R, C) / 2⌉ laps. Each cell is touched once: Θ(R·C). You cannot do better because the output itself has R·C numbers.</p>
@@ -1689,7 +2631,7 @@ System.out.println(Arrays.deepToString(g));   // [[1, 2, 3], [8, 9, 4], [7, 6, 5
       <h4>Cache note</h4><p>The → walk reads memory in order (fast); the ↓ and ↑ walks jump between row arrays (slower). For interview sizes this never matters, but it is a nice remark when asked about real performance.</p>`,
     aiEra: `<p><b>What AI changes:</b> spiral code is pure boilerplate for an assistant — it will write it in seconds. Interviewers therefore watch whether <b>you</b> catch the single-row/single-column bug and test non-square inputs.</p>
       <p><b>Use AI as a partner:</b> ask <code>Give me 5 matrices that break a spiral traversal (1×1, 1×4, 4×1, 2×3, 3×2)</code>, then run your code against them. Or ask it to convert your read-spiral into a write-spiral to check you understand they are the same walk.</p>
-      <p><b>Where AI goes wrong:</b> missing the <code>top ≤ bottom</code> / <code>left ≤ right</code> guards, swapping rows and columns (<code>g.length</code> vs <code>g[0].length</code>), or forgetting the empty-matrix check.</p>
+      <p><b>Where AI goes wrong:</b> missing the <code>top ≤ bottom</code> / <code>left ≤ right</code> guards, swapping rows and columns (length of <code>g</code> vs length of <code>g[0]</code>), or forgetting the empty-matrix check.</p>
       <p><b>What you must still own:</b> the four-wall invariant, a quick hand trace on a 3 × 4, and the discipline to test the degenerate shapes before saying "done".</p>`,
     problems: [{
       title: 'Spiral Matrix',
@@ -1733,8 +2675,18 @@ System.out.println(Arrays.deepToString(g));   // [[1, 2, 3], [8, 9, 4], [7, 6, 5
       hints: [
         `<p><b>Aha:</b> the cells you still have to read always form a rectangle. Describe it with four numbers — top, bottom, left, right — and peel one side at a time.</p>`,
         `<p>Loop while <code>top ≤ bottom && left ≤ right</code>: walk → on row top (then top++), ↓ on column right (then right−−), ← on row bottom (then bottom−−), ↑ on column left (then left++).</p>`,
-        `<p><b>Traps:</b> guard the ← walk with <code>if (top ≤ bottom)</code> and the ↑ walk with <code>if (left ≤ right)</code>; test 1 × N, N × 1, 1 × 1 and 3 × 4. Rows = <code>g.length</code>, cols = <code>g[0].length</code>.<br><b>Recipe:</b> init walls; while walls valid: four walks with the two guards; return the list.</p>`
+        `<p><b>Traps:</b> guard the ← walk with <code>if (top ≤ bottom)</code> and the ↑ walk with <code>if (left ≤ right)</code>; test 1 × N, N × 1, 1 × 1 and 3 × 4. Rows = number of rows of <code>g</code>, cols = length of <code>g[0]</code>.<br><b>Recipe:</b> init walls; while walls valid: four walks with the two guards; return the list.</p>`
       ],
+      tests: { sig: 'int[][] -> list<int>', fn: 'spiralOrder', cases: [
+        [[[[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12]]], [1, 2, 3, 4, 8, 12, 11, 10, 9, 5, 6, 7]],
+        [[[[7]]], [7]],
+        [[[[1, 2, 3]]], [1, 2, 3]],
+        [[[[1], [2], [3]]], [1, 2, 3]],
+        [[[[1, 2], [3, 4]]], [1, 2, 4, 3]],
+        [[[[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16]]], [1, 2, 3, 4, 8, 12, 16, 15, 14, 13, 9, 5, 6, 7, 11, 10]],
+        [[[[1, 2], [3, 4], [5, 6]]], [1, 2, 4, 6, 5, 3]],
+        [[[[-1, -2], [-3, -4]]], [-1, -2, -4, -3]]
+      ] },
       solution: {
         approach: `<p>Four shrinking walls, four walks per lap, two guard checks for degenerate middles. O(1) extra space.</p>`,
         code: `
@@ -1764,7 +2716,42 @@ System.out.println(Arrays.deepToString(g));   // [[1, 2, 3], [8, 9, 4], [7, 6, 5
                   System.out.println(new Solution().spiralOrder(g)); // [1, 2, 3, 4, 8, 12, 11, 10, 9, 5, 6, 7]
               }
           }`,
-        alt: [{ lang: 'cpp', code: `vector<int> spiralOrder(vector<vector<int>>& g) {
+        alt: [
+          { lang: 'python', code: `def spiral_order(g):
+    out = []
+    top, bottom, left, right = 0, len(g) - 1, 0, len(g[0]) - 1
+    while top <= bottom and left <= right:
+        out += g[top][left:right + 1]                              # →
+        top += 1
+        out += [g[r][right] for r in range(top, bottom + 1)]       # ↓
+        right -= 1
+        if top <= bottom:                                          # still a row below?
+            out += g[bottom][left:right + 1][::-1]                 # ←
+            bottom -= 1
+        if left <= right:                                          # still a column left?
+            out += [g[r][left] for r in range(bottom, top - 1, -1)]  # ↑
+            left += 1
+    return out` },
+          { lang: 'js', code: `function spiralOrder(g) {
+  const out = [];
+  let top = 0, bottom = g.length - 1, left = 0, right = g[0].length - 1;
+  while (top <= bottom && left <= right) {
+    for (let c = left; c <= right; c++) out.push(g[top][c]);       // →
+    top++;
+    for (let r = top; r <= bottom; r++) out.push(g[r][right]);     // ↓
+    right--;
+    if (top <= bottom) {                                           // still a row below?
+      for (let c = right; c >= left; c--) out.push(g[bottom][c]);  // ←
+      bottom--;
+    }
+    if (left <= right) {                                           // still a column left?
+      for (let r = bottom; r >= top; r--) out.push(g[r][left]);    // ↑
+      left++;
+    }
+  }
+  return out;
+}` },
+          { lang: 'cpp', code: `vector<int> spiralOrder(vector<vector<int>>& g) {
     vector<int> out;
     int top = 0, bottom = (int)g.size() - 1, left = 0, right = (int)g[0].size() - 1;
     while (top <= bottom && left <= right) {
@@ -1776,7 +2763,8 @@ System.out.println(Arrays.deepToString(g));   // [[1, 2, 3], [8, 9, 4], [7, 6, 5
         if (left <= right) { for (int r = bottom; r >= top; r--) out.push_back(g[r][left]); left++; }
     }
     return out;
-}` }],
+}` }
+        ],
         dry: {
           head: ['walk', 'walls before (t, b, l, r)', 'cells read', 'output length'],
           rows: [
@@ -1821,7 +2809,7 @@ System.out.println(Arrays.deepToString(g));   // [[1, 2, 3], [8, 9, 4], [7, 6, 5
       '"Can matrix A become B by rotating?" (LeetCode 1886) → try the 4 rotations (0°, 90°, 180°, 270°) and compare.',
       'Rectangular R × C input that must be rotated → in-place is impossible; build a C × R result with res[c][R−1−r] = g[r][c].'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       void rotateClockwise(int[][] g) {
           int n = g.length;
           // 1) transpose: swap across the main diagonal (only c > r, so each pair is swapped once)
@@ -1840,7 +2828,33 @@ System.out.println(Arrays.deepToString(g));   // [[1, 2, 3], [8, 9, 4], [7, 6, 5
                   row[hi] = t;
               }
           }
-      }`, `
+      }`, alt: [
+        { lang: 'python', code: `def rotate_clockwise(g):
+    n = len(g)
+    # 1) transpose: swap across the main diagonal (only c > r, so each pair is swapped once)
+    for r in range(n):
+        for c in range(r + 1, n):
+            g[r][c], g[c][r] = g[c][r], g[r][c]
+    # 2) mirror every row left <-> right
+    for row in g:
+        row.reverse()` },
+        { lang: 'js', code: `function rotateClockwise(g) {
+  const n = g.length;
+  // 1) transpose: swap across the main diagonal (only c > r, so each pair is swapped once)
+  for (let r = 0; r < n; r++)
+    for (let c = r + 1; c < n; c++) [g[r][c], g[c][r]] = [g[c][r], g[r][c]];
+  // 2) mirror every row left <-> right
+  for (const row of g) row.reverse();
+}` },
+        { lang: 'cpp', code: `void rotateClockwise(vector<vector<int>>& g) {
+    int n = g.size();
+    // 1) transpose: swap across the main diagonal (only c > r, so each pair is swapped once)
+    for (int r = 0; r < n; r++)
+        for (int c = r + 1; c < n; c++) swap(g[r][c], g[c][r]);
+    // 2) mirror every row left <-> right
+    for (auto& row : g) reverse(row.begin(), row.end());
+}` }
+      ] }, { lang: 'java', code: `
       int[][] rotateRectangle(int[][] g) {
           int R = g.length, C = g[0].length;
           int[][] res = new int[C][R];          // shape changes: R x C becomes C x R
@@ -1848,7 +2862,25 @@ System.out.println(Arrays.deepToString(g));   // [[1, 2, 3], [8, 9, 4], [7, 6, 5
               for (int c = 0; c < C; c++)
                   res[c][R - 1 - r] = g[r][c];   // the clockwise cell rule
           return res;
-      }`],
+      }`, alt: [
+        { lang: 'python', code: `def rotate_rectangle(g):
+    # zip(*g) gives the columns; reversing the rows first makes it clockwise
+    return [list(col) for col in zip(*g[::-1])]   # R x C becomes C x R` },
+        { lang: 'js', code: `function rotateRectangle(g) {
+  const R = g.length, C = g[0].length;
+  const res = Array.from({ length: C }, () => new Array(R));   // shape changes: R x C becomes C x R
+  for (let r = 0; r < R; r++)
+    for (let c = 0; c < C; c++) res[c][R - 1 - r] = g[r][c];   // the clockwise cell rule
+  return res;
+}` },
+        { lang: 'cpp', code: `vector<vector<int>> rotateRectangle(const vector<vector<int>>& g) {
+    int R = g.size(), C = g[0].size();
+    vector<vector<int>> res(C, vector<int>(R));   // shape changes: R x C becomes C x R
+    for (int r = 0; r < R; r++)
+        for (int c = 0; c < C; c++) res[c][R - 1 - r] = g[r][c];   // the clockwise cell rule
+    return res;
+}` }
+      ] }],
     codeTitle: ['In-place 90° clockwise (square matrix)', 'Rectangular matrix: new C × R result'],
     viz: {
       title: 'Rotate clockwise = transpose swaps, then row reversals',
@@ -1897,14 +2929,35 @@ System.out.println(Arrays.deepToString(g));   // [[1, 2, 3], [8, 9, 4], [7, 6, 5
     },
     examples: [
       { title: '2 × 2 by hand', html: `<p>[[1, 2], [3, 4]] → transpose [[1, 3], [2, 4]] → reverse rows <b>[[3, 1], [4, 2]]</b>. Check the rule (r, c) → (c, N−1−r): the 1 at (0, 0) goes to (0, 1) ✔; the 3 at (1, 0) goes to (0, 0) ✔.</p>` },
-      { title: 'Anti-clockwise', html: `<p>[[1, 2, 3], [4, 5, 6], [7, 8, 9]] anti-clockwise is [[3, 6, 9], [2, 5, 8], [1, 4, 7]]. Recipe: reverse each row first ([[3,2,1],[6,5,4],[9,8,7]]) then transpose → [[3,6,9],[2,5,8],[1,4,7]] ✔. Or transpose then reverse the order of the rows. Draw a 2 × 2 to remember which order goes with which direction.</p>`, code: `int[][] g = {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}};
+      { title: 'Anti-clockwise', html: `<p>[[1, 2, 3], [4, 5, 6], [7, 8, 9]] anti-clockwise is [[3, 6, 9], [2, 5, 8], [1, 4, 7]]. Recipe: reverse each row first ([[3,2,1],[6,5,4],[9,8,7]]) then transpose → [[3,6,9],[2,5,8],[1,4,7]] ✔. Or transpose then reverse the order of the rows. Draw a 2 × 2 to remember which order goes with which direction.</p>`, code: { lang: 'java', code: `int[][] g = {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}};
 int n = g.length;
 for (int[] row : g)                                   // 1) reverse each row
     for (int lo = 0, hi = n - 1; lo < hi; lo++, hi--) { int t = row[lo]; row[lo] = row[hi]; row[hi] = t; }
 for (int r = 0; r < n; r++)                           // 2) transpose
     for (int c = r + 1; c < n; c++) { int t = g[r][c]; g[r][c] = g[c][r]; g[c][r] = t; }
-System.out.println(Arrays.deepToString(g));           // [[3, 6, 9], [2, 5, 8], [1, 4, 7]]` },
-      { title: 'Layer-by-layer four-way swap (one pass)', html: `<p>Instead of two passes, rotate each ring by moving four cells at once: top → right → bottom → left → top. For a 4 × 4, layer 0 handles positions i = 0..2: each step saves <code>top = g[first][first+i]</code>, then left → top, bottom → left, right → bottom, saved top → right. It touches each cell once (vs twice for transpose + reverse) but is much easier to get wrong under pressure. Mention it as an alternative; code the two-flip version.</p>`, code: `int[][] g = {{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}, {13, 14, 15, 16}};
+System.out.println(Arrays.deepToString(g));           // [[3, 6, 9], [2, 5, 8], [1, 4, 7]]`, alt: [
+        { lang: 'python', run: true, code: `g = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+n = len(g)
+for row in g:                       # 1) reverse each row
+    row.reverse()
+for r in range(n):                  # 2) transpose
+    for c in range(r + 1, n):
+        g[r][c], g[c][r] = g[c][r], g[r][c]
+print(g)   # [[3, 6, 9], [2, 5, 8], [1, 4, 7]]` },
+        { lang: 'js', run: true, code: `const g = [[1, 2, 3], [4, 5, 6], [7, 8, 9]];
+const n = g.length;
+for (const row of g) row.reverse();                 // 1) reverse each row
+for (let r = 0; r < n; r++)                         // 2) transpose
+  for (let c = r + 1; c < n; c++) [g[r][c], g[c][r]] = [g[c][r], g[r][c]];
+console.log(JSON.stringify(g));   // [[3,6,9],[2,5,8],[1,4,7]]` },
+        { lang: 'cpp', code: `vector<vector<int>> g = {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}};
+int n = g.size();
+for (auto& row : g) reverse(row.begin(), row.end());   // 1) reverse each row
+for (int r = 0; r < n; r++)                            // 2) transpose
+    for (int c = r + 1; c < n; c++) swap(g[r][c], g[c][r]);
+for (auto& row : g) { for (int x : row) cout << x << " "; cout << "\\n"; }   // 3 6 9 / 2 5 8 / 1 4 7` }
+      ] } },
+      { title: 'Layer-by-layer four-way swap (one pass)', html: `<p>Instead of two passes, rotate each ring by moving four cells at once: top → right → bottom → left → top. For a 4 × 4, layer 0 handles positions i = 0..2: each step saves <code>top = g[first][first+i]</code>, then left → top, bottom → left, right → bottom, saved top → right. It touches each cell once (vs twice for transpose + reverse) but is much easier to get wrong under pressure. Mention it as an alternative; code the two-flip version.</p>`, code: { lang: 'java', code: `int[][] g = {{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}, {13, 14, 15, 16}};
 int n = g.length;
 for (int layer = 0; layer < n / 2; layer++) {
     int first = layer, last = n - 1 - layer;
@@ -1916,7 +2969,45 @@ for (int layer = 0; layer < n / 2; layer++) {
         g[first + i][last] = top;                        // top    -> right
     }
 }
-System.out.println(Arrays.deepToString(g));  // [[13, 9, 5, 1], [14, 10, 6, 2], [15, 11, 7, 3], [16, 12, 8, 4]]` },
+System.out.println(Arrays.deepToString(g));  // [[13, 9, 5, 1], [14, 10, 6, 2], [15, 11, 7, 3], [16, 12, 8, 4]]`, alt: [
+        { lang: 'python', run: true, code: `g = [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16]]
+n = len(g)
+for layer in range(n // 2):
+    first, last = layer, n - 1 - layer
+    for i in range(last - first):
+        top = g[first][first + i]                   # save top
+        g[first][first + i] = g[last - i][first]    # left   -> top
+        g[last - i][first] = g[last][last - i]      # bottom -> left
+        g[last][last - i] = g[first + i][last]      # right  -> bottom
+        g[first + i][last] = top                    # top    -> right
+print(g)   # [[13, 9, 5, 1], [14, 10, 6, 2], [15, 11, 7, 3], [16, 12, 8, 4]]` },
+        { lang: 'js', run: true, code: `const g = [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16]];
+const n = g.length;
+for (let layer = 0; layer < n >> 1; layer++) {
+  const first = layer, last = n - 1 - layer;
+  for (let i = 0; i < last - first; i++) {
+    const top = g[first][first + i];                // save top
+    g[first][first + i] = g[last - i][first];       // left   -> top
+    g[last - i][first] = g[last][last - i];         // bottom -> left
+    g[last][last - i] = g[first + i][last];         // right  -> bottom
+    g[first + i][last] = top;                       // top    -> right
+  }
+}
+console.log(JSON.stringify(g));   // [[13,9,5,1],[14,10,6,2],[15,11,7,3],[16,12,8,4]]` },
+        { lang: 'cpp', code: `vector<vector<int>> g = {{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}, {13, 14, 15, 16}};
+int n = g.size();
+for (int layer = 0; layer < n / 2; layer++) {
+    int first = layer, last = n - 1 - layer;
+    for (int i = 0; i < last - first; i++) {
+        int top = g[first][first + i];                   // save top
+        g[first][first + i] = g[last - i][first];        // left   -> top
+        g[last - i][first] = g[last][last - i];          // bottom -> left
+        g[last][last - i] = g[first + i][last];          // right  -> bottom
+        g[first + i][last] = top;                        // top    -> right
+    }
+}
+for (auto& row : g) { for (int x : row) cout << x << " "; cout << "\\n"; }` }
+      ] } },
       { title: 'Rectangular 2 × 3', html: `<p>g = [[1, 2, 3], [4, 5, 6]] (R = 2, C = 3) rotated clockwise is 3 × 2: <b>[[4, 1], [5, 2], [6, 3]]</b>. With res[c][R−1−r] = g[r][c]: the 1 at (0, 0) lands at res[0][1] ✔, the 6 at (1, 2) lands at res[2][0] ✔. The shape changes, so a new matrix is unavoidable.</p>` }
     ],
     deepDive: `<h4>Why transpose + reverse equals rotation</h4><p>Transpose maps (r, c) → (c, r). Reversing each row maps (x, y) → (x, N−1−y). Composing: (r, c) → (c, r) → (c, N−1−r), the clockwise rule. Any rotation is a composition of two reflections — a fact from geometry that turns a scary in-place operation into two trivial loops.</p>
@@ -1959,6 +3050,14 @@ System.out.println(Arrays.deepToString(g));  // [[13, 9, 5, 1], [14, 10, 6, 2], 
         `<p>Transpose with a double loop where the inner index starts at <code>r + 1</code>, swapping <code>g[r][c]</code> and <code>g[c][r]</code>. Then reverse every row with two pointers.</p>`,
         `<p><b>Traps:</b> starting the inner loop at 0 swaps every pair twice (no change). N = 1 must work (nothing to do). Check direction on a 2 × 2.<br><b>Recipe:</b> for r: for c in r+1..N−1: swap(g[r][c], g[c][r]); for each row: reverse.</p>`
       ],
+      tests: { sig: 'int[][] -> void', fn: 'rotate', mutate: 0, cases: [
+        [[[[1, 2, 3], [4, 5, 6], [7, 8, 9]]], [[7, 4, 1], [8, 5, 2], [9, 6, 3]]],
+        [[[[1]]], [[1]]],
+        [[[[1, 2], [3, 4]]], [[3, 1], [4, 2]]],
+        [[[[5, 1, 9, 11], [2, 4, 8, 10], [13, 3, 6, 7], [15, 14, 12, 16]]], [[15, 13, 2, 5], [14, 3, 4, 1], [12, 6, 8, 9], [16, 7, 10, 11]]],
+        [[[[-1000, 1000], [0, -1]]], [[0, -1000], [-1, 1000]]],
+        [[[[1, 2, 3, 4, 5], [6, 7, 8, 9, 10], [11, 12, 13, 14, 15], [16, 17, 18, 19, 20], [21, 22, 23, 24, 25]]], [[21, 16, 11, 6, 1], [22, 17, 12, 7, 2], [23, 18, 13, 8, 3], [24, 19, 14, 9, 4], [25, 20, 15, 10, 5]]]
+      ] },
       solution: {
         approach: `<p>Transpose (swap across the diagonal), then reverse each row. Two reflections = one 90° clockwise rotation, all in place.</p>`,
         code: `
@@ -1987,7 +3086,8 @@ System.out.println(Arrays.deepToString(g));  // [[13, 9, 5, 1], [14, 10, 6, 2], 
                   System.out.println(Arrays.deepToString(g)); // [[7, 4, 1], [8, 5, 2], [9, 6, 3]]
               }
           }`,
-        alt: [{ lang: 'python', code: `def rotate(g):
+        alt: [
+          { lang: 'python', code: `def rotate(g):
     n = len(g)
     for r in range(n):
         for c in range(r + 1, n):
@@ -1997,7 +3097,23 @@ System.out.println(Arrays.deepToString(g));  // [[13, 9, 5, 1], [14, 10, 6, 2], 
 
 m = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
 rotate(m)
-print(m)` }],
+print(m)` },
+          { lang: 'js', code: `function rotate(g) {
+  const n = g.length;
+  for (let r = 0; r < n; r++)                // transpose: swap above the diagonal
+    for (let c = r + 1; c < n; c++) [g[r][c], g[c][r]] = [g[c][r], g[r][c]];
+  for (const row of g) row.reverse();        // then reverse each row
+}` },
+          { lang: 'cpp', code: `class Solution {
+public:
+    void rotate(vector<vector<int>>& g) {
+        int n = g.size();
+        for (int r = 0; r < n; r++)              // transpose: swap above the diagonal
+            for (int c = r + 1; c < n; c++) swap(g[r][c], g[c][r]);
+        for (auto& row : g) reverse(row.begin(), row.end());   // then reverse each row
+    }
+};` }
+        ],
         dry: {
           head: ['step', 'action', 'matrix'],
           rows: [
@@ -2042,7 +3158,7 @@ print(m)` }],
       '"k-th smallest element in a sorted matrix" → binary search on the value + staircase count of elements ≤ mid.',
       '"Do better than O(R·C)" or R, C ≤ 1000 with many queries → do not scan every cell; use the sorted order to discard rows/columns.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       boolean searchMatrix(int[][] g, int target) {
           int r = 0, c = g[0].length - 1;          // start at the top-right corner
           while (r < g.length && c >= 0) {
@@ -2052,7 +3168,39 @@ print(m)` }],
               else r++;                            // everything to the left is smaller: drop this row
           }
           return false;                            // walked off the matrix: not present
-      }`, `
+      }`, alt: [
+        { lang: 'python', code: `def search_matrix(g, target):
+    r, c = 0, len(g[0]) - 1           # start at the top-right corner
+    while r < len(g) and c >= 0:
+        v = g[r][c]
+        if v == target:
+            return True
+        if v > target:
+            c -= 1                    # everything below is bigger: drop this column
+        else:
+            r += 1                    # everything to the left is smaller: drop this row
+    return False                      # walked off the matrix: not present` },
+        { lang: 'js', code: `function searchMatrix(g, target) {
+  let r = 0, c = g[0].length - 1;     // start at the top-right corner
+  while (r < g.length && c >= 0) {
+    const v = g[r][c];
+    if (v === target) return true;
+    if (v > target) c--;              // everything below is bigger: drop this column
+    else r++;                         // everything to the left is smaller: drop this row
+  }
+  return false;                       // walked off the matrix: not present
+}` },
+        { lang: 'cpp', code: `bool searchMatrix(const vector<vector<int>>& g, int target) {
+    int r = 0, c = (int)g[0].size() - 1;   // start at the top-right corner
+    while (r < (int)g.size() && c >= 0) {
+        int v = g[r][c];
+        if (v == target) return true;
+        if (v > target) c--;               // everything below is bigger: drop this column
+        else r++;                          // everything to the left is smaller: drop this row
+    }
+    return false;                          // walked off the matrix: not present
+}` }
+      ] }, { lang: 'java', code: `
       // Fully sorted matrix (rows continue each other): binary search on a virtual flat array
       boolean searchFlat(int[][] g, int target) {
           int R = g.length, C = g[0].length;
@@ -2064,7 +3212,46 @@ print(m)` }],
               if (v < target) lo = mid + 1; else hi = mid - 1;
           }
           return false;
-      }`],
+      }`, alt: [
+        { lang: 'python', code: `# Fully sorted matrix (rows continue each other): binary search on a virtual flat array
+def search_flat(g, target):
+    R, C = len(g), len(g[0])
+    lo, hi = 0, R * C - 1
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        v = g[mid // C][mid % C]      # flat index -> (row, col)
+        if v == target:
+            return True
+        if v < target:
+            lo = mid + 1
+        else:
+            hi = mid - 1
+    return False` },
+        { lang: 'js', code: `// Fully sorted matrix (rows continue each other): binary search on a virtual flat array
+function searchFlat(g, target) {
+  const R = g.length, C = g[0].length;
+  let lo = 0, hi = R * C - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const v = g[Math.floor(mid / C)][mid % C];   // flat index -> (row, col)
+    if (v === target) return true;
+    if (v < target) lo = mid + 1; else hi = mid - 1;
+  }
+  return false;
+}` },
+        { lang: 'cpp', code: `// Fully sorted matrix (rows continue each other): binary search on a virtual flat array
+bool searchFlat(const vector<vector<int>>& g, int target) {
+    int R = g.size(), C = g[0].size();
+    int lo = 0, hi = R * C - 1;
+    while (lo <= hi) {
+        int mid = lo + (hi - lo) / 2;
+        int v = g[mid / C][mid % C];          // flat index -> (row, col)
+        if (v == target) return true;
+        if (v < target) lo = mid + 1; else hi = mid - 1;
+    }
+    return false;
+}` }
+      ] }],
     codeTitle: ['Staircase search — O(R + C)', 'Bonus: fully sorted matrix — O(log(R·C))'],
     viz: {
       title: 'Staircase search: every step throws away a row or a column',
@@ -2134,13 +3321,39 @@ print(m)` }],
     },
     examples: [
       { title: 'Target not present', html: `<p>Same matrix, target = 15: 11 &lt; 15 → r = 1; 12 &lt; 15 → r = 2; 16 &gt; 15 → c = 2; 9 &lt; 15 → r = 3; 14 &lt; 15 → r = 4 → off the bottom → <b>false</b>. Five steps, never more than R + C − 1 = 7.</p>` },
-      { title: 'Count negative numbers in a sorted matrix', html: `<p>LeetCode 1351: rows and columns sorted in <b>decreasing</b> order. Start at the bottom-left; if the value is negative, everything to its right in that row is negative too → add (C − c) and move up; otherwise move right. [[4, 3, 2, −1], [3, 2, 1, −1], [1, 1, −1, −2], [−1, −1, −2, −3]] → <b>8</b> negatives in O(R + C).</p>`, code: `int[][] g = {{4, 3, 2, -1}, {3, 2, 1, -1}, {1, 1, -1, -2}, {-1, -1, -2, -3}};
+      { title: 'Count negative numbers in a sorted matrix', html: `<p>LeetCode 1351: rows and columns sorted in <b>decreasing</b> order. Start at the bottom-left; if the value is negative, everything to its right in that row is negative too → add (C − c) and move up; otherwise move right. [[4, 3, 2, −1], [3, 2, 1, −1], [1, 1, −1, −2], [−1, −1, −2, −3]] → <b>8</b> negatives in O(R + C).</p>`, code: { lang: 'java', code: `int[][] g = {{4, 3, 2, -1}, {3, 2, 1, -1}, {1, 1, -1, -2}, {-1, -1, -2, -3}};
 int R = g.length, C = g[0].length, r = R - 1, c = 0, count = 0;
 while (r >= 0 && c < C) {
     if (g[r][c] < 0) { count += C - c; r--; }   // this cell and all to its right are negative
     else c++;                                    // non-negative: look further right
 }
-System.out.println(count);   // 8` },
+System.out.println(count);   // 8`, alt: [
+        { lang: 'python', run: true, code: `g = [[4, 3, 2, -1], [3, 2, 1, -1], [1, 1, -1, -2], [-1, -1, -2, -3]]
+R, C = len(g), len(g[0])
+r, c, count = R - 1, 0, 0
+while r >= 0 and c < C:
+    if g[r][c] < 0:
+        count += C - c          # this cell and all to its right are negative
+        r -= 1
+    else:
+        c += 1                  # non-negative: look further right
+print(count)   # 8` },
+        { lang: 'js', run: true, code: `const g = [[4, 3, 2, -1], [3, 2, 1, -1], [1, 1, -1, -2], [-1, -1, -2, -3]];
+const R = g.length, C = g[0].length;
+let r = R - 1, c = 0, count = 0;
+while (r >= 0 && c < C) {
+  if (g[r][c] < 0) { count += C - c; r--; }   // this cell and all to its right are negative
+  else c++;                                    // non-negative: look further right
+}
+console.log(count);   // 8` },
+        { lang: 'cpp', code: `vector<vector<int>> g = {{4, 3, 2, -1}, {3, 2, 1, -1}, {1, 1, -1, -2}, {-1, -1, -2, -3}};
+int R = g.size(), C = g[0].size(), r = R - 1, c = 0, count = 0;
+while (r >= 0 && c < C) {
+    if (g[r][c] < 0) { count += C - c; r--; }   // this cell and all to its right are negative
+    else c++;                                    // non-negative: look further right
+}
+cout << count << "\\n";   // 8` }
+      ] } },
       { title: 'Count how many values are ≤ x (building block for k-th smallest)', html: `<p>Walk from the bottom-left: if g[r][c] ≤ x, the whole column segment from row 0 to r is ≤ x → add r + 1 and move right; else move up. For the 4 × 4 matrix above and x = 8: column 0 gives 3 (1, 2, 3), column 1 gives 3 (4, 5, 6), column 2 gives 2 (7, 8), column 3 gives 0 → <b>8</b> values ≤ 8. Binary-searching x over the value range with this O(R + C) count finds the k-th smallest in O((R + C) · log(range)).</p>` },
       { title: 'Fully sorted matrix (LeetCode 74)', html: `<p>[[1, 3, 5, 7], [10, 11, 16, 20], [23, 30, 34, 60]], target 3. Treat it as the flat list [1, 3, 5, 7, 10, …]: lo = 0, hi = 11, mid = 5 → (1, 1) = 11 &gt; 3 → hi = 4; mid = 2 → (0, 2) = 5 &gt; 3 → hi = 1; mid = 0 → 1 &lt; 3 → lo = 1; mid = 1 → (0, 1) = 3 → <b>found</b>. O(log 12) ≈ 4 steps.</p>` }
     ],
@@ -2150,7 +3363,7 @@ System.out.println(count);   // 8` },
       <h4>Duplicates and "find all positions"</h4><p>Existence search works unchanged with duplicates. Counting or listing <b>every</b> occurrence needs more care: after a match, equal values can sit both to the left in the same row and below in the same column, so one staircase walk can miss some. Safe options: count with two staircase counts, <code>count(≤ target) − count(≤ target − 1)</code> (two O(R + C) walks), or binary-search the equal block in each row (O(R log C)). Always clarify whether the interviewer wants existence, a count, or positions.</p>`,
     aiEra: `<p><b>What AI changes:</b> assistants know "Search a 2D Matrix II" well — but they frequently confuse it with the fully sorted LeetCode 74 version and apply flat binary search where it is <b>wrong</b>. Spotting which kind of sorted matrix you have is now the core skill.</p>
       <p><b>Use AI as a partner:</b> <code>Give me a matrix that is row- and column-sorted but NOT fully sorted, where flat binary search fails for some target</code>. Then check: [[1, 4], [2, 5]] flat is [1, 4, 2, 5] — not sorted, so searching 2 can fail.</p>
-      <p><b>Where AI goes wrong:</b> starting at the top-left, using <code>g.length</code> for columns, or claiming O(log N·M) for the row-column sorted version.</p>
+      <p><b>Where AI goes wrong:</b> starting at the top-left, using the row count for columns, or claiming O(log N·M) for the row-column sorted version.</p>
       <p><b>What you must still own:</b> the elimination invariant ("each step removes a row or a column"), the corner choice argument, and reading the problem statement carefully to pick staircase vs flat binary search.</p>`,
     problems: [{
       title: 'Search a Row- and Column-Sorted Matrix',
@@ -2180,8 +3393,20 @@ System.out.println(count);   // 8` },
       hints: [
         `<p><b>Aha:</b> find a corner where one direction increases and the other decreases. The top-right (and bottom-left) corners have that property.</p>`,
         `<p>Two indices r = 0, c = C − 1. Loop while inside the matrix: equal → true; bigger → c−−; smaller → r++. No extra memory.</p>`,
-        `<p><b>Traps:</b> loop condition is <code>r &lt; R && c ≥ 0</code>; columns count is <code>g[0].length</code>; do not use flat binary search (rows are not continuous).<br><b>Recipe:</b> r = 0, c = C−1; while r &lt; R and c ≥ 0: compare and move; return false after the loop.</p>`
+        `<p><b>Traps:</b> loop condition is <code>r &lt; R && c ≥ 0</code>; columns count is the length of <code>g[0]</code>; do not use flat binary search (rows are not continuous).<br><b>Recipe:</b> r = 0, c = C−1; while r &lt; R and c ≥ 0: compare and move; return false after the loop.</p>`
       ],
+      tests: { sig: 'int[][] int -> bool', fn: 'searchMatrix', cases: [
+        [[[[1, 4, 7, 11, 15], [2, 5, 8, 12, 19], [3, 6, 9, 16, 22], [10, 13, 14, 17, 24], [18, 21, 23, 26, 30]], 5], true],
+        [[[[1, 4, 7, 11, 15], [2, 5, 8, 12, 19], [3, 6, 9, 16, 22], [10, 13, 14, 17, 24], [18, 21, 23, 26, 30]], 20], false],
+        [[[[1, 4, 7, 11, 15], [2, 5, 8, 12, 19], [3, 6, 9, 16, 22], [10, 13, 14, 17, 24], [18, 21, 23, 26, 30]], 1], true],
+        [[[[1, 4, 7, 11, 15], [2, 5, 8, 12, 19], [3, 6, 9, 16, 22], [10, 13, 14, 17, 24], [18, 21, 23, 26, 30]], 30], true],
+        [[[[1, 4, 7, 11, 15], [2, 5, 8, 12, 19], [3, 6, 9, 16, 22], [10, 13, 14, 17, 24], [18, 21, 23, 26, 30]], 0], false],
+        [[[[1, 4, 7, 11, 15], [2, 5, 8, 12, 19], [3, 6, 9, 16, 22], [10, 13, 14, 17, 24], [18, 21, 23, 26, 30]], 31], false],
+        [[[[5]], 5], true],
+        [[[[5]], -5], false],
+        [[[[1, 3, 5, 7, 9]], 7], true],
+        [[[[-1000000000], [0], [1000000000]], 1000000000], true]
+      ] },
       solution: {
         approach: `<p>Staircase search from the top-right corner: each comparison eliminates one full row or one full column, so at most R + C − 1 comparisons.</p>`,
         code: `
@@ -2202,6 +3427,41 @@ System.out.println(count);   // 8` },
                   System.out.println(s.searchMatrix(g, 5) + " " + s.searchMatrix(g, 20)); // true false
               }
           }`,
+        alt: [
+          { lang: 'python', code: `def search_matrix(g, target):
+    r, c = 0, len(g[0]) - 1          # start at the top-right corner
+    while r < len(g) and c >= 0:
+        v = g[r][c]
+        if v == target:
+            return True
+        if v > target:
+            c -= 1                   # this column is too big from here down
+        else:
+            r += 1                   # this row is too small up to here
+    return False` },
+          { lang: 'js', code: `function searchMatrix(g, target) {
+  let r = 0, c = g[0].length - 1;    // start at the top-right corner
+  while (r < g.length && c >= 0) {
+    const v = g[r][c];
+    if (v === target) return true;
+    if (v > target) c--;             // this column is too big from here down
+    else r++;                        // this row is too small up to here
+  }
+  return false;
+}` },
+          { lang: 'cpp', code: `class Solution {
+public:
+    bool searchMatrix(vector<vector<int>>& g, int target) {
+        int r = 0, c = (int)g[0].size() - 1;    // start at the top-right corner
+        while (r < (int)g.size() && c >= 0) {
+            if (g[r][c] == target) return true;
+            if (g[r][c] > target) c--;          // this column is too big from here down
+            else r++;                           // this row is too small up to here
+        }
+        return false;
+    }
+};` }
+        ],
         dry: {
           head: ['step', '(r, c)', 'g[r][c]', 'vs 20', 'move'],
           rows: [
@@ -2247,7 +3507,7 @@ System.out.println(count);   // 8` },
       '"Largest square / rectangle with sum ≤ threshold" or "count submatrices with property X" → prefix table + search over sizes.',
       '"Add v to every cell of a sub-rectangle, many times, then read the matrix" → 2D difference array (the reverse trick).'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       class NumMatrix {
           private final long[][] P;                   // padded: P[i][j] = sum of A[0..i-1][0..j-1]
 
@@ -2262,7 +3522,48 @@ System.out.println(count);   // 8` },
           long sumRegion(int r1, int c1, int r2, int c2) {   // inclusive corners
               return P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1];
           }
-      }`, {
+      }`, alt: [
+        { lang: 'python', code: `class NumMatrix:
+    def __init__(self, A):
+        R, C = len(A), len(A[0])
+        # padded: P[i][j] = sum of A[0..i-1][0..j-1]; row 0 and column 0 stay 0
+        self.P = P = [[0] * (C + 1) for _ in range(R + 1)]
+        for i in range(R):
+            for j in range(C):
+                P[i + 1][j + 1] = A[i][j] + P[i][j + 1] + P[i + 1][j] - P[i][j]
+
+    def sum_region(self, r1, c1, r2, c2):   # inclusive corners
+        P = self.P
+        return P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]` },
+        { lang: 'js', code: `class NumMatrix {
+  constructor(A) {
+    const R = A.length, C = A[0].length;
+    // padded: P[i][j] = sum of A[0..i-1][0..j-1]; row 0 and column 0 stay 0
+    this.P = Array.from({ length: R + 1 }, () => new Array(C + 1).fill(0));
+    const P = this.P;
+    for (let i = 0; i < R; i++)
+      for (let j = 0; j < C; j++) P[i + 1][j + 1] = A[i][j] + P[i][j + 1] + P[i + 1][j] - P[i][j];
+  }
+
+  sumRegion(r1, c1, r2, c2) {   // inclusive corners
+    const P = this.P;
+    return P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1];
+  }
+}` },
+        { lang: 'cpp', code: `class NumMatrix {
+    vector<vector<long long>> P;   // padded: P[i][j] = sum of A[0..i-1][0..j-1]
+public:
+    NumMatrix(const vector<vector<int>>& A) : P(A.size() + 1, vector<long long>(A[0].size() + 1, 0)) {
+        for (size_t i = 0; i < A.size(); i++)
+            for (size_t j = 0; j < A[0].size(); j++)
+                P[i + 1][j + 1] = A[i][j] + P[i][j + 1] + P[i + 1][j] - P[i][j];
+    }
+
+    long long sumRegion(int r1, int c1, int r2, int c2) const {   // inclusive corners
+        return P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1];
+    }
+};` }
+      ] }, {
       lang: 'python', run: true, title: 'Python: build and query (runnable)', code: `def build(A):
     R, C = len(A), len(A[0])
     P = [[0] * (C + 1) for _ in range(R + 1)]
@@ -2279,7 +3580,7 @@ P = build(A)
 print(P)
 print(query(P, 1, 1, 2, 2))   # 11
 print(query(P, 0, 0, 2, 2))   # 21` }],
-    codeTitle: ['Padded 2D prefix sum class (Java)', 'Same in Python'],
+    codeTitle: ['Padded 2D prefix sum class', 'Same in Python'],
     viz: {
       title: 'Build the 2D prefix table, then answer a rectangle query',
       input: '3 0 1; 5 6 3; 1 2 0 | 1 1 2 2',
@@ -2336,14 +3637,37 @@ print(query(P, 0, 0, 2, 2))   # 21` }],
     },
     examples: [
       { title: 'Rectangle touching the top-left corner', html: `<p>Query (0, 0)..(1, 1) on the A above: P[2][2] − P[0][2] − P[2][0] + P[0][0] = 14 − 0 − 0 + 0 = <b>14</b> (3 + 0 + 5 + 6). The zero padding makes the strips vanish automatically — no if-statements for edges.</p>` },
-      { title: 'Count 1s in a sub-rectangle of a binary grid', html: `<p>Seats grid (1 = booked): [[1, 0, 1], [1, 1, 0], [0, 1, 1]]. P built the same way; booked seats in rows 1..2, cols 1..2 = P[3][3] − P[1][3] − P[3][1] + P[1][1] = 6 − 2 − 2 + 1 = <b>3</b> (1, 0, 1, 1). Counting is summing a 0/1 grid.</p>`, code: `int[][] A = {{1, 0, 1}, {1, 1, 0}, {0, 1, 1}};
+      { title: 'Count 1s in a sub-rectangle of a binary grid', html: `<p>Seats grid (1 = booked): [[1, 0, 1], [1, 1, 0], [0, 1, 1]]. P built the same way; booked seats in rows 1..2, cols 1..2 = P[3][3] − P[1][3] − P[3][1] + P[1][1] = 6 − 2 − 2 + 1 = <b>3</b> (1, 0, 1, 1). Counting is summing a 0/1 grid.</p>`, code: { lang: 'java', code: `int[][] A = {{1, 0, 1}, {1, 1, 0}, {0, 1, 1}};
 int R = A.length, C = A[0].length;
 int[][] P = new int[R + 1][C + 1];
 for (int i = 0; i < R; i++)
     for (int j = 0; j < C; j++)
         P[i + 1][j + 1] = A[i][j] + P[i][j + 1] + P[i + 1][j] - P[i][j];
 int r1 = 1, c1 = 1, r2 = 2, c2 = 2;
-System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]);   // 3` },
+System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]);   // 3`, alt: [
+        { lang: 'python', run: true, code: `A = [[1, 0, 1], [1, 1, 0], [0, 1, 1]]
+R, C = len(A), len(A[0])
+P = [[0] * (C + 1) for _ in range(R + 1)]
+for i in range(R):
+    for j in range(C):
+        P[i + 1][j + 1] = A[i][j] + P[i][j + 1] + P[i + 1][j] - P[i][j]
+r1, c1, r2, c2 = 1, 1, 2, 2
+print(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1])   # 3` },
+        { lang: 'js', run: true, code: `const A = [[1, 0, 1], [1, 1, 0], [0, 1, 1]];
+const R = A.length, C = A[0].length;
+const P = Array.from({ length: R + 1 }, () => new Array(C + 1).fill(0));
+for (let i = 0; i < R; i++)
+  for (let j = 0; j < C; j++) P[i + 1][j + 1] = A[i][j] + P[i][j + 1] + P[i + 1][j] - P[i][j];
+const r1 = 1, c1 = 1, r2 = 2, c2 = 2;
+console.log(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]);   // 3` },
+        { lang: 'cpp', code: `vector<vector<int>> A = {{1, 0, 1}, {1, 1, 0}, {0, 1, 1}};
+int R = A.size(), C = A[0].size();
+vector<vector<int>> P(R + 1, vector<int>(C + 1, 0));
+for (int i = 0; i < R; i++)
+    for (int j = 0; j < C; j++) P[i + 1][j + 1] = A[i][j] + P[i][j + 1] + P[i + 1][j] - P[i][j];
+int r1 = 1, c1 = 1, r2 = 2, c2 = 2;
+cout << P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1] << "\\n";   // 3` }
+      ] } },
       { title: 'Best K × K square', html: `<p>Find the K × K block with the largest sum. With P, every square's sum is O(1), so trying all (R − K + 1)(C − K + 1) top-left corners costs O(R·C) total instead of O(R·C·K<sup>2</sup>). For A = [[1, 2, 3], [4, 5, 6], [7, 8, 9]] and K = 2 the best block is bottom-right: 5 + 6 + 8 + 9 = <b>28</b>.</p>` },
       { title: '2D difference array: many rectangle updates', html: `<p>To add v to every cell of (r1, c1)..(r2, c2): <code>D[r1][c1] += v; D[r1][c2+1] −= v; D[r2+1][c1] −= v; D[r2+1][c2+1] += v</code>. After all updates, a 2D prefix sum over D gives the final grid. Adding 1 to (0, 0)..(1, 1) on a 3 × 3 zero grid gives D corners +1, −1, −1, +1 → prefix → [[1, 1, 0], [1, 1, 0], [0, 0, 0]]. Used for "stamping" problems and range painting (LeetCode 2536).</p>` }
     ],
@@ -2391,6 +3715,15 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
         `<p>Precompute a padded <code>long[R+1][C+1]</code> table with <code>P[i+1][j+1] = A[i][j] + P[i][j+1] + P[i+1][j] − P[i][j]</code> in the constructor.</p>`,
         `<p><b>Traps:</b> padded indices are shifted by +1 — write the query formula once and test it on a 1 × 1 rectangle. Use <code>long</code>. Rectangles on row 0 / col 0 need no special case thanks to padding.<br><b>Recipe:</b> build P in O(R·C); query = P[r2+1][c2+1] − P[r1][c2+1] − P[r2+1][c1] + P[r1][c1].</p>`
       ],
+      tests: { cls: 'NumMatrix', sigs: { NumMatrix: 'int[][]', sumRegion: 'int int int int -> long' }, cases: [
+        { ops: ['NumMatrix', 'sumRegion', 'sumRegion', 'sumRegion'], args: [[[[3, 0, 1], [5, 6, 3], [1, 2, 0]]], [1, 1, 2, 2], [0, 0, 0, 2], [0, 0, 2, 2]], out: [null, 11, 4, 21] },
+        { ops: ['NumMatrix', 'sumRegion'], args: [[[[-7]]], [0, 0, 0, 0]], out: [null, -7] },
+        { ops: ['NumMatrix', 'sumRegion', 'sumRegion', 'sumRegion', 'sumRegion', 'sumRegion'], args: [[[[3, 0, 1, 4, 2], [5, 6, 3, 2, 1], [1, 2, 0, 1, 5], [4, 1, 0, 1, 7], [1, 0, 3, 0, 5]]], [2, 1, 4, 3], [1, 1, 2, 2], [1, 2, 2, 4], [0, 0, 4, 4], [4, 4, 4, 4]], out: [null, 8, 11, 12, 58, 5] },
+        { ops: ['NumMatrix', 'sumRegion', 'sumRegion'], args: [[[[10000, 10000, 10000, 10000], [10000, 10000, 10000, 10000], [10000, 10000, 10000, 10000], [10000, 10000, 10000, 10000]]], [0, 0, 3, 3], [1, 1, 2, 2]], out: [null, 160000, 40000] },
+        { ops: ['NumMatrix', 'sumRegion', 'sumRegion', 'sumRegion'], args: [[[[-10000, 10000], [10000, -10000]]], [0, 0, 1, 1], [0, 0, 0, 1], [0, 1, 1, 1]], out: [null, 0, 0, 0] },
+        { ops: ['NumMatrix', 'sumRegion', 'sumRegion'], args: [[[[1, 2, 3, 4]]], [0, 1, 0, 2], [0, 0, 0, 3]], out: [null, 5, 10] },
+        { ops: ['NumMatrix', 'sumRegion', 'sumRegion'], args: [[[[1], [2], [3]]], [1, 0, 2, 0], [0, 0, 0, 0]], out: [null, 5, 1] }
+      ] },
       solution: {
         approach: `<p>Padded 2D prefix sums built once with inclusion–exclusion; each query is four lookups and three additions/subtractions.</p>`,
         code: `
@@ -2420,6 +3753,50 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
                   System.out.println(m.sumRegion(1, 1, 2, 2) + " " + m.sumRegion(0, 0, 0, 2) + " " + m.sumRegion(0, 0, 2, 2)); // 11 4 21
               }
           }`,
+        alt: [
+          { lang: 'python', code: `class NumMatrix:
+    def __init__(self, A):
+        R, C = len(A), len(A[0])
+        P = [[0] * (C + 1) for _ in range(R + 1)]
+        for i in range(R):
+            for j in range(C):
+                # this cell + block above + block left - overlap counted twice
+                P[i + 1][j + 1] = A[i][j] + P[i][j + 1] + P[i + 1][j] - P[i][j]
+        self.P = P
+
+    def sumRegion(self, r1, c1, r2, c2):
+        P = self.P
+        return P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]` },
+          { lang: 'js', code: `class NumMatrix {
+  constructor(A) {
+    const R = A.length, C = A[0].length;
+    this.P = Array.from({ length: R + 1 }, () => new Array(C + 1).fill(0));
+    for (let i = 0; i < R; i++)
+      for (let j = 0; j < C; j++)
+        // this cell + block above + block left - overlap counted twice
+        this.P[i + 1][j + 1] = A[i][j] + this.P[i][j + 1] + this.P[i + 1][j] - this.P[i][j];
+  }
+
+  sumRegion(r1, c1, r2, c2) {
+    const P = this.P;
+    return P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1];
+  }
+}` },
+          { lang: 'cpp', code: `class NumMatrix {
+    vector<vector<long long>> P;
+public:
+    NumMatrix(vector<vector<int>>& A) : P(A.size() + 1, vector<long long>(A[0].size() + 1, 0)) {
+        for (size_t i = 0; i < A.size(); i++)
+            for (size_t j = 0; j < A[0].size(); j++)
+                // this cell + block above + block left - overlap counted twice
+                P[i + 1][j + 1] = A[i][j] + P[i][j + 1] + P[i + 1][j] - P[i][j];
+    }
+
+    long long sumRegion(int r1, int c1, int r2, int c2) {
+        return P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1];
+    }
+};` }
+        ],
         dry: {
           head: ['query', 'P[r2+1][c2+1]', '− P[r1][c2+1]', '− P[r2+1][c1]', '+ P[r1][c1]', 'answer'],
           rows: [
@@ -2465,6 +3842,15 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
       `<p>One loop, one carried total. You can even write the answer back into <code>nums</code> itself for O(1) extra space.</p>`,
       `<p><b>Traps:</b> start the loop at i = 1 (or carry a total starting at 0). Sum stays within int here (10<sup>3</sup> × 10<sup>6</sup> = 10<sup>9</sup>), but use long in general.<br><b>Recipe:</b> for i in 1..N−1: nums[i] += nums[i−1]; return nums.</p>`
     ],
+    tests: { sig: 'int[] -> int[]', fn: 'runningSum', cases: [
+        [[[1, 2, 3, 4]], [1, 3, 6, 10]],
+        [[[1, 1, 1, 1, 1]], [1, 2, 3, 4, 5]],
+        [[[3, 1, 2, 10, 1]], [3, 4, 6, 16, 17]],
+        [[[5]], [5]],
+        [[[-1, -2, -3]], [-1, -3, -6]],
+        [[[1000000, 1000000, 1000000, 1000000, 1000000]], [1000000, 2000000, 3000000, 4000000, 5000000]],
+        [[[0, -1000000, 1000000]], [0, -1000000, 0]]
+      ] },
     solution: {
       approach: `<p>Carry forward the running total; each index adds one number to the previous answer.</p>`,
       code: `
@@ -2480,6 +3866,23 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
                 System.out.println(Arrays.toString(new Solution().runningSum(new int[]{1, 2, 3, 4}))); // [1, 3, 6, 10]
             }
         }`,
+      alt: [
+        { lang: 'python', code: `from itertools import accumulate
+
+def running_sum(nums):
+    return list(accumulate(nums))` },
+        { lang: 'js', code: `function runningSum(nums) {
+  for (let i = 1; i < nums.length; i++) nums[i] += nums[i - 1];   // in place
+  return nums;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> runningSum(vector<int>& nums) {
+        partial_sum(nums.begin(), nums.end(), nums.begin());   // in place running total
+        return nums;
+    }
+};` }
+      ],
       dry: { head: ['i', 'nums[i] before', 'add nums[i−1]', 'nums[i] after'], rows: [['1', '2', '1', '3'], ['2', '3', '3', '6'], ['3', '4', '6', '10']] },
       complexity: `<p><b>Time O(N)</b>, <b>space O(1)</b> extra (in place).</p>`,
       followUps: ['Answer range-sum queries using this array.', 'Running XOR instead of running sum.']
@@ -2511,6 +3914,16 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
       `<p>Carry <code>minSoFar</code> and <code>best</code>. For each price: best = max(best, price − minSoFar); then minSoFar = min(minSoFar, price).</p>`,
       `<p><b>Traps:</b> update best <b>before</b> updating min (or the same-day buy/sell gives 0 harmlessly). Answer is never negative.<br><b>Recipe:</b> min = prices[0], best = 0; for each later price: best = max(best, p − min); min = min(min, p).</p>`
     ],
+    tests: { sig: 'int[] -> int', fn: 'maxProfit', cases: [
+        [[[7, 1, 5, 3, 6, 4]], 5],
+        [[[7, 6, 4, 3, 1]], 0],
+        [[[5]], 0],
+        [[[1, 2]], 1],
+        [[[2, 1]], 0],
+        [[[3, 3, 3]], 0],
+        [[[2, 4, 1, 10000]], 9999],
+        [[[0, 10000, 0]], 10000]
+      ] },
     solution: {
       approach: `<p>Carry forward the cheapest price so far; every day evaluate "sell today". This is also Kadane on the daily differences.</p>`,
       code: `
@@ -2528,6 +3941,33 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
                 System.out.println(new Solution().maxProfit(new int[]{7, 1, 5, 3, 6, 4})); // 5
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def max_profit(prices):
+    best, min_so_far = 0, prices[0]
+    for p in prices[1:]:
+        best = max(best, p - min_so_far)   # sell today?
+        min_so_far = min(min_so_far, p)    # cheaper buy for later days?
+    return best` },
+        { lang: 'js', code: `function maxProfit(prices) {
+  let minSoFar = prices[0], best = 0;
+  for (let i = 1; i < prices.length; i++) {
+    best = Math.max(best, prices[i] - minSoFar);   // sell today?
+    minSoFar = Math.min(minSoFar, prices[i]);      // cheaper buy for later days?
+  }
+  return best;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int maxProfit(vector<int>& prices) {
+        int minSoFar = prices[0], best = 0;
+        for (int p : prices) {
+            best = max(best, p - minSoFar);   // sell today?
+            minSoFar = min(minSoFar, p);      // cheaper buy for later days?
+        }
+        return best;
+    }
+};` }
+      ],
       dry: { head: ['day', 'price', 'price − min', 'best', 'min after'], rows: [['0', '7', '—', '0', '7'], ['1', '1', '−6', '0', '1'], ['2', '5', '4', '4', '1'], ['3', '3', '2', '4', '1'], ['4', '6', '5', H.c('p', '5'), '1'], ['5', '4', '3', '5', '1']] },
       complexity: `<p><b>Time O(N)</b>, <b>space O(1)</b>.</p>`,
       followUps: ['Unlimited transactions (sum of all positive differences).', 'At most two transactions (prefix best + suffix best).', 'With a cooldown or fee (DP module).']
@@ -2559,6 +3999,14 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
       `<p>One loop over r, add both cells, then fix the double-counted centre if N is odd.</p>`,
       `<p><b>Traps:</b> when N is odd, r = N/2 gives the same cell twice → subtract mat[N/2][N/2] once.<br><b>Recipe:</b> s = Σ (mat[r][r] + mat[r][N−1−r]); if N odd: s −= mat[N/2][N/2].</p>`
     ],
+    tests: { sig: 'int[][] -> int', fn: 'diagonalSum', cases: [
+        [[[[1, 2, 3], [4, 5, 6], [7, 8, 9]]], 25],
+        [[[[5]]], 5],
+        [[[[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]]], 8],
+        [[[[1, 2], [3, 4]]], 10],
+        [[[[100, 100, 100, 100, 100], [100, 100, 100, 100, 100], [100, 100, 100, 100, 100], [100, 100, 100, 100, 100], [100, 100, 100, 100, 100]]], 900],
+        [[[[7, 3, 1, 9], [3, 4, 6, 9], [6, 9, 6, 6], [9, 5, 8, 5]]], 55]
+      ] },
     solution: {
       approach: `<p>Use the index formulas of the two diagonals; one pass over the rows.</p>`,
       code: `
@@ -2577,6 +4025,28 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
                 System.out.println(new Solution().diagonalSum(new int[][]{{1, 2, 3}, {4, 5, 6}, {7, 8, 9}})); // 25
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def diagonal_sum(mat):
+    n = len(mat)
+    s = sum(mat[r][r] + mat[r][n - 1 - r] for r in range(n))
+    return s - mat[n // 2][n // 2] if n % 2 else s   # centre was added twice` },
+        { lang: 'js', code: `function diagonalSum(mat) {
+  const n = mat.length;
+  let s = 0;
+  for (let r = 0; r < n; r++) s += mat[r][r] + mat[r][n - 1 - r];
+  if (n % 2 === 1) s -= mat[n >> 1][n >> 1];   // centre was added twice
+  return s;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int diagonalSum(vector<vector<int>>& mat) {
+        int n = mat.size(), s = 0;
+        for (int r = 0; r < n; r++) s += mat[r][r] + mat[r][n - 1 - r];
+        if (n % 2 == 1) s -= mat[n / 2][n / 2];   // centre was added twice
+        return s;
+    }
+};` }
+      ],
       complexity: `<p><b>Time O(N)</b> (only 2N cells read), <b>space O(1)</b>.</p>`,
       followUps: ['Sum of every anti-diagonal (cells grouped by r + c).', 'Check if a matrix is a Toeplitz matrix (constant diagonals).']
     }
@@ -2611,6 +4081,14 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
       `<p>Left extension a ∈ [0, i], right extension b ∈ [0, N−1−i]; odd length ⇔ a and b have the same parity. Count evens and odds on each side.</p>`,
       `<p><b>Traps:</b> integer division for ceil: ⌈L/2⌉ = (L + 1) / 2. A simpler known shortcut: oddCount = (L·R + 1) / 2 (integer division).<br><b>Recipe:</b> for each i: L = i+1, R = N−i, total += arr[i] × ((L·R + 1) / 2).</p>`
     ],
+    tests: { sig: 'int[] -> int', fn: 'sumOddLengthSubarrays', cases: [
+        [[[1, 4, 2, 5, 3]], 58],
+        [[[1, 2]], 3],
+        [[[10, 11, 12]], 66],
+        [[[7]], 7],
+        [[Array(100).fill(1000)], 85850000],
+        [[[1, 1, 1, 1]], 10]
+      ] },
     solution: {
       approach: `<p>Each index lies in L·R subarrays, and ⌈L·R / 2⌉ of them have odd length. Multiply and add.</p>`,
       code: `
@@ -2629,6 +4107,32 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
                 System.out.println(new Solution().sumOddLengthSubarrays(new int[]{1, 4, 2, 5, 3})); // 58
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def sum_odd_length_subarrays(arr):
+    n = len(arr)
+    # (i + 1) * (n - i) subarrays contain i; the odd-length ones are the larger half
+    return sum(x * (((i + 1) * (n - i) + 1) // 2) for i, x in enumerate(arr))` },
+        { lang: 'js', code: `function sumOddLengthSubarrays(arr) {
+  const n = arr.length;
+  let total = 0;
+  for (let i = 0; i < n; i++) {
+    const all = (i + 1) * (n - i);          // subarrays containing i
+    total += arr[i] * Math.ceil(all / 2);   // the odd-length ones
+  }
+  return total;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int sumOddLengthSubarrays(vector<int>& arr) {
+        int n = arr.size(), total = 0;
+        for (int i = 0; i < n; i++) {
+            int all = (i + 1) * (n - i);    // subarrays containing i
+            total += arr[i] * ((all + 1) / 2);   // the odd-length ones
+        }
+        return total;
+    }
+};` }
+      ],
       dry: { head: ['i', 'arr[i]', 'all = L·R', 'odd = ⌈all/2⌉', 'contribution'], rows: [['0', '1', '5', '3', '3'], ['1', '4', '8', '4', '16'], ['2', '2', '9', '5', '10'], ['3', '5', '8', '4', '20'], ['4', '3', '5', '3', '9 → total ' + H.c('p', '58')]] },
       complexity: `<p><b>Time O(N)</b>, <b>space O(1)</b>.</p>`,
       followUps: ['Even-length subarrays only (all − odd).', 'Sum of all subarray XORs (only parity of the count matters).']
@@ -2666,6 +4170,15 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
       `<p>First pass left→right: out[i] = product of everything before i. Second pass right→left with a carried <code>right</code> product: out[i] *= right; right *= nums[i].</p>`,
       `<p><b>Traps:</b> out[0] starts as 1 (nothing on the left); the right product starts at 1. No division, so zeros work.<br><b>Recipe:</b> out[0] = 1; out[i] = out[i−1]·nums[i−1]; right = 1; for i = N−1..0: out[i] *= right; right *= nums[i].</p>`
     ],
+    tests: { sig: 'int[] -> int[]', fn: 'productExceptSelf', cases: [
+        [[[1, 2, 3, 4]], [24, 12, 8, 6]],
+        [[[-1, 1, 0, -3, 3]], [0, 0, 9, 0, 0]],
+        [[[2, 3]], [3, 2]],
+        [[[0, 0]], [0, 0]],
+        [[[0, 5, 2]], [10, 0, 0]],
+        [[[-2, -3, -4]], [12, 8, 6]],
+        [[[30, 30, 30, 30, 30, 30]], [24300000, 24300000, 24300000, 24300000, 24300000, 24300000]]
+      ] },
     solution: {
       approach: `<p>Prefix products stored in the output, suffix product carried in one variable. O(1) extra space besides the output.</p>`,
       code: `
@@ -2687,6 +4200,42 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
                 System.out.println(Arrays.toString(new Solution().productExceptSelf(new int[]{1, 2, 3, 4}))); // [24, 12, 8, 6]
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def product_except_self(nums):
+    n = len(nums)
+    out = [1] * n
+    for i in range(1, n):
+        out[i] = out[i - 1] * nums[i - 1]   # product of everything left of i
+    right = 1
+    for i in range(n - 1, -1, -1):
+        out[i] *= right                     # times everything right of i
+        right *= nums[i]
+    return out` },
+        { lang: 'js', code: `function productExceptSelf(nums) {
+  const n = nums.length, out = new Array(n).fill(1);
+  for (let i = 1; i < n; i++) out[i] = out[i - 1] * nums[i - 1];   // product left of i
+  let right = 1;
+  for (let i = n - 1; i >= 0; i--) {
+    out[i] *= right;                                               // times product right of i
+    right *= nums[i];
+  }
+  return out;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> productExceptSelf(vector<int>& nums) {
+        int n = nums.size();
+        vector<int> out(n, 1);
+        for (int i = 1; i < n; i++) out[i] = out[i - 1] * nums[i - 1];   // product left of i
+        int right = 1;
+        for (int i = n - 1; i >= 0; i--) {
+            out[i] *= right;                                             // times product right of i
+            right *= nums[i];
+        }
+        return out;
+    }
+};` }
+      ],
       dry: { head: ['i', 'left product (pass 1)', 'right before', 'out[i]', 'right after'], rows: [['3', '6', '1', '6', '4'], ['2', '2', '4', '8', '12'], ['1', '1', '12', '12', '24'], ['0', '1', '24', '24', '24']] },
       complexity: `<p><b>Time O(N)</b>, <b>space O(1)</b> extra (output array not counted).</p>`,
       followUps: ['What if products can overflow? (use long or mod)', 'Count zeros approach with division allowed.']
@@ -2722,6 +4271,17 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
       `<p>One pass carrying four values: curMax, bestMax, curMin, bestMin, plus the total.</p>`,
       `<p><b>Traps:</b> if every number is negative, bestMin = total, so total − bestMin = 0 means "empty subarray" — not allowed. Return bestMax in that case (detect with bestMax &lt; 0).<br><b>Recipe:</b> run both Kadanes; return bestMax &lt; 0 ? bestMax : max(bestMax, total − bestMin).</p>`
     ],
+    tests: { sig: 'int[] -> int', fn: 'maxSubarraySumCircular', cases: [
+        [[[5, -3, 5]], 10],
+        [[[1, -2, 3, -2]], 3],
+        [[[-3, -2, -3]], -2],
+        [[[7]], 7],
+        [[[-7]], -7],
+        [[[3, -1, 2, -1]], 4],
+        [[[3, -2, 2, -3]], 3],
+        [[[30000, 30000, 30000, 30000]], 120000],
+        [[[-30000, 30000, -30000]], 30000]
+      ] },
     solution: {
       approach: `<p>Max Kadane for the normal case, min Kadane for the wrap case (total − min), with the all-negative guard.</p>`,
       code: `
@@ -2746,6 +4306,46 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
                 System.out.println(s.maxSubarraySumCircular(new int[]{5, -3, 5}) + " " + s.maxSubarraySumCircular(new int[]{-3, -2, -3})); // 10 -2
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def max_subarray_sum_circular(nums):
+    cur_max = cur_min = 0
+    best_max, best_min = float('-inf'), float('inf')
+    for x in nums:
+        cur_max = max(x, cur_max + x)       # best run ending here
+        best_max = max(best_max, cur_max)
+        cur_min = min(x, cur_min + x)       # worst run ending here
+        best_min = min(best_min, cur_min)
+    if best_max < 0:                        # all negative: the wrap would be empty
+        return best_max
+    return max(best_max, sum(nums) - best_min)` },
+        { lang: 'js', code: `function maxSubarraySumCircular(nums) {
+  let total = 0, curMax = 0, curMin = 0, bestMax = -Infinity, bestMin = Infinity;
+  for (const x of nums) {
+    curMax = Math.max(x, curMax + x);       // best run ending here
+    bestMax = Math.max(bestMax, curMax);
+    curMin = Math.min(x, curMin + x);       // worst run ending here
+    bestMin = Math.min(bestMin, curMin);
+    total += x;
+  }
+  if (bestMax < 0) return bestMax;          // all negative: the wrap would be empty
+  return Math.max(bestMax, total - bestMin);
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int maxSubarraySumCircular(vector<int>& nums) {
+        int total = 0, curMax = 0, curMin = 0, bestMax = INT_MIN, bestMin = INT_MAX;
+        for (int x : nums) {
+            curMax = max(x, curMax + x);        // best run ending here
+            bestMax = max(bestMax, curMax);
+            curMin = min(x, curMin + x);        // worst run ending here
+            bestMin = min(bestMin, curMin);
+            total += x;
+        }
+        if (bestMax < 0) return bestMax;        // all negative: the wrap would be empty
+        return max(bestMax, total - bestMin);
+    }
+};` }
+      ],
       dry: { head: ['x', 'curMax', 'bestMax', 'curMin', 'bestMin', 'total'], rows: [['5', '5', '5', '5', '5', '5'], ['−3', '2', '5', '−3', '−3', '2'], ['5', '7', '7', '2', '−3', '7 → max(7, 7 − (−3)) = ' + H.c('p', '10')]] },
       complexity: `<p><b>Time O(N)</b>, <b>space O(1)</b>.</p>`,
       followUps: ['Return the indices of the best circular subarray.', 'Circular subarray with length at most K (needs a monotonic deque).']
@@ -2758,7 +4358,7 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
     tags: ['kadane', 'carry forward', 'dp'],
     companies: ['Amazon', 'LinkedIn', 'Microsoft', 'Google'],
     statement: `<p>Given an integer array <code>nums</code>, find a non-empty contiguous subarray with the largest <b>product</b> and return that product.</p>`,
-    constraints: `1 ≤ N ≤ 2 × 10<sup>4</sup>, −10 ≤ nums[i] ≤ 10, the answer fits in a 32-bit int`,
+    constraints: `1 ≤ N ≤ 2 × 10<sup>4</sup>, −10 ≤ nums[i] ≤ 10, the product of any subarray fits in a 32-bit int`,
     example: `${H.arr([2, 3, -2, 4], { label: 'nums', hl: { 0: 'p', 1: 'p' } })}<p>Output ${H.c('p', '<b>6</b>')} from [2, 3]. For [−2, 3, −4] the answer is <b>24</b> — two negatives multiply into a big positive, so the smallest (most negative) product so far can suddenly become the largest.</p>`,
     brute: {
       why: `<p>All subarrays with a running product: O(N<sup>2</sup>) = 4 × 10<sup>8</sup> — borderline/slow. The waste: the best product ending at i depends only on the best and worst products ending at i − 1.</p>`,
@@ -2781,6 +4381,17 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
       `<p>Carry <code>hi</code> and <code>lo</code> (max and min product ending here). For x: candidates are x, hi·x, lo·x; new hi = max, new lo = min.</p>`,
       `<p><b>Traps:</b> compute both from the <b>old</b> hi/lo (use temps). Zero resets both to 0 — the "start fresh" option x handles it. Start best = nums[0].<br><b>Recipe:</b> hi = lo = best = nums[0]; for each next x: a = hi·x, b = lo·x; hi = max(x, a, b); lo = min(x, a, b); best = max(best, hi).</p>`
     ],
+    tests: { sig: 'int[] -> int', fn: 'maxProduct', cases: [
+        [[[2, 3, -2, 4]], 6],
+        [[[-2, 0, -1]], 0],
+        [[[-2, 3, -4]], 24],
+        [[[-5]], -5],
+        [[[0, 2]], 2],
+        [[[-2, -3]], 6],
+        [[[2, -5, -2, -4, 3]], 24],
+        [[[10, 10, 10, 10, 10, 10, 10, 10, 10]], 1000000000],
+        [[[-1, -1, -1]], 1]
+      ] },
     solution: {
       approach: `<p>Kadane with two carried states (max and min product ending here).</p>`,
       code: `
@@ -2802,6 +4413,38 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
                 System.out.println(s.maxProduct(new int[]{2, 3, -2, 4}) + " " + s.maxProduct(new int[]{-2, 3, -4})); // 6 24
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def max_product(nums):
+    hi = lo = best = nums[0]
+    for x in nums[1:]:
+        cands = (x, hi * x, lo * x)    # start fresh, extend the best, extend the worst
+        hi, lo = max(cands), min(cands)
+        best = max(best, hi)
+    return best` },
+        { lang: 'js', code: `function maxProduct(nums) {
+  let hi = nums[0], lo = nums[0], best = nums[0];
+  for (let i = 1; i < nums.length; i++) {
+    const x = nums[i], a = hi * x, b = lo * x;   // extend the best and the worst run
+    hi = Math.max(x, a, b);
+    lo = Math.min(x, a, b);
+    best = Math.max(best, hi);
+  }
+  return best;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int maxProduct(vector<int>& nums) {
+        int hi = nums[0], lo = nums[0], best = nums[0];
+        for (size_t i = 1; i < nums.size(); i++) {
+            int x = nums[i], a = hi * x, b = lo * x;   // extend the best and the worst run
+            hi = max({x, a, b});
+            lo = min({x, a, b});
+            best = max(best, hi);
+        }
+        return best;
+    }
+};` }
+      ],
       dry: { head: ['x', 'hi·x', 'lo·x', 'hi', 'lo', 'best'], rows: [['−2', '—', '—', '−2', '−2', '−2'], ['3', '−6', '−6', '3', '−6', '3'], ['−4', '−12', '24', '24', '−12', H.c('p', '24')]] },
       complexity: `<p><b>Time O(N)</b>, <b>space O(1)</b>.</p>`,
       followUps: ['Return the subarray indices.', 'Prefix/suffix product alternative (split at zeros).']
@@ -2843,6 +4486,14 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
       `<p>Four walls top/bottom/left/right and a counter <code>v</code> starting at 1.</p>`,
       `<p><b>Traps:</b> for a square matrix the guards rarely trigger, but keep them; odd n ends with a single centre cell.<br><b>Recipe:</b> while top ≤ bottom and left ≤ right: → fill row top, top++; ↓ fill col right, right−−; ← fill row bottom (if top ≤ bottom), bottom−−; ↑ fill col left (if left ≤ right), left++.</p>`
     ],
+    tests: { sig: 'int -> int[][]', fn: 'generateMatrix', cases: [
+        [[1], [[1]]],
+        [[2], [[1, 2], [4, 3]]],
+        [[3], [[1, 2, 3], [8, 9, 4], [7, 6, 5]]],
+        [[4], [[1, 2, 3, 4], [12, 13, 14, 5], [11, 16, 15, 6], [10, 9, 8, 7]]],
+        [[5], [[1, 2, 3, 4, 5], [16, 17, 18, 19, 6], [15, 24, 25, 20, 7], [14, 23, 22, 21, 8], [13, 12, 11, 10, 9]]],
+        [[6], [[1, 2, 3, 4, 5, 6], [20, 21, 22, 23, 24, 7], [19, 32, 33, 34, 25, 8], [18, 31, 36, 35, 26, 9], [17, 30, 29, 28, 27, 10], [16, 15, 14, 13, 12, 11]]]
+      ] },
     solution: {
       approach: `<p>Four shrinking walls; each walk writes the next counter values.</p>`,
       code: `
@@ -2865,6 +4516,56 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
                 System.out.println(Arrays.deepToString(new Solution().generateMatrix(3))); // [[1, 2, 3], [8, 9, 4], [7, 6, 5]]
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def generate_matrix(n):
+    g = [[0] * n for _ in range(n)]
+    top, bottom, left, right, v = 0, n - 1, 0, n - 1, 1
+    while top <= bottom and left <= right:
+        for c in range(left, right + 1):
+            g[top][c] = v; v += 1
+        top += 1
+        for r in range(top, bottom + 1):
+            g[r][right] = v; v += 1
+        right -= 1
+        if top <= bottom:
+            for c in range(right, left - 1, -1):
+                g[bottom][c] = v; v += 1
+            bottom -= 1
+        if left <= right:
+            for r in range(bottom, top - 1, -1):
+                g[r][left] = v; v += 1
+            left += 1
+    return g` },
+        { lang: 'js', code: `function generateMatrix(n) {
+  const g = Array.from({ length: n }, () => new Array(n).fill(0));
+  let top = 0, bottom = n - 1, left = 0, right = n - 1, v = 1;
+  while (top <= bottom && left <= right) {
+    for (let c = left; c <= right; c++) g[top][c] = v++;
+    top++;
+    for (let r = top; r <= bottom; r++) g[r][right] = v++;
+    right--;
+    if (top <= bottom) { for (let c = right; c >= left; c--) g[bottom][c] = v++; bottom--; }
+    if (left <= right) { for (let r = bottom; r >= top; r--) g[r][left] = v++; left++; }
+  }
+  return g;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    vector<vector<int>> generateMatrix(int n) {
+        vector<vector<int>> g(n, vector<int>(n, 0));
+        int top = 0, bottom = n - 1, left = 0, right = n - 1, v = 1;
+        while (top <= bottom && left <= right) {
+            for (int c = left; c <= right; c++) g[top][c] = v++;
+            top++;
+            for (int r = top; r <= bottom; r++) g[r][right] = v++;
+            right--;
+            if (top <= bottom) { for (int c = right; c >= left; c--) g[bottom][c] = v++; bottom--; }
+            if (left <= right) { for (int r = bottom; r >= top; r--) g[r][left] = v++; left++; }
+        }
+        return g;
+    }
+};` }
+      ],
       complexity: `<p><b>Time O(n<sup>2</sup>)</b>, <b>space O(1)</b> extra besides the output.</p>`,
       followUps: ['Generate an R × C (non-square) spiral.', 'Fill anti-clockwise starting from the centre.']
     }
@@ -2893,12 +4594,23 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
                     }
         }`
     },
-    mcq: { q: `<p>Why do we need a separate flag for the first column (or first row) in the O(1)-space solution?</p>`, options: ['Cell (0, 0) cannot mark both row 0 and column 0 at once', 'Java arrays start at index 1', 'To handle negative numbers', 'It is only for speed'], answer: 0, explain: `<p>We use row 0 as column markers and column 0 as row markers. The cell (0, 0) is shared by both, so one extra boolean (e.g. col0Zero) keeps the two meanings apart.</p>` },
+    mcq: { q: `<p>Why do we need a separate flag for the first column (or first row) in the O(1)-space solution?</p>`, options: ['Cell (0, 0) cannot mark both row 0 and column 0 at once', 'Arrays start at index 1', 'To handle negative numbers', 'It is only for speed'], answer: 0, explain: `<p>We use row 0 as column markers and column 0 as row markers. The cell (0, 0) is shared by both, so one extra boolean (e.g. col0Zero) keeps the two meanings apart.</p>` },
     hints: [
       `<p><b>Aha:</b> you only need to know which rows and which columns contain a zero — not where exactly.</p>`,
       `<p>Store those flags in the matrix itself: m[r][0] = 0 marks row r, m[0][c] = 0 marks column c. Keep one boolean for column 0.</p>`,
       `<p><b>Traps:</b> process the first row/column <b>last</b>, otherwise the markers get wiped before you read them.<br><b>Recipe:</b> pass 1: mark; pass 2: for r ≥ 1, c ≥ 1 zero the cell if its row or column marker is 0; then zero row 0 if m[0][0] == 0; zero column 0 if col0Zero.</p>`
     ],
+    tests: { sig: 'int[][] -> void', fn: 'setZeroes', mutate: 0, cases: [
+        [[[[1, 1, 1], [1, 0, 1], [1, 1, 1]]], [[1, 0, 1], [0, 0, 0], [1, 0, 1]]],
+        [[[[0, 1, 2, 0], [3, 4, 5, 2], [1, 3, 1, 5]]], [[0, 0, 0, 0], [0, 4, 5, 0], [0, 3, 1, 0]]],
+        [[[[5]]], [[5]]],
+        [[[[0]]], [[0]]],
+        [[[[1, 2, 3]]], [[1, 2, 3]]],
+        [[[[1], [0], [3]]], [[0], [0], [0]]],
+        [[[[1, 2], [3, 4]]], [[1, 2], [3, 4]]],
+        [[[[2147483647, -2147483648], [0, 7]]], [[0, -2147483648], [0, 0]]],
+        [[[[1, 0, 3], [4, 5, 6], [0, 8, 9]]], [[0, 0, 0], [0, 0, 6], [0, 0, 0]]]
+      ] },
     solution: {
       approach: `<p>Use the first row and first column as marker arrays, with one extra flag for column 0. Fill the inner cells from the markers, then fix the marker row/column last.</p>`,
       code: `
@@ -2930,6 +4642,57 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
                 System.out.println(Arrays.deepToString(m)); // [[0, 0, 0, 0], [0, 4, 5, 0], [0, 3, 1, 0]]
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def set_zeroes(m):
+    R, C = len(m), len(m[0])
+    col0_zero = False
+    for r in range(R):
+        if m[r][0] == 0:
+            col0_zero = True                  # column 0 has its own flag
+        for c in range(1, C):
+            if m[r][c] == 0:
+                m[r][0] = m[0][c] = 0         # mark row r and column c
+    for r in range(1, R):                     # inner cells first
+        for c in range(1, C):
+            if m[r][0] == 0 or m[0][c] == 0:
+                m[r][c] = 0
+    if m[0][0] == 0:                          # row 0 marker
+        m[0][:] = [0] * C
+    if col0_zero:                             # column 0 marker
+        for r in range(R):
+            m[r][0] = 0` },
+        { lang: 'js', code: `function setZeroes(m) {
+  const R = m.length, C = m[0].length;
+  let col0Zero = false;
+  for (let r = 0; r < R; r++) {
+    if (m[r][0] === 0) col0Zero = true;        // column 0 has its own flag
+    for (let c = 1; c < C; c++)
+      if (m[r][c] === 0) { m[r][0] = 0; m[0][c] = 0; }   // mark row r and column c
+  }
+  for (let r = 1; r < R; r++)                  // inner cells first
+    for (let c = 1; c < C; c++)
+      if (m[r][0] === 0 || m[0][c] === 0) m[r][c] = 0;
+  if (m[0][0] === 0) m[0].fill(0);             // row 0 marker
+  if (col0Zero) for (let r = 0; r < R; r++) m[r][0] = 0;   // column 0 marker
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    void setZeroes(vector<vector<int>>& m) {
+        int R = m.size(), C = m[0].size();
+        bool col0Zero = false;
+        for (int r = 0; r < R; r++) {
+            if (m[r][0] == 0) col0Zero = true;      // column 0 has its own flag
+            for (int c = 1; c < C; c++)
+                if (m[r][c] == 0) m[r][0] = m[0][c] = 0;   // mark row r and column c
+        }
+        for (int r = 1; r < R; r++)                 // inner cells first
+            for (int c = 1; c < C; c++)
+                if (m[r][0] == 0 || m[0][c] == 0) m[r][c] = 0;
+        if (m[0][0] == 0) fill(m[0].begin(), m[0].end(), 0);   // row 0 marker
+        if (col0Zero) for (int r = 0; r < R; r++) m[r][0] = 0; // column 0 marker
+    }
+};` }
+      ],
       complexity: `<p><b>Time O(R·C)</b>, <b>space O(1)</b> extra.</p>`,
       followUps: ['Do it with O(R + C) boolean arrays first — explain the trade-off.', 'Game of Life: update in place using extra state values.']
     }
@@ -2961,6 +4724,19 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
       `<p>Binary search lo = 0, hi = R·C − 1; read <code>g[mid / C][mid % C]</code>.</p>`,
       `<p><b>Traps:</b> divide by the number of <b>columns</b>, not rows; use lo + (hi − lo) / 2.<br><b>Recipe:</b> standard binary search on the virtual flat array.</p>`
     ],
+    tests: { sig: 'int[][] int -> bool', fn: 'searchMatrix', cases: [
+        [[[[1, 3, 5, 7], [10, 11, 16, 20], [23, 30, 34, 60]], 3], true],
+        [[[[1, 3, 5, 7], [10, 11, 16, 20], [23, 30, 34, 60]], 13], false],
+        [[[[1, 3, 5, 7], [10, 11, 16, 20], [23, 30, 34, 60]], 1], true],
+        [[[[1, 3, 5, 7], [10, 11, 16, 20], [23, 30, 34, 60]], 60], true],
+        [[[[1, 3, 5, 7], [10, 11, 16, 20], [23, 30, 34, 60]], 0], false],
+        [[[[1, 3, 5, 7], [10, 11, 16, 20], [23, 30, 34, 60]], 61], false],
+        [[[[1, 3, 5, 7], [10, 11, 16, 20], [23, 30, 34, 60]], 23], true],
+        [[[[5]], 5], true],
+        [[[[5]], 6], false],
+        [[[[1], [3]], 3], true],
+        [[[[-10000, 0, 10000]], -10000], true]
+      ] },
     solution: {
       approach: `<p>Binary search on a virtual flat array using flat → (row, col) conversion.</p>`,
       code: `
@@ -2983,6 +4759,48 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
                 System.out.println(new Solution().searchMatrix(g, 3) + " " + new Solution().searchMatrix(g, 13)); // true false
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def search_matrix(g, target):
+    R, C = len(g), len(g[0])
+    lo, hi = 0, R * C - 1
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        r, c = divmod(mid, C)           # flat index -> (row, col)
+        if g[r][c] == target:
+            return True
+        if g[r][c] < target:
+            lo = mid + 1
+        else:
+            hi = mid - 1
+    return False` },
+        { lang: 'js', code: `function searchMatrix(g, target) {
+  const R = g.length, C = g[0].length;
+  let lo = 0, hi = R * C - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const v = g[Math.floor(mid / C)][mid % C];   // flat index -> (row, col)
+    if (v === target) return true;
+    if (v < target) lo = mid + 1;
+    else hi = mid - 1;
+  }
+  return false;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    bool searchMatrix(vector<vector<int>>& g, int target) {
+        int R = g.size(), C = g[0].size();
+        int lo = 0, hi = R * C - 1;
+        while (lo <= hi) {
+            int mid = lo + (hi - lo) / 2;
+            int v = g[mid / C][mid % C];        // flat index -> (row, col)
+            if (v == target) return true;
+            if (v < target) lo = mid + 1;
+            else hi = mid - 1;
+        }
+        return false;
+    }
+};` }
+      ],
       dry: { head: ['lo', 'hi', 'mid', '(r, c)', 'value vs 13'], rows: [['0', '11', '5', '(1, 1)', '11 &lt; 13 → lo = 6'], ['6', '11', '8', '(2, 0)', '23 &gt; 13 → hi = 7'], ['6', '7', '6', '(1, 2)', '16 &gt; 13 → hi = 5'], ['6', '5', '—', '—', H.c('r', 'lo &gt; hi → false')]] },
       complexity: `<p><b>Time O(log(R·C))</b>, <b>space O(1)</b>.</p>`,
       followUps: ['What if only rows and columns are sorted? (staircase)', 'Find the first value ≥ target (lower bound).']
@@ -3017,6 +4835,15 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
       `<p>For each (i, j): clamp the corners to the matrix, then use big − top − left + corner.</p>`,
       `<p><b>Traps:</b> clamp with max(0, …) and min(R − 1, …) before indexing the padded table.<br><b>Recipe:</b> build P; for each cell: r1, c1, r2, c2 = clamped; ans = P[r2+1][c2+1] − P[r1][c2+1] − P[r2+1][c1] + P[r1][c1].</p>`
     ],
+    tests: { sig: 'int[][] int -> int[][]', fn: 'matrixBlockSum', cases: [
+        [[[[1, 2, 3], [4, 5, 6], [7, 8, 9]], 1], [[12, 21, 16], [27, 45, 33], [24, 39, 28]]],
+        [[[[1, 2, 3], [4, 5, 6], [7, 8, 9]], 2], [[45, 45, 45], [45, 45, 45], [45, 45, 45]]],
+        [[[[5]], 1], [[5]]],
+        [[[[1, 2, 3, 4]], 1], [[3, 6, 9, 7]]],
+        [[[[1], [2], [3], [4]], 2], [[6], [10], [10], [9]]],
+        [[[[100, 100, 100, 100], [100, 100, 100, 100], [100, 100, 100, 100]], 100], [[1200, 1200, 1200, 1200], [1200, 1200, 1200, 1200], [1200, 1200, 1200, 1200]]],
+        [[[[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16]], 1], [[14, 24, 30, 22], [33, 54, 63, 45], [57, 90, 99, 69], [46, 72, 78, 54]]]
+      ] },
     solution: {
       approach: `<p>One padded 2D prefix table; each output cell is an O(1) clamped rectangle query.</p>`,
       code: `
@@ -3043,6 +4870,51 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
                 System.out.println(Arrays.deepToString(new Solution().matrixBlockSum(m, 1))); // [[12, 21, 16], [27, 45, 33], [24, 39, 28]]
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def matrix_block_sum(mat, k):
+    R, C = len(mat), len(mat[0])
+    P = [[0] * (C + 1) for _ in range(R + 1)]
+    for i in range(R):
+        for j in range(C):
+            P[i + 1][j + 1] = mat[i][j] + P[i][j + 1] + P[i + 1][j] - P[i][j]
+    ans = [[0] * C for _ in range(R)]
+    for i in range(R):
+        r1, r2 = max(0, i - k), min(R - 1, i + k)        # clamp to the grid
+        for j in range(C):
+            c1, c2 = max(0, j - k), min(C - 1, j + k)
+            ans[i][j] = P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
+    return ans` },
+        { lang: 'js', code: `function matrixBlockSum(mat, k) {
+  const R = mat.length, C = mat[0].length;
+  const P = Array.from({ length: R + 1 }, () => new Array(C + 1).fill(0));
+  for (let i = 0; i < R; i++)
+    for (let j = 0; j < C; j++)
+      P[i + 1][j + 1] = mat[i][j] + P[i][j + 1] + P[i + 1][j] - P[i][j];
+  return mat.map((row, i) => row.map((_, j) => {
+    const r1 = Math.max(0, i - k), c1 = Math.max(0, j - k);          // clamp to the grid
+    const r2 = Math.min(R - 1, i + k), c2 = Math.min(C - 1, j + k);
+    return P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1];
+  }));
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    vector<vector<int>> matrixBlockSum(vector<vector<int>>& mat, int k) {
+        int R = mat.size(), C = mat[0].size();
+        vector<vector<int>> P(R + 1, vector<int>(C + 1, 0));
+        for (int i = 0; i < R; i++)
+            for (int j = 0; j < C; j++)
+                P[i + 1][j + 1] = mat[i][j] + P[i][j + 1] + P[i + 1][j] - P[i][j];
+        vector<vector<int>> ans(R, vector<int>(C));
+        for (int i = 0; i < R; i++)
+            for (int j = 0; j < C; j++) {
+                int r1 = max(0, i - k), c1 = max(0, j - k);           // clamp to the grid
+                int r2 = min(R - 1, i + k), c2 = min(C - 1, j + k);
+                ans[i][j] = P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1];
+            }
+        return ans;
+    }
+};` }
+      ],
       complexity: `<p><b>Time O(R·C)</b>, <b>space O(R·C)</b> for the prefix table.</p>`,
       followUps: ['Largest square with sum ≤ threshold (LeetCode 1292).', 'Image blur / box filter in real image processing.']
     }
@@ -3085,6 +4957,17 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
       `<p>Pass 1 (→): if ratings[i] &gt; ratings[i−1], c[i] = c[i−1] + 1. Pass 2 (←): if ratings[i] &gt; ratings[i+1], c[i] = max(c[i], c[i+1] + 1).</p>`,
       `<p><b>Traps:</b> use max in pass 2, not assignment; equal ratings impose nothing.<br><b>Recipe:</b> fill 1s; left pass; right pass with max; sum.</p>`
     ],
+    tests: { sig: 'int[] -> int', fn: 'candy', cases: [
+        [[[1, 0, 2]], 5],
+        [[[1, 2, 2]], 4],
+        [[[1, 3, 4, 5, 2]], 11],
+        [[[5]], 1],
+        [[[1, 2, 3, 4, 5]], 15],
+        [[[5, 4, 3, 2, 1]], 15],
+        [[[2, 2, 2, 2]], 4],
+        [[[1, 3, 2, 2, 1]], 7],
+        [[[0, 20000, 0, 20000]], 6]
+      ] },
     solution: {
       approach: `<p>Two directional passes (like prefix and suffix arrays), combined with max per index. This is the minimum because each child gets exactly the length of the longest increasing run reaching it from either side.</p>`,
       code: `
@@ -3107,6 +4990,38 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
                 System.out.println(s.candy(new int[]{1, 0, 2}) + " " + s.candy(new int[]{1, 2, 2}) + " " + s.candy(new int[]{1, 3, 4, 5, 2})); // 5 4 11
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def candy(ratings):
+    n = len(ratings)
+    c = [1] * n                                   # everyone gets at least one
+    for i in range(1, n):                         # left neighbour rule
+        if ratings[i] > ratings[i - 1]:
+            c[i] = c[i - 1] + 1
+    for i in range(n - 2, -1, -1):                # right neighbour rule
+        if ratings[i] > ratings[i + 1]:
+            c[i] = max(c[i], c[i + 1] + 1)
+    return sum(c)` },
+        { lang: 'js', code: `function candy(ratings) {
+  const n = ratings.length, c = new Array(n).fill(1);   // everyone gets at least one
+  for (let i = 1; i < n; i++)                           // left neighbour rule
+    if (ratings[i] > ratings[i - 1]) c[i] = c[i - 1] + 1;
+  for (let i = n - 2; i >= 0; i--)                      // right neighbour rule
+    if (ratings[i] > ratings[i + 1]) c[i] = Math.max(c[i], c[i + 1] + 1);
+  return c.reduce((s, x) => s + x, 0);
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int candy(vector<int>& ratings) {
+        int n = ratings.size();
+        vector<int> c(n, 1);                              // everyone gets at least one
+        for (int i = 1; i < n; i++)                       // left neighbour rule
+            if (ratings[i] > ratings[i - 1]) c[i] = c[i - 1] + 1;
+        for (int i = n - 2; i >= 0; i--)                  // right neighbour rule
+            if (ratings[i] > ratings[i + 1]) c[i] = max(c[i], c[i + 1] + 1);
+        return accumulate(c.begin(), c.end(), 0);
+    }
+};` }
+      ],
       dry: { head: ['i', 'rating', 'after → pass', 'after ← pass'], rows: [['0', '1', '1', '1'], ['1', '3', '2', '2'], ['2', '4', '3', '3'], ['3', '5', '4', '4'], ['4', '2', '1', '1 → total ' + H.c('p', '11')]] },
       complexity: `<p><b>Time O(N)</b>, <b>space O(N)</b> (an O(1)-space version counts up/down slopes).</p>`,
       followUps: ['Children in a circle.', 'O(1) extra space with slope counting.']
@@ -3138,6 +5053,19 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
       `<p>For each i, while nums[i] is in 1..N and not already at its home (nums[nums[i] − 1] ≠ nums[i]), swap it home.</p>`,
       `<p><b>Traps:</b> the duplicate check <code>nums[v−1] ≠ v</code> prevents infinite loops; negative and huge values are skipped. Each swap places one value permanently → O(N) total.<br><b>Recipe:</b> place; then scan for the first i with nums[i] ≠ i + 1; if none, return N + 1.</p>`
     ],
+    tests: { sig: 'int[] -> int', fn: 'firstMissingPositive', cases: [
+        [[[3, 4, -1, 1]], 2],
+        [[[1, 2, 0]], 3],
+        [[[7, 8, 9, 11, 12]], 1],
+        [[[1]], 2],
+        [[[2]], 1],
+        [[[1, 1]], 2],
+        [[[2, 1]], 3],
+        [[[-2147483648, 2147483647]], 1],
+        [[[5, 4, 3, 2, 1]], 6],
+        [[[0, -1, -2]], 1],
+        [[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]], 11]
+      ] },
     solution: {
       approach: `<p>Cyclic placement: put every value v in 1..N at index v − 1 by swapping, then the first mismatch is the answer.</p>`,
       code: `
@@ -3162,6 +5090,45 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
                 System.out.println(s.firstMissingPositive(new int[]{3, 4, -1, 1}) + " " + s.firstMissingPositive(new int[]{1, 2, 0}) + " " + s.firstMissingPositive(new int[]{7, 8, 9, 11, 12})); // 2 3 1
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def first_missing_positive(nums):
+    n = len(nums)
+    for i in range(n):
+        # swap nums[i] home until it is out of range, a duplicate, or already home
+        while 1 <= nums[i] <= n and nums[nums[i] - 1] != nums[i]:
+            v = nums[i]
+            nums[i], nums[v - 1] = nums[v - 1], v
+    for i, x in enumerate(nums):
+        if x != i + 1:
+            return i + 1                  # first empty home
+    return n + 1` },
+        { lang: 'js', code: `function firstMissingPositive(nums) {
+  const n = nums.length;
+  for (let i = 0; i < n; i++) {
+    // swap nums[i] home until it is out of range, a duplicate, or already home
+    while (nums[i] >= 1 && nums[i] <= n && nums[nums[i] - 1] !== nums[i]) {
+      const v = nums[i];
+      nums[i] = nums[v - 1];
+      nums[v - 1] = v;
+    }
+  }
+  for (let i = 0; i < n; i++) if (nums[i] !== i + 1) return i + 1;   // first empty home
+  return n + 1;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int firstMissingPositive(vector<int>& nums) {
+        int n = nums.size();
+        for (int i = 0; i < n; i++)
+            // swap nums[i] home until it is out of range, a duplicate, or already home
+            while (nums[i] >= 1 && nums[i] <= n && nums[nums[i] - 1] != nums[i])
+                swap(nums[i], nums[nums[i] - 1]);
+        for (int i = 0; i < n; i++)
+            if (nums[i] != i + 1) return i + 1;    // first empty home
+        return n + 1;
+    }
+};` }
+      ],
       dry: { head: ['step', 'action', 'array'], rows: [['i=0', 'swap 3 → index 2', '[−1, 4, 3, 1]'], ['i=0', '−1 out of range, stop', '[−1, 4, 3, 1]'], ['i=1', 'swap 4 → index 3', '[−1, 1, 3, 4]'], ['i=1', 'swap 1 → index 0', '[1, −1, 3, 4]'], ['scan', 'index 1 holds −1 ≠ 2', H.c('p', 'answer 2')]] },
       complexity: `<p><b>Time O(N)</b> — every swap puts a value home for good, so at most N swaps overall. <b>Space O(1)</b>.</p>`,
       followUps: ['Find all missing numbers in 1..N.', 'Find the duplicate and the missing number.', 'Sign-marking variant (negate nums[v − 1]).']
@@ -3197,9 +5164,19 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
     mcq: { q: `<p>You fix top row = 1 and bottom row = 3 and add each column's values between them, getting [−9, 4, 15, 10, −2]. What is the best rectangle sum for this row pair?</p>`, options: ['29 (Kadane on the compressed row: 4 + 15 + 10)', '18', '15', '27'], answer: 0, explain: `<p>Each compressed value is a whole column strip. Kadane over [−9, 4, 15, 10, −2] gives 4 + 15 + 10 = 29, i.e. columns 1..3 — the answer above.</p>` },
     hints: [
       `<p><b>Aha:</b> fix the top and bottom rows. Then each column contributes one number (its strip sum), and the problem becomes 1D max subarray.</p>`,
-      `<p>For each top, keep a <code>long[] col</code>; extend bottom one row at a time adding that row into col (carry forward), and run Kadane on col.</p>`,
+      `<p>For each top, keep a 64-bit array <code>col</code>; extend bottom one row at a time adding that row into col (carry forward), and run Kadane on col.</p>`,
       `<p><b>Traps:</b> reset col for every new top; Kadane must allow all-negative (start with col[0]); use long.<br><b>Recipe:</b> for top: col = 0s; for bottom ≥ top: col[c] += A[bottom][c]; best = max(best, kadane(col)).</p>`
     ],
+    tests: { sig: 'int[][] -> long', fn: 'maxSumRectangle', cases: [
+        [[[[1, 2, -1, -4, -20], [-8, -3, 4, 2, 1], [3, 8, 10, 1, 3], [-4, -1, 1, 7, -6]]], 29],
+        [[[[-5]]], -5],
+        [[[[-3, -1], [-2, -4]]], -1],
+        [[[[10000, 10000, 10000, 10000, 10000], [10000, 10000, 10000, 10000, 10000], [10000, 10000, 10000, 10000, 10000], [10000, 10000, 10000, 10000, 10000]]], 200000],
+        [[[[2, -1, 3]]], 4],
+        [[[[1], [-2], [3]]], 3],
+        [[[[0, 0], [0, 0]]], 0],
+        [[[[1, -10, 1], [-10, 9, -10], [1, -10, 1]]], 9]
+      ] },
     solution: {
       approach: `<p>Row-pair compression + Kadane: O(R<sup>2</sup>·C). Transpose first if R &gt; C so the squared dimension is the smaller one.</p>`,
       code: `
@@ -3227,9 +5204,62 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
                 System.out.println(new Solution().maxSumRectangle(A)); // 29
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def max_sum_rectangle(A):
+    R, C = len(A), len(A[0])
+    best = float('-inf')
+    for top in range(R):
+        col = [0] * C                       # column sums for rows top..bottom
+        for bottom in range(top, R):
+            for c in range(C):
+                col[c] += A[bottom][c]      # grow the strip by one row
+            cur = here = col[0]             # Kadane on the squashed row
+            for x in col[1:]:
+                cur = max(x, cur + x)
+                here = max(here, cur)
+            best = max(best, here)
+    return best` },
+        { lang: 'js', code: `function maxSumRectangle(A) {
+  const R = A.length, C = A[0].length;
+  let best = -Infinity;
+  for (let top = 0; top < R; top++) {
+    const col = new Array(C).fill(0);       // column sums for rows top..bottom
+    for (let bottom = top; bottom < R; bottom++) {
+      for (let c = 0; c < C; c++) col[c] += A[bottom][c];   // grow the strip by one row
+      let cur = col[0], here = col[0];      // Kadane on the squashed row
+      for (let c = 1; c < C; c++) {
+        cur = Math.max(col[c], cur + col[c]);
+        here = Math.max(here, cur);
+      }
+      best = Math.max(best, here);
+    }
+  }
+  return best;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    long long maxSumRectangle(vector<vector<int>>& A) {
+        int R = A.size(), C = A[0].size();
+        long long best = LLONG_MIN;
+        for (int top = 0; top < R; top++) {
+            vector<long long> col(C, 0);            // column sums for rows top..bottom
+            for (int bottom = top; bottom < R; bottom++) {
+                for (int c = 0; c < C; c++) col[c] += A[bottom][c];   // grow the strip
+                long long cur = col[0], here = col[0];               // Kadane on the squashed row
+                for (int c = 1; c < C; c++) {
+                    cur = max(col[c], cur + col[c]);
+                    here = max(here, cur);
+                }
+                best = max(best, here);
+            }
+        }
+        return best;
+    }
+};` }
+      ],
       dry: { head: ['top..bottom', 'compressed col', 'Kadane best'], rows: [['2..2', '[3, 8, 10, 1, 3]', '25'], ['1..2', '[−5, 5, 14, 3, 4]', '26'], ['1..3', '[−9, 4, 15, 10, −2]', H.c('p', '29')], ['0..3', '[−8, 6, 14, 6, −22]', '26']] },
       complexity: `<p><b>Time O(R<sup>2</sup>·C)</b> (10<sup>6</sup> for 100 × 100), <b>space O(C)</b>.</p>`,
-      followUps: ['Return the rectangle corners.', 'Max rectangle sum no larger than K (needs a TreeSet of prefix sums).', 'Count submatrices that sum to a target (needs a HashMap).']
+      followUps: ['Return the rectangle corners.', 'Max rectangle sum no larger than K (needs a sorted set of prefix sums: <code>TreeSet</code> / <code>SortedList</code> / <code>std::set</code>).', 'Count submatrices that sum to a target (needs a hash map: <code>HashMap</code> / <code>dict</code> / <code>Map</code> / <code>unordered_map</code>).']
     }
   });
 
@@ -3263,6 +5293,17 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
       `<p>Build window sums W with prefix sums. left[i] = index of best W in 0..i (strict &gt; keeps the earliest). right[i] = index of best W in i..m−1 (≥ while scanning right-to-left keeps the earliest).</p>`,
       `<p><b>Traps:</b> tie-breaking for the lexicographically smallest answer (strict vs non-strict comparisons); middle j ranges from k to m − 1 − k.<br><b>Recipe:</b> W, left, right; for j in k..m−1−k: total = W[left[j−k]] + W[j] + W[right[j+k]]; keep the strict best.</p>`
     ],
+    tests: { sig: 'int[] int -> int[]', fn: 'maxSumOfThreeSubarrays', cases: [
+        [[[1, 2, 1, 2, 6, 7, 5, 1], 2], [0, 3, 5]],
+        [[[1, 2, 1, 2, 1, 2, 1, 2, 1], 2], [0, 2, 4]],
+        [[[1, 1, 1], 1], [0, 1, 2]],
+        [[[4, 5, 6], 1], [0, 1, 2]],
+        [[[7, 7, 7, 7, 7, 7], 2], [0, 2, 4]],
+        [[[9, 1, 1, 9, 1, 1, 9, 1, 1], 3], [0, 3, 6]],
+        [[[65535, 65535, 65535, 65535, 65535, 65535, 65535, 65535, 65535], 3], [0, 3, 6]],
+        [[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 1], [7, 8, 9]],
+        [[[3, 1, 1, 3, 1, 1, 1, 3, 1], 1], [0, 3, 7]]
+      ] },
     solution: {
       approach: `<p>Prefix sums → window sums; prefix-argmax and suffix-argmax arrays; one pass over the middle window. Everything is O(N).</p>`,
       code: `
@@ -3305,6 +5346,78 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
                 System.out.println(Arrays.toString(r)); // [0, 3, 5]
             }
         }`,
+      alt: [
+        { lang: 'python', code: `from itertools import accumulate
+
+def max_sum_of_three_subarrays(nums, k):
+    P = [0, *accumulate(nums)]
+    W = [P[i + k] - P[i] for i in range(len(nums) - k + 1)]   # window sums
+    m = len(W)
+    left, best = [0] * m, 0
+    for i in range(m):                     # best start in 0..i, earliest on ties
+        if W[i] > W[best]:
+            best = i
+        left[i] = best
+    right, best = [0] * m, m - 1
+    for i in range(m - 1, -1, -1):         # best start in i..m-1, earliest on ties
+        if W[i] >= W[best]:
+            best = i
+        right[i] = best
+    ans, best_sum = None, -1
+    for j in range(k, m - k):              # middle window start
+        a, c = left[j - k], right[j + k]
+        total = W[a] + W[j] + W[c]
+        if total > best_sum:               # strict: keep the lexicographically smallest
+            best_sum, ans = total, [a, j, c]
+    return ans` },
+        { lang: 'js', code: `function maxSumOfThreeSubarrays(nums, k) {
+  const n = nums.length, m = n - k + 1;
+  const P = new Array(n + 1).fill(0);
+  for (let i = 0; i < n; i++) P[i + 1] = P[i] + nums[i];
+  const W = Array.from({ length: m }, (_, i) => P[i + k] - P[i]);   // window sums
+  const left = new Array(m), right = new Array(m);
+  for (let i = 0, best = 0; i < m; i++) {          // best start in 0..i, earliest on ties
+    if (W[i] > W[best]) best = i;
+    left[i] = best;
+  }
+  for (let i = m - 1, best = m - 1; i >= 0; i--) { // best start in i..m-1, earliest on ties
+    if (W[i] >= W[best]) best = i;
+    right[i] = best;
+  }
+  let ans = [-1, -1, -1], bestSum = -1;
+  for (let j = k; j + k < m; j++) {                // middle window start
+    const a = left[j - k], c = right[j + k], total = W[a] + W[j] + W[c];
+    if (total > bestSum) { bestSum = total; ans = [a, j, c]; }   // strict: lexicographically smallest
+  }
+  return ans;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> maxSumOfThreeSubarrays(vector<int>& nums, int k) {
+        int n = nums.size(), m = n - k + 1;
+        vector<long long> P(n + 1, 0), W(m);
+        for (int i = 0; i < n; i++) P[i + 1] = P[i] + nums[i];
+        for (int i = 0; i < m; i++) W[i] = P[i + k] - P[i];   // window sums
+        vector<int> left(m), right(m);
+        for (int i = 0, best = 0; i < m; i++) {              // best start in 0..i, earliest on ties
+            if (W[i] > W[best]) best = i;
+            left[i] = best;
+        }
+        for (int i = m - 1, best = m - 1; i >= 0; i--) {     // best start in i..m-1, earliest on ties
+            if (W[i] >= W[best]) best = i;
+            right[i] = best;
+        }
+        vector<int> ans{-1, -1, -1};
+        long long bestSum = -1;
+        for (int j = k; j + k < m; j++) {                    // middle window start
+            int a = left[j - k], c = right[j + k];
+            long long total = W[a] + W[j] + W[c];
+            if (total > bestSum) { bestSum = total; ans = {a, j, c}; }   // strict: lexicographically smallest
+        }
+        return ans;
+    }
+};` }
+      ],
       dry: { head: ['j (middle)', 'left[j−k]', 'right[j+k]', 'W sums', 'total'], rows: [['2', '0', '4', '3 + 3 + 13', '19'], ['3', '0', '5', '3 + 8 + 12', H.c('p', '23')], ['4', '0', '6', '3 + 13 + 6', '22']] },
       complexity: `<p><b>Time O(N)</b>, <b>space O(N)</b> for W, left and right.</p>`,
       followUps: ['Two non-overlapping subarrays with different lengths L and M (LeetCode 1031).', 'Generalise to m subarrays (DP over windows).']
@@ -3315,7 +5428,7 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
   // QUIZ
   // =====================================================================
   quiz.push(
-    { q: `<p>In a Java <code>int[][] g = new int[3][5]</code>, what is <code>g[0].length</code>?</p>`, options: ['5 (number of columns)', '3 (number of rows)', '15', 'It depends on the values'], answer: 0, explain: `<p><code>g.length</code> is the number of rows (3). <code>g[0]</code> is the first row array, whose length is the number of columns (5).</p>` },
+    { q: `<p>A grid <code>g</code> has 3 rows and 5 columns (Java <code>new int[3][5]</code>, Python <code>[[0] * 5 for _ in range(3)]</code>). What is the length of <code>g[0]</code> (<code>g[0].length</code> / <code>len(g[0])</code>)?</p>`, options: ['5 (number of columns)', '3 (number of rows)', '15', 'It depends on the values'], answer: 0, explain: `<p><code>g.length</code> is the number of rows (3). <code>g[0]</code> is the first row array, whose length is the number of columns (5).</p>` },
     { q: `<p>Using the padded prefix array P (P[0] = 0, P[i+1] = P[i] + A[i]), the sum of A[L..R] inclusive is…</p>`, options: ['P[R+1] − P[L]', 'P[R] − P[L]', 'P[R] − P[L−1]', 'P[R+1] − P[L−1]'], answer: 0, explain: `<p>P[R+1] covers A[0..R] and P[L] covers A[0..L−1]; their difference is exactly A[L..R]. The unpadded formula pf[R] − pf[L−1] is the same thing shifted by one.</p>` },
     { q: `<p>Which range question can prefix sums NOT answer in O(1)?</p>`, options: ['Maximum value in A[L..R]', 'Sum of A[L..R]', 'XOR of A[L..R]', 'Number of even values in A[L..R]'], answer: 0, explain: `<p>Prefix tricks need an operation you can undo (subtract, XOR again). You cannot "un-max" a prefix. Range max needs a sparse table or segment tree.</p>` },
     { q: `<p>You delete index i from an array. Elements to the right of i…</p>`, options: ['Change parity (even ↔ odd index)', 'Keep their parity', 'Are deleted too', 'Only the next one changes parity'], answer: 0, explain: `<p>Each right-side element moves from index j to j − 1, which flips parity. That is why the right-side even and odd sums swap in the special-index formula.</p>` },
@@ -3330,14 +5443,14 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
     { q: `<p>Staircase search in a row- and column-sorted matrix starts at the top-right. The value is smaller than the target. You…</p>`, options: ['Move down (drop this row)', 'Move left (drop this column)', 'Move up', 'Stop: not found'], answer: 0, explain: `<p>Everything to the left in this row is even smaller, so the whole row is useless — move down.</p>` },
     { q: `<p>2D prefix query with padded P for rectangle (r1, c1)..(r2, c2):</p>`, options: ['P[r2+1][c2+1] − P[r1][c2+1] − P[r2+1][c1] + P[r1][c1]', 'P[r2][c2] − P[r1][c1]', 'P[r2+1][c2+1] − P[r1][c1]', 'P[r2+1][c2+1] − P[r1][c2+1] − P[r2+1][c1]'], answer: 0, explain: `<p>Big block minus the top strip minus the left strip plus the corner that was subtracted twice (inclusion–exclusion).</p>` },
     { q: `<p>N = Q = 10<sup>5</sup> range-sum queries on a static array. Which complexity should you aim for?</p>`, options: ['O(N + Q) with prefix sums', 'O(N · Q) with loops', 'O(N<sup>2</sup>)', 'O(Q log Q) by sorting queries'], answer: 0, explain: `<p>N·Q = 10<sup>10</sup> is far above the ~10<sup>8</sup> operations/second budget. One O(N) build plus O(1) per query is about 2 × 10<sup>5</sup> steps.</p>` },
-    { q: `<p>Why store prefix sums of 10<sup>5</sup> values up to 10<sup>9</sup> in a <code>long[]</code>?</p>`, options: ['Totals reach 10<sup>14</sup>, beyond int\'s ~2.1 × 10<sup>9</sup>', 'long is faster than int', 'Java requires it for arrays', 'To allow negative numbers'], answer: 0, explain: `<p>int overflows silently (wraps around) at 2<sup>31</sup> − 1 ≈ 2.1 × 10<sup>9</sup>. long holds up to about 9.2 × 10<sup>18</sup>.</p>` }
+    { q: `<p>Why store prefix sums of 10<sup>5</sup> values up to 10<sup>9</sup> as 64-bit integers (<code>long[]</code> / <code>long long</code>)?</p>`, options: ['Totals reach 10<sup>14</sup>, beyond int\'s ~2.1 × 10<sup>9</sup>', 'long is faster than int', 'Java requires it for arrays', 'To allow negative numbers'], answer: 0, explain: `<p>int overflows silently (wraps around) at 2<sup>31</sup> − 1 ≈ 2.1 × 10<sup>9</sup>. long holds up to about 9.2 × 10<sup>18</sup>.</p>` }
   );
 
   // =====================================================================
   // INTERVIEW Q&A
   // =====================================================================
   interview.push(
-    { q: `<p>Why is accessing <code>a[i]</code> O(1), and why is inserting at the front of an array O(N)?</p>`, level: 'B', a: `<p>An array is one contiguous block of equal-sized slots, so the address of slot i is <code>base + i × size</code> — one multiply and one add, regardless of i. That is O(1) random access. Inserting at the front means every existing element must shift one slot right to make room, which touches all N elements: O(N). Appending at the end of a dynamic array (ArrayList) is O(1) amortized because capacity doubles when full, so the total copying over N appends is at most about 2N.</p>`, followUps: ['What is amortized analysis?', 'How does a 2D Java array differ from a C 2D array in memory?', 'When would you choose a LinkedList over an ArrayList?'] },
+    { q: `<p>Why is accessing <code>a[i]</code> O(1), and why is inserting at the front of an array O(N)?</p>`, level: 'B', a: `<p>An array is one contiguous block of equal-sized slots, so the address of slot i is <code>base + i × size</code> — one multiply and one add, regardless of i. That is O(1) random access. Inserting at the front means every existing element must shift one slot right to make room, which touches all N elements: O(N). Appending at the end of a dynamic array (ArrayList / list / Array / vector) is O(1) amortized because capacity doubles when full, so the total copying over N appends is at most about 2N.</p>`, followUps: ['What is amortized analysis?', 'How does a 2D array of row arrays (Java, Python, JS) differ from a C/C++ built-in 2D array in memory?', 'When would you choose a LinkedList over an ArrayList?'] },
     { q: `<p>Explain prefix sums to a non-programmer and state the formula for a range sum.</p>`, level: 'B', a: `<p>It is a running scoreboard: after each item, write down the total so far. To get the total of items L through R, take the scoreboard reading at R and subtract the reading just before L — no re-adding. With a padded array P (P[0] = 0, P[i+1] = P[i] + A[i]), <code>sum(L..R) = P[R+1] − P[L]</code>. Building takes O(N) once; every query is O(1). I always mention <code>long</code> for overflow, and that it only works when the array does not change — otherwise I would use a Fenwick tree.</p>`, followUps: ['How would you support point updates?', 'What is a difference array?', 'Does it work with negative numbers?'] },
     { q: `<p>Walk me through Kadane's algorithm and prove it is correct.</p>`, level: 'I', a: `<p>Let cur be the best sum of a subarray ending exactly at i. Any such subarray is either just A[i] or extends a subarray ending at i − 1, and among those the best one to extend is the one with sum cur(i−1). So <code>cur(i) = max(A[i], cur(i−1) + A[i])</code>, and the answer is the max of cur over all i, because the optimal subarray ends somewhere. It is DP with a one-variable state: O(N) time, O(1) space. Initialise best with A[0], not 0, to handle all-negative arrays. To return indices, remember where the current run started whenever I restart, and record (start, i) whenever best improves.</p>`, followUps: ['How do you handle a circular array?', 'What changes for maximum product?', 'How would you find the max-sum rectangle in a matrix?'] },
     { q: `<p>How does the contribution technique compute the sum of all subarray sums in O(N)?</p>`, level: 'I', a: `<p>Instead of iterating over the ~N<sup>2</sup>/2 subarrays, I swap the order of summation: each A[i] is added once for every subarray that contains it. A subarray containing i starts at any of the i + 1 positions 0..i and ends at any of the N − i positions i..N−1, so it appears in (i+1)(N−i) subarrays. The answer is Σ A[i]·(i+1)(N−i), one pass. I cast to long before multiplying, since (N/2)<sup>2</sup>·10<sup>9</sup> can approach 10<sup>18</sup>, and apply mod per factor if the problem asks for it.</p>`, followUps: ['Sum over only odd-length subarrays?', 'Sum of subarray minimums?', 'What is the 2D version for submatrices?'] },
@@ -3382,9 +5495,9 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
         <li><b>Prefix / suffix max</b> — the left-pass + right-pass trick behind Trapping Rain Water.</li>
         <li><b>Matrix moves</b> — spiral walk with four shrinking walls, 90° rotation by transpose + reverse, the staircase search in a row-and-column sorted matrix, and 2D prefix sums for any rectangle sum in O(1).</li>
       </ul>
-      <p>Every idea starts with an everyday picture, then small numbers you can check by hand, then clean commented Java. Watch each visualizer step by step (change the input!), try the guided problems before peeking at hints, and finish with the mixed practice set, quiz and interview questions.</p>`,
+      <p>Every idea starts with an everyday picture, then small numbers you can check by hand, then clean commented code in Java, Python, JavaScript and C++ (pick your language on any code block). Watch each visualizer step by step (change the input!), try the guided problems before peeking at hints, and finish with the mixed practice set, quiz and interview questions.</p>`,
     goals: [
-      'Explain why <code>a[i]</code> is O(1), how a 2D Java array is laid out (array of row arrays), and convert between flat index and (row, col)',
+      'Explain why <code>a[i]</code> is O(1), how a 2D array is laid out (an array of row arrays in Java, Python and JS; one row-major block for a C++ built-in array), and convert between flat index and (row, col)',
       'Build 1D, even/odd-index and 2D prefix sums and answer any range or rectangle sum in O(1) without off-by-one errors',
       'Recognise carry-forward problems (pair counts, leaders, best-so-far) and solve them in one O(N) pass with O(1) memory',
       'Code Kadane\'s algorithm from memory, return the subarray indices, and adapt it to circular, product and 2D variants',
@@ -3394,6 +5507,12 @@ System.out.println(P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
     ],
     prereqs: `DSA 1 (Programming Foundations for DSA — Java loops, arrays, methods) and DSA 2 (Math Foundations &amp; Time/Space Complexity — counting loop iterations, the 10<sup>8</sup> operations/second rule). DSA 4 (Bit Manipulation) is helpful for the XOR prefix examples but not required.`,
     hours: 14,
+    langNotes: {
+      java: `<p><b>Java:</b> <code>int</code> overflow wraps silently, so keep prefix sums, pair counts and Kadane totals in <code>long</code> and cast before multiplying (<code>(long) a * b</code>). <code>new int[n]</code> is zero-filled; <code>a.length</code> is a field, <code>list.size()</code> a method. <code>int[][]</code> is an array of row arrays, so <code>g.clone()</code> is shallow. Return <code>List&lt;Integer&gt;</code> only when asked; boxed <code>Integer</code> lists are slower and compare with <code>equals</code>, not <code>==</code>, above 127. Nothing here recurses, so the ~10k-frame stack limit does not matter.</p>`,
+      python: `<p><b>Python:</b> ints never overflow, so no <code>long</code> worries — but big sums are slower. <code>itertools.accumulate</code> builds a prefix sum in one line (<code>[0, *accumulate(a)]</code> gives the padded version). Make a grid with <code>[[0] * C for _ in range(R)]</code>; <code>[[0] * C] * R</code> repeats <b>one</b> row object R times. <code>b = a</code> aliases; copy with <code>a[:]</code> or <code>a.copy()</code>. Negative indices wrap around (<code>a[-1]</code> is the last item), so an off-by-one bug can read the wrong cell instead of crashing. <code>list.insert(0, x)</code> and <code>list.pop(0)</code> are O(n). Plain loops over 10<sup>6</sup> cells take about a second; prefer built-ins like <code>sum</code>, <code>zip</code> and slicing.</p>`,
+      js: `<p><b>JavaScript:</b> every number is a double, exact only up to 2<sup>53</sup> ≈ 9 × 10<sup>15</sup>. Prefix sums of 10<sup>5</sup> values of 10<sup>9</sup> (10<sup>14</sup>) are safe; the contribution total in "Sum of All Subarray Sums" can reach 10<sup>18</sup>, so that solution uses <code>BigInt</code>. <code>%</code> keeps the sign of the dividend (<code>-7 % 3 === -1</code>) and <code>x | 0</code> truncates to 32 bits. Build grids with <code>Array.from({ length: R }, () =&gt; new Array(C).fill(0))</code>; <code>new Array(R).fill(row)</code> shares one row. Reading past the end gives <code>undefined</code> (no error), and <code>undefined + 1</code> is <code>NaN</code>. <code>arr.sort()</code> compares as strings unless you pass <code>(a, b) =&gt; a - b</code>; <code>shift</code>/<code>unshift</code> are O(n).</p>`,
+      cpp: `<p><b>C++:</b> signed overflow is undefined behaviour, so use <code>long long</code> for sums and write <code>accumulate(v.begin(), v.end(), 0LL)</code> (a plain <code>0</code> sums in <code>int</code>). <code>vector&lt;int&gt; b = a;</code> <b>copies</b> (unlike Java/Python/JS); pass <code>vector&lt;int&gt;&amp;</code> or <code>const&amp;</code> to avoid copies. <code>a[i]</code> has no bounds check (use <code>a.at(i)</code> while debugging). <code>partial_sum</code>, <code>reverse</code> and <code>swap</code> cover the prefix, rotation and transpose steps. <code>int g[R][C]</code> is one row-major block; <code>vector&lt;vector&lt;int&gt;&gt;</code> is one block per row. Mixing <code>size_t</code> (unsigned) with <code>int</code> breaks loops like <code>i &gt;= 0</code>; cast sizes to <code>int</code>.</p>`
+    },
     topics: topics,
     practice: practice,
     quiz: quiz,

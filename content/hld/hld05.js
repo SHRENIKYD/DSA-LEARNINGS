@@ -1482,6 +1482,7 @@ print("skewed global top 3 :", global_top_k(3))
      REGISTER
      ===================================================================== */
   registerModule({
+  langExplain: `<p><b>About the code here.</b> System design is language-neutral, and interviews never require a particular language for it. The short samples are Python (and occasionally Java) only to make an idea concrete, such as an estimate, a hash ring or a rate limiter. Read them like pseudocode; the runnable ones are calculators you can change and re-run.</p>`,
     id: 'hld05',
     title: 'Databases at Scale: Choice, Replication & Sharding',
     intro: `<p>Almost every system design interview ends up at the database: <i>"Which database would you use? What happens when it gets too big? What if the server dies? What about the celebrity user?"</i> This module gives you a calm, step-by-step way to answer all of these.</p>

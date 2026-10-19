@@ -61,8 +61,9 @@ function code(where, x, required, defLang) {
   if (/\bTODO\b|implement here|your code here/i.test(s.code)) E(where, 'placeholder text in code');
   if (/^\s*(\/\/|#|--)?\s*\.\.\.\s*$/m.test(s.code) || /(\/\/|#)\s*\.\.\.\s*$/m.test(s.code) || /\/\*\s*\.\.\.\s*\*\//.test(s.code)) E(where, 'ellipsis placeholder in code');
   if (s.lang === 'sql' && s.db !== undefined && !(m.databases && m.databases[s.db])) E(where, 'sql snippet uses db "' + s.db + '" but module.databases has no such key');
+  asList(s.alt).forEach((a, i) => code(where + '.alt[' + i + ']', a, true, defLang));
   if (s.check === false) return;
-  snippets.push(Object.assign({ where }, s));
+  snippets.push(Object.assign({ where }, s, { alt: undefined }));
 }
 function mcq(where, q) {
   if (!q) { E(where, 'missing'); return; }
@@ -173,6 +174,10 @@ if (pr.length < 12 || pr.length > 20) E('module', 'practice must have 12-20 prob
 const lc = (l) => pr.filter((p) => p.level === l).length;
 if (lc('Easy') < 3) E('module', 'practice needs >= 3 Easy'); if (lc('Medium') < 4) E('module', 'practice needs >= 4 Medium'); if (lc('Hard') < 3) E('module', 'practice needs >= 3 Hard');
 pr.forEach((p, k) => problem('practice[' + k + '] "' + String(p.title).slice(0, 40) + '"', p, false));
+if (m.langNotes) {
+  if (typeof m.langNotes !== 'object') E('module', 'langNotes must be an object {java, python, js, cpp}');
+  else Object.keys(m.langNotes).forEach((k) => { if (!['java', 'python', 'js', 'ts', 'cpp'].includes(k)) E('langNotes', 'unknown language key ' + k); html('langNotes.' + k, m.langNotes[k], 40); });
+}
 const qz = m.quiz || [];
 if (qz.length < 10) E('module', 'quiz needs >= 10 MCQs (got ' + qz.length + ')');
 qz.forEach((q, i) => mcq('quiz[' + i + ']', q));
@@ -256,13 +261,23 @@ function codeCheck() {
     const pchDir = path.join(os.tmpdir(), 'imastery-pch');
     const hdr = path.join(pchDir, 'all.h');
     if (!fs.existsSync(hdr + '.gch')) {
+      // Shared with tools/solution-check.js and parallel runs: build privately, then rename into place.
       fs.mkdirSync(pchDir, { recursive: true });
-      fs.writeFileSync(hdr, '#include <bits/stdc++.h>\nusing namespace std;\n');
-      spawnSync('g++', ['-std=c++20', '-x', 'c++-header', hdr, '-o', hdr + '.gch'], { encoding: 'utf8' });
+      const tag = '.' + process.pid + '-' + Date.now();
+      fs.writeFileSync(hdr + tag, '#include <bits/stdc++.h>\nusing namespace std;\n');
+      if (!fs.existsSync(hdr)) fs.renameSync(hdr + tag, hdr); else fs.rmSync(hdr + tag, { force: true });
+      const r = spawnSync('g++', ['-std=c++20', '-O1', '-x', 'c++-header', hdr, '-o', hdr + '.gch' + tag], { encoding: 'utf8' });
+      if (r.status === 0 && !fs.existsSync(hdr + '.gch')) fs.renameSync(hdr + '.gch' + tag, hdr + '.gch'); else fs.rmSync(hdr + '.gch' + tag, { force: true });
     }
+    const CSTUBS = {
+      ListNode: 'struct ListNode { int val; ListNode* next; ListNode() : val(0), next(nullptr) {} ListNode(int x) : val(x), next(nullptr) {} ListNode(int x, ListNode* n) : val(x), next(n) {} };',
+      TreeNode: 'struct TreeNode { int val; TreeNode* left; TreeNode* right; TreeNode() : val(0), left(nullptr), right(nullptr) {} TreeNode(int x) : val(x), left(nullptr), right(nullptr) {} TreeNode(int x, TreeNode* l, TreeNode* r) : val(x), left(l), right(r) {} };'
+    };
     by.cpp.forEach((s, k) => {
       total++;
-      const tries = [s.code, 'void snip__() {\n' + s.code + '\n}\n'];
+      let stubs = '';
+      for (const [n, d] of Object.entries(CSTUBS)) if (new RegExp('\\b' + n + '\\b').test(s.code) && !new RegExp('(struct|class)\\s+' + n + '\\b').test(s.code)) stubs += d + '\n';
+      const tries = [stubs + s.code, stubs + 'void snip__() {\n' + s.code + '\n}\n'];
       let msg = '';
       for (let i = 0; i < tries.length; i++) {
         const f = path.join(tmp, 'c' + k + '_' + i + '.cpp');
@@ -275,7 +290,19 @@ function codeCheck() {
     });
   }
   (by.json || []).forEach((s) => { total++; try { JSON.parse(s.code); ok++; } catch (e) { fail(s, e.message); } });
-  const unchecked = Object.keys(by).filter((l) => !['java', 'python', 'sql', 'js', 'ts', 'cpp', 'json'].includes(l)).reduce((a, l) => a + by[l].length, 0);
+  [].concat(by.bash || [], by.sh || []).forEach((s, k) => {
+    total++;
+    const f = path.join(tmp, 'b' + k + '.sh'); fs.writeFileSync(f, s.code);
+    const r = spawnSync('bash', ['-n', f], { encoding: 'utf8' });
+    if (r.status === 0) ok++; else fail(s, r.stderr);
+  });
+  (by.yaml || []).forEach((s, k) => {
+    total++;
+    const f = path.join(tmp, 'y' + k + '.yaml'); fs.writeFileSync(f, s.code);
+    const r = spawnSync('python3', ['-c', 'import sys, yaml; list(yaml.safe_load_all(open(sys.argv[1])))', f], { encoding: 'utf8' });
+    if (r.status === 0) ok++; else fail(s, (r.stderr || '').split('\n').slice(-4).join('\n'));
+  });
+  const unchecked = Object.keys(by).filter((l) => !['java', 'python', 'sql', 'js', 'ts', 'cpp', 'json', 'bash', 'sh', 'yaml'].includes(l)).reduce((a, l) => a + by[l].length, 0);
   console.log('code: ' + ok + '/' + total + ' checked snippets pass' + (unchecked ? ' (' + unchecked + ' in unchecked languages)' : ''));
   fs.rmSync(tmp, { recursive: true, force: true });
 }

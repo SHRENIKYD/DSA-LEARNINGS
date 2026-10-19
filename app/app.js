@@ -5,9 +5,10 @@
   function lsGet(k, d) { try { var v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } }
   function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } }
 
-  var LV = { B: { name: 'Beginner', c: 'var(--g)' }, I: { name: 'Intermediate', c: 'var(--lv-i)' }, A: { name: 'Advanced', c: 'var(--p)' }, E: { name: 'Expert', c: 'var(--r)' } };
-  var TABS = [['home', '⌂', 'Home'], ['map', '◈', 'Map'], ['play', '▶', 'Play'], ['badges', '★', 'Badges'], ['me', '◉', 'Me']];
-  var BIT = '<svg class="bit" viewBox="0 0 56 56" aria-hidden="true"><rect x="10" y="14" width="36" height="30" rx="9" fill="#22D3EE"/><rect x="15" y="20" width="26" height="15" rx="5" fill="#06222A"/><circle cx="22" cy="27.5" r="3.2" fill="#67E8F9"/><circle cx="34" cy="27.5" r="3.2" fill="#67E8F9"/><path d="M24 38.5q4 3 8 0" stroke="#06222A" stroke-width="2.2" fill="none" stroke-linecap="round"/><rect x="26" y="5" width="4" height="9" rx="2" fill="#22D3EE"/><circle cx="28" cy="5" r="3.5" fill="#FDE047"/><rect x="4" y="24" width="6" height="10" rx="3" fill="#0891B2"/><rect x="46" y="24" width="6" height="10" rx="3" fill="#0891B2"/></svg>';
+  var LV = { B: { name: 'Beginner Shore', c: 'var(--g)' }, I: { name: 'Intermediate Forest', c: 'var(--xp)' }, A: { name: 'Advanced Peaks', c: 'var(--flame)' }, E: { name: 'Expert Summit', c: 'var(--p)' } };
+  function tabIcon(d) { return '<svg viewBox="0 0 24 24" aria-hidden="true">' + d + '</svg>'; }
+  var TABS = [['home', tabIcon('<circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/>'), 'Home'], ['map', tabIcon('<path d="M3 6.5l6-3 6 3 6-3v14l-6 3-6-3-6 3z"/><path d="M9 3.5v14M15 6.5v14"/>'), 'World'], ['play', tabIcon('<path d="M7 4.5l12 7.5-12 7.5z"/>'), 'Play'], ['badges', tabIcon('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5.5"/><path d="M12 9.2l.9 1.9 2 .3-1.5 1.4.4 2-1.8-1-1.8 1 .4-2-1.5-1.4 2-.3z"/>'), 'Badges'], ['me', tabIcon('<rect x="5" y="3" width="14" height="18" rx="2"/><circle cx="12" cy="10" r="3"/><path d="M9 16h6"/>'), 'Me']];
+  var BIT = '<svg class="bit" viewBox="0 0 56 56" aria-hidden="true"><rect x="10" y="14" width="36" height="30" rx="9" fill="#F2C14E"/><rect x="15" y="20" width="26" height="15" rx="5" fill="#12263A"/><circle cx="22" cy="27.5" r="3.2" fill="#F4EEDC"/><circle cx="34" cy="27.5" r="3.2" fill="#F4EEDC"/><path d="M24 38.5q4 3 8 0" stroke="#12263A" stroke-width="2.2" fill="none" stroke-linecap="round"/><rect x="26" y="5" width="4" height="9" rx="2" fill="#F2C14E"/><circle cx="28" cy="5" r="3.5" fill="#FF8A5B"/><rect x="4" y="24" width="6" height="10" rx="3" fill="#B8891F"/><rect x="46" y="24" width="6" height="10" rx="3" fill="#B8891F"/></svg>';
 
   var play = lsGet('imastery.play', null) || Play.emptyState();
   play.settings = play.settings || { haptics: true, bit: true, motion: true };
@@ -21,7 +22,7 @@
   function setTheme(t) {
     lsSet('imastery.theme', t);
     document.documentElement.setAttribute('data-theme', t);
-    var mc = $('meta[name="theme-color"]'); if (mc) mc.setAttribute('content', t === 'light' ? '#F5F6F8' : '#0B0D12');
+    var mc = $('meta[name="theme-color"]'); if (mc) mc.setAttribute('content', t === 'light' ? '#F6F1E4' : '#12263A');
   }
   function done() { return lsGet('imastery.done', {}) || {}; }
   function save() { lsSet('imastery.play', play); }
@@ -68,7 +69,7 @@
   }
   function confetti() {
     if (!play.settings.motion) return '';
-    var cols = ['#FDE047', '#22D3EE', '#C084FC', '#4ADE80', '#FB923C', '#F87171'], s = '';
+    var cols = ['#F2C14E', '#FF8A5B', '#B48CF2', '#5FB98B', '#8FC3E0', '#F4EEDC'], s = '';
     for (var i = 0; i < 26; i++) s += '<i style="left:' + Math.round(Math.random() * 100) + '%;background:' + cols[i % cols.length] + ';animation-delay:' + (Math.random() * 0.6).toFixed(2) + 's;transform:rotate(' + Math.round(Math.random() * 360) + 'deg)"></i>';
     return s;
   }
@@ -124,6 +125,11 @@
     if (!pool.length) pool = Games.list.filter(function (x) { return x.id !== play.lastGame; });
     var dn = Math.floor(new Date(now().getFullYear(), now().getMonth(), now().getDate()).getTime() / 864e5), g = pool[dn % pool.length];
     h += '<a class="card gamecard" href="#game/' + g.id + '"><span class="kick xp">Today\'s game · ' + esc(g.kicker) + '</span><b class="ttl">' + esc(g.title) + '</b><span class="muted sm">' + esc(g.goal) + '</span><span class="b3 ghost">PLAY · +' + Play.XP.game + ' XP</span></a>';
+    if (window.Learn && window.PATHS) {
+      var rv = Learn.routeView(), nx = rv.next[0];
+      h += '<a class="card routecard" href="route.html"><span class="kick">Your route · ' + esc(Learn.LANG_NAMES[rv.pref.lang]) + ' · ' + rv.pref.hours + ' h/week</span><b class="ttl">' + esc(rv.sch.plan.route.name) + '</b>' + bar(rv.pctHours / 100) +
+        '<span class="muted sm">' + rv.pctHours + '% done · ' + rv.mastered + ' of ' + rv.core + ' modules mastered · about ' + rv.weeksLeft + ' weeks left' + (nx ? '. Next: ' + esc(nx.meta.title) + '. ' + esc(nx.why) : '') + '</span><span class="b3 ghost">OPEN YOUR ROUTE PLAN</span></a>';
+    }
     var nv = Object.keys(window.IM_VIDEOS || {}).length;
     if (nv) h += '<a class="card vidcard" href="videos.html"><span class="kick">Videos</span><b class="ttl">Watch topics explained</b><span class="muted sm">' + nv.toLocaleString('en-US') + ' topics have a video so far. New ones are added every day.</span><span class="b3 ghost">🎬 OPEN VIDEOS</span></a>';
     h += '<div class="journey-shortcuts"><a class="card" href="#world"><span>◈</span><b>Explore islands</b><small>Find your next lesson</small></a><a class="card" href="#passport"><span>▧</span><b>Your passport</b><small>Collect your journey</small></a><a class="card" href="#expedition"><span>☀</span><b>Daily quests</b><small>One small victory</small></a><a class="card" href="#search"><span>⌕</span><b>Search lessons</b><small>Every track, one place</small></a></div>';

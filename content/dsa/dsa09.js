@@ -39,8 +39,8 @@
   // TOPIC 1 — Strings in Java basics
   // =====================================================================
   topics.push({
-    title: 'Strings in Java: Immutability, char Arithmetic (c - \'a\') and the String Pool',
-    analogy: `<p><b>A Java String is like a name engraved on a trophy.</b> Once the letters are engraved you cannot change one letter — if you want "Rahul" to become "Rahim", the shop makes a <b>brand-new trophy</b>. That is <b>immutability</b>.</p>
+    title: 'Strings Under the Hood: Immutability, char Arithmetic (c - \'a\') and the String Pool',
+    analogy: `<p><b>A string in Java, Python or JavaScript is like a name engraved on a trophy.</b> Once the letters are engraved you cannot change one letter — if you want "Rahul" to become "Rahim", the shop makes a <b>brand-new trophy</b>. That is <b>immutability</b>.</p>
       <p><b>Letters are numbered seats in a cinema row.</b> Seat 97 is <code>'a'</code>, seat 98 is <code>'b'</code>, seat 99 is <code>'c'</code>... If you ask "how far is <code>'c'</code> from the start of the row?", you do 99 − 97 = <b>2</b>. That is all <code>c - 'a'</code> means.</p>
       <p><b>The String pool is the library's single copy of a popular book.</b> When ten people ask for "hello", the library hands them the <i>same</i> copy instead of printing ten new ones.</p>`,
     explain: `<h4>1. Immutability — a String never changes</h4>
@@ -50,7 +50,7 @@
         ['<code>s.toUpperCase();</code>', 'creates "CAT" and <span class="c-r">throws it away</span> (you did not save it!) — s is still "cat"'],
         ['<code>s = s.toUpperCase();</code>', 'creates "CAT" and now s points to it. "cat" itself was <b>never</b> modified']
       ])}
-      <p><b>Why should you care?</b> (1) Safe to share and use as HashMap keys. (2) Any "edit" costs a full copy → editing in a loop is slow (next topics: <code>char[]</code> and <code>StringBuilder</code>).</p>
+      <p><b>Why should you care?</b> (1) Safe to share and use as keys in a hash map (<code>HashMap</code> / <code>dict</code> / <code>Map</code> / <code>unordered_map</code>). (2) Any "edit" costs a full copy → editing in a loop is slow (next topics: a mutable character array and a string builder (<code>StringBuilder</code> / a Python list + <code>"".join</code> / a JS array + <code>join</code> / C++ <code>std::string</code> with <code>+=</code>)).</p>
       <h4>2. char arithmetic — letters are just small numbers</h4>
       <p>A <code>char</code> is stored as a number (its Unicode / ASCII code). Subtracting <code>'a'</code> turns a lowercase letter into a 0-based slot number — perfect for an <code>int[26]</code> counter array.</p>
       ${H.table(['char c', 'code', 'c - \'a\'', 'meaning'], [
@@ -79,16 +79,25 @@
         ['<code>s.equals(t)</code>, <code>s.compareTo(t)</code>', 'O(n)', 'compareTo = dictionary order'],
         ['<code>Character.isLetterOrDigit(c)</code>, <code>Character.toLowerCase(c)</code>', 'O(1)', 'cleaning input'],
         ['<code>new String(charArray)</code>, <code>String.valueOf(x)</code>', 'O(n)', 'convert back to String']
-      ])}`,
+      ])}
+      <h4>5. The same ideas in Python, JavaScript and C++</h4>
+      ${H.table(['', 'Java', 'Python', 'JavaScript', 'C++'], [
+        ['Can a string change?', 'no (immutable)', 'no (immutable)', 'no (immutable)', '<b>yes</b>: <code>std::string</code> is mutable'],
+        ['Compare the letters', '<code>a.equals(b)</code>', '<code>a == b</code>', '<code>a === b</code>', '<code>a == b</code>'],
+        ['Same object?', '<code>a == b</code>', '<code>a is b</code>', '(not visible for primitives)', 'compare addresses: <code>&amp;a == &amp;b</code>'],
+        ['Letter → slot 0..25', "<code>c - 'a'</code>", "<code>ord(c) - ord('a')</code>", '<code>s.charCodeAt(i) - 97</code>', "<code>c - 'a'</code>"],
+        ['Edit characters', '<code>s.toCharArray()</code>', '<code>list(s)</code> then <code>"".join</code>', '<code>[...s]</code> then <code>join("")</code>', 'edit <code>s[i]</code> directly']
+      ])}
+      <p>The pool, <code>intern()</code> and the <code>==</code> trap are Java details, but every language has the same split between "same letters" and "same object". The <code>c - 'a'</code> counting trick works everywhere.</p>`,
     clues: [
-      '"String contains <b>only lowercase English letters</b>" → an <code>int[26]</code> array with <code>c - \'a\'</code> beats a HashMap.',
+      '"String contains <b>only lowercase English letters</b>" → an <code>int[26]</code> array with <code>c - \'a\'</code> beats a hash map.',
       '"<b>anagram</b>", "<b>frequency</b>", "same characters", "permutation of" → count letters with <code>cnt[c - \'a\']++</code>.',
-      '"<b>modify / swap / reverse in place</b>" → Strings cannot change; convert with <code>toCharArray()</code> first.',
-      '"Compare two strings" → use <code>equals</code>, never <code>==</code> (pool vs <code>new</code> trap).',
+      '"<b>modify / swap / reverse in place</b>" → Java, Python and JS strings cannot change; convert to a character array first (<code>toCharArray()</code> / <code>list(s)</code> / <code>[...s]</code>). A C++ <code>std::string</code> can be edited directly.',
+      '"Compare two strings" → in Java use <code>equals</code>, never <code>==</code> (pool vs <code>new</code> trap). Python <code>==</code>, JS <code>===</code> and C++ <code>std::string ==</code> already compare the letters.',
       '"Digits given as characters" (e.g. <code>"1234"</code>) → <code>c - \'0\'</code> gives the number.',
       '<code>|s| ≤ 10<sup>5</sup></code> → any per-character String copy inside a loop (substring, +) can blow up to O(N<sup>2</sup>).'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       class StringBasics {
           public static void main(String[] args) {
               // ---- 1. Immutability ----
@@ -125,7 +134,94 @@
               String edited = new String(arr);
               System.out.println(edited);      // jello
           }
-      }`],
+      }`,
+      alt: [
+        { lang: 'python', code: `import sys
+
+# ---- 1. Immutability ----
+s = "cat"
+s.upper()                        # result is thrown away, s is still "cat"
+print(s)                         # cat
+s = s.upper()                    # now s names a NEW string "CAT"
+print(s)                         # CAT
+
+# ---- 2. char arithmetic with ord() / chr() ----
+word = "banana"
+cnt = [0] * 26                   # one slot per lowercase letter
+for c in word:
+    cnt[ord(c) - ord("a")] += 1  # 'a'->0, 'b'->1, ..., 'z'->25
+print("a=%d b=%d n=%d" % (cnt[0], cnt[1], cnt[ord("n") - ord("a")]))  # a=3 b=1 n=2
+print(chr(ord("a") + 3))         # d  (number back to letter)
+print(ord("7") - ord("0") + 1)   # 8  (digit char -> int value)
+
+# ---- 3. == compares letters, "is" compares objects ----
+a = "hi"
+c = "".join(["h", "i"])          # built at runtime -> a separate object
+print(a == c)                    # True  (same letters) -> ALWAYS compare text with ==
+print(a is c)                    # False (different objects)
+print(a is sys.intern(c))        # True  (intern returns the shared copy)
+
+# ---- 4. Editing safely: convert to a list ----
+arr = list("hello")
+arr[0] = "j"                     # lists CAN be changed
+print("".join(arr))              # jello`, run: true },
+        { lang: 'js', code: `// ---- 1. Immutability ----
+let s = "cat";
+s.toUpperCase();                    // result is thrown away, s is still "cat"
+console.log(s);                     // cat
+s = s.toUpperCase();                // now s holds a NEW string "CAT"
+console.log(s);                     // CAT
+
+// ---- 2. char arithmetic with charCodeAt / fromCharCode ----
+const word = "banana";
+const cnt = new Array(26).fill(0);  // one slot per lowercase letter
+for (const c of word) cnt[c.charCodeAt(0) - 97]++;   // 'a' is 97
+console.log("a=" + cnt[0] + " b=" + cnt[1] + " n=" + cnt["n".charCodeAt(0) - 97]); // a=3 b=1 n=2
+console.log(String.fromCharCode(97 + 3));            // d  (number back to letter)
+console.log("7".charCodeAt(0) - 48 + 1);             // 8  (digit char -> int value)
+
+// ---- 3. === compares string values (strings are primitives) ----
+const a = "hi";
+const c = ["h", "i"].join("");      // built at runtime
+console.log(a === c);               // true: same letters
+const boxed = new String("hi");     // a wrapper OBJECT: avoid it
+console.log(a === boxed);           // false: primitive vs object
+console.log(a === boxed.valueOf()); // true
+
+// ---- 4. Editing safely: convert to an array ----
+const arr = [..."hello"];
+arr[0] = "j";                       // arrays CAN be changed
+console.log(arr.join(""));          // jello`, run: true },
+        { lang: 'cpp', code: `#include <bits/stdc++.h>
+using namespace std;
+
+int main() {
+    // ---- 1. std::string is MUTABLE (Java, Python and JS strings are not) ----
+    string s = "cat";
+    string up = s;                           // a real copy
+    for (char& ch : up) ch = toupper(ch);    // edit the copy in place
+    cout << s << " " << up << '\\n';          // cat CAT
+    s[0] = 'b';                              // change one letter directly
+    cout << s << '\\n';                       // bat
+
+    // ---- 2. char arithmetic ----
+    string word = "banana";
+    array<int, 26> cnt{};                    // one slot per lowercase letter
+    for (char c : word) cnt[c - 'a']++;      // 'a'->0, 'b'->1, ..., 'z'->25
+    cout << "a=" << cnt[0] << " b=" << cnt[1] << " n=" << cnt['n' - 'a'] << '\\n';  // a=3 b=1 n=2
+    cout << char('a' + 3) << '\\n';           // d  (number back to letter)
+    cout << ('7' - '0') + 1 << '\\n';         // 8  (digit char -> int value)
+
+    // ---- 3. == on std::string compares letters; on char* it compares addresses ----
+    string a = "hi", c = string("h") + "i";
+    cout << boolalpha << (a == c) << '\\n';   // true
+    const char* p = "hi";
+    char buf[] = "hi";
+    cout << (p == buf) << '\\n';              // false: two different addresses
+    cout << (strcmp(p, buf) == 0) << '\\n';   // true: compares the letters
+    return 0;
+}` }
+      ] }],
     codeTitle: ['Immutability, c - \'a\', String pool, char[] editing'],
     viz: [{
       title: 'Counting letters with cnt[c - \'a\']++',
@@ -209,14 +305,34 @@
     examples: [
       { title: 'The forgotten assignment bug (immutability)', html: `<p>A very common bug in interviews: calling a String method and <b>not saving the result</b>. Because Strings never change, the call builds a new String and it is thrown away.</p>
         ${H.table(['Code', 'Value of s afterwards'], [['<code>String s = "  hi  "; s.trim();</code>', '<span class="c-r">"  hi  "</span> (unchanged!)'], ['<code>s = s.trim();</code>', '<span class="c-g">"hi"</span>']])}
-        <p>Same with <code>replace</code>, <code>toLowerCase</code>, <code>concat</code>, <code>strip</code>. Rule: <b>String methods return; they never modify.</b></p>`, code: `String s = "  hi  ";
+        <p>Same with <code>replace</code>, <code>toLowerCase</code>, <code>concat</code>, <code>strip</code>. Rule: <b>String methods return; they never modify.</b></p>`, code: { lang: 'java', code: `String s = "  hi  ";
 s.trim();                       // result discarded
 System.out.println("[" + s + "]"); // [  hi  ]
 s = s.trim();                   // keep the new String
-System.out.println("[" + s + "]"); // [hi]` },
+System.out.println("[" + s + "]"); // [hi]`,
+          alt: [
+            { lang: 'python', code: `s = "  hi  "
+s.strip()                        # result discarded
+print("[" + s + "]")             # [  hi  ]
+s = s.strip()                    # keep the new string
+print("[" + s + "]")             # [hi]`, run: true },
+            { lang: 'js', code: `let s = "  hi  ";
+s.trim();                        // result discarded
+console.log("[" + s + "]");      // [  hi  ]
+s = s.trim();                    // keep the new string
+console.log("[" + s + "]");      // [hi]`, run: true },
+            { lang: 'cpp', code: `// std::string has no trim(); this helper returns a NEW string,
+// so the caller must assign it: s = trim(s);  (same trap as Java)
+string trim(const string& s) {
+    size_t b = s.find_first_not_of(' ');
+    if (b == string::npos) return "";        // only spaces
+    size_t e = s.find_last_not_of(' ');
+    return s.substr(b, e - b + 1);           // "  hi  " -> "hi"
+}` }
+          ] } },
       { title: 'Caesar cipher with char arithmetic (wrap-around with %)', html: `<p>Shift every lowercase letter forward by k, wrapping z → a. Turn the letter into a slot 0..25, add k, wrap with <code>% 26</code>, turn it back into a letter.</p>
         ${H.table(['c', "c − 'a'", '+ k (k = 3)', '% 26', "+ 'a'"], [['x', '23', '26', '0', '<b>a</b>'], ['y', '24', '27', '1', '<b>b</b>'], ['m', '12', '15', '15', '<b>p</b>']])}
-        <p>So <code>"xym"</code> → <code>"abp"</code>. If k can be huge (10<sup>9</sup>), first do <code>k %= 26</code>; if k can be negative use <code>((x % 26) + 26) % 26</code>.</p>`, code: `static String caesar(String s, int k) {
+        <p>So <code>"xym"</code> → <code>"abp"</code>. If k can be huge (10<sup>9</sup>), first do <code>k %= 26</code>; if k can be negative use <code>((x % 26) + 26) % 26</code>.</p>`, code: { lang: 'java', code: `static String caesar(String s, int k) {
     k = ((k % 26) + 26) % 26;                   // handle huge or negative k
     char[] a = s.toCharArray();                 // mutable copy
     for (int i = 0; i < a.length; i++) {
@@ -225,7 +341,28 @@ System.out.println("[" + s + "]"); // [hi]` },
         }
     }
     return new String(a);                       // "xym", 3 -> "abp"
+}`,
+          alt: [
+            { lang: 'python', code: `def caesar(s, k):
+    k %= 26                                  # Python % is never negative: huge or negative k is fine
+    return "".join(
+        chr(ord("a") + (ord(c) - ord("a") + k) % 26) if "a" <= c <= "z" else c
+        for c in s
+    )                                        # "xym", 3 -> "abp"` },
+            { lang: 'js', code: `function caesar(s, k) {
+  k = ((k % 26) + 26) % 26;                  // JS % keeps the sign: fix negative k
+  return [...s]
+    .map((c) => (c >= "a" && c <= "z" ? String.fromCharCode(97 + ((c.charCodeAt(0) - 97 + k) % 26)) : c))
+    .join("");                               // "xym", 3 -> "abp"
 }` },
+            { lang: 'cpp', code: `string caesar(string s, int k) {             // by value: we edit our own copy
+    k = ((k % 26) + 26) % 26;                // C++ % keeps the sign: fix negative k
+    for (char& c : s) {
+        if (c >= 'a' && c <= 'z') c = char('a' + (c - 'a' + k) % 26);
+    }
+    return s;                                // "xym", 3 -> "abp"
+}` }
+          ] } },
       { title: 'Compile-time constants vs runtime concatenation (== surprises)', html: `<p>Why does <code>==</code> sometimes "work" on Strings and fool beginners?</p>
         ${H.table(['Expression', '==', 'Why'], [
           ['<code>"hel" + "lo" == "hello"</code>', '<span class="c-g">true</span>', 'both parts are literals → the compiler joins them into one literal → pooled'],
@@ -291,8 +428,18 @@ System.out.println("[" + s + "]"); // [hi]` },
       hints: [
         `<p><b>Aha:</b> two strings are anagrams exactly when every letter appears the same number of times in both. Order is irrelevant — so count, don't compare positions.</p>`,
         `<p>Use one <code>int[26]</code>: add 1 for each letter of s (<code>cnt[c - 'a']++</code>), subtract 1 for each letter of t. Anagram ⇔ every slot ends at 0.</p>`,
-        `<p><b>Traps:</b> different lengths → return false immediately; the follow-up "Unicode input" needs a HashMap instead of int[26]. <b>Recipe:</b> if lengths differ return false; for i: cnt[s[i]−'a']++, cnt[t[i]−'a']−−; return all slots == 0.</p>`
+        `<p><b>Traps:</b> different lengths → return false immediately; the follow-up "Unicode input" needs a hash map (<code>HashMap</code> / <code>dict</code> / <code>Map</code> / <code>unordered_map</code>) instead of int[26]. <b>Recipe:</b> if lengths differ return false; for i: cnt[s[i]−'a']++, cnt[t[i]−'a']−−; return all slots == 0.</p>`
       ],
+      tests: { sig: 'string string -> bool', fn: 'isAnagram', cases: [
+        [["anagram","nagaram"],true],
+        [["rat","car"],false],
+        [["a","a"],true],
+        [["a","b"],false],
+        [["ab","a"],false],
+        [["aabb","abab"],true],
+        [["aab","abb"],false],
+        [["zyxwvutsrqponmlkjihgfedcba","abcdefghijklmnopqrstuvwxyz"],true]
+      ] },
       solution: {
         approach: `<p>One counting array: +1 for letters of s, −1 for letters of t; anagram iff all zero.</p>`,
         code: `
@@ -316,14 +463,37 @@ System.out.println("[" + s + "]"); // [hi]` },
                   System.out.println(sol.isAnagram("rat", "car"));         // false
               }
           }`,
-        alt: [{ lang: 'python', code: `from collections import Counter
+        alt: [
+          { lang: 'python', code: `from collections import Counter
 
 def is_anagram(s, t):
     # Counter builds a letter -> count map; equal maps means anagram
     return len(s) == len(t) and Counter(s) == Counter(t)
 
 print(is_anagram("anagram", "nagaram"))  # True
-print(is_anagram("rat", "car"))          # False`, run: true }],
+print(is_anagram("rat", "car"))          # False`, run: true },
+          { lang: 'js', code: `function isAnagram(s, t) {
+  if (s.length !== t.length) return false;     // different sizes can never match
+  const cnt = new Array(26).fill(0);            // one counter per letter a..z
+  for (let i = 0; i < s.length; i++) {
+    cnt[s.charCodeAt(i) - 97]++;                // letter from s: +1
+    cnt[t.charCodeAt(i) - 97]--;                // letter from t: -1
+  }
+  return cnt.every((c) => c === 0);
+}` },
+          { lang: 'cpp', code: `class Solution {
+public:
+    bool isAnagram(const string& s, const string& t) {
+        if (s.size() != t.size()) return false;     // different sizes can never match
+        array<int, 26> cnt{};                       // one counter per letter a..z
+        for (size_t i = 0; i < s.size(); i++) {
+            cnt[s[i] - 'a']++;                      // letter from s: +1
+            cnt[t[i] - 'a']--;                      // letter from t: -1
+        }
+        return all_of(cnt.begin(), cnt.end(), [](int c) { return c == 0; });
+    }
+};` }
+        ],
         dry: {
           head: ['i', 's[i] → slot', 't[i] → slot', 'changed slots after step'],
           rows: [
@@ -364,12 +534,12 @@ print(is_anagram("rat", "car"))          # False`, run: true }],
       <p>${H.c('m', 'Grey')} cells (comma, space) are skipped. ${H.c('g', 'A vs A')} then ${H.c('y', 'b vs b')} match → <b>true</b>. Time O(N), extra space O(1).</p>`,
     clues: [
       '"reads the <b>same forward and backward</b>" / "mirror" / "symmetric string" → two pointers from both ends.',
-      '"<b>considering only alphanumeric characters and ignoring cases</b>" → skip with <code>Character.isLetterOrDigit</code>, compare with <code>Character.toLowerCase</code>.',
+      '"<b>considering only alphanumeric characters and ignoring cases</b>" → skip anything that is not a letter or digit (<code>Character.isLetterOrDigit</code> / <code>str.isalnum()</code> / a regex test / <code>isalnum</code>), then compare lowercase versions.',
       '"<b>O(1) extra space</b>" → do not build a reversed copy; move <code>l</code> and <code>r</code> inside the original string.',
       '"<b>after deleting at most one character</b>" → same two pointers; on the first mismatch try skipping left OR right once.',
       '"palindrome" + "substring" → not this check alone; see Expand Around Center later in this module.'
     ],
-    code: `
+    code: { lang: 'java', code: `
       class PalinCheck {
           // Plain palindrome check on s[l..r] (inclusive) with two pointers
           static boolean isPal(String s, int l, int r) {
@@ -387,6 +557,51 @@ print(is_anagram("rat", "car"))          # False`, run: true }],
               System.out.println(isPal("ab", 0, 1));      // false
           }
       }`,
+      alt: [
+        { lang: 'python', code: `def is_pal(s, l, r):
+    # plain palindrome check on s[l..r] (inclusive) with two pointers
+    while l < r:
+        if s[l] != s[r]:
+            return False                     # mismatch -> not a palindrome
+        l, r = l + 1, r - 1                  # step inward from both sides
+    return True                              # pointers met/crossed: all pairs matched
+
+print(is_pal("racecar", 0, 6))  # True  (odd length)
+print(is_pal("noon", 0, 3))     # True  (even length)
+print(is_pal("ab", 0, 1))       # False`, run: true },
+        { lang: 'js', code: `// plain palindrome check on s[l..r] (inclusive) with two pointers
+function isPal(s, l, r) {
+  while (l < r) {
+    if (s[l] !== s[r]) return false;         // mismatch -> not a palindrome
+    l++;                                     // step inward from the left
+    r--;                                     // step inward from the right
+  }
+  return true;                               // pointers met/crossed: all pairs matched
+}
+
+console.log(isPal("racecar", 0, 6)); // true  (odd length)
+console.log(isPal("noon", 0, 3));    // true  (even length)
+console.log(isPal("ab", 0, 1));      // false`, run: true },
+        { lang: 'cpp', code: `#include <bits/stdc++.h>
+using namespace std;
+
+// plain palindrome check on s[l..r] (inclusive) with two pointers
+bool isPal(const string& s, int l, int r) {
+    while (l < r) {
+        if (s[l] != s[r]) return false;      // mismatch -> not a palindrome
+        l++;                                 // step inward from the left
+        r--;                                 // step inward from the right
+    }
+    return true;                             // pointers met/crossed: all pairs matched
+}
+
+int main() {
+    cout << boolalpha;
+    cout << isPal("racecar", 0, 6) << '\\n';  // true  (odd length)
+    cout << isPal("noon", 0, 3) << '\\n';     // true  (even length)
+    cout << isPal("ab", 0, 1) << '\\n';       // false
+}` }
+      ] },
     codeTitle: 'Two-pointer palindrome check',
     viz: {
       title: 'Valid Palindrome: two pointers that skip junk',
@@ -450,7 +665,7 @@ print(is_anagram("rat", "car"))          # False`, run: true }],
     examples: [
       { title: 'Valid Palindrome II — allowed to delete at most one character', html: `<p><code>"abca"</code>: l = 0, r = 3 → a = a ✓. l = 1, r = 2 → ${H.c('r', 'b ≠ c')}. We may delete <b>one</b> of them, so try both: skip the left one → is <code>s[2..2] = "c"</code> a palindrome? yes → <b class="c-g">true</b>.</p>
         ${H.arr('abca'.split(''), { hl: { 0: 'g', 3: 'g', 1: 'r', 2: 'r' }, ptr: { 1: 'l', 2: 'r' } })}
-        <p>Why only two tries? Everything outside l..r already matched, so the deleted character <i>must</i> be s[l] or s[r]. Each try is a plain O(N) check → total O(N).</p>`, code: `static boolean validPalindrome(String s) {
+        <p>Why only two tries? Everything outside l..r already matched, so the deleted character <i>must</i> be s[l] or s[r]. Each try is a plain O(N) check → total O(N).</p>`, code: { lang: 'java', code: `static boolean validPalindrome(String s) {
     int l = 0, r = s.length() - 1;
     while (l < r) {
         if (s.charAt(l) != s.charAt(r)) {
@@ -466,23 +681,93 @@ print(is_anagram("rat", "car"))          # False`, run: true }],
 static boolean isPal(String s, int l, int r) {
     while (l < r) if (s.charAt(l++) != s.charAt(r--)) return false;
     return true;
+}`,
+          alt: [
+            { lang: 'python', code: `def is_pal(s, l, r):
+    while l < r:
+        if s[l] != s[r]:
+            return False
+        l, r = l + 1, r - 1
+    return True
+
+def valid_palindrome(s):
+    l, r = 0, len(s) - 1
+    while l < r:
+        if s[l] != s[r]:
+            # first mismatch: delete s[l] OR delete s[r], then the rest must be a plain palindrome
+            return is_pal(s, l + 1, r) or is_pal(s, l, r - 1)
+        l, r = l + 1, r - 1
+    return True                              # already a palindrome, nothing to delete` },
+            { lang: 'js', code: `function isPal(s, l, r) {
+  while (l < r) if (s[l++] !== s[r--]) return false;
+  return true;
+}
+
+function validPalindrome(s) {
+  let l = 0, r = s.length - 1;
+  while (l < r) {
+    if (s[l] !== s[r]) {
+      // first mismatch: delete s[l] OR delete s[r], then the rest must be a plain palindrome
+      return isPal(s, l + 1, r) || isPal(s, l, r - 1);
+    }
+    l++;
+    r--;
+  }
+  return true;                               // already a palindrome, nothing to delete
 }` },
+            { lang: 'cpp', code: `bool isPal(const string& s, int l, int r) {
+    while (l < r) if (s[l++] != s[r--]) return false;
+    return true;
+}
+
+bool validPalindrome(const string& s) {
+    int l = 0, r = (int)s.size() - 1;
+    while (l < r) {
+        if (s[l] != s[r]) {
+            // first mismatch: delete s[l] OR delete s[r], then the rest must be a plain palindrome
+            return isPal(s, l + 1, r) || isPal(s, l, r - 1);
+        }
+        l++;
+        r--;
+    }
+    return true;                             // already a palindrome, nothing to delete
+}` }
+          ] } },
       { title: 'Palindrome permutation — can the letters be rearranged into a palindrome?', html: `<p>In a palindrome every letter has a mirror partner, except possibly <b>one</b> middle letter. So: count letters; at most one letter may have an <b>odd</b> count.</p>
         ${H.table(['word', 'counts', 'odd counts', 'answer'], [
           ['carerac', 'c2 a2 r2 e1', '1 (e)', '<span class="c-g">yes</span> ("racecar")'],
           ['aabb', 'a2 b2', '0', '<span class="c-g">yes</span> ("abba")'],
           ['abc', 'a1 b1 c1', '3', '<span class="c-r">no</span>']
         ])}
-        <p>Here we never use two pointers — the clue "<i>rearrange</i>" means order does not matter, so counting (Topic 1) is the tool.</p>`, code: `static boolean canPermutePalindrome(String s) {
+        <p>Here we never use two pointers — the clue "<i>rearrange</i>" means order does not matter, so counting (Topic 1) is the tool.</p>`, code: { lang: 'java', code: `static boolean canPermutePalindrome(String s) {
     int[] cnt = new int[26];
     for (char c : s.toCharArray()) cnt[c - 'a']++;
     int odd = 0;
     for (int x : cnt) if (x % 2 == 1) odd++;
     return odd <= 1;                  // at most one letter may sit alone in the middle
+}`,
+          alt: [
+            { lang: 'python', code: `from collections import Counter
+
+def can_permute_palindrome(s):
+    odd = sum(v % 2 for v in Counter(s).values())
+    return odd <= 1                          # at most one letter may sit alone in the middle` },
+            { lang: 'js', code: `function canPermutePalindrome(s) {
+  const cnt = new Array(26).fill(0);
+  for (let i = 0; i < s.length; i++) cnt[s.charCodeAt(i) - 97]++;
+  const odd = cnt.filter((x) => x % 2 === 1).length;
+  return odd <= 1;                           // at most one letter may sit alone in the middle
 }` },
+            { lang: 'cpp', code: `bool canPermutePalindrome(const string& s) {
+    array<int, 26> cnt{};
+    for (char c : s) cnt[c - 'a']++;
+    int odd = count_if(cnt.begin(), cnt.end(), [](int x) { return x % 2 == 1; });
+    return odd <= 1;                         // at most one letter may sit alone in the middle
+}` }
+          ] } },
       { title: 'Palindrome number without converting to a String', html: `<p>Is 1221 a palindrome? Reverse only the <b>second half</b> of the digits using % 10 and / 10, then compare with the first half.</p>
         ${H.table(['x', 'rev', 'step'], [['1221', '0', 'start'], ['122', '1', 'take last digit 1'], ['12', '12', 'take 2 → rev = 1·10 + 2'], ['12', '12', 'stop: x ≤ rev; x == rev → <span class="c-g">true</span>']])}
-        <p>Odd length (12321): stop with x = 12, rev = 123 → compare x == rev / 10. Negative numbers and numbers ending in 0 (except 0 itself) are never palindromes. Same two-ends idea, done with arithmetic.</p>`, code: `static boolean isPalindromeNumber(int x) {
+        <p>Odd length (12321): stop with x = 12, rev = 123 → compare x == rev / 10. Negative numbers and numbers ending in 0 (except 0 itself) are never palindromes. Same two-ends idea, done with arithmetic.</p>`, code: { lang: 'java', code: `static boolean isPalindromeNumber(int x) {
     if (x < 0 || (x % 10 == 0 && x != 0)) return false;
     int rev = 0;
     while (x > rev) {                 // stop when we've reversed half the digits
@@ -490,7 +775,35 @@ static boolean isPal(String s, int l, int r) {
         x /= 10;
     }
     return x == rev || x == rev / 10; // even length || odd length (drop middle digit)
+}`,
+          alt: [
+            { lang: 'python', code: `def is_palindrome_number(x):
+    if x < 0 or (x % 10 == 0 and x != 0):
+        return False
+    rev = 0
+    while x > rev:                           # stop when we've reversed half the digits
+        rev = rev * 10 + x % 10
+        x //= 10                             # // is integer division in Python
+    return x == rev or x == rev // 10        # even length or odd length (drop middle digit)` },
+            { lang: 'js', code: `function isPalindromeNumber(x) {
+  if (x < 0 || (x % 10 === 0 && x !== 0)) return false;
+  let rev = 0;
+  while (x > rev) {                          // stop when we've reversed half the digits
+    rev = rev * 10 + (x % 10);
+    x = Math.floor(x / 10);                  // "/" gives a fraction in JS
+  }
+  return x === rev || x === Math.floor(rev / 10);   // even length or odd length
+}` },
+            { lang: 'cpp', code: `bool isPalindromeNumber(int x) {
+    if (x < 0 || (x % 10 == 0 && x != 0)) return false;
+    int rev = 0;
+    while (x > rev) {                        // stop when we've reversed half the digits
+        rev = rev * 10 + x % 10;
+        x /= 10;
+    }
+    return x == rev || x == rev / 10;        // even length or odd length (drop middle digit)
 }` }
+          ] } }
     ],
     deepDive: `<h4>Why the two-pointer check is correct (and minimal)</h4>
       <p>Definition: s is a palindrome ⇔ s[i] = s[n−1−i] for every i. The loop checks exactly the pairs (0, n−1), (1, n−2), … — ⌊n/2⌋ comparisons, each character read at most once. Any correct algorithm must read every character at least once (changing an unread one could break the palindrome), so O(N) is optimal.</p>
@@ -499,7 +812,7 @@ static boolean isPal(String s, int l, int r) {
         <li><b>Delete at most one (Valid Palindrome II):</b> greedy is safe because the pairs outside the first mismatch already match; the deleted char must be one of the two mismatched ones. Still O(N).</li>
         <li><b>Delete at most k:</b> greedy branching explodes (2<sup>k</sup>). Instead: minimum deletions = n − LPS, where LPS = longest palindromic <i>subsequence</i> (a DP problem, DSA DP I/II). Answer is yes iff n − LPS ≤ k.</li>
         <li><b>Palindrome linked list:</b> no random access → find the middle with slow/fast pointers, reverse the second half, compare, restore. O(N) time, O(1) space (Linked Lists module).</li>
-        <li><b>Recursive check</b> <code>isPal(l, r) = s[l]==s[r] &amp;&amp; isPal(l+1, r−1)</code> is elegant but uses N/2 stack frames — 10<sup>5</sup> chars can throw <code>StackOverflowError</code>. Prefer the loop.</li>
+        <li><b>Recursive check</b> <code>isPal(l, r) = s[l]==s[r] &amp;&amp; isPal(l+1, r−1)</code> is elegant but uses N/2 stack frames — 10<sup>5</sup> chars can throw <code>StackOverflowError</code> in Java and hit Python's ~1000-frame <code>RecursionError</code> much sooner. Prefer the loop.</li>
       </ul>
       <h4>Production reality</h4>
       <p><code>Character.isLetterOrDigit</code> and <code>toLowerCase</code> are Unicode-aware: "É" counts as a letter, and some characters (like Turkish dotless ı or German ß) do not round-trip case cleanly. For human text you may need normalization (<code>java.text.Normalizer</code>, NFC/NFD) before comparing. Building a cleaned copy with <code>replaceAll("[^A-Za-z0-9]", "")</code> is readable and still O(N), but allocates extra memory and compiles a regex.</p>`,
@@ -539,9 +852,23 @@ static boolean isPal(String s, int l, int r) {
       },
       hints: [
         `<p><b>Aha:</b> a palindrome is just "pair i matches pair n−1−i" for every outer pair. You never need the reversed string — compare the two ends and walk inward.</p>`,
-        `<p>Use two integer pointers <code>l = 0</code>, <code>r = n − 1</code>. Before comparing, move <code>l</code> right while <code>s[l]</code> is not a letter/digit, and move <code>r</code> left while <code>s[r]</code> is not a letter/digit (<code>Character.isLetterOrDigit</code>).</p>`,
-        `<p><b>Traps:</b> keep <code>l &lt; r</code> inside the skipping loops (a string of only junk like <code>",.!"</code> must return true, not crash); compare with <code>Character.toLowerCase</code>; digits count ("0P" is false). <b>Recipe:</b> while l &lt; r: skip junk on both sides → if lower(s[l]) ≠ lower(s[r]) return false → l++, r-- . After the loop return true.</p>`
+        `<p>Use two integer pointers <code>l = 0</code>, <code>r = n − 1</code>. Before comparing, move <code>l</code> right while <code>s[l]</code> is not a letter/digit, and move <code>r</code> left while <code>s[r]</code> is not a letter/digit (<code>Character.isLetterOrDigit</code> / <code>isalnum()</code> / <code>/[a-z0-9]/i.test</code> / <code>isalnum</code>).</p>`,
+        `<p><b>Traps:</b> keep <code>l &lt; r</code> inside the skipping loops (a string of only junk like <code>",.!"</code> must return true, not crash); compare lowercase versions (<code>Character.toLowerCase</code> / <code>lower()</code> / <code>toLowerCase()</code> / <code>tolower</code>); digits count ("0P" is false). <b>Recipe:</b> while l &lt; r: skip junk on both sides → if lower(s[l]) ≠ lower(s[r]) return false → l++, r-- . After the loop return true.</p>`
       ],
+      tests: { sig: 'string -> bool', fn: 'isPalindrome', cases: [
+        [["A man, a plan, a canal: Panama"],true],
+        [["race a car"],false],
+        [["Race car"],true],
+        [[" "],true],
+        [[",.!"],true],
+        [["0P"],false],
+        [["a"],true],
+        [["ab_a"],true],
+        [["Aa"],true],
+        [["No 'x' in Nixon"],true],
+        [["1a2"],false],
+        [["12321"],true]
+      ] },
       solution: {
         approach: `<p>Two pointers from both ends, skipping non-alphanumerics, comparing lowercase characters.</p>`,
         code: `
@@ -570,6 +897,45 @@ static boolean isPal(String s, int l, int r) {
                   System.out.println(sol.isPalindrome("Race car"));                       // true
               }
           }`,
+        alt: [
+          { lang: 'python', code: `def is_palindrome(s):
+    l, r = 0, len(s) - 1
+    while l < r:
+        while l < r and not s[l].isalnum():   # skip junk on the left
+            l += 1
+        while l < r and not s[r].isalnum():   # skip junk on the right
+            r -= 1
+        if s[l].lower() != s[r].lower():      # compare ignoring case
+            return False
+        l, r = l + 1, r - 1
+    return True` },
+          { lang: 'js', code: `function isPalindrome(s) {
+  const isAlnum = (ch) => /[A-Za-z0-9]/.test(ch);
+  let l = 0, r = s.length - 1;
+  while (l < r) {
+    while (l < r && !isAlnum(s[l])) l++;        // skip junk on the left
+    while (l < r && !isAlnum(s[r])) r--;        // skip junk on the right
+    if (s[l].toLowerCase() !== s[r].toLowerCase()) return false;
+    l++;
+    r--;
+  }
+  return true;
+}` },
+          { lang: 'cpp', code: `class Solution {
+public:
+    bool isPalindrome(const string& s) {
+        int l = 0, r = (int)s.size() - 1;
+        while (l < r) {
+            while (l < r && !isalnum((unsigned char)s[l])) l++;   // skip junk on the left
+            while (l < r && !isalnum((unsigned char)s[r])) r--;   // skip junk on the right
+            if (tolower((unsigned char)s[l]) != tolower((unsigned char)s[r])) return false;
+            l++;
+            r--;
+        }
+        return true;
+    }
+};` }
+        ],
         dry: {
           head: ['l', 'r', 's[l]', 's[r]', 'action'],
           rows: [
@@ -590,7 +956,7 @@ static boolean isPal(String s, int l, int r) {
   // TOPIC 3 — StringBuilder efficiency
   // =====================================================================
   topics.push({
-    title: 'StringBuilder Efficiency: Why s += c in a Loop Is O(N²)',
+    title: 'String Builders: Why s += c in a Loop Is O(N²)',
     analogy: `<p><b>The re-copied shopping list.</b> Imagine that every time you remember one more item, you take a <i>fresh sheet</i> and re-write the <b>whole</b> list plus the new item. Item 1: write 1 line. Item 2: write 2 lines. Item 100: write 100 lines. That is what <code>s += c</code> does, because a String can never change (immutability).</p>
       <p><b>The notepad with spare pages.</b> A <code>StringBuilder</code> is a notepad with empty lines at the bottom. Adding an item = write one line. Only when the notepad is full do you buy one about <b>twice as big</b> and copy once. Copies become rare, so adding is O(1) on average.</p>`,
     explain: `<h4>Why <code>+=</code> is quadratic</h4>
@@ -610,15 +976,23 @@ static boolean isPal(String s, int l, int r) {
         ['insert at front', '<code>sb.insert(0, x)</code>', '<span class="c-r">O(N)</span> — shifts everything; avoid in loops'],
         ['finish', '<code>sb.toString()</code>', 'O(N), do it once at the end']
       ])}
-      <p><b>Note:</b> a one-line expression like <code>String t = a + "-" + b;</code> is fine — the compiler joins it in one go. The danger is <code>+=</code> <b>inside a loop</b>, where each round makes a new full copy.</p>`,
+      <p><b>Note:</b> a one-line expression like <code>String t = a + "-" + b;</code> is fine — the compiler joins it in one go. The danger is <code>+=</code> <b>inside a loop</b>, where each round makes a new full copy.</p>
+      <h4>The builder in each language</h4>
+      ${H.table(['Language', 'Builder', 'Add a piece', 'Undo last', 'Finish'], [
+        ['Java', '<code>StringBuilder</code>', '<code>sb.append(x)</code>', '<code>sb.deleteCharAt(sb.length() - 1)</code>', '<code>sb.toString()</code>'],
+        ['Python', 'a <code>list</code> of pieces', '<code>parts.append(x)</code>', '<code>parts.pop()</code>', '<code>"".join(parts)</code>'],
+        ['JavaScript', 'an array of pieces', '<code>parts.push(x)</code>', '<code>parts.pop()</code>', '<code>parts.join("")</code>'],
+        ['C++', '<code>std::string</code> itself (mutable)', '<code>s += x</code> / <code>push_back</code>', '<code>s.pop_back()</code>', 'nothing to do']
+      ])}
+      <p>All four grow a hidden array by doubling, so each add is amortized O(1). In C++ the slow version is <code>s = s + c</code> (it builds a new string each time), while <code>s += c</code> is fast.</p>`,
     clues: [
-      '"<b>build / return a new string</b>" from many small pieces (encode, compress, join, reverse words) → <code>StringBuilder</code>.',
-      '<code>|s| ≤ 10<sup>5</sup></code> or more and you see <code>result += ...</code> inside a loop → hidden O(N<sup>2</sup>); switch to StringBuilder.',
+      '"<b>build / return a new string</b>" from many small pieces (encode, compress, join, reverse words) → a string builder (<code>StringBuilder</code> / list + join / array + join / <code>std::string +=</code>).',
+      '<code>|s| ≤ 10<sup>5</sup></code> or more and you see <code>result += ...</code> inside a loop → hidden O(N<sup>2</sup>); switch to a builder.',
       '"<b>remove the last character</b>" while exploring (backtracking, generate parentheses) → <code>sb.deleteCharAt(sb.length() - 1)</code>.',
-      '"<b>in-place</b>" / "modify characters" → <code>char[]</code> (fixed size) or StringBuilder <code>setCharAt</code>.',
+      '"<b>in-place</b>" / "modify characters" → a character array (<code>char[]</code> / <code>list(s)</code> / <code>[...s]</code>) or the builder (<code>setCharAt</code>); a C++ <code>std::string</code> is already editable.',
       '"<b>prepend</b>" many times → append and <code>reverse()</code> once at the end instead of <code>insert(0, ...)</code>.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       class BuildDemo {
           // SLOW: every += creates a brand-new String and copies all old chars -> O(N^2)
           static String slow(int n) {
@@ -646,7 +1020,81 @@ static boolean isPal(String s, int l, int r) {
               long t2 = System.nanoTime();
               System.out.println("fast ms = " + (t1 - t0) / 1000000 + ", slow ms = " + (t2 - t1) / 1000000);
           }
-      }`, `
+      }`,
+      alt: [
+        { lang: 'python', code: `import time
+
+# RISKY: each s = s + c may build a brand-new string -> O(N^2) in the worst case.
+# (CPython sometimes extends the string in place, but that is an implementation detail.)
+def slow(n):
+    s = ""
+    for i in range(n):
+        s = s + chr(ord("a") + i % 26)
+    return s
+
+# FAST: collect pieces in a list and join once -> O(N) total, guaranteed
+def fast(n):
+    parts = []
+    for i in range(n):
+        parts.append(chr(ord("a") + i % 26))
+    return "".join(parts)            # one final copy
+
+t0 = time.perf_counter()
+fast(100000)
+t1 = time.perf_counter()
+slow(100000)
+t2 = time.perf_counter()
+print("fast ms = %d, slow ms = %d" % ((t1 - t0) * 1000, (t2 - t1) * 1000))`, run: true },
+        { lang: 'js', code: `// RISKY: s += c builds a new string value each time. Engines often hide the cost
+// with "rope" strings, but the guaranteed-linear way is an array plus one join.
+function slow(n) {
+  let s = "";
+  for (let i = 0; i < n; i++) s += String.fromCharCode(97 + (i % 26));
+  return s;
+}
+
+// FAST: push pieces into an array, join once at the end -> O(N) total
+function fast(n) {
+  const parts = [];
+  for (let i = 0; i < n; i++) parts.push(String.fromCharCode(97 + (i % 26)));
+  return parts.join("");
+}
+
+const t0 = Date.now();
+fast(100000);
+const t1 = Date.now();
+slow(100000);
+const t2 = Date.now();
+console.log("fast ms = " + (t1 - t0) + ", slow ms = " + (t2 - t1));`, run: true },
+        { lang: 'cpp', code: `#include <bits/stdc++.h>
+using namespace std;
+
+// SLOW: s = s + c builds a brand-new string and copies all old chars -> O(N^2)
+string slow(int n) {
+    string s;
+    for (int i = 0; i < n; i++) s = s + char('a' + i % 26);
+    return s;
+}
+
+// FAST: s += c (or push_back) writes into spare capacity -> amortized O(1) each
+string fast(int n) {
+    string s;
+    s.reserve(n);                            // optional: skip every resize
+    for (int i = 0; i < n; i++) s += char('a' + i % 26);
+    return s;
+}
+
+int main() {
+    using clk = chrono::steady_clock;
+    auto t0 = clk::now();
+    fast(100000);
+    auto t1 = clk::now();
+    slow(100000);                            // noticeably slower
+    auto t2 = clk::now();
+    auto ms = [](auto d) { return (long long)chrono::duration_cast<chrono::milliseconds>(d).count(); };
+    cout << "fast ms = " << ms(t1 - t0) << ", slow ms = " << ms(t2 - t1) << '\\n';
+}` }
+      ] }, { lang: 'java', code: `
       class SbToolbox {
           public static void main(String[] args) {
               StringBuilder sb = new StringBuilder("abc");
@@ -656,7 +1104,35 @@ static boolean isPal(String s, int l, int r) {
               sb.reverse();                               // x21dcbA
               System.out.println(sb.toString() + " length=" + sb.length());
           }
-      }`],
+      }`,
+        alt: [
+          { lang: 'python', code: `# Python has no StringBuilder: a list of characters plays that role
+sb = list("abc")
+sb.append("d"); sb.extend("12"); sb.extend("xy")   # abcd12xy
+sb[0] = "A"                                        # Abcd12xy
+sb.pop()                                           # Abcd12x  (undo last, used in backtracking)
+sb.reverse()                                       # x21dcbA
+print("".join(sb) + " length=" + str(len(sb)))`, run: true },
+          { lang: 'js', code: `// JS has no StringBuilder: an array of pieces plays that role
+const sb = [..."abc"];
+sb.push("d", "12", "xy");                     // pieces: abcd12xy
+const chars = [...sb.join("")];               // split into single characters to edit them
+chars[0] = "A";                               // Abcd12xy
+chars.pop();                                  // Abcd12x  (undo last, used in backtracking)
+chars.reverse();                              // x21dcbA
+console.log(chars.join("") + " length=" + chars.length);`, run: true },
+          { lang: 'cpp', code: `#include <bits/stdc++.h>
+using namespace std;
+
+int main() {
+    string sb = "abc";                        // std::string is already a mutable builder
+    sb += 'd'; sb += to_string(12); sb += "xy";   // abcd12xy
+    sb[0] = 'A';                              // Abcd12xy
+    sb.pop_back();                            // Abcd12x  (undo last, used in backtracking)
+    reverse(sb.begin(), sb.end());            // x21dcbA
+    cout << sb << " length=" << sb.size() << '\\n';
+}` }
+        ] }],
     codeTitle: ['Slow += vs fast StringBuilder', 'StringBuilder toolbox'],
     viz: {
       title: 'Work done: s += c versus StringBuilder.append',
@@ -700,26 +1176,69 @@ static boolean isPal(String s, int l, int r) {
           ['append separator <b>before</b> every item except the first', '<code>if (sb.length() &gt; 0) sb.append(\',\');</code>'],
           ['append then cut', '<code>sb.setLength(sb.length() - 1)</code> at the end (check non-empty!)'],
           ['library', '<code>String.join(",", list)</code>, <code>StringJoiner</code>, <code>Collectors.joining(",")</code> — all use a builder inside']
-        ])}`, code: `static String joinNums(int[] a) {
+        ])}`, code: { lang: 'java', code: `static String joinNums(int[] a) {
     StringBuilder sb = new StringBuilder();
     for (int x : a) {
         if (sb.length() > 0) sb.append(',');   // separator only between items
         sb.append(x);
     }
     return sb.toString();                     // [3, 1, 4] -> "3,1,4"
+}`,
+          alt: [
+            { lang: 'python', code: `def join_nums(a):
+    return ",".join(map(str, a))             # [3, 1, 4] -> "3,1,4"` },
+            { lang: 'js', code: `function joinNums(a) {
+  return a.join(",");                        // [3, 1, 4] -> "3,1,4"
 }` },
+            { lang: 'cpp', code: `string joinNums(const vector<int>& a) {
+    string out;
+    for (int x : a) {
+        if (!out.empty()) out += ',';        // separator only between items
+        out += to_string(x);
+    }
+    return out;                              // [3, 1, 4] -> "3,1,4"
+}` }
+          ] } },
       { title: 'Backtracking with one shared StringBuilder (append / deleteCharAt)', html: `<p>Generate all binary strings of length n. Instead of creating a new String at every step (<code>cur + "0"</code>), keep <b>one</b> builder: append a char, recurse, then <b>undo</b> by deleting the last char.</p>
         ${H.table(['call', 'sb before', 'action', 'sb after'], [['gen', '""', 'append 0', '"0"'], ['gen', '"0"', 'append 0 → print "00" → delete', '"0"'], ['gen', '"0"', 'append 1 → print "01" → delete', '"0"'], ['back', '"0"', 'delete → append 1', '"1"']])}
-        <p>Each append/delete at the end is O(1), so the only real cost is printing the 2<sup>n</sup> answers.</p>`, code: `static void gen(int n, StringBuilder sb, List<String> out) {
+        <p>Each append/delete at the end is O(1), so the only real cost is printing the 2<sup>n</sup> answers.</p>`, code: { lang: 'java', code: `static void gen(int n, StringBuilder sb, List<String> out) {
     if (sb.length() == n) { out.add(sb.toString()); return; }
     for (char c = '0'; c <= '1'; c++) {
         sb.append(c);                    // choose
         gen(n, sb, out);                 // explore
         sb.deleteCharAt(sb.length() - 1);// un-choose (O(1) at the end)
     }
+}`,
+          alt: [
+            { lang: 'python', code: `def gen(n, cur, out):
+    # cur is a list of chars used as a builder
+    if len(cur) == n:
+        out.append("".join(cur))
+        return
+    for c in "01":
+        cur.append(c)                        # choose
+        gen(n, cur, out)                     # explore
+        cur.pop()                            # un-choose (O(1) at the end)` },
+            { lang: 'js', code: `function gen(n, cur, out) {
+  // cur is an array of chars used as a builder
+  if (cur.length === n) { out.push(cur.join("")); return; }
+  for (const c of "01") {
+    cur.push(c);                             // choose
+    gen(n, cur, out);                        // explore
+    cur.pop();                               // un-choose (O(1) at the end)
+  }
 }` },
+            { lang: 'cpp', code: `void gen(int n, string& cur, vector<string>& out) {
+    if ((int)cur.size() == n) { out.push_back(cur); return; }
+    for (char c = '0'; c <= '1'; c++) {
+        cur.push_back(c);                    // choose
+        gen(n, cur, out);                    // explore
+        cur.pop_back();                      // un-choose (O(1) at the end)
+    }
+}` }
+          ] } },
       { title: 'Prepending trap: integer to binary string', html: `<p>Converting 13 to binary produces digits <b>right to left</b> (13 % 2 = 1, 6 % 2 = 0, 3 % 2 = 1, 1 % 2 = 1). Using <code>sb.insert(0, d)</code> shifts the whole builder each time → O(N<sup>2</sup>). Append instead and reverse once:</p>
-        ${H.table(['n', 'n % 2', 'sb (appended)'], [['13', '1', '1'], ['6', '0', '10'], ['3', '1', '101'], ['1', '1', '1011'], ['0', '—', 'reverse → <b class="c-g">1101</b>']])}`, code: `static String toBinary(int n) {
+        ${H.table(['n', 'n % 2', 'sb (appended)'], [['13', '1', '1'], ['6', '0', '10'], ['3', '1', '101'], ['1', '1', '1011'], ['0', '—', 'reverse → <b class="c-g">1101</b>']])}`, code: { lang: 'java', code: `static String toBinary(int n) {
     if (n == 0) return "0";
     StringBuilder sb = new StringBuilder();
     while (n > 0) {
@@ -727,7 +1246,36 @@ static boolean isPal(String s, int l, int r) {
         n /= 2;
     }
     return sb.reverse().toString();      // 13 -> "1101"
+}`,
+          alt: [
+            { lang: 'python', code: `def to_binary(n):
+    if n == 0:
+        return "0"
+    bits = []
+    while n > 0:
+        bits.append(str(n % 2))              # least significant bit first
+        n //= 2
+    return "".join(reversed(bits))           # 13 -> "1101"  (built-in: format(n, "b"))` },
+            { lang: 'js', code: `function toBinary(n) {
+  if (n === 0) return "0";
+  const bits = [];
+  while (n > 0) {
+    bits.push(n % 2);                        // least significant bit first
+    n = Math.floor(n / 2);
+  }
+  return bits.reverse().join("");            // 13 -> "1101"  (built-in: n.toString(2))
+}` },
+            { lang: 'cpp', code: `string toBinary(int n) {
+    if (n == 0) return "0";
+    string s;
+    while (n > 0) {
+        s += char('0' + n % 2);              // least significant bit first
+        n /= 2;
+    }
+    reverse(s.begin(), s.end());             // one reverse instead of many front inserts
+    return s;                                // 13 -> "1101"
 }` }
+          ] } }
     ],
     deepDive: `<h4>Inside StringBuilder</h4>
       <p>It extends <code>AbstractStringBuilder</code>: a <code>byte[] value</code> (Latin-1 or UTF-16, like String), an <code>int count</code> of used cells and a coder flag. Default capacity is 16. When an append would overflow, the new capacity is roughly <b>old × 2 + 2</b> (or exactly what is needed if that is bigger), and the old content is copied once with <code>Arrays.copyOf</code>.</p>
@@ -779,11 +1327,22 @@ static boolean isPal(String s, int l, int r) {
       },
       hints: [
         `<p><b>Aha:</b> the string splits into <b>blocks of equal neighbours</b>. Each block becomes exactly "char + length". The end of one block is the start of the next, so one left-to-right walk is enough.</p>`,
-        `<p>Use two pointers: <code>i</code> = start of the current run, <code>j</code> = runs ahead while <code>s[j] == s[i]</code>. Append <code>s[i]</code> and <code>j − i</code> to a <b>StringBuilder</b>, then jump <code>i = j</code>.</p>`,
+        `<p>Use two pointers: <code>i</code> = start of the current run, <code>j</code> = runs ahead while <code>s[j] == s[i]</code>. Append <code>s[i]</code> and <code>j − i</code> to a <b>string builder</b> (<code>StringBuilder</code>, a Python list, a JS array, or a C++ <code>std::string</code>), then jump <code>i = j</code>.</p>`,
         `<p><b>Traps:</b> counts can be more than 9 (e.g. "c12") — append the int, not a single digit char; return the original when the compressed one is <b>not shorter</b> (equal length → original); check <code>j &lt; n</code> before reading <code>s[j]</code>. <b>Recipe:</b> i = 0; while i &lt; n: j = i; while j &lt; n and s[j] == s[i]: j++; sb.append(s[i]).append(j − i); i = j. Return shorter of sb and s.</p>`
       ],
+      tests: { sig: 'string -> string', fn: 'compress', cases: [
+        [["aabcccccaaa"],"a2b1c5a3"],
+        [["abc"],"abc"],
+        [["a"],"a"],
+        [["aa"],"aa"],
+        [["aaa"],"a3"],
+        [["aaaaaaaaaaaab"],"a12b1"],
+        [["AAaa"],"AAaa"],
+        [["aAAAAb"],"aAAAAb"],
+        [["zzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"],"z30"]
+      ] },
       solution: {
-        approach: `<p>Scan runs with two pointers, append "char + count" to a StringBuilder, compare lengths at the end.</p>`,
+        approach: `<p>Scan runs with two pointers, append "char + count" to a string builder, compare lengths at the end.</p>`,
         code: `
           class Solution {
               public String compress(String s) {
@@ -807,6 +1366,42 @@ static boolean isPal(String s, int l, int r) {
                   System.out.println(sol.compress("abc"));         // abc
               }
           }`,
+        alt: [
+          { lang: 'python', code: `from itertools import groupby
+
+def compress(s):
+    # groupby yields each run of equal neighbours: ('a', 'aa'), ('b', 'b'), ...
+    out = "".join(f"{ch}{len(list(run))}" for ch, run in groupby(s))
+    return out if len(out) < len(s) else s` },
+          { lang: 'js', code: `function compress(s) {
+  const parts = [];                             // collect pieces, join once (no += copies)
+  let i = 0;
+  while (i < s.length) {
+    let j = i;
+    while (j < s.length && s[j] === s[i]) j++;  // j stops at the first different char
+    parts.push(s[i], String(j - i));
+    i = j;
+  }
+  const out = parts.join("");
+  return out.length < s.length ? out : s;
+}` },
+          { lang: 'cpp', code: `class Solution {
+public:
+    string compress(const string& s) {
+        string out;
+        out.reserve(s.size());
+        size_t i = 0, n = s.size();
+        while (i < n) {
+            size_t j = i;
+            while (j < n && s[j] == s[i]) j++;      // j stops at the first different char
+            out += s[i];
+            out += to_string(j - i);                // amortized O(1) appends
+            i = j;
+        }
+        return out.size() < n ? out : s;
+    }
+};` }
+        ],
         dry: {
           head: ['i', 'c = s[i]', 'j (end)', 'run length j − i', 'sb after append'],
           rows: [
@@ -845,15 +1440,24 @@ static boolean isPal(String s, int l, int r) {
         q: 'If you scan the string from the <b>right end</b> to the left, in what order do you meet the words?',
         options: ['In the original order', 'In reversed order — exactly the order the answer needs', 'Random order', 'Alphabetical order'],
         answer: 1,
-        explain: 'Walking from the right, you finish the last word first. So you can append each word to the StringBuilder as soon as you find it — no array of words and no reversing needed.'
+        explain: 'Walking from the right, you finish the last word first. So you can append each word to the builder as soon as you find it — no array of words and no reversing needed.'
       },
       hints: [
         `<p><b>Aha:</b> reading the string from the <b>end</b> gives you the words already in reversed order. Each word is a block between spaces: find its last character, then walk left to its first character.</p>`,
-        `<p>Use an index <code>i</code> starting at <code>n − 1</code> and a <b>StringBuilder</b>. Skip spaces (i--), remember <code>end = i</code>, walk left while non-space, then the word is <code>s[i+1 .. end]</code>; append it with <code>sb.append(s, i + 1, end + 1)</code>.</p>`,
+        `<p>Use an index <code>i</code> starting at <code>n − 1</code> and a <b>string builder</b>. Skip spaces (i--), remember <code>end = i</code>, walk left while non-space, then the word is <code>s[i+1 .. end]</code>; append that slice (Java: <code>sb.append(s, i + 1, end + 1)</code>; Python and JS: <code>s[i+1:end+1]</code> / <code>s.slice(i + 1, end + 1)</code>; C++: <code>s.substr(i + 1, end - i)</code>).</p>`,
         `<p><b>Traps:</b> leading/trailing/multiple spaces (always skip them before reading a word); add a separating <code>' '</code> only if sb is not empty (no space before the first word); stop when i drops below 0 after skipping. <b>Recipe:</b> i = n−1; loop: skip spaces; if i &lt; 0 break; end = i; move i left over the word; if sb not empty append ' '; append s[i+1..end]. Return sb.</p>`
       ],
+      tests: { sig: 'string -> string', fn: 'reverseWords', cases: [
+        [[" hello world  "],"world hello"],
+        [["the sky is blue"],"blue is sky the"],
+        [["a"],"a"],
+        [["  a  "],"a"],
+        [["a good   example"],"example good a"],
+        [["x y"],"y x"],
+        [["abc123 9 Z"],"Z 9 abc123"]
+      ] },
       solution: {
-        approach: `<p>Scan right-to-left, cut out each word with two indices, append to a StringBuilder with single spaces.</p>`,
+        approach: `<p>Scan right-to-left, cut out each word with two indices, append to a string builder with single spaces.</p>`,
         code: `
           class Solution {
               public String reverseWords(String s) {
@@ -876,6 +1480,30 @@ static boolean isPal(String s, int l, int r) {
                   System.out.println("[" + sol.reverseWords("the sky is blue") + "]");  // [blue is sky the]
               }
           }`,
+        alt: [
+          { lang: 'python', code: `def reverse_words(s):
+    # split() with no argument drops leading, trailing and repeated spaces
+    return " ".join(reversed(s.split()))` },
+          { lang: 'js', code: `function reverseWords(s) {
+  // split on single spaces, drop the empty pieces made by extra spaces
+  return s.split(" ").filter((w) => w.length > 0).reverse().join(" ");
+}` },
+          { lang: 'cpp', code: `class Solution {
+public:
+    string reverseWords(const string& s) {
+        istringstream in(s);                        // >> skips any number of spaces
+        vector<string> words;
+        string w;
+        while (in >> w) words.push_back(w);
+        string out;
+        for (int k = (int)words.size() - 1; k >= 0; k--) {
+            if (!out.empty()) out += ' ';           // exactly one space between words
+            out += words[k];
+        }
+        return out;
+    }
+};` }
+        ],
         dry: {
           head: ['i (start)', 'after skipping spaces', 'end', 'i after word', 'word s[i+1..end]', 'sb'],
           rows: [
@@ -923,7 +1551,7 @@ static boolean isPal(String s, int l, int r) {
       '"<b>subsequence</b>" (letters may be skipped) is a different problem → DP, not this.',
       'Both "aba"-type and "abba"-type answers possible → remember <b>two</b> centers per position.'
     ],
-    code: `
+    code: { lang: 'java', code: `
       class Expand {
           // grow outward from (l, r) while the ends match; return the palindrome length found
           static int expand(String s, int l, int r) {
@@ -940,6 +1568,44 @@ static boolean isPal(String s, int l, int r) {
               System.out.println(expand("cbbd", 1, 2));  // 2 ("bb", even center)
           }
       }`,
+      alt: [
+        { lang: 'python', code: `def expand(s, l, r):
+    # grow outward from (l, r) while the ends match; return the palindrome length found
+    while l >= 0 and r < len(s) and s[l] == s[r]:
+        l -= 1                               # one step left
+        r += 1                               # one step right
+    return r - l - 1                         # loop stopped one step too far on both sides
+
+print(expand("babad", 1, 1))  # 3 ("bab", odd center)
+print(expand("cbbd", 1, 2))   # 2 ("bb", even center)`, run: true },
+        { lang: 'js', code: `// grow outward from (l, r) while the ends match; return the palindrome length found
+function expand(s, l, r) {
+  while (l >= 0 && r < s.length && s[l] === s[r]) {
+    l--;                                     // one step left
+    r++;                                     // one step right
+  }
+  return r - l - 1;                          // loop stopped one step too far on both sides
+}
+
+console.log(expand("babad", 1, 1)); // 3 ("bab", odd center)
+console.log(expand("cbbd", 1, 2));  // 2 ("bb", even center)`, run: true },
+        { lang: 'cpp', code: `#include <bits/stdc++.h>
+using namespace std;
+
+// grow outward from (l, r) while the ends match; return the palindrome length found
+int expand(const string& s, int l, int r) {
+    while (l >= 0 && r < (int)s.size() && s[l] == s[r]) {
+        l--;                                 // one step left
+        r++;                                 // one step right
+    }
+    return r - l - 1;                        // loop stopped one step too far on both sides
+}
+
+int main() {
+    cout << expand("babad", 1, 1) << '\\n';   // 3 ("bab", odd center)
+    cout << expand("cbbd", 1, 2) << '\\n';    // 2 ("bb", even center)
+}` }
+      ] },
     codeTitle: 'The expand helper',
     viz: {
       title: 'Expand around every center (odd and even)',
@@ -993,7 +1659,7 @@ static boolean isPal(String s, int l, int r) {
         ${H.table(['center', 'palindromes found while expanding', 'count'], [
           ['0 (odd)', 'a', '1'], ['0|1 (even)', 'aa', '1'], ['1 (odd)', 'a, aaa', '2'], ['1|2 (even)', 'aa', '1'], ['2 (odd)', 'a', '1'], ['', '<b>total</b>', '<b class="c-g">6</b>']
         ])}
-        <p>Positions count separately: "a" at 0, 1 and 2 are three different substrings.</p>`, code: `static int countSubstrings(String s) {
+        <p>Positions count separately: "a" at 0, 1 and 2 are three different substrings.</p>`, code: { lang: 'java', code: `static int countSubstrings(String s) {
     int total = 0;
     for (int c = 0; c < s.length(); c++) {
         for (int r0 = c; r0 <= c + 1; r0++) {          // r0 = c (odd) and c + 1 (even)
@@ -1006,13 +1672,52 @@ static boolean isPal(String s, int l, int r) {
         }
     }
     return total;                                      // "aaa" -> 6, "abc" -> 3
+}`,
+          alt: [
+            { lang: 'python', code: `def count_substrings(s):
+    total = 0
+    for c in range(len(s)):
+        for r0 in (c, c + 1):                # odd center, then even center
+            l, r = c, r0
+            while l >= 0 and r < len(s) and s[l] == s[r]:
+                total += 1                   # s[l..r] is one more palindrome
+                l, r = l - 1, r + 1
+    return total                             # "aaa" -> 6, "abc" -> 3` },
+            { lang: 'js', code: `function countSubstrings(s) {
+  let total = 0;
+  for (let c = 0; c < s.length; c++) {
+    for (let r0 = c; r0 <= c + 1; r0++) {    // r0 = c (odd) and c + 1 (even)
+      let l = c, r = r0;
+      while (l >= 0 && r < s.length && s[l] === s[r]) {
+        total++;                             // s[l..r] is one more palindrome
+        l--;
+        r++;
+      }
+    }
+  }
+  return total;                              // "aaa" -> 6, "abc" -> 3
 }` },
+            { lang: 'cpp', code: `int countSubstrings(const string& s) {
+    int total = 0, n = s.size();
+    for (int c = 0; c < n; c++) {
+        for (int r0 = c; r0 <= c + 1; r0++) {    // r0 = c (odd) and c + 1 (even)
+            int l = c, r = r0;
+            while (l >= 0 && r < n && s[l] == s[r]) {
+                total++;                         // s[l..r] is one more palindrome
+                l--;
+                r++;
+            }
+        }
+    }
+    return total;                                // "aaa" -> 6, "abc" -> 3
+}` }
+          ] } },
       { title: 'An even palindrome hiding inside noise', html: `<p><code>"forgeeksskeegfor"</code>: odd centers only find single letters here, but the <b>gap between the two s's</b> (indices 7|8) grows: ss → kssk → eksske → eeksskee → geeksskeeg, then "r ≠ f" stops it.</p>
         ${H.arr('forgeeksskeegfor'.split(''), { hl: { 3: 'p', 4: 'p', 5: 'p', 6: 'p', 7: 'g', 8: 'g', 9: 'p', 10: 'p', 11: 'p', 12: 'p' } })}
         <p>Length 10, start = c − (len − 1) / 2 = 7 − 4 = <b>3</b> → <code>"geeksskeeg"</code>. Without the even center this answer is impossible to find.</p>` },
       { title: 'The DP-table alternative (and why expansion is usually better)', html: `<p><code>pal[i][j]</code> = true if s[i..j] is a palindrome: <code>pal[i][j] = s[i]==s[j] &amp;&amp; (j − i &lt; 2 || pal[i+1][j−1])</code>. Fill by increasing length. For "abba":</p>
         ${H.table(['i \\ j', 'a(0)', 'b(1)', 'b(2)', 'a(3)'], [['a(0)', 'T', 'F', 'F', '<b class="c-g">T</b>'], ['b(1)', '', 'T', '<b class="c-g">T</b>', 'F'], ['b(2)', '', '', 'T', 'F'], ['a(3)', '', '', '', 'T']])}
-        <p>Same O(N<sup>2</sup>) time, but O(N<sup>2</sup>) memory (10<sup>6</sup> booleans for N = 1000). Use it when you need <b>many</b> "is s[i..j] a palindrome?" queries later (e.g. Palindrome Partitioning); otherwise expand around center.</p>`, code: `static String longestDp(String s) {
+        <p>Same O(N<sup>2</sup>) time, but O(N<sup>2</sup>) memory (10<sup>6</sup> booleans for N = 1000). Use it when you need <b>many</b> "is s[i..j] a palindrome?" queries later (e.g. Palindrome Partitioning); otherwise expand around center.</p>`, code: { lang: 'java', code: `static String longestDp(String s) {
     int n = s.length(), bestL = 0, bestLen = 1;
     boolean[][] pal = new boolean[n][n];
     for (int len = 1; len <= n; len++) {
@@ -1023,7 +1728,45 @@ static boolean isPal(String s, int l, int r) {
         }
     }
     return s.substring(bestL, bestL + bestLen);
+}`,
+          alt: [
+            { lang: 'python', code: `def longest_dp(s):
+    n = len(s)
+    best_l, best_len = 0, 1
+    pal = [[False] * n for _ in range(n)]    # pal[i][j]: is s[i..j] a palindrome?
+    for length in range(1, n + 1):
+        for i in range(n - length + 1):
+            j = i + length - 1
+            pal[i][j] = s[i] == s[j] and (length <= 2 or pal[i + 1][j - 1])
+            if pal[i][j] and length > best_len:
+                best_l, best_len = i, length
+    return s[best_l:best_l + best_len]` },
+            { lang: 'js', code: `function longestDp(s) {
+  const n = s.length;
+  let bestL = 0, bestLen = 1;
+  const pal = Array.from({ length: n }, () => new Array(n).fill(false));
+  for (let len = 1; len <= n; len++) {
+    for (let i = 0; i + len - 1 < n; i++) {
+      const j = i + len - 1;
+      pal[i][j] = s[i] === s[j] && (len <= 2 || pal[i + 1][j - 1]);
+      if (pal[i][j] && len > bestLen) { bestLen = len; bestL = i; }
+    }
+  }
+  return s.slice(bestL, bestL + bestLen);
+}` },
+            { lang: 'cpp', code: `string longestDp(const string& s) {
+    int n = s.size(), bestL = 0, bestLen = 1;
+    vector<vector<char>> pal(n, vector<char>(n, 0));   // char, not vector<bool>: faster access
+    for (int len = 1; len <= n; len++) {
+        for (int i = 0; i + len - 1 < n; i++) {
+            int j = i + len - 1;
+            pal[i][j] = s[i] == s[j] && (len <= 2 || pal[i + 1][j - 1]);
+            if (pal[i][j] && len > bestLen) { bestLen = len; bestL = i; }
+        }
+    }
+    return s.substr(bestL, bestLen);
 }` }
+          ] } }
     ],
     deepDive: `<h4>Worst case and a cheap speed-up</h4>
       <p>Expansion is O(N<sup>2</sup>) only on very repetitive strings like "aaaa…a" (every center grows to the edge). On random text most centers stop after one step, so it is close to O(N) in practice. A safe pruning: a center c can never produce more than 2·(n − c) − 1 characters, so once the best length is ≥ that bound, no center at c or later can beat it — stop early.</p>
@@ -1069,7 +1812,7 @@ static boolean isPal(String s, int l, int r) {
       },
       mcq: {
         q: 'Why must we expand from <b>both</b> <code>(c, c)</code> and <code>(c, c+1)</code>?',
-        options: ['To make the code run twice as fast', 'Because odd-length palindromes have a letter in the middle while even-length ones have a gap in the middle', 'Because Java indexes start at 0', 'It is not needed; (c, c) finds everything'],
+        options: ['To make the code run twice as fast', 'Because odd-length palindromes have a letter in the middle while even-length ones have a gap in the middle', 'Because string indexes start at 0', 'It is not needed; (c, c) finds everything'],
         answer: 1,
         explain: 'Starting at (c, c) only ever builds odd lengths 1, 3, 5... An even palindrome like "abba" has no middle letter; it can only be found by starting from the gap (c, c+1).'
       },
@@ -1078,6 +1821,18 @@ static boolean isPal(String s, int l, int r) {
         `<p>No data structure needed — just two pointers <code>l</code> and <code>r</code> moving <b>outward</b>. Loop over centers c = 0..n−1, call <code>expand(c, c)</code> and <code>expand(c, c+1)</code>, keep <code>bestStart</code> and <code>bestLen</code>.</p>`,
         `<p><b>Traps:</b> after the while-loop, l and r have gone one step too far → length is <code>r − l − 1</code>; start index is <code>c − (len − 1) / 2</code>; the even center at the last index has r = n (returns 0, fine); a 1-character string is its own answer. <b>Recipe:</b> best = (0, 1); for c: len = max(expand(c,c), expand(c,c+1)); if len &gt; bestLen: bestLen = len, bestStart = c − (len−1)/2. Return substring(bestStart, bestStart + bestLen).</p>`
       ],
+      tests: { sig: 'string -> string', fn: 'longestPalindrome', check: "(args, out, exp) => typeof out === 'string' && out.length === exp.length && args[0].includes(out) && out === out.split('').reverse().join('')", cases: [
+        [["babad"],"bab"],
+        [["cbbd"],"bb"],
+        [["a"],"a"],
+        [["ac"],"a"],
+        [["aaaa"],"aaaa"],
+        [["forgeeksskeegfor"],"geeksskeeg"],
+        [["abacdfgdcaba"],"aba"],
+        [["racecar"],"racecar"],
+        [["abcba1221"],"abcba"],
+        [["bb"],"bb"]
+      ] },
       solution: {
         approach: `<p>Try all 2N−1 centers, expand outward while ends match, remember the longest.</p>`,
         code: `
@@ -1111,6 +1866,54 @@ static boolean isPal(String s, int l, int r) {
                   System.out.println(sol.longestPalindrome("cbbd"));  // bb
               }
           }`,
+        alt: [
+          { lang: 'python', code: `def longest_palindrome(s):
+    def expand(l, r):
+        while l >= 0 and r < len(s) and s[l] == s[r]:
+            l, r = l - 1, r + 1
+        return r - l - 1                      # length of s[l+1 .. r-1]
+
+    best_start, best_len = 0, 1
+    for c in range(len(s)):
+        length = max(expand(c, c), expand(c, c + 1))   # odd and even centers
+        if length > best_len:
+            best_len = length
+            best_start = c - (length - 1) // 2
+    return s[best_start:best_start + best_len]` },
+          { lang: 'js', code: `function longestPalindrome(s) {
+  const expand = (l, r) => {
+    while (l >= 0 && r < s.length && s[l] === s[r]) { l--; r++; }
+    return r - l - 1;                           // length of s[l+1 .. r-1]
+  };
+  let bestStart = 0, bestLen = 1;
+  for (let c = 0; c < s.length; c++) {
+    const len = Math.max(expand(c, c), expand(c, c + 1));   // odd and even centers
+    if (len > bestLen) {
+      bestLen = len;
+      bestStart = c - Math.floor((len - 1) / 2);
+    }
+  }
+  return s.slice(bestStart, bestStart + bestLen);
+}` },
+          { lang: 'cpp', code: `class Solution {
+    int expand(const string& s, int l, int r) {
+        while (l >= 0 && r < (int)s.size() && s[l] == s[r]) { l--; r++; }
+        return r - l - 1;                           // length of s[l+1 .. r-1]
+    }
+public:
+    string longestPalindrome(const string& s) {
+        int bestStart = 0, bestLen = 1;
+        for (int c = 0; c < (int)s.size(); c++) {
+            int len = max(expand(s, c, c), expand(s, c, c + 1));   // odd and even centers
+            if (len > bestLen) {
+                bestLen = len;
+                bestStart = c - (len - 1) / 2;
+            }
+        }
+        return s.substr(bestStart, bestLen);
+    }
+};` }
+        ],
         dry: {
           head: ['c', 'odd expand(c,c)', 'even expand(c,c+1)', 'len', 'bestStart, bestLen'],
           rows: [
@@ -1144,7 +1947,7 @@ static boolean isPal(String s, int l, int r) {
       ])}
       <p>General formula: <code>newHash = (oldHash − out·B<sup>m−1</sup>) · B + in</code>. One subtraction, one multiplication, one addition — no matter how long the pattern is.</p>
       <h4>3. Mod — keep numbers small</h4>
-      <p>B<sup>m</sup> explodes quickly, so do every step <b>modulo a big prime M</b> (e.g. 10<sup>9</sup>+7), using <code>long</code> so the product <code>hash · B</code> (up to ~3·10<sup>10</sup>) does not overflow. After subtracting, the value can go negative in Java, so fix it with <code>(x % M + M) % M</code>.</p>
+      <p>B<sup>m</sup> explodes quickly, so do every step <b>modulo a big prime M</b> (e.g. 10<sup>9</sup>+7), using 64-bit integers (<code>long</code> / <code>long long</code>) so the product <code>hash · B</code> (up to ~3·10<sup>10</sup>) does not overflow. Python integers never overflow; JS Numbers stay exact only up to 2<sup>53</sup> ≈ 9·10<sup>15</sup>, so keep every product below that or use <code>BigInt</code>. After subtracting, the value can go negative in Java, JS and C++ (their <code>%</code> keeps the sign; Python's does not), so fix it with <code>(x % M + M) % M</code>.</p>
       <h4>4. Collisions — always double-check</h4>
       <p>Squeezing infinitely many strings into M buckets means two different strings can share a hash. Example with a tiny M = 101, B = 31: hash("abc") = 16 and hash("eee") = 16 too! So when hashes match, <b>compare the characters</b> (Las Vegas style, always correct), or use <b>two different mods</b> (double hashing) when you need speed and can accept a near-zero risk.</p>
       <h4>5. Prefix hashes — the hash of ANY substring in O(1)</h4>
@@ -1159,7 +1962,7 @@ static boolean isPal(String s, int l, int r) {
       '<code>|s| ≤ 10<sup>5</sup></code> with substring comparisons → O(N·M) is too slow; hashing makes each compare O(1).',
       'You see "mod 10<sup>9</sup>+7" and "base 31 / 131" in editorial code → it is polynomial hashing.'
     ],
-    code: `
+    code: { lang: 'java', code: `
       class PrefixHash {
           static final long B = 31, M = 1_000_000_007L;
           long[] pre, pw;
@@ -1187,6 +1990,76 @@ static boolean isPal(String s, int l, int r) {
               System.out.println(h.get(0, 1) == h.get(1, 2)); // false: "ab" vs "bc"
           }
       }`,
+      alt: [
+        { lang: 'python', code: `class PrefixHash:
+    B, M = 31, 1_000_000_007
+
+    def __init__(self, s):
+        n = len(s)
+        self.pre = [0] * (n + 1)
+        self.pw = [1] * (n + 1)
+        for i, ch in enumerate(s):
+            self.pre[i + 1] = (self.pre[i] * self.B + ord(ch) - ord("a") + 1) % self.M   # append one "digit"
+            self.pw[i + 1] = self.pw[i] * self.B % self.M                               # B^(i+1)
+
+    def get(self, l, r):
+        # hash of s[l..r] inclusive, in O(1); Python % is never negative
+        return (self.pre[r + 1] - self.pre[l] * self.pw[r - l + 1]) % self.M
+
+h = PrefixHash("abcabc")
+print(h.get(0, 2) == h.get(3, 5))  # True: "abc" == "abc"
+print(h.get(0, 1) == h.get(1, 2))  # False: "ab" vs "bc"`, run: true },
+        { lang: 'js', code: `// pre[l] * pw[len] can reach 10^18, far past 2^53, so this version uses BigInt.
+// (Plain Numbers work only if every product stays below 2^53.)
+class PrefixHash {
+  constructor(s) {
+    const B = 31n, M = 1000000007n, n = s.length;
+    this.M = M;
+    this.pre = new Array(n + 1).fill(0n);
+    this.pw = new Array(n + 1).fill(1n);
+    for (let i = 0; i < n; i++) {
+      this.pre[i + 1] = (this.pre[i] * B + BigInt(s.charCodeAt(i) - 96)) % M;   // append one "digit"
+      this.pw[i + 1] = (this.pw[i] * B) % M;                                     // B^(i+1)
+    }
+  }
+
+  // hash of s[l..r] inclusive, in O(1)
+  get(l, r) {
+    const x = (this.pre[r + 1] - this.pre[l] * this.pw[r - l + 1]) % this.M;
+    return (x + this.M) % this.M;                                                // fix negative values
+  }
+}
+
+const h = new PrefixHash("abcabc");
+console.log(h.get(0, 2) === h.get(3, 5)); // true: "abc" == "abc"
+console.log(h.get(0, 1) === h.get(1, 2)); // false: "ab" vs "bc"`, run: true },
+        { lang: 'cpp', code: `#include <bits/stdc++.h>
+using namespace std;
+
+struct PrefixHash {
+    static constexpr long long B = 31, M = 1000000007LL;
+    vector<long long> pre, pw;
+
+    explicit PrefixHash(const string& s) : pre(s.size() + 1, 0), pw(s.size() + 1, 1) {
+        for (size_t i = 0; i < s.size(); i++) {
+            pre[i + 1] = (pre[i] * B + (s[i] - 'a' + 1)) % M;   // append one "digit"
+            pw[i + 1] = pw[i] * B % M;                          // B^(i+1)
+        }
+    }
+
+    // hash of s[l..r] inclusive, in O(1)
+    long long get(int l, int r) const {
+        long long x = (pre[r + 1] - pre[l] * pw[r - l + 1]) % M;
+        return (x + M) % M;                                     // fix negative values
+    }
+};
+
+int main() {
+    PrefixHash h("abcabc");
+    cout << boolalpha << (h.get(0, 2) == h.get(3, 5)) << '\\n'; // true: "abc" == "abc"
+    cout << (h.get(0, 1) == h.get(1, 2)) << '\\n';              // false: "ab" vs "bc"
+}` }
+      ] },
     codeTitle: 'Prefix hashes: O(1) hash of any substring',
     viz: {
       title: 'Rabin-Karp: sliding the hash window (tiny mod 101 to show a collision)',
@@ -1255,7 +2128,7 @@ static boolean isPal(String s, int l, int r) {
         <p>Each slide is 3 arithmetic operations, independent of m. With letters and a big prime mod, the arithmetic is identical — only the numbers are not human-readable.</p>` },
       { title: 'Double hashing — two independent fingerprints', html: `<p>One mod-10<sup>9</sup>+7 hash collides with probability about 10<sup>−9</sup> per comparison. Comparing ~10<sup>10</sup> pairs (e.g. all substrings of a 10<sup>5</sup> string) makes a collision likely (birthday effect). Pair two hashes with different mods (or bases): a false match now needs both to collide, ≈ 10<sup>−18</sup>.</p>
         ${H.table(['string', 'h1 (B=31, M=10<sup>9</sup>+7)', 'h2 (B=37, M=998244353)'], [['"abc"', '1026', '1446'], ['"acb"', '1056', '1482']])}
-        <p>Store the pair as one <code>long</code> key: <code>h1 * M2 + h2</code> fits in 64 bits (≈ 10<sup>18</sup> &lt; 9.2·10<sup>18</sup>).</p>`, code: `static long[] twoHashes(String s) {
+        <p>Store the pair as one <code>long</code> key: <code>h1 * M2 + h2</code> fits in 64 bits (≈ 10<sup>18</sup> &lt; 9.2·10<sup>18</sup>).</p>`, code: { lang: 'java', code: `static long[] twoHashes(String s) {
     final long B1 = 31, M1 = 1_000_000_007L, B2 = 37, M2 = 998_244_353L;
     long h1 = 0, h2 = 0;
     for (int i = 0; i < s.length(); i++) {
@@ -1264,7 +2137,37 @@ static boolean isPal(String s, int l, int r) {
         h2 = (h2 * B2 + v) % M2;
     }
     return new long[]{h1, h2};      // "abc" -> [1026, 1446]
+}`,
+          alt: [
+            { lang: 'python', code: `def two_hashes(s):
+    B1, M1, B2, M2 = 31, 1_000_000_007, 37, 998_244_353
+    h1 = h2 = 0
+    for ch in s:
+        v = ord(ch) - ord("a") + 1
+        h1 = (h1 * B1 + v) % M1
+        h2 = (h2 * B2 + v) % M2
+    return h1, h2                            # "abc" -> (1026, 1446)` },
+            { lang: 'js', code: `function twoHashes(s) {
+  const B1 = 31, M1 = 1000000007, B2 = 37, M2 = 998244353;   // products stay below 2^53
+  let h1 = 0, h2 = 0;
+  for (let i = 0; i < s.length; i++) {
+    const v = s.charCodeAt(i) - 96;
+    h1 = (h1 * B1 + v) % M1;
+    h2 = (h2 * B2 + v) % M2;
+  }
+  return [h1, h2];                           // "abc" -> [1026, 1446]
+}` },
+            { lang: 'cpp', code: `pair<long long, long long> twoHashes(const string& s) {
+    const long long B1 = 31, M1 = 1000000007LL, B2 = 37, M2 = 998244353LL;
+    long long h1 = 0, h2 = 0;
+    for (char ch : s) {
+        int v = ch - 'a' + 1;
+        h1 = (h1 * B1 + v) % M1;
+        h2 = (h2 * B2 + v) % M2;
+    }
+    return {h1, h2};                         // "abc" -> {1026, 1446}
 }` }
+          ] } }
     ],
     deepDive: `<h4>How likely is a collision?</h4>
       <p>For a prime M and a <b>random</b> base, two different strings of length L collide with probability at most about L / M. With M ≈ 10<sup>9</sup> that is tiny for one comparison, but the <b>birthday paradox</b> bites when you put K hashes in a set: collisions become likely once K ≈ √M ≈ 3·10<sup>4</sup>. Hence double hashing, or a 61-bit modulus.</p>
@@ -1317,9 +2220,20 @@ static boolean isPal(String s, int l, int r) {
       },
       hints: [
         `<p><b>Aha:</b> read a string as a number in base B. Sliding the window is like moving from 123 to 234: drop the leading digit, shift left (× B), add the new last digit — O(1) instead of O(M).</p>`,
-        `<p>Keep <code>long patHash</code>, <code>long winHash</code> and <code>long power = B<sup>m−1</sup> mod M</code>. Only when <code>winHash == patHash</code> compare characters (or use <code>txt.regionMatches(i, pat, 0, m)</code>) to rule out collisions.</p>`,
-        `<p><b>Traps:</b> use <code>long</code> and take <code>% M</code> after every multiply; after subtracting add M before the final mod (Java's % can be negative); letter values from 1 (not 0); don't roll past the last window (check <code>i + m &lt; n</code>). <b>Recipe:</b> build patHash and first winHash; for i = 0..n−m: if equal and letters equal → add i; if i + m &lt; n: winHash = ((winHash − val(txt[i])·power) mod M + M) mod M; winHash = (winHash·B + val(txt[i+m])) mod M.</p>`
+        `<p>Keep three 64-bit numbers: <code>patHash</code>, <code>winHash</code> and <code>power = B<sup>m−1</sup> mod M</code>. Only when <code>winHash == patHash</code> compare characters (<code>regionMatches</code> / a slice compare / <code>startsWith(pat, i)</code> / <code>compare</code>) to rule out collisions.</p>`,
+        `<p><b>Traps:</b> use 64-bit integers and take <code>% M</code> after every multiply; after subtracting add M before the final mod (% can be negative in Java, JS and C++); letter values from 1 (not 0); don't roll past the last window (check <code>i + m &lt; n</code>). <b>Recipe:</b> build patHash and first winHash; for i = 0..n−m: if equal and letters equal → add i; if i + m &lt; n: winHash = ((winHash − val(txt[i])·power) mod M + M) mod M; winHash = (winHash·B + val(txt[i+m])) mod M.</p>`
       ],
+      tests: { sig: 'string string -> list<int>', fn: 'search', cases: [
+        [["abcbabc","abc"],[0,4]],
+        [["aaaaa","aa"],[0,1,2,3]],
+        [["abc","abc"],[0]],
+        [["abc","d"],[]],
+        [["a","a"],[0]],
+        [["abceeedabc","abc"],[0,7]],
+        [["zzzzyzzzz","zz"],[0,1,2,5,6,7]],
+        [["abababab","abab"],[0,2,4]],
+        [["xyz","xyzz"],[]]
+      ] },
       solution: {
         approach: `<p>Polynomial hash of the pattern and of a sliding window; O(1) roll; verify on equal hashes.</p>`,
         code: `
@@ -1359,6 +2273,70 @@ static boolean isPal(String s, int l, int r) {
                   System.out.println(new Solution().search("abcbabc", "abc")); // [0, 4]
               }
           }`,
+        alt: [
+          { lang: 'python', code: `B, M = 31, 1_000_000_007
+
+def search(txt, pat):
+    n, m = len(txt), len(pat)
+    if m > n:
+        return []
+    val = lambda ch: ord(ch) - ord('a') + 1   # a=1 .. z=26, never 0
+    pat_hash = win_hash = 0
+    for k in range(m):
+        pat_hash = (pat_hash * B + val(pat[k])) % M
+        win_hash = (win_hash * B + val(txt[k])) % M
+    power = pow(B, m - 1, M)                  # B^(m-1) mod M
+    res = []
+    for i in range(n - m + 1):
+        if win_hash == pat_hash and txt[i:i + m] == pat:   # verify: rule out a collision
+            res.append(i)
+        if i + m < n:                         # roll: drop txt[i], add txt[i+m]
+            win_hash = ((win_hash - val(txt[i]) * power) * B + val(txt[i + m])) % M
+    return res` },
+          { lang: 'js', code: `function search(txt, pat) {
+  const B = 31, M = 1000000007;                 // every product stays below 2^53
+  const n = txt.length, m = pat.length, res = [];
+  if (m > n) return res;
+  const val = (str, k) => str.charCodeAt(k) - 96;   // a=1 .. z=26
+  let patHash = 0, winHash = 0, power = 1;
+  for (let k = 0; k < m; k++) {
+    patHash = (patHash * B + val(pat, k)) % M;
+    winHash = (winHash * B + val(txt, k)) % M;
+    if (k < m - 1) power = (power * B) % M;     // B^(m-1) mod M
+  }
+  for (let i = 0; i + m <= n; i++) {
+    if (winHash === patHash && txt.startsWith(pat, i)) res.push(i);   // verify on a hit
+    if (i + m < n) {
+      winHash = (winHash - (val(txt, i) * power) % M + M) % M;   // % can be negative: add M
+      winHash = (winHash * B + val(txt, i + m)) % M;
+    }
+  }
+  return res;
+}` },
+          { lang: 'cpp', code: `class Solution {
+    static constexpr long long B = 31, M = 1000000007LL;
+public:
+    vector<int> search(const string& txt, const string& pat) {
+        vector<int> res;
+        int n = txt.size(), m = pat.size();
+        if (m > n) return res;
+        long long patHash = 0, winHash = 0, power = 1;     // power = B^(m-1) mod M
+        for (int k = 0; k < m; k++) {
+            patHash = (patHash * B + (pat[k] - 'a' + 1)) % M;
+            winHash = (winHash * B + (txt[k] - 'a' + 1)) % M;
+            if (k < m - 1) power = power * B % M;
+        }
+        for (int i = 0; i + m <= n; i++) {
+            if (winHash == patHash && txt.compare(i, m, pat) == 0) res.push_back(i);   // verify
+            if (i + m < n) {
+                winHash = (winHash - (txt[i] - 'a' + 1) * power % M + M) % M;   // keep it >= 0
+                winHash = (winHash * B + (txt[i + m] - 'a' + 1)) % M;
+            }
+        }
+        return res;
+    }
+};` }
+        ],
         dry: {
           head: ['i', 'window', 'winHash', '== 1026?', 'action / roll'],
           rows: [
@@ -1413,7 +2391,7 @@ static boolean isPal(String s, int l, int r) {
       '<code>|txt| ≤ 10<sup>6</sup></code> with worst-case inputs like "aaaa…ab" → naive O(N·M) dies; KMP stays O(N + M).',
       '"rotation of a string" → search for one string inside <code>s + s</code> with KMP.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       class LpsBuilder {
           static int[] buildLps(String p) {
               int m = p.length();
@@ -1439,7 +2417,76 @@ static boolean isPal(String s, int l, int r) {
               System.out.println(Arrays.toString(buildLps("ababaca"))); // [0, 0, 1, 2, 3, 0, 1]
               System.out.println(Arrays.toString(buildLps("aabaaab"))); // [0, 1, 0, 1, 2, 2, 3]
           }
-      }`],
+      }`,
+      alt: [
+        { lang: 'python', code: `def build_lps(p):
+    m = len(p)
+    lps = [0] * m                            # lps[0] = 0 always
+    length, i = 0, 1                         # length of current prefix-suffix
+    while i < m:
+        if p[i] == p[length]:
+            length += 1                      # border grows by one
+            lps[i] = length
+            i += 1
+        elif length > 0:
+            length = lps[length - 1]         # fall back to a shorter border; i stays
+        else:
+            lps[i] = 0                       # nothing reusable
+            i += 1
+    return lps
+
+print(build_lps("ababaca"))  # [0, 0, 1, 2, 3, 0, 1]
+print(build_lps("aabaaab"))  # [0, 1, 0, 1, 2, 2, 3]`, run: true },
+        { lang: 'js', code: `function buildLps(p) {
+  const m = p.length;
+  const lps = new Array(m).fill(0);          // lps[0] = 0 always
+  let len = 0, i = 1;                        // len = length of current prefix-suffix
+  while (i < m) {
+    if (p[i] === p[len]) {
+      len++;                                 // border grows by one
+      lps[i] = len;
+      i++;
+    } else if (len > 0) {
+      len = lps[len - 1];                    // fall back to a shorter border; i stays
+    } else {
+      lps[i] = 0;                            // nothing reusable
+      i++;
+    }
+  }
+  return lps;
+}
+
+console.log(JSON.stringify(buildLps("ababaca"))); // [0,0,1,2,3,0,1]
+console.log(JSON.stringify(buildLps("aabaaab"))); // [0,1,0,1,2,2,3]`, run: true },
+        { lang: 'cpp', code: `#include <bits/stdc++.h>
+using namespace std;
+
+vector<int> buildLps(const string& p) {
+    int m = p.size();
+    vector<int> lps(m, 0);                   // lps[0] = 0 always
+    int len = 0, i = 1;                      // len = length of current prefix-suffix
+    while (i < m) {
+        if (p[i] == p[len]) {
+            len++;                           // border grows by one
+            lps[i] = len;
+            i++;
+        } else if (len > 0) {
+            len = lps[len - 1];              // fall back to a shorter border; i stays
+        } else {
+            lps[i] = 0;                      // nothing reusable
+            i++;
+        }
+    }
+    return lps;
+}
+
+int main() {
+    for (const string& p : {string("ababaca"), string("aabaaab")}) {
+        for (int x : buildLps(p)) cout << x << ' ';
+        cout << '\\n';                        // 0 0 1 2 3 0 1  /  0 1 0 1 2 2 3
+    }
+}` }
+      ] }],
     codeTitle: ['Building the LPS array'],
     viz: [{
       title: 'Building the LPS array (pointers i and len)',
@@ -1561,7 +2608,7 @@ static boolean isPal(String s, int l, int r) {
         ])}
         <p>Reading lps quickly is a skill interviewers test: compute it by hand for a 6–8 letter pattern before writing any code.</p>` },
       { title: 'Repeated substring pattern via the period', html: `<p>Is <code>"abcabcabc"</code> built by repeating a smaller piece? lps[n − 1] = 6 (the border "abcabc"). The smallest period is <b>p = n − lps[n − 1] = 9 − 6 = 3</b>. Since 9 % 3 == 0 and lps[n − 1] &gt; 0 → yes, "abc" × 3.</p>
-        ${H.table(['s', 'n', 'lps[n−1]', 'p = n − lps', 'n % p == 0?', 'answer'], [['abcabcabc', '9', '6', '3', 'yes', '<span class="c-g">true</span>'], ['abab', '4', '2', '2', 'yes', '<span class="c-g">true</span>'], ['abcab', '5', '2', '3', 'no', '<span class="c-r">false</span>'], ['aaaa', '4', '3', '1', 'yes', '<span class="c-g">true</span>']])}`, code: `static boolean repeated(String s) {
+        ${H.table(['s', 'n', 'lps[n−1]', 'p = n − lps', 'n % p == 0?', 'answer'], [['abcabcabc', '9', '6', '3', 'yes', '<span class="c-g">true</span>'], ['abab', '4', '2', '2', 'yes', '<span class="c-g">true</span>'], ['abcab', '5', '2', '3', 'no', '<span class="c-r">false</span>'], ['aaaa', '4', '3', '1', 'yes', '<span class="c-g">true</span>']])}`, code: { lang: 'java', code: `static boolean repeated(String s) {
     int n = s.length();
     int[] lps = new int[n];
     for (int i = 1, len = 0; i < n; ) {          // standard LPS build
@@ -1571,7 +2618,41 @@ static boolean isPal(String s, int l, int r) {
     }
     int border = lps[n - 1];
     return border > 0 && n % (n - border) == 0;  // period divides the length
+}`,
+          alt: [
+            { lang: 'python', code: `def repeated(s):
+    n = len(s)
+    lps, length = [0] * n, 0
+    for i in range(1, n):                    # standard LPS build
+        while length > 0 and s[i] != s[length]:
+            length = lps[length - 1]
+        if s[i] == s[length]:
+            length += 1
+        lps[i] = length
+    border = lps[-1]
+    return border > 0 and n % (n - border) == 0   # period divides the length` },
+            { lang: 'js', code: `function repeated(s) {
+  const n = s.length, lps = new Array(n).fill(0);
+  for (let i = 1, len = 0; i < n; ) {        // standard LPS build
+    if (s[i] === s[len]) lps[i++] = ++len;
+    else if (len > 0) len = lps[len - 1];
+    else lps[i++] = 0;
+  }
+  const border = lps[n - 1];
+  return border > 0 && n % (n - border) === 0;   // period divides the length
 }` },
+            { lang: 'cpp', code: `bool repeated(const string& s) {
+    int n = s.size();
+    vector<int> lps(n, 0);
+    for (int i = 1, len = 0; i < n; ) {      // standard LPS build
+        if (s[i] == s[len]) lps[i++] = ++len;
+        else if (len > 0) len = lps[len - 1];
+        else lps[i++] = 0;
+    }
+    int border = lps[n - 1];
+    return border > 0 && n % (n - border) == 0;   // period divides the length
+}` }
+          ] } },
       { title: 'Shortest palindrome by adding characters in front', html: `<p>s = <code>"aacecaaa"</code>. The longest palindromic <b>prefix</b> of s is what we can keep; everything after it must be mirrored in front. Build <code>t = s + "#" + reverse(s)</code> = "aacecaaa#aaacecaa". lps of t's last position = length of the longest prefix of s that equals a suffix of reverse(s) = the longest palindromic prefix = <b>7</b> ("aacecaa").</p>
         <p>Remaining suffix "a" → reversed "a" goes in front → <code>"aaacecaaa"</code>. The <code>#</code> stops the border from crossing between the two halves.</p>` }
     ],
@@ -1624,6 +2705,17 @@ static boolean isPal(String s, int l, int r) {
         `<p>Two arrays/pointers: build <code>int[] lps</code> (pointers i, len), then scan with <code>i</code> over the text and <code>j</code> over the pattern. Match → both move. Mismatch → <code>j = lps[j−1]</code> if j &gt; 0, else <code>i++</code>.</p>`,
         `<p><b>Traps:</b> on a full match record <code>i − m</code> (i has already moved past the match) and set <code>j = lps[m−1]</code> — not 0 — so overlaps like "aa" in "aaa" are found; use lps[j−1], never lps[j]; on mismatch with j &gt; 0 do <b>not</b> increment i. <b>Recipe:</b> lps = build(pat); i = j = 0; while i &lt; n: if txt[i]==pat[j]: i++, j++; if j==m: add i−m, j = lps[m−1]; else if j &gt; 0: j = lps[j−1]; else i++.</p>`
       ],
+      tests: { sig: 'string string -> list<int>', fn: 'kmpSearch', cases: [
+        [["abxabcabcaby","abcaby"],[6]],
+        [["aaaa","aa"],[0,1,2]],
+        [["a","a"],[0]],
+        [["abc","c"],[2]],
+        [["abc","x"],[]],
+        [["a b a b","a b"],[0,4]],
+        [["aaaaaaaaab","aaab"],[6]],
+        [["ababababab","abab"],[0,2,4,6]],
+        [["AaAa","aA"],[1]]
+      ] },
       solution: {
         approach: `<p>Precompute LPS in O(M), then one forward scan of the text in O(N).</p>`,
         code: `
@@ -1673,6 +2765,91 @@ static boolean isPal(String s, int l, int r) {
                   System.out.println(new Solution().kmpSearch("aaaa", "aa"));             // [0, 1, 2]
               }
           }`,
+        alt: [
+          { lang: 'python', code: `def build_lps(p):
+    lps = [0] * len(p)
+    length, i = 0, 1
+    while i < len(p):
+        if p[i] == p[length]:
+            length += 1
+            lps[i] = length                   # border grows
+            i += 1
+        elif length > 0:
+            length = lps[length - 1]          # shorter border, i stays
+        else:
+            i += 1                            # no border (lps[i] stays 0)
+    return lps
+
+def kmp_search(txt, pat):
+    lps, res = build_lps(pat), []
+    m, j = len(pat), 0
+    for i, ch in enumerate(txt):              # i never moves back
+        while j > 0 and ch != pat[j]:
+            j = lps[j - 1]                    # slide the pattern
+        if ch == pat[j]:
+            j += 1
+            if j == m:                        # full match ends at i
+                res.append(i - m + 1)
+                j = lps[m - 1]                # keep the border: overlaps work
+    return res` },
+          { lang: 'js', code: `function buildLps(p) {
+  const lps = new Array(p.length).fill(0);
+  let len = 0, i = 1;
+  while (i < p.length) {
+    if (p[i] === p[len]) lps[i++] = ++len;      // border grows
+    else if (len > 0) len = lps[len - 1];       // shorter border, i stays
+    else lps[i++] = 0;                          // no border
+  }
+  return lps;
+}
+
+function kmpSearch(txt, pat) {
+  const lps = buildLps(pat), res = [];
+  const n = txt.length, m = pat.length;
+  let i = 0, j = 0;                             // i -> text, j -> pattern
+  while (i < n) {
+    if (txt[i] === pat[j]) {
+      i++;
+      j++;
+      if (j === m) {
+        res.push(i - m);                        // match started m chars back
+        j = lps[m - 1];                         // keep the border: overlaps work
+      }
+    } else if (j > 0) j = lps[j - 1];
+    else i++;
+  }
+  return res;
+}` },
+          { lang: 'cpp', code: `class Solution {
+    vector<int> buildLps(const string& p) {
+        vector<int> lps(p.size(), 0);
+        int len = 0;
+        for (size_t i = 1; i < p.size(); ) {
+            if (p[i] == p[len]) lps[i++] = ++len;   // border grows
+            else if (len > 0) len = lps[len - 1];   // shorter border, i stays
+            else lps[i++] = 0;                      // no border
+        }
+        return lps;
+    }
+public:
+    vector<int> kmpSearch(const string& txt, const string& pat) {
+        vector<int> res, lps = buildLps(pat);
+        int n = txt.size(), m = pat.size(), i = 0, j = 0;
+        while (i < n) {
+            if (txt[i] == pat[j]) {
+                i++;
+                j++;
+                if (j == m) {
+                    res.push_back(i - m);           // match started m chars back
+                    j = lps[m - 1];                 // keep the border: overlaps work
+                }
+            } else if (j > 0) j = lps[j - 1];
+            else i++;
+        }
+        return res;
+    }
+};` }
+        ],
         dry: {
           head: ['i', 'j', 'txt[i]', 'pat[j]', 'action'],
           rows: [
@@ -1727,7 +2904,7 @@ static boolean isPal(String s, int l, int r) {
       '"<b>smallest period</b>" / "string made of repeats" → smallest p with p + Z[p] == n and n % p == 0.',
       'You need guaranteed O(N + M) but find LPS fallbacks confusing → Z gives the same power with a simpler box picture.'
     ],
-    code: `
+    code: { lang: 'java', code: `
       class ZAlgo {
           static int[] zArray(String s) {
               int n = s.length();
@@ -1756,6 +2933,73 @@ static boolean isPal(String s, int l, int r) {
               System.out.println(Arrays.toString(zArray("aba$ababa"))); // [0, 0, 1, 0, 3, 0, 3, 0, 1]
           }
       }`,
+      alt: [
+        { lang: 'python', code: `def z_array(s):
+    n = len(s)
+    z = [0] * n                              # z[0] stays 0 by convention
+    L = R = 0                                # box [L, R]: s[L..R] == s[0..R-L]
+    for i in range(1, n):
+        if i <= R:
+            # inside the box: copy the mirrored answer, but never beyond R
+            z[i] = min(R - i + 1, z[i - L])
+        # try to extend by reading new characters
+        while i + z[i] < n and s[z[i]] == s[i + z[i]]:
+            z[i] += 1
+        # the match reaches further right than the old box -> move the box
+        if i + z[i] - 1 > R:
+            L, R = i, i + z[i] - 1
+    return z
+
+print(z_array("aabxaab"))    # [0, 1, 0, 0, 3, 1, 0]
+print(z_array("aba$ababa"))  # [0, 0, 1, 0, 3, 0, 3, 0, 1]`, run: true },
+        { lang: 'js', code: `function zArray(s) {
+  const n = s.length;
+  const z = new Array(n).fill(0);            // z[0] stays 0 by convention
+  let L = 0, R = 0;                          // box [L, R]: s[L..R] == s[0..R-L]
+  for (let i = 1; i < n; i++) {
+    // inside the box: copy the mirrored answer, but never beyond R
+    if (i <= R) z[i] = Math.min(R - i + 1, z[i - L]);
+    // try to extend by reading new characters
+    while (i + z[i] < n && s[z[i]] === s[i + z[i]]) z[i]++;
+    // the match reaches further right than the old box -> move the box
+    if (i + z[i] - 1 > R) {
+      L = i;
+      R = i + z[i] - 1;
+    }
+  }
+  return z;
+}
+
+console.log(JSON.stringify(zArray("aabxaab")));   // [0,1,0,0,3,1,0]
+console.log(JSON.stringify(zArray("aba$ababa"))); // [0,0,1,0,3,0,3,0,1]`, run: true },
+        { lang: 'cpp', code: `#include <bits/stdc++.h>
+using namespace std;
+
+vector<int> zArray(const string& s) {
+    int n = s.size();
+    vector<int> z(n, 0);                     // z[0] stays 0 by convention
+    int L = 0, R = 0;                        // box [L, R]: s[L..R] == s[0..R-L]
+    for (int i = 1; i < n; i++) {
+        // inside the box: copy the mirrored answer, but never beyond R
+        if (i <= R) z[i] = min(R - i + 1, z[i - L]);
+        // try to extend by reading new characters
+        while (i + z[i] < n && s[z[i]] == s[i + z[i]]) z[i]++;
+        // the match reaches further right than the old box -> move the box
+        if (i + z[i] - 1 > R) {
+            L = i;
+            R = i + z[i] - 1;
+        }
+    }
+    return z;
+}
+
+int main() {
+    for (const string& s : {string("aabxaab"), string("aba$ababa")}) {
+        for (int x : zArray(s)) cout << x << ' ';
+        cout << '\\n';                        // 0 1 0 0 3 1 0  /  0 0 1 0 3 0 3 0 1
+    }
+}` }
+      ] },
     codeTitle: 'Z-array in O(N)',
     viz: {
       title: 'Z-array with the [L, R] box on pattern$text',
@@ -1820,7 +3064,7 @@ static boolean isPal(String s, int l, int r) {
       { title: 'Sum of scores: LCP of every suffix with the whole string', html: `<p>The "score" of suffix i is the length of the longest common prefix of s[i..] and s — that is exactly Z[i] (and the whole string scores n). For s = <code>"babab"</code>: Z = [0, 0, 3, 0, 1] → total = 5 + 0 + 3 + 0 + 1 = <b>9</b>.</p>
         ${H.arr('babab'.split(''), { label: 's', hl: { 2: 'g', 3: 'g', 4: 'g' } })}
         ${H.arr([5, 0, 3, 0, 1], { label: 'score (Z with Z[0] = n)', hl: { 2: 'p' } })}
-        <p>One O(N) pass instead of N separate comparisons.</p>`, code: `static long sumScores(String s) {
+        <p>One O(N) pass instead of N separate comparisons.</p>`, code: { lang: 'java', code: `static long sumScores(String s) {
     int n = s.length();
     int[] z = new int[n];
     long total = n;                                   // the full string matches itself
@@ -1831,7 +3075,46 @@ static boolean isPal(String s, int l, int r) {
         total += z[i];
     }
     return total;                                     // "babab" -> 9
+}`,
+          alt: [
+            { lang: 'python', code: `def sum_scores(s):
+    n = len(s)
+    z = [0] * n
+    total = n                                # the full string matches itself
+    L = R = 0
+    for i in range(1, n):
+        if i <= R:
+            z[i] = min(R - i + 1, z[i - L])
+        while i + z[i] < n and s[z[i]] == s[i + z[i]]:
+            z[i] += 1
+        if i + z[i] - 1 > R:
+            L, R = i, i + z[i] - 1
+        total += z[i]
+    return total                             # "babab" -> 9` },
+            { lang: 'js', code: `function sumScores(s) {
+  const n = s.length, z = new Array(n).fill(0);
+  let total = n;                             // the full string matches itself
+  for (let i = 1, L = 0, R = 0; i < n; i++) {
+    if (i <= R) z[i] = Math.min(R - i + 1, z[i - L]);
+    while (i + z[i] < n && s[z[i]] === s[i + z[i]]) z[i]++;
+    if (i + z[i] - 1 > R) { L = i; R = i + z[i] - 1; }
+    total += z[i];
+  }
+  return total;                              // "babab" -> 9
 }` },
+            { lang: 'cpp', code: `long long sumScores(const string& s) {
+    int n = s.size();
+    vector<int> z(n, 0);
+    long long total = n;                     // the full string matches itself
+    for (int i = 1, L = 0, R = 0; i < n; i++) {
+        if (i <= R) z[i] = min(R - i + 1, z[i - L]);
+        while (i + z[i] < n && s[z[i]] == s[i + z[i]]) z[i]++;
+        if (i + z[i] - 1 > R) { L = i; R = i + z[i] - 1; }
+        total += z[i];
+    }
+    return total;                            // "babab" -> 9
+}` }
+          ] } },
       { title: 'Smallest period with the Z-array', html: `<p>p is a period of s if s[i] = s[i + p] for all valid i — equivalently <b>p + Z[p] == n</b> (the suffix starting at p matches the prefix all the way to the end). For s = <code>"abcabcab"</code>: Z = [0, 0, 0, 5, 0, 0, 2, 0]. The smallest p with p + Z[p] = 8 is <b>p = 3</b> ("abc" repeated, last copy cut short).</p>
         <p>If the question needs <i>full</i> repetition ("abcabc" = "abc" × 2), also require n % p == 0 — same rule as the KMP version (p = n − lps[n − 1]).</p>` }
     ],
@@ -1871,7 +3154,7 @@ static boolean isPal(String s, int l, int r) {
       },
       mcq: {
         q: 'Why do we put a separator like <code>$</code> between pattern and text?',
-        options: ['To make the string longer', 'So that no Z-value can be larger than m — a match can never run past the pattern into the text', 'Because Java strings need a terminator', 'It speeds up the comparisons'],
+        options: ['To make the string longer', 'So that no Z-value can be larger than m — a match can never run past the pattern into the text', 'Because strings need a terminator character', 'It speeds up the comparisons'],
         answer: 1,
         explain: '$ appears nowhere else, so any comparison reaching it fails. That caps every Z[i] at m and makes "Z[i] == m" an exact "pattern starts here" test. Without it, e.g. pat "aa" + txt "aaa" would give Z values bigger than 2 that mix pattern and text.'
       },
@@ -1880,6 +3163,17 @@ static boolean isPal(String s, int l, int r) {
         `<p>Build <code>s = pat + "$" + txt</code>, compute the Z-array with the <code>[L, R]</code> box (start inside the box from <code>min(R − i + 1, Z[i − L])</code>, then extend), and count indices <code>i &gt; m</code> with <code>Z[i] == m</code>.</p>`,
         `<p><b>Traps:</b> the separator must not occur in either string; cap with <code>R − i + 1</code> (inclusive box) — forgetting the cap gives too-large values; check <code>i + z[i] &lt; n</code> before reading; overlaps are automatically counted. <b>Recipe:</b> s = pat+"$"+txt; z = zArray(s); count = number of i with z[i] == m; return count.</p>`
       ],
+      tests: { sig: 'string string -> int', fn: 'countOccurrences', cases: [
+        [["ababa","aba"],2],
+        [["baabaab","aab"],2],
+        [["aaaa","a"],4],
+        [["abc","d"],0],
+        [["a","a"],1],
+        [["aaaaa","aa"],4],
+        [["abcabc","abcabc"],1],
+        [["ab","ab"],1],
+        [["abababa","aba"],3]
+      ] },
       solution: {
         approach: `<p>Z-array of pat$txt; every Z value equal to |pat| is one occurrence.</p>`,
         code: `
@@ -1915,6 +3209,61 @@ static boolean isPal(String s, int l, int r) {
                   System.out.println(new Solution().countOccurrences("baabaab", "aab"));   // 2
               }
           }`,
+        alt: [
+          { lang: 'python', code: `def z_array(s):
+    n = len(s)
+    z = [0] * n
+    L = R = 0                                 # box [L, R]: s[L..R] == s[0..R-L]
+    for i in range(1, n):
+        if i <= R:
+            z[i] = min(R - i + 1, z[i - L])   # reuse the mirrored answer
+        while i + z[i] < n and s[z[i]] == s[i + z[i]]:
+            z[i] += 1                         # extend with new characters
+        if i + z[i] - 1 > R:
+            L, R = i, i + z[i] - 1            # move the box
+    return z
+
+def count_occurrences(txt, pat):
+    m = len(pat)
+    z = z_array(pat + "$" + txt)              # '$' never appears in pat or txt
+    return sum(1 for v in z[m + 1:] if v == m)` },
+          { lang: 'js', code: `function zArray(s) {
+  const n = s.length, z = new Array(n).fill(0);
+  let L = 0, R = 0;                             // box [L, R], inclusive
+  for (let i = 1; i < n; i++) {
+    if (i <= R) z[i] = Math.min(R - i + 1, z[i - L]);          // mirrored value
+    while (i + z[i] < n && s[z[i]] === s[i + z[i]]) z[i]++;    // extend
+    if (i + z[i] - 1 > R) { L = i; R = i + z[i] - 1; }         // move the box
+  }
+  return z;
+}
+
+function countOccurrences(txt, pat) {
+  const m = pat.length, z = zArray(pat + "$" + txt);
+  let count = 0;
+  for (let i = m + 1; i < z.length; i++) if (z[i] === m) count++;
+  return count;
+}` },
+          { lang: 'cpp', code: `class Solution {
+    vector<int> zArray(const string& s) {
+        int n = s.size();
+        vector<int> z(n, 0);
+        int L = 0, R = 0;                           // box [L, R], inclusive
+        for (int i = 1; i < n; i++) {
+            if (i <= R) z[i] = min(R - i + 1, z[i - L]);              // mirrored value
+            while (i + z[i] < n && s[z[i]] == s[i + z[i]]) z[i]++;    // extend
+            if (i + z[i] - 1 > R) { L = i; R = i + z[i] - 1; }        // move the box
+        }
+        return z;
+    }
+public:
+    int countOccurrences(const string& txt, const string& pat) {
+        int m = pat.size();
+        vector<int> z = zArray(pat + "$" + txt);    // '$' never appears in pat or txt
+        return (int)count(z.begin() + m + 1, z.end(), m);
+    }
+};` }
+        ],
         dry: {
           head: ['i', 's[i]', 'inside box? start', 'Z[i] after extend', 'box [L, R]', 'count'],
           rows: [
@@ -1970,6 +3319,16 @@ static boolean isPal(String s, int l, int r) {
       `<p>Use <code>int[26]</code> with <code>cnt[c - 'a']++</code> in pass 1. In pass 2 walk the string in order and return the first i with <code>cnt[s.charAt(i) - 'a'] == 1</code>.</p>`,
       `<p><b>Traps:</b> walk the <b>string</b> in pass 2, not the alphabet (alphabet order would return the smallest letter, not the first position); return −1 if nothing is found. <b>Recipe:</b> count all; for i in 0..n−1: if cnt[s[i]] == 1 return i; return −1.</p>`
     ],
+    tests: { sig: 'string -> int', fn: 'firstUniqChar', cases: [
+      [["leetcode"],0],
+      [["loveleetcode"],2],
+      [["aabb"],-1],
+      [["z"],0],
+      [["aabbc"],4],
+      [["abcabcd"],6],
+      [["zzyy"],-1],
+      [["dabcabc"],0]
+    ] },
     solution: {
       approach: `<p>Count letters in an int[26], then return the first index whose letter count is 1.</p>`,
       code: `
@@ -1990,6 +3349,35 @@ static boolean isPal(String s, int l, int r) {
                 System.out.println(sol.firstUniqChar("aabb"));          // -1
             }
         }`,
+      alt: [
+        { lang: 'python', code: `from collections import Counter
+
+def first_uniq_char(s):
+    cnt = Counter(s)                          # pass 1: count every letter
+    for i, ch in enumerate(s):                # pass 2: first letter with count 1
+        if cnt[ch] == 1:
+            return i
+    return -1` },
+        { lang: 'js', code: `function firstUniqChar(s) {
+  const cnt = new Array(26).fill(0);
+  for (let i = 0; i < s.length; i++) cnt[s.charCodeAt(i) - 97]++;   // pass 1: count
+  for (let i = 0; i < s.length; i++) {
+    if (cnt[s.charCodeAt(i) - 97] === 1) return i;                 // pass 2: first unique
+  }
+  return -1;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int firstUniqChar(const string& s) {
+        array<int, 26> cnt{};
+        for (char c : s) cnt[c - 'a']++;            // pass 1: count
+        for (int i = 0; i < (int)s.size(); i++) {
+            if (cnt[s[i] - 'a'] == 1) return i;     // pass 2: first unique
+        }
+        return -1;
+    }
+};` }
+      ],
       dry: {
         head: ['pass', 'i', 's[i]', 'cnt[s[i]]', 'action'],
         rows: [
@@ -2034,9 +3422,20 @@ static boolean isPal(String s, int l, int r) {
     },
     hints: [
       `<p><b>Aha:</b> this is the palindrome two-pointer walk, but instead of <i>comparing</i> s[l] and s[r] you <i>swap</i> them — and you skip non-letters exactly like Valid Palindrome skips junk.</p>`,
-      `<p>Strings are immutable, so work on <code>char[] a = s.toCharArray()</code>. l = 0, r = n − 1; skip non-letters on each side with <code>Character.isLetter</code>; swap; move both inward.</p>`,
+      `<p>Java, Python and JS strings are immutable, so work on a character array (<code>s.toCharArray()</code> / <code>list(s)</code> / <code>[...s]</code>; a C++ <code>std::string</code> can be swapped in place). l = 0, r = n − 1; skip non-letters on each side (<code>Character.isLetter</code> / <code>isalpha</code>); swap; move both inward.</p>`,
       `<p><b>Traps:</b> keep <code>l &lt; r</code> inside the skip loops; build the answer with <code>new String(a)</code>. <b>Recipe:</b> while l &lt; r: if !letter(a[l]) l++; else if !letter(a[r]) r−−; else swap(a[l], a[r]), l++, r−−.</p>`
     ],
+    tests: { sig: 'string -> string', fn: 'reverseOnlyLetters', cases: [
+      [["ab-cd"],"dc-ba"],
+      [["a-bC-dEf-ghIj"],"j-Ih-gfE-dCba"],
+      [["Test1ng-Leet=code-Q!"],"Qedo1ct-eeLg=ntse-T!"],
+      [["a"],"a"],
+      [["-"],"-"],
+      [["7_28]"],"7_28]"],
+      [["ab"],"ba"],
+      [["a-b"],"b-a"],
+      [["!!a"],"!!a"]
+    ] },
     solution: {
       approach: `<p>Two pointers on a char array; skip non-letters; swap letters.</p>`,
       code: `
@@ -2062,6 +3461,47 @@ static boolean isPal(String s, int l, int r) {
                 System.out.println(sol.reverseOnlyLetters("a-bC-dEf-ghIj"));  // j-Ih-gfE-dCba
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def reverse_only_letters(s):
+    a = list(s)                               # strings are immutable: edit a list
+    l, r = 0, len(a) - 1
+    while l < r:
+        if not a[l].isalpha():
+            l += 1
+        elif not a[r].isalpha():
+            r -= 1
+        else:
+            a[l], a[r] = a[r], a[l]           # swap two letters
+            l, r = l + 1, r - 1
+    return "".join(a)` },
+        { lang: 'js', code: `function reverseOnlyLetters(s) {
+  const a = s.split("");                        // strings are immutable: edit an array
+  const isLetter = (ch) => /[A-Za-z]/.test(ch);
+  let l = 0, r = a.length - 1;
+  while (l < r) {
+    if (!isLetter(a[l])) l++;
+    else if (!isLetter(a[r])) r--;
+    else {
+      [a[l], a[r]] = [a[r], a[l]];              // swap two letters
+      l++;
+      r--;
+    }
+  }
+  return a.join("");
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    string reverseOnlyLetters(string s) {           // by value: we edit our own copy
+        int l = 0, r = (int)s.size() - 1;
+        while (l < r) {
+            if (!isalpha((unsigned char)s[l])) l++;
+            else if (!isalpha((unsigned char)s[r])) r--;
+            else swap(s[l++], s[r--]);              // swap two letters
+        }
+        return s;
+    }
+};` }
+      ],
       dry: {
         head: ['l', 'r', 'a[l]', 'a[r]', 'action', 'array'],
         rows: [
@@ -2105,9 +3545,20 @@ static boolean isPal(String s, int l, int r) {
     },
     hints: [
       `<p><b>Aha:</b> stack the strings vertically; the answer is the number of leading columns where every row has the same character.</p>`,
-      `<p>For column i = 0, 1, …: let c = strs[0].charAt(i); for every other string, if it is too short or has a different char at i, return <code>strs[0].substring(0, i)</code>.</p>`,
+      `<p>For column i = 0, 1, …: let c = strs[0][i]; for every other string, if it is too short or has a different char at i, return the first i characters of strs[0].</p>`,
       `<p><b>Traps:</b> check <code>i &lt; s.length()</code> before charAt; an empty string in the input makes the answer ""; a single string is its own prefix. <b>Recipe:</b> for i over strs[0]: for s in strs: if i == len(s) or s[i] ≠ strs[0][i]: return prefix of length i. Return strs[0].</p>`
     ],
+    tests: { sig: 'string[] -> string', fn: 'longestCommonPrefix', cases: [
+      [[["flower","flow","flight"]],"fl"],
+      [[["dog","racecar","car"]],""],
+      [[[""]],""],
+      [[["a"]],"a"],
+      [[["ab","a"]],"a"],
+      [[["abc","abc","abc"]],"abc"],
+      [[["","b"]],""],
+      [[["b",""]],""],
+      [[["prefix","prefixes","pre"]],"pre"]
+    ] },
     solution: {
       approach: `<p>Vertical scanning: compare column i across all strings, stop at the first disagreement or the first string that ends.</p>`,
       code: `
@@ -2132,6 +3583,35 @@ static boolean isPal(String s, int l, int r) {
                 System.out.println("[" + sol.longestCommonPrefix(new String[]{"dog", "racecar", "car"}) + "]"); // []
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def longest_common_prefix(strs):
+    # zip(*strs) gives column 0, column 1, ... and stops at the shortest string
+    for i, column in enumerate(zip(*strs)):
+        if len(set(column)) > 1:              # some string disagrees in column i
+            return strs[0][:i]
+    return min(strs, key=len)                 # every column of the shortest string matched` },
+        { lang: 'js', code: `function longestCommonPrefix(strs) {
+  const first = strs[0];
+  for (let i = 0; i < first.length; i++) {
+    for (const w of strs) {
+      if (i === w.length || w[i] !== first[i]) return first.slice(0, i);   // column i fails
+    }
+  }
+  return first;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    string longestCommonPrefix(const vector<string>& strs) {
+        const string& first = strs[0];
+        for (size_t i = 0; i < first.size(); i++) {
+            for (const string& w : strs) {
+                if (i == w.size() || w[i] != first[i]) return first.substr(0, i);   // column i fails
+            }
+        }
+        return first;
+    }
+};` }
+      ],
       dry: {
         head: ['column i', 'c = strs[0][i]', 'flow[i]', 'flight[i]', 'result'],
         rows: [
@@ -2177,6 +3657,17 @@ static boolean isPal(String s, int l, int r) {
       `<p>Build lps for the needle (pointers i, len), then scan the haystack with i (text) and j (needle). Match → i++, j++; mismatch with j &gt; 0 → j = lps[j − 1]; else i++.</p>`,
       `<p><b>Traps:</b> the moment j == m return <code>i − m</code> (i has already advanced); needle longer than haystack → −1. <b>Recipe:</b> lps = build(needle); i = j = 0; while i &lt; n: if h[i]==nd[j]: i++, j++, if j==m return i−m; else if j &gt; 0: j = lps[j−1]; else i++. Return −1.</p>`
     ],
+    tests: { sig: 'string string -> int', fn: 'strStr', cases: [
+      [["sadbutsad","sad"],0],
+      [["leetcode","leeto"],-1],
+      [["aaaaab","aab"],3],
+      [["a","a"],0],
+      [["abc","abcd"],-1],
+      [["mississippi","issip"],4],
+      [["aabaaabaaac","aabaaac"],4],
+      [["abc","c"],2],
+      [["hello","ll"],2]
+    ] },
     solution: {
       approach: `<p>KMP: O(m) LPS build + O(n) single forward scan, stop at the first full match.</p>`,
       code: `
@@ -2211,6 +3702,67 @@ static boolean isPal(String s, int l, int r) {
                 System.out.println(sol.strStr("aaaaab", "aab"));     // 3
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def str_str(haystack, needle):
+    m = len(needle)
+    lps = [0] * m
+    length = 0
+    for i in range(1, m):                     # build LPS of the needle
+        while length > 0 and needle[i] != needle[length]:
+            length = lps[length - 1]
+        if needle[i] == needle[length]:
+            length += 1
+        lps[i] = length
+    j = 0
+    for i, ch in enumerate(haystack):
+        while j > 0 and ch != needle[j]:
+            j = lps[j - 1]                    # reuse the matched border
+        if ch == needle[j]:
+            j += 1
+            if j == m:
+                return i - m + 1              # first full match
+    return -1` },
+        { lang: 'js', code: `function strStr(haystack, needle) {
+  const n = haystack.length, m = needle.length;
+  const lps = new Array(m).fill(0);
+  for (let i = 1, len = 0; i < m; ) {           // build LPS of the needle
+    if (needle[i] === needle[len]) lps[i++] = ++len;
+    else if (len > 0) len = lps[len - 1];
+    else lps[i++] = 0;
+  }
+  let i = 0, j = 0;
+  while (i < n) {
+    if (haystack[i] === needle[j]) {
+      i++;
+      j++;
+      if (j === m) return i - m;                // first full match
+    } else if (j > 0) j = lps[j - 1];           // reuse the matched border
+    else i++;
+  }
+  return -1;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int strStr(const string& haystack, const string& needle) {
+        int n = haystack.size(), m = needle.size();
+        vector<int> lps(m, 0);
+        for (int i = 1, len = 0; i < m; ) {         // build LPS of the needle
+            if (needle[i] == needle[len]) lps[i++] = ++len;
+            else if (len > 0) len = lps[len - 1];
+            else lps[i++] = 0;
+        }
+        for (int i = 0, j = 0; i < n; ) {
+            if (haystack[i] == needle[j]) {
+                i++;
+                j++;
+                if (j == m) return i - m;           // first full match
+            } else if (j > 0) j = lps[j - 1];       // reuse the matched border
+            else i++;
+        }
+        return -1;
+    }
+};` }
+      ],
       dry: {
         head: ['i', 'j', 'h[i]', 'nd[j]', 'action (needle "aab", lps [0,1,0])'],
         rows: [
@@ -2261,6 +3813,18 @@ static boolean isPal(String s, int l, int r) {
       `<p>Check lengths first, then run any linear matcher (KMP from this module) for goal inside s + s.</p>`,
       `<p><b>Traps:</b> different lengths → false (otherwise "ab" would match inside "abcabc"); use KMP for guaranteed O(n). <b>Recipe:</b> if |s| ≠ |goal| return false; return kmpFind(s + s, goal) ≥ 0.</p>`
     ],
+    tests: { sig: 'string string -> bool', fn: 'rotateString', cases: [
+      [["abcde","cdeab"],true],
+      [["abcde","abced"],false],
+      [["a","a"],true],
+      [["ab","abc"],false],
+      [["aa","a"],false],
+      [["abab","baba"],true],
+      [["abc","acb"],false],
+      [["aa","aa"],true],
+      [["abc","abc"],true],
+      [["ab","ba"],true]
+    ] },
     solution: {
       approach: `<p>Length check + KMP search of goal in s + s.</p>`,
       code: `
@@ -2295,6 +3859,76 @@ static boolean isPal(String s, int l, int r) {
                 System.out.println(sol.rotateString("abcde", "abced")); // false
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def kmp_find(t, p):
+    lps, length = [0] * len(p), 0
+    for i in range(1, len(p)):
+        while length > 0 and p[i] != p[length]:
+            length = lps[length - 1]
+        if p[i] == p[length]:
+            length += 1
+        lps[i] = length
+    j = 0
+    for i, ch in enumerate(t):
+        while j > 0 and ch != p[j]:
+            j = lps[j - 1]
+        if ch == p[j]:
+            j += 1
+            if j == len(p):
+                return i - j + 1
+    return -1
+
+def rotate_string(s, goal):
+    # a rotation of s is exactly a length-n window of s + s
+    return len(s) == len(goal) and kmp_find(s + s, goal) >= 0` },
+        { lang: 'js', code: `function kmpFind(t, p) {
+  const m = p.length, lps = new Array(m).fill(0);
+  for (let i = 1, len = 0; i < m; ) {
+    if (p[i] === p[len]) lps[i++] = ++len;
+    else if (len > 0) len = lps[len - 1];
+    else lps[i++] = 0;
+  }
+  for (let i = 0, j = 0; i < t.length; ) {
+    if (t[i] === p[j]) {
+      i++;
+      j++;
+      if (j === m) return i - m;
+    } else if (j > 0) j = lps[j - 1];
+    else i++;
+  }
+  return -1;
+}
+
+function rotateString(s, goal) {
+  if (s.length !== goal.length) return false;
+  return kmpFind(s + s, goal) >= 0;             // rotation <=> goal occurs in s+s
+}` },
+        { lang: 'cpp', code: `class Solution {
+    int kmpFind(const string& t, const string& p) {
+        int m = p.size();
+        vector<int> lps(m, 0);
+        for (int i = 1, len = 0; i < m; ) {
+            if (p[i] == p[len]) lps[i++] = ++len;
+            else if (len > 0) len = lps[len - 1];
+            else lps[i++] = 0;
+        }
+        for (int i = 0, j = 0; i < (int)t.size(); ) {
+            if (t[i] == p[j]) {
+                i++;
+                j++;
+                if (j == m) return i - m;
+            } else if (j > 0) j = lps[j - 1];
+            else i++;
+        }
+        return -1;
+    }
+public:
+    bool rotateString(const string& s, const string& goal) {
+        if (s.size() != goal.size()) return false;
+        return kmpFind(s + s, goal) >= 0;           // rotation <=> goal occurs in s+s
+    }
+};` }
+      ],
       dry: {
         head: ['step', 'value', 'note'],
         rows: [
@@ -2343,9 +3977,19 @@ static boolean isPal(String s, int l, int r) {
     },
     hints: [
       `<p><b>Aha:</b> "anagram of p" = "same letter counts as p". A window of fixed length |p| sliding over s only changes by one letter in and one letter out.</p>`,
-      `<p>Two <code>int[26]</code> arrays: need (counts of p) and win (counts of the current window). After each slide, compare with <code>Arrays.equals(need, win)</code> — 26 operations, constant.</p>`,
+      `<p>Two <code>int[26]</code> arrays: need (counts of p) and win (counts of the current window). After each slide, compare the two arrays (<code>Arrays.equals</code> / <code>==</code> on Python lists or C++ <code>std::array</code> / a 26-step loop in JS) — 26 operations, constant.</p>`,
       `<p><b>Traps:</b> if |p| &gt; |s| return empty; record the start index i − m + 1 once the window is full. <b>Recipe:</b> count p; for i in 0..n−1: win[s[i]]++; if i ≥ m: win[s[i−m]]−−; if i ≥ m−1 and win == need: add i−m+1.</p>`
     ],
+    tests: { sig: 'string string -> list<int>', fn: 'findAnagrams', cmp: 'set', cases: [
+      [["cbaebabacd","abc"],[0,6]],
+      [["abab","ab"],[0,1,2]],
+      [["a","ab"],[]],
+      [["aaaa","a"],[0,1,2,3]],
+      [["ab","ab"],[0]],
+      [["baa","aa"],[1]],
+      [["abcdef","xyz"],[]],
+      [["aaabaa","aab"],[1,2,3]]
+    ] },
     solution: {
       approach: `<p>Fixed-size sliding window with two 26-slot count arrays.</p>`,
       code: `
@@ -2371,6 +4015,52 @@ static boolean isPal(String s, int l, int r) {
                 System.out.println(new Solution().findAnagrams("abab", "ab"));        // [0, 1, 2]
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def find_anagrams(s, p):
+    n, m = len(s), len(p)
+    if m > n:
+        return []
+    need, win = [0] * 26, [0] * 26
+    for ch in p:
+        need[ord(ch) - 97] += 1
+    res = []
+    for i, ch in enumerate(s):
+        win[ord(ch) - 97] += 1                # letter enters on the right
+        if i >= m:
+            win[ord(s[i - m]) - 97] -= 1      # letter leaves on the left
+        if i >= m - 1 and win == need:        # list equality: 26 comparisons
+            res.append(i - m + 1)
+    return res` },
+        { lang: 'js', code: `function findAnagrams(s, p) {
+  const n = s.length, m = p.length, res = [];
+  if (m > n) return res;
+  const need = new Array(26).fill(0), win = new Array(26).fill(0);
+  for (let k = 0; k < m; k++) need[p.charCodeAt(k) - 97]++;
+  const same = () => need.every((x, k) => x === win[k]);   // 26 comparisons
+  for (let i = 0; i < n; i++) {
+    win[s.charCodeAt(i) - 97]++;                // letter enters on the right
+    if (i >= m) win[s.charCodeAt(i - m) - 97]--;  // letter leaves on the left
+    if (i >= m - 1 && same()) res.push(i - m + 1);
+  }
+  return res;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> findAnagrams(const string& s, const string& p) {
+        vector<int> res;
+        int n = s.size(), m = p.size();
+        if (m > n) return res;
+        array<int, 26> need{}, win{};
+        for (char c : p) need[c - 'a']++;
+        for (int i = 0; i < n; i++) {
+            win[s[i] - 'a']++;                      // letter enters on the right
+            if (i >= m) win[s[i - m] - 'a']--;      // letter leaves on the left
+            if (i >= m - 1 && win == need) res.push_back(i - m + 1);   // array == compares 26 slots
+        }
+        return res;
+    }
+};` }
+      ],
       dry: {
         head: ['i', 'window', 'counts (a,b,c,…)', 'equal to need?', 'res'],
         rows: [
@@ -2425,18 +4115,27 @@ static boolean isPal(String s, int l, int r) {
         }`
     },
     mcq: {
-      q: 'Which is a correct HashMap key that is identical for all anagrams?',
+      q: 'Which is a correct hash-map key that is identical for all anagrams?',
       options: ['The word itself', 'The sorted letters, or the 26 counts written as a string like "a1e1t1"', 'The word length', 'The first letter'],
       answer: 1,
       explain: 'Anagrams have the same multiset of letters. Sorting them, or writing their 26 counts, produces the same canonical form for every member of the family and a different one for any other family.'
     },
     hints: [
-      `<p><b>Aha:</b> give each word a "fingerprint" that ignores order — then all anagrams share it and a HashMap groups them automatically.</p>`,
-      `<p>Fingerprint = counts of 26 letters. Build it with a <code>StringBuilder</code> (e.g. append each count followed by '#'), use it as the key of <code>HashMap&lt;String, List&lt;String&gt;&gt;</code>, and <code>computeIfAbsent</code> to add the word.</p>`,
+      `<p><b>Aha:</b> give each word a "fingerprint" that ignores order — then all anagrams share it and a hash map groups them automatically.</p>`,
+      `<p>Fingerprint = counts of 26 letters. Write it as a string (each count followed by '#'; in Python a <code>tuple</code> of counts works directly) and use it as the key of a map from key to list of words (<code>HashMap</code> + <code>computeIfAbsent</code> / <code>defaultdict(list)</code> / <code>Map</code> / <code>unordered_map</code>).</p>`,
       `<p><b>Traps:</b> separate counts with a delimiter ("1#11#" vs "11#1#" must differ); the empty string is a valid word with all-zero key. <b>Recipe:</b> for each word: cnt[26]; key = join counts with '#'; map[key].add(word). Return map values.</p>`
     ],
+    tests: { sig: 'string[] -> list<list<string>>', fn: 'groupAnagrams', cmp: 'sets', cases: [
+      [[["eat","tea","tan","ate","nat","bat"]],[["eat","tea","ate"],["tan","nat"],["bat"]]],
+      [[[""]],[[""]]],
+      [[["a"]],[["a"]]],
+      [[["",""]],[["",""]]],
+      [[["abc","bca","cab","xyz","zyx","q"]],[["abc","bca","cab"],["xyz","zyx"],["q"]]],
+      [[["ab","ba","abb","bab"]],[["ab","ba"],["abb","bab"]]],
+      [[["bdddddddddd","bbbbbbbbbbc"]],[["bdddddddddd"],["bbbbbbbbbbc"]]]
+    ] },
     solution: {
-      approach: `<p>Canonical count key per word built with a StringBuilder; HashMap from key to group.</p>`,
+      approach: `<p>Canonical count key per word; a hash map from key to group.</p>`,
       code: `
         class Solution {
             public List<List<String>> groupAnagrams(String[] strs) {
@@ -2456,6 +4155,45 @@ static boolean isPal(String s, int l, int r) {
                 System.out.println(g.size() + " groups: " + g);   // 3 groups (order may vary)
             }
         }`,
+      alt: [
+        { lang: 'python', code: `from collections import defaultdict
+
+def group_anagrams(strs):
+    groups = defaultdict(list)
+    for w in strs:
+        cnt = [0] * 26
+        for ch in w:
+            cnt[ord(ch) - 97] += 1
+        groups[tuple(cnt)].append(w)          # a tuple of counts is a hashable, order-free key
+    return list(groups.values())` },
+        { lang: 'js', code: `function groupAnagrams(strs) {
+  const groups = new Map();
+  for (const w of strs) {
+    const cnt = new Array(26).fill(0);
+    for (let i = 0; i < w.length; i++) cnt[w.charCodeAt(i) - 97]++;
+    const key = cnt.join("#");                  // "1#0#0#...": order-free fingerprint
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(w);
+  }
+  return [...groups.values()];
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    vector<vector<string>> groupAnagrams(const vector<string>& strs) {
+        unordered_map<string, vector<string>> groups;
+        for (const string& w : strs) {
+            array<int, 26> cnt{};
+            for (char c : w) cnt[c - 'a']++;
+            string key;
+            for (int c : cnt) { key += to_string(c); key += '#'; }   // order-free fingerprint
+            groups[key].push_back(w);
+        }
+        vector<vector<string>> res;
+        for (auto& [key, g] : groups) res.push_back(move(g));
+        return res;
+    }
+};` }
+      ],
       dry: {
         head: ['word', 'counts', 'key exists?', 'groups'],
         rows: [
@@ -2504,9 +4242,31 @@ static boolean isPal(String s, int l, int r) {
     },
     hints: [
       `<p><b>Aha:</b> it is a tiny state machine — spaces → sign → digits → stop. Each digit is <code>c - '0'</code> and is added with <code>res = res * 10 + d</code>.</p>`,
-      `<p>Keep <code>sign</code> (±1) and a non-negative <code>int res</code>. Before adding a digit, test <code>res &gt; (Integer.MAX_VALUE - d) / 10</code>; if true, return MAX or MIN depending on the sign.</p>`,
+      `<p>Keep <code>sign</code> (±1) and a non-negative <code>int res</code>. Before adding a digit, test <code>res &gt; (MAX - d) / 10</code> with MAX = 2<sup>31</sup> − 1 = 2147483647 (<code>Integer.MAX_VALUE</code> / <code>INT_MAX</code>); if true, return MAX or MIN depending on the sign. Python ints never overflow, so there you may simply stop once res passes MAX.</p>`,
       `<p><b>Traps:</b> only one sign allowed ("+-12" → 0); stop at the first non-digit; "-2147483648" must return MIN exactly (the clamp handles it); empty or all-space input → 0. <b>Recipe:</b> i skips spaces; read sign; while digit: d = c − '0'; if overflow → clamp; res = res·10 + d. Return sign·res.</p>`
     ],
+    tests: { sig: 'string -> int', fn: 'myAtoi', cases: [
+      [["42"],42],
+      [["   -42"],-42],
+      [["4193 with words"],4193],
+      [["words 987"],0],
+      [["-91283472332"],-2147483648],
+      [["2147483647"],2147483647],
+      [["2147483648"],2147483647],
+      [["-2147483648"],-2147483648],
+      [["-2147483649"],-2147483648],
+      [["+-12"],0],
+      [["  +0 123"],0],
+      [["00000000000012345678"],12345678],
+      [["3.14159"],3],
+      [["-"],0],
+      [[""],0],
+      [["   "],0],
+      [["+1"],1],
+      [["9223372036854775808"],2147483647],
+      [["21474836460"],2147483647],
+      [["  -0012a42"],-12]
+    ] },
     solution: {
       approach: `<p>Linear scan with char arithmetic and an overflow test before every multiply.</p>`,
       code: `
@@ -2539,6 +4299,63 @@ static boolean isPal(String s, int l, int r) {
                 System.out.println(sol.myAtoi("-91283472332"));     // -2147483648
             }
         }`,
+      alt: [
+        { lang: 'python', code: `INT_MAX, INT_MIN = 2**31 - 1, -2**31
+
+def my_atoi(s):
+    i, n = 0, len(s)
+    while i < n and s[i] == " ":              # 1) skip leading spaces
+        i += 1
+    sign = 1
+    if i < n and s[i] in "+-":                # 2) optional sign
+        sign = -1 if s[i] == "-" else 1
+        i += 1
+    res = 0
+    while i < n and "0" <= s[i] <= "9":       # 3) digits
+        res = res * 10 + (ord(s[i]) - ord("0"))
+        if res > INT_MAX:                     # Python ints never overflow, but stop early
+            return INT_MAX if sign == 1 else INT_MIN
+        i += 1
+    return sign * res` },
+        { lang: 'js', code: `function myAtoi(s) {
+  const MAX = 2147483647, MIN = -2147483648;
+  let i = 0;
+  const n = s.length;
+  while (i < n && s[i] === " ") i++;            // 1) skip leading spaces
+  let sign = 1;
+  if (i < n && (s[i] === "+" || s[i] === "-")) {
+    sign = s[i] === "-" ? -1 : 1;               // 2) optional sign
+    i++;
+  }
+  let res = 0;
+  while (i < n && s[i] >= "0" && s[i] <= "9") { // 3) digits
+    const d = s.charCodeAt(i) - 48;
+    if (res > (MAX - d) / 10) return sign === 1 ? MAX : MIN;   // res*10+d would pass MAX
+    res = res * 10 + d;
+    i++;
+  }
+  return sign * res;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int myAtoi(const string& s) {
+        size_t i = 0, n = s.size();
+        while (i < n && s[i] == ' ') i++;           // 1) skip leading spaces
+        int sign = 1;
+        if (i < n && (s[i] == '+' || s[i] == '-')) {
+            sign = s[i] == '-' ? -1 : 1;            // 2) optional sign
+            i++;
+        }
+        long long res = 0;
+        while (i < n && isdigit((unsigned char)s[i])) {   // 3) digits
+            res = res * 10 + (s[i] - '0');
+            if (res > INT_MAX) return sign == 1 ? INT_MAX : INT_MIN;   // clamp before it grows further
+            i++;
+        }
+        return (int)(sign * res);
+    }
+};` }
+      ],
       dry: {
         head: ['char', 'state', 'd', 'res', 'note'],
         rows: [
@@ -2581,10 +4398,22 @@ static boolean isPal(String s, int l, int r) {
     hints: [
       `<p><b>Aha:</b> do grade-school multiplication, but store every partial product in an <code>int[n + m]</code> at the right place instead of writing shifted rows.</p>`,
       `<p>Loop i from n−1 down, j from m−1 down: <code>mul = (num1[i]−'0')·(num2[j]−'0')</code>; <code>sum = mul + pos[i+j+1]</code>; <code>pos[i+j+1] = sum % 10</code>; <code>pos[i+j] += sum / 10</code>.</p>`,
-      `<p><b>Traps:</b> skip leading zeros when building the answer with a StringBuilder; if everything is zero return "0". <b>Recipe:</b> fill pos as above; sb = digits of pos skipping leading zeros; return sb empty ? "0" : sb.</p>`
+      `<p><b>Traps:</b> skip leading zeros when building the answer with a string builder; if everything is zero return "0". <b>Recipe:</b> fill pos as above; sb = digits of pos skipping leading zeros; return sb empty ? "0" : sb.</p>`
     ],
+    tests: { sig: 'string string -> string', fn: 'multiply', cases: [
+      [["123","45"],"5535"],
+      [["0","52"],"0"],
+      [["99","99"],"9801"],
+      [["9","9"],"81"],
+      [["1","1"],"1"],
+      [["0","0"],"0"],
+      [["123456789123456789123456789","987654321987654321987654321"],"121932631356500531591068431581771069347203169112635269"],
+      [["99999999999999999999","99999999999999999999"],"9999999999999999999800000000000000000001"],
+      [["2","0"],"0"],
+      [["100","1000"],"100000"]
+    ] },
     solution: {
-      approach: `<p>Schoolbook multiplication into a position array, then build the string with a StringBuilder.</p>`,
+      approach: `<p>Schoolbook multiplication into a position array, then build the string with a string builder.</p>`,
       code: `
         class Solution {
             public String multiply(String num1, String num2) {
@@ -2613,6 +4442,52 @@ static boolean isPal(String s, int l, int r) {
                 System.out.println(sol.multiply("99", "99"));   // 9801
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def multiply(num1, num2):
+    n, m = len(num1), len(num2)
+    pos = [0] * (n + m)                       # the product has at most n + m digits
+    for i in range(n - 1, -1, -1):
+        for j in range(m - 1, -1, -1):
+            total = int(num1[i]) * int(num2[j]) + pos[i + j + 1]
+            pos[i + j + 1] = total % 10       # ones digit stays
+            pos[i + j] += total // 10         # carry moves left
+    digits = "".join(map(str, pos)).lstrip("0")   # drop leading zeros
+    return digits or "0"` },
+        { lang: 'js', code: `function multiply(num1, num2) {
+  const n = num1.length, m = num2.length;
+  const pos = new Array(n + m).fill(0);         // product has at most n+m digits
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      const sum = (num1.charCodeAt(i) - 48) * (num2.charCodeAt(j) - 48) + pos[i + j + 1];
+      pos[i + j + 1] = sum % 10;                // ones digit stays
+      pos[i + j] += Math.floor(sum / 10);       // carry moves left
+    }
+  }
+  let k = 0;
+  while (k < pos.length - 1 && pos[k] === 0) k++;   // skip leading zeros, keep one digit
+  return pos.slice(k).join("");
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    string multiply(const string& num1, const string& num2) {
+        int n = num1.size(), m = num2.size();
+        vector<int> pos(n + m, 0);                  // product has at most n+m digits
+        for (int i = n - 1; i >= 0; i--) {
+            for (int j = m - 1; j >= 0; j--) {
+                int sum = (num1[i] - '0') * (num2[j] - '0') + pos[i + j + 1];
+                pos[i + j + 1] = sum % 10;          // ones digit stays
+                pos[i + j] += sum / 10;             // carry moves left
+            }
+        }
+        string out;
+        for (int d : pos) {
+            if (out.empty() && d == 0) continue;    // skip leading zeros
+            out += char('0' + d);
+        }
+        return out.empty() ? "0" : out;
+    }
+};` }
+      ],
       dry: {
         head: ['i, j', 'digits', 'mul', 'pos after (index 0..4)'],
         rows: [
@@ -2664,11 +4539,22 @@ static boolean isPal(String s, int l, int r) {
     },
     hints: [
       `<p><b>Aha:</b> each step is run-length encoding (the String Compression problem in Topic 3) with the count written <b>before</b> the digit.</p>`,
-      `<p>Loop n − 1 times; inside, two pointers i (run start) and j (run end) over the current term; append <code>(j − i)</code> then the digit to a StringBuilder.</p>`,
-      `<p><b>Traps:</b> n = 1 → "1"; use a fresh StringBuilder per term; do not use +=. <b>Recipe:</b> cur = "1"; repeat n−1 times: sb = new; for each run [i, j): sb.append(j−i).append(cur[i]); cur = sb.toString().</p>`
+      `<p>Loop n − 1 times; inside, two pointers i (run start) and j (run end) over the current term; append <code>(j − i)</code> then the digit to a string builder.</p>`,
+      `<p><b>Traps:</b> n = 1 → "1"; use a fresh builder per term; do not grow a string with += in a loop. <b>Recipe:</b> cur = "1"; repeat n−1 times: sb = new; for each run [i, j): sb.append(j−i).append(cur[i]); cur = sb.toString().</p>`
     ],
+    tests: { sig: 'int -> string', fn: 'countAndSay', cases: [
+      [[1],"1"],
+      [[2],"11"],
+      [[3],"21"],
+      [[4],"1211"],
+      [[5],"111221"],
+      [[6],"312211"],
+      [[10],"13211311123113112211"],
+      [[15],"311311222113111231131112132112311321322112111312211312111322212311322113212221"],
+      [[30],"3113112221131112311332111213122112311311123112111331121113122112132113121113222112311311221112131221123113112221121113311211131122211211131221131211132221121321132132212321121113121112133221123113112221131112212211131221121321131211132221123113112221131112311332211211133112111311222112111312211311123113322112111312211312111322212321121113121112133221121321132132211331121321132213211231132132211211131221232112111312212221121123222112311311222113111231133211121321321122111312211312111322211213211321322123211211131211121332211231131122211311123113321112131221123113111231121123222112111331121113112221121113122113111231133221121113122113121113221112131221123113111231121123222112111312211312111322212321121113121112131112132112311321322112111312212321121113122122211211232221121321132132211331121321231231121113112221121321132132211322132113213221123113112221133112132123222112111312211312112213211231132132211211131221131211322113321132211221121332211231131122211311123113321112131221123113111231121113311211131221121321131211132221123113112211121312211231131122211211133112111311222112111312211312111322211213211321223112111311222112132113213221133122211311221122111312211312111322212321121113121112131112132112311321322112111312212321121113122122211211232221121321132132211331121321231231121113112221121321132132211322132113213221123113112221133112132123222112111312211312112213211231132132211211131221131211322113321132211221121332211213211321322113311213212312311211131122211213211331121321123123211231131122211211131221131112311332211213211321223112111311222112132113213221123123211231132132211231131122211311123113322112111312211312111322111213122112311311123112112322211213211321322113312211223113112221121113122113111231133221121321132132211331222113321112131122211332113221122112133221123113112221131112311332111213122112311311123112111331121113122112132113121113222112311311221112131221123113112221121113311211131122211211131221131211132221121321132132212321121113121112133221123113112221131112311332111213122112311311123112112322211322311311222113111231133211121312211231131112311211232221121113122113121113222123211211131221132211131221121321131211132221123113112211121312211231131122113221122112133221121321132132211331121321231231121113121113122122311311222113111231133221121113122113121113221112131221123113111231121123222112132113213221133112132123123112111312211322311211133112111312211213211311123113223112111321322123122113222122211211232221121113122113121113222123211211131211121311121321123113213221121113122123211211131221121311121312211213211321322112311311222113311213212322211211131221131211221321123113213221121113122113121113222112131112131221121321131211132221121321132132211331121321232221123113112221131112311322311211131122211213211331121321122112133221121113122113121113222123112221221321132132211231131122211331121321232221121113122113121113222123211211131211121332211213111213122112132113121113222112132113213221232112111312111213322112132113213221133112132123123112111311222112132113311213211221121332211231131122211311123113321112131221123113112221132231131122211211131221131112311332211213211321223112111311222112132113212221132221222112112322211211131221131211132221232112111312111213111213211231131112311311221122132113213221133112132123222112311311222113111231132231121113112221121321133112132112211213322112111312211312111322212321121113121112131112132112311321322112111312212321121113122122211211232221121311121312211213211312111322211213211321322123211211131211121332211213211321322113311213211322132112311321322112111312212321121113122122211211232221121321132132211331121321231231121113112221121321133112132112312321123113112221121113122113111231133221121321132122311211131122211213211321222113222122211211232221123113112221131112311332111213122112311311123112111331121113122112132113121113222112311311221112131221123113112221121113311211131122211211131221131211132221121321132132212321121113121112133221123113112221131112311332111213213211221113122113121113222112132113213221232112111312111213322112132113213221133112132123123112111312211322311211133112111312212221121123222112132113213221133112132123222113223113112221131112311332111213122112311311123112112322211211131221131211132221232112111312111213111213211231132132211211131221131211221321123113213221123113112221131112211322212322211231131122211322111312211312111322211213211321322113311213211331121113122122211211132213211231131122212322211331222113112211"]
+    ] },
     solution: {
-      approach: `<p>Iterative run-length encoding with two pointers and a StringBuilder.</p>`,
+      approach: `<p>Iterative run-length encoding with two pointers and a string builder.</p>`,
       code: `
         class Solution {
             public String countAndSay(int n) {
@@ -2693,6 +4579,50 @@ static boolean isPal(String s, int l, int r) {
                 System.out.println(sol.countAndSay(6));  // 312211
             }
         }`,
+      alt: [
+        { lang: 'python', code: `from itertools import groupby
+
+def count_and_say(n):
+    cur = "1"
+    for _ in range(n - 1):
+        # describe each run: count first, then the digit
+        cur = "".join(f"{len(list(run))}{d}" for d, run in groupby(cur))
+    return cur` },
+        { lang: 'js', code: `function countAndSay(n) {
+  let cur = "1";
+  for (let t = 1; t < n; t++) {
+    const parts = [];
+    let i = 0;
+    while (i < cur.length) {
+      let j = i;
+      while (j < cur.length && cur[j] === cur[i]) j++;   // end of the run
+      parts.push(String(j - i), cur[i]);                  // count, then digit
+      i = j;
+    }
+    cur = parts.join("");
+  }
+  return cur;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    string countAndSay(int n) {
+        string cur = "1";
+        for (int t = 1; t < n; t++) {
+            string next;
+            size_t i = 0;
+            while (i < cur.size()) {
+                size_t j = i;
+                while (j < cur.size() && cur[j] == cur[i]) j++;   // end of the run
+                next += to_string(j - i);                          // count, then digit
+                next += cur[i];
+                i = j;
+            }
+            cur = move(next);
+        }
+        return cur;
+    }
+};` }
+      ],
       dry: {
         head: ['t', 'cur', 'runs', 'next'],
         rows: [
@@ -2739,6 +4669,16 @@ static boolean isPal(String s, int l, int r) {
       `<p>Roll: <code>h = ((h &lt;&lt; 2) | code) &amp; 0xFFFFF</code>. Use a <code>HashSet&lt;Integer&gt;</code> seen and another set for already-reported windows (or a byte array of size 2<sup>20</sup> as a counter).</p>`,
       `<p><b>Traps:</b> start checking only once i ≥ 9 (window full); report each repeat once; |s| &lt; 10 → empty. <b>Recipe:</b> for i: h = roll(h, s[i]); if i ≥ 9: if h in seen and h not in added: add substring(i−9, i+1); seen.add(h).</p>`
     ],
+    tests: { sig: 'string -> list<string>', fn: 'findRepeatedDnaSequences', cmp: 'set', cases: [
+      [["AAAAACCCCCAAAAACCCCCCAAAAAGGGTTT"],["AAAAACCCCC","CCCCCAAAAA"]],
+      [["AAAAAAAAAAAAA"],["AAAAAAAAAA"]],
+      [["AAAAAAAAAAA"],["AAAAAAAAAA"]],
+      [["A"],[]],
+      [["ACGT"],[]],
+      [["AAAAAAAAAA"],[]],
+      [["ACGTACGTACGTACGT"],["ACGTACGTAC","CGTACGTACG","GTACGTACGT"]],
+      [["GAGAGAGAGAGA"],["GAGAGAGAGA"]]
+    ] },
     solution: {
       approach: `<p>2-bit rolling encoding into a 20-bit int; sets of seen and reported codes.</p>`,
       code: `
@@ -2766,6 +4706,57 @@ static boolean isPal(String s, int l, int r) {
                 // [AAAAACCCCC, CCCCCAAAAA]
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def find_repeated_dna_sequences(s):
+    code = {"A": 0, "C": 1, "G": 2, "T": 3}
+    mask = (1 << 20) - 1                      # 10 letters x 2 bits
+    seen, added, res = set(), set(), []
+    h = 0
+    for i, ch in enumerate(s):
+        h = ((h << 2) | code[ch]) & mask      # roll in the new letter
+        if i >= 9:                            # window s[i-9..i] is full
+            if h in seen and h not in added:
+                added.add(h)
+                res.append(s[i - 9:i + 1])    # report a repeat once
+            seen.add(h)
+    return res` },
+        { lang: 'js', code: `function findRepeatedDnaSequences(s) {
+  const code = { A: 0, C: 1, G: 2, T: 3 };
+  const mask = (1 << 20) - 1;                   // keep only the last 10 letters
+  const seen = new Set(), added = new Set(), res = [];
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 2) | code[s[i]]) & mask;         // roll in the new letter
+    if (i >= 9) {
+      if (seen.has(h) && !added.has(h)) {
+        added.add(h);
+        res.push(s.slice(i - 9, i + 1));        // second sighting: report once
+      }
+      seen.add(h);
+    }
+  }
+  return res;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    vector<string> findRepeatedDnaSequences(const string& s) {
+        vector<string> res;
+        array<int, 128> code{};
+        code['A'] = 0; code['C'] = 1; code['G'] = 2; code['T'] = 3;
+        unordered_set<int> seen, added;
+        int h = 0, mask = (1 << 20) - 1;            // keep only the last 10 letters
+        for (int i = 0; i < (int)s.size(); i++) {
+            h = ((h << 2) | code[s[i]]) & mask;     // roll in the new letter
+            if (i >= 9) {
+                if (!seen.insert(h).second && added.insert(h).second) {
+                    res.push_back(s.substr(i - 9, 10));   // second sighting: report once
+                }
+            }
+        }
+        return res;
+    }
+};` }
+      ],
       dry: {
         head: ['i', 'window', 'code (binary groups)', 'seen before?', 'res'],
         rows: [
@@ -2810,9 +4801,22 @@ static boolean isPal(String s, int l, int r) {
     },
     hints: [
       `<p><b>Aha:</b> the answer is either q = ⌈|b|/|a|⌉, q + 1, or impossible — no other values need testing.</p>`,
-      `<p>Build t = a repeated q + 1 times with a StringBuilder, run KMP for b once, and look at <b>where</b> the first match ends: if it ends within q copies the answer is q, else q + 1.</p>`,
+      `<p>Build t = a repeated q + 1 times (a builder, or <code>a * (q + 1)</code> / <code>a.repeat(q + 1)</code>), run KMP for b once, and look at <b>where</b> the first match ends: if it ends within q copies the answer is q, else q + 1.</p>`,
       `<p><b>Traps:</b> match end index = start + |b|; needed copies = ⌈end / |a|⌉. <b>Recipe:</b> q = ceil; t = a×(q+1); pos = kmp(t, b); if pos &lt; 0 return −1; return ceil((pos + |b|) / |a|).</p>`
     ],
+    tests: { sig: 'string string -> int', fn: 'repeatedStringMatch', cases: [
+      [["abcd","cdabcdab"],3],
+      [["a","aa"],2],
+      [["abc","wxyz"],-1],
+      [["a","a"],1],
+      [["abc","cabcabca"],4],
+      [["aaac","aac"],1],
+      [["abcd","abcd"],1],
+      [["ab","ba"],2],
+      [["abc","ca"],2],
+      [["aa","a"],1],
+      [["abc","ac"],-1]
+    ] },
     solution: {
       approach: `<p>Repeat a q + 1 times, one KMP search, compute how many copies the first match spans.</p>`,
       code: `
@@ -2853,6 +4857,87 @@ static boolean isPal(String s, int l, int r) {
                 System.out.println(sol.repeatedStringMatch("abc", "wxyz"));      // -1
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def kmp_find(t, p):
+    lps, length = [0] * len(p), 0
+    for i in range(1, len(p)):
+        while length > 0 and p[i] != p[length]:
+            length = lps[length - 1]
+        if p[i] == p[length]:
+            length += 1
+        lps[i] = length
+    j = 0
+    for i, ch in enumerate(t):
+        while j > 0 and ch != p[j]:
+            j = lps[j - 1]
+        if ch == p[j]:
+            j += 1
+            if j == len(p):
+                return i - j + 1
+    return -1
+
+def repeated_string_match(a, b):
+    q = -(-len(b) // len(a))                  # ceil(|b| / |a|)
+    pos = kmp_find(a * (q + 1), b)            # q + 1 copies always suffice
+    if pos < 0:
+        return -1
+    end = pos + len(b)                        # exclusive end of the first match
+    return -(-end // len(a))                  # copies needed to cover it` },
+        { lang: 'js', code: `function kmpFind(t, p) {
+  const m = p.length, lps = new Array(m).fill(0);
+  for (let i = 1, len = 0; i < m; ) {
+    if (p[i] === p[len]) lps[i++] = ++len;
+    else if (len > 0) len = lps[len - 1];
+    else lps[i++] = 0;
+  }
+  for (let i = 0, j = 0; i < t.length; ) {
+    if (t[i] === p[j]) {
+      i++;
+      j++;
+      if (j === m) return i - m;
+    } else if (j > 0) j = lps[j - 1];
+    else i++;
+  }
+  return -1;
+}
+
+function repeatedStringMatch(a, b) {
+  const q = Math.ceil(b.length / a.length);
+  const pos = kmpFind(a.repeat(q + 1), b);      // q + 1 copies always suffice
+  if (pos < 0) return -1;
+  return Math.ceil((pos + b.length) / a.length);   // copies covering the first match
+}` },
+        { lang: 'cpp', code: `class Solution {
+    int kmpFind(const string& t, const string& p) {
+        int m = p.size();
+        vector<int> lps(m, 0);
+        for (int i = 1, len = 0; i < m; ) {
+            if (p[i] == p[len]) lps[i++] = ++len;
+            else if (len > 0) len = lps[len - 1];
+            else lps[i++] = 0;
+        }
+        for (int i = 0, j = 0; i < (int)t.size(); ) {
+            if (t[i] == p[j]) {
+                i++;
+                j++;
+                if (j == m) return i - m;
+            } else if (j > 0) j = lps[j - 1];
+            else i++;
+        }
+        return -1;
+    }
+public:
+    int repeatedStringMatch(const string& a, const string& b) {
+        int q = (b.size() + a.size() - 1) / a.size();   // ceil(|b| / |a|)
+        string t;
+        for (int k = 0; k <= q; k++) t += a;            // q + 1 copies
+        int pos = kmpFind(t, b);
+        if (pos < 0) return -1;
+        int end = pos + b.size();                       // exclusive end of the match
+        return (end + a.size() - 1) / a.size();         // copies needed to cover it
+    }
+};` }
+      ],
       dry: {
         head: ['step', 'value'],
         rows: [
@@ -2902,6 +4987,17 @@ static boolean isPal(String s, int l, int r) {
       `<p>Build lps for s with the i / len pointers (fallback <code>len = lps[len − 1]</code>). Answer = <code>s.substring(0, lps[n − 1])</code>.</p>`,
       `<p><b>Traps:</b> use lps[n − 1], not the maximum over all lps; "proper" excludes the whole string (lps never equals i + 1, so this is automatic). Alternative: compare prefix and suffix hashes for every length (O(n) with rolling hashes, but probabilistic). <b>Recipe:</b> lps = build(s); return s[0 .. lps[n−1]).</p>`
     ],
+    tests: { sig: 'string -> string', fn: 'longestPrefix', cases: [
+      [["level"],"l"],
+      [["ababab"],"abab"],
+      [["abc"],""],
+      [["a"],""],
+      [["aaaa"],"aaa"],
+      [["abcab"],"ab"],
+      [["aabaaab"],"aab"],
+      [["acccbaaacccbac"],"ac"],
+      [["aa"],"a"]
+    ] },
     solution: {
       approach: `<p>Prefix function (LPS); answer is the prefix of length lps[n − 1].</p>`,
       code: `
@@ -2929,6 +5025,40 @@ static boolean isPal(String s, int l, int r) {
                 System.out.println("[" + sol.longestPrefix("abc") + "]"); // []
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def longest_prefix(s):
+    lps, length = [0] * len(s), 0
+    for i in range(1, len(s)):
+        while length > 0 and s[i] != s[length]:
+            length = lps[length - 1]          # try the next shorter border
+        if s[i] == s[length]:
+            length += 1                       # border grows
+        lps[i] = length
+    return s[:lps[-1]]                        # longest proper border of the whole string` },
+        { lang: 'js', code: `function longestPrefix(s) {
+  const n = s.length, lps = new Array(n).fill(0);
+  let len = 0, i = 1;
+  while (i < n) {
+    if (s[i] === s[len]) lps[i++] = ++len;      // border grows
+    else if (len > 0) len = lps[len - 1];       // try the next shorter border
+    else lps[i++] = 0;
+  }
+  return s.slice(0, lps[n - 1]);
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    string longestPrefix(const string& s) {
+        int n = s.size();
+        vector<int> lps(n, 0);
+        for (int i = 1, len = 0; i < n; ) {
+            if (s[i] == s[len]) lps[i++] = ++len;   // border grows
+            else if (len > 0) len = lps[len - 1];   // try the next shorter border
+            else lps[i++] = 0;
+        }
+        return s.substr(0, lps[n - 1]);
+    }
+};` }
+      ],
       dry: {
         head: ['i', 's[i]', 'len before', 'compare', 'lps[i]'],
         rows: [
@@ -2977,8 +5107,20 @@ static boolean isPal(String s, int l, int r) {
     hints: [
       `<p><b>Aha:</b> whatever we add in front must mirror the part of s that is <b>not</b> already a palindrome at the start. So find the <b>longest palindromic prefix</b>.</p>`,
       `<p>Longest palindromic prefix = lps[last] of <code>s + "#" + reverse(s)</code> (KMP). Then answer = reverse(s.substring(k)) + s.</p>`,
-      `<p><b>Traps:</b> without "#", lps could exceed |s| (e.g. s = "aaa"); empty s → ""; use StringBuilder.reverse. <b>Recipe:</b> rev = reverse(s); t = s + "#" + rev; k = lps(t)[last]; return rev.substring(0, n − k) + s.</p>`
+      `<p><b>Traps:</b> without "#", lps could exceed |s| (e.g. s = "aaa"); empty s → ""; reverse once (<code>StringBuilder.reverse</code> / <code>s[::-1]</code> / <code>std::reverse</code>). <b>Recipe:</b> rev = reverse(s); t = s + "#" + rev; k = lps(t)[last]; return rev.substring(0, n − k) + s.</p>`
     ],
+    tests: { sig: 'string -> string', fn: 'shortestPalindrome', cases: [
+      [["aacecaaa"],"aaacecaaa"],
+      [["abcd"],"dcbabcd"],
+      [[""],""],
+      [["a"],"a"],
+      [["aa"],"aa"],
+      [["ab"],"bab"],
+      [["abbacd"],"dcabbacd"],
+      [["aabba"],"abbaabba"],
+      [["racecar"],"racecar"],
+      [["aaaab"],"baaaab"]
+    ] },
     solution: {
       approach: `<p>KMP prefix function on s#reverse(s) gives the longest palindromic prefix in O(n).</p>`,
       code: `
@@ -3003,6 +5145,47 @@ static boolean isPal(String s, int l, int r) {
                 System.out.println(sol.shortestPalindrome("abcd"));     // dcbabcd
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def shortest_palindrome(s):
+    rev = s[::-1]
+    t = s + "#" + rev                         # '#' never appears in s
+    lps, length = [0] * len(t), 0
+    for i in range(1, len(t)):
+        while length > 0 and t[i] != t[length]:
+            length = lps[length - 1]
+        if t[i] == t[length]:
+            length += 1
+        lps[i] = length
+    k = lps[-1]                               # longest palindromic prefix of s
+    return rev[:len(s) - k] + s               # mirror the leftover in front` },
+        { lang: 'js', code: `function shortestPalindrome(s) {
+  const rev = s.split("").reverse().join("");
+  const t = s + "#" + rev;                      // '#' never appears in s
+  const lps = new Array(t.length).fill(0);
+  for (let i = 1, len = 0; i < t.length; ) {
+    if (t[i] === t[len]) lps[i++] = ++len;
+    else if (len > 0) len = lps[len - 1];
+    else lps[i++] = 0;
+  }
+  const k = lps[t.length - 1];                  // longest palindromic prefix length
+  return rev.slice(0, s.length - k) + s;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    string shortestPalindrome(const string& s) {
+        string rev(s.rbegin(), s.rend());
+        string t = s + "#" + rev;                   // '#' never appears in s
+        vector<int> lps(t.size(), 0);
+        for (int i = 1, len = 0; i < (int)t.size(); ) {
+            if (t[i] == t[len]) lps[i++] = ++len;
+            else if (len > 0) len = lps[len - 1];
+            else lps[i++] = 0;
+        }
+        int k = lps.back();                         // longest palindromic prefix length
+        return rev.substr(0, s.size() - k) + s;
+    }
+};` }
+      ],
       dry: {
         head: ['s', 't = s#rev', 'lps[last] = k', 'leftover s[k..]', 'answer'],
         rows: [
@@ -3050,6 +5233,18 @@ static boolean isPal(String s, int l, int r) {
       `<p>Compute Z with the [L, R] box in O(n); answer = n + Σ Z[i] for i ≥ 1.</p>`,
       `<p><b>Traps:</b> sum in <code>long</code> (n = 10<sup>5</sup> of "a" gives ~5·10<sup>9</sup>); remember the full string's own score n (Z[0] is 0 by convention). <b>Recipe:</b> z = zArray(s); total = n + sum(z[1..]); return total.</p>`
     ],
+    tests: { sig: 'string -> long', fn: 'sumScores', cases: [
+      [["babab"],9],
+      [["azbazbzaz"],14],
+      [["a"],1],
+      [["aaaa"],10],
+      [["abcd"],4],
+      [["abacabadabacaba"],32],
+      [["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],2001000],
+      [["abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab"],250500],
+      [[{ $rep: 'a', n: 70000 }],2450035000],
+      [[{ $concat: [{ $rep: 'a', n: 66000 }, 'b'] }],2178033001]
+    ] },
     solution: {
       approach: `<p>Z-algorithm; sum of Z plus n.</p>`,
       code: `
@@ -3076,6 +5271,48 @@ static boolean isPal(String s, int l, int r) {
                 System.out.println(sol.sumScores("azbazbzaz"));  // 14
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def sum_scores(s):
+    n = len(s)
+    z = [0] * n
+    total = n                                 # the whole string scores n
+    L = R = 0
+    for i in range(1, n):
+        if i <= R:
+            z[i] = min(R - i + 1, z[i - L])
+        while i + z[i] < n and s[z[i]] == s[i + z[i]]:
+            z[i] += 1
+        if i + z[i] - 1 > R:
+            L, R = i, i + z[i] - 1
+        total += z[i]
+    return total                              # Python ints never overflow` },
+        { lang: 'js', code: `function sumScores(s) {
+  const n = s.length, z = new Array(n).fill(0);
+  let total = n;                                // the whole string scores n
+  for (let i = 1, L = 0, R = 0; i < n; i++) {
+    if (i <= R) z[i] = Math.min(R - i + 1, z[i - L]);
+    while (i + z[i] < n && s[z[i]] === s[i + z[i]]) z[i]++;
+    if (i + z[i] - 1 > R) { L = i; R = i + z[i] - 1; }
+    total += z[i];                              // sums stay far below 2^53
+  }
+  return total;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    long long sumScores(const string& s) {
+        int n = s.size();
+        vector<int> z(n, 0);
+        long long total = n;                        // long long: the sum can pass 2^31
+        for (int i = 1, L = 0, R = 0; i < n; i++) {
+            if (i <= R) z[i] = min(R - i + 1, z[i - L]);
+            while (i + z[i] < n && s[z[i]] == s[i + z[i]]) z[i]++;
+            if (i + z[i] - 1 > R) { L = i; R = i + z[i] - 1; }
+            total += z[i];
+        }
+        return total;
+    }
+};` }
+      ],
       dry: {
         head: ['i', 'free start', 'Z[i]', 'box', 'total'],
         rows: [
@@ -3121,9 +5358,20 @@ static boolean isPal(String s, int l, int r) {
     },
     hints: [
       `<p><b>Aha:</b> two ideas combine: (1) binary search the answer length L; (2) for a fixed L, find a repeated window in O(n) with a rolling hash.</p>`,
-      `<p>Precompute prefix hashes and powers once; for a given L, hash every window with <code>(pre[i+L] − pre[i]·pw[L]) mod M</code> into a <code>HashMap&lt;Long, List&lt;Integer&gt;&gt;</code>; on an equal hash, confirm with <code>regionMatches</code> before declaring a duplicate.</p>`,
-      `<p><b>Traps:</b> verify on hash hits (or use double hashing) — a false positive breaks the binary search; char values must be non-zero (use the char code itself with base 131); keep products below 2<sup>63</sup>. <b>Recipe:</b> lo = 1, hi = n − 1; while lo ≤ hi: mid; st = findDup(mid); if st ≥ 0: best = (st, mid), lo = mid + 1 else hi = mid − 1.</p>`
+      `<p>Precompute prefix hashes and powers once; for a given L, hash every window with <code>(pre[i+L] − pre[i]·pw[L]) mod M</code> into a hash map from hash to the list of start indices; on an equal hash, compare the characters before declaring a duplicate.</p>`,
+      `<p><b>Traps:</b> verify on hash hits (or use double hashing) — a false positive breaks the binary search; char values must be non-zero (use the char code itself with base 131); keep products below 2<sup>63</sup> (below 2<sup>53</sup> for JS Numbers, or roll the window so you never multiply two big values). <b>Recipe:</b> lo = 1, hi = n − 1; while lo ≤ hi: mid; st = findDup(mid); if st ≥ 0: best = (st, mid), lo = mid + 1 else hi = mid − 1.</p>`
     ],
+    tests: { sig: 'string -> string', fn: 'longestDupSubstring', check: "(args, out, exp) => { if (typeof out !== 'string' || out.length !== exp.length) return false; if (!out) return true; const s = args[0], i = s.indexOf(out); return i >= 0 && s.indexOf(out, i + 1) >= 0; }", cases: [
+      [["banana"],"ana"],
+      [["abcd"],""],
+      [["aa"],"a"],
+      [["aaaaa"],"aaaa"],
+      [["abcabcabc"],"abcabc"],
+      [["ab"],""],
+      [["mississippi"],"issi"],
+      [["aabcaabdaab"],"aab"],
+      [["zxyzxyzx"],"zxyzx"]
+    ] },
     solution: {
       approach: `<p>Binary search on length + Rabin-Karp window hashing (verified) — O(n log n) expected.</p>`,
       code: `
@@ -3174,6 +5422,100 @@ static boolean isPal(String s, int l, int r) {
                 System.out.println("[" + sol.longestDupSubstring("abcd") + "]"); // []
             }
         }`,
+      alt: [
+        { lang: 'python', code: `B, M = 131, 1_000_000_007
+
+def longest_dup_substring(s):
+    n = len(s)
+    pre, pw = [0] * (n + 1), [1] * (n + 1)
+    for i, ch in enumerate(s):
+        pre[i + 1] = (pre[i] * B + ord(ch)) % M   # char code is never 0
+        pw[i + 1] = pw[i] * B % M
+
+    def find_dup(length):                     # start of a repeated window, or -1
+        seen = {}
+        for i in range(n - length + 1):
+            h = (pre[i + length] - pre[i] * pw[length]) % M
+            starts = seen.setdefault(h, [])
+            for j in starts:
+                if s[j:j + length] == s[i:i + length]:   # verified: not a collision
+                    return i
+            starts.append(i)
+        return -1
+
+    lo, hi, best = 1, n - 1, ""
+    while lo <= hi:                           # binary search on the length
+        mid = (lo + hi) // 2
+        st = find_dup(mid)
+        if st >= 0:
+            best, lo = s[st:st + mid], mid + 1
+        else:
+            hi = mid - 1
+    return best` },
+        { lang: 'js', code: `function longestDupSubstring(s) {
+  const B = 131, M = 1000000007, n = s.length;
+  // start of a repeated window of this length, or -1
+  const findDup = (len) => {
+    let power = 1;
+    for (let k = 0; k < len; k++) power = (power * B) % M;   // B^len mod M
+    const seen = new Map();
+    let h = 0;
+    for (let i = 0; i < n; i++) {
+      h = (h * B + s.charCodeAt(i)) % M;                      // add the new char
+      if (i >= len) h = (h - (s.charCodeAt(i - len) * power) % M + M) % M;   // drop the old one
+      if (i >= len - 1) {
+        const st = i - len + 1, starts = seen.get(h);
+        if (starts) {
+          const win = s.slice(st, st + len);          // build text only on a hash hit
+          for (const j of starts) if (s.slice(j, j + len) === win) return st;   // verified match
+          starts.push(st);
+        } else seen.set(h, [st]);
+      }
+    }
+    return -1;
+  };
+  let lo = 1, hi = n - 1, bestStart = -1, bestLen = 0;
+  while (lo <= hi) {                            // binary search on the length
+    const mid = (lo + hi) >> 1;
+    const st = findDup(mid);
+    if (st >= 0) { bestStart = st; bestLen = mid; lo = mid + 1; }
+    else hi = mid - 1;
+  }
+  return bestStart < 0 ? "" : s.slice(bestStart, bestStart + bestLen);
+}` },
+        { lang: 'cpp', code: `class Solution {
+    static constexpr long long B = 131, M = 1000000007LL;
+    // start of a repeated window of length len, or -1
+    int findDup(const string& s, int len) {
+        long long power = 1, h = 0;
+        for (int k = 0; k < len; k++) power = power * B % M;   // B^len mod M
+        unordered_map<long long, vector<int>> seen;
+        for (int i = 0; i < (int)s.size(); i++) {
+            h = (h * B + s[i]) % M;                             // add the new char
+            if (i >= len) h = (h - s[i - len] * power % M + M) % M;   // drop the old one
+            if (i < len - 1) continue;
+            int st = i - len + 1;
+            auto& starts = seen[h];
+            for (int j : starts) {
+                if (s.compare(j, len, s, st, len) == 0) return st;   // verified: not a collision
+            }
+            starts.push_back(st);
+        }
+        return -1;
+    }
+public:
+    string longestDupSubstring(const string& s) {
+        int lo = 1, hi = (int)s.size() - 1, bestStart = -1, bestLen = 0;
+        while (lo <= hi) {                          // binary search on the length
+            int mid = lo + (hi - lo) / 2;
+            int st = findDup(s, mid);
+            if (st >= 0) { bestStart = st; bestLen = mid; lo = mid + 1; }
+            else hi = mid - 1;
+        }
+        return bestStart < 0 ? "" : s.substr(bestStart, bestLen);
+    }
+};` }
+      ],
       dry: {
         head: ['lo', 'hi', 'mid', 'repeated window of length mid?', 'best'],
         rows: [
@@ -3225,11 +5567,11 @@ static boolean isPal(String s, int l, int r) {
   registerModule({
     id: 'dsa09',
     title: 'String Algorithms',
-    intro: `<p>Strings are the most common input type in coding interviews — names, logs, DNA, URLs, chat messages. This module starts with how Java really stores text (immutability, <code>c - 'a'</code> arithmetic, the String pool, why <code>+=</code> in a loop is secretly O(N<sup>2</sup>)), then builds up to the classic algorithms every strong candidate knows: <b>two-pointer palindromes</b>, <b>expand around center</b> for the longest palindromic substring, the <b>polynomial rolling hash</b> behind Rabin-Karp, <b>KMP with its LPS array</b>, and the <b>Z-algorithm</b>.</p>
+    intro: `<p>Strings are the most common input type in coding interviews — names, logs, DNA, URLs, chat messages. This module starts with how strings really work, using Java's internals as the running example with notes for Python, JavaScript and C++ (immutability, <code>c - 'a'</code> arithmetic, the String pool, why <code>+=</code> in a loop is secretly O(N<sup>2</sup>)), then builds up to the classic algorithms every strong candidate knows: <b>two-pointer palindromes</b>, <b>expand around center</b> for the longest palindromic substring, the <b>polynomial rolling hash</b> behind Rabin-Karp, <b>KMP with its LPS array</b>, and the <b>Z-algorithm</b>.</p>
       <p>Every topic opens with an everyday analogy, then shows a step-by-step visualizer you can feed your own input, worked examples, an expert deep dive and an AI-era section. It builds directly on hashing (DSA 8) and the two-pointer / sliding-window ideas (DSA 6). By the end you will read a question like "find all occurrences in linear time" or "longest prefix that is also a suffix" and immediately know which tool to reach for.</p>`,
     goals: [
       'Explain String immutability, the String pool and == vs equals, and use <code>c - \'a\'</code> counting arrays instead of HashMaps when the alphabet is small',
-      'Spot hidden O(N<sup>2</sup>) string building and replace it with StringBuilder or char[] (and prove why append is amortized O(1))',
+      'Spot hidden O(N<sup>2</sup>) string building and replace it with a string builder or a character array (and prove why append is amortized O(1))',
       'Check palindromes with two pointers in O(1) space and find the longest palindromic substring with expand-around-center (odd and even centers)',
       'Implement a polynomial rolling hash (prefix hashes, O(1) substring hash, mod arithmetic, collision handling) and Rabin-Karp search',
       'Build the KMP LPS array by hand and in code, search in guaranteed O(N + M), and use LPS for periods, happy prefixes and shortest palindromes',
@@ -3238,6 +5580,12 @@ static boolean isPal(String s, int l, int r) {
     ],
     prereqs: `DSA 1 (Programming Foundations — Java strings and arrays), DSA 2 (Complexity), DSA 3 (Modular arithmetic: (a − b + m) % m and fast power), DSA 6 (Two Pointers &amp; Sliding Window) and DSA 8 (Hashing Masterclass).`,
     hours: 14,
+    langNotes: {
+      java: `<p><b>Java:</b> <code>String</code> is immutable, so compare text with <code>equals</code> (never <code>==</code>) and build long strings with a <code>StringBuilder</code>; <code>s += c</code> in a loop is O(N<sup>2</sup>). <code>substring</code> copies its characters (O(length)). <code>c - 'a'</code> gives an <code>int</code>, perfect for an <code>int[26]</code> counter, and <code>Arrays.equals</code> compares two count arrays. Rolling hashes need <code>long</code>, a <code>% M</code> after every multiply, and <code>(x % M + M) % M</code> (or <code>Math.floorMod</code>) because <code>%</code> keeps the sign. <code>String.indexOf</code> is a fast naive search with an O(N·M) worst case, not KMP. Every algorithm here is a loop, so the ~10k-frame recursion limit never matters.</p>`,
+      python: `<p><b>Python:</b> <code>str</code> is immutable. Build results in a <code>list</code> and finish with <code>"".join(parts)</code>; edit characters through <code>list(s)</code>. Use <code>ord(c) - ord('a')</code> for slots, <code>collections.Counter</code> or <code>[0] * 26</code> for counts, and <code>itertools.groupby</code> for runs. Slices like <code>s[i:j]</code> and <code>s[::-1]</code> copy (O(length)), so avoid slicing inside hot loops. Integers never overflow and <code>%</code> is never negative, which makes rolling hashes short; <code>pow(B, k, M)</code> gives powers mod M. <code>==</code> compares letters (<code>is</code> compares objects). <code>str.isalnum()</code> / <code>isalpha()</code> are Unicode-aware. Recursion stops near 1000 frames, but every solution here is iterative.</p>`,
+      js: `<p><b>JavaScript:</b> strings are immutable primitives and <code>===</code> compares their letters. Collect pieces in an array and <code>join("")</code> once; engines often make <code>s += c</code> cheap, but that is not guaranteed. Use <code>s.charCodeAt(i) - 97</code> for slots and plain arrays or <code>Map</code> / <code>Set</code> for counts. <code>Number</code> is exact only up to 2<sup>53</sup>: <code>hash * 31</code> with a hash below 10<sup>9</sup> is safe, but <code>pre[l] * pw[len]</code> (about 10<sup>18</sup>) is not, so roll the window instead or use <code>BigInt</code>. <code>%</code> keeps the sign of the dividend, so add M after subtracting. <code>s.length</code> and <code>s[i]</code> count UTF-16 units (an emoji is 2), while <code>for (const ch of s)</code> walks whole code points. <code>arr.shift()</code> is O(N).</p>`,
+      cpp: `<p><b>C++:</b> <code>std::string</code> is <b>mutable</b>: edit <code>s[i]</code> directly, and <code>s += c</code> / <code>push_back</code> are amortized O(1), but <code>s = s + c</code> builds a new string every time (O(N<sup>2</sup>) in a loop). <code>==</code> compares letters for <code>std::string</code> but addresses for <code>const char*</code>. <code>substr</code> copies; <code>s.compare(pos, len, t)</code> compares without copying. Hashes need <code>long long</code> (signed overflow is undefined behaviour) and <code>(x % M + M) % M</code>, because <code>%</code> keeps the sign. Cast to <code>unsigned char</code> before <code>isalnum</code> / <code>tolower</code>, and cast <code>size()</code> to <code>int</code> before computing <code>size() - 1</code>. <code>array&lt;int, 26&gt;</code> compares with <code>==</code>; prefer <code>unordered_map</code> (O(1) average) over <code>map</code> (O(log N)).</p>`
+    },
     topics: topics,
     practice: practice,
     quiz: quiz,

@@ -1971,6 +1971,7 @@ SELECT ts, temp FROM readings WHERE device_id = 7 AND ts >= '2026-10-14 00:10:00
   );
 
   registerModule({
+  langExplain: `<p><b>About the code here.</b> The SQL runs in every language the same way. The few Python samples only drive SQLite from application code to show a pattern (for example a user-defined function or logic moved into the app); the same calls exist in Java (JDBC), JavaScript (<code>better-sqlite3</code>, <code>pg</code>) and C++ (the SQLite C API).</p>`,
     id: 'sql10',
     title: 'Index Internals',
     lang: 'sql',

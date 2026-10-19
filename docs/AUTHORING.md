@@ -22,7 +22,7 @@ Repo root: `/home/user/DSA-LEARNINGS` (ROOT). The engine is done (`src/`). You w
 |---|---|
 | module `intro` | ≥ 120 chars HTML |
 | `goals` | ≥ 3 concrete outcomes |
-| `prereqs` | HTML, which modules/skills first (e.g. "DSA 5 (Prefix Sums)") |
+| `prereqs` | HTML shown above the lessons. Required and helpful modules come from `src/paths.js` (`NEEDS`, `RECS`); add the new module's id there too, and `node tools/paths-check.js` must pass |
 | `hours` | number, realistic incl. practice |
 | `topics` | ≥ 3 (typically 4–8; one per scope item group) |
 | each topic | `analogy` ≥ 80 · `explain` ≥ 300 · `deepDive` ≥ 250 · `aiEra` ≥ 250 chars of text · `clues` ≥ 3 · **`viz` ≥ 1 (MANDATORY)** · **`examples` ≥ 3** |
@@ -76,6 +76,13 @@ registerModule({
   }
 }
 ```
+Tests and languages (DSA and LLD; see `docs/LANGUAGE_AUTHORING.md` for the full format):
+- every problem has `tests` (function, design-class or stdin/stdout program mode, ≥ 6 cases incl. boundaries), checked with `node tools/solution-check.js content/<track>/<id>.js --require java,python,js,cpp` (LLD: `ts` instead of `js`);
+- `solution.code` is Java; `solution.alt` holds Python, JS (LLD: TypeScript) and C++ versions that pass the same tests;
+- Java lesson code gets the same `alt` tabs; the learner's chosen language is shown first;
+- module `langNotes: { java, python, js, cpp }` (HTML) covers recursion limits, integer behaviour, heaps and complexity traps for that module;
+- a module outside DSA/LLD whose code is in one language sets `langExplain` (HTML) to say why, so learners on another language route are not left guessing.
+
 Track rules (from `src/tracks.js`): `code: 'required'` tracks (dsa, java, py, js, cpp, sql, lld, fe) need `brute.code` and `solution.code` on every problem. `code: 'optional'` tracks (hld, be, ai, cs, beh) may omit code, but then `solution.approach` must be ≥ 200 chars (a full written design/answer). For HLD use `brute` = naive design and why it breaks; for behavioral use `brute` = a weak answer and why it fails, `solution.approach` = a strong model answer.
 
 ### Java / Python / JS / TS / C++ / SQL checks

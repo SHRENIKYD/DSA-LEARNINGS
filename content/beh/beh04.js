@@ -992,6 +992,7 @@ IV('How do you recover from a mistake you made earlier in the interview?', '<p>I
 
 // ---------------- REGISTER ----------------
 registerModule({
+  langExplain: `<p><b>About the code here.</b> The few samples are optional Python helpers you can run in the page, such as a resume-bullet checker or a story-bank matrix. Nothing in the behavioural rounds depends on a programming language, so skip them if you like.</p>`,
   id: 'beh04',
   title: 'Communication in Coding & Design Rounds',
   intro: `<p>Two candidates can write identical code and get opposite results. The difference is how they <b>communicate</b>: the questions they ask, the way they think aloud, whether they state a brute force first, how they handle hints, how they test, and how they use the clock. This module turns those habits into scripts and checklists, with full mock transcripts of a coding round (Two Sum / Top-K) and a design round (URL shortener) showing good versus poor communication, plus a runnable 45-minute planner and self-tested code you can dry run aloud.</p>`,

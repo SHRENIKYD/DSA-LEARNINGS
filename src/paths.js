@@ -1,0 +1,235 @@
+/* Learning order: prerequisites, language preparation, career routes and projects.
+   Difficulty (level B/I/A/E in tracks.js) is a badge only; order comes from these prerequisites.
+   'prep:dsa', 'prep:lld' and 'prep:conc' are resolved per language through PREP, so DSA and LLD never assume one language. */
+var PATHS = (function () {
+  var NEEDS = {
+    // DSA (language-neutral; prep:dsa = your language's basics + collections)
+    dsa01: ['prep:dsa'], dsa02: ['dsa01'], dsa03: ['dsa01', 'dsa02'], dsa04: ['dsa01', 'dsa02'], dsa05: ['dsa01', 'dsa02'],
+    dsa06: ['dsa02', 'dsa05'], dsa07: ['dsa02', 'dsa05', 'dsa06'], dsa08: ['dsa02', 'dsa05', 'dsa06'], dsa09: ['dsa03', 'dsa06', 'dsa08'],
+    dsa10: ['dsa02', 'dsa05', 'dsa07'], dsa11: ['dsa01', 'dsa02'], dsa12: ['dsa06', 'dsa08', 'dsa11'], dsa13: ['dsa05', 'dsa06'],
+    dsa14: ['dsa11', 'dsa13'], dsa15: ['dsa07', 'dsa08', 'dsa14'], dsa16: ['dsa07', 'dsa15'], dsa17: ['dsa02', 'dsa05', 'dsa11'],
+    dsa18: ['dsa10', 'dsa14', 'dsa17'], dsa19: ['dsa08', 'dsa11', 'dsa13', 'dsa14'], dsa20: ['dsa15', 'dsa19'],
+    dsa21: ['dsa04', 'dsa05', 'dsa10', 'dsa14'], dsa22: ['dsa19', 'dsa20'], dsa23: ['dsa17', 'dsa18', 'dsa13'],
+    dsa24: ['dsa09', 'dsa10', 'dsa13', 'dsa15'], dsa25: ['dsa03', 'dsa04', 'dsa17'], dsa26: ['dsa07', 'dsa10', 'dsa13', 'dsa15', 'dsa19'],
+    dsa27: ['dsa08', 'dsa12', 'dsa14', 'dsa15'], dsa28: ['dsa06', 'dsa08', 'dsa10', 'dsa14', 'dsa16', 'dsa17', 'dsa20'],
+    // Java
+    java02: ['java01'], java03: ['java02'], java04: ['java03'], java05: ['java04'], java06: ['java04', 'java05'], java07: ['java05'],
+    java08: ['java07'], java09: ['java07', 'java08'], java10: ['java07', 'java08'], java11: ['java04', 'java09'], java12: ['java11'],
+    java13: ['java10', 'java12'], java14: ['java09', 'java13'],
+    // Python
+    py02: ['py01'], py03: ['py02'], py04: ['py02'], py05: ['py02', 'py04'], py06: ['py02', 'py04'], py07: ['py05', 'py06'],
+    py08: ['py04', 'py05', 'py06'], py09: ['py06', 'py07', 'py08'], py10: ['py07', 'py09'], py11: ['py05', 'py06', 'py07'],
+    py12: ['py05', 'py08'], py13: ['py08', 'py12'],
+    // JavaScript / TypeScript
+    js02: ['js01'], js03: ['js02'], js04: ['js02', 'js03'], js05: ['js04'], js06: ['js02', 'js05'], js07: ['js04'], js08: ['js07'],
+    js09: ['js06', 'js08'], js10: ['js06', 'js09'], js11: ['js10'], js12: ['js04', 'js06', 'js08'], js13: ['js05', 'js08'], js14: ['js08', 'js13'],
+    // C++
+    cpp02: ['cpp01'], cpp03: ['cpp02'], cpp04: ['cpp03'], cpp05: ['cpp04'], cpp06: ['cpp03', 'cpp05'], cpp07: ['cpp03'],
+    cpp08: ['cpp07'], cpp09: ['cpp05', 'cpp08'], cpp10: ['cpp06', 'cpp09'], cpp11: ['cpp06', 'cpp10'], cpp12: ['cpp06', 'cpp11'], cpp13: ['cpp10', 'cpp11'],
+    // SQL
+    sql02: ['sql01'], sql03: ['sql02'], sql04: ['sql03'], sql05: ['sql04'], sql06: ['sql05'], sql07: ['sql01', 'sql04'], sql08: ['sql07'],
+    sql09: ['sql06', 'sql07'], sql10: ['sql04', 'sql07'], sql11: ['sql06', 'sql10'], sql12: ['sql09', 'sql10'], sql13: ['sql10', 'sql12'],
+    sql14: ['sql12', 'sql13'], sql15: ['sql06', 'sql11'],
+    // LLD (prep:lld = your language's classes, interfaces, equality, generics)
+    lld01: ['prep:lld'], lld02: ['lld01'], lld03: ['lld02'], lld04: ['lld03'], lld05: ['lld04'], lld06: ['lld05'], lld07: ['lld06'],
+    lld08: ['lld07'], lld09: ['lld07'], lld10: ['lld08', 'prep:conc'], lld11: ['lld06', 'lld10'], lld12: ['lld10', 'lld11'],
+    // HLD
+    hld02: ['hld01'], hld03: ['hld02'], hld04: ['hld02'], hld05: ['hld02'], hld06: ['hld05'], hld07: ['hld05', 'hld06'], hld08: ['hld02'],
+    hld09: ['hld04'], hld10: ['hld05', 'hld07'], hld11: ['hld10'], hld12: ['hld04', 'hld08'], hld13: ['hld05', 'hld08'],
+    hld14: ['hld03', 'hld06', 'hld07', 'hld09'], hld15: ['hld08', 'hld13', 'hld14'], hld16: ['hld10', 'hld11', 'hld14'],
+    // Frontend
+    fe02: ['fe01'], fe03: ['fe02'], fe04: ['fe02', 'fe03', 'js02'], fe05: ['fe03'], fe06: ['fe02', 'fe04'], fe07: ['fe04', 'js08'],
+    fe08: ['fe04', 'js06'], fe09: ['fe08', 'js04'], fe10: ['fe07', 'fe09'], fe11: ['fe05', 'fe07'], fe12: ['fe09'], fe13: ['fe07'],
+    fe14: ['fe08'], fe15: ['fe10', 'fe14'], fe16: ['fe10', 'fe11', 'fe15'],
+    // Backend (Spring Boot, Node.js, Python)
+    be02: ['be01'], be03: ['be02', 'sql04'], be04: ['be01'], be05: ['be04'], be06: ['be03', 'be05', 'java09'], be07: ['be04', 'js08'],
+    be08: ['be03', 'sql10'], be09: ['be08'], be10: ['be09'], be11: ['be04'], be12: ['be09'], be13: ['be10'], be14: ['be13'], be15: ['be05'],
+    be16: ['be13'], be17: ['be04', 'py06', 'py09'], be18: ['be17', 'sql07', 'sql09'], be19: ['be05', 'be17'], be20: ['be17', 'py09'],
+    be21: ['be18', 'be19'],
+    // GenAI
+    ai02: ['ai01'], ai03: ['ai01'], ai04: ['ai03'], ai05: ['ai04'], ai06: ['ai05'], ai07: ['ai02'], ai08: ['ai06'], ai09: ['ai07', 'ai08'],
+    ai10: ['ai07'], ai11: ['ai09', 'ai10'], ai12: ['ai05', 'ai06'], ai13: ['ai09'], ai14: ['ai09', 'ai13'], ai15: ['ai05', 'ai06', 'ai18', 'ai20'],
+    ai16: ['ai02'], ai17: ['ai02'], ai18: ['ai03'], ai19: ['ai03'], ai20: ['ai18'],
+    // CS Core
+    cs02: ['cs01'], cs03: ['cs02'], cs04: ['cs02'], cs05: ['cs04'], cs06: ['cs02'], cs07: ['cs06'], cs08: ['cs02'], cs09: ['cs06', 'cs08'],
+    cs11: ['cs10'], cs12: ['cs10'], cs13: ['cs12'], cs14: ['cs12', 'cs13'],
+    // Behavioral
+    beh02: ['beh01'], beh03: ['beh02'], beh04: ['beh01'], beh05: ['beh03'], beh06: ['beh01'],
+    // Cloud & DevOps
+    devops02: ['devops01'], devops03: ['devops01'], devops05: ['devops01', 'devops03'], devops06: ['devops05'],
+    devops07: ['devops02', 'py03'], devops08: ['devops01', 'devops02'], devops09: ['devops04', 'devops06'], devops10: ['devops01', 'devops02'],
+    devops11: ['devops04', 'devops08'], devops12: ['devops06'], devops13: ['devops03', 'devops08'], devops14: ['devops13'],
+    devops15: ['devops13'], devops16: ['devops06', 'devops11'], devops17: ['devops12', 'devops14'], devops18: ['devops15', 'devops16', 'devops17']
+  };
+  var RECS = {
+    dsa03: ['dsa05'], dsa04: ['dsa03'], dsa05: ['dsa04'], dsa08: ['dsa04'], dsa13: ['dsa12'], dsa14: ['dsa08'], dsa15: ['dsa04', 'dsa12'],
+    dsa16: ['dsa05', 'dsa11'], dsa17: ['dsa16'], dsa18: ['dsa11'], dsa20: ['dsa17'], dsa21: ['dsa11', 'dsa15'], dsa22: ['dsa04', 'dsa11'],
+    dsa23: ['dsa03', 'dsa04', 'dsa21'], dsa24: ['dsa03', 'dsa21'], dsa25: ['dsa02'], dsa26: ['dsa03', 'dsa12'], dsa27: ['dsa10', 'dsa13'],
+    dsa28: ['dsa18', 'dsa19', 'dsa21', 'dsa22', 'dsa23', 'dsa24', 'dsa25', 'dsa26', 'dsa27'],
+    java01: ['dsa01'], java06: ['java02'], java10: ['java05'], java11: ['java07', 'java10'], java13: ['java10'],
+    py03: ['py01'], py10: ['py06'], py11: ['dsa08', 'dsa13', 'dsa15'], py13: ['py10'],
+    js06: ['js04'], js08: ['js03'], js11: ['js07'], js14: ['js02', 'js09'],
+    cpp05: ['cpp06'], cpp07: ['cpp05', 'cpp06'], cpp09: ['cpp02', 'cpp03'],
+    sql06: ['dsa05', 'dsa06'], sql08: ['sql03', 'sql05'], sql15: ['sql10'],
+    lld02: ['prep:lld'], lld06: ['lld02'], lld11: ['lld02'],
+    hld04: ['cs13'], hld05: ['sql10', 'sql12'], hld06: ['be09'], hld08: ['be09'], hld09: ['be04'], hld12: ['be16'], hld14: ['dsa08'],
+    fe13: ['cs13'], fe09: ['js05'],
+    be01: ['cs13'], be02: ['java04', 'js07'], be04: ['be02', 'be17'], be09: ['hld06'], be10: ['hld09'], be11: ['be06', 'be07'], be12: ['java12'], be13: ['cs09'],
+    be14: ['hld05'], be16: ['hld12'], be18: ['be08'], be21: ['be09', 'devops08'],
+    ai03: ['py02'], ai04: ['ai18', 'ai19'], ai05: ['ai18', 'ai20'], ai06: ['ai18'], ai07: ['ai06'], ai08: ['ai18'], ai10: ['be04'],
+    ai13: ['ai11'], ai14: ['hld06'], ai16: ['ai11'], ai18: ['py02'], ai19: ['py02'], ai20: ['ai19'],
+    cs08: ['cs07'], cs12: ['cs11'],
+    devops01: ['cs01', 'cs08'], devops02: ['cs08'], devops03: ['cs10', 'cs11', 'cs13'], devops04: ['devops01'], devops07: ['py02'], devops08: ['cs09'],
+    devops12: ['hld04', 'hld05'], devops15: ['hld12', 'be16'], devops16: ['be15'], devops17: ['hld10', 'be10', 'be14'], devops18: ['beh01']
+  };
+  var PREP = {
+    java: { name: 'Java', dsa: ['java01', 'java02', 'java05', 'java07'], lld: ['java03', 'java04', 'java05', 'java08'], conc: ['java11', 'java12'] },
+    python: { name: 'Python', dsa: ['py01', 'py02', 'py05'], lld: ['py04', 'py08', 'py09'], conc: ['py10'] },
+    js: { name: 'JavaScript / TypeScript', dsa: ['js01', 'js02'], lld: ['js06', 'js10', 'js11'], conc: ['js07', 'js08'] },
+    cpp: { name: 'C++', dsa: ['cpp01', 'cpp02', 'cpp03', 'cpp07', 'cpp08'], lld: ['cpp04', 'cpp05', 'cpp06'], conc: ['cpp11'] }
+  };
+  /* Routes. stages: ordered groups; each module is core unless listed in rec (recommended) or opt (optional).
+     langs: languages the route can be followed in. 'prep:*' entries expand to the chosen language's modules. */
+  var ROUTES = [
+    { id: 'sde', name: 'Interview / SDE foundations', langs: ['java', 'python', 'js', 'cpp'], blurb: 'The classic product-company loop: your language, core DSA, SQL and CS basics, low-level design, an introduction to system design and mock rounds.',
+      stages: [
+        { name: 'Your language', mods: ['prep:dsa'] },
+        { name: 'Core DSA', mods: ['dsa01', 'dsa02', 'dsa03', 'dsa04', 'dsa05', 'dsa06', 'dsa07', 'dsa08', 'dsa09', 'dsa10', 'dsa11', 'dsa12', 'dsa13', 'dsa14', 'dsa15', 'dsa16', 'dsa17', 'dsa18', 'dsa19', 'dsa20'], opt: ['dsa03', 'dsa09'], project: 'sde-p1' },
+        { name: 'SQL and CS fundamentals', mods: ['sql01', 'sql02', 'sql03', 'sql04', 'sql05', 'sql06', 'cs01', 'cs02', 'cs04', 'cs06', 'cs10', 'cs12', 'cs13'], rec: ['cs04', 'cs06'], behavioral: ['beh01', 'beh02'] },
+        { name: 'Low-level design', mods: ['prep:lld', 'lld01', 'lld02', 'lld03', 'lld04', 'lld05', 'lld06', 'lld07'], project: 'sde-p2' },
+        { name: 'Introductory system design', mods: ['hld01', 'hld02', 'hld03', 'hld04', 'hld05', 'hld06'] },
+        { name: 'Mocks and interviews', mods: ['dsa28', 'beh03', 'beh04'], behavioral: ['beh04'] }
+      ],
+      extensions: ['dsa21', 'dsa22', 'dsa23', 'dsa24', 'dsa25', 'dsa26', 'dsa27', 'lld08', 'lld09', 'hld07', 'hld08', 'hld09', 'sql10', 'sql11', 'sql12'] },
+    { id: 'pyback', name: 'Python backend', langs: ['python'], blurb: 'Python first, then DSA, SQL, HTTP and APIs, FastAPI with SQLAlchemy, testing and security, and system design.',
+      stages: [
+        { name: 'Python', mods: ['py01', 'py02', 'py03', 'py04', 'py05', 'py06', 'py07', 'py08', 'py09'] },
+        { name: 'Core DSA', mods: ['dsa01', 'dsa02', 'dsa05', 'dsa06', 'dsa07', 'dsa08', 'dsa10', 'dsa11', 'dsa13', 'dsa14', 'dsa15'], project: 'py-p1' },
+        { name: 'SQL', mods: ['sql01', 'sql02', 'sql03', 'sql04', 'sql05', 'sql06', 'sql07', 'sql08', 'sql09'] },
+        { name: 'HTTP and APIs', mods: ['cs10', 'cs13', 'be01', 'be04'] },
+        { name: 'Backend development in Python', mods: ['be17', 'be18', 'be21'], project: 'py-p2', behavioral: ['beh01', 'beh02'] },
+        { name: 'Testing and security', mods: ['be05', 'be19', 'be20', 'be15'], rec: ['be15'] },
+        { name: 'System design', mods: ['hld01', 'hld02', 'hld03', 'hld04', 'hld05', 'hld06', 'hld08', 'hld09'], project: 'py-p3', behavioral: ['beh04'] }
+      ],
+      extensions: ['py10', 'py11', 'be09', 'be16', 'hld12', 'devops08', 'devops11'] },
+    { id: 'frontend', name: 'Frontend', langs: ['js'], blurb: 'JavaScript, then TypeScript, HTML/CSS and the browser, React, and the testing, accessibility and performance work that separates seniors.',
+      stages: [
+        { name: 'JavaScript', mods: ['js01', 'js02', 'js03', 'js04', 'js05', 'js06', 'js07', 'js08', 'js09'] },
+        { name: 'TypeScript', mods: ['js10', 'js11'] },
+        { name: 'HTML, CSS and browser fundamentals', mods: ['fe01', 'fe02', 'fe03', 'fe04', 'fe05', 'fe07'], project: 'fe-p1' },
+        { name: 'A frontend framework (React)', mods: ['fe08', 'fe09', 'fe10'], project: 'fe-p2', behavioral: ['beh01', 'beh02'] },
+        { name: 'Testing, accessibility and performance', mods: ['fe06', 'fe11', 'fe14', 'fe13'], rec: ['fe13'] },
+        { name: 'Architecture and interviews', mods: ['fe15', 'fe16', 'dsa01', 'dsa02', 'dsa05', 'dsa06', 'dsa08', 'dsa13'], rec: ['dsa01', 'dsa02', 'dsa05', 'dsa06', 'dsa08', 'dsa13'], project: 'fe-p3', behavioral: ['beh04'] }
+      ],
+      extensions: ['js12', 'js13', 'js14', 'fe12', 'hld01', 'hld04', 'hld06'] },
+    { id: 'javaback', name: 'Java backend', langs: ['java'], blurb: 'Java, core DSA and SQL, Spring Boot backends, concurrency, then low-level and high-level design.',
+      stages: [
+        { name: 'Java', mods: ['java01', 'java02', 'java03', 'java04', 'java05', 'java06', 'java07', 'java08', 'java09'] },
+        { name: 'Core DSA and SQL', mods: ['dsa01', 'dsa02', 'dsa05', 'dsa06', 'dsa07', 'dsa08', 'dsa10', 'dsa11', 'dsa12', 'dsa13', 'dsa14', 'dsa15', 'dsa17', 'dsa19', 'sql01', 'sql02', 'sql03', 'sql04', 'sql05', 'sql06', 'sql07', 'sql09', 'sql10'], project: 'jb-p1' },
+        { name: 'Backend development', mods: ['be01', 'be02', 'be03', 'be04', 'be05', 'be06', 'be08', 'be09', 'be11'], project: 'jb-p2', behavioral: ['beh01', 'beh02'] },
+        { name: 'Concurrency', mods: ['java10', 'java11', 'java12'] },
+        { name: 'LLD and HLD', mods: ['lld01', 'lld02', 'lld03', 'lld04', 'lld05', 'lld06', 'lld07', 'lld08', 'lld10', 'hld01', 'hld02', 'hld03', 'hld04', 'hld05', 'hld06', 'hld07', 'hld08', 'hld09', 'hld12'], project: 'jb-p3', behavioral: ['beh03', 'beh04'] }
+      ],
+      extensions: ['java13', 'java14', 'be10', 'be12', 'be13', 'be16', 'sql11', 'sql12', 'hld10', 'hld14'] },
+    { id: 'aiapp', name: 'AI application development', langs: ['python'], blurb: 'Python, the maths that ML actually uses, ML and LLM foundations, evaluation, retrieval and tools, then deployment and safety.',
+      stages: [
+        { name: 'Python', mods: ['py01', 'py02', 'py03', 'py04', 'py05', 'py06', 'py07', 'py09'] },
+        { name: 'Essential maths', mods: ['ai03', 'ai18', 'ai19', 'ai20'] },
+        { name: 'ML and LLM foundations', mods: ['ai01', 'ai02', 'ai04', 'ai05', 'ai06', 'ai07'], project: 'ai-p1' },
+        { name: 'Evaluation', mods: ['ai13'] },
+        { name: 'Retrieval and tools', mods: ['ai08', 'ai09', 'ai10', 'ai11'], project: 'ai-p2', behavioral: ['beh01', 'beh02'] },
+        { name: 'Deployment and safety', mods: ['be01', 'be04', 'be17', 'ai14'], project: 'ai-p3', behavioral: ['beh04'] }
+      ],
+      extensions: ['ai12', 'ai15', 'ai16', 'ai17', 'py10', 'be18', 'be20', 'hld06'] },
+    { id: 'systems', name: 'C++ / systems', langs: ['cpp'], blurb: 'C++, DSA in C++, memory and ownership, operating systems and concurrency, networking, and systems projects.',
+      stages: [
+        { name: 'C++', mods: ['cpp01', 'cpp02', 'cpp03', 'cpp04', 'cpp05', 'cpp07', 'cpp08'] },
+        { name: 'DSA', mods: ['dsa01', 'dsa02', 'dsa04', 'dsa05', 'dsa06', 'dsa07', 'dsa08', 'dsa10', 'dsa11', 'dsa12', 'dsa13', 'dsa14', 'dsa15', 'dsa17', 'dsa19'], project: 'cpp-p1' },
+        { name: 'Memory and ownership', mods: ['cpp06', 'cpp09', 'cpp10', 'cpp12'], project: 'cpp-p2' },
+        { name: 'Operating systems and concurrency', mods: ['cs01', 'cs02', 'cs03', 'cs04', 'cs05', 'cs06', 'cs07', 'cs08', 'cpp11'], behavioral: ['beh01', 'beh02'] },
+        { name: 'Networking and systems projects', mods: ['cs10', 'cs11', 'cs12', 'cs13', 'cs09'], project: 'cpp-p3', behavioral: ['beh04'] }
+      ],
+      extensions: ['cpp13', 'cs14', 'dsa20', 'dsa21', 'lld10', 'hld10'] },
+    { id: 'devops', name: 'Cloud & DevOps', langs: ['python'], blurb: 'From Linux and networking to Terraform, Kubernetes, observability and multi-region architecture: cloud support to DevOps, SRE and cloud architect.',
+      stages: [
+        { name: 'Phase 1: The foundation', mods: ['devops01', 'devops02', 'devops03', 'devops04', 'devops05', 'devops06'], project: 'ops-p1', behavioral: ['beh01'] },
+        { name: 'Phase 2: Automation and provisioning', mods: ['py01', 'py02', 'py03', 'devops07', 'devops08', 'devops09', 'devops10', 'devops11', 'devops12'], project: 'ops-p2', behavioral: ['beh02'] },
+        { name: 'Phase 3: Orchestration, scale and observability', mods: ['devops13', 'devops14', 'devops15', 'devops16', 'devops17', 'devops18'], project: 'ops-p3', behavioral: ['beh04'] }
+      ],
+      extensions: ['cs08', 'cs09', 'cs11', 'cs13', 'hld04', 'hld12', 'be13', 'be14', 'be16'] }
+  ];
+  var PROJECTS = {
+    'sde-p1': { name: 'Problem-solving portfolio', hours: 12, brief: 'Solve and write up 15 mixed problems (5 easy, 7 medium, 3 hard) without topic labels, with brute force, optimised solution, complexity and tests for each.', rubric: ['Each solution passes your own edge-case tests', 'States time and space complexity correctly', 'Explains why the chosen pattern fits the clues'] },
+    'sde-p2': { name: 'Parking lot or library system', hours: 14, brief: 'Design and implement a parking lot (or library) in your language: requirements, class diagram, the core classes, and a demo run.', rubric: ['Clear entities and responsibilities', 'SOLID: no god class, extension without editing existing classes', 'A test or demo that exercises the main flows'] },
+    'py-p1': { name: 'CLI data tool', hours: 10, brief: 'A command-line tool that reads a CSV, answers three queries using the right data structures, and has pytest tests.', rubric: ['argparse interface with help text', 'Uses dict/heapq/deque where they fit', 'Tests for empty and malformed input'] },
+    'py-p2': { name: 'Task API with FastAPI', hours: 18, brief: 'A tasks API with FastAPI, SQLAlchemy and Alembic: CRUD, validation, pagination, and a migration history.', rubric: ['Pydantic models validate every input', 'Database access in a session per request', 'OpenAPI docs describe every endpoint'] },
+    'py-p3': { name: 'Production-ready API', hours: 20, brief: 'Add JWT auth, tests with coverage over 80%, a background job, Docker image and a short design doc with scaling notes.', rubric: ['Passwords hashed with argon2 or bcrypt', 'CI runs tests and lint on every push', 'Design doc covers caching and failure modes'] },
+    'fe-p1': { name: 'Accessible landing page', hours: 10, brief: 'A responsive landing page with semantic HTML, CSS layout, a form with validation, and a Lighthouse accessibility score of 95 or more.', rubric: ['Works from 320 px to desktop', 'Keyboard and screen-reader friendly', 'No layout shift on load'] },
+    'fe-p2': { name: 'React data app', hours: 16, brief: 'A React app that fetches, caches and paginates data from a public API, with loading and error states and TypeScript types.', rubric: ['No race conditions on fast typing', 'Typed API layer', 'Component tests for the main flows'] },
+    'fe-p3': { name: 'Frontend system design write-up', hours: 10, brief: 'Design an autocomplete or news feed: components, state, API contract, caching, performance budget and accessibility.', rubric: ['Clear data flow diagram', 'Performance and accessibility budgets', 'Trade-offs explained'] },
+    'jb-p1': { name: 'Algorithms with tests', hours: 10, brief: 'Implement 12 mixed problems in Java with JUnit tests, including boundary cases and a benchmark of two approaches.', rubric: ['JUnit tests for edge cases', 'Correct complexity analysis', 'Benchmark shows the asymptotic difference'] },
+    'jb-p2': { name: 'Spring Boot service', hours: 20, brief: 'A Spring Boot REST service with JPA, Flyway migrations, validation, authentication, and integration tests with Testcontainers.', rubric: ['Layered design with DTOs', 'Transactions where needed', 'Integration tests against a real database'] },
+    'jb-p3': { name: 'Concurrent booking system', hours: 18, brief: 'Design and build a seat-booking system that is correct under concurrent requests, with an LLD diagram and an HLD scaling plan.', rubric: ['No double booking under load test', 'Clear locking or optimistic concurrency strategy', 'Capacity estimate and scaling plan'] },
+    'ai-p1': { name: 'Classifier from scratch', hours: 12, brief: 'Train a logistic-regression classifier in plain Python with gradient descent, evaluate it, and compare with a library model.', rubric: ['Correct gradients (checked numerically)', 'Train/validation split and metrics', 'Explains overfitting with a learning curve'] },
+    'ai-p2': { name: 'RAG assistant over your notes', hours: 18, brief: 'Chunk, embed and retrieve your own documents, answer questions with citations, and measure answer quality on a golden set.', rubric: ['Retrieval quality measured (recall at k)', 'Answers cite their sources', 'Prompt-injection test cases included'] },
+    'ai-p3': { name: 'Deployed AI service', hours: 16, brief: 'Wrap the assistant in a FastAPI service with streaming, rate limits, logging of prompts and costs, and guardrails.', rubric: ['Streaming responses', 'Cost and latency tracked per request', 'Guardrails and an evaluation run in CI'] },
+    'cpp-p1': { name: 'Competitive toolkit', hours: 10, brief: 'A tested C++ header with fast I/O, a DSU, a segment tree and Dijkstra, plus 10 problems solved with it.', rubric: ['Header compiles with -Wall -Wextra cleanly', 'Unit tests for each structure', 'No undefined behaviour under sanitizers'] },
+    'cpp-p2': { name: 'Memory allocator', hours: 16, brief: 'A fixed-size pool allocator with RAII wrappers, benchmarks against new/delete, and tests under AddressSanitizer.', rubric: ['No leaks or double frees under ASan', 'Clear ownership model', 'Benchmark with analysis'] },
+    'cpp-p3': { name: 'Multithreaded HTTP server', hours: 24, brief: 'A small HTTP/1.1 server with a thread pool, keep-alive and graceful shutdown, load-tested with wrk or ab.', rubric: ['Handles concurrent clients without data races (TSan clean)', 'Correct HTTP parsing for GET and HEAD', 'Load test results with a bottleneck analysis'] },
+    'ops-p1': { name: 'Static site on the cloud', hours: 10, brief: 'Host a static site on object storage behind a CDN with your own DNS name and HTTPS, using least-privilege IAM, then tear it down.', rubric: ['HTTPS with a valid certificate', 'No public write access, least-privilege policy', 'Budget alert and teardown steps documented'] },
+    'ops-p2': { name: 'Containerised app with CI and IaC', hours: 20, brief: 'Containerise a small app, build and test it in GitHub Actions, and provision a two-tier VPC deployment with Terraform and Ansible.', rubric: ['Pipeline builds, scans and deploys on merge', 'Terraform with remote state and modules', 'Re-running Ansible changes nothing (idempotent)'] },
+    'ops-p3': { name: 'Kubernetes platform with observability', hours: 30, brief: 'Deploy the app to Kubernetes with Helm, autoscaling, Prometheus and Grafana dashboards, alerts, Vault secrets and a disaster-recovery runbook.', rubric: ['SLOs defined and alerting on burn rate', 'Secrets never in Git', 'Restore tested from backup within the RTO'] }
+  };
+  var REVISION = 0.15;
+  function resolve(id, lang) {
+    if (id.indexOf('prep:') !== 0) return [id];
+    var p = PREP[lang || 'java'] || PREP.java;
+    return (p[id.slice(5)] || []).slice();
+  }
+  function needs(id, lang) { var out = []; (NEEDS[id] || []).forEach(function (x) { resolve(x, lang).forEach(function (y) { if (out.indexOf(y) < 0) out.push(y); }); }); return out; }
+  function recs(id, lang) { var out = []; (RECS[id] || []).forEach(function (x) { resolve(x, lang).forEach(function (y) { if (out.indexOf(y) < 0) out.push(y); }); }); return out; }
+  /* A route expanded for one language: ordered unique modules, each tagged core / rec / opt, with prep stages filled in
+     and every missing prerequisite pulled in just before the module that needs it. */
+  function plan(routeId, lang) {
+    var R = ROUTES.filter(function (r) { return r.id === routeId; })[0];
+    if (!R) return null;
+    lang = R.langs.indexOf(lang) >= 0 ? lang : R.langs[0];
+    var seen = {}, list = [];
+    function add(id, kind, stage, visiting) {
+      if (seen[id]) { if (kind === 'core' && seen[id].kind !== 'core') seen[id].kind = 'core'; return; }
+      visiting = visiting || {};
+      if (visiting[id]) return;
+      visiting[id] = true;
+      needs(id, lang).forEach(function (n) { add(n, kind === 'opt' ? 'opt' : 'core', stage, visiting); });
+      seen[id] = { id: id, kind: kind, stage: stage };
+      list.push(seen[id]);
+    }
+    R.stages.forEach(function (st, si) {
+      st.mods.forEach(function (m) {
+        var kind = (st.opt || []).indexOf(m) >= 0 ? 'opt' : (st.rec || []).indexOf(m) >= 0 ? 'rec' : 'core';
+        resolve(m, lang).forEach(function (x) { add(x, kind, si); });
+      });
+    });
+    var ext = [];
+    (R.extensions || []).forEach(function (m) { resolve(m, lang).forEach(function (x) { if (!seen[x]) ext.push(x); }); });
+    return { route: R, lang: lang, items: list, extensions: ext };
+  }
+  /* hours: { moduleId: hours }. Returns totals for the schedule table. */
+  function schedule(routeId, lang, hours) {
+    var p = plan(routeId, lang);
+    if (!p) return null;
+    var core = 0, rec = 0, opt = 0, ext = 0, proj = 0;
+    p.items.forEach(function (it) { var h = hours[it.id] || 0; if (it.kind === 'core') core += h; else if (it.kind === 'rec') rec += h; else opt += h; });
+    p.extensions.forEach(function (id) { ext += hours[id] || 0; });
+    p.route.stages.forEach(function (st) { if (st.project && PROJECTS[st.project]) proj += PROJECTS[st.project].hours; });
+    var revision = Math.round((core + rec) * REVISION);
+    var total = core + rec + revision + proj;
+    var weeks = {};
+    [5, 10, 20, 40].forEach(function (w) { weeks[w] = Math.ceil(total / w); });
+    var extWeeks = {};
+    [5, 10, 20, 40].forEach(function (w) { extWeeks[w] = Math.ceil((opt + ext) * (1 + REVISION) / w); });
+    return { core: core, rec: rec, opt: opt, ext: ext, projects: proj, revision: revision, total: total, weeks: weeks, extWeeks: extWeeks, plan: p };
+  }
+  return { NEEDS: NEEDS, RECS: RECS, PREP: PREP, ROUTES: ROUTES, PROJECTS: PROJECTS, REVISION: REVISION, resolve: resolve, needs: needs, recs: recs, plan: plan, schedule: schedule };
+})();
+if (typeof module !== 'undefined') module.exports = PATHS;

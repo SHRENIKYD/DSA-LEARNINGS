@@ -54,12 +54,12 @@
       <p><code>lo</code> and <code>hi</code> are the edges of the part we still believe in (the <span class="c-b">search window</span>). <code>mid</code> is the middle we look at. Looking for 11: ${H.c('y', 'a[3] = 7')} is too small, so 7 and everything left of it is useless:</p>
       ${H.arr([1, 3, 5, 7, 9, 11, 13], { label: 'a', ptr: { 4: 'lo', 5: 'mid', 6: 'hi' }, hl: { 0: 'm', 1: 'm', 2: 'm', 3: 'm', 5: 'g' } })}
       <h4>The overflow trap: mid = lo + (hi - lo) / 2</h4>
-      <p>The "obvious" <code>(lo + hi) / 2</code> can break. A Java <code>int</code> holds at most <b>2,147,483,647</b>. If <code>lo = 2,000,000,000</code> and <code>hi = 2,100,000,000</code>, then <code>lo + hi = 4,100,000,000</code> does not fit and wraps around to a ${H.c('r', 'negative number')} → crash or wrong index.</p>
+      <p>The "obvious" <code>(lo + hi) / 2</code> can break. A 32-bit <code>int</code> (Java, C++) holds at most <b>2,147,483,647</b>. (Python ints never overflow, and a JS number stays exact up to 2<sup>53</sup>, but the habit matters.) If <code>lo = 2,000,000,000</code> and <code>hi = 2,100,000,000</code>, then <code>lo + hi = 4,100,000,000</code> does not fit and wraps around to a ${H.c('r', 'negative number')} → crash or wrong index.</p>
       ${H.table(['Formula', 'Biggest number it builds', 'Safe?'], [
         ['<code>(lo + hi) / 2</code>', 'lo + hi (can be ~4·10<sup>9</sup>)', H.c('r', 'NO – overflow')],
         ['<code>lo + (hi - lo) / 2</code>', 'hi - lo, then add to lo (never bigger than hi)', H.c('g', 'YES')]
       ])}
-      <p>Both give the same middle; the second simply never builds a too-big number. (In Java <code>(lo + hi) &gt;&gt;&gt; 1</code> also works, but <code>lo + (hi - lo) / 2</code> is the one to remember.)</p>
+      <p>Both give the same middle; the second simply never builds a too-big number. (In Java and JavaScript <code>(lo + hi) &gt;&gt;&gt; 1</code> also works, but <code>lo + (hi - lo) / 2</code> is the one to remember.)</p>
       <h4>Loop invariant = the promise you never break</h4>
       <p>An <b>invariant</b> is a sentence that is true before every loop round. For classic search it is: <i>"If the target exists, it is somewhere inside <code>[lo, hi]</code>."</i> Every move must keep that promise:</p>
       <ul>
@@ -82,9 +82,9 @@
       '"You must write an algorithm with <b>O(log n)</b> runtime complexity" → the problem is begging for binary search.',
       '<code>N ≤ 10<sup>5</sup></code> with up to 10<sup>5</sup> queries → O(N) per query = 10<sup>10</sup> (too slow), O(log N) per query = ~2·10<sup>6</sup> (fine).',
       'A yes/no question that is <b>monotonic</b>: once it becomes "yes" it stays "yes" (or the reverse) → binary search on that question.',
-      'Values or indices up to <b>10<sup>9</sup></b> → remember <code>mid = lo + (hi - lo) / 2</code> and use <code>long</code> when multiplying.'
+      'Values or indices up to <b>10<sup>9</sup></b> → remember <code>mid = lo + (hi - lo) / 2</code> and use a 64-bit type (<code>long</code> / <code>long long</code>) when multiplying.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       // Template A: closed window [lo, hi]. Use for "find exact value".
       int binarySearch(int[] a, int target) {
           int lo = 0, hi = a.length - 1;          // window = whole array
@@ -95,7 +95,43 @@
               else hi = mid - 1;                   // target is left of mid
           }
           return -1;                               // window empty: not present
-      }`, `
+      }`,
+      alt: [
+        { lang: 'python', code: `# Template A: closed window [lo, hi]. Use for "find exact value".
+def binary_search(a, target):
+    lo, hi = 0, len(a) - 1            # window = whole list
+    while lo <= hi:                   # window not empty
+        mid = (lo + hi) // 2          # Python ints never overflow
+        if a[mid] == target:
+            return mid                # found it
+        if a[mid] < target:
+            lo = mid + 1              # target is right of mid
+        else:
+            hi = mid - 1              # target is left of mid
+    return -1                         # window empty: not present` },
+        { lang: 'js', code: `// Template A: closed window [lo, hi]. Use for "find exact value".
+function binarySearch(a, target) {
+  let lo = 0, hi = a.length - 1;            // window = whole array
+  while (lo <= hi) {                        // window not empty
+    const mid = lo + ((hi - lo) >> 1);      // integer middle (no fractions)
+    if (a[mid] === target) return mid;      // found it
+    if (a[mid] < target) lo = mid + 1;      // target is right of mid
+    else hi = mid - 1;                      // target is left of mid
+  }
+  return -1;                                // window empty: not present
+}` },
+        { lang: 'cpp', code: `// Template A: closed window [lo, hi]. Use for "find exact value".
+int binarySearch(const vector<int>& a, int target) {
+    int lo = 0, hi = (int)a.size() - 1;     // window = whole array
+    while (lo <= hi) {                      // window not empty
+        int mid = lo + (hi - lo) / 2;       // overflow-safe middle
+        if (a[mid] == target) return mid;   // found it
+        if (a[mid] < target) lo = mid + 1;  // target is right of mid
+        else hi = mid - 1;                  // target is left of mid
+    }
+    return -1;                              // window empty: not present
+}` }
+      ] }, { lang: 'java', code: `
       // Template B: shrink until one candidate is left.
       // Finds the FIRST index whose value is >= target (n if none).
       int firstAtLeast(int[] a, int target) {
@@ -106,7 +142,42 @@
               else lo = mid + 1;                   // mid is too small: drop it
           }
           return lo;                               // lo == hi: the single survivor
-      }`],
+      }`,
+      alt: [
+        { lang: 'python', code: `# Template B: shrink until one candidate is left.
+# Finds the FIRST index whose value is >= target (n if none).
+def first_at_least(a, target):
+    lo, hi = 0, len(a)                # hi = n means "none found"
+    while lo < hi:                    # more than one candidate
+        mid = (lo + hi) // 2          # lower middle (never equals hi)
+        if a[mid] >= target:
+            hi = mid                  # mid could be the answer: keep it
+        else:
+            lo = mid + 1              # mid is too small: drop it
+    return lo                         # same as bisect.bisect_left(a, target)` },
+        { lang: 'js', code: `// Template B: shrink until one candidate is left.
+// Finds the FIRST index whose value is >= target (n if none).
+function firstAtLeast(a, target) {
+  let lo = 0, hi = a.length;                // hi = n means "none found"
+  while (lo < hi) {                         // more than one candidate
+    const mid = lo + ((hi - lo) >> 1);      // lower middle (never equals hi)
+    if (a[mid] >= target) hi = mid;         // mid could be the answer: keep it
+    else lo = mid + 1;                      // mid is too small: drop it
+  }
+  return lo;                                // lo == hi: the single survivor
+}` },
+        { lang: 'cpp', code: `// Template B: shrink until one candidate is left.
+// Finds the FIRST index whose value is >= target (n if none).
+int firstAtLeast(const vector<int>& a, int target) {
+    int lo = 0, hi = (int)a.size();         // hi = n means "none found"
+    while (lo < hi) {                       // more than one candidate
+        int mid = lo + (hi - lo) / 2;       // lower middle (never equals hi)
+        if (a[mid] >= target) hi = mid;     // mid could be the answer: keep it
+        else lo = mid + 1;                  // mid is too small: drop it
+    }
+    return lo;   // same as lower_bound(a.begin(), a.end(), target) - a.begin()
+}` }
+      ] }],
     codeTitle: ['Template A: while (lo <= hi)', 'Template B: while (lo < hi)'],
     viz: {
       title: 'Classic binary search: lo / mid / hi',
@@ -162,16 +233,31 @@
       {
         title: 'Watching (lo + hi) / 2 overflow for real',
         html: `<p>Suppose the window is <code>lo = 1,500,000,000</code>, <code>hi = 2,000,000,000</code> (think: binary searching over a huge range of IDs or answers).</p>
-          ${H.table(['Formula', 'Math', 'What Java int gets'], [
+          ${H.table(['Formula', 'Math', 'What a 32-bit Java int gets'], [
             ['<code>(lo + hi) / 2</code>', '3,500,000,000 / 2', H.c('r', '(-794,967,296) / 2 = -397,483,648 → crash or wrong index')],
             ['<code>lo + (hi - lo) / 2</code>', '1.5·10<sup>9</sup> + 250,000,000', H.c('g', '1,750,000,000 ✔')],
             ['<code>(lo + hi) &gt;&gt;&gt; 1</code>', 'unsigned shift reads the wrapped bits correctly', H.c('g', '1,750,000,000 ✔')]
           ])}
           <p>3,500,000,000 is bigger than 2,147,483,647, so it wraps around by 2<sup>32</sup> = 4,294,967,296 and becomes negative.</p>`,
-        code: `int lo = 1_500_000_000, hi = 2_000_000_000;
+        code: { lang: 'java', code: `int lo = 1_500_000_000, hi = 2_000_000_000;
 System.out.println((lo + hi) / 2);        // -397483648  (overflow!)
 System.out.println(lo + (hi - lo) / 2);   // 1750000000  (safe)
-System.out.println((lo + hi) >>> 1);      // 1750000000  (safe, unsigned shift)`
+System.out.println((lo + hi) >>> 1);      // 1750000000  (safe, unsigned shift)`,
+          alt: [
+            { lang: 'python', code: `lo, hi = 1_500_000_000, 2_000_000_000
+print((lo + hi) // 2)          # 1750000000: Python ints never overflow
+# What a 32-bit int would hold for lo + hi (wrap around by 2**32):
+wrapped = (lo + hi + 2**31) % 2**32 - 2**31
+print(wrapped)                 # -794967296: the bug Java and C++ code must avoid` },
+            { lang: 'js', code: `const lo = 1_500_000_000, hi = 2_000_000_000;
+console.log(Math.floor((lo + hi) / 2));   // 1750000000: Number is a double, no wrap here
+console.log(((lo + hi) | 0) >> 1);        // -397483648: |0 forces 32 bits and overflows
+console.log((lo + hi) >>> 1);             // 1750000000: unsigned shift, safe below 2^32` },
+            { lang: 'cpp', code: `int lo = 1500000000, hi = 2000000000;
+// cout << (lo + hi) / 2;               // signed overflow: undefined behaviour in C++
+cout << lo + (hi - lo) / 2 << "\\n";      // 1750000000  (safe)
+cout << ((long long)lo + hi) / 2 << "\\n"; // 1750000000  (safe, 64-bit sum)` }
+          ] }
       },
       {
         title: 'The one-element bug: lo &lt; hi with Template A moves',
@@ -230,6 +316,17 @@ System.out.println((lo + hi) >>> 1);      // 1750000000  (safe, unsigned shift)`
         `<p>No extra data structure — just three integers <code>lo</code>, <code>hi</code>, <code>mid</code>. lo moves right past mid, or hi moves left past mid, so the window always shrinks.</p>`,
         `<p>Traps: use <code>while (lo &lt;= hi)</code> (a 1-element window must still be checked); <code>mid = lo + (hi - lo) / 2</code>; move to <code>mid ± 1</code>, never to <code>mid</code>, or you may loop forever. Recipe: lo = 0, hi = n-1; while lo ≤ hi: mid; equal → return mid; smaller → lo = mid+1; bigger → hi = mid-1. Return -1.</p>`
       ],
+      tests: { sig: 'int[] int -> int', fn: 'search', cases: [
+        [[[-1, 0, 3, 5, 9, 12], 9], 4],
+        [[[-1, 0, 3, 5, 9, 12], 2], -1],
+        [[[5], 5], 0],
+        [[[5], -5], -1],
+        [[[1, 3], 3], 1],
+        [[[1, 3], 0], -1],
+        [[[-9999, -5, 0, 7, 9999], -9999], 0],
+        [[[-9999, -5, 0, 7, 9999], 9999], 4],
+        [[[2, 4, 6, 8, 10, 12, 14], 15], -1]
+      ] },
       solution: {
         approach: `<p>Template A on the closed window [lo, hi]; stop on a match or when the window is empty.</p>`,
         code: `
@@ -255,6 +352,42 @@ System.out.println((lo + hi) >>> 1);      // 1750000000  (safe, unsigned shift)`
                   System.out.println(s.search(new int[]{-1, 0, 3, 5, 9, 12}, 2)); // -1
               }
           }`,
+        alt: [
+          { lang: 'python', code: `def search(nums, target):
+    lo, hi = 0, len(nums) - 1          # the window we still trust
+    while lo <= hi:                    # window still has at least 1 item
+        mid = (lo + hi) // 2           # Python ints never overflow
+        if nums[mid] == target:
+            return mid                 # found it
+        if nums[mid] < target:
+            lo = mid + 1               # mid and everything left of it are too small
+        else:
+            hi = mid - 1               # mid and everything right of it are too big
+    return -1                          # window empty: target not present` },
+          { lang: 'js', code: `function search(nums, target) {
+  let lo = 0, hi = nums.length - 1;         // the window we still trust
+  while (lo <= hi) {                        // window still has at least 1 item
+    const mid = lo + ((hi - lo) >> 1);      // middle; >> 1 halves a small int
+    if (nums[mid] === target) return mid;   // found it
+    if (nums[mid] < target) lo = mid + 1;   // mid and everything left are too small
+    else hi = mid - 1;                      // mid and everything right are too big
+  }
+  return -1;                                // window empty: target not present
+}` },
+          { lang: 'cpp', code: `class Solution {
+public:
+    int search(const vector<int>& nums, int target) {
+        int lo = 0, hi = (int)nums.size() - 1;     // the window we still trust
+        while (lo <= hi) {                          // window still has at least 1 item
+            int mid = lo + (hi - lo) / 2;           // middle, written so it can't overflow
+            if (nums[mid] == target) return mid;    // found it
+            if (nums[mid] < target) lo = mid + 1;   // mid and everything left are too small
+            else hi = mid - 1;                      // mid and everything right are too big
+        }
+        return -1;                                  // window empty: target not present
+    }
+};` }
+        ],
         dry: {
           head: ['target', 'lo', 'hi', 'mid', 'nums[mid]', 'action'],
           rows: [
@@ -304,7 +437,7 @@ System.out.println((lo + hi) >>> 1);      // 1750000000  (safe, unsigned shift)`
       'Sorted array <b>with duplicates</b> + O(log n) required → plain search is not enough; you need the "keep going" version.',
       '"Insert position" / "where would x go" → lower bound.'
     ],
-    code: `
+    code: { lang: 'java', code: `
       // Lower bound: first index i with a[i] >= x (returns n if none).
       static int lowerBound(int[] a, int x) {
           int lo = 0, hi = a.length;          // answer lies in [0, n]
@@ -331,6 +464,85 @@ System.out.println((lo + hi) >>> 1);      // 1750000000  (safe, unsigned shift)`
       static int countOf(int[] a, int x) {
           return upperBound(a, x) - lowerBound(a, x);
       }`,
+      alt: [
+        { lang: 'python', code: `# Lower bound: first index i with a[i] >= x (returns n if none).
+def lower_bound(a, x):
+    lo, hi = 0, len(a)                # answer lies in [0, n]
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if a[mid] >= x:
+            hi = mid                  # mid is a "yes": answer is mid or to its left
+        else:
+            lo = mid + 1              # mid is a "no": answer is to its right
+    return lo
+
+# Upper bound: first index i with a[i] > x (returns n if none).
+def upper_bound(a, x):
+    lo, hi = 0, len(a)
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if a[mid] > x:                # only the comparison changed: > instead of >=
+            hi = mid
+        else:
+            lo = mid + 1
+    return lo
+
+# How many times does x appear? Two O(log n) searches.
+def count_of(a, x):
+    return upper_bound(a, x) - lower_bound(a, x)
+# The standard library has both: bisect_left == lower_bound, bisect_right == upper_bound.` },
+        { lang: 'js', code: `// Lower bound: first index i with a[i] >= x (returns n if none).
+function lowerBound(a, x) {
+  let lo = 0, hi = a.length;              // answer lies in [0, n]
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (a[mid] >= x) hi = mid;            // mid is a "yes": answer is mid or to its left
+    else lo = mid + 1;                    // mid is a "no": answer is to its right
+  }
+  return lo;
+}
+
+// Upper bound: first index i with a[i] > x (returns n if none).
+function upperBound(a, x) {
+  let lo = 0, hi = a.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (a[mid] > x) hi = mid;             // only the comparison changed: > instead of >=
+    else lo = mid + 1;
+  }
+  return lo;
+}
+
+// How many times does x appear? Two O(log n) searches.
+const countOf = (a, x) => upperBound(a, x) - lowerBound(a, x);` },
+        { lang: 'cpp', code: `// Lower bound: first index i with a[i] >= x (returns n if none).
+int lowerBound(const vector<int>& a, int x) {
+    int lo = 0, hi = (int)a.size();       // answer lies in [0, n]
+    while (lo < hi) {
+        int mid = lo + (hi - lo) / 2;
+        if (a[mid] >= x) hi = mid;        // mid is a "yes": answer is mid or to its left
+        else lo = mid + 1;                // mid is a "no": answer is to its right
+    }
+    return lo;
+}
+
+// Upper bound: first index i with a[i] > x (returns n if none).
+int upperBound(const vector<int>& a, int x) {
+    int lo = 0, hi = (int)a.size();
+    while (lo < hi) {
+        int mid = lo + (hi - lo) / 2;
+        if (a[mid] > x) hi = mid;         // only the comparison changed: > instead of >=
+        else lo = mid + 1;
+    }
+    return lo;
+}
+
+// How many times does x appear? The STL version: equal_range gives both bounds.
+int countOf(const vector<int>& a, int x) {
+    auto [first, last] = equal_range(a.begin(), a.end(), x);
+    return (int)(last - first);           // == upperBound(a, x) - lowerBound(a, x)
+}` }
+      ] },
     codeTitle: 'lowerBound / upperBound / count',
     viz: {
       title: 'First or last occurrence: keep searching after a hit',
@@ -378,12 +590,30 @@ System.out.println((lo + hi) >>> 1);      // 1750000000  (safe, unsigned shift)`
         html: `<p>How many 7s are in ${H.arr([1, 3, 7, 7, 7, 7, 9, 12], { label: 'a', hl: { 2: 'g', 3: 'g', 4: 'g', 5: 'g' }, ptr: { 2: 'lb', 6: 'ub' } })}</p>
           <p>lowerBound(7) = first index with a[i] ≥ 7 = ${H.c('g', '2')}. upperBound(7) = first index with a[i] &gt; 7 = ${H.c('p', '6')}. Count = 6 − 2 = <b>4</b>.</p>
           <p>If the array had a million 7s, a "find one then walk" approach would take a million steps; two bounds still take about 40.</p>`,
-        code: `int[] a = {1, 3, 7, 7, 7, 7, 9, 12};
+        code: { lang: 'java', code: `int[] a = {1, 3, 7, 7, 7, 7, 9, 12};
 int lb = 0, hi = a.length;
 while (lb < hi) { int mid = lb + (hi - lb) / 2; if (a[mid] >= 7) hi = mid; else lb = mid + 1; }
 int ub = 0; hi = a.length;
 while (ub < hi) { int mid = ub + (hi - ub) / 2; if (a[mid] > 7) hi = mid; else ub = mid + 1; }
-System.out.println(ub - lb); // 4`
+System.out.println(ub - lb); // 4`,
+          alt: [
+            { lang: 'python', code: `from bisect import bisect_left, bisect_right
+
+a = [1, 3, 7, 7, 7, 7, 9, 12]
+lb = bisect_left(a, 7)         # first index with a[i] >= 7  -> 2
+ub = bisect_right(a, 7)        # first index with a[i] > 7   -> 6
+print(ub - lb)                 # 4` },
+            { lang: 'js', code: `const a = [1, 3, 7, 7, 7, 7, 9, 12];
+let lb = 0, hi = a.length;
+while (lb < hi) { const mid = (lb + hi) >>> 1; if (a[mid] >= 7) hi = mid; else lb = mid + 1; }
+let ub = 0; hi = a.length;
+while (ub < hi) { const mid = (ub + hi) >>> 1; if (a[mid] > 7) hi = mid; else ub = mid + 1; }
+console.log(ub - lb); // 4` },
+            { lang: 'cpp', code: `vector<int> a = {1, 3, 7, 7, 7, 7, 9, 12};
+auto lb = lower_bound(a.begin(), a.end(), 7);   // first element >= 7 (index 2)
+auto ub = upper_bound(a.begin(), a.end(), 7);   // first element > 7  (index 6)
+cout << (ub - lb) << "\\n";                     // 4` }
+          ] }
       },
       {
         title: 'Floor and ceiling of a missing value',
@@ -407,18 +637,38 @@ System.out.println(ub - lb); // 4`
       {
         title: 'Searching by a key inside objects (timestamps)',
         html: `<p>A log of events sorted by time: <code>[09:00, 09:05, 09:05, 09:12, 09:30]</code>. "Show all events between 09:05 and 09:20" = indices <code>[lowerBound(09:05), upperBound(09:20))</code> = [1, 4) → three events. Every time-range query in a sorted log, database index or metrics store is just these two bounds.</p>`,
-        code: `long[] times = {900, 905, 905, 912, 930};      // minutes written as hhmm for readability
+        code: { lang: 'java', code: `long[] times = {900, 905, 905, 912, 930};      // minutes written as hhmm for readability
 int from = Arrays.binarySearch(times, 905);       // some index of 905 (not guaranteed first!)
-System.out.println(from >= 0 ? "905 present" : "905 missing");`
+System.out.println(from >= 0 ? "905 present" : "905 missing");`,
+          alt: [
+            { lang: 'python', code: `from bisect import bisect_left, bisect_right
+
+times = [900, 905, 905, 912, 930]       # minutes written as hhmm for readability
+lo = bisect_left(times, 905)            # first event at or after 09:05 -> 1
+hi = bisect_right(times, 920)           # first event after 09:20      -> 4
+print(times[lo:hi])                     # [905, 905, 912]: three events` },
+            { lang: 'js', code: `// JS has no built-in binary search; write lowerBound once and reuse it.
+const lowerBound = (a, x) => { let lo = 0, hi = a.length; while (lo < hi) { const m = (lo + hi) >>> 1; if (a[m] >= x) hi = m; else lo = m + 1; } return lo; };
+const times = [900, 905, 905, 912, 930];        // minutes written as hhmm for readability
+const from = lowerBound(times, 905);            // first event at or after 09:05 -> 1
+const to = lowerBound(times, 921);              // first event after 09:20 -> 4
+console.log(times.slice(from, to));             // [905, 905, 912]` },
+            { lang: 'cpp', code: `vector<long long> times = {900, 905, 905, 912, 930};   // minutes written as hhmm
+// binary_search only answers yes/no; lower_bound gives the FIRST matching position.
+bool present = binary_search(times.begin(), times.end(), 905LL);
+auto from = lower_bound(times.begin(), times.end(), 905LL);   // first 905 (index 1)
+auto to = upper_bound(times.begin(), times.end(), 920LL);     // first after 09:20 (index 4)
+cout << (present ? "905 present" : "905 missing") << ", " << (to - from) << " events\\n";` }
+          ] }
       }
     ],
     deepDive: `<p><b>One template to rule them all: "first true".</b> Every boundary question is: given a predicate <code>P(i)</code> that is <code>false…false true…true</code>, find the first true. lower bound uses <code>P(i) = a[i] ≥ x</code>, upper bound uses <code>a[i] &gt; x</code>, "last index ≤ x" is <code>firstTrue(a[i] &gt; x) − 1</code>. Writing only <code>firstTrue</code> and swapping predicates removes most off-by-one risk.</p>
-      <p><b>Library behaviour you must know:</b> Java <code>Arrays.binarySearch</code> / <code>Collections.binarySearch</code> make <b>no guarantee</b> which duplicate they return — never use them for "first occurrence". C++ has <code>lower_bound</code>, <code>upper_bound</code>, <code>equal_range</code>; Python has <code>bisect_left</code> (= lower bound) and <code>bisect_right</code> (= upper bound); Go has <code>sort.Search(n, pred)</code> which is literally "first true". For <b>changing</b> data, Java's <code>TreeMap</code>/<code>TreeSet</code> give <code>ceilingKey</code>, <code>floorKey</code>, <code>higherKey</code>, <code>lowerKey</code> in O(log n) on a red-black tree.</p>
+      <p><b>Library behaviour you must know:</b> Java <code>Arrays.binarySearch</code> / <code>Collections.binarySearch</code> make <b>no guarantee</b> which duplicate they return — never use them for "first occurrence". C++ has <code>lower_bound</code>, <code>upper_bound</code>, <code>equal_range</code>; Python has <code>bisect_left</code> (= lower bound) and <code>bisect_right</code> (= upper bound); Go has <code>sort.Search(n, pred)</code> which is literally "first true". For <b>changing</b> data, Java's <code>TreeMap</code>/<code>TreeSet</code> give <code>ceilingKey</code>, <code>floorKey</code>, <code>higherKey</code>, <code>lowerKey</code> in O(log n) on a red-black tree; C++ <code>std::set</code>/<code>std::map</code> have <code>lower_bound</code>/<code>upper_bound</code>, and Python's <code>sortedcontainers.SortedList</code> has <code>bisect_left</code>/<code>bisect_right</code>.</p>
       <p><b>Why the "save ans and keep going" version is also O(log n):</b> it never stops early, so it always does ~log₂ n rounds — duplicates do not slow it down. The "find one, then expand" version is O(log n + k) where k is the number of copies, which degrades to O(n).</p>
       <p><b>Production reality:</b> a database range scan on a B-tree index (<code>WHERE ts BETWEEN a AND b</code>) does a lower-bound seek to the first key ≥ a, then walks leaf pages until a key &gt; b. Time-series databases, Kafka's time index and sorted-string tables (SSTables) all use the same pair of bounds.</p>`,
     aiEra: `<p><b>What AI changes:</b> asking an assistant "first and last position of target" gives working code immediately — it's one of the most common LeetCode problems in its training data. The risk is the variants: "last element strictly smaller than x", "count in a range [L, R]", "closest value". These are where generated code silently returns one index too far.</p>
       <p><b>Use AI as a partner:</b> describe the predicate in words and ask it to map it to <code>firstTrue</code>: <code>Express 'largest index with a[i] &lt; x' using lower_bound or upper_bound and explain the -1</code>. Then ask for a table of 6 edge cases (empty array, all equal, x below min, x above max) and verify each by hand.</p>
-      <p><b>Where AI goes wrong:</b> using <code>Arrays.binarySearch</code> for "first occurrence" (unspecified with duplicates), forgetting <code>hi = n</code> so "insert at the end" is impossible, or returning early on a match.</p>
+      <p><b>Where AI goes wrong:</b> using a "find any match" search such as Java's <code>Arrays.binarySearch</code> for "first occurrence" (unspecified with duplicates), forgetting <code>hi = n</code> so "insert at the end" is impossible, or returning early on a match.</p>
       <p><b>What you must still own:</b> turning a word problem into a monotonic yes/no predicate and deciding whether you want the first true or the last false. That translation is the actual skill interviewers test.</p>`,
     problems: [{
       title: 'First and Last Position of Element in Sorted Array',
@@ -454,6 +704,17 @@ System.out.println(from >= 0 ? "905 present" : "905 missing");`
         `<p>No extra structure. Run binary search twice with an <code>ans</code> variable. On a hit: for first, save and go left (<code>hi = mid - 1</code>); for last, save and go right (<code>lo = mid + 1</code>).</p>`,
         `<p>Traps: empty array (n = 0) must return [-1, -1] without touching <code>nums[0]</code>; target missing → ans stays -1; do not return early on a hit. Recipe: first = search(goLeft); if first == -1 return [-1,-1]; last = search(goRight); return [first, last].</p>`
       ],
+      tests: { sig: 'int[] int -> int[]', fn: 'searchRange', cases: [
+        [[[5, 7, 7, 8, 8, 10], 8], [3, 4]],
+        [[[5, 7, 7, 8, 8, 10], 6], [-1, -1]],
+        [[[], 0], [-1, -1]],
+        [[[1], 1], [0, 0]],
+        [[[2, 2, 2, 2, 2], 2], [0, 4]],
+        [[[1, 2, 3], 4], [-1, -1]],
+        [[[-1000000000, -1000000000, 0, 1000000000], -1000000000], [0, 1]],
+        [[[1, 1, 2, 2, 2, 3], 2], [2, 4]],
+        [[[1, 2, 3, 3], 3], [2, 3]]
+      ] },
       solution: {
         approach: `<p>Two binary searches that keep going after a hit: one leans left, one leans right.</p>`,
         code: `
@@ -489,6 +750,78 @@ System.out.println(from >= 0 ? "905 present" : "905 missing");`
                   System.out.println(r[0] + " " + r[1]); // 3 4
               }
           }`,
+        alt: [
+          { lang: 'python', code: `def search_range(nums, target):
+    def find_edge(lean_left):
+        lo, hi, ans = 0, len(nums) - 1, -1
+        while lo <= hi:
+            mid = (lo + hi) // 2
+            if nums[mid] == target:
+                ans = mid                  # a real match: remember it
+                if lean_left:
+                    hi = mid - 1           # maybe an earlier copy exists
+                else:
+                    lo = mid + 1           # maybe a later copy exists
+            elif nums[mid] < target:
+                lo = mid + 1               # all copies are to the right
+            else:
+                hi = mid - 1               # all copies are to the left
+        return ans
+
+    first = find_edge(True)
+    if first == -1:
+        return [-1, -1]                    # not present at all
+    return [first, find_edge(False)]
+# Library view: bisect_left(nums, t) is the first index, bisect_right(nums, t) - 1 the last.` },
+          { lang: 'js', code: `function searchRange(nums, target) {
+  // leanLeft = true -> first occurrence, false -> last occurrence
+  const findEdge = (leanLeft) => {
+    let lo = 0, hi = nums.length - 1, ans = -1;
+    while (lo <= hi) {
+      const mid = lo + ((hi - lo) >> 1);
+      if (nums[mid] === target) {
+        ans = mid;                         // a real match: remember it
+        if (leanLeft) hi = mid - 1;        // maybe an earlier copy exists
+        else lo = mid + 1;                 // maybe a later copy exists
+      } else if (nums[mid] < target) {
+        lo = mid + 1;                      // all copies are to the right
+      } else {
+        hi = mid - 1;                      // all copies are to the left
+      }
+    }
+    return ans;
+  };
+  const first = findEdge(true);
+  if (first === -1) return [-1, -1];       // not present at all
+  return [first, findEdge(false)];
+}` },
+          { lang: 'cpp', code: `class Solution {
+    // leanLeft = true -> first occurrence, false -> last occurrence
+    int findEdge(const vector<int>& nums, int target, bool leanLeft) {
+        int lo = 0, hi = (int)nums.size() - 1, ans = -1;
+        while (lo <= hi) {
+            int mid = lo + (hi - lo) / 2;
+            if (nums[mid] == target) {
+                ans = mid;                         // a real match: remember it
+                if (leanLeft) hi = mid - 1;        // maybe an earlier copy exists
+                else lo = mid + 1;                 // maybe a later copy exists
+            } else if (nums[mid] < target) {
+                lo = mid + 1;                      // all copies are to the right
+            } else {
+                hi = mid - 1;                      // all copies are to the left
+            }
+        }
+        return ans;
+    }
+public:
+    vector<int> searchRange(const vector<int>& nums, int target) {
+        int first = findEdge(nums, target, true);
+        if (first == -1) return {-1, -1};          // not present at all
+        return {first, findEdge(nums, target, false)};
+        // Library view: std::equal_range(nums.begin(), nums.end(), target) gives both bounds.
+    }
+};` }
+        ],
         dry: {
           head: ['search', 'lo', 'hi', 'mid', 'nums[mid]', 'action', 'ans'],
           rows: [
@@ -651,6 +984,19 @@ System.out.println(from >= 0 ? "905 present" : "905 missing");`
         `<p>Still just lo / mid / hi. For the sorted side you can test "is target inside?" with two comparisons against its ends. Inside → move into it; outside → move to the other side.</p>`,
         `<p>Traps: use <code>≤</code> in <code>a[lo] ≤ a[mid]</code> (when lo == mid); use strict <code>&lt;</code> against <code>a[mid]</code> in the range check because mid was already checked; a not-rotated array works too (left always sorted). Recipe: while lo ≤ hi: mid; if hit return; if left sorted: (a[lo] ≤ t &lt; a[mid]) ? hi = mid-1 : lo = mid+1; else: (a[mid] &lt; t ≤ a[hi]) ? lo = mid+1 : hi = mid-1. Return -1.</p>`
       ],
+      tests: { sig: 'int[] int -> int', fn: 'search', cases: [
+        [[[4, 5, 6, 7, 0, 1, 2], 0], 4],
+        [[[4, 5, 6, 7, 0, 1, 2], 3], -1],
+        [[[1], 0], -1],
+        [[[1], 1], 0],
+        [[[3, 1], 1], 1],
+        [[[1, 3], 3], 1],
+        [[[5, 1, 3], 5], 0],
+        [[[6, 7, 9, 1, 2, 4], 2], 4],
+        [[[1, 2, 3, 4, 5], 4], 3],
+        [[[2, 3, 4, 5, 6, 7, 8, 9, 1], 1], 8],
+        [[[15, 18, 22, 29, 35, 3, 6, 9, 11], 9], 7]
+      ] },
       solution: {
         approach: `<p>Binary search where each step first identifies the sorted half, then checks whether the target lies in its value range.</p>`,
         code: `
@@ -684,6 +1030,58 @@ System.out.println(from >= 0 ? "905 present" : "905 missing");`
                   System.out.println(new Solution().search(new int[]{4, 5, 6, 7, 0, 1, 2}, 0)); // 4
               }
           }`,
+        alt: [
+          { lang: 'python', code: `def search(nums, target):
+    lo, hi = 0, len(nums) - 1
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        if nums[mid] == target:
+            return mid                          # found
+        if nums[lo] <= nums[mid]:               # LEFT half [lo..mid] is sorted
+            if nums[lo] <= target < nums[mid]:  # chained comparison: target inside it
+                hi = mid - 1
+            else:
+                lo = mid + 1                    # otherwise it can only be on the right
+        else:                                   # RIGHT half [mid..hi] is sorted
+            if nums[mid] < target <= nums[hi]:
+                lo = mid + 1
+            else:
+                hi = mid - 1
+    return -1                                   # not present` },
+          { lang: 'js', code: `function search(nums, target) {
+  let lo = 0, hi = nums.length - 1;
+  while (lo <= hi) {
+    const mid = lo + ((hi - lo) >> 1);
+    if (nums[mid] === target) return mid;                 // found
+    if (nums[lo] <= nums[mid]) {                          // LEFT half [lo..mid] is sorted
+      if (nums[lo] <= target && target < nums[mid]) hi = mid - 1;
+      else lo = mid + 1;                                  // otherwise it is on the right
+    } else {                                              // RIGHT half [mid..hi] is sorted
+      if (nums[mid] < target && target <= nums[hi]) lo = mid + 1;
+      else hi = mid - 1;
+    }
+  }
+  return -1;                                              // not present
+}` },
+          { lang: 'cpp', code: `class Solution {
+public:
+    int search(const vector<int>& nums, int target) {
+        int lo = 0, hi = (int)nums.size() - 1;
+        while (lo <= hi) {
+            int mid = lo + (hi - lo) / 2;
+            if (nums[mid] == target) return mid;                  // found
+            if (nums[lo] <= nums[mid]) {                          // LEFT half [lo..mid] is sorted
+                if (nums[lo] <= target && target < nums[mid]) hi = mid - 1;
+                else lo = mid + 1;                                // otherwise it is on the right
+            } else {                                              // RIGHT half [mid..hi] is sorted
+                if (nums[mid] < target && target <= nums[hi]) lo = mid + 1;
+                else hi = mid - 1;
+            }
+        }
+        return -1;                                                // not present
+    }
+};` }
+        ],
         dry: {
           head: ['lo', 'hi', 'mid', 'nums[mid]', 'sorted half', 'target in it?', 'action'],
           rows: [
@@ -759,13 +1157,38 @@ System.out.println(from >= 0 ? "905 present" : "905 missing");`
       {
         title: 'Mountain array: find the summit',
         html: `<p>A <b>mountain array</b> strictly rises then strictly falls, e.g. ${H.arr([0, 2, 5, 9, 7, 3, 1], { label: 'a', hl: { 3: 'p' } })} It has exactly <b>one</b> peak, so the same code returns the unique summit (index ${H.c('p', '3')}). This is "Peak Index in a Mountain Array" and the first step of "Find in Mountain Array" (find the summit, then binary search the rising side ascending and the falling side descending).</p>`,
-        code: `int[] a = {0, 2, 5, 9, 7, 3, 1};
+        code: { lang: 'java', code: `int[] a = {0, 2, 5, 9, 7, 3, 1};
 int lo = 0, hi = a.length - 1;
 while (lo < hi) {
     int mid = lo + (hi - lo) / 2;
     if (a[mid] < a[mid + 1]) lo = mid + 1; else hi = mid;
 }
-System.out.println(lo); // 3`
+System.out.println(lo); // 3`,
+          alt: [
+            { lang: 'python', code: `a = [0, 2, 5, 9, 7, 3, 1]
+lo, hi = 0, len(a) - 1
+while lo < hi:
+    mid = (lo + hi) // 2
+    if a[mid] < a[mid + 1]:
+        lo = mid + 1               # uphill: summit is to the right
+    else:
+        hi = mid                   # downhill: summit is mid or left
+print(lo)  # 3` },
+            { lang: 'js', code: `const a = [0, 2, 5, 9, 7, 3, 1];
+let lo = 0, hi = a.length - 1;
+while (lo < hi) {
+  const mid = (lo + hi) >>> 1;
+  if (a[mid] < a[mid + 1]) lo = mid + 1; else hi = mid;
+}
+console.log(lo); // 3` },
+            { lang: 'cpp', code: `vector<int> a = {0, 2, 5, 9, 7, 3, 1};
+int lo = 0, hi = (int)a.size() - 1;
+while (lo < hi) {
+    int mid = lo + (hi - lo) / 2;
+    if (a[mid] < a[mid + 1]) lo = mid + 1; else hi = mid;
+}
+cout << lo << "\\n"; // 3` }
+          ] }
       },
       {
         title: 'Why flat ground (equal neighbours) breaks it',
@@ -813,8 +1236,19 @@ System.out.println(lo); // 3`
       hints: [
         `<p><b>Aha:</b> if <code>a[mid] &lt; a[mid+1]</code>, a peak exists to the right of mid; otherwise a peak exists in <code>[lo, mid]</code> (mid included). Sorting is not needed — only a guaranteed side.</p>`,
         `<p>Use the <code>while (lo &lt; hi)</code> template: <code>lo = mid + 1</code> when uphill, <code>hi = mid</code> when downhill. When lo == hi, that index is the peak.</p>`,
-        `<p>Traps: with <code>lo &lt; hi</code>, mid is always &lt; hi, so <code>mid + 1</code> never goes out of bounds; never write <code>hi = mid - 1</code> on the downhill case (you might throw away the peak); n = 1 → return 0 (loop doesn't run). Values can be <code>Integer.MIN_VALUE</code> — that's fine since we never compute -∞ ourselves.</p>`
+        `<p>Traps: with <code>lo &lt; hi</code>, mid is always &lt; hi, so <code>mid + 1</code> never goes out of bounds; never write <code>hi = mid - 1</code> on the downhill case (you might throw away the peak); n = 1 → return 0 (loop doesn't run). Values can be the smallest int (-2<sup>31</sup>) — that's fine since we never compute -∞ ourselves.</p>`
       ],
+      tests: { sig: 'int[] -> int', fn: 'findPeakElement', check: '(a, out) => { const v = a[0], i = out; return Number.isInteger(i) && i >= 0 && i < v.length && (i === 0 || v[i] > v[i - 1]) && (i === v.length - 1 || v[i] > v[i + 1]); }', cases: [
+        [[[1, 2, 1, 3, 5, 6, 4]], 5],
+        [[[1, 2, 3]], 2],
+        [[[3, 2, 1]], 0],
+        [[[5]], 0],
+        [[[1, 2]], 1],
+        [[[2, 1]], 0],
+        [[[-2147483648, 2147483647, -2147483648]], 1],
+        [[[-2147483648, -2147483647]], 1],
+        [[[1, 3, 2, 4, 1, 5, 0]], 5]
+      ] },
       solution: {
         approach: `<p>Binary search on the slope: always move toward the higher neighbour.</p>`,
         code: `
@@ -837,6 +1271,41 @@ System.out.println(lo); // 3`
                   System.out.println(new Solution().findPeakElement(new int[]{1, 2, 1, 3, 5, 6, 4})); // 5
               }
           }`,
+        alt: [
+          { lang: 'python', code: `def find_peak_element(nums):
+    lo, hi = 0, len(nums) - 1
+    # Promise: there is always a peak inside [lo, hi].
+    while lo < hi:                       # at least 2 candidates left
+        mid = (lo + hi) // 2             # mid < hi, so mid + 1 is safe
+        if nums[mid] < nums[mid + 1]:
+            lo = mid + 1                 # uphill to the right: a peak is on the right
+        else:
+            hi = mid                     # downhill: mid or something left of it is a peak
+    return lo                            # lo == hi: the last candidate is a peak` },
+          { lang: 'js', code: `function findPeakElement(nums) {
+  let lo = 0, hi = nums.length - 1;
+  // Promise: there is always a peak inside [lo, hi].
+  while (lo < hi) {                        // at least 2 candidates left
+    const mid = lo + ((hi - lo) >> 1);     // mid < hi, so mid + 1 is safe
+    if (nums[mid] < nums[mid + 1]) lo = mid + 1;   // uphill: a peak is on the right
+    else hi = mid;                         // downhill: mid or something left is a peak
+  }
+  return lo;                               // lo == hi: the last candidate is a peak
+}` },
+          { lang: 'cpp', code: `class Solution {
+public:
+    int findPeakElement(const vector<int>& nums) {
+        int lo = 0, hi = (int)nums.size() - 1;
+        // Promise: there is always a peak inside [lo, hi].
+        while (lo < hi) {                          // at least 2 candidates left
+            int mid = lo + (hi - lo) / 2;          // mid < hi, so mid + 1 is safe
+            if (nums[mid] < nums[mid + 1]) lo = mid + 1;   // uphill: a peak is on the right
+            else hi = mid;                         // downhill: mid or something left is a peak
+        }
+        return lo;                                 // lo == hi: the last candidate is a peak
+    }
+};` }
+        ],
         dry: {
           head: ['lo', 'hi', 'mid', 'nums[mid]', 'nums[mid+1]', 'action'],
           rows: [
@@ -872,7 +1341,7 @@ System.out.println(lo); // 3`
         ['yes yes yes <b>no</b> no', 'the <b>last yes</b> (biggest that works)', 'ans = mid; lo = mid + 1'],
         ['no no <b>yes</b> yes yes', 'the <b>first yes</b> (smallest that works)', 'ans = mid; hi = mid - 1']
       ])}
-      <p>${H.c('r', 'Overflow trap:')} <code>mid * mid</code> with mid ≈ 10<sup>9</sup> is 10<sup>18</sup>, far beyond <code>int</code>. Compute it as <code>(long) mid * mid</code>, or compare <code>mid ≤ n / mid</code>.</p>
+      <p>${H.c('r', 'Overflow trap:')} <code>mid * mid</code> with mid ≈ 10<sup>9</sup> is 10<sup>18</sup>, far beyond a 32-bit <code>int</code>. Compute it in 64 bits (<code>(long) mid * mid</code> in Java, <code>(long long) mid * mid</code> in C++; Python never overflows), or compare <code>mid ≤ n / mid</code>.</p>
       <h4>Real numbers (precision search)</h4>
       <p>For a decimal answer like √2 or a cube root, there is no "mid + 1". Just repeat <code>mid = (lo + hi) / 2</code> a fixed number of times (e.g. 100): each round halves the gap, so after 100 rounds the error is smaller than anything a <code>double</code> can show.</p>`,
     clues: [
@@ -882,7 +1351,7 @@ System.out.println(lo); // 3`
       '"Return the answer with an error of at most 10<sup>-6</sup>" → real-valued binary search with a fixed number of iterations.',
       'A guessing game: "higher / lower" feedback → classic halving.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       // Integer square root: largest x with x*x <= n.
       static int mySqrt(int n) {
           int lo = 0, hi = n, ans = 0;
@@ -896,7 +1365,48 @@ System.out.println(lo); // 3`
               }
           }
           return ans;
-      }`, `
+      }`,
+      alt: [
+        { lang: 'python', code: `# Integer square root: largest x with x*x <= n.
+def my_sqrt(n):
+    lo, hi, ans = 0, n, 0
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        if mid * mid <= n:         # no cast needed: Python ints never overflow
+            ans = mid              # mid fits: remember it
+            lo = mid + 1           # try a bigger side
+        else:
+            hi = mid - 1           # too big: try smaller
+    return ans                     # math.isqrt(n) is the library version` },
+        { lang: 'js', code: `// Integer square root: largest x with x*x <= n.
+function mySqrt(n) {
+  let lo = 0, hi = n, ans = 0;
+  while (lo <= hi) {
+    const mid = lo + Math.floor((hi - lo) / 2);
+    if (mid * mid <= n) {      // exact while mid*mid < 2^53; huge squares stay > n anyway
+      ans = mid;               // mid fits: remember it
+      lo = mid + 1;            // try a bigger side
+    } else {
+      hi = mid - 1;            // too big: try smaller
+    }
+  }
+  return ans;
+}` },
+        { lang: 'cpp', code: `// Integer square root: largest x with x*x <= n.
+int mySqrt(int n) {
+    int lo = 0, hi = n, ans = 0;
+    while (lo <= hi) {
+        int mid = lo + (hi - lo) / 2;
+        if ((long long)mid * mid <= n) {   // long long: mid*mid can be ~4*10^18
+            ans = mid;                     // mid fits: remember it
+            lo = mid + 1;                  // try a bigger side
+        } else {
+            hi = mid - 1;                  // too big: try smaller
+        }
+    }
+    return ans;
+}` }
+      ] }, { lang: 'java', code: `
       // Real-valued search: cube root of a positive number, any precision.
       static double cubeRoot(double v) {
           double lo = 0, hi = Math.max(1.0, v);   // the answer lies in [0, max(1, v)]
@@ -906,7 +1416,39 @@ System.out.println(lo); // 3`
               else hi = mid;                      // big enough: answer is mid or left
           }
           return lo;
-      }`],
+      }`,
+      alt: [
+        { lang: 'python', code: `# Real-valued search: cube root of a positive number, any precision.
+def cube_root(v):
+    lo, hi = 0.0, max(1.0, v)          # the answer lies in [0, max(1, v)]
+    for _ in range(100):               # 100 halvings: gap becomes tiny
+        mid = (lo + hi) / 2
+        if mid ** 3 < v:
+            lo = mid                   # too small: answer is right of mid
+        else:
+            hi = mid                   # big enough: answer is mid or left
+    return lo` },
+        { lang: 'js', code: `// Real-valued search: cube root of a positive number, any precision.
+function cubeRoot(v) {
+  let lo = 0, hi = Math.max(1, v);        // the answer lies in [0, max(1, v)]
+  for (let it = 0; it < 100; it++) {      // 100 halvings: gap becomes tiny
+    const mid = (lo + hi) / 2;            // all numbers are doubles: no rounding down
+    if (mid * mid * mid < v) lo = mid;    // too small: answer is right of mid
+    else hi = mid;                        // big enough: answer is mid or left
+  }
+  return lo;
+}` },
+        { lang: 'cpp', code: `// Real-valued search: cube root of a positive number, any precision.
+double cubeRoot(double v) {
+    double lo = 0, hi = max(1.0, v);        // the answer lies in [0, max(1, v)]
+    for (int it = 0; it < 100; it++) {      // 100 halvings: gap becomes tiny
+        double mid = (lo + hi) / 2;
+        if (mid * mid * mid < v) lo = mid;  // too small: answer is right of mid
+        else hi = mid;                      // big enough: answer is mid or left
+    }
+    return lo;
+}` }
+      ] }],
     codeTitle: ['Integer search on f(x) = x*x', 'Precision search on doubles'],
     viz: {
       title: 'Integer square root: guess, square, compare',
@@ -963,14 +1505,40 @@ System.out.println(lo); // 3`
       },
       {
         title: 'Overflow-free comparison with division',
-        html: `<p>Instead of casting to long you can compare <code>mid ≤ x / mid</code> (for mid &gt; 0). Integer division rounds down, and for whole numbers <code>mid · mid ≤ x ⇔ mid ≤ ⌊x / mid⌋</code>, so the test is exact. Handy in languages or problems where even <code>long</code> could overflow (e.g. searching k with k³ ≤ 10<sup>18</sup>).</p>`,
-        code: `int x = 2147483647, lo = 1, hi = x, ans = 0;
+        html: `<p>Instead of widening to a 64-bit type you can compare <code>mid ≤ x / mid</code> (for mid &gt; 0). Integer division rounds down, and for whole numbers <code>mid · mid ≤ x ⇔ mid ≤ ⌊x / mid⌋</code>, so the test is exact. Handy in languages or problems where even <code>long</code> could overflow (e.g. searching k with k³ ≤ 10<sup>18</sup>).</p>`,
+        code: { lang: 'java', code: `int x = 2147483647, lo = 1, hi = x, ans = 0;
 while (lo <= hi) {
     int mid = lo + (hi - lo) / 2;
     if (mid <= x / mid) { ans = mid; lo = mid + 1; }   // mid*mid <= x, no multiplication
     else hi = mid - 1;
 }
-System.out.println(ans); // 46340`
+System.out.println(ans); // 46340`,
+          alt: [
+            { lang: 'python', code: `x, lo, ans = 2147483647, 1, 0
+hi = x
+while lo <= hi:
+    mid = (lo + hi) // 2
+    if mid <= x // mid:            # mid*mid <= x without multiplying (// rounds down)
+        ans, lo = mid, mid + 1
+    else:
+        hi = mid - 1
+print(ans)  # 46340` },
+            { lang: 'js', code: `const x = 2147483647;
+let lo = 1, hi = x, ans = 0;
+while (lo <= hi) {
+  const mid = lo + Math.floor((hi - lo) / 2);
+  if (mid <= Math.floor(x / mid)) { ans = mid; lo = mid + 1; }   // floor: / gives a fraction in JS
+  else hi = mid - 1;
+}
+console.log(ans); // 46340` },
+            { lang: 'cpp', code: `int x = 2147483647, lo = 1, hi = x, ans = 0;
+while (lo <= hi) {
+    int mid = lo + (hi - lo) / 2;
+    if (mid <= x / mid) { ans = mid; lo = mid + 1; }   // mid*mid <= x, no multiplication
+    else hi = mid - 1;
+}
+cout << ans << "\\n"; // 46340` }
+          ] }
       },
       {
         title: 'Real-valued search: √2 to 6 decimal places',
@@ -990,11 +1558,11 @@ System.out.println(ans); // 46340`
       }
     ],
     deepDive: `<p><b>Bisection vs Newton.</b> Binary search gains <b>one correct bit</b> per round (linear convergence). Newton's method for √x, <code>r = (r + x / r) / 2</code>, roughly <b>doubles the number of correct digits</b> per round (quadratic convergence), so ~5–6 rounds suffice for a double. Integer Newton (<code>r = (r + x / r) / 2</code> until it stops decreasing) is what fast libraries use for big-integer square roots (Java's <code>BigInteger.sqrt()</code>, Python's <code>math.isqrt</code>). Binary search is simpler, always safe, and works for <i>any</i> monotonic function — Newton needs a derivative and a good start.</p>
-      <p><b>Can't I just use Math.sqrt?</b> IEEE 754 requires <code>sqrt</code> to be correctly rounded, so <code>(int) Math.sqrt(x)</code> is right for every <code>int</code>. For <code>long</code> values above 2<sup>53</sup>, the double cannot represent x exactly and the result can be off by one — production code then corrects with <code>while (r*r &gt; x) r--; while ((r+1)*(r+1) ≤ x) r++;</code> (careful with overflow). Interviews ask for the binary search to test your monotonic-function thinking.</p>
+      <p><b>Can't I just use the built-in sqrt?</b> IEEE 754 requires <code>sqrt</code> to be correctly rounded, so truncating it (<code>(int) Math.sqrt(x)</code>, <code>int(math.sqrt(x))</code>, <code>Math.floor(Math.sqrt(x))</code>) is right for every 32-bit <code>int</code>. For 64-bit values above 2<sup>53</sup>, the double cannot represent x exactly and the result can be off by one — production code then corrects with <code>while (r*r &gt; x) r--; while ((r+1)*(r+1) ≤ x) r++;</code> (careful with overflow). Python has an exact <code>math.isqrt</code>. Interviews ask for the binary search to test your monotonic-function thinking.</p>
       <p><b>Stopping rules for doubles.</b> <code>while (hi - lo &gt; 1e-9)</code> can loop forever when the numbers are large (e.g. 10<sup>12</sup>): neighbouring doubles there are farther apart than 10<sup>-9</sup>, so the gap never gets that small. A <b>fixed iteration count</b> (60–100) always terminates. Relative error <code>(hi - lo) &gt; 1e-9 * max(1, |lo|)</code> is the other safe option.</p>
       <p><b>Searching any monotonic f.</b> The same skeleton finds: the smallest n with n! &gt; 10<sup>18</sup>, the smallest radius covering all houses, the time when two moving objects meet, or the k-th smallest value in an implicit table (count how many values are ≤ mid). Requirement: f monotonic and cheap to evaluate.</p>`,
     aiEra: `<p><b>What AI changes:</b> an assistant will happily answer "compute sqrt" with <code>Math.sqrt</code> or with Newton's method. In an interview, say why you choose binary search (simple, provably terminates, works on any monotonic predicate) and mention Newton as the faster alternative — that shows breadth.</p>
-      <p><b>Use AI as a partner:</b> ask it to test your <code>mySqrt</code> against <code>(long) Math.floor(Math.sqrt(x))</code> for all x in [0, 10<sup>6</sup>] plus the 1,000 largest ints. Ask <code>What is the largest x for which my int version overflows if I remove the long cast?</code> to really understand the overflow.</p>
+      <p><b>Use AI as a partner:</b> ask it to test your <code>mySqrt</code> against the floor of the built-in square root for all x in [0, 10<sup>6</sup>] plus the 1,000 largest ints. Ask <code>What is the largest x for which my int version overflows if I remove the 64-bit cast?</code> to really understand the overflow.</p>
       <p><b>Where AI goes wrong:</b> <code>hi = x / 2</code> without handling x = 1 (answer 1 is outside [0, 0]), <code>mid * mid</code> in int, or a <code>while (hi - lo &gt; eps)</code> loop that never ends on large inputs.</p>
       <p><b>What you must still own:</b> recognizing that "no array, but a range of answers + a yes/no test that flips once" is still binary search. That shift — from searching <i>data</i> to searching <i>answers</i> — is the bridge to the next topics.</p>`,
     problems: [{
@@ -1019,13 +1587,25 @@ System.out.println(ans); // 46340`
         q: `For x = 2147483647 the search tries mid = 1073741823. What goes wrong with <code>if (mid * mid &lt;= x)</code> in <code>int</code>?`,
         options: [`Nothing, it is fine`, `mid * mid overflows and becomes a garbage value, so the comparison lies`, `It throws an ArithmeticException`, `Binary search cannot handle large x`],
         answer: 1,
-        explain: `1073741823² ≈ 1.15·10<sup>18</sup>, far above 2,147,483,647. Java int multiplication silently wraps around, giving a wrong (even negative) number. Cast to long first: <code>(long) mid * mid</code>.`
+        explain: `1073741823² ≈ 1.15·10<sup>18</sup>, far above 2,147,483,647. Java int multiplication silently wraps around, giving a wrong (even negative) number; in C++ it is undefined behaviour. Widen first: <code>(long) mid * mid</code> (C++: <code>(long long) mid * mid</code>). Python ints never overflow.`
       },
       hints: [
         `<p><b>Aha:</b> "k² ≤ x?" is yes for small k and no for big k, switching only once. The answer is the last yes in the range <code>[0, x]</code>.</p>`,
         `<p>No data structure: lo, hi, mid and an <code>ans</code> variable. If mid fits, save it and move lo up; otherwise move hi down.</p>`,
-        `<p>Traps: <code>(long) mid * mid</code> to avoid overflow; x = 0 and x = 1 must return themselves; don't use floating sqrt. Recipe: lo = 0, hi = x, ans = 0; while lo ≤ hi: mid; if mid² ≤ x → ans = mid, lo = mid+1; else hi = mid-1. Return ans.</p>`
+        `<p>Traps: square in 64 bits (<code>(long) mid * mid</code>; Python needs nothing) to avoid overflow; x = 0 and x = 1 must return themselves; don't use floating sqrt. Recipe: lo = 0, hi = x, ans = 0; while lo ≤ hi: mid; if mid² ≤ x → ans = mid, lo = mid+1; else hi = mid-1. Return ans.</p>`
       ],
+      tests: { sig: 'int -> int', fn: 'mySqrt', cases: [
+        [[0], 0],
+        [[1], 1],
+        [[2], 1],
+        [[3], 1],
+        [[4], 2],
+        [[8], 2],
+        [[20], 4],
+        [[2147395599], 46339],
+        [[2147395600], 46340],
+        [[2147483647], 46340]
+      ] },
       solution: {
         approach: `<p>Binary search over candidate answers 0..x for the last k with k² ≤ x.</p>`,
         code: `
@@ -1052,6 +1632,48 @@ System.out.println(ans); // 46340`
                   System.out.println(s.mySqrt(2147483647));  // 46340
               }
           }`,
+        alt: [
+          { lang: 'python', code: `def my_sqrt(x):
+    lo, hi, ans = 0, x, 0
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        if mid * mid <= x:          # Python ints never overflow
+            ans, lo = mid, mid + 1  # mid works: best so far, look for a bigger one
+        else:
+            hi = mid - 1            # mid too big, so are all larger values
+    return ans
+# In real code: math.isqrt(x) does exactly this, exactly.` },
+          { lang: 'js', code: `function mySqrt(x) {
+  let lo = 0, hi = x, ans = 0;
+  while (lo <= hi) {
+    const mid = lo + Math.floor((hi - lo) / 2);   // not >> 1: x can be near 2^31
+    // Squares near x are exact (far below 2^53). Huge squares may round, but stay > x.
+    if (mid * mid <= x) {
+      ans = mid;                 // mid works: best so far
+      lo = mid + 1;              // look for a bigger one
+    } else {
+      hi = mid - 1;              // mid too big, so are all larger values
+    }
+  }
+  return ans;
+}` },
+          { lang: 'cpp', code: `class Solution {
+public:
+    int mySqrt(int x) {
+        int lo = 0, hi = x, ans = 0;
+        while (lo <= hi) {
+            int mid = lo + (hi - lo) / 2;          // safe middle
+            if ((long long)mid * mid <= x) {       // square in long long: no overflow
+                ans = mid;                         // mid works: best so far
+                lo = mid + 1;                      // look for a bigger one
+            } else {
+                hi = mid - 1;                      // mid too big, so are all larger values
+            }
+        }
+        return ans;
+    }
+};` }
+        ],
         dry: {
           head: ['lo', 'hi', 'mid', 'mid²', '≤ 20?', 'action', 'ans'],
           rows: [
@@ -1176,14 +1798,46 @@ System.out.println(ans); // 46340`
       {
         title: 'Same skeleton, different costume: Magnetic Force Between Two Balls',
         html: `<p>"Place m balls in baskets at <code>position[i]</code> to <b>maximize the minimum magnetic force</b> |x − y|." Positions [1, 2, 3, 4, 7], m = 3 → answer ${H.c('p', '3')} (balls at 1, 4, 7). It is Aggressive Cows word for word: sort, binary search d in [1, 6], greedy check.</p>`,
-        code: `int[] pos = {1, 2, 3, 4, 7};
+        code: { lang: 'java', code: `int[] pos = {1, 2, 3, 4, 7};
 int m = 3, lo = 1, hi = pos[pos.length - 1] - pos[0], ans = 0;
 while (lo <= hi) {
     int d = lo + (hi - lo) / 2, count = 1, last = pos[0];
     for (int i = 1; i < pos.length; i++) if (pos[i] - last >= d) { count++; last = pos[i]; }
     if (count >= m) { ans = d; lo = d + 1; } else hi = d - 1;
 }
-System.out.println(ans); // 3`
+System.out.println(ans); // 3`,
+          alt: [
+            { lang: 'python', code: `pos, m = [1, 2, 3, 4, 7], 3
+lo, hi, ans = 1, pos[-1] - pos[0], 0
+while lo <= hi:
+    d = (lo + hi) // 2
+    count, last = 1, pos[0]
+    for p in pos[1:]:
+        if p - last >= d:
+            count, last = count + 1, p
+    if count >= m:
+        ans, lo = d, d + 1         # feasible: try a bigger gap
+    else:
+        hi = d - 1
+print(ans)  # 3` },
+            { lang: 'js', code: `const pos = [1, 2, 3, 4, 7], m = 3;
+let lo = 1, hi = pos[pos.length - 1] - pos[0], ans = 0;
+while (lo <= hi) {
+  const d = (lo + hi) >>> 1;
+  let count = 1, last = pos[0];
+  for (let i = 1; i < pos.length; i++) if (pos[i] - last >= d) { count++; last = pos[i]; }
+  if (count >= m) { ans = d; lo = d + 1; } else hi = d - 1;
+}
+console.log(ans); // 3` },
+            { lang: 'cpp', code: `vector<int> pos = {1, 2, 3, 4, 7};
+int m = 3, lo = 1, hi = pos.back() - pos.front(), ans = 0;
+while (lo <= hi) {
+    int d = lo + (hi - lo) / 2, count = 1, last = pos[0];
+    for (size_t i = 1; i < pos.size(); i++) if (pos[i] - last >= d) { count++; last = pos[i]; }
+    if (count >= m) { ans = d; lo = d + 1; } else hi = d - 1;
+}
+cout << ans << "\\n"; // 3` }
+          ] }
       },
       {
         title: 'Seeing the monotonic yes/no strip',
@@ -1245,6 +1899,18 @@ System.out.println(ans); // 3`
         `<p>Sort the stalls. The check is greedy: put cow 1 in the first stall, keep <code>last</code> = position of the latest cow, and place the next cow in the first stall with <code>pos - last ≥ d</code>. Count cows; feasible if count ≥ k.</p>`,
         `<p>Traps: forget to sort → greedy is wrong; <code>hi = max - min</code>, not max; positions up to 10<sup>9</sup> → <code>mid = lo + (hi - lo) / 2</code>; you can stop the greedy early once k cows are placed. Recipe: sort; lo = 1, hi = max-min; while lo ≤ hi: mid; if canPlace(mid) → ans = mid, lo = mid+1 else hi = mid-1.</p>`
       ],
+      tests: { sig: 'int[] int -> int', fn: 'aggressiveCows', cases: [
+        [[[1, 2, 8, 4, 9], 3], 3],
+        [[[1, 2, 4, 8, 9], 3], 3],
+        [[[0, 3, 4, 7, 10, 9], 4], 3],
+        [[[3, 9, 14, 20], 2], 17],
+        [[[1, 2], 2], 1],
+        [[[0, 1000000000], 2], 1000000000],
+        [[[1, 2, 3, 4, 7], 3], 3],
+        [[[5, 4, 3, 2, 1], 5], 1],
+        [[[0, 500000000, 1000000000], 3], 500000000],
+        [[[9, 1, 8, 2, 4], 3], 3]
+      ] },
       solution: {
         approach: `<p>Sort, then binary search the distance d with a greedy O(N) feasibility check.</p>`,
         code: `
@@ -1285,6 +1951,74 @@ System.out.println(ans); // 3`
                   System.out.println(aggressiveCows(new int[]{1, 2, 8, 4, 9}, 3)); // 3
               }
           }`,
+        alt: [
+          { lang: 'python', code: `def aggressive_cows(stalls, k):
+    stalls = sorted(stalls)                 # greedy needs left-to-right order (new list)
+
+    def can_place(d):
+        count, last = 1, stalls[0]          # first cow goes into the first stall
+        for pos in stalls[1:]:
+            if pos - last >= d:             # far enough from the previous cow
+                count, last = count + 1, pos
+                if count >= k:
+                    return True             # all cows placed: early exit
+        return count >= k
+
+    lo, hi, ans = 1, stalls[-1] - stalls[0], 0
+    while lo <= hi:
+        mid = (lo + hi) // 2                # a guessed minimum distance
+        if can_place(mid):
+            ans, lo = mid, mid + 1          # feasible: remember it, spread further
+        else:
+            hi = mid - 1                    # too ambitious: shrink the gap
+    return ans` },
+          { lang: 'js', code: `function aggressiveCows(stalls, k) {
+  const s = [...stalls].sort((a, b) => a - b);   // numeric sort on a copy
+  const canPlace = (d) => {
+    let count = 1, last = s[0];                  // first cow goes into the first stall
+    for (let i = 1; i < s.length; i++) {
+      if (s[i] - last >= d) {                    // far enough from the previous cow
+        count++;
+        last = s[i];
+        if (count >= k) return true;             // all cows placed: early exit
+      }
+    }
+    return count >= k;
+  };
+  let lo = 1, hi = s[s.length - 1] - s[0], ans = 0;
+  while (lo <= hi) {
+    const mid = lo + Math.floor((hi - lo) / 2);  // a guessed minimum distance
+    if (canPlace(mid)) { ans = mid; lo = mid + 1; }   // feasible: spread further
+    else hi = mid - 1;                           // too ambitious: shrink the gap
+  }
+  return ans;
+}` },
+          { lang: 'cpp', code: `class Solution {
+    // Can we place k cows so that every two neighbouring cows are >= d apart?
+    static bool canPlace(const vector<int>& stalls, int k, int d) {
+        int count = 1, last = stalls[0];           // first cow goes into the first stall
+        for (size_t i = 1; i < stalls.size(); i++) {
+            if (stalls[i] - last >= d) {           // far enough from the previous cow
+                count++;
+                last = stalls[i];
+                if (count >= k) return true;       // all cows placed: early exit
+            }
+        }
+        return count >= k;
+    }
+public:
+    static int aggressiveCows(vector<int> stalls, int k) {    // by value: we sort a copy
+        sort(stalls.begin(), stalls.end());                   // greedy needs left-to-right order
+        int lo = 1, hi = stalls.back() - stalls.front(), ans = 0;
+        while (lo <= hi) {
+            int mid = lo + (hi - lo) / 2;                     // a guessed minimum distance
+            if (canPlace(stalls, k, mid)) { ans = mid; lo = mid + 1; }   // feasible: spread further
+            else hi = mid - 1;                                // too ambitious: shrink the gap
+        }
+        return ans;
+    }
+};` }
+        ],
         dry: {
           head: ['lo', 'hi', 'mid (d)', 'greedy cows at', 'count', 'feasible?', 'action', 'ans'],
           rows: [
@@ -1328,11 +2062,11 @@ System.out.println(ans); // 3`
         ['Ship Packages in D Days', 'package weights', 'days', 'ship capacity']
       ])}
       <p><b>"Allocate Books" twist:</b> every student must get <b>at least one book</b>, so if <code>m &gt; n</code> the answer is <code>-1</code>. When m ≤ n, needing ≤ m groups is enough because a group can always be split further to give everyone a book.</p>
-      <p><b>Cost:</b> O(N) per check × log₂(sum − max) checks → <b>O(N log(sum))</b>. Use <code>long</code> for sums when values are large (10<sup>5</sup> × 10<sup>9</sup> overflows int).</p>`,
+      <p><b>Cost:</b> O(N) per check × log₂(sum − max) checks → <b>O(N log(sum))</b>. Use a 64-bit integer (<code>long</code> / <code>long long</code>; Python ints never overflow) for sums when values are large (10<sup>5</sup> × 10<sup>9</sup> overflows a 32-bit int).</p>`,
     clues: [
       '"<b>Minimize the maximum</b>" (time, pages, sum, load, capacity) → binary search on the answer, want the first yes.',
       '"Split into <b>k contiguous</b> parts / each worker takes <b>consecutive</b> items" → greedy counting check.',
-      'Answer lies between <b>max(a)</b> and <b>sum(a)</b>, which can be ~10<sup>14</sup> → only ~47 checks, but use <code>long</code>.',
+      'Answer lies between <b>max(a)</b> and <b>sum(a)</b>, which can be ~10<sup>14</sup> → only ~47 checks, but use a 64-bit integer.',
       '"Smallest capacity / speed / time such that the job finishes within D" → same first-yes pattern.',
       '"Each student must get at least one book" → impossible (return -1) when there are more students than books.'
     ],
@@ -1397,14 +2131,48 @@ System.out.println(ans); // 3`
       {
         title: 'Capacity to ship packages within D days',
         html: `<p>Weights [1..10] (in this order), D = 5 days, packages must ship in order. Smallest ship capacity? Range [max = 10, sum = 55]. Capacity 15 → days: [1..5]=15, [6,7]=13, [8]=8, [9]=9, [10]=10 → 5 days ✔. Capacity 14 → [1..4]=10, [5,6]=11, [7]=7, [8]=8, [9]=9, [10]=10 → 6 days ✘. Answer <b>15</b>.</p>`,
-        code: `int[] w = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+        code: { lang: 'java', code: `int[] w = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
 int days = 5, lo = 10, hi = 55, ans = hi;
 while (lo <= hi) {
     int cap = lo + (hi - lo) / 2, need = 1, load = 0;
     for (int x : w) { if (load + x > cap) { need++; load = 0; } load += x; }
     if (need <= days) { ans = cap; hi = cap - 1; } else lo = cap + 1;
 }
-System.out.println(ans); // 15`
+System.out.println(ans); // 15`,
+          alt: [
+            { lang: 'python', code: `w, days = list(range(1, 11)), 5
+lo, hi = max(w), sum(w)            # 10 .. 55
+ans = hi
+while lo <= hi:
+    cap = (lo + hi) // 2
+    need, load = 1, 0
+    for x in w:
+        if load + x > cap:
+            need, load = need + 1, 0
+        load += x
+    if need <= days:
+        ans, hi = cap, cap - 1     # feasible: try a smaller ship
+    else:
+        lo = cap + 1
+print(ans)  # 15` },
+            { lang: 'js', code: `const w = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], days = 5;
+let lo = 10, hi = 55, ans = hi;
+while (lo <= hi) {
+  const cap = (lo + hi) >>> 1;
+  let need = 1, load = 0;
+  for (const x of w) { if (load + x > cap) { need++; load = 0; } load += x; }
+  if (need <= days) { ans = cap; hi = cap - 1; } else lo = cap + 1;
+}
+console.log(ans); // 15` },
+            { lang: 'cpp', code: `vector<int> w = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+int days = 5, lo = 10, hi = 55, ans = hi;
+while (lo <= hi) {
+    int cap = lo + (hi - lo) / 2, need = 1, load = 0;
+    for (int x : w) { if (load + x > cap) { need++; load = 0; } load += x; }
+    if (need <= days) { ans = cap; hi = cap - 1; } else lo = cap + 1;
+}
+cout << ans << "\\n"; // 15` }
+          ] }
       },
       {
         title: 'More workers than items',
@@ -1460,8 +2228,21 @@ System.out.println(ans); // 15`
       hints: [
         `<p><b>Aha:</b> "Can k painters finish if nobody paints more than L?" is no for small L and yes for large L — monotonic. The answer is the first yes in <code>[max(boards), sum(boards)]</code>.</p>`,
         `<p>Check with a greedy pass: running <code>load</code> and <code>painters = 1</code>. If <code>load + board &gt; L</code>, start a new painter (<code>painters++</code>, <code>load = 0</code>). Feasible if <code>painters ≤ k</code>.</p>`,
-        `<p>Traps: lo must be <b>max</b> (not 0 or 1), otherwise a single board longer than L breaks the greedy; sum can reach 10<sup>10</sup> → use <code>long</code>; if k ≥ n the answer is just max. Recipe: lo = max, hi = sum; while lo ≤ hi: mid; if feasible(mid) → ans = mid, hi = mid-1 else lo = mid+1.</p>`
+        `<p>Traps: lo must be <b>max</b> (not 0 or 1), otherwise a single board longer than L breaks the greedy; sum can reach 10<sup>10</sup> → use a 64-bit integer (<code>long</code> / <code>long long</code>; Python ints never overflow); if k ≥ n the answer is just max. Recipe: lo = max, hi = sum; while lo ≤ hi: mid; if feasible(mid) → ans = mid, hi = mid-1 else lo = mid+1.</p>`
       ],
+      tests: { sig: 'int[] int -> long', fn: 'minTime', cases: [
+        [[[10, 20, 30, 40], 2], 60],
+        [[[10, 20, 30, 40], 1], 100],
+        [[[10, 20, 30, 40], 4], 40],
+        [[[5, 9, 3], 10], 9],
+        [[[7], 3], 7],
+        [[[10, 50], 2], 50],
+        [[[100000, 1, 100000], 2], 100001],
+        [[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 3], 21],
+        [[Array(1000).fill(100000), 3], 33400000],
+        [[{ $rep: 100000, n: 50000 }, 2], 2500000000],
+        [[{ $rep: 100000, n: 70000 }, 3], 2333400000]
+      ] },
       solution: {
         approach: `<p>Binary search the time limit in [max, sum]; feasibility = greedy count of painters ≤ k.</p>`,
         code: `
@@ -1503,6 +2284,69 @@ System.out.println(ans); // 15`
                   System.out.println(minTime(new int[]{10, 20, 30, 40}, 2)); // 60
               }
           }`,
+        alt: [
+          { lang: 'python', code: `def min_time(boards, k):
+    def painters_needed(limit):
+        painters, load = 1, 0              # load = length given to the current painter
+        for b in boards:
+            if load + b > limit:           # this board does not fit: next painter
+                painters, load = painters + 1, 0
+            load += b
+        return painters
+
+    lo, hi = max(boards), sum(boards)      # longest board .. one painter does everything
+    ans = hi
+    while lo <= hi:
+        mid = (lo + hi) // 2               # a guessed maximum time
+        if painters_needed(mid) <= k:
+            ans, hi = mid, mid - 1         # feasible: remember, then try smaller
+        else:
+            lo = mid + 1                   # needs too many painters: allow more time
+    return ans` },
+          { lang: 'js', code: `function minTime(boards, k) {
+  const paintersNeeded = (limit) => {
+    let painters = 1, load = 0;              // load = length given to the current painter
+    for (const b of boards) {
+      if (load + b > limit) { painters++; load = 0; }   // board does not fit: next painter
+      load += b;
+    }
+    return painters;
+  };
+  let lo = Math.max(...boards);              // someone must paint the longest board
+  let hi = boards.reduce((s, b) => s + b, 0);   // one painter does everything (exact below 2^53)
+  let ans = hi;
+  while (lo <= hi) {
+    const mid = lo + Math.floor((hi - lo) / 2);   // a guessed maximum time
+    if (paintersNeeded(mid) <= k) { ans = mid; hi = mid - 1; }   // feasible: try smaller
+    else lo = mid + 1;                       // needs too many painters: allow more time
+  }
+  return ans;
+}` },
+          { lang: 'cpp', code: `class Solution {
+    // How many painters are needed if nobody may paint more than limit?
+    static int paintersNeeded(const vector<int>& boards, long long limit) {
+        int painters = 1;
+        long long load = 0;                        // length given to the current painter
+        for (int b : boards) {
+            if (load + b > limit) { painters++; load = 0; }   // board does not fit: next painter
+            load += b;
+        }
+        return painters;
+    }
+public:
+    static long long minTime(const vector<int>& boards, int k) {
+        long long lo = *max_element(boards.begin(), boards.end());     // longest board must fit
+        long long hi = accumulate(boards.begin(), boards.end(), 0LL);  // 0LL: sum in long long
+        long long ans = hi;
+        while (lo <= hi) {
+            long long mid = lo + (hi - lo) / 2;    // a guessed maximum time
+            if (paintersNeeded(boards, mid) <= k) { ans = mid; hi = mid - 1; }   // feasible: try smaller
+            else lo = mid + 1;                     // needs too many painters: allow more time
+        }
+        return ans;
+    }
+};` }
+        ],
         dry: {
           head: ['lo', 'hi', 'mid', 'greedy groups', 'painters', '≤ 2?', 'action'],
           rows: [
@@ -1561,8 +2405,19 @@ System.out.println(ans); // 15`
       hints: [
         `<p><b>Aha:</b> "Can m students manage if nobody reads more than L pages?" Larger L → fewer students needed → monotonic (no…no yes…yes). Want the first yes in <code>[max, sum]</code>.</p>`,
         `<p>Greedy count: give books in order to the current student while the total stays ≤ L; otherwise start a new student. Feasible if <code>students ≤ m</code> (with m ≤ n, extra students can always take a book off someone, so "≤ m" is enough).</p>`,
-        `<p>Traps: return <b>-1 when m &gt; n</b> before searching; use <code>long</code> for sums (10<sup>5</sup> × 10<sup>6</sup> = 10<sup>11</sup>); lo = max(pages). Recipe: if m &gt; n → -1; lo = max, hi = sum; while lo ≤ hi: mid; count students for mid; if count ≤ m → ans = mid, hi = mid-1 else lo = mid+1.</p>`
+        `<p>Traps: return <b>-1 when m &gt; n</b> before searching; use a 64-bit integer (<code>long</code> / <code>long long</code>; Python ints never overflow) for sums (10<sup>5</sup> × 10<sup>6</sup> = 10<sup>11</sup>); lo = max(pages). Recipe: if m &gt; n → -1; lo = max, hi = sum; while lo ≤ hi: mid; count students for mid; if count ≤ m → ans = mid, hi = mid-1 else lo = mid+1.</p>`
       ],
+      tests: { sig: 'int[] int -> long', fn: 'findPages', cases: [
+        [[[12, 34, 67, 90], 2], 113],
+        [[[12, 34, 67, 90], 5], -1],
+        [[[10, 20, 30, 40], 2], 60],
+        [[[5], 1], 5],
+        [[[5, 9, 3], 3], 9],
+        [[[1, 1, 1, 1], 4], 1],
+        [[[15, 17, 20], 2], 32],
+        [[Array(2200).fill(1000000), 1], 2200000000],
+        [[Array(2200).fill(1000000), 3], 734000000]
+      ] },
       solution: {
         approach: `<p>Exactly the painter's skeleton plus the "m &gt; n → -1" rule.</p>`,
         code: `
@@ -1607,6 +2462,74 @@ System.out.println(ans); // 15`
                   System.out.println(findPages(new int[]{12, 34, 67, 90}, 5)); // -1
               }
           }`,
+        alt: [
+          { lang: 'python', code: `def find_pages(pages, m):
+    if m > len(pages):
+        return -1                          # someone would get no book
+
+    def students_needed(limit):
+        students, reading = 1, 0           # reading = pages of the current student
+        for p in pages:
+            if reading + p > limit:        # book doesn't fit: next student
+                students, reading = students + 1, 0
+            reading += p
+        return students
+
+    lo, hi = max(pages), sum(pages)        # thickest book .. one student reads all
+    ans = hi
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        if students_needed(mid) <= m:
+            ans, hi = mid, mid - 1         # feasible: try to lower the max
+        else:
+            lo = mid + 1                   # too many students needed: raise the limit
+    return ans` },
+          { lang: 'js', code: `function findPages(pages, m) {
+  if (m > pages.length) return -1;         // someone would get no book
+  const studentsNeeded = (limit) => {
+    let students = 1, reading = 0;         // reading = pages of the current student
+    for (const p of pages) {
+      if (reading + p > limit) { students++; reading = 0; }   // book doesn't fit: next student
+      reading += p;
+    }
+    return students;
+  };
+  let lo = Math.max(...pages);             // thickest book must fit
+  let hi = pages.reduce((s, p) => s + p, 0);   // one student reads all (≤ 1e11, exact)
+  let ans = hi;
+  while (lo <= hi) {
+    const mid = lo + Math.floor((hi - lo) / 2);
+    if (studentsNeeded(mid) <= m) { ans = mid; hi = mid - 1; }   // feasible: lower the max
+    else lo = mid + 1;                     // too many students needed: raise the limit
+  }
+  return ans;
+}` },
+          { lang: 'cpp', code: `class Solution {
+    // Number of students needed if nobody may read more than limit pages.
+    static int studentsNeeded(const vector<int>& pages, long long limit) {
+        int students = 1;
+        long long reading = 0;                     // pages of the current student
+        for (int p : pages) {
+            if (reading + p > limit) { students++; reading = 0; }   // book doesn't fit: next student
+            reading += p;
+        }
+        return students;
+    }
+public:
+    static long long findPages(const vector<int>& pages, int m) {
+        if (m > (int)pages.size()) return -1;      // someone would get no book
+        long long lo = *max_element(pages.begin(), pages.end());     // thickest book must fit
+        long long hi = accumulate(pages.begin(), pages.end(), 0LL);  // one student reads all
+        long long ans = hi;
+        while (lo <= hi) {
+            long long mid = lo + (hi - lo) / 2;
+            if (studentsNeeded(pages, mid) <= m) { ans = mid; hi = mid - 1; }   // feasible: lower the max
+            else lo = mid + 1;                     // too many students needed: raise the limit
+        }
+        return ans;
+    }
+};` }
+        ],
         dry: {
           head: ['lo', 'hi', 'mid', 'greedy groups', 'students', '≤ 2?', 'action'],
           rows: [
@@ -1657,10 +2580,10 @@ System.out.println(ans); // 15`
       '"Return the <b>minimum</b> integer k / speed / capacity / days <b>such that</b> the task finishes within H" → first yes on a monotonic check.',
       'The check for one guess is <b>easy and O(n)</b>, but there is no direct formula for the best value → binary search on the answer.',
       'Answer range like <b>1 … 10<sup>9</sup></b> with n ≤ 10<sup>4</sup>–10<sup>5</sup> → O(n log(range)) is fine, O(n · range) is not.',
-      'Ceiling division appears ("each hour she eats at most k", "each day ships at most C") → <code>(p + k - 1) / k</code>, watch overflow → <code>long</code>.',
+      'Ceiling division appears ("each hour she eats at most k", "each day ships at most C") → <code>(p + k - 1) / k</code>, watch overflow → 64-bit integer.',
       'Ask the magic question: <b>"If k works, does k + 1 also work?"</b> Yes → monotonic → binary search. If not (non-monotonic), binary search is wrong.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       // The universal "first yes" helper: ok(x) must be false...false true...true on [lo, hi].
       // Returns the smallest x with ok(x) == true, or hi + 1 if none is true.
       static long firstTrue(long lo, long hi, java.util.function.LongPredicate ok) {
@@ -1682,7 +2605,62 @@ System.out.println(ans); // 15`
               for (int p : piles) hours += (p + k - 1) / k;     // ceil(p / k)
               return hours <= h;
           });
-      }`, { lang: 'python', run: true, title: 'Same recipe in Python (runnable)', code: `def first_true(lo, hi, ok):
+      }`,
+      alt: [
+        { lang: 'python', code: `# The universal "first yes" helper: ok(x) must be False...False True...True on [lo, hi].
+# Returns the smallest x with ok(x) True, or hi + 1 if none is True.
+def first_true(lo, hi, ok):
+    ans = hi + 1
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        if ok(mid):
+            ans, hi = mid, mid - 1     # works: remember, look for smaller
+        else:
+            lo = mid + 1               # fails: need a bigger value
+    return ans
+
+# Koko with the helper: minimum speed so that total hours <= h.
+def min_eating_speed(piles, h):
+    return first_true(1, max(piles), lambda k: sum((p + k - 1) // k for p in piles) <= h)` },
+        { lang: 'js', code: `// The universal "first yes" helper: ok(x) must be false...false true...true on [lo, hi].
+// Returns the smallest x with ok(x) === true, or hi + 1 if none is true.
+function firstTrue(lo, hi, ok) {
+  let ans = hi + 1;
+  while (lo <= hi) {
+    const mid = lo + Math.floor((hi - lo) / 2);
+    if (ok(mid)) { ans = mid; hi = mid - 1; }   // works: remember, look for smaller
+    else lo = mid + 1;                          // fails: need a bigger value
+  }
+  return ans;
+}
+
+// Koko with the helper: minimum speed so that total hours <= h.
+function minEatingSpeed(piles, h) {
+  return firstTrue(1, Math.max(...piles), (k) =>
+    piles.reduce((s, p) => s + Math.ceil(p / k), 0) <= h);   // sum < 2^53: exact
+}` },
+        { lang: 'cpp', code: `// The universal "first yes" helper: ok(x) must be false...false true...true on [lo, hi].
+// Returns the smallest x with ok(x) == true, or hi + 1 if none is true.
+long long firstTrue(long long lo, long long hi, const function<bool(long long)>& ok) {
+    long long ans = hi + 1;
+    while (lo <= hi) {
+        long long mid = lo + (hi - lo) / 2;
+        if (ok(mid)) { ans = mid; hi = mid - 1; }   // works: remember, look for smaller
+        else lo = mid + 1;                          // fails: need a bigger value
+    }
+    return ans;
+}
+
+// Koko with the helper: minimum speed so that total hours <= h.
+int minEatingSpeed(const vector<int>& piles, int h) {
+    int mx = *max_element(piles.begin(), piles.end());
+    return (int)firstTrue(1, mx, [&](long long k) {
+        long long hours = 0;                        // long long: can reach 10^13 when k = 1
+        for (int p : piles) hours += (p + k - 1) / k;   // ceil(p / k)
+        return hours <= h;
+    });
+}` }
+      ] }, { lang: 'python', run: true, title: 'Same recipe in Python (runnable)', code: `def first_true(lo, hi, ok):
     """Smallest x in [lo, hi] with ok(x) True (ok must be F..F T..T). hi+1 if none."""
     ans = hi + 1
     while lo <= hi:
@@ -1700,7 +2678,7 @@ def min_eating_speed(piles, h):
 print(min_eating_speed([3, 6, 7, 11], 8))        # 4
 print(min_eating_speed([30, 11, 23, 4, 20], 5))  # 30
 print(min_eating_speed([30, 11, 23, 4, 20], 6))  # 23` }],
-    codeTitle: ['Generic firstTrue + Koko (Java)'],
+    codeTitle: ['Generic firstTrue + Koko'],
     viz: {
       title: 'Koko: binary search over speeds',
       input: '3 6 7 11 | 8',
@@ -1757,11 +2735,29 @@ print(min_eating_speed([30, 11, 23, 4, 20], 6))  # 23` }],
       {
         title: 'Overflow in the hours sum',
         html: `<p>n = 10<sup>4</sup> piles of 10<sup>9</sup> bananas and speed k = 1: total hours = 10<sup>13</sup>, far above the <code>int</code> limit (~2.1·10<sup>9</sup>). An <code>int</code> sum wraps to a garbage (possibly small or negative) value, the check wrongly says "fits", and the answer is wrong. Use <code>long hours</code>. Also <code>p + k - 1</code> with p, k near 2<sup>31</sup> can overflow int — use <code>(p - 1) / k + 1</code> for p ≥ 1, or compute in long.</p>`,
-        code: `int[] piles = {1_000_000_000, 1_000_000_000, 1_000_000_000};
+        code: { lang: 'java', code: `int[] piles = {1_000_000_000, 1_000_000_000, 1_000_000_000};
 int k = 1;
 int badSum = 0; long goodSum = 0;
 for (int p : piles) { badSum += (p - 1) / k + 1; goodSum += (p - 1) / k + 1; }
-System.out.println(badSum + " vs " + goodSum);   // -1294967296 vs 3000000000`
+System.out.println(badSum + " vs " + goodSum);   // -1294967296 vs 3000000000`,
+          alt: [
+            { lang: 'python', code: `piles, k = [1_000_000_000] * 3, 1
+good = sum((p - 1) // k + 1 for p in piles)          # Python ints never overflow
+bad = (good + 2**31) % 2**32 - 2**31                  # what a 32-bit int would hold
+print(bad, "vs", good)                                # -1294967296 vs 3000000000` },
+            { lang: 'js', code: `const piles = [1e9, 1e9, 1e9], k = 1;
+let bad = 0, good = 0;
+for (const p of piles) {
+  bad = (bad + Math.ceil(p / k)) | 0;   // |0 squeezes to 32 bits, like a Java int
+  good += Math.ceil(p / k);             // Number is exact up to 2^53
+}
+console.log(bad + " vs " + good);       // -1294967296 vs 3000000000` },
+            { lang: 'cpp', code: `vector<int> piles = {1000000000, 1000000000, 1000000000};
+int k = 1;
+long long goodSum = 0;            // an int sum here would overflow: undefined behaviour in C++
+for (int p : piles) goodSum += (p - 1) / k + 1;
+cout << goodSum << "\\n";          // 3000000000` }
+          ] }
       },
       {
         title: 'Minimum days to make m bouquets (same recipe, time as the answer)',
@@ -1779,7 +2775,7 @@ System.out.println(badSum + " vs " + goodSum);   // -1294967296 vs 3000000000`
       <p><b>The general principle — "binary search on a monotone predicate":</b> arrays are just one source of a monotone predicate (<code>a[i] ≥ x</code>). Answers, time, capacity, thresholds in ML (pick the smallest confidence threshold with precision ≥ 95%), rate limits (largest QPS where p99 latency ≤ 200 ms), and <code>git bisect</code> (first bad commit) are all the same algorithm.</p>`,
     aiEra: `<p><b>What AI changes:</b> "Koko Eating Bananas" is a top-50 interview problem, so any assistant solves it. What remains valuable is <b>pattern transfer</b>: recognizing that a capacity-planning question at work ("smallest number of pods so p99 stays under 200 ms") is the same first-true search, with an expensive load test as the check.</p>
       <p><b>Use AI as a partner:</b> describe a real situation and ask <code>Is this predicate monotonic in x? Give a counterexample if not</code>. Ask it to generate the brute-force oracle (try every k from 1 to max) and compare on random small inputs. For expensive checks (each one is a 10-minute load test or a model evaluation), ask it to estimate how many checks binary search needs: log₂(range) — e.g. 10 checks for 1,000 candidate values.</p>
-      <p><b>Where AI goes wrong:</b> <code>int</code> hours sum, <code>Math.ceil(p / k)</code> on integers (integer division happens <i>before</i> ceil, so it rounds down — a classic Java bug), lo = 0 causing division by zero, or returning lo from a mismatched template.</p>
+      <p><b>Where AI goes wrong:</b> <code>int</code> hours sum, <code>Math.ceil(p / k)</code> on integers (integer division happens <i>before</i> ceil, so it rounds down — a classic Java and C++ bug; in Python and JS <code>/</code> keeps the fraction, so only Python's <code>//</code> has the same trap), lo = 0 causing division by zero, or returning lo from a mismatched template.</p>
       <p><b>What you must still own:</b> the 5-step recipe — guess the answer, define the range, write the O(n) check, prove monotonicity, choose first/last true. Say those five steps out loud in the interview and you have answered the question before writing code.</p>`,
     problems: [{
       title: 'Koko Eating Bananas',
@@ -1810,11 +2806,23 @@ System.out.println(badSum + " vs " + goodSum);   // -1294967296 vs 3000000000`
       },
       hints: [
         `<p><b>Aha:</b> you can't compute k directly, but for a given k you can count hours in O(n). And more speed never needs more hours → no…no yes…yes → find the first yes.</p>`,
-        `<p>Range <code>[1, max(piles)]</code>. Check: <code>hours = Σ ⌈p / k⌉</code> using <code>(p + k - 1) / k</code> in <code>long</code>; feasible if hours ≤ h. On feasible: ans = mid, hi = mid - 1; else lo = mid + 1.</p>`,
-        `<p>Traps: <code>Math.ceil(p / k)</code> with ints rounds down first (wrong); int overflow of the hours sum; lo must start at 1 (division by zero at 0). Recipe: max = max(piles); lo = 1, hi = max; while lo ≤ hi → mid → hours(mid) ≤ h ? (ans = mid, hi = mid - 1) : lo = mid + 1. Return ans.</p>`
+        `<p>Range <code>[1, max(piles)]</code>. Check: <code>hours = Σ ⌈p / k⌉</code> using <code>(p + k - 1) / k</code> (Python: <code>-(-p // k)</code> also works) in a 64-bit integer (<code>long</code> / <code>long long</code>; Python ints never overflow); feasible if hours ≤ h. On feasible: ans = mid, hi = mid - 1; else lo = mid + 1.</p>`,
+        `<p>Traps: in Java and C++, <code>ceil(p / k)</code> on ints rounds down first (wrong); int overflow of the hours sum; lo must start at 1 (division by zero at 0). Recipe: max = max(piles); lo = 1, hi = max; while lo ≤ hi → mid → hours(mid) ≤ h ? (ans = mid, hi = mid - 1) : lo = mid + 1. Return ans.</p>`
       ],
+      tests: { sig: 'int[] int -> int', fn: 'minEatingSpeed', cases: [
+        [[[3, 6, 7, 11], 8], 4],
+        [[[30, 11, 23, 4, 20], 5], 30],
+        [[[30, 11, 23, 4, 20], 6], 23],
+        [[[1], 1], 1],
+        [[[5, 5, 5], 15], 1],
+        [[[1, 1, 1, 999999999], 4], 999999999],
+        [[[1000000000], 2], 500000000],
+        [[[312884470], 312884469], 2],
+        [[[1000000000, 1000000000, 1000000000], 1000000000], 4],
+        [[[805306368, 805306368, 805306368], 1000000000], 3]
+      ] },
       solution: {
-        approach: `<p>Binary search the speed on [1, max]; the feasibility check sums ceiling divisions in long.</p>`,
+        approach: `<p>Binary search the speed on [1, max]; the feasibility check sums ceiling divisions in a 64-bit integer (<code>long</code> / <code>long long</code>; Python ints never overflow).</p>`,
         code: `
           class Solution {
               // Hours Koko needs at speed k. long: up to 10^4 piles * 10^9 hours.
@@ -1859,7 +2867,37 @@ System.out.println(badSum + " vs " + goodSum);   // -1294967296 vs 3000000000`
             lo = mid + 1               # too slow -> faster
     return ans
 
-print(min_eating_speed([3, 6, 7, 11], 8))  # 4`, run: true }],
+print(min_eating_speed([3, 6, 7, 11], 8))  # 4`, run: true },
+          { lang: 'js', code: `function minEatingSpeed(piles, h) {
+  // Hours at speed k. Number is exact here: at most 1e4 * 1e9 = 1e13 < 2^53.
+  const hoursNeeded = (k) => piles.reduce((s, p) => s + Math.ceil(p / k), 0);
+  let lo = 1, hi = Math.max(...piles), ans = hi;   // speed max(piles) always works
+  while (lo <= hi) {
+    const mid = lo + Math.floor((hi - lo) / 2);    // a guessed speed
+    if (hoursNeeded(mid) <= h) { ans = mid; hi = mid - 1; }   // fast enough: try slower
+    else lo = mid + 1;                             // too slow: must eat faster
+  }
+  return ans;
+}` },
+          { lang: 'cpp', code: `class Solution {
+    // Hours Koko needs at speed k. long long: up to 10^4 piles * 10^9 hours.
+    long long hoursNeeded(const vector<int>& piles, int k) {
+        long long hours = 0;
+        for (int p : piles) hours += (p + (long long)k - 1) / k;   // ceil(p / k), no floats
+        return hours;
+    }
+public:
+    int minEatingSpeed(const vector<int>& piles, int h) {
+        int lo = 1, hi = *max_element(piles.begin(), piles.end());   // speed max always works
+        int ans = hi;
+        while (lo <= hi) {
+            int mid = lo + (hi - lo) / 2;                            // a guessed speed
+            if (hoursNeeded(piles, mid) <= h) { ans = mid; hi = mid - 1; }   // fast enough: try slower
+            else lo = mid + 1;                                       // too slow: must eat faster
+        }
+        return ans;
+    }
+};` }],
         dry: {
           head: ['lo', 'hi', 'mid', 'hours at mid', '≤ 8?', 'action', 'ans'],
           rows: [
@@ -1904,6 +2942,16 @@ print(min_eating_speed([3, 6, 7, 11], 8))  # 4`, run: true }],
       `<p>Use Template B with <code>hi = n</code> (so "insert at the end" is possible): if <code>nums[mid] ≥ target</code> → <code>hi = mid</code>, else <code>lo = mid + 1</code>.</p>`,
       `<p>Traps: hi must start at <b>n</b>, not n - 1, or target bigger than everything returns the wrong index. Recipe: lo = 0, hi = n; while lo &lt; hi: mid; nums[mid] ≥ target ? hi = mid : lo = mid+1. Return lo.</p>`
     ],
+    tests: { sig: 'int[] int -> int', fn: 'searchInsert', cases: [
+      [[[1, 3, 5, 6], 5], 2],
+      [[[1, 3, 5, 6], 2], 1],
+      [[[1, 3, 5, 6], 7], 4],
+      [[[1, 3, 5, 6], 0], 0],
+      [[[1], 1], 0],
+      [[[1], 2], 1],
+      [[[1], -5], 0],
+      [[[-10000, 0, 10000], 10000], 2]
+    ] },
     solution: {
       approach: `<p>Lower bound: first index with value ≥ target.</p>`,
       code: `
@@ -1921,6 +2969,38 @@ print(min_eating_speed([3, 6, 7, 11], 8))  # 4`, run: true }],
                 return lo;                         // first index with nums[i] >= target
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def search_insert(nums, target):
+    lo, hi = 0, len(nums)              # answer can be anything in [0, n]
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if nums[mid] >= target:
+            hi = mid                   # mid could be the slot: keep it
+        else:
+            lo = mid + 1               # mid is too small: slot is to the right
+    return lo                          # same as bisect.bisect_left(nums, target)` },
+        { lang: 'js', code: `function searchInsert(nums, target) {
+  let lo = 0, hi = nums.length;        // answer can be anything in [0, n]
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;       // fine for array indices
+    if (nums[mid] >= target) hi = mid; // mid could be the slot: keep it
+    else lo = mid + 1;                 // mid is too small: slot is to the right
+  }
+  return lo;                           // first index with nums[i] >= target
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int searchInsert(const vector<int>& nums, int target) {
+        int lo = 0, hi = (int)nums.size();         // answer can be anything in [0, n]
+        while (lo < hi) {
+            int mid = lo + (hi - lo) / 2;
+            if (nums[mid] >= target) hi = mid;     // mid could be the slot: keep it
+            else lo = mid + 1;                     // mid is too small: slot is to the right
+        }
+        return lo;   // same as lower_bound(nums.begin(), nums.end(), target) - nums.begin()
+    }
+};` }
+      ],
       dry: {
         head: ['lo', 'hi', 'mid', 'nums[mid]', '≥ 2?', 'action'],
         rows: [
@@ -1966,6 +3046,17 @@ print(min_eating_speed([3, 6, 7, 11], 8))  # 4`, run: true }],
       `<p>Template B on [0, n]: if <code>missing(mid) &lt; k</code> → lo = mid + 1, else hi = mid. When it stops at index lo, exactly lo array numbers are below the answer.</p>`,
       `<p>Traps: if all elements are passed (lo = n), the answer is beyond the array — the formula still works. The answer is <code>lo + k</code>: k missing numbers plus lo present numbers come before or at it. Check: lo = 4, k = 5 → 9.</p>`
     ],
+    tests: { sig: 'int[] int -> int', fn: 'findKthPositive', cases: [
+      [[[2, 3, 4, 7, 11], 5], 9],
+      [[[1, 2, 3, 4], 2], 6],
+      [[[5], 1], 1],
+      [[[5], 4], 4],
+      [[[5], 5], 6],
+      [[[1], 1000], 1001],
+      [[[2], 1], 1],
+      [[[1000], 1000], 1001],
+      [[Array.from({ length: 1000 }, (_, i) => i + 1), 1000], 2000]
+    ] },
     solution: {
       approach: `<p>Binary search for the first index whose "missing so far" count reaches k; answer = index + k.</p>`,
       code: `
@@ -1985,6 +3076,41 @@ print(min_eating_speed([3, 6, 7, 11], 8))  # 4`, run: true }],
                 return lo + k;
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def find_kth_positive(arr, k):
+    lo, hi = 0, len(arr)                   # answer index in [0, n]
+    while lo < hi:
+        mid = (lo + hi) // 2
+        missing = arr[mid] - (mid + 1)     # positives absent before arr[mid]
+        if missing < k:
+            lo = mid + 1                   # not enough missing yet: go right
+        else:
+            hi = mid                       # enough missing: answer is before arr[mid]
+    return lo + k                          # lo present values + k missing ones` },
+        { lang: 'js', code: `function findKthPositive(arr, k) {
+  let lo = 0, hi = arr.length;             // answer index in [0, n]
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    const missing = arr[mid] - (mid + 1);  // positives absent before arr[mid]
+    if (missing < k) lo = mid + 1;         // not enough missing yet: go right
+    else hi = mid;                         // enough missing: answer is before arr[mid]
+  }
+  return lo + k;                           // lo present values + k missing ones
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int findKthPositive(const vector<int>& arr, int k) {
+        int lo = 0, hi = (int)arr.size();          // answer index in [0, n]
+        while (lo < hi) {
+            int mid = lo + (hi - lo) / 2;
+            int missing = arr[mid] - (mid + 1);    // positives absent before arr[mid]
+            if (missing < k) lo = mid + 1;         // not enough missing yet: go right
+            else hi = mid;                         // enough missing: answer is before arr[mid]
+        }
+        return lo + k;                             // lo present values + k missing ones
+    }
+};` }
+      ],
       dry: {
         head: ['lo', 'hi', 'mid', 'arr[mid]', 'missing', '&lt; 5?', 'action'],
         rows: [
@@ -2026,6 +3152,17 @@ print(min_eating_speed([3, 6, 7, 11], 8))  # 4`, run: true }],
       `<p>Template B: <code>lo = mid + 1</code> or <code>hi = mid</code>, stop when lo == hi; that index holds the minimum.</p>`,
       `<p>Trap: comparing with <code>nums[lo]</code> instead of <code>nums[hi]</code> fails on a non-rotated array (left is always sorted, you can't tell where the min is). Never use hi = mid - 1: mid itself may be the minimum.</p>`
     ],
+    tests: { sig: 'int[] -> int', fn: 'findMin', cases: [
+      [[[3, 4, 5, 1, 2]], 1],
+      [[[4, 5, 6, 7, 0, 1, 2]], 0],
+      [[[11, 13, 15, 17]], 11],
+      [[[1]], 1],
+      [[[2, 1]], 1],
+      [[[1, 2]], 1],
+      [[[-5000, 5000]], -5000],
+      [[[5000, -5000]], -5000],
+      [[[2, 3, 4, 5, 1]], 1]
+    ] },
     solution: {
       approach: `<p>Shrink towards the drop by comparing mid with the right end.</p>`,
       code: `
@@ -2043,6 +3180,38 @@ print(min_eating_speed([3, 6, 7, 11], 8))  # 4`, run: true }],
                 return nums[lo];               // lo == hi points at the minimum
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def find_min(nums):
+    lo, hi = 0, len(nums) - 1
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if nums[mid] > nums[hi]:
+            lo = mid + 1               # drop is right of mid: min is in (mid, hi]
+        else:
+            hi = mid                   # mid..hi is sorted: min is mid or left of it
+    return nums[lo]                    # lo == hi points at the minimum` },
+        { lang: 'js', code: `function findMin(nums) {
+  let lo = 0, hi = nums.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (nums[mid] > nums[hi]) lo = mid + 1;   // drop is right of mid: min is in (mid, hi]
+    else hi = mid;                            // mid..hi is sorted: min is mid or left of it
+  }
+  return nums[lo];                            // lo == hi points at the minimum
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int findMin(const vector<int>& nums) {
+        int lo = 0, hi = (int)nums.size() - 1;
+        while (lo < hi) {
+            int mid = lo + (hi - lo) / 2;
+            if (nums[mid] > nums[hi]) lo = mid + 1;   // drop is right of mid: min is in (mid, hi]
+            else hi = mid;                            // mid..hi is sorted: min is mid or left of it
+        }
+        return nums[lo];                              // lo == hi points at the minimum
+    }
+};` }
+      ],
       dry: {
         head: ['lo', 'hi', 'mid', 'nums[mid]', 'nums[hi]', 'action'],
         rows: [
@@ -2083,6 +3252,16 @@ print(min_eating_speed([3, 6, 7, 11], 8))  # 4`, run: true }],
       `<p>Make mid even (<code>if (mid % 2 == 1) mid--</code>). If <code>nums[mid] == nums[mid+1]</code> → single is right: <code>lo = mid + 2</code>. Else → single is at mid or left: <code>hi = mid</code>.</p>`,
       `<p>Traps: lo and hi stay even, so mid + 1 ≤ hi always exists; n = 1 → loop skipped, return nums[0]. Recipe: lo = 0, hi = n-1; while lo &lt; hi: even mid; compare with mid+1; move. Return nums[lo].</p>`
     ],
+    tests: { sig: 'int[] -> int', fn: 'singleNonDuplicate', cases: [
+      [[[1, 1, 2, 3, 3, 4, 4, 8, 8]], 2],
+      [[[3, 3, 7, 7, 10, 11, 11]], 10],
+      [[[1]], 1],
+      [[[1, 2, 2]], 1],
+      [[[1, 1, 2]], 2],
+      [[[0, 0, 100000]], 100000],
+      [[[1, 1, 2, 2, 3, 3, 4]], 4],
+      [[[0, 1, 1, 2, 2]], 0]
+    ] },
     solution: {
       approach: `<p>Binary search on even indices using the pair-alignment rule.</p>`,
       code: `
@@ -2101,6 +3280,41 @@ print(min_eating_speed([3, 6, 7, 11], 8))  # 4`, run: true }],
                 return nums[lo];
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def single_non_duplicate(nums):
+    lo, hi = 0, len(nums) - 1          # both even (n is odd)
+    while lo < hi:
+        mid = (lo + hi) // 2
+        mid -= mid % 2                 # look at a pair that should start at an even index
+        if nums[mid] == nums[mid + 1]:
+            lo = mid + 2               # pair is aligned: single is further right
+        else:
+            hi = mid                   # alignment broken: single is mid or left
+    return nums[lo]` },
+        { lang: 'js', code: `function singleNonDuplicate(nums) {
+  let lo = 0, hi = nums.length - 1;    // both even (n is odd)
+  while (lo < hi) {
+    let mid = (lo + hi) >>> 1;
+    mid -= mid & 1;                    // look at a pair that should start at an even index
+    if (nums[mid] === nums[mid + 1]) lo = mid + 2;   // aligned: single is further right
+    else hi = mid;                     // alignment broken: single is mid or left
+  }
+  return nums[lo];
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int singleNonDuplicate(const vector<int>& nums) {
+        int lo = 0, hi = (int)nums.size() - 1;     // both even (n is odd)
+        while (lo < hi) {
+            int mid = lo + (hi - lo) / 2;
+            mid -= mid & 1;                        // look at a pair that should start at an even index
+            if (nums[mid] == nums[mid + 1]) lo = mid + 2;   // aligned: single is further right
+            else hi = mid;                         // alignment broken: single is mid or left
+        }
+        return nums[lo];
+    }
+};` }
+      ],
       dry: {
         head: ['lo', 'hi', 'mid (even)', 'nums[mid], nums[mid+1]', 'action'],
         rows: [
@@ -2153,6 +3367,16 @@ print(min_eating_speed([3, 6, 7, 11], 8))  # 4`, run: true }],
       `<p>Template A: lo = 1, hi = n. API returns 1 → pick is bigger → lo = mid + 1; returns −1 → hi = mid − 1; returns 0 → done.</p>`,
       `<p>Traps: overflow at n = 2<sup>31</sup> − 1 (use lo + (hi − lo) / 2); don't mix up the sign convention (−1 means <i>your guess</i> is too high). At most 31 calls.</p>`
     ],
+    // Design mode: the constructor takes the hidden pick (a stand-in for the judge), then guessNumber(n) runs.
+    tests: { cls: 'Solution', sigs: { Solution: 'int', guessNumber: 'int -> int' }, cases: [
+      { ops: ['Solution', 'guessNumber'], args: [[6], [10]], out: [null, 6] },
+      { ops: ['Solution', 'guessNumber'], args: [[1], [1]], out: [null, 1] },
+      { ops: ['Solution', 'guessNumber'], args: [[1], [2147483647]], out: [null, 1] },
+      { ops: ['Solution', 'guessNumber'], args: [[2147483647], [2147483647]], out: [null, 2147483647] },
+      { ops: ['Solution', 'guessNumber'], args: [[10], [10]], out: [null, 10] },
+      { ops: ['Solution', 'guessNumber'], args: [[2], [3]], out: [null, 2] },
+      { ops: ['Solution', 'guessNumber', 'guessNumber'], args: [[1702766719], [2126753390], [2147483647]], out: [null, 1702766719, 1702766719] }
+    ] },
     solution: {
       approach: `<p>Binary search over 1..n using the API's three-way answer.</p>`,
       code: `
@@ -2179,6 +3403,64 @@ print(min_eating_speed([3, 6, 7, 11], 8))  # 4`, run: true }],
                 System.out.println(new Solution(2147483647).guessNumber(2147483647));   // 2147483647
             }
         }`,
+      alt: [
+        { lang: 'python', code: `class Solution:
+    def __init__(self, pick):
+        self._pick = pick
+
+    # Stand-in for the judge's API: -1 = guess too high, 1 = guess too low, 0 = correct.
+    def guess(self, num):
+        return (self._pick > num) - (self._pick < num)
+
+    def guessNumber(self, n):
+        lo, hi = 1, n
+        while lo <= hi:
+            mid = (lo + hi) // 2       # Python ints never overflow
+            r = self.guess(mid)
+            if r == 0:
+                return mid             # correct
+            if r == 1:
+                lo = mid + 1           # pick is higher than mid
+            else:
+                hi = mid - 1           # pick is lower than mid
+        return -1                      # unreachable for valid input` },
+        { lang: 'js', code: `class Solution {
+  constructor(pick) { this.pick = pick; }
+  // Stand-in for the judge's API: -1 = guess too high, 1 = guess too low, 0 = correct.
+  guess(num) { return Math.sign(this.pick - num); }
+
+  guessNumber(n) {
+    let lo = 1, hi = n;
+    while (lo <= hi) {
+      const mid = lo + Math.floor((hi - lo) / 2);   // not >> 1: values reach 2^31 - 1
+      const r = this.guess(mid);
+      if (r === 0) return mid;          // correct
+      if (r === 1) lo = mid + 1;        // pick is higher than mid
+      else hi = mid - 1;                // pick is lower than mid
+    }
+    return -1;                          // unreachable for valid input
+  }
+}` },
+        { lang: 'cpp', code: `class Solution {
+    int pick;
+public:
+    explicit Solution(int pick) : pick(pick) {}
+    // Stand-in for the judge's API: -1 = guess too high, 1 = guess too low, 0 = correct.
+    int guess(int num) const { return (pick > num) - (pick < num); }
+
+    int guessNumber(int n) {
+        int lo = 1, hi = n;
+        while (lo <= hi) {
+            int mid = lo + (hi - lo) / 2;      // no overflow even near 2^31 - 1
+            int r = guess(mid);
+            if (r == 0) return mid;            // correct
+            if (r == 1) lo = mid + 1;          // pick is higher than mid
+            else hi = mid - 1;                 // pick is lower than mid
+        }
+        return -1;                             // unreachable for valid input
+    }
+};` }
+      ],
       dry: {
         head: ['lo', 'hi', 'mid', 'guess(mid)', 'action'],
         rows: [
@@ -2215,11 +3497,22 @@ print(min_eating_speed([3, 6, 7, 11], 8))  # 4`, run: true }],
     },
     hints: [
       `<p><b>Aha:</b> k² is increasing in k, so "k² vs num" is a sorted comparison — classic exact-match binary search on k.</p>`,
-      `<p>lo = 1, hi = num; compute <code>sq = (long) mid * mid</code>; equal → true; smaller → lo = mid + 1; bigger → hi = mid − 1.</p>`,
-      `<p>Traps: the square overflows int for mid &gt; 46,340 — use long. If the loop ends, no k matched → false. num = 1 → true.</p>`
+      `<p>lo = 1, hi = num; compute <code>sq = mid · mid</code> in 64 bits (<code>long</code> / <code>long long</code>; Python never overflows); equal → true; smaller → lo = mid + 1; bigger → hi = mid − 1.</p>`,
+      `<p>Traps: the square overflows a 32-bit int for mid &gt; 46,340 — use a 64-bit type (Python needs nothing). If the loop ends, no k matched → false. num = 1 → true.</p>`
     ],
+    tests: { sig: 'int -> bool', fn: 'isPerfectSquare', cases: [
+      [[1], true],
+      [[2], false],
+      [[4], true],
+      [[14], false],
+      [[16], true],
+      [[808201], true],
+      [[2147395600], true],
+      [[2147395601], false],
+      [[2147483647], false]
+    ] },
     solution: {
-      approach: `<p>Exact-value binary search over k with a long square.</p>`,
+      approach: `<p>Exact-value binary search over k with a 64-bit square (Python ints never overflow).</p>`,
       code: `
         class Solution {
             public boolean isPerfectSquare(int num) {
@@ -2234,6 +3527,45 @@ print(min_eating_speed([3, 6, 7, 11], 8))  # 4`, run: true }],
                 return false;                            // no integer squares to num
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def is_perfect_square(num):
+    lo, hi = 1, num
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        sq = mid * mid                 # Python ints never overflow
+        if sq == num:
+            return True                # found an exact root
+        if sq < num:
+            lo = mid + 1               # root must be bigger
+        else:
+            hi = mid - 1               # root must be smaller
+    return False                       # no integer squares to num` },
+        { lang: 'js', code: `function isPerfectSquare(num) {
+  let lo = 1, hi = num;
+  while (lo <= hi) {
+    const mid = lo + Math.floor((hi - lo) / 2);
+    const sq = mid * mid;          // exact while sq < 2^53; near num it always is
+    if (sq === num) return true;   // found an exact root
+    if (sq < num) lo = mid + 1;    // root must be bigger
+    else hi = mid - 1;             // root must be smaller
+  }
+  return false;                    // no integer squares to num
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    bool isPerfectSquare(int num) {
+        long long lo = 1, hi = num;
+        while (lo <= hi) {
+            long long mid = lo + (hi - lo) / 2;
+            long long sq = mid * mid;              // long long: no overflow
+            if (sq == num) return true;            // found an exact root
+            if (sq < num) lo = mid + 1;            // root must be bigger
+            else hi = mid - 1;                     // root must be smaller
+        }
+        return false;                              // no integer squares to num
+    }
+};` }
+      ],
       dry: {
         head: ['lo', 'hi', 'mid', 'mid²', 'vs 14', 'action'],
         rows: [
@@ -2279,6 +3611,17 @@ print(min_eating_speed([3, 6, 7, 11], 8))  # 4`, run: true }],
       `<p>Binary search indices 0..m·n − 1 and map index k → <code>matrix[k / n][k % n]</code> — no copying.</p>`,
       `<p>Traps: divide by n (columns); hi = m·n − 1. A different problem ("Search a 2D Matrix II", rows and columns sorted separately) needs the staircase walk from the top-right corner instead, O(m + n).</p>`
     ],
+    tests: { sig: 'int[][] int -> bool', fn: 'searchMatrix', cases: [
+      [[[[1, 3, 5, 7], [10, 11, 16, 20], [23, 30, 34, 60]], 16], true],
+      [[[[1, 3, 5, 7], [10, 11, 16, 20], [23, 30, 34, 60]], 13], false],
+      [[[[1, 3, 5, 7], [10, 11, 16, 20], [23, 30, 34, 60]], 60], true],
+      [[[[1, 3, 5, 7], [10, 11, 16, 20], [23, 30, 34, 60]], 0], false],
+      [[[[1]], 1], true],
+      [[[[1]], 2], false],
+      [[[[1, 3]], 3], true],
+      [[[[1], [3], [5]], 5], true],
+      [[[[1], [3], [5]], 4], false]
+    ] },
     solution: {
       approach: `<p>Classic binary search over a virtual 1D array with index mapping.</p>`,
       code: `
@@ -2296,6 +3639,49 @@ print(min_eating_speed([3, 6, 7, 11], 8))  # 4`, run: true }],
                 return false;
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def search_matrix(matrix, target):
+    m, n = len(matrix), len(matrix[0])
+    lo, hi = 0, m * n - 1                  # virtual indices of the flattened matrix
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        r, c = divmod(mid, n)              # map back to (row, col)
+        v = matrix[r][c]
+        if v == target:
+            return True
+        if v < target:
+            lo = mid + 1
+        else:
+            hi = mid - 1
+    return False` },
+        { lang: 'js', code: `function searchMatrix(matrix, target) {
+  const m = matrix.length, n = matrix[0].length;
+  let lo = 0, hi = m * n - 1;              // virtual indices of the flattened matrix
+  while (lo <= hi) {
+    const mid = (lo + hi) >>> 1;
+    const v = matrix[Math.floor(mid / n)][mid % n];   // map back to (row, col)
+    if (v === target) return true;
+    if (v < target) lo = mid + 1;
+    else hi = mid - 1;
+  }
+  return false;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    bool searchMatrix(const vector<vector<int>>& matrix, int target) {
+        int m = (int)matrix.size(), n = (int)matrix[0].size();
+        int lo = 0, hi = m * n - 1;                // virtual indices of the flattened matrix
+        while (lo <= hi) {
+            int mid = lo + (hi - lo) / 2;
+            int v = matrix[mid / n][mid % n];      // map back to (row, col)
+            if (v == target) return true;
+            if (v < target) lo = mid + 1;
+            else hi = mid - 1;
+        }
+        return false;
+    }
+};` }
+      ],
       dry: {
         head: ['lo', 'hi', 'mid', '(row, col)', 'value', 'action'],
         rows: [
@@ -2336,6 +3722,18 @@ print(min_eating_speed([3, 6, 7, 11], 8))  # 4`, run: true }],
       `<p>In that ambiguous case, shrink both ends by one (they are not the target). Otherwise use the normal "which half is sorted + is target inside it" logic.</p>`,
       `<p>Traps: check <code>nums[mid] == target</code> first; worst case O(n) (e.g. [1,1,1,…,1,0,1,1]); return boolean, not index. If nums[lo] == nums[mid] but nums[hi] differs, the left half is provably sorted.</p>`
     ],
+    tests: { sig: 'int[] int -> bool', fn: 'search', cases: [
+      [[[2, 5, 6, 0, 0, 1, 2], 0], true],
+      [[[2, 5, 6, 0, 0, 1, 2], 3], false],
+      [[[1, 0, 1, 1, 1], 0], true],
+      [[[1, 1, 1, 1, 1, 1, 0, 1, 1], 0], true],
+      [[[1], 1], true],
+      [[[1], 0], false],
+      [[[1, 3, 1, 1, 1], 3], true],
+      [[[3, 1], 1], true],
+      [[[2, 2, 2, 3, 2, 2, 2], 3], true],
+      [[[1, 1], 2], false]
+    ] },
     solution: {
       approach: `<p>Rotated search with one extra rule for the fully ambiguous probe.</p>`,
       code: `
@@ -2359,6 +3757,64 @@ print(min_eating_speed([3, 6, 7, 11], 8))  # 4`, run: true }],
                 return false;
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def search(nums, target):
+    lo, hi = 0, len(nums) - 1
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        if nums[mid] == target:
+            return True
+        if nums[lo] == nums[mid] == nums[hi]:
+            lo, hi = lo + 1, hi - 1            # ends equal nums[mid] != target: drop both
+        elif nums[lo] <= nums[mid]:            # left half sorted
+            if nums[lo] <= target < nums[mid]:
+                hi = mid - 1
+            else:
+                lo = mid + 1
+        else:                                  # right half sorted
+            if nums[mid] < target <= nums[hi]:
+                lo = mid + 1
+            else:
+                hi = mid - 1
+    return False` },
+        { lang: 'js', code: `function search(nums, target) {
+  let lo = 0, hi = nums.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >>> 1;
+    if (nums[mid] === target) return true;
+    if (nums[lo] === nums[mid] && nums[mid] === nums[hi]) {
+      lo++; hi--;                              // ends equal nums[mid] != target: drop both
+    } else if (nums[lo] <= nums[mid]) {        // left half sorted
+      if (nums[lo] <= target && target < nums[mid]) hi = mid - 1;
+      else lo = mid + 1;
+    } else {                                   // right half sorted
+      if (nums[mid] < target && target <= nums[hi]) lo = mid + 1;
+      else hi = mid - 1;
+    }
+  }
+  return false;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    bool search(const vector<int>& nums, int target) {
+        int lo = 0, hi = (int)nums.size() - 1;
+        while (lo <= hi) {
+            int mid = lo + (hi - lo) / 2;
+            if (nums[mid] == target) return true;
+            if (nums[lo] == nums[mid] && nums[mid] == nums[hi]) {
+                lo++; hi--;                            // ends equal nums[mid] != target: drop both
+            } else if (nums[lo] <= nums[mid]) {        // left half sorted
+                if (nums[lo] <= target && target < nums[mid]) hi = mid - 1;
+                else lo = mid + 1;
+            } else {                                   // right half sorted
+                if (nums[mid] < target && target <= nums[hi]) lo = mid + 1;
+                else hi = mid - 1;
+            }
+        }
+        return false;
+    }
+};` }
+      ],
       dry: {
         head: ['lo', 'hi', 'mid', 'nums[lo], nums[mid], nums[hi]', 'case (target = 3)', 'action'],
         rows: [
@@ -2407,6 +3863,17 @@ print(min_eating_speed([3, 6, 7, 11], 8))  # 4`, run: true }],
       `<p>Check(cap): greedy — keep adding packages to today; when the next one would overflow, start a new day. Feasible if days used ≤ days.</p>`,
       `<p>Traps: lo = max (otherwise a single package heavier than cap breaks the greedy); first yes → on feasible hi = mid − 1. Recipe: lo = max, hi = sum; while lo ≤ hi …</p>`
     ],
+    tests: { sig: 'int[] int -> int', fn: 'shipWithinDays', cases: [
+      [[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 5], 15],
+      [[[3, 2, 2, 4, 1, 4], 3], 6],
+      [[[1, 2, 3, 1, 1], 4], 3],
+      [[[5], 1], 5],
+      [[[1, 1, 1, 1], 4], 1],
+      [[[500, 500, 500], 1], 1500],
+      [[[10, 50], 2], 50],
+      [[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 1], 55],
+      [[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 10], 10]
+    ] },
     solution: {
       approach: `<p>First-yes binary search on capacity with a greedy day counter.</p>`,
       code: `
@@ -2432,6 +3899,65 @@ print(min_eating_speed([3, 6, 7, 11], 8))  # 4`, run: true }],
                 return ans;
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def ship_within_days(weights, days):
+    def days_needed(cap):
+        used, load = 1, 0
+        for w in weights:
+            if load + w > cap:             # ship is full: next day
+                used, load = used + 1, 0
+            load += w
+        return used
+
+    lo, hi = max(weights), sum(weights)    # heaviest package .. everything in one day
+    ans = hi
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        if days_needed(mid) <= days:
+            ans, hi = mid, mid - 1         # works: try a smaller ship
+        else:
+            lo = mid + 1                   # too small: bigger ship
+    return ans` },
+        { lang: 'js', code: `function shipWithinDays(weights, days) {
+  const daysNeeded = (cap) => {
+    let used = 1, load = 0;
+    for (const w of weights) {
+      if (load + w > cap) { used++; load = 0; }   // ship is full: next day
+      load += w;
+    }
+    return used;
+  };
+  let lo = Math.max(...weights), hi = weights.reduce((s, w) => s + w, 0), ans = hi;
+  while (lo <= hi) {
+    const mid = (lo + hi) >>> 1;                 // sums stay far below 2^31
+    if (daysNeeded(mid) <= days) { ans = mid; hi = mid - 1; }   // works: smaller ship
+    else lo = mid + 1;                           // too small: bigger ship
+  }
+  return ans;
+}` },
+        { lang: 'cpp', code: `class Solution {
+    int daysNeeded(const vector<int>& weights, int cap) {
+        int days = 1, load = 0;
+        for (int w : weights) {
+            if (load + w > cap) { days++; load = 0; }   // ship is full: next day
+            load += w;
+        }
+        return days;
+    }
+public:
+    int shipWithinDays(const vector<int>& weights, int days) {
+        int lo = *max_element(weights.begin(), weights.end());     // heaviest package must fit
+        int hi = accumulate(weights.begin(), weights.end(), 0);    // ≤ 2.5e7: fits int
+        int ans = hi;
+        while (lo <= hi) {
+            int mid = lo + (hi - lo) / 2;
+            if (daysNeeded(weights, mid) <= days) { ans = mid; hi = mid - 1; }   // works: smaller ship
+            else lo = mid + 1;                                     // too small: bigger ship
+        }
+        return ans;
+    }
+};` }
+      ],
       dry: {
         head: ['lo', 'hi', 'mid', 'days needed', '≤ 3?', 'action'],
         rows: [
@@ -2477,13 +4003,24 @@ print(min_eating_speed([3, 6, 7, 11], 8))  # 4`, run: true }],
       q: `Why check <code>(long) m * k &gt; n</code> first?`,
       options: [`It speeds up the search`, `If we need more flowers than exist, no day works → -1`, `To avoid sorting`, `It is not needed`],
       answer: 1,
-      explain: `m bouquets need m·k distinct flowers. If that exceeds n, even after every flower blooms it's impossible. m·k can reach 10<sup>11</sup>, so multiply in long.`
+      explain: `m bouquets need m·k distinct flowers. If that exceeds n, even after every flower blooms it's impossible. m·k can reach 10<sup>11</sup>, so multiply in 64 bits (<code>long</code> / <code>long long</code>; Python never overflows).`
     },
     hints: [
       `<p><b>Aha:</b> "Can I make m bouquets by day D?" is no…no yes…yes in D. The answer is the first yes in <code>[min(bloomDay), max(bloomDay)]</code>.</p>`,
       `<p>Check(D): walk left to right with a run counter of consecutive bloomed flowers (bloomDay ≤ D). When run reaches k, make a bouquet and reset run to 0; a non-bloomed flower also resets run.</p>`,
       `<p>Traps: impossible case m·k &gt; n (long!); greedy taking the leftmost k is optimal; early exit when bouquets ≥ m. Recipe: if impossible → −1; lo = min, hi = max; first-yes search.</p>`
     ],
+    tests: { sig: 'int[] int int -> int', fn: 'minDays', cases: [
+      [[[1, 10, 3, 10, 2], 3, 1], 3],
+      [[[1, 10, 3, 10, 2], 3, 2], -1],
+      [[[7, 7, 7, 7, 12, 7, 7], 2, 3], 12],
+      [[[1000000000, 1000000000], 1, 1], 1000000000],
+      [[[1, 10, 2, 9, 3, 8, 4, 7, 5, 6], 4, 2], 9],
+      [[[5], 1, 1], 5],
+      [[[1, 2, 3, 4], 2, 2], 4],
+      [[[1, 2, 3], 1000000, 3], -1],
+      [[Array(3000).fill(1), 1000000, 3000], -1]
+    ] },
     solution: {
       approach: `<p>First-yes binary search on the day; feasibility counts adjacent runs greedily.</p>`,
       code: `
@@ -2514,6 +4051,80 @@ print(min_eating_speed([3, 6, 7, 11], 8))  # 4`, run: true }],
                 return ans;
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def min_days(bloom_day, m, k):
+    if m * k > len(bloom_day):
+        return -1                          # not enough flowers ever (no overflow in Python)
+
+    def can_make(day):
+        made = run = 0
+        for b in bloom_day:
+            if b <= day:
+                run += 1                   # one more bloomed neighbour
+                if run == k:
+                    made, run = made + 1, 0
+                    if made >= m:
+                        return True
+            else:
+                run = 0                    # gap breaks adjacency
+        return False
+
+    lo, hi = min(bloom_day), max(bloom_day)
+    ans = hi
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        if can_make(mid):
+            ans, hi = mid, mid - 1
+        else:
+            lo = mid + 1
+    return ans` },
+        { lang: 'js', code: `function minDays(bloomDay, m, k) {
+  if (m * k > bloomDay.length) return -1;  // m*k <= 1e11: exact as a Number
+  const canMake = (day) => {
+    let made = 0, run = 0;
+    for (const b of bloomDay) {
+      if (b <= day) {
+        if (++run === k) { made++; run = 0; if (made >= m) return true; }   // one more bouquet
+      } else {
+        run = 0;                           // gap breaks adjacency
+      }
+    }
+    return false;
+  };
+  let lo = Math.min(...bloomDay), hi = Math.max(...bloomDay), ans = hi;
+  while (lo <= hi) {
+    const mid = lo + Math.floor((hi - lo) / 2);
+    if (canMake(mid)) { ans = mid; hi = mid - 1; }
+    else lo = mid + 1;
+  }
+  return ans;
+}` },
+        { lang: 'cpp', code: `class Solution {
+    bool canMake(const vector<int>& bloomDay, int m, int k, int day) {
+        int made = 0, run = 0;
+        for (int b : bloomDay) {
+            if (b <= day) {
+                if (++run == k) { made++; run = 0; if (made >= m) return true; }   // one more bouquet
+            } else {
+                run = 0;                           // gap breaks adjacency
+            }
+        }
+        return false;
+    }
+public:
+    int minDays(const vector<int>& bloomDay, int m, int k) {
+        if ((long long)m * k > (long long)bloomDay.size()) return -1;   // not enough flowers ever
+        auto [mn, mx] = minmax_element(bloomDay.begin(), bloomDay.end());
+        int lo = *mn, hi = *mx, ans = hi;
+        while (lo <= hi) {
+            int mid = lo + (hi - lo) / 2;
+            if (canMake(bloomDay, m, k, mid)) { ans = mid; hi = mid - 1; }
+            else lo = mid + 1;
+        }
+        return ans;
+    }
+};` }
+      ],
       dry: {
         head: ['lo', 'hi', 'mid', 'bloomed', 'bouquets', '≥ 2?', 'action'],
         rows: [
@@ -2566,6 +4177,17 @@ print(min_eating_speed([3, 6, 7, 11], 8))  # 4`, run: true }],
       `<p>Greedy check: running sum; when adding the next number would exceed L, start a new part. Feasible if parts ≤ k ("≤" is fine: a feasible split into fewer parts can be cut further, since k ≤ n).</p>`,
       `<p>Traps: lo = max(nums) (zeros are allowed, so min could be 0 but the max element must fit); sums up to 10<sup>9</sup> fit in int but use long for safety. Recipe: lo = max, hi = sum, first-yes search.</p>`
     ],
+    tests: { sig: 'int[] int -> int', fn: 'splitArray', cases: [
+      [[[7, 2, 5, 10, 8], 2], 18],
+      [[[1, 2, 3, 4, 5], 2], 9],
+      [[[1, 4, 4], 3], 4],
+      [[[0], 1], 0],
+      [[[0, 0, 0], 2], 0],
+      [[[10], 1], 10],
+      [[[2, 3, 1, 2, 4, 3], 5], 4],
+      [[Array(1000).fill(1000000), 1], 1000000000],
+      [[Array(1000).fill(1000000), 50], 20000000]
+    ] },
     solution: {
       approach: `<p>First-yes binary search on the largest-sum limit with greedy part counting.</p>`,
       code: `
@@ -2592,6 +4214,66 @@ print(min_eating_speed([3, 6, 7, 11], 8))  # 4`, run: true }],
                 return (int) ans;
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def split_array(nums, k):
+    def parts_needed(limit):
+        parts, run = 1, 0
+        for x in nums:
+            if run + x > limit:            # start a new subarray
+                parts, run = parts + 1, 0
+            run += x
+        return parts
+
+    lo, hi = max(nums), sum(nums)
+    ans = hi
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        if parts_needed(mid) <= k:
+            ans, hi = mid, mid - 1
+        else:
+            lo = mid + 1
+    return ans` },
+        { lang: 'js', code: `function splitArray(nums, k) {
+  const partsNeeded = (limit) => {
+    let parts = 1, run = 0;
+    for (const x of nums) {
+      if (run + x > limit) { parts++; run = 0; }   // start a new subarray
+      run += x;
+    }
+    return parts;
+  };
+  let lo = Math.max(...nums), hi = nums.reduce((s, x) => s + x, 0), ans = hi;
+  while (lo <= hi) {
+    const mid = lo + Math.floor((hi - lo) / 2);
+    if (partsNeeded(mid) <= k) { ans = mid; hi = mid - 1; }
+    else lo = mid + 1;
+  }
+  return ans;
+}` },
+        { lang: 'cpp', code: `class Solution {
+    int partsNeeded(const vector<int>& nums, long long limit) {
+        int parts = 1;
+        long long run = 0;
+        for (int x : nums) {
+            if (run + x > limit) { parts++; run = 0; }   // start a new subarray
+            run += x;
+        }
+        return parts;
+    }
+public:
+    int splitArray(const vector<int>& nums, int k) {
+        long long lo = *max_element(nums.begin(), nums.end());
+        long long hi = accumulate(nums.begin(), nums.end(), 0LL);
+        long long ans = hi;
+        while (lo <= hi) {
+            long long mid = lo + (hi - lo) / 2;
+            if (partsNeeded(nums, mid) <= k) { ans = mid; hi = mid - 1; }
+            else lo = mid + 1;
+        }
+        return (int)ans;                   // the answer is at most 10^9: fits int
+    }
+};` }
+      ],
       dry: {
         head: ['lo', 'hi', 'mid', 'greedy parts', 'count', '≤ 2?', 'action'],
         rows: [
@@ -2640,6 +4322,19 @@ print(min_eating_speed([3, 6, 7, 11], 8))  # 4`, run: true }],
       `<p>For a candidate i: if <code>A[i−1] &gt; B[j]</code>, A gave too many → hi = i − 1. If <code>B[j−1] &gt; A[i]</code>, A gave too few → lo = i + 1. Otherwise the cut is right. Use ±∞ for out-of-range neighbours.</p>`,
       `<p>Traps: binary search the <b>shorter</b> array (so j stays in range); odd total → median = max(left side); even → (max(left) + min(right)) / 2.0 in long/double. Empty A is fine (i = 0).</p>`
     ],
+    tests: { sig: 'int[] int[] -> double', fn: 'findMedianSortedArrays', cmp: 'float', cases: [
+      [[[1, 3, 8], [7, 9, 10, 11]], 8.0],
+      [[[1, 2], [3, 4]], 2.5],
+      [[[1, 3], [2]], 2.0],
+      [[[], [1]], 1.0],
+      [[[2], []], 2.0],
+      [[[], [2, 3]], 2.5],
+      [[[1000000], [1000000]], 1000000.0],
+      [[[-1000000, -999999], [1000000]], -999999.0],
+      [[[1, 1, 1], [1, 1, 1]], 1.0],
+      [[[1, 2, 3, 4, 5], [6, 7, 8, 9, 10, 11]], 6.0],
+      [[[-5, 3, 6, 12, 15], [-12, -10, -6, -3, 4, 10]], 3.0]
+    ] },
     solution: {
       approach: `<p>Binary search the partition index in the smaller array; check the two cross conditions.</p>`,
       code: `
@@ -2673,6 +4368,77 @@ print(min_eating_speed([3, 6, 7, 11], 8))  # 4`, run: true }],
                 System.out.println(new Solution().findMedianSortedArrays(new int[]{1, 2}, new int[]{3, 4}));            // 2.5
             }
         }`,
+      alt: [
+        { lang: 'python', code: `from math import inf
+
+def find_median_sorted_arrays(A, B):
+    if len(A) > len(B):
+        A, B = B, A                        # search the shorter one
+    m, n = len(A), len(B)
+    half = (m + n + 1) // 2                # size of the left half
+    lo, hi = 0, m                          # i = how many elements A gives
+    while lo <= hi:
+        i = (lo + hi) // 2
+        j = half - i                       # B gives the rest
+        a_left = A[i - 1] if i > 0 else -inf
+        a_right = A[i] if i < m else inf
+        b_left = B[j - 1] if j > 0 else -inf
+        b_right = B[j] if j < n else inf
+        if a_left <= b_right and b_left <= a_right:     # valid cut
+            if (m + n) % 2:
+                return float(max(a_left, b_left))
+            return (max(a_left, b_left) + min(a_right, b_right)) / 2
+        if a_left > b_right:
+            hi = i - 1                     # A gave too many: move cut left
+        else:
+            lo = i + 1                     # A gave too few: move cut right
+    raise ValueError("inputs were not sorted")` },
+        { lang: 'js', code: `function findMedianSortedArrays(A, B) {
+  if (A.length > B.length) [A, B] = [B, A];      // search the shorter one
+  const m = A.length, n = B.length;
+  const half = (m + n + 1) >> 1;                 // size of the left half
+  let lo = 0, hi = m;                            // i = how many elements A gives
+  while (lo <= hi) {
+    const i = (lo + hi) >> 1;
+    const j = half - i;                          // B gives the rest
+    const aLeft = i === 0 ? -Infinity : A[i - 1];
+    const aRight = i === m ? Infinity : A[i];
+    const bLeft = j === 0 ? -Infinity : B[j - 1];
+    const bRight = j === n ? Infinity : B[j];
+    if (aLeft <= bRight && bLeft <= aRight) {    // valid cut
+      if ((m + n) % 2 === 1) return Math.max(aLeft, bLeft);
+      return (Math.max(aLeft, bLeft) + Math.min(aRight, bRight)) / 2;
+    }
+    if (aLeft > bRight) hi = i - 1;              // A gave too many: move cut left
+    else lo = i + 1;                             // A gave too few: move cut right
+  }
+  throw new Error('inputs were not sorted');
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    double findMedianSortedArrays(const vector<int>& A, const vector<int>& B) {
+        if (A.size() > B.size()) return findMedianSortedArrays(B, A);   // search the shorter one
+        int m = (int)A.size(), n = (int)B.size();
+        int half = (m + n + 1) / 2;                // size of the left half
+        int lo = 0, hi = m;                        // i = how many elements A gives
+        while (lo <= hi) {
+            int i = lo + (hi - lo) / 2;
+            int j = half - i;                      // B gives the rest
+            int aLeft  = i == 0 ? INT_MIN : A[i - 1];
+            int aRight = i == m ? INT_MAX : A[i];
+            int bLeft  = j == 0 ? INT_MIN : B[j - 1];
+            int bRight = j == n ? INT_MAX : B[j];
+            if (aLeft <= bRight && bLeft <= aRight) {               // valid cut
+                if ((m + n) % 2 == 1) return max(aLeft, bLeft);
+                return (max(aLeft, bLeft) + (long long)min(aRight, bRight)) / 2.0;
+            }
+            if (aLeft > bRight) hi = i - 1;        // A gave too many: move cut left
+            else lo = i + 1;                       // A gave too few: move cut right
+        }
+        throw invalid_argument("inputs were not sorted");
+    }
+};` }
+      ],
       dry: {
         head: ['lo', 'hi', 'i', 'j', 'A[i−1] | A[i]', 'B[j−1] | B[j]', 'check', 'action'],
         rows: [
@@ -2715,6 +4481,17 @@ print(min_eating_speed([3, 6, 7, 11], 8))  # 4`, run: true }],
       `<p>Only the tie <code>nums[mid] == nums[hi]</code> is new: you can't tell the side, but you can safely discard hi (its value survives at mid).</p>`,
       `<p>Traps: don't discard mid on a tie; worst case O(n) for arrays like [1,1,1,…,1]; return the value, not the index (the index of "the" minimum isn't unique). Recipe: while lo &lt; hi: mid; &gt; → lo = mid + 1; &lt; → hi = mid; == → hi−−.</p>`
     ],
+    tests: { sig: 'int[] -> int', fn: 'findMin', cases: [
+      [[[10, 1, 10, 10, 10]], 1],
+      [[[10, 10, 10, 1, 10]], 1],
+      [[[2, 2, 2, 0, 1]], 0],
+      [[[1, 3, 5]], 1],
+      [[[1]], 1],
+      [[[1, 1, 1, 1]], 1],
+      [[[3, 3, 1, 3]], 1],
+      [[[-5000, -5000]], -5000],
+      [[[3, 1, 3, 3, 3]], 1]
+    ] },
     solution: {
       approach: `<p>Template B on the "drop", shrinking hi by one on ties.</p>`,
       code: `
@@ -2734,6 +4511,42 @@ print(min_eating_speed([3, 6, 7, 11], 8))  # 4`, run: true }],
                 return nums[lo];
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def find_min(nums):
+    lo, hi = 0, len(nums) - 1
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if nums[mid] > nums[hi]:
+            lo = mid + 1               # drop is right of mid
+        elif nums[mid] < nums[hi]:
+            hi = mid                   # mid..hi sorted: min is mid or left
+        else:
+            hi -= 1                    # tie: hi's value also lives at mid, drop hi
+    return nums[lo]` },
+        { lang: 'js', code: `function findMin(nums) {
+  let lo = 0, hi = nums.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (nums[mid] > nums[hi]) lo = mid + 1;        // drop is right of mid
+    else if (nums[mid] < nums[hi]) hi = mid;       // mid..hi sorted: min is mid or left
+    else hi--;                                     // tie: hi's value also lives at mid
+  }
+  return nums[lo];
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int findMin(const vector<int>& nums) {
+        int lo = 0, hi = (int)nums.size() - 1;
+        while (lo < hi) {
+            int mid = lo + (hi - lo) / 2;
+            if (nums[mid] > nums[hi]) lo = mid + 1;        // drop is right of mid
+            else if (nums[mid] < nums[hi]) hi = mid;       // mid..hi sorted: min is mid or left
+            else hi--;                                     // tie: hi's value also lives at mid
+        }
+        return nums[lo];
+    }
+};` }
+      ],
       dry: {
         head: ['lo', 'hi', 'mid', 'nums[mid] vs nums[hi]', 'action'],
         rows: [
@@ -2780,6 +4593,19 @@ print(min_eating_speed([3, 6, 7, 11], 8))  # 4`, run: true }],
       `<p>count(x) = Σ<sub>i=1..m</sub> min(x / i, n), O(m) per check. Binary search x in [1, m·n].</p>`,
       `<p>Traps: the first x with count ≥ k is automatically a value that appears in the table (count only jumps at table values), so no extra check is needed; m·n can be 9·10<sup>8</sup> (fits int) but sums of counts fit easily too. Recipe: lo = 1, hi = m·n; mid; count(mid) ≥ k ? (ans = mid, hi = mid − 1) : lo = mid + 1.</p>`
     ],
+    tests: { sig: 'int int int -> int', fn: 'findKthNumber', cases: [
+      [[3, 3, 5], 3],
+      [[2, 3, 6], 6],
+      [[1, 1, 1], 1],
+      [[1, 5, 3], 3],
+      [[5, 1, 4], 4],
+      [[3, 3, 1], 1],
+      [[3, 3, 9], 9],
+      [[45, 12, 471], 312],
+      [[300, 400, 50000], 17034],
+      [[30000, 30000, 1], 1],
+      [[30000, 30000, 900000000], 900000000]
+    ] },
     solution: {
       approach: `<p>Binary search on the value with a row-by-row counting check — the "k-th smallest via counting" pattern.</p>`,
       code: `
@@ -2800,6 +4626,53 @@ print(min_eating_speed([3, 6, 7, 11], 8))  # 4`, run: true }],
                 return ans;
             }
         }`,
+      alt: [
+        { lang: 'python', code: `def find_kth_number(m, n, k):
+    def count_at_most(x):
+        # multiples of i that are <= x, at most n per row
+        return sum(min(x // i, n) for i in range(1, m + 1))
+
+    lo, hi = 1, m * n
+    ans = hi
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        if count_at_most(mid) >= k:
+            ans, hi = mid, mid - 1         # enough values <= mid: try smaller
+        else:
+            lo = mid + 1
+    return ans` },
+        { lang: 'js', code: `function findKthNumber(m, n, k) {
+  const countAtMost = (x) => {
+    let c = 0;
+    for (let i = 1; i <= m; i++) c += Math.min(Math.floor(x / i), n);   // multiples of i <= x
+    return c;
+  };
+  let lo = 1, hi = m * n, ans = hi;
+  while (lo <= hi) {
+    const mid = lo + Math.floor((hi - lo) / 2);
+    if (countAtMost(mid) >= k) { ans = mid; hi = mid - 1; }   // enough values <= mid
+    else lo = mid + 1;
+  }
+  return ans;
+}` },
+        { lang: 'cpp', code: `class Solution {
+    long long countAtMost(int m, int n, int x) {
+        long long c = 0;
+        for (int i = 1; i <= m; i++) c += min(x / i, n);   // multiples of i that are <= x
+        return c;
+    }
+public:
+    int findKthNumber(int m, int n, int k) {
+        int lo = 1, hi = m * n, ans = hi;                  // m*n <= 9*10^8: fits int
+        while (lo <= hi) {
+            int mid = lo + (hi - lo) / 2;
+            if (countAtMost(m, n, mid) >= k) { ans = mid; hi = mid - 1; }   // enough values <= mid
+            else lo = mid + 1;
+        }
+        return ans;
+    }
+};` }
+      ],
       dry: {
         head: ['lo', 'hi', 'mid', 'count(mid) = rows 1+2+3', '≥ 5?', 'action'],
         rows: [
@@ -2815,7 +4688,7 @@ print(min_eating_speed([3, 6, 7, 11], 8))  # 4`, run: true }],
 
   /* ================= QUIZ ================= */
   quiz.push(
-    { q: 'Why is <code>mid = lo + (hi - lo) / 2</code> preferred over <code>(lo + hi) / 2</code> in Java?', options: ['It is faster', '<code>lo + hi</code> can overflow int when both are large', 'It rounds up instead of down', 'It works on unsorted arrays'], answer: 1, explain: 'With lo and hi near 2·10<sup>9</sup>, lo + hi exceeds 2<sup>31</sup> − 1 and wraps negative. hi − lo never overflows for valid indices.' },
+    { q: 'Why is <code>mid = lo + (hi - lo) / 2</code> preferred over <code>(lo + hi) / 2</code> in Java or C++?', options: ['It is faster', '<code>lo + hi</code> can overflow int when both are large', 'It rounds up instead of down', 'It works on unsorted arrays'], answer: 1, explain: 'With lo and hi near 2·10<sup>9</sup>, lo + hi exceeds 2<sup>31</sup> − 1 and wraps negative. hi − lo never overflows for valid indices.' },
     { q: 'At most how many comparisons does binary search need on 1,000,000 sorted items?', options: ['~10', '~20', '~1,000', '~500,000'], answer: 1, explain: '2<sup>20</sup> ≈ 1.05 million, so ⌊log₂ 10<sup>6</sup>⌋ + 1 = 20 looks are enough.' },
     { q: 'Template <code>while (lo &lt; hi)</code> with <code>lo = mid</code> on one branch. What must mid be to avoid an infinite loop?', options: ['<code>lo + (hi - lo) / 2</code> (lower middle)', '<code>lo + (hi - lo + 1) / 2</code> (upper middle)', '<code>hi - 1</code>', 'It never loops forever'], answer: 1, explain: 'With lo = 3, hi = 4 the lower middle is 3; lo = mid keeps lo = 3 forever. The upper middle (4) guarantees progress.' },
     { q: 'In <code>[1, 2, 2, 2, 5]</code>, lowerBound(2) and upperBound(2) are…', options: ['1 and 3', '1 and 4', '0 and 4', '2 and 3'], answer: 1, explain: 'First index with a[i] ≥ 2 is 1; first index with a[i] &gt; 2 is 4 (value 5). Count = 4 − 1 = 3.' },
@@ -2862,10 +4735,16 @@ print(min_eating_speed([3, 6, 7, 11], 8))  # 4`, run: true }],
       'Find first/last occurrence, count, floor and ceiling with lower bound / upper bound in O(log n)',
       'Search rotated sorted arrays and find peaks by identifying which half is guaranteed to contain the answer',
       'Turn "minimize the maximum" / "maximize the minimum" / "minimum speed or capacity" problems into binary search on the answer with a greedy feasibility check',
-      'Prove monotonicity and greedy correctness out loud, and pick the right answer range and data types (long) under interview pressure'
+      'Prove monotonicity and greedy correctness out loud, and pick the right answer range and integer width (64-bit where sums or products grow) under interview pressure'
     ],
     prereqs: `DSA 2 (Math Foundations & Complexity — logarithms as repeated halving), DSA 5 (Arrays & Prefix Sums) and DSA 7 (Sorting & Intervals). Comfortable with Java loops, arrays and integer overflow.`,
     hours: 14,
+    langNotes: {
+      java: `<p><b>Java:</b> <code>int</code> overflow wraps silently, so write <code>mid = lo + (hi - lo) / 2</code> (or <code>(lo + hi) &gt;&gt;&gt; 1</code>), square as <code>(long) mid * mid</code>, and keep answer-space sums (painters, pages, hours) in <code>long</code>. Integer division truncates, so <code>Math.ceil(p / k)</code> on ints is already rounded down: use <code>(p + k - 1) / k</code>. <code>Arrays.binarySearch</code> returns <i>some</i> match with duplicates (never use it for "first") and <code>-(insertionPoint) - 1</code> when missing; <code>Collections.binarySearch</code> on a <code>LinkedList</code> is O(n). For changing sorted data, <code>TreeMap</code> / <code>TreeSet</code> give <code>ceilingKey</code> / <code>floorKey</code> in O(log n). Recursion depth is no issue here (about 31 levels), and the iterative loops use none.</p>`,
+      python: `<p><b>Python:</b> integers never overflow, so <code>(lo + hi) // 2</code> and <code>mid * mid</code> are safe as written. <code>//</code> floors (it rounds −7 // 2 to −4, unlike Java's −3), which is still a valid middle. The standard library does the boundary searches: <code>bisect_left</code> = lower bound, <code>bisect_right</code> = upper bound, and since 3.10 both take <code>key=</code>. <code>math.isqrt</code> is an exact integer square root. Pass <code>lo</code>/<code>hi</code> indices instead of slicing (<code>a[mid:]</code> copies, which makes it O(n) per step). Use <code>-(-p // k)</code> or <code>(p + k - 1) // k</code> for ceiling division; <code>math.ceil(p / k)</code> goes through a float. Recursion stops near 1000 frames, far above binary search's ~31 levels.</p>`,
+      js: `<p><b>JavaScript:</b> <code>/</code> gives a fraction, so take the middle with <code>Math.floor((lo + hi) / 2)</code>, or <code>(lo + hi) &gt;&gt;&gt; 1</code> while the sum is below 2<sup>32</sup> (<code>&gt;&gt; 1</code> and <code>| 0</code> squeeze to signed 32 bits and break past 2<sup>31</sup>). <code>Number</code> is exact up to 2<sup>53</sup>, which covers every sum in this module; beyond it use <code>BigInt</code>. There is no built-in binary search: write <code>lowerBound</code> once and reuse it. <code>arr.sort()</code> compares as strings, so sort stalls with <code>(a, b) =&gt; a - b</code> (and on a copy if the caller's order matters). <code>Math.ceil(p / k)</code> is correct here because the division keeps its fraction. <code>Math.max(...arr)</code> spreads every element as an argument; on very large arrays use a loop or <code>reduce</code>.</p>`,
+      cpp: `<p><b>C++:</b> signed overflow is undefined behaviour, so use <code>mid = lo + (hi - lo) / 2</code>, square as <code>(long long) mid * mid</code>, and sum with <code>accumulate(..., 0LL)</code> (a plain <code>0</code> sums in <code>int</code>). The STL has the whole toolkit: <code>lower_bound</code>, <code>upper_bound</code>, <code>equal_range</code> (both bounds and the count), <code>binary_search</code> (yes/no only), and <code>partition_point</code>, which is exactly "first index where the predicate turns false". <code>std::set</code> / <code>std::map</code> have their own O(log n) <code>lower_bound</code>; calling the free function on them is O(n). <code>size()</code> is unsigned, so write <code>(int)a.size() - 1</code> before the empty case wraps it. <code>INT_MIN</code> / <code>INT_MAX</code> work as the ±∞ sentinels in the median problem.</p>`
+    },
     topics: topics,
     practice: practice,
     quiz: quiz,
