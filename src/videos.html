@@ -67,6 +67,8 @@
   function label() { tb.textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? 'Light theme' : 'Dark theme'; }
   tb.addEventListener('click', function () { var t = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'; try { localStorage.setItem('imastery.theme', JSON.stringify(t)); } catch (e) { } document.documentElement.setAttribute('data-theme', t); label(); });
   addEventListener('pageshow', label); addEventListener('storage', label);
+  var want = decodeURIComponent(location.hash.slice(1));
+  if (L.tracks.some(function (t) { return t.id === want; })) cur = want;
   label(); chips(); render();
 })();
 </script>

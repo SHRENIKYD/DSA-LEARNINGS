@@ -123,6 +123,8 @@
     if (!pool.length) pool = Games.list.filter(function (x) { return x.id !== play.lastGame; });
     var dn = Math.floor(new Date(now().getFullYear(), now().getMonth(), now().getDate()).getTime() / 864e5), g = pool[dn % pool.length];
     h += '<a class="card gamecard" href="#game/' + g.id + '"><span class="kick xp">Today\'s game · ' + esc(g.kicker) + '</span><b class="ttl">' + esc(g.title) + '</b><span class="muted sm">' + esc(g.goal) + '</span><span class="b3 ghost">PLAY · +' + Play.XP.game + ' XP</span></a>';
+    var nv = Object.keys(window.IM_VIDEOS || {}).length;
+    if (nv) h += '<a class="card vidcard" href="videos.html"><span class="kick">Videos</span><b class="ttl">Watch topics explained</b><span class="muted sm">' + nv.toLocaleString('en-US') + ' topics have a video so far. New ones are added every day.</span><span class="b3 ghost">🎬 OPEN VIDEOS</span></a>';
     page('home', h);
   }
 
@@ -159,6 +161,8 @@
     if (g) h += '<a class="card gamecard" href="#game/' + g.id + '"><span class="kick xp">Warm-up game' + (play.games && play.games[g.id] ? ' · won ✓' : '') + '</span><b class="ttl">' + esc(g.title) + '</b><span class="muted sm">' + esc(g.goal) + '</span><span class="b3 ghost">PLAY</span></a>';
     if (m) {
       h += '<div class="acts"><a class="b3" href="' + lessonHref(mid) + '">📖 LEARN</a><a class="b3 ghost" href="' + lessonHref(mid, '-quiz') + '">🎯 QUIZ</a></div>';
+      var mv = Object.keys(window.IM_VIDEOS || {}).filter(function (k) { return k.indexOf(mid + '-t') === 0; }).length;
+      if (mv) h += '<a class="card vidcard" href="videos.html#' + x.t.id + '"><span class="kick">Videos</span><b class="ttl">' + mv + ' video' + (mv === 1 ? '' : 's') + ' for this module</b><span class="muted sm">They also play inside each lesson.</span></a>';
       if (m.practice) h += '<a class="card boss" href="' + lessonHref(mid, '-arena') + '"><div class="row sb"><span class="kick" style="color:var(--p)">Boss · practice arena</span><span aria-hidden="true">⚔</span></div><b class="ttl">' + (m.practice - m.practiceDone) + ' of ' + m.practice + ' problems left</b>' + bar((m.practice - m.practiceDone) / m.practice, 'hp') + '<span class="b3 p">ATTACK</span></a>';
     }
     page('map', h);
