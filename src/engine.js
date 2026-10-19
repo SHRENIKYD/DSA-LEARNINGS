@@ -891,14 +891,7 @@ var App = (function () {
     } else {
       h += '<a class="nextstop" href="dsa.html#dsa01"><span class="kicker">First stop · place 1 · Foundation Isle</span><b>Programming Foundations</b><span>DSA + Math for CS · starts with a real-world legend</span><span class="sail">' + ICONS.play + 'Set sail</span></a>';
     }
-    h += '</div><div class="wmap" role="group" aria-label="World map"><svg viewBox="0 0 700 470" aria-hidden="true">' +
-      J.REGIONS.map(function (r) { return '<ellipse class="wl" cx="' + r.x + '" cy="' + r.y + '" rx="' + r.rx + '" ry="' + r.ry + '"/>'; }).join('') +
-      '<path class="wroute" d="M130 330 C 220 300, 260 400, 350 395 S 480 330, 560 330 S 620 180, 565 110 S 420 90, 340 140 S 160 60, 100 100"/>' +
-      '</svg>' +
-      J.REGIONS.map(function (r) {
-        var g = S.region[r.key];
-        return '<a class="wlab" href="#r-' + r.key + '" style="left:' + r.lx + '%;top:' + r.ly + '%">' + (r === R0 ? '<span class="where">You are here</span>' : '') + '<b>' + J.icon(r.icon, 'c-' + r.color) + esc(r.name) + '</b><span>' + r.tracks.map(function (t) { return trackBy[t] ? esc(trackBy[t].short) : ''; }).join(' · ') + ' · ' + J.pct(g.done, g.items) + '%</span></a>';
-      }).join('') + '</div></section>';
+    h += '</div>' + J.atlasHtml(S, R0, trackBy, last) + '</section>';
 
     var mid = last && last.id && M[last.id] ? last.id : 'dsa01', tid = last && last.id && M[last.id] ? last.track : 'dsa', c = M[mid], steps = [];
     var tix = last && last.id === mid ? last.topic || 0 : 0, num = last && last.id === mid ? last.num : 1;
@@ -938,6 +931,7 @@ var App = (function () {
       '</div><ol class="route" id="proute" role="tabpanel" aria-labelledby="ptab1"></ol></section>';
     h += '<footer class="jfoot">' + (window.IM_VERSION ? '<span>Interview Mastery v' + esc(window.IM_VERSION) + '</span>' : '') + '<a href="privacy.html">Privacy policy</a><a href="https://github.com/SHRENIKYD/DSA-LEARNINGS">Source on GitHub</a><button class="btn ghost" type="button" id="resetProgress">Reset all progress</button></footer>';
     $('#main').innerHTML = h;
+    J.mountAtlas(S, trackBy, last);
 
     var pickPath = function (i) {
       $$('.ptab').forEach(function (b) { b.setAttribute('aria-selected', b.getAttribute('data-path') === String(i) ? 'true' : 'false'); });
@@ -967,3 +961,4 @@ var App = (function () {
 
   return { track: track, home: home, renderPart: renderPart, highlight: highlight, dedent: dedent, PART: PART, items: items };
 })();
+

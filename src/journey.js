@@ -207,5 +207,69 @@ var Journey = (function () {
   }
   function dest() { var d = get('imastery.dest', 'backend'); for (var i = 0; i < ROLES.length; i++) if (ROLES[i].id === d) return ROLES[i]; return ROLES[0]; }
 
-  return { ICON: ICON, REGIONS: REGIONS, ZONES: ZONES, ZCOLOR: ZCOLOR, ROLES: ROLES, STAMPS: STAMPS, regionOf: regionOf, icon: icon, mods: mods, stats: stats, stampsOf: stampsOf, stampSvg: stampSvg, bar: bar, themeIcon: themeIcon, passport: passport, dest: dest, setDest: function (id) { set('imastery.dest', id); }, pct: pct, esc: esc };
+  /* Interactive atlas uses the same progress and track registry as the rest of the site. */
+  var atlasSelection = null, atlasPaused = false;
+  var ATLAS_POS = { isle: [20, 61], obs: [50, 79], port: [80, 60], peaks: [79, 23], valley: [49, 33], harbor: [18, 20] };
+  var ATLAS_COPY = {
+    isle: 'Build solid foundations in problem solving, algorithms and the core ideas behind every computer.',
+    valley: 'Find your voice in code. Explore the languages that turn your ideas into working solutions.',
+    peaks: 'See the bigger picture. Design clear, resilient systems, from objects to distributed architecture.',
+    port: 'Turn ideas into experiences people can use, from the browser to the services behind it.',
+    obs: 'Look beyond the horizon. Understand intelligent systems and learn to build alongside AI.',
+    harbor: 'Bring your story into focus and prepare to communicate your strengths with confidence.'
+  };
+  function atlasHtml(s, current, tracks, last) {
+    var chosen = REGIONS.filter(function (r) { return r.key === atlasSelection; })[0] || current || REGIONS[0];
+    var route = 'M140 360 C210 365 245 465 350 466 S470 354 560 354 S620 185 553 136 S420 125 343 195 S180 65 126 118';
+    var h = '<div class="atlas' + (atlasPaused ? ' is-paused' : '') + '" role="group" aria-label="Interactive learning atlas"><div class="atlas-ocean"><div class="atlas-grid" aria-hidden="true"></div>' +
+      '<span class="atlas-caption">' + icon('compass') + ' THE LEARNING ARCHIPELAGO</span>' +
+      '<svg class="atlas-route" viewBox="0 0 700 590" preserveAspectRatio="none" aria-hidden="true"><path d="' + route + '"/><circle class="atlas-traveler" r="4"><animateMotion dur="28s" repeatCount="indefinite" path="' + route + '"/></circle></svg>';
+    h += REGIONS.map(function (r, i) {
+      var pos = ATLAS_POS[r.key], g = s.region[r.key];
+      return '<button type="button" class="atlas-island' + (r === chosen ? ' selected' : '') + '" data-island="' + r.key + '" aria-pressed="' + (r === chosen) + '" aria-controls="atlas-detail" style="left:' + pos[0] + '%;top:' + pos[1] + '%;--drift:' + (-i * .8) + 's">' +
+        '<span class="atlas-terrain"><span class="atlas-land"></span><span class="atlas-monument">' + icon(r.icon) + '</span>' + (r === current ? '<span class="atlas-pin">You are here</span>' : '') + '</span>' +
+        '<b>' + esc(r.name) + '</b><span class="atlas-sub">' + r.tracks.filter(function (t) { return tracks[t]; }).map(function (t) { return esc(tracks[t].short); }).join(' · ') + '</span><span class="atlas-pct">' + pct(g.done, g.items) + '% explored</span></button>';
+    }).join('');
+    h += '<div class="atlas-legend"><span>●</span> Your journey · select an island to explore</div><button class="atlas-motion" type="button" aria-pressed="' + atlasPaused + '">' + (atlasPaused ? 'Resume motion' : 'Pause motion') + '</button></div>' +
+      '<aside class="atlas-detail" id="atlas-detail" aria-live="polite">' + atlasDetail(chosen, s, tracks, last) + '</aside></div>';
+    return h;
+  }
+  function atlasDetail(r, s, tracks, last) {
+    var g = s.region[r.key], p = pct(g.done, g.items), available = r.tracks.filter(function (t) { return tracks[t]; });
+    var resume = last && available.indexOf(last.track) >= 0 && last.hash;
+    var next = null;
+    available.some(function (tid) { return tracks[tid].modules.some(function (m) { var ms = s.module[m.id]; if (ms && !ms.full) { next = { track: tid, module: m.id }; return true; } return false; }); });
+    var href = resume ? last.track + '.html#' + last.hash : next ? next.track + '.html#' + next.module : available.length ? available[0] + '.html' : '#r-' + r.key;
+    return '<span class="atlas-kicker">' + icon(r.icon) + esc(r.area) + '</span><h2>' + esc(r.name) + '</h2><p>' + esc(ATLAS_COPY[r.key]) + '</p>' +
+      '<div class="atlas-progress" role="progressbar" aria-label="' + esc(r.name) + ' progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + p + '"><i style="width:' + p + '%"></i></div>' +
+      '<div class="atlas-progress-label"><span>' + g.done + ' / ' + g.items + ' activities</span><b>' + p + '%</b></div><h3>Your expedition</h3><div class="atlas-tracks">' +
+      available.map(function (tid) { var tr = s.track[tid], n = tr ? pct(tr.done, tr.items) : 0; return '<a href="' + esc(tid) + '.html"><span>' + esc(tracks[tid].title) + '</span><b>' + n + '% ↗</b></a>'; }).join('') + '</div>' +
+      '<a class="atlas-cta" href="' + esc(href) + '">' + (resume ? 'Continue expedition' : p === 100 ? 'Revisit this region' : 'Begin expedition') + ' ↗</a><small>One small step. A stronger foundation.</small>';
+  }
+  function mountAtlas(s, tracks, last) {
+    var root = document.querySelector('.atlas'); if (!root) return;
+    var svg = root.querySelector('.atlas-route');
+    var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    function motion() {
+      var paused = atlasPaused || reduced;
+      root.classList.toggle('is-paused', paused);
+      if (svg && svg.pauseAnimations) { if (paused) svg.pauseAnimations(); else svg.unpauseAnimations(); }
+      var b = root.querySelector('.atlas-motion'); b.setAttribute('aria-pressed', String(paused)); b.disabled = !!reduced;
+      b.textContent = reduced ? 'Reduced motion enabled' : paused ? 'Resume motion' : 'Pause motion';
+    }
+    root.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-island]');
+      if (b) {
+        var r = REGIONS.filter(function (r) { return r.key === b.getAttribute('data-island'); })[0]; if (!r) return;
+        atlasSelection = r.key;
+        Array.prototype.forEach.call(root.querySelectorAll('[data-island]'), function (el) { var on = el === b; el.classList.toggle('selected', on); el.setAttribute('aria-pressed', String(on)); });
+        root.querySelector('.atlas-detail').innerHTML = atlasDetail(r, s, tracks, last);
+      }
+      if (e.target.closest('.atlas-motion')) { atlasPaused = !atlasPaused; motion(); }
+    });
+    motion();
+  }
+
+  return { atlasHtml: atlasHtml, mountAtlas: mountAtlas, ICON: ICON, REGIONS: REGIONS, ZONES: ZONES, ZCOLOR: ZCOLOR, ROLES: ROLES, STAMPS: STAMPS, regionOf: regionOf, icon: icon, mods: mods, stats: stats, stampsOf: stampsOf, stampSvg: stampSvg, bar: bar, themeIcon: themeIcon, passport: passport, dest: dest, setDest: function (id) { set('imastery.dest', id); }, pct: pct, esc: esc };
 })();
+

@@ -627,3 +627,48 @@ svg.stamp.off .st-fill{opacity:0}
   .pland{grid-template-columns:minmax(0,1fr) 90px 40px}
   .jfoot .btn{margin-left:0}
 }
+
+
+/* Learning atlas: floating terrain with real track links and progress. */
+.whero:has(.atlas){display:grid;grid-template-columns:1fr;gap:24px}
+.whero:has(.atlas) .wh-l{display:grid;grid-template-columns:1fr minmax(260px,370px);column-gap:36px;align-items:center}
+.whero:has(.atlas) .wh-l>.kicker,.whero:has(.atlas) .wh-l>h1,.whero:has(.atlas) .wh-l>p{grid-column:1}
+.whero:has(.atlas) .nextstop{grid-column:2;grid-row:1/4}
+.atlas{--atlas-orange:#f19a6c;display:grid;grid-template-columns:minmax(0,1fr) 290px;border:1px solid var(--border);border-radius:24px;overflow:hidden;min-width:0}
+.atlas-ocean{position:relative;min-height:590px;overflow:hidden;background:radial-gradient(ellipse at 40% 50%,#304449,#242b38 80%);color:#f4eee3}
+.atlas-grid{position:absolute;inset:0;opacity:.35;background-image:linear-gradient(#abc4c411 1px,transparent 1px),linear-gradient(90deg,#abc4c411 1px,transparent 1px);background-size:36px 36px;pointer-events:none}
+.atlas-caption{position:absolute;left:22px;top:20px;display:flex;align-items:center;gap:7px;color:#b6c7c4;font:10px var(--f-mono);letter-spacing:1.4px}
+.atlas-caption .ic{width:16px;height:16px}
+.atlas-route{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.atlas-route path{fill:none;stroke:#eca574;stroke-width:2;stroke-linecap:round;stroke-dasharray:2 9;opacity:.65;animation:atlas-route 26s linear infinite}
+.atlas-traveler{fill:#ffe1b9;filter:drop-shadow(0 0 5px #ffb46f)}
+.atlas-island{position:absolute;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;width:24%;padding:0;border:0;background:none;color:inherit;cursor:pointer;text-align:center;z-index:1;font-family:inherit;border-radius:10px}
+.atlas-terrain{width:100%;max-width:155px;height:94px;position:relative;display:block;animation:atlas-float 5s ease-in-out var(--drift) infinite}
+.atlas-land{position:absolute;inset:20px 5px 0;border-radius:48% 52% 45% 47%;background:linear-gradient(150deg,#b2b78d,#6b8870 65%,#4e6b61);box-shadow:0 8px 0 #40594e,0 15px 0 #304740,0 25px 20px #0004;transform:rotate(-8deg);transition:filter .2s,box-shadow .2s}
+.atlas-land:after{content:'';position:absolute;inset:8px;border:1px solid #e1e8b744;border-radius:50%}
+.atlas-monument{position:absolute;inset:0;display:grid;place-items:center;color:#f2dbb4;filter:drop-shadow(0 6px 1px #24352b80)}
+.atlas-monument .ic{width:52px;height:52px;stroke-width:1.6}
+.atlas-island>b{font:700 clamp(11px,1.3vw,16px) var(--f-head);margin-top:22px;line-height:1.15}
+.atlas-sub{font-size:10px;line-height:1.4;margin:5px 0 2px;color:#c9d2ca;max-width:160px}
+.atlas-pct{font:10px var(--f-mono);color:#c5b99c}
+.atlas-pin{position:absolute;top:-9px;left:50%;transform:translateX(-50%);border-radius:5px;padding:5px 8px;background:var(--atlas-orange);color:#2a201d;font:600 9px var(--f-mono);white-space:nowrap}
+.atlas-pin:after{content:'';position:absolute;top:100%;left:45%;border:4px solid transparent;border-top-color:var(--atlas-orange)}
+.atlas-island.selected .atlas-land{box-shadow:0 8px 0 #40594e,0 15px 0 #304740,0 0 0 2px #f19a6c,0 0 30px #f19a6c33}
+.atlas-island:hover .atlas-land{filter:brightness(1.18)}
+.atlas :focus-visible{outline:3px solid #f7b48c;outline-offset:6px}
+.atlas-legend{position:absolute;bottom:24px;left:22px;font:9px var(--f-mono);color:#c0c9c2;max-width:60%}.atlas-legend>span{color:#f1a46e;margin-right:6px}
+.atlas-motion{position:absolute;bottom:17px;right:16px;padding:8px 10px;border:1px solid #ffffff30;border-radius:7px;background:#1c242b;color:#e3ddd1;cursor:pointer;font:10px var(--f-mono)}
+.atlas-detail{background:var(--panel);padding:26px 22px;display:flex;flex-direction:column;min-width:0}
+.atlas-kicker{font:11px var(--f-mono);color:var(--clay);display:flex;align-items:center;gap:8px}.atlas-kicker .ic{width:19px;height:19px}
+.atlas-detail h2{font:700 26px var(--f-head);line-height:1.1;margin:15px 0 12px}.atlas-detail p{font-size:14px;line-height:1.6;color:var(--muted);margin:0}
+.atlas-progress{height:4px;border-radius:4px;overflow:hidden;background:var(--border);margin-top:22px}.atlas-progress i{display:block;height:100%;background:var(--clay)}
+.atlas-progress-label{display:flex;justify-content:space-between;color:var(--muted);font:10px var(--f-mono);margin-top:9px}
+.atlas-detail h3{font:11px var(--f-mono);text-transform:uppercase;letter-spacing:1px;margin:28px 0 8px;color:var(--muted)}
+.atlas-tracks{margin-bottom:24px}.atlas-tracks a{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 0;border-bottom:1px solid var(--border);color:var(--text);text-decoration:none;font-size:13px}.atlas-tracks a:hover{color:var(--clay)}.atlas-tracks b{white-space:nowrap;font:10px var(--f-mono);color:var(--muted)}
+.atlas-cta{display:block;text-align:center;background:#ed7546;color:#231619;border-radius:9px;padding:14px 10px;text-decoration:none;font-weight:800;font-size:14px;margin-top:auto}.atlas-cta:hover{background:#ffac7b;color:#231619}.atlas-detail>small{text-align:center;margin-top:12px;font:9px var(--f-mono);color:var(--muted)}
+.atlas.is-paused *{animation-play-state:paused!important}
+@keyframes atlas-float{0%,100%{translate:0 0}50%{translate:0 -8px}}@keyframes atlas-route{to{stroke-dashoffset:-220}}
+[data-theme="light"] .atlas-ocean{background:radial-gradient(ellipse at 40% 50%,#405c62,#293848 85%)}
+@media(max-width:900px){.atlas{grid-template-columns:minmax(0,1fr)}.atlas-detail{min-height:380px}.atlas-tracks{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));column-gap:20px}.whero:has(.atlas) .wh-l{display:flex}.atlas-island>b{font-size:14px}}
+@media(max-width:480px){.atlas-ocean{min-height:560px}.atlas-caption{font-size:8px;left:14px;letter-spacing:.6px}.atlas-terrain{height:70px}.atlas-monument .ic{width:37px;height:37px}.atlas-island>b{font-size:11px}.atlas-sub{font-size:8px}.atlas-pct{font-size:8px}.atlas-pin{font-size:8px;padding:4px 6px}.atlas-legend{left:12px;bottom:16px;font-size:8px;max-width:48%}.atlas-motion{font-size:9px;right:10px}.atlas-detail{padding:22px}}
+@media(prefers-reduced-motion:reduce){.atlas *{animation:none!important;transition:none!important}}
