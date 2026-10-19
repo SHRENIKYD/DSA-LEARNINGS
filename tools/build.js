@@ -28,6 +28,7 @@ fs.cpSync(path.join(root, 'vendor'), path.join(out, 'vendor'), { recursive: true
 const hash = crypto.createHash('sha1');
 const SI = { modules: {}, entries: [], problems: 0, viz: 0 };
 let warnings = 0;
+const ALLT = [];
 
 for (const t of TRACKS) {
   const dir = path.join(root, 'content', t.id);
@@ -51,6 +52,7 @@ for (const t of TRACKS) {
     SI.modules[pm.id] = { items: ctx.App.items(m), pl: (m.practice || []).map((p) => String(p.level || 'Medium').charAt(0).toUpperCase()).join('') };
     SI.entries.push({ t: pm.num + '. ' + strip(m.title || pm.title), c: t.short + ' · Module', h: href + pm.id, s: strip(pm.scope).toLowerCase() });
     m.topics.forEach((tp, i) => {
+      ALLT.push({ tr: t.id, tid: pm.id + '-t' + i, mn: pm.num, mt: strip(m.title || pm.title), tt: strip(tp.title) });
       SI.viz += asList(tp.viz).length;
       SI.entries.push({ t: strip(tp.title), c: t.short + ' · ' + strip(m.title || pm.title), h: href + pm.id + '-t' + i, s: strip(asList(tp.clues).join(' ')).toLowerCase().slice(0, 300) });
       asList(tp.problems).concat(asList(tp.problem)).forEach((p, j) => {
@@ -84,6 +86,12 @@ try { VIDS = JSON.parse(rd('data/videos.json')).videos || {}; } catch (e) { }
 const vidJs = {};
 Object.keys(VIDS).forEach((k) => { const v = VIDS[k]; if (v && /^[A-Za-z0-9_-]{11}$/.test(v.id || '')) vidJs[k] = { id: v.id, title: String(v.title || '').slice(0, 140), channel: String(v.channel || '').slice(0, 80), secs: +v.secs || 0 }; });
 fs.writeFileSync(path.join(out, 'assets', 'videos.js'), 'window.IM_VIDEOS=' + JSON.stringify(vidJs).replace(/</g, '\\u003c') + ';');
+const lib = { total: ALLT.length, tracks: [] };
+for (const t of TRACKS) {
+  const items = ALLT.filter((x) => x.tr === t.id && vidJs[x.tid]).map((x) => Object.assign({ mn: x.mn, mt: x.mt, tt: x.tt, tid: x.tid }, vidJs[x.tid]));
+  if (items.length) lib.tracks.push({ id: t.id, short: t.short, title: t.title, items: items });
+}
+fs.writeFileSync(path.join(out, 'assets', 'video-library.js'), 'window.IM_VIDEO_LIB=' + JSON.stringify(lib).replace(/</g, '\\u003c') + ';');
 
 const tpl = rd('src/track.html');
 for (const t of TRACKS) {
@@ -93,6 +101,7 @@ for (const t of TRACKS) {
 }
 fs.writeFileSync(path.join(out, 'index.html'), rd('src/index.html').replace(/@@V@@/g, V));
 fs.writeFileSync(path.join(out, 'login.html'), rd('src/login.html').replace(/@@V@@/g, V));
+fs.writeFileSync(path.join(out, 'videos.html'), rd('src/videos.html').replace(/@@V@@/g, V));
 const contactEmail = (process.env.CONTACT_EMAIL || '').trim();
 const contact = /^[^\s@<>"]+@[^\s@<>"]+\.[A-Za-z]{2,}$/.test(contactEmail)
   ? 'Questions or requests: <b>' + H(contactEmail) + '</b>. To delete your account, use the steps above.'

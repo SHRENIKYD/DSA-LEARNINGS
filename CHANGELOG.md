@@ -2,6 +2,11 @@
 
 Versions follow [Semantic Versioning](https://semver.org): MAJOR for breaking changes to progress data or URLs, MINOR for new features or modules, PATCH for fixes. Each release is a `vX.Y.Z` git tag on `main`, and `package.json` holds the current version for both the website and the mobile app. The Android workflow creates the tag and a GitHub Release (with the APK) automatically when a new version reaches `main`.
 
+## [Unreleased]
+
+### Added
+- Videos page on the website (`videos.html`): every lesson video in one place, grouped by track, with search, track filters, play in place and a link to each lesson. Linked from the home page and every track page.
+
 ## [1.6.0] — 2026-10-19
 
 ### Added
