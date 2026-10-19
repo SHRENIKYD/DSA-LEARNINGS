@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -29,6 +29,15 @@ jobs:
           SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_PUBLISHABLE_KEY }}
           CONTACT_EMAIL: ${{ vars.CONTACT_EMAIL }}
         run: node tools/build.js site
+      - name: Tag the website version (main only)
+        if: github.ref == 'refs/heads/main'
+        run: |
+          V=$(node -p "require('./package.json').version")
+          if git ls-remote --exit-code --tags origin "refs/tags/web-v$V" >/dev/null; then echo "web-v$V is already tagged"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "web-v$V" "$GITHUB_SHA" -m "Website v$V"
+          git push origin "refs/tags/web-v$V"
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

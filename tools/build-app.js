@@ -7,7 +7,7 @@ const { spawnSync } = require('child_process');
 const root = path.join(__dirname, '..');
 const out = path.resolve(process.argv[2] || path.join(root, 'app-www'));
 const rd = (p) => fs.readFileSync(path.join(root, p), 'utf8');
-const VERSION = JSON.parse(rd('package.json')).version;
+const VERSION = JSON.parse(rd('package.json')).appVersion;
 
 fs.rmSync(out, { recursive: true, force: true });
 const r = spawnSync(process.execPath, [path.join(__dirname, 'build.js'), out], { stdio: 'inherit', env: process.env });

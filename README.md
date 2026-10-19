@@ -15,6 +15,8 @@ Every module has the same layout:
 - 📝 **Quiz** and 🎤 **interview Q&A bank**.
 - 🏟 **Practice Arena** with 12–20 graded problems.
 
+The site is styled as a story journey: the home page is a world map of 6 regions, each track is a land, each module is a place and each topic is a landmark. Progress earns 16 rubber-stamp badges on the Passport page (`passport.html`); lesson videos are collected on the Watchtower page (`videos.html`).
+
 SQL snippets run live in the browser (sql.js), and JavaScript/Python snippets run in a sandbox.
 
 See [docs/CURRICULUM.md](docs/CURRICULUM.md) for the full curriculum and learning paths.
@@ -51,7 +53,11 @@ Publishing on Google Play: see [docs/PLAY_RELEASE.md](docs/PLAY_RELEASE.md). Les
 XP and badges are worked out from the progress the website already saves, so they sync with your account. Streaks, quests and game wins are kept on the device for now.
 
 ## Versioning
-The current version is in `package.json`; every release is a `vX.Y.Z` tag on `main` and is listed in [CHANGELOG.md](CHANGELOG.md). To release: bump `version` in `package.json`, run `node tools/version-sync.js` (updates the iOS project; Android reads `package.json` itself), add a CHANGELOG entry and merge to `main`. The Android workflow then tags `vX.Y.Z` and publishes a GitHub Release with the APK.
+The website and the mobile app have separate versions in `package.json`:
+- **Website**: `version`, shown in the home page footer and listed in [CHANGELOG.md](CHANGELOG.md). To release, bump it, add a CHANGELOG entry and merge to `main`; the Pages workflow tags it `web-vX.Y.Z`.
+- **App**: `appVersion`, listed in [CHANGELOG-APP.md](CHANGELOG-APP.md). To release, bump it, run `node tools/version-sync.js` (updates the iOS project; Android reads `package.json` itself), add a CHANGELOG-APP entry and merge to `main`. The Android workflow tags it `app-vX.Y.Z`, publishes a GitHub Release with the APK and uploads it to Google Play.
+
+A website-only change does not need an app version bump, and the reverse. Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
 ## Project layout
 | Path | What |
@@ -63,6 +69,7 @@ The current version is in `package.json`; every release is a `vX.Y.Z` tag on `ma
 | `tools/e2e.js` | Headless-browser smoke test of the built site |
 | `docs/AUTHORING.md` | How to write a module |
 | `vendor/` | sql.js (MIT) for the in-browser SQL runner, supabase-js 2.117.2 (MIT) for accounts |
+| `src/journey.js` | Journey layer: regions, zones, destinations, stamp rules and the SVG stamp artwork, top bar, Passport page |
 | `src/auth.js`, `src/login.*` | Accounts: sign-in page and progress sync |
 | `supabase/schema.sql` | Database table + row-level security for per-user progress |
 

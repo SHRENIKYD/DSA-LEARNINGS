@@ -84,24 +84,24 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          notes() { node -e "const s=require('fs').readFileSync('CHANGELOG.md','utf8');const m=s.split(/^## /m).find(x=>x.startsWith('['+process.argv[1]+']'));process.stdout.write(m?m.split('\\n').slice(1).join('\\n').trim():'')" "$1"; }
+          notes() { node -e "const s=require('fs').readFileSync(process.argv[2],'utf8');const m=s.split(/^## /m).find(x=>x.startsWith('['+process.argv[1]+']'));process.stdout.write(m?m.split('\\n').slice(1).join('\\n').trim():'')" "$1" "$2"; }
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          release() {  # $1 = version, $2 = commit, $3 = title, rest = assets
-            local v="$1" sha="$2" title="$3"; shift 3
-            if git ls-remote --exit-code --tags origin "refs/tags/v$v" >/dev/null; then echo "v$v is already tagged"; return 0; fi
-            git tag -a "v$v" "$sha" -m "$title"
-            git push origin "refs/tags/v$v"
-            notes "$v" > "notes-$v.md"
-            gh release create "v$v" "$@" --verify-tag --title "$title" --notes-file "notes-$v.md"
+          release() {  # $1 = tag, $2 = version, $3 = changelog, $4 = commit, $5 = title, rest = assets
+            local tag="$1" v="$2" log="$3" sha="$4" title="$5"; shift 5
+            if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then echo "$tag is already tagged"; return 0; fi
+            git tag -a "$tag" "$sha" -m "$title"
+            git push origin "refs/tags/$tag"
+            notes "$v" "$log" > "notes-$tag.md"
+            gh release create "$tag" "$@" --verify-tag --title "$title" --notes-file "notes-$tag.md"
           }
-          release 1.0.0 db7338f7b7e2d598fdbc9cc451f21f852664a97a "v1.0.0 · website launch"
-          V=$(node -p "require('./package.json').version")
-          cp android/app/build/outputs/apk/debug/app-debug.apk "interview-mastery-v$V-debug.apk"
-          ASSETS="interview-mastery-v$V-debug.apk"
-          if [ -f android/app/build/outputs/bundle/release/app-release.aab ]; then cp android/app/build/outputs/bundle/release/app-release.aab "interview-mastery-v$V.aab"; ASSETS="$ASSETS interview-mastery-v$V.aab"; fi
-          if git ls-remote --exit-code --tags origin "refs/tags/v$V" >/dev/null; then echo "NEW_RELEASE=false" >> "$GITHUB_ENV"; else echo "NEW_RELEASE=true" >> "$GITHUB_ENV"; fi
-          release "$V" "$GITHUB_SHA" "v$V" $ASSETS
+          release v1.0.0 1.0.0 CHANGELOG.md db7338f7b7e2d598fdbc9cc451f21f852664a97a "v1.0.0 · website launch"
+          V=$(node -p "require('./package.json').appVersion")
+          cp android/app/build/outputs/apk/debug/app-debug.apk "interview-mastery-app-v$V-debug.apk"
+          ASSETS="interview-mastery-app-v$V-debug.apk"
+          if [ -f android/app/build/outputs/bundle/release/app-release.aab ]; then cp android/app/build/outputs/bundle/release/app-release.aab "interview-mastery-app-v$V.aab"; ASSETS="$ASSETS interview-mastery-app-v$V.aab"; fi
+          if git ls-remote --exit-code --tags origin "refs/tags/app-v$V" >/dev/null; then echo "NEW_RELEASE=false" >> "$GITHUB_ENV"; else echo "NEW_RELEASE=true" >> "$GITHUB_ENV"; fi
+          release "app-v$V" "$V" CHANGELOG-APP.md "$GITHUB_SHA" "App v$V" $ASSETS
       - name: Upload to Google Play (track from the PLAY_TRACK variable, default internal)
         if: env.HAS_UPLOAD_KEY == 'true' && env.HAS_PLAY_ACCOUNT == 'true' && env.NEW_RELEASE == 'true'
         uses: r0adkll/upload-google-play@v1

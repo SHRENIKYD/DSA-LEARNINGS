@@ -4,34 +4,32 @@
 <meta charset="utf-8">
 <script>(function(){function t(){var v;try{v=JSON.parse(localStorage.getItem('imastery.theme'))}catch(e){}document.documentElement.setAttribute('data-theme',v==='light'?'light':'dark')}t();addEventListener('pageshow',t);addEventListener('storage',function(e){if(e.key==='imastery.theme')t()})})();</script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Videos — Interview Mastery</title>
+<title>Watchtower — Interview Mastery</title>
 <meta name="description" content="Video explanations for every Interview Mastery topic: DSA, Java, Python, JS/TS, C++, SQL, system design, frontend, backend, GenAI, OS and networks.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Source+Sans+3:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:wght@500;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="assets/style.css?v=@@V@@">
 </head>
 <body class="vpage">
-<header class="vhead">
-  <a class="brand" href="index.html"><span class="logo">IM</span><div>Interview Mastery<small>Videos</small></div></a>
-  <div class="side-row"><a class="btn" href="index.html"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Home</a><button id="themeBtn" class="btn" type="button">Theme</button></div>
-</header>
+@@JBAR@@
 <main class="vmain">
-  <h1>Videos</h1>
-  <p class="vcount" id="vcount"></p>
-  <label class="sbox"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input id="vsearch" type="search" placeholder="Search topics, videos or channels" aria-label="Search videos" autocomplete="off"></label>
+  <div class="vtop"><div><span class="kicker">The watchtower · videos</span><h1>See every landmark explained</h1><p class="vcount" id="vcount"></p></div>
+  <label class="sbox"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input id="vsearch" type="search" placeholder="Search landmarks, videos or channels" aria-label="Search videos" autocomplete="off"></label></div>
   <div class="vchips" id="vchips" role="tablist" aria-label="Tracks"></div>
   <div id="vlist" aria-live="polite"></div>
   <p class="vid-note">Videos play from YouTube when you tap them, in its privacy-enhanced player. They are picked automatically for each topic and new ones are added every day.</p>
 </main>
+<script src="assets/tracks.js?v=@@V@@"></script>
 <script src="assets/video-library.js?v=@@V@@"></script>
+<script src="assets/journey.js?v=@@V@@"></script>
 <script>
 (function () {
   var L = window.IM_VIDEO_LIB || { total: 0, tracks: [] }, cur = 'all', q = '';
   var $ = function (s) { return document.querySelector(s); };
   function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   var all = 0; L.tracks.forEach(function (t) { all += t.items.length; });
-  $('#vcount').textContent = all ? all.toLocaleString('en-US') + ' of ' + L.total.toLocaleString('en-US') + ' topics have a video so far.' : 'Videos are being added. Check back soon.';
+  $('#vcount').textContent = all ? all.toLocaleString('en-US') + ' of ' + L.total.toLocaleString('en-US') + ' landmarks have a video so far. New ones arrive every day.' : 'Videos are being added. Check back soon.';
   function chips() {
     $('#vchips').innerHTML = [['all', 'All', all]].concat(L.tracks.map(function (t) { return [t.id, t.short, t.items.length]; })).map(function (c) {
       return '<button type="button" role="tab" class="vchip' + (c[0] === cur ? ' on' : '') + '" aria-selected="' + (c[0] === cur) + '" data-t="' + esc(c[0]) + '">' + esc(c[1]) + ' · ' + c[2] + '</button>';
@@ -39,9 +37,9 @@
   }
   function item(t, v) {
     var mins = v.secs ? Math.max(1, Math.round(v.secs / 60)) + ' min · ' : '';
-    return '<article class="box vid vitem"><span class="tag">' + esc(t.short) + ' · Module ' + v.mn + ' · ' + esc(v.mt) + '</span><h3>' + esc(v.tt) + '</h3>' +
-      '<button type="button" class="vid-play" data-vid="' + esc(v.id) + '" aria-label="Play video: ' + esc(v.title) + '"><span class="vid-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5l12 7-12 7z"/></svg></span><span class="vid-meta"><b>' + esc(v.title) + '</b><small>' + esc(v.channel) + ' · ' + mins + 'YouTube</small></span></button>' +
-      '<a class="vlesson" href="' + esc(t.id) + '.html#' + esc(v.tid) + '">Open the lesson ›</a></article>';
+    return '<article class="vitem"><button type="button" class="vid-play vthumb" data-vid="' + esc(v.id) + '" aria-label="Play video: ' + esc(v.title) + '"><span class="vid-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5l12 7-12 7z"/></svg></span><b hidden>' + esc(v.title) + '</b></button>' +
+      '<span class="kicker">Place ' + v.mn + ' · ' + esc(v.mt) + '</span><h3>' + esc(v.tt) + '</h3><p class="vmeta">' + esc(v.title) + ' · ' + esc(v.channel) + ' · ' + mins + 'YouTube</p>' +
+      '<a class="vlesson" href="' + esc(t.id) + '.html#' + esc(v.tid) + '">Visit the landmark ›</a></article>';
   }
   function render() {
     var words = q.toLowerCase().split(/\s+/).filter(Boolean), h = '', n = 0;
@@ -50,7 +48,7 @@
       var rows = t.items.filter(function (v) { var hay = (v.tt + ' ' + v.title + ' ' + v.channel + ' ' + v.mt + ' ' + t.short).toLowerCase(); return words.every(function (w) { return hay.indexOf(w) >= 0; }); });
       if (!rows.length) return;
       n += rows.length;
-      h += '<section class="vtrack"><h2>' + esc(t.title) + ' <small>' + rows.length + '</small></h2><div class="vgrid">' + rows.map(function (v) { return item(t, v); }).join('') + '</div></section>';
+      h += '<section class="vtrack"><h2><span class="kicker c-' + Journey.regionOf(t.id).color + '">' + esc(Journey.regionOf(t.id).name) + '</span>' + esc(t.title) + ' <small>' + rows.length + ' video' + (rows.length === 1 ? '' : 's') + '</small></h2><div class="vgrid">' + rows.map(function (v) { return item(t, v); }).join('') + '</div></section>';
     });
     $('#vlist').innerHTML = h || (all ? '<p class="vempty">No videos match “' + esc(q) + '”.</p>' : '');
   }
@@ -63,13 +61,10 @@
     fr.innerHTML = '<iframe src="https://www.youtube-nocookie.com/embed/' + id + '?autoplay=1&rel=0&playsinline=1" title="' + esc(b.querySelector('b').textContent) + '" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>';
     b.replaceWith(fr);
   });
-  var tb = $('#themeBtn');
-  function label() { tb.textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? 'Light theme' : 'Dark theme'; }
-  tb.addEventListener('click', function () { var t = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'; try { localStorage.setItem('imastery.theme', JSON.stringify(t)); } catch (e) { } document.documentElement.setAttribute('data-theme', t); label(); });
-  addEventListener('pageshow', label); addEventListener('storage', label);
+  Journey.bar({ theme: true });
   var want = decodeURIComponent(location.hash.slice(1));
   if (L.tracks.some(function (t) { return t.id === want; })) cur = want;
-  label(); chips(); render();
+  chips(); render();
 })();
 </script>
 </body>
