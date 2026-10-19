@@ -4,6 +4,8 @@ on:
   push:
     branches: [main, claude/dsa-math-study-portal-weghh9]
     paths: ['app/**', 'src/**', 'content/**', 'vendor/**', 'android/**', 'tools/**', 'package.json', 'package-lock.json', 'capacitor.config.json', '.github/workflows/android.yml']
+  pull_request:
+    paths: ['app/**', 'src/**', 'content/**', 'vendor/**', 'android/**', 'tools/**', 'package.json', 'package-lock.json', 'capacitor.config.json', '.github/workflows/android.yml']
   workflow_dispatch:
 
 permissions:
@@ -26,6 +28,8 @@ jobs:
           node tools/play-test.js
           node tools/update-test.js
           node tools/icon-test.js
+          node tools/fun-test.js
+          node tools/app-navigation-test.js
 
   apk:
     needs: test
