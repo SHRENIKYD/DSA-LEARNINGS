@@ -170,6 +170,29 @@ var Journey = (function () {
       : '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
   }
 
+  function passportStampSvg(x) {
+    var svg = stampSvg(x.st, x.on);
+    return x.on ? svg : svg.replace(/<text class="st-q"[^>]*>\?<\/text>/, '<g class="st-ic" transform="translate(42 42) scale(1.5)">' + (ICON[x.st.icon] || ICON.compass) + '</g>');
+  }
+  function stampCollectionHtml(list) {
+    var earned = list.filter(function (x) { return x.on; }), got = earned.length;
+    var featured = earned.length ? earned[earned.length - 1] : list[0];
+    var h = '<div class="passport-summary"><span class="kicker">Traveller’s collection</span><div class="passport-title"><h2 id="pStampsH">Your stamp passport</h2><span class="mono muted" id="pStampsN">' + got + ' of ' + list.length + ' collected</span></div>' +
+      '<p class="muted">Every stamp tells a story. Explore landmarks, uncover treasures and leave your mark on the map.</p>' +
+      '<div class="passport-meter" role="progressbar" aria-label="Stamp collection" aria-valuemin="0" aria-valuemax="' + list.length + '" aria-valuenow="' + got + '"><i style="width:' + pct(got, list.length) + '%"></i></div></div>';
+    if (featured) {
+      h += '<div class="passport-feature">' + passportStampSvg(featured) + '<div><span class="kicker">' + (got ? 'From your collection' : 'Your first adventure') + '</span><h3>' + esc(featured.st.name) + '</h3><span class="passport-status' + (got ? ' earned' : '') + '">' + (got ? '✓ Earned' : 'Next stamp to discover') + '</span><p>' + esc(featured.st.how) + '.</p></div><span class="passport-watermark" aria-hidden="true">' + icon('compass') + '</span></div>';
+    }
+    h += '<div class="passport-page-heading"><h3>Marks of your journey</h3><span class="mono muted">' + (got ? 'Keep exploring' : 'A blank page, a new beginning') + '</span></div><div class="pgrid" id="pStamps">';
+    h += list.map(function (x) {
+      var progress = Math.min(100, pct(x.have, x.st.need));
+      var svg = passportStampSvg(x);
+      return '<div class="pst' + (x.on ? ' on' : '') + '">' + svg + '<b>' + esc(x.st.name) + '</b><span class="passport-stamp-status">' + (x.on ? '✓ Earned' : 'Not yet earned') + '</span>' +
+        '<span class="passport-condition">' + esc(x.st.how) + '</span>' + (!x.on ? '<div class="passport-stamp-meter" role="progressbar" aria-label="' + esc(x.st.name) + ' progress" aria-valuemin="0" aria-valuemax="' + x.st.need + '" aria-valuenow="' + x.have + '"><i style="width:' + progress + '%"></i></div><span class="passport-count">' + x.have + ' / ' + x.st.need + '</span>' : '') + '</div>';
+    }).join('');
+    return h + '</div><div class="passport-page-footer"><span>' + icon('map') + ' Interview Mastery · Traveller’s collection</span><span class="mono">01 / 01</span></div>';
+  }
+
   /* ---------- passport page ---------- */
   function passport() {
     bar({ theme: true });
@@ -182,10 +205,7 @@ var Journey = (function () {
       document.getElementById('pHead').innerHTML = '<span class="pp-av" aria-hidden="true">' + (u ? esc(who.charAt(0).toUpperCase()) : icon('compass')) + '</span>' +
         '<div class="pp-who"><span class="kicker">Traveller\'s passport</span><b>' + esc(who) + '</b><span>' + (u ? 'Your journey is synced to every device you sign in on.' : 'Progress is saved in this browser. Sign in to keep it on every device.') + '</span></div>' +
         '<div class="pp-nums"><div><b>' + got + '</b><span>stamps</span></div><div><b>' + s.places + '</b><span>places cleared</span></div><div><b>' + s.topics.toLocaleString('en-US') + '</b><span>landmarks</span></div></div>';
-      document.getElementById('pStampsN').textContent = got + ' of ' + list.length;
-      document.getElementById('pStamps').innerHTML = list.map(function (x) {
-        return '<div class="pst' + (x.on ? ' on' : '') + '">' + stampSvg(x.st, x.on) + '<b>' + esc(x.st.name) + '</b><span>' + (x.on ? 'Earned' : esc(x.st.how) + (x.st.need > 1 ? ' · ' + x.have + ' / ' + x.st.need : '')) + '</span></div>';
-      }).join('');
+      document.getElementById('pCollection').innerHTML = stampCollectionHtml(list);
       document.getElementById('pLands').innerHTML = REGIONS.map(function (r) {
         var g = s.region[r.key], p = pct(g.done, g.items);
         return '<div class="pland"><span>' + icon(r.icon) + esc(r.name) + '</span><span class="jbar-p c-' + r.color + '"><i style="width:' + Math.max(p ? 3 : 0, p) + '%"></i></span><span class="mono">' + p + '%</span></div>';
@@ -270,6 +290,6 @@ var Journey = (function () {
     motion();
   }
 
-  return { atlasHtml: atlasHtml, mountAtlas: mountAtlas, ICON: ICON, REGIONS: REGIONS, ZONES: ZONES, ZCOLOR: ZCOLOR, ROLES: ROLES, STAMPS: STAMPS, regionOf: regionOf, icon: icon, mods: mods, stats: stats, stampsOf: stampsOf, stampSvg: stampSvg, bar: bar, themeIcon: themeIcon, passport: passport, dest: dest, setDest: function (id) { set('imastery.dest', id); }, pct: pct, esc: esc };
+  return { stampCollectionHtml: stampCollectionHtml, atlasHtml: atlasHtml, mountAtlas: mountAtlas, ICON: ICON, REGIONS: REGIONS, ZONES: ZONES, ZCOLOR: ZCOLOR, ROLES: ROLES, STAMPS: STAMPS, regionOf: regionOf, icon: icon, mods: mods, stats: stats, stampsOf: stampsOf, stampSvg: stampSvg, bar: bar, themeIcon: themeIcon, passport: passport, dest: dest, setDest: function (id) { set('imastery.dest', id); }, pct: pct, esc: esc };
 })();
 
