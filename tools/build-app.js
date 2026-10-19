@@ -36,7 +36,7 @@ for (const t of TRACKS) {
   pages++;
 }
 // Bundle the web fonts (SIL Open Font License) so the app needs no Google Fonts request and renders text offline.
-const FONTS = [['space-grotesk', 'Space Grotesk', [500, 600, 700]], ['source-sans-3', 'Source Sans 3', [400, 500, 600, 700]], ['ibm-plex-mono', 'IBM Plex Mono', [400, 500, 600]]];
+const FONTS = [['space-grotesk', 'Space Grotesk', [500, 600, 700]], ['source-sans-3', 'Source Sans 3', [400, 500, 600, 700]], ['ibm-plex-mono', 'IBM Plex Mono', [400, 500, 600]], ['bricolage-grotesque', 'Bricolage Grotesque', [500, 700, 800]], ['atkinson-hyperlegible', 'Atkinson Hyperlegible', [400, 700]]];
 const fontDir = path.join(out, 'fonts');
 fs.mkdirSync(fontDir, { recursive: true });
 let fontCss = '';

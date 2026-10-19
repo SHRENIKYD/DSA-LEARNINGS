@@ -66,6 +66,9 @@ p{margin:0}
 /* cards */
 .card{background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:14px;display:flex;flex-direction:column;gap:8px}
 .card.hero{border-color:var(--border2)}
+.card.vidcard{border-color:rgba(230,33,23,.45)}
+.card.vidcard .kick{color:#F87171}
+:root[data-theme="light"] .card.vidcard .kick{color:#B91C1C}
 .card.gamecard{background:linear-gradient(160deg,rgba(253,224,71,.10),var(--panel) 60%);border-color:rgba(253,224,71,.35)}
 .card.boss{background:linear-gradient(160deg,var(--p-bg),var(--panel) 65%);border-color:var(--p)}
 .lvcard b{font-family:var(--f-head)}

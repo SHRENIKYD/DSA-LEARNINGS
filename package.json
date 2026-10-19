@@ -1,6 +1,6 @@
 {
   "name": "interview-mastery",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "private": true,
   "description": "Beginner-to-expert interview prep: 13 tracks with visualizers, practice and progress sync.",
   "repository": "github:SHRENIKYD/DSA-LEARNINGS",
@@ -21,6 +21,8 @@
   },
   "devDependencies": {
     "@capacitor/cli": "8.5.2",
+    "@fontsource/atkinson-hyperlegible": "5.3.0",
+    "@fontsource/bricolage-grotesque": "5.3.0",
     "@fontsource/ibm-plex-mono": "5.3.0",
     "@fontsource/source-sans-3": "5.3.0",
     "@fontsource/space-grotesk": "5.3.0"
