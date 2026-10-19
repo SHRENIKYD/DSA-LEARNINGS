@@ -57,7 +57,7 @@ The website and the mobile app have separate versions in `package.json`:
 - **Website**: `version`, shown in the home page footer and listed in [CHANGELOG.md](CHANGELOG.md). To release, bump it, add a CHANGELOG entry and merge to `main`; the Pages workflow tags it `web-vX.Y.Z`.
 - **App**: `appVersion`, listed in [CHANGELOG-APP.md](CHANGELOG-APP.md). To release, bump it, run `node tools/version-sync.js` (updates the iOS project; Android reads `package.json` itself), add a CHANGELOG-APP entry and merge to `main`. The Android workflow tags it `app-vX.Y.Z`, publishes a GitHub Release with the APK and uploads it to Google Play.
 
-A website-only change does not need an app version bump, and the reverse. Up to 1.6.0 both shared one version, tagged `vX.Y.Z`.
+A website-only change does not need an app version bump, and the reverse. Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
 ## Project layout
 | Path | What |

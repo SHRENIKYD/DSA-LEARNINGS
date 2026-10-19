@@ -2,7 +2,7 @@
 
 Versions follow [Semantic Versioning](https://semver.org): MAJOR for breaking changes to progress data or URLs, MINOR for new features or modules, PATCH for fixes.
 
-From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.0 both shared one version, tagged `vX.Y.Z`.
+From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
 ## [1.7.0] — 2026-10-19
 
@@ -11,12 +11,18 @@ From 1.7.0 the website and the mobile app have separate versions. This file is t
 - Track pages are lands: a banner with progress and a continue button, a "you are here" card with the current place's landmarks, riddle gate, practice arena and interview tavern, and places grouped by zone (Beginner Shore, Intermediate Forest, Advanced Peaks, Expert Summit).
 - Passport page (`passport.html`) with 16 rubber-stamp badges drawn as SVG (10 milestones and one per region), lands explored, settings (daylight map, destination) and account.
 - Shared top bar on every page: World map, Watchtower (videos), Passport, theme and passport avatar.
-- Watchtower page (`videos.html`): every lesson video in one place, grouped by track, with search, track filters, play in place and a link to each lesson. A track id in the address (`videos.html#dsa`) opens it filtered to that track.
 - `assets/progress-map.js`: a small per-module item map so the passport works without loading the search index.
 
 ### Changed
 - New palette (night and daylight), Bricolage Grotesque headings and Atkinson Hyperlegible body text. Lessons use the journey names: the legend (analogy, on a paper card), hidden treasure (guided problem, violet), riddle gate (quiz) and interview tavern.
+- Videos page restyled as the Watchtower.
 - Separate versions for the website and the app (see above).
+
+## [1.6.1] — 2026-10-19
+
+### Added
+- Android app: a Videos card on the home screen opens the Videos page, and each module screen shows how many videos it has, opening the Videos page filtered to that track. The first app build with the lesson videos.
+- Videos page on the website (`videos.html`): every lesson video in one place, grouped by track, with search, track filters, play in place and a link to each lesson. A track id in the address (`videos.html#dsa`) opens it filtered to that track.
 
 ## [1.6.0] — 2026-10-19
 
