@@ -1,44 +1,31 @@
-// Renders store/icon.svg into the Android and iOS app icons, splash screens and Play Store graphics.
-// usage: node tools/make-icons.js   (needs Playwright with Chromium installed)
+// Build native icon and splash assets from the approved Lightbulb Logic master.
+// Requires ImageMagick (`convert`). No browser or network is used.
 const fs = require('fs');
 const path = require('path');
-let chromium; try { ({ chromium } = require('playwright')); } catch (e) { ({ chromium } = require('/opt/node22/lib/node_modules/playwright')); }
+const { execFileSync } = require('child_process');
 const root = path.join(__dirname, '..');
-const svg = fs.readFileSync(path.join(root, 'store', 'icon.svg'), 'utf8');
-const noBg = svg.replace('<rect id="bg" width="1024" height="1024" fill="#0B0D12"/>', '').replace(/<rect width="1024" height="1024" fill="url\(#glow\)"\/>/, '');
-const res = (p) => path.join(root, 'android', 'app', 'src', 'main', 'res', p);
-
-async function shot(page, html, w, h, file, transparent) {
-  await page.setViewportSize({ width: w, height: h });
-  await page.setContent('<!doctype html><html><body style="margin:0;background:' + (transparent ? 'transparent' : '#0B0D12') + '">' + html + '</body></html>');
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  await page.screenshot({ path: file, omitBackground: !!transparent });
+const master = path.join(root, 'store/app-icon-master.png');
+function write(file, args) {
+  const out = path.join(root, file); fs.mkdirSync(path.dirname(out), { recursive: true });
+  execFileSync('convert', [...args, '-colors', '128', '-strip', out], { stdio: 'inherit' });
 }
-const sized = (s, w, h, extra) => s.replace('<svg ', '<svg width="' + w + '" height="' + h + '" style="display:block' + (extra || '') + '" ');
-
-(async () => {
-  const br = await chromium.launch(), page = await br.newPage();
-  const DENS = { mdpi: 1, hdpi: 1.5, xhdpi: 2, xxhdpi: 3, xxxhdpi: 4 };
-  for (const [d, k] of Object.entries(DENS)) {
-    const legacy = Math.round(48 * k), fg = Math.round(108 * k);
-    await shot(page, sized(svg, legacy, legacy), legacy, legacy, res('mipmap-' + d + '/ic_launcher.png'));
-    await shot(page, '<div style="width:' + legacy + 'px;height:' + legacy + 'px;border-radius:50%;overflow:hidden">' + sized(svg, legacy, legacy) + '</div>', legacy, legacy, res('mipmap-' + d + '/ic_launcher_round.png'), true);
-    // Adaptive icon foreground: 108dp canvas; Bit fills about half of it, inside the central 66dp safe zone.
-    const inner = fg;
-    await shot(page, '<div style="width:' + fg + 'px;height:' + fg + 'px;display:grid;place-items:center">' + sized(noBg, inner, inner) + '</div>', fg, fg, res('mipmap-' + d + '/ic_launcher_foreground.png'), true);
-  }
-  // Splash screens: dark background with Bit in the middle.
-  const splash = (w, h) => '<div style="width:' + w + 'px;height:' + h + 'px;display:grid;place-items:center;background:#0B0D12">' + sized(svg, Math.round(Math.min(w, h) * 0.42), Math.round(Math.min(w, h) * 0.42), ';border-radius:22%') + '</div>';
-  const SPL = { 'drawable/splash.png': [480, 320], 'drawable-land-mdpi/splash.png': [480, 320], 'drawable-land-hdpi/splash.png': [800, 480], 'drawable-land-xhdpi/splash.png': [1280, 720], 'drawable-land-xxhdpi/splash.png': [1600, 960], 'drawable-land-xxxhdpi/splash.png': [1920, 1280], 'drawable-port-mdpi/splash.png': [320, 480], 'drawable-port-hdpi/splash.png': [480, 800], 'drawable-port-xhdpi/splash.png': [720, 1280], 'drawable-port-xxhdpi/splash.png': [960, 1600], 'drawable-port-xxxhdpi/splash.png': [1280, 1920] };
-  for (const [f, [w, h]] of Object.entries(SPL)) await shot(page, splash(w, h), w, h, res(f));
-  // iOS
-  const ios = path.join(root, 'ios', 'App', 'App', 'Assets.xcassets');
-  await shot(page, sized(svg, 1024, 1024), 1024, 1024, path.join(ios, 'AppIcon.appiconset', 'AppIcon-512@2x.png'));
-  for (const f of ['splash-2732x2732.png', 'splash-2732x2732-1.png', 'splash-2732x2732-2.png']) await shot(page, splash(2732, 2732), 2732, 2732, path.join(ios, 'Splash.imageset', f));
-  // Play Store: 512×512 icon and 1024×500 feature graphic
-  await shot(page, sized(svg, 512, 512), 512, 512, path.join(root, 'store', 'play-icon-512.png'));
-  await shot(page, '<div style="width:1024px;height:500px;display:flex;align-items:center;gap:56px;padding:0 72px;box-sizing:border-box;background:radial-gradient(circle at 22% 50%,rgba(34,211,238,.28),transparent 45%),#0B0D12;font-family:Space Grotesk,Inter Display,Inter,DejaVu Sans,sans-serif;color:#E7E9EE">' +
-    sized(noBg, 300, 300) + '<div><div style="font-size:64px;font-weight:700;line-height:1.05">Interview<br>Mastery</div><div style="margin-top:18px;font-size:28px;color:#A0A6B2">Learn DSA &amp; CS by playing</div><div style="margin-top:22px;font-size:22px;color:#FDE047;font-family:IBM Plex Mono,DejaVu Sans Mono,monospace">194 modules · 8 concept games</div></div></div>', 1024, 500, path.join(root, 'store', 'feature-graphic-1024x500.png'));
-  await br.close();
-  console.log('icons, splash screens and store graphics written');
-})();
+function icon(file, size) { write(file, [master, '-resize', size + 'x' + size, '-alpha', 'off']); }
+const res = 'android/app/src/main/res/';
+for (const [density, k] of Object.entries({ mdpi: 1, hdpi: 1.5, xhdpi: 2, xxhdpi: 3, xxxhdpi: 4 })) {
+  const size = Math.round(48 * k), canvas = Math.round(108 * k), inner = Math.round(canvas * .84);
+  icon(res + 'mipmap-' + density + '/ic_launcher.png', size);
+  // Android performs launcher masks; legacy round assets retain a circular alpha mask.
+  write(res + 'mipmap-' + density + '/ic_launcher_round.png', [master, '-resize', size + 'x' + size, '(', '+clone', '-alpha', 'transparent', '-fill', 'white', '-draw', 'circle ' + size / 2 + ',' + size / 2 + ' ' + size / 2 + ',0', ')', '-alpha', 'off', '-compose', 'CopyOpacity', '-composite']);
+  // Keep the mark inside Android's central 66dp adaptive-icon safe zone.
+  write(res + 'mipmap-' + density + '/ic_launcher_foreground.png', [master, '-resize', inner + 'x' + inner, '-background', '#F6F1E4', '-gravity', 'center', '-extent', canvas + 'x' + canvas]);
+}
+function splash(file, w, h) { const inner = Math.round(Math.min(w, h) * .42); write(file, [master, '-resize', inner + 'x' + inner, '-background', '#F6F1E4', '-gravity', 'center', '-extent', w + 'x' + h, '-alpha', 'off']); }
+const sizes = { 'drawable/splash.png': [480, 320], 'drawable-land-mdpi/splash.png': [480, 320], 'drawable-land-hdpi/splash.png': [800, 480], 'drawable-land-xhdpi/splash.png': [1280, 720], 'drawable-land-xxhdpi/splash.png': [1600, 960], 'drawable-land-xxxhdpi/splash.png': [1920, 1280], 'drawable-port-mdpi/splash.png': [320, 480], 'drawable-port-hdpi/splash.png': [480, 800], 'drawable-port-xhdpi/splash.png': [720, 1280], 'drawable-port-xxhdpi/splash.png': [960, 1600], 'drawable-port-xxxhdpi/splash.png': [1280, 1920] };
+for (const [file, [w, h]] of Object.entries(sizes)) splash(res + file, w, h);
+const ios = 'ios/App/App/Assets.xcassets/';
+icon(ios + 'AppIcon.appiconset/AppIcon-512@2x.png', 1024);
+for (const file of ['splash-2732x2732.png', 'splash-2732x2732-1.png', 'splash-2732x2732-2.png']) splash(ios + 'Splash.imageset/' + file, 2732, 2732);
+icon('store/play-icon-512.png', 512);
+icon('app/icon.png', 192);
+write('store/feature-graphic-1024x500.png', ['-size', '1024x500', 'xc:#12263A', '(', master, '-resize', '300x300', ')', '-geometry', '+60+100', '-composite', '-font', 'DejaVu-Sans-Bold', '-fill', '#F4EEDC', '-pointsize', '62', '-annotate', '+420+180', 'Interview', '-annotate', '+420+255', 'Mastery', '-font', 'DejaVu-Sans', '-pointsize', '25', '-fill', '#C9DCE8', '-annotate', '+422+315', 'Learn. Practice. Master.']);
+console.log('Lightbulb Logic: Android density icons, adaptive foregrounds, iOS icon, splash screens and in-app icon generated');

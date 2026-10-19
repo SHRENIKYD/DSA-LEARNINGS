@@ -13,9 +13,9 @@ fs.rmSync(out, { recursive: true, force: true });
 const r = spawnSync(process.execPath, [path.join(__dirname, 'build.js'), out], { stdio: 'inherit', env: process.env });
 if (r.status !== 0) process.exit(r.status || 1);
 
-const FILES = ['play.js', 'games.js', 'sound.js', 'speech.js', 'reader.js', 'app.js', 'bridge.js', 'app.css', 'bridge.css', 'reader.css'];
+const FILES = ['icon.png', 'update.js', 'play.js', 'games.js', 'sound.js', 'speech.js', 'reader.js', 'app.js', 'bridge.js', 'app.css', 'bridge.css', 'reader.css'];
 const hash = crypto.createHash('sha1');
-for (const f of FILES) hash.update(rd('app/' + f));
+for (const f of FILES) hash.update(fs.readFileSync(path.join(root, 'app', f)));
 hash.update(VERSION);
 const V = hash.digest('hex').slice(0, 10);
 
@@ -58,3 +58,4 @@ for (const f of fs.readdirSync(out).filter((x) => x.endsWith('.html'))) {
   if (next !== html) { fs.writeFileSync(file, next); fontPages++; }
 }
 console.log('app bundle v' + VERSION + ' → ' + out + ' (' + pages + ' lesson pages with play mode, fonts bundled in ' + fontPages + ' pages)');
+
