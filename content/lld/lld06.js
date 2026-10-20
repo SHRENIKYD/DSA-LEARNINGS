@@ -46,7 +46,7 @@ ${H.table(['Role', 'What it is', 'In the checkout example'], [
 ])}
 <p><b>The naive way</b> is one big method: <code>if (type.equals("FLAT")) … else if (type.equals("PERCENT")) … else if …</code>. It works on day one. On day 30 marketing wants "festive 20% capped at ₹300", then "buy one get one", then "first-order free delivery". Every new rule edits the same method, the method grows to 200 lines, every edit risks breaking old rules, and you cannot unit test one rule alone. That is a broken <b>Open/Closed Principle</b>: the class is not closed for modification.</p>
 <p><b>With Strategy</b>, adding a rule = adding one new class. Nothing old is touched. ${H.c('g', 'Each rule is tiny, testable and reusable.')}</p>
-<p><b>Modern Java twist:</b> if the strategy interface has one method, it is a <b>functional interface</b>, so a strategy can simply be a lambda: <code>Checkout c = new Checkout(amt -&gt; amt * 0.9);</code>. You already use this daily — <code>Comparator</code> is a strategy for <code>Collections.sort</code>, and <code>ThreadPoolExecutor</code> takes a <code>RejectedExecutionHandler</code> strategy.</p>`,
+<p><b>Functions as strategies:</b> if the strategy interface has one method, a strategy can simply be a function. Java (a functional interface): <code>new Checkout(amt -&gt; amt * 0.9)</code>; Python: <code>Checkout(lambda amt: amt * 0.9)</code>; TypeScript: <code>new Checkout(amt =&gt; amt * 0.9)</code>; C++: <code>Checkout([](double amt) { return amt * 0.9; })</code> over a <code>std::function</code>. You already use this daily — Java's <code>Comparator</code>, Python's <code>sorted(key=...)</code> and JavaScript's <code>array.sort(compareFn)</code> are all strategies plugged into a sort that stays fixed.</p>`,
     clues: [
       '"Support <b>multiple ways</b> to pay / sort / route / compress / price" → one interface, one class per way.',
       '"The <b>algorithm should be selectable at runtime</b>" or "chosen by config / user / A-B test" → Strategy.',
@@ -96,12 +96,206 @@ class Main {
                                                new PercentOff(10), new FestiveCap());
         for (DiscountStrategy r : rules) {
             c.setStrategy(r);                              // swap at runtime
-            System.out.println(r.name() + " -> " + c.total(1000));
+            System.out.println(r.name() + " -> " + String.format("%.2f", c.total(1000)));
         }
         c.setStrategy(amount -> amount - 50);              // a lambda is a strategy too
-        System.out.println("Lambda -> " + c.total(1000));
+        System.out.println("Lambda -> " + String.format("%.2f", c.total(1000)));
     }
-}` }, { lang: 'java', title: 'Strategy registry: pick by key without if/else', code: `// When the strategy is chosen by a string (config, request param), use a Map, not a switch.
+}`, alt: [
+          { lang: 'python', code: `from abc import ABC, abstractmethod
+from typing import Callable
+
+
+# 1) The "socket": every discount rule must provide this one method.
+class DiscountStrategy(ABC):
+    @abstractmethod
+    def apply(self, amount: float) -> float:  # returns the amount AFTER discount
+        ...
+
+    def name(self) -> str:
+        return type(self).__name__
+
+
+# 2) One small class per rule. Adding a rule never edits an old one.
+class NoDiscount(DiscountStrategy):
+    def apply(self, amount: float) -> float:
+        return amount
+
+
+class FlatOff(DiscountStrategy):
+    def __init__(self, off: float, min_order: float):
+        self._off, self._min_order = off, min_order
+
+    def apply(self, amount: float) -> float:
+        return amount - self._off if amount >= self._min_order else amount
+
+
+class PercentOff(DiscountStrategy):
+    def __init__(self, pct: float):
+        self._pct = pct
+
+    def apply(self, amount: float) -> float:
+        return amount * (1 - self._pct / 100.0)
+
+
+class FestiveCap(DiscountStrategy):  # 20% off, but at most 300
+    def apply(self, amount: float) -> float:
+        return amount - min(amount * 0.20, 300)
+
+
+class FunctionStrategy(DiscountStrategy):  # wraps any function, like a Java lambda
+    def __init__(self, fn: Callable[[float], float]):
+        self._fn = fn
+
+    def apply(self, amount: float) -> float:
+        return self._fn(amount)
+
+
+# 3) The context: uses a strategy, never asks "which one are you?"
+class Checkout:
+    def __init__(self):
+        self._strategy: DiscountStrategy = NoDiscount()
+
+    def set_strategy(self, s: DiscountStrategy) -> None:
+        if s is None:
+            raise ValueError("strategy required")
+        self._strategy = s
+
+    def total(self, cart_amount: float) -> float:
+        after = self._strategy.apply(cart_amount)
+        return round(after, 2)  # money rounding lives in ONE place
+
+
+if __name__ == "__main__":
+    c = Checkout()
+    rules = [NoDiscount(), FlatOff(100, 500), PercentOff(10), FestiveCap()]
+    for r in rules:
+        c.set_strategy(r)  # swap at runtime
+        print(f"{r.name()} -> {c.total(1000):.2f}")
+    c.set_strategy(FunctionStrategy(lambda amount: amount - 50))  # a function is a strategy too
+    print(f"Lambda -> {c.total(1000):.2f}")` },
+          { lang: 'ts', code: `// 1) The "socket": every discount rule must provide this one method.
+interface DiscountStrategy {
+  apply(amount: number): number; // returns the amount AFTER discount
+  name(): string;
+}
+
+// 2) One small class per rule. Adding a rule never edits an old one.
+abstract class BaseStrategy implements DiscountStrategy {
+  abstract apply(amount: number): number;
+  name(): string { return this.constructor.name; }
+}
+
+class NoDiscount extends BaseStrategy {
+  apply(amount: number): number { return amount; }
+}
+
+class FlatOff extends BaseStrategy {
+  constructor(private readonly off: number, private readonly minOrder: number) { super(); }
+  apply(amount: number): number { return amount >= this.minOrder ? amount - this.off : amount; }
+}
+
+class PercentOff extends BaseStrategy {
+  constructor(private readonly pct: number) { super(); }
+  apply(amount: number): number { return amount * (1 - this.pct / 100); }
+}
+
+class FestiveCap extends BaseStrategy { // 20% off, but at most 300
+  apply(amount: number): number { return amount - Math.min(amount * 0.2, 300); }
+}
+
+// 3) The context: uses a strategy, never asks "which one are you?"
+class Checkout {
+  private strategy: DiscountStrategy = new NoDiscount();
+  setStrategy(s: DiscountStrategy): void { this.strategy = s; }
+  total(cartAmount: number): number {
+    const after = this.strategy.apply(cartAmount);
+    return Math.round(after * 100) / 100; // money rounding lives in ONE place
+  }
+}
+
+const c = new Checkout();
+const rules: DiscountStrategy[] = [new NoDiscount(), new FlatOff(100, 500), new PercentOff(10), new FestiveCap()];
+for (const r of rules) {
+  c.setStrategy(r); // swap at runtime
+  console.log(\`\${r.name()} -> \${c.total(1000).toFixed(2)}\`);
+}
+c.setStrategy({ apply: (amount) => amount - 50, name: () => "Lambda" }); // an object literal is a strategy too
+console.log(\`Lambda -> \${c.total(1000).toFixed(2)}\`);` },
+          { lang: 'cpp', code: `// 1) The "socket": every discount rule must provide this one method.
+class DiscountStrategy {
+public:
+    virtual ~DiscountStrategy() = default;
+    virtual double apply(double amount) const = 0;  // returns the amount AFTER discount
+    virtual string name() const = 0;
+};
+
+// 2) One small class per rule. Adding a rule never edits an old one.
+class NoDiscount : public DiscountStrategy {
+public:
+    double apply(double amount) const override { return amount; }
+    string name() const override { return "NoDiscount"; }
+};
+class FlatOff : public DiscountStrategy {
+public:
+    FlatOff(double off, double minOrder) : off(off), minOrder(minOrder) {}
+    double apply(double amount) const override { return amount >= minOrder ? amount - off : amount; }
+    string name() const override { return "FlatOff"; }
+private:
+    double off, minOrder;
+};
+class PercentOff : public DiscountStrategy {
+public:
+    explicit PercentOff(double pct) : pct(pct) {}
+    double apply(double amount) const override { return amount * (1 - pct / 100.0); }
+    string name() const override { return "PercentOff"; }
+private:
+    double pct;
+};
+class FestiveCap : public DiscountStrategy {  // 20% off, but at most 300
+public:
+    double apply(double amount) const override { return amount - min(amount * 0.20, 300.0); }
+    string name() const override { return "FestiveCap"; }
+};
+class LambdaStrategy : public DiscountStrategy {  // wraps any callable
+public:
+    LambdaStrategy(string name, function<double(double)> fn) : label(std::move(name)), fn(std::move(fn)) {}
+    double apply(double amount) const override { return fn(amount); }
+    string name() const override { return label; }
+private:
+    string label;
+    function<double(double)> fn;
+};
+
+// 3) The context: uses a strategy, never asks "which one are you?"
+class Checkout {
+public:
+    void setStrategy(shared_ptr<const DiscountStrategy> s) {
+        if (!s) throw invalid_argument("strategy required");
+        strategy = std::move(s);
+    }
+    double total(double cartAmount) const {
+        double after = strategy->apply(cartAmount);
+        return round(after * 100) / 100.0;  // money rounding lives in ONE place
+    }
+private:
+    shared_ptr<const DiscountStrategy> strategy = make_shared<NoDiscount>();
+};
+
+int main() {
+    Checkout c;
+    vector<shared_ptr<const DiscountStrategy>> rules = {
+        make_shared<NoDiscount>(), make_shared<FlatOff>(100, 500),
+        make_shared<PercentOff>(10), make_shared<FestiveCap>()};
+    cout << fixed << setprecision(2);
+    for (const auto& r : rules) {
+        c.setStrategy(r);  // swap at runtime
+        cout << r->name() << " -> " << c.total(1000) << "\\n";
+    }
+    c.setStrategy(make_shared<LambdaStrategy>("Lambda", [](double amount) { return amount - 50; }));  // a lambda is a strategy too
+    cout << "Lambda -> " << c.total(1000) << "\\n";
+}` }
+        ] }, { lang: 'java', title: 'Strategy registry: pick by key without if/else', code: `// When the strategy is chosen by a string (config, request param), use a Map, not a switch.
 enum ShippingSpeed { STANDARD, EXPRESS, SAME_DAY }
 
 class ShippingCalculator {
@@ -122,9 +316,99 @@ class ShippingCalculator {
 
     public static void main(String[] args) {
         ShippingCalculator calc = new ShippingCalculator();
-        for (ShippingSpeed s : ShippingSpeed.values()) System.out.println(s + " 2kg = " + calc.cost(s, 2));
+        for (ShippingSpeed s : ShippingSpeed.values()) System.out.println(s + " 2kg = " + String.format("%.2f", calc.cost(s, 2)));
     }
-}` }],
+}`, alt: [
+          { lang: 'python', code: `from enum import Enum, auto
+from typing import Callable
+
+
+# When the strategy is chosen by a string (config, request param), use a dict, not an if/elif ladder.
+class ShippingSpeed(Enum):
+    STANDARD = auto()
+    EXPRESS = auto()
+    SAME_DAY = auto()
+
+
+class ShippingCalculator:
+    def __init__(self):
+        self._rules: dict[ShippingSpeed, Callable[[float], float]] = {
+            ShippingSpeed.STANDARD: lambda kg: 40 + 10 * kg,
+            ShippingSpeed.EXPRESS: lambda kg: 90 + 15 * kg,
+            ShippingSpeed.SAME_DAY: lambda kg: 150 + 25 * kg,
+        }
+
+    # New speed? Add one enum member + one dict entry. No function body grows.
+    def cost(self, speed: ShippingSpeed, kg: float) -> float:
+        rule = self._rules.get(speed)
+        if rule is None:
+            raise ValueError(f"No rule for {speed.name}")
+        return rule(kg)
+
+
+if __name__ == "__main__":
+    calc = ShippingCalculator()
+    for s in ShippingSpeed:
+        print(f"{s.name} 2kg = {calc.cost(s, 2):.2f}")` },
+          { lang: 'ts', code: `// When the strategy is chosen by a string (config, request param), use a Map, not a switch.
+type ShippingSpeed = "STANDARD" | "EXPRESS" | "SAME_DAY";
+
+class ShippingCalculator {
+  private readonly rules = new Map<ShippingSpeed, (kg: number) => number>([
+    ["STANDARD", (kg) => 40 + 10 * kg],
+    ["EXPRESS", (kg) => 90 + 15 * kg],
+    ["SAME_DAY", (kg) => 150 + 25 * kg],
+  ]);
+
+  // New speed? Add one union member + one entry. No function body grows.
+  cost(speed: ShippingSpeed, kg: number): number {
+    const rule = this.rules.get(speed);
+    if (rule === undefined) throw new Error(\`No rule for \${speed}\`);
+    return rule(kg);
+  }
+}
+
+const calc = new ShippingCalculator();
+const speeds: ShippingSpeed[] = ["STANDARD", "EXPRESS", "SAME_DAY"];
+for (const s of speeds) console.log(\`\${s} 2kg = \${calc.cost(s, 2).toFixed(2)}\`);` },
+          { lang: 'cpp', code: `// When the strategy is chosen by a string (config, request param), use a map, not a switch.
+enum class ShippingSpeed { STANDARD, EXPRESS, SAME_DAY };
+
+string name(ShippingSpeed s) {
+    switch (s) {
+        case ShippingSpeed::STANDARD: return "STANDARD";
+        case ShippingSpeed::EXPRESS: return "EXPRESS";
+        case ShippingSpeed::SAME_DAY: return "SAME_DAY";
+    }
+    return "?";
+}
+
+class ShippingCalculator {
+public:
+    ShippingCalculator() {
+        rules[ShippingSpeed::STANDARD] = [](double kg) { return 40 + 10 * kg; };
+        rules[ShippingSpeed::EXPRESS] = [](double kg) { return 90 + 15 * kg; };
+        rules[ShippingSpeed::SAME_DAY] = [](double kg) { return 150 + 25 * kg; };
+    }
+
+    // New speed? Add one enum constant + one entry. No function body grows.
+    double cost(ShippingSpeed speed, double kg) const {
+        auto it = rules.find(speed);
+        if (it == rules.end()) throw invalid_argument("No rule for " + name(speed));
+        return it->second(kg);
+    }
+
+private:
+    map<ShippingSpeed, function<double(double)>> rules;
+};
+
+int main() {
+    ShippingCalculator calc;
+    cout << fixed << setprecision(2);
+    for (ShippingSpeed s : {ShippingSpeed::STANDARD, ShippingSpeed::EXPRESS, ShippingSpeed::SAME_DAY})
+        cout << name(s) << " 2kg = " << calc.cost(s, 2) << "\\n";
+}` }
+        ] }],
     codeTitle: ['Strategy with classes', 'Strategy registry with lambdas'],
     viz: {
       title: 'Strategy: one Checkout, swappable discount rules',
@@ -164,7 +448,7 @@ class ShippingCalculator {
           var hl2 = { CK: 'cur', DS: 'cur' }; hl2[d.id] = 'ok';
           var eh2 = { 'CK-DS': 'ok' }; eh2[d.id + '-DS'] = 'ok';
           results.push([d.cls, d.rule, String(amt), String(after)]);
-          frames.push(F('Step ' + (i + 1) + 'b: <code>checkout.total(' + amt + ')</code> calls <code>strategy.apply(' + amt + ')</code>. Java\'s dynamic dispatch lands in <b>' + d.cls + '</b> (' + d.rule + '). Result: <b>₹' + after + '</b>.',
+          frames.push(F('Step ' + (i + 1) + 'b: <code>checkout.total(' + amt + ')</code> calls <code>strategy.apply(' + amt + ')</code>. The virtual call lands in <b>' + d.cls + '</b> (' + d.rule + '). Result: <b>₹' + after + '</b>.',
             [G('Runtime call path', nodes, edges, { h: 70, hl: hl2, ehl: eh2 }),
               VARS('Result', { before: amt, after: after, saved: Math.round((amt - after) * 100) / 100 }, { after: 'ok' }),
               CODE('What runs', 'double total(double a) {\n  double after = strategy.apply(a);\n  return round(after);\n}', { 2: 'ok' })]));
@@ -176,20 +460,76 @@ class ShippingCalculator {
       }
     },
     examples: [
-      { title: 'Comparator is a Strategy you already use', html: `<p><code>Collections.sort(list, comparator)</code>: the sort algorithm (context) is fixed; <b>how to compare two items</b> is the strategy. Sorting employees by salary, then by name, then by joining date needs zero changes to the sort code — just different comparators.</p>`, code: `record Emp(String name, int salary) {}
+      { title: 'Comparator is a Strategy you already use', html: `<p><code>Collections.sort(list, comparator)</code>: the sort algorithm (context) is fixed; <b>how to compare two items</b> is the strategy. Sorting employees by salary, then by name, then by joining date needs zero changes to the sort code — just different comparators.</p>`, code: { lang: 'java', code: `record Emp(String name, int salary) {}
 List<Emp> emps = new ArrayList<>(List.of(new Emp("Asha", 90), new Emp("Ben", 70), new Emp("Cy", 80)));
 emps.sort(Comparator.comparingInt(Emp::salary));          // strategy 1
 System.out.println(emps);
 emps.sort(Comparator.comparing(Emp::name).reversed());    // strategy 2
-System.out.println(emps);` },
+System.out.println(emps);`, alt: [
+          { lang: 'python', code: `from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Emp:
+    name: str
+    salary: int
+
+
+emps = [Emp("Asha", 90), Emp("Ben", 70), Emp("Cy", 80)]
+emps.sort(key=lambda e: e.salary)  # strategy 1
+print(emps)
+emps.sort(key=lambda e: e.name, reverse=True)  # strategy 2
+print(emps)` },
+          { lang: 'ts', code: `interface Emp { readonly name: string; readonly salary: number; }
+
+const emps: Emp[] = [{ name: "Asha", salary: 90 }, { name: "Ben", salary: 70 }, { name: "Cy", salary: 80 }];
+emps.sort((a, b) => a.salary - b.salary); // strategy 1
+console.log(emps);
+emps.sort((a, b) => b.name.localeCompare(a.name)); // strategy 2
+console.log(emps);` },
+          { lang: 'cpp', code: `struct Emp { string name; int salary; };
+
+vector<Emp> emps = {{"Asha", 90}, {"Ben", 70}, {"Cy", 80}};
+ranges::sort(emps, {}, &Emp::salary);                 // strategy 1
+for (auto& e : emps) cout << e.name << ":" << e.salary << " ";
+cout << "\\n";
+ranges::sort(emps, greater<>(), &Emp::name);          // strategy 2
+for (auto& e : emps) cout << e.name << ":" << e.salary << " ";
+cout << "\\n";` }
+        ] } },
       { title: 'Payment methods at checkout', html: `<p>Card, UPI, Wallet, Net-banking all "pay an amount" but each talks to a different gateway with different fees and retries. A <code>PaymentStrategy</code> interface with <code>pay(Order)</code> lets the order service stay identical while finance adds "Buy Now Pay Later" next quarter as a brand-new class. Combine with a <b>factory/registry</b> that maps <code>"UPI"</code> → <code>UpiPayment</code> so the controller never writes if/else.</p>` },
-      { title: 'Splitwise split types', html: `<p>An expense can be split <b>EQUAL</b>, <b>EXACT</b> amounts or by <b>PERCENT</b>. Each is a <code>SplitStrategy.split(total, participants)</code> returning a map of user → share, plus its own validation (percent must add to 100, exact must add to total). Interviewers love this because the validation rules are different per strategy — exactly the code that would otherwise turn into a tangle of if/else.</p>`, code: `interface SplitStrategy { Map<String, Double> split(double total, List<String> users); }
+      { title: 'Splitwise split types', html: `<p>An expense can be split <b>EQUAL</b>, <b>EXACT</b> amounts or by <b>PERCENT</b>. Each is a <code>SplitStrategy.split(total, participants)</code> returning a map of user → share, plus its own validation (percent must add to 100, exact must add to total). Interviewers love this because the validation rules are different per strategy — exactly the code that would otherwise turn into a tangle of if/else.</p>`, code: { lang: 'java', code: `interface SplitStrategy { Map<String, Double> split(double total, List<String> users); }
 SplitStrategy equal = (total, users) -> {
     Map<String, Double> m = new LinkedHashMap<>();
     for (String u : users) m.put(u, total / users.size());
     return m;
 };
-System.out.println(equal.split(300, List.of("A", "B", "C")));   // {A=100.0, B=100.0, C=100.0}` },
+System.out.println(equal.split(300, List.of("A", "B", "C")));   // {A=100.0, B=100.0, C=100.0}`, alt: [
+          { lang: 'python', code: `from typing import Callable
+
+SplitStrategy = Callable[[float, list[str]], dict[str, float]]
+
+
+def equal(total: float, users: list[str]) -> dict[str, float]:
+    return {u: total / len(users) for u in users}
+
+
+split: SplitStrategy = equal
+print(split(300, ["A", "B", "C"]))  # {'A': 100.0, 'B': 100.0, 'C': 100.0}` },
+          { lang: 'ts', code: `type SplitStrategy = (total: number, users: string[]) => Map<string, number>;
+
+const equal: SplitStrategy = (total, users) => new Map(users.map((u) => [u, total / users.length]));
+console.log(equal(300, ["A", "B", "C"])); // Map(3) { 'A' => 100, 'B' => 100, 'C' => 100 }` },
+          { lang: 'cpp', code: `using SplitStrategy = function<map<string, double>(double, const vector<string>&)>;
+
+SplitStrategy equal = [](double total, const vector<string>& users) {
+    map<string, double> m;
+    for (const string& u : users) m[u] = total / users.size();
+    return m;
+};
+for (auto& [user, share] : equal(300, {"A", "B", "C"})) cout << user << "=" << share << " ";  // A=100 B=100 C=100
+cout << "\\n";` }
+        ] } },
       { title: 'When NOT to use Strategy', html: `<p>If there are only <b>two</b> options that will never grow (e.g. ascending vs descending), a boolean or a simple <code>Comparator.reversed()</code> is clearer. Strategy pays off when variants <b>grow over time</b>, are <b>tested separately</b>, or are <b>chosen at runtime</b>. Do not create five classes for a one-line difference — that is over-engineering (YAGNI).</p>` }
     ],
     deepDive: `<p><b>Strategy vs State:</b> both look identical on a class diagram (context holds an interface). The difference is <i>who switches</i>. In Strategy the <b>client</b> chooses and the strategies do not know each other. In State the <b>states themselves</b> trigger transitions ("after paying, move to PAID"). If the objects call <code>context.setX(new Other())</code>, it is State.</p>
@@ -218,6 +558,7 @@ System.out.println(equal.split(300, List.of("A", "B", "C")));   // {A=100.0, B=1
 }` },
       mcq: { q: 'Product says "a new fare type AIRPORT (flat 200 + 15/km) launches next week". With Strategy, what changes?', options: ['Add one class AirportFare implements FareStrategy; FareCalculator untouched', 'Add another else-if in FareCalculator', 'Subclass FareCalculator', 'Change the Ride class'], answer: 0, explain: 'Strategy makes new behaviour an addition, not a modification. The context only knows the interface.' },
       hints: [`<p>Hint 1: What varies is the <b>formula</b>; what stays the same is "take a ride, return a fare, round it". Put the varying part behind an interface.</p>`, `<p>Hint 2: <code>interface FareStrategy { double fare(Ride r); }</code>. SURGE can <b>wrap</b> another strategy (NORMAL) and multiply, so its multiplier lives in its own constructor — no unused parameters.</p>`, `<p>Hint 3: Validate negative distance once in the context. Recipe: Ride record → strategy classes → <code>FareCalculator(FareStrategy)</code> with <code>setStrategy</code> → round in one place.</p>`],
+      tests: { io: true, cases: [{ stdin: '', stdout: "NORMAL  190.00\nSURGE   285.00\nPOOL    133.00\nPOOL    67.62\nAIRPORT 350.00\nrejected: negative ride\nrejected: surge 1.0-5.0\n" }] },
       solution: {
         approach: `<p>Make <code>FareStrategy</code> the single varying point. <code>NormalFare</code> holds the base formula. <code>SurgeFare</code> and <code>PoolFare</code> <b>reuse</b> <code>NormalFare</code> by composition (they wrap it), so the base formula exists once. <code>FareCalculator</code> validates the ride, delegates to the current strategy and rounds. A new type is a new class; the calculator never changes. Strategies are immutable, so they are thread-safe and can be shared.</p>`,
         code: `record Ride(double km, double minutes) {}
@@ -257,15 +598,216 @@ class FareCalculator {
         Ride ride = new Ride(10, 20);
         FareStrategy normal = new NormalFare();
         FareCalculator calc = new FareCalculator(normal);
-        System.out.println("NORMAL  " + calc.calculate(ride));   // 190.0
+        System.out.println("NORMAL  " + String.format("%.2f", calc.calculate(ride)));
         calc.setStrategy(new SurgeFare(normal, 1.5));
-        System.out.println("SURGE   " + calc.calculate(ride));   // 285.0
+        System.out.println("SURGE   " + String.format("%.2f", calc.calculate(ride)));
         calc.setStrategy(new PoolFare(normal));
-        System.out.println("POOL    " + calc.calculate(ride));   // 133.0
+        System.out.println("POOL    " + String.format("%.2f", calc.calculate(ride)));
+        System.out.println("POOL    " + String.format("%.2f", calc.calculate(new Ride(3.3, 7))));
         calc.setStrategy(new AirportFare());
-        System.out.println("AIRPORT " + calc.calculate(ride));   // 350.0
+        System.out.println("AIRPORT " + String.format("%.2f", calc.calculate(ride)));
+        try { calc.calculate(new Ride(-1, 5)); }
+        catch (IllegalArgumentException e) { System.out.println("rejected: " + e.getMessage()); }
+        try { new SurgeFare(normal, 6.0); }
+        catch (IllegalArgumentException e) { System.out.println("rejected: " + e.getMessage()); }
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `from abc import ABC, abstractmethod
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Ride:
+    km: float
+    minutes: float
+
+
+class FareStrategy(ABC):
+    @abstractmethod
+    def fare(self, ride: Ride) -> float: ...
+
+
+class NormalFare(FareStrategy):
+    def fare(self, ride: Ride) -> float:
+        return 50 + 12 * ride.km + 1 * ride.minutes
+
+
+class SurgeFare(FareStrategy):
+    def __init__(self, base: FareStrategy, multiplier: float):
+        if not 1.0 <= multiplier <= 5.0:
+            raise ValueError("surge 1.0-5.0")
+        self._base = base
+        self._multiplier = multiplier
+
+    def fare(self, ride: Ride) -> float:
+        return self._base.fare(ride) * self._multiplier
+
+
+class PoolFare(FareStrategy):
+    def __init__(self, base: FareStrategy):
+        self._base = base
+
+    def fare(self, ride: Ride) -> float:
+        return self._base.fare(ride) * 0.7
+
+
+class AirportFare(FareStrategy):  # added later: zero edits elsewhere
+    def fare(self, ride: Ride) -> float:
+        return 200 + 15 * ride.km
+
+
+class FareCalculator:
+    def __init__(self, strategy: FareStrategy):
+        self._strategy = strategy
+
+    def set_strategy(self, strategy: FareStrategy) -> None:
+        self._strategy = strategy
+
+    def calculate(self, ride: Ride) -> float:
+        if ride.km < 0 or ride.minutes < 0:
+            raise ValueError("negative ride")
+        return round(self._strategy.fare(ride), 2)
+
+
+if __name__ == "__main__":
+    ride = Ride(10, 20)
+    normal = NormalFare()
+    calc = FareCalculator(normal)
+    print(f"NORMAL  {calc.calculate(ride):.2f}")
+    calc.set_strategy(SurgeFare(normal, 1.5))
+    print(f"SURGE   {calc.calculate(ride):.2f}")
+    calc.set_strategy(PoolFare(normal))
+    print(f"POOL    {calc.calculate(ride):.2f}")
+    print(f"POOL    {calc.calculate(Ride(3.3, 7)):.2f}")
+    calc.set_strategy(AirportFare())
+    print(f"AIRPORT {calc.calculate(ride):.2f}")
+    try:
+        calc.calculate(Ride(-1, 5))
+    except ValueError as e:
+        print("rejected:", e)
+    try:
+        SurgeFare(normal, 6.0)
+    except ValueError as e:
+        print("rejected:", e)` },
+          { lang: 'ts', code: `interface Ride { readonly km: number; readonly minutes: number; }
+
+interface FareStrategy { fare(ride: Ride): number; }
+
+class NormalFare implements FareStrategy {
+  fare(r: Ride): number { return 50 + 12 * r.km + 1 * r.minutes; }
+}
+
+class SurgeFare implements FareStrategy {
+  constructor(private readonly base: FareStrategy, private readonly multiplier: number) {
+    if (multiplier < 1.0 || multiplier > 5.0) throw new Error("surge 1.0-5.0");
+  }
+  fare(r: Ride): number { return this.base.fare(r) * this.multiplier; }
+}
+
+class PoolFare implements FareStrategy {
+  constructor(private readonly base: FareStrategy) {}
+  fare(r: Ride): number { return this.base.fare(r) * 0.7; }
+}
+
+class AirportFare implements FareStrategy { // added later: zero edits elsewhere
+  fare(r: Ride): number { return 200 + 15 * r.km; }
+}
+
+class FareCalculator {
+  constructor(private strategy: FareStrategy) {}
+  setStrategy(s: FareStrategy): void { this.strategy = s; }
+  calculate(r: Ride): number {
+    if (r.km < 0 || r.minutes < 0) throw new Error("negative ride");
+    return Math.round(this.strategy.fare(r) * 100) / 100;
+  }
+}
+
+const ride: Ride = { km: 10, minutes: 20 };
+const normal = new NormalFare();
+const calc = new FareCalculator(normal);
+console.log("NORMAL  " + calc.calculate(ride).toFixed(2));
+calc.setStrategy(new SurgeFare(normal, 1.5));
+console.log("SURGE   " + calc.calculate(ride).toFixed(2));
+calc.setStrategy(new PoolFare(normal));
+console.log("POOL    " + calc.calculate(ride).toFixed(2));
+console.log("POOL    " + calc.calculate({ km: 3.3, minutes: 7 }).toFixed(2));
+calc.setStrategy(new AirportFare());
+console.log("AIRPORT " + calc.calculate(ride).toFixed(2));
+try { calc.calculate({ km: -1, minutes: 5 }); }
+catch (e) { console.log("rejected: " + (e as Error).message); }
+try { new SurgeFare(normal, 6.0); }
+catch (e) { console.log("rejected: " + (e as Error).message); }` },
+          { lang: 'cpp', code: `struct Ride { double km; double minutes; };
+
+class FareStrategy {
+public:
+    virtual ~FareStrategy() = default;
+    virtual double fare(const Ride& r) const = 0;
+};
+
+class NormalFare : public FareStrategy {
+public:
+    double fare(const Ride& r) const override { return 50 + 12 * r.km + 1 * r.minutes; }
+};
+
+class SurgeFare : public FareStrategy {
+    shared_ptr<const FareStrategy> base;
+    double multiplier;
+public:
+    SurgeFare(shared_ptr<const FareStrategy> base, double multiplier)
+        : base(std::move(base)), multiplier(multiplier) {
+        if (multiplier < 1.0 || multiplier > 5.0) throw invalid_argument("surge 1.0-5.0");
+    }
+    double fare(const Ride& r) const override { return base->fare(r) * multiplier; }
+};
+
+class PoolFare : public FareStrategy {
+    shared_ptr<const FareStrategy> base;
+public:
+    explicit PoolFare(shared_ptr<const FareStrategy> base) : base(std::move(base)) {}
+    double fare(const Ride& r) const override { return base->fare(r) * 0.7; }
+};
+
+class AirportFare : public FareStrategy {  // added later: zero edits elsewhere
+public:
+    double fare(const Ride& r) const override { return 200 + 15 * r.km; }
+};
+
+class FareCalculator {
+    shared_ptr<const FareStrategy> strategy;
+public:
+    explicit FareCalculator(shared_ptr<const FareStrategy> s) : strategy(std::move(s)) {}
+    void setStrategy(shared_ptr<const FareStrategy> s) { strategy = std::move(s); }
+    double calculate(const Ride& r) const {
+        if (r.km < 0 || r.minutes < 0) throw invalid_argument("negative ride");
+        return round(strategy->fare(r) * 100) / 100.0;
+    }
+};
+
+string money(double v) {
+    ostringstream os;
+    os << fixed << setprecision(2) << v;
+    return os.str();
+}
+
+int main() {
+    Ride ride{10, 20};
+    auto normal = make_shared<NormalFare>();
+    FareCalculator calc(normal);
+    cout << "NORMAL  " << money(calc.calculate(ride)) << "\\n";
+    calc.setStrategy(make_shared<SurgeFare>(normal, 1.5));
+    cout << "SURGE   " << money(calc.calculate(ride)) << "\\n";
+    calc.setStrategy(make_shared<PoolFare>(normal));
+    cout << "POOL    " << money(calc.calculate(ride)) << "\\n";
+    cout << "POOL    " << money(calc.calculate(Ride{3.3, 7})) << "\\n";
+    calc.setStrategy(make_shared<AirportFare>());
+    cout << "AIRPORT " << money(calc.calculate(ride)) << "\\n";
+    try { calc.calculate(Ride{-1, 5}); }
+    catch (const invalid_argument& e) { cout << "rejected: " << e.what() << "\\n"; }
+    try { SurgeFare bad(normal, 6.0); }
+    catch (const invalid_argument& e) { cout << "rejected: " << e.what() << "\\n"; }
+}` }
+        ],
         complexity: `<p>O(1) per fare. Adding a fare type: one new class, zero modified classes. Strategies are immutable → safe to share across threads.</p>`,
         followUps: ['How would you pick the strategy from a city + time-of-day config without if/else? (Map registry or a rule chain.)', 'How would you combine SURGE on top of POOL? (Wrapping strategies — that is the Decorator idea.)', 'How do you unit test each strategy?']
       }
@@ -327,7 +869,7 @@ class StockTicker {
 }
 
 class MobileApp implements PriceObserver {
-    public void onPrice(String s, double o, double n) { System.out.println("[app] " + s + " now " + n); }
+    public void onPrice(String s, double o, double n) { System.out.println(String.format("[app] %s now %.2f", s, n)); }
 }
 class EmailAlert implements PriceObserver {
     private final double thresholdPct;
@@ -343,14 +885,207 @@ class Demo {
         StockTicker t = new StockTicker();
         t.subscribe(new MobileApp());
         AutoCloseable email = t.subscribe(new EmailAlert(3));
-        t.subscribe((s, o, n) -> System.out.println("[dashboard] plot " + s + "=" + n));
+        t.subscribe((s, o, n) -> System.out.println(String.format("[dashboard] plot %s=%.2f", s, n)));
         t.setPrice("TCS", 100);
         t.setPrice("TCS", 104);      // app, email (4%), dashboard
         email.close();               // unsubscribe
         t.setPrice("TCS", 97);       // app, dashboard only
     }
-}` }],
-    codeTitle: ['Observer in modern Java'],
+}`, alt: [
+          { lang: 'python', code: `from typing import Callable, Protocol
+
+
+# The observer contract: one callback. Any function with this shape qualifies.
+class PriceObserver(Protocol):
+    def __call__(self, symbol: str, old_price: float, new_price: float) -> None: ...
+
+
+class Subscription:
+    """Returned by subscribe(): close() (or a \`with\` block) unsubscribes, so nothing leaks."""
+
+    def __init__(self, cancel: Callable[[], None]):
+        self._cancel = cancel
+
+    def close(self) -> None:
+        self._cancel()
+
+    def __enter__(self) -> "Subscription":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
+
+class StockTicker:
+    def __init__(self):
+        self._observers: list[PriceObserver] = []
+        self._prices: dict[str, float] = {}
+
+    def subscribe(self, o: PriceObserver) -> Subscription:
+        self._observers.append(o)
+        return Subscription(lambda: self._observers.remove(o) if o in self._observers else None)
+
+    def set_price(self, symbol: str, new_price: float) -> None:
+        old = self._prices.get(symbol)
+        self._prices[symbol] = new_price
+        if old is not None and old == new_price:  # no change, no noise
+            return
+        self._notify_all(symbol, new_price if old is None else old, new_price)
+
+    def _notify_all(self, s: str, old_p: float, new_p: float) -> None:
+        for o in list(self._observers):  # copy: safe if observers (un)subscribe while we notify
+            try:
+                o(s, old_p, new_p)  # push model: data travels with the call
+            except Exception as e:  # one broken observer must not stop the others
+                print("observer failed:", e)
+
+
+class MobileApp:
+    def __call__(self, s: str, o: float, n: float) -> None:
+        print(f"[app] {s} now {n:.2f}")
+
+
+class EmailAlert:
+    def __init__(self, threshold_pct: float):
+        self._threshold_pct = threshold_pct
+
+    def __call__(self, s: str, o: float, n: float) -> None:
+        change = abs(n - o) / o * 100
+        if change >= self._threshold_pct:
+            print(f"[email] {s} moved {change:.1f}%")
+
+
+if __name__ == "__main__":
+    t = StockTicker()
+    t.subscribe(MobileApp())
+    email = t.subscribe(EmailAlert(3))
+    t.subscribe(lambda s, o, n: print(f"[dashboard] plot {s}={n:.2f}"))
+    t.set_price("TCS", 100)
+    t.set_price("TCS", 104)  # app, email (4%), dashboard
+    email.close()  # unsubscribe
+    t.set_price("TCS", 97)  # app, dashboard only` },
+          { lang: 'ts', code: `// The observer contract: one callback. Any function with this shape qualifies.
+type PriceObserver = (symbol: string, oldPrice: number, newPrice: number) => void;
+
+interface Subscription { close(): void; }
+
+class StockTicker {
+  private observers: PriceObserver[] = [];
+  private readonly prices = new Map<string, number>();
+
+  // Returning a Subscription makes unsubscribing easy and leak-proof.
+  subscribe(o: PriceObserver): Subscription {
+    this.observers = [...this.observers, o]; // copy-on-write: safe if observers (un)subscribe mid-notification
+    return { close: () => { this.observers = this.observers.filter((x) => x !== o); } };
+  }
+
+  setPrice(symbol: string, newPrice: number): void {
+    const old = this.prices.get(symbol);
+    this.prices.set(symbol, newPrice);
+    if (old !== undefined && old === newPrice) return; // no change, no noise
+    this.notifyAll(symbol, old ?? newPrice, newPrice);
+  }
+
+  private notifyAll(s: string, oldP: number, newP: number): void {
+    for (const o of this.observers) {
+      try {
+        o(s, oldP, newP); // push model: data travels with the call
+      } catch (e) { // one broken observer must not stop the others
+        console.log("observer failed: " + (e as Error).message);
+      }
+    }
+  }
+}
+
+class MobileApp {
+  readonly onPrice: PriceObserver = (s, _o, n) => console.log(\`[app] \${s} now \${n.toFixed(2)}\`);
+}
+
+class EmailAlert {
+  constructor(private readonly thresholdPct: number) {}
+  readonly onPrice: PriceObserver = (s, o, n) => {
+    const change = (Math.abs(n - o) / o) * 100;
+    if (change >= this.thresholdPct) console.log(\`[email] \${s} moved \${change.toFixed(1)}%\`);
+  };
+}
+
+const t = new StockTicker();
+t.subscribe(new MobileApp().onPrice);
+const email = t.subscribe(new EmailAlert(3).onPrice);
+t.subscribe((s, _o, n) => console.log(\`[dashboard] plot \${s}=\${n.toFixed(2)}\`));
+t.setPrice("TCS", 100);
+t.setPrice("TCS", 104); // app, email (4%), dashboard
+email.close(); // unsubscribe
+t.setPrice("TCS", 97); // app, dashboard only` },
+          { lang: 'cpp', code: `// The observer contract: one callback. A lambda can implement it.
+using PriceObserver = function<void(const string& symbol, double oldPrice, double newPrice)>;
+
+class StockTicker {
+public:
+    // The returned handle unsubscribes; calling it twice is harmless.
+    function<void()> subscribe(PriceObserver o) {
+        size_t id = nextId++;
+        observers.push_back({id, std::move(o)});
+        return [this, id] {
+            observers.erase(remove_if(observers.begin(), observers.end(), [id](auto& e) { return e.id == id; }),
+                            observers.end());
+        };
+    }
+
+    void setPrice(const string& symbol, double newPrice) {
+        auto it = prices.find(symbol);
+        bool known = it != prices.end();
+        double old = known ? it->second : newPrice;
+        prices[symbol] = newPrice;
+        if (known && old == newPrice) return;  // no change, no noise
+        notifyAll(symbol, old, newPrice);
+    }
+
+private:
+    struct Entry { size_t id; PriceObserver fn; };
+
+    void notifyAll(const string& s, double oldP, double newP) {
+        auto snapshot = observers;  // copy: safe if observers (un)subscribe while we notify
+        for (auto& e : snapshot) {
+            try {
+                e.fn(s, oldP, newP);  // push model: data travels with the call
+            } catch (const exception& ex) {  // one broken observer must not stop the others
+                cout << "observer failed: " << ex.what() << "\\n";
+            }
+        }
+    }
+
+    vector<Entry> observers;
+    map<string, double> prices;
+    size_t nextId = 0;
+};
+
+struct MobileApp {
+    void operator()(const string& s, double, double n) const { cout << "[app] " << s << " now " << fixed << setprecision(2) << n << "\\n"; }
+};
+
+struct EmailAlert {
+    double thresholdPct;
+    void operator()(const string& s, double o, double n) const {
+        double change = abs(n - o) / o * 100;
+        if (change >= thresholdPct) cout << "[email] " << s << " moved " << fixed << setprecision(1) << change << "%\\n";
+    }
+};
+
+int main() {
+    StockTicker t;
+    t.subscribe(MobileApp{});
+    auto email = t.subscribe(EmailAlert{3});
+    t.subscribe([](const string& s, double, double n) {
+        cout << "[dashboard] plot " << s << "=" << fixed << setprecision(2) << n << "\\n";
+    });
+    t.setPrice("TCS", 100);
+    t.setPrice("TCS", 104);  // app, email (4%), dashboard
+    email();                 // unsubscribe
+    t.setPrice("TCS", 97);   // app, dashboard only
+}` }
+        ] }],
+    codeTitle: ['Observer with unsubscribe handles'],
     viz: {
       title: 'Observer: price updates fanning out to subscribers',
       input: '100 104 +bot 97 -email +dash 101',
@@ -414,11 +1149,30 @@ class Demo {
     },
     examples: [
       { title: 'GUI / browser event listeners', html: `<p><code>button.addActionListener(e -&gt; save())</code> in Swing or <code>button.addEventListener('click', save)</code> in JS: the button is the subject, your lambda is the observer. The button library was written years before your code, yet it can call you — because it only knows the listener interface.</p>` },
-      { title: 'Order status updates in e-commerce', html: `<p>When an order becomes <b>SHIPPED</b>: send SMS, send email, update loyalty points, notify the warehouse dashboard. With Observer, <code>Order.setStatus()</code> publishes an <code>OrderShipped</code> event and four listeners react. Next quarter adding "WhatsApp message" is one new listener class.</p>`, code: `interface OrderListener { void onStatus(String orderId, String status); }
+      { title: 'Order status updates in e-commerce', html: `<p>When an order becomes <b>SHIPPED</b>: send SMS, send email, update loyalty points, notify the warehouse dashboard. With Observer, <code>Order.setStatus()</code> publishes an <code>OrderShipped</code> event and four listeners react. Next quarter adding "WhatsApp message" is one new listener class.</p>`, code: { lang: 'java', code: `interface OrderListener { void onStatus(String orderId, String status); }
 List<OrderListener> listeners = new ArrayList<>();
 listeners.add((id, st) -> System.out.println("SMS: order " + id + " is " + st));
 listeners.add((id, st) -> System.out.println("Loyalty: +10 points for " + id));
-for (OrderListener l : listeners) l.onStatus("A42", "SHIPPED");` },
+for (OrderListener l : listeners) l.onStatus("A42", "SHIPPED");`, alt: [
+          { lang: 'python', code: `from typing import Callable
+
+OrderListener = Callable[[str, str], None]  # (order_id, status)
+listeners: list[OrderListener] = []
+listeners.append(lambda id, st: print(f"SMS: order {id} is {st}"))
+listeners.append(lambda id, st: print(f"Loyalty: +10 points for {id}"))
+for listener in listeners:
+    listener("A42", "SHIPPED")` },
+          { lang: 'ts', code: `type OrderListener = (orderId: string, status: string) => void;
+const listeners: OrderListener[] = [];
+listeners.push((id, st) => console.log(\`SMS: order \${id} is \${st}\`));
+listeners.push((id) => console.log(\`Loyalty: +10 points for \${id}\`));
+for (const l of listeners) l("A42", "SHIPPED");` },
+          { lang: 'cpp', code: `using OrderListener = function<void(const string& orderId, const string& status)>;
+vector<OrderListener> listeners;
+listeners.push_back([](const string& id, const string& st) { cout << "SMS: order " << id << " is " << st << "\\n"; });
+listeners.push_back([](const string& id, const string&) { cout << "Loyalty: +10 points for " << id << "\\n"; });
+for (auto& l : listeners) l("A42", "SHIPPED");` }
+        ] } },
       { title: 'Auction: notify all other bidders', html: `<p>Each bidder subscribes to an <code>Auction</code>. When Asha bids ₹500, the auction notifies everyone <i>except</i> Asha that the highest bid changed. Note the design decision: the subject can filter (skip the sender) — or each observer can ignore its own event. Discuss which is cleaner (subject-side filtering keeps observers dumb).</p>` },
       { title: 'Observer vs Pub/Sub broker', html: `<p>In-process Observer: subject holds direct references; delivery is a method call; if the process dies, events are lost. <b>Pub/Sub</b> (Kafka, Redis Pub/Sub, SNS): publisher and subscribers do not know each other at all — a <b>broker</b> sits between them, events can be persisted, replayed, delivered across machines. Same idea, different scale. Say this in interviews to show you know the boundary.</p>` }
     ],
@@ -426,7 +1180,7 @@ for (OrderListener l : listeners) l.onStatus("A42", "SHIPPED");` },
 <p><b>Concurrency:</b> iterating an <code>ArrayList</code> while an observer unsubscribes inside its callback throws <code>ConcurrentModificationException</code>. <code>CopyOnWriteArrayList</code> gives a snapshot iterator — perfect when reads (notifications) vastly outnumber writes (subscriptions). Never call observers while holding a lock: an observer may call back into the subject and deadlock.</p>
 <p><b>Failure isolation and ordering:</b> one observer throwing must not stop the rest — wrap each call. Notification order is the list order; <b>never</b> let correctness depend on it. Slow observers block the subject in a synchronous design — move to async delivery (an <code>ExecutorService</code> per observer, or a queue) when observers do I/O.</p>
 <p><b>Re-entrancy and cascades:</b> an observer that changes the subject triggers another notification while the first is still in progress → infinite loops or inconsistent views. Guard with a "notifying" flag or queue events.</p>
-<p><b>Java history:</b> <code>java.util.Observable</code> was deprecated in Java 9 (it is a class, not an interface, and its notification order and thread-safety were unspecified). Use your own interface, <code>PropertyChangeSupport</code> (JavaBeans), <code>java.util.concurrent.Flow</code> (Reactive Streams with <b>back-pressure</b>), or frameworks (Spring events, RxJava, Project Reactor).</p>`,
+<p><b>Library history:</b> Java's <code>java.util.Observable</code> was deprecated in Java 9 (it is a class, not an interface, and its notification order and thread-safety were unspecified). Use your own interface, <code>PropertyChangeSupport</code> (JavaBeans), <code>java.util.concurrent.Flow</code> (Reactive Streams with <b>back-pressure</b>), or frameworks (Spring events, RxJava, Project Reactor). Python has no built-in Observer (use a list of callables or a signals library such as <code>blinker</code>); JavaScript has <code>EventTarget</code> and Node's <code>EventEmitter</code>; C++ code usually keeps a list of <code>std::function</code> callbacks or uses Boost.Signals2 / Qt signals.</p>`,
     aiEra: `<p><b>What AI changes:</b> asking an assistant "add an email notification when stock changes" usually yields a direct call inside <code>setPrice()</code>. Recognise the one-to-many smell and steer it: "Refactor to an Observer with a <code>PriceObserver</code> interface and <code>CopyOnWriteArrayList</code>, keep subscriptions closeable." AI is great at producing the listener boilerplate and the tests that assert each observer got called once.</p>
 <p><b>Agents are event-driven:</b> tool results, streaming tokens and human-in-the-loop approvals are all delivered via callbacks/observers (e.g. streaming handlers that fire per token). LLM observability tools hook into frameworks as observers to log every model call.</p>
 <p><b>Where AI goes wrong:</b> forgets unsubscribe (leaks), iterates a plain <code>ArrayList</code> while mutating it, lets one exception kill the loop, or calls observers inside a <code>synchronized</code> block. <b>What you own:</b> sync vs async delivery, failure isolation, ordering guarantees, and when to graduate to a real broker.</p>`,
@@ -452,6 +1206,7 @@ for (OrderListener l : listeners) l.onStatus("A42", "SHIPPED");` },
 }` },
       mcq: { q: 'How do you make sure an update to INFY never scans TCS subscribers?', options: ['Map&lt;String symbol, List&lt;Observer&gt;&gt; — one subject list per symbol', 'Sort the global list', 'Use a Set instead of a List', 'Notify everyone and let them filter'], answer: 0, explain: 'Partition observers by topic (symbol). Each update only walks its own list — like per-topic subscriptions in a pub/sub system.' },
       hints: [`<p>Hint 1: Each subscription is an <b>observer</b> with its own rule and its own memory of "was I already triggered?" (edge detection = notify on crossing only).</p>`, `<p>Hint 2: <code>Map&lt;String, List&lt;PriceAlert&gt;&gt;</code> keyed by symbol, values in <code>CopyOnWriteArrayList</code>. Channel is a separate <code>Notifier</code> interface (a strategy) injected into the alert.</p>`, `<p>Hint 3: Rule "above X": fire when <code>prev ≤ X &lt; now</code>. Store <code>lastPrice</code> per symbol. Return a handle from subscribe so the user can unsubscribe. Recipe: subscribe → map.computeIfAbsent(symbol) → add; update → get list → for each: alert.onPrice(prev, now).</p>`],
+      tests: { io: true, cases: [{ stdin: '', stdout: "PUSH asha: TCS is ABOVE 4000.00 (now 4050.00)\nSMS  ben: TCS is BELOW 3500.00 (now 3400.00)\nlistener failed: boom\nlistener failed: boom\nPUSH cy: INFY is ABOVE 1500.00 (now 1600.00)\n" }] },
       solution: {
         approach: `<p>Use Observer with <b>topic partitioning</b>: the market is a subject per symbol (a map from symbol to its observer list). Each <code>PriceAlert</code> is an observer that knows its rule and detects <b>crossings</b> using the previous and new price, so it fires once per crossing. How the alert is delivered is a separate <code>Notifier</code> strategy, so adding WhatsApp touches neither the market nor the alert logic. Subscriptions return a <code>Runnable</code> that removes the observer.</p>`,
         code: `interface Notifier { void send(String user, String msg); }
@@ -466,7 +1221,7 @@ class PriceAlert implements PriceListener {
     }
     public void onPrice(String symbol, double prev, double now) {
         boolean crossed = dir == Dir.ABOVE ? (prev <= level && now > level) : (prev >= level && now < level);
-        if (crossed) notifier.send(user, symbol + " is " + dir + " " + level + " (now " + now + ")");
+        if (crossed) notifier.send(user, String.format("%s is %s %.2f (now %.2f)", symbol, dir, level, now));
     }
 }
 
@@ -498,8 +1253,229 @@ class StockMarket {
         ben.run();                       // ben unsubscribes
         mkt.updatePrice("TCS", 3600);
         mkt.updatePrice("TCS", 3300);    // nobody: asha's rule is ABOVE, ben left
+        // a broken listener must not stop the others
+        mkt.subscribe("INFY", (s, prev, now) -> { throw new IllegalStateException("boom"); });
+        mkt.subscribe("INFY", new PriceAlert("cy", PriceAlert.Dir.ABOVE, 1500, push));
+        mkt.updatePrice("INFY", 1400);
+        mkt.updatePrice("INFY", 1600);
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `import threading
+from collections import defaultdict
+from enum import Enum
+from typing import Callable, Protocol
+
+Notifier = Callable[[str, str], None]
+
+
+class PriceListener(Protocol):
+    def on_price(self, symbol: str, prev: float, now: float) -> None: ...
+
+
+class Dir(Enum):
+    ABOVE = "ABOVE"
+    BELOW = "BELOW"
+
+
+class PriceAlert:
+    def __init__(self, user: str, direction: Dir, level: float, notifier: Notifier):
+        self._user, self._dir, self._level, self._notifier = user, direction, level, notifier
+
+    def on_price(self, symbol: str, prev: float, now: float) -> None:
+        if self._dir is Dir.ABOVE:
+            crossed = prev <= self._level < now
+        else:
+            crossed = now < self._level <= prev
+        if crossed:
+            self._notifier(self._user, f"{symbol} is {self._dir.value} {self._level:.2f} (now {now:.2f})")
+
+
+class StockMarket:
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._by_symbol: dict[str, list[PriceListener]] = defaultdict(list)
+        self._last_price: dict[str, float] = {}
+
+    def subscribe(self, symbol: str, listener: PriceListener) -> Callable[[], None]:
+        with self._lock:
+            self._by_symbol[symbol].append(listener)
+
+        def unsubscribe() -> None:  # unsubscribe handle
+            with self._lock:
+                if listener in self._by_symbol[symbol]:
+                    self._by_symbol[symbol].remove(listener)
+
+        return unsubscribe
+
+    def update_price(self, symbol: str, now: float) -> None:
+        with self._lock:
+            prev = self._last_price.get(symbol, now)
+            self._last_price[symbol] = now
+            listeners = list(self._by_symbol.get(symbol, []))  # snapshot: only THIS symbol
+        for listener in listeners:
+            try:
+                listener.on_price(symbol, prev, now)
+            except Exception as e:
+                print("listener failed:", e)
+
+
+class BrokenListener:
+    def on_price(self, symbol: str, prev: float, now: float) -> None:
+        raise RuntimeError("boom")
+
+
+if __name__ == "__main__":
+    push: Notifier = lambda u, m: print(f"PUSH {u}: {m}")
+    sms: Notifier = lambda u, m: print(f"SMS  {u}: {m}")
+    mkt = StockMarket()
+    mkt.subscribe("TCS", PriceAlert("asha", Dir.ABOVE, 4000, push))
+    ben = mkt.subscribe("TCS", PriceAlert("ben", Dir.BELOW, 3500, sms))
+    for p in (3900, 4050, 4100, 3400):
+        mkt.update_price("TCS", p)
+    ben()  # ben unsubscribes
+    mkt.update_price("TCS", 3600)
+    mkt.update_price("TCS", 3300)  # nobody: asha's rule is ABOVE, ben left
+    # a broken listener must not stop the others
+    mkt.subscribe("INFY", BrokenListener())
+    mkt.subscribe("INFY", PriceAlert("cy", Dir.ABOVE, 1500, push))
+    mkt.update_price("INFY", 1400)
+    mkt.update_price("INFY", 1600)` },
+          { lang: 'ts', code: `type Notifier = (user: string, msg: string) => void;
+
+interface PriceListener { onPrice(symbol: string, prev: number, now: number): void; }
+
+type Dir = "ABOVE" | "BELOW";
+
+class PriceAlert implements PriceListener {
+  constructor(
+    private readonly user: string,
+    private readonly dir: Dir,
+    private readonly level: number,
+    private readonly notifier: Notifier,
+  ) {}
+
+  onPrice(symbol: string, prev: number, now: number): void {
+    const crossed = this.dir === "ABOVE"
+      ? prev <= this.level && now > this.level
+      : prev >= this.level && now < this.level;
+    if (crossed) {
+      this.notifier(this.user, \`\${symbol} is \${this.dir} \${this.level.toFixed(2)} (now \${now.toFixed(2)})\`);
+    }
+  }
+}
+
+class StockMarket {
+  private readonly bySymbol = new Map<string, PriceListener[]>();
+  private readonly lastPrice = new Map<string, number>();
+
+  subscribe(symbol: string, l: PriceListener): () => void {
+    const list = this.bySymbol.get(symbol) ?? [];
+    this.bySymbol.set(symbol, [...list, l]); // copy-on-write keeps running loops safe
+    return () => { // unsubscribe handle
+      this.bySymbol.set(symbol, (this.bySymbol.get(symbol) ?? []).filter((x) => x !== l));
+    };
+  }
+
+  updatePrice(symbol: string, now: number): void {
+    const prev = this.lastPrice.get(symbol) ?? now;
+    this.lastPrice.set(symbol, now);
+    for (const l of this.bySymbol.get(symbol) ?? []) { // only THIS symbol
+      try { l.onPrice(symbol, prev, now); }
+      catch (e) { console.log("listener failed: " + (e as Error).message); }
+    }
+  }
+}
+
+const push: Notifier = (u, m) => console.log(\`PUSH \${u}: \${m}\`);
+const sms: Notifier = (u, m) => console.log(\`SMS  \${u}: \${m}\`);
+const mkt = new StockMarket();
+mkt.subscribe("TCS", new PriceAlert("asha", "ABOVE", 4000, push));
+const ben = mkt.subscribe("TCS", new PriceAlert("ben", "BELOW", 3500, sms));
+for (const p of [3900, 4050, 4100, 3400]) mkt.updatePrice("TCS", p);
+ben(); // ben unsubscribes
+mkt.updatePrice("TCS", 3600);
+mkt.updatePrice("TCS", 3300); // nobody: asha's rule is ABOVE, ben left
+// a broken listener must not stop the others
+mkt.subscribe("INFY", { onPrice: () => { throw new Error("boom"); } });
+mkt.subscribe("INFY", new PriceAlert("cy", "ABOVE", 1500, push));
+mkt.updatePrice("INFY", 1400);
+mkt.updatePrice("INFY", 1600);` },
+          { lang: 'cpp', code: `using Notifier = function<void(const string&, const string&)>;
+
+class PriceListener {
+public:
+    virtual ~PriceListener() = default;
+    virtual void onPrice(const string& symbol, double prev, double now) = 0;
+};
+
+string fixed2(double v) {
+    ostringstream os;
+    os << fixed << setprecision(2) << v;
+    return os.str();
+}
+
+class PriceAlert : public PriceListener {
+public:
+    enum class Dir { ABOVE, BELOW };
+    PriceAlert(string user, Dir dir, double level, Notifier notifier)
+        : user(std::move(user)), dir(dir), level(level), notifier(std::move(notifier)) {}
+    void onPrice(const string& symbol, double prev, double now) override {
+        bool crossed = dir == Dir::ABOVE ? (prev <= level && now > level)
+                                         : (prev >= level && now < level);
+        if (crossed)
+            notifier(user, symbol + " is " + (dir == Dir::ABOVE ? "ABOVE " : "BELOW ") + fixed2(level) +
+                               " (now " + fixed2(now) + ")");
+    }
+private:
+    string user; Dir dir; double level; Notifier notifier;
+};
+
+class StockMarket {
+    using Listeners = vector<shared_ptr<PriceListener>>;
+    map<string, Listeners> bySymbol;
+    map<string, double> lastPrice;
+public:
+    function<void()> subscribe(const string& symbol, shared_ptr<PriceListener> l) {
+        bySymbol[symbol].push_back(l);
+        return [this, symbol, l] {  // unsubscribe handle
+            auto& v = bySymbol[symbol];
+            v.erase(remove(v.begin(), v.end(), l), v.end());
+        };
+    }
+    void updatePrice(const string& symbol, double now) {
+        auto it = lastPrice.find(symbol);
+        double prev = it == lastPrice.end() ? now : it->second;
+        lastPrice[symbol] = now;
+        Listeners snapshot = bySymbol[symbol];  // only THIS symbol; safe if a listener unsubscribes
+        for (auto& l : snapshot) {
+            try { l->onPrice(symbol, prev, now); }
+            catch (const exception& e) { cout << "listener failed: " << e.what() << "\\n"; }
+        }
+    }
+};
+
+class BrokenListener : public PriceListener {
+public:
+    void onPrice(const string&, double, double) override { throw runtime_error("boom"); }
+};
+
+int main() {
+    Notifier push = [](const string& u, const string& m) { cout << "PUSH " << u << ": " << m << "\\n"; };
+    Notifier sms = [](const string& u, const string& m) { cout << "SMS  " << u << ": " << m << "\\n"; };
+    StockMarket mkt;
+    mkt.subscribe("TCS", make_shared<PriceAlert>("asha", PriceAlert::Dir::ABOVE, 4000, push));
+    auto ben = mkt.subscribe("TCS", make_shared<PriceAlert>("ben", PriceAlert::Dir::BELOW, 3500, sms));
+    for (double p : {3900.0, 4050.0, 4100.0, 3400.0}) mkt.updatePrice("TCS", p);
+    ben();  // ben unsubscribes
+    mkt.updatePrice("TCS", 3600);
+    mkt.updatePrice("TCS", 3300);  // nobody: asha's rule is ABOVE, ben left
+    // a broken listener must not stop the others
+    mkt.subscribe("INFY", make_shared<BrokenListener>());
+    mkt.subscribe("INFY", make_shared<PriceAlert>("cy", PriceAlert::Dir::ABOVE, 1500, push));
+    mkt.updatePrice("INFY", 1400);
+    mkt.updatePrice("INFY", 1600);
+}` }
+        ],
         complexity: `<p>Update: O(k) where k = subscribers of that symbol (not all subscribers). Subscribe/unsubscribe: O(k) due to copy-on-write — fine because they are rare. Memory O(total subscriptions).</p>`,
         followUps: ['Notifications go to a slow SMS gateway — how do you keep updatePrice fast? (async executor / queue per channel)', 'How would this look across 50 servers? (Kafka topic per symbol partition, consumer groups)', 'How do you avoid alert storms when price oscillates around the level? (hysteresis / cooldown)']
       }
@@ -605,7 +1581,268 @@ class EditorDemo {
         cm.undo(); System.out.println(doc);   // Hello
         cm.redo(); System.out.println(doc);   // Hello World
     }
-}` }, { lang: 'java', title: 'Commands as jobs: queue, macro and log', code: `// Runnable IS the Command pattern without undo. An executor is an invoker with a queue.
+}`, alt: [
+          { lang: 'python', code: `from abc import ABC, abstractmethod
+from collections import deque
+
+
+# Receiver: knows HOW to edit text. Knows nothing about undo.
+class Document:
+    def __init__(self):
+        self._text = ""
+
+    def insert(self, pos: int, s: str) -> None:
+        self._text = self._text[:pos] + s + self._text[pos:]
+
+    def delete(self, pos: int, length: int) -> str:  # returns what was removed
+        gone = self._text[pos:pos + length]
+        self._text = self._text[:pos] + self._text[pos + length:]
+        return gone
+
+    def __len__(self) -> int:
+        return len(self._text)
+
+    def __str__(self) -> str:
+        return self._text
+
+
+class EditCommand(ABC):
+    @abstractmethod
+    def execute(self) -> None: ...
+
+    @abstractmethod
+    def undo(self) -> None: ...
+
+
+# Each command stores exactly what it needs to reverse itself (not the whole document).
+class InsertText(EditCommand):
+    def __init__(self, doc: Document, s: str):
+        self._doc, self._s, self._pos = doc, s, 0
+
+    def execute(self) -> None:
+        self._pos = len(self._doc)
+        self._doc.insert(self._pos, self._s)
+
+    def undo(self) -> None:
+        self._doc.delete(self._pos, len(self._s))
+
+
+class DeleteLast(EditCommand):
+    def __init__(self, doc: Document, n: int):
+        self._doc, self._n, self._removed, self._pos = doc, n, "", 0
+
+    def execute(self) -> None:
+        k = min(self._n, len(self._doc))
+        self._pos = len(self._doc) - k
+        self._removed = self._doc.delete(self._pos, k)  # remember the deleted text for undo
+
+    def undo(self) -> None:
+        self._doc.insert(self._pos, self._removed)
+
+
+# Invoker: runs commands and keeps history. It never looks inside a command.
+class CommandManager:
+    def __init__(self, limit: int):
+        self._undo: deque[EditCommand] = deque(maxlen=limit)  # bounded history: drops the oldest
+        self._redo: list[EditCommand] = []
+
+    def run(self, c: EditCommand) -> None:
+        c.execute()
+        self._undo.append(c)
+        self._redo.clear()  # a new action kills the old "future"
+
+    def undo(self) -> bool:
+        if not self._undo:
+            return False
+        c = self._undo.pop()
+        c.undo()
+        self._redo.append(c)
+        return True
+
+    def redo(self) -> bool:
+        if not self._redo:
+            return False
+        c = self._redo.pop()
+        c.execute()
+        self._undo.append(c)
+        return True
+
+
+if __name__ == "__main__":
+    doc = Document()
+    cm = CommandManager(100)
+    cm.run(InsertText(doc, "Hello"))
+    cm.run(InsertText(doc, " World"))
+    cm.run(DeleteLast(doc, 3))
+    print(doc)  # Hello Wo
+    cm.undo(); print(doc)  # Hello World
+    cm.undo(); print(doc)  # Hello
+    cm.redo(); print(doc)  # Hello World` },
+          { lang: 'ts', code: `// Receiver: knows HOW to edit text. Knows nothing about undo.
+// (Named Doc because Document is a built-in DOM type.)
+class Doc {
+  private text = "";
+  insert(pos: number, s: string): void { this.text = this.text.slice(0, pos) + s + this.text.slice(pos); }
+  delete(pos: number, len: number): string { // returns what was removed
+    const gone = this.text.slice(pos, pos + len);
+    this.text = this.text.slice(0, pos) + this.text.slice(pos + len);
+    return gone;
+  }
+  get length(): number { return this.text.length; }
+  toString(): string { return this.text; }
+}
+
+interface EditCommand {
+  execute(): void;
+  undo(): void;
+}
+
+// Each command stores exactly what it needs to reverse itself (not the whole document).
+class InsertText implements EditCommand {
+  private pos = 0;
+  constructor(private readonly doc: Doc, private readonly s: string) {}
+  execute(): void { this.pos = this.doc.length; this.doc.insert(this.pos, this.s); }
+  undo(): void { this.doc.delete(this.pos, this.s.length); }
+}
+
+class DeleteLast implements EditCommand {
+  private removed = "";
+  private pos = 0;
+  constructor(private readonly doc: Doc, private readonly n: number) {}
+  execute(): void {
+    const k = Math.min(this.n, this.doc.length);
+    this.pos = this.doc.length - k;
+    this.removed = this.doc.delete(this.pos, k); // remember the deleted text for undo
+  }
+  undo(): void { this.doc.insert(this.pos, this.removed); }
+}
+
+// Invoker: runs commands and keeps history. It never looks inside a command.
+class CommandManager {
+  private readonly undoStack: EditCommand[] = [];
+  private readonly redoStack: EditCommand[] = [];
+  constructor(private readonly limit: number) {}
+
+  run(c: EditCommand): void {
+    c.execute();
+    this.undoStack.push(c);
+    if (this.undoStack.length > this.limit) this.undoStack.shift(); // bounded history: drop the oldest
+    this.redoStack.length = 0; // a new action kills the old "future"
+  }
+  undo(): boolean {
+    const c = this.undoStack.pop();
+    if (c === undefined) return false;
+    c.undo();
+    this.redoStack.push(c);
+    return true;
+  }
+  redo(): boolean {
+    const c = this.redoStack.pop();
+    if (c === undefined) return false;
+    c.execute();
+    this.undoStack.push(c);
+    return true;
+  }
+}
+
+const doc = new Doc();
+const cm = new CommandManager(100);
+cm.run(new InsertText(doc, "Hello"));
+cm.run(new InsertText(doc, " World"));
+cm.run(new DeleteLast(doc, 3));
+console.log(String(doc)); // Hello Wo
+cm.undo(); console.log(String(doc)); // Hello World
+cm.undo(); console.log(String(doc)); // Hello
+cm.redo(); console.log(String(doc)); // Hello World` },
+          { lang: 'cpp', code: `// Receiver: knows HOW to edit text. Knows nothing about undo.
+class Document {
+public:
+    void insert(size_t pos, const string& s) { text.insert(pos, s); }
+    string erase(size_t pos, size_t len) {  // returns what was removed
+        string gone = text.substr(pos, len);
+        text.erase(pos, len);
+        return gone;
+    }
+    size_t length() const { return text.size(); }
+    const string& str() const { return text; }
+private:
+    string text;
+};
+
+class EditCommand {
+public:
+    virtual ~EditCommand() = default;
+    virtual void execute() = 0;
+    virtual void undo() = 0;
+};
+
+// Each command stores exactly what it needs to reverse itself (not the whole document).
+class InsertText : public EditCommand {
+public:
+    InsertText(Document& doc, string s) : doc(doc), s(std::move(s)) {}
+    void execute() override { pos = doc.length(); doc.insert(pos, s); }
+    void undo() override { doc.erase(pos, s.size()); }
+private:
+    Document& doc; string s; size_t pos = 0;
+};
+class DeleteLast : public EditCommand {
+public:
+    DeleteLast(Document& doc, size_t n) : doc(doc), n(n) {}
+    void execute() override {
+        size_t k = min(n, doc.length());
+        pos = doc.length() - k;
+        removed = doc.erase(pos, k);  // remember the deleted text for undo
+    }
+    void undo() override { doc.insert(pos, removed); }
+private:
+    Document& doc; size_t n; string removed; size_t pos = 0;
+};
+
+// Invoker: runs commands and keeps history. It never looks inside a command.
+class CommandManager {
+public:
+    explicit CommandManager(size_t limit) : limit(limit) {}
+
+    void run(unique_ptr<EditCommand> c) {
+        c->execute();
+        undoStack.push_back(std::move(c));
+        if (undoStack.size() > limit) undoStack.pop_front();  // bounded history: drop the oldest
+        redoStack.clear();  // a new action kills the old "future"
+    }
+    bool undo() {
+        if (undoStack.empty()) return false;
+        auto c = std::move(undoStack.back());
+        undoStack.pop_back();
+        c->undo();
+        redoStack.push_back(std::move(c));
+        return true;
+    }
+    bool redo() {
+        if (redoStack.empty()) return false;
+        auto c = std::move(redoStack.back());
+        redoStack.pop_back();
+        c->execute();
+        undoStack.push_back(std::move(c));
+        return true;
+    }
+private:
+    deque<unique_ptr<EditCommand>> undoStack;
+    vector<unique_ptr<EditCommand>> redoStack;
+    size_t limit;
+};
+
+int main() {
+    Document doc;
+    CommandManager cm(100);
+    cm.run(make_unique<InsertText>(doc, "Hello"));
+    cm.run(make_unique<InsertText>(doc, " World"));
+    cm.run(make_unique<DeleteLast>(doc, 3));
+    cout << doc.str() << "\\n";  // Hello Wo
+    cm.undo(); cout << doc.str() << "\\n";  // Hello World
+    cm.undo(); cout << doc.str() << "\\n";  // Hello
+    cm.redo(); cout << doc.str() << "\\n";  // Hello World
+}` }
+        ] }, { lang: 'java', title: 'Commands as jobs: queue, macro and log', code: `// Runnable IS the Command pattern without undo. An executor is an invoker with a queue.
 class JobsDemo {
     public static void main(String[] args) throws Exception {
         List<String> auditLog = new CopyOnWriteArrayList<>();
@@ -619,13 +1856,89 @@ class JobsDemo {
         Runnable goodNight = () -> steps.forEach(Runnable::run);
         queue.add(goodNight);
 
-        ExecutorService pool = Executors.newFixedThreadPool(2);
+        ExecutorService pool = Executors.newSingleThreadExecutor();   // one worker: jobs run in queue order
         while (!queue.isEmpty()) pool.submit(queue.poll());   // the invoker does not know what jobs do
         pool.shutdown();
         pool.awaitTermination(1, TimeUnit.SECONDS);
         System.out.println(auditLog.size() + " actions ran: " + auditLog);
     }
-}` }],
+}`, alt: [
+          { lang: 'python', code: `import queue
+from concurrent.futures import ThreadPoolExecutor
+from typing import Callable
+
+# A plain callable IS the Command pattern without undo. An executor is an invoker with a queue.
+audit_log: list[str] = []
+jobs: "queue.Queue[Callable[[], None]]" = queue.Queue()
+
+jobs.put(lambda: audit_log.append("resize image 42"))
+jobs.put(lambda: audit_log.append("send welcome email to asha"))
+
+# Macro = a command made of commands (Composite + Command)
+steps: list[Callable[[], None]] = [lambda: audit_log.append("lights off"), lambda: audit_log.append("lock door")]
+
+
+def good_night() -> None:
+    for step in steps:
+        step()
+
+
+jobs.put(good_night)
+
+with ThreadPoolExecutor(max_workers=1) as pool:  # one worker: jobs run in queue order
+    while not jobs.empty():
+        pool.submit(jobs.get())  # the invoker does not know what jobs do
+# leaving the \`with\` block waits for every job to finish
+print(f"{len(audit_log)} actions ran: [{', '.join(audit_log)}]")` },
+          { lang: 'ts', code: `// A plain function IS the Command pattern without undo. A job queue is an invoker.
+type Job = () => void;
+
+const auditLog: string[] = [];
+const queue: Job[] = [];
+
+queue.push(() => auditLog.push("resize image 42"));
+queue.push(() => auditLog.push("send welcome email to asha"));
+
+// Macro = a command made of commands (Composite + Command)
+const steps: Job[] = [() => auditLog.push("lights off"), () => auditLog.push("lock door")];
+const goodNight: Job = () => steps.forEach((step) => step());
+queue.push(goodNight);
+
+// One worker drains the queue in order; each job runs in its own turn of the event loop.
+async function drain(): Promise<void> {
+  for (let job = queue.shift(); job !== undefined; job = queue.shift()) {
+    await Promise.resolve().then(job); // the invoker does not know what jobs do
+  }
+}
+
+drain().then(() => console.log(\`\${auditLog.length} actions ran: [\${auditLog.join(", ")}]\`));` },
+          { lang: 'cpp', code: `// A callable IS the Command pattern without undo. A worker thread draining a queue is an invoker.
+int main() {
+    vector<string> auditLog;
+    queue<function<void()>> jobs;
+
+    jobs.push([&] { auditLog.push_back("resize image 42"); });
+    jobs.push([&] { auditLog.push_back("send welcome email to asha"); });
+
+    // Macro = a command made of commands (Composite + Command)
+    vector<function<void()>> steps = {[&] { auditLog.push_back("lights off"); }, [&] { auditLog.push_back("lock door"); }};
+    jobs.push([steps] { for (const auto& step : steps) step(); });
+
+    {
+        jthread worker([&] {  // one worker: jobs run in queue order
+            while (!jobs.empty()) {
+                auto job = std::move(jobs.front());
+                jobs.pop();
+                job();  // the invoker does not know what jobs do
+            }
+        });
+    }  // leaving the scope joins the thread
+
+    cout << auditLog.size() << " actions ran: [";
+    for (size_t i = 0; i < auditLog.size(); i++) cout << (i ? ", " : "") << auditLog[i];
+    cout << "]\\n";
+}` }
+        ] }],
     codeTitle: ['Undo/redo editor', 'Command as queued jobs + macro'],
     viz: {
       title: 'Command: undo and redo stacks in a text editor',
@@ -695,11 +2008,26 @@ class JobsDemo {
     },
     examples: [
       { title: 'Smart-home remote with programmable buttons', html: `<p>A remote has 7 slots. Slot 1 = <code>LightOnCommand(livingRoomLight)</code>, slot 2 = <code>FanSpeedCommand(fan, HIGH)</code>. The remote (invoker) just calls <code>slots[i].execute()</code>. Re-program a button at runtime by assigning a different command. The undo button calls <code>lastCommand.undo()</code> — for the fan, undo restores the <i>previous</i> speed that the command saved before changing it.</p>` },
-      { title: 'Thread pools and schedulers', html: `<p><code>executor.submit(() -&gt; resize(img))</code>: your lambda is a command object. The executor (invoker) queues it, picks a thread and calls <code>run()</code>, with zero knowledge of image resizing. <code>ScheduledExecutorService</code> is the same with a time delay. Message queues (SQS, RabbitMQ) are this idea across machines: the message is a serialized command.</p>`, code: `ScheduledExecutorService ses = Executors.newSingleThreadScheduledExecutor();
+      { title: 'Thread pools and schedulers', html: `<p><code>executor.submit(() -&gt; resize(img))</code>: your lambda is a command object. The executor (invoker) queues it, picks a thread and calls <code>run()</code>, with zero knowledge of image resizing. <code>ScheduledExecutorService</code> is the same with a time delay. Message queues (SQS, RabbitMQ) are this idea across machines: the message is a serialized command.</p>`, code: { lang: 'java', code: `ScheduledExecutorService ses = Executors.newSingleThreadScheduledExecutor();
 Runnable reminder = () -> System.out.println("Drink water!");   // command object
 ses.schedule(reminder, 10, TimeUnit.MILLISECONDS);
 ses.shutdown();
-ses.awaitTermination(1, TimeUnit.SECONDS);` },
+ses.awaitTermination(1, TimeUnit.SECONDS);`, alt: [
+          { lang: 'python', code: `import threading
+
+reminder = lambda: print("Drink water!")  # command object
+timer = threading.Timer(0.01, reminder)  # run once after 10 ms
+timer.start()
+timer.join()` },
+          { lang: 'ts', code: `const reminder = (): void => console.log("Drink water!"); // command object
+setTimeout(reminder, 10); // run once after 10 ms` },
+          { lang: 'cpp', code: `auto reminder = [] { cout << "Drink water!\\n"; };  // command object
+auto later = async(launch::async, [reminder] {
+    this_thread::sleep_for(chrono::milliseconds(10));  // run once after 10 ms
+    reminder();
+});
+later.get();` }
+        ] } },
       { title: 'Database-style write-ahead log', html: `<p>A key-value store writes each command (<code>SET k v</code>, <code>DEL k</code>) to an append-only log <b>before</b> applying it. After a crash, it replays the log to rebuild memory. Redis AOF works this way. Commands that are data = durability, replication (send the log to replicas) and auditing for free.</p>` },
       { title: 'Undo for irreversible actions', html: `<p>Some actions cannot be undone by "doing the opposite": sending an email, charging a card, applying a lossy image filter. Options: a <b>compensating command</b> (refund instead of un-charge, send a "please ignore" email), or a <b>Memento snapshot</b> taken before execute (the image filter). Mention this nuance — interviewers love it.</p>` }
     ],
@@ -736,6 +2064,7 @@ ses.awaitTermination(1, TimeUnit.SECONDS);` },
 }` },
       mcq: { q: 'withdraw(A, 50) fails because A has only 30. What should the invoker do?', options: ['Not push it onto the undo stack — execute() reports failure first', 'Push it and let undo add 50 back', 'Push it and mark it failed', 'Throw away the entire history'], answer: 0, explain: 'Only successful commands belong in history; undoing a failed withdraw would create money. Have execute() return a boolean (or throw) and push only on success.' },
       hints: [`<p>Hint 1: Each operation becomes an object that knows how to <code>execute()</code> and <code>undo()</code> itself. The bank (invoker) just keeps a stack.</p>`, `<p>Hint 2: <code>interface BankCommand { boolean execute(); void undo(); String describe(); }</code>. Transfer can <b>reuse</b> withdraw + deposit internally, and undo them in reverse order.</p>`, `<p>Hint 3: Push to history only when <code>execute()</code> returns true. Undo on an empty stack returns false. Recipe: Account receiver with deposit/withdraw(returns boolean) → three command classes → Bank.run(cmd) / undoLast().</p>`],
+      tests: { io: true, cases: [{ stdin: '', stdout: "FAILED: withdraw 50 from A\n[transfer 70 A->B, deposit 5 to B] A=30 B=75\nafter undo A=100 B=0\nFAILED: transfer 500 A->B\n[] A=100 B=0\nundo on empty: false\n" }] },
       solution: {
         approach: `<p>Receiver = <code>Account</code> (holds balance, rejects overdrafts). Each operation is a <code>BankCommand</code> carrying its accounts and amount, so it can reverse itself exactly. <code>TransferCommand</code> is built from a withdraw and a deposit; if the withdraw fails nothing happens. The invoker <code>Bank</code> pushes only successful commands, so <code>undoLast()</code> is a pop + <code>undo()</code>. New operations (interest, fee) are new classes — the invoker never changes.</p>`,
         code: `class Account {
@@ -803,8 +2132,306 @@ class Bank {
         System.out.println(bank.history() + " A=" + a.balance() + " B=" + b.balance());
         bank.undoLast(); bank.undoLast();
         System.out.println("after undo A=" + a.balance() + " B=" + b.balance());   // A=100 B=0
+        bank.run(new TransferCommand(a, b, 500));        // fails, nothing moves
+        System.out.println(bank.history() + " A=" + a.balance() + " B=" + b.balance());
+        System.out.println("undo on empty: " + bank.undoLast());
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `from abc import ABC, abstractmethod
+from collections import deque
+
+
+class Account:
+    def __init__(self, id: str, balance: int):
+        self.id = id
+        self._balance = balance
+
+    def deposit(self, amt: int) -> None:
+        self._balance += amt
+
+    def withdraw(self, amt: int) -> bool:
+        if amt > self._balance:  # receiver guards its own invariant
+            return False
+        self._balance -= amt
+        return True
+
+    @property
+    def balance(self) -> int:
+        return self._balance
+
+
+class BankCommand(ABC):
+    @abstractmethod
+    def execute(self) -> bool: ...
+
+    @abstractmethod
+    def undo(self) -> None: ...
+
+    @abstractmethod
+    def describe(self) -> str: ...
+
+
+class DepositCommand(BankCommand):
+    def __init__(self, acc: Account, amt: int):
+        self._acc, self._amt = acc, amt
+
+    def execute(self) -> bool:
+        self._acc.deposit(self._amt)
+        return True
+
+    def undo(self) -> None:
+        self._acc.withdraw(self._amt)
+
+    def describe(self) -> str:
+        return f"deposit {self._amt} to {self._acc.id}"
+
+
+class WithdrawCommand(BankCommand):
+    def __init__(self, acc: Account, amt: int):
+        self._acc, self._amt = acc, amt
+
+    def execute(self) -> bool:
+        return self._acc.withdraw(self._amt)
+
+    def undo(self) -> None:
+        self._acc.deposit(self._amt)
+
+    def describe(self) -> str:
+        return f"withdraw {self._amt} from {self._acc.id}"
+
+
+class TransferCommand(BankCommand):
+    def __init__(self, src: Account, dst: Account, amt: int):
+        self._out = WithdrawCommand(src, amt)
+        self._in = DepositCommand(dst, amt)
+        self._text = f"transfer {amt} {src.id}->{dst.id}"
+
+    def execute(self) -> bool:
+        if not self._out.execute():
+            return False
+        self._in.execute()
+        return True
+
+    def undo(self) -> None:  # reverse order
+        self._in.undo()
+        self._out.undo()
+
+    def describe(self) -> str:
+        return self._text
+
+
+class Bank:
+    def __init__(self):
+        self._history: deque[BankCommand] = deque()
+
+    def run(self, cmd: BankCommand) -> bool:
+        if not cmd.execute():
+            print("FAILED:", cmd.describe())
+            return False
+        self._history.append(cmd)
+        return True
+
+    def undo_last(self) -> bool:
+        if not self._history:
+            return False
+        self._history.pop().undo()
+        return True
+
+    def history(self) -> list[str]:
+        return [c.describe() for c in self._history]
+
+
+def show(bank: Bank) -> str:
+    return "[" + ", ".join(bank.history()) + "]"
+
+
+if __name__ == "__main__":
+    a, b = Account("A", 100), Account("B", 0)
+    bank = Bank()
+    bank.run(TransferCommand(a, b, 70))
+    bank.run(WithdrawCommand(a, 50))  # fails, not recorded
+    bank.run(DepositCommand(b, 5))
+    print(f"{show(bank)} A={a.balance} B={b.balance}")
+    bank.undo_last()
+    bank.undo_last()
+    print(f"after undo A={a.balance} B={b.balance}")  # A=100 B=0
+    bank.run(TransferCommand(a, b, 500))  # fails, nothing moves
+    print(f"{show(bank)} A={a.balance} B={b.balance}")
+    print("undo on empty:", str(bank.undo_last()).lower())` },
+          { lang: 'ts', code: `class Account {
+  constructor(readonly id: string, private _balance: number) {}
+  deposit(amt: number): void { this._balance += amt; }
+  withdraw(amt: number): boolean {
+    if (amt > this._balance) return false; // receiver guards its own invariant
+    this._balance -= amt;
+    return true;
+  }
+  get balance(): number { return this._balance; }
+}
+
+interface BankCommand {
+  execute(): boolean;
+  undo(): void;
+  describe(): string;
+}
+
+class DepositCommand implements BankCommand {
+  constructor(private readonly acc: Account, private readonly amt: number) {}
+  execute(): boolean { this.acc.deposit(this.amt); return true; }
+  undo(): void { this.acc.withdraw(this.amt); }
+  describe(): string { return \`deposit \${this.amt} to \${this.acc.id}\`; }
+}
+
+class WithdrawCommand implements BankCommand {
+  constructor(private readonly acc: Account, private readonly amt: number) {}
+  execute(): boolean { return this.acc.withdraw(this.amt); }
+  undo(): void { this.acc.deposit(this.amt); }
+  describe(): string { return \`withdraw \${this.amt} from \${this.acc.id}\`; }
+}
+
+class TransferCommand implements BankCommand {
+  private readonly out: BankCommand;
+  private readonly in: BankCommand;
+  private readonly text: string;
+  constructor(from: Account, to: Account, amt: number) {
+    this.out = new WithdrawCommand(from, amt);
+    this.in = new DepositCommand(to, amt);
+    this.text = \`transfer \${amt} \${from.id}->\${to.id}\`;
+  }
+  execute(): boolean {
+    if (!this.out.execute()) return false;
+    this.in.execute();
+    return true;
+  }
+  undo(): void { this.in.undo(); this.out.undo(); } // reverse order
+  describe(): string { return this.text; }
+}
+
+class Bank {
+  private readonly stack: BankCommand[] = [];
+  run(c: BankCommand): boolean {
+    if (!c.execute()) { console.log("FAILED: " + c.describe()); return false; }
+    this.stack.push(c);
+    return true;
+  }
+  undoLast(): boolean {
+    const c = this.stack.pop();
+    if (!c) return false;
+    c.undo();
+    return true;
+  }
+  history(): string[] { return this.stack.map((c) => c.describe()); }
+}
+
+const show = (bank: Bank): string => "[" + bank.history().join(", ") + "]";
+
+const a = new Account("A", 100), b = new Account("B", 0);
+const bank = new Bank();
+bank.run(new TransferCommand(a, b, 70));
+bank.run(new WithdrawCommand(a, 50)); // fails, not recorded
+bank.run(new DepositCommand(b, 5));
+console.log(\`\${show(bank)} A=\${a.balance} B=\${b.balance}\`);
+bank.undoLast(); bank.undoLast();
+console.log(\`after undo A=\${a.balance} B=\${b.balance}\`); // A=100 B=0
+bank.run(new TransferCommand(a, b, 500)); // fails, nothing moves
+console.log(\`\${show(bank)} A=\${a.balance} B=\${b.balance}\`);
+console.log("undo on empty: " + bank.undoLast());` },
+          { lang: 'cpp', code: `class Account {
+public:
+    Account(string id, long long balance) : id_(std::move(id)), balance_(balance) {}
+    const string& id() const { return id_; }
+    void deposit(long long amt) { balance_ += amt; }
+    bool withdraw(long long amt) {
+        if (amt > balance_) return false;  // receiver guards its own invariant
+        balance_ -= amt;
+        return true;
+    }
+    long long balance() const { return balance_; }
+private:
+    string id_;
+    long long balance_;
+};
+
+class BankCommand {
+public:
+    virtual ~BankCommand() = default;
+    virtual bool execute() = 0;
+    virtual void undo() = 0;
+    virtual string describe() const = 0;
+};
+
+class DepositCommand : public BankCommand {
+public:
+    DepositCommand(Account& acc, long long amt) : acc(acc), amt(amt) {}
+    bool execute() override { acc.deposit(amt); return true; }
+    void undo() override { acc.withdraw(amt); }
+    string describe() const override { return "deposit " + to_string(amt) + " to " + acc.id(); }
+private:
+    Account& acc; long long amt;
+};
+
+class WithdrawCommand : public BankCommand {
+public:
+    WithdrawCommand(Account& acc, long long amt) : acc(acc), amt(amt) {}
+    bool execute() override { return acc.withdraw(amt); }
+    void undo() override { acc.deposit(amt); }
+    string describe() const override { return "withdraw " + to_string(amt) + " from " + acc.id(); }
+private:
+    Account& acc; long long amt;
+};
+
+class TransferCommand : public BankCommand {
+public:
+    TransferCommand(Account& from, Account& to, long long amt)
+        : out(from, amt), in(to, amt),
+          text("transfer " + to_string(amt) + " " + from.id() + "->" + to.id()) {}
+    bool execute() override {
+        if (!out.execute()) return false;
+        in.execute();
+        return true;
+    }
+    void undo() override { in.undo(); out.undo(); }  // reverse order
+    string describe() const override { return text; }
+private:
+    WithdrawCommand out; DepositCommand in; string text;
+};
+
+class Bank {
+public:
+    bool run(unique_ptr<BankCommand> c) {
+        if (!c->execute()) { cout << "FAILED: " << c->describe() << "\\n"; return false; }
+        history_.push_back(std::move(c));
+        return true;
+    }
+    bool undoLast() {
+        if (history_.empty()) return false;
+        history_.back()->undo();
+        history_.pop_back();
+        return true;
+    }
+    string history() const {
+        string s = "[";
+        for (size_t i = 0; i < history_.size(); i++) s += (i ? ", " : "") + history_[i]->describe();
+        return s + "]";
+    }
+private:
+    vector<unique_ptr<BankCommand>> history_;
+};
+
+int main() {
+    Account a("A", 100), b("B", 0);
+    Bank bank;
+    bank.run(make_unique<TransferCommand>(a, b, 70));
+    bank.run(make_unique<WithdrawCommand>(a, 50));  // fails, not recorded
+    bank.run(make_unique<DepositCommand>(b, 5));
+    cout << bank.history() << " A=" << a.balance() << " B=" << b.balance() << "\\n";
+    bank.undoLast(); bank.undoLast();
+    cout << "after undo A=" << a.balance() << " B=" << b.balance() << "\\n";  // A=100 B=0
+    bank.run(make_unique<TransferCommand>(a, b, 500));  // fails, nothing moves
+    cout << bank.history() << " A=" << a.balance() << " B=" << b.balance() << "\\n";
+    cout << "undo on empty: " << boolalpha << bank.undoLast() << "\\n";
+}` }
+        ],
         complexity: `<p>run and undoLast are O(1). History memory O(number of successful operations) — bound it with a capped deque in production.</p>`,
         followUps: ['Two threads transfer at once — where do you lock? (lock both accounts in a fixed id order to avoid deadlock)', 'Undo should be allowed only within 24 hours — where does that rule live?', 'How would you persist commands for crash recovery (write-ahead log)?']
       }
@@ -890,7 +2517,249 @@ class Order {
         o.deliver();
         System.out.println(o.status() + " " + o.audit());
     }
-}` }, { lang: 'java', title: 'Table-driven alternative: enum + transition map', code: `// When states have little behaviour (just "which event leads where"), a table is simpler than classes.
+}`, alt: [
+          { lang: 'python', code: `import threading
+
+
+class OrderState:
+    """Default = illegal. Each state overrides only what it allows. Unknown actions fail loudly."""
+    name = "?"
+
+    def pay(self, o: "Order") -> None:
+        self._illegal("pay")
+
+    def ship(self, o: "Order") -> None:
+        self._illegal("ship")
+
+    def deliver(self, o: "Order") -> None:
+        self._illegal("deliver")
+
+    def cancel(self, o: "Order") -> None:
+        self._illegal("cancel")
+
+    def _illegal(self, action: str) -> None:
+        raise RuntimeError(f"Cannot {action} when order is {self.name}")
+
+
+# States hold no per-order data, so ONE instance of each can be shared by all orders.
+class NewState(OrderState):
+    name = "NEW"
+
+    def pay(self, o):
+        print("charging card")
+        o.set_state(PAID)
+
+    def cancel(self, o):
+        o.set_state(CANCELLED)
+
+
+class PaidState(OrderState):
+    name = "PAID"
+
+    def ship(self, o):
+        print("handing to courier")
+        o.set_state(SHIPPED)
+
+    def cancel(self, o):
+        print("refunding")
+        o.set_state(CANCELLED)
+
+
+class ShippedState(OrderState):
+    name = "SHIPPED"  # cancel not allowed: the default raises
+
+    def deliver(self, o):
+        o.set_state(DELIVERED)
+
+
+class DeliveredState(OrderState):
+    name = "DELIVERED"  # terminal state
+
+
+class CancelledState(OrderState):
+    name = "CANCELLED"  # terminal state
+
+
+NEW, PAID, SHIPPED, DELIVERED, CANCELLED = NewState(), PaidState(), ShippedState(), DeliveredState(), CancelledState()
+
+
+class Order:
+    def __init__(self):
+        self._state: OrderState = NEW
+        self._audit: list[str] = []
+        self._lock = threading.RLock()
+
+    def set_state(self, nxt: OrderState) -> None:
+        self._audit.append(f"{self._state.name} -> {nxt.name}")
+        self._state = nxt
+
+    # Every public action is a one-line delegation. The lock = one transition at a time.
+    def pay(self) -> None:
+        with self._lock:
+            self._state.pay(self)
+
+    def ship(self) -> None:
+        with self._lock:
+            self._state.ship(self)
+
+    def deliver(self) -> None:
+        with self._lock:
+            self._state.deliver(self)
+
+    def cancel(self) -> None:
+        with self._lock:
+            self._state.cancel(self)
+
+    def status(self) -> str:
+        return self._state.name
+
+    def audit(self) -> list[str]:
+        return self._audit
+
+
+if __name__ == "__main__":
+    o = Order()
+    o.pay()
+    o.ship()
+    try:
+        o.cancel()
+    except RuntimeError as e:
+        print(e)
+    o.deliver()
+    print(o.status(), "[" + ", ".join(o.audit()) + "]")` },
+          { lang: 'ts', code: `// Default = illegal. Each state overrides only what it allows. Unknown actions fail loudly.
+abstract class OrderState {
+  abstract readonly name: string;
+  pay(_o: Order): void { this.illegal("pay"); }
+  ship(_o: Order): void { this.illegal("ship"); }
+  deliver(_o: Order): void { this.illegal("deliver"); }
+  cancel(_o: Order): void { this.illegal("cancel"); }
+  private illegal(action: string): never {
+    throw new Error(\`Cannot \${action} when order is \${this.name}\`);
+  }
+}
+
+// States hold no per-order data, so ONE instance of each can be shared by all orders.
+class NewState extends OrderState {
+  readonly name = "NEW";
+  override pay(o: Order): void { console.log("charging card"); o.setState(PAID); }
+  override cancel(o: Order): void { o.setState(CANCELLED); }
+}
+class PaidState extends OrderState {
+  readonly name = "PAID";
+  override ship(o: Order): void { console.log("handing to courier"); o.setState(SHIPPED); }
+  override cancel(o: Order): void { console.log("refunding"); o.setState(CANCELLED); }
+}
+class ShippedState extends OrderState {
+  readonly name = "SHIPPED"; // cancel not allowed: the default throws
+  override deliver(o: Order): void { o.setState(DELIVERED); }
+}
+class DeliveredState extends OrderState { readonly name = "DELIVERED"; } // terminal state
+class CancelledState extends OrderState { readonly name = "CANCELLED"; } // terminal state
+
+const NEW = new NewState(), PAID = new PaidState(), SHIPPED = new ShippedState();
+const DELIVERED = new DeliveredState(), CANCELLED = new CancelledState();
+
+class Order {
+  private state: OrderState = NEW;
+  private readonly trail: string[] = [];
+  setState(next: OrderState): void { this.trail.push(\`\${this.state.name} -> \${next.name}\`); this.state = next; }
+  // Every public action is a one-line delegation (JavaScript is single-threaded: no lock needed).
+  pay(): void { this.state.pay(this); }
+  ship(): void { this.state.ship(this); }
+  deliver(): void { this.state.deliver(this); }
+  cancel(): void { this.state.cancel(this); }
+  status(): string { return this.state.name; }
+  audit(): readonly string[] { return this.trail; }
+}
+
+const o = new Order();
+o.pay(); o.ship();
+try { o.cancel(); } catch (e) { console.log((e as Error).message); }
+o.deliver();
+console.log(o.status() + " [" + o.audit().join(", ") + "]");` },
+          { lang: 'cpp', code: `class Order;
+
+class OrderState {
+public:
+    virtual ~OrderState() = default;
+    virtual string name() const = 0;
+    // Default = illegal. Each state overrides only what it allows. Unknown actions fail loudly.
+    virtual void pay(Order&) const { illegal("pay"); }
+    virtual void ship(Order&) const { illegal("ship"); }
+    virtual void deliver(Order&) const { illegal("deliver"); }
+    virtual void cancel(Order&) const { illegal("cancel"); }
+private:
+    [[noreturn]] void illegal(const string& action) const {
+        throw logic_error("Cannot " + action + " when order is " + name());
+    }
+};
+
+// States hold no per-order data, so ONE instance of each can be shared by all orders.
+const OrderState* newState();
+const OrderState* paidState();
+const OrderState* shippedState();
+const OrderState* deliveredState();
+const OrderState* cancelledState();
+
+class Order {
+public:
+    void setState(const OrderState* next) { audit_.push_back(state->name() + " -> " + next->name()); state = next; }
+    // Every public action is a one-line delegation. The mutex = one transition at a time.
+    void pay() { lock_guard g(m); state->pay(*this); }
+    void ship() { lock_guard g(m); state->ship(*this); }
+    void deliver() { lock_guard g(m); state->deliver(*this); }
+    void cancel() { lock_guard g(m); state->cancel(*this); }
+    string status() const { return state->name(); }
+    const vector<string>& audit() const { return audit_; }
+private:
+    const OrderState* state = newState();  // non-owning: the states are shared singletons
+    vector<string> audit_;
+    recursive_mutex m;
+};
+
+class NewState : public OrderState {
+public:
+    string name() const override { return "NEW"; }
+    void pay(Order& o) const override { cout << "charging card\\n"; o.setState(paidState()); }
+    void cancel(Order& o) const override { o.setState(cancelledState()); }
+};
+class PaidState : public OrderState {
+public:
+    string name() const override { return "PAID"; }
+    void ship(Order& o) const override { cout << "handing to courier\\n"; o.setState(shippedState()); }
+    void cancel(Order& o) const override { cout << "refunding\\n"; o.setState(cancelledState()); }
+};
+class ShippedState : public OrderState {
+public:
+    string name() const override { return "SHIPPED"; }  // cancel not allowed: the default throws
+    void deliver(Order& o) const override { o.setState(deliveredState()); }
+};
+class DeliveredState : public OrderState {
+public:
+    string name() const override { return "DELIVERED"; }  // terminal state
+};
+class CancelledState : public OrderState {
+public:
+    string name() const override { return "CANCELLED"; }  // terminal state
+};
+
+const OrderState* newState() { static const NewState s; return &s; }
+const OrderState* paidState() { static const PaidState s; return &s; }
+const OrderState* shippedState() { static const ShippedState s; return &s; }
+const OrderState* deliveredState() { static const DeliveredState s; return &s; }
+const OrderState* cancelledState() { static const CancelledState s; return &s; }
+
+int main() {
+    Order o;
+    o.pay(); o.ship();
+    try { o.cancel(); } catch (const logic_error& e) { cout << e.what() << "\\n"; }
+    o.deliver();
+    string trail;
+    for (const auto& line : o.audit()) trail += (trail.empty() ? "" : ", ") + line;
+    cout << o.status() << " [" << trail << "]\\n";
+}` }
+        ] }, { lang: 'java', title: 'Table-driven alternative: enum + transition map', code: `// When states have little behaviour (just "which event leads where"), a table is simpler than classes.
 enum Light { RED, GREEN, YELLOW }
 enum Event { TIMER, EMERGENCY }
 
@@ -915,7 +2784,107 @@ class TrafficLight {
         for (int i = 0; i < 4; i++) System.out.print(tl.fire(Event.TIMER) + " ");
         System.out.println(tl.fire(Event.EMERGENCY));
     }
-}` }],
+}`, alt: [
+          { lang: 'python', code: `from enum import Enum, auto
+
+
+# When states have little behaviour (just "which event leads where"), a table is simpler than classes.
+class Light(Enum):
+    RED = auto()
+    GREEN = auto()
+    YELLOW = auto()
+
+
+class Event(Enum):
+    TIMER = auto()
+    EMERGENCY = auto()
+
+
+class TrafficLight:
+    _T: dict[Light, dict[Event, Light]] = {
+        Light.RED: {Event.TIMER: Light.GREEN, Event.EMERGENCY: Light.RED},
+        Light.GREEN: {Event.TIMER: Light.YELLOW, Event.EMERGENCY: Light.RED},
+        Light.YELLOW: {Event.TIMER: Light.RED, Event.EMERGENCY: Light.RED},
+    }
+
+    def __init__(self):
+        self._current = Light.RED
+
+    def fire(self, e: Event) -> Light:
+        nxt = self._T[self._current].get(e)
+        if nxt is None:
+            raise RuntimeError(f"{e.name} not allowed in {self._current.name}")
+        self._current = nxt
+        return self._current
+
+
+if __name__ == "__main__":
+    tl = TrafficLight()
+    print(" ".join(tl.fire(Event.TIMER).name for _ in range(4)), tl.fire(Event.EMERGENCY).name)` },
+          { lang: 'ts', code: `// When states have little behaviour (just "which event leads where"), a table is simpler than classes.
+type Light = "RED" | "GREEN" | "YELLOW";
+type Trigger = "TIMER" | "EMERGENCY"; // not called Event: that is a built-in DOM type
+
+const TABLE: Record<Light, Record<Trigger, Light>> = {
+  RED: { TIMER: "GREEN", EMERGENCY: "RED" },
+  GREEN: { TIMER: "YELLOW", EMERGENCY: "RED" },
+  YELLOW: { TIMER: "RED", EMERGENCY: "RED" },
+};
+
+class TrafficLight {
+  private current: Light = "RED";
+
+  fire(e: Trigger): Light {
+    const next = TABLE[this.current][e];
+    if (next === undefined) throw new Error(\`\${e} not allowed in \${this.current}\`);
+    this.current = next;
+    return this.current;
+  }
+}
+
+const tl = new TrafficLight();
+const seen: Light[] = [];
+for (let i = 0; i < 4; i++) seen.push(tl.fire("TIMER"));
+console.log(seen.join(" ") + " " + tl.fire("EMERGENCY"));` },
+          { lang: 'cpp', code: `// When states have little behaviour (just "which event leads where"), a table is simpler than classes.
+enum class Light { RED, GREEN, YELLOW };
+enum class Event { TIMER, EMERGENCY };
+
+string name(Light l) {
+    switch (l) {
+        case Light::RED: return "RED";
+        case Light::GREEN: return "GREEN";
+        case Light::YELLOW: return "YELLOW";
+    }
+    return "?";
+}
+string name(Event e) { return e == Event::TIMER ? "TIMER" : "EMERGENCY"; }
+
+class TrafficLight {
+public:
+    Light fire(Event e) {
+        auto row = table.at(current);
+        auto it = row.find(e);
+        if (it == row.end()) throw logic_error(name(e) + " not allowed in " + name(current));
+        return current = it->second;
+    }
+
+private:
+    const map<Light, map<Event, Light>> table = {
+        {Light::RED,    {{Event::TIMER, Light::GREEN},  {Event::EMERGENCY, Light::RED}}},
+        {Light::GREEN,  {{Event::TIMER, Light::YELLOW}, {Event::EMERGENCY, Light::RED}}},
+        {Light::YELLOW, {{Event::TIMER, Light::RED},    {Event::EMERGENCY, Light::RED}}},
+    };
+    Light current = Light::RED;
+};
+
+int main() {
+    TrafficLight tl;
+    string line;
+    for (int i = 0; i < 4; i++) line += name(tl.fire(Event::TIMER)) + " ";
+    cout << line << name(tl.fire(Event::EMERGENCY)) << "\\n";
+}` }
+        ] }],
     codeTitle: ['State classes', 'Enum transition table'],
     viz: {
       title: 'State machine: an order moving through its lifecycle',
@@ -938,7 +2907,7 @@ class TrafficLight {
           if (!LINE[e]) throw new Error('Unknown event "' + e + '". Use pay, ship, deliver or cancel');
           var hl = clone(done); hl[cur] = 'cur';
           var ch = {}; ch[LINE[e]] = 'cur';
-          frames.push(F('Event <b>' + e + '()</b> arrives. The Order does <i>not</i> check its status — it calls <code>state.' + e + '(this)</code>, so Java dispatches to <b>' + CLS[cur] + '.' + e + '()</b>.',
+          frames.push(F('Event <b>' + e + '()</b> arrives. The Order does <i>not</i> check its status — it calls <code>state.' + e + '(this)</code>, so the call dispatches to <b>' + CLS[cur] + '.' + e + '()</b>.',
             [G('Dispatching to the current state', nodes, edges, { h: 70, hl: hl }), VARS('Order context', { state: CLS[cur], status: cur, event: e + '()' }, { event: 'cur' }), CODE('Delegation', code, ch)]));
           var nxt = T[cur][e];
           if (!nxt) {
@@ -963,7 +2932,7 @@ class TrafficLight {
       }
     },
     examples: [
-      { title: 'Media player: play / pause / stop', html: `<p>States: <b>Stopped</b>, <b>Playing</b>, <b>Paused</b>. The <i>play</i> button in Stopped starts from 0:00; in Paused it resumes from the saved position; in Playing it does nothing. With State, each meaning lives in its own class instead of <code>if (playing) … else if (paused) …</code> in every button handler.</p>`, code: `interface PlayerState { PlayerState play(); PlayerState pause(); }
+      { title: 'Media player: play / pause / stop', html: `<p>States: <b>Stopped</b>, <b>Playing</b>, <b>Paused</b>. The <i>play</i> button in Stopped starts from 0:00; in Paused it resumes from the saved position; in Playing it does nothing. With State, each meaning lives in its own class instead of <code>if (playing) … else if (paused) …</code> in every button handler.</p>`, code: { lang: 'java', code: `interface PlayerState { PlayerState play(); PlayerState pause(); }
 PlayerState[] holder = new PlayerState[1];
 PlayerState paused = new PlayerState() {
     public PlayerState play() { System.out.println("resume"); return holder[0]; }
@@ -975,10 +2944,65 @@ holder[0] = new PlayerState() {   // playing
 };
 PlayerState s = holder[0];
 s = s.pause();
+s = s.play();`, alt: [
+          { lang: 'python', code: `class Playing:
+    def play(self):
+        return self
+
+    def pause(self):
+        print("pause at 1:23")
+        return PAUSED
+
+
+class Paused:
+    def play(self):
+        print("resume")
+        return PLAYING
+
+    def pause(self):
+        return self
+
+
+PLAYING, PAUSED = Playing(), Paused()  # each state hands back the next one
+s = PLAYING
+s = s.pause()
+s = s.play()` },
+          { lang: 'ts', code: `interface PlayerState { play(): PlayerState; pause(): PlayerState; }
+
+const playing: PlayerState = {
+  play: () => playing,
+  pause: () => { console.log("pause at 1:23"); return paused; },
+};
+const paused: PlayerState = {
+  play: () => { console.log("resume"); return playing; },
+  pause: () => paused,
+};
+
+let s = playing; // each state hands back the next one
+s = s.pause();
 s = s.play();` },
+          { lang: 'cpp', code: `struct PlayerState {
+    virtual ~PlayerState() = default;
+    virtual PlayerState* play() = 0;
+    virtual PlayerState* pause() = 0;
+};
+static PlayerState* holder[1];  // lets the two states point at each other
+static struct Paused : PlayerState {
+    PlayerState* play() override { cout << "resume\\n"; return holder[0]; }
+    PlayerState* pause() override { return this; }
+} paused;
+static struct Playing : PlayerState {
+    PlayerState* play() override { return this; }
+    PlayerState* pause() override { cout << "pause at 1:23\\n"; return &paused; }
+} playing;
+holder[0] = &playing;
+PlayerState* s = holder[0];
+s = s->pause();
+s = s->play();` }
+        ] } },
       { title: 'Vending machine (classic interview)', html: `<p>States: <b>Idle</b> → (insert coin) → <b>HasMoney</b> → (select item) → <b>Dispensing</b> → <b>Idle</b>, plus <b>SoldOut</b>. "Select item" in Idle says "insert money first"; in HasMoney it checks price and stock; in SoldOut it refunds. The machine (context) also holds data (inventory, balance) that states read and update. Full design comes in LLD 9.</p>` },
       { title: 'TCP connection', html: `<p>RFC 793 literally defines TCP as a state machine: CLOSED, LISTEN, SYN_SENT, SYN_RECEIVED, ESTABLISHED, FIN_WAIT, TIME_WAIT… The same segment (e.g. a FIN) means different things in different states. The original GoF book used <code>TCPConnection</code> as its State example.</p>` },
-      { title: 'State vs plain enum switch: when is a switch fine?', html: `<p>If there are 3 states, 2 events and almost no behaviour per state (only "next state"), an <b>enum + transition table</b> (second code tab) is clearer than 3 classes. Use full State classes when states have <b>real behaviour</b> (charging, refunding, timers, messages) or the number of states grows. With Java 21 sealed interfaces + pattern-matching switch, the compiler can also check that every state is handled.</p>` }
+      { title: 'State vs plain enum switch: when is a switch fine?', html: `<p>If there are 3 states, 2 events and almost no behaviour per state (only "next state"), an <b>enum + transition table</b> (second code tab) is clearer than 3 classes. Use full State classes when states have <b>real behaviour</b> (charging, refunding, timers, messages) or the number of states grows. With sealed types or unions plus an exhaustive switch (Java 21 sealed interfaces, TypeScript unions with a <code>never</code> check, C++ <code>enum class</code> with <code>-Wswitch</code>), the compiler can also check that every state is handled.</p>` }
     ],
     deepDive: `<p><b>Who owns transitions?</b> Option A (classic GoF): each state calls <code>context.setState(next)</code> — easy to read, but states know each other. Option B: state methods <b>return</b> the next state and the context assigns it — states become pure functions, easier to test. Option C: a central <b>transition table</b> (event → next state) plus per-state entry/exit actions — what workflow engines (Spring Statemachine, AWS Step Functions) do.</p>
 <p><b>Shared vs per-context state objects:</b> if a state holds no fields, use one singleton per state (flyweight) — zero allocation per transition. If it holds data (e.g. "Dispensing" needs the selected item), either keep that data in the context or allocate a fresh state object per transition.</p>
@@ -1010,6 +3034,7 @@ s = s.play();` },
 }` },
       mcq: { q: 'In the State pattern, where does the rule "only admins may publish from Moderation" live?', options: ['Inside ModerationState.publish()', 'Inside Document.publish() with an if', 'In the User class', 'In a global validator'], answer: 0, explain: 'All rules of a state live in that state class. Document.publish() just delegates.' },
       hints: [`<p>Hint 1: List the states and, for each, what every method does. That table <i>is</i> your class list.</p>`, `<p>Hint 2: <code>interface DocState</code> with default methods that throw; each state overrides only legal actions. States return or set the next state.</p>`, `<p>Hint 3: <code>edit()</code> is allowed only in Draft → <code>DraftState</code> overrides edit; others inherit the throwing default. Mark Document methods <code>synchronized</code>. Recipe: record User(name, admin) → DocState interface → 3 singletons → Document delegates.</p>`],
+      tests: { io: true, cases: [{ stdin: '', stdout: "Moderation\nOnly an admin can publish from Moderation\nDraft\nPublished\nCannot edit in Published\nDraft\nCannot reject in Draft\n" }] },
       solution: {
         approach: `<p>Model each state as a class implementing <code>DocState</code>. Defaults throw "not allowed in X", so each state only overrides what is legal — illegal transitions are impossible to forget. The <b>state returns the next state</b> (pure, easy to test) and the <code>Document</code> context assigns it inside a synchronized method. Adding Archived = one new class + override <code>archive()</code> in the states that allow it.</p>`,
         code: `record User(String name, boolean admin) {}
@@ -1064,8 +3089,271 @@ class Document {
         d.reject();                              System.out.println(d.state());   // Draft
         d.publish(admin);                        System.out.println(d.state());   // Published
         try { d.edit("x"); } catch (IllegalStateException e) { System.out.println(e.getMessage()); }
+        d.expire();                              System.out.println(d.state());   // Draft
+        try { d.reject(); } catch (IllegalStateException e) { System.out.println(e.getMessage()); }
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `import threading
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class User:
+    name: str
+    admin: bool
+
+
+class DocState:
+    """Every transition is illegal unless a concrete state overrides it."""
+    name = "?"
+
+    def publish(self, doc: "Document", user: User) -> "DocState":
+        raise self._no("publish")
+
+    def reject(self, doc: "Document") -> "DocState":
+        raise self._no("reject")
+
+    def expire(self, doc: "Document") -> "DocState":
+        raise self._no("expire")
+
+    def edit(self, doc: "Document", text: str) -> None:
+        raise self._no("edit")
+
+    def _no(self, what: str) -> RuntimeError:
+        return RuntimeError(f"Cannot {what} in {self.name}")
+
+
+class Draft(DocState):
+    name = "Draft"
+
+    def publish(self, doc, user):
+        return PUBLISHED if user.admin else MODERATION
+
+    def edit(self, doc, text):
+        doc.text = text
+
+
+class Moderation(DocState):
+    name = "Moderation"
+
+    def publish(self, doc, user):
+        if not user.admin:
+            raise RuntimeError("Only an admin can publish from Moderation")
+        return PUBLISHED
+
+    def reject(self, doc):
+        return DRAFT
+
+
+class Published(DocState):
+    name = "Published"
+
+    def publish(self, doc, user):
+        return self  # no-op
+
+    def expire(self, doc):
+        return DRAFT
+
+
+DRAFT, MODERATION, PUBLISHED = Draft(), Moderation(), Published()  # stateless, so shared
+
+
+class Document:
+    def __init__(self):
+        self._state: DocState = DRAFT
+        self.text = ""
+        self._lock = threading.Lock()
+
+    def publish(self, user: User) -> None:
+        with self._lock:
+            self._state = self._state.publish(self, user)
+
+    def reject(self) -> None:
+        with self._lock:
+            self._state = self._state.reject(self)
+
+    def expire(self) -> None:
+        with self._lock:
+            self._state = self._state.expire(self)
+
+    def edit(self, text: str) -> None:
+        with self._lock:
+            self._state.edit(self, text)
+
+    @property
+    def state(self) -> str:
+        return self._state.name
+
+
+if __name__ == "__main__":
+    author, admin = User("ria", False), User("root", True)
+    d = Document()
+    d.edit("hello")
+    d.publish(author)
+    print(d.state)  # Moderation
+    try:
+        d.publish(author)
+    except RuntimeError as e:
+        print(e)
+    d.reject()
+    print(d.state)  # Draft
+    d.publish(admin)
+    print(d.state)  # Published
+    try:
+        d.edit("x")
+    except RuntimeError as e:
+        print(e)
+    d.expire()
+    print(d.state)  # Draft
+    try:
+        d.reject()
+    except RuntimeError as e:
+        print(e)` },
+          { lang: 'ts', code: `interface User { readonly name: string; readonly admin: boolean; }
+
+interface DocState {
+  readonly name: string;
+  publish(d: Doc, u: User): DocState;
+  reject(d: Doc): DocState;
+  expire(d: Doc): DocState;
+  edit(d: Doc, text: string): void;
+}
+
+// Every transition is illegal unless a concrete state overrides it.
+abstract class BaseState implements DocState {
+  abstract readonly name: string;
+  publish(_d: Doc, _u: User): DocState { throw this.no("publish"); }
+  reject(_d: Doc): DocState { throw this.no("reject"); }
+  expire(_d: Doc): DocState { throw this.no("expire"); }
+  edit(_d: Doc, _text: string): void { throw this.no("edit"); }
+  private no(what: string): Error { return new Error(\`Cannot \${what} in \${this.name}\`); }
+}
+
+class Draft extends BaseState {
+  readonly name = "Draft";
+  publish(_d: Doc, u: User): DocState { return u.admin ? PUBLISHED : MODERATION; }
+  edit(d: Doc, text: string): void { d.text = text; }
+}
+
+class Moderation extends BaseState {
+  readonly name = "Moderation";
+  publish(_d: Doc, u: User): DocState {
+    if (!u.admin) throw new Error("Only an admin can publish from Moderation");
+    return PUBLISHED;
+  }
+  reject(_d: Doc): DocState { return DRAFT; }
+}
+
+class Published extends BaseState {
+  readonly name = "Published";
+  publish(_d: Doc, _u: User): DocState { return this; } // no-op
+  expire(_d: Doc): DocState { return DRAFT; }
+}
+
+const DRAFT = new Draft(), MODERATION = new Moderation(), PUBLISHED = new Published(); // stateless, so shared
+
+// Named Doc because Document is a built-in DOM type.
+class Doc {
+  text = "";
+  private current: DocState = DRAFT;
+  publish(u: User): void { this.current = this.current.publish(this, u); }
+  reject(): void { this.current = this.current.reject(this); }
+  expire(): void { this.current = this.current.expire(this); }
+  edit(text: string): void { this.current.edit(this, text); }
+  get state(): string { return this.current.name; }
+}
+
+function attempt(action: () => void): void {
+  try { action(); } catch (e) { console.log((e as Error).message); }
+}
+
+const author: User = { name: "ria", admin: false }, admin: User = { name: "root", admin: true };
+const d = new Doc();
+d.edit("hello");
+d.publish(author); console.log(d.state); // Moderation
+attempt(() => d.publish(author));
+d.reject(); console.log(d.state); // Draft
+d.publish(admin); console.log(d.state); // Published
+attempt(() => d.edit("x"));
+d.expire(); console.log(d.state); // Draft
+attempt(() => d.reject());` },
+          { lang: 'cpp', code: `struct User { string name; bool admin; };
+
+class Document;
+
+class DocState {
+public:
+    virtual ~DocState() = default;
+    virtual string name() const = 0;
+    // Every transition is illegal unless a concrete state overrides it.
+    virtual const DocState* publish(Document&, const User&) const { throw no("publish"); }
+    virtual const DocState* reject(Document&) const { throw no("reject"); }
+    virtual const DocState* expire(Document&) const { throw no("expire"); }
+    virtual void edit(Document&, const string&) const { throw no("edit"); }
+protected:
+    runtime_error no(const string& what) const { return runtime_error("Cannot " + what + " in " + name()); }
+};
+
+const DocState* draft();
+const DocState* moderation();
+const DocState* published();
+
+class Document {
+public:
+    void setText(const string& t) { text = t; }
+    void publish(const User& u) { state_ = state_->publish(*this, u); }
+    void reject() { state_ = state_->reject(*this); }
+    void expire() { state_ = state_->expire(*this); }
+    void edit(const string& t) { state_->edit(*this, t); }
+    string state() const { return state_->name(); }
+private:
+    const DocState* state_ = draft();  // non-owning: the states are shared singletons
+    string text;
+};
+
+class Draft : public DocState {
+public:
+    string name() const override { return "Draft"; }
+    const DocState* publish(Document&, const User& u) const override { return u.admin ? published() : moderation(); }
+    void edit(Document& d, const string& text) const override { d.setText(text); }
+};
+class Moderation : public DocState {
+public:
+    string name() const override { return "Moderation"; }
+    const DocState* publish(Document&, const User& u) const override {
+        if (!u.admin) throw runtime_error("Only an admin can publish from Moderation");
+        return published();
+    }
+    const DocState* reject(Document&) const override { return draft(); }
+};
+class Published : public DocState {
+public:
+    string name() const override { return "Published"; }
+    const DocState* publish(Document&, const User&) const override { return this; }  // no-op
+    const DocState* expire(Document&) const override { return draft(); }
+};
+
+const DocState* draft() { static const Draft s; return &s; }
+const DocState* moderation() { static const Moderation s; return &s; }
+const DocState* published() { static const Published s; return &s; }
+
+void attempt(const function<void()>& action) {
+    try { action(); } catch (const runtime_error& e) { cout << e.what() << "\\n"; }
+}
+
+int main() {
+    User author{"ria", false}, admin{"root", true};
+    Document d;
+    d.edit("hello");
+    d.publish(author); cout << d.state() << "\\n";  // Moderation
+    attempt([&] { d.publish(author); });
+    d.reject(); cout << d.state() << "\\n";  // Draft
+    d.publish(admin); cout << d.state() << "\\n";  // Published
+    attempt([&] { d.edit("x"); });
+    d.expire(); cout << d.state() << "\\n";  // Draft
+    attempt([&] { d.reject(); });
+}` }
+        ],
         complexity: `<p>Every action O(1). Adding a state: 1 new class + small overrides in states that transition into it; Document unchanged.</p>`,
         followUps: ['Store the state in a database row — how do you rebuild the object on load?', 'Add Archived reachable from Draft and Published; what changes?', 'Two admins publish and reject at the same moment — how does the DB version column help?']
       }
@@ -1085,7 +3373,7 @@ ${H.table(['Kind of step', 'Declared as', 'Meaning'], [
 ])}
 <p><b>The naive way:</b> <code>CsvImporter</code> and <code>JsonImporter</code> are two separate classes that each open the file, parse, validate, save and log. 80% of the code is copy-pasted. A bug fix in "save" (say, batching inserts) must be done in every copy; someone forgets one, and the JSON importer still inserts row by row. ${H.c('r', 'Duplicated skeleton = duplicated bugs.')}</p>
 <p><b>With Template Method:</b> the skeleton lives once in <code>DataImporter.importFile()</code>. Subclasses write only <code>parse()</code>. This is the <b>Hollywood Principle</b>: "Don't call us, we'll call you" — the base class calls the subclass's steps, not the other way round.</p>
-<p>You see it in the JDK and frameworks: <code>AbstractList</code> (implement <code>get</code> and <code>size</code>, get the whole List API), <code>InputStream.read(byte[])</code> built on the abstract <code>read()</code>, <code>HttpServlet.service()</code> dispatching to <code>doGet</code>/<code>doPost</code>, JUnit's <code>@BeforeEach</code> → test → <code>@AfterEach</code> lifecycle, Spring's <code>JdbcTemplate</code> (a callback-based cousin).</p>`,
+<p>You see it in standard libraries and frameworks: Java's <code>AbstractList</code> (implement <code>get</code> and <code>size</code>, get the whole List API), <code>InputStream.read(byte[])</code> built on the abstract <code>read()</code>, <code>HttpServlet.service()</code> dispatching to <code>doGet</code>/<code>doPost</code>, JUnit's <code>@BeforeEach</code> → test → <code>@AfterEach</code> lifecycle, Spring's <code>JdbcTemplate</code> (a callback-based cousin). Python's <code>collections.abc.Sequence</code> works the same way (implement <code>__getitem__</code> and <code>__len__</code>, inherit <code>__contains__</code>, <code>index</code> and <code>__iter__</code>), and <code>unittest.TestCase</code> runs <code>setUp</code> → test → <code>tearDown</code>.</p>`,
     clues: [
       '"Several classes do <b>the same steps in the same order</b> but differ in one or two steps" → Template Method.',
       '"Avoid duplicated code between CsvExporter and PdfExporter" / "common workflow, different formats".',
@@ -1151,7 +3439,195 @@ class ImportDemo {
         System.out.println(new CsvImporter().importFile("users.csv", "asha, 31\\nben, -4\\ncy, 22"));
         System.out.println(new TrustedFeedImporter().importFile("feed.txt", "dee=40;eli=29"));
     }
-}` }],
+}`, alt: [
+          { lang: 'python', code: `from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import final
+
+
+@dataclass(frozen=True)
+class Row:
+    name: str
+    age: int
+
+
+class DataImporter(ABC):
+    # The TEMPLATE METHOD: marked final, so subclasses should not change the order of steps.
+    @final
+    def import_file(self, file_name: str, content: str) -> int:
+        print("open", file_name)  # fixed step
+        rows = self.parse(content)  # abstract step: must override
+        if self.should_validate():  # hook decides whether to validate
+            rows = self._validate(rows)
+        self._save(rows)  # fixed step
+        self.after_import(len(rows))  # hook: empty by default
+        return len(rows)
+
+    @abstractmethod
+    def parse(self, content: str) -> list[Row]:  # every format is different
+        ...
+
+    def should_validate(self) -> bool:  # hook with a sensible default
+        return True
+
+    def after_import(self, count: int) -> None:  # hook: do nothing by default
+        pass
+
+    def _validate(self, rows: list[Row]) -> list[Row]:  # shared rule, written once
+        return [r for r in rows if 0 <= r.age < 150 and r.name.strip()]
+
+    def _save(self, rows: list[Row]) -> None:  # shared, e.g. batched DB insert
+        print(f"saving {len(rows)} rows in one batch")
+
+
+class CsvImporter(DataImporter):
+    def parse(self, content: str) -> list[Row]:
+        out = []
+        for line in content.split("\\n"):
+            name, age = line.split(",")
+            out.append(Row(name.strip(), int(age.strip())))
+        return out
+
+
+class TrustedFeedImporter(DataImporter):  # already-clean partner feed
+    def parse(self, content: str) -> list[Row]:
+        return [Row(k, int(v)) for k, v in (part.split("=") for part in content.split(";"))]
+
+    def should_validate(self) -> bool:  # override hook
+        return False
+
+    def after_import(self, count: int) -> None:
+        print("ping partner: got", count)
+
+
+if __name__ == "__main__":
+    print(CsvImporter().import_file("users.csv", "asha, 31\\nben, -4\\ncy, 22"))
+    print(TrustedFeedImporter().import_file("feed.txt", "dee=40;eli=29"))` },
+          { lang: 'ts', code: `interface Row { readonly name: string; readonly age: number; }
+
+abstract class DataImporter {
+  // The TEMPLATE METHOD: one fixed order of steps. Subclasses fill in the blanks, never reorder them.
+  importFile(fileName: string, content: string): number {
+    console.log("open " + fileName); // fixed step
+    let rows = this.parse(content); // abstract step: must override
+    if (this.shouldValidate()) rows = this.validate(rows); // hook decides whether to validate
+    this.save(rows); // fixed step
+    this.afterImport(rows.length); // hook: empty by default
+    return rows.length;
+  }
+
+  protected abstract parse(content: string): Row[]; // every format is different
+
+  protected shouldValidate(): boolean { return true; } // hook with a sensible default
+  protected afterImport(_count: number): void {} // hook: do nothing by default
+
+  private validate(rows: Row[]): Row[] { // shared rule, written once
+    return rows.filter((r) => r.age >= 0 && r.age < 150 && r.name.trim() !== "");
+  }
+  private save(rows: Row[]): void { // shared, e.g. batched DB insert
+    console.log(\`saving \${rows.length} rows in one batch\`);
+  }
+}
+
+class CsvImporter extends DataImporter {
+  protected parse(content: string): Row[] {
+    return content.split("\\n").map((line) => {
+      const [name, age] = line.split(",");
+      return { name: name.trim(), age: Number(age.trim()) };
+    });
+  }
+}
+
+class TrustedFeedImporter extends DataImporter { // already-clean partner feed
+  protected parse(content: string): Row[] {
+    return content.split(";").map((part) => {
+      const [name, age] = part.split("=");
+      return { name, age: Number(age) };
+    });
+  }
+  protected override shouldValidate(): boolean { return false; } // override hook
+  protected override afterImport(n: number): void { console.log("ping partner: got " + n); }
+}
+
+console.log(new CsvImporter().importFile("users.csv", "asha, 31\\nben, -4\\ncy, 22"));
+console.log(new TrustedFeedImporter().importFile("feed.txt", "dee=40;eli=29"));` },
+          { lang: 'cpp', code: `struct Row { string name; int age; };
+
+string trim(const string& s) {
+    size_t a = s.find_first_not_of(" \\t"), b = s.find_last_not_of(" \\t");
+    return a == string::npos ? "" : s.substr(a, b - a + 1);
+}
+
+vector<string> splitOn(const string& s, char sep) {
+    vector<string> parts;
+    stringstream ss(s);
+    for (string p; getline(ss, p, sep);) parts.push_back(p);
+    return parts;
+}
+
+class DataImporter {
+public:
+    virtual ~DataImporter() = default;
+
+    // The TEMPLATE METHOD: non-virtual, so subclasses cannot change the order of steps.
+    int importFile(const string& fileName, const string& content) {
+        cout << "open " << fileName << "\\n";                 // fixed step
+        vector<Row> rows = parse(content);                    // abstract step: must override
+        if (shouldValidate()) rows = validate(rows);          // hook decides whether to validate
+        save(rows);                                           // fixed step
+        afterImport(rows.size());                             // hook: empty by default
+        return int(rows.size());
+    }
+
+protected:
+    virtual vector<Row> parse(const string& content) = 0;    // every format is different
+
+    virtual bool shouldValidate() const { return true; }     // hook with a sensible default
+    virtual void afterImport(size_t) {}                      // hook: do nothing by default
+
+private:
+    vector<Row> validate(const vector<Row>& rows) const {    // shared rule, written once
+        vector<Row> ok;
+        for (const Row& r : rows)
+            if (r.age >= 0 && r.age < 150 && !trim(r.name).empty()) ok.push_back(r);
+        return ok;
+    }
+    void save(const vector<Row>& rows) const {               // shared, e.g. batched DB insert
+        cout << "saving " << rows.size() << " rows in one batch\\n";
+    }
+};
+
+class CsvImporter : public DataImporter {
+protected:
+    vector<Row> parse(const string& content) override {
+        vector<Row> out;
+        for (const string& line : splitOn(content, '\\n')) {
+            auto p = splitOn(line, ',');
+            out.push_back({trim(p[0]), stoi(trim(p[1]))});
+        }
+        return out;
+    }
+};
+
+class TrustedFeedImporter : public DataImporter {  // already-clean partner feed
+protected:
+    vector<Row> parse(const string& content) override {
+        vector<Row> out;
+        for (const string& part : splitOn(content, ';')) {
+            auto kv = splitOn(part, '=');
+            out.push_back({kv[0], stoi(kv[1])});
+        }
+        return out;
+    }
+    bool shouldValidate() const override { return false; }  // override hook
+    void afterImport(size_t n) override { cout << "ping partner: got " << n << "\\n"; }
+};
+
+int main() {
+    cout << CsvImporter().importFile("users.csv", "asha, 31\\nben, -4\\ncy, 22") << "\\n";
+    cout << TrustedFeedImporter().importFile("feed.txt", "dee=40;eli=29") << "\\n";
+}` }
+        ] }],
     codeTitle: ['Template Method with hooks'],
     viz: {
       title: 'Template Method: who runs each step (base vs subclass)',
@@ -1177,7 +3653,7 @@ class ImportDemo {
           frames.push(F(narr, [G('Who runs this step?', nodes, edges, { h: 70, hl: h, ehl: e, tags: (function () { var t = {}; t[who] = 'running'; return t; })() }), CODE('Template method in DataImporter', code, c)].concat(extra || [])));
         };
         step(2, 'BASE', '<b>Fixed step</b> <code>open(f)</code> runs in the <b>base class</b>. No subclass can skip it or move it — the method is <code>final</code>.', [{ type: 'array', label: 'raw input lines', values: rowsIn }]);
-        step(3, SUB.id, '<b>Abstract step</b> <code>parse(c)</code>: the base calls it, but Java dispatches to <b>' + SUB.cls + '.parse()</b>. "Don\'t call us, we\'ll call you" — the parent calls the child.', [{ type: 'array', label: 'parsed rows', values: parsed }], 'ok');
+        step(3, SUB.id, '<b>Abstract step</b> <code>parse(c)</code>: the base calls it, but the call dispatches to <b>' + SUB.cls + '.parse()</b>. "Don\'t call us, we\'ll call you" — the parent calls the child.', [{ type: 'array', label: 'parsed rows', values: parsed }], 'ok');
         var validates = kind !== 'trusted';
         step(4, validates ? 'BASE' : SUB.id, '<b>Hook</b> <code>shouldValidate()</code>: ' + (validates ? 'not overridden, so the base default <code>true</code> is used.' : H.c('p', 'TrustedFeedImporter overrides it to return false') + ' — a hook lets a subclass switch a step off without touching the skeleton.'), [VARS('hook result', { shouldValidate: validates }, { shouldValidate: validates ? 'ok' : 'bad' })], validates ? 'cur' : 'sel');
         if (validates) {
@@ -1196,7 +3672,7 @@ class ImportDemo {
       }
     },
     examples: [
-      { title: 'Tea vs Coffee (the classic)', html: `<p><code>prepareRecipe()</code> = boilWater → <b>brew()</b> → pourInCup → <b>addCondiments()</b> if <code>customerWantsCondiments()</code>. Tea brews by steeping, coffee by dripping; a "black coffee" subclass overrides the hook to return false. Two abstract steps, one hook, one fixed order.</p>`, code: `abstract class Beverage {
+      { title: 'Tea vs Coffee (the classic)', html: `<p><code>prepareRecipe()</code> = boilWater → <b>brew()</b> → pourInCup → <b>addCondiments()</b> if <code>customerWantsCondiments()</code>. Tea brews by steeping, coffee by dripping; a "black coffee" subclass overrides the hook to return false. Two abstract steps, one hook, one fixed order.</p>`, code: { lang: 'java', code: `abstract class Beverage {
     final void prepare() { boil(); brew(); pour(); if (wantsExtras()) addExtras(); }
     private void boil() { System.out.println("boil water"); }
     private void pour() { System.out.println("pour into cup"); }
@@ -1212,18 +3688,144 @@ class BlackCoffee extends Beverage {
     protected void brew() { System.out.println("drip coffee"); }
     protected void addExtras() { System.out.println("add milk"); }
     @Override protected boolean wantsExtras() { return false; }
+}`, alt: [
+          { lang: 'python', code: `from abc import ABC, abstractmethod
+from typing import final
+
+
+class Beverage(ABC):
+    @final
+    def prepare(self) -> None:
+        self._boil()
+        self.brew()
+        self._pour()
+        if self.wants_extras():
+            self.add_extras()
+
+    def _boil(self) -> None:
+        print("boil water")
+
+    def _pour(self) -> None:
+        print("pour into cup")
+
+    @abstractmethod
+    def brew(self) -> None: ...
+
+    @abstractmethod
+    def add_extras(self) -> None: ...
+
+    def wants_extras(self) -> bool:  # hook
+        return True
+
+
+class Tea(Beverage):
+    def brew(self) -> None:
+        print("steep tea bag")
+
+    def add_extras(self) -> None:
+        print("add lemon")
+
+
+class BlackCoffee(Beverage):
+    def brew(self) -> None:
+        print("drip coffee")
+
+    def add_extras(self) -> None:
+        print("add milk")
+
+    def wants_extras(self) -> bool:
+        return False` },
+          { lang: 'ts', code: `abstract class Beverage {
+  prepare(): void { this.boil(); this.brew(); this.pour(); if (this.wantsExtras()) this.addExtras(); }
+  private boil(): void { console.log("boil water"); }
+  private pour(): void { console.log("pour into cup"); }
+  protected abstract brew(): void;
+  protected abstract addExtras(): void;
+  protected wantsExtras(): boolean { return true; } // hook
+}
+
+class Tea extends Beverage {
+  protected brew(): void { console.log("steep tea bag"); }
+  protected addExtras(): void { console.log("add lemon"); }
+}
+
+class BlackCoffee extends Beverage {
+  protected brew(): void { console.log("drip coffee"); }
+  protected addExtras(): void { console.log("add milk"); }
+  protected override wantsExtras(): boolean { return false; }
 }` },
-      { title: 'AbstractList: write 2 methods, get 30', html: `<p>Extend <code>AbstractList&lt;E&gt;</code> and implement only <code>get(int)</code> and <code>size()</code>. You instantly get <code>iterator()</code>, <code>contains()</code>, <code>indexOf()</code>, <code>equals()</code>, <code>hashCode()</code>, <code>subList()</code>, streams… all template methods in the base calling your two primitives.</p>`, code: `List<Integer> squares = new AbstractList<Integer>() {
+          { lang: 'cpp', code: `class Beverage {
+public:
+    virtual ~Beverage() = default;
+    void prepare() { boil(); brew(); pour(); if (wantsExtras()) addExtras(); }  // non-virtual: the template
+protected:
+    virtual void brew() = 0;
+    virtual void addExtras() = 0;
+    virtual bool wantsExtras() const { return true; }  // hook
+private:
+    void boil() const { cout << "boil water\\n"; }
+    void pour() const { cout << "pour into cup\\n"; }
+};
+
+class Tea : public Beverage {
+protected:
+    void brew() override { cout << "steep tea bag\\n"; }
+    void addExtras() override { cout << "add lemon\\n"; }
+};
+
+class BlackCoffee : public Beverage {
+protected:
+    void brew() override { cout << "drip coffee\\n"; }
+    void addExtras() override { cout << "add milk\\n"; }
+    bool wantsExtras() const override { return false; }
+};` }
+        ] } },
+      { title: 'AbstractList: write 2 methods, get 30', html: `<p>Extend <code>AbstractList&lt;E&gt;</code> and implement only <code>get(int)</code> and <code>size()</code>. You instantly get <code>iterator()</code>, <code>contains()</code>, <code>indexOf()</code>, <code>equals()</code>, <code>hashCode()</code>, <code>subList()</code>, streams… all template methods in the base calling your two primitives.</p>`, code: { lang: 'java', code: `List<Integer> squares = new AbstractList<Integer>() {
     public Integer get(int i) { return i * i; }
     public int size() { return 5; }
 };
-System.out.println(squares + " contains 9? " + squares.contains(9));` },
+System.out.println(squares + " contains 9? " + squares.contains(9));`, alt: [
+          { lang: 'python', code: `from collections.abc import Sequence
+
+
+class Squares(Sequence):  # write __getitem__ and __len__, get the rest from the base class
+    def __getitem__(self, i: int) -> int:
+        if not 0 <= i < len(self):
+            raise IndexError(i)
+        return i * i
+
+    def __len__(self) -> int:
+        return 5
+
+
+squares = Squares()
+print(f"{list(squares)} contains 9? {str(9 in squares).lower()}")` },
+          { lang: 'ts', code: `// JavaScript has no AbstractList, so write the small base class once: two primitives, many methods.
+abstract class AbstractList<T> {
+  abstract get(i: number): T;
+  abstract size(): number;
+  *[Symbol.iterator](): Generator<T> { for (let i = 0; i < this.size(); i++) yield this.get(i); }
+  contains(x: T): boolean { for (const v of this) if (v === x) return true; return false; }
+  toString(): string { return "[" + [...this].join(", ") + "]"; }
+}
+
+const squares = new (class extends AbstractList<number> {
+  get(i: number): number { return i * i; }
+  size(): number { return 5; }
+})();
+console.log(\`\${squares} contains 9? \${squares.contains(9)}\`);` },
+          { lang: 'cpp', code: `// A lazy view plays the AbstractList role: define the element rule once, reuse every algorithm.
+auto squares = views::iota(0, 5) | views::transform([](int i) { return i * i; });
+cout << "[";
+for (int v : squares) cout << (v ? ", " : "") << v;
+cout << "] contains 9? " << boolalpha << (ranges::find(squares, 9) != squares.end()) << "\\n";` }
+        ] } },
       { title: 'HttpServlet.service()', html: `<p>The servlet container calls <code>service(req, res)</code> (template method). It reads the HTTP method and calls <code>doGet</code>, <code>doPost</code>, <code>doPut</code>… which you override. Default implementations return 405 Method Not Allowed — they are hooks with a safe default.</p>` },
       { title: 'Template Method vs Strategy for the same problem', html: `<p>The importer could instead be <code>Importer(Parser parser)</code> with a <code>Parser</code> strategy. Pick <b>Template Method</b> when the steps share lots of protected state with the skeleton and the variation is fixed per class. Pick <b>Strategy</b> when you need to mix and match at runtime (CSV parser + no validation + S3 saver), when steps are reusable elsewhere, or when you want to avoid deep inheritance. Many teams start with Template Method and refactor to strategies as combinations multiply.</p>` }
     ],
     deepDive: `<p><b>Make the template method <code>final</code></b>, otherwise a subclass can override it and silently skip validation or resource cleanup — the whole guarantee disappears. Make fixed steps <code>private</code> (or <code>final</code>), primitives <code>protected abstract</code>, and hooks <code>protected</code> with safe defaults.</p>
 <p><b>Fragile base class problem:</b> subclasses depend on <i>when</i> and <i>how often</i> the base calls their steps. Changing the skeleton (e.g. calling <code>parse()</code> twice, or calling a hook before fields are initialised) can break subclasses you never saw. Never call overridable methods from a constructor: the subclass's fields are not initialised yet.</p>
-<p><b>Inheritance limits:</b> Java has single inheritance; a class that already extends something cannot also extend your template. Combinatorial variation (3 formats × 2 validation modes × 2 destinations) explodes into 12 subclasses — the signal to switch to Strategy/composition. A functional middle ground: a template method that accepts lambdas for steps (<code>importFile(content, parser, afterHook)</code>), like Spring's <code>JdbcTemplate</code> + <code>RowMapper</code> callback.</p>
+<p><b>Inheritance limits:</b> in Java and TypeScript a class has a single parent, so a class that already extends something cannot also extend your template (Python and C++ allow multiple inheritance, with their own diamond problems). Combinatorial variation (3 formats × 2 validation modes × 2 destinations) explodes into 12 subclasses — the signal to switch to Strategy/composition. A functional middle ground: a template method that accepts lambdas for steps (<code>importFile(content, parser, afterHook)</code>), like Spring's <code>JdbcTemplate</code> + <code>RowMapper</code> callback.</p>
 <p><b>Liskov:</b> a subclass must respect the contract of each step (e.g. <code>parse</code> returns a non-null list). Document step contracts on the abstract methods. <b>Testing:</b> test the skeleton once with a tiny test subclass that records which steps were called in which order; test each subclass's steps directly.</p>`,
     aiEra: `<p><b>What AI changes:</b> AI often generates near-duplicate classes ("write a JSON importer like this CSV importer") — fast, but you end up with copy-pasted skeletons. Ask instead: "Extract the shared workflow into an abstract base with a final template method; keep only parse() in subclasses." AI is good at this mechanical refactor and at finding duplicated sequences across files.</p>
 <p><b>In LLM pipelines</b> the template is everywhere: <i>build prompt → call model → parse output → validate → retry on failure → log</i>. Base "chain" classes in agent frameworks fix this skeleton and let you override <code>buildPrompt</code> and <code>parse</code>. Validation and retry policy must stay in the fixed part so nobody skips them.</p>
@@ -1247,6 +3849,7 @@ System.out.println(squares + " contains 9? " + squares.contains(9));` },
 // NaiveHtmlExport and NaiveMarkdownExport: the same loop pasted twice more, with different bugs.` },
       mcq: { q: 'Which method of the base exporter should be declared final?', options: ['export() — the template method that fixes the order of steps', 'row() — the formatting of a line', 'escape() — every format escapes differently', 'None; final is bad practice'], answer: 0, explain: 'The template method must be final so subclasses cannot reorder or skip sorting, totals or escaping. Format-specific pieces are the overridable steps.' },
       hints: [`<p>Hint 1: Write down the steps every format performs. What differs? Only header text, row text, footer text and the escape rule.</p>`, `<p>Hint 2: Abstract class <code>ReportExporter</code> with <code>public final String export(List&lt;Sale&gt;)</code> and protected abstract <code>header()</code>, <code>row(region, amount)</code>, <code>footer(total)</code>, plus a hook <code>escape(String)</code>.</p>`, `<p>Hint 3: Sort a <b>copy</b> (don't mutate the caller's list). Recipe: copy+sort → header → for each: row(escape(region), amount) → footer(total). CSV escape quotes fields containing commas; HTML escapes &amp;lt;; Markdown escapes |.</p>`],
+      tests: { io: true, cases: [{ stdin: '', stdout: "region,amount\n\"South, East\",500\nNorth,300\nA<B|C,50\nTOTAL,850\n<table><tr><th>region</th><th>amount</th></tr>\n<tr><td>South, East</td><td>500</td></tr>\n<tr><td>North</td><td>300</td></tr>\n<tr><td>A&lt;B|C</td><td>50</td></tr>\n<tr><td>TOTAL</td><td>850</td></tr></table>\n| region | amount |\n|---|---|\n| South, East | 500 |\n| North | 300 |\n| A<B\\|C | 50 |\n| **TOTAL** | 850 |\nregion,amount\n\"say \"\"hi\"\"\",7\nTOTAL,7\nregion,amount\nTOTAL,0\n" }] },
       solution: {
         approach: `<p>Put the workflow (copy, sort descending, header, escaped rows, total footer) in a <code>final export()</code> method of an abstract base. Subclasses implement three tiny formatting steps and override the <code>escape</code> hook. Every format now gets sorting, totals and escaping for free and cannot skip them. Adding JSON export = one class with three short methods.</p>`,
         code: `record Sale(String region, long amount) {}
@@ -1294,9 +3897,219 @@ class ExportDemo {
     public static void main(String[] args) {
         List<Sale> sales = List.of(new Sale("North", 300), new Sale("South, East", 500), new Sale("A<B|C", 50));
         for (ReportExporter e : List.of(new CsvExporter(), new HtmlExporter(), new MarkdownExporter()))
-            System.out.println(e.export(sales));
+            System.out.print(e.export(sales));
+        System.out.print(new CsvExporter().export(List.of(new Sale("say \\"hi\\"", 7))));   // quote doubling
+        System.out.print(new CsvExporter().export(List.of()));                          // empty input
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import final
+
+
+@dataclass(frozen=True)
+class Sale:
+    region: str
+    amount: int
+
+
+class ReportExporter(ABC):
+    @final
+    def export(self, sales: list[Sale]) -> str:  # the template method: fixed order of steps
+        ordered = sorted(sales, key=lambda s: s.amount, reverse=True)  # never mutates the input
+        out = [self.header()]
+        total = 0
+        for s in ordered:
+            out.append(self.row(self.escape(s.region), s.amount))
+            total += s.amount
+        out.append(self.footer(total))
+        return "".join(out)
+
+    @abstractmethod
+    def header(self) -> str: ...
+
+    @abstractmethod
+    def row(self, region: str, amount: int) -> str: ...
+
+    @abstractmethod
+    def footer(self, total: int) -> str: ...
+
+    def escape(self, s: str) -> str:  # hook
+        return s
+
+
+class CsvExporter(ReportExporter):
+    def header(self) -> str:
+        return "region,amount\\n"
+
+    def row(self, region: str, amount: int) -> str:
+        return f"{region},{amount}\\n"
+
+    def footer(self, total: int) -> str:
+        return f"TOTAL,{total}\\n"
+
+    def escape(self, s: str) -> str:
+        if "," in s or '"' in s:
+            return '"' + s.replace('"', '""') + '"'
+        return s
+
+
+class HtmlExporter(ReportExporter):
+    def header(self) -> str:
+        return "<table><tr><th>region</th><th>amount</th></tr>\\n"
+
+    def row(self, region: str, amount: int) -> str:
+        return f"<tr><td>{region}</td><td>{amount}</td></tr>\\n"
+
+    def footer(self, total: int) -> str:
+        return f"<tr><td>TOTAL</td><td>{total}</td></tr></table>\\n"
+
+    def escape(self, s: str) -> str:
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+class MarkdownExporter(ReportExporter):
+    def header(self) -> str:
+        return "| region | amount |\\n|---|---|\\n"
+
+    def row(self, region: str, amount: int) -> str:
+        return f"| {region} | {amount} |\\n"
+
+    def footer(self, total: int) -> str:
+        return f"| **TOTAL** | {total} |\\n"
+
+    def escape(self, s: str) -> str:
+        return s.replace("|", "\\\\|")
+
+
+if __name__ == "__main__":
+    sales = [Sale("North", 300), Sale("South, East", 500), Sale("A<B|C", 50)]
+    for e in (CsvExporter(), HtmlExporter(), MarkdownExporter()):
+        print(e.export(sales), end="")
+    print(CsvExporter().export([Sale('say "hi"', 7)]), end="")  # quote doubling
+    print(CsvExporter().export([]), end="")  # empty input` },
+          { lang: 'ts', code: `interface Sale { readonly region: string; readonly amount: number; }
+
+abstract class ReportExporter {
+  // The template method: fixed order of steps. Subclasses must not override it.
+  export(sales: readonly Sale[]): string {
+    const sorted = [...sales].sort((a, b) => b.amount - a.amount); // never mutate the input
+    let out = this.header();
+    let total = 0;
+    for (const s of sorted) {
+      out += this.row(this.escape(s.region), s.amount);
+      total += s.amount;
+    }
+    return out + this.footer(total);
+  }
+  protected abstract header(): string;
+  protected abstract row(region: string, amount: number): string;
+  protected abstract footer(total: number): string;
+  protected escape(s: string): string { return s; } // hook
+}
+
+class CsvExporter extends ReportExporter {
+  protected header(): string { return "region,amount\\n"; }
+  protected row(r: string, a: number): string { return \`\${r},\${a}\\n\`; }
+  protected footer(t: number): string { return \`TOTAL,\${t}\\n\`; }
+  protected override escape(s: string): string {
+    return s.includes(",") || s.includes('"') ? \`"\${s.replaceAll('"', '""')}"\` : s;
+  }
+}
+
+class HtmlExporter extends ReportExporter {
+  protected header(): string { return "<table><tr><th>region</th><th>amount</th></tr>\\n"; }
+  protected row(r: string, a: number): string { return \`<tr><td>\${r}</td><td>\${a}</td></tr>\\n\`; }
+  protected footer(t: number): string { return \`<tr><td>TOTAL</td><td>\${t}</td></tr></table>\\n\`; }
+  protected override escape(s: string): string {
+    return s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+  }
+}
+
+class MarkdownExporter extends ReportExporter {
+  protected header(): string { return "| region | amount |\\n|---|---|\\n"; }
+  protected row(r: string, a: number): string { return \`| \${r} | \${a} |\\n\`; }
+  protected footer(t: number): string { return \`| **TOTAL** | \${t} |\\n\`; }
+  protected override escape(s: string): string { return s.replaceAll("|", "\\\\|"); }
+}
+
+const sales: Sale[] = [
+  { region: "North", amount: 300 },
+  { region: "South, East", amount: 500 },
+  { region: "A<B|C", amount: 50 },
+];
+const show = (report: string): void => console.log(report.trimEnd()); // reports already end with a newline
+for (const e of [new CsvExporter(), new HtmlExporter(), new MarkdownExporter()]) show(e.export(sales));
+show(new CsvExporter().export([{ region: 'say "hi"', amount: 7 }])); // quote doubling
+show(new CsvExporter().export([])); // empty input` },
+          { lang: 'cpp', code: `struct Sale { string region; long long amount; };
+
+class ReportExporter {
+public:
+    virtual ~ReportExporter() = default;
+    // The template method: fixed order of steps (named exportReport because \`export\` is a C++20 keyword).
+    string exportReport(vector<Sale> sales) const {  // taken by value: the caller's list is never mutated
+        ranges::sort(sales, greater<>(), &Sale::amount);
+        string out = header();
+        long long total = 0;
+        for (const Sale& s : sales) {
+            out += row(escape(s.region), s.amount);
+            total += s.amount;
+        }
+        return out + footer(total);
+    }
+protected:
+    virtual string header() const = 0;
+    virtual string row(const string& region, long long amount) const = 0;
+    virtual string footer(long long total) const = 0;
+    virtual string escape(const string& s) const { return s; }  // hook
+};
+
+string replaceAll(string s, const string& from, const string& to) {
+    for (size_t at = 0; (at = s.find(from, at)) != string::npos; at += to.size()) s.replace(at, from.size(), to);
+    return s;
+}
+
+class CsvExporter : public ReportExporter {
+protected:
+    string header() const override { return "region,amount\\n"; }
+    string row(const string& r, long long a) const override { return r + "," + to_string(a) + "\\n"; }
+    string footer(long long t) const override { return "TOTAL," + to_string(t) + "\\n"; }
+    string escape(const string& s) const override {
+        if (s.find(',') == string::npos && s.find('"') == string::npos) return s;
+        return "\\"" + replaceAll(s, "\\"", "\\"\\"") + "\\"";
+    }
+};
+
+class HtmlExporter : public ReportExporter {
+protected:
+    string header() const override { return "<table><tr><th>region</th><th>amount</th></tr>\\n"; }
+    string row(const string& r, long long a) const override { return "<tr><td>" + r + "</td><td>" + to_string(a) + "</td></tr>\\n"; }
+    string footer(long long t) const override { return "<tr><td>TOTAL</td><td>" + to_string(t) + "</td></tr></table>\\n"; }
+    string escape(const string& s) const override {
+        return replaceAll(replaceAll(replaceAll(s, "&", "&amp;"), "<", "&lt;"), ">", "&gt;");
+    }
+};
+
+class MarkdownExporter : public ReportExporter {
+protected:
+    string header() const override { return "| region | amount |\\n|---|---|\\n"; }
+    string row(const string& r, long long a) const override { return "| " + r + " | " + to_string(a) + " |\\n"; }
+    string footer(long long t) const override { return "| **TOTAL** | " + to_string(t) + " |\\n"; }
+    string escape(const string& s) const override { return replaceAll(s, "|", "\\\\|"); }
+};
+
+int main() {
+    vector<Sale> sales = {{"North", 300}, {"South, East", 500}, {"A<B|C", 50}};
+    vector<unique_ptr<ReportExporter>> exporters;
+    exporters.push_back(make_unique<CsvExporter>());
+    exporters.push_back(make_unique<HtmlExporter>());
+    exporters.push_back(make_unique<MarkdownExporter>());
+    for (const auto& e : exporters) cout << e->exportReport(sales);
+    cout << CsvExporter().exportReport({{"say \\"hi\\"", 7}});  // quote doubling
+    cout << CsvExporter().exportReport({});                  // empty input
+}` }
+        ],
         complexity: `<p>O(N log N) for the sort, O(N) for writing. The skeleton exists once; each format is ~4 short methods.</p>`,
         followUps: ['Stream 10<sup>8</sup> rows without holding them in memory — what changes in the template? (write to a Writer, require pre-sorted input or external sort)', 'Allow mixing any format with any sort order at runtime — would you keep Template Method?', 'How would you test that every subclass gets sorting for free?']
       }
@@ -1374,7 +4187,193 @@ class ApprovalDemo {
         for (long amt : new long[]{500, 7_500, 70_000, 999_999})
             System.out.println(head.handle(new Expense("asha", amt, amt == 70_000 ? "TRAINING" : "TRAVEL")));
     }
-}` }, { lang: 'java', title: 'Middleware pipeline (every handler may act, any may stop)', code: `record Request(String path, String token, String ip) {}
+}`, alt: [
+          { lang: 'python', code: `from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import final
+
+
+@dataclass(frozen=True)
+class Expense:
+    employee: str
+    amount: int
+    category: str
+
+
+class Approver(ABC):
+    def __init__(self, title: str):
+        self._title = title
+        self._next: Approver | None = None
+
+    # Returns \`nxt\` so chains can be built fluently: a.link_to(b).link_to(c)
+    def link_to(self, nxt: Approver) -> Approver:
+        self._next = nxt
+        return nxt
+
+    # The walking logic lives ONCE in the base class.
+    @final
+    def handle(self, e: Expense) -> str:
+        if self.can_approve(e):
+            return f"{self._title} approved {e.amount} for {e.employee}"
+        if self._next is None:
+            return f"REJECTED: nobody can approve {e.amount}"
+        return self._next.handle(e)
+
+    @abstractmethod
+    def can_approve(self, e: Expense) -> bool: ...
+
+
+class TeamLead(Approver):
+    def __init__(self):
+        super().__init__("TeamLead")
+
+    def can_approve(self, e: Expense) -> bool:
+        return e.amount <= 1_000
+
+
+class Manager(Approver):
+    def __init__(self):
+        super().__init__("Manager")
+
+    def can_approve(self, e: Expense) -> bool:
+        return e.amount <= 10_000
+
+
+class Director(Approver):
+    def __init__(self):
+        super().__init__("Director")
+
+    # Special rule lives with the handler that owns it, not in a central if/else.
+    def can_approve(self, e: Expense) -> bool:
+        return e.amount <= 50_000 or (e.category == "TRAINING" and e.amount <= 80_000)
+
+
+class Cfo(Approver):
+    def __init__(self):
+        super().__init__("CFO")
+
+    def can_approve(self, e: Expense) -> bool:
+        return e.amount <= 200_000
+
+
+if __name__ == "__main__":
+    head = TeamLead()
+    head.link_to(Manager()).link_to(Director()).link_to(Cfo())  # assembled once
+    for amt in (500, 7_500, 70_000, 999_999):
+        print(head.handle(Expense("asha", amt, "TRAINING" if amt == 70_000 else "TRAVEL")))` },
+          { lang: 'ts', code: `interface Expense { readonly employee: string; readonly amount: number; readonly category: string; }
+
+abstract class Approver {
+  private next: Approver | null = null;
+
+  protected constructor(private readonly title: string) {}
+
+  // Returns \`next\` so chains can be built fluently: a.linkTo(b).linkTo(c)
+  linkTo(next: Approver): Approver {
+    this.next = next;
+    return next;
+  }
+
+  // The walking logic lives ONCE in the base class.
+  handle(e: Expense): string {
+    if (this.canApprove(e)) return \`\${this.title} approved \${e.amount} for \${e.employee}\`;
+    if (this.next === null) return \`REJECTED: nobody can approve \${e.amount}\`;
+    return this.next.handle(e);
+  }
+
+  protected abstract canApprove(e: Expense): boolean;
+}
+
+class TeamLead extends Approver {
+  constructor() { super("TeamLead"); }
+  protected canApprove(e: Expense): boolean { return e.amount <= 1_000; }
+}
+class Manager extends Approver {
+  constructor() { super("Manager"); }
+  protected canApprove(e: Expense): boolean { return e.amount <= 10_000; }
+}
+class Director extends Approver {
+  constructor() { super("Director"); }
+  // Special rule lives with the handler that owns it, not in a central if/else.
+  protected canApprove(e: Expense): boolean {
+    return e.amount <= 50_000 || (e.category === "TRAINING" && e.amount <= 80_000);
+  }
+}
+class Cfo extends Approver {
+  constructor() { super("CFO"); }
+  protected canApprove(e: Expense): boolean { return e.amount <= 200_000; }
+}
+
+const head = new TeamLead();
+head.linkTo(new Manager()).linkTo(new Director()).linkTo(new Cfo()); // assembled once
+for (const amt of [500, 7_500, 70_000, 999_999]) {
+  console.log(head.handle({ employee: "asha", amount: amt, category: amt === 70_000 ? "TRAINING" : "TRAVEL" }));
+}` },
+          { lang: 'cpp', code: `struct Expense { string employee; long long amount; string category; };
+
+class Approver {
+public:
+    virtual ~Approver() = default;
+
+    // Returns the new link so chains can be built fluently: a.linkTo(b).linkTo(c). The chain owns its links.
+    Approver& linkTo(unique_ptr<Approver> n) {
+        next = std::move(n);
+        return *next;
+    }
+
+    // The walking logic lives ONCE in the base class.
+    string handle(const Expense& e) const {
+        if (canApprove(e)) return title + " approved " + to_string(e.amount) + " for " + e.employee;
+        if (!next) return "REJECTED: nobody can approve " + to_string(e.amount);
+        return next->handle(e);
+    }
+
+protected:
+    explicit Approver(string title) : title(std::move(title)) {}
+    virtual bool canApprove(const Expense& e) const = 0;
+
+private:
+    string title;
+    unique_ptr<Approver> next;
+};
+
+class TeamLead : public Approver {
+public:
+    TeamLead() : Approver("TeamLead") {}
+protected:
+    bool canApprove(const Expense& e) const override { return e.amount <= 1'000; }
+};
+class Manager : public Approver {
+public:
+    Manager() : Approver("Manager") {}
+protected:
+    bool canApprove(const Expense& e) const override { return e.amount <= 10'000; }
+};
+class Director : public Approver {
+public:
+    Director() : Approver("Director") {}
+protected:
+    // Special rule lives with the handler that owns it, not in a central if/else.
+    bool canApprove(const Expense& e) const override {
+        return e.amount <= 50'000 || (e.category == "TRAINING" && e.amount <= 80'000);
+    }
+};
+class Cfo : public Approver {
+public:
+    Cfo() : Approver("CFO") {}
+protected:
+    bool canApprove(const Expense& e) const override { return e.amount <= 200'000; }
+};
+
+int main() {
+    TeamLead head;
+    head.linkTo(make_unique<Manager>()).linkTo(make_unique<Director>()).linkTo(make_unique<Cfo>());  // assembled once
+    for (long long amt : {500LL, 7'500LL, 70'000LL, 999'999LL})
+        cout << head.handle({"asha", amt, amt == 70'000 ? "TRAINING" : "TRAVEL"}) << "\\n";
+}` }
+        ] }, { lang: 'java', title: 'Middleware pipeline (every handler may act, any may stop)', code: `record Request(String path, String token, String ip) {}
 record Response(int status, String body) {}
 
 // A middleware receives the request and a "next" function it MAY call.
@@ -1397,16 +4396,158 @@ class Pipeline {
         Map<String, Integer> hits = new HashMap<>();
         Pipeline p = new Pipeline(r -> new Response(200, "orders for " + r.token()))
             .use((r, next) -> {                                          // logging: before AND after
-                long t0 = System.nanoTime();
                 Response res = next.apply(r);
-                System.out.println(r.path() + " -> " + res.status() + " in " + (System.nanoTime() - t0) / 1000 + "us");
+                System.out.println(r.path() + " -> " + res.status());
                 return res;
             })
             .use((r, next) -> r.token() == null ? new Response(401, "login first") : next.apply(r))   // auth
             .use((r, next) -> hits.merge(r.ip(), 1, Integer::sum) > 2 ? new Response(429, "slow down") : next.apply(r));
         for (int i = 0; i < 4; i++) System.out.println(p.handle(new Request("/orders", i == 0 ? null : "asha", "1.2.3.4")).body());
     }
-}` }],
+}`, alt: [
+          { lang: 'python', code: `from dataclasses import dataclass
+from typing import Callable, Optional
+
+
+@dataclass(frozen=True)
+class Request:
+    path: str
+    token: Optional[str]
+    ip: str
+
+
+@dataclass(frozen=True)
+class Response:
+    status: int
+    body: str
+
+
+Handler = Callable[[Request], Response]
+# A middleware receives the request and a "next" function it MAY call.
+Middleware = Callable[[Request, Handler], Response]
+
+
+class Pipeline:
+    def __init__(self, endpoint: Handler):
+        self._chain: list[Middleware] = []
+        self._endpoint = endpoint
+
+    def use(self, m: Middleware) -> "Pipeline":
+        self._chain.append(m)
+        return self
+
+    def handle(self, r: Request) -> Response:
+        return self._call(0, r)
+
+    def _call(self, i: int, r: Request) -> Response:
+        if i == len(self._chain):
+            return self._endpoint(r)  # end of chain: real handler
+        return self._chain[i](r, lambda req: self._call(i + 1, req))  # give it a 'next'
+
+
+if __name__ == "__main__":
+    hits: dict[str, int] = {}
+
+    def logging(r: Request, nxt: Handler) -> Response:  # before AND after
+        res = nxt(r)
+        print(f"{r.path} -> {res.status}")
+        return res
+
+    def auth(r: Request, nxt: Handler) -> Response:
+        return Response(401, "login first") if r.token is None else nxt(r)
+
+    def rate_limit(r: Request, nxt: Handler) -> Response:
+        hits[r.ip] = hits.get(r.ip, 0) + 1
+        return Response(429, "slow down") if hits[r.ip] > 2 else nxt(r)
+
+    p = Pipeline(lambda r: Response(200, f"orders for {r.token}")).use(logging).use(auth).use(rate_limit)
+    for i in range(4):
+        print(p.handle(Request("/orders", None if i == 0 else "asha", "1.2.3.4")).body)` },
+          { lang: 'ts', code: `// (Named ApiRequest/ApiResponse because Request and Response are built-in types.)
+interface ApiRequest { readonly path: string; readonly token: string | null; readonly ip: string; }
+interface ApiResponse { readonly status: number; readonly body: string; }
+
+type Handler = (r: ApiRequest) => ApiResponse;
+// A middleware receives the request and a "next" function it MAY call.
+type Middleware = (r: ApiRequest, next: Handler) => ApiResponse;
+
+class Pipeline {
+  private readonly chain: Middleware[] = [];
+  constructor(private readonly endpoint: Handler) {}
+
+  use(m: Middleware): this {
+    this.chain.push(m);
+    return this;
+  }
+
+  handle(r: ApiRequest): ApiResponse { return this.call(0, r); }
+
+  private call(i: number, r: ApiRequest): ApiResponse {
+    if (i === this.chain.length) return this.endpoint(r); // end of chain: real handler
+    return this.chain[i](r, (req) => this.call(i + 1, req)); // give it a 'next'
+  }
+}
+
+const hits = new Map<string, number>();
+const p = new Pipeline((r) => ({ status: 200, body: \`orders for \${r.token}\` }))
+  .use((r, next) => { // logging: before AND after
+    const res = next(r);
+    console.log(\`\${r.path} -> \${res.status}\`);
+    return res;
+  })
+  .use((r, next) => (r.token === null ? { status: 401, body: "login first" } : next(r))) // auth
+  .use((r, next) => {
+    const n = (hits.get(r.ip) ?? 0) + 1;
+    hits.set(r.ip, n);
+    return n > 2 ? { status: 429, body: "slow down" } : next(r);
+  });
+for (let i = 0; i < 4; i++) console.log(p.handle({ path: "/orders", token: i === 0 ? null : "asha", ip: "1.2.3.4" }).body);` },
+          { lang: 'cpp', code: `struct Request { string path; optional<string> token; string ip; };
+struct Response { int status; string body; };
+
+using Handler = function<Response(const Request&)>;
+// A middleware receives the request and a "next" function it MAY call.
+using Middleware = function<Response(const Request&, const Handler&)>;
+
+class Pipeline {
+public:
+    explicit Pipeline(Handler endpoint) : endpoint(std::move(endpoint)) {}
+
+    Pipeline& use(Middleware m) {
+        chain.push_back(std::move(m));
+        return *this;
+    }
+
+    Response handle(const Request& r) const { return call(0, r); }
+
+private:
+    Response call(size_t i, const Request& r) const {
+        if (i == chain.size()) return endpoint(r);  // end of chain: real handler
+        return chain[i](r, [this, i](const Request& req) { return call(i + 1, req); });  // give it a 'next'
+    }
+
+    vector<Middleware> chain;
+    Handler endpoint;
+};
+
+int main() {
+    map<string, int> hits;
+    Pipeline p([](const Request& r) { return Response{200, "orders for " + *r.token}; });
+    p.use([](const Request& r, const Handler& next) {  // logging: before AND after
+         Response res = next(r);
+         cout << r.path << " -> " << res.status << "\\n";
+         return res;
+     })
+     .use([](const Request& r, const Handler& next) {  // auth
+         return r.token ? next(r) : Response{401, "login first"};
+     })
+     .use([&hits](const Request& r, const Handler& next) {
+         return ++hits[r.ip] > 2 ? Response{429, "slow down"} : next(r);
+     });
+    for (int i = 0; i < 4; i++)
+        cout << p.handle({"/orders", i == 0 ? nullopt : optional<string>("asha"), "1.2.3.4"}).body << "\\n";
+}` }
+        ] }],
     codeTitle: ['Pure chain: approvals', 'Filter chain: middleware'],
     viz: {
       title: 'Chain of Responsibility: an expense walking up the approval chain',
@@ -1457,10 +4598,27 @@ class Pipeline {
     examples: [
       { title: 'Logger with levels', html: `<p>Handlers: <code>ConsoleLogger(DEBUG)</code> → <code>FileLogger(INFO)</code> → <code>AlertLogger(ERROR)</code>. Here it is a <b>pipeline</b>: an ERROR message is written by <i>all three</i> (each handles if level ≥ its threshold, then passes on). A DEBUG message is only printed to console. Log4j/Logback appenders and logger hierarchies follow this idea (and LLD 12 builds a full logging framework).</p>` },
       { title: 'Servlet filters and Spring Security', html: `<p>Every HTTP request passes through <code>FilterChain.doFilter()</code>: CORS → authentication → authorization → CSRF → your controller. A filter can stop the chain (return 401) or modify the request/response. Spring Security is literally a configurable chain of ~15 filters; adding a custom JWT filter means inserting a handler at the right position.</p>` },
-      { title: 'Discount rules: first match or stack them?', html: `<p>Checkout runs <code>EmployeeDiscount → CouponDiscount → LoyaltyDiscount</code>. If the business says "only the best single discount applies", it is first-match (or evaluate all and pick max). If "discounts stack", it is a pipeline where each one reduces the price and passes it on. Same chain object, different semantics — clarify in the interview!</p>`, code: `List<UnaryOperator<Double>> rules = List.of(p -> p * 0.9, p -> p - 50, p -> Math.max(p, 100));
+      { title: 'Discount rules: first match or stack them?', html: `<p>Checkout runs <code>EmployeeDiscount → CouponDiscount → LoyaltyDiscount</code>. If the business says "only the best single discount applies", it is first-match (or evaluate all and pick max). If "discounts stack", it is a pipeline where each one reduces the price and passes it on. Same chain object, different semantics — clarify in the interview!</p>`, code: { lang: 'java', code: `List<UnaryOperator<Double>> rules = List.of(p -> p * 0.9, p -> p - 50, p -> Math.max(p, 100));
 double price = 1000;
 for (UnaryOperator<Double> r : rules) price = r.apply(price);   // stacking pipeline
-System.out.println(price);   // 850.0` },
+System.out.println(String.format("%.2f", price));   // 850.00`, alt: [
+          { lang: 'python', code: `from typing import Callable
+
+rules: list[Callable[[float], float]] = [lambda p: p * 0.9, lambda p: p - 50, lambda p: max(p, 100)]
+price = 1000.0
+for rule in rules:
+    price = rule(price)  # stacking pipeline
+print(f"{price:.2f}")  # 850.00` },
+          { lang: 'ts', code: `const rules: ((p: number) => number)[] = [(p) => p * 0.9, (p) => p - 50, (p) => Math.max(p, 100)];
+let price = 1000;
+for (const rule of rules) price = rule(price); // stacking pipeline
+console.log(price.toFixed(2)); // 850.00` },
+          { lang: 'cpp', code: `vector<function<double(double)>> rules = {
+    [](double p) { return p * 0.9; }, [](double p) { return p - 50; }, [](double p) { return max(p, 100.0); }};
+double price = 1000;
+for (auto& rule : rules) price = rule(price);  // stacking pipeline
+cout << fixed << setprecision(2) << price << "\\n";  // 850.00` }
+        ] } },
       { title: 'Event bubbling in UIs', html: `<p>Click a button inside a card inside a page: the click goes to the button first; if it does not handle it (no listener or does not stop propagation) it bubbles to the card, then the page, then the document. The DOM event model is a chain of responsibility along the parent links.</p>` }
     ],
     deepDive: `<p><b>Guarantee of handling:</b> CoR does not guarantee anyone handles the request. Put a <b>terminal default handler</b> at the end (reject/log/404) and make "unhandled" an explicit result, not a <code>null</code>.</p>
@@ -1488,6 +4646,7 @@ System.out.println(price);   // 850.0` },
 }` },
       mcq: { q: 'withdraw(50) cannot be made from 100+ notes. When should stock be decremented?', options: ['Only after the whole chain confirms the remainder reached 0 (plan first, commit after)', 'Each handler decrements immediately as it goes', 'Before the chain starts', 'Never; the ATM recounts nightly'], answer: 0, explain: 'Two-phase: handlers build a plan (how many notes each), and only if the remainder is 0 do we commit. Otherwise a failed withdrawal would leak notes.' },
       hints: [`<p>Hint 1: Each denomination is a handler: "take as many of my notes as I can, pass the remainder to the next".</p>`, `<p>Hint 2: Pass a mutable <b>plan</b> (Map denomination → count) along the chain instead of touching stock directly. The last handler (or the ATM) checks remainder == 0.</p>`, `<p>Hint 3: Commit = each handler subtracts its planned count. Keep denominations sorted descending when building the chain. Synchronize withdraw (two customers, one ATM is rare but stock must stay consistent).</p>`],
+      tests: { io: true, cases: [{ stdin: '', stdout: "3700 -> 2000x1 500x3 200x1\n50 -> refused\n9999 -> refused\n1000 -> 200x4 100x2\n0 -> refused\n100 -> refused\n" }] },
       solution: {
         approach: `<p>Each <code>NoteDispenser</code> owns one denomination and its stock, and links to the next smaller one. <code>plan(remaining, plan)</code> takes <code>min(remaining / value, stock)</code> notes, records it in the plan, and passes the remainder down. The ATM calls the head; if the final remainder is not 0, it discards the plan (nothing changed). Otherwise it calls <code>commit(plan)</code> down the chain. Adding ₹50 = new dispenser linked at the end.</p>`,
         code: `class NoteDispenser {
@@ -1523,15 +4682,214 @@ class Atm {
         return Optional.of(plan);
     }
 
+    static String describe(Atm atm, int amount) {
+        Optional<Map<Integer, Integer>> r = atm.withdraw(amount);
+        if (r.isEmpty()) return amount + " -> refused";
+        return amount + " -> " + r.get().entrySet().stream()
+                .map(e -> e.getKey() + "x" + e.getValue()).collect(Collectors.joining(" "));
+    }
+
     public static void main(String[] args) {
         NoteDispenser d2000 = new NoteDispenser(2000, 1);
         d2000.linkTo(new NoteDispenser(500, 3)).linkTo(new NoteDispenser(200, 5)).linkTo(new NoteDispenser(100, 2));
         Atm atm = new Atm(d2000);
-        System.out.println(atm.withdraw(3700));   // Optional[{2000=1, 500=3, 200=1}]
-        System.out.println(atm.withdraw(50));     // Optional.empty
-        System.out.println(atm.withdraw(1000));   // 2000s and 500s are gone: {200=4, 100=2}
+        System.out.println(describe(atm, 3700));
+        System.out.println(describe(atm, 50));      // no note combination: refused
+        System.out.println(describe(atm, 9999));    // plans a lot, then fails: stock must be untouched
+        System.out.println(describe(atm, 1000));    // 2000s and 500s are gone: {200=4, 100=2}
+        System.out.println(describe(atm, 0));
+        System.out.println(describe(atm, 100));     // out of 100s
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `from __future__ import annotations
+
+
+class NoteDispenser:
+    def __init__(self, value: int, stock: int):
+        self.value = value
+        self._stock = stock
+        self._next: NoteDispenser | None = None
+
+    def link_to(self, nxt: NoteDispenser) -> NoteDispenser:
+        self._next = nxt
+        return nxt
+
+    def plan(self, remaining: int, plan: dict[int, int]) -> int:
+        """Phase 1: plan only, no side effects. Returns the remainder nobody could serve."""
+        take = min(remaining // self.value, self._stock)
+        if take > 0:
+            plan[self.value] = take
+        left = remaining - take * self.value
+        return left if self._next is None or left == 0 else self._next.plan(left, plan)
+
+    def commit(self, plan: dict[int, int]) -> None:
+        """Phase 2: apply the plan along the chain."""
+        self._stock -= plan.get(self.value, 0)
+        if self._next is not None:
+            self._next.commit(plan)
+
+    @property
+    def stock(self) -> int:
+        return self._stock
+
+
+class Atm:
+    def __init__(self, head: NoteDispenser):
+        self._head = head
+
+    def withdraw(self, amount: int) -> dict[int, int] | None:
+        if amount <= 0:
+            return None
+        plan: dict[int, int] = {}
+        if self._head.plan(amount, plan) != 0:  # cannot make exact amount: nothing dispensed
+            return None
+        self._head.commit(plan)
+        return plan
+
+
+def describe(atm: Atm, amount: int) -> str:
+    result = atm.withdraw(amount)
+    if result is None:
+        return f"{amount} -> refused"
+    return f"{amount} -> " + " ".join(f"{v}x{n}" for v, n in result.items())
+
+
+if __name__ == "__main__":
+    d2000 = NoteDispenser(2000, 1)
+    d2000.link_to(NoteDispenser(500, 3)).link_to(NoteDispenser(200, 5)).link_to(NoteDispenser(100, 2))
+    atm = Atm(d2000)
+    print(describe(atm, 3700))
+    print(describe(atm, 50))  # no note combination: refused
+    print(describe(atm, 9999))  # plans a lot, then fails: stock must be untouched
+    print(describe(atm, 1000))  # 2000s and 500s are gone: {200=4, 100=2}
+    print(describe(atm, 0))
+    print(describe(atm, 100))  # out of 100s` },
+          { lang: 'ts', code: `class NoteDispenser {
+  private next: NoteDispenser | null = null;
+
+  constructor(readonly value: number, private stock: number) {}
+
+  linkTo(n: NoteDispenser): NoteDispenser {
+    this.next = n;
+    return n;
+  }
+
+  // Phase 1: plan only, no side effects. Returns the remainder nobody could serve.
+  plan(remaining: number, plan: Map<number, number>): number {
+    const take = Math.min(Math.floor(remaining / this.value), this.stock);
+    if (take > 0) plan.set(this.value, take);
+    const left = remaining - take * this.value;
+    return this.next === null || left === 0 ? left : this.next.plan(left, plan);
+  }
+
+  // Phase 2: apply the plan along the chain.
+  commit(plan: Map<number, number>): void {
+    this.stock -= plan.get(this.value) ?? 0;
+    this.next?.commit(plan);
+  }
+
+  get remaining(): number { return this.stock; }
+}
+
+class Atm {
+  constructor(private readonly head: NoteDispenser) {}
+
+  withdraw(amount: number): Map<number, number> | undefined {
+    if (amount <= 0) return undefined;
+    const plan = new Map<number, number>();
+    if (this.head.plan(amount, plan) !== 0) return undefined; // cannot make exact amount: nothing dispensed
+    this.head.commit(plan);
+    return plan;
+  }
+}
+
+function describe(atm: Atm, amount: number): string {
+  const r = atm.withdraw(amount);
+  if (r === undefined) return \`\${amount} -> refused\`;
+  return \`\${amount} -> \` + [...r].map(([v, n]) => \`\${v}x\${n}\`).join(" ");
+}
+
+const d2000 = new NoteDispenser(2000, 1);
+d2000.linkTo(new NoteDispenser(500, 3)).linkTo(new NoteDispenser(200, 5)).linkTo(new NoteDispenser(100, 2));
+const atm = new Atm(d2000);
+console.log(describe(atm, 3700));
+console.log(describe(atm, 50)); // no note combination: refused
+console.log(describe(atm, 9999)); // plans a lot, then fails: stock must be untouched
+console.log(describe(atm, 1000)); // 2000s and 500s are gone: {200=4, 100=2}
+console.log(describe(atm, 0));
+console.log(describe(atm, 100)); // out of 100s` },
+          { lang: 'cpp', code: `using Plan = vector<pair<int, int>>;  // (note value, count), largest note first
+
+class NoteDispenser {
+public:
+    NoteDispenser(int value, int stock) : value(value), stock_(stock) {}
+
+    NoteDispenser& linkTo(unique_ptr<NoteDispenser> n) {  // the chain owns its links
+        next = std::move(n);
+        return *next;
+    }
+
+    // Phase 1: plan only, no side effects. Returns the remainder nobody could serve.
+    int plan(int remaining, Plan& plan) const {
+        int take = min(remaining / value, stock_);
+        if (take > 0) plan.emplace_back(value, take);
+        int left = remaining - take * value;
+        return (!next || left == 0) ? left : next->plan(left, plan);
+    }
+
+    // Phase 2: apply the plan along the chain.
+    void commit(const Plan& plan) {
+        for (auto& [v, n] : plan) if (v == value) stock_ -= n;
+        if (next) next->commit(plan);
+    }
+
+    int stock() const { return stock_; }
+
+private:
+    int value;
+    int stock_;
+    unique_ptr<NoteDispenser> next;
+};
+
+class Atm {
+public:
+    explicit Atm(NoteDispenser& head) : head(head) {}
+
+    optional<Plan> withdraw(int amount) {
+        if (amount <= 0) return nullopt;
+        Plan plan;
+        if (head.plan(amount, plan) != 0) return nullopt;  // cannot make exact amount: nothing dispensed
+        head.commit(plan);
+        return plan;
+    }
+
+private:
+    NoteDispenser& head;
+};
+
+string describe(Atm& atm, int amount) {
+    auto r = atm.withdraw(amount);
+    string s = to_string(amount) + " -> ";
+    if (!r) return s + "refused";
+    for (size_t i = 0; i < r->size(); i++)
+        s += (i ? " " : "") + to_string((*r)[i].first) + "x" + to_string((*r)[i].second);
+    return s;
+}
+
+int main() {
+    NoteDispenser d2000(2000, 1);
+    d2000.linkTo(make_unique<NoteDispenser>(500, 3))
+         .linkTo(make_unique<NoteDispenser>(200, 5))
+         .linkTo(make_unique<NoteDispenser>(100, 2));
+    Atm atm(d2000);
+    cout << describe(atm, 3700) << "\\n";
+    cout << describe(atm, 50) << "\\n";    // no note combination: refused
+    cout << describe(atm, 9999) << "\\n";  // plans a lot, then fails: stock must be untouched
+    cout << describe(atm, 1000) << "\\n";  // 2000s and 500s are gone: {200=4, 100=2}
+    cout << describe(atm, 0) << "\\n";
+    cout << describe(atm, 100) << "\\n";   // out of 100s
+}` }
+        ],
         complexity: `<p>O(D) per withdrawal, D = number of denominations. No stock changes on failure.</p>`,
         followUps: ['Greedy fails with limited stock: 600 with stock 500×1, 200×3 → greedy takes 500 and gets stuck at 100. How would you fix it? (try fewer large notes: bounded backtracking / DP)', 'How would you add ₹50 notes?', 'Should the dispenser chain or the ATM own the policy "max 40 notes per withdrawal"?']
       }
@@ -1543,10 +4901,10 @@ class Atm {
     title: 'Iterator: Walk Any Collection Without Knowing Its Insides',
     analogy: `<p>A <b>TV remote</b> has "next channel" and "previous channel" buttons. You do not know (or care) whether channels come from cable, satellite or the internet, or how they are stored — you just press <b>next</b>. A <b>music playlist</b> is the same: "next song" works whether the playlist is in order, shuffled or on repeat. The remote button is an <b>iterator</b>: a uniform way to go through items one by one.</p>`,
     explain: `<p><b>Iterator in one line:</b> give a collection a separate object that walks over its elements one at a time through a tiny interface — <code>hasNext()</code> and <code>next()</code> — so code using the collection never depends on how it is stored (array, linked list, tree, hash table, database cursor, network pages).</p>
-${H.table(['Role', 'Java type', 'Job'], [
-  ['<b>Aggregate</b>', '<code>Iterable&lt;T&gt;</code>', 'Has <code>iterator()</code> → enables the for-each loop'],
-  ['<b>Iterator</b>', '<code>Iterator&lt;T&gt;</code>', '<code>hasNext()</code>, <code>next()</code>, optional <code>remove()</code>; remembers <i>where we are</i>'],
-  ['<b>Concrete iterator</b>', 'your class', 'Knows the internal structure: an index, a node pointer, a stack for trees, a page token']
+${H.table(['Role', 'Java type', 'Python / TypeScript / C++', 'Job'], [
+  ['<b>Aggregate</b>', '<code>Iterable&lt;T&gt;</code>', '<code>__iter__</code> / <code>[Symbol.iterator]()</code> / <code>begin()</code> + <code>end()</code>', 'Has <code>iterator()</code> → enables the for-each loop'],
+  ['<b>Iterator</b>', '<code>Iterator&lt;T&gt;</code>', '<code>__next__</code> (raises <code>StopIteration</code>) / <code>next()</code> returning <code>{ done, value }</code> / <code>operator*</code>, <code>operator++</code>, <code>operator!=</code>', '<code>hasNext()</code>, <code>next()</code>, optional <code>remove()</code>; remembers <i>where we are</i>'],
+  ['<b>Concrete iterator</b>', 'your class', 'a class, or a generator function', 'Knows the internal structure: an index, a node pointer, a stack for trees, a page token']
 ])}
 <p><b>The naive way:</b> expose the internals: <code>playlist.getSongsArray()</code> and let callers write <code>for (int i = 0; …)</code>. Now every caller depends on "it is an array". Switching to a linked list or adding shuffle mode breaks all of them. For a tree, every caller must write their own recursive traversal (and gets it wrong). ${H.c('r', 'Traversal logic is duplicated and the data structure can never change.')}</p>
 <p><b>With Iterator:</b> the collection hands out iterators; callers write <code>for (Song s : playlist)</code>. The collection is free to change its storage, and can offer several traversal orders (<code>inOrder()</code>, <code>levelOrder()</code>, <code>shuffled()</code>) — each is just another iterator. Multiple iterators can walk the same collection independently because the "cursor" lives in the iterator, not the collection.</p>
@@ -1574,16 +4932,11 @@ class Playlist implements Iterable<Song> {
     @Override public Iterator<Song> iterator() { return new InOrder(); }
 
     // A second traversal order is just another iterator: callers do not change.
-    Iterable<Song> shuffled(long seed) {
-        return () -> {
-            List<Integer> idx = new ArrayList<>();
-            for (int i = 0; i < size; i++) idx.add(i);
-            Collections.shuffle(idx, new Random(seed));
-            Iterator<Integer> it = idx.iterator();
-            return new Iterator<Song>() {
-                public boolean hasNext() { return it.hasNext(); }
-                public Song next() { return songs[it.next()]; }
-            };
+    Iterable<Song> reversed() {
+        return () -> new Iterator<Song>() {
+            private int cursor = size - 1;
+            public boolean hasNext() { return cursor >= 0; }
+            public Song next() { return songs[cursor--]; }
         };
     }
 
@@ -1597,18 +4950,164 @@ class Playlist implements Iterable<Song> {
             return songs[cursor++];
         }
     }
+}
 
+class PlaylistDemo {
     public static void main(String[] args) {
         Playlist p = new Playlist();
         for (String t : List.of("Intro", "Blue", "Rain")) p.add(new Song(t));
         for (Song s : p) System.out.print(s.title() + " ");          // for-each uses iterator()
         System.out.println();
-        for (Song s : p.shuffled(42)) System.out.print(s.title() + " ");
+        for (Song s : p.reversed()) System.out.print(s.title() + " ");
         System.out.println();
         try { for (Song s : p) p.add(new Song("Oops")); }            // modify while iterating
         catch (ConcurrentModificationException e) { System.out.println("fail-fast: CME"); }
     }
-}` }],
+}`, alt: [
+          { lang: 'python', code: `from dataclasses import dataclass
+from typing import Iterator
+
+
+@dataclass(frozen=True)
+class Song:
+    title: str
+
+
+class ConcurrentModification(RuntimeError):
+    pass
+
+
+class Playlist:
+    def __init__(self):
+        self._songs: list[Song] = []  # internal storage: hidden from callers
+        self._mod_count = 0  # detects changes during iteration
+
+    def add(self, s: Song) -> None:
+        self._songs.append(s)
+        self._mod_count += 1
+
+    def __iter__(self) -> Iterator[Song]:  # for-each calls this; the cursor lives in the generator
+        cursor = 0
+        expected_mod = self._mod_count
+        while cursor < len(self._songs):
+            if self._mod_count != expected_mod:
+                raise ConcurrentModification()
+            yield self._songs[cursor]
+            cursor += 1
+
+    # A second traversal order is just another iterator: callers do not change.
+    def reversed(self) -> Iterator[Song]:
+        for i in range(len(self._songs) - 1, -1, -1):
+            yield self._songs[i]
+
+
+if __name__ == "__main__":
+    p = Playlist()
+    for t in ("Intro", "Blue", "Rain"):
+        p.add(Song(t))
+    print(" ".join(s.title for s in p))  # for-each uses __iter__
+    print(" ".join(s.title for s in p.reversed()))
+    try:
+        for s in p:
+            p.add(Song("Oops"))  # modify while iterating
+    except ConcurrentModification:
+        print("fail-fast: CME")` },
+          { lang: 'ts', code: `interface Song { readonly title: string; }
+
+class ConcurrentModificationError extends Error {}
+
+class Playlist implements Iterable<Song> {
+  private songs: Song[] = []; // internal storage: hidden from callers
+  private modCount = 0; // detects changes during iteration
+
+  add(s: Song): void {
+    this.songs.push(s);
+    this.modCount++;
+  }
+
+  [Symbol.iterator](): Iterator<Song> { // for-of calls this; the cursor lives HERE
+    let cursor = 0;
+    const expectedMod = this.modCount;
+    return {
+      next: (): IteratorResult<Song> => {
+        if (cursor >= this.songs.length) return { done: true, value: undefined };
+        if (this.modCount !== expectedMod) throw new ConcurrentModificationError();
+        return { done: false, value: this.songs[cursor++] };
+      },
+    };
+  }
+
+  // A second traversal order is just another iterator: callers do not change.
+  reversed(): Iterable<Song> {
+    const songs = this.songs;
+    return {
+      *[Symbol.iterator]() { for (let i = songs.length - 1; i >= 0; i--) yield songs[i]; },
+    };
+  }
+}
+
+const p = new Playlist();
+for (const t of ["Intro", "Blue", "Rain"]) p.add({ title: t });
+console.log([...p].map((s) => s.title).join(" ")); // for-of uses [Symbol.iterator]
+console.log([...p.reversed()].map((s) => s.title).join(" "));
+try {
+  for (const _s of p) p.add({ title: "Oops" }); // modify while iterating
+} catch (e) {
+  if (e instanceof ConcurrentModificationError) console.log("fail-fast: CME");
+}` },
+          { lang: 'cpp', code: `struct Song { string title; };
+
+struct ConcurrentModification : runtime_error {
+    ConcurrentModification() : runtime_error("playlist changed while iterating") {}
+};
+
+class Playlist {
+public:
+    void add(Song s) {
+        songs.push_back(std::move(s));  // internal storage: hidden from callers
+        modCount++;                     // detects changes during iteration
+    }
+
+    // The iterator keeps its own cursor, so range-for works on a Playlist.
+    class Iterator {
+    public:
+        Iterator(const Playlist& p, size_t cursor) : list(&p), cursor(cursor), expectedMod(p.modCount) {}
+        const Song& operator*() const {
+            if (list->modCount != expectedMod) throw ConcurrentModification();  // fail-fast
+            return list->songs[cursor];
+        }
+        Iterator& operator++() { ++cursor; return *this; }
+        bool operator!=(const Iterator& o) const { return cursor != o.cursor; }
+    private:
+        const Playlist* list;
+        size_t cursor;
+        size_t expectedMod;
+    };
+    Iterator begin() const { return Iterator(*this, 0); }
+    Iterator end() const { return Iterator(*this, songs.size()); }
+
+    // A second traversal order is just another view: callers do not change.
+    auto reversed() const { return songs | views::reverse; }
+
+private:
+    vector<Song> songs;
+    size_t modCount = 0;
+};
+
+int main() {
+    Playlist p;
+    for (const char* t : {"Intro", "Blue", "Rain"}) p.add({t});
+    for (const Song& s : p) cout << s.title << " ";  // range-for uses begin()/end()
+    cout << "\\n";
+    for (const Song& s : p.reversed()) cout << s.title << " ";
+    cout << "\\n";
+    try {
+        for (const Song& s : p) { (void)s; p.add({"Oops"}); }  // modify while iterating
+    } catch (const ConcurrentModification&) {
+        cout << "fail-fast: CME\\n";
+    }
+}` }
+        ] }],
     codeTitle: ['Iterable playlist'],
     viz: {
       title: 'Lazy BST in-order iterator with an explicit stack',
@@ -1658,12 +5157,30 @@ class Playlist implements Iterable<Song> {
     },
     examples: [
       { title: 'for-each is the Iterator pattern', html: `<p><code>for (String s : list)</code> compiles to <code>Iterator&lt;String&gt; it = list.iterator(); while (it.hasNext()) { String s = it.next(); … }</code>. Any class implementing <code>Iterable</code> gets the loop syntax. That is why the same loop works over <code>ArrayList</code>, <code>HashSet</code>, <code>TreeMap.keySet()</code> and your own classes.</p>` },
-      { title: 'Removing while iterating — the right way', html: `<p>Calling <code>list.remove(x)</code> inside a for-each throws <code>ConcurrentModificationException</code> on the next step (fail-fast: the iterator sees modCount changed). Use <code>iterator.remove()</code> or <code>removeIf</code>. Concurrent collections (<code>ConcurrentHashMap</code>, <code>CopyOnWriteArrayList</code>) give <b>weakly consistent / snapshot</b> iterators that never throw CME.</p>`, code: `List<Integer> nums = new ArrayList<>(List.of(1, 2, 3, 4, 5, 6));
+      { title: 'Removing while iterating — the right way', html: `<p>Calling <code>list.remove(x)</code> inside a for-each throws <code>ConcurrentModificationException</code> on the next step (fail-fast: the iterator sees modCount changed). Use <code>iterator.remove()</code> or <code>removeIf</code>. Concurrent collections (<code>ConcurrentHashMap</code>, <code>CopyOnWriteArrayList</code>) give <b>weakly consistent / snapshot</b> iterators that never throw CME.</p>`, code: { lang: 'java', code: `List<Integer> nums = new ArrayList<>(List.of(1, 2, 3, 4, 5, 6));
 Iterator<Integer> it = nums.iterator();
 while (it.hasNext()) if (it.next() % 2 == 0) it.remove();   // safe removal
 System.out.println(nums);                                   // [1, 3, 5]
 nums.removeIf(x -> x > 3);                                  // even simpler
-System.out.println(nums);                                   // [1, 3]` },
+System.out.println(nums);                                   // [1, 3]`, alt: [
+          { lang: 'python', code: `nums = [1, 2, 3, 4, 5, 6]
+nums[:] = [x for x in nums if x % 2 != 0]  # safe removal: build the survivors, then swap them in
+print(nums)  # [1, 3, 5]
+nums[:] = [x for x in nums if x <= 3]  # the removeIf equivalent
+print(nums)  # [1, 3]` },
+          { lang: 'ts', code: `let nums = [1, 2, 3, 4, 5, 6];
+nums = nums.filter((x) => x % 2 !== 0); // safe removal: never splice() inside a for-of over the same array
+console.log(nums); // [ 1, 3, 5 ]
+nums = nums.filter((x) => x <= 3); // the removeIf equivalent
+console.log(nums); // [ 1, 3 ]` },
+          { lang: 'cpp', code: `vector<int> nums = {1, 2, 3, 4, 5, 6};
+nums.erase(remove_if(nums.begin(), nums.end(), [](int x) { return x % 2 == 0; }), nums.end());  // erase-remove idiom
+for (int x : nums) cout << x << " ";  // 1 3 5
+cout << "\\n";
+erase_if(nums, [](int x) { return x > 3; });  // C++20: the removeIf equivalent
+for (int x : nums) cout << x << " ";  // 1 3
+cout << "\\n";` }
+        ] } },
       { title: 'Paginated API iterator', html: `<p>A REST API returns 100 orders per page with a <code>nextPageToken</code>. Wrap it in an <code>Iterator&lt;Order&gt;</code>: <code>hasNext()</code> checks the local buffer; when it is empty and a token exists, fetch the next page. Callers just loop over orders; they never see tokens, and pages are fetched lazily — stop early and you never download the rest. AWS and Google SDKs ship exactly these "paginators".</p>` },
       { title: 'Internal vs external iteration', html: `<p><b>External</b> (Iterator): the caller drives — call <code>next()</code> when it wants, can stop, can interleave two iterators (merge two sorted lists). <b>Internal</b> (<code>forEach</code>, Streams): the collection drives and calls your lambda for each element — less control, but the library can parallelise (<code>parallelStream</code>) and optimise. <code>Spliterator</code> is Java's iterator designed for splitting work across threads.</p>` }
     ],
@@ -1691,9 +5208,16 @@ System.out.println(nums);                                   // [1, 3]` },
 }` },
       mcq: { q: 'Why is next() O(1) amortised even though it may push several nodes?', options: ['Every node is pushed once and popped once over the whole iteration, so N calls do O(N) total work', 'Because the stack is small', 'Because the tree is balanced', 'It is actually O(log N) worst case per call, and that is the same'], answer: 0, explain: 'Total pushes = N, total pops = N across all calls. A single call may push h nodes, but averaged over N calls the cost is constant.' },
       hints: [`<p>Hint 1: Simulate the recursive in-order traversal yourself; what the recursion keeps on the call stack, keep on an explicit stack.</p>`, `<p>Hint 2: The smallest unreturned value is always on top of a stack containing the "left spine" of what remains. Helper <code>pushLeft(node)</code>: push node and go left until null.</p>`, `<p>Hint 3: Constructor: pushLeft(root). next(): pop n; pushLeft(n.right); return n.val. hasNext(): !stack.isEmpty(). Use ArrayDeque, not the legacy Stack class.</p>`],
+      tests: { io: true, cases: [{ stdin: '', stdout: "3 7 9 15 20\nerror: exhausted\nempty tree hasNext: false\n1 true true 2 3 false\n" }] },
       solution: {
-        approach: `<p>Keep an explicit stack that mirrors the paused recursion of an in-order traversal. Initially push the left spine of the root. Each <code>next()</code> pops the top (the smallest remaining), then pushes the left spine of its right subtree — exactly the nodes that come next in sorted order. Each node is pushed and popped once, giving O(1) amortised per call and O(h) memory. Implementing <code>Iterator&lt;Integer&gt;</code> lets callers use it with standard Java tooling.</p>`,
-        code: `class BSTIterator implements Iterator<Integer> {
+        approach: `<p>Keep an explicit stack that mirrors the paused recursion of an in-order traversal. Initially push the left spine of the root. Each <code>next()</code> pops the top (the smallest remaining), then pushes the left spine of its right subtree — exactly the nodes that come next in sorted order. Each node is pushed and popped once, giving O(1) amortised per call and O(h) memory. Implementing the language's iterator protocol (<code>Iterator&lt;Integer&gt;</code> in Java, <code>__iter__</code>/<code>__next__</code> in Python, <code>[Symbol.iterator]</code> in TypeScript) lets callers use it with the standard loops.</p>`,
+        code: `class TreeNode {
+    int val; TreeNode left, right;
+    TreeNode(int val) { this.val = val; }
+    TreeNode(int val, TreeNode left, TreeNode right) { this.val = val; this.left = left; this.right = right; }
+}
+
+class BSTIterator implements Iterator<Integer> {
     private final Deque<TreeNode> stack = new ArrayDeque<>();
 
     BSTIterator(TreeNode root) { pushLeft(root); }
@@ -1705,7 +5229,7 @@ System.out.println(nums);                                   // [1, 3]` },
     @Override public boolean hasNext() { return !stack.isEmpty(); }   // idempotent: no side effects
 
     @Override public Integer next() {
-        if (stack.isEmpty()) throw new NoSuchElementException();
+        if (stack.isEmpty()) throw new NoSuchElementException("exhausted");
         TreeNode n = stack.pop();
         pushLeft(n.right);                  // the right subtree's smallest comes next
         return n.val;
@@ -1717,8 +5241,154 @@ System.out.println(nums);                                   // [1, 3]` },
         StringBuilder sb = new StringBuilder();
         while (it.hasNext()) sb.append(it.next()).append(' ');
         System.out.println(sb.toString().trim());   // 3 7 9 15 20
+        try { it.next(); } catch (NoSuchElementException e) { System.out.println("error: " + e.getMessage()); }
+        System.out.println("empty tree hasNext: " + new BSTIterator(null).hasNext());
+        BSTIterator chain = new BSTIterator(new TreeNode(3, new TreeNode(2, new TreeNode(1), null), null));   // left chain
+        System.out.println(chain.next() + " " + chain.hasNext() + " " + chain.hasNext() + " " + chain.next() + " " + chain.next() + " " + chain.hasNext());
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `from __future__ import annotations
+
+from dataclasses import dataclass
+
+
+@dataclass
+class TreeNode:
+    val: int
+    left: TreeNode | None = None
+    right: TreeNode | None = None
+
+
+class BSTIterator:
+    def __init__(self, root: TreeNode | None):
+        self._stack: list[TreeNode] = []
+        self._push_left(root)
+
+    def _push_left(self, node: TreeNode | None) -> None:
+        while node is not None:
+            self._stack.append(node)
+            node = node.left
+
+    def has_next(self) -> bool:  # idempotent: no side effects
+        return bool(self._stack)
+
+    def next(self) -> int:
+        if not self._stack:
+            raise StopIteration("exhausted")
+        node = self._stack.pop()
+        self._push_left(node.right)  # the right subtree's smallest comes next
+        return node.val
+
+    # Python's own protocol on top: \`for v in BSTIterator(root)\` works too.
+    def __iter__(self) -> BSTIterator:
+        return self
+
+    def __next__(self) -> int:
+        return self.next()
+
+
+if __name__ == "__main__":
+    root = TreeNode(7, TreeNode(3), TreeNode(15, TreeNode(9), TreeNode(20)))
+    it = BSTIterator(root)
+    values = []
+    while it.has_next():
+        values.append(str(it.next()))
+    print(" ".join(values))  # 3 7 9 15 20
+    try:
+        it.next()
+    except StopIteration as e:
+        print("error:", e)
+    print("empty tree hasNext:", str(BSTIterator(None).has_next()).lower())
+    chain = BSTIterator(TreeNode(3, TreeNode(2, TreeNode(1), None), None))  # left chain
+    first = chain.next()
+    print(first, str(chain.has_next()).lower(), str(chain.has_next()).lower(), chain.next(), chain.next(), str(chain.has_next()).lower())` },
+          { lang: 'ts', code: `class TreeNode {
+  constructor(
+    public val: number,
+    public left: TreeNode | null = null,
+    public right: TreeNode | null = null,
+  ) {}
+}
+
+class BSTIterator {
+  private readonly stack: TreeNode[] = [];
+
+  constructor(root: TreeNode | null) { this.pushLeft(root); }
+
+  private pushLeft(node: TreeNode | null): void {
+    while (node !== null) { this.stack.push(node); node = node.left; }
+  }
+
+  hasNext(): boolean { return this.stack.length > 0; } // idempotent: no side effects
+
+  next(): number {
+    const node = this.stack.pop();
+    if (node === undefined) throw new Error("exhausted");
+    this.pushLeft(node.right); // the right subtree's smallest comes next
+    return node.val;
+  }
+
+  // JavaScript's own protocol on top: \`for (const v of new BSTIterator(root))\` works too.
+  *[Symbol.iterator](): Generator<number> {
+    while (this.hasNext()) yield this.next();
+  }
+}
+
+const root = new TreeNode(7, new TreeNode(3), new TreeNode(15, new TreeNode(9), new TreeNode(20)));
+const it = new BSTIterator(root);
+const values: number[] = [];
+while (it.hasNext()) values.push(it.next());
+console.log(values.join(" ")); // 3 7 9 15 20
+try { it.next(); } catch (e) { console.log("error: " + (e as Error).message); }
+console.log("empty tree hasNext: " + new BSTIterator(null).hasNext());
+const chain = new BSTIterator(new TreeNode(3, new TreeNode(2, new TreeNode(1), null), null)); // left chain
+const first = chain.next();
+console.log(\`\${first} \${chain.hasNext()} \${chain.hasNext()} \${chain.next()} \${chain.next()} \${chain.hasNext()}\`);` },
+          { lang: 'cpp', code: `struct TreeNode {
+    int val;
+    unique_ptr<TreeNode> left, right;  // each node owns its children
+    explicit TreeNode(int val, unique_ptr<TreeNode> left = nullptr, unique_ptr<TreeNode> right = nullptr)
+        : val(val), left(std::move(left)), right(std::move(right)) {}
+};
+
+class BSTIterator {
+public:
+    explicit BSTIterator(const TreeNode* root) { pushLeft(root); }
+
+    bool hasNext() const { return !stack.empty(); }  // idempotent: no side effects
+
+    int next() {
+        if (stack.empty()) throw out_of_range("exhausted");
+        const TreeNode* n = stack.back();
+        stack.pop_back();
+        pushLeft(n->right.get());  // the right subtree's smallest comes next
+        return n->val;
+    }
+
+private:
+    void pushLeft(const TreeNode* n) {
+        for (; n; n = n->left.get()) stack.push_back(n);
+    }
+    vector<const TreeNode*> stack;  // non-owning: the tree outlives the iterator
+};
+
+int main() {
+    auto root = make_unique<TreeNode>(7, make_unique<TreeNode>(3),
+        make_unique<TreeNode>(15, make_unique<TreeNode>(9), make_unique<TreeNode>(20)));
+    BSTIterator it(root.get());
+    string line;
+    while (it.hasNext()) line += (line.empty() ? "" : " ") + to_string(it.next());
+    cout << line << "\\n";  // 3 7 9 15 20
+    try { it.next(); } catch (const out_of_range& e) { cout << "error: " << e.what() << "\\n"; }
+    cout << boolalpha << "empty tree hasNext: " << BSTIterator(nullptr).hasNext() << "\\n";
+    auto chainRoot = make_unique<TreeNode>(3, make_unique<TreeNode>(2, make_unique<TreeNode>(1)));  // left chain
+    BSTIterator chain(chainRoot.get());
+    int first = chain.next();
+    bool h1 = chain.hasNext(), h2 = chain.hasNext();
+    int second = chain.next(), third = chain.next();
+    cout << first << " " << h1 << " " << h2 << " " << second << " " << third << " " << chain.hasNext() << "\\n";
+}` }
+        ],
         complexity: `<p>Time: O(1) amortised per <code>next()</code> (O(h) worst case for a single call); <code>hasNext()</code> O(1). Memory: O(h) — O(log N) balanced, O(N) for a skewed tree.</p>`,
         followUps: ['Add a peek() method without consuming the value', 'Iterate in descending order (mirror: push right spine)', 'Support prev() as well (bidirectional) — what extra state do you need?']
       }
@@ -1797,11 +5467,241 @@ class ChatRoom implements ChatMediator {
         b.say("@carol lunch?");
         room.mute("alice");
         a.say("spam spam");
+        b.say("@dave hey");                                  // unknown recipient
+        room.leave(c);
+        c.say("anyone?");                                    // left the room: ignored
         System.out.println("bob:   " + b.inbox);
         System.out.println("carol: " + c.inbox);
         System.out.println("alice: " + a.inbox);
     }
-}` }],
+}`, alt: [
+          { lang: 'python', code: `from abc import ABC, abstractmethod
+
+
+class ChatMediator(ABC):
+    @abstractmethod
+    def join(self, u: "User") -> None: ...
+
+    @abstractmethod
+    def leave(self, u: "User") -> None: ...
+
+    @abstractmethod
+    def send(self, sender: "User", text: str) -> None: ...
+
+
+class User:
+    def __init__(self, name: str, room: ChatMediator):
+        self.name = name
+        self._room = room  # the ONLY reference a user holds
+        self.inbox: list[str] = []
+
+    def say(self, text: str) -> None:
+        self._room.send(self, text)
+
+    def receive(self, sender: str, text: str) -> None:
+        self.inbox.append(f"{sender}: {text}")
+
+
+class ChatRoom(ChatMediator):
+    def __init__(self):
+        self._members: dict[str, User] = {}
+        self._muted: set[str] = set()
+        self._history: list[str] = []
+
+    def join(self, u: User) -> None:
+        self._members[u.name] = u
+        self._broadcast("system", f"{u.name} joined", None)
+
+    def leave(self, u: User) -> None:
+        self._members.pop(u.name, None)
+        self._broadcast("system", f"{u.name} left", None)
+
+    def mute(self, name: str) -> None:
+        self._muted.add(name)
+
+    # All coordination rules live here, in ONE place.
+    def send(self, sender: User, text: str) -> None:
+        if sender.name not in self._members:  # not in the room
+            return
+        if sender.name in self._muted:
+            sender.receive("system", "you are muted")
+            return
+        self._history.append(f"{sender.name}: {text}")
+        if text.startswith("@"):  # direct message rule
+            to = text[1:].split(" ", 1)[0]
+            target = self._members.get(to)
+            if target is not None:
+                target.receive(f"{sender.name} (private)", text)
+            else:
+                sender.receive("system", f"no user {to}")
+            return
+        self._broadcast(sender.name, text, sender)
+
+    def _broadcast(self, sender: str, text: str, except_user: User | None) -> None:
+        for u in self._members.values():
+            if u is not except_user:
+                u.receive(sender, text)
+
+
+def show(items: list[str]) -> str:
+    return "[" + ", ".join(items) + "]"
+
+
+if __name__ == "__main__":
+    room = ChatRoom()
+    a, b, c = User("alice", room), User("bob", room), User("carol", room)
+    room.join(a); room.join(b); room.join(c)
+    a.say("hi all")
+    b.say("@carol lunch?")
+    room.mute("alice")
+    a.say("spam spam")
+    b.say("@dave hey")  # unknown recipient
+    room.leave(c)
+    c.say("anyone?")  # left the room: ignored
+    print("bob:  ", show(b.inbox))
+    print("carol:", show(c.inbox))
+    print("alice:", show(a.inbox))` },
+          { lang: 'ts', code: `interface ChatMediator {
+  join(u: User): void;
+  leave(u: User): void;
+  send(from: User, text: string): void;
+}
+
+class User {
+  readonly inbox: string[] = [];
+  // the ONLY reference a user holds is the mediator
+  constructor(readonly name: string, private readonly room: ChatMediator) {}
+  say(text: string): void { this.room.send(this, text); }
+  receive(from: string, text: string): void { this.inbox.push(\`\${from}: \${text}\`); }
+}
+
+class ChatRoom implements ChatMediator {
+  private readonly members = new Map<string, User>();
+  private readonly muted = new Set<string>();
+  private readonly history: string[] = [];
+
+  join(u: User): void { this.members.set(u.name, u); this.broadcast("system", \`\${u.name} joined\`, null); }
+  leave(u: User): void { this.members.delete(u.name); this.broadcast("system", \`\${u.name} left\`, null); }
+  mute(name: string): void { this.muted.add(name); }
+
+  // All coordination rules live here, in ONE place.
+  send(from: User, text: string): void {
+    if (!this.members.has(from.name)) return; // not in the room
+    if (this.muted.has(from.name)) { from.receive("system", "you are muted"); return; }
+    this.history.push(\`\${from.name}: \${text}\`);
+    if (text.startsWith("@")) { // direct message rule
+      const to = text.slice(1).split(" ")[0];
+      const target = this.members.get(to);
+      if (target !== undefined) target.receive(\`\${from.name} (private)\`, text);
+      else from.receive("system", \`no user \${to}\`);
+      return;
+    }
+    this.broadcast(from.name, text, from);
+  }
+
+  private broadcast(from: string, text: string, except: User | null): void {
+    for (const u of this.members.values()) if (u !== except) u.receive(from, text);
+  }
+}
+
+const show = (items: string[]): string => "[" + items.join(", ") + "]";
+
+const room = new ChatRoom();
+const a = new User("alice", room), b = new User("bob", room), c = new User("carol", room);
+room.join(a); room.join(b); room.join(c);
+a.say("hi all");
+b.say("@carol lunch?");
+room.mute("alice");
+a.say("spam spam");
+b.say("@dave hey"); // unknown recipient
+room.leave(c);
+c.say("anyone?"); // left the room: ignored
+console.log("bob:  ", show(b.inbox));
+console.log("carol:", show(c.inbox));
+console.log("alice:", show(a.inbox));` },
+          { lang: 'cpp', code: `class User;
+
+class ChatMediator {
+public:
+    virtual ~ChatMediator() = default;
+    virtual void join(User& u) = 0;
+    virtual void leave(User& u) = 0;
+    virtual void send(User& from, const string& text) = 0;
+};
+
+class User {
+public:
+    User(string name, ChatMediator& room) : name_(std::move(name)), room(room) {}  // the ONLY reference a user holds
+    const string& name() const { return name_; }
+    void say(const string& text) { room.send(*this, text); }
+    void receive(const string& from, const string& text) { inbox_.push_back(from + ": " + text); }
+    const vector<string>& inbox() const { return inbox_; }
+private:
+    string name_;
+    ChatMediator& room;
+    vector<string> inbox_;
+};
+
+class ChatRoom : public ChatMediator {
+public:
+    void join(User& u) override { members.push_back(&u); broadcast("system", u.name() + " joined", nullptr); }
+    void leave(User& u) override {
+        members.erase(remove(members.begin(), members.end(), &u), members.end());
+        broadcast("system", u.name() + " left", nullptr);
+    }
+    void mute(const string& name) { muted.insert(name); }
+
+    // All coordination rules live here, in ONE place.
+    void send(User& from, const string& text) override {
+        if (find(members.begin(), members.end(), &from) == members.end()) return;  // not in the room
+        if (muted.count(from.name())) { from.receive("system", "you are muted"); return; }
+        history.push_back(from.name() + ": " + text);
+        if (text.starts_with('@')) {  // direct message rule
+            string to = text.substr(1, text.find(' ') == string::npos ? string::npos : text.find(' ') - 1);
+            User* target = find_user(to);
+            if (target) target->receive(from.name() + " (private)", text);
+            else from.receive("system", "no user " + to);
+            return;
+        }
+        broadcast(from.name(), text, &from);
+    }
+
+private:
+    User* find_user(const string& name) {
+        for (User* u : members) if (u->name() == name) return u;
+        return nullptr;
+    }
+    void broadcast(const string& from, const string& text, const User* except) {
+        for (User* u : members) if (u != except) u->receive(from, text);
+    }
+
+    vector<User*> members;  // non-owning, in join order
+    set<string> muted;
+    vector<string> history;
+};
+
+string show(const vector<string>& items) {
+    string s = "[";
+    for (size_t i = 0; i < items.size(); i++) s += (i ? ", " : "") + items[i];
+    return s + "]";
+}
+
+int main() {
+    ChatRoom room;
+    User a("alice", room), b("bob", room), c("carol", room);
+    room.join(a); room.join(b); room.join(c);
+    a.say("hi all");
+    b.say("@carol lunch?");
+    room.mute("alice");
+    a.say("spam spam");
+    b.say("@dave hey");  // unknown recipient
+    room.leave(c);
+    c.say("anyone?");  // left the room: ignored
+    cout << "bob:   " << show(b.inbox()) << "\\n";
+    cout << "carol: " << show(c.inbox()) << "\\n";
+    cout << "alice: " << show(a.inbox()) << "\\n";
+}` }
+        ] }],
     codeTitle: ['Chat room mediator'],
     viz: {
       title: 'Mediator: mesh vs hub, then messages routed through the chat room',
@@ -1880,7 +5780,7 @@ class ChatRoom implements ChatMediator {
       }
     },
     examples: [
-      { title: 'Sign-up form dialog', html: `<p>Widgets: email field, password field, "I accept terms" checkbox, Submit button. Rule: Submit is enabled only when email is valid, password ≥ 8 chars and the box is ticked. Without a mediator, each widget would need references to the others. With a <code>SignupDialog</code> mediator, each widget calls <code>dialog.changed(this)</code> and the dialog re-evaluates the rule and enables/disables Submit.</p>`, code: `class SignupDialog {
+      { title: 'Sign-up form dialog', html: `<p>Widgets: email field, password field, "I accept terms" checkbox, Submit button. Rule: Submit is enabled only when email is valid, password ≥ 8 chars and the box is ticked. Without a mediator, each widget would need references to the others. With a <code>SignupDialog</code> mediator, each widget calls <code>dialog.changed(this)</code> and the dialog re-evaluates the rule and enables/disables Submit.</p>`, code: { lang: 'java', code: `class SignupDialog {
     String email = ""; String password = ""; boolean accepted; boolean submitEnabled;
     void changed() {   // every widget calls this; the rule lives in one place
         submitEnabled = email.contains("@") && password.length() >= 8 && accepted;
@@ -1890,7 +5790,51 @@ SignupDialog d = new SignupDialog();
 d.email = "a@b.com"; d.changed();
 d.password = "secret123"; d.changed();
 d.accepted = true; d.changed();
-System.out.println("submit enabled? " + d.submitEnabled);` },
+System.out.println("submit enabled? " + d.submitEnabled);`, alt: [
+          { lang: 'python', code: `class SignupDialog:
+    def __init__(self):
+        self.email = ""
+        self.password = ""
+        self.accepted = False
+        self.submit_enabled = False
+
+    def changed(self) -> None:  # every widget calls this; the rule lives in one place
+        self.submit_enabled = "@" in self.email and len(self.password) >= 8 and self.accepted
+
+
+d = SignupDialog()
+d.email = "a@b.com"; d.changed()
+d.password = "secret123"; d.changed()
+d.accepted = True; d.changed()
+print("submit enabled?", str(d.submit_enabled).lower())` },
+          { lang: 'ts', code: `class SignupDialog {
+  email = "";
+  password = "";
+  accepted = false;
+  submitEnabled = false;
+  changed(): void { // every widget calls this; the rule lives in one place
+    this.submitEnabled = this.email.includes("@") && this.password.length >= 8 && this.accepted;
+  }
+}
+
+const d = new SignupDialog();
+d.email = "a@b.com"; d.changed();
+d.password = "secret123"; d.changed();
+d.accepted = true; d.changed();
+console.log("submit enabled? " + d.submitEnabled);` },
+          { lang: 'cpp', code: `struct SignupDialog {
+    string email, password;
+    bool accepted = false, submitEnabled = false;
+    void changed() {  // every widget calls this; the rule lives in one place
+        submitEnabled = email.find('@') != string::npos && password.size() >= 8 && accepted;
+    }
+};
+SignupDialog d;
+d.email = "a@b.com"; d.changed();
+d.password = "secret123"; d.changed();
+d.accepted = true; d.changed();
+cout << "submit enabled? " << boolalpha << d.submitEnabled << "\\n";` }
+        ] } },
       { title: 'Ride matching dispatcher', html: `<p>Riders and drivers never contact each other directly at first. The <b>dispatcher</b> receives "need a ride" and "I am available" events, applies matching rules (nearest driver, rating, surge) and introduces a pair. Swapping the matching algorithm touches only the dispatcher (which might hold a Strategy for it — patterns combine).</p>` },
       { title: 'Observer vs Mediator side by side', html: `<p><b>Observer:</b> a stock ticker broadcasts "price changed"; it does not decide anything about who should react or how. <b>Mediator:</b> the control tower receives "plane 7 wants to land", <i>checks</i> runway state, <i>tells</i> plane 7 to land and plane 9 to circle. A mediator is often <i>implemented with</i> observer-style notifications, but its point is the coordination logic in the middle.</p>` },
       { title: 'Event bus inside an application', html: `<p>Modules publish events to an in-app bus (Guava EventBus, Spring <code>ApplicationEventPublisher</code>) and subscribe to the types they care about. Modules no longer import each other — the bus mediates. Downside: control flow becomes implicit ("who handles this event?"), so keep event names explicit and log them.</p>` }
@@ -1918,6 +5862,7 @@ System.out.println("submit enabled? " + d.submitEnabled);` },
 }` },
       mcq: { q: 'Which object should decide that an emergency plane jumps the queue?', options: ['The tower (mediator) — it owns the queue and runway rules', 'Each plane, by checking the others', 'The runway object', 'The emergency plane itself, by landing anyway'], answer: 0, explain: 'Coordination rules belong to the mediator. Planes only report events (request, landed) and obey instructions.' },
       hints: [`<p>Hint 1: Planes know only the tower. The tower knows runways (free/occupied) and a waiting queue.</p>`, `<p>Hint 2: Two deques (emergency, normal) or a PriorityQueue keyed by (priority, arrival sequence). An array of runway owners, null = free.</p>`, `<p>Hint 3: <code>landed()</code> frees the runway then calls a private <code>dispatchNext()</code>. Make tower methods <code>synchronized</code> so two planes cannot grab the same runway. Recipe: request → free runway? assign : enqueue; landed → free → dispatch.</p>`],
+      tests: { io: true, cases: [{ stdin: '', stdout: "A: landing on runway 0\nB: holding pattern\nE: holding pattern\ntower: runway 0 free\nE: landing on runway 0\ntower: runway 0 free\nB: landing on runway 0\ntower: runway 0 free\nerror: A was not on a runway\n" }] },
       solution: {
         approach: `<p>The <code>Tower</code> is the mediator: it owns runway occupancy and two FIFO queues (emergency first). Planes are colleagues that only call <code>requestLanding</code> / <code>landed</code> and receive instructions via <code>clearToLand(runway)</code> or <code>hold()</code>. All rules — priority, fairness, runway assignment — live in the tower, in synchronized methods, so there are no races and planes never reference each other.</p>`,
         code: `class Plane {
@@ -1969,8 +5914,193 @@ class Tower {
         t.requestLanding(e);
         t.landed(a);      // E lands before B
         t.landed(e);      // then B
+        t.landed(b);      // nobody waiting: runway stays free
+        try { t.landed(a); } catch (IllegalStateException ex) { System.out.println("error: " + ex.getMessage()); }
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `from collections import deque
+from dataclasses import dataclass
+import threading
+
+
+@dataclass(frozen=True)
+class Plane:
+    id: str
+    emergency: bool = False
+
+    def clear_to_land(self, runway: int) -> None:
+        print(f"{self.id}: landing on runway {runway}")
+
+    def hold(self) -> None:
+        print(f"{self.id}: holding pattern")
+
+
+class Tower:
+    """The mediator: planes only ever talk to the tower, never to each other."""
+
+    def __init__(self, runways: int):
+        self._runways: list[Plane | None] = [None] * runways  # None = free
+        self._emergency_q: deque[Plane] = deque()
+        self._normal_q: deque[Plane] = deque()
+        self._lock = threading.Lock()
+
+    def request_landing(self, plane: Plane) -> None:
+        with self._lock:
+            free = self._free_runway()
+            if free >= 0:
+                self._assign(free, plane)
+                return
+            (self._emergency_q if plane.emergency else self._normal_q).append(plane)
+            plane.hold()
+
+    def landed(self, plane: Plane) -> None:
+        with self._lock:
+            for i, on_runway in enumerate(self._runways):
+                if on_runway == plane:
+                    self._runways[i] = None
+                    print(f"tower: runway {i} free")
+                    self._dispatch_next(i)
+                    return
+            raise RuntimeError(f"{plane.id} was not on a runway")
+
+    def _dispatch_next(self, runway: int) -> None:
+        queue = self._emergency_q or self._normal_q
+        if queue:
+            self._assign(runway, queue.popleft())
+
+    def _free_runway(self) -> int:
+        return next((i for i, p in enumerate(self._runways) if p is None), -1)
+
+    def _assign(self, i: int, plane: Plane) -> None:
+        self._runways[i] = plane
+        plane.clear_to_land(i)
+
+
+if __name__ == "__main__":
+    t = Tower(1)
+    a, b, e = Plane("A"), Plane("B"), Plane("E", emergency=True)
+    t.request_landing(a)
+    t.request_landing(b)
+    t.request_landing(e)
+    t.landed(a)  # E lands before B
+    t.landed(e)  # then B
+    t.landed(b)  # nobody waiting: runway stays free
+    try:
+        t.landed(a)
+    except RuntimeError as ex:
+        print("error:", ex)` },
+          { lang: 'ts', code: `class Plane {
+  constructor(readonly id: string, readonly emergency: boolean = false) {}
+  clearToLand(runway: number): void { console.log(\`\${this.id}: landing on runway \${runway}\`); }
+  hold(): void { console.log(\`\${this.id}: holding pattern\`); }
+}
+
+// The mediator: planes only ever talk to the tower, never to each other.
+class Tower {
+  private readonly runways: (Plane | null)[]; // null = free
+  private readonly emergencyQ: Plane[] = [];
+  private readonly normalQ: Plane[] = [];
+
+  constructor(runwayCount: number) { this.runways = new Array<Plane | null>(runwayCount).fill(null); }
+
+  requestLanding(p: Plane): void {
+    const free = this.runways.indexOf(null);
+    if (free >= 0) { this.assign(free, p); return; }
+    (p.emergency ? this.emergencyQ : this.normalQ).push(p);
+    p.hold();
+  }
+
+  landed(p: Plane): void {
+    const i = this.runways.indexOf(p);
+    if (i < 0) throw new Error(\`\${p.id} was not on a runway\`);
+    this.runways[i] = null;
+    console.log(\`tower: runway \${i} free\`);
+    this.dispatchNext(i);
+  }
+
+  private dispatchNext(runway: number): void {
+    const next = this.emergencyQ.shift() ?? this.normalQ.shift();
+    if (next !== undefined) this.assign(runway, next);
+  }
+
+  private assign(i: number, p: Plane): void {
+    this.runways[i] = p;
+    p.clearToLand(i);
+  }
+}
+
+const t = new Tower(1);
+const a = new Plane("A"), b = new Plane("B"), e = new Plane("E", true);
+t.requestLanding(a);
+t.requestLanding(b);
+t.requestLanding(e);
+t.landed(a); // E lands before B
+t.landed(e); // then B
+t.landed(b); // nobody waiting: runway stays free
+try { t.landed(a); } catch (ex) { console.log("error: " + (ex as Error).message); }` },
+          { lang: 'cpp', code: `class Plane {
+public:
+    Plane(string id, bool emergency = false) : id_(std::move(id)), emergency_(emergency) {}
+    const string& id() const { return id_; }
+    bool emergency() const { return emergency_; }
+    void clearToLand(int runway) const { cout << id_ << ": landing on runway " << runway << "\\n"; }
+    void hold() const { cout << id_ << ": holding pattern\\n"; }
+private:
+    string id_;
+    bool emergency_;
+};
+
+// The mediator: planes only ever talk to the tower, never to each other.
+class Tower {
+public:
+    explicit Tower(int runways) : runways_(runways, nullptr) {}
+
+    void requestLanding(Plane& p) {
+        int free = freeRunway();
+        if (free >= 0) { assign(free, p); return; }
+        (p.emergency() ? emergencyQ : normalQ).push_back(&p);
+        p.hold();
+    }
+
+    void landed(Plane& p) {
+        auto it = find(runways_.begin(), runways_.end(), &p);
+        if (it == runways_.end()) throw runtime_error(p.id() + " was not on a runway");
+        int i = int(it - runways_.begin());
+        *it = nullptr;
+        cout << "tower: runway " << i << " free\\n";
+        dispatchNext(i);
+    }
+
+private:
+    void dispatchNext(int runway) {
+        deque<Plane*>& q = !emergencyQ.empty() ? emergencyQ : normalQ;
+        if (q.empty()) return;
+        Plane* next = q.front();
+        q.pop_front();
+        assign(runway, *next);
+    }
+    int freeRunway() const {
+        auto it = find(runways_.begin(), runways_.end(), nullptr);
+        return it == runways_.end() ? -1 : int(it - runways_.begin());
+    }
+    void assign(int i, Plane& p) { runways_[i] = &p; p.clearToLand(i); }
+
+    vector<Plane*> runways_;  // non-owning; nullptr = free
+    deque<Plane*> emergencyQ, normalQ;
+};
+
+int main() {
+    Tower t(1);
+    Plane a("A"), b("B"), e("E", true);
+    t.requestLanding(a);
+    t.requestLanding(b);
+    t.requestLanding(e);
+    t.landed(a);  // E lands before B
+    t.landed(e);  // then B
+    t.landed(b);  // nobody waiting: runway stays free
+    try { t.landed(a); } catch (const runtime_error& ex) { cout << "error: " << ex.what() << "\\n"; }
+}` }
+        ],
         complexity: `<p>request/landed: O(R) to scan runways (R ≤ 10) + O(1) queue ops. Memory O(R + waiting planes).</p>`,
         followUps: ['Planes also take off from the same runways — how do you mix takeoff and landing queues fairly?', 'How would you notify planes asynchronously (they are remote)?', 'Add a rule: heavy planes need a 2-minute gap — where does it live?']
       }
@@ -2054,7 +6184,219 @@ class MementoDemo {
         slots.pop().ifPresent(g::restore);
         System.out.println("reloaded: " + g + " remaining saves " + slots.labels());
     }
-}` }],
+}`, alt: [
+          { lang: 'python', code: `from __future__ import annotations
+
+from dataclasses import dataclass
+from collections import deque
+from typing import Optional
+
+
+class Game:
+    def __init__(self):
+        self._hp, self._gold, self._level = 100, 0, 1
+        self._inventory: list[str] = []
+
+    def play(self, damage: int, loot: int, item: Optional[str]) -> None:
+        self._hp = max(0, self._hp - damage)
+        self._gold += loot
+        if item is not None:
+            self._inventory.append(item)
+        if self._gold >= 100:
+            self._level += 1
+            self._gold -= 100
+
+    # MEMENTO: frozen, underscore fields, tuple inventory. Outside code can hold it but should not read it.
+    @dataclass(frozen=True)
+    class Snapshot:
+        _hp: int
+        _gold: int
+        _level: int
+        _inventory: tuple[str, ...]  # a copy, see save()
+        label: str  # only harmless metadata is meant to be read
+
+    def save(self, label: str) -> Game.Snapshot:
+        return Game.Snapshot(self._hp, self._gold, self._level, tuple(self._inventory), label)  # copy, not reference!
+
+    def restore(self, s: Game.Snapshot) -> None:
+        self._hp, self._gold, self._level = s._hp, s._gold, s._level  # Game reads Snapshot's private fields
+        self._inventory = list(s._inventory)
+
+    def __str__(self) -> str:
+        return f"hp={self._hp} gold={self._gold} lvl={self._level} inv=[{', '.join(self._inventory)}]"
+
+
+# CARETAKER: stores snapshots, never inspects or edits them.
+class SaveSlots:
+    def __init__(self, max_slots: int):
+        self._history: deque[Game.Snapshot] = deque(maxlen=max_slots)  # drops the oldest
+
+    def push(self, s: Game.Snapshot) -> None:
+        self._history.append(s)
+
+    def pop(self) -> Optional[Game.Snapshot]:
+        return self._history.pop() if self._history else None
+
+    def labels(self) -> list[str]:
+        return [s.label for s in reversed(self._history)]
+
+
+if __name__ == "__main__":
+    g = Game()
+    slots = SaveSlots(3)
+    g.play(10, 60, "sword")
+    slots.push(g.save("before cave"))
+    g.play(70, 50, "shield")
+    slots.push(g.save("before boss"))
+    g.play(90, 0, None)  # boss fight goes badly
+    print("now:     ", g)
+    if (s := slots.pop()) is not None:
+        g.restore(s)
+    print("reloaded:", g)
+    if (s := slots.pop()) is not None:
+        g.restore(s)
+    print("reloaded:", g, "remaining saves", "[" + ", ".join(slots.labels()) + "]")` },
+          { lang: 'ts', code: `// MEMENTO: an opaque token. Outside code can hold it but cannot read it.
+declare const sealed: unique symbol;
+interface Snapshot { readonly [sealed]: true; readonly label: string; } // only harmless metadata is visible
+
+interface GameState { hp: number; gold: number; level: number; inventory: readonly string[]; }
+
+class Game {
+  private static readonly vault = new WeakMap<Snapshot, GameState>(); // only Game can open a Snapshot
+  private hp = 100;
+  private gold = 0;
+  private level = 1;
+  private readonly inventory: string[] = [];
+
+  play(damage: number, loot: number, item: string | null): void {
+    this.hp = Math.max(0, this.hp - damage);
+    this.gold += loot;
+    if (item !== null) this.inventory.push(item);
+    if (this.gold >= 100) { this.level++; this.gold -= 100; }
+  }
+
+  save(label: string): Snapshot {
+    const snap = { label } as Snapshot;
+    Game.vault.set(snap, { hp: this.hp, gold: this.gold, level: this.level, inventory: [...this.inventory] }); // copy, not reference!
+    return snap;
+  }
+
+  restore(s: Snapshot): void {
+    const st = Game.vault.get(s);
+    if (st === undefined) throw new Error("foreign snapshot");
+    this.hp = st.hp; this.gold = st.gold; this.level = st.level;
+    this.inventory.length = 0;
+    this.inventory.push(...st.inventory);
+  }
+
+  toString(): string { return \`hp=\${this.hp} gold=\${this.gold} lvl=\${this.level} inv=[\${this.inventory.join(", ")}]\`; }
+}
+
+// CARETAKER: stores snapshots, never inspects or edits them.
+class SaveSlots {
+  private readonly history: Snapshot[] = [];
+  constructor(private readonly max: number) {}
+  push(s: Snapshot): void {
+    this.history.push(s);
+    if (this.history.length > this.max) this.history.shift(); // drop the oldest
+  }
+  pop(): Snapshot | undefined { return this.history.pop(); }
+  labels(): string[] { return this.history.map((s) => s.label).reverse(); }
+}
+
+const g = new Game();
+const slots = new SaveSlots(3);
+g.play(10, 60, "sword");
+slots.push(g.save("before cave"));
+g.play(70, 50, "shield");
+slots.push(g.save("before boss"));
+g.play(90, 0, null); // boss fight goes badly
+console.log("now:      " + g);
+let s = slots.pop();
+if (s) g.restore(s);
+console.log("reloaded: " + g);
+s = slots.pop();
+if (s) g.restore(s);
+console.log("reloaded: " + g + " remaining saves [" + slots.labels().join(", ") + "]");` },
+          { lang: 'cpp', code: `class Game {
+public:
+    void play(int damage, int loot, const optional<string>& item) {
+        hp = max(0, hp - damage);
+        gold += loot;
+        if (item) inventory.push_back(*item);
+        if (gold >= 100) { level++; gold -= 100; }
+    }
+
+    // MEMENTO: nested, immutable, constructor and fields private. Outside code can hold it but not read it.
+    class Snapshot {
+        friend class Game;
+    public:
+        const string& label() const { return label_; }  // only harmless metadata is visible
+    private:
+        Snapshot(int hp, int gold, int level, vector<string> inv, string label)
+            : hp(hp), gold(gold), level(level), inventory(std::move(inv)), label_(std::move(label)) {}
+        int hp, gold, level;
+        vector<string> inventory;  // a copy, see save()
+        string label_;
+    };
+
+    Snapshot save(string label) const { return Snapshot(hp, gold, level, inventory, std::move(label)); }  // copy, not reference!
+    void restore(const Snapshot& s) {
+        hp = s.hp; gold = s.gold; level = s.level;  // Game can read Snapshot's private fields
+        inventory = s.inventory;
+    }
+
+    string str() const {
+        string inv;
+        for (size_t i = 0; i < inventory.size(); i++) inv += (i ? ", " : "") + inventory[i];
+        return "hp=" + to_string(hp) + " gold=" + to_string(gold) + " lvl=" + to_string(level) + " inv=[" + inv + "]";
+    }
+
+private:
+    int hp = 100, gold = 0, level = 1;
+    vector<string> inventory;
+};
+
+// CARETAKER: stores snapshots, never inspects or edits them.
+class SaveSlots {
+public:
+    explicit SaveSlots(size_t max) : max(max) {}
+    void push(Game::Snapshot s) {
+        history.push_back(std::move(s));
+        if (history.size() > max) history.pop_front();  // drop the oldest
+    }
+    optional<Game::Snapshot> pop() {
+        if (history.empty()) return nullopt;
+        Game::Snapshot s = std::move(history.back());
+        history.pop_back();
+        return s;
+    }
+    string labels() const {
+        string out = "[";
+        for (size_t i = history.size(); i-- > 0;) out += history[i].label() + (i ? ", " : "");
+        return out + "]";
+    }
+private:
+    deque<Game::Snapshot> history;
+    size_t max;
+};
+
+int main() {
+    Game g;
+    SaveSlots slots(3);
+    g.play(10, 60, "sword");
+    slots.push(g.save("before cave"));
+    g.play(70, 50, "shield");
+    slots.push(g.save("before boss"));
+    g.play(90, 0, nullopt);  // boss fight goes badly
+    cout << "now:      " << g.str() << "\\n";
+    if (auto s = slots.pop()) g.restore(*s);
+    cout << "reloaded: " << g.str() << "\\n";
+    if (auto s = slots.pop()) g.restore(*s);
+    cout << "reloaded: " << g.str() << " remaining saves " << slots.labels() << "\\n";
+}` }
+        ] }],
     codeTitle: ['Memento with caretaker'],
     viz: {
       title: 'Memento: saving and restoring sealed snapshots',
@@ -2103,18 +6445,39 @@ class MementoDemo {
       }
     },
     examples: [
-      { title: 'The shallow-copy bug', html: `<p>If <code>save()</code> stores <code>this.inventory</code> (the same list object), then adding "shield" after saving also changes the snapshot — restore brings back the shield you should have lost. Always copy mutable fields (<code>List.copyOf</code>, defensive copies, or keep state immutable to begin with).</p>`, code: `List<String> live = new ArrayList<>(List.of("sword"));
+      { title: 'The shallow-copy bug', html: `<p>If <code>save()</code> stores <code>this.inventory</code> (the same list object), then adding "shield" after saving also changes the snapshot — restore brings back the shield you should have lost. Always copy mutable fields (<code>List.copyOf</code>, defensive copies, or keep state immutable to begin with).</p>`, code: { lang: 'java', code: `List<String> live = new ArrayList<>(List.of("sword"));
 List<String> badSnapshot = live;                 // same object!
 List<String> goodSnapshot = List.copyOf(live);   // independent copy
 live.add("shield");
-System.out.println("bad: " + badSnapshot + "  good: " + goodSnapshot);   // bad: [sword, shield]  good: [sword]` },
+System.out.println("bad: " + badSnapshot + "  good: " + goodSnapshot);   // bad: [sword, shield]  good: [sword]`, alt: [
+          { lang: 'python', code: `live = ["sword"]
+bad_snapshot = live  # same object!
+good_snapshot = list(live)  # independent copy
+live.append("shield")
+print(f"bad: {bad_snapshot}  good: {good_snapshot}")  # bad: ['sword', 'shield']  good: ['sword']` },
+          { lang: 'ts', code: `const live: string[] = ["sword"];
+const badSnapshot = live; // same object!
+const goodSnapshot = [...live]; // independent copy
+live.push("shield");
+console.log("bad:", badSnapshot, " good:", goodSnapshot); // bad: [ 'sword', 'shield' ]  good: [ 'sword' ]` },
+          { lang: 'cpp', code: `vector<string> live = {"sword"};
+vector<string>& badSnapshot = live;  // same object!
+vector<string> goodSnapshot = live;  // independent copy
+live.push_back("shield");
+auto show = [](const vector<string>& v) {
+    string s = "[";
+    for (size_t i = 0; i < v.size(); i++) s += (i ? ", " : "") + v[i];
+    return s + "]";
+};
+cout << "bad: " << show(badSnapshot) << "  good: " << show(goodSnapshot) << "\\n";  // bad: [sword, shield]  good: [sword]` }
+        ] } },
       { title: 'Form draft autosave', html: `<p>A long job-application form saves a memento every 30 s to local storage. If the browser crashes, the form restores the last memento. The autosave timer (caretaker) does not understand the form's fields; it stores whatever opaque blob <code>form.snapshot()</code> returns (often serialized JSON).</p>` },
       { title: 'Immutable state makes Memento free', html: `<p>If the originator's state is an immutable record (<code>record Board(List&lt;String&gt; cells, int turn)</code> built with copies), then "saving" is just keeping a reference to the current state object — it can never change. Redux in frontend apps, persistent data structures in functional languages and Git commits all work this way: <b>history = list of immutable states</b>, with structural sharing to save memory.</p>` },
       { title: 'Transactions: snapshot on BEGIN', html: `<p>An in-memory key-value store supports <code>BEGIN</code> / <code>ROLLBACK</code> / <code>COMMIT</code>. Simplest correct design: on BEGIN push a memento (copy of the map) on a stack; ROLLBACK pops and restores; COMMIT discards the top. Cost: O(size of map) per BEGIN. Optimised design (Hard practice problem): store only the <i>changed keys' old values</i> — a delta memento.</p>` }
     ],
-    deepDive: `<p><b>Narrow vs wide interface:</b> GoF says the memento offers a <i>wide</i> interface to the originator (read all state) and a <i>narrow</i> one to everyone else (nothing, or a label/timestamp). In Java: nested class with private fields (the outer class can access them), or package-private access with originator and memento in the same package, or an opaque serialized byte array.</p>
+    deepDive: `<p><b>Narrow vs wide interface:</b> GoF says the memento offers a <i>wide</i> interface to the originator (read all state) and a <i>narrow</i> one to everyone else (nothing, or a label/timestamp). In Java: nested class with private fields (the outer class can access them), or package-private access with originator and memento in the same package. In C++: a nested class with private members and <code>friend class Originator</code>. In Python (no real privacy): a frozen dataclass with underscore-named fields. In TypeScript: an opaque token whose contents sit in a private <code>WeakMap</code> inside the originator. In any language: an opaque serialized byte array.</p>
 <p><b>Memory strategies:</b> (1) full snapshots — simple, O(state) per save; (2) <b>deltas</b> — store only what changed since the previous memento; restore by applying deltas backwards; (3) <b>copy-on-write / persistent structures</b> — unchanged parts are shared between snapshots; (4) cap the number of mementos (ring buffer) or thin them out over time (keep every save from the last minute, one per minute for the last hour…).</p>
-<p><b>Serialization & versioning:</b> mementos written to disk (save files, autosave) outlive code versions. Add a version number and a migration path; never use raw Java serialization of internal classes for long-term storage — prefer explicit formats (JSON/Protobuf).</p>
+<p><b>Serialization & versioning:</b> mementos written to disk (save files, autosave) outlive code versions. Add a version number and a migration path; never use raw language-native serialization of internal classes (Java serialization, Python <code>pickle</code>) for long-term storage — prefer explicit formats (JSON/Protobuf).</p>
 <p><b>Consistency:</b> taking a snapshot while another thread mutates the originator gives a torn state. Synchronize <code>save()</code>/<code>restore()</code> with mutators, or snapshot immutable state atomically (swap an <code>AtomicReference&lt;State&gt;</code>). Databases solve this at scale with MVCC snapshots and point-in-time recovery — the same idea.</p>
 <p><b>Restore side effects:</b> restoring fields does not undo external effects (emails sent, payments made). Memento rolls back <i>in-memory state only</i> — say this explicitly in interviews.</p>`,
     aiEra: `<p><b>What AI changes:</b> AI coding agents need checkpoints. Tools like Claude Code snapshot files before edits so you can rewind; agent frameworks persist the conversation/graph state after each step (a memento) so a run can resume or be "time-travelled" back to a previous step for debugging. Same pattern: opaque snapshots, a caretaker (checkpointer), restore on demand.</p>
@@ -2139,6 +6502,7 @@ class NaiveCheckpoints {
 }` },
       mcq: { q: 'Where should the code that copies the inventory list live?', options: ['In Player.save() — the originator decides how to snapshot itself', 'In CheckpointManager.save()', 'In the inventory item class', 'Nowhere; references are fine'], answer: 0, explain: 'Only the originator knows its internals and which parts are mutable; it builds a self-contained memento. The caretaker just stores it.' },
       hints: [`<p>Hint 1: Player creates a <code>Player.Memento</code> (nested, private fields) and has <code>restore(Memento)</code>.</p>`, `<p>Hint 2: Caretaker = <code>LinkedHashMap&lt;String, Player.Memento&gt;</code>. Re-inserting a name: remove then put so it becomes newest. Evict the first entry when size &gt; 3.</p>`, `<p>Hint 3: Copy the inventory with <code>List.copyOf</code> on save and copy again on restore (so the player cannot mutate the memento's list). <code>load</code> returns boolean for missing slots.</p>`],
+      tests: { io: true, cases: [{ stdin: '', stdout: "hp=60 at (5,2) inv=[map,key]\nhp=100 at (0,0) inv=[map]\nfalse [start, door]\n[door, c1, c2]\nhp=100 at (0,0) inv=[map]\n[c1, c2, door] false\n" }] },
       solution: {
         approach: `<p>Player is the originator: <code>createMemento()</code> returns an immutable nested <code>Memento</code> with private fields and a defensive copy of the inventory; <code>restore(m)</code> copies everything back. The caretaker <code>CheckpointManager</code> keeps a <code>LinkedHashMap</code> in insertion order to evict the oldest slot. It only ever handles <code>Player.Memento</code> as an opaque value — no access to hp or position.</p>`,
         code: `class Player {
@@ -2148,7 +6512,7 @@ class NaiveCheckpoints {
     void move(int dx, int dy) { x += dx; y += dy; }
     void damage(int d) { hp = Math.max(0, hp - d); }
     void pick(String item) { inventory.add(item); }
-    @Override public String toString() { return "hp=" + hp + " at (" + x + "," + y + ") inv=" + inventory; }
+    @Override public String toString() { return "hp=" + hp + " at (" + x + "," + y + ") inv=[" + String.join(",", inventory) + "]"; }
 
     static final class Memento {
         private final int hp, x, y; private final List<String> inventory;
@@ -2188,11 +6552,254 @@ class CheckpointManager {
         p.move(5, 2); p.pick("key"); p.damage(40);
         cm.save("door", p);
         p.damage(100);
-        cm.load("door", p);  System.out.println(p);    // hp=60 at (5,2) inv=[map, key]
+        cm.load("door", p);  System.out.println(p);    // hp=60 at (5,2) inv=[map,key]
         cm.load("start", p); System.out.println(p);    // hp=100 at (0,0) inv=[map]
         System.out.println(cm.load("boss", p) + " " + cm.list());
+        cm.save("c1", p); cm.save("c2", p);            // 4th slot evicts the oldest ("start")
+        System.out.println(cm.list());
+        p.pick("gem"); cm.load("c1", p);               // the save was a copy: no gem
+        System.out.println(p);
+        cm.save("door", p);                            // overwrite => newest
+        System.out.println(cm.list() + " " + cm.load("start", p));
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `from __future__ import annotations
+
+from dataclasses import dataclass
+
+
+class Player:
+    def __init__(self):
+        self._hp = 100
+        self._x = 0
+        self._y = 0
+        self._inventory: list[str] = []
+
+    def move(self, dx: int, dy: int) -> None:
+        self._x += dx
+        self._y += dy
+
+    def damage(self, d: int) -> None:
+        self._hp = max(0, self._hp - d)
+
+    def pick(self, item: str) -> None:
+        self._inventory.append(item)
+
+    def __str__(self) -> str:
+        return f"hp={self._hp} at ({self._x},{self._y}) inv=[{','.join(self._inventory)}]"
+
+    @dataclass(frozen=True)
+    class Memento:
+        """Opaque snapshot: frozen, and the inventory is a tuple, so nobody can change it later."""
+        _hp: int
+        _x: int
+        _y: int
+        _inventory: tuple[str, ...]
+
+    def create_memento(self) -> Player.Memento:
+        return Player.Memento(self._hp, self._x, self._y, tuple(self._inventory))
+
+    def restore(self, m: Player.Memento) -> None:
+        self._hp, self._x, self._y = m._hp, m._x, m._y
+        self._inventory = list(m._inventory)
+
+
+class CheckpointManager:
+    MAX = 3
+
+    def __init__(self):
+        self._slots: dict[str, Player.Memento] = {}  # dicts keep insertion order
+
+    def save(self, name: str, p: Player) -> None:
+        self._slots.pop(name, None)  # overwrite => becomes newest
+        self._slots[name] = p.create_memento()
+        if len(self._slots) > self.MAX:
+            del self._slots[next(iter(self._slots))]  # evict the oldest
+
+    def load(self, name: str, p: Player) -> bool:
+        m = self._slots.get(name)
+        if m is None:
+            return False
+        p.restore(m)
+        return True
+
+    def list(self) -> list[str]:
+        return [*self._slots]
+
+
+def show(names: list[str]) -> str:
+    return "[" + ", ".join(names) + "]"
+
+
+if __name__ == "__main__":
+    p = Player()
+    p.pick("map")
+    cm = CheckpointManager()
+    cm.save("start", p)
+    p.move(5, 2)
+    p.pick("key")
+    p.damage(40)
+    cm.save("door", p)
+    p.damage(100)
+    cm.load("door", p)
+    print(p)  # hp=60 at (5,2) inv=[map,key]
+    cm.load("start", p)
+    print(p)  # hp=100 at (0,0) inv=[map]
+    print(str(cm.load("boss", p)).lower(), show(cm.list()))
+    cm.save("c1", p)
+    cm.save("c2", p)  # 4th slot evicts the oldest ("start")
+    print(show(cm.list()))
+    p.pick("gem")
+    cm.load("c1", p)  # the save was a copy: no gem
+    print(p)
+    cm.save("door", p)  # overwrite => newest
+    print(show(cm.list()), str(cm.load("start", p)).lower())` },
+          { lang: 'ts', code: `// Opaque token: the manager can hold a Memento but cannot see inside it.
+declare const sealed: unique symbol;
+interface Memento { readonly [sealed]: true; }
+
+interface Snapshot { readonly hp: number; readonly x: number; readonly y: number; readonly inventory: readonly string[]; }
+
+class Player {
+  private static readonly vault = new WeakMap<Memento, Snapshot>(); // only Player can read it
+  private hp = 100;
+  private x = 0;
+  private y = 0;
+  private inventory: string[] = [];
+
+  move(dx: number, dy: number): void { this.x += dx; this.y += dy; }
+  damage(d: number): void { this.hp = Math.max(0, this.hp - d); }
+  pick(item: string): void { this.inventory.push(item); }
+  toString(): string { return \`hp=\${this.hp} at (\${this.x},\${this.y}) inv=[\${this.inventory.join(",")}]\`; }
+
+  createMemento(): Memento {
+    const m = {} as Memento;
+    Player.vault.set(m, { hp: this.hp, x: this.x, y: this.y, inventory: [...this.inventory] });
+    return m;
+  }
+
+  restore(m: Memento): void {
+    const s = Player.vault.get(m);
+    if (s === undefined) throw new Error("foreign memento");
+    this.hp = s.hp; this.x = s.x; this.y = s.y;
+    this.inventory = [...s.inventory];
+  }
+}
+
+class CheckpointManager {
+  private static readonly MAX = 3;
+  private readonly slots = new Map<string, Memento>(); // Map keeps insertion order
+
+  save(name: string, p: Player): void {
+    this.slots.delete(name); // overwrite => becomes newest
+    this.slots.set(name, p.createMemento());
+    if (this.slots.size > CheckpointManager.MAX) {
+      const oldest = this.slots.keys().next().value as string;
+      this.slots.delete(oldest);
+    }
+  }
+
+  load(name: string, p: Player): boolean {
+    const m = this.slots.get(name);
+    if (m === undefined) return false;
+    p.restore(m);
+    return true;
+  }
+
+  list(): string[] { return [...this.slots.keys()]; }
+}
+
+const show = (names: string[]): string => "[" + names.join(", ") + "]";
+
+const p = new Player(); p.pick("map");
+const cm = new CheckpointManager();
+cm.save("start", p);
+p.move(5, 2); p.pick("key"); p.damage(40);
+cm.save("door", p);
+p.damage(100);
+cm.load("door", p); console.log(String(p)); // hp=60 at (5,2) inv=[map,key]
+cm.load("start", p); console.log(String(p)); // hp=100 at (0,0) inv=[map]
+console.log(cm.load("boss", p) + " " + show(cm.list()));
+cm.save("c1", p); cm.save("c2", p); // 4th slot evicts the oldest ("start")
+console.log(show(cm.list()));
+p.pick("gem"); cm.load("c1", p); // the save was a copy: no gem
+console.log(String(p));
+cm.save("door", p); // overwrite => newest
+console.log(show(cm.list()) + " " + cm.load("start", p));` },
+          { lang: 'cpp', code: `class Player {
+public:
+    class Memento {  // opaque: only Player can read or build one
+        friend class Player;
+        Memento(int hp, int x, int y, vector<string> inv) : hp(hp), x(x), y(y), inventory(std::move(inv)) {}
+        int hp, x, y;
+        vector<string> inventory;
+    };
+
+    void move(int dx, int dy) { x += dx; y += dy; }
+    void damage(int d) { hp = max(0, hp - d); }
+    void pick(const string& item) { inventory.push_back(item); }
+    string str() const {
+        string s = "hp=" + to_string(hp) + " at (" + to_string(x) + "," + to_string(y) + ") inv=[";
+        for (size_t i = 0; i < inventory.size(); i++) s += (i ? "," : "") + inventory[i];
+        return s + "]";
+    }
+
+    Memento createMemento() const { return Memento(hp, x, y, inventory); }  // vector is copied
+    void restore(const Memento& m) { hp = m.hp; x = m.x; y = m.y; inventory = m.inventory; }
+
+private:
+    int hp = 100, x = 0, y = 0;
+    vector<string> inventory;
+};
+
+class CheckpointManager {
+public:
+    void save(const string& name, const Player& p) {
+        slots.erase(remove_if(slots.begin(), slots.end(), [&](auto& s) { return s.first == name; }), slots.end());
+        slots.emplace_back(name, p.createMemento());  // overwrite => becomes newest
+        if (slots.size() > MAX) slots.erase(slots.begin());  // evict the oldest
+    }
+    bool load(const string& name, Player& p) const {
+        for (const auto& [n, m] : slots)
+            if (n == name) { p.restore(m); return true; }
+        return false;
+    }
+    vector<string> list() const {
+        vector<string> names;
+        for (const auto& s : slots) names.push_back(s.first);
+        return names;
+    }
+private:
+    static constexpr size_t MAX = 3;
+    vector<pair<string, Player::Memento>> slots;  // oldest first
+};
+
+string show(const vector<string>& names) {
+    string s = "[";
+    for (size_t i = 0; i < names.size(); i++) s += (i ? ", " : "") + names[i];
+    return s + "]";
+}
+
+int main() {
+    Player p; p.pick("map");
+    CheckpointManager cm;
+    cm.save("start", p);
+    p.move(5, 2); p.pick("key"); p.damage(40);
+    cm.save("door", p);
+    p.damage(100);
+    cm.load("door", p); cout << p.str() << "\\n";  // hp=60 at (5,2) inv=[map,key]
+    cm.load("start", p); cout << p.str() << "\\n";  // hp=100 at (0,0) inv=[map]
+    bool found = cm.load("boss", p);
+    cout << boolalpha << found << " " << show(cm.list()) << "\\n";
+    cm.save("c1", p); cm.save("c2", p);  // 4th slot evicts the oldest ("start")
+    cout << show(cm.list()) << "\\n";
+    p.pick("gem"); cm.load("c1", p);  // the save was a copy: no gem
+    cout << p.str() << "\\n";
+    cm.save("door", p);  // overwrite => newest
+    string names = show(cm.list());
+    cout << names << " " << cm.load("start", p) << "\\n";
+}` }
+        ],
         complexity: `<p>save: O(inventory size) for the copy; load: O(inventory size); list: O(slots). Memory O(slots × state size).</p>`,
         followUps: ['Persist slots to disk across game versions — what would you add? (version field + migration)', 'The world map is 50 MB — how do you avoid copying it per save? (deltas / immutable chunks)', 'Add autosave every 5 minutes without blocking the game thread']
       }
@@ -2211,8 +6818,8 @@ ${H.table(['Role', 'Job', 'Expression example'], [
   ['<b>Concrete visitors</b>', 'One operation each', '<code>EvalVisitor</code>, <code>PrintVisitor</code>, <code>CountVisitor</code>']
 ])}
 <p><b>The naive way:</b> either (a) add a method for every operation to every class (<code>eval()</code>, <code>print()</code>, <code>toJson()</code>, <code>typeCheck()</code>…) so node classes bloat with unrelated concerns and each new operation edits every class; or (b) write <code>if (e instanceof Add) … else if (e instanceof Mul) …</code> in each operation, and when a new node type appears you silently forget one of the ten instanceof chains. ${H.c('r', 'Operations are scattered or unchecked.')}</p>
-<p><b>Why <code>accept</code>? Double dispatch.</b> Java picks an overloaded method by the <i>compile-time</i> type. Given <code>Expr e</code>, calling <code>visitor.visit(e)</code> cannot know e is an <code>Add</code>. So we bounce: <code>e.accept(v)</code> dispatches on the <b>element's runtime type</b> (first dispatch), and inside <code>Add.accept</code> the call <code>v.visitAdd(this)</code> dispatches on the <b>visitor's runtime type</b> (second dispatch). Two virtual calls = the exact (element, operation) pair.</p>
-<p><b>The trade-off (say it in interviews):</b> Visitor makes <b>adding operations easy</b> (new class) but <b>adding element types hard</b> (every visitor needs a new method). Use it when types are stable and operations grow — compilers (AST passes), document exporters, file-system tools. Modern Java 21 offers a lighter alternative: <b>sealed interfaces + pattern-matching switch</b>, where the compiler checks exhaustiveness.</p>`,
+<p><b>Why <code>accept</code>? Double dispatch.</b> Java and C++ pick an overloaded method by the <i>compile-time</i> type (Python and JavaScript have no overloading by type at all). Given <code>Expr e</code>, calling <code>visitor.visit(e)</code> cannot know e is an <code>Add</code>. So we bounce: <code>e.accept(v)</code> dispatches on the <b>element's runtime type</b> (first dispatch), and inside <code>Add.accept</code> the call <code>v.visitAdd(this)</code> dispatches on the <b>visitor's runtime type</b> (second dispatch). Two virtual calls = the exact (element, operation) pair.</p>
+<p><b>The trade-off (say it in interviews):</b> Visitor makes <b>adding operations easy</b> (new class) but <b>adding element types hard</b> (every visitor needs a new method). Use it when types are stable and operations grow — compilers (AST passes), document exporters, file-system tools. Modern languages offer a lighter alternative: <b>sealed interfaces + pattern-matching switch</b> (Java 21), <code>match</code> on dataclasses (Python), discriminated unions (TypeScript) or <code>std::variant</code> + <code>std::visit</code> (C++), where the compiler or type checker verifies exhaustiveness.</p>`,
     clues: [
       '"Perform <b>many different operations</b> over a <b>fixed hierarchy</b> of objects" (AST, shapes, file system, insurance products) → Visitor.',
       '"Add new operations <b>without modifying the element classes</b>" → Visitor by definition.',
@@ -2269,7 +6876,239 @@ class VisitorDemo {
         e.accept(c);
         System.out.println(c.counts);
     }
-}` }, { lang: 'java', title: 'Java 21 alternative: sealed types + pattern-matching switch', code: `// The compiler knows ALL subtypes of a sealed interface, so the switch must be exhaustive.
+}`, alt: [
+          { lang: 'python', code: `from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Generic, TypeVar
+
+R = TypeVar("R")
+
+
+class ExprVisitor(ABC, Generic[R]):
+    @abstractmethod
+    def visit_num(self, n: Num) -> R: ...
+
+    @abstractmethod
+    def visit_add(self, a: Add) -> R: ...
+
+    @abstractmethod
+    def visit_sub(self, s: Sub) -> R: ...
+
+    @abstractmethod
+    def visit_mul(self, m: Mul) -> R: ...
+
+
+class Expr(ABC):
+    @abstractmethod
+    def accept(self, v: ExprVisitor[R]) -> R: ...
+
+
+# Each accept() is one line: "visitor, here is me, with my exact type".
+@dataclass(frozen=True)
+class Num(Expr):
+    value: int
+
+    def accept(self, v: ExprVisitor[R]) -> R:
+        return v.visit_num(self)
+
+
+@dataclass(frozen=True)
+class Add(Expr):
+    l: Expr
+    r: Expr
+
+    def accept(self, v: ExprVisitor[R]) -> R:
+        return v.visit_add(self)
+
+
+@dataclass(frozen=True)
+class Sub(Expr):
+    l: Expr
+    r: Expr
+
+    def accept(self, v: ExprVisitor[R]) -> R:
+        return v.visit_sub(self)
+
+
+@dataclass(frozen=True)
+class Mul(Expr):
+    l: Expr
+    r: Expr
+
+    def accept(self, v: ExprVisitor[R]) -> R:
+        return v.visit_mul(self)
+
+
+# Operation 1: evaluate
+class EvalVisitor(ExprVisitor[int]):
+    def visit_num(self, n: Num) -> int:
+        return n.value
+
+    def visit_add(self, a: Add) -> int:
+        return a.l.accept(self) + a.r.accept(self)
+
+    def visit_sub(self, s: Sub) -> int:
+        return s.l.accept(self) - s.r.accept(self)
+
+    def visit_mul(self, m: Mul) -> int:
+        return m.l.accept(self) * m.r.accept(self)
+
+
+# Operation 2: pretty-print. Added later, ZERO changes to Num/Add/Sub/Mul.
+class PrintVisitor(ExprVisitor[str]):
+    def visit_num(self, n: Num) -> str:
+        return str(n.value)
+
+    def visit_add(self, a: Add) -> str:
+        return f"({a.l.accept(self)} + {a.r.accept(self)})"
+
+    def visit_sub(self, s: Sub) -> str:
+        return f"({s.l.accept(self)} - {s.r.accept(self)})"
+
+    def visit_mul(self, m: Mul) -> str:
+        return f"{m.l.accept(self)} * {m.r.accept(self)}"
+
+
+# Operation 3: count nodes by type (a visitor can also accumulate state)
+class CountVisitor(ExprVisitor[None]):
+    def __init__(self):
+        self.counts: dict[str, int] = {}
+
+    def _bump(self, k: str) -> None:
+        self.counts[k] = self.counts.get(k, 0) + 1
+
+    def visit_num(self, n: Num) -> None:
+        self._bump("Num")
+
+    def visit_add(self, a: Add) -> None:
+        a.l.accept(self); a.r.accept(self); self._bump("Add")
+
+    def visit_sub(self, s: Sub) -> None:
+        s.l.accept(self); s.r.accept(self); self._bump("Sub")
+
+    def visit_mul(self, m: Mul) -> None:
+        m.l.accept(self); m.r.accept(self); self._bump("Mul")
+
+
+if __name__ == "__main__":
+    e = Mul(Add(Num(2), Num(3)), Sub(Num(7), Num(4)))  # (2+3)*(7-4)
+    print(f"{e.accept(PrintVisitor())} = {e.accept(EvalVisitor())}")
+    c = CountVisitor()
+    e.accept(c)
+    print("{" + ", ".join(f"{k}={c.counts[k]}" for k in sorted(c.counts)) + "}")` },
+          { lang: 'ts', code: `interface ExprVisitor<R> {
+  visitNum(n: Num): R;
+  visitAdd(a: Add): R;
+  visitSub(s: Sub): R;
+  visitMul(m: Mul): R;
+}
+
+interface Expr { accept<R>(v: ExprVisitor<R>): R; }
+
+// Each accept() is one line: "visitor, here is me, with my exact type".
+class Num implements Expr {
+  constructor(readonly value: number) {}
+  accept<R>(v: ExprVisitor<R>): R { return v.visitNum(this); }
+}
+class Add implements Expr {
+  constructor(readonly l: Expr, readonly r: Expr) {}
+  accept<R>(v: ExprVisitor<R>): R { return v.visitAdd(this); }
+}
+class Sub implements Expr {
+  constructor(readonly l: Expr, readonly r: Expr) {}
+  accept<R>(v: ExprVisitor<R>): R { return v.visitSub(this); }
+}
+class Mul implements Expr {
+  constructor(readonly l: Expr, readonly r: Expr) {}
+  accept<R>(v: ExprVisitor<R>): R { return v.visitMul(this); }
+}
+
+// Operation 1: evaluate
+class EvalVisitor implements ExprVisitor<number> {
+  visitNum(n: Num): number { return n.value; }
+  visitAdd(a: Add): number { return a.l.accept(this) + a.r.accept(this); }
+  visitSub(s: Sub): number { return s.l.accept(this) - s.r.accept(this); }
+  visitMul(m: Mul): number { return m.l.accept(this) * m.r.accept(this); }
+}
+
+// Operation 2: pretty-print. Added later, ZERO changes to Num/Add/Sub/Mul.
+class PrintVisitor implements ExprVisitor<string> {
+  visitNum(n: Num): string { return String(n.value); }
+  visitAdd(a: Add): string { return \`(\${a.l.accept(this)} + \${a.r.accept(this)})\`; }
+  visitSub(s: Sub): string { return \`(\${s.l.accept(this)} - \${s.r.accept(this)})\`; }
+  visitMul(m: Mul): string { return \`\${m.l.accept(this)} * \${m.r.accept(this)}\`; }
+}
+
+// Operation 3: count nodes by type (a visitor can also accumulate state)
+class CountVisitor implements ExprVisitor<void> {
+  readonly counts = new Map<string, number>();
+  private bump(k: string): void { this.counts.set(k, (this.counts.get(k) ?? 0) + 1); }
+  visitNum(_n: Num): void { this.bump("Num"); }
+  visitAdd(a: Add): void { a.l.accept(this); a.r.accept(this); this.bump("Add"); }
+  visitSub(s: Sub): void { s.l.accept(this); s.r.accept(this); this.bump("Sub"); }
+  visitMul(m: Mul): void { m.l.accept(this); m.r.accept(this); this.bump("Mul"); }
+}
+
+const e: Expr = new Mul(new Add(new Num(2), new Num(3)), new Sub(new Num(7), new Num(4))); // (2+3)*(7-4)
+console.log(\`\${e.accept(new PrintVisitor())} = \${e.accept(new EvalVisitor())}\`);
+const c = new CountVisitor();
+e.accept(c);
+console.log("{" + [...c.counts].sort(([a], [b]) => (a < b ? -1 : 1)).map(([k, v]) => \`\${k}=\${v}\`).join(", ") + "}");` },
+          { lang: 'cpp', code: `// The closed set of node types is a std::variant, and std::visit is the visitor:
+// the compiler rejects a visitor that forgets a node type, and there is no accept() boilerplate.
+struct Expr;
+using ExprPtr = unique_ptr<Expr>;
+
+struct Num { int value; };
+struct Add { ExprPtr l, r; };
+struct Sub { ExprPtr l, r; };
+struct Mul { ExprPtr l, r; };
+struct Expr { variant<Num, Add, Sub, Mul> node; };
+
+template <class T, class... Args>
+ExprPtr make(Args&&... args) { return make_unique<Expr>(Expr{T{std::forward<Args>(args)...}}); }
+
+// Operation 1: evaluate
+struct EvalVisitor {
+    int operator()(const Num& n) const { return n.value; }
+    int operator()(const Add& a) const { return eval(*a.l) + eval(*a.r); }
+    int operator()(const Sub& s) const { return eval(*s.l) - eval(*s.r); }
+    int operator()(const Mul& m) const { return eval(*m.l) * eval(*m.r); }
+    int eval(const Expr& e) const { return visit(*this, e.node); }
+};
+
+// Operation 2: pretty-print. Added later, ZERO changes to Num/Add/Sub/Mul.
+struct PrintVisitor {
+    string operator()(const Num& n) const { return to_string(n.value); }
+    string operator()(const Add& a) const { return "(" + print(*a.l) + " + " + print(*a.r) + ")"; }
+    string operator()(const Sub& s) const { return "(" + print(*s.l) + " - " + print(*s.r) + ")"; }
+    string operator()(const Mul& m) const { return print(*m.l) + " * " + print(*m.r); }
+    string print(const Expr& e) const { return visit(*this, e.node); }
+};
+
+// Operation 3: count nodes by type (a visitor can also accumulate state)
+struct CountVisitor {
+    map<string, int> counts;  // ordered, so the output is sorted by name
+    void operator()(const Num&) { counts["Num"]++; }
+    void operator()(const Add& a) { walk(*a.l); walk(*a.r); counts["Add"]++; }
+    void operator()(const Sub& s) { walk(*s.l); walk(*s.r); counts["Sub"]++; }
+    void operator()(const Mul& m) { walk(*m.l); walk(*m.r); counts["Mul"]++; }
+    void walk(const Expr& e) { visit(*this, e.node); }
+};
+
+int main() {
+    ExprPtr e = make<Mul>(make<Add>(make<Num>(2), make<Num>(3)),
+                          make<Sub>(make<Num>(7), make<Num>(4)));  // (2+3)*(7-4)
+    cout << PrintVisitor().print(*e) << " = " << EvalVisitor().eval(*e) << "\\n";
+    CountVisitor c;
+    c.walk(*e);
+    string out = "{";
+    for (auto it = c.counts.begin(); it != c.counts.end(); ++it) out += (it == c.counts.begin() ? "" : ", ") + it->first + "=" + to_string(it->second);
+    cout << out << "}\\n";
+}` }
+        ] }, { lang: 'java', title: 'Java 21 alternative: sealed types + pattern-matching switch', code: `// The compiler knows ALL subtypes of a sealed interface, so the switch must be exhaustive.
 sealed interface Shape permits Circle, Rect, Triangle {}
 record Circle(double r) implements Shape {}
 record Rect(double w, double h) implements Shape {}
@@ -2286,16 +7125,130 @@ class ShapeOps {
     }
     static String svg(Shape s) {
         return switch (s) {
-            case Circle c   -> "<circle r='" + c.r() + "'/>";
-            case Rect r     -> "<rect width='" + r.w() + "' height='" + r.h() + "'/>";
-            case Triangle t -> "<polygon base='" + t.b() + "'/>";
+            case Circle c   -> String.format("<circle r='%.1f'/>", c.r());
+            case Rect r     -> String.format("<rect width='%.1f' height='%.1f'/>", r.w(), r.h());
+            case Triangle t -> String.format("<polygon base='%.1f'/>", t.b());
         };
     }
     public static void main(String[] args) {
         List<Shape> shapes = List.of(new Circle(1), new Rect(2, 3), new Triangle(4, 5));
         for (Shape s : shapes) System.out.printf("%.2f %s%n", area(s), svg(s));
     }
-}` }],
+}`, alt: [
+          { lang: 'python', code: `import math
+from dataclasses import dataclass
+
+
+# The type checker knows ALL members of this union, so an exhaustive match is checkable.
+@dataclass(frozen=True)
+class Circle:
+    r: float
+
+
+@dataclass(frozen=True)
+class Rect:
+    w: float
+    h: float
+
+
+@dataclass(frozen=True)
+class Triangle:
+    b: float
+    h: float
+
+
+Shape = Circle | Rect | Triangle
+
+
+# Each "visitor" is just a function with a match. No accept() boilerplate.
+def area(s: Shape) -> float:
+    match s:
+        case Circle(r):
+            return math.pi * r * r
+        case Rect(w, h):
+            return w * h
+        case Triangle(b, h):
+            return 0.5 * b * h  # add a new Shape and mypy/pyright flag the missing case
+
+
+def svg(s: Shape) -> str:
+    match s:
+        case Circle(r):
+            return f"<circle r='{r:.1f}'/>"
+        case Rect(w, h):
+            return f"<rect width='{w:.1f}' height='{h:.1f}'/>"
+        case Triangle(b):
+            return f"<polygon base='{b:.1f}'/>"
+
+
+if __name__ == "__main__":
+    shapes: list[Shape] = [Circle(1), Rect(2, 3), Triangle(4, 5)]
+    for s in shapes:
+        print(f"{area(s):.2f} {svg(s)}")` },
+          { lang: 'ts', code: `// A discriminated union: the compiler knows ALL variants, so the switch must be exhaustive.
+type Shape =
+  | { kind: "circle"; r: number }
+  | { kind: "rect"; w: number; h: number }
+  | { kind: "triangle"; b: number; h: number };
+
+// Each "visitor" is just a function with a switch. No accept() boilerplate.
+function area(s: Shape): number {
+  switch (s.kind) {
+    case "circle": return Math.PI * s.r * s.r;
+    case "rect": return s.w * s.h;
+    case "triangle": return 0.5 * s.b * s.h;
+    default: { const unreachable: never = s; return unreachable; } // a new Shape stops compiling here: safe!
+  }
+}
+
+function svg(s: Shape): string {
+  switch (s.kind) {
+    case "circle": return \`<circle r='\${s.r.toFixed(1)}'/>\`;
+    case "rect": return \`<rect width='\${s.w.toFixed(1)}' height='\${s.h.toFixed(1)}'/>\`;
+    case "triangle": return \`<polygon base='\${s.b.toFixed(1)}'/>\`;
+    default: { const unreachable: never = s; return unreachable; }
+  }
+}
+
+const shapes: Shape[] = [{ kind: "circle", r: 1 }, { kind: "rect", w: 2, h: 3 }, { kind: "triangle", b: 4, h: 5 }];
+for (const s of shapes) console.log(\`\${area(s).toFixed(2)} \${svg(s)}\`);` },
+          { lang: 'cpp', code: `// std::variant is the closed set of shapes; std::visit with a lambda per case is the exhaustive switch.
+struct Circle { double r; };
+struct Rect { double w, h; };
+struct Triangle { double b, h; };
+using Shape = variant<Circle, Rect, Triangle>;
+
+template <class... Fs> struct Overloaded : Fs... { using Fs::operator()...; };
+
+// Each "visitor" is just a function with a visit. No accept() boilerplate.
+double area(const Shape& s) {
+    return visit(Overloaded{
+        [](const Circle& c) { return numbers::pi * c.r * c.r; },
+        [](const Rect& r) { return r.w * r.h; },
+        [](const Triangle& t) { return 0.5 * t.b * t.h; },  // drop a case and this stops compiling: safe!
+    }, s);
+}
+
+string fixed1(double v) {
+    ostringstream os;
+    os << fixed << setprecision(1) << v;
+    return os.str();
+}
+
+string svg(const Shape& s) {
+    return visit(Overloaded{
+        [](const Circle& c) { return "<circle r='" + fixed1(c.r) + "'/>"; },
+        [](const Rect& r) { return "<rect width='" + fixed1(r.w) + "' height='" + fixed1(r.h) + "'/>"; },
+        [](const Triangle& t) { return "<polygon base='" + fixed1(t.b) + "'/>"; },
+    }, s);
+}
+
+int main() {
+    vector<Shape> shapes = {Circle{1}, Rect{2, 3}, Triangle{4, 5}};
+    cout << fixed << setprecision(2);
+    for (const Shape& s : shapes) cout << area(s) << " " << svg(s) << "\\n";
+}` }
+        ] }],
     codeTitle: ['Classic Visitor', 'Sealed + switch (modern alternative)'],
     viz: {
       title: 'Visitor: double dispatch walking (2+3)*(7-4)',
@@ -2345,7 +7298,7 @@ class ShapeOps {
     },
     examples: [
       { title: 'Compilers and linters', html: `<p><code>javac</code>'s annotation processing API (<code>ElementVisitor</code>, <code>TypeVisitor</code>), ANTLR-generated parse-tree visitors and Java's <code>FileVisitor</code> all use this pattern. A compiler has a fixed set of AST node types and many passes: name resolution, type checking, constant folding, code generation — each pass is a visitor.</p>` },
-      { title: 'Files.walkFileTree — a JDK visitor', html: `<p>The JDK walks a directory tree and calls your <code>FileVisitor</code> at each event: <code>preVisitDirectory</code>, <code>visitFile</code>, <code>visitFileFailed</code>, <code>postVisitDirectory</code>. Counting files, deleting a tree or copying it are different visitors over the same walk.</p>`, code: `import java.nio.file.*;
+      { title: 'Files.walkFileTree — a JDK visitor', html: `<p>The JDK walks a directory tree and calls your <code>FileVisitor</code> at each event: <code>preVisitDirectory</code>, <code>visitFile</code>, <code>visitFileFailed</code>, <code>postVisitDirectory</code>. Counting files, deleting a tree or copying it are different visitors over the same walk.</p>`, code: { lang: 'java', code: `import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 Path dir = Files.createTempDirectory("demo");
 Files.writeString(dir.resolve("a.txt"), "hello");
@@ -2357,16 +7310,53 @@ Files.walkFileTree(dir, new SimpleFileVisitor<Path>() {
         return FileVisitResult.CONTINUE;
     }
 });
-System.out.println("bytes = " + total[0]);   // 11` },
+System.out.println("bytes = " + total[0]);   // 11`, alt: [
+          { lang: 'python', code: `import os
+import tempfile
+
+with tempfile.TemporaryDirectory() as folder:
+    with open(os.path.join(folder, "a.txt"), "w") as f:
+        f.write("hello")
+    with open(os.path.join(folder, "b.log"), "w") as f:
+        f.write("world!")
+    total = 0
+    for root, _dirs, files in os.walk(folder):  # os.walk is the library's tree walker
+        for name in files:
+            total += os.path.getsize(os.path.join(root, name))
+    print("bytes =", total)  # 11` },
+          { lang: 'ts', code: `import { mkdtempSync, writeFileSync, readdirSync, statSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const dir = mkdtempSync(join(tmpdir(), "demo-"));
+writeFileSync(join(dir, "a.txt"), "hello");
+writeFileSync(join(dir, "b.log"), "world!");
+let total = 0;
+for (const name of readdirSync(dir, { recursive: true }) as string[]) { // the library walks the tree for us
+  total += statSync(join(dir, name)).size;
+}
+console.log("bytes =", total); // 11
+rmSync(dir, { recursive: true });` },
+          { lang: 'cpp', code: `namespace fs = filesystem;
+fs::path dir = fs::temp_directory_path() / "demo_tree";
+fs::create_directories(dir);
+ofstream(dir / "a.txt") << "hello";
+ofstream(dir / "b.log") << "world!";
+uintmax_t total = 0;
+for (const auto& entry : fs::recursive_directory_iterator(dir))  // the library walks the tree for us
+    if (entry.is_regular_file()) total += entry.file_size();
+cout << "bytes = " << total << "\\n";  // 11
+fs::remove_all(dir);` }
+        ] } },
       { title: 'Insurance / tax over product types', html: `<p>A cart contains <code>Book</code>, <code>Electronics</code> and <code>Food</code>. Finance asks for tax, logistics for shipping weight, marketing for loyalty points — three visitors. Each visitor keeps its rules together (all tax rules in <code>TaxVisitor</code>) instead of spreading <code>tax()</code>, <code>shippingWeight()</code>, <code>points()</code> across every product class.</p>` },
-      { title: 'Choosing: polymorphism vs Visitor vs sealed switch', html: `<p><b>Methods on elements</b> (plain polymorphism): best when <i>types</i> are added often and operations are few and core to the type. <b>Visitor</b>: best when types are stable and operations are many and owned by different teams. <b>Sealed + switch</b> (Java 21): same benefits as Visitor with far less code and compiler-checked exhaustiveness, but the operation logic sits in functions rather than objects (harder to pass around state or swap at runtime). This is the "expression problem" — no option makes both directions free.</p>` }
+      { title: 'Choosing: polymorphism vs Visitor vs sealed switch', html: `<p><b>Methods on elements</b> (plain polymorphism): best when <i>types</i> are added often and operations are few and core to the type. <b>Visitor</b>: best when types are stable and operations are many and owned by different teams. <b>Sealed type + switch</b> (Java 21 sealed interfaces, TypeScript unions, C++ <code>std::variant</code>, Python <code>match</code>): same benefits as Visitor with far less code and compiler-checked exhaustiveness, but the operation logic sits in functions rather than objects (harder to pass around state or swap at runtime). This is the "expression problem" — no option makes both directions free.</p>` }
     ],
-    deepDive: `<p><b>Double dispatch explained precisely:</b> Java does <i>single dispatch</i> on the receiver's runtime type and <i>static</i> overload resolution on argument types. <code>visitor.visit(expr)</code> with overloads <code>visit(Add)</code>/<code>visit(Mul)</code> would fail to compile (or pick <code>visit(Expr)</code>) because <code>expr</code> is statically <code>Expr</code>. <code>accept</code> converts the element's runtime type into a static type inside its own class (<code>this</code> is <code>Add</code> there), so the right overload is chosen at compile time in each <code>accept</code>.</p>
+    deepDive: `<p><b>Double dispatch explained precisely:</b> Java and C++ do <i>single dispatch</i> on the receiver's runtime type and <i>static</i> overload resolution on argument types. <code>visitor.visit(expr)</code> with overloads <code>visit(Add)</code>/<code>visit(Mul)</code> would fail to compile (or pick <code>visit(Expr)</code>) because <code>expr</code> is statically <code>Expr</code>. <code>accept</code> converts the element's runtime type into a static type inside its own class (<code>this</code> is <code>Add</code> there), so the right overload is chosen at compile time in each <code>accept</code>.</p>
 <p><b>Who traverses?</b> Options: the visitor (as in EvalVisitor recursing into children — flexible, e.g. short-circuiting), the elements' <code>accept</code> (always visits children — uniform, but less control), or an external iterator. Pick one and be consistent, or you visit nodes twice.</p>
 <p><b>Encapsulation cost:</b> visitors need access to element data, so elements often expose getters they would otherwise hide. Records make this explicit and acceptable for data-centric trees.</p>
 <p><b>Acyclic / default visitors:</b> to soften "new type breaks all visitors", provide an abstract base visitor with default implementations (e.g. <code>visitDiv</code> falls back to <code>visitDefault</code>) — but then the compiler no longer forces you to handle new types. Sealed + exhaustive switch keeps the safety; with <code>default</code> branches you lose it again.</p>
 <p><b>Generic return types</b> (<code>ExprVisitor&lt;R&gt;</code>) avoid mutable accumulator fields and make visitors reusable and thread-safe; use <code>Void</code> visitors for side-effect passes. <b>Performance:</b> two virtual calls per node — negligible; deep trees may need an explicit stack instead of recursion.</p>`,
-    aiEra: `<p><b>What AI changes:</b> AI is great at generating the boilerplate that made Visitor painful (one <code>accept</code> per class, one <code>visitX</code> per type) — but in Java 21 you should often ask it for the <b>sealed interface + switch</b> version instead, which is shorter and compiler-checked. AI tools that transform code (codemods, refactoring agents) themselves walk ASTs with visitors (e.g. JavaParser, OpenRewrite recipes) — knowing the pattern helps you review those recipes.</p>
+    aiEra: `<p><b>What AI changes:</b> AI is great at generating the boilerplate that made Visitor painful (one <code>accept</code> per class, one <code>visitX</code> per type) — but in modern Java, Python, TypeScript and C++ you should often ask it for the <b>sealed type / union + switch</b> version instead, which is shorter and compiler-checked. AI tools that transform code (codemods, refactoring agents) themselves walk ASTs with visitors (e.g. JavaParser, OpenRewrite recipes) — knowing the pattern helps you review those recipes.</p>
 <p><b>Where AI goes wrong:</b> it writes <code>instanceof</code> ladders with a silent <code>else</code>, uses overloads expecting runtime dispatch (the classic double-dispatch misunderstanding), or adds a <code>default</code> branch that hides unhandled new types. <b>What you own:</b> deciding which axis (types or operations) will change, and choosing polymorphism, Visitor or sealed switch accordingly.</p>`,
     problems: [{
       title: 'File System Analyzer (size, search, tree print)', level: 'Hard', tags: ['visitor', 'composite'], companies: ['Dropbox', 'Google', 'Box'],
@@ -2388,8 +7378,9 @@ System.out.println("bytes = " + total[0]);   // 11` },
 }` },
       mcq: { q: 'Next quarter a new node type SymlinkNode is added. What is the cost with the Visitor design?', options: ['Add visitSymlink to the visitor interface; every existing visitor must implement it (the compiler lists them)', 'Nothing changes', 'Only the SymlinkNode class is added', 'All file and dir classes must change'], answer: 0, explain: 'Visitor makes new operations cheap and new element types expensive — but the compiler points to every visitor that must be updated, unlike instanceof chains that fail silently.' },
       hints: [`<p>Hint 1: Nodes are stable, operations grow → Visitor. Nodes get <code>accept(FsVisitor v)</code>; the visitor has <code>visitFile</code> and <code>visitDir</code>.</p>`, `<p>Hint 2: Let the visitor control traversal in <code>visitDir</code> (loop over children calling <code>child.accept(this)</code>), so each visitor can track depth or path, or stop early.</p>`, `<p>Hint 3: Track the current path with a <code>Deque&lt;String&gt;</code> (push on enter dir, pop on exit). Size visitor accumulates a long; find visitor collects paths; print visitor uses depth for indentation.</p>`],
+      tests: { io: true, cases: [{ stdin: '', stdout: "175 [root/a.txt, root/docs/c.txt]\nroot/\n  a.txt (100)\n  docs/\n    b.md (50)\n    c.txt (25)\n  empty/\n0 [] [solo.txt]\n" }] },
       solution: {
-        approach: `<p>Node classes (<code>FileNode</code>, <code>DirNode</code>) implement <code>FsNode.accept(FsVisitor)</code>. Each operation is a visitor: <code>SizeVisitor</code> sums file sizes; <code>FindVisitor</code> tracks the current path with a deque and collects matches; <code>TreePrinter</code> tracks depth. Visitors drive traversal in <code>visitDir</code>, so they share no traversal bugs with each other and can add path/depth tracking. Adding "largest file" is one more ~10-line class; node classes are untouched.</p>`,
+        approach: `<p>Node classes (<code>FileNode</code>, <code>DirNode</code>) implement <code>FsNode.accept(FsVisitor)</code>. Each operation is a visitor: <code>SizeVisitor</code> sums file sizes; <code>FindVisitor</code> tracks the current path with a stack and collects matches (a file at the root is reported by its bare name); <code>TreePrinter</code> tracks depth. Visitors drive traversal in <code>visitDir</code>, so they share no traversal bugs with each other and can add path/depth tracking. Adding "largest file" is one more ~10-line class; node classes are untouched.</p>`,
         code: `interface FsVisitor { void visitFile(FileNode f); void visitDir(DirNode d); }
 interface FsNode { String name(); void accept(FsVisitor v); }
 
@@ -2411,7 +7402,7 @@ class FindVisitor implements FsVisitor {
     final List<String> found = new ArrayList<>();
     FindVisitor(String ext) { this.ext = ext; }
     public void visitFile(FileNode f) {
-        if (f.name().endsWith(ext)) found.add(String.join("/", path) + "/" + f.name());
+        if (f.name().endsWith(ext)) found.add(path.isEmpty() ? f.name() : String.join("/", path) + "/" + f.name());
     }
     public void visitDir(DirNode d) {
         path.addLast(d.name());
@@ -2442,8 +7433,301 @@ class FsDemo {
         TreePrinter tp = new TreePrinter(); root.accept(tp);
         System.out.println(size.total + " " + find.found);
         System.out.print(tp.out);
+        FsNode empty = new DirNode("void", List.of()), solo = new FileNode("solo.txt", 7);
+        SizeVisitor s2 = new SizeVisitor(); empty.accept(s2);
+        FindVisitor f2 = new FindVisitor(".txt"); empty.accept(f2);
+        FindVisitor f3 = new FindVisitor(".txt"); solo.accept(f3);
+        System.out.println(s2.total + " " + f2.found + " " + f3.found);
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+
+
+class FsVisitor(ABC):
+    @abstractmethod
+    def visit_file(self, f: FileNode) -> None: ...
+
+    @abstractmethod
+    def visit_dir(self, d: DirNode) -> None: ...
+
+
+class FsNode(ABC):
+    name: str
+
+    @abstractmethod
+    def accept(self, v: FsVisitor) -> None: ...
+
+
+@dataclass(frozen=True)
+class FileNode(FsNode):
+    name: str
+    size: int
+
+    def accept(self, v: FsVisitor) -> None:  # double dispatch: the node picks the visitor method
+        v.visit_file(self)
+
+
+@dataclass(frozen=True)
+class DirNode(FsNode):
+    name: str
+    children: tuple[FsNode, ...] = ()
+
+    def accept(self, v: FsVisitor) -> None:
+        v.visit_dir(self)
+
+
+class SizeVisitor(FsVisitor):
+    def __init__(self):
+        self.total = 0
+
+    def visit_file(self, f: FileNode) -> None:
+        self.total += f.size
+
+    def visit_dir(self, d: DirNode) -> None:
+        for c in d.children:
+            c.accept(self)
+
+
+class FindVisitor(FsVisitor):
+    def __init__(self, ext: str):
+        self._ext = ext
+        self._path: list[str] = []
+        self.found: list[str] = []
+
+    def visit_file(self, f: FileNode) -> None:
+        if f.name.endswith(self._ext):
+            self.found.append("/".join([*self._path, f.name]))
+
+    def visit_dir(self, d: DirNode) -> None:
+        self._path.append(d.name)
+        for c in d.children:
+            c.accept(self)
+        self._path.pop()
+
+
+class TreePrinter(FsVisitor):
+    def __init__(self):
+        self._depth = 0
+        self.lines: list[str] = []
+
+    def visit_file(self, f: FileNode) -> None:
+        self.lines.append("  " * self._depth + f"{f.name} ({f.size})")
+
+    def visit_dir(self, d: DirNode) -> None:
+        self.lines.append("  " * self._depth + d.name + "/")
+        self._depth += 1
+        for c in d.children:
+            c.accept(self)
+        self._depth -= 1
+
+
+def show(names: list[str]) -> str:
+    return "[" + ", ".join(names) + "]"
+
+
+if __name__ == "__main__":
+    root = DirNode("root", (
+        FileNode("a.txt", 100),
+        DirNode("docs", (FileNode("b.md", 50), FileNode("c.txt", 25))),
+        DirNode("empty"),
+    ))
+    size = SizeVisitor()
+    root.accept(size)
+    find = FindVisitor(".txt")
+    root.accept(find)
+    tp = TreePrinter()
+    root.accept(tp)
+    print(size.total, show(find.found))
+    print("\\n".join(tp.lines))
+    empty, solo = DirNode("void"), FileNode("solo.txt", 7)
+    s2, f2, f3 = SizeVisitor(), FindVisitor(".txt"), FindVisitor(".txt")
+    empty.accept(s2)
+    empty.accept(f2)
+    solo.accept(f3)
+    print(s2.total, show(f2.found), show(f3.found))` },
+          { lang: 'ts', code: `interface FsVisitor {
+  visitFile(f: FileNode): void;
+  visitDir(d: DirNode): void;
+}
+
+interface FsNode {
+  readonly name: string;
+  accept(v: FsVisitor): void;
+}
+
+class FileNode implements FsNode {
+  constructor(readonly name: string, readonly size: number) {}
+  accept(v: FsVisitor): void { v.visitFile(this); } // double dispatch: the node picks the visitor method
+}
+
+class DirNode implements FsNode {
+  constructor(readonly name: string, readonly children: readonly FsNode[] = []) {}
+  accept(v: FsVisitor): void { v.visitDir(this); }
+}
+
+class SizeVisitor implements FsVisitor {
+  total = 0;
+  visitFile(f: FileNode): void { this.total += f.size; }
+  visitDir(d: DirNode): void { for (const c of d.children) c.accept(this); }
+}
+
+class FindVisitor implements FsVisitor {
+  private readonly path: string[] = [];
+  readonly found: string[] = [];
+  constructor(private readonly ext: string) {}
+  visitFile(f: FileNode): void {
+    if (f.name.endsWith(this.ext)) this.found.push([...this.path, f.name].join("/"));
+  }
+  visitDir(d: DirNode): void {
+    this.path.push(d.name);
+    for (const c of d.children) c.accept(this);
+    this.path.pop();
+  }
+}
+
+class TreePrinter implements FsVisitor {
+  private depth = 0;
+  readonly lines: string[] = [];
+  visitFile(f: FileNode): void { this.lines.push("  ".repeat(this.depth) + \`\${f.name} (\${f.size})\`); }
+  visitDir(d: DirNode): void {
+    this.lines.push("  ".repeat(this.depth) + d.name + "/");
+    this.depth++;
+    for (const c of d.children) c.accept(this);
+    this.depth--;
+  }
+}
+
+const show = (names: string[]): string => "[" + names.join(", ") + "]";
+
+const root = new DirNode("root", [
+  new FileNode("a.txt", 100),
+  new DirNode("docs", [new FileNode("b.md", 50), new FileNode("c.txt", 25)]),
+  new DirNode("empty"),
+]);
+const size = new SizeVisitor(); root.accept(size);
+const find = new FindVisitor(".txt"); root.accept(find);
+const tp = new TreePrinter(); root.accept(tp);
+console.log(size.total + " " + show(find.found));
+console.log(tp.lines.join("\\n"));
+const empty = new DirNode("void"), solo = new FileNode("solo.txt", 7);
+const s2 = new SizeVisitor(), f2 = new FindVisitor(".txt"), f3 = new FindVisitor(".txt");
+empty.accept(s2); empty.accept(f2); solo.accept(f3);
+console.log(\`\${s2.total} \${show(f2.found)} \${show(f3.found)}\`);` },
+          { lang: 'cpp', code: `class FileNode;
+class DirNode;
+
+class FsVisitor {
+public:
+    virtual ~FsVisitor() = default;
+    virtual void visitFile(const FileNode& f) = 0;
+    virtual void visitDir(const DirNode& d) = 0;
+};
+
+class FsNode {
+public:
+    virtual ~FsNode() = default;
+    virtual void accept(FsVisitor& v) const = 0;
+};
+
+class FileNode : public FsNode {
+public:
+    FileNode(string name, long long size) : name_(std::move(name)), size_(size) {}
+    const string& name() const { return name_; }
+    long long size() const { return size_; }
+    void accept(FsVisitor& v) const override { v.visitFile(*this); }  // double dispatch
+private:
+    string name_;
+    long long size_;
+};
+
+class DirNode : public FsNode {
+public:
+    DirNode(string name, vector<unique_ptr<FsNode>> children = {})
+        : name_(std::move(name)), children_(std::move(children)) {}
+    const string& name() const { return name_; }
+    const vector<unique_ptr<FsNode>>& children() const { return children_; }
+    void accept(FsVisitor& v) const override { v.visitDir(*this); }
+private:
+    string name_;
+    vector<unique_ptr<FsNode>> children_;  // the directory owns its subtree
+};
+
+class SizeVisitor : public FsVisitor {
+public:
+    long long total = 0;
+    void visitFile(const FileNode& f) override { total += f.size(); }
+    void visitDir(const DirNode& d) override { for (const auto& c : d.children()) c->accept(*this); }
+};
+
+class FindVisitor : public FsVisitor {
+public:
+    explicit FindVisitor(string ext) : ext(std::move(ext)) {}
+    vector<string> found;
+    void visitFile(const FileNode& f) override {
+        const string& n = f.name();
+        if (n.size() >= ext.size() && n.compare(n.size() - ext.size(), ext.size(), ext) == 0) {
+            string full;
+            for (const string& part : path) full += part + "/";
+            found.push_back(full + n);
+        }
+    }
+    void visitDir(const DirNode& d) override {
+        path.push_back(d.name());
+        for (const auto& c : d.children()) c->accept(*this);
+        path.pop_back();
+    }
+private:
+    string ext;
+    vector<string> path;
+};
+
+class TreePrinter : public FsVisitor {
+public:
+    string out;
+    void visitFile(const FileNode& f) override { out += string(depth * 2, ' ') + f.name() + " (" + to_string(f.size()) + ")\\n"; }
+    void visitDir(const DirNode& d) override {
+        out += string(depth * 2, ' ') + d.name() + "/\\n";
+        depth++;
+        for (const auto& c : d.children()) c->accept(*this);
+        depth--;
+    }
+private:
+    int depth = 0;
+};
+
+template <class... Nodes>
+unique_ptr<DirNode> dir(string name, Nodes... kids) {
+    vector<unique_ptr<FsNode>> children;
+    (children.push_back(std::move(kids)), ...);
+    return make_unique<DirNode>(std::move(name), std::move(children));
+}
+
+string show(const vector<string>& names) {
+    string s = "[";
+    for (size_t i = 0; i < names.size(); i++) s += (i ? ", " : "") + names[i];
+    return s + "]";
+}
+
+int main() {
+    auto root = dir("root",
+        make_unique<FileNode>("a.txt", 100),
+        dir("docs", make_unique<FileNode>("b.md", 50), make_unique<FileNode>("c.txt", 25)),
+        dir("empty"));
+    SizeVisitor size; root->accept(size);
+    FindVisitor find(".txt"); root->accept(find);
+    TreePrinter tp; root->accept(tp);
+    cout << size.total << " " << show(find.found) << "\\n";
+    cout << tp.out;
+    auto empty = dir("void");
+    FileNode solo("solo.txt", 7);
+    SizeVisitor s2; FindVisitor f2(".txt"), f3(".txt");
+    empty->accept(s2); empty->accept(f2); solo.accept(f3);
+    cout << s2.total << " " << show(f2.found) << " " << show(f3.found) << "\\n";
+}` }
+        ],
         complexity: `<p>Each visitor is O(N) time over N nodes; extra space O(depth) for recursion/path. New operation = 1 class; node classes unchanged.</p>`,
         followUps: ['Depth can be 10<sup>5</sup> (deep nesting) — how do you avoid StackOverflowError? (explicit stack traversal)', 'Rewrite with a sealed interface + switch. What do you gain and lose?', 'Run SizeVisitor in parallel over huge directories (ForkJoin, per-subtree visitors merged)']
       }
@@ -2467,7 +7751,7 @@ class FsDemo {
     title: 'Which Pattern Fits? Choosing, Comparing and Combining',
     analogy: `<p>A <b>mechanic's toolbox</b> has ten tools. A good mechanic does not ask "how can I use the torque wrench today?" — they look at the problem (a loose bolt, a stuck nut) and the right tool picks itself. Requirements in an LLD interview contain <b>tell-tale words</b> the same way a symptom points a doctor to a diagnosis: "undo" → Command/Memento, "notify" → Observer, "status" → State.</p>`,
     explain: `<p><b>The one-page cheat sheet.</b> Every behavioral pattern answers one question about <i>who decides</i> and <i>who talks to whom</i>:</p>
-${H.table(['Pattern', 'Problem it solves', 'Tell-tale words', 'Key Java shape'], [
+${H.table(['Pattern', 'Problem it solves', 'Tell-tale words', 'Key shape'], [
   ['Strategy', 'Many ways to do one job, picked at runtime', 'pricing rules, payment methods, "pluggable"', 'context holds an interface; client sets it'],
   ['Observer', 'One change, many interested parties', 'notify, subscribe, alert, follow', 'subject keeps List&lt;Listener&gt;'],
   ['Command', 'Treat an action as data', 'undo/redo, queue, macro, log, retry', 'execute()/undo() + invoker stacks'],
@@ -2477,7 +7761,7 @@ ${H.table(['Pattern', 'Problem it solves', 'Tell-tale words', 'Key Java shape'],
   ['Iterator', 'Walk a collection without its insides', 'traverse, next, paging, cursor', 'Iterable + hasNext()/next()'],
   ['Mediator', 'Many objects coordinate', 'chat room, tower, hub, dispatcher', 'colleagues know only the mediator'],
   ['Memento', 'Save and restore state privately', 'snapshot, checkpoint, rollback', 'originator creates opaque snapshot; caretaker stores'],
-  ['Visitor', 'New operations over a fixed type set', 'export, AST, compute X for every element', 'accept(v) → v.visitX(this); or sealed + switch']
+  ['Visitor', 'New operations over a fixed type set', 'export, AST, compute X for every element', 'accept(v) → v.visitX(this); or sealed type / union + switch']
 ])}
 <p><b>Look-alike pairs</b> interviewers love to ask about:</p>
 <ul>
@@ -2545,7 +7829,206 @@ class OrderWorkflow {
         o.undo();
         System.out.println(o.status() + ", shipping quote " + o.quote(2500));
     }
-}` }],
+}`, alt: [
+          { lang: 'python', code: `import threading
+from enum import Enum, auto
+from typing import Callable, Optional
+
+
+# Strategy: how shipping cost is computed
+ShippingPolicy = Callable[[int], int]  # weight in grams -> cost
+
+# Observer: who hears about status changes
+OrderEvents = Callable[[str, str, str], None]  # (order_id, from, to)
+
+
+# State: what each action means in each status (table-driven to stay short)
+class Status(Enum):
+    NEW = auto()
+    PAID = auto()
+    SHIPPED = auto()
+    CANCELLED = auto()
+
+    def on(self, action: str) -> Optional["Status"]:
+        match self, action:
+            case Status.NEW, "pay":
+                return Status.PAID
+            case Status.NEW, "cancel":
+                return Status.CANCELLED
+            case Status.PAID, "ship":
+                return Status.SHIPPED
+            case Status.PAID, "cancel":
+                return Status.CANCELLED
+            case _:
+                return None  # SHIPPED, CANCELLED: terminal here
+
+
+class OrderWorkflow:
+    def __init__(self, order_id: str, shipping: ShippingPolicy):
+        self._id = order_id
+        self._status = Status.NEW
+        self._shipping = shipping
+        self._listeners: list[OrderEvents] = []
+        self._undo_log: list[Callable[[], None]] = []  # Command: reversible steps
+        self._lock = threading.RLock()
+
+    def subscribe(self, listener: OrderEvents) -> None:
+        self._listeners.append(listener)
+
+    def act(self, action: str) -> None:
+        with self._lock:
+            nxt = self._status.on(action)
+            if nxt is None:
+                raise RuntimeError(f"cannot {action} in {self._status.name}")
+            prev = self._status
+            self._status = nxt
+            self._undo_log.append(lambda: setattr(self, "_status", prev))  # command to revert
+            for listener in list(self._listeners):
+                listener(self._id, prev.name, nxt.name)
+
+    def undo(self) -> None:
+        with self._lock:
+            if self._undo_log:
+                self._undo_log.pop()()
+
+    def quote(self, grams: int) -> int:
+        return self._shipping(grams)
+
+    @property
+    def status(self) -> Status:
+        return self._status
+
+
+if __name__ == "__main__":
+    o = OrderWorkflow("A1", lambda g: 40 + g // 100)  # strategy as a function
+    o.subscribe(lambda id, f, t: print(f"email: {id} {f} -> {t}"))
+    o.subscribe(lambda id, f, t: print(f"analytics: {t}"))
+    o.act("pay")
+    o.act("ship")
+    try:
+        o.act("cancel")
+    except RuntimeError as e:
+        print(e)
+    o.undo()
+    print(f"{o.status.name}, shipping quote {o.quote(2500)}")` },
+          { lang: 'ts', code: `// Strategy: how shipping cost is computed
+type ShippingPolicy = (weightGrams: number) => number;
+
+// Observer: who hears about status changes
+type OrderEvents = (orderId: string, from: Status, to: Status) => void;
+
+// State: what each action means in each status (table-driven to stay short)
+type Status = "NEW" | "PAID" | "SHIPPED" | "CANCELLED";
+const TRANSITIONS: Record<Status, Partial<Record<string, Status>>> = {
+  NEW: { pay: "PAID", cancel: "CANCELLED" },
+  PAID: { ship: "SHIPPED", cancel: "CANCELLED" },
+  SHIPPED: {}, // terminal here
+  CANCELLED: {}, // terminal here
+};
+
+class OrderWorkflow {
+  private status: Status = "NEW";
+  private readonly listeners: OrderEvents[] = [];
+  private readonly undoLog: (() => void)[] = []; // Command: reversible steps
+
+  constructor(private readonly id: string, private readonly shipping: ShippingPolicy) {}
+
+  subscribe(l: OrderEvents): void { this.listeners.push(l); }
+
+  act(action: string): void {
+    const next = TRANSITIONS[this.status][action];
+    if (next === undefined) throw new Error(\`cannot \${action} in \${this.status}\`);
+    const prev = this.status;
+    this.status = next;
+    this.undoLog.push(() => { this.status = prev; }); // command to revert
+    for (const l of this.listeners) l(this.id, prev, next);
+  }
+
+  undo(): void { this.undoLog.pop()?.(); }
+  quote(grams: number): number { return this.shipping(grams); }
+  currentStatus(): Status { return this.status; }
+}
+
+const o = new OrderWorkflow("A1", (g) => 40 + Math.floor(g / 100)); // strategy as a function
+o.subscribe((id, f, t) => console.log(\`email: \${id} \${f} -> \${t}\`));
+o.subscribe((_id, _f, t) => console.log(\`analytics: \${t}\`));
+o.act("pay"); o.act("ship");
+try { o.act("cancel"); } catch (e) { console.log((e as Error).message); }
+o.undo();
+console.log(\`\${o.currentStatus()}, shipping quote \${o.quote(2500)}\`);` },
+          { lang: 'cpp', code: `// Strategy: how shipping cost is computed
+using ShippingPolicy = function<long long(long long weightGrams)>;
+
+// State: what each action means in each status (table-driven to stay short)
+enum class Status { NEW, PAID, SHIPPED, CANCELLED };
+
+string name(Status s) {
+    switch (s) {
+        case Status::NEW: return "NEW";
+        case Status::PAID: return "PAID";
+        case Status::SHIPPED: return "SHIPPED";
+        case Status::CANCELLED: return "CANCELLED";
+    }
+    return "?";
+}
+
+optional<Status> on(Status s, const string& action) {
+    if (s == Status::NEW && action == "pay") return Status::PAID;
+    if (s == Status::NEW && action == "cancel") return Status::CANCELLED;
+    if (s == Status::PAID && action == "ship") return Status::SHIPPED;
+    if (s == Status::PAID && action == "cancel") return Status::CANCELLED;
+    return nullopt;  // SHIPPED, CANCELLED: terminal here
+}
+
+// Observer: who hears about status changes
+using OrderEvents = function<void(const string& orderId, const string& from, const string& to)>;
+
+class OrderWorkflow {
+public:
+    OrderWorkflow(string id, ShippingPolicy shipping) : id(std::move(id)), shipping(std::move(shipping)) {}
+
+    void subscribe(OrderEvents l) { listeners.push_back(std::move(l)); }
+
+    void act(const string& action) {
+        lock_guard g(m);
+        auto next = on(status_, action);
+        if (!next) throw logic_error("cannot " + action + " in " + name(status_));
+        Status prev = status_;
+        status_ = *next;
+        undoLog.push_back([this, prev] { status_ = prev; });  // command to revert
+        for (auto& l : listeners) l(id, name(prev), name(*next));
+    }
+
+    void undo() {
+        lock_guard g(m);
+        if (undoLog.empty()) return;
+        auto step = std::move(undoLog.back());
+        undoLog.pop_back();
+        step();
+    }
+
+    long long quote(long long grams) const { return shipping(grams); }
+    Status status() const { return status_; }
+
+private:
+    string id;
+    Status status_ = Status::NEW;
+    ShippingPolicy shipping;
+    vector<OrderEvents> listeners;
+    vector<function<void()>> undoLog;  // Command: reversible steps
+    recursive_mutex m;
+};
+
+int main() {
+    OrderWorkflow o("A1", [](long long g) { return 40 + g / 100; });  // strategy as a lambda
+    o.subscribe([](const string& id, const string& f, const string& t) { cout << "email: " << id << " " << f << " -> " << t << "\\n"; });
+    o.subscribe([](const string&, const string&, const string& t) { cout << "analytics: " << t << "\\n"; });
+    o.act("pay"); o.act("ship");
+    try { o.act("cancel"); } catch (const logic_error& e) { cout << e.what() << "\\n"; }
+    o.undo();
+    cout << name(o.status()) << ", shipping quote " << o.quote(2500) << "\\n";
+}` }
+        ] }],
     codeTitle: ['Combining patterns'],
     viz: {
       title: 'Clue detector: which pattern does this requirement hint at?',
@@ -2601,7 +8084,7 @@ class OrderWorkflow {
     title: 'Sort Employees by Pluggable Criteria', level: 'Easy', tags: ['strategy', 'comparator'], companies: ['Amazon', 'Infosys', 'TCS'],
     statement: `<p>An HR screen has a dropdown "Sort by": <b>salary</b> (high → low), <b>name</b> (A → Z), <b>joined</b> (oldest first), <b>dept-then-salary</b> (dept A → Z, then salary high → low). Implement <code>EmployeeSorter.sort(List&lt;Employee&gt;, String key)</code>. More sort options will be added by other teams; they must not edit your sorting code. Unknown keys must fail with a clear message.</p>`,
     constraints: `Up to 10<sup>5</sup> employees. Sorting must be stable and O(N log N). Do not mutate the caller's list.`,
-    example: `<p>[(Asha, ENG, 90, 2019), (Ben, OPS, 70, 2017), (Cy, ENG, 95, 2021)]<br>key = "salary" → ${H.c('g', 'Cy, Asha, Ben')}; key = "dept-then-salary" → ${H.c('g', 'Cy, Asha (ENG), Ben (OPS)')}; key = "age" → ${H.c('r', 'IllegalArgumentException: unknown sort key age')}.</p>`,
+    example: `<p>[(Asha, ENG, 90, 2019), (Ben, OPS, 70, 2017), (Cy, ENG, 95, 2021)]<br>key = "salary" → ${H.c('g', 'Cy, Asha, Ben')}; key = "dept-then-salary" → ${H.c('g', 'Cy, Asha (ENG), Ben (OPS)')}; key = "age" → ${H.c('r', 'invalid-argument error: unknown sort key age')}.</p>`,
     brute: { why: `<p>A switch on the key with a hand-written bubble sort inside each case: four copies of an O(N²) loop, a new option means editing the switch, and a typo in one comparison only shows up for that option. The sorting <i>algorithm</i> and the <i>ordering rule</i> are welded together.</p>`, code: `class NaiveSorter {
     record Emp(String name, String dept, int salary, int joined) {}
     static void sort(List<Emp> a, String key) {
@@ -2617,9 +8100,10 @@ class OrderWorkflow {
             }
     }
 }` },
-    mcq: { q: 'In Collections.sort(list, comparator), which part is the Strategy?', options: ['The Comparator', 'The List', 'The sort algorithm (TimSort)', 'The Employee class'], answer: 0, explain: 'The sorting algorithm is the fixed context; the comparator is the interchangeable rule plugged into it.' },
+    mcq: { q: 'In a sort that takes a comparison rule (Collections.sort(list, comparator), sorted(list, key=...), array.sort(compareFn)), which part is the Strategy?', options: ['The Comparator', 'The List', 'The sort algorithm (TimSort)', 'The Employee class'], answer: 0, explain: 'The sorting algorithm is the fixed context; the comparator is the interchangeable rule plugged into it.' },
     hints: [`<p>Hint 1: Separate "how to sort" (library TimSort, stable, O(N log N)) from "what order" (a Comparator).</p>`, `<p>Hint 2: A <code>Map&lt;String, Comparator&lt;Employee&gt;&gt;</code> registry; other teams call <code>register(key, comparator)</code>.</p>`, `<p>Hint 3: Build comparators with <code>Comparator.comparing(...).thenComparing(...)</code> and <code>.reversed()</code>; copy the list before sorting; throw on unknown keys.</p>`],
-    solution: {
+    tests: { io: true, cases: [{ stdin: '', stdout: "dept-then-salary: Cy Asha Ben\njoined: Ben Asha Cy\nname-desc: Cy Ben Asha\nsalary tie: Asha Dee\ninput untouched: Asha Ben Cy\nerror: unknown sort key age\n" }] },
+      solution: {
       approach: `<p>The sort algorithm is fixed (List.sort, stable TimSort). Each ordering rule is a <code>Comparator</code> strategy stored in a registry keyed by the dropdown value. New options are added by registering, not by editing. Composite orders use <code>thenComparing</code>. The input list is copied so callers are not surprised.</p>`,
       code: `record Employee(String name, String dept, int salary, LocalDate joined) {}
 
@@ -2644,17 +8128,186 @@ class EmployeeSorter {
         return copy;
     }
 
+    static String names(List<Employee> list) {
+        return list.stream().map(Employee::name).collect(Collectors.joining(" "));
+    }
+
     public static void main(String[] args) {
         List<Employee> es = List.of(new Employee("Asha", "ENG", 90, LocalDate.of(2019, 1, 1)),
                 new Employee("Ben", "OPS", 70, LocalDate.of(2017, 5, 1)),
                 new Employee("Cy", "ENG", 95, LocalDate.of(2021, 3, 1)));
         EmployeeSorter s = new EmployeeSorter();
-        s.sort(es, "dept-then-salary").forEach(e -> System.out.print(e.name() + " "));
-        System.out.println();
+        System.out.println("dept-then-salary: " + names(s.sort(es, "dept-then-salary")));
+        System.out.println("joined: " + names(s.sort(es, "joined")));
         s.register("name-desc", Comparator.comparing(Employee::name).reversed());   // added by another team
-        s.sort(es, "name-desc").forEach(e -> System.out.print(e.name() + " "));
+        System.out.println("name-desc: " + names(s.sort(es, "name-desc")));
+        List<Employee> tied = List.of(es.get(0), new Employee("Dee", "OPS", 90, LocalDate.of(2020, 2, 2)));
+        System.out.println("salary tie: " + names(s.sort(tied, "salary")));          // stable: input order kept
+        System.out.println("input untouched: " + names(es));
+        try { s.sort(es, "age"); }
+        catch (IllegalArgumentException e) { System.out.println("error: " + e.getMessage()); }
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `from dataclasses import dataclass
+from datetime import date
+from typing import Any, Callable
+
+
+@dataclass(frozen=True)
+class Employee:
+    name: str
+    dept: str
+    salary: int
+    joined: date
+
+
+@dataclass(frozen=True)
+class SortRule:
+    """A strategy: how to build the sort key, and whether to reverse."""
+    key: Callable[[Employee], Any]
+    reverse: bool = False
+
+
+class EmployeeSorter:
+    def __init__(self):
+        self._strategies: dict[str, SortRule] = {}
+        self.register("salary", lambda e: e.salary, reverse=True)
+        self.register("name", lambda e: e.name)
+        self.register("joined", lambda e: e.joined)
+        self.register("dept-then-salary", lambda e: (e.dept, -e.salary))
+
+    def register(self, key: str, sort_key: Callable[[Employee], Any], reverse: bool = False) -> None:
+        self._strategies[key] = SortRule(sort_key, reverse)
+
+    def sort(self, employees: list[Employee], key: str) -> list[Employee]:
+        rule = self._strategies.get(key)
+        if rule is None:
+            raise ValueError(f"unknown sort key {key}")
+        return sorted(employees, key=rule.key, reverse=rule.reverse)  # stable, new list, input untouched
+
+
+def names(employees: list[Employee]) -> str:
+    return " ".join(e.name for e in employees)
+
+
+if __name__ == "__main__":
+    es = [Employee("Asha", "ENG", 90, date(2019, 1, 1)),
+          Employee("Ben", "OPS", 70, date(2017, 5, 1)),
+          Employee("Cy", "ENG", 95, date(2021, 3, 1))]
+    s = EmployeeSorter()
+    print("dept-then-salary:", names(s.sort(es, "dept-then-salary")))
+    print("joined:", names(s.sort(es, "joined")))
+    s.register("name-desc", lambda e: e.name, reverse=True)  # added by another team
+    print("name-desc:", names(s.sort(es, "name-desc")))
+    tied = [es[0], Employee("Dee", "OPS", 90, date(2020, 2, 2))]
+    print("salary tie:", names(s.sort(tied, "salary")))  # stable: input order kept
+    print("input untouched:", names(es))
+    try:
+        s.sort(es, "age")
+    except ValueError as e:
+        print("error:", e)` },
+          { lang: 'ts', code: `interface Employee {
+  readonly name: string;
+  readonly dept: string;
+  readonly salary: number;
+  readonly joined: Date;
+}
+
+type Comparator<T> = (a: T, b: T) => number;
+
+class EmployeeSorter {
+  private readonly strategies = new Map<string, Comparator<Employee>>();
+
+  constructor() {
+    this.register("salary", (a, b) => b.salary - a.salary);
+    this.register("name", (a, b) => a.name.localeCompare(b.name));
+    this.register("joined", (a, b) => a.joined.getTime() - b.joined.getTime());
+    this.register("dept-then-salary", (a, b) => a.dept.localeCompare(b.dept) || b.salary - a.salary);
+  }
+
+  register(key: string, c: Comparator<Employee>): void { this.strategies.set(key, c); }
+
+  sort(input: readonly Employee[], key: string): Employee[] {
+    const c = this.strategies.get(key);
+    if (c === undefined) throw new Error(\`unknown sort key \${key}\`);
+    return [...input].sort(c); // copy first; Array.sort is stable
+  }
+}
+
+const names = (list: readonly Employee[]): string => list.map((e) => e.name).join(" ");
+const day = (iso: string): Date => new Date(iso + "T00:00:00Z");
+
+const es: Employee[] = [
+  { name: "Asha", dept: "ENG", salary: 90, joined: day("2019-01-01") },
+  { name: "Ben", dept: "OPS", salary: 70, joined: day("2017-05-01") },
+  { name: "Cy", dept: "ENG", salary: 95, joined: day("2021-03-01") },
+];
+const s = new EmployeeSorter();
+console.log("dept-then-salary: " + names(s.sort(es, "dept-then-salary")));
+console.log("joined: " + names(s.sort(es, "joined")));
+s.register("name-desc", (a, b) => b.name.localeCompare(a.name)); // added by another team
+console.log("name-desc: " + names(s.sort(es, "name-desc")));
+const tied: Employee[] = [es[0], { name: "Dee", dept: "OPS", salary: 90, joined: day("2020-02-02") }];
+console.log("salary tie: " + names(s.sort(tied, "salary"))); // stable: input order kept
+console.log("input untouched: " + names(es));
+try { s.sort(es, "age"); }
+catch (e) { console.log("error: " + (e as Error).message); }` },
+          { lang: 'cpp', code: `struct Employee {
+    string name;
+    string dept;
+    int salary;
+    chrono::year_month_day joined;
+};
+
+using Comparator = function<bool(const Employee&, const Employee&)>;  // "a goes before b"
+
+class EmployeeSorter {
+public:
+    EmployeeSorter() {
+        registerRule("salary", [](auto& a, auto& b) { return a.salary > b.salary; });
+        registerRule("name", [](auto& a, auto& b) { return a.name < b.name; });
+        registerRule("joined", [](auto& a, auto& b) { return a.joined < b.joined; });
+        registerRule("dept-then-salary", [](auto& a, auto& b) {
+            return a.dept != b.dept ? a.dept < b.dept : a.salary > b.salary;
+        });
+    }
+
+    void registerRule(const string& key, Comparator c) { strategies[key] = std::move(c); }
+
+    vector<Employee> sort(vector<Employee> input, const string& key) const {  // by value: caller's list untouched
+        auto it = strategies.find(key);
+        if (it == strategies.end()) throw invalid_argument("unknown sort key " + key);
+        stable_sort(input.begin(), input.end(), it->second);  // stable O(N log N)
+        return input;
+    }
+
+private:
+    map<string, Comparator> strategies;
+};
+
+string names(const vector<Employee>& list) {
+    string s;
+    for (size_t i = 0; i < list.size(); i++) s += (i ? " " : "") + list[i].name;
+    return s;
+}
+
+int main() {
+    using namespace chrono;
+    vector<Employee> es = {{"Asha", "ENG", 90, 2019y / 1 / 1},
+                           {"Ben", "OPS", 70, 2017y / 5 / 1},
+                           {"Cy", "ENG", 95, 2021y / 3 / 1}};
+    EmployeeSorter s;
+    cout << "dept-then-salary: " << names(s.sort(es, "dept-then-salary")) << "\\n";
+    cout << "joined: " << names(s.sort(es, "joined")) << "\\n";
+    s.registerRule("name-desc", [](auto& a, auto& b) { return a.name > b.name; });  // added by another team
+    cout << "name-desc: " << names(s.sort(es, "name-desc")) << "\\n";
+    vector<Employee> tied = {es[0], {"Dee", "OPS", 90, 2020y / 2 / 2}};
+    cout << "salary tie: " << names(s.sort(tied, "salary")) << "\\n";  // stable: input order kept
+    cout << "input untouched: " << names(es) << "\\n";
+    try { s.sort(es, "age"); }
+    catch (const invalid_argument& e) { cout << "error: " << e.what() << "\\n"; }
+}` }
+        ],
       complexity: `<p>O(N log N) time, O(N) extra space for the copy. Registering a strategy: O(1).</p>`,
       followUps: ['Let users combine any two keys at runtime (compose comparators)', 'How would you expose the available keys to the UI?']
     }
@@ -2682,7 +8335,8 @@ class EmployeeSorter {
 }` },
     mcq: { q: 'Which state class should handle pedestrianButton() by changing to YELLOW?', options: ['GREEN only; other states inherit a "do nothing" default', 'Every state, with an if inside', 'The controller, with a switch', 'YELLOW'], answer: 0, explain: 'Only the state where the event matters overrides it. Defaults make other states ignore it safely.' },
     hints: [`<p>Hint 1: Each colour is a state with its own duration and its own reaction to each event.</p>`, `<p>Hint 2: An <code>enum Light</code> with constant-specific bodies is a compact State pattern: each constant overrides <code>onTimer()</code> etc. and returns the next state.</p>`, `<p>Hint 3: Default methods return <code>this</code> (ignore). <code>emergency()</code> is the same for all → implement once in the enum, not per constant.</p>`],
-    solution: {
+    tests: { io: true, cases: [{ stdin: '', stdout: "RED 30s\nGREEN 25s\nYELLOW 5s\nYELLOW 5s\nRED 30s\nRED 30s\nFLASHING_RED 0s\nFLASHING_RED 0s\nRED 30s\nRED 30s\n" }] },
+      solution: {
       approach: `<p>Use an enum as a compact State pattern: each constant knows its duration and overrides only the events it reacts to, returning the next state. Shared behaviour (emergency → FLASHING_RED) lives once in the enum body. The controller holds the current state and assigns whatever the state returns.</p>`,
       code: `enum Light {
     RED(30)    { Light onTimer() { return GREEN; } },
@@ -2707,15 +8361,199 @@ class TrafficController {
     String color() { return state.name(); }
     int duration() { return state.seconds; }
 
+    String show() { return color() + " " + duration() + "s"; }
+
     public static void main(String[] args) {
         TrafficController t = new TrafficController();
-        t.timerExpired(); t.pedestrianButton(); System.out.print(t.color() + " ");   // YELLOW
-        t.timerExpired(); t.emergency(); t.timerExpired(); System.out.print(t.color() + " ");
-        t.resume(); System.out.println(t.color() + " " + t.duration() + "s");       // RED 30s
+        System.out.println(t.show());                                          // RED 30s
+        t.timerExpired();       System.out.println(t.show());                  // GREEN 25s
+        t.pedestrianButton();   System.out.println(t.show());                  // YELLOW 5s
+        t.pedestrianButton();   System.out.println(t.show());                  // ignored
+        t.timerExpired();       System.out.println(t.show());                  // RED 30s
+        t.pedestrianButton();   System.out.println(t.show());                  // ignored
+        t.emergency();          System.out.println(t.show());                  // FLASHING_RED 0s
+        t.timerExpired();       System.out.println(t.show());                  // stays
+        t.resume();             System.out.println(t.show());                  // RED 30s
+        t.resume();             System.out.println(t.show());                  // ignored
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `from enum import Enum
+
+
+class Light(Enum):
+    RED = 30
+    GREEN = 25
+    YELLOW = 5
+    FLASHING_RED = 0
+
+    @property
+    def seconds(self) -> int:
+        return self.value
+
+    def on_timer(self) -> "Light":
+        match self:
+            case Light.RED:
+                return Light.GREEN
+            case Light.GREEN:
+                return Light.YELLOW
+            case Light.YELLOW:
+                return Light.RED
+            case Light.FLASHING_RED:
+                return self
+
+    def on_pedestrian(self) -> "Light":
+        return Light.YELLOW if self is Light.GREEN else self  # default: ignore
+
+    def on_resume(self) -> "Light":
+        return Light.RED if self is Light.FLASHING_RED else self  # default: ignore
+
+    def on_emergency(self) -> "Light":
+        return Light.FLASHING_RED  # same for every state
+
+
+class TrafficController:
+    def __init__(self):
+        self._state = Light.RED
+
+    def timer_expired(self) -> None:
+        self._state = self._state.on_timer()
+
+    def pedestrian_button(self) -> None:
+        self._state = self._state.on_pedestrian()
+
+    def emergency(self) -> None:
+        self._state = self._state.on_emergency()
+
+    def resume(self) -> None:
+        self._state = self._state.on_resume()
+
+    def color(self) -> str:
+        return self._state.name
+
+    def duration(self) -> int:
+        return self._state.seconds
+
+    def show(self) -> str:
+        return f"{self.color()} {self.duration()}s"
+
+
+if __name__ == "__main__":
+    t = TrafficController()
+    print(t.show())  # RED 30s
+    t.timer_expired(); print(t.show())  # GREEN 25s
+    t.pedestrian_button(); print(t.show())  # YELLOW 5s
+    t.pedestrian_button(); print(t.show())  # ignored
+    t.timer_expired(); print(t.show())  # RED 30s
+    t.pedestrian_button(); print(t.show())  # ignored
+    t.emergency(); print(t.show())  # FLASHING_RED 0s
+    t.timer_expired(); print(t.show())  # stays
+    t.resume(); print(t.show())  # RED 30s
+    t.resume(); print(t.show())  # ignored` },
+          { lang: 'ts', code: `type Light = "RED" | "GREEN" | "YELLOW" | "FLASHING_RED";
+
+const SECONDS: Record<Light, number> = { RED: 30, GREEN: 25, YELLOW: 5, FLASHING_RED: 0 };
+
+// switch on a union: the compiler flags a state that is not handled (the \`never\` check).
+function onTimer(s: Light): Light {
+  switch (s) {
+    case "RED": return "GREEN";
+    case "GREEN": return "YELLOW";
+    case "YELLOW": return "RED";
+    case "FLASHING_RED": return s;
+    default: { const unreachable: never = s; return unreachable; }
+  }
+}
+const onPedestrian = (s: Light): Light => (s === "GREEN" ? "YELLOW" : s); // default: ignore
+const onResume = (s: Light): Light => (s === "FLASHING_RED" ? "RED" : s); // default: ignore
+const onEmergency = (_s: Light): Light => "FLASHING_RED"; // same for every state
+
+class TrafficController {
+  private state: Light = "RED";
+  timerExpired(): void { this.state = onTimer(this.state); }
+  pedestrianButton(): void { this.state = onPedestrian(this.state); }
+  emergency(): void { this.state = onEmergency(this.state); }
+  resume(): void { this.state = onResume(this.state); }
+  color(): string { return this.state; }
+  duration(): number { return SECONDS[this.state]; }
+  show(): string { return \`\${this.color()} \${this.duration()}s\`; }
+}
+
+const t = new TrafficController();
+console.log(t.show()); // RED 30s
+t.timerExpired(); console.log(t.show()); // GREEN 25s
+t.pedestrianButton(); console.log(t.show()); // YELLOW 5s
+t.pedestrianButton(); console.log(t.show()); // ignored
+t.timerExpired(); console.log(t.show()); // RED 30s
+t.pedestrianButton(); console.log(t.show()); // ignored
+t.emergency(); console.log(t.show()); // FLASHING_RED 0s
+t.timerExpired(); console.log(t.show()); // stays
+t.resume(); console.log(t.show()); // RED 30s
+t.resume(); console.log(t.show()); // ignored` },
+          { lang: 'cpp', code: `enum class Light { RED, GREEN, YELLOW, FLASHING_RED };
+
+string name(Light s) {
+    switch (s) {
+        case Light::RED: return "RED";
+        case Light::GREEN: return "GREEN";
+        case Light::YELLOW: return "YELLOW";
+        case Light::FLASHING_RED: return "FLASHING_RED";
+    }
+    return "?";
+}
+
+int seconds(Light s) {
+    switch (s) {
+        case Light::RED: return 30;
+        case Light::GREEN: return 25;
+        case Light::YELLOW: return 5;
+        case Light::FLASHING_RED: return 0;
+    }
+    return 0;
+}
+
+// No default branch: with -Wswitch the compiler flags a state that is not handled.
+Light onTimer(Light s) {
+    switch (s) {
+        case Light::RED: return Light::GREEN;
+        case Light::GREEN: return Light::YELLOW;
+        case Light::YELLOW: return Light::RED;
+        case Light::FLASHING_RED: return s;
+    }
+    return s;
+}
+Light onPedestrian(Light s) { return s == Light::GREEN ? Light::YELLOW : s; }       // default: ignore
+Light onResume(Light s) { return s == Light::FLASHING_RED ? Light::RED : s; }       // default: ignore
+Light onEmergency(Light) { return Light::FLASHING_RED; }                            // same for every state
+
+class TrafficController {
+public:
+    void timerExpired() { state = onTimer(state); }
+    void pedestrianButton() { state = onPedestrian(state); }
+    void emergency() { state = onEmergency(state); }
+    void resume() { state = onResume(state); }
+    string color() const { return name(state); }
+    int duration() const { return seconds(state); }
+    string show() const { return color() + " " + to_string(duration()) + "s"; }
+private:
+    Light state = Light::RED;
+};
+
+int main() {
+    TrafficController t;
+    cout << t.show() << "\\n";  // RED 30s
+    t.timerExpired(); cout << t.show() << "\\n";  // GREEN 25s
+    t.pedestrianButton(); cout << t.show() << "\\n";  // YELLOW 5s
+    t.pedestrianButton(); cout << t.show() << "\\n";  // ignored
+    t.timerExpired(); cout << t.show() << "\\n";  // RED 30s
+    t.pedestrianButton(); cout << t.show() << "\\n";  // ignored
+    t.emergency(); cout << t.show() << "\\n";  // FLASHING_RED 0s
+    t.timerExpired(); cout << t.show() << "\\n";  // stays
+    t.resume(); cout << t.show() << "\\n";  // RED 30s
+    t.resume(); cout << t.show() << "\\n";  // ignored
+}` }
+        ],
       complexity: `<p>O(1) per event, O(1) memory. New state = new enum constant + overrides in states that lead to it.</p>`,
-      followUps: ['Drive it with a real ScheduledExecutorService timer — where does scheduling live?', 'Two lights at an intersection must never both be GREEN — which pattern coordinates them? (Mediator)']
+      followUps: ['Drive it with a real timer (a scheduled executor, threading.Timer, setTimeout) — where does scheduling live?', 'Two lights at an intersection must never both be GREEN — which pattern coordinates them? (Mediator)']
     }
   });
 
@@ -2734,7 +8572,8 @@ class TrafficController {
 }` },
     mcq: { q: 'What extra state does a lazy PeekingIterator need?', options: ['One cached "next" element plus a flag saying whether it is valid', 'A copy of all remaining elements', 'A stack', 'Nothing; call next() twice'], answer: 0, explain: 'Look ahead by exactly one element and remember it; next() returns the cached value and refills the cache.' },
     hints: [`<p>Hint 1: To peek you must take the element from the underlying iterator early — so remember it.</p>`, `<p>Hint 2: Fields: <code>Integer nextVal</code> and <code>boolean hasPeeked</code> (null can be a valid element, so do not use null as "empty").</p>`, `<p>Hint 3: peek(): if not cached, cache it. next(): if cached, return and clear; else delegate. hasNext(): cached || underlying.hasNext().</p>`],
-    solution: {
+    tests: { io: true, cases: [{ stdin: '', stdout: "1 2 2 3 false\npeek: exhausted\nnext: exhausted\nx x x false\nfalse\n" }] },
+      solution: {
       approach: `<p>Keep a one-element look-ahead buffer. <code>peek()</code> fills the buffer if empty and returns it without consuming; <code>next()</code> returns the buffer if filled (and clears it) or delegates to the wrapped iterator. A separate boolean distinguishes "no buffered element" from "buffered null". Implementing <code>Iterator&lt;T&gt;</code> generically makes it reusable. This is also a Decorator over an Iterator.</p>`,
       code: `class PeekingIterator<T> implements Iterator<T> {
     private final Iterator<T> it;
@@ -2745,7 +8584,7 @@ class TrafficController {
 
     T peek() {
         if (!hasBuffered) {
-            if (!it.hasNext()) throw new NoSuchElementException();
+            if (!it.hasNext()) throw new NoSuchElementException("exhausted");
             buffered = it.next();
             hasBuffered = true;
         }
@@ -2754,7 +8593,8 @@ class TrafficController {
 
     @Override public T next() {
         if (hasBuffered) { hasBuffered = false; T v = buffered; buffered = null; return v; }
-        return it.next();                       // throws NoSuchElementException when exhausted
+        if (!it.hasNext()) throw new NoSuchElementException("exhausted");
+        return it.next();
     }
 
     @Override public boolean hasNext() { return hasBuffered || it.hasNext(); }
@@ -2762,8 +8602,152 @@ class TrafficController {
     public static void main(String[] args) {
         PeekingIterator<Integer> p = new PeekingIterator<>(List.of(1, 2, 3).iterator());
         System.out.println(p.next() + " " + p.peek() + " " + p.next() + " " + p.next() + " " + p.hasNext());
+        try { p.peek(); } catch (NoSuchElementException e) { System.out.println("peek: " + e.getMessage()); }
+        try { p.next(); } catch (NoSuchElementException e) { System.out.println("next: " + e.getMessage()); }
+        PeekingIterator<String> one = new PeekingIterator<>(List.of("x").iterator());
+        System.out.println(one.peek() + " " + one.peek() + " " + one.next() + " " + one.hasNext());   // peek does not consume
+        System.out.println(new PeekingIterator<>(List.<Integer>of().iterator()).hasNext());
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `from typing import Generic, Iterator, TypeVar
+
+T = TypeVar("T")
+_EMPTY = object()  # marks "nothing buffered" (None could be a real element)
+
+
+class PeekingIterator(Generic[T]):
+    def __init__(self, it: Iterator[T]):
+        self._it = it
+        self._buffered = _EMPTY
+
+    def peek(self) -> T:
+        if self._buffered is _EMPTY:
+            try:
+                self._buffered = next(self._it)
+            except StopIteration:
+                raise StopIteration("exhausted") from None
+        return self._buffered  # type: ignore[return-value]
+
+    def next(self) -> T:
+        value = self.peek()  # fills the buffer, or raises when exhausted
+        self._buffered = _EMPTY
+        return value
+
+    def has_next(self) -> bool:
+        if self._buffered is not _EMPTY:
+            return True
+        try:
+            self._buffered = next(self._it)
+            return True
+        except StopIteration:
+            return False
+
+    def __iter__(self) -> "PeekingIterator[T]":
+        return self
+
+    def __next__(self) -> T:
+        return self.next()
+
+
+if __name__ == "__main__":
+    p = PeekingIterator(iter([1, 2, 3]))
+    a = p.next(); b = p.peek(); c = p.next(); d = p.next()
+    print(a, b, c, d, str(p.has_next()).lower())
+    for action in (p.peek, p.next):
+        try:
+            action()
+        except StopIteration as e:
+            print(f"{action.__name__}: {e}")
+    one = PeekingIterator(iter(["x"]))
+    x1 = one.peek(); x2 = one.peek(); x3 = one.next()
+    print(x1, x2, x3, str(one.has_next()).lower())  # peek does not consume
+    print(str(PeekingIterator(iter([])).has_next()).lower())` },
+          { lang: 'ts', code: `class PeekingIterator<T> {
+  private buffered: IteratorResult<T> | null = null; // one element of look-ahead
+
+  constructor(private readonly it: Iterator<T>) {}
+
+  private fill(): IteratorResult<T> {
+    if (this.buffered === null) this.buffered = this.it.next();
+    return this.buffered;
+  }
+
+  peek(): T {
+    const r = this.fill();
+    if (r.done) throw new Error("exhausted");
+    return r.value;
+  }
+
+  next(): T {
+    const value = this.peek(); // fills the buffer, or throws when exhausted
+    this.buffered = null;
+    return value;
+  }
+
+  hasNext(): boolean { return !this.fill().done; }
+}
+
+const p = new PeekingIterator([1, 2, 3][Symbol.iterator]());
+const a = p.next(), b = p.peek(), c = p.next(), d = p.next();
+console.log(\`\${a} \${b} \${c} \${d} \${p.hasNext()}\`);
+try { p.peek(); } catch (e) { console.log("peek: " + (e as Error).message); }
+try { p.next(); } catch (e) { console.log("next: " + (e as Error).message); }
+const one = new PeekingIterator(["x"][Symbol.iterator]());
+const x1 = one.peek(), x2 = one.peek(), x3 = one.next();
+console.log(\`\${x1} \${x2} \${x3} \${one.hasNext()}\`); // peek does not consume
+console.log(new PeekingIterator([][Symbol.iterator]()).hasNext());` },
+          { lang: 'cpp', code: `template <class T>
+class PeekingIterator {
+public:
+    // \`pull\` hands out the next element, or nullopt when the source is finished.
+    explicit PeekingIterator(function<optional<T>()> pull) : pull(std::move(pull)) {}
+
+    const T& peek() {
+        if (!buffered) {
+            buffered = pull();
+            if (!buffered) throw out_of_range("exhausted");
+        }
+        return *buffered;
+    }
+
+    T next() {
+        T value = peek();  // fills the buffer, or throws when exhausted
+        buffered.reset();
+        return value;
+    }
+
+    bool hasNext() {
+        if (!buffered) buffered = pull();
+        return buffered.has_value();
+    }
+
+private:
+    function<optional<T>()> pull;
+    optional<T> buffered;
+};
+
+template <class T>
+PeekingIterator<T> over(vector<T> items) {  // adapt a vector into a pull source
+    auto data = make_shared<vector<T>>(std::move(items));
+    auto pos = make_shared<size_t>(0);
+    return PeekingIterator<T>([data, pos]() -> optional<T> {
+        if (*pos == data->size()) return nullopt;
+        return (*data)[(*pos)++];
+    });
+}
+
+int main() {
+    auto p = over<int>({1, 2, 3});
+    int a = p.next(), b = p.peek(), c = p.next(), d = p.next();
+    cout << boolalpha << a << " " << b << " " << c << " " << d << " " << p.hasNext() << "\\n";
+    try { p.peek(); } catch (const out_of_range& e) { cout << "peek: " << e.what() << "\\n"; }
+    try { p.next(); } catch (const out_of_range& e) { cout << "next: " << e.what() << "\\n"; }
+    auto one = over<string>({"x"});
+    string x1 = one.peek(), x2 = one.peek(), x3 = one.next();
+    cout << x1 << " " << x2 << " " << x3 << " " << one.hasNext() << "\\n";  // peek does not consume
+    cout << over<int>({}).hasNext() << "\\n";
+}` }
+        ],
       complexity: `<p>O(1) time per call, O(1) extra memory.</p>`,
       followUps: ['Generalise to peek(k) — look k ahead (use a small deque)', 'Use it to merge K sorted iterators with a heap']
     }
@@ -2787,7 +8771,8 @@ class TrafficController {
 }` },
     mcq: { q: 'Dim(30) is pressed twice in a row, then undo twice. What must each command store to undo correctly?', options: ['The brightness just before it executed', 'The brightness it sets (30)', 'Nothing; Dim undoes to 100', 'The slot number'], answer: 0, explain: 'Undo restores the previous value. Each command instance must capture it at execute time, so every press needs its own command record.' },
     hints: [`<p>Hint 1: Make <code>interface Command { void execute(); void undo(); }</code>. The remote holds <code>Command[] slots</code>.</p>`, `<p>Hint 2: A slot holds a command <i>template</i>; each press must record its own "previous brightness". Either create a fresh command per press (a Supplier in the slot) or let the history store (command, previous value) pairs.</p>`, `<p>Hint 3: A <code>SetBrightness(light, target)</code> command covers On/Off/Dim. Bounded <code>ArrayDeque</code> for history.</p>`],
-    solution: {
+    tests: { io: true, cases: [{ stdin: '', stdout: "30 100 0\nempty slot recorded: false\nclamped 100\nrestored 0\nhistory kept 100\n" }] },
+      solution: {
       approach: `<p>Slots hold <code>Supplier&lt;Command&gt;</code> factories so every press creates a fresh command object that captures the brightness before it runs. The remote (invoker) executes it and pushes it on a bounded history. Undo pops and calls <code>undo()</code>. The remote only knows the <code>Command</code> interface, so slots can control fans or TVs tomorrow.</p>`,
       code: `class Light {
     private int brightness;
@@ -2835,8 +8820,239 @@ class Remote {
         StringBuilder sb = new StringBuilder();
         while (r.undo()) sb.append(l.get()).append(' ');
         System.out.println(sb.toString().trim());    // 30 100 0
+        r.press(5);                                  // empty slot: no-op, not recorded
+        System.out.println("empty slot recorded: " + r.undo());
+        r.program(3, () -> new SetBrightness(l, 150));
+        r.press(3);
+        System.out.println("clamped " + l.get());    // Light clamps to 100
+        r.undo();
+        System.out.println("restored " + l.get());   // exact previous value: 0
+        for (int i = 0; i < 105; i++) r.press(i % 2);
+        int undone = 0;
+        while (r.undo()) undone++;
+        System.out.println("history kept " + undone); // oldest 5 dropped
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `from abc import ABC, abstractmethod
+from collections import deque
+from typing import Callable, Optional
+
+
+class Light:
+    def __init__(self):
+        self._brightness = 0
+
+    def set(self, b: int) -> None:
+        self._brightness = max(0, min(100, b))
+
+    def get(self) -> int:
+        return self._brightness
+
+
+class Command(ABC):
+    @abstractmethod
+    def execute(self) -> None: ...
+
+    @abstractmethod
+    def undo(self) -> None: ...
+
+
+class SetBrightness(Command):
+    def __init__(self, light: Light, target: int):
+        self._light, self._target = light, target
+        self._previous = 0
+
+    def execute(self) -> None:
+        self._previous = self._light.get()
+        self._light.set(self._target)
+
+    def undo(self) -> None:
+        self._light.set(self._previous)
+
+
+class Remote:
+    def __init__(self):
+        self._slots: list[Optional[Callable[[], Command]]] = [None] * 10
+        self._history: deque[Command] = deque(maxlen=100)  # drops the oldest on overflow
+
+    def program(self, slot: int, factory: Callable[[], Command]) -> None:
+        self._slots[slot] = factory
+
+    def press(self, slot: int) -> None:
+        factory = self._slots[slot]
+        if factory is None:  # empty slot: no-op, not recorded
+            return
+        cmd = factory()  # fresh command per press
+        cmd.execute()
+        self._history.append(cmd)
+
+    def undo(self) -> bool:
+        if not self._history:
+            return False
+        self._history.pop().undo()
+        return True
+
+
+if __name__ == "__main__":
+    light = Light()
+    r = Remote()
+    r.program(0, lambda: SetBrightness(light, 100))
+    r.program(1, lambda: SetBrightness(light, 30))
+    r.program(2, lambda: SetBrightness(light, 0))
+    r.press(0); r.press(1); r.press(2)
+    seen = []
+    while r.undo():
+        seen.append(str(light.get()))
+    print(" ".join(seen))  # 30 100 0
+    r.press(5)  # empty slot: no-op, not recorded
+    print("empty slot recorded:", str(r.undo()).lower())
+    r.program(3, lambda: SetBrightness(light, 150))
+    r.press(3)
+    print("clamped", light.get())  # Light clamps to 100
+    r.undo()
+    print("restored", light.get())  # exact previous value: 0
+    for i in range(105):
+        r.press(i % 2)
+    undone = 0
+    while r.undo():
+        undone += 1
+    print("history kept", undone)  # oldest 5 dropped` },
+          { lang: 'ts', code: `class Light {
+  private brightness = 0;
+  set(b: number): void { this.brightness = Math.max(0, Math.min(100, b)); }
+  get(): number { return this.brightness; }
+}
+
+interface Command { execute(): void; undo(): void; }
+
+class SetBrightness implements Command {
+  private previous = 0;
+  constructor(private readonly light: Light, private readonly target: number) {}
+  execute(): void { this.previous = this.light.get(); this.light.set(this.target); }
+  undo(): void { this.light.set(this.previous); }
+}
+
+class Remote {
+  private static readonly MAX_HISTORY = 100;
+  private readonly slots: (() => Command)[] = new Array(10); // holes = empty slots
+  private readonly history: Command[] = [];
+
+  program(slot: number, factory: () => Command): void { this.slots[slot] = factory; }
+
+  press(slot: number): void {
+    const factory = this.slots[slot];
+    if (factory === undefined) return; // empty slot: no-op, not recorded
+    const c = factory(); // fresh command per press
+    c.execute();
+    this.history.push(c);
+    if (this.history.length > Remote.MAX_HISTORY) this.history.shift(); // drop the oldest
+  }
+
+  undo(): boolean {
+    const c = this.history.pop();
+    if (c === undefined) return false;
+    c.undo();
+    return true;
+  }
+}
+
+const light = new Light();
+const r = new Remote();
+r.program(0, () => new SetBrightness(light, 100));
+r.program(1, () => new SetBrightness(light, 30));
+r.program(2, () => new SetBrightness(light, 0));
+r.press(0); r.press(1); r.press(2);
+const seen: number[] = [];
+while (r.undo()) seen.push(light.get());
+console.log(seen.join(" ")); // 30 100 0
+r.press(5); // empty slot: no-op, not recorded
+console.log("empty slot recorded: " + r.undo());
+r.program(3, () => new SetBrightness(light, 150));
+r.press(3);
+console.log("clamped " + light.get()); // Light clamps to 100
+r.undo();
+console.log("restored " + light.get()); // exact previous value: 0
+for (let i = 0; i < 105; i++) r.press(i % 2);
+let undone = 0;
+while (r.undo()) undone++;
+console.log("history kept " + undone); // oldest 5 dropped` },
+          { lang: 'cpp', code: `class Light {
+public:
+    void set(int b) { brightness = max(0, min(100, b)); }
+    int get() const { return brightness; }
+private:
+    int brightness = 0;
+};
+
+class Command {
+public:
+    virtual ~Command() = default;
+    virtual void execute() = 0;
+    virtual void undo() = 0;
+};
+
+class SetBrightness : public Command {
+public:
+    SetBrightness(Light& light, int target) : light(light), target(target) {}
+    void execute() override { previous = light.get(); light.set(target); }
+    void undo() override { light.set(previous); }
+private:
+    Light& light;
+    int target;
+    int previous = 0;
+};
+
+class Remote {
+public:
+    using Factory = function<unique_ptr<Command>()>;
+
+    void program(size_t slot, Factory factory) { slots.at(slot) = std::move(factory); }
+
+    void press(size_t slot) {
+        const Factory& factory = slots.at(slot);
+        if (!factory) return;  // empty slot: no-op, not recorded
+        auto c = factory();    // fresh command per press
+        c->execute();
+        history.push_back(std::move(c));
+        if (history.size() > MAX_HISTORY) history.pop_front();  // drop the oldest
+    }
+
+    bool undo() {
+        if (history.empty()) return false;
+        history.back()->undo();
+        history.pop_back();
+        return true;
+    }
+
+private:
+    static constexpr size_t MAX_HISTORY = 100;
+    vector<Factory> slots = vector<Factory>(10);
+    deque<unique_ptr<Command>> history;
+};
+
+int main() {
+    Light light;
+    Remote r;
+    r.program(0, [&] { return make_unique<SetBrightness>(light, 100); });
+    r.program(1, [&] { return make_unique<SetBrightness>(light, 30); });
+    r.program(2, [&] { return make_unique<SetBrightness>(light, 0); });
+    r.press(0); r.press(1); r.press(2);
+    string seen;
+    while (r.undo()) seen += (seen.empty() ? "" : " ") + to_string(light.get());
+    cout << seen << "\\n";  // 30 100 0
+    r.press(5);  // empty slot: no-op, not recorded
+    cout << boolalpha << "empty slot recorded: " << r.undo() << "\\n";
+    r.program(3, [&] { return make_unique<SetBrightness>(light, 150); });
+    r.press(3);
+    cout << "clamped " << light.get() << "\\n";  // Light clamps to 100
+    r.undo();
+    cout << "restored " << light.get() << "\\n";  // exact previous value: 0
+    for (int i = 0; i < 105; i++) r.press(i % 2);
+    int undone = 0;
+    while (r.undo()) undone++;
+    cout << "history kept " << undone << "\\n";  // oldest 5 dropped
+}` }
+        ],
       complexity: `<p>press/undo O(1); memory O(history size) — bounded at 100.</p>`,
       followUps: ['Add a "Party mode" macro slot that runs several commands and undoes them together', 'Add redo']
     }
@@ -2858,8 +9074,9 @@ class Remote {
 }` },
     mcq: { q: 'In this logger, why does every handler call next even after handling?', options: ['Pipeline semantics: several handlers may each act on the same message', 'Because the first handler cannot write', 'To save memory', 'It is a bug; CoR must stop at the first handler'], answer: 0, explain: 'Chain of Responsibility has two flavours. Approvals stop at the first handler; logging is a filter pipeline where many handlers act.' },
     hints: [`<p>Hint 1: <code>enum Level</code> with ordinal comparison. Abstract <code>LogHandler</code> with <code>minLevel</code>, <code>next</code>, and a final <code>handle()</code>.</p>`, `<p>Hint 2: <code>handle()</code>: if level ≥ min, try { write } catch (RuntimeException) { record failure }; then if next != null, next.handle().</p>`, `<p>Hint 3: Cheap filtering: the Logger can store the lowest min level of the chain and return early. Use a thread-safe list for the file handler.</p>`],
-    solution: {
-      approach: `<p>Each handler is a link with its own minimum level. The base class fixes the walking logic (Template Method inside CoR): check level → write (isolated in try/catch) → forward. The logger only knows the head of the chain plus a pre-computed global minimum, so messages that no handler wants are dropped in O(1). Chains are assembled by configuration code.</p>`,
+    tests: { io: true, cases: [{ stdin: '', stdout: "[console] DEBUG cache miss\n[console] WARN slow query\n[console] ERROR db down\n[pager] waking on-call: db down\nfile has [WARN slow query, ERROR db down]\nBrokenHandler failed: disk full\n[pager] waking on-call: x\nfile2 has [ERROR x]\nfile2 has [ERROR x]\n" }] },
+      solution: {
+      approach: `<p>Each handler is a link with its own minimum level. The base class fixes the walking logic (Template Method inside CoR): check level → write (isolated in try/catch) → forward. The logger only knows the head of the chain plus a pre-computed global minimum, so messages that no handler wants are dropped in O(1). Chains are assembled by configuration code before the logger is built, because the minimum is computed once when the logger is created.</p>`,
       code: `enum Level { DEBUG, INFO, WARN, ERROR }
 
 abstract class LogHandler {
@@ -2871,7 +9088,7 @@ abstract class LogHandler {
     final void handle(Level level, String msg) {
         if (level.compareTo(min) >= 0) {
             try { write(level, msg); }
-            catch (RuntimeException e) { System.err.println(getClass().getSimpleName() + " failed: " + e.getMessage()); }
+            catch (RuntimeException e) { System.out.println(getClass().getSimpleName() + " failed: " + e.getMessage()); }
         }
         if (next != null) next.handle(level, msg);           // pipeline: always forward
     }
@@ -2892,9 +9109,14 @@ class PagerHandler extends LogHandler {
     protected void write(Level l, String m) { System.out.println("[pager] waking on-call: " + m); }
 }
 
+class BrokenHandler extends LogHandler {
+    BrokenHandler() { super(Level.INFO); }
+    protected void write(Level l, String m) { throw new IllegalStateException("disk full"); }
+}
+
 class Logger {
     private final LogHandler head; private final Level min;
-    Logger(LogHandler head) { this.head = head; this.min = head.min(); }
+    Logger(LogHandler head) { this.head = head; this.min = head.min(); }   // build the chain first, then the Logger
     void log(Level level, String msg) {
         if (level.compareTo(min) < 0) return;                // nobody wants it: O(1) drop
         head.handle(level, msg);
@@ -2909,8 +9131,306 @@ class Logger {
         log.log(Level.WARN, "slow query");
         log.log(Level.ERROR, "db down");
         System.out.println("file has " + file.lines);
+        // a failing handler must not stop the rest of the pipeline
+        FileHandler file2 = new FileHandler();
+        file2.then(new BrokenHandler()).then(new PagerHandler());
+        new Logger(file2).log(Level.ERROR, "x");
+        System.out.println("file2 has " + file2.lines);
+        // nobody wants DEBUG here: dropped before any handler runs
+        new Logger(file2).log(Level.DEBUG, "ignored");
+        System.out.println("file2 has " + file2.lines);
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `from __future__ import annotations
+
+import threading
+from abc import ABC, abstractmethod
+from enum import IntEnum
+
+
+class Level(IntEnum):  # ordered, so DEBUG < INFO < WARN < ERROR
+    DEBUG = 0
+    INFO = 1
+    WARN = 2
+    ERROR = 3
+
+
+class LogHandler(ABC):
+    def __init__(self, minimum: Level):
+        self._min = minimum
+        self._next: LogHandler | None = None
+
+    def then(self, nxt: LogHandler) -> LogHandler:
+        self._next = nxt
+        return nxt
+
+    def min(self) -> Level:
+        return self._min if self._next is None else min(self._min, self._next.min())
+
+    def handle(self, level: Level, msg: str) -> None:  # fixed walking logic: do not override
+        if level >= self._min:
+            try:
+                self.write(level, msg)
+            except Exception as e:
+                print(f"{type(self).__name__} failed: {e}")
+        if self._next is not None:
+            self._next.handle(level, msg)  # pipeline: always forward
+
+    @abstractmethod
+    def write(self, level: Level, msg: str) -> None: ...
+
+
+class ConsoleHandler(LogHandler):
+    def __init__(self):
+        super().__init__(Level.DEBUG)
+
+    def write(self, level: Level, msg: str) -> None:
+        print(f"[console] {level.name} {msg}")
+
+
+class FileHandler(LogHandler):
+    def __init__(self):
+        super().__init__(Level.INFO)
+        self.lines: list[str] = []
+        self._lock = threading.Lock()
+
+    def write(self, level: Level, msg: str) -> None:
+        with self._lock:
+            self.lines.append(f"{level.name} {msg}")
+
+
+class PagerHandler(LogHandler):
+    def __init__(self):
+        super().__init__(Level.ERROR)
+
+    def write(self, level: Level, msg: str) -> None:
+        print(f"[pager] waking on-call: {msg}")
+
+
+class BrokenHandler(LogHandler):
+    def __init__(self):
+        super().__init__(Level.INFO)
+
+    def write(self, level: Level, msg: str) -> None:
+        raise RuntimeError("disk full")
+
+
+class Logger:
+    def __init__(self, head: LogHandler):  # build the chain first, then the Logger
+        self._head = head
+        self._min = head.min()
+
+    def log(self, level: Level, msg: str) -> None:
+        if level < self._min:  # nobody wants it: O(1) drop
+            return
+        self._head.handle(level, msg)
+
+
+def show(lines: list[str]) -> str:
+    return "[" + ", ".join(lines) + "]"
+
+
+if __name__ == "__main__":
+    console = ConsoleHandler()
+    file = FileHandler()
+    console.then(file).then(PagerHandler())
+    log = Logger(console)
+    log.log(Level.DEBUG, "cache miss")
+    log.log(Level.WARN, "slow query")
+    log.log(Level.ERROR, "db down")
+    print("file has", show(file.lines))
+    # a failing handler must not stop the rest of the pipeline
+    file2 = FileHandler()
+    file2.then(BrokenHandler()).then(PagerHandler())
+    Logger(file2).log(Level.ERROR, "x")
+    print("file2 has", show(file2.lines))
+    # nobody wants DEBUG here: dropped before any handler runs
+    Logger(file2).log(Level.DEBUG, "ignored")
+    print("file2 has", show(file2.lines))` },
+          { lang: 'ts', code: `enum Level { DEBUG, INFO, WARN, ERROR }
+
+abstract class LogHandler {
+  private next: LogHandler | null = null;
+
+  constructor(private readonly minLevel: Level) {}
+
+  then(n: LogHandler): LogHandler {
+    this.next = n;
+    return n;
+  }
+
+  min(): Level {
+    return this.next === null ? this.minLevel : Math.min(this.minLevel, this.next.min());
+  }
+
+  // Fixed walking logic: subclasses implement write() only.
+  handle(level: Level, msg: string): void {
+    if (level >= this.minLevel) {
+      try { this.write(level, msg); }
+      catch (e) { console.log(\`\${this.constructor.name} failed: \${(e as Error).message}\`); }
+    }
+    this.next?.handle(level, msg); // pipeline: always forward
+  }
+
+  protected abstract write(level: Level, msg: string): void;
+}
+
+class ConsoleHandler extends LogHandler {
+  constructor() { super(Level.DEBUG); }
+  protected write(l: Level, m: string): void { console.log(\`[console] \${Level[l]} \${m}\`); }
+}
+
+class FileHandler extends LogHandler {
+  readonly lines: string[] = [];
+  constructor() { super(Level.INFO); }
+  protected write(l: Level, m: string): void { this.lines.push(\`\${Level[l]} \${m}\`); }
+}
+
+class PagerHandler extends LogHandler {
+  constructor() { super(Level.ERROR); }
+  protected write(_l: Level, m: string): void { console.log(\`[pager] waking on-call: \${m}\`); }
+}
+
+class BrokenHandler extends LogHandler {
+  constructor() { super(Level.INFO); }
+  protected write(_l: Level, _m: string): void { throw new Error("disk full"); }
+}
+
+class Logger {
+  private readonly min: Level;
+  constructor(private readonly head: LogHandler) { this.min = head.min(); } // build the chain first, then the Logger
+  log(level: Level, msg: string): void {
+    if (level < this.min) return; // nobody wants it: O(1) drop
+    this.head.handle(level, msg);
+  }
+}
+
+const show = (lines: string[]): string => "[" + lines.join(", ") + "]";
+
+const consoleH = new ConsoleHandler();
+const file = new FileHandler();
+consoleH.then(file).then(new PagerHandler());
+const log = new Logger(consoleH);
+log.log(Level.DEBUG, "cache miss");
+log.log(Level.WARN, "slow query");
+log.log(Level.ERROR, "db down");
+console.log("file has " + show(file.lines));
+// a failing handler must not stop the rest of the pipeline
+const file2 = new FileHandler();
+file2.then(new BrokenHandler()).then(new PagerHandler());
+new Logger(file2).log(Level.ERROR, "x");
+console.log("file2 has " + show(file2.lines));
+// nobody wants DEBUG here: dropped before any handler runs
+new Logger(file2).log(Level.DEBUG, "ignored");
+console.log("file2 has " + show(file2.lines));` },
+          { lang: 'cpp', code: `enum class Level { DEBUG, INFO, WARN, ERROR };
+
+string toString(Level l) {
+    static const char* names[] = {"DEBUG", "INFO", "WARN", "ERROR"};
+    return names[static_cast<int>(l)];
+}
+
+class LogHandler {
+public:
+    explicit LogHandler(Level minimum) : minLevel(minimum) {}
+    virtual ~LogHandler() = default;
+
+    LogHandler& then(unique_ptr<LogHandler> n) {  // the chain owns its links
+        next = std::move(n);
+        return *next;
+    }
+
+    Level min() const { return next ? std::min(minLevel, next->min()) : minLevel; }
+
+    // Fixed walking logic: subclasses implement write() and name() only.
+    void handle(Level level, const string& msg) {
+        if (level >= minLevel) {
+            try { write(level, msg); }
+            catch (const exception& e) { cout << name() << " failed: " << e.what() << "\\n"; }
+        }
+        if (next) next->handle(level, msg);  // pipeline: always forward
+    }
+
+protected:
+    virtual void write(Level level, const string& msg) = 0;
+    virtual string name() const = 0;
+
+private:
+    Level minLevel;
+    unique_ptr<LogHandler> next;
+};
+
+class ConsoleHandler : public LogHandler {
+public:
+    ConsoleHandler() : LogHandler(Level::DEBUG) {}
+protected:
+    void write(Level l, const string& m) override { cout << "[console] " << toString(l) << " " << m << "\\n"; }
+    string name() const override { return "ConsoleHandler"; }
+};
+
+class FileHandler : public LogHandler {
+public:
+    FileHandler() : LogHandler(Level::INFO) {}
+    vector<string> lines;
+protected:
+    void write(Level l, const string& m) override { lines.push_back(toString(l) + " " + m); }
+    string name() const override { return "FileHandler"; }
+};
+
+class PagerHandler : public LogHandler {
+public:
+    PagerHandler() : LogHandler(Level::ERROR) {}
+protected:
+    void write(Level, const string& m) override { cout << "[pager] waking on-call: " << m << "\\n"; }
+    string name() const override { return "PagerHandler"; }
+};
+
+class BrokenHandler : public LogHandler {
+public:
+    BrokenHandler() : LogHandler(Level::INFO) {}
+protected:
+    void write(Level, const string&) override { throw runtime_error("disk full"); }
+    string name() const override { return "BrokenHandler"; }
+};
+
+class Logger {
+public:
+    explicit Logger(LogHandler& head) : head(head), min(head.min()) {}  // build the chain first, then the Logger
+    void log(Level level, const string& msg) {
+        if (level < min) return;  // nobody wants it: O(1) drop
+        head.handle(level, msg);
+    }
+private:
+    LogHandler& head;
+    Level min;
+};
+
+string show(const vector<string>& lines) {
+    string s = "[";
+    for (size_t i = 0; i < lines.size(); i++) s += (i ? ", " : "") + lines[i];
+    return s + "]";
+}
+
+int main() {
+    ConsoleHandler console;
+    auto file = make_unique<FileHandler>();
+    FileHandler& fileRef = *file;
+    console.then(std::move(file)).then(make_unique<PagerHandler>());
+    Logger log(console);
+    log.log(Level::DEBUG, "cache miss");
+    log.log(Level::WARN, "slow query");
+    log.log(Level::ERROR, "db down");
+    cout << "file has " << show(fileRef.lines) << "\\n";
+    // a failing handler must not stop the rest of the pipeline
+    FileHandler file2;
+    file2.then(make_unique<BrokenHandler>()).then(make_unique<PagerHandler>());
+    Logger(file2).log(Level::ERROR, "x");
+    cout << "file2 has " << show(file2.lines) << "\\n";
+    // nobody wants DEBUG here: dropped before any handler runs
+    Logger(file2).log(Level::DEBUG, "ignored");
+    cout << "file2 has " << show(file2.lines) << "\\n";
+}` }
+        ],
       complexity: `<p>O(H) per message for H handlers; O(1) for messages below the global minimum.</p>`,
       followUps: ['Make writing asynchronous so a slow file system does not block callers (queue + background thread)', 'Add per-package log levels (logger hierarchy)']
     }
@@ -2932,7 +9452,8 @@ class Logger {
 }` },
     mcq: { q: 'How do you find every handler that should receive an OrderShipped event?', options: ['Walk its class, superclasses and interfaces, and collect the handlers registered for each', 'Only look up OrderShipped.class', 'Call every handler and let it check instanceof', 'Use the event name string'], answer: 0, explain: 'Subscriptions keyed by type; delivery resolves the event type hierarchy (cache it per class for speed).' },
     hints: [`<p>Hint 1: <code>Map&lt;Class&lt;?&gt;, List&lt;Consumer&lt;Object&gt;&gt;&gt;</code> — store handlers wrapped so the bus can call them with an Object after a safe cast.</p>`, `<p>Hint 2: Collect all supertypes with a BFS over <code>getSuperclass()</code> and <code>getInterfaces()</code>; cache the result in a <code>ConcurrentHashMap&lt;Class, List&lt;Class&gt;&gt;</code>.</p>`, `<p>Hint 3: Use <code>CopyOnWriteArrayList</code> for handler lists; wrap each call in try/catch; unsubscribe handle removes the exact wrapper.</p>`],
-    solution: {
+    tests: { io: true, cases: [{ stdin: '', stdout: "sms: A1 shipped\naudit A1\ndebug OrderShipped\n3 handlers\naudit A2\ndebug OrderShipped\n2 handlers\ndebug UserSignedUp\n1 handlers\nhandler failed: mail down\nwelcome u8\ndebug UserSignedUp\n2 handlers\n" }] },
+      solution: {
       approach: `<p>An Observer keyed by type. Subscriptions are stored per <code>Class</code> in thread-safe lists; each typed handler is wrapped in a <code>Consumer&lt;Object&gt;</code> that casts with <code>type.cast</code>. On publish, the bus resolves the event's type hierarchy once (cached), gathers handlers from every type in it, and invokes each in isolation. The unsubscribe handle removes the exact wrapper instance.</p>`,
       code: `interface OrderEvent { String orderId(); }
 record OrderShipped(String orderId) implements OrderEvent {}
@@ -2977,15 +9498,212 @@ class EventBus {
 
     public static void main(String[] args) {
         EventBus bus = new EventBus();
-        bus.subscribe(OrderEvent.class, e -> System.out.println("audit " + e.orderId()));
         Runnable sms = bus.subscribe(OrderShipped.class, e -> System.out.println("sms: " + e.orderId() + " shipped"));
-        bus.subscribe(Object.class, e -> System.out.println("debug " + e));
+        bus.subscribe(OrderEvent.class, e -> System.out.println("audit " + e.orderId()));
+        bus.subscribe(Object.class, e -> System.out.println("debug " + e.getClass().getSimpleName()));
         System.out.println(bus.publish(new OrderShipped("A1")) + " handlers");
         sms.run();
         System.out.println(bus.publish(new OrderShipped("A2")) + " handlers");
         System.out.println(bus.publish(new UserSignedUp("u7")) + " handlers");
+        EventBus bus2 = new EventBus();
+        bus2.subscribe(UserSignedUp.class, e -> { throw new IllegalStateException("mail down"); });
+        bus2.subscribe(UserSignedUp.class, e -> System.out.println("welcome " + e.userId()));
+        bus2.subscribe(Object.class, e -> System.out.println("debug " + e.getClass().getSimpleName()));
+        System.out.println(bus2.publish(new UserSignedUp("u8")) + " handlers");   // the broken handler is not counted
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `import threading
+from abc import ABC
+from collections import defaultdict
+from dataclasses import dataclass
+from typing import Callable, TypeVar
+
+T = TypeVar("T")
+
+
+class OrderEvent(ABC):
+    order_id: str
+
+
+@dataclass(frozen=True)
+class OrderShipped(OrderEvent):
+    order_id: str
+
+
+@dataclass(frozen=True)
+class UserSignedUp:
+    user_id: str
+
+
+class EventBus:
+    def __init__(self):
+        self._handlers: dict[type, list[Callable[[object], None]]] = defaultdict(list)
+        self._lock = threading.Lock()
+
+    def subscribe(self, event_type: type[T], handler: Callable[[T], None]) -> Callable[[], None]:
+        with self._lock:
+            self._handlers[event_type].append(handler)  # type: ignore[arg-type]
+
+        def unsubscribe() -> None:
+            with self._lock:
+                if handler in self._handlers[event_type]:
+                    self._handlers[event_type].remove(handler)  # type: ignore[arg-type]
+
+        return unsubscribe
+
+    def publish(self, event: object) -> int:
+        ok = 0
+        for t in type(event).__mro__:  # the class, its parents, ..., object: most specific first
+            with self._lock:
+                snapshot = list(self._handlers.get(t, []))
+            for h in snapshot:
+                try:
+                    h(event)
+                    ok += 1
+                except Exception as e:
+                    print("handler failed:", e)
+        return ok
+
+
+def fail(message: str) -> None:
+    raise RuntimeError(message)
+
+
+if __name__ == "__main__":
+    bus = EventBus()
+    sms = bus.subscribe(OrderShipped, lambda e: print(f"sms: {e.order_id} shipped"))
+    bus.subscribe(OrderEvent, lambda e: print(f"audit {e.order_id}"))
+    bus.subscribe(object, lambda e: print("debug", type(e).__name__))
+    print(bus.publish(OrderShipped("A1")), "handlers")
+    sms()
+    print(bus.publish(OrderShipped("A2")), "handlers")
+    print(bus.publish(UserSignedUp("u7")), "handlers")
+    bus2 = EventBus()
+    bus2.subscribe(UserSignedUp, lambda e: fail("mail down"))
+    bus2.subscribe(UserSignedUp, lambda e: print(f"welcome {e.user_id}"))
+    bus2.subscribe(object, lambda e: print("debug", type(e).__name__))
+    print(bus2.publish(UserSignedUp("u8")), "handlers")  # the broken handler is not counted` },
+          { lang: 'ts', code: `abstract class OrderEvent {
+  abstract readonly orderId: string;
+}
+
+class OrderShipped extends OrderEvent {
+  constructor(readonly orderId: string) { super(); }
+}
+
+class UserSignedUp {
+  constructor(readonly userId: string) {}
+}
+
+type EventType<T> = abstract new (...args: never[]) => T;
+
+class EventBus {
+  private readonly handlers = new Map<Function, ((e: never) => void)[]>();
+
+  subscribe<T extends object>(type: EventType<T>, handler: (e: T) => void): () => void {
+    this.handlers.set(type, [...(this.handlers.get(type) ?? []), handler]); // copy-on-write
+    return () => {
+      this.handlers.set(type, (this.handlers.get(type) ?? []).filter((h) => h !== handler));
+    };
+  }
+
+  publish(event: object): number {
+    let ok = 0;
+    // the prototype chain is the class hierarchy: the class, its parents, ..., Object
+    for (let p: object | null = Object.getPrototypeOf(event); p !== null; p = Object.getPrototypeOf(p)) {
+      for (const h of this.handlers.get(p.constructor) ?? []) {
+        try { (h as (e: object) => void)(event); ok++; }
+        catch (e) { console.log("handler failed: " + (e as Error).message); }
+      }
+    }
+    return ok;
+  }
+}
+
+const bus = new EventBus();
+const sms = bus.subscribe(OrderShipped, (e) => console.log(\`sms: \${e.orderId} shipped\`));
+bus.subscribe(OrderEvent, (e) => console.log(\`audit \${e.orderId}\`));
+bus.subscribe(Object, (e) => console.log("debug " + e.constructor.name));
+console.log(bus.publish(new OrderShipped("A1")) + " handlers");
+sms();
+console.log(bus.publish(new OrderShipped("A2")) + " handlers");
+console.log(bus.publish(new UserSignedUp("u7")) + " handlers");
+const bus2 = new EventBus();
+bus2.subscribe(UserSignedUp, () => { throw new Error("mail down"); });
+bus2.subscribe(UserSignedUp, (e) => console.log(\`welcome \${e.userId}\`));
+bus2.subscribe(Object, (e) => console.log("debug " + e.constructor.name));
+console.log(bus2.publish(new UserSignedUp("u8")) + " handlers"); // the broken handler is not counted` },
+          { lang: 'cpp', code: `// Events share one polymorphic base (C++ has no "Object"), so dynamic_cast can ask "is this event a T?".
+struct Event {
+    virtual ~Event() = default;
+    virtual string kind() const = 0;
+};
+
+struct OrderEvent : Event {
+    virtual const string& orderId() const = 0;
+};
+
+struct OrderShipped : OrderEvent {
+    explicit OrderShipped(string id) : id(std::move(id)) {}
+    const string& orderId() const override { return id; }
+    string kind() const override { return "OrderShipped"; }
+    string id;
+};
+
+struct UserSignedUp : Event {
+    explicit UserSignedUp(string id) : userId(std::move(id)) {}
+    string kind() const override { return "UserSignedUp"; }
+    string userId;
+};
+
+class EventBus {
+public:
+    // Returns an unsubscribe handle. Handlers run in subscription order (Java runs the most specific type first).
+    template <class T>
+    function<void()> subscribe(function<void(const T&)> handler) {
+        size_t id = nextId++;
+        handlers.push_back({id, [handler](const Event& e) {
+            const T* typed = dynamic_cast<const T*>(&e);  // T or any of its subtypes matches
+            if (typed) handler(*typed);
+            return typed != nullptr;
+        }});
+        return [this, id] {
+            handlers.erase(remove_if(handlers.begin(), handlers.end(), [id](auto& h) { return h.id == id; }), handlers.end());
+        };
+    }
+
+    int publish(const Event& event) {
+        int ok = 0;
+        auto snapshot = handlers;  // safe if a handler unsubscribes
+        for (auto& h : snapshot) {
+            try { if (h.matchAndRun(event)) ok++; }
+            catch (const exception& e) { cout << "handler failed: " << e.what() << "\\n"; }
+        }
+        return ok;
+    }
+
+private:
+    struct Entry { size_t id; function<bool(const Event&)> matchAndRun; };
+    vector<Entry> handlers;
+    size_t nextId = 0;
+};
+
+int main() {
+    EventBus bus;
+    auto sms = bus.subscribe<OrderShipped>([](const OrderShipped& e) { cout << "sms: " << e.orderId() << " shipped\\n"; });
+    bus.subscribe<OrderEvent>([](const OrderEvent& e) { cout << "audit " << e.orderId() << "\\n"; });
+    bus.subscribe<Event>([](const Event& e) { cout << "debug " << e.kind() << "\\n"; });
+    cout << bus.publish(OrderShipped("A1")) << " handlers\\n";
+    sms();
+    cout << bus.publish(OrderShipped("A2")) << " handlers\\n";
+    cout << bus.publish(UserSignedUp("u7")) << " handlers\\n";
+    EventBus bus2;
+    bus2.subscribe<UserSignedUp>([](const UserSignedUp&) { throw runtime_error("mail down"); });
+    bus2.subscribe<UserSignedUp>([](const UserSignedUp& e) { cout << "welcome " << e.userId << "\\n"; });
+    bus2.subscribe<Event>([](const Event& e) { cout << "debug " << e.kind() << "\\n"; });
+    cout << bus2.publish(UserSignedUp("u8")) << " handlers\\n";  // the broken handler is not counted
+}` }
+        ],
       complexity: `<p>publish: O(T + H) where T = types in the hierarchy (cached) and H = matching handlers. subscribe/unsubscribe: O(H) copy-on-write.</p>`,
       followUps: ['Deliver asynchronously with ordering per event type', 'Add dead-event handling (no subscribers)', 'Prevent memory leaks from forgotten subscriptions']
     }
@@ -3004,9 +9722,10 @@ class FlattenAll {
     boolean hasNext() { return i < out.size(); }
     Integer next() { return out.get(i++); }
 }` },
-    mcq: { q: 'Why must hasNext() do work (not just check a stack is non-empty)?', options: ['Because the stack may hold only empty lists, so we must unpack until an integer is on top', 'Because next() is slow', 'Because Java requires it', 'It must not do work'], answer: 0, explain: 'hasNext() advances past empty lists and unpacks nested lists until an integer is ready (or nothing remains). It must be idempotent, so it only prepares and never consumes the integer.' },
+    mcq: { q: 'Why must hasNext() do work (not just check a stack is non-empty)?', options: ['Because the stack may hold only empty lists, so we must unpack until an integer is on top', 'Because next() is slow', 'Because the language requires it', 'It must not do work'], answer: 0, explain: 'hasNext() advances past empty lists and unpacks nested lists until an integer is ready (or nothing remains). It must be idempotent, so it only prepares and never consumes the integer.' },
     hints: [`<p>Hint 1: Keep a stack of iterators (one per open list), like a paused DFS.</p>`, `<p>Hint 2: In hasNext(): look at the top iterator; if exhausted pop it; if its next element is a list, push that list's iterator; if it is an integer, cache it and return true.</p>`, `<p>Hint 3: Use a cached <code>Integer nextVal</code> to make hasNext idempotent; next() calls hasNext(), returns and clears the cache.</p>`],
-    solution: {
+    tests: { io: true, cases: [{ stdin: '', stdout: "1 1 2 1 4 6\n3\nfalse false\nerror: exhausted\ndeep 42\n" }] },
+      solution: {
       approach: `<p>Simulate DFS with a stack of <code>Iterator&lt;NestedInteger&gt;</code>. <code>hasNext()</code> repeatedly inspects the top iterator: pop it when exhausted, descend (push a new iterator) when the next element is a list, and stop when it finds an integer, which it caches. <code>next()</code> returns the cached integer. Memory is O(depth); each element is touched once, so operations are O(1) amortised and no recursion is used.</p>`,
       code: `interface NestedInteger {
     boolean isInteger();
@@ -3039,7 +9758,7 @@ class NestedIterator implements Iterator<Integer> {
     }
 
     @Override public Integer next() {
-        if (!hasNext()) throw new NoSuchElementException();
+        if (!hasNext()) throw new NoSuchElementException("exhausted");
         Integer v = nextVal; nextVal = null; return v;
     }
 
@@ -3050,9 +9769,235 @@ class NestedIterator implements Iterator<Integer> {
         StringBuilder sb = new StringBuilder();
         while (it.hasNext()) sb.append(it.next()).append(' ');
         System.out.println(sb.toString().trim());   // 1 1 2 1 4 6
-        System.out.println(new NestedIterator(List.of(NestedInteger.of(), NestedInteger.of(NestedInteger.of()), NestedInteger.of(3))).next());
+        System.out.println(new NestedIterator(List.of(NestedInteger.of(), NestedInteger.of(NestedInteger.of()), NestedInteger.of(3))).next());   // 3
+        NestedIterator empty = new NestedIterator(List.of(NestedInteger.of(), NestedInteger.of(NestedInteger.of())));
+        System.out.println(empty.hasNext() + " " + empty.hasNext());   // false false: repeated calls are safe
+        try { empty.next(); } catch (NoSuchElementException e) { System.out.println("error: " + e.getMessage()); }
+        NestedInteger deep = NestedInteger.of(42);
+        for (int i = 0; i < 5000; i++) deep = NestedInteger.of(deep);   // 5000 levels, no recursion
+        System.out.println("deep " + new NestedIterator(List.of(deep)).next());
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+
+
+class NestedInteger(ABC):
+    @abstractmethod
+    def is_integer(self) -> bool: ...
+
+    @abstractmethod
+    def get_integer(self) -> int | None: ...
+
+    @abstractmethod
+    def get_list(self) -> list[NestedInteger]: ...
+
+
+@dataclass(frozen=True)
+class NestedImpl(NestedInteger):
+    value: int | None = None
+    items: tuple[NestedInteger, ...] = ()
+
+    def is_integer(self) -> bool:
+        return self.value is not None
+
+    def get_integer(self) -> int | None:
+        return self.value
+
+    def get_list(self) -> list[NestedInteger]:
+        return list(self.items)
+
+
+def of_int(v: int) -> NestedInteger:  # Java overloads of(int)
+    return NestedImpl(value=v)
+
+
+def of_list(*xs: NestedInteger) -> NestedInteger:  # ... and of(NestedInteger...)
+    return NestedImpl(items=xs)
+
+
+class NestedIterator:
+    def __init__(self, items: list[NestedInteger]):
+        self._stack = [iter(items)]  # one iterator per open list
+        self._next_val: int | None = None  # cached look-ahead
+
+    def has_next(self) -> bool:
+        while self._next_val is None and self._stack:
+            top = self._stack[-1]
+            x = next(top, None)
+            if x is None:
+                self._stack.pop()
+            elif x.is_integer():
+                self._next_val = x.get_integer()
+            else:
+                self._stack.append(iter(x.get_list()))  # descend lazily
+        return self._next_val is not None
+
+    def next(self) -> int:
+        if not self.has_next():
+            raise StopIteration("exhausted")
+        v = self._next_val
+        self._next_val = None
+        return v  # type: ignore[return-value]
+
+    def __iter__(self) -> NestedIterator:
+        return self
+
+    def __next__(self) -> int:
+        return self.next()
+
+
+if __name__ == "__main__":
+    data = [of_list(of_int(1), of_int(1)), of_int(2),
+            of_list(of_int(1), of_list(of_int(4), of_list(of_int(6))))]
+    print(" ".join(str(v) for v in NestedIterator(data)))  # 1 1 2 1 4 6
+    print(NestedIterator([of_list(), of_list(of_list()), of_int(3)]).next())  # 3
+    empty = NestedIterator([of_list(), of_list(of_list())])
+    print(str(empty.has_next()).lower(), str(empty.has_next()).lower())  # false false: repeated calls are safe
+    try:
+        empty.next()
+    except StopIteration as e:
+        print("error:", e)
+    deep = of_int(42)
+    for _ in range(5000):
+        deep = of_list(deep)  # 5000 levels, no recursion
+    print("deep", NestedIterator([deep]).next())` },
+          { lang: 'ts', code: `interface NestedInteger {
+  isInteger(): boolean;
+  getInteger(): number | null;
+  getList(): readonly NestedInteger[];
+}
+
+class NestedImpl implements NestedInteger {
+  constructor(private readonly value: number | null, private readonly list: readonly NestedInteger[]) {}
+  isInteger(): boolean { return this.value !== null; }
+  getInteger(): number | null { return this.value; }
+  getList(): readonly NestedInteger[] { return this.list; }
+}
+
+const ofInt = (v: number): NestedInteger => new NestedImpl(v, []); // Java overloads of(int)
+const ofList = (...xs: NestedInteger[]): NestedInteger => new NestedImpl(null, xs); // ... and of(NestedInteger...)
+
+class NestedIterator {
+  private readonly stack: Iterator<NestedInteger>[] = []; // one iterator per open list
+  private nextVal: number | null = null; // cached look-ahead
+
+  constructor(list: readonly NestedInteger[]) { this.stack.push(list[Symbol.iterator]()); }
+
+  hasNext(): boolean {
+    while (this.nextVal === null && this.stack.length > 0) {
+      const r = this.stack[this.stack.length - 1].next();
+      if (r.done) this.stack.pop();
+      else if (r.value.isInteger()) this.nextVal = r.value.getInteger();
+      else this.stack.push(r.value.getList()[Symbol.iterator]()); // descend lazily
+    }
+    return this.nextVal !== null;
+  }
+
+  next(): number {
+    if (!this.hasNext()) throw new Error("exhausted");
+    const v = this.nextVal as number;
+    this.nextVal = null;
+    return v;
+  }
+}
+
+const input = [ofList(ofInt(1), ofInt(1)), ofInt(2), ofList(ofInt(1), ofList(ofInt(4), ofList(ofInt(6))))];
+const it = new NestedIterator(input);
+const out: number[] = [];
+while (it.hasNext()) out.push(it.next());
+console.log(out.join(" ")); // 1 1 2 1 4 6
+console.log(new NestedIterator([ofList(), ofList(ofList()), ofInt(3)]).next()); // 3
+const empty = new NestedIterator([ofList(), ofList(ofList())]);
+console.log(\`\${empty.hasNext()} \${empty.hasNext()}\`); // false false: repeated calls are safe
+try { empty.next(); } catch (e) { console.log("error: " + (e as Error).message); }
+let deep = ofInt(42);
+for (let i = 0; i < 5000; i++) deep = ofList(deep); // 5000 levels, no recursion
+console.log("deep " + new NestedIterator([deep]).next());` },
+          { lang: 'cpp', code: `class NestedInteger;
+using Nested = shared_ptr<const NestedInteger>;
+
+class NestedInteger {
+public:
+    virtual ~NestedInteger() = default;
+    virtual bool isInteger() const = 0;
+    virtual int getInteger() const = 0;
+    virtual const vector<Nested>& getList() const = 0;
+};
+
+class IntValue : public NestedInteger {
+public:
+    explicit IntValue(int v) : value(v) {}
+    bool isInteger() const override { return true; }
+    int getInteger() const override { return value; }
+    const vector<Nested>& getList() const override { throw logic_error("not a list"); }
+private:
+    int value;
+};
+
+class ListValue : public NestedInteger {
+public:
+    explicit ListValue(vector<Nested> items) : items(std::move(items)) {}
+    bool isInteger() const override { return false; }
+    int getInteger() const override { throw logic_error("not an integer"); }
+    const vector<Nested>& getList() const override { return items; }
+private:
+    vector<Nested> items;
+};
+
+Nested ofInt(int v) { return make_shared<IntValue>(v); }                                  // Java overloads of(int)
+Nested ofList(vector<Nested> xs = {}) { return make_shared<ListValue>(std::move(xs)); }     // ... and of(NestedInteger...)
+
+class NestedIterator {
+public:
+    explicit NestedIterator(vector<Nested> list) : root(std::move(list)) {
+        stack.push_back({root.begin(), root.end()});
+    }
+
+    bool hasNext() {
+        while (!nextVal && !stack.empty()) {
+            auto& [cur, end] = stack.back();
+            if (cur == end) { stack.pop_back(); continue; }
+            const Nested& x = *cur++;
+            if (x->isInteger()) nextVal = x->getInteger();
+            else stack.push_back({x->getList().begin(), x->getList().end()});  // descend lazily
+        }
+        return nextVal.has_value();
+    }
+
+    int next() {
+        if (!hasNext()) throw out_of_range("exhausted");
+        int v = *nextVal;
+        nextVal.reset();
+        return v;
+    }
+
+private:
+    using Range = pair<vector<Nested>::const_iterator, vector<Nested>::const_iterator>;
+    vector<Nested> root;  // keeps the whole tree alive; the stack holds non-owning positions
+    vector<Range> stack;  // one range per open list
+    optional<int> nextVal;  // cached look-ahead
+};
+
+int main() {
+    vector<Nested> in = {ofList({ofInt(1), ofInt(1)}), ofInt(2),
+                         ofList({ofInt(1), ofList({ofInt(4), ofList({ofInt(6)})})})};
+    NestedIterator it(in);
+    string line;
+    while (it.hasNext()) line += (line.empty() ? "" : " ") + to_string(it.next());
+    cout << line << "\\n";  // 1 1 2 1 4 6
+    cout << NestedIterator({ofList(), ofList({ofList()}), ofInt(3)}).next() << "\\n";  // 3
+    NestedIterator empty({ofList(), ofList({ofList()})});
+    bool a = empty.hasNext(), b = empty.hasNext();
+    cout << boolalpha << a << " " << b << "\\n";  // false false: repeated calls are safe
+    try { empty.next(); } catch (const out_of_range& e) { cout << "error: " << e.what() << "\\n"; }
+    Nested deep = ofInt(42);
+    for (int i = 0; i < 5000; i++) deep = ofList({deep});  // 5000 levels, no recursion
+    cout << "deep " << NestedIterator({deep}).next() << "\\n";
+}` }
+        ],
       complexity: `<p>O(1) amortised per call (each element and list is visited once); O(depth) memory.</p>`,
       followUps: ['Support remove()', 'Return elements in reverse order lazily', 'Make it work for a structure that is streamed from disk']
     }
@@ -3073,7 +10018,8 @@ class NestedIterator implements Iterator<Integer> {
 }` },
     mcq: { q: 'Where does "time does not advance while paused" live in the State design?', options: ['PausedState.tick() is a no-op (inherited default)', 'In MediaPlayer.tick() with an if', 'In the UI', 'In the track object'], answer: 0, explain: 'Each state defines its own reaction; Paused simply does not override tick, so the default does nothing.' },
     hints: [`<p>Hint 1: Context = player (position, length, callback). States = Stopped, Playing, Paused.</p>`, `<p>Hint 2: <code>interface PlayerState</code> with default no-op methods returning <code>this</code>; each state overrides only its meaningful events and returns the next state.</p>`, `<p>Hint 3: Playing.tick: pos += s; if pos ≥ len → pos = 0, fire callback, return Stopped. Keep the state singletons stateless; data stays in the context.</p>`],
-    solution: {
+    tests: { io: true, cases: [{ stdin: '', stdout: "Playing@0\nPlaying@4\nPaused@4\nPaused@4\nPlaying@4\nPlaying@4\nfinished!\nStopped@0\nStopped@0\nStopped@0\nPlaying@0\nPlaying@2\nStopped@0\n" }] },
+      solution: {
       approach: `<p>State objects are stateless singletons that receive the context and return the next state; the context (player) keeps position, length and the finished callback. Defaults return <code>this</code>, which encodes "ignored" for every event a state does not handle. The player's public methods are one-line delegations plus a status string.</p>`,
       code: `interface PlayerState {
     String name();
@@ -3115,9 +10061,255 @@ class MediaPlayer {
 
     public static void main(String[] args) {
         MediaPlayer m = new MediaPlayer(10, () -> System.out.println("finished!"));
-        System.out.println(String.join(" ", m.play(), m.tick(4), m.pause(), m.tick(3), m.play(), m.tick(7)));
+        System.out.println(m.play());       // Playing@0
+        System.out.println(m.tick(4));      // Playing@4
+        System.out.println(m.pause());      // Paused@4
+        System.out.println(m.tick(3));      // Paused@4: time is frozen
+        System.out.println(m.play());       // Playing@4: resumes
+        System.out.println(m.play());       // Playing@4: no-op
+        System.out.println(m.tick(7));      // finished! then Stopped@0
+        System.out.println(m.pause());      // Stopped@0: ignored
+        System.out.println(m.tick(1));      // Stopped@0: ignored
+        System.out.println(m.play());       // Playing@0
+        System.out.println(m.tick(2));      // Playing@2
+        System.out.println(m.stop());       // Stopped@0
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `from typing import Callable
+
+
+class PlayerState:
+    """Default behaviour: ignore the event. Concrete states override what they handle."""
+    name = "?"
+
+    def play(self, p: "MediaPlayer") -> "PlayerState":
+        return self
+
+    def pause(self, p: "MediaPlayer") -> "PlayerState":
+        return self
+
+    def tick(self, p: "MediaPlayer", seconds: int) -> "PlayerState":
+        return self
+
+    def stop(self, p: "MediaPlayer") -> "PlayerState":
+        p.position = 0
+        return STOPPED
+
+
+class Stopped(PlayerState):
+    name = "Stopped"
+
+    def play(self, p):
+        p.position = 0
+        return PLAYING
+
+
+class Playing(PlayerState):
+    name = "Playing"
+
+    def pause(self, p):
+        return PAUSED
+
+    def tick(self, p, seconds):
+        p.position += seconds
+        if p.position >= p.length:
+            p.position = 0
+            p.on_finished()
+            return STOPPED
+        return self
+
+
+class Paused(PlayerState):
+    name = "Paused"
+
+    def play(self, p):
+        return PLAYING  # resume from saved position
+
+
+STOPPED, PLAYING, PAUSED = Stopped(), Playing(), Paused()  # stateless, so shared
+
+
+class MediaPlayer:
+    def __init__(self, length: int, on_finished: Callable[[], None]):
+        self.position = 0
+        self.length = length
+        self.on_finished = on_finished
+        self._state: PlayerState = STOPPED
+
+    def play(self) -> str:
+        self._state = self._state.play(self)
+        return self.status()
+
+    def pause(self) -> str:
+        self._state = self._state.pause(self)
+        return self.status()
+
+    def stop(self) -> str:
+        self._state = self._state.stop(self)
+        return self.status()
+
+    def tick(self, seconds: int) -> str:
+        self._state = self._state.tick(self, seconds)
+        return self.status()
+
+    def status(self) -> str:
+        return f"{self._state.name}@{self.position}"
+
+
+if __name__ == "__main__":
+    m = MediaPlayer(10, lambda: print("finished!"))
+    print(m.play())  # Playing@0
+    print(m.tick(4))  # Playing@4
+    print(m.pause())  # Paused@4
+    print(m.tick(3))  # Paused@4: time is frozen
+    print(m.play())  # Playing@4: resumes
+    print(m.play())  # Playing@4: no-op
+    print(m.tick(7))  # finished! then Stopped@0
+    print(m.pause())  # Stopped@0: ignored
+    print(m.tick(1))  # Stopped@0: ignored
+    print(m.play())  # Playing@0
+    print(m.tick(2))  # Playing@2
+    print(m.stop())  # Stopped@0` },
+          { lang: 'ts', code: `interface PlayerState {
+  readonly name: string;
+  play(p: MediaPlayer): PlayerState;
+  pause(p: MediaPlayer): PlayerState;
+  tick(p: MediaPlayer, seconds: number): PlayerState;
+  stop(p: MediaPlayer): PlayerState;
+}
+
+// Default behaviour: ignore the event. Concrete states override what they handle.
+abstract class BaseState implements PlayerState {
+  abstract readonly name: string;
+  play(_p: MediaPlayer): PlayerState { return this; }
+  pause(_p: MediaPlayer): PlayerState { return this; }
+  tick(_p: MediaPlayer, _seconds: number): PlayerState { return this; }
+  stop(p: MediaPlayer): PlayerState { p.position = 0; return STOPPED; }
+}
+
+class Stopped extends BaseState {
+  readonly name = "Stopped";
+  play(p: MediaPlayer): PlayerState { p.position = 0; return PLAYING; }
+}
+
+class Playing extends BaseState {
+  readonly name = "Playing";
+  pause(_p: MediaPlayer): PlayerState { return PAUSED; }
+  tick(p: MediaPlayer, seconds: number): PlayerState {
+    p.position += seconds;
+    if (p.position >= p.length) { p.position = 0; p.onFinished(); return STOPPED; }
+    return this;
+  }
+}
+
+class Paused extends BaseState {
+  readonly name = "Paused";
+  play(_p: MediaPlayer): PlayerState { return PLAYING; } // resume from saved position
+}
+
+const STOPPED = new Stopped(), PLAYING = new Playing(), PAUSED = new Paused(); // stateless, so shared
+
+class MediaPlayer {
+  position = 0;
+  private state: PlayerState = STOPPED;
+  constructor(readonly length: number, readonly onFinished: () => void) {}
+  play(): string { this.state = this.state.play(this); return this.status(); }
+  pause(): string { this.state = this.state.pause(this); return this.status(); }
+  stop(): string { this.state = this.state.stop(this); return this.status(); }
+  tick(s: number): string { this.state = this.state.tick(this, s); return this.status(); }
+  status(): string { return \`\${this.state.name}@\${this.position}\`; }
+}
+
+const m = new MediaPlayer(10, () => console.log("finished!"));
+console.log(m.play()); // Playing@0
+console.log(m.tick(4)); // Playing@4
+console.log(m.pause()); // Paused@4
+console.log(m.tick(3)); // Paused@4: time is frozen
+console.log(m.play()); // Playing@4: resumes
+console.log(m.play()); // Playing@4: no-op
+console.log(m.tick(7)); // finished! then Stopped@0
+console.log(m.pause()); // Stopped@0: ignored
+console.log(m.tick(1)); // Stopped@0: ignored
+console.log(m.play()); // Playing@0
+console.log(m.tick(2)); // Playing@2
+console.log(m.stop()); // Stopped@0` },
+          { lang: 'cpp', code: `class MediaPlayer;
+
+class PlayerState {
+public:
+    virtual ~PlayerState() = default;
+    virtual string name() const = 0;
+    // Default behaviour: ignore the event. Concrete states override what they handle.
+    virtual const PlayerState* play(MediaPlayer&) const { return this; }
+    virtual const PlayerState* pause(MediaPlayer&) const { return this; }
+    virtual const PlayerState* tick(MediaPlayer&, int) const { return this; }
+    virtual const PlayerState* stop(MediaPlayer& p) const;
+};
+
+const PlayerState* stopped();
+const PlayerState* playing();
+const PlayerState* paused();
+
+class MediaPlayer {
+public:
+    int position = 0;
+    const int length;
+    const function<void()> onFinished;
+
+    MediaPlayer(int length, function<void()> onFinished) : length(length), onFinished(std::move(onFinished)) {}
+    string play() { state = state->play(*this); return status(); }
+    string pause() { state = state->pause(*this); return status(); }
+    string stop() { state = state->stop(*this); return status(); }
+    string tick(int s) { state = state->tick(*this, s); return status(); }
+    string status() const { return state->name() + "@" + to_string(position); }
+
+private:
+    const PlayerState* state = stopped();  // non-owning: the states are shared singletons
+};
+
+const PlayerState* PlayerState::stop(MediaPlayer& p) const { p.position = 0; return stopped(); }
+
+class Stopped : public PlayerState {
+public:
+    string name() const override { return "Stopped"; }
+    const PlayerState* play(MediaPlayer& p) const override { p.position = 0; return playing(); }
+};
+class Playing : public PlayerState {
+public:
+    string name() const override { return "Playing"; }
+    const PlayerState* pause(MediaPlayer&) const override { return paused(); }
+    const PlayerState* tick(MediaPlayer& p, int s) const override {
+        p.position += s;
+        if (p.position >= p.length) { p.position = 0; p.onFinished(); return stopped(); }
+        return this;
+    }
+};
+class Paused : public PlayerState {
+public:
+    string name() const override { return "Paused"; }
+    const PlayerState* play(MediaPlayer&) const override { return playing(); }  // resume from saved position
+};
+
+const PlayerState* stopped() { static const Stopped s; return &s; }
+const PlayerState* playing() { static const Playing s; return &s; }
+const PlayerState* paused() { static const Paused s; return &s; }
+
+int main() {
+    MediaPlayer m(10, [] { cout << "finished!\\n"; });
+    cout << m.play() << "\\n";   // Playing@0
+    cout << m.tick(4) << "\\n";  // Playing@4
+    cout << m.pause() << "\\n";  // Paused@4
+    cout << m.tick(3) << "\\n";  // Paused@4: time is frozen
+    cout << m.play() << "\\n";   // Playing@4: resumes
+    cout << m.play() << "\\n";   // Playing@4: no-op
+    cout << m.tick(7) << "\\n";  // finished! then Stopped@0
+    cout << m.pause() << "\\n";  // Stopped@0: ignored
+    cout << m.tick(1) << "\\n";  // Stopped@0: ignored
+    cout << m.play() << "\\n";   // Playing@0
+    cout << m.tick(2) << "\\n";  // Playing@2
+    cout << m.stop() << "\\n";   // Stopped@0
+}` }
+        ],
       complexity: `<p>O(1) per action, O(1) memory. A Buffering state = one class + overrides in Playing (to enter it) — Stopped and Paused are untouched.</p>`,
       followUps: ['Add a playlist: when a track finishes, auto-play the next (who owns that rule?)', 'Notify UI widgets of state changes (Observer)']
     }
@@ -3142,7 +10334,8 @@ class MediaPlayer {
 }` },
     mcq: { q: 'Finance adds "loyalty points" next sprint. With Visitor, what do you write?', options: ['One new class LoyaltyVisitor; item classes untouched', 'A points() method in each item class', 'A new instanceof ladder', 'A new item type'], answer: 0, explain: 'New operations over stable types are exactly what Visitor makes cheap.' },
     hints: [`<p>Hint 1: <code>interface CartItem { &lt;R&gt; R accept(CartVisitor&lt;R&gt; v); }</code> and a visitor with <code>visitBook</code>, <code>visitElectronics</code>, <code>visitGrocery</code>.</p>`, `<p>Hint 2: Each visitor returns the amount for one item; the cart sums <code>item.accept(visitor)</code> over all items.</p>`, `<p>Hint 3: Blocks of 500 g "or part thereof" = <code>(grams + 499) / 500</code>. Keep all money in long paise.</p>`],
-    solution: {
+    tests: { io: true, cases: [{ stdin: '', stdout: "tax=36500 shipping=14000\ntax=9 shipping=4000\ntax=0 shipping=0\n" }] },
+      solution: {
       approach: `<p>Item records are the stable element hierarchy with one-line <code>accept</code> methods. Each business operation is a <code>CartVisitor&lt;Long&gt;</code> that returns the amount for one item; a generic <code>Cart.total(visitor)</code> sums over items. All tax rules sit together in <code>TaxVisitor</code> and all shipping rules in <code>ShippingVisitor</code>, which is how finance and logistics teams want to own them.</p>`,
       code: `interface CartVisitor<R> {
     R visitBook(Book b);
@@ -3182,8 +10375,233 @@ class Cart {
         c.add(new Electronics(200_000, 1200, true));
         c.add(new Grocery(10_000, 900, true));
         System.out.println("tax=" + c.total(new TaxVisitor()) + " shipping=" + c.total(new ShippingVisitor()));   // 36500 14000
+        Cart edge = new Cart();
+        edge.add(new Book(1_000, 500));          // exactly one 500 g block
+        edge.add(new Book(1_000, 501));          // 1 g over: two blocks
+        edge.add(new Grocery(199, 1, false));    // 5% of 199 = 9 (integer paise)
+        System.out.println("tax=" + edge.total(new TaxVisitor()) + " shipping=" + edge.total(new ShippingVisitor()));   // 9 4000
+        Cart empty = new Cart();
+        System.out.println("tax=" + empty.total(new TaxVisitor()) + " shipping=" + empty.total(new ShippingVisitor()));   // 0 0
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Generic, TypeVar
+
+R = TypeVar("R")
+
+
+class CartVisitor(ABC, Generic[R]):
+    @abstractmethod
+    def visit_book(self, b: Book) -> R: ...
+
+    @abstractmethod
+    def visit_electronics(self, e: Electronics) -> R: ...
+
+    @abstractmethod
+    def visit_grocery(self, g: Grocery) -> R: ...
+
+
+class CartItem(ABC):
+    @abstractmethod
+    def accept(self, v: CartVisitor[R]) -> R: ...
+
+
+@dataclass(frozen=True)
+class Book(CartItem):
+    price: int
+    grams: int
+
+    def accept(self, v: CartVisitor[R]) -> R:
+        return v.visit_book(self)
+
+
+@dataclass(frozen=True)
+class Electronics(CartItem):
+    price: int
+    grams: int
+    fragile: bool
+
+    def accept(self, v: CartVisitor[R]) -> R:
+        return v.visit_electronics(self)
+
+
+@dataclass(frozen=True)
+class Grocery(CartItem):
+    price: int
+    grams: int
+    perishable: bool
+
+    def accept(self, v: CartVisitor[R]) -> R:
+        return v.visit_grocery(self)
+
+
+class TaxVisitor(CartVisitor[int]):
+    def visit_book(self, b: Book) -> int:
+        return 0
+
+    def visit_electronics(self, e: Electronics) -> int:
+        return e.price * 18 // 100
+
+    def visit_grocery(self, g: Grocery) -> int:
+        return g.price * 5 // 100
+
+
+class ShippingVisitor(CartVisitor[int]):
+    @staticmethod
+    def _base(grams: int) -> int:
+        return 1000 * ((grams + 499) // 500)  # Rs 10 per 500 g block
+
+    def visit_book(self, b: Book) -> int:
+        return self._base(b.grams)
+
+    def visit_electronics(self, e: Electronics) -> int:
+        return self._base(e.grams) + (5000 if e.fragile else 0)
+
+    def visit_grocery(self, g: Grocery) -> int:
+        return self._base(g.grams) + (3000 if g.perishable else 0)
+
+
+class Cart:
+    def __init__(self):
+        self._items: list[CartItem] = []
+
+    def add(self, item: CartItem) -> None:
+        self._items.append(item)
+
+    def total(self, v: CartVisitor[int]) -> int:
+        return sum(item.accept(v) for item in self._items)
+
+
+def report(c: Cart) -> str:
+    return f"tax={c.total(TaxVisitor())} shipping={c.total(ShippingVisitor())}"
+
+
+if __name__ == "__main__":
+    c = Cart()
+    c.add(Book(50_000, 400))
+    c.add(Electronics(200_000, 1200, True))
+    c.add(Grocery(10_000, 900, True))
+    print(report(c))  # 36500 14000
+    edge = Cart()
+    edge.add(Book(1_000, 500))  # exactly one 500 g block
+    edge.add(Book(1_000, 501))  # 1 g over: two blocks
+    edge.add(Grocery(199, 1, False))  # 5% of 199 = 9 (integer paise)
+    print(report(edge))  # 9 4000
+    print(report(Cart()))  # 0 0` },
+          { lang: 'ts', code: `interface CartVisitor<R> {
+  visitBook(b: Book): R;
+  visitElectronics(e: Electronics): R;
+  visitGrocery(g: Grocery): R;
+}
+
+interface CartItem {
+  accept<R>(v: CartVisitor<R>): R;
+}
+
+class Book implements CartItem {
+  constructor(readonly price: number, readonly grams: number) {}
+  accept<R>(v: CartVisitor<R>): R { return v.visitBook(this); }
+}
+
+class Electronics implements CartItem {
+  constructor(readonly price: number, readonly grams: number, readonly fragile: boolean) {}
+  accept<R>(v: CartVisitor<R>): R { return v.visitElectronics(this); }
+}
+
+class Grocery implements CartItem {
+  constructor(readonly price: number, readonly grams: number, readonly perishable: boolean) {}
+  accept<R>(v: CartVisitor<R>): R { return v.visitGrocery(this); }
+}
+
+class TaxVisitor implements CartVisitor<number> {
+  visitBook(_b: Book): number { return 0; }
+  visitElectronics(e: Electronics): number { return Math.floor((e.price * 18) / 100); }
+  visitGrocery(g: Grocery): number { return Math.floor((g.price * 5) / 100); }
+}
+
+class ShippingVisitor implements CartVisitor<number> {
+  private static base(grams: number): number { return 1000 * Math.floor((grams + 499) / 500); } // Rs 10 per 500 g block
+  visitBook(b: Book): number { return ShippingVisitor.base(b.grams); }
+  visitElectronics(e: Electronics): number { return ShippingVisitor.base(e.grams) + (e.fragile ? 5000 : 0); }
+  visitGrocery(g: Grocery): number { return ShippingVisitor.base(g.grams) + (g.perishable ? 3000 : 0); }
+}
+
+class Cart {
+  private readonly items: CartItem[] = [];
+  add(i: CartItem): void { this.items.push(i); }
+  total(v: CartVisitor<number>): number {
+    return this.items.reduce((sum, i) => sum + i.accept(v), 0);
+  }
+}
+
+const report = (c: Cart): string => \`tax=\${c.total(new TaxVisitor())} shipping=\${c.total(new ShippingVisitor())}\`;
+
+const c = new Cart();
+c.add(new Book(50_000, 400));
+c.add(new Electronics(200_000, 1200, true));
+c.add(new Grocery(10_000, 900, true));
+console.log(report(c)); // 36500 14000
+const edge = new Cart();
+edge.add(new Book(1_000, 500)); // exactly one 500 g block
+edge.add(new Book(1_000, 501)); // 1 g over: two blocks
+edge.add(new Grocery(199, 1, false)); // 5% of 199 = 9 (integer paise)
+console.log(report(edge)); // 9 4000
+console.log(report(new Cart())); // 0 0` },
+          { lang: 'cpp', code: `struct Book { long long price; int grams; };
+struct Electronics { long long price; int grams; bool fragile; };
+struct Grocery { long long price; int grams; bool perishable; };
+
+// The closed set of item types is a std::variant; std::visit is the visitor,
+// and the compiler rejects a visitor that forgets one of the types.
+using CartItem = variant<Book, Electronics, Grocery>;
+
+struct TaxVisitor {
+    long long operator()(const Book&) const { return 0; }
+    long long operator()(const Electronics& e) const { return e.price * 18 / 100; }
+    long long operator()(const Grocery& g) const { return g.price * 5 / 100; }
+};
+
+struct ShippingVisitor {
+    static long long base(int grams) { return 1000LL * ((grams + 499) / 500); }  // Rs 10 per 500 g block
+    long long operator()(const Book& b) const { return base(b.grams); }
+    long long operator()(const Electronics& e) const { return base(e.grams) + (e.fragile ? 5000 : 0); }
+    long long operator()(const Grocery& g) const { return base(g.grams) + (g.perishable ? 3000 : 0); }
+};
+
+class Cart {
+public:
+    void add(CartItem i) { items.push_back(std::move(i)); }
+    template <class Visitor>
+    long long total(const Visitor& v) const {
+        long long sum = 0;
+        for (const CartItem& i : items) sum += visit(v, i);
+        return sum;
+    }
+private:
+    vector<CartItem> items;
+};
+
+string report(const Cart& c) {
+    return "tax=" + to_string(c.total(TaxVisitor{})) + " shipping=" + to_string(c.total(ShippingVisitor{}));
+}
+
+int main() {
+    Cart c;
+    c.add(Book{50'000, 400});
+    c.add(Electronics{200'000, 1200, true});
+    c.add(Grocery{10'000, 900, true});
+    cout << report(c) << "\\n";  // 36500 14000
+    Cart edge;
+    edge.add(Book{1'000, 500});  // exactly one 500 g block
+    edge.add(Book{1'000, 501});  // 1 g over: two blocks
+    edge.add(Grocery{199, 1, false});  // 5% of 199 = 9 (integer paise)
+    cout << report(edge) << "\\n";  // 9 4000
+    cout << report(Cart{}) << "\\n";  // 0 0
+}` }
+        ],
       complexity: `<p>O(N) per visitor run. New operation: one class. New item type: one method in every visitor (compiler-enforced).</p>`,
       followUps: ['Rewrite with a sealed interface and switch — compare the amount of code', 'Tax rules differ by state/country — combine Visitor with a Strategy per region']
     }
@@ -3205,8 +10623,9 @@ class Cart {
 // NaiveUpiPayment, NaiveWalletPayment: same flow pasted with different mistakes.` },
     mcq: { q: 'UPI wants to skip fraud checks for small amounts. How should it express that?', options: ['Override a hook like needsFraudCheck(amount) that the template calls', 'Override the whole pay() method', 'Add an if in the base class for UPI', 'Catch the fraud exception'], answer: 0, explain: 'Hooks let subclasses switch optional steps on/off while the base keeps the order and the mandatory steps.' },
     hints: [`<p>Hint 1: <code>public final PaymentResult pay(long amount)</code> in an abstract <code>PaymentProcessor</code>.</p>`, `<p>Hint 2: Abstract: <code>debit(amount)</code> returning boolean. Hooks: <code>needsFraudCheck(amount)</code> (default true), <code>fee(amount)</code> (default 0).</p>`, `<p>Hint 3: Shared private steps: validate, fraudCheck (limit rule), receipt. Return a record <code>PaymentResult(status, fee)</code> with an enum status.</p>`],
-    solution: {
-      approach: `<p>The base class fixes the flow in a <code>final pay()</code>: validate → (hook) fraud check → abstract debit → (hook) fee → receipt. Mandatory steps are private, so no subclass can skip them; optional behaviour is expressed through hooks with safe defaults. A new payment method is a small subclass, and a compliance change to the flow is made once.</p>`,
+    tests: { io: true, cases: [{ stdin: '', stdout: "receipt: 50000 fee 1000\ncard 50000: OK fee 1000\nreceipt: 150000 fee 0\nupi 150000: OK fee 0\nupi 20000000: FRAUD_REJECTED fee 0\ncard 20000000: FRAUD_REJECTED fee 0\nwallet 90000: DEBIT_FAILED fee 0\nreceipt: 50000 fee 0\nwallet 50000: OK fee 0\nwallet 50000: DEBIT_FAILED fee 0\ncard 0: INVALID_AMOUNT fee 0\nflaky 1000: DEBIT_FAILED fee 0\n" }] },
+      solution: {
+      approach: `<p>The base class fixes the flow in a <code>pay()</code> that subclasses cannot override (<code>final</code> in Java, non-virtual in C++, <code>@final</code> in Python): validate → (hook) fraud check → abstract debit → (hook) fee → receipt. A gateway that throws inside <code>debit</code> is turned into <code>DEBIT_FAILED</code>, so the caller never sees an exception. Mandatory steps are private, so no subclass can skip them; optional behaviour is expressed through hooks with safe defaults. A new payment method is a small subclass, and a compliance change to the flow is made once.</p>`,
       code: `enum PayStatus { OK, INVALID_AMOUNT, FRAUD_REJECTED, DEBIT_FAILED }
 record PaymentResult(PayStatus status, long fee) {}
 
@@ -3214,7 +10633,10 @@ abstract class PaymentProcessor {
     public final PaymentResult pay(long amount) {
         if (amount <= 0) return new PaymentResult(PayStatus.INVALID_AMOUNT, 0);
         if (needsFraudCheck(amount) && !fraudCheck(amount)) return new PaymentResult(PayStatus.FRAUD_REJECTED, 0);
-        if (!debit(amount)) return new PaymentResult(PayStatus.DEBIT_FAILED, 0);
+        boolean debited;
+        try { debited = debit(amount); }
+        catch (RuntimeException e) { debited = false; }                   // a crashing gateway is a failed debit, never an exception to the caller
+        if (!debited) return new PaymentResult(PayStatus.DEBIT_FAILED, 0);
         long fee = fee(amount);
         writeReceipt(amount, fee);
         return new PaymentResult(PayStatus.OK, fee);
@@ -3224,7 +10646,7 @@ abstract class PaymentProcessor {
     protected long fee(long amount) { return 0; }                     // hook
     private boolean fraudCheck(long amount) { return amount <= 10_000_000; }   // ₹1,00,000 in paise
     private void writeReceipt(long amount, long fee) {
-        System.out.println(getClass().getSimpleName() + " receipt: " + amount + " fee " + fee);
+        System.out.println("receipt: " + amount + " fee " + fee);
     }
 }
 
@@ -3246,14 +10668,282 @@ class WalletPayment extends PaymentProcessor {
     @Override protected boolean needsFraudCheck(long amount) { return false; }
 }
 
+class FlakyPayment extends PaymentProcessor {
+    protected boolean debit(long amount) { throw new IllegalStateException("gateway down"); }
+}
+
 class PayDemo {
-    public static void main(String[] args) {
-        System.out.println(new CardPayment().pay(50_000));
-        System.out.println(new UpiPayment().pay(150_000));
-        System.out.println(new CardPayment().pay(20_000_000));
-        System.out.println(new WalletPayment(80_000).pay(90_000));
+    static void show(String label, long amount, PaymentResult r) {
+        System.out.println(label + " " + amount + ": " + r.status() + " fee " + r.fee());
     }
-}`,
+
+    public static void main(String[] args) {
+        show("card", 50_000, new CardPayment().pay(50_000));
+        show("upi", 150_000, new UpiPayment().pay(150_000));            // below the UPI fraud threshold: check skipped
+        show("upi", 20_000_000, new UpiPayment().pay(20_000_000));      // above it: fraud check applies and fails
+        show("card", 20_000_000, new CardPayment().pay(20_000_000));
+        WalletPayment wallet = new WalletPayment(80_000);
+        show("wallet", 90_000, wallet.pay(90_000));
+        show("wallet", 50_000, wallet.pay(50_000));
+        show("wallet", 50_000, wallet.pay(50_000));                      // only 30,000 left
+        show("card", 0, new CardPayment().pay(0));
+        show("flaky", 1_000, new FlakyPayment().pay(1_000));
+    }
+}`, alt: [
+          { lang: 'python', code: `from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from enum import Enum, auto
+from typing import final
+
+
+class PayStatus(Enum):
+    OK = auto()
+    INVALID_AMOUNT = auto()
+    FRAUD_REJECTED = auto()
+    DEBIT_FAILED = auto()
+
+
+@dataclass(frozen=True)
+class PaymentResult:
+    status: PayStatus
+    fee: int
+
+
+class PaymentProcessor(ABC):
+    @final
+    def pay(self, amount: int) -> PaymentResult:  # the template method: order of steps is fixed
+        if amount <= 0:
+            return PaymentResult(PayStatus.INVALID_AMOUNT, 0)
+        if self.needs_fraud_check(amount) and not self._fraud_check(amount):
+            return PaymentResult(PayStatus.FRAUD_REJECTED, 0)
+        try:
+            debited = self.debit(amount)
+        except Exception:  # a crashing gateway is a failed debit, never an exception to the caller
+            debited = False
+        if not debited:
+            return PaymentResult(PayStatus.DEBIT_FAILED, 0)
+        fee = self.fee(amount)
+        self._write_receipt(amount, fee)
+        return PaymentResult(PayStatus.OK, fee)
+
+    @abstractmethod
+    def debit(self, amount: int) -> bool: ...
+
+    def needs_fraud_check(self, amount: int) -> bool:  # hook
+        return True
+
+    def fee(self, amount: int) -> int:  # hook
+        return 0
+
+    def _fraud_check(self, amount: int) -> bool:
+        return amount <= 10_000_000  # Rs 1,00,000 in paise
+
+    def _write_receipt(self, amount: int, fee: int) -> None:
+        print(f"receipt: {amount} fee {fee}")
+
+
+class CardPayment(PaymentProcessor):
+    def debit(self, amount: int) -> bool:
+        return True  # call card network
+
+    def fee(self, amount: int) -> int:
+        return amount * 2 // 100
+
+
+class UpiPayment(PaymentProcessor):
+    def debit(self, amount: int) -> bool:
+        return True
+
+    def needs_fraud_check(self, amount: int) -> bool:
+        return amount > 200_000
+
+
+class WalletPayment(PaymentProcessor):
+    def __init__(self, balance: int):
+        self._balance = balance
+
+    def debit(self, amount: int) -> bool:
+        if amount > self._balance:
+            return False
+        self._balance -= amount
+        return True
+
+    def needs_fraud_check(self, amount: int) -> bool:
+        return False
+
+
+class FlakyPayment(PaymentProcessor):
+    def debit(self, amount: int) -> bool:
+        raise RuntimeError("gateway down")
+
+
+def show(label: str, amount: int, r: PaymentResult) -> None:
+    print(f"{label} {amount}: {r.status.name} fee {r.fee}")
+
+
+if __name__ == "__main__":
+    show("card", 50_000, CardPayment().pay(50_000))
+    show("upi", 150_000, UpiPayment().pay(150_000))  # below the UPI fraud threshold: check skipped
+    show("upi", 20_000_000, UpiPayment().pay(20_000_000))  # above it: fraud check applies and fails
+    show("card", 20_000_000, CardPayment().pay(20_000_000))
+    wallet = WalletPayment(80_000)
+    show("wallet", 90_000, wallet.pay(90_000))
+    show("wallet", 50_000, wallet.pay(50_000))
+    show("wallet", 50_000, wallet.pay(50_000))  # only 30,000 left
+    show("card", 0, CardPayment().pay(0))
+    show("flaky", 1_000, FlakyPayment().pay(1_000))` },
+          { lang: 'ts', code: `enum PayStatus { OK, INVALID_AMOUNT, FRAUD_REJECTED, DEBIT_FAILED }
+
+interface PaymentResult { readonly status: PayStatus; readonly fee: number; }
+
+abstract class PaymentProcessor {
+  // The template method: order of steps is fixed. Subclasses must not override it.
+  pay(amount: number): PaymentResult {
+    if (amount <= 0) return { status: PayStatus.INVALID_AMOUNT, fee: 0 };
+    if (this.needsFraudCheck(amount) && !this.fraudCheck(amount)) return { status: PayStatus.FRAUD_REJECTED, fee: 0 };
+    let debited: boolean;
+    try { debited = this.debit(amount); }
+    catch { debited = false; } // a crashing gateway is a failed debit, never an exception to the caller
+    if (!debited) return { status: PayStatus.DEBIT_FAILED, fee: 0 };
+    const fee = this.fee(amount);
+    this.writeReceipt(amount, fee);
+    return { status: PayStatus.OK, fee };
+  }
+
+  protected abstract debit(amount: number): boolean;
+  protected needsFraudCheck(_amount: number): boolean { return true; } // hook
+  protected fee(_amount: number): number { return 0; } // hook
+  private fraudCheck(amount: number): boolean { return amount <= 10_000_000; } // Rs 1,00,000 in paise
+  private writeReceipt(amount: number, fee: number): void { console.log(\`receipt: \${amount} fee \${fee}\`); }
+}
+
+class CardPayment extends PaymentProcessor {
+  protected debit(_amount: number): boolean { return true; } // call card network
+  protected override fee(amount: number): number { return Math.floor((amount * 2) / 100); }
+}
+
+class UpiPayment extends PaymentProcessor {
+  protected debit(_amount: number): boolean { return true; }
+  protected override needsFraudCheck(amount: number): boolean { return amount > 200_000; }
+}
+
+class WalletPayment extends PaymentProcessor {
+  constructor(private balance: number) { super(); }
+  protected debit(amount: number): boolean {
+    if (amount > this.balance) return false;
+    this.balance -= amount;
+    return true;
+  }
+  protected override needsFraudCheck(_amount: number): boolean { return false; }
+}
+
+class FlakyPayment extends PaymentProcessor {
+  protected debit(_amount: number): boolean { throw new Error("gateway down"); }
+}
+
+function show(label: string, amount: number, r: PaymentResult): void {
+  console.log(\`\${label} \${amount}: \${PayStatus[r.status]} fee \${r.fee}\`);
+}
+
+show("card", 50_000, new CardPayment().pay(50_000));
+show("upi", 150_000, new UpiPayment().pay(150_000)); // below the UPI fraud threshold: check skipped
+show("upi", 20_000_000, new UpiPayment().pay(20_000_000)); // above it: fraud check applies and fails
+show("card", 20_000_000, new CardPayment().pay(20_000_000));
+const wallet = new WalletPayment(80_000);
+show("wallet", 90_000, wallet.pay(90_000));
+show("wallet", 50_000, wallet.pay(50_000));
+show("wallet", 50_000, wallet.pay(50_000)); // only 30,000 left
+show("card", 0, new CardPayment().pay(0));
+show("flaky", 1_000, new FlakyPayment().pay(1_000));` },
+          { lang: 'cpp', code: `enum class PayStatus { OK, INVALID_AMOUNT, FRAUD_REJECTED, DEBIT_FAILED };
+
+string name(PayStatus s) {
+    switch (s) {
+        case PayStatus::OK: return "OK";
+        case PayStatus::INVALID_AMOUNT: return "INVALID_AMOUNT";
+        case PayStatus::FRAUD_REJECTED: return "FRAUD_REJECTED";
+        case PayStatus::DEBIT_FAILED: return "DEBIT_FAILED";
+    }
+    return "?";
+}
+
+struct PaymentResult { PayStatus status; long long fee; };
+
+class PaymentProcessor {
+public:
+    virtual ~PaymentProcessor() = default;
+
+    // The template method: non-virtual, so the order of steps cannot be overridden.
+    PaymentResult pay(long long amount) {
+        if (amount <= 0) return {PayStatus::INVALID_AMOUNT, 0};
+        if (needsFraudCheck(amount) && !fraudCheck(amount)) return {PayStatus::FRAUD_REJECTED, 0};
+        bool debited;
+        try { debited = debit(amount); }
+        catch (const exception&) { debited = false; }  // a crashing gateway is a failed debit, never an exception to the caller
+        if (!debited) return {PayStatus::DEBIT_FAILED, 0};
+        long long f = fee(amount);
+        writeReceipt(amount, f);
+        return {PayStatus::OK, f};
+    }
+
+protected:
+    virtual bool debit(long long amount) = 0;
+    virtual bool needsFraudCheck(long long) const { return true; }  // hook
+    virtual long long fee(long long) const { return 0; }            // hook
+
+private:
+    bool fraudCheck(long long amount) const { return amount <= 10'000'000; }  // Rs 1,00,000 in paise
+    void writeReceipt(long long amount, long long f) const { cout << "receipt: " << amount << " fee " << f << "\\n"; }
+};
+
+class CardPayment : public PaymentProcessor {
+protected:
+    bool debit(long long) override { return true; }  // call card network
+    long long fee(long long amount) const override { return amount * 2 / 100; }
+};
+
+class UpiPayment : public PaymentProcessor {
+protected:
+    bool debit(long long) override { return true; }
+    bool needsFraudCheck(long long amount) const override { return amount > 200'000; }
+};
+
+class WalletPayment : public PaymentProcessor {
+public:
+    explicit WalletPayment(long long balance) : balance(balance) {}
+protected:
+    bool debit(long long amount) override {
+        if (amount > balance) return false;
+        balance -= amount;
+        return true;
+    }
+    bool needsFraudCheck(long long) const override { return false; }
+private:
+    long long balance;
+};
+
+class FlakyPayment : public PaymentProcessor {
+protected:
+    bool debit(long long) override { throw runtime_error("gateway down"); }
+};
+
+void show(const string& label, long long amount, const PaymentResult& r) {
+    cout << label << " " << amount << ": " << name(r.status) << " fee " << r.fee << "\\n";
+}
+
+int main() {
+    show("card", 50'000, CardPayment().pay(50'000));
+    show("upi", 150'000, UpiPayment().pay(150'000));            // below the UPI fraud threshold: check skipped
+    show("upi", 20'000'000, UpiPayment().pay(20'000'000));      // above it: fraud check applies and fails
+    show("card", 20'000'000, CardPayment().pay(20'000'000));
+    WalletPayment wallet(80'000);
+    show("wallet", 90'000, wallet.pay(90'000));
+    show("wallet", 50'000, wallet.pay(50'000));
+    show("wallet", 50'000, wallet.pay(50'000));                  // only 30,000 left
+    show("card", 0, CardPayment().pay(0));
+    show("flaky", 1'000, FlakyPayment().pay(1'000));
+}` }
+        ],
       complexity: `<p>O(1) per payment. New method = one subclass with 1–3 small overrides.</p>`,
       followUps: ['Fraud checking should call a pluggable ML service — would you make it a Strategy injected into the base?', 'Make debit + receipt atomic (what if receipt writing fails?)']
     }
@@ -3276,7 +10966,8 @@ class PayDemo {
 }` },
     mcq: { q: 'Inside one transaction, key a is set three times. What should the undo log keep for a?', options: ['Only its value before the FIRST change in this transaction', 'All three old values', 'Only the latest value', 'Nothing; rollback re-reads the database'], answer: 0, explain: 'Rollback must restore the state at begin(); the first old value is all that is needed. Recording it once per key per transaction keeps the log O(keys touched).' },
     hints: [`<p>Hint 1: A <b>delta memento</b>: each transaction keeps a <code>Map&lt;key, oldValue&gt;</code> recorded the first time it touches a key. A sentinel marks "key did not exist".</p>`, `<p>Hint 2: rollback: for each entry, restore the old value (or remove the key if the sentinel). commit: merge the child log into the parent with <code>putIfAbsent</code> (the parent's older value wins); if outermost, just drop it.</p>`, `<p>Hint 3: Use <code>Optional</code> or a private static final Object ABSENT as the sentinel. Stack of logs = <code>Deque&lt;Map&lt;String,Object&gt;&gt;</code>.</p>`],
-    solution: {
+    tests: { io: true, cases: [{ stdin: '', stdout: "null 1\n20 null\n20 false\n20\nfalse\nnull null\n5\n" }] },
+      solution: {
       approach: `<p>Store data in one live map and keep a stack of <b>undo logs</b>, one per open transaction (a delta memento). Before the first modification of a key within the innermost transaction, record its previous value (or ABSENT). <b>rollback</b> replays that log into the live map and pops it. <b>commit</b> pops the log and merges it into the parent's log with <code>putIfAbsent</code>, so the parent can still roll back to its own begin state; at the outermost level the log is simply discarded. begin is O(1); rollback/commit cost O(keys touched).</p>`,
       code: `class TxStore {
     private static final Object ABSENT = new Object();
@@ -3325,8 +11016,202 @@ class PayDemo {
         System.out.println(s.get("a") + " " + s.rollback()); // 20 false
         s.begin(); s.set("a", "30"); s.begin(); s.set("a", "40"); s.commit(); s.rollback();
         System.out.println(s.get("a"));                      // 20 (outer rollback undoes both)
+        System.out.println(s.commit());                      // false: no open transaction
+        s.begin(); s.delete("zzz"); s.set("c", "7"); s.rollback();
+        System.out.println(s.get("zzz") + " " + s.get("c")); // null null
+        s.begin(); s.set("a", "5"); s.begin(); s.set("a", "6"); s.rollback(); s.commit();
+        System.out.println(s.get("a"));                      // 5: inner rollback keeps the outer change
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `_ABSENT = object()  # "the key did not exist" (None could be a real stored value)
+
+
+class TxStore:
+    def __init__(self):
+        self._data: dict[str, str] = {}
+        self._logs: list[dict[str, object]] = []  # one undo log per open transaction
+
+    def get(self, k: str) -> str | None:
+        return self._data.get(k)
+
+    def set(self, k: str, v: str) -> None:
+        self._remember(k)
+        self._data[k] = v
+
+    def delete(self, k: str) -> None:
+        self._remember(k)
+        self._data.pop(k, None)
+
+    def _remember(self, k: str) -> None:
+        if self._logs and k not in self._logs[-1]:
+            self._logs[-1][k] = self._data.get(k, _ABSENT)  # first touch in this transaction only
+
+    def begin(self) -> None:  # O(1)
+        self._logs.append({})
+
+    def rollback(self) -> bool:
+        if not self._logs:
+            return False
+        for k, old in self._logs.pop().items():
+            if old is _ABSENT:
+                self._data.pop(k, None)
+            else:
+                self._data[k] = old  # type: ignore[assignment]
+        return True
+
+    def commit(self) -> bool:
+        if not self._logs:
+            return False
+        log = self._logs.pop()
+        if self._logs:
+            for k, old in log.items():
+                self._logs[-1].setdefault(k, old)  # parent keeps its OLDER value
+        return True
+
+
+def show(v: object) -> str:
+    return "null" if v is None else str(v).lower() if isinstance(v, bool) else str(v)
+
+
+if __name__ == "__main__":
+    s = TxStore()
+    s.set("a", "10")
+    s.begin(); s.set("a", "20")
+    s.begin(); s.delete("a"); s.set("b", "1")
+    print(show(s.get("a")), show(s.get("b")))  # null 1
+    s.rollback()
+    print(show(s.get("a")), show(s.get("b")))  # 20 null
+    s.commit()
+    print(show(s.get("a")), show(s.rollback()))  # 20 false
+    s.begin(); s.set("a", "30"); s.begin(); s.set("a", "40"); s.commit(); s.rollback()
+    print(show(s.get("a")))  # 20 (outer rollback undoes both)
+    print(show(s.commit()))  # false: no open transaction
+    s.begin(); s.delete("zzz"); s.set("c", "7"); s.rollback()
+    print(show(s.get("zzz")), show(s.get("c")))  # null null
+    s.begin(); s.set("a", "5"); s.begin(); s.set("a", "6"); s.rollback(); s.commit()
+    print(show(s.get("a")))  # 5: inner rollback keeps the outer change` },
+          { lang: 'ts', code: `const ABSENT = Symbol("absent"); // "the key did not exist" (undefined could be confused with a missing entry)
+
+class TxStore {
+  private readonly data = new Map<string, string>();
+  private readonly logs: Map<string, string | typeof ABSENT>[] = []; // one undo log per open transaction
+
+  get(k: string): string | null { return this.data.get(k) ?? null; }
+
+  set(k: string, v: string): void { this.remember(k); this.data.set(k, v); }
+
+  delete(k: string): void { this.remember(k); this.data.delete(k); }
+
+  private remember(k: string): void {
+    const log = this.logs[this.logs.length - 1];
+    if (log !== undefined && !log.has(k)) log.set(k, this.data.get(k) ?? ABSENT); // first touch in this transaction only
+  }
+
+  begin(): void { this.logs.push(new Map()); } // O(1)
+
+  rollback(): boolean {
+    const log = this.logs.pop();
+    if (log === undefined) return false;
+    for (const [k, old] of log) {
+      if (old === ABSENT) this.data.delete(k);
+      else this.data.set(k, old);
+    }
+    return true;
+  }
+
+  commit(): boolean {
+    const log = this.logs.pop();
+    if (log === undefined) return false;
+    const parent = this.logs[this.logs.length - 1];
+    if (parent !== undefined) {
+      for (const [k, old] of log) if (!parent.has(k)) parent.set(k, old); // parent keeps its OLDER value
+    }
+    return true;
+  }
+}
+
+const s = new TxStore();
+s.set("a", "10");
+s.begin(); s.set("a", "20");
+s.begin(); s.delete("a"); s.set("b", "1");
+console.log(\`\${s.get("a")} \${s.get("b")}\`); // null 1
+s.rollback();
+console.log(\`\${s.get("a")} \${s.get("b")}\`); // 20 null
+s.commit();
+console.log(\`\${s.get("a")} \${s.rollback()}\`); // 20 false
+s.begin(); s.set("a", "30"); s.begin(); s.set("a", "40"); s.commit(); s.rollback();
+console.log(\`\${s.get("a")}\`); // 20 (outer rollback undoes both)
+console.log(\`\${s.commit()}\`); // false: no open transaction
+s.begin(); s.delete("zzz"); s.set("c", "7"); s.rollback();
+console.log(\`\${s.get("zzz")} \${s.get("c")}\`); // null null
+s.begin(); s.set("a", "5"); s.begin(); s.set("a", "6"); s.rollback(); s.commit();
+console.log(\`\${s.get("a")}\`); // 5: inner rollback keeps the outer change` },
+          { lang: 'cpp', code: `class TxStore {
+public:
+    optional<string> get(const string& k) const {
+        auto it = data.find(k);
+        return it == data.end() ? nullopt : optional<string>(it->second);
+    }
+
+    void set(const string& k, const string& v) { remember(k); data[k] = v; }
+    void del(const string& k) { remember(k); data.erase(k); }  // \`delete\` is a C++ keyword
+
+    void begin() { logs.emplace_back(); }  // O(1)
+
+    bool rollback() {
+        if (logs.empty()) return false;
+        for (auto& [k, old] : logs.back()) {
+            if (old) data[k] = *old;
+            else data.erase(k);
+        }
+        logs.pop_back();
+        return true;
+    }
+
+    bool commit() {
+        if (logs.empty()) return false;
+        auto log = std::move(logs.back());
+        logs.pop_back();
+        if (!logs.empty())
+            for (auto& [k, old] : log) logs.back().try_emplace(k, old);  // parent keeps its OLDER value
+        return true;
+    }
+
+private:
+    using UndoLog = unordered_map<string, optional<string>>;  // nullopt = the key did not exist
+
+    void remember(const string& k) {
+        if (logs.empty()) return;
+        auto it = data.find(k);
+        logs.back().try_emplace(k, it == data.end() ? nullopt : optional<string>(it->second));  // first touch only
+    }
+
+    unordered_map<string, string> data;
+    vector<UndoLog> logs;  // one undo log per open transaction
+};
+
+string show(const optional<string>& v) { return v ? *v : "null"; }
+
+int main() {
+    TxStore s;
+    s.set("a", "10");
+    s.begin(); s.set("a", "20");
+    s.begin(); s.del("a"); s.set("b", "1");
+    cout << show(s.get("a")) << " " << show(s.get("b")) << "\\n";  // null 1
+    s.rollback();
+    cout << show(s.get("a")) << " " << show(s.get("b")) << "\\n";  // 20 null
+    s.commit();
+    string a = show(s.get("a"));
+    cout << boolalpha << a << " " << s.rollback() << "\\n";  // 20 false
+    s.begin(); s.set("a", "30"); s.begin(); s.set("a", "40"); s.commit(); s.rollback();
+    cout << show(s.get("a")) << "\\n";  // 20 (outer rollback undoes both)
+    cout << s.commit() << "\\n";  // false: no open transaction
+    s.begin(); s.del("zzz"); s.set("c", "7"); s.rollback();
+    cout << show(s.get("zzz")) << " " << show(s.get("c")) << "\\n";  // null null
+    s.begin(); s.set("a", "5"); s.begin(); s.set("a", "6"); s.rollback(); s.commit();
+    cout << show(s.get("a")) << "\\n";  // 5: inner rollback keeps the outer change
+}` }
+        ],
       complexity: `<p>get/set/delete O(1) average; begin O(1); rollback/commit O(keys touched in that transaction). Memory O(total keys touched across open transactions).</p>`,
       followUps: ['Add count(value) in O(1) that also respects rollback (maintain a value→count map, logged the same way)', 'Make it thread-safe with snapshot isolation (MVCC)', 'Persist with a write-ahead log for crash recovery']
     }
@@ -3352,7 +11237,8 @@ class PayDemo {
 }` },
     mcq: { q: 'Why must ErrorBoundary be the OUTERMOST middleware?', options: ['So exceptions thrown by any inner middleware or the endpoint propagate up into its try/catch', 'Because it is the fastest', 'So it runs after the response is sent', 'Order does not matter'], answer: 0, explain: 'In the onion model, a middleware can only catch exceptions from what runs inside its next() call. Outermost = wraps everything.' },
     hints: [`<p>Hint 1: <code>interface Middleware { Response handle(Request r, Function&lt;Request, Response&gt; next); }</code>. Store (order, seq, middleware) and sort once.</p>`, `<p>Hint 2: Pre-compose the chain into a single <code>Function&lt;Request, Response&gt;</code> by folding from the innermost: <code>f = r -&gt; m.handle(r, inner)</code>.</p>`, `<p>Hint 3: Responses with headers: an immutable record with a <code>withHeader</code> method. RateLimit uses <code>ConcurrentHashMap.merge</code>. Mark the chain "built" and rebuild if a middleware is added later.</p>`],
-    solution: {
+    tests: { io: true, cases: [{ stdin: '', stdout: "401 login headers=[X-Time-Us]\n200 ok /a headers=[X-Time-Us]\n500 error: endpoint bug headers=[]\n200 ok /a headers=[X-Time-Us]\n429 slow down headers=[X-Time-Us]\n200 /CAB headers=[]\n" }] },
+      solution: {
       approach: `<p>Middlewares are Chain-of-Responsibility handlers in the onion style. Registration stores them with (order, sequence). <code>build()</code> sorts them and folds from the innermost outward, producing one composed function — so per-request cost is just the calls themselves, with no list walking or allocation for the chain. Each middleware decides to short-circuit, delegate, or post-process. The ErrorBoundary has the lowest order so its try/catch wraps everything. Rate limiting uses a concurrent map so the shared middleware is thread-safe.</p>`,
       code: `record Req(String path, String token, String client) {}
 record Resp(int status, String body, Map<String, String> headers) {
@@ -3364,8 +11250,9 @@ record Resp(int status, String body, Map<String, String> headers) {
 }
 @FunctionalInterface interface Mw { Resp handle(Req r, Function<Req, Resp> next); }
 
+record Entry(int order, int seq, Mw mw) {}
+
 class Server {
-    private record Entry(int order, int seq, Mw mw) {}
     private final List<Entry> entries = new ArrayList<>();
     private final Function<Req, Resp> endpoint;
     private volatile Function<Req, Resp> chain;
@@ -3388,6 +11275,10 @@ class Server {
 
     Resp handle(Req r) { Function<Req, Resp> c = chain; return (c != null ? c : build()).apply(r); }
 
+    static String show(Resp r) {
+        return r.status() + " " + r.body() + " headers=[" + String.join(",", r.headers().keySet()) + "]";
+    }
+
     public static void main(String[] args) {
         Map<String, Integer> hits = new ConcurrentHashMap<>();
         Server s = new Server(r -> {
@@ -3398,13 +11289,288 @@ class Server {
          .use(20, (r, next) -> r.token() == null ? new Resp(401, "login") : next.apply(r))
          .use(0, (r, next) -> { try { return next.apply(r); } catch (RuntimeException e) { return new Resp(500, "error: " + e.getMessage()); } })
          .use(10, (r, next) -> { long t = System.nanoTime(); Resp res = next.apply(r); return res.withHeader("X-Time-Us", String.valueOf((System.nanoTime() - t) / 1000)); });
-        System.out.println(s.handle(new Req("/a", null, "c1")).status());          // 401
-        System.out.println(s.handle(new Req("/a", "t", "c1")).headers().keySet()); // 200 + [X-Time-Us]
-        System.out.println(s.handle(new Req("/boom", "t", "c2")).status());       // 500
-        s.handle(new Req("/a", "t", "c1"));
-        System.out.println(s.handle(new Req("/a", "t", "c1")).status());          // 429
+        System.out.println(show(s.handle(new Req("/a", null, "c1"))));   // 401: Auth stops it, Timing still wraps it
+        System.out.println(show(s.handle(new Req("/a", "t", "c1"))));    // 200
+        System.out.println(show(s.handle(new Req("/boom", "t", "c2")))); // 500 from the error boundary
+        System.out.println(show(s.handle(new Req("/a", "t", "c1"))));    // 200 (2nd counted request)
+        System.out.println(show(s.handle(new Req("/a", "t", "c1"))));    // 429 (3rd)
+        // equal order numbers keep registration order; lower numbers run first
+        Server t = new Server(r -> new Resp(200, r.path()));
+        t.use(5, (r, next) -> next.apply(new Req(r.path() + "A", r.token(), r.client())))
+         .use(5, (r, next) -> next.apply(new Req(r.path() + "B", r.token(), r.client())))
+         .use(1, (r, next) -> next.apply(new Req(r.path() + "C", r.token(), r.client())));
+        System.out.println(show(t.handle(new Req("/", null, "c"))));     // /CAB
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `import threading
+import time
+from dataclasses import dataclass, field, replace
+from typing import Callable, Optional
+
+
+@dataclass(frozen=True)
+class Req:
+    path: str
+    token: Optional[str]
+    client: str
+
+
+@dataclass(frozen=True)
+class Resp:
+    status: int
+    body: str
+    headers: dict[str, str] = field(default_factory=dict)
+
+    def with_header(self, k: str, v: str) -> "Resp":
+        return replace(self, headers={**self.headers, k: v})  # new object, old one untouched
+
+
+Handler = Callable[[Req], Resp]
+Mw = Callable[[Req, Handler], Resp]  # (request, next) -> response
+
+
+def _wrap(mw: Mw, inner: Handler) -> Handler:
+    return lambda r: mw(r, inner)  # a helper, so each closure keeps its own mw/inner
+
+
+class Server:
+    def __init__(self, endpoint: Handler):
+        self._endpoint = endpoint
+        self._entries: list[tuple[int, int, Mw]] = []  # (order, registration sequence, middleware)
+        self._chain: Optional[Handler] = None
+        self._lock = threading.Lock()
+
+    def use(self, order: int, mw: Mw) -> "Server":
+        with self._lock:
+            self._entries.append((order, len(self._entries), mw))
+            self._chain = None
+        return self
+
+    def _build(self) -> Handler:
+        with self._lock:
+            if self._chain is None:
+                f = self._endpoint
+                for _, _, mw in sorted(self._entries, key=lambda e: (e[0], e[1]), reverse=True):  # fold innermost -> outermost
+                    f = _wrap(mw, f)
+                self._chain = f
+            return self._chain
+
+    def handle(self, r: Req) -> Resp:
+        return (self._chain or self._build())(r)
+
+
+def show(r: Resp) -> str:
+    return f"{r.status} {r.body} headers=[{','.join(r.headers)}]"
+
+
+if __name__ == "__main__":
+    hits: dict[str, int] = {}
+
+    def endpoint(r: Req) -> Resp:
+        if r.path == "/boom":
+            raise RuntimeError("endpoint bug")
+        return Resp(200, "ok " + r.path)
+
+    def rate_limit(r: Req, nxt: Handler) -> Resp:
+        hits[r.client] = hits.get(r.client, 0) + 1
+        return Resp(429, "slow down") if hits[r.client] > 2 else nxt(r)
+
+    def auth(r: Req, nxt: Handler) -> Resp:
+        return Resp(401, "login") if r.token is None else nxt(r)
+
+    def error_boundary(r: Req, nxt: Handler) -> Resp:
+        try:
+            return nxt(r)
+        except Exception as e:
+            return Resp(500, f"error: {e}")
+
+    def timing(r: Req, nxt: Handler) -> Resp:
+        t = time.perf_counter_ns()
+        res = nxt(r)
+        return res.with_header("X-Time-Us", str((time.perf_counter_ns() - t) // 1000))
+
+    s = Server(endpoint)
+    s.use(30, rate_limit).use(20, auth).use(0, error_boundary).use(10, timing)
+    print(show(s.handle(Req("/a", None, "c1"))))  # 401: Auth stops it, Timing still wraps it
+    print(show(s.handle(Req("/a", "t", "c1"))))  # 200
+    print(show(s.handle(Req("/boom", "t", "c2"))))  # 500 from the error boundary
+    print(show(s.handle(Req("/a", "t", "c1"))))  # 200 (2nd counted request)
+    print(show(s.handle(Req("/a", "t", "c1"))))  # 429 (3rd)
+    # equal order numbers keep registration order; lower numbers run first
+    def append(letter: str) -> Mw:
+        return lambda r, nxt: nxt(replace(r, path=r.path + letter))
+
+    t = Server(lambda r: Resp(200, r.path))
+    t.use(5, append("A")).use(5, append("B")).use(1, append("C"))
+    print(show(t.handle(Req("/", None, "c"))))  # /CAB` },
+          { lang: 'ts', code: `interface Req { readonly path: string; readonly token: string | null; readonly client: string; }
+
+class Resp {
+  constructor(
+    readonly status: number,
+    readonly body: string,
+    readonly headers: ReadonlyMap<string, string> = new Map(),
+  ) {}
+  withHeader(k: string, v: string): Resp {
+    return new Resp(this.status, this.body, new Map(this.headers).set(k, v)); // new object, old one untouched
+  }
+}
+
+type Handler = (r: Req) => Resp;
+type Mw = (r: Req, next: Handler) => Resp;
+
+class Server {
+  private readonly entries: { order: number; seq: number; mw: Mw }[] = [];
+  private chain: Handler | null = null;
+
+  constructor(private readonly endpoint: Handler) {}
+
+  use(order: number, mw: Mw): this {
+    this.entries.push({ order, seq: this.entries.length, mw });
+    this.chain = null;
+    return this;
+  }
+
+  private build(): Handler {
+    const sorted = [...this.entries].sort((a, b) => a.order - b.order || a.seq - b.seq);
+    let f: Handler = this.endpoint;
+    for (let i = sorted.length - 1; i >= 0; i--) { // fold innermost -> outermost
+      const { mw } = sorted[i];
+      const inner = f;
+      f = (r) => mw(r, inner);
+    }
+    return (this.chain = f);
+  }
+
+  handle(r: Req): Resp { return (this.chain ?? this.build())(r); }
+}
+
+const show = (r: Resp): string => \`\${r.status} \${r.body} headers=[\${[...r.headers.keys()].join(",")}]\`;
+
+const hits = new Map<string, number>();
+const s = new Server((r) => {
+  if (r.path === "/boom") throw new Error("endpoint bug");
+  return new Resp(200, "ok " + r.path);
+});
+s.use(30, (r, next) => {
+  const n = (hits.get(r.client) ?? 0) + 1;
+  hits.set(r.client, n);
+  return n > 2 ? new Resp(429, "slow down") : next(r);
+})
+  .use(20, (r, next) => (r.token === null ? new Resp(401, "login") : next(r)))
+  .use(0, (r, next) => {
+    try { return next(r); }
+    catch (e) { return new Resp(500, "error: " + (e as Error).message); }
+  })
+  .use(10, (r, next) => {
+    const t = Date.now();
+    return next(r).withHeader("X-Time-Us", String((Date.now() - t) * 1000)); // ms clock, reported in microseconds
+  });
+console.log(show(s.handle({ path: "/a", token: null, client: "c1" }))); // 401: Auth stops it, Timing still wraps it
+console.log(show(s.handle({ path: "/a", token: "t", client: "c1" }))); // 200
+console.log(show(s.handle({ path: "/boom", token: "t", client: "c2" }))); // 500 from the error boundary
+console.log(show(s.handle({ path: "/a", token: "t", client: "c1" }))); // 200 (2nd counted request)
+console.log(show(s.handle({ path: "/a", token: "t", client: "c1" }))); // 429 (3rd)
+// equal order numbers keep registration order; lower numbers run first
+const append = (letter: string): Mw => (r, next) => next({ ...r, path: r.path + letter });
+const t = new Server((r) => new Resp(200, r.path));
+t.use(5, append("A")).use(5, append("B")).use(1, append("C"));
+console.log(show(t.handle({ path: "/", token: null, client: "c" }))); // /CAB` },
+          { lang: 'cpp', code: `struct Req { string path; optional<string> token; string client; };
+
+struct Resp {
+    int status;
+    string body;
+    map<string, string> headers;
+    Resp withHeader(const string& k, const string& v) const {  // copy: the original is untouched
+        Resp copy = *this;
+        copy.headers[k] = v;
+        return copy;
+    }
+};
+
+using Handler = function<Resp(const Req&)>;
+using Mw = function<Resp(const Req&, const Handler&)>;  // (request, next) -> response
+
+class Server {
+public:
+    explicit Server(Handler endpoint) : endpoint(std::move(endpoint)) {}
+
+    Server& use(int order, Mw mw) {
+        entries.push_back({order, int(entries.size()), std::move(mw)});
+        chain = nullptr;
+        return *this;
+    }
+
+    Resp handle(const Req& r) {
+        if (!chain) chain = build();
+        return chain(r);
+    }
+
+private:
+    struct Entry { int order; int seq; Mw mw; };
+
+    Handler build() const {
+        vector<Entry> sorted = entries;
+        sort(sorted.begin(), sorted.end(), [](const Entry& a, const Entry& b) {
+            return tie(a.order, a.seq) < tie(b.order, b.seq);
+        });
+        Handler f = endpoint;
+        for (auto it = sorted.rbegin(); it != sorted.rend(); ++it)  // fold innermost -> outermost
+            f = [mw = it->mw, inner = f](const Req& r) { return mw(r, inner); };
+        return f;
+    }
+
+    Handler endpoint;
+    vector<Entry> entries;
+    Handler chain;
+};
+
+string show(const Resp& r) {
+    string keys;
+    for (const auto& [k, v] : r.headers) keys += (keys.empty() ? "" : ",") + k;
+    return to_string(r.status) + " " + r.body + " headers=[" + keys + "]";
+}
+
+Mw append(char letter) {
+    return [letter](const Req& r, const Handler& next) {
+        Req changed = r;
+        changed.path += letter;
+        return next(changed);
+    };
+}
+
+int main() {
+    map<string, int> hits;
+    Server s([](const Req& r) {
+        if (r.path == "/boom") throw runtime_error("endpoint bug");
+        return Resp{200, "ok " + r.path, {}};
+    });
+    s.use(30, [&](const Req& r, const Handler& next) {
+         return ++hits[r.client] > 2 ? Resp{429, "slow down", {}} : next(r);
+     })
+     .use(20, [](const Req& r, const Handler& next) { return r.token ? next(r) : Resp{401, "login", {}}; })
+     .use(0, [](const Req& r, const Handler& next) {
+         try { return next(r); }
+         catch (const exception& e) { return Resp{500, string("error: ") + e.what(), {}}; }
+     })
+     .use(10, [](const Req& r, const Handler& next) {
+         auto t = chrono::steady_clock::now();
+         Resp res = next(r);
+         auto us = chrono::duration_cast<chrono::microseconds>(chrono::steady_clock::now() - t).count();
+         return res.withHeader("X-Time-Us", to_string(us));
+     });
+    cout << show(s.handle({"/a", nullopt, "c1"})) << "\\n";  // 401: Auth stops it, Timing still wraps it
+    cout << show(s.handle({"/a", "t", "c1"})) << "\\n";      // 200
+    cout << show(s.handle({"/boom", "t", "c2"})) << "\\n";   // 500 from the error boundary
+    cout << show(s.handle({"/a", "t", "c1"})) << "\\n";      // 200 (2nd counted request)
+    cout << show(s.handle({"/a", "t", "c1"})) << "\\n";      // 429 (3rd)
+    // equal order numbers keep registration order; lower numbers run first
+    Server t([](const Req& r) { return Resp{200, r.path, {}}; });
+    t.use(5, append('A')).use(5, append('B')).use(1, append('C'));
+    cout << show(t.handle({"/", nullopt, "c"})) << "\\n";  // /CAB
+}` }
+        ],
       complexity: `<p>Build: O(M log M) once. Per request: O(M) middleware calls, zero chain allocation. Rate limiter O(1) per request.</p>`,
       followUps: ['Make per-route middleware (only /admin needs an extra role check)', 'Add async (CompletableFuture) middlewares without blocking threads', 'How does this map to Servlet filters / Spring Security?']
     }
@@ -3430,15 +11596,17 @@ class Server {
 }` },
     mcq: { q: 'Which pattern decides "try PUSH, then SMS, then EMAIL until one works"?', options: ['Chain of Responsibility built per user from their preference list', 'Observer', 'Visitor', 'Memento'], answer: 0, explain: 'Each channel handler either succeeds (stops) or passes to the next. Observer decides WHO hears the event; Strategy encapsulates HOW each channel sends; the chain decides WHICH channel ends up delivering.' },
     hints: [`<p>Hint 1: Three questions, three patterns: who receives (Observer, keyed by event type), how a channel sends (Strategy: <code>Channel.send(user, msg)</code>), which channel wins (Chain: try in order until success).</p>`, `<p>Hint 2: Registry <code>Map&lt;String, Channel&gt;</code> lets new channels plug in by name. Subscriptions: <code>Map&lt;EventType, List&lt;Subscription&gt;&gt;</code> where a subscription holds the user and their ordered channel names.</p>`, `<p>Hint 3: The fallback loop catches exceptions per channel; log the winning channel or FAILED. Use concurrent collections; deliver asynchronously in production (mention it).</p>`],
-    solution: {
+    tests: { io: true, cases: [{ stdin: '', stdout: "push  -> asha [ORDER_SHIPPED] A1 is on the way\nSMS threw for ben: gateway down\nemail -> ben [ORDER_SHIPPED] A1 is on the way\nSMS threw for cy: gateway down\nemail -> ben [PAYMENT_FAILED] card declined\nemail -> dan [PAYMENT_FAILED] card declined\nasha ORDER_SHIPPED PUSH\nben ORDER_SHIPPED EMAIL\ncy ORDER_SHIPPED FAILED\nben PAYMENT_FAILED EMAIL\ndan PAYMENT_FAILED EMAIL\n" }] },
+      solution: {
       approach: `<p><b>Observer:</b> the dispatcher keeps subscriptions per event type, so publish touches only interested users. <b>Strategy:</b> each channel implements <code>Channel</code> and is registered by name — WhatsApp is a new class plus one <code>register</code> call. <b>Chain of Responsibility:</b> for each user, channels are tried in the user's preference order; a channel that returns false or throws passes the job to the next; the first success stops the chain. Every attempt result goes to a delivery log for retries and analytics.</p>`,
       code: `record Event(String type, String payload) {}
 record Delivery(String user, String eventType, String channel) {}
 
 interface Channel { boolean send(String user, String message); }
 
+record Subscription(String user, List<String> channelOrder) {}
+
 class NotificationDispatcher {
-    private record Subscription(String user, List<String> channelOrder) {}
     private final Map<String, Channel> channels = new ConcurrentHashMap<>();
     private final Map<String, List<Subscription>> subs = new ConcurrentHashMap<>();
     final List<Delivery> log = new CopyOnWriteArrayList<>();
@@ -3476,10 +11644,221 @@ class NotificationDispatcher {
         d.subscribe("ben", "ORDER_SHIPPED", List.of("SMS", "EMAIL"));
         d.subscribe("cy", "ORDER_SHIPPED", List.of("SMS"));
         d.publish(new Event("ORDER_SHIPPED", "A1 is on the way"));
-        d.publish(new Event("PAYMENT_FAILED", "nobody subscribed"));
-        d.log.forEach(System.out::println);
+        d.publish(new Event("PAYMENT_FAILED", "nobody subscribed"));      // no subscribers: nothing happens
+        d.subscribe("ben", "PAYMENT_FAILED", List.of("PUSH", "EMAIL"));  // PUSH returns false for ben
+        d.subscribe("dan", "PAYMENT_FAILED", List.of("FAX", "EMAIL"));   // FAX is not registered: skipped
+        d.publish(new Event("PAYMENT_FAILED", "card declined"));
+        d.log.forEach(x -> System.out.println(x.user() + " " + x.eventType() + " " + x.channel()));
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `from dataclasses import dataclass
+from typing import Callable
+
+Channel = Callable[[str, str], bool]  # (user, message) -> delivered?
+
+
+@dataclass(frozen=True)
+class Event:
+    type: str
+    payload: str
+
+
+@dataclass(frozen=True)
+class Delivery:
+    user: str
+    event_type: str
+    channel: str
+
+
+@dataclass(frozen=True)
+class Subscription:
+    user: str
+    channel_order: tuple[str, ...]
+
+
+class NotificationDispatcher:
+    def __init__(self):
+        self._channels: dict[str, Channel] = {}
+        self._subs: dict[str, list[Subscription]] = {}
+        self.log: list[Delivery] = []
+
+    def register_channel(self, name: str, channel: Channel) -> None:  # Strategy registry
+        self._channels[name] = channel
+
+    def subscribe(self, user: str, event_type: str, channel_order: list[str]) -> None:  # Observer
+        self._subs.setdefault(event_type, []).append(Subscription(user, tuple(channel_order)))
+
+    def publish(self, e: Event) -> None:
+        for s in list(self._subs.get(e.type, [])):
+            winner = self._deliver(s, f"[{e.type}] {e.payload}")
+            self.log.append(Delivery(s.user, e.type, winner))
+
+    # Chain of Responsibility: first channel that succeeds handles it.
+    def _deliver(self, s: Subscription, msg: str) -> str:
+        for name in s.channel_order:
+            channel = self._channels.get(name)
+            if channel is None:  # unknown channel: skip
+                continue
+            try:
+                if channel(s.user, msg):
+                    return name
+            except Exception as ex:
+                print(f"{name} threw for {s.user}: {ex}")
+        return "FAILED"
+
+
+def push(user: str, msg: str) -> bool:
+    if user == "ben":
+        return False
+    print(f"push  -> {user} {msg}")
+    return True
+
+
+def sms(user: str, msg: str) -> bool:
+    raise RuntimeError("gateway down")
+
+
+def email(user: str, msg: str) -> bool:
+    print(f"email -> {user} {msg}")
+    return True
+
+
+if __name__ == "__main__":
+    d = NotificationDispatcher()
+    d.register_channel("PUSH", push)
+    d.register_channel("SMS", sms)
+    d.register_channel("EMAIL", email)
+    d.subscribe("asha", "ORDER_SHIPPED", ["PUSH", "SMS"])
+    d.subscribe("ben", "ORDER_SHIPPED", ["SMS", "EMAIL"])
+    d.subscribe("cy", "ORDER_SHIPPED", ["SMS"])
+    d.publish(Event("ORDER_SHIPPED", "A1 is on the way"))
+    d.publish(Event("PAYMENT_FAILED", "nobody subscribed"))  # no subscribers: nothing happens
+    d.subscribe("ben", "PAYMENT_FAILED", ["PUSH", "EMAIL"])  # PUSH returns False for ben
+    d.subscribe("dan", "PAYMENT_FAILED", ["FAX", "EMAIL"])  # FAX is not registered: skipped
+    d.publish(Event("PAYMENT_FAILED", "card declined"))
+    for x in d.log:
+        print(x.user, x.event_type, x.channel)` },
+          { lang: 'ts', code: `// Named DomainEvent because Event is a built-in DOM type.
+interface DomainEvent { readonly type: string; readonly payload: string; }
+interface Delivery { readonly user: string; readonly eventType: string; readonly channel: string; }
+interface Subscription { readonly user: string; readonly channelOrder: readonly string[]; }
+
+type Channel = (user: string, message: string) => boolean; // delivered?
+
+class NotificationDispatcher {
+  private readonly channels = new Map<string, Channel>();
+  private readonly subs = new Map<string, Subscription[]>();
+  readonly log: Delivery[] = [];
+
+  registerChannel(name: string, c: Channel): void { this.channels.set(name, c); } // Strategy registry
+
+  subscribe(user: string, eventType: string, channelOrder: readonly string[]): void { // Observer
+    const list = this.subs.get(eventType) ?? [];
+    list.push({ user, channelOrder: [...channelOrder] });
+    this.subs.set(eventType, list);
+  }
+
+  publish(e: DomainEvent): void {
+    for (const s of [...(this.subs.get(e.type) ?? [])]) {
+      const winner = this.deliver(s, \`[\${e.type}] \${e.payload}\`);
+      this.log.push({ user: s.user, eventType: e.type, channel: winner });
+    }
+  }
+
+  // Chain of Responsibility: first channel that succeeds handles it.
+  private deliver(s: Subscription, msg: string): string {
+    for (const name of s.channelOrder) {
+      const c = this.channels.get(name);
+      if (c === undefined) continue; // unknown channel: skip
+      try { if (c(s.user, msg)) return name; }
+      catch (ex) { console.log(\`\${name} threw for \${s.user}: \${(ex as Error).message}\`); }
+    }
+    return "FAILED";
+  }
+}
+
+const d = new NotificationDispatcher();
+d.registerChannel("PUSH", (u, m) => {
+  if (u === "ben") return false;
+  console.log(\`push  -> \${u} \${m}\`);
+  return true;
+});
+d.registerChannel("SMS", () => { throw new Error("gateway down"); });
+d.registerChannel("EMAIL", (u, m) => { console.log(\`email -> \${u} \${m}\`); return true; });
+d.subscribe("asha", "ORDER_SHIPPED", ["PUSH", "SMS"]);
+d.subscribe("ben", "ORDER_SHIPPED", ["SMS", "EMAIL"]);
+d.subscribe("cy", "ORDER_SHIPPED", ["SMS"]);
+d.publish({ type: "ORDER_SHIPPED", payload: "A1 is on the way" });
+d.publish({ type: "PAYMENT_FAILED", payload: "nobody subscribed" }); // no subscribers: nothing happens
+d.subscribe("ben", "PAYMENT_FAILED", ["PUSH", "EMAIL"]); // PUSH returns false for ben
+d.subscribe("dan", "PAYMENT_FAILED", ["FAX", "EMAIL"]); // FAX is not registered: skipped
+d.publish({ type: "PAYMENT_FAILED", payload: "card declined" });
+for (const x of d.log) console.log(\`\${x.user} \${x.eventType} \${x.channel}\`);` },
+          { lang: 'cpp', code: `struct Event { string type; string payload; };
+struct Delivery { string user; string eventType; string channel; };
+
+using Channel = function<bool(const string& user, const string& message)>;  // delivered?
+
+class NotificationDispatcher {
+public:
+    vector<Delivery> log;
+
+    void registerChannel(const string& name, Channel c) { channels[name] = std::move(c); }  // Strategy registry
+
+    void subscribe(const string& user, const string& eventType, vector<string> channelOrder) {  // Observer
+        subs[eventType].push_back({user, std::move(channelOrder)});
+    }
+
+    void publish(const Event& e) {
+        auto it = subs.find(e.type);
+        if (it == subs.end()) return;
+        for (const Subscription& s : vector<Subscription>(it->second)) {  // iterate a copy
+            string winner = deliver(s, "[" + e.type + "] " + e.payload);
+            log.push_back({s.user, e.type, winner});
+        }
+    }
+
+private:
+    struct Subscription { string user; vector<string> channelOrder; };
+
+    // Chain of Responsibility: first channel that succeeds handles it.
+    string deliver(const Subscription& s, const string& msg) {
+        for (const string& name : s.channelOrder) {
+            auto it = channels.find(name);
+            if (it == channels.end()) continue;  // unknown channel: skip
+            try { if (it->second(s.user, msg)) return name; }
+            catch (const exception& ex) { cout << name << " threw for " << s.user << ": " << ex.what() << "\\n"; }
+        }
+        return "FAILED";
+    }
+
+    map<string, Channel> channels;
+    map<string, vector<Subscription>> subs;
+};
+
+int main() {
+    NotificationDispatcher d;
+    d.registerChannel("PUSH", [](const string& u, const string& m) {
+        if (u == "ben") return false;
+        cout << "push  -> " << u << " " << m << "\\n";
+        return true;
+    });
+    d.registerChannel("SMS", [](const string&, const string&) -> bool { throw runtime_error("gateway down"); });
+    d.registerChannel("EMAIL", [](const string& u, const string& m) {
+        cout << "email -> " << u << " " << m << "\\n";
+        return true;
+    });
+    d.subscribe("asha", "ORDER_SHIPPED", {"PUSH", "SMS"});
+    d.subscribe("ben", "ORDER_SHIPPED", {"SMS", "EMAIL"});
+    d.subscribe("cy", "ORDER_SHIPPED", {"SMS"});
+    d.publish({"ORDER_SHIPPED", "A1 is on the way"});
+    d.publish({"PAYMENT_FAILED", "nobody subscribed"});      // no subscribers: nothing happens
+    d.subscribe("ben", "PAYMENT_FAILED", {"PUSH", "EMAIL"});  // PUSH returns false for ben
+    d.subscribe("dan", "PAYMENT_FAILED", {"FAX", "EMAIL"});   // FAX is not registered: skipped
+    d.publish({"PAYMENT_FAILED", "card declined"});
+    for (const auto& x : d.log) cout << x.user << " " << x.eventType << " " << x.channel << "\\n";
+}` }
+        ],
       complexity: `<p>publish: O(S × C) where S = subscribers of that event type and C = channels tried per user (small). Subscribe O(S) copy-on-write. Memory O(subscriptions + log).</p>`,
       followUps: ['Retry FAILED deliveries with exponential backoff (a Command queue)', 'Quiet hours per user — which pattern/where?', 'Scale out: Kafka topics per event type, consumer groups per channel']
     }
@@ -3507,7 +11886,8 @@ class NotificationDispatcher {
 }` },
     mcq: { q: 'C1 depends on B1 and A1; B1 depends on A1. A1 changes. Why recompute in topological order?', options: ['So C1 is computed once, after B1 has its new value (no glitch, no double work)', 'Because alphabetical order is required', 'To detect cycles', 'It does not matter'], answer: 0, explain: 'Naive observer push would update C1 when A1 changes (with stale B1) and again when B1 changes. Topological order over the affected subgraph computes each cell once with fresh inputs.' },
     hints: [`<p>Hint 1: Each cell keeps its <b>inputs</b> (refs) and its <b>observers</b> (dependents). Changing a cell notifies its dependents — Observer — but do it in a batch.</p>`, `<p>Hint 2: On change: collect all affected cells by DFS/BFS over dependents; then Kahn's topological sort restricted to that set (in-degree = number of affected inputs); recompute in that order.</p>`, `<p>Hint 3: Cycle check before installing a formula: DFS from each ref along <i>inputs</i>; if you reach the target cell, reject. When replacing a formula, remove the cell from its old inputs' dependent sets.</p>`],
-    solution: {
+    tests: { io: true, cases: [{ stdin: '', stdout: "set A1 = 10:\nrecompute B1 = 13.00\nrecompute C1 = 23.00\nB1=13.00 C1=23.00\ncycle accepted? false\nA1 still 10.00\nset A1 = 1:\nrecompute B1 = 4.00\nrecompute B2 = 1.00\nrecompute C1 = 5.00\nrecompute D1 = 5.00\nself-reference accepted? false\nB2 still 1.00\nE1=0.00\nrecompute E1 = 4.00\nE1=4.00\n" }] },
+      solution: {
       approach: `<p>Model the sheet as a dependency graph. Every cell stores its inputs and its dependents (observers). Installing a formula first checks for cycles by searching from each new input through inputs for the target cell; if found, nothing changes. Otherwise old edges are removed and new ones added. Any change triggers a <b>batched</b> notification: gather the affected set (all transitive dependents), order it topologically with Kahn's algorithm restricted to that set, and recompute each cell once. This gives glitch-free, minimal recalculation — the same idea used by Excel and reactive UI frameworks.</p>`,
       code: `class Sheet {
     private final Map<String, Double> value = new HashMap<>();
@@ -3565,16 +11945,18 @@ class NotificationDispatcher {
             for (String r : inputs.get(c)) if (affected.contains(r)) d++;
             indeg.put(c, d);
         }
-        Deque<String> ready = new ArrayDeque<>();
+        PriorityQueue<String> ready = new PriorityQueue<>();               // alphabetical: same order on every run
         indeg.forEach((c, d) -> { if (d == 0) ready.add(c); });
         while (!ready.isEmpty()) {
             String c = ready.poll();
             value.put(c, compute(c));
-            System.out.println("  recompute " + c + " = " + get(c));
+            System.out.println(String.format("  recompute %s = %.2f", c, get(c)));
             for (String dep : dependents.getOrDefault(c, Set.of()))
                 if (affected.contains(dep) && indeg.merge(dep, -1, Integer::sum) == 0) ready.add(dep);
         }
     }
+
+    static String f(double v) { return String.format("%.2f", v); }
 
     public static void main(String[] args) {
         Sheet s = new Sheet();
@@ -3583,11 +11965,354 @@ class NotificationDispatcher {
         s.setSum("C1", "B1", "A1");
         System.out.println("set A1 = 10:");
         s.setValue("A1", 10);
-        System.out.println("B1=" + s.get("B1") + " C1=" + s.get("C1"));        // 13.0 23.0
-        System.out.println("cycle accepted? " + s.setSum("A1", "C1"));         // false
-        System.out.println("A1 still " + s.get("A1"));
+        System.out.println("B1=" + f(s.get("B1")) + " C1=" + f(s.get("C1")));        // 13.00 23.00
+        System.out.println("cycle accepted? " + s.setSum("A1", "C1"));              // false
+        System.out.println("A1 still " + f(s.get("A1")));
+        s.setSum("B2", "A1");
+        s.setSum("D1", "B1", "B2");                                                  // diamond: A1 -> B1/B2 -> D1
+        System.out.println("set A1 = 1:");
+        s.setValue("A1", 1);                                                         // D1 recomputed once, after B1 and B2
+        System.out.println("self-reference accepted? " + s.setSum("B2", "B2"));     // false
+        System.out.println("B2 still " + f(s.get("B2")));
+        s.setSum("E1", "Z9");                                                        // missing cell counts as 0
+        System.out.println("E1=" + f(s.get("E1")));
+        s.setValue("Z9", 4);
+        System.out.println("E1=" + f(s.get("E1")));
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `import heapq
+from collections import defaultdict
+
+
+class Sheet:
+    def __init__(self):
+        self._value: dict[str, float] = {}
+        self._inputs: dict[str, list[str]] = {}  # formula refs
+        self._dependents: dict[str, set[str]] = defaultdict(set)  # observers
+
+    def get(self, cell: str) -> float:
+        return self._value.get(cell, 0.0)
+
+    def set_value(self, cell: str, v: float) -> None:
+        self._detach(cell)
+        self._value[cell] = v
+        self._propagate(cell)
+
+    def set_sum(self, cell: str, *refs: str) -> bool:
+        if any(self._reaches(r, cell) for r in refs):  # would create a cycle
+            return False
+        self._detach(cell)
+        self._inputs[cell] = list(refs)
+        for r in refs:
+            self._dependents[r].add(cell)
+        self._value[cell] = self._compute(cell)
+        self._propagate(cell)
+        return True
+
+    def _detach(self, cell: str) -> None:
+        for r in self._inputs.pop(cell, []):
+            self._dependents[r].discard(cell)
+
+    def _reaches(self, start: str, target: str) -> bool:
+        """DFS along inputs: does \`start\` (transitively) read \`target\`?"""
+        stack, seen = [start], set()
+        while stack:
+            c = stack.pop()
+            if c == target:
+                return True
+            if c not in seen:
+                seen.add(c)
+                stack.extend(self._inputs.get(c, []))
+        return False
+
+    def _compute(self, cell: str) -> float:
+        return sum(self.get(r) for r in self._inputs[cell])
+
+    def _propagate(self, changed: str) -> None:
+        """Batched observer notification: each affected cell recomputed once, inputs first."""
+        affected: set[str] = set()
+        queue = list(self._dependents.get(changed, ()))
+        while queue:
+            c = queue.pop()
+            if c not in affected:
+                affected.add(c)
+                queue.extend(self._dependents.get(c, ()))
+        indeg = {c: sum(1 for r in self._inputs[c] if r in affected) for c in affected}
+        ready = [c for c, d in indeg.items() if d == 0]
+        heapq.heapify(ready)  # alphabetical: same order on every run
+        while ready:
+            c = heapq.heappop(ready)
+            self._value[c] = self._compute(c)
+            print(f"  recompute {c} = {self.get(c):.2f}")
+            for dep in self._dependents.get(c, ()):
+                if dep in affected:
+                    indeg[dep] -= 1
+                    if indeg[dep] == 0:
+                        heapq.heappush(ready, dep)
+
+
+if __name__ == "__main__":
+    s = Sheet()
+    s.set_value("A1", 2)
+    s.set_value("A2", 3)
+    s.set_sum("B1", "A1", "A2")
+    s.set_sum("C1", "B1", "A1")
+    print("set A1 = 10:")
+    s.set_value("A1", 10)
+    print(f"B1={s.get('B1'):.2f} C1={s.get('C1'):.2f}")  # 13.00 23.00
+    print("cycle accepted?", str(s.set_sum("A1", "C1")).lower())  # false
+    print(f"A1 still {s.get('A1'):.2f}")
+    s.set_sum("B2", "A1")
+    s.set_sum("D1", "B1", "B2")  # diamond: A1 -> B1/B2 -> D1
+    print("set A1 = 1:")
+    s.set_value("A1", 1)  # D1 recomputed once, after B1 and B2
+    print("self-reference accepted?", str(s.set_sum("B2", "B2")).lower())  # false
+    print(f"B2 still {s.get('B2'):.2f}")
+    s.set_sum("E1", "Z9")  # missing cell counts as 0
+    print(f"E1={s.get('E1'):.2f}")
+    s.set_value("Z9", 4)
+    print(f"E1={s.get('E1'):.2f}")` },
+          { lang: 'ts', code: `// A tiny binary min-heap (JavaScript has none built in).
+class MinHeap<T> {
+  private readonly a: T[] = [];
+  constructor(private readonly less: (x: T, y: T) => boolean) {}
+  get size(): number { return this.a.length; }
+  push(v: T): void {
+    const a = this.a;
+    a.push(v);
+    for (let i = a.length - 1; i > 0;) {
+      const p = (i - 1) >> 1;
+      if (!this.less(a[i], a[p])) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop(): T {
+    const a = this.a;
+    const top = a[0];
+    const last = a.pop() as T;
+    if (a.length > 0) {
+      a[0] = last;
+      for (let i = 0;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.less(a[l], a[m])) m = l;
+        if (r < a.length && this.less(a[r], a[m])) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+class Sheet {
+  private readonly value = new Map<string, number>();
+  private readonly inputs = new Map<string, string[]>(); // formula refs
+  private readonly dependents = new Map<string, Set<string>>(); // observers
+
+  get(c: string): number { return this.value.get(c) ?? 0; }
+
+  setValue(cell: string, v: number): void {
+    this.detach(cell);
+    this.value.set(cell, v);
+    this.propagate(cell);
+  }
+
+  setSum(cell: string, ...refs: string[]): boolean {
+    if (refs.some((r) => this.reaches(r, cell))) return false; // would create a cycle
+    this.detach(cell);
+    this.inputs.set(cell, refs);
+    for (const r of refs) {
+      if (!this.dependents.has(r)) this.dependents.set(r, new Set());
+      this.dependents.get(r)!.add(cell);
+    }
+    this.value.set(cell, this.compute(cell));
+    this.propagate(cell);
+    return true;
+  }
+
+  private detach(cell: string): void {
+    for (const r of this.inputs.get(cell) ?? []) this.dependents.get(r)?.delete(cell);
+    this.inputs.delete(cell);
+  }
+
+  // DFS along inputs: does \`from\` (transitively) read \`target\`?
+  private reaches(from: string, target: string): boolean {
+    const stack = [from];
+    const seen = new Set<string>();
+    while (stack.length > 0) {
+      const c = stack.pop() as string;
+      if (c === target) return true;
+      if (!seen.has(c)) { seen.add(c); stack.push(...(this.inputs.get(c) ?? [])); }
+    }
+    return false;
+  }
+
+  private compute(cell: string): number {
+    return (this.inputs.get(cell) ?? []).reduce((s, r) => s + this.get(r), 0);
+  }
+
+  // Batched observer notification: each affected cell recomputed once, inputs first.
+  private propagate(changed: string): void {
+    const affected = new Set<string>();
+    const queue = [...(this.dependents.get(changed) ?? [])];
+    while (queue.length > 0) {
+      const c = queue.pop() as string;
+      if (!affected.has(c)) { affected.add(c); queue.push(...(this.dependents.get(c) ?? [])); }
+    }
+    const indeg = new Map<string, number>();
+    for (const c of affected) indeg.set(c, (this.inputs.get(c) ?? []).filter((r) => affected.has(r)).length);
+    const ready = new MinHeap<string>((x, y) => x < y); // alphabetical: same order on every run
+    for (const [c, d] of indeg) if (d === 0) ready.push(c);
+    while (ready.size > 0) {
+      const c = ready.pop();
+      this.value.set(c, this.compute(c));
+      console.log(\`  recompute \${c} = \${this.get(c).toFixed(2)}\`);
+      for (const dep of this.dependents.get(c) ?? []) {
+        if (!affected.has(dep)) continue;
+        const left = (indeg.get(dep) as number) - 1;
+        indeg.set(dep, left);
+        if (left === 0) ready.push(dep);
+      }
+    }
+  }
+}
+
+const s = new Sheet();
+s.setValue("A1", 2); s.setValue("A2", 3);
+s.setSum("B1", "A1", "A2");
+s.setSum("C1", "B1", "A1");
+console.log("set A1 = 10:");
+s.setValue("A1", 10);
+console.log(\`B1=\${s.get("B1").toFixed(2)} C1=\${s.get("C1").toFixed(2)}\`); // 13.00 23.00
+console.log("cycle accepted? " + s.setSum("A1", "C1")); // false
+console.log(\`A1 still \${s.get("A1").toFixed(2)}\`);
+s.setSum("B2", "A1");
+s.setSum("D1", "B1", "B2"); // diamond: A1 -> B1/B2 -> D1
+console.log("set A1 = 1:");
+s.setValue("A1", 1); // D1 recomputed once, after B1 and B2
+console.log("self-reference accepted? " + s.setSum("B2", "B2")); // false
+console.log(\`B2 still \${s.get("B2").toFixed(2)}\`);
+s.setSum("E1", "Z9"); // missing cell counts as 0
+console.log(\`E1=\${s.get("E1").toFixed(2)}\`);
+s.setValue("Z9", 4);
+console.log(\`E1=\${s.get("E1").toFixed(2)}\`);` },
+          { lang: 'cpp', code: `class Sheet {
+public:
+    double get(const string& c) const {
+        auto it = value.find(c);
+        return it == value.end() ? 0.0 : it->second;
+    }
+
+    void setValue(const string& cell, double v) {
+        detach(cell);
+        value[cell] = v;
+        propagate(cell);
+    }
+
+    bool setSum(const string& cell, const vector<string>& refs) {
+        for (const string& r : refs)
+            if (reaches(r, cell)) return false;  // would create a cycle
+        detach(cell);
+        inputs[cell] = refs;
+        for (const string& r : refs) dependents[r].insert(cell);
+        value[cell] = compute(cell);
+        propagate(cell);
+        return true;
+    }
+
+private:
+    void detach(const string& cell) {
+        auto it = inputs.find(cell);
+        if (it == inputs.end()) return;
+        for (const string& r : it->second) dependents[r].erase(cell);
+        inputs.erase(it);
+    }
+
+    // DFS along inputs: does \`from\` (transitively) read \`target\`?
+    bool reaches(const string& from, const string& target) const {
+        vector<string> stack{from};
+        unordered_set<string> seen;
+        while (!stack.empty()) {
+            string c = stack.back();
+            stack.pop_back();
+            if (c == target) return true;
+            if (!seen.insert(c).second) continue;
+            auto it = inputs.find(c);
+            if (it != inputs.end()) stack.insert(stack.end(), it->second.begin(), it->second.end());
+        }
+        return false;
+    }
+
+    double compute(const string& cell) const {
+        double s = 0;
+        for (const string& r : inputs.at(cell)) s += get(r);
+        return s;
+    }
+
+    // Batched observer notification: each affected cell recomputed once, inputs first.
+    void propagate(const string& changed) {
+        unordered_set<string> affected;
+        vector<string> queue(dependents[changed].begin(), dependents[changed].end());
+        while (!queue.empty()) {
+            string c = queue.back();
+            queue.pop_back();
+            if (!affected.insert(c).second) continue;
+            queue.insert(queue.end(), dependents[c].begin(), dependents[c].end());
+        }
+        unordered_map<string, int> indeg;
+        for (const string& c : affected) {
+            int d = 0;
+            for (const string& r : inputs.at(c)) d += affected.count(r);
+            indeg[c] = d;
+        }
+        priority_queue<string, vector<string>, greater<>> ready;  // alphabetical: same order on every run
+        for (auto& [c, d] : indeg) if (d == 0) ready.push(c);
+        while (!ready.empty()) {
+            string c = ready.top();
+            ready.pop();
+            value[c] = compute(c);
+            cout << "  recompute " << c << " = " << fixed << setprecision(2) << get(c) << "\\n";
+            for (const string& dep : dependents[c])
+                if (affected.count(dep) && --indeg[dep] == 0) ready.push(dep);
+        }
+    }
+
+    unordered_map<string, double> value;
+    unordered_map<string, vector<string>> inputs;                 // formula refs
+    unordered_map<string, unordered_set<string>> dependents;      // observers
+};
+
+string f2(double v) {
+    ostringstream os;
+    os << fixed << setprecision(2) << v;
+    return os.str();
+}
+
+int main() {
+    Sheet s;
+    s.setValue("A1", 2); s.setValue("A2", 3);
+    s.setSum("B1", {"A1", "A2"});
+    s.setSum("C1", {"B1", "A1"});
+    cout << "set A1 = 10:\\n";
+    s.setValue("A1", 10);
+    cout << "B1=" << f2(s.get("B1")) << " C1=" << f2(s.get("C1")) << "\\n";  // 13.00 23.00
+    cout << boolalpha << "cycle accepted? " << s.setSum("A1", {"C1"}) << "\\n";  // false
+    cout << "A1 still " << f2(s.get("A1")) << "\\n";
+    s.setSum("B2", {"A1"});
+    s.setSum("D1", {"B1", "B2"});  // diamond: A1 -> B1/B2 -> D1
+    cout << "set A1 = 1:\\n";
+    s.setValue("A1", 1);  // D1 recomputed once, after B1 and B2
+    cout << "self-reference accepted? " << s.setSum("B2", {"B2"}) << "\\n";  // false
+    cout << "B2 still " << f2(s.get("B2")) << "\\n";
+    s.setSum("E1", {"Z9"});  // missing cell counts as 0
+    cout << "E1=" << f2(s.get("E1")) << "\\n";
+    s.setValue("Z9", 4);
+    cout << "E1=" << f2(s.get("E1")) << "\\n";
+}` }
+        ],
       complexity: `<p>Change: O(V<sub>a</sub> + E<sub>a</sub>) over the affected subgraph only. Cycle check: O(V + E) worst case over the inputs reachable from the new refs. Memory O(cells + references).</p>`,
       followUps: ['Support other functions (MIN, AVG, IF) — Strategy per function or a Visitor over a formula AST?', 'Undo for cell edits (Command storing old value or old formula)', 'Recalculate in parallel: which cells can run concurrently? (same topological level)']
     }
@@ -3604,7 +12329,7 @@ class NotificationDispatcher {
     { q: 'A BST iterator using an explicit stack has which complexity per next() call?', options: ['O(1) amortised, O(h) memory', 'O(N) per call', 'O(log N) memory always, O(N) time', 'O(1) worst case, O(N) memory'], answer: 0, explain: 'Each node is pushed and popped exactly once over the whole traversal; the stack holds at most one root-to-leaf path.' },
     { q: 'Ten UI widgets each enable/disable others based on their values. What pattern reduces their N×N coupling?', options: ['Mediator (a dialog object coordinating the widgets)', 'Iterator', 'Template Method', 'Memento'], answer: 0, explain: 'Colleagues talk only to the mediator, which holds the interaction rules in one place.' },
     { q: 'In the Memento pattern, who is allowed to read the snapshot\'s internal fields?', options: ['Only the originator that created it', 'The caretaker', 'Any class in the application', 'Nobody, not even the originator'], answer: 0, explain: 'The caretaker stores mementos opaquely; only the originator reads them back during restore — this preserves encapsulation.' },
-    { q: 'Why does Visitor need an <code>accept(visitor)</code> method on each element?', options: ['To achieve double dispatch: pick the method by both the element\'s and the visitor\'s runtime types', 'To make elements serializable', 'Because Java has no interfaces', 'To iterate children in order'], answer: 0, explain: 'Java overload resolution uses static types; accept() lets each element call the correctly typed visitX(this).' },
+    { q: 'Why does Visitor need an <code>accept(visitor)</code> method on each element?', options: ['To achieve double dispatch: pick the method by both the element\'s and the visitor\'s runtime types', 'To make elements serializable', 'Because the language has no interfaces', 'To iterate children in order'], answer: 0, explain: 'Overload resolution (Java, C++) uses static types; accept() lets each element call the correctly typed visitX(this).' },
     { q: 'Visitor makes which kind of change cheap?', options: ['Adding a new operation over existing element types', 'Adding a new element type', 'Renaming element classes', 'Changing the traversal order of a list'], answer: 0, explain: 'New operation = one new visitor class. New element type = a new method in every visitor (the expression problem).' },
     { q: 'You need undo for an "apply Gaussian blur" action that cannot be mathematically reversed. Best choice?', options: ['Take a Memento (snapshot) before applying, restore it on undo', 'A Command whose undo() applies "un-blur"', 'Observer', 'Chain of Responsibility'], answer: 0, explain: 'Non-invertible operations need state snapshots; Command-style inverse operations only work when an inverse exists.' },
     { q: 'Calling <code>list.remove(x)</code> inside a for-each over an ArrayList typically causes…', options: ['ConcurrentModificationException from the fail-fast iterator', 'Silent success', 'A compile error', 'An infinite loop'], answer: 0, explain: 'The iterator detects a structural modification via modCount. Use iterator.remove() or removeIf().' },
@@ -3613,7 +12338,7 @@ class NotificationDispatcher {
 
   /* ======================= INTERVIEW ======================= */
   interview.push(
-    { q: 'What are behavioral design patterns, and how do they differ from creational and structural ones?', level: 'B', a: `<p><b>Creational</b> patterns are about <i>creating</i> objects (Factory, Builder, Singleton). <b>Structural</b> patterns are about <i>composing</i> objects into bigger structures (Adapter, Decorator, Composite). <b>Behavioral</b> patterns are about <i>communication and responsibility at runtime</i>: who decides, who notifies whom, how a request travels, how actions are stored or undone. The GoF list has 11 (the ten in this module plus Interpreter). In interviews they show up as requirements: "pluggable pricing" (Strategy), "notify subscribers" (Observer), "undo" (Command/Memento), "order lifecycle" (State).</p>`, followUps: ['Name one behavioral pattern you used in a real project and why', 'Which behavioral pattern is built into Java\'s for-each loop?'] },
+    { q: 'What are behavioral design patterns, and how do they differ from creational and structural ones?', level: 'B', a: `<p><b>Creational</b> patterns are about <i>creating</i> objects (Factory, Builder, Singleton). <b>Structural</b> patterns are about <i>composing</i> objects into bigger structures (Adapter, Decorator, Composite). <b>Behavioral</b> patterns are about <i>communication and responsibility at runtime</i>: who decides, who notifies whom, how a request travels, how actions are stored or undone. The GoF list has 11 (the ten in this module plus Interpreter). In interviews they show up as requirements: "pluggable pricing" (Strategy), "notify subscribers" (Observer), "undo" (Command/Memento), "order lifecycle" (State).</p>`, followUps: ['Name one behavioral pattern you used in a real project and why', 'Which behavioral pattern is built into the for-each loop?'] },
     { q: 'Strategy vs State — they look identical. How do you explain the difference?', level: 'I', a: `<p>Both have a context holding a reference to an interface with several implementations. <b>Strategy</b>: the <i>client</i> picks an algorithm and the strategies are independent and unaware of each other (payment methods, sort orders). <b>State</b>: the object's behaviour changes with its internal mode, and <i>the states themselves</i> decide the next state (PaidState.ship() moves the order to Shipped). Clues: State has transitions and illegal actions; Strategy has interchangeable, equally valid choices. A vending machine is State; its pricing algorithm could be a Strategy inside it.</p>`, followUps: ['Can a State object hold a Strategy?', 'When would you use an enum transition table instead of State classes?'] },
     { q: 'Design undo/redo for a text editor. Which pattern(s) and data structures?', level: 'I', a: `<p>Use <b>Command</b>: each edit is an object with <code>execute()</code>/<code>undo()</code> that stores only what it needs (position, inserted text, deleted text). An invoker keeps two stacks: run → execute, push on undo stack, <b>clear redo</b>; undo → pop, undo(), push on redo; redo → pop, execute(), push on undo. Coalesce consecutive keystrokes into one command (merge within a time window) and wrap multi-step operations in a MacroCommand. Cap history length. For non-invertible operations (filters, reformat-all) store a <b>Memento</b> snapshot inside the command. For collaborative editing, positions must be transformed (OT/CRDT).</p>`, followUps: ['How much memory does your design use for a 50 MB document?', 'How do you implement "undo typing" as a single step for a whole word?'] },
     { q: 'What problems can Observer cause in production, and how do you mitigate them?', level: 'A', a: `<p>(1) <b>Memory leaks</b> from forgotten subscriptions (lapsed listeners) — return closeable subscription handles, tie them to lifecycles, or use weak references carefully. (2) <b>Concurrency</b> — mutating the list while notifying (CME) → CopyOnWriteArrayList; never notify while holding a lock (deadlock with re-entrant callbacks). (3) <b>Failure isolation</b> — wrap each callback in try/catch. (4) <b>Slow observers</b> block the subject — deliver asynchronously via executors/queues, with back-pressure. (5) <b>Cascades/re-entrancy</b> — an observer changing the subject triggers nested notifications; queue events. (6) <b>Ordering</b> — never rely on notification order. (7) Hard-to-follow control flow — log events and name them clearly.</p>`, followUps: ['How does java.util.concurrent.Flow add back-pressure?', 'When do you move from in-process Observer to Kafka?'] },
@@ -3622,11 +12347,11 @@ class NotificationDispatcher {
     { q: 'How would you implement an iterator over a binary search tree that uses less than O(N) memory?', level: 'I', a: `<p>Simulate in-order traversal with an explicit stack. Constructor pushes the left spine of the root. <code>next()</code> pops the top (the smallest unvisited value), then pushes the left spine of its right child, and returns the value. <code>hasNext()</code> is just "stack not empty" — idempotent. Memory is O(h) (log N if balanced) and <code>next()</code> is O(1) amortised because every node is pushed and popped exactly once. Implement <code>Iterator&lt;Integer&gt;</code>, throw NoSuchElementException when exhausted, and mention fail-fast behaviour if the tree is mutated during iteration.</p>`, followUps: ['How would you support prev()?', 'How would you make it fail-fast on concurrent modification?'] },
     { q: 'Observer vs Mediator vs Pub/Sub — what is the difference?', level: 'A', a: `<p><b>Observer</b>: a subject keeps direct references to observers and broadcasts changes one-to-many; it contains no coordination logic. <b>Mediator</b>: many colleagues talk only to a central object that contains the <i>rules</i> of their interaction (chat room routing, control tower assigning runways) — many-to-many with logic in the hub. <b>Pub/Sub</b>: publishers and subscribers are fully decoupled by a broker and topics; they do not know each other at all, and the broker can persist, replay and distribute across machines (Kafka, SNS). A mediator is often implemented using observer-style callbacks; pub/sub is Observer scaled out with a broker in between.</p>`, followUps: ['Orchestration vs choreography in sagas — which pattern is which?', 'How do you prevent a mediator becoming a god object?'] },
     { q: 'Memento vs Command for undo — trade-offs?', level: 'A', a: `<p><b>Command</b> stores the operation and its inverse data (inserted text, previous value): memory proportional to the edit, fast, but every operation needs a correct inverse and positions can go stale. <b>Memento</b> stores the state itself: works for any operation including non-invertible ones, simple to reason about, but memory proportional to the state per snapshot — mitigated by deltas, copy-on-write or immutable/persistent data structures with structural sharing. Real systems combine them: command log for fine-grained undo plus periodic snapshots (checkpoints) to bound replay time — exactly how databases combine a WAL with checkpoints and how event sourcing uses snapshots.</p>`, followUps: ['How do you keep a memento from leaking private state?', 'What does restore NOT undo?'] },
-    { q: 'Explain double dispatch and why the Visitor pattern needs accept().', level: 'A', a: `<p>Java selects <i>overloaded</i> methods at compile time using static argument types, and selects <i>overridden</i> methods at runtime using only the receiver's type (single dispatch). With <code>Expr e = new Add(...)</code>, calling <code>visitor.visit(e)</code> cannot select <code>visit(Add)</code>. Visitor bounces: <code>e.accept(v)</code> dispatches on the element's runtime type; inside <code>Add.accept</code>, <code>this</code> is statically an <code>Add</code>, so <code>v.visitAdd(this)</code> is chosen, and that call dispatches on the visitor's runtime type. Two virtual calls select the (element, operation) pair. Java 21 sealed interfaces with pattern-matching switch achieve the same with compiler-checked exhaustiveness and no accept boilerplate.</p>`, followUps: ['What is the expression problem?', 'When would you still prefer classic Visitor over sealed + switch?'] },
+    { q: 'Explain double dispatch and why the Visitor pattern needs accept().', level: 'A', a: `<p>Java and C++ select <i>overloaded</i> methods at compile time using static argument types, and selects <i>overridden</i> methods at runtime using only the receiver's type (single dispatch). With <code>Expr e = new Add(...)</code>, calling <code>visitor.visit(e)</code> cannot select <code>visit(Add)</code>. Visitor bounces: <code>e.accept(v)</code> dispatches on the element's runtime type; inside <code>Add.accept</code>, <code>this</code> is statically an <code>Add</code>, so <code>v.visitAdd(this)</code> is chosen, and that call dispatches on the visitor's runtime type. Two virtual calls select the (element, operation) pair. Sealed types or unions with pattern matching (Java 21, TypeScript, Python <code>match</code>, C++ <code>std::variant</code>) achieve the same with checked exhaustiveness and no accept boilerplate.</p>`, followUps: ['What is the expression problem?', 'When would you still prefer classic Visitor over sealed + switch?'] },
     { q: 'Design an order lifecycle (NEW → PAID → SHIPPED → DELIVERED, cancellable before shipping) so that illegal transitions are impossible and concurrent requests are safe.', level: 'A', a: `<p>Draw the state diagram first. Implement State: an <code>OrderState</code> interface whose default methods throw IllegalStateException; each state overrides only legal events and returns/sets the next state, with entry actions (charge, refund, notify). Terminal states override nothing. Concurrency: in memory, synchronize transitions; in a database, use a conditional update — <code>UPDATE orders SET status='PAID', version=version+1 WHERE id=? AND status='NEW' AND version=?</code> — and treat 0 rows as a lost race. Persist the state name, rebuild the state object on load. Publish an event per transition (Observer) for emails/analytics, and keep an audit log of transitions.</p>`, followUps: ['How would you add ON_HOLD reachable from PAID?', 'How do you handle a payment webhook arriving twice?'] },
     { q: 'You are given a 400-line method full of if/else on a "type" field. How do you decide which behavioral pattern (if any) to refactor to?', level: 'E', a: `<p>First ask <b>what varies and who decides</b>. If branches choose <i>how to compute</i> something and the type is chosen by the caller → Strategy (registry map). If branches depend on the object's <i>current status</i> and change it → State. If branches ask "can this branch handle it, else try the next" → Chain of Responsibility. If the same ladder over the same <i>types</i> appears in many operations → Visitor or sealed + switch. If branches differ only in a few steps of a shared sequence → Template Method. Then refactor safely: characterisation tests first, extract one branch at a time behind the interface, keep behaviour identical, and stop when the axis of change is isolated — do not add patterns where variation is not real.</p>`, followUps: ['How do you make this refactor safe with no tests?', 'When is a switch statement the better design?'] },
     { q: 'How do behavioral patterns appear in AI/LLM applications and agent frameworks?', level: 'E', a: `<p><b>Command</b>: model tool calls are requests reified as data (name + JSON args) that the host validates, executes, logs and can undo. <b>Strategy</b>: model routing (cheap vs smart model), retrieval method, chunking policy. <b>Chain of Responsibility</b>: guardrail pipelines and fallback chains (cache → small model → large model → human). <b>Observer</b>: streaming token callbacks and tracing hooks. <b>State</b>: agent graphs (plan → act → observe → done) with persisted current state for resumption. <b>Mediator</b>: a supervisor/orchestrator agent coordinating worker agents. <b>Memento</b>: checkpointers that snapshot agent state for time-travel debugging and rollback of file edits. Naming these lets you reason about reliability: idempotent tool commands, bounded chains, terminal states and human approval gates.</p>`, followUps: ['How would you make agent tool calls safely undoable?', 'Why do agent frameworks model agents as explicit state graphs?'] },
-    { q: 'Implement Observer in Java today: what would you use instead of java.util.Observable?', level: 'I', a: `<p><code>Observable</code> is deprecated since Java 9: it is a class (forcing inheritance), its notification order and thread-safety are unspecified, and <code>setChanged()</code> is awkward. Today: define a small functional interface (<code>PriceListener</code>) so observers can be lambdas; keep them in a <code>CopyOnWriteArrayList</code>; return an <code>AutoCloseable</code> handle from <code>subscribe</code>; isolate failures per observer; deliver asynchronously with an <code>Executor</code> when observers do I/O. For streams with back-pressure use <code>java.util.concurrent.Flow</code> / Reactor / RxJava; in Spring, <code>ApplicationEventPublisher</code> + <code>@EventListener</code>; for JavaBeans properties, <code>PropertyChangeSupport</code>.</p>`, followUps: ['What is back-pressure and when do you need it?', 'How do you test that an observer was notified exactly once?'] }
+    { q: 'Implement Observer in Java today: what would you use instead of java.util.Observable?', level: 'I', a: `<p><code>Observable</code> is deprecated since Java 9: it is a class (forcing inheritance), its notification order and thread-safety are unspecified, and <code>setChanged()</code> is awkward. Today: define a small functional interface (<code>PriceListener</code>) so observers can be lambdas; keep them in a <code>CopyOnWriteArrayList</code>; return an <code>AutoCloseable</code> handle from <code>subscribe</code>; isolate failures per observer; deliver asynchronously with an <code>Executor</code> when observers do I/O. For streams with back-pressure use <code>java.util.concurrent.Flow</code> / Reactor / RxJava; in Spring, <code>ApplicationEventPublisher</code> + <code>@EventListener</code>; for JavaBeans properties, <code>PropertyChangeSupport</code>. In Python keep a list of callables; in TypeScript a copy-on-write array of functions with a closing handle; in C++ a vector of <code>std::function</code> with an id-based unsubscribe.</p>`, followUps: ['What is back-pressure and when do you need it?', 'How do you test that an observer was notified exactly once?'] }
   );
 
   /* Spread correct answers across positions (all MCQs are authored with the right answer first). */
@@ -3647,10 +12372,10 @@ class NotificationDispatcher {
     id: 'lld06',
     title: 'Behavioral Design Patterns',
     intro: `<p>Creational patterns decide <b>how objects are born</b>, structural patterns decide <b>how they are wired together</b>, and <b>behavioral patterns decide how they talk and share work</b> once the program runs. This module covers all ten classics you will meet in Low-Level Design interviews: <b>Strategy, Observer, Command, State, Template Method, Chain of Responsibility, Iterator, Mediator, Memento and Visitor</b>.</p>
-<p>Every pattern follows the same path: a real-life analogy first, then the naive if/else design and <i>why it hurts</i>, then the pattern's class diagram and a <b>step-by-step animation of it running</b> (notifications fanning out, state machines moving, requests walking down a chain, undo stacks pushing and popping), then compilable modern Java (records, lambdas, sealed types), worked examples, expert deep dives and how AI tools change the job. The module ends with a "which pattern fits?" clue detector, 14 practice problems, a quiz and interview questions.</p>`,
+<p>Every pattern follows the same path: a real-life analogy first, then the naive if/else design and <i>why it hurts</i>, then the pattern's class diagram and a <b>step-by-step animation of it running</b> (notifications fanning out, state machines moving, requests walking down a chain, undo stacks pushing and popping), then compilable code in Java with Python, TypeScript and C++ tabs on every block (records, lambdas, sealed types and their equivalents), worked examples, expert deep dives and how AI tools change the job. The module ends with a "which pattern fits?" clue detector, 14 practice problems, a quiz and interview questions.</p>`,
     goals: [
       'Recognise from the wording of a requirement which behavioral pattern fits (and when none is needed)',
-      'Implement all 10 behavioral patterns in idiomatic, thread-aware Java 21 — interfaces, lambdas, records, sealed types',
+      'Implement all 10 behavioral patterns in idiomatic, thread-aware Java, Python, TypeScript or C++ — interfaces, lambdas, records, sealed types or their equivalents',
       'Replace if/else and switch-on-type ladders with Strategy, State, Chain of Responsibility or Visitor and explain the trade-off',
       'Build undo/redo with Command and Memento, and explain the difference between the two',
       'Tell apart look-alike patterns: Strategy vs State, Observer vs Mediator, Command vs Memento, Template Method vs Strategy',
@@ -3658,6 +12383,12 @@ class NotificationDispatcher {
     ],
     prereqs: `LLD 2 (SOLID Principles) — especially Open/Closed and Dependency Inversion; LLD 4–5 (Creational and Structural patterns) helpful; comfortable Java: interfaces, abstract classes, generics, lambdas.`,
     hours: 16,
+    langNotes: {
+      java: `<p><b>Interfaces, lambdas, records.</b> A one-method interface (<code>FareStrategy</code>, <code>PriceListener</code>, <code>Mw</code>) is a functional interface, so a lambda is a strategy, listener or middleware; keep abstract classes for a fixed skeleton (Template Method with a <code>final</code> method) or shared state. Records give immutable events, results and mementos with <code>equals</code>/<code>hashCode</code> for free; plain classes compare by identity, which is what unsubscribe-by-reference needs. <b>Sealed interfaces</b> plus a pattern-matching <code>switch</code> are the exhaustive alternative to Visitor and to a state table.</p><p><b>Concurrency and traps.</b> Observers live in a <code>CopyOnWriteArrayList</code> so (un)subscribing during a notification is safe; guard state transitions with <code>synchronized</code>. A <code>for-each</code> over an <code>ArrayList</code> is fail-fast (<code>ConcurrentModificationException</code>): remove through the iterator or <code>removeIf</code>. A private nested class is how Memento hides its fields from the caretaker. Undo stacks are <code>Deque</code>s; <code>HashMap</code> iteration order is unspecified, so sort when output must be reproducible.</p>`,
+      python: `<p><b>Protocols, callables, dataclasses.</b> Use <code>abc.ABC</code> with <code>@abstractmethod</code> for a nominal interface and <code>typing.Protocol</code> (or a plain <code>Callable</code>) when any object with the right shape should fit; a function or lambda is already a Strategy, Observer or Middleware. <code>@dataclass(frozen=True)</code> gives immutable events and mementos with value <code>__eq__</code> and <code>__hash__</code>; for a listener handle compare by identity, because <code>list.remove</code> removes the first <i>equal</i> item. <code>typing.final</code> and underscore names are conventions only, so Template Method and Memento rely on discipline, and the type checker (mypy, pyright) enforces exhaustive <code>match</code> over a union.</p><p><b>Traps.</b> There is no method overloading, so Visitor uses distinct names (<code>visit_add</code>). A generator is the shortest Iterator, and <code>deque(maxlen=n)</code> is a bounded undo history. Python has no <code>final</code> keyword for methods and no private; the GIL does not make a check-then-set sequence atomic, so wrap state transitions in a <code>Lock</code>. Recursion stops at 1000 frames, which is why the nested-list and tree iterators use an explicit stack. Format money with <code>f"{x:.2f}"</code>, and <code>round()</code> rounds half to even.</p>`,
+      js: `<p><b>TypeScript.</b> <b>Interfaces are erased and types are structural</b>, so an object literal or arrow function with the right shape is a Strategy, Observer or Middleware, and a fake in a test. Use an <code>abstract class</code> for Template Method (there is no <code>final</code>; document the template method instead) and a <b>discriminated union</b> with a <code>never</code> check for exhaustive Visitor and State switches. <code>readonly</code> and <code>Object.freeze</code> give shallow immutability; <code>private</code> is compile-time only (use <code>#field</code> or a module-level <code>WeakMap</code> for a truly opaque Memento).</p><p><b>Traps.</b> The runtime is single-threaded, so no locks are needed, but <code>await</code> lets other code run between steps: copy the listener array before notifying (copy-on-write) so a handler that unsubscribes does not skip a neighbour. <code>Map</code> and <code>Set</code> keep insertion order; <code>Array.sort</code> is stable but sorts strings unless you pass a comparator; <code>shift()</code> on a long queue is O(n). Do not name a class <code>Event</code>, <code>Request</code>, <code>Response</code> or <code>Document</code> in a script file: they clash with DOM types. There is no built-in heap, so the spreadsheet recalculation carries a small <code>MinHeap</code>. Money: <code>toFixed(2)</code>, integers exact to 2<sup>53</sup>.</p>`,
+      cpp: `<p><b>Abstract bases and ownership.</b> An interface is a class of pure virtual functions with a <b>virtual destructor</b>; mark overrides <code>override</code>. Template Method is the non-virtual interface idiom: a public non-virtual <code>pay()</code> calls private or protected virtual steps, so a subclass cannot reorder them. Strategies and callbacks are <code>std::function</code> or lambdas. Ownership is explicit: a chain or command history owns its elements through <code>std::unique_ptr</code>, a shared strategy is a <code>std::shared_ptr&lt;const T&gt;</code>, and Mediator colleagues, runway planes or a Memento originator are non-owning references or pointers that must outlive the user.</p><p><b>Value types and traps.</b> <code>std::variant</code> + <code>std::visit</code> is the Visitor for a closed set of types, and <code>enum class</code> with a <code>switch</code> and no <code>default</code> lets <code>-Wswitch</code> catch a missing state. A Memento is a nested class with private members and <code>friend class Originator</code>. <code>delete</code>, <code>new</code> and <code>export</code> are keywords, so the code names them <code>del</code> and <code>exportReport</code>. Copy a listener list before notifying so a callback can unsubscribe; erasing from a vector while iterating invalidates iterators (use erase-remove or <code>std::erase_if</code>). A very long <code>unique_ptr</code> chain is destroyed recursively, so build chains of thousands of links as a vector.</p>`
+    },
     topics: topics,
     practice: practice,
     quiz: quiz,

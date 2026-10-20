@@ -1,9 +1,9 @@
 # Interview Mastery
 
-A free, beginner-to-expert study site for product-company interviews. It covers 14 tracks and 220 planned modules (214 written so far):
+A free, beginner-to-expert study site for product-company interviews. It covers 14 tracks and 220 modules:
 DSA + Math, Java, Python, JavaScript/TypeScript, C++, SQL + DBMS, Low-Level Design, High-Level System Design, Frontend, Backend, GenAI & Working With AI (including MCP), CS Core (OS + Networks), Cloud & DevOps, and Behavioral & Career.
 
-**Study routes (Phase 1 of 3, see [docs/RELEASE_PHASE1.md](docs/RELEASE_PHASE1.md)).** Pick a career route and a language (Java, Python, JavaScript/TypeScript or C++) on the route page (`route.html`). The site orders modules by prerequisites, shows what to study next and why, gives a schedule at 5–40 hours a week, and counts a module as mastered only after a checkpoint or readiness check. DSA 1–17 have tested solutions in all four languages; the rest follows in Phases 2 and 3.
+**Study routes (Phases 1 and 2 of 3, see [docs/RELEASE_PHASE1.md](docs/RELEASE_PHASE1.md) and [docs/RELEASE_PHASE2.md](docs/RELEASE_PHASE2.md)).** Pick a career route and a language (Java, Python, JavaScript/TypeScript or C++) on the route page (`route.html`). The site orders modules by prerequisites, shows what to study next and why, gives a schedule at 5–40 hours a week, and counts a module as mastered only after a checkpoint or readiness check. Every DSA problem (28 modules) and every Low-Level Design program (12 modules) has a tested solution in all four languages; Phase 3 extends this to the language and SQL tracks.
 
 Every module has the same layout:
 - 🎯 **Learning-path header**: goals, prerequisites and estimated hours.
@@ -75,7 +75,7 @@ A website-only change does not need an app version bump, and the reverse. Up to 
 | `tools/paths-check.js` | Checks prerequisites, routes, language coverage and schedules (`--strict` for release) |
 | `src/paths.js`, `src/learn.js`, `src/route.html` | Route data (prerequisites, routes, projects, schedules), mastery and review logic, and the route page |
 | `docs/LANGUAGE_AUTHORING.md` | How to add tests and the four language versions to a module |
-| `docs/STUDY_PATHS_PLAN.md`, `docs/RELEASE_PHASE1.md` | The three-phase plan and the Phase 1 release notes |
+| `docs/STUDY_PATHS_PLAN.md`, `docs/RELEASE_PHASE1.md`, `docs/RELEASE_PHASE2.md` | The three-phase plan and the release notes for each phase |
 | `docs/AUTHORING.md` | How to write a module |
 | `vendor/` | sql.js (MIT) for the in-browser SQL runner, supabase-js 2.117.2 (MIT) for accounts |
 | `src/journey.js` | Journey layer: regions, zones, destinations, stamp rules and the SVG stamp artwork, top bar, Passport page |

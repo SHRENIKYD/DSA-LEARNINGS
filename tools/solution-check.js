@@ -74,7 +74,7 @@ function parseSig(sig) {
 const snake = (s) => s.replace(/([a-z0-9])([A-Z])/g, '$1_$2').replace(/([A-Z])([A-Z][a-z])/g, '$1_$2').toLowerCase();
 
 /* ---------- Java ---------- */
-const J_IMP = 'import java.util.*;\nimport java.util.function.*;\nimport java.util.stream.*;\nimport java.math.*;\nimport java.io.*;\n';
+const J_IMP = 'import java.util.*;\nimport java.util.function.*;\nimport java.util.stream.*;\nimport java.util.concurrent.*;\nimport java.util.concurrent.atomic.*;\nimport java.util.concurrent.locks.*;\nimport java.time.*;\nimport java.math.*;\nimport java.io.*;\n';
 const J_NODES = {
   ListNode: 'class ListNode { int val; ListNode next; ListNode() {} ListNode(int v) { val = v; } ListNode(int v, ListNode n) { val = v; next = n; } }',
   TreeNode: 'class TreeNode { int val; TreeNode left, right; TreeNode() {} TreeNode(int v) { val = v; } TreeNode(int v, TreeNode l, TreeNode r) { val = v; left = l; right = r; } }'
@@ -416,14 +416,15 @@ function runLang(lang, pr, code, T, n) {
   if (extra) code = code + '\n' + extra + '\n';
   const dir = path.join(tmp, pr.id + '-' + lang); fs.mkdirSync(dir, { recursive: true });
   const ioCases = T.io ? T.cases : null;
-  const exec = (cmd, argv, stdin) => spawnSync(cmd, argv, { cwd: dir, encoding: 'utf8', input: stdin || '', timeout: 20000, maxBuffer: 16 << 20 });
+  // Compiles get a generous limit (a busy machine can be slow); running the solution keeps the 20 s limit.
+  const exec = (cmd, argv, stdin, ms) => spawnSync(cmd, argv, { cwd: dir, encoding: 'utf8', input: stdin || '', timeout: ms || 20000, maxBuffer: 16 << 20 });
   let run;
   if (lang === 'java') {
     fs.writeFileSync(path.join(dir, 'Main.java'), javaSource(pr, code, T));
-    const c = exec('javac', ['-nowarn', '-Xlint:none', '-d', 'out', 'Main.java']);
+    const c = exec('javac', ['-nowarn', '-Xlint:none', '-d', 'out', 'Main.java'], '', 180000);
     if (c.status !== 0) return { err: 'compile error:\n' + (c.stderr || c.stdout).slice(0, 1500) };
     let mainCls = 'Main__';
-    if (T.io) { const at = code.search(/static\s+void\s+main\s*\(/); const cs = [...code.matchAll(/\b(class|record|enum|interface)\s+(\w+)/g)].filter((x) => x.index < at); mainCls = cs.length ? cs[cs.length - 1][2] : 'Main'; }
+    if (T.io) { const bare = code.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'/g, (m) => ' '.repeat(m.length)); const at = bare.search(/static\s+void\s+main\s*\(/); const span = (i) => { const o = bare.indexOf('{', i); let d = 0; for (let j = o; j >= 0 && j < bare.length; j++) { if (bare[j] === '{') d++; else if (bare[j] === '}' && --d === 0) return [o, j]; } return [o, bare.length]; }; const cs = [...bare.matchAll(/\b(class|record|enum|interface)\s+(\w+)/g)].filter((x) => x.index < at).map((x) => ({ n: x[2], r: span(x.index) })).filter((c) => c.r[0] < at && at < c.r[1]); mainCls = cs.length ? cs[cs.length - 1].n : 'Main'; }
     run = (stdin) => exec('java', ['-cp', 'out', mainCls], stdin);
   } else if (lang === 'python') {
     fs.writeFileSync(path.join(dir, 'main.py'), pySource(pr, code, T));
@@ -434,7 +435,7 @@ function runLang(lang, pr, code, T, n) {
     run = (stdin) => exec('node', ['main.js'], stdin);
   } else if (lang === 'cpp') {
     fs.writeFileSync(path.join(dir, 'main.cpp'), cppSource(pr, code, T));
-    const c = exec('g++', ['-std=c++20', '-O1', '-w', '-include', cppPch(), 'main.cpp', '-o', 'main']);
+    const c = exec('g++', ['-std=c++20', '-O1', '-w', '-include', cppPch(), 'main.cpp', '-o', 'main'], '', 180000);
     if (c.status !== 0) return { err: 'compile error:\n' + (c.stderr || '').replace(/\/tmp\/[^\s:]+\//g, '').slice(0, 1500) };
     run = (stdin) => exec('./main', [], stdin);
   }

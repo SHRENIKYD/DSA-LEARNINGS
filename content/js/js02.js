@@ -2261,6 +2261,365 @@ console.log(load('{oops}'));                                          // { ok: f
     }]
   });
 
+  /* ================= TOPIC 10: PRIORITY QUEUES / BINARY HEAP ================= */
+  topics.push({
+    title: 'Priority Queues in JavaScript: Building a Binary Heap',
+    analogy: `<p>Picture a hospital emergency room. Patients do not see the doctor in the order they arrived — the <b>most urgent</b> one goes first, and when a new patient walks in, the nurse slots them in by urgency. Nobody re-sorts the whole waiting room each time; the nurse only makes sure the person at the front desk is always the most urgent. That is a <b>priority queue</b>. A <b>binary heap</b> is the trick that keeps "the most urgent is at the front" true using only a few swaps per arrival or departure. JavaScript ships no heap, so this lesson builds one you can trust.</p>`,
+    explain: `<p>🟢 <b>The problem.</b> You need three things, fast: <b>add</b> an item, <b>look at</b> the best item, <b>remove</b> the best item. A plain array makes one of them slow. Keeping it sorted makes adding slow (shift everything). Leaving it unsorted makes finding the best slow (scan everything). A heap makes add and remove both about <code>log₂ n</code> steps — for a million items that is about 20 steps, not a million.</p>
+<p>🟢 <b>The layout: a tree inside an array.</b> A heap is a tree where every parent is "better" than its two children (for a min-heap: smaller). We do not build tree nodes. We store the tree in a plain array, level by level, and use arithmetic to move around:</p>
+${H.table(['Index i', 'Where', 'Formula'], [['parent of i', 'one level up', '<code>(i - 1) &gt;&gt; 1</code>'], ['left child of i', 'one level down', '<code>2 * i + 1</code>'], ['right child of i', 'one level down', '<code>2 * i + 2</code>'], ['root (the best item)', 'index 0', '<code>a[0]</code>']])}
+${H.arr([1, 3, 2, 7, 4], { label: 'array a', idx: true, hl: { 0: 'g', 1: 'b', 2: 'b' } })}
+<p>Here index 0 (value 1) has children at 1 and 2 (values 3 and 2). Index 1 has children at 3 and 4 (values 7 and 4). Every parent is smaller than its children. Note the rule is <b>not</b> "fully sorted" — 3 and 2 are in either order. It only promises the root is the minimum.</p>
+<p>🔵 <b>Push = add at the end, then sift UP.</b> Put the new value in the next free slot (the end of the array). While it is better than its parent, swap them. At most one swap per level, so at most <code>log₂ n</code> swaps.</p>
+<p>🔵 <b>Pop = take the root, refill from the end, sift DOWN.</b> Save <code>a[0]</code> as the answer. Remove the last element and drop it into the root. Now the root may be too big, so compare it with its two children, swap with the <b>better</b> child, and repeat until neither child is better. Again at most <code>log₂ n</code> swaps.</p>
+<p>🔵 <b>One class, any order, via a comparator.</b> We pass <code>less(a, b)</code>: "should <code>a</code> leave the heap before <code>b</code>?" The default <code>a &lt; b</code> gives a min-heap, <code>a &gt; b</code> gives a max-heap, and a function that compares fields gives a heap of objects. This is exactly the <code>MinHeap</code> class you will see inside the JavaScript solutions of the DSA modules: <code>push</code>, <code>pop</code>, <code>peek</code>, <code>size</code>.</p>
+<p>🔵 <b>Cost summary.</b></p>
+${H.table(['Operation', 'Heap', 'Sorted array', 'Re-sort on every insert'], [['peek best', 'O(1)', 'O(1)', 'O(1)'], ['push', '<span class="c-g">O(log n)</span>', 'O(n) shift', '<span class="c-r">O(n log n)</span>'], ['pop best', '<span class="c-g">O(log n)</span>', 'O(1) from the right end, O(n) from the left', 'O(1)–O(n)'], ['build from n items', '<span class="c-g">O(n)</span> heapify', 'O(n log n)', '—']])}
+<p>🟣 <b>Why re-sorting is the trap.</b> The brute force is <code>arr.push(x); arr.sort(cmp)</code>. Each sort costs <code>O(n log n)</code>, so n inserts cost <code>O(n² log n)</code>. With n = 10<sup>5</sup> that is about 10<sup>11</sup> basic steps — far too slow. A heap does the same work in <code>O(n log n)</code> total.</p>`,
+    clues: [
+      'The words <b>"k-th largest"</b>, <b>"top K"</b>, <b>"K closest"</b>, <b>"K most frequent"</b> — keep a heap of size k, not a full sort.',
+      '<b>"Merge k sorted lists/arrays"</b> — a heap holds the current head of each list.',
+      '<b>"Repeatedly take the largest/smallest, then put something back"</b> (last stone weight, task scheduling, Huffman coding, Dijkstra) — that is exactly pop + push.',
+      '<b>Data arrives as a stream</b> and you must answer after every item — you cannot afford to re-sort each time.',
+      'N ≤ 10<sup>5</sup> with an answer needed after each of N steps → you need O(log n) per step, not O(n).',
+      '"Median of a stream" → two heaps (a max-heap of the lower half, a min-heap of the upper half).',
+      'Greedy problems saying "always pick the cheapest/earliest available" → the "available" set is a heap.'
+    ],
+    code: [
+      { lang: 'js', run: true, title: 'A binary heap with a comparator (the MinHeap used across the course)', code: `// A binary heap stored in a plain array.
+// less(a, b) answers: "should a leave the heap BEFORE b?" (true / false).
+class MinHeap {
+  constructor(less = (a, b) => a < b) {
+    this.a = [];            // the tree, level by level
+    this.less = less;
+  }
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }               // undefined when empty
+
+  push(x) {
+    const a = this.a;
+    a.push(x);                               // 1) put it in the next free slot
+    let i = a.length - 1;
+    while (i > 0) {                          // 2) sift UP
+      const p = (i - 1) >> 1;                //    parent index
+      if (!this.less(a[i], a[p])) break;     //    parent is fine: stop
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+
+  pop() {
+    const a = this.a;
+    if (a.length === 0) return undefined;    // never forget the empty case
+    const top = a[0];
+    const last = a.pop();                    // 1) remove the last slot
+    if (a.length > 0) {
+      a[0] = last;                           // 2) it takes the root's place
+      let i = 0;
+      for (;;) {                             // 3) sift DOWN
+        const l = 2 * i + 1, r = l + 1;      //    children
+        let m = i;                           //    m = who should be on top
+        if (l < a.length && this.less(a[l], a[m])) m = l;
+        if (r < a.length && this.less(a[r], a[m])) m = r;
+        if (m === i) break;                  //    both children are worse: stop
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+// Min-heap (default comparator)
+const h = new MinHeap();
+[5, 3, 8, 1, 9, 2].forEach(x => h.push(x));
+console.log(h.a, h.peek(), h.size());       // [1, 3, 2, 5, 9, 8] 1 6
+const out = [];
+while (h.size()) out.push(h.pop());
+console.log(out);                           // [1, 2, 3, 5, 8, 9]
+console.log(h.pop(), h.peek());             // undefined undefined
+
+// Max-heap: flip the comparator
+const mx = new MinHeap((a, b) => a > b);
+[5, 3, 8, 1].forEach(x => mx.push(x));
+console.log(mx.pop(), mx.pop());            // 8 5
+
+// Heap of objects: lowest priority number first, ties by name
+const jobs = new MinHeap((x, y) => x.pri !== y.pri ? x.pri < y.pri : x.name < y.name);
+jobs.push({ name: 'email', pri: 3 });
+jobs.push({ name: 'deploy', pri: 1 });
+jobs.push({ name: 'backup', pri: 1 });
+console.log(jobs.pop().name, jobs.pop().name, jobs.pop().name); // backup deploy email` },
+      { lang: 'js', run: true, title: 'Heapify: build a heap from n items in O(n)', code: `// Build a heap from n items in O(n): sift DOWN every non-leaf, last parent first.
+function heapify(a, less = (x, y) => x < y) {
+  const n = a.length;
+  for (let s = (n >> 1) - 1; s >= 0; s--) {   // (n >> 1) - 1 is the last parent
+    let i = s;
+    for (;;) {
+      const l = 2 * i + 1, r = l + 1;
+      let m = i;
+      if (l < n && less(a[l], a[m])) m = l;
+      if (r < n && less(a[r], a[m])) m = r;
+      if (m === i) break;
+      [a[i], a[m]] = [a[m], a[i]];
+      i = m;
+    }
+  }
+  return a;
+}
+console.log(heapify([9, 4, 7, 1, 8, 2]));   // [1, 4, 2, 9, 8, 7]
+console.log(heapify([]), heapify([5]));     // [] [5]` }
+    ],
+    codeTitle: ['A binary heap with a comparator (the MinHeap used across the course)', 'Heapify: build a heap from n items in O(n)'],
+    viz: [{
+      title: 'Array and tree side by side: pushes and pops',
+      input: 'push 5 push 3 push 8 push 1 pop push 2 pop',
+      inputLabel: 'Operations: push N or pop (max 12 operations, at most 15 items in the heap)',
+      gen: function (input) {
+        var tok = String(input === undefined ? '' : input).trim().split(/[\s,]+/).filter(function (x) { return x.length; });
+        var ops = [], i, t;
+        for (i = 0; i < tok.length; i++) {
+          t = tok[i].toLowerCase();
+          if (t === 'pop') ops.push({ k: 'pop' });
+          else if (t === 'push') {
+            var v = Number(tok[i + 1]);
+            if (tok[i + 1] === undefined || !isFinite(v)) throw new Error('Write push followed by a number, e.g. push 5 push 3 pop');
+            ops.push({ k: 'push', v: v }); i++;
+          } else throw new Error('Use only the words push (with a number) and pop, e.g. push 5 push 3 pop');
+        }
+        if (!ops.length) throw new Error('Enter at least one operation, e.g. push 5 push 3 pop');
+        if (ops.length > 12) throw new Error('Please use at most 12 operations so the animation stays readable');
+        var a = [], f = [];
+        function snap(narr, hl, extra) {
+          var parts = [{ type: 'array', label: 'Array a (the storage)', values: a.map(String), hl: hl, showIdx: true }];
+          if (a.length) parts.push({ type: 'tree', label: 'The same data drawn as a tree', arr: a.slice(), hl: hl });
+          else parts.push(tx('The tree is empty: no nodes yet.', 'Tree'));
+          if (extra) parts.push(tx(extra, 'Note'));
+          f.push(fr(narr, parts));
+        }
+        f.push(fr('A <b>min-heap</b>. Parent of index i is <code>(i-1)&gt;&gt;1</code>, children are <code>2i+1</code> and <code>2i+2</code>. Rule: every parent is ≤ both children, so <code>a[0]</code> is always the minimum. Watch the array and the tree change together.', [{ type: 'array', label: 'Array a (the storage)', values: [], hl: {}, showIdx: true }, tx('Empty heap. size = 0.', 'Tree')]));
+        ops.forEach(function (op) {
+          var j, p, hl, big = false;
+          if (op.k === 'push') {
+            if (a.length >= 15) throw new Error('At most 15 items fit in the picture. Add more pop operations.');
+            a.push(op.v); j = a.length - 1;
+            snap('<b>push(' + op.v + ')</b>: put it in the next free slot, index ' + j + ' (the end of the array). In the tree it is the next free spot on the bottom row.', (function () { var o = {}; o[j] = 'cur'; return o; })());
+            while (j > 0) {
+              p = (j - 1) >> 1;
+              hl = {}; hl[j] = 'cur'; hl[p] = 'win';
+              if (!(a[j] < a[p])) {
+                snap('Sift up: compare ' + a[j] + ' (index ' + j + ') with its parent ' + a[p] + ' (index ' + p + '). The parent is not larger, so the order is already correct. <b>Stop.</b>', hl);
+                break;
+              }
+              snap('Sift up: ' + a[j] + ' is smaller than its parent ' + a[p] + ' (parent index = (' + j + '-1)&gt;&gt;1 = ' + p + '). <b>Swap</b> them.', hl);
+              var tmp = a[j]; a[j] = a[p]; a[p] = tmp; j = p;
+              hl = {}; hl[j] = 'ok';
+              snap('Swapped. The value now sits at index ' + j + '.', hl);
+            }
+            hl = {}; hl[0] = 'sel';
+            snap('<b>push done.</b> Heap is valid again; the minimum is ' + a[0] + ' at the root. At most one swap per tree level: O(log n).', hl);
+          } else {
+            if (a.length === 0) {
+              snap('<b>pop()</b> on an empty heap: the <code>size === 0</code> guard returns <code>undefined</code>. Without that guard the code would read <code>a[0]</code> of nothing and put <code>undefined</code> in the heap.', {}, 'Always check for empty first.');
+              return;
+            }
+            var top = a[0], last = a.pop();
+            hl = {}; hl[0] = 'sel';
+            if (a.length === 0) {
+              f.push(fr('<b>pop()</b>: the root ' + top + ' is the only item. Remove it. The heap is empty again; the answer is <b>' + top + '</b>.', [{ type: 'array', label: 'Array a (the storage)', values: [], hl: {}, showIdx: true }, tx('Popped ' + top + '. The heap is empty.', 'Tree')]));
+              return;
+            }
+            a[0] = last; j = 0;
+            snap('<b>pop()</b>: the answer is the root, <b>' + top + '</b>. Take the LAST item (' + last + ') out of its slot and drop it into the root. The shape stays complete, but the root may now be too big.', hl);
+            for (;;) {
+              var l = 2 * j + 1, r = l + 1, m = j;
+              if (l < a.length && a[l] < a[m]) m = l;
+              if (r < a.length && a[r] < a[m]) m = r;
+              hl = {}; hl[j] = 'cur'; if (l < a.length) hl[l] = 'win'; if (r < a.length) hl[r] = 'win';
+              if (m === j) {
+                snap('Sift down at index ' + j + ' (value ' + a[j] + '): ' + (l >= a.length ? 'it has no children' : 'children are ' + a[l] + (r < a.length ? ' and ' + a[r] : '') + ', neither smaller') + '. <b>Stop.</b>', hl);
+                break;
+              }
+              snap('Sift down at index ' + j + ' (value ' + a[j] + '): children are at ' + l + (r < a.length ? ' and ' + r : '') + '. The smaller child is ' + a[m] + ' (index ' + m + '), so <b>swap</b> with it. (Always the smaller child, or the other child would be larger than its new parent.)', hl);
+              var t2 = a[j]; a[j] = a[m]; a[m] = t2; j = m;
+              hl = {}; hl[j] = 'ok';
+              snap('Swapped. The value now sits at index ' + j + '.', hl);
+            }
+            hl = {}; hl[0] = 'sel';
+            snap('<b>pop done</b>: returned ' + top + '. New minimum is ' + a[0] + '. At most one swap per level: O(log n).', hl);
+          }
+        });
+        f.push(fr('Finished. Final array: <code>[' + a.join(', ') + ']</code>. Notice the array is <b>not</b> sorted; only parent ≤ children is guaranteed. Popping repeatedly would give the numbers in sorted order.', [{ type: 'array', label: 'Final array', values: a.map(String), hl: a.length ? { 0: 'sel' } : {}, showIdx: true }].concat(a.length ? [{ type: 'tree', label: 'Final tree', arr: a.slice(), hl: { 0: 'sel' } }] : [])));
+        return f;
+      }
+    }],
+    examples: [
+      { title: 'Index arithmetic: where is everyone?', html: `<p>For the array below, check the formulas by hand. Index 4 (value 4): parent is <code>(4-1)&gt;&gt;1 = 1</code> (value 3). Index 1 has children <code>2*1+1 = 3</code> and <code>2*1+2 = 4</code>. Index 2 has children 5 and 6, but the array only has 5 items, so both are <span class="c-r">out of range</span>: that is why the sift-down code checks <code>l &lt; a.length</code> before reading.</p>${H.table(['i', 'value', 'parent', 'left child', 'right child'], [['0', '1', '—', '1 (3)', '2 (2)'], ['1', '3', '0 (1)', '3 (7)', '4 (4)'], ['2', '2', '0 (1)', '5 → <span class="c-r">none</span>', '6 → <span class="c-r">none</span>'], ['3', '7', '1 (3)', 'none', 'none'], ['4', '4', '1 (3)', 'none', 'none']])}<p><b>Off-by-one trap:</b> with a 0-based array the children of <code>i</code> are <code>2i+1</code> and <code>2i+2</code>. The formulas <code>2i</code> and <code>2i+1</code> belong to a 1-based array (root at index 1). Mixing them makes index 0 its own child and quietly corrupts the heap.</p>` },
+      { title: 'One class, three behaviours: min, max, objects', html: `<p>Only the comparator changes. The heap asks <code>less(a, b)</code> — "does <code>a</code> come out before <code>b</code>?" — and never looks inside your items. For objects, compare the field you care about, and add a tie-breaker so results are predictable (a heap is <b>not stable</b>: equal items may come out in any order).</p>${H.table(['Want', 'Comparator'], [['smallest first', '<code>(a, b) =&gt; a &lt; b</code> (default)'], ['largest first', '<code>(a, b) =&gt; a &gt; b</code>'], ['closest to origin first', '<code>(p, q) =&gt; p.d &lt; q.d</code>'], ['pairs <code>[count, word]</code>: highest count, then alphabetical', '<code>(x, y) =&gt; x[0] !== y[0] ? x[0] &gt; y[0] : x[1] &lt; y[1]</code>']])}`, code: { lang: 'js', run: true, code: `class MinHeap {
+  constructor(less = (a, b) => a < b) { this.a = []; this.less = less; }
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a; a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (!this.less(a[i], a[p])) break;
+      [a[i], a[p]] = [a[p], a[i]]; i = p;
+    }
+  }
+  pop() {
+    const a = this.a;
+    if (a.length === 0) return undefined;
+    const top = a[0], last = a.pop();
+    if (a.length > 0) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.less(a[l], a[m])) m = l;
+        if (r < a.length && this.less(a[r], a[m])) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]]; i = m;
+      }
+    }
+    return top;
+  }
+}
+
+// pairs [count, word]: highest count first, ties alphabetical
+const pq = new MinHeap((x, y) => (x[0] !== y[0] ? x[0] > y[0] : x[1] < y[1]));
+[[2, 'pear'], [5, 'fig'], [2, 'apple'], [5, 'date']].forEach(p => pq.push(p));
+const order = [];
+while (pq.size()) order.push(pq.pop().join(':'));
+console.log(order.join(' '));   // 5:date 5:fig 2:apple 2:pear` } },
+      { title: 'Bug hunt: sort() and comparators', html: `<p>Two of the classic bugs come from <code>sort</code>, which people use as the brute force. (1) With no comparator, <code>sort()</code> turns numbers into <b>strings</b> and compares text, so <code>10</code> lands before <code>9</code>. (2) The comparator for <code>sort</code> must return a <b>number</b> — negative, zero or positive. Returning a boolean (<code>a &gt; b</code>) gives only 1 or 0, never negative, so the engine cannot tell "less than" from "equal" and the order stays wrong.</p><p>The heap comparator is different on purpose: it returns a <b>boolean</b> ("does a come first?"). Mixing the two styles is the bug. If you ever pass a heap's <code>less</code> to <code>sort</code>, or a <code>sort</code> comparator to the heap, it breaks silently: <code>(a, b) =&gt; a - b</code> as a heap predicate is truthy for every non-zero difference, so it behaves like "always first".</p>`, code: { lang: 'js', run: true, code: `console.log([10, 9, 1, 100].sort());                // [ 1, 10, 100, 9 ]  strings!
+console.log([10, 9, 1, 100].sort((a, b) => a - b)); // [ 1, 9, 10, 100 ]  numeric
+console.log([3, 1, 2, 5, 4].sort((a, b) => a > b)); // [ 3, 1, 2, 5, 4 ]  boolean: unchanged in V8
+const less = (a, b) => a < b;                       // a HEAP predicate
+console.log(less(1, 2), less(2, 1));                // true false
+const wrong = (a, b) => a - b;                      // a SORT comparator used as a predicate
+console.log(Boolean(wrong(5, 1)), Boolean(wrong(1, 5))); // true true  "everyone comes first"` } },
+      { title: 'Numbers: 2^53, BigInt, % and | 0', html: `<p>A heap is only as good as the numbers you compare. Four facts about JavaScript numbers that bite in heap problems:</p>${H.table(['Fact', 'Example', 'Result'], [['<code>Number</code> is exact only up to 2<sup>53</sup> − 1 (<code>Number.MAX_SAFE_INTEGER</code>)', '<code>2 ** 53 === 2 ** 53 + 1</code>', '<span class="c-r">true</span>'], ['Past that use <code>BigInt</code> (<code>123n</code>); <code>&lt;</code> and <code>&gt;</code> work, but you cannot mix it with Number', '<code>1n + 1</code>', '<span class="c-r">TypeError</span>'], ['A BigInt <code>a - b</code> inside <code>sort</code> throws, because sort needs a Number', '<code>[3n,1n].sort((a,b)=&gt;a-b)</code>', '<span class="c-r">TypeError</span>'], ['<code>%</code> keeps the sign of the left operand', '<code>-7 % 3</code>', '-1'], ['<code>| 0</code> truncates to a signed 32-bit integer', '<code>2 ** 32 + 5 | 0</code>', '5'], ['', '<code>2 ** 31 | 0</code>', '-2147483648']])}<p>Our heap only uses <code>&lt;</code> and <code>&gt;</code> on your items, so it works unchanged with BigInt values. Use <code>(a, b) =&gt; a &lt; b</code>, not <code>a - b</code>. For the index math, <code>(i - 1) &gt;&gt; 1</code> is safe because heap indexes are small. Do not use <code>| 0</code> on values (sums, products, weights): it silently wraps anything past 2<sup>31</sup>. Use <code>Math.floor(x / 2)</code> or <code>&gt;&gt;</code> only for indexes. Negative numbers: a <code>%</code> result can be negative, so for a bucket index use <code>((x % m) + m) % m</code>.</p>`, code: { lang: 'js', run: true, code: `console.log(Number.MAX_SAFE_INTEGER);                // 9007199254740991
+console.log(2 ** 53 === 2 ** 53 + 1);                // true  (precision lost)
+console.log(9007199254740993n + 2n);                 // 9007199254740995n  exact
+try { 1n + 1; } catch (e) { console.log(e.name); }   // TypeError  cannot mix
+console.log([3n, 1n, 2n].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))); // [ 1n, 2n, 3n ]
+console.log(-7 % 3, 7 % -3, ((-7 % 3) + 3) % 3);     // -1 1 2
+console.log(2 ** 32 + 5 | 0, 2 ** 31 | 0, 3.9 | 0, -3.9 | 0); // 5 -2147483648 3 -3` } },
+      { title: 'Java, Python and C++ compared with JavaScript', html: `<p>You will meet heaps in every language. They differ in two ways: <b>which end</b> comes out first, and <b>how you say "better"</b>.</p>${H.table(['Language', 'Type', 'Default order', 'How to flip / customise', 'Calls'], [['Java', '<code>PriorityQueue</code>', 'min-heap', 'comparator returns an <b>int</b> (negative → first); <code>Collections.reverseOrder()</code> for max', '<code>offer, poll, peek, size</code>'], ['Python', '<code>heapq</code> (functions on a list)', 'min-heap only', 'no comparator: push tuples <code>(key, tie, item)</code>, negate numbers for a max-heap', '<code>heappush, heappop, h[0], heapify</code>'], ['C++', '<code>priority_queue</code>', '<b>max</b>-heap', 'third template argument; <code>greater&lt;int&gt;</code> gives a min-heap (the comparator is "less", so the biggest by that order is on top)', '<code>push, pop (returns void), top, size</code>'], ['JavaScript', 'none built in: our <code>MinHeap</code>', 'whatever <code>less</code> says (default min)', '<code>less(a, b)</code> returns a <b>boolean</b>: true if <code>a</code> comes first', '<code>push, pop, peek, size</code>']])}<p>Watch two traps. Python and Java return the minimum, C++ returns the maximum, so a solution ported straight across can answer the opposite question. And C++ <code>pop()</code> returns nothing: read <code>top()</code> first.</p>` }
+    ],
+    deepDive: `<p>🟣 <b>Why the shape is an array.</b> The heap is a <b>complete</b> binary tree: every level is full except possibly the last, which fills left to right. A complete tree has no gaps, so a plain array holds it with no wasted slots, and the index formulas replace pointers. That is faster in practice than node objects (better cache behaviour, less garbage), which is why every standard-library heap works this way.</p>
+<p>🟣 <b>Why push and pop are O(log n).</b> A complete tree with n nodes has height <code>⌊log₂ n⌋</code>. Sift-up moves a node at most to the root; sift-down moves it at most to the bottom. One swap per level, so about 20 swaps for a million items.</p>
+<p>🟣 <b>Why heapify is O(n), not O(n log n).</b> Pushing n items one by one costs O(n log n). Heapify instead sifts down every non-leaf, starting from the last parent <code>(n &gt;&gt; 1) - 1</code> and going back to index 0. Half the nodes are leaves and need no work. A quarter can sink at most 1 level, an eighth at most 2, and so on: the total is <code>n · (1/4 + 2/8 + 3/16 + …) ≤ n</code>. So build from an existing array with heapify, not with n pushes.</p>
+<p>🟣 <b>Edge cases the class must survive.</b></p>
+<ul><li><b>Empty heap:</b> <code>pop</code> and <code>peek</code> return <code>undefined</code>. Forgetting <code>size === 0</code> in <code>pop</code> is the classic bug: <code>a.pop()</code> returns <code>undefined</code> and <code>a[0] = undefined</code> then puts a hole into a non-empty-looking heap.</li>
+<li><b>One item:</b> after removing the last slot the array is empty. Only refill the root when something remains, as the code does with <code>if (a.length &gt; 0)</code>.</li>
+<li><b>Only a left child:</b> the right child index can be out of range. Always guard with <code>l &lt; a.length</code> and <code>r &lt; a.length</code> before reading.</li>
+<li><b>Child pick:</b> swap with the <b>better</b> child. Swapping with the worse one leaves the better child above its new parent.</li>
+<li><b>Duplicates and ties:</b> a heap is not stable. If the answer depends on tie order, put the tie-breaker in the comparator.</li></ul>
+<p>🟣 <b>Mutating items while they are in the heap.</b> A heap only re-checks order on push and pop. If you change an item's priority in place, the heap is silently wrong. Either push a new entry and ignore stale ones when they pop out (the "lazy deletion" used in Dijkstra), or use a heap that supports decrease-key and tracks positions.</p>
+<p>🟣 <b>Other limits worth knowing.</b> A heap finds the best item fast but cannot search for an arbitrary one (O(n)). It does not iterate in sorted order: <code>heap.a</code> is only partly ordered, so never print it and expect a sorted list. For a one-off "sort once, then walk" job, <code>arr.sort((a, b) =&gt; a - b)</code> is simpler and equally fast overall; reach for a heap when items arrive or change <b>between</b> the reads. And <code>a - b</code> as a sort comparator can lose precision or give <code>NaN</code> with <code>Infinity</code> or mixed types; for huge values and BigInt use explicit <code>-1 / 0 / 1</code>.</p>
+<p>🟣 <b>Production reality.</b> Node and browsers have no standard heap as of 2026. Many teams use a small library, but in interviews you write it yourself. Know the class above cold: about 25 lines, and every interviewer will accept it.</p>`,
+    aiEra: `<p>🤖 <b>What AI does well:</b> it writes a correct textbook heap in seconds, converts between Java <code>PriorityQueue</code>, Python <code>heapq</code> and JavaScript, and explains sift-up and sift-down with a worked example. It is also a good generator of test cases.</p>
+<p>🤖 <b>Where it slips on this topic.</b> Models trained on Java and Python often assume JavaScript has <code>PriorityQueue</code> or <code>heapq</code>, and emit code that throws <code>ReferenceError</code>. They will also write the "easy" version — <code>arr.sort()</code> after each insert — that passes small tests and times out on N = 10<sup>5</sup>. Watch for the number-sort bug (no comparator, so strings), a boolean returned from a sort comparator, and a max-heap built by copying C++ semantics into a min-heap default.</p>
+<p>🤖 <b>How to work with it.</b> Ask for the comparator contract in one sentence ("<code>less(a, b)</code> true means a leaves first"). Then verify cheaply: push 10<sup>4</sup> random numbers, pop them all, and compare with <code>[...nums].sort((a, b) =&gt; a - b)</code>. A ten-line check like that catches nearly every heap bug. Ask the AI to state the complexity of each operation and to point at the line where <code>size === 0</code> is handled; if it cannot, it probably is not.</p>
+<p>🤖 <b>Old school still wins in interviews.</b> You cannot paste a library on a whiteboard. Practise writing the class from memory until push, pop and the three index formulas are automatic; then the AI is your reviewer, not your crutch.</p>`,
+    after: `<p>Next you will use this class: the guided problem below keeps a heap of size k to answer "k-th largest" for a stream, and the two practice problems at the end of the module (<b>Merge K Sorted Arrays</b> and <b>Last Stone Weight</b>) use the same class in a merge and a smash simulation.</p>`,
+    problems: [{
+      title: 'Kth Largest Element in a Stream',
+      level: 'Easy', tags: ['heap', 'priority queue', 'streaming', 'top-k'], companies: ['Amazon', 'Meta', 'Google'],
+      statement: `<p>Design a class <code>KthLargest</code>. The constructor takes an integer <code>k</code> and an array <code>nums</code> (the numbers so far). The method <code>add(val)</code> adds a number to the stream and returns the <b>k-th largest</b> number seen so far (the k-th largest in sorted order, counting duplicates).</p>`,
+      constraints: `<p>1 ≤ k ≤ 10<sup>4</sup>; 0 ≤ nums.length ≤ 10<sup>4</sup>; −10<sup>4</sup> ≤ nums[i], val ≤ 10<sup>4</sup>; up to 10<sup>4</sup> calls to <code>add</code>. It is guaranteed that there are at least k numbers when <code>add</code> is called.</p>`,
+      example: `<p><code>new KthLargest(3, [4, 5, 8, 2])</code>, then:</p>${H.table(['call', 'numbers so far (sorted, largest first)', 'returns'], [['add(3)', '8 5 <span class="c-g">4</span> 3 2', '<span class="c-g">4</span>'], ['add(5)', '8 5 <span class="c-g">5</span> 4 3 2', '<span class="c-g">5</span>'], ['add(10)', '10 8 <span class="c-g">5</span> 5 4 3 2', '<span class="c-g">5</span>'], ['add(9)', '10 9 <span class="c-g">8</span> 5 5 4 3 2', '<span class="c-g">8</span>'], ['add(4)', '10 9 <span class="c-g">8</span> 5 5 4 4 3 2', '<span class="c-g">8</span>']])}<p>The green number is the 3rd one in each row.</p>`,
+      brute: { why: `<p>Keep every number, push the new one, <code>sort</code> the whole array, read index <code>k - 1</code>. Correct, but each <code>add</code> sorts everything again: <code>O(n log n)</code> per call, and memory grows forever. With 10<sup>4</sup> numbers and 10<sup>4</sup> calls that is around 10<sup>9</sup> steps. The wasted work: we sort numbers we will never need again (everything smaller than the k-th largest can never matter).</p>`, code: `class KthLargest {
+  constructor(k, nums) {
+    this.k = k;
+    this.nums = [...nums];
+  }
+  add(val) {
+    this.nums.push(val);
+    this.nums.sort((a, b) => b - a);   // O(n log n) every single call
+    return this.nums[this.k - 1];
+  }
+}` },
+      mcq: { q: 'You only ever need the k-th largest. Which structure holds the least data and answers fastest?', options: ['A min-heap that keeps only the k largest numbers; its root is the k-th largest', 'A max-heap holding every number so far', 'A sorted array of every number, re-sorted on each add', 'A hash set of every number'], answer: 0, explain: 'The k-th largest is the smallest of the top k. A min-heap of size k keeps exactly those k numbers with the smallest at the root, so peek is the answer, and each add costs O(log k). A max-heap of everything would need k pops to reach the k-th item; a re-sorted array is O(n log n) per add; a set has no order.' },
+      hints: [
+        `<p>Hint 1: the k-th largest is the <b>smallest</b> of the k largest numbers. Anything smaller than that can never be the answer again, because numbers only get added, never removed.</p>`,
+        `<p>Hint 2: keep a <b>min-heap of size at most k</b>. Its root is the smallest of the top k, which is your answer. When a new number is bigger than the root, it deserves a place: pop the root, push the newcomer.</p>`,
+        `<p>Hint 3: recipe. Constructor: set k, create an empty heap, call <code>add</code> for every number in <code>nums</code>. <code>add(val)</code>: if the heap has fewer than k items, push; else if <code>val &gt; peek()</code>, pop then push; otherwise ignore. Return <code>peek()</code>. Edge cases: empty <code>nums</code>, duplicates (equal values count separately, and <code>val &gt; peek()</code> being false for an equal value is fine), k = 1.</p>`
+      ],
+      tests: {"cls":"KthLargest","sigs":{"KthLargest":"int int[]","add":"int -> int"},"cases":[{"ops":["KthLargest","add","add","add","add","add"],"args":[[3,[4,5,8,2]],[3],[5],[10],[9],[4]],"out":[null,4,5,5,8,8]},{"ops":["KthLargest","add","add","add","add","add"],"args":[[1,[]],[-3],[-2],[-4],[0],[4]],"out":[null,-3,-2,-2,0,4]},{"ops":["KthLargest","add","add","add","add","add"],"args":[[2,[0]],[-1],[1],[-2],[-4],[3]],"out":[null,-1,0,0,0,1]},{"ops":["KthLargest","add","add","add","add"],"args":[[3,[5,5,5]],[5],[6],[5],[1]],"out":[null,5,5,5,5]},{"ops":["KthLargest","add","add","add","add","add","add","add"],"args":[[4,[1,2,3]],[4],[10],[0],[7],[7],[7],[-1]],"out":[null,1,2,2,3,4,7,7]},{"ops":["KthLargest","add","add","add","add","add"],"args":[[2,[-10000,10000]],[10000],[-10000],[0],[10000],[9999]],"out":[null,10000,10000,10000,10000,10000]},{"ops":["KthLargest","add","add","add","add","add","add","add"],"args":[[5000,{$range:[0,10000,1]}],[10001],[-5],[5000],[9999],[10000],[10000],[0]],"out":[null,5001,5001,5001,5002,5003,5004,5004]},{"ops":["KthLargest","add","add","add"],"args":[[1,{$range:[10000,0,-1]}],[1],[10001],[5]],"out":[null,10000,10001,10001]},{"ops":["KthLargest","add","add","add","add"],"args":[[3,[7,7]],[1],[9],[-2],[9]],"out":[null,1,7,7,7]}]},
+      solution: {
+        approach: `<p>Keep a <b>min-heap holding only the k largest numbers seen so far</b>. The root is the smallest of those k, which is exactly the k-th largest overall. A new number smaller than or equal to the root changes nothing; a bigger one replaces the root. The heap never grows beyond k, so each <code>add</code> costs <code>O(log k)</code> and memory is <code>O(k)</code>. The class below is the course-standard <code>MinHeap</code> with <code>push</code>, <code>pop</code>, <code>peek</code> and <code>size</code>.</p>`,
+        code: { lang: 'js', code: `// JS has no built-in heap: a small binary min-heap with a comparator.
+class MinHeap {
+  constructor(less = (a, b) => a < b) { this.a = []; this.less = less; }  // less(a, b): a comes out first
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (!this.less(a[i], a[p])) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a;
+    if (a.length === 0) return undefined;
+    const top = a[0], last = a.pop();
+    if (a.length > 0) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.less(a[l], a[m])) m = l;
+        if (r < a.length && this.less(a[r], a[m])) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+class KthLargest {
+  constructor(k, nums) {
+    this.k = k;
+    this.heap = new MinHeap();            // holds the k largest so far; root = k-th largest
+    for (const x of nums) this.add(x);
+  }
+  add(val) {
+    if (this.heap.size() < this.k) {
+      this.heap.push(val);                // still filling up
+    } else if (val > this.heap.peek()) {
+      this.heap.pop();                    // drop the old k-th largest
+      this.heap.push(val);
+    }                                     // else: val cannot be in the top k
+    return this.heap.peek();
+  }
+}` },
+        dry: { head: ['call', 'heap (k = 3) after', 'decision', 'returns'], rows: [
+          ['constructor [4,5,8,2]', '{4, 5, 8}', '4, 5, 8 fill the heap; 2 is not &gt; 4, ignored', '—'],
+          ['add(3)', '{4, 5, 8}', '3 &gt; 4? no, ignore', '<span class="c-g">4</span>'],
+          ['add(5)', '{5, 5, 8}', '5 &gt; 4: pop 4, push 5', '<span class="c-g">5</span>'],
+          ['add(10)', '{5, 8, 10}', '10 &gt; 5: pop 5, push 10', '<span class="c-g">5</span>'],
+          ['add(9)', '{8, 9, 10}', '9 &gt; 5: pop 5, push 9', '<span class="c-g">8</span>'],
+          ['add(4)', '{8, 9, 10}', '4 &gt; 8? no, ignore', '<span class="c-g">8</span>']
+        ] },
+        complexity: `<p>Constructor O(n log k); each <code>add</code> O(log k) (one push and at most one pop on a heap of size ≤ k); peek O(1). Space O(k). The sort-every-time brute force is O(n log n) per add and O(n) space.</p>`,
+        followUps: ['Return the k-th <b>smallest</b> instead: use a max-heap (flip the comparator to <code>a &gt; b</code>) of size k.', 'Top-K frequent words: count with a <code>Map</code>, then a size-k heap ordered by (count, word).', 'The stream has 10<sup>9</sup> numbers and k is 10<sup>6</sup>: why is O(k) memory still fine, and what would you use for the median instead (two heaps)?']
+      }
+    }]
+  });
+
   /* ================= PRACTICE: Easy ================= */
   practice.push({
     title: 'Chunk an Array into Groups of Size k',
@@ -3062,6 +3421,178 @@ try { toJSON(cyc); } catch (e) { console.log(e.name + ': ' + e.message); }` },
     }
   });
 
+
+  /* ================= PRACTICE: heaps (appended) ================= */
+  practice.push({
+    title: 'Merge K Sorted Arrays',
+    level: 'Hard', tags: ['heap', 'priority queue', 'merge', 'arrays'], companies: ['Amazon', 'Google', 'Meta', 'Microsoft'],
+    statement: `<p>You get <code>arrays</code>, a list of k arrays of integers, each already sorted in ascending order. Write <code>mergeKSorted(arrays)</code> that returns one sorted array with every value from all of them (duplicates kept). Some arrays may be empty. Do not mutate the input. Write your own <code>MinHeap</code> class (<code>push</code>, <code>pop</code>, <code>peek</code>, <code>size</code>, with a comparator).</p>`,
+    constraints: `<p>0 ≤ k ≤ 10<sup>4</sup>; total number of values n ≤ 10<sup>5</sup>; −10<sup>9</sup> ≤ value ≤ 10<sup>9</sup>.</p>`,
+    example: `<p><code>mergeKSorted([[1, 4, 5], [1, 3, 4], [2, 6]])</code> → ${H.c('g', '[1, 1, 2, 3, 4, 4, 5, 6]')}<br>${H.arr([1, 4, 5], { label: 'A' })}${H.arr([1, 3, 4], { label: 'B' })}${H.arr([2, 6], { label: 'C' })}Each array is sorted, so the overall smallest is always the front of one of them. The heap holds those k fronts. Also: <code>mergeKSorted([])</code> → <code>[]</code> and <code>mergeKSorted([[], []])</code> → <code>[]</code>.</p>`,
+    brute: { why: `<p>Concatenate everything and call <code>sort((a, b) =&gt; a - b)</code>. It is correct and short, but it costs <code>O(n log n)</code> and ignores the fact that every array is already sorted. The wasted work is re-discovering order that was given to us. (Forgetting the comparator is worse: <code>sort()</code> compares as strings and puts 10 before 9.)</p>`, code: `function mergeKSorted(arrays) {
+  const all = [];
+  for (const arr of arrays) for (const x of arr) all.push(x);
+  return all.sort((a, b) => a - b);   // O(n log n), ignores the sorted input
+}` },
+    mcq: { q: 'What goes into the heap?', options: ['One entry per array: its current front value plus which array and which position it came from', 'Every value from every array', 'Only the largest value of each array', 'The arrays themselves, compared by length'], answer: 0, explain: 'The next output value is always the smallest current front. So the heap holds just k entries (value, array index, position). Pop the smallest, then push the next value from the same array. The heap never has more than k entries, so each of the n steps costs O(log k).' },
+    hints: [
+      `<p>Hint 1: the smallest value not yet output must be at the <b>front</b> of one of the k arrays. You never need to look deeper than the fronts.</p>`,
+      `<p>Hint 2: put the k fronts in a min-heap, as <code>[value, arrayIndex, position]</code>, compared by value. Pop the smallest, append it to the output, then push the next element of that same array (if any).</p>`,
+      `<p>Hint 3: skip empty arrays when you seed the heap. Loop <code>while heap.size() &gt; 0</code>. Edge cases: <code>arrays = []</code>, all arrays empty, one array, duplicates across arrays, negative numbers. Compare numbers with <code>a &lt; b</code> in the heap predicate (not <code>a - b</code>).</p>`
+    ],
+    tests: {"sig":"int[][] -> int[]","fn":"mergeKSorted","cases":[[[[[1,4,5],[1,3,4],[2,6]]],[1,1,2,3,4,4,5,6]],[[[]],[]],[[[[]]],[]],[[[[],[],[]]],[]],[[[[5]]],[5]],[[[[1,1,1],[1,1],[1]]],[1,1,1,1,1,1]],[[[[-5,-1,0],[-3,-3],[10],[]]],[-5,-3,-3,-1,0,10]],[[[[1000000000,1000000000],[-1000000000],[0,1000000000]]],[-1000000000,0,1000000000,1000000000,1000000000]],[[[[1,2,3],[4,5,6],[7,8,9]]],[1,2,3,4,5,6,7,8,9]],[[[[7,8,9],[4,5,6],[1,2,3]]],[1,2,3,4,5,6,7,8,9]],[[{$rep:[1,2,3],"n":1000}],{$concat:[{$rep:1,"n":1000},{$rep:2,"n":1000},{$rep:3,"n":1000}]}],[[[{$range:[0,100000,2]},{$range:[1,100000,2]}]],{$range:[0,100000,1]}],[[{$rep:[4],"n":10000}],{$rep:4,"n":10000}]]},
+    solution: {
+      approach: `<p>Seed a min-heap with the first element of each non-empty array, as <code>[value, which array, position]</code>. Repeat: pop the smallest entry, add its value to the answer, and push the next element from the same array. Each of the n values is pushed and popped once on a heap of at most k entries, so the total is <code>O(n log k)</code>.</p>`,
+      code: { lang: 'js', code: `// JS has no built-in heap: a small binary min-heap with a comparator.
+class MinHeap {
+  constructor(less = (a, b) => a < b) { this.a = []; this.less = less; }  // less(a, b): a comes out first
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (!this.less(a[i], a[p])) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a;
+    if (a.length === 0) return undefined;
+    const top = a[0], last = a.pop();
+    if (a.length > 0) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.less(a[l], a[m])) m = l;
+        if (r < a.length && this.less(a[r], a[m])) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+function mergeKSorted(arrays) {
+  // entry = [value, which array, position inside that array]
+  const heap = new MinHeap((x, y) => x[0] < y[0]);
+  for (let k = 0; k < arrays.length; k++) {
+    if (arrays[k].length > 0) heap.push([arrays[k][0], k, 0]);   // skip empty arrays
+  }
+  const out = [];
+  while (heap.size() > 0) {
+    const [val, k, pos] = heap.pop();          // smallest current front
+    out.push(val);
+    if (pos + 1 < arrays[k].length) {
+      heap.push([arrays[k][pos + 1], k, pos + 1]);   // advance in the same array
+    }
+  }
+  return out;
+}` },
+      dry: { head: ['step', 'popped', 'output so far', 'heap fronts after pushing next'], rows: [
+        ['seed', '—', '[]', '(1,A) (1,B) (2,C)'],
+        ['1', '1 from A', '[1]', '(1,B) (2,C) (4,A)'],
+        ['2', '1 from B', '[1,1]', '(2,C) (3,B) (4,A)'],
+        ['3', '2 from C', '[1,1,2]', '(3,B) (4,A) (6,C)'],
+        ['4', '3 from B', '[1,1,2,3]', '(4,A) (4,B) (6,C)'],
+        ['5-6', '4 and 4', '[1,1,2,3,4,4]', '(5,A) (6,C)'],
+        ['7-8', '5, 6', '[1,1,2,3,4,4,5,6]', 'empty → done']
+      ] },
+      complexity: `<p>Time O(n log k) for n total values and k arrays (each value is pushed and popped once on a heap of at most k entries). Space O(k) for the heap plus O(n) for the output. The concatenate-and-sort brute force is O(n log n).</p>`,
+      followUps: ['Merge two sorted arrays with two pointers, then merge k by divide and conquer: also O(n log k), with no heap.', 'The k lists do not fit in memory (external merge sort): which part of this solution still works?', 'Return only the smallest m values: stop after m pops.']
+    }
+  });
+
+  practice.push({
+    title: 'Last Stone Weight',
+    level: 'Medium', tags: ['heap', 'priority queue', 'simulation', 'max-heap'], companies: ['Amazon', 'Google', 'Bloomberg'],
+    statement: `<p>You have an array <code>stones</code> of positive integer weights. Each turn, take the two heaviest stones, <code>y ≥ x</code>, and smash them together:</p><ul><li>if <code>x === y</code>, both stones are destroyed;</li><li>otherwise <code>x</code> is destroyed and <code>y</code> becomes <code>y - x</code>.</li></ul><p>Repeat until at most one stone is left. Write <code>lastStoneWeight(stones)</code> that returns the weight of the last stone, or <code>0</code> if none is left. Write your own <code>MinHeap</code> class and use a comparator to make it a max-heap.</p>`,
+    constraints: `<p>1 ≤ stones.length ≤ 10<sup>5</sup>; 1 ≤ stones[i] ≤ 10<sup>9</sup>.</p>`,
+    example: `<p><code>lastStoneWeight([2, 7, 4, 1, 8, 1])</code> → ${H.c('g', '1')}<br>${H.table(['turn', 'stones (largest first)', 'smash', 'result'], [['1', '8 7 4 2 1 1', '8 vs 7', 'leaves 1'], ['2', '4 2 1 1 1', '4 vs 2', 'leaves 2'], ['3', '2 1 1 1', '2 vs 1', 'leaves 1'], ['4', '1 1 1', '1 vs 1', 'both gone'], ['end', '1', '—', '<span class="c-g">answer 1</span>']])}</p>`,
+    brute: { why: `<p>Sort the array, take the last two, smash, push the leftover and sort again. Every turn pays a full sort: <code>O(n log n)</code> per turn and up to n turns, so <code>O(n² log n)</code>. We only ever need the top two stones, never a complete order. (Also remember <code>sort</code> needs <code>(a, b) =&gt; a - b</code>; the default sorts as strings.)</p>`, code: `function lastStoneWeight(stones) {
+  const s = [...stones];
+  while (s.length > 1) {
+    s.sort((a, b) => a - b);           // full sort every turn
+    const y = s.pop(), x = s.pop();
+    if (y !== x) s.push(y - x);
+  }
+  return s.length ? s[0] : 0;
+}` },
+    mcq: { q: 'Which structure gives "the heaviest stone" fastest, even as new leftovers keep being added?', options: ['A max-heap (a MinHeap with the comparator flipped to a &gt; b)', 'A sorted array that is re-sorted after each smash', 'A Set of the weights', 'A queue in the original order'], answer: 0, explain: 'Each turn is two removals of the maximum and at most one insertion. A max-heap does each in O(log n). Re-sorting costs O(n log n) per turn, a Set loses duplicates, and a queue has no notion of "heaviest".' },
+    hints: [
+      `<p>Hint 1: each turn needs only the <b>two largest</b> stones, and then one new stone may appear. That is "remove the max, remove the max, maybe insert".</p>`,
+      `<p>Hint 2: a max-heap does exactly that. Take your <code>MinHeap</code> and pass the comparator <code>(a, b) =&gt; a &gt; b</code> so the biggest comes out first.</p>`,
+      `<p>Hint 3: push all stones. While <code>heap.size() &gt; 1</code>: pop <code>y</code>, pop <code>x</code>; if they differ, push <code>y - x</code>. At the end return the one remaining stone, or 0 if the heap is empty. Edge cases: a single stone, two equal stones, all stones equal (odd count leaves one).</p>`
+    ],
+    tests: {"sig":"int[] -> int","fn":"lastStoneWeight","cases":[[[[2,7,4,1,8,1]],1],[[[1]],1],[[[2,2]],0],[[[10,4]],6],[[[3,7,2]],2],[[[1,1,1]],1],[[[9,3,1000,1000,2]],4],[[[1000000000,1]],999999999],[[[1000000000,1000000000,1000000000]],1000000000],[[[5,5,5,5,6]],4],[[{$range:[1,3001,1]}],0],[[{$rep:1000,"n":100000}],0],[[{$rep:1000,"n":99999}],1000]]},
+    solution: {
+      approach: `<p>Put all stones in a max-heap. While at least two remain, pop the two heaviest, and if they differ push the difference back. The heap shrinks by one or two stones per turn, so there are at most n turns, each costing <code>O(log n)</code>. Because weights go up to 10<sup>9</sup>, check that nothing here needs more than a normal <code>Number</code>: differences only get smaller, so there is no precision problem.</p>`,
+      code: { lang: 'js', code: `// JS has no built-in heap: a small binary min-heap with a comparator.
+class MinHeap {
+  constructor(less = (a, b) => a < b) { this.a = []; this.less = less; }  // less(a, b): a comes out first
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (!this.less(a[i], a[p])) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a;
+    if (a.length === 0) return undefined;
+    const top = a[0], last = a.pop();
+    if (a.length > 0) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.less(a[l], a[m])) m = l;
+        if (r < a.length && this.less(a[r], a[m])) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+function lastStoneWeight(stones) {
+  const heap = new MinHeap((a, b) => a > b);   // flipped comparator = max-heap
+  for (const s of stones) heap.push(s);
+  while (heap.size() > 1) {
+    const y = heap.pop();                       // heaviest
+    const x = heap.pop();                       // second heaviest
+    if (y !== x) heap.push(y - x);              // leftover goes back in
+  }
+  return heap.size() === 0 ? 0 : heap.peek();
+}` },
+      dry: { head: ['turn', 'pop y', 'pop x', 'push', 'heap (largest first)'], rows: [
+        ['start', '—', '—', '—', '8 7 4 2 1 1'],
+        ['1', '8', '7', '1', '4 2 1 1 1'],
+        ['2', '4', '2', '2', '2 1 1 1'],
+        ['3', '2', '1', '1', '1 1 1'],
+        ['4', '1', '1', 'nothing (equal)', '1'],
+        ['end', '—', '—', '—', 'size 1 → return 1']
+      ] },
+      complexity: `<p>Time O(n log n): n initial pushes plus at most n smashes of 2 pops and 1 push on a heap of at most n stones. Space O(n). The re-sorting brute force is O(n² log n).</p>`,
+      followUps: ['Build the heap in O(n) with heapify instead of n pushes. Does the total complexity change?', 'Return the number of smashes performed.', 'Stones can weigh up to 10<sup>18</sup>: switch to BigInt. Which parts of the code must change (the comparator, the subtraction literals, the empty-case return)?']
+    }
+  });
 
   /* ================= QUIZ ================= */
   quiz.push({

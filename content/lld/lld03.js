@@ -71,7 +71,7 @@ ${H.table(['Kind of duplication', 'Example', 'Fix'], [
       '"Front-end and back-end validation disagree" → one source of truth for the rule (schema).',
       'Follow-up "could merging these two make things worse?" → they want you to mention accidental duplication and the wrong abstraction.'
     ],
-    code: `// BEFORE: the "10% off when subtotal is above 1000" rule lives in TWO places.
+    code: { lang: 'java', code: `// BEFORE: the "10% off when subtotal is above 1000" rule lives in TWO places.
 // Money is kept in whole paise/cents (long) to avoid floating-point errors.
 class CartBefore {
     long total(long subtotal) {
@@ -105,7 +105,117 @@ class DryDemo {
         System.out.println(new CartBefore().total(100_000) + " vs " + new InvoiceBefore().amountDue(100_000));
         System.out.println(new Cart().total(100_000) + " vs " + new Invoice().amountDue(100_000));
     }
-}`,
+}`, alt: [
+        { lang: 'python', code: `# BEFORE: the "10% off when subtotal is above 1000" rule lives in TWO places.
+# Money is kept in whole paise/cents (int) to avoid floating-point errors.
+class CartBefore:
+    def total(self, subtotal: int) -> int:
+        if subtotal > 100_000:
+            return subtotal * 90 // 100  # copy #1
+        return subtotal
+
+
+class InvoiceBefore:
+    def amount_due(self, subtotal: int) -> int:
+        if subtotal >= 100_000:
+            return subtotal - subtotal // 10  # copy #2 - note ">=" : they already disagree!
+        return subtotal
+
+
+# AFTER: one authoritative home for the rule.
+class DiscountPolicy:
+    THRESHOLD = 100_000  # 1000.00 in paise
+    PERCENT_OFF = 10
+
+    @classmethod
+    def apply(cls, subtotal: int) -> int:  # no instances: just the rule
+        if subtotal <= cls.THRESHOLD:
+            return subtotal
+        return subtotal - subtotal * cls.PERCENT_OFF // 100
+
+
+class Cart:
+    def total(self, subtotal: int) -> int:
+        return DiscountPolicy.apply(subtotal)
+
+
+class Invoice:
+    def amount_due(self, subtotal: int) -> int:
+        return DiscountPolicy.apply(subtotal)
+
+
+if __name__ == "__main__":
+    # exactly at the threshold the OLD code gave two different answers
+    print(f"{CartBefore().total(100_000)} vs {InvoiceBefore().amount_due(100_000)}")
+    print(f"{Cart().total(100_000)} vs {Invoice().amount_due(100_000)}")` },
+        { lang: 'ts', code: `// BEFORE: the "10% off when subtotal is above 1000" rule lives in TWO places.
+// Money is kept in whole paise/cents (integers) to avoid floating-point errors.
+class CartBefore {
+  total(subtotal: number): number {
+    if (subtotal > 100_000) return Math.floor((subtotal * 90) / 100); // copy #1
+    return subtotal;
+  }
+}
+class InvoiceBefore {
+  amountDue(subtotal: number): number {
+    if (subtotal >= 100_000) return subtotal - Math.floor(subtotal / 10); // copy #2 - note ">=" : they already disagree!
+    return subtotal;
+  }
+}
+
+// AFTER: one authoritative home for the rule.
+class DiscountPolicy {
+  static readonly THRESHOLD = 100_000; // 1000.00 in paise
+  static readonly PERCENT_OFF = 10;
+  private constructor() {} // no instances: just the rule
+  static apply(subtotal: number): number {
+    if (subtotal <= DiscountPolicy.THRESHOLD) return subtotal;
+    return subtotal - Math.floor((subtotal * DiscountPolicy.PERCENT_OFF) / 100);
+  }
+}
+class Cart { total(subtotal: number): number { return DiscountPolicy.apply(subtotal); } }
+class Invoice { amountDue(subtotal: number): number { return DiscountPolicy.apply(subtotal); } }
+
+// exactly at the threshold the OLD code gave two different answers
+console.log(\`\${new CartBefore().total(100_000)} vs \${new InvoiceBefore().amountDue(100_000)}\`);
+console.log(\`\${new Cart().total(100_000)} vs \${new Invoice().amountDue(100_000)}\`);` },
+        { lang: 'cpp', code: `// BEFORE: the "10% off when subtotal is above 1000" rule lives in TWO places.
+// Money is kept in whole paise/cents (long long) to avoid floating-point errors.
+class CartBefore {
+public:
+    long long total(long long subtotal) const {
+        if (subtotal > 100'000) return subtotal * 90 / 100;      // copy #1
+        return subtotal;
+    }
+};
+class InvoiceBefore {
+public:
+    long long amountDue(long long subtotal) const {
+        if (subtotal >= 100'000) return subtotal - subtotal / 10; // copy #2 - note ">=" : they already disagree!
+        return subtotal;
+    }
+};
+
+// AFTER: one authoritative home for the rule.
+class DiscountPolicy final {
+public:
+    static constexpr long long THRESHOLD = 100'000;   // 1000.00 in paise
+    static constexpr int PERCENT_OFF = 10;
+    DiscountPolicy() = delete;                         // no instances: just the rule
+    static long long apply(long long subtotal) {
+        if (subtotal <= THRESHOLD) return subtotal;
+        return subtotal - subtotal * PERCENT_OFF / 100;
+    }
+};
+class Cart { public: long long total(long long subtotal) const { return DiscountPolicy::apply(subtotal); } };
+class Invoice { public: long long amountDue(long long subtotal) const { return DiscountPolicy::apply(subtotal); } };
+
+int main() {
+    // exactly at the threshold the OLD code gave two different answers
+    cout << CartBefore().total(100'000) << " vs " << InvoiceBefore().amountDue(100'000) << "\\n";
+    cout << Cart().total(100'000) << " vs " << Invoice().amountDue(100'000) << "\\n";
+}` }
+      ] },
     codeTitle: 'Two copies of a rule drift apart; one DiscountPolicy fixes it',
     viz: [{
       title: 'Dependency graph: copies of a rule vs one home',
@@ -191,21 +301,73 @@ class DryDemo {
       }
     }],
     examples: [
-      { title: 'Magic number → named constant', html: `<p>A delivery app has <code>if (km &gt; 7)</code> in the fee code, the ETA code and the "free delivery" banner. Marketing changes the free radius to 10 km. Two places get updated; the banner still says 7 km. Fix: <code>static final int FREE_DELIVERY_KM = 10;</code> in one place (or a config value). The constant also <b>documents</b> what 7 meant.</p>`, code: `final class DeliveryRules {
+      { title: 'Magic number → named constant', html: `<p>A delivery app has <code>if (km &gt; 7)</code> in the fee code, the ETA code and the "free delivery" banner. Marketing changes the free radius to 10 km. Two places get updated; the banner still says 7 km. Fix: <code>static final int FREE_DELIVERY_KM = 10;</code> in one place (or a config value). The constant also <b>documents</b> what 7 meant.</p>`, code: { lang: 'java', code: `final class DeliveryRules {
     static final int FREE_DELIVERY_KM = 10;
     private DeliveryRules() {}
     static boolean isFree(int km) { return km <= FREE_DELIVERY_KM; }
+}`, alt: [
+          { lang: 'python', code: `class DeliveryRules:
+    FREE_DELIVERY_KM = 10
+
+    @classmethod
+    def is_free(cls, km: int) -> bool:
+        return km <= cls.FREE_DELIVERY_KM` },
+          { lang: 'ts', code: `class DeliveryRules {
+  static readonly FREE_DELIVERY_KM = 10;
+  private constructor() {}
+  static isFree(km: number): boolean { return km <= DeliveryRules.FREE_DELIVERY_KM; }
 }` },
+          { lang: 'cpp', code: `class DeliveryRules final {
+public:
+    static constexpr int FREE_DELIVERY_KM = 10;
+    DeliveryRules() = delete;
+    static bool isFree(int km) { return km <= FREE_DELIVERY_KM; }
+};` }
+        ] } },
       { title: 'Accidental duplication — do NOT merge', html: `<p>${H.c('y', 'Looks the same:')} <code>gstRate = 0.18</code> and <code>lateFeeRate = 0.18</code>. ${H.c('r', 'Different knowledge:')} one is set by the government, the other by your finance team. Merging them into one constant means a GST change silently changes late fees. Keep two constants with two names. DRY is about <b>reasons to change</b>, not matching text.</p>` },
-      { title: 'Derived data: store the fact once', html: `<p>A <code>User</code> table stores <code>dateOfBirth</code> <b>and</b> <code>age</code>. After a birthday, <code>age</code> is wrong unless a nightly job fixes it. The age is <i>derived</i> knowledge. Store only the DOB and compute the age when needed.</p>`, code: `record User(String name, LocalDate dateOfBirth) {
+      { title: 'Derived data: store the fact once', html: `<p>A <code>User</code> table stores <code>dateOfBirth</code> <b>and</b> <code>age</code>. After a birthday, <code>age</code> is wrong unless a nightly job fixes it. The age is <i>derived</i> knowledge. Store only the DOB and compute the age when needed.</p>`, code: { lang: 'java', code: `record User(String name, LocalDate dateOfBirth) {
     int ageOn(LocalDate today) { return Period.between(dateOfBirth, today).getYears(); }
+}`, alt: [
+          { lang: 'python', code: `from dataclasses import dataclass
+from datetime import date
+
+
+@dataclass(frozen=True)
+class User:
+    name: str
+    date_of_birth: date
+
+    def age_on(self, today: date) -> int:
+        had_birthday = (today.month, today.day) >= (self.date_of_birth.month, self.date_of_birth.day)
+        return today.year - self.date_of_birth.year - (0 if had_birthday else 1)` },
+          { lang: 'ts', code: `class User {
+  // dateOfBirth is an ISO date such as "1990-06-15"; only the age is derived, never stored
+  constructor(readonly name: string, readonly dateOfBirth: string) {}
+
+  ageOn(today: string): number {
+    const [by, bm, bd] = this.dateOfBirth.split("-").map(Number);
+    const [ty, tm, td] = today.split("-").map(Number);
+    const hadBirthday = tm > bm || (tm === bm && td >= bd);
+    return ty - by - (hadBirthday ? 0 : 1);
+  }
 }` },
+          { lang: 'cpp', code: `struct User {
+    string name;
+    chrono::year_month_day dateOfBirth;
+
+    int ageOn(chrono::year_month_day today) const {
+        bool hadBirthday = today.month() > dateOfBirth.month() ||
+                           (today.month() == dateOfBirth.month() && today.day() >= dateOfBirth.day());
+        return int(today.year()) - int(dateOfBirth.year()) - (hadBirthday ? 0 : 1);
+    }
+};` }
+        ] } },
       { title: 'DRY in tests vs DAMP', html: `<p>Test code follows a softer rule: <b>DAMP</b> ("Descriptive And Meaningful Phrases"). It is fine to repeat a few setup lines so each test reads on its own. Hiding everything in a giant shared <code>setUp()</code> makes a failing test hard to understand. Do extract <i>helpers</i> such as <code>anOrderWith(items)</code>, which keep both DRY and readability.</p>` }
     ],
     deepDive: `<p><b>DRY versus the wrong abstraction.</b> Sandi Metz's well-known line: <i>"duplication is far cheaper than the wrong abstraction"</i>. Here is how it goes wrong. Two similar methods get merged into one. A new caller needs a small difference, so somebody adds a boolean parameter. Then another one. After a year the shared method has 5 flags and 30 branches, and nobody dares touch it. The cure is to <b>inline the abstraction back</b> into each caller and re-extract only what is truly shared. Kent C. Dodds calls the habit <b>AHA</b>: "Avoid Hasty Abstractions".</p>
 <p><b>DRY creates coupling.</b> Sharing code means every user now depends on it. Inside one service that is cheap. Across microservices, a shared "common" library with business rules makes teams release together, which is the <i>distributed monolith</i> problem. Many teams accept some duplication <i>between</i> services (each owns its own copy of a DTO) to keep them independently deployable, while staying strictly DRY <i>inside</i> each service.</p>
 <p><b>Single source of truth for data</b> is DRY applied to storage: database normalization, one service owning each entity, caches that are clearly <i>copies</i> with an invalidation story. When you <i>must</i> copy (caches, read replicas, denormalized read models in CQRS), make the copy <b>generated</b> from the source, never hand-edited.</p>
-<p><b>Generators</b> are a DRY tool: OpenAPI or Protobuf schemas generate client and server types, so the contract lives in one file. Java <code>record</code>s DRY up <code>equals/hashCode/toString</code> boilerplate. Enums with fields DRY up parallel <code>switch</code> statements.</p>
+<p><b>Generators</b> are a DRY tool: OpenAPI or Protobuf schemas generate client and server types, so the contract lives in one file. Value-type features DRY up <code>equals/hashCode/toString</code> boilerplate (Java <code>record</code>, Python <code>@dataclass</code>, C++ defaulted <code>operator==</code>). Enums with fields DRY up parallel <code>switch</code> statements.</p>
 <p><b>Measuring:</b> tools like PMD's CPD (copy-paste detector), SonarQube duplication %, and IntelliJ's "Duplicated code fragment" inspection find textual copies. They cannot find <i>knowledge</i> duplication written in different words (like <code>&gt; 1000</code> vs <code>&gt;= 1000</code> above). That needs human review.</p>`,
     aiEra: `<p><b>What AI changes:</b> AI assistants make copying almost free. Ask for "a validator for the checkout form" in three different files and you will often get three slightly different validators. Industry analyses of AI-heavy repositories (for example GitClear's code-quality reports) have shown copy-pasted lines rising and "moved"/refactored lines falling. So DRY review matters <b>more</b>, not less.</p>
 <p><b>Use AI as a partner:</b> paste a package and ask <code>List every business rule (numbers, thresholds, formats) that appears in more than one place, with file names. Do not change code.</code> Then decide yourself which are real duplicates. Ask it to draft the Extract Method and the unit tests that prove behaviour is unchanged.</p>
@@ -246,6 +408,7 @@ class EmailService {
         `<p>Hint 2: Create a small <code>ShippingPolicy</code> class with named constants (<code>FREE_ABOVE</code>, <code>STANDARD_FEE</code>, <code>EXPRESS_SURCHARGE</code>) and one method <code>feeFor(order, express)</code>.</p>`,
         `<p>Hint 3: Pick the charging code as the truth (<code>&gt;= 500</code> is free, express always adds 30). Inject the policy into each service so tests can swap it. Check the boundary 499 / 500 and express on a free order.</p>`
       ],
+      tests: { io: true, cases: [{ stdin: '', stdout: "499 -> charged 70, Shipping: Rs 70\n500 -> charged 30, Shipping: Rs 30\n501 -> charged 30, Shipping: Rs 30\nstandard: cart 40, checkout 0\n" }] },
       solution: {
         approach: `<p><b>Spot:</b> three copies of one business rule plus magic numbers → DRY violation that already caused drift. <b>Refactor:</b> Extract Class <code>ShippingPolicy</code> holding the constants and the single formula, taken from <code>CheckoutService</code> because that is what customers are charged. Each service receives the policy in its constructor (so a test or a festival promotion can pass a different one) and delegates. The receipt now prints exactly what was charged.</p>
 <p><b>Why this is better:</b> one edit per rule change; the boundary is decided once; the constants explain themselves. <b>Trade-off:</b> three services now depend on <code>ShippingPolicy</code>, which is correct because they must agree.</p>`,
@@ -279,14 +442,133 @@ class EmailService {
 class ShippingDemo {
     public static void main(String[] args) {
         ShippingPolicy p = new ShippingPolicy();
+        CartService cart = new CartService(p);
         CheckoutService checkout = new CheckoutService(p);
         EmailService email = new EmailService(p);
         int[] orders = {499, 500, 501};
         for (int o : orders) {
             System.out.println(o + " -> charged " + checkout.fee(o, true) + ", " + email.receiptLine(o, true));
         }
+        System.out.println("standard: cart " + cart.fee(499, false) + ", checkout " + checkout.fee(500, false));
     }
 }`,
+        alt: [
+          { lang: 'python', code: `class ShippingPolicy:
+    FREE_ABOVE = 500  # order value (inclusive) that ships free
+    STANDARD_FEE = 40
+    EXPRESS_SURCHARGE = 30
+
+    def fee_for(self, order_value: int, express: bool) -> int:
+        fee = 0 if order_value >= self.FREE_ABOVE else self.STANDARD_FEE
+        return fee + self.EXPRESS_SURCHARGE if express else fee
+
+
+class CartService:
+    def __init__(self, policy: ShippingPolicy) -> None:
+        self._policy = policy
+
+    def fee(self, order: int, express: bool) -> int:
+        return self._policy.fee_for(order, express)
+
+
+class CheckoutService:
+    def __init__(self, policy: ShippingPolicy) -> None:
+        self._policy = policy
+
+    def fee(self, order: int, express: bool) -> int:
+        return self._policy.fee_for(order, express)
+
+
+class EmailService:
+    def __init__(self, policy: ShippingPolicy) -> None:
+        self._policy = policy
+
+    def receipt_line(self, order: int, express: bool) -> str:
+        return f"Shipping: Rs {self._policy.fee_for(order, express)}"
+
+
+if __name__ == "__main__":
+    policy = ShippingPolicy()
+    cart = CartService(policy)
+    checkout = CheckoutService(policy)
+    email = EmailService(policy)
+    for order in (499, 500, 501):
+        print(f"{order} -> charged {checkout.fee(order, True)}, {email.receipt_line(order, True)}")
+    print(f"standard: cart {cart.fee(499, False)}, checkout {checkout.fee(500, False)}")` },
+          { lang: 'ts', code: `class ShippingPolicy {
+  static readonly FREE_ABOVE = 500; // order value (inclusive) that ships free
+  static readonly STANDARD_FEE = 40;
+  static readonly EXPRESS_SURCHARGE = 30;
+
+  feeFor(orderValue: number, express: boolean): number {
+    const fee = orderValue >= ShippingPolicy.FREE_ABOVE ? 0 : ShippingPolicy.STANDARD_FEE;
+    return express ? fee + ShippingPolicy.EXPRESS_SURCHARGE : fee;
+  }
+}
+
+class CartService {
+  constructor(private readonly policy: ShippingPolicy) {}
+  fee(order: number, express: boolean): number { return this.policy.feeFor(order, express); }
+}
+class CheckoutService {
+  constructor(private readonly policy: ShippingPolicy) {}
+  fee(order: number, express: boolean): number { return this.policy.feeFor(order, express); }
+}
+class EmailService {
+  constructor(private readonly policy: ShippingPolicy) {}
+  receiptLine(order: number, express: boolean): string { return \`Shipping: Rs \${this.policy.feeFor(order, express)}\`; }
+}
+
+const policy = new ShippingPolicy();
+const cart = new CartService(policy);
+const checkout = new CheckoutService(policy);
+const email = new EmailService(policy);
+for (const order of [499, 500, 501]) {
+  console.log(\`\${order} -> charged \${checkout.fee(order, true)}, \${email.receiptLine(order, true)}\`);
+}
+console.log(\`standard: cart \${cart.fee(499, false)}, checkout \${checkout.fee(500, false)}\`);` },
+          { lang: 'cpp', code: `class ShippingPolicy {
+public:
+    static constexpr int FREE_ABOVE = 500;   // order value (inclusive) that ships free
+    static constexpr int STANDARD_FEE = 40;
+    static constexpr int EXPRESS_SURCHARGE = 30;
+
+    int feeFor(int orderValue, bool express) const {
+        int fee = orderValue >= FREE_ABOVE ? 0 : STANDARD_FEE;
+        return express ? fee + EXPRESS_SURCHARGE : fee;
+    }
+};
+
+class CartService {
+    const ShippingPolicy& policy_;
+public:
+    explicit CartService(const ShippingPolicy& policy) : policy_(policy) {}
+    int fee(int order, bool express) const { return policy_.feeFor(order, express); }
+};
+class CheckoutService {
+    const ShippingPolicy& policy_;
+public:
+    explicit CheckoutService(const ShippingPolicy& policy) : policy_(policy) {}
+    int fee(int order, bool express) const { return policy_.feeFor(order, express); }
+};
+class EmailService {
+    const ShippingPolicy& policy_;
+public:
+    explicit EmailService(const ShippingPolicy& policy) : policy_(policy) {}
+    string receiptLine(int order, bool express) const { return "Shipping: Rs " + to_string(policy_.feeFor(order, express)); }
+};
+
+int main() {
+    ShippingPolicy policy;
+    CartService cart(policy);
+    CheckoutService checkout(policy);
+    EmailService email(policy);
+    for (int order : {499, 500, 501}) {
+        cout << order << " -> charged " << checkout.fee(order, true) << ", " << email.receiptLine(order, true) << "\\n";
+    }
+    cout << "standard: cart " << cart.fee(499, false) << ", checkout " << checkout.fee(500, false) << "\\n";
+}` }
+        ],
         complexity: `<p>Runtime is O(1) either way. The real metric is <b>change cost</b>: before, 3 edits per rule change with drift risk; after, 1 edit and 0 drift.</p>`,
         followUps: ['How would you let marketing change FREE_ABOVE without a deploy? (config / feature flag, still one source)', 'Should ShippingPolicy be an interface? Only when a second real policy appears (YAGNI).', 'Write the boundary tests: 499, 500, express on a free order.']
       }
@@ -320,7 +602,7 @@ ${H.table(['Cost', 'Plain meaning', 'Example'], [
       '"Machine coding round, 90 minutes" → start with the simplest working core, extend only when asked.',
       'Follow-up "the requirement just changed — how hard is it to extend?" → shows YAGNI + clean code makes change cheap.'
     ],
-    code: `// OVER-ENGINEERED (YAGNI + KISS violations): a "framework" for a single greeting.
+    code: { lang: 'java', code: `// OVER-ENGINEERED (YAGNI + KISS violations): a "framework" for a single greeting.
 interface GreetingStrategy { String greet(String name); }
 class EnglishGreeting implements GreetingStrategy { public String greet(String n) { return "Hello, " + n; } }
 interface GreetingStrategyFactory { GreetingStrategy create(String locale); }
@@ -348,7 +630,112 @@ class KissDemo {
         System.out.println(new GreetingService(new DefaultGreetingStrategyFactory()).greet("Asha", "en"));
         System.out.println(new Greeter().greet("Asha"));
     }
-}`,
+}`, alt: [
+        { lang: 'python', code: `from typing import Protocol
+
+
+# OVER-ENGINEERED (YAGNI + KISS violations): a "framework" for a single greeting.
+class GreetingStrategy(Protocol):
+    def greet(self, name: str) -> str: ...
+
+
+class EnglishGreeting:
+    def greet(self, name: str) -> str:
+        return f"Hello, {name}"
+
+
+class GreetingStrategyFactory(Protocol):
+    def create(self, locale: str) -> GreetingStrategy: ...
+
+
+class DefaultGreetingStrategyFactory:
+    def create(self, locale: str) -> GreetingStrategy:
+        # "we might support French one day" - nobody asked for it
+        return EnglishGreeting()
+
+
+class GreetingService:
+    def __init__(self, factory: GreetingStrategyFactory) -> None:
+        self._factory = factory
+
+    def greet(self, name: str, locale: str) -> str:
+        return self._factory.create(locale).greet(name)
+
+
+# SIMPLE (what the requirement actually says: greet users in English).
+def greet(name: str) -> str:
+    return f"Hello, {name}"
+# When French REALLY arrives, refactoring greet into a class takes 5 minutes
+# because the code is small, named well and covered by a test.
+
+
+if __name__ == "__main__":
+    print(GreetingService(DefaultGreetingStrategyFactory()).greet("Asha", "en"))
+    print(greet("Asha"))` },
+        { lang: 'ts', code: `// OVER-ENGINEERED (YAGNI + KISS violations): a "framework" for a single greeting.
+interface GreetingStrategy { greet(name: string): string; }
+class EnglishGreeting implements GreetingStrategy {
+  greet(name: string): string { return \`Hello, \${name}\`; }
+}
+interface GreetingStrategyFactory { create(locale: string): GreetingStrategy; }
+class DefaultGreetingStrategyFactory implements GreetingStrategyFactory {
+  create(locale: string): GreetingStrategy {
+    // "we might support French one day" - nobody asked for it
+    return new EnglishGreeting();
+  }
+}
+class GreetingService {
+  constructor(private readonly factory: GreetingStrategyFactory) {}
+  greet(name: string, locale: string): string { return this.factory.create(locale).greet(name); }
+}
+
+// SIMPLE (what the requirement actually says: greet users in English).
+const greet = (name: string): string => \`Hello, \${name}\`;
+// When French REALLY arrives, refactoring greet into an interface takes 5 minutes
+// because the code is small, named well and covered by a test.
+
+console.log(new GreetingService(new DefaultGreetingStrategyFactory()).greet("Asha", "en"));
+console.log(greet("Asha"));` },
+        { lang: 'cpp', code: `// OVER-ENGINEERED (YAGNI + KISS violations): a "framework" for a single greeting.
+class GreetingStrategy {
+public:
+    virtual ~GreetingStrategy() = default;
+    virtual string greet(const string& name) const = 0;
+};
+class EnglishGreeting : public GreetingStrategy {
+public:
+    string greet(const string& name) const override { return "Hello, " + name; }
+};
+class GreetingStrategyFactory {
+public:
+    virtual ~GreetingStrategyFactory() = default;
+    virtual unique_ptr<GreetingStrategy> create(const string& locale) const = 0;
+};
+class DefaultGreetingStrategyFactory : public GreetingStrategyFactory {
+public:
+    unique_ptr<GreetingStrategy> create(const string&) const override {
+        // "we might support French one day" - nobody asked for it
+        return make_unique<EnglishGreeting>();
+    }
+};
+class GreetingService {
+    const GreetingStrategyFactory& factory_;
+public:
+    explicit GreetingService(const GreetingStrategyFactory& factory) : factory_(factory) {}
+    string greet(const string& name, const string& locale) const { return factory_.create(locale)->greet(name); }
+};
+
+// SIMPLE (what the requirement actually says: greet users in English).
+string greet(const string& name) { return "Hello, " + name; }
+// When French REALLY arrives, refactoring greet into an interface takes 5 minutes
+// because the code is small, named well and covered by a test.
+
+int main() {
+    DefaultGreetingStrategyFactory factory;
+    cout << GreetingService(factory).greet("Asha", "en") << "\\n";
+    cout << greet("Asha") << "\\n";
+}` }
+      ] },
     codeTitle: 'Five types for one sentence vs one small class',
     viz: [{
       title: 'Speculative features pile up (cost of carry)',
@@ -405,7 +792,7 @@ class KissDemo {
       }
     }],
     examples: [
-      { title: 'The generic repository nobody needed', html: `<p>A team writes <code>GenericRepository&lt;T, ID&gt;</code> with <code>findAll, findBy(Criteria), page, sort, softDelete, audit…</code> for a feature that only needs <code>findById</code> and <code>save</code>. Each new entity has to "fit" the generic shape, and bugs in unused methods still need fixing. ${H.c('g', 'YAGNI version:')} a small <code>OrderRepository</code> with the two methods actually called. Add more when a caller needs them.</p>`, code: `interface OrderRepository {
+      { title: 'The generic repository nobody needed', html: `<p>A team writes <code>GenericRepository&lt;T, ID&gt;</code> with <code>findAll, findBy(Criteria), page, sort, softDelete, audit…</code> for a feature that only needs <code>findById</code> and <code>save</code>. Each new entity has to "fit" the generic shape, and bugs in unused methods still need fixing. ${H.c('g', 'YAGNI version:')} a small <code>OrderRepository</code> with the two methods actually called. Add more when a caller needs them.</p>`, code: { lang: 'java', code: `interface OrderRepository {
     Optional<String> findById(long id);
     void save(long id, String order);
 }
@@ -413,7 +800,49 @@ class InMemoryOrderRepository implements OrderRepository {
     private final Map<Long, String> store = new HashMap<>();
     public Optional<String> findById(long id) { return Optional.ofNullable(store.get(id)); }
     public void save(long id, String order) { store.put(id, order); }
+}`, alt: [
+          { lang: 'python', code: `from typing import Optional, Protocol
+
+
+class OrderRepository(Protocol):
+    def find_by_id(self, id: int) -> Optional[str]: ...
+    def save(self, id: int, order: str) -> None: ...
+
+
+class InMemoryOrderRepository:
+    def __init__(self) -> None:
+        self._store: dict[int, str] = {}
+
+    def find_by_id(self, id: int) -> Optional[str]:
+        return self._store.get(id)
+
+    def save(self, id: int, order: str) -> None:
+        self._store[id] = order` },
+          { lang: 'ts', code: `interface OrderRepository {
+  findById(id: number): string | undefined;
+  save(id: number, order: string): void;
+}
+class InMemoryOrderRepository implements OrderRepository {
+  private readonly store = new Map<number, string>();
+  findById(id: number): string | undefined { return this.store.get(id); }
+  save(id: number, order: string): void { this.store.set(id, order); }
 }` },
+          { lang: 'cpp', code: `class OrderRepository {
+public:
+    virtual ~OrderRepository() = default;
+    virtual optional<string> findById(long long id) const = 0;
+    virtual void save(long long id, const string& order) = 0;
+};
+class InMemoryOrderRepository : public OrderRepository {
+    unordered_map<long long, string> store_;
+public:
+    optional<string> findById(long long id) const override {
+        auto it = store_.find(id);
+        return it == store_.end() ? nullopt : optional<string>(it->second);
+    }
+    void save(long long id, const string& order) override { store_[id] = order; }
+};` }
+        ] } },
       { title: 'Config flag that is never toggled', html: `<p><code>if (config.useNewTaxEngine())</code> was added "for safe rollout" two years ago and is <code>true</code> everywhere. Now every reader has to understand <b>two</b> tax engines. Feature flags are great for rollout, but they need an <b>expiry date</b>. Delete the old branch once the rollout is done.</p>` },
       { title: 'Premature optimization', html: `<p>A developer adds a hand-rolled LRU cache in front of a lookup that runs 10 times a day "for performance". It adds invalidation bugs and nothing measurable. KISS + measure first: write the plain loop, profile, and optimize only the measured hotspot. Knuth's full quote: "premature optimization is the root of all evil" — <i>"yet we should not pass up our opportunities in that critical 3%"</i>.</p>` },
       { title: 'When YAGNI does NOT apply', html: `<p>In an interview you design a Parking Lot. Saying "I will hard-code one floor because YAGNI" is wrong when the <b>stated</b> requirement is multiple floors. YAGNI is about <i>guessed</i> needs, not stated ones. Also do not skip: input validation, thread-safety for a shared resource, money as integers/BigDecimal — those are correctness, not features.</p>` }
@@ -470,6 +899,7 @@ class NotificationOrchestrator {
         `<p>Hint 2: Keep one interface <code>MailSender { void send(String to, String subject) }</code> because a test needs a fake. Everything else can collapse into a plain <code>ShippingNotifier</code> class.</p>`,
         `<p>Hint 3: Recipe: delete Priority, RetryPolicy, NoRetry, Channel hierarchy, factory and registry → keep MailSender + SmtpMailSender + ShippingNotifier. Write a FakeMailSender that records messages and assert one message was sent. Note in the PR where SMS would plug in later.</p>`
       ],
+      tests: { io: true, cases: [{ stdin: '', stdout: "MAIL to asha@mail.com: Your order #42 has shipped\ntest sees: [ben@mail.com | Your order #7 has shipped, cy@mail.com | Your order #8 has shipped]\n" }] },
       solution: {
         approach: `<p><b>Review notes (the smells):</b> speculative generality (Channel hierarchy with one subclass, registry with one entry, retry loop that runs once), dead data (Priority never read), stringly-typed lookup (<code>"EMAIL"</code> can fail at runtime with a null).</p>
 <p><b>Refactor (Collapse Hierarchy + Inline Class + Remove Dead Code):</b> one interface <code>MailSender</code> — justified today because tests need a fake — one real implementation, and one <code>ShippingNotifier</code> with a single readable method. When SMS truly arrives, we will know its real needs (phone numbers, opt-in rules) and can introduce a <code>Notifier</code> abstraction then; the small codebase makes that a 15-minute change.</p>`,
@@ -502,10 +932,124 @@ class NotifierDemo {
         new ShippingNotifier(new ConsoleMailSender()).orderShipped("asha@mail.com", 42);
 
         FakeMailSender fake = new FakeMailSender();
-        new ShippingNotifier(fake).orderShipped("ben@mail.com", 7);
-        System.out.println("test sees: " + fake.sent);   // [ben@mail.com | Your order #7 has shipped]
+        ShippingNotifier notifier = new ShippingNotifier(fake);
+        notifier.orderShipped("ben@mail.com", 7);
+        notifier.orderShipped("cy@mail.com", 8);
+        System.out.println("test sees: " + fake.sent);   // [ben@mail.com | Your order #7 has shipped, cy@mail.com | ...]
     }
 }`,
+        alt: [
+          { lang: 'python', code: `from typing import Protocol
+
+
+class MailSender(Protocol):
+    def send(self, to: str, body: str) -> None: ...
+
+
+class ConsoleMailSender:
+    """Real implementation (would wrap SES or SMTP in production)."""
+
+    def send(self, to: str, body: str) -> None:
+        print(f"MAIL to {to}: {body}")
+
+
+class FakeMailSender:
+    """Test double: records instead of sending."""
+
+    def __init__(self) -> None:
+        self.sent: list[str] = []
+
+    def send(self, to: str, body: str) -> None:
+        self.sent.append(f"{to} | {body}")
+
+
+class ShippingNotifier:
+    def __init__(self, mail: MailSender) -> None:
+        self._mail = mail
+
+    def order_shipped(self, customer_email: str, order_id: int) -> None:
+        self._mail.send(customer_email, f"Your order #{order_id} has shipped")
+
+
+if __name__ == "__main__":
+    ShippingNotifier(ConsoleMailSender()).order_shipped("asha@mail.com", 42)
+
+    fake = FakeMailSender()
+    notifier = ShippingNotifier(fake)
+    notifier.order_shipped("ben@mail.com", 7)
+    notifier.order_shipped("cy@mail.com", 8)
+    print(f"test sees: [{', '.join(fake.sent)}]")` },
+          { lang: 'ts', code: `interface MailSender {
+  send(to: string, body: string): void;
+}
+
+// Real implementation (would wrap SES or SMTP in production).
+class ConsoleMailSender implements MailSender {
+  send(to: string, body: string): void { console.log(\`MAIL to \${to}: \${body}\`); }
+}
+
+// Test double: records instead of sending.
+class FakeMailSender implements MailSender {
+  readonly sent: string[] = [];
+  send(to: string, body: string): void { this.sent.push(\`\${to} | \${body}\`); }
+}
+
+class ShippingNotifier {
+  constructor(private readonly mail: MailSender) {}
+
+  orderShipped(customerEmail: string, orderId: number): void {
+    this.mail.send(customerEmail, \`Your order #\${orderId} has shipped\`);
+  }
+}
+
+new ShippingNotifier(new ConsoleMailSender()).orderShipped("asha@mail.com", 42);
+
+const fake = new FakeMailSender();
+const notifier = new ShippingNotifier(fake);
+notifier.orderShipped("ben@mail.com", 7);
+notifier.orderShipped("cy@mail.com", 8);
+console.log(\`test sees: [\${fake.sent.join(", ")}]\`);` },
+          { lang: 'cpp', code: `class MailSender {
+public:
+    virtual ~MailSender() = default;
+    virtual void send(const string& to, const string& body) = 0;
+};
+
+// Real implementation (would wrap SES or SMTP in production).
+class ConsoleMailSender : public MailSender {
+public:
+    void send(const string& to, const string& body) override { cout << "MAIL to " << to << ": " << body << "\\n"; }
+};
+
+// Test double: records instead of sending.
+class FakeMailSender : public MailSender {
+public:
+    vector<string> sent;
+    void send(const string& to, const string& body) override { sent.push_back(to + " | " + body); }
+};
+
+class ShippingNotifier {
+    MailSender& mail_;   // the caller owns the sender and outlives the notifier
+public:
+    explicit ShippingNotifier(MailSender& mail) : mail_(mail) {}
+    void orderShipped(const string& customerEmail, int orderId) {
+        mail_.send(customerEmail, "Your order #" + to_string(orderId) + " has shipped");
+    }
+};
+
+int main() {
+    ConsoleMailSender console;
+    ShippingNotifier(console).orderShipped("asha@mail.com", 42);
+
+    FakeMailSender fake;
+    ShippingNotifier notifier(fake);
+    notifier.orderShipped("ben@mail.com", 7);
+    notifier.orderShipped("cy@mail.com", 8);
+    string joined;
+    for (size_t i = 0; i < fake.sent.size(); i++) joined += (i ? ", " : "") + fake.sent[i];
+    cout << "test sees: [" << joined << "]\\n";
+}` }
+        ],
         complexity: `<p>Types: 8 → 4 (including the test fake). Hops from caller to "email sent": 5 → 2. Runtime is O(1) in both; the gain is reading and change cost.</p>`,
         followUps: ['SMS is now required: what is the smallest change? (introduce Notifier interface or add SmsSender + decide per customer preference)', 'Retries are now required: where do they belong? (inside the real MailSender adapter, not the domain service)', 'How would you convince the teammate without hurting them? (cost of carry, show the diff, keep the seam)']
       }
@@ -526,7 +1070,7 @@ ${H.table(['Problem with inheritance', 'Plain meaning', 'Composition answer'], [
   ['<b>Class explosion</b>', 'Coffee with Milk, with Sugar, with Milk+Sugar… n options → 2<sup>n</sup> subclasses.', 'One Coffee with a list of add-ons → n small classes.'],
   ['<b>Fixed at compile time</b>', 'An object cannot change its parent while running.', 'Swap the part at runtime: <code>robot.setMove(new Fly())</code>.'],
   ['<b>Inherits things you do not want</b>', '<code>java.util.Stack extends Vector</code>, so you can <code>insertElementAt(x, 0)</code> into a "stack"!', 'Expose only the operations that make sense.'],
-  ['<b>Single inheritance in Java</b>', 'You get only one parent class.', 'You can hold any number of parts.']
+  ['<b>Single inheritance (Java, TypeScript)</b>', 'You get only one parent class.', 'You can hold any number of parts.']
 ])}
 <p><b>When inheritance IS right:</b> (1) a genuine "is-a" where every subclass can be used wherever the parent is expected (the Liskov Substitution Principle from SOLID); (2) a parent <b>designed and documented</b> for extension (e.g. <code>AbstractList</code>, framework template classes); (3) closed families of data types such as <code>sealed interface Shape permits Circle, Square</code>. Implementing an <b>interface</b> is fine almost always — it shares a contract, not implementation.</p>
 <p><b>Quick test:</b> say it out loud. "A <code>Stack</code> is a <code>Vector</code>" — no, a stack only pushes and pops. "A <code>SavingsAccount</code> is an <code>Account</code>" — yes, probably. "An <code>Employee</code> is a <code>Person</code>" — careful: what happens when that person becomes a contractor? A <b>role</b> that changes over time is a part (composition), not an identity.</p>`,
@@ -538,7 +1082,7 @@ ${H.table(['Problem with inheritance', 'Plain meaning', 'Composition answer'], [
       '"Reuse code from class X" asked in an LLD round → interviewer listens for has-a + delegation, not extends.',
       'A role that changes over time (customer becomes seller, employee becomes contractor) → composition of roles.'
     ],
-    code: `// BROKEN: extending HashSet couples us to HashSet's private habit:
+    code: { lang: 'java', code: `// BROKEN: extending HashSet couples us to HashSet's private habit:
 // AbstractCollection.addAll() calls add() for each element ("self-use").
 class InstrumentedHashSet<E> extends HashSet<E> {
     private int addCount = 0;
@@ -576,7 +1120,221 @@ class CompositionDemo {
         fixed.addAll(List.of("a", "b", "c"));
         System.out.println("composition count = " + fixed.getAddCount());  // 3
     }
-}`,
+}`, alt: [
+        { lang: 'python', code: `from collections.abc import Iterable, Iterator
+from typing import Generic, TypeVar
+
+E = TypeVar("E")
+
+
+# Stands in for Java's HashSet: add_all() calls the overridable add() for each element ("self-use").
+class SimpleSet(Generic[E]):
+    def __init__(self) -> None:
+        self._items: set[E] = set()
+
+    def add(self, e: E) -> bool:
+        before = len(self._items)
+        self._items.add(e)
+        return len(self._items) > before
+
+    def add_all(self, c: Iterable[E]) -> bool:
+        changed = False
+        for e in c:
+            changed = self.add(e) or changed
+        return changed
+
+
+# BROKEN: extending SimpleSet couples us to its private habit (the self-use above).
+class InstrumentedHashSet(SimpleSet[E]):
+    def __init__(self) -> None:
+        super().__init__()
+        self._add_count = 0
+
+    def add(self, e: E) -> bool:
+        self._add_count += 1
+        return super().add(e)
+
+    def add_all(self, c: Iterable[E]) -> bool:
+        items = list(c)
+        self._add_count += len(items)
+        return super().add_all(items)  # internally calls OUR add() again -> double count
+
+    def get_add_count(self) -> int:
+        return self._add_count
+
+
+# FIXED with composition: wrap any set and forward calls (Effective Java, Item 18).
+class InstrumentedSet(Generic[E]):
+    def __init__(self, inner: set[E]) -> None:
+        self._inner = inner  # has-a, not is-a
+        self._add_count = 0
+
+    def add(self, e: E) -> bool:
+        self._add_count += 1
+        before = len(self._inner)
+        self._inner.add(e)
+        return len(self._inner) > before
+
+    def add_all(self, c: Iterable[E]) -> bool:
+        items = list(c)
+        self._add_count += len(items)
+        before = len(self._inner)
+        self._inner.update(items)  # the inner set's add is NOT ours -> no double count
+        return len(self._inner) > before
+
+    def __contains__(self, o: object) -> bool:
+        return o in self._inner
+
+    def __len__(self) -> int:
+        return len(self._inner)
+
+    def __iter__(self) -> Iterator[E]:
+        return iter(self._inner)
+
+    def get_add_count(self) -> int:
+        return self._add_count
+
+
+if __name__ == "__main__":
+    broken: InstrumentedHashSet[str] = InstrumentedHashSet()
+    broken.add_all(["a", "b", "c"])
+    print(f"inheritance count = {broken.get_add_count()}")  # 6 (wrong!)
+
+    fixed: InstrumentedSet[str] = InstrumentedSet(set())  # works with ANY set
+    fixed.add_all(["a", "b", "c"])
+    print(f"composition count = {fixed.get_add_count()}")  # 3` },
+        { lang: 'ts', code: `// Stands in for Java's HashSet: addAll() calls the overridable add() for each element ("self-use").
+class SimpleSet<E> {
+  protected readonly items = new Set<E>();
+
+  add(e: E): boolean {
+    const before = this.items.size;
+    this.items.add(e);
+    return this.items.size > before;
+  }
+  addAll(c: Iterable<E>): boolean {
+    let changed = false;
+    for (const e of c) changed = this.add(e) || changed;
+    return changed;
+  }
+}
+
+// BROKEN: extending SimpleSet couples us to its private habit (the self-use above).
+class InstrumentedHashSet<E> extends SimpleSet<E> {
+  private addCount = 0;
+
+  override add(e: E): boolean {
+    this.addCount++;
+    return super.add(e);
+  }
+  override addAll(c: Iterable<E>): boolean {
+    const items = [...c];
+    this.addCount += items.length;
+    return super.addAll(items); // internally calls OUR add() again -> double count
+  }
+  getAddCount(): number { return this.addCount; }
+}
+
+// FIXED with composition: wrap any Set and forward calls (Effective Java, Item 18).
+class InstrumentedSet<E> implements Iterable<E> {
+  private addCount = 0;
+
+  constructor(private readonly inner: Set<E>) {} // has-a, not is-a
+
+  add(e: E): boolean {
+    this.addCount++;
+    const before = this.inner.size;
+    this.inner.add(e);
+    return this.inner.size > before;
+  }
+  addAll(c: Iterable<E>): boolean {
+    const items = [...c];
+    this.addCount += items.length;
+    const before = this.inner.size;
+    for (const e of items) this.inner.add(e); // the inner set's add is NOT ours -> no double count
+    return this.inner.size > before;
+  }
+  has(o: E): boolean { return this.inner.has(o); }
+  get size(): number { return this.inner.size; }
+  getAddCount(): number { return this.addCount; }
+  [Symbol.iterator](): Iterator<E> { return this.inner[Symbol.iterator](); }
+}
+
+const broken = new InstrumentedHashSet<string>();
+broken.addAll(["a", "b", "c"]);
+console.log(\`inheritance count = \${broken.getAddCount()}\`); // 6 (wrong!)
+
+const fixed = new InstrumentedSet<string>(new Set()); // works with ANY Set
+fixed.addAll(["a", "b", "c"]);
+console.log(\`composition count = \${fixed.getAddCount()}\`); // 3` },
+        { lang: 'cpp', code: `// Stands in for Java's HashSet: addAll() calls the overridable add() for each element ("self-use").
+template <typename E>
+class SimpleSet {
+protected:
+    set<E> items_;
+public:
+    virtual ~SimpleSet() = default;
+    virtual bool add(const E& e) { return items_.insert(e).second; }
+    virtual bool addAll(const vector<E>& c) {
+        bool changed = false;
+        for (const E& e : c) {
+            bool added = add(e);
+            changed = changed || added;
+        }
+        return changed;
+    }
+};
+
+// BROKEN: extending SimpleSet couples us to its private habit (the self-use above).
+template <typename E>
+class InstrumentedHashSet : public SimpleSet<E> {
+    int addCount_ = 0;
+public:
+    bool add(const E& e) override {
+        addCount_++;
+        return SimpleSet<E>::add(e);
+    }
+    bool addAll(const vector<E>& c) override {
+        addCount_ += static_cast<int>(c.size());
+        return SimpleSet<E>::addAll(c);   // internally calls OUR add() again -> double count
+    }
+    int getAddCount() const { return addCount_; }
+};
+
+// FIXED with composition: wrap a set and forward calls (Effective Java, Item 18).
+template <typename E>
+class InstrumentedSet {
+    set<E> inner_;   // has-a, not is-a
+    int addCount_ = 0;
+public:
+    explicit InstrumentedSet(set<E> inner) : inner_(std::move(inner)) {}
+    bool add(const E& e) {
+        addCount_++;
+        return inner_.insert(e).second;
+    }
+    bool addAll(const vector<E>& c) {
+        addCount_ += static_cast<int>(c.size());
+        size_t before = inner_.size();
+        inner_.insert(c.begin(), c.end());   // the inner set's insert is NOT ours -> no double count
+        return inner_.size() > before;
+    }
+    bool contains(const E& e) const { return inner_.count(e) > 0; }
+    size_t size() const { return inner_.size(); }
+    int getAddCount() const { return addCount_; }
+    auto begin() const { return inner_.begin(); }
+    auto end() const { return inner_.end(); }
+};
+
+int main() {
+    InstrumentedHashSet<string> broken;
+    broken.addAll({"a", "b", "c"});
+    cout << "inheritance count = " << broken.getAddCount() << "\\n";   // 6 (wrong!)
+
+    InstrumentedSet<string> fixed{set<string>{}};
+    fixed.addAll({"a", "b", "c"});
+    cout << "composition count = " << fixed.getAddCount() << "\\n";    // 3
+}` }
+      ] },
     codeTitle: 'The fragile base class bug and the composition fix',
     viz: [{
       title: 'Class explosion: inheritance vs composition',
@@ -657,14 +1415,57 @@ class CompositionDemo {
       }
     }],
     examples: [
-      { title: 'java.util.Stack extends Vector — a famous mistake', html: `<p>Because <code>Stack</code> inherits from <code>Vector</code>, you can call <code>stack.add(0, x)</code> or <code>stack.remove(3)</code> and break the stack's last-in-first-out promise. Its Javadoc now recommends <code>Deque&lt;Integer&gt; stack = new ArrayDeque&lt;&gt;()</code>. <code>Properties extends Hashtable</code> has the same flaw: you can <code>put</code> non-String values that later break <code>getProperty</code>.</p>`, code: `Stack<Integer> s = new Stack<>();
+      { title: 'java.util.Stack extends Vector — a famous mistake', html: `<p>Because <code>Stack</code> inherits from <code>Vector</code>, you can call <code>stack.add(0, x)</code> or <code>stack.remove(3)</code> and break the stack's last-in-first-out promise. Its Javadoc now recommends <code>Deque&lt;Integer&gt; stack = new ArrayDeque&lt;&gt;()</code>. <code>Properties extends Hashtable</code> has the same flaw: you can <code>put</code> non-String values that later break <code>getProperty</code>.</p>`, code: { lang: 'java', code: `Stack<Integer> s = new Stack<>();
 s.push(1); s.push(2);
 s.add(0, 99);                 // legal, but no longer a stack!
 System.out.println(s);        // [99, 1, 2]
 Deque<Integer> better = new ArrayDeque<>();
 better.push(1); better.push(2);
-System.out.println(better.pop()); // 2 — only stack operations are natural here` },
-      { title: 'Strategy: change behaviour at runtime', html: `<p>A game character can walk, then picks up a jetpack and flies. With inheritance you would need <code>WalkingHero</code> and <code>FlyingHero</code> and could not switch. With composition the hero <b>has</b> a <code>Movement</code> and swaps it.</p>`, code: `interface Movement { String move(); }
+System.out.println(better.pop()); // 2 — only stack operations are natural here`, alt: [
+          { lang: 'python', code: `s = [1, 2]
+s.insert(0, 99)  # legal, but no longer a stack!
+print(s)  # [99, 1, 2]
+
+
+class IntStack:  # has-a list, exposes only stack operations
+    def __init__(self) -> None:
+        self._items: list[int] = []
+
+    def push(self, x: int) -> None:
+        self._items.append(x)
+
+    def pop(self) -> int:
+        return self._items.pop()
+
+
+better = IntStack()
+better.push(1)
+better.push(2)
+print(better.pop())  # 2 - only stack operations are natural here` },
+          { lang: 'ts', code: `const s: number[] = [1, 2];
+s.splice(0, 0, 99); // legal, but no longer a stack!
+console.log(\`[\${s.join(", ")}]\`); // [99, 1, 2]
+
+class IntStack { // has-a array, exposes only stack operations
+  private readonly items: number[] = [];
+  push(x: number): void { this.items.push(x); }
+  pop(): number | undefined { return this.items.pop(); }
+}
+
+const better = new IntStack();
+better.push(1);
+better.push(2);
+console.log(better.pop()); // 2 - only stack operations are natural here` },
+          { lang: 'cpp', code: `vector<int> s{1, 2};
+s.insert(s.begin(), 99);        // legal, but no longer a stack!
+cout << "[" << s[0] << ", " << s[1] << ", " << s[2] << "]\\n";   // [99, 1, 2]
+stack<int> better;              // an adapter: only stack operations are exposed
+better.push(1);
+better.push(2);
+cout << better.top() << "\\n";   // 2 (top, then better.pop() would remove it)
+better.pop();` }
+        ] } },
+      { title: 'Strategy: change behaviour at runtime', html: `<p>A game character can walk, then picks up a jetpack and flies. With inheritance you would need <code>WalkingHero</code> and <code>FlyingHero</code> and could not switch. With composition the hero <b>has</b> a <code>Movement</code> and swaps it.</p>`, code: { lang: 'java', code: `interface Movement { String move(); }
 class Walk implements Movement { public String move() { return "walks"; } }
 class Fly implements Movement { public String move() { return "flies"; } }
 class Hero {
@@ -679,8 +1480,77 @@ class HeroDemo {
         h.setMovement(new Fly());   // picked up a jetpack
         System.out.println(h.act());
     }
-}` },
-      { title: 'Where inheritance is the right tool', html: `<p>A closed family of shapes: every <code>Circle</code> truly <i>is a</i> <code>Shape</code>, no subclass inherits implementation it does not want, and <code>sealed</code> stops strangers from adding subclasses. Records are final, so there is no fragile-base problem.</p>`, code: `sealed interface Shape permits Circle, Square {}
+}`, alt: [
+          { lang: 'python', code: `from typing import Protocol
+
+
+class Movement(Protocol):
+    def move(self) -> str: ...
+
+
+class Walk:
+    def move(self) -> str:
+        return "walks"
+
+
+class Fly:
+    def move(self) -> str:
+        return "flies"
+
+
+class Hero:
+    def __init__(self) -> None:
+        self._movement: Movement = Walk()
+
+    def set_movement(self, m: Movement) -> None:
+        self._movement = m
+
+    def act(self) -> str:
+        return f"Hero {self._movement.move()}"
+
+
+if __name__ == "__main__":
+    h = Hero()
+    print(h.act())
+    h.set_movement(Fly())  # picked up a jetpack
+    print(h.act())` },
+          { lang: 'ts', code: `interface Movement { move(): string; }
+class Walk implements Movement { move(): string { return "walks"; } }
+class Fly implements Movement { move(): string { return "flies"; } }
+
+class Hero {
+  private movement: Movement = new Walk();
+  setMovement(m: Movement): void { this.movement = m; }
+  act(): string { return \`Hero \${this.movement.move()}\`; }
+}
+
+const h = new Hero();
+console.log(h.act());
+h.setMovement(new Fly()); // picked up a jetpack
+console.log(h.act());` },
+          { lang: 'cpp', code: `class Movement {
+public:
+    virtual ~Movement() = default;
+    virtual string move() const = 0;
+};
+class Walk : public Movement { public: string move() const override { return "walks"; } };
+class Fly : public Movement { public: string move() const override { return "flies"; } };
+
+class Hero {
+    unique_ptr<Movement> movement_ = make_unique<Walk>();
+public:
+    void setMovement(unique_ptr<Movement> m) { movement_ = std::move(m); }
+    string act() const { return "Hero " + movement_->move(); }
+};
+
+int main() {
+    Hero h;
+    cout << h.act() << "\\n";
+    h.setMovement(make_unique<Fly>());   // picked up a jetpack
+    cout << h.act() << "\\n";
+}` }
+        ] } },
+      { title: 'Where inheritance is the right tool', html: `<p>A closed family of shapes: every <code>Circle</code> truly <i>is a</i> <code>Shape</code>, no subclass inherits implementation it does not want, and a closed hierarchy (<code>sealed</code> in Java, a union type in TypeScript, <code>std::variant</code> in C++) stops strangers from adding subclasses. Value types such as records, frozen dataclasses and structs are not meant to be extended, so there is no fragile-base problem.</p>`, code: { lang: 'java', code: `sealed interface Shape permits Circle, Square {}
 record Circle(double r) implements Shape {}
 record Square(double side) implements Shape {}
 class Areas {
@@ -690,8 +1560,52 @@ class Areas {
             case Square q -> q.side() * q.side();
         };
     }
+}`, alt: [
+          { lang: 'python', code: `import math
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Circle:
+    r: float
+
+
+@dataclass(frozen=True)
+class Square:
+    side: float
+
+
+Shape = Circle | Square  # a closed set: every variant is listed up front
+
+
+def area(s: Shape) -> float:
+    match s:
+        case Circle(r):
+            return math.pi * r * r
+        case Square(side):
+            return side * side` },
+          { lang: 'ts', code: `type Shape =
+  | { readonly kind: "circle"; readonly r: number }
+  | { readonly kind: "square"; readonly side: number };
+
+function area(s: Shape): number {
+  switch (s.kind) {
+    case "circle": return Math.PI * s.r * s.r;
+    case "square": return s.side * s.side;
+  }
 }` },
-      { title: 'Roles that change over time', html: `<p><code>class Seller extends User</code> breaks the day a buyer also starts selling (Java has no multiple inheritance, and the object cannot change class). Model roles as parts: <code>User</code> has a <code>Set&lt;Role&gt;</code> or optional <code>SellerProfile</code>. Same for <code>Employee</code> → contractor, <code>Student</code> → teaching assistant.</p>` }
+          { lang: 'cpp', code: `struct Circle { double r; };
+struct Square { double side; };
+using Shape = variant<Circle, Square>;   // a closed set: every variant is listed up front
+
+double area(const Shape& s) {
+    return visit([](const auto& v) {
+        if constexpr (is_same_v<decay_t<decltype(v)>, Circle>) return numbers::pi * v.r * v.r;
+        else return v.side * v.side;
+    }, s);
+}` }
+        ] } },
+      { title: 'Roles that change over time', html: `<p><code>class Seller extends User</code> breaks the day a buyer also starts selling (single-inheritance languages such as Java and TypeScript allow only one parent, and in every language an object cannot change its class). Model roles as parts: <code>User</code> has a <code>Set&lt;Role&gt;</code> or optional <code>SellerProfile</code>. Same for <code>Employee</code> → contractor, <code>Student</code> → teaching assistant.</p>` }
     ],
     deepDive: `<p><b>Why the fragile base class happens:</b> a subclass that overrides a method participates in the parent's <i>self-calls</i>. The parent author may change which methods call which (a legal refactor that keeps the public contract), and every subclass that relied on the old call graph breaks. Effective Java Item 19: <i>"Design and document for inheritance or else prohibit it."</i> If a class is meant to be extended, its docs must say which overridable methods it calls internally (the "Implementation Requirements" tag <code>@implSpec</code>). Otherwise make it <code>final</code> or give it only private constructors.</p>
 <p><b>Constructors calling overridable methods</b> are another trap: the parent constructor runs before subclass fields are initialized, so an override that reads a subclass field sees <code>null</code>/<code>0</code>.</p>
@@ -699,7 +1613,7 @@ class Areas {
 <p><b>Performance:</b> an extra delegation call costs effectively nothing — HotSpot inlines small monomorphic calls. Do not choose inheritance for speed.</p>
 <p><b>Identity &amp; equality:</b> wrappers break <code>==</code> identity and can surprise callbacks (the wrapped object passes <code>this</code> to a listener, bypassing the wrapper — the "SELF problem"). Know it, it rarely matters.</p>
 <p><b>Inheritance vs composition is also coupling:</b> inheritance is the <i>strongest</i> coupling in OO (child sees protected fields and the parent's call graph). Composition through an interface is among the weakest. That is why this principle sits next to "low coupling" in every design book.</p>`,
-    aiEra: `<p><b>What AI changes:</b> assistants trained on decades of Java code still reach for <code>extends</code> often — older tutorials loved deep hierarchies (<code>Animal → Mammal → Dog</code>). Ask for "an admin user" and you may get <code>class Admin extends User</code> even when admin is a role that can be granted and revoked.</p>
+    aiEra: `<p><b>What AI changes:</b> assistants trained on decades of object-oriented code still reach for <code>extends</code> often — older tutorials loved deep hierarchies (<code>Animal → Mammal → Dog</code>). Ask for "an admin user" and you may get <code>class Admin extends User</code> even when admin is a role that can be granted and revoked.</p>
 <p><b>Use AI as a partner:</b> ask <code>For each extends in this package, does the subclass satisfy Liskov substitution and does it rely on the parent's internal self-calls? Suggest composition where it doesn't.</code> Let it generate the forwarding boilerplate for a wrapper — tedious work AI does well — then review that every method really forwards.</p>
 <p><b>Where AI goes wrong:</b> it may "fix" a class explosion by adding even more subclasses, or suggest composition everywhere, including for sealed data hierarchies where inheritance is perfect. It also forgets to forward <code>equals/hashCode</code> sensibly in wrappers.</p>
 <p><b>What you must still own:</b> the <i>is-a vs has-a vs plays-a-role</i> judgment from the domain, and spotting runtime-variability needs in requirements ("users can switch plans", "robot changes mode").</p>`,
@@ -739,6 +1653,7 @@ class TalkingFlyingRobot extends Robot {
         `<p>Hint 2: <code>interface Movement { String move(); }</code> and <code>interface Speech { String speak(); }</code>. <code>Robot</code> holds one of each and delegates.</p>`,
         `<p>Hint 3: Add setters (or a builder) to swap parts. Default to sensible parts in the constructor. Check: swim = 1 new class; 3 movements × 2 speech = 6 combos with only 5 small classes + Robot.</p>`
       ],
+      tests: { io: true, cases: [{ stdin: '', stdout: "R2 walks, says nothing\nR2 flies, says nothing\nR2 swims, says hello\n" }] },
       solution: {
         approach: `<p><b>Smell:</b> class explosion + duplicated behaviour + behaviour frozen at creation time. <b>Refactor:</b> Replace Inheritance with Delegation. Each axis of variation becomes an interface (<code>Movement</code>, <code>Speech</code>) with tiny implementations. <code>Robot</code> is now a single <code>final</code> class that <b>has</b> a movement and a speech part and delegates to them. Combinations are made by plugging parts in; runtime changes are a setter call. New ability = one new class, zero edits to existing ones (Open/Closed).</p>`,
         code: `interface Movement { String move(); }
@@ -777,6 +1692,133 @@ class RobotDemo {
         System.out.println(r2.act());          // R2 swims, says hello
     }
 }`,
+        alt: [
+          { lang: 'python', code: `from typing import Protocol
+
+
+class Movement(Protocol):
+    def move(self) -> str: ...
+
+
+class Speech(Protocol):
+    def speak(self) -> str: ...
+
+
+class Walk:
+    def move(self) -> str:
+        return "walks"
+
+
+class Fly:
+    def move(self) -> str:
+        return "flies"
+
+
+class Swim:  # new ability = 1 class
+    def move(self) -> str:
+        return "swims"
+
+
+class Silent:
+    def speak(self) -> str:
+        return "says nothing"
+
+
+class Talk:
+    def speak(self) -> str:
+        return "says hello"
+
+
+class Robot:
+    def __init__(self, name: str, movement: Movement, speech: Speech) -> None:
+        self._name = name
+        self._movement = movement
+        self._speech = speech
+
+    def set_movement(self, movement: Movement) -> None:  # runtime change
+        self._movement = movement
+
+    def set_speech(self, speech: Speech) -> None:
+        self._speech = speech
+
+    def act(self) -> str:
+        return f"{self._name} {self._movement.move()}, {self._speech.speak()}"
+
+
+if __name__ == "__main__":
+    r2 = Robot("R2", Walk(), Silent())
+    print(r2.act())
+    r2.set_movement(Fly())  # wings unlocked
+    print(r2.act())
+    r2.set_speech(Talk())
+    r2.set_movement(Swim())
+    print(r2.act())` },
+          { lang: 'ts', code: `interface Movement { move(): string; }
+class Walk implements Movement { move(): string { return "walks"; } }
+class Fly implements Movement { move(): string { return "flies"; } }
+class Swim implements Movement { move(): string { return "swims"; } } // new ability = 1 class
+
+interface Speech { speak(): string; }
+class Silent implements Speech { speak(): string { return "says nothing"; } }
+class Talk implements Speech { speak(): string { return "says hello"; } }
+
+class Robot {
+  constructor(private readonly name: string, private movement: Movement, private speech: Speech) {}
+
+  setMovement(m: Movement): void { this.movement = m; } // runtime change
+  setSpeech(s: Speech): void { this.speech = s; }
+
+  act(): string { return \`\${this.name} \${this.movement.move()}, \${this.speech.speak()}\`; }
+}
+
+const r2 = new Robot("R2", new Walk(), new Silent());
+console.log(r2.act());
+r2.setMovement(new Fly()); // wings unlocked
+console.log(r2.act());
+r2.setSpeech(new Talk());
+r2.setMovement(new Swim());
+console.log(r2.act());` },
+          { lang: 'cpp', code: `class Movement {
+public:
+    virtual ~Movement() = default;
+    virtual string move() const = 0;
+};
+class Walk : public Movement { public: string move() const override { return "walks"; } };
+class Fly : public Movement { public: string move() const override { return "flies"; } };
+class Swim : public Movement { public: string move() const override { return "swims"; } };   // new ability = 1 class
+
+class Speech {
+public:
+    virtual ~Speech() = default;
+    virtual string speak() const = 0;
+};
+class Silent : public Speech { public: string speak() const override { return "says nothing"; } };
+class Talk : public Speech { public: string speak() const override { return "says hello"; } };
+
+class Robot final {
+    string name_;
+    unique_ptr<Movement> movement_;   // the robot owns its parts
+    unique_ptr<Speech> speech_;
+public:
+    Robot(string name, unique_ptr<Movement> movement, unique_ptr<Speech> speech)
+        : name_(std::move(name)), movement_(std::move(movement)), speech_(std::move(speech)) {}
+
+    void setMovement(unique_ptr<Movement> m) { movement_ = std::move(m); }   // runtime change
+    void setSpeech(unique_ptr<Speech> s) { speech_ = std::move(s); }
+
+    string act() const { return name_ + " " + movement_->move() + ", " + speech_->speak(); }
+};
+
+int main() {
+    Robot r2("R2", make_unique<Walk>(), make_unique<Silent>());
+    cout << r2.act() << "\\n";
+    r2.setMovement(make_unique<Fly>());   // wings unlocked
+    cout << r2.act() << "\\n";
+    r2.setSpeech(make_unique<Talk>());
+    r2.setMovement(make_unique<Swim>());
+    cout << r2.act() << "\\n";
+}` }
+        ],
         complexity: `<p>Classes for m movements and s speech styles: inheritance m × s, composition m + s + 1. Runtime cost: one extra virtual call per action — negligible.</p>`,
         followUps: ['A robot can do several movements at once — what changes? (List&lt;Movement&gt;)', 'How would you stop invalid combos (a fish robot that talks)? (validation in a factory/builder)', 'Which GoF pattern is this? (Strategy; with stacking add-ons it would be Decorator)']
       }
@@ -797,7 +1839,7 @@ class RobotDemo {
 </ul>
 <p>They pull in the same direction: when each class has one focused job (high cohesion), it naturally needs fewer, narrower connections to others (low coupling).</p>
 <p><b>Kinds of coupling, worst → best</b> (classic structured-design list):</p>
-${H.table(['Coupling', 'What it looks like in Java', 'Why it hurts'], [
+${H.table(['Coupling', 'What it looks like in code', 'Why it hurts'], [
   [H.c('r', 'Content'), 'Class A changes B\'s private fields via reflection or reaches into its internals', 'Any internal change to B breaks A'],
   [H.c('r', 'Common (global)'), 'Many classes read/write a <code>static</code> mutable <code>Config</code> or singleton', 'Hidden links; tests interfere with each other'],
   [H.c('y', 'External'), 'Many classes depend on a specific file format / vendor SDK', 'Vendor change ripples everywhere'],
@@ -821,7 +1863,7 @@ ${H.table(['Coupling', 'What it looks like in Java', 'Why it hurts'], [
       '"A small change broke something far away" → hidden coupling (shared mutable state, global config).',
       'Interviewer draws boxes and arrows and asks "what would you change?" → count arrows into concrete classes, look for cycles.'
     ],
-    code: `// BEFORE: high coupling — concrete classes created inside, global state, control flag.
+    code: { lang: 'java', code: `// BEFORE: high coupling — concrete classes created inside, global state, control flag.
 class GlobalConfig { static String currency = "INR"; }           // common coupling
 class MySqlDb { void insert(String row) { System.out.println("SQL INSERT " + row); } }
 class SmtpMailer { void sendMail(String to, String msg) { System.out.println("SMTP " + to + ": " + msg); } }
@@ -865,7 +1907,165 @@ class CouplingDemo {
         s.place("asha@mail.com", 500);
         // In a test: new OrderService((e, a, c) -> {}, (to, m) -> {}, "INR") — no DB, no SMTP needed.
     }
-}`,
+}`, alt: [
+        { lang: 'python', code: `from typing import Protocol
+
+
+# BEFORE: high coupling - concrete classes created inside, global state, control flag.
+class GlobalConfig:
+    currency = "INR"  # common coupling
+
+
+class MySqlDb:
+    def insert(self, row: str) -> None:
+        print(f"SQL INSERT {row}")
+
+
+class SmtpMailer:
+    def send_mail(self, to: str, msg: str) -> None:
+        print(f"SMTP {to}: {msg}")
+
+
+class OrderServiceBefore:
+    def place(self, customer_email: str, amount: int, send_mail: bool) -> None:  # control coupling
+        db = MySqlDb()  # hard-wired, untestable
+        db.insert(f"{customer_email},{amount},{GlobalConfig.currency}")
+        if send_mail:
+            SmtpMailer().send_mail(customer_email, "Order placed")
+
+
+# AFTER: depend on small interfaces, inject them, pass only needed data.
+class OrderRepository(Protocol):
+    def save(self, customer_email: str, amount: int, currency: str) -> None: ...
+
+
+class Notifier(Protocol):
+    def notify(self, to: str, message: str) -> None: ...
+
+
+class MySqlOrderRepository:
+    def save(self, customer_email: str, amount: int, currency: str) -> None:
+        print(f"SQL INSERT {customer_email},{amount},{currency}")
+
+
+class EmailNotifier:
+    def notify(self, to: str, message: str) -> None:
+        print(f"SMTP {to}: {message}")
+
+
+class OrderService:
+    def __init__(self, orders: OrderRepository, notifier: Notifier, currency: str) -> None:
+        self._orders = orders
+        self._notifier = notifier
+        self._currency = currency
+
+    def place(self, customer_email: str, amount: int) -> None:  # one job, no flag
+        self._orders.save(customer_email, amount, self._currency)
+        self._notifier.notify(customer_email, "Order placed")
+
+
+if __name__ == "__main__":
+    OrderServiceBefore().place("asha@mail.com", 500, True)
+    s = OrderService(MySqlOrderRepository(), EmailNotifier(), "INR")
+    s.place("asha@mail.com", 500)
+    # In a test: pass tiny fakes with save/notify methods - no DB, no SMTP needed.` },
+        { lang: 'ts', code: `// BEFORE: high coupling - concrete classes created inside, global state, control flag.
+class GlobalConfig { static currency = "INR"; } // common coupling
+class MySqlDb { insert(row: string): void { console.log(\`SQL INSERT \${row}\`); } }
+class SmtpMailer { sendMail(to: string, msg: string): void { console.log(\`SMTP \${to}: \${msg}\`); } }
+
+class OrderServiceBefore {
+  place(customerEmail: string, amount: number, sendMail: boolean): void { // control coupling
+    const db = new MySqlDb(); // hard-wired, untestable
+    db.insert(\`\${customerEmail},\${amount},\${GlobalConfig.currency}\`);
+    if (sendMail) new SmtpMailer().sendMail(customerEmail, "Order placed");
+  }
+}
+
+// AFTER: depend on small interfaces, inject them, pass only needed data.
+interface OrderRepository { save(customerEmail: string, amount: number, currency: string): void; }
+interface Notifier { notify(to: string, message: string): void; }
+
+class MySqlOrderRepository implements OrderRepository {
+  save(e: string, a: number, c: string): void { console.log(\`SQL INSERT \${e},\${a},\${c}\`); }
+}
+class EmailNotifier implements Notifier {
+  notify(to: string, m: string): void { console.log(\`SMTP \${to}: \${m}\`); }
+}
+
+class OrderService {
+  constructor(
+    private readonly orders: OrderRepository,
+    private readonly notifier: Notifier,
+    private readonly currency: string,
+  ) {}
+  place(customerEmail: string, amount: number): void { // one job, no flag
+    this.orders.save(customerEmail, amount, this.currency);
+    this.notifier.notify(customerEmail, "Order placed");
+  }
+}
+
+new OrderServiceBefore().place("asha@mail.com", 500, true);
+const s = new OrderService(new MySqlOrderRepository(), new EmailNotifier(), "INR");
+s.place("asha@mail.com", 500);
+// In a test: new OrderService({ save() {} }, { notify() {} }, "INR") - no DB, no SMTP needed.` },
+        { lang: 'cpp', code: `// BEFORE: high coupling - concrete classes created inside, global state, control flag.
+struct GlobalConfig { static inline string currency = "INR"; };   // common coupling
+class MySqlDb { public: void insert(const string& row) { cout << "SQL INSERT " << row << "\\n"; } };
+class SmtpMailer { public: void sendMail(const string& to, const string& msg) { cout << "SMTP " << to << ": " << msg << "\\n"; } };
+
+class OrderServiceBefore {
+public:
+    void place(const string& customerEmail, int amount, bool sendMail) {   // control coupling
+        MySqlDb db;                                                         // hard-wired, untestable
+        db.insert(customerEmail + "," + to_string(amount) + "," + GlobalConfig::currency);
+        if (sendMail) SmtpMailer().sendMail(customerEmail, "Order placed");
+    }
+};
+
+// AFTER: depend on small interfaces, inject them, pass only needed data.
+class OrderRepository {
+public:
+    virtual ~OrderRepository() = default;
+    virtual void save(const string& customerEmail, int amount, const string& currency) = 0;
+};
+class Notifier {
+public:
+    virtual ~Notifier() = default;
+    virtual void notify(const string& to, const string& message) = 0;
+};
+
+class MySqlOrderRepository : public OrderRepository {
+public:
+    void save(const string& e, int a, const string& c) override { cout << "SQL INSERT " << e << "," << a << "," << c << "\\n"; }
+};
+class EmailNotifier : public Notifier {
+public:
+    void notify(const string& to, const string& m) override { cout << "SMTP " << to << ": " << m << "\\n"; }
+};
+
+class OrderService {
+    OrderRepository& orders_;   // injected; the caller owns them and outlives the service
+    Notifier& notifier_;
+    string currency_;
+public:
+    OrderService(OrderRepository& orders, Notifier& notifier, string currency)
+        : orders_(orders), notifier_(notifier), currency_(std::move(currency)) {}
+    void place(const string& customerEmail, int amount) {   // one job, no flag
+        orders_.save(customerEmail, amount, currency_);
+        notifier_.notify(customerEmail, "Order placed");
+    }
+};
+
+int main() {
+    OrderServiceBefore().place("asha@mail.com", 500, true);
+    MySqlOrderRepository repo;
+    EmailNotifier notifier;
+    OrderService s(repo, notifier, "INR");
+    s.place("asha@mail.com", 500);
+    // In a test: pass tiny fakes that implement save/notify - no DB, no SMTP needed.
+}` }
+      ] },
     codeTitle: 'From hard-wired dependencies to injected interfaces',
     viz: [{
       title: 'Dependency graph before/after: watch a change ripple',
@@ -958,11 +2158,30 @@ class CouplingDemo {
       }
     }],
     examples: [
-      { title: 'Control coupling: kill the boolean flag', html: `<p><code>render(doc, true)</code> — what does <code>true</code> mean? The caller must know the callee's insides. Split into two intention-revealing methods. Each is simpler and the call site reads like English.</p>`, code: `class Renderer {
+      { title: 'Control coupling: kill the boolean flag', html: `<p><code>render(doc, true)</code> — what does <code>true</code> mean? The caller must know the callee's insides. Split into two intention-revealing methods. Each is simpler and the call site reads like English.</p>`, code: { lang: 'java', code: `class Renderer {
     // before: String render(String doc, boolean asPdf) { if (asPdf) ... else ... }
     String renderHtml(String doc) { return "<html>" + doc + "</html>"; }
     String renderPdf(String doc)  { return "%PDF " + doc; }
+}`, alt: [
+          { lang: 'python', code: `class Renderer:
+    # before: def render(self, doc, as_pdf: bool): if as_pdf: ... else: ...
+    def render_html(self, doc: str) -> str:
+        return f"<html>{doc}</html>"
+
+    def render_pdf(self, doc: str) -> str:
+        return f"%PDF {doc}"` },
+          { lang: 'ts', code: `class Renderer {
+  // before: render(doc: string, asPdf: boolean): string { if (asPdf) ... else ... }
+  renderHtml(doc: string): string { return \`<html>\${doc}</html>\`; }
+  renderPdf(doc: string): string { return \`%PDF \${doc}\`; }
 }` },
+          { lang: 'cpp', code: `class Renderer {
+public:
+    // before: string render(const string& doc, bool asPdf) { if (asPdf) ... else ... }
+    string renderHtml(const string& doc) const { return "<html>" + doc + "</html>"; }
+    string renderPdf(const string& doc) const { return "%PDF " + doc; }
+};` }
+        ] } },
       { title: 'Stamp coupling: pass only what you need', html: `<p><code>sendWelcome(User user)</code> only reads <code>user.email()</code>. Now the mailer depends on <code>User</code>, its package and every future field. <code>sendWelcome(String email)</code> is reusable for leads and guests too. (Counterpoint: if you would pass 5 fields of User, a small parameter object is better than 5 strings.)</p>` },
       { title: 'Temporal cohesion: the init() junk drawer', html: `<p><code>AppStartup.init()</code> loads config, warms the product cache, starts the metrics thread and sends a "server up" Slack message. They are together only because they happen at the same time. Each belongs to its own component with its own <code>start()</code>; the startup class just calls them in order.</p>` },
       { title: 'Package-level coupling: cycles', html: `<p>If <code>orders</code> imports <code>payments</code> and <code>payments</code> imports <code>orders</code>, neither can be built, tested or released alone. Break the cycle by moving the shared type to a third package or by introducing an interface in one package that the other implements (the <b>Acyclic Dependencies Principle</b>). Tools such as ArchUnit can fail the build when a cycle appears.</p>` }
@@ -980,7 +2199,7 @@ class CouplingDemo {
       title: 'Untestable OrderService hard-wired to vendors',
       level: 'Medium', tags: ['coupling', 'dependency injection', 'interfaces'], companies: ['Razorpay', 'Microsoft'],
       statement: `<p>The <code>CheckoutService</code> below creates its own <code>StripeClient</code> and <code>SmtpMailer</code> with <code>new</code>, reads a static <code>Settings.taxPercent</code>, and takes a <code>boolean dryRun</code> that changes what it does. Unit tests hit the real payment API. Refactor to reduce coupling so that: tests need no network, the payment vendor can be swapped, and there is no global mutable state or control flag.</p>`,
-      constraints: `Keep the public behaviour: charge amount + tax, then email a receipt. Java 21, no frameworks (plain constructor injection).`,
+      constraints: `Keep the public behaviour: charge amount + tax, then email a receipt. No frameworks (plain constructor injection).`,
       example: `<p>Charge 1000 with tax 18 → gateway receives ${H.c('g', '1180')}, customer receives "Paid 1180". In a test with a fake gateway, ${H.c('g', 'no real API call')} happens and we can assert the amount.</p>`,
       brute: {
         why: `<p>Four kinds of coupling in one class: <b>external</b> (concrete Stripe/SMTP classes), <b>common</b> (static mutable <code>Settings</code>), <b>control</b> (<code>dryRun</code> flag), and creation coupling (<code>new</code> inside means you cannot substitute anything). Consequences: tests are slow and flaky, switching vendor edits business code, and one test changing <code>Settings.taxPercent</code> breaks others.</p>`,
@@ -1004,6 +2223,7 @@ class CheckoutService {
         `<p>Hint 2: Define <code>PaymentGateway</code> and <code>Mailer</code> interfaces owned by the checkout code. Pass them plus <code>taxPercent</code> into the constructor.</p>`,
         `<p>Hint 3: Replace <code>dryRun</code> with a different gateway implementation (a <code>DryRunGateway</code> that charges nothing). Write a recording fake in the demo to prove the amount is 1180.</p>`
       ],
+      tests: { io: true, cases: [{ stdin: '', stdout: "[1180] [asha@mail.com:Paid 1180]\nMAIL ben@mail.com Paid 590\nstripe-txn-590\nMAIL cy@mail.com Paid 100\nDRY 100\n" }] },
       solution: {
         approach: `<p><b>Spot:</b> external + common + control coupling and hard-coded creation. <b>Refactor steps:</b> (1) Extract Interface <code>PaymentGateway</code>, <code>Mailer</code>; (2) move vendor code into adapters <code>StripeGateway</code>, <code>SmtpMailerAdapter</code>; (3) constructor-inject the interfaces and the tax rate (no global); (4) Replace Parameter with Polymorphism: <code>dryRun</code> becomes a <code>DryRunGateway</code>. Now <code>CheckoutService</code> has one job, depends only on abstractions it owns, and is trivially testable.</p>`,
         code: `interface PaymentGateway { String charge(int amount); }
@@ -1046,10 +2266,184 @@ class CheckoutTestDemo {
         svc.checkout("asha@mail.com", 1000);
         System.out.println(charged + " " + mails);           // [1180] [asha@mail.com:Paid 1180]
 
-        // production wiring
-        new CheckoutService(new StripeGateway(), new ConsoleMailer(), 18).checkout("ben@mail.com", 500);
+        // production wiring, then the dry-run gateway that replaces the old boolean flag
+        System.out.println(new CheckoutService(new StripeGateway(), new ConsoleMailer(), 18).checkout("ben@mail.com", 500));
+        System.out.println(new CheckoutService(new DryRunGateway(), new ConsoleMailer(), 0).checkout("cy@mail.com", 100));
     }
 }`,
+        alt: [
+          { lang: 'python', code: `from typing import Protocol
+
+
+class PaymentGateway(Protocol):
+    def charge(self, amount: int) -> str: ...
+
+
+class Mailer(Protocol):
+    def send(self, to: str, body: str) -> None: ...
+
+
+class StripeGateway:  # adapter around the vendor SDK
+    def charge(self, amount: int) -> str:
+        return f"stripe-txn-{amount}"
+
+
+class DryRunGateway:  # replaces the dry_run flag
+    def charge(self, amount: int) -> str:
+        return f"DRY {amount}"
+
+
+class ConsoleMailer:
+    def send(self, to: str, body: str) -> None:
+        print(f"MAIL {to} {body}")
+
+
+class CheckoutService:
+    def __init__(self, gateway: PaymentGateway, mailer: Mailer, tax_percent: int) -> None:
+        self._gateway = gateway
+        self._mailer = mailer
+        self._tax_percent = tax_percent
+
+    def checkout(self, email: str, amount: int) -> str:
+        total = amount + amount * self._tax_percent // 100
+        txn = self._gateway.charge(total)
+        self._mailer.send(email, f"Paid {total}")
+        return txn
+
+
+class RecordingGateway:  # test fake: no network
+    def __init__(self) -> None:
+        self.charged: list[int] = []
+
+    def charge(self, amount: int) -> str:
+        self.charged.append(amount)
+        return "fake-txn"
+
+
+class RecordingMailer:
+    def __init__(self) -> None:
+        self.mails: list[str] = []
+
+    def send(self, to: str, body: str) -> None:
+        self.mails.append(f"{to}:{body}")
+
+
+if __name__ == "__main__":
+    gateway, mailer = RecordingGateway(), RecordingMailer()
+    CheckoutService(gateway, mailer, 18).checkout("asha@mail.com", 1000)
+    print(f"[{', '.join(map(str, gateway.charged))}] [{', '.join(mailer.mails)}]")
+
+    print(CheckoutService(StripeGateway(), ConsoleMailer(), 18).checkout("ben@mail.com", 500))
+    print(CheckoutService(DryRunGateway(), ConsoleMailer(), 0).checkout("cy@mail.com", 100))` },
+          { lang: 'ts', code: `interface PaymentGateway { charge(amount: number): string; }
+interface Mailer { send(to: string, body: string): void; }
+
+class StripeGateway implements PaymentGateway { // adapter around the vendor SDK
+  charge(amount: number): string { return \`stripe-txn-\${amount}\`; }
+}
+class DryRunGateway implements PaymentGateway { // replaces the dryRun flag
+  charge(amount: number): string { return \`DRY \${amount}\`; }
+}
+class ConsoleMailer implements Mailer {
+  send(to: string, body: string): void { console.log(\`MAIL \${to} \${body}\`); }
+}
+
+class CheckoutService {
+  constructor(
+    private readonly gateway: PaymentGateway,
+    private readonly mailer: Mailer,
+    private readonly taxPercent: number,
+  ) {}
+
+  checkout(email: string, amount: number): string {
+    const total = amount + Math.floor((amount * this.taxPercent) / 100);
+    const txn = this.gateway.charge(total);
+    this.mailer.send(email, \`Paid \${total}\`);
+    return txn;
+  }
+}
+
+// "unit test" with fakes: object literals satisfy the interfaces
+const charged: number[] = [];
+const mails: string[] = [];
+const svc = new CheckoutService(
+  { charge: (amount) => { charged.push(amount); return "fake-txn"; } },
+  { send: (to, body) => { mails.push(\`\${to}:\${body}\`); } },
+  18,
+);
+svc.checkout("asha@mail.com", 1000);
+console.log(\`[\${charged.join(", ")}] [\${mails.join(", ")}]\`);
+
+console.log(new CheckoutService(new StripeGateway(), new ConsoleMailer(), 18).checkout("ben@mail.com", 500));
+console.log(new CheckoutService(new DryRunGateway(), new ConsoleMailer(), 0).checkout("cy@mail.com", 100));` },
+          { lang: 'cpp', code: `class PaymentGateway {
+public:
+    virtual ~PaymentGateway() = default;
+    virtual string charge(int amount) = 0;
+};
+class Mailer {
+public:
+    virtual ~Mailer() = default;
+    virtual void send(const string& to, const string& body) = 0;
+};
+
+class StripeGateway : public PaymentGateway {   // adapter around the vendor SDK
+public:
+    string charge(int amount) override { return "stripe-txn-" + to_string(amount); }
+};
+class DryRunGateway : public PaymentGateway {   // replaces the dryRun flag
+public:
+    string charge(int amount) override { return "DRY " + to_string(amount); }
+};
+class ConsoleMailer : public Mailer {
+public:
+    void send(const string& to, const string& body) override { cout << "MAIL " << to << " " << body << "\\n"; }
+};
+
+class CheckoutService {
+    PaymentGateway& gateway_;   // injected; the composition root owns them
+    Mailer& mailer_;
+    int taxPercent_;
+public:
+    CheckoutService(PaymentGateway& gateway, Mailer& mailer, int taxPercent)
+        : gateway_(gateway), mailer_(mailer), taxPercent_(taxPercent) {}
+
+    string checkout(const string& email, int amount) {
+        int total = amount + amount * taxPercent_ / 100;
+        string txn = gateway_.charge(total);
+        mailer_.send(email, "Paid " + to_string(total));
+        return txn;
+    }
+};
+
+class RecordingGateway : public PaymentGateway {   // test fake: no network
+public:
+    vector<int> charged;
+    string charge(int amount) override { charged.push_back(amount); return "fake-txn"; }
+};
+class RecordingMailer : public Mailer {
+public:
+    vector<string> mails;
+    void send(const string& to, const string& body) override { mails.push_back(to + ":" + body); }
+};
+
+int main() {
+    RecordingGateway gateway;
+    RecordingMailer mailer;
+    CheckoutService(gateway, mailer, 18).checkout("asha@mail.com", 1000);
+    cout << "[";
+    for (size_t i = 0; i < gateway.charged.size(); i++) cout << (i ? ", " : "") << gateway.charged[i];
+    cout << "] [";
+    for (size_t i = 0; i < mailer.mails.size(); i++) cout << (i ? ", " : "") << mailer.mails[i];
+    cout << "]\\n";
+
+    StripeGateway stripe;
+    DryRunGateway dryRun;
+    ConsoleMailer console;
+    cout << CheckoutService(stripe, console, 18).checkout("ben@mail.com", 500) << "\\n";
+    cout << CheckoutService(dryRun, console, 0).checkout("cy@mail.com", 100) << "\\n";
+}` }
+        ],
         complexity: `<p>Concrete dependencies of CheckoutService: 3 → 0. Test runtime: network-bound → microseconds. Classes: 4 → 6 small ones (a fair price for testability and vendor freedom).</p>`,
         followUps: ['Who creates the objects now? (a composition root / main / DI container like Spring)', 'Is an interface for Mailer YAGNI? (No: the test is a present-day second implementation)', 'How would you handle tax rules per country? (TaxPolicy strategy injected the same way)']
       }
@@ -1083,8 +2477,8 @@ ${H.table(['Ask (violates LoD)', 'Tell (follows LoD)'], [
 <p><b>It is not about counting dots.</b> These are all fine:</p>
 <ul>
 <li><b>Fluent APIs / builders</b> that return the same object: <code>sb.append("a").append("b")</code>, <code>Order.builder().id(1).build()</code>.</li>
-<li><b>Streams</b>: <code>list.stream().filter(...).map(...).toList()</code> — each call returns a stream you created; you are talking to one friend.</li>
-<li><b>Plain data structures</b> (records, DTOs) whose whole job is to expose data: <code>dto.address().city()</code> on a JSON response record. Bob Martin (Clean Code) separates <i>objects</i> (hide data, expose behaviour) from <i>data structures</i> (expose data, no behaviour). LoD is for objects.</li>
+<li><b>Streams and pipelines</b>: <code>list.stream().filter(...).map(...).toList()</code> (or a comprehension, <code>array.filter().map()</code>, <code>std::ranges</code>) — each call returns a stream you created; you are talking to one friend.</li>
+<li><b>Plain data structures</b> (records, dataclasses, plain structs, DTOs) whose whole job is to expose data: <code>dto.address().city()</code> on a JSON response record. Bob Martin (Clean Code) separates <i>objects</i> (hide data, expose behaviour) from <i>data structures</i> (expose data, no behaviour). LoD is for objects.</li>
 </ul>
 <p><b>Do not overdo it:</b> wrapping every nested getter creates a <b>Middle Man</b> smell — classes that only forward calls. Add a "tell" method when it expresses a real domain idea (<code>needsFuel</code>, <code>shippingCity</code>), not mechanically for every field.</p>`,
     clues: [
@@ -1095,7 +2489,7 @@ ${H.table(['Ask (violates LoD)', 'Tell (follows LoD)'], [
       'Interviewer: "is <code>list.stream().map().filter()</code> a violation?" → they want the "not dot counting" nuance.',
       'Class that only forwards calls to another → over-applied LoD; Middle Man smell.'
     ],
-    code: `// ----- BEFORE: the paperboy reaches into the customer's wallet -----
+    code: { lang: 'java', code: `// ----- BEFORE: the paperboy reaches into the customer's wallet -----
 class Wallet {
     private int cash;
     Wallet(int cash) { this.cash = cash; }
@@ -1143,7 +2537,160 @@ class DemeterDemo {
         p.collect(new Customer(new Wallet(100)), 200);
         System.out.println("collected = " + p.collected);   // 200
     }
-}`,
+}`, alt: [
+        { lang: 'python', code: `# ----- BEFORE: the paperboy reaches into the customer's wallet -----
+class Wallet:
+    def __init__(self, cash: int) -> None:
+        self._cash = cash
+
+    def get_cash(self) -> int:
+        return self._cash
+
+    def set_cash(self, c: int) -> None:
+        self._cash = c
+
+
+class CustomerBefore:
+    def __init__(self, w: Wallet) -> None:
+        self._wallet = w
+
+    def get_wallet(self) -> Wallet:  # exposes its insides
+        return self._wallet
+
+
+class PaperboyBefore:
+    def __init__(self) -> None:
+        self.collected = 0
+
+    def collect(self, c: CustomerBefore, due: int) -> None:
+        w = c.get_wallet()  # stranger!
+        if w.get_cash() >= due:  # talking to the stranger
+            w.set_cash(w.get_cash() - due)  # and changing its state
+            self.collected += due
+
+
+# ----- AFTER: tell, don't ask -----
+class Customer:
+    def __init__(self, w: Wallet) -> None:
+        self._wallet = w  # private part, never handed out
+
+    def pay(self, due: int) -> int:
+        """Pays if possible; returns the amount actually paid. Customer decides HOW."""
+        if self._wallet.get_cash() < due:  # Customer talks to ITS OWN field: allowed
+            return 0
+        self._wallet.set_cash(self._wallet.get_cash() - due)
+        return due
+
+
+class Paperboy:
+    def __init__(self) -> None:
+        self.collected = 0
+
+    def collect(self, c: Customer, due: int) -> None:
+        self.collected += c.pay(due)  # only talks to a parameter: allowed
+
+
+if __name__ == "__main__":
+    p = Paperboy()
+    p.collect(Customer(Wallet(500)), 200)
+    p.collect(Customer(Wallet(100)), 200)
+    print(f"collected = {p.collected}")  # 200` },
+        { lang: 'ts', code: `// ----- BEFORE: the paperboy reaches into the customer's wallet -----
+class Wallet {
+  constructor(private cash: number) {}
+  getCash(): number { return this.cash; }
+  setCash(c: number): void { this.cash = c; }
+}
+class CustomerBefore {
+  constructor(private readonly wallet: Wallet) {}
+  getWallet(): Wallet { return this.wallet; } // exposes its insides
+}
+class PaperboyBefore {
+  collected = 0;
+  collect(c: CustomerBefore, due: number): void {
+    const w = c.getWallet(); // stranger!
+    if (w.getCash() >= due) { // talking to the stranger
+      w.setCash(w.getCash() - due); // and changing its state
+      this.collected += due;
+    }
+  }
+}
+
+// ----- AFTER: tell, don't ask -----
+class Customer {
+  constructor(private readonly wallet: Wallet) {} // private part, never handed out
+  /** Pays if possible; returns the amount actually paid. Customer decides HOW. */
+  pay(due: number): number {
+    if (this.wallet.getCash() < due) return 0; // Customer talks to ITS OWN field: allowed
+    this.wallet.setCash(this.wallet.getCash() - due);
+    return due;
+  }
+}
+class Paperboy {
+  collected = 0;
+  collect(c: Customer, due: number): void {
+    this.collected += c.pay(due); // only talks to a parameter: allowed
+  }
+}
+
+const p = new Paperboy();
+p.collect(new Customer(new Wallet(500)), 200);
+p.collect(new Customer(new Wallet(100)), 200);
+console.log(\`collected = \${p.collected}\`); // 200` },
+        { lang: 'cpp', code: `// ----- BEFORE: the paperboy reaches into the customer's wallet -----
+class Wallet {
+    int cash_;
+public:
+    explicit Wallet(int cash) : cash_(cash) {}
+    int getCash() const { return cash_; }
+    void setCash(int c) { cash_ = c; }
+};
+class CustomerBefore {
+    Wallet wallet_;
+public:
+    explicit CustomerBefore(Wallet w) : wallet_(w) {}
+    Wallet& getWallet() { return wallet_; }          // exposes its insides
+};
+class PaperboyBefore {
+public:
+    int collected = 0;
+    void collect(CustomerBefore& c, int due) {
+        Wallet& w = c.getWallet();                    // stranger!
+        if (w.getCash() >= due) {                     // talking to the stranger
+            w.setCash(w.getCash() - due);             // and changing its state
+            collected += due;
+        }
+    }
+};
+
+// ----- AFTER: tell, don't ask -----
+class Customer {
+    Wallet wallet_;                                   // private part, never handed out
+public:
+    explicit Customer(Wallet w) : wallet_(w) {}
+    // Pays if possible; returns the amount actually paid. Customer decides HOW.
+    int pay(int due) {
+        if (wallet_.getCash() < due) return 0;        // Customer talks to ITS OWN field: allowed
+        wallet_.setCash(wallet_.getCash() - due);
+        return due;
+    }
+};
+class Paperboy {
+public:
+    int collected = 0;
+    void collect(Customer& c, int due) {
+        collected += c.pay(due);                      // only talks to a parameter: allowed
+    }
+};
+
+int main() {
+    Paperboy p;
+    Customer a{Wallet(500)}, b{Wallet(100)};
+    p.collect(a, 200);
+    p.collect(b, 200);
+    cout << "collected = " << p.collected << "\\n";    // 200
+}` }
+      ] },
     codeTitle: 'Paperboy and the wallet — before and after',
     viz: [{
       title: 'Train wreck inspector',
@@ -1196,29 +2743,112 @@ class DemeterDemo {
       }
     }],
     examples: [
-      { title: 'Car needs fuel?', html: `<p>${H.c('r', 'Ask:')} <code>if (car.getEngine().getFuelTank().getLevel() &lt; 10)</code>. ${H.c('g', 'Tell:')} <code>if (car.needsFuel())</code>. When electric cars arrive, <code>needsFuel</code> becomes <code>needsCharge</code> logic inside <code>Car</code>; callers do not care that there is no fuel tank anymore.</p>`, code: `class FuelTank { private int level; FuelTank(int l) { level = l; } boolean isBelow(int pct) { return level < pct; } }
+      { title: 'Car needs fuel?', html: `<p>${H.c('r', 'Ask:')} <code>if (car.getEngine().getFuelTank().getLevel() &lt; 10)</code>. ${H.c('g', 'Tell:')} <code>if (car.needsFuel())</code>. When electric cars arrive, <code>needsFuel</code> becomes <code>needsCharge</code> logic inside <code>Car</code>; callers do not care that there is no fuel tank anymore.</p>`, code: { lang: 'java', code: `class FuelTank { private int level; FuelTank(int l) { level = l; } boolean isBelow(int pct) { return level < pct; } }
 class Engine { private final FuelTank tank; Engine(FuelTank t) { tank = t; } boolean lowOnFuel() { return tank.isBelow(10); } }
 class Car {
     private final Engine engine;
     Car(Engine e) { engine = e; }
     boolean needsFuel() { return engine.lowOnFuel(); }   // each level talks only to its own part
+}`, alt: [
+          { lang: 'python', code: `class FuelTank:
+    def __init__(self, level: int) -> None:
+        self._level = level
+
+    def is_below(self, pct: int) -> bool:
+        return self._level < pct
+
+
+class Engine:
+    def __init__(self, tank: FuelTank) -> None:
+        self._tank = tank
+
+    def low_on_fuel(self) -> bool:
+        return self._tank.is_below(10)
+
+
+class Car:
+    def __init__(self, engine: Engine) -> None:
+        self._engine = engine
+
+    def needs_fuel(self) -> bool:  # each level talks only to its own part
+        return self._engine.low_on_fuel()` },
+          { lang: 'ts', code: `class FuelTank {
+  constructor(private readonly level: number) {}
+  isBelow(pct: number): boolean { return this.level < pct; }
+}
+class Engine {
+  constructor(private readonly tank: FuelTank) {}
+  lowOnFuel(): boolean { return this.tank.isBelow(10); }
+}
+class Car {
+  constructor(private readonly engine: Engine) {}
+  needsFuel(): boolean { return this.engine.lowOnFuel(); } // each level talks only to its own part
 }` },
+          { lang: 'cpp', code: `class FuelTank {
+    int level_;
+public:
+    explicit FuelTank(int level) : level_(level) {}
+    bool isBelow(int pct) const { return level_ < pct; }
+};
+class Engine {
+    FuelTank tank_;
+public:
+    explicit Engine(FuelTank tank) : tank_(tank) {}
+    bool lowOnFuel() const { return tank_.isBelow(10); }
+};
+class Car {
+    Engine engine_;
+public:
+    explicit Car(Engine engine) : engine_(engine) {}
+    bool needsFuel() const { return engine_.lowOnFuel(); }   // each level talks only to its own part
+};` }
+        ] } },
       { title: 'Bank account: stop doing its job for it', html: `<p>${H.c('r', 'Ask:')} <code>if (acct.getBalance() &gt;= amt) acct.setBalance(acct.getBalance() - amt);</code> — the rule "no overdraft" now lives in every caller, and two threads can both pass the check (a race). ${H.c('g', 'Tell:')} <code>acct.withdraw(amt)</code> keeps the rule and the locking inside the account. LoD and encapsulation are the same idea seen from two sides.</p>` },
-      { title: 'Data structures are allowed to be dug into', html: `<p>A JSON response mapped to records: <code>resp.data().user().email()</code>. These records have no behaviour and no invariants; they exist to carry data. Wrapping them in "tell" methods would just add a Middle Man. LoD protects <b>objects with behaviour</b>, not passive data.</p>`, code: `record Address(String city) {}
+      { title: 'Data structures are allowed to be dug into', html: `<p>A JSON response mapped to plain data types (records, dataclasses, structs): <code>resp.data().user().email()</code>. These records have no behaviour and no invariants; they exist to carry data. Wrapping them in "tell" methods would just add a Middle Man. LoD protects <b>objects with behaviour</b>, not passive data.</p>`, code: { lang: 'java', code: `record Address(String city) {}
 record UserDto(String email, Address address) {}
 class DtoDemo {
     public static void main(String[] args) {
         UserDto u = new UserDto("a@b.com", new Address("Pune"));
         System.out.println(u.address().city());   // fine: plain data
     }
-}` },
+}`, alt: [
+          { lang: 'python', code: `from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Address:
+    city: str
+
+
+@dataclass(frozen=True)
+class UserDto:
+    email: str
+    address: Address
+
+
+if __name__ == "__main__":
+    u = UserDto("a@b.com", Address("Pune"))
+    print(u.address.city)  # fine: plain data` },
+          { lang: 'ts', code: `interface Address { readonly city: string; }
+interface UserDto { readonly email: string; readonly address: Address; }
+
+const u: UserDto = { email: "a@b.com", address: { city: "Pune" } };
+console.log(u.address.city); // fine: plain data` },
+          { lang: 'cpp', code: `struct Address { string city; };
+struct UserDto { string email; Address address; };
+
+int main() {
+    UserDto u{"a@b.com", Address{"Pune"}};
+    cout << u.address.city << "\\n";   // fine: plain data
+}` }
+        ] } },
       { title: 'The test-mock smell', html: `<p>If testing <code>InvoiceService</code> requires <code>when(order.getCustomer()).thenReturn(cust); when(cust.getAddress()).thenReturn(addr); when(addr.getCountry())...</code>, the class under test violates LoD. After introducing <code>order.billingCountry()</code> the test needs one stub. Painful mocks are a design signal.</p>` }
     ],
     deepDive: `<p><b>Formal versions:</b> the original paper (Lieberherr, Holland, Riel, 1988) defined a <i>class form</i> (you may call methods of classes of your fields/arguments) and an <i>object form</i> (the stricter list in this topic). The object form is what people mean today.</p>
 <p><b>Why it reduces coupling:</b> every method you call on an object is a dependency on that object's type. A train wreck of length k makes you depend on k types and on the <i>shape of the path</i> between them. LoD keeps each class's knowledge to its immediate neighbourhood, so changes to the object graph stay local. In connascence terms, it removes connascence of type/structure across distant classes.</p>
 <p><b>The cost:</b> wrapper methods. Taken mechanically, LoD creates <code>Order.getCustomerAddressCityName()</code> for every combination — the <b>Middle Man</b> smell, and wide interfaces (an Interface Segregation problem). The judgment call: add a method when it names a <b>domain concept</b> (<code>shippingCity</code>, <code>isOverdue</code>, <code>needsFuel</code>). If you notice many callers asking the same deep question, that is strong evidence the method belongs on the first object.</p>
 <p><b>Feature envy is LoD's twin:</b> a method that pulls lots of data from another object to compute something "envies" that object; Move Method puts the computation where the data lives, which removes the chain at the same time.</p>
-<p><b>Null chains:</b> <code>a.getB().getC()</code> also fails with <code>NullPointerException</code> anywhere along the chain. <code>Optional.map(...).map(...)</code> hides the NPE but not the coupling — it is still a train wreck, just a safer one. Java's "helpful NullPointerExceptions" (JEP 358) at least tell you which link was null.</p>
+<p><b>Null chains:</b> <code>a.getB().getC()</code> also fails anywhere along the chain with a null-pointer error (<code>NullPointerException</code> in Java, <code>AttributeError</code> on <code>None</code> in Python, <code>TypeError</code> on <code>undefined</code> in TypeScript, undefined behaviour on a null pointer in C++). <code>Optional.map(...).map(...)</code> (or <code>?.</code> in TypeScript and Python's <code>and</code> chains) hides the null failure but not the coupling — it is still a train wreck, just a safer one. Java's "helpful NullPointerExceptions" (JEP 358) at least tell you which link was null.</p>
 <p><b>Concurrency bonus:</b> "Tell" keeps check-then-act inside one object, where one lock can guard it. "Ask" splits the check and the act across objects, inviting race conditions.</p>`,
     aiEra: `<p><b>What AI changes:</b> autocomplete loves train wrecks. Type <code>order.</code> and the IDE/AI offers <code>getCustomer().getAddress().getCity()</code> in one keystroke because it can see the whole object graph. Writing a violation became effortless, so spotting it in review matters more.</p>
 <p><b>Use AI as a partner:</b> <code>Find all call chains longer than two hops on domain objects (ignore streams, builders and records). For each, suggest a Tell-Don't-Ask method name based on what the caller is trying to decide.</code> AI is good at proposing names from intent; you decide which names are real domain concepts.</p>
@@ -1262,6 +2892,7 @@ class Paperboy {
         `<p>Hint 2: Give <code>Customer</code> a method <code>int pay(int due)</code> that returns the amount paid (0 if it cannot). Remove <code>getWallet()</code> so no one can reach in again.</p>`,
         `<p>Hint 3: Inside <code>pay</code>, Customer may talk to its own fields (wallet, upi). Check wallet first, then UPI. Paperboy's loop becomes <code>total += c.pay(due)</code>.</p>`
       ],
+      tests: { io: true, cases: [{ stdin: '', stdout: "200\n250\n" }] },
       solution: {
         approach: `<p><b>Spot:</b> train wreck <code>c.getWallet().getCash()</code> + decision made outside the data owner (feature envy). <b>Refactor:</b> Hide Delegate / Tell-Don't-Ask — add <code>Customer.pay(due)</code>, remove the <code>getWallet()</code> getter, and put the "wallet first, then UPI" rule inside <code>Customer</code>. Paperboy talks only to his parameter. Adding a third payment method changes only <code>Customer</code>.</p>`,
         code: `class Wallet {
@@ -1297,13 +2928,154 @@ class Paperboy {
 }
 class PaperboyDemo {
     public static void main(String[] args) {
+        Paperboy boy = new Paperboy();
         List<Customer> cs = List.of(
             new Customer(new Wallet(500), new UpiAccount(0)),
             new Customer(new Wallet(50), new UpiAccount(300)),
             new Customer(new Wallet(10), new UpiAccount(0)));
-        System.out.println(new Paperboy().collectAll(cs, 100));   // 200
+        System.out.println(boy.collectAll(cs, 100));   // 200: A by cash, B by UPI, C cannot pay
+        System.out.println(boy.collectAll(cs, 250));   // 250: only A (wallet 400 left) can cover it
     }
 }`,
+        alt: [
+          { lang: 'python', code: `class Wallet:
+    def __init__(self, cash: int) -> None:
+        self._cash = cash
+
+    def can_cover(self, amount: int) -> bool:
+        return self._cash >= amount
+
+    def take(self, amount: int) -> None:
+        self._cash -= amount
+
+
+class UpiAccount:
+    def __init__(self, balance: int) -> None:
+        self._balance = balance
+
+    def can_cover(self, amount: int) -> bool:
+        return self._balance >= amount
+
+    def debit(self, amount: int) -> None:
+        self._balance -= amount
+
+
+class Customer:
+    def __init__(self, wallet: Wallet, upi: UpiAccount) -> None:
+        self._wallet = wallet
+        self._upi = upi
+
+    def pay(self, due: int) -> int:
+        """Pays the full due if possible; returns what was paid (0 or due)."""
+        if self._wallet.can_cover(due):
+            self._wallet.take(due)
+            return due
+        if self._upi.can_cover(due):
+            self._upi.debit(due)
+            return due
+        return 0
+
+
+class Paperboy:
+    def collect_all(self, customers: list[Customer], due: int) -> int:
+        return sum(c.pay(due) for c in customers)  # tell, don't ask
+
+
+if __name__ == "__main__":
+    boy = Paperboy()
+    cs = [
+        Customer(Wallet(500), UpiAccount(0)),
+        Customer(Wallet(50), UpiAccount(300)),
+        Customer(Wallet(10), UpiAccount(0)),
+    ]
+    print(boy.collect_all(cs, 100))  # 200: A by cash, B by UPI, C cannot pay
+    print(boy.collect_all(cs, 250))  # 250: only A (wallet 400 left) can cover it` },
+          { lang: 'ts', code: `class Wallet {
+  constructor(private cash: number) {}
+  canCover(amt: number): boolean { return this.cash >= amt; }
+  take(amt: number): void { this.cash -= amt; }
+}
+
+class UpiAccount {
+  constructor(private balance: number) {}
+  canCover(amt: number): boolean { return this.balance >= amt; }
+  debit(amt: number): void { this.balance -= amt; }
+}
+
+class Customer {
+  constructor(private readonly wallet: Wallet, private readonly upi: UpiAccount) {}
+
+  /** Pays the full due if possible; returns what was paid (0 or due). */
+  pay(due: number): number {
+    if (this.wallet.canCover(due)) { this.wallet.take(due); return due; }
+    if (this.upi.canCover(due)) { this.upi.debit(due); return due; }
+    return 0;
+  }
+}
+
+class Paperboy {
+  collectAll(customers: Customer[], due: number): number {
+    return customers.reduce((total, c) => total + c.pay(due), 0); // tell, don't ask
+  }
+}
+
+const boy = new Paperboy();
+const cs = [
+  new Customer(new Wallet(500), new UpiAccount(0)),
+  new Customer(new Wallet(50), new UpiAccount(300)),
+  new Customer(new Wallet(10), new UpiAccount(0)),
+];
+console.log(boy.collectAll(cs, 100)); // 200: A by cash, B by UPI, C cannot pay
+console.log(boy.collectAll(cs, 250)); // 250: only A (wallet 400 left) can cover it` },
+          { lang: 'cpp', code: `class Wallet {
+    int cash_;
+public:
+    explicit Wallet(int cash) : cash_(cash) {}
+    bool canCover(int amt) const { return cash_ >= amt; }
+    void take(int amt) { cash_ -= amt; }
+};
+
+class UpiAccount {
+    int balance_;
+public:
+    explicit UpiAccount(int balance) : balance_(balance) {}
+    bool canCover(int amt) const { return balance_ >= amt; }
+    void debit(int amt) { balance_ -= amt; }
+};
+
+class Customer {
+    Wallet wallet_;
+    UpiAccount upi_;
+public:
+    Customer(Wallet wallet, UpiAccount upi) : wallet_(wallet), upi_(upi) {}
+
+    // Pays the full due if possible; returns what was paid (0 or due).
+    int pay(int due) {
+        if (wallet_.canCover(due)) { wallet_.take(due); return due; }
+        if (upi_.canCover(due)) { upi_.debit(due); return due; }
+        return 0;
+    }
+};
+
+class Paperboy {
+public:
+    int collectAll(vector<Customer>& customers, int due) {
+        int total = 0;
+        for (Customer& c : customers) total += c.pay(due);   // tell, don't ask
+        return total;
+    }
+};
+
+int main() {
+    Paperboy boy;
+    vector<Customer> cs;
+    cs.emplace_back(Wallet(500), UpiAccount(0));
+    cs.emplace_back(Wallet(50), UpiAccount(300));
+    cs.emplace_back(Wallet(10), UpiAccount(0));
+    cout << boy.collectAll(cs, 100) << "\\n";   // 200: A by cash, B by UPI, C cannot pay
+    cout << boy.collectAll(cs, 250) << "\\n";   // 250: only A (wallet 400 left) can cover it
+}` }
+        ],
         complexity: `<p>O(customers) time, O(1) extra space — same as before. Classes Paperboy depends on: 3 (Customer, Wallet, implicitly UPI) → 1 (Customer).</p>`,
         followUps: ['How would you support partial payments?', 'Where would you put a rule like "senior citizens get 10% off"?', 'Is Customer becoming a God class now? When would you extract a PaymentMethod strategy list?']
       }
@@ -1340,7 +3112,7 @@ ${H.table(['Rule', 'Bad', 'Good'], [
 <li><b>Command–Query Separation</b> (Bertrand Meyer): a method either <i>does</i> something (command, returns void) or <i>answers</i> something (query, no side effects) — not both. <code>boolean set(...)</code> that changes state <i>and</i> reports is confusing.</li>
 <li><b>Guard clauses</b> instead of deep nesting: handle the invalid cases first and <code>return</code> early, so the happy path is flat ("arrow code" → straight line).</li>
 </ul>
-<p><b>How small?</b> There is no magic number. A useful guide: fits on one screen, nesting ≤ 2 levels, you can name it without "and". Very small is fine in Java — the JIT inlines tiny methods, so there is no speed cost.</p>`,
+<p><b>How small?</b> There is no magic number. A useful guide: fits on one screen, nesting ≤ 2 levels, you can name it without "and". Very small is fine in compiled and JIT languages (Java, C++, TypeScript on V8): tiny methods are inlined, so there is no speed cost. A call in CPython does cost time, but readability still wins until a profiler says otherwise.</p>`,
     clues: [
       'Reviewer asks "what does <code>process(data, true)</code> do?" → poor names + flag argument.',
       'Method needs a comment above each block ("// validate", "// compute total") → each block wants to be an Extract Method with that comment as its name.',
@@ -1349,7 +3121,7 @@ ${H.table(['Rule', 'Bad', 'Good'], [
       'Same concept called fetch/get/retrieve/load in one codebase → inconsistent vocabulary.',
       'Machine-coding round evaluation criteria mention "readability" → names and small functions are graded.'
     ],
-    code: `record Item(String name, int priceCents, int qty) {}
+    code: { lang: 'java', code: `record Item(String name, int priceCents, int qty) {}
 record Customer(String name, boolean premium) {}
 
 // BEFORE: vague names, one long method, flag argument, deep nesting.
@@ -1408,7 +3180,178 @@ class NamingDemo {
         Customer asha = new Customer("Asha", true);
         System.out.println(new Proc().doIt(cart, asha, true) + " == " + new OrderPricer().expressTotal(cart, asha));
     }
-}`,
+}`, alt: [
+        { lang: 'python', code: `from dataclasses import dataclass
+from typing import Optional
+
+
+@dataclass(frozen=True)
+class Item:
+    name: str
+    price_cents: int
+    qty: int
+
+
+@dataclass(frozen=True)
+class Customer:
+    name: str
+    premium: bool
+
+
+# BEFORE: vague names, one long method, flag argument, deep nesting.
+class Proc:
+    def do_it(self, l: Optional[list[Item]], c: Customer, f: bool) -> int:
+        t = 0
+        if l is not None:
+            if len(l) > 0:
+                for i in l:
+                    if i.qty > 0:
+                        t += i.price_cents * i.qty
+                if c.premium:
+                    t = t - t // 10
+                if f:
+                    t = t + 4000
+        return t
+
+
+# AFTER: intention-revealing names, guard clause, one level of abstraction per method.
+class OrderPricer:
+    EXPRESS_FEE_CENTS = 4000
+    PREMIUM_DISCOUNT_PERCENT = 10
+
+    def standard_total(self, cart: Optional[list[Item]], customer: Customer) -> int:
+        if not cart:  # guard clause
+            return 0
+        return self._apply_loyalty_discount(self._subtotal(cart), customer)
+
+    def express_total(self, cart: Optional[list[Item]], customer: Customer) -> int:  # flag replaced by a 2nd method
+        total = self.standard_total(cart, customer)
+        return 0 if total == 0 else total + self.EXPRESS_FEE_CENTS
+
+    def _subtotal(self, cart: list[Item]) -> int:
+        return sum(item.price_cents * item.qty for item in cart if item.qty > 0)
+
+    def _apply_loyalty_discount(self, amount: int, customer: Customer) -> int:
+        if not customer.premium:
+            return amount
+        return amount - amount * self.PREMIUM_DISCOUNT_PERCENT // 100
+
+
+if __name__ == "__main__":
+    cart = [Item("pen", 1000, 2), Item("book", 30000, 1)]
+    asha = Customer("Asha", True)
+    print(f"{Proc().do_it(cart, asha, True)} == {OrderPricer().express_total(cart, asha)}")` },
+        { lang: 'ts', code: `interface Item { readonly name: string; readonly priceCents: number; readonly qty: number; }
+interface Customer { readonly name: string; readonly premium: boolean; }
+
+// BEFORE: vague names, one long method, flag argument, deep nesting.
+class Proc {
+  doIt(l: Item[] | null, c: Customer, f: boolean): number {
+    let t = 0;
+    if (l !== null) {
+      if (l.length > 0) {
+        for (const i of l) {
+          if (i.qty > 0) {
+            t += i.priceCents * i.qty;
+          }
+        }
+        if (c.premium) {
+          t = t - Math.floor(t / 10);
+        }
+        if (f) {
+          t = t + 4000;
+        }
+      }
+    }
+    return t;
+  }
+}
+
+// AFTER: intention-revealing names, guard clause, one level of abstraction per method.
+class OrderPricer {
+  private static readonly EXPRESS_FEE_CENTS = 4000;
+  private static readonly PREMIUM_DISCOUNT_PERCENT = 10;
+
+  standardTotal(cart: readonly Item[] | null, customer: Customer): number {
+    if (cart === null || cart.length === 0) return 0; // guard clause
+    return this.applyLoyaltyDiscount(this.subtotal(cart), customer);
+  }
+  expressTotal(cart: readonly Item[] | null, customer: Customer): number { // flag replaced by a 2nd method
+    const total = this.standardTotal(cart, customer);
+    return total === 0 ? 0 : total + OrderPricer.EXPRESS_FEE_CENTS;
+  }
+
+  private subtotal(cart: readonly Item[]): number {
+    return cart.filter((item) => item.qty > 0).reduce((sum, item) => sum + item.priceCents * item.qty, 0);
+  }
+  private applyLoyaltyDiscount(amount: number, customer: Customer): number {
+    if (!customer.premium) return amount;
+    return amount - Math.floor((amount * OrderPricer.PREMIUM_DISCOUNT_PERCENT) / 100);
+  }
+}
+
+const cart: Item[] = [{ name: "pen", priceCents: 1000, qty: 2 }, { name: "book", priceCents: 30000, qty: 1 }];
+const asha: Customer = { name: "Asha", premium: true };
+console.log(\`\${new Proc().doIt(cart, asha, true)} == \${new OrderPricer().expressTotal(cart, asha)}\`);` },
+        { lang: 'cpp', code: `struct Item { string name; int priceCents; int qty; };
+struct Customer { string name; bool premium; };
+
+// BEFORE: vague names, one long method, flag argument, deep nesting.
+class Proc {
+public:
+    int doIt(const vector<Item>* l, const Customer& c, bool f) const {
+        int t = 0;
+        if (l != nullptr) {
+            if (!l->empty()) {
+                for (const Item& i : *l) {
+                    if (i.qty > 0) {
+                        t += i.priceCents * i.qty;
+                    }
+                }
+                if (c.premium) {
+                    t = t - t / 10;
+                }
+                if (f) {
+                    t = t + 4000;
+                }
+            }
+        }
+        return t;
+    }
+};
+
+// AFTER: intention-revealing names, guard clause, one level of abstraction per method.
+class OrderPricer {
+    static constexpr int EXPRESS_FEE_CENTS = 4000;
+    static constexpr int PREMIUM_DISCOUNT_PERCENT = 10;
+
+    static int subtotal(const vector<Item>& cart) {
+        int sum = 0;
+        for (const Item& item : cart) if (item.qty > 0) sum += item.priceCents * item.qty;
+        return sum;
+    }
+    static int applyLoyaltyDiscount(int amount, const Customer& customer) {
+        if (!customer.premium) return amount;
+        return amount - amount * PREMIUM_DISCOUNT_PERCENT / 100;
+    }
+
+public:
+    int standardTotal(const vector<Item>& cart, const Customer& customer) const {
+        if (cart.empty()) return 0;   // guard clause
+        return applyLoyaltyDiscount(subtotal(cart), customer);
+    }
+    int expressTotal(const vector<Item>& cart, const Customer& customer) const {   // flag replaced by a 2nd method
+        int total = standardTotal(cart, customer);
+        return total == 0 ? 0 : total + EXPRESS_FEE_CENTS;
+    }
+};
+
+int main() {
+    vector<Item> cart{{"pen", 1000, 2}, {"book", 30000, 1}};
+    Customer asha{"Asha", true};
+    cout << Proc().doIt(&cart, asha, true) << " == " << OrderPricer().expressTotal(cart, asha) << "\\n";
+}` }
+      ] },
     codeTitle: 'From doIt(l, c, f) to a readable OrderPricer',
     viz: [{
       title: 'Refactor a long method step by step',
@@ -1468,7 +3411,7 @@ class NamingDemo {
         var generic = ['data', 'info', 'manager', 'mgr', 'process', 'handle', 'stuff', 'thing', 'temp', 'tmp', 'obj', 'object', 'util', 'helper', 'val', 'value', 'item', 'list'];
         function diagnose(nm) {
           var low = nm.toLowerCase(), issues = [];
-          if (!/^[A-Za-z_$][\w$]*$/.test(nm)) issues.push('not a valid Java identifier');
+          if (!/^[A-Za-z_$][\w$]*$/.test(nm)) issues.push('not a valid identifier');
           if (nm.length <= 2) issues.push('too short — says nothing outside a tiny loop');
           if (/\d$/.test(nm)) issues.push('number suffix is noise (data1/data2) — what makes them different?');
           if (/^(is|has|can)?Not[A-Z]/.test(nm) || /^not[A-Z]/.test(nm)) issues.push('negative boolean — double negatives (!isNotX) confuse');
@@ -1495,16 +3438,46 @@ class NamingDemo {
       }
     }],
     examples: [
-      { title: 'Guard clauses flatten arrow code', html: `<p>Deep nesting forces readers to keep a stack of conditions in their head. Handle the exceptional cases first and return.</p>`, code: `class Shipping {
+      { title: 'Guard clauses flatten arrow code', html: `<p>Deep nesting forces readers to keep a stack of conditions in their head. Handle the exceptional cases first and return.</p>`, code: { lang: 'java', code: `class Shipping {
     String label(String name, String city, boolean paid) {
         if (name == null || name.isBlank()) return "ERROR: no name";
         if (city == null || city.isBlank()) return "ERROR: no city";
         if (!paid) return "HOLD: unpaid";
         return name + ", " + city;             // happy path, not nested
     }
+}`, alt: [
+          { lang: 'python', code: `class Shipping:
+    def label(self, name: str | None, city: str | None, paid: bool) -> str:
+        if not name or not name.strip():
+            return "ERROR: no name"
+        if not city or not city.strip():
+            return "ERROR: no city"
+        if not paid:
+            return "HOLD: unpaid"
+        return f"{name}, {city}"  # happy path, not nested` },
+          { lang: 'ts', code: `class Shipping {
+  label(name: string | null, city: string | null, paid: boolean): string {
+    if (name === null || name.trim() === "") return "ERROR: no name";
+    if (city === null || city.trim() === "") return "ERROR: no city";
+    if (!paid) return "HOLD: unpaid";
+    return \`\${name}, \${city}\`; // happy path, not nested
+  }
 }` },
+          { lang: 'cpp', code: `class Shipping {
+    static bool blank(const optional<string>& s) {
+        return !s || all_of(s->begin(), s->end(), [](unsigned char c) { return isspace(c); });
+    }
+public:
+    string label(const optional<string>& name, const optional<string>& city, bool paid) const {
+        if (blank(name)) return "ERROR: no name";
+        if (blank(city)) return "ERROR: no city";
+        if (!paid) return "HOLD: unpaid";
+        return *name + ", " + *city;   // happy path, not nested
+    }
+};` }
+        ] } },
       { title: 'Command–Query Separation', html: `<p>${H.c('r', 'Confusing:')} <code>if (set("color", "red"))</code> — does it check whether color <i>was</i> red, or set it and report success? ${H.c('g', 'Clear:')} <code>if (hasAttribute("color")) setAttribute("color", "red");</code> A query must be safe to call twice; a command changes state and returns nothing (or throws on failure). (Exceptions such as <code>Deque.pop()</code> or <code>Set.add()</code> returning a boolean are accepted idioms — know them.)</p>` },
-      { title: 'Parameter object for long argument lists', html: `<p><code>search(String from, String to, LocalDate depart, LocalDate ret, int adults, int kids, boolean flexible)</code> — easy to swap <code>from</code> and <code>to</code> by mistake. Group what belongs together: <code>search(Route route, DateRange dates, Passengers pax)</code>. The new types also become homes for behaviour (<code>dates.nights()</code>).</p>`, code: `record Route(String from, String to) {}
+      { title: 'Parameter object for long argument lists', html: `<p><code>search(String from, String to, LocalDate depart, LocalDate ret, int adults, int kids, boolean flexible)</code> — easy to swap <code>from</code> and <code>to</code> by mistake. Group what belongs together: <code>search(Route route, DateRange dates, Passengers pax)</code>. The new types also become homes for behaviour (<code>dates.nights()</code>).</p>`, code: { lang: 'java', code: `record Route(String from, String to) {}
 record DateRange(LocalDate depart, LocalDate ret) {
     DateRange { if (ret.isBefore(depart)) throw new IllegalArgumentException("return before departure"); }
     long nights() { return java.time.temporal.ChronoUnit.DAYS.between(depart, ret); }
@@ -1514,14 +3487,83 @@ class FlightSearch {
     String search(Route route, DateRange dates, Passengers pax) {
         return route.from() + "->" + route.to() + " for " + dates.nights() + " nights, " + (pax.adults() + pax.kids()) + " pax";
     }
+}`, alt: [
+          { lang: 'python', code: `from dataclasses import dataclass
+from datetime import date
+
+
+@dataclass(frozen=True)
+class Route:
+    from_city: str
+    to_city: str
+
+
+@dataclass(frozen=True)
+class DateRange:
+    depart: date
+    ret: date
+
+    def __post_init__(self) -> None:
+        if self.ret < self.depart:
+            raise ValueError("return before departure")
+
+    def nights(self) -> int:
+        return (self.ret - self.depart).days
+
+
+@dataclass(frozen=True)
+class Passengers:
+    adults: int
+    kids: int
+
+
+class FlightSearch:
+    def search(self, route: Route, dates: DateRange, pax: Passengers) -> str:
+        return f"{route.from_city}->{route.to_city} for {dates.nights()} nights, {pax.adults + pax.kids} pax"` },
+          { lang: 'ts', code: `interface Route { readonly from: string; readonly to: string; }
+
+class DateRange {
+  // depart and ret are ISO dates such as "2026-10-01"
+  constructor(readonly depart: string, readonly ret: string) {
+    if (Date.parse(ret) < Date.parse(depart)) throw new RangeError("return before departure");
+  }
+  nights(): number { return Math.round((Date.parse(this.ret) - Date.parse(this.depart)) / 86_400_000); }
+}
+
+interface Passengers { readonly adults: number; readonly kids: number; }
+
+class FlightSearch {
+  search(route: Route, dates: DateRange, pax: Passengers): string {
+    return \`\${route.from}->\${route.to} for \${dates.nights()} nights, \${pax.adults + pax.kids} pax\`;
+  }
 }` },
+          { lang: 'cpp', code: `struct Route { string from; string to; };
+
+class DateRange {
+    chrono::sys_days depart_, ret_;
+public:
+    DateRange(chrono::sys_days depart, chrono::sys_days ret) : depart_(depart), ret_(ret) {
+        if (ret_ < depart_) throw invalid_argument("return before departure");
+    }
+    long nights() const { return (ret_ - depart_).count(); }
+};
+
+struct Passengers { int adults; int kids; };
+
+class FlightSearch {
+public:
+    string search(const Route& route, const DateRange& dates, const Passengers& pax) const {
+        return route.from + "->" + route.to + " for " + to_string(dates.nights()) + " nights, " + to_string(pax.adults + pax.kids) + " pax";
+    }
+};` }
+        ] } },
       { title: 'Comments: why, not what', html: `<p>${H.c('r', 'Redundant:')} <code>// increment retry count</code> above <code>retryCount++</code>. ${H.c('g', 'Valuable:')} <code>// Bank API rate-limits at 5 req/s; retry with backoff or we get banned for an hour.</code> If you need a comment to explain <i>what</i> code does, try a better name or an extracted method first. Keep comments for <i>why</i>, warnings, and public API docs.</p>` }
     ],
     deepDive: `<p><b>Why small functions help the brain:</b> working memory holds only a handful of "chunks" at once (often quoted as about 4). A well-named function turns 15 lines into one chunk ("applyLoyaltyDiscount"). Deep nesting is costly because each level is another chunk you must hold — that is why SonarSource's <b>cognitive complexity</b> metric adds an extra penalty per nesting level, unlike plain <b>cyclomatic complexity</b> (number of independent paths = decisions + 1).</p>
 <p><b>Can functions be too small?</b> Yes. Splitting into dozens of 1-line methods that are each used once, with names that just restate the code (<code>addOne(x)</code>), forces readers to jump around ("lasagna code"). Extract when the new name <b>adds information</b> or hides a level of detail. Inline Method is the reverse refactoring for when it doesn't.</p>
-<p><b>Performance in Java:</b> HotSpot's JIT inlines small methods aggressively (by default, methods under 35 bytes of bytecode always, and hot methods up to ~325 bytes), so extracting methods almost never costs speed. Megamorphic virtual calls are the rare exception, and only profiling can tell you it matters.</p>
+<p><b>Performance:</b> optimizing compilers and JITs (HotSpot, V8, GCC and Clang) inline small methods aggressively (HotSpot, for example, always inlines methods under 35 bytes of bytecode), so extracting methods almost never costs speed. Megamorphic virtual calls are the rare exception, and only profiling can tell you it matters. Python is the exception: a function call there has a real cost, but it is still rarely the bottleneck.</p>
 <p><b>Names and architecture:</b> Domain-Driven Design calls the shared vocabulary of developers and business people the <b>Ubiquitous Language</b>. When code uses the same words as the business ("backorder", "settlement", "chargeback"), conversations map directly onto classes. Name drift (the business says "subscription", code says <code>Plan</code>) is a slow tax on every discussion.</p>
-<p><b>Getters and setters:</b> the JavaBeans <code>getX/setX</code> convention is required by many frameworks, but domain objects read better with intention-revealing commands (<code>account.deposit(m)</code> rather than <code>setBalance</code>). Java records use <code>x()</code> accessors without the <code>get</code> prefix.</p>
+<p><b>Getters and setters:</b> the JavaBeans <code>getX/setX</code> convention is required by many Java frameworks, but domain objects read better with intention-revealing commands (<code>account.deposit(m)</code> rather than <code>setBalance</code>). Java records, Python properties and TypeScript <code>readonly</code> fields expose values without a <code>get</code> prefix.</p>
 <p><b>Tests as names:</b> test method names are specifications: <code>expressTotal_addsFee_forNonEmptyCart()</code> or JUnit 5's <code>@DisplayName</code>. When a test fails, its name should tell you which rule broke.</p>`,
     aiEra: `<p><b>What AI changes:</b> names are now also <b>prompts</b>. Coding assistants and agents read your identifiers to guess intent. A method called <code>applyLoyaltyDiscount</code> gets better completions, better generated tests and better agent edits than <code>doIt2</code>. Vague names make AI output vaguer too.</p>
 <p><b>Use AI as a partner:</b> AI is very good at proposing names: <code>Suggest 3 intention-revealing names for this method based on what it does and how callers use it.</code> It is also good at mechanical Extract Method suggestions and at turning comments into method names. Ask it to explain a function in one sentence — if that sentence contains "and", the function probably does two things.</p>
@@ -1567,6 +3609,7 @@ class FlightSearch {
         `<p>Hint 2: Invert each <code>if</code> into a guard clause that returns the error immediately; the final line returns "OK". Keep the order email → password → age.</p>`,
         `<p>Hint 3: Extract <code>isValidEmail</code>, <code>isStrongPassword</code>, <code>isAllowedAge</code>, and constants <code>MIN_PASSWORD_LENGTH = 8</code>, <code>MIN_AGE = 18</code>, <code>MAX_AGE = 120</code>. Rename <code>V.chk</code> to <code>SignupValidator.validate(email, password, age)</code>.</p>`
       ],
+      tests: { io: true, cases: [{ stdin: '', stdout: "OK\nbad email\nweak password\nweak password\nbad age\nOK\nbad email\nbad age\n" }] },
       solution: {
         approach: `<p><b>Smells:</b> arrow code (deep nesting), meaningless names, magic numbers, duplicated error returns. <b>Refactor, in safe steps:</b> (1) characterization tests; (2) Rename (class, method, parameters); (3) Replace Nested Conditional with Guard Clauses; (4) Extract Method for each rule; (5) Replace Magic Number with Symbolic Constant. Each step is tiny and the tests stay green. The resulting <code>validate</code> reads as a checklist, and adding a rule is one more guard line.</p>`,
         code: `class SignupValidator {
@@ -1596,8 +3639,111 @@ class ValidatorCheck {
         System.out.println(v.validate("asha@x.com", null, 30));         // weak password
         System.out.println(v.validate("asha@x.com", "secret123", 121)); // bad age
         System.out.println(v.validate("asha@x.com", "secret123", 18));  // OK (boundary)
+        System.out.println(v.validate(null, "secret123", 25));          // bad email (null is rejected, not a crash)
+        System.out.println(v.validate("asha@x.com", "secret123", 17));  // bad age
     }
 }`,
+        alt: [
+          { lang: 'python', code: `from typing import Optional
+
+
+class SignupValidator:
+    MIN_PASSWORD_LENGTH = 8
+    MIN_AGE = 18
+    MAX_AGE = 120
+
+    def validate(self, email: Optional[str], password: Optional[str], age: int) -> str:
+        if not self._is_valid_email(email):
+            return "bad email"
+        if not self._is_strong_password(password):
+            return "weak password"
+        if not self._is_allowed_age(age):
+            return "bad age"
+        return "OK"
+
+    @staticmethod
+    def _is_valid_email(email: Optional[str]) -> bool:
+        return email is not None and "@" in email
+
+    @classmethod
+    def _is_strong_password(cls, pw: Optional[str]) -> bool:
+        return pw is not None and len(pw) >= cls.MIN_PASSWORD_LENGTH
+
+    @classmethod
+    def _is_allowed_age(cls, age: int) -> bool:
+        return cls.MIN_AGE <= age <= cls.MAX_AGE
+
+
+if __name__ == "__main__":
+    v = SignupValidator()
+    # characterization cases: same outputs as the old chk(...)
+    print(v.validate("asha@x.com", "secret123", 25))  # OK
+    print(v.validate("asha", "secret123", 25))  # bad email
+    print(v.validate("asha@x.com", "short", 15))  # weak password (priority)
+    print(v.validate("asha@x.com", None, 30))  # weak password
+    print(v.validate("asha@x.com", "secret123", 121))  # bad age
+    print(v.validate("asha@x.com", "secret123", 18))  # OK (boundary)
+    print(v.validate(None, "secret123", 25))  # bad email (None is rejected, not a crash)
+    print(v.validate("asha@x.com", "secret123", 17))  # bad age` },
+          { lang: 'ts', code: `class SignupValidator {
+  static readonly MIN_PASSWORD_LENGTH = 8;
+  static readonly MIN_AGE = 18;
+  static readonly MAX_AGE = 120;
+
+  validate(email: string | null, password: string | null, age: number): string {
+    if (!this.isValidEmail(email)) return "bad email";
+    if (!this.isStrongPassword(password)) return "weak password";
+    if (!this.isAllowedAge(age)) return "bad age";
+    return "OK";
+  }
+
+  private isValidEmail(email: string | null): boolean { return email !== null && email.includes("@"); }
+  private isStrongPassword(pw: string | null): boolean { return pw !== null && pw.length >= SignupValidator.MIN_PASSWORD_LENGTH; }
+  private isAllowedAge(age: number): boolean { return age >= SignupValidator.MIN_AGE && age <= SignupValidator.MAX_AGE; }
+}
+
+const v = new SignupValidator();
+// characterization cases: same outputs as the old chk(...)
+console.log(v.validate("asha@x.com", "secret123", 25)); // OK
+console.log(v.validate("asha", "secret123", 25)); // bad email
+console.log(v.validate("asha@x.com", "short", 15)); // weak password (priority)
+console.log(v.validate("asha@x.com", null, 30)); // weak password
+console.log(v.validate("asha@x.com", "secret123", 121)); // bad age
+console.log(v.validate("asha@x.com", "secret123", 18)); // OK (boundary)
+console.log(v.validate(null, "secret123", 25)); // bad email (null is rejected, not a crash)
+console.log(v.validate("asha@x.com", "secret123", 17)); // bad age` },
+          { lang: 'cpp', code: `class SignupValidator {
+public:
+    static constexpr size_t MIN_PASSWORD_LENGTH = 8;
+    static constexpr int MIN_AGE = 18;
+    static constexpr int MAX_AGE = 120;
+
+    string validate(const optional<string>& email, const optional<string>& password, int age) const {
+        if (!isValidEmail(email)) return "bad email";
+        if (!isStrongPassword(password)) return "weak password";
+        if (!isAllowedAge(age)) return "bad age";
+        return "OK";
+    }
+
+private:
+    static bool isValidEmail(const optional<string>& email) { return email && email->find('@') != string::npos; }
+    static bool isStrongPassword(const optional<string>& pw) { return pw && pw->size() >= MIN_PASSWORD_LENGTH; }
+    static bool isAllowedAge(int age) { return age >= MIN_AGE && age <= MAX_AGE; }
+};
+
+int main() {
+    SignupValidator v;
+    // characterization cases: same outputs as the old chk(...)
+    cout << v.validate("asha@x.com", "secret123", 25) << "\\n";   // OK
+    cout << v.validate("asha", "secret123", 25) << "\\n";         // bad email
+    cout << v.validate("asha@x.com", "short", 15) << "\\n";       // weak password (priority)
+    cout << v.validate("asha@x.com", nullopt, 30) << "\\n";       // weak password
+    cout << v.validate("asha@x.com", "secret123", 121) << "\\n";  // bad age
+    cout << v.validate("asha@x.com", "secret123", 18) << "\\n";   // OK (boundary)
+    cout << v.validate(nullopt, "secret123", 25) << "\\n";        // bad email (absent is rejected, not a crash)
+    cout << v.validate("asha@x.com", "secret123", 17) << "\\n";   // bad age
+}` }
+        ],
         complexity: `<p>Runtime unchanged: O(length of email + password). Max nesting 5 → 1; longest method 22 lines → 5; magic numbers 3 → 0.</p>`,
         followUps: ['Return all errors at once instead of the first one — what shape would you use? (List&lt;String&gt; or a ValidationResult)', 'How would you share these rules with the front-end without duplicating them?', 'Should errors be strings or an enum? Why?']
       }
@@ -1643,7 +3789,7 @@ ${H.table(['Group', 'Smell', 'You notice…', 'Usual refactoring'], [
       '"Should we rewrite it?" → prefer incremental refactoring / strangler fig; rewrites lose hidden behaviour.',
       'Code review exercise: "list the smells in this snippet" → name them with catalogue words (Feature Envy, Primitive Obsession…) and pair each with a refactoring.'
     ],
-    code: `// BEFORE: the same switch on a type code appears in several classes (shotgun surgery).
+    code: { lang: 'java', code: `// BEFORE: the same switch on a type code appears in several classes (shotgun surgery).
 enum EmpType { ENGINEER, MANAGER, INTERN }
 class EmpBefore { final EmpType type; final int base; EmpBefore(EmpType t, int b) { type = t; base = b; } }
 class PayrollBefore {
@@ -1694,7 +3840,215 @@ class SmellDemo {
         for (Employee e : staff) System.out.println(e.badge() + " " + e.pay());
         // Adding "Contractor" = one new record. The compiler (sealed) lists every place that must handle it.
     }
-}`,
+}`, alt: [
+        { lang: 'python', code: `from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from enum import Enum, auto
+
+
+# BEFORE: the same switch on a type code appears in several classes (shotgun surgery).
+class EmpType(Enum):
+    ENGINEER = auto()
+    MANAGER = auto()
+    INTERN = auto()
+
+
+@dataclass(frozen=True)
+class EmpBefore:
+    type: EmpType
+    base: int
+
+
+class PayrollBefore:
+    def pay(self, e: EmpBefore) -> int:
+        if e.type is EmpType.ENGINEER:
+            return e.base
+        if e.type is EmpType.MANAGER:
+            return e.base + 20_000
+        if e.type is EmpType.INTERN:
+            return e.base // 2
+        raise RuntimeError("unknown type")
+
+
+class BadgeBefore:
+    def label(self, e: EmpBefore) -> str:
+        if e.type is EmpType.ENGINEER:  # copy #2 of the type knowledge
+            return "ENG"
+        if e.type is EmpType.MANAGER:
+            return "MGR"
+        if e.type is EmpType.INTERN:
+            return "INT"
+        raise RuntimeError("unknown type")
+
+
+# AFTER: Replace Conditional with Polymorphism. Each type owns its behaviour.
+class Employee(ABC):
+    @abstractmethod
+    def pay(self) -> int: ...
+
+    @abstractmethod
+    def badge(self) -> str: ...
+
+
+@dataclass(frozen=True)
+class Engineer(Employee):
+    base: int
+
+    def pay(self) -> int:
+        return self.base
+
+    def badge(self) -> str:
+        return "ENG"
+
+
+@dataclass(frozen=True)
+class Manager(Employee):
+    MANAGEMENT_ALLOWANCE = 20_000
+    base: int
+
+    def pay(self) -> int:
+        return self.base + self.MANAGEMENT_ALLOWANCE
+
+    def badge(self) -> str:
+        return "MGR"
+
+
+@dataclass(frozen=True)
+class Intern(Employee):
+    base: int
+
+    def pay(self) -> int:
+        return self.base // 2
+
+    def badge(self) -> str:
+        return "INT"
+
+
+if __name__ == "__main__":
+    old = EmpBefore(EmpType.MANAGER, 100_000)
+    print(f"{PayrollBefore().pay(old)} {BadgeBefore().label(old)}")
+    staff: list[Employee] = [Engineer(90_000), Manager(100_000), Intern(40_000)]
+    for e in staff:
+        print(f"{e.badge()} {e.pay()}")
+    # Adding "Contractor" = one new class. A type checker with a closed union lists every place that must handle it.` },
+        { lang: 'ts', code: `// BEFORE: the same switch on a type code appears in several classes (shotgun surgery).
+type EmpType = "ENGINEER" | "MANAGER" | "INTERN";
+interface EmpBefore { readonly type: EmpType; readonly base: number; }
+
+class PayrollBefore {
+  pay(e: EmpBefore): number {
+    switch (e.type) {
+      case "ENGINEER": return e.base;
+      case "MANAGER": return e.base + 20_000;
+      case "INTERN": return Math.floor(e.base / 2);
+    }
+  }
+}
+class BadgeBefore {
+  label(e: EmpBefore): string {
+    switch (e.type) { // copy #2 of the type knowledge
+      case "ENGINEER": return "ENG";
+      case "MANAGER": return "MGR";
+      case "INTERN": return "INT";
+    }
+  }
+}
+
+// AFTER: Replace Conditional with Polymorphism. Each type owns its behaviour.
+interface Employee {
+  pay(): number;
+  badge(): string;
+}
+class Engineer implements Employee {
+  constructor(private readonly base: number) {}
+  pay(): number { return this.base; }
+  badge(): string { return "ENG"; }
+}
+class Manager implements Employee {
+  static readonly MANAGEMENT_ALLOWANCE = 20_000;
+  constructor(private readonly base: number) {}
+  pay(): number { return this.base + Manager.MANAGEMENT_ALLOWANCE; }
+  badge(): string { return "MGR"; }
+}
+class Intern implements Employee {
+  constructor(private readonly base: number) {}
+  pay(): number { return Math.floor(this.base / 2); }
+  badge(): string { return "INT"; }
+}
+
+const old: EmpBefore = { type: "MANAGER", base: 100_000 };
+console.log(\`\${new PayrollBefore().pay(old)} \${new BadgeBefore().label(old)}\`);
+const staff: Employee[] = [new Engineer(90_000), new Manager(100_000), new Intern(40_000)];
+for (const e of staff) console.log(\`\${e.badge()} \${e.pay()}\`);
+// Adding "Contractor" = one new class. A discriminated union (as above for EmpType) lets the compiler list every switch to update.` },
+        { lang: 'cpp', code: `// BEFORE: the same switch on a type code appears in several classes (shotgun surgery).
+enum class EmpType { ENGINEER, MANAGER, INTERN };
+struct EmpBefore { EmpType type; int base; };
+
+class PayrollBefore {
+public:
+    int pay(const EmpBefore& e) const {
+        switch (e.type) {
+            case EmpType::ENGINEER: return e.base;
+            case EmpType::MANAGER:  return e.base + 20'000;
+            case EmpType::INTERN:   return e.base / 2;
+        }
+        throw logic_error("unknown type");
+    }
+};
+class BadgeBefore {
+public:
+    string label(const EmpBefore& e) const {
+        switch (e.type) {                       // copy #2 of the type knowledge
+            case EmpType::ENGINEER: return "ENG";
+            case EmpType::MANAGER:  return "MGR";
+            case EmpType::INTERN:   return "INT";
+        }
+        throw logic_error("unknown type");
+    }
+};
+
+// AFTER: Replace Conditional with Polymorphism. Each type owns its behaviour.
+class Employee {
+public:
+    virtual ~Employee() = default;
+    virtual int pay() const = 0;
+    virtual string badge() const = 0;
+};
+class Engineer final : public Employee {
+    int base_;
+public:
+    explicit Engineer(int base) : base_(base) {}
+    int pay() const override { return base_; }
+    string badge() const override { return "ENG"; }
+};
+class Manager final : public Employee {
+    int base_;
+public:
+    static constexpr int MANAGEMENT_ALLOWANCE = 20'000;
+    explicit Manager(int base) : base_(base) {}
+    int pay() const override { return base_ + MANAGEMENT_ALLOWANCE; }
+    string badge() const override { return "MGR"; }
+};
+class Intern final : public Employee {
+    int base_;
+public:
+    explicit Intern(int base) : base_(base) {}
+    int pay() const override { return base_ / 2; }
+    string badge() const override { return "INT"; }
+};
+
+int main() {
+    EmpBefore old{EmpType::MANAGER, 100'000};
+    cout << PayrollBefore().pay(old) << " " << BadgeBefore().label(old) << "\\n";
+    vector<unique_ptr<Employee>> staff;
+    staff.push_back(make_unique<Engineer>(90'000));
+    staff.push_back(make_unique<Manager>(100'000));
+    staff.push_back(make_unique<Intern>(40'000));
+    for (const auto& e : staff) cout << e->badge() << " " << e->pay() << "\\n";
+    // Adding "Contractor" = one new class. A switch over the enum (above) warns about every case you forgot.
+}` }
+      ] },
     codeTitle: 'Replace Conditional with Polymorphism',
     viz: [{
       title: 'Shotgun surgery: adding a new type',
@@ -1760,7 +4114,7 @@ class SmellDemo {
       }
     }],
     examples: [
-      { title: 'Primitive Obsession → value object', html: `<p>Money as <code>double</code> gives rounding errors (<code>0.1 + 0.2 != 0.3</code>) and lets you add rupees to dollars. A small immutable <code>Money</code> type fixes both and becomes the home for money rules.</p>`, code: `record Money(long minorUnits, String currency) {
+      { title: 'Primitive Obsession → value object', html: `<p>Money as <code>double</code> gives rounding errors (<code>0.1 + 0.2 != 0.3</code>) and lets you add rupees to dollars. A small immutable <code>Money</code> type fixes both and becomes the home for money rules.</p>`, code: { lang: 'java', code: `record Money(long minorUnits, String currency) {
     Money {
         Objects.requireNonNull(currency);
         if (minorUnits < 0) throw new IllegalArgumentException("negative money");
@@ -1770,10 +4124,57 @@ class SmellDemo {
         return new Money(minorUnits + other.minorUnits, currency);
     }
     Money percent(int p) { return new Money(minorUnits * p / 100, currency); }
+}`, alt: [
+          { lang: 'python', code: `from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Money:
+    minor_units: int
+    currency: str
+
+    def __post_init__(self) -> None:
+        if self.minor_units < 0:
+            raise ValueError("negative money")
+
+    def plus(self, other: "Money") -> "Money":
+        if self.currency != other.currency:
+            raise ValueError("currency mismatch")
+        return Money(self.minor_units + other.minor_units, self.currency)
+
+    def percent(self, p: int) -> "Money":
+        return Money(self.minor_units * p // 100, self.currency)` },
+          { lang: 'ts', code: `class Money {
+  constructor(readonly minorUnits: number, readonly currency: string) {
+    if (minorUnits < 0) throw new RangeError("negative money");
+  }
+  plus(other: Money): Money {
+    if (this.currency !== other.currency) throw new TypeError("currency mismatch");
+    return new Money(this.minorUnits + other.minorUnits, this.currency);
+  }
+  percent(p: number): Money {
+    return new Money(Math.floor((this.minorUnits * p) / 100), this.currency);
+  }
 }` },
+          { lang: 'cpp', code: `class Money {
+    long long minorUnits_;
+    string currency_;
+public:
+    Money(long long minorUnits, string currency) : minorUnits_(minorUnits), currency_(std::move(currency)) {
+        if (minorUnits_ < 0) throw invalid_argument("negative money");
+    }
+    long long minorUnits() const { return minorUnits_; }
+    const string& currency() const { return currency_; }
+    Money plus(const Money& other) const {
+        if (currency_ != other.currency_) throw invalid_argument("currency mismatch");
+        return Money(minorUnits_ + other.minorUnits_, currency_);
+    }
+    Money percent(int p) const { return Money(minorUnits_ * p / 100, currency_); }
+};` }
+        ] } },
       { title: 'Feature Envy → Move Method', html: `<p><code>InvoicePrinter.lineTotal(Item i)</code> reads <code>i.price()</code>, <code>i.qty()</code>, <code>i.discount()</code> and nothing of its own. It "envies" <code>Item</code>. Move it: <code>item.total()</code>. Now the rule lives next to its data, and other callers (cart, refunds) reuse it instead of copying it.</p>` },
       { title: 'Divergent Change vs Shotgun Surgery', html: `${H.table(['', 'Divergent Change', 'Shotgun Surgery'], [['Shape', 'one class ← many reasons', 'one reason → many classes'], ['Example', '<code>Order</code> edited for tax, PDF layout and DB schema changes', 'adding a currency edits 7 files'], ['Fix', 'split (Extract Class)', 'gather (Move Method/Field, Inline Class)']])}` },
-      { title: 'Characterization test for legacy code', html: `<p>You do not know what <code>legacyFee(int)</code> <i>should</i> return, but you can record what it <i>does</i> return today and lock it in. Any refactor that changes these numbers is caught immediately.</p>`, code: `class LegacyFees {
+      { title: 'Characterization test for legacy code', html: `<p>You do not know what <code>legacyFee(int)</code> <i>should</i> return, but you can record what it <i>does</i> return today and lock it in. Any refactor that changes these numbers is caught immediately.</p>`, code: { lang: 'java', code: `class LegacyFees {
     static int legacyFee(int amount) { return amount < 100 ? 5 : amount / 20 + (amount % 7 == 0 ? 1 : 0); }
 }
 class CharacterizationTest {
@@ -1786,7 +4187,48 @@ class CharacterizationTest {
         }
         System.out.println("behaviour pinned");
     }
+}`, alt: [
+          { lang: 'python', code: `class LegacyFees:
+    @staticmethod
+    def legacy_fee(amount: int) -> int:
+        return 5 if amount < 100 else amount // 20 + (1 if amount % 7 == 0 else 0)
+
+
+if __name__ == "__main__":
+    inputs = [0, 99, 100, 140, 1000]
+    recorded = [5, 5, 5, 8, 50]  # captured from the current code
+    for amount, expected in zip(inputs, recorded):
+        actual = LegacyFees.legacy_fee(amount)
+        if actual != expected:
+            raise AssertionError(f"{amount} -> {actual}")
+    print("behaviour pinned")` },
+          { lang: 'ts', code: `class LegacyFees {
+  static legacyFee(amount: number): number {
+    return amount < 100 ? 5 : Math.floor(amount / 20) + (amount % 7 === 0 ? 1 : 0);
+  }
+}
+
+const inputs = [0, 99, 100, 140, 1000];
+const recorded = [5, 5, 5, 8, 50]; // captured from the current code
+inputs.forEach((amount, i) => {
+  const actual = LegacyFees.legacyFee(amount);
+  if (actual !== recorded[i]) throw new Error(\`\${amount} -> \${actual}\`);
+});
+console.log("behaviour pinned");` },
+          { lang: 'cpp', code: `struct LegacyFees {
+    static int legacyFee(int amount) { return amount < 100 ? 5 : amount / 20 + (amount % 7 == 0 ? 1 : 0); }
+};
+
+int main() {
+    vector<int> inputs{0, 99, 100, 140, 1000};
+    vector<int> recorded{5, 5, 5, 8, 50};   // captured from the current code
+    for (size_t i = 0; i < inputs.size(); i++) {
+        int actual = LegacyFees::legacyFee(inputs[i]);
+        if (actual != recorded[i]) throw runtime_error(to_string(inputs[i]) + " -> " + to_string(actual));
+    }
+    cout << "behaviour pinned\\n";
 }` }
+        ] } }
     ],
     deepDive: `<p><b>Why "smell" and not "rule":</b> every smell has legitimate exceptions — a long method that is a flat list of 40 field mappings is fine; a <code>switch</code> in a single factory is the right home. Smells start a conversation; tests and change history decide.</p>
 <p><b>Finding what to refactor first:</b> Adam Tornhill's <i>hotspot</i> analysis multiplies <b>change frequency</b> (from git log) by <b>complexity</b>. Messy code nobody touches costs little; messy code edited every week costs a lot. Refactor hotspots first. The "Boy Scout Rule" (leave code a bit cleaner than you found it) spreads the work into daily feature tasks instead of big "refactoring sprints".</p>
@@ -1848,6 +4290,7 @@ class Customer {
         `<p>Hint 2: These methods use only rental/movie data → Move Method into <code>Rental</code> (feature envy). Then the switch depends on the price code only → move it into a <code>PriceCode</code> type.</p>`,
         `<p>Hint 3: Make <code>PriceCode</code> an enum with constant-specific methods <code>charge(days)</code> and <code>points(days)</code>. Customer keeps <code>totalCharge()</code>/<code>totalPoints()</code>; <code>statement()</code> only formats. An <code>htmlStatement()</code> reuses the same methods.</p>`
       ],
+      tests: { io: true, cases: [{ stdin: '', stdout: "identical output\n<h1>Asha</h1><ul><li>Jaws 350</li><li>Dune 600</li><li>Bluey 300</li></ul><p>Total 1250</p>\nRental record for Ben|Dune:300|Total 300|Points 1\n" }] },
       solution: {
         approach: `<p><b>Sequence of small refactorings</b> (each followed by running the pinned test): (1) Extract Method <code>amountFor</code> / <code>pointsFor</code>; (2) Move Method to <code>Rental</code> (the data lives there); (3) Replace Type Code with an enum <code>PriceCode</code>; (4) Replace Conditional with Polymorphism using constant-specific enum methods — each category owns its charge and points rule; (5) Replace Temp with Query: <code>totalCharge()</code> and <code>totalPoints()</code> on Customer; (6) <code>statement()</code> is now pure formatting, and <code>htmlStatement()</code> reuses the same queries.</p>
 <p><b>Result:</b> new category = one new enum constant; new output format = one new formatting method; calculations exist once. The text output is unchanged (verified in <code>main</code>).</p>`,
@@ -1904,10 +4347,206 @@ class RentalDemo {
         String expected = "Rental record for Asha|Jaws:350|Dune:600|Bluey:300|Total 1250|Points 4";
         System.out.println(c.statement().equals(expected) ? "identical output" : "CHANGED: " + c.statement());
         System.out.println(c.htmlStatement());
+
+        Customer ben = new Customer("Ben");                        // a one-day new release earns only 1 point
+        ben.rent(new Rental(new Movie("Dune", PriceCode.NEW_RELEASE), 1));
+        System.out.println(ben.statement());
     }
 }`,
+        alt: [
+          { lang: 'python', code: `from dataclasses import dataclass
+from enum import Enum
+from typing import Callable
+
+
+@dataclass(frozen=True)
+class _Rule:
+    charge: Callable[[int], int]
+    points: Callable[[int], int] = lambda days: 1  # default rule, overridden where different
+
+
+class PriceCode(Enum):
+    REGULAR = _Rule(lambda days: 200 + max(0, days - 2) * 150)
+    NEW_RELEASE = _Rule(lambda days: days * 300, lambda days: 2 if days > 1 else 1)
+    CHILDREN = _Rule(lambda days: 150 + max(0, days - 3) * 150)
+
+    def charge(self, days: int) -> int:
+        return self.value.charge(days)
+
+    def points(self, days: int) -> int:
+        return self.value.points(days)
+
+
+@dataclass(frozen=True)
+class Movie:
+    title: str
+    price_code: PriceCode
+
+
+@dataclass(frozen=True)
+class Rental:
+    movie: Movie
+    days: int
+
+    def charge(self) -> int:
+        return self.movie.price_code.charge(self.days)
+
+    def points(self) -> int:
+        return self.movie.price_code.points(self.days)
+
+
+class Customer:
+    def __init__(self, name: str) -> None:
+        self._name = name
+        self._rentals: list[Rental] = []
+
+    def rent(self, rental: Rental) -> None:
+        self._rentals.append(rental)
+
+    def total_charge(self) -> int:
+        return sum(r.charge() for r in self._rentals)
+
+    def total_points(self) -> int:
+        return sum(r.points() for r in self._rentals)
+
+    def statement(self) -> str:  # formatting only
+        lines = "".join(f"{r.movie.title}:{r.charge()}|" for r in self._rentals)
+        return f"Rental record for {self._name}|{lines}Total {self.total_charge()}|Points {self.total_points()}"
+
+    def html_statement(self) -> str:  # new format reuses the same rules
+        items = "".join(f"<li>{r.movie.title} {r.charge()}</li>" for r in self._rentals)
+        return f"<h1>{self._name}</h1><ul>{items}</ul><p>Total {self.total_charge()}</p>"
+
+
+if __name__ == "__main__":
+    c = Customer("Asha")
+    c.rent(Rental(Movie("Jaws", PriceCode.REGULAR), 3))
+    c.rent(Rental(Movie("Dune", PriceCode.NEW_RELEASE), 2))
+    c.rent(Rental(Movie("Bluey", PriceCode.CHILDREN), 4))
+    expected = "Rental record for Asha|Jaws:350|Dune:600|Bluey:300|Total 1250|Points 4"
+    print("identical output" if c.statement() == expected else "CHANGED: " + c.statement())
+    print(c.html_statement())
+
+    ben = Customer("Ben")  # a one-day new release earns only 1 point
+    ben.rent(Rental(Movie("Dune", PriceCode.NEW_RELEASE), 1))
+    print(ben.statement())` },
+          { lang: 'ts', code: `interface PriceCode {
+  charge(days: number): number;
+  points(days: number): number;
+}
+
+// Each category owns its charge and points rule; points default to 1.
+const REGULAR: PriceCode = {
+  charge: (days) => 200 + Math.max(0, days - 2) * 150,
+  points: () => 1,
+};
+const NEW_RELEASE: PriceCode = {
+  charge: (days) => days * 300,
+  points: (days) => (days > 1 ? 2 : 1),
+};
+const CHILDREN: PriceCode = {
+  charge: (days) => 150 + Math.max(0, days - 3) * 150,
+  points: () => 1,
+};
+
+interface Movie { readonly title: string; readonly priceCode: PriceCode; }
+
+class Rental {
+  constructor(readonly movie: Movie, readonly days: number) {}
+  charge(): number { return this.movie.priceCode.charge(this.days); }
+  points(): number { return this.movie.priceCode.points(this.days); }
+}
+
+class Customer {
+  private readonly rentals: Rental[] = [];
+  constructor(private readonly name: string) {}
+
+  rent(r: Rental): void { this.rentals.push(r); }
+
+  totalCharge(): number { return this.rentals.reduce((s, r) => s + r.charge(), 0); }
+  totalPoints(): number { return this.rentals.reduce((s, r) => s + r.points(), 0); }
+
+  statement(): string { // formatting only
+    const lines = this.rentals.map((r) => \`\${r.movie.title}:\${r.charge()}|\`).join("");
+    return \`Rental record for \${this.name}|\${lines}Total \${this.totalCharge()}|Points \${this.totalPoints()}\`;
+  }
+  htmlStatement(): string { // new format reuses the same rules
+    const items = this.rentals.map((r) => \`<li>\${r.movie.title} \${r.charge()}</li>\`).join("");
+    return \`<h1>\${this.name}</h1><ul>\${items}</ul><p>Total \${this.totalCharge()}</p>\`;
+  }
+}
+
+const c = new Customer("Asha");
+c.rent(new Rental({ title: "Jaws", priceCode: REGULAR }, 3));
+c.rent(new Rental({ title: "Dune", priceCode: NEW_RELEASE }, 2));
+c.rent(new Rental({ title: "Bluey", priceCode: CHILDREN }, 4));
+const expected = "Rental record for Asha|Jaws:350|Dune:600|Bluey:300|Total 1250|Points 4";
+console.log(c.statement() === expected ? "identical output" : "CHANGED: " + c.statement());
+console.log(c.htmlStatement());
+
+const ben = new Customer("Ben"); // a one-day new release earns only 1 point
+ben.rent(new Rental({ title: "Dune", priceCode: NEW_RELEASE }, 1));
+console.log(ben.statement());` },
+          { lang: 'cpp', code: `// Each category owns its charge and points rule; points default to 1.
+struct PriceCode {
+    function<int(int)> charge;
+    function<int(int)> points;
+};
+
+const PriceCode REGULAR{[](int days) { return 200 + max(0, days - 2) * 150; }, [](int) { return 1; }};
+const PriceCode NEW_RELEASE{[](int days) { return days * 300; }, [](int days) { return days > 1 ? 2 : 1; }};
+const PriceCode CHILDREN{[](int days) { return 150 + max(0, days - 3) * 150; }, [](int) { return 1; }};
+
+struct Movie {
+    string title;
+    const PriceCode* priceCode;
+};
+
+struct Rental {
+    Movie movie;
+    int days;
+    int charge() const { return movie.priceCode->charge(days); }
+    int points() const { return movie.priceCode->points(days); }
+};
+
+class Customer {
+    string name_;
+    vector<Rental> rentals_;
+public:
+    explicit Customer(string name) : name_(std::move(name)) {}
+    void rent(const Rental& r) { rentals_.push_back(r); }
+
+    int totalCharge() const { int s = 0; for (const Rental& r : rentals_) s += r.charge(); return s; }
+    int totalPoints() const { int s = 0; for (const Rental& r : rentals_) s += r.points(); return s; }
+
+    string statement() const {   // formatting only
+        string out = "Rental record for " + name_ + "|";
+        for (const Rental& r : rentals_) out += r.movie.title + ":" + to_string(r.charge()) + "|";
+        return out + "Total " + to_string(totalCharge()) + "|Points " + to_string(totalPoints());
+    }
+    string htmlStatement() const {   // new format reuses the same rules
+        string out = "<h1>" + name_ + "</h1><ul>";
+        for (const Rental& r : rentals_) out += "<li>" + r.movie.title + " " + to_string(r.charge()) + "</li>";
+        return out + "</ul><p>Total " + to_string(totalCharge()) + "</p>";
+    }
+};
+
+int main() {
+    Customer c("Asha");
+    c.rent({{"Jaws", &REGULAR}, 3});
+    c.rent({{"Dune", &NEW_RELEASE}, 2});
+    c.rent({{"Bluey", &CHILDREN}, 4});
+    string expected = "Rental record for Asha|Jaws:350|Dune:600|Bluey:300|Total 1250|Points 4";
+    cout << (c.statement() == expected ? "identical output" : "CHANGED: " + c.statement()) << "\\n";
+    cout << c.htmlStatement() << "\\n";
+
+    Customer ben("Ben");   // a one-day new release earns only 1 point
+    ben.rent({{"Dune", &NEW_RELEASE}, 1});
+    cout << ben.statement() << "\\n";
+}` }
+        ],
         complexity: `<p>Time O(rentals) per statement (totals are recomputed — two passes instead of one, which is fine; cache only if profiling says so). Places to edit for a new category: 3+ → 1.</p>`,
-        followUps: ['A movie can change category (new release becomes regular after 3 months). Does the enum design handle it? (yes: priceCode is a field; use a new Movie record or make it mutable)', 'Why not use a sealed interface with classes instead of an enum? (enum is enough when categories carry no per-instance state)', 'How would you test each category in isolation?']
+        followUps: ['A movie can change category (new release becomes regular after 3 months). Does the enum design handle it? (yes: priceCode is a field; use a new Movie record or make it mutable)', 'Why not use a closed set of classes (a sealed interface) instead of an enum? (enum is enough when categories carry no per-instance state)', 'How would you test each category in isolation?']
       }
     }]
   });
@@ -1919,7 +4558,7 @@ class RentalDemo {
     title: 'Magic numbers in a parking fee calculator',
     level: 'Easy', tags: ['DRY', 'magic numbers', 'naming'], companies: ['Amazon', 'Zoho'],
     statement: `<p>A parking lot charges ₹50 for the first 2 hours, ₹30 for each extra hour, and never more than ₹500 per day. The numbers <code>50</code>, <code>2</code>, <code>30</code> and <code>500</code> are typed directly in two methods: <code>fee(hours)</code> and <code>estimateText(hours)</code>. Spot the smells and refactor so each tariff value has one named home.</p>`,
-    constraints: `Hours are whole numbers ≥ 0 (0 hours costs ₹0). Outputs must not change. Use Java 21.`,
+    constraints: `Hours are whole numbers ≥ 0 (0 hours costs ₹0). Outputs must not change.`,
     example: `<p><code>fee(1)</code> = ${H.c('g', '50')}, <code>fee(5)</code> = 50 + 3×30 = ${H.c('g', '140')}, <code>fee(20)</code> = min(50 + 18×30, 500) = ${H.c('g', '500')}. <code>estimateText(5)</code> = "About Rs 140 (first 2 h Rs 50)".</p>`,
     brute: {
       why: `<p>The same tariff facts appear in two methods (and in a text string), with nothing explaining what 30 or 500 mean. When the price of the first block changes, someone will update <code>fee</code> and forget the estimate text — customers see one price and pay another.</p>`,
@@ -1941,6 +4580,7 @@ class RentalDemo {
       `<p>Hint 2: Create constants <code>FIRST_BLOCK_HOURS</code>, <code>FIRST_BLOCK_PRICE</code>, <code>EXTRA_HOUR_PRICE</code>, <code>DAILY_CAP</code>.</p>`,
       `<p>Hint 3: <code>estimateText</code> should call <code>fee(hours)</code> and build the text from the constants. Test 0, 2, 3, 5, 20 hours before and after.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "0h -> 0 | About Rs 0 (first 2 h Rs 50)\n1h -> 50 | About Rs 50 (first 2 h Rs 50)\n2h -> 50 | About Rs 50 (first 2 h Rs 50)\n3h -> 80 | About Rs 80 (first 2 h Rs 50)\n5h -> 140 | About Rs 140 (first 2 h Rs 50)\n8h -> 230 | About Rs 230 (first 2 h Rs 50)\n20h -> 500 | About Rs 500 (first 2 h Rs 50)\n" }] },
     solution: {
       approach: `<p><b>Smells:</b> magic numbers + duplicated formula. <b>Refactor:</b> Replace Magic Number with Symbolic Constant, then make <code>estimateText</code> reuse <code>fee</code> (Extract/Reuse Method). Now changing the tariff is one edit and the text can never disagree with the charge.</p>`,
       code: `class ParkingTariff {
@@ -1962,9 +4602,76 @@ class RentalDemo {
 
     public static void main(String[] args) {
         ParkingTariff t = new ParkingTariff();
-        for (int h : new int[]{0, 2, 3, 5, 20}) System.out.println(h + "h -> " + t.fee(h) + " | " + t.estimateText(h));
+        for (int h : new int[]{0, 1, 2, 3, 5, 8, 20}) System.out.println(h + "h -> " + t.fee(h) + " | " + t.estimateText(h));
     }
 }`,
+      alt: [
+        { lang: 'python', code: `class ParkingTariff:
+    FIRST_BLOCK_HOURS = 2
+    FIRST_BLOCK_PRICE = 50
+    EXTRA_HOUR_PRICE = 30
+    DAILY_CAP = 500
+
+    def fee(self, hours: int) -> int:
+        if hours == 0:
+            return 0
+        if hours <= self.FIRST_BLOCK_HOURS:
+            return self.FIRST_BLOCK_PRICE
+        uncapped = self.FIRST_BLOCK_PRICE + (hours - self.FIRST_BLOCK_HOURS) * self.EXTRA_HOUR_PRICE
+        return min(uncapped, self.DAILY_CAP)
+
+    def estimate_text(self, hours: int) -> str:
+        return f"About Rs {self.fee(hours)} (first {self.FIRST_BLOCK_HOURS} h Rs {self.FIRST_BLOCK_PRICE})"
+
+
+if __name__ == "__main__":
+    t = ParkingTariff()
+    for h in (0, 1, 2, 3, 5, 8, 20):
+        print(f"{h}h -> {t.fee(h)} | {t.estimate_text(h)}")` },
+        { lang: 'ts', code: `class ParkingTariff {
+  static readonly FIRST_BLOCK_HOURS = 2;
+  static readonly FIRST_BLOCK_PRICE = 50;
+  static readonly EXTRA_HOUR_PRICE = 30;
+  static readonly DAILY_CAP = 500;
+
+  fee(hours: number): number {
+    if (hours === 0) return 0;
+    if (hours <= ParkingTariff.FIRST_BLOCK_HOURS) return ParkingTariff.FIRST_BLOCK_PRICE;
+    const uncapped = ParkingTariff.FIRST_BLOCK_PRICE + (hours - ParkingTariff.FIRST_BLOCK_HOURS) * ParkingTariff.EXTRA_HOUR_PRICE;
+    return Math.min(uncapped, ParkingTariff.DAILY_CAP);
+  }
+
+  estimateText(hours: number): string {
+    return \`About Rs \${this.fee(hours)} (first \${ParkingTariff.FIRST_BLOCK_HOURS} h Rs \${ParkingTariff.FIRST_BLOCK_PRICE})\`;
+  }
+}
+
+const t = new ParkingTariff();
+for (const h of [0, 1, 2, 3, 5, 8, 20]) console.log(\`\${h}h -> \${t.fee(h)} | \${t.estimateText(h)}\`);` },
+        { lang: 'cpp', code: `class ParkingTariff {
+public:
+    static constexpr int FIRST_BLOCK_HOURS = 2;
+    static constexpr int FIRST_BLOCK_PRICE = 50;
+    static constexpr int EXTRA_HOUR_PRICE = 30;
+    static constexpr int DAILY_CAP = 500;
+
+    int fee(int hours) const {
+        if (hours == 0) return 0;
+        if (hours <= FIRST_BLOCK_HOURS) return FIRST_BLOCK_PRICE;
+        int uncapped = FIRST_BLOCK_PRICE + (hours - FIRST_BLOCK_HOURS) * EXTRA_HOUR_PRICE;
+        return min(uncapped, DAILY_CAP);
+    }
+
+    string estimateText(int hours) const {
+        return "About Rs " + to_string(fee(hours)) + " (first " + to_string(FIRST_BLOCK_HOURS) + " h Rs " + to_string(FIRST_BLOCK_PRICE) + ")";
+    }
+};
+
+int main() {
+    ParkingTariff t;
+    for (int h : {0, 1, 2, 3, 5, 8, 20}) cout << h << "h -> " << t.fee(h) << " | " << t.estimateText(h) << "\\n";
+}` }
+      ],
       complexity: `<p>O(1). Edits per tariff change: up to 4 scattered numbers in 2 methods → 1 constant.</p>`,
       followUps: ['Weekend tariff differs — how do you add it without duplicating fee()? (TariffPolicy strategy)', 'Should the constants live in config? When does that help?']
     }
@@ -1990,10 +4697,11 @@ class RentalDemo {
     },
     mcq: { q: 'Which name best fits the method?', options: ['getThem', 'process', 'findProductsToReorder', 'filterList'], answer: 2, explain: 'It reveals intent (reorder), the domain object (products) and the kind of operation (find, a query).' },
     hints: [
-      `<p>Hint 1: Name the concept hidden in <code>int[]</code>: it is a product with an id, stock and reorder level. A <code>record</code> gives each slot a name.</p>`,
+      `<p>Hint 1: Name the concept hidden in <code>int[]</code>: it is a product with an id, stock and reorder level. A small value type (a Java <code>record</code>, a Python <code>@dataclass</code>, a C++ <code>struct</code>) gives each slot a name.</p>`,
       `<p>Hint 2: Put the question "does this product need reordering?" on the product itself: <code>needsReorder()</code>.</p>`,
       `<p>Hint 3: The method becomes <code>findProductsToReorder(List&lt;Product&gt; products)</code>; a stream filter or loop both read well now.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "reorder 1 (stock 5 < 10)\nreorder 3 (stock 9 < 10)\ncount 2\n" }] },
     solution: {
       approach: `<p><b>Refactor:</b> Replace Array with Object (<code>record Product</code>), Rename Method/variables, and Move the condition into the product (<code>needsReorder</code>). The calling code now reads like the business rule.</p>`,
       code: `record Product(int id, int stock, int reorderLevel) {
@@ -2006,12 +4714,77 @@ class Inventory {
     }
 
     public static void main(String[] args) {
-        List<Product> all = List.of(new Product(1, 5, 10), new Product(2, 50, 10), new Product(3, 9, 10));
-        System.out.println(new Inventory().findProductsToReorder(all));
+        List<Product> all = List.of(new Product(1, 5, 10), new Product(2, 50, 10), new Product(3, 9, 10), new Product(4, 10, 10));
+        List<Product> low = new Inventory().findProductsToReorder(all);
+        for (Product p : low) System.out.println("reorder " + p.id() + " (stock " + p.stock() + " < " + p.reorderLevel() + ")");
+        System.out.println("count " + low.size());   // product 4 sits exactly at its level: not reordered
     }
 }`,
+      alt: [
+        { lang: 'python', code: `from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Product:
+    id: int
+    stock: int
+    reorder_level: int
+
+    def needs_reorder(self) -> bool:
+        return self.stock < self.reorder_level
+
+
+class Inventory:
+    def find_products_to_reorder(self, products: list[Product]) -> list[Product]:
+        return [p for p in products if p.needs_reorder()]
+
+
+if __name__ == "__main__":
+    all_products = [Product(1, 5, 10), Product(2, 50, 10), Product(3, 9, 10), Product(4, 10, 10)]
+    low = Inventory().find_products_to_reorder(all_products)
+    for p in low:
+        print(f"reorder {p.id} (stock {p.stock} < {p.reorder_level})")
+    print(f"count {len(low)}")  # product 4 sits exactly at its level: not reordered` },
+        { lang: 'ts', code: `class Product {
+  constructor(readonly id: number, readonly stock: number, readonly reorderLevel: number) {}
+  needsReorder(): boolean { return this.stock < this.reorderLevel; }
+}
+
+class Inventory {
+  findProductsToReorder(products: readonly Product[]): Product[] {
+    return products.filter((p) => p.needsReorder());
+  }
+}
+
+const all = [new Product(1, 5, 10), new Product(2, 50, 10), new Product(3, 9, 10), new Product(4, 10, 10)];
+const low = new Inventory().findProductsToReorder(all);
+for (const p of low) console.log(\`reorder \${p.id} (stock \${p.stock} < \${p.reorderLevel})\`);
+console.log(\`count \${low.length}\`); // product 4 sits exactly at its level: not reordered` },
+        { lang: 'cpp', code: `struct Product {
+    int id;
+    int stock;
+    int reorderLevel;
+    bool needsReorder() const { return stock < reorderLevel; }
+};
+
+class Inventory {
+public:
+    vector<Product> findProductsToReorder(const vector<Product>& products) const {
+        vector<Product> low;
+        copy_if(products.begin(), products.end(), back_inserter(low), [](const Product& p) { return p.needsReorder(); });
+        return low;
+    }
+};
+
+int main() {
+    vector<Product> all{{1, 5, 10}, {2, 50, 10}, {3, 9, 10}, {4, 10, 10}};
+    vector<Product> low = Inventory().findProductsToReorder(all);
+    for (const Product& p : low) cout << "reorder " << p.id << " (stock " << p.stock << " < " << p.reorderLevel << ")\\n";
+    cout << "count " << low.size() << "\\n";   // product 4 sits exactly at its level: not reordered
+}` }
+      ],
       complexity: `<p>O(n) time, O(k) output. Reading time: from "decode the array slots" to "read one line".</p>`,
-      followUps: ['Where would a per-warehouse stock count go?', 'Why is a record better than a class with public fields here?']
+      followUps: ['Where would a per-warehouse stock count go?', 'Why is a small value type (record, dataclass, struct) better than a class with public fields here?']
     }
   });
 
@@ -2044,6 +4817,7 @@ class Inventory {
       `<p>Hint 2: Keep the old method temporarily delegating to the new ones (so callers can migrate), then delete it — the Parallel Change technique.</p>`,
       `<p>Hint 3: If many formats appear later, introduce <code>interface RowFormat { String format(List&lt;String&gt; rows); }</code>. Not needed yet (YAGNI).</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "csv=a,b json=[\"a\",\"b\"]\ncsv= json=[]\nbridge ok\n" }] },
     solution: {
       approach: `<p><b>Refactor:</b> Remove Flag Argument (Fowler) → <code>toCsv</code> and <code>toJson</code>. During migration the old <code>export</code> is marked <code>@Deprecated</code> and delegates, so callers can move one by one; then it is deleted.</p>`,
       code: `class Exporter {
@@ -2068,9 +4842,85 @@ class Inventory {
 
     public static void main(String[] args) {
         Exporter e = new Exporter();
-        System.out.println(e.toCsv(List.of("a", "b")) + "  " + e.toJson(List.of("a", "b")));
+        List<String> rows = List.of("a", "b");
+        System.out.println("csv=" + e.toCsv(rows) + " json=" + e.toJson(rows));
+        System.out.println("csv=" + e.toCsv(List.of()) + " json=" + e.toJson(List.of()));   // empty input
+        System.out.println(e.export(rows, true).equals(e.toCsv(rows)) && e.export(rows, false).equals(e.toJson(rows)) ? "bridge ok" : "bridge broken");
     }
 }`,
+      alt: [
+        { lang: 'python', code: `import warnings
+
+
+class Exporter:
+    def to_csv(self, rows: list[str]) -> str:
+        return ",".join(rows)
+
+    def to_json(self, rows: list[str]) -> str:
+        return "[" + ",".join(f'"{r}"' for r in rows) + "]"
+
+    def export(self, rows: list[str], csv: bool) -> str:
+        """Temporary bridge for old callers; delete once all call sites use to_csv/to_json."""
+        warnings.warn("export() is deprecated: use to_csv or to_json", DeprecationWarning, stacklevel=2)
+        return self.to_csv(rows) if csv else self.to_json(rows)
+
+
+if __name__ == "__main__":
+    e = Exporter()
+    rows = ["a", "b"]
+    print(f"csv={e.to_csv(rows)} json={e.to_json(rows)}")
+    print(f"csv={e.to_csv([])} json={e.to_json([])}")  # empty input
+    ok = e.export(rows, True) == e.to_csv(rows) and e.export(rows, False) == e.to_json(rows)
+    print("bridge ok" if ok else "bridge broken")` },
+        { lang: 'ts', code: `class Exporter {
+  toCsv(rows: readonly string[]): string {
+    return rows.join(",");
+  }
+
+  toJson(rows: readonly string[]): string {
+    return "[" + rows.map((r) => \`"\${r}"\`).join(",") + "]";
+  }
+
+  /** @deprecated Temporary bridge for old callers; delete once all call sites use toCsv/toJson. */
+  export(rows: readonly string[], csv: boolean): string {
+    return csv ? this.toCsv(rows) : this.toJson(rows);
+  }
+}
+
+const e = new Exporter();
+const rows = ["a", "b"];
+console.log(\`csv=\${e.toCsv(rows)} json=\${e.toJson(rows)}\`);
+console.log(\`csv=\${e.toCsv([])} json=\${e.toJson([])}\`); // empty input
+const ok = e.export(rows, true) === e.toCsv(rows) && e.export(rows, false) === e.toJson(rows);
+console.log(ok ? "bridge ok" : "bridge broken");` },
+        { lang: 'cpp', code: `class Exporter {
+public:
+    string toCsv(const vector<string>& rows) const {
+        string out;
+        for (size_t i = 0; i < rows.size(); i++) out += (i ? "," : "") + rows[i];
+        return out;
+    }
+
+    string toJson(const vector<string>& rows) const {
+        string out = "[";
+        for (size_t i = 0; i < rows.size(); i++) out += string(i ? "," : "") + "\\"" + rows[i] + "\\"";
+        return out + "]";
+    }
+
+    // Temporary bridge for old callers (named exportRows because export is a C++20 keyword).
+    [[deprecated("use toCsv or toJson")]]
+    string exportRows(const vector<string>& rows, bool csv) const { return csv ? toCsv(rows) : toJson(rows); }
+};
+
+int main() {
+    Exporter e;
+    vector<string> rows{"a", "b"};
+    cout << "csv=" << e.toCsv(rows) << " json=" << e.toJson(rows) << "\\n";
+    cout << "csv=" << e.toCsv({}) << " json=" << e.toJson({}) << "\\n";   // empty input
+    bool ok = e.exportRows(rows, true) == e.toCsv(rows) && e.exportRows(rows, false) == e.toJson(rows);
+    cout << (ok ? "bridge ok" : "bridge broken") << "\\n";
+}` }
+      ],
       complexity: `<p>O(total characters) for both formats, unchanged. Call-site readability: <code>export(rows, true)</code> → <code>toCsv(rows)</code>.</p>`,
       followUps: ['When would you introduce a RowFormat interface instead?', 'How do you find and migrate all callers safely? (IDE find usages, deprecation warnings)']
     }
@@ -2102,6 +4952,7 @@ class DefaultTipCalculatorFactory implements TipCalculatorFactory {
       `<p>Hint 2: Abstract class with one subclass → Collapse Hierarchy. Factory with one product and no test need → Inline. Unused parameter → Remove Parameter.</p>`,
       `<p>Hint 3: Keep one class <code>TipCalculator</code> with <code>int tip(int bill, int percent)</code>. Guard against negative input if you like, and test the rounding-down case.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "150 99\nrejected: bill and percent must be >= 0\n" }] },
     solution: {
       approach: `<p><b>Smell:</b> Speculative Generality + Dead Code. <b>Refactor:</b> Collapse Hierarchy, Inline Class (factory), Remove Parameter (currency), Remove Dead Code (tipForGroups). Version control remembers the deleted code if it is ever needed — deleting is safe.</p>`,
       code: `class TipCalculator {
@@ -2113,8 +4964,60 @@ class DefaultTipCalculatorFactory implements TipCalculatorFactory {
     public static void main(String[] args) {
         TipCalculator calc = new TipCalculator();
         System.out.println(calc.tip(1000, 15) + " " + calc.tip(999, 10));   // 150 99
+        try {
+            calc.tip(-5, 10);
+        } catch (IllegalArgumentException e) {
+            System.out.println("rejected: " + e.getMessage());
+        }
     }
 }`,
+      alt: [
+        { lang: 'python', code: `class TipCalculator:
+    def tip(self, bill: int, percent: int) -> int:
+        if bill < 0 or percent < 0:
+            raise ValueError("bill and percent must be >= 0")
+        return bill * percent // 100  # floor division rounds down, as required
+
+
+if __name__ == "__main__":
+    calc = TipCalculator()
+    print(calc.tip(1000, 15), calc.tip(999, 10))  # 150 99
+    try:
+        calc.tip(-5, 10)
+    except ValueError as e:
+        print(f"rejected: {e}")` },
+        { lang: 'ts', code: `class TipCalculator {
+  tip(bill: number, percent: number): number {
+    if (bill < 0 || percent < 0) throw new RangeError("bill and percent must be >= 0");
+    return Math.floor((bill * percent) / 100); // rounds down, as required
+  }
+}
+
+const calc = new TipCalculator();
+console.log(\`\${calc.tip(1000, 15)} \${calc.tip(999, 10)}\`); // 150 99
+try {
+  calc.tip(-5, 10);
+} catch (e) {
+  console.log(\`rejected: \${(e as Error).message}\`);
+}` },
+        { lang: 'cpp', code: `class TipCalculator {
+public:
+    int tip(int bill, int percent) const {
+        if (bill < 0 || percent < 0) throw invalid_argument("bill and percent must be >= 0");
+        return bill * percent / 100;   // integer division rounds down for non-negative values, as required
+    }
+};
+
+int main() {
+    TipCalculator calc;
+    cout << calc.tip(1000, 15) << " " << calc.tip(999, 10) << "\\n";   // 150 99
+    try {
+        calc.tip(-5, 10);
+    } catch (const invalid_argument& e) {
+        cout << "rejected: " << e.what() << "\\n";
+    }
+}` }
+      ],
       complexity: `<p>O(1). Types 4 → 1, members 5 → 1.</p>`,
       followUps: ['Splitting the bill among people is now requested — where does it go?', 'How do you convince a teammate that deleting "future" code is safe? (git history, YAGNI costs)']
     }
@@ -2152,6 +5055,7 @@ class DefaultTipCalculatorFactory implements TipCalculatorFactory {
       `<p>Hint 2: Put rules in compact constructors / static factories: Phone strips non-digits, handles optional 91 prefix, checks 10 digits; Money rejects negative and mismatched currency in <code>plus</code>.</p>`,
       `<p>Hint 3: Change the service signature to <code>deposit(Phone, Money)</code>. Records give value-based <code>equals/hashCode</code>, so Phone works as a map key. Keep one currency per wallet and check it.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "30 INR\ntrue\nrejected: INR + USD\nrejected: bad phone: +9112345\nrejected: negative amount\n" }] },
     solution: {
       approach: `<p><b>Refactor:</b> Replace Primitive with Object. <code>Money</code> uses integer minor units (no floating-point error) and refuses mixed currencies. <code>Phone</code> normalises in a static factory and validates in the compact constructor, so every <code>Phone</code> instance is valid ("parse, don't validate"). The service now takes types that make the old bugs impossible to express, and validation lives in one place each.</p>`,
       code: `record Money(long minor, String currency) {
@@ -2187,14 +5091,210 @@ class WalletService {
         WalletService w = new WalletService();
         w.deposit(Phone.of("98765 43210"), new Money(10, "INR"));
         w.deposit(Phone.of("+91-98765-43210"), new Money(20, "INR"));
-        System.out.println(w.balance(Phone.of("9876543210")));   // Money[minor=30, currency=INR]
+        Money total = w.balance(Phone.of("9876543210"));
+        System.out.println(total.minor() + " " + total.currency());                       // 30 INR
+        System.out.println(Phone.of("98765 43210").equals(Phone.of("+91-98765-43210")));   // true: same value, same account
         try {
             w.deposit(Phone.of("9876543210"), new Money(5, "USD"));
         } catch (IllegalArgumentException e) {
             System.out.println("rejected: " + e.getMessage());
         }
+        try {
+            Phone.of("12345");
+        } catch (IllegalArgumentException e) {
+            System.out.println("rejected: " + e.getMessage());
+        }
+        try {
+            new Money(-1, "INR");
+        } catch (IllegalArgumentException e) {
+            System.out.println("rejected: " + e.getMessage());
+        }
     }
 }`,
+      alt: [
+        { lang: 'python', code: `import re
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Money:
+    minor: int
+    currency: str
+
+    def __post_init__(self) -> None:
+        if self.minor < 0:
+            raise ValueError("negative amount")
+
+    def plus(self, other: "Money") -> "Money":
+        if self.currency != other.currency:
+            raise ValueError(f"{self.currency} + {other.currency}")
+        return Money(self.minor + other.minor, self.currency)
+
+
+@dataclass(frozen=True)
+class Phone:
+    e164: str
+
+    def __post_init__(self) -> None:
+        if not re.fullmatch(r"[+]91[0-9]{10}", self.e164):
+            raise ValueError(f"bad phone: {self.e164}")
+
+    @staticmethod
+    def of(raw: str) -> "Phone":
+        digits = re.sub(r"[^0-9]", "", raw)
+        if len(digits) == 12 and digits.startswith("91"):
+            digits = digits[2:]
+        return Phone("+91" + digits)
+
+
+class WalletService:
+    def __init__(self) -> None:
+        self._balances: dict[Phone, Money] = {}  # frozen dataclass: __eq__ and __hash__ make Phone a safe key
+
+    def deposit(self, phone: Phone, amount: Money) -> None:
+        current = self._balances.get(phone)
+        self._balances[phone] = amount if current is None else current.plus(amount)  # plus() enforces same currency
+
+    def balance(self, phone: Phone) -> Money:
+        return self._balances.get(phone, Money(0, "INR"))
+
+
+if __name__ == "__main__":
+    w = WalletService()
+    w.deposit(Phone.of("98765 43210"), Money(10, "INR"))
+    w.deposit(Phone.of("+91-98765-43210"), Money(20, "INR"))
+    total = w.balance(Phone.of("9876543210"))
+    print(f"{total.minor} {total.currency}")  # 30 INR
+    print(str(Phone.of("98765 43210") == Phone.of("+91-98765-43210")).lower())  # true: same value, same account
+    for action in (
+        lambda: w.deposit(Phone.of("9876543210"), Money(5, "USD")),
+        lambda: Phone.of("12345"),
+        lambda: Money(-1, "INR"),
+    ):
+        try:
+            action()
+        except ValueError as e:
+            print(f"rejected: {e}")` },
+        { lang: 'ts', code: `class Money {
+  constructor(readonly minor: number, readonly currency: string) {
+    if (minor < 0) throw new RangeError("negative amount");
+  }
+  plus(o: Money): Money {
+    if (this.currency !== o.currency) throw new TypeError(\`\${this.currency} + \${o.currency}\`);
+    const sum = this.minor + o.minor;
+    if (!Number.isSafeInteger(sum)) throw new RangeError("integer overflow");
+    return new Money(sum, this.currency);
+  }
+}
+
+class Phone {
+  private constructor(readonly e164: string) {
+    if (!/^[+]91[0-9]{10}$/.test(e164)) throw new RangeError(\`bad phone: \${e164}\`);
+  }
+  static of(raw: string): Phone {
+    let digits = raw.replace(/[^0-9]/g, "");
+    if (digits.length === 12 && digits.startsWith("91")) digits = digits.substring(2);
+    return new Phone("+91" + digits);
+  }
+  equals(o: Phone): boolean { return this.e164 === o.e164; }
+}
+
+class WalletService {
+  private readonly balances = new Map<string, Money>(); // objects compare by identity, so key by the e164 string
+
+  deposit(phone: Phone, amount: Money): void {
+    const current = this.balances.get(phone.e164);
+    this.balances.set(phone.e164, current === undefined ? amount : current.plus(amount)); // plus() enforces same currency
+  }
+  balance(phone: Phone): Money { return this.balances.get(phone.e164) ?? new Money(0, "INR"); }
+}
+
+const w = new WalletService();
+w.deposit(Phone.of("98765 43210"), new Money(10, "INR"));
+w.deposit(Phone.of("+91-98765-43210"), new Money(20, "INR"));
+const total = w.balance(Phone.of("9876543210"));
+console.log(\`\${total.minor} \${total.currency}\`); // 30 INR
+console.log(Phone.of("98765 43210").equals(Phone.of("+91-98765-43210"))); // true: same value, same account
+const attempts: Array<() => void> = [
+  () => w.deposit(Phone.of("9876543210"), new Money(5, "USD")),
+  () => { Phone.of("12345"); },
+  () => { new Money(-1, "INR"); },
+];
+for (const attempt of attempts) {
+  try {
+    attempt();
+  } catch (e) {
+    console.log(\`rejected: \${(e as Error).message}\`);
+  }
+}` },
+        { lang: 'cpp', code: `class Money {
+    long long minor_;
+    string currency_;
+public:
+    Money(long long minor, string currency) : minor_(minor), currency_(std::move(currency)) {
+        if (minor_ < 0) throw invalid_argument("negative amount");
+    }
+    long long minor() const { return minor_; }
+    const string& currency() const { return currency_; }
+    Money plus(const Money& o) const {
+        if (currency_ != o.currency_) throw invalid_argument(currency_ + " + " + o.currency_);
+        long long sum;
+        if (__builtin_add_overflow(minor_, o.minor_, &sum)) throw overflow_error("integer overflow");
+        return Money(sum, currency_);
+    }
+};
+
+class Phone {
+    string e164_;
+    explicit Phone(string e164) : e164_(std::move(e164)) {
+        if (!regex_match(e164_, regex("[+]91[0-9]{10}"))) throw invalid_argument("bad phone: " + e164_);
+    }
+public:
+    static Phone of(const string& raw) {
+        string digits;
+        for (char ch : raw) if (isdigit(static_cast<unsigned char>(ch))) digits += ch;
+        if (digits.size() == 12 && digits.rfind("91", 0) == 0) digits = digits.substr(2);
+        return Phone("+91" + digits);
+    }
+    const string& e164() const { return e164_; }
+    auto operator<=>(const Phone&) const = default;   // value equality and ordering: usable as a map key
+};
+
+class WalletService {
+    map<Phone, Money> balances_;
+public:
+    void deposit(const Phone& phone, const Money& amount) {
+        auto it = balances_.find(phone);
+        if (it == balances_.end()) balances_.emplace(phone, amount);
+        else it->second = it->second.plus(amount);   // plus() enforces same currency
+    }
+    Money balance(const Phone& phone) const {
+        auto it = balances_.find(phone);
+        return it == balances_.end() ? Money(0, "INR") : it->second;
+    }
+};
+
+int main() {
+    WalletService w;
+    w.deposit(Phone::of("98765 43210"), Money(10, "INR"));
+    w.deposit(Phone::of("+91-98765-43210"), Money(20, "INR"));
+    Money total = w.balance(Phone::of("9876543210"));
+    cout << total.minor() << " " << total.currency() << "\\n";   // 30 INR
+    cout << boolalpha << (Phone::of("98765 43210") == Phone::of("+91-98765-43210")) << "\\n";   // true: same value, same account
+    vector<function<void()>> attempts{
+        [&] { w.deposit(Phone::of("9876543210"), Money(5, "USD")); },
+        [] { Phone::of("12345"); },
+        [] { Money(-1, "INR"); },
+    };
+    for (auto& attempt : attempts) {
+        try {
+            attempt();
+        } catch (const exception& e) {
+            cout << "rejected: " << e.what() << "\\n";
+        }
+    }
+}` }
+      ],
       complexity: `<p>Same O(1) per deposit. Validation sites: every caller → one constructor per concept. Classes: +2 tiny records.</p>`,
       followUps: ['Why long minor units instead of BigDecimal? When would you choose BigDecimal? (fractional rates, interest)', 'How would you support multiple currencies per wallet? (Map&lt;Currency, Money&gt;)', 'What does "parse, don\'t validate" mean?']
     }
@@ -2227,6 +5327,7 @@ class WalletService {
       `<p>Hint 2: Move <code>zone()</code> and <code>label()</code> into Address — they use only address data (Feature Envy).</p>`,
       `<p>Hint 3: <code>Delivery.quote(Address a)</code> asks <code>a.zone()</code>. Build addresses with named accessor calls so swapping is visible in review.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "4 30 12 MG Road, Pune, MH - 411001\n7 60 5 Park St, Kolkata, WB - 700016\nrejected: PIN must be 6 digits\nrejected: city required\n" }] },
     solution: {
       approach: `<p><b>Refactor:</b> Introduce Parameter Object (<code>Address</code>) → Move Method (<code>zone</code>, <code>label</code>) into it → validate in the constructor. Signatures shrink to one argument, the swap bug disappears (there is one constructor in one place to review), and address rules have a home.</p>`,
       code: `record Address(String line1, String city, String state, String pin) {
@@ -2245,10 +5346,137 @@ class Delivery {
     int quote(Address to) { return to.zone().equals(LOCAL_ZONE) ? LOCAL_FEE : OUTSTATION_FEE; }
 
     public static void main(String[] args) {
+        Delivery d = new Delivery();
         Address a = new Address("12 MG Road", "Pune", "MH", "411001");
-        System.out.println(a.zone() + " " + new Delivery().quote(a) + " " + a.label());
+        System.out.println(a.zone() + " " + d.quote(a) + " " + a.label());
+        Address b = new Address("5 Park St", "Kolkata", "WB", "700016");
+        System.out.println(b.zone() + " " + d.quote(b) + " " + b.label());
+        try {
+            new Address("1 Lane", "Pune", "MH", "4110");
+        } catch (IllegalArgumentException e) {
+            System.out.println("rejected: " + e.getMessage());
+        }
+        try {
+            new Address("1 Lane", " ", "MH", "411001");
+        } catch (IllegalArgumentException e) {
+            System.out.println("rejected: " + e.getMessage());
+        }
     }
 }`,
+      alt: [
+        { lang: 'python', code: `import re
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Address:
+    line1: str
+    city: str
+    state: str
+    pin: str
+
+    def __post_init__(self) -> None:
+        if not re.fullmatch(r"[0-9]{6}", self.pin or ""):
+            raise ValueError("PIN must be 6 digits")
+        if not self.city or not self.city.strip():
+            raise ValueError("city required")
+
+    def zone(self) -> str:
+        return self.pin[0]
+
+    def label(self) -> str:
+        return f"{self.line1}, {self.city}, {self.state} - {self.pin}"
+
+
+class Delivery:
+    LOCAL_ZONE = "4"
+    LOCAL_FEE = 30
+    OUTSTATION_FEE = 60
+
+    def quote(self, to: Address) -> int:
+        return self.LOCAL_FEE if to.zone() == self.LOCAL_ZONE else self.OUTSTATION_FEE
+
+
+if __name__ == "__main__":
+    d = Delivery()
+    a = Address("12 MG Road", "Pune", "MH", "411001")
+    print(a.zone(), d.quote(a), a.label())
+    b = Address("5 Park St", "Kolkata", "WB", "700016")
+    print(b.zone(), d.quote(b), b.label())
+    for city, pin in (("Pune", "4110"), (" ", "411001")):
+        try:
+            Address("1 Lane", city, "MH", pin)
+        except ValueError as e:
+            print(f"rejected: {e}")` },
+        { lang: 'ts', code: `class Address {
+  constructor(
+    readonly line1: string,
+    readonly city: string,
+    readonly state: string,
+    readonly pin: string,
+  ) {
+    if (!/^[0-9]{6}$/.test(pin)) throw new RangeError("PIN must be 6 digits");
+    if (city.trim() === "") throw new RangeError("city required");
+  }
+  zone(): string { return this.pin.substring(0, 1); }
+  label(): string { return \`\${this.line1}, \${this.city}, \${this.state} - \${this.pin}\`; }
+}
+
+class Delivery {
+  static readonly LOCAL_ZONE = "4";
+  static readonly LOCAL_FEE = 30;
+  static readonly OUTSTATION_FEE = 60;
+
+  quote(to: Address): number { return to.zone() === Delivery.LOCAL_ZONE ? Delivery.LOCAL_FEE : Delivery.OUTSTATION_FEE; }
+}
+
+const d = new Delivery();
+const a = new Address("12 MG Road", "Pune", "MH", "411001");
+console.log(\`\${a.zone()} \${d.quote(a)} \${a.label()}\`);
+const b = new Address("5 Park St", "Kolkata", "WB", "700016");
+console.log(\`\${b.zone()} \${d.quote(b)} \${b.label()}\`);
+for (const [city, pin] of [["Pune", "4110"], [" ", "411001"]]) {
+  try {
+    new Address("1 Lane", city, "MH", pin);
+  } catch (e) {
+    console.log(\`rejected: \${(e as Error).message}\`);
+  }
+}` },
+        { lang: 'cpp', code: `class Address {
+    string line1_, city_, state_, pin_;
+public:
+    Address(string line1, string city, string state, string pin)
+        : line1_(std::move(line1)), city_(std::move(city)), state_(std::move(state)), pin_(std::move(pin)) {
+        if (!regex_match(pin_, regex("[0-9]{6}"))) throw invalid_argument("PIN must be 6 digits");
+        if (all_of(city_.begin(), city_.end(), [](unsigned char c) { return isspace(c); })) throw invalid_argument("city required");
+    }
+    string zone() const { return pin_.substr(0, 1); }
+    string label() const { return line1_ + ", " + city_ + ", " + state_ + " - " + pin_; }
+};
+
+class Delivery {
+public:
+    static inline const string LOCAL_ZONE = "4";
+    static constexpr int LOCAL_FEE = 30;
+    static constexpr int OUTSTATION_FEE = 60;
+    int quote(const Address& to) const { return to.zone() == LOCAL_ZONE ? LOCAL_FEE : OUTSTATION_FEE; }
+};
+
+int main() {
+    Delivery d;
+    Address a("12 MG Road", "Pune", "MH", "411001");
+    cout << a.zone() << " " << d.quote(a) << " " << a.label() << "\\n";
+    Address b("5 Park St", "Kolkata", "WB", "700016");
+    cout << b.zone() << " " << d.quote(b) << " " << b.label() << "\\n";
+    for (auto [city, pin] : vector<pair<string, string>>{{"Pune", "4110"}, {" ", "411001"}}) {
+        try {
+            Address("1 Lane", city, "MH", pin);
+        } catch (const invalid_argument& e) {
+            cout << "rejected: " << e.what() << "\\n";
+        }
+    }
+}` }
+      ],
       complexity: `<p>O(1) everywhere. Parameters per method 4 → 1; validation sites 1 per method → 1 total.</p>`,
       followUps: ['Would a builder help if Address had 10 optional fields?', 'Where would geocoding (lat/long) go — in Address or a separate service? Why?']
     }
@@ -2282,6 +5510,7 @@ class CartView {
       `<p>Hint 2: Move Method → <code>LineItem.total()</code>. Make both printers call it; delete their copies.</p>`,
       `<p>Hint 3: Consider whether the getters are still needed. Often a "tell" method like <code>printLine()</code> or a record with accessors is enough. Test the negative-discount case.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "Pen x 3 = 2500 | 0\nGift x 1 = 0\n" }] },
     solution: {
       approach: `<p><b>Refactor:</b> Move Method <code>lineTotal</code> into <code>LineItem</code> as <code>total()</code>; replace both copies with calls (removes duplication and the drifted bug). <code>LineItem</code> becomes a record with behaviour; printers only format. Cohesion rises in all three classes.</p>`,
       code: `record LineItem(String name, int price, int qty, int discount) {
@@ -2298,8 +5527,81 @@ class EnvyDemo {
         LineItem pen = new LineItem("Pen", 1000, 3, 500);
         LineItem gift = new LineItem("Gift", 100, 1, 500);
         System.out.println(new InvoicePrinter().print(pen) + " | " + new CartView().lineTotal(gift));   // Pen x 3 = 2500 | 0
+        System.out.println(new InvoicePrinter().print(gift));   // Gift x 1 = 0 (discount larger than the price: clamped, not negative)
     }
 }`,
+      alt: [
+        { lang: 'python', code: `from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class LineItem:
+    name: str
+    price: int
+    qty: int
+    discount: int
+
+    def total(self) -> int:
+        return max(0, self.price * self.qty - self.discount)  # rule next to its data
+
+
+class InvoicePrinter:
+    def print(self, item: LineItem) -> str:
+        return f"{item.name} x {item.qty} = {item.total()}"
+
+
+class CartView:
+    def line_total(self, item: LineItem) -> int:
+        return item.total()  # no copy, no drift
+
+
+if __name__ == "__main__":
+    pen = LineItem("Pen", 1000, 3, 500)
+    gift = LineItem("Gift", 100, 1, 500)
+    print(f"{InvoicePrinter().print(pen)} | {CartView().line_total(gift)}")
+    print(InvoicePrinter().print(gift))  # discount larger than the price: clamped, not negative` },
+        { lang: 'ts', code: `class LineItem {
+  constructor(readonly name: string, readonly price: number, readonly qty: number, readonly discount: number) {}
+  total(): number { return Math.max(0, this.price * this.qty - this.discount); } // rule next to its data
+}
+
+class InvoicePrinter {
+  print(item: LineItem): string { return \`\${item.name} x \${item.qty} = \${item.total()}\`; }
+}
+
+class CartView {
+  lineTotal(item: LineItem): number { return item.total(); } // no copy, no drift
+}
+
+const pen = new LineItem("Pen", 1000, 3, 500);
+const gift = new LineItem("Gift", 100, 1, 500);
+console.log(\`\${new InvoicePrinter().print(pen)} | \${new CartView().lineTotal(gift)}\`);
+console.log(new InvoicePrinter().print(gift)); // discount larger than the price: clamped, not negative` },
+        { lang: 'cpp', code: `struct LineItem {
+    string name;
+    int price;
+    int qty;
+    int discount;
+    int total() const { return max(0, price * qty - discount); }   // rule next to its data
+};
+
+class InvoicePrinter {
+public:
+    string print(const LineItem& item) const { return item.name + " x " + to_string(item.qty) + " = " + to_string(item.total()); }
+};
+
+class CartView {
+public:
+    int lineTotal(const LineItem& item) const { return item.total(); }   // no copy, no drift
+};
+
+int main() {
+    LineItem pen{"Pen", 1000, 3, 500};
+    LineItem gift{"Gift", 100, 1, 500};
+    cout << InvoicePrinter().print(pen) << " | " << CartView().lineTotal(gift) << "\\n";
+    cout << InvoicePrinter().print(gift) << "\\n";   // discount larger than the price: clamped, not negative
+}` }
+      ],
       complexity: `<p>O(1) per line. Copies of the formula 2 → 1; the CartView bug is fixed as a side effect.</p>`,
       followUps: ['Tax per line is added — where does it go?', 'When is a pure data class (DTO) acceptable? (API boundaries, serialisation)']
     }
@@ -2334,6 +5636,7 @@ class UndoMisuse {
       `<p>Hint 2: Hold a private <code>Deque&lt;T&gt;</code> (<code>ArrayDeque</code>) and delegate. Use <code>addFirst/removeFirst</code> for the top and <code>removeLast</code> to drop the oldest.</p>`,
       `<p>Hint 3: Expose only push/pop/peek/size/isEmpty. Throw <code>NoSuchElementException</code> on empty pop/peek (ArrayDeque's <code>removeFirst</code>/<code>getFirst</code> already do).</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "c b\n50\nx59\ncannot pop: empty\n" }] },
     solution: {
       approach: `<p><b>Refactor:</b> Replace Inheritance with Delegation (Replace Superclass with Delegate). The class owns a private <code>ArrayDeque</code>; its public surface is exactly the stack operations, so invariants (LIFO order, max 50) cannot be bypassed. As a bonus, <code>ArrayDeque</code> makes "drop oldest" O(1) instead of ArrayList's O(n) <code>remove(0)</code>.</p>`,
       code: `final class UndoStack<T> {
@@ -2355,9 +5658,127 @@ class UndoMisuse {
         System.out.println(s.pop() + " " + s.peek());     // c b
         for (int i = 0; i < 60; i++) s.push("x" + i);
         System.out.println(s.size());                      // 50
+        System.out.println(s.peek());                      // x59: the newest survives, the oldest were dropped
+        try {
+            new UndoStack<String>().pop();
+        } catch (NoSuchElementException e) {
+            System.out.println("cannot pop: empty");
+        }
         // s.add(0, "z");  -- does not compile any more
     }
 }`,
+      alt: [
+        { lang: 'python', code: `from collections import deque
+from typing import Generic, TypeVar
+
+T = TypeVar("T")
+
+
+class UndoStack(Generic[T]):
+    MAX = 50
+
+    def __init__(self) -> None:
+        self._items: deque[T] = deque(maxlen=self.MAX)  # has-a storage; maxlen drops the oldest, O(1)
+
+    def push(self, item: T) -> None:
+        self._items.append(item)
+
+    def pop(self) -> T:
+        return self._items.pop()  # raises IndexError when empty
+
+    def peek(self) -> T:
+        return self._items[-1]
+
+    def size(self) -> int:
+        return len(self._items)
+
+    def is_empty(self) -> bool:
+        return not self._items
+
+
+if __name__ == "__main__":
+    s: UndoStack[str] = UndoStack()
+    for x in "abc":
+        s.push(x)
+    print(s.pop(), s.peek())  # c b
+    for i in range(60):
+        s.push(f"x{i}")
+    print(s.size())  # 50
+    print(s.peek())  # x59: the newest survives, the oldest were dropped
+    try:
+        UndoStack[str]().pop()
+    except IndexError:
+        print("cannot pop: empty")` },
+        { lang: 'ts', code: `class UndoStack<T> {
+  static readonly MAX = 50;
+  private readonly items: T[] = []; // has-a storage; the newest item is last
+
+  push(item: T): void {
+    this.items.push(item);
+    if (this.items.length > UndoStack.MAX) this.items.shift(); // drop the oldest (the array never exceeds 51, so shift is cheap)
+  }
+  pop(): T {
+    if (this.items.length === 0) throw new Error("empty");
+    return this.items.pop() as T;
+  }
+  peek(): T {
+    if (this.items.length === 0) throw new Error("empty");
+    return this.items[this.items.length - 1];
+  }
+  size(): number { return this.items.length; }
+  isEmpty(): boolean { return this.items.length === 0; }
+}
+
+const s = new UndoStack<string>();
+for (const x of ["a", "b", "c"]) s.push(x);
+console.log(\`\${s.pop()} \${s.peek()}\`); // c b
+for (let i = 0; i < 60; i++) s.push(\`x\${i}\`);
+console.log(s.size()); // 50
+console.log(s.peek()); // x59: the newest survives, the oldest were dropped
+try {
+  new UndoStack<string>().pop();
+} catch {
+  console.log("cannot pop: empty");
+}` },
+        { lang: 'cpp', code: `template <typename T>
+class UndoStack {
+    deque<T> items_;   // has-a storage; the newest item is at the front
+public:
+    static constexpr size_t MAX = 50;
+
+    void push(T item) {
+        items_.push_front(std::move(item));
+        if (items_.size() > MAX) items_.pop_back();   // drop the oldest, O(1)
+    }
+    T pop() {
+        if (items_.empty()) throw out_of_range("empty");
+        T top = std::move(items_.front());
+        items_.pop_front();
+        return top;
+    }
+    const T& peek() const {
+        if (items_.empty()) throw out_of_range("empty");
+        return items_.front();
+    }
+    size_t size() const { return items_.size(); }
+    bool isEmpty() const { return items_.empty(); }
+};
+
+int main() {
+    UndoStack<string> s;
+    for (string x : {"a", "b", "c"}) s.push(x);
+    string top = s.pop();
+    cout << top << " " << s.peek() << "\\n";   // c b
+    for (int i = 0; i < 60; i++) s.push("x" + to_string(i));
+    cout << s.size() << "\\n";   // 50
+    cout << s.peek() << "\\n";   // x59: the newest survives, the oldest were dropped
+    try {
+        UndoStack<string>().pop();
+    } catch (const out_of_range&) {
+        cout << "cannot pop: empty\\n";
+    }
+}` }
+      ],
       complexity: `<p>push/pop/peek O(1) (drop-oldest improved from O(n) to O(1)). Public methods: ~45 → 5.</p>`,
       followUps: ['How would you add redo? (second stack; cleared on new push)', 'When WOULD extending a JDK collection be acceptable? (AbstractList etc. designed for extension)']
     }
@@ -2398,6 +5819,7 @@ class Dashboard {
       `<p>Hint 2: Make <code>Car</code> an interface (or sealed) with <code>plate()</code> and <code>needsService()</code>; <code>PetrolCar</code> and <code>ElectricCar</code> implement it using their own parts.</p>`,
       `<p>Hint 3: Remove the getters that leaked internals (<code>getEngine</code>, <code>getFuelTank</code>). Dashboard becomes a one-line filter over cars.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "[KA01, KA03, KA05]\n[]\n" }] },
     solution: {
       approach: `<p><b>Refactor:</b> Hide Delegate + Replace Conditional with Polymorphism. Each car type answers <code>needsService()</code> using its own parts; the dashboard talks only to <code>Car</code>. Electric cars plug in without touching the dashboard, and the engine/tank classes are free to change.</p>`,
       code: `sealed interface Car permits PetrolCar, ElectricCar {
@@ -2417,10 +5839,146 @@ class Dashboard {
         return cars.stream().filter(Car::needsService).map(Car::plate).toList();
     }
     public static void main(String[] args) {
-        List<Car> fleet = List.of(new PetrolCar("KA01", 3, 80), new PetrolCar("KA02", 40, 90), new ElectricCar("KA03", 10));
-        System.out.println(new Dashboard().needingService(fleet));   // [KA01, KA03]
+        List<Car> fleet = List.of(new PetrolCar("KA01", 3, 80), new PetrolCar("KA02", 40, 90), new ElectricCar("KA03", 10),
+                new PetrolCar("KA04", 5, 20), new PetrolCar("KA05", 40, 10), new ElectricCar("KA06", 15));
+        System.out.println(new Dashboard().needingService(fleet));   // [KA01, KA03, KA05]; KA04 and KA06 sit exactly on the limit
+        System.out.println(new Dashboard().needingService(List.of()));   // []
     }
 }`,
+      alt: [
+        { lang: 'python', code: `from abc import ABC, abstractmethod
+from dataclasses import dataclass
+
+
+class Car(ABC):
+    plate: str
+
+    @abstractmethod
+    def needs_service(self) -> bool: ...
+
+
+@dataclass(frozen=True)
+class PetrolCar(Car):
+    MIN_FUEL = 5
+    MIN_OIL = 20
+
+    plate: str
+    fuel_litres: int
+    oil_percent: int
+
+    def needs_service(self) -> bool:
+        return self.fuel_litres < self.MIN_FUEL or self.oil_percent < self.MIN_OIL
+
+
+@dataclass(frozen=True)
+class ElectricCar(Car):
+    MIN_BATTERY = 15
+
+    plate: str
+    battery_percent: int
+
+    def needs_service(self) -> bool:
+        return self.battery_percent < self.MIN_BATTERY
+
+
+class Dashboard:
+    def needing_service(self, cars: list[Car]) -> list[str]:
+        return [c.plate for c in cars if c.needs_service()]
+
+
+if __name__ == "__main__":
+    fleet = [
+        PetrolCar("KA01", 3, 80), PetrolCar("KA02", 40, 90), ElectricCar("KA03", 10),
+        PetrolCar("KA04", 5, 20), PetrolCar("KA05", 40, 10), ElectricCar("KA06", 15),
+    ]
+    show = lambda plates: "[" + ", ".join(plates) + "]"
+    print(show(Dashboard().needing_service(fleet)))  # [KA01, KA03, KA05]; KA04 and KA06 sit exactly on the limit
+    print(show(Dashboard().needing_service([])))  # []` },
+        { lang: 'ts', code: `interface Car {
+  readonly plate: string;
+  needsService(): boolean;
+}
+
+class PetrolCar implements Car {
+  static readonly MIN_FUEL = 5;
+  static readonly MIN_OIL = 20;
+  constructor(readonly plate: string, private readonly fuelLitres: number, private readonly oilPercent: number) {}
+  needsService(): boolean { return this.fuelLitres < PetrolCar.MIN_FUEL || this.oilPercent < PetrolCar.MIN_OIL; }
+}
+
+class ElectricCar implements Car {
+  static readonly MIN_BATTERY = 15;
+  constructor(readonly plate: string, private readonly batteryPercent: number) {}
+  needsService(): boolean { return this.batteryPercent < ElectricCar.MIN_BATTERY; }
+}
+
+class Dashboard {
+  needingService(cars: readonly Car[]): string[] {
+    return cars.filter((c) => c.needsService()).map((c) => c.plate);
+  }
+}
+
+const fleet: Car[] = [
+  new PetrolCar("KA01", 3, 80), new PetrolCar("KA02", 40, 90), new ElectricCar("KA03", 10),
+  new PetrolCar("KA04", 5, 20), new PetrolCar("KA05", 40, 10), new ElectricCar("KA06", 15),
+];
+const show = (plates: string[]): string => \`[\${plates.join(", ")}]\`;
+console.log(show(new Dashboard().needingService(fleet))); // [KA01, KA03, KA05]; KA04 and KA06 sit exactly on the limit
+console.log(show(new Dashboard().needingService([]))); // []` },
+        { lang: 'cpp', code: `class Car {
+public:
+    virtual ~Car() = default;
+    virtual const string& plate() const = 0;
+    virtual bool needsService() const = 0;
+};
+
+class PetrolCar final : public Car {
+    string plate_;
+    int fuelLitres_, oilPercent_;
+public:
+    static constexpr int MIN_FUEL = 5, MIN_OIL = 20;
+    PetrolCar(string plate, int fuelLitres, int oilPercent) : plate_(std::move(plate)), fuelLitres_(fuelLitres), oilPercent_(oilPercent) {}
+    const string& plate() const override { return plate_; }
+    bool needsService() const override { return fuelLitres_ < MIN_FUEL || oilPercent_ < MIN_OIL; }
+};
+
+class ElectricCar final : public Car {
+    string plate_;
+    int batteryPercent_;
+public:
+    static constexpr int MIN_BATTERY = 15;
+    ElectricCar(string plate, int batteryPercent) : plate_(std::move(plate)), batteryPercent_(batteryPercent) {}
+    const string& plate() const override { return plate_; }
+    bool needsService() const override { return batteryPercent_ < MIN_BATTERY; }
+};
+
+class Dashboard {
+public:
+    vector<string> needingService(const vector<unique_ptr<Car>>& cars) const {
+        vector<string> plates;
+        for (const auto& c : cars) if (c->needsService()) plates.push_back(c->plate());
+        return plates;
+    }
+};
+
+static string show(const vector<string>& plates) {
+    string out = "[";
+    for (size_t i = 0; i < plates.size(); i++) out += (i ? ", " : "") + plates[i];
+    return out + "]";
+}
+
+int main() {
+    vector<unique_ptr<Car>> fleet;
+    fleet.push_back(make_unique<PetrolCar>("KA01", 3, 80));
+    fleet.push_back(make_unique<PetrolCar>("KA02", 40, 90));
+    fleet.push_back(make_unique<ElectricCar>("KA03", 10));
+    fleet.push_back(make_unique<PetrolCar>("KA04", 5, 20));
+    fleet.push_back(make_unique<PetrolCar>("KA05", 40, 10));
+    fleet.push_back(make_unique<ElectricCar>("KA06", 15));
+    cout << show(Dashboard().needingService(fleet)) << "\\n";   // [KA01, KA03, KA05]; KA04 and KA06 sit exactly on the limit
+    cout << show(Dashboard().needingService({})) << "\\n";      // []
+}` }
+      ],
       complexity: `<p>O(cars). Classes the dashboard depends on: 4 → 1.</p>`,
       followUps: ['The UI needs to show WHY a car needs service — how without breaking LoD? (return a ServiceReport value)', 'Is cars.stream().filter().map() a Demeter violation? Why not?']
     }
@@ -2443,12 +6001,13 @@ class PriceService {
     }
 }`
     },
-    mcq: { q: 'What is the standard Java way to make "now" testable?', options: ['Call System.currentTimeMillis() instead', 'Inject a java.time.Clock and use LocalDate.now(clock)', 'Use Thread.sleep in tests until Saturday', 'Mock LocalDate with reflection'], answer: 1, explain: 'java.time.Clock exists for this. Production passes Clock.systemDefaultZone(); tests pass Clock.fixed(...).' },
+    mcq: { q: 'What is the standard way to make "now" testable?', options: ['Call System.currentTimeMillis() instead', 'Inject a clock (Java\'s java.time.Clock, or a function that returns today\'s date) and ask it for the date', 'Use Thread.sleep in tests until Saturday', 'Mock LocalDate with reflection'], answer: 1, explain: 'Make the clock a dependency. In Java, java.time.Clock exists for this: production passes Clock.systemDefaultZone() and tests pass Clock.fixed(...). In Python, TypeScript or C++ the clock is a function that returns today\'s date: production passes the real one, tests pass a fixed one.' },
     hints: [
       `<p>Hint 1: List the hidden inputs of <code>finalPrice</code>: today's date and the surcharge percent. Make them explicit dependencies.</p>`,
-      `<p>Hint 2: Constructor-inject a <code>Clock</code> and the <code>weekendPercent</code> (an immutable value). Use <code>LocalDate.now(clock)</code>.</p>`,
+      `<p>Hint 2: Constructor-inject a clock (Java's <code>Clock</code>, or a function that returns today's date in Python, TypeScript and C++) and the <code>weekendPercent</code> (an immutable value). Ask the injected clock for the date.</p>`,
       `<p>Hint 3: In the demo build two services with <code>Clock.fixed(Instant.parse("2026-10-17T10:00:00Z"), ZoneOffset.UTC)</code> (Saturday) and a Wednesday clock, and check 1100 and 1000.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "1100\n1000\n1100\n1000\n" }] },
     solution: {
       approach: `<p><b>Refactor:</b> make implicit dependencies explicit. The clock and the percent are passed in the constructor (dependency injection), the global config is gone, and the weekend rule is extracted into a small well-named method. Tests now pin any date and any percent, and there is no shared mutable state between tests.</p>`,
       code: `class PriceService {
@@ -2472,11 +6031,99 @@ class PriceService {
     public static void main(String[] args) {
         Clock saturday = Clock.fixed(Instant.parse("2026-10-17T10:00:00Z"), ZoneOffset.UTC);
         Clock wednesday = Clock.fixed(Instant.parse("2026-10-14T10:00:00Z"), ZoneOffset.UTC);
+        Clock sunday = Clock.fixed(Instant.parse("2026-10-18T23:30:00Z"), ZoneOffset.UTC);
         System.out.println(new PriceService(saturday, 10).finalPrice(1000));   // 1100
         System.out.println(new PriceService(wednesday, 10).finalPrice(1000));  // 1000
+        System.out.println(new PriceService(sunday, 10).finalPrice(1000));     // 1100
+        System.out.println(new PriceService(saturday, 0).finalPrice(1000));    // 1000: the percent is injected too
         // production: new PriceService(Clock.systemDefaultZone(), configuredPercent)
     }
 }`,
+      alt: [
+        { lang: 'python', code: `from datetime import date
+from typing import Callable
+
+Clock = Callable[[], date]  # a clock is just a function that returns today's date
+
+
+class PriceService:
+    def __init__(self, clock: Clock, weekend_percent: int) -> None:
+        self._clock = clock
+        self._weekend_percent = weekend_percent
+
+    def final_price(self, base: int) -> int:
+        if self._is_weekend(self._clock()):
+            return base + base * self._weekend_percent // 100
+        return base
+
+    @staticmethod
+    def _is_weekend(day: date) -> bool:
+        return day.weekday() >= 5  # Monday is 0, so 5 and 6 are Saturday and Sunday
+
+
+if __name__ == "__main__":
+    saturday: Clock = lambda: date(2026, 10, 17)
+    wednesday: Clock = lambda: date(2026, 10, 14)
+    sunday: Clock = lambda: date(2026, 10, 18)
+    print(PriceService(saturday, 10).final_price(1000))  # 1100
+    print(PriceService(wednesday, 10).final_price(1000))  # 1000
+    print(PriceService(sunday, 10).final_price(1000))  # 1100
+    print(PriceService(saturday, 0).final_price(1000))  # 1000: the percent is injected too
+    # production: PriceService(date.today, configured_percent)` },
+        { lang: 'ts', code: `type Clock = () => Date; // inject the clock instead of calling new Date() inside the service
+
+class PriceService {
+  constructor(private readonly clock: Clock, private readonly weekendPercent: number) {}
+
+  finalPrice(base: number): number {
+    return PriceService.isWeekend(this.clock()) ? base + Math.floor((base * this.weekendPercent) / 100) : base;
+  }
+
+  private static isWeekend(date: Date): boolean {
+    const day = date.getUTCDay(); // 0 = Sunday, 6 = Saturday
+    return day === 0 || day === 6;
+  }
+}
+
+const saturday: Clock = () => new Date("2026-10-17T10:00:00Z");
+const wednesday: Clock = () => new Date("2026-10-14T10:00:00Z");
+const sunday: Clock = () => new Date("2026-10-18T23:30:00Z");
+console.log(new PriceService(saturday, 10).finalPrice(1000)); // 1100
+console.log(new PriceService(wednesday, 10).finalPrice(1000)); // 1000
+console.log(new PriceService(sunday, 10).finalPrice(1000)); // 1100
+console.log(new PriceService(saturday, 0).finalPrice(1000)); // 1000: the percent is injected too
+// production: new PriceService(() => new Date(), configuredPercent)` },
+        { lang: 'cpp', code: `using Clock = function<chrono::sys_days()>;   // inject "today" as a callable
+
+class PriceService {
+    Clock clock_;
+    int weekendPercent_;
+
+    static bool isWeekend(chrono::sys_days day) {
+        chrono::weekday wd{day};
+        return wd == chrono::Saturday || wd == chrono::Sunday;
+    }
+
+public:
+    PriceService(Clock clock, int weekendPercent) : clock_(std::move(clock)), weekendPercent_(weekendPercent) {}
+
+    int finalPrice(int base) const {
+        return isWeekend(clock_()) ? base + base * weekendPercent_ / 100 : base;
+    }
+};
+
+int main() {
+    using namespace chrono;
+    Clock saturday = [] { return sys_days{year{2026} / 10 / 17}; };
+    Clock wednesday = [] { return sys_days{year{2026} / 10 / 14}; };
+    Clock sunday = [] { return sys_days{year{2026} / 10 / 18}; };
+    cout << PriceService(saturday, 10).finalPrice(1000) << "\\n";    // 1100
+    cout << PriceService(wednesday, 10).finalPrice(1000) << "\\n";   // 1000
+    cout << PriceService(sunday, 10).finalPrice(1000) << "\\n";      // 1100
+    cout << PriceService(saturday, 0).finalPrice(1000) << "\\n";     // 1000: the percent is injected too
+    // production: a clock that returns floor<days>(system_clock::now())
+}` }
+      ],
       complexity: `<p>O(1). Hidden dependencies 2 → 0; flaky tests → deterministic.</p>`,
       followUps: ['Which time zone defines "weekend" for a global product? (the hotel\'s, not the server\'s)', 'Where else does hidden global coupling show up? (Random, UUID, environment variables, singletons)']
     }
@@ -2524,6 +6171,7 @@ class PriceService {
       `<p>Hint 2: <code>interface Channel { String id(); boolean accepts(String to); int costPaise(); String deliver(String to, String msg); }</code>. The service holds a <code>LinkedHashMap&lt;String, Channel&gt;</code> built from a list passed to its constructor.</p>`,
       `<p>Hint 3: <code>send</code> = look up (unknown → exception) → check <code>accepts</code> → <code>deliver</code>. <code>availableChannels</code> = the map's keys (registration order). Adding WhatsApp = new class + add it to the list in the wiring code. Reject duplicate ids at registration.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "WHATSAPP to 9876543210: Hi cost 40\nEMAIL to asha@x.com: Hi cost 0\n[EMAIL, SMS, WHATSAPP]\ninvalid recipient for SMS\nunknown channel PUSH\nduplicate channel SMS\n" }] },
     solution: {
       approach: `<p><b>Refactor:</b> Replace Conditional with Polymorphism + Move Method (gather each channel's knowledge into its own class) + a small registry (Open/Closed). The <code>NotificationService</code> no longer changes when channels are added; it only orchestrates lookup → validation → delivery. Channel classes are highly cohesive (everything about one channel) and loosely coupled (the service sees only the interface). The settings list is derived from the registry, so it cannot get out of sync.</p>`,
       code: `interface Channel {
@@ -2576,10 +6224,266 @@ final class NotificationService {
     public static void main(String[] args) {
         NotificationService svc = new NotificationService(List.of(new EmailChannel(), new SmsChannel(), new WhatsAppChannel()));
         System.out.println(svc.send("WHATSAPP", "9876543210", "Hi") + " cost " + svc.costPaise("WHATSAPP"));
+        System.out.println(svc.send("EMAIL", "asha@x.com", "Hi") + " cost " + svc.costPaise("EMAIL"));
         System.out.println(svc.availableChannels());
-        try { svc.send("SMS", "asha@x.com", "Hi"); } catch (IllegalArgumentException e) { System.out.println(e.getMessage()); }
+        String[][] bad = {{"SMS", "asha@x.com"}, {"PUSH", "9876543210"}};
+        for (String[] b : bad) {
+            try { svc.send(b[0], b[1], "Hi"); } catch (IllegalArgumentException e) { System.out.println(e.getMessage()); }
+        }
+        try { new NotificationService(List.of(new SmsChannel(), new SmsChannel())); } catch (IllegalArgumentException e) { System.out.println(e.getMessage()); }
     }
 }`,
+      alt: [
+        { lang: 'python', code: `import re
+from abc import ABC, abstractmethod
+
+
+class Channel(ABC):
+    @property
+    @abstractmethod
+    def id(self) -> str: ...
+
+    @abstractmethod
+    def accepts(self, recipient: str) -> bool: ...
+
+    @abstractmethod
+    def cost_paise(self) -> int: ...
+
+    @abstractmethod
+    def deliver(self, recipient: str, message: str) -> str: ...
+
+
+class EmailChannel(Channel):
+    id = "EMAIL"
+
+    def accepts(self, recipient: str) -> bool:
+        return "@" in recipient
+
+    def cost_paise(self) -> int:
+        return 0
+
+    def deliver(self, recipient: str, message: str) -> str:
+        return f"EMAIL to {recipient}: {message}"
+
+
+class SmsChannel(Channel):
+    id = "SMS"
+
+    def accepts(self, recipient: str) -> bool:
+        return re.fullmatch(r"[0-9]{10}", recipient) is not None
+
+    def cost_paise(self) -> int:
+        return 25
+
+    def deliver(self, recipient: str, message: str) -> str:
+        return f"SMS to {recipient}: {message}"
+
+
+class WhatsAppChannel(Channel):  # the NEW channel: one class
+    id = "WHATSAPP"
+
+    def accepts(self, recipient: str) -> bool:
+        return re.fullmatch(r"[0-9]{10}", recipient) is not None
+
+    def cost_paise(self) -> int:
+        return 40
+
+    def deliver(self, recipient: str, message: str) -> str:
+        return f"WHATSAPP to {recipient}: {message}"
+
+
+class NotificationService:
+    def __init__(self, available: list[Channel]) -> None:
+        self._channels: dict[str, Channel] = {}  # dicts keep insertion order
+        for c in available:
+            if c.id in self._channels:
+                raise ValueError(f"duplicate channel {c.id}")
+            self._channels[c.id] = c
+
+    def _lookup(self, channel_id: str) -> Channel:
+        channel = self._channels.get(channel_id)
+        if channel is None:
+            raise ValueError(f"unknown channel {channel_id}")
+        return channel
+
+    def send(self, channel_id: str, to: str, msg: str) -> str:
+        channel = self._lookup(channel_id)
+        if not channel.accepts(to):
+            raise ValueError(f"invalid recipient for {channel_id}")
+        return channel.deliver(to, msg)
+
+    def cost_paise(self, channel_id: str) -> int:
+        return self._lookup(channel_id).cost_paise()
+
+    def available_channels(self) -> list[str]:
+        return list(self._channels)
+
+
+if __name__ == "__main__":
+    svc = NotificationService([EmailChannel(), SmsChannel(), WhatsAppChannel()])
+    print(f"{svc.send('WHATSAPP', '9876543210', 'Hi')} cost {svc.cost_paise('WHATSAPP')}")
+    print(f"{svc.send('EMAIL', 'asha@x.com', 'Hi')} cost {svc.cost_paise('EMAIL')}")
+    print("[" + ", ".join(svc.available_channels()) + "]")
+    for channel_id, to in (("SMS", "asha@x.com"), ("PUSH", "9876543210")):
+        try:
+            svc.send(channel_id, to, "Hi")
+        except ValueError as e:
+            print(e)
+    try:
+        NotificationService([SmsChannel(), SmsChannel()])
+    except ValueError as e:
+        print(e)` },
+        { lang: 'ts', code: `interface Channel {
+  readonly id: string;
+  accepts(recipient: string): boolean;
+  costPaise(): number;
+  deliver(recipient: string, message: string): string;
+}
+
+class EmailChannel implements Channel {
+  readonly id = "EMAIL";
+  accepts(r: string): boolean { return r.includes("@"); }
+  costPaise(): number { return 0; }
+  deliver(r: string, m: string): string { return \`EMAIL to \${r}: \${m}\`; }
+}
+class SmsChannel implements Channel {
+  readonly id = "SMS";
+  accepts(r: string): boolean { return /^[0-9]{10}$/.test(r); }
+  costPaise(): number { return 25; }
+  deliver(r: string, m: string): string { return \`SMS to \${r}: \${m}\`; }
+}
+class WhatsAppChannel implements Channel { // the NEW channel: one class
+  readonly id = "WHATSAPP";
+  accepts(r: string): boolean { return /^[0-9]{10}$/.test(r); }
+  costPaise(): number { return 40; }
+  deliver(r: string, m: string): string { return \`WHATSAPP to \${r}: \${m}\`; }
+}
+
+class NotificationService {
+  private readonly channels = new Map<string, Channel>(); // Map keeps insertion order
+
+  constructor(available: readonly Channel[]) {
+    for (const c of available) {
+      if (this.channels.has(c.id)) throw new Error(\`duplicate channel \${c.id}\`);
+      this.channels.set(c.id, c);
+    }
+  }
+  private lookup(id: string): Channel {
+    const c = this.channels.get(id);
+    if (c === undefined) throw new Error(\`unknown channel \${id}\`);
+    return c;
+  }
+  send(channelId: string, to: string, msg: string): string {
+    const c = this.lookup(channelId);
+    if (!c.accepts(to)) throw new Error(\`invalid recipient for \${channelId}\`);
+    return c.deliver(to, msg);
+  }
+  costPaise(channelId: string): number { return this.lookup(channelId).costPaise(); }
+  availableChannels(): string[] { return [...this.channels.keys()]; }
+}
+
+const svc = new NotificationService([new EmailChannel(), new SmsChannel(), new WhatsAppChannel()]);
+console.log(\`\${svc.send("WHATSAPP", "9876543210", "Hi")} cost \${svc.costPaise("WHATSAPP")}\`);
+console.log(\`\${svc.send("EMAIL", "asha@x.com", "Hi")} cost \${svc.costPaise("EMAIL")}\`);
+console.log(\`[\${svc.availableChannels().join(", ")}]\`);
+for (const [channelId, to] of [["SMS", "asha@x.com"], ["PUSH", "9876543210"]]) {
+  try {
+    svc.send(channelId, to, "Hi");
+  } catch (e) {
+    console.log((e as Error).message);
+  }
+}
+try {
+  new NotificationService([new SmsChannel(), new SmsChannel()]);
+} catch (e) {
+  console.log((e as Error).message);
+}` },
+        { lang: 'cpp', code: `class Channel {
+public:
+    virtual ~Channel() = default;
+    virtual string id() const = 0;
+    virtual bool accepts(const string& recipient) const = 0;
+    virtual int costPaise() const = 0;
+    virtual string deliver(const string& recipient, const string& message) const = 0;
+};
+
+class EmailChannel : public Channel {
+public:
+    string id() const override { return "EMAIL"; }
+    bool accepts(const string& r) const override { return r.find('@') != string::npos; }
+    int costPaise() const override { return 0; }
+    string deliver(const string& r, const string& m) const override { return "EMAIL to " + r + ": " + m; }
+};
+class SmsChannel : public Channel {
+public:
+    string id() const override { return "SMS"; }
+    bool accepts(const string& r) const override { return regex_match(r, regex("[0-9]{10}")); }
+    int costPaise() const override { return 25; }
+    string deliver(const string& r, const string& m) const override { return "SMS to " + r + ": " + m; }
+};
+class WhatsAppChannel : public Channel {   // the NEW channel: one class
+public:
+    string id() const override { return "WHATSAPP"; }
+    bool accepts(const string& r) const override { return regex_match(r, regex("[0-9]{10}")); }
+    int costPaise() const override { return 40; }
+    string deliver(const string& r, const string& m) const override { return "WHATSAPP to " + r + ": " + m; }
+};
+
+class NotificationService {
+    unordered_map<string, unique_ptr<Channel>> channels_;   // the service owns its channels
+    vector<string> order_;                                  // keeps registration order for the settings page
+
+    const Channel& lookup(const string& id) const {
+        auto it = channels_.find(id);
+        if (it == channels_.end()) throw invalid_argument("unknown channel " + id);
+        return *it->second;
+    }
+
+public:
+    explicit NotificationService(vector<unique_ptr<Channel>> available) {
+        for (auto& c : available) {
+            string id = c->id();
+            if (!channels_.emplace(id, std::move(c)).second) throw invalid_argument("duplicate channel " + id);
+            order_.push_back(id);
+        }
+    }
+    string send(const string& channelId, const string& to, const string& msg) const {
+        const Channel& c = lookup(channelId);
+        if (!c.accepts(to)) throw invalid_argument("invalid recipient for " + channelId);
+        return c.deliver(to, msg);
+    }
+    int costPaise(const string& channelId) const { return lookup(channelId).costPaise(); }
+    const vector<string>& availableChannels() const { return order_; }
+};
+
+int main() {
+    vector<unique_ptr<Channel>> all;
+    all.push_back(make_unique<EmailChannel>());
+    all.push_back(make_unique<SmsChannel>());
+    all.push_back(make_unique<WhatsAppChannel>());
+    NotificationService svc(std::move(all));
+    cout << svc.send("WHATSAPP", "9876543210", "Hi") << " cost " << svc.costPaise("WHATSAPP") << "\\n";
+    cout << svc.send("EMAIL", "asha@x.com", "Hi") << " cost " << svc.costPaise("EMAIL") << "\\n";
+    cout << "[";
+    for (size_t i = 0; i < svc.availableChannels().size(); i++) cout << (i ? ", " : "") << svc.availableChannels()[i];
+    cout << "]\\n";
+    for (auto [channelId, to] : vector<pair<string, string>>{{"SMS", "asha@x.com"}, {"PUSH", "9876543210"}}) {
+        try {
+            svc.send(channelId, to, "Hi");
+        } catch (const invalid_argument& e) {
+            cout << e.what() << "\\n";
+        }
+    }
+    try {
+        vector<unique_ptr<Channel>> twice;
+        twice.push_back(make_unique<SmsChannel>());
+        twice.push_back(make_unique<SmsChannel>());
+        NotificationService dup(std::move(twice));
+    } catch (const invalid_argument& e) {
+        cout << e.what() << "\\n";
+    }
+}` }
+      ],
       complexity: `<p>Lookup O(1) per send. Places edited per new channel: 5 → 1 class + 1 wiring line. The service class never changes again for new channels.</p>`,
       followUps: ['Channels need different message shapes (email has a subject). How does the interface evolve? (a Message value object; or channel-specific renderers)', 'How would you load channels via ServiceLoader or Spring without the wiring line?', 'Customer preference decides the channel — where does that rule live?']
     }
@@ -2627,6 +6531,7 @@ final class NotificationService {
       `<p>Hint 2: <code>Catalog</code> and <code>MemberDirectory</code> own their maps and expose <code>titleOf(isbn)</code>/<code>nameOf(id)</code> that throw on unknown. A <code>record Loan(memberId, isbn, borrowedOn)</code> replaces the two parallel maps (a data clump!).</p>`,
       `<p>Hint 3: <code>FinePolicy</code> knows loan days and rate (<code>fineFor(loan, returnDate)</code>, <code>isOverdue</code>). <code>LoanService</code> depends on Catalog, MemberDirectory and FinePolicy via constructor. A thin <code>Library</code> facade can keep the old API if callers need it.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "[Asha: Clean Code]\n25\n[]\nunknown book 999\nunknown member m9\nalready on loan: 111\nnot on loan: 222\n0\n" }] },
     solution: {
       approach: `<p><b>Analysis:</b> the method × field table splits into four groups → four cohesive classes. Two parallel maps keyed by isbn are a data clump → <code>record Loan</code>. <b>Refactor:</b> Extract Class ×3 (Catalog, MemberDirectory, FinePolicy), Introduce Parameter Object (Loan), Move Method (fine and overdue rules into FinePolicy). <code>LoanService</code> orchestrates, depending on the others through constructor injection. Each class now changes for one reason (fine rules, wording, catalogue rules), merge conflicts drop, and each class is testable alone.</p>`,
       code: `final class Catalog {
@@ -2699,8 +6604,311 @@ class LibraryDemo {
         loans.borrow("m1", "111", LocalDate.of(2026, 10, 1));
         System.out.println(loans.overdueReminders(LocalDate.of(2026, 10, 16)));   // [Asha: Clean Code]
         System.out.println(loans.returnBook("111", LocalDate.of(2026, 10, 20)));  // 25
+        System.out.println(loans.overdueReminders(LocalDate.of(2026, 10, 20)));   // [] (the book is back)
+        try { loans.borrow("m1", "999", LocalDate.of(2026, 10, 21)); } catch (IllegalArgumentException e) { System.out.println(e.getMessage()); }
+        try { loans.borrow("m9", "111", LocalDate.of(2026, 10, 21)); } catch (IllegalArgumentException e) { System.out.println(e.getMessage()); }
+        loans.borrow("m1", "111", LocalDate.of(2026, 10, 21));
+        try { loans.borrow("m1", "111", LocalDate.of(2026, 10, 22)); } catch (IllegalStateException e) { System.out.println(e.getMessage()); }
+        try { loans.returnBook("222", LocalDate.of(2026, 10, 22)); } catch (IllegalArgumentException e) { System.out.println(e.getMessage()); }
+        System.out.println(loans.returnBook("111", LocalDate.of(2026, 10, 25)));  // 0: returned on time
     }
 }`,
+      alt: [
+        { lang: 'python', code: `from dataclasses import dataclass
+from datetime import date
+
+
+class Catalog:
+    def __init__(self) -> None:
+        self._titles: dict[str, str] = {}
+
+    def add(self, isbn: str, title: str) -> None:
+        self._titles[isbn] = title
+
+    def title_of(self, isbn: str) -> str:
+        if isbn not in self._titles:
+            raise ValueError(f"unknown book {isbn}")
+        return self._titles[isbn]
+
+
+class MemberDirectory:
+    def __init__(self) -> None:
+        self._names: dict[str, str] = {}
+
+    def register(self, member_id: str, name: str) -> None:
+        self._names[member_id] = name
+
+    def name_of(self, member_id: str) -> str:
+        if member_id not in self._names:
+            raise ValueError(f"unknown member {member_id}")
+        return self._names[member_id]
+
+
+@dataclass(frozen=True)
+class Loan:
+    member_id: str
+    isbn: str
+    borrowed_on: date
+
+
+class FinePolicy:
+    def __init__(self, loan_days: int, rupees_per_day: int) -> None:
+        self._loan_days = loan_days
+        self._rupees_per_day = rupees_per_day
+
+    def _days_late(self, loan: Loan, on: date) -> int:
+        return max(0, (on - loan.borrowed_on).days - self._loan_days)
+
+    def fine_for(self, loan: Loan, returned_on: date) -> int:
+        return self._days_late(loan, returned_on) * self._rupees_per_day
+
+    def is_overdue(self, loan: Loan, on: date) -> bool:
+        return self._days_late(loan, on) > 0
+
+
+class LoanService:
+    def __init__(self, catalog: Catalog, members: MemberDirectory, fines: FinePolicy) -> None:
+        self._catalog = catalog
+        self._members = members
+        self._fines = fines
+        self._active_by_isbn: dict[str, Loan] = {}
+
+    def borrow(self, member_id: str, isbn: str, on: date) -> None:
+        self._members.name_of(member_id)  # validates member
+        self._catalog.title_of(isbn)  # validates book
+        if isbn in self._active_by_isbn:
+            raise RuntimeError(f"already on loan: {isbn}")
+        self._active_by_isbn[isbn] = Loan(member_id, isbn, on)
+
+    def return_book(self, isbn: str, on: date) -> int:
+        loan = self._active_by_isbn.pop(isbn, None)
+        if loan is None:
+            raise ValueError(f"not on loan: {isbn}")
+        return self._fines.fine_for(loan, on)
+
+    def overdue_reminders(self, on: date) -> list[str]:
+        return [
+            f"{self._members.name_of(loan.member_id)}: {self._catalog.title_of(loan.isbn)}"
+            for loan in self._active_by_isbn.values()
+            if self._fines.is_overdue(loan, on)
+        ]
+
+
+def attempt(action) -> None:
+    try:
+        action()
+    except (ValueError, RuntimeError) as e:
+        print(e)
+
+
+if __name__ == "__main__":
+    catalog = Catalog()
+    members = MemberDirectory()
+    loans = LoanService(catalog, members, FinePolicy(14, 5))
+    catalog.add("111", "Clean Code")
+    members.register("m1", "Asha")
+    loans.borrow("m1", "111", date(2026, 10, 1))
+    print("[" + ", ".join(loans.overdue_reminders(date(2026, 10, 16))) + "]")  # [Asha: Clean Code]
+    print(loans.return_book("111", date(2026, 10, 20)))  # 25
+    print("[" + ", ".join(loans.overdue_reminders(date(2026, 10, 20))) + "]")  # [] (the book is back)
+    attempt(lambda: loans.borrow("m1", "999", date(2026, 10, 21)))
+    attempt(lambda: loans.borrow("m9", "111", date(2026, 10, 21)))
+    loans.borrow("m1", "111", date(2026, 10, 21))
+    attempt(lambda: loans.borrow("m1", "111", date(2026, 10, 22)))
+    attempt(lambda: loans.return_book("222", date(2026, 10, 22)))
+    print(loans.return_book("111", date(2026, 10, 25)))  # 0: returned on time` },
+        { lang: 'ts', code: `// A calendar day as whole days since 1970-01-01 (UTC), so subtracting two days gives the days between them.
+type Day = number;
+const day = (year: number, month: number, date: number): Day => Date.UTC(year, month - 1, date) / 86_400_000;
+
+class Catalog {
+  private readonly titles = new Map<string, string>();
+  add(isbn: string, title: string): void { this.titles.set(isbn, title); }
+  titleOf(isbn: string): string {
+    const t = this.titles.get(isbn);
+    if (t === undefined) throw new Error(\`unknown book \${isbn}\`);
+    return t;
+  }
+}
+
+class MemberDirectory {
+  private readonly names = new Map<string, string>();
+  register(id: string, name: string): void { this.names.set(id, name); }
+  nameOf(id: string): string {
+    const n = this.names.get(id);
+    if (n === undefined) throw new Error(\`unknown member \${id}\`);
+    return n;
+  }
+}
+
+interface Loan { readonly memberId: string; readonly isbn: string; readonly borrowedOn: Day; }
+
+class FinePolicy {
+  constructor(private readonly loanDays: number, private readonly rupeesPerDay: number) {}
+  private daysLate(loan: Loan, on: Day): number { return Math.max(0, on - loan.borrowedOn - this.loanDays); }
+  fineFor(loan: Loan, returnedOn: Day): number { return this.daysLate(loan, returnedOn) * this.rupeesPerDay; }
+  isOverdue(loan: Loan, on: Day): boolean { return this.daysLate(loan, on) > 0; }
+}
+
+class LoanService {
+  private readonly activeByIsbn = new Map<string, Loan>();
+
+  constructor(
+    private readonly catalog: Catalog,
+    private readonly members: MemberDirectory,
+    private readonly fines: FinePolicy,
+  ) {}
+
+  borrow(memberId: string, isbn: string, on: Day): void {
+    this.members.nameOf(memberId); // validates member
+    this.catalog.titleOf(isbn); // validates book
+    if (this.activeByIsbn.has(isbn)) throw new Error(\`already on loan: \${isbn}\`);
+    this.activeByIsbn.set(isbn, { memberId, isbn, borrowedOn: on });
+  }
+  returnBook(isbn: string, on: Day): number {
+    const loan = this.activeByIsbn.get(isbn);
+    if (loan === undefined) throw new Error(\`not on loan: \${isbn}\`);
+    this.activeByIsbn.delete(isbn);
+    return this.fines.fineFor(loan, on);
+  }
+  overdueReminders(on: Day): string[] {
+    return [...this.activeByIsbn.values()]
+      .filter((loan) => this.fines.isOverdue(loan, on))
+      .map((loan) => \`\${this.members.nameOf(loan.memberId)}: \${this.catalog.titleOf(loan.isbn)}\`);
+  }
+}
+
+function attempt(action: () => void): void {
+  try {
+    action();
+  } catch (e) {
+    console.log((e as Error).message);
+  }
+}
+
+const catalog = new Catalog();
+const members = new MemberDirectory();
+const loans = new LoanService(catalog, members, new FinePolicy(14, 5));
+catalog.add("111", "Clean Code");
+members.register("m1", "Asha");
+loans.borrow("m1", "111", day(2026, 10, 1));
+console.log(\`[\${loans.overdueReminders(day(2026, 10, 16)).join(", ")}]\`); // [Asha: Clean Code]
+console.log(loans.returnBook("111", day(2026, 10, 20))); // 25
+console.log(\`[\${loans.overdueReminders(day(2026, 10, 20)).join(", ")}]\`); // [] (the book is back)
+attempt(() => loans.borrow("m1", "999", day(2026, 10, 21)));
+attempt(() => loans.borrow("m9", "111", day(2026, 10, 21)));
+loans.borrow("m1", "111", day(2026, 10, 21));
+attempt(() => loans.borrow("m1", "111", day(2026, 10, 22)));
+attempt(() => loans.returnBook("222", day(2026, 10, 22)));
+console.log(loans.returnBook("111", day(2026, 10, 25))); // 0: returned on time` },
+        { lang: 'cpp', code: `using Day = chrono::sys_days;
+static Day day(int y, unsigned m, unsigned d) { return Day{chrono::year{y} / chrono::month{m} / chrono::day{d}}; }
+
+class Catalog {
+    map<string, string> titles_;
+public:
+    void add(const string& isbn, const string& title) { titles_[isbn] = title; }
+    const string& titleOf(const string& isbn) const {
+        auto it = titles_.find(isbn);
+        if (it == titles_.end()) throw invalid_argument("unknown book " + isbn);
+        return it->second;
+    }
+};
+
+class MemberDirectory {
+    map<string, string> names_;
+public:
+    void registerMember(const string& id, const string& name) { names_[id] = name; }   // "register" is a reserved word
+    const string& nameOf(const string& id) const {
+        auto it = names_.find(id);
+        if (it == names_.end()) throw invalid_argument("unknown member " + id);
+        return it->second;
+    }
+};
+
+struct Loan {
+    string memberId;
+    string isbn;
+    Day borrowedOn;
+};
+
+class FinePolicy {
+    int loanDays_, rupeesPerDay_;
+    long daysLate(const Loan& loan, Day on) const { return max(0L, static_cast<long>((on - loan.borrowedOn).count()) - loanDays_); }
+public:
+    FinePolicy(int loanDays, int rupeesPerDay) : loanDays_(loanDays), rupeesPerDay_(rupeesPerDay) {}
+    int fineFor(const Loan& loan, Day returnedOn) const { return static_cast<int>(daysLate(loan, returnedOn)) * rupeesPerDay_; }
+    bool isOverdue(const Loan& loan, Day on) const { return daysLate(loan, on) > 0; }
+};
+
+class LoanService {
+    const Catalog& catalog_;
+    const MemberDirectory& members_;
+    const FinePolicy& fines_;
+    vector<Loan> active_;   // in borrowing order, one entry per book on loan
+
+    vector<Loan>::iterator find(const string& isbn) {
+        return find_if(active_.begin(), active_.end(), [&](const Loan& l) { return l.isbn == isbn; });
+    }
+
+public:
+    LoanService(const Catalog& catalog, const MemberDirectory& members, const FinePolicy& fines)
+        : catalog_(catalog), members_(members), fines_(fines) {}
+
+    void borrow(const string& memberId, const string& isbn, Day on) {
+        members_.nameOf(memberId);   // validates member
+        catalog_.titleOf(isbn);      // validates book
+        if (find(isbn) != active_.end()) throw logic_error("already on loan: " + isbn);
+        active_.push_back({memberId, isbn, on});
+    }
+    int returnBook(const string& isbn, Day on) {
+        auto it = find(isbn);
+        if (it == active_.end()) throw invalid_argument("not on loan: " + isbn);
+        Loan loan = *it;
+        active_.erase(it);
+        return fines_.fineFor(loan, on);
+    }
+    vector<string> overdueReminders(Day on) const {
+        vector<string> out;
+        for (const Loan& loan : active_)
+            if (fines_.isOverdue(loan, on)) out.push_back(members_.nameOf(loan.memberId) + ": " + catalog_.titleOf(loan.isbn));
+        return out;
+    }
+};
+
+static string show(const vector<string>& items) {
+    string out = "[";
+    for (size_t i = 0; i < items.size(); i++) out += (i ? ", " : "") + items[i];
+    return out + "]";
+}
+
+static void attempt(const function<void()>& action) {
+    try {
+        action();
+    } catch (const exception& e) {
+        cout << e.what() << "\\n";
+    }
+}
+
+int main() {
+    Catalog catalog;
+    MemberDirectory members;
+    FinePolicy policy(14, 5);
+    LoanService loans(catalog, members, policy);
+    catalog.add("111", "Clean Code");
+    members.registerMember("m1", "Asha");
+    loans.borrow("m1", "111", day(2026, 10, 1));
+    cout << show(loans.overdueReminders(day(2026, 10, 16))) << "\\n";   // [Asha: Clean Code]
+    cout << loans.returnBook("111", day(2026, 10, 20)) << "\\n";        // 25
+    cout << show(loans.overdueReminders(day(2026, 10, 20))) << "\\n";   // [] (the book is back)
+    attempt([&] { loans.borrow("m1", "999", day(2026, 10, 21)); });
+    attempt([&] { loans.borrow("m9", "111", day(2026, 10, 21)); });
+    loans.borrow("m1", "111", day(2026, 10, 21));
+    attempt([&] { loans.borrow("m1", "111", day(2026, 10, 22)); });
+    attempt([&] { loans.returnBook("222", day(2026, 10, 22)); });
+    cout << loans.returnBook("111", day(2026, 10, 25)) << "\\n";        // 0: returned on time
+}` }
+      ],
       complexity: `<p>All operations O(1) except reminders O(active loans) — same as before. LCOM: 1 class with 4 disconnected groups → 4 classes with 1 group each.</p>`,
       followUps: ['Members can borrow max 3 books — which class owns that rule?', 'Reminders must be emailed — where does the mailer dependency go? (a ReminderJob using LoanService, not inside it)', 'Draw the new dependency graph. Is there any cycle?']
     }
@@ -2747,6 +6955,7 @@ class LibraryDemo {
       `<p>Hint 2: Flatten with Extract Method: <code>applyTier</code>, <code>applyCoupon</code>, <code>applyBulk</code>, <code>clampAtZero</code>, called in the same order. Replace magic numbers with constants.</p>`,
       `<p>Hint 3: Use <code>"GOLD".equals(tier)</code> style to keep null-safety identical. Run the pinned table after each step; finish with a loop that compares old vs new for every case.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "all 8 pinned cases identical\nmalformed coupon rejected by both\n" }] },
     solution: {
       approach: `<p><b>Step 1 — pin behaviour:</b> a table of inputs covering every branch and boundary, with outputs recorded from the legacy code (the demo also compares old vs new live). <b>Step 2 — refactor in tiny steps</b>, re-running the table each time: Extract Method for each rule, Replace Nested Conditional with Guard Clauses inside each step, Replace Magic Number with Constant. The pipeline <code>applyTier → applyCoupon → applyBulk → clamp</code> now documents the quirky order explicitly, ready for a separate, approved behaviour change if the business wants one.</p>`,
       code: `final class LegacyPricing {   // kept only to prove equivalence
@@ -2809,8 +7018,263 @@ class PricingCharacterization {
             if (legacy != expected || clean != expected) throw new AssertionError(Arrays.toString(c) + " legacy=" + legacy + " clean=" + clean);
         }
         System.out.println("all " + cases.length + " pinned cases identical");
+
+        int rejected = 0;                       // a malformed coupon fails the same way before and after
+        try { LegacyPricing.price(100, 1, null, "PCTabc"); } catch (NumberFormatException e) { rejected++; }
+        try { Pricing.price(100, 1, null, "PCTabc"); } catch (NumberFormatException e) { rejected++; }
+        System.out.println(rejected == 2 ? "malformed coupon rejected by both" : "behaviour differs");
     }
 }`,
+      alt: [
+        { lang: 'python', code: `from typing import Optional
+
+
+class LegacyPricing:  # kept only to prove equivalence
+    @staticmethod
+    def price(unit: int, qty: int, tier: Optional[str], coupon: Optional[str]) -> int:
+        t = unit * qty
+        if tier is not None:
+            if tier == "GOLD":
+                t = t - t * 10 // 100
+            elif tier == "SILVER":
+                t = t - t * 5 // 100
+        if coupon is not None:
+            if coupon == "FLAT100":
+                if t > 500:
+                    t = t - 100
+            elif coupon.startswith("PCT"):
+                t = t - t * int(coupon[3:]) // 100
+        if qty >= 10:
+            t = t - 50
+        if t < 0:
+            t = 0
+        return t
+
+
+class Pricing:
+    GOLD_PERCENT = 10
+    SILVER_PERCENT = 5
+    FLAT_COUPON_OFF = 100
+    FLAT_COUPON_MIN_TOTAL = 500
+    BULK_MIN_QTY = 10
+    BULK_OFF = 50
+
+    @classmethod
+    def price(cls, unit: int, qty: int, tier: Optional[str], coupon: Optional[str]) -> int:
+        total = unit * qty
+        total = cls._apply_tier(total, tier)
+        total = cls._apply_coupon(total, coupon)
+        total = cls._apply_bulk(total, qty)  # NOTE: after coupon, existing behaviour pinned by tests
+        return max(0, total)
+
+    @staticmethod
+    def _percent_off(amount: int, percent: int) -> int:
+        return amount - amount * percent // 100
+
+    @classmethod
+    def _apply_tier(cls, total: int, tier: Optional[str]) -> int:
+        if tier == "GOLD":
+            return cls._percent_off(total, cls.GOLD_PERCENT)
+        if tier == "SILVER":
+            return cls._percent_off(total, cls.SILVER_PERCENT)
+        return total  # None or unknown tier: no discount
+
+    @classmethod
+    def _apply_coupon(cls, total: int, coupon: Optional[str]) -> int:
+        if coupon is None:
+            return total
+        if coupon == "FLAT100":
+            return total - cls.FLAT_COUPON_OFF if total > cls.FLAT_COUPON_MIN_TOTAL else total
+        if coupon.startswith("PCT"):
+            return cls._percent_off(total, int(coupon[3:]))
+        return total  # unknown coupon: ignored
+
+    @classmethod
+    def _apply_bulk(cls, total: int, qty: int) -> int:
+        return total - cls.BULK_OFF if qty >= cls.BULK_MIN_QTY else total
+
+
+if __name__ == "__main__":
+    cases = [
+        (100, 10, "GOLD", "FLAT100", 750), (60, 1, None, "FLAT100", 60), (501, 1, None, "FLAT100", 401),
+        (500, 1, None, "FLAT100", 500), (200, 3, "SILVER", "PCT10", 513), (10, 10, "GOLD", None, 40),
+        (3, 10, None, "PCT50", 0), (100, 9, "BRONZE", "XYZ", 900),
+    ]
+    for unit, qty, tier, coupon, expected in cases:
+        legacy = LegacyPricing.price(unit, qty, tier, coupon)
+        clean = Pricing.price(unit, qty, tier, coupon)
+        if legacy != expected or clean != expected:
+            raise AssertionError(f"{(unit, qty, tier, coupon)} legacy={legacy} clean={clean}")
+    print(f"all {len(cases)} pinned cases identical")
+
+    rejected = 0  # a malformed coupon fails the same way before and after
+    for price in (LegacyPricing.price, Pricing.price):
+        try:
+            price(100, 1, None, "PCTabc")
+        except ValueError:
+            rejected += 1
+    print("malformed coupon rejected by both" if rejected == 2 else "behaviour differs")` },
+        { lang: 'ts', code: `function parseIntStrict(s: string): number {
+  if (!/^[+-]?[0-9]+$/.test(s)) throw new SyntaxError(\`not a number: \${s}\`);
+  return Number(s);
+}
+
+class LegacyPricing { // kept only to prove equivalence
+  static price(unit: number, qty: number, tier: string | null, coupon: string | null): number {
+    let t = unit * qty;
+    if (tier !== null) {
+      if (tier === "GOLD") t = t - Math.floor((t * 10) / 100);
+      else if (tier === "SILVER") t = t - Math.floor((t * 5) / 100);
+    }
+    if (coupon !== null) {
+      if (coupon === "FLAT100") {
+        if (t > 500) t = t - 100;
+      } else if (coupon.startsWith("PCT")) {
+        t = t - Math.floor((t * parseIntStrict(coupon.substring(3))) / 100);
+      }
+    }
+    if (qty >= 10) t = t - 50;
+    if (t < 0) t = 0;
+    return t;
+  }
+}
+
+class Pricing {
+  static readonly GOLD_PERCENT = 10;
+  static readonly SILVER_PERCENT = 5;
+  static readonly FLAT_COUPON_OFF = 100;
+  static readonly FLAT_COUPON_MIN_TOTAL = 500;
+  static readonly BULK_MIN_QTY = 10;
+  static readonly BULK_OFF = 50;
+
+  static price(unit: number, qty: number, tier: string | null, coupon: string | null): number {
+    let total = unit * qty;
+    total = Pricing.applyTier(total, tier);
+    total = Pricing.applyCoupon(total, coupon);
+    total = Pricing.applyBulk(total, qty); // NOTE: after coupon, existing behaviour pinned by tests
+    return Math.max(0, total);
+  }
+
+  private static percentOff(amount: number, percent: number): number {
+    return amount - Math.floor((amount * percent) / 100);
+  }
+
+  private static applyTier(total: number, tier: string | null): number {
+    if (tier === "GOLD") return Pricing.percentOff(total, Pricing.GOLD_PERCENT);
+    if (tier === "SILVER") return Pricing.percentOff(total, Pricing.SILVER_PERCENT);
+    return total; // null or unknown tier: no discount
+  }
+
+  private static applyCoupon(total: number, coupon: string | null): number {
+    if (coupon === null) return total;
+    if (coupon === "FLAT100") return total > Pricing.FLAT_COUPON_MIN_TOTAL ? total - Pricing.FLAT_COUPON_OFF : total;
+    if (coupon.startsWith("PCT")) return Pricing.percentOff(total, parseIntStrict(coupon.substring(3)));
+    return total; // unknown coupon: ignored
+  }
+
+  private static applyBulk(total: number, qty: number): number {
+    return qty >= Pricing.BULK_MIN_QTY ? total - Pricing.BULK_OFF : total;
+  }
+}
+
+type PinnedCase = [unit: number, qty: number, tier: string | null, coupon: string | null, expected: number];
+const cases: PinnedCase[] = [
+  [100, 10, "GOLD", "FLAT100", 750], [60, 1, null, "FLAT100", 60], [501, 1, null, "FLAT100", 401],
+  [500, 1, null, "FLAT100", 500], [200, 3, "SILVER", "PCT10", 513], [10, 10, "GOLD", null, 40],
+  [3, 10, null, "PCT50", 0], [100, 9, "BRONZE", "XYZ", 900],
+];
+for (const [unit, qty, tier, coupon, expected] of cases) {
+  const legacy = LegacyPricing.price(unit, qty, tier, coupon);
+  const clean = Pricing.price(unit, qty, tier, coupon);
+  if (legacy !== expected || clean !== expected) {
+    throw new Error(\`\${JSON.stringify([unit, qty, tier, coupon])} legacy=\${legacy} clean=\${clean}\`);
+  }
+}
+console.log(\`all \${cases.length} pinned cases identical\`);
+
+let rejected = 0; // a malformed coupon fails the same way before and after
+for (const price of [LegacyPricing.price, Pricing.price]) {
+  try {
+    price(100, 1, null, "PCTabc");
+  } catch (e) {
+    if (e instanceof SyntaxError) rejected++;
+  }
+}
+console.log(rejected === 2 ? "malformed coupon rejected by both" : "behaviour differs");` },
+        { lang: 'cpp', code: `class LegacyPricing {   // kept only to prove equivalence
+public:
+    static int price(int unit, int qty, const optional<string>& tier, const optional<string>& coupon) {
+        int t = unit * qty;
+        if (tier) { if (*tier == "GOLD") t = t - t * 10 / 100; else if (*tier == "SILVER") t = t - t * 5 / 100; }
+        if (coupon) {
+            if (*coupon == "FLAT100") { if (t > 500) t = t - 100; }
+            else if (coupon->rfind("PCT", 0) == 0) t = t - t * stoi(coupon->substr(3)) / 100;
+        }
+        if (qty >= 10) t = t - 50;
+        if (t < 0) t = 0;
+        return t;
+    }
+};
+
+class Pricing {
+    static constexpr int GOLD_PERCENT = 10, SILVER_PERCENT = 5;
+    static constexpr int FLAT_COUPON_OFF = 100, FLAT_COUPON_MIN_TOTAL = 500;
+    static constexpr int BULK_MIN_QTY = 10, BULK_OFF = 50;
+
+    static int percentOff(int amount, int percent) { return amount - amount * percent / 100; }
+
+    static int applyTier(int total, const optional<string>& tier) {
+        if (tier == "GOLD") return percentOff(total, GOLD_PERCENT);
+        if (tier == "SILVER") return percentOff(total, SILVER_PERCENT);
+        return total;   // no tier or unknown tier: no discount
+    }
+
+    static int applyCoupon(int total, const optional<string>& coupon) {
+        if (!coupon) return total;
+        if (*coupon == "FLAT100") return total > FLAT_COUPON_MIN_TOTAL ? total - FLAT_COUPON_OFF : total;
+        if (coupon->rfind("PCT", 0) == 0) return percentOff(total, stoi(coupon->substr(3)));
+        return total;   // unknown coupon: ignored
+    }
+
+    static int applyBulk(int total, int qty) { return qty >= BULK_MIN_QTY ? total - BULK_OFF : total; }
+
+public:
+    static int price(int unit, int qty, const optional<string>& tier, const optional<string>& coupon) {
+        int total = unit * qty;
+        total = applyTier(total, tier);
+        total = applyCoupon(total, coupon);
+        total = applyBulk(total, qty);   // NOTE: after coupon, existing behaviour pinned by tests
+        return max(0, total);
+    }
+};
+
+struct PinnedCase {
+    int unit, qty;
+    optional<string> tier, coupon;
+    int expected;
+};
+
+int main() {
+    vector<PinnedCase> cases{
+        {100, 10, "GOLD", "FLAT100", 750}, {60, 1, nullopt, "FLAT100", 60}, {501, 1, nullopt, "FLAT100", 401},
+        {500, 1, nullopt, "FLAT100", 500}, {200, 3, "SILVER", "PCT10", 513}, {10, 10, "GOLD", nullopt, 40},
+        {3, 10, nullopt, "PCT50", 0}, {100, 9, "BRONZE", "XYZ", 900},
+    };
+    for (const PinnedCase& c : cases) {
+        int legacy = LegacyPricing::price(c.unit, c.qty, c.tier, c.coupon);
+        int clean = Pricing::price(c.unit, c.qty, c.tier, c.coupon);
+        if (legacy != c.expected || clean != c.expected) {
+            throw runtime_error("pinned case failed: legacy=" + to_string(legacy) + " clean=" + to_string(clean));
+        }
+    }
+    cout << "all " << cases.size() << " pinned cases identical\\n";
+
+    int rejected = 0;   // a malformed coupon fails the same way before and after
+    try { LegacyPricing::price(100, 1, nullopt, "PCTabc"); } catch (const invalid_argument&) { rejected++; }
+    try { Pricing::price(100, 1, nullopt, "PCTabc"); } catch (const invalid_argument&) { rejected++; }
+    cout << (rejected == 2 ? "malformed coupon rejected by both" : "behaviour differs") << "\\n";
+}` }
+      ],
       complexity: `<p>O(1) per price. Max nesting 4 → 1; one 25-line method → five methods of 1-5 lines. Most important "metric": 8 pinned cases now guard every future change.</p>`,
       followUps: ['How would you find inputs that cover all branches in a bigger legacy method? (coverage tools, approval tests with generated inputs)', 'The business decides bulk should apply before the coupon. What changes, and in which commit?', 'What if Integer.parseInt fails for "PCTabc"? Should the refactor change that? (No — pin it, then decide)']
     }
@@ -2845,6 +7309,7 @@ class FlyingFireWarrior extends FireWarrior {}    // one class per combination..
       `<p>Hint 2: <code>interface Weapon { int baseDamage(); }</code>, <code>interface Buff { int bonus(); }</code>, <code>enum Ability { FLY, HEAL, ... }</code>. <code>Character</code> is <code>final</code> — nobody can override its internals.</p>`,
       `<p>Hint 3: <code>attack()</code> = weapon.baseDamage() + sum of buff bonuses. Provide <code>equip</code>, <code>addBuff</code>, <code>removeBuff</code>, <code>can(Ability)</code>. No method calls an overridable method of the same object, so the recursion bug is impossible.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "Asha with Sword [] -> 10\nAsha with Sword [Fire, Rage] -> 18\nAsha with Bow [Fire, Rage] -> 15\nAsha with Bow [Fire] -> 12 canFly=true canStealth=false\n12\n" }] },
     solution: {
       approach: `<p><b>Refactor:</b> Replace Inheritance with Delegation along three axes. <code>Character</code> is a <code>final</code> class holding a <code>Weapon</code> (Strategy, swappable), a <code>List&lt;Buff&gt;</code> (stackable parts, the idea behind Decorator) and an <code>EnumSet&lt;Ability&gt;</code>. Because the class is final and only calls its parts' public methods, there is no self-use for a subclass to break (fragile base class gone). Combinations are data, not classes: n weapons + m buffs + k abilities instead of n × 2<sup>m</sup> × 2<sup>k</sup> subclasses.</p>`,
       code: `interface Weapon { int baseDamage(); String name(); }
@@ -2889,9 +7354,236 @@ final class GameCharacter {
         asha.equip(new Bow());
         System.out.println(asha.describe());                   // 15
         asha.removeBuff(new Rage());
-        System.out.println(asha.describe() + " canFly=" + asha.can(Ability.FLY));   // 12 canFly=true
+        System.out.println(asha.describe() + " canFly=" + asha.can(Ability.FLY) + " canStealth=" + asha.can(Ability.STEALTH));   // 12 canFly=true canStealth=false
+        asha.removeBuff(new Rage());                           // already removed: nothing happens
+        System.out.println(asha.attack());                     // 12
     }
 }`,
+      alt: [
+        { lang: 'python', code: `from dataclasses import dataclass
+from enum import Enum, auto
+from typing import Protocol
+
+
+class Weapon(Protocol):
+    def base_damage(self) -> int: ...
+    def name(self) -> str: ...
+
+
+class Buff(Protocol):
+    def bonus(self) -> int: ...
+    def name(self) -> str: ...
+
+
+@dataclass(frozen=True)
+class Sword:
+    def base_damage(self) -> int:
+        return 10
+
+    def name(self) -> str:
+        return "Sword"
+
+
+@dataclass(frozen=True)
+class Bow:
+    def base_damage(self) -> int:
+        return 7
+
+    def name(self) -> str:
+        return "Bow"
+
+
+@dataclass(frozen=True)
+class FireEnchant:
+    def bonus(self) -> int:
+        return 5
+
+    def name(self) -> str:
+        return "Fire"
+
+
+@dataclass(frozen=True)
+class Rage:
+    def bonus(self) -> int:
+        return 3
+
+    def name(self) -> str:
+        return "Rage"
+
+
+class Ability(Enum):
+    FLY = auto()
+    HEAL = auto()
+    STEALTH = auto()
+
+
+class GameCharacter:
+    def __init__(self, name: str, weapon: Weapon, *abilities: Ability) -> None:
+        self._name = name
+        self._weapon = weapon
+        self._buffs: list[Buff] = []
+        self._abilities = set(abilities)
+
+    def equip(self, weapon: Weapon) -> None:  # swap at runtime
+        self._weapon = weapon
+
+    def add_buff(self, buff: Buff) -> None:
+        self._buffs.append(buff)
+
+    def remove_buff(self, buff: Buff) -> None:  # frozen dataclasses compare by value
+        if buff in self._buffs:
+            self._buffs.remove(buff)
+
+    def can(self, ability: Ability) -> bool:
+        return ability in self._abilities
+
+    def attack(self) -> int:
+        return self._weapon.base_damage() + sum(b.bonus() for b in self._buffs)
+
+    def describe(self) -> str:
+        buffs = ", ".join(b.name() for b in self._buffs)
+        return f"{self._name} with {self._weapon.name()} [{buffs}] -> {self.attack()}"
+
+
+if __name__ == "__main__":
+    asha = GameCharacter("Asha", Sword(), Ability.FLY, Ability.HEAL)
+    print(asha.describe())  # 10
+    asha.add_buff(FireEnchant())
+    asha.add_buff(Rage())
+    print(asha.describe())  # 18
+    asha.equip(Bow())
+    print(asha.describe())  # 15
+    asha.remove_buff(Rage())
+    print(f"{asha.describe()} canFly={str(asha.can(Ability.FLY)).lower()} canStealth={str(asha.can(Ability.STEALTH)).lower()}")
+    asha.remove_buff(Rage())  # already removed: nothing happens
+    print(asha.attack())  # 12` },
+        { lang: 'ts', code: `interface Weapon { baseDamage(): number; name(): string; }
+interface Buff { bonus(): number; name(): string; }
+
+class Sword implements Weapon { baseDamage(): number { return 10; } name(): string { return "Sword"; } }
+class Bow implements Weapon { baseDamage(): number { return 7; } name(): string { return "Bow"; } }
+
+class FireEnchant implements Buff { bonus(): number { return 5; } name(): string { return "Fire"; } }
+class Rage implements Buff { bonus(): number { return 3; } name(): string { return "Rage"; } }
+
+type Ability = "FLY" | "HEAL" | "STEALTH";
+
+class GameCharacter {
+  private readonly buffs: Buff[] = [];
+  private readonly abilities: ReadonlySet<Ability>;
+
+  constructor(private readonly name: string, private weapon: Weapon, ...abilities: Ability[]) {
+    this.abilities = new Set(abilities);
+  }
+
+  equip(w: Weapon): void { this.weapon = w; } // swap at runtime
+  addBuff(b: Buff): void { this.buffs.push(b); }
+  removeBuff(b: Buff): void { // objects compare by identity, so a buff is "equal" when its name matches
+    const i = this.buffs.findIndex((x) => x.name() === b.name());
+    if (i >= 0) this.buffs.splice(i, 1);
+  }
+  can(a: Ability): boolean { return this.abilities.has(a); }
+
+  attack(): number {
+    return this.weapon.baseDamage() + this.buffs.reduce((sum, b) => sum + b.bonus(), 0);
+  }
+  describe(): string {
+    return \`\${this.name} with \${this.weapon.name()} [\${this.buffs.map((b) => b.name()).join(", ")}] -> \${this.attack()}\`;
+  }
+}
+
+const asha = new GameCharacter("Asha", new Sword(), "FLY", "HEAL");
+console.log(asha.describe()); // 10
+asha.addBuff(new FireEnchant());
+asha.addBuff(new Rage());
+console.log(asha.describe()); // 18
+asha.equip(new Bow());
+console.log(asha.describe()); // 15
+asha.removeBuff(new Rage());
+console.log(\`\${asha.describe()} canFly=\${asha.can("FLY")} canStealth=\${asha.can("STEALTH")}\`);
+asha.removeBuff(new Rage()); // already removed: nothing happens
+console.log(asha.attack()); // 12` },
+        { lang: 'cpp', code: `class Weapon {
+public:
+    virtual ~Weapon() = default;
+    virtual int baseDamage() const = 0;
+    virtual string name() const = 0;
+};
+class Sword : public Weapon {
+public:
+    int baseDamage() const override { return 10; }
+    string name() const override { return "Sword"; }
+};
+class Bow : public Weapon {
+public:
+    int baseDamage() const override { return 7; }
+    string name() const override { return "Bow"; }
+};
+
+class Buff {
+public:
+    virtual ~Buff() = default;
+    virtual int bonus() const = 0;
+    virtual string name() const = 0;
+};
+class FireEnchant : public Buff {
+public:
+    int bonus() const override { return 5; }
+    string name() const override { return "Fire"; }
+};
+class Rage : public Buff {
+public:
+    int bonus() const override { return 3; }
+    string name() const override { return "Rage"; }
+};
+
+enum class Ability { FLY, HEAL, STEALTH };
+
+class GameCharacter final {
+    string name_;
+    unique_ptr<Weapon> weapon_;            // the character owns its weapon and buffs
+    vector<unique_ptr<Buff>> buffs_;
+    set<Ability> abilities_;
+
+public:
+    GameCharacter(string name, unique_ptr<Weapon> weapon, initializer_list<Ability> abilities)
+        : name_(std::move(name)), weapon_(std::move(weapon)), abilities_(abilities) {}
+
+    void equip(unique_ptr<Weapon> w) { weapon_ = std::move(w); }   // swap at runtime
+    void addBuff(unique_ptr<Buff> b) { buffs_.push_back(std::move(b)); }
+    void removeBuff(const Buff& b) {   // pointers compare by address, so a buff is "equal" when its name matches
+        auto it = find_if(buffs_.begin(), buffs_.end(), [&](const unique_ptr<Buff>& x) { return x->name() == b.name(); });
+        if (it != buffs_.end()) buffs_.erase(it);
+    }
+    bool can(Ability a) const { return abilities_.count(a) > 0; }
+
+    int attack() const {
+        int bonus = 0;
+        for (const auto& b : buffs_) bonus += b->bonus();
+        return weapon_->baseDamage() + bonus;
+    }
+    string describe() const {
+        string buffs;
+        for (size_t i = 0; i < buffs_.size(); i++) buffs += (i ? ", " : "") + buffs_[i]->name();
+        return name_ + " with " + weapon_->name() + " [" + buffs + "] -> " + to_string(attack());
+    }
+};
+
+int main() {
+    GameCharacter asha("Asha", make_unique<Sword>(), {Ability::FLY, Ability::HEAL});
+    cout << asha.describe() << "\\n";   // 10
+    asha.addBuff(make_unique<FireEnchant>());
+    asha.addBuff(make_unique<Rage>());
+    cout << asha.describe() << "\\n";   // 18
+    asha.equip(make_unique<Bow>());
+    cout << asha.describe() << "\\n";   // 15
+    asha.removeBuff(Rage());
+    cout << asha.describe() << " canFly=" << boolalpha << asha.can(Ability::FLY)
+         << " canStealth=" << asha.can(Ability::STEALTH) << "\\n";
+    asha.removeBuff(Rage());           // already removed: nothing happens
+    cout << asha.attack() << "\\n";     // 12
+}` }
+      ],
       complexity: `<p>attack() is O(active buffs). Types: one per weapon/buff instead of one per combination. No overridable self-calls → no fragile base class.</p>`,
       followUps: ['A buff that doubles damage (multiplicative) — does a simple sum still work? (ordered pipeline / true Decorator wrapping)', 'Buffs expire after N turns — where does the timer live?', 'How would you load weapons and buffs from designer-edited JSON? (data-driven: parts are data, not code)']
     }
@@ -2924,10 +7616,10 @@ final class GameCharacter {
   interview.push({ level: 'I', q: 'What is the Law of Demeter? Is <code>list.stream().filter(...).map(...).toList()</code> a violation?', a: `<p>The Law of Demeter says a method should only call methods on: itself, its parameters, objects it creates, and its own fields — not on objects returned by those calls. The classic violation is a train wreck like <code>order.getCustomer().getAddress().getCity()</code>, which couples the caller to the entire object graph. The fix is "Tell, Don't Ask": add <code>order.shippingCity()</code> so each object talks only to its neighbour.</p><p>The stream pipeline is <b>not</b> a violation: each call returns a stream that is part of the same fluent operation, not a stranger's internals. Same for builders (<code>sb.append().append()</code>) and for plain data structures such as records/DTOs. LoD protects objects with behaviour, it is not "count the dots". Over-applying it creates Middle Man classes, so I add delegating methods only when they name a real domain concept.</p>`, followUps: ['How does LoD show up in unit tests? (deep mock chains)', 'How do you balance LoD against the Middle Man smell?'] });
   interview.push({ level: 'I', q: 'You are reviewing a 300-line method. Walk me through how you would refactor it.', a: `<p>1) <b>Safety net first:</b> check existing tests; if none, write characterization tests that pin current outputs for typical inputs, boundaries and error paths. 2) <b>Read and rename:</b> use IDE Rename to give variables and the method intention-revealing names — understanding improves immediately. 3) <b>Flatten:</b> guard clauses for invalid cases to remove nesting. 4) <b>Extract Method</b> for each block that has a comment banner or a single purpose ("validate", "compute subtotal", "apply discount"), keeping one level of abstraction per method. 5) Replace magic numbers with constants; introduce parameter objects for argument clumps. 6) Look for <b>Feature Envy</b> and move methods to the class that owns the data; if a switch on type appears, consider polymorphism.</p><p>After every tiny step: run tests, commit. If red, undo the step rather than debug. Refactoring and behaviour changes go in separate commits.</p>`, followUps: ['How small should each commit be?', 'How do you get buy-in for refactoring time? (Boy Scout rule, hotspots)'] });
   interview.push({ level: 'I', q: 'Explain divergent change vs shotgun surgery with examples.', a: `<p>They are mirror images. <b>Divergent change</b>: one class changes for many unrelated reasons — e.g. <code>Order</code> is edited for tax rules, for PDF layout and for database schema changes. It violates single responsibility; the cure is to <b>split</b> it (Extract Class) so each reason has its own class.</p><p><b>Shotgun surgery</b>: one logical change forces edits in many classes — e.g. adding a payment method edits a switch in the checkout, refunds, reporting and settings. The knowledge is scattered; the cure is to <b>gather</b> it (Move Method/Field, Replace Conditional with Polymorphism) so the payment method is one class implementing an interface. A good design aims for "one change → one place" and "one place → one reason to change".</p>`, followUps: ['Which SOLID principles map to these smells?', 'How can git history help you detect shotgun surgery? (files that always change together — change coupling)'] });
-  interview.push({ level: 'I', q: 'What is primitive obsession, and how do value objects fix it?', a: `<p>Primitive obsession is using basic types (<code>String</code>, <code>int</code>, <code>double</code>) for domain concepts: money as <code>double</code>, email/phone as <code>String</code>, status as <code>int</code>. Consequences: validation and formatting are duplicated everywhere, the compiler cannot stop you passing a phone where a name is expected, and floating-point money has rounding errors.</p><p>A <b>value object</b> — in Java usually an immutable <code>record</code> — wraps the value, validates it once in the constructor ("parse, don't validate"), compares by value, and becomes the home for related behaviour: <code>Money.plus</code> refuses mixed currencies, <code>Phone.of</code> normalises formats, <code>Email.domain()</code>. After that, every instance in the system is valid by construction and method signatures document themselves: <code>transfer(Phone from, Phone to, Money amount)</code>.</p>`, followUps: ['long minor units or BigDecimal for money?', 'What about performance/allocations of many small objects? (usually negligible; Valhalla value classes in future)'] });
-  interview.push({ level: 'A', q: 'How would you make a class with <code>new StripeClient()</code>, <code>LocalDate.now()</code> and a static config unit-testable?', a: `<p>All three are hidden dependencies (external, temporal and common/global coupling). I make them explicit: define an interface the domain owns (<code>PaymentGateway</code>), move Stripe code into an adapter implementing it, and pass the gateway, a <code>java.time.Clock</code> and the config values through the constructor. The class then uses <code>LocalDate.now(clock)</code>.</p><p>Production wiring (a <code>main</code>, a factory or a DI container like Spring) passes the real adapter and <code>Clock.systemDefaultZone()</code>; tests pass a recording fake or a lambda and <code>Clock.fixed(...)</code>. Benefits beyond testing: vendor changes stop at the adapter, dependencies are visible in the constructor (a long constructor is itself a useful smell signalling too many responsibilities), and there is no shared mutable state between tests.</p>`, followUps: ['Constructor vs setter vs field injection — which and why?', 'When is a static method fine? (pure functions with no hidden state, e.g. Math.max)'] });
-  interview.push({ level: 'A', q: 'What is connascence and how does it refine "coupling"?', a: `<p>Connascence (Meilir Page-Jones) says two parts are connascent if changing one requires changing the other. It gives coupling a vocabulary with <b>strength</b>. Static forms, weakest to strongest: name, type, meaning (both sides know "2 means admin"), position (argument order), algorithm (both sides must hash identically). Dynamic forms: execution order, timing, value (values must stay in sync), identity (must be the same object).</p><p>Practical rules: convert strong forms to weaker ones — position → name with a parameter object, meaning → an enum, algorithm → a shared single implementation; keep strong connascence <b>local</b> (inside one class or module) and only weak connascence across boundaries such as services; and reduce the <b>degree</b> (how many parts are involved). It turns vague "this is too coupled" into a specific, fixable statement.</p>`, followUps: ['Give an example of connascence of position in Java and how to fix it.', 'Which connascence types appear between microservices?'] });
-  interview.push({ level: 'A', q: 'When is a switch on a type code acceptable, and when should it become polymorphism?', a: `<p>Replace it with polymorphism when the <b>same</b> switch over the same type set appears in several places, and new <b>types</b> are added more often than new operations — each new type would otherwise require shotgun surgery. One class per type gathers all its behaviour, and the compiler (abstract methods or a sealed interface) forces you to implement every operation.</p><p>A switch is fine when it appears in <b>one</b> place — typically a factory converting external data (a DB code, a JSON field) into the right object — or when the set of types is closed and stable but <b>operations</b> are added often. Then Java 21 pattern-matching <code>switch</code> over a <code>sealed</code> hierarchy is excellent: exhaustive, compiler-checked, and keeps each operation in one place (the "expression problem" trade-off; Visitor is the classic OO version).</p>`, followUps: ['What is the expression problem?', 'How does a sealed interface make switch safer than an enum with default?'] });
+  interview.push({ level: 'I', q: 'What is primitive obsession, and how do value objects fix it?', a: `<p>Primitive obsession is using basic types (<code>String</code>, <code>int</code>, <code>double</code>) for domain concepts: money as <code>double</code>, email/phone as <code>String</code>, status as <code>int</code>. Consequences: validation and formatting are duplicated everywhere, the compiler cannot stop you passing a phone where a name is expected, and floating-point money has rounding errors.</p><p>A <b>value object</b> — an immutable class (a Java <code>record</code>, a Python frozen <code>@dataclass</code>, a TypeScript class with <code>readonly</code> fields, a C++ class with a validating constructor) — wraps the value, validates it once in the constructor ("parse, don't validate"), compares by value, and becomes the home for related behaviour: <code>Money.plus</code> refuses mixed currencies, <code>Phone.of</code> normalises formats, <code>Email.domain()</code>. After that, every instance in the system is valid by construction and method signatures document themselves: <code>transfer(Phone from, Phone to, Money amount)</code>.</p>`, followUps: ['long minor units or BigDecimal for money?', 'What about performance/allocations of many small objects? (usually negligible; Valhalla value classes in future)'] });
+  interview.push({ level: 'A', q: 'How would you make a class with <code>new StripeClient()</code>, <code>LocalDate.now()</code> and a static config unit-testable?', a: `<p>All three are hidden dependencies (external, temporal and common/global coupling). I make them explicit: define an interface the domain owns (<code>PaymentGateway</code>), move Stripe code into an adapter implementing it, and pass the gateway, a clock (Java's <code>java.time.Clock</code>, or a function that returns today's date) and the config values through the constructor. The class then asks the injected clock for the date instead of calling <code>LocalDate.now()</code>.</p><p>Production wiring (a <code>main</code>, a factory or a DI container like Spring) passes the real adapter and the system clock (<code>Clock.systemDefaultZone()</code> in Java); tests pass a recording fake or a lambda and a fixed clock (<code>Clock.fixed(...)</code>). Benefits beyond testing: vendor changes stop at the adapter, dependencies are visible in the constructor (a long constructor is itself a useful smell signalling too many responsibilities), and there is no shared mutable state between tests.</p>`, followUps: ['Constructor vs setter vs field injection — which and why?', 'When is a static method fine? (pure functions with no hidden state, e.g. Math.max)'] });
+  interview.push({ level: 'A', q: 'What is connascence and how does it refine "coupling"?', a: `<p>Connascence (Meilir Page-Jones) says two parts are connascent if changing one requires changing the other. It gives coupling a vocabulary with <b>strength</b>. Static forms, weakest to strongest: name, type, meaning (both sides know "2 means admin"), position (argument order), algorithm (both sides must hash identically). Dynamic forms: execution order, timing, value (values must stay in sync), identity (must be the same object).</p><p>Practical rules: convert strong forms to weaker ones — position → name with a parameter object, meaning → an enum, algorithm → a shared single implementation; keep strong connascence <b>local</b> (inside one class or module) and only weak connascence across boundaries such as services; and reduce the <b>degree</b> (how many parts are involved). It turns vague "this is too coupled" into a specific, fixable statement.</p>`, followUps: ['Give an example of connascence of position in your language and how to fix it.', 'Which connascence types appear between microservices?'] });
+  interview.push({ level: 'A', q: 'When is a switch on a type code acceptable, and when should it become polymorphism?', a: `<p>Replace it with polymorphism when the <b>same</b> switch over the same type set appears in several places, and new <b>types</b> are added more often than new operations — each new type would otherwise require shotgun surgery. One class per type gathers all its behaviour, and the compiler (abstract methods or a sealed interface) forces you to implement every operation.</p><p>A switch is fine when it appears in <b>one</b> place — typically a factory converting external data (a DB code, a JSON field) into the right object — or when the set of types is closed and stable but <b>operations</b> are added often. Then a pattern-matching <code>switch</code> over a closed hierarchy (a Java <code>sealed</code> interface, a TypeScript discriminated union, Python <code>match</code> on dataclasses, C++ <code>std::visit</code> on a <code>std::variant</code>) is excellent: exhaustive, compiler-checked, and keeps each operation in one place (the "expression problem" trade-off; Visitor is the classic OO version).</p>`, followUps: ['What is the expression problem?', 'How does a closed hierarchy (a sealed interface or a union type) make switch safer than an enum with default?'] });
   interview.push({ level: 'E', q: 'Your team\'s core service is a 15k-line "God" module. How do you improve it without a rewrite?', a: `<p>1) <b>Find hotspots</b>: combine git change frequency with complexity to find the 5% of code that causes most pain; ignore stable ugly code. 2) <b>Safety nets</b>: characterization/approval tests around the hotspot's public behaviour, plus ArchUnit rules to stop new violations. 3) <b>Seams</b>: introduce interfaces at vendor and I/O boundaries (Branch by Abstraction) so pieces can move independently. 4) <b>Extract by cohesion</b>: use method × field and change-coupling analysis to find natural sub-domains (billing, notifications), extract them into modules with explicit APIs — still in the same deployable at first. 5) <b>Strangler fig / expand–contract</b> for anything that crosses process boundaries. 6) <b>Make it a habit</b>: Boy Scout rule in every feature PR, small reviewable steps, measurable goals (hotspot complexity, build times, defect rate).</p><p>Throughout, refactoring PRs are separate from behaviour changes, and the business sees value continuously instead of waiting months for a risky rewrite.</p>`, followUps: ['How do you prioritise refactoring against feature work with a product manager?', 'What metrics show the effort is working?', 'When IS a rewrite justified?'] });
   interview.push({ level: 'E', q: 'How do AI coding assistants change the importance of clean-code principles?', a: `<p>They make principles <b>more</b> important. Generation is cheap, so duplication and speculative abstractions arrive faster (several industry analyses have reported more copy-pasted code in AI-assisted repositories). Agents also work best on cohesive, loosely coupled code: a focused class with clear names fits in the context window and gets correct edits; a tangled module causes missed ripples.</p><p>How I work with them: I give explicit constraints ("only the stated requirements, no single-implementation interfaces, follow existing names"), ask AI for analysis before edits (list smells, dependency edges, duplicated rules), prefer IDE automated refactorings for guaranteed behaviour preservation, require characterization tests before AI refactors, and review diffs for hidden behaviour changes mixed into "cleanups". Names and a repo glossary act as prompts for both humans and agents. What I still own: choosing seams, domain vocabulary, and saying no to complexity.</p>`, followUps: ['How would you write team guidelines for AI-generated code review?', 'Which refactorings would you trust an agent to do unattended?'] });
 
@@ -2935,7 +7627,7 @@ final class GameCharacter {
     id: 'lld03',
     title: 'Clean Code & Design Principles',
     intro: `<p>SOLID tells you how to shape classes; this module gives you the <b>everyday habits</b> that keep a codebase pleasant to change: <b>DRY</b>, <b>KISS</b>, <b>YAGNI</b>, <b>composition over inheritance</b>, <b>low coupling / high cohesion</b>, the <b>Law of Demeter</b>, good <b>names</b>, <b>small functions</b>, and the catalogue of <b>code smells</b> with the <b>refactorings</b> that cure them.</p>
-<p>Every topic starts with a real-life analogy, then shows a smelly Java design next to a refactored one. Visualizers draw <b>dependency graphs before and after</b> (red = tight coupling), build <b>cohesion tables</b> that reveal hidden classes, and <b>step through refactors</b> line by line. Practice problems are code-review exercises: the "brute force" is the smelly design and why it hurts; the solution is compilable Java plus the reasoning an interviewer wants to hear.</p>
+<p>Every topic starts with a real-life analogy, then shows a smelly design next to a refactored one, with the code in Java, Python, TypeScript and C++. Visualizers draw <b>dependency graphs before and after</b> (red = tight coupling), build <b>cohesion tables</b> that reveal hidden classes, and <b>step through refactors</b> line by line. Practice problems are code-review exercises: the "brute force" is the smelly design and why it hurts; the solution is a complete program in Java, Python, TypeScript and C++ plus the reasoning an interviewer wants to hear.</p>
 <p>Why it matters: machine-coding and LLD rounds grade <i>readability, extensibility and testability</i> as much as correctness, and in the AI era — when code is cheap to generate — judging and simplifying code is the skill that sets you apart.</p>`,
     goals: [
       'Spot duplicated <b>knowledge</b> (not just duplicated text) and refactor it to a single source of truth — while avoiding accidental duplication and the wrong abstraction',
@@ -2948,6 +7640,12 @@ final class GameCharacter {
     ],
     prereqs: `LLD 1 (OOP Modelling &amp; UML) and LLD 2 (SOLID Principles). Comfortable with Java classes, interfaces, records, enums and collections (Java track modules on OOP and Collections).`,
     hours: 12,
+    langNotes: {
+      java: `<p><b>One home for a rule.</b> <code>static final</code> constants in a small <code>final</code> class with a private constructor are the usual home for a tariff or threshold; an <code>enum</code> with constant-specific methods (<code>PriceCode</code>) is the home for a rule that differs per category. <b>Interfaces and composition.</b> An <code>interface</code> is the seam you inject: a lambda can implement a one-method interface, so a test fake is one line, and constructor injection with <code>final</code> fields makes dependencies visible. Prefer delegation to <code>extends</code>: <code>class UndoStack extends ArrayList</code> hands every <code>add(int, E)</code> to your users, and <code>HashSet.addAll</code> calling <code>add</code> is the classic fragile-base-class trap. <b>Value objects.</b> A <code>record</code> gives you <code>equals</code>, <code>hashCode</code> and <code>toString</code> by value, plus a compact constructor for validation (<code>Phone</code>, <code>Money</code>, <code>Address</code>), so it is safe as a <code>HashMap</code> key; <code>List.copyOf</code> and <code>final</code> fields keep it immutable. <b>Closed sets.</b> A <code>sealed interface</code> with records replaces a type-code <code>switch</code>, and the compiler lists every place a new variant must be handled. <b>Time and config.</b> Pass a <code>java.time.Clock</code> (<code>Clock.fixed</code> in tests) instead of calling <code>LocalDate.now()</code>; never read a static mutable <code>Config</code>. <b>Numbers.</b> <code>int</code> division truncates toward zero and <code>int</code> overflow wraps silently, so keep money in <code>long</code> minor units (use <code>Math.addExact</code> to fail loudly) or <code>BigDecimal</code>, never <code>double</code>.</p>`,
+      python: `<p><b>One home for a rule.</b> Class attributes (<code>FREE_ABOVE = 500</code>) or module-level constants in upper case hold a tariff; an <code>Enum</code> whose values carry small rule objects plays the role of Java's constant-specific enum methods. <b>Interfaces and composition.</b> Use <code>typing.Protocol</code> for a seam any object with the right methods can fill (a test fake needs no base class), or <code>abc.ABC</code> with <code>@abstractmethod</code> when you want a class that forgets a method to fail at construction. A <code>Callable</code> is the one-method interface; a clock is just <code>Callable[[], date]</code>. Inheritance is even riskier here because nothing stops a subclass from overriding anything, so prefer a field that <i>has</i> the collaborator (<code>deque(maxlen=50)</code> inside <code>UndoStack</code> instead of subclassing <code>list</code>). <b>Value objects.</b> <code>@dataclass(frozen=True)</code> generates <code>__eq__</code> and <code>__hash__</code> by field, so it works as a dict key; validate in <code>__post_init__</code>. Writing your own <code>__eq__</code> removes <code>__hash__</code> unless you define it too. <b>Tell, don't ask.</b> A single leading underscore (<code>self._wallet</code>) is only a convention, so the discipline is yours; avoid public getters that return the inner object. <b>Numbers.</b> Integers never overflow, but <code>//</code> floors toward minus infinity (Java and C++ truncate toward zero), which only matters for negative values; keep money in integer minor units or <code>Decimal</code>, not <code>float</code>.</p>`,
+      js: `<p><b>TypeScript.</b> <b>One home for a rule.</b> <code>static readonly</code> members on a class (or a <code>const</code> object) hold a tariff; there is no constant-specific enum method, so a rule per category is an object that implements an interface (<code>PriceCode</code>), and a string-literal union (<code>"GOLD" | "SILVER"</code>) replaces an <code>enum</code> for a closed set. <b>Interfaces and composition.</b> An <code>interface</code> is erased at run time and structural, so an object literal with the right methods is a perfectly good test fake; a function type (<code>type Clock = () =&gt; Date</code>) is the one-method interface. Constructor parameter properties (<code>constructor(private readonly repo: Repo) {}</code>) are the shortest way to inject. Prefer a field that holds the collaborator over <code>extends</code>, and turn on <code>strict</code> and <code>noImplicitOverride</code> so an accidental override is an error. <b>Value objects.</b> <code>===</code>, <code>Map</code> keys and <code>Set</code> compare objects by identity, so two <code>Phone</code> instances with the same digits are different keys: key the map by a string (<code>phone.e164</code>) or give the class an <code>equals</code> method. <code>readonly</code> exists only at compile time; <code>Object.freeze</code> enforces it. <b>Tell, don't ask.</b> <code>private</code> is also compile-time only (use <code>#field</code> for real privacy). <b>Numbers.</b> <code>number</code> is a double: keep money in integer minor units, use <code>Math.floor</code> (or <code>Math.trunc</code>) after dividing because <code>/</code> never truncates, and check <code>Number.isSafeInteger</code> past 2^53 (<code>BigInt</code> beyond that). Dates are mutable <code>Date</code> objects: inject a <code>() =&gt; Date</code> and do not call <code>new Date()</code> inside business rules.</p>`,
+      cpp: `<p><b>One home for a rule.</b> <code>static constexpr</code> members in a class (or <code>inline constexpr</code> variables) are the named constants; a category rule is a small struct holding <code>std::function</code> members or a class with virtual methods. <b>Interfaces and composition.</b> An interface is a class of pure virtual functions with a <b>virtual destructor</b>; mark every implementation <code>override</code> so a signature mismatch fails to compile, and <code>final</code> on a leaf class. <b>Ownership is the injection decision.</b> A service that owns its part holds a <code>std::unique_ptr&lt;Interface&gt;</code> (<code>Robot</code> and its <code>Movement</code>, <code>GameCharacter</code> and its buffs); a service that only uses a dependency owned by <code>main</code> holds a reference (<code>CheckoutService</code> and its gateway), which must outlive it. Never copy a polymorphic object by value: it slices the derived part. Containers of polymorphic objects are <code>vector&lt;unique_ptr&lt;Base&gt;&gt;</code>. <b>Value objects.</b> A plain class with a validating constructor (throw <code>std::invalid_argument</code>) is the equivalent of a Java record; <code>auto operator&lt;=&gt;(const T&amp;) const = default;</code> generates comparison, so it works as a <code>std::map</code> key; <code>const</code> members and const methods give immutability. <b>Names to avoid.</b> <code>export</code>, <code>register</code>, <code>new</code>, <code>delete</code> and <code>default</code> are keywords, so the Java methods <code>export</code> and <code>register</code> become <code>exportRows</code> and <code>registerMember</code> here. <b>Numbers.</b> Signed overflow is undefined behaviour: use <code>long long</code> for money and <code>__builtin_add_overflow</code> to detect it; <code>/</code> truncates toward zero. <b>Time.</b> Inject a clock as a <code>std::function</code> returning a <code>std::chrono::sys_days</code> instead of calling <code>system_clock::now()</code> inside the rule.</p>`
+    },
     topics: topics,
     practice: practice,
     quiz: quiz,

@@ -1,6 +1,8 @@
 /* Released Android app updates. Never install or reload without a user action. */
 var AppUpdates = (function () {
   var API = 'https://api.github.com/repos/SHRENIKYD/DSA-LEARNINGS/releases?per_page=100';
+  // Updates install through Google Play; GitHub is only used to learn that a new version exists.
+  var PKG = 'io.github.shrenikyd.interviewmastery', PLAY_APP = 'market://details?id=' + PKG, PLAY_WEB = 'https://play.google.com/store/apps/details?id=' + PKG;
   var DAY = 86400000, lastCheck = 0, busy = false, pending = null, initialized = false, snoozed = {}, installed = '';
   function version(s) { var m = /^(?:app-v|v)?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(String(s || '')); return m ? m.slice(1).map(Number) : null; }
   function newer(a, b) { a = version(a); b = version(b); if (!a || !b) return false; for (var i = 0; i < 3; i++) { if (a[i] !== b[i]) return a[i] > b[i]; } return false; }
@@ -23,17 +25,24 @@ var AppUpdates = (function () {
     var release = pending; pending = null;
     var previous = document.activeElement, modal = document.createElement('dialog'); modal.id = 'appUpdateDialog'; modal.className = 'update-dialog';
     modal.setAttribute('aria-labelledby', 'updateTitle'); modal.setAttribute('aria-describedby', 'updateDescription');
-    modal.innerHTML = '<span class="kick">A fresh chapter</span><span class="update-icon" aria-hidden="true">↥</span><h2 id="updateTitle">New version available</h2><p id="updateDescription">Interview Mastery ' + release.tag_name.slice(5) + ' is ready. You’re using ' + installed + '.</p><p class="muted sm">Open the official release page to view and download the update. Your current session stays open.</p><p id="updateOpenStatus" class="sm" role="status"></p><button class="b3" type="button" id="updateNow">UPDATE NOW</button><button class="b3 ghost" type="button" id="updateLater">LATER</button>';
+    modal.innerHTML = '<span class="kick">A fresh chapter</span><span class="update-icon" aria-hidden="true">↥</span><h2 id="updateTitle">New version available</h2><p id="updateDescription">Interview Mastery ' + release.tag_name.slice(5) + ' is ready. You’re using ' + installed + '.</p><p class="muted sm">Update from Google Play. If Play does not show it yet, the release is still rolling out, so try again a little later. Your current session stays open.</p><p id="updateOpenStatus" class="sm" role="status"></p><button class="b3" type="button" id="updateNow">UPDATE ON GOOGLE PLAY</button><button class="b3 ghost" type="button" id="updateLater">LATER</button>';
     document.body.appendChild(modal);
     function later() { snooze(release.tag_name); modal.close(); }
     modal.addEventListener('cancel', function (e) { e.preventDefault(); later(); });
     modal.addEventListener('close', function () { modal.remove(); if (previous && previous.isConnected && previous.focus) previous.focus(); });
     modal.querySelector('#updateLater').addEventListener('click', later);
     modal.querySelector('#updateNow').addEventListener('click', function () {
-      var b = plugin('Browser'), status = modal.querySelector('#updateOpenStatus');
-      if (!b || !b.open) { status.textContent = 'The browser could not open. Please try again or visit the app’s GitHub releases.'; return; }
-      var button = modal.querySelector('#updateNow'); button.disabled = true;
-      Promise.resolve().then(function () { return b.open({ url: release.html_url }); }).then(function () { snooze(release.tag_name); modal.close(); }, function () { button.disabled = false; status.textContent = 'Could not open the update page. Please try again.'; });
+      var status = modal.querySelector('#updateOpenStatus'), button = modal.querySelector('#updateNow'); button.disabled = true;
+      var done = function () { snooze(release.tag_name); modal.close(); };
+      // market:// is handed to the Play Store app by the native shell. If the app is still in front shortly after,
+      // there is no Play Store app, so open the Play listing in the browser instead.
+      try { location.href = PLAY_APP; } catch (e) { }
+      setTimeout(function () {
+        if (document.hidden) { done(); return; }
+        var b = plugin('Browser');
+        if (!b || !b.open) { button.disabled = false; status.textContent = 'Google Play could not open. Please open the Play Store and search for Interview Mastery.'; return; }
+        Promise.resolve().then(function () { return b.open({ url: PLAY_WEB }); }).then(done, function () { button.disabled = false; status.textContent = 'Could not open Google Play. Please try again.'; });
+      }, 1200);
     });
     modal.showModal(); modal.querySelector('#updateNow').focus();
   }
@@ -63,6 +72,6 @@ var AppUpdates = (function () {
     var app = plugin('App'); if (app && app.addListener) Promise.resolve(app.addListener('appStateChange', function (state) { if (state.isActive) { check(false); show(); } })).catch(function () { });
     check(false);
   }
-  return { version: version, newer: newer, latest: latest, check: check, init: init };
+  return { version: version, newer: newer, latest: latest, check: check, init: init, PLAY_APP: PLAY_APP, PLAY_WEB: PLAY_WEB };
 })();
 if (typeof module !== 'undefined') module.exports = AppUpdates;

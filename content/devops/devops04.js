@@ -1435,7 +1435,41 @@ if (!apiKey) {
   // Fail fast with a clear message, but never print the value itself.
   throw new Error('API_KEY is not set. Copy .env.example to .env for local runs.');
 }
-module.exports = { apiKey };` } },
+module.exports = { apiKey };`, alt: [
+        { lang: 'python', title: 'config.py', code: `# Read configuration from the environment; never hard-code secrets.
+import os
+
+API_KEY = os.environ.get("API_KEY")
+if not API_KEY:
+    # Fail fast with a clear message, but never print the value itself.
+    raise RuntimeError("API_KEY is not set. Copy .env.example to .env for local runs.")` },
+        { lang: 'java', title: 'Config.java', code: `// Read configuration from the environment; never hard-code secrets.
+final class Config {
+    static final String API_KEY = require("API_KEY");
+
+    private static String require(String name) {
+        String value = System.getenv(name);
+        if (value == null || value.isEmpty()) {
+            // Fail fast with a clear message, but never print the value itself.
+            throw new IllegalStateException(name + " is not set. Copy .env.example to .env for local runs.");
+        }
+        return value;
+    }
+}` },
+        { lang: 'cpp', title: 'config.cpp', code: `// Read configuration from the environment; never hard-code secrets.
+#include <cstdlib>
+#include <stdexcept>
+#include <string>
+
+std::string apiKey() {
+    const char* value = std::getenv("API_KEY");
+    if (value == nullptr || *value == '\\0') {
+        // Fail fast with a clear message, but never print the value itself.
+        throw std::runtime_error("API_KEY is not set. Copy .env.example to .env for local runs.");
+    }
+    return value;
+}` }
+      ] } },
       { title: '"It is in .gitignore but still shows up"', html: `<p>Someone committed <code>config/local.yaml</code> last month; today you added it to <code>.gitignore</code>, but every edit still shows in <code>git status</code>. Ignore rules only apply to <b>untracked</b> files. Untrack it (the local file stays), commit, and tell teammates: their next pull will <b>delete</b> the file from their working tree, so they should back it up first. If it held secrets, also rotate them.</p>`, code: `git rm --cached config/local.yaml          # stop tracking, keep my copy
 echo "config/local.yaml" >> .gitignore
 git commit -am "Stop tracking local config"

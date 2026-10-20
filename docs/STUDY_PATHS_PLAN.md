@@ -1,15 +1,15 @@
 # Study paths, language support and Cloud & DevOps: implementation plan
 
-Status: Phase 1 released (see the table below and [RELEASE_PHASE1.md](RELEASE_PHASE1.md)); Phases 2 and 3 in progress.
+Status: Phases 1 and 2 released (see the table below); Phase 3 planned.
 
 ## Status by phase
 
-The plan ships in three phases. Phase 1 is released; details are in [RELEASE_PHASE1.md](RELEASE_PHASE1.md).
+The plan ships in three phases. Phases 1 and 2 are released; details are in [RELEASE_PHASE1.md](RELEASE_PHASE1.md) and [RELEASE_PHASE2.md](RELEASE_PHASE2.md).
 
 | Phase | Contents | State |
 |---|---|---|
 | 1 | Routes, prerequisites, schedules, mastery, readiness checks and spaced review; DSA 1–17 in four languages; Python Backend I–V; maths for ML (3 modules); Cloud & DevOps 1–12; Stage 1 fault repairs; app route card and journey look; checking tools | Released (website 1.8.0, app 1.9.0) |
-| 2 | DSA 18–28 in four languages; LLD 1–12 in Python, TypeScript and C++; Cloud & DevOps 13–18; the JavaScript heap lesson; `paths-check --strict` passes for every route | In progress |
+| 2 | DSA 18–28 in four languages; LLD 1–12 in Python, TypeScript and C++; Cloud & DevOps 13–18; the JavaScript heap lesson; `paths-check --strict` passes for every route | Released (website 1.9.0, app 1.10.0); details in [RELEASE_PHASE2.md](RELEASE_PHASE2.md) |
 | 3 | Tests for the language and SQL tracks; project rubrics; the remaining Java-only text; the full route page in the app; solution and path checks in CI; HCL highlighting | Planned |
 
 ## 0. Where the syllabus stands today

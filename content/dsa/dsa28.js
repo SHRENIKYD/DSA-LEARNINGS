@@ -65,7 +65,7 @@
       ${H.table(['clue in the question', 'first technique to try', 'learned in'], [
         ['"sorted array" + "pair / triplet with sum"', H.c('g', 'Two pointers from both ends'), 'DSA 6'],
         ['"contiguous subarray / substring" + "longest / shortest" + all values ≥ 0', H.c('g', 'Sliding window (grow / shrink)'), 'DSA 6, 8'],
-        ['"subarray sum = K" and <b>negatives allowed</b>', H.c('g', 'Prefix sum + HashMap of counts'), 'DSA 5, 8'],
+        ['"subarray sum = K" and <b>negatives allowed</b>', H.c('g', 'Prefix sum + hash map of counts'), 'DSA 5, 8'],
         ['"range sum" many times, no updates', H.c('g', 'Prefix sums, O(1) per query'), 'DSA 5'],
         ['"range query" + "update" mixed', H.c('g', 'Fenwick / segment tree'), 'DSA 23'],
         ['"sorted" / "rotated" / "find position" in O(log N)', H.c('g', 'Binary search on index'), 'DSA 10'],
@@ -76,7 +76,7 @@
         ['"running median", "stream"', H.c('g', 'Two heaps'), 'DSA 16'],
         ['"prefix", "starts with", "dictionary of words"', H.c('g', 'Trie'), 'DSA 16'],
         ['"appears once while others twice", "XOR", "subset as mask"', H.c('g', 'Bit manipulation'), 'DSA 4'],
-        ['"seen before?", "frequency", "anagram", "duplicates"', H.c('g', 'HashMap / HashSet'), 'DSA 8'],
+        ['"seen before?", "frequency", "anagram", "duplicates"', H.c('g', 'Hash map / hash set'), 'DSA 8'],
         ['"linked list" + "middle / cycle / kth from end"', H.c('g', 'Fast &amp; slow pointers'), 'DSA 12'],
         ['"tree" + "height / path / subtree"', H.c('g', 'DFS returning a value upward'), 'DSA 15'],
         ['"level by level", "minimum depth", "right view"', H.c('g', 'BFS with a queue'), 'DSA 15'],
@@ -91,7 +91,7 @@
         ['"number of ways", "min cost", "can you reach" + choices at each step', H.c('g', 'Dynamic programming'), 'DSA 18, 19'],
         ['"list / generate ALL subsets / permutations / boards"', H.c('g', 'Backtracking'), 'DSA 11'],
         ['N ≤ 20 and "choose a subset / visit all"', H.c('g', 'Bitmask DP or backtracking'), 'DSA 4, 24'],
-        ['"design a cache / iterator / counter" with O(1) operations', H.c('g', 'HashMap + linked list / deque'), 'DSA 12, 27']
+        ['"design a cache / iterator / counter" with O(1) operations', H.c('g', 'Hash map + linked list / deque'), 'DSA 12, 27']
       ])}
       <p>Read the left column as <b>symptoms</b>, not rules. Most real problems show two or three symptoms at once; you pick the technique that explains <b>all</b> of them. Example: "subarray" suggests sliding window, but "negative numbers" breaks the window's grow/shrink logic, so prefix sum + hash wins.</p>
       <h4>The 3-question filter (works in 30 seconds)</h4>
@@ -145,7 +145,7 @@ for q in questions:
     print(q)
     for tech, hits in spot(q)[:2]:
         print("   ->", tech, "because of", hits)
-` }, `
+` }, { lang: 'java', code: `
 // The "pattern skeletons" you should be able to type from memory in under 2 minutes each.
 class Skeletons {
     // 1) Variable sliding window: longest window where a condition stays valid
@@ -169,7 +169,7 @@ class Skeletons {
         return lo;
     }
 
-    // 3) Prefix sum + HashMap: count subarrays with sum exactly k (negatives OK)
+    // 3) Prefix sum + hash map: count subarrays with sum exactly k (negatives OK)
     int countSumK(int[] a, int k) {
         Map<Long, Integer> seen = new HashMap<>();
         seen.put(0L, 1);                        // the empty prefix
@@ -214,8 +214,205 @@ class Skeletons {
         }
         return dist[R - 1][C - 1];
     }
-}` ],
-    codeTitle: ['Clue matcher (Python, runnable)', 'Five pattern skeletons to type from memory (Java)'],
+}`,
+        alt: [{ lang: 'python', code: `from collections import deque
+
+# The "pattern skeletons" you should be able to type from memory in under 2 minutes each.
+
+# 1) Variable sliding window: longest window where a condition stays valid
+def longest_valid_window(a, limit):
+    left = best = total = 0
+    for right, x in enumerate(a):
+        total += x                          # grow: take a[right] in
+        while total > limit:                # shrink until valid again
+            total -= a[left]
+            left += 1
+        best = max(best, right - left + 1)
+    return best
+
+# 2) Binary search on the answer: smallest x where feasible(x) is true
+def smallest_feasible(lo, hi, feasible):
+    while lo < hi:
+        mid = (lo + hi) // 2                # Python ints never overflow
+        if feasible(mid):
+            hi = mid                        # mid works -> answer is mid or smaller
+        else:
+            lo = mid + 1                    # mid fails -> answer is bigger
+    return lo
+
+# 3) Prefix sum + dict: count subarrays with sum exactly k (negatives OK)
+def count_sum_k(a, k):
+    seen = {0: 1}                           # the empty prefix
+    pf = count = 0
+    for x in a:
+        pf += x
+        count += seen.get(pf - k, 0)        # earlier prefixes that leave sum k
+        seen[pf] = seen.get(pf, 0) + 1
+    return count
+
+# 4) Monotonic stack: next greater element to the right
+def next_greater(a):
+    ans = [-1] * len(a)
+    st = []                                 # indices whose answer is still unknown
+    for i, x in enumerate(a):
+        while st and a[st[-1]] < x:
+            ans[st.pop()] = x
+        st.append(i)
+    return ans
+
+# 5) BFS on a grid: minimum steps from (0,0) to bottom-right, 1 = wall
+def bfs_steps(g):
+    R, C = len(g), len(g[0])
+    if g[0][0] == 1:
+        return -1
+    dist = [[-1] * C for _ in range(R)]
+    dist[0][0] = 0
+    q = deque([(0, 0)])
+    while q:
+        r, c = q.popleft()
+        for nr, nc in ((r + 1, c), (r - 1, c), (r, c + 1), (r, c - 1)):
+            if 0 <= nr < R and 0 <= nc < C and g[nr][nc] != 1 and dist[nr][nc] == -1:
+                dist[nr][nc] = dist[r][c] + 1      # first visit = shortest
+                q.append((nr, nc))
+    return dist[R - 1][C - 1]` },
+          { lang: 'js', code: `// The "pattern skeletons" you should be able to type from memory in under 2 minutes each.
+
+// 1) Variable sliding window: longest window where a condition stays valid
+function longestValidWindow(a, limit) {
+  let left = 0, best = 0, sum = 0;
+  for (let right = 0; right < a.length; right++) {
+    sum += a[right];                         // grow: take a[right] in
+    while (sum > limit) sum -= a[left++];    // shrink until valid again
+    best = Math.max(best, right - left + 1);
+  }
+  return best;
+}
+
+// 2) Binary search on the answer: smallest x where feasible(x) is true
+function smallestFeasible(lo, hi, feasible) {
+  while (lo < hi) {
+    const mid = lo + Math.floor((hi - lo) / 2);   // keep the middle an integer
+    if (feasible(mid)) hi = mid;             // mid works -> answer is mid or smaller
+    else lo = mid + 1;                       // mid fails -> answer is bigger
+  }
+  return lo;
+}
+
+// 3) Prefix sum + Map: count subarrays with sum exactly k (negatives OK)
+function countSumK(a, k) {
+  const seen = new Map([[0, 1]]);            // the empty prefix
+  let pf = 0, count = 0;
+  for (const x of a) {
+    pf += x;
+    count += seen.get(pf - k) || 0;          // earlier prefixes that leave sum k
+    seen.set(pf, (seen.get(pf) || 0) + 1);
+  }
+  return count;
+}
+
+// 4) Monotonic stack: next greater element to the right
+function nextGreater(a) {
+  const ans = new Array(a.length).fill(-1);
+  const st = [];                             // indices whose answer is still unknown
+  for (let i = 0; i < a.length; i++) {
+    while (st.length > 0 && a[st[st.length - 1]] < a[i]) ans[st.pop()] = a[i];
+    st.push(i);
+  }
+  return ans;
+}
+
+// 5) BFS on a grid: minimum steps from (0,0) to bottom-right, 1 = wall
+function bfsSteps(g) {
+  const R = g.length, C = g[0].length;
+  if (g[0][0] === 1) return -1;
+  const dist = Array.from({ length: R }, () => new Array(C).fill(-1));
+  dist[0][0] = 0;
+  const q = [[0, 0]];                        // read index = head: shift() would be O(n)
+  const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  for (let head = 0; head < q.length; head++) {
+    const [r, c] = q[head];
+    for (const [dr, dc] of dirs) {
+      const nr = r + dr, nc = c + dc;
+      if (nr < 0 || nc < 0 || nr >= R || nc >= C || g[nr][nc] === 1 || dist[nr][nc] !== -1) continue;
+      dist[nr][nc] = dist[r][c] + 1;         // first visit = shortest
+      q.push([nr, nc]);
+    }
+  }
+  return dist[R - 1][C - 1];
+}` },
+          { lang: 'cpp', code: `// The "pattern skeletons" you should be able to type from memory in under 2 minutes each.
+class Skeletons {
+public:
+    // 1) Variable sliding window: longest window where a condition stays valid
+    int longestValidWindow(const vector<int>& a, int limit) {
+        int left = 0, best = 0;
+        long long sum = 0;
+        for (int right = 0; right < (int)a.size(); right++) {
+            sum += a[right];                    // grow: take a[right] in
+            while (sum > limit) sum -= a[left++];   // shrink until valid again
+            best = max(best, right - left + 1);
+        }
+        return best;
+    }
+
+    // 2) Binary search on the answer: smallest x where feasible(x) is true
+    int smallestFeasible(int lo, int hi, function<bool(int)> feasible) {
+        while (lo < hi) {
+            int mid = lo + (hi - lo) / 2;       // overflow-safe middle
+            if (feasible(mid)) hi = mid;        // mid works -> answer is mid or smaller
+            else lo = mid + 1;                  // mid fails -> answer is bigger
+        }
+        return lo;
+    }
+
+    // 3) Prefix sum + unordered_map: count subarrays with sum exactly k (negatives OK)
+    int countSumK(const vector<int>& a, int k) {
+        unordered_map<long long, int> seen;
+        seen[0] = 1;                            // the empty prefix
+        long long pf = 0;
+        int count = 0;
+        for (int x : a) {
+            pf += x;
+            auto it = seen.find(pf - k);        // earlier prefixes that leave sum k
+            if (it != seen.end()) count += it->second;
+            seen[pf]++;
+        }
+        return count;
+    }
+
+    // 4) Monotonic stack: next greater element to the right
+    vector<int> nextGreater(const vector<int>& a) {
+        vector<int> ans(a.size(), -1), st;      // st holds indices whose answer is still unknown
+        for (int i = 0; i < (int)a.size(); i++) {
+            while (!st.empty() && a[st.back()] < a[i]) { ans[st.back()] = a[i]; st.pop_back(); }
+            st.push_back(i);
+        }
+        return ans;
+    }
+
+    // 5) BFS on a grid: minimum steps from (0,0) to bottom-right, 1 = wall
+    int bfsSteps(const vector<vector<int>>& g) {
+        int R = g.size(), C = g[0].size();
+        if (g[0][0] == 1) return -1;
+        vector<vector<int>> dist(R, vector<int>(C, -1));
+        queue<pair<int, int>> q;
+        q.push({0, 0});
+        dist[0][0] = 0;
+        const int dr[] = {1, -1, 0, 0}, dc[] = {0, 0, 1, -1};
+        while (!q.empty()) {
+            auto [r, c] = q.front();
+            q.pop();
+            for (int d = 0; d < 4; d++) {
+                int nr = r + dr[d], nc = c + dc[d];
+                if (nr < 0 || nc < 0 || nr >= R || nc >= C || g[nr][nc] == 1 || dist[nr][nc] != -1) continue;
+                dist[nr][nc] = dist[r][c] + 1;  // first visit = shortest
+                q.push({nr, nc});
+            }
+        }
+        return dist[R - 1][C - 1];
+    }
+};` }] } ],
+    codeTitle: ['Clue matcher (Python, runnable)', 'Five pattern skeletons to type from memory'],
     viz: {
       title: 'Decision flow: from the words in a question to a technique',
       input: 'Given an array with negative numbers, count subarrays whose sum equals k. n <= 10^5',
@@ -299,7 +496,7 @@ class Skeletons {
         <p>Clue: "<b>least</b> X <b>such that</b> it is possible". If capacity 15 works, 16 also works — the answers are <b>monotonic</b> (NO NO NO YES YES YES). That shape is ${H.c('g', 'binary search on the answer')} between max(weight) and sum(weights), with a greedy O(N) check per guess: O(N log(sum)).</p>` },
       { title: 'Disguised graph: "Alien dictionary"', html: `<p>"Given words sorted in an unknown alphabet, find the alphabet order."</p>
         <p>Comparing neighbours <code>"wrt"</code> vs <code>"wrf"</code> tells you <b>t comes before f</b>. "Comes before" = <b>a directed edge</b>; "find an order" = ${H.c('g', 'topological sort')}. A cycle means no valid alphabet. The words were never called a graph — the relationships give it away.</p>` },
-      { title: 'Two clues fighting: "Maximum subarray sum with one deletion"', html: `<p>"Subarray" suggests sliding window, but values are negative and we want a <b>maximum</b>, not a fixed target. Window logic breaks. "Choose to delete or not at each step" is a <b>choice</b> → ${H.c('g', 'DP with two states')} (best ending here with no deletion / with one deletion). This is Kadane (DSA 5) + state-machine DP (DSA 19).</p>`, code: `int maximumSum(int[] a) {
+      { title: 'Two clues fighting: "Maximum subarray sum with one deletion"', html: `<p>"Subarray" suggests sliding window, but values are negative and we want a <b>maximum</b>, not a fixed target. Window logic breaks. "Choose to delete or not at each step" is a <b>choice</b> → ${H.c('g', 'DP with two states')} (best ending here with no deletion / with one deletion). This is Kadane (DSA 5) + state-machine DP (DSA 19).</p>`, code: { lang: 'java', code: `int maximumSum(int[] a) {
     int noDel = a[0], oneDel = Integer.MIN_VALUE / 2, best = a[0];
     for (int i = 1; i < a.length; i++) {
         oneDel = Math.max(oneDel + a[i], noDel); // either delete a[i] now, or we deleted earlier
@@ -307,13 +504,38 @@ class Skeletons {
         best = Math.max(best, Math.max(noDel, oneDel));
     }
     return best;
-}` }
+}`,
+        alt: [{ lang: 'python', code: `def maximum_sum(a):
+    no_del, one_del, best = a[0], float("-inf"), a[0]
+    for x in a[1:]:
+        one_del = max(one_del + x, no_del)    # either delete x now, or we deleted earlier
+        no_del = max(no_del + x, x)           # plain Kadane
+        best = max(best, no_del, one_del)
+    return best` },
+          { lang: 'js', code: `function maximumSum(a) {
+  let noDel = a[0], oneDel = -Infinity, best = a[0];
+  for (let i = 1; i < a.length; i++) {
+    oneDel = Math.max(oneDel + a[i], noDel);   // either delete a[i] now, or we deleted earlier
+    noDel = Math.max(noDel + a[i], a[i]);      // plain Kadane
+    best = Math.max(best, noDel, oneDel);
+  }
+  return best;
+}` },
+          { lang: 'cpp', code: `int maximumSum(const vector<int>& a) {
+    int noDel = a[0], oneDel = INT_MIN / 2, best = a[0];
+    for (size_t i = 1; i < a.size(); i++) {
+        oneDel = max(oneDel + a[i], noDel);    // either delete a[i] now, or we deleted earlier
+        noDel = max(noDel + a[i], a[i]);       // plain Kadane
+        best = max({best, noDel, oneDel});
+    }
+    return best;
+}` }] } }
     ],
     deepDive: `<p><b>Why pattern maps work (and when they fail).</b> Interview problems are drawn from a small set of reusable <i>invariants</i>: "the window is always valid", "the stack is always decreasing", "everything left of lo fails the check". A clue word is a hint about which invariant the author built the problem around. That is why one table covers hundreds of problems.</p>
       <p><b>Failure mode 1 — one clue, wrong family.</b> "Longest" appears in sliding window, LIS (DP), and longest path (graph DP). Always pair the clue with the input shape and the size: "longest + contiguous + non-negative" is a window; "longest + subsequence" is DP; "longest + in a DAG" is topo order + DP.</p>
       <p><b>Failure mode 2 — the hidden monotonicity.</b> Binary search on the answer never says "binary search". The tell is a yes/no check that flips once: if capacity C works then C+1 works. Ask yourself: "If I guessed the answer, could I check it in O(N)?" If yes, you probably have binary search on the answer.</p>
       <p><b>Failure mode 3 — the graph in disguise.</b> States connected by moves (word ladder, lock combinations, sliding puzzle) form an implicit graph. "Minimum number of moves" over such states = BFS, even with no edges in the input.</p>
-      <p><b>Failure mode 4 — design questions.</b> "Implement X with O(1) get and put" is a data-structure combination question (DSA 27). The clue is the <b>required complexity per operation</b>: O(1) lookup → hash map; O(1) order changes → linked list; O(log N) ordered → TreeMap/heap.</p>
+      <p><b>Failure mode 4 — design questions.</b> "Implement X with O(1) get and put" is a data-structure combination question (DSA 27). The clue is the <b>required complexity per operation</b>: O(1) lookup → hash map; O(1) order changes → linked list; O(log N) ordered → ordered map (TreeMap / std::map) or heap.</p>
       <p><b>Production reality:</b> The same mapping is how senior engineers read requirements: "recent N events" → ring buffer; "top trending" → heap/count-min sketch; "dependency graph of services" → topological order for deploys. The skill transfers directly from interviews to system work.</p>`,
     aiEra: `<p><b>What AI changes:</b> An assistant can name the pattern for almost any classic problem instantly. Interviewers know this, so 2026 loops increasingly test the <b>reasoning behind the pick</b>: "Why not a sliding window here?", "What would change if values could be negative?". Memorising "problem → pattern" pairs is worth less; understanding which <b>clue</b> forces which choice is worth more.</p>
       <p><b>Use AI as a sparring partner:</b> <code>Give me a disguised problem whose real pattern is monotonic stack. Do not tell me the pattern. After I answer, tell me which phrase was the giveaway.</code> Or: <code>Rewrite LeetCode 'Koko eating bananas' as a story about servers so I can practise spotting the pattern.</code></p>
@@ -336,9 +558,27 @@ class Skeletons {
     return count;
 }` },
       mcq: { q: 'Why is a sliding window wrong here?', options: ['Negative numbers mean shrinking the window can increase the sum, so grow/shrink decisions are unreliable', 'Windows only work on strings', 'The array is too long for a window', 'Windows cannot count, only find the longest'], answer: 0, explain: 'A window needs "adding makes it bigger, removing makes it smaller". Negatives break that, so you cannot know which way to move.' },
-      hints: [`<p>Hint 1: sum(i..j) = pf[j] − pf[i−1]. You want pf[j] − pf[i−1] = k, i.e. an <b>earlier</b> prefix equal to pf[j] − k.</p>`, `<p>Hint 2: keep a HashMap from "prefix sum value" → "how many times seen so far". At each j, add map[pf − k] to the answer.</p>`, `<p>Hint 3: seed the map with {0: 1} so subarrays starting at index 0 are counted. Recipe: pf = 0; for x: pf += x; ans += map[pf−k]; map[pf]++.</p>`],
+      hints: [`<p>Hint 1: sum(i..j) = pf[j] − pf[i−1]. You want pf[j] − pf[i−1] = k, i.e. an <b>earlier</b> prefix equal to pf[j] − k.</p>`, `<p>Hint 2: keep a hash map from "prefix sum value" → "how many times seen so far". At each j, add map[pf − k] to the answer.</p>`, `<p>Hint 3: seed the map with {0: 1} so subarrays starting at index 0 are counted. Recipe: pf = 0; for x: pf += x; ans += map[pf−k]; map[pf]++.</p>`],
+      tests: { sig: 'int[] int -> int', fn: 'subarraySum', cases: [
+        [[[1,-1,1,1],2],2],
+        [[[1,1,1],2],2],
+        [[[1,2,3],3],2],
+        [[[0,0,0,0],0],10],
+        [[[-1,-1,1],0],1],
+        [[[1],1],1],
+        [[[1],0],0],
+        [[[-1000,1000],0],1],
+        [[[3,4,7,2,-3,1,4,2],7],4],
+        [[[-2,2,-4,0,0,1,-1],-3],2],
+        [[[3,-3,-2,1,3],5],0],
+        [[[0,0,1,-2,2,2,4,-2],-1],3],
+        [[[2,-3,-4,3,-4,1,-2],1],1],
+        [[{"$rep":0,"n":20000},0],200010000],
+        [[{"$rep":1000,"n":20000},10000000],10001],
+        [[{"$rep":-1000,"n":20000},-10000000],10001]
+      ] },
       solution: {
-        approach: `<p><b>Clue reading:</b> "contiguous subarray" + "sum equals k" + "negative values" → prefix sum + HashMap (DSA 5 + DSA 8). One pass; for each end j, count how many earlier prefixes equal pf − k.</p>`,
+        approach: `<p><b>Clue reading:</b> "contiguous subarray" + "sum equals k" + "negative values" → prefix sum + hash map (DSA 5 + DSA 8). One pass; for each end j, count how many earlier prefixes equal pf − k.</p>`,
         code: `class Solution {
     public int subarraySum(int[] nums, int k) {
         Map<Integer, Integer> freq = new HashMap<>();
@@ -352,19 +592,42 @@ class Skeletons {
         return count;
     }
 }`,
-        alt: [{ lang: 'python', code: `from collections import defaultdict
+        alt: [{ lang: 'python', code: `from collections import Counter
 
 def subarray_sum(nums, k):
-    freq = defaultdict(int)
-    freq[0] = 1
+    freq = Counter({0: 1})        # the empty prefix lets subarrays start at index 0
     pf = count = 0
     for x in nums:
-        pf += x
-        count += freq[pf - k]
-        freq[pf] += 1
-    return count
-
-print(subarray_sum([1, -1, 1, 1], 2))  # 2`, run: true }],
+        pf += x                   # prefix sum up to here
+        count += freq[pf - k]     # earlier prefixes that leave exactly k
+        freq[pf] += 1             # record this prefix AFTER counting
+    return count` },
+          { lang: 'js', code: `function subarraySum(nums, k) {
+  const freq = new Map([[0, 1]]);          // the empty prefix
+  let pf = 0, count = 0;
+  for (const x of nums) {
+    pf += x;                               // prefix sum up to here
+    count += freq.get(pf - k) || 0;        // earlier prefixes that leave exactly k
+    freq.set(pf, (freq.get(pf) || 0) + 1); // record this prefix AFTER counting
+  }
+  return count;
+}` },
+          { lang: 'cpp', code: `class Solution {
+public:
+    int subarraySum(vector<int>& nums, int k) {
+        unordered_map<long long, int> freq;
+        freq[0] = 1;                          // the empty prefix
+        long long pf = 0;
+        int count = 0;
+        for (int x : nums) {
+            pf += x;                          // prefix sum up to here
+            auto it = freq.find(pf - k);      // earlier prefixes that leave exactly k
+            if (it != freq.end()) count += it->second;
+            freq[pf]++;                       // record this prefix AFTER counting
+        }
+        return count;
+    }
+};` }],
         dry: { head: ['j', 'x', 'pf', 'pf − k', 'freq before', 'count'], rows: [['0', '1', '1', '−1', '{0:1}', '0'], ['1', '−1', '0', '−2', '{0:1, 1:1}', '0'], ['2', '1', '1', '−1', '{0:2, 1:1}', '0'], ['3', '1', '2', '0', '{0:2, 1:2}', H.c('g', '0 + 2 = 2')]] },
         complexity: `<p>Time O(N) average (hash operations), space O(N) for the map.</p>`,
         followUps: ['Return the longest such subarray instead of the count (store first index of each prefix).', 'What if all numbers were positive? (Then a sliding window also works in O(1) space.)', 'Count subarrays whose sum is divisible by k (store pf mod k, fix negative mods).']
@@ -413,7 +676,7 @@ print(subarray_sum([1, -1, 1, 1], 2))  # 2`, run: true }],
       <ul>
         <li><b>Values up to 10<sup>9</sup></b> — you cannot make an array indexed by value; and sums of two values overflow <code>int</code> → use <code>long</code>. Also hints "binary search over the value range" (log<sub>2</sub>10<sup>9</sup> ≈ 30 steps).</li>
         <li><b>K ≤ 20</b> next to a big N — the small parameter is where the exponential part goes: O(N·2<sup>K</sup>) is fine.</li>
-        <li><b>Lowercase letters only</b> — alphabet of 26 is a constant: an <code>int[26]</code> beats a HashMap, and O(26·N) counts as O(N).</li>
+        <li><b>Lowercase letters only</b> — alphabet of 26 is a constant: a 26-slot count array (<code>int[26]</code> in Java) beats a hash map, and O(26·N) counts as O(N).</li>
         <li><b>Q queries up to 10<sup>5</sup></b> — each query must cost O(log N) or O(1), so you need preprocessing (prefix sums, sparse table, segment tree).</li>
         <li><b>"Answer modulo 10<sup>9</sup>+7"</b> — the count is astronomically large → counting DP or combinatorics, never enumeration.</li>
         <li><b>Grid up to 1000 × 1000</b> — 10<sup>6</sup> cells, so O(R·C) BFS/DP is fine, O((R·C)<sup>2</sup>) is not.</li>
@@ -489,16 +752,26 @@ for n in [10, 20, 500, 5000, 100000, 10**9]:
     examples: [
       { title: 'N ≤ 15 — the size is shouting "bitmask"', html: `<p>"Assign 15 workers to 15 jobs at minimum total cost." 15! ≈ 1.3·10<sup>12</sup> (TLE), but 2<sup>15</sup>·15 ≈ 4.9·10<sup>5</sup> (instant). ${H.c('g', 'Bitmask DP')}: <code>dp[mask]</code> = min cost when the jobs in <code>mask</code> are taken by the first popcount(mask) workers (DSA 24).</p>` },
       { title: 'N ≤ 10<sup>5</sup> and Q ≤ 10<sup>5</sup> range-sum queries', html: `<p>Answering each query with a loop: 10<sup>5</sup> × 10<sup>5</sup> = 10<sup>10</sup> → TLE. Prefix sums: build O(N) once, each query O(1), total 2·10<sup>5</sup>. If updates are mixed in, prefix sums break (an update costs O(N)) → ${H.c('g', 'Fenwick tree')} with O(log N) for both (DSA 23).</p>` },
-      { title: 'Values up to 10<sup>9</sup>, N ≤ 10<sup>5</sup>, "minimum largest sum"', html: `<p>You cannot loop over every candidate answer (up to 10<sup>14</sup>), but binary search over that range takes only log<sub>2</sub>(10<sup>14</sup>) ≈ 47 checks of O(N) each → about 5·10<sup>6</sup> steps. Also: sums reach 10<sup>14</sup>, so ${H.c('r', 'int overflows')} → use <code>long</code>.</p>`, code: `long lo = 0, hi = 0;
+      { title: 'Values up to 10<sup>9</sup>, N ≤ 10<sup>5</sup>, "minimum largest sum"', html: `<p>You cannot loop over every candidate answer (up to 10<sup>14</sup>), but binary search over that range takes only log<sub>2</sub>(10<sup>14</sup>) ≈ 47 checks of O(N) each → about 5·10<sup>6</sup> steps. Also: sums reach 10<sup>14</sup>, so ${H.c('r', 'int overflows')} → use <code>long</code>.</p>`, code: { lang: 'java', code: `long lo = 0, hi = 0;
 int[] nums = {7, 2, 5, 10, 8};
 for (int x : nums) { lo = Math.max(lo, x); hi += x; }   // answer lies in [max, sum]
-System.out.println("search range: " + lo + " .. " + hi + ", about " + (64 - Long.numberOfLeadingZeros(hi - lo + 1)) + " checks");` },
-      { title: 'String of lowercase letters, length ≤ 10<sup>5</sup>', html: `<p>"Lowercase only" means 26 counters. Comparing two frequency arrays costs 26 steps, a constant. A window algorithm that compares counts at every step is O(26·N) = 2.6·10<sup>6</sup> → fine. Use <code>int[26]</code> instead of a HashMap: faster and no boxing.</p>` }
+System.out.println("search range: " + lo + " .. " + hi + ", about " + (64 - Long.numberOfLeadingZeros(hi - lo + 1)) + " checks");`,
+        alt: [{ lang: 'python', run: true, code: `nums = [7, 2, 5, 10, 8]
+lo, hi = max(nums), sum(nums)                 # answer lies in [max, sum]
+print(f"search range: {lo} .. {hi}, about {(hi - lo + 1).bit_length()} checks")` },
+          { lang: 'js', run: true, code: `const nums = [7, 2, 5, 10, 8];
+const lo = Math.max(...nums), hi = nums.reduce((a, b) => a + b, 0);   // answer lies in [max, sum]
+console.log("search range: " + lo + " .. " + hi + ", about " + (hi - lo + 1).toString(2).length + " checks");` },
+          { lang: 'cpp', code: `vector<int> nums = {7, 2, 5, 10, 8};
+long long lo = *max_element(nums.begin(), nums.end());
+long long hi = accumulate(nums.begin(), nums.end(), 0LL);   // answer lies in [max, sum]
+cout << "search range: " << lo << " .. " << hi << ", about " << (64 - __builtin_clzll(hi - lo + 1)) << " checks" << endl;` }] } },
+      { title: 'String of lowercase letters, length ≤ 10<sup>5</sup>', html: `<p>"Lowercase only" means 26 counters. Comparing two frequency arrays costs 26 steps, a constant. A window algorithm that compares counts at every step is O(26·N) = 2.6·10<sup>6</sup> → fine. Use a 26-slot count array instead of a hash map: faster and no boxing.</p>` }
     ],
-    deepDive: `<p><b>Where "10<sup>8</sup> per second" comes from.</b> A modern CPU runs ~3·10<sup>9</sup> cycles per second, but one "step" of an algorithm (array access, comparison, hash lookup) costs anywhere from 1 to 100+ cycles once you count cache misses and branch mispredictions. 10<sup>8</sup> is a safe, conservative middle. Java adds JIT warm-up and object overhead; Python is ~30–100× slower, so a Python O(N log N) at N = 10<sup>6</sup> may still struggle.</p>
-      <p><b>Constants matter at the border.</b> O(N log N) with a HashMap of boxed <code>Long</code>s can be slower than O(N log N) with a sorted primitive array, because every boxed object is a pointer chase. At N = 10<sup>6</sup>, cache-friendly code wins by 5–10×.</p>
+    deepDive: `<p><b>Where "10<sup>8</sup> per second" comes from.</b> A modern CPU runs ~3·10<sup>9</sup> cycles per second, but one "step" of an algorithm (array access, comparison, hash lookup) costs anywhere from 1 to 100+ cycles once you count cache misses and branch mispredictions. 10<sup>8</sup> is a safe, conservative middle. Java and JavaScript add JIT warm-up and object overhead; Python is ~30–100× slower, so a Python O(N log N) at N = 10<sup>6</sup> may still struggle.</p>
+      <p><b>Constants matter at the border.</b> O(N log N) with a hash map of boxed numbers (such as Java <code>Long</code>s) can be slower than O(N log N) with a sorted primitive array, because every boxed object is a pointer chase. At N = 10<sup>6</sup>, cache-friendly code wins by 5–10×.</p>
       <p><b>Reading constraints backwards.</b> Problem setters choose N so that the intended solution passes and the naive one fails. If N ≤ 2000, an O(N<sup>2</sup>) solution is almost certainly intended — do not burn time searching for O(N log N). If N ≤ 10<sup>5</sup> but the obvious solution is O(N<sup>2</sup>), the problem is about removing one loop (hashing, sorting, monotonic structure, prefix sums).</p>
-      <p><b>Memory budget too.</b> 256 MB ≈ 6·10<sup>7</sup> ints. A 10<sup>4</sup> × 10<sup>4</sup> int DP table is 400 MB → you need the rolling-array trick (keep two rows). Recursion depth of 10<sup>5</sup> in Java can overflow the default stack → iterative DFS or BFS.</p>
+      <p><b>Memory budget too.</b> 256 MB ≈ 6·10<sup>7</sup> ints. A 10<sup>4</sup> × 10<sup>4</sup> int DP table is 400 MB → you need the rolling-array trick (keep two rows). Recursion depth of 10<sup>5</sup> can overflow the default stack in Java, JavaScript and Python → iterative DFS or BFS.</p>
       <p><b>Amortised vs worst case:</b> a monotonic stack inside a loop looks O(N<sup>2</sup>) but each element is pushed and popped once → O(N). Always count total work, not nested loops.</p>`,
     aiEra: `<p><b>What AI changes:</b> AI happily produces an O(N<sup>2</sup>) solution that passes the three sample tests and fails the hidden 10<sup>5</sup> test. Generated code rarely mentions the budget unless you ask. Your job is to <b>state the budget first</b> and reject code that does not meet it.</p>
       <p><b>Prompt that works:</b> <code>N ≤ 2·10^5, values ≤ 10^9. State the target time complexity, then give a solution that meets it, and list where overflow can happen.</code> Then verify the claim yourself by counting loops.</p>
@@ -526,6 +799,25 @@ int go(int[] nums, int start, int k) {
 }` },
       mcq: { q: '"Minimize the largest part sum" + values up to 10<sup>6</sup>. What is the cleanest approach?', options: ['Binary search on the answer with a greedy O(N) feasibility check', 'Sort the array and split in the middle', 'Sliding window of size N/k', 'Heap of part sums'], answer: 0, explain: '"Minimize the maximum" is the classic tell. If largest sum X is achievable, any X\' &gt; X is too — monotone → binary search.' },
       hints: [`<p>Hint 1: Flip the question: "Can I split into ≤ k parts so that every part sum ≤ X?" That yes/no answer only flips once as X grows.</p>`, `<p>Hint 2: The check is greedy: walk left to right, start a new part whenever adding the next number would exceed X. Count the parts.</p>`, `<p>Hint 3: Search X in [max(nums), sum(nums)]. Use long for sums. Recipe: lo = max, hi = sum; while lo &lt; hi: mid; if parts(mid) ≤ k: hi = mid else lo = mid + 1.</p>`],
+      tests: { sig: 'int[] int -> int', fn: 'splitArray', cases: [
+        [[[7,2,5,10,8],2],18],
+        [[[1,2,3,4,5],2],9],
+        [[[1,4,4],3],4],
+        [[[0,0,0],2],0],
+        [[[10],1],10],
+        [[[5,5,5,5],4],5],
+        [[[2,3,1,2,4,3],5],4],
+        [[[1,2,3,4,5],1],15],
+        [[[0],1],0],
+        [[[8,3,13,15,6,20],5],20],
+        [[[14,2,12,11,14],5],14],
+        [[[17,12,0,7,2],3],17],
+        [[[3,16,1,1,4],5],16],
+        [[{"$rep":1000000,"n":1000},1],1000000000],
+        [[{"$rep":1000000,"n":1000},2],500000000],
+        [[{"$rep":1000000,"n":1000},50],20000000],
+        [[{"$concat":[{"$rep":0,"n":999},[1000000]]},50],1000000]
+      ] },
       solution: {
         approach: `<p><b>Budget:</b> N ≤ 1000, k ≤ 50 → an O(k·N<sup>2</sup>) = 5·10<sup>7</sup> DP also fits, but binary search on the answer is O(N log(sum)) ≈ 1000 × 30 and shorter to code. Mention both; code the simpler one.</p>`,
         code: `class Solution {
@@ -549,6 +841,65 @@ int go(int[] nums, int start, int k) {
         return parts;
     }
 }`,
+        alt: [{ lang: 'python', code: `def split_array(nums, k):
+    def parts_needed(cap):                 # greedy: fewest parts if no part may exceed cap
+        parts, cur = 1, 0
+        for x in nums:
+            if cur + x > cap:
+                parts += 1
+                cur = 0
+            cur += x
+        return parts
+
+    lo, hi = max(nums), sum(nums)          # the answer is in [max, sum]
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if parts_needed(mid) <= k:
+            hi = mid                       # feasible: try smaller
+        else:
+            lo = mid + 1                   # too many parts: need a bigger cap
+    return lo` },
+          { lang: 'js', code: `function splitArray(nums, k) {
+  // greedy: how many parts if no part may exceed cap?
+  const partsNeeded = (cap) => {
+    let parts = 1, cur = 0;
+    for (const x of nums) {
+      if (cur + x > cap) { parts++; cur = 0; }
+      cur += x;
+    }
+    return parts;
+  };
+  let lo = Math.max(...nums), hi = nums.reduce((a, b) => a + b, 0); // answer is in [max, sum]
+  while (lo < hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (partsNeeded(mid) <= k) hi = mid;   // feasible: try smaller
+    else lo = mid + 1;                     // too many parts: need a bigger cap
+  }
+  return lo;
+}` },
+          { lang: 'cpp', code: `class Solution {
+    // greedy: how many parts if no part may exceed cap?
+    int partsNeeded(const vector<int>& nums, long long cap) {
+        int parts = 1;
+        long long cur = 0;
+        for (int x : nums) {
+            if (cur + x > cap) { parts++; cur = 0; }
+            cur += x;
+        }
+        return parts;
+    }
+public:
+    int splitArray(vector<int>& nums, int k) {
+        long long lo = *max_element(nums.begin(), nums.end());
+        long long hi = accumulate(nums.begin(), nums.end(), 0LL);   // answer is in [max, sum]
+        while (lo < hi) {
+            long long mid = lo + (hi - lo) / 2;
+            if (partsNeeded(nums, mid) <= k) hi = mid;   // feasible: try smaller
+            else lo = mid + 1;                           // too many parts: need a bigger cap
+        }
+        return (int)lo;
+    }
+};` }],
         dry: { head: ['lo', 'hi', 'mid', 'greedy parts at cap = mid', 'move'], rows: [['10', '32', '21', '[7,2,5] [10,8] → 2', 'hi = 21'], ['10', '21', '15', '[7,2,5] [10] [8] → 3', 'lo = 16'], ['16', '21', '18', '[7,2,5] [10,8] → 2', 'hi = 18'], ['16', '18', '17', '[7,2,5] [10] [8] → 3', 'lo = 18'], ['18', '18', '—', 'loop ends', H.c('g', 'answer 18')]] },
         complexity: `<p>Time O(N · log(sum)) ≈ 1000 × 30. Space O(1).</p>`,
         followUps: ['Return the actual split points.', 'Same problem but you may reorder the array first — now what? (Becomes a load-balancing / bin-packing flavour, NP-hard in general.)', 'Painter’s partition: identical structure, explain why.']
@@ -586,7 +937,7 @@ int go(int[] nums, int start, int k) {
       '[2,7,11,15], target 9 → [0,1]. Own: [3,3], target 6 → [0,1] (equal values, different indices). Edge: negatives [−1, 4], target 3.',
       'Check every pair i &lt; j: O(N<sup>2</sup>) = 5·10<sup>7</sup> — works but slow.',
       'For each i we search the whole array for target − a[i]. That search is the waste: a lookup should be O(1).',
-      'Clue "seen before?" → HashMap value → index. One pass: before storing a[i], ask "is target − a[i] already in the map?" O(N).',
+      'Clue "seen before?" → hash map value → index. One pass: before storing a[i], ask "is target − a[i] already in the map?" O(N).',
       '[2,7,11,15], t=9: i=0 store 2→0; i=1 need 2 → found at 0 → [0,1] ✔.',
       'Map&lt;Integer,Integer&gt; idx; loop; check, then put (check first avoids using the same element twice).',
       '[3,3] t=6: i=0 store; i=1 need 3 → found → [0,1] ✔. No-solution case: return empty array (agreed in step 1).'
@@ -636,7 +987,7 @@ int go(int[] nums, int start, int k) {
       'The statement is <b>vague</b> about duplicates, empty input or output format → the clarifying questions are part of the grade.',
       'You find yourself <b>writing many if-statements</b> for cases → step back; there is usually a cleaner invariant.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
 // The shape of a strong interview solution: tiny main method, named helpers, early edge cases.
 class MinMeetingRooms {
     public int minMeetingRooms(int[][] intervals) {
@@ -654,7 +1005,57 @@ class MinMeetingRooms {
         }
         return best;
     }
-}`, { lang: 'python', run: true, title: 'Brute force vs optimised: count the work (runnable)', code: `import random
+}`,
+        alt: [{ lang: 'python', code: `# The shape of a strong interview solution: tiny entry point, named steps, early edge cases.
+class MinMeetingRooms:
+    def min_meeting_rooms(self, intervals):
+        if not intervals:
+            return 0                                   # edge case first, out loud
+        starts = sorted(s for s, _ in intervals)
+        ends = sorted(e for _, e in intervals)
+        used = best = j = 0                            # j points at the earliest unfinished end
+        for s in starts:
+            while j < len(ends) and ends[j] <= s:      # free rooms whose meeting ended
+                used -= 1
+                j += 1
+            used += 1                                  # this meeting takes a room
+            best = max(best, used)
+        return best` },
+          { lang: 'js', code: `// The shape of a strong interview solution: tiny entry point, named steps, early edge cases.
+class MinMeetingRooms {
+  minMeetingRooms(intervals) {
+    if (!intervals || intervals.length === 0) return 0;          // edge case first, out loud
+    const n = intervals.length;
+    const starts = intervals.map((m) => m[0]).sort((a, b) => a - b);   // comparator: default sort is by string
+    const ends = intervals.map((m) => m[1]).sort((a, b) => a - b);
+    let used = 0, best = 0, j = 0;                               // j points at the earliest unfinished end
+    for (let i = 0; i < n; i++) {
+      while (j < n && ends[j] <= starts[i]) { used--; j++; }     // free rooms whose meeting ended
+      used++;                                                    // this meeting takes a room
+      best = Math.max(best, used);
+    }
+    return best;
+  }
+}` },
+          { lang: 'cpp', code: `// The shape of a strong interview solution: tiny entry point, named steps, early edge cases.
+class MinMeetingRooms {
+public:
+    int minMeetingRooms(const vector<vector<int>>& intervals) {
+        if (intervals.empty()) return 0;               // edge case first, out loud
+        int n = intervals.size();
+        vector<int> starts, ends;
+        for (const auto& m : intervals) { starts.push_back(m[0]); ends.push_back(m[1]); }
+        sort(starts.begin(), starts.end());
+        sort(ends.begin(), ends.end());
+        int used = 0, best = 0, j = 0;                 // j points at the earliest unfinished end
+        for (int i = 0; i < n; i++) {
+            while (j < n && ends[j] <= starts[i]) { used--; j++; }   // free rooms whose meeting ended
+            used++;                                    // this meeting takes a room
+            best = max(best, used);
+        }
+        return best;
+    }
+};` }] }, { lang: 'python', run: true, title: 'Brute force vs optimised: count the work (runnable)', code: `import random
 
 def brute(iv):
     ops = 0; best = 0
@@ -690,7 +1091,7 @@ for n in [10, 100, 1000]:
     assert b == o
     print(f"n={n:5}: rooms={b:3}  brute ops={bo:8}  sweep ops={oo:6} (+ sorting)")
 ` }],
-    codeTitle: ['Clean final code shape (Java)', 'Why step 4 matters: operation counts'],
+    codeTitle: ['Clean final code shape', 'Why step 4 matters: operation counts'],
     viz: {
       title: 'The 8-step loop on a real problem (rooms · twosum · stairs)',
       input: 'rooms',
@@ -733,11 +1134,23 @@ for n in [10, 100, 1000]:
     examples: [
       { title: 'Using "solve it by hand": Gas Station', html: `<p>"Circular route, gas[i] and cost[i]; find the start station to complete the loop." Do it by hand with gas = [1,2,3,4,5], cost = [3,4,5,1,2]: start at 0, tank goes 1−3 = −2 → fail. Start at 1: −2 → fail. You quickly notice: <b>whenever the tank goes negative at station i, no start between the old start and i can work</b> — so jump the start to i+1. That observation <i>is</i> the O(N) greedy (DSA 17). You found it by watching yourself.</p>` },
       { title: 'Using "sort the input": Minimum arrows to burst balloons', html: `<p>Balloons are intervals; an arrow at x bursts all intervals containing x. Unsorted, it feels hopeless. Sort by <b>end</b>: shoot at the first end; skip every balloon starting at or before that point; repeat. ${H.arr(['[1,6]', '[2,8]', '[7,12]', '[10,16]'], { hl: { 0: 'g', 1: 'g', 2: 'b', 3: 'b' } })}<p>Arrow at 6 bursts the green pair, arrow at 12 the blue pair → 2 arrows.</p>` },
-      { title: 'Using "guess the answer and check": Koko eating bananas', html: `<p>"Minimum eating speed to finish all piles in h hours." If someone told you the speed s, could you check it? Yes: hours = Σ ⌈pile / s⌉, one O(N) pass. And if s works, s+1 works too. Guess-and-check + monotonic ⇒ binary search on s in [1, max pile].</p>`, code: `long hoursAt(int[] piles, int s) {
+      { title: 'Using "guess the answer and check": Koko eating bananas', html: `<p>"Minimum eating speed to finish all piles in h hours." If someone told you the speed s, could you check it? Yes: hours = Σ ⌈pile / s⌉, one O(N) pass. And if s works, s+1 works too. Guess-and-check + monotonic ⇒ binary search on s in [1, max pile].</p>`, code: { lang: 'java', code: `long hoursAt(int[] piles, int s) {
     long h = 0;
     for (int p : piles) h += (p + s - 1) / s;   // ceil(p / s) without floating point
     return h;
+}`,
+        alt: [{ lang: 'python', code: `def hours_at(piles, s):
+    return sum((p + s - 1) // s for p in piles)   # ceil(p / s) without floating point` },
+          { lang: 'js', code: `function hoursAt(piles, s) {
+  let h = 0;
+  for (const p of piles) h += Math.floor((p + s - 1) / s);   // ceil(p / s) without floating point
+  return h;
 }` },
+          { lang: 'cpp', code: `long long hoursAt(const vector<int>& piles, long long s) {
+    long long h = 0;
+    for (int p : piles) h += (p + s - 1) / s;   // ceil(p / s) without floating point
+    return h;
+}` }] } },
       { title: 'Using "simplify": Trapping rain water', html: `<p>Too hard at once? Simplify to <b>one bar</b>: how much water sits above bar i? It is <code>min(maxLeft, maxRight) − height[i]</code>. Now the full problem is "compute maxLeft and maxRight for every i" → prefix max + suffix max arrays (O(N)), or two pointers for O(1) space.</p>` }
     ],
     deepDive: `<p><b>Why brute force first is not a waste of time.</b> (1) It proves you understood the problem — interviewers often catch misunderstandings here. (2) It gives a correctness oracle you can mentally check the fast solution against. (3) The structure of the brute force tells you where to optimise: a nested loop that re-sums a range → prefix sums; one that re-searches → hashing/binary search; one that re-scans to find a max → heap/monotonic deque; a recursion with repeated arguments → memoisation.</p>
@@ -764,8 +1177,26 @@ for n in [10, 100, 1000]:
     }
     return best;
 }` },
-      mcq: { q: 'Which data structure most naturally tells you "the earliest time any room frees up"?', options: ['A min-heap of end times', 'A stack of start times', 'A HashMap from start to end', 'A queue of intervals in input order'], answer: 0, explain: 'The heap top is the earliest ending meeting. If it ends by the new start, reuse that room (poll), then push the new end.' },
+      mcq: { q: 'Which data structure most naturally tells you "the earliest time any room frees up"?', options: ['A min-heap of end times', 'A stack of start times', 'A hash map from start to end', 'A queue of intervals in input order'], answer: 0, explain: 'The heap top is the earliest ending meeting. If it ends by the new start, reuse that room (poll), then push the new end.' },
       hints: [`<p>Hint 1: Process meetings in order of start time. At each start, which rooms are free? Those whose meeting already ended.</p>`, `<p>Hint 2: Keep a min-heap of end times of rooms in use. Before adding a meeting, pop the top if it ended (end ≤ start).</p>`, `<p>Hint 3: The heap's maximum size over time is the answer. Edge cases: empty input → 0; touching intervals share a room (use ≤).</p>`],
+      tests: { sig: 'int[][] -> int', fn: 'minMeetingRooms', cases: [
+        [[[[0,30],[5,10],[15,20]]],2],
+        [[[[7,10],[2,4]]],1],
+        [[[[1,5],[5,10]]],1],
+        [[[[0,1]]],1],
+        [[[]],0],
+        [[[[1,10],[2,9],[3,8],[4,7]]],4],
+        [[[[0,10],[10,20],[20,30]]],1],
+        [[[[1,3],[1,3],[1,3]]],3],
+        [[[[0,1000000],[0,1000000]]],2],
+        [[[[6,9],[1,4],[4,7],[1,7],[10,13],[7,8]]],3],
+        [[[[2,5],[9,14],[10,12],[9,10],[12,13],[2,8],[8,9],[3,7]]],3],
+        [[[[11,14],[11,14],[2,7]]],2],
+        [[[[10,12],[1,3],[5,7]]],1],
+        [[{"$rep":[0,1000000],"n":10000}],10000],
+        [[{"$concat":[[[0,5]],{"$rep":[5,10],"n":5000}]}],5000],
+        [[{"$concat":[{"$rep":[0,1],"n":4000},{"$rep":[1,2],"n":4000}]}],4000]
+      ] },
       solution: {
         approach: `<p>Sort by start. Min-heap holds end times of busy rooms. For each meeting: if the earliest end ≤ its start, that room is free — poll it. Push this meeting's end. Answer = heap size at the end (the heap only grows when no room is free). The two-array sweep from the topic code is an equivalent O(N log N) alternative.</p>`,
         code: `class Solution {
@@ -779,6 +1210,71 @@ for n in [10, 100, 1000]:
         return ends.size();                                             // rooms ever needed at once
     }
 }`,
+        alt: [{ lang: 'python', code: `import heapq
+
+def min_meeting_rooms(intervals):
+    ends = []                                  # min-heap of end times of busy rooms
+    for start, end in sorted(intervals):       # by start time
+        if ends and ends[0] <= start:
+            heapq.heapreplace(ends, end)       # reuse the room that freed first
+        else:
+            heapq.heappush(ends, end)          # open a new room
+    return len(ends)` },
+          { lang: 'js', code: `class MinHeap {
+  constructor(less) { this.a = []; this.less = less || ((x, y) => x < y); }
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(v) {
+    const a = this.a;
+    a.push(v);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (!this.less(a[i], a[p])) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.less(a[l], a[m])) m = l;
+        if (r < a.length && this.less(a[r], a[m])) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+function minMeetingRooms(intervals) {
+  const sorted = [...intervals].sort((a, b) => a[0] - b[0]);   // by start time
+  const ends = new MinHeap();                                  // end times of busy rooms
+  for (const [start, end] of sorted) {
+    if (ends.size() > 0 && ends.peek() <= start) ends.pop();   // reuse the room that freed first
+    ends.push(end);                                            // this meeting occupies a room
+  }
+  return ends.size();                                          // rooms ever needed at once
+}` },
+          { lang: 'cpp', code: `class Solution {
+public:
+    int minMeetingRooms(vector<vector<int>>& intervals) {
+        sort(intervals.begin(), intervals.end());               // by start time
+        priority_queue<int, vector<int>, greater<int>> ends;    // min-heap of end times
+        for (auto& m : intervals) {
+            if (!ends.empty() && ends.top() <= m[0]) ends.pop();  // reuse the room that freed first
+            ends.push(m[1]);                                      // this meeting occupies a room
+        }
+        return (int)ends.size();
+    }
+};` }],
         dry: { head: ['meeting', 'heap before', 'earliest end ≤ start?', 'heap after', 'rooms'], rows: [['[0,30]', '{}', '—', '{30}', '1'], ['[5,10]', '{30}', '30 ≤ 5? no', '{10, 30}', '2'], ['[15,20]', '{10, 30}', '10 ≤ 15? yes → poll', '{20, 30}', H.c('g', '2')]] },
         complexity: `<p>Time O(N log N) for the sort and heap operations. Space O(N) for the heap.</p>`,
         followUps: ['Return which room each meeting gets.', 'Rooms have different capacities and meetings have sizes — what changes?', 'Meetings arrive online (stream) — can you still answer the current room count?']
@@ -919,7 +1415,7 @@ for day in range(1, 4):
         <details><summary>Reveal patterns and target times</summary><p>1. Sort by start + merge into the last kept interval (DSA 7) — 15 min. 2. Min-heap of size k, or quickselect for average O(N) (DSA 7, 16) — 15 min. 3. DP: <code>dp[i]</code> = can the prefix of length i be split; try every dictionary word ending at i (DSA 19) — 25 min.</p></details>
         <p>The mix forces three different decisions: sort-based greedy, heap selection, and boolean DP.</p>` },
       { title: 'Set C — 75 minutes (Medium, Hard, Hard)', html: `<ol><li>LRU Cache</li><li>Sliding Window Maximum</li><li>Edit Distance</li></ol>
-        <details><summary>Reveal patterns and target times</summary><p>1. HashMap + doubly linked list, O(1) get/put (DSA 12) — 20 min. 2. Monotonic deque of indices, front = max (DSA 14) — 20 min. 3. 2D DP over prefixes: insert/delete/replace (DSA 18) — 30 min.</p></details>
+        <details><summary>Reveal patterns and target times</summary><p>1. Hash map + doubly linked list, O(1) get/put (DSA 12) — 20 min. 2. Monotonic deque of indices, front = max (DSA 14) — 20 min. 3. 2D DP over prefixes: insert/delete/replace (DSA 18) — 30 min.</p></details>
         <p>Typical outcome for a first attempt: 2 solved, 1 partial. That is fine — the error log entry is the win.</p>` },
       { title: 'Reading your set results like a coach', html: `${H.table(['symptom in results', 'diagnosis', 'fix'], [
         ['picked the wrong pattern', 'weak clue recognition', 'drill the master map (Topic 1), more interleaving'],
@@ -956,9 +1452,25 @@ for day in range(1, 4):
     return groups;
 }` },
       mcq: { q: 'What is the best "signature" key for a word when letters are only a–z and words can be 100 long?', options: ['A 26-count string like "1#0#0#…" built in O(L)', 'The word sorted, O(L log L)', 'The sum of character codes', 'The first and last letters'], answer: 0, explain: 'Counts are O(L) and unique per anagram class. Sorting also works (O(L log L)). Sums collide: "ad" and "bc" have equal sums.' },
-      hints: [`<p>Hint 1: Two words are anagrams exactly when their letter counts are equal. Turn the counts into a key.</p>`, `<p>Hint 2: HashMap&lt;String, List&lt;String&gt;&gt; from key → words. One pass.</p>`, `<p>Hint 3: Build the key from int[26] with separators ("#") so counts like 1,11 and 11,1 cannot collide. Empty string gets the all-zero key — still a valid group.</p>`],
+      hints: [`<p>Hint 1: Two words are anagrams exactly when their letter counts are equal. Turn the counts into a key.</p>`, `<p>Hint 2: HashMap&lt;String, List&lt;String&gt;&gt; from key → words. One pass.</p>`, `<p>Hint 3: Build the key from the 26 counts with separators ("#") so counts like 1,11 and 11,1 cannot collide. Empty string gets the all-zero key — still a valid group.</p>`],
+      tests: { sig: 'string[] -> list<list<string>>', fn: 'groupAnagrams', check: "(args, out, expected) => { const words = args[0]; const key = (s) => s.split(\"\").sort().join(\"\"); const seen = new Set(); let total = 0; const sizes = []; for (const g of out) { if (g.length === 0) return false; const k = key(g[0]); if (seen.has(k)) return false; seen.add(k); for (const w of g) if (key(w) !== k) return false; total += g.length; sizes.push(g.length); } if (total !== words.length) return false; const a = words.map(String).sort(), b = out.flat().map(String).sort(); for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false; sizes.sort((p, q) => p - q); return JSON.stringify(sizes) === JSON.stringify(expected); }", cases: [
+        [[["eat","tea","tan","ate","nat","bat"]],[1,2,3]],
+        [[[""]],[1]],
+        [[["a"]],[1]],
+        [[["",""]],[2]],
+        [[["ab","ba","abc","cab","bca","c"]],[1,2,3]],
+        [[["aab","aba","baa","abb"]],[1,3]],
+        [[["a","b","c"]],[1,1,1]],
+        [[["zz","zz","z"]],[1,2]],
+        [[["aa","bc","","","cb","a","c",""]],[1,1,1,2,3]],
+        [[["b","cbb","bc","bba","b",""]],[1,1,1,1,2]],
+        [[["ccc","bbb","aaa","ba","bc","caa","cb"]],[1,1,1,1,1,2]],
+        [[{"$rep":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","n":10000}],[10000]],
+        [[{"$concat":[{"$rep":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","n":5000},{"$rep":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","n":5000}]}],[5000,5000]],
+        [[{"$concat":[{"$rep":"abababababababababababababababababababababababababababababababababababababababababababababababababab","n":5000},{"$rep":"babababababababababababababababababababababababababababababababababababababababababababababababababa","n":5000}]}],[10000]]
+      ] },
       solution: {
-        approach: `<p>Clue: "same letters, same counts" → frequency signature + HashMap (DSA 8). Compute the 26-count key per word in O(L), append the word to its bucket.</p>`,
+        approach: `<p>Clue: "same letters, same counts" → frequency signature + hash map (DSA 8). Compute the 26-count key per word in O(L), append the word to its bucket.</p>`,
         code: `class Solution {
     public List<List<String>> groupAnagrams(String[] strs) {
         Map<String, List<String>> groups = new HashMap<>();
@@ -972,6 +1484,43 @@ for day in range(1, 4):
         return new ArrayList<>(groups.values());
     }
 }`,
+        alt: [{ lang: 'python', code: `from collections import defaultdict
+
+def group_anagrams(strs):
+    groups = defaultdict(list)
+    for w in strs:
+        cnt = [0] * 26
+        for ch in w:
+            cnt[ord(ch) - ord('a')] += 1
+        groups[tuple(cnt)].append(w)       # equal letter counts = same key
+    return list(groups.values())` },
+          { lang: 'js', code: `function groupAnagrams(strs) {
+  const groups = new Map();
+  for (const w of strs) {
+    const cnt = new Array(26).fill(0);
+    for (const ch of w) cnt[ch.charCodeAt(0) - 97]++;
+    const key = cnt.join('#');                 // '#' separates counts: no collisions
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(w);
+  }
+  return [...groups.values()];
+}` },
+          { lang: 'cpp', code: `class Solution {
+public:
+    vector<vector<string>> groupAnagrams(vector<string>& strs) {
+        unordered_map<string, vector<string>> groups;
+        for (const string& w : strs) {
+            int cnt[26] = {};
+            for (char c : w) cnt[c - 'a']++;
+            string key;
+            for (int c : cnt) key += to_string(c) + '#';   // '#' separates counts: no collisions
+            groups[key].push_back(w);
+        }
+        vector<vector<string>> res;
+        for (auto& [key, words] : groups) res.push_back(move(words));
+        return res;
+    }
+};` }],
         dry: { head: ['word', 'non-zero counts', 'key bucket', 'groups so far'], rows: [['eat', 'a1 e1 t1', 'K1 (new)', '1'], ['tea', 'a1 e1 t1', 'K1', '1'], ['tan', 'a1 n1 t1', 'K2 (new)', '2'], ['ate', 'a1 e1 t1', 'K1', '2'], ['nat', 'a1 n1 t1', 'K2', '2'], ['bat', 'a1 b1 t1', 'K3 (new)', H.c('g', '3')]] },
         complexity: `<p>Time O(N · L) (plus O(26) per key). Space O(N · L) for the groups.</p>`,
         followUps: ['Unicode words instead of a–z?', 'Stream of words: return the current group of a new word in O(L).', 'Find the largest anagram group only — can you avoid storing every word?']
@@ -1071,8 +1620,8 @@ def oranges_rotting(grid):
 print(oranges_rotting([[2, 1, 1], [1, 1, 0], [0, 1, 1]]))  # 4
 print(oranges_rotting([[2, 1, 1], [0, 1, 1], [1, 0, 1]]))  # -1 (bottom-left is unreachable)
 print(oranges_rotting([[0, 2]]))                           # 0 (nothing fresh)
-` }, `
-// Walkthrough 3 code: LRU cache with O(1) get/put — HashMap for lookup + doubly linked list for order.
+` }, { lang: 'java', code: `
+// Walkthrough 3 code: LRU cache with O(1) get/put — hash map for lookup + doubly linked list for order.
 class LRUCache {
     private static class Node { int key, val; Node prev, next; Node(int k, int v) { key = k; val = v; } }
     private final int capacity;
@@ -1101,8 +1650,115 @@ class LRUCache {
     }
     private void unlink(Node n) { n.prev.next = n.next; n.next.prev = n.prev; }
     private void addFront(Node n) { n.next = head.next; n.prev = head; head.next.prev = n; head.next = n; }
-}`],
-    codeTitle: ['Rotting oranges (Python, runnable)', 'LRU cache (Java)'],
+}`,
+        alt: [{ lang: 'python', code: `# Walkthrough 3 code: LRU cache with O(1) get/put - dict for lookup + doubly linked list for order.
+class LRUCache:
+    class Node:
+        __slots__ = ("key", "val", "prev", "next")
+
+        def __init__(self, key=0, val=0):
+            self.key, self.val = key, val
+            self.prev = self.next = None
+
+    def __init__(self, capacity):
+        self.capacity = capacity
+        self.map = {}
+        self.head, self.tail = self.Node(), self.Node()      # sentinels: no None checks
+        self.head.next, self.tail.prev = self.tail, self.head
+
+    def get(self, key):
+        n = self.map.get(key)
+        if n is None:
+            return -1
+        self._unlink(n)
+        self._add_front(n)                                   # touched -> most recently used
+        return n.val
+
+    def put(self, key, value):
+        n = self.map.get(key)
+        if n is not None:
+            n.val = value
+            self._unlink(n)
+            self._add_front(n)
+            return
+        if len(self.map) == self.capacity:                   # evict least recently used (just before tail)
+            lru = self.tail.prev
+            self._unlink(lru)
+            del self.map[lru.key]
+        n = self.Node(key, value)
+        self.map[key] = n
+        self._add_front(n)
+
+    def _unlink(self, n):
+        n.prev.next = n.next
+        n.next.prev = n.prev
+
+    def _add_front(self, n):
+        n.next, n.prev = self.head.next, self.head
+        self.head.next.prev = n
+        self.head.next = n` },
+          { lang: 'js', code: `// Walkthrough 3 code: LRU cache with O(1) get/put - Map for lookup + doubly linked list for order.
+class LRUCache {
+  constructor(capacity) {
+    this.capacity = capacity;
+    this.map = new Map();
+    this.head = { key: 0, val: 0, prev: null, next: null };   // sentinels: no null checks
+    this.tail = { key: 0, val: 0, prev: null, next: null };
+    this.head.next = this.tail;
+    this.tail.prev = this.head;
+  }
+  get(key) {
+    const n = this.map.get(key);
+    if (n === undefined) return -1;
+    this.unlink(n);
+    this.addFront(n);                                         // touched -> most recently used
+    return n.val;
+  }
+  put(key, value) {
+    let n = this.map.get(key);
+    if (n !== undefined) { n.val = value; this.unlink(n); this.addFront(n); return; }
+    if (this.map.size === this.capacity) {                    // evict least recently used (just before tail)
+      const lru = this.tail.prev;
+      this.unlink(lru);
+      this.map.delete(lru.key);
+    }
+    n = { key, val: value, prev: null, next: null };
+    this.map.set(key, n);
+    this.addFront(n);
+  }
+  unlink(n) { n.prev.next = n.next; n.next.prev = n.prev; }
+  addFront(n) { n.next = this.head.next; n.prev = this.head; this.head.next.prev = n; this.head.next = n; }
+}` },
+          { lang: 'cpp', code: `// Walkthrough 3 code: LRU cache with O(1) get/put - hash map for lookup + doubly linked list for order.
+// std::list is a doubly linked list; the map stores an iterator to each node.
+class LRUCache {
+    int capacity;
+    list<pair<int, int>> order;                                    // front = most recently used
+    unordered_map<int, list<pair<int, int>>::iterator> pos;
+public:
+    LRUCache(int capacity) : capacity(capacity) {}
+    int get(int key) {
+        auto it = pos.find(key);
+        if (it == pos.end()) return -1;
+        order.splice(order.begin(), order, it->second);            // touched -> most recently used
+        return it->second->second;
+    }
+    void put(int key, int value) {
+        auto it = pos.find(key);
+        if (it != pos.end()) {
+            it->second->second = value;
+            order.splice(order.begin(), order, it->second);
+            return;
+        }
+        if ((int)pos.size() == capacity) {                         // evict least recently used (the back)
+            pos.erase(order.back().first);
+            order.pop_back();
+        }
+        order.emplace_front(key, value);
+        pos[key] = order.begin();
+    }
+};` }] }],
+    codeTitle: ['Rotting oranges (Python, runnable)', 'LRU cache'],
     viz: {
       title: 'Mock round replay: Rotting Oranges with the candidate’s script',
       input: '2 1 1 / 1 1 0 / 0 1 1',
@@ -1156,7 +1812,7 @@ class LRUCache {
         <p><b>C:</b> "The clues are <i>substring</i> and <i>longest</i>, and the condition 'no repeats' only gets worse as the window grows — a sliding window fits. I keep the last index of each character; when s[right] was seen inside the window, jump left past it."</p>
         <p><b>I:</b> "Why jump instead of moving left one step at a time?" <b>C:</b> "Both are O(N) overall, but jumping is one assignment. I must use max(left, last+1) so left never moves backwards."</p>
         <p><b>C:</b> (traces "abba") "At the second 'a', last['a'] = 0 but left is already 2 — the max() saves me. Answer 2."</p></details>
-        <p>The key moment: the candidate <b>tested the tricky case "abba"</b> on their own. That one trace is worth more than five easy ones.</p>`, code: `int lengthOfLongestSubstring(String s) {
+        <p>The key moment: the candidate <b>tested the tricky case "abba"</b> on their own. That one trace is worth more than five easy ones.</p>`, code: { lang: 'java', code: `int lengthOfLongestSubstring(String s) {
     int[] last = new int[128];
     Arrays.fill(last, -1);
     int left = 0, best = 0;
@@ -1167,10 +1823,40 @@ class LRUCache {
         best = Math.max(best, right - left + 1);
     }
     return best;
+}`,
+        alt: [{ lang: 'python', code: `def length_of_longest_substring(s):
+    last = {}                                  # char -> index of its latest occurrence
+    left = best = 0
+    for right, ch in enumerate(s):
+        left = max(left, last.get(ch, -1) + 1) # never move left backwards ("abba")
+        last[ch] = right
+        best = max(best, right - left + 1)
+    return best` },
+          { lang: 'js', code: `function lengthOfLongestSubstring(s) {
+  const last = new Map();                      // char -> index of its latest occurrence
+  let left = 0, best = 0;
+  for (let right = 0; right < s.length; right++) {
+    const ch = s[right];
+    left = Math.max(left, (last.has(ch) ? last.get(ch) : -1) + 1);   // never move left backwards ("abba")
+    last.set(ch, right);
+    best = Math.max(best, right - left + 1);
+  }
+  return best;
 }` },
+          { lang: 'cpp', code: `int lengthOfLongestSubstring(const string& s) {
+    vector<int> last(256, -1);                 // char -> index of its latest occurrence
+    int left = 0, best = 0;
+    for (int right = 0; right < (int)s.size(); right++) {
+        unsigned char ch = s[right];
+        left = max(left, last[ch] + 1);        // never move left backwards ("abba")
+        last[ch] = right;
+        best = max(best, right - left + 1);
+    }
+    return best;
+}` }] } },
       { title: 'Walkthrough 3 — Design an LRU cache', html: `<p><b>C:</b> "Both get and put must be O(1). O(1) lookup means a HashMap. O(1) 'move to most recent' and 'remove least recent' means a doubly linked list — I can unlink a node in O(1) if I hold a pointer to it, which the map gives me."</p>
         <p><b>C:</b> "I'll use two sentinel nodes, head and tail, so I never check for null when inserting or removing."</p>
-        <p><b>I:</b> "Could you use Java's LinkedHashMap?" <b>C:</b> "Yes — with accessOrder = true and removeEldestEntry overridden it is an LRU in 10 lines. I'll mention it, but I'll build it by hand since that is what you are assessing. In production I would use the library or Caffeine."</p>
+        <p><b>I:</b> "Could you use the library's ordered hash map?" <b>C:</b> "Yes — Java's LinkedHashMap with accessOrder = true and removeEldestEntry overridden, or Python's OrderedDict with move_to_end, gives an LRU in about 10 lines. I'll mention it, but I'll build it by hand since that is what you are assessing. In production I would use the library or Caffeine."</p>
         <p>Strong because: complexity requirement → data structures, explicit sentinel choice, and an honest production note.</p>` },
       { title: 'Weak vs strong at the same moment', html: `${H.table(['moment', 'weak candidate', 'strong candidate'], [
         ['problem read', 'starts typing immediately', 'restates, asks about edge cases'],
@@ -1218,6 +1904,24 @@ class LRUCache {
 }` },
       mcq: { q: 'Why must the BFS start with ALL rotten oranges in the queue at once?', options: ['They all spread simultaneously, so level k of a multi-source BFS is exactly minute k', 'To save memory', 'Because DFS would be faster otherwise', 'It does not matter; one source at a time gives the same answer'], answer: 0, explain: 'Running BFS from one source at a time would compute distances from that source only; the true minute is the distance to the NEAREST rotten orange, which a multi-source BFS gives directly.' },
       hints: [`<p>Hint 1: The minute a fresh orange rots = its distance to the nearest rotten orange.</p>`, `<p>Hint 2: Multi-source BFS: enqueue every rotten cell first. Process the queue level by level; each level is one minute.</p>`, `<p>Hint 3: Count fresh oranges up front, decrement as they rot. Mark rotten when enqueuing. If fresh &gt; 0 at the end → −1; if fresh was 0 from the start → 0.</p>`],
+      tests: { sig: 'int[][] -> int', fn: 'orangesRotting', cases: [
+        [[[[2,1,1],[1,1,0],[0,1,1]]],4],
+        [[[[2,1,1],[0,1,1],[1,0,1]]],-1],
+        [[[[0,2]]],0],
+        [[[[1]]],-1],
+        [[[[0]]],0],
+        [[[[2]]],0],
+        [[[[2,2],[1,1],[0,0],[2,0]]],1],
+        [[[[1,2]]],1],
+        [[[[2,1,1,1,1,1,1,1,1,1]]],9],
+        [[[[1,1],[1,1]]],-1],
+        [[[[2,1],[2,1],[2,0],[0,2],[2,2]]],1],
+        [[[[0,0],[1,0]]],-1],
+        [[[[0,0,0,2,2],[2,1,0,2,0],[2,2,1,2,1]]],1],
+        [[[[1,0,2,2],[0,0,2,1],[1,0,2,0],[0,2,0,2],[1,0,0,2]]],-1],
+        [[{"$rep":[2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],"n":1000}],999],
+        [[{"$rep":[2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],"n":300}],299]
+      ] },
       solution: {
         approach: `<p>Multi-source BFS (DSA 20). All rotten cells are level 0. Each level rots all fresh neighbours of the current level. Stop when the queue is empty or no fresh oranges remain.</p>`,
         code: `class Solution {
@@ -1247,6 +1951,83 @@ class LRUCache {
         return fresh == 0 ? minutes : -1;
     }
 }`,
+        alt: [{ lang: 'python', code: `from collections import deque
+
+def oranges_rotting(grid):
+    R, C = len(grid), len(grid[0])
+    q, fresh = deque(), 0
+    for r in range(R):
+        for c in range(C):
+            if grid[r][c] == 2:
+                q.append((r, c))               # every rotten orange is a source
+            elif grid[r][c] == 1:
+                fresh += 1
+    minutes = 0
+    while q and fresh:
+        for _ in range(len(q)):                # one level = one minute
+            r, c = q.popleft()
+            for nr, nc in ((r + 1, c), (r - 1, c), (r, c + 1), (r, c - 1)):
+                if 0 <= nr < R and 0 <= nc < C and grid[nr][nc] == 1:
+                    grid[nr][nc] = 2           # mark at enqueue time
+                    fresh -= 1
+                    q.append((nr, nc))
+        minutes += 1
+    return minutes if fresh == 0 else -1` },
+          { lang: 'js', code: `function orangesRotting(grid) {
+  const R = grid.length, C = grid[0].length;
+  let queue = [], fresh = 0;
+  for (let r = 0; r < R; r++)
+    for (let c = 0; c < C; c++) {
+      if (grid[r][c] === 2) queue.push([r, c]);   // every rotten orange is a source
+      else if (grid[r][c] === 1) fresh++;
+    }
+  const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  let minutes = 0;
+  while (queue.length > 0 && fresh > 0) {
+    const next = [];                               // one level = one minute
+    for (const [r, c] of queue) {
+      for (const [dr, dc] of dirs) {
+        const nr = r + dr, nc = c + dc;
+        if (nr < 0 || nc < 0 || nr >= R || nc >= C || grid[nr][nc] !== 1) continue;
+        grid[nr][nc] = 2;                          // mark at enqueue time
+        fresh--;
+        next.push([nr, nc]);
+      }
+    }
+    queue = next;
+    minutes++;
+  }
+  return fresh === 0 ? minutes : -1;
+}` },
+          { lang: 'cpp', code: `class Solution {
+public:
+    int orangesRotting(vector<vector<int>>& grid) {
+        int R = grid.size(), C = grid[0].size(), fresh = 0;
+        queue<pair<int, int>> q;
+        for (int r = 0; r < R; r++)
+            for (int c = 0; c < C; c++) {
+                if (grid[r][c] == 2) q.push({r, c});   // every rotten orange is a source
+                else if (grid[r][c] == 1) fresh++;
+            }
+        const int dr[] = {1, -1, 0, 0}, dc[] = {0, 0, 1, -1};
+        int minutes = 0;
+        while (!q.empty() && fresh > 0) {
+            for (int size = q.size(); size > 0; size--) {   // one level = one minute
+                auto [r, c] = q.front();
+                q.pop();
+                for (int d = 0; d < 4; d++) {
+                    int nr = r + dr[d], nc = c + dc[d];
+                    if (nr < 0 || nc < 0 || nr >= R || nc >= C || grid[nr][nc] != 1) continue;
+                    grid[nr][nc] = 2;                       // mark at enqueue time
+                    fresh--;
+                    q.push({nr, nc});
+                }
+            }
+            minutes++;
+        }
+        return fresh == 0 ? minutes : -1;
+    }
+};` }],
         dry: { head: ['minute', 'level (rotting now)', 'fresh left'], rows: [['0', '(0,0) sources', '6'], ['1', '(1,0) (0,1)', '4'], ['2', '(1,1) (0,2)', '2'], ['3', '(2,1)', '1'], ['4', '(2,2)', H.c('g', '0 → answer 4')]] },
         complexity: `<p>Time O(R·C): each cell is enqueued at most once and checks 4 neighbours. Space O(R·C) for the queue in the worst case.</p>`,
         followUps: ['Return the time each orange rots (store distances).', 'Some cells take 2 minutes to rot — what algorithm now?', 'Do it without modifying the input grid.']
@@ -1281,9 +2062,9 @@ class LRUCache {
         ['Integer overflow', '<code>int sum</code> of 10<sup>5</sup> values up to 10<sup>9</sup>; <code>(lo+hi)/2</code>', 'max values; use <code>long</code>'],
         ['Visited marked too late', 'BFS marks on dequeue → same cell queued many times', 'count queue pushes on a small grid'],
         ['State not reset', 'global array or static field reused between test cases', 'run two test cases back to back'],
-        ['Aliasing', '<code>Arrays.fill(grid, row)</code> — every row is the same object; adding a list to results then mutating it', 'change one cell, print all rows'],
-        ['Java object equality', '<code>Integer a == Integer b</code> fails above 127; <code>String ==</code>', 'values like 1000'],
-        ['Comparator overflow', '<code>(a, b) -&gt; a - b</code> with large negatives', 'sort [Integer.MIN_VALUE, 1]'],
+        ['Aliasing', 'one row object reused for every row (Java <code>Arrays.fill(grid, row)</code>, Python <code>[row] * n</code>, JS <code>new Array(n).fill([])</code>) — every row is the same object; or adding a list to results then mutating it', 'change one cell, print all rows'],
+        ['Reference vs value equality', 'Java <code>Integer a == Integer b</code> fails above 127 and <code>String ==</code> compares references; Python <code>is</code>; JS <code>===</code> on arrays and objects; C++ comparing pointers', 'values like 1000'],
+        ['Comparator overflow', '<code>a - b</code> as a comparator (Java, C++) with large negatives', 'sort [the smallest 32-bit int, 1]'],
         ['Missing base case / return', 'recursion never stops, or the result of a recursive call is ignored', 'smallest input (n = 0, null node)']
       ])}
       <h4>What to say while debugging</h4>
@@ -1328,7 +2109,7 @@ def max_subarray_fixed(a):
 
 print("fixed passes all:", all(max_subarray_fixed(t) == max_subarray_brute(t)
       for t in ([random.randint(-5, 5) for _ in range(random.randint(1, 6))] for _ in range(2000))))
-` }, `
+` }, { lang: 'java', code: `
 // The same stress-test harness in Java: fast solution vs brute force on thousands of tiny random inputs.
 class StressTest {
     static int fast(int[] a, int t) {                 // lower bound: first index with a[i] >= t
@@ -1358,8 +2139,98 @@ class StressTest {
         }
         System.out.println("all 10000 tiny tests agree");
     }
-}`],
-    codeTitle: ['Stress test finds the bug (Python, runnable)', 'Stress-test harness (Java)'],
+}`,
+        alt: [{ lang: 'python', run: true, code: `import random
+
+# The same stress-test harness: fast solution vs brute force on thousands of tiny random inputs.
+def fast(a, t):                                   # lower bound: first index with a[i] >= t
+    lo, hi = 0, len(a)
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if a[mid] < t:
+            lo = mid + 1
+        else:
+            hi = mid
+    return lo
+
+def brute(a, t):
+    for i, x in enumerate(a):
+        if x >= t:
+            return i
+    return len(a)
+
+rnd = random.Random(42)
+for trial in range(10000):
+    n = rnd.randrange(6)                          # include the empty array!
+    a = sorted(rnd.randrange(10) for _ in range(n))
+    t = rnd.randrange(12) - 1
+    if fast(a, t) != brute(a, t):
+        print("MISMATCH", a, "t =", t)
+        break
+else:
+    print("all 10000 tiny tests agree")` },
+          { lang: 'js', run: true, code: `// The same stress-test harness: fast solution vs brute force on thousands of tiny random inputs.
+function fast(a, t) {                             // lower bound: first index with a[i] >= t
+  let lo = 0, hi = a.length;
+  while (lo < hi) {
+    const mid = lo + Math.floor((hi - lo) / 2);
+    if (a[mid] < t) lo = mid + 1; else hi = mid;
+  }
+  return lo;
+}
+function brute(a, t) {
+  for (let i = 0; i < a.length; i++) if (a[i] >= t) return i;
+  return a.length;
+}
+// a tiny seeded generator, so a failing run can be repeated exactly
+let seed = 42;
+const rand = (n) => { seed = (Math.imul(seed, 1103515245) + 12345) & 0x7fffffff; return Math.floor(seed / 2147483648 * n); };
+
+let mismatch = null;
+for (let trial = 0; trial < 10000 && mismatch === null; trial++) {
+  const n = rand(6);                              // include the empty array!
+  const a = Array.from({ length: n }, () => rand(10)).sort((x, y) => x - y);
+  const t = rand(12) - 1;
+  if (fast(a, t) !== brute(a, t)) mismatch = "MISMATCH [" + a + "] t=" + t;
+}
+console.log(mismatch === null ? "all 10000 tiny tests agree" : mismatch);` },
+          { lang: 'cpp', code: `// The same stress-test harness: fast solution vs brute force on thousands of tiny random inputs.
+class StressTest {
+public:
+    static int fast(const vector<int>& a, int t) {      // lower bound: first index with a[i] >= t
+        int lo = 0, hi = a.size();
+        while (lo < hi) {
+            int mid = lo + (hi - lo) / 2;
+            if (a[mid] < t) lo = mid + 1; else hi = mid;
+        }
+        return lo;
+    }
+    static int brute(const vector<int>& a, int t) {
+        for (int i = 0; i < (int)a.size(); i++) if (a[i] >= t) return i;
+        return a.size();
+    }
+    static void run() {
+        mt19937 rnd(42);                                // fixed seed: failures repeat exactly
+        for (int trial = 0; trial < 10000; trial++) {
+            int n = rnd() % 6;                          // include the empty array!
+            vector<int> a(n);
+            for (int& x : a) x = rnd() % 10;
+            sort(a.begin(), a.end());
+            int t = (int)(rnd() % 12) - 1;
+            if (fast(a, t) != brute(a, t)) {
+                cout << "MISMATCH t=" << t << endl;
+                return;
+            }
+        }
+        cout << "all 10000 tiny tests agree" << endl;
+    }
+};
+
+int main() {
+    StressTest::run();
+    return 0;
+}` }] }],
+    codeTitle: ['Stress test finds the bug (Python, runnable)', 'Stress-test harness'],
     viz: {
       title: 'Trace a buggy binary search, catch the infinite loop, then fix it',
       input: '1 3 5 7 9 | 6',
@@ -1422,14 +2293,35 @@ class StressTest {
       }
     },
     examples: [
-      { title: 'The Integer cache trap', html: `<p>Two <code>Integer</code> objects compared with <code>==</code> compare <b>references</b>. Java caches −128..127, so small tests pass and large ones fail — a classic "works on the sample, fails on hidden tests" bug.</p>`, code: `Map<String, Integer> a = new HashMap<>(), b = new HashMap<>();
+      { title: 'Reference equality vs value equality (the Integer cache trap)', html: `<p>In Java, two <code>Integer</code> objects compared with <code>==</code> compare <b>references</b>. Java caches −128..127, so small tests pass and large ones fail — a classic "works on the sample, fails on hidden tests" bug. The same family of slip exists elsewhere: Python <code>is</code> on integers, JavaScript <code>===</code> on arrays or objects, and C++ comparing two C-string pointers. Compare values, not identities.</p>`, code: { lang: 'java', code: `Map<String, Integer> a = new HashMap<>(), b = new HashMap<>();
 a.put("x", 1000); b.put("x", 1000);
 System.out.println(a.get("x") == b.get("x"));        // false: different Integer objects
 System.out.println(a.get("x").equals(b.get("x")));   // true: compares values
-System.out.println(a.get("x").intValue() == b.get("x")); // true: unboxed comparison` },
-      { title: 'Comparator overflow', html: `<p><code>(x, y) -&gt; x - y</code> looks fine until x = −2,000,000,000 and y = 2,000,000,000: the subtraction overflows to a positive number and the sort order flips. Always use <code>Integer.compare(x, y)</code>.</p>`, code: `Integer[] v = {2_000_000_000, -2_000_000_000, 0};
+System.out.println(a.get("x").intValue() == b.get("x")); // true: unboxed comparison`,
+        alt: [{ lang: 'python', run: true, code: `a = int("1000")
+b = int("1000")
+print(a is b)       # False: two separate int objects (identity)
+print(a == b)       # True: compares values` },
+          { lang: 'js', run: true, code: `const a = [1000], b = [1000];
+console.log(a === b);                        // false: two different array objects (identity)
+console.log(a[0] === b[0]);                  // true: numbers compare by value
+console.log(JSON.stringify(a) === JSON.stringify(b));   // true: compares contents` },
+          { lang: 'cpp', code: `string a = "x", b = "x";
+cout << (a.c_str() == b.c_str()) << endl;    // 0 (false): compares the two pointers
+cout << (a == b) << endl;                    // 1 (true): string == compares the contents` }] } },
+      { title: 'Comparator overflow', html: `<p><code>(x, y) -&gt; x - y</code> looks fine until x = −2,000,000,000 and y = 2,000,000,000: the 32-bit subtraction overflows to a positive number and the sort order flips. Always compare with <code>Integer.compare(x, y)</code> in Java or <code>x &lt; y</code> in C++, and remember that JavaScript needs a comparator at all, because its default sort compares strings.</p>`, code: { lang: 'java', code: `Integer[] v = {2_000_000_000, -2_000_000_000, 0};
 Arrays.sort(v, (x, y) -> Integer.compare(x, y));   // safe
-System.out.println(Arrays.toString(v));             // [-2000000000, 0, 2000000000]` },
+System.out.println(Arrays.toString(v));             // [-2000000000, 0, 2000000000]`,
+        alt: [{ lang: 'python', run: true, code: `v = [2_000_000_000, -2_000_000_000, 0]
+v.sort()                                       # no overflow in Python; never compare with x - y in a 32-bit language
+print(v)                                       # [-2000000000, 0, 2000000000]` },
+          { lang: 'js', run: true, code: `const v = [2000000000, -2000000000, 0];
+v.sort((x, y) => x - y);                       // a comparator is a must: the default sort compares strings
+console.log(v);                                // [ -2000000000, 0, 2000000000 ]` },
+          { lang: 'cpp', code: `vector<int> v = {2000000000, -2000000000, 0};
+sort(v.begin(), v.end(), [](int x, int y) { return x < y; });   // safe; x - y could overflow int
+for (int x : v) cout << x << " ";              // -2000000000 0 2000000000
+cout << endl;` }] } },
       { title: 'Aliasing in backtracking results', html: `<p>In subsets/permutations, <code>result.add(path)</code> stores a <b>reference</b> to the list you keep mutating — at the end every stored "answer" is the same, usually empty, list. Fix: <code>result.add(new ArrayList&lt;&gt;(path))</code>. Quick test: print the result for input [1,2]; if you see [[], [], [], []] it is aliasing.</p>` },
       { title: 'BFS marks visited on dequeue', html: `<p>On a 3×3 open grid, marking a cell visited only when it is <i>dequeued</i> lets neighbours enqueue it several times. It still gives correct distances but can blow up to O(4<sup>depth</sup>) queue size and TLE on 1000×1000 grids. Mark when you <b>enqueue</b>. Spotting it: count total pushes — more than R·C means a bug.</p>` }
     ],
@@ -1460,6 +2352,24 @@ return lo;</pre><p>It hangs on some inputs and returns wrong answers on others. 
 }` },
       mcq: { q: 'With nums = [1, 3] and target 2, what happens in the buggy code?', options: ['lo=0, hi=1, mid=0, nums[0] &lt; 2 so lo = 0 again — infinite loop', 'It returns 1 correctly', 'It returns 0', 'It throws ArrayIndexOutOfBounds'], answer: 0, explain: 'lo = mid does not move when mid == lo, which happens whenever only two elements remain.' },
       hints: [`<p>Hint 1: Trace [1,3] with target 2. Does the range [lo, hi] get smaller on every iteration?</p>`, `<p>Hint 2: If nums[mid] &lt; target, mid can never be the answer, so the next range should exclude it: lo = mid + 1.</p>`, `<p>Hint 3: The answer can be N (insert after everything), so the search range must be [0, N]: start hi = nums.length. Recipe: lo=0, hi=N; while lo&lt;hi: mid; if nums[mid] &lt; target: lo=mid+1 else hi=mid; return lo.</p>`],
+      tests: { sig: 'int[] int -> int', fn: 'searchInsert', cases: [
+        [[[1,3,5,6],5],2],
+        [[[1,3,5,6],2],1],
+        [[[1,3,5,6],7],4],
+        [[[1,3,5,6],0],0],
+        [[[1],0],0],
+        [[[1],1],0],
+        [[[1],2],1],
+        [[[1,3],2],1],
+        [[[1,3],3],1],
+        [[[-10000,10000],-10000],0],
+        [[[-10000,10000],10000],1],
+        [[[-10000,10000],0],1],
+        [[{"$range":[-10000,0]},10000],10000],
+        [[{"$range":[-10000,0]},-10000],0],
+        [[{"$range":[-10000,0]},-1],9999],
+        [[{"$range":[-10000,0]},-5000],5000]
+      ] },
       solution: {
         approach: `<p>Bug 1 (hang): <code>lo = mid</code> does not shrink the range when mid == lo. Bug 2 (wrong answer): <code>hi = n − 1</code> excludes the valid answer n. Minor: <code>(lo + hi) / 2</code> is fine here but <code>lo + (hi − lo) / 2</code> is the overflow-safe habit. Fixed version is the lower-bound template with invariant: everything before lo is &lt; target, everything from hi on is ≥ target.</p>`,
         code: `class Solution {
@@ -1474,16 +2384,35 @@ return lo;</pre><p>It hangs on some inputs and returns wrong answers on others. 
     }
 }`,
         alt: [{ lang: 'python', code: `def search_insert(nums, target):
-    lo, hi = 0, len(nums)
-    while lo < hi:
-        mid = (lo + hi) // 2
+    lo, hi = 0, len(nums)                  # the answer lies in [0, n]
+    while lo < hi:                         # invariant: nums[:lo] < target <= nums[hi:]
+        mid = (lo + hi) // 2               # Python ints never overflow
         if nums[mid] < target:
-            lo = mid + 1
+            lo = mid + 1                   # mid is too small: exclude it
         else:
-            hi = mid
-    return lo
-
-print(search_insert([1, 3, 5, 6], 5), search_insert([1, 3, 5, 6], 2), search_insert([1, 3, 5, 6], 7))  # 2 1 4`, run: true }],
+            hi = mid                       # mid might be the answer: keep it
+    return lo` },
+          { lang: 'js', code: `function searchInsert(nums, target) {
+  let lo = 0, hi = nums.length;            // the answer lies in [0, n]
+  while (lo < hi) {                        // invariant: nums[0..lo-1] < target <= nums[hi..]
+    const mid = lo + ((hi - lo) >> 1);
+    if (nums[mid] < target) lo = mid + 1;  // mid is too small: exclude it
+    else hi = mid;                         // mid might be the answer: keep it
+  }
+  return lo;
+}` },
+          { lang: 'cpp', code: `class Solution {
+public:
+    int searchInsert(vector<int>& nums, int target) {
+        int lo = 0, hi = nums.size();      // the answer lies in [0, n]
+        while (lo < hi) {                  // invariant: nums[..lo-1] < target <= nums[hi..]
+            int mid = lo + (hi - lo) / 2;  // overflow-safe
+            if (nums[mid] < target) lo = mid + 1;   // mid is too small: exclude it
+            else hi = mid;                          // mid might be the answer: keep it
+        }
+        return lo;                         // same as lower_bound(...) - nums.begin()
+    }
+};` }],
         dry: { head: ['lo', 'hi', 'mid', 'nums[mid] vs 7', 'action'], rows: [['0', '4', '2', '5 &lt; 7', 'lo = 3'], ['3', '4', '3', '6 &lt; 7', 'lo = 4'], ['4', '4', '—', 'loop ends', H.c('g', 'return 4')]] },
         complexity: `<p>Time O(log N), space O(1).</p>`,
         followUps: ['Return the last index with nums[i] ≤ target (upper bound − 1).', 'Duplicates allowed: return the first occurrence of target or −1.', 'Write the invariant as a comment and prove termination.']
@@ -1501,14 +2430,14 @@ print(search_insert([1, 3, 5, 6], 5), search_insert([1, 3, 5, 6], 2), search_ins
     explain: `<p>Almost every problem has more than one reasonable solution. Explaining the trade-off between them is often the difference between a "hire" and a "strong hire", especially at mid and senior levels.</p>
       <h4>The trade-off axes you should know by name</h4>
       ${H.table(['axis', 'option A', 'option B', 'example'], [
-        ['Time vs space', 'faster, more memory', 'slower, less memory', 'HashSet duplicate check O(N)/O(N) vs sort + scan O(N log N)/O(1)'],
+        ['Time vs space', 'faster, more memory', 'slower, less memory', 'Hash set duplicate check O(N)/O(N) vs sort + scan O(N log N)/O(1)'],
         ['Preprocess vs per-query', 'build once, answer fast', 'no build, slow answers', 'prefix sums vs re-summing each query'],
         ['Read-heavy vs write-heavy', 'cheap reads, costly updates', 'cheap updates, costly reads', 'prefix sums (O(N) update) vs Fenwick (O(log N) both)'],
-        ['Average vs worst case', 'great on average', 'guaranteed bound', 'HashMap / quickselect vs TreeMap / heap'],
+        ['Average vs worst case', 'great on average', 'guaranteed bound', 'Hash map / quickselect vs ordered map / heap'],
         ['Simplicity vs optimality', 'short, obviously correct', 'faster, trickier', 'O(N<sup>2</sup>) DP at N = 2000 vs an O(N log N) trick'],
         ['In-place vs copy', 'O(1) extra space', 'input left untouched', 'sorting the caller’s array vs sorting a copy'],
         ['Recursion vs iteration', 'clear code', 'no stack overflow', 'DFS on a 10<sup>5</sup>-deep chain'],
-        ['Exact vs approximate', 'exact answer', 'tiny memory, small error', 'HashSet distinct count vs HyperLogLog'],
+        ['Exact vs approximate', 'exact answer', 'tiny memory, small error', 'Hash set distinct count vs HyperLogLog'],
         ['Online vs offline', 'answer as data arrives', 'see all data first', 'two-heap running median vs sort at the end']
       ])}
       <h4>A 4-sentence template</h4>
@@ -1530,7 +2459,7 @@ print(search_insert([1, 3, 5, 6], 5), search_insert([1, 3, 5, 6], 2), search_ins
       'Interviewer asks "<b>what if memory is limited?</b>" → switch to the space-lean option and state the time cost.',
       '"<b>Many queries</b>" or "called millions of times" → move work to preprocessing.',
       '"<b>Data arrives as a stream</b>" → online structures (heaps, windows, sketches); no sorting the whole input.',
-      '"<b>Updates</b> mixed with queries" → balanced structure (Fenwick, segment tree, TreeMap) over static prefix arrays.',
+      '"<b>Updates</b> mixed with queries" → balanced structure (Fenwick, segment tree, ordered map such as TreeMap / std::map) over static prefix arrays.',
       '"<b>Is there a simpler way?</b>" → they may prefer readable O(N log N) over a fragile O(N).',
       'You hear "<b>worst case</b>" → hash maps and quickselect lose their guarantees; mention adversarial inputs.'
     ],
@@ -1621,8 +2550,8 @@ for k in (1, 2, 4):
       }
     },
     examples: [
-      { title: 'Top K frequent: heap vs bucket sort', html: `<p><b>Heap:</b> count with a HashMap (O(N)), keep a min-heap of size k (O(U log k) for U unique values). <b>Bucket sort:</b> frequencies are between 1 and N, so put values into N+1 buckets by frequency and read from the top: O(N) total. Say: "Bucket sort is linear and I'd use it for a one-off batch. If the data were a stream or k were tiny, the heap uses only O(k) extra beyond the counts and supports updates."</p>` },
-      { title: 'Recursion vs iteration on a degenerate tree', html: `<p>A "tree" of 10<sup>5</sup> nodes that is really a linked list (every node has only a right child) makes recursive DFS 10<sup>5</sup> frames deep. Java's default thread stack often overflows around 10<sup>4</sup>–10<sup>5</sup> frames. Trade-off: recursion is clearer; an explicit stack is safe. In an interview: write recursion, then say "for very deep inputs I'd convert to an explicit stack" — and show you can.</p>`, code: `int maxDepthIterative(TreeNode root) {
+      { title: 'Top K frequent: heap vs bucket sort', html: `<p><b>Heap:</b> count with a hash map (O(N)), keep a min-heap of size k (O(U log k) for U unique values). <b>Bucket sort:</b> frequencies are between 1 and N, so put values into N+1 buckets by frequency and read from the top: O(N) total. Say: "Bucket sort is linear and I'd use it for a one-off batch. If the data were a stream or k were tiny, the heap uses only O(k) extra beyond the counts and supports updates."</p>` },
+      { title: 'Recursion vs iteration on a degenerate tree', html: `<p>A "tree" of 10<sup>5</sup> nodes that is really a linked list (every node has only a right child) makes recursive DFS 10<sup>5</sup> frames deep. The default stack often overflows at that depth: Java and JavaScript around 10<sup>4</sup> frames, Python at 1,000, while C++ usually survives on its 8 MB stack but is not guaranteed to. Trade-off: recursion is clearer; an explicit stack is safe. In an interview: write recursion, then say "for very deep inputs I'd convert to an explicit stack" — and show you can.</p>`, code: { lang: 'java', code: `int maxDepthIterative(TreeNode root) {
     if (root == null) return 0;
     Deque<Object[]> st = new ArrayDeque<>();
     st.push(new Object[]{root, 1});
@@ -1636,23 +2565,61 @@ for k in (1, 2, 4):
         if (node.right != null) st.push(new Object[]{node.right, d + 1});
     }
     return best;
+}`,
+        alt: [{ lang: 'python', code: `def max_depth_iterative(root):
+    if root is None:
+        return 0
+    stack = [(root, 1)]
+    best = 0
+    while stack:
+        node, d = stack.pop()
+        best = max(best, d)
+        if node.left:
+            stack.append((node.left, d + 1))
+        if node.right:
+            stack.append((node.right, d + 1))
+    return best` },
+          { lang: 'js', code: `function maxDepthIterative(root) {
+  if (root === null) return 0;
+  const stack = [[root, 1]];
+  let best = 0;
+  while (stack.length > 0) {
+    const [node, d] = stack.pop();
+    best = Math.max(best, d);
+    if (node.left) stack.push([node.left, d + 1]);
+    if (node.right) stack.push([node.right, d + 1]);
+  }
+  return best;
 }` },
-      { title: 'HashMap vs TreeMap', html: `${H.table(['need', 'HashMap', 'TreeMap'], [
+          { lang: 'cpp', code: `int maxDepthIterative(TreeNode* root) {
+    if (!root) return 0;
+    vector<pair<TreeNode*, int>> st = {{root, 1}};
+    int best = 0;
+    while (!st.empty()) {
+        auto [node, d] = st.back();
+        st.pop_back();
+        best = max(best, d);
+        if (node->left) st.push_back({node->left, d + 1});
+        if (node->right) st.push_back({node->right, d + 1});
+    }
+    return best;
+}` }] } },
+      { title: 'Hash map vs ordered map (TreeMap)', html: `${H.table(['need', 'Hash map / dict / Map / unordered_map', 'TreeMap / std::map / sorted list'], [
         ['get / put', 'O(1) average', 'O(log N) guaranteed'],
         ['iterate in key order', H.c('r', 'no'), H.c('g', 'yes')],
-        ['"smallest key ≥ x" (ceiling), ranges', H.c('r', 'no'), H.c('g', 'yes: ceilingKey, subMap')],
+        ['"smallest key ≥ x" (ceiling), ranges', H.c('r', 'no'), H.c('g', 'yes: ceilingKey / lower_bound, range views')],
         ['adversarial keys', 'may degrade (Java treeifies buckets → O(log N))', 'unaffected']
-      ])}<p>Clue: the moment a question says "the next booking after time t" or "all keys in a range", switch to TreeMap (e.g. My Calendar, time-based key-value store).</p>` },
+      ])}<p>Clue: the moment a question says "the next booking after time t" or "all keys in a range", switch to an ordered map (TreeMap / std::map / sorted list; e.g. My Calendar, time-based key-value store).</p>` },
       { title: 'In-place vs copy: "Remove duplicates from sorted array"', html: `<p>The in-place two-pointer version uses O(1) space but <b>destroys the caller's data</b>. In an interview, ask: "Am I allowed to modify the input?" If yes, in-place; if it's shared (e.g., used by another thread), copy first. Asking this question is itself a trade-off signal interviewers note.</p>` }
     ],
-    deepDive: `<p><b>Big-O hides constants — say so when it matters.</b> A Fenwick tree and a segment tree are both O(log N), but Fenwick is ~3× faster and uses half the memory; a segment tree supports more operations (min, max, lazy range updates). Sorting an array of primitives (dual-pivot quicksort) beats a HashMap for dedup at moderate N because of cache locality, despite the extra log factor.</p>
-      <p><b>Amortised vs worst-case latency.</b> ArrayList append is O(1) amortised, but an individual append can cost O(N) when it resizes. For a latency-sensitive service that occasional spike matters; pre-size the list. Same for HashMap rehashing. Mentioning this distinction signals production experience.</p>
+    deepDive: `<p><b>Big-O hides constants — say so when it matters.</b> A Fenwick tree and a segment tree are both O(log N), but Fenwick is ~3× faster and uses half the memory; a segment tree supports more operations (min, max, lazy range updates). Sorting an array of primitives (dual-pivot quicksort) beats a hash map for dedup at moderate N because of cache locality, despite the extra log factor.</p>
+      <p><b>Amortised vs worst-case latency.</b> ArrayList append is O(1) amortised, but an individual append can cost O(N) when it resizes. For a latency-sensitive service that occasional spike matters; pre-size the list. Same for hash map rehashing. Mentioning this distinction signals production experience.</p>
       <p><b>Hash flooding.</b> Hash maps are O(1) only on average. An attacker who knows your hash function can force collisions. Java mitigates this by turning long bucket chains into red-black trees (O(log N)); Python randomises string hashes per process. In competitive programming, anti-hash tests target unordered_map in C++.</p>
-      <p><b>Space is also time.</b> Using 5×N memory can push data out of CPU caches and slow everything down. A smaller structure (bitset instead of boolean[], int[26] instead of HashMap) can be faster despite identical big-O.</p>
+      <p><b>Space is also time.</b> Using 5×N memory can push data out of CPU caches and slow everything down. A smaller structure (bitset instead of boolean[], int[26] instead of hash map) can be faster despite identical big-O.</p>
       <p><b>Engineering trade-offs beyond Big-O:</b> readability and maintainability, testability, library availability (use <code>PriorityQueue</code>, do not hand-roll a heap in production), and failure modes (recursion depth, overflow). Senior answers mention at least one non-asymptotic factor.</p>`,
     aiEra: `<p><b>What AI changes:</b> AI lists trade-offs fluently — sometimes too fluently, producing generic tables that do not reference <i>your</i> constraints. Interviewers can smell a memorised list. The value you add is <b>tying each trade-off to the numbers in this problem</b>.</p>
       <p><b>Practise with:</b> <code>Give me two solutions to this problem with different trade-offs. Then argue for each one as if you were a different engineer. Then ask me which I would ship given N = 10^6 and 10^5 updates per second.</code></p>
-      <p><b>Where AI goes wrong:</b> claims like "quickselect is O(N)" without the average-case caveat, or "HashMap is always faster than TreeMap". Correcting those nuances is exactly the depth interviewers probe.</p>
+      <p><b>Where AI goes wrong:</b> claims like "quickselect is O(N)" without the average-case caveat, or "a hash map is always faster than an ordered map". Correcting those nuances is exactly the depth interviewers probe.</p>
       <p><b>What you must own:</b> the decision. AI can enumerate options; the engineer chooses one, defends it with the constraints, and owns the downside. In system-level follow-ups ("what if this runs on 100 machines?") that judgement is the whole interview.</p>`,
     problems: [{
       title: 'Trade-off Design: Two Sum Data Structure', level: 'Easy', tags: ['design', 'hashing', 'trade-offs'], companies: ['LinkedIn', 'Meta'],
@@ -1669,10 +2636,21 @@ for k in (1, 2, 4):
         return false;
     }
 }` },
-      mcq: { q: 'The workload is 1 million find calls and only 100 add calls. Which design fits best?', options: ['Precompute all pair sums into a HashSet on add: add O(N), find O(1)', 'Count map: add O(1), find O(N)', 'Keep a sorted list and two-pointer on every find', 'Brute force pairs'], answer: 0, explain: 'Read-heavy workload → pay at write time. With only 100 adds, the set holds at most ~5000 sums and every find is O(1).' },
-      hints: [`<p>Hint 1: For find, you need "is value − x present?" for some stored x — a HashMap lookup.</p>`, `<p>Hint 2: Store counts, not just presence: value 6 with a single 3 stored must return false; with two 3s, true.</p>`, `<p>Hint 3: Opposite design: on add, insert number + every existing number into a "sums" set → O(N) add, O(1) find. Pick by read/write ratio.</p>`],
+      mcq: { q: 'The workload is 1 million find calls and only 100 add calls. Which design fits best?', options: ['Precompute all pair sums into a hash set on add: add O(N), find O(1)', 'Count map: add O(1), find O(N)', 'Keep a sorted list and two-pointer on every find', 'Brute force pairs'], answer: 0, explain: 'Read-heavy workload → pay at write time. With only 100 adds, the set holds at most ~5000 sums and every find is O(1).' },
+      hints: [`<p>Hint 1: For find, you need "is value − x present?" for some stored x — a hash map lookup.</p>`, `<p>Hint 2: Store counts, not just presence: value 6 with a single 3 stored must return false; with two 3s, true.</p>`, `<p>Hint 3: Opposite design: on add, insert number + every existing number into a "sums" set → O(N) add, O(1) find. Pick by read/write ratio.</p>`],
+      tests: { cls: 'TwoSum', sigs: {TwoSum: '',add: 'int -> void',find: 'int -> bool'}, cases: [
+        {"ops":["TwoSum","add","add","add","find","find","add","find"],"args":[[],[1],[3],[5],[4],[7],[3],[6]],"out":[null,null,null,null,true,false,null,true]},
+        {"ops":["TwoSum","find"],"args":[[],[0]],"out":[null,false]},
+        {"ops":["TwoSum","add","find","add","find"],"args":[[],[3],[6],[3],[6]],"out":[null,null,false,null,true]},
+        {"ops":["TwoSum","add","find","add","find"],"args":[[],[0],[0],[0],[0]],"out":[null,null,false,null,true]},
+        {"ops":["TwoSum","add","add","find","find","find"],"args":[[],[-100000],[100000],[0],[-200000],[200000]],"out":[null,null,null,true,false,false]},
+        {"ops":["TwoSum","add","add","find","find","find"],"args":[[],[100000],[100000],[200000],[2147483647],[-2147483648]],"out":[null,null,null,true,false,false]},
+        {"ops":["TwoSum","add","find","find","add","find","find"],"args":[[],[5],[10],[5],[-5],[0],[10]],"out":[null,null,false,false,null,true,false]},
+        {"ops":["TwoSum","add","add","find","find","add","find"],"args":[[],[1],[2],[3],[-3],[2],[4]],"out":[null,null,null,true,false,null,true]},
+        {"ops":["TwoSum","add","find","find","find","find","add","find","find","find","add","find","add","find","find","find","find","find","add","add","add","add","add","add","add","add","add","add","add","add","add","add","add","find","find","add","find","add","add","find","find","add","find","find","add","find","find","add","add","find","find","add","add","add","add","add","add","add","add","find","add","add","add","add","find","add","find","find","add","add","find","find","find","add","add","add","add","find","find","add","add","add","add","find","add","add","find","add","find","add","find","add","find","find","add","find","add","find","find","find","find","find","find","find","find","add","add","find","add","add","find","add","add","find","add","add","find","find","find","add","add","add","add","add","add","add","add","find","add","find","add","add","find","find","find","add","find","add","find","add","find","add","add","find","find","add","add","add","find","add","find","find","add","find","find","add","add","find","find","add","find","find","add","add","add","find","add","add","add","add","add","add","add","add","add","find","add","add","find","find","add","find","add","find","find","add","find","add","add","find","add","find","add","find","find","find","find","add","find","find","find","add","add","add","add","add","add","add","add","find","find","add","find","add","add","add","add","add","add","add","add","add","find","add","add","add","add","find","add","add","find","add","add","add","find","add","add","add","find","find","find","add","add","add","add","find","find","find","find","add","add","add","add","find","add","find","find","add","add","find","find","find","find","find","add","add","add","find","find","add","find","add","add","add","find","add","find","add","add","find","add","add","find","add","add","find","add","find","add","find","find","find","find","add","add","find","find","add","add","add","add"],"args":[[],[-11],[-59],[49],[-45],[-36],[21],[29],[-12],[55],[4],[31],[-19],[1],[-15],[-31],[-59],[-7],[-4],[-12],[-25],[12],[-13],[18],[-8],[8],[13],[2],[-30],[1],[20],[27],[-13],[-27],[19],[-23],[34],[17],[-26],[-41],[-58],[-8],[-56],[52],[-6],[36],[-24],[-17],[7],[10],[-4],[-15],[-12],[11],[-9],[5],[-15],[6],[21],[-25],[17],[16],[-30],[14],[21],[-1],[22],[-5],[-9],[29],[-16],[16],[4],[-25],[1],[18],[-21],[-40],[-32],[-30],[16],[-5],[-14],[-21],[-16],[4],[-4],[16],[53],[30],[9],[-3],[-50],[-49],[-8],[-16],[13],[-35],[-32],[-25],[42],[29],[-52],[-33],[-45],[16],[4],[-47],[18],[29],[47],[-29],[-30],[60],[14],[9],[19],[-50],[25],[-21],[-8],[-16],[-20],[0],[-28],[6],[-8],[-57],[12],[-29],[28],[1],[29],[8],[-60],[0],[-2],[5],[-40],[-22],[-37],[-27],[-2],[-31],[-8],[21],[-15],[21],[34],[-2],[20],[-50],[27],[-28],[-10],[-3],[-16],[43],[55],[-5],[-7],[51],[-30],[-1],[-29],[-10],[0],[3],[17],[-20],[22],[8],[14],[17],[11],[-49],[4],[-30],[27],[-52],[-9],[-10],[-5],[-15],[14],[-2],[9],[18],[19],[60],[6],[26],[-16],[57],[-59],[-48],[-36],[17],[-12],[49],[22],[13],[11],[22],[-15],[30],[15],[2],[-2],[-58],[7],[26],[15],[-20],[3],[-10],[18],[16],[-5],[4],[-8],[6],[-31],[8],[24],[13],[-22],[29],[-15],[7],[-55],[10],[-8],[22],[-46],[3],[-23],[-29],[-18],[58],[23],[26],[8],[4],[-11],[-5],[-42],[34],[-9],[4],[-18],[-15],[-28],[33],[-8],[-18],[23],[25],[-29],[-27],[20],[-12],[-30],[-14],[2],[18],[-17],[57],[-33],[14],[28],[-7],[-13],[-15],[-18],[6],[24],[0],[19],[-56],[26],[18],[29],[21],[-5],[-47],[26],[8],[-2],[44],[37],[-48],[-8],[-23],[-8],[-44],[-18],[-21],[-1],[23],[25]],"out":[null,null,false,false,false,false,null,false,false,false,null,false,null,false,true,false,false,true,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,true,true,null,true,null,null,true,false,null,true,false,null,false,true,null,null,true,true,null,null,null,null,null,null,null,null,true,null,null,null,null,true,null,true,true,null,null,true,true,true,null,null,null,null,true,true,null,null,null,null,true,null,null,true,null,false,null,true,null,true,true,null,true,null,true,true,true,true,true,false,true,true,null,null,true,null,null,true,null,null,false,null,null,true,true,true,null,null,null,null,null,null,null,null,true,null,true,null,null,true,true,true,null,true,null,true,null,true,null,null,true,true,null,null,null,true,null,true,true,null,true,true,null,null,true,true,null,true,true,null,null,null,true,null,null,null,null,null,null,null,null,null,true,null,null,true,true,null,true,null,true,true,null,true,null,null,false,null,true,null,true,true,true,true,null,true,true,true,null,null,null,null,null,null,null,null,true,true,null,true,null,null,null,null,null,null,null,null,null,true,null,null,null,null,true,null,null,true,null,null,null,true,null,null,null,true,true,true,null,null,null,null,true,true,true,true,null,null,null,null,true,null,true,true,null,null,true,true,true,true,true,null,null,null,true,true,null,true,null,null,null,true,null,true,null,null,true,null,null,true,null,null,true,null,true,null,true,true,true,true,null,null,true,true,null,null,null,null]}
+      ] },
       solution: {
-        approach: `<p><b>Write-cheap design (implemented):</b> HashMap value → count. add O(1); find iterates distinct keys, O(U). <b>Read-cheap design:</b> maintain a HashSet of all pairwise sums; add costs O(N) and memory O(N<sup>2</sup>), find is O(1). Choose by the ratio of adds to finds — and by memory: N<sup>2</sup> sums is 10<sup>8</sup> for N = 10<sup>4</sup>, which is too much.</p>`,
+        approach: `<p><b>Write-cheap design (implemented):</b> hash map value → count. add O(1); find iterates distinct keys, O(U). <b>Read-cheap design:</b> maintain a hash set of all pairwise sums; add costs O(N) and memory O(N<sup>2</sup>), find is O(1). Choose by the ratio of adds to finds — and by memory: N<sup>2</sup> sums is 10<sup>8</sup> for N = 10<sup>4</sup>, which is too much.</p>`,
         code: `class TwoSum {
     private final Map<Integer, Integer> count = new HashMap<>();
 
@@ -1694,6 +2672,64 @@ for k in (1, 2, 4):
         return false;
     }
 }`,
+        alt: [{ lang: 'python', code: `from collections import Counter
+
+class TwoSum:
+    def __init__(self):
+        self.count = Counter()
+
+    def add(self, number):
+        self.count[number] += 1                # O(1): write-cheap
+
+    def find(self, value):
+        for key, c in self.count.items():
+            other = value - key                # Python ints never overflow
+            if other == key:
+                if c >= 2:
+                    return True                # same value needs two entries
+            elif other in self.count:
+                return True
+        return False` },
+          { lang: 'js', code: `class TwoSum {
+  constructor() {
+    this.count = new Map();
+  }
+  add(number) {
+    this.count.set(number, (this.count.get(number) || 0) + 1);   // O(1): write-cheap
+  }
+  find(value) {
+    for (const [key, c] of this.count) {
+      const other = value - key;               // exact: values stay far below 2^53
+      if (other === key) {
+        if (c >= 2) return true;               // same value needs two entries
+      } else if (this.count.has(other)) {
+        return true;
+      }
+    }
+    return false;
+  }
+}` },
+          { lang: 'cpp', code: `class TwoSum {
+    unordered_map<int, int> count;
+public:
+    TwoSum() {}
+    void add(int number) {
+        count[number]++;                           // O(1): write-cheap
+    }
+    bool find(int value) {
+        for (const auto& [key, c] : count) {
+            long long need = (long long)value - key;   // long long: value - key can overflow int
+            if (need < INT_MIN || need > INT_MAX) continue;
+            int other = (int)need;
+            if (other == key) {
+                if (c >= 2) return true;           // same value needs two entries
+            } else if (count.count(other)) {
+                return true;
+            }
+        }
+        return false;
+    }
+};` }],
         dry: { head: ['call', 'count map', 'check', 'result'], rows: [['add 1, 3, 5', '{1:1, 3:1, 5:1}', '—', '—'], ['find(4)', 'same', 'key 1 → need 3, present', H.c('g', 'true')], ['find(7)', 'same', '1→6 no, 3→4 no, 5→2 no', H.c('r', 'false')], ['add 3; find(6)', '{1:1, 3:2, 5:1}', 'key 1 → need 5, present', H.c('g', 'true')]] },
         complexity: `<p>add O(1), find O(U) with U distinct values, space O(U). Alternative: add O(N), find O(1), space O(N<sup>2</sup>).</p>`,
         followUps: ['Support remove(number).', 'Thread-safe version: which operations need locking?', 'Values arrive as a stream and finds must be O(1) but memory is limited — what do you give up?']
@@ -1732,14 +2768,14 @@ for k in (1, 2, 4):
       ])}
       <h4>3. Code mistakes</h4>
       ${H.table(['mistake', 'example', 'fix'], [
-        ['int overflow', '<code>int sum</code>, <code>a * b</code> with values to 10<sup>9</sup>', '<code>long</code>, cast before multiplying'],
-        ['Negative modulo in Java', '<code>-7 % 3 == -1</code>', '<code>((x % m) + m) % m</code>'],
+        ['int overflow', '<code>int sum</code>, <code>a * b</code> with values to 10<sup>9</sup>', '<code>long</code> / <code>long long</code>, cast before multiplying (Python and <code>BigInt</code> avoid it)'],
+        ['Negative modulo (Java, C++, JavaScript)', '<code>-7 % 3 == -1</code> (Python gives 2)', '<code>((x % m) + m) % m</code>'],
         ['Off-by-one', '<code>i &lt;= n</code>, missing last window', 'test sizes 0, 1, 2'],
         ['Wrong initial value', '<code>max = 0</code> with all-negative input', 'start from the first element or MIN_VALUE'],
-        ['Modifying a collection while iterating', '<code>ConcurrentModificationException</code>', 'iterator.remove() or collect then remove'],
-        ['String concatenation in a loop', 'O(N<sup>2</sup>) copying', '<code>StringBuilder</code>'],
-        ['Shared mutable result', '<code>res.add(path)</code> in backtracking', '<code>res.add(new ArrayList&lt;&gt;(path))</code>'],
-        ['Deep recursion', 'StackOverflowError at depth ~10<sup>4</sup>–10<sup>5</sup>', 'iterative version / explicit stack']
+        ['Modifying a collection while iterating', '<code>ConcurrentModificationException</code> in Java; skipped elements in Python and JS', 'iterator.remove() or collect then remove'],
+        ['String concatenation in a loop', 'O(N<sup>2</sup>) copying', 'a string builder (<code>StringBuilder</code>, <code>"".join(parts)</code>, <code>parts.join("")</code>, <code>std::string +=</code>)'],
+        ['Shared mutable result', '<code>res.add(path)</code> in backtracking', 'copy it: <code>res.add(new ArrayList&lt;&gt;(path))</code>, <code>res.append(path[:])</code>, <code>res.push([...path])</code>'],
+        ['Deep recursion', 'StackOverflowError / RecursionError / RangeError at depth ~10<sup>3</sup>–10<sup>5</sup>', 'iterative version / explicit stack']
       ])}
       <h4>4. Communication mistakes</h4>
       <p>Arguing with a correct hint, bluffing about something you do not know ("I'm not sure, but my reasoning is…" is always better), and not asking any questions at the end. Interviewers forgive bugs much faster than they forgive defensiveness.</p>`,
@@ -1750,7 +2786,7 @@ for k in (1, 2, 4):
       'Your solution uses <b>recursion over N up to 10<sup>5</sup></b> → stack depth alarm.',
       'You are about to say "<b>done</b>" → you have not traced an edge case yet.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
 // A gallery of classic slips and their fixes — each line compiles and shows the difference.
 class MistakeGallery {
     public static void main(String[] args) {
@@ -1776,8 +2812,96 @@ class MistakeGallery {
         for (int c : coins) while (amount >= c) { amount -= c; greedyCount++; }
         System.out.println("greedy uses " + greedyCount + " coins, but 3 + 3 uses 2");
     }
-}`],
-    codeTitle: ['Mistake gallery (Java)'],
+}`,
+        alt: [{ lang: 'python', run: true, code: `# A gallery of classic slips and their fixes. Python ints never overflow, so a helper
+# imitates a 32-bit int to show what happens in Java, C++ and (with |0) JavaScript.
+def i32(x):
+    x &= 0xFFFFFFFF
+    return x - (1 << 32) if x >= (1 << 31) else x
+
+# 1) Overflow in the midpoint
+lo, hi = 2_000_000_000, 2_100_000_000
+bad_mid = i32(lo + hi) // 2               # lo + hi overflows a 32-bit int -> negative
+good_mid = lo + (hi - lo) // 2            # never exceeds hi
+print("bad mid =", bad_mid, ", good mid =", good_mid)
+
+# 2) Negative modulo: C-like languages give -1, Python's % is already non-negative
+x, m = -7, 3
+c_like = x - m * int(x / m)               # remainder that keeps the sign of the dividend
+print("-7 % 3 =", c_like, ", fixed =", ((c_like % m) + m) % m)
+
+# 3) Product overflow: in a 32-bit language, cast BEFORE multiplying
+a = b = 100_000
+wrong = i32(a * b)                        # multiplied as a 32-bit int, already wrapped
+right = a * b
+print("wrong =", wrong, ", right =", right)
+
+# 4) Greedy coin change fails for coins {1, 3, 4}, amount 6
+amount, greedy_count = 6, 0
+for c in [4, 3, 1]:
+    while amount >= c:
+        amount -= c
+        greedy_count += 1
+print("greedy uses", greedy_count, "coins, but 3 + 3 uses 2")` },
+          { lang: 'js', run: true, code: `// A gallery of classic slips and their fixes. JavaScript numbers are doubles, so |0 imitates
+// a 32-bit int and Math.imul multiplies like one.
+
+// 1) Overflow in the midpoint (what a 32-bit int language does)
+const lo = 2000000000, hi = 2100000000;
+const badMid = ((lo + hi) | 0) / 2;       // |0 wraps the sum to 32 bits -> negative
+const goodMid = lo + Math.floor((hi - lo) / 2);   // never exceeds hi
+console.log("bad mid = " + badMid + ", good mid = " + goodMid);
+
+// 2) Negative modulo: % keeps the sign of the dividend
+const x = -7, m = 3;
+console.log("-7 % 3 = " + (x % m) + ", fixed = " + (((x % m) + m) % m));
+
+// 3) Product overflow: a 32-bit multiply wraps, a double multiply does not (until 2^53)
+const a = 100000, b = 100000;
+const wrong = Math.imul(a, b);            // 32-bit wrap
+const right = a * b;                      // exact here, but use BigInt past 2^53
+console.log("wrong = " + wrong + ", right = " + right);
+
+// 4) Greedy coin change fails for coins {1, 3, 4}, amount 6
+let amount = 6, greedyCount = 0;
+for (const c of [4, 3, 1]) while (amount >= c) { amount -= c; greedyCount++; }
+console.log("greedy uses " + greedyCount + " coins, but 3 + 3 uses 2");` },
+          { lang: 'cpp', code: `// A gallery of classic slips and their fixes. Signed int overflow is undefined behaviour in C++,
+// so the slips are shown by wrapping through unsigned arithmetic, which is well defined.
+class MistakeGallery {
+public:
+    static int wrap(long long v) { return (int)(unsigned int)v; }   // keep the low 32 bits
+
+    static void run() {
+        // 1) Overflow in the midpoint
+        int lo = 2000000000, hi = 2100000000;
+        int badMid = wrap((long long)lo + hi) / 2;     // the 32-bit sum wraps -> negative
+        int goodMid = lo + (hi - lo) / 2;              // never exceeds hi
+        cout << "bad mid = " << badMid << ", good mid = " << goodMid << endl;
+
+        // 2) Negative modulo
+        int x = -7, m = 3;
+        cout << "-7 % 3 = " << (x % m) << ", fixed = " << (((x % m) + m) % m) << endl;
+
+        // 3) Product overflow: cast BEFORE multiplying
+        int a = 100000, b = 100000;
+        long long wrong = wrap((long long)a * b);      // what a 32-bit multiply would give
+        long long right = (long long)a * b;
+        cout << "wrong = " << wrong << ", right = " << right << endl;
+
+        // 4) Greedy coin change fails for coins {1, 3, 4}, amount 6
+        int coins[] = {4, 3, 1};
+        int amount = 6, greedyCount = 0;
+        for (int c : coins) while (amount >= c) { amount -= c; greedyCount++; }
+        cout << "greedy uses " << greedyCount << " coins, but 3 + 3 uses 2" << endl;
+    }
+};
+
+int main() {
+    MistakeGallery::run();
+    return 0;
+}` }] }],
+    codeTitle: ['Mistake gallery'],
     viz: {
       title: 'Mistake replay: overflow, negative mod and a greedy that lies',
       input: '2000000000 2100000000',
@@ -1787,11 +2911,11 @@ class MistakeGallery {
         var lo = v[0], hi = v[1];
         if (lo > hi) throw new Error('lo must be ≤ hi');
         var frames = [];
-        frames.push({ narr: 'Mistake #1 — <b>overflow</b>. lo = ' + lo + ', hi = ' + hi + '. A Java <code>int</code> has 32 bits; the largest value is 2,147,483,647 (bit 31 is the sign bit).', parts: [
+        frames.push({ narr: 'Mistake #1 — <b>overflow</b>. lo = ' + lo + ', hi = ' + hi + '. A 32-bit <code>int</code> (Java, C++) has 32 bits; the largest value is 2,147,483,647 (bit 31 is the sign bit).', parts: [
           { type: 'bits', label: 'lo', value: lo, width: 32 }, { type: 'bits', label: 'hi', value: hi, width: 32 }
         ] });
         var sum = to32(lo + hi), over = lo + hi > 2147483647;
-        frames.push({ narr: '<code>lo + hi</code> = ' + (lo + hi) + (over ? ' — too big! The carry lands in the <b>sign bit</b>, so Java sees <span class="c-r">' + sum + '</span>.' : ' — fits this time, but only by luck of the input.'), parts: [
+        frames.push({ narr: '<code>lo + hi</code> = ' + (lo + hi) + (over ? ' — too big! The carry lands in the <b>sign bit</b>, so a 32-bit int sees <span class="c-r">' + sum + '</span>.' : ' — fits this time, but only by luck of the input.'), parts: [
           { type: 'bits', label: 'lo + hi as int', value: sum >>> 0, width: 32, hl: over ? { 31: 'bad' } : {} },
           { type: 'vars', vals: { 'true sum': lo + hi, 'int sum': sum }, hl: { 'int sum': over ? 'bad' : 'ok' } }
         ] });
@@ -1800,8 +2924,8 @@ class MistakeGallery {
           { type: 'vars', vals: { 'bad mid': badMid, 'good mid': goodMid }, hl: { 'bad mid': over ? 'bad' : '', 'good mid': 'ok' } },
           { type: 'code', lang: 'java', code: 'int mid = (lo + hi) / 2;        // can overflow\nint mid = lo + (hi - lo) / 2;  // safe', hl: { 1: over ? 'bad' : '', 2: 'ok' } }
         ] });
-        frames.push({ narr: 'Mistake #2 — <b>negative modulo</b>. In Java (and C++), <code>-7 % 3</code> is <span class="c-r">−1</span>, not 2. If you use it as an array index or hash bucket, you crash. Fix: <code>((x % m) + m) % m</code> = 2.', parts: [
-          { type: 'table', label: 'x % 3 in Java vs math', columns: ['x', 'Java x % 3', 'fixed ((x%3)+3)%3'], rows: [[-7, -1, 2], [-6, 0, 0], [-5, -2, 1], [5, 2, 2]], hl: { 0: 'bad', 2: 'bad' } }
+        frames.push({ narr: 'Mistake #2 — <b>negative modulo</b>. In Java, C++ and JavaScript, <code>-7 % 3</code> is <span class="c-r">−1</span>, not 2 (the Python <code>%</code> operator already gives 2). If you use it as an array index or hash bucket, you crash. Fix: <code>((x % m) + m) % m</code> = 2.', parts: [
+          { type: 'table', label: 'x % 3 in Java / C++ / JS vs math', columns: ['x', 'Java / C++ / JS x % 3', 'fixed ((x%3)+3)%3'], rows: [[-7, -1, 2], [-6, 0, 0], [-5, -2, 1], [5, 2, 2]], hl: { 0: 'bad', 2: 'bad' } }
         ] });
         frames.push({ narr: 'Mistake #3 — <b>trusting greedy</b>. Coins {1, 3, 4}, amount 6. Greedy grabs the biggest coin first: 4, then 1, then 1 = <span class="c-r">3 coins</span>.', parts: [
           { type: 'bars', label: 'greedy picks', values: [4, 1, 1], idxLabels: ['pick 1', 'pick 2', 'pick 3'], hl: { 0: 'cur', 1: 'bad', 2: 'bad' } }
@@ -1820,14 +2944,24 @@ class MistakeGallery {
     examples: [
       { title: 'Dijkstra with a negative edge', html: `<p>Edges: A→B 2, A→C 5, C→B −4. Dijkstra settles B at cost 2 first (cheapest in the heap), then finds A→C→B = 1 too late — B was already "final". Correct answer 1, textbook Dijkstra (with a settled set) says 2. Versions that allow re-insertion happen to fix this tiny case but can take exponential time on bigger ones. ${H.c('r', 'Either way, negative edges break the "settled = final" guarantee')}. Use Bellman-Ford (DSA 21), or Johnson’s reweighting for all-pairs.</p>` },
       { title: 'Sliding window with negatives', html: `<p>"Shortest subarray with sum ≥ K", array [1, −5, 4, 4], K = 8. The window grows: running sums 1, −4, 0, 4 — never reaching 8, so it never shrinks and answers "none". But [4, 4] = 8 exists! The −5 inside the window drags the sum down, and a plain window has no rule for "drop the left part because it hurts". The correct tool is prefix sums + a monotonic deque (LeetCode 862). Clue: <b>negatives + "shortest/longest with sum"</b>.</p>` },
-      { title: 'String building in a loop', html: `<p><code>s = s + c</code> inside a loop copies the whole string each time: 1 + 2 + … + N = O(N<sup>2</sup>) characters copied. For N = 10<sup>5</sup> that is 5·10<sup>9</sup> — TLE disguised as an O(N) algorithm.</p>`, code: `StringBuilder sb = new StringBuilder();
+      { title: 'String building in a loop', html: `<p><code>s = s + c</code> inside a loop copies the whole string each time: 1 + 2 + … + N = O(N<sup>2</sup>) characters copied. For N = 10<sup>5</sup> that is 5·10<sup>9</sup> — TLE disguised as an O(N) algorithm.</p>`, code: { lang: 'java', code: `StringBuilder sb = new StringBuilder();
 for (int i = 0; i < 5; i++) sb.append(i).append(',');  // amortised O(1) per append
-System.out.println(sb);  // 0,1,2,3,4,` },
+System.out.println(sb);  // 0,1,2,3,4,`,
+        alt: [{ lang: 'python', run: true, code: `parts = []
+for i in range(5):
+    parts.append(f"{i},")                      # amortised O(1) per append
+print("".join(parts))                          # 0,1,2,3,4,` },
+          { lang: 'js', run: true, code: `const parts = [];
+for (let i = 0; i < 5; i++) parts.push(i + ",");   // amortised O(1) per push
+console.log(parts.join(""));                        // 0,1,2,3,4,` },
+          { lang: 'cpp', code: `string sb;
+for (int i = 0; i < 5; i++) sb += to_string(i) + ',';   // amortised O(1) per append
+cout << sb << endl;                                     // 0,1,2,3,4,` }] } },
       { title: 'DP state missing a dimension: stock with cooldown', html: `<p>Defining <code>dp[i]</code> = best profit up to day i is not enough: whether you may buy on day i depends on whether you <b>hold a stock</b> and whether you <b>sold yesterday</b>. Two different situations share one cell → wrong answers. Fix: states hold / sold / rest (DSA 19). The check: "Does the future depend on anything not stored in my state?" If yes, add it.</p>` }
     ],
     deepDive: `<p><b>Why the same slips repeat.</b> Under stress the brain falls back on the most practised pattern ("windows solve subarray problems") and skips verification. The fix is not more knowledge but <b>cheap checks inserted at fixed points</b>: after choosing a pattern (counter-check table), after writing a loop (sizes 0/1/2), before saying done (edge case trace).</p>
       <p><b>Proof sketches kill pattern mistakes.</b> Greedy needs an exchange argument ("any optimal solution can be changed to include my greedy choice without getting worse"). Binary search on the answer needs monotonicity. Dijkstra needs non-negative weights. DP needs a state that captures everything the future depends on (the Markov property). If you cannot sketch the proof in two sentences, test with a small counterexample.</p>
-      <p><b>Overflow arithmetic in detail.</b> Java ints wrap modulo 2<sup>32</sup> silently (no exception, unlike Rust in debug mode or Python's big ints). <code>Math.addExact</code> / <code>Math.multiplyExact</code> throw on overflow — useful while testing. When computing modular products, cast to long before multiplying: (10<sup>9</sup>+6)<sup>2</sup> ≈ 10<sup>18</sup> fits in a long (max ≈ 9.2·10<sup>18</sup>), but the sum of two such products does not.</p>
+      <p><b>Overflow arithmetic in detail.</b> 32-bit ints (Java, and C++ in practice) wrap modulo 2<sup>32</sup> silently, and in C++ signed overflow is formally undefined behaviour. Python ints never overflow, and JavaScript numbers are doubles that lose exactness past 2<sup>53</sup> (use <code>BigInt</code>). In Java, <code>Math.addExact</code> / <code>Math.multiplyExact</code> throw on overflow — useful while testing. When computing modular products, cast to a 64-bit type (<code>long</code> / <code>long long</code>) before multiplying: (10<sup>9</sup>+6)<sup>2</sup> ≈ 10<sup>18</sup> fits in a long (max ≈ 9.2·10<sup>18</sup>), but the sum of two such products does not.</p>
       <p><b>Floating point.</b> Comparing doubles with == fails (0.1 + 0.2 ≠ 0.3). Use integer arithmetic where possible (compare a/b with c/d as a·d vs c·b in long), or an epsilon. Geometry problems (DSA 26) use integer cross products for exactly this reason.</p>
       <p><b>Track your personal list.</b> Everyone has 3–5 favourite slips. Your error log (Topic 4) will reveal them within two weeks. Put them on a sticky note next to your screen in practice — and recite them silently before a real round.</p>`,
     aiEra: `<p><b>What AI changes:</b> AI-generated code makes the <i>same</i> classic mistakes, just faster: <code>(lo + hi) / 2</code>, <code>best = 0</code>, greedy where DP is needed, BFS marking visited on dequeue. Reviewing AI output against this mistake list is one of the most practical skills of 2026.</p>
@@ -1852,21 +2986,82 @@ System.out.println(sb);  // 0,1,2,3,4,` },
 }` },
       mcq: { q: 'Why do we track the MINIMUM product ending at each index too?', options: ['A very negative product times a negative number becomes the new maximum', 'To handle zeros only', 'To make the code shorter', 'Because the answer could be negative'], answer: 0, explain: 'min × (negative) can jump to the top. Tracking both lets a sign flip promote the old minimum to the new maximum.' },
       hints: [`<p>Hint 1: Kadane tracks the best sum ending here. For products, a negative number swaps the roles of the best and worst.</p>`, `<p>Hint 2: Keep curMax and curMin ending at i. New values come from {x, curMax·x, curMin·x}.</p>`, `<p>Hint 3: Compute both new values from the OLD pair (use temporaries). Initialise everything with nums[0], not 0 or 1. Zero naturally resets because x itself is a candidate.</p>`],
+      tests: { sig: 'int[] -> int', fn: 'maxProduct', cases: [
+        [[[2,3,-2,4]],6],
+        [[[-2,0,-1]],0],
+        [[[-2,3,-4]],24],
+        [[[0]],0],
+        [[[-2]],-2],
+        [[[0,2]],2],
+        [[[-3,-1,-1]],3],
+        [[[2,-5,-2,-4,3]],24],
+        [[[0,0,-1]],0],
+        [[[-1,0,-1,0,-2]],0],
+        [[[1,1,1]],1],
+        [[[-10,10,10,10,10,10,10,10,10,10]],1000000000],
+        [[[10,10,10,-10,-10,8,10,10,10,-10,10]],800000000],
+        [[[10,1,-10,5,10,-10,10,-10,10,-5,-10]],250000000],
+        [[[8,10,10,10,10,-10,-10,10,10,1,-4]],800000000],
+        [[[0,-1,1]],1],
+        [[[-2,3,2,2,-3,-1,1]],72],
+        [[[-2,-3,0,-1,-3]],6],
+        [[[1,-2,3]],3],
+        [[{"$rep":-1,"n":20000}],1],
+        [[{"$rep":-1,"n":19999}],1],
+        [[{"$rep":1,"n":20000}],1],
+        [[{"$concat":[{"$rep":2,"n":30},[-1]]}],1073741824]
+      ] },
       solution: {
         approach: `<p>Kadane variant (DSA 5 + DSA 19 state-machine flavour): two states per index — the largest and smallest product of a subarray ending here. A negative x swaps their roles; a zero resets both to 0, and the next element restarts fresh via the "x alone" candidate.</p>`,
         code: `class Solution {
     public int maxProduct(int[] nums) {
-        int curMax = nums[0], curMin = nums[0], best = nums[0]; // start from a real element
+        // long: the answer fits an int, but curMin can be about 10x larger than that
+        long curMax = nums[0], curMin = nums[0], best = nums[0]; // start from a real element
         for (int i = 1; i < nums.length; i++) {
-            int x = nums[i];
-            int a = curMax * x, b = curMin * x;          // both from the OLD values
+            long x = nums[i];
+            long a = curMax * x, b = curMin * x;         // both from the OLD values
             curMax = Math.max(x, Math.max(a, b));        // x alone = restart (handles zeros)
             curMin = Math.min(x, Math.min(a, b));
             best = Math.max(best, curMax);
         }
-        return best;
+        return (int) best;
     }
 }`,
+        alt: [{ lang: 'python', code: `def max_product(nums):
+    cur_max = cur_min = best = nums[0]         # start from a real element
+    for x in nums[1:]:
+        a, b = cur_max * x, cur_min * x        # both from the OLD values
+        cur_max = max(x, a, b)                 # x alone = restart (handles zeros)
+        cur_min = min(x, a, b)
+        best = max(best, cur_max)
+    return best` },
+          { lang: 'js', code: `function maxProduct(nums) {
+  // products stay below about 2e10, far under 2^53, so plain numbers are exact
+  let curMax = nums[0], curMin = nums[0], best = nums[0];   // start from a real element
+  for (let i = 1; i < nums.length; i++) {
+    const x = nums[i];
+    const a = curMax * x, b = curMin * x;      // both from the OLD values
+    curMax = Math.max(x, a, b);                // x alone = restart (handles zeros)
+    curMin = Math.min(x, a, b);
+    best = Math.max(best, curMax);
+  }
+  return best;
+}` },
+          { lang: 'cpp', code: `class Solution {
+public:
+    int maxProduct(vector<int>& nums) {
+        // long long: curMin can be about 10x larger than any int answer
+        long long curMax = nums[0], curMin = nums[0], best = nums[0];   // start from a real element
+        for (size_t i = 1; i < nums.size(); i++) {
+            long long x = nums[i];
+            long long a = curMax * x, b = curMin * x;   // both from the OLD values
+            curMax = max({x, a, b});                    // x alone = restart (handles zeros)
+            curMin = min({x, a, b});
+            best = max(best, curMax);
+        }
+        return (int)best;
+    }
+};` }],
         dry: { head: ['i', 'x', 'curMax', 'curMin', 'best'], rows: [['0', '−2', '−2', '−2', '−2'], ['1', '3', '3', '−6', '3'], ['2', '−4', H.c('g', '24'), '−12', H.c('g', '24')]] },
         complexity: `<p>Time O(N), space O(1).</p>`,
         followUps: ['Return the subarray boundaries as well.', 'What if values can be up to 10<sup>9</sup>? (Products overflow quickly — use logs or BigInteger and discuss.)', 'Prefix/suffix product trick: explain why the answer is the max over all prefix and suffix products split at zeros.']
@@ -1926,7 +3121,7 @@ System.out.println(sb);  // 0,1,2,3,4,` },
       'You feel the urge to <b>cram late</b> the night before → sleep improves recall more than one more problem.',
       'You solved a problem <b>only after reading the solution</b> → schedule a from-scratch redo in 2–3 days.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
 // Java toolkit check: you should be able to write every line below without looking anything up.
 class JavaToolkit {
     void toolkit() {
@@ -1963,8 +3158,162 @@ class JavaToolkit {
         long m = ((-7 % 3) + 3) % 3;                                  // positive modulo
         System.out.println(ceil + " " + floor + " " + sb + " " + big + " " + m + " " + mod);
     }
-}`],
-    codeTitle: ['Java toolkit you must know cold'],
+}`,
+        alt: [{ lang: 'python', run: true, code: `# Python toolkit check: you should be able to write every line below without looking anything up.
+import bisect
+import heapq
+from collections import Counter, defaultdict, deque
+
+stack = []                                   # a list is a stack: append / pop at the end
+stack.append(1); stack[-1]; stack.pop()
+queue = deque()                              # never list.pop(0): it is O(n)
+queue.append(1); queue[0]; queue.popleft()
+
+min_by_first = []                            # heapq is a MIN-heap; tuples compare element by element
+heapq.heappush(min_by_first, (3, 7))
+max_heap = []                                # for a max-heap, push the negated value
+heapq.heappush(max_heap, -5)
+
+groups = defaultdict(list)
+groups["a"].append(1)                        # grouping idiom
+freq = Counter()
+freq[42] += 1                                # counting idiom
+
+keys = [10, 20]                              # a sorted list + bisect plays the role of a TreeMap
+i = bisect.bisect_left(keys, 15)
+ceil = keys[i] if i < len(keys) else None    # 20: smallest key >= 15
+j = bisect.bisect_right(keys, 15)
+floor = keys[j - 1] if j > 0 else None       # 10: largest key <= 15
+
+intervals = [[5, 6], [1, 3]]
+intervals.sort(key=lambda p: p[0])           # sort by a key; no subtraction comparator needed
+
+grid = [[-1] * 4 for _ in range(3)]          # a comprehension: [[-1] * 4] * 3 would share ONE row
+
+chars = list("abc")
+chars.reverse(); chars.append("d"); chars[0] = "z"
+sb = "".join(chars)                          # build strings from a list, not with += in a loop
+
+big = 2147483647 * 2                         # Python ints never overflow
+mod = 1_000_000_007
+m = (-7 % 3 + 3) % 3                         # Python's % is already non-negative
+print(ceil, floor, sb, big, m, mod)` },
+          { lang: 'js', run: true, code: `// JavaScript toolkit check: you should be able to write every line below without looking anything up.
+
+// JS has no built-in heap: keep a small MinHeap class like this one.
+class MinHeap {
+  constructor(less) { this.a = []; this.less = less || ((x, y) => x < y); }
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(v) {
+    const a = this.a;
+    a.push(v);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (!this.less(a[i], a[p])) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.less(a[l], a[m])) m = l;
+        if (r < a.length && this.less(a[r], a[m])) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+const stack = [];                            // an array is a stack: push / pop at the end
+stack.push(1); stack[stack.length - 1]; stack.pop();
+const queue = [];                            // never shift() in a loop: it is O(n). Use a read index.
+queue.push(1); let head = 0; queue[head++];
+
+const minByFirst = new MinHeap((a, b) => a[0] < b[0]);
+const maxHeap = new MinHeap((a, b) => a > b);   // flip the comparator for a max-heap
+minByFirst.push([3, 7]); maxHeap.push(5);
+
+const groups = new Map();
+if (!groups.has("a")) groups.set("a", []);
+groups.get("a").push(1);                     // grouping idiom
+const freq = new Map();
+freq.set(42, (freq.get(42) || 0) + 1);       // counting idiom
+
+const keys = [10, 20];                       // a sorted array + binary search plays the role of a TreeMap
+const lowerBound = (arr, x) => { let lo = 0, hi = arr.length; while (lo < hi) { const mid = (lo + hi) >> 1; if (arr[mid] < x) lo = mid + 1; else hi = mid; } return lo; };
+const i = lowerBound(keys, 15);
+const ceil = i < keys.length ? keys[i] : null;       // 20: smallest key >= 15
+const floor = i > 0 ? keys[i - 1] : null;           // 10: largest key <= 15
+
+const intervals = [[5, 6], [1, 3]];
+intervals.sort((a, b) => a[0] - b[0]);       // always pass a comparator: the default sort compares strings
+
+const grid = Array.from({ length: 3 }, () => new Array(4).fill(-1));   // fill(-1) on the outer array would share ONE row
+
+const chars = "abc".split("");
+chars.reverse(); chars.push("d"); chars[0] = "z";
+const sb = chars.join("");
+
+const big = 2147483647n * 2n;                // BigInt: Number is exact only up to 2^53
+const mod = 1000000007;
+const m = ((-7 % 3) + 3) % 3;                // % keeps the sign of the dividend
+console.log(ceil, floor, sb, String(big), m, mod);` },
+          { lang: 'cpp', code: `// C++ toolkit check: you should be able to write every line below without looking anything up.
+class CppToolkit {
+public:
+    static void toolkit() {
+        stack<int> st;                                   // adapters: stack / queue over deque
+        st.push(1); st.top(); st.pop();
+        queue<int> qu;
+        qu.push(1); qu.front(); qu.pop();
+
+        priority_queue<pair<int, int>, vector<pair<int, int>>, greater<>> minByFirst;   // MIN-heap by (first, second)
+        priority_queue<int> maxHeap;                     // the default is a MAX-heap
+        minByFirst.push({3, 7}); maxHeap.push(5);
+
+        unordered_map<string, vector<int>> groups;
+        groups["a"].push_back(1);                        // grouping idiom
+        unordered_map<int, int> freq;
+        freq[42]++;                                      // counting idiom
+
+        map<int, string> tm;                             // ordered map (a balanced tree), O(log n)
+        tm[10] = "x"; tm[20] = "y";
+        auto ceilIt = tm.lower_bound(15);                // first key >= 15 -> 20
+        auto floorIt = tm.upper_bound(15);               // first key > 15, step back -> 10
+        int ceilKey = ceilIt->first;
+        int floorKey = (--floorIt)->first;
+
+        vector<vector<int>> intervals = {{5, 6}, {1, 3}};
+        sort(intervals.begin(), intervals.end(), [](const auto& a, const auto& b) { return a[0] < b[0]; });   // never a[0] - b[0]
+
+        vector<vector<int>> grid(3, vector<int>(4, -1)); // every row is its own vector
+
+        string sb = "abc";
+        reverse(sb.begin(), sb.end()); sb += 'd'; sb[0] = 'z';
+
+        long long big = (long long)INT_MAX * 2;          // cast before multiply: signed overflow is undefined
+        int mod = 1'000'000'007;
+        long long m = ((-7 % 3) + 3) % 3;                // % keeps the sign of the dividend
+        cout << ceilKey << " " << floorKey << " " << sb << " " << big << " " << m << " " << mod << endl;
+    }
+};
+
+int main() {
+    CppToolkit::toolkit();
+    return 0;
+}` }] }],
+    codeTitle: ['Toolkit you must know cold'],
     viz: {
       title: 'Last-week revision planner: weakest patterns get the most (spaced) slots',
       input: 'TwoPointers:4 Window:3 BinarySearch:2 Graphs:3 DP:1 Heap:4 Backtracking:2',
@@ -2025,13 +3374,13 @@ class JavaToolkit {
         ['"cheapest flight with at most K stops"', 'Bellman-Ford for K+1 rounds on a copy of dist (or BFS by levels)'],
         ['"merge k sorted lists"', 'min-heap of list heads; pop, push its next']
       ])}<p>Make 30–50 of these from your error log. Review the deck daily in the last week; it takes 10 minutes.</p>` },
-      { title: 'Complexity cheat sheet for Java collections', html: `${H.table(['structure', 'add', 'remove', 'lookup', 'notes'], [
-        ['ArrayList', 'O(1) amortised (end)', 'O(N) (middle)', 'O(1) by index', 'contains is O(N)'],
-        ['ArrayDeque', 'O(1) both ends', 'O(1) both ends', '—', 'use for stacks and queues'],
-        ['HashMap / HashSet', 'O(1) avg', 'O(1) avg', 'O(1) avg', 'no order'],
-        ['TreeMap / TreeSet', 'O(log N)', 'O(log N)', 'O(log N)', 'floor/ceiling/range'],
-        ['PriorityQueue', 'O(log N)', 'O(log N) poll; O(N) remove(obj)', 'O(1) peek', 'not sorted when iterated'],
-        ['LinkedHashMap', 'O(1)', 'O(1)', 'O(1)', 'insertion/access order → LRU']
+      { title: 'Complexity cheat sheet for the standard collections', html: `${H.table(['structure', 'add', 'remove', 'lookup', 'notes'], [
+        ['dynamic array (ArrayList / list / Array / vector)', 'O(1) amortised (end)', 'O(N) (middle)', 'O(1) by index', 'contains is O(N)'],
+        ['deque (ArrayDeque / collections.deque / std::deque)', 'O(1) both ends', 'O(1) both ends', '—', 'use for stacks and queues'],
+        ['hash map / set (hash map / dict, set / Map, Set / unordered_map)', 'O(1) avg', 'O(1) avg', 'O(1) avg', 'no order'],
+        ['ordered map / set (TreeMap / sorted list + bisect / std::map)', 'O(log N)', 'O(log N)', 'O(log N)', 'floor/ceiling/range'],
+        ['heap (PriorityQueue / heapq / priority_queue / your own MinHeap in JS)', 'O(log N)', 'O(log N) poll; O(N) remove(obj)', 'O(1) peek', 'not sorted when iterated'],
+        ['insertion-ordered map (LinkedHashMap / OrderedDict / Map)', 'O(1)', 'O(1)', 'O(1)', 'insertion/access order → LRU']
       ])}` },
       { title: 'The 20-minute night-before routine', html: `<ol><li>Read the pattern sheet once (5 min).</li><li>Type two skeletons from memory: sliding window + BFS (8 min).</li><li>Read your top 5 error-log lines (3 min).</li><li>Prepare: charger, water, quiet room, editor tested, ID/links ready (4 min).</li></ol><p>Then stop. Recall the next day is better after sleep than after an extra two hours of grinding.</p>` },
       { title: 'A one-line answer to "tell me the complexity" for 10 classics', html: `${H.table(['algorithm', 'time', 'space'], [
@@ -2069,6 +3418,24 @@ class JavaToolkit {
 }` },
     mcq: { q: 'Which single value do you need to carry forward while scanning left to right?', options: ['The minimum price seen so far', 'The maximum price seen so far', 'The sum of prices so far', 'The previous day price only'], answer: 0, explain: 'Selling today, the best buy is the cheapest earlier day — carry the running minimum (DSA 5, carry forward).' },
     hints: [`<p>Hint 1: If you sell on day j, the best buy day is the cheapest day before j.</p>`, `<p>Hint 2: Keep <code>minSoFar</code> while scanning; profit today = price − minSoFar.</p>`, `<p>Hint 3: Initialise minSoFar = prices[0], best = 0 (never negative). Update best before or after min — both work because selling on the buy day gives 0.</p>`],
+    tests: { sig: 'int[] -> int', fn: 'maxProfit', cases: [
+      [[[7,1,5,3,6,4]],5],
+      [[[7,6,4,3,1]],0],
+      [[[5]],0],
+      [[[0]],0],
+      [[[1,2]],1],
+      [[[2,1]],0],
+      [[[3,3,3]],0],
+      [[[2,4,1]],2],
+      [[[3,2,6,5,0,3]],4],
+      [[[10000,0,10000]],10000],
+      [[[4,8,17,9]],13],
+      [[[12,18,3,13]],10],
+      [[[15,11,7,14]],7],
+      [[{"$concat":[{"$rep":0,"n":50000},{"$rep":10000,"n":50000}]}],10000],
+      [[{"$range":[10000,0,-1]}],0],
+      [[{"$concat":[{"$range":[10000,0,-1]},{"$rep":10000,"n":80000}]}],9999]
+    ] },
     solution: {
       approach: `<p><b>Clue:</b> "buy before sell" + one transaction → carry forward the running minimum. One pass.</p>`,
       code: `class Solution {
@@ -2081,6 +3448,31 @@ class JavaToolkit {
         return best;
     }
 }`,
+      alt: [{ lang: 'python', code: `def max_profit(prices):
+    min_so_far, best = prices[0], 0
+    for p in prices:
+        min_so_far = min(min_so_far, p)        # cheapest buy up to today
+        best = max(best, p - min_so_far)       # sell today
+    return best` },
+        { lang: 'js', code: `function maxProfit(prices) {
+  let minSoFar = prices[0], best = 0;
+  for (const p of prices) {
+    minSoFar = Math.min(minSoFar, p);          // cheapest buy up to today
+    best = Math.max(best, p - minSoFar);       // sell today
+  }
+  return best;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int maxProfit(vector<int>& prices) {
+        int minSoFar = prices[0], best = 0;
+        for (int p : prices) {
+            minSoFar = min(minSoFar, p);       // cheapest buy up to today
+            best = max(best, p - minSoFar);    // sell today
+        }
+        return best;
+    }
+};` }],
       dry: { head: ['day', 'price', 'minSoFar', 'best'], rows: [['0', '7', '7', '0'], ['1', '1', '1', '0'], ['2', '5', '1', '4'], ['4', '6', '1', H.c('g', '5')]] },
       complexity: `<p>Time O(N), space O(1).</p>`,
       followUps: ['Unlimited transactions (sum every rise).', 'At most k transactions (state-machine DP, DSA 19).', 'With a cooldown day after selling.']
@@ -2098,10 +3490,31 @@ class JavaToolkit {
             if (nums[i] == nums[j]) return true;
     return false;
 }` },
-    mcq: { q: 'Which pattern fits "two equal values at most k apart"?', options: ['A fixed-size sliding window kept in a HashSet', 'Sorting then two pointers', 'Binary search', 'Prefix sums'], answer: 0, explain: 'Only the last k values matter; keep them in a set, drop the one leaving the window. Sorting loses the index distances.' },
-    hints: [`<p>Hint 1: At index i, only nums[i−k .. i−1] can pair with nums[i].</p>`, `<p>Hint 2: Keep exactly those values in a HashSet; set.add returns false on a duplicate.</p>`, `<p>Hint 3: After adding nums[i], if the set size exceeds k, remove nums[i−k]. k = 0 → always false.</p>`],
+    mcq: { q: 'Which pattern fits "two equal values at most k apart"?', options: ['A fixed-size sliding window kept in a hash set', 'Sorting then two pointers', 'Binary search', 'Prefix sums'], answer: 0, explain: 'Only the last k values matter; keep them in a set, drop the one leaving the window. Sorting loses the index distances.' },
+    hints: [`<p>Hint 1: At index i, only nums[i−k .. i−1] can pair with nums[i].</p>`, `<p>Hint 2: Keep exactly those values in a hash set; set.add returns false on a duplicate.</p>`, `<p>Hint 3: After adding nums[i], if the set size exceeds k, remove nums[i−k]. k = 0 → always false.</p>`],
+    tests: { sig: 'int[] int -> bool', fn: 'containsNearbyDuplicate', cases: [
+      [[[1,2,3,1],3],true],
+      [[[1,0,1,1],1],true],
+      [[[1,2,3,1,2,3],2],false],
+      [[[7],0],false],
+      [[[5,5],0],false],
+      [[[5,5],1],true],
+      [[[1000000000,-1000000000,1000000000],2],true],
+      [[[1000000000,-1000000000,1000000000],1],false],
+      [[[1,2,1],0],false],
+      [[[0,0],100000],true],
+      [[[-1,-1],1],true],
+      [[[4,2,2,2,2,0,2],0],false],
+      [[[0,5,1,0,1,3,2,5,2],3],true],
+      [[[3,5,5,3],2],true],
+      [[{"$range":[0,100000]},100000],false],
+      [[{"$concat":[{"$range":[0,99999]},[0]]},99999],true],
+      [[{"$concat":[{"$range":[0,99999]},[0]]},99998],false],
+      [[{"$rep":3,"n":100000},0],false],
+      [[{"$rep":3,"n":100000},100000],true]
+    ] },
     solution: {
-      approach: `<p><b>Clue:</b> "within distance k" = fixed-size window; "equal value" = membership test → HashSet window (DSA 6 + DSA 8).</p>`,
+      approach: `<p><b>Clue:</b> "within distance k" = fixed-size window; "equal value" = membership test → hash set window (DSA 6 + DSA 8).</p>`,
       code: `class Solution {
     public boolean containsNearbyDuplicate(int[] nums, int k) {
         Set<Integer> window = new HashSet<>();
@@ -2112,6 +3525,35 @@ class JavaToolkit {
         return false;
     }
 }`,
+      alt: [{ lang: 'python', code: `def contains_nearby_duplicate(nums, k):
+    window = set()
+    for i, x in enumerate(nums):
+        if x in window:
+            return True                        # already inside the last k values
+        window.add(x)
+        if len(window) > k:
+            window.remove(nums[i - k])         # slide: drop the oldest
+    return False` },
+        { lang: 'js', code: `function containsNearbyDuplicate(nums, k) {
+  const window = new Set();
+  for (let i = 0; i < nums.length; i++) {
+    if (window.has(nums[i])) return true;      // already inside the last k values
+    window.add(nums[i]);
+    if (window.size > k) window.delete(nums[i - k]);   // slide: drop the oldest
+  }
+  return false;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    bool containsNearbyDuplicate(vector<int>& nums, int k) {
+        unordered_set<int> window;
+        for (int i = 0; i < (int)nums.size(); i++) {
+            if (!window.insert(nums[i]).second) return true;   // already inside the last k values
+            if ((int)window.size() > k) window.erase(nums[i - k]);   // slide: drop the oldest
+        }
+        return false;
+    }
+};` }],
       complexity: `<p>Time O(N) average, space O(min(N, k)).</p>`,
       followUps: ['Values within t of each other (|nums[i] − nums[j]| ≤ t): use TreeSet floor/ceiling or buckets of width t+1.']
     }
@@ -2130,8 +3572,33 @@ class JavaToolkit {
     } while (!s.equals(prev));
     return s.isEmpty();
 }` },
-    mcq: { q: '"Each closer must match the most recent unmatched opener" describes which structure?', options: ['Stack (LIFO)', 'Queue (FIFO)', 'Heap', 'HashSet'], answer: 0, explain: '"Most recent" = last in, first out.' },
+    mcq: { q: '"Each closer must match the most recent unmatched opener" describes which structure?', options: ['Stack (LIFO)', 'Queue (FIFO)', 'Heap', 'Hash set'], answer: 0, explain: '"Most recent" = last in, first out.' },
     hints: [`<p>Hint 1: The closer always matches the latest unclosed opener.</p>`, `<p>Hint 2: Push openers; on a closer, the top must be its partner — pop it.</p>`, `<p>Hint 3: Fail if the stack is empty on a closer, or non-empty at the end. Quick reject: odd length.</p>`],
+    tests: { sig: 'string -> bool', fn: 'isValid', cases: [
+      [["()"],true],
+      [["()[]{}"],true],
+      [["(]"],false],
+      [["([)]"],false],
+      [["{[]}"],true],
+      [["("],false],
+      [["))"],false],
+      [["((()))"],true],
+      [["(()"],false],
+      [["{[()]}"],true],
+      [["}{"],false],
+      [["["],false],
+      [["]["],false],
+      [["([]{})"],true],
+      [["(((((((("],false],
+      [[")("],false],
+      [["(][})["],false],
+      [["{{]}{}()["],false],
+      [["({"],false],
+      [[{"$concat":[{"$rep":"(","n":5000},{"$rep":")","n":5000}]}],true],
+      [[{"$rep":"(","n":10000}],false],
+      [[{"$concat":[{"$rep":"[","n":4999},{"$rep":"]","n":4999},"{}"]}],true],
+      [[{"$concat":[{"$rep":"{","n":5000},{"$rep":"}","n":4999},"("]}],false]
+    ] },
     solution: {
       approach: `<p><b>Clue:</b> nesting / "most recent" → stack (DSA 14). Pushing the <i>expected closer</i> makes the check a single comparison.</p>`,
       code: `class Solution {
@@ -2147,6 +3614,42 @@ class JavaToolkit {
         return st.isEmpty();
     }
 }`,
+      alt: [{ lang: 'python', code: `def is_valid(s):
+    if len(s) % 2:
+        return False
+    closer = {'(': ')', '[': ']', '{': '}'}
+    stack = []
+    for c in s:
+        if c in closer:
+            stack.append(closer[c])            # push the closer we now expect
+        elif not stack or stack.pop() != c:
+            return False
+    return not stack` },
+        { lang: 'js', code: `function isValid(s) {
+  if (s.length % 2 === 1) return false;
+  const closer = { '(': ')', '[': ']', '{': '}' };
+  const stack = [];
+  for (const c of s) {
+    if (c in closer) stack.push(closer[c]);    // push the closer we now expect
+    else if (stack.length === 0 || stack.pop() !== c) return false;
+  }
+  return stack.length === 0;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    bool isValid(string s) {
+        if (s.size() % 2) return false;
+        stack<char> st;
+        for (char c : s) {
+            if (c == '(') st.push(')');        // push the closer we now expect
+            else if (c == '[') st.push(']');
+            else if (c == '{') st.push('}');
+            else if (st.empty() || st.top() != c) return false;
+            else st.pop();
+        }
+        return st.empty();
+    }
+};` }],
       complexity: `<p>Time O(N), space O(N).</p>`,
       followUps: ['Minimum insertions to make it valid.', 'Longest valid parentheses substring (stack of indices or DP).']
     }
@@ -2157,7 +3660,7 @@ class JavaToolkit {
     statement: `<p><b>Timed: 10 min.</b> An array holds N <b>distinct</b> numbers from the range 0..N (so exactly one is missing). Return the missing number using O(1) extra space.</p>`,
     constraints: `1 ≤ N ≤ 10<sup>4</sup>, 0 ≤ nums[i] ≤ N, all distinct`,
     example: `${H.arr([3, 0, 1])}<p>N = 3, range 0..3, the array lacks <b>${H.c('g', '2')}</b>.</p>`,
-    brute: { why: `<p>For each candidate 0..N, scan the array for it: O(N<sup>2</sup>). Or a HashSet: O(N) time but O(N) space, which breaks the O(1)-space requirement.</p>`, code: `int missingBrute(int[] nums) {
+    brute: { why: `<p>For each candidate 0..N, scan the array for it: O(N<sup>2</sup>). Or a hash set: O(N) time but O(N) space, which breaks the O(1)-space requirement.</p>`, code: `int missingBrute(int[] nums) {
     for (int c = 0; c <= nums.length; c++) {
         boolean found = false;
         for (int x : nums) if (x == c) { found = true; break; }
@@ -2167,6 +3670,21 @@ class JavaToolkit {
 }` },
     mcq: { q: 'XOR of all indices 0..N and all array values leaves…', options: ['the missing number, because every present number cancels with its twin', '0 always', 'the largest value', 'the sum of the array'], answer: 0, explain: 'x ^ x = 0 and x ^ 0 = x (DSA 4). Every number except the missing one appears twice.' },
     hints: [`<p>Hint 1: "Every value appears in two lists except one" is the XOR-cancellation signature.</p>`, `<p>Hint 2: XOR together i for i in 0..N and every nums[i].</p>`, `<p>Hint 3: Alternative: N(N+1)/2 − sum(nums) — fine here, but mention overflow for big N; XOR never overflows.</p>`],
+    tests: { sig: 'int[] -> int', fn: 'missingNumber', cases: [
+      [[[3,0,1]],2],
+      [[[0,1]],2],
+      [[[9,6,4,2,3,5,7,0,1]],8],
+      [[[1]],0],
+      [[[0]],1],
+      [[[2,0]],1],
+      [[[1,2]],0],
+      [[[0,2,3,1,5]],4],
+      [[[4,3,2,1]],0],
+      [[{"$range":[0,10000]}],10000],
+      [[{"$range":[1,10001]}],0],
+      [[{"$concat":[{"$range":[0,5000]},{"$range":[5001,10001]}]}],5000],
+      [[{"$concat":[{"$range":[10000,5000,-1]},{"$range":[0,5000]}]}],5000]
+    ] },
     solution: {
       approach: `<p><b>Clue:</b> "exactly one missing/odd one out" + O(1) space → XOR cancellation (DSA 4).</p>`,
       code: `class Solution {
@@ -2176,6 +3694,24 @@ class JavaToolkit {
         return x;
     }
 }`,
+      alt: [{ lang: 'python', code: `def missing_number(nums):
+    x = len(nums)                              # start with N (the loop below stops at N-1)
+    for i, v in enumerate(nums):
+        x ^= i ^ v                             # equal pairs cancel out
+    return x` },
+        { lang: 'js', code: `function missingNumber(nums) {
+  let x = nums.length;                         // start with N (the loop below stops at N-1)
+  for (let i = 0; i < nums.length; i++) x ^= i ^ nums[i];   // equal pairs cancel out
+  return x;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int missingNumber(vector<int>& nums) {
+        int x = nums.size();                   // start with N (the loop below stops at N-1)
+        for (int i = 0; i < (int)nums.size(); i++) x ^= i ^ nums[i];   // equal pairs cancel out
+        return x;
+    }
+};` }],
       dry: { head: ['i', 'nums[i]', 'x after i ^ nums[i]'], rows: [['start', '—', '3'], ['0', '3', '3^0^3 = 0'], ['1', '0', '0^1^0 = 1'], ['2', '1', '1^2^1 = ' + H.c('g', '2')]] },
       complexity: `<p>Time O(N), space O(1).</p>`,
       followUps: ['Two numbers missing (split by a set bit of the XOR, like Single Number III).', 'Find the duplicate in 1..N with one repeat (Floyd cycle detection on indices).']
@@ -2197,7 +3733,20 @@ class JavaToolkit {
     return res;
 }` },
     mcq: { q: 'Frequencies lie in 1..N. Which trick gives O(N) total?', options: ['Bucket sort: bucket[f] = values with frequency f, read from high f down', 'Binary search on k', 'Two pointers on the sorted array', 'Union-Find'], answer: 0, explain: 'A bounded key range (1..N) allows counting/bucket sort in linear time.' },
-    hints: [`<p>Hint 1: First count frequencies with a HashMap.</p>`, `<p>Hint 2: Either keep a min-heap of size k keyed by frequency (O(U log k)) or bucket by frequency (O(N)).</p>`, `<p>Hint 3: Buckets: array of lists of size N+1. Walk f from N down to 1, collecting until you have k values.</p>`],
+    hints: [`<p>Hint 1: First count frequencies with a hash map.</p>`, `<p>Hint 2: Either keep a min-heap of size k keyed by frequency (O(U log k)) or bucket by frequency (O(N)).</p>`, `<p>Hint 3: Buckets: array of lists of size N+1. Walk f from N down to 1, collecting until you have k values.</p>`],
+    tests: { sig: 'int[] int -> int[]', fn: 'topKFrequent', cmp: 'set', cases: [
+      [[[1,1,1,2,2,3],2],[1,2]],
+      [[[1],1],[1]],
+      [[[1,2],2],[1,2]],
+      [[[-1,-1,2,2,2,3],1],[2]],
+      [[[4,4,4,4,5,5,5,6,6,7],3],[4,5,6]],
+      [[[10000,-10000,10000],1],[10000]],
+      [[[0,0,0,1,1,2],3],[0,1,2]],
+      [[[5,3,5,3,5,3,5],2],[5,3]],
+      [[{"$concat":[{"$rep":5,"n":60000},{"$rep":-10000,"n":40000}]},1],[5]],
+      [[{"$concat":[{"$rep":5,"n":60000},{"$rep":-10000,"n":40000}]},2],[5,-10000]],
+      [[{"$concat":[{"$rep":7,"n":50000},{"$range":[-10000,0]},{"$range":[1,10001]}]},1],[7]]
+    ] },
     solution: {
       approach: `<p><b>Clue:</b> "top k" → heap; "frequencies bounded by N" → bucket sort beats it. Mention both (trade-off: heap works for streams, buckets are linear for batches).</p>`,
       code: `class Solution {
@@ -2221,13 +3770,49 @@ class JavaToolkit {
     }
 }`,
       alt: [{ lang: 'python', code: `from collections import Counter
-import heapq
 
 def top_k_frequent(nums, k):
     cnt = Counter(nums)
-    return heapq.nlargest(k, cnt.keys(), key=cnt.get)   # heap version, O(U log k)
-
-print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))  # [1, 2]`, run: true }],
+    bucket = [[] for _ in range(len(nums) + 1)]   # bucket[f] = values seen f times
+    for value, f in cnt.items():
+        bucket[f].append(value)
+    res = []
+    for f in range(len(nums), 0, -1):
+        for value in bucket[f]:
+            res.append(value)
+            if len(res) == k:
+                return res
+    return res` },
+        { lang: 'js', code: `function topKFrequent(nums, k) {
+  const cnt = new Map();
+  for (const x of nums) cnt.set(x, (cnt.get(x) || 0) + 1);
+  const bucket = Array.from({ length: nums.length + 1 }, () => []);   // bucket[f] = values seen f times
+  for (const [value, f] of cnt) bucket[f].push(value);
+  const res = [];
+  for (let f = nums.length; f >= 1 && res.length < k; f--) {
+    for (const value of bucket[f]) {
+      if (res.length === k) break;
+      res.push(value);
+    }
+  }
+  return res;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> topKFrequent(vector<int>& nums, int k) {
+        unordered_map<int, int> cnt;
+        for (int x : nums) cnt[x]++;
+        vector<vector<int>> bucket(nums.size() + 1);   // bucket[f] = values seen f times
+        for (auto& [value, f] : cnt) bucket[f].push_back(value);
+        vector<int> res;
+        for (int f = nums.size(); f >= 1 && (int)res.size() < k; f--)
+            for (int value : bucket[f]) {
+                if ((int)res.size() == k) break;
+                res.push_back(value);
+            }
+        return res;
+    }
+};` }],
       complexity: `<p>Time O(N), space O(N). Heap alternative: O(N + U log k) time, O(U + k) space.</p>`,
       followUps: ['Stream of values: maintain top k as data arrives.', 'Top k frequent words with alphabetical tie-break.']
     }
@@ -2267,6 +3852,24 @@ print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))  # [1, 2]`, run: true }],
 }` },
     mcq: { q: 'Each time the outer scan finds an unvisited land cell, what do you do?', options: ['Count +1 and flood-fill (BFS/DFS) its whole island, marking visited', 'Count +1 only', 'Sort the grid', 'Run Dijkstra'], answer: 0, explain: 'The flood fill guarantees each island is counted exactly once — the components pattern (DSA 20).' },
     hints: [`<p>Hint 1: Islands are connected components of land cells.</p>`, `<p>Hint 2: Scan the grid; on unvisited land, increment the count and flood-fill to mark the whole island.</p>`, `<p>Hint 3: Use an explicit stack/queue — recursive DFS can be 90,000 deep on a 300×300 all-land grid. Mark cells when pushing.</p>`],
+    tests: { sig: 'char[][] -> int', fn: 'numIslands', cases: [
+      [[[["1","1","0","0","0"],["1","1","0","0","0"],["0","0","1","0","0"],["0","0","0","1","1"]]],3],
+      [[[["1","1","1","1","0"],["1","1","0","1","0"],["1","1","0","0","0"],["0","0","0","0","0"]]],1],
+      [[[["1"]]],1],
+      [[[["0"]]],0],
+      [[[["1","0","1"],["0","1","0"],["1","0","1"]]],5],
+      [[[["1"],["0"],["1"]]],2],
+      [[[["1","0","1","0","1"]]],3],
+      [[[["1","1","1"],["1","0","1"],["1","1","1"]]],1],
+      [[[["1","1","1","1"],["0","0","0","0"],["1","1","1","1"]]],2],
+      [[[["1","0"],["0","1"]]],2],
+      [[[["1","1","0","1","0"],["0","1","0","1","0"]]],2],
+      [[[["1","1","0","1","0"],["1","0","0","1","1"],["1","0","0","1","1"]]],2],
+      [[[["1","1"],["0","0"]]],1],
+      [[{"$rep":["1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1"],"n":300}],1],
+      [[{"$rep":["0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0"],"n":300}],0],
+      [[{"$rep":["1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","1","0"],"n":300}],1]
+    ] },
     solution: {
       approach: `<p><b>Clue:</b> "grid" + "connected" → flood fill counting components. Iterative BFS avoids stack overflow; Union-Find is an alternative (useful if land is added over time — Number of Islands II).</p>`,
       code: `class Solution {
@@ -2293,6 +3896,72 @@ print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))  # [1, 2]`, run: true }],
         return count;
     }
 }`,
+      alt: [{ lang: 'python', code: `from collections import deque
+
+def num_islands(grid):
+    R, C, count = len(grid), len(grid[0]), 0
+    for r in range(R):
+        for c in range(C):
+            if grid[r][c] != '1':
+                continue
+            count += 1                         # new island found
+            grid[r][c] = '0'                   # sink it as we enqueue (visited mark)
+            q = deque([(r, c)])
+            while q:
+                cr, cc = q.popleft()
+                for nr, nc in ((cr + 1, cc), (cr - 1, cc), (cr, cc + 1), (cr, cc - 1)):
+                    if 0 <= nr < R and 0 <= nc < C and grid[nr][nc] == '1':
+                        grid[nr][nc] = '0'
+                        q.append((nr, nc))
+    return count` },
+        { lang: 'js', code: `function numIslands(grid) {
+  const R = grid.length, C = grid[0].length;
+  const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  let count = 0;
+  for (let r = 0; r < R; r++)
+    for (let c = 0; c < C; c++) {
+      if (grid[r][c] !== '1') continue;
+      count++;                                 // new island found
+      grid[r][c] = '0';                        // sink it as we enqueue (visited mark)
+      const stack = [[r, c]];                  // an explicit stack works as well as a queue here
+      while (stack.length > 0) {
+        const [cr, cc] = stack.pop();
+        for (const [dr, dc] of dirs) {
+          const nr = cr + dr, nc = cc + dc;
+          if (nr < 0 || nc < 0 || nr >= R || nc >= C || grid[nr][nc] !== '1') continue;
+          grid[nr][nc] = '0';
+          stack.push([nr, nc]);
+        }
+      }
+    }
+  return count;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int numIslands(vector<vector<char>>& grid) {
+        int R = grid.size(), C = grid[0].size(), count = 0;
+        const int dr[] = {1, -1, 0, 0}, dc[] = {0, 0, 1, -1};
+        queue<pair<int, int>> q;
+        for (int r = 0; r < R; r++)
+            for (int c = 0; c < C; c++) {
+                if (grid[r][c] != '1') continue;
+                count++;                       // new island found
+                grid[r][c] = '0';              // sink it as we enqueue (visited mark)
+                q.push({r, c});
+                while (!q.empty()) {
+                    auto [cr, cc] = q.front();
+                    q.pop();
+                    for (int d = 0; d < 4; d++) {
+                        int nr = cr + dr[d], nc = cc + dc[d];
+                        if (nr < 0 || nc < 0 || nr >= R || nc >= C || grid[nr][nc] != '1') continue;
+                        grid[nr][nc] = '0';
+                        q.push({nr, nc});
+                    }
+                }
+            }
+        return count;
+    }
+};` }],
       complexity: `<p>Time O(R·C), space O(min(R, C)) to O(R·C) for the queue.</p>`,
       followUps: ['Do not modify the input (separate visited array).', 'Land added one cell at a time; report the count after each (Union-Find).', 'Count distinct island shapes.']
     }
@@ -2312,6 +3981,26 @@ print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))  # [1, 2]`, run: true }],
 }` },
     mcq: { q: 'What makes binary search valid here?', options: ['If speed s finishes in time, every speed above s also does', 'The piles are sorted', 'h is large', 'Speeds are integers'], answer: 0, explain: 'Monotone feasibility (NO…NO YES…YES) is the precondition for binary search on the answer (DSA 10).' },
     hints: [`<p>Hint 1: "Minimum speed such that…" → guess a speed and check it.</p>`, `<p>Hint 2: Check = Σ ⌈pile / s⌉ ≤ h, computed in O(N) with integer ceil (p + s − 1) / s.</p>`, `<p>Hint 3: Search s in [1, max(piles)]. Use long for the hour total (10<sup>4</sup> piles × 10<sup>9</sup> hours overflows int).</p>`],
+    tests: { sig: 'int[] int -> int', fn: 'minEatingSpeed', cases: [
+      [[[3,6,7,11],8],4],
+      [[[30,11,23,4,20],5],30],
+      [[[30,11,23,4,20],6],23],
+      [[[1],1],1],
+      [[[5],5],1],
+      [[[5],1],5],
+      [[[1,1,1],3],1],
+      [[[1,1,1],10],1],
+      [[[312884470],312884469],2],
+      [[[4,9,2],3],9],
+      [[[2,5,15],17],2],
+      [[[1,12,29,8,1],11],6],
+      [[[19,11,18],16],4],
+      [[[1000000000],1],1000000000],
+      [[[1000000000],1000000000],1],
+      [[{"$rep":1000000000,"n":10000},1000000000],10000],
+      [[{"$rep":1000000000,"n":10000},10000],1000000000],
+      [[{"$rep":1000000000,"n":10000},20000],500000000]
+    ] },
     solution: {
       approach: `<p><b>Clue:</b> "minimum X such that possible" + monotone → binary search on the answer with an O(N) greedy check.</p>`,
       code: `class Solution {
@@ -2331,6 +4020,46 @@ print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))  # [1, 2]`, run: true }],
         return hours;
     }
 }`,
+      alt: [{ lang: 'python', code: `def min_eating_speed(piles, h):
+    def hours_at(s):
+        return sum((p + s - 1) // s for p in piles)   # ceil(p / s) with integers
+
+    lo, hi = 1, max(piles)                     # speed max(piles) always works
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if hours_at(mid) <= h:
+            hi = mid                           # fast enough: try slower
+        else:
+            lo = mid + 1                       # too slow
+    return lo` },
+        { lang: 'js', code: `function minEatingSpeed(piles, h) {
+  // ceil(p / s) with integers; the total stays below 1e13, so Number is exact
+  const hoursAt = (s) => piles.reduce((sum, p) => sum + Math.floor((p + s - 1) / s), 0);
+  let lo = 1, hi = Math.max(...piles);         // speed max(piles) always works
+  while (lo < hi) {
+    const mid = lo + Math.floor((hi - lo) / 2);
+    if (hoursAt(mid) <= h) hi = mid;           // fast enough: try slower
+    else lo = mid + 1;                         // too slow
+  }
+  return lo;
+}` },
+        { lang: 'cpp', code: `class Solution {
+    long long hoursAt(const vector<int>& piles, long long s) {
+        long long hours = 0;                   // long long: up to 10^4 * 10^9
+        for (int p : piles) hours += (p + s - 1) / s;   // ceil without floating point
+        return hours;
+    }
+public:
+    int minEatingSpeed(vector<int>& piles, int h) {
+        int lo = 1, hi = *max_element(piles.begin(), piles.end());   // speed max(piles) always works
+        while (lo < hi) {
+            int mid = lo + (hi - lo) / 2;
+            if (hoursAt(piles, mid) <= h) hi = mid;   // fast enough: try slower
+            else lo = mid + 1;                        // too slow
+        }
+        return lo;
+    }
+};` }],
       dry: { head: ['lo', 'hi', 'mid', 'hours', 'move'], rows: [['1', '11', '6', '1+1+2+2 = 6 ≤ 8', 'hi = 6'], ['1', '6', '3', '1+2+3+4 = 10', 'lo = 4'], ['4', '6', '5', '1+2+2+3 = 8 ≤ 8', 'hi = 5'], ['4', '5', '4', '1+2+2+3 = 8 ≤ 8', 'hi = 4'], ['4', '4', '—', 'stop', H.c('g', '4')]] },
       complexity: `<p>Time O(N log max(piles)) ≈ 10<sup>4</sup> × 30. Space O(1).</p>`,
       followUps: ['Minimum days to make m bouquets (same template).', 'Capacity to ship packages within D days.']
@@ -2351,6 +4080,22 @@ print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))  # [1, 2]`, run: true }],
 }` },
     mcq: { q: '"Days until a warmer temperature" is which classic?', options: ['Next greater element → monotonic decreasing stack of indices', 'Sliding window maximum', 'Binary search on the answer', 'Kadane'], answer: 0, explain: 'Every "next greater/smaller" question is a monotonic stack (DSA 14).' },
     hints: [`<p>Hint 1: This is "next greater element", returning distances instead of values.</p>`, `<p>Hint 2: Keep a stack of indices whose answer is unknown; their temperatures are decreasing from bottom to top.</p>`, `<p>Hint 3: When t[i] is warmer than the top, pop it and set ans[top] = i − top. Repeat, then push i. Leftovers keep 0.</p>`],
+    tests: { sig: 'int[] -> int[]', fn: 'dailyTemperatures', cases: [
+      [[[73,74,75,71,69,72,76,73]],[1,1,4,2,1,1,0,0]],
+      [[[30,40,50,60]],[1,1,1,0]],
+      [[[30,60,90]],[1,1,0]],
+      [[[30]],[0]],
+      [[[100,100,100]],[0,0,0]],
+      [[[100,30,100,30,100]],[0,1,0,1,0]],
+      [[[50,40,30,60]],[3,2,1,0]],
+      [[[31,30]],[0,0]],
+      [[[39,35,40,39,38]],[2,1,0,0,0]],
+      [[[39,39,34,30,33,37,34,30,36,32]],[0,0,3,1,1,0,2,1,0,0]],
+      [[[40,38,37,35,31,37,34,32,40,37]],[0,7,6,2,1,3,2,1,0,0]],
+      [[{"$concat":[{"$rep":30,"n":99999},[100]]}],{"$concat":[{"$range":[99999,0,-1]},[0]]}],
+      [[{"$rep":55,"n":100000}],{"$rep":0,"n":100000}],
+      [[{"$concat":[{"$rep":100,"n":50000},{"$rep":30,"n":50000}]}],{"$rep":0,"n":100000}]
+    ] },
     solution: {
       approach: `<p><b>Clue:</b> "wait until warmer" = next greater → monotonic stack, each index pushed and popped once.</p>`,
       code: `class Solution {
@@ -2367,6 +4112,43 @@ print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))  # [1, 2]`, run: true }],
         return ans;                                       // remaining indices stay 0
     }
 }`,
+      alt: [{ lang: 'python', code: `def daily_temperatures(temps):
+    ans = [0] * len(temps)
+    stack = []                                 # indices with decreasing temps
+    for i, t in enumerate(temps):
+        while stack and temps[stack[-1]] < t:
+            j = stack.pop()
+            ans[j] = i - j                     # i is j's first warmer day
+        stack.append(i)
+    return ans                                 # remaining indices stay 0` },
+        { lang: 'js', code: `function dailyTemperatures(t) {
+  const ans = new Array(t.length).fill(0);
+  const stack = [];                            // indices with decreasing temps
+  for (let i = 0; i < t.length; i++) {
+    while (stack.length > 0 && t[stack[stack.length - 1]] < t[i]) {
+      const j = stack.pop();
+      ans[j] = i - j;                          // i is j's first warmer day
+    }
+    stack.push(i);
+  }
+  return ans;                                  // remaining indices stay 0
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> dailyTemperatures(vector<int>& t) {
+        vector<int> ans(t.size(), 0);
+        vector<int> st;                        // indices with decreasing temps
+        for (int i = 0; i < (int)t.size(); i++) {
+            while (!st.empty() && t[st.back()] < t[i]) {
+                int j = st.back();
+                st.pop_back();
+                ans[j] = i - j;                // i is j's first warmer day
+            }
+            st.push_back(i);
+        }
+        return ans;                            // remaining indices stay 0
+    }
+};` }],
       complexity: `<p>Time O(N) amortised (each index pushed and popped at most once). Space O(N).</p>`,
       followUps: ['Circular array (Next Greater Element II): loop 2N times with i % N.', 'Stock span (previous greater).']
     }
@@ -2396,6 +4178,22 @@ print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))  # [1, 2]`, run: true }],
 }` },
     mcq: { q: 'In Kahn’s algorithm, how do you detect that no valid order exists?', options: ['Fewer than n courses get output — the rest are stuck in a cycle', 'The queue becomes empty at the start', 'A course has two prerequisites', 'The graph is disconnected'], answer: 0, explain: 'Nodes on a cycle never reach indegree 0, so they never leave the queue logic.' },
     hints: [`<p>Hint 1: "b before a" is a directed edge b → a. You want a topological order.</p>`, `<p>Hint 2: Kahn: compute indegrees; queue all indegree-0 courses; pop, output, decrement neighbours, enqueue those reaching 0.</p>`, `<p>Hint 3: If the output has fewer than n courses, return an empty array. Disconnected courses are fine — they start with indegree 0.</p>`],
+    tests: { sig: 'int int[][] -> int[]', fn: 'findOrder', check: "(args, out, expected) => { const n = args[0], pre = args[1]; if (expected.length === 0) return out.length === 0; if (out.length !== n) return false; const pos = new Array(n).fill(-1); for (let i = 0; i < n; i++) { if (out[i] < 0 || out[i] >= n || pos[out[i]] !== -1) return false; pos[out[i]] = i; } return pre.every(p => pos[p[1]] < pos[p[0]]); }", cases: [
+      [[4,[[1,0],[2,0],[3,1],[3,2]]],[0,1,2,3]],
+      [[2,[[1,0]]],[0,1]],
+      [[2,[[1,0],[0,1]]],[]],
+      [[1,[]],[0]],
+      [[3,[]],[0,1,2]],
+      [[3,[[0,1],[1,2],[2,0]]],[]],
+      [[3,[[0,1],[1,2]]],[2,1,0]],
+      [[4,[[1,0],[2,1],[3,2],[1,3]]],[]],
+      [[5,[[1,0],[2,0],[3,1],[3,2],[4,3]]],[0,1,2,3,4]],
+      [[2,[[0,0]]],[]],
+      [[500,[[1,0],[2,1],[3,2],[4,3],[5,4],[6,5],[7,6],[8,7],[9,8],[10,9],[11,10],[12,11],[13,12],[14,13],[15,14],[16,15],[17,16],[18,17],[19,18],[20,19],[21,20],[22,21],[23,22],[24,23],[25,24],[26,25],[27,26],[28,27],[29,28],[30,29],[31,30],[32,31],[33,32],[34,33],[35,34],[36,35],[37,36],[38,37],[39,38],[40,39],[41,40],[42,41],[43,42],[44,43],[45,44],[46,45],[47,46],[48,47],[49,48],[50,49],[51,50],[52,51],[53,52],[54,53],[55,54],[56,55],[57,56],[58,57],[59,58],[60,59],[61,60],[62,61],[63,62],[64,63],[65,64],[66,65],[67,66],[68,67],[69,68],[70,69],[71,70],[72,71],[73,72],[74,73],[75,74],[76,75],[77,76],[78,77],[79,78],[80,79],[81,80],[82,81],[83,82],[84,83],[85,84],[86,85],[87,86],[88,87],[89,88],[90,89],[91,90],[92,91],[93,92],[94,93],[95,94],[96,95],[97,96],[98,97],[99,98],[100,99],[101,100],[102,101],[103,102],[104,103],[105,104],[106,105],[107,106],[108,107],[109,108],[110,109],[111,110],[112,111],[113,112],[114,113],[115,114],[116,115],[117,116],[118,117],[119,118],[120,119],[121,120],[122,121],[123,122],[124,123],[125,124],[126,125],[127,126],[128,127],[129,128],[130,129],[131,130],[132,131],[133,132],[134,133],[135,134],[136,135],[137,136],[138,137],[139,138],[140,139],[141,140],[142,141],[143,142],[144,143],[145,144],[146,145],[147,146],[148,147],[149,148],[150,149],[151,150],[152,151],[153,152],[154,153],[155,154],[156,155],[157,156],[158,157],[159,158],[160,159],[161,160],[162,161],[163,162],[164,163],[165,164],[166,165],[167,166],[168,167],[169,168],[170,169],[171,170],[172,171],[173,172],[174,173],[175,174],[176,175],[177,176],[178,177],[179,178],[180,179],[181,180],[182,181],[183,182],[184,183],[185,184],[186,185],[187,186],[188,187],[189,188],[190,189],[191,190],[192,191],[193,192],[194,193],[195,194],[196,195],[197,196],[198,197],[199,198],[200,199],[201,200],[202,201],[203,202],[204,203],[205,204],[206,205],[207,206],[208,207],[209,208],[210,209],[211,210],[212,211],[213,212],[214,213],[215,214],[216,215],[217,216],[218,217],[219,218],[220,219],[221,220],[222,221],[223,222],[224,223],[225,224],[226,225],[227,226],[228,227],[229,228],[230,229],[231,230],[232,231],[233,232],[234,233],[235,234],[236,235],[237,236],[238,237],[239,238],[240,239],[241,240],[242,241],[243,242],[244,243],[245,244],[246,245],[247,246],[248,247],[249,248],[250,249],[251,250],[252,251],[253,252],[254,253],[255,254],[256,255],[257,256],[258,257],[259,258],[260,259],[261,260],[262,261],[263,262],[264,263],[265,264],[266,265],[267,266],[268,267],[269,268],[270,269],[271,270],[272,271],[273,272],[274,273],[275,274],[276,275],[277,276],[278,277],[279,278],[280,279],[281,280],[282,281],[283,282],[284,283],[285,284],[286,285],[287,286],[288,287],[289,288],[290,289],[291,290],[292,291],[293,292],[294,293],[295,294],[296,295],[297,296],[298,297],[299,298],[300,299],[301,300],[302,301],[303,302],[304,303],[305,304],[306,305],[307,306],[308,307],[309,308],[310,309],[311,310],[312,311],[313,312],[314,313],[315,314],[316,315],[317,316],[318,317],[319,318],[320,319],[321,320],[322,321],[323,322],[324,323],[325,324],[326,325],[327,326],[328,327],[329,328],[330,329],[331,330],[332,331],[333,332],[334,333],[335,334],[336,335],[337,336],[338,337],[339,338],[340,339],[341,340],[342,341],[343,342],[344,343],[345,344],[346,345],[347,346],[348,347],[349,348],[350,349],[351,350],[352,351],[353,352],[354,353],[355,354],[356,355],[357,356],[358,357],[359,358],[360,359],[361,360],[362,361],[363,362],[364,363],[365,364],[366,365],[367,366],[368,367],[369,368],[370,369],[371,370],[372,371],[373,372],[374,373],[375,374],[376,375],[377,376],[378,377],[379,378],[380,379],[381,380],[382,381],[383,382],[384,383],[385,384],[386,385],[387,386],[388,387],[389,388],[390,389],[391,390],[392,391],[393,392],[394,393],[395,394],[396,395],[397,396],[398,397],[399,398],[400,399],[401,400],[402,401],[403,402],[404,403],[405,404],[406,405],[407,406],[408,407],[409,408],[410,409],[411,410],[412,411],[413,412],[414,413],[415,414],[416,415],[417,416],[418,417],[419,418],[420,419],[421,420],[422,421],[423,422],[424,423],[425,424],[426,425],[427,426],[428,427],[429,428],[430,429],[431,430],[432,431],[433,432],[434,433],[435,434],[436,435],[437,436],[438,437],[439,438],[440,439],[441,440],[442,441],[443,442],[444,443],[445,444],[446,445],[447,446],[448,447],[449,448],[450,449],[451,450],[452,451],[453,452],[454,453],[455,454],[456,455],[457,456],[458,457],[459,458],[460,459],[461,460],[462,461],[463,462],[464,463],[465,464],[466,465],[467,466],[468,467],[469,468],[470,469],[471,470],[472,471],[473,472],[474,473],[475,474],[476,475],[477,476],[478,477],[479,478],[480,479],[481,480],[482,481],[483,482],[484,483],[485,484],[486,485],[487,486],[488,487],[489,488],[490,489],[491,490],[492,491],[493,492],[494,493],[495,494],[496,495],[497,496],[498,497],[499,498]]],[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255,256,257,258,259,260,261,262,263,264,265,266,267,268,269,270,271,272,273,274,275,276,277,278,279,280,281,282,283,284,285,286,287,288,289,290,291,292,293,294,295,296,297,298,299,300,301,302,303,304,305,306,307,308,309,310,311,312,313,314,315,316,317,318,319,320,321,322,323,324,325,326,327,328,329,330,331,332,333,334,335,336,337,338,339,340,341,342,343,344,345,346,347,348,349,350,351,352,353,354,355,356,357,358,359,360,361,362,363,364,365,366,367,368,369,370,371,372,373,374,375,376,377,378,379,380,381,382,383,384,385,386,387,388,389,390,391,392,393,394,395,396,397,398,399,400,401,402,403,404,405,406,407,408,409,410,411,412,413,414,415,416,417,418,419,420,421,422,423,424,425,426,427,428,429,430,431,432,433,434,435,436,437,438,439,440,441,442,443,444,445,446,447,448,449,450,451,452,453,454,455,456,457,458,459,460,461,462,463,464,465,466,467,468,469,470,471,472,473,474,475,476,477,478,479,480,481,482,483,484,485,486,487,488,489,490,491,492,493,494,495,496,497,498,499]],
+      [[500,[[0,1],[1,2],[2,3],[3,4],[4,5],[5,6],[6,7],[7,8],[8,9],[9,10],[10,11],[11,12],[12,13],[13,14],[14,15],[15,16],[16,17],[17,18],[18,19],[19,20],[20,21],[21,22],[22,23],[23,24],[24,25],[25,26],[26,27],[27,28],[28,29],[29,30],[30,31],[31,32],[32,33],[33,34],[34,35],[35,36],[36,37],[37,38],[38,39],[39,40],[40,41],[41,42],[42,43],[43,44],[44,45],[45,46],[46,47],[47,48],[48,49],[49,50],[50,51],[51,52],[52,53],[53,54],[54,55],[55,56],[56,57],[57,58],[58,59],[59,60],[60,61],[61,62],[62,63],[63,64],[64,65],[65,66],[66,67],[67,68],[68,69],[69,70],[70,71],[71,72],[72,73],[73,74],[74,75],[75,76],[76,77],[77,78],[78,79],[79,80],[80,81],[81,82],[82,83],[83,84],[84,85],[85,86],[86,87],[87,88],[88,89],[89,90],[90,91],[91,92],[92,93],[93,94],[94,95],[95,96],[96,97],[97,98],[98,99],[99,100],[100,101],[101,102],[102,103],[103,104],[104,105],[105,106],[106,107],[107,108],[108,109],[109,110],[110,111],[111,112],[112,113],[113,114],[114,115],[115,116],[116,117],[117,118],[118,119],[119,120],[120,121],[121,122],[122,123],[123,124],[124,125],[125,126],[126,127],[127,128],[128,129],[129,130],[130,131],[131,132],[132,133],[133,134],[134,135],[135,136],[136,137],[137,138],[138,139],[139,140],[140,141],[141,142],[142,143],[143,144],[144,145],[145,146],[146,147],[147,148],[148,149],[149,150],[150,151],[151,152],[152,153],[153,154],[154,155],[155,156],[156,157],[157,158],[158,159],[159,160],[160,161],[161,162],[162,163],[163,164],[164,165],[165,166],[166,167],[167,168],[168,169],[169,170],[170,171],[171,172],[172,173],[173,174],[174,175],[175,176],[176,177],[177,178],[178,179],[179,180],[180,181],[181,182],[182,183],[183,184],[184,185],[185,186],[186,187],[187,188],[188,189],[189,190],[190,191],[191,192],[192,193],[193,194],[194,195],[195,196],[196,197],[197,198],[198,199],[199,200],[200,201],[201,202],[202,203],[203,204],[204,205],[205,206],[206,207],[207,208],[208,209],[209,210],[210,211],[211,212],[212,213],[213,214],[214,215],[215,216],[216,217],[217,218],[218,219],[219,220],[220,221],[221,222],[222,223],[223,224],[224,225],[225,226],[226,227],[227,228],[228,229],[229,230],[230,231],[231,232],[232,233],[233,234],[234,235],[235,236],[236,237],[237,238],[238,239],[239,240],[240,241],[241,242],[242,243],[243,244],[244,245],[245,246],[246,247],[247,248],[248,249],[249,250],[250,251],[251,252],[252,253],[253,254],[254,255],[255,256],[256,257],[257,258],[258,259],[259,260],[260,261],[261,262],[262,263],[263,264],[264,265],[265,266],[266,267],[267,268],[268,269],[269,270],[270,271],[271,272],[272,273],[273,274],[274,275],[275,276],[276,277],[277,278],[278,279],[279,280],[280,281],[281,282],[282,283],[283,284],[284,285],[285,286],[286,287],[287,288],[288,289],[289,290],[290,291],[291,292],[292,293],[293,294],[294,295],[295,296],[296,297],[297,298],[298,299],[299,300],[300,301],[301,302],[302,303],[303,304],[304,305],[305,306],[306,307],[307,308],[308,309],[309,310],[310,311],[311,312],[312,313],[313,314],[314,315],[315,316],[316,317],[317,318],[318,319],[319,320],[320,321],[321,322],[322,323],[323,324],[324,325],[325,326],[326,327],[327,328],[328,329],[329,330],[330,331],[331,332],[332,333],[333,334],[334,335],[335,336],[336,337],[337,338],[338,339],[339,340],[340,341],[341,342],[342,343],[343,344],[344,345],[345,346],[346,347],[347,348],[348,349],[349,350],[350,351],[351,352],[352,353],[353,354],[354,355],[355,356],[356,357],[357,358],[358,359],[359,360],[360,361],[361,362],[362,363],[363,364],[364,365],[365,366],[366,367],[367,368],[368,369],[369,370],[370,371],[371,372],[372,373],[373,374],[374,375],[375,376],[376,377],[377,378],[378,379],[379,380],[380,381],[381,382],[382,383],[383,384],[384,385],[385,386],[386,387],[387,388],[388,389],[389,390],[390,391],[391,392],[392,393],[393,394],[394,395],[395,396],[396,397],[397,398],[398,399],[399,400],[400,401],[401,402],[402,403],[403,404],[404,405],[405,406],[406,407],[407,408],[408,409],[409,410],[410,411],[411,412],[412,413],[413,414],[414,415],[415,416],[416,417],[417,418],[418,419],[419,420],[420,421],[421,422],[422,423],[423,424],[424,425],[425,426],[426,427],[427,428],[428,429],[429,430],[430,431],[431,432],[432,433],[433,434],[434,435],[435,436],[436,437],[437,438],[438,439],[439,440],[440,441],[441,442],[442,443],[443,444],[444,445],[445,446],[446,447],[447,448],[448,449],[449,450],[450,451],[451,452],[452,453],[453,454],[454,455],[455,456],[456,457],[457,458],[458,459],[459,460],[460,461],[461,462],[462,463],[463,464],[464,465],[465,466],[466,467],[467,468],[468,469],[469,470],[470,471],[471,472],[472,473],[473,474],[474,475],[475,476],[476,477],[477,478],[478,479],[479,480],[480,481],[481,482],[482,483],[483,484],[484,485],[485,486],[486,487],[487,488],[488,489],[489,490],[490,491],[491,492],[492,493],[493,494],[494,495],[495,496],[496,497],[497,498],[498,499]]],[499,498,497,496,495,494,493,492,491,490,489,488,487,486,485,484,483,482,481,480,479,478,477,476,475,474,473,472,471,470,469,468,467,466,465,464,463,462,461,460,459,458,457,456,455,454,453,452,451,450,449,448,447,446,445,444,443,442,441,440,439,438,437,436,435,434,433,432,431,430,429,428,427,426,425,424,423,422,421,420,419,418,417,416,415,414,413,412,411,410,409,408,407,406,405,404,403,402,401,400,399,398,397,396,395,394,393,392,391,390,389,388,387,386,385,384,383,382,381,380,379,378,377,376,375,374,373,372,371,370,369,368,367,366,365,364,363,362,361,360,359,358,357,356,355,354,353,352,351,350,349,348,347,346,345,344,343,342,341,340,339,338,337,336,335,334,333,332,331,330,329,328,327,326,325,324,323,322,321,320,319,318,317,316,315,314,313,312,311,310,309,308,307,306,305,304,303,302,301,300,299,298,297,296,295,294,293,292,291,290,289,288,287,286,285,284,283,282,281,280,279,278,277,276,275,274,273,272,271,270,269,268,267,266,265,264,263,262,261,260,259,258,257,256,255,254,253,252,251,250,249,248,247,246,245,244,243,242,241,240,239,238,237,236,235,234,233,232,231,230,229,228,227,226,225,224,223,222,221,220,219,218,217,216,215,214,213,212,211,210,209,208,207,206,205,204,203,202,201,200,199,198,197,196,195,194,193,192,191,190,189,188,187,186,185,184,183,182,181,180,179,178,177,176,175,174,173,172,171,170,169,168,167,166,165,164,163,162,161,160,159,158,157,156,155,154,153,152,151,150,149,148,147,146,145,144,143,142,141,140,139,138,137,136,135,134,133,132,131,130,129,128,127,126,125,124,123,122,121,120,119,118,117,116,115,114,113,112,111,110,109,108,107,106,105,104,103,102,101,100,99,98,97,96,95,94,93,92,91,90,89,88,87,86,85,84,83,82,81,80,79,78,77,76,75,74,73,72,71,70,69,68,67,66,65,64,63,62,61,60,59,58,57,56,55,54,53,52,51,50,49,48,47,46,45,44,43,42,41,40,39,38,37,36,35,34,33,32,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0]],
+      [[500,[[1,0],[2,1],[3,2],[4,3],[5,4],[6,5],[7,6],[8,7],[9,8],[10,9],[11,10],[12,11],[13,12],[14,13],[15,14],[16,15],[17,16],[18,17],[19,18],[20,19],[21,20],[22,21],[23,22],[24,23],[25,24],[26,25],[27,26],[28,27],[29,28],[30,29],[31,30],[32,31],[33,32],[34,33],[35,34],[36,35],[37,36],[38,37],[39,38],[40,39],[41,40],[42,41],[43,42],[44,43],[45,44],[46,45],[47,46],[48,47],[49,48],[50,49],[51,50],[52,51],[53,52],[54,53],[55,54],[56,55],[57,56],[58,57],[59,58],[60,59],[61,60],[62,61],[63,62],[64,63],[65,64],[66,65],[67,66],[68,67],[69,68],[70,69],[71,70],[72,71],[73,72],[74,73],[75,74],[76,75],[77,76],[78,77],[79,78],[80,79],[81,80],[82,81],[83,82],[84,83],[85,84],[86,85],[87,86],[88,87],[89,88],[90,89],[91,90],[92,91],[93,92],[94,93],[95,94],[96,95],[97,96],[98,97],[99,98],[100,99],[101,100],[102,101],[103,102],[104,103],[105,104],[106,105],[107,106],[108,107],[109,108],[110,109],[111,110],[112,111],[113,112],[114,113],[115,114],[116,115],[117,116],[118,117],[119,118],[120,119],[121,120],[122,121],[123,122],[124,123],[125,124],[126,125],[127,126],[128,127],[129,128],[130,129],[131,130],[132,131],[133,132],[134,133],[135,134],[136,135],[137,136],[138,137],[139,138],[140,139],[141,140],[142,141],[143,142],[144,143],[145,144],[146,145],[147,146],[148,147],[149,148],[150,149],[151,150],[152,151],[153,152],[154,153],[155,154],[156,155],[157,156],[158,157],[159,158],[160,159],[161,160],[162,161],[163,162],[164,163],[165,164],[166,165],[167,166],[168,167],[169,168],[170,169],[171,170],[172,171],[173,172],[174,173],[175,174],[176,175],[177,176],[178,177],[179,178],[180,179],[181,180],[182,181],[183,182],[184,183],[185,184],[186,185],[187,186],[188,187],[189,188],[190,189],[191,190],[192,191],[193,192],[194,193],[195,194],[196,195],[197,196],[198,197],[199,198],[200,199],[201,200],[202,201],[203,202],[204,203],[205,204],[206,205],[207,206],[208,207],[209,208],[210,209],[211,210],[212,211],[213,212],[214,213],[215,214],[216,215],[217,216],[218,217],[219,218],[220,219],[221,220],[222,221],[223,222],[224,223],[225,224],[226,225],[227,226],[228,227],[229,228],[230,229],[231,230],[232,231],[233,232],[234,233],[235,234],[236,235],[237,236],[238,237],[239,238],[240,239],[241,240],[242,241],[243,242],[244,243],[245,244],[246,245],[247,246],[248,247],[249,248],[250,249],[251,250],[252,251],[253,252],[254,253],[255,254],[256,255],[257,256],[258,257],[259,258],[260,259],[261,260],[262,261],[263,262],[264,263],[265,264],[266,265],[267,266],[268,267],[269,268],[270,269],[271,270],[272,271],[273,272],[274,273],[275,274],[276,275],[277,276],[278,277],[279,278],[280,279],[281,280],[282,281],[283,282],[284,283],[285,284],[286,285],[287,286],[288,287],[289,288],[290,289],[291,290],[292,291],[293,292],[294,293],[295,294],[296,295],[297,296],[298,297],[299,298],[300,299],[301,300],[302,301],[303,302],[304,303],[305,304],[306,305],[307,306],[308,307],[309,308],[310,309],[311,310],[312,311],[313,312],[314,313],[315,314],[316,315],[317,316],[318,317],[319,318],[320,319],[321,320],[322,321],[323,322],[324,323],[325,324],[326,325],[327,326],[328,327],[329,328],[330,329],[331,330],[332,331],[333,332],[334,333],[335,334],[336,335],[337,336],[338,337],[339,338],[340,339],[341,340],[342,341],[343,342],[344,343],[345,344],[346,345],[347,346],[348,347],[349,348],[350,349],[351,350],[352,351],[353,352],[354,353],[355,354],[356,355],[357,356],[358,357],[359,358],[360,359],[361,360],[362,361],[363,362],[364,363],[365,364],[366,365],[367,366],[368,367],[369,368],[370,369],[371,370],[372,371],[373,372],[374,373],[375,374],[376,375],[377,376],[378,377],[379,378],[380,379],[381,380],[382,381],[383,382],[384,383],[385,384],[386,385],[387,386],[388,387],[389,388],[390,389],[391,390],[392,391],[393,392],[394,393],[395,394],[396,395],[397,396],[398,397],[399,398],[400,399],[401,400],[402,401],[403,402],[404,403],[405,404],[406,405],[407,406],[408,407],[409,408],[410,409],[411,410],[412,411],[413,412],[414,413],[415,414],[416,415],[417,416],[418,417],[419,418],[420,419],[421,420],[422,421],[423,422],[424,423],[425,424],[426,425],[427,426],[428,427],[429,428],[430,429],[431,430],[432,431],[433,432],[434,433],[435,434],[436,435],[437,436],[438,437],[439,438],[440,439],[441,440],[442,441],[443,442],[444,443],[445,444],[446,445],[447,446],[448,447],[449,448],[450,449],[451,450],[452,451],[453,452],[454,453],[455,454],[456,455],[457,456],[458,457],[459,458],[460,459],[461,460],[462,461],[463,462],[464,463],[465,464],[466,465],[467,466],[468,467],[469,468],[470,469],[471,470],[472,471],[473,472],[474,473],[475,474],[476,475],[477,476],[478,477],[479,478],[480,479],[481,480],[482,481],[483,482],[484,483],[485,484],[486,485],[487,486],[488,487],[489,488],[490,489],[491,490],[492,491],[493,492],[494,493],[495,494],[496,495],[497,496],[498,497],[499,498],[0,499]]],[]],
+      [[2000,[]],{"$range":[0,2000]}]
+    ] },
     solution: {
       approach: `<p><b>Clue:</b> "prerequisites", "order" → topological sort (DSA 20). Kahn’s BFS gives the order and cycle detection in one pass.</p>`,
       code: `class Solution {
@@ -2416,6 +4214,58 @@ print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))  # [1, 2]`, run: true }],
         return k == n ? order : new int[0];        // leftover nodes = cycle
     }
 }`,
+      alt: [{ lang: 'python', code: `from collections import deque
+
+def find_order(n, prerequisites):
+    adj = [[] for _ in range(n)]
+    indeg = [0] * n
+    for a, b in prerequisites:                 # edge b -> a
+        adj[b].append(a)
+        indeg[a] += 1
+    q = deque(i for i in range(n) if indeg[i] == 0)
+    order = []
+    while q:
+        c = q.popleft()
+        order.append(c)
+        for nxt in adj[c]:
+            indeg[nxt] -= 1
+            if indeg[nxt] == 0:
+                q.append(nxt)
+    return order if len(order) == n else []    # leftover nodes = cycle` },
+        { lang: 'js', code: `function findOrder(n, prerequisites) {
+  const adj = Array.from({ length: n }, () => []);
+  const indeg = new Array(n).fill(0);
+  for (const [a, b] of prerequisites) {        // edge b -> a
+    adj[b].push(a);
+    indeg[a]++;
+  }
+  const order = [];                            // doubles as the queue: read index = head
+  for (let i = 0; i < n; i++) if (indeg[i] === 0) order.push(i);
+  for (let head = 0; head < order.length; head++) {
+    for (const nxt of adj[order[head]]) {
+      if (--indeg[nxt] === 0) order.push(nxt);
+    }
+  }
+  return order.length === n ? order : [];      // leftover nodes = cycle
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> findOrder(int n, vector<vector<int>>& prerequisites) {
+        vector<vector<int>> adj(n);
+        vector<int> indeg(n, 0);
+        for (auto& p : prerequisites) {        // edge b -> a
+            adj[p[1]].push_back(p[0]);
+            indeg[p[0]]++;
+        }
+        vector<int> order;                     // doubles as the queue: read index = head
+        for (int i = 0; i < n; i++) if (indeg[i] == 0) order.push_back(i);
+        for (size_t head = 0; head < order.size(); head++)
+            for (int nxt : adj[order[head]])
+                if (--indeg[nxt] == 0) order.push_back(nxt);
+        if ((int)order.size() != n) return {};     // leftover nodes = cycle
+        return order;
+    }
+};` }],
       dry: { head: ['pop', 'order', 'indegree changes', 'queue'], rows: [['—', '[]', 'indeg = [0,1,1,2]', '[0]'], ['0', '[0]', '1→0, 2→0', '[1, 2]'], ['1', '[0,1]', '3→1', '[2]'], ['2', '[0,1,2]', '3→0', '[3]'], ['3', H.c('g', '[0,1,2,3]'), '—', '[]']] },
       complexity: `<p>Time O(n + E), space O(n + E).</p>`,
       followUps: ['Return the minimum number of semesters (BFS levels).', 'Lexicographically smallest order (priority queue instead of queue).', 'Alien Dictionary: build the edges yourself.']
@@ -2441,6 +4291,27 @@ print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))  # [1, 2]`, run: true }],
 }` },
     mcq: { q: 'A window is valid when…', options: ['window length − count of its most frequent letter ≤ k', 'it has at most k distinct letters', 'its length ≤ k', 'all letters are equal'], answer: 0, explain: 'Keep the majority letter, change the rest; the "rest" must be at most k.' },
     hints: [`<p>Hint 1: "Longest substring" + a validity condition → variable sliding window.</p>`, `<p>Hint 2: Valid iff (right − left + 1) − maxCount ≤ k, where maxCount is the top letter count in the window.</p>`, `<p>Hint 3: When invalid, move left by one. You never need to decrease maxCount: the answer only grows when a bigger maxCount appears.</p>`],
+    tests: { sig: 'string int -> int', fn: 'characterReplacement', cases: [
+      [["AABABBA",1],4],
+      [["ABAB",2],4],
+      [["AAAA",0],4],
+      [["A",0],1],
+      [["A",1],1],
+      [["ABC",0],1],
+      [["ABC",3],3],
+      [["ABBB",2],4],
+      [["AABA",0],2],
+      [["ABCDEFG",2],3],
+      [["BAAAB",1],4],
+      [["ACBBB",3],5],
+      [["CACACCBCA",4],9],
+      [["ABABBBBCCAB",2],7],
+      [["ACCA",1],3],
+      [[{"$rep":"A","n":100000},0],100000],
+      [[{"$concat":[{"$rep":"A","n":50000},{"$rep":"B","n":50000}]},0],50000],
+      [[{"$concat":[{"$rep":"A","n":50000},{"$rep":"B","n":50000}]},50000],100000],
+      [[{"$concat":[{"$rep":"A","n":50000},{"$rep":"B","n":50000}]},20000],70000]
+    ] },
     solution: {
       approach: `<p><b>Clue:</b> "longest substring" + "at most k changes" → sliding window with a 26-count array (DSA 6). The non-shrinking maxCount trick keeps it O(N).</p>`,
       code: `class Solution {
@@ -2458,6 +4329,47 @@ print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))  # [1, 2]`, run: true }],
         return best;
     }
 }`,
+      alt: [{ lang: 'python', code: `def character_replacement(s, k):
+    cnt = [0] * 26
+    left = max_cnt = best = 0
+    for right, ch in enumerate(s):
+        i = ord(ch) - 65
+        cnt[i] += 1
+        max_cnt = max(max_cnt, cnt[i])
+        while right - left + 1 - max_cnt > k:      # too many letters to change
+            cnt[ord(s[left]) - 65] -= 1
+            left += 1
+        best = max(best, right - left + 1)
+    return best` },
+        { lang: 'js', code: `function characterReplacement(s, k) {
+  const cnt = new Array(26).fill(0);
+  let left = 0, maxCnt = 0, best = 0;
+  for (let right = 0; right < s.length; right++) {
+    maxCnt = Math.max(maxCnt, ++cnt[s.charCodeAt(right) - 65]);
+    while (right - left + 1 - maxCnt > k) {    // too many letters to change
+      cnt[s.charCodeAt(left) - 65]--;
+      left++;
+    }
+    best = Math.max(best, right - left + 1);
+  }
+  return best;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int characterReplacement(string s, int k) {
+        int cnt[26] = {};
+        int left = 0, maxCnt = 0, best = 0;
+        for (int right = 0; right < (int)s.size(); right++) {
+            maxCnt = max(maxCnt, ++cnt[s[right] - 'A']);
+            while (right - left + 1 - maxCnt > k) {   // too many letters to change
+                cnt[s[left] - 'A']--;
+                left++;
+            }
+            best = max(best, right - left + 1);
+        }
+        return best;
+    }
+};` }],
       complexity: `<p>Time O(N), space O(26).</p>`,
       followUps: ['Binary string version: Max Consecutive Ones III.', 'Why is a stale (too large) maxCount still safe? Prove it.']
     }
@@ -2480,6 +4392,25 @@ print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))  # [1, 2]`, run: true }],
 }` },
     mcq: { q: 'What does dp[a] mean in the standard solution?', options: ['Fewest coins that sum exactly to a', 'Number of ways to make a', 'Largest coin used for a', 'Whether coin a exists'], answer: 0, explain: 'Then dp[a] = 1 + min over coins c ≤ a of dp[a − c] (DSA 18).' },
     hints: [`<p>Hint 1: Greedy fails ({1,3,4}, 6). "Fewest" + choices at each step → DP.</p>`, `<p>Hint 2: dp[a] = min over coins c of dp[a − c] + 1, with dp[0] = 0.</p>`, `<p>Hint 3: Fill a from 1 to amount; use a sentinel "infinity" = amount + 1. Watch out: coins can be up to 2<sup>31</sup>−1, so check c ≤ a before subtracting.</p>`],
+    tests: { sig: 'int[] int -> int', fn: 'coinChange', cases: [
+      [[[1,3,4],6],2],
+      [[[2],3],-1],
+      [[[1],0],0],
+      [[[1,2,5],11],3],
+      [[[2],0],0],
+      [[[186,419,83,408],6249],20],
+      [[[5],10000],2000],
+      [[[3,7],10000],1432],
+      [[[1],10000],10000],
+      [[[2],9999],-1],
+      [[[2147483647],10000],-1],
+      [[[2147483647,1],10000],10000],
+      [[[2,5,10,1],27],4],
+      [[[7],0],0],
+      [[[5],38],-1],
+      [[[2],39],-1],
+      [[[2],3],-1]
+    ] },
     solution: {
       approach: `<p><b>Clue:</b> "fewest coins", unlimited supply, amount ≤ 10<sup>4</sup> → 1D unbounded-knapsack DP, O(amount × coins) = 1.2·10<sup>5</sup>.</p>`,
       code: `class Solution {
@@ -2494,6 +4425,35 @@ print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))  # [1, 2]`, run: true }],
         return dp[amount] >= INF ? -1 : dp[amount];
     }
 }`,
+      alt: [{ lang: 'python', code: `def coin_change(coins, amount):
+    INF = amount + 1                           # more coins than could ever be needed
+    dp = [0] + [INF] * amount                  # zero coins make amount 0
+    for a in range(1, amount + 1):
+        for c in coins:
+            if c <= a and dp[a - c] + 1 < dp[a]:
+                dp[a] = dp[a - c] + 1
+    return -1 if dp[amount] >= INF else dp[amount]` },
+        { lang: 'js', code: `function coinChange(coins, amount) {
+  const INF = amount + 1;                      // more coins than could ever be needed
+  const dp = new Array(amount + 1).fill(INF);
+  dp[0] = 0;                                   // zero coins make amount 0
+  for (let a = 1; a <= amount; a++)
+    for (const c of coins)
+      if (c <= a && dp[a - c] + 1 < dp[a]) dp[a] = dp[a - c] + 1;
+  return dp[amount] >= INF ? -1 : dp[amount];
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int coinChange(vector<int>& coins, int amount) {
+        int INF = amount + 1;                  // more coins than could ever be needed
+        vector<int> dp(amount + 1, INF);
+        dp[0] = 0;                             // zero coins make amount 0
+        for (int a = 1; a <= amount; a++)
+            for (int c : coins)
+                if (c <= a && dp[a - c] + 1 < dp[a]) dp[a] = dp[a - c] + 1;
+        return dp[amount] >= INF ? -1 : dp[amount];
+    }
+};` }],
       dry: { head: ['a', '0', '1', '2', '3', '4', '5', '6'], rows: [['dp[a]', '0', '1', '2', '1', '1', '2', H.c('g', '2')], ['via', '—', '1', '1+1', '3', '4', '4+1', '3+3']] },
       complexity: `<p>Time O(amount × coins), space O(amount).</p>`,
       followUps: ['Count the number of ways (Coin Change II) — loop order matters!', 'Reconstruct the coins used.']
@@ -2516,6 +4476,25 @@ print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))  # [1, 2]`, run: true }],
 }` },
     mcq: { q: 'Why may we discard a value that has a larger value to its right inside the window?', options: ['The larger one stays in the window longer and is bigger, so the smaller can never be a max again', 'To save memory only', 'Because the array is sorted', 'We may not discard it'], answer: 0, explain: 'Dominated elements are useless → keep a decreasing deque (DSA 14).' },
     hints: [`<p>Hint 1: A value is useless once a bigger value appears after it.</p>`, `<p>Hint 2: Deque of indices with decreasing values: pop from the back while smaller than the new value; the front is the max.</p>`, `<p>Hint 3: Pop the front if its index ≤ i − k (left the window). Record the front once i ≥ k − 1.</p>`],
+    tests: { sig: 'int[] int -> int[]', fn: 'maxSlidingWindow', cases: [
+      [[[1,3,-1,-3,5,3,6,7],3],[3,3,5,5,6,7]],
+      [[[1],1],[1]],
+      [[[1,-1],1],[1,-1]],
+      [[[9,11],2],[11]],
+      [[[4,3,2,1],2],[4,3,2]],
+      [[[1,2,3,4],2],[2,3,4]],
+      [[[5,5,5,5],3],[5,5]],
+      [[[-10000,10000,-10000],2],[10000,10000]],
+      [[[4,-2,3,-5,-1,-2,2,-3,-3,-1],6],[4,3,3,2,2]],
+      [[[-1,2,2,-5,3,0,-2,5,-5,-5,5,4],1],[-1,2,2,-5,3,0,-2,5,-5,-5,5,4]],
+      [[[1,1,2,-1,4,-4],5],[4,4]],
+      [[[-2,5,-5,1,4,-2],5],[5,5]],
+      [[{"$range":[-10000,10000]},3],{"$range":[-9998,10000]}],
+      [[{"$range":[10000,-10000,-1]},3],{"$range":[10000,-9998,-1]}],
+      [[{"$rep":5,"n":100000},50000],{"$rep":5,"n":50001}],
+      [[{"$rep":-7,"n":100000},100000],[-7]],
+      [[{"$concat":[{"$rep":0,"n":99999},[10000]]},1000],{"$concat":[{"$rep":0,"n":99000},[10000]]}]
+    ] },
     solution: {
       approach: `<p><b>Clue:</b> "max of every window of size k" → monotonic deque, O(N) total.</p>`,
       code: `class Solution {
@@ -2532,6 +4511,47 @@ print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))  # [1, 2]`, run: true }],
         return res;
     }
 }`,
+      alt: [{ lang: 'python', code: `from collections import deque
+
+def max_sliding_window(nums, k):
+    res = []
+    dq = deque()                               # indices, values decreasing
+    for i, x in enumerate(nums):
+        if dq and dq[0] <= i - k:
+            dq.popleft()                       # left the window
+        while dq and nums[dq[-1]] <= x:
+            dq.pop()                           # dominated
+        dq.append(i)
+        if i >= k - 1:
+            res.append(nums[dq[0]])            # front = max
+    return res` },
+        { lang: 'js', code: `function maxSlidingWindow(nums, k) {
+  const n = nums.length, res = [];
+  const dq = new Array(n);                     // indices, values decreasing; head..tail is the deque
+  let head = 0, tail = 0;
+  for (let i = 0; i < n; i++) {
+    if (head < tail && dq[head] <= i - k) head++;                    // left the window
+    while (head < tail && nums[dq[tail - 1]] <= nums[i]) tail--;     // dominated
+    dq[tail++] = i;
+    if (i >= k - 1) res.push(nums[dq[head]]);                        // front = max
+  }
+  return res;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> maxSlidingWindow(vector<int>& nums, int k) {
+        int n = nums.size();
+        vector<int> res;
+        deque<int> dq;                         // indices, values decreasing
+        for (int i = 0; i < n; i++) {
+            if (!dq.empty() && dq.front() <= i - k) dq.pop_front();         // left the window
+            while (!dq.empty() && nums[dq.back()] <= nums[i]) dq.pop_back(); // dominated
+            dq.push_back(i);
+            if (i >= k - 1) res.push_back(nums[dq.front()]);                // front = max
+        }
+        return res;
+    }
+};` }],
       dry: { head: ['i', 'nums[i]', 'deque (values)', 'output'], rows: [['2', '−1', '[3, −1]', '3'], ['3', '−3', '[3, −1, −3]', '3'], ['4', '5', '[5] (3 expired, rest dominated)', '5'], ['6', '6', '[6]', '6'], ['7', '7', '[7]', H.c('g', '7')]] },
       complexity: `<p>Time O(N) amortised, space O(k).</p>`,
       followUps: ['Window minimum at the same time.', 'Shortest subarray with sum ≥ K (deque over prefix sums).', 'Constrained subsequence sum (deque-optimised DP).']
@@ -2555,8 +4575,24 @@ print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))  # [1, 2]`, run: true }],
     }
     return dummy.next;
 }` },
-    mcq: { q: 'Which structure finds the smallest of k heads in O(log k)?', options: ['Min-heap (PriorityQueue) of list nodes', 'Stack', 'HashMap', 'Sorted array rebuilt each step'], answer: 0, explain: '"Merge k sorted" is a heap signature (DSA 16): poll the smallest, push its successor.' },
-    hints: [`<p>Hint 1: At any moment the next output node is the smallest of the k current heads.</p>`, `<p>Hint 2: Keep those heads in a min-heap ordered by value.</p>`, `<p>Hint 3: Skip null lists. Use a dummy head. Comparator: Integer.compare(a.val, b.val).</p>`],
+    mcq: { q: 'Which structure finds the smallest of k heads in O(log k)?', options: ['Min-heap (priority queue) of list nodes', 'Stack', 'Hash map', 'Sorted array rebuilt each step'], answer: 0, explain: '"Merge k sorted" is a heap signature (DSA 16): poll the smallest, push its successor.' },
+    hints: [`<p>Hint 1: At any moment the next output node is the smallest of the k current heads.</p>`, `<p>Hint 2: Keep those heads in a min-heap ordered by value.</p>`, `<p>Hint 3: Skip null lists. Use a dummy head. Compare nodes by <code>val</code> (Java: <code>Integer.compare(a.val, b.val)</code>; Python: push <code>(val, index, node)</code> tuples).</p>`],
+    tests: { sig: 'ListNode[] -> ListNode', fn: 'mergeKLists', cases: [
+      [[[[1,4,5],[1,3,4],[2,6]]],[1,1,2,3,4,4,5,6]],
+      [[[]],[]],
+      [[[[]]],[]],
+      [[[[],[1]]],[1]],
+      [[[[5]]],[5]],
+      [[[[-10000,10000],[-10000],[0,0]]],[-10000,-10000,0,0,10000]],
+      [[[[3],[2],[1]]],[1,2,3]],
+      [[[[1,2,3],[4,5,6]]],[1,2,3,4,5,6]],
+      [[[[],[],[]]],[]],
+      [[[[2,2],[2],[2,2,2]]],[2,2,2,2,2,2]],
+      [[{"$rep":[1],"n":10000}],{"$rep":1,"n":10000}],
+      [[[{"$range":[0,10000,2]},{"$range":[1,10000,2]}]],{"$range":[0,10000]}],
+      [[[{"$rep":7,"n":5000},{"$rep":7,"n":5000}]],{"$rep":7,"n":10000}],
+      [[{"$concat":[{"$rep":[],"n":9999},[[1]]]}],[1]]
+    ] },
     solution: {
       approach: `<p><b>Clue:</b> "merge k sorted" → min-heap of heads. Alternative: pairwise divide-and-conquer merging, also O(N log k) with O(1) extra space (besides recursion).</p>`,
       code: `class Solution {
@@ -2573,6 +4609,88 @@ print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))  # [1, 2]`, run: true }],
         return dummy.next;
     }
 }`,
+      alt: [{ lang: 'python', code: `import heapq
+
+def merge_k_lists(lists):
+    heap = []
+    for i, head in enumerate(lists):
+        if head:
+            heap.append((head.val, i, head))   # i breaks ties so nodes are never compared
+    heapq.heapify(heap)
+    dummy = tail = ListNode(0)
+    while heap:
+        _, i, node = heapq.heappop(heap)       # smallest current head
+        tail.next = node
+        tail = node
+        if node.next:
+            heapq.heappush(heap, (node.next.val, i, node.next))   # its successor joins the race
+    return dummy.next` },
+        { lang: 'js', code: `class MinHeap {
+  constructor(less) { this.a = []; this.less = less || ((x, y) => x < y); }
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(v) {
+    const a = this.a;
+    a.push(v);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (!this.less(a[i], a[p])) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.less(a[l], a[m])) m = l;
+        if (r < a.length && this.less(a[r], a[m])) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+function mergeKLists(lists) {
+  const heap = new MinHeap((a, b) => a.val < b.val);
+  for (const head of lists) if (head) heap.push(head);
+  const dummy = new ListNode(0);
+  let tail = dummy;
+  while (heap.size() > 0) {
+    const node = heap.pop();                   // smallest current head
+    tail.next = node;
+    tail = node;
+    if (node.next) heap.push(node.next);       // its successor joins the race
+  }
+  return dummy.next;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    ListNode* mergeKLists(vector<ListNode*>& lists) {
+        // priority_queue is a max-heap, so "greater val" means "lower priority": a min-heap
+        auto cmp = [](ListNode* a, ListNode* b) { return a->val > b->val; };
+        priority_queue<ListNode*, vector<ListNode*>, decltype(cmp)> pq(cmp);
+        for (ListNode* head : lists) if (head) pq.push(head);
+        ListNode dummy(0);
+        ListNode* tail = &dummy;
+        while (!pq.empty()) {
+            ListNode* node = pq.top();         // smallest current head
+            pq.pop();
+            tail->next = node;
+            tail = node;
+            if (node->next) pq.push(node->next);   // its successor joins the race
+        }
+        return dummy.next;
+    }
+};` }],
       complexity: `<p>Time O(N log k), space O(k) for the heap.</p>`,
       followUps: ['Merge k sorted arrays and find the smallest range covering one element of each.', 'External merge sort of files that do not fit in memory.']
     }
@@ -2595,6 +4713,25 @@ print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))  # [1, 2]`, run: true }],
 }` },
     mcq: { q: 'With two pointers, why is it safe to settle the side with the smaller max?', options: ['Its water level is decided by its own max, because the other side is known to be at least as tall', 'Because it is closer to the edge', 'Because water flows left', 'It is not safe'], answer: 0, explain: 'If leftMax ≤ rightMax, water at left = leftMax − h[left]; nothing on the right can lower it.' },
     hints: [`<p>Hint 1: Water above i = min(maxLeft(i), maxRight(i)) − height[i].</p>`, `<p>Hint 2: Precompute prefix max and suffix max arrays → O(N) time, O(N) space.</p>`, `<p>Hint 3: Two pointers for O(1) space: move the side whose running max is smaller and add its water.</p>`],
+    tests: { sig: 'int[] -> int', fn: 'trap', cases: [
+      [[[0,1,0,2,1,0,1,3,2,1,2,1]],6],
+      [[[4,2,0,3,2,5]],9],
+      [[[1]],0],
+      [[[0]],0],
+      [[[3,0,3]],3],
+      [[[1,2,3,4]],0],
+      [[[4,3,2,1]],0],
+      [[[2,0,2]],2],
+      [[[5,4,1,2]],1],
+      [[[0,0,0]],0],
+      [[[100000,0,100000]],100000],
+      [[[5,2,4,5,2,0,5,3,2]],12],
+      [[[5,1,5,5,2,1,4,5,3]],12],
+      [[[4,4,0,5,4,1]],4],
+      [[{"$concat":[[100000],{"$rep":0,"n":19998},[100000]]}],1999800000],
+      [[{"$concat":[{"$range":[0,10000]},{"$range":[10000,0,-1]}]}],0],
+      [[{"$concat":[{"$rep":1,"n":1},{"$rep":0,"n":10000},{"$rep":2,"n":1},{"$rep":0,"n":9998},{"$rep":1,"n":1}]}],19998]
+    ] },
     solution: {
       approach: `<p><b>Clue:</b> per-position answer depends on max to the left and right → prefix/suffix max (DSA 5), compressed into two pointers (DSA 6).</p>`,
       code: `class Solution {
@@ -2609,6 +4746,43 @@ print(top_k_frequent([1, 1, 1, 2, 2, 3], 2))  # [1, 2]`, run: true }],
         return water;
     }
 }`,
+      alt: [{ lang: 'python', code: `def trap(h):
+    l, r = 0, len(h) - 1
+    left_max = right_max = water = 0
+    while l < r:
+        left_max = max(left_max, h[l])
+        right_max = max(right_max, h[r])
+        if left_max <= right_max:              # left side is the bottleneck
+            water += left_max - h[l]
+            l += 1
+        else:                                  # right side is the bottleneck
+            water += right_max - h[r]
+            r -= 1
+    return water` },
+        { lang: 'js', code: `function trap(h) {
+  let l = 0, r = h.length - 1, leftMax = 0, rightMax = 0, water = 0;
+  while (l < r) {
+    leftMax = Math.max(leftMax, h[l]);
+    rightMax = Math.max(rightMax, h[r]);
+    if (leftMax <= rightMax) water += leftMax - h[l++];   // left side is the bottleneck
+    else water += rightMax - h[r--];                      // right side is the bottleneck
+  }
+  return water;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int trap(vector<int>& h) {
+        int l = 0, r = (int)h.size() - 1, leftMax = 0, rightMax = 0;
+        long long water = 0;                   // the total can reach about 2*10^9
+        while (l < r) {
+            leftMax = max(leftMax, h[l]);
+            rightMax = max(rightMax, h[r]);
+            if (leftMax <= rightMax) water += leftMax - h[l++];   // left side is the bottleneck
+            else water += rightMax - h[r--];                      // right side is the bottleneck
+        }
+        return (int)water;
+    }
+};` }],
       complexity: `<p>Time O(N), space O(1).</p>`,
       followUps: ['2D version (Trapping Rain Water II): min-heap from the border inward.', 'Monotonic stack version that fills water layer by layer.']
     }
@@ -2638,6 +4812,20 @@ boolean oneApart(String a, String b) {
 }` },
     mcq: { q: '"Shortest sequence of one-letter changes" is…', options: ['BFS on an implicit graph whose nodes are words', 'Dijkstra with weights = letter distance', 'DP over the word list order', 'Backtracking for all paths'], answer: 0, explain: 'All moves cost 1 → unweighted shortest path → BFS (DSA 20). The graph is never given; you generate neighbours.' },
     hints: [`<p>Hint 1: Words are nodes, one-letter changes are edges, each costs 1.</p>`, `<p>Hint 2: BFS from beginWord. Generate neighbours by trying all 26 letters at each position (O(26·L) per word) and checking the dictionary set.</p>`, `<p>Hint 3: Remove words from the set when enqueued (visited). If endWord is not in the list, return 0 immediately.</p>`],
+    tests: { sig: 'string string list<string> -> int', fn: 'ladderLength', cases: [
+      [["hit","cog",["hot","dot","dog","lot","log","cog"]],5],
+      [["hit","cog",["hot","dot","dog","lot","log"]],0],
+      [["a","c",["a","b","c"]],2],
+      [["hot","dog",["hot","dog"]],0],
+      [["hit","hot",["hot"]],2],
+      [["hit","hot",["hit","hot"]],2],
+      [["abc","abd",["abd"]],2],
+      [["lost","cost",["most","fust","miss","cost","lost"]],2],
+      [["ab","cd",["ad","cd","cb"]],3],
+      [["hot","dot",["dot","hot"]],2],
+      [["aaaaaaaaaa","bbbbbbbbbb",["aaaaaaaaaa","aaaaaaaaab","aaaaaaaaba","aaaaaaaabb","aaaaaaabaa","aaaaaaabab","aaaaaaabba","aaaaaaabbb","aaaaaabaaa","aaaaaabaab","aaaaaababa","aaaaaababb","aaaaaabbaa","aaaaaabbab","aaaaaabbba","aaaaaabbbb","aaaaabaaaa","aaaaabaaab","aaaaabaaba","aaaaabaabb","aaaaababaa","aaaaababab","aaaaababba","aaaaababbb","aaaaabbaaa","aaaaabbaab","aaaaabbaba","aaaaabbabb","aaaaabbbaa","aaaaabbbab","aaaaabbbba","aaaaabbbbb","aaaabaaaaa","aaaabaaaab","aaaabaaaba","aaaabaaabb","aaaabaabaa","aaaabaabab","aaaabaabba","aaaabaabbb","aaaababaaa","aaaababaab","aaaabababa","aaaabababb","aaaababbaa","aaaababbab","aaaababbba","aaaababbbb","aaaabbaaaa","aaaabbaaab","aaaabbaaba","aaaabbaabb","aaaabbabaa","aaaabbabab","aaaabbabba","aaaabbabbb","aaaabbbaaa","aaaabbbaab","aaaabbbaba","aaaabbbabb","aaaabbbbaa","aaaabbbbab","aaaabbbbba","aaaabbbbbb","aaabaaaaaa","aaabaaaaab","aaabaaaaba","aaabaaaabb","aaabaaabaa","aaabaaabab","aaabaaabba","aaabaaabbb","aaabaabaaa","aaabaabaab","aaabaababa","aaabaababb","aaabaabbaa","aaabaabbab","aaabaabbba","aaabaabbbb","aaababaaaa","aaababaaab","aaababaaba","aaababaabb","aaabababaa","aaabababab","aaabababba","aaabababbb","aaababbaaa","aaababbaab","aaababbaba","aaababbabb","aaababbbaa","aaababbbab","aaababbbba","aaababbbbb","aaabbaaaaa","aaabbaaaab","aaabbaaaba","aaabbaaabb","aaabbaabaa","aaabbaabab","aaabbaabba","aaabbaabbb","aaabbabaaa","aaabbabaab","aaabbababa","aaabbababb","aaabbabbaa","aaabbabbab","aaabbabbba","aaabbabbbb","aaabbbaaaa","aaabbbaaab","aaabbbaaba","aaabbbaabb","aaabbbabaa","aaabbbabab","aaabbbabba","aaabbbabbb","aaabbbbaaa","aaabbbbaab","aaabbbbaba","aaabbbbabb","aaabbbbbaa","aaabbbbbab","aaabbbbbba","aaabbbbbbb","aabaaaaaaa","aabaaaaaab","aabaaaaaba","aabaaaaabb","aabaaaabaa","aabaaaabab","aabaaaabba","aabaaaabbb","aabaaabaaa","aabaaabaab","aabaaababa","aabaaababb","aabaaabbaa","aabaaabbab","aabaaabbba","aabaaabbbb","aabaabaaaa","aabaabaaab","aabaabaaba","aabaabaabb","aabaababaa","aabaababab","aabaababba","aabaababbb","aabaabbaaa","aabaabbaab","aabaabbaba","aabaabbabb","aabaabbbaa","aabaabbbab","aabaabbbba","aabaabbbbb","aababaaaaa","aababaaaab","aababaaaba","aababaaabb","aababaabaa","aababaabab","aababaabba","aababaabbb","aabababaaa","aabababaab","aababababa","aababababb","aabababbaa","aabababbab","aabababbba","aabababbbb","aababbaaaa","aababbaaab","aababbaaba","aababbaabb","aababbabaa","aababbabab","aababbabba","aababbabbb","aababbbaaa","aababbbaab","aababbbaba","aababbbabb","aababbbbaa","aababbbbab","aababbbbba","aababbbbbb","aabbaaaaaa","aabbaaaaab","aabbaaaaba","aabbaaaabb","aabbaaabaa","aabbaaabab","aabbaaabba","aabbaaabbb","aabbaabaaa","aabbaabaab","aabbaababa","aabbaababb","aabbaabbaa","aabbaabbab","aabbaabbba","aabbaabbbb","aabbabaaaa","aabbabaaab","aabbabaaba","aabbabaabb","aabbababaa","aabbababab","aabbababba","aabbababbb","aabbabbaaa","aabbabbaab","aabbabbaba","aabbabbabb","aabbabbbaa","aabbabbbab","aabbabbbba","aabbabbbbb","aabbbaaaaa","aabbbaaaab","aabbbaaaba","aabbbaaabb","aabbbaabaa","aabbbaabab","aabbbaabba","aabbbaabbb","aabbbabaaa","aabbbabaab","aabbbababa","aabbbababb","aabbbabbaa","aabbbabbab","aabbbabbba","aabbbabbbb","aabbbbaaaa","aabbbbaaab","aabbbbaaba","aabbbbaabb","aabbbbabaa","aabbbbabab","aabbbbabba","aabbbbabbb","aabbbbbaaa","aabbbbbaab","aabbbbbaba","aabbbbbabb","aabbbbbbaa","aabbbbbbab","aabbbbbbba","aabbbbbbbb","abaaaaaaaa","abaaaaaaab","abaaaaaaba","abaaaaaabb","abaaaaabaa","abaaaaabab","abaaaaabba","abaaaaabbb","abaaaabaaa","abaaaabaab","abaaaababa","abaaaababb","abaaaabbaa","abaaaabbab","abaaaabbba","abaaaabbbb","abaaabaaaa","abaaabaaab","abaaabaaba","abaaabaabb","abaaababaa","abaaababab","abaaababba","abaaababbb","abaaabbaaa","abaaabbaab","abaaabbaba","abaaabbabb","abaaabbbaa","abaaabbbab","abaaabbbba","abaaabbbbb","abaabaaaaa","abaabaaaab","abaabaaaba","abaabaaabb","abaabaabaa","abaabaabab","abaabaabba","abaabaabbb","abaababaaa","abaababaab","abaabababa","abaabababb","abaababbaa","abaababbab","abaababbba","abaababbbb","abaabbaaaa","abaabbaaab","abaabbaaba","abaabbaabb","abaabbabaa","abaabbabab","abaabbabba","abaabbabbb","abaabbbaaa","abaabbbaab","abaabbbaba","abaabbbabb","abaabbbbaa","abaabbbbab","abaabbbbba","abaabbbbbb","ababaaaaaa","ababaaaaab","ababaaaaba","ababaaaabb","ababaaabaa","ababaaabab","ababaaabba","ababaaabbb","ababaabaaa","ababaabaab","ababaababa","ababaababb","ababaabbaa","ababaabbab","ababaabbba","ababaabbbb","abababaaaa","abababaaab","abababaaba","abababaabb","ababababaa","ababababab","ababababba","ababababbb","abababbaaa","abababbaab","abababbaba","abababbabb","abababbbaa","abababbbab","abababbbba","abababbbbb","ababbaaaaa","ababbaaaab","ababbaaaba","ababbaaabb","ababbaabaa","ababbaabab","ababbaabba","ababbaabbb","ababbabaaa","ababbabaab","ababbababa","ababbababb","ababbabbaa","ababbabbab","ababbabbba","ababbabbbb","ababbbaaaa","ababbbaaab","ababbbaaba","ababbbaabb","ababbbabaa","ababbbabab","ababbbabba","ababbbabbb","ababbbbaaa","ababbbbaab","ababbbbaba","ababbbbabb","ababbbbbaa","ababbbbbab","ababbbbbba","ababbbbbbb","abbaaaaaaa","abbaaaaaab","abbaaaaaba","abbaaaaabb","abbaaaabaa","abbaaaabab","abbaaaabba","abbaaaabbb","abbaaabaaa","abbaaabaab","abbaaababa","abbaaababb","abbaaabbaa","abbaaabbab","abbaaabbba","abbaaabbbb","abbaabaaaa","abbaabaaab","abbaabaaba","abbaabaabb","abbaababaa","abbaababab","abbaababba","abbaababbb","abbaabbaaa","abbaabbaab","abbaabbaba","abbaabbabb","abbaabbbaa","abbaabbbab","abbaabbbba","abbaabbbbb","abbabaaaaa","abbabaaaab","abbabaaaba","abbabaaabb","abbabaabaa","abbabaabab","abbabaabba","abbabaabbb","abbababaaa","abbababaab","abbabababa","abbabababb","abbababbaa","abbababbab","abbababbba","abbababbbb","abbabbaaaa","abbabbaaab","abbabbaaba","abbabbaabb","abbabbabaa","abbabbabab","abbabbabba","abbabbabbb","abbabbbaaa","abbabbbaab","abbabbbaba","abbabbbabb","abbabbbbaa","abbabbbbab","abbabbbbba","abbabbbbbb","abbbaaaaaa","abbbaaaaab","abbbaaaaba","abbbaaaabb","abbbaaabaa","abbbaaabab","abbbaaabba","abbbaaabbb","abbbaabaaa","abbbaabaab","abbbaababa","abbbaababb","abbbaabbaa","abbbaabbab","abbbaabbba","abbbaabbbb","abbbabaaaa","abbbabaaab","abbbabaaba","abbbabaabb","abbbababaa","abbbababab","abbbababba","abbbababbb","abbbabbaaa","abbbabbaab","abbbabbaba","abbbabbabb","abbbabbbaa","abbbabbbab","abbbabbbba","abbbabbbbb","abbbbaaaaa","abbbbaaaab","abbbbaaaba","abbbbaaabb","abbbbaabaa","abbbbaabab","abbbbaabba","abbbbaabbb","abbbbabaaa","abbbbabaab","abbbbababa","abbbbababb","abbbbabbaa","abbbbabbab","abbbbabbba","abbbbabbbb","abbbbbaaaa","abbbbbaaab","abbbbbaaba","abbbbbaabb","abbbbbabaa","abbbbbabab","abbbbbabba","abbbbbabbb","abbbbbbaaa","abbbbbbaab","abbbbbbaba","abbbbbbabb","abbbbbbbaa","abbbbbbbab","abbbbbbbba","abbbbbbbbb","baaaaaaaaa","baaaaaaaab","baaaaaaaba","baaaaaaabb","baaaaaabaa","baaaaaabab","baaaaaabba","baaaaaabbb","baaaaabaaa","baaaaabaab","baaaaababa","baaaaababb","baaaaabbaa","baaaaabbab","baaaaabbba","baaaaabbbb","baaaabaaaa","baaaabaaab","baaaabaaba","baaaabaabb","baaaababaa","baaaababab","baaaababba","baaaababbb","baaaabbaaa","baaaabbaab","baaaabbaba","baaaabbabb","baaaabbbaa","baaaabbbab","baaaabbbba","baaaabbbbb","baaabaaaaa","baaabaaaab","baaabaaaba","baaabaaabb","baaabaabaa","baaabaabab","baaabaabba","baaabaabbb","baaababaaa","baaababaab","baaabababa","baaabababb","baaababbaa","baaababbab","baaababbba","baaababbbb","baaabbaaaa","baaabbaaab","baaabbaaba","baaabbaabb","baaabbabaa","baaabbabab","baaabbabba","baaabbabbb","baaabbbaaa","baaabbbaab","baaabbbaba","baaabbbabb","baaabbbbaa","baaabbbbab","baaabbbbba","baaabbbbbb","baabaaaaaa","baabaaaaab","baabaaaaba","baabaaaabb","baabaaabaa","baabaaabab","baabaaabba","baabaaabbb","baabaabaaa","baabaabaab","baabaababa","baabaababb","baabaabbaa","baabaabbab","baabaabbba","baabaabbbb","baababaaaa","baababaaab","baababaaba","baababaabb","baabababaa","baabababab","baabababba","baabababbb","baababbaaa","baababbaab","baababbaba","baababbabb","baababbbaa","baababbbab","baababbbba","baababbbbb","baabbaaaaa","baabbaaaab","baabbaaaba","baabbaaabb","baabbaabaa","baabbaabab","baabbaabba","baabbaabbb","baabbabaaa","baabbabaab","baabbababa","baabbababb","baabbabbaa","baabbabbab","baabbabbba","baabbabbbb","baabbbaaaa","baabbbaaab","baabbbaaba","baabbbaabb","baabbbabaa","baabbbabab","baabbbabba","baabbbabbb","baabbbbaaa","baabbbbaab","baabbbbaba","baabbbbabb","baabbbbbaa","baabbbbbab","baabbbbbba","baabbbbbbb","babaaaaaaa","babaaaaaab","babaaaaaba","babaaaaabb","babaaaabaa","babaaaabab","babaaaabba","babaaaabbb","babaaabaaa","babaaabaab","babaaababa","babaaababb","babaaabbaa","babaaabbab","babaaabbba","babaaabbbb","babaabaaaa","babaabaaab","babaabaaba","babaabaabb","babaababaa","babaababab","babaababba","babaababbb","babaabbaaa","babaabbaab","babaabbaba","babaabbabb","babaabbbaa","babaabbbab","babaabbbba","babaabbbbb","bababaaaaa","bababaaaab","bababaaaba","bababaaabb","bababaabaa","bababaabab","bababaabba","bababaabbb","babababaaa","babababaab","bababababa","bababababb","babababbaa","babababbab","babababbba","babababbbb","bababbaaaa","bababbaaab","bababbaaba","bababbaabb","bababbabaa","bababbabab","bababbabba","bababbabbb","bababbbaaa","bababbbaab","bababbbaba","bababbbabb","bababbbbaa","bababbbbab","bababbbbba","bababbbbbb","babbaaaaaa","babbaaaaab","babbaaaaba","babbaaaabb","babbaaabaa","babbaaabab","babbaaabba","babbaaabbb","babbaabaaa","babbaabaab","babbaababa","babbaababb","babbaabbaa","babbaabbab","babbaabbba","babbaabbbb","babbabaaaa","babbabaaab","babbabaaba","babbabaabb","babbababaa","babbababab","babbababba","babbababbb","babbabbaaa","babbabbaab","babbabbaba","babbabbabb","babbabbbaa","babbabbbab","babbabbbba","babbabbbbb","babbbaaaaa","babbbaaaab","babbbaaaba","babbbaaabb","babbbaabaa","babbbaabab","babbbaabba","babbbaabbb","babbbabaaa","babbbabaab","babbbababa","babbbababb","babbbabbaa","babbbabbab","babbbabbba","babbbabbbb","babbbbaaaa","babbbbaaab","babbbbaaba","babbbbaabb","babbbbabaa","babbbbabab","babbbbabba","babbbbabbb","babbbbbaaa","babbbbbaab","babbbbbaba","babbbbbabb","babbbbbbaa","babbbbbbab","babbbbbbba","babbbbbbbb","bbaaaaaaaa","bbaaaaaaab","bbaaaaaaba","bbaaaaaabb","bbaaaaabaa","bbaaaaabab","bbaaaaabba","bbaaaaabbb","bbaaaabaaa","bbaaaabaab","bbaaaababa","bbaaaababb","bbaaaabbaa","bbaaaabbab","bbaaaabbba","bbaaaabbbb","bbaaabaaaa","bbaaabaaab","bbaaabaaba","bbaaabaabb","bbaaababaa","bbaaababab","bbaaababba","bbaaababbb","bbaaabbaaa","bbaaabbaab","bbaaabbaba","bbaaabbabb","bbaaabbbaa","bbaaabbbab","bbaaabbbba","bbaaabbbbb","bbaabaaaaa","bbaabaaaab","bbaabaaaba","bbaabaaabb","bbaabaabaa","bbaabaabab","bbaabaabba","bbaabaabbb","bbaababaaa","bbaababaab","bbaabababa","bbaabababb","bbaababbaa","bbaababbab","bbaababbba","bbaababbbb","bbaabbaaaa","bbaabbaaab","bbaabbaaba","bbaabbaabb","bbaabbabaa","bbaabbabab","bbaabbabba","bbaabbabbb","bbaabbbaaa","bbaabbbaab","bbaabbbaba","bbaabbbabb","bbaabbbbaa","bbaabbbbab","bbaabbbbba","bbaabbbbbb","bbabaaaaaa","bbabaaaaab","bbabaaaaba","bbabaaaabb","bbabaaabaa","bbabaaabab","bbabaaabba","bbabaaabbb","bbabaabaaa","bbabaabaab","bbabaababa","bbabaababb","bbabaabbaa","bbabaabbab","bbabaabbba","bbabaabbbb","bbababaaaa","bbababaaab","bbababaaba","bbababaabb","bbabababaa","bbabababab","bbabababba","bbabababbb","bbababbaaa","bbababbaab","bbababbaba","bbababbabb","bbababbbaa","bbababbbab","bbababbbba","bbababbbbb","bbabbaaaaa","bbabbaaaab","bbabbaaaba","bbabbaaabb","bbabbaabaa","bbabbaabab","bbabbaabba","bbabbaabbb","bbabbabaaa","bbabbabaab","bbabbababa","bbabbababb","bbabbabbaa","bbabbabbab","bbabbabbba","bbabbabbbb","bbabbbaaaa","bbabbbaaab","bbabbbaaba","bbabbbaabb","bbabbbabaa","bbabbbabab","bbabbbabba","bbabbbabbb","bbabbbbaaa","bbabbbbaab","bbabbbbaba","bbabbbbabb","bbabbbbbaa","bbabbbbbab","bbabbbbbba","bbabbbbbbb","bbbaaaaaaa","bbbaaaaaab","bbbaaaaaba","bbbaaaaabb","bbbaaaabaa","bbbaaaabab","bbbaaaabba","bbbaaaabbb","bbbaaabaaa","bbbaaabaab","bbbaaababa","bbbaaababb","bbbaaabbaa","bbbaaabbab","bbbaaabbba","bbbaaabbbb","bbbaabaaaa","bbbaabaaab","bbbaabaaba","bbbaabaabb","bbbaababaa","bbbaababab","bbbaababba","bbbaababbb","bbbaabbaaa","bbbaabbaab","bbbaabbaba","bbbaabbabb","bbbaabbbaa","bbbaabbbab","bbbaabbbba","bbbaabbbbb","bbbabaaaaa","bbbabaaaab","bbbabaaaba","bbbabaaabb","bbbabaabaa","bbbabaabab","bbbabaabba","bbbabaabbb","bbbababaaa","bbbababaab","bbbabababa","bbbabababb","bbbababbaa","bbbababbab","bbbababbba","bbbababbbb","bbbabbaaaa","bbbabbaaab","bbbabbaaba","bbbabbaabb","bbbabbabaa","bbbabbabab","bbbabbabba","bbbabbabbb","bbbabbbaaa","bbbabbbaab","bbbabbbaba","bbbabbbabb","bbbabbbbaa","bbbabbbbab","bbbabbbbba","bbbabbbbbb","bbbbaaaaaa","bbbbaaaaab","bbbbaaaaba","bbbbaaaabb","bbbbaaabaa","bbbbaaabab","bbbbaaabba","bbbbaaabbb","bbbbaabaaa","bbbbaabaab","bbbbaababa","bbbbaababb","bbbbaabbaa","bbbbaabbab","bbbbaabbba","bbbbaabbbb","bbbbabaaaa","bbbbabaaab","bbbbabaaba","bbbbabaabb","bbbbababaa","bbbbababab","bbbbababba","bbbbababbb","bbbbabbaaa","bbbbabbaab","bbbbabbaba","bbbbabbabb","bbbbabbbaa","bbbbabbbab","bbbbabbbba","bbbbabbbbb","bbbbbaaaaa","bbbbbaaaab","bbbbbaaaba","bbbbbaaabb","bbbbbaabaa","bbbbbaabab","bbbbbaabba","bbbbbaabbb","bbbbbabaaa","bbbbbabaab","bbbbbababa","bbbbbababb","bbbbbabbaa","bbbbbabbab","bbbbbabbba","bbbbbabbbb","bbbbbbaaaa","bbbbbbaaab","bbbbbbaaba","bbbbbbaabb","bbbbbbabaa","bbbbbbabab","bbbbbbabba","bbbbbbabbb","bbbbbbbaaa","bbbbbbbaab","bbbbbbbaba","bbbbbbbabb","bbbbbbbbaa","bbbbbbbbab","bbbbbbbbba","bbbbbbbbbb"]],11],
+      [["aaaaaaaaaa","bbbbbbbbbb",["aaaaaaaaaa","aaaaaaaaab","aaaaaaaaba","aaaaaaaabb","aaaaaaabaa","aaaaaaabab","aaaaaaabba","aaaaaaabbb","aaaaaabaaa","aaaaaabaab","aaaaaababa","aaaaaababb","aaaaaabbaa","aaaaaabbab","aaaaaabbba","aaaaaabbbb","aaaaabaaaa","aaaaabaaab","aaaaabaaba","aaaaabaabb","aaaaababaa","aaaaababab","aaaaababba","aaaaababbb","aaaaabbaaa","aaaaabbaab","aaaaabbaba","aaaaabbabb","aaaaabbbaa","aaaaabbbab","aaaaabbbba","aaaaabbbbb","aaaabaaaaa","aaaabaaaab","aaaabaaaba","aaaabaaabb","aaaabaabaa","aaaabaabab","aaaabaabba","aaaabaabbb","aaaababaaa","aaaababaab","aaaabababa","aaaabababb","aaaababbaa","aaaababbab","aaaababbba","aaaababbbb","aaaabbaaaa","aaaabbaaab","aaaabbaaba","aaaabbaabb","aaaabbabaa","aaaabbabab","aaaabbabba","aaaabbabbb","aaaabbbaaa","aaaabbbaab","aaaabbbaba","aaaabbbabb","aaaabbbbaa","aaaabbbbab","aaaabbbbba","aaaabbbbbb","aaabaaaaaa","aaabaaaaab","aaabaaaaba","aaabaaaabb","aaabaaabaa","aaabaaabab","aaabaaabba","aaabaaabbb","aaabaabaaa","aaabaabaab","aaabaababa","aaabaababb","aaabaabbaa","aaabaabbab","aaabaabbba","aaabaabbbb","aaababaaaa","aaababaaab","aaababaaba","aaababaabb","aaabababaa","aaabababab","aaabababba","aaabababbb","aaababbaaa","aaababbaab","aaababbaba","aaababbabb","aaababbbaa","aaababbbab","aaababbbba","aaababbbbb","aaabbaaaaa","aaabbaaaab","aaabbaaaba","aaabbaaabb","aaabbaabaa","aaabbaabab","aaabbaabba","aaabbaabbb","aaabbabaaa","aaabbabaab","aaabbababa","aaabbababb","aaabbabbaa","aaabbabbab","aaabbabbba","aaabbabbbb","aaabbbaaaa","aaabbbaaab","aaabbbaaba","aaabbbaabb","aaabbbabaa","aaabbbabab","aaabbbabba","aaabbbabbb","aaabbbbaaa","aaabbbbaab","aaabbbbaba","aaabbbbabb","aaabbbbbaa","aaabbbbbab","aaabbbbbba","aaabbbbbbb","aabaaaaaaa","aabaaaaaab","aabaaaaaba","aabaaaaabb","aabaaaabaa","aabaaaabab","aabaaaabba","aabaaaabbb","aabaaabaaa","aabaaabaab","aabaaababa","aabaaababb","aabaaabbaa","aabaaabbab","aabaaabbba","aabaaabbbb","aabaabaaaa","aabaabaaab","aabaabaaba","aabaabaabb","aabaababaa","aabaababab","aabaababba","aabaababbb","aabaabbaaa","aabaabbaab","aabaabbaba","aabaabbabb","aabaabbbaa","aabaabbbab","aabaabbbba","aabaabbbbb","aababaaaaa","aababaaaab","aababaaaba","aababaaabb","aababaabaa","aababaabab","aababaabba","aababaabbb","aabababaaa","aabababaab","aababababa","aababababb","aabababbaa","aabababbab","aabababbba","aabababbbb","aababbaaaa","aababbaaab","aababbaaba","aababbaabb","aababbabaa","aababbabab","aababbabba","aababbabbb","aababbbaaa","aababbbaab","aababbbaba","aababbbabb","aababbbbaa","aababbbbab","aababbbbba","aababbbbbb","aabbaaaaaa","aabbaaaaab","aabbaaaaba","aabbaaaabb","aabbaaabaa","aabbaaabab","aabbaaabba","aabbaaabbb","aabbaabaaa","aabbaabaab","aabbaababa","aabbaababb","aabbaabbaa","aabbaabbab","aabbaabbba","aabbaabbbb","aabbabaaaa","aabbabaaab","aabbabaaba","aabbabaabb","aabbababaa","aabbababab","aabbababba","aabbababbb","aabbabbaaa","aabbabbaab","aabbabbaba","aabbabbabb","aabbabbbaa","aabbabbbab","aabbabbbba","aabbabbbbb","aabbbaaaaa","aabbbaaaab","aabbbaaaba","aabbbaaabb","aabbbaabaa","aabbbaabab","aabbbaabba","aabbbaabbb","aabbbabaaa","aabbbabaab","aabbbababa","aabbbababb","aabbbabbaa","aabbbabbab","aabbbabbba","aabbbabbbb","aabbbbaaaa","aabbbbaaab","aabbbbaaba","aabbbbaabb","aabbbbabaa","aabbbbabab","aabbbbabba","aabbbbabbb","aabbbbbaaa","aabbbbbaab","aabbbbbaba","aabbbbbabb","aabbbbbbaa","aabbbbbbab","aabbbbbbba","aabbbbbbbb","abaaaaaaaa","abaaaaaaab","abaaaaaaba","abaaaaaabb","abaaaaabaa","abaaaaabab","abaaaaabba","abaaaaabbb","abaaaabaaa","abaaaabaab","abaaaababa","abaaaababb","abaaaabbaa","abaaaabbab","abaaaabbba","abaaaabbbb","abaaabaaaa","abaaabaaab","abaaabaaba","abaaabaabb","abaaababaa","abaaababab","abaaababba","abaaababbb","abaaabbaaa","abaaabbaab","abaaabbaba","abaaabbabb","abaaabbbaa","abaaabbbab","abaaabbbba","abaaabbbbb","abaabaaaaa","abaabaaaab","abaabaaaba","abaabaaabb","abaabaabaa","abaabaabab","abaabaabba","abaabaabbb","abaababaaa","abaababaab","abaabababa","abaabababb","abaababbaa","abaababbab","abaababbba","abaababbbb","abaabbaaaa","abaabbaaab","abaabbaaba","abaabbaabb","abaabbabaa","abaabbabab","abaabbabba","abaabbabbb","abaabbbaaa","abaabbbaab","abaabbbaba","abaabbbabb","abaabbbbaa","abaabbbbab","abaabbbbba","abaabbbbbb","ababaaaaaa","ababaaaaab","ababaaaaba","ababaaaabb","ababaaabaa","ababaaabab","ababaaabba","ababaaabbb","ababaabaaa","ababaabaab","ababaababa","ababaababb","ababaabbaa","ababaabbab","ababaabbba","ababaabbbb","abababaaaa","abababaaab","abababaaba","abababaabb","ababababaa","ababababab","ababababba","ababababbb","abababbaaa","abababbaab","abababbaba","abababbabb","abababbbaa","abababbbab","abababbbba","abababbbbb","ababbaaaaa","ababbaaaab","ababbaaaba","ababbaaabb","ababbaabaa","ababbaabab","ababbaabba","ababbaabbb","ababbabaaa","ababbabaab","ababbababa","ababbababb","ababbabbaa","ababbabbab","ababbabbba","ababbabbbb","ababbbaaaa","ababbbaaab","ababbbaaba","ababbbaabb","ababbbabaa","ababbbabab","ababbbabba","ababbbabbb","ababbbbaaa","ababbbbaab","ababbbbaba","ababbbbabb","ababbbbbaa","ababbbbbab","ababbbbbba","ababbbbbbb","abbaaaaaaa","abbaaaaaab","abbaaaaaba","abbaaaaabb","abbaaaabaa","abbaaaabab","abbaaaabba","abbaaaabbb","abbaaabaaa","abbaaabaab","abbaaababa","abbaaababb","abbaaabbaa","abbaaabbab","abbaaabbba","abbaaabbbb","abbaabaaaa","abbaabaaab","abbaabaaba","abbaabaabb","abbaababaa","abbaababab","abbaababba","abbaababbb","abbaabbaaa","abbaabbaab","abbaabbaba","abbaabbabb","abbaabbbaa","abbaabbbab","abbaabbbba","abbaabbbbb","abbabaaaaa","abbabaaaab","abbabaaaba","abbabaaabb","abbabaabaa","abbabaabab","abbabaabba","abbabaabbb","abbababaaa","abbababaab","abbabababa","abbabababb","abbababbaa","abbababbab","abbababbba","abbababbbb","abbabbaaaa","abbabbaaab","abbabbaaba","abbabbaabb","abbabbabaa","abbabbabab","abbabbabba","abbabbabbb","abbabbbaaa","abbabbbaab","abbabbbaba","abbabbbabb","abbabbbbaa","abbabbbbab","abbabbbbba","abbabbbbbb","abbbaaaaaa","abbbaaaaab","abbbaaaaba","abbbaaaabb","abbbaaabaa","abbbaaabab","abbbaaabba","abbbaaabbb","abbbaabaaa","abbbaabaab","abbbaababa","abbbaababb","abbbaabbaa","abbbaabbab","abbbaabbba","abbbaabbbb","abbbabaaaa","abbbabaaab","abbbabaaba","abbbabaabb","abbbababaa","abbbababab","abbbababba","abbbababbb","abbbabbaaa","abbbabbaab","abbbabbaba","abbbabbabb","abbbabbbaa","abbbabbbab","abbbabbbba","abbbabbbbb","abbbbaaaaa","abbbbaaaab","abbbbaaaba","abbbbaaabb","abbbbaabaa","abbbbaabab","abbbbaabba","abbbbaabbb","abbbbabaaa","abbbbabaab","abbbbababa","abbbbababb","abbbbabbaa","abbbbabbab","abbbbabbba","abbbbabbbb","abbbbbaaaa","abbbbbaaab","abbbbbaaba","abbbbbaabb","abbbbbabaa","abbbbbabab","abbbbbabba","abbbbbabbb","abbbbbbaaa","abbbbbbaab","abbbbbbaba","abbbbbbabb","abbbbbbbaa","abbbbbbbab","abbbbbbbba","abbbbbbbbb","baaaaaaaaa","baaaaaaaab","baaaaaaaba","baaaaaaabb","baaaaaabaa","baaaaaabab","baaaaaabba","baaaaaabbb","baaaaabaaa","baaaaabaab","baaaaababa","baaaaababb","baaaaabbaa","baaaaabbab","baaaaabbba","baaaaabbbb","baaaabaaaa","baaaabaaab","baaaabaaba","baaaabaabb","baaaababaa","baaaababab","baaaababba","baaaababbb","baaaabbaaa","baaaabbaab","baaaabbaba","baaaabbabb","baaaabbbaa","baaaabbbab","baaaabbbba","baaaabbbbb","baaabaaaaa","baaabaaaab","baaabaaaba","baaabaaabb","baaabaabaa","baaabaabab","baaabaabba","baaabaabbb","baaababaaa","baaababaab","baaabababa","baaabababb","baaababbaa","baaababbab","baaababbba","baaababbbb","baaabbaaaa","baaabbaaab","baaabbaaba","baaabbaabb","baaabbabaa","baaabbabab","baaabbabba","baaabbabbb","baaabbbaaa","baaabbbaab","baaabbbaba","baaabbbabb","baaabbbbaa","baaabbbbab","baaabbbbba","baaabbbbbb","baabaaaaaa","baabaaaaab","baabaaaaba","baabaaaabb","baabaaabaa","baabaaabab","baabaaabba","baabaaabbb","baabaabaaa","baabaabaab","baabaababa","baabaababb","baabaabbaa","baabaabbab","baabaabbba","baabaabbbb","baababaaaa","baababaaab","baababaaba","baababaabb","baabababaa","baabababab","baabababba","baabababbb","baababbaaa","baababbaab","baababbaba","baababbabb","baababbbaa","baababbbab","baababbbba","baababbbbb","baabbaaaaa","baabbaaaab","baabbaaaba","baabbaaabb","baabbaabaa","baabbaabab","baabbaabba","baabbaabbb","baabbabaaa","baabbabaab","baabbababa","baabbababb","baabbabbaa","baabbabbab","baabbabbba","baabbabbbb","baabbbaaaa","baabbbaaab","baabbbaaba","baabbbaabb","baabbbabaa","baabbbabab","baabbbabba","baabbbabbb","baabbbbaaa","baabbbbaab","baabbbbaba","baabbbbabb","baabbbbbaa","baabbbbbab","baabbbbbba","baabbbbbbb","babaaaaaaa","babaaaaaab","babaaaaaba","babaaaaabb","babaaaabaa","babaaaabab","babaaaabba","babaaaabbb","babaaabaaa","babaaabaab","babaaababa","babaaababb","babaaabbaa","babaaabbab","babaaabbba","babaaabbbb","babaabaaaa","babaabaaab","babaabaaba","babaabaabb","babaababaa","babaababab","babaababba","babaababbb","babaabbaaa","babaabbaab","babaabbaba","babaabbabb","babaabbbaa","babaabbbab","babaabbbba","babaabbbbb","bababaaaaa","bababaaaab","bababaaaba","bababaaabb","bababaabaa","bababaabab","bababaabba","bababaabbb","babababaaa","babababaab","bababababa","bababababb","babababbaa","babababbab","babababbba","babababbbb","bababbaaaa","bababbaaab","bababbaaba","bababbaabb","bababbabaa","bababbabab","bababbabba","bababbabbb","bababbbaaa","bababbbaab","bababbbaba","bababbbabb","bababbbbaa","bababbbbab","bababbbbba","bababbbbbb","babbaaaaaa","babbaaaaab","babbaaaaba","babbaaaabb","babbaaabaa","babbaaabab","babbaaabba","babbaaabbb","babbaabaaa","babbaabaab","babbaababa","babbaababb","babbaabbaa","babbaabbab","babbaabbba","babbaabbbb","babbabaaaa","babbabaaab","babbabaaba","babbabaabb","babbababaa","babbababab","babbababba","babbababbb","babbabbaaa","babbabbaab","babbabbaba","babbabbabb","babbabbbaa","babbabbbab","babbabbbba","babbabbbbb","babbbaaaaa","babbbaaaab","babbbaaaba","babbbaaabb","babbbaabaa","babbbaabab","babbbaabba","babbbaabbb","babbbabaaa","babbbabaab","babbbababa","babbbababb","babbbabbaa","babbbabbab","babbbabbba","babbbabbbb","babbbbaaaa","babbbbaaab","babbbbaaba","babbbbaabb","babbbbabaa","babbbbabab","babbbbabba","babbbbabbb","babbbbbaaa","babbbbbaab","babbbbbaba","babbbbbabb","babbbbbbaa","babbbbbbab","babbbbbbba","babbbbbbbb","bbaaaaaaaa","bbaaaaaaab","bbaaaaaaba","bbaaaaaabb","bbaaaaabaa","bbaaaaabab","bbaaaaabba","bbaaaaabbb","bbaaaabaaa","bbaaaabaab","bbaaaababa","bbaaaababb","bbaaaabbaa","bbaaaabbab","bbaaaabbba","bbaaaabbbb","bbaaabaaaa","bbaaabaaab","bbaaabaaba","bbaaabaabb","bbaaababaa","bbaaababab","bbaaababba","bbaaababbb","bbaaabbaaa","bbaaabbaab","bbaaabbaba","bbaaabbabb","bbaaabbbaa","bbaaabbbab","bbaaabbbba","bbaaabbbbb","bbaabaaaaa","bbaabaaaab","bbaabaaaba","bbaabaaabb","bbaabaabaa","bbaabaabab","bbaabaabba","bbaabaabbb","bbaababaaa","bbaababaab","bbaabababa","bbaabababb","bbaababbaa","bbaababbab","bbaababbba","bbaababbbb","bbaabbaaaa","bbaabbaaab","bbaabbaaba","bbaabbaabb","bbaabbabaa","bbaabbabab","bbaabbabba","bbaabbabbb","bbaabbbaaa","bbaabbbaab","bbaabbbaba","bbaabbbabb","bbaabbbbaa","bbaabbbbab","bbaabbbbba","bbaabbbbbb","bbabaaaaaa","bbabaaaaab","bbabaaaaba","bbabaaaabb","bbabaaabaa","bbabaaabab","bbabaaabba","bbabaaabbb","bbabaabaaa","bbabaabaab","bbabaababa","bbabaababb","bbabaabbaa","bbabaabbab","bbabaabbba","bbabaabbbb","bbababaaaa","bbababaaab","bbababaaba","bbababaabb","bbabababaa","bbabababab","bbabababba","bbabababbb","bbababbaaa","bbababbaab","bbababbaba","bbababbabb","bbababbbaa","bbababbbab","bbababbbba","bbababbbbb","bbabbaaaaa","bbabbaaaab","bbabbaaaba","bbabbaaabb","bbabbaabaa","bbabbaabab","bbabbaabba","bbabbaabbb","bbabbabaaa","bbabbabaab","bbabbababa","bbabbababb","bbabbabbaa","bbabbabbab","bbabbabbba","bbabbabbbb","bbabbbaaaa","bbabbbaaab","bbabbbaaba","bbabbbaabb","bbabbbabaa","bbabbbabab","bbabbbabba","bbabbbabbb","bbabbbbaaa","bbabbbbaab","bbabbbbaba","bbabbbbabb","bbabbbbbaa","bbabbbbbab","bbabbbbbba","bbabbbbbbb","bbbaaaaaaa","bbbaaaaaab","bbbaaaaaba","bbbaaaaabb","bbbaaaabaa","bbbaaaabab","bbbaaaabba","bbbaaaabbb","bbbaaabaaa","bbbaaabaab","bbbaaababa","bbbaaababb","bbbaaabbaa","bbbaaabbab","bbbaaabbba","bbbaaabbbb","bbbaabaaaa","bbbaabaaab","bbbaabaaba","bbbaabaabb","bbbaababaa","bbbaababab","bbbaababba","bbbaababbb","bbbaabbaaa","bbbaabbaab","bbbaabbaba","bbbaabbabb","bbbaabbbaa","bbbaabbbab","bbbaabbbba","bbbaabbbbb","bbbabaaaaa","bbbabaaaab","bbbabaaaba","bbbabaaabb","bbbabaabaa","bbbabaabab","bbbabaabba","bbbabaabbb","bbbababaaa","bbbababaab","bbbabababa","bbbabababb","bbbababbaa","bbbababbab","bbbababbba","bbbababbbb","bbbabbaaaa","bbbabbaaab","bbbabbaaba","bbbabbaabb","bbbabbabaa","bbbabbabab","bbbabbabba","bbbabbabbb","bbbabbbaaa","bbbabbbaab","bbbabbbaba","bbbabbbabb","bbbabbbbaa","bbbabbbbab","bbbabbbbba","bbbabbbbbb","bbbbaaaaaa","bbbbaaaaab","bbbbaaaaba","bbbbaaaabb","bbbbaaabaa","bbbbaaabab","bbbbaaabba","bbbbaaabbb","bbbbaabaaa","bbbbaabaab","bbbbaababa","bbbbaababb","bbbbaabbaa","bbbbaabbab","bbbbaabbba","bbbbaabbbb","bbbbabaaaa","bbbbabaaab","bbbbabaaba","bbbbabaabb","bbbbababaa","bbbbababab","bbbbababba","bbbbababbb","bbbbabbaaa","bbbbabbaab","bbbbabbaba","bbbbabbabb","bbbbabbbaa","bbbbabbbab","bbbbabbbba","bbbbabbbbb","bbbbbaaaaa","bbbbbaaaab","bbbbbaaaba","bbbbbaaabb","bbbbbaabaa","bbbbbaabab","bbbbbaabba","bbbbbaabbb","bbbbbabaaa","bbbbbabaab","bbbbbababa","bbbbbababb","bbbbbabbaa","bbbbbabbab","bbbbbabbba","bbbbbabbbb","bbbbbbaaaa","bbbbbbaaab","bbbbbbaaba","bbbbbbaabb","bbbbbbabaa","bbbbbbabab","bbbbbbabba","bbbbbbabbb","bbbbbbbaaa","bbbbbbbaab","bbbbbbbaba","bbbbbbbabb","bbbbbbbbaa","bbbbbbbbab","bbbbbbbbba"]],0]
+    ] },
     solution: {
       approach: `<p><b>Clue:</b> "shortest transformation", unit moves → BFS on an implicit graph. Neighbour generation by letter substitution avoids comparing all word pairs (5000<sup>2</sup>). Bidirectional BFS is the senior follow-up.</p>`,
       code: `class Solution {
@@ -2668,6 +4856,83 @@ boolean oneApart(String a, String b) {
         return 0;
     }
 }`,
+      alt: [{ lang: 'python', code: `from collections import deque
+
+def ladder_length(begin_word, end_word, word_list):
+    words = set(word_list)
+    if end_word not in words:
+        return 0
+    words.discard(begin_word)
+    q = deque([begin_word])
+    steps = 1                                  # words in the sequence so far
+    while q:
+        for _ in range(len(q)):
+            w = q.popleft()
+            for i in range(len(w)):
+                for c in 'abcdefghijklmnopqrstuvwxyz':
+                    if c == w[i]:
+                        continue
+                    nxt = w[:i] + c + w[i + 1:]
+                    if nxt == end_word:
+                        return steps + 1
+                    if nxt in words:
+                        words.remove(nxt)      # remove = mark visited
+                        q.append(nxt)
+        steps += 1
+    return 0` },
+        { lang: 'js', code: `function ladderLength(beginWord, endWord, wordList) {
+  const dict = new Set(wordList);
+  if (!dict.has(endWord)) return 0;
+  dict.delete(beginWord);
+  let level = [beginWord];
+  let steps = 1;                               // words in the sequence so far
+  while (level.length > 0) {
+    const next = [];
+    for (const word of level) {
+      for (let i = 0; i < word.length; i++) {
+        for (let code = 97; code <= 122; code++) {
+          const c = String.fromCharCode(code);
+          if (c === word[i]) continue;
+          const cand = word.slice(0, i) + c + word.slice(i + 1);
+          if (cand === endWord) return steps + 1;
+          if (dict.delete(cand)) next.push(cand);   // delete = mark visited
+        }
+      }
+    }
+    level = next;
+    steps++;
+  }
+  return 0;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    int ladderLength(string beginWord, string endWord, vector<string>& wordList) {
+        unordered_set<string> dict(wordList.begin(), wordList.end());
+        if (!dict.count(endWord)) return 0;
+        dict.erase(beginWord);
+        queue<string> q;
+        q.push(beginWord);
+        int steps = 1;                         // words in the sequence so far
+        while (!q.empty()) {
+            for (int size = q.size(); size > 0; size--) {
+                string w = q.front();
+                q.pop();
+                for (size_t i = 0; i < w.size(); i++) {
+                    char orig = w[i];
+                    for (char c = 'a'; c <= 'z'; c++) {
+                        if (c == orig) continue;
+                        w[i] = c;
+                        if (w == endWord) return steps + 1;
+                        if (dict.erase(w)) q.push(w);   // erase = mark visited
+                    }
+                    w[i] = orig;
+                }
+            }
+            steps++;
+        }
+        return 0;
+    }
+};` }],
       complexity: `<p>Time O(M · L · 26 · L) where M = word count, L = word length (building each candidate string costs L). Space O(M · L).</p>`,
       followUps: ['Return all shortest sequences (Word Ladder II: BFS for distances, then DFS backtracking).', 'Bidirectional BFS: why does it cut the explored nodes so much?']
     }
@@ -2689,6 +4954,25 @@ boolean oneApart(String a, String b) {
 }` },
     mcq: { q: 'Scanning from right to left, which operation do you need per element?', options: ['"How many seen values are &lt; x?" then "add x" — a prefix count query + point update (Fenwick tree)', 'Find the maximum seen so far', 'Check whether x was seen', 'Sort the seen values every time'], answer: 0, explain: 'Prefix count + point update on a value-indexed array is exactly what a Fenwick tree does in O(log N) (DSA 23).' },
     hints: [`<p>Hint 1: Walk from right to left; the "seen" set is exactly the elements to the right.</p>`, `<p>Hint 2: Keep counts indexed by value; the answer for x is the count of values &lt; x — a prefix sum with updates → Fenwick tree.</p>`, `<p>Hint 3: Shift values by +10<sup>4</sup>+1 so indices are ≥ 1 (or coordinate-compress for large ranges). Query(x − 1) before update(x).</p>`],
+    tests: { sig: 'int[] -> list<int>', fn: 'countSmaller', cases: [
+      [[[5,2,6,1]],[2,1,1,0]],
+      [[[-1]],[0]],
+      [[[-1,-1]],[0,0]],
+      [[[1,2,3]],[0,0,0]],
+      [[[3,2,1]],[2,1,0]],
+      [[[2,0,1]],[2,0,0]],
+      [[[0,0,0,0]],[0,0,0,0]],
+      [[[10000,-10000]],[1,0]],
+      [[[-10000,10000]],[0,0]],
+      [[[5,5,2,5,1]],[2,2,1,1,0]],
+      [[[4,3,4,-2,2,-2,4,0,1]],[6,5,5,0,3,0,2,0,0]],
+      [[[-3,-1,-1,-4,2,-4,0,4]],[2,2,2,0,2,0,0,0]],
+      [[[-3,0,-4,-1]],[1,2,0,0]],
+      [[{"$range":[10000,-10001,-1]}],{"$range":[20000,-1,-1]}],
+      [[{"$rep":5,"n":100000}],{"$rep":0,"n":100000}],
+      [[{"$concat":[{"$rep":10000,"n":50000},{"$rep":-10000,"n":50000}]}],{"$concat":[{"$rep":50000,"n":50000},{"$rep":0,"n":50000}]}],
+      [[{"$range":[-10000,10000]}],{"$rep":0,"n":20000}]
+    ] },
     solution: {
       approach: `<p><b>Clue:</b> "count elements to the right that are smaller", N = 10<sup>5</sup> → O(N log N) with a Fenwick tree over values (or merge sort with index tracking — the inversion-count family, DSA 7).</p>`,
       code: `class Solution {
@@ -2707,6 +4991,57 @@ boolean oneApart(String a, String b) {
     private void update(int i) { for (; i < bit.length; i += i & -i) bit[i]++; }
     private int query(int i) { int s = 0; for (; i > 0; i -= i & -i) s += bit[i]; return s; }
 }`,
+      alt: [{ lang: 'python', code: `def count_smaller(nums):
+    OFFSET, SIZE = 10001, 20002                # maps -10^4..10^4 to 1..20001
+    bit = [0] * (SIZE + 1)
+
+    def update(i):
+        while i <= SIZE:
+            bit[i] += 1
+            i += i & -i
+
+    def query(i):                              # how many seen values have index <= i
+        s = 0
+        while i > 0:
+            s += bit[i]
+            i -= i & -i
+        return s
+
+    res = [0] * len(nums)
+    for i in range(len(nums) - 1, -1, -1):
+        idx = nums[i] + OFFSET
+        res[i] = query(idx - 1)                # how many seen values are smaller
+        update(idx)                            # now nums[i] is "seen"
+    return res` },
+        { lang: 'js', code: `function countSmaller(nums) {
+  const OFFSET = 10001, SIZE = 20002;          // maps -10^4..10^4 to 1..20001
+  const bit = new Int32Array(SIZE + 1);
+  const update = (i) => { for (; i <= SIZE; i += i & -i) bit[i]++; };
+  const query = (i) => { let s = 0; for (; i > 0; i -= i & -i) s += bit[i]; return s; };
+  const res = new Array(nums.length);
+  for (let i = nums.length - 1; i >= 0; i--) {
+    const idx = nums[i] + OFFSET;
+    res[i] = query(idx - 1);                   // how many seen values are smaller
+    update(idx);                               // now nums[i] is "seen"
+  }
+  return res;
+}` },
+        { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> countSmaller(vector<int>& nums) {
+        const int OFFSET = 10001, SIZE = 20002;    // maps -10^4..10^4 to 1..20001
+        vector<int> bit(SIZE + 1, 0);
+        auto update = [&](int i) { for (; i <= SIZE; i += i & -i) bit[i]++; };
+        auto query = [&](int i) { int s = 0; for (; i > 0; i -= i & -i) s += bit[i]; return s; };
+        vector<int> res(nums.size());
+        for (int i = (int)nums.size() - 1; i >= 0; i--) {
+            int idx = nums[i] + OFFSET;
+            res[i] = query(idx - 1);               // how many seen values are smaller
+            update(idx);                           // now nums[i] is "seen"
+        }
+        return res;
+    }
+};` }],
       dry: { head: ['i (right→left)', 'nums[i]', 'seen before', 'smaller seen', 'res'], rows: [['3', '1', '{}', '0', '[_, _, _, 0]'], ['2', '6', '{1}', '1', '[_, _, 1, 0]'], ['1', '2', '{1, 6}', '1', '[_, 1, 1, 0]'], ['0', '5', '{1, 2, 6}', '2', H.c('g', '[2, 1, 1, 0]')]] },
       complexity: `<p>Time O(N log V) with V = 20001 value slots; space O(V). With coordinate compression: O(N log N).</p>`,
       followUps: ['Count of range sum (prefix sums + merge sort / BIT).', 'Reverse pairs: nums[i] &gt; 2·nums[j].', 'Values up to 10<sup>9</sup> — compress coordinates first.']
@@ -2716,7 +5051,7 @@ boolean oneApart(String a, String b) {
   // =====================================================================
   // QUIZ — mixed pattern recognition
   // =====================================================================
-  quiz.push({ q: '"Given an array that may contain negative numbers, find the length of the longest subarray with sum exactly k." First technique?', options: ['Prefix sum + HashMap storing the FIRST index of each prefix', 'Sliding window', 'Two pointers after sorting', 'Monotonic stack'], answer: 0, explain: 'Negatives break windows; sorting destroys contiguity. Store first occurrence of each prefix sum to maximise length.' });
+  quiz.push({ q: '"Given an array that may contain negative numbers, find the length of the longest subarray with sum exactly k." First technique?', options: ['Prefix sum + hash map storing the FIRST index of each prefix', 'Sliding window', 'Two pointers after sorting', 'Monotonic stack'], answer: 0, explain: 'Negatives break windows; sorting destroys contiguity. Store first occurrence of each prefix sum to maximise length.' });
   quiz.push({ q: 'Constraint says <code>N ≤ 18</code> and asks for the best way to visit all cities. Target complexity?', options: ['O(2<sup>N</sup> · N<sup>2</sup>) bitmask DP', 'O(N log N)', 'O(N!) is required', 'O(N<sup>3</sup>) Floyd-Warshall only'], answer: 0, explain: '2<sup>18</sup> · 18<sup>2</sup> ≈ 8.5·10<sup>7</sup> fits; 18! ≈ 6.4·10<sup>15</sup> does not. Small N + "visit all" = bitmask DP (DSA 24).' });
   quiz.push({ q: '"Find the minimum largest distance between adjacent gas stations after adding k stations." Which phrase is the giveaway?', options: ['"minimum largest" — minimise the maximum → binary search on the answer', '"gas stations" → greedy', '"adjacent" → two pointers', '"add k" → heap is the only option'], answer: 0, explain: 'Minimise-the-maximum with a monotone feasibility check is the binary-search-on-answer signature.' });
   quiz.push({ q: 'Which statement about the 10<sup>8</sup>-operations-per-second rule is most accurate?', options: ['It is a rough budget; constants, cache behaviour and language speed shift it', 'It is an exact law for every computer', 'It only applies to C++', 'It means O(N<sup>2</sup>) always passes for N = 10<sup>5</sup>'], answer: 0, explain: 'It is an estimate for planning. N = 10<sup>5</sup> squared is 10<sup>10</sup>, about 100 seconds.' });
@@ -2725,7 +5060,7 @@ boolean oneApart(String a, String b) {
   quiz.push({ q: 'BFS on a grid where moving into a cell costs either 0 or 1. Best algorithm?', options: ['0-1 BFS with a deque (push front for 0, back for 1)', 'Plain BFS with a queue', 'DFS', 'Floyd-Warshall'], answer: 0, explain: 'Plain BFS assumes equal weights. 0-1 BFS is Dijkstra specialised to weights 0/1, O(V + E) (DSA 21).' });
   quiz.push({ q: 'Workload: 10<sup>5</sup> range-sum queries and 10<sup>5</sup> point updates on 10<sup>5</sup> numbers. Best fit?', options: ['Fenwick tree (O(log N) each)', 'Prefix sums rebuilt after each update', 'Naive loop per query', 'Sorting'], answer: 0, explain: 'Prefix sums make updates O(N) → 10<sup>10</sup> total. Fenwick: ~3.4·10<sup>6</sup>.' });
   quiz.push({ q: 'Greedy coin change works for coins {1, 5, 10, 25} but not for {1, 3, 4}. What should you do before coding a greedy in an interview?', options: ['Try to break it with a small counterexample, or sketch an exchange argument', 'Trust it if it passes the sample', 'Always use DP instead of greedy', 'Sort coins descending, which fixes it'], answer: 0, explain: 'Greedy needs a proof; a one-minute counterexample hunt is the practical substitute.' });
-  quiz.push({ q: 'You compute <code>(lo + hi) / 2</code> with lo = hi = 2·10<sup>9</sup> in Java ints. What happens?', options: ['Overflow: the sum wraps negative and mid becomes negative', 'Java throws an ArithmeticException', 'It returns 2·10<sup>9</sup>', 'It promotes to long automatically'], answer: 0, explain: 'Java ints wrap silently. Use lo + (hi − lo) / 2.' });
+  quiz.push({ q: 'You compute <code>(lo + hi) / 2</code> with lo = hi = 2·10<sup>9</sup> in 32-bit ints (Java, C++). What happens?', options: ['Overflow: the sum wraps negative and mid becomes negative', 'It throws an ArithmeticException', 'It returns 2·10<sup>9</sup>', 'It promotes to long automatically'], answer: 0, explain: 'A 32-bit int wraps silently (Python ints never overflow; JavaScript numbers are doubles). Use lo + (hi − lo) / 2.' });
   quiz.push({ q: 'Why do interleaved (mixed) practice sets beat blocked sets for interview prep?', options: ['They train choosing the pattern, not just executing it', 'They are easier', 'They take less time', 'They avoid hard problems'], answer: 0, explain: 'Blocked practice reveals the pattern by the chapter title; interviews do not.' });
   quiz.push({ q: '"Return the k closest points to the origin" with a stream of points. Which choice and why?', options: ['Max-heap of size k (evict the farthest) — O(N log k), works online', 'Sort all points every time', 'Quickselect — needs all data, not online', 'BFS from the origin'], answer: 0, explain: 'Quickselect is great offline, but a stream needs an online structure; the size-k heap keeps only the best k.' });
   quiz.push({ q: 'The interviewer asks "Are you sure about that line?" What does it usually mean and what should you do?', options: ['There is probably a bug there — trace that line with a tiny input out loud', 'They are impressed — move on', 'They want you to rewrite everything', 'They want a different language'], answer: 0, explain: 'Treat it as a hint. Calm tracing beats defensiveness or random edits.' });
@@ -2777,6 +5112,12 @@ boolean oneApart(String a, String b) {
     ],
     prereqs: `The whole DSA track, especially DSA 5–6 (prefix sums, two pointers, sliding window), DSA 8 (hashing), DSA 10 (binary search), DSA 14 (stacks/queues), DSA 15–16 (trees, heaps, tries), DSA 17–19 (greedy and DP) and DSA 20–21 (graphs). Advanced modules (DSA 22–27) help with the hardest follow-ups but are not required.`,
     hours: 20,
+    langNotes: {
+      java: `<p><b>Java:</b> <code>int</code> wraps silently on overflow, so use <code>long</code> for sums, products and the binary-search midpoint (<code>lo + (hi - lo) / 2</code>). Recursion is limited to roughly 10,000 frames, so deep DFS needs an explicit stack. <code>PriorityQueue</code> is a min-heap, <code>ArrayDeque</code> is the stack and the queue, <code>HashMap</code> is O(1) on average and <code>TreeMap</code> is O(log N). Compare boxed values with <code>equals</code>, and sort with <code>Integer.compare</code>, never <code>a - b</code>.</p>`,
+      python: `<p><b>Python:</b> integers never overflow, but recursion stops at 1,000 frames, so use loops or an explicit stack for deep DFS. Never use <code>list.pop(0)</code> (O(n)); use <code>collections.deque</code>. <code>heapq</code> is a min-heap only, so push negated values for a max-heap, and push <code>(key, index, item)</code> tuples when items cannot be compared. <code>Counter</code> and <code>defaultdict</code> replace hand-written counting maps, and <code>bisect</code> on a sorted list stands in for <code>TreeMap</code>. Python is 30 to 100 times slower than C++, so keep the loops tight.</p>`,
+      js: `<p><b>JavaScript:</b> <code>Number</code> is a double: exact only up to 2<sup>53</sup>, so use <code>BigInt</code> beyond that, and <code>|0</code> truncates to 32 bits. <code>%</code> keeps the sign of the dividend. <code>sort()</code> compares strings unless you pass a comparator. <code>array.shift()</code> is O(n), so keep a read index for BFS queues. There is no built-in heap: the solutions here include a small <code>MinHeap</code> class. The call stack holds about 10,000 frames. <code>Map</code> and <code>Set</code> are O(1) on average; keep a sorted array when you need ordered lookups.</p>`,
+      cpp: `<p><b>C++:</b> signed overflow is undefined behaviour, so use <code>long long</code> for sums and products. The default stack is about 8 MB, which is plenty for most recursion but not for 10<sup>5</sup>-deep chains in big frames. <code>priority_queue</code> is a max-heap (use <code>greater&lt;&gt;</code> for a min-heap). <code>map</code> is O(log N) and ordered, <code>unordered_map</code> is O(1) on average. Pass big containers by reference, and remember that <code>%</code> keeps the sign of the dividend.</p>`
+    },
     topics: topics,
     practice: practice,
     quiz: quiz,

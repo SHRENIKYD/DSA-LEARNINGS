@@ -59,7 +59,9 @@ function code(where, x, required, defLang) {
   const s = typeof x === 'string' ? { code: x, lang: defLang } : Object.assign({ lang: defLang }, x);
   if (typeof s.code !== 'string' || !s.code.trim()) { E(where, 'code must be a non-empty string'); return; }
   if (/\bTODO\b|implement here|your code here/i.test(s.code)) E(where, 'placeholder text in code');
-  if (/^\s*(\/\/|#|--)?\s*\.\.\.\s*$/m.test(s.code) || /(\/\/|#)\s*\.\.\.\s*$/m.test(s.code) || /\/\*\s*\.\.\.\s*\*\//.test(s.code)) E(where, 'ellipsis placeholder in code');
+  // In Python, a bare `...` body right after a `def ...:` / `class ...:` line is an idiomatic abstract stub, not a placeholder.
+  const ell = /^py(thon)?$/.test(s.lang || '') ? s.code.replace(/(:[ \t]*(#[^\n]*)?\n)([ \t]+)\.\.\.[ \t]*(?=\n|$)/g, '$1$3pass') : s.code;
+  if (/^\s*(\/\/|#|--)?\s*\.\.\.\s*$/m.test(ell) || /(\/\/|#)\s*\.\.\.\s*$/m.test(s.code) || /\/\*\s*\.\.\.\s*\*\//.test(s.code)) E(where, 'ellipsis placeholder in code');
   if (s.lang === 'sql' && s.db !== undefined && !(m.databases && m.databases[s.db])) E(where, 'sql snippet uses db "' + s.db + '" but module.databases has no such key');
   asList(s.alt).forEach((a, i) => code(where + '.alt[' + i + ']', a, true, defLang));
   if (s.check === false) return;

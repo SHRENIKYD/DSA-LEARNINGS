@@ -269,20 +269,992 @@ public class LoggingDemo {
         pay.error("gateway timeout for order {}", 43);
         MDC.clear();
 
-        System.out.println("file got  " + file.lines().size() + " lines: " + file.lines());
+        // The clock differs on every run, so the demo prints the JSON lines with "ts" zeroed.
+        List<String> fileLines = file.lines().stream().map(l -> l.replaceAll("\"ts\":\\d+", "\"ts\":0")).toList();
+        System.out.println("file got  " + fileLines.size() + " lines: " + fileLines);
         System.out.println("pager got " + pager.lines().size() + " line: " + pager.lines());
         System.out.println("same object? " + (lm.getLogger("com.shop.db") == db));
 
+        // A disabled call never builds its message (the lazy Supplier is not even called).
+        int[] built = {0};
+        pay.log(LogLevel.DEBUG, () -> { built[0]++; return "expensive text"; });
+        System.out.println("lazy message built while disabled? " + (built[0] > 0));
+
+        // additive = false keeps a private audit log away from the root handlers.
+        MemoryAppender auditFile = new MemoryAppender(new PlainFormatter());
+        Logger audit = lm.getLogger("com.shop.audit");
+        audit.setHandlers(new AppenderHandler(LogLevel.INFO, auditFile));
+        audit.setAdditive(false);
+        audit.info("user {} exported data", "asha");
+        System.out.println("audit file " + auditFile.lines() + ", root file still " + file.lines().size() + " lines");
+
         // Async decorator with a tiny queue: DEBUG/INFO may be dropped, WARN+ never.
+        // How many INFOs are dropped depends on thread timing, so only the invariants are printed.
         MemoryAppender slowDisk = new MemoryAppender(new PlainFormatter());
         AsyncAppender async = new AsyncAppender(slowDisk, 4);
         for (int i = 0; i < 50; i++)
             async.append(new LogMessage(i % 10 == 0 ? LogLevel.WARN : LogLevel.INFO, "load", "msg " + i,
                                         0, "main", Map.of()));
         async.close();
-        System.out.println("async wrote " + slowDisk.lines().size() + ", dropped " + async.dropped()
-                           + " (total 50, all 5 WARNs kept)");
+        List<String> warns = slowDisk.lines().stream().filter(l -> l.startsWith("WARN")).toList();
+        System.out.println("async: written + dropped = " + (slowDisk.lines().size() + async.dropped()) + " of 50");
+        System.out.println("WARN lines kept: " + warns.size() + " " + warns);
     }
+}`;
+  var LOG_CORE_PY = `
+# ===== A small but real logging framework (think: a mini Log4j / Logback) =====
+import queue
+import re
+import threading
+import time
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from enum import Enum
+from types import MappingProxyType
+from typing import Callable, Mapping, Optional, Union
+
+
+# 1) Levels: an Enum with a number, so "is WARN at least INFO?" is one comparison.
+class LogLevel(Enum):
+    DEBUG = 10
+    INFO = 20
+    WARN = 30
+    ERROR = 40
+    FATAL = 50
+
+    def at_least(self, other: "LogLevel") -> bool:
+        return self.value >= other.value
+
+
+# 2) The message: a frozen dataclass. Built ONCE, then shared by every handler/appender.
+@dataclass(frozen=True)
+class LogMessage:
+    level: LogLevel
+    logger: str
+    text: str
+    epoch_millis: int
+    thread: str
+    context: Mapping[str, str]
+
+
+# 3) MDC = "Mapped Diagnostic Context": per-thread key/values (requestId, userId)
+#    that get stamped on every message without passing them as parameters.
+class MDC:
+    _local = threading.local()               # every thread sees its own dict
+
+    @classmethod
+    def _ctx(cls) -> dict:
+        if not hasattr(cls._local, "ctx"):
+            cls._local.ctx = {}
+        return cls._local.ctx
+
+    @classmethod
+    def put(cls, k: str, v: str) -> None:
+        cls._ctx()[k] = v
+
+    @classmethod
+    def clear(cls) -> None:
+        cls._ctx().clear()
+
+    @classmethod
+    def snapshot(cls) -> Mapping[str, str]:   # copy: the message must not change later
+        return MappingProxyType(dict(cls._ctx()))
+
+
+def show_map(m: Mapping[str, str]) -> str:   # sorted, Java-style {k=v, k2=v2}
+    return "{" + ", ".join(f"{k}={m[k]}" for k in sorted(m)) + "}"
+
+
+# 4) Formatter = HOW a message looks (Strategy pattern).
+class LogFormatter(ABC):
+    @abstractmethod
+    def format(self, m: LogMessage) -> str: ...
+
+
+class PlainFormatter(LogFormatter):
+    def format(self, m: LogMessage) -> str:
+        ctx = " " + show_map(m.context) if m.context else ""
+        return f"{m.level.name:<5} [{m.thread}] {m.logger} -{ctx} {m.text}"
+
+
+class JsonFormatter(LogFormatter):
+    def format(self, m: LogMessage) -> str:
+        out = (f'{{"ts":{m.epoch_millis},"level":"{m.level.name}","logger":"{m.logger}",'
+               f'"msg":"{m.text.replace(chr(34), chr(39))}"')
+        for k in sorted(m.context):
+            out += f',"{k}":"{m.context[k]}"'
+        return out + "}"
+
+
+# 5) Appender = WHERE a message goes (console, file, network...). New target = new class.
+class Appender(ABC):
+    @abstractmethod
+    def append(self, m: LogMessage) -> None: ...
+
+    def close(self) -> None:
+        pass
+
+
+class ConsoleAppender(Appender):
+    def __init__(self, formatter: LogFormatter) -> None:
+        self._formatter = formatter
+        self._lock = threading.Lock()         # two threads must not interleave half-lines
+
+    def append(self, m: LogMessage) -> None:
+        with self._lock:
+            print(self._formatter.format(m))
+
+
+# Stands in for a FileAppender: keeps lines in memory so the demo has no disk side effects.
+class MemoryAppender(Appender):
+    def __init__(self, formatter: LogFormatter) -> None:
+        self._formatter = formatter
+        self._lines: list[str] = []
+        self._lock = threading.Lock()
+
+    def append(self, m: LogMessage) -> None:
+        line = self._formatter.format(m)
+        with self._lock:
+            self._lines.append(line)
+
+    def lines(self) -> list[str]:
+        with self._lock:
+            return list(self._lines)
+
+
+# Decorator: makes ANY appender asynchronous. Callers only pay for a queue put.
+class AsyncAppender(Appender):
+    _POISON = LogMessage(LogLevel.FATAL, "", "", 0, "", {})
+
+    def __init__(self, target: Appender, capacity: int) -> None:
+        self._target = target
+        self._queue: "queue.Queue[LogMessage]" = queue.Queue(maxsize=capacity)
+        self._dropped = 0
+        self._lock = threading.Lock()         # \`+=\` on an int is not atomic, even with the GIL
+        self._worker = threading.Thread(target=self._drain, name="log-writer", daemon=True)
+        self._worker.start()                  # daemon: never keeps the process alive
+
+    def append(self, m: LogMessage) -> None:
+        if m.level.at_least(LogLevel.WARN):
+            self._queue.put(m)                # important messages: wait for space
+        else:
+            try:
+                self._queue.put_nowait(m)
+            except queue.Full:                # DEBUG/INFO under pressure: drop, but count it
+                with self._lock:
+                    self._dropped += 1
+
+    def _drain(self) -> None:
+        while True:
+            m = self._queue.get()
+            if m is self._POISON:
+                return
+            self._target.append(m)
+
+    def close(self) -> None:
+        self._queue.put(self._POISON)         # everything queued before it gets written first
+        self._worker.join(timeout=2)          # bounded wait: shutdown can never hang
+        self._target.close()
+
+    @property
+    def dropped(self) -> int:
+        with self._lock:
+            return self._dropped
+
+
+# 6) Chain of Responsibility: each handler checks its own minimum level,
+#    writes if it cares, then passes the SAME message to the next handler.
+class LogHandler(ABC):
+    def __init__(self, min_level: LogLevel) -> None:
+        self._next: Optional["LogHandler"] = None
+        self._min_level = min_level
+
+    def link_with(self, nxt: "LogHandler") -> "LogHandler":   # returns next for fluent chaining
+        self._next = nxt
+        return nxt
+
+    def handle(self, m: LogMessage) -> None:                  # template method: order is fixed
+        if m.level.at_least(self._min_level):
+            self._write(m)
+        if self._next is not None:
+            self._next.handle(m)
+
+    @abstractmethod
+    def _write(self, m: LogMessage) -> None: ...
+
+
+class AppenderHandler(LogHandler):
+    def __init__(self, min_level: LogLevel, appender: Appender) -> None:
+        super().__init__(min_level)
+        self._appender = appender
+
+    def _write(self, m: LogMessage) -> None:
+        self._appender.append(m)
+
+
+def thread_name() -> str:
+    t = threading.current_thread()
+    return "main" if t is threading.main_thread() else t.name
+
+
+# 7) Logger: named, hierarchical ("com.shop.db" -> "com.shop" -> "com" -> root).
+class Logger:
+    def __init__(self, name: str, parent: Optional["Logger"]) -> None:
+        self._name = name
+        self._parent = parent
+        self._level: Optional[LogLevel] = None        # None = inherit from parent
+        self._handlers: Optional[LogHandler] = None   # head of this logger's chain (may be None)
+        self._additive = True                         # also send to parent's handlers?
+
+    def set_level(self, level: Optional[LogLevel]) -> None:
+        self._level = level
+
+    def set_handlers(self, head: Optional[LogHandler]) -> None:
+        self._handlers = head
+
+    def set_additive(self, additive: bool) -> None:
+        self._additive = additive
+
+    def effective_level(self) -> LogLevel:
+        lg: Optional[Logger] = self
+        while lg is not None:
+            if lg._level is not None:
+                return lg._level
+            lg = lg._parent
+        return LogLevel.INFO                          # safe default if even root has none
+
+    def is_enabled(self, lv: LogLevel) -> bool:
+        return lv.at_least(self.effective_level())
+
+    # Cheap exit FIRST: if disabled we never build the string.
+    # \`text\` is a "{}" pattern, or a zero-argument function (lazy) that runs only when enabled.
+    def log(self, lv: LogLevel, text: Union[str, Callable[[], str]], *args: object) -> None:
+        if not self.is_enabled(lv):
+            return
+        body = text() if callable(text) else fill(text, *args)
+        self._dispatch(LogMessage(lv, self._name, body, int(time.time() * 1000),
+                                  thread_name(), MDC.snapshot()))
+
+    def debug(self, p: str, *a: object) -> None: self.log(LogLevel.DEBUG, p, *a)
+    def info(self, p: str, *a: object) -> None: self.log(LogLevel.INFO, p, *a)
+    def warn(self, p: str, *a: object) -> None: self.log(LogLevel.WARN, p, *a)
+    def error(self, p: str, *a: object) -> None: self.log(LogLevel.ERROR, p, *a)
+
+    # Second chain: walk up the logger tree until a non-additive logger stops it.
+    def _dispatch(self, m: LogMessage) -> None:
+        lg: Optional[Logger] = self
+        while lg is not None:
+            if lg._handlers is not None:
+                lg._handlers.handle(m)
+            if not lg._additive:
+                break
+            lg = lg._parent
+
+
+# "{}" placeholders, SLF4J style. Plain text is NEVER interpreted (no lookups -> no Log4Shell).
+def fill(pattern: str, *args: object) -> str:
+    out: list[str] = []
+    a = i = 0
+    while i < len(pattern):
+        if a < len(args) and pattern.startswith("{}", i):
+            out.append(str(args[a]))
+            a += 1
+            i += 2
+        else:
+            out.append(pattern[i])
+            i += 1
+    return "".join(out)
+
+
+# 8) LogManager: the single registry (Singleton + Factory). Same name -> same Logger object.
+class LogManager:
+    def __init__(self) -> None:
+        self._root = Logger("root", None)
+        self._loggers: dict[str, Logger] = {}
+        self._lock = threading.RLock()
+
+    @staticmethod
+    def get() -> "LogManager":
+        return _INSTANCE
+
+    def root(self) -> Logger:
+        return self._root
+
+    def get_logger(self, name: str) -> Logger:
+        with self._lock:
+            existing = self._loggers.get(name)
+            if existing is not None:
+                return existing
+            dot = name.rfind(".")
+            parent = self._root if dot < 0 else self.get_logger(name[:dot])   # ancestors first
+            return self._loggers.setdefault(name, Logger(name, parent))
+
+
+_INSTANCE = LogManager()    # a module body runs once, so this one object is the singleton
+
+
+def show(items: list[str]) -> str:
+    return "[" + ", ".join(items) + "]"
+
+
+def main() -> None:
+    lm = LogManager.get()
+    file = MemoryAppender(JsonFormatter())
+    pager = MemoryAppender(PlainFormatter())
+
+    # root chain: Console(>=DEBUG) -> File(>=INFO) -> Pager(>=ERROR)
+    head = AppenderHandler(LogLevel.DEBUG, ConsoleAppender(PlainFormatter()))
+    head.link_with(AppenderHandler(LogLevel.INFO, file)).link_with(AppenderHandler(LogLevel.ERROR, pager))
+    lm.root().set_level(LogLevel.INFO)
+    lm.root().set_handlers(head)
+
+    db = lm.get_logger("com.shop.db")
+    pay = lm.get_logger("com.shop.payment")
+    db.set_level(LogLevel.DEBUG)                # turn on DEBUG only for the DB package
+
+    MDC.put("requestId", "r-77")
+    db.debug("SELECT took {} ms", 12)           # console only (DEBUG < INFO for file)
+    pay.debug("never built: {}", "x")           # payment inherits INFO from root -> skipped cheaply
+    pay.info("charged order {} amount {}", 42, 499)
+    pay.error("gateway timeout for order {}", 43)
+    MDC.clear()
+
+    # The clock differs on every run, so the demo prints the JSON lines with "ts" zeroed.
+    file_lines = [re.sub(r'"ts":\\d+', '"ts":0', ln) for ln in file.lines()]
+    print(f"file got  {len(file_lines)} lines: {show(file_lines)}")
+    print(f"pager got {len(pager.lines())} line: {show(pager.lines())}")
+    print(f"same object? {str(lm.get_logger('com.shop.db') is db).lower()}")
+
+    # A disabled call never builds its message (the lazy function is not even called).
+    built = [0]
+
+    def expensive() -> str:
+        built[0] += 1
+        return "expensive text"
+
+    pay.log(LogLevel.DEBUG, expensive)
+    print(f"lazy message built while disabled? {str(built[0] > 0).lower()}")
+
+    # additive = False keeps a private audit log away from the root handlers.
+    audit_file = MemoryAppender(PlainFormatter())
+    audit = lm.get_logger("com.shop.audit")
+    audit.set_handlers(AppenderHandler(LogLevel.INFO, audit_file))
+    audit.set_additive(False)
+    audit.info("user {} exported data", "asha")
+    print(f"audit file {show(audit_file.lines())}, root file still {len(file.lines())} lines")
+
+    # Async decorator with a tiny queue: DEBUG/INFO may be dropped, WARN+ never.
+    # How many INFOs are dropped depends on thread timing, so only the invariants are printed.
+    slow_disk = MemoryAppender(PlainFormatter())
+    async_app = AsyncAppender(slow_disk, 4)
+    for i in range(50):
+        async_app.append(LogMessage(LogLevel.WARN if i % 10 == 0 else LogLevel.INFO, "load",
+                                    f"msg {i}", 0, "main", {}))
+    async_app.close()
+    warns = [ln for ln in slow_disk.lines() if ln.startswith("WARN")]
+    print(f"async: written + dropped = {len(slow_disk.lines()) + async_app.dropped} of 50")
+    print(f"WARN lines kept: {len(warns)} {show(warns)}")
+
+
+if __name__ == "__main__":
+    main()`;
+  var LOG_CORE_TS = `
+// ===== A small but real logging framework (think: a mini Log4j / Logback) =====
+
+// 1) Levels: a numeric enum, so "is WARN at least INFO?" is one comparison (>=).
+enum LogLevel { DEBUG = 10, INFO = 20, WARN = 30, ERROR = 40, FATAL = 50 }
+
+// 2) The message: a readonly interface. Built ONCE, then shared by every handler/appender.
+interface LogMessage {
+  readonly level: LogLevel;
+  readonly logger: string;
+  readonly text: string;
+  readonly epochMillis: number;
+  readonly thread: string;
+  readonly context: Readonly<Record<string, string>>;
+}
+
+// 3) MDC = "Mapped Diagnostic Context": key/values (requestId, userId) stamped on every
+//    message without passing them as parameters. Node runs our code on one thread, so a
+//    plain object is enough here (AsyncLocalStorage is the per-request version).
+class MDC {
+  private static ctx: Record<string, string> = {};
+  static put(k: string, v: string): void { MDC.ctx[k] = v; }
+  static clear(): void { MDC.ctx = {}; }
+  static snapshot(): Readonly<Record<string, string>> { return Object.freeze({ ...MDC.ctx }); } // copy
+}
+
+function showMap(m: Readonly<Record<string, string>>): string {   // sorted, Java-style {k=v, k2=v2}
+  return "{" + Object.keys(m).sort().map((k) => k + "=" + m[k]).join(", ") + "}";
+}
+
+// 4) Formatter = HOW a message looks (Strategy pattern).
+interface LogFormatter { format(m: LogMessage): string; }
+
+class PlainFormatter implements LogFormatter {
+  format(m: LogMessage): string {
+    const ctx = Object.keys(m.context).length === 0 ? "" : " " + showMap(m.context);
+    return LogLevel[m.level].padEnd(5) + " [" + m.thread + "] " + m.logger + " -" + ctx + " " + m.text;
+  }
+}
+
+class JsonFormatter implements LogFormatter {
+  format(m: LogMessage): string {
+    let out = '{"ts":' + m.epochMillis + ',"level":"' + LogLevel[m.level] + '","logger":"' + m.logger +
+      '","msg":"' + m.text.replaceAll('"', "'") + '"';
+    for (const k of Object.keys(m.context).sort()) out += ',"' + k + '":"' + m.context[k] + '"';
+    return out + "}";
+  }
+}
+
+// 5) Appender = WHERE a message goes (console, file, network...). New target = new class.
+interface Appender {
+  append(m: LogMessage): void;
+  close(): void;
+}
+
+class ConsoleAppender implements Appender {
+  constructor(private readonly formatter: LogFormatter) {}
+  append(m: LogMessage): void { console.log(this.formatter.format(m)); }
+  close(): void {}
+}
+
+// Stands in for a FileAppender: keeps lines in memory so the demo has no disk side effects.
+class MemoryAppender implements Appender {
+  private readonly _lines: string[] = [];
+  constructor(private readonly formatter: LogFormatter) {}
+  append(m: LogMessage): void { this._lines.push(this.formatter.format(m)); }
+  lines(): string[] { return [...this._lines]; }
+  close(): void {}
+}
+
+// Decorator: makes ANY appender asynchronous. Callers only pay for a push; the target is written
+// on a later turn of the event loop. JavaScript cannot block a caller, so WARN+ is always accepted
+// (it may exceed the capacity) and only DEBUG/INFO are dropped when the queue is full.
+class AsyncAppender implements Appender {
+  private queue: LogMessage[] = [];
+  private droppedCount = 0;
+  private scheduled = false;
+
+  constructor(private readonly target: Appender, private readonly capacity: number) {}
+
+  append(m: LogMessage): void {
+    if (m.level >= LogLevel.WARN || this.queue.length < this.capacity) this.queue.push(m);
+    else this.droppedCount++;                 // DEBUG/INFO under pressure: drop, but count it
+    if (!this.scheduled) {
+      this.scheduled = true;
+      setTimeout(() => this.drain(), 0);      // the "background worker": a later event-loop turn
+    }
+  }
+
+  private drain(): void {
+    this.scheduled = false;
+    for (const m of this.queue.splice(0)) this.target.append(m);   // take all, keep order
+  }
+
+  close(): void {
+    this.drain();                             // everything queued so far is written first
+    this.target.close();
+  }
+  dropped(): number { return this.droppedCount; }
+}
+
+// 6) Chain of Responsibility: each handler checks its own minimum level,
+//    writes if it cares, then passes the SAME message to the next handler.
+abstract class LogHandler {
+  private next: LogHandler | null = null;
+  constructor(protected readonly minLevel: LogLevel) {}
+  linkWith(next: LogHandler): LogHandler { this.next = next; return next; }  // returns next for chaining
+  handle(m: LogMessage): void {                                              // template method: order is fixed
+    if (m.level >= this.minLevel) this.write(m);
+    if (this.next !== null) this.next.handle(m);
+  }
+  protected abstract write(m: LogMessage): void;
+}
+
+class AppenderHandler extends LogHandler {
+  constructor(minLevel: LogLevel, private readonly appender: Appender) { super(minLevel); }
+  protected write(m: LogMessage): void { this.appender.append(m); }
+}
+
+// 7) Logger: named, hierarchical ("com.shop.db" -> "com.shop" -> "com" -> root).
+class Logger {
+  private level: LogLevel | null = null;          // null = inherit from parent
+  private handlers: LogHandler | null = null;     // head of this logger's chain (may be null)
+  private additive = true;                        // also send to parent's handlers?
+
+  constructor(private readonly name: string, private readonly parent: Logger | null) {}
+
+  setLevel(level: LogLevel | null): void { this.level = level; }
+  setHandlers(head: LogHandler | null): void { this.handlers = head; }
+  setAdditive(additive: boolean): void { this.additive = additive; }
+
+  effectiveLevel(): LogLevel {
+    for (let l: Logger | null = this; l !== null; l = l.parent) if (l.level !== null) return l.level;
+    return LogLevel.INFO;                         // safe default if even root has none
+  }
+  isEnabled(lv: LogLevel): boolean { return lv >= this.effectiveLevel(); }
+
+  // Cheap exit FIRST: if disabled we never build the string.
+  // \`text\` is a "{}" pattern, or a function (lazy) that runs only when the level is enabled.
+  log(lv: LogLevel, text: string | (() => string), ...args: unknown[]): void {
+    if (!this.isEnabled(lv)) return;
+    const body = typeof text === "function" ? text() : fill(text, ...args);
+    this.dispatch({ level: lv, logger: this.name, text: body, epochMillis: Date.now(), thread: "main", context: MDC.snapshot() });
+  }
+  debug(p: string, ...a: unknown[]): void { this.log(LogLevel.DEBUG, p, ...a); }
+  info(p: string, ...a: unknown[]): void { this.log(LogLevel.INFO, p, ...a); }
+  warn(p: string, ...a: unknown[]): void { this.log(LogLevel.WARN, p, ...a); }
+  error(p: string, ...a: unknown[]): void { this.log(LogLevel.ERROR, p, ...a); }
+
+  // Second chain: walk up the logger tree until a non-additive logger stops it.
+  private dispatch(m: LogMessage): void {
+    for (let l: Logger | null = this; l !== null; l = l.parent) {
+      if (l.handlers !== null) l.handlers.handle(m);
+      if (!l.additive) break;
+    }
+  }
+}
+
+// "{}" placeholders, SLF4J style. Plain text is NEVER interpreted (no lookups -> no Log4Shell).
+function fill(pattern: string, ...args: unknown[]): string {
+  let out = "";
+  let a = 0;
+  let i = 0;
+  while (i < pattern.length) {
+    if (a < args.length && pattern.startsWith("{}", i)) { out += String(args[a++]); i += 2; }
+    else out += pattern[i++];
+  }
+  return out;
+}
+
+// 8) LogManager: the single registry (Singleton + Factory). Same name -> same Logger object.
+class LogManager {
+  private static readonly INSTANCE = new LogManager();
+  private readonly rootLogger = new Logger("root", null);
+  private readonly loggers = new Map<string, Logger>();
+  private constructor() {}
+  static get(): LogManager { return LogManager.INSTANCE; }
+  root(): Logger { return this.rootLogger; }
+
+  getLogger(name: string): Logger {
+    const existing = this.loggers.get(name);
+    if (existing !== undefined) return existing;
+    const dot = name.lastIndexOf(".");
+    const parent = dot < 0 ? this.rootLogger : this.getLogger(name.substring(0, dot));   // ancestors first
+    const created = new Logger(name, parent);
+    this.loggers.set(name, created);
+    return created;
+  }
+}
+
+const show = (items: string[]): string => "[" + items.join(", ") + "]";
+
+function main(): void {
+  const lm = LogManager.get();
+  const file = new MemoryAppender(new JsonFormatter());
+  const pager = new MemoryAppender(new PlainFormatter());
+
+  // root chain: Console(>=DEBUG) -> File(>=INFO) -> Pager(>=ERROR)
+  const head = new AppenderHandler(LogLevel.DEBUG, new ConsoleAppender(new PlainFormatter()));
+  head.linkWith(new AppenderHandler(LogLevel.INFO, file))
+      .linkWith(new AppenderHandler(LogLevel.ERROR, pager));
+  lm.root().setLevel(LogLevel.INFO);
+  lm.root().setHandlers(head);
+
+  const db = lm.getLogger("com.shop.db");
+  const pay = lm.getLogger("com.shop.payment");
+  db.setLevel(LogLevel.DEBUG);                    // turn on DEBUG only for the DB package
+
+  MDC.put("requestId", "r-77");
+  db.debug("SELECT took {} ms", 12);              // console only (DEBUG < INFO for file)
+  pay.debug("never built: {}", "x");              // payment inherits INFO from root -> skipped cheaply
+  pay.info("charged order {} amount {}", 42, 499);
+  pay.error("gateway timeout for order {}", 43);
+  MDC.clear();
+
+  // The clock differs on every run, so the demo prints the JSON lines with "ts" zeroed.
+  const fileLines = file.lines().map((l) => l.replace(/"ts":\\d+/, '"ts":0'));
+  console.log("file got  " + fileLines.length + " lines: " + show(fileLines));
+  console.log("pager got " + pager.lines().length + " line: " + show(pager.lines()));
+  console.log("same object? " + (lm.getLogger("com.shop.db") === db));
+
+  // A disabled call never builds its message (the lazy function is not even called).
+  let built = 0;
+  pay.log(LogLevel.DEBUG, () => { built++; return "expensive text"; });
+  console.log("lazy message built while disabled? " + (built > 0));
+
+  // additive = false keeps a private audit log away from the root handlers.
+  const auditFile = new MemoryAppender(new PlainFormatter());
+  const audit = lm.getLogger("com.shop.audit");
+  audit.setHandlers(new AppenderHandler(LogLevel.INFO, auditFile));
+  audit.setAdditive(false);
+  audit.info("user {} exported data", "asha");
+  console.log("audit file " + show(auditFile.lines()) + ", root file still " + file.lines().length + " lines");
+
+  // Async decorator with a tiny queue: DEBUG/INFO may be dropped, WARN+ never.
+  // The exact drop count is an implementation detail, so only the invariants are printed.
+  const slowDisk = new MemoryAppender(new PlainFormatter());
+  const asyncApp = new AsyncAppender(slowDisk, 4);
+  for (let i = 0; i < 50; i++) {
+    asyncApp.append({ level: i % 10 === 0 ? LogLevel.WARN : LogLevel.INFO, logger: "load", text: "msg " + i,
+                   epochMillis: 0, thread: "main", context: {} });
+  }
+  asyncApp.close();
+  const warns = slowDisk.lines().filter((l) => l.startsWith("WARN"));
+  console.log("async: written + dropped = " + (slowDisk.lines().length + asyncApp.dropped()) + " of 50");
+  console.log("WARN lines kept: " + warns.length + " " + show(warns));
+}
+
+main();`;
+  var LOG_CORE_CPP = String.raw`
+// ===== A small but real logging framework (think: a mini Log4j / Logback) =====
+
+// 1) Levels: an enum class with numbers, so "is WARN at least INFO?" is one comparison.
+enum class LogLevel { DEBUG = 10, INFO = 20, WARN = 30, ERROR = 40, FATAL = 50 };
+
+bool atLeast(LogLevel a, LogLevel b) { return static_cast<int>(a) >= static_cast<int>(b); }
+
+string levelName(LogLevel l) {
+    switch (l) {
+        case LogLevel::DEBUG: return "DEBUG";
+        case LogLevel::INFO:  return "INFO";
+        case LogLevel::WARN:  return "WARN";
+        case LogLevel::ERROR: return "ERROR";
+        default:              return "FATAL";
+    }
+}
+
+// 2) The message: an immutable struct (all members const). Built ONCE, then shared by reference.
+struct LogMessage {
+    const LogLevel level;
+    const string logger;
+    const string text;
+    const long long epochMillis;
+    const string thread;
+    const map<string, string> context;       // std::map keeps the keys sorted
+};
+
+// 3) MDC = "Mapped Diagnostic Context": per-thread key/values (requestId, userId)
+//    that get stamped on every message without passing them as parameters.
+class MDC {
+    static map<string, string>& ctx() {
+        thread_local map<string, string> c;  // every thread has its own copy
+        return c;
+    }
+public:
+    static void put(const string& k, const string& v) { ctx()[k] = v; }
+    static void clear() { ctx().clear(); }
+    static map<string, string> snapshot() { return ctx(); }   // a copy: the message must not change later
+};
+
+string showMap(const map<string, string>& m) {   // Java-style {k=v, k2=v2}
+    string out = "{";
+    bool first = true;
+    for (const auto& [k, v] : m) {
+        if (!first) out += ", ";
+        out += k + "=" + v;
+        first = false;
+    }
+    return out + "}";
+}
+
+string show(const vector<string>& items) {
+    string out = "[";
+    for (size_t i = 0; i < items.size(); i++) out += (i ? ", " : "") + items[i];
+    return out + "]";
+}
+
+// 4) Formatter = HOW a message looks (Strategy pattern).
+class LogFormatter {
+public:
+    virtual ~LogFormatter() = default;
+    virtual string format(const LogMessage& m) const = 0;
+};
+
+class PlainFormatter : public LogFormatter {
+public:
+    string format(const LogMessage& m) const override {
+        string ctx = m.context.empty() ? "" : " " + showMap(m.context);
+        ostringstream out;
+        out << left << setw(5) << levelName(m.level) << " [" << m.thread << "] " << m.logger << " -" << ctx << " " << m.text;
+        return out.str();
+    }
+};
+
+class JsonFormatter : public LogFormatter {
+public:
+    string format(const LogMessage& m) const override {
+        string msg = m.text;
+        replace(msg.begin(), msg.end(), '"', '\'');
+        string out = "{\"ts\":" + to_string(m.epochMillis) + ",\"level\":\"" + levelName(m.level) +
+                     "\",\"logger\":\"" + m.logger + "\",\"msg\":\"" + msg + "\"";
+        for (const auto& [k, v] : m.context) out += ",\"" + k + "\":\"" + v + "\"";
+        return out + "}";
+    }
+};
+
+// 5) Appender = WHERE a message goes (console, file, network...). New target = new class.
+class Appender {
+public:
+    virtual ~Appender() = default;
+    virtual void append(const LogMessage& m) = 0;
+    virtual void close() {}
+};
+
+class ConsoleAppender : public Appender {
+    shared_ptr<LogFormatter> formatter;
+    mutex mu;                                // two threads must not interleave half-lines
+public:
+    explicit ConsoleAppender(shared_ptr<LogFormatter> f) : formatter(move(f)) {}
+    void append(const LogMessage& m) override {
+        lock_guard<mutex> lock(mu);
+        cout << formatter->format(m) << "\n";
+    }
+};
+
+// Stands in for a FileAppender: keeps lines in memory so the demo has no disk side effects.
+class MemoryAppender : public Appender {
+    shared_ptr<LogFormatter> formatter;
+    vector<string> lines_;
+    mutable mutex mu;
+public:
+    explicit MemoryAppender(shared_ptr<LogFormatter> f) : formatter(move(f)) {}
+    void append(const LogMessage& m) override {
+        string line = formatter->format(m);
+        lock_guard<mutex> lock(mu);
+        lines_.push_back(move(line));
+    }
+    vector<string> lines() const {
+        lock_guard<mutex> lock(mu);
+        return lines_;                       // returns a copy
+    }
+};
+
+// Decorator: makes ANY appender asynchronous. Callers only pay for a queue push.
+class AsyncAppender : public Appender {
+    shared_ptr<Appender> target;
+    const size_t capacity;
+    deque<LogMessage> queue;
+    mutex mu;
+    condition_variable notFull, notEmpty;
+    bool closing = false;
+    atomic<long long> dropped_{0};
+    thread worker;
+
+    void drain() {
+        unique_lock<mutex> lock(mu);
+        while (true) {
+            notEmpty.wait(lock, [&] { return !queue.empty() || closing; });
+            if (queue.empty()) return;       // closing and nothing left
+            LogMessage m = move(queue.front());
+            queue.pop_front();
+            notFull.notify_one();
+            lock.unlock();
+            target->append(m);               // the slow part runs without the lock
+            lock.lock();
+        }
+    }
+public:
+    AsyncAppender(shared_ptr<Appender> t, size_t cap) : target(move(t)), capacity(cap), worker([this] { drain(); }) {}
+    ~AsyncAppender() override { close(); }   // RAII: the thread is always joined
+
+    void append(const LogMessage& m) override {
+        unique_lock<mutex> lock(mu);
+        if (atLeast(m.level, LogLevel::WARN)) {
+            notFull.wait(lock, [&] { return queue.size() < capacity; });   // important: wait for space
+        } else if (queue.size() >= capacity) {
+            dropped_++;                      // DEBUG/INFO under pressure: drop, but count it
+            return;
+        }
+        queue.push_back(m);
+        notEmpty.notify_one();
+    }
+
+    void close() override {
+        {
+            lock_guard<mutex> lock(mu);
+            if (closing) return;
+            closing = true;                  // the worker writes everything queued, then stops
+        }
+        notEmpty.notify_all();
+        if (worker.joinable()) worker.join();
+        target->close();
+    }
+    long long dropped() const { return dropped_.load(); }
+};
+
+// 6) Chain of Responsibility: each handler checks its own minimum level,
+//    writes if it cares, then passes the SAME message to the next handler.
+class LogHandler {
+    unique_ptr<LogHandler> next;             // each link owns the one after it
+    const LogLevel minLevel;
+protected:
+    virtual void write(const LogMessage& m) = 0;
+public:
+    explicit LogHandler(LogLevel min) : minLevel(min) {}
+    virtual ~LogHandler() = default;
+    LogHandler* linkWith(unique_ptr<LogHandler> n) {   // returns next for fluent chaining
+        next = move(n);
+        return next.get();
+    }
+    void handle(const LogMessage& m) {                 // template method: order is fixed
+        if (atLeast(m.level, minLevel)) write(m);
+        if (next) next->handle(m);
+    }
+};
+
+class AppenderHandler : public LogHandler {
+    shared_ptr<Appender> appender;
+protected:
+    void write(const LogMessage& m) override { appender->append(m); }
+public:
+    AppenderHandler(LogLevel min, shared_ptr<Appender> a) : LogHandler(min), appender(move(a)) {}
+};
+
+string threadName() { return "main"; }       // C++ threads have no names; this demo logs from main
+
+// "{}" placeholders, SLF4J style. Plain text is NEVER interpreted (no lookups -> no Log4Shell).
+string fill(const string& pattern, const vector<string>& args) {
+    string out;
+    size_t a = 0, i = 0;
+    while (i < pattern.size()) {
+        if (a < args.size() && pattern.compare(i, 2, "{}") == 0) { out += args[a++]; i += 2; }
+        else out += pattern[i++];
+    }
+    return out;
+}
+
+template <class T>
+string str(const T& v) { ostringstream o; o << v; return o.str(); }
+
+// 7) Logger: named, hierarchical ("com.shop.db" -> "com.shop" -> "com" -> root).
+class Logger {
+    const string name;
+    Logger* const parent;                    // not owned: LogManager owns every Logger
+    optional<LogLevel> level;                // empty = inherit from parent
+    unique_ptr<LogHandler> handlers;         // head of this logger's chain (may be null)
+    bool additive = true;                    // also send to parent's handlers?
+
+    // Second chain: walk up the logger tree until a non-additive logger stops it.
+    void dispatch(const LogMessage& m) const {
+        for (const Logger* l = this; l != nullptr; l = l->parent) {
+            if (l->handlers) l->handlers->handle(m);
+            if (!l->additive) break;
+        }
+    }
+    void emit(LogLevel lv, const string& body) const {
+        long long now = chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch()).count();
+        dispatch(LogMessage{lv, name, body, now, threadName(), MDC::snapshot()});
+    }
+public:
+    Logger(string n, Logger* p) : name(move(n)), parent(p) {}
+
+    void setLevel(optional<LogLevel> l) { level = l; }
+    void setHandlers(unique_ptr<LogHandler> head) { handlers = move(head); }
+    void setAdditive(bool a) { additive = a; }
+
+    LogLevel effectiveLevel() const {
+        for (const Logger* l = this; l != nullptr; l = l->parent) if (l->level) return *l->level;
+        return LogLevel::INFO;               // safe default if even root has none
+    }
+    bool isEnabled(LogLevel lv) const { return atLeast(lv, effectiveLevel()); }
+
+    // Cheap exit FIRST: if disabled we never build the string.
+    void log(LogLevel lv, const string& pattern, const vector<string>& args = {}) const {
+        if (!isEnabled(lv)) return;
+        emit(lv, fill(pattern, args));
+    }
+    // Lazy variant: the function runs only when the level is enabled.
+    void log(LogLevel lv, const function<string()>& lazy) const {
+        if (!isEnabled(lv)) return;
+        emit(lv, lazy());
+    }
+    template <class... A> void debug(const string& p, const A&... a) const { log(LogLevel::DEBUG, p, vector<string>{str(a)...}); }
+    template <class... A> void info(const string& p, const A&... a) const  { log(LogLevel::INFO, p, vector<string>{str(a)...}); }
+    template <class... A> void warn(const string& p, const A&... a) const  { log(LogLevel::WARN, p, vector<string>{str(a)...}); }
+    template <class... A> void error(const string& p, const A&... a) const { log(LogLevel::ERROR, p, vector<string>{str(a)...}); }
+};
+
+// 8) LogManager: the single registry (Singleton + Factory). Same name -> same Logger object.
+class LogManager {
+    Logger root_{"root", nullptr};
+    map<string, unique_ptr<Logger>> loggers;
+    recursive_mutex mu;
+    LogManager() = default;
+public:
+    LogManager(const LogManager&) = delete;            // no copies: there is only one
+    LogManager& operator=(const LogManager&) = delete;
+    static LogManager& get() {
+        static LogManager instance;                    // created on first use, thread-safe since C++11
+        return instance;
+    }
+    Logger& root() { return root_; }
+
+    Logger& getLogger(const string& name) {
+        lock_guard<recursive_mutex> lock(mu);
+        auto it = loggers.find(name);
+        if (it != loggers.end()) return *it->second;
+        size_t dot = name.rfind('.');
+        Logger* parent = dot == string::npos ? &root_ : &getLogger(name.substr(0, dot));   // ancestors first
+        return *(loggers[name] = make_unique<Logger>(name, parent));
+    }
+};
+
+int main() {
+    LogManager& lm = LogManager::get();
+    auto file = make_shared<MemoryAppender>(make_shared<JsonFormatter>());
+    auto pager = make_shared<MemoryAppender>(make_shared<PlainFormatter>());
+
+    // root chain: Console(>=DEBUG) -> File(>=INFO) -> Pager(>=ERROR)
+    auto head = make_unique<AppenderHandler>(LogLevel::DEBUG, make_shared<ConsoleAppender>(make_shared<PlainFormatter>()));
+    head->linkWith(make_unique<AppenderHandler>(LogLevel::INFO, file))
+        ->linkWith(make_unique<AppenderHandler>(LogLevel::ERROR, pager));
+    lm.root().setLevel(LogLevel::INFO);
+    lm.root().setHandlers(move(head));
+
+    Logger& db = lm.getLogger("com.shop.db");
+    Logger& pay = lm.getLogger("com.shop.payment");
+    db.setLevel(LogLevel::DEBUG);                      // turn on DEBUG only for the DB package
+
+    MDC::put("requestId", "r-77");
+    db.debug("SELECT took {} ms", 12);                 // console only (DEBUG < INFO for file)
+    pay.debug("never built: {}", "x");                 // payment inherits INFO from root -> skipped cheaply
+    pay.info("charged order {} amount {}", 42, 499);
+    pay.error("gateway timeout for order {}", 43);
+    MDC::clear();
+
+    // The clock differs on every run, so the demo prints the JSON lines with "ts" zeroed.
+    vector<string> fileLines;
+    for (const string& l : file->lines()) fileLines.push_back(regex_replace(l, regex("\"ts\":\\d+"), "\"ts\":0"));
+    cout << "file got  " << fileLines.size() << " lines: " << show(fileLines) << "\n";
+    cout << "pager got " << pager->lines().size() << " line: " << show(pager->lines()) << "\n";
+    cout << boolalpha << "same object? " << (&lm.getLogger("com.shop.db") == &db) << "\n";
+
+    // A disabled call never builds its message (the lazy function is not even called).
+    int built = 0;
+    pay.log(LogLevel::DEBUG, function<string()>([&] { built++; return string("expensive text"); }));
+    cout << "lazy message built while disabled? " << (built > 0) << "\n";
+
+    // additive = false keeps a private audit log away from the root handlers.
+    auto auditFile = make_shared<MemoryAppender>(make_shared<PlainFormatter>());
+    Logger& audit = lm.getLogger("com.shop.audit");
+    audit.setHandlers(make_unique<AppenderHandler>(LogLevel::INFO, auditFile));
+    audit.setAdditive(false);
+    audit.info("user {} exported data", "asha");
+    cout << "audit file " << show(auditFile->lines()) << ", root file still " << file->lines().size() << " lines\n";
+
+    // Async decorator with a tiny queue: DEBUG/INFO may be dropped, WARN+ never.
+    // How many INFOs are dropped depends on thread timing, so only the invariants are printed.
+    auto slowDisk = make_shared<MemoryAppender>(make_shared<PlainFormatter>());
+    AsyncAppender async(slowDisk, 4);
+    for (int i = 0; i < 50; i++)
+        async.append(LogMessage{i % 10 == 0 ? LogLevel::WARN : LogLevel::INFO, "load", "msg " + to_string(i), 0, "main", {}});
+    async.close();
+    vector<string> warns;
+    for (const string& l : slowDisk->lines()) if (l.rfind("WARN", 0) == 0) warns.push_back(l);
+    cout << "async: written + dropped = " << slowDisk->lines().size() + async.dropped() << " of 50\n";
+    cout << "WARN lines kept: " << warns.size() << " " << show(warns) << "\n";
 }`;
 
   var LOG_NODES = [
@@ -300,7 +1272,7 @@ public class LoggingDemo {
         code: 'Logger getLogger(String name) {\n  int dot = name.lastIndexOf(\'.\');\n  Logger parent = dot < 0 ? root : getLogger(name.substring(0, dot));\n  return loggers.computeIfAbsent(name, n -> new Logger(n, parent));\n}', codeHl: { 3: 'cur', 4: 'ok' } },
       { narr: '<b>Logger</b> owns three knobs: its <b>level</b> (null means "ask my parent"), the <b>head of its handler chain</b>, and an <b>additive</b> flag (should my parent\'s handlers also see this?). The level check happens FIRST, before any string is built.', on: ['LG'], tags: { LG: 'level / parent / additive' },
         code: 'void log(LogLevel lv, String p, Object... a) {\n  if (!isEnabled(lv)) return;   // cheap exit\n  dispatch(new LogMessage(lv, name, fill(p, a), now, thread, MDC.snapshot()));\n}', codeHl: { 2: 'cur', 3: 'ok' } },
-      { narr: '<b>LogMessage</b> is an immutable <code>record</code>: level, logger name, text, time, thread and MDC context. Immutable matters because the same object is shared by many handlers and maybe a background thread.', on: ['MSG', 'LVL'], edges: ['LG-MSG', 'MSG-LVL'] },
+      { narr: '<b>LogMessage</b> is an immutable value object (a Java <code>record</code>, Python frozen dataclass, TypeScript <code>readonly</code> interface, C++ struct of const members): level, logger name, text, time, thread and MDC context. Immutable matters because the same object is shared by many handlers and maybe a background thread.', on: ['MSG', 'LVL'], edges: ['LG-MSG', 'MSG-LVL'] },
       { narr: '<b>Chain of Responsibility</b>: <code>LogHandler</code> has a <code>next</code> pointer. <code>handle()</code> = "if the level is high enough for me, write; then pass it on". Adding a Pager or Slack handler = one new link, zero edits to Logger.', on: ['LH', 'AH'], edges: ['LG-LH', 'AH-LH'], tags: { LH: 'next →' },
         code: 'final void handle(LogMessage m) {\n  if (m.level().atLeast(minLevel)) write(m);\n  if (next != null) next.handle(m);\n}', codeHl: { 2: 'ok', 3: 'cur' } },
       { narr: '<b>Appender</b> = WHERE (console, file, socket, Kafka). <b>LogFormatter</b> = HOW it looks (plain text, JSON). Two independent axes, two interfaces. 3 targets × 2 formats = 5 small classes, not 6 combined ones.', on: ['AP', 'FM', 'CA', 'FA', 'JF'], edges: ['AH-AP', 'AP-FM', 'CA-AP', 'FA-AP', 'JF-FM'] },
@@ -409,7 +1381,7 @@ public class LoggingDemo {
 <p><b>Step 2 — the nouns become classes:</b></p>
 ${H.table(['Class', 'One job', 'Pattern'], [
   ['<code>LogLevel</code> (enum)', 'Order the levels with a number so "is WARN ≥ INFO?" is one comparison', '—'],
-  ['<code>LogMessage</code> (record)', 'Immutable bundle: level, logger name, text, time, thread, context', 'Value object'],
+  ['<code>LogMessage</code> (immutable value type)', 'Immutable bundle: level, logger name, text, time, thread, context', 'Value object'],
   ['<code>Logger</code>', 'Entry point. Checks level, builds message, starts the chain', 'Facade'],
   ['<code>LogHandler</code>', 'One link of the chain: "write if level ≥ my min, then pass on"', 'Chain of Responsibility'],
   ['<code>Appender</code>', 'WHERE the line goes (console, file, socket)', 'Strategy / plug-in'],
@@ -427,10 +1399,10 @@ ${H.arr(['log.warn()', 'level gate', 'build message', 'handler 1', 'handler 2', 
       '"Each destination has its own level" or "only page on-call for ERROR" → per-handler minimum level in a chain.',
       '"Logging must not slow down requests" → AsyncAppender (bounded queue + background thread) and a drop/block policy.',
       '"Enable DEBUG for one module only" → hierarchical named loggers with inherited levels.',
-      '"Attach requestId/userId to every log line" → MDC (ThreadLocal context).',
-      '"Thread-safe" → immutable LogMessage, synchronized or single-writer appenders, ConcurrentHashMap registry.'
+      '"Attach requestId/userId to every log line" → MDC (per-thread context: Java <code>ThreadLocal</code>, Python <code>threading.local</code>, C++ <code>thread_local</code>, Node <code>AsyncLocalStorage</code>).',
+      '"Thread-safe" → immutable LogMessage, locked or single-writer appenders, a concurrent (or locked) registry map.'
     ],
-    code: [LOG_CORE],
+    code: [{ lang: 'java', code: LOG_CORE, alt: [{ lang: 'python', code: LOG_CORE_PY }, { lang: 'ts', code: LOG_CORE_TS }, { lang: 'cpp', code: LOG_CORE_CPP }] }],
     codeTitle: ['Complete logging framework — levels, MDC, formatters, appenders, async decorator, handler chain, logger hierarchy (runnable main)'],
     viz: [
       { title: 'Class diagram tour: who does what in the logging framework', gen: function () { return logClassViz(); } },
@@ -444,7 +1416,7 @@ ${H.table(['Call', 'Severity', '≥ WARN (30)?', 'Printed?'], [
   ['<code>warn("disk 91%")</code>', '30', 'yes', H.c('g', 'yes')],
   ['<code>error("payment failed")</code>', '40', 'yes', H.c('g', 'yes')]
 ])}<p>Why numbers 10/20/30/40 instead of 1/2/3/4? Gaps leave room to add a custom level (e.g. <code>AUDIT(35)</code>) later without renumbering.</p>` },
-      { title: 'Adding a Slack appender without touching the core', html: `<p>Product wants ERRORs in a Slack channel. With the good design this is <b>one new class and one line of config</b>. Logger, LogHandler and every existing appender stay untouched — that is Open/Closed in action.</p>`, code: String.raw`
+      { title: 'Adding a Slack appender without touching the core', html: `<p>Product wants ERRORs in a Slack channel. With the good design this is <b>one new class and one line of config</b>. Logger, LogHandler and every existing appender stay untouched — that is Open/Closed in action.</p>`, code: { lang: 'java', code: String.raw`
 interface Appender { void append(String line); }
 
 // A brand-new destination. Nothing else changes.
@@ -462,7 +1434,66 @@ class SlackDemo {
         slack.append("ERROR gateway timeout order=43");
         System.out.println(slack.sent());   // [#payments-alerts: ERROR gateway timeout order=43]
     }
-}` },
+}`,
+        alt: [
+          { lang: 'python', code: String.raw`
+from abc import ABC, abstractmethod
+
+
+class Appender(ABC):
+    @abstractmethod
+    def append(self, line: str) -> None: ...
+
+
+# A brand-new destination. Nothing else changes.
+class SlackAppender(Appender):
+    def __init__(self, channel: str) -> None:
+        self._channel = channel
+        self.sent: list[str] = []            # stands in for an HTTP client
+
+    def append(self, line: str) -> None:
+        self.sent.append(f"#{self._channel}: {line}")
+
+
+slack = SlackAppender("payments-alerts")
+slack.append("ERROR gateway timeout order=43")
+print("[" + ", ".join(slack.sent) + "]")     # [#payments-alerts: ERROR gateway timeout order=43]` },
+          { lang: 'ts', code: String.raw`
+interface Appender { append(line: string): void; }
+
+// A brand-new destination. Nothing else changes.
+class SlackAppender implements Appender {
+  readonly sent: string[] = [];              // stands in for an HTTP client
+  constructor(private readonly channel: string) {}
+  append(line: string): void { this.sent.push("#" + this.channel + ": " + line); }
+}
+
+const slack = new SlackAppender("payments-alerts");
+slack.append("ERROR gateway timeout order=43");
+console.log("[" + slack.sent.join(", ") + "]");   // [#payments-alerts: ERROR gateway timeout order=43]` },
+          { lang: 'cpp', code: String.raw`
+class Appender {
+public:
+    virtual ~Appender() = default;
+    virtual void append(const string& line) = 0;
+};
+
+// A brand-new destination. Nothing else changes.
+class SlackAppender : public Appender {
+    string channel;
+    vector<string> sent_;                    // stands in for an HTTP client
+public:
+    explicit SlackAppender(string c) : channel(move(c)) {}
+    void append(const string& line) override { sent_.push_back("#" + channel + ": " + line); }
+    const vector<string>& sent() const { return sent_; }
+};
+
+int main() {
+    SlackAppender slack("payments-alerts");
+    slack.append("ERROR gateway timeout order=43");
+    cout << "[" << slack.sent()[0] << "]\n";  // [#payments-alerts: ERROR gateway timeout order=43]
+}` }
+        ] } },
       { title: 'Logger hierarchy: one setting, many packages', html: `<p>Config: root = INFO, <code>com.shop.db</code> = DEBUG, nothing else set.</p>
 ${H.table(['Logger', 'Own level', 'Effective level', 'Why'], [
   ['<code>com.shop.db.pool</code>', '—', 'DEBUG', 'climbs to com.shop.db'],
@@ -474,7 +1505,7 @@ ${H.table(['Logger', 'Own level', 'Effective level', 'Why'], [
 ${H.table(['Flavour', 'Rule', 'Use when'], [
   ['<b>Strict</b> (textbook)', 'Each handler owns ONE level. If it matches, handle and <b>stop</b>; otherwise pass on.', 'Interviewer says "INFO handler, DEBUG handler, ERROR handler" — exactly one handles each message'],
   ['<b>Pipeline</b> (real frameworks)', 'Every handler sees the message; each writes if level ≥ its min; always pass on.', 'One message must reach console AND file AND pager']
-])}`, code: String.raw`
+])}`, code: { lang: 'java', code: String.raw`
 enum Lvl { DEBUG, INFO, ERROR }
 
 abstract class StrictHandler {
@@ -499,15 +1530,131 @@ class StrictDemo {
         chain.handle(Lvl.INFO, "user logged in");     // InfoHandler handled
         chain.handle(Lvl.ERROR, "db down");          // ErrorHandler handled
     }
-}` },
-      { title: 'Async appender under load: drop or block?', html: `<p>Queue capacity 4, a burst of 50 messages (45 INFO, 5 WARN), slow disk. Policy: <b>WARN+ blocks</b> until there is space; <b>INFO is dropped</b> when full (and counted). Result in the demo: all 5 WARNs written, some INFOs dropped, the count printed so operators know. Logback\'s <code>AsyncAppender</code> does something very similar: when the queue is 80% full it discards TRACE/DEBUG/INFO by default (<code>discardingThreshold</code>), and <code>neverBlock=true</code> drops instead of blocking.</p>` }
+}`,
+        alt: [
+          { lang: 'python', code: String.raw`
+from abc import ABC, abstractmethod
+from enum import Enum, auto
+from typing import Optional
+
+
+class Lvl(Enum):
+    DEBUG = auto()
+    INFO = auto()
+    ERROR = auto()
+
+
+class StrictHandler(ABC):
+    def __init__(self) -> None:
+        self._next: Optional["StrictHandler"] = None
+
+    def set_next(self, n: "StrictHandler") -> "StrictHandler":
+        self._next = n
+        return n
+
+    def handle(self, lvl: Lvl, msg: str) -> None:
+        if self.can_handle(lvl):
+            print(f"{self.name()} handled: {msg}")      # stop here
+        elif self._next is not None:
+            self._next.handle(lvl, msg)
+        else:
+            print(f"nobody handled: {msg}")
+
+    @abstractmethod
+    def can_handle(self, lvl: Lvl) -> bool: ...
+
+    @abstractmethod
+    def name(self) -> str: ...
+
+
+class DebugH(StrictHandler):
+    def can_handle(self, lvl: Lvl) -> bool: return lvl is Lvl.DEBUG
+    def name(self) -> str: return "DebugHandler"
+
+
+class InfoH(StrictHandler):
+    def can_handle(self, lvl: Lvl) -> bool: return lvl is Lvl.INFO
+    def name(self) -> str: return "InfoHandler"
+
+
+class ErrorH(StrictHandler):
+    def can_handle(self, lvl: Lvl) -> bool: return lvl is Lvl.ERROR
+    def name(self) -> str: return "ErrorHandler"
+
+
+chain = DebugH()
+chain.set_next(InfoH()).set_next(ErrorH())
+chain.handle(Lvl.INFO, "user logged in")     # InfoHandler handled
+chain.handle(Lvl.ERROR, "db down")           # ErrorHandler handled` },
+          { lang: 'ts', code: String.raw`
+enum Lvl { DEBUG, INFO, ERROR }
+
+abstract class StrictHandler {
+  private next: StrictHandler | null = null;
+  setNext(n: StrictHandler): StrictHandler { this.next = n; return n; }
+  handle(lvl: Lvl, msg: string): void {
+    if (this.canHandle(lvl)) console.log(this.name() + " handled: " + msg);   // stop here
+    else if (this.next !== null) this.next.handle(lvl, msg);
+    else console.log("nobody handled: " + msg);
+  }
+  abstract canHandle(lvl: Lvl): boolean;
+  abstract name(): string;
+}
+class DebugH extends StrictHandler { canHandle(l: Lvl): boolean { return l === Lvl.DEBUG; } name(): string { return "DebugHandler"; } }
+class InfoH extends StrictHandler { canHandle(l: Lvl): boolean { return l === Lvl.INFO; } name(): string { return "InfoHandler"; } }
+class ErrorH extends StrictHandler { canHandle(l: Lvl): boolean { return l === Lvl.ERROR; } name(): string { return "ErrorHandler"; } }
+
+const chain = new DebugH();
+chain.setNext(new InfoH()).setNext(new ErrorH());
+chain.handle(Lvl.INFO, "user logged in");    // InfoHandler handled
+chain.handle(Lvl.ERROR, "db down");          // ErrorHandler handled` },
+          { lang: 'cpp', code: String.raw`
+enum class Lvl { DEBUG, INFO, ERROR };
+
+class StrictHandler {
+    unique_ptr<StrictHandler> next;
+public:
+    virtual ~StrictHandler() = default;
+    StrictHandler* setNext(unique_ptr<StrictHandler> n) { next = move(n); return next.get(); }
+    void handle(Lvl lvl, const string& msg) const {
+        if (canHandle(lvl)) cout << name() << " handled: " << msg << "\n";     // stop here
+        else if (next) next->handle(lvl, msg);
+        else cout << "nobody handled: " << msg << "\n";
+    }
+    virtual bool canHandle(Lvl lvl) const = 0;
+    virtual string name() const = 0;
+};
+class DebugH : public StrictHandler {
+public:
+    bool canHandle(Lvl l) const override { return l == Lvl::DEBUG; }
+    string name() const override { return "DebugHandler"; }
+};
+class InfoH : public StrictHandler {
+public:
+    bool canHandle(Lvl l) const override { return l == Lvl::INFO; }
+    string name() const override { return "InfoHandler"; }
+};
+class ErrorH : public StrictHandler {
+public:
+    bool canHandle(Lvl l) const override { return l == Lvl::ERROR; }
+    string name() const override { return "ErrorHandler"; }
+};
+
+int main() {
+    DebugH chain;
+    chain.setNext(make_unique<InfoH>())->setNext(make_unique<ErrorH>());
+    chain.handle(Lvl::INFO, "user logged in");    // InfoHandler handled
+    chain.handle(Lvl::ERROR, "db down");          // ErrorHandler handled
+}` }
+        ] } },
+      { title: 'Async appender under load: drop or block?', html: `<p>Queue capacity 4, a burst of 50 messages (45 INFO, 5 WARN), slow disk. Policy: <b>WARN+ blocks</b> until there is space; <b>INFO is dropped</b> when full (and counted). Result in the demo: all 5 WARNs are written, and some INFOs are dropped. How many depends on thread timing, so the demo prints the invariant <code>written + dropped = 50</code> and the 5 WARN lines (operators would get the count as a metric). JavaScript cannot block a caller, so the TypeScript version always accepts WARN+ and drops only INFO/DEBUG. Logback\'s <code>AsyncAppender</code> does something very similar: when the queue is 80% full it discards TRACE/DEBUG/INFO by default (<code>discardingThreshold</code>), and <code>neverBlock=true</code> drops instead of blocking.</p>` }
     ],
-    deepDive: `<p><b>1. The cost model.</b> A disabled log call must be almost free. Order inside <code>log()</code>: (a) compare two ints, (b) only then format, allocate, read the clock, copy MDC. That is why APIs offer <code>log.debug("x={}", x)</code> (no concatenation unless enabled) and <code>log.debug(() -&gt; expensive())</code> (Supplier, lazy). <code>log.debug("x=" + x)</code> builds the string even when DEBUG is off.</p>
-<p><b>2. Thread safety.</b> The message is immutable, so sharing it is safe. Appenders are the shared mutable part: a file appender must not interleave two half-lines. Options: <code>synchronized append</code> (simple, contention under load), a <b>single writer thread</b> fed by a queue (AsyncAppender), or a lock-free ring buffer — Log4j 2\'s async loggers use the <b>LMAX Disruptor</b> and reach millions of messages per second.</p>
-<p><b>3. Back-pressure policy is a product decision.</b> When the queue is full you can block (never lose logs, but slow requests), drop (fast, lossy), or drop low levels first. Always <b>count drops</b> and expose the number as a metric. On shutdown, flush with a <b>poison pill</b> and a <b>bounded join</b> so the JVM can still exit.</p>
-<p><b>4. MDC and async.</b> MDC uses a <code>ThreadLocal</code>, so it must be <b>snapshotted into the message</b> on the calling thread — the background writer thread has a different (empty) MDC. Thread pools reuse threads, so always <code>MDC.clear()</code> in a finally block or you leak one user\'s requestId into another user\'s logs.</p>
+    deepDive: `<p><b>1. The cost model.</b> A disabled log call must be almost free. Order inside <code>log()</code>: (a) compare two ints, (b) only then format, allocate, read the clock, copy MDC. That is why APIs offer <code>log.debug("x={}", x)</code> (no concatenation unless enabled) and <code>log.debug(() -&gt; expensive())</code> (a lazy callback: Java <code>Supplier</code>, Python <code>lambda</code>, C++ <code>std::function</code>). <code>log.debug("x=" + x)</code> builds the string even when DEBUG is off.</p>
+<p><b>2. Thread safety.</b> The message is immutable, so sharing it is safe. Appenders are the shared mutable part: a file appender must not interleave two half-lines. Options: a lock around <code>append</code> (Java <code>synchronized</code>, Python <code>threading.Lock</code>, C++ <code>std::mutex</code>; simple, contention under load), a <b>single writer thread</b> fed by a queue (AsyncAppender), or a lock-free ring buffer — Log4j 2\'s async loggers use the <b>LMAX Disruptor</b> and reach millions of messages per second.</p>
+<p><b>3. Back-pressure policy is a product decision.</b> When the queue is full you can block (never lose logs, but slow requests), drop (fast, lossy), or drop low levels first. Always <b>count drops</b> and expose the number as a metric. On shutdown, flush with a <b>poison pill</b> and a <b>bounded join</b> so the process can still exit.</p>
+<p><b>4. MDC and async.</b> MDC is per-thread state (Java <code>ThreadLocal</code>, Python <code>threading.local</code>, C++ <code>thread_local</code>), so it must be <b>snapshotted into the message</b> on the calling thread — the background writer thread has a different (empty) MDC. Thread pools reuse threads, so always <code>MDC.clear()</code> in a finally block or you leak one user\'s requestId into another user\'s logs.</p>
 <p><b>5. Security: Log4Shell (CVE-2021-44228).</b> Log4j 2 evaluated <code>$&#123;jndi:ldap://...}</code> lookups inside <i>logged data</i>, so an attacker who could get a string logged could run code. Lesson for your design: the formatter must treat user text as <b>plain data</b>, never as instructions. Also redact secrets/PII in a formatter or filter, and escape newlines to stop log-forging (fake extra lines).</p>
-<p><b>6. Production extras.</b> Rolling files by size/time with retention; structured JSON logs shipped to ELK/Loki/Datadog; sampling for very chatty DEBUG; SLF4J as a <b>facade</b> so libraries never pick the backend; per-logger levels changeable at runtime (JMX/actuator) — which is why <code>level</code> is <code>volatile</code> in the code above.</p>`,
+<p><b>6. Production extras.</b> Rolling files by size/time with retention; structured JSON logs shipped to ELK/Loki/Datadog; sampling for very chatty DEBUG; SLF4J as a <b>facade</b> so libraries never pick the backend; per-logger levels changeable at runtime (JMX/actuator) — which is why the Java code marks <code>level</code> <code>volatile</code> (C++ uses <code>std::atomic</code>; Python and Node need nothing special).</p>`,
     aiEra: `<p><b>What AI changes:</b> an assistant writes the boilerplate of this design (enum, interfaces, three appenders) in seconds, and modern observability stacks (OpenTelemetry) already correlate logs with traces. Your value moves to the <b>decisions</b>: which pattern, what back-pressure policy, what must never be logged.</p>
 <p><b>Use AI as a partner:</b> <code>Review my AsyncAppender: can close() hang? Can a message be lost between offer and shutdown?</code> or <code>Generate 10 log lines with tricky content (newlines, quotes, $&#123;...}, emojis) to test my JSON formatter</code>.</p>
 <p><b>Where AI goes wrong:</b> it often forgets the level check happens <i>before</i> string building, joins the worker thread without a timeout, reads MDC on the wrong thread, or concatenates strings inside <code>debug()</code>.</p>
@@ -550,10 +1697,11 @@ class NaiveLogger {
       hints: [
         `<p>Separate the three questions: <b>should</b> we log (level gate), <b>where</b> (sinks), <b>how it looks</b> (formatter). Each becomes its own type.</p>`,
         `<p>Give each sink a <code>next</code> pointer and a <code>minLevel</code>. <code>handle(msg)</code>: write if <code>msg.level ≥ minLevel</code>, then <code>next.handle(msg)</code>. Use an enum with ordinal/severity for levels.</p>`,
-        `<p>Edge cases: logger gate before building strings (use <code>Supplier&lt;String&gt;</code>), synchronized writes in sinks, null <code>next</code> at the end of the chain. Recipe: enum Level → record Msg → interface Formatter → abstract Sink(chain) → Logger(gate + head) → demo.</p>`
+        `<p>Edge cases: logger gate before building strings (pass the text as a lazy callback: Java <code>Supplier&lt;String&gt;</code>, Python <code>lambda</code>, C++ <code>std::function</code>), locked writes in sinks, null <code>next</code> at the end of the chain. Recipe: Level enum → Msg value type → Formatter interface → abstract Sink(chain) → Logger(gate + head) → demo.</p>`
       ],
+      tests: { io: true, cases: [{ stdin: '', stdout: "[INFO] b\n[ERROR] c\nfile=[[INFO] b, [ERROR] c] alert=[PAGE: c]\nconcurrent lines = 400\nINFO built 0 strings\n[ERROR] kept\nERROR built 1 strings in total\n" }] },
       solution: {
-        approach: `<p>Level enum with severities; an immutable message record; a <code>Formatter</code> strategy; an abstract <code>Sink</code> forming a chain where each link writes if the level is high enough and always forwards; a <code>Logger</code> that checks its own level first and only then builds the message lazily. Sinks are in-memory lists with synchronized writes. Adding a sink = one subclass + one <code>linkWith</code> call.</p>`,
+        approach: `<p>Level enum with severities; an immutable message value type; a <code>Formatter</code> strategy; an abstract <code>Sink</code> forming a chain where each link writes if the level is high enough and always forwards; a <code>Logger</code> that checks its own level first and only then builds the message lazily. Sinks are in-memory lists with locked writes. Adding a sink = one subclass + one <code>linkWith</code> call.</p>`,
         code: String.raw`
 enum Level { DEBUG, INFO, WARN, ERROR;
     boolean atLeast(Level o) { return ordinal() >= o.ordinal(); } }
@@ -610,7 +1758,6 @@ class LoggerSolution {
         System.out.println("file=" + file.lines() + " alert=" + alert.lines());
 
         // concurrency smoke test: 4 threads x 100 lines, nothing lost
-        SimpleLogger quiet = new SimpleLogger(Level.INFO, new FileSink(Level.INFO, plain));
         FileSink sink = new FileSink(Level.INFO, plain);
         SimpleLogger multi = new SimpleLogger(Level.INFO, sink);
         ExecutorService pool = Executors.newFixedThreadPool(4);
@@ -618,9 +1765,336 @@ class LoggerSolution {
         pool.shutdown();
         pool.awaitTermination(5, TimeUnit.SECONDS);
         System.out.println("concurrent lines = " + sink.lines().size());   // 400
-        quiet.debug("not built");
+
+        // raise the level at run time: a disabled call never builds its text
+        int[] built = {0};
+        log.setLevel(Level.ERROR);
+        log.log(Level.INFO, () -> { built[0]++; return "hidden"; });
+        System.out.println("INFO built " + built[0] + " strings");
+        log.log(Level.ERROR, () -> { built[0]++; return "kept"; });
+        System.out.println("ERROR built " + built[0] + " strings in total");
     }
 }`,
+      alt: [
+          { lang: 'python', code: String.raw`
+import threading
+import time
+from abc import ABC
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from enum import IntEnum
+from typing import Callable, Optional
+
+
+class Level(IntEnum):
+    DEBUG = 0
+    INFO = 1
+    WARN = 2
+    ERROR = 3
+
+    def at_least(self, other: "Level") -> bool:
+        return self >= other
+
+
+@dataclass(frozen=True)
+class Msg:
+    level: Level
+    text: str
+    time: int
+
+
+Formatter = Callable[[Msg], str]
+
+
+class Sink(ABC):
+    def __init__(self, min_level: Level, fmt: Formatter) -> None:
+        self._min = min_level
+        self._fmt = fmt
+        self._next: Optional["Sink"] = None
+        self._written: list[str] = []
+        self._lock = threading.Lock()
+
+    def link_with(self, n: "Sink") -> "Sink":
+        self._next = n
+        return n
+
+    def handle(self, m: Msg) -> None:
+        if m.level.at_least(self._min):
+            self._write(self._fmt(m))
+        if self._next is not None:
+            self._next.handle(m)
+
+    def _write(self, line: str) -> None:
+        with self._lock:
+            self._written.append(line)
+
+    def lines(self) -> list[str]:
+        with self._lock:
+            return list(self._written)
+
+
+class ConsoleSink(Sink):
+    def _write(self, line: str) -> None:
+        with self._lock:
+            self._written.append(line)
+            print(line)
+
+
+class FileSink(Sink):
+    pass
+
+
+class AlertSink(Sink):
+    pass
+
+
+class SimpleLogger:
+    def __init__(self, level: Level, head: Sink) -> None:
+        self._level = level
+        self._head = head
+
+    def set_level(self, level: Level) -> None:
+        self._level = level
+
+    def log(self, level: Level, text: Callable[[], str]) -> None:
+        if not level.at_least(self._level):
+            return                                       # gate first: no string built
+        self._head.handle(Msg(level, text(), int(time.time() * 1000)))
+
+    def debug(self, s: str) -> None: self.log(Level.DEBUG, lambda: s)
+    def info(self, s: str) -> None: self.log(Level.INFO, lambda: s)
+    def error(self, s: str) -> None: self.log(Level.ERROR, lambda: s)
+
+
+def show(items: list[str]) -> str:
+    return "[" + ", ".join(items) + "]"
+
+
+def main() -> None:
+    def plain(m: Msg) -> str:
+        return f"[{m.level.name}] {m.text}"
+
+    console = ConsoleSink(Level.DEBUG, plain)
+    file = FileSink(Level.INFO, plain)
+    alert = AlertSink(Level.ERROR, lambda m: "PAGE: " + m.text)
+    console.link_with(file).link_with(alert)
+    log = SimpleLogger(Level.INFO, console)
+
+    log.debug("a")
+    log.info("b")
+    log.error("c")
+    print(f"file={show(file.lines())} alert={show(alert.lines())}")
+
+    # concurrency smoke test: 4 threads x 100 lines, nothing lost
+    sink = FileSink(Level.INFO, plain)
+    multi = SimpleLogger(Level.INFO, sink)
+
+    def worker() -> None:
+        for i in range(100):
+            multi.info(f"x{i}")
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        for _ in range(4):
+            pool.submit(worker)
+    print(f"concurrent lines = {len(sink.lines())}")     # 400
+
+    # raise the level at run time: a disabled call never builds its text
+    built = [0]
+
+    def build(text: str) -> Callable[[], str]:
+        def make() -> str:
+            built[0] += 1
+            return text
+        return make
+
+    log.set_level(Level.ERROR)
+    log.log(Level.INFO, build("hidden"))
+    print(f"INFO built {built[0]} strings")
+    log.log(Level.ERROR, build("kept"))
+    print(f"ERROR built {built[0]} strings in total")
+
+
+if __name__ == "__main__":
+    main()` },
+          { lang: 'ts', code: String.raw`
+enum Level { DEBUG, INFO, WARN, ERROR }
+
+interface Msg { readonly level: Level; readonly text: string; readonly time: number; }
+
+type Formatter = (m: Msg) => string;
+
+abstract class Sink {
+  private next: Sink | null = null;
+  protected readonly written: string[] = [];
+  constructor(private readonly min: Level, private readonly fmt: Formatter) {}
+  linkWith(n: Sink): Sink { this.next = n; return n; }
+  handle(m: Msg): void {
+    if (m.level >= this.min) this.write(this.fmt(m));
+    if (this.next !== null) this.next.handle(m);
+  }
+  protected write(line: string): void { this.written.push(line); }
+  lines(): string[] { return [...this.written]; }
+}
+class ConsoleSink extends Sink {
+  protected override write(line: string): void { super.write(line); console.log(line); }
+}
+class FileSink extends Sink {}
+class AlertSink extends Sink {}
+
+class SimpleLogger {
+  constructor(private level: Level, private readonly head: Sink) {}
+  setLevel(l: Level): void { this.level = l; }
+  log(l: Level, text: () => string): void {
+    if (l < this.level) return;                    // gate first: no string built
+    this.head.handle({ level: l, text: text(), time: Date.now() });
+  }
+  debug(s: string): void { this.log(Level.DEBUG, () => s); }
+  info(s: string): void { this.log(Level.INFO, () => s); }
+  error(s: string): void { this.log(Level.ERROR, () => s); }
+}
+
+const show = (items: string[]): string => "[" + items.join(", ") + "]";
+
+async function main(): Promise<void> {
+  const plain: Formatter = (m) => "[" + Level[m.level] + "] " + m.text;
+  const console_ = new ConsoleSink(Level.DEBUG, plain);
+  const file = new FileSink(Level.INFO, plain);
+  const alert = new AlertSink(Level.ERROR, (m) => "PAGE: " + m.text);
+  console_.linkWith(file).linkWith(alert);
+  const log = new SimpleLogger(Level.INFO, console_);
+
+  log.debug("a");
+  log.info("b");
+  log.error("c");
+  console.log("file=" + show(file.lines()) + " alert=" + show(alert.lines()));
+
+  // concurrency smoke test: 4 async writers x 100 lines, nothing lost.
+  // JavaScript runs one task at a time, so writes can only interleave at an await.
+  const sink = new FileSink(Level.INFO, plain);
+  const multi = new SimpleLogger(Level.INFO, sink);
+  const writer = async (): Promise<void> => {
+    for (let i = 0; i < 100; i++) { multi.info("x" + i); await Promise.resolve(); }
+  };
+  await Promise.all([writer(), writer(), writer(), writer()]);
+  console.log("concurrent lines = " + sink.lines().length);   // 400
+
+  // raise the level at run time: a disabled call never builds its text
+  let built = 0;
+  log.setLevel(Level.ERROR);
+  log.log(Level.INFO, () => { built++; return "hidden"; });
+  console.log("INFO built " + built + " strings");
+  log.log(Level.ERROR, () => { built++; return "kept"; });
+  console.log("ERROR built " + built + " strings in total");
+}
+
+main();` },
+          { lang: 'cpp', code: String.raw`
+enum class Level { DEBUG, INFO, WARN, ERROR };
+
+bool atLeast(Level a, Level b) { return static_cast<int>(a) >= static_cast<int>(b); }
+
+string levelName(Level l) {
+    static const char* names[] = {"DEBUG", "INFO", "WARN", "ERROR"};
+    return names[static_cast<int>(l)];
+}
+
+struct Msg {
+    Level level;
+    string text;
+    long long time;
+};
+
+using Formatter = function<string(const Msg&)>;
+
+class Sink {
+    const Level min;
+    const Formatter fmt;
+    unique_ptr<Sink> next;                   // each link owns the one after it
+    vector<string> written;
+    mutable mutex mu;
+protected:
+    virtual void write(const string& line) {
+        lock_guard<mutex> lock(mu);
+        written.push_back(line);
+    }
+public:
+    Sink(Level m, Formatter f) : min(m), fmt(move(f)) {}
+    virtual ~Sink() = default;
+    Sink* linkWith(unique_ptr<Sink> n) { next = move(n); return next.get(); }
+    void handle(const Msg& m) {
+        if (atLeast(m.level, min)) write(fmt(m));
+        if (next) next->handle(m);
+    }
+    vector<string> lines() const {
+        lock_guard<mutex> lock(mu);
+        return written;
+    }
+};
+class ConsoleSink : public Sink {
+protected:
+    void write(const string& line) override { Sink::write(line); cout << line << "\n"; }
+public:
+    using Sink::Sink;
+};
+class FileSink : public Sink { public: using Sink::Sink; };
+class AlertSink : public Sink { public: using Sink::Sink; };
+
+class SimpleLogger {
+    atomic<int> level;
+    Sink& head;
+public:
+    SimpleLogger(Level l, Sink& h) : level(static_cast<int>(l)), head(h) {}
+    void setLevel(Level l) { level = static_cast<int>(l); }
+    void log(Level l, const function<string()>& text) {
+        if (static_cast<int>(l) < level) return;          // gate first: no string built
+        long long now = chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch()).count();
+        head.handle(Msg{l, text(), now});
+    }
+    void debug(const string& s) { log(Level::DEBUG, [&] { return s; }); }
+    void info(const string& s) { log(Level::INFO, [&] { return s; }); }
+    void error(const string& s) { log(Level::ERROR, [&] { return s; }); }
+};
+
+string show(const vector<string>& items) {
+    string out = "[";
+    for (size_t i = 0; i < items.size(); i++) out += (i ? ", " : "") + items[i];
+    return out + "]";
+}
+
+int main() {
+    Formatter plain = [](const Msg& m) { return "[" + levelName(m.level) + "] " + m.text; };
+    auto console = make_unique<ConsoleSink>(Level::DEBUG, plain);
+    auto file = make_unique<FileSink>(Level::INFO, plain);
+    auto alert = make_unique<AlertSink>(Level::ERROR, [](const Msg& m) { return "PAGE: " + m.text; });
+    FileSink* filePtr = file.get();                       // the chain owns the sinks; keep views to read them
+    AlertSink* alertPtr = alert.get();
+    console->linkWith(move(file))->linkWith(move(alert));
+    SimpleLogger log(Level::INFO, *console);
+
+    log.debug("a");
+    log.info("b");
+    log.error("c");
+    cout << "file=" << show(filePtr->lines()) << " alert=" << show(alertPtr->lines()) << "\n";
+
+    // concurrency smoke test: 4 threads x 100 lines, nothing lost
+    FileSink sink(Level::INFO, plain);
+    SimpleLogger multi(Level::INFO, sink);
+    {
+        vector<jthread> pool;
+        for (int t = 0; t < 4; t++)
+            pool.emplace_back([&multi] { for (int i = 0; i < 100; i++) multi.info("x" + to_string(i)); });
+    }                                                      // jthread joins when the vector is destroyed
+    cout << "concurrent lines = " << sink.lines().size() << "\n";   // 400
+
+    // raise the level at run time: a disabled call never builds its text
+    int built = 0;
+    log.setLevel(Level::ERROR);
+    log.log(Level::INFO, [&] { built++; return string("hidden"); });
+    cout << "INFO built " << built << " strings\n";
+    log.log(Level::ERROR, [&] { built++; return string("kept"); });
+    cout << "ERROR built " << built << " strings in total\n";
+}` }
+        ],
         complexity: `<p>Gate check O(1). A passing message costs O(H) for H sinks in the chain plus formatting. Memory: one immutable message per call shared by all sinks.</p>`,
         followUps: ['Make the File sink asynchronous without changing Sink or Logger (hint: Decorator).', 'Add per-package levels (com.app.db = DEBUG) — what new class do you need?', 'How would you rotate the file sink every 10 MB?', 'Add a filter that masks credit-card numbers before any sink sees them.']
       }
@@ -640,7 +2114,9 @@ record StoredMessage(long offset, String key, String value, long timestamp) {
 record RecordMetadata(String topic, int partition, long offset) { }
 
 // Identifies one partition of one topic (used as a map key for offsets).
-record TopicPartition(String topic, int partition) { }
+record TopicPartition(String topic, int partition) {
+    public String toString() { return topic + "-" + partition; }   // short form for printing
+}
 
 // A partition = an append-only list. Messages are never changed, only appended (and old ones expired).
 class Partition {
@@ -823,7 +2299,783 @@ public class PubSubDemo {
         // Retention deletes old messages; an expired committed offset jumps to the earliest kept one.
         broker.topic("orders").partitions.get(0).deleteBefore(1);
         System.out.println("p0 now starts at offset " + broker.topic("orders").partitions.get(0).startOffset());
+
+        // Failure paths: reading a deleted offset, and a stale bookmark that points at a deleted message.
+        try { broker.topic("orders").partitions.get(0).read(0, 5); }
+        catch (IllegalArgumentException e) { System.out.println("read p0@0: " + e.getMessage()); }
+        broker.commit("audit", new TopicPartition("orders", 0), 0);
+        GroupConsumer audit = new ConsumerGroup("audit", "orders", broker).join("x1");
+        System.out.println("audit polled " + audit.poll(100).size() + " of 8 (p0@0 was deleted, stale bookmark skipped ahead)");
+        try { producer.send("payments", "u1", "x"); }
+        catch (IllegalArgumentException e) { System.out.println("send: " + e.getMessage()); }
     }
+}`;
+  var MQ_CORE_PY = String.raw`
+# ===== A Kafka-like, in-memory pub-sub log: topics, partitions, offsets, consumer groups =====
+import itertools
+import threading
+import time
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Optional
+
+
+# One stored message. The offset is its permanent "page number" inside its partition.
+@dataclass(frozen=True)
+class StoredMessage:
+    offset: int
+    key: Optional[str]
+    value: str
+    timestamp: int
+
+    def __str__(self) -> str:                 # short form for printing
+        return f"{'null' if self.key is None else self.key}:{self.value}@{self.offset}"
+
+
+# Where a published message landed.
+@dataclass(frozen=True)
+class RecordMetadata:
+    topic: str
+    partition: int
+    offset: int
+
+
+# Identifies one partition of one topic. Frozen dataclasses are hashable, so it works as a dict key.
+@dataclass(frozen=True)
+class TopicPartition:
+    topic: str
+    partition: int
+
+    def __str__(self) -> str:
+        return f"{self.topic}-{self.partition}"
+
+
+# A partition = an append-only list. Messages are never changed, only appended (and old ones expired).
+class Partition:
+    def __init__(self, pid: int) -> None:
+        self.id = pid
+        self._log: list[StoredMessage] = []
+        self._start_offset = 0                # first offset still kept after retention
+        self._lock = threading.Lock()
+
+    def append(self, key: Optional[str], value: str) -> int:
+        with self._lock:
+            offset = self._start_offset + len(self._log)          # next page number
+            self._log.append(StoredMessage(offset, key, value, int(time.time() * 1000)))
+            return offset
+
+    # Read up to max messages starting AT from_offset. Reading never deletes anything.
+    def read(self, from_offset: int, max_count: int) -> list[StoredMessage]:
+        with self._lock:
+            if from_offset < self._start_offset:
+                raise ValueError(f"offset {from_offset} already deleted")
+            start = from_offset - self._start_offset
+            return self._log[start:start + max_count]              # slicing already returns a copy
+
+    def start_offset(self) -> int:
+        with self._lock:
+            return self._start_offset
+
+    def end_offset(self) -> int:              # "log-end offset": next offset to write
+        with self._lock:
+            return self._start_offset + len(self._log)
+
+    # Retention: drop everything before new_start (time/size based in real Kafka).
+    def delete_before(self, new_start: int) -> None:
+        with self._lock:
+            n = min(len(self._log), max(0, new_start - self._start_offset))
+            del self._log[:n]
+            self._start_offset += n
+
+
+# Strategy: which partition gets a message.
+class Partitioner(ABC):
+    @abstractmethod
+    def choose(self, key: Optional[str], num_partitions: int) -> int: ...
+
+
+def java_hash(s: str) -> int:
+    """Java's String.hashCode (31*h + c, wrapped to 32 bits) so every language picks the same partition."""
+    h = 0
+    for ch in s:
+        h = (31 * h + ord(ch)) & 0xFFFFFFFF
+    return h - (1 << 32) if h >= (1 << 31) else h
+
+
+class KeyHashPartitioner(Partitioner):
+    def __init__(self) -> None:
+        self._round_robin = itertools.count()
+        self._lock = threading.Lock()
+
+    def choose(self, key: Optional[str], n: int) -> int:
+        if key is None:                       # no key: spread evenly
+            with self._lock:
+                return next(self._round_robin) % n
+        return java_hash(key) % n             # same key -> same partition -> ordered (% is floor-mod in Python)
+
+
+class Topic:
+    def __init__(self, name: str, count: int) -> None:
+        self.name = name
+        self.partitions = [Partition(i) for i in range(count)]
+
+
+# The broker owns topics and the committed offsets of every consumer group.
+class Broker:
+    def __init__(self) -> None:
+        self._topics: dict[str, Topic] = {}
+        self._committed: dict[str, dict[TopicPartition, int]] = {}
+        self._lock = threading.Lock()
+
+    def create_topic(self, name: str, partitions: int) -> Topic:
+        with self._lock:
+            return self._topics.setdefault(name, Topic(name, partitions))
+
+    def topic(self, name: str) -> Topic:
+        t = self._topics.get(name)
+        if t is None:
+            raise ValueError(f"no topic {name}")
+        return t
+
+    def append(self, topic: str, partition: int, key: Optional[str], value: str) -> RecordMetadata:
+        off = self.topic(topic).partitions[partition].append(key, value)
+        return RecordMetadata(topic, partition, off)
+
+    # Committed offset = "next offset this GROUP should read". Missing = never committed.
+    def commit(self, group: str, tp: TopicPartition, next_offset: int) -> None:
+        with self._lock:
+            offsets = self._committed.setdefault(group, {})
+            offsets[tp] = max(offsets.get(tp, next_offset), next_offset)   # never moves backwards
+
+    def committed(self, group: str, tp: TopicPartition) -> Optional[int]:
+        with self._lock:
+            return self._committed.get(group, {}).get(tp)
+
+
+class Producer:
+    def __init__(self, broker: Broker, partitioner: Partitioner) -> None:
+        self._broker = broker
+        self._partitioner = partitioner
+
+    def send(self, topic: str, key: Optional[str], value: str) -> RecordMetadata:
+        p = self._partitioner.choose(key, len(self._broker.topic(topic).partitions))
+        return self._broker.append(topic, p, key, value)
+
+
+# Group coordinator: decides which member reads which partition (each partition -> exactly ONE member).
+class ConsumerGroup:
+    def __init__(self, group_id: str, topic: str, broker: Broker) -> None:
+        self.group_id = group_id
+        self.topic = topic
+        self._broker = broker
+        self._members: list["GroupConsumer"] = []
+        self._lock = threading.RLock()
+
+    def join(self, consumer_id: str) -> "GroupConsumer":
+        with self._lock:
+            c = GroupConsumer(consumer_id, self, self._broker)
+            self._members.append(c)
+            self._rebalance()
+            return c
+
+    def leave(self, c: "GroupConsumer") -> None:      # crash or shutdown
+        with self._lock:
+            self._members.remove(c)
+            self._rebalance()
+
+    # Round-robin assignment; every member restarts from the COMMITTED offsets.
+    def _rebalance(self) -> None:
+        self._members.sort(key=lambda m: m.id)
+        for m in self._members:
+            m.clear_assignment()
+        n = len(self._broker.topic(self.topic).partitions)
+        for p in range(n):
+            if not self._members:
+                break
+            self._members[p % len(self._members)].assign(TopicPartition(self.topic, p))
+
+
+class GroupConsumer:
+    def __init__(self, cid: str, group: ConsumerGroup, broker: Broker) -> None:
+        self.id = cid
+        self._group = group
+        self._broker = broker
+        self._position: dict[TopicPartition, int] = {}
+
+    def clear_assignment(self) -> None:
+        self._position.clear()
+
+    def assign(self, tp: TopicPartition) -> None:
+        p = self._broker.topic(tp.topic).partitions[tp.partition]
+        committed = self._broker.committed(self._group.group_id, tp)
+        start = p.start_offset() if committed is None else committed       # auto.offset.reset = earliest
+        self._position[tp] = max(start, p.start_offset())                  # committed offset may be expired
+
+    def assignment(self) -> list[TopicPartition]:
+        return sorted(self._position, key=lambda tp: tp.partition)
+
+    # Pull model: the consumer asks for data at its own pace.
+    def poll(self, max_per_partition: int) -> list[StoredMessage]:
+        out: list[StoredMessage] = []
+        for tp in self.assignment():
+            p = self._broker.topic(tp.topic).partitions[tp.partition]
+            batch = p.read(self._position[tp], max_per_partition)
+            if batch:
+                self._position[tp] = batch[-1].offset + 1                   # advance local position
+            out.extend(batch)
+        return out
+
+    # At-least-once: call AFTER processing. A crash before this = those messages are re-read by someone.
+    def commit_sync(self) -> None:
+        for tp, nxt in self._position.items():
+            self._broker.commit(self._group.group_id, tp, nxt)
+
+
+def show(items: list) -> str:
+    return "[" + ", ".join(str(i) for i in items) + "]"
+
+
+def main() -> None:
+    broker = Broker()
+    broker.create_topic("orders", 3)
+    producer = Producer(broker, KeyHashPartitioner())
+    events = [("u1", "login"), ("u2", "view"), ("u1", "cart"), ("u3", "view"),
+              ("u2", "pay"), ("u1", "buy"), ("u3", "exit"), (None, "heartbeat")]
+    for key, value in events:
+        md = producer.send("orders", key, value)
+        print(f"sent {'null' if key is None else key}:{value} -> p{md.partition}@{md.offset}")
+
+    billing = ConsumerGroup("billing", "orders", broker)
+    c1 = billing.join("c1")
+    c2 = billing.join("c2")
+    print(f"c1 owns {show(c1.assignment())}, c2 owns {show(c2.assignment())}")
+
+    print(f"c1 polled {show(c1.poll(2))}")
+    c1.commit_sync()
+    print(f"c2 polled {show(c2.poll(2))}  ...and crashes before commit!")
+    billing.leave(c2)                                   # rebalance: c1 now owns all partitions
+    again = c1.poll(10)
+    print(f"after rebalance c1 got {len(again)} msgs (includes c2's uncommitted = redelivery)")
+    c1.commit_sync()
+
+    # A second group reads the SAME data independently, from the beginning.
+    analytics = ConsumerGroup("analytics", "orders", broker)
+    a1 = analytics.join("a1")
+    print(f"analytics read {len(a1.poll(100))} of 8 messages")
+
+    # Retention deletes old messages; an expired committed offset jumps to the earliest kept one.
+    broker.topic("orders").partitions[0].delete_before(1)
+    print(f"p0 now starts at offset {broker.topic('orders').partitions[0].start_offset()}")
+
+    # Failure paths: reading a deleted offset, and a stale bookmark that points at a deleted message.
+    try:
+        broker.topic("orders").partitions[0].read(0, 5)
+    except ValueError as e:
+        print(f"read p0@0: {e}")
+    broker.commit("audit", TopicPartition("orders", 0), 0)
+    audit = ConsumerGroup("audit", "orders", broker).join("x1")
+    print(f"audit polled {len(audit.poll(100))} of 8 (p0@0 was deleted, stale bookmark skipped ahead)")
+    try:
+        producer.send("payments", "u1", "x")
+    except ValueError as e:
+        print(f"send: {e}")
+
+
+if __name__ == "__main__":
+    main()`;
+  var MQ_CORE_TS = String.raw`
+// ===== A Kafka-like, in-memory pub-sub log: topics, partitions, offsets, consumer groups =====
+
+// One stored message. The offset is its permanent "page number" inside its partition.
+interface StoredMessage {
+  readonly offset: number;
+  readonly key: string | null;
+  readonly value: string;
+  readonly timestamp: number;
+}
+const showMessage = (m: StoredMessage): string => (m.key ?? "null") + ":" + m.value + "@" + m.offset;   // short form
+
+// Where a published message landed.
+interface RecordMetadata { readonly topic: string; readonly partition: number; readonly offset: number; }
+
+// Identifies one partition of one topic. Objects compare by identity, so we key maps by this string.
+interface TopicPartition { readonly topic: string; readonly partition: number; }
+const tpKey = (tp: TopicPartition): string => tp.topic + "-" + tp.partition;
+
+// A partition = an append-only list. Messages are never changed, only appended (and old ones expired).
+class Partition {
+  private log: StoredMessage[] = [];
+  private start = 0;                          // first offset still kept after retention
+
+  constructor(readonly id: number) {}
+
+  append(key: string | null, value: string): number {
+    const offset = this.start + this.log.length;                      // next page number
+    this.log.push({ offset, key, value, timestamp: Date.now() });
+    return offset;
+  }
+
+  // Read up to max messages starting AT fromOffset. Reading never deletes anything.
+  read(fromOffset: number, max: number): StoredMessage[] {
+    if (fromOffset < this.start) throw new Error("offset " + fromOffset + " already deleted");
+    const from = fromOffset - this.start;
+    return this.log.slice(from, from + max);                          // slice returns a copy
+  }
+
+  startOffset(): number { return this.start; }
+  endOffset(): number { return this.start + this.log.length; }        // "log-end offset": next offset to write
+
+  // Retention: drop everything before newStart (time/size based in real Kafka).
+  deleteBefore(newStart: number): void {
+    const n = Math.min(this.log.length, Math.max(0, newStart - this.start));
+    this.log.splice(0, n);
+    this.start += n;
+  }
+}
+
+// Strategy: which partition gets a message.
+interface Partitioner { choose(key: string | null, numPartitions: number): number; }
+
+// Java's String.hashCode (31*h + c, wrapped to 32 bits) so every language picks the same partition.
+function javaHash(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  return h;
+}
+const floorMod = (a: number, n: number): number => ((a % n) + n) % n;   // JS % keeps the sign of a
+
+class KeyHashPartitioner implements Partitioner {
+  private roundRobin = 0;
+  choose(key: string | null, n: number): number {
+    if (key === null) return floorMod(this.roundRobin++, n);            // no key: spread evenly
+    return floorMod(javaHash(key), n);                                  // same key -> same partition -> ordered
+  }
+}
+
+class Topic {
+  readonly partitions: Partition[] = [];
+  constructor(readonly name: string, count: number) {
+    for (let i = 0; i < count; i++) this.partitions.push(new Partition(i));
+  }
+}
+
+// The broker owns topics and the committed offsets of every consumer group.
+class Broker {
+  private readonly topics = new Map<string, Topic>();
+  private readonly committedOffsets = new Map<string, Map<string, number>>();   // group -> "topic-p" -> offset
+
+  createTopic(name: string, partitions: number): Topic {
+    let t = this.topics.get(name);
+    if (t === undefined) { t = new Topic(name, partitions); this.topics.set(name, t); }
+    return t;
+  }
+  topic(name: string): Topic {
+    const t = this.topics.get(name);
+    if (t === undefined) throw new Error("no topic " + name);
+    return t;
+  }
+  append(topic: string, partition: number, key: string | null, value: string): RecordMetadata {
+    const offset = this.topic(topic).partitions[partition].append(key, value);
+    return { topic, partition, offset };
+  }
+  // Committed offset = "next offset this GROUP should read". Missing = never committed.
+  commit(group: string, tp: TopicPartition, nextOffset: number): void {
+    let offsets = this.committedOffsets.get(group);
+    if (offsets === undefined) { offsets = new Map(); this.committedOffsets.set(group, offsets); }
+    offsets.set(tpKey(tp), Math.max(offsets.get(tpKey(tp)) ?? nextOffset, nextOffset));   // never moves backwards
+  }
+  committed(group: string, tp: TopicPartition): number | undefined {
+    return this.committedOffsets.get(group)?.get(tpKey(tp));
+  }
+}
+
+class Producer {
+  constructor(private readonly broker: Broker, private readonly partitioner: Partitioner) {}
+  send(topic: string, key: string | null, value: string): RecordMetadata {
+    const p = this.partitioner.choose(key, this.broker.topic(topic).partitions.length);
+    return this.broker.append(topic, p, key, value);
+  }
+}
+
+// Group coordinator: decides which member reads which partition (each partition -> exactly ONE member).
+class ConsumerGroup {
+  private members: GroupConsumer[] = [];
+  constructor(readonly groupId: string, readonly topic: string, private readonly broker: Broker) {}
+
+  join(consumerId: string): GroupConsumer {
+    const c = new GroupConsumer(consumerId, this, this.broker);
+    this.members.push(c);
+    this.rebalance();
+    return c;
+  }
+  leave(c: GroupConsumer): void {             // crash or shutdown
+    this.members = this.members.filter((m) => m !== c);
+    this.rebalance();
+  }
+
+  // Round-robin assignment; every member restarts from the COMMITTED offsets.
+  private rebalance(): void {
+    this.members.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    this.members.forEach((m) => m.clearAssignment());
+    const n = this.broker.topic(this.topic).partitions.length;
+    for (let p = 0; p < n && this.members.length > 0; p++)
+      this.members[p % this.members.length].assign({ topic: this.topic, partition: p });
+  }
+}
+
+class GroupConsumer {
+  private readonly position = new Map<number, number>();   // partition -> next offset to read
+
+  constructor(readonly id: string, private readonly group: ConsumerGroup, private readonly broker: Broker) {}
+
+  clearAssignment(): void { this.position.clear(); }
+  assign(tp: TopicPartition): void {
+    const p = this.broker.topic(tp.topic).partitions[tp.partition];
+    const start = this.broker.committed(this.group.groupId, tp) ?? p.startOffset();   // auto.offset.reset = earliest
+    this.position.set(tp.partition, Math.max(start, p.startOffset()));              // committed offset may be expired
+  }
+  assignment(): TopicPartition[] {
+    return [...this.position.keys()].sort((a, b) => a - b).map((partition) => ({ topic: this.group.topic, partition }));
+  }
+
+  // Pull model: the consumer asks for data at its own pace.
+  poll(maxPerPartition: number): StoredMessage[] {
+    const out: StoredMessage[] = [];
+    for (const tp of this.assignment()) {
+      const p = this.broker.topic(tp.topic).partitions[tp.partition];
+      const batch = p.read(this.position.get(tp.partition)!, maxPerPartition);
+      if (batch.length > 0) this.position.set(tp.partition, batch[batch.length - 1].offset + 1);   // advance local position
+      out.push(...batch);
+    }
+    return out;
+  }
+  // At-least-once: call AFTER processing. A crash before this = those messages are re-read by someone.
+  commitSync(): void {
+    for (const [partition, next] of this.position) this.broker.commit(this.group.groupId, { topic: this.group.topic, partition }, next);
+  }
+}
+
+const show = (items: string[]): string => "[" + items.join(", ") + "]";
+const showTps = (tps: TopicPartition[]): string => show(tps.map(tpKey));
+
+function main(): void {
+  const broker = new Broker();
+  broker.createTopic("orders", 3);
+  const producer = new Producer(broker, new KeyHashPartitioner());
+  const events: [string | null, string][] = [["u1", "login"], ["u2", "view"], ["u1", "cart"], ["u3", "view"],
+    ["u2", "pay"], ["u1", "buy"], ["u3", "exit"], [null, "heartbeat"]];
+  for (const [key, value] of events) {
+    const md = producer.send("orders", key, value);
+    console.log("sent " + (key ?? "null") + ":" + value + " -> p" + md.partition + "@" + md.offset);
+  }
+
+  const billing = new ConsumerGroup("billing", "orders", broker);
+  const c1 = billing.join("c1");
+  const c2 = billing.join("c2");
+  console.log("c1 owns " + showTps(c1.assignment()) + ", c2 owns " + showTps(c2.assignment()));
+
+  console.log("c1 polled " + show(c1.poll(2).map(showMessage)));
+  c1.commitSync();
+  console.log("c2 polled " + show(c2.poll(2).map(showMessage)) + "  ...and crashes before commit!");
+  billing.leave(c2);                          // rebalance: c1 now owns all partitions
+  const again = c1.poll(10);
+  console.log("after rebalance c1 got " + again.length + " msgs (includes c2's uncommitted = redelivery)");
+  c1.commitSync();
+
+  // A second group reads the SAME data independently, from the beginning.
+  const analytics = new ConsumerGroup("analytics", "orders", broker);
+  const a1 = analytics.join("a1");
+  console.log("analytics read " + a1.poll(100).length + " of 8 messages");
+
+  // Retention deletes old messages; an expired committed offset jumps to the earliest kept one.
+  broker.topic("orders").partitions[0].deleteBefore(1);
+  console.log("p0 now starts at offset " + broker.topic("orders").partitions[0].startOffset());
+
+  // Failure paths: reading a deleted offset, and a stale bookmark that points at a deleted message.
+  try { broker.topic("orders").partitions[0].read(0, 5); }
+  catch (e) { console.log("read p0@0: " + (e as Error).message); }
+  broker.commit("audit", { topic: "orders", partition: 0 }, 0);
+  const audit = new ConsumerGroup("audit", "orders", broker).join("x1");
+  console.log("audit polled " + audit.poll(100).length + " of 8 (p0@0 was deleted, stale bookmark skipped ahead)");
+  try { producer.send("payments", "u1", "x"); }
+  catch (e) { console.log("send: " + (e as Error).message); }
+}
+
+main();`;
+  var MQ_CORE_CPP = String.raw`
+// ===== A Kafka-like, in-memory pub-sub log: topics, partitions, offsets, consumer groups =====
+
+// One stored message. The offset is its permanent "page number" inside its partition.
+struct StoredMessage {
+    long long offset;
+    optional<string> key;                     // empty = message without a key
+    string value;
+    long long timestamp;
+};
+string str(const StoredMessage& m) { return m.key.value_or("null") + ":" + m.value + "@" + to_string(m.offset); }
+
+// Where a published message landed.
+struct RecordMetadata {
+    string topic;
+    int partition;
+    long long offset;
+};
+
+// Identifies one partition of one topic. The defaulted <=> makes it usable as a std::map key.
+struct TopicPartition {
+    string topic;
+    int partition;
+    auto operator<=>(const TopicPartition&) const = default;
+};
+string str(const TopicPartition& tp) { return tp.topic + "-" + to_string(tp.partition); }
+
+// A partition = an append-only list. Messages are never changed, only appended (and old ones expired).
+class Partition {
+    vector<StoredMessage> log;
+    long long start = 0;                      // first offset still kept after retention
+    mutable mutex mu;
+public:
+    long long append(const optional<string>& key, const string& value) {
+        lock_guard<mutex> lock(mu);
+        long long offset = start + static_cast<long long>(log.size());            // next page number
+        long long now = chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch()).count();
+        log.push_back({offset, key, value, now});
+        return offset;
+    }
+
+    // Read up to max messages starting AT fromOffset. Reading never deletes anything.
+    vector<StoredMessage> read(long long fromOffset, int max) const {
+        lock_guard<mutex> lock(mu);
+        if (fromOffset < start) throw invalid_argument("offset " + to_string(fromOffset) + " already deleted");
+        size_t from = static_cast<size_t>(fromOffset - start);
+        size_t to = min(log.size(), from + max);
+        if (from >= to) return {};
+        return vector<StoredMessage>(log.begin() + from, log.begin() + to);       // a copy
+    }
+
+    long long startOffset() const { lock_guard<mutex> lock(mu); return start; }
+    long long endOffset() const { lock_guard<mutex> lock(mu); return start + static_cast<long long>(log.size()); }   // next offset to write
+
+    // Retention: drop everything before newStart (time/size based in real Kafka).
+    void deleteBefore(long long newStart) {
+        lock_guard<mutex> lock(mu);
+        long long n = min<long long>(log.size(), max<long long>(0, newStart - start));
+        log.erase(log.begin(), log.begin() + n);
+        start += n;
+    }
+};
+
+// Strategy: which partition gets a message.
+class Partitioner {
+public:
+    virtual ~Partitioner() = default;
+    virtual int choose(const optional<string>& key, int numPartitions) = 0;
+};
+
+// Java's String.hashCode (31*h + c, wrapped to 32 bits) so every language picks the same partition.
+int32_t javaHash(const string& s) {
+    uint32_t h = 0;                           // unsigned arithmetic wraps; signed overflow would be undefined
+    for (unsigned char c : s) h = 31 * h + c;
+    return static_cast<int32_t>(h);
+}
+int floorMod(long long a, int n) { return static_cast<int>(((a % n) + n) % n); }
+
+class KeyHashPartitioner : public Partitioner {
+    atomic<int> roundRobin{0};
+public:
+    int choose(const optional<string>& key, int n) override {
+        if (!key) return floorMod(roundRobin++, n);       // no key: spread evenly
+        return floorMod(javaHash(*key), n);                // same key -> same partition -> ordered
+    }
+};
+
+class Topic {
+public:
+    const string name;
+    vector<unique_ptr<Partition>> partitions;
+    Topic(string n, int count) : name(move(n)) {
+        for (int i = 0; i < count; i++) partitions.push_back(make_unique<Partition>());
+    }
+};
+
+// The broker owns topics and the committed offsets of every consumer group.
+class Broker {
+    map<string, unique_ptr<Topic>> topics;
+    map<string, map<TopicPartition, long long>> committedOffsets;
+    mutable mutex mu;
+public:
+    Topic& createTopic(const string& name, int partitions) {
+        lock_guard<mutex> lock(mu);
+        auto& slot = topics[name];
+        if (!slot) slot = make_unique<Topic>(name, partitions);
+        return *slot;
+    }
+    Topic& topic(const string& name) {
+        lock_guard<mutex> lock(mu);
+        auto it = topics.find(name);
+        if (it == topics.end()) throw invalid_argument("no topic " + name);
+        return *it->second;
+    }
+    RecordMetadata append(const string& topicName, int partition, const optional<string>& key, const string& value) {
+        long long off = topic(topicName).partitions[partition]->append(key, value);
+        return {topicName, partition, off};
+    }
+    // Committed offset = "next offset this GROUP should read". Missing = never committed.
+    void commit(const string& group, const TopicPartition& tp, long long nextOffset) {
+        lock_guard<mutex> lock(mu);
+        auto& offsets = committedOffsets[group];
+        auto it = offsets.find(tp);
+        if (it == offsets.end()) offsets[tp] = nextOffset;
+        else it->second = max(it->second, nextOffset);    // never moves backwards
+    }
+    optional<long long> committed(const string& group, const TopicPartition& tp) const {
+        lock_guard<mutex> lock(mu);
+        auto g = committedOffsets.find(group);
+        if (g == committedOffsets.end()) return nullopt;
+        auto it = g->second.find(tp);
+        if (it == g->second.end()) return nullopt;
+        return it->second;
+    }
+};
+
+class Producer {
+    Broker& broker;
+    Partitioner& partitioner;
+public:
+    Producer(Broker& b, Partitioner& p) : broker(b), partitioner(p) {}
+    RecordMetadata send(const string& topic, const optional<string>& key, const string& value) {
+        int p = partitioner.choose(key, static_cast<int>(broker.topic(topic).partitions.size()));
+        return broker.append(topic, p, key, value);
+    }
+};
+
+class ConsumerGroup;
+
+class GroupConsumer {
+    const ConsumerGroup& group;
+    Broker& broker;
+    map<int, long long> position;             // partition -> next offset to read (sorted by partition)
+public:
+    const string id;
+    GroupConsumer(string i, const ConsumerGroup& g, Broker& b) : group(g), broker(b), id(move(i)) {}
+
+    void clearAssignment() { position.clear(); }
+    void assign(const TopicPartition& tp);
+    vector<TopicPartition> assignment() const;
+
+    // Pull model: the consumer asks for data at its own pace.
+    vector<StoredMessage> poll(int maxPerPartition);
+    // At-least-once: call AFTER processing. A crash before this = those messages are re-read by someone.
+    void commitSync();
+};
+
+// Group coordinator: decides which member reads which partition (each partition -> exactly ONE member).
+class ConsumerGroup {
+    Broker& broker;
+    vector<unique_ptr<GroupConsumer>> members;           // the group owns its consumers
+    mutex mu;
+
+    // Round-robin assignment; every member restarts from the COMMITTED offsets.
+    void rebalance() {
+        sort(members.begin(), members.end(), [](const auto& a, const auto& b) { return a->id < b->id; });
+        for (auto& m : members) m->clearAssignment();
+        int n = static_cast<int>(broker.topic(topic).partitions.size());
+        for (int p = 0; p < n && !members.empty(); p++)
+            members[p % members.size()]->assign({topic, p});
+    }
+public:
+    const string groupId, topic;
+    ConsumerGroup(string g, string t, Broker& b) : broker(b), groupId(move(g)), topic(move(t)) {}
+
+    GroupConsumer& join(const string& consumerId) {
+        lock_guard<mutex> lock(mu);
+        members.push_back(make_unique<GroupConsumer>(consumerId, *this, broker));
+        GroupConsumer& c = *members.back();
+        rebalance();
+        return c;
+    }
+    // Crash or shutdown. The member object is destroyed, so do not use its reference afterwards.
+    void leave(GroupConsumer& c) {
+        lock_guard<mutex> lock(mu);
+        members.erase(remove_if(members.begin(), members.end(), [&](const auto& m) { return m.get() == &c; }), members.end());
+        rebalance();
+    }
+};
+
+void GroupConsumer::assign(const TopicPartition& tp) {
+    Partition& p = *broker.topic(tp.topic).partitions[tp.partition];
+    long long start = broker.committed(group.groupId, tp).value_or(p.startOffset());   // auto.offset.reset = earliest
+    position[tp.partition] = max(start, p.startOffset());                              // committed offset may be expired
+}
+vector<TopicPartition> GroupConsumer::assignment() const {
+    vector<TopicPartition> out;
+    for (const auto& [partition, next] : position) out.push_back({group.topic, partition});
+    return out;
+}
+vector<StoredMessage> GroupConsumer::poll(int maxPerPartition) {
+    vector<StoredMessage> out;
+    for (auto& [partition, next] : position) {
+        Partition& p = *broker.topic(group.topic).partitions[partition];
+        vector<StoredMessage> batch = p.read(next, maxPerPartition);
+        if (!batch.empty()) next = batch.back().offset + 1;                            // advance local position
+        out.insert(out.end(), batch.begin(), batch.end());
+    }
+    return out;
+}
+void GroupConsumer::commitSync() {
+    for (const auto& [partition, next] : position) broker.commit(group.groupId, {group.topic, partition}, next);
+}
+
+template <class T>
+string show(const vector<T>& items) {
+    string out = "[";
+    for (size_t i = 0; i < items.size(); i++) out += (i ? ", " : "") + str(items[i]);
+    return out + "]";
+}
+
+int main() {
+    Broker broker;
+    broker.createTopic("orders", 3);
+    KeyHashPartitioner partitioner;
+    Producer producer(broker, partitioner);
+    vector<pair<optional<string>, string>> events = {{"u1", "login"}, {"u2", "view"}, {"u1", "cart"}, {"u3", "view"},
+        {"u2", "pay"}, {"u1", "buy"}, {"u3", "exit"}, {nullopt, "heartbeat"}};
+    for (const auto& [key, value] : events) {
+        RecordMetadata md = producer.send("orders", key, value);
+        cout << "sent " << key.value_or("null") << ":" << value << " -> p" << md.partition << "@" << md.offset << "\n";
+    }
+
+    ConsumerGroup billing("billing", "orders", broker);
+    GroupConsumer& c1 = billing.join("c1");
+    GroupConsumer& c2 = billing.join("c2");
+    cout << "c1 owns " << show(c1.assignment()) << ", c2 owns " << show(c2.assignment()) << "\n";
+
+    cout << "c1 polled " << show(c1.poll(2)) << "\n";
+    c1.commitSync();
+    cout << "c2 polled " << show(c2.poll(2)) << "  ...and crashes before commit!\n";
+    billing.leave(c2);                        // rebalance: c1 now owns all partitions
+    vector<StoredMessage> again = c1.poll(10);
+    cout << "after rebalance c1 got " << again.size() << " msgs (includes c2's uncommitted = redelivery)\n";
+    c1.commitSync();
+
+    // A second group reads the SAME data independently, from the beginning.
+    ConsumerGroup analytics("analytics", "orders", broker);
+    GroupConsumer& a1 = analytics.join("a1");
+    cout << "analytics read " << a1.poll(100).size() << " of 8 messages\n";
+
+    // Retention deletes old messages; an expired committed offset jumps to the earliest kept one.
+    broker.topic("orders").partitions[0]->deleteBefore(1);
+    cout << "p0 now starts at offset " << broker.topic("orders").partitions[0]->startOffset() << "\n";
+
+    // Failure paths: reading a deleted offset, and a stale bookmark that points at a deleted message.
+    try { broker.topic("orders").partitions[0]->read(0, 5); }
+    catch (const invalid_argument& e) { cout << "read p0@0: " << e.what() << "\n"; }
+    broker.commit("audit", {"orders", 0}, 0);
+    ConsumerGroup auditGroup("audit", "orders", broker);
+    GroupConsumer& audit = auditGroup.join("x1");
+    cout << "audit polled " << audit.poll(100).size() << " of 8 (p0@0 was deleted, stale bookmark skipped ahead)\n";
+    try { producer.send("payments", "u1", "x"); }
+    catch (const invalid_argument& e) { cout << "send: " << e.what() << "\n"; }
 }`;
 
   var MQ_NODES = [
@@ -964,7 +3216,7 @@ ${H.table(['Word', 'Plain meaning'], [
       '"Slow consumers must not affect producers" → pull model, bounded retention, lag monitoring.',
       '"Messages older than 7 days can be deleted" → retention by time/size; reset policy (earliest/latest) for expired offsets.'
     ],
-    code: [MQ_CORE],
+    code: [{ lang: 'java', code: MQ_CORE, alt: [{ lang: 'python', code: MQ_CORE_PY }, { lang: 'ts', code: MQ_CORE_TS }, { lang: 'cpp', code: MQ_CORE_CPP }] }],
     codeTitle: ['Complete in-memory pub-sub log — partitions, key partitioner, broker-stored offsets, consumer group rebalance, retention (runnable main)'],
     viz: [
       { title: 'Class diagram tour: producer → broker → partitions ← consumer groups', gen: function () { return mqClassViz(); } },
@@ -976,7 +3228,7 @@ ${H.table(['Key', 'hash', '% 3', '% 4'], [['u1', '166', 'P1', H.c('r', 'P2')], [
 <p>Increase to 4 partitions and u1\'s <b>new</b> events go to P2 while old ones are in P1. Two different consumers may now process u1\'s events at the same time — ${H.c('r', 'order is broken during the change')}. That is why Kafka partition counts are planned up front, and why "add partitions" is a classic follow-up.</p>` },
       { title: 'Two consumer groups, one log', html: `<p><b>billing</b> and <b>analytics</b> both subscribe to <code>orders</code>. Billing is at offset 50 on P0, analytics is at offset 12 (it is slower). Neither affects the other; the broker stores one copy of the data and two bookmarks.</p>${H.kv([['billing / P0', '50'], ['analytics / P0', '12'], ['log-end P0', '57']], { label: 'committed offsets' })}<p>Lag: billing 7, analytics 45. A new team "fraud" can join tomorrow and read from offset 0 (<code>earliest</code>) or only new data (<code>latest</code>).</p>` },
       { title: 'More consumers than partitions', html: `<p>Topic with 3 partitions, group with 5 consumers: c1→P0, c2→P1, c3→P2, ${H.c('y', 'c4 and c5 idle')}. The partition count is the <b>ceiling on parallelism</b> inside one group. Rule of thumb in interviews: choose partitions ≥ the max consumers you expect, but not thousands (each costs files, memory and rebalance time).</p>` },
-      { title: 'At-least-once + idempotent consumer = effectively once', html: `<p>Commit after processing; if the same message comes twice, skip it using a store of processed ids. In real systems the "processed ids" check and the side effect are written in the <b>same database transaction</b>.</p>`, code: String.raw`
+      { title: 'At-least-once + idempotent consumer = effectively once', html: `<p>Commit after processing; if the same message comes twice, skip it using a store of processed ids. In real systems the "processed ids" check and the side effect are written in the <b>same database transaction</b>.</p>`, code: { lang: 'java', code: String.raw`
 record Event(String orderId, int amount) { }
 
 class IdempotentBilling {
@@ -998,7 +3250,86 @@ class IdempotentBilling {
         b.handle(new Event("o1", 100));                      // re-delivered after a crash
         System.out.println("charged = " + b.totalCharged);   // 150, not 250
     }
-}` },
+}`,
+        alt: [
+          { lang: 'python', code: String.raw`
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Event:
+    order_id: str
+    amount: int
+
+
+class IdempotentBilling:
+    def __init__(self) -> None:
+        self._processed: set[str] = set()        # in production: a DB table with a unique key
+        self.total_charged = 0
+
+    def handle(self, e: Event) -> None:
+        if e.order_id in self._processed:        # already seen: a re-delivery
+            print(f"skip duplicate {e.order_id}")
+            return
+        self._processed.add(e.order_id)
+        self.total_charged += e.amount
+
+
+b = IdempotentBilling()
+b.handle(Event("o1", 100))
+b.handle(Event("o2", 50))
+b.handle(Event("o1", 100))                       # re-delivered after a crash
+print("charged =", b.total_charged)              # 150, not 250` },
+          { lang: 'ts', code: String.raw`
+interface OrderEvent { readonly orderId: string; readonly amount: number; }
+
+class IdempotentBilling {
+  private readonly processed = new Set<string>();   // in production: a DB table with a unique key
+  totalCharged = 0;
+
+  handle(e: OrderEvent): void {
+    if (this.processed.has(e.orderId)) {            // already seen: a re-delivery
+      console.log("skip duplicate " + e.orderId);
+      return;
+    }
+    this.processed.add(e.orderId);
+    this.totalCharged += e.amount;
+  }
+}
+
+const b = new IdempotentBilling();
+b.handle({ orderId: "o1", amount: 100 });
+b.handle({ orderId: "o2", amount: 50 });
+b.handle({ orderId: "o1", amount: 100 });           // re-delivered after a crash
+console.log("charged = " + b.totalCharged);         // 150, not 250` },
+          { lang: 'cpp', code: String.raw`
+struct Event {
+    string orderId;
+    int amount;
+};
+
+class IdempotentBilling {
+    unordered_set<string> processed;                // in production: a DB table with a unique key
+    int totalCharged_ = 0;
+public:
+    void handle(const Event& e) {
+        if (!processed.insert(e.orderId).second) {  // insert() reports false if already present
+            cout << "skip duplicate " << e.orderId << "\n";
+            return;
+        }
+        totalCharged_ += e.amount;
+    }
+    int totalCharged() const { return totalCharged_; }
+};
+
+int main() {
+    IdempotentBilling b;
+    b.handle({"o1", 100});
+    b.handle({"o2", 50});
+    b.handle({"o1", 100});                          // re-delivered after a crash
+    cout << "charged = " << b.totalCharged() << "\n";   // 150, not 250
+}` }
+        ] } },
       { title: 'Delivery semantics cheat sheet', html: `${H.table(['Guarantee', 'Recipe', 'Failure effect', 'Use for'], [
   ['At-most-once', 'commit, then process', 'crash → message lost', 'metrics, click logs'],
   ['At-least-once', 'process, then commit', 'crash → message repeated', 'most business events (+ idempotency)'],
@@ -1010,7 +3341,7 @@ class IdempotentBilling {
 <p><b>3. Producer side.</b> Batching (<code>linger.ms</code>, <code>batch.size</code>) and compression trade a few ms of latency for big throughput. The <b>idempotent producer</b> (default since Kafka 3.0) tags batches with producer id + sequence number so broker-side retries do not create duplicates. Messages without a key use a <b>sticky partitioner</b> (fill a batch for one partition, then switch) rather than strict round-robin.</p>
 <p><b>4. Rebalancing.</b> Old "eager" rebalances stopped the whole group. <b>Cooperative sticky</b> assignment moves only the partitions that must move; <b>static membership</b> avoids rebalances on quick restarts; Kafka 4.0 made the new server-side consumer protocol (KIP-848) generally available and removed ZooKeeper entirely (KRaft only). Share groups (KIP-932) add queue-style consumption where many consumers can share one partition with per-message acks.</p>
 <p><b>5. Log compaction.</b> For "latest value per key" topics (user profile, config), compaction keeps only the newest message for each key and tombstones (null value) delete a key. Offsets stay the same; there are just gaps.</p>
-<p><b>6. Concurrency in your LLD code.</b> Make <code>Partition.append/read</code> synchronized (or use a lock per partition — never one global lock). Offsets per group live in a <code>ConcurrentHashMap</code>. For blocking consumers, use <code>wait/notifyAll</code> or a <code>Condition</code> with a timeout (long polling), and always provide <code>shutdown()</code> that interrupts and joins with a bound so tests never hang.</p>`,
+<p><b>6. Concurrency in your LLD code.</b> Guard <code>Partition.append/read</code> with a lock (Java <code>synchronized</code>, Python <code>threading.Lock</code>, C++ <code>std::mutex</code>), one lock per partition and never one global lock. Keep the offsets per group in a concurrent or locked map. For blocking consumers, use a condition variable with a timeout (long polling): <code>wait/notifyAll</code> in Java, <code>threading.Condition</code> in Python, <code>std::condition_variable</code> in C++, and in JavaScript a promise that the producer resolves. Always provide <code>shutdown()</code> that stops the workers and joins with a bound so tests never hang.</p>`,
     aiEra: `<p><b>What AI changes:</b> event streams are now the main way data reaches AI systems — real-time features for ML models, change-data-capture feeding vector indexes, and queues that smooth bursty LLM inference traffic. AI tools also write consumer boilerplate in seconds.</p>
 <p><b>Use AI as a partner:</b> <code>Here is my consumer loop. List every point where a crash causes loss or duplication.</code> or <code>Generate a test where a consumer dies between process and commit, and assert re-delivery.</code></p>
 <p><b>Where AI goes wrong:</b> committing offsets before processing ("auto-commit" defaults), assuming global ordering across partitions, forgetting that adding partitions remaps keys, ignoring rebalances (a consumer keeps processing a partition it no longer owns), and writing <code>while(true)</code> loops with no shutdown path.</p>
@@ -1052,11 +3383,12 @@ class NaiveBus {
       mcq: { q: 'Subscriber B is 100× slower than A. In the log + offset design, what happens?', options: ['B\'s offset falls behind (lag grows); A and the publisher are unaffected', 'The publisher blocks until B catches up', 'A must wait for B to keep order', 'Messages are dropped for B'], answer: 0, explain: 'Each subscriber reads from the shared log at its own offset on its own thread. Slowness shows up as lag, not as back-pressure on others (until retention deletes data B has not read).' },
       hints: [
         `<p>Store each message <b>once</b> per topic in an append-only list. A subscriber is just "a thread + an offset".</p>`,
-        `<p>Worker loop: <code>off = topic.awaitReadable(offset)</code> (wait while offset ≥ size, re-reading the offset after every wake-up), consume, then advance. <code>publish</code> appends and calls <code>notifyAll()</code>. Use <code>AtomicInteger</code> for the offset so <code>resetOffset</code> from another thread is safe (compareAndSet when advancing).</p>`,
-        `<p>Edge cases: reset while a message is being processed (CAS keeps the reset), subscriber throws (catch, log, continue or move to a dead-letter list), shutdown (interrupt workers; <code>wait()</code> throws InterruptedException; join with timeout). Recipe: TopicLog{list, publish, awaitReadable, get} → Worker{sub, offset, run} → Queue{topics, workers, publish, subscribe, reset, shutdown}.</p>`
+        `<p>Worker loop: <code>off = topic.awaitReadable(offset)</code> (wait while offset ≥ size, re-reading the offset after every wake-up), consume, then advance. <code>publish</code> appends and wakes all waiters (<code>notifyAll()</code>). Use an atomic integer for the offset (Java <code>AtomicInteger</code>, C++ <code>std::atomic&lt;int&gt;</code>, Python an int behind a lock) so <code>resetOffset</code> from another thread is safe (compare-and-set when advancing).</p>`,
+        `<p>Edge cases: reset while a message is being processed (CAS keeps the reset), subscriber throws (catch, log, continue or move to a dead-letter list), shutdown (signal the workers: Java interrupts them, Python and C++ set a stop flag and wake them; join with a timeout). Recipe: TopicLog{list, publish, awaitReadable, get} → Worker{sub, offset, run} → Queue{topics, workers, publish, subscribe, reset, shutdown}.</p>`
       ],
+      tests: { io: true, cases: [{ stdin: '', stdout: "published 3 messages while B was stuck, B has received 0\nall delivered=true A=[m1, m2, m3, m1, m2, m3] B=[m1, m2, m3] C=[m1, m3]\nerrors=[C failed on m2: bad message]\npublish failed: unknown topic audit\nshutdown complete\n" }] },
       solution: {
-        approach: `<p>One <code>TopicLog</code> per topic holds messages in an <code>ArrayList</code> guarded by its monitor. Each subscription is a <code>SubscriberWorker</code> thread with an <code>AtomicInteger</code> offset. The worker blocks in <code>awaitReadable(offset)</code> using <code>wait()</code> until a message exists at its <i>current</i> offset (re-read on every wake-up, so a reset is never missed), consumes it, then advances with <code>compareAndSet(off, off + 1)</code> so a concurrent <code>resetOffset</code> is never overwritten. <code>publish</code> = append + <code>notifyAll</code>. <code>shutdown</code> interrupts all workers and joins with a timeout.</p>`,
+        approach: `<p>One <code>TopicLog</code> per topic holds messages in a list guarded by its lock. Each subscription is a <code>SubscriberWorker</code> thread with an atomic offset. The worker blocks in <code>awaitReadable(offset)</code> on a condition variable (<code>wait()</code> in Java) until a message exists at its <i>current</i> offset (re-read on every wake-up, so a reset is never missed), consumes it, then advances with <code>compareAndSet(off, off + 1)</code> so a concurrent <code>resetOffset</code> is never overwritten. <code>publish</code> = append + wake all. <code>shutdown</code> stops all workers and joins with a timeout. TypeScript has no threads: each worker is an async loop that sleeps on a promise, and the compare-and-set becomes "advance only if the offset is unchanged".</p>`,
         code: String.raw`
 interface Subscriber { String id(); void consume(String msg) throws Exception; }
 
@@ -1078,6 +3410,7 @@ class SubscriberWorker implements Runnable {
     final TopicLog topic;
     final Subscriber sub;
     final AtomicInteger offset = new AtomicInteger();
+    final List<String> errors = new CopyOnWriteArrayList<>();   // failed deliveries, so tests can read them
     SubscriberWorker(TopicLog topic, Subscriber sub) { this.topic = topic; this.sub = sub; }
     public void run() {
         try {
@@ -1085,7 +3418,7 @@ class SubscriberWorker implements Runnable {
                 int off = topic.awaitReadable(offset);
                 String msg = topic.get(off);
                 try { sub.consume(msg); }
-                catch (Exception e) { System.out.println(sub.id() + " failed on " + msg + ": " + e.getMessage()); }
+                catch (Exception e) { errors.add(sub.id() + " failed on " + msg + ": " + e.getMessage()); }  // one bad message never stops the loop
                 offset.compareAndSet(off, off + 1);       // if reset happened meanwhile, keep the reset
             }
         } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
@@ -1109,6 +3442,11 @@ class MessageQueue {
         t.start();
     }
     void resetOffset(String topic, String subId, int offset) { workers.get(topic + "/" + subId).reset(offset); }
+    List<String> errors() {
+        List<String> all = new ArrayList<>();
+        workers.values().forEach(w -> all.addAll(w.errors));
+        return all;
+    }
     void shutdown() throws InterruptedException {
         threads.forEach(Thread::interrupt);
         for (Thread t : threads) t.join(2000);
@@ -1121,33 +3459,576 @@ class MessageQueue {
 }
 
 class RecordingSub implements Subscriber {
-    final String id; final long delayMs; final CountDownLatch latch;
+    final String id; final CountDownLatch gate; final String poison; final CountDownLatch latch;
     final List<String> got = Collections.synchronizedList(new ArrayList<>());
-    RecordingSub(String id, long delayMs, CountDownLatch latch) { this.id = id; this.delayMs = delayMs; this.latch = latch; }
+    // gate: a slow subscriber is stuck until the gate opens (null = fast); poison: a message that makes consume() throw
+    RecordingSub(String id, CountDownLatch gate, String poison, CountDownLatch latch) {
+        this.id = id; this.gate = gate; this.poison = poison; this.latch = latch;
+    }
     public String id() { return id; }
-    public void consume(String m) throws Exception { if (delayMs > 0) Thread.sleep(delayMs); got.add(m); latch.countDown(); }
+    public void consume(String m) throws Exception {
+        if (gate != null) gate.await();
+        if (m.equals(poison)) throw new Exception("bad message");
+        got.add(m); latch.countDown();
+    }
 }
 
 class PubSubSolution {
     public static void main(String[] args) throws Exception {
         MessageQueue q = new MessageQueue();
         q.createTopic("orders");
-        CountDownLatch done = new CountDownLatch(9);              // A: 3 + 3 replayed, B: 3
-        RecordingSub a = new RecordingSub("A", 0, done);
-        RecordingSub b = new RecordingSub("B", 5, done);
+        CountDownLatch done = new CountDownLatch(11);             // A: 3 + 3 replayed, B: 3, C: 2 (m2 fails)
+        CountDownLatch gateB = new CountDownLatch(1);             // B is "slow": stuck until we open the gate
+        RecordingSub a = new RecordingSub("A", null, null, done);
+        RecordingSub b = new RecordingSub("B", gateB, null, done);
+        RecordingSub c = new RecordingSub("C", null, "m2", done);
         q.subscribe("orders", a);
         q.subscribe("orders", b);
-        long t = System.nanoTime();
+        q.subscribe("orders", c);
         for (String m : List.of("m1", "m2", "m3")) q.publish("orders", m);
-        System.out.println("publish took " + (System.nanoTime() - t) / 1000 + " us (not blocked by slow B)");
+        System.out.println("published 3 messages while B was stuck, B has received " + b.got.size());
+        gateB.countDown();                                        // B wakes up and catches up
         while (a.got.size() < 3) Thread.sleep(1);
         q.resetOffset("orders", "A", 0);                          // replay for A only
         boolean ok = done.await(2, TimeUnit.SECONDS);
-        System.out.println("all delivered=" + ok + " A=" + a.got + " B=" + b.got);
+        System.out.println("all delivered=" + ok + " A=" + a.got + " B=" + b.got + " C=" + c.got);
+        System.out.println("errors=" + q.errors());
+        try { q.publish("audit", "x"); }
+        catch (IllegalArgumentException e) { System.out.println("publish failed: " + e.getMessage()); }
         q.shutdown();
         System.out.println("shutdown complete");
     }
 }`,
+      alt: [
+          { lang: 'python', code: String.raw`
+import threading
+import time
+from abc import ABC, abstractmethod
+from typing import Optional
+
+
+class Subscriber(ABC):
+    @property
+    @abstractmethod
+    def id(self) -> str: ...
+
+    @abstractmethod
+    def consume(self, msg: str) -> None: ...
+
+
+class AtomicInt:
+    """A tiny lock-protected int with compare-and-set (Python has no AtomicInteger)."""
+
+    def __init__(self, value: int = 0) -> None:
+        self._value = value
+        self._lock = threading.Lock()
+
+    def get(self) -> int:
+        with self._lock:
+            return self._value
+
+    def set(self, value: int) -> None:
+        with self._lock:
+            self._value = value
+
+    def compare_and_set(self, expected: int, new: int) -> bool:
+        with self._lock:
+            if self._value != expected:
+                return False
+            self._value = new
+            return True
+
+
+class CountDownLatch:
+    def __init__(self, count: int) -> None:
+        self._count = count
+        self._cond = threading.Condition()
+
+    def count_down(self) -> None:
+        with self._cond:
+            self._count -= 1
+            if self._count <= 0:
+                self._cond.notify_all()
+
+    def wait(self, timeout: float) -> bool:
+        with self._cond:
+            return self._cond.wait_for(lambda: self._count <= 0, timeout)
+
+
+class TopicLog:
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self._messages: list[str] = []
+        self._cond = threading.Condition()
+
+    def publish(self, m: str) -> None:
+        with self._cond:
+            self._messages.append(m)
+            self._cond.notify_all()
+
+    # Re-reads the offset inside the loop, so a reset() wakes us up correctly. None = asked to stop.
+    def await_readable(self, offset: AtomicInt, stop: threading.Event) -> Optional[int]:
+        with self._cond:
+            while offset.get() >= len(self._messages) and not stop.is_set():
+                self._cond.wait()                      # no busy-waiting
+            return None if stop.is_set() else offset.get()
+
+    def get(self, i: int) -> str:
+        with self._cond:
+            return self._messages[i]
+
+    def wake_all(self) -> None:
+        with self._cond:
+            self._cond.notify_all()
+
+
+class SubscriberWorker:
+    def __init__(self, topic: TopicLog, sub: Subscriber) -> None:
+        self.topic = topic
+        self.sub = sub
+        self.offset = AtomicInt()
+        self.errors: list[str] = []                    # failed deliveries, so tests can read them
+        self.stop = threading.Event()
+        self.thread = threading.Thread(target=self._run, name=f"sub-{sub.id}", daemon=True)
+
+    def _run(self) -> None:
+        while not self.stop.is_set():
+            off = self.topic.await_readable(self.offset, self.stop)
+            if off is None:
+                return
+            msg = self.topic.get(off)
+            try:
+                self.sub.consume(msg)
+            except Exception as e:                     # one bad message never stops the loop
+                self.errors.append(f"{self.sub.id} failed on {msg}: {e}")
+            self.offset.compare_and_set(off, off + 1)  # if a reset happened meanwhile, keep the reset
+
+    def reset(self, new_offset: int) -> None:
+        self.offset.set(new_offset)
+        self.topic.wake_all()
+
+    def shutdown(self) -> None:
+        self.stop.set()
+        self.topic.wake_all()
+
+
+class MessageQueue:
+    def __init__(self) -> None:
+        self._topics: dict[str, TopicLog] = {}
+        self._workers: dict[str, SubscriberWorker] = {}
+        self._lock = threading.Lock()
+
+    def create_topic(self, name: str) -> None:
+        with self._lock:
+            self._topics.setdefault(name, TopicLog(name))
+
+    def publish(self, topic: str, msg: str) -> None:
+        self._get(topic).publish(msg)
+
+    def subscribe(self, topic: str, s: Subscriber) -> None:
+        w = SubscriberWorker(self._get(topic), s)
+        with self._lock:
+            self._workers[f"{topic}/{s.id}"] = w
+        w.thread.start()
+
+    def reset_offset(self, topic: str, sub_id: str, offset: int) -> None:
+        self._workers[f"{topic}/{sub_id}"].reset(offset)
+
+    def errors(self) -> list[str]:
+        with self._lock:
+            return [e for w in self._workers.values() for e in w.errors]
+
+    def shutdown(self) -> None:
+        with self._lock:
+            workers = list(self._workers.values())
+        for w in workers:
+            w.shutdown()
+        for w in workers:
+            w.thread.join(timeout=2)
+
+    def _get(self, name: str) -> TopicLog:
+        t = self._topics.get(name)
+        if t is None:
+            raise ValueError(f"unknown topic {name}")
+        return t
+
+
+class RecordingSub(Subscriber):
+    # gate: a slow subscriber is stuck until the gate opens (None = fast);
+    # poison: a message that makes consume() raise
+    def __init__(self, sid: str, gate: Optional[threading.Event], poison: Optional[str], latch: CountDownLatch) -> None:
+        self._id = sid
+        self.gate = gate
+        self.poison = poison
+        self.latch = latch
+        self.got: list[str] = []
+
+    @property
+    def id(self) -> str:
+        return self._id
+
+    def consume(self, m: str) -> None:
+        if self.gate is not None:
+            self.gate.wait()
+        if m == self.poison:
+            raise RuntimeError("bad message")
+        self.got.append(m)
+        self.latch.count_down()
+
+
+def show(items: list[str]) -> str:
+    return "[" + ", ".join(items) + "]"
+
+
+def main() -> None:
+    q = MessageQueue()
+    q.create_topic("orders")
+    done = CountDownLatch(11)                          # A: 3 + 3 replayed, B: 3, C: 2 (m2 fails)
+    gate_b = threading.Event()                         # B is "slow": stuck until we open the gate
+    a = RecordingSub("A", None, None, done)
+    b = RecordingSub("B", gate_b, None, done)
+    c = RecordingSub("C", None, "m2", done)
+    q.subscribe("orders", a)
+    q.subscribe("orders", b)
+    q.subscribe("orders", c)
+    for m in ["m1", "m2", "m3"]:
+        q.publish("orders", m)
+    print(f"published 3 messages while B was stuck, B has received {len(b.got)}")
+    gate_b.set()                                       # B wakes up and catches up
+    while len(a.got) < 3:
+        time.sleep(0.001)
+    q.reset_offset("orders", "A", 0)                   # replay for A only
+    ok = done.wait(2)
+    print(f"all delivered={str(ok).lower()} A={show(a.got)} B={show(b.got)} C={show(c.got)}")
+    print(f"errors={show(q.errors())}")
+    try:
+        q.publish("audit", "x")
+    except ValueError as e:
+        print(f"publish failed: {e}")
+    q.shutdown()
+    print("shutdown complete")
+
+
+if __name__ == "__main__":
+    main()` },
+          { lang: 'ts', code: String.raw`
+interface Subscriber {
+  readonly id: string;
+  consume(msg: string): Promise<void>;
+}
+
+// JavaScript has no threads here: each subscriber is an async loop that sleeps on a promise.
+class TopicLog {
+  private readonly messages: string[] = [];
+  private waiters: Array<() => void> = [];
+  constructor(readonly name: string) {}
+
+  publish(m: string): void {
+    this.messages.push(m);
+    this.wakeAll();
+  }
+  length(): number { return this.messages.length; }
+  get(i: number): string { return this.messages[i]; }
+  wakeAll(): void {
+    const w = this.waiters;
+    this.waiters = [];
+    w.forEach((resolve) => resolve());
+  }
+  // Sleeps until a wake-up; the caller re-checks its condition in a loop (no busy-waiting).
+  nextWakeUp(): Promise<void> {
+    return new Promise((resolve) => this.waiters.push(resolve));
+  }
+}
+
+class SubscriberWorker {
+  offset = 0;
+  readonly errors: string[] = [];                  // failed deliveries, so tests can read them
+  private stopped = false;
+  private running: Promise<void> = Promise.resolve();
+
+  constructor(private readonly topic: TopicLog, private readonly sub: Subscriber) {}
+
+  start(): void { this.running = this.run(); }
+
+  private async run(): Promise<void> {
+    while (!this.stopped) {
+      while (!this.stopped && this.offset >= this.topic.length()) await this.topic.nextWakeUp();
+      if (this.stopped) return;
+      const off = this.offset;
+      const msg = this.topic.get(off);
+      try { await this.sub.consume(msg); }
+      catch (e) { this.errors.push(this.sub.id + " failed on " + msg + ": " + (e as Error).message); }  // one bad message never stops the loop
+      if (this.offset === off) this.offset = off + 1;   // if a reset happened meanwhile, keep the reset
+    }
+  }
+
+  reset(newOffset: number): void { this.offset = newOffset; this.topic.wakeAll(); }
+  async shutdown(): Promise<void> { this.stopped = true; this.topic.wakeAll(); await this.running; }
+}
+
+class MessageQueue {
+  private readonly topics = new Map<string, TopicLog>();
+  private readonly workers = new Map<string, SubscriberWorker>();
+
+  createTopic(name: string): void { if (!this.topics.has(name)) this.topics.set(name, new TopicLog(name)); }
+  publish(topic: string, msg: string): void { this.get(topic).publish(msg); }
+  subscribe(topic: string, s: Subscriber): void {
+    const w = new SubscriberWorker(this.get(topic), s);
+    this.workers.set(topic + "/" + s.id, w);
+    w.start();
+  }
+  resetOffset(topic: string, subId: string, offset: number): void {
+    const w = this.workers.get(topic + "/" + subId);
+    if (w === undefined) throw new Error("unknown subscriber " + subId);
+    w.reset(offset);
+  }
+  errors(): string[] { return [...this.workers.values()].flatMap((w) => w.errors); }
+  async shutdown(): Promise<void> { await Promise.all([...this.workers.values()].map((w) => w.shutdown())); }
+  private get(name: string): TopicLog {
+    const t = this.topics.get(name);
+    if (t === undefined) throw new Error("unknown topic " + name);
+    return t;
+  }
+}
+
+class CountDownLatch {
+  private waiters: Array<() => void> = [];
+  constructor(private count: number) {}
+  countDown(): void {
+    if (--this.count <= 0) { this.waiters.forEach((r) => r()); this.waiters = []; }
+  }
+  // resolves true when the count reaches 0, false after timeoutMs
+  wait(timeoutMs: number): Promise<boolean> {
+    if (this.count <= 0) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(false), timeoutMs);
+      this.waiters.push(() => { clearTimeout(timer); resolve(true); });
+    });
+  }
+}
+
+class RecordingSub implements Subscriber {
+  readonly got: string[] = [];
+  // gate: a slow subscriber is stuck until the gate opens (null = fast);
+  // poison: a message that makes consume() throw
+  constructor(readonly id: string, private readonly gate: Promise<void> | null,
+              private readonly poison: string | null, private readonly latch: CountDownLatch) {}
+  async consume(m: string): Promise<void> {
+    if (this.gate !== null) await this.gate;
+    if (m === this.poison) throw new Error("bad message");
+    this.got.push(m);
+    this.latch.countDown();
+  }
+}
+
+const show = (items: string[]): string => "[" + items.join(", ") + "]";
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function main(): Promise<void> {
+  const q = new MessageQueue();
+  q.createTopic("orders");
+  const done = new CountDownLatch(11);             // A: 3 + 3 replayed, B: 3, C: 2 (m2 fails)
+  let openGate: () => void = () => {};
+  const gateB = new Promise<void>((resolve) => { openGate = resolve; });   // B is "slow": stuck until we open the gate
+  const a = new RecordingSub("A", null, null, done);
+  const b = new RecordingSub("B", gateB, null, done);
+  const c = new RecordingSub("C", null, "m2", done);
+  q.subscribe("orders", a);
+  q.subscribe("orders", b);
+  q.subscribe("orders", c);
+  for (const m of ["m1", "m2", "m3"]) q.publish("orders", m);
+  await sleep(10);                                 // let the workers run: A and C finish, B stays stuck
+  console.log("published 3 messages while B was stuck, B has received " + b.got.length);
+  openGate();                                      // B wakes up and catches up
+  while (a.got.length < 3) await sleep(1);
+  q.resetOffset("orders", "A", 0);                 // replay for A only
+  const ok = await done.wait(2000);
+  console.log("all delivered=" + ok + " A=" + show(a.got) + " B=" + show(b.got) + " C=" + show(c.got));
+  console.log("errors=" + show(q.errors()));
+  try { q.publish("audit", "x"); }
+  catch (e) { console.log("publish failed: " + (e as Error).message); }
+  await q.shutdown();
+  console.log("shutdown complete");
+}
+
+main();` },
+          { lang: 'cpp', code: String.raw`
+class Subscriber {
+public:
+    virtual ~Subscriber() = default;
+    virtual string id() const = 0;
+    virtual void consume(const string& msg) = 0;       // may throw
+};
+
+class CountDownLatch {
+    int count;
+    mutex mu;
+    condition_variable cv;
+public:
+    explicit CountDownLatch(int c) : count(c) {}
+    void countDown() {
+        lock_guard<mutex> lock(mu);
+        if (--count <= 0) cv.notify_all();
+    }
+    void await() {
+        unique_lock<mutex> lock(mu);
+        cv.wait(lock, [&] { return count <= 0; });
+    }
+    bool await(chrono::milliseconds timeout) {
+        unique_lock<mutex> lock(mu);
+        return cv.wait_for(lock, timeout, [&] { return count <= 0; });
+    }
+};
+
+class TopicLog {
+    vector<string> messages;
+    mutable mutex mu;
+    condition_variable cv;
+public:
+    const string name;
+    explicit TopicLog(string n) : name(move(n)) {}
+
+    void publish(const string& m) {
+        { lock_guard<mutex> lock(mu); messages.push_back(m); }
+        cv.notify_all();
+    }
+    // Sleeps until offset is readable or stop is set (no busy-waiting). Re-reads the atomic inside the predicate,
+    // so a reset() wakes us up correctly. Returns false when asked to stop.
+    bool awaitReadable(const atomic<int>& offset, const atomic<bool>& stop) {
+        unique_lock<mutex> lock(mu);
+        cv.wait(lock, [&] { return stop.load() || offset.load() < static_cast<int>(messages.size()); });
+        return !stop.load();
+    }
+    string get(int i) const { lock_guard<mutex> lock(mu); return messages[i]; }
+    void wakeAll() {
+        { lock_guard<mutex> lock(mu); }                 // take the lock so no waiter misses the wake-up
+        cv.notify_all();
+    }
+};
+
+class SubscriberWorker {
+    TopicLog& topic;
+    Subscriber& sub;
+    atomic<int> offset{0};
+    atomic<bool> stop{false};
+    vector<string> errors_;                             // failed deliveries, so tests can read them
+    mutable mutex errMu;
+    thread thr;
+
+    void run() {
+        while (topic.awaitReadable(offset, stop)) {
+            int off = offset.load();
+            string msg = topic.get(off);
+            try { sub.consume(msg); }
+            catch (const exception& e) {                // one bad message never stops the loop
+                lock_guard<mutex> lock(errMu);
+                errors_.push_back(sub.id() + " failed on " + msg + ": " + e.what());
+            }
+            offset.compare_exchange_strong(off, off + 1);   // if a reset happened meanwhile, keep the reset
+        }
+    }
+public:
+    SubscriberWorker(TopicLog& t, Subscriber& s) : topic(t), sub(s), thr([this] { run(); }) {}
+    ~SubscriberWorker() { shutdown(); }
+
+    void reset(int newOffset) { offset = newOffset; topic.wakeAll(); }
+    vector<string> errors() const { lock_guard<mutex> lock(errMu); return errors_; }
+    void shutdown() {
+        stop = true;
+        topic.wakeAll();
+        if (thr.joinable()) thr.join();
+    }
+};
+
+class MessageQueue {
+    map<string, unique_ptr<TopicLog>> topics;
+    map<string, unique_ptr<SubscriberWorker>> workers;
+    mutex mu;
+
+    TopicLog& get(const string& name) {
+        lock_guard<mutex> lock(mu);
+        auto it = topics.find(name);
+        if (it == topics.end()) throw invalid_argument("unknown topic " + name);
+        return *it->second;
+    }
+public:
+    void createTopic(const string& name) {
+        lock_guard<mutex> lock(mu);
+        if (!topics.count(name)) topics[name] = make_unique<TopicLog>(name);
+    }
+    void publish(const string& topic, const string& msg) { get(topic).publish(msg); }
+    // The queue does not own the subscriber: it must outlive the queue.
+    void subscribe(const string& topic, Subscriber& s) {
+        auto w = make_unique<SubscriberWorker>(get(topic), s);
+        lock_guard<mutex> lock(mu);
+        workers[topic + "/" + s.id()] = move(w);
+    }
+    void resetOffset(const string& topic, const string& subId, int offset) {
+        lock_guard<mutex> lock(mu);
+        workers.at(topic + "/" + subId)->reset(offset);
+    }
+    vector<string> errors() {
+        lock_guard<mutex> lock(mu);
+        vector<string> all;
+        for (auto& [key, w] : workers) for (auto& e : w->errors()) all.push_back(e);
+        return all;
+    }
+    void shutdown() {
+        lock_guard<mutex> lock(mu);
+        for (auto& [key, w] : workers) w->shutdown();   // each worker is told to stop, then joined
+    }
+};
+
+class RecordingSub : public Subscriber {
+    const string id_;
+    CountDownLatch* gate;                               // a slow subscriber is stuck until the gate opens (null = fast)
+    const string poison;                                // a message that makes consume() throw
+    CountDownLatch& latch;
+    vector<string> got_;
+    mutable mutex mu;
+public:
+    RecordingSub(string i, CountDownLatch* g, string p, CountDownLatch& l) : id_(move(i)), gate(g), poison(move(p)), latch(l) {}
+    string id() const override { return id_; }
+    void consume(const string& m) override {
+        if (gate) gate->await();
+        if (m == poison) throw runtime_error("bad message");
+        { lock_guard<mutex> lock(mu); got_.push_back(m); }
+        latch.countDown();
+    }
+    vector<string> got() const { lock_guard<mutex> lock(mu); return got_; }
+};
+
+string show(const vector<string>& items) {
+    string out = "[";
+    for (size_t i = 0; i < items.size(); i++) out += (i ? ", " : "") + items[i];
+    return out + "]";
+}
+
+int main() {
+    MessageQueue q;
+    q.createTopic("orders");
+    CountDownLatch done(11);                            // A: 3 + 3 replayed, B: 3, C: 2 (m2 fails)
+    CountDownLatch gateB(1);                            // B is "slow": stuck until we open the gate
+    RecordingSub a("A", nullptr, "", done);
+    RecordingSub b("B", &gateB, "", done);
+    RecordingSub c("C", nullptr, "m2", done);
+    q.subscribe("orders", a);
+    q.subscribe("orders", b);
+    q.subscribe("orders", c);
+    for (const char* m : {"m1", "m2", "m3"}) q.publish("orders", m);
+    cout << "published 3 messages while B was stuck, B has received " << b.got().size() << "\n";
+    gateB.countDown();                                  // B wakes up and catches up
+    while (a.got().size() < 3) this_thread::sleep_for(chrono::milliseconds(1));
+    q.resetOffset("orders", "A", 0);                    // replay for A only
+    bool ok = done.await(chrono::milliseconds(2000));
+    cout << "all delivered=" << boolalpha << ok << " A=" << show(a.got()) << " B=" << show(b.got()) << " C=" << show(c.got()) << "\n";
+    cout << "errors=" << show(q.errors()) << "\n";
+    try { q.publish("audit", "x"); }
+    catch (const invalid_argument& e) { cout << "publish failed: " << e.what() << "\n"; }
+    q.shutdown();
+    cout << "shutdown complete\n";
+}` }
+        ],
         complexity: `<p>publish O(1) amortised + waking waiters. Each delivery O(1). Memory O(total messages) — stored once regardless of subscriber count. Threads: one per subscriber (use a pool / virtual threads for thousands).</p>`,
         followUps: ['Add consumer groups: several workers share one subscription, one partition each.', 'Add retention: delete messages every subscriber has passed — how do you find the minimum offset quickly?', 'Add retries with backoff and a dead-letter topic for messages that fail 3 times.', 'Replace one thread per subscriber with virtual threads or a shared executor — what changes?']
       }
@@ -1463,6 +4344,1068 @@ public class ChessDemo {
         System.out.println("replay Qxf7: " + g.move("h5", "f7"));
     }
 }`;
+  var CHESS_CORE_PY = String.raw`
+# ===== Chess core: pieces know HOW they move; the rule engine knows WHAT is legal =====
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from enum import Enum
+from typing import Optional
+
+
+class Color(Enum):
+    WHITE = 0
+    BLACK = 1
+
+    def opposite(self) -> "Color":
+        return Color.BLACK if self is Color.WHITE else Color.WHITE
+
+
+class PieceType(Enum):
+    KING = "K"
+    QUEEN = "Q"
+    ROOK = "R"
+    BISHOP = "B"
+    KNIGHT = "N"
+    PAWN = "P"
+
+
+# row 0 = rank 1, col 0 = file a.  "e4" -> (3, 4)
+@dataclass(frozen=True)
+class Position:
+    row: int
+    col: int
+
+    @staticmethod
+    def of(sq: str) -> "Position":
+        return Position(ord(sq[1]) - ord("1"), ord(sq[0]) - ord("a"))
+
+    def on_board(self) -> bool:
+        return 0 <= self.row < 8 and 0 <= self.col < 8
+
+    def plus(self, dr: int, dc: int) -> "Position":
+        return Position(self.row + dr, self.col + dc)
+
+    def __str__(self) -> str:
+        return chr(ord("a") + self.col) + chr(ord("1") + self.row)
+
+
+class MoveType(Enum):
+    NORMAL = 0
+    DOUBLE_PAWN = 1
+    EN_PASSANT = 2
+    CASTLE_KING = 3
+    CASTLE_QUEEN = 4
+    PROMOTION = 5
+
+
+@dataclass(frozen=True)
+class Move:
+    src: Position
+    dst: Position
+    type: MoveType
+
+    def __str__(self) -> str:
+        suffix = "" if self.type is MoveType.NORMAL else f"({self.type.name})"
+        return f"{self.src}-{self.dst}{suffix}"
+
+
+STRAIGHT = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+DIAGONAL = [(1, 1), (1, -1), (-1, 1), (-1, -1)]
+ALL8 = STRAIGHT + DIAGONAL
+KNIGHT_JUMPS = [(2, 1), (2, -1), (-2, 1), (-2, -1), (1, 2), (1, -2), (-1, 2), (-1, -2)]
+
+
+# Pieces are immutable: no position, no has-moved flag. The Board owns that state.
+class Piece(ABC):
+    def __init__(self, color: Color) -> None:
+        self.color = color
+
+    @property
+    @abstractmethod
+    def type(self) -> PieceType: ...
+
+    # Moves that follow the piece's movement rule, ignoring "does this leave my king in check?"
+    @abstractmethod
+    def pseudo_legal_moves(self, b: "Board", src: Position) -> list[Move]: ...
+
+    # Squares this piece attacks (used for check detection). Same as moves for most pieces.
+    def attacks(self, b: "Board", src: Position) -> list[Position]:
+        return [m.dst for m in self.pseudo_legal_moves(b, src)]
+
+    def symbol(self) -> str:
+        s = self.type.value
+        return s if self.color is Color.WHITE else s.lower()
+
+    # Rook/Bishop/Queen: walk each direction until the edge or a piece.
+    def slide(self, b: "Board", src: Position, dirs: list[tuple[int, int]]) -> list[Move]:
+        out: list[Move] = []
+        for dr, dc in dirs:
+            p = src.plus(dr, dc)
+            while p.on_board():
+                occ = b.at(p)
+                if occ is None:
+                    out.append(Move(src, p, MoveType.NORMAL))
+                else:
+                    if occ.color is not self.color:
+                        out.append(Move(src, p, MoveType.NORMAL))     # capture
+                    break                                              # blocked either way
+                p = p.plus(dr, dc)
+        return out
+
+    # King/Knight: fixed jumps.
+    def jumps(self, b: "Board", src: Position, deltas: list[tuple[int, int]]) -> list[Move]:
+        out: list[Move] = []
+        for dr, dc in deltas:
+            p = src.plus(dr, dc)
+            if p.on_board():
+                occ = b.at(p)
+                if occ is None or occ.color is not self.color:
+                    out.append(Move(src, p, MoveType.NORMAL))
+        return out
+
+
+class Rook(Piece):
+    @property
+    def type(self) -> PieceType: return PieceType.ROOK
+    def pseudo_legal_moves(self, b: "Board", src: Position) -> list[Move]: return self.slide(b, src, STRAIGHT)
+
+
+class Bishop(Piece):
+    @property
+    def type(self) -> PieceType: return PieceType.BISHOP
+    def pseudo_legal_moves(self, b: "Board", src: Position) -> list[Move]: return self.slide(b, src, DIAGONAL)
+
+
+class Queen(Piece):
+    @property
+    def type(self) -> PieceType: return PieceType.QUEEN
+    def pseudo_legal_moves(self, b: "Board", src: Position) -> list[Move]: return self.slide(b, src, ALL8)
+
+
+class Knight(Piece):
+    @property
+    def type(self) -> PieceType: return PieceType.KNIGHT
+    def pseudo_legal_moves(self, b: "Board", src: Position) -> list[Move]: return self.jumps(b, src, KNIGHT_JUMPS)
+
+
+class King(Piece):
+    @property
+    def type(self) -> PieceType: return PieceType.KING
+
+    # attacks = one step only (castling never attacks anything; also avoids infinite recursion)
+    def attacks(self, b: "Board", src: Position) -> list[Position]:
+        return [m.dst for m in self.jumps(b, src, ALL8)]
+
+    def pseudo_legal_moves(self, b: "Board", src: Position) -> list[Move]:
+        out = self.jumps(b, src, ALL8)
+        r = 0 if self.color is Color.WHITE else 7
+        enemy = self.color.opposite()
+        if src != Position(r, 4) or b.is_attacked(src, enemy):           # cannot castle out of check
+            return out
+        k, q = ("K", "Q") if self.color is Color.WHITE else ("k", "q")
+        if (k in b.castling and b.at(Position(r, 5)) is None and b.at(Position(r, 6)) is None
+                and not b.is_attacked(Position(r, 5), enemy) and not b.is_attacked(Position(r, 6), enemy)):
+            out.append(Move(src, Position(r, 6), MoveType.CASTLE_KING))
+        if (q in b.castling and b.at(Position(r, 3)) is None and b.at(Position(r, 2)) is None
+                and b.at(Position(r, 1)) is None
+                and not b.is_attacked(Position(r, 3), enemy) and not b.is_attacked(Position(r, 2), enemy)):
+            out.append(Move(src, Position(r, 2), MoveType.CASTLE_QUEEN))
+        return out
+
+
+class Pawn(Piece):
+    @property
+    def type(self) -> PieceType: return PieceType.PAWN
+
+    def _dir(self) -> int:
+        return 1 if self.color is Color.WHITE else -1
+
+    def attacks(self, b: "Board", src: Position) -> list[Position]:   # pawns capture diagonally, move straight
+        return [p for p in (src.plus(self._dir(), dc) for dc in (-1, 1)) if p.on_board()]
+
+    def pseudo_legal_moves(self, b: "Board", src: Position) -> list[Move]:
+        out: list[Move] = []
+        start_row, last_row = (1, 7) if self.color is Color.WHITE else (6, 0)
+        one = src.plus(self._dir(), 0)
+        if one.on_board() and b.at(one) is None:
+            out.append(Move(src, one, MoveType.PROMOTION if one.row == last_row else MoveType.NORMAL))
+            two = src.plus(2 * self._dir(), 0)
+            if src.row == start_row and b.at(two) is None:
+                out.append(Move(src, two, MoveType.DOUBLE_PAWN))
+        for d in self.attacks(b, src):
+            t = b.at(d)
+            if t is not None and t.color is not self.color:
+                out.append(Move(src, d, MoveType.PROMOTION if d.row == last_row else MoveType.NORMAL))
+            elif t is None and d == b.en_passant_target:
+                out.append(Move(src, d, MoveType.EN_PASSANT))
+        return out
+
+
+# The Board = the full position: squares + castling rights + en-passant square.
+class Board:
+    def __init__(self) -> None:
+        self._grid: list[list[Optional[Piece]]] = [[None] * 8 for _ in range(8)]
+        self.castling = "KQkq"                            # FEN-style rights still available
+        self.en_passant_target: Optional[Position] = None  # square a pawn may capture INTO this move
+
+    def at(self, p: Position) -> Optional[Piece]:
+        return self._grid[p.row][p.col]
+
+    def put(self, p: Position, x: Optional[Piece]) -> None:
+        self._grid[p.row][p.col] = x
+
+    @staticmethod
+    def standard() -> "Board":
+        b = Board()
+        for c in range(8):
+            b._grid[1][c] = Pawn(Color.WHITE)
+            b._grid[6][c] = Pawn(Color.BLACK)
+        for s in (Color.WHITE, Color.BLACK):
+            r = 0 if s is Color.WHITE else 7
+            for c, kind in enumerate([Rook, Knight, Bishop, Queen, King, Bishop, Knight, Rook]):
+                b._grid[r][c] = kind(s)
+        return b
+
+    def copy(self) -> "Board":                            # pieces are immutable, so a shallow grid copy is enough
+        b = Board()
+        b._grid = [row[:] for row in self._grid]
+        b.castling = self.castling
+        b.en_passant_target = self.en_passant_target
+        return b
+
+    def king_of(self, c: Color) -> Position:
+        for r in range(8):
+            for col in range(8):
+                p = self._grid[r][col]
+                if p is not None and p.color is c and p.type is PieceType.KING:
+                    return Position(r, col)
+        raise RuntimeError(f"no {c.name} king")
+
+    def is_attacked(self, target: Position, by: Color) -> bool:
+        for r in range(8):
+            for c in range(8):
+                p = self._grid[r][c]
+                if p is not None and p.color is by and target in p.attacks(self, Position(r, c)):
+                    return True
+        return False
+
+    # Executes a move that is already known to be legal; handles all special rules.
+    def apply(self, m: Move) -> None:
+        p = self.at(m.src)
+        assert p is not None
+        self.put(m.dst, p)
+        self.put(m.src, None)
+        r = m.src.row
+        if m.type is MoveType.EN_PASSANT:
+            self.put(Position(r, m.dst.col), None)         # captured pawn is beside us
+        elif m.type is MoveType.CASTLE_KING:
+            self.put(Position(r, 5), self.at(Position(r, 7)))
+            self.put(Position(r, 7), None)
+        elif m.type is MoveType.CASTLE_QUEEN:
+            self.put(Position(r, 3), self.at(Position(r, 0)))
+            self.put(Position(r, 0), None)
+        elif m.type is MoveType.PROMOTION:
+            self.put(m.dst, Queen(p.color))                # auto-queen (extension: ask player)
+        self.en_passant_target = (Position((m.src.row + m.dst.row) // 2, m.src.col)
+                                  if m.type is MoveType.DOUBLE_PAWN else None)
+        self._lose_rights(m.src)
+        self._lose_rights(m.dst)                           # a captured rook also loses rights
+
+    def _lose_rights(self, sq: Position) -> None:
+        lost = {"e1": "KQ", "h1": "K", "a1": "Q", "e8": "kq", "h8": "k", "a8": "q"}.get(str(sq), "")
+        self.castling = "".join(ch for ch in self.castling if ch not in lost)
+
+    def render(self) -> str:
+        lines = []
+        for r in range(7, -1, -1):
+            cells = "".join((self._grid[r][c].symbol() if self._grid[r][c] else ".") + " " for c in range(8))
+            lines.append(f"{r + 1} {cells}")
+        return "\n".join(lines) + "\n  a b c d e f g h"
+
+
+# Rule engine: the ONLY place that knows "a move may not leave your own king in check".
+class MoveValidator:
+    @staticmethod
+    def legal_moves(b: Board, side: Color, src: Position) -> list[Move]:
+        p = b.at(src)
+        if p is None or p.color is not side:
+            return []
+        legal = []
+        for m in p.pseudo_legal_moves(b, src):
+            nxt = b.copy()                                 # copy-make: simulate, then test
+            nxt.apply(m)
+            if not nxt.is_attacked(nxt.king_of(side), side.opposite()):
+                legal.append(m)
+        return legal
+
+    @staticmethod
+    def all_legal_moves(b: Board, side: Color) -> list[Move]:
+        return [m for r in range(8) for c in range(8) for m in MoveValidator.legal_moves(b, side, Position(r, c))]
+
+    # perft = count leaf positions at a depth; the standard way to test a move generator.
+    @staticmethod
+    def perft(b: Board, side: Color, depth: int) -> int:
+        if depth == 0:
+            return 1
+        n = 0
+        for m in MoveValidator.all_legal_moves(b, side):
+            nxt = b.copy()
+            nxt.apply(m)
+            n += MoveValidator.perft(nxt, side.opposite(), depth - 1)
+        return n
+
+
+class GameStatus(Enum):
+    ACTIVE = 0
+    CHECK = 1
+    CHECKMATE = 2
+    STALEMATE = 3
+
+
+class Game:
+    def __init__(self) -> None:
+        self._board = Board.standard()
+        self._turn = Color.WHITE
+        self._status = GameStatus.ACTIVE
+        self._history: list[Board] = []                    # Memento: snapshots for undo
+        self._moves: list[Move] = []
+
+    def move(self, src: str, dst: str) -> str:
+        if self._status in (GameStatus.CHECKMATE, GameStatus.STALEMATE):
+            return f"game over: {self._status.name}"
+        f, t = Position.of(src), Position.of(dst)
+        p = self._board.at(f)
+        if p is None:
+            return f"illegal: no piece on {src}"
+        if p.color is not self._turn:
+            return f"illegal: it is {self._turn.name}'s turn"
+        for m in MoveValidator.legal_moves(self._board, self._turn, f):
+            if m.dst == t:
+                self._history.append(self._board.copy())
+                self._board.apply(m)
+                self._moves.append(m)
+                self._turn = self._turn.opposite()
+                self._update_status()
+                tail = "" if self._status is GameStatus.ACTIVE else f" -> {self._status.name}"
+                return f"ok {m}{tail}"
+        pseudo = any(m.dst == t for m in p.pseudo_legal_moves(self._board, f))
+        return (f"illegal: {src}-{dst} would leave your king in check" if pseudo
+                else f"illegal: {p.type.name} cannot move like that")
+
+    def undo(self) -> bool:
+        if not self._history:
+            return False
+        self._board = self._history.pop()
+        self._moves.pop()
+        self._turn = self._turn.opposite()
+        self._update_status()
+        return True
+
+    def _update_status(self) -> None:
+        in_check = self._board.is_attacked(self._board.king_of(self._turn), self._turn.opposite())
+        can_move = bool(MoveValidator.all_legal_moves(self._board, self._turn))
+        if can_move:
+            self._status = GameStatus.CHECK if in_check else GameStatus.ACTIVE
+        else:
+            self._status = GameStatus.CHECKMATE if in_check else GameStatus.STALEMATE
+
+    @property
+    def status(self) -> GameStatus:
+        return self._status
+
+    @property
+    def board(self) -> Board:
+        return self._board
+
+
+def main() -> None:
+    p1, p2, p3 = (MoveValidator.perft(Board.standard(), Color.WHITE, d) for d in (1, 2, 3))
+    print(f"perft(1..3) = {p1}, {p2}, {p3}   (expected 20, 400, 8902)")
+
+    g = Game()
+    print(g.move("e2", "e5"))                     # pawn cannot jump 3
+    print(g.move("e7", "e5"))                     # wrong turn
+    scholar = [("e2", "e4"), ("e7", "e5"), ("f1", "c4"), ("b8", "c6"), ("d1", "h5"), ("g8", "f6"), ("h5", "f7")]
+    for a, b in scholar:
+        print(f"{a}{b}: {g.move(a, b)}")
+    print(g.board.render())
+    print(f"status = {g.status.name}")            # CHECKMATE
+    g.undo()
+    print(f"after undo: {g.status.name}, white to move again")
+    print(f"black tries to move: {g.move('a7', 'a6')}")      # not black's turn
+    print(f"replay Qxf7: {g.move('h5', 'f7')}")
+
+
+if __name__ == "__main__":
+    main()`;
+  var CHESS_CORE_TS = String.raw`
+// ===== Chess core: pieces know HOW they move; the rule engine knows WHAT is legal =====
+
+enum Color { WHITE, BLACK }
+const opposite = (c: Color): Color => (c === Color.WHITE ? Color.BLACK : Color.WHITE);
+
+enum PieceType { KING, QUEEN, ROOK, BISHOP, KNIGHT, PAWN }
+const SYMBOL: Record<PieceType, string> = {
+  [PieceType.KING]: "K", [PieceType.QUEEN]: "Q", [PieceType.ROOK]: "R",
+  [PieceType.BISHOP]: "B", [PieceType.KNIGHT]: "N", [PieceType.PAWN]: "P",
+};
+
+// row 0 = rank 1, col 0 = file a.  "e4" -> (3, 4)
+class Position {
+  constructor(readonly row: number, readonly col: number) {}
+  static of(sq: string): Position {
+    return new Position(sq.charCodeAt(1) - "1".charCodeAt(0), sq.charCodeAt(0) - "a".charCodeAt(0));
+  }
+  onBoard(): boolean { return this.row >= 0 && this.row < 8 && this.col >= 0 && this.col < 8; }
+  plus(dr: number, dc: number): Position { return new Position(this.row + dr, this.col + dc); }
+  equals(o: Position | null): boolean { return o !== null && o.row === this.row && o.col === this.col; }
+  toString(): string { return String.fromCharCode(97 + this.col) + String.fromCharCode(49 + this.row); }
+}
+
+enum MoveType { NORMAL, DOUBLE_PAWN, EN_PASSANT, CASTLE_KING, CASTLE_QUEEN, PROMOTION }
+
+class Move {
+  constructor(readonly from: Position, readonly to: Position, readonly type: MoveType) {}
+  toString(): string {
+    return this.from + "-" + this.to + (this.type === MoveType.NORMAL ? "" : "(" + MoveType[this.type] + ")");
+  }
+}
+
+type Dir = readonly [number, number];
+const STRAIGHT: Dir[] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+const DIAGONAL: Dir[] = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
+const ALL8: Dir[] = [...STRAIGHT, ...DIAGONAL];
+const KNIGHT_JUMPS: Dir[] = [[2, 1], [2, -1], [-2, 1], [-2, -1], [1, 2], [1, -2], [-1, 2], [-1, -2]];
+
+// Pieces are immutable: no position, no hasMoved flag. The Board owns that state.
+abstract class Piece {
+  constructor(readonly color: Color) {}
+  abstract type(): PieceType;
+  // Moves that follow the piece's movement rule, ignoring "does this leave my king in check?"
+  abstract pseudoLegalMoves(b: Board, from: Position): Move[];
+  // Squares this piece attacks (used for check detection). Same as moves for most pieces.
+  attacks(b: Board, from: Position): Position[] { return this.pseudoLegalMoves(b, from).map((m) => m.to); }
+  symbol(): string {
+    const s = SYMBOL[this.type()];
+    return this.color === Color.WHITE ? s : s.toLowerCase();
+  }
+
+  // Rook/Bishop/Queen: walk each direction until the edge or a piece.
+  protected slide(b: Board, from: Position, dirs: readonly Dir[]): Move[] {
+    const out: Move[] = [];
+    for (const [dr, dc] of dirs) {
+      for (let p = from.plus(dr, dc); p.onBoard(); p = p.plus(dr, dc)) {
+        const occ = b.at(p);
+        if (occ === null) { out.push(new Move(from, p, MoveType.NORMAL)); continue; }
+        if (occ.color !== this.color) out.push(new Move(from, p, MoveType.NORMAL));   // capture
+        break;                                                                         // blocked either way
+      }
+    }
+    return out;
+  }
+  // King/Knight: fixed jumps.
+  protected jumps(b: Board, from: Position, deltas: readonly Dir[]): Move[] {
+    const out: Move[] = [];
+    for (const [dr, dc] of deltas) {
+      const p = from.plus(dr, dc);
+      if (!p.onBoard()) continue;
+      const occ = b.at(p);
+      if (occ === null || occ.color !== this.color) out.push(new Move(from, p, MoveType.NORMAL));
+    }
+    return out;
+  }
+}
+
+class Rook extends Piece {
+  type(): PieceType { return PieceType.ROOK; }
+  pseudoLegalMoves(b: Board, f: Position): Move[] { return this.slide(b, f, STRAIGHT); }
+}
+class Bishop extends Piece {
+  type(): PieceType { return PieceType.BISHOP; }
+  pseudoLegalMoves(b: Board, f: Position): Move[] { return this.slide(b, f, DIAGONAL); }
+}
+class Queen extends Piece {
+  type(): PieceType { return PieceType.QUEEN; }
+  pseudoLegalMoves(b: Board, f: Position): Move[] { return this.slide(b, f, ALL8); }
+}
+class Knight extends Piece {
+  type(): PieceType { return PieceType.KNIGHT; }
+  pseudoLegalMoves(b: Board, f: Position): Move[] { return this.jumps(b, f, KNIGHT_JUMPS); }
+}
+
+class King extends Piece {
+  type(): PieceType { return PieceType.KING; }
+  // attacks = one step only (castling never attacks anything; also avoids infinite recursion)
+  override attacks(b: Board, f: Position): Position[] { return this.jumps(b, f, ALL8).map((m) => m.to); }
+  pseudoLegalMoves(b: Board, f: Position): Move[] {
+    const out = this.jumps(b, f, ALL8);
+    const r = this.color === Color.WHITE ? 0 : 7;
+    const enemy = opposite(this.color);
+    if (!f.equals(new Position(r, 4)) || b.isAttacked(f, enemy)) return out;      // cannot castle out of check
+    const [k, q] = this.color === Color.WHITE ? ["K", "Q"] : ["k", "q"];
+    const free = (...cols: number[]): boolean => cols.every((c) => b.at(new Position(r, c)) === null);
+    const safe = (...cols: number[]): boolean => cols.every((c) => !b.isAttacked(new Position(r, c), enemy));
+    if (b.castling.includes(k) && free(5, 6) && safe(5, 6)) out.push(new Move(f, new Position(r, 6), MoveType.CASTLE_KING));
+    if (b.castling.includes(q) && free(3, 2, 1) && safe(3, 2)) out.push(new Move(f, new Position(r, 2), MoveType.CASTLE_QUEEN));
+    return out;
+  }
+}
+
+class Pawn extends Piece {
+  type(): PieceType { return PieceType.PAWN; }
+  private dir(): number { return this.color === Color.WHITE ? 1 : -1; }
+  override attacks(b: Board, f: Position): Position[] {   // pawns capture diagonally, move straight
+    return [-1, 1].map((dc) => f.plus(this.dir(), dc)).filter((p) => p.onBoard());
+  }
+  pseudoLegalMoves(b: Board, f: Position): Move[] {
+    const out: Move[] = [];
+    const startRow = this.color === Color.WHITE ? 1 : 6;
+    const lastRow = this.color === Color.WHITE ? 7 : 0;
+    const one = f.plus(this.dir(), 0);
+    if (one.onBoard() && b.at(one) === null) {
+      out.push(new Move(f, one, one.row === lastRow ? MoveType.PROMOTION : MoveType.NORMAL));
+      const two = f.plus(2 * this.dir(), 0);
+      if (f.row === startRow && b.at(two) === null) out.push(new Move(f, two, MoveType.DOUBLE_PAWN));
+    }
+    for (const d of this.attacks(b, f)) {
+      const t = b.at(d);
+      if (t !== null && t.color !== this.color) out.push(new Move(f, d, d.row === lastRow ? MoveType.PROMOTION : MoveType.NORMAL));
+      else if (t === null && d.equals(b.enPassantTarget)) out.push(new Move(f, d, MoveType.EN_PASSANT));
+    }
+    return out;
+  }
+}
+
+// The Board = the full position: squares + castling rights + en-passant square.
+class Board {
+  private grid: (Piece | null)[][] = Array.from({ length: 8 }, () => Array<Piece | null>(8).fill(null));
+  castling = "KQkq";                            // FEN-style rights still available
+  enPassantTarget: Position | null = null;      // square a pawn may capture INTO this move, or null
+
+  at(p: Position): Piece | null { return this.grid[p.row][p.col]; }
+  put(p: Position, x: Piece | null): void { this.grid[p.row][p.col] = x; }
+
+  static standard(): Board {
+    const b = new Board();
+    for (let c = 0; c < 8; c++) { b.grid[1][c] = new Pawn(Color.WHITE); b.grid[6][c] = new Pawn(Color.BLACK); }
+    for (const s of [Color.WHITE, Color.BLACK]) {
+      const r = s === Color.WHITE ? 0 : 7;
+      b.grid[r] = [new Rook(s), new Knight(s), new Bishop(s), new Queen(s), new King(s), new Bishop(s), new Knight(s), new Rook(s)];
+    }
+    return b;
+  }
+
+  copy(): Board {                               // pieces are immutable, so a shallow grid copy is enough
+    const b = new Board();
+    b.grid = this.grid.map((row) => row.slice());
+    b.castling = this.castling;
+    b.enPassantTarget = this.enPassantTarget;
+    return b;
+  }
+
+  kingOf(c: Color): Position {
+    for (let r = 0; r < 8; r++) for (let col = 0; col < 8; col++) {
+      const p = this.grid[r][col];
+      if (p !== null && p.color === c && p.type() === PieceType.KING) return new Position(r, col);
+    }
+    throw new Error("no " + Color[c] + " king");
+  }
+
+  isAttacked(target: Position, by: Color): boolean {
+    for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
+      const p = this.grid[r][c];
+      if (p !== null && p.color === by && p.attacks(this, new Position(r, c)).some((a) => a.equals(target))) return true;
+    }
+    return false;
+  }
+
+  // Executes a move that is already known to be legal; handles all special rules.
+  apply(m: Move): void {
+    const p = this.at(m.from)!;
+    this.put(m.to, p);
+    this.put(m.from, null);
+    const r = m.from.row;
+    switch (m.type) {
+      case MoveType.EN_PASSANT: this.put(new Position(r, m.to.col), null); break;      // captured pawn is beside us
+      case MoveType.CASTLE_KING: this.put(new Position(r, 5), this.at(new Position(r, 7))); this.put(new Position(r, 7), null); break;
+      case MoveType.CASTLE_QUEEN: this.put(new Position(r, 3), this.at(new Position(r, 0))); this.put(new Position(r, 0), null); break;
+      case MoveType.PROMOTION: this.put(m.to, new Queen(p.color)); break;               // auto-queen (extension: ask player)
+      default: break;
+    }
+    this.enPassantTarget = m.type === MoveType.DOUBLE_PAWN ? new Position((m.from.row + m.to.row) / 2, m.from.col) : null;
+    this.loseRights(m.from);
+    this.loseRights(m.to);                                                              // a captured rook also loses rights
+  }
+  private loseRights(sq: Position): void {
+    const lost: Record<string, string> = { e1: "KQ", h1: "K", a1: "Q", e8: "kq", h8: "k", a8: "q" };
+    const gone = lost[sq.toString()] ?? "";
+    this.castling = [...this.castling].filter((ch) => !gone.includes(ch)).join("");
+  }
+
+  render(): string {
+    const lines: string[] = [];
+    for (let r = 7; r >= 0; r--) {
+      lines.push((r + 1) + " " + this.grid[r].map((p) => (p === null ? "." : p.symbol()) + " ").join(""));
+    }
+    return lines.join("\n") + "\n  a b c d e f g h";
+  }
+}
+
+// Rule engine: the ONLY place that knows "a move may not leave your own king in check".
+class MoveValidator {
+  static legalMoves(b: Board, side: Color, from: Position): Move[] {
+    const p = b.at(from);
+    if (p === null || p.color !== side) return [];
+    return p.pseudoLegalMoves(b, from).filter((m) => {
+      const next = b.copy();                    // copy-make: simulate, then test
+      next.apply(m);
+      return !next.isAttacked(next.kingOf(side), opposite(side));
+    });
+  }
+  static allLegalMoves(b: Board, side: Color): Move[] {
+    const all: Move[] = [];
+    for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) all.push(...MoveValidator.legalMoves(b, side, new Position(r, c)));
+    return all;
+  }
+  // perft = count leaf positions at a depth; the standard way to test a move generator.
+  static perft(b: Board, side: Color, depth: number): number {
+    if (depth === 0) return 1;
+    let n = 0;
+    for (const m of MoveValidator.allLegalMoves(b, side)) {
+      const next = b.copy();
+      next.apply(m);
+      n += MoveValidator.perft(next, opposite(side), depth - 1);
+    }
+    return n;
+  }
+}
+
+enum GameStatus { ACTIVE, CHECK, CHECKMATE, STALEMATE }
+
+class Game {
+  private boardNow = Board.standard();
+  private turn = Color.WHITE;
+  private statusNow = GameStatus.ACTIVE;
+  private readonly history: Board[] = [];       // Memento: snapshots for undo
+  private readonly moves: Move[] = [];
+
+  move(from: string, to: string): string {
+    if (this.statusNow === GameStatus.CHECKMATE || this.statusNow === GameStatus.STALEMATE) return "game over: " + GameStatus[this.statusNow];
+    const f = Position.of(from), t = Position.of(to);
+    const p = this.boardNow.at(f);
+    if (p === null) return "illegal: no piece on " + from;
+    if (p.color !== this.turn) return "illegal: it is " + Color[this.turn] + "'s turn";
+    for (const m of MoveValidator.legalMoves(this.boardNow, this.turn, f)) {
+      if (m.to.equals(t)) {
+        this.history.push(this.boardNow.copy());
+        this.boardNow.apply(m);
+        this.moves.push(m);
+        this.turn = opposite(this.turn);
+        this.updateStatus();
+        return "ok " + m + (this.statusNow === GameStatus.ACTIVE ? "" : " -> " + GameStatus[this.statusNow]);
+      }
+    }
+    const pseudo = p.pseudoLegalMoves(this.boardNow, f).some((m) => m.to.equals(t));
+    return pseudo ? "illegal: " + from + "-" + to + " would leave your king in check"
+                  : "illegal: " + PieceType[p.type()] + " cannot move like that";
+  }
+
+  undo(): boolean {
+    const previous = this.history.pop();
+    if (previous === undefined) return false;
+    this.boardNow = previous;
+    this.moves.pop();
+    this.turn = opposite(this.turn);
+    this.updateStatus();
+    return true;
+  }
+
+  private updateStatus(): void {
+    const inCheck = this.boardNow.isAttacked(this.boardNow.kingOf(this.turn), opposite(this.turn));
+    const canMove = MoveValidator.allLegalMoves(this.boardNow, this.turn).length > 0;
+    this.statusNow = canMove ? (inCheck ? GameStatus.CHECK : GameStatus.ACTIVE)
+                             : (inCheck ? GameStatus.CHECKMATE : GameStatus.STALEMATE);
+  }
+  status(): GameStatus { return this.statusNow; }
+  board(): Board { return this.boardNow; }
+}
+
+function main(): void {
+  const perft = [1, 2, 3].map((d) => MoveValidator.perft(Board.standard(), Color.WHITE, d));
+  console.log("perft(1..3) = " + perft.join(", ") + "   (expected 20, 400, 8902)");
+
+  const g = new Game();
+  console.log(g.move("e2", "e5"));              // pawn cannot jump 3
+  console.log(g.move("e7", "e5"));              // wrong turn
+  const scholar = [["e2", "e4"], ["e7", "e5"], ["f1", "c4"], ["b8", "c6"], ["d1", "h5"], ["g8", "f6"], ["h5", "f7"]];
+  for (const [a, b] of scholar) console.log(a + b + ": " + g.move(a, b));
+  console.log(g.board().render());
+  console.log("status = " + GameStatus[g.status()]);   // CHECKMATE
+  g.undo();
+  console.log("after undo: " + GameStatus[g.status()] + ", white to move again");
+  console.log("black tries to move: " + g.move("a7", "a6"));      // not black's turn
+  console.log("replay Qxf7: " + g.move("h5", "f7"));
+}
+
+main();`;
+  var CHESS_CORE_CPP = String.raw`
+// ===== Chess core: pieces know HOW they move; the rule engine knows WHAT is legal =====
+
+enum class Color { WHITE, BLACK };
+Color opposite(Color c) { return c == Color::WHITE ? Color::BLACK : Color::WHITE; }
+string name(Color c) { return c == Color::WHITE ? "WHITE" : "BLACK"; }
+
+enum class PieceType { KING, QUEEN, ROOK, BISHOP, KNIGHT, PAWN };
+string name(PieceType t) {
+    static const char* names[] = {"KING", "QUEEN", "ROOK", "BISHOP", "KNIGHT", "PAWN"};
+    return names[static_cast<int>(t)];
+}
+
+// row 0 = rank 1, col 0 = file a.  "e4" -> (3, 4)
+struct Position {
+    int row, col;
+    static Position of(const string& sq) { return {sq[1] - '1', sq[0] - 'a'}; }
+    bool onBoard() const { return row >= 0 && row < 8 && col >= 0 && col < 8; }
+    Position plus(int dr, int dc) const { return {row + dr, col + dc}; }
+    bool operator==(const Position&) const = default;
+    string toString() const { return string{static_cast<char>('a' + col), static_cast<char>('1' + row)}; }
+};
+
+enum class MoveType { NORMAL, DOUBLE_PAWN, EN_PASSANT, CASTLE_KING, CASTLE_QUEEN, PROMOTION };
+string name(MoveType t) {
+    static const char* names[] = {"NORMAL", "DOUBLE_PAWN", "EN_PASSANT", "CASTLE_KING", "CASTLE_QUEEN", "PROMOTION"};
+    return names[static_cast<int>(t)];
+}
+
+struct Move {
+    Position from, to;
+    MoveType type;
+    string toString() const {
+        return from.toString() + "-" + to.toString() + (type == MoveType::NORMAL ? "" : "(" + name(type) + ")");
+    }
+};
+
+using Dir = pair<int, int>;
+const vector<Dir> STRAIGHT = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+const vector<Dir> DIAGONAL = {{1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
+const vector<Dir> ALL8 = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
+const vector<Dir> KNIGHT_JUMPS = {{2, 1}, {2, -1}, {-2, 1}, {-2, -1}, {1, 2}, {1, -2}, {-1, 2}, {-1, -2}};
+
+class Board;
+
+// Pieces are immutable: no position, no hasMoved flag. The Board owns that state.
+class Piece {
+public:
+    const Color color;
+    explicit Piece(Color c) : color(c) {}
+    virtual ~Piece() = default;
+    virtual PieceType type() const = 0;
+    // Moves that follow the piece's movement rule, ignoring "does this leave my king in check?"
+    virtual vector<Move> pseudoLegalMoves(const Board& b, Position from) const = 0;
+    // Squares this piece attacks (used for check detection). Same as moves for most pieces.
+    virtual vector<Position> attacks(const Board& b, Position from) const;
+    char symbol() const {
+        static const char sym[] = {'K', 'Q', 'R', 'B', 'N', 'P'};
+        char s = sym[static_cast<int>(type())];
+        return color == Color::WHITE ? s : static_cast<char>(tolower(s));
+    }
+protected:
+    vector<Move> slide(const Board& b, Position from, const vector<Dir>& dirs) const;   // Rook/Bishop/Queen
+    vector<Move> jumps(const Board& b, Position from, const vector<Dir>& deltas) const; // King/Knight
+};
+
+class Rook : public Piece {
+public:
+    using Piece::Piece;
+    PieceType type() const override { return PieceType::ROOK; }
+    vector<Move> pseudoLegalMoves(const Board& b, Position f) const override { return slide(b, f, STRAIGHT); }
+};
+class Bishop : public Piece {
+public:
+    using Piece::Piece;
+    PieceType type() const override { return PieceType::BISHOP; }
+    vector<Move> pseudoLegalMoves(const Board& b, Position f) const override { return slide(b, f, DIAGONAL); }
+};
+class Queen : public Piece {
+public:
+    using Piece::Piece;
+    PieceType type() const override { return PieceType::QUEEN; }
+    vector<Move> pseudoLegalMoves(const Board& b, Position f) const override { return slide(b, f, ALL8); }
+};
+class Knight : public Piece {
+public:
+    using Piece::Piece;
+    PieceType type() const override { return PieceType::KNIGHT; }
+    vector<Move> pseudoLegalMoves(const Board& b, Position f) const override { return jumps(b, f, KNIGHT_JUMPS); }
+};
+class King : public Piece {
+public:
+    using Piece::Piece;
+    PieceType type() const override { return PieceType::KING; }
+    vector<Position> attacks(const Board& b, Position f) const override;
+    vector<Move> pseudoLegalMoves(const Board& b, Position f) const override;
+};
+class Pawn : public Piece {
+    int dir() const { return color == Color::WHITE ? 1 : -1; }
+public:
+    using Piece::Piece;
+    PieceType type() const override { return PieceType::PAWN; }
+    vector<Position> attacks(const Board& b, Position f) const override;
+    vector<Move> pseudoLegalMoves(const Board& b, Position f) const override;
+};
+
+// The Board = the full position: squares + castling rights + en-passant square.
+class Board {
+    // shared_ptr<const Piece>: pieces never change, so copying a Board just copies the pointers.
+    array<array<shared_ptr<const Piece>, 8>, 8> grid;
+    void loseRights(Position sq) {
+        static const map<string, string> lost = {{"e1", "KQ"}, {"h1", "K"}, {"a1", "Q"}, {"e8", "kq"}, {"h8", "k"}, {"a8", "q"}};
+        auto it = lost.find(sq.toString());
+        if (it == lost.end()) return;
+        string kept;
+        for (char ch : castling) if (it->second.find(ch) == string::npos) kept += ch;
+        castling = kept;
+    }
+public:
+    string castling = "KQkq";                 // FEN-style rights still available
+    optional<Position> enPassantTarget;       // square a pawn may capture INTO this move, or empty
+
+    const Piece* at(Position p) const { return grid[p.row][p.col].get(); }
+    void put(Position p, shared_ptr<const Piece> x) { grid[p.row][p.col] = move(x); }
+
+    static Board standard() {
+        Board b;
+        for (int c = 0; c < 8; c++) {
+            b.grid[1][c] = make_shared<Pawn>(Color::WHITE);
+            b.grid[6][c] = make_shared<Pawn>(Color::BLACK);
+        }
+        for (Color s : {Color::WHITE, Color::BLACK}) {
+            int r = s == Color::WHITE ? 0 : 7;
+            b.grid[r] = {make_shared<Rook>(s), make_shared<Knight>(s), make_shared<Bishop>(s), make_shared<Queen>(s),
+                         make_shared<King>(s), make_shared<Bishop>(s), make_shared<Knight>(s), make_shared<Rook>(s)};
+        }
+        return b;
+    }
+
+    Position kingOf(Color c) const {
+        for (int r = 0; r < 8; r++) for (int col = 0; col < 8; col++) {
+            const Piece* p = grid[r][col].get();
+            if (p && p->color == c && p->type() == PieceType::KING) return {r, col};
+        }
+        throw logic_error("no " + name(c) + " king");
+    }
+
+    bool isAttacked(Position target, Color by) const {
+        for (int r = 0; r < 8; r++) for (int c = 0; c < 8; c++) {
+            const Piece* p = grid[r][c].get();
+            if (!p || p->color != by) continue;
+            for (Position a : p->attacks(*this, {r, c})) if (a == target) return true;
+        }
+        return false;
+    }
+
+    // Executes a move that is already known to be legal; handles all special rules.
+    void apply(const Move& m) {
+        shared_ptr<const Piece> p = grid[m.from.row][m.from.col];
+        put(m.to, p);
+        put(m.from, nullptr);
+        int r = m.from.row;
+        switch (m.type) {
+            case MoveType::EN_PASSANT: put({r, m.to.col}, nullptr); break;              // captured pawn is beside us
+            case MoveType::CASTLE_KING: put({r, 5}, grid[r][7]); put({r, 7}, nullptr); break;
+            case MoveType::CASTLE_QUEEN: put({r, 3}, grid[r][0]); put({r, 0}, nullptr); break;
+            case MoveType::PROMOTION: put(m.to, make_shared<Queen>(p->color)); break;   // auto-queen (extension: ask player)
+            default: break;
+        }
+        enPassantTarget = m.type == MoveType::DOUBLE_PAWN ? optional<Position>(Position{(m.from.row + m.to.row) / 2, m.from.col}) : nullopt;
+        loseRights(m.from);
+        loseRights(m.to);                                                               // a captured rook also loses rights
+    }
+
+    string render() const {
+        string out;
+        for (int r = 7; r >= 0; r--) {
+            out += to_string(r + 1) + " ";
+            for (int c = 0; c < 8; c++) { out += grid[r][c] ? grid[r][c]->symbol() : '.'; out += ' '; }
+            out += '\n';
+        }
+        return out + "  a b c d e f g h";
+    }
+};
+
+vector<Position> Piece::attacks(const Board& b, Position from) const {
+    vector<Position> out;
+    for (const Move& m : pseudoLegalMoves(b, from)) out.push_back(m.to);
+    return out;
+}
+vector<Move> Piece::slide(const Board& b, Position from, const vector<Dir>& dirs) const {
+    vector<Move> out;
+    for (auto [dr, dc] : dirs) {
+        for (Position p = from.plus(dr, dc); p.onBoard(); p = p.plus(dr, dc)) {
+            const Piece* occ = b.at(p);
+            if (!occ) { out.push_back({from, p, MoveType::NORMAL}); continue; }
+            if (occ->color != color) out.push_back({from, p, MoveType::NORMAL});   // capture
+            break;                                                                  // blocked either way
+        }
+    }
+    return out;
+}
+vector<Move> Piece::jumps(const Board& b, Position from, const vector<Dir>& deltas) const {
+    vector<Move> out;
+    for (auto [dr, dc] : deltas) {
+        Position p = from.plus(dr, dc);
+        if (!p.onBoard()) continue;
+        const Piece* occ = b.at(p);
+        if (!occ || occ->color != color) out.push_back({from, p, MoveType::NORMAL});
+    }
+    return out;
+}
+
+// attacks = one step only (castling never attacks anything; also avoids infinite recursion)
+vector<Position> King::attacks(const Board& b, Position f) const {
+    vector<Position> out;
+    for (const Move& m : jumps(b, f, ALL8)) out.push_back(m.to);
+    return out;
+}
+vector<Move> King::pseudoLegalMoves(const Board& b, Position f) const {
+    vector<Move> out = jumps(b, f, ALL8);
+    int r = color == Color::WHITE ? 0 : 7;
+    Color enemy = opposite(color);
+    if (!(f == Position{r, 4}) || b.isAttacked(f, enemy)) return out;                // cannot castle out of check
+    char k = color == Color::WHITE ? 'K' : 'k', q = color == Color::WHITE ? 'Q' : 'q';
+    auto free = [&](initializer_list<int> cols) { return all_of(cols.begin(), cols.end(), [&](int c) { return !b.at({r, c}); }); };
+    auto safe = [&](initializer_list<int> cols) { return all_of(cols.begin(), cols.end(), [&](int c) { return !b.isAttacked({r, c}, enemy); }); };
+    if (b.castling.find(k) != string::npos && free({5, 6}) && safe({5, 6})) out.push_back({f, {r, 6}, MoveType::CASTLE_KING});
+    if (b.castling.find(q) != string::npos && free({3, 2, 1}) && safe({3, 2})) out.push_back({f, {r, 2}, MoveType::CASTLE_QUEEN});
+    return out;
+}
+
+vector<Position> Pawn::attacks(const Board&, Position f) const {   // pawns capture diagonally, move straight
+    vector<Position> out;
+    for (int dc : {-1, 1}) { Position p = f.plus(dir(), dc); if (p.onBoard()) out.push_back(p); }
+    return out;
+}
+vector<Move> Pawn::pseudoLegalMoves(const Board& b, Position f) const {
+    vector<Move> out;
+    int startRow = color == Color::WHITE ? 1 : 6, lastRow = color == Color::WHITE ? 7 : 0;
+    Position one = f.plus(dir(), 0);
+    if (one.onBoard() && !b.at(one)) {
+        out.push_back({f, one, one.row == lastRow ? MoveType::PROMOTION : MoveType::NORMAL});
+        Position two = f.plus(2 * dir(), 0);
+        if (f.row == startRow && !b.at(two)) out.push_back({f, two, MoveType::DOUBLE_PAWN});
+    }
+    for (Position d : attacks(b, f)) {
+        const Piece* t = b.at(d);
+        if (t && t->color != color) out.push_back({f, d, d.row == lastRow ? MoveType::PROMOTION : MoveType::NORMAL});
+        else if (!t && b.enPassantTarget && d == *b.enPassantTarget) out.push_back({f, d, MoveType::EN_PASSANT});
+    }
+    return out;
+}
+
+// Rule engine: the ONLY place that knows "a move may not leave your own king in check".
+class MoveValidator {
+public:
+    MoveValidator() = delete;
+    static vector<Move> legalMoves(const Board& b, Color side, Position from) {
+        const Piece* p = b.at(from);
+        if (!p || p->color != side) return {};
+        vector<Move> legal;
+        for (const Move& m : p->pseudoLegalMoves(b, from)) {
+            Board next = b;                                  // copy-make: simulate, then test
+            next.apply(m);
+            if (!next.isAttacked(next.kingOf(side), opposite(side))) legal.push_back(m);
+        }
+        return legal;
+    }
+    static vector<Move> allLegalMoves(const Board& b, Color side) {
+        vector<Move> all;
+        for (int r = 0; r < 8; r++) for (int c = 0; c < 8; c++) {
+            vector<Move> ms = legalMoves(b, side, {r, c});
+            all.insert(all.end(), ms.begin(), ms.end());
+        }
+        return all;
+    }
+    // perft = count leaf positions at a depth; the standard way to test a move generator.
+    static long long perft(const Board& b, Color side, int depth) {
+        if (depth == 0) return 1;
+        long long n = 0;
+        for (const Move& m : allLegalMoves(b, side)) { Board next = b; next.apply(m); n += perft(next, opposite(side), depth - 1); }
+        return n;
+    }
+};
+
+enum class GameStatus { ACTIVE, CHECK, CHECKMATE, STALEMATE };
+string name(GameStatus s) {
+    static const char* names[] = {"ACTIVE", "CHECK", "CHECKMATE", "STALEMATE"};
+    return names[static_cast<int>(s)];
+}
+
+class Game {
+    Board board_ = Board::standard();
+    Color turn = Color::WHITE;
+    GameStatus status_ = GameStatus::ACTIVE;
+    vector<Board> history;                        // Memento: snapshots for undo
+    vector<Move> moves;
+
+    void updateStatus() {
+        bool inCheck = board_.isAttacked(board_.kingOf(turn), opposite(turn));
+        bool canMove = !MoveValidator::allLegalMoves(board_, turn).empty();
+        status_ = canMove ? (inCheck ? GameStatus::CHECK : GameStatus::ACTIVE)
+                          : (inCheck ? GameStatus::CHECKMATE : GameStatus::STALEMATE);
+    }
+public:
+    string move(const string& from, const string& to) {
+        if (status_ == GameStatus::CHECKMATE || status_ == GameStatus::STALEMATE) return "game over: " + name(status_);
+        Position f = Position::of(from), t = Position::of(to);
+        const Piece* p = board_.at(f);
+        if (!p) return "illegal: no piece on " + from;
+        if (p->color != turn) return "illegal: it is " + name(turn) + "'s turn";
+        for (const Move& m : MoveValidator::legalMoves(board_, turn, f)) {
+            if (m.to == t) {
+                history.push_back(board_);
+                board_.apply(m);
+                moves.push_back(m);
+                turn = opposite(turn);
+                updateStatus();
+                return "ok " + m.toString() + (status_ == GameStatus::ACTIVE ? "" : " -> " + name(status_));
+            }
+        }
+        bool pseudo = false;
+        for (const Move& m : p->pseudoLegalMoves(board_, f)) if (m.to == t) pseudo = true;
+        return pseudo ? "illegal: " + from + "-" + to + " would leave your king in check"
+                      : "illegal: " + name(p->type()) + " cannot move like that";
+    }
+
+    bool undo() {
+        if (history.empty()) return false;
+        board_ = history.back();
+        history.pop_back();
+        moves.pop_back();
+        turn = opposite(turn);
+        updateStatus();
+        return true;
+    }
+    GameStatus status() const { return status_; }
+    const Board& board() const { return board_; }
+};
+
+int main() {
+    cout << "perft(1..3) = " << MoveValidator::perft(Board::standard(), Color::WHITE, 1) << ", "
+         << MoveValidator::perft(Board::standard(), Color::WHITE, 2) << ", "
+         << MoveValidator::perft(Board::standard(), Color::WHITE, 3) << "   (expected 20, 400, 8902)\n";
+
+    Game g;
+    cout << g.move("e2", "e5") << "\n";           // pawn cannot jump 3
+    cout << g.move("e7", "e5") << "\n";           // wrong turn
+    vector<pair<string, string>> scholar = {{"e2", "e4"}, {"e7", "e5"}, {"f1", "c4"}, {"b8", "c6"}, {"d1", "h5"}, {"g8", "f6"}, {"h5", "f7"}};
+    for (const auto& [a, b] : scholar) cout << a << b << ": " << g.move(a, b) << "\n";
+    cout << g.board().render() << "\n";
+    cout << "status = " << name(g.status()) << "\n";      // CHECKMATE
+    g.undo();
+    cout << "after undo: " << name(g.status()) << ", white to move again\n";
+    cout << "black tries to move: " << g.move("a7", "a6") << "\n";      // not black's turn
+    cout << "replay Qxf7: " << g.move("h5", "f7") << "\n";
+}`;
 
   /* ---- JS mini move generator for the board visualizer (no castling / en passant) ---- */
   var CH_UNI = { wK: '♔', wQ: '♕', wR: '♖', wB: '♗', wN: '♘', wP: '♙', bK: '♚', bQ: '♛', bR: '♜', bB: '♝', bN: '♞', bP: '♟' };
@@ -1619,7 +5562,7 @@ public class ChessDemo {
       });
     }
     var status = total ? (checker ? 'CHECK' : 'ACTIVE') : (checker ? 'CHECKMATE' : 'STALEMATE');
-    frames.push(F('Game status for ' + sideName + ': run the same funnel for <b>every</b> piece → <b>' + total + '</b> legal move(s) in total. ' + (status === 'CHECKMATE' ? H.c('r', 'In check with no legal moves = CHECKMATE.') : status === 'STALEMATE' ? H.c('y', 'Not in check but no legal moves = STALEMATE (draw).') : 'The game goes on (' + status + ').') + ' (This visualizer skips castling and en passant; the Java code handles both.)', [chGrid(b, hl), TABLE('Status rule', ['in check?', 'any legal move?', 'status'], [['no', 'yes', 'ACTIVE'], ['yes', 'yes', 'CHECK'], ['yes', 'no', 'CHECKMATE'], ['no', 'no', 'STALEMATE']], one(['ACTIVE', 'CHECK', 'CHECKMATE', 'STALEMATE'].indexOf(status), 'sel'))]));
+    frames.push(F('Game status for ' + sideName + ': run the same funnel for <b>every</b> piece → <b>' + total + '</b> legal move(s) in total. ' + (status === 'CHECKMATE' ? H.c('r', 'In check with no legal moves = CHECKMATE.') : status === 'STALEMATE' ? H.c('y', 'Not in check but no legal moves = STALEMATE (draw).') : 'The game goes on (' + status + ').') + ' (This visualizer skips castling and en passant; the full code in the topic handles both.)', [chGrid(b, hl), TABLE('Status rule', ['in check?', 'any legal move?', 'status'], [['no', 'yes', 'ACTIVE'], ['yes', 'yes', 'CHECK'], ['yes', 'no', 'CHECKMATE'], ['no', 'no', 'STALEMATE']], one(['ACTIVE', 'CHECK', 'CHECKMATE', 'STALEMATE'].indexOf(status), 'sel'))]));
     return frames;
   }
 
@@ -1673,7 +5616,7 @@ ${H.table(['Stage', 'Question', 'Who answers', 'Example rejection'], [
       '"Detect checkmate and stalemate" → count all legal moves of the side to move + in-check flag.',
       '"Online multiplayer / timers" → Observer for move events, Game state machine, server-side validation.'
     ],
-    code: [CHESS_CORE],
+    code: [{ lang: 'java', code: CHESS_CORE, alt: [{ lang: 'python', code: CHESS_CORE_PY }, { lang: 'ts', code: CHESS_CORE_TS }, { lang: 'cpp', code: CHESS_CORE_CPP }] }],
     codeTitle: ['Chess core — pieces, board with castling/en passant/promotion, rule engine, perft self-test, game with check/checkmate/stalemate and undo (runnable main)'],
     viz: [
       { title: 'Class diagram tour: Game, Board, Pieces, MoveValidator', gen: function () { return chessClassViz(); } },
@@ -1700,7 +5643,7 @@ ${H.table(['Move', 'Stage 1', 'Stage 2 (simulate)', 'Verdict'], [
   ['King does not pass through / land on attacked square', '<code>!isAttacked(f1) && !isAttacked(g1)</code> (+ final copy-make test)'],
   ['Rook moves too', '<code>apply()</code> case CASTLE_KING: h1 → f1']
 ])}<p>Note the rook square b1 must be empty for queen-side castling but does NOT need to be safe — only the king\'s path matters.</p>` },
-      { title: 'perft: how engine authors prove move generation is right', html: `<p><b>perft(d)</b> counts all positions reachable in exactly d plies. Known values from the start: <b>20, 400, 8,902, 197,281, 4,865,609</b>. If your generator prints 8,902 at depth 3, pawns, knights, bishops, checks and pins are almost certainly right. Special "tricky" positions (like "Kiwipete") exercise castling, en passant and promotion. The Java demo above computes depths 1–3 as a built-in self test — a great thing to mention in an interview.</p>` }
+      { title: 'perft: how engine authors prove move generation is right', html: `<p><b>perft(d)</b> counts all positions reachable in exactly d plies. Known values from the start: <b>20, 400, 8,902, 197,281, 4,865,609</b>. If your generator prints 8,902 at depth 3, pawns, knights, bishops, checks and pins are almost certainly right. Special "tricky" positions (like "Kiwipete") exercise castling, en passant and promotion. The demo above computes depths 1–3 as a built-in self test — a great thing to mention in an interview.</p>` }
     ],
     deepDive: `<p><b>1. Copy-make vs make-unmake.</b> Our validator copies the board (64 references + 2 fields) for every candidate move. Real engines instead <b>make</b> the move in place and <b>unmake</b> it, storing just the captured piece, old castling rights and old en-passant square in an undo record (Command pattern). That avoids allocation and is much faster when searching millions of positions.</p>
 <p><b>2. Faster check detection.</b> Our <code>isAttacked</code> asks every enemy piece for its attack list (≈ 16 × up to 27 squares). Better: look <b>outward from the king</b> — knight jumps, pawn diagonals, and 8 rays stopping at the first piece. Even better: <b>bitboards</b> (one 64-bit long per piece type and colour), where attacks are computed with shifts and precomputed tables ("magic bitboards" for sliders). Pins can be precomputed once per position so each move is checked in O(1).</p>
@@ -1744,9 +5687,10 @@ class NaiveChess {
       mcq: { q: 'Your king is in check from a bishop. Which approach correctly finds ALL legal replies (block, capture, king move)?', options: ['Simulate every pseudo-legal move on a copy and keep those where the king is not attacked', 'Only generate king moves', 'Only generate captures of the checking piece', 'Generate moves normally; check is handled at the end of the game'], answer: 0, explain: 'Copy-make + isAttacked covers blocks, captures and king moves uniformly, including double checks where only king moves work.' },
       hints: [
         `<p>Separate <b>can this piece reach that square</b> (per-piece rule) from <b>is my king safe afterwards</b> (one global check). The second needs no knowledge of piece types except for computing attacks.</p>`,
-        `<p>Store rules in a <code>Map&lt;Character, MoveRule&gt;</code> (Strategy registry). Sliders use a shared <code>pathClear</code> that walks one step at a time with <code>Integer.signum</code>. For king safety: copy the board, make the move, find your king, and ask every enemy piece\'s rule "can you reach the king square?".</p>`,
+        `<p>Store rules in a map from piece letter to <code>MoveRule</code> function (Strategy registry; <code>Map&lt;Character, MoveRule&gt;</code> in Java). Sliders use a shared <code>pathClear</code> that walks one step at a time with the sign of each difference (<code>Integer.signum</code> in Java). For king safety: copy the board, make the move, find your king, and ask every enemy piece\'s rule "can you reach the king square?".</p>`,
         `<p>Edge cases: from == to, empty from-square, wrong colour, capturing own piece, pawn direction depends on colour, pawn captures only diagonally and only when the target is occupied by an enemy, king capturing a defended piece (the simulation handles it). Recipe: parse → basic checks → rule.canReach → simulate → !inCheck.</p>`
       ],
+      tests: { io: true, cases: [{ stdin: '', stdout: "e2-e4 true\ne2-e5 false\nf1-c4 false\ng1-f3 true\ne7-e5 false\npinned Re2-g2 false\npinned Re2-e7 true\nKe1-f2 true\nempty square e3-e4 false\nown piece d1-d2 false\nKe1-e2 into rook check false\nKe1xd2 takes the rook true\n" }] },
       solution: {
         approach: `<p>A <b>Strategy registry</b>: one small <code>MoveRule</code> lambda per piece letter, so a new piece = one new entry (composition instead of a class hierarchy — the other valid design besides the subclass version in the topic code). <code>isLegal</code> does the funnel: basic checks → rule → simulate on a copy → reject if own king is attacked. Attack detection reuses the same rules, because "piece X can capture the king square" is exactly "piece X attacks it" (pawn rule only allows diagonal moves onto occupied enemy squares, which is the attack pattern).</p>`,
         code: String.raw`
@@ -1828,8 +5772,324 @@ class ChessValidatorDemo {
         System.out.println("pinned Re2-g2 " + ChessRules.isLegal(pin, "e2", "g2", true));  // false
         System.out.println("pinned Re2-e7 " + ChessRules.isLegal(pin, "e2", "e7", true));  // true (capture)
         System.out.println("Ke1-f2 " + ChessRules.isLegal(pin, "e1", "f2", true));         // true
+
+        System.out.println("empty square e3-e4 " + ChessRules.isLegal(start, "e3", "e4", true));   // false
+        System.out.println("own piece d1-d2 " + ChessRules.isLegal(start, "d1", "d2", true));      // false
+        char[][] rookNear = ChessRules.parse(new String[] {
+            "k.......", "........", "........", "........", "........", "........", "...r....", "....K..." });
+        System.out.println("Ke1-e2 into rook check " + ChessRules.isLegal(rookNear, "e1", "e2", true));   // false
+        System.out.println("Ke1xd2 takes the rook " + ChessRules.isLegal(rookNear, "e1", "d2", true));    // true
     }
 }`,
+      alt: [
+          { lang: 'python', code: String.raw`
+from typing import Callable
+
+Board = list[list[str]]
+MoveRule = Callable[[Board, int, int, int, int], bool]
+
+
+def sign(x: int) -> int:
+    return (x > 0) - (x < 0)
+
+
+# Walk from (fr,fc) toward (tr,tc) one step at a time; every square in between must be empty.
+def path_clear(b: Board, fr: int, fc: int, tr: int, tc: int) -> bool:
+    sr, sc = sign(tr - fr), sign(tc - fc)
+    r, c = fr + sr, fc + sc
+    while (r, c) != (tr, tc):
+        if b[r][c] != ".":
+            return False
+        r, c = r + sr, c + sc
+    return True
+
+
+def rook_rule(b: Board, fr: int, fc: int, tr: int, tc: int) -> bool:
+    return (fr == tr or fc == tc) and path_clear(b, fr, fc, tr, tc)
+
+
+def bishop_rule(b: Board, fr: int, fc: int, tr: int, tc: int) -> bool:
+    return abs(fr - tr) == abs(fc - tc) and path_clear(b, fr, fc, tr, tc)
+
+
+def pawn_rule(b: Board, fr: int, fc: int, tr: int, tc: int) -> bool:
+    white = b[fr][fc].isupper()
+    direction, dr, dc = (1 if white else -1), tr - fr, abs(tc - fc)
+    target = b[tr][tc]
+    if dc == 0 and dr == direction:
+        return target == "."
+    if dc == 0 and dr == 2 * direction:
+        return fr == (1 if white else 6) and target == "." and b[fr + direction][fc] == "."
+    return dc == 1 and dr == direction and target != "." and target.isupper() != white
+
+
+RULES: dict[str, MoveRule] = {
+    "R": rook_rule,
+    "B": bishop_rule,
+    "Q": lambda b, fr, fc, tr, tc: rook_rule(b, fr, fc, tr, tc) or bishop_rule(b, fr, fc, tr, tc),
+    "N": lambda b, fr, fc, tr, tc: abs(fr - tr) * abs(fc - tc) == 2,
+    "K": lambda b, fr, fc, tr, tc: abs(fr - tr) <= 1 and abs(fc - tc) <= 1,
+    "P": pawn_rule,
+}
+
+
+class ChessRules:
+    @staticmethod
+    def parse(ranks8to1: list[str]) -> Board:
+        return [list(ranks8to1[7 - r]) for r in range(8)]          # row 0 = rank 1
+
+    @staticmethod
+    def is_legal(b: Board, src: str, dst: str, white_to_move: bool) -> bool:
+        fr, fc, tr, tc = int(src[1]) - 1, ord(src[0]) - 97, int(dst[1]) - 1, ord(dst[0]) - 97
+        piece = b[fr][fc]
+        if piece == "." or piece.isupper() != white_to_move:        # empty or wrong side
+            return False
+        if (fr, fc) == (tr, tc):
+            return False
+        target = b[tr][tc]
+        if target != "." and target.isupper() == white_to_move:     # own piece
+            return False
+        rule = RULES.get(piece.upper())
+        if rule is None or not rule(b, fr, fc, tr, tc):
+            return False
+        nxt = [row[:] for row in b]
+        nxt[tr][tc] = piece
+        nxt[fr][fc] = "."
+        return not ChessRules.in_check(nxt, white_to_move)
+
+    @staticmethod
+    def in_check(b: Board, white: bool) -> bool:
+        king = "K" if white else "k"
+        kr, kc = next((r, c) for r in range(8) for c in range(8) if b[r][c] == king)
+        for r in range(8):
+            for c in range(8):
+                p = b[r][c]
+                if p == "." or p.isupper() == white:                # only enemy pieces
+                    continue
+                if RULES[p.upper()](b, r, c, kr, kc):
+                    return True
+        return False
+
+
+def show(flag: bool) -> str:
+    return str(flag).lower()
+
+
+def main() -> None:
+    start = ChessRules.parse(["rnbqkbnr", "pppppppp", "........", "........",
+                              "........", "........", "PPPPPPPP", "RNBQKBNR"])
+    print("e2-e4", show(ChessRules.is_legal(start, "e2", "e4", True)))    # true
+    print("e2-e5", show(ChessRules.is_legal(start, "e2", "e5", True)))    # false
+    print("f1-c4", show(ChessRules.is_legal(start, "f1", "c4", True)))    # false (blocked)
+    print("g1-f3", show(ChessRules.is_legal(start, "g1", "f3", True)))    # true
+    print("e7-e5", show(ChessRules.is_legal(start, "e7", "e5", True)))    # false (not your piece)
+
+    pin = ChessRules.parse(["......k.", "....r...", "........", "........",
+                            "........", "........", "...PR...", "....K..."])
+    print("pinned Re2-g2", show(ChessRules.is_legal(pin, "e2", "g2", True)))   # false
+    print("pinned Re2-e7", show(ChessRules.is_legal(pin, "e2", "e7", True)))   # true (capture)
+    print("Ke1-f2", show(ChessRules.is_legal(pin, "e1", "f2", True)))          # true
+
+    print("empty square e3-e4", show(ChessRules.is_legal(start, "e3", "e4", True)))   # false
+    print("own piece d1-d2", show(ChessRules.is_legal(start, "d1", "d2", True)))      # false
+    rook_near = ChessRules.parse(["k.......", "........", "........", "........",
+                                  "........", "........", "...r....", "....K..."])
+    print("Ke1-e2 into rook check", show(ChessRules.is_legal(rook_near, "e1", "e2", True)))   # false
+    print("Ke1xd2 takes the rook", show(ChessRules.is_legal(rook_near, "e1", "d2", True)))    # true
+
+
+if __name__ == "__main__":
+    main()` },
+          { lang: 'ts', code: String.raw`
+type Board = string[][];
+type MoveRule = (b: Board, fr: number, fc: number, tr: number, tc: number) => boolean;
+
+const isUpper = (ch: string): boolean => ch !== ch.toLowerCase();
+
+// Walk from (fr,fc) toward (tr,tc) one step at a time; every square in between must be empty.
+function pathClear(b: Board, fr: number, fc: number, tr: number, tc: number): boolean {
+  const sr = Math.sign(tr - fr), sc = Math.sign(tc - fc);
+  for (let r = fr + sr, c = fc + sc; r !== tr || c !== tc; r += sr, c += sc) {
+    if (b[r][c] !== ".") return false;
+  }
+  return true;
+}
+
+const rookRule: MoveRule = (b, fr, fc, tr, tc) => (fr === tr || fc === tc) && pathClear(b, fr, fc, tr, tc);
+const bishopRule: MoveRule = (b, fr, fc, tr, tc) => Math.abs(fr - tr) === Math.abs(fc - tc) && pathClear(b, fr, fc, tr, tc);
+const pawnRule: MoveRule = (b, fr, fc, tr, tc) => {
+  const white = isUpper(b[fr][fc]);
+  const dir = white ? 1 : -1, dr = tr - fr, dc = Math.abs(tc - fc);
+  const target = b[tr][tc];
+  if (dc === 0 && dr === dir) return target === ".";
+  if (dc === 0 && dr === 2 * dir) return fr === (white ? 1 : 6) && target === "." && b[fr + dir][fc] === ".";
+  return dc === 1 && dr === dir && target !== "." && isUpper(target) !== white;
+};
+
+const RULES = new Map<string, MoveRule>([
+  ["R", rookRule],
+  ["B", bishopRule],
+  ["Q", (b, fr, fc, tr, tc) => rookRule(b, fr, fc, tr, tc) || bishopRule(b, fr, fc, tr, tc)],
+  ["N", (_b, fr, fc, tr, tc) => Math.abs(fr - tr) * Math.abs(fc - tc) === 2],
+  ["K", (_b, fr, fc, tr, tc) => Math.abs(fr - tr) <= 1 && Math.abs(fc - tc) <= 1],
+  ["P", pawnRule],
+]);
+
+class ChessRules {
+  static parse(ranks8to1: string[]): Board {
+    return Array.from({ length: 8 }, (_, r) => [...ranks8to1[7 - r]]);   // row 0 = rank 1
+  }
+
+  static isLegal(b: Board, from: string, to: string, whiteToMove: boolean): boolean {
+    const fr = from.charCodeAt(1) - 49, fc = from.charCodeAt(0) - 97, tr = to.charCodeAt(1) - 49, tc = to.charCodeAt(0) - 97;
+    const piece = b[fr][fc];
+    if (piece === "." || isUpper(piece) !== whiteToMove) return false;       // empty or wrong side
+    if (fr === tr && fc === tc) return false;
+    const target = b[tr][tc];
+    if (target !== "." && isUpper(target) === whiteToMove) return false;     // own piece
+    const rule = RULES.get(piece.toUpperCase());
+    if (rule === undefined || !rule(b, fr, fc, tr, tc)) return false;
+    const next = b.map((row) => row.slice());
+    next[tr][tc] = piece;
+    next[fr][fc] = ".";
+    return !ChessRules.inCheck(next, whiteToMove);
+  }
+
+  static inCheck(b: Board, white: boolean): boolean {
+    const king = white ? "K" : "k";
+    let kr = -1, kc = -1;
+    for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) if (b[r][c] === king) { kr = r; kc = c; }
+    for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
+      const p = b[r][c];
+      if (p === "." || isUpper(p) === white) continue;                       // only enemy pieces
+      if (RULES.get(p.toUpperCase())!(b, r, c, kr, kc)) return true;
+    }
+    return false;
+  }
+}
+
+function main(): void {
+  const start = ChessRules.parse(["rnbqkbnr", "pppppppp", "........", "........",
+                                  "........", "........", "PPPPPPPP", "RNBQKBNR"]);
+  console.log("e2-e4 " + ChessRules.isLegal(start, "e2", "e4", true));   // true
+  console.log("e2-e5 " + ChessRules.isLegal(start, "e2", "e5", true));   // false
+  console.log("f1-c4 " + ChessRules.isLegal(start, "f1", "c4", true));   // false (blocked)
+  console.log("g1-f3 " + ChessRules.isLegal(start, "g1", "f3", true));   // true
+  console.log("e7-e5 " + ChessRules.isLegal(start, "e7", "e5", true));   // false (not your piece)
+
+  const pin = ChessRules.parse(["......k.", "....r...", "........", "........",
+                                "........", "........", "...PR...", "....K..."]);
+  console.log("pinned Re2-g2 " + ChessRules.isLegal(pin, "e2", "g2", true));   // false
+  console.log("pinned Re2-e7 " + ChessRules.isLegal(pin, "e2", "e7", true));   // true (capture)
+  console.log("Ke1-f2 " + ChessRules.isLegal(pin, "e1", "f2", true));          // true
+
+  console.log("empty square e3-e4 " + ChessRules.isLegal(start, "e3", "e4", true));   // false
+  console.log("own piece d1-d2 " + ChessRules.isLegal(start, "d1", "d2", true));      // false
+  const rookNear = ChessRules.parse(["k.......", "........", "........", "........",
+                                     "........", "........", "...r....", "....K..."]);
+  console.log("Ke1-e2 into rook check " + ChessRules.isLegal(rookNear, "e1", "e2", true));   // false
+  console.log("Ke1xd2 takes the rook " + ChessRules.isLegal(rookNear, "e1", "d2", true));    // true
+}
+
+main();` },
+          { lang: 'cpp', code: String.raw`
+using Board = vector<string>;                 // 8 strings of 8 chars, row 0 = rank 1
+using MoveRule = function<bool(const Board&, int, int, int, int)>;
+
+int sign(int x) { return (x > 0) - (x < 0); }
+bool isUpper(char ch) { return isupper(static_cast<unsigned char>(ch)) != 0; }
+
+// Walk from (fr,fc) toward (tr,tc) one step at a time; every square in between must be empty.
+bool pathClear(const Board& b, int fr, int fc, int tr, int tc) {
+    int sr = sign(tr - fr), sc = sign(tc - fc);
+    for (int r = fr + sr, c = fc + sc; r != tr || c != tc; r += sr, c += sc)
+        if (b[r][c] != '.') return false;
+    return true;
+}
+
+bool rookRule(const Board& b, int fr, int fc, int tr, int tc) { return (fr == tr || fc == tc) && pathClear(b, fr, fc, tr, tc); }
+bool bishopRule(const Board& b, int fr, int fc, int tr, int tc) { return abs(fr - tr) == abs(fc - tc) && pathClear(b, fr, fc, tr, tc); }
+bool pawnRule(const Board& b, int fr, int fc, int tr, int tc) {
+    bool white = isUpper(b[fr][fc]);
+    int dir = white ? 1 : -1, dr = tr - fr, dc = abs(tc - fc);
+    char target = b[tr][tc];
+    if (dc == 0 && dr == dir) return target == '.';
+    if (dc == 0 && dr == 2 * dir) return fr == (white ? 1 : 6) && target == '.' && b[fr + dir][fc] == '.';
+    return dc == 1 && dr == dir && target != '.' && isUpper(target) != white;
+}
+
+const map<char, MoveRule>& rules() {
+    static const map<char, MoveRule> RULES = {
+        {'R', rookRule},
+        {'B', bishopRule},
+        {'Q', [](const Board& b, int fr, int fc, int tr, int tc) { return rookRule(b, fr, fc, tr, tc) || bishopRule(b, fr, fc, tr, tc); }},
+        {'N', [](const Board&, int fr, int fc, int tr, int tc) { return abs(fr - tr) * abs(fc - tc) == 2; }},
+        {'K', [](const Board&, int fr, int fc, int tr, int tc) { return abs(fr - tr) <= 1 && abs(fc - tc) <= 1; }},
+        {'P', pawnRule},
+    };
+    return RULES;
+}
+
+class ChessRules {
+public:
+    static Board parse(const vector<string>& ranks8to1) {
+        Board b(8);
+        for (int i = 0; i < 8; i++) b[7 - i] = ranks8to1[i];      // row 0 = rank 1
+        return b;
+    }
+
+    static bool isLegal(const Board& b, const string& from, const string& to, bool whiteToMove) {
+        int fr = from[1] - '1', fc = from[0] - 'a', tr = to[1] - '1', tc = to[0] - 'a';
+        char piece = b[fr][fc];
+        if (piece == '.' || isUpper(piece) != whiteToMove) return false;       // empty or wrong side
+        if (fr == tr && fc == tc) return false;
+        char target = b[tr][tc];
+        if (target != '.' && isUpper(target) == whiteToMove) return false;     // own piece
+        auto it = rules().find(static_cast<char>(toupper(piece)));
+        if (it == rules().end() || !it->second(b, fr, fc, tr, tc)) return false;
+        Board next = b;
+        next[tr][tc] = piece;
+        next[fr][fc] = '.';
+        return !inCheck(next, whiteToMove);
+    }
+
+    static bool inCheck(const Board& b, bool white) {
+        char king = white ? 'K' : 'k';
+        int kr = -1, kc = -1;
+        for (int r = 0; r < 8; r++) for (int c = 0; c < 8; c++) if (b[r][c] == king) { kr = r; kc = c; }
+        for (int r = 0; r < 8; r++) for (int c = 0; c < 8; c++) {
+            char p = b[r][c];
+            if (p == '.' || isUpper(p) == white) continue;                      // only enemy pieces
+            if (rules().at(static_cast<char>(toupper(p)))(b, r, c, kr, kc)) return true;
+        }
+        return false;
+    }
+};
+
+int main() {
+    cout << boolalpha;
+    Board start = ChessRules::parse({"rnbqkbnr", "pppppppp", "........", "........",
+                                     "........", "........", "PPPPPPPP", "RNBQKBNR"});
+    cout << "e2-e4 " << ChessRules::isLegal(start, "e2", "e4", true) << "\n";   // true
+    cout << "e2-e5 " << ChessRules::isLegal(start, "e2", "e5", true) << "\n";   // false
+    cout << "f1-c4 " << ChessRules::isLegal(start, "f1", "c4", true) << "\n";   // false (blocked)
+    cout << "g1-f3 " << ChessRules::isLegal(start, "g1", "f3", true) << "\n";   // true
+    cout << "e7-e5 " << ChessRules::isLegal(start, "e7", "e5", true) << "\n";   // false (not your piece)
+
+    Board pin = ChessRules::parse({"......k.", "....r...", "........", "........",
+                                   "........", "........", "...PR...", "....K..."});
+    cout << "pinned Re2-g2 " << ChessRules::isLegal(pin, "e2", "g2", true) << "\n";   // false
+    cout << "pinned Re2-e7 " << ChessRules::isLegal(pin, "e2", "e7", true) << "\n";   // true (capture)
+    cout << "Ke1-f2 " << ChessRules::isLegal(pin, "e1", "f2", true) << "\n";          // true
+
+    cout << "empty square e3-e4 " << ChessRules::isLegal(start, "e3", "e4", true) << "\n";   // false
+    cout << "own piece d1-d2 " << ChessRules::isLegal(start, "d1", "d2", true) << "\n";      // false
+    Board rookNear = ChessRules::parse({"k.......", "........", "........", "........",
+                                        "........", "........", "...r....", "....K..."});
+    cout << "Ke1-e2 into rook check " << ChessRules::isLegal(rookNear, "e1", "e2", true) << "\n";   // false
+    cout << "Ke1xd2 takes the rook " << ChessRules::isLegal(rookNear, "e1", "d2", true) << "\n";    // true
+}` }
+        ],
         dry: { head: ['Move', 'Basic checks', 'Rule', 'Simulated king safe?', 'Result'], rows: [['e2→e4 (start)', 'ok', 'pawn double step, e3 & e4 empty', 'yes', H.c('g', 'true')], ['f1→c4 (start)', 'ok', 'bishop diagonal, but e2 occupied', '—', H.c('r', 'false')], ['Re2→g2 (pin)', 'ok', 'rook straight, f2 empty', 'no: re7 sees Ke1', H.c('r', 'false')], ['Re2→e7 (pin)', 'ok', 'rook straight, e3..e6 empty', 'yes: attacker captured', H.c('g', 'true')]] },
         complexity: `<p>Rule check O(8) for the path. King-safety check scans 64 squares and runs a rule (≤ 8 steps) for each enemy piece: O(64 · 8) ≈ constant. Copy O(64). Comfortably 10<sup>5</sup>+ validations per second.</p>`,
         followUps: ['Add castling: what extra state must the board carry?', 'Add en passant without breaking the "pawn captures only occupied squares" rule.', 'Return the reason for rejection (enum) instead of a boolean.', 'Make inCheck O(1)-ish by scanning outward from the king instead of over all pieces.']
@@ -1990,7 +6250,593 @@ public class KVStoreDemo {
         kv.set("session", "s-3");           // remove TTL inside a tx
         kv.rollback();                      // TTL entry restored, including its expiry time
         System.out.println("after rollback ttl(session)=" + kv.ttl("session") + "ms");
+        System.out.println("commit with no tx -> " + kv.commit() + ", delete of a missing key -> " + kv.delete("nope"));
     }
+}`;
+  var KV_CORE_PY = String.raw`
+# ===== In-memory key-value store: GET/SET/DEL/COUNT, nested BEGIN/ROLLBACK/COMMIT, TTL =====
+import heapq
+import threading
+from dataclasses import dataclass
+from typing import Optional, Protocol
+
+
+# Time is injected so tests can move the clock by hand (no time.sleep in tests!).
+class Ticker(Protocol):
+    def now_millis(self) -> int: ...
+
+
+class ManualTicker:
+    def __init__(self) -> None:
+        self._now = 0
+
+    def now_millis(self) -> int:
+        return self._now
+
+    def advance(self, ms: int) -> None:
+        self._now += ms
+
+
+# expire_at == 0 means "never expires".
+@dataclass(frozen=True)
+class Entry:
+    value: str
+    expire_at: int
+
+    def expired(self, now: int) -> bool:
+        return self.expire_at > 0 and now >= self.expire_at
+
+
+class KVStore:
+    def __init__(self, clock: Ticker) -> None:
+        self._data: dict[str, Entry] = {}
+        self._value_count: dict[str, int] = {}                  # value -> how many keys hold it
+        # Undo log per open transaction: key -> Entry BEFORE the transaction first touched it
+        # (None = key did not exist). The last item of the list is the innermost transaction.
+        self._tx_stack: list[dict[str, Optional[Entry]]] = []
+        # One scheduled expiry per (at, key). Stale ones (key overwritten or deleted) are skipped when popped.
+        self._expiries: list[tuple[int, str]] = []
+        self._clock = clock
+        self._lock = threading.RLock()
+
+    # ---------- reads ----------
+    def get(self, key: str) -> Optional[str]:
+        with self._lock:
+            e = self._data.get(key)
+            if e is None:
+                return None
+            if e.expired(self._clock.now_millis()):
+                self._write_raw(key, None)                       # LAZY expiry on access
+                return None
+            return e.value
+
+    def count(self, value: str) -> int:
+        with self._lock:
+            self.expire_due()                                    # make the index exact before answering
+            return self._value_count.get(value, 0)
+
+    # Redis-style TTL: -2 = no such key, -1 = no expiry, else milliseconds left.
+    def ttl(self, key: str) -> int:
+        with self._lock:
+            if self.get(key) is None:
+                return -2
+            e = self._data[key]
+            return -1 if e.expire_at == 0 else e.expire_at - self._clock.now_millis()
+
+    # ---------- writes (all go through _record_undo + _write_raw) ----------
+    def set(self, key: str, value: str, ttl_millis: int = 0) -> None:
+        with self._lock:
+            self._record_undo(key)
+            expire_at = self._clock.now_millis() + ttl_millis if ttl_millis > 0 else 0
+            self._write_raw(key, Entry(value, expire_at))
+
+    def delete(self, key: str) -> bool:
+        with self._lock:
+            if self.get(key) is None:
+                return False
+            self._record_undo(key)
+            self._write_raw(key, None)
+            return True
+
+    # ---------- transactions ----------
+    def begin(self) -> None:
+        with self._lock:
+            self._tx_stack.append({})
+
+    def rollback(self) -> bool:
+        with self._lock:
+            if not self._tx_stack:
+                return False                                     # "NO TRANSACTION"
+            undo = self._tx_stack.pop()
+            for k, old in undo.items():                          # put every touched key back
+                self._write_raw(k, old)
+            return True
+
+    # Commit the innermost transaction. Its undo info moves into the parent,
+    # so rolling back the parent later still restores the ORIGINAL values.
+    def commit(self) -> bool:
+        with self._lock:
+            if not self._tx_stack:
+                return False
+            top = self._tx_stack.pop()
+            if self._tx_stack:
+                for k, old in top.items():
+                    self._tx_stack[-1].setdefault(k, old)        # parent's older snapshot wins
+            return True
+
+    def depth(self) -> int:
+        with self._lock:
+            return len(self._tx_stack)
+
+    # ---------- expiry ----------
+    # ACTIVE expiry: remove everything whose time has come (a scheduler would call this every 100 ms).
+    def expire_due(self) -> int:
+        with self._lock:
+            removed = 0
+            now = self._clock.now_millis()
+            while self._expiries and self._expiries[0][0] <= now:
+                at, key = heapq.heappop(self._expiries)
+                e = self._data.get(key)
+                if e is not None and e.expire_at == at:          # skip stale heap entries
+                    self._write_raw(key, None)
+                    removed += 1
+            return removed
+
+    # ---------- internals ----------
+    def _record_undo(self, key: str) -> None:
+        if self._tx_stack:
+            self._tx_stack[-1].setdefault(key, self._data.get(key))   # first touch only
+
+    # The ONLY method that changes data; keeps the value index and expiry heap in sync.
+    def _write_raw(self, key: str, e: Optional[Entry]) -> None:
+        old = self._data.pop(key, None) if e is None else self._data.get(key)
+        if e is not None:
+            self._data[key] = e
+        if old is not None:
+            left = self._value_count[old.value] - 1
+            if left == 0:
+                del self._value_count[old.value]
+            else:
+                self._value_count[old.value] = left
+        if e is not None:
+            self._value_count[e.value] = self._value_count.get(e.value, 0) + 1
+            if e.expire_at > 0:
+                heapq.heappush(self._expiries, (e.expire_at, key))
+
+
+def show(v: Optional[str]) -> str:
+    return "null" if v is None else v
+
+
+def main() -> None:
+    clock = ManualTicker()
+    kv = KVStore(clock)
+
+    kv.set("a", "10")
+    kv.begin()                          # T1
+    kv.set("a", "20")
+    kv.set("b", "20")
+    print(f"T1: a={show(kv.get('a'))} count(20)={kv.count('20')}")             # 20, 2
+    kv.begin()                          # T2 (nested)
+    kv.delete("a")
+    print(f"T2: a={show(kv.get('a'))}")                                         # null
+    kv.rollback()                       # undo T2 only
+    print(f"after rollback T2: a={show(kv.get('a'))}")                          # 20
+    kv.commit()                         # T1 becomes permanent
+    print(f"after commit: a={show(kv.get('a'))} b={show(kv.get('b'))} depth={kv.depth()}")
+
+    kv.begin()
+    kv.set("a", "99")
+    kv.begin()
+    kv.set("a", "100")
+    kv.commit()                         # inner commit merges undo into outer
+    kv.rollback()                       # outer rollback must restore 20, not 99
+    print(f"nested commit then outer rollback: a={show(kv.get('a'))}")          # 20
+    print(f"rollback with no tx -> {str(kv.rollback()).lower()}")               # false
+
+    kv.set("session", "s-1", 5_000)     # TTL 5 s
+    kv.set("otp", "1234", 2_000)        # TTL 2 s
+    clock.advance(1_000)
+    print(f"t=1s ttl(otp)={kv.ttl('otp')}ms, ttl(a)={kv.ttl('a')}")
+    clock.advance(1_500)
+    print(f"t=2.5s otp={show(kv.get('otp'))} (lazy expiry on read)")
+    kv.set("session", "s-2", 10_000)    # overwrite -> old heap entry becomes stale
+    kv.set("cache", "v", 1_000)         # nobody will read this one: only the active sweep frees it
+    clock.advance(4_000)
+    removed = kv.expire_due()
+    print(f"t=6.5s expireDue removed {removed}, session={show(kv.get('session'))}")
+
+    kv.begin()
+    kv.set("session", "s-3")            # remove TTL inside a tx
+    kv.rollback()                       # TTL entry restored, including its expiry time
+    print(f"after rollback ttl(session)={kv.ttl('session')}ms")
+    print(f"commit with no tx -> {str(kv.commit()).lower()}, delete of a missing key -> {str(kv.delete('nope')).lower()}")
+
+
+if __name__ == "__main__":
+    main()`;
+  var KV_CORE_TS = String.raw`
+// ===== In-memory key-value store: GET/SET/DEL/COUNT, nested BEGIN/ROLLBACK/COMMIT, TTL =====
+
+// Time is injected so tests can move the clock by hand (no setTimeout in tests!).
+interface Ticker { nowMillis(): number; }
+
+class ManualTicker implements Ticker {
+  private now = 0;
+  nowMillis(): number { return this.now; }
+  advance(ms: number): void { this.now += ms; }
+}
+
+// expireAt === 0 means "never expires".
+interface Entry { readonly value: string; readonly expireAt: number; }
+const expired = (e: Entry, now: number): boolean => e.expireAt > 0 && now >= e.expireAt;
+
+// One scheduled expiry. Stale ones (key overwritten or deleted) are skipped when popped.
+interface Expiry { readonly at: number; readonly key: string; }
+
+// JavaScript has no built-in heap, so here is a small binary min-heap.
+class MinHeap<T> {
+  private readonly items: T[] = [];
+  constructor(private readonly less: (a: T, b: T) => boolean) {}
+  get size(): number { return this.items.length; }
+  peek(): T | undefined { return this.items[0]; }
+  push(x: T): void {
+    const a = this.items;
+    a.push(x);
+    for (let i = a.length - 1; i > 0;) {
+      const p = (i - 1) >> 1;
+      if (!this.less(a[i], a[p])) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop(): T | undefined {
+    const a = this.items;
+    if (a.length === 0) return undefined;
+    const top = a[0];
+    const last = a.pop() as T;
+    if (a.length > 0) {
+      a[0] = last;
+      for (let i = 0;;) {
+        let m = i;
+        const l = 2 * i + 1, r = l + 1;
+        if (l < a.length && this.less(a[l], a[m])) m = l;
+        if (r < a.length && this.less(a[r], a[m])) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+class KVStore {
+  private readonly data = new Map<string, Entry>();
+  private readonly valueCount = new Map<string, number>();      // value -> how many keys hold it
+  // Undo log per open transaction: key -> Entry BEFORE the transaction first touched it
+  // (null = key did not exist). The last item of the array is the innermost transaction.
+  private readonly txStack: Map<string, Entry | null>[] = [];
+  private readonly expiries = new MinHeap<Expiry>((a, b) => a.at < b.at);
+
+  constructor(private readonly clock: Ticker) {}
+
+  // ---------- reads ----------
+  get(key: string): string | null {
+    const e = this.data.get(key);
+    if (e === undefined) return null;
+    if (expired(e, this.clock.nowMillis())) { this.writeRaw(key, null); return null; }   // LAZY expiry on access
+    return e.value;
+  }
+  count(value: string): number {
+    this.expireDue();                                           // make the index exact before answering
+    return this.valueCount.get(value) ?? 0;
+  }
+  // Redis-style TTL: -2 = no such key, -1 = no expiry, else milliseconds left.
+  ttl(key: string): number {
+    if (this.get(key) === null) return -2;
+    const e = this.data.get(key)!;
+    return e.expireAt === 0 ? -1 : e.expireAt - this.clock.nowMillis();
+  }
+
+  // ---------- writes (all go through recordUndo + writeRaw) ----------
+  set(key: string, value: string, ttlMillis = 0): void {
+    this.recordUndo(key);
+    this.writeRaw(key, { value, expireAt: ttlMillis > 0 ? this.clock.nowMillis() + ttlMillis : 0 });
+  }
+  delete(key: string): boolean {
+    if (this.get(key) === null) return false;
+    this.recordUndo(key);
+    this.writeRaw(key, null);
+    return true;
+  }
+
+  // ---------- transactions ----------
+  begin(): void { this.txStack.push(new Map()); }
+
+  rollback(): boolean {
+    const undo = this.txStack.pop();
+    if (undo === undefined) return false;                       // "NO TRANSACTION"
+    for (const [k, old] of undo) this.writeRaw(k, old);         // put every touched key back
+    return true;
+  }
+
+  // Commit the innermost transaction. Its undo info moves into the parent,
+  // so rolling back the parent later still restores the ORIGINAL values.
+  commit(): boolean {
+    const top = this.txStack.pop();
+    if (top === undefined) return false;
+    const parent = this.txStack[this.txStack.length - 1];
+    if (parent !== undefined) for (const [k, old] of top) if (!parent.has(k)) parent.set(k, old);   // parent's older snapshot wins
+    return true;
+  }
+  depth(): number { return this.txStack.length; }
+
+  // ---------- expiry ----------
+  // ACTIVE expiry: remove everything whose time has come (a scheduler would call this every 100 ms).
+  expireDue(): number {
+    let removed = 0;
+    const now = this.clock.nowMillis();
+    for (let x = this.expiries.peek(); x !== undefined && x.at <= now; x = this.expiries.peek()) {
+      this.expiries.pop();
+      const e = this.data.get(x.key);
+      if (e !== undefined && e.expireAt === x.at) { this.writeRaw(x.key, null); removed++; }   // skip stale heap entries
+    }
+    return removed;
+  }
+
+  // ---------- internals ----------
+  private recordUndo(key: string): void {
+    const top = this.txStack[this.txStack.length - 1];
+    if (top !== undefined && !top.has(key)) top.set(key, this.data.get(key) ?? null);           // first touch only
+  }
+  // The ONLY method that changes data; keeps the value index and expiry heap in sync.
+  private writeRaw(key: string, e: Entry | null): void {
+    const old = this.data.get(key);
+    if (e === null) this.data.delete(key); else this.data.set(key, e);
+    if (old !== undefined) {
+      const left = (this.valueCount.get(old.value) ?? 0) - 1;
+      if (left === 0) this.valueCount.delete(old.value); else this.valueCount.set(old.value, left);
+    }
+    if (e !== null) {
+      this.valueCount.set(e.value, (this.valueCount.get(e.value) ?? 0) + 1);
+      if (e.expireAt > 0) this.expiries.push({ at: e.expireAt, key });
+    }
+  }
+}
+
+const show = (v: string | null): string => v ?? "null";
+
+function main(): void {
+  const clock = new ManualTicker();
+  const kv = new KVStore(clock);
+
+  kv.set("a", "10");
+  kv.begin();                         // T1
+  kv.set("a", "20");
+  kv.set("b", "20");
+  console.log("T1: a=" + show(kv.get("a")) + " count(20)=" + kv.count("20"));     // 20, 2
+  kv.begin();                         // T2 (nested)
+  kv.delete("a");
+  console.log("T2: a=" + show(kv.get("a")));                                      // null
+  kv.rollback();                      // undo T2 only
+  console.log("after rollback T2: a=" + show(kv.get("a")));                       // 20
+  kv.commit();                        // T1 becomes permanent
+  console.log("after commit: a=" + show(kv.get("a")) + " b=" + show(kv.get("b")) + " depth=" + kv.depth());
+
+  kv.begin();
+  kv.set("a", "99");
+  kv.begin();
+  kv.set("a", "100");
+  kv.commit();                        // inner commit merges undo into outer
+  kv.rollback();                      // outer rollback must restore 20, not 99
+  console.log("nested commit then outer rollback: a=" + show(kv.get("a")));       // 20
+  console.log("rollback with no tx -> " + kv.rollback());                          // false
+
+  kv.set("session", "s-1", 5_000);    // TTL 5 s
+  kv.set("otp", "1234", 2_000);       // TTL 2 s
+  clock.advance(1_000);
+  console.log("t=1s ttl(otp)=" + kv.ttl("otp") + "ms, ttl(a)=" + kv.ttl("a"));
+  clock.advance(1_500);
+  console.log("t=2.5s otp=" + show(kv.get("otp")) + " (lazy expiry on read)");
+  kv.set("session", "s-2", 10_000);   // overwrite -> old heap entry becomes stale
+  kv.set("cache", "v", 1_000);        // nobody will read this one: only the active sweep frees it
+  clock.advance(4_000);
+  const removed = kv.expireDue();
+  console.log("t=6.5s expireDue removed " + removed + ", session=" + show(kv.get("session")));
+
+  kv.begin();
+  kv.set("session", "s-3");           // remove TTL inside a tx
+  kv.rollback();                      // TTL entry restored, including its expiry time
+  console.log("after rollback ttl(session)=" + kv.ttl("session") + "ms");
+  console.log("commit with no tx -> " + kv.commit() + ", delete of a missing key -> " + kv.delete("nope"));
+}
+
+main();`;
+  var KV_CORE_CPP = String.raw`
+// ===== In-memory key-value store: GET/SET/DEL/COUNT, nested BEGIN/ROLLBACK/COMMIT, TTL =====
+
+// Time is injected so tests can move the clock by hand (no sleep_for in tests!).
+class Ticker {
+public:
+    virtual ~Ticker() = default;
+    virtual long long nowMillis() const = 0;
+};
+
+class ManualTicker : public Ticker {
+    long long now = 0;
+public:
+    long long nowMillis() const override { return now; }
+    void advance(long long ms) { now += ms; }
+};
+
+// expireAt == 0 means "never expires".
+struct Entry {
+    string value;
+    long long expireAt;
+    bool expired(long long now) const { return expireAt > 0 && now >= expireAt; }
+};
+
+// One scheduled expiry. Stale ones (key overwritten or deleted) are skipped when popped.
+struct Expiry {
+    long long at;
+    string key;
+    bool operator>(const Expiry& o) const { return at > o.at; }
+};
+
+class KVStore {
+    map<string, Entry> data;
+    map<string, int> valueCount;                                   // value -> how many keys hold it
+    // Undo log per open transaction: key -> Entry BEFORE the transaction first touched it
+    // (empty optional = key did not exist). The back of the vector is the innermost transaction.
+    vector<map<string, optional<Entry>>> txStack;
+    priority_queue<Expiry, vector<Expiry>, greater<Expiry>> expiries;   // min-heap (the default is a max-heap)
+    const Ticker& clock;
+    mutable recursive_mutex mu;
+
+    void recordUndo(const string& key) {
+        if (txStack.empty()) return;
+        auto it = data.find(key);
+        txStack.back().try_emplace(key, it == data.end() ? nullopt : optional<Entry>(it->second));   // first touch only
+    }
+    // The ONLY method that changes data; keeps the value index and expiry heap in sync.
+    void writeRaw(const string& key, const optional<Entry>& e) {
+        auto it = data.find(key);
+        optional<Entry> old = it == data.end() ? nullopt : optional<Entry>(it->second);
+        if (e) data[key] = *e; else data.erase(key);
+        if (old && --valueCount[old->value] == 0) valueCount.erase(old->value);
+        if (e) {
+            valueCount[e->value]++;
+            if (e->expireAt > 0) expiries.push({e->expireAt, key});
+        }
+    }
+public:
+    explicit KVStore(const Ticker& c) : clock(c) {}
+
+    // ---------- reads ----------
+    optional<string> get(const string& key) {
+        lock_guard<recursive_mutex> lock(mu);
+        auto it = data.find(key);
+        if (it == data.end()) return nullopt;
+        if (it->second.expired(clock.nowMillis())) { writeRaw(key, nullopt); return nullopt; }   // LAZY expiry on access
+        return it->second.value;
+    }
+    int count(const string& value) {
+        lock_guard<recursive_mutex> lock(mu);
+        expireDue();                                               // make the index exact before answering
+        auto it = valueCount.find(value);
+        return it == valueCount.end() ? 0 : it->second;
+    }
+    // Redis-style TTL: -2 = no such key, -1 = no expiry, else milliseconds left.
+    long long ttl(const string& key) {
+        lock_guard<recursive_mutex> lock(mu);
+        if (!get(key)) return -2;
+        const Entry& e = data.at(key);
+        return e.expireAt == 0 ? -1 : e.expireAt - clock.nowMillis();
+    }
+
+    // ---------- writes (all go through recordUndo + writeRaw) ----------
+    void set(const string& key, const string& value, long long ttlMillis = 0) {
+        lock_guard<recursive_mutex> lock(mu);
+        recordUndo(key);
+        writeRaw(key, Entry{value, ttlMillis > 0 ? clock.nowMillis() + ttlMillis : 0});
+    }
+    bool del(const string& key) {                                  // "delete" is a C++ keyword
+        lock_guard<recursive_mutex> lock(mu);
+        if (!get(key)) return false;
+        recordUndo(key);
+        writeRaw(key, nullopt);
+        return true;
+    }
+
+    // ---------- transactions ----------
+    void begin() { lock_guard<recursive_mutex> lock(mu); txStack.emplace_back(); }
+
+    bool rollback() {
+        lock_guard<recursive_mutex> lock(mu);
+        if (txStack.empty()) return false;                         // "NO TRANSACTION"
+        auto undo = move(txStack.back());
+        txStack.pop_back();
+        for (const auto& [k, old] : undo) writeRaw(k, old);        // put every touched key back
+        return true;
+    }
+
+    // Commit the innermost transaction. Its undo info moves into the parent,
+    // so rolling back the parent later still restores the ORIGINAL values.
+    bool commit() {
+        lock_guard<recursive_mutex> lock(mu);
+        if (txStack.empty()) return false;
+        auto top = move(txStack.back());
+        txStack.pop_back();
+        if (!txStack.empty()) for (auto& [k, old] : top) txStack.back().try_emplace(k, old);   // parent's older snapshot wins
+        return true;
+    }
+    int depth() const { lock_guard<recursive_mutex> lock(mu); return static_cast<int>(txStack.size()); }
+
+    // ---------- expiry ----------
+    // ACTIVE expiry: remove everything whose time has come (a scheduler would call this every 100 ms).
+    int expireDue() {
+        lock_guard<recursive_mutex> lock(mu);
+        int removed = 0;
+        long long now = clock.nowMillis();
+        while (!expiries.empty() && expiries.top().at <= now) {
+            Expiry x = expiries.top();
+            expiries.pop();
+            auto it = data.find(x.key);
+            if (it != data.end() && it->second.expireAt == x.at) { writeRaw(x.key, nullopt); removed++; }   // skip stale heap entries
+        }
+        return removed;
+    }
+};
+
+string show(const optional<string>& v) { return v.value_or("null"); }
+
+int main() {
+    cout << boolalpha;
+    ManualTicker clock;
+    KVStore kv(clock);
+
+    kv.set("a", "10");
+    kv.begin();                         // T1
+    kv.set("a", "20");
+    kv.set("b", "20");
+    cout << "T1: a=" << show(kv.get("a")) << " count(20)=" << kv.count("20") << "\n";     // 20, 2
+    kv.begin();                         // T2 (nested)
+    kv.del("a");
+    cout << "T2: a=" << show(kv.get("a")) << "\n";                                        // null
+    kv.rollback();                      // undo T2 only
+    cout << "after rollback T2: a=" << show(kv.get("a")) << "\n";                         // 20
+    kv.commit();                        // T1 becomes permanent
+    cout << "after commit: a=" << show(kv.get("a")) << " b=" << show(kv.get("b")) << " depth=" << kv.depth() << "\n";
+
+    kv.begin();
+    kv.set("a", "99");
+    kv.begin();
+    kv.set("a", "100");
+    kv.commit();                        // inner commit merges undo into outer
+    kv.rollback();                      // outer rollback must restore 20, not 99
+    cout << "nested commit then outer rollback: a=" << show(kv.get("a")) << "\n";         // 20
+    cout << "rollback with no tx -> " << kv.rollback() << "\n";                            // false
+
+    kv.set("session", "s-1", 5'000);    // TTL 5 s
+    kv.set("otp", "1234", 2'000);       // TTL 2 s
+    clock.advance(1'000);
+    cout << "t=1s ttl(otp)=" << kv.ttl("otp") << "ms, ttl(a)=" << kv.ttl("a") << "\n";
+    clock.advance(1'500);
+    cout << "t=2.5s otp=" << show(kv.get("otp")) << " (lazy expiry on read)\n";
+    kv.set("session", "s-2", 10'000);   // overwrite -> old heap entry becomes stale
+    kv.set("cache", "v", 1'000);        // nobody will read this one: only the active sweep frees it
+    clock.advance(4'000);
+    int removed = kv.expireDue();
+    cout << "t=6.5s expireDue removed " << removed << ", session=" << show(kv.get("session")) << "\n";
+
+    kv.begin();
+    kv.set("session", "s-3");           // remove TTL inside a tx
+    kv.rollback();                      // TTL entry restored, including its expiry time
+    cout << "after rollback ttl(session)=" << kv.ttl("session") << "ms\n";
+    bool committed = kv.commit();
+    bool deleted = kv.del("nope");
+    cout << "commit with no tx -> " << committed << ", delete of a missing key -> " << deleted << "\n";
 }`;
 
   var KV_NODES = [
@@ -2001,7 +6847,7 @@ public class KVStoreDemo {
   var KV_EDGES = [['CL', 'KV', 'SET/GET/BEGIN…'], ['KV', 'TK', 'now()'], ['KV', 'DT', 'owns'], ['KV', 'TX', 'owns'], ['KV', 'PQ', 'owns'], ['DT', 'EN', 'values'], ['KV', 'IX', 'owns'], ['PQ', 'EX', 'items']];
   function kvClassViz() {
     return classTour('KV store — class diagram', KV_NODES, KV_EDGES, [
-      { narr: 'The whole store is one <b>facade</b> class with four private data structures. Every public method is <code>synchronized</code>, so the four always change together (one lock = no torn updates).', on: ['KV'] },
+      { narr: 'The whole store is one <b>facade</b> class with four private data structures. Every public method takes the one lock (Java <code>synchronized</code>, Python <code>RLock</code>, C++ <code>recursive_mutex</code>; JavaScript runs one task at a time), so the four always change together (one lock = no torn updates).', on: ['KV'] },
       { narr: '<b>data</b> maps key → <b>Entry(value, expireAt)</b>. Storing the absolute expiry time (not "seconds left") makes checks a single comparison: <code>now ≥ expireAt</code>.', on: ['DT', 'EN'], edges: ['KV-DT', 'DT-EN'] },
       { narr: '<b>txStack</b>: one <b>undo map</b> per open transaction. On the FIRST write to a key inside a transaction we save its old Entry (or "absent"). ROLLBACK = write the saved values back. COMMIT = pop and merge into the parent.', on: ['TX'], edges: ['KV-TX'], cls: 'sel',
         code: 'private void recordUndo(String key) {\n  if (!txStack.isEmpty())\n    txStack.peek().putIfAbsent(key,\n        Optional.ofNullable(data.get(key)));\n}', codeHl: { 3: 'ok' } },
@@ -2144,10 +6990,10 @@ ${H.table(['Design', 'BEGIN', 'Write', 'GET', 'ROLLBACK', 'Good for'], [
   ['<b>Overlay / write-set</b>', 'push empty map', 'write into top layer only', 'search layers top → bottom: O(depth)', H.c('g', 'just pop'), 'per-session isolation (others never see uncommitted data)'],
   [H.c('r', '<b>Snapshot copy</b> (naive)'), H.c('r', 'copy whole map O(n)'), 'write to copy', 'O(1)', 'swap back', 'never — memory × depth']
 ])}
-<p><b>The naive design (brute force) and why it breaks:</b> on BEGIN, <code>new HashMap&lt;&gt;(data)</code>. Correct, but a store with 10 million keys copies 10 million entries for <b>every</b> BEGIN — seconds of CPU and gigabytes of memory, and nested transactions multiply it. Also the naive <code>COUNT v</code> scans every key (O(n)). The undo log only pays for keys a transaction actually <b>touches</b>, and a <code>valueCount</code> index answers COUNT in O(1).</p>
+<p><b>The naive design (brute force) and why it breaks:</b> on BEGIN, copy the whole map (<code>new HashMap&lt;&gt;(data)</code>, <code>dict(data)</code>, <code>new Map(data)</code>). Correct, but a store with 10 million keys copies 10 million entries for <b>every</b> BEGIN — seconds of CPU and gigabytes of memory, and nested transactions multiply it. Also the naive <code>COUNT v</code> scans every key (O(n)). The undo log only pays for keys a transaction actually <b>touches</b>, and a <code>valueCount</code> index answers COUNT in O(1).</p>
 <p><b>The rule that makes nested commit correct:</b> when an inner transaction commits, move its undo entries into the parent <b>only for keys the parent has not saved yet</b> (<code>putIfAbsent</code>). Then a later rollback of the parent still restores the value from <i>before the parent began</i>. Getting this wrong is the #1 bug in this problem — the visualizer lets you test it.</p>
 <p><b>TTL in one line each:</b> store absolute <code>expireAt</code> (not "seconds left"); <b>lazy</b> check on every read; <b>active</b> sweep with a min-heap ordered by expireAt (skip stale heap items whose time no longer matches the entry); inject a <b>clock</b> so tests do not sleep.</p>
-<p><b>Classes:</b> <code>KVStore</code> (synchronized facade), <code>Entry(value, expireAt)</code>, <code>Expiry(at, key)</code>, <code>Ticker</code> (clock interface), and in a full answer a <code>CommandParser</code> + <code>Command</code> objects for the text protocol.</p>`,
+<p><b>Classes:</b> <code>KVStore</code> (locked facade), <code>Entry(value, expireAt)</code>, <code>Expiry(at, key)</code>, <code>Ticker</code> (clock interface), and in a full answer a <code>CommandParser</code> + <code>Command</code> objects for the text protocol.</p>`,
     clues: [
       '"BEGIN / ROLLBACK / COMMIT" with "nested transactions" → stack of undo logs (or overlay layers), never a full copy.',
       '"NUMEQUALTO / COUNT of a value in O(1)" → secondary index value → count, updated in one private write method.',
@@ -2157,7 +7003,7 @@ ${H.table(['Design', 'BEGIN', 'Write', 'GET', 'ROLLBACK', 'Good for'], [
       '"Each client has its own transaction" → per-session overlay write-sets, or optimistic WATCH-style versioning.',
       '"Design Redis-lite" → command parsing (Command pattern), data structures, expiry, persistence (AOF/snapshot) as follow-ups.'
     ],
-    code: [KV_CORE],
+    code: [{ lang: 'java', code: KV_CORE, alt: [{ lang: 'python', code: KV_CORE_PY }, { lang: 'ts', code: KV_CORE_TS }, { lang: 'cpp', code: KV_CORE_CPP }] }],
     codeTitle: ['KV store — undo-log transactions (nested commit/rollback), value-count index, lazy + active TTL with an injected clock (runnable main)'],
     viz: [
       { title: 'Class diagram tour: one facade, four data structures', gen: function () { return kvClassViz(); } },
@@ -2174,7 +7020,7 @@ ${H.table(['Design', 'BEGIN', 'Write', 'GET', 'ROLLBACK', 'Good for'], [
   ['6', 'COMMIT (T2)', '30', H.c('g', '{a: 10}') + ' (kept — putIfAbsent)', 'popped'],
   ['7', 'ROLLBACK (T1)', H.c('g', '10'), 'popped', '—']
 ])}<p>If step 6 had <b>overwritten</b> T1\'s entry with T2\'s <code>{a: 20}</code>, step 7 would wrongly give 20.</p>` },
-      { title: 'Overlay design (per-session isolation) in a few lines', html: `<p>When several clients have their own transactions, writes must stay invisible to others until commit. Keep a stack of <b>write-sets</b>; reads search from the top; a tombstone marks deletes; commit merges the top layer down.</p>`, code: String.raw`
+      { title: 'Overlay design (per-session isolation) in a few lines', html: `<p>When several clients have their own transactions, writes must stay invisible to others until commit. Keep a stack of <b>write-sets</b>; reads search from the top; a tombstone marks deletes; commit merges the top layer down.</p>`, code: { lang: 'java', code: String.raw`
 class OverlayStore {
     private static final String TOMBSTONE = "\u0000deleted";
     private final Map<String, String> base = new HashMap<>();
@@ -2207,7 +7053,154 @@ class OverlayStore {
         s.rollback();
         System.out.println("after rollback a=" + s.get("a")); // 10
     }
-}` },
+}`,
+        alt: [
+          { lang: 'python', code: String.raw`
+from typing import Optional
+
+TOMBSTONE = "\x00deleted"
+
+
+class OverlayStore:
+    def __init__(self) -> None:
+        self._base: dict[str, str] = {}
+        self._layers: list[dict[str, str]] = []          # per session in a real server; last = top
+
+    def begin(self) -> None:
+        self._layers.append({})
+
+    def set(self, k: str, v: str) -> None:
+        (self._layers[-1] if self._layers else self._base)[k] = v
+
+    def delete(self, k: str) -> None:
+        if self._layers:
+            self._layers[-1][k] = TOMBSTONE
+        else:
+            self._base.pop(k, None)
+
+    def get(self, k: str) -> Optional[str]:
+        for layer in reversed(self._layers):             # top -> bottom
+            if k in layer:
+                return None if layer[k] == TOMBSTONE else layer[k]
+        return self._base.get(k)
+
+    def rollback(self) -> bool:                          # O(1): just drop the layer
+        if not self._layers:
+            return False
+        self._layers.pop()
+        return True
+
+    def commit(self) -> bool:
+        if not self._layers:
+            return False
+        top = self._layers.pop()
+        for k, v in top.items():
+            if self._layers:
+                self._layers[-1][k] = v
+            elif v == TOMBSTONE:
+                self._base.pop(k, None)
+            else:
+                self._base[k] = v
+        return True
+
+
+def show(v: Optional[str]) -> str:
+    return "null" if v is None else v
+
+
+s = OverlayStore()
+s.set("a", "10")
+s.begin(); s.set("a", "20"); s.delete("a")
+print("inside tx a=" + show(s.get("a")))             # null
+s.rollback()
+print("after rollback a=" + show(s.get("a")))        # 10` },
+          { lang: 'ts', code: String.raw`
+const TOMBSTONE = "\u0000deleted";
+
+class OverlayStore {
+  private readonly base = new Map<string, string>();
+  private readonly layers: Map<string, string>[] = [];      // per session in a real server; last = top
+
+  begin(): void { this.layers.push(new Map()); }
+  set(k: string, v: string): void { (this.layers[this.layers.length - 1] ?? this.base).set(k, v); }
+  delete(k: string): void {
+    if (this.layers.length === 0) this.base.delete(k);
+    else this.layers[this.layers.length - 1].set(k, TOMBSTONE);
+  }
+  get(k: string): string | null {
+    for (let i = this.layers.length - 1; i >= 0; i--) {   // top -> bottom
+      const v = this.layers[i].get(k);
+      if (v !== undefined) return v === TOMBSTONE ? null : v;
+    }
+    return this.base.get(k) ?? null;
+  }
+  rollback(): boolean { return this.layers.pop() !== undefined; }   // O(1): just drop the layer
+  commit(): boolean {
+    const top = this.layers.pop();
+    if (top === undefined) return false;
+    const target = this.layers[this.layers.length - 1];
+    for (const [k, v] of top) {
+      if (target !== undefined) target.set(k, v);
+      else if (v === TOMBSTONE) this.base.delete(k);
+      else this.base.set(k, v);
+    }
+    return true;
+  }
+}
+
+const s = new OverlayStore();
+s.set("a", "10");
+s.begin(); s.set("a", "20"); s.delete("a");
+console.log("inside tx a=" + s.get("a"));       // null
+s.rollback();
+console.log("after rollback a=" + s.get("a"));  // 10` },
+          { lang: 'cpp', code: String.raw`
+const string TOMBSTONE = string("\0deleted", 8);
+
+class OverlayStore {
+    unordered_map<string, string> base;
+    vector<unordered_map<string, string>> layers;    // per session in a real server; back = top
+public:
+    void begin() { layers.emplace_back(); }
+    void set(const string& k, const string& v) { (layers.empty() ? base : layers.back())[k] = v; }
+    void del(const string& k) {                      // "delete" is a C++ keyword
+        if (layers.empty()) base.erase(k); else layers.back()[k] = TOMBSTONE;
+    }
+    optional<string> get(const string& k) const {
+        for (auto it = layers.rbegin(); it != layers.rend(); ++it) {   // top -> bottom
+            auto f = it->find(k);
+            if (f != it->end()) return f->second == TOMBSTONE ? nullopt : optional<string>(f->second);
+        }
+        auto f = base.find(k);
+        return f == base.end() ? nullopt : optional<string>(f->second);
+    }
+    bool rollback() {                                // O(1): just drop the layer
+        if (layers.empty()) return false;
+        layers.pop_back();
+        return true;
+    }
+    bool commit() {
+        if (layers.empty()) return false;
+        auto top = move(layers.back());
+        layers.pop_back();
+        for (auto& [k, v] : top) {
+            if (!layers.empty()) layers.back()[k] = v;
+            else if (v == TOMBSTONE) base.erase(k);
+            else base[k] = v;
+        }
+        return true;
+    }
+};
+
+int main() {
+    OverlayStore s;
+    s.set("a", "10");
+    s.begin(); s.set("a", "20"); s.del("a");
+    cout << "inside tx a=" << s.get("a").value_or("null") << "\n";        // null
+    s.rollback();
+    cout << "after rollback a=" << s.get("a").value_or("null") << "\n";   // 10
+}` }
+        ] } },
       { title: 'COUNT with an index vs a scan', html: `<p>Keys a=10, b=10, c=20. <code>COUNT 10</code>:</p>${H.kv([['10', '2'], ['20', '1']], { label: 'valueCount' })}<p>Scan: look at all n keys → O(n) per query. Index: one map lookup → O(1). The price: every write, delete, rollback and expiry must update the index — which is why the code funnels <b>all</b> changes through <code>writeRaw()</code>. Remove a counter when it reaches 0 so the index does not leak memory.</p>` },
       { title: 'TTL + transactions: what does rollback restore?', html: `<p><code>SET session s1 EX 10</code> (expireAt = 10 s). At 3 s: <code>BEGIN; SET session s2</code> (no TTL); <code>ROLLBACK</code>. The undo log stored the <b>whole Entry</b>, so the key gets back value s1 <b>and</b> expireAt 10 s — TTL 7 s left. If you stored only the value, rollback would silently make the key immortal. If time passes the old expireAt during the transaction, the restored entry is simply expired on the next read (lazy check) — still correct.</p>` },
       { title: 'How real Redis does it (and how it differs)', html: `${H.table(['Topic', 'Our design', 'Redis'], [
@@ -2217,7 +7210,7 @@ class OverlayStore {
   ['Concurrency', 'one lock', 'single-threaded command execution (I/O threads optional)']
 ])}` }
     ],
-    deepDive: `<p><b>1. Why one lock is fine here, and when it is not.</b> All four structures (data, index, undo stack, heap) must change together, so a single <code>synchronized</code> facade is the simplest correct answer and is fast for in-memory ops (Redis itself executes commands on one thread). To scale: shard the keyspace into N independent stores by <code>hash(key) % N</code>, each with its own lock and heap; cross-shard transactions then need a lock ordering or 2PC — say this explicitly.</p>
+    deepDive: `<p><b>1. Why one lock is fine here, and when it is not.</b> All four structures (data, index, undo stack, heap) must change together, so a single locked facade is the simplest correct answer and is fast for in-memory ops (Redis itself executes commands on one thread). To scale: shard the keyspace into N independent stores by <code>hash(key) % N</code>, each with its own lock and heap; cross-shard transactions then need a lock ordering or 2PC — say this explicitly.</p>
 <p><b>2. Isolation.</b> The undo-log store gives atomicity (all-or-nothing) for one client but <b>no isolation</b>: other readers see uncommitted writes (dirty reads). For multi-client transactions use per-session overlays (read-your-writes, commit merges under the lock), or <b>MVCC</b>: every key keeps versions tagged with a commit timestamp; a transaction reads the snapshot at its start time, and commit fails on write-write conflicts (optimistic). That is how most databases avoid readers blocking writers.</p>
 <p><b>3. Expiry at scale.</b> A heap costs O(log n) per TTL set and holds stale items after overwrites (bounded by writes; rebuild when stale ratio is high). Alternatives: a <b>timing wheel</b> (buckets per second, O(1) insert — used by Kafka and Netty), or Redis-style <b>random sampling</b> (no extra structure; probabilistic memory reclaim). Always keep lazy expiry for correctness.</p>
 <p><b>4. Durability.</b> Memory is lost on crash. Options: <b>append-only file</b> (log every write command; replay on start; fsync every second is the usual trade-off; rewrite/compact periodically) and <b>snapshots</b> (fork + copy-on-write in Redis, RDB files). Store TTLs as <b>absolute</b> timestamps in the log so a restart does not extend lifetimes.</p>
@@ -2266,9 +7259,10 @@ class SnapshotDb {
       mcq: { q: 'With the undo-log design, what does ROLLBACK cost?', options: ['O(number of keys the innermost transaction changed)', 'O(total keys in the database)', 'O(1) always', 'O(depth of the transaction stack × n)'], answer: 0, explain: 'Each open transaction remembers only the keys it touched (old value saved once). Rollback writes exactly those back.' },
       hints: [
         `<p>Do not copy data on BEGIN. Instead, when a key is changed inside a transaction, remember its <b>old</b> value (only the first time in that transaction).</p>`,
-        `<p>Use <code>Deque&lt;Map&lt;String, String&gt;&gt;</code> of undo maps (null value = "did not exist") and a <code>Map&lt;String, Integer&gt;</code> value counter. Route every change through one <code>apply(name, newValue)</code> that updates both maps.</p>`,
-        `<p>Edge cases: SET the same key twice in one transaction (keep the first old value: <code>containsKey</code> check, since the old value may be null), UNSET a missing key, ROLLBACK/COMMIT with no transaction, counters reaching zero (remove them). COMMIT here closes all transactions: simply clear the stack — data is already applied.</p>`
+        `<p>Use a stack of undo maps (<code>Deque&lt;Map&lt;String, String&gt;&gt;</code> in Java; a "no value" entry = "did not exist") and a hash map from value to count (<code>Map&lt;String, Integer&gt;</code>). Route every change through one <code>apply(name, newValue)</code> that updates both maps.</p>`,
+        `<p>Edge cases: SET the same key twice in one transaction (keep the first old value: check whether the key is already in the undo map, since the saved old value may be "absent"), UNSET a missing key, ROLLBACK/COMMIT with no transaction, counters reaching zero (remove them). COMMIT here closes all transactions: simply clear the stack — data is already applied.</p>`
       ],
+      tests: { io: true, cases: [{ stdin: '', stdout: "[2, 1, 2, 10, NO TRANSACTION]\n[40, NO TRANSACTION]\n[50, NULL, 60, 60]\n[NO TRANSACTION, NULL, UNKNOWN FLY, 0]\n" }] },
       solution: {
         approach: `<p>Writes are applied immediately to <code>data</code>; each open transaction keeps an undo map of first-touched keys → old value (null = absent). A <code>counts</code> map tracks how many names have each value and is updated in the single <code>apply</code> method, so NUMEQUALTO is O(1). ROLLBACK pops one undo map and applies its old values; COMMIT clears the whole stack because changes are already in place.</p>`,
         code: String.raw`
@@ -2320,8 +7314,225 @@ class SimpleDatabase {
         System.out.println(new SimpleDatabase().run(List.of(
             "SET a 50", "BEGIN", "GET a", "SET a 60", "BEGIN", "UNSET a", "GET a",
             "ROLLBACK", "GET a", "COMMIT", "GET a", "END")));                   // [50, NULL, 60, 60]
+        // failure paths: no transaction, unset of a missing name, unknown command, END stops the run
+        System.out.println(new SimpleDatabase().run(List.of(
+            "COMMIT", "UNSET zzz", "GET zzz", "FLY away", "NUMEQUALTO 5", "END", "GET a")));  // [NO TRANSACTION, NULL, UNKNOWN FLY, 0]
     }
 }`,
+      alt: [
+          { lang: 'python', code: String.raw`
+from typing import Optional
+
+
+class SimpleDatabase:
+    def __init__(self) -> None:
+        self._data: dict[str, str] = {}
+        self._counts: dict[str, int] = {}
+        self._undo: list[dict[str, Optional[str]]] = []      # value None = key did not exist
+
+    def _apply(self, name: str, value: Optional[str]) -> None:   # the ONLY mutation point
+        old = self._data.pop(name, None) if value is None else self._data.get(name)
+        if value is not None:
+            self._data[name] = value
+        if old is not None:
+            if self._counts[old] == 1:
+                del self._counts[old]
+            else:
+                self._counts[old] -= 1
+        if value is not None:
+            self._counts[value] = self._counts.get(value, 0) + 1
+
+    def _write(self, name: str, value: Optional[str]) -> None:
+        if self._undo and name not in self._undo[-1]:
+            self._undo[-1][name] = self._data.get(name)           # remember first old value
+        self._apply(name, value)
+
+    def run(self, commands: list[str]) -> list[str]:
+        out: list[str] = []
+        for line in commands:
+            t = line.strip().split(" ")
+            match t[0]:
+                case "SET":
+                    self._write(t[1], t[2])
+                case "UNSET":
+                    if t[1] in self._data:
+                        self._write(t[1], None)
+                case "GET":
+                    out.append(self._data.get(t[1], "NULL"))
+                case "NUMEQUALTO":
+                    out.append(str(self._counts.get(t[1], 0)))
+                case "BEGIN":
+                    self._undo.append({})
+                case "ROLLBACK":
+                    if not self._undo:
+                        out.append("NO TRANSACTION")
+                    else:
+                        for name, old in self._undo.pop().items():  # restore old values (None = delete)
+                            self._apply(name, old)
+                case "COMMIT":
+                    if not self._undo:
+                        out.append("NO TRANSACTION")
+                    else:
+                        self._undo.clear()
+                case "END":
+                    return out
+                case _:
+                    out.append("UNKNOWN " + t[0])
+        return out
+
+
+def show(items: list[str]) -> str:
+    return "[" + ", ".join(items) + "]"
+
+
+def main() -> None:
+    print(show(SimpleDatabase().run([
+        "SET a 10", "SET b 10", "NUMEQUALTO 10", "BEGIN", "SET a 20", "NUMEQUALTO 10",
+        "ROLLBACK", "NUMEQUALTO 10", "GET a", "ROLLBACK", "END"])))        # [2, 1, 2, 10, NO TRANSACTION]
+    print(show(SimpleDatabase().run([
+        "BEGIN", "SET a 30", "BEGIN", "SET a 40", "COMMIT", "GET a", "ROLLBACK", "END"])))   # [40, NO TRANSACTION]
+    print(show(SimpleDatabase().run([
+        "SET a 50", "BEGIN", "GET a", "SET a 60", "BEGIN", "UNSET a", "GET a",
+        "ROLLBACK", "GET a", "COMMIT", "GET a", "END"])))                   # [50, NULL, 60, 60]
+    # failure paths: no transaction, unset of a missing name, unknown command, END stops the run
+    print(show(SimpleDatabase().run([
+        "COMMIT", "UNSET zzz", "GET zzz", "FLY away", "NUMEQUALTO 5", "END", "GET a"])))     # [NO TRANSACTION, NULL, UNKNOWN FLY, 0]
+
+
+if __name__ == "__main__":
+    main()` },
+          { lang: 'ts', code: String.raw`
+class SimpleDatabase {
+  private readonly data = new Map<string, string>();
+  private readonly counts = new Map<string, number>();
+  private readonly undo: Map<string, string | null>[] = [];      // value null = key did not exist
+
+  private apply(name: string, value: string | null): void {      // the ONLY mutation point
+    const old = this.data.get(name);
+    if (value === null) this.data.delete(name); else this.data.set(name, value);
+    if (old !== undefined) {
+      const c = this.counts.get(old)!;
+      if (c === 1) this.counts.delete(old); else this.counts.set(old, c - 1);
+    }
+    if (value !== null) this.counts.set(value, (this.counts.get(value) ?? 0) + 1);
+  }
+  private write(name: string, value: string | null): void {
+    const top = this.undo[this.undo.length - 1];
+    if (top !== undefined && !top.has(name)) top.set(name, this.data.get(name) ?? null);   // remember first old value
+    this.apply(name, value);
+  }
+
+  run(commands: string[]): string[] {
+    const out: string[] = [];
+    for (const line of commands) {
+      const t = line.trim().split(" ");
+      switch (t[0]) {
+        case "SET": this.write(t[1], t[2]); break;
+        case "UNSET": if (this.data.has(t[1])) this.write(t[1], null); break;
+        case "GET": out.push(this.data.get(t[1]) ?? "NULL"); break;
+        case "NUMEQUALTO": out.push(String(this.counts.get(t[1]) ?? 0)); break;
+        case "BEGIN": this.undo.push(new Map()); break;
+        case "ROLLBACK": {
+          const u = this.undo.pop();
+          if (u === undefined) out.push("NO TRANSACTION");
+          else for (const [name, old] of u) this.apply(name, old);   // restore old values (null = delete)
+          break;
+        }
+        case "COMMIT":
+          if (this.undo.length === 0) out.push("NO TRANSACTION"); else this.undo.length = 0;
+          break;
+        case "END": return out;
+        default: out.push("UNKNOWN " + t[0]);
+      }
+    }
+    return out;
+  }
+}
+
+const show = (items: string[]): string => "[" + items.join(", ") + "]";
+
+console.log(show(new SimpleDatabase().run([
+  "SET a 10", "SET b 10", "NUMEQUALTO 10", "BEGIN", "SET a 20", "NUMEQUALTO 10",
+  "ROLLBACK", "NUMEQUALTO 10", "GET a", "ROLLBACK", "END"])));        // [2, 1, 2, 10, NO TRANSACTION]
+console.log(show(new SimpleDatabase().run([
+  "BEGIN", "SET a 30", "BEGIN", "SET a 40", "COMMIT", "GET a", "ROLLBACK", "END"])));   // [40, NO TRANSACTION]
+console.log(show(new SimpleDatabase().run([
+  "SET a 50", "BEGIN", "GET a", "SET a 60", "BEGIN", "UNSET a", "GET a",
+  "ROLLBACK", "GET a", "COMMIT", "GET a", "END"])));                   // [50, NULL, 60, 60]
+// failure paths: no transaction, unset of a missing name, unknown command, END stops the run
+console.log(show(new SimpleDatabase().run([
+  "COMMIT", "UNSET zzz", "GET zzz", "FLY away", "NUMEQUALTO 5", "END", "GET a"])));     // [NO TRANSACTION, NULL, UNKNOWN FLY, 0]` },
+          { lang: 'cpp', code: String.raw`
+class SimpleDatabase {
+    unordered_map<string, string> data;
+    unordered_map<string, int> counts;
+    vector<map<string, optional<string>>> undo;          // value empty = key did not exist
+
+    void apply(const string& name, const optional<string>& value) {   // the ONLY mutation point
+        auto it = data.find(name);
+        optional<string> old = it == data.end() ? nullopt : optional<string>(it->second);
+        if (value) data[name] = *value; else data.erase(name);
+        if (old && --counts[*old] == 0) counts.erase(*old);
+        if (value) counts[*value]++;
+    }
+    void write(const string& name, const optional<string>& value) {
+        if (!undo.empty() && !undo.back().count(name)) {
+            auto it = data.find(name);
+            undo.back()[name] = it == data.end() ? nullopt : optional<string>(it->second);   // remember first old value
+        }
+        apply(name, value);
+    }
+public:
+    vector<string> run(const vector<string>& commands) {
+        vector<string> out;
+        for (const string& line : commands) {
+            vector<string> t;
+            istringstream in(line);
+            for (string w; in >> w;) t.push_back(w);
+            const string& cmd = t[0];
+            if (cmd == "SET") write(t[1], t[2]);
+            else if (cmd == "UNSET") { if (data.count(t[1])) write(t[1], nullopt); }
+            else if (cmd == "GET") out.push_back(data.count(t[1]) ? data[t[1]] : "NULL");
+            else if (cmd == "NUMEQUALTO") out.push_back(to_string(counts.count(t[1]) ? counts[t[1]] : 0));
+            else if (cmd == "BEGIN") undo.emplace_back();
+            else if (cmd == "ROLLBACK") {
+                if (undo.empty()) out.push_back("NO TRANSACTION");
+                else {
+                    auto u = move(undo.back());
+                    undo.pop_back();
+                    for (const auto& [name, old] : u) apply(name, old);   // restore old values (empty = delete)
+                }
+            }
+            else if (cmd == "COMMIT") {
+                if (undo.empty()) out.push_back("NO TRANSACTION"); else undo.clear();
+            }
+            else if (cmd == "END") return out;
+            else out.push_back("UNKNOWN " + cmd);
+        }
+        return out;
+    }
+};
+
+string show(const vector<string>& items) {
+    string out = "[";
+    for (size_t i = 0; i < items.size(); i++) out += (i ? ", " : "") + items[i];
+    return out + "]";
+}
+
+int main() {
+    cout << show(SimpleDatabase().run({
+        "SET a 10", "SET b 10", "NUMEQUALTO 10", "BEGIN", "SET a 20", "NUMEQUALTO 10",
+        "ROLLBACK", "NUMEQUALTO 10", "GET a", "ROLLBACK", "END"})) << "\n";        // [2, 1, 2, 10, NO TRANSACTION]
+    cout << show(SimpleDatabase().run({
+        "BEGIN", "SET a 30", "BEGIN", "SET a 40", "COMMIT", "GET a", "ROLLBACK", "END"})) << "\n";   // [40, NO TRANSACTION]
+    cout << show(SimpleDatabase().run({
+        "SET a 50", "BEGIN", "GET a", "SET a 60", "BEGIN", "UNSET a", "GET a",
+        "ROLLBACK", "GET a", "COMMIT", "GET a", "END"})) << "\n";                   // [50, NULL, 60, 60]
+    // failure paths: no transaction, unset of a missing name, unknown command, END stops the run
+    cout << show(SimpleDatabase().run({
+        "COMMIT", "UNSET zzz", "GET zzz", "FLY away", "NUMEQUALTO 5", "END", "GET a"})) << "\n";     // [NO TRANSACTION, NULL, UNKNOWN FLY, 0]
+}` }
+        ],
         dry: { head: ['Command', 'data', 'undo stack', 'counts', 'output'], rows: [['SET a 10, SET b 10', 'a=10 b=10', '[]', '10→2', ''], ['BEGIN, SET a 20', 'a=20 b=10', '[{a:10}]', '10→1, 20→1', ''], ['NUMEQUALTO 10', '', '', '', '1'], ['ROLLBACK', 'a=10 b=10', '[]', '10→2', ''], ['ROLLBACK', '', '[]', '', 'NO TRANSACTION']] },
         complexity: `<p>SET/GET/UNSET/NUMEQUALTO O(1) average. BEGIN O(1). ROLLBACK O(k) for k keys touched by that transaction. COMMIT O(depth) to clear. Memory O(n + total touched keys across open transactions).</p>`,
         followUps: ['Make COMMIT close only the innermost transaction (merge undo maps with putIfAbsent).', 'Add TTL: SET name value EX 10 — what must the undo map store now?', 'Two clients each with their own transaction: switch to overlays or MVCC?', 'Persist to an append-only log; how do you replay transactions that never committed?']
@@ -2356,9 +7567,10 @@ class LevelScan {
     mcq: { q: 'Which lookup sequence finds the effective level of <code>a.b.c</code>?', options: ['a.b.c → a.b → a → root, stop at the first configured one', 'root → a → a.b → a.b.c, take the last configured', 'Only a.b.c, else root', 'Any config key that is a substring of a.b.c'], answer: 0, explain: 'Climbing from the most specific name and stopping at the first hit gives the closest ancestor in O(depth) hash lookups. Option 2 also works but always walks the full depth.' },
     hints: [
       `<p>An ancestor is obtained by cutting at the last dot: <code>name.substring(0, name.lastIndexOf('.'))</code>. That respects the dot boundary automatically.</p>`,
-      `<p>Put the config in a <code>HashMap</code>; loop: if map contains name → done; else cut the last part; when no dot is left, use root.</p>`,
+      `<p>Put the config in a hash map (<code>HashMap</code> / <code>dict</code> / <code>Map</code> / <code>unordered_map</code>); loop: if map contains name → done; else cut the last part; when no dot is left, use root.</p>`,
       `<p>Edge cases: the logger "root" itself, names without dots, unknown levels (validate), and caching results per logger name if config rarely changes (real frameworks cache the effective level and invalidate on config reload).</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "true\nfalse\ntrue\nWARN true\nINFO\n" }] },
     solution: {
       approach: `<p>Walk up the hierarchy with <code>lastIndexOf('.')</code> doing O(1) hash lookups; the first configured name wins; fall back to root. Compare level ordinals.</p>`,
       code: String.raw`
@@ -2385,8 +7597,115 @@ class LevelResolver {
         System.out.println(r.shouldLog("com.shop.db.pool", Lv.DEBUG));  // true
         System.out.println(r.shouldLog("com.shop.cart", Lv.INFO));      // false
         System.out.println(r.shouldLog("com.shopx", Lv.INFO));          // true
+        System.out.println(r.effective("com.shop") + " " + r.shouldLog("com.shop.db", Lv.ERROR));  // WARN true
+        System.out.println(new LevelResolver(Map.of()).effective("a.b.c"));                       // INFO (nothing configured)
     }
 }`,
+    alt: [
+        { lang: 'python', code: String.raw`
+from enum import IntEnum
+
+
+class Lv(IntEnum):
+    DEBUG = 0
+    INFO = 1
+    WARN = 2
+    ERROR = 3
+
+
+class LevelResolver:
+    def __init__(self, cfg: dict[str, Lv]) -> None:
+        self._cfg = cfg
+
+    def effective(self, logger: str) -> Lv:
+        name = logger
+        while True:
+            lv = self._cfg.get(name)
+            if lv is not None:
+                return lv
+            dot = name.rfind(".")
+            if dot < 0:
+                return self._cfg.get("root", Lv.INFO)
+            name = name[:dot]                           # climb exactly one level
+
+    def should_log(self, logger: str, level: Lv) -> bool:
+        return level >= self.effective(logger)
+
+
+def main() -> None:
+    r = LevelResolver({"root": Lv.INFO, "com.shop": Lv.WARN, "com.shop.db": Lv.DEBUG})
+    print(str(r.should_log("com.shop.db.pool", Lv.DEBUG)).lower())    # true
+    print(str(r.should_log("com.shop.cart", Lv.INFO)).lower())        # false
+    print(str(r.should_log("com.shopx", Lv.INFO)).lower())            # true
+    print(f"{r.effective('com.shop').name} {str(r.should_log('com.shop.db', Lv.ERROR)).lower()}")   # WARN true
+    print(LevelResolver({}).effective("a.b.c").name)                  # INFO (nothing configured)
+
+
+if __name__ == "__main__":
+    main()` },
+        { lang: 'ts', code: String.raw`
+enum Lv { DEBUG, INFO, WARN, ERROR }
+
+class LevelResolver {
+  constructor(private readonly cfg: ReadonlyMap<string, Lv>) {}
+
+  effective(logger: string): Lv {
+    let name = logger;
+    for (;;) {
+      const lv = this.cfg.get(name);
+      if (lv !== undefined) return lv;
+      const dot = name.lastIndexOf(".");
+      if (dot < 0) return this.cfg.get("root") ?? Lv.INFO;
+      name = name.substring(0, dot);                    // climb exactly one level
+    }
+  }
+  shouldLog(logger: string, level: Lv): boolean { return level >= this.effective(logger); }
+}
+
+const r = new LevelResolver(new Map([["root", Lv.INFO], ["com.shop", Lv.WARN], ["com.shop.db", Lv.DEBUG]]));
+console.log(r.shouldLog("com.shop.db.pool", Lv.DEBUG));   // true
+console.log(r.shouldLog("com.shop.cart", Lv.INFO));       // false
+console.log(r.shouldLog("com.shopx", Lv.INFO));           // true
+console.log(Lv[r.effective("com.shop")] + " " + r.shouldLog("com.shop.db", Lv.ERROR));   // WARN true
+console.log(Lv[new LevelResolver(new Map()).effective("a.b.c")]);                       // INFO (nothing configured)` },
+        { lang: 'cpp', code: String.raw`
+enum class Lv { DEBUG, INFO, WARN, ERROR };
+
+string name(Lv lv) {
+    static const char* names[] = {"DEBUG", "INFO", "WARN", "ERROR"};
+    return names[static_cast<int>(lv)];
+}
+
+class LevelResolver {
+    map<string, Lv> cfg;
+public:
+    explicit LevelResolver(map<string, Lv> c) : cfg(move(c)) {}
+
+    Lv effective(string logger) const {
+        while (true) {
+            auto it = cfg.find(logger);
+            if (it != cfg.end()) return it->second;
+            size_t dot = logger.rfind('.');
+            if (dot == string::npos) {
+                auto root = cfg.find("root");
+                return root == cfg.end() ? Lv::INFO : root->second;
+            }
+            logger.resize(dot);                          // climb exactly one level
+        }
+    }
+    bool shouldLog(const string& logger, Lv level) const { return level >= effective(logger); }
+};
+
+int main() {
+    cout << boolalpha;
+    LevelResolver r({{"root", Lv::INFO}, {"com.shop", Lv::WARN}, {"com.shop.db", Lv::DEBUG}});
+    cout << r.shouldLog("com.shop.db.pool", Lv::DEBUG) << "\n";    // true
+    cout << r.shouldLog("com.shop.cart", Lv::INFO) << "\n";        // false
+    cout << r.shouldLog("com.shopx", Lv::INFO) << "\n";            // true
+    cout << name(r.effective("com.shop")) << " " << r.shouldLog("com.shop.db", Lv::ERROR) << "\n";   // WARN true
+    cout << name(LevelResolver({}).effective("a.b.c")) << "\n";    // INFO (nothing configured)
+}` }
+      ],
       complexity: `<p>O(D) hash lookups per query, D = number of name parts (≤ 10). Memory O(C).</p>`,
       followUps: ['Cache effective levels and invalidate on config change.', 'Support wildcards like com.*.db.']
     }
@@ -2395,11 +7714,11 @@ class LevelResolver {
   practice.push({
     title: 'Pick the Partition: Key Hash and Round-Robin',
     level: 'Easy', tags: ['pub-sub', 'hashing', 'kafka'], companies: ['Confluent', 'LinkedIn', 'Uber'],
-    statement: `<p>Implement <code>int partitionFor(String key, int n)</code> for a producer: messages with a key go to <code>hash(key) mod n</code> (same key → same partition, always); messages with a <code>null</code> key are spread round-robin. The result must always be in <code>[0, n)</code>.</p>`,
-    constraints: `<p>1 ≤ n ≤ 10<sup>4</sup>. Any String is a valid key — including ones whose <code>hashCode()</code> is negative or <code>Integer.MIN_VALUE</code>.</p>`,
-    example: `<p>n = 3, keys <code>u1, null, u1, null, null</code> → u1 always the same partition; nulls go 0, 1, 2. Key <code>"polygenelubricants"</code> has <code>hashCode() == Integer.MIN_VALUE</code>: ${H.c('r', 'Math.abs gives a negative number')}, ${H.c('g', 'floorMod gives 1')}.</p>`,
+    statement: `<p>Implement <code>int partitionFor(String key, int n)</code> (Python <code>partition_for</code>) for a producer: messages with a key go to <code>hash(key) mod n</code> (same key → same partition, always); messages with a <code>null</code> key are spread round-robin. The result must always be in <code>[0, n)</code>.</p>`,
+    constraints: `<p>1 ≤ n ≤ 10<sup>4</sup>. Any string is a valid key. The hash is Java's <code>String.hashCode()</code> (31·h + c, wrapped to a signed 32-bit int), which can be negative or even the minimum int, −2<sup>31</sup>. The Python, TypeScript and C++ versions compute the same value, so all four languages choose the same partition.</p>`,
+    example: `<p>n = 3, keys <code>u1, null, u1, null, null</code> → u1 always the same partition; nulls go 0, 1, 2. Key <code>"polygenelubricants"</code> has hash −2<sup>31</sup> (<code>Integer.MIN_VALUE</code>): ${H.c('r', 'taking the absolute value first still gives a negative number')}, ${H.c('g', 'a floor-mod gives 1')}.</p>`,
     brute: {
-      why: `<p><code>Math.abs(key.hashCode()) % n</code> looks right but <code>Math.abs(Integer.MIN_VALUE)</code> is still negative (it overflows), so one-in-four-billion keys produce a negative partition and crash the producer in production. A random choice for null keys also loses even spread guarantees.</p>`,
+      why: `<p><code>abs(hash) % n</code> looks right, but the absolute value of the minimum 32-bit int is still negative (<code>Math.abs(Integer.MIN_VALUE)</code> overflows), so one-in-four-billion keys produce a negative partition and crash the producer in production. Also, <code>%</code> keeps the sign of its left operand in Java, C++ and JavaScript (not in Python). A random choice for null keys also loses even spread guarantees.</p>`,
       code: String.raw`
 class AbsPartitioner {
     static int partitionFor(String key, int n) { return Math.abs(key.hashCode()) % n; }
@@ -2411,10 +7730,11 @@ class AbsPartitioner {
     },
     mcq: { q: 'Why does every message with key "order-42" land in the same partition?', options: ['The partition is a pure function of the key hash and the partition count', 'The broker remembers which partition each key used', 'Round-robin is applied per key', 'Consumers request it'], answer: 0, explain: 'hash(key) mod n is deterministic — as long as n does not change. That is why adding partitions reshuffles keys.' },
     hints: [
-      `<p>Use <code>Math.floorMod(hash, n)</code>: it always returns a value in [0, n) even for negative hashes. Alternatively mask the sign bit: <code>(hash &amp; 0x7fffffff) % n</code>.</p>`,
-      `<p>For null keys keep an <code>AtomicInteger</code> counter and use <code>floorMod(counter.getAndIncrement(), n)</code> — floorMod also protects you when the counter overflows.</p>`,
+      `<p>Use a floor-mod (Java <code>Math.floorMod(hash, n)</code>; Python's <code>%</code> already is one; in C++ and JavaScript write <code>((hash % n) + n) % n</code>): it always returns a value in [0, n) even for negative hashes. Alternatively mask the sign bit: <code>(hash &amp; 0x7fffffff) % n</code>.</p>`,
+      `<p>For null keys keep an atomic counter (<code>AtomicInteger</code>, <code>std::atomic</code>, or a lock-guarded int) and use <code>floorMod(counter.getAndIncrement(), n)</code> — floorMod also protects you when the counter overflows.</p>`,
       `<p>Mention: Kafka uses murmur2 for better spread than String.hashCode, and modern Kafka uses a "sticky" partitioner for null keys (fill one batch, then switch) to improve batching.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "1\n1 0 1 1 2\nrejected: n must be positive\n" }] },
     solution: {
       approach: `<p>Deterministic floorMod of the key hash for keyed messages; an atomic round-robin counter for null keys; both always land in range.</p>`,
       code: String.raw`
@@ -2431,8 +7751,104 @@ class SafePartitioner {
         StringBuilder sb = new StringBuilder();
         for (String k : new String[] {"u1", null, "u1", null, null}) sb.append(p.partitionFor(k, 3)).append(' ');
         System.out.println(sb.toString().trim());                         // u1 twice the same; nulls 0 1 2
+        try { p.partitionFor("x", 0); }
+        catch (IllegalArgumentException e) { System.out.println("rejected: " + e.getMessage()); }
     }
 }`,
+    alt: [
+        { lang: 'python', code: String.raw`
+import itertools
+import threading
+from typing import Optional
+
+
+def java_hash(s: str) -> int:
+    """Java's String.hashCode: 31*h + c wrapped to a signed 32-bit int (the result may be negative)."""
+    h = 0
+    for ch in s:
+        h = (31 * h + ord(ch)) & 0xFFFFFFFF
+    return h - (1 << 32) if h >= (1 << 31) else h
+
+
+class SafePartitioner:
+    def __init__(self) -> None:
+        self._rr = itertools.count()
+        self._lock = threading.Lock()
+
+    def partition_for(self, key: Optional[str], n: int) -> int:
+        if n <= 0:
+            raise ValueError("n must be positive")
+        if key is None:
+            with self._lock:
+                return next(self._rr) % n
+        return java_hash(key) % n                       # Python's % is already a floor-mod: never negative
+
+
+def main() -> None:
+    p = SafePartitioner()
+    print(p.partition_for("polygenelubricants", 3))      # 1, never negative
+    print(" ".join(str(p.partition_for(k, 3)) for k in ["u1", None, "u1", None, None]))   # u1 twice the same; nulls 0 1 2
+    try:
+        p.partition_for("x", 0)
+    except ValueError as e:
+        print(f"rejected: {e}")
+
+
+if __name__ == "__main__":
+    main()` },
+        { lang: 'ts', code: String.raw`
+// Java's String.hashCode: 31*h + c wrapped to a signed 32-bit int (the result may be negative).
+function javaHash(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  return h;
+}
+const floorMod = (a: number, n: number): number => ((a % n) + n) % n;   // JS % keeps the sign of a
+
+class SafePartitioner {
+  private rr = 0;
+  partitionFor(key: string | null, n: number): number {
+    if (n <= 0) throw new Error("n must be positive");
+    if (key === null) return floorMod(this.rr++, n);
+    return floorMod(javaHash(key), n);
+  }
+}
+
+const p = new SafePartitioner();
+console.log(p.partitionFor("polygenelubricants", 3));    // 1, never negative
+console.log(["u1", null, "u1", null, null].map((k) => p.partitionFor(k, 3)).join(" "));   // u1 twice the same; nulls 0 1 2
+try { p.partitionFor("x", 0); }
+catch (e) { console.log("rejected: " + (e as Error).message); }` },
+        { lang: 'cpp', code: String.raw`
+// Java's String.hashCode: 31*h + c wrapped to a signed 32-bit int (the result may be negative).
+int32_t javaHash(const string& s) {
+    uint32_t h = 0;                                      // unsigned arithmetic wraps; signed overflow would be undefined
+    for (unsigned char c : s) h = 31 * h + c;
+    return static_cast<int32_t>(h);
+}
+int floorMod(long long a, int n) { return static_cast<int>(((a % n) + n) % n); }   // C++ % keeps the sign of a
+
+class SafePartitioner {
+    atomic<int> rr{0};
+public:
+    int partitionFor(const optional<string>& key, int n) {
+        if (n <= 0) throw invalid_argument("n must be positive");
+        if (!key) return floorMod(rr++, n);
+        return floorMod(javaHash(*key), n);
+    }
+};
+
+int main() {
+    SafePartitioner p;
+    cout << p.partitionFor("polygenelubricants", 3) << "\n";      // 1, never negative
+    string line;
+    for (const optional<string>& k : vector<optional<string>>{"u1", nullopt, "u1", nullopt, nullopt})
+        line += (line.empty() ? "" : " ") + to_string(p.partitionFor(k, 3));
+    cout << line << "\n";                                          // u1 twice the same; nulls 0 1 2
+    try { p.partitionFor("x", 0); }
+    catch (const invalid_argument& e) { cout << "rejected: " << e.what() << "\n"; }
+}` }
+      ],
       complexity: `<p>O(length of key) to hash, O(1) otherwise.</p>`,
       followUps: ['What happens to per-key ordering when n grows from 3 to 4?', 'Design a consistent-hashing partitioner to reduce key movement.']
     }
@@ -2465,6 +7881,7 @@ class KnightScan {
       `<p>For the minimum moves, run BFS on the 64-square graph where edges are knight jumps; the first time you reach t is the answer.</p>`,
       `<p>Edge cases: s == t → 0; corners have only 2 moves. In the OOP chess design this is exactly <code>Knight.pseudoLegalMoves</code> via the shared <code>jumps(deltas)</code> helper.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "[a3, c3, d2] 2 8\na1->h8 = 6\n0 [f7, g6]\n" }] },
     solution: {
       approach: `<p>Apply the 8 deltas with a bounds check. For distances, BFS from s over at most 64 nodes.</p>`,
       code: String.raw`
@@ -2492,8 +7909,131 @@ class KnightMoves {
     public static void main(String[] args) {
         System.out.println(moves("b1") + " " + moves("a1").size() + " " + moves("d4").size());  // [a3, c3, d2] 2 8
         System.out.println("a1->h8 = " + minMoves("a1", "h8"));                                    // 6
+        System.out.println(minMoves("a1", "a1") + " " + moves("h8"));                                // 0 [f7, g6]
     }
 }`,
+    alt: [
+        { lang: 'python', code: String.raw`
+from collections import deque
+
+D = [(2, 1), (2, -1), (-2, 1), (-2, -1), (1, 2), (1, -2), (-1, 2), (-1, -2)]
+
+
+def sq(r: int, c: int) -> str:
+    return chr(ord("a") + c) + str(r + 1)
+
+
+class KnightMoves:
+    @staticmethod
+    def moves(s: str) -> list[str]:
+        r, c = int(s[1]) - 1, ord(s[0]) - ord("a")
+        return sorted(sq(r + dr, c + dc) for dr, dc in D if 0 <= r + dr < 8 and 0 <= c + dc < 8)
+
+    @staticmethod
+    def min_moves(s: str, t: str) -> int:
+        dist = {s: 0}
+        q = deque([s])
+        while q:
+            cur = q.popleft()
+            if cur == t:
+                return dist[cur]
+            for nx in KnightMoves.moves(cur):
+                if nx not in dist:
+                    dist[nx] = dist[cur] + 1
+                    q.append(nx)
+        return -1
+
+
+def show(items: list[str]) -> str:
+    return "[" + ", ".join(items) + "]"
+
+
+def main() -> None:
+    print(f"{show(KnightMoves.moves('b1'))} {len(KnightMoves.moves('a1'))} {len(KnightMoves.moves('d4'))}")   # [a3, c3, d2] 2 8
+    print(f"a1->h8 = {KnightMoves.min_moves('a1', 'h8')}")                                                    # 6
+    print(f"{KnightMoves.min_moves('a1', 'a1')} {show(KnightMoves.moves('h8'))}")                              # 0 [f7, g6]
+
+
+if __name__ == "__main__":
+    main()` },
+        { lang: 'ts', code: String.raw`
+const D: readonly (readonly [number, number])[] = [[2, 1], [2, -1], [-2, 1], [-2, -1], [1, 2], [1, -2], [-1, 2], [-1, -2]];
+const sq = (r: number, c: number): string => String.fromCharCode(97 + c) + (r + 1);
+
+class KnightMoves {
+  static moves(s: string): string[] {
+    const r = s.charCodeAt(1) - 49, c = s.charCodeAt(0) - 97;
+    const out: string[] = [];
+    for (const [dr, dc] of D) {
+      const rr = r + dr, cc = c + dc;
+      if (rr >= 0 && rr < 8 && cc >= 0 && cc < 8) out.push(sq(rr, cc));
+    }
+    return out.sort();                                   // strings: the default sort is lexicographic
+  }
+
+  static minMoves(s: string, t: string): number {
+    const dist = new Map<string, number>([[s, 0]]);
+    const q: string[] = [s];
+    for (let head = 0; head < q.length; head++) {        // index instead of shift(): O(1) per step
+      const cur = q[head];
+      const d = dist.get(cur)!;
+      if (cur === t) return d;
+      for (const nx of KnightMoves.moves(cur)) {
+        if (!dist.has(nx)) { dist.set(nx, d + 1); q.push(nx); }
+      }
+    }
+    return -1;
+  }
+}
+
+const show = (items: string[]): string => "[" + items.join(", ") + "]";
+
+console.log(show(KnightMoves.moves("b1")) + " " + KnightMoves.moves("a1").length + " " + KnightMoves.moves("d4").length);   // [a3, c3, d2] 2 8
+console.log("a1->h8 = " + KnightMoves.minMoves("a1", "h8"));                                                                // 6
+console.log(KnightMoves.minMoves("a1", "a1") + " " + show(KnightMoves.moves("h8")));                                         // 0 [f7, g6]` },
+        { lang: 'cpp', code: String.raw`
+class KnightMoves {
+    static string sq(int r, int c) { return string{static_cast<char>('a' + c), static_cast<char>('1' + r)}; }
+public:
+    static vector<string> moves(const string& s) {
+        static const int D[8][2] = {{2, 1}, {2, -1}, {-2, 1}, {-2, -1}, {1, 2}, {1, -2}, {-1, 2}, {-1, -2}};
+        int r = s[1] - '1', c = s[0] - 'a';
+        vector<string> out;
+        for (const auto& d : D) {
+            int rr = r + d[0], cc = c + d[1];
+            if (rr >= 0 && rr < 8 && cc >= 0 && cc < 8) out.push_back(sq(rr, cc));
+        }
+        sort(out.begin(), out.end());
+        return out;
+    }
+
+    static int minMoves(const string& s, const string& t) {
+        unordered_map<string, int> dist{{s, 0}};
+        queue<string> q;
+        q.push(s);
+        while (!q.empty()) {
+            string cur = q.front();
+            q.pop();
+            if (cur == t) return dist[cur];
+            for (const string& nx : moves(cur))
+                if (dist.emplace(nx, dist[cur] + 1).second) q.push(nx);
+        }
+        return -1;
+    }
+};
+
+string show(const vector<string>& items) {
+    string out = "[";
+    for (size_t i = 0; i < items.size(); i++) out += (i ? ", " : "") + items[i];
+    return out + "]";
+}
+
+int main() {
+    cout << show(KnightMoves::moves("b1")) << " " << KnightMoves::moves("a1").size() << " " << KnightMoves::moves("d4").size() << "\n";   // [a3, c3, d2] 2 8
+    cout << "a1->h8 = " << KnightMoves::minMoves("a1", "h8") << "\n";                                                                       // 6
+    cout << KnightMoves::minMoves("a1", "a1") << " " << show(KnightMoves::moves("h8")) << "\n";                                              // 0 [f7, g6]
+}` }
+      ],
       complexity: `<p>One-move list O(8). BFS O(64 · 8).</p>`,
       followUps: ['Count squares reachable in exactly k moves.', 'Add obstacles (own pieces) — which squares become illegal?']
     }
@@ -2524,21 +8064,23 @@ class ScanCache {
     }
 }`
     },
-    mcq: { q: 'Why store <code>expireAt = now + ttl</code> instead of <code>ttl</code>?', options: ['Checking becomes one comparison and does not drift as time passes', 'It uses less memory', 'Java requires it', 'It makes keys never expire'], answer: 0, explain: 'An absolute deadline is compared directly with the current time; a relative TTL would need its start time stored anyway.' },
+    mcq: { q: 'Why store <code>expireAt = now + ttl</code> instead of <code>ttl</code>?', options: ['Checking becomes one comparison and does not drift as time passes', 'It uses less memory', 'The language requires it', 'It makes keys never expire'], answer: 0, explain: 'An absolute deadline is compared directly with the current time; a relative TTL would need its start time stored anyway.' },
     hints: [
       `<p>Define <code>interface Clock { long now(); }</code> and a <code>FakeClock</code> with <code>advance(ms)</code> for tests.</p>`,
       `<p>On <code>get</code>: if the entry exists and <code>now ≥ expireAt</code>, remove it and return null (lazy expiry). For <code>size()</code> keep a min-heap of (expireAt, key) and pop all due items first.</p>`,
       `<p>Edge cases: overwriting a key leaves a stale heap item — check the entry\'s expireAt matches before removing; ttl ≤ 0 means "no expiry"; expiry exactly at the boundary (≥, not &gt;).</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "1\nnull\n1\n5 2\n" }] },
     solution: {
-      approach: `<p>HashMap of entries with absolute expiry; lazy removal on read; a min-heap to purge due keys before <code>size()</code>; injected clock.</p>`,
+      approach: `<p>A hash map of entries with absolute expiry; lazy removal on read; a min-heap to purge due keys before <code>size()</code>; injected clock.</p>`,
       code: String.raw`
 interface Clock { long now(); }
 class FakeClock implements Clock { long t; public long now() { return t; } void advance(long ms) { t += ms; } }
 
+record Item(String value, long expireAt) { }
+record Due(long at, String key) { }
+
 class TtlCache {
-    private record Item(String value, long expireAt) { }
-    private record Due(long at, String key) { }
     private final Map<String, Item> map = new HashMap<>();
     private final PriorityQueue<Due> heap = new PriorityQueue<>(Comparator.comparingLong(Due::at));
     private final Clock clock;
@@ -2571,8 +8113,241 @@ class TtlCache {
         clock.advance(500);  System.out.println(c.get("a"));   // null
         c.put("b", "2", 100); c.put("c", "3", 0);
         clock.advance(200);  System.out.println(c.size());     // 1 (only c)
+        c.put("d", "4", 50); c.put("d", "5", 500);             // overwrite: the first heap item is now stale
+        clock.advance(100);
+        System.out.println(c.get("d") + " " + c.size());       // 5 2
     }
 }`,
+    alt: [
+        { lang: 'python', code: String.raw`
+import heapq
+import sys
+from dataclasses import dataclass
+from typing import Optional, Protocol
+
+
+class Clock(Protocol):
+    def now(self) -> int: ...
+
+
+class FakeClock:
+    def __init__(self) -> None:
+        self.t = 0
+
+    def now(self) -> int:
+        return self.t
+
+    def advance(self, ms: int) -> None:
+        self.t += ms
+
+
+@dataclass(frozen=True)
+class Item:
+    value: str
+    expire_at: int
+
+
+class TtlCache:
+    def __init__(self, clock: Clock) -> None:
+        self._map: dict[str, Item] = {}
+        self._heap: list[tuple[int, str]] = []          # (expire_at, key)
+        self._clock = clock
+
+    def put(self, k: str, v: str, ttl: int) -> None:
+        at = self._clock.now() + ttl if ttl > 0 else sys.maxsize
+        self._map[k] = Item(v, at)
+        if ttl > 0:
+            heapq.heappush(self._heap, (at, k))
+
+    def get(self, k: str) -> Optional[str]:
+        it = self._map.get(k)
+        if it is None:
+            return None
+        if self._clock.now() >= it.expire_at:           # lazy expiry
+            del self._map[k]
+            return None
+        return it.value
+
+    def size(self) -> int:
+        while self._heap and self._heap[0][0] <= self._clock.now():
+            at, key = heapq.heappop(self._heap)
+            it = self._map.get(key)
+            if it is not None and it.expire_at == at:   # skip stale heap items
+                del self._map[key]
+        return len(self._map)
+
+
+def show(v: Optional[str]) -> str:
+    return "null" if v is None else v
+
+
+def main() -> None:
+    clock = FakeClock()
+    c = TtlCache(clock)
+    c.put("a", "1", 1000)
+    clock.advance(500)
+    print(show(c.get("a")))                             # 1
+    clock.advance(500)
+    print(show(c.get("a")))                             # null
+    c.put("b", "2", 100)
+    c.put("c", "3", 0)
+    clock.advance(200)
+    print(c.size())                                     # 1 (only c)
+    c.put("d", "4", 50)
+    c.put("d", "5", 500)                                # overwrite: the first heap item is now stale
+    clock.advance(100)
+    print(f"{show(c.get('d'))} {c.size()}")             # 5 2
+
+
+if __name__ == "__main__":
+    main()` },
+        { lang: 'ts', code: String.raw`
+interface Clock { now(): number; }
+
+class FakeClock implements Clock {
+  t = 0;
+  now(): number { return this.t; }
+  advance(ms: number): void { this.t += ms; }
+}
+
+interface Item { readonly value: string; readonly expireAt: number; }
+interface Due { readonly at: number; readonly key: string; }
+
+// JavaScript has no built-in heap, so here is a small binary min-heap.
+class MinHeap<T> {
+  private readonly items: T[] = [];
+  constructor(private readonly less: (a: T, b: T) => boolean) {}
+  get size(): number { return this.items.length; }
+  peek(): T | undefined { return this.items[0]; }
+  push(x: T): void {
+    const a = this.items;
+    a.push(x);
+    for (let i = a.length - 1; i > 0;) {
+      const p = (i - 1) >> 1;
+      if (!this.less(a[i], a[p])) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop(): T | undefined {
+    const a = this.items;
+    if (a.length === 0) return undefined;
+    const top = a[0];
+    const last = a.pop() as T;
+    if (a.length > 0) {
+      a[0] = last;
+      for (let i = 0;;) {
+        let m = i;
+        const l = 2 * i + 1, r = l + 1;
+        if (l < a.length && this.less(a[l], a[m])) m = l;
+        if (r < a.length && this.less(a[r], a[m])) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+class TtlCache {
+  private readonly map = new Map<string, Item>();
+  private readonly heap = new MinHeap<Due>((a, b) => a.at < b.at);
+  constructor(private readonly clock: Clock) {}
+
+  put(k: string, v: string, ttl: number): void {
+    const at = ttl > 0 ? this.clock.now() + ttl : Infinity;
+    this.map.set(k, { value: v, expireAt: at });
+    if (ttl > 0) this.heap.push({ at, key: k });
+  }
+  get(k: string): string | null {
+    const it = this.map.get(k);
+    if (it === undefined) return null;
+    if (this.clock.now() >= it.expireAt) { this.map.delete(k); return null; }   // lazy expiry
+    return it.value;
+  }
+  size(): number {
+    for (let d = this.heap.peek(); d !== undefined && d.at <= this.clock.now(); d = this.heap.peek()) {
+      this.heap.pop();
+      const it = this.map.get(d.key);
+      if (it !== undefined && it.expireAt === d.at) this.map.delete(d.key);      // skip stale heap items
+    }
+    return this.map.size;
+  }
+}
+
+const clock = new FakeClock();
+const c = new TtlCache(clock);
+c.put("a", "1", 1000);
+clock.advance(500); console.log(c.get("a"));   // 1
+clock.advance(500); console.log(c.get("a"));   // null
+c.put("b", "2", 100); c.put("c", "3", 0);
+clock.advance(200); console.log(c.size());     // 1 (only c)
+c.put("d", "4", 50); c.put("d", "5", 500);     // overwrite: the first heap item is now stale
+clock.advance(100);
+console.log(c.get("d") + " " + c.size());      // 5 2` },
+        { lang: 'cpp', code: String.raw`
+class Clock {
+public:
+    virtual ~Clock() = default;
+    virtual long long now() const = 0;
+};
+
+class FakeClock : public Clock {
+public:
+    long long t = 0;
+    long long now() const override { return t; }
+    void advance(long long ms) { t += ms; }
+};
+
+class TtlCache {
+    struct Item { string value; long long expireAt; };
+    struct Due {
+        long long at;
+        string key;
+        bool operator>(const Due& o) const { return at > o.at; }
+    };
+    unordered_map<string, Item> map;
+    priority_queue<Due, vector<Due>, greater<Due>> heap;       // min-heap (the default is a max-heap)
+    const Clock& clock;
+public:
+    explicit TtlCache(const Clock& c) : clock(c) {}
+
+    void put(const string& k, const string& v, long long ttl) {
+        long long at = ttl > 0 ? clock.now() + ttl : numeric_limits<long long>::max();
+        map[k] = {v, at};
+        if (ttl > 0) heap.push({at, k});
+    }
+    optional<string> get(const string& k) {
+        auto it = map.find(k);
+        if (it == map.end()) return nullopt;
+        if (clock.now() >= it->second.expireAt) { map.erase(it); return nullopt; }   // lazy expiry
+        return it->second.value;
+    }
+    int size() {
+        while (!heap.empty() && heap.top().at <= clock.now()) {
+            Due d = heap.top();
+            heap.pop();
+            auto it = map.find(d.key);
+            if (it != map.end() && it->second.expireAt == d.at) map.erase(it);        // skip stale heap items
+        }
+        return static_cast<int>(map.size());
+    }
+};
+
+int main() {
+    FakeClock clock;
+    TtlCache c(clock);
+    c.put("a", "1", 1000);
+    clock.advance(500); cout << c.get("a").value_or("null") << "\n";   // 1
+    clock.advance(500); cout << c.get("a").value_or("null") << "\n";   // null
+    c.put("b", "2", 100); c.put("c", "3", 0);
+    clock.advance(200); cout << c.size() << "\n";                      // 1 (only c)
+    c.put("d", "4", 50); c.put("d", "5", 500);                         // overwrite: the first heap item is now stale
+    clock.advance(100);
+    cout << c.get("d").value_or("null") << " " << c.size() << "\n";    // 5 2
+}` }
+      ],
       complexity: `<p>put O(log n) with TTL (heap), get O(1), size amortised O(k log n) for k expired items.</p>`,
       followUps: ['Add LRU eviction when size exceeds a limit.', 'Make it thread-safe without one global lock (lock striping).']
     }
@@ -2582,7 +8357,7 @@ class TtlCache {
   practice.push({
     title: 'SLF4J-Style Message Formatter with {} Placeholders',
     level: 'Medium', tags: ['logging', 'strings', 'formatter'], companies: ['Atlassian', 'Salesforce'],
-    statement: `<p>Implement <code>format(pattern, Object... args)</code>: each <code>{}</code> is replaced by the next argument (<code>String.valueOf</code>); <code>\\{}</code> prints a literal <code>{}</code>; missing arguments leave <code>{}</code> as is; if the <b>last</b> argument is a <code>Throwable</code> not used by a placeholder, append <code> | exception: Type: message</code>.</p>`,
+    statement: `<p>Implement <code>format(pattern, args...)</code> (Java <code>Object... args</code>, Python <code>*args</code>, TypeScript <code>...args</code>): each <code>{}</code> is replaced by the next argument converted to text (<code>String.valueOf</code> in Java; a missing value prints as <code>null</code>); <code>\\{}</code> prints a literal <code>{}</code>; missing arguments leave <code>{}</code> as is; if the <b>last</b> argument is an exception (a Java <code>Throwable</code>) not used by a placeholder, append <code> | exception: Type: message</code>.</p>`,
     constraints: `<p>Pattern length ≤ 10<sup>4</sup>, arguments may contain any characters including <code>$</code> and <code>\\</code>. Must be O(length).</p>`,
     example: `${H.table(['Pattern / args', 'Output'], [['"user {} paid {}" / asha, $5', 'user asha paid $5'], ['"set \\\\{} to {}" / x', 'set {} to x'], ['"a {} b {}" / 1', 'a 1 b {}'], ['"failed {}" / 42, IOException("disk")', 'failed 42 | exception: IOException: disk']])}`,
     brute: {
@@ -2600,12 +8375,13 @@ class RegexFormat {
     }
 }`
     },
-    mcq: { q: 'Why do logging APIs prefer <code>log.debug("x={}", x)</code> over <code>log.debug("x=" + x)</code>?', options: ['Formatting happens only if DEBUG is enabled', 'It is shorter to type', 'It is required by Java', 'It makes logs JSON'], answer: 0, explain: 'With concatenation the string is built before the call even if the line is then dropped; with placeholders the work happens after the level check.' },
+    mcq: { q: 'Why do logging APIs prefer <code>log.debug("x={}", x)</code> over <code>log.debug("x=" + x)</code>?', options: ['Formatting happens only if DEBUG is enabled', 'It is shorter to type', 'The language requires it', 'It makes logs JSON'], answer: 0, explain: 'With concatenation the string is built before the call even if the line is then dropped; with placeholders the work happens after the level check.' },
     hints: [
       `<p>Scan the pattern once with an index and a <code>StringBuilder</code>. At each position check for <code>\\{}</code> (escape) and <code>{}</code> (placeholder).</p>`,
       `<p>Track how many arguments you used. After the scan, if the last argument is a Throwable and was not consumed, append its class simple name and message.</p>`,
-      `<p>Edge cases: null args print "null", arrays (use <code>Arrays.toString</code> for Object[]), a lone <code>{</code>, pattern ending in a backslash. Never interpret argument text — that is the Log4Shell lesson.</p>`
+      `<p>Edge cases: null args print "null", arrays (print their elements, e.g. <code>Arrays.toString</code> in Java), a lone <code>{</code>, pattern ending in a backslash. Never interpret argument text — that is the Log4Shell lesson.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "user asha paid $5\nset {} to x\na 1 b {}\nfailed 42 | exception: IOException: disk\nids [1, 2]\nempty {} and {}\n" }] },
     solution: {
       approach: `<p>Single left-to-right scan; escapes and placeholders handled by <code>startsWith</code> at the current index; arguments appended verbatim, never re-parsed; a trailing unused Throwable is reported.</p>`,
       code: String.raw`
@@ -2629,10 +8405,138 @@ class MessageFormatter {
         System.out.println(format("set \\{} to {}", "x"));
         System.out.println(format("a {} b {}", 1));
         System.out.println(format("failed {}", 42, new IOException("disk")));
+        System.out.println(format("ids {}", (Object) new Integer[] {1, 2}));
+        System.out.println(format("empty {} and {}"));
     }
 }`,
+    alt: [
+        { lang: 'python', code: String.raw`
+class IOException(Exception):
+    pass
+
+
+def to_text(o: object) -> str:
+    if o is None:
+        return "null"
+    if isinstance(o, (list, tuple)):                     # Java's Object[] is printed element by element
+        return "[" + ", ".join(to_text(x) for x in o) + "]"
+    return str(o)
+
+
+class MessageFormatter:
+    @staticmethod
+    def format(pattern: str, *args: object) -> str:
+        out: list[str] = []
+        used = i = 0
+        while i < len(pattern):
+            if pattern.startswith("\\{}", i):            # escaped literal
+                out.append("{}")
+                i += 3
+            elif pattern.startswith("{}", i) and used < len(args):
+                out.append(to_text(args[used]))
+                used += 1
+                i += 2
+            else:
+                out.append(pattern[i])
+                i += 1
+        if len(args) > used and isinstance(args[-1], BaseException):
+            t = args[-1]
+            out.append(f" | exception: {type(t).__name__}: {t}")
+        return "".join(out)
+
+
+def main() -> None:
+    print(MessageFormatter.format("user {} paid {}", "asha", "$5"))
+    print(MessageFormatter.format("set \\{} to {}", "x"))
+    print(MessageFormatter.format("a {} b {}", 1))
+    print(MessageFormatter.format("failed {}", 42, IOException("disk")))
+    print(MessageFormatter.format("ids {}", [1, 2]))
+    print(MessageFormatter.format("empty {} and {}"))
+
+
+if __name__ == "__main__":
+    main()` },
+        { lang: 'ts', code: String.raw`
+class IOException extends Error {}
+
+function toText(o: unknown): string {
+  if (Array.isArray(o)) return "[" + o.map(toText).join(", ") + "]";   // Java's Object[] is printed element by element
+  return String(o);
+}
+
+class MessageFormatter {
+  static format(pattern: string, ...args: unknown[]): string {
+    let out = "";
+    let used = 0;
+    let i = 0;
+    while (i < pattern.length) {
+      if (pattern.startsWith("\\{}", i)) { out += "{}"; i += 3; }                      // escaped literal
+      else if (pattern.startsWith("{}", i) && used < args.length) { out += toText(args[used++]); i += 2; }
+      else out += pattern[i++];
+    }
+    const last = args[args.length - 1];
+    if (args.length > used && last instanceof Error) out += " | exception: " + last.constructor.name + ": " + last.message;
+    return out;
+  }
+}
+
+console.log(MessageFormatter.format("user {} paid {}", "asha", "$5"));
+console.log(MessageFormatter.format("set \\{} to {}", "x"));
+console.log(MessageFormatter.format("a {} b {}", 1));
+console.log(MessageFormatter.format("failed {}", 42, new IOException("disk")));
+console.log(MessageFormatter.format("ids {}", [1, 2]));
+console.log(MessageFormatter.format("empty {} and {}"));` },
+        { lang: 'cpp', code: String.raw`
+struct Throwable : runtime_error {
+    using runtime_error::runtime_error;
+    virtual string type() const { return "Throwable"; }
+};
+struct IOException : Throwable {
+    using Throwable::Throwable;
+    string type() const override { return "IOException"; }
+};
+
+using Arg = variant<int, string, vector<int>, shared_ptr<const Throwable>>;
+
+string toText(const Arg& a) {
+    if (auto* n = get_if<int>(&a)) return to_string(*n);
+    if (auto* s = get_if<string>(&a)) return *s;
+    if (auto* v = get_if<vector<int>>(&a)) {                 // Java's Object[] is printed element by element
+        string out = "[";
+        for (size_t i = 0; i < v->size(); i++) out += (i ? ", " : "") + to_string((*v)[i]);
+        return out + "]";
+    }
+    return "<exception>";
+}
+
+class MessageFormatter {
+public:
+    static string format(const string& pattern, const vector<Arg>& args = {}) {
+        string out;
+        size_t used = 0, i = 0;
+        while (i < pattern.size()) {
+            if (pattern.compare(i, 3, "\\{}") == 0) { out += "{}"; i += 3; }                  // escaped literal
+            else if (pattern.compare(i, 2, "{}") == 0 && used < args.size()) { out += toText(args[used++]); i += 2; }
+            else out += pattern[i++];
+        }
+        if (args.size() > used)
+            if (auto* t = get_if<shared_ptr<const Throwable>>(&args.back()))
+                out += " | exception: " + (*t)->type() + ": " + (*t)->what();
+        return out;
+    }
+};
+
+int main() {
+    cout << MessageFormatter::format("user {} paid {}", {string("asha"), string("$5")}) << "\n";
+    cout << MessageFormatter::format("set \\{} to {}", {string("x")}) << "\n";
+    cout << MessageFormatter::format("a {} b {}", {1}) << "\n";
+    cout << MessageFormatter::format("failed {}", {42, shared_ptr<const Throwable>(make_shared<IOException>("disk"))}) << "\n";
+    cout << MessageFormatter::format("ids {}", {vector<int>{1, 2}}) << "\n";
+    cout << MessageFormatter::format("empty {} and {}") << "\n";
+}` }
+      ],
       complexity: `<p>O(L + total argument length). No regex, no re-scanning.</p>`,
-      followUps: ['Add lazy Supplier arguments evaluated only when formatting happens.', 'Mask values whose key looks like "password" or a 16-digit card number.']
+      followUps: ['Add lazy arguments (a Java <code>Supplier</code>, a lambda elsewhere) evaluated only when formatting happens.', 'Mask values whose key looks like "password" or a 16-digit card number.']
     }
   });
 
@@ -2660,12 +8564,13 @@ class TruncatingAppender {
     }
 }`
     },
-    mcq: { q: 'Which structure makes "shift .1→.2→.3 and drop the oldest" O(1)?', options: ['A Deque of backups: addFirst the current file, pollLast when too many', 'An array copied on every rotation', 'A HashMap keyed by file name rebuilt each time', 'A TreeMap sorted by size'], answer: 0, explain: 'The rotated files are a sliding window of the most recent K; a Deque gives O(1) push-front and pop-back. Names are derived from position when listing.' },
+    mcq: { q: 'Which structure makes "shift .1→.2→.3 and drop the oldest" O(1)?', options: ['A Deque of backups: addFirst the current file, pollLast when too many', 'An array copied on every rotation', 'A hash map keyed by file name rebuilt each time', 'A TreeMap sorted by size'], answer: 0, explain: 'The rotated files are a sliding window of the most recent K; a Deque gives O(1) push-front and pop-back. Names are derived from position when listing.' },
     hints: [
-      `<p>Keep the current file as a list and the rotated files in a <code>Deque&lt;List&lt;String&gt;&gt;</code>, newest first.</p>`,
+      `<p>Keep the current file as a list and the rotated files in a deque of lists (<code>Deque&lt;List&lt;String&gt;&gt;</code>, <code>collections.deque</code>, <code>std::deque</code>; a JavaScript array with <code>unshift</code>), newest first.</p>`,
       `<p>On append: if current is full, <code>addFirst(current)</code>, start a new list, and <code>pollLast()</code> while the deque has more than maxBackups.</p>`,
-      `<p>Derive names only when listing: index i in the deque → <code>app.log.(i+1)</code>. Edge cases: maxBackups = 0 (just start fresh), thread safety (synchronized append), time-based rotation as a follow-up.</p>`
+      `<p>Derive names only when listing: index i in the deque → <code>app.log.(i+1)</code>. Edge cases: maxBackups = 0 (just start fresh), thread safety (lock the append), time-based rotation as a follow-up.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "{app.log=[L7], app.log.1=[L5, L6], app.log.2=[L3, L4]}\n{app.log=[L5]} {app.log=[]}\n" }] },
     solution: {
       approach: `<p>Current file + bounded deque of backups. Rotation is two O(1) deque operations; names are computed on read, which is how real appenders avoid renaming loops being part of the hot path (they rename on disk once per rotation).</p>`,
       code: String.raw`
@@ -2696,8 +8601,148 @@ class RollingAppender {
         RollingAppender a = new RollingAppender(2, 2);
         for (int i = 1; i <= 7; i++) a.append("L" + i);
         System.out.println(a.files());   // {app.log=[L7], app.log.1=[L5, L6], app.log.2=[L3, L4]}
+        RollingAppender noBackups = new RollingAppender(2, 0);   // maxBackups = 0: rotation just starts fresh
+        for (int i = 1; i <= 5; i++) noBackups.append("L" + i);
+        System.out.println(noBackups.files() + " " + new RollingAppender(2, 1).files());   // {app.log=[L5]} {app.log=[]}
     }
 }`,
+    alt: [
+        { lang: 'python', code: String.raw`
+import threading
+from collections import deque
+
+
+def show_list(items: list[str]) -> str:
+    return "[" + ", ".join(items) + "]"
+
+
+def show_files(files: dict[str, list[str]]) -> str:
+    return "{" + ", ".join(f"{name}={show_list(lines)}" for name, lines in files.items()) + "}"
+
+
+class RollingAppender:
+    def __init__(self, max_lines: int, max_backups: int) -> None:
+        self._max_lines = max_lines
+        self._max_backups = max_backups
+        self._current: list[str] = []
+        self._backups: deque[list[str]] = deque()       # newest first
+        self._lock = threading.Lock()
+
+    def append(self, line: str) -> None:
+        with self._lock:
+            if len(self._current) >= self._max_lines:
+                self._rotate()
+            self._current.append(line)
+
+    def _rotate(self) -> None:
+        if self._max_backups > 0:
+            self._backups.appendleft(self._current)
+        while len(self._backups) > self._max_backups:
+            self._backups.pop()                         # delete the oldest
+        self._current = []
+
+    def files(self) -> dict[str, list[str]]:
+        with self._lock:
+            out = {"app.log": list(self._current)}
+            for i, b in enumerate(self._backups, start=1):
+                out[f"app.log.{i}"] = list(b)
+            return out
+
+
+def main() -> None:
+    a = RollingAppender(2, 2)
+    for i in range(1, 8):
+        a.append(f"L{i}")
+    print(show_files(a.files()))                        # {app.log=[L7], app.log.1=[L5, L6], app.log.2=[L3, L4]}
+    no_backups = RollingAppender(2, 0)                  # max_backups = 0: rotation just starts fresh
+    for i in range(1, 6):
+        no_backups.append(f"L{i}")
+    print(show_files(no_backups.files()), show_files(RollingAppender(2, 1).files()))   # {app.log=[L5]} {app.log=[]}
+
+
+if __name__ == "__main__":
+    main()` },
+        { lang: 'ts', code: String.raw`
+const showList = (items: string[]): string => "[" + items.join(", ") + "]";
+const showFiles = (files: Map<string, string[]>): string =>
+  "{" + [...files].map(([name, lines]) => name + "=" + showList(lines)).join(", ") + "}";
+
+class RollingAppender {
+  private current: string[] = [];
+  private readonly backups: string[][] = [];             // newest first
+
+  constructor(private readonly maxLines: number, private readonly maxBackups: number) {}
+
+  append(line: string): void {
+    if (this.current.length >= this.maxLines) this.rotate();
+    this.current.push(line);
+  }
+  private rotate(): void {
+    if (this.maxBackups > 0) this.backups.unshift(this.current);
+    while (this.backups.length > this.maxBackups) this.backups.pop();   // delete the oldest
+    this.current = [];
+  }
+  files(): Map<string, string[]> {
+    const out = new Map<string, string[]>([["app.log", [...this.current]]]);
+    this.backups.forEach((b, i) => out.set("app.log." + (i + 1), [...b]));
+    return out;
+  }
+}
+
+const a = new RollingAppender(2, 2);
+for (let i = 1; i <= 7; i++) a.append("L" + i);
+console.log(showFiles(a.files()));                       // {app.log=[L7], app.log.1=[L5, L6], app.log.2=[L3, L4]}
+const noBackups = new RollingAppender(2, 0);             // maxBackups = 0: rotation just starts fresh
+for (let i = 1; i <= 5; i++) noBackups.append("L" + i);
+console.log(showFiles(noBackups.files()) + " " + showFiles(new RollingAppender(2, 1).files()));   // {app.log=[L5]} {app.log=[]}` },
+        { lang: 'cpp', code: String.raw`
+string showList(const vector<string>& items) {
+    string out = "[";
+    for (size_t i = 0; i < items.size(); i++) out += (i ? ", " : "") + items[i];
+    return out + "]";
+}
+string showFiles(const vector<pair<string, vector<string>>>& files) {
+    string out = "{";
+    for (size_t i = 0; i < files.size(); i++) out += (i ? ", " : "") + files[i].first + "=" + showList(files[i].second);
+    return out + "}";
+}
+
+class RollingAppender {
+    const size_t maxLines, maxBackups;
+    vector<string> current;
+    deque<vector<string>> backups;                        // newest first
+    mutex mu;
+
+    void rotate() {
+        if (maxBackups > 0) backups.push_front(move(current));
+        while (backups.size() > maxBackups) backups.pop_back();   // delete the oldest
+        current.clear();                                  // a moved-from vector must be reset before reuse
+    }
+public:
+    RollingAppender(size_t lines, size_t keep) : maxLines(lines), maxBackups(keep) {}
+
+    void append(const string& line) {
+        lock_guard<mutex> lock(mu);
+        if (current.size() >= maxLines) rotate();
+        current.push_back(line);
+    }
+    vector<pair<string, vector<string>>> files() {
+        lock_guard<mutex> lock(mu);
+        vector<pair<string, vector<string>>> out{{"app.log", current}};
+        for (size_t i = 0; i < backups.size(); i++) out.push_back({"app.log." + to_string(i + 1), backups[i]});
+        return out;
+    }
+};
+
+int main() {
+    RollingAppender a(2, 2);
+    for (int i = 1; i <= 7; i++) a.append("L" + to_string(i));
+    cout << showFiles(a.files()) << "\n";                 // {app.log=[L7], app.log.1=[L5, L6], app.log.2=[L3, L4]}
+    RollingAppender noBackups(2, 0);                      // maxBackups = 0: rotation just starts fresh
+    for (int i = 1; i <= 5; i++) noBackups.append("L" + to_string(i));
+    cout << showFiles(noBackups.files()) << " " << showFiles(RollingAppender(2, 1).files()) << "\n";   // {app.log=[L5]} {app.log=[]}
+}` }
+      ],
       complexity: `<p>append O(1) amortised; rotation O(1); listing O(total lines kept).</p>`,
       followUps: ['Rotate daily as well as by size (two triggering policies — Strategy).', 'Compress backups in a background thread.']
     }
@@ -2727,6 +8772,7 @@ class EveryoneReadsAll {
       `<p>Range: base = P / C, extra = P % C; consumer i gets base + (i &lt; extra ? 1 : 0) partitions starting where the previous one ended. Round-robin: partition p → consumer p % C.</p>`,
       `<p>Discuss: with many topics, range assigns per topic so c1 gets the extra partition of <i>every</i> topic (skew); round-robin over all topic-partitions balances better; cooperative-sticky minimises movement on rebalance.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "{c1=[0, 1, 2], c2=[3, 4], c3=[5, 6]}\n{c1=[0, 3, 6], c2=[1, 4], c3=[2, 5]}\n{a=[0], b=[1], c=[]}\n{a=[], b=[]}\n" }] },
     solution: {
       approach: `<p>Deterministic arithmetic on sorted ids for range; modulo dealing for round-robin. Both are pure functions — easy to test and identical on every member.</p>`,
       code: String.raw`
@@ -2755,8 +8801,127 @@ class Assignors {
         System.out.println(range(cs, 7));        // {c1=[0, 1, 2], c2=[3, 4], c3=[5, 6]}
         System.out.println(roundRobin(cs, 7));   // {c1=[0, 3, 6], c2=[1, 4], c3=[2, 5]}
         System.out.println(range(List.of("a", "b", "c"), 2));   // c idle
+        System.out.println(roundRobin(List.of("a", "b"), 0));   // no partitions: nobody gets anything
     }
 }`,
+    alt: [
+        { lang: 'python', code: `
+Assignment = dict[str, list[int]]
+
+
+def show(a: Assignment) -> str:
+    return "{" + ", ".join(f"{c}={ps}" for c, ps in a.items()) + "}"
+
+
+class Assignors:
+    @staticmethod
+    def range(consumers: list[str], partitions: int) -> Assignment:
+        cs = sorted(consumers)
+        base, extra = divmod(partitions, len(cs))
+        out: Assignment = {}
+        p = 0
+        for i, c in enumerate(cs):
+            n = base + (1 if i < extra else 0)           # the first \`extra\` consumers get one more
+            out[c] = list(range(p, p + n))
+            p += n
+        return out
+
+    @staticmethod
+    def round_robin(consumers: list[str], partitions: int) -> Assignment:
+        cs = sorted(consumers)
+        out: Assignment = {c: [] for c in cs}
+        for p in range(partitions):
+            out[cs[p % len(cs)]].append(p)               # deal like cards
+        return out
+
+
+def main() -> None:
+    cs = ["c3", "c1", "c2"]
+    print(show(Assignors.range(cs, 7)))                  # {c1=[0, 1, 2], c2=[3, 4], c3=[5, 6]}
+    print(show(Assignors.round_robin(cs, 7)))            # {c1=[0, 3, 6], c2=[1, 4], c3=[2, 5]}
+    print(show(Assignors.range(["a", "b", "c"], 2)))     # c idle
+    print(show(Assignors.round_robin(["a", "b"], 0)))    # no partitions: nobody gets anything
+
+
+if __name__ == "__main__":
+    main()` },
+        { lang: 'ts', code: `
+type Assignment = Map<string, number[]>;
+
+const show = (a: Assignment): string =>
+  "{" + [...a].map(([c, ps]) => c + "=[" + ps.join(", ") + "]").join(", ") + "}";
+
+class Assignors {
+  static range(consumers: string[], partitions: number): Assignment {
+    const cs = [...consumers].sort();                    // strings: the default sort is lexicographic
+    const base = Math.floor(partitions / cs.length), extra = partitions % cs.length;
+    const out: Assignment = new Map();
+    let p = 0;
+    cs.forEach((c, i) => {
+      const n = base + (i < extra ? 1 : 0);              // the first \`extra\` consumers get one more
+      out.set(c, Array.from({ length: n }, () => p++));
+    });
+    return out;
+  }
+
+  static roundRobin(consumers: string[], partitions: number): Assignment {
+    const cs = [...consumers].sort();
+    const out: Assignment = new Map(cs.map((c): [string, number[]] => [c, []]));
+    for (let p = 0; p < partitions; p++) out.get(cs[p % cs.length])!.push(p);   // deal like cards
+    return out;
+  }
+}
+
+const cs = ["c3", "c1", "c2"];
+console.log(show(Assignors.range(cs, 7)));               // {c1=[0, 1, 2], c2=[3, 4], c3=[5, 6]}
+console.log(show(Assignors.roundRobin(cs, 7)));          // {c1=[0, 3, 6], c2=[1, 4], c3=[2, 5]}
+console.log(show(Assignors.range(["a", "b", "c"], 2)));  // c idle
+console.log(show(Assignors.roundRobin(["a", "b"], 0)));  // no partitions: nobody gets anything` },
+        { lang: 'cpp', code: `
+using Assignment = vector<pair<string, vector<int>>>;     // consumers in sorted order
+
+string show(const Assignment& a) {
+    string out = "{";
+    for (size_t i = 0; i < a.size(); i++) {
+        out += (i ? ", " : "") + a[i].first + "=[";
+        for (size_t k = 0; k < a[i].second.size(); k++) out += (k ? ", " : "") + to_string(a[i].second[k]);
+        out += "]";
+    }
+    return out + "}";
+}
+
+class Assignors {
+public:
+    static Assignment range(vector<string> consumers, int partitions) {
+        sort(consumers.begin(), consumers.end());
+        int c = static_cast<int>(consumers.size()), base = partitions / c, extra = partitions % c, p = 0;
+        Assignment out;
+        for (int i = 0; i < c; i++) {
+            vector<int> mine(base + (i < extra ? 1 : 0));      // the first \`extra\` consumers get one more
+            iota(mine.begin(), mine.end(), p);
+            p += static_cast<int>(mine.size());
+            out.push_back({consumers[i], mine});
+        }
+        return out;
+    }
+
+    static Assignment roundRobin(vector<string> consumers, int partitions) {
+        sort(consumers.begin(), consumers.end());
+        Assignment out;
+        for (const string& c : consumers) out.push_back({c, {}});
+        for (int p = 0; p < partitions; p++) out[p % out.size()].second.push_back(p);   // deal like cards
+        return out;
+    }
+};
+
+int main() {
+    vector<string> cs = {"c3", "c1", "c2"};
+    cout << show(Assignors::range(cs, 7)) << "\\n";                     // {c1=[0, 1, 2], c2=[3, 4], c3=[5, 6]}
+    cout << show(Assignors::roundRobin(cs, 7)) << "\\n";                // {c1=[0, 3, 6], c2=[1, 4], c3=[2, 5]}
+    cout << show(Assignors::range({"a", "b", "c"}, 2)) << "\\n";        // c idle
+    cout << show(Assignors::roundRobin({"a", "b"}, 0)) << "\\n";        // no partitions: nobody gets anything
+}` }
+      ],
       complexity: `<p>O(C log C + P) time, O(P) output.</p>`,
       followUps: ['Implement a sticky assignor that keeps as many old assignments as possible.', 'How many partitions move when one of 10 consumers leaves under round-robin vs sticky?']
     }
@@ -2784,9 +8949,10 @@ class LagSimulate {
     mcq: { q: 'Lag on one partition keeps growing while the others stay near 0. Most likely cause?', options: ['A hot key or a slow/poison message on that partition', 'The broker is down', 'Too many partitions overall', 'Auto-commit is disabled everywhere'], answer: 0, explain: 'Per-partition skew points to that partition: a hot key sending most traffic there, or one message that keeps failing and blocking progress.' },
     hints: [
       `<p>Everything is arithmetic on offsets: lag = end − committed, re-delivered = position − committed.</p>`,
-      `<p>Use <code>long</code>, validate the ordering invariant, and return a small record per partition plus totals.</p>`,
+      `<p>Use <code>long</code>, validate the ordering invariant, and return a small value object per partition plus totals.</p>`,
       `<p>Production notes: lag in <i>messages</i> can mislead when messages are bursty; also report lag in <i>time</i> (age of the oldest unconsumed message). Alert on lag growth rate, not just its size.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "P0 lag=20 redelivered=10\nP1 lag=0 redelivered=0\nP2 lag=50 redelivered=45\ntotal lag 70, re-delivered 55\nbad offsets on P3\n" }] },
     solution: {
       approach: `<p>One pass over partitions computing two subtractions each, with invariant checks; totals summed in longs.</p>`,
       code: String.raw`
@@ -2807,11 +8973,117 @@ class LagCalculator {
         List<LagReport> r = report(List.of(new PartitionState(0, 120, 100, 110),
                                            new PartitionState(1, 50, 50, 50),
                                            new PartitionState(2, 80, 30, 75)));
-        System.out.println(r);
+        for (LagReport x : r) System.out.println("P" + x.id() + " lag=" + x.lag() + " redelivered=" + x.redelivered());
         System.out.println("total lag " + r.stream().mapToLong(LagReport::lag).sum()
             + ", re-delivered " + r.stream().mapToLong(LagReport::redelivered).sum());   // 70, 55
+        try { report(List.of(new PartitionState(3, 10, 8, 5))); }                       // committed > position
+        catch (IllegalArgumentException e) { System.out.println(e.getMessage()); }
     }
 }`,
+    alt: [
+        { lang: 'python', code: String.raw`
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class PartitionState:
+    id: int
+    end: int
+    committed: int
+    position: int
+
+
+@dataclass(frozen=True)
+class LagReport:
+    id: int
+    lag: int
+    redelivered: int
+
+
+class LagCalculator:
+    @staticmethod
+    def report(parts: list[PartitionState]) -> list[LagReport]:
+        out: list[LagReport] = []
+        for p in parts:
+            if p.committed > p.position or p.position > p.end:
+                raise ValueError(f"bad offsets on P{p.id}")
+            out.append(LagReport(p.id, p.end - p.committed, p.position - p.committed))
+        return out
+
+
+def main() -> None:
+    r = LagCalculator.report([PartitionState(0, 120, 100, 110),
+                              PartitionState(1, 50, 50, 50),
+                              PartitionState(2, 80, 30, 75)])
+    for x in r:
+        print(f"P{x.id} lag={x.lag} redelivered={x.redelivered}")
+    print(f"total lag {sum(x.lag for x in r)}, re-delivered {sum(x.redelivered for x in r)}")   # 70, 55
+    try:
+        LagCalculator.report([PartitionState(3, 10, 8, 5)])    # committed > position
+    except ValueError as e:
+        print(e)
+
+
+if __name__ == "__main__":
+    main()` },
+        { lang: 'ts', code: String.raw`
+interface PartitionState { readonly id: number; readonly end: number; readonly committed: number; readonly position: number; }
+interface LagReport { readonly id: number; readonly lag: number; readonly redelivered: number; }
+
+class LagCalculator {
+  static report(parts: readonly PartitionState[]): LagReport[] {
+    return parts.map((p) => {
+      if (p.committed > p.position || p.position > p.end) throw new Error("bad offsets on P" + p.id);
+      return { id: p.id, lag: p.end - p.committed, redelivered: p.position - p.committed };
+    });
+  }
+}
+
+const r = LagCalculator.report([
+  { id: 0, end: 120, committed: 100, position: 110 },
+  { id: 1, end: 50, committed: 50, position: 50 },
+  { id: 2, end: 80, committed: 30, position: 75 },
+]);
+for (const x of r) console.log("P" + x.id + " lag=" + x.lag + " redelivered=" + x.redelivered);
+console.log("total lag " + r.reduce((s, x) => s + x.lag, 0) + ", re-delivered " + r.reduce((s, x) => s + x.redelivered, 0));   // 70, 55
+try { LagCalculator.report([{ id: 3, end: 10, committed: 8, position: 5 }]); }                                       // committed > position
+catch (e) { console.log((e as Error).message); }` },
+        { lang: 'cpp', code: String.raw`
+struct PartitionState {
+    int id;
+    long long end, committed, position;
+};
+struct LagReport {
+    int id;
+    long long lag, redelivered;
+};
+
+class LagCalculator {
+public:
+    static vector<LagReport> report(const vector<PartitionState>& parts) {
+        vector<LagReport> out;
+        for (const PartitionState& p : parts) {
+            if (p.committed > p.position || p.position > p.end)
+                throw invalid_argument("bad offsets on P" + to_string(p.id));
+            out.push_back({p.id, p.end - p.committed, p.position - p.committed});
+        }
+        return out;
+    }
+};
+
+int main() {
+    vector<LagReport> r = LagCalculator::report({{0, 120, 100, 110}, {1, 50, 50, 50}, {2, 80, 30, 75}});
+    long long lag = 0, redelivered = 0;
+    for (const LagReport& x : r) {
+        cout << "P" << x.id << " lag=" << x.lag << " redelivered=" << x.redelivered << "\n";
+        lag += x.lag;
+        redelivered += x.redelivered;
+    }
+    cout << "total lag " << lag << ", re-delivered " << redelivered << "\n";   // 70, 55
+    try { LagCalculator::report({{3, 10, 8, 5}}); }                            // committed > position
+    catch (const invalid_argument& e) { cout << e.what() << "\n"; }
+}` }
+      ],
       complexity: `<p>O(P) time, O(P) output.</p>`,
       followUps: ['Commit every N messages instead of every batch: how does that bound re-delivery?', 'Compute time-based lag given message timestamps.']
     }
@@ -2851,6 +9123,7 @@ class CheckByAllMoves {
       `<p>Also check the 8 knight squares for an enemy knight, the 8 neighbours for the enemy king, and the 2 squares from which an enemy pawn would capture (for White\'s king: one rank up, since black pawns move down).</p>`,
       `<p>Stop each ray at the first piece of any colour. Return square names so the caller can tell single from double check.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "[e8, d3]\n[d3]\n[d7]\n[]\n" }] },
     solution: {
       approach: `<p>Find the king, then probe 8 rays (stop at the first piece), 8 knight jumps, 8 king neighbours and 2 pawn squares — at most ~40 squares instead of all enemy moves.</p>`,
       code: String.raw`
@@ -2893,8 +9166,202 @@ class CheckDetector {
         System.out.println(attackers(dbl, true));                   // [e8, d3] double check
         String[] blocked = { "....r...", "........", "........", "........", "....P...", "...n....", "........", "....K..." };
         System.out.println(attackers(blocked, true));               // [d3]
+        String[] pawnCheck = { "....k...", "...P....", "........", "........", "........", "........", "........", "....K..." };
+        System.out.println(attackers(pawnCheck, false));            // [d7] a white pawn attacks the black king
+        String[] safe = { "........", "........", "........", "........", "........", "........", "r.......", "....K..k" };
+        System.out.println(attackers(safe, true));                  // [] not in check
     }
 }`,
+    alt: [
+        { lang: 'python', code: String.raw`
+Dirs = list[tuple[int, int]]
+
+STRAIGHT: Dirs = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+DIAG: Dirs = [(1, 1), (1, -1), (-1, 1), (-1, -1)]
+KNIGHT: Dirs = [(2, 1), (2, -1), (-2, 1), (-2, -1), (1, 2), (1, -2), (-1, 2), (-1, -2)]
+
+
+def enemy(p: str, white: bool) -> bool:
+    return p != "." and p.isupper() != white
+
+
+def sq(r: int, c: int) -> str:
+    return chr(ord("a") + c) + str(r + 1)
+
+
+def on_board(r: int, c: int) -> bool:
+    return 0 <= r < 8 and 0 <= c < 8
+
+
+class CheckDetector:
+    @staticmethod
+    def attackers(ranks8_to_1: list[str], white: bool) -> list[str]:
+        b = [list(ranks8_to_1[7 - r]) for r in range(8)]                      # row 0 = rank 1
+        king = "K" if white else "k"
+        kr, kc = next((r, c) for r in range(8) for c in range(8) if b[r][c] == king)
+        out: list[str] = []
+
+        def ray(dirs: Dirs, kinds: str) -> None:
+            for dr, dc in dirs:
+                r, c = kr + dr, kc + dc
+                while on_board(r, c):
+                    if b[r][c] != ".":                                          # first piece blocks the ray
+                        if enemy(b[r][c], white) and b[r][c].upper() in kinds:
+                            out.append(sq(r, c))
+                        break
+                    r, c = r + dr, c + dc
+
+        def jump(deltas: Dirs, kind: str) -> None:
+            for dr, dc in deltas:
+                r, c = kr + dr, kc + dc
+                if on_board(r, c) and enemy(b[r][c], white) and b[r][c].upper() == kind:
+                    out.append(sq(r, c))
+
+        ray(STRAIGHT, "RQ")
+        ray(DIAG, "BQ")
+        jump(KNIGHT, "N")
+        jump(STRAIGHT + DIAG, "K")
+        pawn_dr = 1 if white else -1                                            # enemy pawns capture toward us
+        jump([(pawn_dr, 1), (pawn_dr, -1)], "P")
+        return out
+
+
+def show(items: list[str]) -> str:
+    return "[" + ", ".join(items) + "]"
+
+
+def main() -> None:
+    dbl = ["....r...", "........", "........", "........", "........", "...n....", "........", "....K..."]
+    print(show(CheckDetector.attackers(dbl, True)))                              # [e8, d3] double check
+    blocked = ["....r...", "........", "........", "........", "....P...", "...n....", "........", "....K..."]
+    print(show(CheckDetector.attackers(blocked, True)))                          # [d3]
+    pawn_check = ["....k...", "...P....", "........", "........", "........", "........", "........", "....K..."]
+    print(show(CheckDetector.attackers(pawn_check, False)))                      # [d7] a white pawn attacks the black king
+    safe = ["........", "........", "........", "........", "........", "........", "r.......", "....K..k"]
+    print(show(CheckDetector.attackers(safe, True)))                             # [] not in check
+
+
+if __name__ == "__main__":
+    main()` },
+        { lang: 'ts', code: String.raw`
+type Dir = readonly [number, number];
+const STRAIGHT: Dir[] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+const DIAG: Dir[] = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
+const KNIGHT: Dir[] = [[2, 1], [2, -1], [-2, 1], [-2, -1], [1, 2], [1, -2], [-1, 2], [-1, -2]];
+
+const isUpper = (ch: string): boolean => ch !== ch.toLowerCase();
+const enemy = (p: string, white: boolean): boolean => p !== "." && isUpper(p) !== white;
+const sq = (r: number, c: number): string => String.fromCharCode(97 + c) + (r + 1);
+const onBoard = (r: number, c: number): boolean => r >= 0 && r < 8 && c >= 0 && c < 8;
+
+class CheckDetector {
+  static attackers(ranks8to1: string[], white: boolean): string[] {
+    const b = Array.from({ length: 8 }, (_, r) => [...ranks8to1[7 - r]]);   // row 0 = rank 1
+    const king = white ? "K" : "k";
+    let kr = -1, kc = -1;
+    for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) if (b[r][c] === king) { kr = r; kc = c; }
+    const out: string[] = [];
+
+    const ray = (dirs: readonly Dir[], kinds: string): void => {
+      for (const [dr, dc] of dirs) {
+        for (let r = kr + dr, c = kc + dc; onBoard(r, c); r += dr, c += dc) {
+          if (b[r][c] === ".") continue;
+          if (enemy(b[r][c], white) && kinds.includes(b[r][c].toUpperCase())) out.push(sq(r, c));
+          break;                                                             // first piece blocks the ray
+        }
+      }
+    };
+    const jump = (deltas: readonly Dir[], kind: string): void => {
+      for (const [dr, dc] of deltas) {
+        const r = kr + dr, c = kc + dc;
+        if (onBoard(r, c) && enemy(b[r][c], white) && b[r][c].toUpperCase() === kind) out.push(sq(r, c));
+      }
+    };
+
+    ray(STRAIGHT, "RQ");
+    ray(DIAG, "BQ");
+    jump(KNIGHT, "N");
+    jump([...STRAIGHT, ...DIAG], "K");
+    const pawnDr = white ? 1 : -1;                                           // enemy pawns capture toward us
+    jump([[pawnDr, 1], [pawnDr, -1]], "P");
+    return out;
+  }
+}
+
+const show = (items: string[]): string => "[" + items.join(", ") + "]";
+
+const dbl = ["....r...", "........", "........", "........", "........", "...n....", "........", "....K..."];
+console.log(show(CheckDetector.attackers(dbl, true)));                       // [e8, d3] double check
+const blocked = ["....r...", "........", "........", "........", "....P...", "...n....", "........", "....K..."];
+console.log(show(CheckDetector.attackers(blocked, true)));                   // [d3]
+const pawnCheck = ["....k...", "...P....", "........", "........", "........", "........", "........", "....K..."];
+console.log(show(CheckDetector.attackers(pawnCheck, false)));                // [d7] a white pawn attacks the black king
+const safe = ["........", "........", "........", "........", "........", "........", "r.......", "....K..k"];
+console.log(show(CheckDetector.attackers(safe, true)));                      // [] not in check` },
+        { lang: 'cpp', code: String.raw`
+using Dir = pair<int, int>;
+const vector<Dir> STRAIGHT = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+const vector<Dir> DIAG = {{1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
+const vector<Dir> KNIGHT = {{2, 1}, {2, -1}, {-2, 1}, {-2, -1}, {1, 2}, {1, -2}, {-1, 2}, {-1, -2}};
+
+bool enemy(char p, bool white) { return p != '.' && (isupper(static_cast<unsigned char>(p)) != 0) != white; }
+string sq(int r, int c) { return string{static_cast<char>('a' + c), static_cast<char>('1' + r)}; }
+bool onBoard(int r, int c) { return r >= 0 && r < 8 && c >= 0 && c < 8; }
+char upper(char c) { return static_cast<char>(toupper(static_cast<unsigned char>(c))); }
+
+class CheckDetector {
+public:
+    static vector<string> attackers(const vector<string>& ranks8to1, bool white) {
+        vector<string> b(8);
+        for (int i = 0; i < 8; i++) b[7 - i] = ranks8to1[i];            // row 0 = rank 1
+        int kr = -1, kc = -1;
+        for (int r = 0; r < 8; r++) for (int c = 0; c < 8; c++) if (b[r][c] == (white ? 'K' : 'k')) { kr = r; kc = c; }
+        vector<string> out;
+
+        auto ray = [&](const vector<Dir>& dirs, const string& kinds) {
+            for (auto [dr, dc] : dirs)
+                for (int r = kr + dr, c = kc + dc; onBoard(r, c); r += dr, c += dc) {
+                    if (b[r][c] == '.') continue;
+                    if (enemy(b[r][c], white) && kinds.find(upper(b[r][c])) != string::npos) out.push_back(sq(r, c));
+                    break;                                              // first piece blocks the ray
+                }
+        };
+        auto jump = [&](const vector<Dir>& deltas, char kind) {
+            for (auto [dr, dc] : deltas) {
+                int r = kr + dr, c = kc + dc;
+                if (onBoard(r, c) && enemy(b[r][c], white) && upper(b[r][c]) == kind) out.push_back(sq(r, c));
+            }
+        };
+
+        ray(STRAIGHT, "RQ");
+        ray(DIAG, "BQ");
+        jump(KNIGHT, 'N');
+        vector<Dir> all8 = STRAIGHT;
+        all8.insert(all8.end(), DIAG.begin(), DIAG.end());
+        jump(all8, 'K');
+        int pawnDr = white ? 1 : -1;                                    // enemy pawns capture toward us
+        jump({{pawnDr, 1}, {pawnDr, -1}}, 'P');
+        return out;
+    }
+};
+
+string show(const vector<string>& items) {
+    string out = "[";
+    for (size_t i = 0; i < items.size(); i++) out += (i ? ", " : "") + items[i];
+    return out + "]";
+}
+
+int main() {
+    vector<string> dbl = {"....r...", "........", "........", "........", "........", "...n....", "........", "....K..."};
+    cout << show(CheckDetector::attackers(dbl, true)) << "\n";           // [e8, d3] double check
+    vector<string> blocked = {"....r...", "........", "........", "........", "....P...", "...n....", "........", "....K..."};
+    cout << show(CheckDetector::attackers(blocked, true)) << "\n";       // [d3]
+    vector<string> pawnCheck = {"....k...", "...P....", "........", "........", "........", "........", "........", "....K..."};
+    cout << show(CheckDetector::attackers(pawnCheck, false)) << "\n";    // [d7] a white pawn attacks the black king
+    vector<string> safe = {"........", "........", "........", "........", "........", "........", "r.......", "....K..k"};
+    cout << show(CheckDetector::attackers(safe, true)) << "\n";          // [] not in check
+}` }
+      ],
       complexity: `<p>O(1): at most 8 rays × 7 squares + 18 jump squares. Plus O(64) to find the king (or track it incrementally).</p>`,
       followUps: ['Also return pinned pieces (own piece first on a ray, enemy slider second).', 'Use this to generate check evasions quickly: block squares = squares between king and a single slider attacker.']
     }
@@ -2926,6 +9393,7 @@ class ForeverDedupe {
       `<p>On append: same text and within window → count++ and return. Otherwise flush the "repeated N times" line (if N &gt; 0), write the new message, and reset the state.</p>`,
       `<p>Edge cases: flush pending repeats on close(); the window is measured from the first occurrence (not sliding) so a constant stream still prints once per window.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "[disk full, last message repeated 2 times, ok, disk full]\n[x, last message repeated 1 times, x]\n" }] },
     solution: {
       approach: `<p>A Decorator holding (lastText, windowStart, suppressed). Constant state, constant time; injected clock for deterministic tests; close() flushes.</p>`,
       code: String.raw`
@@ -2963,8 +9431,179 @@ class DedupeAppender implements LineSink {
         t[0] = 5000; d.write("disk full");                  // after the window: logged again
         d.close();
         System.out.println(out);   // [disk full, last message repeated 2 times, ok, disk full]
+
+        List<String> out2 = new ArrayList<>();                      // a repeat after the window flushes the count first
+        DedupeAppender d2 = new DedupeAppender(out2::add, 1000, () -> t[0]);
+        t[0] = 0;    d2.write("x");
+        t[0] = 5;    d2.write("x");
+        t[0] = 2000; d2.write("x");
+        d2.close();
+        System.out.println(out2);  // [x, last message repeated 1 times, x]
     }
 }`,
+    alt: [
+        { lang: 'python', code: String.raw`
+import threading
+from typing import Callable
+
+LineSink = Callable[[str], None]
+
+
+class DedupeAppender:
+    def __init__(self, target: LineSink, window_ms: int, clock: Callable[[], int]) -> None:
+        self._target = target
+        self._window_ms = window_ms
+        self._clock = clock
+        self._last: str | None = None
+        self._window_start = 0
+        self._suppressed = 0
+        self._lock = threading.Lock()
+
+    def write(self, line: str) -> None:
+        with self._lock:
+            now = self._clock()
+            if line == self._last and now - self._window_start < self._window_ms:
+                self._suppressed += 1
+                return
+            self._flush()
+            self._target(line)
+            self._last = line
+            self._window_start = now
+
+    def close(self) -> None:
+        with self._lock:
+            self._flush()
+
+    def _flush(self) -> None:
+        if self._suppressed > 0:
+            self._target(f"last message repeated {self._suppressed} times")
+        self._suppressed = 0
+
+
+def show(items: list[str]) -> str:
+    return "[" + ", ".join(items) + "]"
+
+
+def main() -> None:
+    t = [0]
+    out: list[str] = []
+    d = DedupeAppender(out.append, 1000, lambda: t[0])
+    for time in (0, 10, 20):
+        t[0] = time
+        d.write("disk full")
+    t[0] = 30
+    d.write("ok")
+    t[0] = 5000
+    d.write("disk full")                                # after the window: logged again
+    d.close()
+    print(show(out))                                    # [disk full, last message repeated 2 times, ok, disk full]
+
+    out2: list[str] = []                                # a repeat after the window flushes the count first
+    d2 = DedupeAppender(out2.append, 1000, lambda: t[0])
+    for time in (0, 5, 2000):
+        t[0] = time
+        d2.write("x")
+    d2.close()
+    print(show(out2))                                   # [x, last message repeated 1 times, x]
+
+
+if __name__ == "__main__":
+    main()` },
+        { lang: 'ts', code: String.raw`
+type LineSink = (line: string) => void;
+
+class DedupeAppender {
+  private last: string | null = null;
+  private windowStart = 0;
+  private suppressed = 0;
+
+  constructor(private readonly target: LineSink, private readonly windowMs: number, private readonly clock: () => number) {}
+
+  write(line: string): void {
+    const now = this.clock();
+    if (line === this.last && now - this.windowStart < this.windowMs) { this.suppressed++; return; }
+    this.flush();
+    this.target(line);
+    this.last = line;
+    this.windowStart = now;
+  }
+  close(): void { this.flush(); }
+  private flush(): void {
+    if (this.suppressed > 0) this.target("last message repeated " + this.suppressed + " times");
+    this.suppressed = 0;
+  }
+}
+
+const show = (items: string[]): string => "[" + items.join(", ") + "]";
+
+let t = 0;
+const out: string[] = [];
+const d = new DedupeAppender((l) => out.push(l), 1000, () => t);
+for (const time of [0, 10, 20]) { t = time; d.write("disk full"); }
+t = 30; d.write("ok");
+t = 5000; d.write("disk full");                         // after the window: logged again
+d.close();
+console.log(show(out));                                // [disk full, last message repeated 2 times, ok, disk full]
+
+const out2: string[] = [];                             // a repeat after the window flushes the count first
+const d2 = new DedupeAppender((l) => out2.push(l), 1000, () => t);
+for (const time of [0, 5, 2000]) { t = time; d2.write("x"); }
+d2.close();
+console.log(show(out2));                               // [x, last message repeated 1 times, x]` },
+        { lang: 'cpp', code: String.raw`
+using LineSink = function<void(const string&)>;
+
+class DedupeAppender {
+    LineSink target;
+    const long long windowMs;
+    function<long long()> clock;
+    optional<string> last;
+    long long windowStart = 0;
+    int suppressed = 0;
+    mutex mu;
+
+    void flush() {
+        if (suppressed > 0) target("last message repeated " + to_string(suppressed) + " times");
+        suppressed = 0;
+    }
+public:
+    DedupeAppender(LineSink t, long long window, function<long long()> c) : target(move(t)), windowMs(window), clock(move(c)) {}
+
+    void write(const string& line) {
+        lock_guard<mutex> lock(mu);
+        long long now = clock();
+        if (last && line == *last && now - windowStart < windowMs) { suppressed++; return; }
+        flush();
+        target(line);
+        last = line;
+        windowStart = now;
+    }
+    void close() { lock_guard<mutex> lock(mu); flush(); }
+};
+
+string show(const vector<string>& items) {
+    string out = "[";
+    for (size_t i = 0; i < items.size(); i++) out += (i ? ", " : "") + items[i];
+    return out + "]";
+}
+
+int main() {
+    long long t = 0;
+    vector<string> out;
+    DedupeAppender d([&](const string& l) { out.push_back(l); }, 1000, [&] { return t; });
+    for (long long time : {0, 10, 20}) { t = time; d.write("disk full"); }
+    t = 30; d.write("ok");
+    t = 5000; d.write("disk full");                      // after the window: logged again
+    d.close();
+    cout << show(out) << "\n";                           // [disk full, last message repeated 2 times, ok, disk full]
+
+    vector<string> out2;                                 // a repeat after the window flushes the count first
+    DedupeAppender d2([&](const string& l) { out2.push_back(l); }, 1000, [&] { return t; });
+    for (long long time : {0, 5, 2000}) { t = time; d2.write("x"); }
+    d2.close();
+    cout << show(out2) << "\n";                          // [x, last message repeated 1 times, x]
+}` }
+      ],
       complexity: `<p>O(1) time and memory per message.</p>`,
       followUps: ['Collapse per logger name instead of globally (map of states, bounded LRU).', 'Emit the repeat summary on a timer even if no new message arrives.']
     }
@@ -2995,6 +9634,7 @@ class KingOnlyMate {
       `<p>Enumerate pseudo-legal moves for every piece of the side to move (sliders: rays; knight/king: jumps; pawn: forward + diagonal captures), apply each on a copy, and keep it if the king is not attacked. Stop at the first legal move — you only need to know whether one exists.</p>`,
       `<p>Edge cases: pawn double step needs both squares empty; pawn on the last rank promotes (the piece type does not matter for king safety unless it blocks — use a queen); king moves must check the destination, not the original square.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "CHECKMATE\nSTALEMATE\nCHECK\nACTIVE\n" }] },
     solution: {
       approach: `<p>Generate pseudo-legal moves per piece, simulate each on a cloned char board, and test king safety with an outward-from-king attack check. Early-exit when one legal move is found. Combine with the in-check flag for the status.</p>`,
       code: String.raw`
@@ -3079,6 +9719,309 @@ class GameStatusChecker {
         System.out.println(status(new String[] { "rnbqkbnr", "pppppppp", "........", "........", "........", "........", "PPPPPPPP", "RNBQKBNR" }, true));  // ACTIVE
     }
 }`,
+    alt: [
+        { lang: 'python', code: String.raw`
+Dirs = list[tuple[int, int]]
+Board = list[list[str]]
+
+ST: Dirs = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+DG: Dirs = [(1, 1), (1, -1), (-1, 1), (-1, -1)]
+KN: Dirs = [(2, 1), (2, -1), (-2, 1), (-2, -1), (1, 2), (1, -2), (-1, 2), (-1, -2)]
+K8: Dirs = ST + DG
+
+
+def on(r: int, c: int) -> bool:
+    return 0 <= r < 8 and 0 <= c < 8
+
+
+def mine(p: str, w: bool) -> bool:
+    return p != "." and p.isupper() == w
+
+
+def theirs(p: str, w: bool) -> bool:
+    return p != "." and p.isupper() != w
+
+
+class GameStatusChecker:
+    @staticmethod
+    def attacked(b: Board, r: int, c: int, by_white: bool) -> bool:
+        knight, king, pawn = ("N", "K", "P") if by_white else ("n", "k", "p")
+        if any(on(r + dr, c + dc) and b[r + dr][c + dc] == knight for dr, dc in KN):
+            return True
+        if any(on(r + dr, c + dc) and b[r + dr][c + dc] == king for dr, dc in K8):
+            return True
+        pr = r - 1 if by_white else r + 1                  # where an attacking pawn would stand
+        if any(on(pr, c + dc) and b[pr][c + dc] == pawn for dc in (-1, 1)):
+            return True
+        for dirs, slider in ((ST, "R"), (DG, "B")):
+            for dr, dc in dirs:
+                i, j = r + dr, c + dc
+                while on(i, j):
+                    p = b[i][j]
+                    if p != ".":                           # first piece blocks the ray
+                        if p.isupper() == by_white and p.upper() in ("Q", slider):
+                            return True
+                        break
+                    i, j = i + dr, j + dc
+        return False
+
+    @staticmethod
+    def king_safe_after(b: Board, fr: int, fc: int, tr: int, tc: int, w: bool) -> bool:
+        n = [row[:] for row in b]
+        p = n[fr][fc]
+        promote = p.upper() == "P" and tr in (0, 7)
+        n[tr][tc] = ("Q" if w else "q") if promote else p
+        n[fr][fc] = "."
+        for r in range(8):
+            for c in range(8):
+                if n[r][c] == ("K" if w else "k"):
+                    return not GameStatusChecker.attacked(n, r, c, not w)
+        return False
+
+    @staticmethod
+    def has_legal_move(b: Board, w: bool) -> bool:
+        for r in range(8):
+            for c in range(8):
+                p = b[r][c]
+                if not mine(p, w):
+                    continue
+                targets: list[tuple[int, int]] = []
+                u = p.upper()
+                if u == "N":
+                    targets = [(r + dr, c + dc) for dr, dc in KN]
+                elif u == "K":
+                    targets = [(r + dr, c + dc) for dr, dc in K8]
+                elif u == "P":
+                    d = 1 if w else -1
+                    if on(r + d, c) and b[r + d][c] == ".":
+                        targets.append((r + d, c))
+                        if r == (1 if w else 6) and b[r + 2 * d][c] == ".":
+                            targets.append((r + 2 * d, c))
+                    targets += [(r + d, c + dc) for dc in (-1, 1) if on(r + d, c + dc) and theirs(b[r + d][c + dc], w)]
+                else:
+                    dirs = (ST if u != "B" else []) + (DG if u != "R" else [])
+                    for dr, dc in dirs:
+                        i, j = r + dr, c + dc
+                        while on(i, j):
+                            targets.append((i, j))
+                            if b[i][j] != ".":
+                                break
+                            i, j = i + dr, j + dc
+                for tr, tc in targets:
+                    if on(tr, tc) and not mine(b[tr][tc], w) and GameStatusChecker.king_safe_after(b, r, c, tr, tc, w):
+                        return True                         # early exit
+        return False
+
+    @staticmethod
+    def status(ranks8_to_1: list[str], white_to_move: bool) -> str:
+        b = [list(ranks8_to_1[7 - r]) for r in range(8)]
+        king = "K" if white_to_move else "k"
+        kr, kc = next((r, c) for r in range(8) for c in range(8) if b[r][c] == king)
+        check = GameStatusChecker.attacked(b, kr, kc, not white_to_move)
+        moves = GameStatusChecker.has_legal_move(b, white_to_move)
+        if moves:
+            return "CHECK" if check else "ACTIVE"
+        return "CHECKMATE" if check else "STALEMATE"
+
+
+def main() -> None:
+    print(GameStatusChecker.status(["......k.", "........", "........", "........", "........", "........", "......PP", "r......K"], True))   # CHECKMATE
+    print(GameStatusChecker.status(["........", "........", "........", "........", "........", "......q.", ".....k..", ".......K"], True))   # STALEMATE
+    print(GameStatusChecker.status(["......k.", "........", "........", "........", "........", "........", "...R..PP", "r......K"], True))   # CHECK
+    print(GameStatusChecker.status(["rnbqkbnr", "pppppppp", "........", "........", "........", "........", "PPPPPPPP", "RNBQKBNR"], True))   # ACTIVE
+
+
+if __name__ == "__main__":
+    main()` },
+        { lang: 'ts', code: String.raw`
+type Dir = readonly [number, number];
+type Board = string[][];
+
+const ST: Dir[] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+const DG: Dir[] = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
+const KN: Dir[] = [[2, 1], [2, -1], [-2, 1], [-2, -1], [1, 2], [1, -2], [-1, 2], [-1, -2]];
+const K8: Dir[] = [...ST, ...DG];
+
+const on = (r: number, c: number): boolean => r >= 0 && r < 8 && c >= 0 && c < 8;
+const isUpper = (ch: string): boolean => ch !== ch.toLowerCase();
+const mine = (p: string, w: boolean): boolean => p !== "." && isUpper(p) === w;
+const theirs = (p: string, w: boolean): boolean => p !== "." && isUpper(p) !== w;
+
+class GameStatusChecker {
+  static attacked(b: Board, r: number, c: number, byWhite: boolean): boolean {
+    const [knight, king, pawn] = byWhite ? ["N", "K", "P"] : ["n", "k", "p"];
+    if (KN.some(([dr, dc]) => on(r + dr, c + dc) && b[r + dr][c + dc] === knight)) return true;
+    if (K8.some(([dr, dc]) => on(r + dr, c + dc) && b[r + dr][c + dc] === king)) return true;
+    const pr = byWhite ? r - 1 : r + 1;                    // where an attacking pawn would stand
+    if ([-1, 1].some((dc) => on(pr, c + dc) && b[pr][c + dc] === pawn)) return true;
+    for (const [dirs, slider] of [[ST, "R"], [DG, "B"]] as [Dir[], string][]) {
+      for (const [dr, dc] of dirs) {
+        for (let i = r + dr, j = c + dc; on(i, j); i += dr, j += dc) {
+          const p = b[i][j];
+          if (p === ".") continue;
+          if (isUpper(p) === byWhite && (p.toUpperCase() === "Q" || p.toUpperCase() === slider)) return true;
+          break;                                           // first piece blocks the ray
+        }
+      }
+    }
+    return false;
+  }
+
+  static kingSafeAfter(b: Board, fr: number, fc: number, tr: number, tc: number, w: boolean): boolean {
+    const n = b.map((row) => row.slice());
+    const p = n[fr][fc];
+    n[tr][tc] = p.toUpperCase() === "P" && (tr === 0 || tr === 7) ? (w ? "Q" : "q") : p;   // promotion
+    n[fr][fc] = ".";
+    for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
+      if (n[r][c] === (w ? "K" : "k")) return !GameStatusChecker.attacked(n, r, c, !w);
+    }
+    return false;
+  }
+
+  static hasLegalMove(b: Board, w: boolean): boolean {
+    for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
+      const p = b[r][c];
+      if (!mine(p, w)) continue;
+      const targets: [number, number][] = [];
+      switch (p.toUpperCase()) {
+        case "N": for (const [dr, dc] of KN) targets.push([r + dr, c + dc]); break;
+        case "K": for (const [dr, dc] of K8) targets.push([r + dr, c + dc]); break;
+        case "P": {
+          const d = w ? 1 : -1;
+          if (on(r + d, c) && b[r + d][c] === ".") {
+            targets.push([r + d, c]);
+            if (r === (w ? 1 : 6) && b[r + 2 * d][c] === ".") targets.push([r + 2 * d, c]);
+          }
+          for (const dc of [-1, 1]) if (on(r + d, c + dc) && theirs(b[r + d][c + dc], w)) targets.push([r + d, c + dc]);
+          break;
+        }
+        default: {
+          const u = p.toUpperCase();
+          const dirs = [...(u !== "B" ? ST : []), ...(u !== "R" ? DG : [])];
+          for (const [dr, dc] of dirs) {
+            for (let i = r + dr, j = c + dc; on(i, j); i += dr, j += dc) {
+              targets.push([i, j]);
+              if (b[i][j] !== ".") break;
+            }
+          }
+        }
+      }
+      for (const [tr, tc] of targets) {
+        if (on(tr, tc) && !mine(b[tr][tc], w) && GameStatusChecker.kingSafeAfter(b, r, c, tr, tc, w)) return true;   // early exit
+      }
+    }
+    return false;
+  }
+
+  static status(ranks8to1: string[], whiteToMove: boolean): string {
+    const b: Board = Array.from({ length: 8 }, (_, r) => [...ranks8to1[7 - r]]);
+    let kr = 0, kc = 0;
+    for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) if (b[r][c] === (whiteToMove ? "K" : "k")) { kr = r; kc = c; }
+    const check = GameStatusChecker.attacked(b, kr, kc, !whiteToMove);
+    const moves = GameStatusChecker.hasLegalMove(b, whiteToMove);
+    return moves ? (check ? "CHECK" : "ACTIVE") : (check ? "CHECKMATE" : "STALEMATE");
+  }
+}
+
+console.log(GameStatusChecker.status(["......k.", "........", "........", "........", "........", "........", "......PP", "r......K"], true));   // CHECKMATE
+console.log(GameStatusChecker.status(["........", "........", "........", "........", "........", "......q.", ".....k..", ".......K"], true));   // STALEMATE
+console.log(GameStatusChecker.status(["......k.", "........", "........", "........", "........", "........", "...R..PP", "r......K"], true));   // CHECK
+console.log(GameStatusChecker.status(["rnbqkbnr", "pppppppp", "........", "........", "........", "........", "PPPPPPPP", "RNBQKBNR"], true));   // ACTIVE` },
+        { lang: 'cpp', code: String.raw`
+using Dir = pair<int, int>;
+using Board = vector<string>;
+
+const vector<Dir> ST = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+const vector<Dir> DG = {{1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
+const vector<Dir> KN = {{2, 1}, {2, -1}, {-2, 1}, {-2, -1}, {1, 2}, {1, -2}, {-1, 2}, {-1, -2}};
+const vector<Dir> K8 = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
+
+bool on(int r, int c) { return r >= 0 && r < 8 && c >= 0 && c < 8; }
+bool isUp(char ch) { return isupper(static_cast<unsigned char>(ch)) != 0; }
+char up(char ch) { return static_cast<char>(toupper(static_cast<unsigned char>(ch))); }
+bool mine(char p, bool w) { return p != '.' && isUp(p) == w; }
+bool theirs(char p, bool w) { return p != '.' && isUp(p) != w; }
+
+class GameStatusChecker {
+public:
+    static bool attacked(const Board& b, int r, int c, bool byWhite) {
+        char knight = byWhite ? 'N' : 'n', king = byWhite ? 'K' : 'k', pawn = byWhite ? 'P' : 'p';
+        for (auto [dr, dc] : KN) if (on(r + dr, c + dc) && b[r + dr][c + dc] == knight) return true;
+        for (auto [dr, dc] : K8) if (on(r + dr, c + dc) && b[r + dr][c + dc] == king) return true;
+        int pr = byWhite ? r - 1 : r + 1;                  // where an attacking pawn would stand
+        for (int dc : {-1, 1}) if (on(pr, c + dc) && b[pr][c + dc] == pawn) return true;
+        for (int s = 0; s < 2; s++)
+            for (auto [dr, dc] : s == 0 ? ST : DG)
+                for (int i = r + dr, j = c + dc; on(i, j); i += dr, j += dc) {
+                    char p = b[i][j];
+                    if (p == '.') continue;
+                    if (isUp(p) == byWhite && (up(p) == 'Q' || up(p) == (s == 0 ? 'R' : 'B'))) return true;
+                    break;                                 // first piece blocks the ray
+                }
+        return false;
+    }
+
+    static bool kingSafeAfter(const Board& b, int fr, int fc, int tr, int tc, bool w) {
+        Board n = b;
+        char p = n[fr][fc];
+        n[tr][tc] = (up(p) == 'P' && (tr == 0 || tr == 7)) ? (w ? 'Q' : 'q') : p;   // promotion
+        n[fr][fc] = '.';
+        for (int r = 0; r < 8; r++) for (int c = 0; c < 8; c++)
+            if (n[r][c] == (w ? 'K' : 'k')) return !attacked(n, r, c, !w);
+        return false;
+    }
+
+    static bool hasLegalMove(const Board& b, bool w) {
+        for (int r = 0; r < 8; r++) for (int c = 0; c < 8; c++) {
+            char p = b[r][c];
+            if (!mine(p, w)) continue;
+            vector<Dir> targets;
+            switch (up(p)) {
+                case 'N': for (auto [dr, dc] : KN) targets.push_back({r + dr, c + dc}); break;
+                case 'K': for (auto [dr, dc] : K8) targets.push_back({r + dr, c + dc}); break;
+                case 'P': {
+                    int d = w ? 1 : -1;
+                    if (on(r + d, c) && b[r + d][c] == '.') {
+                        targets.push_back({r + d, c});
+                        if (r == (w ? 1 : 6) && b[r + 2 * d][c] == '.') targets.push_back({r + 2 * d, c});
+                    }
+                    for (int dc : {-1, 1}) if (on(r + d, c + dc) && theirs(b[r + d][c + dc], w)) targets.push_back({r + d, c + dc});
+                    break;
+                }
+                default: {
+                    vector<Dir> dirs;
+                    if (up(p) != 'B') dirs.insert(dirs.end(), ST.begin(), ST.end());
+                    if (up(p) != 'R') dirs.insert(dirs.end(), DG.begin(), DG.end());
+                    for (auto [dr, dc] : dirs)
+                        for (int i = r + dr, j = c + dc; on(i, j); i += dr, j += dc) {
+                            targets.push_back({i, j});
+                            if (b[i][j] != '.') break;
+                        }
+                }
+            }
+            for (auto [tr, tc] : targets)
+                if (on(tr, tc) && !mine(b[tr][tc], w) && kingSafeAfter(b, r, c, tr, tc, w)) return true;   // early exit
+        }
+        return false;
+    }
+
+    static string status(const vector<string>& ranks8to1, bool whiteToMove) {
+        Board b(8);
+        for (int i = 0; i < 8; i++) b[7 - i] = ranks8to1[i];
+        int kr = 0, kc = 0;
+        for (int r = 0; r < 8; r++) for (int c = 0; c < 8; c++) if (b[r][c] == (whiteToMove ? 'K' : 'k')) { kr = r; kc = c; }
+        bool check = attacked(b, kr, kc, !whiteToMove), moves = hasLegalMove(b, whiteToMove);
+        return moves ? (check ? "CHECK" : "ACTIVE") : (check ? "CHECKMATE" : "STALEMATE");
+    }
+};
+
+int main() {
+    cout << GameStatusChecker::status({"......k.", "........", "........", "........", "........", "........", "......PP", "r......K"}, true) << "\n";   // CHECKMATE
+    cout << GameStatusChecker::status({"........", "........", "........", "........", "........", "......q.", ".....k..", ".......K"}, true) << "\n";   // STALEMATE
+    cout << GameStatusChecker::status({"......k.", "........", "........", "........", "........", "........", "...R..PP", "r......K"}, true) << "\n";   // CHECK
+    cout << GameStatusChecker::status({"rnbqkbnr", "pppppppp", "........", "........", "........", "........", "PPPPPPPP", "RNBQKBNR"}, true) << "\n";   // ACTIVE
+}` }
+      ],
       complexity: `<p>At most ~218 pseudo-legal moves (the chess maximum), each simulated in O(64) → a few thousand operations; early exit usually stops much sooner.</p>`,
       followUps: ['Add castling and en passant without breaking the early exit.', 'Detect insufficient material and threefold repetition (Zobrist hashing).']
     }
@@ -3117,6 +10060,7 @@ class QuadraticCompaction {
       `<p>Pass 2: walk the log in order; keep a record only if its offset equals <code>latest.get(key)</code> and its value is not null.</p>`,
       `<p>Real compaction runs on closed segments only (never the active tail), in the background, and keeps the newest tombstones for a grace period. Offsets are never rewritten.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "[2:u3=Goa, 3:u1=Mumbai]\nnew head offset = 2\n[] new head offset = -1\n" }] },
     solution: {
       approach: `<p>Two linear passes: build the latest-offset map, then filter in order. Offsets preserved, tombstoned keys dropped.</p>`,
       code: String.raw`
@@ -3131,13 +10075,122 @@ class Compactor {
             if (latest.get(r.key()) == r.offset() && r.value() != null) out.add(r);
         return out;
     }
+    static String show(List<LogRec> log) {
+        return log.stream().map(r -> r.offset() + ":" + r.key() + "=" + r.value()).toList().toString();
+    }
+    static long head(List<LogRec> log) { return log.isEmpty() ? -1 : log.get(0).offset(); }
+
     public static void main(String[] args) {
         List<LogRec> out = compact(List.of(new LogRec(0, "u1", "Delhi"), new LogRec(1, "u2", "Pune"),
             new LogRec(2, "u3", "Goa"), new LogRec(3, "u1", "Mumbai"), new LogRec(4, "u2", null)));
-        System.out.println(out);
-        System.out.println("new head offset = " + (out.isEmpty() ? -1 : out.get(0).offset()));   // 2
+        System.out.println(show(out));                          // [2:u3=Goa, 3:u1=Mumbai]
+        System.out.println("new head offset = " + head(out));    // 2
+        List<LogRec> gone = compact(List.of(new LogRec(0, "k", "v"), new LogRec(1, "k", null)));   // deleted by a tombstone
+        System.out.println(show(gone) + " new head offset = " + head(gone));                        // [] -1
     }
 }`,
+    alt: [
+        { lang: 'python', code: String.raw`
+from dataclasses import dataclass
+from typing import Optional
+
+
+@dataclass(frozen=True)
+class LogRec:
+    offset: int
+    key: str
+    value: Optional[str]                                # None = tombstone (a delete)
+
+
+class Compactor:
+    @staticmethod
+    def compact(log: list[LogRec]) -> list[LogRec]:
+        latest = {r.key: r.offset for r in log}         # pass 1: the last offset per key wins
+        return [r for r in log if latest[r.key] == r.offset and r.value is not None]   # pass 2, original order
+
+
+def show(log: list[LogRec]) -> str:
+    return "[" + ", ".join(f"{r.offset}:{r.key}={r.value}" for r in log) + "]"
+
+
+def head(log: list[LogRec]) -> int:
+    return log[0].offset if log else -1
+
+
+def main() -> None:
+    out = Compactor.compact([LogRec(0, "u1", "Delhi"), LogRec(1, "u2", "Pune"), LogRec(2, "u3", "Goa"),
+                             LogRec(3, "u1", "Mumbai"), LogRec(4, "u2", None)])
+    print(show(out))                                    # [2:u3=Goa, 3:u1=Mumbai]
+    print(f"new head offset = {head(out)}")             # 2
+    gone = Compactor.compact([LogRec(0, "k", "v"), LogRec(1, "k", None)])    # deleted by a tombstone
+    print(f"{show(gone)} new head offset = {head(gone)}")                    # [] -1
+
+
+if __name__ == "__main__":
+    main()` },
+        { lang: 'ts', code: String.raw`
+interface LogRec {
+  readonly offset: number;
+  readonly key: string;
+  readonly value: string | null;                        // null = tombstone (a delete)
+}
+
+class Compactor {
+  static compact(log: readonly LogRec[]): LogRec[] {
+    const latest = new Map<string, number>();
+    for (const r of log) latest.set(r.key, r.offset);   // pass 1: the last offset per key wins
+    return log.filter((r) => latest.get(r.key) === r.offset && r.value !== null);   // pass 2, original order
+  }
+}
+
+const show = (log: LogRec[]): string => "[" + log.map((r) => r.offset + ":" + r.key + "=" + r.value).join(", ") + "]";
+const head = (log: LogRec[]): number => (log.length === 0 ? -1 : log[0].offset);
+
+const out = Compactor.compact([
+  { offset: 0, key: "u1", value: "Delhi" }, { offset: 1, key: "u2", value: "Pune" },
+  { offset: 2, key: "u3", value: "Goa" }, { offset: 3, key: "u1", value: "Mumbai" },
+  { offset: 4, key: "u2", value: null },
+]);
+console.log(show(out));                                 // [2:u3=Goa, 3:u1=Mumbai]
+console.log("new head offset = " + head(out));          // 2
+const gone = Compactor.compact([{ offset: 0, key: "k", value: "v" }, { offset: 1, key: "k", value: null }]);   // deleted by a tombstone
+console.log(show(gone) + " new head offset = " + head(gone));                                                   // [] -1` },
+        { lang: 'cpp', code: String.raw`
+struct LogRec {
+    long long offset;
+    string key;
+    optional<string> value;                             // empty = tombstone (a delete)
+};
+
+class Compactor {
+public:
+    static vector<LogRec> compact(const vector<LogRec>& log) {
+        unordered_map<string, long long> latest;
+        for (const LogRec& r : log) latest[r.key] = r.offset;          // pass 1: the last offset per key wins
+        vector<LogRec> out;
+        for (const LogRec& r : log)                                    // pass 2, original order
+            if (latest[r.key] == r.offset && r.value) out.push_back(r);
+        return out;
+    }
+};
+
+string show(const vector<LogRec>& log) {
+    string out = "[";
+    for (size_t i = 0; i < log.size(); i++)
+        out += (i ? ", " : "") + to_string(log[i].offset) + ":" + log[i].key + "=" + log[i].value.value_or("null");
+    return out + "]";
+}
+long long head(const vector<LogRec>& log) { return log.empty() ? -1 : log[0].offset; }
+
+int main() {
+    vector<LogRec> out = Compactor::compact({{0, "u1", "Delhi"}, {1, "u2", "Pune"}, {2, "u3", "Goa"},
+                                             {3, "u1", "Mumbai"}, {4, "u2", nullopt}});
+    cout << show(out) << "\n";                                         // [2:u3=Goa, 3:u1=Mumbai]
+    cout << "new head offset = " << head(out) << "\n";                 // 2
+    vector<LogRec> gone = Compactor::compact({{0, "k", "v"}, {1, "k", nullopt}});   // deleted by a tombstone
+    cout << show(gone) << " new head offset = " << head(gone) << "\n"; // [] -1
+}` }
+      ],
       complexity: `<p>O(n) time, O(distinct keys) extra memory.</p>`,
       followUps: ['Compact only records older than the active segment boundary.', 'Keep tombstones younger than T milliseconds.']
     }
@@ -3147,7 +10200,7 @@ class Compactor {
     title: 'Consumer Retries with Exponential Backoff and a Dead-Letter Queue',
     level: 'Hard', tags: ['pub-sub', 'retry', 'priority queue', 'simulation'], companies: ['Uber', 'Stripe', 'DoorDash'],
     statement: `<p>A consumer handles messages with a handler that sometimes fails. A failed message is retried after <code>base × 2<sup>attempt−1</sup></code> ms (attempt 1 → base, 2 → 2·base, …); after <code>maxAttempts</code> failures it goes to a <b>dead-letter queue</b>. A failing ("poison") message must <b>not</b> block other messages. Simulate with a virtual clock and return the processing timeline and the DLQ.</p>`,
-    constraints: `<p>Up to 10<sup>5</sup> messages; no <code>Thread.sleep</code>; O(n log n) total.</p>`,
+    constraints: `<p>Up to 10<sup>5</sup> messages; no real sleeping (<code>Thread.sleep</code>, <code>time.sleep</code>); O(n log n) total.</p>`,
     example: `<p>base = 100 ms, maxAttempts = 3; m2 always fails, m3 fails once:</p>${H.table(['time', 'event'], [['0', 'm1 ok'], ['0', 'm2 fail #1 → retry at 100'], ['0', 'm3 fail #1 → retry at 100'], ['100', 'm2 fail #2 → retry at 300'], ['100', 'm3 ok'], ['300', H.c('r', 'm2 fail #3 → DLQ')]])}`,
     brute: {
       why: `<p>Retrying in place (<code>while (!ok) retry()</code>) blocks the whole partition behind one poison message — every later message waits forever (or until a human intervenes). Sleeping between retries also stalls the thread. The brute below caps itself at 1000 attempts just so the demo ends.</p>`,
@@ -3172,12 +10225,13 @@ class RetryInPlace {
       `<p>Event loop: process all main-queue messages at the current time; then jump the virtual clock to the earliest retry time and process the due retries; failures are rescheduled or sent to the DLQ.</p>`,
       `<p>Edge cases: maxAttempts = 1 (straight to DLQ), ties in time (use a sequence number for stable order), and note that retries break strict per-key ordering — if ordering matters, park the whole key, not just the message.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "0 m1 ok\n0 m2 fail #1 -> retry at 100\n0 m3 fail #1 -> retry at 100\n100 m2 fail #2 -> retry at 300\n100 m3 ok\n300 m2 fail #3 -> DLQ\nDLQ = [m2]\n" }] },
     solution: {
       approach: `<p>Discrete-event simulation: a FIFO for fresh messages, a priority queue keyed by (time, sequence) for retries, a virtual clock that jumps to the next event, and a DLQ list. Poison messages only ever occupy a heap slot, never the head of the main queue.</p>`,
       code: String.raw`
-class RetryingConsumer {
-    record Attempt(long at, long seq, String msg, int attempt) { }
+record Attempt(long at, long seq, String msg, int attempt) { }
 
+class RetryingConsumer {
     static List<String> run(List<String> msgs, Predicate<String> handlerFails, long base, int maxAttempts, List<String> dlq) {
         List<String> timeline = new ArrayList<>();
         PriorityQueue<Attempt> retries = new PriorityQueue<>(Comparator.comparingLong(Attempt::at).thenComparingLong(Attempt::seq));
@@ -3204,6 +10258,179 @@ class RetryingConsumer {
         System.out.println("DLQ = " + dlq);
     }
 }`,
+    alt: [
+        { lang: 'python', code: String.raw`
+import heapq
+from collections import deque
+from dataclasses import dataclass, field
+from typing import Callable
+
+
+@dataclass(frozen=True, order=True)
+class Attempt:
+    at: int
+    seq: int                                            # ties on time are served in arrival order
+    msg: str = field(compare=False)
+    attempt: int = field(compare=False)
+
+
+class RetryingConsumer:
+    @staticmethod
+    def run(msgs: list[str], handler_fails: Callable[[str], bool], base: int, max_attempts: int,
+            dlq: list[str]) -> list[str]:
+        timeline: list[str] = []
+        retries: list[Attempt] = []                     # a heap ordered by (at, seq)
+        fresh: deque[Attempt] = deque()
+        seq = now = 0
+        for m in msgs:
+            fresh.append(Attempt(0, seq, m, 1))
+            seq += 1
+        while fresh or retries:
+            if fresh:
+                a = fresh.popleft()
+            else:
+                a = heapq.heappop(retries)
+                now = max(now, a.at)                    # jump the virtual clock
+            if not handler_fails(f"{a.msg}#{a.attempt}"):
+                timeline.append(f"{now} {a.msg} ok")
+                continue
+            if a.attempt >= max_attempts:
+                dlq.append(a.msg)
+                timeline.append(f"{now} {a.msg} fail #{a.attempt} -> DLQ")
+                continue
+            nxt = now + base * (1 << (a.attempt - 1))
+            heapq.heappush(retries, Attempt(nxt, seq, a.msg, a.attempt + 1))
+            seq += 1
+            timeline.append(f"{now} {a.msg} fail #{a.attempt} -> retry at {nxt}")
+        return timeline
+
+
+def main() -> None:
+    dlq: list[str] = []
+    # m2 always fails; m3 fails only on its first attempt
+
+    def fails(s: str) -> bool:
+        return s.startswith("m2#") or s == "m3#1"
+
+    for line in RetryingConsumer.run(["m1", "m2", "m3"], fails, 100, 3, dlq):
+        print(line)
+    print("DLQ = [" + ", ".join(dlq) + "]")
+
+
+if __name__ == "__main__":
+    main()` },
+        { lang: 'ts', code: String.raw`
+interface Attempt { readonly at: number; readonly seq: number; readonly msg: string; readonly attempt: number; }
+
+// JavaScript has no built-in heap, so here is a small binary min-heap.
+class MinHeap<T> {
+  private readonly items: T[] = [];
+  constructor(private readonly less: (a: T, b: T) => boolean) {}
+  get size(): number { return this.items.length; }
+  peek(): T | undefined { return this.items[0]; }
+  push(x: T): void {
+    const a = this.items;
+    a.push(x);
+    for (let i = a.length - 1; i > 0;) {
+      const p = (i - 1) >> 1;
+      if (!this.less(a[i], a[p])) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop(): T | undefined {
+    const a = this.items;
+    if (a.length === 0) return undefined;
+    const top = a[0];
+    const last = a.pop() as T;
+    if (a.length > 0) {
+      a[0] = last;
+      for (let i = 0;;) {
+        let m = i;
+        const l = 2 * i + 1, r = l + 1;
+        if (l < a.length && this.less(a[l], a[m])) m = l;
+        if (r < a.length && this.less(a[r], a[m])) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+class RetryingConsumer {
+  static run(msgs: string[], handlerFails: (s: string) => boolean, base: number, maxAttempts: number, dlq: string[]): string[] {
+    const timeline: string[] = [];
+    const retries = new MinHeap<Attempt>((a, b) => a.at < b.at || (a.at === b.at && a.seq < b.seq));   // ties: arrival order
+    let freshHead = 0;
+    const fresh: Attempt[] = [];
+    let seq = 0, now = 0;
+    for (const m of msgs) fresh.push({ at: 0, seq: seq++, msg: m, attempt: 1 });
+    while (freshHead < fresh.length || retries.size > 0) {
+      let a: Attempt;
+      if (freshHead < fresh.length) a = fresh[freshHead++];
+      else { a = retries.pop()!; now = Math.max(now, a.at); }              // jump the virtual clock
+      if (!handlerFails(a.msg + "#" + a.attempt)) { timeline.push(now + " " + a.msg + " ok"); continue; }
+      if (a.attempt >= maxAttempts) { dlq.push(a.msg); timeline.push(now + " " + a.msg + " fail #" + a.attempt + " -> DLQ"); continue; }
+      const next = now + base * 2 ** (a.attempt - 1);
+      retries.push({ at: next, seq: seq++, msg: a.msg, attempt: a.attempt + 1 });
+      timeline.push(now + " " + a.msg + " fail #" + a.attempt + " -> retry at " + next);
+    }
+    return timeline;
+  }
+}
+
+const dlq: string[] = [];
+// m2 always fails; m3 fails only on its first attempt
+const fails = (s: string): boolean => s.startsWith("m2#") || s === "m3#1";
+for (const line of RetryingConsumer.run(["m1", "m2", "m3"], fails, 100, 3, dlq)) console.log(line);
+console.log("DLQ = [" + dlq.join(", ") + "]");` },
+        { lang: 'cpp', code: String.raw`
+struct Attempt {
+    long long at, seq;                                  // ties on time are served in arrival order
+    string msg;
+    int attempt;
+    bool operator>(const Attempt& o) const { return tie(at, seq) > tie(o.at, o.seq); }
+};
+
+class RetryingConsumer {
+public:
+    static vector<string> run(const vector<string>& msgs, const function<bool(const string&)>& handlerFails,
+                              long long base, int maxAttempts, vector<string>& dlq) {
+        vector<string> timeline;
+        priority_queue<Attempt, vector<Attempt>, greater<Attempt>> retries;   // min-heap (the default is a max-heap)
+        deque<Attempt> fresh;
+        long long seq = 0, now = 0;
+        for (const string& m : msgs) fresh.push_back({0, seq++, m, 1});
+        while (!fresh.empty() || !retries.empty()) {
+            Attempt a;
+            if (!fresh.empty()) { a = fresh.front(); fresh.pop_front(); }
+            else { a = retries.top(); retries.pop(); now = max(now, a.at); }   // jump the virtual clock
+            if (!handlerFails(a.msg + "#" + to_string(a.attempt))) { timeline.push_back(to_string(now) + " " + a.msg + " ok"); continue; }
+            if (a.attempt >= maxAttempts) {
+                dlq.push_back(a.msg);
+                timeline.push_back(to_string(now) + " " + a.msg + " fail #" + to_string(a.attempt) + " -> DLQ");
+                continue;
+            }
+            long long next = now + base * (1LL << (a.attempt - 1));
+            retries.push({next, seq++, a.msg, a.attempt + 1});
+            timeline.push_back(to_string(now) + " " + a.msg + " fail #" + to_string(a.attempt) + " -> retry at " + to_string(next));
+        }
+        return timeline;
+    }
+};
+
+int main() {
+    vector<string> dlq;
+    // m2 always fails; m3 fails only on its first attempt
+    auto fails = [](const string& s) { return s.rfind("m2#", 0) == 0 || s == "m3#1"; };
+    for (const string& line : RetryingConsumer::run({"m1", "m2", "m3"}, fails, 100, 3, dlq)) cout << line << "\n";
+    cout << "DLQ = [";
+    for (size_t i = 0; i < dlq.size(); i++) cout << (i ? ", " : "") << dlq[i];
+    cout << "]\n";
+}` }
+      ],
       complexity: `<p>Each attempt is one heap push/pop: O(A log A) for A total attempts (≤ n · maxAttempts).</p>`,
       followUps: ['Persist the retry schedule in "retry topics" (orders.retry.1m, orders.retry.10m) like many Kafka setups.', 'Add a DLQ replay tool that re-publishes after a bug fix.']
     }
@@ -3212,11 +10439,11 @@ class RetryingConsumer {
   practice.push({
     title: 'Async Logger: Bounded Queue, Drop Policy and Graceful Shutdown',
     level: 'Hard', tags: ['logging', 'concurrency', 'producer-consumer'], companies: ['Amazon', 'Goldman Sachs', 'Netflix'],
-    statement: `<p>Build an asynchronous logger: many threads call <code>log(line)</code>; one background writer drains a <b>bounded</b> queue into a slow sink. When the queue is full, <b>drop</b> the line and count it (callers must never block). <code>shutdown()</code> must write everything already queued, then stop, and must return within a timeout even if the sink is stuck.</p>`,
+    statement: `<p>Build an asynchronous logger: many threads call <code>log(line)</code> (in TypeScript, many concurrent async tasks); one background writer drains a <b>bounded</b> queue into a slow sink. When the queue is full, <b>drop</b> the line and count it (callers must never block). <code>shutdown()</code> must write everything already queued, then stop, and must return within a timeout even if the sink is stuck.</p>`,
     constraints: `<p>8 producer threads × 10<sup>4</sup> lines; queue capacity 1024; shutdown ≤ 2 s; no lost lines except counted drops: <code>written + dropped == logged</code>.</p>`,
     example: `<p>Sink takes ~10 µs per line, 8 producers log 80,000 lines in a ~60 ms burst. The sink can only absorb a few thousand lines in that time, so ${H.c('g', 'a few thousand are written')} and ${H.c('y', 'the rest are dropped and counted')} — written + dropped is exactly 80,000 (the split depends on timing). Callers never wait for the sink.</p>`,
     brute: {
-      why: `<p>Writing synchronously on the caller thread makes every request pay the sink\'s latency (a slow disk slows every user). The other naive fix — an <b>unbounded</b> queue with a non-daemon <code>while(true) take()</code> thread — can run out of memory under bursts and keeps the JVM from ever exiting.</p>`,
+      why: `<p>Writing synchronously on the caller thread makes every request pay the sink\'s latency (a slow disk slows every user). The other naive fix — an <b>unbounded</b> queue with a non-daemon <code>while(true) take()</code> thread — can run out of memory under bursts and keeps the process from ever exiting.</p>`,
       code: String.raw`
 class SyncLogger {
     static void slowSink(String line) {
@@ -3230,14 +10457,15 @@ class SyncLogger {
     }
 }`
     },
-    mcq: { q: 'Why must the async writer thread be stopped with a "poison pill" placed in the queue rather than just interrupting it?', options: ['Messages queued before the pill are still written first, so nothing accepted is lost', 'Interrupts are not allowed in Java', 'The pill is faster', 'It prevents dropping'], answer: 0, explain: 'The pill travels through the FIFO behind every accepted line, so the writer flushes them and then exits. A join with timeout guards against a stuck sink.' },
+    mcq: { q: 'Why must the async writer thread be stopped with a "poison pill" placed in the queue rather than just interrupting it?', options: ['Messages queued before the pill are still written first, so nothing accepted is lost', 'Threads can never be interrupted', 'The pill is faster', 'It prevents dropping'], answer: 0, explain: 'The pill travels through the FIFO behind every accepted line, so the writer flushes them and then exits. A join with timeout guards against a stuck sink.' },
     hints: [
-      `<p>Use <code>ArrayBlockingQueue</code> with <code>offer()</code> (non-blocking): if it returns false, increment an <code>AtomicLong</code> dropped counter.</p>`,
+      `<p>Use a bounded queue with a non-blocking insert (Java <code>ArrayBlockingQueue.offer()</code>, Python <code>queue.Queue.put_nowait()</code>, C++ a deque under a mutex): if the queue is full, increment an atomic dropped counter (<code>AtomicLong</code>, or a lock-guarded int).</p>`,
       `<p>Writer loop: <code>take()</code> until it sees the poison pill. <code>shutdown()</code>: set a closed flag (reject new logs), <code>put(POISON)</code> with a timeout, then <code>join(timeout)</code>.</p>`,
-      `<p>Edge cases: logs arriving after shutdown (count as dropped), sink exceptions (catch and continue, never kill the writer), daemon thread so a forgotten shutdown cannot hang the JVM. Check the invariant written + dropped == logged in the demo.</p>`
+      `<p>Edge cases: logs arriving after shutdown (count as dropped), sink exceptions (catch and continue, never kill the writer), daemon thread so a forgotten shutdown cannot hang the process. Check the invariant written + dropped == logged in the demo.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "producers finished with a stuck sink: true\nlogged = 80000, dropped at least 78975: true\nclean shutdown: true\nwritten + dropped = logged: true, written <= 1025: true\nlate line dropped: true\nflaky shutdown: true, written=2, dropped=1\n" }] },
     solution: {
-      approach: `<p>Classic producer-consumer: bounded <code>ArrayBlockingQueue</code>, non-blocking <code>offer</code> with a drop counter, one daemon writer thread, poison-pill shutdown with bounded waits. Counters are atomic so the invariant can be checked.</p>`,
+      approach: `<p>Classic producer-consumer: a bounded queue (Java <code>ArrayBlockingQueue</code>), a non-blocking insert with a drop counter, one daemon writer thread, poison-pill shutdown with bounded waits. Counters are atomic so the invariant can be checked (TypeScript uses an async loop instead of a thread, so plain numbers are enough).</p>`,
       code: String.raw`
 class AsyncLogger {
     private static final String POISON = new String("POISON");          // unique identity
@@ -3275,21 +10503,289 @@ class AsyncLogger {
         return queued && !writer.isAlive();
     }
     public static void main(String[] args) throws Exception {
+        // 1) A stuck sink never blocks the producers: lines are dropped (and counted) instead.
+        CountDownLatch gate = new CountDownLatch(1);
         AsyncLogger log = new AsyncLogger(1024, line -> {
-            long end = System.nanoTime() + 10_000;                         // slow sink ~10 us
-            while (System.nanoTime() < end) { Thread.onSpinWait(); }
+            try { gate.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
         });
         ExecutorService pool = Executors.newFixedThreadPool(8);
-        long t = System.nanoTime();
         for (int p = 0; p < 8; p++) pool.submit(() -> { for (int i = 0; i < 10_000; i++) log.log("line " + i); });
         pool.shutdown();
-        pool.awaitTermination(5, TimeUnit.SECONDS);
-        System.out.println("producers done in " + (System.nanoTime() - t) / 1_000_000 + " ms");
+        System.out.println("producers finished with a stuck sink: " + pool.awaitTermination(5, TimeUnit.SECONDS));
+        System.out.println("logged = " + log.logged.get() + ", dropped at least 78975: " + (log.dropped.get() >= 80_000 - 1024 - 1));
+        gate.countDown();                                                  // the disk recovers
         System.out.println("clean shutdown: " + log.shutdown(2000));
         long w = log.written.get(), d = log.dropped.get();
-        System.out.println("written + dropped = " + (w + d) + " of " + log.logged.get() + " (dropped " + d + ")");
+        System.out.println("written + dropped = logged: " + (w + d == log.logged.get()) + ", written <= 1025: " + (w <= 1025));
+        log.log("late");                                                   // after shutdown: dropped, never blocks
+        System.out.println("late line dropped: " + (log.dropped.get() == d + 1));
+
+        // 2) A sink that throws must not kill the writer thread: the bad line is counted as dropped.
+        AsyncLogger flaky = new AsyncLogger(16, line -> { if (line.contains("bad")) throw new IllegalStateException("disk error"); });
+        flaky.log("ok1"); flaky.log("bad line"); flaky.log("ok2");
+        System.out.println("flaky shutdown: " + flaky.shutdown(2000) + ", written=" + flaky.written.get() + ", dropped=" + flaky.dropped.get());
     }
 }`,
+    alt: [
+        { lang: 'python', code: `
+import queue
+import threading
+from concurrent.futures import ThreadPoolExecutor, wait
+from typing import Callable
+
+
+class Counter:
+    """A lock-protected counter: \`+= 1\` on a plain int is not atomic across threads."""
+
+    def __init__(self) -> None:
+        self._value = 0
+        self._lock = threading.Lock()
+
+    def increment(self) -> None:
+        with self._lock:
+            self._value += 1
+
+    @property
+    def value(self) -> int:
+        with self._lock:
+            return self._value
+
+
+class AsyncLogger:
+    _POISON = object()                                  # unique identity
+
+    def __init__(self, capacity: int, sink: Callable[[str], None]) -> None:
+        self._queue: "queue.Queue[object]" = queue.Queue(maxsize=capacity)
+        self._sink = sink
+        self.dropped, self.written, self.logged = Counter(), Counter(), Counter()
+        self._closed = False
+        self._writer = threading.Thread(target=self._drain, name="async-log-writer", daemon=True)
+        self._writer.start()
+
+    def log(self, line: str) -> None:
+        self.logged.increment()
+        if self._closed:
+            self.dropped.increment()
+            return
+        try:
+            self._queue.put_nowait(line)                # never blocks the caller
+        except queue.Full:
+            self.dropped.increment()
+
+    def _drain(self) -> None:
+        while True:
+            line = self._queue.get()
+            if line is self._POISON:
+                return
+            try:
+                self._sink(str(line))
+                self.written.increment()
+            except Exception:                           # a bad line must not kill the writer
+                self.dropped.increment()
+
+    def shutdown(self, timeout_ms: int) -> bool:
+        self._closed = True
+        try:
+            self._queue.put(self._POISON, timeout=timeout_ms / 1000)
+            queued = True
+        except queue.Full:
+            queued = False
+        self._writer.join(timeout_ms / 1000)
+        return queued and not self._writer.is_alive()
+
+
+def main() -> None:
+    # 1) A stuck sink never blocks the producers: lines are dropped (and counted) instead.
+    gate = threading.Event()
+    log = AsyncLogger(1024, lambda line: gate.wait())
+
+    def produce() -> None:
+        for i in range(10_000):
+            log.log(f"line {i}")
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = [pool.submit(produce) for _ in range(8)]
+        finished = not wait(futures, timeout=5).not_done
+    print(f"producers finished with a stuck sink: {str(finished).lower()}")
+    print(f"logged = {log.logged.value}, dropped at least 78975: {str(log.dropped.value >= 80_000 - 1024 - 1).lower()}")
+    gate.set()                                          # the disk recovers
+    print(f"clean shutdown: {str(log.shutdown(2000)).lower()}")
+    w, d = log.written.value, log.dropped.value
+    print(f"written + dropped = logged: {str(w + d == log.logged.value).lower()}, written <= 1025: {str(w <= 1025).lower()}")
+    log.log("late")                                     # after shutdown: dropped, never blocks
+    print(f"late line dropped: {str(log.dropped.value == d + 1).lower()}")
+
+    # 2) A sink that throws must not kill the writer thread: the bad line is counted as dropped.
+    def flaky_sink(line: str) -> None:
+        if "bad" in line:
+            raise RuntimeError("disk error")
+
+    flaky = AsyncLogger(16, flaky_sink)
+    flaky.log("ok1")
+    flaky.log("bad line")
+    flaky.log("ok2")
+    print(f"flaky shutdown: {str(flaky.shutdown(2000)).lower()}, written={flaky.written.value}, dropped={flaky.dropped.value}")
+
+
+if __name__ == "__main__":
+    main()` },
+        { lang: 'ts', code: String.raw`
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+class AsyncLogger {
+  private readonly queue: string[] = [];
+  private closed = false;
+  private wake: (() => void) | null = null;
+  private readonly writer: Promise<void>;
+  dropped = 0;
+  written = 0;
+  logged = 0;
+
+  constructor(private readonly capacity: number, private readonly sink: (line: string) => void | Promise<void>) {
+    this.writer = this.drain();                       // the "writer thread": an async loop
+  }
+
+  log(line: string): void {
+    this.logged++;
+    if (this.closed || this.queue.length >= this.capacity) { this.dropped++; return; }   // never blocks the caller
+    this.queue.push(line);
+    this.wake?.();
+  }
+
+  private async drain(): Promise<void> {
+    for (;;) {
+      const line = this.queue.shift();
+      if (line === undefined) {
+        if (this.closed) return;
+        await new Promise<void>((resolve) => { this.wake = resolve; });
+        continue;
+      }
+      try { await this.sink(line); this.written++; }
+      catch { this.dropped++; }                       // a bad line must not kill the writer
+    }
+  }
+
+  async shutdown(timeoutMs: number): Promise<boolean> {
+    this.closed = true;
+    this.wake?.();
+    return Promise.race([this.writer.then(() => true), sleep(timeoutMs).then(() => false)]);
+  }
+}
+
+async function main(): Promise<void> {
+  // 1) A stuck sink never blocks the producers: lines are dropped (and counted) instead.
+  let openGate: () => void = () => {};
+  const gate = new Promise<void>((resolve) => { openGate = resolve; });
+  const log = new AsyncLogger(1024, () => gate);
+  const produce = async (): Promise<void> => { for (let i = 0; i < 10_000; i++) log.log("line " + i); };
+  const finished = await Promise.race([
+    Promise.all(Array.from({ length: 8 }, produce)).then(() => true),
+    sleep(5000).then(() => false),
+  ]);
+  console.log("producers finished with a stuck sink: " + finished);
+  console.log("logged = " + log.logged + ", dropped at least 78975: " + (log.dropped >= 80_000 - 1024 - 1));
+  openGate();                                         // the disk recovers
+  console.log("clean shutdown: " + await log.shutdown(2000));
+  const w = log.written, d = log.dropped;
+  console.log("written + dropped = logged: " + (w + d === log.logged) + ", written <= 1025: " + (w <= 1025));
+  log.log("late");                                    // after shutdown: dropped, never blocks
+  console.log("late line dropped: " + (log.dropped === d + 1));
+
+  // 2) A sink that throws must not kill the writer: the bad line is counted as dropped.
+  const flaky = new AsyncLogger(16, (line) => { if (line.includes("bad")) throw new Error("disk error"); });
+  flaky.log("ok1"); flaky.log("bad line"); flaky.log("ok2");
+  console.log("flaky shutdown: " + await flaky.shutdown(2000) + ", written=" + flaky.written + ", dropped=" + flaky.dropped);
+}
+
+main();` },
+        { lang: 'cpp', code: String.raw`
+class Gate {                                            // a latch that stays open once opened
+    bool open_ = false;
+    mutex mu;
+    condition_variable cv;
+public:
+    void open() { { lock_guard<mutex> lock(mu); open_ = true; } cv.notify_all(); }
+    void wait() { unique_lock<mutex> lock(mu); cv.wait(lock, [&] { return open_; }); }
+};
+
+class AsyncLogger {
+    const size_t capacity;
+    function<void(const string&)> sink;
+    deque<string> queue;
+    mutex mu;
+    condition_variable cv;                              // "queue not empty / closed" and "writer finished"
+    bool closed = false, finished = false;
+    atomic<long long> dropped_{0}, written_{0}, logged_{0};
+    thread writer;
+
+    void drain() {
+        unique_lock<mutex> lock(mu);
+        while (true) {
+            cv.wait(lock, [&] { return !queue.empty() || closed; });
+            if (queue.empty()) break;                   // closed and nothing left
+            string line = move(queue.front());
+            queue.pop_front();
+            lock.unlock();
+            try { sink(line); written_++; }
+            catch (const exception&) { dropped_++; }    // a bad line must not kill the writer
+            lock.lock();
+        }
+        finished = true;
+        cv.notify_all();
+    }
+public:
+    AsyncLogger(size_t cap, function<void(const string&)> s) : capacity(cap), sink(move(s)), writer([this] { drain(); }) {}
+    ~AsyncLogger() { shutdown(60000); if (writer.joinable()) writer.join(); }   // RAII: the thread is always joined
+
+    void log(const string& line) {
+        logged_++;
+        {
+            lock_guard<mutex> lock(mu);
+            if (!closed && queue.size() < capacity) { queue.push_back(line); cv.notify_all(); return; }
+        }
+        dropped_++;                                     // never blocks the caller
+    }
+    bool shutdown(long long timeoutMs) {
+        unique_lock<mutex> lock(mu);
+        closed = true;
+        cv.notify_all();
+        bool done = cv.wait_for(lock, chrono::milliseconds(timeoutMs), [&] { return finished; });
+        lock.unlock();
+        if (done && writer.joinable()) writer.join();
+        return done;
+    }
+    long long dropped() const { return dropped_; }
+    long long written() const { return written_; }
+    long long logged() const { return logged_; }
+};
+
+const char* yn(bool b) { return b ? "true" : "false"; }
+
+int main() {
+    // 1) A stuck sink never blocks the producers: lines are dropped (and counted) instead.
+    Gate gate;
+    AsyncLogger log(1024, [&](const string&) { gate.wait(); });
+    vector<future<void>> producers;
+    for (int p = 0; p < 8; p++)
+        producers.push_back(async(launch::async, [&] { for (int i = 0; i < 10000; i++) log.log("line " + to_string(i)); }));
+    bool finished = true;
+    for (auto& f : producers) finished = finished && f.wait_for(chrono::seconds(5)) == future_status::ready;
+    cout << "producers finished with a stuck sink: " << yn(finished) << "\n";
+    cout << "logged = " << log.logged() << ", dropped at least 78975: " << yn(log.dropped() >= 80000 - 1024 - 1) << "\n";
+    gate.open();                                        // the disk recovers
+    cout << "clean shutdown: " << yn(log.shutdown(2000)) << "\n";
+    long long w = log.written(), d = log.dropped();
+    cout << "written + dropped = logged: " << yn(w + d == log.logged()) << ", written <= 1025: " << yn(w <= 1025) << "\n";
+    log.log("late");                                    // after shutdown: dropped, never blocks
+    cout << "late line dropped: " << yn(log.dropped() == d + 1) << "\n";
+
+    // 2) A sink that throws must not kill the writer thread: the bad line is counted as dropped.
+    AsyncLogger flaky(16, [](const string& line) { if (line.find("bad") != string::npos) throw runtime_error("disk error"); });
+    flaky.log("ok1"); flaky.log("bad line"); flaky.log("ok2");
+    bool clean = flaky.shutdown(2000);
+    cout << "flaky shutdown: " << yn(clean) << ", written=" << flaky.written() << ", dropped=" << flaky.dropped() << "\n";
+}` }
+      ],
       complexity: `<p><code>log()</code> O(1) and lock-light; the writer does O(1) per line. Memory bounded by capacity.</p>`,
       followUps: ['Drop DEBUG/INFO first and block for ERROR (two-tier policy).', 'Batch writes: drainTo(list, 256) then one sink call.', 'Replace the queue with an LMAX Disruptor-style ring buffer: what gets faster and why?']
     }
@@ -3321,8 +10817,9 @@ class LostUpdate {
       `<p><code>get</code> checks the session\'s own writeSet first (read-your-writes), else reads the store and records the version. <code>commit</code>: under the store lock, compare every readSet version with the current one; if all match, apply the writeSet and bump versions; else return CONFLICT.</p>`,
       `<p>Edge cases: reading a missing key (version 0) then someone creates it → conflict; deletes as tombstone values; retries in a loop with a bound. The lock is held only during the short validate-and-apply step, never while the client thinks.</p>`
     ],
+    tests: { io: true, cases: [{ stdin: '', stdout: "A: OK, B: CONFLICT\nB-retry attempt 1: OK\ncounter = 7\ndisjoint keys: OK\nread set invalidated: CONFLICT\nstress counter = 1000\n" }] },
     solution: {
-      approach: `<p>Optimistic concurrency control: versioned values, per-session read/write sets, validate-then-apply inside one short critical section. Reads take no lock on a <code>ConcurrentHashMap</code>; commits are serialized by a lock, which makes validation + apply atomic.</p>`,
+      approach: `<p>Optimistic concurrency control: versioned values, per-session read/write sets, validate-then-apply inside one short critical section. Reads take no commit lock (Java <code>ConcurrentHashMap</code>; the C++ version guards the map with a small mutex); commits are serialized by a lock, which makes validation + apply atomic.</p>`,
       code: String.raw`
 class VersionedStore {
     record Versioned(String value, long version) { }
@@ -3385,6 +10882,18 @@ class OccDemo {
         increment(s, "B-retry");                                             // OK on first try now
         System.out.println("counter = " + s.data.get("counter").value());    // 7
 
+        Session reader = s.begin(), writer = s.begin();
+        reader.get("counter");                                               // read-only session
+        writer.set("other", "x");
+        writer.commit();                                                     // a different key: no conflict
+        System.out.println("disjoint keys: " + reader.commit());             // OK
+        Session stale = s.begin(), bump = s.begin();
+        stale.get("counter");
+        bump.set("counter", "100");
+        bump.commit();
+        stale.set("flag", "1");                                              // writes another key, but READ a stale counter
+        System.out.println("read set invalidated: " + stale.commit());       // CONFLICT
+
         // stress: 4 threads x 250 increments, each retrying on conflict -> exactly 1000 added
         VersionedStore s2 = new VersionedStore();
         s2.data.put("counter", new VersionedStore.Versioned("0", 1));
@@ -3403,6 +10912,316 @@ class OccDemo {
         System.out.println("stress counter = " + s2.data.get("counter").value());   // 1000
     }
 }`,
+    alt: [
+        { lang: 'python', code: String.raw`
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from typing import Optional
+
+
+@dataclass(frozen=True)
+class Versioned:
+    value: str
+    version: int
+
+
+class VersionedStore:
+    def __init__(self) -> None:
+        self.data: dict[str, Versioned] = {}
+        self._commit_lock = threading.Lock()
+
+    def begin(self) -> "Session":
+        return Session(self)
+
+    def try_commit(self, read_set: dict[str, int], write_set: dict[str, str]) -> bool:
+        with self._commit_lock:                         # short critical section: validate + apply
+            for key, seen in read_set.items():
+                cur = self.data.get(key)
+                if (cur.version if cur else 0) != seen:
+                    return False                        # someone changed what we read
+            for key, value in write_set.items():
+                cur = self.data.get(key)
+                self.data[key] = Versioned(value, (cur.version if cur else 0) + 1)
+            return True
+
+
+class Session:
+    def __init__(self, store: VersionedStore) -> None:
+        self._store = store
+        self._read_set: dict[str, int] = {}
+        self._write_set: dict[str, str] = {}
+
+    def get(self, k: str) -> Optional[str]:
+        if k in self._write_set:
+            return self._write_set[k]                   # read your own writes
+        v = self._store.data.get(k)
+        self._read_set.setdefault(k, v.version if v else 0)
+        return v.value if v else None
+
+    def set(self, k: str, v: str) -> None:
+        self._write_set[k] = v                          # invisible to others until commit
+
+    def commit(self) -> str:
+        return "OK" if self._store.try_commit(self._read_set, self._write_set) else "CONFLICT"
+
+
+def increment(s: VersionedStore, who: str) -> None:
+    for attempt in range(1, 6):
+        t = s.begin()
+        v = int(t.get("counter") or "0")
+        t.set("counter", str(v + 1))
+        r = t.commit()
+        print(f"{who} attempt {attempt}: {r}")
+        if r == "OK":
+            return
+
+
+def main() -> None:
+    s = VersionedStore()
+    s.data["counter"] = Versioned("5", 1)
+    a, b = s.begin(), s.begin()
+    va, vb = int(a.get("counter") or "0"), int(b.get("counter") or "0")
+    a.set("counter", str(va + 1))
+    b.set("counter", str(vb + 1))
+    print(f"A: {a.commit()}, B: {b.commit()}")          # OK, CONFLICT
+    increment(s, "B-retry")                             # OK on first try now
+    print(f"counter = {s.data['counter'].value}")       # 7
+
+    reader, writer = s.begin(), s.begin()
+    reader.get("counter")                               # read-only session
+    writer.set("other", "x")
+    writer.commit()                                     # a different key: no conflict
+    print(f"disjoint keys: {reader.commit()}")          # OK
+    stale, bump = s.begin(), s.begin()
+    stale.get("counter")
+    bump.set("counter", "100")
+    bump.commit()
+    stale.set("flag", "1")                              # writes another key, but READ a stale counter
+    print(f"read set invalidated: {stale.commit()}")    # CONFLICT
+
+    # stress: 4 threads x 250 increments, each retrying on conflict -> exactly 1000 added
+    s2 = VersionedStore()
+    s2.data["counter"] = Versioned("0", 1)
+
+    def worker() -> None:
+        for _ in range(250):
+            while True:
+                t = s2.begin()
+                t.set("counter", str(int(t.get("counter") or "0") + 1))
+                if t.commit() == "OK":
+                    break
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        for _ in range(4):
+            pool.submit(worker)
+    print(f"stress counter = {s2.data['counter'].value}")   # 1000
+
+
+if __name__ == "__main__":
+    main()` },
+        { lang: 'ts', code: String.raw`
+interface Versioned { readonly value: string; readonly version: number; }
+
+class VersionedStore {
+  readonly data = new Map<string, Versioned>();
+
+  begin(): Session { return new Session(this); }
+
+  // JavaScript runs one task at a time, so validate + apply cannot interleave: no lock is needed.
+  tryCommit(readSet: ReadonlyMap<string, number>, writeSet: ReadonlyMap<string, string>): boolean {
+    for (const [key, seen] of readSet) {
+      if ((this.data.get(key)?.version ?? 0) !== seen) return false;   // someone changed what we read
+    }
+    for (const [key, value] of writeSet) {
+      this.data.set(key, { value, version: (this.data.get(key)?.version ?? 0) + 1 });
+    }
+    return true;
+  }
+}
+
+class Session {
+  private readonly readSet = new Map<string, number>();
+  private readonly writeSet = new Map<string, string>();
+  constructor(private readonly store: VersionedStore) {}
+
+  get(k: string): string | null {
+    const mine = this.writeSet.get(k);
+    if (mine !== undefined) return mine;                // read your own writes
+    const v = this.store.data.get(k);
+    if (!this.readSet.has(k)) this.readSet.set(k, v?.version ?? 0);
+    return v?.value ?? null;
+  }
+  set(k: string, v: string): void { this.writeSet.set(k, v); }   // invisible to others until commit
+  commit(): string { return this.store.tryCommit(this.readSet, this.writeSet) ? "OK" : "CONFLICT"; }
+}
+
+const num = (s: string | null): number => Number.parseInt(s ?? "0", 10);
+
+function increment(s: VersionedStore, who: string): void {
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    const t = s.begin();
+    t.set("counter", String(num(t.get("counter")) + 1));
+    const r = t.commit();
+    console.log(who + " attempt " + attempt + ": " + r);
+    if (r === "OK") return;
+  }
+}
+
+async function main(): Promise<void> {
+  const s = new VersionedStore();
+  s.data.set("counter", { value: "5", version: 1 });
+  const a = s.begin(), b = s.begin();
+  const va = num(a.get("counter")), vb = num(b.get("counter"));
+  a.set("counter", String(va + 1));
+  b.set("counter", String(vb + 1));
+  console.log("A: " + a.commit() + ", B: " + b.commit());        // OK, CONFLICT
+  increment(s, "B-retry");                                       // OK on first try now
+  console.log("counter = " + s.data.get("counter")!.value);      // 7
+
+  const reader = s.begin(), writer = s.begin();
+  reader.get("counter");                                         // read-only session
+  writer.set("other", "x");
+  writer.commit();                                               // a different key: no conflict
+  console.log("disjoint keys: " + reader.commit());              // OK
+  const stale = s.begin(), bump = s.begin();
+  stale.get("counter");
+  bump.set("counter", "100");
+  bump.commit();
+  stale.set("flag", "1");                                        // writes another key, but READ a stale counter
+  console.log("read set invalidated: " + stale.commit());        // CONFLICT
+
+  // stress: 4 async workers x 250 increments, each retrying on conflict -> exactly 1000 added.
+  // Awaiting between the read and the commit lets the workers interleave, so conflicts really happen.
+  const s2 = new VersionedStore();
+  s2.data.set("counter", { value: "0", version: 1 });
+  const worker = async (): Promise<void> => {
+    for (let i = 0; i < 250; i++) {
+      for (;;) {
+        const t = s2.begin();
+        const v = num(t.get("counter"));
+        await Promise.resolve();
+        t.set("counter", String(v + 1));
+        if (t.commit() === "OK") break;
+      }
+    }
+  };
+  await Promise.all([worker(), worker(), worker(), worker()]);
+  console.log("stress counter = " + s2.data.get("counter")!.value);   // 1000
+}
+
+main();` },
+        { lang: 'cpp', code: String.raw`
+struct Versioned {
+    string value;
+    long long version;
+};
+
+class Session;
+
+class VersionedStore {
+    unordered_map<string, Versioned> data_;
+    mutable mutex dataMu;                               // guards the map itself (readers run while a commit applies)
+    mutex commitLock;
+public:
+    optional<Versioned> read(const string& k) const {
+        lock_guard<mutex> lock(dataMu);
+        auto it = data_.find(k);
+        return it == data_.end() ? nullopt : optional<Versioned>(it->second);
+    }
+    void put(const string& k, Versioned v) { lock_guard<mutex> lock(dataMu); data_[k] = move(v); }
+
+    Session begin();
+
+    bool tryCommit(const map<string, long long>& readSet, const map<string, string>& writeSet) {
+        lock_guard<mutex> commit(commitLock);           // short critical section: validate + apply
+        for (const auto& [key, seen] : readSet) {
+            auto cur = read(key);
+            if ((cur ? cur->version : 0) != seen) return false;   // someone changed what we read
+        }
+        for (const auto& [key, value] : writeSet) {
+            auto cur = read(key);
+            put(key, {value, (cur ? cur->version : 0) + 1});
+        }
+        return true;
+    }
+};
+
+class Session {
+    VersionedStore& store;
+    map<string, long long> readSet;
+    map<string, string> writeSet;
+public:
+    explicit Session(VersionedStore& s) : store(s) {}
+
+    optional<string> get(const string& k) {
+        auto mine = writeSet.find(k);
+        if (mine != writeSet.end()) return mine->second;          // read your own writes
+        auto v = store.read(k);
+        readSet.emplace(k, v ? v->version : 0);                   // emplace keeps the first version we saw
+        if (!v) return nullopt;
+        return v->value;
+    }
+    void set(const string& k, const string& v) { writeSet[k] = v; }   // invisible to others until commit
+    string commit() { return store.tryCommit(readSet, writeSet) ? "OK" : "CONFLICT"; }
+};
+
+Session VersionedStore::begin() { return Session(*this); }
+
+int num(const optional<string>& s) { return stoi(s.value_or("0")); }
+
+void increment(VersionedStore& s, const string& who) {
+    for (int attempt = 1; attempt <= 5; attempt++) {
+        Session t = s.begin();
+        t.set("counter", to_string(num(t.get("counter")) + 1));
+        string r = t.commit();
+        cout << who << " attempt " << attempt << ": " << r << "\n";
+        if (r == "OK") return;
+    }
+}
+
+int main() {
+    VersionedStore s;
+    s.put("counter", {"5", 1});
+    Session a = s.begin(), b = s.begin();
+    int va = num(a.get("counter")), vb = num(b.get("counter"));
+    a.set("counter", to_string(va + 1));
+    b.set("counter", to_string(vb + 1));
+    string ra = a.commit(), rb = b.commit();
+    cout << "A: " << ra << ", B: " << rb << "\n";                  // OK, CONFLICT
+    increment(s, "B-retry");                                       // OK on first try now
+    cout << "counter = " << s.read("counter")->value << "\n";      // 7
+
+    Session reader = s.begin(), writer = s.begin();
+    reader.get("counter");                                         // read-only session
+    writer.set("other", "x");
+    writer.commit();                                               // a different key: no conflict
+    cout << "disjoint keys: " << reader.commit() << "\n";          // OK
+    Session stale = s.begin(), bump = s.begin();
+    stale.get("counter");
+    bump.set("counter", "100");
+    bump.commit();
+    stale.set("flag", "1");                                        // writes another key, but READ a stale counter
+    cout << "read set invalidated: " << stale.commit() << "\n";    // CONFLICT
+
+    // stress: 4 threads x 250 increments, each retrying on conflict -> exactly 1000 added
+    VersionedStore s2;
+    s2.put("counter", {"0", 1});
+    {
+        vector<jthread> pool;
+        for (int th = 0; th < 4; th++)
+            pool.emplace_back([&s2] {
+                for (int i = 0; i < 250; i++)
+                    while (true) {
+                        Session t = s2.begin();
+                        t.set("counter", to_string(num(t.get("counter")) + 1));
+                        if (t.commit() == "OK") break;
+                    }
+            });
+    }                                                              // jthreads join when the vector is destroyed
+    cout << "stress counter = " << s2.read("counter")->value << "\n";   // 1000
+}` }
+      ],
       complexity: `<p>get O(1), set O(1), commit O(|readSet| + |writeSet|) under a short lock. Under high contention on one key, retries grow — then switch that key to pessimistic locking or an atomic increment command.</p>`,
       followUps: ['Shard the commit lock by key ranges; how do you avoid deadlock for multi-shard commits?', 'Turn this into MVCC snapshot reads (keep old versions, read as of the session start).', 'Add TTL: does an expiry count as a write for conflict detection?']
     }
@@ -3410,10 +11229,10 @@ class OccDemo {
 
   /* ======================= QUIZ ======================= */
   quiz.push(
-    { q: 'In the logging framework, why is the level check done BEFORE building the LogMessage?', options: ['A disabled call then costs almost nothing — no formatting, allocation or clock read', 'Because appenders cannot handle DEBUG', 'To keep messages in order', 'Java requires it'], answer: 0, explain: 'Most DEBUG lines are disabled in production; an int comparison up front avoids all the expensive work for them.' },
+    { q: 'In the logging framework, why is the level check done BEFORE building the LogMessage?', options: ['A disabled call then costs almost nothing — no formatting, allocation or clock read', 'Because appenders cannot handle DEBUG', 'To keep messages in order', 'The language requires it'], answer: 0, explain: 'Most DEBUG lines are disabled in production; an int comparison up front avoids all the expensive work for them.' },
     { q: 'Which pattern is <code>AsyncAppender</code> (it implements Appender and wraps another Appender)?', options: ['Decorator', 'Adapter', 'Composite', 'Facade'], answer: 0, explain: 'Same interface, wraps an instance of it, adds behaviour (queueing) before delegating — a textbook Decorator.' },
     { q: 'Logger <code>com.shop.audit</code> has <code>additive = false</code>. An ERROR logged there…', options: ['goes only to com.shop.audit\'s own handlers', 'goes to root only', 'is dropped', 'goes to every logger in the app'], answer: 0, explain: 'Additivity controls whether the climb to parent loggers continues; false stops it at this logger.' },
-    { q: 'Why must MDC values be copied into the message on the calling thread when logging asynchronously?', options: ['MDC is ThreadLocal; the background writer thread has its own (empty) MDC', 'MDC is too large to share', 'The writer thread cannot read maps', 'To sort the keys'], answer: 0, explain: 'ThreadLocal state does not travel with the message. Snapshot it into the immutable message when it is created.' },
+    { q: 'Why must MDC values be copied into the message on the calling thread when logging asynchronously?', options: ['MDC is per-thread (thread-local); the background writer thread has its own (empty) MDC', 'MDC is too large to share', 'The writer thread cannot read maps', 'To sort the keys'], answer: 0, explain: 'Thread-local state does not travel with the message. Snapshot it into the immutable message when it is created.' },
     { q: 'A topic has 6 partitions and a consumer group has 8 members. How many members receive data?', options: ['6', '8', '3', '1'], answer: 0, explain: 'Each partition is owned by exactly one member of a group, so at most 6 are busy and 2 sit idle.' },
     { q: 'A consumer processes a batch, then crashes before committing. After the rebalance, what happens to that batch?', options: ['It is delivered again from the last committed offset (at-least-once)', 'It is lost', 'It is skipped automatically', 'The broker deletes it'], answer: 0, explain: 'The committed offset is the restart point; everything after it is re-read. Hence idempotent consumers.' },
     { q: 'Which ordering guarantee does a Kafka-like log give?', options: ['Order within a partition only', 'Global order across all partitions', 'Order per consumer group across topics', 'No ordering at all'], answer: 0, explain: 'Offsets are per partition. Use the same key for events that must stay in order so they land in one partition.' },
@@ -3427,8 +11246,8 @@ class OccDemo {
 
   /* ======================= INTERVIEW Q&A ======================= */
   interview.push(
-    { q: 'Walk me through the class design of a logging framework.', level: 'I', a: `<p>I split it by question. <b>Should we log?</b> <code>LogLevel</code> enum with severities, and a <code>Logger</code> that checks its effective level first. <b>What is logged?</b> An immutable <code>LogMessage</code> record (level, logger, text, time, thread, MDC snapshot). <b>Where does it go?</b> A chain of <code>LogHandler</code>s, each with a min level and an <code>Appender</code> (console, file, network). <b>How does it look?</b> A <code>LogFormatter</code> strategy. A <code>LogManager</code> singleton hands out named, hierarchical loggers. Async is a Decorator around any appender.</p>`, followUps: ['Where is Chain of Responsibility used — once or twice?', 'How do you change a level at runtime safely?'] },
-    { q: 'How do you make logging not slow down request threads?', level: 'A', a: `<p>Three layers. (1) <b>Cheap exit</b>: level check before formatting; placeholders or Suppliers so disabled lines build nothing. (2) <b>Async appender</b>: the request thread only offers an immutable message to a <b>bounded</b> queue; one writer thread does I/O, ideally batching with <code>drainTo</code>. (3) A <b>back-pressure policy</b> for a full queue: drop DEBUG/INFO and count drops, block only for ERROR, or never block. Log4j 2 async loggers use the LMAX Disruptor ring buffer for very high throughput. Always flush on shutdown with a poison pill and a bounded join.</p>`, followUps: ['What metric would you expose?', 'Why bounded and not unbounded?'] },
+    { q: 'Walk me through the class design of a logging framework.', level: 'I', a: `<p>I split it by question. <b>Should we log?</b> <code>LogLevel</code> enum with severities, and a <code>Logger</code> that checks its effective level first. <b>What is logged?</b> An immutable <code>LogMessage</code> value object (level, logger, text, time, thread, MDC snapshot). <b>Where does it go?</b> A chain of <code>LogHandler</code>s, each with a min level and an <code>Appender</code> (console, file, network). <b>How does it look?</b> A <code>LogFormatter</code> strategy. A <code>LogManager</code> singleton hands out named, hierarchical loggers. Async is a Decorator around any appender.</p>`, followUps: ['Where is Chain of Responsibility used — once or twice?', 'How do you change a level at runtime safely?'] },
+    { q: 'How do you make logging not slow down request threads?', level: 'A', a: `<p>Three layers. (1) <b>Cheap exit</b>: level check before formatting; placeholders or lazy callbacks (suppliers) so disabled lines build nothing. (2) <b>Async appender</b>: the request thread only offers an immutable message to a <b>bounded</b> queue; one writer thread does I/O, ideally batching (Java <code>drainTo</code>). (3) A <b>back-pressure policy</b> for a full queue: drop DEBUG/INFO and count drops, block only for ERROR, or never block. Log4j 2 async loggers use the LMAX Disruptor ring buffer for very high throughput. Always flush on shutdown with a poison pill and a bounded join.</p>`, followUps: ['What metric would you expose?', 'Why bounded and not unbounded?'] },
     { q: 'What was Log4Shell and what does it teach about designing a logger?', level: 'E', a: `<p>CVE-2021-44228: Log4j 2 performed <b>lookups</b> (like JNDI) on strings inside logged messages, so an attacker who got text such as a crafted user-agent into a log line could make the server load and run remote code. Lesson: a logger must treat message content as <b>inert data</b> — format placeholders from the pattern only, never interpret argument text; disable or sandbox any expression features; also escape newlines (log forging) and redact secrets/PII in a filter before any appender.</p>`, followUps: ['How would you test your formatter for this?', 'Why are logs also a prompt-injection risk now?'] },
     { q: 'Design a Kafka-like message queue at class level. What are the key entities?', level: 'A', a: `<p><code>Broker</code> owns <code>Topic</code>s; a topic has N <code>Partition</code>s, each an append-only list of <code>StoredMessage(offset, key, value, ts)</code>. <code>Producer</code> uses a <code>Partitioner</code> strategy (hash of key, round-robin for null). Consumption is <b>pull</b>-based: a <code>ConsumerGroup</code> coordinator assigns each partition to one member and rebalances on join/leave; each <code>GroupConsumer</code> keeps an in-memory position per partition and commits offsets to the broker keyed by (group, topic, partition). Retention deletes old segments. Messages are never deleted on read — that enables replay and many independent groups.</p>`, followUps: ['Where do you store committed offsets and why there?', 'How do you add retention without breaking consumers?'] },
     { q: 'Explain at-most-once, at-least-once and exactly-once delivery.', level: 'I', a: `<p>It depends on <b>when you commit</b> relative to processing. Commit first, then process → a crash loses the message: <b>at-most-once</b>. Process first, then commit → a crash re-delivers: <b>at-least-once</b> (the common default; make handlers idempotent with a dedupe key). <b>Exactly-once</b> needs the processing result and the offset to be committed atomically — Kafka transactions with an idempotent producer for read-process-write inside Kafka, or storing the offset in the same database transaction as the result for external sinks.</p>`, followUps: ['How does an idempotent producer avoid duplicates on retry?', 'Give a use case where at-most-once is fine.'] },
@@ -3437,7 +11256,7 @@ class OccDemo {
     { q: 'Design Chess. Where do you put move validation?', level: 'A', a: `<p>Three layers. <b>Pieces</b> (abstract <code>Piece</code> with Rook/Bishop/Queen sharing <code>slide</code>, King/Knight sharing <code>jumps</code>, Pawn special) generate <b>pseudo-legal</b> moves: shape, blocking, no own-piece capture. A <b>MoveValidator</b> filters them: apply each on a board copy and reject if the mover\'s king is attacked — this single rule handles pins, walking into check and answering check. <b>Game</b> handles turn order, special-move state (castling rights, en-passant square on the Board), status (check/checkmate/stalemate), history and undo. Players are a Strategy (human, bot).</p>`, followUps: ['Why are pieces immutable in your design?', 'How do you test the move generator (perft)?'] },
     { q: 'How do you detect checkmate and stalemate?', level: 'I', a: `<p>After each move, for the side to move compute two facts: <b>in check?</b> (is their king square attacked by the opponent) and <b>has any legal move?</b> (generate pseudo-legal moves for every piece, simulate, keep those that leave the king safe — stop at the first one found). In check + no moves = checkmate; not in check + no moves = stalemate (draw); otherwise check or normal play. Other draws need extra state: 50-move counter, threefold repetition via Zobrist hashes, insufficient material.</p>`, followUps: ['Why can a double check only be answered by a king move?', 'How would you make this faster for an engine?'] },
     { q: 'How would you implement undo in chess (and in general)?', level: 'I', a: `<p>Two classic options. <b>Memento</b>: push a snapshot of the board (cheap when pieces are immutable — a 64-slot copy plus castling rights and en-passant square) before each move; undo = pop. <b>Command</b>: each <code>Move</code> stores what it needs to reverse itself — captured piece, previous castling rights, previous en-passant square, promotion flag — and has <code>execute/undo</code>. Snapshots are simpler and safer; commands use less memory and are what engines use (make/unmake) because search makes millions of moves. Redo is a second stack.</p>`, followUps: ['Which info does en passant add to the undo record?', 'How does undo interact with a chess clock?'] },
-    { q: 'Design an in-memory key-value store with nested transactions.', level: 'A', a: `<p>Data in a <code>HashMap</code>. A stack of <b>undo maps</b>: BEGIN pushes an empty map; every write first records the key\'s old value in the top map with <code>putIfAbsent</code> (absent = tombstone), then writes to the data. ROLLBACK pops and restores those keys. COMMIT pops and merges the undo entries into the parent with putIfAbsent, so the parent can still roll back to its own start. Reads are O(1); transaction cost is proportional to keys touched. A value→count index answers COUNT in O(1) as long as every mutation goes through one private method. If clients need isolation, switch to per-session overlays or MVCC.</p>`, followUps: ['What breaks if COMMIT overwrites the parent\'s entries?', 'Undo log vs overlay: which gives isolation?'] },
+    { q: 'Design an in-memory key-value store with nested transactions.', level: 'A', a: `<p>Data in a hash map. A stack of <b>undo maps</b>: BEGIN pushes an empty map; every write first records the key\'s old value in the top map with <code>putIfAbsent</code> (absent = tombstone), then writes to the data. ROLLBACK pops and restores those keys. COMMIT pops and merges the undo entries into the parent with putIfAbsent, so the parent can still roll back to its own start. Reads are O(1); transaction cost is proportional to keys touched. A value→count index answers COUNT in O(1) as long as every mutation goes through one private method. If clients need isolation, switch to per-session overlays or MVCC.</p>`, followUps: ['What breaks if COMMIT overwrites the parent\'s entries?', 'Undo log vs overlay: which gives isolation?'] },
     { q: 'How do you implement key expiry (TTL) efficiently and testably?', level: 'I', a: `<p>Store an absolute <code>expireAt</code> per key. <b>Lazy</b> expiry: on every access, if <code>now ≥ expireAt</code> delete and report missing — this guarantees correctness. <b>Active</b> expiry frees memory for keys no one reads: a min-heap (or timing wheel) of (expireAt, key) popped by a periodic task, skipping stale items whose expireAt no longer matches; Redis instead samples random keys with TTLs. Inject a clock interface so tests advance time instantly. Rollback restores the whole entry including expireAt; persistence stores absolute times so restarts do not extend lifetimes.</p>`, followUps: ['Heap vs timing wheel vs sampling?', 'What does TTL return for a key without expiry?'] },
     { q: 'Redis MULTI/EXEC vs the BEGIN/ROLLBACK store we built — what is different?', level: 'E', a: `<p>Redis <code>MULTI</code> <b>queues</b> commands; <code>EXEC</code> runs them all atomically (no other client\'s command interleaves, since execution is single-threaded); <code>DISCARD</code> drops the queue. There is <b>no rollback</b> of commands that already executed — if one command fails at runtime, the others still apply. Reads inside MULTI return results only at EXEC, so you cannot branch on them; for read-modify-write you use <code>WATCH</code> (optimistic: EXEC aborts if a watched key changed) or a Lua script / function. Our design executes immediately and keeps an undo log, giving rollback but no isolation.</p>`, followUps: ['How would you implement WATCH in our store?', 'When would you use a Lua script instead?'] },
     { q: 'In a 90-minute machine-coding round on any of these four systems, how do you plan your time?', level: 'B', a: `<p>About <b>10 min</b> clarifying scope out loud (must-haves vs extensions, concurrency needs, in-memory OK?). <b>10 min</b> class diagram and core interfaces (name the patterns: Chain, Strategy, Decorator, Memento, Command). <b>45 min</b> code the core path end to end with a runnable <code>main</code> — inject time, keep state in one place, no premature threading. <b>15 min</b> tests/demo of tricky cases (nested rollback, pin, crash before commit, queue full). <b>10 min</b> extensions and trade-offs: thread safety, persistence, scale-out. Working, readable code with clear extension points beats a half-finished "complete" design.</p>`, followUps: ['What would you cut first if time runs short?', 'How do you show extensibility without coding every feature?'] }
@@ -3446,7 +11265,7 @@ class OccDemo {
   registerModule({
     id: 'lld12',
     title: 'Expert Case Studies: Logger, Pub-Sub, Chess, KV Store',
-    intro: `<p>This is the last and hardest stop on the LLD track: four <b>expert machine-coding case studies</b> that companies like Amazon, Uber, Flipkart, Google and Stripe actually ask, each built end to end in Java you can run.</p>
+    intro: `<p>This is the last and hardest stop on the LLD track: four <b>expert machine-coding case studies</b> that companies like Amazon, Uber, Flipkart, Google and Stripe actually ask, each built end to end as a runnable program in Java, Python, TypeScript and C++.</p>
 <ul>
 <li><b>Logging framework</b>: levels, a hierarchy of named loggers, a <b>chain of responsibility</b> of handlers, appenders and formatters, MDC, and an async decorator with a drop policy.</li>
 <li><b>Kafka-like pub-sub queue</b>: topics, partitions, offsets, key-based ordering, consumer groups, rebalancing, commits and re-delivery, and retention.</li>
@@ -3456,13 +11275,19 @@ class OccDemo {
 <p>Every topic starts from a <b>naive design</b> and shows exactly where it breaks. Then you get the class diagram as an animated visualizer, a message, move or command flowing through the system step by step, full core code, worked examples, deep dives into how the real systems (Log4j/Logback, Kafka, chess engines, Redis) do it, and a section on how AI changes the work. You finish with 15 machine-coding practice problems.</p>`,
     goals: [
       'Design a <b>logging framework</b> from scratch: levels, hierarchical loggers with additivity, a handler chain (Chain of Responsibility), appenders/formatters (Strategy), an async appender (Decorator) with a back-pressure policy, and MDC.',
-      'Design a <b>Kafka-like pub-sub log</b>: partitioning by key, offsets, consumer groups and rebalancing, committed offsets vs positions, lag, and at-most/at-least/exactly-once delivery, all in runnable Java.',
+      'Design a <b>Kafka-like pub-sub log</b>: partitioning by key, offsets, consumer groups and rebalancing, committed offsets vs positions, lag, and at-most/at-least/exactly-once delivery, all as runnable code in four languages.',
       'Design <b>Chess</b> with clean separation of piece movement rules, a central legality check (copy-make + king safety), special moves, check/checkmate/stalemate detection, undo, and perft-based testing.',
       'Design an <b>in-memory KV store</b> with nested transactions (undo log vs overlay vs MVCC), an O(1) value index, and TTL using lazy plus active expiry with an injected clock.',
       'Handle the expert follow-ups with confidence: thread safety, back-pressure, crash recovery, isolation, persistence, and "add a new feature without editing old classes".'
     ],
     prereqs: `<p>LLD 1–7 (OOP modelling, SOLID, the core design patterns, especially Chain of Responsibility, Strategy, Decorator, Command, Memento and Observer, and the LLD interview framework), LLD 10 (Concurrency in LLD: locks, blocking queues, producer–consumer) and LLD 11 (extensible architecture) are strongly recommended. You should be comfortable with Java 17+ records, enums, switch expressions, collections (<code>HashMap</code>, <code>ArrayDeque</code>, <code>PriorityQueue</code>, <code>ConcurrentHashMap</code>) and basic threads.</p>`,
     hours: 22,
+    langNotes: {
+      java: `<p><b>Interfaces vs abstract classes.</b> Use an <code>interface</code> for roles that vary (<code>Appender</code>, <code>LogFormatter</code>, <code>Partitioner</code>, <code>Ticker</code>) and an <code>abstract class</code> where the parent owns a fixed algorithm and children fill one gap: <code>LogHandler.handle()</code> is the template method and <code>Piece</code> shares <code>slide</code> and <code>jumps</code>. <b>Equality, hashing and immutability.</b> A <code>record</code> generates <code>equals</code>, <code>hashCode</code> and <code>toString</code>, so <code>Position</code>, <code>TopicPartition</code> and <code>LogMessage</code> are safe map keys and safe to share; copy mutable inputs with <code>Map.copyOf</code> or <code>List.copyOf</code> so a message cannot change later. <b>Concurrency.</b> <code>synchronized</code> for a locked facade, <code>ConcurrentHashMap</code> for registries, <code>ArrayBlockingQueue</code> (<code>offer</code> drops, <code>put</code> blocks), <code>AtomicLong</code> for counters, <code>volatile</code> for a level changed at run time, <code>ThreadLocal</code> for MDC, and <code>wait/notifyAll</code> inside a monitor. A daemon thread, a poison pill and a bounded <code>join</code> give a shutdown that cannot hang. <b>Numbers and heaps.</b> <code>int</code> overflow wraps silently, so <code>Math.abs(Integer.MIN_VALUE)</code> is still negative: use <code>Math.floorMod</code> for partitions. <code>PriorityQueue</code> is a min-heap, which is what the expiry heap needs. Use <code>String.format</code> for padding.</p>`,
+      python: `<p><b>Interfaces vs abstract classes.</b> <code>abc.ABC</code> with <code>@abstractmethod</code> is the nominal interface (an abstract body may be <code>...</code>); <code>typing.Protocol</code> fits one-method roles such as <code>Ticker</code> and <code>Clock</code> because only the shape matters. Python has no <code>final</code>, so the template method <code>LogHandler.handle</code> is a plain method that subclasses are asked not to override. Method names are the Java names in <code>snake_case</code>. <b>Equality, hashing and immutability.</b> <code>@dataclass(frozen=True)</code> generates <code>__eq__</code> and <code>__hash__</code>, so <code>Position</code> and <code>TopicPartition</code> are dictionary keys; a dict stored inside a frozen dataclass is still mutable, so wrap it in <code>MappingProxyType</code>. <b>Concurrency.</b> The GIL does not make <code>x += 1</code> atomic, so counters get a <code>Lock</code>. <code>queue.Queue</code> offers <code>put_nowait</code> (drop) and <code>put</code> (block), <code>threading.Condition</code> replaces <code>wait/notifyAll</code>, <code>threading.local</code> is the MDC, and threads cannot be interrupted, so stop them with an <code>Event</code> or a poison pill. <b>Numbers and heaps.</b> Integers never overflow, so Java's <code>String.hashCode</code> is rebuilt with <code>&amp; 0xFFFFFFFF</code> and a sign fix, and <code>%</code> is already a floor-mod. <code>heapq</code> is a min-heap of tuples such as <code>(expire_at, key)</code>. Use <code>collections.deque</code>, never <code>list.pop(0)</code>, for queues.</p>`,
+      js: `<p><b>TypeScript.</b> <b>Interfaces vs abstract classes.</b> An <code>interface</code> exists only at compile time: use it for roles (<code>Appender</code>, <code>LogFormatter</code>, <code>Clock</code>) and for plain data (<code>LogMessage</code>, <code>Entry</code>); use an <code>abstract class</code> for the template method in <code>LogHandler</code> and for <code>Piece</code>. A numeric <code>enum</code> has a reverse mapping (<code>LogLevel[20]</code> is <code>"INFO"</code>), so <code>level &gt;= min</code> is the whole level check. <b>Equality, hashing and immutability.</b> <code>===</code>, <code>Map</code> and <code>Set</code> compare objects by identity, so key by a string (<code>"orders-0"</code>) or give the class an <code>equals</code> method (<code>Position</code>); <code>readonly</code> and <code>Object.freeze</code> are shallow. <b>Concurrency.</b> Node runs one task at a time, so there are no data races, but code interleaves at every <code>await</code>: finish check-then-act before awaiting (the optimistic-commit stress test awaits between read and commit on purpose, to force conflicts). A background writer is an async loop that sleeps on a promise, <code>setTimeout</code> defers work, and a caller can never be blocked, so a bounded queue drops (or grows for WARN+) instead of waiting. There is no thread-local (use <code>AsyncLocalStorage</code>) and no built-in heap, so the module includes a small <code>MinHeap</code> class. <b>Numbers.</b> <code>number</code> is a double: <code>Math.imul</code> and <code>| 0</code> reproduce 32-bit hashing, and <code>%</code> keeps the sign of the left operand, so write <code>((a % n) + n) % n</code>. <code>Array.prototype.shift</code> is O(n); use an index for long queues.</p>`,
+      cpp: `<p><b>Interfaces vs abstract classes.</b> A class of pure virtual functions is the interface (<code>Appender</code>, <code>LogFormatter</code>, <code>Ticker</code>); always give a polymorphic base a <b>virtual destructor</b> and mark overrides with <code>override</code>. For the template method keep the public <code>handle()</code> non-virtual and the hook (<code>write</code>) pure virtual. <b>Ownership and lifetimes.</b> A chain of handlers is a chain of <code>std::unique_ptr</code> (each link owns the next); the registry owns its <code>unique_ptr&lt;Logger&gt;</code> and hands out references; pieces are immutable, so a board stores <code>shared_ptr&lt;const Piece&gt;</code> and copying a board copies only pointers. A reference must not outlive its owner (<code>ConsumerGroup::leave</code> destroys the consumer it removes). A class that owns a <code>std::thread</code> joins it in the destructor (RAII) or uses <code>std::jthread</code>. <b>Equality, hashing and immutability.</b> <code>operator==</code> and <code>operator&lt;=&gt;</code> can be <code>= default</code>, which makes <code>Position</code> comparable and <code>TopicPartition</code> a <code>std::map</code> key; <code>const</code> members make a message immutable. <b>Concurrency.</b> <code>std::mutex</code> with <code>lock_guard</code>, <code>condition_variable</code> (always pass a predicate to <code>wait</code>), <code>std::atomic</code>, <code>thread_local</code> for MDC, and <code>recursive_mutex</code> when a locked method calls another locked method. <b>Numbers and heaps.</b> Signed overflow is undefined behaviour, so hash with <code>uint32_t</code>; <code>%</code> keeps the sign of the left operand. <code>priority_queue</code> is a max-heap, so the expiry heap uses <code>greater&lt;&gt;</code>. <code>delete</code> is a keyword, so the store's method is <code>del</code>.</p>`
+    },
     topics: topics,
     practice: practice,
     quiz: quiz,

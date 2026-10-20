@@ -105,7 +105,7 @@ ${H.table(['State \\ Event', 'assign', 'arrive', 'start', 'end', 'cancel'], [
 <ul>
 <li><b>Enum + transition table</b> — best when states only decide "what is next", with little behaviour.</li>
 <li><b>State classes (GoF State pattern)</b> — best when each state has real behaviour (charging fees, starting meters, opening doors, dispensing cash).</li>
-<li><b>Sealed interface + records + pattern-matching switch (Java 21)</b> — a pure function <code>next(state, event)</code>; the compiler checks you handled every state.</li>
+<li><b>Closed set of immutable states + exhaustive match</b> — a pure function <code>next(state, event)</code>; the compiler checks you handled every state (Java sealed interface + records, Python dataclasses + <code>match</code>, TypeScript discriminated union, C++ <code>std::variant</code>).</li>
 </ul>`,
     clues: [
       '"The same button/request behaves differently depending on the current status" → State pattern.',
@@ -207,7 +207,320 @@ class RideDemo {
         ride.log().forEach(System.out::println);
         System.out.println("final state = " + ride.stateName() + ", fee = " + ride.fee());
     }
-}` }, { lang: 'java', title: 'Enum + EnumMap transition table (when states carry little behaviour)', code: `import java.util.*;
+}`, alt: [
+          { lang: 'python', code: `from abc import ABC, abstractmethod
+
+
+class Ride:
+    """Context: the outside world only talks to Ride. Ride owns data; the state object owns behaviour."""
+
+    def __init__(self) -> None:
+        self._state: "RideState" = Requested()
+        self._cancellation_fee = 0
+        self._log: list[str] = []
+
+    # Public API = events. Each one is a one-line delegation to the current state.
+    def assign_driver(self, driver: str) -> None: self._state.assign(self, driver)
+    def driver_arrived(self) -> None: self._state.arrive(self)
+    def start_trip(self) -> None: self._state.start(self)
+    def end_trip(self, fare: int) -> None: self._state.end(self, fare)
+    def cancel(self) -> None: self._state.cancel(self)
+
+    # Hooks the state objects use. Only states call these.
+    def transition_to(self, nxt: "RideState") -> None:
+        self._log.append(f"{self._state.name()} -> {nxt.name()}")
+        self._state.on_exit(self)  # exit action of the old state
+        self._state = nxt
+        nxt.on_enter(self)  # entry action of the new state
+
+    def reject(self, event: str) -> None:
+        self._log.append(f"REJECTED '{event}' in {self._state.name()}")
+
+    def charge(self, fee: int) -> None: self._cancellation_fee = fee
+    def state_name(self) -> str: return self._state.name()
+    def fee(self) -> int: return self._cancellation_fee
+    def log(self) -> list[str]: return self._log
+
+
+class RideState(ABC):
+    """One method per event. Defaults reject, so each state overrides ONLY what it allows."""
+
+    @abstractmethod
+    def name(self) -> str: ...
+
+    def on_enter(self, r: Ride) -> None: pass
+    def on_exit(self, r: Ride) -> None: pass
+    def assign(self, r: Ride, driver: str) -> None: r.reject("assign")
+    def arrive(self, r: Ride) -> None: r.reject("arrive")
+    def start(self, r: Ride) -> None: r.reject("start")
+    def end(self, r: Ride, fare: int) -> None: r.reject("end")
+    def cancel(self, r: Ride) -> None: r.reject("cancel")
+
+
+class Requested(RideState):
+    def name(self) -> str: return "REQUESTED"
+    def assign(self, r: Ride, driver: str) -> None: r.transition_to(Assigned(driver))
+
+    def cancel(self, r: Ride) -> None:  # free
+        r.charge(0)
+        r.transition_to(Cancelled())
+
+
+class Assigned(RideState):
+    def __init__(self, driver: str) -> None:
+        self._driver = driver  # state-specific data lives in the state
+
+    def name(self) -> str: return f"ASSIGNED({self._driver})"
+    def arrive(self, r: Ride) -> None: r.transition_to(Arrived(self._driver))
+
+    def cancel(self, r: Ride) -> None:  # small fee
+        r.charge(25)
+        r.transition_to(Cancelled())
+
+
+class Arrived(RideState):
+    def __init__(self, driver: str) -> None:
+        self._driver = driver
+
+    def name(self) -> str: return f"ARRIVED({self._driver})"
+    def start(self, r: Ride) -> None: r.transition_to(InTrip())
+
+    def cancel(self, r: Ride) -> None:  # driver waited
+        r.charge(50)
+        r.transition_to(Cancelled())
+
+
+class InTrip(RideState):
+    def name(self) -> str: return "IN_TRIP"
+    def on_enter(self, r: Ride) -> None: pass  # start the fare meter here
+    def end(self, r: Ride, fare: int) -> None: r.transition_to(Completed(fare))
+    # cancel() is NOT overridden -> default rejects it: no cancelling mid-ride
+
+
+class Completed(RideState):
+    def __init__(self, fare: int) -> None:
+        self._fare = fare
+
+    def name(self) -> str: return f"COMPLETED(Rs {self._fare})"
+
+
+class Cancelled(RideState):
+    def name(self) -> str: return "CANCELLED"
+
+
+if __name__ == "__main__":
+    ride = Ride()
+    ride.start_trip()  # rejected: no driver yet
+    ride.assign_driver("Asha")
+    ride.driver_arrived()
+    ride.start_trip()
+    ride.cancel()  # rejected: cannot cancel mid-trip
+    ride.end_trip(240)
+    for line in ride.log():
+        print(line)
+    print(f"final state = {ride.state_name()}, fee = {ride.fee()}")` },
+          { lang: 'ts', code: `/** Context: the outside world only talks to Ride. Ride owns data; the state object owns behaviour. */
+class Ride {
+  private state: RideState = new Requested();
+  private cancellationFee = 0;
+  private readonly entries: string[] = [];
+
+  // Public API = events. Each one is a one-line delegation to the current state.
+  assignDriver(driver: string): void { this.state.assign(this, driver); }
+  driverArrived(): void { this.state.arrive(this); }
+  startTrip(): void { this.state.start(this); }
+  endTrip(fare: number): void { this.state.end(this, fare); }
+  cancel(): void { this.state.cancel(this); }
+
+  // Hooks the state objects use. Only states call these.
+  transitionTo(next: RideState): void {
+    this.entries.push(\`\${this.state.name()} -> \${next.name()}\`);
+    this.state.onExit(this); // exit action of the old state
+    this.state = next;
+    next.onEnter(this); // entry action of the new state
+  }
+  reject(event: string): void { this.entries.push(\`REJECTED '\${event}' in \${this.state.name()}\`); }
+  charge(fee: number): void { this.cancellationFee = fee; }
+  stateName(): string { return this.state.name(); }
+  fee(): number { return this.cancellationFee; }
+  log(): readonly string[] { return this.entries; }
+}
+
+/** One method per event. Defaults reject, so each state overrides ONLY what it allows. */
+interface RideState {
+  name(): string;
+  onEnter(r: Ride): void;
+  onExit(r: Ride): void;
+  assign(r: Ride, driver: string): void;
+  arrive(r: Ride): void;
+  start(r: Ride): void;
+  end(r: Ride, fare: number): void;
+  cancel(r: Ride): void;
+}
+
+// Interfaces carry no code in TypeScript, so the defaults live in a base class.
+abstract class BaseRideState implements RideState {
+  abstract name(): string;
+  onEnter(r: Ride): void {}
+  onExit(r: Ride): void {}
+  assign(r: Ride, driver: string): void { r.reject("assign"); }
+  arrive(r: Ride): void { r.reject("arrive"); }
+  start(r: Ride): void { r.reject("start"); }
+  end(r: Ride, fare: number): void { r.reject("end"); }
+  cancel(r: Ride): void { r.reject("cancel"); }
+}
+
+class Requested extends BaseRideState {
+  name(): string { return "REQUESTED"; }
+  override assign(r: Ride, driver: string): void { r.transitionTo(new Assigned(driver)); }
+  override cancel(r: Ride): void { r.charge(0); r.transitionTo(new Cancelled()); } // free
+}
+
+class Assigned extends BaseRideState {
+  constructor(private readonly driver: string) { super(); } // state-specific data lives in the state
+  name(): string { return \`ASSIGNED(\${this.driver})\`; }
+  override arrive(r: Ride): void { r.transitionTo(new Arrived(this.driver)); }
+  override cancel(r: Ride): void { r.charge(25); r.transitionTo(new Cancelled()); } // small fee
+}
+
+class Arrived extends BaseRideState {
+  constructor(private readonly driver: string) { super(); }
+  name(): string { return \`ARRIVED(\${this.driver})\`; }
+  override start(r: Ride): void { r.transitionTo(new InTrip()); }
+  override cancel(r: Ride): void { r.charge(50); r.transitionTo(new Cancelled()); } // driver waited
+}
+
+class InTrip extends BaseRideState {
+  name(): string { return "IN_TRIP"; }
+  override onEnter(r: Ride): void { /* start the fare meter here */ }
+  override end(r: Ride, fare: number): void { r.transitionTo(new Completed(fare)); }
+  // cancel() is NOT overridden -> default rejects it: no cancelling mid-ride
+}
+
+class Completed extends BaseRideState {
+  constructor(private readonly fare: number) { super(); }
+  name(): string { return \`COMPLETED(Rs \${this.fare})\`; }
+}
+
+class Cancelled extends BaseRideState {
+  name(): string { return "CANCELLED"; }
+}
+
+const ride = new Ride();
+ride.startTrip(); // rejected: no driver yet
+ride.assignDriver("Asha");
+ride.driverArrived();
+ride.startTrip();
+ride.cancel(); // rejected: cannot cancel mid-trip
+ride.endTrip(240);
+ride.log().forEach((line) => console.log(line));
+console.log(\`final state = \${ride.stateName()}, fee = \${ride.fee()}\`);` },
+          { lang: 'cpp', code: `class Ride;
+
+// One method per event. Defaults reject, so each state overrides ONLY what it allows.
+struct RideState {
+    virtual ~RideState() = default;
+    virtual string name() const = 0;
+    virtual void onEnter(Ride&) const {}
+    virtual void onExit(Ride&) const {}
+    virtual void assign(Ride& r, const string& driver) const;
+    virtual void arrive(Ride& r) const;
+    virtual void start(Ride& r) const;
+    virtual void end(Ride& r, int fare) const;
+    virtual void cancel(Ride& r) const;
+};
+
+// Context: the outside world only talks to Ride. Ride owns data and the current state object.
+class Ride {
+    unique_ptr<RideState> state_;
+    int cancellationFee_ = 0;
+    vector<string> log_;
+
+public:
+    Ride();
+
+    // Public API = events. Each one is a one-line delegation to the current state.
+    void assignDriver(const string& driver) { state_->assign(*this, driver); }
+    void driverArrived() { state_->arrive(*this); }
+    void startTrip() { state_->start(*this); }
+    void endTrip(int fare) { state_->end(*this, fare); }
+    void cancel() { state_->cancel(*this); }
+
+    // Hooks the state objects use. Only states call these. The old state is destroyed here,
+    // so a state method must not touch its own members after calling transitionTo.
+    void transitionTo(unique_ptr<RideState> next) {
+        log_.push_back(state_->name() + " -> " + next->name());
+        state_->onExit(*this);  // exit action of the old state
+        state_ = move(next);
+        state_->onEnter(*this);  // entry action of the new state
+    }
+    void reject(const string& event) { log_.push_back("REJECTED '" + event + "' in " + state_->name()); }
+    void charge(int fee) { cancellationFee_ = fee; }
+    string stateName() const { return state_->name(); }
+    int fee() const { return cancellationFee_; }
+    const vector<string>& log() const { return log_; }
+};
+
+void RideState::assign(Ride& r, const string&) const { r.reject("assign"); }
+void RideState::arrive(Ride& r) const { r.reject("arrive"); }
+void RideState::start(Ride& r) const { r.reject("start"); }
+void RideState::end(Ride& r, int) const { r.reject("end"); }
+void RideState::cancel(Ride& r) const { r.reject("cancel"); }
+
+struct Cancelled final : RideState {
+    string name() const override { return "CANCELLED"; }
+};
+struct Completed final : RideState {
+    explicit Completed(int fare) : fare_(fare) {}
+    string name() const override { return "COMPLETED(Rs " + to_string(fare_) + ")"; }
+
+private:
+    int fare_;
+};
+struct InTrip final : RideState {
+    string name() const override { return "IN_TRIP"; }
+    void onEnter(Ride&) const override {}  // start the fare meter here
+    void end(Ride& r, int fare) const override { r.transitionTo(make_unique<Completed>(fare)); }
+    // cancel() is NOT overridden -> default rejects it: no cancelling mid-ride
+};
+struct Arrived final : RideState {
+    explicit Arrived(string driver) : driver_(move(driver)) {}
+    string name() const override { return "ARRIVED(" + driver_ + ")"; }
+    void start(Ride& r) const override { r.transitionTo(make_unique<InTrip>()); }
+    void cancel(Ride& r) const override { r.charge(50); r.transitionTo(make_unique<Cancelled>()); }  // driver waited
+
+private:
+    string driver_;
+};
+struct Assigned final : RideState {
+    explicit Assigned(string driver) : driver_(move(driver)) {}  // state-specific data lives in the state
+    string name() const override { return "ASSIGNED(" + driver_ + ")"; }
+    void arrive(Ride& r) const override { r.transitionTo(make_unique<Arrived>(driver_)); }
+    void cancel(Ride& r) const override { r.charge(25); r.transitionTo(make_unique<Cancelled>()); }  // small fee
+
+private:
+    string driver_;
+};
+struct Requested final : RideState {
+    string name() const override { return "REQUESTED"; }
+    void assign(Ride& r, const string& driver) const override { r.transitionTo(make_unique<Assigned>(driver)); }
+    void cancel(Ride& r) const override { r.charge(0); r.transitionTo(make_unique<Cancelled>()); }  // free
+};
+
+Ride::Ride() : state_(make_unique<Requested>()) {}
+
+int main() {
+    Ride ride;
+    ride.startTrip();  // rejected: no driver yet
+    ride.assignDriver("Asha");
+    ride.driverArrived();
+    ride.startTrip();
+    ride.cancel();  // rejected: cannot cancel mid-trip
+    ride.endTrip(240);
+    for (const auto& line : ride.log()) cout << line << "\\n";
+    cout << "final state = " << ride.stateName() << ", fee = " << ride.fee() << "\\n";
+}` }
+        ] }, { lang: 'java', title: 'Enum + EnumMap transition table (when states carry little behaviour)', code: `import java.util.*;
 
 enum TripState { REQUESTED, ASSIGNED, ARRIVED, IN_TRIP, COMPLETED, CANCELLED }
 enum TripEvent { ASSIGN, ARRIVE, START, END, CANCEL }
@@ -245,7 +558,137 @@ class TripMachine {
             System.out.println(e + (ok ? " accepted -> " : " rejected, still ") + m.state());
         }
     }
-}` }, { lang: 'java', title: 'Java 21: sealed states + records + exhaustive pattern switch (pure function)', code: `import java.util.*;
+}`, alt: [
+          { lang: 'python', code: `from enum import Enum
+
+
+class TripState(Enum):
+    REQUESTED = 1
+    ASSIGNED = 2
+    ARRIVED = 3
+    IN_TRIP = 4
+    COMPLETED = 5
+    CANCELLED = 6
+
+
+class TripEvent(Enum):
+    ASSIGN = 1
+    ARRIVE = 2
+    START = 3
+    END = 4
+    CANCEL = 5
+
+
+S, E = TripState, TripEvent
+
+# The whole machine is DATA: row = state, column = event, cell = next state.
+TABLE: dict[TripState, dict[TripEvent, TripState]] = {
+    S.REQUESTED: {E.ASSIGN: S.ASSIGNED, E.CANCEL: S.CANCELLED},
+    S.ASSIGNED: {E.ARRIVE: S.ARRIVED, E.CANCEL: S.CANCELLED},
+    S.ARRIVED: {E.START: S.IN_TRIP, E.CANCEL: S.CANCELLED},
+    S.IN_TRIP: {E.END: S.COMPLETED},
+    S.COMPLETED: {},
+    S.CANCELLED: {},
+}
+
+
+class TripMachine:
+    def __init__(self) -> None:
+        self._state = TripState.REQUESTED
+
+    def fire(self, e: TripEvent) -> bool:
+        """Returns True if the event was accepted. Unknown cell = rejected, state unchanged."""
+        nxt = TABLE[self._state].get(e)
+        if nxt is None:
+            return False
+        self._state = nxt
+        return True
+
+    @property
+    def state(self) -> TripState:
+        return self._state
+
+
+if __name__ == "__main__":
+    m = TripMachine()
+    for e in [E.START, E.ASSIGN, E.ARRIVE, E.START, E.CANCEL, E.END]:
+        ok = m.fire(e)
+        print(e.name + (" accepted -> " if ok else " rejected, still ") + m.state.name)` },
+          { lang: 'ts', code: `type TripState = "REQUESTED" | "ASSIGNED" | "ARRIVED" | "IN_TRIP" | "COMPLETED" | "CANCELLED";
+type TripEvent = "ASSIGN" | "ARRIVE" | "START" | "END" | "CANCEL";
+
+// The whole machine is DATA: row = state, column = event, cell = next state.
+const TABLE: Record<TripState, Partial<Record<TripEvent, TripState>>> = {
+  REQUESTED: { ASSIGN: "ASSIGNED", CANCEL: "CANCELLED" },
+  ASSIGNED: { ARRIVE: "ARRIVED", CANCEL: "CANCELLED" },
+  ARRIVED: { START: "IN_TRIP", CANCEL: "CANCELLED" },
+  IN_TRIP: { END: "COMPLETED" },
+  COMPLETED: {},
+  CANCELLED: {},
+};
+
+class TripMachine {
+  private current: TripState = "REQUESTED";
+
+  /** Returns true if the event was accepted. Unknown cell = rejected, state unchanged. */
+  fire(e: TripEvent): boolean {
+    const next = TABLE[this.current][e];
+    if (next === undefined) return false;
+    this.current = next;
+    return true;
+  }
+  state(): TripState { return this.current; }
+}
+
+const m = new TripMachine();
+const events: TripEvent[] = ["START", "ASSIGN", "ARRIVE", "START", "CANCEL", "END"];
+for (const e of events) {
+  const ok = m.fire(e);
+  console.log(e + (ok ? " accepted -> " : " rejected, still ") + m.state());
+}` },
+          { lang: 'cpp', code: `enum class TripState { REQUESTED, ASSIGNED, ARRIVED, IN_TRIP, COMPLETED, CANCELLED };
+enum class TripEvent { ASSIGN, ARRIVE, START, END, CANCEL };
+
+const char* name(TripState s) {
+    static const char* n[] = {"REQUESTED", "ASSIGNED", "ARRIVED", "IN_TRIP", "COMPLETED", "CANCELLED"};
+    return n[static_cast<int>(s)];
+}
+const char* name(TripEvent e) {
+    static const char* n[] = {"ASSIGN", "ARRIVE", "START", "END", "CANCEL"};
+    return n[static_cast<int>(e)];
+}
+
+class TripMachine {
+    using S = TripState;
+    using E = TripEvent;
+    // The whole machine is DATA: (state, event) -> next state.
+    inline static const map<pair<S, E>, S> TABLE = {
+        {{S::REQUESTED, E::ASSIGN}, S::ASSIGNED}, {{S::REQUESTED, E::CANCEL}, S::CANCELLED},
+        {{S::ASSIGNED, E::ARRIVE}, S::ARRIVED},   {{S::ASSIGNED, E::CANCEL}, S::CANCELLED},
+        {{S::ARRIVED, E::START}, S::IN_TRIP},     {{S::ARRIVED, E::CANCEL}, S::CANCELLED},
+        {{S::IN_TRIP, E::END}, S::COMPLETED},
+    };
+    TripState state_ = TripState::REQUESTED;
+
+public:
+    // Returns true if the event was accepted. Unknown cell = rejected, state unchanged.
+    bool fire(TripEvent e) {
+        auto it = TABLE.find({state_, e});
+        if (it == TABLE.end()) return false;
+        state_ = it->second;
+        return true;
+    }
+    TripState state() const { return state_; }
+};
+
+int main() {
+    TripMachine m;
+    for (TripEvent e : {TripEvent::START, TripEvent::ASSIGN, TripEvent::ARRIVE, TripEvent::START, TripEvent::CANCEL, TripEvent::END}) {
+        bool ok = m.fire(e);
+        cout << name(e) << (ok ? " accepted -> " : " rejected, still ") << name(m.state()) << "\\n";
+    }
+}` }
+        ] }, { lang: 'java', title: 'Java 21: sealed states + records + exhaustive pattern switch (pure function)', code: `import java.util.*;
 
 sealed interface TripS permits Req, Asg, Arr, Run, Done, Cxl {}
 record Req() implements TripS {}
@@ -288,7 +731,158 @@ class PureTrip {
             s = n;
         }
     }
-}` }],
+}`, alt: [
+          { lang: 'python', code: `from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Req: pass
+
+
+@dataclass(frozen=True)
+class Asg: driver: str
+
+
+@dataclass(frozen=True)
+class Arr: driver: str
+
+
+@dataclass(frozen=True)
+class Run: driver: str
+
+
+@dataclass(frozen=True)
+class Done:
+    driver: str
+    fare: int
+
+
+@dataclass(frozen=True)
+class Cxl: fee: int
+
+
+TripS = Req | Asg | Arr | Run | Done | Cxl  # a closed set of states
+
+
+def next_state(s: TripS, event: str) -> TripS:
+    """(state, event) -> next state. No mutation: easy to test, log, replay and persist."""
+    match s, event:
+        case Req(), "assign": return Asg("Asha")
+        case Req(), "cancel": return Cxl(0)
+        case Asg(driver), "arrive": return Arr(driver)
+        case Asg(), "cancel": return Cxl(25)
+        case Arr(driver), "start": return Run(driver)
+        case Arr(), "cancel": return Cxl(50)
+        case Run(driver), "end": return Done(driver, 240)
+        case _: return s  # unknown event, or a terminal state (Done, Cxl)
+
+
+def show(s: TripS) -> str:
+    """Same look as a Java record: Asg[driver=Asha]."""
+    fields = ", ".join(f"{k}={v}" for k, v in vars(s).items())
+    return f"{type(s).__name__}[{fields}]"
+
+
+if __name__ == "__main__":
+    s: TripS = Req()
+    for e in ["start", "assign", "arrive", "start", "cancel", "end"]:
+        n = next_state(s, e)
+        print(f"{e}: {show(s)} -> {show(n)}" + ("  (ignored)" if n is s else ""))
+        s = n` },
+          { lang: 'ts', code: `// A discriminated union: the compiler checks that every state is handled.
+type TripS =
+  | { kind: "Req" }
+  | { kind: "Asg"; driver: string }
+  | { kind: "Arr"; driver: string }
+  | { kind: "Run"; driver: string }
+  | { kind: "Done"; driver: string; fare: number }
+  | { kind: "Cxl"; fee: number };
+
+/** (state, event) -> next state. No mutation: easy to test, log, replay and persist. */
+function next(s: TripS, event: string): TripS {
+  switch (s.kind) { // no default: the compiler proves every state is handled
+    case "Req":
+      if (event === "assign") return { kind: "Asg", driver: "Asha" };
+      if (event === "cancel") return { kind: "Cxl", fee: 0 };
+      return s;
+    case "Asg":
+      if (event === "arrive") return { kind: "Arr", driver: s.driver };
+      if (event === "cancel") return { kind: "Cxl", fee: 25 };
+      return s;
+    case "Arr":
+      if (event === "start") return { kind: "Run", driver: s.driver };
+      if (event === "cancel") return { kind: "Cxl", fee: 50 };
+      return s;
+    case "Run":
+      return event === "end" ? { kind: "Done", driver: s.driver, fare: 240 } : s;
+    case "Done": return s; // terminal
+    case "Cxl": return s; // terminal
+  }
+}
+
+/** Same look as a Java record: Asg[driver=Asha]. */
+function show(s: TripS): string {
+  const { kind, ...fields } = s;
+  return \`\${kind}[\${Object.entries(fields).map(([k, v]) => \`\${k}=\${v}\`).join(", ")}]\`;
+}
+
+let s: TripS = { kind: "Req" };
+for (const e of ["start", "assign", "arrive", "start", "cancel", "end"]) {
+  const n = next(s, e);
+  console.log(\`\${e}: \${show(s)} -> \${show(n)}\` + (n === s ? "  (ignored)" : ""));
+  s = n;
+}` },
+          { lang: 'cpp', code: `struct Req { bool operator==(const Req&) const = default; };
+struct Asg { string driver; bool operator==(const Asg&) const = default; };
+struct Arr { string driver; bool operator==(const Arr&) const = default; };
+struct Run { string driver; bool operator==(const Run&) const = default; };
+struct Done { string driver; int fare; bool operator==(const Done&) const = default; };
+struct Cxl { int fee; bool operator==(const Cxl&) const = default; };
+
+using TripS = variant<Req, Asg, Arr, Run, Done, Cxl>;  // a closed set of states
+
+// (state, event) -> next state. No mutation: easy to test, log, replay and persist.
+TripS next(const TripS& s, const string& event) {
+    return visit([&](const auto& st) -> TripS {
+        using T = decay_t<decltype(st)>;
+        if constexpr (is_same_v<T, Req>) {
+            if (event == "assign") return Asg{"Asha"};
+            if (event == "cancel") return Cxl{0};
+        } else if constexpr (is_same_v<T, Asg>) {
+            if (event == "arrive") return Arr{st.driver};
+            if (event == "cancel") return Cxl{25};
+        } else if constexpr (is_same_v<T, Arr>) {
+            if (event == "start") return Run{st.driver};
+            if (event == "cancel") return Cxl{50};
+        } else if constexpr (is_same_v<T, Run>) {
+            if (event == "end") return Done{st.driver, 240};
+        }
+        return st;  // unknown event, or a terminal state (Done, Cxl)
+    }, s);
+}
+
+// Same look as a Java record: Asg[driver=Asha].
+string show(const TripS& s) {
+    return visit([](const auto& st) -> string {
+        using T = decay_t<decltype(st)>;
+        if constexpr (is_same_v<T, Req>) return "Req[]";
+        else if constexpr (is_same_v<T, Asg>) return "Asg[driver=" + st.driver + "]";
+        else if constexpr (is_same_v<T, Arr>) return "Arr[driver=" + st.driver + "]";
+        else if constexpr (is_same_v<T, Run>) return "Run[driver=" + st.driver + "]";
+        else if constexpr (is_same_v<T, Done>) return "Done[driver=" + st.driver + ", fare=" + to_string(st.fare) + "]";
+        else return "Cxl[fee=" + to_string(st.fee) + "]";
+    }, s);
+}
+
+int main() {
+    TripS s = Req{};
+    for (const char* e : {"start", "assign", "arrive", "start", "cancel", "end"}) {
+        TripS n = next(s, e);
+        cout << e << ": " << show(s) << " -> " << show(n) << (n == s ? "  (ignored)" : "") << "\\n";
+        s = n;
+    }
+}` }
+        ] }],
     codeTitle: ['GoF State classes', 'Enum transition table', 'Sealed + pattern switch'],
     viz: [{
       title: 'Cab ride state machine: watch each event move (or bounce off) the current state',
@@ -382,7 +976,7 @@ class PureTrip {
     }],
     examples: [
       { title: 'Same event, four meanings: Cancel', html: `<p>${H.table(['Current state', 'cancel() does', 'Why'], [['REQUESTED', 'free → CANCELLED', 'nobody has been inconvenienced'], ['ASSIGNED', '₹25 fee → CANCELLED', 'driver started driving to you'], ['ARRIVED', '₹50 fee → CANCELLED', 'driver is waiting at your gate'], ['IN_TRIP', H.c('r', 'rejected'), 'you are in the car — end the trip instead']])}</p><p>Four different behaviours for one button, and <b>zero</b> if-statements in <code>Ride.cancel()</code>. The <i>fee rule</i> lives inside the class of the state it belongs to.</p>` },
-      { title: 'Add-a-state follow-up: NO_SHOW', html: `<p>Interviewer: "If the rider does not come out within 5 minutes, mark NO_SHOW and charge ₹100." With State objects: ${H.c('g', '(1) new class NoShow')}; ${H.c('g', '(2) one new method timeout() on the interface with a default reject')}; ${H.c('g', '(3) Arrived overrides timeout()')}. Requested, Assigned, InTrip, Completed are untouched. That is the Open/Closed principle in action.</p>`, code: `interface RideState2 {
+      { title: 'Add-a-state follow-up: NO_SHOW', html: `<p>Interviewer: "If the rider does not come out within 5 minutes, mark NO_SHOW and charge ₹100." With State objects: ${H.c('g', '(1) new class NoShow')}; ${H.c('g', '(2) one new method timeout() on the state interface with a default reject')}; ${H.c('g', '(3) Arrived overrides timeout()')}. Requested, Assigned, InTrip, Completed are untouched. That is the Open/Closed principle in action.</p>`, code: { lang: 'java', code: `interface RideState2 {
     String name();
     default RideState2 timeout() { return this; }          // new event: default = ignore
     default RideState2 start()   { return this; }
@@ -397,20 +991,93 @@ final class NoShow2 implements RideState2 {                  // the new state
     final int fee;
     NoShow2(int fee) { this.fee = fee; }
     public String name() { return "NO_SHOW(Rs " + fee + ")"; }
+}`, alt: [
+          { lang: 'python', code: `from abc import ABC, abstractmethod
+
+
+class RideState2(ABC):
+    @abstractmethod
+    def name(self) -> str: ...
+
+    def timeout(self) -> "RideState2": return self  # new event: default = ignore
+    def start(self) -> "RideState2": return self
+
+
+class Arrived2(RideState2):
+    def name(self) -> str: return "ARRIVED"
+    def start(self) -> RideState2: return InTrip2()
+    def timeout(self) -> RideState2: return NoShow2(100)  # the ONLY changed state
+
+
+class InTrip2(RideState2):
+    def name(self) -> str: return "IN_TRIP"
+
+
+class NoShow2(RideState2):  # the new state
+    def __init__(self, fee: int) -> None:
+        self.fee = fee
+
+    def name(self) -> str: return f"NO_SHOW(Rs {self.fee})"` },
+          { lang: 'ts', code: `interface RideState2 {
+  name(): string;
+  timeout(): RideState2;
+  start(): RideState2;
+}
+
+abstract class BaseRideState2 implements RideState2 {
+  abstract name(): string;
+  timeout(): RideState2 { return this; } // new event: default = ignore
+  start(): RideState2 { return this; }
+}
+
+class Arrived2 extends BaseRideState2 {
+  name(): string { return "ARRIVED"; }
+  override start(): RideState2 { return new InTrip2(); }
+  override timeout(): RideState2 { return new NoShow2(100); } // the ONLY changed state
+}
+class InTrip2 extends BaseRideState2 {
+  name(): string { return "IN_TRIP"; }
+}
+class NoShow2 extends BaseRideState2 { // the new state
+  constructor(readonly fee: number) { super(); }
+  name(): string { return \`NO_SHOW(Rs \${this.fee})\`; }
 }` },
-      { title: 'Who decides the next state? Three valid answers', html: `<p>${H.table(['Style', 'Where the transition lives', 'Good for'], [['State-driven', 'Inside each State class (<code>r.transitionTo(new X())</code>)', 'behaviour-rich states, GoF classic'], ['Context-driven', 'Context switches based on what the state returns', 'states as stateless singletons; easy logging'], ['Table-driven', 'An EnumMap / config file', 'many simple states, rules owned by product/ops']])}</p><p>A popular middle ground: each state method <b>returns</b> the next state (<code>RideState start()</code>), and the context does <code>state = state.start()</code>. States stay free of setters, and the context is the only place that writes the field — perfect for logging and locking.</p>` },
+          { lang: 'cpp', code: `struct RideState2;
+using StatePtr = unique_ptr<RideState2>;  // nullptr means "stay in this state"
+
+struct RideState2 {
+    virtual ~RideState2() = default;
+    virtual string name() const = 0;
+    virtual StatePtr timeout() const { return nullptr; }  // new event: default = ignore
+    virtual StatePtr start() const { return nullptr; }
+};
+struct InTrip2 final : RideState2 {
+    string name() const override { return "IN_TRIP"; }
+};
+struct NoShow2 final : RideState2 {  // the new state
+    explicit NoShow2(int fee) : fee(fee) {}
+    const int fee;
+    string name() const override { return "NO_SHOW(Rs " + to_string(fee) + ")"; }
+};
+struct Arrived2 final : RideState2 {
+    string name() const override { return "ARRIVED"; }
+    StatePtr start() const override { return make_unique<InTrip2>(); }
+    StatePtr timeout() const override { return make_unique<NoShow2>(100); }  // the ONLY changed state
+};` }
+        ] } },
+      { title: 'Who decides the next state? Three valid answers', html: `<p>${H.table(['Style', 'Where the transition lives', 'Good for'], [['State-driven', 'Inside each State class (<code>r.transitionTo(new X())</code>)', 'behaviour-rich states, GoF classic'], ['Context-driven', 'Context switches based on what the state returns', 'states as stateless singletons; easy logging'], ['Table-driven', 'A map keyed by (state, event), or a config file', 'many simple states, rules owned by product/ops']])}</p><p>A popular middle ground: each state method <b>returns</b> the next state (<code>RideState start()</code>), and the context does <code>state = state.start()</code>. States stay free of setters, and the context is the only place that writes the field — perfect for logging and locking.</p>` },
       { title: 'State vs Strategy: identical class diagram, different story', html: `<p>Both have a context holding an interface reference. The difference is <b>who changes it and why</b>. ${H.c('b', 'Strategy')}: the <i>client</i> picks an algorithm (pay by card or UPI) and it rarely changes during the object’s life. ${H.c('p', 'State')}: the object changes its <i>own</i> state as events arrive (REQUESTED → ASSIGNED → …), and states usually know their successors. If an interviewer asks "isn't that just Strategy?", answer with this.</p>` },
       { title: 'Entry and exit actions', html: `<p>Some work belongs to <b>entering</b> or <b>leaving</b> a state, not to a specific event. Entering IN_TRIP starts the fare meter; leaving it stops the meter. Put these in <code>onEnter()</code>/<code>onExit()</code> and call them from <code>transitionTo()</code>. Otherwise you copy "start meter" into every event that leads to IN_TRIP — and forget one. Elevators use this heavily: entering DOORS_OPEN starts a 3-second timer; leaving it cancels the timer.</p>` }
     ],
-    deepDive: `<p><b>1. State objects: shared or per-context?</b> If a state has no fields (Requested, InTrip) you can make it a singleton (<code>static final INSTANCE</code>) and share it across a million rides — that is the Flyweight idea. If a state carries data (Assigned has the driver name), create a new instance per transition. Mixing both is fine.</p>
+    deepDive: `<p><b>1. State objects: shared or per-context?</b> If a state has no fields (Requested, InTrip) you can make it a single shared instance (a <code>static final</code> field in Java, a module-level constant in Python, a <code>static</code> member in TypeScript or C++) and share it across a million rides — that is the Flyweight idea. If a state carries data (Assigned has the driver name), create a new instance per transition. Mixing both is fine.</p>
 <p><b>2. Invalid-event policy</b> is a design decision you must state out loud: <i>ignore</i> (UI buttons — pressing pause twice is harmless), <i>reject with error</i> (APIs — return 409 Conflict), or <i>throw</i> (programming bug — should never happen). Elevators ignore duplicate hall calls; ATMs return an error screen; payment ledgers throw.</p>
 <p><b>3. Guards.</b> A transition may need a condition: "start only if the OTP matches". Put the guard in the state method (<code>if (!otpOk) { r.reject("bad OTP"); return; }</code>) or in the table as a <code>Predicate</code>. UML statecharts write it as <code>start [otp ok] / startMeter</code>: <i>event [guard] / action</i>.</p>
 <p><b>4. Hierarchical (nested) states.</b> An elevator in EMERGENCY must ignore all hall calls whether it was MOVING or IDLE. Instead of adding "if emergency" to every state, model a parent state <b>OPERATIONAL</b> with children IDLE/MOVING/DOORS_OPEN, and a sibling EMERGENCY. Events not handled by a child bubble up to the parent (like exceptions bubbling up the call stack). Spring Statemachine, XState and SCXML all support this.</p>
 <p><b>5. Persistence.</b> State objects are not stored in a database; their <b>name</b> is. Save <code>status = 'ARRIVED'</code> plus the data (driver id), and rehydrate with a factory: <code>switch (status) { case "ARRIVED" -> new Arrived(driver); … }</code>. Add a <code>version</code> column so two servers cannot both apply a transition (optimistic locking: <code>UPDATE ride SET status='IN_TRIP', version=8 WHERE id=? AND version=7</code>).</p>
-<p><b>6. Concurrency.</b> "Check current state, then write next state" is a <b>check-then-act</b> race. Two threads can both see ARRIVED and both start the trip. Make transitions atomic: <code>synchronized</code> on the context, an <code>AtomicReference.compareAndSet(old, next)</code>, or a single-threaded event loop (actor model) — the elevator and ATM topics use these.</p>
+<p><b>6. Concurrency.</b> "Check current state, then write next state" is a <b>check-then-act</b> race. Two threads can both see ARRIVED and both start the trip. Make transitions atomic: a lock on the context (<code>synchronized</code>, <code>threading.Lock</code>, <code>std::mutex</code>), an atomic compare-and-set on an immutable snapshot (<code>AtomicReference.compareAndSet(old, next)</code> in Java), or a single-threaded event loop (actor model; JavaScript already works this way) — the elevator and ATM topics use these.</p>
 <p><b>7. Testing.</b> A state machine is perfect for table-driven tests: for every (state, event) cell, assert the next state and the side effects. 6 × 5 = 30 parameterized cases cover the whole behaviour — including all the "—" rejections that hand-written tests usually forget.</p>`,
-    aiEra: `<p><b>What AI changes:</b> ask an assistant for "a vending machine in Java" and you will very often get the if/else ladder or a <code>switch(status)</code> repeated in every method, because that is the most common code online. Your value is spotting that the requirement is <i>state-heavy</i> and asking for the right shape: "Give me a state × event table first, then one class per state with default-reject methods."</p>
-<p><b>Use AI as a partner:</b> <code>Here is my transition table. List every (state, event) pair I have not specified and suggest a sensible behaviour for each.</code> LLMs are good at enumerating the missing cells — exactly the edge cases interviewers poke at. Also: <code>Generate JUnit 5 @ParameterizedTest cases for every cell of this table.</code></p>
+    aiEra: `<p><b>What AI changes:</b> ask an assistant for "a vending machine" in any language and you will very often get the if/else ladder or a <code>switch(status)</code> repeated in every method, because that is the most common code online. Your value is spotting that the requirement is <i>state-heavy</i> and asking for the right shape: "Give me a state × event table first, then one class per state with default-reject methods."</p>
+<p><b>Use AI as a partner:</b> <code>Here is my transition table. List every (state, event) pair I have not specified and suggest a sensible behaviour for each.</code> LLMs are good at enumerating the missing cells — exactly the edge cases interviewers poke at. Also: <code>Generate parameterized tests (JUnit, pytest, Jest or GoogleTest) for every cell of this table.</code></p>
 <p><b>AI agents ARE state machines.</b> LangGraph, OpenAI Agents SDK handoffs and most "agent workflow" tools model an agent as nodes (states) and edges (transitions) with guards ("if tool call failed, go to RETRY"). Knowing State deeply lets you design reliable agent flows: explicit terminal states, retry limits, and no "LLM decides to jump anywhere".</p>
 <p><b>Where AI goes wrong:</b> forgets terminal states (allows <i>cancel</i> after COMPLETED), mixes state checks into the context again, creates new state objects on every call in hot paths, and ignores concurrency (two threads transitioning at once). <b>What you must still own:</b> drawing the table, choosing the invalid-event policy, and explaining why the design survives the "add a state" follow-up.</p>`,
     problems: [{
@@ -437,10 +1104,11 @@ final class NoShow2 implements RideState2 {                  // the new state
     }
     // publish(), reject(), archive() ... the same if/else repeated in every method
 }` },
-      mcq: { q: 'You add ARCHIVED with the State pattern and default-reject methods. Which classes must change?', options: ['The interface (new archive() with default reject), Published (override archive), and a new Archived class', 'Every state class', 'Only the Document context', 'Draft and Published only'], answer: 0, explain: 'The default method means states that do not allow archive() need no change. Only the state that leads to ARCHIVED overrides it, plus the new class.' },
-      hints: [`<p>Hint 1: Draw the state × event table: 4 states × 5 events. Most cells are "reject". Only 6 cells move the document.</p>`, `<p>Hint 2: <code>interface DocState</code> with one default method per event that calls <code>doc.reject(event)</code>. Each concrete state overrides only its allowed events. The guard "reviewer ≠ author" lives in <code>InReview.approve</code>.</p>`, `<p>Hint 3: Keep the reason from reject() in the Document (data), not in a static field. Recipe: Document(context) → transitionTo(next) logs "A → B" → states as stateless singletons except where they need data → default-reject → ARCHIVED = new class + override in Published.</p>`],
+      mcq: { q: 'You add ARCHIVED with the State pattern and default-reject methods. Which classes must change?', options: ['The interface (new archive() with default reject), Published (override archive), and a new Archived class', 'Every state class', 'Only the Document context', 'Draft and Published only'], answer: 0, explain: 'A default in the base state (an interface default method, a base-class method) means states that do not allow archive() need no change. Only the state that leads to ARCHIVED overrides it, plus the new class.' },
+      hints: [`<p>Hint 1: Draw the state × event table: 4 states × 5 events. Most cells are "reject". Only 6 cells move the document.</p>`, `<p>Hint 2: <code>DocState</code> (an interface or base class) with one default method per event that calls <code>doc.reject(event)</code>. Each concrete state overrides only its allowed events. The guard "reviewer ≠ author" lives in <code>InReview.approve</code>.</p>`, `<p>Hint 3: Keep the reason from reject() in the Document (data), not in a static field. Recipe: Document(context) → transitionTo(next) logs "A → B" → states as stateless singletons except where they need data → default-reject → ARCHIVED = new class + override in Published.</p>`],
+      tests: { io: true, cases: [{ stdin: '', stdout: "DRAFT -> IN_REVIEW\nrejected approve (self-approval not allowed) in IN_REVIEW\nIN_REVIEW -> APPROVED\nAPPROVED -> DRAFT\nDRAFT -> IN_REVIEW\nIN_REVIEW -> APPROVED\nAPPROVED -> PUBLISHED\nrejected edit in PUBLISHED\nPUBLISHED -> ARCHIVED\nfinal = ARCHIVED\n" }] },
       solution: {
-        approach: `<p>The Document is the context: it holds author, content, last rejection reason, history and the current <code>DocState</code>. Each event method on Document is one line: <code>state.submit(this)</code>. States are stateless, so we share singletons. Invalid events fall to the interface's default methods, which log a rejection. The ARCHIVED follow-up adds one interface method with a default, one override in <code>Published</code>, and one new class.</p>`,
+        approach: `<p>The Document is the context: it holds author, content, last rejection reason, history and the current <code>DocState</code>. Each event method on Document is one line: <code>state.submit(this)</code>. States are stateless, so we share singletons. Invalid events fall to the base state's default methods, which log a rejection. The ARCHIVED follow-up adds one base-state method with a default, one override in <code>Published</code>, and one new class.</p>`,
         code: `import java.util.*;
 
 interface DocState {
@@ -522,7 +1190,303 @@ class Document {
         doc.history().forEach(System.out::println);
         System.out.println("final = " + doc.status());
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `from abc import ABC, abstractmethod
+
+
+class DocState(ABC):
+    @abstractmethod
+    def name(self) -> str: ...
+
+    # Every event is rejected unless a state overrides it.
+    def submit(self, d: "Document") -> None: d.reject("submit")
+    def approve(self, d: "Document", reviewer: str) -> None: d.reject("approve")
+    def reject_doc(self, d: "Document", reason: str) -> None: d.reject("reject")
+    def publish(self, d: "Document") -> None: d.reject("publish")
+    def edit(self, d: "Document", text: str) -> None: d.reject("edit")
+    def archive(self, d: "Document") -> None: d.reject("archive")  # follow-up event
+
+
+class Draft(DocState):
+    def name(self) -> str: return "DRAFT"
+    def submit(self, d: "Document") -> None: d.transition_to(IN_REVIEW)
+    def edit(self, d: "Document", text: str) -> None: d.set_content(text)
+
+
+class InReview(DocState):
+    def name(self) -> str: return "IN_REVIEW"
+
+    def approve(self, d: "Document", reviewer: str) -> None:
+        if reviewer == d.author:  # guard
+            d.reject("approve (self-approval not allowed)")
+            return
+        d.transition_to(APPROVED)
+
+    def reject_doc(self, d: "Document", reason: str) -> None:
+        d.set_rejection_reason(reason)
+        d.transition_to(DRAFT)
+
+
+class Approved(DocState):
+    def name(self) -> str: return "APPROVED"
+    def publish(self, d: "Document") -> None: d.transition_to(PUBLISHED)
+
+    def edit(self, d: "Document", text: str) -> None:  # approval void
+        d.set_content(text)
+        d.transition_to(DRAFT)
+
+
+class Published(DocState):
+    def name(self) -> str: return "PUBLISHED"
+    def archive(self, d: "Document") -> None: d.transition_to(ARCHIVED)  # follow-up: 1 override
+
+
+class Archived(DocState):  # follow-up: 1 new class
+    def name(self) -> str: return "ARCHIVED"
+
+
+# States hold no data, so one shared instance of each is enough.
+DRAFT, IN_REVIEW, APPROVED = Draft(), InReview(), Approved()
+PUBLISHED, ARCHIVED = Published(), Archived()
+
+
+class Document:
+    def __init__(self, author: str) -> None:
+        self.author = author
+        self.content = ""
+        self.rejection_reason = ""
+        self.state: DocState = DRAFT
+        self.history: list[str] = []
+
+    def submit(self) -> None: self.state.submit(self)
+    def approve(self, reviewer: str) -> None: self.state.approve(self, reviewer)
+    def reject_review(self, reason: str) -> None: self.state.reject_doc(self, reason)
+    def publish(self) -> None: self.state.publish(self)
+    def edit(self, text: str) -> None: self.state.edit(self, text)
+    def archive(self) -> None: self.state.archive(self)
+
+    def transition_to(self, nxt: DocState) -> None:
+        self.history.append(f"{self.state.name()} -> {nxt.name()}")
+        self.state = nxt
+
+    def reject(self, event: str) -> None:
+        self.history.append(f"rejected {event} in {self.state.name()}")
+
+    def set_content(self, c: str) -> None: self.content = c
+    def set_rejection_reason(self, r: str) -> None: self.rejection_reason = r
+    def status(self) -> str: return self.state.name()
+
+
+if __name__ == "__main__":
+    doc = Document("asha")
+    doc.edit("v1")
+    doc.submit()
+    doc.approve("asha")  # rejected: self approval
+    doc.approve("ben")
+    doc.edit("v2")  # back to DRAFT
+    doc.submit()
+    doc.approve("ben")
+    doc.publish()
+    doc.edit("v3")  # rejected: published is frozen
+    doc.archive()
+    for line in doc.history:
+        print(line)
+    print("final =", doc.status())` },
+          { lang: 'ts', code: `interface DocState {
+  name(): string;
+  submit(d: Document): void;
+  approve(d: Document, reviewer: string): void;
+  rejectDoc(d: Document, reason: string): void;
+  publish(d: Document): void;
+  edit(d: Document, text: string): void;
+  archive(d: Document): void;
+}
+
+// Interfaces have no default methods, so shared "reject everything" lives in a base class.
+abstract class BaseState implements DocState {
+  abstract name(): string;
+  submit(d: Document): void { d.reject("submit"); }
+  approve(d: Document, reviewer: string): void { d.reject("approve"); }
+  rejectDoc(d: Document, reason: string): void { d.reject("reject"); }
+  publish(d: Document): void { d.reject("publish"); }
+  edit(d: Document, text: string): void { d.reject("edit"); }
+  archive(d: Document): void { d.reject("archive"); } // follow-up event
+}
+
+class Draft extends BaseState {
+  static readonly I = new Draft();
+  name(): string { return "DRAFT"; }
+  override submit(d: Document): void { d.transitionTo(InReview.I); }
+  override edit(d: Document, text: string): void { d.setContent(text); }
+}
+class InReview extends BaseState {
+  static readonly I = new InReview();
+  name(): string { return "IN_REVIEW"; }
+  override approve(d: Document, reviewer: string): void {
+    if (reviewer === d.author) { d.reject("approve (self-approval not allowed)"); return; } // guard
+    d.transitionTo(Approved.I);
+  }
+  override rejectDoc(d: Document, reason: string): void { d.setRejectionReason(reason); d.transitionTo(Draft.I); }
+}
+class Approved extends BaseState {
+  static readonly I = new Approved();
+  name(): string { return "APPROVED"; }
+  override publish(d: Document): void { d.transitionTo(Published.I); }
+  override edit(d: Document, text: string): void { d.setContent(text); d.transitionTo(Draft.I); } // approval void
+}
+class Published extends BaseState {
+  static readonly I = new Published();
+  name(): string { return "PUBLISHED"; }
+  override archive(d: Document): void { d.transitionTo(Archived.I); } // follow-up: 1 override
+}
+class Archived extends BaseState { // follow-up: 1 new class
+  static readonly I = new Archived();
+  name(): string { return "ARCHIVED"; }
+}
+
+class Document {
+  private content = "";
+  private rejectionReason = "";
+  private state: DocState = Draft.I;
+  readonly history: string[] = [];
+
+  constructor(readonly author: string) {}
+
+  submit(): void { this.state.submit(this); }
+  approve(reviewer: string): void { this.state.approve(this, reviewer); }
+  rejectReview(reason: string): void { this.state.rejectDoc(this, reason); }
+  publish(): void { this.state.publish(this); }
+  edit(text: string): void { this.state.edit(this, text); }
+  archive(): void { this.state.archive(this); }
+
+  transitionTo(next: DocState): void { this.history.push(\`\${this.state.name()} -> \${next.name()}\`); this.state = next; }
+  reject(event: string): void { this.history.push(\`rejected \${event} in \${this.state.name()}\`); }
+  setContent(c: string): void { this.content = c; }
+  setRejectionReason(r: string): void { this.rejectionReason = r; }
+  status(): string { return this.state.name(); }
+}
+
+const doc = new Document("asha");
+doc.edit("v1");
+doc.submit();
+doc.approve("asha"); // rejected: self approval
+doc.approve("ben");
+doc.edit("v2"); // back to DRAFT
+doc.submit();
+doc.approve("ben");
+doc.publish();
+doc.edit("v3"); // rejected: published is frozen
+doc.archive();
+doc.history.forEach((line) => console.log(line));
+console.log("final = " + doc.status());` },
+          { lang: 'cpp', code: `class Document;
+
+struct DocState {
+    virtual ~DocState() = default;
+    virtual string name() const = 0;
+    // Every event is rejected unless a state overrides it.
+    virtual void submit(Document& d) const;
+    virtual void approve(Document& d, const string& reviewer) const;
+    virtual void rejectDoc(Document& d, const string& reason) const;
+    virtual void publish(Document& d) const;
+    virtual void edit(Document& d, const string& text) const;
+    virtual void archive(Document& d) const;  // follow-up event
+};
+
+struct Draft final : DocState {
+    static const Draft I;
+    string name() const override { return "DRAFT"; }
+    void submit(Document& d) const override;
+    void edit(Document& d, const string& text) const override;
+};
+struct InReview final : DocState {
+    static const InReview I;
+    string name() const override { return "IN_REVIEW"; }
+    void approve(Document& d, const string& reviewer) const override;
+    void rejectDoc(Document& d, const string& reason) const override;
+};
+struct Approved final : DocState {
+    static const Approved I;
+    string name() const override { return "APPROVED"; }
+    void publish(Document& d) const override;
+    void edit(Document& d, const string& text) const override;
+};
+struct Published final : DocState {
+    static const Published I;
+    string name() const override { return "PUBLISHED"; }
+    void archive(Document& d) const override;  // follow-up: 1 override
+};
+struct Archived final : DocState {  // follow-up: 1 new class
+    static const Archived I;
+    string name() const override { return "ARCHIVED"; }
+};
+inline const Draft Draft::I;
+inline const InReview InReview::I;
+inline const Approved Approved::I;
+inline const Published Published::I;
+inline const Archived Archived::I;
+
+class Document {
+    string author_;
+    string content_, rejectionReason_;
+    const DocState* state_ = &Draft::I;
+    vector<string> history_;
+
+public:
+    explicit Document(string author) : author_(move(author)) {}
+    void submit() { state_->submit(*this); }
+    void approve(const string& reviewer) { state_->approve(*this, reviewer); }
+    void rejectReview(const string& reason) { state_->rejectDoc(*this, reason); }
+    void publish() { state_->publish(*this); }
+    void edit(const string& text) { state_->edit(*this, text); }
+    void archive() { state_->archive(*this); }
+
+    void transitionTo(const DocState& next) {
+        history_.push_back(state_->name() + " -> " + next.name());
+        state_ = &next;
+    }
+    void reject(const string& event) { history_.push_back("rejected " + event + " in " + state_->name()); }
+    void setContent(const string& c) { content_ = c; }
+    void setRejectionReason(const string& r) { rejectionReason_ = r; }
+    const string& author() const { return author_; }
+    string status() const { return state_->name(); }
+    const vector<string>& history() const { return history_; }
+};
+
+void DocState::submit(Document& d) const { d.reject("submit"); }
+void DocState::approve(Document& d, const string&) const { d.reject("approve"); }
+void DocState::rejectDoc(Document& d, const string&) const { d.reject("reject"); }
+void DocState::publish(Document& d) const { d.reject("publish"); }
+void DocState::edit(Document& d, const string&) const { d.reject("edit"); }
+void DocState::archive(Document& d) const { d.reject("archive"); }
+
+void Draft::submit(Document& d) const { d.transitionTo(InReview::I); }
+void Draft::edit(Document& d, const string& text) const { d.setContent(text); }
+void InReview::approve(Document& d, const string& reviewer) const {
+    if (reviewer == d.author()) { d.reject("approve (self-approval not allowed)"); return; }  // guard
+    d.transitionTo(Approved::I);
+}
+void InReview::rejectDoc(Document& d, const string& reason) const { d.setRejectionReason(reason); d.transitionTo(Draft::I); }
+void Approved::publish(Document& d) const { d.transitionTo(Published::I); }
+void Approved::edit(Document& d, const string& text) const { d.setContent(text); d.transitionTo(Draft::I); }  // approval void
+void Published::archive(Document& d) const { d.transitionTo(Archived::I); }
+
+int main() {
+    Document doc("asha");
+    doc.edit("v1");
+    doc.submit();
+    doc.approve("asha");  // rejected: self approval
+    doc.approve("ben");
+    doc.edit("v2");       // back to DRAFT
+    doc.submit();
+    doc.approve("ben");
+    doc.publish();
+    doc.edit("v3");       // rejected: published is frozen
+    doc.archive();
+    for (const auto& line : doc.history()) cout << line << "\\n";
+    cout << "final = " << doc.status() << "\\n";
+}` }
+        ],
         complexity: `<p>Every event is O(1): one virtual call plus a list append. Adding a state costs O(1) new classes and touches only the states that lead into it. Memory: states are shared singletons, so a million documents share 5 state objects.</p>`,
         followUps: ['Two reviewers must approve (2-of-3). Where does the approval count live — in the state or in the context?', 'Persist the document in a database and rebuild the state object on load.', 'Two editors click submit at the same time — how do you stop a double transition?']
       }
@@ -562,7 +1526,7 @@ ${H.table(['Class', 'Holds', 'Does'], [
   ['<code>Building</code>', 'floors, cars, controller', 'wires everything together'],
   ['<code>ElevatorCar</code>', 'id, current floor, direction, <b>state</b>, set of stops, door', '<code>addStop()</code>, <code>tick()</code>'],
   ['<code>CarState</code> (enum with behaviour)', 'IDLE, MOVING_UP, MOVING_DOWN, DOORS_OPEN, MAINTENANCE', '<code>onTick(car)</code> returns the next state'],
-  ['<code>HallCall</code> / car call', 'floor (+ direction for hall calls)', 'immutable record — the "request"'],
+  ['<code>HallCall</code> / car call', 'floor (+ direction for hall calls)', 'immutable value object (record, dataclass, struct) — the "request"'],
   ['<code>ElevatorController</code>', 'list of cars, dispatch strategy', 'picks which car serves a hall call'],
   ['<code>SchedulingStrategy</code>', '—', 'decides the next stop (FCFS/SSTF/SCAN/LOOK)'],
   ['<code>Door</code>, <code>Display</code>, <code>Button</code>', 'open/closed, text, lit', 'small helpers; Display observes the car']
@@ -721,7 +1685,453 @@ class ElevatorController {
         for (int t = 0; t < 12; t++) ctl.tickAll();
         System.out.println("car 0 at " + a.floor() + " " + a.state() + ", car 1 at " + b.floor() + " " + b.state());
     }
-}` },
+}`, alt: [
+          { lang: 'python', code: `from dataclasses import dataclass
+from enum import Enum
+from typing import Optional
+
+MAX_COST = 2**31 - 1
+
+
+class Direction(Enum):
+    UP = 1
+    DOWN = 2
+    NONE = 3
+
+
+@dataclass(frozen=True)
+class HallCall:
+    """A request from a floor button: "I am on floor 4 and want to go UP"."""
+    floor: int
+    direction: Direction
+
+
+class CarState(Enum):
+    """Enum State pattern: each member carries its own behaviour (see on_tick)."""
+    IDLE = 1
+    MOVING_UP = 2
+    MOVING_DOWN = 3
+    DOORS_OPEN = 4
+    MAINTENANCE = 5
+
+    def on_tick(self, c: "ElevatorCar") -> "CarState":
+        S = CarState
+        match self:
+            case S.IDLE:
+                if c.maintenance_requested():
+                    return S.MAINTENANCE
+                if c.is_stop(c.floor):
+                    c.arrive()
+                    return S.DOORS_OPEN
+                d = c.choose_direction()
+                c.set_direction(d)
+                return {Direction.UP: S.MOVING_UP, Direction.DOWN: S.MOVING_DOWN}.get(d, S.IDLE)
+            case S.MOVING_UP | S.MOVING_DOWN:
+                c.move(+1 if self is S.MOVING_UP else -1)
+                if c.is_stop(c.floor):
+                    c.arrive()
+                    return S.DOORS_OPEN
+                return self
+            case S.DOORS_OPEN:
+                if c.door_blocked():  # safety: never close on a person
+                    c.reset_door_timer()
+                    return S.DOORS_OPEN
+                if c.count_down_door() > 0:
+                    return S.DOORS_OPEN
+                return S.IDLE  # doors closed; IDLE decides next
+            case _:
+                return S.MAINTENANCE
+
+    def accepts_calls(self) -> bool:
+        return self is not CarState.MAINTENANCE
+
+
+class ElevatorCar:
+    DOOR_TICKS = 2
+
+    def __init__(self, id: int, min_floor: int, max_floor: int, start_floor: int) -> None:
+        self.id = id
+        self._min_floor, self._max_floor = min_floor, max_floor
+        self.floor = start_floor
+        self._direction = Direction.NONE
+        self.state = CarState.IDLE
+        self._stops: set[int] = set()
+        self._door_ticks = 0
+        self._blocked = False
+        self._maintenance = False
+
+    def add_stop(self, f: int) -> bool:
+        """Car button or dispatcher assignment. Returns False if the car is not taking calls."""
+        if f < self._min_floor or f > self._max_floor:
+            raise ValueError(f"no floor {f}")
+        if not self.state.accepts_calls() or self._maintenance:
+            return False
+        self._stops.add(f)  # duplicates ignored by the set
+        return True
+
+    def tick(self) -> None:
+        nxt = self.state.on_tick(self)
+        if nxt is not self.state:
+            print(f"car {self.id}: {self.state.name} -> {nxt.name} at floor {self.floor}")
+        self.state = nxt
+
+    def cost_for(self, call: HallCall) -> int:
+        """Cost of serving a hall call; the controller picks the cheapest car."""
+        if not self.state.accepts_calls() or self._maintenance:
+            return MAX_COST
+        distance = abs(self.floor - call.floor)
+        on_the_way = (self.state is CarState.MOVING_UP and call.direction is Direction.UP and call.floor > self.floor) or \\
+                     (self.state is CarState.MOVING_DOWN and call.direction is Direction.DOWN and call.floor < self.floor)
+        if self.state is CarState.IDLE or on_the_way:
+            return distance
+        return distance + 2 * (self._max_floor - self._min_floor)  # must finish its current sweep first
+
+    # ---- helpers used only by CarState ----
+    def is_stop(self, f: int) -> bool: return f in self._stops
+
+    def arrive(self) -> None:
+        self._stops.discard(self.floor)
+        self._door_ticks = self.DOOR_TICKS
+
+    def move(self, delta: int) -> None: self.floor += delta
+
+    def count_down_door(self) -> int:
+        self._door_ticks -= 1
+        return self._door_ticks
+
+    def reset_door_timer(self) -> None:
+        self._door_ticks = self.DOOR_TICKS
+        self._blocked = False
+
+    def door_blocked(self) -> bool: return self._blocked
+    def set_direction(self, d: Direction) -> None: self._direction = d
+    def maintenance_requested(self) -> bool: return self._maintenance
+
+    def choose_direction(self) -> Direction:
+        """LOOK rule: keep going while work remains ahead."""
+        above = min((s for s in self._stops if s > self.floor), default=None)
+        below = max((s for s in self._stops if s < self.floor), default=None)
+        if self._direction is Direction.UP and above is not None:
+            return Direction.UP
+        if self._direction is Direction.DOWN and below is not None:
+            return Direction.DOWN
+        if above is not None and below is not None:
+            return Direction.UP if (above - self.floor) <= (self.floor - below) else Direction.DOWN
+        if above is not None:
+            return Direction.UP
+        if below is not None:
+            return Direction.DOWN
+        return Direction.NONE
+
+    # ---- outside events ----
+    def block_door(self) -> None: self._blocked = True
+
+    def request_maintenance(self) -> None:
+        self._maintenance = True
+        self._stops.clear()
+
+    def finish_maintenance(self) -> None:
+        self._maintenance = False
+        if self.state is CarState.MAINTENANCE:
+            self.state = CarState.IDLE
+
+
+class ElevatorController:
+    def __init__(self, cars: list[ElevatorCar]) -> None:
+        self._cars = cars
+
+    def on_hall_call(self, call: HallCall) -> ElevatorCar:
+        best = min(self._cars, key=lambda c: c.cost_for(call))
+        if best.cost_for(call) == MAX_COST:
+            raise RuntimeError("no car in service")
+        best.add_stop(call.floor)
+        return best
+
+    def on_car_button(self, car_index: int, floor: int) -> None:
+        self._cars[car_index].add_stop(floor)
+
+    def tick_all(self) -> None:
+        for c in self._cars:
+            c.tick()
+
+
+if __name__ == "__main__":
+    a, b = ElevatorCar(0, 0, 9, 0), ElevatorCar(1, 0, 9, 9)
+    ctl = ElevatorController([a, b])
+    print("hall call 2 UP -> car", ctl.on_hall_call(HallCall(2, Direction.UP)).id)
+    print("hall call 8 DOWN -> car", ctl.on_hall_call(HallCall(8, Direction.DOWN)).id)
+    for _ in range(6):
+        ctl.tick_all()
+    ctl.on_car_button(0, 6)  # passenger in car 0 presses 6
+    a.block_door()  # someone holds the door
+    for _ in range(12):
+        ctl.tick_all()
+    print(f"car 0 at {a.floor} {a.state.name}, car 1 at {b.floor} {b.state.name}")` },
+          { lang: 'ts', code: `type Direction = "UP" | "DOWN" | "NONE";
+
+/** A request from a floor button: "I am on floor 4 and want to go UP". */
+interface HallCall { readonly floor: number; readonly direction: Direction }
+
+const MAX_COST = 2 ** 31 - 1;
+
+/** Object-literal State pattern: each state carries its own behaviour. */
+interface CarState {
+  readonly name: string;
+  onTick(c: ElevatorCar): CarState;
+  acceptsCalls(): boolean;
+}
+
+function state(name: string, onTick: (c: ElevatorCar) => CarState, acceptsCalls = true): CarState {
+  return { name, onTick, acceptsCalls: () => acceptsCalls };
+}
+
+const IDLE: CarState = state("IDLE", (c) => {
+  if (c.maintenanceRequested()) return MAINTENANCE;
+  if (c.isStop(c.floor)) { c.arrive(); return DOORS_OPEN; }
+  const d = c.chooseDirection();
+  c.setDirection(d);
+  return d === "UP" ? MOVING_UP : d === "DOWN" ? MOVING_DOWN : IDLE;
+});
+const MOVING_UP: CarState = state("MOVING_UP", (c) => {
+  c.move(+1);
+  if (c.isStop(c.floor)) { c.arrive(); return DOORS_OPEN; }
+  return MOVING_UP;
+});
+const MOVING_DOWN: CarState = state("MOVING_DOWN", (c) => {
+  c.move(-1);
+  if (c.isStop(c.floor)) { c.arrive(); return DOORS_OPEN; }
+  return MOVING_DOWN;
+});
+const DOORS_OPEN: CarState = state("DOORS_OPEN", (c) => {
+  if (c.doorBlocked()) { c.resetDoorTimer(); return DOORS_OPEN; } // safety: never close on a person
+  if (c.countDownDoor() > 0) return DOORS_OPEN;
+  return IDLE; // doors closed; IDLE decides next
+});
+const MAINTENANCE: CarState = state("MAINTENANCE", () => MAINTENANCE, false);
+
+class ElevatorCar {
+  static readonly DOOR_TICKS = 2;
+  floor: number;
+  state: CarState = IDLE;
+  private direction: Direction = "NONE";
+  private readonly stops = new Set<number>();
+  private doorTicks = 0;
+  private blocked = false;
+  private maintenance = false;
+
+  constructor(readonly id: number, private readonly minFloor: number, private readonly maxFloor: number, startFloor: number) {
+    this.floor = startFloor;
+  }
+
+  /** Car button or dispatcher assignment. Returns false if the car is not taking calls. */
+  addStop(f: number): boolean {
+    if (f < this.minFloor || f > this.maxFloor) throw new RangeError(\`no floor \${f}\`);
+    if (!this.state.acceptsCalls() || this.maintenance) return false;
+    this.stops.add(f); // duplicates ignored by the set
+    return true;
+  }
+
+  tick(): void {
+    const next = this.state.onTick(this);
+    if (next !== this.state) console.log(\`car \${this.id}: \${this.state.name} -> \${next.name} at floor \${this.floor}\`);
+    this.state = next;
+  }
+
+  /** Cost of serving a hall call; the controller picks the cheapest car. */
+  costFor(call: HallCall): number {
+    if (!this.state.acceptsCalls() || this.maintenance) return MAX_COST;
+    const distance = Math.abs(this.floor - call.floor);
+    const onTheWay = (this.state === MOVING_UP && call.direction === "UP" && call.floor > this.floor)
+      || (this.state === MOVING_DOWN && call.direction === "DOWN" && call.floor < this.floor);
+    if (this.state === IDLE || onTheWay) return distance;
+    return distance + 2 * (this.maxFloor - this.minFloor); // must finish its current sweep first
+  }
+
+  // ---- helpers used only by the states ----
+  isStop(f: number): boolean { return this.stops.has(f); }
+  arrive(): void { this.stops.delete(this.floor); this.doorTicks = ElevatorCar.DOOR_TICKS; }
+  move(delta: number): void { this.floor += delta; }
+  countDownDoor(): number { return --this.doorTicks; }
+  resetDoorTimer(): void { this.doorTicks = ElevatorCar.DOOR_TICKS; this.blocked = false; }
+  doorBlocked(): boolean { return this.blocked; }
+  setDirection(d: Direction): void { this.direction = d; }
+  maintenanceRequested(): boolean { return this.maintenance; }
+  chooseDirection(): Direction { // LOOK rule: keep going while work remains ahead
+    const ahead = [...this.stops].filter((s) => s > this.floor);
+    const behind = [...this.stops].filter((s) => s < this.floor);
+    const above = ahead.length ? Math.min(...ahead) : null;
+    const below = behind.length ? Math.max(...behind) : null;
+    if (this.direction === "UP" && above !== null) return "UP";
+    if (this.direction === "DOWN" && below !== null) return "DOWN";
+    if (above !== null && below !== null) return (above - this.floor) <= (this.floor - below) ? "UP" : "DOWN";
+    if (above !== null) return "UP";
+    if (below !== null) return "DOWN";
+    return "NONE";
+  }
+
+  // ---- outside events ----
+  blockDoor(): void { this.blocked = true; }
+  requestMaintenance(): void { this.maintenance = true; this.stops.clear(); }
+  finishMaintenance(): void { this.maintenance = false; if (this.state === MAINTENANCE) this.state = IDLE; }
+}
+
+class ElevatorController {
+  constructor(private readonly cars: ElevatorCar[]) {}
+
+  onHallCall(call: HallCall): ElevatorCar {
+    let best = this.cars[0];
+    for (const c of this.cars) if (c.costFor(call) < best.costFor(call)) best = c;
+    if (best.costFor(call) === MAX_COST) throw new Error("no car in service");
+    best.addStop(call.floor);
+    return best;
+  }
+  onCarButton(carIndex: number, floor: number): void { this.cars[carIndex].addStop(floor); }
+  tickAll(): void { this.cars.forEach((c) => c.tick()); }
+}
+
+const a = new ElevatorCar(0, 0, 9, 0), b = new ElevatorCar(1, 0, 9, 9);
+const ctl = new ElevatorController([a, b]);
+console.log("hall call 2 UP -> car " + ctl.onHallCall({ floor: 2, direction: "UP" }).id);
+console.log("hall call 8 DOWN -> car " + ctl.onHallCall({ floor: 8, direction: "DOWN" }).id);
+for (let t = 0; t < 6; t++) ctl.tickAll();
+ctl.onCarButton(0, 6); // passenger in car 0 presses 6
+a.blockDoor(); // someone holds the door
+for (let t = 0; t < 12; t++) ctl.tickAll();
+console.log(\`car 0 at \${a.floor} \${a.state.name}, car 1 at \${b.floor} \${b.state.name}\`);` },
+          { lang: 'cpp', code: `enum class Direction { UP, DOWN, NONE };
+
+// A request from a floor button: "I am on floor 4 and want to go UP".
+struct HallCall {
+    int floor;
+    Direction direction;
+};
+
+// Enum State pattern: the state is a plain enum; onTick(state, car) holds the behaviour.
+enum class CarState { IDLE, MOVING_UP, MOVING_DOWN, DOORS_OPEN, MAINTENANCE };
+
+const char* name(CarState s) {
+    static const char* n[] = {"IDLE", "MOVING_UP", "MOVING_DOWN", "DOORS_OPEN", "MAINTENANCE"};
+    return n[static_cast<int>(s)];
+}
+bool acceptsCalls(CarState s) { return s != CarState::MAINTENANCE; }
+
+class ElevatorCar {
+public:
+    static constexpr int DOOR_TICKS = 2;
+
+    ElevatorCar(int id, int minFloor, int maxFloor, int startFloor)
+        : id_(id), minFloor_(minFloor), maxFloor_(maxFloor), floor_(startFloor) {}
+
+    // Car button or dispatcher assignment. Returns false if the car is not taking calls.
+    bool addStop(int f) {
+        if (f < minFloor_ || f > maxFloor_) throw invalid_argument("no floor " + to_string(f));
+        if (!acceptsCalls(state_) || maintenance_) return false;
+        stops_.insert(f);  // duplicates ignored by the set
+        return true;
+    }
+
+    void tick() {
+        CarState next = onTick(state_);
+        if (next != state_) cout << "car " << id_ << ": " << name(state_) << " -> " << name(next) << " at floor " << floor_ << "\\n";
+        state_ = next;
+    }
+
+    // Cost of serving a hall call; the controller picks the cheapest car.
+    int costFor(const HallCall& call) const {
+        if (!acceptsCalls(state_) || maintenance_) return INT_MAX;
+        int distance = abs(floor_ - call.floor);
+        bool onTheWay = (state_ == CarState::MOVING_UP && call.direction == Direction::UP && call.floor > floor_)
+                     || (state_ == CarState::MOVING_DOWN && call.direction == Direction::DOWN && call.floor < floor_);
+        if (state_ == CarState::IDLE || onTheWay) return distance;
+        return distance + 2 * (maxFloor_ - minFloor_);  // must finish its current sweep first
+    }
+
+    // ---- outside events ----
+    void blockDoor() { blocked_ = true; }
+    void requestMaintenance() { maintenance_ = true; stops_.clear(); }
+    void finishMaintenance() { maintenance_ = false; if (state_ == CarState::MAINTENANCE) state_ = CarState::IDLE; }
+    int floor() const { return floor_; }
+    int id() const { return id_; }
+    CarState state() const { return state_; }
+
+private:
+    // The behaviour of each state, one case per enum constant.
+    CarState onTick(CarState s) {
+        switch (s) {
+            case CarState::IDLE: {
+                if (maintenance_) return CarState::MAINTENANCE;
+                if (stops_.count(floor_)) { arrive(); return CarState::DOORS_OPEN; }
+                direction_ = chooseDirection();
+                return direction_ == Direction::UP ? CarState::MOVING_UP
+                     : direction_ == Direction::DOWN ? CarState::MOVING_DOWN : CarState::IDLE;
+            }
+            case CarState::MOVING_UP:
+            case CarState::MOVING_DOWN:
+                floor_ += s == CarState::MOVING_UP ? +1 : -1;
+                if (stops_.count(floor_)) { arrive(); return CarState::DOORS_OPEN; }
+                return s;
+            case CarState::DOORS_OPEN:
+                if (blocked_) { doorTicks_ = DOOR_TICKS; blocked_ = false; return CarState::DOORS_OPEN; }  // safety: never close on a person
+                if (--doorTicks_ > 0) return CarState::DOORS_OPEN;
+                return CarState::IDLE;  // doors closed; IDLE decides next
+            case CarState::MAINTENANCE:
+                return CarState::MAINTENANCE;
+        }
+        return s;
+    }
+
+    void arrive() { stops_.erase(floor_); doorTicks_ = DOOR_TICKS; }
+
+    Direction chooseDirection() const {  // LOOK rule: keep going while work remains ahead
+        auto up = stops_.upper_bound(floor_);
+        auto lo = stops_.lower_bound(floor_);
+        bool hasAbove = up != stops_.end(), hasBelow = lo != stops_.begin();
+        int above = hasAbove ? *up : 0, below = hasBelow ? *prev(lo) : 0;
+        if (direction_ == Direction::UP && hasAbove) return Direction::UP;
+        if (direction_ == Direction::DOWN && hasBelow) return Direction::DOWN;
+        if (hasAbove && hasBelow) return (above - floor_) <= (floor_ - below) ? Direction::UP : Direction::DOWN;
+        if (hasAbove) return Direction::UP;
+        if (hasBelow) return Direction::DOWN;
+        return Direction::NONE;
+    }
+
+    int id_, minFloor_, maxFloor_, floor_;
+    Direction direction_ = Direction::NONE;
+    CarState state_ = CarState::IDLE;
+    set<int> stops_;  // sorted: bound lookups are O(log n)
+    int doorTicks_ = 0;
+    bool blocked_ = false, maintenance_ = false;
+};
+
+class ElevatorController {
+    vector<ElevatorCar*> cars_;  // the cars are owned by the caller
+
+public:
+    explicit ElevatorController(vector<ElevatorCar*> cars) : cars_(move(cars)) {}
+
+    ElevatorCar& onHallCall(const HallCall& call) {
+        auto best = min_element(cars_.begin(), cars_.end(),
+                                [&](ElevatorCar* x, ElevatorCar* y) { return x->costFor(call) < y->costFor(call); });
+        if ((*best)->costFor(call) == INT_MAX) throw runtime_error("no car in service");
+        (*best)->addStop(call.floor);
+        return **best;
+    }
+    void onCarButton(int carIndex, int floor) { cars_[carIndex]->addStop(floor); }
+    void tickAll() { for (ElevatorCar* c : cars_) c->tick(); }
+};
+
+int main() {
+    ElevatorCar a(0, 0, 9, 0), b(1, 0, 9, 9);
+    ElevatorController ctl({&a, &b});
+    cout << "hall call 2 UP -> car " << ctl.onHallCall({2, Direction::UP}).id() << "\\n";
+    cout << "hall call 8 DOWN -> car " << ctl.onHallCall({8, Direction::DOWN}).id() << "\\n";
+    for (int t = 0; t < 6; t++) ctl.tickAll();
+    ctl.onCarButton(0, 6);  // passenger in car 0 presses 6
+    a.blockDoor();          // someone holds the door
+    for (int t = 0; t < 12; t++) ctl.tickAll();
+    cout << "car 0 at " << a.floor() << " " << name(a.state()) << ", car 1 at " << b.floor() << " " << name(b.state()) << "\\n";
+}` }
+        ] },
     viz: {
       title: 'One elevator car: states light up as it serves calls floor by floor',
       input: 'start=0; calls=5 B 2 M 7',
@@ -775,11 +2185,37 @@ class ElevatorController {
       }
     },
     examples: [
-      { title: 'Hall call vs car call: two kinds of request', html: `<p>${H.table(['', 'Hall call', 'Car call'], [['Pressed', 'on the floor (▲/▼)', 'inside the car (a floor number)'], ['Data', '(floor, direction)', '(car id, floor)'], ['Who decides the car?', 'the controller (dispatcher)', 'already decided — it is that car'], ['Example', 'Floor 4, ▲', 'Car B, go to 9']])}</p><p>Modelling both as one <code>Request</code> class with a nullable direction is a common mistake; the dispatcher only ever handles hall calls. Two small records keep each rule obvious.</p>`, code: `record HallRequest(int floor, boolean up) {}
-record CarRequest(int carId, int floor) {}` },
-      { title: 'Why a set of stops, not a FIFO queue', html: `<p>Calls arrive: 7, 2, 6 while the car is at 0. A FIFO queue forces 0→7→2→6 = 7 + 5 + 4 = <b>16 floors</b>. A sorted set lets the car serve 2 and 6 on the way up: 0→2→6→7 = <b>7 floors</b>. Also, pressing 6 three times must not create three stops — a set ignores duplicates for free. ${H.c('g', 'TreeSet&lt;Integer&gt; gives higher(f)/lower(f) in O(log n)')}, exactly the "next stop above/below me" questions a lift asks.</p>` },
+      { title: 'Hall call vs car call: two kinds of request', html: `<p>${H.table(['', 'Hall call', 'Car call'], [['Pressed', 'on the floor (▲/▼)', 'inside the car (a floor number)'], ['Data', '(floor, direction)', '(car id, floor)'], ['Who decides the car?', 'the controller (dispatcher)', 'already decided — it is that car'], ['Example', 'Floor 4, ▲', 'Car B, go to 9']])}</p><p>Modelling both as one <code>Request</code> class with a nullable direction is a common mistake; the dispatcher only ever handles hall calls. Two small records keep each rule obvious.</p>`, code: { lang: 'java', code: `record HallRequest(int floor, boolean up) {}
+record CarRequest(int carId, int floor) {}`, alt: [
+          { lang: 'python', code: `from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class HallRequest:
+    floor: int
+    up: bool
+
+
+@dataclass(frozen=True)
+class CarRequest:
+    car_id: int
+    floor: int` },
+          { lang: 'ts', code: `interface HallRequest { readonly floor: number; readonly up: boolean }
+interface CarRequest { readonly carId: number; readonly floor: number }` },
+          { lang: 'cpp', code: `struct HallRequest {
+    int floor;
+    bool up;
+    bool operator==(const HallRequest&) const = default;
+};
+struct CarRequest {
+    int carId;
+    int floor;
+    bool operator==(const CarRequest&) const = default;
+};` }
+        ] } },
+      { title: 'Why a set of stops, not a FIFO queue', html: `<p>Calls arrive: 7, 2, 6 while the car is at 0. A FIFO queue forces 0→7→2→6 = 7 + 5 + 4 = <b>16 floors</b>. A sorted set lets the car serve 2 and 6 on the way up: 0→2→6→7 = <b>7 floors</b>. Also, pressing 6 three times must not create three stops — a set ignores duplicates for free. ${H.c('g', 'A sorted set (TreeSet, std::set, or a sorted list with bisect) gives higher(f)/lower(f) in O(log n)')}, exactly the "next stop above/below me" questions a lift asks.</p>` },
       { title: 'Door obstruction: the safety self-loop', html: `<p>In DOORS_OPEN, each tick checks the door sensor first. Blocked → reset timer, stay open. This rule lives in exactly one place (<code>DOORS_OPEN.onTick</code>). With flags, you would have to remember to check <code>doorBlocked</code> everywhere doors might close — and an elevator closing on a child is not a bug you get to fix later.</p>` },
-      { title: 'Add-a-state follow-up: OVERLOADED', html: `<p>"If load exceeds 680 kg, keep doors open and beep." Add <b>OVERLOADED</b>: DOORS_OPEN → OVERLOADED when the weight sensor trips; OVERLOADED → DOORS_OPEN when weight drops. IDLE/MOVING states are untouched because only DOORS_OPEN can lead there — a car cannot become overloaded with closed doors.</p>`, code: `enum CarState2 {
+      { title: 'Add-a-state follow-up: OVERLOADED', html: `<p>"If load exceeds 680 kg, keep doors open and beep." Add <b>OVERLOADED</b>: DOORS_OPEN → OVERLOADED when the weight sensor trips; OVERLOADED → DOORS_OPEN when weight drops. IDLE/MOVING states are untouched because only DOORS_OPEN can lead there — a car cannot become overloaded with closed doors.</p>`, code: { lang: 'java', code: `enum CarState2 {
     DOORS_OPEN { CarState2 onTick(Car2 c) { return c.loadKg() > 680 ? OVERLOADED : DOORS_OPEN; } },
     OVERLOADED { CarState2 onTick(Car2 c) { c.beep(); return c.loadKg() > 680 ? OVERLOADED : DOORS_OPEN; } };
     abstract CarState2 onTick(Car2 c);
@@ -788,19 +2224,68 @@ class Car2 {
     int load = 700;
     int loadKg() { return load; }
     void beep() { System.out.println("BEEP: overloaded"); }
-}` },
+}`, alt: [
+          { lang: 'python', code: `from enum import Enum
+
+
+class Car2:
+    def __init__(self) -> None:
+        self.load = 700
+
+    def load_kg(self) -> int: return self.load
+    def beep(self) -> None: print("BEEP: overloaded")
+
+
+class CarState2(Enum):
+    DOORS_OPEN = 1
+    OVERLOADED = 2
+
+    def on_tick(self, c: Car2) -> "CarState2":
+        if self is CarState2.OVERLOADED:
+            c.beep()
+        return CarState2.OVERLOADED if c.load_kg() > 680 else CarState2.DOORS_OPEN` },
+          { lang: 'ts', code: `class Car2 {
+  load = 700;
+  loadKg(): number { return this.load; }
+  beep(): void { console.log("BEEP: overloaded"); }
+}
+
+interface CarState2 {
+  onTick(c: Car2): CarState2;
+}
+
+const DOORS_OPEN: CarState2 = { onTick: (c) => (c.loadKg() > 680 ? OVERLOADED : DOORS_OPEN) };
+const OVERLOADED: CarState2 = {
+  onTick: (c) => {
+    c.beep();
+    return c.loadKg() > 680 ? OVERLOADED : DOORS_OPEN;
+  },
+};` },
+          { lang: 'cpp', code: `struct Car2 {
+    int load = 700;
+    int loadKg() const { return load; }
+    void beep() const { cout << "BEEP: overloaded\\n"; }
+};
+
+enum class CarState2 { DOORS_OPEN, OVERLOADED };
+
+CarState2 onTick(CarState2 s, const Car2& c) {
+    if (s == CarState2::OVERLOADED) c.beep();
+    return c.loadKg() > 680 ? CarState2::OVERLOADED : CarState2::DOORS_OPEN;
+}` }
+        ] } },
       { title: 'Display as an Observer of the car', html: `<p>Each floor has a display "▲ 5". Instead of the car calling every display, displays <b>subscribe</b> to the car: <code>car.addListener(display)</code>; on every state change the car notifies listeners with (floor, direction). New listeners (a mobile app, a building-management dashboard, a logger) plug in without changing <code>ElevatorCar</code>. State + Observer is the standard combination in elevator designs.</p>` }
     ],
     deepDive: `<p><b>Tick-driven vs event-driven.</b> Our car advances on a clock tick — easy to simulate and test deterministically (great in a machine-coding round). Real controllers are <b>event-driven</b>: sensors fire "floor 4 reached", "door closed", "weight changed"; each event is fed to the current state. Both are the same state machine; only the trigger differs. Say this out loud in interviews.</p>
-<p><b>Single thread of control.</b> Buttons are pressed from many threads (floors, cars, network). Never let them mutate the car directly. Put every input into a <code>BlockingQueue&lt;Event&gt;</code> consumed by one controller thread per car (the <b>actor</b> or event-loop model). Then the state machine needs no locks, and events are applied in a clear order. If you must share, make <code>addStop</code> and <code>tick</code> <code>synchronized</code> on the car.</p>
+<p><b>Single thread of control.</b> Buttons are pressed from many threads (floors, cars, network). Never let them mutate the car directly. Put every input into a thread-safe queue of events (<code>BlockingQueue</code>, <code>queue.Queue</code>, a mutex plus condition variable; in JavaScript the event loop is that queue) consumed by one controller per car (the <b>actor</b> or event-loop model). Then the state machine needs no locks, and events are applied in a clear order. If you must share, guard <code>addStop</code> and <code>tick</code> with one lock per car.</p>
 <p><b>Illegal states must be unrepresentable.</b> With flags (isMoving, isDoorOpen) there are 2 × 2 = 4 combinations and one of them (moving with doors open) is deadly. With one <code>CarState</code> field there are exactly 5 legal states. Real lift firmware is verified exactly this way — every state has a defined door status and motor status.</p>
-<p><b>Stops data structure.</b> <code>TreeSet</code> gives O(log n) for add/remove/higher/lower; with only ~100 floors a <code>boolean[] up, down</code> pair indexed by floor is O(1) and even simpler. Many production designs keep <b>two sets</b>: stops to serve while going up, stops while going down — this is how a hall call "5▼" is <i>not</i> served by a car passing 5 on its way up (the person wants to go down; picking them up now would take them the wrong way).</p>
-<p><b>Timers.</b> In production, DOORS_OPEN uses a <code>ScheduledExecutorService</code> to schedule a <code>DoorTimeout</code> event; leaving the state (exit action) cancels the scheduled future. A forgotten timer that fires in the wrong state is a classic bug — the state machine protects you because DOORS_OPEN is the only state that handles DoorTimeout; every other state ignores it.</p>
+<p><b>Stops data structure.</b> a sorted set (<code>TreeSet</code>, <code>std::set</code>) gives O(log n) for add/remove/higher/lower; with only ~100 floors a <code>boolean[] up, down</code> pair indexed by floor is O(1) and even simpler. Many production designs keep <b>two sets</b>: stops to serve while going up, stops while going down — this is how a hall call "5▼" is <i>not</i> served by a car passing 5 on its way up (the person wants to go down; picking them up now would take them the wrong way).</p>
+<p><b>Timers.</b> In production, DOORS_OPEN uses a scheduler (<code>ScheduledExecutorService</code>, <code>asyncio</code> or <code>threading.Timer</code>, <code>setTimeout</code>, a timer thread) to schedule a <code>DoorTimeout</code> event; leaving the state (exit action) cancels the scheduled future. A forgotten timer that fires in the wrong state is a classic bug — the state machine protects you because DOORS_OPEN is the only state that handles DoorTimeout; every other state ignores it.</p>
 <p><b>Safety vs efficiency hierarchy.</b> Fire service &gt; maintenance &gt; door safety &gt; overload &gt; normal scheduling. Model this as a <b>hierarchical state machine</b>: a top-level FIRE_SERVICE state overrides everything; NORMAL_OPERATION contains IDLE/MOVING/DOORS_OPEN as sub-states.</p>`,
-    aiEra: `<p><b>What AI changes:</b> an LLM will produce a 200-line elevator in seconds — usually a single <code>Elevator</code> class with <code>isMoving</code> and <code>doorOpen</code> booleans and a <code>PriorityQueue</code> of requests. It runs, so juniors stop there. Your job is to review it like a senior: "Which combinations of these flags are illegal? Where is the door-safety rule? What happens to a hall call for 5▼ while the car goes up past 5?"</p>
+    aiEra: `<p><b>What AI changes:</b> an LLM will produce a 200-line elevator in seconds — usually a single <code>Elevator</code> class with <code>isMoving</code> and <code>doorOpen</code> booleans and a priority queue of requests. It runs, so juniors stop there. Your job is to review it like a senior: "Which combinations of these flags are illegal? Where is the door-safety rule? What happens to a hall call for 5▼ while the car goes up past 5?"</p>
 <p><b>Use AI as a partner:</b> <code>Here is my CarState enum and transitions. Generate a randomized simulation that presses 1000 random buttons and asserts: doors never open while moving, every request is eventually served, the car never goes outside floors 0-9.</code> Property-based tests like this find bugs no hand-written test does — and AI is very good at writing them.</p>
 <p><b>Modern buildings:</b> destination dispatch (you type your floor in the lobby and the screen says "take car C"), occupancy prediction from badge-in data, and ML models tuning dispatch weights by time of day (morning up-peak, lunch, evening down-peak). The state machine stays the same; the dispatcher gets smarter.</p>
-<p><b>What you must still own:</b> the state × event table, the safety ordering, the single-thread-of-control decision, and explaining trade-offs (tick vs event, TreeSet vs arrays) in your own words.</p>`,
+<p><b>What you must still own:</b> the state × event table, the safety ordering, the single-thread-of-control decision, and explaining trade-offs (tick vs event, sorted set vs arrays) in your own words.</p>`,
     problems: [{
       title: 'Fire Recall Mode for an Elevator (add-a-state)', level: 'Medium', tags: ['state pattern', 'elevator', 'add-a-state'], companies: ['Amazon', 'Microsoft', 'Otis', 'Uber'],
       statement: `<p>You have a working elevator car with states IDLE, MOVING_UP, MOVING_DOWN, DOORS_OPEN. Add <b>fire recall</b>: when the building's fire alarm triggers, the car must (1) drop all pending stops, (2) if doors are open, close them as soon as the door is not blocked, (3) travel non-stop to the lobby (floor 0), (4) open doors and stay parked, ignoring every call, until the alarm is reset — then return to IDLE. Implement it without adding <code>if (fire)</code> checks to the existing states.</p>`,
@@ -822,9 +2307,10 @@ class Car2 {
     }
 }` },
       mcq: { q: 'A passenger presses "3" inside the car during FIRE_RECALL. With the State pattern, where is this handled?', options: ['FIRE_RECALL.acceptsCalls() returns false, so addStop() rejects it — no other code changes', 'MOVING_DOWN must check a fire flag', 'The controller must filter it', 'It cannot be handled'], answer: 0, explain: 'The new states declare their own policy for calls. The context asks the current state; existing states do not know fire mode exists.' },
-      hints: [`<p>Hint 1: Fire recall is really <b>two</b> new states: FIRE_RECALL (travelling to the lobby) and FIRE_PARKED (doors open, waiting for reset).</p>`, `<p>Hint 2: The alarm is an <b>outside event</b> that can arrive in any state. Handle it once in the car: <code>onFireAlarm()</code> clears stops and sets the state to FIRE_RECALL — the existing states do not need to know.</p>`, `<p>Hint 3: FIRE_RECALL.onTick: if doors open and not blocked → close; else if floor &gt; 0 → move down; else → FIRE_PARKED. Both new states override <code>acceptsCalls()</code> to false. Reset: only FIRE_PARKED → IDLE.</p>`],
+      hints: [`<p>Hint 1: Fire recall is really <b>two</b> new states: FIRE_RECALL (travelling to the lobby) and FIRE_PARKED (doors open, waiting for reset).</p>`, `<p>Hint 2: The alarm is an <b>outside event</b> that can arrive in any state. Handle it once in the car: <code>onFireAlarm()</code> clears stops and sets the state to FIRE_RECALL — the existing states do not need to know.</p>`, `<p>Hint 3: FIRE_RECALL.onTick: if doors open and not blocked → close; else if floor &gt; 0 → move down; else → FIRE_PARKED. Both new states answer <code>acceptsCalls()</code> with false. Reset: only FIRE_PARKED → IDLE.</p>`],
+      tests: { io: true, cases: [{ stdin: '', stdout: "call 3 accepted? false\nFIRE_PARKED at floor 0, door open true\nreset ok? true -> IDLE\nreset again? false\nIDLE at floor 2\n" }] },
       solution: {
-        approach: `<p>Model the alarm as an outside event handled by the context: it clears the stop set and jumps to <b>FIRE_RECALL</b> (doors close safely, then the car moves down without stopping). On reaching floor 0 it becomes <b>FIRE_PARKED</b> (doors open). Both new enum constants override <code>acceptsCalls()</code> to return false, so <code>addStop</code> rejects calls without any flag. Reset is accepted only in FIRE_PARKED. The original four states are unchanged.</p>`,
+        approach: `<p>Model the alarm as an outside event handled by the context: it clears the stop set and jumps to <b>FIRE_RECALL</b> (doors close safely, then the car moves down without stopping). On reaching floor 0 it becomes <b>FIRE_PARKED</b> (doors open). Both new states answer <code>acceptsCalls()</code> with false, so <code>addStop</code> rejects calls without any flag. Reset is accepted only in FIRE_PARKED. The original four states are unchanged.</p>`,
         code: `import java.util.*;
 
 enum FState {
@@ -896,9 +2382,275 @@ class FireCar {
         for (int t = 0; t < 10; t++) car.tick();
         System.out.println(car.state + " at floor " + car.floor + ", door open " + car.doorOpen);
         System.out.println("reset ok? " + car.onAlarmReset() + " -> " + car.state);
+        System.out.println("reset again? " + car.onAlarmReset());       // false: only a parked car resets
+        car.addStop(2);
+        for (int t = 0; t < 5; t++) car.tick();
+        System.out.println(car.state + " at floor " + car.floor);      // back in service
     }
-}`,
-        complexity: `<p>Each tick is O(log n) for the TreeSet operations; recall takes at most (current floor + 1) ticks. Adding the mode cost 2 new enum constants and 2 context methods; the four existing states were not edited.</p>`,
+}`, alt: [
+          { lang: 'python', code: `from enum import Enum
+
+
+class FState(Enum):
+    IDLE = "IDLE"
+    MOVING_UP = "MOVING_UP"
+    MOVING_DOWN = "MOVING_DOWN"
+    DOORS_OPEN = "DOORS_OPEN"
+    # ---------- the two NEW states; nothing above was modified ----------
+    FIRE_RECALL = "FIRE_RECALL"
+    FIRE_PARKED = "FIRE_PARKED"
+
+    def on_tick(self, c: "FireCar") -> "FState":
+        match self:
+            case FState.IDLE:
+                if c.floor in c.stops:
+                    c.stops.discard(c.floor)
+                    c.door_open = True
+                    return FState.DOORS_OPEN
+                if any(f > c.floor for f in c.stops):
+                    return FState.MOVING_UP
+                if any(f < c.floor for f in c.stops):
+                    return FState.MOVING_DOWN
+                return FState.IDLE
+            case FState.MOVING_UP | FState.MOVING_DOWN:
+                c.floor += 1 if self is FState.MOVING_UP else -1
+                if c.floor in c.stops:
+                    c.stops.discard(c.floor)
+                    c.door_open = True
+                    return FState.DOORS_OPEN
+                return self
+            case FState.DOORS_OPEN:
+                if c.door_blocked:
+                    return FState.DOORS_OPEN
+                c.door_open = False
+                return FState.IDLE
+            case FState.FIRE_RECALL:
+                if c.door_open:  # close safely first
+                    if not c.door_blocked:
+                        c.door_open = False
+                    return FState.FIRE_RECALL
+                if c.floor > 0:  # non-stop to lobby
+                    c.floor -= 1
+                    return FState.FIRE_RECALL
+                c.door_open = True
+                return FState.FIRE_PARKED
+            case _:  # FIRE_PARKED
+                return FState.FIRE_PARKED
+
+    def accepts_calls(self) -> bool:
+        return self not in (FState.FIRE_RECALL, FState.FIRE_PARKED)
+
+
+class FireCar:
+    def __init__(self, floor: int) -> None:
+        self.floor = floor
+        self.door_open = False
+        self.door_blocked = False
+        self.stops: set[int] = set()
+        self.state = FState.IDLE
+
+    def add_stop(self, f: int) -> bool:
+        if not self.state.accepts_calls():
+            return False
+        self.stops.add(f)
+        return True
+
+    def tick(self) -> None:
+        self.state = self.state.on_tick(self)
+
+    def on_fire_alarm(self) -> None:
+        """Outside event: valid in ANY state, so the context handles it once."""
+        self.stops.clear()
+        self.state = FState.FIRE_RECALL
+
+    def on_alarm_reset(self) -> bool:
+        """Only a parked car may return to service."""
+        if self.state is not FState.FIRE_PARKED:
+            return False
+        self.door_open = False
+        self.state = FState.IDLE
+        return True
+
+
+if __name__ == "__main__":
+    car = FireCar(6)
+    car.add_stop(9)
+    car.tick()  # IDLE -> MOVING_UP
+    car.on_fire_alarm()
+    print("call 3 accepted?", str(car.add_stop(3)).lower())  # false
+    for _ in range(10):
+        car.tick()
+    print(f"{car.state.name} at floor {car.floor}, door open {str(car.door_open).lower()}")
+    ok = car.on_alarm_reset()
+    print(f"reset ok? {str(ok).lower()} -> {car.state.name}")
+    print("reset again?", str(car.on_alarm_reset()).lower())  # false: only a parked car resets
+    car.add_stop(2)
+    for _ in range(5):
+        car.tick()
+    print(f"{car.state.name} at floor {car.floor}")  # back in service` },
+          { lang: 'ts', code: `interface FState {
+  readonly name: string;
+  onTick(c: FireCar): FState;
+  acceptsCalls(): boolean;
+}
+
+// Each state is an object literal: behaviour lives next to the state it belongs to.
+function state(name: string, onTick: (c: FireCar) => FState, acceptsCalls = true): FState {
+  return { name, onTick, acceptsCalls: () => acceptsCalls };
+}
+
+const IDLE: FState = state("IDLE", (c) => {
+  if (c.stops.delete(c.floor)) { c.doorOpen = true; return DOORS_OPEN; }
+  if ([...c.stops].some((f) => f > c.floor)) return MOVING_UP;
+  if ([...c.stops].some((f) => f < c.floor)) return MOVING_DOWN;
+  return IDLE;
+});
+const MOVING_UP: FState = state("MOVING_UP", (c) => {
+  c.floor++;
+  if (c.stops.delete(c.floor)) { c.doorOpen = true; return DOORS_OPEN; }
+  return MOVING_UP;
+});
+const MOVING_DOWN: FState = state("MOVING_DOWN", (c) => {
+  c.floor--;
+  if (c.stops.delete(c.floor)) { c.doorOpen = true; return DOORS_OPEN; }
+  return MOVING_DOWN;
+});
+const DOORS_OPEN: FState = state("DOORS_OPEN", (c) => {
+  if (c.doorBlocked) return DOORS_OPEN;
+  c.doorOpen = false;
+  return IDLE;
+});
+// ---------- the two NEW states; nothing above was modified ----------
+const FIRE_RECALL: FState = state("FIRE_RECALL", (c) => {
+  if (c.doorOpen) { if (!c.doorBlocked) c.doorOpen = false; return FIRE_RECALL; } // close safely first
+  if (c.floor > 0) { c.floor--; return FIRE_RECALL; } // non-stop to lobby
+  c.doorOpen = true;
+  return FIRE_PARKED;
+}, false);
+const FIRE_PARKED: FState = state("FIRE_PARKED", () => FIRE_PARKED, false);
+
+class FireCar {
+  doorOpen = false;
+  doorBlocked = false;
+  readonly stops = new Set<number>();
+  state: FState = IDLE;
+
+  constructor(public floor: number) {}
+
+  addStop(f: number): boolean {
+    if (!this.state.acceptsCalls()) return false;
+    this.stops.add(f);
+    return true;
+  }
+  tick(): void { this.state = this.state.onTick(this); }
+
+  /** Outside event: valid in ANY state, so the context handles it once. */
+  onFireAlarm(): void { this.stops.clear(); this.state = FIRE_RECALL; }
+
+  /** Only a parked car may return to service. */
+  onAlarmReset(): boolean {
+    if (this.state !== FIRE_PARKED) return false;
+    this.doorOpen = false;
+    this.state = IDLE;
+    return true;
+  }
+}
+
+const car = new FireCar(6);
+car.addStop(9);
+car.tick(); // IDLE -> MOVING_UP
+car.onFireAlarm();
+console.log("call 3 accepted? " + car.addStop(3)); // false
+for (let t = 0; t < 10; t++) car.tick();
+console.log(\`\${car.state.name} at floor \${car.floor}, door open \${car.doorOpen}\`);
+const ok = car.onAlarmReset();
+console.log(\`reset ok? \${ok} -> \${car.state.name}\`);
+console.log("reset again? " + car.onAlarmReset()); // false: only a parked car resets
+car.addStop(2);
+for (let t = 0; t < 5; t++) car.tick();
+console.log(\`\${car.state.name} at floor \${car.floor}\`); // back in service` },
+          { lang: 'cpp', code: `enum class FState { IDLE, MOVING_UP, MOVING_DOWN, DOORS_OPEN, FIRE_RECALL, FIRE_PARKED };  // last two are NEW
+
+const char* toString(FState s) {
+    static const char* names[] = {"IDLE", "MOVING_UP", "MOVING_DOWN", "DOORS_OPEN", "FIRE_RECALL", "FIRE_PARKED"};
+    return names[static_cast<int>(s)];
+}
+
+struct FireCar {
+    int floor;
+    bool doorOpen = false, doorBlocked = false;
+    set<int> stops;
+    FState state = FState::IDLE;
+
+    explicit FireCar(int floor) : floor(floor) {}
+
+    static bool acceptsCalls(FState s) { return s != FState::FIRE_RECALL && s != FState::FIRE_PARKED; }
+
+    bool addStop(int f) {
+        if (!acceptsCalls(state)) return false;
+        stops.insert(f);
+        return true;
+    }
+
+    FState onTick() {
+        switch (state) {
+            case FState::IDLE:
+                if (stops.erase(floor)) { doorOpen = true; return FState::DOORS_OPEN; }
+                if (stops.upper_bound(floor) != stops.end()) return FState::MOVING_UP;
+                if (stops.begin() != stops.end() && *stops.begin() < floor) return FState::MOVING_DOWN;
+                return FState::IDLE;
+            case FState::MOVING_UP:
+            case FState::MOVING_DOWN:
+                floor += state == FState::MOVING_UP ? 1 : -1;
+                if (stops.erase(floor)) { doorOpen = true; return FState::DOORS_OPEN; }
+                return state;
+            case FState::DOORS_OPEN:
+                if (doorBlocked) return FState::DOORS_OPEN;
+                doorOpen = false;
+                return FState::IDLE;
+            case FState::FIRE_RECALL:
+                if (doorOpen) { if (!doorBlocked) doorOpen = false; return FState::FIRE_RECALL; }  // close safely first
+                if (floor > 0) { floor--; return FState::FIRE_RECALL; }                            // non-stop to lobby
+                doorOpen = true;
+                return FState::FIRE_PARKED;
+            case FState::FIRE_PARKED:
+                return FState::FIRE_PARKED;
+        }
+        return state;
+    }
+
+    void tick() { state = onTick(); }
+
+    // Outside event: valid in ANY state, so the context handles it once.
+    void onFireAlarm() { stops.clear(); state = FState::FIRE_RECALL; }
+
+    // Only a parked car may return to service.
+    bool onAlarmReset() {
+        if (state != FState::FIRE_PARKED) return false;
+        doorOpen = false;
+        state = FState::IDLE;
+        return true;
+    }
+};
+
+int main() {
+    cout << boolalpha;
+    FireCar car(6);
+    car.addStop(9);
+    car.tick();  // IDLE -> MOVING_UP
+    car.onFireAlarm();
+    cout << "call 3 accepted? " << car.addStop(3) << "\\n";  // false
+    for (int t = 0; t < 10; t++) car.tick();
+    cout << toString(car.state) << " at floor " << car.floor << ", door open " << car.doorOpen << "\\n";
+    bool ok = car.onAlarmReset();
+    cout << "reset ok? " << ok << " -> " << toString(car.state) << "\\n";
+    cout << "reset again? " << car.onAlarmReset() << "\\n";  // false: only a parked car resets
+    car.addStop(2);
+    for (int t = 0; t < 5; t++) car.tick();
+    cout << toString(car.state) << " at floor " << car.floor << "\\n";  // back in service
+}` }
+        ],
+        complexity: `<p>Each tick is O(log n) for the sorted-set operations; recall takes at most (current floor + 1) ticks. Adding the mode cost 2 new enum constants and 2 context methods; the four existing states were not edited.</p>`,
         followUps: ['Firefighters use a key to drive the car manually (Phase II). Model it as another state — what does it accept?', 'With 4 cars, should all recall at once or one by one? Who coordinates?', 'Should a car already in MAINTENANCE also recall? How would a hierarchical state machine express priority?']
       }
     }]
@@ -1068,7 +2820,276 @@ class SchedulerBench {
             System.out.printf("%-4s route=%s floors=%d%n", s.name(), r, distance(5, r));
         }
     }
-}` }, { lang: 'java', title: 'Multi-car dispatcher with a direction-aware cost function', code: `import java.util.*;
+}`, alt: [
+          { lang: 'python', code: `from abc import ABC, abstractmethod
+from enum import Enum
+
+
+class Dir(Enum):
+    UP = 1
+    DOWN = 2
+
+
+class SchedulingStrategy(ABC):
+    """Strategy: given where the car is, plan the waypoints it will visit."""
+
+    @abstractmethod
+    def name(self) -> str: ...
+
+    @abstractmethod
+    def route(self, start: int, direction: Dir, requests: list[int], top: int) -> list[int]: ...
+
+
+class Fcfs(SchedulingStrategy):
+    def name(self) -> str: return "FCFS"
+
+    def route(self, start: int, direction: Dir, requests: list[int], top: int) -> list[int]:
+        return list(dict.fromkeys(requests))  # arrival order, duplicates removed
+
+
+class Sstf(SchedulingStrategy):
+    def name(self) -> str: return "SSTF"
+
+    def route(self, start: int, direction: Dir, requests: list[int], top: int) -> list[int]:
+        left = set(requests)
+        out: list[int] = []
+        cur, d = start, direction
+        while left:
+            lo = max((f for f in left if f <= cur), default=None)  # nearest below / above
+            hi = min((f for f in left if f >= cur), default=None)
+            d_down = float("inf") if lo is None else cur - lo
+            d_up = float("inf") if hi is None else hi - cur
+            if d_up < d_down or (d_up == d_down and d is Dir.UP):
+                nxt, d = hi, Dir.UP
+            else:
+                nxt, d = lo, Dir.DOWN  # tie -> keep current direction
+            out.append(nxt)
+            left.remove(nxt)
+            cur = nxt
+        return out
+
+
+class Look(SchedulingStrategy):
+    def name(self) -> str: return "LOOK"
+
+    def route(self, start: int, direction: Dir, requests: list[int], top: int) -> list[int]:
+        s = sorted(set(requests))
+        if direction is Dir.UP:
+            # everything at/above ascending, then turn at the LAST request
+            return [f for f in s if f >= start] + [f for f in reversed(s) if f < start]
+        return [f for f in reversed(s) if f <= start] + [f for f in s if f > start]
+
+
+class Scan(SchedulingStrategy):
+    def name(self) -> str: return "SCAN"
+
+    def route(self, start: int, direction: Dir, requests: list[int], top: int) -> list[int]:
+        s = sorted(set(requests))
+        if direction is Dir.UP:
+            first, second, end = [f for f in s if f >= start], [f for f in reversed(s) if f < start], top
+        else:
+            first, second, end = [f for f in reversed(s) if f <= start], [f for f in s if f > start], 0
+        out = list(first)
+        already_at_end = bool(first) and first[-1] == end
+        if second and not already_at_end:
+            out.append(end)  # ride all the way to the end floor
+        return out + second
+
+
+def distance(start: int, route: list[int]) -> int:
+    total, pos = 0, start
+    for f in route:
+        total += abs(f - pos)
+        pos = f
+    return total
+
+
+if __name__ == "__main__":
+    req = [8, 2, 6, 1, 4]
+    for s in (Fcfs(), Sstf(), Scan(), Look()):
+        r = s.route(5, Dir.UP, req, 9)
+        print(f"{s.name():<4} route={r} floors={distance(5, r)}")` },
+          { lang: 'ts', code: `type Dir = "UP" | "DOWN";
+
+/** Strategy: given where the car is, plan the waypoints it will visit. */
+interface SchedulingStrategy {
+  name(): string;
+  route(start: number, dir: Dir, requests: number[], topFloor: number): number[];
+}
+
+const sortedUnique = (xs: number[]): number[] => [...new Set(xs)].sort((a, b) => a - b);
+
+class Fcfs implements SchedulingStrategy {
+  name(): string { return "FCFS"; }
+  route(start: number, dir: Dir, req: number[], top: number): number[] {
+    return [...new Set(req)]; // arrival order, duplicates removed
+  }
+}
+
+class Sstf implements SchedulingStrategy {
+  name(): string { return "SSTF"; }
+  route(start: number, dir: Dir, req: number[], top: number): number[] {
+    const left = new Set(req);
+    const out: number[] = [];
+    let cur = start;
+    let d = dir;
+    while (left.size > 0) {
+      const below = [...left].filter((f) => f <= cur), above = [...left].filter((f) => f >= cur);
+      const lo = below.length ? Math.max(...below) : null; // nearest below / above
+      const hi = above.length ? Math.min(...above) : null;
+      const dDown = lo === null ? Infinity : cur - lo;
+      const dUp = hi === null ? Infinity : hi - cur;
+      let next: number;
+      if (dUp < dDown || (dUp === dDown && d === "UP")) { next = hi!; d = "UP"; }
+      else { next = lo!; d = "DOWN"; } // tie -> keep current direction
+      out.push(next);
+      left.delete(next);
+      cur = next;
+    }
+    return out;
+  }
+}
+
+class Look implements SchedulingStrategy {
+  name(): string { return "LOOK"; }
+  route(start: number, dir: Dir, req: number[], top: number): number[] {
+    const s = sortedUnique(req), desc = [...s].reverse();
+    return dir === "UP"
+      ? [...s.filter((f) => f >= start), ...desc.filter((f) => f < start)] // turn at the LAST request
+      : [...desc.filter((f) => f <= start), ...s.filter((f) => f > start)];
+  }
+}
+
+class Scan implements SchedulingStrategy {
+  name(): string { return "SCAN"; }
+  route(start: number, dir: Dir, req: number[], top: number): number[] {
+    const s = sortedUnique(req), desc = [...s].reverse();
+    const up = dir === "UP";
+    const first = up ? s.filter((f) => f >= start) : desc.filter((f) => f <= start);
+    const second = up ? desc.filter((f) => f < start) : s.filter((f) => f > start);
+    const end = up ? top : 0;
+    const out = [...first];
+    const alreadyAtEnd = first.length > 0 && first[first.length - 1] === end;
+    if (second.length > 0 && !alreadyAtEnd) out.push(end); // ride all the way to the end floor
+    return [...out, ...second];
+  }
+}
+
+function distance(start: number, route: number[]): number {
+  let total = 0, pos = start;
+  for (const f of route) { total += Math.abs(f - pos); pos = f; }
+  return total;
+}
+
+const req = [8, 2, 6, 1, 4];
+const strategies: SchedulingStrategy[] = [new Fcfs(), new Sstf(), new Scan(), new Look()];
+for (const s of strategies) {
+  const r = s.route(5, "UP", req, 9);
+  console.log(\`\${s.name().padEnd(4)} route=[\${r.join(", ")}] floors=\${distance(5, r)}\`);
+}` },
+          { lang: 'cpp', code: `enum class Dir { UP, DOWN };
+
+// Strategy: given where the car is, plan the waypoints it will visit.
+struct SchedulingStrategy {
+    virtual ~SchedulingStrategy() = default;
+    virtual string name() const = 0;
+    virtual vector<int> route(int start, Dir dir, const vector<int>& requests, int topFloor) const = 0;
+};
+
+struct Fcfs final : SchedulingStrategy {
+    string name() const override { return "FCFS"; }
+    vector<int> route(int, Dir, const vector<int>& req, int) const override {
+        vector<int> out;
+        for (int f : req) if (find(out.begin(), out.end(), f) == out.end()) out.push_back(f);  // arrival order, no duplicates
+        return out;
+    }
+};
+
+struct Sstf final : SchedulingStrategy {
+    string name() const override { return "SSTF"; }
+    vector<int> route(int start, Dir dir, const vector<int>& req, int) const override {
+        set<int> left(req.begin(), req.end());
+        vector<int> out;
+        int cur = start;
+        Dir d = dir;
+        while (!left.empty()) {
+            auto hi = left.lower_bound(cur);  // nearest above / below in O(log n)
+            auto lo = left.upper_bound(cur);
+            bool hasLo = lo != left.begin();
+            if (hasLo) --lo;
+            int dDown = hasLo ? cur - *lo : INT_MAX;
+            int dUp = hi != left.end() ? *hi - cur : INT_MAX;
+            int next;
+            if (dUp < dDown || (dUp == dDown && d == Dir::UP)) { next = *hi; d = Dir::UP; }
+            else { next = *lo; d = Dir::DOWN; }  // tie -> keep current direction
+            out.push_back(next);
+            left.erase(next);
+            cur = next;
+        }
+        return out;
+    }
+};
+
+struct Look final : SchedulingStrategy {
+    string name() const override { return "LOOK"; }
+    vector<int> route(int start, Dir dir, const vector<int>& req, int) const override {
+        set<int> s(req.begin(), req.end());
+        vector<int> out;
+        if (dir == Dir::UP) {
+            for (auto it = s.lower_bound(start); it != s.end(); ++it) out.push_back(*it);  // at/above, ascending
+            for (auto it = s.lower_bound(start); it != s.begin();) out.push_back(*--it);    // then turn at the LAST request
+        } else {
+            for (auto it = s.upper_bound(start); it != s.begin();) out.push_back(*--it);
+            for (auto it = s.upper_bound(start); it != s.end(); ++it) out.push_back(*it);
+        }
+        return out;
+    }
+};
+
+struct Scan final : SchedulingStrategy {
+    string name() const override { return "SCAN"; }
+    vector<int> route(int start, Dir dir, const vector<int>& req, int top) const override {
+        set<int> s(req.begin(), req.end());
+        vector<int> first, second;
+        int end;
+        if (dir == Dir::UP) {
+            for (auto it = s.lower_bound(start); it != s.end(); ++it) first.push_back(*it);
+            for (auto it = s.lower_bound(start); it != s.begin();) second.push_back(*--it);
+            end = top;
+        } else {
+            for (auto it = s.upper_bound(start); it != s.begin();) first.push_back(*--it);
+            for (auto it = s.upper_bound(start); it != s.end(); ++it) second.push_back(*it);
+            end = 0;
+        }
+        vector<int> out = first;
+        bool alreadyAtEnd = !first.empty() && first.back() == end;
+        if (!second.empty() && !alreadyAtEnd) out.push_back(end);  // ride all the way to the end floor
+        out.insert(out.end(), second.begin(), second.end());
+        return out;
+    }
+};
+
+int distance(int start, const vector<int>& route) {
+    int total = 0, pos = start;
+    for (int f : route) { total += abs(f - pos); pos = f; }
+    return total;
+}
+
+int main() {
+    vector<int> req = {8, 2, 6, 1, 4};
+    vector<unique_ptr<SchedulingStrategy>> strategies;
+    strategies.push_back(make_unique<Fcfs>());
+    strategies.push_back(make_unique<Sstf>());
+    strategies.push_back(make_unique<Scan>());
+    strategies.push_back(make_unique<Look>());
+    for (const auto& s : strategies) {
+        vector<int> r = s->route(5, Dir::UP, req, 9);
+        cout << left << setw(4) << s->name() << " route=[";
+        for (size_t i = 0; i < r.size(); i++) cout << (i ? ", " : "") << r[i];
+        cout << "] floors=" << distance(5, r) << "\\n";
+    }
+}` }
+        ] }, { lang: 'java', title: 'Multi-car dispatcher with a direction-aware cost function', code: `import java.util.*;
 
 enum Motion { UP, DOWN, IDLE }
 
@@ -1132,7 +3153,224 @@ class Dispatcher {
             System.out.println("call " + call + " -> car " + d.onHallCall(call).id);
         }
     }
-}` }],
+}`, alt: [
+          { lang: 'python', code: `from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from enum import Enum
+
+
+class Motion(Enum):
+    UP = 1
+    DOWN = 2
+    IDLE = 3
+
+
+@dataclass(frozen=True)
+class Call:
+    floor: int
+    wants_up: bool
+
+    def __str__(self) -> str:  # same look as a Java record
+        return f"Call[floor={self.floor}, wantsUp={str(self.wants_up).lower()}]"
+
+
+@dataclass
+class Car:
+    id: str
+    floor: int
+    motion: Motion
+    assigned: list[int] = field(default_factory=list)
+
+
+class DispatchStrategy(ABC):
+    @abstractmethod
+    def choose(self, cars: list[Car], call: Call, top: int) -> Car: ...
+
+
+class NearestCarDispatch(DispatchStrategy):
+    """Estimated floors to travel before reaching the caller, assuming SCAN-like sweeps, + load penalty."""
+
+    @staticmethod
+    def travel(c: Car, k: Call, top: int) -> int:
+        p, f = c.floor, k.floor
+        if c.motion is Motion.IDLE:
+            return abs(p - f)
+        if c.motion is Motion.UP:
+            if k.wants_up and f >= p:
+                return f - p  # on the way
+            if not k.wants_up:
+                return (top - p) + (top - f)  # up to the top, then down to f
+            return (top - p) + top + f  # full loop: top, bottom, back up to f
+        if not k.wants_up and f <= p:
+            return p - f
+        if k.wants_up:
+            return p + f  # down to 0, then up to f
+        return p + top + (top - f)
+
+    def choose(self, cars: list[Car], call: Call, top: int) -> Car:
+        # the small penalty spreads the load; min() keeps the first car on ties
+        return min(cars, key=lambda c: self.travel(c, call, top) + len(c.assigned))
+
+
+class Dispatcher:
+    def __init__(self, cars: list[Car], top: int, strategy: DispatchStrategy) -> None:
+        self._cars = cars
+        self._top = top
+        self._strategy = strategy  # swappable: zoning in the morning rush, etc.
+
+    def set_strategy(self, s: DispatchStrategy) -> None:
+        self._strategy = s
+
+    def on_hall_call(self, call: Call) -> Car:
+        c = self._strategy.choose(self._cars, call, self._top)
+        c.assigned.append(call.floor)
+        if c.motion is Motion.IDLE and c.floor != call.floor:
+            c.motion = Motion.UP if call.floor > c.floor else Motion.DOWN
+        return c
+
+
+if __name__ == "__main__":
+    cars = [Car("A", 0, Motion.IDLE), Car("B", 6, Motion.DOWN), Car("C", 3, Motion.UP)]
+    d = Dispatcher(cars, 9, NearestCarDispatch())
+    for call in [Call(4, True), Call(7, False), Call(2, False)]:
+        print(f"call {call} -> car {d.on_hall_call(call).id}")` },
+          { lang: 'ts', code: `type Motion = "UP" | "DOWN" | "IDLE";
+
+interface Call { readonly floor: number; readonly wantsUp: boolean }
+
+class Car {
+  readonly assigned: number[] = [];
+  constructor(readonly id: string, public floor: number, public motion: Motion) {}
+}
+
+interface DispatchStrategy {
+  choose(cars: Car[], call: Call, top: number): Car;
+}
+
+/** Estimated floors to travel before reaching the caller, assuming SCAN-like sweeps, + load penalty. */
+class NearestCarDispatch implements DispatchStrategy {
+  static travel(c: Car, k: Call, top: number): number {
+    const p = c.floor, f = k.floor;
+    switch (c.motion) {
+      case "IDLE": return Math.abs(p - f);
+      case "UP":
+        if (k.wantsUp && f >= p) return f - p; // on the way
+        if (!k.wantsUp) return (top - p) + (top - f); // up to the top, then down to f
+        return (top - p) + top + f; // full loop: top, bottom, back up to f
+      default:
+        if (!k.wantsUp && f <= p) return p - f;
+        if (k.wantsUp) return p + f; // down to 0, then up to f
+        return p + top + (top - f);
+    }
+  }
+
+  choose(cars: Car[], call: Call, top: number): Car {
+    let best = cars[0];
+    let bestCost = Infinity;
+    for (const c of cars) {
+      const cost = NearestCarDispatch.travel(c, call, top) + c.assigned.length; // small penalty spreads the load
+      if (cost < bestCost) { bestCost = cost; best = c; }
+    }
+    return best;
+  }
+}
+
+class Dispatcher {
+  // swappable: zoning in the morning rush, etc.
+  constructor(private readonly cars: Car[], private readonly top: number, private strategy: DispatchStrategy) {}
+
+  setStrategy(s: DispatchStrategy): void { this.strategy = s; }
+
+  onHallCall(call: Call): Car {
+    const c = this.strategy.choose(this.cars, call, this.top);
+    c.assigned.push(call.floor);
+    if (c.motion === "IDLE" && c.floor !== call.floor) c.motion = call.floor > c.floor ? "UP" : "DOWN";
+    return c;
+  }
+}
+
+const cars = [new Car("A", 0, "IDLE"), new Car("B", 6, "DOWN"), new Car("C", 3, "UP")];
+const d = new Dispatcher(cars, 9, new NearestCarDispatch());
+const calls: Call[] = [{ floor: 4, wantsUp: true }, { floor: 7, wantsUp: false }, { floor: 2, wantsUp: false }];
+for (const call of calls) {
+  console.log(\`call Call[floor=\${call.floor}, wantsUp=\${call.wantsUp}] -> car \${d.onHallCall(call).id}\`);
+}` },
+          { lang: 'cpp', code: `enum class Motion { UP, DOWN, IDLE };
+
+struct Call {
+    int floor;
+    bool wantsUp;
+};
+
+struct Car {
+    string id;
+    int floor;
+    Motion motion;
+    vector<int> assigned;
+};
+
+struct DispatchStrategy {
+    virtual ~DispatchStrategy() = default;
+    virtual Car& choose(vector<Car>& cars, const Call& call, int top) const = 0;
+};
+
+// Estimated floors to travel before reaching the caller, assuming SCAN-like sweeps, + load penalty.
+class NearestCarDispatch final : public DispatchStrategy {
+public:
+    static int travel(const Car& c, const Call& k, int top) {
+        int p = c.floor, f = k.floor;
+        switch (c.motion) {
+            case Motion::IDLE: return abs(p - f);
+            case Motion::UP:
+                if (k.wantsUp && f >= p) return f - p;      // on the way
+                if (!k.wantsUp) return (top - p) + (top - f);  // up to the top, then down to f
+                return (top - p) + top + f;                 // full loop: top, bottom, back up to f
+            default:
+                if (!k.wantsUp && f <= p) return p - f;
+                if (k.wantsUp) return p + f;                // down to 0, then up to f
+                return p + top + (top - f);
+        }
+    }
+
+    Car& choose(vector<Car>& cars, const Call& call, int top) const override {
+        Car* best = nullptr;
+        int bestCost = INT_MAX;
+        for (Car& c : cars) {
+            int cost = travel(c, call, top) + static_cast<int>(c.assigned.size());  // small penalty spreads the load
+            if (cost < bestCost) { bestCost = cost; best = &c; }
+        }
+        return *best;
+    }
+};
+
+class Dispatcher {
+    vector<Car> cars_;
+    int top_;
+    unique_ptr<DispatchStrategy> strategy_;  // swappable: zoning in the morning rush, etc.
+
+public:
+    Dispatcher(vector<Car> cars, int top, unique_ptr<DispatchStrategy> s)
+        : cars_(move(cars)), top_(top), strategy_(move(s)) {}
+
+    void setStrategy(unique_ptr<DispatchStrategy> s) { strategy_ = move(s); }
+
+    const Car& onHallCall(const Call& call) {
+        Car& c = strategy_->choose(cars_, call, top_);
+        c.assigned.push_back(call.floor);
+        if (c.motion == Motion::IDLE && c.floor != call.floor) c.motion = call.floor > c.floor ? Motion::UP : Motion::DOWN;
+        return c;
+    }
+};
+
+int main() {
+    cout << boolalpha;
+    Dispatcher d({{"A", 0, Motion::IDLE, {}}, {"B", 6, Motion::DOWN, {}}, {"C", 3, Motion::UP, {}}}, 9,
+                 make_unique<NearestCarDispatch>());
+    for (Call call : {Call{4, true}, Call{7, false}, Call{2, false}}) {
+        cout << "call Call[floor=" << call.floor << ", wantsUp=" << call.wantsUp << "] -> car " << d.onHallCall(call).id << "\\n";
+    }
+}` }
+        ] }],
     codeTitle: ['Car-level scheduling strategies', 'Building-level dispatch'],
     viz: [{
       title: 'Scheduling race: watch the car serve the request list (FCFS / SSTF / SCAN / LOOK)',
@@ -1261,24 +3499,56 @@ class Dispatcher {
     examples: [
       { title: 'SSTF starvation, step by step', html: `<p>Car at 5. Waiting: floor 0. Every few seconds someone presses 4 or 6. SSTF always picks the nearer 4/6, so floor 0 waits forever. ${H.table(['time', 'car at', 'waiting', 'SSTF picks'], [['t0', '5', '0, 6', '6'], ['t1', '6', '0, 4', '4'], ['t2', '4', '0, 6', '6'], ['…', '…', H.c('r', '0 still waiting'), '…']])} LOOK would keep going in one direction and reach 0 within one sweep. ${H.c('g', 'Bounded waiting')} is a requirement worth saying out loud.</p>` },
       { title: 'C-SCAN / C-LOOK: fairness for the top floors', html: `<p>With SCAN, middle floors are passed twice per cycle but end floors once, so their worst-case wait is longer. <b>C-SCAN</b> (circular) serves only while going up, then rides empty straight to the bottom and starts again — every floor gets the same worst-case wait. Common in disk schedulers; in buildings, a similar idea is an "up-peak" mode where cars return to the lobby after each trip.</p>` },
-      { title: 'Directional hall calls in the stop sets', html: `<p>Car at 2 going ▲ with car call 8. Hall calls: 5▲ and 5▼. With two sets: <code>upStops = {5, 8}</code>, <code>downStops = {5}</code>. Going up it stops at 5 for the ▲ caller only; the ▼ caller is served on the way back down. Passing a floor serves it only if the floor is in the set for the <b>current direction</b>.</p>`, code: `import java.util.*;
+      { title: 'Directional hall calls in the stop sets', html: `<p>Car at 2 going ▲ with car call 8. Hall calls: 5▲ and 5▼. With two sets: <code>upStops = {5, 8}</code>, <code>downStops = {5}</code>. Going up it stops at 5 for the ▲ caller only; the ▼ caller is served on the way back down. Passing a floor serves it only if the floor is in the set for the <b>current direction</b>.</p>`, code: { lang: 'java', code: `import java.util.*;
 class DirectionalStops {
     final TreeSet<Integer> up = new TreeSet<>(), down = new TreeSet<>();
     void hallCall(int floor, boolean wantsUp) { (wantsUp ? up : down).add(floor); }
     /** Should a car moving in direction 'goingUp' stop at 'floor'? */
     boolean shouldStop(int floor, boolean goingUp) { return goingUp ? up.contains(floor) : down.contains(floor); }
+}`, alt: [
+          { lang: 'python', code: `class DirectionalStops:
+    def __init__(self) -> None:
+        self.up: set[int] = set()
+        self.down: set[int] = set()
+
+    def hall_call(self, floor: int, wants_up: bool) -> None:
+        (self.up if wants_up else self.down).add(floor)
+
+    def should_stop(self, floor: int, going_up: bool) -> bool:
+        """Should a car moving in direction 'going_up' stop at 'floor'?"""
+        return floor in (self.up if going_up else self.down)` },
+          { lang: 'ts', code: `class DirectionalStops {
+  readonly up = new Set<number>();
+  readonly down = new Set<number>();
+
+  hallCall(floor: number, wantsUp: boolean): void { (wantsUp ? this.up : this.down).add(floor); }
+
+  /** Should a car moving in direction 'goingUp' stop at 'floor'? */
+  shouldStop(floor: number, goingUp: boolean): boolean {
+    return (goingUp ? this.up : this.down).has(floor);
+  }
 }` },
+          { lang: 'cpp', code: `class DirectionalStops {
+    set<int> up_, down_;
+
+public:
+    void hallCall(int floor, bool wantsUp) { (wantsUp ? up_ : down_).insert(floor); }
+
+    // Should a car moving in direction 'goingUp' stop at 'floor'?
+    bool shouldStop(int floor, bool goingUp) const { return (goingUp ? up_ : down_).count(floor) > 0; }
+};` }
+        ] } },
       { title: 'Estimating wait time for the dispatcher', html: `<p>Our cost uses floors, but production systems estimate <b>seconds</b>: travel ≈ floors × 1.5 s + stops on the way × 10 s (doors + boarding). A car 3 floors away with 4 stops in between (≈ 44 s) loses to an idle car 7 floors away (≈ 10 s). The structure stays the same — only the cost function (a Strategy) gets smarter.</p>` }
     ],
     deepDive: `<p><b>Offline vs online.</b> Textbook FCFS/SSTF/SCAN/LOOK assume all requests are known (offline). Real elevators are <b>online</b>: requests keep arriving. The correct implementation is not "compute a route once" but "on every tick, ask: is my current floor in the stop set for my direction? Is there anything ahead? If not, reverse or go idle." That is LOOK expressed as a state machine — exactly the <code>chooseDirection()</code> in the previous topic.</p>
-<p><b>Complexity.</b> With a <code>TreeSet</code> per direction, adding a stop and finding the next stop ahead (<code>ceiling</code>/<code>floor</code>) are O(log F); with F ≤ 200 floors a <code>boolean[]</code> scan is also fine. SSTF over N pending requests is O(N) per decision with a list, O(log N) with a sorted set (nearest = floor/ceiling of the current position).</p>
+<p><b>Complexity.</b> With a sorted set per direction (<code>TreeSet</code>, <code>std::set</code>), adding a stop and finding the next stop ahead (<code>ceiling</code>/<code>floor</code>) are O(log F); with F ≤ 200 floors a <code>boolean[]</code> scan is also fine. SSTF over N pending requests is O(N) per decision with a list, O(log N) with a sorted set (nearest = floor/ceiling of the current position).</p>
 <p><b>Starvation proof for LOOK.</b> A request at floor f is reached at most after the car finishes its current sweep and one sweep in the opposite direction — at most 2·(top − bottom) floors of travel, regardless of new arrivals, because the car never reverses while requests remain ahead. SSTF has no such bound.</p>
 <p><b>Dispatch is an assignment problem.</b> Assigning calls one at a time greedily (what we do) is standard. Modern controllers <b>re-assign</b> periodically (a call may move to a newly idle car), and destination-dispatch systems group passengers by destination so a car makes fewer stops — fewer stops is the biggest win, since each stop costs ~10 seconds.</p>
 <p><b>Traffic modes as Strategy swaps.</b> Up-peak (morning): send idle cars to the lobby. Down-peak (evening): park cars at the top. Inter-floor (midday): spread cars across zones. Night: park one car at the lobby, put others in energy-save. A <code>TrafficModeStrategy</code> chosen by time-of-day or by measured traffic keeps all this out of the car code.</p>
 <p><b>Energy and comfort.</b> Fewer direction reversals = less energy and fewer jerks; LOOK minimises reversals. Some systems penalise reversals in the cost function and cap the number of stops per trip.</p>`,
-    aiEra: `<p><b>What AI changes:</b> asking "which elevator algorithm is best?" gets a confident generic answer. The better use is <b>simulation</b>: <code>Write a Java simulator that replays 10,000 random requests (Poisson arrivals, 70% from the lobby at 9 am) through FCFS, SSTF and LOOK and reports average and 99th-percentile wait.</code> Data beats opinions, and AI writes simulators fast.</p>
+    aiEra: `<p><b>What AI changes:</b> asking "which elevator algorithm is best?" gets a confident generic answer. The better use is <b>simulation</b>: <code>Write a simulator (in your language) that replays 10,000 random requests (Poisson arrivals, 70% from the lobby at 9 am) through FCFS, SSTF and LOOK and reports average and 99th-percentile wait.</code> Data beats opinions, and AI writes simulators fast.</p>
 <p><b>ML in real dispatch:</b> modern controllers learn traffic patterns (badge-ins, calendar, weather) and tune dispatch weights or pre-position idle cars. Reinforcement learning has been studied for dispatch for decades; in practice it usually tunes a <b>cost function</b> inside a classic, verifiable controller rather than replacing it, because safety rules must stay deterministic.</p>
-<p><b>Where AI goes wrong:</b> LLM-written elevators often use one <code>PriorityQueue</code> ordered by distance — that is SSTF with starvation — or ignore hall-call direction. They also mix scheduling into the state machine with if/else. <b>What you must still own:</b> naming the trade-off (throughput vs fairness), proving bounded waiting, and keeping scheduling as a swappable Strategy separate from the car's State.</p>`,
+<p><b>Where AI goes wrong:</b> LLM-written elevators often use one priority queue ordered by distance — that is SSTF with starvation — or ignore hall-call direction. They also mix scheduling into the state machine with if/else. <b>What you must still own:</b> naming the trade-off (throughput vs fairness), proving bounded waiting, and keeping scheduling as a swappable Strategy separate from the car's State.</p>`,
     problems: [{
       title: 'LOOK Service Order and Distance', level: 'Medium', tags: ['elevator', 'scheduling', 'treeset'], companies: ['Amazon', 'Microsoft', 'Adobe', 'Goldman Sachs'],
       statement: `<p>An elevator is at floor <code>start</code> moving in direction <code>dir</code> (UP or DOWN). Pending requests are given as a list of floors (may contain duplicates). Using the <b>LOOK</b> policy, return the order in which the floors are served and the total floors travelled. Then implement a <code>LookScheduler</code> class that supports <b>online</b> use: <code>addRequest(floor)</code> at any time and <code>nextStop()</code> that returns the next floor to go to (or -1 if idle), updating its direction.</p>`,
@@ -1300,9 +3570,10 @@ class BruteLook {
     }
 }` },
       mcq: { q: 'The car is at 5 going UP, with requests at 3 and 7. A new request for 6 arrives when the car is at 5.5 (between 5 and 6). What does LOOK do?', options: ['Stops at 6, then 7, then reverses to 3', 'Goes to 7 first because it was earlier', 'Reverses to 3 immediately because 3 is closer to 5 than 7', 'Ignores 6 until the next sweep'], answer: 0, explain: 'LOOK serves everything ahead in the current direction in floor order, including late arrivals ahead of the car.' },
-      hints: [`<p>Hint 1: LOOK = "everything at or above me in ascending order, then everything below me in descending order" (for UP). Duplicates do not matter — use a set.</p>`, `<p>Hint 2: A <code>TreeSet</code> gives <code>tailSet(start, true)</code> and <code>headSet(start, false).descendingSet()</code>. For the online version, <code>ceiling(pos)</code> / <code>floor(pos)</code> give the next stop in each direction in O(log N).</p>`, `<p>Hint 3: Online <code>nextStop()</code>: if direction is UP and <code>ceiling(pos)</code> exists → go there; else flip to DOWN and try <code>floor(pos)</code>; if neither, return -1 (idle). Remove the floor when served, update pos.</p>`],
+      hints: [`<p>Hint 1: LOOK = "everything at or above me in ascending order, then everything below me in descending order" (for UP). Duplicates do not matter — use a set.</p>`, `<p>Hint 2: A sorted set (<code>TreeSet</code> in Java) gives the requests at or above <code>start</code> ascending and those below it descending (<code>tailSet(start, true)</code> and <code>headSet(start, false).descendingSet()</code>; with <code>std::set</code> use <code>lower_bound</code> and iterate; in Python filter a sorted list). For the online version, <code>ceiling(pos)</code> / <code>floor(pos)</code> give the next stop in each direction in O(log N).</p>`, `<p>Hint 3: Online <code>nextStop()</code>: if direction is UP and <code>ceiling(pos)</code> exists → go there; else flip to DOWN and try <code>floor(pos)</code>; if neither, return -1 (idle). Remove the floor when served, update pos.</p>`],
+      tests: { io: true, cases: [{ stdin: '', stdout: "[6, 8, 4, 2, 1] distance=10\n6 7 3\n-1\n" }] },
       solution: {
-        approach: `<p>Offline: put requests in a TreeSet; for UP take the tail set (≥ start) ascending, then the head set (&lt; start) descending; the mirror for DOWN. Distance is the sum of absolute gaps. Online: keep the TreeSet and the current direction; <code>nextStop</code> looks ahead with <code>ceiling</code>/<code>floor</code> and flips only when nothing remains ahead — that is exactly the LOOK rule, and it avoids starvation.</p>`,
+        approach: `<p>Offline: put requests in a sorted set; for UP take the tail set (≥ start) ascending, then the head set (&lt; start) descending; the mirror for DOWN. Distance is the sum of absolute gaps. Online: keep the sorted set and the current direction; <code>nextStop</code> looks ahead with <code>ceiling</code>/<code>floor</code> and flips only when nothing remains ahead — that is exactly the LOOK rule, and it avoids starvation.</p>`,
         code: `import java.util.*;
 
 class LookScheduler {
@@ -1350,8 +3621,188 @@ class LookScheduler {
         live.addRequest(3); live.addRequest(7);
         live.addRequest(6);                                     // arrives late, but is ahead
         System.out.println(live.nextStop() + " " + live.nextStop() + " " + live.nextStop()); // 6 7 3
+        System.out.println(live.nextStop());                    // -1: nothing pending, idle
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `from bisect import bisect_left, bisect_right, insort
+
+
+class LookScheduler:
+    def __init__(self, start: int, up: bool) -> None:
+        self._pending: list[int] = []  # sorted, no duplicates (like a TreeSet)
+        self._pos = start
+        self._up = up
+
+    def add_request(self, floor: int) -> None:
+        i = bisect_left(self._pending, floor)
+        if i == len(self._pending) or self._pending[i] != floor:
+            insort(self._pending, floor)
+
+    def _ahead(self) -> int | None:
+        p = self._pending
+        if self._up:  # ceiling(pos)
+            i = bisect_left(p, self._pos)
+            return p[i] if i < len(p) else None
+        i = bisect_right(p, self._pos) - 1  # floor(pos)
+        return p[i] if i >= 0 else None
+
+    def next_stop(self) -> int:
+        """Next floor to stop at under LOOK, or -1 if idle. Serves (removes) it and moves there."""
+        if not self._pending:
+            return -1
+        nxt = self._ahead()
+        if nxt is None:  # nothing ahead -> reverse (the LOOK turn)
+            self._up = not self._up
+            nxt = self._ahead()
+        self._pending.remove(nxt)
+        self._pos = nxt
+        return nxt
+
+    @staticmethod
+    def serve_all(start: int, up: bool, req: list[int], order_out: list[int]) -> int:
+        """Offline helper: fills the whole order and returns the distance."""
+        s = LookScheduler(start, up)
+        for f in req:
+            s.add_request(f)
+        dist, at = 0, start
+        while (f := s.next_stop()) != -1:
+            order_out.append(f)
+            dist += abs(f - at)
+            at = f
+        return dist
+
+
+if __name__ == "__main__":
+    order: list[int] = []
+    d = LookScheduler.serve_all(5, True, [8, 2, 6, 1, 4, 6], order)
+    print(f"{order} distance={d}")  # [6, 8, 4, 2, 1] distance=10
+
+    live = LookScheduler(5, True)
+    live.add_request(3)
+    live.add_request(7)
+    live.add_request(6)  # arrives late, but is ahead
+    print(live.next_stop(), live.next_stop(), live.next_stop())  # 6 7 3
+    print(live.next_stop())  # -1: nothing pending, idle` },
+          { lang: 'ts', code: `class LookScheduler {
+  private readonly pending: number[] = []; // sorted, no duplicates (like a TreeSet)
+  private pos: number;
+  private up: boolean;
+
+  constructor(start: number, up: boolean) { this.pos = start; this.up = up; }
+
+  addRequest(floor: number): void {
+    const i = this.pending.findIndex((f) => f >= floor);
+    if (i === -1) this.pending.push(floor);
+    else if (this.pending[i] !== floor) this.pending.splice(i, 0, floor);
+  }
+
+  private ahead(): number | undefined {
+    return this.up
+      ? this.pending.find((f) => f >= this.pos) // ceiling(pos)
+      : this.pending.filter((f) => f <= this.pos).pop(); // floor(pos)
+  }
+
+  /** Next floor to stop at under LOOK, or -1 if idle. Serves (removes) it and moves there. */
+  nextStop(): number {
+    if (this.pending.length === 0) return -1;
+    let next = this.ahead();
+    if (next === undefined) { // nothing ahead -> reverse (the LOOK turn)
+      this.up = !this.up;
+      next = this.ahead();
+    }
+    this.pending.splice(this.pending.indexOf(next!), 1);
+    this.pos = next!;
+    return next!;
+  }
+
+  /** Offline helper: fills the whole order and returns the distance. */
+  static serveAll(start: number, up: boolean, req: number[], orderOut: number[]): number {
+    const s = new LookScheduler(start, up);
+    req.forEach((f) => s.addRequest(f));
+    let dist = 0;
+    let at = start;
+    for (let f = s.nextStop(); f !== -1; f = s.nextStop()) {
+      orderOut.push(f);
+      dist += Math.abs(f - at);
+      at = f;
+    }
+    return dist;
+  }
+}
+
+const order: number[] = [];
+const d = LookScheduler.serveAll(5, true, [8, 2, 6, 1, 4, 6], order);
+console.log(\`[\${order.join(", ")}] distance=\${d}\`); // [6, 8, 4, 2, 1] distance=10
+
+const live = new LookScheduler(5, true);
+live.addRequest(3); live.addRequest(7);
+live.addRequest(6); // arrives late, but is ahead
+const a = live.nextStop(), b = live.nextStop(), c = live.nextStop();
+console.log(\`\${a} \${b} \${c}\`); // 6 7 3
+console.log(live.nextStop()); // -1: nothing pending, idle` },
+          { lang: 'cpp', code: `class LookScheduler {
+    set<int> pending_;
+    int pos_;
+    bool up_;
+
+    // ceiling(pos) when going up, floor(pos) when going down; -1 if nothing ahead
+    int ahead() const {
+        if (up_) {
+            auto it = pending_.lower_bound(pos_);
+            return it == pending_.end() ? -1 : *it;
+        }
+        auto it = pending_.upper_bound(pos_);
+        return it == pending_.begin() ? -1 : *prev(it);
+    }
+
+public:
+    LookScheduler(int start, bool up) : pos_(start), up_(up) {}
+
+    void addRequest(int floor) { pending_.insert(floor); }
+
+    // Next floor to stop at under LOOK, or -1 if idle. Serves (removes) it and moves there.
+    int nextStop() {
+        if (pending_.empty()) return -1;
+        int next = ahead();
+        if (next == -1) {  // nothing ahead -> reverse (the LOOK turn)
+            up_ = !up_;
+            next = ahead();
+        }
+        pending_.erase(next);
+        pos_ = next;
+        return next;
+    }
+
+    // Offline helper: fills the whole order and returns the distance.
+    static long long serveAll(int start, bool up, const vector<int>& req, vector<int>& orderOut) {
+        LookScheduler s(start, up);
+        for (int f : req) s.addRequest(f);
+        long long dist = 0;
+        int at = start;
+        for (int f = s.nextStop(); f != -1; f = s.nextStop()) {
+            orderOut.push_back(f);
+            dist += abs(f - at);
+            at = f;
+        }
+        return dist;
+    }
+};
+
+int main() {
+    vector<int> order;
+    long long d = LookScheduler::serveAll(5, true, {8, 2, 6, 1, 4, 6}, order);
+    cout << "[";
+    for (size_t i = 0; i < order.size(); i++) cout << (i ? ", " : "") << order[i];
+    cout << "] distance=" << d << "\\n";  // [6, 8, 4, 2, 1] distance=10
+
+    LookScheduler live(5, true);
+    live.addRequest(3); live.addRequest(7);
+    live.addRequest(6);  // arrives late, but is ahead
+    int a = live.nextStop(), b = live.nextStop(), c = live.nextStop();
+    cout << a << " " << b << " " << c << "\\n";  // 6 7 3
+    cout << live.nextStop() << "\\n";            // -1: nothing pending, idle
+}` }
+        ],
         complexity: `<p>O(N log N) to insert N requests; each <code>nextStop</code> is O(log N). Space O(N). Compared with the brute force O(F × N), we never visit empty floors in the algorithm (the physical car still moves floor by floor, but the decision is instant).</p>`,
         followUps: ['Modify it into C-LOOK (only serve while going up; jump back to the lowest request).', 'Hall calls have a direction: a ▼ caller must not be served on the up sweep. How do you change the data structure?', 'Add a second car: how would you decide which scheduler gets a new request?']
       }
@@ -1389,7 +3840,7 @@ ${H.table(['Class', 'Responsibility'], [
   ['<code>VendingMachine</code> (context)', 'public API: <code>insertCoin</code>, <code>select</code>, <code>cancel</code>, <code>service</code>, <code>restock</code>; holds state, inventory, coin box, escrow'],
   ['<code>VmState</code> + 5 states', 'IDLE, HAS_MONEY, DISPENSING, SOLD_OUT, MAINTENANCE — each answers every event its own way'],
   ['<code>Inventory</code>', 'slot code → product + quantity; <code>inStock</code>, <code>takeOne</code>, <code>allEmpty</code>'],
-  ['<code>Product</code> (record)', 'code, name, price — immutable'],
+  ['<code>Product</code> (immutable value)', 'code, name, price — immutable'],
   ['<code>Coin</code> (enum)', 'accepted denominations with values — invalid coins cannot even be represented'],
   ['<code>CoinBox</code>', 'count per coin; <code>planChange(amount)</code> with limited coins'],
   ['<b>Escrow</b> (list of inserted coins)', 'coins held aside until the sale completes — cancel returns <i>the exact coins</i> you put in']
@@ -1565,7 +4016,618 @@ class VendingMachine {
         vm.cancel();                                       // refund the exact 10 coin
         System.out.println("state=" + vm.stateName() + " box=" + vm.coinBox());
     }
-}` },
+}`, alt: [
+          { lang: 'python', code: `from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from enum import Enum
+from typing import Optional
+
+
+class Coin(Enum):
+    ONE = 1
+    TWO = 2
+    FIVE = 5
+    TEN = 10
+    TWENTY = 20
+
+
+@dataclass(frozen=True)
+class Product:
+    code: str
+    name: str
+    price: int
+
+
+class Inventory:
+    def __init__(self) -> None:
+        self._products: dict[str, Product] = {}
+        self._stock: dict[str, int] = {}
+
+    def restock(self, p: Product, qty: int) -> None:
+        self._products[p.code] = p
+        self._stock[p.code] = self._stock.get(p.code, 0) + qty
+
+    def find(self, code: str) -> Optional[Product]: return self._products.get(code)
+    def in_stock(self, code: str) -> bool: return self._stock.get(code, 0) > 0
+
+    def take_one(self, code: str) -> None:
+        if code in self._stock:
+            self._stock[code] -= 1
+
+    def all_empty(self) -> bool: return all(q == 0 for q in self._stock.values())
+
+
+class CoinBox:
+    def __init__(self) -> None:
+        self._coins: dict[Coin, int] = {}
+
+    def add(self, c: Coin, n: int) -> None:
+        self._coins[c] = self._coins.get(c, 0) + n
+
+    def plan_change(self, amount: int, extra: list[Coin]) -> Optional[list[Coin]]:
+        """Change for 'amount' using box coins + 'extra' (escrow). Largest-first with backtracking."""
+        avail = dict(self._coins)
+        for c in extra:
+            avail[c] = avail.get(c, 0) + 1
+        desc = sorted(Coin, key=lambda c: c.value, reverse=True)  # 20, 10, 5, 2, 1
+        out: list[Coin] = []
+        return out if self._search(amount, 0, desc, avail, out) else None
+
+    def _search(self, amount: int, i: int, desc: list[Coin], avail: dict[Coin, int], out: list[Coin]) -> bool:
+        if amount == 0:
+            return True
+        if i == len(desc):
+            return False
+        c = desc[i]
+        most = min(avail.get(c, 0), amount // c.value)
+        for k in range(most, -1, -1):  # try many big coins first, back off if stuck
+            out.extend([c] * k)
+            if self._search(amount - k * c.value, i + 1, desc, avail, out):
+                return True
+            del out[len(out) - k:]
+        return False
+
+    def commit(self, escrow: list[Coin], change: list[Coin]) -> None:
+        """Commit a sale: escrow goes in, change comes out."""
+        for c in escrow:
+            self.add(c, 1)
+        for c in change:
+            self.add(c, -1)
+
+    def __str__(self) -> str:  # sorted by coin value, like Java's EnumMap
+        items = sorted(self._coins.items(), key=lambda kv: kv[0].value)
+        return "{" + ", ".join(f"{c.name}={n}" for c, n in items) + "}"
+
+
+def names(coins: list[Coin]) -> str:
+    return "[" + ", ".join(c.name for c in coins) + "]"
+
+
+class VmState(ABC):
+    @abstractmethod
+    def name(self) -> str: ...
+
+    def insert_coin(self, m: "VendingMachine", c: Coin) -> None:
+        m.show(f"{self.name()}: coin returned")
+        m.give_back([c])
+
+    def select(self, m: "VendingMachine", code: str) -> None: m.show(f"{self.name()}: cannot select now")
+    def cancel(self, m: "VendingMachine") -> None: m.show(f"{self.name()}: nothing to cancel")
+    def service(self, m: "VendingMachine") -> None: m.show(f"{self.name()}: cannot enter service now")
+    def restock(self, m: "VendingMachine", p: Product, qty: int) -> None: m.show(f"{self.name()}: open service mode first")
+    def finish_service(self, m: "VendingMachine") -> None: m.show(f"{self.name()}: not in service")
+
+
+class Idle(VmState):
+    def name(self) -> str: return "IDLE"
+
+    def insert_coin(self, m: "VendingMachine", c: Coin) -> None:
+        m.escrow.append(c)
+        m.set_state(HasMoney())
+
+    def select(self, m: "VendingMachine", code: str) -> None:
+        p = m.inventory.find(code)
+        m.show("No such slot" if p is None else f"{p.name} costs Rs {p.price}. Insert coins.")
+
+    def service(self, m: "VendingMachine") -> None: m.set_state(Maintenance())
+
+
+class HasMoney(VmState):
+    def name(self) -> str: return "HAS_MONEY"
+
+    def insert_coin(self, m: "VendingMachine", c: Coin) -> None:
+        m.escrow.append(c)
+        m.show(f"Balance Rs {m.balance()}")
+
+    def select(self, m: "VendingMachine", code: str) -> None:
+        p = m.inventory.find(code)
+        if p is None:
+            m.show("No such slot")  # check 1
+            return
+        if not m.inventory.in_stock(code):
+            m.show(f"{p.name} sold out, pick another")  # check 2
+            return
+        due = p.price - m.balance()
+        if due > 0:
+            m.show(f"Insert Rs {due} more")  # check 3
+            return
+        change = m.coin_box.plan_change(-due, m.escrow)
+        if change is None:
+            m.show("Cannot make change, pick another or cancel")  # check 4
+            return
+        m.set_state(Dispensing())
+        m.complete_sale(p, change)  # commit stock + coins together
+        m.set_state(SoldOut() if m.inventory.all_empty() else Idle())
+
+    def cancel(self, m: "VendingMachine") -> None:
+        m.give_back(m.escrow)
+        m.escrow.clear()
+        m.set_state(Idle())
+
+
+class Dispensing(VmState):  # in real hardware the motor takes ~2 s
+    def name(self) -> str: return "DISPENSING"
+
+
+class SoldOut(VmState):
+    def name(self) -> str: return "SOLD_OUT"
+    def service(self, m: "VendingMachine") -> None: m.set_state(Maintenance())
+
+
+class Maintenance(VmState):
+    def name(self) -> str: return "MAINTENANCE"
+
+    def restock(self, m: "VendingMachine", p: Product, qty: int) -> None:
+        m.inventory.restock(p, qty)
+        m.show(f"Restocked {p.code}")
+
+    def finish_service(self, m: "VendingMachine") -> None:
+        m.set_state(SoldOut() if m.inventory.all_empty() else Idle())
+
+
+class VendingMachine:
+    def __init__(self) -> None:
+        self._state: VmState = Idle()
+        self.inventory = Inventory()
+        self.coin_box = CoinBox()
+        self.escrow: list[Coin] = []
+
+    # ---- public API: every call is a one-line delegation ----
+    def insert_coin(self, c: Coin) -> None: self._state.insert_coin(self, c)
+    def select(self, code: str) -> None: self._state.select(self, code)
+    def cancel(self) -> None: self._state.cancel(self)
+    def service(self) -> None: self._state.service(self)
+    def restock(self, p: Product, qty: int) -> None: self._state.restock(self, p, qty)
+    def finish_service(self) -> None: self._state.finish_service(self)
+
+    # ---- used by states ----
+    def set_state(self, s: VmState) -> None:
+        self.show(f"[{self._state.name()} -> {s.name()}]")
+        self._state = s
+
+    def balance(self) -> int: return sum(c.value for c in self.escrow)
+
+    def complete_sale(self, p: Product, change: list[Coin]) -> None:
+        self.inventory.take_one(p.code)
+        self.coin_box.commit(self.escrow, change)
+        self.escrow.clear()
+        self.show(f"Dropped {p.name}" + ("" if not change else f", change {names(change)}"))
+
+    def give_back(self, coins: list[Coin]) -> None:
+        if coins:
+            self.show(f"Returned {names(coins)}")
+
+    def show(self, msg: str) -> None: print(msg)
+    def state_name(self) -> str: return self._state.name()
+
+
+if __name__ == "__main__":
+    vm = VendingMachine()
+    vm.service()
+    vm.restock(Product("A1", "Chips", 15), 2)
+    vm.restock(Product("B2", "Water", 12), 3)
+    vm.finish_service()
+    vm.coin_box.add(Coin.ONE, 1); vm.coin_box.add(Coin.TWO, 2)
+    vm.select("A1")  # price only
+    vm.insert_coin(Coin.TEN); vm.insert_coin(Coin.FIVE)
+    vm.select("A1")  # exact money
+    vm.insert_coin(Coin.TWENTY)
+    vm.select("B2")  # change 8 = 5 + 2 + 1
+    vm.insert_coin(Coin.TEN)
+    vm.select("A1")  # needs 5 more
+    vm.cancel()  # refund the exact 10 coin
+    print(f"state={vm.state_name()} box={vm.coin_box}")` },
+          { lang: 'ts', code: `const COINS = ["ONE", "TWO", "FIVE", "TEN", "TWENTY"] as const;
+type Coin = (typeof COINS)[number];
+const VALUE: Record<Coin, number> = { ONE: 1, TWO: 2, FIVE: 5, TEN: 10, TWENTY: 20 };
+
+interface Product { readonly code: string; readonly name: string; readonly price: number }
+
+class Inventory {
+  private readonly products = new Map<string, Product>();
+  private readonly stock = new Map<string, number>();
+
+  restock(p: Product, qty: number): void {
+    this.products.set(p.code, p);
+    this.stock.set(p.code, (this.stock.get(p.code) ?? 0) + qty);
+  }
+  find(code: string): Product | undefined { return this.products.get(code); }
+  inStock(code: string): boolean { return (this.stock.get(code) ?? 0) > 0; }
+  takeOne(code: string): void { const q = this.stock.get(code); if (q !== undefined) this.stock.set(code, q - 1); }
+  allEmpty(): boolean { return [...this.stock.values()].every((q) => q === 0); }
+}
+
+class CoinBox {
+  private readonly coins = new Map<Coin, number>();
+
+  add(c: Coin, n: number): void { this.coins.set(c, (this.coins.get(c) ?? 0) + n); }
+
+  /** Change for 'amount' using box coins + 'extra' (escrow). Largest-first with backtracking. */
+  planChange(amount: number, extra: Coin[]): Coin[] | null {
+    const avail = new Map(this.coins);
+    for (const c of extra) avail.set(c, (avail.get(c) ?? 0) + 1);
+    const desc = [...COINS].reverse(); // 20, 10, 5, 2, 1
+    const out: Coin[] = [];
+    return this.search(amount, 0, desc, avail, out) ? out : null;
+  }
+
+  private search(amount: number, i: number, desc: Coin[], avail: Map<Coin, number>, out: Coin[]): boolean {
+    if (amount === 0) return true;
+    if (i === desc.length) return false;
+    const c = desc[i];
+    const max = Math.min(avail.get(c) ?? 0, Math.floor(amount / VALUE[c]));
+    for (let k = max; k >= 0; k--) { // try many big coins first, back off if stuck
+      for (let j = 0; j < k; j++) out.push(c);
+      if (this.search(amount - k * VALUE[c], i + 1, desc, avail, out)) return true;
+      out.length -= k;
+    }
+    return false;
+  }
+
+  /** Commit a sale: escrow goes in, change comes out. */
+  commit(escrow: Coin[], change: Coin[]): void {
+    escrow.forEach((c) => this.add(c, 1));
+    change.forEach((c) => this.add(c, -1));
+  }
+
+  toString(): string { // in coin order, like Java's EnumMap
+    return "{" + COINS.filter((c) => this.coins.has(c)).map((c) => \`\${c}=\${this.coins.get(c)}\`).join(", ") + "}";
+  }
+}
+
+const names = (coins: Coin[]): string => "[" + coins.join(", ") + "]";
+
+interface VmState {
+  name(): string;
+  insertCoin(m: VendingMachine, c: Coin): void;
+  select(m: VendingMachine, code: string): void;
+  cancel(m: VendingMachine): void;
+  service(m: VendingMachine): void;
+  restock(m: VendingMachine, p: Product, qty: number): void;
+  finishService(m: VendingMachine): void;
+}
+
+// Interfaces carry no code in TypeScript, so the "refuse everything" defaults live in a base class.
+abstract class BaseVmState implements VmState {
+  abstract name(): string;
+  insertCoin(m: VendingMachine, c: Coin): void { m.show(\`\${this.name()}: coin returned\`); m.giveBack([c]); }
+  select(m: VendingMachine, code: string): void { m.show(\`\${this.name()}: cannot select now\`); }
+  cancel(m: VendingMachine): void { m.show(\`\${this.name()}: nothing to cancel\`); }
+  service(m: VendingMachine): void { m.show(\`\${this.name()}: cannot enter service now\`); }
+  restock(m: VendingMachine, p: Product, qty: number): void { m.show(\`\${this.name()}: open service mode first\`); }
+  finishService(m: VendingMachine): void { m.show(\`\${this.name()}: not in service\`); }
+}
+
+class Idle extends BaseVmState {
+  name(): string { return "IDLE"; }
+  override insertCoin(m: VendingMachine, c: Coin): void { m.escrow.push(c); m.setState(new HasMoney()); }
+  override select(m: VendingMachine, code: string): void {
+    const p = m.inventory.find(code);
+    m.show(p === undefined ? "No such slot" : \`\${p.name} costs Rs \${p.price}. Insert coins.\`);
+  }
+  override service(m: VendingMachine): void { m.setState(new Maintenance()); }
+}
+
+class HasMoney extends BaseVmState {
+  name(): string { return "HAS_MONEY"; }
+  override insertCoin(m: VendingMachine, c: Coin): void { m.escrow.push(c); m.show(\`Balance Rs \${m.balance()}\`); }
+  override select(m: VendingMachine, code: string): void {
+    const p = m.inventory.find(code);
+    if (p === undefined) { m.show("No such slot"); return; } // check 1
+    if (!m.inventory.inStock(code)) { m.show(\`\${p.name} sold out, pick another\`); return; } // check 2
+    const due = p.price - m.balance();
+    if (due > 0) { m.show(\`Insert Rs \${due} more\`); return; } // check 3
+    const change = m.coinBox.planChange(-due, m.escrow);
+    if (change === null) { m.show("Cannot make change, pick another or cancel"); return; } // check 4
+    m.setState(new Dispensing());
+    m.completeSale(p, change); // commit stock + coins together
+    m.setState(m.inventory.allEmpty() ? new SoldOut() : new Idle());
+  }
+  override cancel(m: VendingMachine): void { m.giveBack(m.escrow); m.escrow.length = 0; m.setState(new Idle()); }
+}
+
+class Dispensing extends BaseVmState { // in real hardware the motor takes ~2 s
+  name(): string { return "DISPENSING"; }
+}
+
+class SoldOut extends BaseVmState {
+  name(): string { return "SOLD_OUT"; }
+  override service(m: VendingMachine): void { m.setState(new Maintenance()); }
+}
+
+class Maintenance extends BaseVmState {
+  name(): string { return "MAINTENANCE"; }
+  override restock(m: VendingMachine, p: Product, qty: number): void { m.inventory.restock(p, qty); m.show(\`Restocked \${p.code}\`); }
+  override finishService(m: VendingMachine): void { m.setState(m.inventory.allEmpty() ? new SoldOut() : new Idle()); }
+}
+
+class VendingMachine {
+  private state: VmState = new Idle();
+  readonly inventory = new Inventory();
+  readonly coinBox = new CoinBox();
+  readonly escrow: Coin[] = [];
+
+  // ---- public API: every call is a one-line delegation ----
+  insertCoin(c: Coin): void { this.state.insertCoin(this, c); }
+  select(code: string): void { this.state.select(this, code); }
+  cancel(): void { this.state.cancel(this); }
+  service(): void { this.state.service(this); }
+  restock(p: Product, qty: number): void { this.state.restock(this, p, qty); }
+  finishService(): void { this.state.finishService(this); }
+
+  // ---- used by states ----
+  setState(s: VmState): void { this.show(\`[\${this.state.name()} -> \${s.name()}]\`); this.state = s; }
+  balance(): number { return this.escrow.reduce((sum, c) => sum + VALUE[c], 0); }
+  completeSale(p: Product, change: Coin[]): void {
+    this.inventory.takeOne(p.code);
+    this.coinBox.commit(this.escrow, change);
+    this.escrow.length = 0;
+    this.show(\`Dropped \${p.name}\` + (change.length === 0 ? "" : \`, change \${names(change)}\`));
+  }
+  giveBack(coins: Coin[]): void { if (coins.length > 0) this.show(\`Returned \${names(coins)}\`); }
+  show(msg: string): void { console.log(msg); }
+  stateName(): string { return this.state.name(); }
+}
+
+const vm = new VendingMachine();
+vm.service();
+vm.restock({ code: "A1", name: "Chips", price: 15 }, 2);
+vm.restock({ code: "B2", name: "Water", price: 12 }, 3);
+vm.finishService();
+vm.coinBox.add("ONE", 1); vm.coinBox.add("TWO", 2);
+vm.select("A1"); // price only
+vm.insertCoin("TEN"); vm.insertCoin("FIVE");
+vm.select("A1"); // exact money
+vm.insertCoin("TWENTY");
+vm.select("B2"); // change 8 = 5 + 2 + 1
+vm.insertCoin("TEN");
+vm.select("A1"); // needs 5 more
+vm.cancel(); // refund the exact 10 coin
+console.log(\`state=\${vm.stateName()} box=\${vm.coinBox}\`);` },
+          { lang: 'cpp', code: `enum class Coin { ONE, TWO, FIVE, TEN, TWENTY };
+
+constexpr int value(Coin c) {
+    constexpr int v[] = {1, 2, 5, 10, 20};
+    return v[static_cast<int>(c)];
+}
+const char* name(Coin c) {
+    static const char* n[] = {"ONE", "TWO", "FIVE", "TEN", "TWENTY"};
+    return n[static_cast<int>(c)];
+}
+string names(const vector<Coin>& coins) {
+    string s = "[";
+    for (size_t i = 0; i < coins.size(); i++) s += (i ? ", " : "") + string(name(coins[i]));
+    return s + "]";
+}
+
+struct Product {
+    string code, name;
+    int price;
+};
+
+class Inventory {
+    map<string, Product> products_;  // sorted by code; only lookups matter here
+    map<string, int> stock_;
+
+public:
+    void restock(const Product& p, int qty) { products_[p.code] = p; stock_[p.code] += qty; }
+    const Product* find(const string& code) const {
+        auto it = products_.find(code);
+        return it == products_.end() ? nullptr : &it->second;
+    }
+    bool inStock(const string& code) const {
+        auto it = stock_.find(code);
+        return it != stock_.end() && it->second > 0;
+    }
+    void takeOne(const string& code) { auto it = stock_.find(code); if (it != stock_.end()) it->second--; }
+    bool allEmpty() const {
+        return all_of(stock_.begin(), stock_.end(), [](const auto& e) { return e.second == 0; });
+    }
+};
+
+class CoinBox {
+    map<Coin, int> coins_;  // ordered by enum value, like Java's EnumMap
+
+    bool search(int amount, size_t i, const vector<Coin>& desc, const map<Coin, int>& avail, vector<Coin>& out) const {
+        if (amount == 0) return true;
+        if (i == desc.size()) return false;
+        Coin c = desc[i];
+        auto it = avail.find(c);
+        int most = min(it == avail.end() ? 0 : it->second, amount / value(c));
+        for (int k = most; k >= 0; k--) {  // try many big coins first, back off if stuck
+            out.insert(out.end(), k, c);
+            if (search(amount - k * value(c), i + 1, desc, avail, out)) return true;
+            out.resize(out.size() - k);
+        }
+        return false;
+    }
+
+public:
+    void add(Coin c, int n) { coins_[c] += n; }
+
+    // Change for 'amount' using box coins + 'extra' (escrow). Largest-first with backtracking.
+    optional<vector<Coin>> planChange(int amount, const vector<Coin>& extra) const {
+        map<Coin, int> avail = coins_;
+        for (Coin c : extra) avail[c]++;
+        vector<Coin> desc = {Coin::TWENTY, Coin::TEN, Coin::FIVE, Coin::TWO, Coin::ONE};
+        vector<Coin> out;
+        if (!search(amount, 0, desc, avail, out)) return nullopt;
+        return out;
+    }
+
+    // Commit a sale: escrow goes in, change comes out.
+    void commit(const vector<Coin>& escrow, const vector<Coin>& change) {
+        for (Coin c : escrow) add(c, 1);
+        for (Coin c : change) add(c, -1);
+    }
+
+    string toString() const {
+        string s = "{";
+        for (const auto& [c, n] : coins_) s += (s.size() > 1 ? ", " : "") + string(name(c)) + "=" + to_string(n);
+        return s + "}";
+    }
+};
+
+class VendingMachine;
+
+// Stateless singletons: the machine holds a pointer to the current one.
+struct VmState {
+    virtual ~VmState() = default;
+    virtual string name() const = 0;
+    virtual void insertCoin(VendingMachine& m, Coin c) const;
+    virtual void select(VendingMachine& m, const string& code) const;
+    virtual void cancel(VendingMachine& m) const;
+    virtual void service(VendingMachine& m) const;
+    virtual void restock(VendingMachine& m, const Product& p, int qty) const;
+    virtual void finishService(VendingMachine& m) const;
+};
+struct Idle final : VmState {
+    static const Idle I;
+    string name() const override { return "IDLE"; }
+    void insertCoin(VendingMachine& m, Coin c) const override;
+    void select(VendingMachine& m, const string& code) const override;
+    void service(VendingMachine& m) const override;
+};
+struct HasMoney final : VmState {
+    static const HasMoney I;
+    string name() const override { return "HAS_MONEY"; }
+    void insertCoin(VendingMachine& m, Coin c) const override;
+    void select(VendingMachine& m, const string& code) const override;
+    void cancel(VendingMachine& m) const override;
+};
+struct Dispensing final : VmState {  // in real hardware the motor takes ~2 s
+    static const Dispensing I;
+    string name() const override { return "DISPENSING"; }
+};
+struct SoldOut final : VmState {
+    static const SoldOut I;
+    string name() const override { return "SOLD_OUT"; }
+    void service(VendingMachine& m) const override;
+};
+struct Maintenance final : VmState {
+    static const Maintenance I;
+    string name() const override { return "MAINTENANCE"; }
+    void restock(VendingMachine& m, const Product& p, int qty) const override;
+    void finishService(VendingMachine& m) const override;
+};
+inline const Idle Idle::I;
+inline const HasMoney HasMoney::I;
+inline const Dispensing Dispensing::I;
+inline const SoldOut SoldOut::I;
+inline const Maintenance Maintenance::I;
+
+class VendingMachine {
+    const VmState* state_ = &Idle::I;
+    Inventory inventory_;
+    CoinBox coinBox_;
+    vector<Coin> escrow_;
+
+public:
+    // ---- public API: every call is a one-line delegation ----
+    void insertCoin(Coin c) { state_->insertCoin(*this, c); }
+    void select(const string& code) { state_->select(*this, code); }
+    void cancel() { state_->cancel(*this); }
+    void service() { state_->service(*this); }
+    void restock(const Product& p, int qty) { state_->restock(*this, p, qty); }
+    void finishService() { state_->finishService(*this); }
+
+    // ---- used by states ----
+    void setState(const VmState& s) { show("[" + state_->name() + " -> " + s.name() + "]"); state_ = &s; }
+    int balance() const {
+        int sum = 0;
+        for (Coin c : escrow_) sum += value(c);
+        return sum;
+    }
+    void completeSale(const Product& p, const vector<Coin>& change) {
+        inventory_.takeOne(p.code);
+        coinBox_.commit(escrow_, change);
+        escrow_.clear();
+        show("Dropped " + p.name + (change.empty() ? "" : ", change " + names(change)));
+    }
+    void giveBack(const vector<Coin>& coins) { if (!coins.empty()) show("Returned " + names(coins)); }
+    void show(const string& msg) const { cout << msg << "\\n"; }
+    vector<Coin>& escrow() { return escrow_; }
+    Inventory& inventory() { return inventory_; }
+    CoinBox& coinBox() { return coinBox_; }
+    string stateName() const { return state_->name(); }
+};
+
+void VmState::insertCoin(VendingMachine& m, Coin c) const { m.show(name() + ": coin returned"); m.giveBack({c}); }
+void VmState::select(VendingMachine& m, const string&) const { m.show(name() + ": cannot select now"); }
+void VmState::cancel(VendingMachine& m) const { m.show(name() + ": nothing to cancel"); }
+void VmState::service(VendingMachine& m) const { m.show(name() + ": cannot enter service now"); }
+void VmState::restock(VendingMachine& m, const Product&, int) const { m.show(name() + ": open service mode first"); }
+void VmState::finishService(VendingMachine& m) const { m.show(name() + ": not in service"); }
+
+void Idle::insertCoin(VendingMachine& m, Coin c) const { m.escrow().push_back(c); m.setState(HasMoney::I); }
+void Idle::select(VendingMachine& m, const string& code) const {
+    const Product* p = m.inventory().find(code);
+    m.show(!p ? "No such slot" : p->name + " costs Rs " + to_string(p->price) + ". Insert coins.");
+}
+void Idle::service(VendingMachine& m) const { m.setState(Maintenance::I); }
+
+void HasMoney::insertCoin(VendingMachine& m, Coin c) const { m.escrow().push_back(c); m.show("Balance Rs " + to_string(m.balance())); }
+void HasMoney::select(VendingMachine& m, const string& code) const {
+    const Product* p = m.inventory().find(code);
+    if (!p) { m.show("No such slot"); return; }                                                  // check 1
+    if (!m.inventory().inStock(code)) { m.show(p->name + " sold out, pick another"); return; }    // check 2
+    int due = p->price - m.balance();
+    if (due > 0) { m.show("Insert Rs " + to_string(due) + " more"); return; }                    // check 3
+    auto change = m.coinBox().planChange(-due, m.escrow());
+    if (!change) { m.show("Cannot make change, pick another or cancel"); return; }               // check 4
+    m.setState(Dispensing::I);
+    m.completeSale(*p, *change);  // commit stock + coins together
+    if (m.inventory().allEmpty()) m.setState(SoldOut::I); else m.setState(Idle::I);
+}
+void HasMoney::cancel(VendingMachine& m) const { m.giveBack(m.escrow()); m.escrow().clear(); m.setState(Idle::I); }
+
+void SoldOut::service(VendingMachine& m) const { m.setState(Maintenance::I); }
+
+void Maintenance::restock(VendingMachine& m, const Product& p, int qty) const { m.inventory().restock(p, qty); m.show("Restocked " + p.code); }
+void Maintenance::finishService(VendingMachine& m) const {
+    if (m.inventory().allEmpty()) m.setState(SoldOut::I); else m.setState(Idle::I);
+}
+
+int main() {
+    VendingMachine vm;
+    vm.service();
+    vm.restock({"A1", "Chips", 15}, 2);
+    vm.restock({"B2", "Water", 12}, 3);
+    vm.finishService();
+    vm.coinBox().add(Coin::ONE, 1); vm.coinBox().add(Coin::TWO, 2);
+    vm.select("A1");  // price only
+    vm.insertCoin(Coin::TEN); vm.insertCoin(Coin::FIVE);
+    vm.select("A1");  // exact money
+    vm.insertCoin(Coin::TWENTY);
+    vm.select("B2");  // change 8 = 5 + 2 + 1
+    vm.insertCoin(Coin::TEN);
+    vm.select("A1");  // needs 5 more
+    vm.cancel();      // refund the exact 10 coin
+    cout << "state=" << vm.stateName() << " box=" << vm.coinBox().toString() << "\\n";
+}` }
+        ] },
     viz: {
       title: 'Vending machine: coins flow in, checks run, snack and change flow out',
       input: 'coin 10, coin 5, select A1, coin 20, select B1, select B2, coin 10, select A2, coin 20, select B2, cancel',
@@ -1643,20 +4705,58 @@ class VendingMachine {
     examples: [
       { title: 'Why greedy change can fail with a limited coin box', html: `<p>Change needed: ₹6. Coin box: ₹5×1, ₹2×3 (no ₹1). Greedy takes ₹5, then needs ₹1 — none → "cannot make change" ✗. But ₹2+₹2+₹2 works ✓. ${H.table(['Approach', 'Coins tried', 'Result'], [['Greedy (largest first, no backtracking)', '5, then stuck at 1', H.c('r', 'fail')], ['Largest-first with backtracking', '5 → stuck → undo → 2+2+2', H.c('g', 'ok')], ['Bounded DP (fewest coins)', 'best over all combos', H.c('g', 'ok, optimal')]])} With unlimited coins of a <b>canonical</b> system (1, 2, 5, 10, 20) greedy is always optimal; the <i>limited counts</i> are what break it.</p>` },
       { title: 'Escrow: the money is not yours until the sale commits', html: `<p>Customer inserts ₹10 + ₹10, then cancels. If the machine had dropped the coins straight into the coin box, it might refund with a ₹20 note it happens to have — or worse, not have ₹20 in coins at all. Real machines hold inserted coins in an <b>escrow</b> tray: cancel opens the tray (exact coins back), commit tips it into the box. In code: a <code>List&lt;Coin&gt; escrow</code> separate from <code>CoinBox</code>.</p>` },
-      { title: 'Add-a-state: CARD_AUTHORIZING for UPI/card payment', html: `<p>New requirement: pay by card. Add a <b>PaymentMethod</b> Strategy (Cash, Card, UPI) and one new state <b>AUTHORIZING</b>: HAS_SELECTION → AUTHORIZING (waiting for the bank) → DISPENSING on approval, → IDLE on decline/timeout. Cash flow is untouched. Because authorization is <i>slow and can fail</i>, it deserves its own state — while authorizing, coin inserts are rejected and cancel sends a "void" to the bank.</p>`, code: `interface PaymentMethod { boolean authorize(int amountRs); void voidAuth(); }
+      { title: 'Add-a-state: CARD_AUTHORIZING for UPI/card payment', html: `<p>New requirement: pay by card. Add a <b>PaymentMethod</b> Strategy (Cash, Card, UPI) and one new state <b>AUTHORIZING</b>: HAS_SELECTION → AUTHORIZING (waiting for the bank) → DISPENSING on approval, → IDLE on decline/timeout. Cash flow is untouched. Because authorization is <i>slow and can fail</i>, it deserves its own state — while authorizing, coin inserts are rejected and cancel sends a "void" to the bank.</p>`, code: { lang: 'java', code: `interface PaymentMethod { boolean authorize(int amountRs); void voidAuth(); }
 class UpiPayment implements PaymentMethod {
     public boolean authorize(int amountRs) { return amountRs <= 2000; }   // stub: UPI-lite limit
     public void voidAuth() { System.out.println("UPI authorization voided"); }
+}`, alt: [
+          { lang: 'python', code: `from abc import ABC, abstractmethod
+
+
+class PaymentMethod(ABC):
+    @abstractmethod
+    def authorize(self, amount_rs: int) -> bool: ...
+
+    @abstractmethod
+    def void_auth(self) -> None: ...
+
+
+class UpiPayment(PaymentMethod):
+    def authorize(self, amount_rs: int) -> bool:
+        return amount_rs <= 2000  # stub: UPI-lite limit
+
+    def void_auth(self) -> None:
+        print("UPI authorization voided")` },
+          { lang: 'ts', code: `interface PaymentMethod {
+  authorize(amountRs: number): boolean;
+  voidAuth(): void;
+}
+
+class UpiPayment implements PaymentMethod {
+  authorize(amountRs: number): boolean { return amountRs <= 2000; } // stub: UPI-lite limit
+  voidAuth(): void { console.log("UPI authorization voided"); }
 }` },
+          { lang: 'cpp', code: `struct PaymentMethod {
+    virtual ~PaymentMethod() = default;
+    virtual bool authorize(int amountRs) = 0;
+    virtual void voidAuth() = 0;
+};
+
+class UpiPayment final : public PaymentMethod {
+public:
+    bool authorize(int amountRs) override { return amountRs <= 2000; }  // stub: UPI-lite limit
+    void voidAuth() override { cout << "UPI authorization voided\\n"; }
+};` }
+        ] } },
       { title: 'Dispense failure: the snack gets stuck', html: `<p>The motor turns but the drop sensor sees nothing (the classic stuck packet). A good design has the DISPENSING state wait for a <b>drop-sensor</b> event: success → commit; timeout → retry the motor once, then <b>refund</b> (or offer another item) and mark the slot faulty. That is why DISPENSING is a real state and not just a method call — it is where hardware can fail.</p>` }
     ],
     deepDive: `<p><b>Commit ordering = money safety.</b> The safest order is: validate everything (slot, stock, balance, change plan) → <b>reserve</b> (mark the item and change coins as taken) → physically dispense → on drop-sensor success <b>commit</b> (stock −1, escrow → box, change out) → on failure <b>release</b> the reservation and refund. It is a tiny two-phase commit between software and hardware.</p>
 <p><b>Change-making complexity.</b> Largest-first with backtracking is fine for 5 denominations and small counts. For "fewest coins with limited counts", use bounded-knapsack DP: <code>dp[a]</code> = fewest coins for amount a, processing each denomination with its count (binary splitting keeps it O(D · A · log C)). Amounts are small (≤ ₹2000) so this is microseconds.</p>
 <p><b>"Exact change only" mode.</b> When the coin box runs low, real machines light an "EXACT CHANGE" lamp. That is a derived condition (<code>coinBox.canMakeAnyChangeUpTo(maxOverpay)</code>), better shown as a display flag than a full state, because it does not change which events are allowed — only which <i>sales</i> succeed. Knowing when <i>not</i> to make something a state is part of the skill.</p>
-<p><b>Thread safety.</b> A physical machine has one customer, but a "smart" machine also receives remote events (operator app, telemetry, card terminal callbacks). Run all events through one thread (an event queue) or make the context methods <code>synchronized</code>; never let a card callback and a coin insert transition the state at the same time.</p>
+<p><b>Thread safety.</b> A physical machine has one customer, but a "smart" machine also receives remote events (operator app, telemetry, card terminal callbacks). Run all events through one thread (an event queue) or guard the context methods with one lock; never let a card callback and a coin insert transition the state at the same time.</p>
 <p><b>Inventory at scale.</b> A fleet of 10,000 machines reports stock and coin levels to a backend (IoT telemetry) so trucks restock before SOLD_OUT. The machine's state machine stays local and works offline; the backend is an Observer of state changes.</p>
 <p><b>Money as integers.</b> Store paise/rupees as <code>int</code>/<code>long</code>, never <code>double</code> — 0.1 + 0.2 ≠ 0.3 in floating point, and a machine that is off by a paisa per sale fails audits.</p>`,
-    aiEra: `<p><b>What AI changes:</b> "vending machine in Java" is one of the most generated LLD answers on the internet, so AI output looks polished. Typical gaps: no escrow (cancel refunds from the coin box), change computed <i>after</i> dispensing, greedy change with limited coins, <code>double</code> for money, and no DISPENSING failure path. Use those as your review checklist.</p>
+    aiEra: `<p><b>What AI changes:</b> "vending machine" is one of the most generated LLD answers on the internet, so AI output looks polished. Typical gaps: no escrow (cancel refunds from the coin box), change computed <i>after</i> dispensing, greedy change with limited coins, <code>double</code> for money, and no DISPENSING failure path. Use those as your review checklist.</p>
 <p><b>Use AI as a partner:</b> <code>Generate 20 adversarial event sequences for my vending machine (cancel mid-dispense, coins during maintenance, exact-change edge cases) and the expected final inventory and coin box for each.</code> Then run them as tests. Also: <code>Prove or disprove: greedy change is optimal for coins {1, 3, 4}.</code> (It is not: 6 = 3+3, greedy gives 4+1+1.)</p>
 <p><b>Real-world 2026:</b> machines take UPI/QR and tap-to-pay; the payment callback arrives asynchronously from a network — the state machine gains an AUTHORIZING state and idempotent handling of duplicate callbacks. <b>What you must still own:</b> the state table, the money-safety ordering and the failure paths — the parts that cost real money when wrong.</p>`,
     problems: [{
@@ -1678,6 +4778,7 @@ class GreedyChange {
 }` },
       mcq: { q: 'Coins {1, 3, 4}, unlimited counts, amount 6. What does greedy give vs optimal?', options: ['Greedy 4+1+1 (3 coins), optimal 3+3 (2 coins)', 'Both give 3+3', 'Greedy fails entirely', 'Both give 4+1+1'], answer: 0, explain: 'Greedy is only guaranteed optimal for canonical coin systems with unlimited coins; {1,3,4} is not canonical.' },
       hints: [`<p>Hint 1: This is a <b>bounded</b> knapsack: each denomination can be used at most counts[i] times; minimise the number of coins.</p>`, `<p>Hint 2: <code>dp[a]</code> = fewest coins to make a. Process denominations one by one; for each, use it k = 1..counts[i] times on top of the previous layer (iterate a from high to low or keep a copy of the previous layer).</p>`, `<p>Hint 3: To return the coins, store for each (denomination, amount) how many of that coin were used, then walk back. dp[0] = 0, others = ∞; answer impossible if dp[amount] = ∞.</p>`],
+      tests: { io: true, cases: [{ stdin: '', stdout: "{2=3}\n{10=1, 5=1, 2=1}\nnull\n{}\nnull\n" }] },
       solution: {
         approach: `<p>Layered DP. <code>prev[a]</code> = fewest coins for amount a using the denominations processed so far. For denomination d with count c, <code>cur[a] = min over k in 0..min(c, a/d) of prev[a − k·d] + k</code>. Record the best k in <code>used[i][a]</code> to reconstruct the answer by walking back from <code>amount</code>. O(D · A · C) worst case — tiny for vending amounts; binary splitting of counts brings it to O(D · A · log C).</p>`,
         code: `import java.util.*;
@@ -1719,8 +4820,136 @@ class ExactChange {
         System.out.println(change(d, c, 6));            // {2=3}
         System.out.println(change(d, c, 17));           // {10=1, 5=1, 2=1}
         System.out.println(change(d, c, 3));            // null -> refuse the sale before dispensing
+        System.out.println(change(d, c, 0));            // {} -> nothing to give back
+        System.out.println(change(d, c, 1));            // null -> no 1-coins left
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `INF = 2**30
+
+
+def change(denoms: list[int], counts: list[int], amount: int) -> dict[int, int] | None:
+    """Fewest coins with limited counts; returns None if impossible."""
+    n = len(denoms)
+    prev = [INF] * (amount + 1)
+    prev[0] = 0
+    used = [[0] * (amount + 1) for _ in range(n)]  # how many of coin i used to reach amount a
+    for i in range(n):
+        cur = prev[:]  # k = 0
+        for a in range(amount + 1):
+            for k in range(1, min(counts[i], a // denoms[i]) + 1):
+                cand = prev[a - k * denoms[i]] + k
+                if cand < cur[a]:
+                    cur[a] = cand
+                    used[i][a] = k
+        prev = cur
+    if prev[amount] >= INF:
+        return None
+    out: dict[int, int] = {}
+    a = amount
+    for i in range(n - 1, -1, -1):  # walk back layer by layer
+        k = used[i][a]
+        if k > 0:
+            out[denoms[i]] = k
+            a -= k * denoms[i]
+    return out  # largest coin first, because we walk from the last layer
+
+
+def show(m: dict[int, int] | None) -> str:
+    return "null" if m is None else "{" + ", ".join(f"{k}={v}" for k, v in m.items()) + "}"
+
+
+if __name__ == "__main__":
+    d, c = [1, 2, 5, 10], [0, 3, 1, 1]
+    print(show(change(d, c, 6)))   # {2=3}
+    print(show(change(d, c, 17)))  # {10=1, 5=1, 2=1}
+    print(show(change(d, c, 3)))   # null -> refuse the sale before dispensing
+    print(show(change(d, c, 0)))   # {} -> nothing to give back
+    print(show(change(d, c, 1)))   # null -> no 1-coins left` },
+          { lang: 'ts', code: `const INF = 2 ** 30;
+
+/** Fewest coins with limited counts; returns null if impossible. Map keeps largest coin first. */
+function change(denoms: number[], counts: number[], amount: number): Map<number, number> | null {
+  const n = denoms.length;
+  let prev: number[] = new Array(amount + 1).fill(INF);
+  prev[0] = 0;
+  const used: number[][] = Array.from({ length: n }, () => new Array<number>(amount + 1).fill(0)); // coin i used to reach a
+  for (let i = 0; i < n; i++) {
+    const cur = prev.slice(); // k = 0
+    for (let a = 0; a <= amount; a++) {
+      const maxK = Math.min(counts[i], Math.floor(a / denoms[i]));
+      for (let k = 1; k <= maxK; k++) {
+        const cand = prev[a - k * denoms[i]] + k;
+        if (cand < cur[a]) { cur[a] = cand; used[i][a] = k; }
+      }
+    }
+    prev = cur;
+  }
+  if (prev[amount] >= INF) return null;
+  const out = new Map<number, number>();
+  let a = amount;
+  for (let i = n - 1; i >= 0; i--) { // walk back layer by layer
+    const k = used[i][a];
+    if (k > 0) { out.set(denoms[i], k); a -= k * denoms[i]; }
+  }
+  return out;
+}
+
+function show(m: Map<number, number> | null): string {
+  return m === null ? "null" : "{" + [...m].map(([k, v]) => \`\${k}=\${v}\`).join(", ") + "}";
+}
+
+const d = [1, 2, 5, 10], c = [0, 3, 1, 1];
+console.log(show(change(d, c, 6)));  // {2=3}
+console.log(show(change(d, c, 17))); // {10=1, 5=1, 2=1}
+console.log(show(change(d, c, 3)));  // null -> refuse the sale before dispensing
+console.log(show(change(d, c, 0)));  // {} -> nothing to give back
+console.log(show(change(d, c, 1)));  // null -> no 1-coins left` },
+          { lang: 'cpp', code: `const int INF = INT_MAX / 2;
+
+// Fewest coins with limited counts; nullopt if impossible. The map lists the largest coin first.
+optional<map<int, int, greater<int>>> change(const vector<int>& denoms, const vector<int>& counts, int amount) {
+    int n = denoms.size();
+    vector<int> prev(amount + 1, INF);
+    prev[0] = 0;
+    vector<vector<int>> used(n, vector<int>(amount + 1, 0));  // how many of coin i used to reach amount a
+    for (int i = 0; i < n; i++) {
+        vector<int> cur = prev;  // k = 0
+        for (int a = 0; a <= amount; a++) {
+            int maxK = min(counts[i], a / denoms[i]);
+            for (int k = 1; k <= maxK; k++) {
+                int cand = prev[a - k * denoms[i]] + k;
+                if (cand < cur[a]) { cur[a] = cand; used[i][a] = k; }
+            }
+        }
+        prev = move(cur);
+    }
+    if (prev[amount] >= INF) return nullopt;
+    map<int, int, greater<int>> out;
+    int a = amount;
+    for (int i = n - 1; i >= 0; i--) {  // walk back layer by layer
+        int k = used[i][a];
+        if (k > 0) { out[denoms[i]] = k; a -= k * denoms[i]; }
+    }
+    return out;
+}
+
+void show(const optional<map<int, int, greater<int>>>& m) {
+    if (!m) { cout << "null\\n"; return; }
+    cout << "{";
+    bool first = true;
+    for (const auto& [coin, k] : *m) { cout << (first ? "" : ", ") << coin << "=" << k; first = false; }
+    cout << "}\\n";
+}
+
+int main() {
+    vector<int> d = {1, 2, 5, 10}, c = {0, 3, 1, 1};
+    show(change(d, c, 6));   // {2=3}
+    show(change(d, c, 17));  // {10=1, 5=1, 2=1}
+    show(change(d, c, 3));   // null -> refuse the sale before dispensing
+    show(change(d, c, 0));   // {} -> nothing to give back
+    show(change(d, c, 1));   // null -> no 1-coins left
+}` }
+        ],
         complexity: `<p>Time O(D · A · C) with D denominations, amount A, max count C (≤ 10 · 10<sup>4</sup> · 10<sup>3</sup> worst case, but in practice A/d bounds k); space O(D · A) for reconstruction. For vending amounts (A ≤ 2000) this runs in well under a millisecond.</p>`,
         followUps: ['Prefer giving away coins the machine has too many of (keep scarce ₹1 coins). How do you change the objective?', 'Light an "EXACT CHANGE ONLY" lamp: which amounts must be checked?', 'Make it work for notes + coins in a ticket kiosk with amounts up to ₹10,000.']
       }
@@ -1988,7 +5217,833 @@ class Atm {
         atm.insertCard(new Card("4111-02", "ACC1"));
         atm.enterPin("0000"); atm.enterPin("1111"); atm.enterPin("2222");   // card retained
     }
-}` },
+}`, alt: [
+          { lang: 'python', code: `from __future__ import annotations
+
+import threading
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Optional
+
+
+@dataclass(frozen=True)
+class Card:
+    number: str
+    account: str
+
+
+class BankService(ABC):
+    """Everything about money lives at the bank. Every call is idempotent by txn_id."""
+
+    @abstractmethod
+    def verify_pin(self, card: Card, pin: str) -> bool: ...
+
+    @abstractmethod
+    def balance(self, account: str) -> int: ...
+
+    @abstractmethod
+    def debit(self, account: str, amount: int, txn_id: str) -> Optional[str]: ...  # None = approved, else reason
+
+    @abstractmethod
+    def reverse(self, txn_id: str) -> None: ...
+
+    @abstractmethod
+    def credit(self, account: str, amount: int, txn_id: str) -> None: ...
+
+
+class InMemoryBank(BankService):
+    DAILY_LIMIT = 10_000
+
+    def __init__(self) -> None:
+        self._balances: dict[str, int] = {}
+        self._pins: dict[str, str] = {}
+        self._withdrawn_today: dict[str, int] = {}
+        self._debits: dict[str, tuple[str, int]] = {}  # txn_id -> (account, amount)
+        self._reversed: set[str] = set()
+        self._credits: set[str] = set()
+        self._lock = threading.RLock()
+
+    def open(self, account: str, pin: str, balance: int) -> None:
+        self._balances[account] = balance
+        self._pins[account] = pin
+
+    def verify_pin(self, card: Card, pin: str) -> bool:
+        return pin == self._pins.get(card.account)
+
+    def balance(self, account: str) -> int:
+        with self._lock:
+            return self._balances.get(account, 0)
+
+    def debit(self, account: str, amount: int, txn_id: str) -> Optional[str]:
+        with self._lock:
+            if txn_id in self._debits:
+                return None  # retry of an approved debit: no double charge
+            if self.balance(account) < amount:
+                return "INSUFFICIENT_FUNDS"
+            if self._withdrawn_today.get(account, 0) + amount > self.DAILY_LIMIT:
+                return "DAILY_LIMIT_EXCEEDED"
+            self._balances[account] = self._balances.get(account, 0) - amount
+            self._withdrawn_today[account] = self._withdrawn_today.get(account, 0) + amount
+            self._debits[txn_id] = (account, amount)
+            return None
+
+    def reverse(self, txn_id: str) -> None:
+        with self._lock:
+            d = self._debits.get(txn_id)
+            if d is None or txn_id in self._reversed:  # unknown or already reversed: no-op
+                return
+            self._reversed.add(txn_id)
+            account, amount = d
+            self._balances[account] = self._balances.get(account, 0) + amount
+            self._withdrawn_today[account] = self._withdrawn_today.get(account, 0) - amount
+
+    def credit(self, account: str, amount: int, txn_id: str) -> None:
+        with self._lock:
+            if txn_id not in self._credits:
+                self._credits.add(txn_id)
+                self._balances[account] = self._balances.get(account, 0) + amount
+
+
+class NoteHandler:
+    """Chain of Responsibility: each cassette serves what it can and passes the rest on."""
+
+    def __init__(self, note: int, count: int) -> None:
+        self.note = note
+        self.count = count
+        self._next: Optional[NoteHandler] = None
+
+    def then(self, n: NoteHandler) -> NoteHandler:
+        self._next = n
+        return n
+
+    def plan(self, amount: int, out: dict[int, int]) -> bool:
+        """Plan only (no notes move). Backtracks: uses fewer big notes if the chain below gets stuck."""
+        for use in range(min(self.count, amount // self.note), -1, -1):
+            rest = amount - use * self.note
+            if rest == 0 or (self._next is not None and self._next.plan(rest, out)):
+                if use > 0:
+                    out[self.note] = use
+                return True
+        return False
+
+    def commit(self, plan: dict[int, int]) -> None:
+        self.count -= plan.get(self.note, 0)
+        if self._next is not None:
+            self._next.commit(plan)
+
+    def total(self) -> int:
+        return self.note * self.count + (0 if self._next is None else self._next.total())
+
+
+def show_plan(plan: dict[int, int]) -> str:
+    return "{" + ", ".join(f"{k}={v}" for k, v in plan.items()) + "}"
+
+
+class CashDispenser:
+    def __init__(self, n2000: int, n500: int, n200: int, n100: int) -> None:
+        self._head = NoteHandler(2000, n2000)
+        self._head.then(NoteHandler(500, n500)).then(NoteHandler(200, n200)).then(NoteHandler(100, n100))
+        self.jam_next = False  # test hook: simulate a hardware jam
+
+    def plan(self, amount: int) -> Optional[dict[int, int]]:
+        p: dict[int, int] = {}
+        if not self._head.plan(amount, p):
+            return None
+        return dict(sorted(p.items(), reverse=True))  # largest note first
+
+    def dispense(self, plan: dict[int, int]) -> bool:
+        if self.jam_next:
+            self.jam_next = False
+            return False
+        self._head.commit(plan)
+        return True
+
+    def total(self) -> int:
+        return self._head.total()
+
+
+class Transaction(ABC):
+    """Command pattern: each transaction is an object with an id that can be logged and audited."""
+
+    @abstractmethod
+    def run(self, atm: "Atm") -> str: ...
+
+
+class WithdrawTxn(Transaction):
+    def __init__(self, amount: int) -> None:
+        self._amount = amount
+
+    def run(self, atm: "Atm") -> str:
+        if self._amount <= 0 or self._amount % 100 != 0:  # 1. validate
+            return "Amount must be a positive multiple of 100"
+        plan = atm.dispenser.plan(self._amount)  # 2. plan notes
+        if plan is None:
+            return f"This ATM cannot dispense Rs {self._amount}"
+        txn_id = atm.new_txn_id()
+        err = atm.bank.debit(atm.card.account, self._amount, txn_id)  # 3. debit
+        if err is not None:
+            return f"Declined: {err}"
+        if not atm.dispenser.dispense(plan):  # 4. dispense
+            atm.bank.reverse(txn_id)  # 5b. rollback
+            return f"Could not dispense. Your account was NOT charged ({txn_id} reversed)"
+        return f"Take Rs {self._amount} as {show_plan(plan)} [{txn_id}]"  # 5a. success
+
+
+class BalanceTxn(Transaction):
+    def run(self, atm: "Atm") -> str:
+        return f"Balance Rs {atm.bank.balance(atm.card.account)}"
+
+
+class DepositTxn(Transaction):
+    def __init__(self, amount: int) -> None:
+        self._amount = amount
+
+    def run(self, atm: "Atm") -> str:
+        if self._amount <= 0 or self._amount % 100 != 0:
+            return "Invalid deposit"
+        txn_id = atm.new_txn_id()
+        atm.bank.credit(atm.card.account, self._amount, txn_id)
+        return f"Deposited Rs {self._amount} [{txn_id}]"
+
+
+class AtmState(ABC):
+    @abstractmethod
+    def name(self) -> str: ...
+
+    def insert_card(self, a: "Atm", c: Card) -> None: a.show(f"{self.name()}: card not accepted now")
+    def enter_pin(self, a: "Atm", pin: str) -> None: a.show(f"{self.name()}: insert card first")
+    def choose(self, a: "Atm", t: Transaction) -> None: a.show(f"{self.name()}: enter PIN first")
+    def eject(self, a: "Atm") -> None: a.show(f"{self.name()}: no card to eject")
+
+
+class AtmIdle(AtmState):
+    def name(self) -> str: return "IDLE"
+
+    def insert_card(self, a: "Atm", c: Card) -> None:
+        a.start_session(c)
+        a.set_state(CardInserted())
+
+
+class CardInserted(AtmState):
+    MAX_ATTEMPTS = 3
+
+    def name(self) -> str: return "CARD_INSERTED"
+
+    def enter_pin(self, a: "Atm", pin: str) -> None:
+        if a.bank.verify_pin(a.card, pin):
+            a.set_state(Authenticated())
+            return
+        tries = a.failed_pin()
+        if tries >= self.MAX_ATTEMPTS:
+            a.retain_card()  # CARD_RETAINED, then IDLE
+            return
+        a.show(f"Wrong PIN, {self.MAX_ATTEMPTS - tries} attempt(s) left")
+
+    def eject(self, a: "Atm") -> None: a.end_session()
+
+
+class Authenticated(AtmState):
+    def name(self) -> str: return "AUTHENTICATED"
+
+    def choose(self, a: "Atm", t: Transaction) -> None:
+        a.set_state(InTransaction())  # other inputs rejected meanwhile
+        a.show(t.run(a))
+        a.set_state(Authenticated())  # "another transaction?"
+
+    def eject(self, a: "Atm") -> None: a.end_session()
+
+
+class InTransaction(AtmState):
+    def name(self) -> str: return "IN_TRANSACTION"
+
+
+class OutOfService(AtmState):
+    def name(self) -> str: return "OUT_OF_SERVICE"
+
+
+class Atm:
+    def __init__(self, bank: BankService, dispenser: CashDispenser) -> None:
+        self._state: AtmState = AtmIdle()
+        self.bank = bank
+        self.dispenser = dispenser
+        self._card: Optional[Card] = None
+        self._failed_pins = 0
+        self._txn_seq = 0
+
+    @property
+    def card(self) -> Card:
+        assert self._card is not None
+        return self._card
+
+    # public API
+    def insert_card(self, c: Card) -> None: self._state.insert_card(self, c)
+    def enter_pin(self, pin: str) -> None: self._state.enter_pin(self, pin)
+    def withdraw(self, amt: int) -> None: self._state.choose(self, WithdrawTxn(amt))
+    def deposit(self, amt: int) -> None: self._state.choose(self, DepositTxn(amt))
+    def balance(self) -> None: self._state.choose(self, BalanceTxn())
+    def eject(self) -> None: self._state.eject(self)
+
+    # used by states and transactions
+    def set_state(self, s: AtmState) -> None:
+        self.show(f"  [{self._state.name()} -> {s.name()}]")
+        self._state = s
+
+    def start_session(self, c: Card) -> None:
+        self._card = c
+        self._failed_pins = 0
+
+    def failed_pin(self) -> int:
+        self._failed_pins += 1
+        return self._failed_pins
+
+    def retain_card(self) -> None:
+        self.show(f"Card {self.card.number} retained. Contact your bank.")
+        self.set_state(AtmIdle())
+        self._card = None
+
+    def end_session(self) -> None:
+        self.show("Card returned")
+        self._card = None
+        self.set_state(OutOfService() if self.dispenser.total() < 100 else AtmIdle())
+
+    def new_txn_id(self) -> str:
+        self._txn_seq += 1
+        return f"T{self._txn_seq}"
+
+    def show(self, msg: str) -> None: print(msg)
+
+
+if __name__ == "__main__":
+    bank = InMemoryBank()
+    bank.open("ACC1", "1234", 15_000)
+    cash = CashDispenser(2, 10, 10, 10)
+    atm = Atm(bank, cash)
+    atm.balance()  # rejected: no card
+    atm.insert_card(Card("4111-01", "ACC1"))
+    atm.enter_pin("1111")  # wrong
+    atm.enter_pin("1234")
+    atm.withdraw(2750)  # not a multiple of 100
+    atm.withdraw(2700)  # 2000 + 500 + 200
+    cash.jam_next = True
+    atm.withdraw(1000)  # jam -> reversed, not charged
+    atm.withdraw(9000)  # daily limit (2700 + 9000 > 10000)
+    atm.balance()  # 12300
+    atm.eject()
+    atm.insert_card(Card("4111-02", "ACC1"))
+    atm.enter_pin("0000"); atm.enter_pin("1111"); atm.enter_pin("2222")  # card retained` },
+          { lang: 'ts', code: `interface Card { readonly number: string; readonly account: string }
+
+/** Everything about money lives at the bank. Every call is idempotent by txnId. */
+interface BankService {
+  verifyPin(card: Card, pin: string): boolean;
+  balance(account: string): number;
+  debit(account: string, amount: number, txnId: string): string | null; // null = approved, else reason
+  reverse(txnId: string): void;
+  credit(account: string, amount: number, txnId: string): void;
+}
+
+class InMemoryBank implements BankService {
+  static readonly DAILY_LIMIT = 10_000;
+  private readonly balances = new Map<string, number>();
+  private readonly pins = new Map<string, string>();
+  private readonly withdrawnToday = new Map<string, number>();
+  private readonly debits = new Map<string, { account: string; amount: number }>();
+  private readonly reversed = new Set<string>();
+  private readonly credits = new Set<string>();
+
+  open(account: string, pin: string, balance: number): void { this.balances.set(account, balance); this.pins.set(account, pin); }
+  verifyPin(c: Card, pin: string): boolean { return pin === this.pins.get(c.account); }
+  balance(a: string): number { return this.balances.get(a) ?? 0; }
+
+  debit(a: string, amt: number, txnId: string): string | null {
+    if (this.debits.has(txnId)) return null; // retry of an approved debit: no double charge
+    if (this.balance(a) < amt) return "INSUFFICIENT_FUNDS";
+    if ((this.withdrawnToday.get(a) ?? 0) + amt > InMemoryBank.DAILY_LIMIT) return "DAILY_LIMIT_EXCEEDED";
+    this.balances.set(a, this.balance(a) - amt);
+    this.withdrawnToday.set(a, (this.withdrawnToday.get(a) ?? 0) + amt);
+    this.debits.set(txnId, { account: a, amount: amt });
+    return null;
+  }
+  reverse(txnId: string): void {
+    const d = this.debits.get(txnId);
+    if (d === undefined || this.reversed.has(txnId)) return; // unknown or already reversed: no-op
+    this.reversed.add(txnId);
+    this.balances.set(d.account, this.balance(d.account) + d.amount);
+    this.withdrawnToday.set(d.account, (this.withdrawnToday.get(d.account) ?? 0) - d.amount);
+  }
+  credit(a: string, amt: number, txnId: string): void {
+    if (this.credits.has(txnId)) return;
+    this.credits.add(txnId);
+    this.balances.set(a, this.balance(a) + amt);
+  }
+}
+
+/** Chain of Responsibility: each cassette serves what it can and passes the rest on. */
+class NoteHandler {
+  private next: NoteHandler | null = null;
+
+  constructor(readonly note: number, public count: number) {}
+
+  then(n: NoteHandler): NoteHandler { this.next = n; return n; }
+
+  /** Plan only (no notes move). Backtracks: uses fewer big notes if the chain below gets stuck. */
+  plan(amount: number, out: Map<number, number>): boolean {
+    for (let use = Math.min(this.count, Math.floor(amount / this.note)); use >= 0; use--) {
+      const rest = amount - use * this.note;
+      if (rest === 0 || (this.next !== null && this.next.plan(rest, out))) {
+        if (use > 0) out.set(this.note, use);
+        return true;
+      }
+    }
+    return false;
+  }
+  commit(plan: Map<number, number>): void {
+    this.count -= plan.get(this.note) ?? 0;
+    this.next?.commit(plan);
+  }
+  total(): number { return this.note * this.count + (this.next === null ? 0 : this.next.total()); }
+}
+
+const showPlan = (plan: Map<number, number>): string => "{" + [...plan].map(([k, v]) => \`\${k}=\${v}\`).join(", ") + "}";
+
+class CashDispenser {
+  private readonly head: NoteHandler;
+  jamNext = false; // test hook: simulate a hardware jam
+
+  constructor(n2000: number, n500: number, n200: number, n100: number) {
+    this.head = new NoteHandler(2000, n2000);
+    this.head.then(new NoteHandler(500, n500)).then(new NoteHandler(200, n200)).then(new NoteHandler(100, n100));
+  }
+  plan(amount: number): Map<number, number> | null {
+    const p = new Map<number, number>();
+    if (!this.head.plan(amount, p)) return null;
+    return new Map([...p].sort((a, b) => b[0] - a[0])); // largest note first
+  }
+  dispense(plan: Map<number, number>): boolean {
+    if (this.jamNext) { this.jamNext = false; return false; }
+    this.head.commit(plan);
+    return true;
+  }
+  total(): number { return this.head.total(); }
+}
+
+/** Command pattern: each transaction is an object with an id that can be logged and audited. */
+interface Transaction { run(atm: Atm): string }
+
+class WithdrawTxn implements Transaction {
+  constructor(private readonly amount: number) {}
+  run(atm: Atm): string {
+    if (this.amount <= 0 || this.amount % 100 !== 0) return "Amount must be a positive multiple of 100"; // 1. validate
+    const plan = atm.dispenser.plan(this.amount); // 2. plan notes
+    if (plan === null) return \`This ATM cannot dispense Rs \${this.amount}\`;
+    const txnId = atm.newTxnId();
+    const err = atm.bank.debit(atm.card().account, this.amount, txnId); // 3. debit
+    if (err !== null) return \`Declined: \${err}\`;
+    if (!atm.dispenser.dispense(plan)) { // 4. dispense
+      atm.bank.reverse(txnId); // 5b. rollback
+      return \`Could not dispense. Your account was NOT charged (\${txnId} reversed)\`;
+    }
+    return \`Take Rs \${this.amount} as \${showPlan(plan)} [\${txnId}]\`; // 5a. success
+  }
+}
+class BalanceTxn implements Transaction {
+  run(atm: Atm): string { return \`Balance Rs \${atm.bank.balance(atm.card().account)}\`; }
+}
+class DepositTxn implements Transaction {
+  constructor(private readonly amount: number) {}
+  run(atm: Atm): string {
+    if (this.amount <= 0 || this.amount % 100 !== 0) return "Invalid deposit";
+    const txnId = atm.newTxnId();
+    atm.bank.credit(atm.card().account, this.amount, txnId);
+    return \`Deposited Rs \${this.amount} [\${txnId}]\`;
+  }
+}
+
+interface AtmState {
+  name(): string;
+  insertCard(a: Atm, c: Card): void;
+  enterPin(a: Atm, pin: string): void;
+  choose(a: Atm, t: Transaction): void;
+  eject(a: Atm): void;
+}
+
+// Interfaces carry no code in TypeScript, so the "refuse everything" defaults live in a base class.
+abstract class BaseAtmState implements AtmState {
+  abstract name(): string;
+  insertCard(a: Atm, c: Card): void { a.show(\`\${this.name()}: card not accepted now\`); }
+  enterPin(a: Atm, pin: string): void { a.show(\`\${this.name()}: insert card first\`); }
+  choose(a: Atm, t: Transaction): void { a.show(\`\${this.name()}: enter PIN first\`); }
+  eject(a: Atm): void { a.show(\`\${this.name()}: no card to eject\`); }
+}
+
+class AtmIdle extends BaseAtmState {
+  name(): string { return "IDLE"; }
+  override insertCard(a: Atm, c: Card): void { a.startSession(c); a.setState(new CardInserted()); }
+}
+class CardInserted extends BaseAtmState {
+  static readonly MAX_ATTEMPTS = 3;
+  name(): string { return "CARD_INSERTED"; }
+  override enterPin(a: Atm, pin: string): void {
+    if (a.bank.verifyPin(a.card(), pin)) { a.setState(new Authenticated()); return; }
+    const tries = a.failedPin();
+    if (tries >= CardInserted.MAX_ATTEMPTS) { a.retainCard(); return; } // CARD_RETAINED, then IDLE
+    a.show(\`Wrong PIN, \${CardInserted.MAX_ATTEMPTS - tries} attempt(s) left\`);
+  }
+  override eject(a: Atm): void { a.endSession(); }
+}
+class Authenticated extends BaseAtmState {
+  name(): string { return "AUTHENTICATED"; }
+  override choose(a: Atm, t: Transaction): void {
+    a.setState(new InTransaction()); // other inputs rejected meanwhile
+    a.show(t.run(a));
+    a.setState(new Authenticated()); // "another transaction?"
+  }
+  override eject(a: Atm): void { a.endSession(); }
+}
+class InTransaction extends BaseAtmState { name(): string { return "IN_TRANSACTION"; } }
+class OutOfService extends BaseAtmState { name(): string { return "OUT_OF_SERVICE"; } }
+
+class Atm {
+  private state: AtmState = new AtmIdle();
+  private current: Card | null = null;
+  private failedPins = 0;
+  private txnSeq = 0;
+
+  constructor(readonly bank: BankService, readonly dispenser: CashDispenser) {}
+
+  // public API
+  insertCard(c: Card): void { this.state.insertCard(this, c); }
+  enterPin(pin: string): void { this.state.enterPin(this, pin); }
+  withdraw(amt: number): void { this.state.choose(this, new WithdrawTxn(amt)); }
+  deposit(amt: number): void { this.state.choose(this, new DepositTxn(amt)); }
+  balance(): void { this.state.choose(this, new BalanceTxn()); }
+  eject(): void { this.state.eject(this); }
+
+  // used by states and transactions
+  setState(s: AtmState): void { this.show(\`  [\${this.state.name()} -> \${s.name()}]\`); this.state = s; }
+  startSession(c: Card): void { this.current = c; this.failedPins = 0; }
+  failedPin(): number { return ++this.failedPins; }
+  retainCard(): void {
+    this.show(\`Card \${this.card().number} retained. Contact your bank.\`);
+    this.setState(new AtmIdle());
+    this.current = null;
+  }
+  endSession(): void {
+    this.show("Card returned");
+    this.current = null;
+    this.setState(this.dispenser.total() < 100 ? new OutOfService() : new AtmIdle());
+  }
+  newTxnId(): string { return "T" + ++this.txnSeq; }
+  show(msg: string): void { console.log(msg); }
+  card(): Card {
+    if (this.current === null) throw new Error("no card inserted");
+    return this.current;
+  }
+}
+
+const bank = new InMemoryBank();
+bank.open("ACC1", "1234", 15_000);
+const cash = new CashDispenser(2, 10, 10, 10);
+const atm = new Atm(bank, cash);
+atm.balance(); // rejected: no card
+atm.insertCard({ number: "4111-01", account: "ACC1" });
+atm.enterPin("1111"); // wrong
+atm.enterPin("1234");
+atm.withdraw(2750); // not a multiple of 100
+atm.withdraw(2700); // 2000 + 500 + 200
+cash.jamNext = true;
+atm.withdraw(1000); // jam -> reversed, not charged
+atm.withdraw(9000); // daily limit (2700 + 9000 > 10000)
+atm.balance(); // 12300
+atm.eject();
+atm.insertCard({ number: "4111-02", account: "ACC1" });
+atm.enterPin("0000"); atm.enterPin("1111"); atm.enterPin("2222"); // card retained` },
+          { lang: 'cpp', code: `struct Card {
+    string number, account;
+};
+
+// Everything about money lives at the bank. Every call is idempotent by txnId.
+struct BankService {
+    virtual ~BankService() = default;
+    virtual bool verifyPin(const Card& card, const string& pin) = 0;
+    virtual long long balance(const string& account) = 0;
+    virtual optional<string> debit(const string& account, long long amount, const string& txnId) = 0;  // nullopt = approved, else reason
+    virtual void reverse(const string& txnId) = 0;
+    virtual void credit(const string& account, long long amount, const string& txnId) = 0;
+};
+
+class InMemoryBank final : public BankService {
+    static constexpr long long DAILY_LIMIT = 10'000;
+    struct Debit { string account; long long amount; };
+    map<string, long long> balances_, withdrawnToday_;
+    map<string, string> pins_;
+    map<string, Debit> debits_;
+    set<string> reversed_, credits_;
+    recursive_mutex mu_;
+
+public:
+    void open(const string& account, const string& pin, long long balance) { balances_[account] = balance; pins_[account] = pin; }
+    bool verifyPin(const Card& c, const string& pin) override {
+        auto it = pins_.find(c.account);
+        return it != pins_.end() && it->second == pin;
+    }
+    long long balance(const string& a) override {
+        lock_guard g(mu_);
+        auto it = balances_.find(a);
+        return it == balances_.end() ? 0 : it->second;
+    }
+    optional<string> debit(const string& a, long long amt, const string& txnId) override {
+        lock_guard g(mu_);
+        if (debits_.count(txnId)) return nullopt;  // retry of an approved debit: no double charge
+        if (balance(a) < amt) return "INSUFFICIENT_FUNDS";
+        if (withdrawnToday_[a] + amt > DAILY_LIMIT) return "DAILY_LIMIT_EXCEEDED";
+        balances_[a] -= amt;
+        withdrawnToday_[a] += amt;
+        debits_[txnId] = {a, amt};
+        return nullopt;
+    }
+    void reverse(const string& txnId) override {
+        lock_guard g(mu_);
+        auto it = debits_.find(txnId);
+        if (it == debits_.end() || !reversed_.insert(txnId).second) return;  // unknown or already reversed: no-op
+        balances_[it->second.account] += it->second.amount;
+        withdrawnToday_[it->second.account] -= it->second.amount;
+    }
+    void credit(const string& a, long long amt, const string& txnId) override {
+        lock_guard g(mu_);
+        if (credits_.insert(txnId).second) balances_[a] += amt;
+    }
+};
+
+using Plan = map<int, int, greater<int>>;  // note -> count, largest note first
+
+// Chain of Responsibility: each cassette serves what it can and passes the rest on.
+class NoteHandler {
+    int note_, count_;
+    unique_ptr<NoteHandler> next_;  // the chain owns its links
+
+public:
+    NoteHandler(int note, int count) : note_(note), count_(count) {}
+    NoteHandler* then(unique_ptr<NoteHandler> n) { next_ = move(n); return next_.get(); }
+
+    // Plan only (no notes move). Backtracks: uses fewer big notes if the chain below gets stuck.
+    bool plan(int amount, Plan& out) const {
+        for (int use = min(count_, amount / note_); use >= 0; use--) {
+            int rest = amount - use * note_;
+            if (rest == 0 || (next_ && next_->plan(rest, out))) {
+                if (use > 0) out[note_] = use;
+                return true;
+            }
+        }
+        return false;
+    }
+    void commit(const Plan& plan) {
+        auto it = plan.find(note_);
+        if (it != plan.end()) count_ -= it->second;
+        if (next_) next_->commit(plan);
+    }
+    long long total() const { return 1LL * note_ * count_ + (next_ ? next_->total() : 0); }
+};
+
+string showPlan(const Plan& plan) {
+    string s = "{";
+    for (const auto& [note, n] : plan) s += (s.size() > 1 ? ", " : "") + to_string(note) + "=" + to_string(n);
+    return s + "}";
+}
+
+class CashDispenser {
+    NoteHandler head_;
+
+public:
+    bool jamNext = false;  // test hook: simulate a hardware jam
+
+    CashDispenser(int n2000, int n500, int n200, int n100) : head_(2000, n2000) {
+        head_.then(make_unique<NoteHandler>(500, n500))->then(make_unique<NoteHandler>(200, n200))
+             ->then(make_unique<NoteHandler>(100, n100));
+    }
+    optional<Plan> plan(int amount) const {
+        Plan p;
+        if (!head_.plan(amount, p)) return nullopt;
+        return p;
+    }
+    bool dispense(const Plan& plan) {
+        if (jamNext) { jamNext = false; return false; }
+        head_.commit(plan);
+        return true;
+    }
+    long long total() const { return head_.total(); }
+};
+
+class Atm;
+
+// Command pattern: each transaction is an object with an id that can be logged and audited.
+struct Transaction {
+    virtual ~Transaction() = default;
+    virtual string run(Atm& atm) const = 0;
+};
+
+// Stateless singletons: the ATM holds a pointer to the current one.
+struct AtmState {
+    virtual ~AtmState() = default;
+    virtual string name() const = 0;
+    virtual void insertCard(Atm& a, const Card& c) const;
+    virtual void enterPin(Atm& a, const string& pin) const;
+    virtual void choose(Atm& a, const Transaction& t) const;
+    virtual void eject(Atm& a) const;
+};
+struct AtmIdle final : AtmState {
+    static const AtmIdle I;
+    string name() const override { return "IDLE"; }
+    void insertCard(Atm& a, const Card& c) const override;
+};
+struct CardInserted final : AtmState {
+    static const CardInserted I;
+    static constexpr int MAX_ATTEMPTS = 3;
+    string name() const override { return "CARD_INSERTED"; }
+    void enterPin(Atm& a, const string& pin) const override;
+    void eject(Atm& a) const override;
+};
+struct Authenticated final : AtmState {
+    static const Authenticated I;
+    string name() const override { return "AUTHENTICATED"; }
+    void choose(Atm& a, const Transaction& t) const override;
+    void eject(Atm& a) const override;
+};
+struct InTransaction final : AtmState {
+    static const InTransaction I;
+    string name() const override { return "IN_TRANSACTION"; }
+};
+struct OutOfService final : AtmState {
+    static const OutOfService I;
+    string name() const override { return "OUT_OF_SERVICE"; }
+};
+inline const AtmIdle AtmIdle::I;
+inline const CardInserted CardInserted::I;
+inline const Authenticated Authenticated::I;
+inline const InTransaction InTransaction::I;
+inline const OutOfService OutOfService::I;
+
+class Atm {
+    const AtmState* state_ = &AtmIdle::I;
+    BankService& bank_;
+    CashDispenser& dispenser_;
+    optional<Card> card_;
+    int failedPins_ = 0, txnSeq_ = 0;
+
+public:
+    Atm(BankService& bank, CashDispenser& dispenser) : bank_(bank), dispenser_(dispenser) {}
+
+    // public API
+    void insertCard(const Card& c);
+    void enterPin(const string& pin) { state_->enterPin(*this, pin); }
+    void withdraw(long long amt);
+    void deposit(long long amt);
+    void balance();
+    void eject() { state_->eject(*this); }
+
+    // used by states and transactions
+    void setState(const AtmState& s) { show("  [" + state_->name() + " -> " + s.name() + "]"); state_ = &s; }
+    void startSession(const Card& c) { card_ = c; failedPins_ = 0; }
+    int failedPin() { return ++failedPins_; }
+    void retainCard() {
+        show("Card " + card_->number + " retained. Contact your bank.");
+        setState(AtmIdle::I);
+        card_.reset();
+    }
+    void endSession() {
+        show("Card returned");
+        card_.reset();
+        if (dispenser_.total() < 100) setState(OutOfService::I); else setState(AtmIdle::I);
+    }
+    string newTxnId() { return "T" + to_string(++txnSeq_); }
+    void show(const string& msg) const { cout << msg << "\\n"; }
+    BankService& bank() { return bank_; }
+    CashDispenser& dispenser() { return dispenser_; }
+    const Card& card() const { return *card_; }
+    void choose(const Transaction& t) { state_->choose(*this, t); }
+};
+
+class WithdrawTxn final : public Transaction {
+    long long amount_;
+
+public:
+    explicit WithdrawTxn(long long amount) : amount_(amount) {}
+    string run(Atm& atm) const override {
+        if (amount_ <= 0 || amount_ % 100 != 0) return "Amount must be a positive multiple of 100";  // 1. validate
+        auto plan = atm.dispenser().plan(static_cast<int>(amount_));                                 // 2. plan notes
+        if (!plan) return "This ATM cannot dispense Rs " + to_string(amount_);
+        string txnId = atm.newTxnId();
+        auto err = atm.bank().debit(atm.card().account, amount_, txnId);                            // 3. debit
+        if (err) return "Declined: " + *err;
+        if (!atm.dispenser().dispense(*plan)) {                                                     // 4. dispense
+            atm.bank().reverse(txnId);                                                              // 5b. rollback
+            return "Could not dispense. Your account was NOT charged (" + txnId + " reversed)";
+        }
+        return "Take Rs " + to_string(amount_) + " as " + showPlan(*plan) + " [" + txnId + "]";    // 5a. success
+    }
+};
+class BalanceTxn final : public Transaction {
+public:
+    string run(Atm& atm) const override { return "Balance Rs " + to_string(atm.bank().balance(atm.card().account)); }
+};
+class DepositTxn final : public Transaction {
+    long long amount_;
+
+public:
+    explicit DepositTxn(long long amount) : amount_(amount) {}
+    string run(Atm& atm) const override {
+        if (amount_ <= 0 || amount_ % 100 != 0) return "Invalid deposit";
+        string txnId = atm.newTxnId();
+        atm.bank().credit(atm.card().account, amount_, txnId);
+        return "Deposited Rs " + to_string(amount_) + " [" + txnId + "]";
+    }
+};
+
+void Atm::insertCard(const Card& c) { state_->insertCard(*this, c); }
+void Atm::withdraw(long long amt) { choose(WithdrawTxn(amt)); }
+void Atm::deposit(long long amt) { choose(DepositTxn(amt)); }
+void Atm::balance() { choose(BalanceTxn()); }
+
+void AtmState::insertCard(Atm& a, const Card&) const { a.show(name() + ": card not accepted now"); }
+void AtmState::enterPin(Atm& a, const string&) const { a.show(name() + ": insert card first"); }
+void AtmState::choose(Atm& a, const Transaction&) const { a.show(name() + ": enter PIN first"); }
+void AtmState::eject(Atm& a) const { a.show(name() + ": no card to eject"); }
+
+void AtmIdle::insertCard(Atm& a, const Card& c) const { a.startSession(c); a.setState(CardInserted::I); }
+void CardInserted::enterPin(Atm& a, const string& pin) const {
+    if (a.bank().verifyPin(a.card(), pin)) { a.setState(Authenticated::I); return; }
+    int tries = a.failedPin();
+    if (tries >= MAX_ATTEMPTS) { a.retainCard(); return; }  // CARD_RETAINED, then IDLE
+    a.show("Wrong PIN, " + to_string(MAX_ATTEMPTS - tries) + " attempt(s) left");
+}
+void CardInserted::eject(Atm& a) const { a.endSession(); }
+void Authenticated::choose(Atm& a, const Transaction& t) const {
+    a.setState(InTransaction::I);  // other inputs rejected meanwhile
+    a.show(t.run(a));
+    a.setState(Authenticated::I);  // "another transaction?"
+}
+void Authenticated::eject(Atm& a) const { a.endSession(); }
+
+int main() {
+    InMemoryBank bank;
+    bank.open("ACC1", "1234", 15'000);
+    CashDispenser cash(2, 10, 10, 10);
+    Atm atm(bank, cash);
+    atm.balance();  // rejected: no card
+    atm.insertCard({"4111-01", "ACC1"});
+    atm.enterPin("1111");  // wrong
+    atm.enterPin("1234");
+    atm.withdraw(2750);  // not a multiple of 100
+    atm.withdraw(2700);  // 2000 + 500 + 200
+    cash.jamNext = true;
+    atm.withdraw(1000);  // jam -> reversed, not charged
+    atm.withdraw(9000);  // daily limit (2700 + 9000 > 10000)
+    atm.balance();       // 12300
+    atm.eject();
+    atm.insertCard({"4111-02", "ACC1"});
+    atm.enterPin("0000"); atm.enterPin("1111"); atm.enterPin("2222");  // card retained
+}` }
+        ] },
     viz: [{
       title: 'ATM state machine: card, PIN attempts, transactions, eject',
       input: 'balance, insert, pin 1111, pin 1234, withdraw 2750, withdraw 2700, balance, eject, insert, pin 0000, pin 1111, pin 2222',
@@ -2142,10 +6197,45 @@ class Atm {
     }],
     examples: [
       { title: 'PIN attempts: whose counter is it?', html: `<p>The counter resets when a <b>new card session</b> starts and on a correct PIN. If you put it in a field that survives sessions, customer B inherits customer A's two wrong tries and gets their card retained after one typo. Real systems also count failures <b>at the bank</b> per card (across ATMs) — the ATM counter is only a local safety net. ${H.table(['Event', 'attempts', 'state'], [['insert card', '0', 'CARD_INSERTED'], ['PIN 1111', '1', 'CARD_INSERTED'], ['PIN 0000', '2', 'CARD_INSERTED'], ['PIN 9999', '3', H.c('r', 'CARD_RETAINED → IDLE')]])}</p>` },
-      { title: 'Transactions as Command objects', html: `<p>Each user choice becomes an object (<code>WithdrawTxn(2700)</code>) with an id. Benefits: the AUTHENTICATED state has one method <code>choose(Transaction t)</code> instead of one per menu item; each transaction is written to the <b>journal</b> before running (crash recovery); and adding "mini statement" or "PIN change" is a new class, nothing else.</p>`, code: `interface Txn { String run(); }
+      { title: 'Transactions as Command objects', html: `<p>Each user choice becomes an object (<code>WithdrawTxn(2700)</code>) with an id. Benefits: the AUTHENTICATED state has one method <code>choose(Transaction t)</code> instead of one per menu item; each transaction is written to the <b>journal</b> before running (crash recovery); and adding "mini statement" or "PIN change" is a new class, nothing else.</p>`, code: { lang: 'java', code: `interface Txn { String run(); }
 record MiniStatement(String account) implements Txn {
     public String run() { return "Last 5 transactions for " + account; }   // new feature = new class
+}`, alt: [
+          { lang: 'python', code: `from dataclasses import dataclass
+from typing import Protocol
+
+
+class Txn(Protocol):
+    def run(self) -> str: ...
+
+
+@dataclass(frozen=True)
+class MiniStatement:
+    account: str
+
+    def run(self) -> str:  # new feature = new class
+        return f"Last 5 transactions for {self.account}"` },
+          { lang: 'ts', code: `interface Txn {
+  run(): string;
+}
+
+class MiniStatement implements Txn {
+  constructor(readonly account: string) {}
+  run(): string { return \`Last 5 transactions for \${this.account}\`; } // new feature = new class
 }` },
+          { lang: 'cpp', code: `struct Txn {
+    virtual ~Txn() = default;
+    virtual string run() const = 0;
+};
+
+class MiniStatement final : public Txn {
+    string account_;
+
+public:
+    explicit MiniStatement(string account) : account_(move(account)) {}
+    string run() const override { return "Last 5 transactions for " + account_; }  // new feature = new class
+};` }
+        ] } },
       { title: 'Idempotency in one picture', html: `<p>${H.table(['Bank receives', 'Bank state before', 'Result'], [['debit 2700 T42', 'T42 unknown', H.c('g', 'debit, store T42')], ['debit 2700 T42 (retry)', 'T42 debited', H.c('b', 'no-op, reply approved')], ['reverse T42', 'T42 debited', H.c('g', 'credit back, mark reversed')], ['reverse T42 (retry)', 'T42 reversed', H.c('b', 'no-op')]])} Without txnIds, a network retry charges the customer twice — the number one ATM bug interviewers probe.</p>` },
       { title: 'Out of service: a state, not a flag', html: `<p>When total cash drops below ₹100 (or a cassette faults, or the printer is out of paper for a bank that requires receipts), the ATM moves to <b>OUT_OF_SERVICE</b> after the current customer ejects. In that state <code>insertCard</code> is rejected by default. Partial modes are common: "no ₹100 notes" just shrinks the allowed amounts (handled by the planner), while "no cash at all" is a real state change.</p>` }
     ],
@@ -2178,6 +6268,7 @@ record MiniStatement(String account) implements Txn {
 }` },
       mcq: { q: 'Why does the plan step come before calling the bank in a withdrawal?', options: ['So the customer is never charged for an amount the ATM cannot physically dispense', 'Because the bank needs the note breakdown', 'To make the transaction faster', 'It does not matter'], answer: 0, explain: 'Planning is local and side-effect free; if it fails, nothing needs undoing. Debit-then-discover-you-cannot-dispense forces a reversal.' },
       hints: [`<p>Hint 1: Make each denomination a <b>handler</b> that knows its note value, its stock and the next handler. The chain order (big → small) is set up once at construction.</p>`, `<p>Hint 2: Plain "take as many as you can" fails on limited stock. Let each handler try <code>use = max … 0</code> and ask the next handler to solve the remainder; return true on the first success (backtracking). Write into the plan only on success.</p>`, `<p>Hint 3: Keep <code>plan()</code> pure (no stock changes) and a separate <code>commit(plan)</code> that walks the chain subtracting counts. Adding ₹50 = link one more handler.</p>`],
+      tests: { io: true, cases: [{ stdin: '', stdout: "plan {200=3}\nplan {2000=1, 500=1, 200=1}\nno plan\nno plan\n{2000=1, 500=1, 200=1, 50=1}\nplan {2000=1, 500=1, 200=1, 50=1}\nplan {500=8, 200=4, 100=1, 50=1}\nno plan\n" }] },
       solution: {
         approach: `<p>Chain of Responsibility with backtracking. Each <code>NoteHandler</code> tries the largest feasible number of its notes first and delegates the remainder; if the rest of the chain fails, it retries with one fewer note. This returns the plan that uses the most big notes among feasible plans (lexicographically largest from the top), matches greedy whenever greedy works, and finds a plan whenever one exists. <code>commit</code> applies a plan after the bank approves.</p>`,
         code: `import java.util.*;
@@ -2217,13 +6308,16 @@ class Dispenser {
     }
     void dispense(Map<Integer, Integer> plan) { head.commit(plan); }
 
+    static String show(Optional<Map<Integer, Integer>> plan) { return plan.map(m -> "plan " + m).orElse("no plan"); }
+
     public static void main(String[] args) {
         Cassette c2000 = new Cassette(2000, 1);
         c2000.link(new Cassette(500, 1)).link(new Cassette(200, 3)).link(new Cassette(100, 0));
         Dispenser d = new Dispenser(c2000);
-        System.out.println(d.plan(600));      // Optional[{200=3}]
-        System.out.println(d.plan(2700));     // Optional[{2000=1, 500=1, 200=1}]
-        System.out.println(d.plan(300));      // Optional.empty -> refuse before calling the bank
+        System.out.println(show(d.plan(600)));      // plan {200=3}
+        System.out.println(show(d.plan(2700)));     // plan {2000=1, 500=1, 200=1}
+        System.out.println(show(d.plan(300)));      // no plan -> refuse before calling the bank
+        System.out.println(show(d.plan(0)));        // no plan -> nothing to dispense
 
         Cassette big = new Cassette(2000, 2);  // adding a Rs 50 cassette = one more link()
         big.link(new Cassette(500, 10)).link(new Cassette(200, 10)).link(new Cassette(100, 10)).link(new Cassette(50, 4));
@@ -2231,8 +6325,230 @@ class Dispenser {
         Map<Integer, Integer> p = d2.plan(2750).orElseThrow();
         d2.dispense(p);
         System.out.println(p);                // {2000=1, 500=1, 200=1, 50=1}
+        System.out.println(show(d2.plan(2750))); // plan {2000=1, 500=1, 200=1, 50=1}: counts dropped, still enough
+        d2.dispense(d2.plan(2750).orElseThrow());
+        System.out.println(show(d2.plan(4950))); // plan {500=8, 200=4, 100=1, 50=1}: the 2000s are gone
+        System.out.println(show(d2.plan(4975))); // no plan: not a multiple of 50
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `from __future__ import annotations
+
+
+class Cassette:
+    def __init__(self, note: int, count: int) -> None:
+        self.note = note
+        self.count = count
+        self._next: Cassette | None = None
+
+    def link(self, n: Cassette) -> Cassette:
+        self._next = n
+        return n
+
+    def plan(self, amount: int, out: dict[int, int]) -> bool:
+        """Pure planning: no counts change. Backtracks when the rest of the chain cannot finish."""
+        for use in range(min(self.count, amount // self.note), -1, -1):
+            rest = amount - use * self.note
+            if rest == 0 or (self._next is not None and self._next.plan(rest, out)):
+                if use > 0:
+                    out[self.note] = use
+                return True
+        return False
+
+    def commit(self, plan: dict[int, int]) -> None:
+        self.count -= plan.get(self.note, 0)
+        if self._next is not None:
+            self._next.commit(plan)
+
+
+class Dispenser:
+    def __init__(self, head: Cassette) -> None:
+        self._head = head
+
+    def plan(self, amount: int) -> dict[int, int] | None:
+        if amount <= 0:
+            return None
+        p: dict[int, int] = {}
+        if not self._head.plan(amount, p):
+            return None
+        return dict(sorted(p.items(), reverse=True))  # largest note first
+
+    def dispense(self, plan: dict[int, int]) -> None:
+        self._head.commit(plan)
+
+    @staticmethod
+    def show(plan: dict[int, int] | None) -> str:
+        if plan is None:
+            return "no plan"
+        return "plan {" + ", ".join(f"{k}={v}" for k, v in plan.items()) + "}"
+
+
+if __name__ == "__main__":
+    c2000 = Cassette(2000, 1)
+    c2000.link(Cassette(500, 1)).link(Cassette(200, 3)).link(Cassette(100, 0))
+    d = Dispenser(c2000)
+    print(Dispenser.show(d.plan(600)))   # plan {200=3}
+    print(Dispenser.show(d.plan(2700)))  # plan {2000=1, 500=1, 200=1}
+    print(Dispenser.show(d.plan(300)))   # no plan -> refuse before calling the bank
+    print(Dispenser.show(d.plan(0)))     # no plan -> nothing to dispense
+
+    big = Cassette(2000, 2)  # adding a Rs 50 cassette = one more link()
+    big.link(Cassette(500, 10)).link(Cassette(200, 10)).link(Cassette(100, 10)).link(Cassette(50, 4))
+    d2 = Dispenser(big)
+    p = d2.plan(2750)
+    assert p is not None
+    d2.dispense(p)
+    print("{" + ", ".join(f"{k}={v}" for k, v in p.items()) + "}")  # {2000=1, 500=1, 200=1, 50=1}
+    print(Dispenser.show(d2.plan(2750)))  # plan {2000=1, 500=1, 200=1, 50=1}: counts dropped, still enough
+    again = d2.plan(2750)
+    assert again is not None
+    d2.dispense(again)
+    print(Dispenser.show(d2.plan(4950)))  # plan {500=8, 200=4, 100=1, 50=1}: the 2000s are gone
+    print(Dispenser.show(d2.plan(4975)))  # no plan: not a multiple of 50` },
+          { lang: 'ts', code: `type Plan = Map<number, number>; // note -> how many, largest note first
+
+class Cassette {
+  private next: Cassette | null = null;
+
+  constructor(readonly note: number, public count: number) {}
+
+  link(n: Cassette): Cassette {
+    this.next = n;
+    return n;
+  }
+
+  /** Pure planning: no counts change. Backtracks when the rest of the chain cannot finish. */
+  plan(amount: number, out: Plan): boolean {
+    for (let use = Math.min(this.count, Math.floor(amount / this.note)); use >= 0; use--) {
+      const rest = amount - use * this.note;
+      if (rest === 0 || (this.next !== null && this.next.plan(rest, out))) {
+        if (use > 0) out.set(this.note, use);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  commit(plan: Plan): void {
+    this.count -= plan.get(this.note) ?? 0;
+    this.next?.commit(plan);
+  }
+}
+
+class Dispenser {
+  constructor(private readonly head: Cassette) {}
+
+  plan(amount: number): Plan | null {
+    if (amount <= 0) return null;
+    const p: Plan = new Map();
+    if (!this.head.plan(amount, p)) return null;
+    return new Map([...p].sort((a, b) => b[0] - a[0])); // largest note first
+  }
+
+  dispense(plan: Plan): void { this.head.commit(plan); }
+
+  static show(plan: Plan | null): string {
+    return plan === null ? "no plan" : "plan " + Dispenser.fmt(plan);
+  }
+  static fmt(plan: Plan): string {
+    return "{" + [...plan].map(([k, v]) => \`\${k}=\${v}\`).join(", ") + "}";
+  }
+}
+
+const c2000 = new Cassette(2000, 1);
+c2000.link(new Cassette(500, 1)).link(new Cassette(200, 3)).link(new Cassette(100, 0));
+const d = new Dispenser(c2000);
+console.log(Dispenser.show(d.plan(600)));  // plan {200=3}
+console.log(Dispenser.show(d.plan(2700))); // plan {2000=1, 500=1, 200=1}
+console.log(Dispenser.show(d.plan(300)));  // no plan -> refuse before calling the bank
+console.log(Dispenser.show(d.plan(0)));    // no plan -> nothing to dispense
+
+const big = new Cassette(2000, 2); // adding a Rs 50 cassette = one more link()
+big.link(new Cassette(500, 10)).link(new Cassette(200, 10)).link(new Cassette(100, 10)).link(new Cassette(50, 4));
+const d2 = new Dispenser(big);
+const p = d2.plan(2750)!;
+d2.dispense(p);
+console.log(Dispenser.fmt(p)); // {2000=1, 500=1, 200=1, 50=1}
+console.log(Dispenser.show(d2.plan(2750))); // plan {2000=1, 500=1, 200=1, 50=1}: counts dropped, still enough
+d2.dispense(d2.plan(2750)!);
+console.log(Dispenser.show(d2.plan(4950))); // plan {500=8, 200=4, 100=1, 50=1}: the 2000s are gone
+console.log(Dispenser.show(d2.plan(4975))); // no plan: not a multiple of 50` },
+          { lang: 'cpp', code: `using Plan = map<int, int, greater<int>>;  // note -> how many, largest note first
+
+class Cassette {
+    int note_, count_;
+    unique_ptr<Cassette> next_;  // the chain owns its links
+
+public:
+    Cassette(int note, int count) : note_(note), count_(count) {}
+
+    Cassette* link(unique_ptr<Cassette> n) {
+        next_ = move(n);
+        return next_.get();
+    }
+
+    // Pure planning: no counts change. Backtracks when the rest of the chain cannot finish.
+    bool plan(int amount, Plan& out) const {
+        for (int use = min(count_, amount / note_); use >= 0; use--) {
+            int rest = amount - use * note_;
+            if (rest == 0 || (next_ && next_->plan(rest, out))) {
+                if (use > 0) out[note_] = use;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void commit(const Plan& plan) {
+        auto it = plan.find(note_);
+        if (it != plan.end()) count_ -= it->second;
+        if (next_) next_->commit(plan);
+    }
+};
+
+class Dispenser {
+    Cassette* head_;
+
+public:
+    explicit Dispenser(Cassette* head) : head_(head) {}
+
+    optional<Plan> plan(int amount) const {
+        if (amount <= 0) return nullopt;
+        Plan p;
+        if (!head_->plan(amount, p)) return nullopt;
+        return p;
+    }
+    void dispense(const Plan& plan) { head_->commit(plan); }
+
+    static string fmt(const Plan& plan) {
+        string s = "{";
+        for (const auto& [note, n] : plan) s += (s.size() > 1 ? ", " : "") + to_string(note) + "=" + to_string(n);
+        return s + "}";
+    }
+    static string show(const optional<Plan>& plan) { return plan ? "plan " + fmt(*plan) : "no plan"; }
+};
+
+int main() {
+    Cassette c2000(2000, 1);
+    c2000.link(make_unique<Cassette>(500, 1))->link(make_unique<Cassette>(200, 3))->link(make_unique<Cassette>(100, 0));
+    Dispenser d(&c2000);
+    cout << Dispenser::show(d.plan(600)) << "\\n";   // plan {200=3}
+    cout << Dispenser::show(d.plan(2700)) << "\\n";  // plan {2000=1, 500=1, 200=1}
+    cout << Dispenser::show(d.plan(300)) << "\\n";   // no plan -> refuse before calling the bank
+    cout << Dispenser::show(d.plan(0)) << "\\n";     // no plan -> nothing to dispense
+
+    Cassette big(2000, 2);  // adding a Rs 50 cassette = one more link()
+    big.link(make_unique<Cassette>(500, 10))->link(make_unique<Cassette>(200, 10))
+        ->link(make_unique<Cassette>(100, 10))->link(make_unique<Cassette>(50, 4));
+    Dispenser d2(&big);
+    Plan p = *d2.plan(2750);
+    d2.dispense(p);
+    cout << Dispenser::fmt(p) << "\\n";                       // {2000=1, 500=1, 200=1, 50=1}
+    cout << Dispenser::show(d2.plan(2750)) << "\\n";          // plan {2000=1, 500=1, 200=1, 50=1}: counts dropped, still enough
+    d2.dispense(*d2.plan(2750));
+    cout << Dispenser::show(d2.plan(4950)) << "\\n";          // plan {500=8, 200=4, 100=1, 50=1}: the 2000s are gone
+    cout << Dispenser::show(d2.plan(4975)) << "\\n";          // no plan: not a multiple of 50
+}` }
+        ],
         complexity: `<p>Greedy-feasible cases run in O(D) (no backtracking). Worst case backtracking explores O(∏ counts) branches, but with 4–5 denominations, the descending order and early success it is tiny in practice; for guaranteed bounds use bounded-knapsack DP, O(D · A/100). Space O(D) recursion.</p>`,
         followUps: ['Prefer to keep ₹100 notes for small withdrawals: change the preference order without breaking correctness.', 'A cassette reports a fault mid-day: how does the chain skip it?', 'Customer asks for "₹2000 in ₹500 notes": how would you add a note-preference option?']
       }
@@ -2253,8 +6569,8 @@ ${H.table(['from', 'event', 'guard', 'to', 'action'], [
 ])}
 <p><b>2. Make transitions atomic.</b> "Read state → check → write new state" is a <b>check-then-act race</b>. Two threads both read <i>qty = 1, state = IDLE</i>, both sell, and the machine sells one can twice. Three standard fixes:</p>
 <ul>
-<li><b>Lock</b> (<code>synchronized</code>/<code>ReentrantLock</code>) around the whole fire(): simple, correct, slightly slower under contention.</li>
-<li><b>Compare-and-set</b> (<code>AtomicReference.compareAndSet(old, new)</code>) on an immutable state snapshot: lock-free; the loser retries or fails.</li>
+<li><b>Lock</b> (<code>synchronized</code>/<code>ReentrantLock</code>, <code>threading.Lock</code>, <code>std::mutex</code>; JavaScript needs none on one thread) around the whole fire(): simple, correct, slightly slower under contention.</li>
+<li><b>Compare-and-set</b> (<code>AtomicReference.compareAndSet(old, new)</code> in Java, <code>std::atomic</code> of a <code>shared_ptr</code> in C++; Python has no CAS primitive, so a tiny lock plays that role) on an immutable state snapshot: lock-free; the loser retries or fails.</li>
 <li><b>Single-threaded event loop</b> (actor): all events go into a queue consumed by one thread — no shared mutation at all. Elevators and ATMs usually work this way.</li>
 </ul>
 <p><b>3. Persist state with a version.</b> Save <code>(id, state, version)</code>. Transition with <code>UPDATE … SET state = ?, version = version + 1 WHERE id = ? AND state = ? AND version = ?</code>. If 0 rows change, someone else won — reload and decide. This is the same CAS idea, at database level (<b>optimistic locking</b>).</p>
@@ -2337,7 +6653,283 @@ class EngineDemo {
         vm.fire(VE.DROP_OK, till);
         System.out.println("final " + vm.state() + ", stock " + till.stock);
     }
-}` }, { lang: 'java', title: 'Lock-free transitions with an immutable snapshot + compareAndSet (and the race it prevents)', code: `import java.util.*;
+}`, alt: [
+          { lang: 'python', code: `from __future__ import annotations
+
+import threading
+from dataclasses import dataclass
+from enum import Enum
+from typing import Callable, Generic, TypeVar
+
+S = TypeVar("S", bound=Enum)  # state enum
+E = TypeVar("E", bound=Enum)  # event enum
+C = TypeVar("C")  # context: the data the guards/actions use
+
+
+@dataclass(frozen=True)
+class Transition(Generic[S, C]):
+    to: S
+    guard: Callable[[C], bool]
+    action: Callable[[C], None]
+
+
+class StateMachine(Generic[S, E, C]):
+    """A reusable engine. The table is data: (state, event) -> ordered list of guarded transitions."""
+
+    def __init__(self, initial: S, table: dict[S, dict[E, list[Transition[S, C]]]]) -> None:
+        self._current = initial
+        self._table = table
+        self._listeners: list[Callable[[S, S], None]] = []
+        self._lock = threading.RLock()
+
+    def fire(self, event: E, ctx: C) -> bool:
+        """Atomic: no other thread can observe or change state mid-transition."""
+        with self._lock:
+            for t in self._table.get(self._current, {}).get(event, []):  # first transition whose guard passes wins
+                if t.guard(ctx):
+                    frm = self._current
+                    t.action(ctx)  # side effect while holding the lock
+                    self._current = t.to
+                    for listener in self._listeners:  # Observer: audit log, metrics, UI
+                        listener(frm, t.to)
+                    return True
+            return False  # illegal event or every guard failed
+
+    @property
+    def state(self) -> S:
+        with self._lock:
+            return self._current
+
+    def on_transition(self, listener: Callable[[S, S], None]) -> None:
+        self._listeners.append(listener)
+
+    @staticmethod
+    def builder(initial: S) -> "Builder[S, E, C]":
+        return Builder(initial)
+
+
+class Builder(Generic[S, E, C]):
+    def __init__(self, initial: S) -> None:
+        self._initial = initial
+        self._table: dict[S, dict[E, list[Transition[S, C]]]] = {}
+
+    def permit(self, frm: S, on: E, to: S,
+               guard: Callable[[C], bool] = lambda c: True,
+               action: Callable[[C], None] = lambda c: None) -> "Builder[S, E, C]":
+        self._table.setdefault(frm, {}).setdefault(on, []).append(Transition(to, guard, action))
+        return self
+
+    def build(self) -> StateMachine[S, E, C]:
+        return StateMachine(self._initial, self._table)
+
+
+class VS(Enum):
+    IDLE = 1
+    HAS_MONEY = 2
+    DISPENSING = 3
+
+
+class VE(Enum):
+    COIN = 1
+    SELECT = 2
+    DROP_OK = 3
+    CANCEL = 4
+
+
+class Till:
+    def __init__(self) -> None:
+        self.balance = 0
+        self.stock = 1
+        self.price = 15
+
+
+def add_coin(t: Till) -> None: t.balance += 10
+def take_one(t: Till) -> None: t.stock -= 1
+
+
+def reset_balance(t: Till) -> None: t.balance = 0
+
+
+if __name__ == "__main__":
+    vm = (StateMachine.builder(VS.IDLE)
+          .permit(VS.IDLE, VE.COIN, VS.HAS_MONEY, lambda t: True, add_coin)
+          .permit(VS.HAS_MONEY, VE.COIN, VS.HAS_MONEY, lambda t: True, add_coin)
+          .permit(VS.HAS_MONEY, VE.SELECT, VS.DISPENSING, lambda t: t.balance >= t.price and t.stock > 0, take_one)
+          .permit(VS.DISPENSING, VE.DROP_OK, VS.IDLE, lambda t: True, reset_balance)
+          .permit(VS.HAS_MONEY, VE.CANCEL, VS.IDLE, lambda t: True, reset_balance)
+          .build())
+    vm.on_transition(lambda a, b: print(f"audit: {a.name} -> {b.name}"))
+    till = Till()
+    print("select early:", str(vm.fire(VE.SELECT, till)).lower())  # false: illegal in IDLE
+    vm.fire(VE.COIN, till)
+    print("select with 10:", str(vm.fire(VE.SELECT, till)).lower())  # false: guard fails
+    vm.fire(VE.COIN, till)
+    vm.fire(VE.SELECT, till)
+    vm.fire(VE.DROP_OK, till)
+    print(f"final {vm.state.name}, stock {till.stock}")` },
+          { lang: 'ts', code: `/** A reusable engine. S = state names, E = event names, C = context (the data the guards/actions use). */
+interface Transition<S, C> {
+  readonly to: S;
+  readonly guard: (ctx: C) => boolean;
+  readonly action: (ctx: C) => void;
+}
+
+class StateMachine<S extends string, E extends string, C> {
+  private readonly listeners: Array<(from: S, to: S) => void> = [];
+
+  constructor(private current: S, private readonly table: Map<S, Map<E, Transition<S, C>[]>>) {}
+
+  /** One JS thread: a transition cannot be interrupted, so it is atomic by construction. */
+  fire(event: E, ctx: C): boolean {
+    const options = this.table.get(this.current)?.get(event) ?? [];
+    for (const t of options) { // first transition whose guard passes wins
+      if (t.guard(ctx)) {
+        const from = this.current;
+        t.action(ctx); // side effect
+        this.current = t.to;
+        this.listeners.forEach((l) => l(from, t.to)); // Observer: audit log, metrics, UI
+        return true;
+      }
+    }
+    return false; // illegal event or every guard failed
+  }
+  state(): S { return this.current; }
+  onTransition(l: (from: S, to: S) => void): void { this.listeners.push(l); }
+
+  static builder<S extends string, E extends string, C>(initial: S): Builder<S, E, C> {
+    return new Builder<S, E, C>(initial);
+  }
+}
+
+class Builder<S extends string, E extends string, C> {
+  private readonly table = new Map<S, Map<E, Transition<S, C>[]>>();
+
+  constructor(private readonly initial: S) {}
+
+  permit(from: S, on: E, to: S, guard: (c: C) => boolean = () => true, action: (c: C) => void = () => {}): this {
+    const row = this.table.get(from) ?? new Map<E, Transition<S, C>[]>();
+    this.table.set(from, row);
+    row.set(on, [...(row.get(on) ?? []), { to, guard, action }]);
+    return this;
+  }
+  build(): StateMachine<S, E, C> { return new StateMachine(this.initial, this.table); }
+}
+
+type VS = "IDLE" | "HAS_MONEY" | "DISPENSING";
+type VE = "COIN" | "SELECT" | "DROP_OK" | "CANCEL";
+
+class Till { balance = 0; stock = 1; readonly price = 15; }
+
+const vm = StateMachine.builder<VS, VE, Till>("IDLE")
+  .permit("IDLE", "COIN", "HAS_MONEY", () => true, (t) => { t.balance += 10; })
+  .permit("HAS_MONEY", "COIN", "HAS_MONEY", () => true, (t) => { t.balance += 10; })
+  .permit("HAS_MONEY", "SELECT", "DISPENSING", (t) => t.balance >= t.price && t.stock > 0, (t) => { t.stock--; })
+  .permit("DISPENSING", "DROP_OK", "IDLE", () => true, (t) => { t.balance = 0; })
+  .permit("HAS_MONEY", "CANCEL", "IDLE", () => true, (t) => { t.balance = 0; })
+  .build();
+vm.onTransition((a, b) => console.log(\`audit: \${a} -> \${b}\`));
+const till = new Till();
+console.log("select early: " + vm.fire("SELECT", till)); // false: illegal in IDLE
+vm.fire("COIN", till);
+console.log("select with 10: " + vm.fire("SELECT", till)); // false: guard fails
+vm.fire("COIN", till);
+vm.fire("SELECT", till);
+vm.fire("DROP_OK", till);
+console.log(\`final \${vm.state()}, stock \${till.stock}\`);` },
+          { lang: 'cpp', code: `// A reusable engine. S = state enum, E = event enum, C = context (the data the guards/actions use).
+template <class S, class E, class C>
+class StateMachine {
+public:
+    struct Transition {
+        S to;
+        function<bool(const C&)> guard;
+        function<void(C&)> action;
+    };
+    using Table = map<S, map<E, vector<Transition>>>;
+
+    class Builder {
+        S initial_;
+        Table table_;
+
+    public:
+        explicit Builder(S initial) : initial_(initial) {}
+        Builder& permit(S from, E on, S to,
+                        function<bool(const C&)> guard = [](const C&) { return true; },
+                        function<void(C&)> action = [](C&) {}) {
+            table_[from][on].push_back({to, move(guard), move(action)});
+            return *this;
+        }
+        StateMachine build() { return StateMachine(initial_, move(table_)); }
+    };
+
+    static Builder builder(S initial) { return Builder(initial); }
+
+    // Atomic: no other thread can observe or change state mid-transition.
+    bool fire(E event, C& ctx) {
+        lock_guard g(mu_);
+        auto row = table_.find(current_);
+        if (row == table_.end()) return false;
+        auto options = row->second.find(event);
+        if (options == row->second.end()) return false;
+        for (const Transition& t : options->second) {  // first transition whose guard passes wins
+            if (t.guard(ctx)) {
+                S from = current_;
+                t.action(ctx);  // side effect while holding the lock
+                current_ = t.to;
+                for (auto& l : listeners_) l(from, t.to);  // Observer: audit log, metrics, UI
+                return true;
+            }
+        }
+        return false;  // illegal event or every guard failed
+    }
+    S state() const { lock_guard g(mu_); return current_; }
+    void onTransition(function<void(S, S)> l) { listeners_.push_back(move(l)); }
+
+    StateMachine(S initial, Table table) : current_(initial), table_(move(table)) {}
+    StateMachine(StateMachine&& o) : current_(o.current_), table_(move(o.table_)), listeners_(move(o.listeners_)) {}
+
+private:
+    mutable recursive_mutex mu_;
+    S current_;
+    Table table_;
+    vector<function<void(S, S)>> listeners_;
+};
+
+enum class VS { IDLE, HAS_MONEY, DISPENSING };
+enum class VE { COIN, SELECT, DROP_OK, CANCEL };
+
+const char* name(VS s) {
+    static const char* n[] = {"IDLE", "HAS_MONEY", "DISPENSING"};
+    return n[static_cast<int>(s)];
+}
+
+struct Till {
+    int balance = 0;
+    int stock = 1;
+    const int price = 15;
+};
+
+int main() {
+    cout << boolalpha;
+    using Vm = StateMachine<VS, VE, Till>;
+    Vm vm = Vm::builder(VS::IDLE)
+        .permit(VS::IDLE, VE::COIN, VS::HAS_MONEY, [](const Till&) { return true; }, [](Till& t) { t.balance += 10; })
+        .permit(VS::HAS_MONEY, VE::COIN, VS::HAS_MONEY, [](const Till&) { return true; }, [](Till& t) { t.balance += 10; })
+        .permit(VS::HAS_MONEY, VE::SELECT, VS::DISPENSING, [](const Till& t) { return t.balance >= t.price && t.stock > 0; }, [](Till& t) { t.stock--; })
+        .permit(VS::DISPENSING, VE::DROP_OK, VS::IDLE, [](const Till&) { return true; }, [](Till& t) { t.balance = 0; })
+        .permit(VS::HAS_MONEY, VE::CANCEL, VS::IDLE, [](const Till&) { return true; }, [](Till& t) { t.balance = 0; })
+        .build();
+    vm.onTransition([](VS a, VS b) { cout << "audit: " << name(a) << " -> " << name(b) << "\\n"; });
+    Till till;
+    cout << "select early: " << vm.fire(VE::SELECT, till) << "\\n";    // false: illegal in IDLE
+    vm.fire(VE::COIN, till);
+    cout << "select with 10: " << vm.fire(VE::SELECT, till) << "\\n";  // false: guard fails
+    vm.fire(VE::COIN, till);
+    vm.fire(VE::SELECT, till);
+    vm.fire(VE::DROP_OK, till);
+    cout << "final " << name(vm.state()) << ", stock " << till.stock << "\\n";
+}` }
+        ] }, { lang: 'java', title: 'Lock-free transitions with an immutable snapshot + compareAndSet (and the race it prevents)', code: `import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 
@@ -2384,7 +6976,200 @@ class LastCanMachine {
         pool.shutdown();
         System.out.println("CAS machine sold " + sold + " can(s); final " + m.snapshot());   // always exactly 1
     }
-}` }],
+}`, alt: [
+          { lang: 'python', code: `import threading
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True, eq=False)  # eq=False: snapshots are compared by identity, like a reference CAS
+class Slot:
+    """Immutable snapshot: state + stock + version travel together, so they can never disagree."""
+    state: str
+    stock: int
+    version: int
+
+    def __str__(self) -> str:  # same look as a Java record
+        return f"Slot[state={self.state}, stock={self.stock}, version={self.version}]"
+
+
+class AtomicReference:
+    """Python has no CAS primitive, so a tiny lock makes get/compare_and_set atomic."""
+
+    def __init__(self, value: Slot) -> None:
+        self._value = value
+        self._lock = threading.Lock()
+
+    def get(self) -> Slot:
+        return self._value
+
+    def compare_and_set(self, expect: Slot, update: Slot) -> bool:
+        with self._lock:
+            if self._value is not expect:
+                return False
+            self._value = update
+            return True
+
+
+class LastCanMachine:
+    def __init__(self) -> None:
+        self._ref = AtomicReference(Slot("IDLE", 1, 0))
+
+    def buy(self) -> bool:
+        """Optimistic buy: read snapshot, compute next, publish only if nobody changed it meanwhile."""
+        while True:
+            cur = self._ref.get()
+            if cur.stock == 0:  # guard on a consistent snapshot
+                return False
+            nxt = Slot("SOLD_OUT" if cur.stock == 1 else "IDLE", cur.stock - 1, cur.version + 1)
+            if self._ref.compare_and_set(cur, nxt):  # we won the race
+                return True
+            # someone else transitioned first -> loop and re-check with fresh data
+
+    def snapshot(self) -> Slot:
+        return self._ref.get()
+
+
+class UnsafeMachine:
+    """The broken version for comparison: check-then-act on plain fields."""
+
+    def __init__(self) -> None:
+        self.stock = 1
+
+    def buy(self) -> bool:
+        if self.stock > 0:  # two threads can both pass this check...
+            self.stock -= 1  # ...and both decrement: stock -1, two cans "sold"
+            return True
+        return False
+
+
+if __name__ == "__main__":
+    m = LastCanMachine()
+    go = threading.Event()
+
+    def buyer() -> bool:
+        go.wait()
+        return m.buy()
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = [pool.submit(buyer) for _ in range(8)]
+        go.set()  # release all 8 buyers at once
+        sold = sum(f.result() for f in results)
+    print(f"CAS machine sold {sold} can(s); final {m.snapshot()}")  # always exactly 1` },
+          { lang: 'ts', code: `/** Immutable snapshot: state + stock + version travel together, so they can never disagree. */
+class Slot {
+  constructor(readonly state: string, readonly stock: number, readonly version: number) {}
+  toString(): string { return \`Slot[state=\${this.state}, stock=\${this.stock}, version=\${this.version}]\`; }
+}
+
+// JavaScript has one thread, so compare-and-set cannot lose a race here;
+// the loop is written the way it must be on a multi-threaded runtime.
+class AtomicReference<T> {
+  constructor(private value: T) {}
+  get(): T { return this.value; }
+  compareAndSet(expect: T, update: T): boolean {
+    if (this.value !== expect) return false;
+    this.value = update;
+    return true;
+  }
+}
+
+class LastCanMachine {
+  private readonly ref = new AtomicReference(new Slot("IDLE", 1, 0));
+
+  /** Optimistic buy: read snapshot, compute next, publish only if nobody changed it meanwhile. */
+  buy(): boolean {
+    for (;;) {
+      const cur = this.ref.get();
+      if (cur.stock === 0) return false; // guard on a consistent snapshot
+      const next = new Slot(cur.stock === 1 ? "SOLD_OUT" : "IDLE", cur.stock - 1, cur.version + 1);
+      if (this.ref.compareAndSet(cur, next)) return true; // we won the race
+      // someone else transitioned first -> loop and re-check with fresh data
+    }
+  }
+  snapshot(): Slot { return this.ref.get(); }
+}
+
+/** The broken version for comparison: check-then-act with an await between the check and the act. */
+class UnsafeMachine {
+  stock = 1;
+  async buy(): Promise<boolean> {
+    if (this.stock > 0) { // two callers can both pass this check...
+      await Promise.resolve(); // ...because other work runs here...
+      this.stock--; // ...and both decrement: stock -1, two cans "sold"
+      return true;
+    }
+    return false;
+  }
+}
+
+async function main(): Promise<void> {
+  const m = new LastCanMachine();
+  let open!: () => void;
+  const go = new Promise<void>((resolve) => { open = resolve; });
+  const results: Promise<boolean>[] = [];
+  for (let i = 0; i < 8; i++) results.push(go.then(() => m.buy()));
+  open(); // release all 8 buyers at once
+  const sold = (await Promise.all(results)).filter(Boolean).length;
+  console.log(\`CAS machine sold \${sold} can(s); final \${m.snapshot()}\`); // always exactly 1
+}
+
+main();` },
+          { lang: 'cpp', code: `// Immutable snapshot: state + stock + version travel together, so they can never disagree.
+struct Slot {
+    string state;
+    int stock;
+    long long version;
+    string toString() const {
+        return "Slot[state=" + state + ", stock=" + to_string(stock) + ", version=" + to_string(version) + "]";
+    }
+};
+
+class LastCanMachine {
+    atomic<shared_ptr<const Slot>> ref_{make_shared<const Slot>(Slot{"IDLE", 1, 0})};
+
+public:
+    // Optimistic buy: read snapshot, compute next, publish only if nobody changed it meanwhile.
+    bool buy() {
+        for (;;) {
+            shared_ptr<const Slot> cur = ref_.load();
+            if (cur->stock == 0) return false;  // guard on a consistent snapshot
+            auto next = make_shared<const Slot>(Slot{cur->stock == 1 ? "SOLD_OUT" : "IDLE", cur->stock - 1, cur->version + 1});
+            if (ref_.compare_exchange_strong(cur, next)) return true;  // we won the race
+            // someone else transitioned first -> loop and re-check with fresh data
+        }
+    }
+    shared_ptr<const Slot> snapshot() const { return ref_.load(); }
+};
+
+// The broken version for comparison: check-then-act on plain fields.
+struct UnsafeMachine {
+    int stock = 1;
+    bool buy() {
+        if (stock > 0) {  // two threads can both pass this check...
+            stock--;      // ...and both decrement: stock -1, two cans "sold" (a data race)
+            return true;
+        }
+        return false;
+    }
+};
+
+int main() {
+    LastCanMachine m;
+    latch go(1);
+    atomic<int> sold = 0;
+    vector<thread> pool;
+    for (int i = 0; i < 8; i++) {
+        pool.emplace_back([&] {
+            go.wait();
+            if (m.buy()) sold++;
+        });
+    }
+    go.count_down();  // release all 8 buyers at once
+    for (auto& t : pool) t.join();
+    cout << "CAS machine sold " << sold << " can(s); final " << m.snapshot()->toString() << "\\n";  // always exactly 1
+}` }
+        ] }],
     codeTitle: ['Generic FSM engine', 'CAS + immutable snapshot'],
     viz: {
       title: 'Race on the last can: two buyers, unsafe vs lock vs compare-and-set',
@@ -2439,7 +7224,7 @@ class LastCanMachine {
     },
     examples: [
       { title: 'Optimistic locking in SQL for a persisted ride/order state', html: `<p>Two servers receive "driver arrived" and "rider cancelled" for ride 77 at the same time. Each runs: <code>UPDATE ride SET status = ?, version = version + 1 WHERE id = 77 AND status = 'ASSIGNED' AND version = 4</code>. The first commits (1 row). The second updates <b>0 rows</b>, reloads (status now ARRIVED or CANCELLED) and re-applies its event to the <i>new</i> state — maybe the cancel now costs ₹50, maybe it is rejected. The state machine runs again on fresh data; it never overwrites.</p>` },
-      { title: 'Exhaustive table test (no framework needed)', html: `<p>Walk every (state, event) cell and compare with an expected table. 3 states × 4 events = 12 assertions, including all the rejections.</p>`, code: `import java.util.*;
+      { title: 'Exhaustive table test (no framework needed)', html: `<p>Walk every (state, event) cell and compare with an expected table. 3 states × 4 events = 12 assertions, including all the rejections.</p>`, code: { lang: 'java', code: `import java.util.*;
 class TableTest {
     enum S { IDLE, HAS_MONEY, DISPENSING }
     enum E { COIN, SELECT, DROP_OK, CANCEL }
@@ -2463,8 +7248,129 @@ class TableTest {
         }
         System.out.println(fails == 0 ? "all 12 cells pass" : fails + " failures");
     }
-}` },
-      { title: 'Single-threaded event loop for an elevator car', html: `<p>Buttons, sensors and the dispatcher run on different threads, but they only <b>post</b> events. One thread per car takes events from a <code>BlockingQueue</code> and feeds them to the state machine. No locks inside the machine, and events are processed in a clear order — this is the actor model (Akka, Erlang, Go channels).</p>`, code: `import java.util.concurrent.*;
+}`, alt: [
+          { lang: 'python', code: `from enum import Enum
+
+
+class S(Enum):
+    IDLE = 0
+    HAS_MONEY = 1
+    DISPENSING = 2
+
+
+class E(Enum):
+    COIN = 0
+    SELECT = 1
+    DROP_OK = 2
+    CANCEL = 3
+
+
+def next_state(s: S, e: E) -> S:
+    """The machine under test (pure function)."""
+    match s, e:
+        case S.IDLE, E.COIN: return S.HAS_MONEY
+        case S.HAS_MONEY, E.COIN: return S.HAS_MONEY
+        case S.HAS_MONEY, E.SELECT: return S.DISPENSING
+        case S.HAS_MONEY, E.CANCEL: return S.IDLE
+        case S.DISPENSING, E.DROP_OK: return S.IDLE
+        case _: return s
+
+
+if __name__ == "__main__":
+    expected = [
+        [S.HAS_MONEY, S.IDLE, S.IDLE, S.IDLE],  # IDLE
+        [S.HAS_MONEY, S.DISPENSING, S.HAS_MONEY, S.IDLE],  # HAS_MONEY
+        [S.DISPENSING, S.DISPENSING, S.IDLE, S.DISPENSING],  # DISPENSING
+    ]
+    fails = 0
+    for s in S:
+        for e in E:
+            got, want = next_state(s, e), expected[s.value][e.value]
+            if got is not want:
+                fails += 1
+                print(f"FAIL {s.name} + {e.name} -> {got.name}, want {want.name}")
+    print("all 12 cells pass" if fails == 0 else f"{fails} failures")` },
+          { lang: 'ts', code: `const STATES = ["IDLE", "HAS_MONEY", "DISPENSING"] as const;
+const EVENTS = ["COIN", "SELECT", "DROP_OK", "CANCEL"] as const;
+type S = (typeof STATES)[number];
+type E = (typeof EVENTS)[number];
+
+/** The machine under test (pure function). */
+function next(s: S, e: E): S {
+  switch (s) {
+    case "IDLE": return e === "COIN" ? "HAS_MONEY" : s;
+    case "HAS_MONEY":
+      switch (e) {
+        case "COIN": return "HAS_MONEY";
+        case "SELECT": return "DISPENSING";
+        case "CANCEL": return "IDLE";
+        default: return s;
+      }
+    case "DISPENSING": return e === "DROP_OK" ? "IDLE" : s;
+  }
+}
+
+const expected: S[][] = [
+  ["HAS_MONEY", "IDLE", "IDLE", "IDLE"], // IDLE
+  ["HAS_MONEY", "DISPENSING", "HAS_MONEY", "IDLE"], // HAS_MONEY
+  ["DISPENSING", "DISPENSING", "IDLE", "DISPENSING"], // DISPENSING
+];
+let fails = 0;
+STATES.forEach((s, i) => EVENTS.forEach((e, j) => {
+  const got = next(s, e), want = expected[i][j];
+  if (got !== want) { fails++; console.log(\`FAIL \${s} + \${e} -> \${got}, want \${want}\`); }
+}));
+console.log(fails === 0 ? "all 12 cells pass" : \`\${fails} failures\`);` },
+          { lang: 'cpp', code: `enum class S { IDLE, HAS_MONEY, DISPENSING };
+enum class E { COIN, SELECT, DROP_OK, CANCEL };
+
+const char* name(S s) {
+    static const char* n[] = {"IDLE", "HAS_MONEY", "DISPENSING"};
+    return n[static_cast<int>(s)];
+}
+const char* name(E e) {
+    static const char* n[] = {"COIN", "SELECT", "DROP_OK", "CANCEL"};
+    return n[static_cast<int>(e)];
+}
+
+// The machine under test (pure function).
+S next(S s, E e) {
+    switch (s) {
+        case S::IDLE: return e == E::COIN ? S::HAS_MONEY : s;
+        case S::HAS_MONEY:
+            switch (e) {
+                case E::COIN: return S::HAS_MONEY;
+                case E::SELECT: return S::DISPENSING;
+                case E::CANCEL: return S::IDLE;
+                default: return s;
+            }
+        case S::DISPENSING: return e == E::DROP_OK ? S::IDLE : s;
+    }
+    return s;
+}
+
+int main() {
+    const S expected[3][4] = {
+        {S::HAS_MONEY, S::IDLE, S::IDLE, S::IDLE},                       // IDLE
+        {S::HAS_MONEY, S::DISPENSING, S::HAS_MONEY, S::IDLE},            // HAS_MONEY
+        {S::DISPENSING, S::DISPENSING, S::IDLE, S::DISPENSING},          // DISPENSING
+    };
+    int fails = 0;
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 4; j++) {
+            S s = static_cast<S>(i);
+            E e = static_cast<E>(j);
+            S got = next(s, e), want = expected[i][j];
+            if (got != want) {
+                fails++;
+                cout << "FAIL " << name(s) << " + " << name(e) << " -> " << name(got) << ", want " << name(want) << "\\n";
+            }
+        }
+    }
+    cout << (fails == 0 ? "all 12 cells pass" : to_string(fails) + " failures") << "\\n";
+}` }
+        ] } },
+      { title: 'Single-threaded event loop for an elevator car', html: `<p>Buttons, sensors and the dispatcher run on different threads, but they only <b>post</b> events. One thread per car takes events from a thread-safe queue (<code>BlockingQueue</code>, <code>queue.Queue</code>, a mutex plus condition variable) and feeds them to the state machine. No locks inside the machine, and events are processed in a clear order — this is the actor model (Akka, Erlang, Go channels).</p>`, code: { lang: 'java', code: `import java.util.concurrent.*;
 class CarLoop implements Runnable {
     private final BlockingQueue<String> inbox = new LinkedBlockingQueue<>();
     private volatile boolean running = true;
@@ -2480,7 +7386,96 @@ class CarLoop implements Runnable {
             } catch (InterruptedException ex) { Thread.currentThread().interrupt(); return; }
         }
     }
+}`, alt: [
+          { lang: 'python', code: `import queue
+import threading
+
+
+class CarLoop:
+    def __init__(self) -> None:
+        self._inbox: "queue.Queue[str]" = queue.Queue()
+        self._running = True
+        self._state = "IDLE"
+
+    def post(self, event: str) -> None:
+        self._inbox.put(event)  # safe to call from any thread
+
+    def run(self) -> None:
+        while self._running:
+            try:
+                e = self._inbox.get(timeout=0.1)
+            except queue.Empty:
+                continue
+            if e == "STOP":
+                self._running = False
+                continue
+            if self._state == "IDLE" and e.startswith("CALL"):  # only this thread writes state
+                self._state = "MOVING"
+
+    def start(self) -> threading.Thread:
+        t = threading.Thread(target=self.run)
+        t.start()
+        return t` },
+          { lang: 'ts', code: `// One JS thread already gives "only one writer at a time"; the inbox keeps events in order
+// and the drain runs after the current call stack finishes, like a single-threaded event loop.
+class CarLoop {
+  private readonly inbox: string[] = [];
+  private running = true;
+  private state = "IDLE";
+  private draining = false;
+
+  post(event: string): void { // safe to call from any callback
+    this.inbox.push(event);
+    if (!this.draining) {
+      this.draining = true;
+      void Promise.resolve().then(() => this.drain());
+    }
+  }
+
+  private drain(): void {
+    for (let e = this.inbox.shift(); e !== undefined && this.running; e = this.inbox.shift()) {
+      if (e === "STOP") { this.running = false; continue; }
+      this.state = this.state === "IDLE" && e.startsWith("CALL") ? "MOVING" : this.state;
+    }
+    this.draining = false;
+  }
+
+  current(): string { return this.state; }
 }` },
+          { lang: 'cpp', code: `class CarLoop {
+    queue<string> inbox_;
+    mutex mu_;
+    condition_variable cv_;
+    bool running_ = true;
+    string state_ = "IDLE";
+
+public:
+    void post(const string& event) {  // safe to call from any thread
+        {
+            lock_guard lock(mu_);
+            inbox_.push(event);
+        }
+        cv_.notify_one();
+    }
+
+    void run() {
+        while (true) {
+            string e;
+            {
+                unique_lock lock(mu_);
+                if (!cv_.wait_for(lock, chrono::milliseconds(100), [&] { return !inbox_.empty(); })) {
+                    if (!running_) return;
+                    continue;
+                }
+                e = move(inbox_.front());
+                inbox_.pop();
+            }
+            if (e == "STOP") { running_ = false; return; }
+            if (state_ == "IDLE" && e.rfind("CALL", 0) == 0) state_ = "MOVING";  // only this thread writes state
+        }
+    }
+};` }
+        ] } },
       { title: 'Validating the table at startup', html: `<p>With transitions as data you can check the design itself: every state reachable from the start (BFS over the table), every non-terminal state has an exit, no (state, event) pair has two guards that can both be true. Run these checks in a unit test so a bad config never ships. Tools like Spring Statemachine, XState and AWS Step Functions do exactly this kind of validation.</p>` }
     ],
     deepDive: `<p><b>Where do side effects go?</b> Actions that talk to the outside world (charge a card, drop a can, call the bank) are the hard part. Pattern: transition to an <i>intermediate</i> state first (DISPENSING, AUTHORIZING), persist it, then perform the side effect, then fire a completion event (DROP_OK / AUTH_OK / TIMEOUT). After a crash you can see "stuck in DISPENSING since 10:02" and recover. Doing the side effect inside a lock and then failing to persist leaves the world and your state disagreeing.</p>
@@ -2489,14 +7484,14 @@ class CarLoop implements Runnable {
 <p><b>Lock granularity.</b> Lock per machine/car/account, never one global lock. For a bank, the lock is the account row; for an elevator system, each car has its own loop and the dispatcher only posts events. Holding a lock while doing slow I/O (bank call) blocks every other request for that object — prefer the intermediate-state pattern above.</p>
 <p><b>CAS pitfalls.</b> CAS on a <i>mutable</i> object is useless (the reference does not change when fields do) — snapshots must be immutable (records). Under heavy contention CAS loops spin; add backoff or fall back to a lock. And the classic ABA problem (state goes A → B → A between your read and CAS) is solved by the <b>version</b> field.</p>
 <p><b>Hierarchical and parallel states.</b> UML statecharts (Harel, 1987) add nesting (EMERGENCY overrides all OPERATIONAL sub-states), history states (resume where you left off) and orthogonal regions (the door and the motor as parallel sub-machines). Use them when the flat table explodes (S × E grows too big), not before.</p>`,
-    aiEra: `<p><b>What AI changes:</b> generating a state machine engine is now trivial; making it <b>correct under concurrency</b> is not. AI-generated code frequently has check-then-act races, mutates objects inside <code>AtomicReference</code>, or holds locks across network calls. Treat every AI-written transition as suspicious until you can point at the line that makes it atomic.</p>
-<p><b>Use AI as a partner:</b> <code>Write a jcstress-style or ExecutorService stress test that fires SELECT from 50 threads at a machine with stock 1 and asserts exactly one success, repeated 10,000 times.</code> AI is excellent at writing these harnesses. Also: <code>Given this transition table, generate a Mermaid stateDiagram and list unreachable states.</code></p>
+    aiEra: `<p><b>What AI changes:</b> generating a state machine engine is now trivial; making it <b>correct under concurrency</b> is not. AI-generated code frequently has check-then-act races, mutates objects inside an atomic reference, or holds locks across network calls. Treat every AI-written transition as suspicious until you can point at the line that makes it atomic.</p>
+<p><b>Use AI as a partner:</b> <code>Write a multi-threaded stress test (a thread pool and a start latch) that fires SELECT from 50 threads at a machine with stock 1 and asserts exactly one success, repeated 10,000 times.</code> AI is excellent at writing these harnesses. Also: <code>Given this transition table, generate a Mermaid stateDiagram and list unreachable states.</code></p>
 <p><b>Agents and workflows:</b> durable-execution platforms (Temporal, AWS Step Functions, LangGraph with checkpointing) are production state machines: persisted state, retries, timeouts, compensation. AI agents built on them inherit these guarantees — and the same rules apply: idempotent steps, explicit terminal states, versioned state.</p>
 <p><b>What you must still own:</b> choosing lock vs CAS vs event loop, placing side effects safely, and proving "exactly one winner" — the reasoning an interviewer is actually testing.</p>`,
     problems: [{
       title: 'Thread-Safe Seat/Slot State Machine with Optimistic Versioning', level: 'Hard', tags: ['concurrency', 'cas', 'state machine', 'optimistic locking'], companies: ['Uber', 'Amazon', 'BookMyShow', 'Stripe'],
       statement: `<p>A resource (a vending slot, a cinema seat, a parking spot) moves through states <b>AVAILABLE → HELD → SOLD</b>, with <b>HELD → AVAILABLE</b> on <code>release()</code> or hold expiry. Many threads call <code>hold(user)</code>, <code>confirm(user)</code> and <code>release(user)</code> concurrently. Guarantee: at most one user ever holds/buys it; only the holder may confirm or release; an expired hold can be taken by someone else. Implement it lock-free with an immutable snapshot and <code>compareAndSet</code>, and expose the version for database-style optimistic locking.</p>`,
-      constraints: `Up to 10<sup>4</sup> concurrent callers. Hold expires after <code>ttlMillis</code>. No <code>synchronized</code> blocks in the solution. Time is passed in (for testability).`,
+      constraints: `Up to 10<sup>4</sup> concurrent callers. Hold expires after <code>ttlMillis</code>. No locks in the solution. Time is passed in (for testability).`,
       example: `<p>50 threads call <code>hold</code> at once → ${H.c('g', 'exactly 1 returns true')}, 49 false. Holder confirms → SOLD. A non-holder calling confirm → ${H.c('r', 'false')}. If the holder waits past the TTL, ${H.c('b', 'another user’s hold succeeds')} because the expired HELD counts as AVAILABLE.</p>`,
       brute: { why: `<p>Plain fields with if-checks: <code>if (state == AVAILABLE) { state = HELD; holder = user; }</code>. Two threads pass the check together, and the second overwrites the holder — both users think they hold the seat. Also <code>state</code> and <code>holder</code> are written separately, so a reader can see HELD with the old holder (torn state).</p>`, code: `class RacySeat {
     String state = "AVAILABLE", holder = null;
@@ -2509,10 +7504,11 @@ class CarLoop implements Runnable {
         return false;
     }
 }` },
-      mcq: { q: 'Why must the snapshot passed to compareAndSet be immutable?', options: ['CAS compares references; if you mutate fields in place, the reference never changes and conflicting updates are not detected', 'Immutable objects are faster to allocate', 'AtomicReference only accepts records', 'To avoid garbage collection'], answer: 0, explain: 'compareAndSet checks reference identity. Each transition must publish a new object so a concurrent change is visible as a different reference.' },
-      hints: [`<p>Hint 1: Put <b>everything</b> that must be consistent (state, holder, expiry, version) into one immutable record. A transition = build a new record from the old one.</p>`, `<p>Hint 2: Loop: <code>cur = ref.get()</code>; compute the "effective" state (HELD but expired counts as AVAILABLE); check the guard; build <code>next</code> with <code>version + 1</code>; <code>if (ref.compareAndSet(cur, next)) return true;</code> else retry.</p>`, `<p>Hint 3: Guards: hold needs effective AVAILABLE; confirm/release need state HELD, same holder and not expired. Return false (no retry) when the guard fails on a fresh snapshot. Pass <code>now</code> as a parameter so tests can control time.</p>`],
+      mcq: { q: 'Why must the snapshot passed to compareAndSet be immutable?', options: ['CAS compares references; if you mutate fields in place, the reference never changes and conflicting updates are not detected', 'Immutable objects are faster to allocate', 'A compare-and-set reference only accepts records', 'To avoid garbage collection'], answer: 0, explain: 'compareAndSet checks reference identity. Each transition must publish a new object so a concurrent change is visible as a different reference.' },
+      hints: [`<p>Hint 1: Put <b>everything</b> that must be consistent (state, holder, expiry, version) into one immutable snapshot object (a record in Java). A transition = build a new snapshot from the old one.</p>`, `<p>Hint 2: Loop: <code>cur = ref.get()</code>; compute the "effective" state (HELD but expired counts as AVAILABLE); check the guard; build <code>next</code> with <code>version + 1</code>; <code>if (ref.compareAndSet(cur, next)) return true;</code> else retry.</p>`, `<p>Hint 3: Guards: hold needs effective AVAILABLE; confirm/release need state HELD, same holder and not expired. Return false (no retry) when the guard fails on a fresh snapshot. Pass <code>now</code> as a parameter so tests can control time.</p>`],
+      tests: { io: true, cases: [{ stdin: '', stdout: "winners=1 state=HELD v1\nholder is a contender: true\nstranger confirm: false\nconfirm after expiry: false\nafter expiry, u_late holds: true\nu_late confirms: true -> SOLD\nhold after sold: false\nrelease after sold: false\n" }] },
       solution: {
-        approach: `<p>Model the whole slot as an immutable <code>record Snap(state, holder, expiresAt, version)</code> inside an <code>AtomicReference</code>. Each operation is a CAS loop: read, evaluate the guard on that consistent snapshot (treating an expired hold as available), build the next snapshot with version + 1, and publish with <code>compareAndSet</code>. Exactly one competing thread can publish from a given snapshot; losers re-read and re-evaluate. The version doubles as the optimistic-lock column when persisting.</p>`,
+        approach: `<p>Model the whole slot as an immutable snapshot <code>Snap(state, holder, expiresAt, version)</code> (a record in Java) held in an atomic reference (<code>AtomicReference</code> in Java). Each operation is a CAS loop: read, evaluate the guard on that consistent snapshot (treating an expired hold as available), build the next snapshot with version + 1, and publish with <code>compareAndSet</code>. Exactly one competing thread can publish from a given snapshot; losers re-read and re-evaluate. The version doubles as the optimistic-lock column when persisting.</p>`,
         code: `import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
@@ -2571,13 +7567,288 @@ class SeatMachine {
         for (Future<Boolean> f : fs) if (f.get()) winners++;
         pool.shutdown();
         Snap s = seat.snapshot();
-        System.out.println("winners=" + winners + " holder=" + s.holder() + " v" + s.version());   // winners=1
+        System.out.println("winners=" + winners + " state=" + s.state() + " v" + s.version());   // winners=1 (holder varies per run)
+        System.out.println("holder is a contender: " + s.holder().startsWith("u"));
         System.out.println("stranger confirm: " + seat.confirm("nobody", 2_000));                   // false
+        System.out.println("confirm after expiry: " + seat.confirm(s.holder(), 6_000));             // false: hold expired at 6000
         System.out.println("after expiry, u_late holds: " + seat.hold("u_late", 7_000));            // true
         System.out.println("u_late confirms: " + seat.confirm("u_late", 7_500) + " -> " + seat.snapshot().state());
+        System.out.println("hold after sold: " + seat.hold("u_other", 8_000));                      // false
+        System.out.println("release after sold: " + seat.release("u_late", 8_000));                 // false
     }
-}`,
-        complexity: `<p>Each operation is O(1) expected; under contention a loser retries, but every failed CAS means some other thread made progress (lock-free). Memory: one small record per transition (garbage collected). The version gives ABA protection and maps directly to <code>UPDATE … WHERE version = ?</code> when persisted.</p>`,
+}`, alt: [
+          { lang: 'python', code: `import threading
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from enum import Enum
+from typing import Generic, Optional, TypeVar
+
+
+class SeatState(Enum):
+    AVAILABLE = 1
+    HELD = 2
+    SOLD = 3
+
+
+@dataclass(frozen=True, eq=False)  # eq=False: compare snapshots by identity, like a Java record reference
+class Snap:
+    state: SeatState
+    holder: Optional[str]
+    expires_at: int
+    version: int
+
+    def held_by(self, u: str, now: int) -> bool:
+        return self.state is SeatState.HELD and self.holder == u and now < self.expires_at
+
+    def effectively_available(self, now: int) -> bool:
+        # an expired hold counts as available
+        return self.state is SeatState.AVAILABLE or (self.state is SeatState.HELD and now >= self.expires_at)
+
+
+T = TypeVar("T")
+
+
+class AtomicReference(Generic[T]):
+    """Python has no CAS primitive, so a tiny lock makes get/compare_and_set atomic."""
+
+    def __init__(self, value: T) -> None:
+        self._value = value
+        self._lock = threading.Lock()
+
+    def get(self) -> T:
+        return self._value
+
+    def compare_and_set(self, expect: T, update: T) -> bool:
+        with self._lock:
+            if self._value is not expect:
+                return False
+            self._value = update
+            return True
+
+
+class SeatMachine:
+    def __init__(self, ttl_millis: int) -> None:
+        self._ref = AtomicReference(Snap(SeatState.AVAILABLE, None, 0, 0))
+        self._ttl = ttl_millis
+
+    def hold(self, user: str, now: int) -> bool:
+        while True:
+            cur = self._ref.get()
+            if not cur.effectively_available(now):  # guard on a fresh snapshot
+                return False
+            nxt = Snap(SeatState.HELD, user, now + self._ttl, cur.version + 1)
+            if self._ref.compare_and_set(cur, nxt):  # exactly one winner
+                return True
+
+    def confirm(self, user: str, now: int) -> bool:
+        while True:
+            cur = self._ref.get()
+            if not cur.held_by(user, now):  # only the live holder
+                return False
+            if self._ref.compare_and_set(cur, Snap(SeatState.SOLD, user, 0, cur.version + 1)):
+                return True
+
+    def release(self, user: str, now: int) -> bool:
+        while True:
+            cur = self._ref.get()
+            if not cur.held_by(user, now):
+                return False
+            if self._ref.compare_and_set(cur, Snap(SeatState.AVAILABLE, None, 0, cur.version + 1)):
+                return True
+
+    def snapshot(self) -> Snap:
+        return self._ref.get()
+
+
+if __name__ == "__main__":
+    seat = SeatMachine(5_000)
+    go = threading.Event()
+
+    def contender(user: str) -> bool:
+        go.wait()
+        return seat.hold(user, 1_000)
+
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        futures = [pool.submit(contender, f"u{i}") for i in range(50)]
+        go.set()
+        winners = sum(f.result() for f in futures)
+    s = seat.snapshot()
+    print(f"winners={winners} state={s.state.name} v{s.version}")  # winners=1 (holder varies per run)
+    print("holder is a contender:", str(s.holder.startswith("u")).lower())
+    print("stranger confirm:", str(seat.confirm("nobody", 2_000)).lower())  # false
+    print("confirm after expiry:", str(seat.confirm(s.holder, 6_000)).lower())  # false: hold expired at 6000
+    print("after expiry, u_late holds:", str(seat.hold("u_late", 7_000)).lower())  # true
+    ok = seat.confirm("u_late", 7_500)
+    print(f"u_late confirms: {str(ok).lower()} -> {seat.snapshot().state.name}")
+    print("hold after sold:", str(seat.hold("u_other", 8_000)).lower())  # false
+    print("release after sold:", str(seat.release("u_late", 8_000)).lower())  # false` },
+          { lang: 'ts', code: `type SeatState = "AVAILABLE" | "HELD" | "SOLD";
+
+class Snap {
+  constructor(
+    readonly state: SeatState,
+    readonly holder: string | null,
+    readonly expiresAt: number,
+    readonly version: number,
+  ) {}
+
+  heldBy(u: string, now: number): boolean {
+    return this.state === "HELD" && this.holder === u && now < this.expiresAt;
+  }
+  effectivelyAvailable(now: number): boolean {
+    return this.state === "AVAILABLE" || (this.state === "HELD" && now >= this.expiresAt); // expired hold
+  }
+}
+
+// One JS thread means a compare-and-set can never actually lose a race here,
+// but the transition code is written exactly as it would be on a multi-threaded runtime.
+class AtomicReference<T> {
+  constructor(private value: T) {}
+  get(): T { return this.value; }
+  compareAndSet(expect: T, update: T): boolean {
+    if (this.value !== expect) return false;
+    this.value = update;
+    return true;
+  }
+}
+
+class SeatMachine {
+  private readonly ref = new AtomicReference<Snap>(new Snap("AVAILABLE", null, 0, 0));
+
+  constructor(private readonly ttlMillis: number) {}
+
+  hold(user: string, now: number): boolean {
+    for (;;) {
+      const cur = this.ref.get();
+      if (!cur.effectivelyAvailable(now)) return false; // guard on a fresh snapshot
+      const next = new Snap("HELD", user, now + this.ttlMillis, cur.version + 1);
+      if (this.ref.compareAndSet(cur, next)) return true; // exactly one winner
+    }
+  }
+  confirm(user: string, now: number): boolean {
+    for (;;) {
+      const cur = this.ref.get();
+      if (!cur.heldBy(user, now)) return false; // only the live holder
+      if (this.ref.compareAndSet(cur, new Snap("SOLD", user, 0, cur.version + 1))) return true;
+    }
+  }
+  release(user: string, now: number): boolean {
+    for (;;) {
+      const cur = this.ref.get();
+      if (!cur.heldBy(user, now)) return false;
+      if (this.ref.compareAndSet(cur, new Snap("AVAILABLE", null, 0, cur.version + 1))) return true;
+    }
+  }
+  snapshot(): Snap { return this.ref.get(); }
+}
+
+async function main(): Promise<void> {
+  const seat = new SeatMachine(5_000);
+  let open!: () => void;
+  const go = new Promise<void>((resolve) => { open = resolve; });
+  const contenders: Promise<boolean>[] = [];
+  for (let i = 0; i < 50; i++) {
+    const user = "u" + i;
+    contenders.push(go.then(() => seat.hold(user, 1_000)));
+  }
+  open();
+  const winners = (await Promise.all(contenders)).filter(Boolean).length;
+  const s = seat.snapshot();
+  console.log(\`winners=\${winners} state=\${s.state} v\${s.version}\`); // winners=1 (holder varies per run)
+  console.log("holder is a contender: " + s.holder!.startsWith("u"));
+  console.log("stranger confirm: " + seat.confirm("nobody", 2_000)); // false
+  console.log("confirm after expiry: " + seat.confirm(s.holder!, 6_000)); // false: hold expired at 6000
+  console.log("after expiry, u_late holds: " + seat.hold("u_late", 7_000)); // true
+  const ok = seat.confirm("u_late", 7_500);
+  console.log(\`u_late confirms: \${ok} -> \${seat.snapshot().state}\`);
+  console.log("hold after sold: " + seat.hold("u_other", 8_000)); // false
+  console.log("release after sold: " + seat.release("u_late", 8_000)); // false
+}
+
+main();` },
+          { lang: 'cpp', code: `enum class SeatState { AVAILABLE, HELD, SOLD };
+
+const char* toString(SeatState s) {
+    switch (s) {
+        case SeatState::AVAILABLE: return "AVAILABLE";
+        case SeatState::HELD: return "HELD";
+        default: return "SOLD";
+    }
+}
+
+// Immutable snapshot: every transition builds a new one.
+struct Snap {
+    SeatState state;
+    string holder;
+    long long expiresAt;
+    long long version;
+
+    bool heldBy(const string& u, long long now) const { return state == SeatState::HELD && holder == u && now < expiresAt; }
+    bool effectivelyAvailable(long long now) const {
+        return state == SeatState::AVAILABLE || (state == SeatState::HELD && now >= expiresAt);  // expired hold
+    }
+};
+
+class SeatMachine {
+    atomic<shared_ptr<const Snap>> ref_{make_shared<const Snap>(Snap{SeatState::AVAILABLE, "", 0, 0})};
+    long long ttlMillis_;
+
+    // Retry loop shared by all transitions: guard on a fresh snapshot, then compare-and-set.
+    template <class Guard, class Make>
+    bool transition(Guard guard, Make make) {
+        for (;;) {
+            shared_ptr<const Snap> cur = ref_.load();
+            if (!guard(*cur)) return false;
+            shared_ptr<const Snap> next = make_shared<const Snap>(make(*cur));
+            if (ref_.compare_exchange_strong(cur, next)) return true;  // exactly one winner
+        }
+    }
+
+public:
+    explicit SeatMachine(long long ttlMillis) : ttlMillis_(ttlMillis) {}
+
+    bool hold(const string& user, long long now) {
+        return transition([&](const Snap& c) { return c.effectivelyAvailable(now); },
+                          [&](const Snap& c) { return Snap{SeatState::HELD, user, now + ttlMillis_, c.version + 1}; });
+    }
+    bool confirm(const string& user, long long now) {
+        return transition([&](const Snap& c) { return c.heldBy(user, now); },
+                          [&](const Snap& c) { return Snap{SeatState::SOLD, user, 0, c.version + 1}; });
+    }
+    bool release(const string& user, long long now) {
+        return transition([&](const Snap& c) { return c.heldBy(user, now); },
+                          [&](const Snap& c) { return Snap{SeatState::AVAILABLE, "", 0, c.version + 1}; });
+    }
+    Snap snapshot() const { return *ref_.load(); }
+};
+
+int main() {
+    cout << boolalpha;
+    SeatMachine seat(5'000);
+    latch go(1);
+    atomic<int> winners = 0;
+    vector<thread> pool;
+    for (int i = 0; i < 50; i++) {
+        pool.emplace_back([&, user = "u" + to_string(i)] {
+            go.wait();
+            if (seat.hold(user, 1'000)) winners++;
+        });
+    }
+    go.count_down();
+    for (auto& t : pool) t.join();
+    Snap s = seat.snapshot();
+    cout << "winners=" << winners << " state=" << toString(s.state) << " v" << s.version << "\\n";  // winners=1 (holder varies per run)
+    cout << "holder is a contender: " << (s.holder.rfind("u", 0) == 0) << "\\n";
+    cout << "stranger confirm: " << seat.confirm("nobody", 2'000) << "\\n";                     // false
+    cout << "confirm after expiry: " << seat.confirm(s.holder, 6'000) << "\\n";                 // false: hold expired at 6000
+    cout << "after expiry, u_late holds: " << seat.hold("u_late", 7'000) << "\\n";              // true
+    bool ok = seat.confirm("u_late", 7'500);
+    cout << "u_late confirms: " << ok << " -> " << toString(seat.snapshot().state) << "\\n";
+    cout << "hold after sold: " << seat.hold("u_other", 8'000) << "\\n";                        // false
+    cout << "release after sold: " << seat.release("u_late", 8'000) << "\\n";                  // false
+}` }
+        ],
+        complexity: `<p>Each operation is O(1) expected; under contention a loser retries, but every failed CAS means some other thread made progress (lock-free). Memory: one small snapshot per transition (garbage collected). The version gives ABA protection and maps directly to <code>UPDATE … WHERE version = ?</code> when persisted.</p>`,
         followUps: ['Persist it: write the SQL for hold/confirm with optimistic locking and explain what the caller does on 0 rows updated.', 'Hold 4 seats atomically (all or nothing) — why does per-seat CAS no longer suffice?', 'Add a SOLD → REFUNDED transition that only an admin can fire; where does the authorization guard live?']
       }
     }]
@@ -2599,10 +7870,11 @@ class SeatMachine {
     }
     void press() { if (state == 1 && remaining > 5) remaining = 5; }   // the ladder again
 }` },
-    mcq: { q: 'Where should the rule "button shortens GREEN only" live in an enum State design?', options: ['As a method on the enum that GREEN overrides; the others inherit "do nothing"', 'In the TrafficLight.press() method with an if on the colour', 'In a static utility class', 'In every tick() call'], answer: 0, explain: 'Constant-specific methods put the behaviour next to the state it belongs to; the context just delegates.' },
-    hints: [`<p>Hint 1: Each colour knows its duration and its successor — that is all a cycle needs. A Java enum with a constructor argument and an abstract <code>next()</code> is perfect.</p>`, `<p>Hint 2: Give the enum a method <code>int onPedestrian(int remaining)</code> that returns <code>remaining</code> by default; only GREEN overrides it with <code>Math.min(remaining, 5)</code>.</p>`, `<p>Hint 3: The context holds <code>light</code> and <code>remaining</code>. tick(): decrement; when it hits 0, switch to <code>light.next()</code> and reload its duration. Night mode = one more constant whose next() is itself.</p>`],
-    solution: {
-      approach: `<p>An enum where every constant carries its duration and its successor (enum State pattern). The pedestrian rule is a constant-specific override on GREEN. The <code>TrafficLight</code> context only counts down and delegates; FLASHING_YELLOW is one new constant that loops to itself.</p>`,
+    mcq: { q: 'Where should the rule "button shortens GREEN only" live in an enum State design?', options: ['As a method on the state that only GREEN overrides; the others inherit "do nothing"', 'In the TrafficLight.press() method with an if on the colour', 'In a static utility class', 'In every tick() call'], answer: 0, explain: 'Constant-specific methods put the behaviour next to the state it belongs to; the context just delegates.' },
+    hints: [`<p>Hint 1: Each colour knows its duration and its successor — that is all a cycle needs. An enum with a duration and a <code>next()</code> method is perfect (a Java enum with a constructor argument and an abstract method, a Python <code>Enum</code> with a lookup table, a C++ <code>enum class</code> with a switch).</p>`, `<p>Hint 2: Give the enum a method <code>int onPedestrian(int remaining)</code> that returns <code>remaining</code> by default; only GREEN overrides it with <code>min(remaining, 5)</code>.</p>`, `<p>Hint 3: The context holds <code>light</code> and <code>remaining</code>. tick(): decrement; when it hits 0, switch to <code>light.next()</code> and reload its duration. Night mode = one more constant whose next() is itself.</p>`],
+    tests: { io: true, cases: [{ stdin: '', stdout: "RED -> GREEN\ngreen left after button: 5\nGREEN -> YELLOW\nYELLOW -> RED\nnow RED\nred left after button: 30\nnight FLASHING_YELLOW 1\n" }] },
+      solution: {
+      approach: `<p>An enum where every constant carries its duration and its successor (enum State pattern). The pedestrian rule is an override on the GREEN state only. The <code>TrafficLight</code> context only counts down and delegates; FLASHING_YELLOW is one new constant that loops to itself.</p>`,
       code: `enum Light {
     RED(30)    { Light next() { return GREEN; } },
     GREEN(25)  {
@@ -2641,8 +7913,194 @@ class TrafficLight {
         System.out.println("green left after button: " + t.remaining());   // 5
         for (int i = 0; i < 10; i++) t.tick();          // GREEN -> YELLOW -> RED
         System.out.println("now " + t.light());
+        t.pressButton();                                // RED ignores the button
+        System.out.println("red left after button: " + t.remaining());   // 30
+        t.nightMode();
+        t.tick();
+        System.out.println("night " + t.light() + " " + t.remaining());   // FLASHING_YELLOW 1
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `from enum import Enum
+
+
+class Light(Enum):
+    RED = 30
+    GREEN = 25
+    YELLOW = 5
+    FLASHING_YELLOW = 1  # add-a-state: night mode
+
+    @property
+    def seconds(self) -> int:
+        return self.value
+
+    def next(self) -> "Light":
+        return {
+            Light.RED: Light.GREEN,
+            Light.GREEN: Light.YELLOW,
+            Light.YELLOW: Light.RED,
+            Light.FLASHING_YELLOW: Light.FLASHING_YELLOW,
+        }[self]
+
+    def on_pedestrian(self, remaining: int) -> int:
+        if self is Light.GREEN:  # only GREEN reacts
+            return min(remaining, 5)
+        return remaining  # default: ignore
+
+
+class TrafficLight:
+    def __init__(self) -> None:
+        self._light = Light.RED
+        self._remaining = Light.RED.seconds
+
+    def tick(self) -> None:
+        self._remaining -= 1
+        if self._remaining > 0:
+            return
+        nxt = self._light.next()
+        if nxt is not self._light:
+            print(f"{self._light.name} -> {nxt.name}")
+        self._light = nxt
+        self._remaining = nxt.seconds
+
+    def press_button(self) -> None:
+        self._remaining = self._light.on_pedestrian(self._remaining)
+
+    def night_mode(self) -> None:
+        self._light = Light.FLASHING_YELLOW
+        self._remaining = self._light.seconds
+
+    @property
+    def light(self) -> Light:
+        return self._light
+
+    @property
+    def remaining(self) -> int:
+        return self._remaining
+
+
+if __name__ == "__main__":
+    t = TrafficLight()
+    for _ in range(33):
+        t.tick()  # RED -> GREEN, 3 s into green
+    t.press_button()
+    print("green left after button:", t.remaining)  # 5
+    for _ in range(10):
+        t.tick()  # GREEN -> YELLOW -> RED
+    print("now", t.light.name)
+    t.press_button()  # RED ignores the button
+    print("red left after button:", t.remaining)  # 30
+    t.night_mode()
+    t.tick()
+    print("night", t.light.name, t.remaining)  # FLASHING_YELLOW 1` },
+          { lang: 'ts', code: `interface Light {
+  readonly name: string;
+  readonly seconds: number;
+  next(): Light;
+  onPedestrian(remaining: number): number;
+}
+
+// Behaviour sits with each state; only GREEN overrides the pedestrian button.
+function light(name: string, seconds: number, next: () => Light, onPedestrian = (r: number) => r): Light {
+  return { name, seconds, next, onPedestrian };
+}
+
+const RED: Light = light("RED", 30, () => GREEN);
+const GREEN: Light = light("GREEN", 25, () => YELLOW, (remaining) => Math.min(remaining, 5)); // only GREEN reacts
+const YELLOW: Light = light("YELLOW", 5, () => RED);
+const FLASHING_YELLOW: Light = light("FLASHING_YELLOW", 1, () => FLASHING_YELLOW); // add-a-state: night mode
+
+class TrafficLight {
+  private current: Light = RED;
+  private remainingSeconds: number = RED.seconds;
+
+  tick(): void {
+    if (--this.remainingSeconds > 0) return;
+    const next = this.current.next();
+    if (next !== this.current) console.log(\`\${this.current.name} -> \${next.name}\`);
+    this.current = next;
+    this.remainingSeconds = next.seconds;
+  }
+  pressButton(): void { this.remainingSeconds = this.current.onPedestrian(this.remainingSeconds); }
+  nightMode(): void { this.current = FLASHING_YELLOW; this.remainingSeconds = FLASHING_YELLOW.seconds; }
+  light(): Light { return this.current; }
+  remaining(): number { return this.remainingSeconds; }
+}
+
+const t = new TrafficLight();
+for (let i = 0; i < 33; i++) t.tick(); // RED -> GREEN, 3 s into green
+t.pressButton();
+console.log("green left after button: " + t.remaining()); // 5
+for (let i = 0; i < 10; i++) t.tick(); // GREEN -> YELLOW -> RED
+console.log("now " + t.light().name);
+t.pressButton(); // RED ignores the button
+console.log("red left after button: " + t.remaining()); // 30
+t.nightMode();
+t.tick();
+console.log(\`night \${t.light().name} \${t.remaining()}\`); // FLASHING_YELLOW 1` },
+          { lang: 'cpp', code: `enum class Light { RED, GREEN, YELLOW, FLASHING_YELLOW };  // FLASHING_YELLOW: add-a-state, night mode
+
+const char* name(Light l) {
+    switch (l) {
+        case Light::RED: return "RED";
+        case Light::GREEN: return "GREEN";
+        case Light::YELLOW: return "YELLOW";
+        default: return "FLASHING_YELLOW";
+    }
+}
+
+int seconds(Light l) {
+    switch (l) {
+        case Light::RED: return 30;
+        case Light::GREEN: return 25;
+        case Light::YELLOW: return 5;
+        default: return 1;
+    }
+}
+
+Light next(Light l) {
+    switch (l) {
+        case Light::RED: return Light::GREEN;
+        case Light::GREEN: return Light::YELLOW;
+        case Light::YELLOW: return Light::RED;
+        default: return Light::FLASHING_YELLOW;
+    }
+}
+
+// Only GREEN reacts to the button; every other state ignores it.
+int onPedestrian(Light l, int remaining) { return l == Light::GREEN ? min(remaining, 5) : remaining; }
+
+class TrafficLight {
+    Light light_ = Light::RED;
+    int remaining_ = seconds(Light::RED);
+
+public:
+    void tick() {
+        if (--remaining_ > 0) return;
+        Light n = next(light_);
+        if (n != light_) cout << name(light_) << " -> " << name(n) << "\\n";
+        light_ = n;
+        remaining_ = seconds(light_);
+    }
+    void pressButton() { remaining_ = onPedestrian(light_, remaining_); }
+    void nightMode() { light_ = Light::FLASHING_YELLOW; remaining_ = seconds(light_); }
+    Light light() const { return light_; }
+    int remaining() const { return remaining_; }
+};
+
+int main() {
+    TrafficLight t;
+    for (int i = 0; i < 33; i++) t.tick();  // RED -> GREEN, 3 s into green
+    t.pressButton();
+    cout << "green left after button: " << t.remaining() << "\\n";  // 5
+    for (int i = 0; i < 10; i++) t.tick();  // GREEN -> YELLOW -> RED
+    cout << "now " << name(t.light()) << "\\n";
+    t.pressButton();  // RED ignores the button
+    cout << "red left after button: " << t.remaining() << "\\n";  // 30
+    t.nightMode();
+    t.tick();
+    cout << "night " << name(t.light()) << " " << t.remaining() << "\\n";  // FLASHING_YELLOW 1
+}` }
+        ],
       complexity: `<p>O(1) per tick and per button press. Adding a colour/mode = one enum constant.</p>`,
       followUps: ['Two crossing roads must never both be GREEN — model the intersection as one state machine, not two.', 'An emergency vehicle sensor forces RED in all directions: which state and which transitions?']
     }
@@ -2660,9 +8118,10 @@ class TrafficLight {
     void push() { if (!locked) { passengers++; locked = true; } else System.out.println("alarm"); }
     void fault() { broken = true; }
 }` },
-    mcq: { q: 'After adding BROKEN with default-reject methods, which existing state classes change?', options: ['None — fault() is handled once in the context or by a default method; only Broken is new', 'Locked and Unlocked both', 'Only Unlocked', 'All classes and the interface'], answer: 0, explain: 'An event valid in every state (fault) can be handled once; the new state class handles its own coin/push.' },
+    mcq: { q: 'After adding BROKEN with default-reject methods, which existing state classes change?', options: ['None — fault() is handled once in the context or by a default in the base state; only Broken is new', 'Locked and Unlocked both', 'Only Unlocked', 'All classes and the interface'], answer: 0, explain: 'An event valid in every state (fault) can be handled once; the new state class handles its own coin/push.' },
     hints: [`<p>Hint 1: Draw the 2 × 2 table (LOCKED/UNLOCKED × coin/push). Every cell has a defined outcome — there are no "impossible" cells here.</p>`, `<p>Hint 2: <code>interface GateState { GateState coin(Turnstile t); GateState push(Turnstile t); }</code> returning the next state keeps the context in charge of the field.</p>`, `<p>Hint 3: fault() is legal from every state → handle it in the context (<code>state = new Broken()</code>). Broken.coin refunds, Broken.push ignores, repair() only works in Broken.</p>`],
-    solution: {
+    tests: { io: true, cases: [{ stdin: '', stdout: "[LOCKED] ALARM: pay first\n[UNLOCKED] already open, coin refunded\n[BROKEN] out of order, coin refunded\n[BROKEN] repaired\n[LOCKED] nothing to repair\nLOCKED coins=1 passengers=1\n" }] },
+      solution: {
       approach: `<p>States return their successor (functional State pattern), so the context is the only writer of <code>state</code>. Counters live in the context. BROKEN is a new class; the global <code>fault()</code> event is handled once in the context because it is valid everywhere.</p>`,
       code: `interface GateState {
     GateState coin(Turnstile t);
@@ -2700,9 +8159,201 @@ class Turnstile {
     public static void main(String[] args) {
         Turnstile t = new Turnstile();
         t.push(); t.coin(); t.coin(); t.push(); t.fault(); t.coin(); t.repair();
+        t.repair();                                 // nothing to repair when not broken
         System.out.println(t.state + " coins=" + t.coins + " passengers=" + t.passengers);   // LOCKED 1 1
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `from abc import ABC, abstractmethod
+
+
+class GateState(ABC):
+    @abstractmethod
+    def coin(self, t: "Turnstile") -> "GateState": ...
+
+    @abstractmethod
+    def push(self, t: "Turnstile") -> "GateState": ...
+
+    def repair(self, t: "Turnstile") -> "GateState":
+        t.say("nothing to repair")
+        return self
+
+
+class Locked(GateState):
+    def coin(self, t: "Turnstile") -> GateState:
+        t.collect()
+        return Unlocked()
+
+    def push(self, t: "Turnstile") -> GateState:
+        t.say("ALARM: pay first")
+        return self
+
+    def __str__(self) -> str:
+        return "LOCKED"
+
+
+class Unlocked(GateState):
+    def coin(self, t: "Turnstile") -> GateState:
+        t.say("already open, coin refunded")
+        return self
+
+    def push(self, t: "Turnstile") -> GateState:
+        t.passed()
+        return Locked()
+
+    def __str__(self) -> str:
+        return "UNLOCKED"
+
+
+class Broken(GateState):  # follow-up: one new class
+    def coin(self, t: "Turnstile") -> GateState:
+        t.say("out of order, coin refunded")
+        return self
+
+    def push(self, t: "Turnstile") -> GateState:
+        t.say("out of order")
+        return self
+
+    def repair(self, t: "Turnstile") -> GateState:
+        t.say("repaired")
+        return Locked()
+
+    def __str__(self) -> str:
+        return "BROKEN"
+
+
+class Turnstile:
+    def __init__(self) -> None:
+        self.state: GateState = Locked()
+        self.coins = 0
+        self.passengers = 0
+
+    def coin(self) -> None: self.state = self.state.coin(self)
+    def push(self) -> None: self.state = self.state.push(self)
+    def repair(self) -> None: self.state = self.state.repair(self)
+    def fault(self) -> None: self.state = Broken()  # valid in every state: handled once
+    def collect(self) -> None: self.coins += 1
+    def passed(self) -> None: self.passengers += 1
+    def say(self, s: str) -> None: print(f"[{self.state}] {s}")
+
+
+if __name__ == "__main__":
+    t = Turnstile()
+    t.push(); t.coin(); t.coin(); t.push(); t.fault(); t.coin(); t.repair()
+    t.repair()  # nothing to repair when not broken
+    print(f"{t.state} coins={t.coins} passengers={t.passengers}")  # LOCKED 1 1` },
+          { lang: 'ts', code: `interface GateState {
+  coin(t: Turnstile): GateState;
+  push(t: Turnstile): GateState;
+  repair(t: Turnstile): GateState;
+  toString(): string;
+}
+
+// Interfaces have no default methods, so the shared default lives in a base class.
+abstract class BaseGateState implements GateState {
+  abstract coin(t: Turnstile): GateState;
+  abstract push(t: Turnstile): GateState;
+  repair(t: Turnstile): GateState { t.say("nothing to repair"); return this; }
+  abstract toString(): string;
+}
+
+class Locked extends BaseGateState {
+  coin(t: Turnstile): GateState { t.collect(); return new Unlocked(); }
+  push(t: Turnstile): GateState { t.say("ALARM: pay first"); return this; }
+  toString(): string { return "LOCKED"; }
+}
+class Unlocked extends BaseGateState {
+  coin(t: Turnstile): GateState { t.say("already open, coin refunded"); return this; }
+  push(t: Turnstile): GateState { t.pass(); return new Locked(); }
+  toString(): string { return "UNLOCKED"; }
+}
+class Broken extends BaseGateState { // follow-up: one new class
+  coin(t: Turnstile): GateState { t.say("out of order, coin refunded"); return this; }
+  push(t: Turnstile): GateState { t.say("out of order"); return this; }
+  override repair(t: Turnstile): GateState { t.say("repaired"); return new Locked(); }
+  toString(): string { return "BROKEN"; }
+}
+
+class Turnstile {
+  state: GateState = new Locked();
+  coins = 0;
+  passengers = 0;
+
+  coin(): void { this.state = this.state.coin(this); }
+  push(): void { this.state = this.state.push(this); }
+  repair(): void { this.state = this.state.repair(this); }
+  fault(): void { this.state = new Broken(); } // valid in every state: handled once
+  collect(): void { this.coins++; }
+  pass(): void { this.passengers++; }
+  say(s: string): void { console.log(\`[\${this.state}] \${s}\`); }
+}
+
+const t = new Turnstile();
+t.push(); t.coin(); t.coin(); t.push(); t.fault(); t.coin(); t.repair();
+t.repair(); // nothing to repair when not broken
+console.log(\`\${t.state} coins=\${t.coins} passengers=\${t.passengers}\`); // LOCKED 1 1` },
+          { lang: 'cpp', code: `class Turnstile;
+struct GateState;
+using StatePtr = unique_ptr<GateState>;  // nullptr means "stay in this state"
+
+struct GateState {
+    virtual ~GateState() = default;
+    virtual StatePtr coin(Turnstile& t) = 0;
+    virtual StatePtr push(Turnstile& t) = 0;
+    virtual StatePtr repair(Turnstile& t);
+    virtual string name() const = 0;
+};
+struct Locked final : GateState {
+    StatePtr coin(Turnstile& t) override;
+    StatePtr push(Turnstile& t) override;
+    string name() const override { return "LOCKED"; }
+};
+struct Unlocked final : GateState {
+    StatePtr coin(Turnstile& t) override;
+    StatePtr push(Turnstile& t) override;
+    string name() const override { return "UNLOCKED"; }
+};
+struct Broken final : GateState {  // follow-up: one new class
+    StatePtr coin(Turnstile& t) override;
+    StatePtr push(Turnstile& t) override;
+    StatePtr repair(Turnstile& t) override;
+    string name() const override { return "BROKEN"; }
+};
+
+class Turnstile {
+    StatePtr state_ = make_unique<Locked>();
+    int coins_ = 0, passengers_ = 0;
+
+    void enter(StatePtr next) { if (next) state_ = move(next); }
+
+public:
+    void coin() { enter(state_->coin(*this)); }
+    void push() { enter(state_->push(*this)); }
+    void repair() { enter(state_->repair(*this)); }
+    void fault() { state_ = make_unique<Broken>(); }  // valid in every state: handled once
+    void collect() { coins_++; }
+    void pass() { passengers_++; }
+    void say(const string& s) const { cout << "[" << state_->name() << "] " << s << "\\n"; }
+    string state() const { return state_->name(); }
+    int coins() const { return coins_; }
+    int passengers() const { return passengers_; }
+};
+
+StatePtr GateState::repair(Turnstile& t) { t.say("nothing to repair"); return nullptr; }
+StatePtr Locked::coin(Turnstile& t) { t.collect(); return make_unique<Unlocked>(); }
+StatePtr Locked::push(Turnstile& t) { t.say("ALARM: pay first"); return nullptr; }
+StatePtr Unlocked::coin(Turnstile& t) { t.say("already open, coin refunded"); return nullptr; }
+StatePtr Unlocked::push(Turnstile& t) { t.pass(); return make_unique<Locked>(); }
+StatePtr Broken::coin(Turnstile& t) { t.say("out of order, coin refunded"); return nullptr; }
+StatePtr Broken::push(Turnstile& t) { t.say("out of order"); return nullptr; }
+StatePtr Broken::repair(Turnstile& t) { t.say("repaired"); return make_unique<Locked>(); }
+
+int main() {
+    Turnstile t;
+    t.push(); t.coin(); t.coin(); t.push(); t.fault(); t.coin(); t.repair();
+    t.repair();  // nothing to repair when not broken
+    cout << t.state() << " coins=" << t.coins() << " passengers=" << t.passengers() << "\\n";  // LOCKED 1 1
+}` }
+        ],
       complexity: `<p>O(1) per event. Adding BROKEN: 1 new class + 2 context methods; Locked/Unlocked untouched.</p>`,
       followUps: ['Support a monthly pass (tap card) as another event — which states care?', 'Two people push through on one coin (tailgating sensor): which transition detects it?']
     }
@@ -2725,7 +8376,8 @@ class Turnstile {
 }` },
     mcq: { q: 'Is LOCKED_OUT better modelled as a separate state or as a counter inside LOCKED?', options: ['A separate state: it accepts different events (all unlocks refused) and has its own exit condition (time)', 'A counter, because states must not hold data', 'A boolean flag on the door', 'An exception thrown from unlock()'], answer: 0, explain: 'Different allowed behaviour + a distinct exit condition is exactly what makes something a state.' },
     hints: [`<p>Hint 1: Table first: 4 states × 4 events. Most cells are "not allowed"; lock in OPEN is a classic trap.</p>`, `<p>Hint 2: LOCKED_OUT is a state holding <code>lockedUntil</code>. Its unlock() checks time first: before → refuse; after → behave like LOCKED (delegate to a fresh Locked state).</p>`, `<p>Hint 3: Keep the wrong-attempt counter in Locked (per locking session) and reset it on success. Pass <code>now</code> into unlock rather than calling the clock inside.</p>`],
-    solution: {
+    tests: { io: true, cases: [{ stdin: '', stdout: "[OPEN] cannot lock now\n[LOCKED] wrong code (1/3)\n[LOCKED] wrong code (2/3)\n[LOCKED] 3 wrong codes: locked out for 60 s\n[LOCKED_OUT] locked out for 53 s\n[LOCKED_OUT] wrong code (1/3)\n[CLOSED] not locked\nfinal CLOSED\n" }] },
+      solution: {
       approach: `<p>Four state classes behind an interface with default "not allowed" methods. Locked counts failures; on the third it returns a <code>LockedOut(now + 60)</code>. LockedOut refuses until the time passes, then delegates to a fresh <code>Locked</code> so the code path for a correct PIN exists in one place.</p>`,
       code: `interface DoorState {
     default DoorState open(SmartDoor d)  { d.say("cannot open now"); return this; }
@@ -2779,10 +8431,260 @@ class SmartDoor {
         d.close(); d.lock();
         d.unlock("0000", 1); d.unlock("1111", 2); d.unlock("2222", 3);
         d.unlock("4321", 10);                       // still locked out
-        d.unlock("4321", 70);
+        d.unlock("9999", 70);                       // lock-out is over, but this code is wrong
+        d.unlock("4321", 71);
+        d.unlock("4321", 72);                       // not locked any more
         System.out.println("final " + d.state);     // CLOSED
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `class DoorState:
+    """Base state: every event is refused unless a subclass overrides it."""
+
+    def open(self, d: "SmartDoor") -> "DoorState":
+        d.say("cannot open now")
+        return self
+
+    def close(self, d: "SmartDoor") -> "DoorState":
+        d.say("cannot close now")
+        return self
+
+    def lock(self, d: "SmartDoor") -> "DoorState":
+        d.say("cannot lock now")
+        return self
+
+    def unlock(self, d: "SmartDoor", code: str, now: int) -> "DoorState":
+        d.say("not locked")
+        return self
+
+
+class OpenDoor(DoorState):
+    def close(self, d: "SmartDoor") -> DoorState:
+        return ClosedDoor()
+
+    def __str__(self) -> str:
+        return "OPEN"
+
+
+class ClosedDoor(DoorState):
+    def open(self, d: "SmartDoor") -> DoorState:
+        return OpenDoor()
+
+    def lock(self, d: "SmartDoor") -> DoorState:
+        return LockedDoor()
+
+    def __str__(self) -> str:
+        return "CLOSED"
+
+
+class LockedDoor(DoorState):
+    def __init__(self) -> None:
+        self._fails = 0
+
+    def unlock(self, d: "SmartDoor", code: str, now: int) -> DoorState:
+        if d.code_matches(code):
+            return ClosedDoor()
+        self._fails += 1
+        if self._fails >= 3:
+            d.say("3 wrong codes: locked out for 60 s")
+            return LockedOut(now + 60)
+        d.say(f"wrong code ({self._fails}/3)")
+        return self
+
+    def __str__(self) -> str:
+        return "LOCKED"
+
+
+class LockedOut(DoorState):
+    def __init__(self, until: int) -> None:
+        self._until = until
+
+    def unlock(self, d: "SmartDoor", code: str, now: int) -> DoorState:
+        if now < self._until:
+            d.say(f"locked out for {self._until - now} s")
+            return self
+        return LockedDoor().unlock(d, code, now)  # time is up: behave like LOCKED
+
+    def __str__(self) -> str:
+        return "LOCKED_OUT"
+
+
+class SmartDoor:
+    def __init__(self, secret: str) -> None:
+        self.state: DoorState = OpenDoor()
+        self._secret = secret
+
+    def open(self) -> None: self.state = self.state.open(self)
+    def close(self) -> None: self.state = self.state.close(self)
+    def lock(self) -> None: self.state = self.state.lock(self)
+    def unlock(self, code: str, now: int) -> None: self.state = self.state.unlock(self, code, now)
+    def code_matches(self, c: str) -> bool: return self._secret == c
+    def say(self, s: str) -> None: print(f"[{self.state}] {s}")
+
+
+if __name__ == "__main__":
+    d = SmartDoor("4321")
+    d.lock()  # cannot lock an open door
+    d.close(); d.lock()
+    d.unlock("0000", 1); d.unlock("1111", 2); d.unlock("2222", 3)
+    d.unlock("4321", 10)  # still locked out
+    d.unlock("9999", 70)  # lock-out is over, but this code is wrong
+    d.unlock("4321", 71)
+    d.unlock("4321", 72)  # not locked any more
+    print("final", d.state)  # CLOSED` },
+          { lang: 'ts', code: `interface DoorState {
+  open(d: SmartDoor): DoorState;
+  close(d: SmartDoor): DoorState;
+  lock(d: SmartDoor): DoorState;
+  unlock(d: SmartDoor, code: string, now: number): DoorState;
+  toString(): string;
+}
+
+// Interfaces have no default methods, so the "refuse everything" defaults live in a base class.
+abstract class BaseDoorState implements DoorState {
+  open(d: SmartDoor): DoorState { d.say("cannot open now"); return this; }
+  close(d: SmartDoor): DoorState { d.say("cannot close now"); return this; }
+  lock(d: SmartDoor): DoorState { d.say("cannot lock now"); return this; }
+  unlock(d: SmartDoor, code: string, now: number): DoorState { d.say("not locked"); return this; }
+  abstract toString(): string;
+}
+
+class OpenDoor extends BaseDoorState {
+  override close(d: SmartDoor): DoorState { return new ClosedDoor(); }
+  toString(): string { return "OPEN"; }
+}
+class ClosedDoor extends BaseDoorState {
+  override open(d: SmartDoor): DoorState { return new OpenDoor(); }
+  override lock(d: SmartDoor): DoorState { return new LockedDoor(); }
+  toString(): string { return "CLOSED"; }
+}
+class LockedDoor extends BaseDoorState {
+  private fails = 0;
+  override unlock(d: SmartDoor, code: string, now: number): DoorState {
+    if (d.codeMatches(code)) return new ClosedDoor();
+    if (++this.fails >= 3) { d.say("3 wrong codes: locked out for 60 s"); return new LockedOut(now + 60); }
+    d.say(\`wrong code (\${this.fails}/3)\`);
+    return this;
+  }
+  toString(): string { return "LOCKED"; }
+}
+class LockedOut extends BaseDoorState {
+  constructor(private readonly until: number) { super(); }
+  override unlock(d: SmartDoor, code: string, now: number): DoorState {
+    if (now < this.until) { d.say(\`locked out for \${this.until - now} s\`); return this; }
+    return new LockedDoor().unlock(d, code, now); // time is up: behave like LOCKED
+  }
+  toString(): string { return "LOCKED_OUT"; }
+}
+
+class SmartDoor {
+  state: DoorState = new OpenDoor();
+
+  constructor(private readonly secret: string) {}
+
+  open(): void { this.state = this.state.open(this); }
+  close(): void { this.state = this.state.close(this); }
+  lock(): void { this.state = this.state.lock(this); }
+  unlock(code: string, now: number): void { this.state = this.state.unlock(this, code, now); }
+  codeMatches(c: string): boolean { return this.secret === c; }
+  say(s: string): void { console.log(\`[\${this.state}] \${s}\`); }
+}
+
+const d = new SmartDoor("4321");
+d.lock(); // cannot lock an open door
+d.close(); d.lock();
+d.unlock("0000", 1); d.unlock("1111", 2); d.unlock("2222", 3);
+d.unlock("4321", 10); // still locked out
+d.unlock("9999", 70); // lock-out is over, but this code is wrong
+d.unlock("4321", 71);
+d.unlock("4321", 72); // not locked any more
+console.log("final " + d.state); // CLOSED` },
+          { lang: 'cpp', code: `class SmartDoor;
+struct DoorState;
+using StatePtr = unique_ptr<DoorState>;  // nullptr means "stay in this state"
+
+struct DoorState {
+    virtual ~DoorState() = default;
+    virtual StatePtr open(SmartDoor& d);
+    virtual StatePtr close(SmartDoor& d);
+    virtual StatePtr lock(SmartDoor& d);
+    virtual StatePtr unlock(SmartDoor& d, const string& code, long long now);
+    virtual string name() const = 0;
+};
+struct OpenDoor final : DoorState {
+    StatePtr close(SmartDoor& d) override;
+    string name() const override { return "OPEN"; }
+};
+struct ClosedDoor final : DoorState {
+    StatePtr open(SmartDoor& d) override;
+    StatePtr lock(SmartDoor& d) override;
+    string name() const override { return "CLOSED"; }
+};
+struct LockedDoor final : DoorState {
+    StatePtr unlock(SmartDoor& d, const string& code, long long now) override;
+    string name() const override { return "LOCKED"; }
+
+private:
+    int fails_ = 0;
+};
+struct LockedOut final : DoorState {
+    explicit LockedOut(long long until) : until_(until) {}
+    StatePtr unlock(SmartDoor& d, const string& code, long long now) override;
+    string name() const override { return "LOCKED_OUT"; }
+
+private:
+    long long until_;
+};
+
+class SmartDoor {
+    StatePtr state_ = make_unique<OpenDoor>();
+    string secret_;
+
+    void enter(StatePtr next) { if (next) state_ = move(next); }
+
+public:
+    explicit SmartDoor(string secret) : secret_(move(secret)) {}
+    void open() { enter(state_->open(*this)); }
+    void close() { enter(state_->close(*this)); }
+    void lock() { enter(state_->lock(*this)); }
+    void unlock(const string& code, long long now) { enter(state_->unlock(*this, code, now)); }
+    bool codeMatches(const string& c) const { return secret_ == c; }
+    void say(const string& s) const { cout << "[" << state_->name() << "] " << s << "\\n"; }
+    string state() const { return state_->name(); }
+};
+
+StatePtr DoorState::open(SmartDoor& d) { d.say("cannot open now"); return nullptr; }
+StatePtr DoorState::close(SmartDoor& d) { d.say("cannot close now"); return nullptr; }
+StatePtr DoorState::lock(SmartDoor& d) { d.say("cannot lock now"); return nullptr; }
+StatePtr DoorState::unlock(SmartDoor& d, const string&, long long) { d.say("not locked"); return nullptr; }
+
+StatePtr OpenDoor::close(SmartDoor&) { return make_unique<ClosedDoor>(); }
+StatePtr ClosedDoor::open(SmartDoor&) { return make_unique<OpenDoor>(); }
+StatePtr ClosedDoor::lock(SmartDoor&) { return make_unique<LockedDoor>(); }
+StatePtr LockedDoor::unlock(SmartDoor& d, const string& code, long long now) {
+    if (d.codeMatches(code)) return make_unique<ClosedDoor>();
+    if (++fails_ >= 3) { d.say("3 wrong codes: locked out for 60 s"); return make_unique<LockedOut>(now + 60); }
+    d.say("wrong code (" + to_string(fails_) + "/3)");
+    return nullptr;
+}
+StatePtr LockedOut::unlock(SmartDoor& d, const string& code, long long now) {
+    if (now < until_) { d.say("locked out for " + to_string(until_ - now) + " s"); return nullptr; }
+    auto fresh = make_unique<LockedDoor>();  // time is up: behave like LOCKED
+    StatePtr next = fresh->unlock(d, code, now);
+    return next ? move(next) : move(fresh);  // "stay" now means: stay in the fresh LOCKED
+}
+
+int main() {
+    SmartDoor d("4321");
+    d.lock();  // cannot lock an open door
+    d.close(); d.lock();
+    d.unlock("0000", 1); d.unlock("1111", 2); d.unlock("2222", 3);
+    d.unlock("4321", 10);  // still locked out
+    d.unlock("9999", 70);  // lock-out is over, but this code is wrong
+    d.unlock("4321", 71);
+    d.unlock("4321", 72);  // not locked any more
+    cout << "final " << d.state() << "\\n";  // CLOSED
+}` }
+        ],
       complexity: `<p>O(1) per event. Lockout costs no timers: it is evaluated lazily from <code>now</code>.</p>`,
       followUps: ['Auto-lock 30 s after the door closes: which state starts the timer and which cancels it?', 'Store failures server-side so resetting the device does not reset the counter.']
     }
@@ -2793,7 +8695,7 @@ class SmartDoor {
     statement: `<p>An e-commerce order moves through <b>PLACED → PACKED → SHIPPED → DELIVERED</b>. <b>CANCELLED</b> is allowed from PLACED or PACKED only. <b>RETURN_REQUESTED</b> is allowed from DELIVERED only within 7 days of delivery, then <b>RETURNED</b>. Implement <code>Order.moveTo(newStatus, today)</code> that rejects illegal transitions with a clear message and keeps a history. The rules must be readable in one place.</p>`,
     constraints: `Dates as <code>LocalDate</code>. Terminal states: CANCELLED, RETURNED. Support listing the allowed next statuses for the UI.`,
     example: `<p>PLACED → PACKED ✓ → ${H.c('r', 'CANCELLED? allowed')} … or PACKED → SHIPPED ✓ → ${H.c('r', 'CANCELLED ✗ (already shipped)')} → DELIVERED on 1 Mar ✓ → RETURN_REQUESTED on 5 Mar ✓; on 10 Mar ✗ (window closed).</p>`,
-    brute: { why: `<p>A string status and <code>if (status.equals("PLACED") &amp;&amp; next.equals("PACKED")) …</code> chains spread across controller, service and admin tools. The same rule is implemented three times, slightly differently, and the UI cannot ask "what can I do next?".</p>`, code: `class NaiveOrder {
+    brute: { why: `<p>A string status and <code>if (status == "PLACED" &amp;&amp; next == "PACKED") …</code> chains spread across controller, service and admin tools. The same rule is implemented three times, slightly differently, and the UI cannot ask "what can I do next?".</p>`, code: `class NaiveOrder {
     String status = "PLACED";
     boolean moveTo(String next) {
         if (status.equals("PLACED") && (next.equals("PACKED") || next.equals("CANCELLED"))) { status = next; return true; }
@@ -2803,10 +8705,11 @@ class SmartDoor {
         return false;
     }
 }` },
-    mcq: { q: 'Why is an EnumMap&lt;Status, EnumSet&lt;Status&gt;&gt; a good fit here?', options: ['States have little behaviour; the rules are pure "from → allowed to" data that the UI can also read', 'It is faster than a switch in all cases', 'Because State classes cannot be used with enums', 'It removes the need for a date check'], answer: 0, explain: 'When states carry almost no behaviour, a transition table is the clearest single source of truth; extra conditions become guards.' },
-    hints: [`<p>Hint 1: Separate the <b>structure</b> (which arrows exist) from <b>guards</b> (the 7-day rule). Structure is an EnumMap of EnumSets.</p>`, `<p>Hint 2: <code>allowedNext()</code> returns <code>TABLE.get(status)</code> — free UI support. Terminal states map to an empty set.</p>`, `<p>Hint 3: In moveTo: if the arrow is missing → reject; if target is RETURN_REQUESTED, check <code>today ≤ deliveredOn + 7 days</code>; record deliveredOn when entering DELIVERED; append "A → B" to history.</p>`],
-    solution: {
-      approach: `<p>Table-driven: one static EnumMap holds every legal arrow. One guard handles the time window. The order records the delivery date as an entry action of DELIVERED and keeps an immutable-ish history list.</p>`,
+    mcq: { q: 'Why is a map from each status to its set of allowed next statuses (in Java an EnumMap&lt;Status, EnumSet&lt;Status&gt;&gt;) a good fit here?', options: ['States have little behaviour; the rules are pure "from → allowed to" data that the UI can also read', 'It is faster than a switch in all cases', 'Because State classes cannot be used with enums', 'It removes the need for a date check'], answer: 0, explain: 'When states carry almost no behaviour, a transition table is the clearest single source of truth; extra conditions become guards.' },
+    hints: [`<p>Hint 1: Separate the <b>structure</b> (which arrows exist) from <b>guards</b> (the 7-day rule). Structure is a map from status to its set of allowed next statuses (an <code>EnumMap</code> of <code>EnumSet</code>s in Java).</p>`, `<p>Hint 2: <code>allowedNext()</code> returns <code>TABLE.get(status)</code> — free UI support. Terminal states map to an empty set.</p>`, `<p>Hint 3: In moveTo: if the arrow is missing → reject; if target is RETURN_REQUESTED, check <code>today ≤ deliveredOn + 7 days</code>; record deliveredOn when entering DELIVERED; append "A → B" to history.</p>`],
+    tests: { io: true, cases: [{ stdin: '', stdout: "allowed now: [RETURN_REQUESTED]\nPLACED -> PACKED\nPACKED -> SHIPPED\nREJECTED SHIPPED -> CANCELLED\nSHIPPED -> DELIVERED\nREJECTED return: window closed on 2026-03-09\nDELIVERED -> RETURN_REQUESTED\nRETURN_REQUESTED -> RETURNED\nREJECTED RETURNED -> PACKED\n" }] },
+      solution: {
+      approach: `<p>Table-driven: one static map (an <code>EnumMap</code> in Java) holds every legal arrow. One guard handles the time window. The order records the delivery date as an entry action of DELIVERED and keeps an immutable-ish history list.</p>`,
       code: `import java.time.*;
 import java.util.*;
 
@@ -2852,9 +8755,205 @@ class Order {
         System.out.println("allowed now: " + o.allowedNext());
         o.moveTo(Status.RETURN_REQUESTED, LocalDate.of(2026, 3, 12));  // rejected: > 7 days
         o.moveTo(Status.RETURN_REQUESTED, LocalDate.of(2026, 3, 6));
+        o.moveTo(Status.RETURNED, LocalDate.of(2026, 3, 8));
+        o.moveTo(Status.PACKED, LocalDate.of(2026, 3, 9));              // rejected: RETURNED is terminal
         o.history().forEach(System.out::println);
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `from datetime import date, timedelta
+from enum import Enum
+
+
+class Status(Enum):
+    PLACED = 1
+    PACKED = 2
+    SHIPPED = 3
+    DELIVERED = 4
+    CANCELLED = 5
+    RETURN_REQUESTED = 6
+    RETURNED = 7
+
+
+S = Status
+NEXT: dict[Status, frozenset[Status]] = {
+    S.PLACED: frozenset({S.PACKED, S.CANCELLED}),
+    S.PACKED: frozenset({S.SHIPPED, S.CANCELLED}),
+    S.SHIPPED: frozenset({S.DELIVERED}),
+    S.DELIVERED: frozenset({S.RETURN_REQUESTED}),
+    S.RETURN_REQUESTED: frozenset({S.RETURNED}),
+    S.CANCELLED: frozenset(),  # terminal
+    S.RETURNED: frozenset(),  # terminal
+}
+
+
+class Order:
+    def __init__(self) -> None:
+        self._status = Status.PLACED
+        self._delivered_on: date | None = None
+        self._history: list[str] = []
+
+    def allowed_next(self) -> list[Status]:
+        return sorted(NEXT[self._status], key=lambda s: s.value)  # enum order, read-only copy
+
+    def move_to(self, nxt: Status, today: date) -> bool:
+        if nxt not in NEXT[self._status]:
+            self._history.append(f"REJECTED {self._status.name} -> {nxt.name}")
+            return False
+        if nxt is Status.RETURN_REQUESTED and today > self._delivered_on + timedelta(days=7):  # guard
+            self._history.append(f"REJECTED return: window closed on {self._delivered_on + timedelta(days=7)}")
+            return False
+        if nxt is Status.DELIVERED:  # entry action
+            self._delivered_on = today
+        self._history.append(f"{self._status.name} -> {nxt.name}")
+        self._status = nxt
+        return True
+
+    @property
+    def status(self) -> Status:
+        return self._status
+
+    @property
+    def history(self) -> list[str]:
+        return self._history
+
+
+if __name__ == "__main__":
+    o = Order()
+    o.move_to(Status.PACKED, date(2026, 3, 1))
+    o.move_to(Status.SHIPPED, date(2026, 3, 1))
+    o.move_to(Status.CANCELLED, date(2026, 3, 1))  # rejected
+    o.move_to(Status.DELIVERED, date(2026, 3, 2))
+    print("allowed now: [" + ", ".join(s.name for s in o.allowed_next()) + "]")
+    o.move_to(Status.RETURN_REQUESTED, date(2026, 3, 12))  # rejected: > 7 days
+    o.move_to(Status.RETURN_REQUESTED, date(2026, 3, 6))
+    o.move_to(Status.RETURNED, date(2026, 3, 8))
+    o.move_to(Status.PACKED, date(2026, 3, 9))  # rejected: RETURNED is terminal
+    for line in o.history:
+        print(line)` },
+          { lang: 'ts', code: `const STATUSES = ["PLACED", "PACKED", "SHIPPED", "DELIVERED", "CANCELLED", "RETURN_REQUESTED", "RETURNED"] as const;
+type Status = (typeof STATUSES)[number];
+
+const NEXT: Record<Status, readonly Status[]> = {
+  PLACED: ["PACKED", "CANCELLED"],
+  PACKED: ["SHIPPED", "CANCELLED"],
+  SHIPPED: ["DELIVERED"],
+  DELIVERED: ["RETURN_REQUESTED"],
+  RETURN_REQUESTED: ["RETURNED"],
+  CANCELLED: [], // terminal
+  RETURNED: [], // terminal
+};
+
+// Dates are UTC calendar days so arithmetic never shifts with the local time zone.
+const day = (y: number, m: number, d: number): Date => new Date(Date.UTC(y, m - 1, d));
+const plusDays = (d: Date, n: number): Date => new Date(d.getTime() + n * 86_400_000);
+const iso = (d: Date): string => d.toISOString().slice(0, 10);
+
+class Order {
+  private current: Status = "PLACED";
+  private deliveredOn: Date | null = null;
+  private readonly log: string[] = [];
+
+  allowedNext(): readonly Status[] { return NEXT[this.current]; }
+
+  moveTo(next: Status, today: Date): boolean {
+    if (!NEXT[this.current].includes(next)) {
+      this.log.push(\`REJECTED \${this.current} -> \${next}\`);
+      return false;
+    }
+    if (next === "RETURN_REQUESTED" && today > plusDays(this.deliveredOn!, 7)) { // guard
+      this.log.push(\`REJECTED return: window closed on \${iso(plusDays(this.deliveredOn!, 7))}\`);
+      return false;
+    }
+    if (next === "DELIVERED") this.deliveredOn = today; // entry action
+    this.log.push(\`\${this.current} -> \${next}\`);
+    this.current = next;
+    return true;
+  }
+  status(): Status { return this.current; }
+  history(): readonly string[] { return this.log; }
+}
+
+const o = new Order();
+o.moveTo("PACKED", day(2026, 3, 1));
+o.moveTo("SHIPPED", day(2026, 3, 1));
+o.moveTo("CANCELLED", day(2026, 3, 1)); // rejected
+o.moveTo("DELIVERED", day(2026, 3, 2));
+console.log(\`allowed now: [\${o.allowedNext().join(", ")}]\`);
+o.moveTo("RETURN_REQUESTED", day(2026, 3, 12)); // rejected: > 7 days
+o.moveTo("RETURN_REQUESTED", day(2026, 3, 6));
+o.moveTo("RETURNED", day(2026, 3, 8));
+o.moveTo("PACKED", day(2026, 3, 9)); // rejected: RETURNED is terminal
+o.history().forEach((line) => console.log(line));` },
+          { lang: 'cpp', code: `using Day = chrono::sys_days;
+
+enum class Status { PLACED, PACKED, SHIPPED, DELIVERED, CANCELLED, RETURN_REQUESTED, RETURNED };
+
+const char* name(Status s) {
+    static const char* names[] = {"PLACED", "PACKED", "SHIPPED", "DELIVERED", "CANCELLED", "RETURN_REQUESTED", "RETURNED"};
+    return names[static_cast<int>(s)];
+}
+
+Day day(int y, unsigned m, unsigned d) { return Day{chrono::year{y} / chrono::month{m} / chrono::day{d}}; }
+
+string iso(Day d) {
+    chrono::year_month_day ymd{d};
+    char buf[16];
+    snprintf(buf, sizeof buf, "%04d-%02u-%02u", int(ymd.year()), unsigned(ymd.month()), unsigned(ymd.day()));
+    return buf;
+}
+
+class Order {
+    inline static const map<Status, set<Status>> NEXT = {
+        {Status::PLACED, {Status::PACKED, Status::CANCELLED}},
+        {Status::PACKED, {Status::SHIPPED, Status::CANCELLED}},
+        {Status::SHIPPED, {Status::DELIVERED}},
+        {Status::DELIVERED, {Status::RETURN_REQUESTED}},
+        {Status::RETURN_REQUESTED, {Status::RETURNED}},
+        {Status::CANCELLED, {}},  // terminal
+        {Status::RETURNED, {}},   // terminal
+    };
+    Status status_ = Status::PLACED;
+    Day deliveredOn_{};
+    vector<string> history_;
+
+public:
+    const set<Status>& allowedNext() const { return NEXT.at(status_); }
+
+    bool moveTo(Status next, Day today) {
+        if (!NEXT.at(status_).count(next)) {
+            history_.push_back(string("REJECTED ") + name(status_) + " -> " + name(next));
+            return false;
+        }
+        if (next == Status::RETURN_REQUESTED && today > deliveredOn_ + chrono::days{7}) {  // guard
+            history_.push_back("REJECTED return: window closed on " + iso(deliveredOn_ + chrono::days{7}));
+            return false;
+        }
+        if (next == Status::DELIVERED) deliveredOn_ = today;  // entry action
+        history_.push_back(string(name(status_)) + " -> " + name(next));
+        status_ = next;
+        return true;
+    }
+    Status status() const { return status_; }
+    const vector<string>& history() const { return history_; }
+};
+
+int main() {
+    Order o;
+    o.moveTo(Status::PACKED, day(2026, 3, 1));
+    o.moveTo(Status::SHIPPED, day(2026, 3, 1));
+    o.moveTo(Status::CANCELLED, day(2026, 3, 1));  // rejected
+    o.moveTo(Status::DELIVERED, day(2026, 3, 2));
+    cout << "allowed now: [";
+    bool first = true;
+    for (Status s : o.allowedNext()) { cout << (first ? "" : ", ") << name(s); first = false; }
+    cout << "]\\n";
+    o.moveTo(Status::RETURN_REQUESTED, day(2026, 3, 12));  // rejected: > 7 days
+    o.moveTo(Status::RETURN_REQUESTED, day(2026, 3, 6));
+    o.moveTo(Status::RETURNED, day(2026, 3, 8));
+    o.moveTo(Status::PACKED, day(2026, 3, 9));  // rejected: RETURNED is terminal
+    for (const auto& line : o.history()) cout << line << "\\n";
+}` }
+        ],
       complexity: `<p>O(1) per transition (EnumSet lookup is a bit test). Adding a status = one enum constant + one table row.</p>`,
       followUps: ['Persist with optimistic locking so two services cannot ship and cancel simultaneously.', 'Emit a domain event (OrderShipped) on each transition — where do you hook it?']
     }
@@ -2866,7 +8965,7 @@ class Order {
     statement: `<p>Build a coffee machine. Recipes: <b>espresso</b> (water 50, beans 18, price 120), <b>latte</b> (water 50, milk 150, beans 18, price 180), <b>cappuccino</b> (water 50, milk 100, beans 18, price 160). States: <b>IDLE</b>, <b>PAID</b> (money inserted), <b>BREWING</b>, <b>NEEDS_REFILL</b> (no drink can be made). Events: <code>pay(amount)</code>, <code>select(drink)</code>, <code>cancel()</code>, <code>refill(ingredient, qty)</code>. Selecting a drink whose ingredients are missing must refuse <i>before</i> charging; when nothing can be brewed, go to NEEDS_REFILL and refund any money.</p>`,
     constraints: `Ingredients in ml/grams as ints. Refill allowed in any state except BREWING. Adding a new drink must not change state classes.`,
     example: `<p>Stock: water 200, milk 120, beans 40. pay 200 → PAID; select latte → ${H.c('r', 'not enough milk (needs 150)')}, stay PAID; select cappuccino → ${H.c('g', 'brew, change 40')} → IDLE. Stock now water 150, milk 20, beans 22. Next espresso possible (beans 22 ≥ 18) → after it beans 4 → ${H.c('y', 'NEEDS_REFILL')}.</p>`,
-    brute: { why: `<p>One <code>makeDrink(String name, int money)</code> with <code>if (name.equals("latte")) { if (milk &gt;= 150 &amp;&amp; …) }</code> per drink, plus status flags. A new drink copies the whole block; the "check before charging" order is easy to get wrong in one copy; refill during brewing is not prevented.</p>`, code: `class NaiveCoffee {
+    brute: { why: `<p>One <code>makeDrink(name, money)</code> with <code>if (name == "latte") { if (milk &gt;= 150 &amp;&amp; …) }</code> per drink, plus status flags. A new drink copies the whole block; the "check before charging" order is easy to get wrong in one copy; refill during brewing is not prevented.</p>`, code: `class NaiveCoffee {
     int water = 200, milk = 120, beans = 40;
     String make(String name, int money) {
         if (name.equals("latte")) {
@@ -2880,9 +8979,10 @@ class Order {
         return "unknown";
     }
 }` },
-    mcq: { q: 'Where should recipes live so that adding "mocha" needs no state-class changes?', options: ['In data: a Map&lt;String, Recipe&gt; where Recipe is a record of ingredients + price', 'One State class per drink', 'In the PAID state as if/else', 'In an enum switch inside BREWING'], answer: 0, explain: 'Drinks are data, states are behaviour. Mixing them makes every new drink a code change across states.' },
-    hints: [`<p>Hint 1: States describe the machine's mode (IDLE, PAID, BREWING, NEEDS_REFILL); drinks are <b>data</b> (record Recipe(Map ingredients, price)).</p>`, `<p>Hint 2: PAID.select runs checks in order: known drink → enough money → enough ingredients (Inventory.canMake) → BREWING → consume + change → next state is NEEDS_REFILL if no recipe can be made, else IDLE.</p>`, `<p>Hint 3: Entering NEEDS_REFILL refunds the balance. refill() is accepted in IDLE/PAID/NEEDS_REFILL; in NEEDS_REFILL it re-checks and returns to IDLE if any drink is possible.</p>`],
-    solution: {
+    mcq: { q: 'Where should recipes live so that adding "mocha" needs no state-class changes?', options: ['In data: a map from drink name to a Recipe value object (ingredients + price)', 'One State class per drink', 'In the PAID state as if/else', 'In an enum switch inside BREWING'], answer: 0, explain: 'Drinks are data, states are behaviour. Mixing them makes every new drink a code change across states.' },
+    hints: [`<p>Hint 1: States describe the machine's mode (IDLE, PAID, BREWING, NEEDS_REFILL); drinks are <b>data</b> (a Recipe value object: ingredients map + price).</p>`, `<p>Hint 2: PAID.select runs checks in order: known drink → enough money → enough ingredients (Inventory.canMake) → BREWING → consume + change → next state is NEEDS_REFILL if no recipe can be made, else IDLE.</p>`, `<p>Hint 3: Entering NEEDS_REFILL refunds the balance. refill() is accepted in IDLE/PAID/NEEDS_REFILL; in NEEDS_REFILL it re-checks and returns to IDLE if any drink is possible.</p>`],
+    tests: { io: true, cases: [{ stdin: '', stdout: "[PAID] not enough milk, pick another\n[BREWING] enjoy your cappuccino, change 40\n[BREWING] enjoy your espresso\nstate NEEDS_REFILL, stock {beans=4, milk=20, water=100}\nafter refill: IDLE\n[IDLE] pay first\n[IDLE] nothing to cancel\n[PAID] unknown drink\n[PAID] insert 70 more\n[PAID] refund 50\nfinal IDLE balance 0\n" }] },
+      solution: {
       approach: `<p>States as an enum with behaviour; recipes and inventory as data. The machine's helper <code>anyDrinkPossible()</code> decides between IDLE and NEEDS_REFILL after each brew and after each refill. Ingredient checks happen before money is kept, so a refused drink never costs anything.</p>`,
       code: `import java.util.*;
 
@@ -2923,13 +9023,19 @@ enum CoffeeState {
 class CoffeeMachine {
     private CoffeeState state = CoffeeState.IDLE;
     private int balance;
-    private final Map<String, Integer> stock = new HashMap<>();
+    private final Map<String, Integer> stock = new TreeMap<>();      // sorted: stable printing
     private final Map<String, Recipe> recipes = new LinkedHashMap<>();
 
     CoffeeMachine() {
-        recipes.put("espresso", new Recipe(120, Map.of("water", 50, "beans", 18)));
-        recipes.put("latte", new Recipe(180, Map.of("water", 50, "milk", 150, "beans", 18)));
-        recipes.put("cappuccino", new Recipe(160, Map.of("water", 50, "milk", 100, "beans", 18)));
+        recipes.put("espresso", new Recipe(120, needs("water", 50, "beans", 18)));
+        recipes.put("latte", new Recipe(180, needs("water", 50, "milk", 150, "beans", 18)));
+        recipes.put("cappuccino", new Recipe(160, needs("water", 50, "milk", 100, "beans", 18)));
+    }
+    /** Ordered on purpose: the first missing ingredient reported must not change from run to run. */
+    private static Map<String, Integer> needs(Object... kv) {
+        Map<String, Integer> m = new LinkedHashMap<>();
+        for (int i = 0; i < kv.length; i += 2) m.put((String) kv[i], (Integer) kv[i + 1]);
+        return m;
     }
     void pay(int amt)                     { state = state.pay(this, amt); }
     void select(String d)                 { state = state.select(this, d); }
@@ -2964,8 +9070,409 @@ class CoffeeMachine {
         System.out.println("state " + m.state + ", stock " + m.stock);   // NEEDS_REFILL
         m.refill("beans", 100);
         System.out.println("after refill: " + m.state);                  // IDLE
+        m.select("latte");                                               // pay first
+        m.cancel();                                                      // nothing to cancel
+        m.pay(50); m.select("tea"); m.select("espresso");                // unknown drink; insert 70 more
+        m.cancel();                                                      // refund 50
+        System.out.println("final " + m.state + " balance " + m.balance());
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Recipe:
+    price: int
+    needs: dict[str, int]  # insertion order = order of the "missing ingredient" check
+
+
+class CoffeeState:
+    """Default behaviour; each state overrides only the events it reacts to."""
+
+    name = "?"
+
+    def pay(self, m: "CoffeeMachine", amt: int) -> "CoffeeState":
+        m.say("cannot pay now")
+        return self
+
+    def select(self, m: "CoffeeMachine", drink: str) -> "CoffeeState":
+        m.say("pay first")
+        return self
+
+    def cancel(self, m: "CoffeeMachine") -> "CoffeeState":
+        m.say("nothing to cancel")
+        return self
+
+    def refill(self, m: "CoffeeMachine", ing: str, qty: int) -> "CoffeeState":
+        m.add_stock(ing, qty)
+        return self
+
+    def enter(self, m: "CoffeeMachine") -> "CoffeeState":  # entry action
+        m.refund()
+        return self
+
+
+class Idle(CoffeeState):
+    name = "IDLE"
+
+    def pay(self, m: "CoffeeMachine", amt: int) -> CoffeeState:
+        m.add_balance(amt)
+        return PAID
+
+
+class Paid(CoffeeState):
+    name = "PAID"
+
+    def pay(self, m: "CoffeeMachine", amt: int) -> CoffeeState:
+        m.add_balance(amt)
+        return PAID
+
+    def select(self, m: "CoffeeMachine", drink: str) -> CoffeeState:
+        r = m.recipe(drink)
+        if r is None:
+            m.say("unknown drink")
+            return PAID
+        if m.balance < r.price:
+            m.say(f"insert {r.price - m.balance} more")
+            return PAID
+        missing = m.missing_for(r)
+        if missing is not None:
+            m.say(f"not enough {missing}, pick another")
+            return PAID
+        m.brew(drink, r)  # BREWING happens here (synchronous demo)
+        return IDLE if m.any_drink_possible() else NEEDS_REFILL.enter(m)
+
+    def cancel(self, m: "CoffeeMachine") -> CoffeeState:
+        m.refund()
+        return IDLE
+
+
+class Brewing(CoffeeState):
+    name = "BREWING"
+
+    def refill(self, m: "CoffeeMachine", ing: str, qty: int) -> CoffeeState:
+        m.say("wait, brewing")
+        return BREWING
+
+
+class NeedsRefill(CoffeeState):
+    name = "NEEDS_REFILL"
+
+    def pay(self, m: "CoffeeMachine", amt: int) -> CoffeeState:
+        m.say(f"needs refill, money returned: {amt}")
+        return NEEDS_REFILL
+
+    def refill(self, m: "CoffeeMachine", ing: str, qty: int) -> CoffeeState:
+        m.add_stock(ing, qty)
+        return IDLE if m.any_drink_possible() else NEEDS_REFILL
+
+
+IDLE, PAID, BREWING, NEEDS_REFILL = Idle(), Paid(), Brewing(), NeedsRefill()
+
+
+class CoffeeMachine:
+    def __init__(self) -> None:
+        self.state: CoffeeState = IDLE
+        self.balance = 0
+        self.stock: dict[str, int] = {}
+        self._recipes = {
+            "espresso": Recipe(120, {"water": 50, "beans": 18}),
+            "latte": Recipe(180, {"water": 50, "milk": 150, "beans": 18}),
+            "cappuccino": Recipe(160, {"water": 50, "milk": 100, "beans": 18}),
+        }
+
+    def pay(self, amt: int) -> None: self.state = self.state.pay(self, amt)
+    def select(self, d: str) -> None: self.state = self.state.select(self, d)
+    def cancel(self) -> None: self.state = self.state.cancel(self)
+    def refill(self, ing: str, qty: int) -> None: self.state = self.state.refill(self, ing, qty)
+
+    def recipe(self, d: str) -> Recipe | None: return self._recipes.get(d)
+    def add_balance(self, a: int) -> None: self.balance += a
+    def add_stock(self, ing: str, q: int) -> None: self.stock[ing] = self.stock.get(ing, 0) + q
+
+    def refund(self) -> None:
+        if self.balance > 0:
+            self.say(f"refund {self.balance}")
+        self.balance = 0
+
+    def missing_for(self, r: Recipe) -> str | None:
+        return next((k for k, v in r.needs.items() if self.stock.get(k, 0) < v), None)
+
+    def any_drink_possible(self) -> bool:
+        return any(self.missing_for(r) is None for r in self._recipes.values())
+
+    def brew(self, drink: str, r: Recipe) -> None:
+        self.state = BREWING
+        for k, v in r.needs.items():
+            self.stock[k] = self.stock.get(k, 0) - v
+        change = self.balance - r.price
+        self.balance = 0
+        self.say(f"enjoy your {drink}" + (f", change {change}" if change > 0 else ""))
+
+    def say(self, s: str) -> None:
+        print(f"[{self.state.name}] {s}")
+
+    def stock_text(self) -> str:  # sorted by ingredient, like a TreeMap
+        return "{" + ", ".join(f"{k}={v}" for k, v in sorted(self.stock.items())) + "}"
+
+
+if __name__ == "__main__":
+    m = CoffeeMachine()
+    m.refill("water", 200); m.refill("milk", 120); m.refill("beans", 40)
+    m.pay(200); m.select("latte"); m.select("cappuccino")
+    m.pay(120); m.select("espresso")
+    print(f"state {m.state.name}, stock {m.stock_text()}")  # NEEDS_REFILL
+    m.refill("beans", 100)
+    print("after refill:", m.state.name)  # IDLE
+    m.select("latte")  # pay first
+    m.cancel()  # nothing to cancel
+    m.pay(50); m.select("tea"); m.select("espresso")  # unknown drink; insert 70 more
+    m.cancel()  # refund 50
+    print("final", m.state.name, "balance", m.balance)` },
+          { lang: 'ts', code: `interface Recipe {
+  readonly price: number;
+  readonly needs: ReadonlyMap<string, number>; // insertion order = order of the "missing ingredient" check
+}
+
+// Base class holds the default behaviour; each state overrides only the events it reacts to.
+abstract class CoffeeState {
+  abstract readonly name: string;
+  pay(m: CoffeeMachine, amt: number): CoffeeState { m.say("cannot pay now"); return this; }
+  select(m: CoffeeMachine, drink: string): CoffeeState { m.say("pay first"); return this; }
+  cancel(m: CoffeeMachine): CoffeeState { m.say("nothing to cancel"); return this; }
+  refill(m: CoffeeMachine, ing: string, qty: number): CoffeeState { m.addStock(ing, qty); return this; }
+  enter(m: CoffeeMachine): CoffeeState { m.refund(); return this; } // entry action
+}
+
+class Idle extends CoffeeState {
+  readonly name = "IDLE";
+  override pay(m: CoffeeMachine, amt: number): CoffeeState { m.addBalance(amt); return PAID; }
+}
+class Paid extends CoffeeState {
+  readonly name = "PAID";
+  override pay(m: CoffeeMachine, amt: number): CoffeeState { m.addBalance(amt); return PAID; }
+  override select(m: CoffeeMachine, drink: string): CoffeeState {
+    const r = m.recipe(drink);
+    if (r === undefined) { m.say("unknown drink"); return PAID; }
+    if (m.balance < r.price) { m.say(\`insert \${r.price - m.balance} more\`); return PAID; }
+    const missing = m.missingFor(r);
+    if (missing !== null) { m.say(\`not enough \${missing}, pick another\`); return PAID; }
+    m.brew(drink, r); // BREWING happens here (synchronous demo)
+    return m.anyDrinkPossible() ? IDLE : NEEDS_REFILL.enter(m);
+  }
+  override cancel(m: CoffeeMachine): CoffeeState { m.refund(); return IDLE; }
+}
+class Brewing extends CoffeeState {
+  readonly name = "BREWING";
+  override refill(m: CoffeeMachine, ing: string, qty: number): CoffeeState { m.say("wait, brewing"); return BREWING; }
+}
+class NeedsRefill extends CoffeeState {
+  readonly name = "NEEDS_REFILL";
+  override pay(m: CoffeeMachine, amt: number): CoffeeState { m.say(\`needs refill, money returned: \${amt}\`); return NEEDS_REFILL; }
+  override refill(m: CoffeeMachine, ing: string, qty: number): CoffeeState {
+    m.addStock(ing, qty);
+    return m.anyDrinkPossible() ? IDLE : NEEDS_REFILL;
+  }
+}
+const IDLE = new Idle(), PAID = new Paid(), BREWING = new Brewing(), NEEDS_REFILL = new NeedsRefill();
+
+class CoffeeMachine {
+  state: CoffeeState = IDLE;
+  balance = 0;
+  readonly stock = new Map<string, number>();
+  private readonly recipes = new Map<string, Recipe>([
+    ["espresso", { price: 120, needs: new Map([["water", 50], ["beans", 18]]) }],
+    ["latte", { price: 180, needs: new Map([["water", 50], ["milk", 150], ["beans", 18]]) }],
+    ["cappuccino", { price: 160, needs: new Map([["water", 50], ["milk", 100], ["beans", 18]]) }],
+  ]);
+
+  pay(amt: number): void { this.state = this.state.pay(this, amt); }
+  select(d: string): void { this.state = this.state.select(this, d); }
+  cancel(): void { this.state = this.state.cancel(this); }
+  refill(ing: string, qty: number): void { this.state = this.state.refill(this, ing, qty); }
+
+  recipe(d: string): Recipe | undefined { return this.recipes.get(d); }
+  addBalance(a: number): void { this.balance += a; }
+  addStock(ing: string, q: number): void { this.stock.set(ing, (this.stock.get(ing) ?? 0) + q); }
+  refund(): void {
+    if (this.balance > 0) this.say("refund " + this.balance);
+    this.balance = 0;
+  }
+  missingFor(r: Recipe): string | null {
+    for (const [k, v] of r.needs) if ((this.stock.get(k) ?? 0) < v) return k;
+    return null;
+  }
+  anyDrinkPossible(): boolean {
+    return [...this.recipes.values()].some((r) => this.missingFor(r) === null);
+  }
+  brew(drink: string, r: Recipe): void {
+    this.state = BREWING;
+    for (const [k, v] of r.needs) this.stock.set(k, (this.stock.get(k) ?? 0) - v);
+    const change = this.balance - r.price;
+    this.balance = 0;
+    this.say("enjoy your " + drink + (change > 0 ? ", change " + change : ""));
+  }
+  say(s: string): void { console.log(\`[\${this.state.name}] \${s}\`); }
+  stockText(): string { // sorted by ingredient, like a TreeMap
+    return "{" + [...this.stock].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([k, v]) => \`\${k}=\${v}\`).join(", ") + "}";
+  }
+}
+
+const m = new CoffeeMachine();
+m.refill("water", 200); m.refill("milk", 120); m.refill("beans", 40);
+m.pay(200); m.select("latte"); m.select("cappuccino");
+m.pay(120); m.select("espresso");
+console.log(\`state \${m.state.name}, stock \${m.stockText()}\`); // NEEDS_REFILL
+m.refill("beans", 100);
+console.log("after refill: " + m.state.name); // IDLE
+m.select("latte"); // pay first
+m.cancel(); // nothing to cancel
+m.pay(50); m.select("tea"); m.select("espresso"); // unknown drink; insert 70 more
+m.cancel(); // refund 50
+console.log(\`final \${m.state.name} balance \${m.balance}\`);` },
+          { lang: 'cpp', code: `struct Recipe {
+    int price;
+    vector<pair<string, int>> needs;  // order = order of the "missing ingredient" check
+};
+
+class CoffeeMachine;
+
+// Singletons per state; the machine holds a non-owning pointer to the current one.
+struct CoffeeState {
+    virtual ~CoffeeState() = default;
+    virtual string name() const = 0;
+    virtual const CoffeeState* pay(CoffeeMachine& m, int amt) const;
+    virtual const CoffeeState* select(CoffeeMachine& m, const string& drink) const;
+    virtual const CoffeeState* cancel(CoffeeMachine& m) const;
+    virtual const CoffeeState* refill(CoffeeMachine& m, const string& ing, int qty) const;
+    virtual const CoffeeState* enter(CoffeeMachine& m) const;  // entry action
+};
+struct Idle final : CoffeeState {
+    static const Idle I;
+    string name() const override { return "IDLE"; }
+    const CoffeeState* pay(CoffeeMachine& m, int amt) const override;
+};
+struct Paid final : CoffeeState {
+    static const Paid I;
+    string name() const override { return "PAID"; }
+    const CoffeeState* pay(CoffeeMachine& m, int amt) const override;
+    const CoffeeState* select(CoffeeMachine& m, const string& drink) const override;
+    const CoffeeState* cancel(CoffeeMachine& m) const override;
+};
+struct Brewing final : CoffeeState {
+    static const Brewing I;
+    string name() const override { return "BREWING"; }
+    const CoffeeState* refill(CoffeeMachine& m, const string& ing, int qty) const override;
+};
+struct NeedsRefill final : CoffeeState {
+    static const NeedsRefill I;
+    string name() const override { return "NEEDS_REFILL"; }
+    const CoffeeState* pay(CoffeeMachine& m, int amt) const override;
+    const CoffeeState* refill(CoffeeMachine& m, const string& ing, int qty) const override;
+};
+inline const Idle Idle::I;
+inline const Paid Paid::I;
+inline const Brewing Brewing::I;
+inline const NeedsRefill NeedsRefill::I;
+
+class CoffeeMachine {
+    const CoffeeState* state_ = &Idle::I;
+    int balance_ = 0;
+    map<string, int> stock_;  // sorted: stable printing
+    vector<pair<string, Recipe>> recipes_ = {
+        {"espresso", {120, {{"water", 50}, {"beans", 18}}}},
+        {"latte", {180, {{"water", 50}, {"milk", 150}, {"beans", 18}}}},
+        {"cappuccino", {160, {{"water", 50}, {"milk", 100}, {"beans", 18}}}},
+    };
+
+public:
+    void pay(int amt) { state_ = state_->pay(*this, amt); }
+    void select(const string& d) { state_ = state_->select(*this, d); }
+    void cancel() { state_ = state_->cancel(*this); }
+    void refill(const string& ing, int qty) { state_ = state_->refill(*this, ing, qty); }
+
+    const Recipe* recipe(const string& d) const {
+        for (const auto& [name, r] : recipes_) if (name == d) return &r;
+        return nullptr;
+    }
+    int balance() const { return balance_; }
+    void addBalance(int a) { balance_ += a; }
+    void addStock(const string& ing, int q) { stock_[ing] += q; }
+    void refund() {
+        if (balance_ > 0) say("refund " + to_string(balance_));
+        balance_ = 0;
+    }
+    optional<string> missingFor(const Recipe& r) const {
+        for (const auto& [ing, need] : r.needs) {
+            auto it = stock_.find(ing);
+            if ((it == stock_.end() ? 0 : it->second) < need) return ing;
+        }
+        return nullopt;
+    }
+    bool anyDrinkPossible() const {
+        return any_of(recipes_.begin(), recipes_.end(), [&](const auto& e) { return !missingFor(e.second); });
+    }
+    void brew(const string& drink, const Recipe& r) {
+        state_ = &Brewing::I;
+        for (const auto& [ing, need] : r.needs) stock_[ing] -= need;
+        int change = balance_ - r.price;
+        balance_ = 0;
+        say("enjoy your " + drink + (change > 0 ? ", change " + to_string(change) : ""));
+    }
+    void say(const string& s) const { cout << "[" << state_->name() << "] " << s << "\\n"; }
+    string stateName() const { return state_->name(); }
+    string stockText() const {
+        string out = "{";
+        for (const auto& [ing, q] : stock_) out += (out.size() > 1 ? ", " : "") + ing + "=" + to_string(q);
+        return out + "}";
+    }
+};
+
+const CoffeeState* CoffeeState::pay(CoffeeMachine& m, int) const { m.say("cannot pay now"); return this; }
+const CoffeeState* CoffeeState::select(CoffeeMachine& m, const string&) const { m.say("pay first"); return this; }
+const CoffeeState* CoffeeState::cancel(CoffeeMachine& m) const { m.say("nothing to cancel"); return this; }
+const CoffeeState* CoffeeState::refill(CoffeeMachine& m, const string& ing, int qty) const { m.addStock(ing, qty); return this; }
+const CoffeeState* CoffeeState::enter(CoffeeMachine& m) const { m.refund(); return this; }
+
+const CoffeeState* Idle::pay(CoffeeMachine& m, int amt) const { m.addBalance(amt); return &Paid::I; }
+
+const CoffeeState* Paid::pay(CoffeeMachine& m, int amt) const { m.addBalance(amt); return this; }
+const CoffeeState* Paid::select(CoffeeMachine& m, const string& drink) const {
+    const Recipe* r = m.recipe(drink);
+    if (!r) { m.say("unknown drink"); return this; }
+    if (m.balance() < r->price) { m.say("insert " + to_string(r->price - m.balance()) + " more"); return this; }
+    if (auto missing = m.missingFor(*r)) { m.say("not enough " + *missing + ", pick another"); return this; }
+    m.brew(drink, *r);  // BREWING happens here (synchronous demo)
+    return m.anyDrinkPossible() ? static_cast<const CoffeeState*>(&Idle::I) : NeedsRefill::I.enter(m);
+}
+const CoffeeState* Paid::cancel(CoffeeMachine& m) const { m.refund(); return &Idle::I; }
+
+const CoffeeState* Brewing::refill(CoffeeMachine& m, const string&, int) const { m.say("wait, brewing"); return this; }
+
+const CoffeeState* NeedsRefill::pay(CoffeeMachine& m, int amt) const {
+    m.say("needs refill, money returned: " + to_string(amt));
+    return this;
+}
+const CoffeeState* NeedsRefill::refill(CoffeeMachine& m, const string& ing, int qty) const {
+    m.addStock(ing, qty);
+    return m.anyDrinkPossible() ? static_cast<const CoffeeState*>(&Idle::I) : this;
+}
+
+int main() {
+    CoffeeMachine m;
+    m.refill("water", 200); m.refill("milk", 120); m.refill("beans", 40);
+    m.pay(200); m.select("latte"); m.select("cappuccino");
+    m.pay(120); m.select("espresso");
+    cout << "state " << m.stateName() << ", stock " << m.stockText() << "\\n";  // NEEDS_REFILL
+    m.refill("beans", 100);
+    cout << "after refill: " << m.stateName() << "\\n";  // IDLE
+    m.select("latte");  // pay first
+    m.cancel();         // nothing to cancel
+    m.pay(50); m.select("tea"); m.select("espresso");  // unknown drink; insert 70 more
+    m.cancel();         // refund 50
+    cout << "final " << m.stateName() << " balance " << m.balance() << "\\n";
+}` }
+        ],
       complexity: `<p>Each event is O(R · I) at worst (recipes × ingredients) for the refill check — tiny. New drink = one map entry.</p>`,
       followUps: ['Brewing takes 40 s: make BREWING asynchronous with a BREW_DONE event and a timeout.', 'Show only the drinks that can currently be made on the screen — which method already gives you that?']
     }
@@ -2985,9 +9492,10 @@ class CoffeeMachine {
     }
 }` },
     mcq: { q: 'How do you reset the daily limit without a midnight batch job?', options: ['Store (date, amountToday) per card; if the stored date differs from today, treat amountToday as 0', 'Reset all rows at midnight with a cron job', 'Never reset it', 'Keep the limit in the ATM'], answer: 0, explain: 'Lazy reset keyed by date is O(1), has no batch job and no midnight race.' },
-    hints: [`<p>Hint 1: The state belongs to the <b>card at the bank</b>: status, failed attempts, and (date, withdrawnToday). Make it a small class per card.</p>`, `<p>Hint 2: Use <code>ConcurrentHashMap&lt;String, CardAccount&gt;</code> and synchronize on the CardAccount object so two ATMs updating the same card are serialized, while different cards run in parallel.</p>`, `<p>Hint 3: Lazy reset: if <code>lastDate != date</code>, set withdrawnToday = 0 and lastDate = date before checking. Return an enum result: OK, WRONG_PIN, BLOCKED, DAILY_LIMIT.</p>`],
-    solution: {
-      approach: `<p>Per-card state object at the bank (ACTIVE/BLOCKED + counters), stored in a ConcurrentHashMap and locked per card. PIN failures are counted globally per card; the daily limit uses a lazy, date-keyed reset. Results are an enum so ATMs can show the right screen.</p>`,
+    hints: [`<p>Hint 1: The state belongs to the <b>card at the bank</b>: status, failed attempts, and (date, withdrawnToday). Make it a small class per card.</p>`, `<p>Hint 2: Use a thread-safe map from card to CardAccount (<code>ConcurrentHashMap</code> in Java, a dict plus a lock in Python, a mutex-protected map in C++) and lock the CardAccount object so two ATMs updating the same card are serialized, while different cards run in parallel.</p>`, `<p>Hint 3: Lazy reset: if <code>lastDate != date</code>, set withdrawnToday = 0 and lastDate = date before checking. Return an enum result: OK, WRONG_PIN, BLOCKED, DAILY_LIMIT.</p>`],
+    tests: { io: true, cases: [{ stdin: '', stdout: "WRONG_PIN WRONG_PIN BLOCKED\ncorrect PIN while blocked: BLOCKED\nOK\nDAILY_LIMIT\nOK\nUNKNOWN_CARD UNKNOWN_CARD\nWRONG_PIN OK WRONG_PIN WRONG_PIN\nOK DAILY_LIMIT\nBLOCKED BLOCKED\n" }] },
+      solution: {
+      approach: `<p>Per-card state object at the bank (ACTIVE/BLOCKED + counters), stored in a concurrent map and locked per card. PIN failures are counted globally per card; the daily limit uses a lazy, date-keyed reset. Results are an enum so ATMs can show the right screen.</p>`,
       code: `import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -3035,6 +9543,7 @@ class CardAuthService {
 
     void adminUnblock(String card) {
         CardAccount a = cards.get(card);
+        if (a == null) return;                                  // unknown card: nothing to unblock
         synchronized (a) { a.blocked = false; a.wrongPins = 0; }
     }
 
@@ -3048,8 +9557,260 @@ class CardAuthService {
         System.out.println(s.authorizeWithdrawal("C1", 20_000, d1));                    // OK
         System.out.println(s.authorizeWithdrawal("C1", 6_000, d1));                     // DAILY_LIMIT
         System.out.println(s.authorizeWithdrawal("C1", 6_000, d1.plusDays(1)));         // OK
+        System.out.println(s.verifyPin("NOPE", "0000") + " " + s.authorizeWithdrawal("NOPE", 1, d1));  // UNKNOWN_CARD UNKNOWN_CARD
+        s.adminUnblock("NOPE");                                                         // no-op, no crash
+        s.register("C2", "9999");
+        System.out.println(s.verifyPin("C2", "0") + " " + s.verifyPin("C2", "9999") + " " + s.verifyPin("C2", "1") + " " + s.verifyPin("C2", "2"));  // success resets the counter
+        System.out.println(s.authorizeWithdrawal("C2", 25_000, d1) + " " + s.authorizeWithdrawal("C2", 1, d1));  // exactly the limit is allowed
+        System.out.println(s.verifyPin("C2", "3") + " " + s.authorizeWithdrawal("C2", 1, d1.plusDays(1)));       // third wrong PIN blocks the card
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `import threading
+from dataclasses import dataclass, field
+from datetime import date, timedelta
+from enum import Enum
+from typing import Optional
+
+
+class AuthResult(Enum):
+    OK = 1
+    WRONG_PIN = 2
+    BLOCKED = 3
+    DAILY_LIMIT = 4
+    UNKNOWN_CARD = 5
+
+
+@dataclass
+class CardAccount:
+    pin: str
+    blocked: bool = False
+    wrong_pins: int = 0
+    last_date: Optional[date] = None
+    withdrawn_today: int = 0
+    lock: threading.Lock = field(default_factory=threading.Lock)  # per-card lock
+
+
+class CardAuthService:
+    MAX_WRONG = 3
+    DAILY_LIMIT = 25_000
+
+    def __init__(self) -> None:
+        self._cards: dict[str, CardAccount] = {}  # dict operations are atomic under the GIL
+
+    def register(self, card: str, pin: str) -> None:
+        self._cards[card] = CardAccount(pin)
+
+    def verify_pin(self, card: str, pin: str) -> AuthResult:
+        a = self._cards.get(card)
+        if a is None:
+            return AuthResult.UNKNOWN_CARD
+        with a.lock:  # ATMs working on other cards are not blocked
+            if a.blocked:
+                return AuthResult.BLOCKED
+            if a.pin == pin:
+                a.wrong_pins = 0
+                return AuthResult.OK
+            a.wrong_pins += 1
+            if a.wrong_pins >= self.MAX_WRONG:
+                a.blocked = True
+                return AuthResult.BLOCKED
+            return AuthResult.WRONG_PIN
+
+    def authorize_withdrawal(self, card: str, amount: int, on: date) -> AuthResult:
+        a = self._cards.get(card)
+        if a is None:
+            return AuthResult.UNKNOWN_CARD
+        with a.lock:
+            if a.blocked:
+                return AuthResult.BLOCKED
+            if on != a.last_date:  # lazy daily reset
+                a.last_date = on
+                a.withdrawn_today = 0
+            if a.withdrawn_today + amount > self.DAILY_LIMIT:
+                return AuthResult.DAILY_LIMIT
+            a.withdrawn_today += amount
+            return AuthResult.OK
+
+    def admin_unblock(self, card: str) -> None:
+        a = self._cards.get(card)
+        if a is None:  # unknown card: nothing to unblock
+            return
+        with a.lock:
+            a.blocked = False
+            a.wrong_pins = 0
+
+
+if __name__ == "__main__":
+    s = CardAuthService()
+    s.register("C1", "1234")
+    r1, r2, r3 = s.verify_pin("C1", "1111"), s.verify_pin("C1", "2222"), s.verify_pin("C1", "3333")
+    print(r1.name, r2.name, r3.name)
+    print("correct PIN while blocked:", s.verify_pin("C1", "1234").name)  # BLOCKED
+    s.admin_unblock("C1")
+    d1 = date(2026, 6, 1)
+    print(s.authorize_withdrawal("C1", 20_000, d1).name)  # OK
+    print(s.authorize_withdrawal("C1", 6_000, d1).name)  # DAILY_LIMIT
+    print(s.authorize_withdrawal("C1", 6_000, d1 + timedelta(days=1)).name)  # OK
+    print(s.verify_pin("NOPE", "0000").name, s.authorize_withdrawal("NOPE", 1, d1).name)  # UNKNOWN_CARD UNKNOWN_CARD
+    s.admin_unblock("NOPE")  # no-op, no crash
+    s.register("C2", "9999")
+    print(*(s.verify_pin("C2", p).name for p in ("0", "9999", "1", "2")))  # success resets the counter
+    print(s.authorize_withdrawal("C2", 25_000, d1).name, s.authorize_withdrawal("C2", 1, d1).name)  # exactly the limit is allowed
+    print(s.verify_pin("C2", "3").name, s.authorize_withdrawal("C2", 1, d1 + timedelta(days=1)).name)  # third wrong PIN blocks the card` },
+          { lang: 'ts', code: `type AuthResult = "OK" | "WRONG_PIN" | "BLOCKED" | "DAILY_LIMIT" | "UNKNOWN_CARD";
+
+class CardAccount {
+  blocked = false;
+  wrongPins = 0;
+  lastDate: string | null = null;
+  withdrawnToday = 0;
+  constructor(readonly pin: string) {}
+}
+
+// Dates are ISO strings (2026-06-01): equal days compare equal, no time-zone surprises.
+const plusDays = (iso: string, n: number): string =>
+  new Date(Date.parse(iso + "T00:00:00Z") + n * 86_400_000).toISOString().slice(0, 10);
+
+class CardAuthService {
+  static readonly MAX_WRONG = 3;
+  static readonly DAILY_LIMIT = 25_000;
+  // One JS thread: each method runs to completion, so no per-card lock is needed here.
+  // With worker threads or a shared database, this is where the per-card lock would go.
+  private readonly cards = new Map<string, CardAccount>();
+
+  register(card: string, pin: string): void { this.cards.set(card, new CardAccount(pin)); }
+
+  verifyPin(card: string, pin: string): AuthResult {
+    const a = this.cards.get(card);
+    if (a === undefined) return "UNKNOWN_CARD";
+    if (a.blocked) return "BLOCKED";
+    if (a.pin === pin) { a.wrongPins = 0; return "OK"; }
+    if (++a.wrongPins >= CardAuthService.MAX_WRONG) { a.blocked = true; return "BLOCKED"; }
+    return "WRONG_PIN";
+  }
+
+  authorizeWithdrawal(card: string, amount: number, date: string): AuthResult {
+    const a = this.cards.get(card);
+    if (a === undefined) return "UNKNOWN_CARD";
+    if (a.blocked) return "BLOCKED";
+    if (date !== a.lastDate) { a.lastDate = date; a.withdrawnToday = 0; } // lazy daily reset
+    if (a.withdrawnToday + amount > CardAuthService.DAILY_LIMIT) return "DAILY_LIMIT";
+    a.withdrawnToday += amount;
+    return "OK";
+  }
+
+  adminUnblock(card: string): void {
+    const a = this.cards.get(card);
+    if (a === undefined) return; // unknown card: nothing to unblock
+    a.blocked = false;
+    a.wrongPins = 0;
+  }
+}
+
+const s = new CardAuthService();
+s.register("C1", "1234");
+const r1 = s.verifyPin("C1", "1111"), r2 = s.verifyPin("C1", "2222"), r3 = s.verifyPin("C1", "3333");
+console.log(\`\${r1} \${r2} \${r3}\`);
+console.log("correct PIN while blocked: " + s.verifyPin("C1", "1234")); // BLOCKED
+s.adminUnblock("C1");
+const d1 = "2026-06-01";
+console.log(s.authorizeWithdrawal("C1", 20_000, d1)); // OK
+console.log(s.authorizeWithdrawal("C1", 6_000, d1)); // DAILY_LIMIT
+console.log(s.authorizeWithdrawal("C1", 6_000, plusDays(d1, 1))); // OK
+console.log(s.verifyPin("NOPE", "0000") + " " + s.authorizeWithdrawal("NOPE", 1, d1)); // UNKNOWN_CARD UNKNOWN_CARD
+s.adminUnblock("NOPE"); // no-op, no crash
+s.register("C2", "9999");
+console.log(["0", "9999", "1", "2"].map((p) => s.verifyPin("C2", p)).join(" ")); // success resets the counter
+console.log(s.authorizeWithdrawal("C2", 25_000, d1) + " " + s.authorizeWithdrawal("C2", 1, d1)); // exactly the limit is allowed
+console.log(s.verifyPin("C2", "3") + " " + s.authorizeWithdrawal("C2", 1, plusDays(d1, 1))); // third wrong PIN blocks the card` },
+          { lang: 'cpp', code: `enum class AuthResult { OK, WRONG_PIN, BLOCKED, DAILY_LIMIT, UNKNOWN_CARD };
+
+const char* name(AuthResult r) {
+    static const char* names[] = {"OK", "WRONG_PIN", "BLOCKED", "DAILY_LIMIT", "UNKNOWN_CARD"};
+    return names[static_cast<int>(r)];
+}
+
+struct CardAccount {
+    explicit CardAccount(string pin) : pin(move(pin)) {}
+    const string pin;
+    bool blocked = false;
+    int wrongPins = 0;
+    optional<chrono::sys_days> lastDate;
+    long long withdrawnToday = 0;
+    mutex lock;  // per-card lock: ATMs working on other cards are not blocked
+};
+
+class CardAuthService {
+    static constexpr int MAX_WRONG = 3;
+    static constexpr long long DAILY_LIMIT = 25'000;
+    mutable shared_mutex mapLock_;  // protects the map itself; accounts are never removed
+    map<string, unique_ptr<CardAccount>> cards_;
+
+    CardAccount* find(const string& card) const {
+        shared_lock g(mapLock_);
+        auto it = cards_.find(card);
+        return it == cards_.end() ? nullptr : it->second.get();
+    }
+
+public:
+    void registerCard(const string& card, const string& pin) {
+        unique_lock g(mapLock_);
+        cards_[card] = make_unique<CardAccount>(pin);
+    }
+
+    AuthResult verifyPin(const string& card, const string& pin) {
+        CardAccount* a = find(card);
+        if (!a) return AuthResult::UNKNOWN_CARD;
+        lock_guard g(a->lock);
+        if (a->blocked) return AuthResult::BLOCKED;
+        if (a->pin == pin) { a->wrongPins = 0; return AuthResult::OK; }
+        if (++a->wrongPins >= MAX_WRONG) { a->blocked = true; return AuthResult::BLOCKED; }
+        return AuthResult::WRONG_PIN;
+    }
+
+    AuthResult authorizeWithdrawal(const string& card, long long amount, chrono::sys_days date) {
+        CardAccount* a = find(card);
+        if (!a) return AuthResult::UNKNOWN_CARD;
+        lock_guard g(a->lock);
+        if (a->blocked) return AuthResult::BLOCKED;
+        if (a->lastDate != date) { a->lastDate = date; a->withdrawnToday = 0; }  // lazy daily reset
+        if (a->withdrawnToday + amount > DAILY_LIMIT) return AuthResult::DAILY_LIMIT;
+        a->withdrawnToday += amount;
+        return AuthResult::OK;
+    }
+
+    void adminUnblock(const string& card) {
+        CardAccount* a = find(card);
+        if (!a) return;  // unknown card: nothing to unblock
+        lock_guard g(a->lock);
+        a->blocked = false;
+        a->wrongPins = 0;
+    }
+};
+
+int main() {
+    using chrono::sys_days;
+    CardAuthService s;
+    s.registerCard("C1", "1234");
+    auto r1 = s.verifyPin("C1", "1111"), r2 = s.verifyPin("C1", "2222"), r3 = s.verifyPin("C1", "3333");
+    cout << name(r1) << " " << name(r2) << " " << name(r3) << "\\n";
+    cout << "correct PIN while blocked: " << name(s.verifyPin("C1", "1234")) << "\\n";  // BLOCKED
+    s.adminUnblock("C1");
+    sys_days d1 = chrono::year{2026} / 6 / 1;
+    cout << name(s.authorizeWithdrawal("C1", 20'000, d1)) << "\\n";                      // OK
+    cout << name(s.authorizeWithdrawal("C1", 6'000, d1)) << "\\n";                       // DAILY_LIMIT
+    cout << name(s.authorizeWithdrawal("C1", 6'000, d1 + chrono::days{1})) << "\\n";     // OK
+    auto u1 = s.verifyPin("NOPE", "0000"), u2 = s.authorizeWithdrawal("NOPE", 1, d1);
+    cout << name(u1) << " " << name(u2) << "\\n";                                        // UNKNOWN_CARD UNKNOWN_CARD
+    s.adminUnblock("NOPE");                                                             // no-op, no crash
+    s.registerCard("C2", "9999");
+    for (const char* p : {"0", "9999", "1", "2"}) cout << name(s.verifyPin("C2", p)) << (string(p) == "2" ? "\\n" : " ");  // success resets the counter
+    auto w1 = s.authorizeWithdrawal("C2", 25'000, d1), w2 = s.authorizeWithdrawal("C2", 1, d1);
+    cout << name(w1) << " " << name(w2) << "\\n";                                        // exactly the limit is allowed
+    auto b1 = s.verifyPin("C2", "3"), b2 = s.authorizeWithdrawal("C2", 1, d1 + chrono::days{1});
+    cout << name(b1) << " " << name(b2) << "\\n";                                        // third wrong PIN blocks the card
+}` }
+        ],
       complexity: `<p>O(1) per call; contention only between requests for the same card. Memory O(cards).</p>`,
       followUps: ['Withdrawal authorized but the ATM fails to dispense: how do you give the limit back (and only once)?', 'Use a database instead of memory: write the conditional UPDATE that enforces the limit atomically.']
     }
@@ -3071,7 +9832,8 @@ class DirectionBlind {
 }` },
     mcq: { q: 'The car is at 8 going up; the only remaining request is hall 8▼. What happens?', options: ['Nothing is ahead, so the car reverses to DOWN at 8 and serves the ▼ call right there', 'It ignores the call until the next up sweep', 'It goes to the top floor first', 'It serves it only if a car call exists'], answer: 0, explain: 'With nothing ahead, LOOK reverses; after reversing, the ▼ call at the current floor matches the new direction.' },
     hints: [`<p>Hint 1: Keep three sets: carCalls, upCalls, downCalls. A floor is a stop for direction d if it is in carCalls or in the hall set for d.</p>`, `<p>Hint 2: Simulate floor by floor: serve what matches the current direction at the current floor; if any request in <i>any</i> set lies strictly ahead, move one floor; otherwise flip direction (without moving).</p>`, `<p>Hint 3: The loop terminates because if requests remain but none is ahead in either direction, they are at the current floor and get served after at most one flip.</p>`],
-    solution: {
+    tests: { io: true, cases: [{ stdin: '', stdout: "[5, 8, 5, 3]\n[]\n[1, 4]\n" }] },
+      solution: {
       approach: `<p>Floor-by-floor LOOK with three sets. At each floor serve car calls and same-direction hall calls; then decide: something ahead → move; nothing ahead → reverse. Opposite-direction calls at the turning floor are served right after the flip, exactly like a real collective-control elevator.</p>`,
       code: `import java.util.*;
 
@@ -3110,8 +9872,154 @@ class DirectionalElevator {
         DirectionalElevator e = new DirectionalElevator(2, true);
         e.carCall(8); e.hallCall(5, true); e.hallCall(5, false); e.hallCall(3, false);
         System.out.println(e.run());                       // [5, 8, 5, 3]
+
+        DirectionalElevator idle = new DirectionalElevator(4, false);
+        System.out.println(idle.run());                    // [] nothing to do
+        idle.hallCall(4, true); idle.hallCall(1, true);    // the up-call at 4 is passed while going down
+        System.out.println(idle.run());                    // [1, 4]
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `class DirectionalElevator:
+    def __init__(self, start: int, going_up: bool) -> None:
+        self.car: set[int] = set()
+        self.up: set[int] = set()
+        self.down: set[int] = set()
+        self.floor = start
+        self.going_up = going_up
+
+    def car_call(self, f: int) -> None:
+        self.car.add(f)
+
+    def hall_call(self, f: int, wants_up: bool) -> None:
+        (self.up if wants_up else self.down).add(f)
+
+    def _any_ahead(self) -> bool:
+        if self.going_up:
+            return any(x > self.floor for s in (self.car, self.up, self.down) for x in s)
+        return any(x < self.floor for s in (self.car, self.up, self.down) for x in s)
+
+    def _empty(self) -> bool:
+        return not (self.car or self.up or self.down)
+
+    def run(self) -> list[int]:
+        stops: list[int] = []
+        while not self._empty():
+            served = self.floor in self.car
+            self.car.discard(self.floor)
+            same_dir = self.up if self.going_up else self.down  # only same-direction hall calls
+            served = served or self.floor in same_dir
+            same_dir.discard(self.floor)
+            if served:
+                stops.append(self.floor)
+            if self._empty():
+                break
+            if self._any_ahead():
+                self.floor += 1 if self.going_up else -1
+            else:
+                self.going_up = not self.going_up  # LOOK turn, no movement
+        return stops
+
+
+if __name__ == "__main__":
+    e = DirectionalElevator(2, True)
+    e.car_call(8); e.hall_call(5, True); e.hall_call(5, False); e.hall_call(3, False)
+    print(e.run())  # [5, 8, 5, 3]
+
+    idle = DirectionalElevator(4, False)
+    print(idle.run())  # [] nothing to do
+    idle.hall_call(4, True); idle.hall_call(1, True)  # the up-call at 4 is passed while going down
+    print(idle.run())  # [1, 4]` },
+          { lang: 'ts', code: `class DirectionalElevator {
+  readonly car = new Set<number>();
+  readonly up = new Set<number>();
+  readonly down = new Set<number>();
+
+  constructor(public floor: number, public goingUp: boolean) {}
+
+  carCall(f: number): void { this.car.add(f); }
+  hallCall(f: number, wantsUp: boolean): void { (wantsUp ? this.up : this.down).add(f); }
+
+  private anyAhead(): boolean {
+    return [this.car, this.up, this.down].some((s) =>
+      [...s].some((x) => (this.goingUp ? x > this.floor : x < this.floor)));
+  }
+  private empty(): boolean { return this.car.size === 0 && this.up.size === 0 && this.down.size === 0; }
+
+  run(): number[] {
+    const stops: number[] = [];
+    while (!this.empty()) {
+      const sameDir = this.goingUp ? this.up : this.down; // only same-direction hall calls
+      const served = this.car.delete(this.floor);
+      const servedHall = sameDir.delete(this.floor);
+      if (served || servedHall) stops.push(this.floor);
+      if (this.empty()) break;
+      if (this.anyAhead()) this.floor += this.goingUp ? 1 : -1;
+      else this.goingUp = !this.goingUp; // LOOK turn, no movement
+    }
+    return stops;
+  }
+}
+
+const show = (xs: number[]): string => \`[\${xs.join(", ")}]\`;
+
+const e = new DirectionalElevator(2, true);
+e.carCall(8); e.hallCall(5, true); e.hallCall(5, false); e.hallCall(3, false);
+console.log(show(e.run())); // [5, 8, 5, 3]
+
+const idle = new DirectionalElevator(4, false);
+console.log(show(idle.run())); // [] nothing to do
+idle.hallCall(4, true); idle.hallCall(1, true); // the up-call at 4 is passed while going down
+console.log(show(idle.run())); // [1, 4]` },
+          { lang: 'cpp', code: `class DirectionalElevator {
+    set<int> car_, up_, down_;
+    int floor_;
+    bool goingUp_;
+
+    bool anyAhead() const {
+        for (const set<int>* s : {&car_, &up_, &down_}) {
+            if (goingUp_ ? s->upper_bound(floor_) != s->end() : (!s->empty() && *s->begin() < floor_)) return true;
+        }
+        return false;
+    }
+    bool empty() const { return car_.empty() && up_.empty() && down_.empty(); }
+
+public:
+    DirectionalElevator(int start, bool goingUp) : floor_(start), goingUp_(goingUp) {}
+
+    void carCall(int f) { car_.insert(f); }
+    void hallCall(int f, bool wantsUp) { (wantsUp ? up_ : down_).insert(f); }
+
+    vector<int> run() {
+        vector<int> stops;
+        while (!empty()) {
+            bool served = car_.erase(floor_) > 0;
+            served |= (goingUp_ ? up_ : down_).erase(floor_) > 0;  // only same-direction hall calls
+            if (served) stops.push_back(floor_);
+            if (empty()) break;
+            if (anyAhead()) floor_ += goingUp_ ? 1 : -1;
+            else goingUp_ = !goingUp_;  // LOOK turn, no movement
+        }
+        return stops;
+    }
+};
+
+string show(const vector<int>& xs) {
+    string s = "[";
+    for (size_t i = 0; i < xs.size(); i++) s += (i ? ", " : "") + to_string(xs[i]);
+    return s + "]";
+}
+
+int main() {
+    DirectionalElevator e(2, true);
+    e.carCall(8); e.hallCall(5, true); e.hallCall(5, false); e.hallCall(3, false);
+    cout << show(e.run()) << "\\n";  // [5, 8, 5, 3]
+
+    DirectionalElevator idle(4, false);
+    cout << show(idle.run()) << "\\n";  // [] nothing to do
+    idle.hallCall(4, true); idle.hallCall(1, true);  // the up-call at 4 is passed while going down
+    cout << show(idle.run()) << "\\n";  // [1, 4]
+}` }
+        ],
       complexity: `<p>O(F · log N) for F floors travelled (each step does O(1) set operations, O(log N) each). For an online version, run one iteration per tick.</p>`,
       followUps: ['Show the hall-button lights: when exactly does 5▼ turn off?', 'Two cars: how does the dispatcher use the direction of each hall call?']
     }
@@ -3133,7 +10041,8 @@ class DirectionalElevator {
 }` },
     mcq: { q: 'What exactly must PAUSED remember to implement resume correctly?', options: ['The state it was paused from AND the ticks remaining in it', 'Only the original program', 'Nothing, resume restarts the cycle', 'Only the ticks remaining'], answer: 0, explain: 'A history state stores the interrupted sub-state plus its progress so the machine continues exactly where it stopped.' },
     hints: [`<p>Hint 1: Running phases differ only in name, duration and successor → an enum with (duration, next). PAUSED and IDLE/DONE are special.</p>`, `<p>Hint 2: Keep <code>current</code>, <code>remaining</code>, plus <code>resumeTo</code>/<code>resumeRemaining</code> captured on pause. tick() does nothing unless current is a running phase.</p>`, `<p>Hint 3: Door rule = a method on the enum: <code>doorMayOpen()</code> true for IDLE, PAUSED, DONE. Guard start() with "door closed".</p>`],
-    solution: {
+    tests: { io: true, cases: [{ stdin: '', stdout: "IDLE -> FILLING (2 ticks)\nFILLING -> WASHING (5 ticks)\nWASHING -> PAUSED\nPAUSED -> WASHING (3 ticks)\nWASHING -> RINSING (3 ticks)\ndoor locked during RINSING\nRINSING -> SPINNING (2 ticks)\nSPINNING -> DONE\ncannot start (DONE, door closed)\ncannot resume\ncannot start (IDLE, door open)\n" }] },
+      solution: {
       approach: `<p>An enum of phases with duration, successor and a door rule. The machine stores the current phase and remaining ticks; pause() snapshots both into history fields and switches to PAUSED; resume() restores them. tick() advances only running phases.</p>`,
       code: `enum Phase {
     IDLE(0, null), FILLING(2, "WASHING"), WASHING(5, "RINSING"), RINSING(3, "SPINNING"), SPINNING(2, "DONE"), DONE(0, null), PAUSED(0, null);
@@ -3179,8 +10088,260 @@ class Washer {
         for (int i = 0; i < 4; i++) w.tick();               // -> RINSING, 1 tick in
         w.openDoor();                                        // refused
         for (int i = 0; i < 10; i++) w.tick();              // -> SPINNING -> DONE
+        w.start();                                           // refused: cycle already finished
+        w.resume();                                          // refused: not paused
+        Washer w2 = new Washer();
+        w2.openDoor();
+        w2.start();                                          // refused: door open
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `from enum import Enum
+
+
+class Phase(Enum):
+    IDLE = 1
+    FILLING = 2
+    WASHING = 3
+    RINSING = 4
+    SPINNING = 5
+    DONE = 6
+    PAUSED = 7
+
+    @property
+    def ticks(self) -> int:
+        return _TICKS.get(self, 0)
+
+    def next(self) -> "Phase":
+        return _NEXT.get(self, self)
+
+    def running(self) -> bool:
+        return self.ticks > 0
+
+    def door_may_open(self) -> bool:
+        return self in (Phase.IDLE, Phase.PAUSED, Phase.DONE)
+
+
+# Declared after the enum so the table can name the members.
+_TICKS = {Phase.FILLING: 2, Phase.WASHING: 5, Phase.RINSING: 3, Phase.SPINNING: 2}
+_NEXT = {Phase.FILLING: Phase.WASHING, Phase.WASHING: Phase.RINSING,
+         Phase.RINSING: Phase.SPINNING, Phase.SPINNING: Phase.DONE}
+
+
+class Washer:
+    def __init__(self) -> None:
+        self._phase = Phase.IDLE
+        self._resume_to = Phase.IDLE
+        self._remaining = 0
+        self._resume_remaining = 0
+        self._door_open = False
+
+    def start(self) -> None:
+        if self._phase is not Phase.IDLE or self._door_open:
+            door = "open" if self._door_open else "closed"
+            print(f"cannot start ({self._phase.name}, door {door})")
+            return
+        self._go(Phase.FILLING, Phase.FILLING.ticks)
+
+    def tick(self) -> None:
+        if not self._phase.running():  # paused/idle/done: time does not move
+            return
+        self._remaining -= 1
+        if self._remaining == 0:
+            n = self._phase.next()
+            self._go(n, n.ticks)
+
+    def pause(self) -> None:
+        if not self._phase.running():
+            return
+        self._resume_to, self._resume_remaining = self._phase, self._remaining  # history
+        self._go(Phase.PAUSED, 0)
+
+    def resume(self) -> None:
+        if self._phase is not Phase.PAUSED or self._door_open:
+            print("cannot resume")
+            return
+        self._go(self._resume_to, self._resume_remaining)
+
+    def open_door(self) -> None:
+        if self._phase.door_may_open():
+            self._door_open = True
+        else:
+            print(f"door locked during {self._phase.name}")
+
+    def close_door(self) -> None:
+        self._door_open = False
+
+    def _go(self, p: Phase, ticks: int) -> None:
+        print(f"{self._phase.name} -> {p.name}" + (f" ({ticks} ticks)" if ticks > 0 else ""))
+        self._phase = p
+        self._remaining = ticks
+
+
+if __name__ == "__main__":
+    w = Washer()
+    w.start()
+    for _ in range(4):
+        w.tick()  # FILLING done, 2 ticks into WASHING
+    w.pause(); w.open_door(); w.close_door(); w.resume()  # WASHING (3 ticks)
+    for _ in range(4):
+        w.tick()  # -> RINSING, 1 tick in
+    w.open_door()  # refused
+    for _ in range(10):
+        w.tick()  # -> SPINNING -> DONE
+    w.start()  # refused: cycle already finished
+    w.resume()  # refused: not paused
+    w2 = Washer()
+    w2.open_door()
+    w2.start()  # refused: door open` },
+          { lang: 'ts', code: `type Phase = "IDLE" | "FILLING" | "WASHING" | "RINSING" | "SPINNING" | "DONE" | "PAUSED";
+
+// Per-phase data in one table: how long it runs and what follows.
+const PHASES: Record<Phase, { ticks: number; next: Phase | null }> = {
+  IDLE: { ticks: 0, next: null },
+  FILLING: { ticks: 2, next: "WASHING" },
+  WASHING: { ticks: 5, next: "RINSING" },
+  RINSING: { ticks: 3, next: "SPINNING" },
+  SPINNING: { ticks: 2, next: "DONE" },
+  DONE: { ticks: 0, next: null },
+  PAUSED: { ticks: 0, next: null },
+};
+const ticks = (p: Phase): number => PHASES[p].ticks;
+const next = (p: Phase): Phase => PHASES[p].next ?? p;
+const running = (p: Phase): boolean => ticks(p) > 0;
+const doorMayOpen = (p: Phase): boolean => p === "IDLE" || p === "PAUSED" || p === "DONE";
+
+class Washer {
+  private phase: Phase = "IDLE";
+  private resumeTo: Phase = "IDLE";
+  private remaining = 0;
+  private resumeRemaining = 0;
+  private doorOpen = false;
+
+  start(): void {
+    if (this.phase !== "IDLE" || this.doorOpen) {
+      console.log(\`cannot start (\${this.phase}, door \${this.doorOpen ? "open" : "closed"})\`);
+      return;
+    }
+    this.go("FILLING", ticks("FILLING"));
+  }
+  tick(): void {
+    if (!running(this.phase)) return; // paused/idle/done: time does not move
+    if (--this.remaining === 0) {
+      const n = next(this.phase);
+      this.go(n, ticks(n));
+    }
+  }
+  pause(): void {
+    if (!running(this.phase)) return;
+    this.resumeTo = this.phase; this.resumeRemaining = this.remaining; // history
+    this.go("PAUSED", 0);
+  }
+  resume(): void {
+    if (this.phase !== "PAUSED" || this.doorOpen) { console.log("cannot resume"); return; }
+    this.go(this.resumeTo, this.resumeRemaining);
+  }
+  openDoor(): void {
+    if (doorMayOpen(this.phase)) this.doorOpen = true;
+    else console.log(\`door locked during \${this.phase}\`);
+  }
+  closeDoor(): void { this.doorOpen = false; }
+  private go(p: Phase, t: number): void {
+    console.log(\`\${this.phase} -> \${p}\` + (t > 0 ? \` (\${t} ticks)\` : ""));
+    this.phase = p;
+    this.remaining = t;
+  }
+}
+
+const w = new Washer();
+w.start();
+for (let i = 0; i < 4; i++) w.tick(); // FILLING done, 2 ticks into WASHING
+w.pause(); w.openDoor(); w.closeDoor(); w.resume(); // WASHING (3 ticks)
+for (let i = 0; i < 4; i++) w.tick(); // -> RINSING, 1 tick in
+w.openDoor(); // refused
+for (let i = 0; i < 10; i++) w.tick(); // -> SPINNING -> DONE
+w.start(); // refused: cycle already finished
+w.resume(); // refused: not paused
+const w2 = new Washer();
+w2.openDoor();
+w2.start(); // refused: door open` },
+          { lang: 'cpp', code: `enum class Phase { IDLE, FILLING, WASHING, RINSING, SPINNING, DONE, PAUSED };
+
+const char* name(Phase p) {
+    static const char* names[] = {"IDLE", "FILLING", "WASHING", "RINSING", "SPINNING", "DONE", "PAUSED"};
+    return names[static_cast<int>(p)];
+}
+
+// Per-phase data: how long it runs, and what follows (itself when it is a resting phase).
+int ticks(Phase p) {
+    static const int t[] = {0, 2, 5, 3, 2, 0, 0};
+    return t[static_cast<int>(p)];
+}
+Phase next(Phase p) {
+    static const Phase n[] = {Phase::IDLE, Phase::WASHING, Phase::RINSING, Phase::SPINNING, Phase::DONE, Phase::DONE, Phase::PAUSED};
+    return n[static_cast<int>(p)];
+}
+bool running(Phase p) { return ticks(p) > 0; }
+bool doorMayOpen(Phase p) { return p == Phase::IDLE || p == Phase::PAUSED || p == Phase::DONE; }
+
+class Washer {
+    Phase phase_ = Phase::IDLE, resumeTo_ = Phase::IDLE;
+    int remaining_ = 0, resumeRemaining_ = 0;
+    bool doorOpen_ = false;
+
+    void go(Phase p, int t) {
+        cout << name(phase_) << " -> " << name(p);
+        if (t > 0) cout << " (" << t << " ticks)";
+        cout << "\\n";
+        phase_ = p;
+        remaining_ = t;
+    }
+
+public:
+    void start() {
+        if (phase_ != Phase::IDLE || doorOpen_) {
+            cout << "cannot start (" << name(phase_) << ", door " << (doorOpen_ ? "open" : "closed") << ")\\n";
+            return;
+        }
+        go(Phase::FILLING, ticks(Phase::FILLING));
+    }
+    void tick() {
+        if (!running(phase_)) return;  // paused/idle/done: time does not move
+        if (--remaining_ == 0) {
+            Phase n = next(phase_);
+            go(n, ticks(n));
+        }
+    }
+    void pause() {
+        if (!running(phase_)) return;
+        resumeTo_ = phase_; resumeRemaining_ = remaining_;  // history
+        go(Phase::PAUSED, 0);
+    }
+    void resume() {
+        if (phase_ != Phase::PAUSED || doorOpen_) { cout << "cannot resume\\n"; return; }
+        go(resumeTo_, resumeRemaining_);
+    }
+    void openDoor() {
+        if (doorMayOpen(phase_)) doorOpen_ = true;
+        else cout << "door locked during " << name(phase_) << "\\n";
+    }
+    void closeDoor() { doorOpen_ = false; }
+};
+
+int main() {
+    Washer w;
+    w.start();
+    for (int i = 0; i < 4; i++) w.tick();  // FILLING done, 2 ticks into WASHING
+    w.pause(); w.openDoor(); w.closeDoor(); w.resume();  // WASHING (3 ticks)
+    for (int i = 0; i < 4; i++) w.tick();  // -> RINSING, 1 tick in
+    w.openDoor();  // refused
+    for (int i = 0; i < 10; i++) w.tick();  // -> SPINNING -> DONE
+    w.start();   // refused: cycle already finished
+    w.resume();  // refused: not paused
+    Washer w2;
+    w2.openDoor();
+    w2.start();  // refused: door open
+}` }
+        ],
       complexity: `<p>O(1) per event and tick. A new program (e.g. "quick wash") = different durations; a new phase = one enum constant.</p>`,
       followUps: ['Power cut: persist (phase, remaining) and resume after restart.', 'Different programs (cotton, wool): Strategy for durations, same state machine.']
     }
@@ -3200,9 +10361,10 @@ class Washer {
     }
 }` },
     mcq: { q: 'A gateway retries the same approval callback. What makes the second one harmless?', options: ['Accept a callback only if the machine is AUTHORIZING and authId equals the current pending id; then clear the pending id', 'Use a bigger timeout', 'Synchronize the method only', 'Dispense twice and refund later'], answer: 0, explain: 'Matching on the pending authId plus state makes the transition happen once; after it, the id no longer matches.' },
-    hints: [`<p>Hint 1: AUTHORIZING is a real state because the machine waits for an outside answer that may never come. Store <code>pendingAuthId</code> when entering it.</p>`, `<p>Hint 2: onAuthResult: if state != AUTHORIZING or authId != pending → stale/duplicate: if approved, call <code>gateway.voidAuth(authId)</code> (unless it was already captured); return.</p>`, `<p>Hint 3: Make every public method <code>synchronized</code> (callbacks come from another thread). Track captured ids in a set so you never void a payment you used.</p>`],
-    solution: {
-      approach: `<p>Add one state (AUTHORIZING) and a pending authId. Transitions out of AUTHORIZING happen only for the matching id; anything else is a duplicate (already captured → ignore) or stale (→ void). Methods are synchronized because the gateway calls back on its own thread.</p>`,
+    hints: [`<p>Hint 1: AUTHORIZING is a real state because the machine waits for an outside answer that may never come. Store <code>pendingAuthId</code> when entering it.</p>`, `<p>Hint 2: onAuthResult: if state != AUTHORIZING or authId != pending → stale/duplicate: if approved, call <code>gateway.voidAuth(authId)</code> (unless it was already captured); return.</p>`, `<p>Hint 3: Make every public method take the machine lock (callbacks come from another thread). Track captured ids in a set so you never void a payment you used.</p>`],
+    tests: { io: true, cases: [{ stdin: '', stdout: "dispensing A1 (auth-1)\nduplicate auth-1 ignored\npayment timed out\ngateway: void auth-2\nstale auth-2 voided\nselect first\nbusy\ndeclined, try again\nduplicate auth-3 ignored\ndispensing C3 (auth-4)\nitems dispensed: 2\n" }] },
+      solution: {
+      approach: `<p>Add one state (AUTHORIZING) and a pending authId. Transitions out of AUTHORIZING happen only for the matching id; anything else is a duplicate (already captured → ignore) or stale (→ void). Methods take the machine lock because the gateway calls back on its own thread.</p>`,
       code: `import java.util.*;
 
 enum VState { IDLE, SELECTED, AUTHORIZING, DISPENSING }
@@ -3260,9 +10422,274 @@ class CardVending {
         String a2 = vm.payByCard();
         vm.timeout();
         vm.onAuthResult(a2, true);                 // late -> void
-        System.out.println("items dispensed: " + vm.dispensed());   // 1
+        vm.payByCard();                            // select first
+        vm.select("C3");
+        String a3 = vm.payByCard();
+        vm.select("D4");                           // busy while authorizing
+        vm.onAuthResult(a3, false);                // declined -> back to SELECTED
+        vm.onAuthResult(a3, false);                // duplicate decline
+        String a4 = vm.payByCard();
+        vm.onAuthResult(a4, true);
+        System.out.println("items dispensed: " + vm.dispensed());   // 2
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `import threading
+from enum import Enum
+from typing import Callable, Optional
+
+
+class VState(Enum):
+    IDLE = 1
+    SELECTED = 2
+    AUTHORIZING = 3
+    DISPENSING = 4
+
+
+Gateway = Callable[[str], None]  # void_auth(auth_id): a one-method interface is just a callable
+
+
+class CardVending:
+    def __init__(self, gateway: Gateway) -> None:
+        self._state = VState.IDLE
+        self._slot = ""
+        self._pending_auth: Optional[str] = None
+        self._seq = 0
+        self._dispensed = 0
+        self._captured: set[str] = set()
+        self._gateway = gateway
+        self._lock = threading.RLock()  # plays the role of Java's synchronized
+
+    def select(self, s: str) -> None:
+        with self._lock:
+            if self._state not in (VState.IDLE, VState.SELECTED):
+                print("busy")
+                return
+            self._slot = s
+            self._state = VState.SELECTED
+
+    def pay_by_card(self) -> Optional[str]:
+        with self._lock:
+            if self._state is not VState.SELECTED:
+                print("select first")
+                return None
+            self._seq += 1
+            self._pending_auth = f"auth-{self._seq}"
+            self._state = VState.AUTHORIZING
+            return self._pending_auth
+
+    def on_auth_result(self, auth_id: str, approved: bool) -> None:
+        with self._lock:
+            current = self._state is VState.AUTHORIZING and auth_id == self._pending_auth
+            if not current:  # duplicate or stale
+                if approved and auth_id not in self._captured:
+                    self._gateway(auth_id)
+                    print(f"stale {auth_id} voided")
+                else:
+                    print(f"duplicate {auth_id} ignored")
+                return
+            self._pending_auth = None
+            if not approved:
+                self._state = VState.SELECTED
+                print("declined, try again")
+                return
+            self._captured.add(auth_id)
+            self._state = VState.DISPENSING
+            self._dispensed += 1
+            print(f"dispensing {self._slot} ({auth_id})")
+            self._state = VState.IDLE
+
+    def timeout(self) -> None:
+        with self._lock:
+            if self._state is not VState.AUTHORIZING:
+                return
+            print("payment timed out")
+            self._pending_auth = None  # a late approval will now be stale
+            self._state = VState.IDLE
+
+    def dispensed(self) -> int:
+        with self._lock:
+            return self._dispensed
+
+
+if __name__ == "__main__":
+    vm = CardVending(lambda auth_id: print(f"gateway: void {auth_id}"))
+    vm.select("A1")
+    a1 = vm.pay_by_card()
+    vm.on_auth_result(a1, True)
+    vm.on_auth_result(a1, True)  # duplicate
+    vm.select("B2")
+    a2 = vm.pay_by_card()
+    vm.timeout()
+    vm.on_auth_result(a2, True)  # late -> void
+    vm.pay_by_card()  # select first
+    vm.select("C3")
+    a3 = vm.pay_by_card()
+    vm.select("D4")  # busy while authorizing
+    vm.on_auth_result(a3, False)  # declined -> back to SELECTED
+    vm.on_auth_result(a3, False)  # duplicate decline
+    a4 = vm.pay_by_card()
+    vm.on_auth_result(a4, True)
+    print("items dispensed:", vm.dispensed())  # 2` },
+          { lang: 'ts', code: `type VState = "IDLE" | "SELECTED" | "AUTHORIZING" | "DISPENSING";
+
+interface Gateway {
+  voidAuth(authId: string): void;
+}
+
+// All calls run on one thread, so each method is already atomic; a multi-threaded runtime would lock here.
+class CardVending {
+  private state: VState = "IDLE";
+  private slot = "";
+  private pendingAuth: string | null = null;
+  private seq = 0;
+  private count = 0;
+  private readonly captured = new Set<string>();
+
+  constructor(private readonly gateway: Gateway) {}
+
+  select(s: string): void {
+    if (this.state !== "IDLE" && this.state !== "SELECTED") { console.log("busy"); return; }
+    this.slot = s;
+    this.state = "SELECTED";
+  }
+  payByCard(): string | null {
+    if (this.state !== "SELECTED") { console.log("select first"); return null; }
+    this.pendingAuth = "auth-" + ++this.seq;
+    this.state = "AUTHORIZING";
+    return this.pendingAuth;
+  }
+  onAuthResult(authId: string, approved: boolean): void {
+    const current = this.state === "AUTHORIZING" && authId === this.pendingAuth;
+    if (!current) { // duplicate or stale
+      if (approved && !this.captured.has(authId)) {
+        this.gateway.voidAuth(authId);
+        console.log(\`stale \${authId} voided\`);
+      } else console.log(\`duplicate \${authId} ignored\`);
+      return;
+    }
+    this.pendingAuth = null;
+    if (!approved) { this.state = "SELECTED"; console.log("declined, try again"); return; }
+    this.captured.add(authId);
+    this.state = "DISPENSING";
+    this.count++;
+    console.log(\`dispensing \${this.slot} (\${authId})\`);
+    this.state = "IDLE";
+  }
+  timeout(): void {
+    if (this.state !== "AUTHORIZING") return;
+    console.log("payment timed out");
+    this.pendingAuth = null; // a late approval will now be stale
+    this.state = "IDLE";
+  }
+  dispensed(): number { return this.count; }
+}
+
+const vm = new CardVending({ voidAuth: (id) => console.log(\`gateway: void \${id}\`) });
+vm.select("A1");
+const a1 = vm.payByCard()!;
+vm.onAuthResult(a1, true);
+vm.onAuthResult(a1, true); // duplicate
+vm.select("B2");
+const a2 = vm.payByCard()!;
+vm.timeout();
+vm.onAuthResult(a2, true); // late -> void
+vm.payByCard(); // select first
+vm.select("C3");
+const a3 = vm.payByCard()!;
+vm.select("D4"); // busy while authorizing
+vm.onAuthResult(a3, false); // declined -> back to SELECTED
+vm.onAuthResult(a3, false); // duplicate decline
+const a4 = vm.payByCard()!;
+vm.onAuthResult(a4, true);
+console.log("items dispensed: " + vm.dispensed()); // 2` },
+          { lang: 'cpp', code: `enum class VState { IDLE, SELECTED, AUTHORIZING, DISPENSING };
+
+struct Gateway {
+    virtual ~Gateway() = default;
+    virtual void voidAuth(const string& authId) = 0;
+};
+
+class CardVending {
+    VState state_ = VState::IDLE;
+    string slot_;
+    optional<string> pendingAuth_;
+    int seq_ = 0, dispensed_ = 0;
+    set<string> captured_;
+    Gateway& gateway_;
+    mutable recursive_mutex mu_;  // plays the role of Java's synchronized
+
+public:
+    explicit CardVending(Gateway& g) : gateway_(g) {}
+
+    void select(const string& s) {
+        lock_guard g(mu_);
+        if (state_ != VState::IDLE && state_ != VState::SELECTED) { cout << "busy\\n"; return; }
+        slot_ = s;
+        state_ = VState::SELECTED;
+    }
+    optional<string> payByCard() {
+        lock_guard g(mu_);
+        if (state_ != VState::SELECTED) { cout << "select first\\n"; return nullopt; }
+        pendingAuth_ = "auth-" + to_string(++seq_);
+        state_ = VState::AUTHORIZING;
+        return pendingAuth_;
+    }
+    void onAuthResult(const string& authId, bool approved) {
+        lock_guard g(mu_);
+        bool current = state_ == VState::AUTHORIZING && pendingAuth_ == authId;
+        if (!current) {  // duplicate or stale
+            if (approved && !captured_.count(authId)) {
+                gateway_.voidAuth(authId);
+                cout << "stale " << authId << " voided\\n";
+            } else {
+                cout << "duplicate " << authId << " ignored\\n";
+            }
+            return;
+        }
+        pendingAuth_.reset();
+        if (!approved) { state_ = VState::SELECTED; cout << "declined, try again\\n"; return; }
+        captured_.insert(authId);
+        state_ = VState::DISPENSING;
+        dispensed_++;
+        cout << "dispensing " << slot_ << " (" << authId << ")\\n";
+        state_ = VState::IDLE;
+    }
+    void timeout() {
+        lock_guard g(mu_);
+        if (state_ != VState::AUTHORIZING) return;
+        cout << "payment timed out\\n";
+        pendingAuth_.reset();  // a late approval will now be stale
+        state_ = VState::IDLE;
+    }
+    int dispensed() const { lock_guard g(mu_); return dispensed_; }
+};
+
+struct PrintingGateway final : Gateway {
+    void voidAuth(const string& id) override { cout << "gateway: void " << id << "\\n"; }
+};
+
+int main() {
+    PrintingGateway gw;
+    CardVending vm(gw);
+    vm.select("A1");
+    string a1 = *vm.payByCard();
+    vm.onAuthResult(a1, true);
+    vm.onAuthResult(a1, true);  // duplicate
+    vm.select("B2");
+    string a2 = *vm.payByCard();
+    vm.timeout();
+    vm.onAuthResult(a2, true);  // late -> void
+    vm.payByCard();             // select first
+    vm.select("C3");
+    string a3 = *vm.payByCard();
+    vm.select("D4");            // busy while authorizing
+    vm.onAuthResult(a3, false); // declined -> back to SELECTED
+    vm.onAuthResult(a3, false); // duplicate decline
+    string a4 = *vm.payByCard();
+    vm.onAuthResult(a4, true);
+    cout << "items dispensed: " << vm.dispensed() << "\\n";  // 2
+}` }
+        ],
       complexity: `<p>O(1) per event; the captured-id set grows with sales (prune by age in production).</p>`,
       followUps: ['The approval arrives, but the motor jams: refund via the gateway — which state handles that?', 'Persist pendingAuth so a reboot during AUTHORIZING can reconcile with the gateway.']
     }
@@ -3281,7 +10708,8 @@ class CardVending {
 }` },
     mcq: { q: 'The fee for a stay of exactly 60 minutes with this pricing is…', options: ['₹50 (one started hour)', '₹80', '₹0', '₹30'], answer: 0, explain: '60 minutes is one started hour: ceil(60/60) = 1 → ₹50. 61 minutes would be ₹80.' },
     hints: [`<p>Hint 1: Fee logic is a pure function (a Strategy) separate from the gate's state machine: <code>fee(minutes)</code> with ceiling division for started hours.</p>`, `<p>Hint 2: States: WAITING accepts scan/lostTicket; TICKET_SCANNED accepts pay/cancel; GATE_OPEN accepts only vehiclePassed. PAID can be skipped by going straight to GATE_OPEN after full payment.</p>`, `<p>Hint 3: Keep a set of used ticket ids (or mark the ticket record) and reject reuse at scan time. Track <code>due</code> in the context; partial payments reduce it.</p>`],
-    solution: {
+    tests: { io: true, cases: [{ stdin: '', stdout: "[TICKET_SCANNED] fee Rs 110\n[TICKET_SCANNED] due Rs 10\n[TICKET_SCANNED] change Rs 10\n[GATE_OPEN] gate open\n[WAITING] gate closed\n[WAITING] ticket already used\n[TICKET_SCANNED] fee Rs 0\n[GATE_OPEN] gate open\n[WAITING] gate closed\n[WAITING] unknown ticket\n[WAITING] nothing to pay\n[WAITING] ALERT: sensor without open gate\n[TICKET_SCANNED] lost ticket fee Rs 500\n[TICKET_SCANNED] finish current exit first\n[TICKET_SCANNED] cancelled, collect your money\n[TICKET_SCANNED] lost ticket fee Rs 500\n[GATE_OPEN] gate open\n[WAITING] gate closed\n" }] },
+      solution: {
       approach: `<p>Enum-driven state checks in a small context class (the machine is small and linear, so an enum + guards is clearer than many classes), with fee calculation as a separate pure strategy. Used tickets are recorded when the gate opens, not when scanned, so a cancelled scan can be retried.</p>`,
       code: `import java.util.*;
 import java.util.function.*;
@@ -3346,8 +10774,287 @@ class ExitGate {
         g.issue("T2", 100);
         g.scan("T2", 105);          // free exit within 10 minutes
         g.vehiclePassed();
+        g.scan("T9", 1);            // unknown ticket
+        g.pay(5);                   // nothing to pay
+        g.vehiclePassed();          // sensor without an open gate
+        g.lostTicket();
+        g.scan("T1", 1);            // must finish the current exit
+        g.cancel();
+        g.lostTicket();
+        g.pay(500);                 // exact payment, no ticket to mark used
+        g.vehiclePassed();
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `from enum import Enum
+from typing import Callable, Optional
+
+
+class GateState(Enum):
+    WAITING = 1
+    TICKET_SCANNED = 2
+    GATE_OPEN = 3
+
+
+class ExitGate:
+    def __init__(self, fee: Callable[[int], int]) -> None:  # pricing strategy
+        self._fee = fee
+        self._state = GateState.WAITING
+        self._entry_minute: dict[str, int] = {}
+        self._used: set[str] = set()
+        self._ticket: Optional[str] = None
+        self._due = 0
+
+    def issue(self, ticket_id: str, minute: int) -> None:
+        self._entry_minute[ticket_id] = minute
+
+    def scan(self, ticket_id: str, now: int) -> None:
+        if self._state is not GateState.WAITING:
+            self._say("finish current exit first")
+            return
+        if ticket_id not in self._entry_minute:
+            self._say("unknown ticket")
+            return
+        if ticket_id in self._used:
+            self._say("ticket already used")
+            return
+        self._ticket = ticket_id
+        self._due = self._fee(now - self._entry_minute[ticket_id])
+        self._state = GateState.TICKET_SCANNED
+        self._say(f"fee Rs {self._due}")
+        if self._due == 0:
+            self._open()
+
+    def lost_ticket(self) -> None:
+        if self._state is not GateState.WAITING:
+            self._say("busy")
+            return
+        self._ticket, self._due, self._state = None, 500, GateState.TICKET_SCANNED
+        self._say("lost ticket fee Rs 500")
+
+    def pay(self, amount: int) -> None:
+        if self._state is not GateState.TICKET_SCANNED:
+            self._say("nothing to pay")
+            return
+        self._due -= amount
+        if self._due > 0:
+            self._say(f"due Rs {self._due}")
+            return
+        if self._due < 0:
+            self._say(f"change Rs {-self._due}")
+        self._open()
+
+    def cancel(self) -> None:
+        if self._state is GateState.TICKET_SCANNED:
+            self._say("cancelled, collect your money")
+            self._state = GateState.WAITING
+
+    def vehicle_passed(self) -> None:
+        if self._state is not GateState.GATE_OPEN:
+            self._say("ALERT: sensor without open gate")
+            return
+        self._state = GateState.WAITING
+        self._say("gate closed")
+
+    def _open(self) -> None:
+        if self._ticket is not None:
+            self._used.add(self._ticket)
+        self._state = GateState.GATE_OPEN
+        self._say("gate open")
+
+    def _say(self, s: str) -> None:
+        print(f"[{self._state.name}] {s}")
+
+
+def standard_fee(minutes: int) -> int:
+    if minutes <= 10:
+        return 0
+    hours = (minutes + 59) // 60  # started hours
+    return 50 + 30 * (hours - 1)
+
+
+if __name__ == "__main__":
+    g = ExitGate(standard_fee)
+    g.issue("T1", 0)
+    g.scan("T1", 130)  # Rs 110
+    g.pay(100); g.pay(20)  # change 10, open
+    g.vehicle_passed()
+    g.scan("T1", 140)  # already used
+    g.issue("T2", 100)
+    g.scan("T2", 105)  # free exit within 10 minutes
+    g.vehicle_passed()
+    g.scan("T9", 1)  # unknown ticket
+    g.pay(5)  # nothing to pay
+    g.vehicle_passed()  # sensor without an open gate
+    g.lost_ticket()
+    g.scan("T1", 1)  # must finish the current exit
+    g.cancel()
+    g.lost_ticket()
+    g.pay(500)  # exact payment, no ticket to mark used
+    g.vehicle_passed()` },
+          { lang: 'ts', code: `type GateState = "WAITING" | "TICKET_SCANNED" | "GATE_OPEN";
+type FeePolicy = (minutes: number) => number; // pricing strategy
+
+class ExitGate {
+  private state: GateState = "WAITING";
+  private readonly entryMinute = new Map<string, number>();
+  private readonly used = new Set<string>();
+  private ticket: string | null = null;
+  private due = 0;
+
+  constructor(private readonly fee: FeePolicy) {}
+
+  issue(id: string, minute: number): void { this.entryMinute.set(id, minute); }
+
+  scan(id: string, now: number): void {
+    if (this.state !== "WAITING") { this.say("finish current exit first"); return; }
+    const entered = this.entryMinute.get(id);
+    if (entered === undefined) { this.say("unknown ticket"); return; }
+    if (this.used.has(id)) { this.say("ticket already used"); return; }
+    this.ticket = id;
+    this.due = this.fee(now - entered);
+    this.state = "TICKET_SCANNED";
+    this.say(\`fee Rs \${this.due}\`);
+    if (this.due === 0) this.open();
+  }
+  lostTicket(): void {
+    if (this.state !== "WAITING") { this.say("busy"); return; }
+    this.ticket = null; this.due = 500; this.state = "TICKET_SCANNED";
+    this.say("lost ticket fee Rs 500");
+  }
+  pay(amount: number): void {
+    if (this.state !== "TICKET_SCANNED") { this.say("nothing to pay"); return; }
+    this.due -= amount;
+    if (this.due > 0) { this.say(\`due Rs \${this.due}\`); return; }
+    if (this.due < 0) this.say(\`change Rs \${-this.due}\`);
+    this.open();
+  }
+  cancel(): void {
+    if (this.state === "TICKET_SCANNED") { this.say("cancelled, collect your money"); this.state = "WAITING"; }
+  }
+  vehiclePassed(): void {
+    if (this.state !== "GATE_OPEN") { this.say("ALERT: sensor without open gate"); return; }
+    this.state = "WAITING";
+    this.say("gate closed");
+  }
+  private open(): void {
+    if (this.ticket !== null) this.used.add(this.ticket);
+    this.state = "GATE_OPEN";
+    this.say("gate open");
+  }
+  private say(s: string): void { console.log(\`[\${this.state}] \${s}\`); }
+
+  static standardFee(minutes: number): number {
+    if (minutes <= 10) return 0;
+    const hours = Math.floor((minutes + 59) / 60); // started hours
+    return 50 + 30 * (hours - 1);
+  }
+}
+
+const g = new ExitGate(ExitGate.standardFee);
+g.issue("T1", 0);
+g.scan("T1", 130); // Rs 110
+g.pay(100); g.pay(20); // change 10, open
+g.vehiclePassed();
+g.scan("T1", 140); // already used
+g.issue("T2", 100);
+g.scan("T2", 105); // free exit within 10 minutes
+g.vehiclePassed();
+g.scan("T9", 1); // unknown ticket
+g.pay(5); // nothing to pay
+g.vehiclePassed(); // sensor without an open gate
+g.lostTicket();
+g.scan("T1", 1); // must finish the current exit
+g.cancel();
+g.lostTicket();
+g.pay(500); // exact payment, no ticket to mark used
+g.vehiclePassed();` },
+          { lang: 'cpp', code: `enum class GateState { WAITING, TICKET_SCANNED, GATE_OPEN };
+
+const char* name(GateState s) {
+    static const char* names[] = {"WAITING", "TICKET_SCANNED", "GATE_OPEN"};
+    return names[static_cast<int>(s)];
+}
+
+class ExitGate {
+    GateState state_ = GateState::WAITING;
+    map<string, int> entryMinute_;
+    set<string> used_;
+    function<int(int)> fee_;  // pricing strategy
+    optional<string> ticket_;
+    int due_ = 0;
+
+    void open() {
+        if (ticket_) used_.insert(*ticket_);
+        state_ = GateState::GATE_OPEN;
+        say("gate open");
+    }
+    void say(const string& s) const { cout << "[" << name(state_) << "] " << s << "\\n"; }
+
+public:
+    explicit ExitGate(function<int(int)> fee) : fee_(move(fee)) {}
+
+    void issue(const string& id, int minute) { entryMinute_[id] = minute; }
+
+    void scan(const string& id, int now) {
+        if (state_ != GateState::WAITING) { say("finish current exit first"); return; }
+        auto it = entryMinute_.find(id);
+        if (it == entryMinute_.end()) { say("unknown ticket"); return; }
+        if (used_.count(id)) { say("ticket already used"); return; }
+        ticket_ = id;
+        due_ = fee_(now - it->second);
+        state_ = GateState::TICKET_SCANNED;
+        say("fee Rs " + to_string(due_));
+        if (due_ == 0) open();
+    }
+    void lostTicket() {
+        if (state_ != GateState::WAITING) { say("busy"); return; }
+        ticket_.reset(); due_ = 500; state_ = GateState::TICKET_SCANNED;
+        say("lost ticket fee Rs 500");
+    }
+    void pay(int amount) {
+        if (state_ != GateState::TICKET_SCANNED) { say("nothing to pay"); return; }
+        due_ -= amount;
+        if (due_ > 0) { say("due Rs " + to_string(due_)); return; }
+        if (due_ < 0) say("change Rs " + to_string(-due_));
+        open();
+    }
+    void cancel() {
+        if (state_ == GateState::TICKET_SCANNED) { say("cancelled, collect your money"); state_ = GateState::WAITING; }
+    }
+    void vehiclePassed() {
+        if (state_ != GateState::GATE_OPEN) { say("ALERT: sensor without open gate"); return; }
+        state_ = GateState::WAITING;
+        say("gate closed");
+    }
+
+    static int standardFee(int minutes) {
+        if (minutes <= 10) return 0;
+        int hours = (minutes + 59) / 60;  // started hours
+        return 50 + 30 * (hours - 1);
+    }
+};
+
+int main() {
+    ExitGate g(ExitGate::standardFee);
+    g.issue("T1", 0);
+    g.scan("T1", 130);  // Rs 110
+    g.pay(100); g.pay(20);  // change 10, open
+    g.vehiclePassed();
+    g.scan("T1", 140);  // already used
+    g.issue("T2", 100);
+    g.scan("T2", 105);  // free exit within 10 minutes
+    g.vehiclePassed();
+    g.scan("T9", 1);    // unknown ticket
+    g.pay(5);           // nothing to pay
+    g.vehiclePassed();  // sensor without an open gate
+    g.lostTicket();
+    g.scan("T1", 1);    // must finish the current exit
+    g.cancel();
+    g.lostTicket();
+    g.pay(500);         // exact payment, no ticket to mark used
+    g.vehiclePassed();
+}` }
+        ],
       complexity: `<p>O(1) per event; O(T) memory for issued/used tickets (expire them daily in production).</p>`,
       followUps: ['Add a monthly-pass flow (scan pass → open, no fee) as another event.', 'Two exit gates share the used-ticket set: make it thread-safe or move it to a database with a unique constraint.']
     }
@@ -3369,9 +11076,10 @@ class GlobalQueueElevators {
         for (int i = 0; i < pos.length && !queue.isEmpty(); i++) pos[i] = queue.poll();   // teleports, FIFO, ignores distance & maintenance
     }
 }` },
-    mcq: { q: 'Which pieces should be swappable Strategies in this design?', options: ['Hall-call dispatch (nearest/zoning) and, optionally, per-car next-stop selection', 'The car states', 'The tick loop', 'The Request record'], answer: 0, explain: 'What changes by building/time-of-day is the dispatch policy; the car state machine is stable.' },
-    hints: [`<p>Hint 1: Classes: <code>Building</code> (owns cars + dispatcher), <code>Car</code> (state machine + TreeSet stops + direction), <code>DispatchStrategy</code> (choose car), records for calls. Start with one car working end-to-end.</p>`, `<p>Hint 2: Car.tick by state: IDLE → serve here / pick direction (LOOK); MOVING → move one floor, stop if floor is a stop; DOORS_OPEN → close → IDLE. Cost function: idle → distance; moving toward the caller in the same direction → distance; else distance + 2·F.</p>`, `<p>Hint 3: Make MAINTENANCE return "infinite" cost so the dispatcher skips it. Keep printing in <code>status()</code> only, so tests can assert on state. Run the simulation until all cars are idle.</p>`],
-    solution: {
+    mcq: { q: 'Which pieces should be swappable Strategies in this design?', options: ['Hall-call dispatch (nearest/zoning) and, optionally, per-car next-stop selection', 'The car states', 'The tick loop', 'The Request value object'], answer: 0, explain: 'What changes by building/time-of-day is the dispatch policy; the car state machine is stable.' },
+    hints: [`<p>Hint 1: Classes: <code>Building</code> (owns cars + dispatcher), <code>Car</code> (state machine + sorted stop set + direction), <code>DispatchStrategy</code> (choose car), records for calls. Start with one car working end-to-end.</p>`, `<p>Hint 2: Car.tick by state: IDLE → serve here / pick direction (LOOK); MOVING → move one floor, stop if floor is a stop; DOORS_OPEN → close → IDLE. Cost function: idle → distance; moving toward the caller in the same direction → distance; else distance + 2·F.</p>`, `<p>Hint 3: Make MAINTENANCE return "infinite" cost so the dispatcher skips it. Keep printing in <code>status()</code> only, so tests can assert on state. Run the simulation until all cars are idle.</p>`],
+    tests: { io: true, cases: [{ stdin: '', stdout: "7 DOWN -> car2\n1 UP   -> car0\n4 UP   -> car0\nall served after 13 ticks\ncar0@4 IDLE stops=[]\ncar1@5 MAINTENANCE stops=[]\ncar2@0 IDLE stops=[]\nrejected: no car in service\n3 UP   -> car1\n" }] },
+      solution: {
       approach: `<p>Building = composition of cars + a DispatchStrategy. Each Car is an enum-state machine with a sorted stop set and LOOK direction choice. The default strategy uses a direction-aware cost; maintenance cars report MAX cost. Everything is deterministic and driven by <code>tickAll()</code>, so a test can replay scenarios.</p>`,
       code: `import java.util.*;
 
@@ -3457,8 +11165,390 @@ class LiftBuilding {
         do { b.tickAll(); t++; } while (!b.allIdle() && t < 100);
         System.out.println("all served after " + t + " ticks");
         b.status();
+        b.maintenance(0, true); b.maintenance(2, true);    // every car out of service
+        try { b.hallCall(3, true); }
+        catch (IllegalStateException e) { System.out.println("rejected: " + e.getMessage()); }
+        b.maintenance(1, false);                            // car1 comes back
+        System.out.println("3 UP   -> car" + b.hallCall(3, true).id);    // car1
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from enum import Enum
+from typing import Optional
+
+MAX_COST = 2**31 - 1  # "infinite": a car in maintenance is never chosen
+
+
+class CarMode(Enum):
+    IDLE = 1
+    MOVING_UP = 2
+    MOVING_DOWN = 3
+    DOORS_OPEN = 4
+    MAINTENANCE = 5
+
+
+@dataclass(frozen=True)
+class Hall:
+    floor: int
+    up: bool
+
+
+class Lift:
+    def __init__(self, id: int, floor: int, top: int) -> None:
+        self.id = id
+        self.top = top
+        self.floor = floor
+        self.mode = CarMode.IDLE
+        self.going_up = True
+        self.stops: set[int] = set()
+
+    def add_stop(self, f: int) -> None:
+        if self.mode is not CarMode.MAINTENANCE:
+            self.stops.add(f)
+
+    def cost(self, h: Hall) -> int:
+        if self.mode is CarMode.MAINTENANCE:
+            return MAX_COST
+        d = abs(self.floor - h.floor)
+        toward = (self.mode is CarMode.MOVING_UP and h.up and h.floor >= self.floor) or \\
+                 (self.mode is CarMode.MOVING_DOWN and not h.up and h.floor <= self.floor)
+        if self.mode in (CarMode.IDLE, CarMode.DOORS_OPEN) or toward:
+            return d + len(self.stops)
+        return d + 2 * self.top + len(self.stops)
+
+    def tick(self) -> None:
+        match self.mode:
+            case CarMode.IDLE:
+                if self.floor in self.stops:
+                    self.stops.discard(self.floor)
+                    self.mode = CarMode.DOORS_OPEN
+                    return
+                above = any(s > self.floor for s in self.stops)
+                below = any(s < self.floor for s in self.stops)
+                if above and (self.going_up or not below):
+                    self.going_up = True
+                    self.mode = CarMode.MOVING_UP
+                elif below:
+                    self.going_up = False
+                    self.mode = CarMode.MOVING_DOWN
+            case CarMode.MOVING_UP | CarMode.MOVING_DOWN:
+                self.floor += 1 if self.mode is CarMode.MOVING_UP else -1
+                if self.floor in self.stops:
+                    self.stops.discard(self.floor)
+                    self.mode = CarMode.DOORS_OPEN
+            case CarMode.DOORS_OPEN:
+                self.mode = CarMode.IDLE
+            case CarMode.MAINTENANCE:
+                pass
+
+    def __str__(self) -> str:
+        stops = "[" + ", ".join(str(s) for s in sorted(self.stops)) + "]"
+        return f"car{self.id}@{self.floor} {self.mode.name} stops={stops}"
+
+
+class DispatchStrategy(ABC):
+    @abstractmethod
+    def choose(self, cars: list[Lift], h: Hall) -> Optional[Lift]: ...
+
+
+class CostDispatch(DispatchStrategy):
+    def choose(self, cars: list[Lift], h: Hall) -> Optional[Lift]:
+        best: Optional[Lift] = None
+        for c in cars:
+            if best is None or c.cost(h) < best.cost(h):  # ties -> lower id
+                best = c
+        return None if best is None or best.cost(h) == MAX_COST else best
+
+
+class LiftBuilding:
+    def __init__(self, top: int, *starts: int) -> None:
+        self._cars = [Lift(i, s, top) for i, s in enumerate(starts)]
+        self._strategy: DispatchStrategy = CostDispatch()
+
+    def set_strategy(self, s: DispatchStrategy) -> None:
+        self._strategy = s
+
+    def hall_call(self, floor: int, up: bool) -> Lift:
+        c = self._strategy.choose(self._cars, Hall(floor, up))
+        if c is None:
+            raise RuntimeError("no car in service")
+        c.add_stop(floor)
+        return c
+
+    def car_call(self, car: int, floor: int) -> None:
+        self._cars[car].add_stop(floor)
+
+    def maintenance(self, car: int, on: bool) -> None:
+        c = self._cars[car]
+        if on:
+            c.stops.clear()
+            c.mode = CarMode.MAINTENANCE
+        else:
+            c.mode = CarMode.IDLE
+
+    def tick_all(self) -> None:
+        for c in self._cars:
+            c.tick()
+
+    def all_idle(self) -> bool:
+        return all(not c.stops and c.mode in (CarMode.IDLE, CarMode.MAINTENANCE) for c in self._cars)
+
+    def status(self) -> None:
+        for c in self._cars:
+            print(c)
+
+
+if __name__ == "__main__":
+    b = LiftBuilding(9, 0, 5, 9)
+    b.maintenance(1, True)  # car1 out of service before the calls
+    print("7 DOWN -> car", b.hall_call(7, False).id, sep="")  # car2 (car1 skipped)
+    print("1 UP   -> car", b.hall_call(1, True).id, sep="")  # car0
+    print("4 UP   -> car", b.hall_call(4, True).id, sep="")  # car0
+    b.car_call(2, 0)
+    t = 0
+    while True:
+        b.tick_all()
+        t += 1
+        if b.all_idle() or t >= 100:
+            break
+    print(f"all served after {t} ticks")
+    b.status()
+    b.maintenance(0, True); b.maintenance(2, True)  # every car out of service
+    try:
+        b.hall_call(3, True)
+    except RuntimeError as e:
+        print("rejected:", e)
+    b.maintenance(1, False)  # car1 comes back
+    print("3 UP   -> car", b.hall_call(3, True).id, sep="")  # car1` },
+          { lang: 'ts', code: `type CarMode = "IDLE" | "MOVING_UP" | "MOVING_DOWN" | "DOORS_OPEN" | "MAINTENANCE";
+interface Hall { readonly floor: number; readonly up: boolean }
+
+const MAX_COST = 2 ** 31 - 1; // "infinite": a car in maintenance is never chosen
+
+class Lift {
+  mode: CarMode = "IDLE";
+  goingUp = true;
+  readonly stops = new Set<number>();
+
+  constructor(readonly id: number, public floor: number, readonly top: number) {}
+
+  addStop(f: number): void { if (this.mode !== "MAINTENANCE") this.stops.add(f); }
+
+  cost(h: Hall): number {
+    if (this.mode === "MAINTENANCE") return MAX_COST;
+    const d = Math.abs(this.floor - h.floor);
+    const toward = (this.mode === "MOVING_UP" && h.up && h.floor >= this.floor)
+      || (this.mode === "MOVING_DOWN" && !h.up && h.floor <= this.floor);
+    return (this.mode === "IDLE" || this.mode === "DOORS_OPEN" || toward)
+      ? d + this.stops.size
+      : d + 2 * this.top + this.stops.size;
+  }
+
+  tick(): void {
+    switch (this.mode) {
+      case "IDLE": {
+        if (this.stops.delete(this.floor)) { this.mode = "DOORS_OPEN"; return; }
+        const above = [...this.stops].some((s) => s > this.floor);
+        const below = [...this.stops].some((s) => s < this.floor);
+        if (above && (this.goingUp || !below)) { this.goingUp = true; this.mode = "MOVING_UP"; }
+        else if (below) { this.goingUp = false; this.mode = "MOVING_DOWN"; }
+        break;
+      }
+      case "MOVING_UP":
+      case "MOVING_DOWN":
+        this.floor += this.mode === "MOVING_UP" ? 1 : -1;
+        if (this.stops.delete(this.floor)) this.mode = "DOORS_OPEN";
+        break;
+      case "DOORS_OPEN":
+        this.mode = "IDLE";
+        break;
+      case "MAINTENANCE":
+        break;
+    }
+  }
+
+  toString(): string {
+    return \`car\${this.id}@\${this.floor} \${this.mode} stops=[\${[...this.stops].sort((a, b) => a - b).join(", ")}]\`;
+  }
+}
+
+interface DispatchStrategy { choose(cars: Lift[], h: Hall): Lift | null }
+
+class CostDispatch implements DispatchStrategy {
+  choose(cars: Lift[], h: Hall): Lift | null {
+    let best: Lift | null = null;
+    for (const c of cars) if (best === null || c.cost(h) < best.cost(h)) best = c; // ties -> lower id
+    return best === null || best.cost(h) === MAX_COST ? null : best;
+  }
+}
+
+class LiftBuilding {
+  private readonly cars: Lift[];
+  private strategy: DispatchStrategy = new CostDispatch();
+
+  constructor(top: number, ...starts: number[]) {
+    this.cars = starts.map((s, i) => new Lift(i, s, top));
+  }
+
+  setStrategy(s: DispatchStrategy): void { this.strategy = s; }
+  hallCall(floor: number, up: boolean): Lift {
+    const c = this.strategy.choose(this.cars, { floor, up });
+    if (c === null) throw new Error("no car in service");
+    c.addStop(floor);
+    return c;
+  }
+  carCall(car: number, floor: number): void { this.cars[car].addStop(floor); }
+  maintenance(car: number, on: boolean): void {
+    const c = this.cars[car];
+    if (on) { c.stops.clear(); c.mode = "MAINTENANCE"; } else c.mode = "IDLE";
+  }
+  tickAll(): void { this.cars.forEach((c) => c.tick()); }
+  allIdle(): boolean {
+    return this.cars.every((c) => c.stops.size === 0 && (c.mode === "IDLE" || c.mode === "MAINTENANCE"));
+  }
+  status(): void { this.cars.forEach((c) => console.log(String(c))); }
+}
+
+const b = new LiftBuilding(9, 0, 5, 9);
+b.maintenance(1, true); // car1 out of service before the calls
+console.log("7 DOWN -> car" + b.hallCall(7, false).id); // car2 (car1 skipped)
+console.log("1 UP   -> car" + b.hallCall(1, true).id); // car0
+console.log("4 UP   -> car" + b.hallCall(4, true).id); // car0
+b.carCall(2, 0);
+let t = 0;
+do { b.tickAll(); t++; } while (!b.allIdle() && t < 100);
+console.log(\`all served after \${t} ticks\`);
+b.status();
+b.maintenance(0, true); b.maintenance(2, true); // every car out of service
+try { b.hallCall(3, true); }
+catch (e) { console.log("rejected: " + (e as Error).message); }
+b.maintenance(1, false); // car1 comes back
+console.log("3 UP   -> car" + b.hallCall(3, true).id); // car1` },
+          { lang: 'cpp', code: `enum class CarMode { IDLE, MOVING_UP, MOVING_DOWN, DOORS_OPEN, MAINTENANCE };
+struct Hall { int floor; bool up; };
+
+const char* name(CarMode m) {
+    static const char* names[] = {"IDLE", "MOVING_UP", "MOVING_DOWN", "DOORS_OPEN", "MAINTENANCE"};
+    return names[static_cast<int>(m)];
+}
+
+constexpr int MAX_COST = INT_MAX;  // "infinite": a car in maintenance is never chosen
+
+class Lift {
+public:
+    const int id, top;
+    int floor;
+    CarMode mode = CarMode::IDLE;
+    bool goingUp = true;
+    set<int> stops;
+
+    Lift(int id, int floor, int top) : id(id), top(top), floor(floor) {}
+
+    void addStop(int f) { if (mode != CarMode::MAINTENANCE) stops.insert(f); }
+
+    int cost(const Hall& h) const {
+        if (mode == CarMode::MAINTENANCE) return MAX_COST;
+        int d = abs(floor - h.floor);
+        bool toward = (mode == CarMode::MOVING_UP && h.up && h.floor >= floor)
+                   || (mode == CarMode::MOVING_DOWN && !h.up && h.floor <= floor);
+        int n = stops.size();
+        return (mode == CarMode::IDLE || mode == CarMode::DOORS_OPEN || toward) ? d + n : d + 2 * top + n;
+    }
+
+    void tick() {
+        switch (mode) {
+            case CarMode::IDLE: {
+                if (stops.erase(floor)) { mode = CarMode::DOORS_OPEN; return; }
+                bool above = stops.upper_bound(floor) != stops.end();
+                bool below = !stops.empty() && *stops.begin() < floor;
+                if (above && (goingUp || !below)) { goingUp = true; mode = CarMode::MOVING_UP; }
+                else if (below) { goingUp = false; mode = CarMode::MOVING_DOWN; }
+                break;
+            }
+            case CarMode::MOVING_UP:
+            case CarMode::MOVING_DOWN:
+                floor += mode == CarMode::MOVING_UP ? 1 : -1;
+                if (stops.erase(floor)) mode = CarMode::DOORS_OPEN;
+                break;
+            case CarMode::DOORS_OPEN:
+                mode = CarMode::IDLE;
+                break;
+            case CarMode::MAINTENANCE:
+                break;
+        }
+    }
+
+    string toString() const {
+        string s = "car" + to_string(id) + "@" + to_string(floor) + " " + name(mode) + " stops=[";
+        bool first = true;
+        for (int f : stops) { s += (first ? "" : ", ") + to_string(f); first = false; }
+        return s + "]";
+    }
+};
+
+struct DispatchStrategy {
+    virtual ~DispatchStrategy() = default;
+    virtual Lift* choose(const vector<unique_ptr<Lift>>& cars, const Hall& h) const = 0;
+};
+
+struct CostDispatch final : DispatchStrategy {
+    Lift* choose(const vector<unique_ptr<Lift>>& cars, const Hall& h) const override {
+        Lift* best = nullptr;
+        for (const auto& c : cars) if (!best || c->cost(h) < best->cost(h)) best = c.get();  // ties -> lower id
+        return !best || best->cost(h) == MAX_COST ? nullptr : best;
+    }
+};
+
+class LiftBuilding {
+    vector<unique_ptr<Lift>> cars_;
+    unique_ptr<DispatchStrategy> strategy_ = make_unique<CostDispatch>();
+
+public:
+    LiftBuilding(int top, initializer_list<int> starts) {
+        int i = 0;
+        for (int s : starts) cars_.push_back(make_unique<Lift>(i++, s, top));
+    }
+
+    void setStrategy(unique_ptr<DispatchStrategy> s) { strategy_ = move(s); }
+    Lift& hallCall(int floor, bool up) {
+        Lift* c = strategy_->choose(cars_, Hall{floor, up});
+        if (!c) throw runtime_error("no car in service");
+        c->addStop(floor);
+        return *c;
+    }
+    void carCall(int car, int floor) { cars_[car]->addStop(floor); }
+    void maintenance(int car, bool on) {
+        Lift& c = *cars_[car];
+        if (on) { c.stops.clear(); c.mode = CarMode::MAINTENANCE; } else c.mode = CarMode::IDLE;
+    }
+    void tickAll() { for (auto& c : cars_) c->tick(); }
+    bool allIdle() const {
+        return all_of(cars_.begin(), cars_.end(), [](const auto& c) {
+            return c->stops.empty() && (c->mode == CarMode::IDLE || c->mode == CarMode::MAINTENANCE);
+        });
+    }
+    void status() const { for (const auto& c : cars_) cout << c->toString() << "\\n"; }
+};
+
+int main() {
+    LiftBuilding b(9, {0, 5, 9});
+    b.maintenance(1, true);  // car1 out of service before the calls
+    cout << "7 DOWN -> car" << b.hallCall(7, false).id << "\\n";  // car2 (car1 skipped)
+    cout << "1 UP   -> car" << b.hallCall(1, true).id << "\\n";   // car0
+    cout << "4 UP   -> car" << b.hallCall(4, true).id << "\\n";   // car0
+    b.carCall(2, 0);
+    int t = 0;
+    do { b.tickAll(); t++; } while (!b.allIdle() && t < 100);
+    cout << "all served after " << t << " ticks\\n";
+    b.status();
+    b.maintenance(0, true); b.maintenance(2, true);  // every car out of service
+    try { b.hallCall(3, true); }
+    catch (const runtime_error& e) { cout << "rejected: " << e.what() << "\\n"; }
+    b.maintenance(1, false);  // car1 comes back
+    cout << "3 UP   -> car" << b.hallCall(3, true).id << "\\n";  // car1
+}` }
+        ],
       complexity: `<p>Dispatch O(N) per hall call; each tick O(N log S). Simulation of T ticks: O(T · N log S).</p>`,
       followUps: ['Add a zoning strategy for the morning rush and switch strategies by time of day.', 'Re-assign pending hall calls when a car goes into maintenance.', 'Make it thread-safe: one event-loop thread per car, the dispatcher only posts events.']
     }
@@ -3480,17 +11570,34 @@ class LiftBuilding {
 }` },
     mcq: { q: 'The ATM never received any reply to debit(T9). What is the only safe action before showing "transaction failed"?', options: ['Send reverse(T9) (retrying until acknowledged) and do not dispense', 'Dispense anyway, the debit probably worked', 'Retry with a new id T10', 'Do nothing; the bank will notice'], answer: 0, explain: 'Unknown outcome must be resolved to a known one. An idempotent reversal is safe whether or not the debit happened.' },
     hints: [`<p>Hint 1: Bank keeps <code>Map&lt;txnId, status&gt;</code> (DEBITED / REVERSED). debit on a known id returns the stored outcome; reverse on DEBITED restores money; reverse on an unknown id stores a REVERSED tombstone so a late debit is refused.</p>`, `<p>Hint 2: Wrap calls in a fake <code>Network</code> that randomly drops the request (bank never sees it), drops the response (bank applied it), or duplicates the request.</p>`, `<p>Hint 3: ATM: generate txnId once; try debit up to 3 times; approved → dispense; no answer → loop reverse(txnId) until acknowledged. Then check the invariant after 10,000 random runs.</p>`],
-    solution: {
+    tests: { io: true, cases: [{ stdin: '', stdout: "true true balance 700\nafter reverse 1000, late retry false\ndebit after early reverse: false balance 1000\noverdraw: false\ninvariant violations in 2000 runs: 0\nnaive bank breaks the invariant: true\n" }] },
+      solution: {
       approach: `<p>Idempotent bank keyed by txnId with tombstones; ATM generates the id once, retries with the same id, dispenses only after a confirmed approval, and resolves unknown outcomes with an idempotent reversal retried until acknowledged. A seeded fault-injecting network proves the invariant across thousands of runs.</p>`,
       code: `import java.util.*;
 
-class IdemBank {
+interface Bank {
+    boolean debit(String id, long amt);
+    void reverse(String id, long amt);
+    long balance();
+}
+
+/** Naive bank: no transaction ids remembered, so a retry or a duplicate charges again. */
+class NaiveBank implements Bank {
+    private long balance;
+    NaiveBank(long balance) { this.balance = balance; }
+    public synchronized boolean debit(String id, long amt) { if (balance < amt) return false; balance -= amt; return true; }
+    public synchronized void reverse(String id, long amt) { balance += amt; }
+    public synchronized long balance() { return balance; }
+}
+
+class IdemBank implements Bank {
     enum T { DEBITED, REVERSED }
     long balance;
     private final Map<String, T> txns = new HashMap<>();
     IdemBank(long balance) { this.balance = balance; }
+    public synchronized long balance() { return balance; }
 
-    synchronized boolean debit(String id, long amt) {
+    public synchronized boolean debit(String id, long amt) {
         T t = txns.get(id);
         if (t == T.DEBITED) return true;                 // duplicate: same answer, no new charge
         if (t == T.REVERSED) return false;               // tombstone: reversal came first
@@ -3499,7 +11606,7 @@ class IdemBank {
         txns.put(id, T.DEBITED);
         return true;
     }
-    synchronized void reverse(String id, long amt) {
+    public synchronized void reverse(String id, long amt) {
         T t = txns.get(id);
         if (t == T.DEBITED) balance += amt;
         txns.put(id, T.REVERSED);                        // also a tombstone for unknown ids
@@ -3510,7 +11617,7 @@ class IdemBank {
 class FlakyNet {
     private final Random rnd;
     FlakyNet(long seed) { rnd = new Random(seed); }
-    Optional<Boolean> callDebit(IdemBank bank, String id, long amt) {
+    Optional<Boolean> callDebit(Bank bank, String id, long amt) {
         int r = rnd.nextInt(10);
         if (r == 0) return Optional.empty();                         // request lost
         boolean res = bank.debit(id, amt);
@@ -3518,7 +11625,7 @@ class FlakyNet {
         if (r == 2) return Optional.empty();                         // response lost (bank applied it!)
         return Optional.of(res);
     }
-    boolean callReverse(IdemBank bank, String id, long amt) {
+    boolean callReverse(Bank bank, String id, long amt) {
         int r = rnd.nextInt(10);
         if (r == 0) return false;                                    // request lost
         bank.reverse(id, amt);
@@ -3530,7 +11637,7 @@ class SafeAtm {
     private int seq = 0;
     long dispensed = 0;
 
-    boolean withdraw(IdemBank bank, FlakyNet net, long amt) {
+    boolean withdraw(Bank bank, FlakyNet net, long amt) {
         String id = "T" + (++seq);                                   // generated once, reused on retries
         for (int attempt = 0; attempt < 3; attempt++) {
             Optional<Boolean> r = net.callDebit(bank, id, amt);
@@ -3544,18 +11651,418 @@ class SafeAtm {
         return false;
     }
 
-    public static void main(String[] args) {
+    /** How many of 2000 fault-injected runs end with dispensed + balance != 100000. */
+    static int violations(boolean idempotent) {
         int violations = 0;
         for (long seed = 0; seed < 2000; seed++) {
-            IdemBank bank = new IdemBank(100_000);
+            Bank bank = idempotent ? new IdemBank(100_000) : new NaiveBank(100_000);
             FlakyNet net = new FlakyNet(seed);
             SafeAtm atm = new SafeAtm();
             for (int i = 0; i < 20; i++) atm.withdraw(bank, net, 1_000);
-            if (atm.dispensed + bank.balance != 100_000) violations++;
+            if (atm.dispensed + bank.balance() != 100_000) violations++;
         }
-        System.out.println("invariant violations in 2000 runs: " + violations);   // 0
+        return violations;
     }
-}`,
+
+    public static void main(String[] args) {
+        IdemBank b = new IdemBank(1_000);
+        System.out.println(b.debit("X", 300) + " " + b.debit("X", 300) + " balance " + b.balance);          // true true balance 700
+        b.reverse("X", 300);
+        System.out.println("after reverse " + b.balance + ", late retry " + b.debit("X", 300));            // 1000, false
+        b.reverse("Y", 300);                                                                                 // reversal arrives before the debit
+        System.out.println("debit after early reverse: " + b.debit("Y", 300) + " balance " + b.balance);   // false 1000
+        System.out.println("overdraw: " + b.debit("Z", 5_000));                                             // false
+        System.out.println("invariant violations in 2000 runs: " + violations(true));                       // 0
+        System.out.println("naive bank breaks the invariant: " + (violations(false) > 0));                  // true
+    }
+}`, alt: [
+          { lang: 'python', code: `import random
+import threading
+from abc import ABC, abstractmethod
+from enum import Enum
+from typing import Optional
+
+
+class Bank(ABC):
+    @abstractmethod
+    def debit(self, txn_id: str, amt: int) -> bool: ...
+
+    @abstractmethod
+    def reverse(self, txn_id: str, amt: int) -> None: ...
+
+    @abstractmethod
+    def balance(self) -> int: ...
+
+
+class NaiveBank(Bank):
+    """No transaction ids remembered, so a retry or a duplicate charges again."""
+
+    def __init__(self, balance: int) -> None:
+        self._balance = balance
+        self._lock = threading.Lock()
+
+    def debit(self, txn_id: str, amt: int) -> bool:
+        with self._lock:
+            if self._balance < amt:
+                return False
+            self._balance -= amt
+            return True
+
+    def reverse(self, txn_id: str, amt: int) -> None:
+        with self._lock:
+            self._balance += amt
+
+    def balance(self) -> int:
+        with self._lock:
+            return self._balance
+
+
+class T(Enum):
+    DEBITED = 1
+    REVERSED = 2
+
+
+class IdemBank(Bank):
+    def __init__(self, balance: int) -> None:
+        self._balance = balance
+        self._txns: dict[str, T] = {}
+        self._lock = threading.Lock()
+
+    def debit(self, txn_id: str, amt: int) -> bool:
+        with self._lock:
+            t = self._txns.get(txn_id)
+            if t is T.DEBITED:
+                return True  # duplicate: same answer, no new charge
+            if t is T.REVERSED:
+                return False  # tombstone: reversal came first
+            if self._balance < amt:
+                return False
+            self._balance -= amt
+            self._txns[txn_id] = T.DEBITED
+            return True
+
+    def reverse(self, txn_id: str, amt: int) -> None:
+        with self._lock:
+            if self._txns.get(txn_id) is T.DEBITED:
+                self._balance += amt
+            self._txns[txn_id] = T.REVERSED  # also a tombstone for unknown ids
+
+    def balance(self) -> int:
+        with self._lock:
+            return self._balance
+
+
+class FlakyNet:
+    """Fault injection: request lost, response lost, or duplicated."""
+
+    def __init__(self, seed: int) -> None:
+        self._rnd = random.Random(seed)
+
+    def call_debit(self, bank: Bank, txn_id: str, amt: int) -> Optional[bool]:
+        r = self._rnd.randrange(10)
+        if r == 0:
+            return None  # request lost
+        res = bank.debit(txn_id, amt)
+        if r == 1:
+            bank.debit(txn_id, amt)  # duplicated request
+        if r == 2:
+            return None  # response lost (bank applied it!)
+        return res
+
+    def call_reverse(self, bank: Bank, txn_id: str, amt: int) -> bool:
+        r = self._rnd.randrange(10)
+        if r == 0:
+            return False  # request lost
+        bank.reverse(txn_id, amt)
+        return r != 1  # r == 1: ack lost
+
+
+class SafeAtm:
+    def __init__(self) -> None:
+        self._seq = 0
+        self.dispensed = 0
+
+    def withdraw(self, bank: Bank, net: FlakyNet, amt: int) -> bool:
+        self._seq += 1
+        txn_id = f"T{self._seq}"  # generated once, reused on retries
+        for _ in range(3):
+            r = net.call_debit(bank, txn_id, amt)
+            if r is not None:
+                if not r:
+                    return False  # declined: nothing to undo
+                self.dispensed += amt  # dispense only after confirmed approval
+                return True
+        while not net.call_reverse(bank, txn_id, amt):  # unknown outcome -> reverse until acked
+            pass
+        return False
+
+
+def violations(idempotent: bool) -> int:
+    """How many of 2000 fault-injected runs end with dispensed + balance != 100000."""
+    bad = 0
+    for seed in range(2000):
+        bank: Bank = IdemBank(100_000) if idempotent else NaiveBank(100_000)
+        net = FlakyNet(seed)
+        atm = SafeAtm()
+        for _ in range(20):
+            atm.withdraw(bank, net, 1_000)
+        if atm.dispensed + bank.balance() != 100_000:
+            bad += 1
+    return bad
+
+
+if __name__ == "__main__":
+    b = IdemBank(1_000)
+    first, second = b.debit("X", 300), b.debit("X", 300)
+    print(str(first).lower(), str(second).lower(), "balance", b.balance())  # true true balance 700
+    b.reverse("X", 300)
+    after = b.balance()
+    print(f"after reverse {after}, late retry {str(b.debit('X', 300)).lower()}")  # 1000, false
+    b.reverse("Y", 300)  # reversal arrives before the debit
+    ok = b.debit("Y", 300)
+    print(f"debit after early reverse: {str(ok).lower()} balance {b.balance()}")  # false 1000
+    print("overdraw:", str(b.debit("Z", 5_000)).lower())  # false
+    print("invariant violations in 2000 runs:", violations(True))  # 0
+    print("naive bank breaks the invariant:", str(violations(False) > 0).lower())  # true` },
+          { lang: 'ts', code: `interface Bank {
+  debit(id: string, amt: number): boolean;
+  reverse(id: string, amt: number): void;
+  balance(): number;
+}
+
+/** Naive bank: no transaction ids remembered, so a retry or a duplicate charges again. */
+class NaiveBank implements Bank {
+  constructor(private bal: number) {}
+  debit(id: string, amt: number): boolean {
+    if (this.bal < amt) return false;
+    this.bal -= amt;
+    return true;
+  }
+  reverse(id: string, amt: number): void { this.bal += amt; }
+  balance(): number { return this.bal; }
+}
+
+type Txn = "DEBITED" | "REVERSED";
+
+class IdemBank implements Bank {
+  private readonly txns = new Map<string, Txn>();
+  constructor(private bal: number) {}
+
+  debit(id: string, amt: number): boolean {
+    const t = this.txns.get(id);
+    if (t === "DEBITED") return true; // duplicate: same answer, no new charge
+    if (t === "REVERSED") return false; // tombstone: reversal came first
+    if (this.bal < amt) return false;
+    this.bal -= amt;
+    this.txns.set(id, "DEBITED");
+    return true;
+  }
+  reverse(id: string, amt: number): void {
+    if (this.txns.get(id) === "DEBITED") this.bal += amt;
+    this.txns.set(id, "REVERSED"); // also a tombstone for unknown ids
+  }
+  balance(): number { return this.bal; }
+}
+
+/** Small seeded generator (mulberry32) so every run is reproducible. */
+function seeded(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Fault injection: request lost, response lost, or duplicated. */
+class FlakyNet {
+  private readonly next: () => number;
+  constructor(seed: number) { this.next = seeded(seed); }
+  private roll(): number { return Math.floor(this.next() * 10); }
+
+  callDebit(bank: Bank, id: string, amt: number): boolean | null {
+    const r = this.roll();
+    if (r === 0) return null; // request lost
+    const res = bank.debit(id, amt);
+    if (r === 1) bank.debit(id, amt); // duplicated request
+    if (r === 2) return null; // response lost (bank applied it!)
+    return res;
+  }
+  callReverse(bank: Bank, id: string, amt: number): boolean {
+    const r = this.roll();
+    if (r === 0) return false; // request lost
+    bank.reverse(id, amt);
+    return r !== 1; // r == 1: ack lost
+  }
+}
+
+class SafeAtm {
+  private seq = 0;
+  dispensed = 0;
+
+  withdraw(bank: Bank, net: FlakyNet, amt: number): boolean {
+    const id = "T" + ++this.seq; // generated once, reused on retries
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const r = net.callDebit(bank, id, amt);
+      if (r !== null) {
+        if (!r) return false; // declined: nothing to undo
+        this.dispensed += amt; // dispense only after confirmed approval
+        return true;
+      }
+    }
+    while (!net.callReverse(bank, id, amt)) { /* unknown outcome -> reverse until acked */ }
+    return false;
+  }
+}
+
+/** How many of 2000 fault-injected runs end with dispensed + balance != 100000. */
+function violations(idempotent: boolean): number {
+  let bad = 0;
+  for (let seed = 0; seed < 2000; seed++) {
+    const bank: Bank = idempotent ? new IdemBank(100_000) : new NaiveBank(100_000);
+    const net = new FlakyNet(seed);
+    const atm = new SafeAtm();
+    for (let i = 0; i < 20; i++) atm.withdraw(bank, net, 1_000);
+    if (atm.dispensed + bank.balance() !== 100_000) bad++;
+  }
+  return bad;
+}
+
+const b = new IdemBank(1_000);
+console.log(\`\${b.debit("X", 300)} \${b.debit("X", 300)} balance \${b.balance()}\`); // true true balance 700
+b.reverse("X", 300);
+console.log(\`after reverse \${b.balance()}, late retry \${b.debit("X", 300)}\`); // 1000, false
+b.reverse("Y", 300); // reversal arrives before the debit
+console.log(\`debit after early reverse: \${b.debit("Y", 300)} balance \${b.balance()}\`); // false 1000
+console.log("overdraw: " + b.debit("Z", 5_000)); // false
+console.log("invariant violations in 2000 runs: " + violations(true)); // 0
+console.log("naive bank breaks the invariant: " + (violations(false) > 0)); // true` },
+          { lang: 'cpp', code: `struct Bank {
+    virtual ~Bank() = default;
+    virtual bool debit(const string& id, long long amt) = 0;
+    virtual void reverse(const string& id, long long amt) = 0;
+    virtual long long balance() const = 0;
+};
+
+// Naive bank: no transaction ids remembered, so a retry or a duplicate charges again.
+class NaiveBank final : public Bank {
+    long long balance_;
+    mutable mutex mu_;
+
+public:
+    explicit NaiveBank(long long balance) : balance_(balance) {}
+    bool debit(const string&, long long amt) override {
+        lock_guard g(mu_);
+        if (balance_ < amt) return false;
+        balance_ -= amt;
+        return true;
+    }
+    void reverse(const string&, long long amt) override { lock_guard g(mu_); balance_ += amt; }
+    long long balance() const override { lock_guard g(mu_); return balance_; }
+};
+
+class IdemBank final : public Bank {
+    enum class T { DEBITED, REVERSED };
+    long long balance_;
+    map<string, T> txns_;
+    mutable mutex mu_;
+
+public:
+    explicit IdemBank(long long balance) : balance_(balance) {}
+
+    bool debit(const string& id, long long amt) override {
+        lock_guard g(mu_);
+        auto it = txns_.find(id);
+        if (it != txns_.end()) return it->second == T::DEBITED;  // duplicate: same answer; tombstone: refuse
+        if (balance_ < amt) return false;
+        balance_ -= amt;
+        txns_[id] = T::DEBITED;
+        return true;
+    }
+    void reverse(const string& id, long long amt) override {
+        lock_guard g(mu_);
+        auto it = txns_.find(id);
+        if (it != txns_.end() && it->second == T::DEBITED) balance_ += amt;
+        txns_[id] = T::REVERSED;  // also a tombstone for unknown ids
+    }
+    long long balance() const override { lock_guard g(mu_); return balance_; }
+};
+
+// Fault injection: request lost, response lost, or duplicated.
+class FlakyNet {
+    mt19937_64 rnd_;
+    int roll() { return uniform_int_distribution<int>(0, 9)(rnd_); }
+
+public:
+    explicit FlakyNet(unsigned long long seed) : rnd_(seed) {}
+
+    optional<bool> callDebit(Bank& bank, const string& id, long long amt) {
+        int r = roll();
+        if (r == 0) return nullopt;  // request lost
+        bool res = bank.debit(id, amt);
+        if (r == 1) bank.debit(id, amt);  // duplicated request
+        if (r == 2) return nullopt;       // response lost (bank applied it!)
+        return res;
+    }
+    bool callReverse(Bank& bank, const string& id, long long amt) {
+        int r = roll();
+        if (r == 0) return false;  // request lost
+        bank.reverse(id, amt);
+        return r != 1;             // r == 1: ack lost
+    }
+};
+
+class SafeAtm {
+    int seq_ = 0;
+
+public:
+    long long dispensed = 0;
+
+    bool withdraw(Bank& bank, FlakyNet& net, long long amt) {
+        string id = "T" + to_string(++seq_);  // generated once, reused on retries
+        for (int attempt = 0; attempt < 3; attempt++) {
+            optional<bool> r = net.callDebit(bank, id, amt);
+            if (r) {
+                if (!*r) return false;  // declined: nothing to undo
+                dispensed += amt;       // dispense only after confirmed approval
+                return true;
+            }
+        }
+        while (!net.callReverse(bank, id, amt)) {}  // unknown outcome -> reverse until acked
+        return false;
+    }
+};
+
+// How many of 2000 fault-injected runs end with dispensed + balance != 100000.
+int violations(bool idempotent) {
+    int bad = 0;
+    for (unsigned long long seed = 0; seed < 2000; seed++) {
+        unique_ptr<Bank> bank;
+        if (idempotent) bank = make_unique<IdemBank>(100'000);
+        else bank = make_unique<NaiveBank>(100'000);
+        FlakyNet net(seed);
+        SafeAtm atm;
+        for (int i = 0; i < 20; i++) atm.withdraw(*bank, net, 1'000);
+        if (atm.dispensed + bank->balance() != 100'000) bad++;
+    }
+    return bad;
+}
+
+int main() {
+    cout << boolalpha;
+    IdemBank b(1'000);
+    cout << b.debit("X", 300) << " " << b.debit("X", 300) << " balance " << b.balance() << "\\n";  // true true balance 700
+    b.reverse("X", 300);
+    cout << "after reverse " << b.balance() << ", late retry " << b.debit("X", 300) << "\\n";       // 1000, false
+    b.reverse("Y", 300);  // reversal arrives before the debit
+    cout << "debit after early reverse: " << b.debit("Y", 300) << " balance " << b.balance() << "\\n";  // false 1000
+    cout << "overdraw: " << b.debit("Z", 5'000) << "\\n";                                           // false
+    cout << "invariant violations in 2000 runs: " << violations(true) << "\\n";                    // 0
+    cout << "naive bank breaks the invariant: " << (violations(false) > 0) << "\\n";               // true
+}` }
+        ],
       complexity: `<p>O(1) expected per withdrawal (bounded retries; the reversal loop ends with probability 1). Bank memory O(transactions) — expire ids after the retry window.</p>`,
       followUps: ['What if the ATM crashes after approval but before dispensing? Add a journal and recovery.', 'Replace the in-memory map with a database table: which unique constraint gives idempotency for free?']
     }
@@ -3576,9 +12083,10 @@ class RacyVending {
         return false;
     }
 }` },
-    mcq: { q: 'Why is a single ReentrantLock around buy/restock/collect an acceptable answer here?', options: ['Each operation is microseconds and the invariant spans stock AND cash, so one lock keeps them consistent with negligible contention', 'Locks are always faster than CAS', 'Because HashMap is thread-safe', 'Only one thread can exist in Java'], answer: 0, explain: 'When an invariant spans several fields and critical sections are tiny, one lock is the simplest correct design.' },
-    hints: [`<p>Hint 1: Identify the invariant: <code>cash == Σ sales × price</code> and <code>stock ≥ 0</code>. Anything touching these fields together must be atomic.</p>`, `<p>Hint 2: Use one <code>ReentrantLock</code> (or synchronized) for buy/restock/collect. Do the slow work (motor, printing) <b>outside</b> the lock after reserving the item.</p>`, `<p>Hint 3: Stress test: ExecutorService + CountDownLatch to start all threads together; count successes with AtomicInteger; assert successes ≤ total stock and cash == successes × price.</p>`],
-    solution: {
+    mcq: { q: 'Why is a single lock around buy/restock/collect an acceptable answer here?', options: ['Each operation is microseconds and the invariant spans stock AND cash, so one lock keeps them consistent with negligible contention', 'Locks are always faster than CAS', 'Because the plain map is thread-safe by itself', 'Only one thread can ever call the machine'], answer: 0, explain: 'When an invariant spans several fields and critical sections are tiny, one lock is the simplest correct design.' },
+    hints: [`<p>Hint 1: Identify the invariant: <code>cash == Σ sales × price</code> and <code>stock ≥ 0</code>. Anything touching these fields together must be atomic.</p>`, `<p>Hint 2: Use one lock (<code>ReentrantLock</code>, <code>threading.Lock</code>, <code>std::mutex</code>) for buy/restock/collect. Do the slow work (motor, printing) <b>outside</b> the lock after reserving the item.</p>`, `<p>Hint 3: Stress test: a thread pool and a start latch to release all threads together; count successes with an atomic counter; assert successes ≤ total stock and cash == successes × price.</p>`],
+    tests: { io: true, cases: [{ stdin: '', stdout: "sold between 3 and 5: true\ncash matches sales: true\nno such slot\ninsufficient\nok, change 5\nsold out\ncash 15 sales 1\nok, change 0\ncollected 30, cash now 0\n" }] },
+      solution: {
       approach: `<p>One lock guards the shared invariant (stock + cash + sales). <code>buy</code> validates and reserves under the lock, then performs the slow physical drop outside it. A latch-started stress test with many threads checks that sales never exceed stock and that cash matches sales exactly.</p>`,
       code: `import java.util.*;
 import java.util.concurrent.*;
@@ -3632,9 +12140,249 @@ class SafeVending {
         go.countDown();
         for (Future<?> f : fs) f.get();
         pool.shutdown();
-        System.out.println("sold " + ok.get() + " (<= 5), cash " + vm.cash() + ", consistent=" + (vm.cash() == 20L * ok.get()));
+        int sold = ok.get();
+        System.out.println("sold between 3 and 5: " + (sold >= 3 && sold <= 5));              // depends on when the restock lands
+        System.out.println("cash matches sales: " + (vm.cash() == 20L * sold && vm.sales() == sold));
+
+        SafeVending v2 = new SafeVending();
+        v2.addSlot("B1", 15, 1);
+        System.out.println(v2.buy("Z9", 50));      // no such slot
+        System.out.println(v2.buy("B1", 10));      // insufficient
+        System.out.println(v2.buy("B1", 20));      // ok, change 5
+        System.out.println(v2.buy("B1", 20));      // sold out
+        System.out.println("cash " + v2.cash() + " sales " + v2.sales());
+        v2.restock("B1", 1);
+        System.out.println(v2.buy("B1", 15));      // ok, change 0
+        System.out.println("collected " + v2.collectCash() + ", cash now " + v2.cash());
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `import threading
+from concurrent.futures import ThreadPoolExecutor
+
+
+class SafeVending:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._stock: dict[str, int] = {}
+        self._price: dict[str, int] = {}
+        self._cash = 0
+        self._sales = 0
+
+    def add_slot(self, slot: str, price_rs: int, qty: int) -> None:
+        with self._lock:
+            self._price[slot] = price_rs
+            self._stock[slot] = qty
+
+    def buy(self, slot: str, paid_rs: int) -> str:
+        with self._lock:
+            p = self._price.get(slot)
+            if p is None:
+                return "no such slot"
+            if self._stock[slot] == 0:
+                return "sold out"
+            if paid_rs < p:
+                return "insufficient"
+            self._stock[slot] -= 1  # reserve + take money atomically
+            self._cash += p
+            self._sales += 1
+            change = paid_rs - p
+        self._drop_item(slot)  # slow hardware work outside the lock
+        return f"ok, change {change}"
+
+    def restock(self, slot: str, qty: int) -> None:
+        with self._lock:
+            self._stock[slot] = self._stock.get(slot, 0) + qty
+
+    def collect_cash(self) -> int:
+        with self._lock:
+            c, self._cash = self._cash, 0
+            return c
+
+    def cash(self) -> int:
+        with self._lock:
+            return self._cash
+
+    def sales(self) -> int:
+        with self._lock:
+            return self._sales
+
+    def _drop_item(self, slot: str) -> None:
+        pass  # stands in for the motor; deliberately outside the lock
+
+
+if __name__ == "__main__":
+    vm = SafeVending()
+    vm.add_slot("A1", 20, 3)
+    go = threading.Event()
+    ok = 0
+    ok_lock = threading.Lock()
+
+    def buyer() -> None:
+        global ok
+        go.wait()
+        if vm.buy("A1", 20).startswith("ok"):
+            with ok_lock:
+                ok += 1
+
+    def operator() -> None:
+        go.wait()
+        vm.restock("A1", 2)  # operator mid-burst
+
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        futures = [pool.submit(buyer) for _ in range(50)]
+        futures.append(pool.submit(operator))
+        go.set()
+        for f in futures:
+            f.result()
+    sold = ok
+    print("sold between 3 and 5:", str(3 <= sold <= 5).lower())  # depends on when the restock lands
+    print("cash matches sales:", str(vm.cash() == 20 * sold and vm.sales() == sold).lower())
+
+    v2 = SafeVending()
+    v2.add_slot("B1", 15, 1)
+    print(v2.buy("Z9", 50))  # no such slot
+    print(v2.buy("B1", 10))  # insufficient
+    print(v2.buy("B1", 20))  # ok, change 5
+    print(v2.buy("B1", 20))  # sold out
+    print("cash", v2.cash(), "sales", v2.sales())
+    v2.restock("B1", 1)
+    print(v2.buy("B1", 15))  # ok, change 0
+    print("collected", v2.collect_cash(), end=", ")
+    print("cash now", v2.cash())` },
+          { lang: 'ts', code: `// JavaScript runs one task at a time, so every method here is already atomic between awaits;
+// the structure (check, reserve and take money together, then the slow hardware step) is the same
+// one a lock-based version needs.
+class SafeVending {
+  private readonly stock = new Map<string, number>();
+  private readonly price = new Map<string, number>();
+  private cashRs = 0;
+  private salesCount = 0;
+
+  addSlot(slot: string, priceRs: number, qty: number): void {
+    this.price.set(slot, priceRs);
+    this.stock.set(slot, qty);
+  }
+
+  async buy(slot: string, paidRs: number): Promise<string> {
+    const p = this.price.get(slot);
+    if (p === undefined) return "no such slot";
+    if (this.stock.get(slot) === 0) return "sold out";
+    if (paidRs < p) return "insufficient";
+    this.stock.set(slot, this.stock.get(slot)! - 1); // reserve + take money in one step
+    this.cashRs += p;
+    this.salesCount++;
+    const change = paidRs - p;
+    await this.dropItem(); // slow hardware work after the shared state is consistent
+    return \`ok, change \${change}\`;
+  }
+
+  restock(slot: string, qty: number): void { this.stock.set(slot, (this.stock.get(slot) ?? 0) + qty); }
+  collectCash(): number { const c = this.cashRs; this.cashRs = 0; return c; }
+  cash(): number { return this.cashRs; }
+  sales(): number { return this.salesCount; }
+  private dropItem(): Promise<void> { return Promise.resolve(); } // yields to the event loop, like waiting on the motor
+}
+
+async function main(): Promise<void> {
+  const vm = new SafeVending();
+  vm.addSlot("A1", 20, 3);
+  let open!: () => void;
+  const go = new Promise<void>((resolve) => { open = resolve; });
+  let ok = 0;
+  const tasks: Promise<void>[] = [];
+  for (let i = 0; i < 50; i++) {
+    tasks.push(go.then(async () => { if ((await vm.buy("A1", 20)).startsWith("ok")) ok++; }));
+  }
+  tasks.push(go.then(() => vm.restock("A1", 2))); // operator mid-burst
+  open();
+  await Promise.all(tasks);
+  const sold = ok;
+  console.log("sold between 3 and 5: " + (sold >= 3 && sold <= 5)); // depends on when the restock lands
+  console.log("cash matches sales: " + (vm.cash() === 20 * sold && vm.sales() === sold));
+
+  const v2 = new SafeVending();
+  v2.addSlot("B1", 15, 1);
+  console.log(await v2.buy("Z9", 50)); // no such slot
+  console.log(await v2.buy("B1", 10)); // insufficient
+  console.log(await v2.buy("B1", 20)); // ok, change 5
+  console.log(await v2.buy("B1", 20)); // sold out
+  console.log(\`cash \${v2.cash()} sales \${v2.sales()}\`);
+  v2.restock("B1", 1);
+  console.log(await v2.buy("B1", 15)); // ok, change 0
+  console.log(\`collected \${v2.collectCash()}, cash now \${v2.cash()}\`);
+}
+
+main();` },
+          { lang: 'cpp', code: `class SafeVending {
+    mutable mutex mu_;
+    map<string, int> stock_, price_;
+    long long cash_ = 0, sales_ = 0;
+
+    void dropItem(const string&) {}  // stands in for the motor; deliberately outside the lock
+
+public:
+    void addSlot(const string& slot, int priceRs, int qty) {
+        lock_guard g(mu_);
+        price_[slot] = priceRs;
+        stock_[slot] = qty;
+    }
+
+    string buy(const string& slot, int paidRs) {
+        int change;
+        {
+            lock_guard g(mu_);
+            auto p = price_.find(slot);
+            if (p == price_.end()) return "no such slot";
+            if (stock_[slot] == 0) return "sold out";
+            if (paidRs < p->second) return "insufficient";
+            stock_[slot]--;  // reserve + take money atomically
+            cash_ += p->second;
+            sales_++;
+            change = paidRs - p->second;
+        }
+        dropItem(slot);  // slow hardware work outside the lock
+        return "ok, change " + to_string(change);
+    }
+
+    void restock(const string& slot, int qty) { lock_guard g(mu_); stock_[slot] += qty; }
+    long long collectCash() { lock_guard g(mu_); return exchange(cash_, 0LL); }
+    long long cash() const { lock_guard g(mu_); return cash_; }
+    long long sales() const { lock_guard g(mu_); return sales_; }
+};
+
+int main() {
+    cout << boolalpha;
+    SafeVending vm;
+    vm.addSlot("A1", 20, 3);
+    latch go(1);
+    atomic<int> ok = 0;
+    vector<thread> pool;
+    for (int i = 0; i < 50; i++) {
+        pool.emplace_back([&] {
+            go.wait();
+            if (vm.buy("A1", 20).rfind("ok", 0) == 0) ok++;
+        });
+    }
+    pool.emplace_back([&] { go.wait(); vm.restock("A1", 2); });  // operator mid-burst
+    go.count_down();
+    for (auto& t : pool) t.join();
+    int sold = ok;
+    cout << "sold between 3 and 5: " << (sold >= 3 && sold <= 5) << "\\n";  // depends on when the restock lands
+    cout << "cash matches sales: " << (vm.cash() == 20LL * sold && vm.sales() == sold) << "\\n";
+
+    SafeVending v2;
+    v2.addSlot("B1", 15, 1);
+    cout << v2.buy("Z9", 50) << "\\n";  // no such slot
+    cout << v2.buy("B1", 10) << "\\n";  // insufficient
+    cout << v2.buy("B1", 20) << "\\n";  // ok, change 5
+    cout << v2.buy("B1", 20) << "\\n";  // sold out
+    cout << "cash " << v2.cash() << " sales " << v2.sales() << "\\n";
+    v2.restock("B1", 1);
+    cout << v2.buy("B1", 15) << "\\n";  // ok, change 0
+    long long collected = v2.collectCash();
+    cout << "collected " << collected << ", cash now " << v2.cash() << "\\n";
+}` }
+        ],
       complexity: `<p>O(1) per operation inside a tiny critical section; contention is negligible at vending-machine rates. Holding no lock during the physical drop keeps the machine responsive.</p>`,
       followUps: ['Per-slot locks + an AtomicLong for cash: what invariant could break and how would you restore it?', 'The drop fails after the lock is released: write the compensation (refund + stock +1) safely.']
     }
@@ -3657,7 +12405,8 @@ class SafeVending {
 }` },
     mcq: { q: 'Leaving MOVING (child of OPERATIONAL) for EMERGENCY (sibling of OPERATIONAL). Which exit/entry order is correct?', options: ['exit MOVING, exit OPERATIONAL, enter EMERGENCY', 'enter EMERGENCY, exit MOVING', 'exit OPERATIONAL only', 'exit MOVING, enter EMERGENCY (OPERATIONAL untouched)'], answer: 0, explain: 'Exit from the innermost state up to (not including) the lowest common ancestor, then enter downward to the target.' },
     hints: [`<p>Hint 1: <code>HState</code> has a name, a parent, and a <code>Map&lt;String, String&gt;</code> of event → target. Dispatch walks from current up the parent chain until some state handles the event.</p>`, `<p>Hint 2: Transition: compute the ancestor chain of source and target; the lowest common ancestor (LCA) is the first shared state. Exit states from current up to the LCA (exclusive), then enter from just below the LCA down to the target.</p>`, `<p>Hint 3: If the target is a composite state (OPERATIONAL), drill into its initial child (IDLE). Log every entry/exit so the test can assert the order.</p>`],
-    solution: {
+    tests: { io: true, cases: [{ stdin: '', stdout: "exit IDLE\nenter MOVING\n  -> now MOVING\nexit MOVING\nexit OPERATIONAL\nenter EMERGENCY\n  -> now EMERGENCY\nunhandled CALL in EMERGENCY\n  -> now EMERGENCY\nexit EMERGENCY\nenter OPERATIONAL\nenter IDLE\n  -> now IDLE\nexit IDLE\nenter MOVING\n  -> now MOVING\nexit MOVING\nenter DOORS_OPEN\n  -> now DOORS_OPEN\nexit DOORS_OPEN\nexit OPERATIONAL\nenter EMERGENCY\n  -> now EMERGENCY\nexit EMERGENCY\nenter OPERATIONAL\nenter IDLE\n  -> now IDLE\nunhandled RESET in IDLE\n  -> now IDLE\n" }] },
+      solution: {
       approach: `<p>A tiny HSM engine: states with parent links and event tables; dispatch bubbles events up the hierarchy; transitions exit up to the lowest common ancestor and enter down to the target, then drill into initial children. The elevator's FIRE rule exists once (on OPERATIONAL) and automatically covers every current and future child.</p>`,
       code: `import java.util.*;
 
@@ -3714,13 +12463,236 @@ class Hsm {
         em.on.put("RESET", op);
 
         Hsm m = new Hsm(root);
-        for (String e : List.of("CALL", "FIRE", "CALL", "RESET", "CALL", "ARRIVE", "FIRE")) {
+        for (String e : List.of("CALL", "FIRE", "CALL", "RESET", "CALL", "ARRIVE", "FIRE", "RESET", "RESET")) {
             m.dispatch(e);
             m.log.add("  -> now " + m.current());
         }
         m.log.forEach(System.out::println);
     }
-}`,
+}`, alt: [
+          { lang: 'python', code: `from __future__ import annotations
+
+from typing import Optional
+
+
+class HState:
+    def __init__(self, name: str, parent: Optional[HState]) -> None:
+        self.name = name
+        self.parent = parent
+        self.initial_child: Optional[HState] = None
+        self.on: dict[str, HState] = {}
+
+    def path_from_root(self) -> list[HState]:
+        path: list[HState] = []
+        s: Optional[HState] = self
+        while s is not None:
+            path.insert(0, s)
+            s = s.parent
+        return path
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class Hsm:
+    def __init__(self, start: HState) -> None:
+        self.log: list[str] = []
+        self._current = self._drill(start, None)
+
+    def dispatch(self, event: str) -> None:
+        s: Optional[HState] = self._current
+        while s is not None:  # bubble up like an exception
+            target = s.on.get(event)
+            if target is not None:
+                self._transition(target)
+                return
+            s = s.parent
+        self.log.append(f"unhandled {event} in {self._current}")
+
+    def _transition(self, target: HState) -> None:
+        src, dst = self._current.path_from_root(), target.path_from_root()
+        i = 0
+        while i < len(src) and i < len(dst) and src[i] is dst[i] and dst[i] is not target:  # LCA depth
+            i += 1
+        for k in range(len(src) - 1, i - 1, -1):
+            self.log.append(f"exit {src[k]}")
+        for k in range(i, len(dst)):
+            self.log.append(f"enter {dst[k]}")
+        self._current = self._drill(target, self.log)
+
+    @staticmethod
+    def _drill(s: HState, log: Optional[list[str]]) -> HState:  # composite target -> initial child
+        while s.initial_child is not None:
+            s = s.initial_child
+            if log is not None:
+                log.append(f"enter {s}")
+        return s
+
+    @property
+    def current(self) -> HState:
+        return self._current
+
+
+if __name__ == "__main__":
+    root = HState("ELEVATOR", None)
+    op, em = HState("OPERATIONAL", root), HState("EMERGENCY", root)
+    idle, moving, doors = HState("IDLE", op), HState("MOVING", op), HState("DOORS_OPEN", op)
+    root.initial_child = op
+    op.initial_child = idle
+    idle.on["CALL"] = moving
+    moving.on["ARRIVE"] = doors
+    doors.on["CLOSE"] = idle
+    op.on["FIRE"] = em  # written ONCE for all children
+    em.on["RESET"] = op
+
+    m = Hsm(root)
+    for e in ["CALL", "FIRE", "CALL", "RESET", "CALL", "ARRIVE", "FIRE", "RESET", "RESET"]:
+        m.dispatch(e)
+        m.log.append(f"  -> now {m.current}")
+    for line in m.log:
+        print(line)` },
+          { lang: 'ts', code: `class HState {
+  initialChild: HState | null = null;
+  readonly on = new Map<string, HState>();
+
+  constructor(readonly name: string, readonly parent: HState | null) {}
+
+  pathFromRoot(): HState[] {
+    const path: HState[] = [];
+    for (let s: HState | null = this; s !== null; s = s.parent) path.unshift(s);
+    return path;
+  }
+  toString(): string { return this.name; }
+}
+
+class Hsm {
+  readonly log: string[] = [];
+  private current: HState;
+
+  constructor(start: HState) { this.current = this.drill(start, null); }
+
+  dispatch(event: string): void {
+    for (let s: HState | null = this.current; s !== null; s = s.parent) { // bubble up like an exception
+      const target = s.on.get(event);
+      if (target !== undefined) { this.transition(target); return; }
+    }
+    this.log.push(\`unhandled \${event} in \${this.current}\`);
+  }
+
+  private transition(target: HState): void {
+    const from = this.current.pathFromRoot(), to = target.pathFromRoot();
+    let i = 0;
+    while (i < from.length && i < to.length && from[i] === to[i] && to[i] !== target) i++; // LCA depth
+    for (let k = from.length - 1; k >= i; k--) this.log.push(\`exit \${from[k]}\`);
+    for (let k = i; k < to.length; k++) this.log.push(\`enter \${to[k]}\`);
+    this.current = this.drill(target, this.log);
+  }
+
+  private drill(s: HState, log: string[] | null): HState { // composite target -> initial child
+    while (s.initialChild !== null) {
+      s = s.initialChild;
+      if (log !== null) log.push(\`enter \${s}\`);
+    }
+    return s;
+  }
+
+  currentState(): HState { return this.current; }
+}
+
+const root = new HState("ELEVATOR", null);
+const op = new HState("OPERATIONAL", root), em = new HState("EMERGENCY", root);
+const idle = new HState("IDLE", op), moving = new HState("MOVING", op), doors = new HState("DOORS_OPEN", op);
+root.initialChild = op;
+op.initialChild = idle;
+idle.on.set("CALL", moving);
+moving.on.set("ARRIVE", doors);
+doors.on.set("CLOSE", idle);
+op.on.set("FIRE", em); // written ONCE for all children
+em.on.set("RESET", op);
+
+const m = new Hsm(root);
+for (const e of ["CALL", "FIRE", "CALL", "RESET", "CALL", "ARRIVE", "FIRE", "RESET", "RESET"]) {
+  m.dispatch(e);
+  m.log.push(\`  -> now \${m.currentState()}\`);
+}
+m.log.forEach((line) => console.log(line));` },
+          { lang: 'cpp', code: `struct HState {
+    string name;
+    HState* parent;
+    HState* initialChild = nullptr;
+    map<string, HState*> on;
+
+    HState(string name, HState* parent) : name(move(name)), parent(parent) {}
+
+    vector<const HState*> pathFromRoot() const {
+        vector<const HState*> path;
+        for (const HState* s = this; s != nullptr; s = s->parent) path.insert(path.begin(), s);
+        return path;
+    }
+};
+
+class Hsm {
+    const HState* current_;
+
+    // composite target -> initial child
+    static const HState* drill(const HState* s, vector<string>* log) {
+        while (s->initialChild) {
+            s = s->initialChild;
+            if (log) log->push_back("enter " + s->name);
+        }
+        return s;
+    }
+
+    void transition(const HState* target) {
+        auto from = current_->pathFromRoot(), to = target->pathFromRoot();
+        size_t i = 0;
+        while (i < from.size() && i < to.size() && from[i] == to[i] && to[i] != target) i++;  // LCA depth
+        for (size_t k = from.size(); k-- > i;) log.push_back("exit " + from[k]->name);
+        for (size_t k = i; k < to.size(); k++) log.push_back("enter " + to[k]->name);
+        current_ = drill(target, &log);
+    }
+
+public:
+    vector<string> log;
+
+    explicit Hsm(const HState* start) : current_(drill(start, nullptr)) {}
+
+    void dispatch(const string& event) {
+        for (const HState* s = current_; s != nullptr; s = s->parent) {  // bubble up like an exception
+            auto it = s->on.find(event);
+            if (it != s->on.end()) { transition(it->second); return; }
+        }
+        log.push_back("unhandled " + event + " in " + current_->name);
+    }
+    const HState* current() const { return current_; }
+};
+
+int main() {
+    // The states live in one vector of unique_ptr; everything else only points at them.
+    vector<unique_ptr<HState>> arena;
+    auto make = [&](const string& name, HState* parent) {
+        arena.push_back(make_unique<HState>(name, parent));
+        return arena.back().get();
+    };
+    HState* root = make("ELEVATOR", nullptr);
+    HState *op = make("OPERATIONAL", root), *em = make("EMERGENCY", root);
+    HState *idle = make("IDLE", op), *moving = make("MOVING", op), *doors = make("DOORS_OPEN", op);
+    root->initialChild = op;
+    op->initialChild = idle;
+    idle->on["CALL"] = moving;
+    moving->on["ARRIVE"] = doors;
+    doors->on["CLOSE"] = idle;
+    op->on["FIRE"] = em;  // written ONCE for all children
+    em->on["RESET"] = op;
+
+    Hsm m(root);
+    for (const char* e : {"CALL", "FIRE", "CALL", "RESET", "CALL", "ARRIVE", "FIRE", "RESET", "RESET"}) {
+        m.dispatch(e);
+        m.log.push_back("  -> now " + m.current()->name);
+    }
+    for (const auto& line : m.log) cout << line << "\\n";
+}` }
+        ],
       complexity: `<p>Dispatch O(depth); transition O(depth) for the LCA walk. Adding a child of OPERATIONAL inherits FIRE for free — O(1) new transitions instead of O(children).</p>`,
       followUps: ['Add a history pseudo-state so RESET returns to the child that was active before the fire.', 'Model the door and the motor as parallel (orthogonal) regions — what changes in dispatch?']
     }
@@ -3738,43 +12710,49 @@ class Hsm {
     { q: 'Correct order of a safe ATM withdrawal?', options: ['validate → plan notes → bank debit with txnId → dispense → confirm (or reverse on failure)', 'dispense → debit → validate', 'debit → validate → dispense', 'plan notes → dispense → debit'], answer: 0, explain: 'Local, side-effect-free checks first; money moves only after approval; failures are compensated with an idempotent reversal.' },
     { q: 'The bank receives debit(T42) twice because the ATM retried after a lost response. What should happen?', options: ['The second call is recognised by txnId and returns the same result without charging again', 'The account is debited twice', 'The bank rejects both', 'The ATM is blocked'], answer: 0, explain: 'Idempotency by a client-generated transaction id is what makes retries safe.' },
     { q: 'An ATM cash chain ₹2000 → ₹500 → ₹200 → ₹100 with stock 500×1, 200×3, 100×0 is asked for ₹600. What does a pure greedy chain do?', options: ['Takes ₹500, gets stuck with ₹100 and fails, although 200×3 works', 'Returns 200×3', 'Returns 500 + 100', 'Dispenses ₹500 only'], answer: 0, explain: 'Greedy with limited stock can fail; each handler must be able to back off (backtracking) or use DP.' },
-    { q: 'Two threads both read state=AVAILABLE and both set HELD. What is this bug called, and a lock-free fix?', options: ['A check-then-act race; fix with an immutable snapshot + AtomicReference.compareAndSet', 'A deadlock; fix with more threads', 'A memory leak; fix with GC', 'Starvation; fix with SSTF'], answer: 0, explain: 'The check and the act must be atomic. CAS publishes the new snapshot only if nobody changed it since it was read.' },
+    { q: 'Two threads both read state=AVAILABLE and both set HELD. What is this bug called, and a lock-free fix?', options: ['A check-then-act race; fix with an immutable snapshot + atomic compare-and-set', 'A deadlock; fix with more threads', 'A memory leak; fix with GC', 'Starvation; fix with SSTF'], answer: 0, explain: 'The check and the act must be atomic. CAS publishes the new snapshot only if nobody changed it since it was read.' },
     { q: 'In a hierarchical state machine, why put the FIRE transition on the OPERATIONAL parent instead of each child?', options: ['Unhandled events bubble up, so one transition covers every current and future child state', 'Children cannot have transitions', 'It makes the elevator move faster', 'Parents run on a separate thread'], answer: 0, explain: 'Hierarchy removes duplicated global transitions — the main cure for state explosion.' },
     { q: 'Which is the best sign that something should be a separate STATE rather than a boolean flag?', options: ['It changes which events are allowed or how they behave, and has its own way out', 'It is a number', 'It is displayed on a screen', 'It is stored in a database'], answer: 0, explain: 'Different behaviour per event + its own exit condition = state. Pure display conditions (like "exact change only") can stay flags.' }
   );
 
   /* ======================= INTERVIEW ======================= */
   interview.push(
-    { q: 'Walk me through how you would start a "design a vending machine" interview.', level: 'I', a: `<p>(1) <b>Clarify</b>: accepted coins/notes, products and slots, change with a limited coin box, cancel/refund, sold-out, operator restock, card payments now or later. (2) <b>Entities</b>: VendingMachine (context), Inventory, Product record, Coin enum, CoinBox, escrow. (3) <b>Draw the state × event table</b> for IDLE, HAS_MONEY, DISPENSING, SOLD_OUT, MAINTENANCE vs insertCoin/select/cancel/operator. (4) Code one class per state with default-reject methods; the context's public methods are one-line delegations. (5) Walk through the money-safety order in select: slot exists → in stock → enough money → change possible → dispense → commit. (6) Finish with extensions: card payment as an AUTHORIZING state, thread safety, telemetry.</p>`, followUps: ['Where does the change-making algorithm live and why?', 'What happens if the motor jams after you took the money?'] },
-    { q: 'When would you NOT use the State pattern?', level: 'I', a: `<p>When there are only 2–3 states, transitions are just "what is next" with no per-state behaviour, and no growth is expected — an <b>enum + EnumMap transition table</b> or a small switch is clearer. Also when a condition only affects display or one check (e.g. "exact change only" lamp) — that is a derived flag, not a state. State pays off when states have real behaviour (fees, timers, hardware actions), when the same <code>switch(status)</code> is repeated across many methods, or when new states are expected (maintenance, fire, no-show). Over-patterning a two-state toggle into four classes is a code smell interviewers notice too.</p>`, followUps: ['Show the same machine as an enum table and as State classes.', 'How does Java 21 sealed + pattern matching change this choice?'] },
+    { q: 'Walk me through how you would start a "design a vending machine" interview.', level: 'I', a: `<p>(1) <b>Clarify</b>: accepted coins/notes, products and slots, change with a limited coin box, cancel/refund, sold-out, operator restock, card payments now or later. (2) <b>Entities</b>: VendingMachine (context), Inventory, Product value object, Coin enum, CoinBox, escrow. (3) <b>Draw the state × event table</b> for IDLE, HAS_MONEY, DISPENSING, SOLD_OUT, MAINTENANCE vs insertCoin/select/cancel/operator. (4) Code one class per state with default-reject methods; the context's public methods are one-line delegations. (5) Walk through the money-safety order in select: slot exists → in stock → enough money → change possible → dispense → commit. (6) Finish with extensions: card payment as an AUTHORIZING state, thread safety, telemetry.</p>`, followUps: ['Where does the change-making algorithm live and why?', 'What happens if the motor jams after you took the money?'] },
+    { q: 'When would you NOT use the State pattern?', level: 'I', a: `<p>When there are only 2–3 states, transitions are just "what is next" with no per-state behaviour, and no growth is expected — an <b>enum + transition table (a map)</b> or a small switch is clearer. Also when a condition only affects display or one check (e.g. "exact change only" lamp) — that is a derived flag, not a state. State pays off when states have real behaviour (fees, timers, hardware actions), when the same <code>switch(status)</code> is repeated across many methods, or when new states are expected (maintenance, fire, no-show). Over-patterning a two-state toggle into four classes is a code smell interviewers notice too.</p>`, followUps: ['Show the same machine as an enum table and as State classes.', 'How do sealed types or tagged unions with exhaustive matching change this choice?'] },
     { q: 'Design the elevator car\'s state machine. What states and transitions do you need?', level: 'I', a: `<p>States: <b>IDLE</b>, <b>MOVING_UP</b>, <b>MOVING_DOWN</b>, <b>DOORS_OPEN</b>, <b>MAINTENANCE</b> (later OVERLOADED, FIRE_RECALL). On each tick or sensor event: IDLE serves a stop at the current floor (→ DOORS_OPEN) or picks a direction by LOOK (→ MOVING_*); MOVING moves one floor and stops if the floor is in the stop set for its direction; DOORS_OPEN counts down a door timer, re-opens if the sensor is blocked, then closes (→ IDLE). MAINTENANCE rejects calls. A single state field makes illegal combinations (moving with doors open) unrepresentable, which booleans would allow. Requests are kept in sorted sets (per direction), not a FIFO queue.</p>`, followUps: ['Where does the door-obstruction rule live?', 'How do you add fire recall without touching existing states?'] },
     { q: 'Compare FCFS, SSTF, SCAN and LOOK for elevators. Which would you choose?', level: 'A', a: `<p><b>FCFS</b>: fair but zig-zags, huge travel. <b>SSTF</b>: nearest next, low travel but can starve far floors. <b>SCAN</b>: sweep to the end floor then reverse — bounded waiting, wastes trips to empty ends. <b>LOOK</b>: sweep only as far as the last request, then reverse — bounded waiting and less waste. Example: start 5 ▲, requests 8,2,6,1,4 → FCFS 21 floors, SSTF 10, SCAN 12, LOOK 10. I choose <b>LOOK</b> (collective control) per car, because it bounds waiting to about two sweeps and minimises direction reversals; the choice sits behind a <code>SchedulingStrategy</code> so it can change per building.</p>`, followUps: ['Prove LOOK cannot starve a request.', 'What is C-LOOK and when is it fairer?'] },
     { q: 'How do you assign a hall call when there are multiple elevators?', level: 'A', a: `<p>A <b>dispatcher</b> (Strategy) computes a cost per car and picks the minimum. Cost ≈ estimated time to reach the caller <i>going their way</i>: idle car → distance; car moving toward the caller in the same direction → distance; otherwise → finish the current sweep and come back (distance + sweep penalty); plus a load term (stops already assigned × ~10 s each). Cars in maintenance or full return infinite cost. Advanced: re-assign periodically, zoning in up-peak, destination dispatch (group by destination floor to cut stops), energy-aware costs. The car's state machine stays unchanged — only the dispatch strategy evolves.</p>`, followUps: ['Why is "nearest car by distance" not enough?', 'How would you switch to zoning at 9 am?'] },
     { q: 'How do you make sure an ATM never charges a customer for cash that was not dispensed?', level: 'A', a: `<p>Order and idempotency. Validate locally, <b>plan notes before calling the bank</b>, debit with an ATM-generated <b>txnId</b> written to the ATM journal first, dispense only after a confirmed approval, then confirm. If the dispenser jams or the bank's reply never arrives, send <b>reverse(txnId)</b>, retrying until acknowledged; the bank treats repeated debits/reversals with the same id as no-ops and keeps tombstones so a late debit after a reversal is refused. On crash, the ATM replays its journal and resolves every in-flight transaction. Notes that jam go to a sealed reject bin, reconciled against the journal.</p>`, followUps: ['What exactly must the bank store to be idempotent?', 'What if the reversal message itself is lost?'] },
     { q: 'Where does the "3 wrong PINs → retain card" counter live, and why?', level: 'I', a: `<p>Two places. Locally, in the <b>CARD_INSERTED</b> session state (reset on a new card and on a correct PIN) so the ATM can retain the card immediately. Authoritatively, <b>at the bank per card</b>, counted across all ATMs and channels — otherwise a thief tries two PINs at each of many ATMs. The ATM never verifies the PIN itself; it sends an encrypted PIN block from the encrypting PIN pad. Putting the counter in a long-lived ATM field is a classic bug: the next customer inherits the previous one's failures.</p>`, followUps: ['How do you unblock a card safely?', 'Why is the PIN never a plain String in the ATM software?'] },
-    { q: 'Explain the check-then-act race in a state machine and three ways to fix it.', level: 'A', a: `<p>Two threads read the same state (e.g. AVAILABLE / stock 1), both pass the guard, and both apply their transition — double sale, double booking. Fixes: (1) <b>Lock</b> the whole fire() (synchronized/ReentrantLock) — simplest; keep slow I/O outside. (2) <b>CAS</b> on an immutable snapshot (state + data + version) via <code>AtomicReference.compareAndSet</code> — lock-free, losers retry on fresh data; the version also prevents ABA. (3) <b>Single-threaded event loop / actor</b> — all events queue to one thread that owns the state; no shared mutation. In a database, the CAS equivalent is optimistic locking: <code>UPDATE … WHERE id = ? AND version = ?</code> and retry on 0 rows.</p>`, followUps: ['Why must the CAS snapshot be immutable?', 'Which would you use for an elevator car and why?'] },
+    { q: 'Explain the check-then-act race in a state machine and three ways to fix it.', level: 'A', a: `<p>Two threads read the same state (e.g. AVAILABLE / stock 1), both pass the guard, and both apply their transition — double sale, double booking. Fixes: (1) <b>Lock</b> the whole fire() (a mutex, <code>synchronized</code>) — simplest; keep slow I/O outside. (2) <b>CAS</b> on an immutable snapshot (state + data + version) via an atomic compare-and-set (<code>AtomicReference.compareAndSet</code> in Java) — lock-free, losers retry on fresh data; the version also prevents ABA. (3) <b>Single-threaded event loop / actor</b> — all events queue to one thread that owns the state; no shared mutation. In a database, the CAS equivalent is optimistic locking: <code>UPDATE … WHERE id = ? AND version = ?</code> and retry on 0 rows.</p>`, followUps: ['Why must the CAS snapshot be immutable?', 'Which would you use for an elevator car and why?'] },
     { q: 'How would you persist a state machine and recover after a crash?', level: 'A', a: `<p>Store the <b>state name + data + version</b> (e.g. ride: status ARRIVED, driverId, version 7), never the state object. Rehydrate via a factory from the stored name. Transitions use optimistic locking. For side effects (charging, dispensing) move to an <b>intermediate state</b> first (DISPENSING / AUTHORIZING), persist it, perform the effect, then fire a completion event — so after a crash you can find "stuck in DISPENSING" rows and reconcile. Publish domain events via a <b>transactional outbox</b> in the same DB transaction. Alternatively event-source: store events, rebuild state by replaying them through the pure transition function.</p>`, followUps: ['What is the outbox pattern solving?', 'Trade-offs of event sourcing for a vending fleet?'] },
-    { q: 'Interviewer: "Now add a MAINTENANCE state to your vending machine." What changes?', level: 'I', a: `<p>With default-reject methods on the state interface: (1) one new class <code>Maintenance</code> overriding <code>restock</code> and <code>finishService</code> (and returning coins on insert); (2) <code>service()</code> added to the interface with a default "not now"; (3) IDLE and SOLD_OUT override <code>service()</code> to enter maintenance; HAS_MONEY keeps the default (finish or cancel the sale first — never open the machine with a customer’s money in escrow). <code>finishService</code> returns SOLD_OUT if the inventory is still empty, else IDLE. No other state changes; the table gains one row and one column, and table-driven tests cover the new cells.</p>`, followUps: ['Why is service() refused in HAS_MONEY?', 'How do you test all the new cells?'] },
+    { q: 'Interviewer: "Now add a MAINTENANCE state to your vending machine." What changes?', level: 'I', a: `<p>With default-reject methods on the state interface: (1) one new class <code>Maintenance</code> overriding <code>restock</code> and <code>finishService</code> (and returning coins on insert); (2) <code>service()</code> added to the state interface with a default "not now"; (3) IDLE and SOLD_OUT override <code>service()</code> to enter maintenance; HAS_MONEY keeps the default (finish or cancel the sale first — never open the machine with a customer’s money in escrow). <code>finishService</code> returns SOLD_OUT if the inventory is still empty, else IDLE. No other state changes; the table gains one row and one column, and table-driven tests cover the new cells.</p>`, followUps: ['Why is service() refused in HAS_MONEY?', 'How do you test all the new cells?'] },
     { q: 'What are hierarchical state machines and when do you need one?', level: 'E', a: `<p>Statecharts (Harel) let states nest: an event not handled by the current state <b>bubbles</b> to its parent. Use them when the flat table explodes because some events apply to many states — e.g. an elevator's FIRE or POWER_FAIL must work from IDLE, MOVING, DOORS_OPEN and any future child. Put FIRE once on the OPERATIONAL parent; transitions exit up to the lowest common ancestor and enter down to the target (entry/exit actions in order). Extras: <b>history states</b> (resume the previous child), <b>orthogonal regions</b> (door and motor as parallel sub-machines). Tools: Spring Statemachine, XState, SCXML, UML. Don't reach for it until the flat machine shows duplication.</p>`, followUps: ['How is the lowest common ancestor used during a transition?', 'Model the washing machine pause as a history state.'] },
     { q: 'How would you test a state-heavy design like an ATM thoroughly?', level: 'A', a: `<p>Layers: (1) <b>Table tests</b> — for every (state, event) cell assert next state and side effects, including all illegal cells. (2) <b>Scenario tests</b> — happy path, 3 wrong PINs, insufficient funds, daily limit, note plan failure. (3) <b>Fault injection</b> with fakes: a bank that drops/duplicates/reorders messages, a dispenser that jams — assert the invariant "charged ⇔ dispensed". (4) <b>Property/randomized tests</b> — thousands of random event sequences checking invariants (never negative stock, menu only after auth). (5) <b>Concurrency stress</b> with latches for shared resources at the bank. Hardware sits behind interfaces (CardReader, Dispenser, Keypad) so all of this runs in milliseconds.</p>`, followUps: ['What invariants would you assert for the vending machine?', 'How does AI help generate these tests, and what do you still check?'] },
-    { q: 'An LLM generated an elevator/vending/ATM design for you. What do you review first?', level: 'E', a: `<p>(1) Are states explicit (one field/enum or State classes) or scattered booleans that allow illegal combos? (2) Is there a state × event table — what happens on every illegal event? (3) Money/safety order: change planned before dispensing, notes planned and approval received before cash, door safety before closing. (4) Idempotency and txnIds on every network call; compensation on failure. (5) Concurrency: check-then-act races, mutable objects in AtomicReference, locks held across I/O. (6) Scheduling: is it SSTF in disguise (PriorityQueue by distance → starvation)? Do hall calls keep direction? (7) Extensibility: can I add a state or strategy without edits elsewhere? Then I ask the AI for adversarial tests and run them.</p>`, followUps: ['Which of these bugs would not show up in a happy-path demo?', 'How do you turn the review into automated checks?'] }
+    { q: 'An LLM generated an elevator/vending/ATM design for you. What do you review first?', level: 'E', a: `<p>(1) Are states explicit (one field/enum or State classes) or scattered booleans that allow illegal combos? (2) Is there a state × event table — what happens on every illegal event? (3) Money/safety order: change planned before dispensing, notes planned and approval received before cash, door safety before closing. (4) Idempotency and txnIds on every network call; compensation on failure. (5) Concurrency: check-then-act races, mutable objects behind an atomic reference, locks held across I/O. (6) Scheduling: is it SSTF in disguise (a priority queue by distance → starvation)? Do hall calls keep direction? (7) Extensibility: can I add a state or strategy without edits elsewhere? Then I ask the AI for adversarial tests and run them.</p>`, followUps: ['Which of these bugs would not show up in a happy-path demo?', 'How do you turn the review into automated checks?'] }
   );
 
   registerModule({
     id: 'lld09',
     title: 'State-Heavy Designs: Elevator, Vending Machine, ATM',
     intro: `<p>Some machines are all about <b>"what mode am I in right now?"</b>. A lift that is moving up ignores the button for a floor it already passed. A vending machine with no money in it refuses to drop a snack. An ATM will not show your balance until your PIN is correct. These are <b>state-heavy designs</b>, and they are the most common "machine coding" rounds at Amazon, Microsoft, Uber, Flipkart, Swiggy, Walmart and Goldman Sachs.</p>
-<p>This module first takes the <b>State pattern</b> apart properly — the brute-force if/else ladder and exactly why it breaks, enum tables, GoF state classes, sealed records, guards, entry/exit actions, nested states. Then it builds three full designs end to end: an <b>Elevator system</b> (car state machine plus FCFS/SSTF/SCAN/LOOK scheduling and multi-car dispatch), a <b>Vending Machine</b> (states, inventory, coins and change-making) and an <b>ATM</b> (card/PIN states, withdraw/deposit/balance flows, cash dispensing chain, bank rollback). It ends with production-grade concerns: thread-safe transitions, persistence and testing. Every topic has an animated visualizer — state boxes lighting up, lift cars moving floor by floor, coins flowing in and change flowing out.</p>`,
+<p>This module first takes the <b>State pattern</b> apart properly — the brute-force if/else ladder and exactly why it breaks, enum tables, GoF state classes, closed sets of immutable states (sealed types, tagged unions, variants), guards, entry/exit actions, nested states. Then it builds three full designs end to end: an <b>Elevator system</b> (car state machine plus FCFS/SSTF/SCAN/LOOK scheduling and multi-car dispatch), a <b>Vending Machine</b> (states, inventory, coins and change-making) and an <b>ATM</b> (card/PIN states, withdraw/deposit/balance flows, cash dispensing chain, bank rollback). It ends with production-grade concerns: thread-safe transitions, persistence and testing. Every topic has an animated visualizer — state boxes lighting up, lift cars moving floor by floor, coins flowing in and change flowing out.</p>`,
     goals: [
-      'Turn any state-heavy requirement into a <b>state × event table</b> and then into clean Java (enum table, State classes or sealed records) — and say which one fits and why.',
+      'Turn any state-heavy requirement into a <b>state × event table</b> and then into clean code in your language (enum table, State classes or a closed set of immutable states) — and say which one fits and why.',
       'Design a complete <b>Elevator system</b>: entities, car state machine, request handling, and compare FCFS, SSTF, SCAN and LOOK on real request lists; dispatch requests across multiple cars.',
       'Design a complete <b>Vending Machine</b> with states, inventory, coin handling, exact-change problems and refunds, and add new states (maintenance, sold-out) without editing existing ones.',
       'Design an <b>ATM</b>: card and PIN states, lock after 3 wrong PINs, withdraw/deposit/balance flows, cash dispensing with Chain of Responsibility, and safe rollback when cash fails to come out.',
-      'Make state machines <b>production-ready</b>: atomic transitions under concurrency (synchronized, CAS, single-threaded loop), persistence with versions, and table-driven tests.',
+      'Make state machines <b>production-ready</b>: atomic transitions under concurrency (a lock, compare-and-set, single-threaded loop), persistence with versions, and table-driven tests.',
       'Survive the classic interview follow-ups: "add a state", "add a second elevator", "the machine runs out of change", "the network fails mid-withdrawal".'
     ],
     prereqs: `<p>LLD 2 (SOLID — especially Open/Closed), LLD 6 (Behavioral Patterns — Strategy, State, Chain of Responsibility, Command, Observer at a basic level) and LLD 7 (the LLD interview framework). Comfortable Java: interfaces with default methods, enums and <code>EnumMap</code>, records, collections (<code>TreeSet</code>, <code>PriorityQueue</code>). Basic threads help for the last topic.</p>`,
     hours: 16,
+    langNotes: {
+      java: `<p><b>State objects.</b> An <code>interface</code> with <code>default</code> methods is the cheapest State pattern: every event is rejected by default and each state overrides only what it allows (always add <code>@Override</code>). An <code>enum</code> whose constants have bodies (and an <code>abstract</code> method) gives you a closed set of states with behaviour and no allocation; <code>EnumMap</code> and <code>EnumSet</code> are the natural storage for a state × event table and iterate in declaration order. <code>sealed</code> interfaces with <code>record</code>s and a pattern <code>switch</code> make a pure <code>next(state, event)</code> function whose missing cases are compile errors. <b>Equality and immutability.</b> Records give value <code>equals</code>/<code>hashCode</code> and are shallowly immutable, so a snapshot (state, stock, version) is one record. <code>AtomicReference.compareAndSet</code> compares <b>references</b>, not <code>equals</code>, so publish a new record instead of mutating the old one. <b>Determinism.</b> <code>Map.of</code> and <code>HashMap</code> iteration order is not part of the contract (<code>Map.of</code> changes between runs): use <code>LinkedHashMap</code>, <code>TreeMap</code> or an <code>EnumMap</code> whenever output or a "first missing item" decision depends on order. <b>Concurrency.</b> <code>synchronized</code>/<code>ReentrantLock</code> around the whole transition, slow I/O outside the lock; a plain <code>HashMap</code> is not thread-safe, <code>ConcurrentHashMap</code> plus a lock per entry is the usual fix.</p>`,
+      python: `<p><b>State objects.</b> Python has no <code>default</code> methods and no per-member bodies on an <code>Enum</code>. Use a base class (<code>abc.ABC</code>, with <code>@abstractmethod</code> only for <code>name()</code>) whose concrete methods reject every event, and let each state subclass override what it allows; stateless states can be module-level instances. An <code>Enum</code> is fine for small machines: put behaviour in one method that uses <code>match self</code> or a lookup table. Two members with the same value silently become <b>aliases</b> (for example two phases both defined as <code>(0, None)</code>), so give members distinct values and keep data in separate tables. <b>Closed sets and equality.</b> A union of frozen dataclasses (<code>Req | Asg | Done</code>) with <code>match</code> and class patterns is the sealed-type idiom. <code>@dataclass(frozen=True)</code> gives value <code>__eq__</code> and <code>__hash__</code>; use <code>eq=False</code> when identity is what you want to compare, as in a compare-and-set loop. <b>Concurrency.</b> The GIL does not make check-then-act safe, and there is no CAS primitive: wrap get/compare_and_set in a small <code>threading.Lock</code>, or lock the whole transition (<code>RLock</code> if a listener may call back in). <b>Order and time.</b> <code>dict</code> keeps insertion order, so an ordered "first missing ingredient" rule is deterministic; <code>datetime.date</code> plus <code>timedelta</code> handles calendar arithmetic. Printing booleans as <code>true</code>/<code>false</code> needs an explicit <code>str(x).lower()</code>.</p>`,
+      js: `<p><b>TypeScript.</b> <b>State objects.</b> Interfaces are erased and cannot hold default methods, so share the "reject every event" defaults in an <code>abstract class</code> that your states extend (turn on <code>noImplicitOverride</code> and write <code>override</code>), or build states as object literals typed by the interface with a small factory function. A union of string literals is the lightest enum (<code>type Phase = "IDLE" | "FILLING"</code>), and a <code>Record&lt;Phase, ...&gt;</code> table must list every phase or the compiler complains. <b>Closed sets.</b> A discriminated union (<code>kind: "Req" | "Asg"</code>) with a <code>switch</code> and no <code>default</code> is checked for exhaustiveness. <b>Equality.</b> Objects compare by identity with <code>===</code>, which is exactly what a compare-and-set needs; there is no built-in value equality, so compare fields or use a string key. <b>Concurrency.</b> JavaScript runs one task at a time: a synchronous method is already atomic, and races appear only across an <code>await</code> (check, <code>await</code>, act). Keep the check and the act in the same synchronous step, or queue events through one async loop. <b>Order and time.</b> <code>Map</code> and <code>Set</code> keep insertion order. Use UTC (<code>Date.UTC</code>) or ISO date strings for calendar days so the time zone cannot move a date. Template literals call <code>toString()</code>, so give state classes one.</p>`,
+      cpp: `<p><b>State objects.</b> An interface is a class of pure virtual functions with a <b>virtual destructor</b>; mark every implementation <code>override</code> (and <code>final</code> where it ends the hierarchy). "Reject everything by default" is a virtual member with a body in the base class, defined after the context class when it needs the context. Stateless states can be shared singletons (<code>inline const Idle Idle::I;</code>) with the context holding a non-owning pointer; states that carry data are returned as <code>std::unique_ptr&lt;State&gt;</code> (<code>nullptr</code> meaning "stay"). When a state method asks the context to replace the state, the old state is destroyed: do not touch its members after that call. <code>enum class</code> plus a <code>switch</code> is the right size for small machines, and <code>std::variant</code> with <code>std::visit</code> is the closed set of states. <b>Ownership.</b> A chain of handlers owns its next link with <code>unique_ptr</code>; observers and strategies are held by reference or raw non-owning pointer. <b>Concurrency.</b> Use <code>std::atomic&lt;std::shared_ptr&lt;const Snap&gt;&gt;</code> (C++20) with <code>compare_exchange_strong</code> for lock-free transitions on immutable snapshots, <code>std::mutex</code> with <code>lock_guard</code> otherwise (<code>recursive_mutex</code> if a callback re-enters), and <code>std::latch</code> to release test threads together. <b>Order and time.</b> <code>std::map</code> iterates in key order (like <code>TreeMap</code>); <code>unordered_map</code> does not. <code>std::chrono::sys_days</code> gives calendar-day arithmetic. Since C++17 the operands of <code>&lt;&lt;</code> are evaluated left to right, so chained output with side effects prints in the order you wrote it.</p>`
+    },
     topics: topics,
     practice: practice,
     quiz: quiz,

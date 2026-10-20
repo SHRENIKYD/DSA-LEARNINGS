@@ -102,7 +102,7 @@
       'Adversarial hint: test data like <code>"aaaa…a"</code> is designed to kill O(N<sup>2</sup>) center expansion.',
       '"palindromic prefix / suffix of every length", "split into two palindromes", "max product of two non-overlapping palindromes" → per-position palindrome radii.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       class Manacher {
           // Returns P over t = "#s0#s1#...#s(n-1)#" (length 2n+1).
           // P[i] = radius of the palindrome centered at t[i]
@@ -148,7 +148,134 @@
               int[] p = radii("abba");
               System.out.println(isPal(p, 0, 3) + " " + isPal(p, 0, 2)); // true false
           }
-      }`, { lang: 'python', run: true, title: 'Manacher in Python (runnable)', code: `
+      }`, alt: [{ lang: 'python', code: `class Manacher:
+    # P over t = "#s0#s1#...#s(n-1)#" (length 2n+1).
+    # P[i] = radius of the palindrome centered at t[i]
+    #      = LENGTH of the matching palindrome in the original s.
+    @staticmethod
+    def radii(s):
+        t = '#' + '#'.join(s) + '#' if s else '#'
+        m = len(t)
+        p = [0] * m
+        c, r = 0, -1                      # box = [c - p[c], r], r = furthest right end
+        for i in range(m):
+            # free start from the mirror (2c - i) if we are inside the box
+            k = 0 if i > r else min(p[2 * c - i], r - i)
+            # try to grow beyond what we already know
+            while i - k - 1 >= 0 and i + k + 1 < m and t[i - k - 1] == t[i + k + 1]:
+                k += 1
+            p[i] = k
+            if i + k > r:                 # box moved right
+                c, r = i, i + k
+        return p
+
+    @staticmethod
+    def longest_palindrome(s):
+        p = Manacher.radii(s)
+        center = max(range(len(p)), key=p.__getitem__)
+        start = (center - p[center]) // 2   # map back to s
+        return s[start:start + p[center]]
+
+    @staticmethod
+    def count_palindromes(s):
+        return sum((v + 1) // 2 for v in Manacher.radii(s))   # palindromes sharing each center
+
+    # O(1) palindrome query after O(n) preprocessing
+    @staticmethod
+    def is_pal(p, l, r):
+        return p[l + r + 1] >= r - l + 1
+
+
+print(Manacher.longest_palindrome("abacabad"))   # abacaba
+print(Manacher.count_palindromes("aaa"))         # 6
+p = Manacher.radii("abba")
+print(Manacher.is_pal(p, 0, 3), Manacher.is_pal(p, 0, 2))   # True False` }, { lang: 'js', code: `class Manacher {
+  // P over t = "#s0#s1#...#s(n-1)#" (length 2n+1).
+  // P[i] = radius of the palindrome centered at t[i]
+  //      = LENGTH of the matching palindrome in the original s.
+  static radii(s) {
+    const t = ['#'];
+    for (const ch of s) t.push(ch, '#');
+    const m = t.length, p = new Array(m).fill(0);
+    let c = 0, r = -1;                       // box = [c - p[c], r], r = furthest right end
+    for (let i = 0; i < m; i++) {
+      // free start from the mirror (2c - i) if we are inside the box
+      let k = i > r ? 0 : Math.min(p[2 * c - i], r - i);
+      // try to grow beyond what we already know
+      while (i - k - 1 >= 0 && i + k + 1 < m && t[i - k - 1] === t[i + k + 1]) k++;
+      p[i] = k;
+      if (i + k > r) { c = i; r = i + k; }   // box moved right
+    }
+    return p;
+  }
+
+  static longestPalindrome(s) {
+    const p = Manacher.radii(s);
+    let best = 0, center = 0;
+    for (let i = 0; i < p.length; i++) if (p[i] > best) { best = p[i]; center = i; }
+    const start = (center - best) >> 1;      // map back to s
+    return s.substring(start, start + best);
+  }
+
+  static countPalindromes(s) {
+    let total = 0;
+    for (const v of Manacher.radii(s)) total += (v + 1) >> 1;   // palindromes sharing this center
+    return total;
+  }
+
+  // O(1) palindrome query after O(n) preprocessing
+  static isPal(p, l, r) { return p[l + r + 1] >= r - l + 1; }
+}
+
+console.log(Manacher.longestPalindrome("abacabad"));   // abacaba
+console.log(Manacher.countPalindromes("aaa"));         // 6
+const p = Manacher.radii("abba");
+console.log(Manacher.isPal(p, 0, 3), Manacher.isPal(p, 0, 2));   // true false` }, { lang: 'cpp', code: `class Manacher {
+public:
+    // P over t = "#s0#s1#...#s(n-1)#" (length 2n+1).
+    // P[i] = radius of the palindrome centered at t[i]
+    //      = LENGTH of the matching palindrome in the original s.
+    static vector<int> radii(const string& s) {
+        string t = "#";
+        for (char ch : s) { t += ch; t += '#'; }
+        int m = t.size();
+        vector<int> p(m, 0);
+        int c = 0, r = -1;                       // box = [c - p[c], r], r = furthest right end
+        for (int i = 0; i < m; i++) {
+            // free start from the mirror (2c - i) if we are inside the box
+            int k = (i > r) ? 0 : min(p[2 * c - i], r - i);
+            // try to grow beyond what we already know
+            while (i - k - 1 >= 0 && i + k + 1 < m && t[i - k - 1] == t[i + k + 1]) k++;
+            p[i] = k;
+            if (i + k > r) { c = i; r = i + k; }  // box moved right
+        }
+        return p;
+    }
+
+    static string longestPalindrome(const string& s) {
+        vector<int> p = radii(s);
+        int best = 0, center = 0;
+        for (int i = 0; i < (int)p.size(); i++) if (p[i] > best) { best = p[i]; center = i; }
+        int start = (center - best) / 2;         // map back to s
+        return s.substr(start, best);
+    }
+
+    static long long countPalindromes(const string& s) {
+        long long total = 0;
+        for (int v : radii(s)) total += (v + 1) / 2;   // palindromes sharing this center
+        return total;
+    }
+
+    // O(1) palindrome query after O(n) preprocessing
+    static bool isPal(const vector<int>& p, int l, int r) { return p[l + r + 1] >= r - l + 1; }
+};
+
+int main() {
+    cout << Manacher::longestPalindrome("abacabad") << "\\n";   // abacaba
+    cout << Manacher::countPalindromes("aaa") << "\\n";         // 6
+    vector<int> p = Manacher::radii("abba");
+    cout << boolalpha << Manacher::isPal(p, 0, 3) << " " << Manacher::isPal(p, 0, 2) << "\\n";   // true false
+}` }] }, { lang: 'python', run: true, title: 'Manacher in Python (runnable)', code: `
 def manacher(s):
     t = '#' + '#'.join(s) + '#'          # "abba" -> "#a#b#b#a#"
     m = len(t)
@@ -239,7 +366,7 @@ for s in ["abba", "abacabad", "aaaa"]:
     deepDive: `<p><b>Proof sketch of the mirror rule.</b> Inside the box [L, R] centered at C, t[C − d] = t[C + d] for all d ≤ R − C. So the neighbourhood of i (up to R) is the reverse of the neighbourhood of its mirror j = 2C − i (down to L). If j’s palindrome ends strictly inside L, the character that stopped j’s growth has a mirrored copy that stops i at exactly the same radius → P[i] = P[j]. If j’s palindrome reaches L or beyond, we only know i’s palindrome reaches R; the characters past R are unknown, so we expand.</p>
       <p><b>Amortised count.</b> Inside the while loop each match increases i + k; when i + k exceeds R, R is updated to it. Matches that happen while i + k ≤ R are impossible (the start value already saturated that zone), so every match moves R by one. R ≤ 2N ⇒ ≤ 2N matches, ≤ 2N + 1 failures. This is the same “box” argument as the <b>Z-algorithm</b> (DSA 9) — Manacher is literally Z-function thinking applied to reflections.</p>
       <p><b>Variants you will meet.</b> (1) The <code>^#a#b#$</code> sentinel version removes bounds checks because <code>^ ≠ $</code>. (2) The <i>d1/d2</i> version keeps odd and even radii in two arrays over s itself (no padding, half the memory). (3) <b>Palindromic tree (eertree)</b> stores each <i>distinct</i> palindrome once (at most N+2 nodes) — use it for “count distinct palindromic substrings” or “palindromic occurrences per prefix”. (4) Hashing + binary search gives O(N log N) longest palindrome — slower, probabilistic, but generalises to 2D.</p>
-      <p><b>Production reality.</b> Real text is Unicode: Java <code>charAt</code> works on UTF-16 code units, so an emoji is two chars and a naive palindrome check can split it. Work on <code>codePoints()</code> or normalised grapheme clusters if the input is user text. Memory: int[2N+1] for N = 10<sup>7</sup> is ~80 MB — use the d1/d2 variant or a byte/short array when radii are bounded.</p>`,
+      <p><b>Production reality.</b> Real text is Unicode: Java and JavaScript index UTF-16 code units (an emoji is two <code>char</code>s and a naive palindrome check can split it), C++ <code>std::string</code> indexes bytes, and only Python indexes code points. Decode to code points (<code>codePoints()</code>, <code>Array.from</code>, a UTF-32 string) or normalised grapheme clusters if the input is user text. Memory: int[2N+1] for N = 10<sup>7</sup> is ~80 MB — use the d1/d2 variant or a byte/short array when radii are bounded.</p>`,
     aiEra: `<p><b>What AI changes:</b> any assistant can produce Manacher in seconds, so “can you type it” is no longer the signal. Interviewers now ask <i>why</i> it is linear, how the mirror rule works, and how to read prefix/suffix/count answers off the P array.</p>
       <p><b>Use AI as a partner:</b> ask <code>Write a stress test that compares my Manacher with an O(N^3) brute force on 10,000 random strings over {a,b}</code>. Small alphabets create many palindromes, which is exactly where off-by-one bugs hide. Ask it to explain one specific frame of the visualizer back to you — if its explanation disagrees with your trace, one of you is wrong, and finding out who is great practice.</p>
       <p><b>Where AI goes wrong:</b> mixing up the two conventions (radius in t vs length in s), so the substring start is off by one; forgetting that P on the padded string already equals the length in s and then doubling it; using <code>min(P[mirror], R − i + 1)</code> with an inclusive/exclusive mismatch. <b>What you must still own:</b> recognising “palindrome + big N” as a Manacher clue, choosing expand-around-center when N ≤ 3000 (simpler, fewer bugs), and proving the O(N) bound out loud.</p>`,
@@ -262,7 +389,24 @@ for s in ["abba", "abacabad", "aaaa"]:
             }
         }` },
       mcq: { q: 'P over the padded string at some center is 5. How many palindromic substrings share this center?', options: ['5', '3 (lengths 5, 3, 1)', '2', '1'], answer: 1, explain: 'Peeling one character off each end keeps a palindrome: lengths 5, 3, 1 → (5 + 1)/2 = 3.' },
-      hints: [`<p>Every palindrome has exactly one center in the <code>#</code>-padded string, and all palindromes with the same center are nested: if the longest has length P, the others have lengths P−2, P−4, …</p>`, `<p>So the answer is Σ ⌈P[i]/2⌉ = Σ (P[i] + 1) / 2 over all centers. You just need every P[i] — Manacher gives all of them in O(N).</p>`, `<p>Use <code>long</code> for the total (N = 10<sup>6</sup> all-same letters gives ~5·10<sup>11</sup>). Recipe: build t, run Manacher, sum (p+1)/2.</p>`],
+      hints: [`<p>Every palindrome has exactly one center in the <code>#</code>-padded string, and all palindromes with the same center are nested: if the longest has length P, the others have lengths P−2, P−4, …</p>`, `<p>So the answer is Σ ⌈P[i]/2⌉ = Σ (P[i] + 1) / 2 over all centers. You just need every P[i] — Manacher gives all of them in O(N).</p>`, `<p>Use a 64-bit integer (<code>long</code>, <code>long long</code>; Python ints are unbounded) for the total (N = 10<sup>6</sup> all-same letters gives ~5·10<sup>11</sup>). Recipe: build t, run Manacher, sum (p+1)/2.</p>`],
+      tests: { sig: 'string -> long', fn: 'countSubstrings', names: { python: 'countSubstrings' }, cases: [
+        [["aaa"],6],
+        [["abc"],3],
+        [["a"],1],
+        [["abba"],6],
+        [["abacaba"],12],
+        [["aabaa"],9],
+        [["zz"],3],
+        [["abcba"],7],
+        [["aabbaabbbabbbb"],34],
+        [["aabbbbb"],18],
+        [["aaaabaaabba"],26],
+        [["abbabbb"],14],
+        [["abcbcbaabcaa"],21],
+        [[{"$rep":"a","n":1000000}],500000500000],
+        [[{"$rep":"ab","n":500000}],250000500000]
+      ] },
       solution: {
         approach: `<p>Run Manacher once. For each center the palindromes centered there have lengths P, P − 2, …, down to 1 or 2, i.e. (P + 1)/2 of them (the # centers with P = 0 contribute 0). Sum them.</p>`,
         code: `
@@ -297,7 +441,39 @@ class Solution:
             if i + k > r:
                 c, r = i, i + k
             total += (k + 1) // 2
-        return total` }],
+        return total` }, { lang: 'js', code: `
+function countSubstrings(s) {
+  const m = 2 * s.length + 1;
+  const at = (i) => (i % 2 === 0 ? 35 : s.charCodeAt(i >> 1));   // "#a#b#..." without building it
+  const p = new Int32Array(m);
+  let c = 0, r = -1, total = 0;
+  for (let i = 0; i < m; i++) {
+    let k = i > r ? 0 : Math.min(p[2 * c - i], r - i);            // mirror gift
+    while (i - k - 1 >= 0 && i + k + 1 < m && at(i - k - 1) === at(i + k + 1)) k++;
+    p[i] = k;
+    if (i + k > r) { c = i; r = i + k; }
+    total += (k + 1) >> 1;                                         // nested palindromes at this center
+  }
+  return total;                                                    // up to 5e11: exact in a double
+}` }, { lang: 'cpp', code: `
+class Solution {
+public:
+    long long countSubstrings(const string& s) {
+        string t = "#";
+        for (char ch : s) { t += ch; t += '#'; }
+        int m = t.size(), c = 0, r = -1;
+        vector<int> p(m, 0);
+        long long total = 0;
+        for (int i = 0; i < m; i++) {
+            int k = (i > r) ? 0 : min(p[2 * c - i], r - i);        // mirror gift
+            while (i - k - 1 >= 0 && i + k + 1 < m && t[i - k - 1] == t[i + k + 1]) k++;
+            p[i] = k;
+            if (i + k > r) { c = i; r = i + k; }
+            total += (k + 1) / 2;                                   // nested palindromes at this center
+        }
+        return total;
+    }
+};` }],
         dry: { head: ['i', 't[i]', 'inside box?', 'start k', 'P[i]', '(P+1)/2', 'total'], rows: [
           ['0', '#', 'no', '0', '0', '0', '0'],
           ['1', 'a', 'no', '0', '1', '1', '1'],
@@ -327,7 +503,7 @@ class Solution:
         ['3', '0', '<code>banana</code>'], ['4', '4', '<code>na</code>'], ['5', '2', '<code>nana</code>']
       ])}
       ${H.arr([5, 3, 1, 0, 4, 2], { label: 'SA for "banana"', idx: true })}
-      <p>It is just <b>N integers</b> (4N bytes in Java) — far lighter than a suffix tree (often 20N+ bytes) yet it answers most of the same questions.</p>
+      <p>It is just <b>N integers</b> (4N bytes with 32-bit ints) — far lighter than a suffix tree (often 20N+ bytes) yet it answers most of the same questions.</p>
       <h4>2. Naive build and why it is too slow</h4>
       <p>Sort N strings with a comparison sort: N log N comparisons, but each comparison can cost O(N) characters → <b>O(N<sup>2</sup> log N)</b>. Fine for N = 1000, hopeless for 10<sup>5</sup> (think <code>aaaa…a</code>, where every comparison scans far).</p>
       <h4>3. Prefix doubling — sort by 1, 2, 4, 8 … characters</h4>
@@ -358,7 +534,7 @@ class Solution:
       'N ≤ 10<sup>5</sup>–10<sup>6</sup> with string comparisons inside a sort → naive O(N<sup>2</sup> log N) is out; prefix doubling O(N log N) is in.',
       'Bioinformatics / search-engine flavour: "index a genome", "full-text search without a hash", "Burrows–Wheeler", "FM-index".'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       class SuffixArray {
           // O(N log N) prefix doubling with counting sort on CYCLIC shifts.
           // We append a sentinel smaller than every real char so cyclic order == suffix order.
@@ -427,7 +603,224 @@ class Solution:
               int[] r = occurrenceRange(s, sa, "ana");
               System.out.println("ana occurs " + (r[1] - r[0]) + " times");   // 2
           }
-      }`, `
+      }`, alt: [{ lang: 'python', code: `class SuffixArray:
+    # O(N log N) prefix doubling with counting sort on CYCLIC shifts.
+    # We append a sentinel smaller than every real char so cyclic order == suffix order.
+    @staticmethod
+    def build(s):
+        a = [ord(ch) + 1 for ch in s] + [0]          # shift: sentinel 0 is smallest
+        n = len(a)
+        alphabet = max(a) + 1
+        cnt = [0] * max(alphabet, n)
+        p = [0] * n
+        # round 0: counting sort by the first character
+        for x in a:
+            cnt[x] += 1
+        for i in range(1, alphabet):
+            cnt[i] += cnt[i - 1]
+        for i in range(n - 1, -1, -1):
+            cnt[a[i]] -= 1
+            p[cnt[a[i]]] = i
+        c = [0] * n
+        classes = 1
+        for i in range(1, n):
+            if a[p[i]] != a[p[i - 1]]:
+                classes += 1
+            c[p[i]] = classes - 1
+        length = 1
+        while length < n and classes < n:
+            # shifting by -len makes the list already sorted by the SECOND half
+            pn = [(x - length) % n for x in p]
+            # stable counting sort by the FIRST half (class of pn[i])
+            cnt = [0] * classes
+            for x in pn:
+                cnt[c[x]] += 1
+            for i in range(1, classes):
+                cnt[i] += cnt[i - 1]
+            for i in range(n - 1, -1, -1):
+                cnt[c[pn[i]]] -= 1
+                p[cnt[c[pn[i]]]] = pn[i]
+            # re-rank: new class when either half differs
+            cn = [0] * n
+            classes = 1
+            for i in range(1, n):
+                if c[p[i]] != c[p[i - 1]] or c[(p[i] + length) % n] != c[(p[i - 1] + length) % n]:
+                    classes += 1
+                cn[p[i]] = classes - 1
+            c = cn
+            length <<= 1
+        return p[1:]                                  # drop the sentinel suffix (always first)
+
+    # -1: suffix < p, 0: p is a prefix of the suffix, +1: suffix > p
+    @staticmethod
+    def cmp(s, start, p):
+        for k, y in enumerate(p):
+            if start + k >= len(s):
+                return -1                             # suffix ran out first -> smaller
+            x = s[start + k]
+            if x != y:
+                return -1 if x < y else 1
+        return 0
+
+    # occurrences of p are SA[lo .. hi-1]
+    @staticmethod
+    def occurrence_range(s, sa, p):
+        lo, hi = 0, len(sa)
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if SuffixArray.cmp(s, sa[mid], p) < 0:
+                lo = mid + 1
+            else:
+                hi = mid
+        left = lo
+        hi = len(sa)
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if SuffixArray.cmp(s, sa[mid], p) <= 0:
+                lo = mid + 1
+            else:
+                hi = mid
+        return left, lo
+
+
+s = "banana"
+sa = SuffixArray.build(s)
+print(sa)                                             # [5, 3, 1, 0, 4, 2]
+lo, hi = SuffixArray.occurrence_range(s, sa, "ana")
+print("ana occurs", hi - lo, "times")                 # 2` }, { lang: 'js', code: `class SuffixArray {
+  // O(N log N) prefix doubling with counting sort on CYCLIC shifts.
+  // We append a sentinel smaller than every real char so cyclic order == suffix order.
+  static build(str) {
+    const n = str.length + 1;
+    const a = new Array(n);
+    for (let i = 0; i < n - 1; i++) a[i] = str.charCodeAt(i) + 1;   // shift: sentinel 0 is smallest
+    a[n - 1] = 0;
+    let alphabet = 0;
+    for (const x of a) alphabet = Math.max(alphabet, x + 1);
+    const p = new Array(n).fill(0);
+    let c = new Array(n).fill(0), cn = new Array(n).fill(0), pn = new Array(n).fill(0);
+    let cnt = new Array(Math.max(alphabet, n)).fill(0);
+    // round 0: counting sort by the first character
+    for (const x of a) cnt[x]++;
+    for (let i = 1; i < alphabet; i++) cnt[i] += cnt[i - 1];
+    for (let i = n - 1; i >= 0; i--) p[--cnt[a[i]]] = i;
+    let classes = 1;
+    c[p[0]] = 0;
+    for (let i = 1; i < n; i++) { if (a[p[i]] !== a[p[i - 1]]) classes++; c[p[i]] = classes - 1; }
+    for (let len = 1; len < n && classes < n; len <<= 1) {
+      // shifting by -len makes the list already sorted by the SECOND half
+      for (let i = 0; i < n; i++) { pn[i] = p[i] - len; if (pn[i] < 0) pn[i] += n; }
+      // stable counting sort by the FIRST half (class of pn[i])
+      cnt.fill(0, 0, classes);
+      for (let i = 0; i < n; i++) cnt[c[pn[i]]]++;
+      for (let i = 1; i < classes; i++) cnt[i] += cnt[i - 1];
+      for (let i = n - 1; i >= 0; i--) p[--cnt[c[pn[i]]]] = pn[i];
+      // re-rank: new class when either half differs
+      cn[p[0]] = 0;
+      classes = 1;
+      for (let i = 1; i < n; i++) {
+        const curB = c[(p[i] + len) % n], prevB = c[(p[i - 1] + len) % n];
+        if (c[p[i]] !== c[p[i - 1]] || curB !== prevB) classes++;
+        cn[p[i]] = classes - 1;
+      }
+      [c, cn] = [cn, c];
+    }
+    return p.slice(1);                       // drop the sentinel suffix (always first)
+  }
+
+  // -1: suffix < p, 0: p is a prefix of the suffix, +1: suffix > p
+  static cmp(s, start, p) {
+    for (let k = 0; k < p.length; k++) {
+      if (start + k >= s.length) return -1;          // suffix ran out first -> smaller
+      const x = s[start + k], y = p[k];
+      if (x !== y) return x < y ? -1 : 1;
+    }
+    return 0;
+  }
+
+  // occurrences of p are SA[lo .. hi-1]
+  static occurrenceRange(s, sa, p) {
+    let lo = 0, hi = sa.length;
+    while (lo < hi) { const mid = (lo + hi) >>> 1; if (SuffixArray.cmp(s, sa[mid], p) < 0) lo = mid + 1; else hi = mid; }
+    const left = lo;
+    hi = sa.length;
+    while (lo < hi) { const mid = (lo + hi) >>> 1; if (SuffixArray.cmp(s, sa[mid], p) <= 0) lo = mid + 1; else hi = mid; }
+    return [left, lo];
+  }
+}
+
+const s = "banana";
+const sa = SuffixArray.build(s);
+console.log(JSON.stringify(sa));                     // [5,3,1,0,4,2]
+const [lo, hi] = SuffixArray.occurrenceRange(s, sa, "ana");
+console.log("ana occurs " + (hi - lo) + " times");   // 2` }, { lang: 'cpp', code: `class SuffixArray {
+public:
+    // O(N log N) prefix doubling with counting sort on CYCLIC shifts.
+    // We append a sentinel smaller than every real char so cyclic order == suffix order.
+    static vector<int> build(const string& str) {
+        int n = str.size() + 1;
+        vector<int> a(n);
+        for (int i = 0; i < n - 1; i++) a[i] = (unsigned char)str[i] + 1;   // shift: sentinel 0 is smallest
+        a[n - 1] = 0;
+        int alphabet = *max_element(a.begin(), a.end()) + 1;
+        vector<int> p(n), c(n), pn(n), cn(n), cnt(max(alphabet, n), 0);
+        // round 0: counting sort by the first character
+        for (int x : a) cnt[x]++;
+        for (int i = 1; i < alphabet; i++) cnt[i] += cnt[i - 1];
+        for (int i = n - 1; i >= 0; i--) p[--cnt[a[i]]] = i;
+        int classes = 1;
+        c[p[0]] = 0;
+        for (int i = 1; i < n; i++) { if (a[p[i]] != a[p[i - 1]]) classes++; c[p[i]] = classes - 1; }
+        for (int len = 1; len < n && classes < n; len <<= 1) {
+            // shifting by -len makes the list already sorted by the SECOND half
+            for (int i = 0; i < n; i++) { pn[i] = p[i] - len; if (pn[i] < 0) pn[i] += n; }
+            // stable counting sort by the FIRST half (class of pn[i])
+            fill(cnt.begin(), cnt.begin() + classes, 0);
+            for (int i = 0; i < n; i++) cnt[c[pn[i]]]++;
+            for (int i = 1; i < classes; i++) cnt[i] += cnt[i - 1];
+            for (int i = n - 1; i >= 0; i--) p[--cnt[c[pn[i]]]] = pn[i];
+            // re-rank: new class when either half differs
+            cn[p[0]] = 0;
+            classes = 1;
+            for (int i = 1; i < n; i++) {
+                int curB = c[(p[i] + len) % n], prevB = c[(p[i - 1] + len) % n];
+                if (c[p[i]] != c[p[i - 1]] || curB != prevB) classes++;
+                cn[p[i]] = classes - 1;
+            }
+            c.swap(cn);
+        }
+        return vector<int>(p.begin() + 1, p.end());   // drop the sentinel suffix (always first)
+    }
+
+    // -1: suffix < p, 0: p is a prefix of the suffix, +1: suffix > p
+    static int cmp(const string& s, int start, const string& p) {
+        for (int k = 0; k < (int)p.size(); k++) {
+            if (start + k >= (int)s.size()) return -1;      // suffix ran out first -> smaller
+            char x = s[start + k], y = p[k];
+            if (x != y) return x < y ? -1 : 1;
+        }
+        return 0;
+    }
+
+    // occurrences of p are SA[lo .. hi-1]
+    static pair<int, int> occurrenceRange(const string& s, const vector<int>& sa, const string& p) {
+        int lo = 0, hi = sa.size();
+        while (lo < hi) { int mid = (lo + hi) / 2; if (cmp(s, sa[mid], p) < 0) lo = mid + 1; else hi = mid; }
+        int left = lo;
+        hi = sa.size();
+        while (lo < hi) { int mid = (lo + hi) / 2; if (cmp(s, sa[mid], p) <= 0) lo = mid + 1; else hi = mid; }
+        return {left, lo};
+    }
+};
+
+int main() {
+    string s = "banana";
+    vector<int> sa = SuffixArray::build(s);
+    for (int x : sa) cout << x << " ";                  // 5 3 1 0 4 2
+    cout << "\\n";
+    auto [lo, hi] = SuffixArray::occurrenceRange(s, sa, "ana");
+    cout << "ana occurs " << hi - lo << " times\\n";     // 2
+}` }] }, { lang: 'java', code: `
       class SuffixArraySimple {
           // O(N log^2 N): easiest to write under interview pressure.
           static int[] build(String s) {
@@ -457,7 +850,78 @@ class Solution:
           public static void main(String[] args) {
               System.out.println(Arrays.toString(build("mississippi"))); // [10, 7, 4, 1, 0, 9, 8, 6, 3, 5, 2]
           }
-      }`, { lang: 'python', run: true, title: 'Prefix doubling in Python (runnable)', code: `
+      }`, alt: [{ lang: 'python', code: `class SuffixArraySimple:
+    # O(N log^2 N): easiest to write under interview pressure.
+    @staticmethod
+    def build(s):
+        n = len(s)
+        if n == 0:
+            return []
+        sa = list(range(n))
+        rank = [ord(ch) for ch in s]
+        k = 1
+        while True:
+            # sort by (first half, second half); the second half is -1 past the end
+            def key(i, r=rank, k=k):
+                return (r[i], r[i + k] if i + k < n else -1)
+            sa.sort(key=key)
+            tmp = [0] * n
+            for i in range(1, n):
+                tmp[sa[i]] = tmp[sa[i - 1]] + (1 if key(sa[i - 1]) < key(sa[i]) else 0)
+            rank = tmp
+            if rank[sa[-1]] == n - 1:         # all ranks distinct -> fully sorted
+                break
+            k <<= 1
+        return sa
+
+
+print(SuffixArraySimple.build("mississippi"))   # [10, 7, 4, 1, 0, 9, 8, 6, 3, 5, 2]` }, { lang: 'js', code: `class SuffixArraySimple {
+  // O(N log^2 N): easiest to write under interview pressure.
+  static build(s) {
+    const n = s.length;
+    if (n === 0) return [];
+    const sa = Array.from({ length: n }, (_, i) => i);
+    let rank = Array.from(s, (ch) => ch.charCodeAt(0));
+    for (let k = 1; ; k <<= 1) {
+      const r = rank;
+      const second = (i) => (i + k < n ? r[i + k] : -1);
+      // sort by (first half, second half)
+      const cmp = (x, y) => (r[x] !== r[y] ? r[x] - r[y] : second(x) - second(y));
+      sa.sort(cmp);
+      const tmp = new Array(n).fill(0);
+      for (let i = 1; i < n; i++) tmp[sa[i]] = tmp[sa[i - 1]] + (cmp(sa[i - 1], sa[i]) < 0 ? 1 : 0);
+      rank = tmp;
+      if (rank[sa[n - 1]] === n - 1) break;   // all ranks distinct -> fully sorted
+    }
+    return sa;
+  }
+}
+
+console.log(JSON.stringify(SuffixArraySimple.build("mississippi")));   // [10,7,4,1,0,9,8,6,3,5,2]` }, { lang: 'cpp', code: `class SuffixArraySimple {
+public:
+    // O(N log^2 N): easiest to write under interview pressure.
+    static vector<int> build(const string& s) {
+        int n = s.size();
+        vector<int> sa(n), rank(n), tmp(n);
+        iota(sa.begin(), sa.end(), 0);
+        for (int i = 0; i < n; i++) rank[i] = (unsigned char)s[i];
+        for (int k = 1; n > 0; k <<= 1) {
+            // sort by (first half, second half); the second half is -1 past the end
+            auto key = [&](int i) { return make_pair(rank[i], i + k < n ? rank[i + k] : -1); };
+            sort(sa.begin(), sa.end(), [&](int x, int y) { return key(x) < key(y); });
+            tmp[sa[0]] = 0;
+            for (int i = 1; i < n; i++) tmp[sa[i]] = tmp[sa[i - 1]] + (key(sa[i - 1]) < key(sa[i]) ? 1 : 0);
+            rank = tmp;
+            if (rank[sa[n - 1]] == n - 1) break;     // all ranks distinct -> fully sorted
+        }
+        return sa;
+    }
+};
+
+int main() {
+    for (int x : SuffixArraySimple::build("mississippi")) cout << x << " ";   // 10 7 4 1 0 9 8 6 3 5 2
+    cout << "\\n";
+}` }] }, { lang: 'python', run: true, title: 'Prefix doubling in Python (runnable)', code: `
 def suffix_array(s):
     n = len(s)
     sa = list(range(n))
@@ -556,7 +1020,7 @@ for word in ["banana", "mississippi", "aaaa"]:
     deepDive: `<p><b>Counting-sort round in detail.</b> Sorting pairs (c[i], c[i+k]) needs two stable passes in radix style — but the list sorted by the <i>second</i> key is free: take the previous order p and shift every entry left by k (<code>p[i] − k mod n</code>). Then one stable counting sort by the first key finishes the job. That is why each round is O(N) and the whole build O(N log N) with tiny constants.</p>
       <p><b>Linear-time builders.</b> <b>SA-IS</b> (Nong, Zhang &amp; Chan, 2009) classifies suffixes as S/L-type, sorts only the “LMS” suffixes recursively and induces the rest; it is what <code>libdivsufsort</code>/<code>sais</code> and many bioinformatics tools use. <b>DC3/skew</b> (Kärkkäinen–Sanders) sorts suffixes at positions i mod 3 ≠ 0 recursively and merges. In interviews you are expected to <i>know they exist</i>, not code them.</p>
       <p><b>Relationship to suffix trees.</b> The SA is the order of leaves in a DFS of the suffix tree (children sorted by edge letter); the LCP array gives the string depths of the LCAs of neighbouring leaves. With SA + LCP + RMQ you can simulate most suffix-tree algorithms with 4–5× less memory. Search can be sped up from O(|P| log N) to O(|P| + log N) using LCP information during binary search (Manber–Myers).</p>
-      <p><b>Production reality.</b> The Burrows–Wheeler Transform (used by bzip2) is literally “the character before each suffix, in SA order”; the <b>FM-index</b> built on it lets read aligners (BWA, Bowtie) search a 3-billion-letter human genome in a few GB of RAM. Pitfalls in code: Java <code>substring</code> inside a comparator allocates O(N) per call (O(N<sup>2</sup>) memory traffic); <code>int</code> overflow when N(N+1)/2 is computed for counting; recursion depth is not an issue (all iterative).</p>`,
+      <p><b>Production reality.</b> The Burrows–Wheeler Transform (used by bzip2) is literally “the character before each suffix, in SA order”; the <b>FM-index</b> built on it lets read aligners (BWA, Bowtie) search a 3-billion-letter human genome in a few GB of RAM. Pitfalls in code: slicing a string inside a comparator (Java <code>substring</code>, Python slices, C++ <code>substr</code>) copies O(N) per call (O(N<sup>2</sup>) memory traffic) — compare with indices instead; 32-bit overflow when N(N+1)/2 is computed for counting; recursion depth is not an issue (all iterative).</p>`,
     aiEra: `<p><b>What AI changes:</b> suffix arrays are suddenly <i>hot</i> outside competitive programming. Training-data deduplication for language models (Lee et al., 2021, “Deduplicating Training Data Makes Language Models Better”) built suffix arrays over hundreds of GB of text to find every repeated span of 50+ tokens, and <b>infini-gram</b> (2024) answers n-gram counts over trillions of tokens with a suffix array — the exact “count occurrences by two binary searches” idea from this topic, at internet scale.</p>
       <p><b>Use AI as a partner:</b> let it draft the O(N log N) build, then ask it to <code>add assertions that SA is a permutation and adjacent suffixes are strictly increasing, and fuzz against sorting all suffixes naively for N ≤ 12</code>. Ask it to explain why shifting p by −k gives the second-key order — if it cannot, write the explanation yourself.</p>
       <p><b>Where AI goes wrong:</b> mixing cyclic and non-cyclic versions (forgetting the sentinel, so <code>aa</code>’s suffixes tie forever), comparing with <code>substring()</code> in a comparator (silently quadratic), and off-by-one upper bounds in the pattern search. <b>What you must still own:</b> knowing when a hash map of substrings is enough versus when you truly need sorted-suffix structure (k-th substring, LCP-based counts), and estimating memory for N = 10<sup>8</sup>.</p>`,
@@ -579,6 +1043,19 @@ for word in ["banana", "mississippi", "aaaa"]:
         }` },
       mcq: { q: 'In a suffix array, the suffixes that start with pattern P…', options: ['are scattered randomly', 'form one contiguous block', 'are always the first |P| entries', 'cannot be found without LCP'], answer: 1, explain: 'Sorted order groups all strings that share a prefix, exactly like a dictionary groups words starting with the same letters.' },
       hints: [`<p>An occurrence of P at index i means P is a <b>prefix</b> of suffix i. In sorted order, all suffixes with prefix P are neighbours.</p>`, `<p>Build the suffix array once (O(N log N)). For each query do a lower bound (first suffix ≥ P) and an upper bound (first suffix whose first |P| chars are &gt; P).</p>`, `<p>Compare a suffix and P only on the first |P| characters; if the suffix ends early it is <i>smaller</i>. Answer = upper − lower. Edge cases: P longer than T, P equal to T.</p>`],
+      tests: { sig: 'string string[] -> int[]', fn: 'countAll', cases: [
+        [["banana",["ana","na","x","banana"]],[2,2,0,1]],
+        [["a",["a","aa","b"]],[1,0,0]],
+        [["aaaa",["aa","aaa","aaaa","aaaaa","a"]],[3,2,1,0,4]],
+        [["mississippi",["ssi","issi","i","pp","mississippi","sip","z"]],[2,2,4,1,1,1,0]],
+        [["abababab",["ab","aba","bab","b","abababab","ba"]],[4,3,3,4,1,3]],
+        [["abcabcabc",["abc","cab","bca","abcabcabcabc"]],[3,2,2,0]],
+        [["abaaababaaabbbaabababbababbabbbabbbb",["bbba","aa","aaaa","aa","abbb","aab","b","baab"]],[2,5,0,5,3,3,20,1]],
+        [["abbaababbbbbabbabbbab",["ba","aa","b","abb","bbb","b","aaba","b"]],[5,1,14,4,4,14,1,14]],
+        [["bbbbabaabababbbabbaaabaaabababbbbaaaaa",["abb","b","abab","a","a","b","a","bb"]],[3,19,4,19,19,19,19,9]],
+        [[{"$rep":"a","n":200000},{"$rep":"aaaaaaaaaa","n":100000}],{"$rep":199991,"n":100000}],
+        [[{"$rep":"ab","n":25000},{"$concat":[{"$rep":"abab","n":40000},["b","ba","zz"]]}],{"$concat":[{"$rep":24999,"n":40000},[25000,24999,0]]}]
+      ] },
       solution: {
         approach: `<p>Index once, query many times. The suffix array turns “find all occurrences” into “find a range in a sorted list”, which binary search does in O(|P| log |T|). Total O(|T| log |T| + Σ|P| · log |T|) ≈ 2·10<sup>7</sup> char comparisons.</p>`,
         code: `
@@ -641,17 +1118,118 @@ for word in ["banana", "mississippi", "aaaa"]:
               }
           }`,
         alt: [{ lang: 'python', code: `
-from bisect import bisect_left, bisect_right
+def build_sa(s):
+    # prefix doubling: sort by (rank[i], rank[i + k]) packed into one integer key
+    n = len(s)
+    rank = [ord(ch) for ch in s]
+    sa = list(range(n))
+    base = max(n, 128) + 2
+    k = 1
+    while True:
+        key = [rank[i] * base + (rank[i + k] + 1 if i + k < n else 0) for i in range(n)]
+        sa.sort(key=key.__getitem__)
+        rank = [0] * n
+        r = 0
+        for j in range(1, n):
+            if key[sa[j]] != key[sa[j - 1]]:
+                r += 1
+            rank[sa[j]] = r
+        if r == n - 1:
+            return sa
+        k <<= 1
+
 
 def count_all(text, queries):
-    sa = sorted(range(len(text)), key=lambda i: text[i:])     # fine for small inputs; use doubling for big ones
-    out = []
-    for p in queries:
-        keys = [text[i:i + len(p)] for i in sa]             # first |p| chars of each suffix, sorted
-        out.append(bisect_right(keys, p) - bisect_left(keys, p))
-    return out
+    sa = build_sa(text)
+    n = len(sa)
 
-print(count_all("banana", ["ana", "na", "x", "banana"]))   # [2, 2, 0, 1]` }],
+    def bound(p, strict):
+        # strict False: first suffix >= p (on |p| chars); True: first suffix > p
+        lo, hi, m = 0, n, len(p)
+        while lo < hi:
+            mid = (lo + hi) // 2
+            piece = text[sa[mid]:sa[mid] + m]       # a short suffix compares as smaller
+            if piece < p or (strict and piece == p):
+                lo = mid + 1
+            else:
+                hi = mid
+        return lo
+
+    return [bound(p, True) - bound(p, False) for p in queries]` }, { lang: 'js', code: `
+function buildSA(s) {
+  // prefix doubling: sort by (rank[i], rank[i + k]) packed into one number
+  const n = s.length;
+  let rank = new Int32Array(n);
+  for (let i = 0; i < n; i++) rank[i] = s.charCodeAt(i);
+  const sa = Array.from({ length: n }, (_, i) => i);
+  const key = new Float64Array(n);
+  const base = Math.max(n, 128) + 2;
+  for (let k = 1; ; k <<= 1) {
+    for (let i = 0; i < n; i++) key[i] = rank[i] * base + (i + k < n ? rank[i + k] + 1 : 0);
+    sa.sort((a, b) => key[a] - key[b]);
+    const next = new Int32Array(n);
+    for (let j = 1; j < n; j++) next[sa[j]] = next[sa[j - 1]] + (key[sa[j]] !== key[sa[j - 1]] ? 1 : 0);
+    rank = next;
+    if (rank[sa[n - 1]] === n - 1) return sa;
+  }
+}
+
+function countAll(text, queries) {
+  const sa = buildSA(text), n = sa.length;
+  // strict false: first suffix >= p (on |p| chars); true: first suffix > p
+  const bound = (p, strict) => {
+    let lo = 0, hi = n;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      const piece = text.substr(sa[mid], p.length);         // a short suffix compares as smaller
+      if (piece < p || (strict && piece === p)) lo = mid + 1; else hi = mid;
+    }
+    return lo;
+  };
+  return queries.map((p) => bound(p, true) - bound(p, false));
+}` }, { lang: 'cpp', code: `
+class Solution {
+    string t;
+    vector<int> sa;
+
+    void build() {                                   // prefix doubling, packed (rank, next rank) keys
+        int n = t.size();
+        sa.resize(n);
+        iota(sa.begin(), sa.end(), 0);
+        vector<int> rank(n), next(n);
+        vector<long long> key(n);
+        for (int i = 0; i < n; i++) rank[i] = t[i];
+        long long base = max(n, 128) + 2;
+        for (int k = 1;; k <<= 1) {
+            for (int i = 0; i < n; i++) key[i] = rank[i] * base + (i + k < n ? rank[i + k] + 1 : 0);
+            sort(sa.begin(), sa.end(), [&](int a, int b) { return key[a] < key[b]; });
+            next[sa[0]] = 0;
+            for (int j = 1; j < n; j++) next[sa[j]] = next[sa[j - 1]] + (key[sa[j]] != key[sa[j - 1]]);
+            rank = next;
+            if (rank[sa[n - 1]] == n - 1) break;
+        }
+    }
+
+    // strict false: first suffix >= p (on |p| chars); true: first suffix > p
+    int bound(const string& p, bool strict) const {
+        int lo = 0, hi = sa.size();
+        while (lo < hi) {
+            int mid = (lo + hi) / 2;
+            int c = t.compare(sa[mid], p.size(), p);  // a short suffix compares as smaller
+            if (c < 0 || (strict && c == 0)) lo = mid + 1; else hi = mid;
+        }
+        return lo;
+    }
+
+public:
+    vector<int> countAll(string text, vector<string> queries) {
+        t = text;
+        build();
+        vector<int> ans;
+        for (const string& p : queries) ans.push_back(bound(p, true) - bound(p, false));
+        return ans;
+    }
+};` }],
         dry: { head: ['search', 'lo', 'hi', 'mid', 'suffix at SA[mid]', 'cmp with "ana"', 'move'], rows: [
           ['lower', '0', '6', '3', 'banana', '+1 (b &gt; a)', 'hi = 3'],
           ['lower', '0', '3', '1', 'ana', '0 (prefix)', 'hi = 1'],
@@ -710,7 +1288,7 @@ print(count_all("banana", ["ana", "na", "x", "banana"]))   # [2, 2, 0, 1]` }],
       '"compare two substrings lexicographically many times" → ranks + RMQ on LCP (O(1) per comparison).',
       'You already have a suffix array and the question mentions “shared prefix”, “overlap”, “repeat” → you need LCP.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       class LcpToolkit {
           static int[] buildSA(String s) {                       // O(N log^2 N) prefix doubling
               int n = s.length();
@@ -774,7 +1352,193 @@ print(count_all("banana", ["ana", "na", "x", "banana"]))   # [2, 2, 0, 1]` }],
               System.out.println(longestRepeated("banana"));             // ana
               System.out.println(longestCommon("xabcdey", "zzbcdq"));    // bcd
           }
-      }`, `
+      }`, alt: [{ lang: 'python', code: `class LcpToolkit:
+    @staticmethod
+    def build_sa(s):                       # O(N log^2 N) prefix doubling
+        n = len(s)
+        sa = list(range(n))
+        rank = [ord(ch) for ch in s]
+        k = 1
+        while n > 1:
+            r, step = rank, k
+            def key(i):
+                return (r[i], r[i + step] if i + step < n else -1)
+            sa.sort(key=key)
+            tmp = [0] * n
+            for i in range(1, n):
+                tmp[sa[i]] = tmp[sa[i - 1]] + (1 if key(sa[i - 1]) < key(sa[i]) else 0)
+            rank = tmp
+            if rank[sa[-1]] == n - 1:
+                break
+            k <<= 1
+        return sa
+
+    # Kasai: lcp[r] = LCP(suffix SA[r-1], suffix SA[r]); lcp[0] = 0. O(N).
+    @staticmethod
+    def kasai(s, sa):
+        n = len(s)
+        rank = [0] * n
+        for r, i in enumerate(sa):
+            rank[i] = r
+        lcp = [0] * n
+        h = 0
+        for i in range(n):                 # TEXT order, not sorted order
+            if rank[i] == 0:               # no neighbour above
+                h = 0
+                continue
+            j = sa[rank[i] - 1]            # sorted neighbour above suffix i
+            while i + h < n and j + h < n and s[i + h] == s[j + h]:
+                h += 1
+            lcp[rank[i]] = h
+            if h > 0:
+                h -= 1                     # the "bookmark slips back one" step
+        return lcp
+
+    @staticmethod
+    def longest_repeated(s):
+        sa = LcpToolkit.build_sa(s)
+        lcp = LcpToolkit.kasai(s, sa)
+        best, at = 0, 0
+        for r in range(1, len(s)):
+            if lcp[r] > best:
+                best, at = lcp[r], sa[r]
+        return s[at:at + best]
+
+    @staticmethod
+    def longest_common(a, b):
+        s = a + "#" + b                    # '#' must not appear in a or b
+        sa = LcpToolkit.build_sa(s)
+        lcp = LcpToolkit.kasai(s, sa)
+        n1, best, at = len(a), 0, 0
+        for r in range(1, len(s)):
+            from_a, prev_from_a = sa[r] < n1, sa[r - 1] < n1
+            if from_a != prev_from_a and lcp[r] > best:
+                best, at = lcp[r], sa[r]
+        return s[at:at + best]
+
+
+s = "banana"
+sa = LcpToolkit.build_sa(s)
+print(LcpToolkit.kasai(s, sa))                          # [0, 1, 3, 0, 0, 2]
+print(LcpToolkit.longest_repeated("banana"))            # ana
+print(LcpToolkit.longest_common("xabcdey", "zzbcdq"))   # bcd` }, { lang: 'js', code: `class LcpToolkit {
+  static buildSA(s) {                       // O(N log^2 N) prefix doubling
+    const n = s.length;
+    const sa = Array.from({ length: n }, (_, i) => i);
+    let rank = Array.from(s, (ch) => ch.charCodeAt(0));
+    for (let k = 1; n > 1; k <<= 1) {
+      const r = rank;
+      const cmp = (x, y) => (r[x] !== r[y] ? r[x] - r[y]
+        : (x + k < n ? r[x + k] : -1) - (y + k < n ? r[y + k] : -1));
+      sa.sort(cmp);
+      const tmp = new Array(n).fill(0);
+      for (let i = 1; i < n; i++) tmp[sa[i]] = tmp[sa[i - 1]] + (cmp(sa[i - 1], sa[i]) < 0 ? 1 : 0);
+      rank = tmp;
+      if (rank[sa[n - 1]] === n - 1) break;
+    }
+    return sa;
+  }
+
+  // Kasai: lcp[r] = LCP(suffix SA[r-1], suffix SA[r]); lcp[0] = 0. O(N).
+  static kasai(s, sa) {
+    const n = s.length;
+    const rank = new Array(n).fill(0), lcp = new Array(n).fill(0);
+    for (let r = 0; r < n; r++) rank[sa[r]] = r;
+    let h = 0;
+    for (let i = 0; i < n; i++) {                      // TEXT order, not sorted order
+      if (rank[i] === 0) { h = 0; continue; }          // no neighbour above
+      const j = sa[rank[i] - 1];                       // sorted neighbour above suffix i
+      while (i + h < n && j + h < n && s[i + h] === s[j + h]) h++;
+      lcp[rank[i]] = h;
+      if (h > 0) h--;                                  // the "bookmark slips back one" step
+    }
+    return lcp;
+  }
+
+  static longestRepeated(s) {
+    const sa = LcpToolkit.buildSA(s), lcp = LcpToolkit.kasai(s, sa);
+    let best = 0, at = 0;
+    for (let r = 1; r < s.length; r++) if (lcp[r] > best) { best = lcp[r]; at = sa[r]; }
+    return s.substring(at, at + best);
+  }
+
+  static longestCommon(a, b) {
+    const s = a + "#" + b;                             // '#' must not appear in a or b
+    const sa = LcpToolkit.buildSA(s), lcp = LcpToolkit.kasai(s, sa);
+    const n1 = a.length;
+    let best = 0, at = 0;
+    for (let r = 1; r < s.length; r++) {
+      const fromA = sa[r] < n1, prevFromA = sa[r - 1] < n1;
+      if (fromA !== prevFromA && lcp[r] > best) { best = lcp[r]; at = sa[r]; }
+    }
+    return s.substring(at, at + best);
+  }
+}
+
+const s = "banana";
+const sa = LcpToolkit.buildSA(s);
+console.log(JSON.stringify(LcpToolkit.kasai(s, sa)));            // [0,1,3,0,0,2]
+console.log(LcpToolkit.longestRepeated("banana"));               // ana
+console.log(LcpToolkit.longestCommon("xabcdey", "zzbcdq"));      // bcd` }, { lang: 'cpp', code: `class LcpToolkit {
+public:
+    static vector<int> buildSA(const string& s) {          // O(N log^2 N) prefix doubling
+        int n = s.size();
+        vector<int> sa(n), rank(n), tmp(n);
+        iota(sa.begin(), sa.end(), 0);
+        for (int i = 0; i < n; i++) rank[i] = (unsigned char)s[i];
+        for (int k = 1; n > 1; k <<= 1) {
+            auto key = [&](int i) { return make_pair(rank[i], i + k < n ? rank[i + k] : -1); };
+            sort(sa.begin(), sa.end(), [&](int x, int y) { return key(x) < key(y); });
+            tmp[sa[0]] = 0;
+            for (int i = 1; i < n; i++) tmp[sa[i]] = tmp[sa[i - 1]] + (key(sa[i - 1]) < key(sa[i]) ? 1 : 0);
+            rank = tmp;
+            if (rank[sa[n - 1]] == n - 1) break;
+        }
+        return sa;
+    }
+
+    // Kasai: lcp[r] = LCP(suffix SA[r-1], suffix SA[r]); lcp[0] = 0. O(N).
+    static vector<int> kasai(const string& s, const vector<int>& sa) {
+        int n = s.size();
+        vector<int> rank(n), lcp(n, 0);
+        for (int r = 0; r < n; r++) rank[sa[r]] = r;
+        int h = 0;
+        for (int i = 0; i < n; i++) {                      // TEXT order, not sorted order
+            if (rank[i] == 0) { h = 0; continue; }         // no neighbour above
+            int j = sa[rank[i] - 1];                       // sorted neighbour above suffix i
+            while (i + h < n && j + h < n && s[i + h] == s[j + h]) h++;
+            lcp[rank[i]] = h;
+            if (h > 0) h--;                                // the "bookmark slips back one" step
+        }
+        return lcp;
+    }
+
+    static string longestRepeated(const string& s) {
+        vector<int> sa = buildSA(s), lcp = kasai(s, sa);
+        int best = 0, at = 0;
+        for (int r = 1; r < (int)s.size(); r++) if (lcp[r] > best) { best = lcp[r]; at = sa[r]; }
+        return s.substr(at, best);
+    }
+
+    static string longestCommon(const string& a, const string& b) {
+        string s = a + "#" + b;                            // '#' must not appear in a or b
+        vector<int> sa = buildSA(s), lcp = kasai(s, sa);
+        int n1 = a.size(), best = 0, at = 0;
+        for (int r = 1; r < (int)s.size(); r++) {
+            bool fromA = sa[r] < n1, prevFromA = sa[r - 1] < n1;
+            if (fromA != prevFromA && lcp[r] > best) { best = lcp[r]; at = sa[r]; }
+        }
+        return s.substr(at, best);
+    }
+};
+
+int main() {
+    string s = "banana";
+    vector<int> sa = LcpToolkit::buildSA(s);
+    for (int x : LcpToolkit::kasai(s, sa)) cout << x << " ";        // 0 1 3 0 0 2
+    cout << "\\n" << LcpToolkit::longestRepeated("banana") << "\\n";   // ana
+    cout << LcpToolkit::longestCommon("xabcdey", "zzbcdq") << "\\n";  // bcd
+}` }] }, { lang: 'java', code: `
       class LcpRmq {
           // O(1) LCP of any two suffixes with a sparse table over lcp[].
           final int[][] sp;
@@ -805,7 +1569,89 @@ print(count_all("banana", ["ana", "na", "x", "banana"]))   # [2, 2, 0, 1]` }],
               System.out.println(q.lcp(5, 1));   // a vs anana   -> 1
               System.out.println(q.lcp(0, 2));   // banana vs nana -> 0
           }
-      }`],
+      }`, alt: [{ lang: 'python', code: `class LcpRmq:
+    # O(1) LCP of any two suffixes with a sparse table over lcp[].
+    def __init__(self, sa, lcp):
+        n = len(sa)
+        self.rank = [0] * n
+        for r, i in enumerate(sa):
+            self.rank[i] = r
+        self.sp = [list(lcp)]
+        k = 1
+        while (1 << k) <= n:
+            prev = self.sp[-1]
+            half = 1 << (k - 1)
+            self.sp.append([min(prev[i], prev[i + half]) for i in range(n - (1 << k) + 1)])
+            k += 1
+
+    # LCP of suffixes starting at positions i and j (i != j)
+    def lcp(self, i, j):
+        a = min(self.rank[i], self.rank[j]) + 1
+        b = max(self.rank[i], self.rank[j])
+        k = (b - a + 1).bit_length() - 1
+        return min(self.sp[k][a], self.sp[k][b - (1 << k) + 1])
+
+
+# banana: SA = [5,3,1,0,4,2], lcp = [0,1,3,0,0,2]
+q = LcpRmq([5, 3, 1, 0, 4, 2], [0, 1, 3, 0, 0, 2])
+print(q.lcp(1, 3))   # anana vs ana -> 3
+print(q.lcp(5, 1))   # a vs anana   -> 1
+print(q.lcp(0, 2))   # banana vs nana -> 0` }, { lang: 'js', code: `class LcpRmq {
+  // O(1) LCP of any two suffixes with a sparse table over lcp[].
+  constructor(sa, lcp) {
+    const n = sa.length;
+    this.rank = new Array(n).fill(0);
+    for (let r = 0; r < n; r++) this.rank[sa[r]] = r;
+    this.sp = [lcp.slice()];
+    for (let k = 1; (1 << k) <= n; k++) {
+      const prev = this.sp[k - 1], cur = new Array(n - (1 << k) + 1);
+      for (let i = 0; i < cur.length; i++) cur[i] = Math.min(prev[i], prev[i + (1 << (k - 1))]);
+      this.sp.push(cur);
+    }
+  }
+  // LCP of suffixes starting at positions i and j (i != j)
+  lcp(i, j) {
+    const a = Math.min(this.rank[i], this.rank[j]) + 1, b = Math.max(this.rank[i], this.rank[j]);
+    const k = 31 - Math.clz32(b - a + 1);       // floor(log2(length))
+    return Math.min(this.sp[k][a], this.sp[k][b - (1 << k) + 1]);
+  }
+}
+
+// banana: SA = [5,3,1,0,4,2], lcp = [0,1,3,0,0,2]
+const q = new LcpRmq([5, 3, 1, 0, 4, 2], [0, 1, 3, 0, 0, 2]);
+console.log(q.lcp(1, 3));   // anana vs ana -> 3
+console.log(q.lcp(5, 1));   // a vs anana   -> 1
+console.log(q.lcp(0, 2));   // banana vs nana -> 0` }, { lang: 'cpp', code: `class LcpRmq {
+    // O(1) LCP of any two suffixes with a sparse table over lcp[].
+    vector<vector<int>> sp;
+    vector<int> rank;
+public:
+    LcpRmq(const vector<int>& sa, const vector<int>& lcp) {
+        int n = sa.size();
+        rank.assign(n, 0);
+        for (int r = 0; r < n; r++) rank[sa[r]] = r;
+        sp.push_back(lcp);
+        for (int k = 1; (1 << k) <= n; k++) {
+            vector<int> cur(n - (1 << k) + 1);
+            for (int i = 0; i < (int)cur.size(); i++) cur[i] = min(sp[k - 1][i], sp[k - 1][i + (1 << (k - 1))]);
+            sp.push_back(cur);
+        }
+    }
+    // LCP of suffixes starting at positions i and j (i != j)
+    int lcp(int i, int j) const {
+        int a = min(rank[i], rank[j]) + 1, b = max(rank[i], rank[j]);
+        int k = 31 - __builtin_clz(b - a + 1);       // floor(log2(length))
+        return min(sp[k][a], sp[k][b - (1 << k) + 1]);
+    }
+};
+
+int main() {
+    // banana: SA = [5,3,1,0,4,2], lcp = [0,1,3,0,0,2]
+    LcpRmq q({5, 3, 1, 0, 4, 2}, {0, 1, 3, 0, 0, 2});
+    cout << q.lcp(1, 3) << "\\n";   // anana vs ana -> 3
+    cout << q.lcp(5, 1) << "\\n";   // a vs anana   -> 1
+    cout << q.lcp(0, 2) << "\\n";   // banana vs nana -> 0
+}` }] }],
     codeTitle: ['Kasai + longest repeated + longest common substring (Java)', 'O(1) LCP of any two suffixes with a sparse table (Java)'],
     viz: {
       title: 'Kasai: the bookmark that only slips back one step',
@@ -872,7 +1718,7 @@ print(count_all("banana", ["ana", "na", "x", "banana"]))   # [2, 2, 0, 1]` }],
       statement: `<p>Given a string <code>s</code>, return <b>any</b> duplicated substring (a substring that occurs at least twice; occurrences may overlap) that has the longest possible length. If there is none, return <code>""</code>.</p>`,
       constraints: `2 ≤ |s| ≤ 3·10<sup>4</sup>, lowercase English letters (LeetCode 1044)`,
       example: `<p>s = <code>"banana"</code> → <b>"ana"</b> (at ${H.c('g', 'index 1')} and ${H.c('b', 'index 3')}, overlapping). s = <code>"abcd"</code> → <b>""</b> (no letter repeats).</p>`,
-      brute: { why: `<p>For every length L from long to short, put all substrings of length L in a HashSet → O(N<sup>2</sup>) substrings, each costing O(N) to hash/copy → O(N<sup>3</sup>) ≈ 2.7·10<sup>13</sup>. The waste: re-hashing the same characters for every L and every start.</p>`, code: `
+      brute: { why: `<p>For every length L from long to short, put all substrings of length L in a hash set → O(N<sup>2</sup>) substrings, each costing O(N) to hash/copy → O(N<sup>3</sup>) ≈ 2.7·10<sup>13</sup>. The waste: re-hashing the same characters for every L and every start.</p>`, code: `
         class Brute {
             String longestDupSubstring(String s) {
                 int n = s.length();
@@ -888,6 +1734,25 @@ print(count_all("banana", ["ana", "na", "x", "banana"]))   # [2, 2, 0, 1]` }],
         }` },
       mcq: { q: 'After building SA and the LCP array, the longest duplicated substring has length…', options: ['the minimum LCP', 'the maximum LCP', 'Σ LCP', 'N − max LCP'], answer: 1, explain: 'A repeated substring is a common prefix of two suffixes; the longest such common prefix is attained by some sorted neighbours, i.e. max lcp.' },
       hints: [`<p>A substring occurs twice ⇔ it is a common prefix of two different suffixes. The longest common prefix of any two suffixes is achieved by two suffixes that are <b>neighbours</b> in sorted order.</p>`, `<p>Build the suffix array, then the LCP array with Kasai. Answer = max lcp[r], starting at SA[r]. (Alternative: binary search on length + Rabin–Karp with a strong hash.)</p>`, `<p>Edge cases: all lcp = 0 → return "". Use the O(N log<sup>2</sup> N) builder — N = 3·10<sup>4</sup> is small. Recipe: SA → rank → Kasai with carried h → track argmax → substring.</p>`],
+      tests: { sig: 'string -> string', fn: 'longestDupSubstring', names: { python: 'longestDupSubstring' }, check: "(args, out, exp) => { const s = args[0]; if (typeof out !== 'string' || out.length !== exp.length) return false; return out === '' || s.indexOf(out) !== s.lastIndexOf(out); }", cases: [
+        [["banana"],"ana"],
+        [["abcd"],""],
+        [["aa"],"a"],
+        [["ab"],""],
+        [["aaa"],"aa"],
+        [["abcabc"],"abc"],
+        [["aabaab"],"aab"],
+        [["zxyzxy"],"zxy"],
+        [["abababa"],"ababa"],
+        [["aaabbababbbabbbbaaabaababbaabb"],"babbb"],
+        [["abababbbaabbababbabbaabababaabba"],"bababb"],
+        [["bbbababbbaabbbbbabababaaa"],"bbbabab"],
+        [["acbbaaacbcaabbcbccbbcccccacaaaccccbaaabbbbcabcaaacaaabaccbbbacbaccbaabbbbbacccbabcaabbcabaacbcacabbcbcbababcbcacaccacbcbbbbbbcbcabcccacaccccacacabbbbbcabcbaacccacbcccabbbbcccbbbacacbcaacbcbcacbbcaaaabbaaabacccbaccbcccbbbcbaaccbacacabbabcbcbacaccbbbcbcbcaaacbcbcbacbcccbbaabaaaccbccbbcabcbabacaccbaaab"],"bbbbcabc"],
+        [["hlrjpxzabypubwssijtgdyrxsetcedxrcerynnfkpjdbpwkpizxklqrbomoztcwhqangdivzylblsrpzlqnjfaoqtqlsmqteeraknnazdspuawtgqzjxrgwtqgoyieyeeojunftgezqtalukqvnqcwntnixrurcejxhdsdwbeoryhypbaskikxuzewinqdaavmugrsagjndtzadzvtyvuxblikdvyihckithdbxpzhywbxzmlstbnfxucrsgnksdsncfilrlwgnnxwmhktrbcshhhbjkybrhepwwylrnpmodwwlcvguztthrheurknhmzhqmveudsjdwhlghghwhgaqypzaedigzpggxqkbmxrvdifoqcxecbigbimyehsqrkdafjynsazywkpgapsippydacuwzziwvgdnwnlohntznpnenskpjnldylzsijpyjtxmayrvcfpkwudgpwllsfteskjjaumxrjrnylrshysfgguxjopxhikcvppaspcvqmabryoidlnmnqaxansaaegunrgqookxyzcvhbnumjddjpmyxmduoxztdaxfppioxbaevfjraabjyerggeosdblilcjteyhsptggwsejjsviwuvnkjkbemllytpcxfgnohwtdoxoffaqbvoeadvxuadkdyjdppbublroeryzsygwuwccadgfzyqfqduerbnsjduuybwqjltbjhnqfsukzbnhiuaxqwiflxhakipnrbgkshacdsfxoqzkyzeiikmuetehdzvgsxmbjbhcjgmtcimjtbjvbgcicsazuxkkkqikutlngviirfetjtsaliruydoqifjzrsfvuyfotazrzgduravhsfwohtzcgrqlxdrdidxowhtxkxuyjjgsqkwjwfksxunplivtfvnbnscpvowgtkjyjluluwjoockbbtnhilivymzahqchwiahxxryhxgdazabcvngvyhncpoizxokpsloarmksyerbiioxwzftjimbeaskzuinxbtdqmjpnlnpirgegysbhluufgglgxyxkbrcjdpeovfsuvnfaateluxxhcohlihufssoqwrifvmaolnmhuaizlzgngxdmwxrajlnhidyzcqxlmycwabtvoghoyzrfhsaufisrszsubuqloryxhzvghclfettucoakdllncvsyouocatpttclkfxfidppwgyiexnwrzcwovnapmjsrvbdsgakbdrsxxehhlysvmevndyfcqawyusjiuvfuxgqxgroxewarxqkujchgpkqigwmgxwqgxcnhgulwebzlcoheusrhuyhzpwjpaplsvpberhftmkfenmenyvnignptfosviwjewdrfdmnfesgcjwgjstezpwccxijhhvnzwmqddyffqnazhjxwxjkzbzvwjlkppdwdfztepylocbqmvgigzojyoiqhpfsohwohysqafvtyjtaufbjwzarqfftwehyrpdgxcccpkbobtouppaymteuqknzajuljcrfkcamafboawaaouhstebcmgplrcksmfbczekwgixejwniydqkcwrkpwruogogsizyjvqaxifdwwkpbtwrwexvjvmnszjywvvjurfokpzsucfrenzagacvnsopowgabnoftbaoxmrcpuglpcpqwglipsrvprrrqgtiozrcdnmxcreoxxicoqjxxsqgspgiiphrzqzkzlbxmfzfuxivgtumtedwpvaerblesdfwqbvcbyqvhqnlmdraucpveikkmtuwaqtzmooelohemmfazaaubyzlzselsyyuzfaslblulhtjhptxxjjqwktzzkrwhpwxjrrcdayrtdoedvlncdnjztnxlrrvlvqtnxxulhxwmreqkzaqwfhrecikakcwsjpjrgwhmpqgddqbpeuvfzwvwjefawdfrerwyyobfbvafvobemjfajktyukvxihlewfojvirqsxcjpmfrsigqgpfldgzvgzuawjrcmjziwmnvnxytdbayvizqyunvtrgbhbljbznrmcvrgihhsbrtqnepwwsxbjbuygntblvzaghjbntvprcuathwempgvsqlrodaymkcnnbfukszumyilmxppmduijazgdnzftxfcbycfyqrxwbetwvivtdxahyycaofrserrixukdsqscxxpckjhbzflfsdcprdfarcroqcvvonmqwsgmgxmymjbjfgtulyknuelrrtyzrydlnrhhtxayqzjfqoqclavtyfgtrvcyulkxmccnpowkmhzgdkmdjzqyfnjvprsjnkfxarnpcwmovhzvnitwtqpxhxiegthyilworkgivllelmlfkospsymuglocitvlqooylwidykxpfzpkiahkmokcmbxahukccppgtoybppcgznuipbevtlwwddxboehyrrhzxvnlmtihntmnsufthoawpbvictdsnbuamwoagxfffswynntyfdpxpihfvcvlhcniufrnd"],"sviw"],
+        [[{"$rep":"a","n":30000}],{"$rep":"a","n":29999}],
+        [[{"$rep":"ab","n":15000}],{"$rep":"ab","n":14999}],
+        [[{"$rep":"abc","n":10000}],{"$rep":"abc","n":9999}]
+      ] },
       solution: {
         approach: `<p>Deterministic O(N log<sup>2</sup> N): suffix array + Kasai’s LCP. The answer is the largest lcp value; its suffix SA[r] begins with the duplicate. No hashing, so no collision risk — a nice talking point versus the usual Rabin–Karp + binary-search solution.</p>`,
         code: `
@@ -958,7 +1823,73 @@ class Solution:
                 best, start, lo = mid, pos, mid + 1
             else:
                 hi = mid - 1
-        return s[start:start + best] if best else ""` }],
+        return s[start:start + best] if best else ""` }, { lang: 'js', code: `
+function buildSA(s) {
+  const n = s.length;
+  let rank = new Int32Array(n);
+  for (let i = 0; i < n; i++) rank[i] = s.charCodeAt(i);
+  const sa = Array.from({ length: n }, (_, i) => i);
+  const key = new Float64Array(n);
+  const base = Math.max(n, 128) + 2;
+  for (let k = 1; ; k <<= 1) {
+    for (let i = 0; i < n; i++) key[i] = rank[i] * base + (i + k < n ? rank[i + k] + 1 : 0);
+    sa.sort((a, b) => key[a] - key[b]);
+    const next = new Int32Array(n);
+    for (let j = 1; j < n; j++) next[sa[j]] = next[sa[j - 1]] + (key[sa[j]] !== key[sa[j - 1]] ? 1 : 0);
+    rank = next;
+    if (rank[sa[n - 1]] === n - 1) return sa;
+  }
+}
+
+function longestDupSubstring(s) {
+  const n = s.length, sa = buildSA(s);
+  const rank = new Int32Array(n);
+  for (let r = 0; r < n; r++) rank[sa[r]] = r;
+  let h = 0, best = 0, at = 0;
+  for (let i = 0; i < n; i++) {                         // Kasai: h drops by at most 1 per step
+    if (rank[i] === 0) { h = 0; continue; }
+    const j = sa[rank[i] - 1];
+    while (i + h < n && j + h < n && s[i + h] === s[j + h]) h++;
+    if (h > best) { best = h; at = i; }
+    if (h > 0) h--;
+  }
+  return s.substring(at, at + best);
+}` }, { lang: 'cpp', code: `
+class Solution {
+    vector<int> buildSA(const string& s) {
+        int n = s.size();
+        vector<int> sa(n), rank(n), next(n);
+        vector<long long> key(n);
+        iota(sa.begin(), sa.end(), 0);
+        for (int i = 0; i < n; i++) rank[i] = s[i];
+        long long base = max(n, 128) + 2;
+        for (int k = 1;; k <<= 1) {
+            for (int i = 0; i < n; i++) key[i] = rank[i] * base + (i + k < n ? rank[i + k] + 1 : 0);
+            sort(sa.begin(), sa.end(), [&](int a, int b) { return key[a] < key[b]; });
+            next[sa[0]] = 0;
+            for (int j = 1; j < n; j++) next[sa[j]] = next[sa[j - 1]] + (key[sa[j]] != key[sa[j - 1]]);
+            rank = next;
+            if (rank[sa[n - 1]] == n - 1) break;
+        }
+        return sa;
+    }
+
+public:
+    string longestDupSubstring(string s) {
+        int n = s.size();
+        vector<int> sa = buildSA(s), rank(n);
+        for (int r = 0; r < n; r++) rank[sa[r]] = r;
+        int h = 0, best = 0, at = 0;
+        for (int i = 0; i < n; i++) {                   // Kasai: h drops by at most 1 per step
+            if (rank[i] == 0) { h = 0; continue; }
+            int j = sa[rank[i] - 1];
+            while (i + h < n && j + h < n && s[i + h] == s[j + h]) h++;
+            if (h > best) { best = h; at = i; }
+            if (h > 0) h--;
+        }
+        return s.substr(at, best);
+    }
+};` }],
         dry: { head: ['i (text order)', 'suffix i', 'neighbour above j', 'h carried', 'h after extend', 'best'], rows: [
           ['0', 'banana', '1 (anana)', '0', '0', '0'],
           ['1', 'anana', '3 (ana)', '0', '<b>3</b>', H.c('g', '3 at 1')],
@@ -1046,7 +1977,7 @@ class Solution:
       '"<b>build the target</b> from given words with minimum cost" with Σ|words| up to 5·10<sup>4</sup> → Aho–Corasick to list which words end at each position, then DP.',
       'Constraints like Σ|patterns| ≤ 10<sup>5</sup> and |text| ≤ 10<sup>6</sup> together → linear-ish multi-pattern search.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       class AhoCorasick {
           private final int[][] go;        // complete transition table (after build)
           private final int[] fail;        // failure link of each node
@@ -1114,7 +2045,191 @@ class Solution:
               for (int[] m : ac.findAll("ahishers"))
                   System.out.println(pats[m[0]] + " at " + m[1]);   // his at 1, she at 3, he at 4, hers at 4
           }
-      }`, { lang: 'python', run: true, title: 'Aho–Corasick in Python (runnable)', code: `
+      }`, alt: [{ lang: 'python', code: `from collections import deque
+
+
+class AhoCorasick:
+    def __init__(self, patterns):
+        self.go = [[-1] * 26]          # complete transition table (after build)
+        self.fail = [0]                # failure link of each node
+        self.dict_link = [-1]          # nearest node on the fail chain that ends a pattern (-1 if none)
+        self.pat_at = [-1]             # pattern index ending at node, or -1 (assumes distinct patterns)
+        self.pat_len = [len(p) for p in patterns]
+        # 1) trie
+        for k, pat in enumerate(patterns):
+            v = 0
+            for ch in pat:
+                c = ord(ch) - 97
+                if self.go[v][c] == -1:
+                    self.go[v][c] = len(self.go)
+                    self.go.append([-1] * 26)
+                    self.fail.append(0)
+                    self.dict_link.append(-1)
+                    self.pat_at.append(-1)
+                v = self.go[v][c]
+            self.pat_at[v] = k
+        # 2) BFS: failure links, dictionary links, complete transitions
+        q = deque()
+        for c in range(26):
+            u = self.go[0][c]
+            if u == -1:
+                self.go[0][c] = 0                            # stay at root
+            else:
+                q.append(u)
+        while q:
+            v = q.popleft()
+            for c in range(26):
+                u = self.go[v][c]
+                if u == -1:
+                    self.go[v][c] = self.go[self.fail[v]][c]   # borrow plan B's edge
+                    continue
+                self.fail[u] = self.go[self.fail[v]][c]
+                f = self.fail[u]
+                self.dict_link[u] = f if self.pat_at[f] != -1 else self.dict_link[f]
+                q.append(u)
+
+    # every match as (patternIndex, startPosition)
+    def find_all(self, text):
+        res = []
+        v = 0
+        for i, ch in enumerate(text):
+            v = self.go[v][ord(ch) - 97]                      # ONE lookup per character
+            u = v if self.pat_at[v] != -1 else self.dict_link[v]
+            while u != -1:
+                res.append((self.pat_at[u], i - self.pat_len[self.pat_at[u]] + 1))
+                u = self.dict_link[u]
+        return res
+
+
+pats = ["he", "she", "his", "hers"]
+ac = AhoCorasick(pats)
+for k, start in ac.find_all("ahishers"):
+    print(pats[k], "at", start)       # his at 1, she at 3, he at 4, hers at 4` }, { lang: 'js', code: `class AhoCorasick {
+  constructor(patterns) {
+    this.go = [new Array(26).fill(-1)];   // complete transition table (after build)
+    this.fail = [0];                      // failure link of each node
+    this.dictLink = [-1];                 // nearest node on the fail chain that ends a pattern (-1 if none)
+    this.patAt = [-1];                    // pattern index ending at node, or -1 (assumes distinct patterns)
+    this.patLen = patterns.map((p) => p.length);
+    // 1) trie
+    patterns.forEach((pat, k) => {
+      let v = 0;
+      for (const ch of pat) {
+        const c = ch.charCodeAt(0) - 97;
+        if (this.go[v][c] === -1) {
+          this.go[v][c] = this.go.length;
+          this.go.push(new Array(26).fill(-1));
+          this.fail.push(0); this.dictLink.push(-1); this.patAt.push(-1);
+        }
+        v = this.go[v][c];
+      }
+      this.patAt[v] = k;
+    });
+    // 2) BFS: failure links, dictionary links, complete transitions
+    const queue = [];
+    for (let c = 0; c < 26; c++) {
+      const u = this.go[0][c];
+      if (u === -1) this.go[0][c] = 0;                   // stay at root
+      else queue.push(u);
+    }
+    for (let head = 0; head < queue.length; head++) {    // index instead of shift(): O(1) per pop
+      const v = queue[head];
+      for (let c = 0; c < 26; c++) {
+        const u = this.go[v][c];
+        if (u === -1) { this.go[v][c] = this.go[this.fail[v]][c]; continue; }   // borrow plan B's edge
+        const f = this.go[this.fail[v]][c];
+        this.fail[u] = f;
+        this.dictLink[u] = this.patAt[f] !== -1 ? f : this.dictLink[f];
+        queue.push(u);
+      }
+    }
+  }
+
+  // every match as [patternIndex, startPosition]
+  findAll(text) {
+    const res = [];
+    let v = 0;
+    for (let i = 0; i < text.length; i++) {
+      v = this.go[v][text.charCodeAt(i) - 97];           // ONE lookup per character
+      for (let u = this.patAt[v] !== -1 ? v : this.dictLink[v]; u !== -1; u = this.dictLink[u])
+        res.push([this.patAt[u], i - this.patLen[this.patAt[u]] + 1]);
+    }
+    return res;
+  }
+}
+
+const pats = ["he", "she", "his", "hers"];
+const ac = new AhoCorasick(pats);
+for (const [k, start] of ac.findAll("ahishers"))
+  console.log(pats[k] + " at " + start);   // his at 1, she at 3, he at 4, hers at 4` }, { lang: 'cpp', code: `class AhoCorasick {
+    vector<array<int, 26>> go;     // complete transition table (after build)
+    vector<int> fail;              // failure link of each node
+    vector<int> dictLink;          // nearest node on the fail chain that ends a pattern (-1 if none)
+    vector<int> patAt;             // pattern index ending at node, or -1 (assumes distinct patterns)
+    vector<int> patLen;
+
+    int newNode() {
+        array<int, 26> row;
+        row.fill(-1);
+        go.push_back(row);
+        fail.push_back(0);
+        dictLink.push_back(-1);
+        patAt.push_back(-1);
+        return go.size() - 1;
+    }
+
+public:
+    AhoCorasick(const vector<string>& patterns) {
+        newNode();
+        // 1) trie
+        for (int k = 0; k < (int)patterns.size(); k++) {
+            int v = 0;
+            for (char ch : patterns[k]) {
+                int c = ch - 'a';
+                if (go[v][c] == -1) { int u = newNode(); go[v][c] = u; }
+                v = go[v][c];
+            }
+            patAt[v] = k;
+            patLen.push_back(patterns[k].size());
+        }
+        // 2) BFS: failure links, dictionary links, complete transitions
+        queue<int> q;
+        for (int c = 0; c < 26; c++) {
+            int u = go[0][c];
+            if (u == -1) go[0][c] = 0;                      // stay at root
+            else q.push(u);
+        }
+        while (!q.empty()) {
+            int v = q.front(); q.pop();
+            for (int c = 0; c < 26; c++) {
+                int u = go[v][c];
+                if (u == -1) { go[v][c] = go[fail[v]][c]; continue; }   // borrow plan B's edge
+                fail[u] = go[fail[v]][c];
+                dictLink[u] = patAt[fail[u]] != -1 ? fail[u] : dictLink[fail[u]];
+                q.push(u);
+            }
+        }
+    }
+
+    // every match as {patternIndex, startPosition}
+    vector<pair<int, int>> findAll(const string& text) const {
+        vector<pair<int, int>> res;
+        int v = 0;
+        for (int i = 0; i < (int)text.size(); i++) {
+            v = go[v][text[i] - 'a'];                        // ONE lookup per character
+            for (int u = patAt[v] != -1 ? v : dictLink[v]; u != -1; u = dictLink[u])
+                res.push_back({patAt[u], i - patLen[patAt[u]] + 1});
+        }
+        return res;
+    }
+};
+
+int main() {
+    vector<string> pats = {"he", "she", "his", "hers"};
+    AhoCorasick ac(pats);
+    for (auto [k, start] : ac.findAll("ahishers"))
+        cout << pats[k] << " at " << start << "\\n";   // his at 1, she at 3, he at 4, hers at 4
+}` }] }, { lang: 'python', run: true, title: 'Aho–Corasick in Python (runnable)', code: `
 from collections import deque
 
 def aho_corasick(patterns, text):
@@ -1265,7 +2380,7 @@ print(aho_corasick(["a", "aa", "aaa"], "aaaa"))
     problems: [{
       title: 'Count Occurrences of Every Dictionary Word', level: 'Hard', tags: ['aho-corasick', 'trie', 'bfs', 'fail tree'], companies: ['Google', 'Microsoft', 'Cloudflare'],
       statement: `<p>Given a text and a list of words, return an array where entry k is the number of (possibly overlapping) occurrences of <code>words[k]</code> in the text. Words may repeat in the list and may be prefixes/suffixes of each other.</p>`,
-      constraints: `1 ≤ |text| ≤ 10<sup>6</sup>, 1 ≤ k ≤ 10<sup>5</sup>, Σ|words| ≤ 10<sup>5</sup>, lowercase letters. Answers fit in a long.`,
+      constraints: `1 ≤ |text| ≤ 10<sup>6</sup>, 1 ≤ k ≤ 10<sup>5</sup>, Σ|words| ≤ 10<sup>5</sup>, lowercase letters. Answers need a 64-bit integer.`,
       example: `<p>text = <code>"ahishers"</code>, words = [he, she, his, hers] → <b>[1, 1, 1, 1]</b>.</p><p>text = <code>"aaaa"</code>, words = [a, aa, aaa] → <b>[4, 3, 2]</b> (${H.c('y', 'aa')} starts at 0, 1, 2).</p>`,
       brute: { why: `<p>For each word, scan the whole text: O(k · N) = 10<sup>11</sup>. Even listing all matches with plain Aho–Corasick can be O(N · k) on nested words like a, aa, aaa, …, because every position matches many words. The waste: walking the same fail chains again and again.</p>`, code: `
         class Brute {
@@ -1279,7 +2394,22 @@ print(aho_corasick(["a", "aa", "aaa"], "aaaa"))
             }
         }` },
       mcq: { q: 'You counted how many text positions ended in each automaton state. How do you get the count for word w?', options: ['Read the count of w’s node only', 'Sum the counts over w’s subtree in the fail tree', 'Sum counts along the path from root to w in the trie', 'Divide by |w|'], answer: 1, explain: 'A position ends an occurrence of w exactly when w is a suffix of the state’s string, i.e. w’s node is on that state’s fail chain — equivalently the state is in w’s fail-subtree.' },
-      hints: [`<p>Scan the text through the automaton and just do <code>cnt[state]++</code> at each position. Don’t walk output chains.</p>`, `<p>w occurs ending at a position iff w’s node is an ancestor of that position’s state in the <b>fail tree</b>. So push counts upward: process nodes in <b>reverse BFS order</b> and do <code>cnt[fail[v]] += cnt[v]</code>.</p>`, `<p>Duplicate words share a node — remember each word’s end node and read <code>cnt[end[k]]</code>. Use long counts. Recipe: trie → BFS (fail + goto) saving BFS order → scan → reverse-BFS accumulation → read answers.</p>`],
+      hints: [`<p>Scan the text through the automaton and just do <code>cnt[state]++</code> at each position. Don’t walk output chains.</p>`, `<p>w occurs ending at a position iff w’s node is an ancestor of that position’s state in the <b>fail tree</b>. So push counts upward: process nodes in <b>reverse BFS order</b> and do <code>cnt[fail[v]] += cnt[v]</code>.</p>`, `<p>Duplicate words share a node — remember each word’s end node and read <code>cnt[end[k]]</code>. Use 64-bit counts. Recipe: trie → BFS (fail + goto) saving BFS order → scan → reverse-BFS accumulation → read answers.</p>`],
+      tests: { sig: 'string string[] -> long[]', fn: 'countOccurrences', cases: [
+        [["ahishers",["he","she","his","hers"]],[1,1,1,1]],
+        [["aaaa",["a","aa","aaa"]],[4,3,2]],
+        [["abc",["d","abcd","abc","c"]],[0,0,1,1]],
+        [["aaaa",["a","a","aa","a"]],[4,4,3,4]],
+        [["abababa",["aba","bab","ababa","b","a"]],[3,2,2,3,4]],
+        [["a",["a"]],[1]],
+        [["xyz",["xyz","yz","z","x","y","xy"]],[1,1,1,1,1,1]],
+        [["aacccacbaabbcaaabbaccaccbccbaccabbabccabac",["b","ab","ca","abca","cba","acc","babc","c","bbbc","bc"]],[11,5,5,0,2,4,1,16,0,3]],
+        [["bcbcaaabbccabbbcccbacacabccaaccbaabbcccbacab",["aa","b","a","baab","caac","c","ba","a","b","cca"]],[4,14,13,1,1,17,3,13,14,2]],
+        [["acbaccbbbbccccacacbcbaaccbcaccabcabcbccccbbb",["acc","c","b","acbc","c","bcaa","ccc","ba","b","bbcb"]],[3,21,14,1,21,0,4,2,14,0]],
+        [[{"$rep":"a","n":1000000},["a","aa","aaa","aaaa","aaaaa","aaaaaa","aaaaaaa","aaaaaaaa","aaaaaaaaa","aaaaaaaaaa","aaaaaaaaaaa","aaaaaaaaaaaa","aaaaaaaaaaaaa","aaaaaaaaaaaaaa","aaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]],[1000000,999999,999998,999997,999996,999995,999994,999993,999992,999991,999990,999989,999988,999987,999986,999985,999984,999983,999982,999981,999980,999979,999978,999977,999976,999975,999974,999973,999972,999971,999970,999969,999968,999967,999966,999965,999964,999963,999962,999961,999960,999959,999958,999957,999956,999955,999954,999953,999952,999951,999950,999949,999948,999947,999946,999945,999944,999943,999942,999941,999940,999939,999938,999937,999936,999935,999934,999933,999932,999931,999930,999929,999928,999927,999926,999925,999924,999923,999922,999921,999920,999919,999918,999917,999916,999915,999914,999913,999912,999911,999910,999909,999908,999907,999906,999905,999904,999903,999902,999901]],
+        [[{"$rep":"a","n":1000000},{"$rep":"a","n":100000}],{"$rep":1000000,"n":100000}],
+        [[{"$rep":"abcabd","n":150000},["dabcabdabc","bcabda","bdabcab","abdabc","cabdabcab","cabd","cabdabca","dabcabda","abdabcab","bcabdabca","bdabcabda","bcabdabca","bcabda","abcabdabca","bdabcabdabc","bdabcabd","bdab","cabdabc","cabda","abdabcabdabc","abdabcabdabc","dab","abcabda","bdabc","cabda","abcabdabca","abcabdabcab","bdab","bcabdab","abd","abcabdabca","bdabcabdab","bda","abcabdabc","dabcabdabca","abca","dabcabdabc","abdabcabda","abdabcab","abca","abcabdabc","cabdabca","abdabca","abdabcabdabc","dabcabda","bdabcabdab","bdabcabda","bdabcabdab","cabd","abda","cabdab","bdabcabda","bcabd","bcab","abd","cabdabcab","bdabcabda","bcabdab","cabdab","abcab","bdabcabdabc","abcabd","dabc","abdabcabdabc","cabdabca","dabcab","dab","dabcab","abdabcabdab","dabcabdab","bdabcabd","dab","abdabcabd","cab","abcabdabca","bdabcabda","dab","dabca","cabdabcabda","cabda","bcab","dabcabdabc","dabcabd","bca","bdabcabda","bcabdab","dabc","bcab","bdabca","bcabdab","bcabdabca","bcabdabcabda","bcabd","abdabcabdab","cabdabcabdab","abdabcab","abd","cabdabca","bdabcabdab","abdabcab","abcab","bcabdabcab","cabdabca","abcabd","dabcabdab","cabd","dabcabd","abd","abdabc","dabc","bdabcabdab","cabdabcab","abcabda","bcabdab","bcabdabcab","bcabdabcabd","dabcabda","abdabcabdab","bdabcabdabca","abd","bdabcabda","bca","bca","abdabcabdabc","abdabcabdab","abdabcabd","abca","dabca","bdabcabda","cabdabcabd","cabda","bdabcabdabca","bcabda","bcabdabcabd","abdabca","abcabdab","dabcabdabcab","cabdabcabdab","bdabcabdabc","abd","bdabcabd","bdabcabdabca","cabd","cab","abcabd","bdabcabdab","cabdabcabd","bcab","dabcab","bcabdabc","abc","cabdabcabdab","dabcabdabca","bdabcabd","bdabca","abcabdabc","cabda","bdabc","abca","cabdabcabd","abc","abca","abdabc","abdabcabdabc","bcabda","cab","bdabcabdab","abcabd","abcabda","bcabdabcabda","bdabc","bdabcab","abcabd","abdabcabdabc","abdabcabd","bdabc","dabcabdabca","bda","bcabdabca","bdabcabdabc","abcab","cabdab","bcabdab","abca","bdabcabda","dab","bcabd","abcabdabca","bcabd","dabcabda","abdabcabd","abcab","dabcab","bdab","bcabda","abdabcabdab","dabcab","bcabdabcabd","bca","abdabcab","bdabcabdab","cab","abdabcabdabc","abdabcabda","cabd","dabcabdabc","abcabd","bdabcabdabca","bdabcabd","abdabc","dab","bdab","bdab","abdabcab","abdab","cabdabca","bdabcabda","dabca","dabc","cabdabcabdab","abdabcab","abdabcabd","bdabc","abcabdabca","bca","dabca","cab","cabd","cabdabcabd","bdabc","abcabdabcab","abdab","bcabdabcabd","abdabc","cabdabcab","abcabdab","bda","abcabdab","cabd","abdabcabda","dab","dabcabdab","cabdabc","bcabdabcabda","dabc","abca","cabdabca","bcabda","dabcabdabca","bcabd","abcabda","bcabdabcab","bcabdabcabda","abcabdabcab","bdabcabdabca","bcabdabcabda","abdabcabdab","abdabcab","abd","abdabcabdab","abcab","abcabd","dabcabdabca","abd","abdabcabd","bcabdabcab","bdabcabda","bcabdabca","abdab","cabd","dabcab","bda","cabdabcabdab","dabcabdabc","abdabca","dabcabdabc","dabcabdabca","bcabdabca","bcabdabca","abdab","abdabca","abdab","abdabcab","bdab","abca","cabdab","bcabdabc","dabcabdabca","bcabdabcabd","abcabdabc","abdabcabdab","dabca","cabdabcabdab","abca","dab","bdab","abc","bdabcabdabca","cabdabcabdab","abdabc","bddcbdbca","dbadbddbcad","adb","bbbabddc","baadcbd","dccadad","dcccdccb","cdbcdd","dbddabdbdc","cbb","bbcdcc","adacabaccdbb","ddadab","dbacaccbad","ccdcddbcb","daabbdbbb","addbdaacaab","babcb","bcccdbcdca","aaacd","dbabddcd","ddbad","abccaaa","bcccbcad","abddbacbcaa","aaddbcad","dddddcaa","adaadbccc","caaaa","abbdd","cdbacabcbac","cbacd","cdc","dabadb","bdccba","caabdbbcd","bdcabbbaa","daabacad","caada","dca","bddcccdb","bbccbbdda","dcbababd","bdabbbd","dbabbd","caddadbbdcda","dcbadbdacbda","cdd","abdbba","bbbb","ddad","cba","adc","cac","babaabcabcab","dad","adcdcb","aabbcadda","bccabcacbd","bdddb","accaaaa","cacdbbcdbd","ddbbcbacca","baacbccd","bdacaccdddc","dbcdaabcc","bcbba","bdbcdcdc","adacdab","bccabd","dacabaaccb","adcdacbdbc","bbccacbccad","daadcdac","bddac","aca","dddddd","addacbb","cdcdac","adaaacbbbbbc","cccbccbb","daababdbdd","daabcbccaba","cad","bad","ababbbaa","ddddcdcbc","dbbcabdc","dbbdddc","acdcacaa","daddd","bbdcbb","bbd","dabb","cacbcdaaaa","ccaacacd","aabdab","cacdba","cbaaadbdd","bbacbcbccaca","bdcbbbb","bddc","cbdabbbcb","ccddcbc","cdcbaadcca","dbbadc","ccccddcbb","bdaaacbcddcb","acadbcacc","caccaddabbbd","bac","dcbcc","bdabbbbcabcc","cacdbadc","babacbddbcc","addcddbdaa","aadbdbc","ccaddcbadbbb","aaddaddaad","bcbaddda","aaaa","addbcbcaa","bbdaabcd","ddabddda","dbccdbdcb","bcaaacdd","adbbdacb","acadddcbca","baddabbadd","aabdcdbad","cdbaa","adcbb","caababa","cadaccbbca","bcaba","dbbadcbaccb","babbbcaad","dddcdccb","bbdbc","daabcddbcb","dcbbaac","bddacabbbbd","bcbbadd","ccbac","daccbdb","cabcdabdab","adadcdccadc","dcacbbbcddc","acddda","daa","addacb","bddddcacbb","cbdabcad","dccc","baadc","ccccc","bbdcac","ccadbcadbaa","aabbb","cdcd","bab","dccdbabdbc","bacd","cccccdbd","bbdbba","cadadacaacd","dccabbaad","bbddbcbdadd","ccccdbbc","daaacbcdab","bdd","babdabb","cccbdadb","cbba","ddbc","acbdcbdda","dadbcad","ddddaacddba","bcb","bcccbbddccd","bbdda","ddacdbbbddda","bda","dcaac","cbbbbcccdd","acbcacc","bccddda","caac","bbcab","bcbdabddaa","dbabbdbbd","ccacacab","bdbdbddd","daab","dddadbcdc","cabcabd","baaabaabbbd","abdada","adba","cdabcddccb","cbaca","ddcdbaddbc","ddcbaadd","bbbabcbbddab","cdaacd","bbccddca","aaabdba","acbd","ddd","cdbb","ddcddbabbcaa","aac","cbccc","bbdabccdcbd","cccbba","bbc","aadacc","abbaacaccbaa","cdaadbcaadb","cdd","dddbabcdadcd","ddacacd","add","ccdbbcdbda","cdbadaddcaaa","dabdcdbcbc","daa","acdbab","dcaadd","bbb","ccbacacbdc","cbdab","bcbbdbbadc","bdcdabcbab","addbabdccda","cdcbac","dccd","bcdcddbaad","badadddddb","abccccccbc","acbdcccbd","dddddabdb","adcdabacd","abbbc","abbc","adbd","baabccd","dbbabbcddbdc","acbbdadacbb","accbbdadbcd","daacadaaccc","ddaaabdc","daacc","dbcaadccb","ddbbac","cadbbd","dbd","dabbbbccdab","baacbdbdb","dcda","baadbbcb","caaabddadbbb","acc","bdaacdabada","cdbcbbcdcb","bddcdacbb","babbb","dcdccca","ccacdcc","daabc","bdabdacacbc","ccacbdcbbbd","dbcc","bccda","dddbaa","abbadcbdbb","bdbac","aadcabbda","aacdcbcbdbc","bcbaabada","cddaaa","dca","daacbdcadca","cadadcac","acbbba","cacbdcabbad","bbbaab","acddb","bacabaaabb","ccddcaccaaa","adaccadaa","bbbb","dbdacaadd","dacadd","bbadadcc","adab","bacbc","cab","ddabbc","bbcc"]],[149998,149999,149999,149999,149999,150000,149999,149998,149999,149999,149998,149999,149999,149999,149998,149999,149999,149999,149999,149998,149998,149999,149999,149999,149999,149999,149999,149999,149999,150000,149999,149998,149999,149999,149998,150000,149998,149998,149999,150000,149999,149999,149999,149998,149998,149998,149998,149998,150000,149999,149999,149998,150000,150000,150000,149999,149998,149999,149999,150000,149998,150000,149999,149998,149999,149999,149999,149999,149998,149998,149999,149999,149999,150000,149999,149998,149999,149999,149998,149999,150000,149998,149999,150000,149998,149999,149999,150000,149999,149999,149999,149998,150000,149998,149998,149999,150000,149999,149998,149999,150000,149999,149999,150000,149998,150000,149999,150000,149999,149999,149998,149999,149999,149999,149999,149999,149998,149998,149998,150000,149998,150000,150000,149998,149998,149999,150000,149999,149998,149999,149999,149998,149999,149999,149999,149999,149998,149998,149998,150000,149999,149998,150000,150000,150000,149998,149999,150000,149999,149999,150000,149998,149998,149999,149999,149999,149999,149999,150000,149999,150000,150000,149999,149998,149999,150000,149998,150000,149999,149998,149999,149999,150000,149998,149999,149999,149998,149999,149999,149998,150000,149999,149999,150000,149998,149999,150000,149999,150000,149998,149999,150000,149999,149999,149999,149998,149999,149999,150000,149999,149998,150000,149998,149998,150000,149998,150000,149998,149999,149999,149999,149999,149999,149999,149999,149999,149998,149999,149999,149998,149999,149999,149999,149999,150000,149999,150000,150000,149999,149999,149999,149999,149999,149999,149999,149999,149999,149999,150000,149998,149999,149998,149999,149998,149999,150000,149999,149999,149998,150000,149999,149999,149998,149999,149998,149998,149998,149999,150000,149998,150000,150000,149998,150000,149999,149999,149998,149999,149999,150000,149999,149999,149998,149998,149999,149998,149998,149999,149999,149999,149999,149999,149999,149999,150000,149999,149999,149998,149999,149999,149998,149999,149998,150000,149999,149999,150000,149998,149998,149999,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,149999,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,150000,0,0]]
+      ] },
       solution: {
         approach: `<p>Build the automaton (trie + BFS failure links + complete goto table). Scan once, counting visits per state. Every visit to state s is an occurrence of every word on s’s fail chain, so accumulating counts from deep to shallow along fail links gives each node the number of positions where its string ends. Total O(N + M·σ), independent of how many matches there are.</p>`,
         code: `
@@ -1352,7 +2482,77 @@ def count_occurrences(text, words):
         cnt[fail[v]] += cnt[v]
     return [cnt[e] for e in end]
 
-print(count_occurrences("aaaa", ["a", "aa", "aaa"]))   # [4, 3, 2]` }],
+print(count_occurrences("aaaa", ["a", "aa", "aaa"]))   # [4, 3, 2]` }, { lang: 'js', code: `
+function countOccurrences(text, words) {
+  let cap = 1;
+  for (const w of words) cap += w.length;
+  const go = new Int32Array(cap * 26).fill(-1);
+  const fail = new Int32Array(cap);
+  const end = [];
+  let nodes = 1;
+  for (const w of words) {                                   // 1) trie
+    let v = 0;
+    for (let i = 0; i < w.length; i++) {
+      const c = w.charCodeAt(i) - 97;
+      if (go[v * 26 + c] === -1) go[v * 26 + c] = nodes++;
+      v = go[v * 26 + c];
+    }
+    end.push(v);                                             // duplicates share the node
+  }
+  const order = new Int32Array(nodes);                       // 2) BFS order, fail links, full goto table
+  let head = 0, tail = 0;
+  order[tail++] = 0;
+  while (head < tail) {
+    const v = order[head++];
+    for (let c = 0; c < 26; c++) {
+      const u = go[v * 26 + c];
+      if (u === -1) go[v * 26 + c] = v === 0 ? 0 : go[fail[v] * 26 + c];
+      else { fail[u] = v === 0 ? 0 : go[fail[v] * 26 + c]; order[tail++] = u; }
+    }
+  }
+  const cnt = new Float64Array(nodes);                       // 3) one visit per text position
+  let v = 0;
+  for (let i = 0; i < text.length; i++) { v = go[v * 26 + text.charCodeAt(i) - 97]; cnt[v]++; }
+  for (let i = tail - 1; i > 0; i--) cnt[fail[order[i]]] += cnt[order[i]];   // 4) push up the fail tree
+  return end.map((e) => cnt[e]);
+}` }, { lang: 'cpp', code: `
+class Solution {
+public:
+    vector<long long> countOccurrences(string text, vector<string> words) {
+        int cap = 1;
+        for (const string& w : words) cap += w.size();
+        vector<array<int, 26>> go(cap);
+        for (auto& row : go) row.fill(-1);
+        vector<int> fail(cap, 0), end;
+        int nodes = 1;
+        for (const string& w : words) {                       // 1) trie
+            int v = 0;
+            for (char ch : w) {
+                int c = ch - 'a';
+                if (go[v][c] == -1) go[v][c] = nodes++;
+                v = go[v][c];
+            }
+            end.push_back(v);                                 // duplicates share the node
+        }
+        vector<int> order;                                    // 2) BFS order, fail links, full goto table
+        order.push_back(0);
+        for (size_t head = 0; head < order.size(); head++) {
+            int v = order[head];
+            for (int c = 0; c < 26; c++) {
+                int u = go[v][c];
+                if (u == -1) go[v][c] = (v == 0) ? 0 : go[fail[v]][c];
+                else { fail[u] = (v == 0) ? 0 : go[fail[v]][c]; order.push_back(u); }
+            }
+        }
+        vector<long long> cnt(nodes, 0);                      // 3) one visit per text position
+        int v = 0;
+        for (char ch : text) { v = go[v][ch - 'a']; cnt[v]++; }
+        for (int i = (int)order.size() - 1; i > 0; i--) cnt[fail[order[i]]] += cnt[order[i]];   // 4) push up
+        vector<long long> ans;
+        for (int e : end) ans.push_back(cnt[e]);
+        return ans;
+    }
+};` }],
         dry: { head: ['i', 'char', 'state after', 'how', 'cnt[state]++'], rows: [
           ['0', 'a', 'root', 'no edge from root', 'root = 1'],
           ['1', 'h', 'h', 'trie edge', 'h = 1'],
@@ -1397,10 +2597,10 @@ print(count_occurrences("aaaa", ["a", "aa", "aaa"]))   # [4, 3, 2]` }],
       ])}
       <p>Rule of thumb: <b>one 32-bit-ish modulus is only safe for a handful of comparisons</b>. For “count distinct substrings” style problems use two moduli (a pair) or one 61-bit Mersenne prime.</p>
       <h4>3. Double hashing</h4>
-      <p>Compute hashes with two independent (B<sub>1</sub>, M<sub>1</sub>) and (B<sub>2</sub>, M<sub>2</sub>) and compare the <b>pair</b> (or pack it into one <code>long</code>: <code>h1 · 2<sup>32</sup> + h2</code>). Collision chance multiplies: ≈ 1/(M<sub>1</sub>M<sub>2</sub>). Alternative: a single modulus <b>M = 2<sup>61</sup> − 1</b> with 128-bit multiplication (<code>Math.multiplyHigh</code> in Java) — one hash, ~10<sup>18</sup> range, and reduction is just shifts and adds.</p>
+      <p>Compute hashes with two independent (B<sub>1</sub>, M<sub>1</sub>) and (B<sub>2</sub>, M<sub>2</sub>) and compare the <b>pair</b> (or pack it into one 64-bit integer: <code>h1 · 2<sup>32</sup> + h2</code>). Collision chance multiplies: ≈ 1/(M<sub>1</sub>M<sub>2</sub>). Alternative: a single modulus <b>M = 2<sup>61</sup> − 1</b> with 128-bit multiplication (<code>Math.multiplyHigh</code> in Java, <code>unsigned __int128</code> in C++, <code>BigInt</code> in JavaScript, plain integers in Python) — one hash, ~10<sup>18</sup> range, and reduction is just shifts and adds.</p>
       <h4>4. Anti-hash tests — how hashes get broken on purpose</h4>
       ${H.table(['Weak choice', 'Attack', 'Fix'], [
-        ['Modulus 2<sup>64</sup> (just let <code>long</code> overflow)', H.c('r', 'Thue–Morse strings of length 2048 collide for <b>every</b> odd base'), 'use a prime modulus'],
+        ['Modulus 2<sup>64</sup> (just let a 64-bit integer overflow)', H.c('r', 'Thue–Morse strings of length 2048 collide for <b>every</b> odd base'), 'use a prime modulus'],
         ['Fixed, publicly known base and prime', 'attacker precomputes a collision (birthday search or lattice reduction)', H.c('g', 'random base chosen at runtime')],
         ['Single ~10<sup>9</sup> modulus with many comparisons', 'birthday paradox, no attacker needed', 'double hash or 2<sup>61</sup>−1'],
         ['Java <code>String.hashCode</code> (fixed base 31, mod 2<sup>32</sup>)', '<code>"Aa"</code> and <code>"BB"</code> both hash to 2112 → hash-flooding a HashMap', 'Java 8 treeifies buckets; Python/Rust use keyed SipHash']
@@ -1414,7 +2614,7 @@ print(count_occurrences("aaaa", ["a", "aa", "aaa"]))   # [4, 3, 2]` }],
       '"2D grid pattern" / "find a sub-matrix" → 2D rolling hash (hash rows, then hash the column of row-hashes).',
       'Fixed-length windows ("all substrings of length 10", DNA) → rolling hash or bit-packing in O(N).'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       class StringHasher {
           // Double polynomial hash with RANDOM bases (anti-hash safe for interview/contest use).
           static final long M1 = 1_000_000_007L, M2 = 998_244_353L;
@@ -1450,7 +2650,104 @@ print(count_occurrences("aaaa", ["a", "aa", "aaa"]))   # [4, 3, 2]` }],
               System.out.println(h.equal(0, 3, 3));   // "abc" vs "abc" -> true
               System.out.println(h.equal(0, 4, 3));   // "abc" vs "bcx" -> false
           }
-      }`, `
+      }`, alt: [{ lang: 'python', code: `import random
+
+
+class StringHasher:
+    # Double polynomial hash with RANDOM bases (anti-hash safe for interview/contest use).
+    M1, M2 = 1_000_000_007, 998_244_353
+
+    def __init__(self, s):
+        b1 = random.randrange(256, self.M1 - 256)     # random at run time -> unknown to an attacker
+        b2 = random.randrange(256, self.M2 - 256)
+        n = len(s)
+        self.p1, self.p2 = [1] * (n + 1), [1] * (n + 1)
+        self.h1, self.h2 = [0] * (n + 1), [0] * (n + 1)
+        for i, ch in enumerate(s):
+            v = ord(ch) + 1                           # never map a char to 0
+            self.p1[i + 1] = self.p1[i] * b1 % self.M1
+            self.p2[i + 1] = self.p2[i] * b2 % self.M2
+            self.h1[i + 1] = (self.h1[i] * b1 + v) % self.M1
+            self.h2[i + 1] = (self.h2[i] * b2 + v) % self.M2
+
+    # hash of s[l:r] packed into one int: (h1 << 32) | h2
+    def get(self, l, r):
+        x = (self.h1[r] - self.h1[l] * self.p1[r - l]) % self.M1
+        y = (self.h2[r] - self.h2[l] * self.p2[r - l]) % self.M2
+        return (x << 32) | y
+
+    def equal(self, a, b, length):
+        return self.get(a, a + length) == self.get(b, b + length)
+
+
+h = StringHasher("abcabcx")
+print(h.equal(0, 3, 3))   # "abc" vs "abc" -> True
+print(h.equal(0, 4, 3))   # "abc" vs "bcx" -> False` }, { lang: 'js', code: `class StringHasher {
+  // Double polynomial hash with RANDOM bases (anti-hash safe for interview/contest use).
+  // Products reach ~1e18, beyond 2^53, so the arithmetic uses BigInt.
+  constructor(s) {
+    const M1 = 1000000007n, M2 = 998244353n;
+    const rnd = (m) => 256n + BigInt(Math.floor(Math.random() * Number(m - 512n)));
+    const b1 = rnd(M1), b2 = rnd(M2);          // random at run time -> unknown to an attacker
+    const n = s.length;
+    this.M1 = M1; this.M2 = M2;
+    this.p1 = [1n]; this.p2 = [1n]; this.h1 = [0n]; this.h2 = [0n];
+    for (let i = 0; i < n; i++) {
+      const v = BigInt(s.charCodeAt(i) + 1);   // never map a char to 0
+      this.p1.push(this.p1[i] * b1 % M1);
+      this.p2.push(this.p2[i] * b2 % M2);
+      this.h1.push((this.h1[i] * b1 + v) % M1);
+      this.h2.push((this.h2[i] * b2 + v) % M2);
+    }
+  }
+
+  // hash of s[l, r) packed into one BigInt: (h1 << 32) | h2
+  get(l, r) {
+    const x = ((this.h1[r] - this.h1[l] * this.p1[r - l]) % this.M1 + this.M1) % this.M1;
+    const y = ((this.h2[r] - this.h2[l] * this.p2[r - l]) % this.M2 + this.M2) % this.M2;
+    return (x << 32n) | y;
+  }
+
+  equal(a, b, len) { return this.get(a, a + len) === this.get(b, b + len); }
+}
+
+const h = new StringHasher("abcabcx");
+console.log(h.equal(0, 3, 3));   // "abc" vs "abc" -> true
+console.log(h.equal(0, 4, 3));   // "abc" vs "bcx" -> false` }, { lang: 'cpp', code: `class StringHasher {
+    // Double polynomial hash with RANDOM bases (anti-hash safe for interview/contest use).
+    static constexpr long long M1 = 1'000'000'007LL, M2 = 998'244'353LL;
+    vector<long long> p1, p2, h1, h2;
+
+public:
+    StringHasher(const string& s) {
+        mt19937_64 rng(chrono::steady_clock::now().time_since_epoch().count());   // time-seeded -> unknown to an attacker
+        long long b1 = 256 + rng() % (M1 - 512), b2 = 256 + rng() % (M2 - 512);
+        int n = s.size();
+        p1.assign(n + 1, 1); p2.assign(n + 1, 1); h1.assign(n + 1, 0); h2.assign(n + 1, 0);
+        for (int i = 0; i < n; i++) {
+            long long v = (unsigned char)s[i] + 1;              // never map a char to 0
+            p1[i + 1] = p1[i] * b1 % M1;
+            p2[i + 1] = p2[i] * b2 % M2;
+            h1[i + 1] = (h1[i] * b1 + v) % M1;
+            h2[i + 1] = (h2[i] * b2 + v) % M2;
+        }
+    }
+
+    // hash of s[l, r) packed into one 64-bit value: (h1 << 32) | h2
+    long long get(int l, int r) const {
+        long long x = (h1[r] - h1[l] * p1[r - l] % M1 + M1) % M1;
+        long long y = (h2[r] - h2[l] * p2[r - l] % M2 + M2) % M2;
+        return (x << 32) | y;
+    }
+
+    bool equal(int a, int b, int len) const { return get(a, a + len) == get(b, b + len); }
+};
+
+int main() {
+    StringHasher h("abcabcx");
+    cout << boolalpha << h.equal(0, 3, 3) << "\\n";   // "abc" vs "abc" -> true
+    cout << h.equal(0, 4, 3) << "\\n";                // "abc" vs "bcx" -> false
+}` }] }, { lang: 'java', code: `
       class Mersenne61 {
           // Single hash modulo 2^61 - 1 using a 128-bit product. ~2.3e18 possible values.
           static final long MOD = (1L << 61) - 1;
@@ -1471,7 +2768,49 @@ print(count_occurrences("aaaa", ["a", "aa", "aaa"]))   # [4, 3, 2]` }],
               for (char c : s.toCharArray()) h = (mulMod(h, base) + c + 1) % MOD;
               System.out.println("hash computed: " + (h >= 0 && h < MOD));
           }
-      }`, `
+      }`, alt: [{ lang: 'python', code: `import random
+
+MOD = (1 << 61) - 1
+
+
+def mul_mod(a, b):                 # Python ints are unbounded, so no 128-bit trick is needed
+    return a * b % MOD
+
+
+base = 1_000_003 + random.randrange(1 << 30)   # random base at runtime
+s = "hashing"
+h = 0
+for ch in s:
+    h = (mul_mod(h, base) + ord(ch) + 1) % MOD
+print("hash computed:", 0 <= h < MOD)` }, { lang: 'js', code: `// Single hash modulo 2^61 - 1. Number is exact only to 2^53, so use BigInt (arbitrary precision).
+const MOD = (1n << 61n) - 1n;
+const mulMod = (a, b) => (a * b) % MOD;           // a, b < 2^61
+
+const base = 1000003n + BigInt(Math.floor(Math.random() * 2 ** 30));   // random base at runtime
+const s = "hashing";
+let h = 0n;
+for (const ch of s) h = (mulMod(h, base) + BigInt(ch.charCodeAt(0)) + 1n) % MOD;
+console.log("hash computed: " + (h >= 0n && h < MOD));` }, { lang: 'cpp', code: `class Mersenne61 {
+public:
+    // Single hash modulo 2^61 - 1 using a 128-bit product. ~2.3e18 possible values.
+    static constexpr unsigned long long MOD = (1ULL << 61) - 1;
+
+    static unsigned long long mulMod(unsigned long long a, unsigned long long b) {   // a, b < 2^61
+        unsigned __int128 prod = (unsigned __int128)a * b;
+        unsigned long long r = (unsigned long long)(prod & MOD) + (unsigned long long)(prod >> 61);   // 2^61 = 1 (mod MOD)
+        r = (r & MOD) + (r >> 61);
+        return r >= MOD ? r - MOD : r;
+    }
+};
+
+int main() {
+    mt19937_64 rng(chrono::steady_clock::now().time_since_epoch().count());
+    unsigned long long base = 1'000'003ULL + rng() % (1ULL << 30);   // random base at runtime
+    string s = "hashing";
+    unsigned long long h = 0;
+    for (char c : s) h = (Mersenne61::mulMod(h, base) + (unsigned char)c + 1) % Mersenne61::MOD;
+    cout << "hash computed: " << boolalpha << (h < Mersenne61::MOD) << "\\n";
+}` }] }, { lang: 'java', code: `
       class ThueMorseAttack {
           // Shows why "let long overflow" (mod 2^64) is NOT a hash: Thue–Morse strings collide for ANY odd base.
           public static void main(String[] args) {
@@ -1488,7 +2827,50 @@ print(count_occurrences("aaaa", ["a", "aa", "aaa"]))   # [4, 3, 2]` }],
                   System.out.println("base " + base + ": equal hash = " + (hs == ht) + ", equal strings = " + s.toString().equals(t.toString()));
               }
           }
-      }`, { lang: 'python', run: true, title: 'Anti-hash demo in Python (runnable)', code: `
+      }`, alt: [{ lang: 'python', code: `# Shows why "let the integer overflow" (mod 2^64) is NOT a hash: Thue-Morse strings collide for ANY odd base.
+# Python ints never overflow, so the wrap-around is made explicit with a mask.
+MASK = (1 << 64) - 1
+n = 1 << 11                                         # 2048 characters
+s = ''.join('b' if bin(i).count('1') % 2 else 'a' for i in range(n))     # Thue-Morse sequence
+t = ''.join('a' if ch == 'b' else 'b' for ch in s)                       # its complement
+for base in (31, 131, 1_000_003, 0x9E3779B97F4A7C15 | 1):
+    hs = ht = 0
+    for i in range(n):
+        hs = (hs * base + ord(s[i])) & MASK
+        ht = (ht * base + ord(t[i])) & MASK
+    print("base", base, ": equal hash =", hs == ht, ", equal strings =", s == t)` }, { lang: 'js', code: `// Shows why "let the integer overflow" (mod 2^64) is NOT a hash: Thue-Morse strings collide for ANY odd base.
+// BigInt.asUintN(64, x) reproduces the wrap-around of a 64-bit unsigned integer.
+const bitCount = (x) => { let c = 0; for (; x; x &= x - 1) c++; return c; };
+const n = 1 << 11;                                  // 2048 characters
+let s = "", t = "";
+for (let i = 0; i < n; i++) {
+  const bit = bitCount(i) % 2 === 1;                // Thue-Morse sequence
+  s += bit ? "b" : "a";
+  t += bit ? "a" : "b";                             // its complement
+}
+for (const base of [31n, 131n, 1000003n, 0x9E3779B97F4A7C15n | 1n]) {
+  let hs = 0n, ht = 0n;
+  for (let i = 0; i < n; i++) {
+    hs = BigInt.asUintN(64, hs * base + BigInt(s.charCodeAt(i)));
+    ht = BigInt.asUintN(64, ht * base + BigInt(t.charCodeAt(i)));
+  }
+  console.log("base " + base + ": equal hash = " + (hs === ht) + ", equal strings = " + (s === t));
+}` }, { lang: 'cpp', code: `int main() {
+    // Shows why "let unsigned long long overflow" (mod 2^64) is NOT a hash: Thue-Morse strings collide for ANY odd base.
+    int n = 1 << 11;                                         // 2048 characters
+    string s, t;
+    for (int i = 0; i < n; i++) {
+        bool bit = __builtin_popcount(i) % 2 == 1;           // Thue-Morse sequence
+        s += bit ? 'b' : 'a';
+        t += bit ? 'a' : 'b';                                // its complement
+    }
+    for (unsigned long long base : {31ULL, 131ULL, 1'000'003ULL, 0x9E3779B97F4A7C15ULL | 1}) {
+        unsigned long long hs = 0, ht = 0;                   // unsigned: wrap-around is defined (signed overflow is UB)
+        for (int i = 0; i < n; i++) { hs = hs * base + s[i]; ht = ht * base + t[i]; }
+        cout << "base " << base << ": equal hash = " << boolalpha << (hs == ht)
+             << ", equal strings = " << (s == t) << "\\n";
+    }
+}` }] }, { lang: 'python', run: true, title: 'Anti-hash demo in Python (runnable)', code: `
 # Thue-Morse attack on "natural overflow" hashing (mod 2**64)
 n = 1 << 11
 S = ''.join('b' if bin(i).count('1') % 2 else 'a' for i in range(n))
@@ -1590,10 +2972,10 @@ print("Aa ->", java_hash("Aa"), " BB ->", java_hash("BB"))
     ],
     deepDive: `<p><b>Why random bases give a guarantee.</b> If s ≠ t (same length n), H<sub>B</sub>(s) − H<sub>B</sub>(t) is a non-zero polynomial in B of degree ≤ n − 1 over the field Z<sub>M</sub>. It has at most n − 1 roots, so a uniformly random B collides with probability ≤ (n − 1)/M (Schwartz–Zippel). The guarantee is about <b>your random choice</b>, not about the input — that is why a fixed base can be attacked and a random one cannot (unless the program leaks it). For K strings compared all-pairs, apply a union bound: ≤ K<sup>2</sup>·n/(2M).</p>
       <p><b>Why 2<sup>64</sup> fails.</b> 2<sup>64</sup> is not prime, so Z<sub>2<sup>64</sup></sub> is not a field and the root-counting argument breaks. For Thue–Morse S<sub>k</sub>, T<sub>k</sub>: D<sub>k</sub> = D<sub>k−1</sub>·(B<sup>2<sup>k−1</sup></sup> − 1), and for odd B, B<sup>2<sup>j</sup></sup> − 1 is divisible by 2<sup>j+1</sup>. So D<sub>k</sub> has ≥ k(k+1)/2 factors of two: k = 11 gives 66 ≥ 64 → zero. Lattice-reduction attacks (LLL) can even find collisions for a <i>known</i> prime modulus and base pair, which is why randomness matters more than size.</p>
-      <p><b>Engineering.</b> Java <code>long</code> products of two values &lt; 2<sup>30</sup> fit easily; for M ≈ 2<sup>61</sup> you need <code>Math.multiplyHigh</code> (or <code>unsigned __int128</code> in C++). Keep the prefix arrays as <code>long[]</code>, precompute powers, and pack two 30-bit hashes into one long for HashSet keys (avoids allocating pair objects). Real-world cousins: rsync and content-defined chunking (Rabin fingerprints / Gear hash) in backup systems and dedup storage; Python, Rust and Ruby use <b>keyed SipHash</b> for strings so web requests cannot flood hash tables (Python since 3.4, with <code>PYTHONHASHSEED</code> randomised per process).</p>`,
-    aiEra: `<p><b>What AI changes:</b> assistants love writing Rabin–Karp with <code>long</code> overflow or a single fixed <code>MOD = 1e9+7, BASE = 31</code>. That passes LeetCode tests and gets <b>hacked</b> in contests or exploited in production (hash flooding). Knowing the anti-hash story lets you review AI code in seconds: “prime modulus? random base? two hashes or verification? zero-free mapping?”.</p>
+      <p><b>Engineering.</b> Products of two values &lt; 2<sup>30</sup> fit in a signed 64-bit integer (Java <code>long</code>, C++ <code>long long</code>), but not in a JavaScript <code>Number</code> (exact only to 2<sup>53</sup>) — use <code>BigInt</code> there. For M ≈ 2<sup>61</sup> you need a 128-bit product: <code>Math.multiplyHigh</code> in Java, <code>unsigned __int128</code> in C++, <code>BigInt</code> in JavaScript; Python needs nothing special. Keep the prefix arrays as 64-bit arrays, precompute powers, and pack two 30-bit hashes into one 64-bit integer for hash-set keys (avoids allocating pair objects). Real-world cousins: rsync and content-defined chunking (Rabin fingerprints / Gear hash) in backup systems and dedup storage; Python, Rust and Ruby use <b>keyed SipHash</b> for strings so web requests cannot flood hash tables (Python since 3.4, with <code>PYTHONHASHSEED</code> randomised per process).</p>`,
+    aiEra: `<p><b>What AI changes:</b> assistants love writing Rabin–Karp that relies on 64-bit overflow or a single fixed <code>MOD = 1e9+7, BASE = 31</code>. That passes LeetCode tests and gets <b>hacked</b> in contests or exploited in production (hash flooding). Knowing the anti-hash story lets you review AI code in seconds: “prime modulus? random base? two hashes or verification? zero-free mapping?”.</p>
       <p><b>Use AI as a partner:</b> ask it to <code>generate an anti-hash test for this code</code> — it can produce Thue–Morse inputs or a birthday-search script that finds collisions for a fixed 32-bit modulus. Watching your own solution fail on it is the fastest way to internalise the rules. Also ask it to compute the birthday-paradox collision probability for your K and M before you choose single vs double hashing.</p>
-      <p><b>Where AI goes wrong:</b> negative values after subtraction (forgetting <code>+ M</code>), multiplying two values near 2<sup>61</sup> in a plain <code>long</code> (silent overflow), mapping <code>'a'</code> to 0, and “double hashing” with two moduli but the <i>same</i> fixed base. <b>What you must still own:</b> the decision of when hashing is acceptable (randomised, small failure probability) versus when you must be deterministic (suffix array / KMP / Z), and explaining that trade-off to an interviewer.</p>`,
+      <p><b>Where AI goes wrong:</b> negative values after subtraction (forgetting <code>+ M</code>), multiplying two values near 2<sup>61</sup> in a plain 64-bit integer (silent overflow), mapping <code>'a'</code> to 0, and “double hashing” with two moduli but the <i>same</i> fixed base. <b>What you must still own:</b> the decision of when hashing is acceptable (randomised, small failure probability) versus when you must be deterministic (suffix array / KMP / Z), and explaining that trade-off to an interviewer.</p>`,
     problems: [{
       title: 'Distinct Echo Substrings', level: 'Hard', tags: ['rolling hash', 'double hashing', 'string'], companies: ['Google', 'Amazon'],
       statement: `<p>Return the number of <b>distinct</b> non-empty substrings of <code>text</code> that can be written as <code>a + a</code> (some string concatenated with itself).</p>`,
@@ -1612,9 +2994,27 @@ print("Aa ->", java_hash("Aa"), " BB ->", java_hash("BB"))
             }
         }` },
       mcq: { q: 'There are about N<sup>2</sup>/4 = 10<sup>6</sup> candidate (start, half) pairs. You store echo hashes in a set with ONE modulus ≈ 10<sup>9</sup>. What is the main risk?', options: ['Overflow', 'Birthday collisions merge different substrings and undercount', 'TLE', 'None'], answer: 1, explain: 'Up to 10<sup>6</sup> hashes in one set with M ≈ 10<sup>9</sup> gives ≈ 500 expected colliding pairs — the answer becomes wrong. Use a double hash (≈ 10<sup>18</sup>).' },
-      hints: [`<p>An echo is fixed by (start i, half-length L). Check “left half == right half” in O(1) with prefix hashes instead of comparing letters.</p>`, `<p>To count <b>distinct</b> echoes, insert the hash of the whole substring text[i, i + 2L) into a HashSet&lt;Long&gt;. Only substrings of equal length can be equal, so you can also keep one set per length.</p>`, `<p>Use two moduli with random bases and pack them into one long. Recipe: prefix hashes → loop i, L → if get(i, i+L) == get(i+L, i+2L) add get(i, i+2L) → return set size.</p>`],
+      hints: [`<p>An echo is fixed by (start i, half-length L). Check “left half == right half” in O(1) with prefix hashes instead of comparing letters.</p>`, `<p>To count <b>distinct</b> echoes, insert the hash of the whole substring text[i, i + 2L) into a hash set of 64-bit values. Only substrings of equal length can be equal, so you can also keep one set per length.</p>`, `<p>Use two moduli with random bases and pack them into one 64-bit integer. Recipe: prefix hashes → loop i, L → if get(i, i+L) == get(i+L, i+2L) add get(i, i+2L) → return set size.</p>`],
+      tests: { sig: 'string -> int', fn: 'distinctEchoSubstrings', names: { python: 'distinctEchoSubstrings' }, cases: [
+        [["abcabcabc"],3],
+        [["leetcodeleetcode"],2],
+        [["a"],0],
+        [["aa"],1],
+        [["ab"],0],
+        [["aaaa"],2],
+        [["abab"],1],
+        [["abcd"],0],
+        [["zzzzzz"],3],
+        [["abcabcabcabcx"],4],
+        [["aaababbbbaabaaaabbbb"],6],
+        [["babbabaabbbabbbabaabaabbbbbabbb"],11],
+        [["aabaabbabbbbbbabababbabbbababbbb"],10],
+        [["acaacccccbbabacabcbcaaacccabbccbabccacabacaaabbbacbbacbcaabaabbbacaabbbbcbacbccabccaaaaaacccacaabacacabcaacbcbacbbaacacccaccababacbbbabbacccabbbcbbbcabaacccbbbaccabbacbcaaaccabcbbbaacacbcbcbbbbcbaccbabcacbabcbcbaccbacbbabccaabbbcbbbccababaacbccaabacabcabaaaacbbbcabbbbacaccccccaccaabbcaccbbacabbbaccacccccabbcbbcaabaabaacbabcacbacbcabccbcabbbbaacbabaaababccbcbbacccbbacacabccbbacaabacacaabbcaaaccaaaa"],29],
+        [["aabaaaaababbaabaabaabbbbabababbaaabbaababababababaabaaaabababbabbbbaaabaaaababaabbbbbaaabbabaabaabaaaabaaababbaaabbbbababbababbaaaaaabaabbbbbaabbaabaaabbbaaabbaababaaabbaababbbbbbabaabaababbbabbaabbbbaaababaaabaabaaaabababbaabbabaaaaaabbbaaaabaaabbaabbbbbaaababbbbbabaababbababaaaaabababbabbbbaaabbbaaaaabbbabaabbbababbabbbaaaaababaaaabaabbbbaabbaaabbaaaaaaababbbbabababbaababaaaaabbaabbbabbbaabbaabbbabaabbbaaababbabbbbbbaabaabbaaabbbbabbbbabbaaabaabbbbbbbbabaabbbaaaabaabaaababaababbbabababbbbbbbbabaabaabbbaababbabbaabaaabbaaaabbababbaaaaababbbabbababbbbabbabbbaaaababababaaabaabbbabaabaabbabaabbbbbaabbbbbbbabbbababbbbbabbaabaababaaaabaaabbabaabbbbbbbaaaabbaaabaaabbbbabbaabbaabbaababbbabbbbabaababbaaababbbabbabbaabaabbbabbaaabbaaabbabaaabbbabaaabababaabaaababaaababaababbbaaabbbbbaaababbbaabbbbbabbbaaaaaabaabbaaaabbaaaaaabaaabbbabaaabbabaaaabbabbababaaaabbaabbbbabbabbaaabbbbbabbaaababbbbbaaaaabaaaababaabbbbbbabbbbaaababbbaaaabbbaababbabbabaaabbbbbbbbbabaaaaabbbbaaaaabbabababaabaaaabbbabababaaaabbbbbaabbabbbaabbaaaabbbbabbbbbbbbbabaabbaabbbaaabbbbbaabaabaabbaabaabbbbbbbaabbaabbaababbabbbbaaaaaabbaabaaaaaabbaaababbbaaababbbbbbbbbbabbbaaabbbbaabbabbbbbbbaabaababaaaaaababaababbabaaaabbabaaababbbbbaababbabbbaabbbbaabbbaaabbbbbbbbabaaabaabaabaabbbaabaabaaaaaababaabbaaaababbabaabaabbaaababbbabbbaabbbbaaaaabbabbbbaaabbabbababbaababbabbabababbbbbababbbbaabbbabaabbbaabbbbbbaaaaaabbabbabbbaaaabaaabaaaaaabbaabaabbabaabbbbaabaababbabaabbaabaaaaababbabbababbaabbbbbaaabaaabaaaababbbbaaaabaaaaaab"],89],
+        [[{"$rep":"a","n":2000}],1000]
+      ] },
       solution: {
-        approach: `<p>Prefix double-hashes give O(1) substring hashes. Enumerate all O(N<sup>2</sup>) (start, half) pairs, test the halves by hash, and add the full substring’s hash to a set. Packing two independent hashes into a long keeps the collision probability around 10<sup>−6</sup> overall even with 10<sup>6</sup> insertions.</p>`,
+        approach: `<p>Prefix double-hashes give O(1) substring hashes. Enumerate all O(N<sup>2</sup>) (start, half) pairs, test the halves by hash, and add the full substring’s hash to a set. Packing two independent hashes into one 64-bit integer keeps the collision probability around 10<sup>−6</sup> overall even with 10<sup>6</sup> insertions.</p>`,
         code: `
           class Solution {
               static final long M1 = 1_000_000_007L, M2 = 998_244_353L;
@@ -1663,7 +3063,46 @@ class Solution:
             for i in range(n - 2 * L + 1):
                 if get(i, i + L) == get(i + L, i + 2 * L):
                     seen.add((L, get(i, i + 2 * L)))
-        return len(seen)` }],
+        return len(seen)` }, { lang: 'js', code: `
+function distinctEchoSubstrings(text) {
+  const n = text.length;
+  const M = (1n << 61n) - 1n;                                 // one big Mersenne prime
+  const B = BigInt(256 + Math.floor(Math.random() * 1e9));    // random base
+  const pre = [0n], pw = [1n];
+  for (let i = 0; i < n; i++) {
+    pre.push((pre[i] * B + BigInt(text.charCodeAt(i))) % M);
+    pw.push(pw[i] * B % M);
+  }
+  const get = (l, r) => ((pre[r] - pre[l] * pw[r - l]) % M + M) % M;
+  const seen = new Set();
+  for (let len = 1; 2 * len <= n; len++)
+    for (let i = 0; i + 2 * len <= n; i++)
+      if (get(i, i + len) === get(i + len, i + 2 * len)) seen.add(get(i, i + 2 * len));
+  return seen.size;
+}` }, { lang: 'cpp', code: `
+class Solution {
+    typedef unsigned long long u64;
+    static const u64 M = (1ULL << 61) - 1;                    // one big Mersenne prime
+    static u64 mul(u64 a, u64 b) { return (u64)((unsigned __int128)a * b % M); }
+
+public:
+    int distinctEchoSubstrings(string text) {
+        int n = text.size();
+        mt19937_64 rng(chrono::steady_clock::now().time_since_epoch().count());
+        u64 B = 256 + rng() % (M - 512);                      // random base
+        vector<u64> pre(n + 1, 0), pw(n + 1, 1);
+        for (int i = 0; i < n; i++) {
+            pre[i + 1] = (mul(pre[i], B) + text[i]) % M;
+            pw[i + 1] = mul(pw[i], B);
+        }
+        auto get = [&](int l, int r) { return (pre[r] + M - mul(pre[l], pw[r - l])) % M; };
+        unordered_set<u64> seen;
+        for (int len = 1; 2 * len <= n; len++)
+            for (int i = 0; i + 2 * len <= n; i++)
+                if (get(i, i + len) == get(i + len, i + 2 * len)) seen.insert(get(i, i + 2 * len));
+        return seen.size();
+    }
+};` }],
         dry: { head: ['half L', 'start i', 'left half', 'right half', 'equal?', 'set size'], rows: [
           ['1', '0..7', 'a,b,c,…', 'b,c,a,…', 'never', '0'],
           ['2', '0..5', 'ab, bc, …', 'ca, ab, …', 'never', '0'],
@@ -1725,7 +3164,7 @@ class Solution:
       '"k-th smallest distinct substring", "count paths in the substring DAG" → SAM is a DAG; DP over it.',
       'Memory budget allows ~2N states × σ edges, and you want deterministic results (no hashing).'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       class SuffixAutomaton {
           final int[] len, link, firstPos;
           final int[][] next;
@@ -1800,7 +3239,217 @@ class Solution:
               System.out.println(sam.contains("cbc") + " " + sam.contains("ca")); // true false
               System.out.println(sam.occurrences("bc"));                        // 2
           }
-      }`, { lang: 'python', run: true, title: 'Suffix automaton in Python (runnable)', code: `
+      }`, alt: [{ lang: 'python', code: `class SuffixAutomaton:
+    def __init__(self, s):
+        self.length = [0]                  # length of the longest string in each state
+        self.link = [-1]
+        self.next = [{}]                   # dict per state: sparse, so no 26-wide rows
+        self.is_clone = [False]
+        self.last = 0
+        for ch in s:
+            self._extend(ch)
+
+    def _new_state(self, length, nxt, link, clone):
+        self.length.append(length)
+        self.link.append(link)
+        self.next.append(nxt)
+        self.is_clone.append(clone)
+        return len(self.length) - 1
+
+    def _extend(self, c):
+        cur = self._new_state(self.length[self.last] + 1, {}, -1, False)
+        p = self.last
+        while p != -1 and c not in self.next[p]:       # new edges into cur
+            self.next[p][c] = cur
+            p = self.link[p]
+        if p == -1:
+            self.link[cur] = 0                         # case 1: fell off root
+        else:
+            q = self.next[p][c]
+            if self.length[p] + 1 == self.length[q]:
+                self.link[cur] = q                     # case 2: perfect fit
+            else:                                      # case 3: clone q
+                clone = self._new_state(self.length[p] + 1, dict(self.next[q]), self.link[q], True)
+                while p != -1 and self.next[p].get(c) == q:
+                    self.next[p][c] = clone
+                    p = self.link[p]
+                self.link[q] = clone
+                self.link[cur] = clone
+        self.last = cur
+
+    def size(self):
+        return len(self.length)
+
+    def contains(self, w):
+        v = 0
+        for ch in w:
+            v = self.next[v].get(ch, -1)
+            if v == -1:
+                return False
+        return True
+
+    def distinct_substrings(self):
+        return sum(self.length[v] - self.length[self.link[v]] for v in range(1, self.size()))
+
+    # occurrences of w = |endpos| of its state
+    def occurrences(self, w):
+        n = self.size()
+        cnt = [0 if self.is_clone[v] or v == 0 else 1 for v in range(n)]   # each prefix end is one position
+        for v in sorted(range(n), key=lambda x: -self.length[x]):         # longest first
+            if self.link[v] >= 0:
+                cnt[self.link[v]] += cnt[v]
+        v = 0
+        for ch in w:
+            v = self.next[v].get(ch, -1)
+            if v == -1:
+                return 0
+        return cnt[v]
+
+
+sam = SuffixAutomaton("abcbc")
+print("states =", sam.size())                                  # 8
+print(sam.distinct_substrings())                               # 12
+print(sam.contains("cbc"), sam.contains("ca"))                 # True False
+print(sam.occurrences("bc"))                                   # 2` }, { lang: 'js', code: `class SuffixAutomaton {
+  constructor(s) {
+    this.len = [0];                    // length of the longest string in each state
+    this.link = [-1];
+    this.next = [new Map()];           // Map per state: sparse, so no 26-wide rows
+    this.isClone = [false];
+    this.last = 0;
+    for (const ch of s) this.extend(ch);
+  }
+
+  newState(len, next, link, clone) {
+    this.len.push(len); this.link.push(link); this.next.push(next); this.isClone.push(clone);
+    return this.len.length - 1;
+  }
+
+  extend(c) {
+    const cur = this.newState(this.len[this.last] + 1, new Map(), -1, false);
+    let p = this.last;
+    while (p !== -1 && !this.next[p].has(c)) { this.next[p].set(c, cur); p = this.link[p]; }   // new edges into cur
+    if (p === -1) this.link[cur] = 0;                                    // case 1: fell off root
+    else {
+      const q = this.next[p].get(c);
+      if (this.len[p] + 1 === this.len[q]) this.link[cur] = q;           // case 2: perfect fit
+      else {                                                             // case 3: clone q
+        const clone = this.newState(this.len[p] + 1, new Map(this.next[q]), this.link[q], true);
+        while (p !== -1 && this.next[p].get(c) === q) { this.next[p].set(c, clone); p = this.link[p]; }
+        this.link[q] = clone;
+        this.link[cur] = clone;
+      }
+    }
+    this.last = cur;
+  }
+
+  get size() { return this.len.length; }
+
+  contains(w) {
+    let v = 0;
+    for (const ch of w) { v = this.next[v].has(ch) ? this.next[v].get(ch) : -1; if (v === -1) return false; }
+    return true;
+  }
+
+  distinctSubstrings() {
+    let total = 0;
+    for (let v = 1; v < this.size; v++) total += this.len[v] - this.len[this.link[v]];
+    return total;
+  }
+
+  // occurrences of w = |endpos| of its state
+  occurrences(w) {
+    const n = this.size;
+    const cnt = new Array(n).fill(0);
+    for (let v = 1; v < n; v++) if (!this.isClone[v]) cnt[v] = 1;       // each prefix end is one position
+    const order = Array.from({ length: n }, (_, v) => v).sort((a, b) => this.len[b] - this.len[a]);   // longest first
+    for (const v of order) if (this.link[v] >= 0) cnt[this.link[v]] += cnt[v];
+    let v = 0;
+    for (const ch of w) { v = this.next[v].has(ch) ? this.next[v].get(ch) : -1; if (v === -1) return 0; }
+    return cnt[v];
+  }
+}
+
+const sam = new SuffixAutomaton("abcbc");
+console.log("states = " + sam.size);                                    // 8
+console.log(sam.distinctSubstrings());                                  // 12
+console.log(sam.contains("cbc") + " " + sam.contains("ca"));            // true false
+console.log(sam.occurrences("bc"));                                     // 2` }, { lang: 'cpp', code: `class SuffixAutomaton {
+    struct State {
+        int len = 0, link = -1;
+        bool isClone = false;
+        array<int, 26> next;
+        State() { next.fill(-1); }
+    };
+    vector<State> st;              // at most 2N - 1 states
+    int last = 0;
+
+    void extend(int c) {
+        int cur = st.size();
+        st.emplace_back();
+        st[cur].len = st[last].len + 1;
+        int p = last;
+        while (p != -1 && st[p].next[c] == -1) { st[p].next[c] = cur; p = st[p].link; }   // new edges into cur
+        if (p == -1) st[cur].link = 0;                                       // case 1: fell off root
+        else {
+            int q = st[p].next[c];
+            if (st[p].len + 1 == st[q].len) st[cur].link = q;                // case 2: perfect fit
+            else {                                                           // case 3: clone q
+                int clone = st.size();
+                st.push_back(st[q]);                                         // copies the transition row
+                st[clone].len = st[p].len + 1;
+                st[clone].isClone = true;
+                while (p != -1 && st[p].next[c] == q) { st[p].next[c] = clone; p = st[p].link; }
+                st[q].link = clone;
+                st[cur].link = clone;
+            }
+        }
+        last = cur;
+    }
+
+public:
+    SuffixAutomaton(const string& s) {
+        st.reserve(2 * max<size_t>(1, s.size()));
+        st.emplace_back();
+        for (char ch : s) extend(ch - 'a');
+    }
+
+    int size() const { return st.size(); }
+
+    bool contains(const string& w) const {
+        int v = 0;
+        for (char ch : w) { v = st[v].next[ch - 'a']; if (v == -1) return false; }
+        return true;
+    }
+
+    long long distinctSubstrings() const {
+        long long total = 0;
+        for (int v = 1; v < (int)st.size(); v++) total += st[v].len - st[st[v].link].len;
+        return total;
+    }
+
+    // occurrences of w = |endpos| of its state
+    long long occurrences(const string& w) const {
+        int n = st.size();
+        vector<long long> cnt(n, 0);
+        for (int v = 1; v < n; v++) if (!st[v].isClone) cnt[v] = 1;          // each prefix end is one position
+        vector<int> order(n);
+        iota(order.begin(), order.end(), 0);
+        sort(order.begin(), order.end(), [&](int a, int b) { return st[a].len > st[b].len; });   // longest first
+        for (int v : order) if (st[v].link >= 0) cnt[st[v].link] += cnt[v];
+        int v = 0;
+        for (char ch : w) { v = st[v].next[ch - 'a']; if (v == -1) return 0; }
+        return cnt[v];
+    }
+};
+
+int main() {
+    SuffixAutomaton sam("abcbc");
+    cout << "states = " << sam.size() << "\\n";                              // 8
+    cout << sam.distinctSubstrings() << "\\n";                               // 12
+    cout << boolalpha << sam.contains("cbc") << " " << sam.contains("ca") << "\\n";   // true false
+    cout << sam.occurrences("bc") << "\\n";                                  // 2
+}` }] }, { lang: 'python', run: true, title: 'Suffix automaton in Python (runnable)', code: `
 class SAM:
     def __init__(self, s):
         self.len, self.link, self.next = [0], [-1], [{}]
@@ -1932,8 +3581,8 @@ print("LCS =", lcs("abcbc", "bcbcab"))                                          
       { title: 'Distinct substrings after every prefix', html: `<p>When the i-th letter arrives, exactly len(cur) − len(link(cur)) new distinct substrings appear (the new suffixes not seen before). For <code>abcbc</code> the increments are 1, 2, 3, 3, 3 → running totals 1, 3, 6, 9, <b>12</b>. A suffix array would have to be rebuilt; the SAM answers online.</p>` }
     ],
     deepDive: `<p><b>Why ≤ 2N − 1 states.</b> The endpos sets form a laminar family (two sets are either disjoint or nested), i.e. a tree whose leaves are at most N single positions; a tree with ≤ N leaves where every internal node has ≥ 2 children (or adds a new position) has ≤ 2N − 1 nodes. Transitions ≤ 3N − 4 by a spanning-tree argument. Construction is amortised O(N) for constant σ: the clone-redirect loop and the edge-adding loop are paid for by how the depth of <code>last</code> in the link tree changes.</p>
-      <p><b>Relation to other structures.</b> The suffix-link tree of the SAM of s is the <b>suffix tree of reverse(s)</b>. Built over a set of strings with separators (or a “generalised SAM” built on a trie), it answers multi-string questions such as the longest substring common to all k strings. Compared with SA + LCP: SAM is online and O(N) but uses σ-wide transitions (26 ints per state → ~200 bytes per character for 26 letters with int[] rows, or hash maps for large alphabets); SA is offline and leaner (4–8 bytes per char).</p>
-      <p><b>Pitfalls.</b> Allocate 2N states (not N); copy the clone’s transition row (not alias it — <code>next[clone] = next[q]</code> without <code>.clone()</code> is a classic bug); compute occurrence counts in decreasing len order (counting sort by len is O(N)); remember clones get cnt 0 initially. For huge N in Java, prefer flat <code>int[]</code> arrays of size 26·2N over <code>int[][]</code> to cut object overhead.</p>`,
+      <p><b>Relation to other structures.</b> The suffix-link tree of the SAM of s is the <b>suffix tree of reverse(s)</b>. Built over a set of strings with separators (or a “generalised SAM” built on a trie), it answers multi-string questions such as the longest substring common to all k strings. Compared with SA + LCP: SAM is online and O(N) but uses σ-wide transitions (26 ints per state → ~200 bytes per character for 26 letters with array rows, or hash maps for large alphabets); SA is offline and leaner (4–8 bytes per char).</p>
+      <p><b>Pitfalls.</b> Allocate 2N states (not N); copy the clone’s transition row (not alias it — <code>next[clone] = next[q]</code> without <code>.clone()</code> is a classic bug); compute occurrence counts in decreasing len order (counting sort by len is O(N)); remember clones get cnt 0 initially. For huge N, prefer one flat array of size 26·2N over an array of per-state rows (a row object per state in Java, a list per state in Python or JavaScript); a C++ <code>vector&lt;array&lt;int, 26&gt;&gt;</code> is already flat.</p>`,
     aiEra: `<p><b>What AI changes:</b> the SAM is the archetype of “hard to derive, easy to copy”. An assistant can paste a correct template, and interviewers at the expert level know it — so they probe <i>understanding</i>: what a state represents (an endpos class), why cloning is needed, and how to adapt it (occurrence counts, first positions, k-th substring). That is the knowledge this topic builds.</p>
       <p><b>Use AI as a partner:</b> ask it to print the state table (len, link, strings in state) for small words and check it against the visualizer; ask for a brute-force “set of all substrings” checker for distinct counts and occurrence counts on random strings of length ≤ 12. Ask it to explain a clone step for <code>abbb</code> in its own words — then verify each claim.</p>
       <p><b>Where AI goes wrong:</b> aliasing the transition array when cloning, sizing arrays to N states, counting occurrences without the longest-first order, and claiming SAM works “in O(N) for any alphabet” (with hash maps it is O(N log σ) or expected O(N)). <b>What you must still own:</b> deciding whether SAM is worth its complexity in an interview (often SA + LCP or hashing is simpler to explain) and articulating the endpos intuition clearly.</p>`,
@@ -1959,6 +3608,26 @@ print("LCS =", lcs("abcbc", "bcbcab"))                                          
         }` },
       mcq: { q: 'While walking t through the SAM of s, the next char has no edge from state v. What do you do?', options: ['Restart from the root with length 0', 'Follow suffix links (setting l = len(v)) until an edge exists or you reach the root', 'Skip the character and keep l', 'Rebuild the automaton'], answer: 1, explain: 'Like Aho–Corasick fail links: the suffix link is the longest shorter suffix with more occurrences; keep as much of the current match as possible.' },
       hints: [`<p>Keep (v, l): the SAM state and length of the longest suffix of t[0..j] that is a substring of s. Answer = max l over j.</p>`, `<p>On character c: while v ≠ root and v has no c-edge, set v = link(v), l = len(v). If an edge exists, take it and l++; otherwise stay at the root with l = 0.</p>`, `<p>Build the SAM of the shorter string to save memory. Each step increases l by ≤ 1 and each fallback decreases it, so the walk is O(|t|). Return best.</p>`],
+      tests: { sig: 'string string -> int', fn: 'longestCommonSubstring', cases: [
+        [["abcbc","bcbcab"],4],
+        [["xabcdey","zzbcdq"],3],
+        [["a","a"],1],
+        [["a","b"],0],
+        [["abc","abc"],3],
+        [["abc","def"],0],
+        [["abcdef","cde"],3],
+        [["aaaa","aa"],2],
+        [["banana","ananas"],5],
+        [["bcbacccccabbcbaaaccbaacbbabcabaaac","abbcccccac"],6],
+        [["baaccbbabbcacbcacccbaaccca","baacbacbacaaacbaccbacbccaccacacbb"],4],
+        [["baacababbbabcaaaabccabcaaccabaaabb","bbabcaaaac"],9],
+        [["bbabaabccbaabbaaacbcaacbabbabcbbaacbbaacbaa","acaabbbccbcbcbbcacabbccbcbcaaabbab"],5],
+        [["babbabbbabaaaabaaaabbabaababbbbaaabaaabbaabbbaaabaaabbbbbbbbabbbbaaaabbaaaabaabbbaaabbabbaaaaabaabbbabababbbaaabbbaaaababbaabaabaaabbaabababaabababababaabbabbabbbbabbbaabbababbaaaaabbbabbbbaababaababbaaabbabaaabaababbbaaabbabbaabbbbbabbaaabbabaaabababaaabaaabbabaabbbaabaabaabbbaaaabbaaaabaaabaabababbbabaaaaababaaabbaabbabaaababaaaaaababbabbbbabaababbbbabbbaaaaaaabbabaabababaabbaabbbababaaaaaaaabab","bababbbabbbbaabbbbbbabaaaabbabaaaaaaabaabababaaaababaaababaaabbabbbaabbbaababaabbabababaaabbaaabbaabaabaaaaababbabaaaabbbbabababababaabbababbaabbbbbabbaaaababaaaabaabbbaabbabbbabbaaaabbabaaaaaabababbbaaabaaaabbbaaabbbbaabbbabababbbbabbaaabbabaaaababababbbabaaaabababaabbabbaabbbabbbaabaabaaaaabaaabbb"],17],
+        [[{"$rep":"a","n":250000},{"$rep":"a","n":250000}],250000],
+        [[{"$rep":"ab","n":125000},{"$rep":"ba","n":125000}],249999],
+        [[{"$rep":"a","n":250000},{"$rep":"b","n":250000}],0],
+        [[{"$concat":[{"$rep":"a","n":100000},"b",{"$rep":"a","n":100000}]},{"$concat":[{"$rep":"a","n":50000},"b",{"$rep":"a","n":150000}]}],150001]
+      ] },
       solution: {
         approach: `<p>Build the suffix automaton of s (O(|s|)). Scan t keeping the current state and current match length, falling back along suffix links on mismatches — exactly the Aho–Corasick / KMP pattern, but over all substrings of s at once.</p>`,
         code: `
@@ -2027,7 +3696,80 @@ def longest_common_substring(s, t):
         if ch in nxt[v]:
             v = nxt[v][ch]; l += 1
         best = max(best, l)
-    return best` }],
+    return best` }, { lang: 'js', code: `
+function longestCommonSubstring(s, t) {
+  const cap = 2 * Math.max(1, s.length);
+  const len = new Int32Array(cap), link = new Int32Array(cap);
+  const next = new Int32Array(cap * 26).fill(-1);
+  link[0] = -1;
+  let size = 1, last = 0;
+  for (let i = 0; i < s.length; i++) {                        // build the SAM of s
+    const c = s.charCodeAt(i) - 97, cur = size++;
+    len[cur] = len[last] + 1;
+    let p = last;
+    while (p !== -1 && next[p * 26 + c] === -1) { next[p * 26 + c] = cur; p = link[p]; }
+    if (p === -1) link[cur] = 0;
+    else {
+      const q = next[p * 26 + c];
+      if (len[p] + 1 === len[q]) link[cur] = q;
+      else {
+        const clone = size++;
+        len[clone] = len[p] + 1;
+        next.copyWithin(clone * 26, q * 26, q * 26 + 26);
+        link[clone] = link[q];
+        while (p !== -1 && next[p * 26 + c] === q) { next[p * 26 + c] = clone; p = link[p]; }
+        link[q] = clone; link[cur] = clone;
+      }
+    }
+    last = cur;
+  }
+  let v = 0, l = 0, best = 0;                                 // walk t through the automaton
+  for (let j = 0; j < t.length; j++) {
+    const c = t.charCodeAt(j) - 97;
+    while (v !== 0 && next[v * 26 + c] === -1) { v = link[v]; l = len[v]; }
+    if (next[v * 26 + c] !== -1) { v = next[v * 26 + c]; l++; }
+    best = Math.max(best, l);
+  }
+  return best;
+}` }, { lang: 'cpp', code: `
+class Solution {
+public:
+    int longestCommonSubstring(string s, string t) {
+        int cap = 2 * max<int>(1, s.size());
+        vector<int> len(cap, 0), link(cap, -1);
+        vector<array<int, 26>> next(cap);
+        for (auto& row : next) row.fill(-1);
+        int size = 1, last = 0;
+        for (char ch : s) {                                   // build the SAM of s
+            int c = ch - 'a', cur = size++;
+            len[cur] = len[last] + 1;
+            int p = last;
+            while (p != -1 && next[p][c] == -1) { next[p][c] = cur; p = link[p]; }
+            if (p == -1) link[cur] = 0;
+            else {
+                int q = next[p][c];
+                if (len[p] + 1 == len[q]) link[cur] = q;
+                else {
+                    int clone = size++;
+                    len[clone] = len[p] + 1;
+                    next[clone] = next[q];
+                    link[clone] = link[q];
+                    while (p != -1 && next[p][c] == q) { next[p][c] = clone; p = link[p]; }
+                    link[q] = link[cur] = clone;
+                }
+            }
+            last = cur;
+        }
+        int v = 0, l = 0, best = 0;                           // walk t through the automaton
+        for (char ch : t) {
+            int c = ch - 'a';
+            while (v != 0 && next[v][c] == -1) { v = link[v]; l = len[v]; }
+            if (next[v][c] != -1) { v = next[v][c]; l++; }
+            best = max(best, l);
+        }
+        return best;
+    }
+};` }],
         dry: { head: ['t[j]', 'fallbacks (state:len)', 'edge taken', 'state v', 'l', 'best'], rows: [
           ['b', '—', '0 → 5', '5 (b)', '1', '1'],
           ['c', '—', '5 → 7', '7 (bc, c)', '2', '2'],
@@ -2088,7 +3830,7 @@ def longest_common_substring(s, t):
       'Constraint words: "N ≤ 10<sup>5</sup>" + "distinct"/"repeated" → no O(N<sup>2</sup>); "queries after each appended char" → SAM.',
       '"deterministic answer required" / "hacks" → avoid single hashing; prefer SA/LCP or SAM.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       class SubstringStats {
           static int[] buildSA(String s) {
               int n = s.length();
@@ -2171,7 +3913,254 @@ def longest_common_substring(s, t):
               System.out.println(longestNonOverlappingRepeat("banana"));           // 2 ("an" or "na")
               System.out.println(longestNonOverlappingRepeat("aaaa"));             // 2 ("aa" at 0 and 2)
           }
-      }`, { lang: 'python', run: true, title: 'Three ways to count distinct substrings (Python, runnable)', code: `
+      }`, alt: [{ lang: 'python', code: `class SubstringStats:
+    @staticmethod
+    def build_sa(s):
+        n = len(s)
+        sa = list(range(n))
+        rank = [ord(ch) for ch in s]
+        k = 1
+        while n > 1:
+            r, step = rank, k
+            def key(i):
+                return (r[i], r[i + step] if i + step < n else -1)
+            sa.sort(key=key)
+            tmp = [0] * n
+            for i in range(1, n):
+                tmp[sa[i]] = tmp[sa[i - 1]] + (1 if key(sa[i - 1]) < key(sa[i]) else 0)
+            rank = tmp
+            if rank[sa[-1]] == n - 1:
+                break
+            k <<= 1
+        return sa
+
+    @staticmethod
+    def kasai(s, sa):
+        n, h = len(s), 0
+        rank = [0] * n
+        for r, i in enumerate(sa):
+            rank[i] = r
+        lcp = [0] * n
+        for i in range(n):
+            if rank[i] == 0:
+                h = 0
+                continue
+            j = sa[rank[i] - 1]
+            while i + h < n and j + h < n and s[i + h] == s[j + h]:
+                h += 1
+            lcp[rank[i]] = h
+            if h > 0:
+                h -= 1
+        return lcp
+
+    # distinct substrings of EVERY length L = 1..n in O(n) after SA + LCP
+    @staticmethod
+    def distinct_by_length(s):
+        n = len(s)
+        sa = SubstringStats.build_sa(s)
+        lcp = SubstringStats.kasai(s, sa)
+        diff = [0] * (n + 2)
+        for r in range(n):                       # rank r adds lengths lcp[r]+1 .. n-sa[r]
+            lo, hi = lcp[r] + 1, n - sa[r]
+            if lo <= hi:
+                diff[lo] += 1
+                diff[hi + 1] -= 1
+        res = [0] * (n + 1)
+        run = 0
+        for L in range(1, n + 1):
+            run += diff[L]
+            res[L] = run
+        return res
+
+    # longest substring that occurs at least twice WITHOUT overlapping (binary search on length)
+    @staticmethod
+    def longest_non_overlapping_repeat(s):
+        n = len(s)
+        sa = SubstringStats.build_sa(s)
+        lcp = SubstringStats.kasai(s, sa)
+        lo, hi = 0, n // 2
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            if SubstringStats._ok(sa, lcp, mid):
+                lo = mid
+            else:
+                hi = mid - 1
+        return lo
+
+    @staticmethod
+    def _ok(sa, lcp, L):
+        mn = mx = sa[0]
+        for r in range(1, len(sa)):
+            if lcp[r] >= L:
+                mn, mx = min(mn, sa[r]), max(mx, sa[r])
+                if mx - mn >= L:
+                    return True
+            else:
+                mn = mx = sa[r]                  # start a new block
+        return False
+
+
+s = "banana"
+sa = SubstringStats.build_sa(s)
+lcp = SubstringStats.kasai(s, sa)
+n = len(s)
+print("distinct =", n * (n + 1) // 2 - sum(lcp))                       # 15
+print(SubstringStats.distinct_by_length(s))                            # [0, 3, 3, 3, 3, 2, 1]
+print(SubstringStats.longest_non_overlapping_repeat("banana"))         # 2 ("an" or "na")
+print(SubstringStats.longest_non_overlapping_repeat("aaaa"))           # 2 ("aa" at 0 and 2)` }, { lang: 'js', code: `class SubstringStats {
+  static buildSA(s) {
+    const n = s.length;
+    const sa = Array.from({ length: n }, (_, i) => i);
+    let rank = Array.from(s, (ch) => ch.charCodeAt(0));
+    for (let k = 1; n > 1; k <<= 1) {
+      const r = rank;
+      const cmp = (x, y) => (r[x] !== r[y] ? r[x] - r[y]
+        : (x + k < n ? r[x + k] : -1) - (y + k < n ? r[y + k] : -1));
+      sa.sort(cmp);
+      const tmp = new Array(n).fill(0);
+      for (let i = 1; i < n; i++) tmp[sa[i]] = tmp[sa[i - 1]] + (cmp(sa[i - 1], sa[i]) < 0 ? 1 : 0);
+      rank = tmp;
+      if (rank[sa[n - 1]] === n - 1) break;
+    }
+    return sa;
+  }
+
+  static kasai(s, sa) {
+    const n = s.length;
+    let h = 0;
+    const rank = new Array(n).fill(0), lcp = new Array(n).fill(0);
+    for (let r = 0; r < n; r++) rank[sa[r]] = r;
+    for (let i = 0; i < n; i++) {
+      if (rank[i] === 0) { h = 0; continue; }
+      const j = sa[rank[i] - 1];
+      while (i + h < n && j + h < n && s[i + h] === s[j + h]) h++;
+      lcp[rank[i]] = h;
+      if (h > 0) h--;
+    }
+    return lcp;
+  }
+
+  // distinct substrings of EVERY length L = 1..n in O(n) after SA + LCP
+  static distinctByLength(s) {
+    const n = s.length;
+    const sa = SubstringStats.buildSA(s), lcp = SubstringStats.kasai(s, sa);
+    const diff = new Array(n + 2).fill(0);
+    for (let r = 0; r < n; r++) {          // rank r adds lengths lcp[r]+1 .. n-sa[r]
+      const from = lcp[r] + 1, to = n - sa[r];
+      if (from <= to) { diff[from]++; diff[to + 1]--; }
+    }
+    const res = new Array(n + 1).fill(0);
+    let run = 0;
+    for (let L = 1; L <= n; L++) { run += diff[L]; res[L] = run; }
+    return res;
+  }
+
+  // longest substring that occurs at least twice WITHOUT overlapping (binary search on length)
+  static longestNonOverlappingRepeat(s) {
+    const n = s.length;
+    const sa = SubstringStats.buildSA(s), lcp = SubstringStats.kasai(s, sa);
+    let lo = 0, hi = n >> 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (SubstringStats.ok(sa, lcp, mid)) lo = mid; else hi = mid - 1;
+    }
+    return lo;
+  }
+
+  static ok(sa, lcp, L) {
+    let mn = sa[0], mx = sa[0];
+    for (let r = 1; r < sa.length; r++) {
+      if (lcp[r] >= L) { mn = Math.min(mn, sa[r]); mx = Math.max(mx, sa[r]); if (mx - mn >= L) return true; }
+      else { mn = mx = sa[r]; }                       // start a new block
+    }
+    return false;
+  }
+}
+
+const s = "banana";
+const sa = SubstringStats.buildSA(s), lcp = SubstringStats.kasai(s, sa);
+const n = s.length;
+console.log("distinct = " + (n * (n + 1) / 2 - lcp.reduce((a, b) => a + b, 0)));          // 15
+console.log(JSON.stringify(SubstringStats.distinctByLength(s)));                           // [0,3,3,3,3,2,1]
+console.log(SubstringStats.longestNonOverlappingRepeat("banana"));                         // 2 ("an" or "na")
+console.log(SubstringStats.longestNonOverlappingRepeat("aaaa"));                           // 2 ("aa" at 0 and 2)` }, { lang: 'cpp', code: `class SubstringStats {
+public:
+    static vector<int> buildSA(const string& s) {
+        int n = s.size();
+        vector<int> sa(n), rank(n), tmp(n);
+        iota(sa.begin(), sa.end(), 0);
+        for (int i = 0; i < n; i++) rank[i] = (unsigned char)s[i];
+        for (int k = 1; n > 1; k <<= 1) {
+            auto key = [&](int i) { return make_pair(rank[i], i + k < n ? rank[i + k] : -1); };
+            sort(sa.begin(), sa.end(), [&](int x, int y) { return key(x) < key(y); });
+            tmp[sa[0]] = 0;
+            for (int i = 1; i < n; i++) tmp[sa[i]] = tmp[sa[i - 1]] + (key(sa[i - 1]) < key(sa[i]) ? 1 : 0);
+            rank = tmp;
+            if (rank[sa[n - 1]] == n - 1) break;
+        }
+        return sa;
+    }
+
+    static vector<int> kasai(const string& s, const vector<int>& sa) {
+        int n = s.size(), h = 0;
+        vector<int> rank(n), lcp(n, 0);
+        for (int r = 0; r < n; r++) rank[sa[r]] = r;
+        for (int i = 0; i < n; i++) {
+            if (rank[i] == 0) { h = 0; continue; }
+            int j = sa[rank[i] - 1];
+            while (i + h < n && j + h < n && s[i + h] == s[j + h]) h++;
+            lcp[rank[i]] = h;
+            if (h > 0) h--;
+        }
+        return lcp;
+    }
+
+    // distinct substrings of EVERY length L = 1..n in O(n) after SA + LCP
+    static vector<long long> distinctByLength(const string& s) {
+        int n = s.size();
+        vector<int> sa = buildSA(s), lcp = kasai(s, sa);
+        vector<long long> diff(n + 2, 0), res(n + 1, 0);
+        for (int r = 0; r < n; r++) {          // rank r adds lengths lcp[r]+1 .. n-sa[r]
+            int from = lcp[r] + 1, to = n - sa[r];
+            if (from <= to) { diff[from]++; diff[to + 1]--; }
+        }
+        long long run = 0;
+        for (int L = 1; L <= n; L++) { run += diff[L]; res[L] = run; }
+        return res;
+    }
+
+    // longest substring that occurs at least twice WITHOUT overlapping (binary search on length)
+    static int longestNonOverlappingRepeat(const string& s) {
+        int n = s.size();
+        vector<int> sa = buildSA(s), lcp = kasai(s, sa);
+        int lo = 0, hi = n / 2;
+        while (lo < hi) {
+            int mid = (lo + hi + 1) / 2;
+            if (ok(sa, lcp, mid)) lo = mid; else hi = mid - 1;
+        }
+        return lo;
+    }
+
+private:
+    static bool ok(const vector<int>& sa, const vector<int>& lcp, int L) {
+        int mn = sa[0], mx = sa[0];
+        for (int r = 1; r < (int)sa.size(); r++) {
+            if (lcp[r] >= L) { mn = min(mn, sa[r]); mx = max(mx, sa[r]); if (mx - mn >= L) return true; }
+            else { mn = mx = sa[r]; }                       // start a new block
+        }
+        return false;
+    }
+};
+
+int main() {
+    string s = "banana";
+    vector<int> sa = SubstringStats::buildSA(s), lcp = SubstringStats::kasai(s, sa);
+    long long n = s.size(), sum = accumulate(lcp.begin(), lcp.end(), 0LL);
+    cout << "distinct = " << n * (n + 1) / 2 - sum << "\\n";                          // 15
+    for (long long x : SubstringStats::distinctByLength(s)) cout << x << " ";        // 0 3 3 3 3 2 1
+    cout << "\\n" << SubstringStats::longestNonOverlappingRepeat("banana") << "\\n";   // 2 ("an" or "na")
+    cout << SubstringStats::longestNonOverlappingRepeat("aaaa") << "\\n";             // 2 ("aa" at 0 and 2)
+}` }] }, { lang: 'python', run: true, title: 'Three ways to count distinct substrings (Python, runnable)', code: `
 import random
 
 def by_set(s):
@@ -2274,10 +4263,10 @@ print("300 random tests: all three methods agree")
     ],
     deepDive: `<p><b>Proof of the distinct-count formula.</b> Map each distinct substring w to the <i>first</i> suffix (in SA order) that has w as a prefix. That suffix at rank r has w as a prefix but the suffix at rank r − 1 does not (otherwise r would not be first), so |w| &gt; lcp[r]; conversely any prefix of rank r longer than lcp[r] is new. Hence rank r owns exactly (n − SA[r]) − lcp[r] substrings and the sum counts each distinct substring once.</p>
       <p><b>Non-overlap needs extra care.</b> Max LCP ignores positions, so <code>aaaa</code> would report <code>aaa</code>. The monotone predicate “a non-overlapping repeat of length L exists” plus blocks of lcp ≥ L gives O(N log N). With a SAM you store firstpos and lastpos (max endpos via the link tree) per state; the best length in state v is min(len(v), lastpos − firstpos) if it exceeds len(link(v)).</p>
-      <p><b>Choosing under real constraints.</b> Memory: SA+LCP ≈ 8N bytes; SAM with 26-wide arrays ≈ 2N·26·4 = 208N bytes (≈ 200 MB for N = 10<sup>6</sup> in Java!) — use a flat array or hash maps. Determinism: hashing can be wrong with tiny probability; acceptable in most interviews if you say so and use double hashing. Speed: O(N log<sup>2</sup> N) SA with <code>Integer[]</code> boxing is ~1 s for N = 10<sup>6</sup> in Java; the counting-sort version is several times faster. Production systems that need these operations at scale (genomics, large corpus dedup) use SA-IS + compressed indexes (FM-index), not textbook code.</p>`,
+      <p><b>Choosing under real constraints.</b> Memory: SA+LCP ≈ 8N bytes; SAM with 26-wide arrays ≈ 2N·26·4 = 208N bytes (≈ 200 MB for N = 10<sup>6</sup> with 32-bit ints!) — use a flat array or hash maps. Determinism: hashing can be wrong with tiny probability; acceptable in most interviews if you say so and use double hashing. Speed: an O(N log<sup>2</sup> N) SA built with a comparator or tuple-key sort (boxed <code>Integer[]</code> in Java, key tuples in Python) takes seconds for N = 10<sup>6</sup>; the counting-sort version is several times faster. Production systems that need these operations at scale (genomics, large corpus dedup) use SA-IS + compressed indexes (FM-index), not textbook code.</p>`,
     aiEra: `<p><b>What AI changes:</b> deduplication and memorisation checks are now everyday ML-engineering tasks. Researchers use suffix arrays to find exact repeated spans in training corpora and to check whether a model’s output appears verbatim in its training data; plagiarism and code-clone detectors (e.g. MOSS) use k-gram hashing with winnowing; near-duplicate detection uses MinHash. Knowing when you need <b>exact</b> structure (SA/SAM) versus <b>approximate</b> fingerprints (MinHash, embeddings) is a real design skill.</p>
       <p><b>Use AI as a partner:</b> give it the problem statement and ask <code>which of hashing, SA+LCP, SAM fits these constraints and why — list memory per character</code>, then check its numbers yourself. Ask for a three-way stress test like the Python snippet above whenever you implement any of these structures.</p>
-      <p><b>Where AI goes wrong:</b> answering the overlap-allowed version when the statement forbids overlap, using N(N+1)/2 in <code>int</code> (overflows at N ≈ 65,536), and proposing embeddings for an exact-match problem. <b>What you must still own:</b> reading the fine print (distinct vs occurrences, overlap vs not), translating constraints into a tool choice, and explaining the trade-off in two sentences.</p>`,
+      <p><b>Where AI goes wrong:</b> answering the overlap-allowed version when the statement forbids overlap, computing N(N+1)/2 in a 32-bit integer (overflows at N ≈ 65,536), and proposing embeddings for an exact-match problem. <b>What you must still own:</b> reading the fine print (distinct vs occurrences, overlap vs not), translating constraints into a tool choice, and explaining the trade-off in two sentences.</p>`,
     problems: [{
       title: 'Number of Distinct Substrings in a String', level: 'Medium', tags: ['suffix array', 'lcp', 'suffix automaton', 'hashing'], companies: ['Google', 'Intuit'],
       statement: `<p>Given a string <code>s</code>, return the number of <b>distinct</b> non-empty substrings of <code>s</code>. Follow-up: can you do it in O(N log N) or O(N)?</p>`,
@@ -2294,7 +4283,24 @@ print("300 random tests: all three methods agree")
             }
         }` },
       mcq: { q: 'With SA + LCP, how many NEW distinct substrings does the suffix at rank r contribute?', options: ['n − SA[r]', 'lcp[r]', '(n − SA[r]) − lcp[r]', '1'], answer: 2, explain: 'Its first lcp[r] prefixes were already counted by the suffix right above it; the remaining prefixes are new.' },
-      hints: [`<p>Every substring is a prefix of a suffix. If suffixes are sorted, a prefix that repeats must be shared with the <b>neighbour above</b>.</p>`, `<p>Build SA, then LCP with Kasai. Answer = Σ over ranks of (suffix length − lcp[r]) = N(N+1)/2 − Σ lcp.</p>`, `<p>Use <code>long</code> (N = 10<sup>5</sup> gives ≈ 5·10<sup>9</sup>). Alternative O(N): suffix automaton, Σ len(v) − len(link(v)). Check: <code>aaaa</code> → 4.</p>`],
+      hints: [`<p>Every substring is a prefix of a suffix. If suffixes are sorted, a prefix that repeats must be shared with the <b>neighbour above</b>.</p>`, `<p>Build SA, then LCP with Kasai. Answer = Σ over ranks of (suffix length − lcp[r]) = N(N+1)/2 − Σ lcp.</p>`, `<p>Use a 64-bit integer (N = 10<sup>5</sup> gives ≈ 5·10<sup>9</sup>). Alternative O(N): suffix automaton, Σ len(v) − len(link(v)). Check: <code>aaaa</code> → 4.</p>`],
+      tests: { sig: 'string -> long', fn: 'countDistinct', names: { python: 'countDistinct' }, cases: [
+        [["aabbaba"],21],
+        [["abcdefg"],28],
+        [["banana"],15],
+        [["a"],1],
+        [["aaaa"],4],
+        [["ab"],3],
+        [["abab"],7],
+        [["mississippi"],53],
+        [["aabaabaaabbbab"],77],
+        [["bbaaababbbbbaaabaaaabbbbaabaaba"],393],
+        [["baabbaaabbabbaabbaabbabaab"],257],
+        [["aababaababccabbabccbcbcaccccccaccccaccbcccabbaaabcaaccbccaccacaabbbcaaacbbbcaaaaabcccbccbbcbcccacbbbbcbbacbcccbcabbaacaaaaabcabccbccaccccbaaabcaacbacabcaabbbababbbbaabaacacabacbccbaaccbabbbbbbaacbbbbccbbcbcbaabccbcbccacccbbcbcabbbcaaacbaaacabcabcbaabccacccbbabcbcccbacaababcabbacaaabccbbabacbacacabac"],43822],
+        [[{"$rep":"a","n":100000}],100000],
+        [[{"$rep":"ab","n":50000}],199999],
+        [[{"$concat":[{"$rep":"a","n":50000},{"$rep":"b","n":50000}]}],2500100000]
+      ] },
       solution: {
         approach: `<p>SA + Kasai LCP: each sorted suffix contributes its prefixes longer than its LCP with the previous suffix. O(N log<sup>2</sup> N) with the comparator SA (or O(N log N) with counting sort); deterministic, ~8N bytes extra.</p>`,
         code: `
@@ -2359,7 +4365,72 @@ class Solution:
                         nxt[p][ch] = cl; p = link[p]
                     link[q] = link[cur] = cl
             last = cur
-        return sum(length[v] - length[link[v]] for v in range(1, len(length)))` }],
+        return sum(length[v] - length[link[v]] for v in range(1, len(length)))` }, { lang: 'js', code: `
+function countDistinct(s) {
+  // suffix automaton: every state adds len(v) - len(link(v)) new substrings
+  const cap = 2 * Math.max(1, s.length);
+  const len = new Int32Array(cap), link = new Int32Array(cap);
+  const next = new Int32Array(cap * 26).fill(-1);
+  link[0] = -1;
+  let size = 1, last = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i) - 97, cur = size++;
+    len[cur] = len[last] + 1;
+    let p = last;
+    while (p !== -1 && next[p * 26 + c] === -1) { next[p * 26 + c] = cur; p = link[p]; }
+    if (p === -1) link[cur] = 0;
+    else {
+      const q = next[p * 26 + c];
+      if (len[p] + 1 === len[q]) link[cur] = q;
+      else {
+        const clone = size++;
+        len[clone] = len[p] + 1;
+        next.copyWithin(clone * 26, q * 26, q * 26 + 26);
+        link[clone] = link[q];
+        while (p !== -1 && next[p * 26 + c] === q) { next[p * 26 + c] = clone; p = link[p]; }
+        link[q] = clone; link[cur] = clone;
+      }
+    }
+    last = cur;
+  }
+  let total = 0;                                               // up to ~5e9: exact in a double
+  for (let v = 1; v < size; v++) total += len[v] - len[link[v]];
+  return total;
+}` }, { lang: 'cpp', code: `
+class Solution {
+public:
+    long long countDistinct(string s) {
+        // suffix automaton: every state adds len(v) - len(link(v)) new substrings
+        int cap = 2 * max<int>(1, s.size());
+        vector<int> len(cap, 0), link(cap, -1);
+        vector<array<int, 26>> next(cap);
+        for (auto& row : next) row.fill(-1);
+        int size = 1, last = 0;
+        for (char ch : s) {
+            int c = ch - 'a', cur = size++;
+            len[cur] = len[last] + 1;
+            int p = last;
+            while (p != -1 && next[p][c] == -1) { next[p][c] = cur; p = link[p]; }
+            if (p == -1) link[cur] = 0;
+            else {
+                int q = next[p][c];
+                if (len[p] + 1 == len[q]) link[cur] = q;
+                else {
+                    int clone = size++;
+                    len[clone] = len[p] + 1;
+                    next[clone] = next[q];
+                    link[clone] = link[q];
+                    while (p != -1 && next[p][c] == q) { next[p][c] = clone; p = link[p]; }
+                    link[q] = link[cur] = clone;
+                }
+            }
+            last = cur;
+        }
+        long long total = 0;
+        for (int v = 1; v < size; v++) total += len[v] - len[link[v]];
+        return total;
+    }
+};` }],
         dry: { head: ['i (text order)', 'suffix', 'neighbour above', 'h (lcp)', 'total after subtracting'], rows: [
           ['start', '', '', '', '21 = 6·7/2'],
           ['0', 'banana', 'anana', '0', '21'],
@@ -2394,8 +4465,26 @@ class Solution:
               return -1;
           }
       }` },
-    mcq: { q: 'Both window hashes equal the needle’s hashes. What should a robust solution do before returning i?', options: ['Return immediately — two hashes never collide', 'Verify with a direct comparison (regionMatches)', 'Recompute with a third modulus', 'Nothing; collisions only happen with mod 2^64'], answer: 1, explain: 'A direct comparison costs O(M) and runs only when the hashes agree, so the expected total stays O(N + M) while the answer becomes always correct.' },
-    hints: [`<p>Hash the needle once. Hash the first window, then roll: remove the left char’s contribution (·B<sup>M−1</sup>), multiply by B, add the new right char.</p>`, `<p>Use two prime moduli with <b>random</b> bases so nobody can craft collisions, and add M before taking mod after subtraction.</p>`, `<p>On a hash match, confirm with <code>regionMatches</code>. Edge: needle longer than haystack → −1. Recipe: precompute B<sup>M−1</sup>, loop i from 0, check, then roll if i + M &lt; N.</p>`],
+    mcq: { q: 'Both window hashes equal the needle’s hashes. What should a robust solution do before returning i?', options: ['Return immediately — two hashes never collide', 'Verify with a direct substring comparison', 'Recompute with a third modulus', 'Nothing; collisions only happen with mod 2^64'], answer: 1, explain: 'A direct comparison costs O(M) and runs only when the hashes agree, so the expected total stays O(N + M) while the answer becomes always correct.' },
+    hints: [`<p>Hash the needle once. Hash the first window, then roll: remove the left char’s contribution (·B<sup>M−1</sup>), multiply by B, add the new right char.</p>`, `<p>Use two prime moduli with <b>random</b> bases so nobody can craft collisions, and add M before taking mod after subtraction.</p>`, `<p>On a hash match, confirm with a direct comparison of the two substrings (<code>regionMatches</code>, slice equality, <code>compare</code>). Edge: needle longer than haystack → −1. Recipe: precompute B<sup>M−1</sup>, loop i from 0, check, then roll if i + M &lt; N.</p>`],
+    tests: { sig: 'string string -> int', fn: 'strStr', names: { python: 'strStr' }, cases: [
+        [["sadbutsad","sad"],0],
+        [["leetcode","leeto"],-1],
+        [["a","a"],0],
+        [["a","b"],-1],
+        [["abc","abcd"],-1],
+        [["abc","c"],2],
+        [["mississippi","issip"],4],
+        [["aaaaab","aab"],3],
+        [["hello","ll"],2],
+        [["abcabcabd","abcabd"],3],
+        [["baababbabb","aa"],1],
+        [["bbbbabbabbaababbbbbaaaaaaabbaa","babba"],3],
+        [["baaabaaaabbbbbbbbaaabaaaababbaaabaababab","ab"],3],
+        [[{"$concat":[{"$rep":"a","n":999999},"b"]},{"$concat":[{"$rep":"a","n":500},"b"]}],999499],
+        [[{"$rep":"ab","n":500000},"ababc"],-1],
+        [[{"$concat":[{"$rep":"a","n":99999},"b"]},{"$concat":[{"$rep":"a","n":99999},"b"]}],0]
+      ] },
     solution: {
       approach: `<p>Rabin–Karp with a double hash and verification: O(N + M) expected, always correct (Las Vegas style — randomness affects only speed, not the answer).</p>`,
       code: `
@@ -2442,7 +4531,52 @@ class Solution:
                 return i
             if i + m < n:
                 hw = ((hw - ord(haystack[i]) * top) * B + ord(haystack[i + m])) % MOD
-        return -1` }],
+        return -1` }, { lang: 'js', code: `
+function strStr(haystack, needle) {
+  const n = haystack.length, m = needle.length;
+  if (m > n) return -1;
+  const M = 1000000007, B = 256 + Math.floor(Math.random() * 1000000);   // random base
+  // a * b mod M without leaving 2^53: split b into 15-bit halves
+  const mul = (a, b) => ((a * (b >>> 15)) % M * 32768 + a * (b & 32767)) % M;
+  let top = 1;                                                // B^(m-1)
+  for (let i = 1; i < m; i++) top = mul(top, B);
+  let hn = 0, hw = 0;
+  for (let i = 0; i < m; i++) {
+    hn = (mul(hn, B) + needle.charCodeAt(i)) % M;
+    hw = (mul(hw, B) + haystack.charCodeAt(i)) % M;
+  }
+  for (let i = 0; ; i++) {
+    if (hw === hn && haystack.startsWith(needle, i)) return i;   // verify: a match is always real
+    if (i + m >= n) return -1;
+    const drop = mul(haystack.charCodeAt(i), top);
+    hw = (mul((hw - drop + M) % M, B) + haystack.charCodeAt(i + m)) % M;
+  }
+}` }, { lang: 'cpp', code: `
+class Solution {
+    typedef unsigned long long u64;
+    static const u64 M = (1ULL << 61) - 1;
+    static u64 mul(u64 a, u64 b) { return (u64)((unsigned __int128)a * b % M); }
+
+public:
+    int strStr(string haystack, string needle) {
+        int n = haystack.size(), m = needle.size();
+        if (m > n) return -1;
+        mt19937_64 rng(chrono::steady_clock::now().time_since_epoch().count());
+        u64 B = 256 + rng() % (M - 512);                      // random base
+        u64 top = 1;                                          // B^(m-1)
+        for (int i = 1; i < m; i++) top = mul(top, B);
+        u64 hn = 0, hw = 0;
+        for (int i = 0; i < m; i++) {
+            hn = (mul(hn, B) + needle[i]) % M;
+            hw = (mul(hw, B) + haystack[i]) % M;
+        }
+        for (int i = 0;; i++) {
+            if (hw == hn && haystack.compare(i, m, needle) == 0) return i;   // verify: a match is always real
+            if (i + m >= n) return -1;
+            hw = (mul((hw + M - mul(haystack[i], top)) % M, B) + haystack[i + m]) % M;
+        }
+    }
+};` }],
       dry: { head: ['i', 'window', 'hash match?', 'verify', 'result'], rows: [['0', 'sad', 'yes', 'equal', H.c('g', 'return 0')], ['—', '(stop)', '', '', '']] },
       complexity: `<p>O(N + M) expected time, O(1) extra space.</p>`,
       followUps: ['Return <b>all</b> occurrences.', 'Deterministic O(N + M): KMP or Z-function (DSA 9).', 'Search a 2D pattern in a 2D grid with a 2D rolling hash.']
@@ -2465,6 +4599,27 @@ class Solution:
       }` },
     mcq: { q: 'Every rotation of s appears as a substring of…', options: ['reverse(s)', 's + s', 's + reverse(s)', 'only s itself'], answer: 1, explain: 'Rotation by k = s[k..] + s[..k], which is s+s starting at index k.' },
     hints: [`<p>Lengths must match. Then goal is a rotation of s ⇔ goal occurs in <code>s + s</code>.</p>`, `<p>Use a linear matcher: prefix function (KMP) on <code>goal + "#" + s + s</code>; a value equal to |goal| means a match.</p>`, `<p>The separator must not occur in the strings. Edge: both empty → true.</p>`],
+    tests: { sig: 'string string -> bool', fn: 'rotateString', names: { python: 'rotateString' }, cases: [
+        [["abcde","cdeab"],true],
+        [["abcde","abced"],false],
+        [["a","a"],true],
+        [["a","b"],false],
+        [["aa","a"],false],
+        [["abc","abc"],true],
+        [["abab","baba"],true],
+        [["abab","abba"],false],
+        [["ab","ba"],true],
+        [["abc","cab"],true],
+        [["abc","bca"],true],
+        [["abc","acb"],false],
+        [["aaaa","aaaa"],true],
+        [["abaab","abaab"],true],
+        [["bba","bab"],true],
+        [["bbbaab","bbbaab"],true],
+        [[{"$concat":[{"$rep":"a","n":499999},"b"]},{"$concat":["b",{"$rep":"a","n":499999}]}],true],
+        [[{"$rep":"a","n":1000000},{"$concat":[{"$rep":"a","n":999999},"b"]}],false],
+        [[{"$concat":[{"$rep":"a","n":500000},"b",{"$rep":"a","n":499999}]},{"$concat":[{"$rep":"a","n":499999},"b",{"$rep":"a","n":500000}]}],true]
+      ] },
     solution: {
       approach: `<p>Reduce to substring search in the doubled string and solve with KMP’s prefix function in O(N). (A double-hash Rabin–Karp works too.)</p>`,
       code: `
@@ -2487,7 +4642,38 @@ class Solution:
       alt: [{ lang: 'python', code: `
 class Solution:
     def rotateString(self, s: str, goal: str) -> bool:
-        return len(s) == len(goal) and goal in s + s` }],
+        return len(s) == len(goal) and goal in s + s` }, { lang: 'js', code: `
+function rotateString(s, goal) {
+  if (s.length !== goal.length) return false;
+  if (s.length === 0) return true;
+  const t = goal + '#' + s + s;                                // KMP prefix function over goal # s+s
+  const pi = new Int32Array(t.length);
+  for (let i = 1; i < t.length; i++) {
+    let k = pi[i - 1];
+    while (k > 0 && t[i] !== t[k]) k = pi[k - 1];
+    if (t[i] === t[k]) k++;
+    pi[i] = k;
+    if (k === goal.length) return true;                        // goal found inside s + s
+  }
+  return false;
+}` }, { lang: 'cpp', code: `
+class Solution {
+public:
+    bool rotateString(string s, string goal) {
+        if (s.size() != goal.size()) return false;
+        if (s.empty()) return true;
+        string t = goal + "#" + s + s;                         // KMP prefix function over goal # s+s
+        vector<int> pi(t.size(), 0);
+        for (size_t i = 1; i < t.size(); i++) {
+            int k = pi[i - 1];
+            while (k > 0 && t[i] != t[k]) k = pi[k - 1];
+            if (t[i] == t[k]) k++;
+            pi[i] = k;
+            if (k == (int)goal.size()) return true;            // goal found inside s + s
+        }
+        return false;
+    }
+};` }],
       dry: { head: ['step', 'value'], rows: [['s + s', 'abcdeabcde'], ['search "cdeab"', 'found at index 2 → <b>true</b>']] },
       complexity: `<p>O(N) time and space.</p>`,
       followUps: ['Return the minimum number of rotations needed.', 'Count how many rotations of s equal goal (all matches in s + s minus the last).']
@@ -2512,6 +4698,26 @@ class Solution:
       }` },
     mcq: { q: 'The longest proper border (prefix = suffix) of s has length b. The smallest period is…', options: ['b', 'n − b', 'n / b', 'n + b'], answer: 1, explain: 'If s[0..b) = s[n−b..n), shifting s by n − b lines it up with itself, so n − b is a period, and the longest border gives the smallest period.' },
     hints: [`<p>s is a repetition ⇔ its smallest period p divides n and p &lt; n.</p>`, `<p>Prefix function: b = π[n−1] is the longest border; smallest period p = n − b.</p>`, `<p>Return b &gt; 0 && n % (n − b) == 0. Check: <code>"abcab"</code> has b = 2, p = 3, 5 % 3 ≠ 0 → false.</p>`],
+    tests: { sig: 'string -> bool', fn: 'repeatedSubstringPattern', names: { python: 'repeatedSubstringPattern' }, cases: [
+        [["abab"],true],
+        [["aba"],false],
+        [["abcabcabcabc"],true],
+        [["a"],false],
+        [["aa"],true],
+        [["ab"],false],
+        [["abcab"],false],
+        [["aabaab"],true],
+        [["aabaaba"],false],
+        [["abaababaab"],true],
+        [["zzzz"],true],
+        [["abcabd"],false],
+        [["babbaba"],false],
+        [["bbbabbbaab"],false],
+        [["baaba"],false],
+        [[{"$rep":"a","n":10000}],true],
+        [[{"$concat":[{"$rep":"a","n":9999},"b"]}],false],
+        [[{"$rep":"abcde","n":2000}],true]
+      ] },
     solution: {
       approach: `<p>Compute the prefix function; the smallest period is n − π[n−1]. s is a power of a shorter string iff that period divides n (and the border is non-empty).</p>`,
       code: `
@@ -2533,7 +4739,34 @@ class Solution:
 class Solution:
     def repeatedSubstringPattern(self, s: str) -> bool:
         # s is periodic iff s appears in (s+s) with the first and last char removed
-        return s in (s + s)[1:-1]` }],
+        return s in (s + s)[1:-1]` }, { lang: 'js', code: `
+function repeatedSubstringPattern(s) {
+  const n = s.length;
+  const pi = new Int32Array(n);                                // KMP prefix function
+  for (let i = 1; i < n; i++) {
+    let k = pi[i - 1];
+    while (k > 0 && s[i] !== s[k]) k = pi[k - 1];
+    if (s[i] === s[k]) k++;
+    pi[i] = k;
+  }
+  const border = pi[n - 1], period = n - border;
+  return border > 0 && n % period === 0;
+}` }, { lang: 'cpp', code: `
+class Solution {
+public:
+    bool repeatedSubstringPattern(const string& s) {
+        int n = s.size();
+        vector<int> pi(n, 0);                                  // KMP prefix function
+        for (int i = 1; i < n; i++) {
+            int k = pi[i - 1];
+            while (k > 0 && s[i] != s[k]) k = pi[k - 1];
+            if (s[i] == s[k]) k++;
+            pi[i] = k;
+        }
+        int border = pi[n - 1], period = n - border;
+        return border > 0 && n % period == 0;
+    }
+};` }],
       dry: { head: ['s', 'π[n−1]', 'period', 'n % period', 'answer'], rows: [['abab', '2', '2', '0', H.c('g', 'true')], ['aba', '1', '2', '1', H.c('r', 'false')], ['abcabcabcabc', '9', '3', '0', H.c('g', 'true')]] },
       complexity: `<p>O(N) time and space.</p>`,
       followUps: ['Return the shortest repeating unit.', 'Answer the question for every prefix of s.']
@@ -2560,6 +4793,25 @@ class Solution:
       }` },
     mcq: { q: 'In the #-padded string, P[i] = 4 at i = 6. The palindrome in s is…', options: ['s[1..4]', 's[3..6]', 's[1..5]', 's[6..10]'], answer: 0, explain: 'Start = (i − P[i]) / 2 = (6 − 4)/2 = 1, length 4 → s[1..4].' },
     hints: [`<p>Pad with <code>#</code> so every palindrome has a center cell; P[i] then equals the palindrome’s length in s.</p>`, `<p>Manacher: keep the rightmost palindrome [C − P[C], R]; inside it start from min(P[2C − i], R − i), then expand.</p>`, `<p>Track the argmax of P; start = (i − P[i]) / 2, length = P[i]. Single character strings return themselves.</p>`],
+    tests: { sig: 'string -> string', fn: 'longestPalindrome', names: { python: 'longestPalindrome' }, check: "(args, out, exp) => { const s = args[0]; if (typeof out !== 'string' || out.length !== exp.length) return false; if (s.indexOf(out) < 0) return false; for (let i = 0, j = out.length - 1; i < j; i++, j--) if (out[i] !== out[j]) return false; return true; }", cases: [
+        [["babad"],"bab"],
+        [["cbbd"],"bb"],
+        [["a"],"a"],
+        [["ac"],"a"],
+        [["aaaa"],"aaaa"],
+        [["forgeeksskeegfor"],"geeksskeeg"],
+        [["abacdfgdcaba"],"aba"],
+        [["bb"],"bb"],
+        [["abcda"],"a"],
+        [["xabax"],"xabax"],
+        [["bbbbbaaaaabaa"],"baaaaab"],
+        [["abbbbbaabaaabbbbaaabbabbbbbbabbba"],"baaabbbbaaab"],
+        [["bbabababaaaababaaaaabb"],"ababaaaababa"],
+        [["ccbcbaabaacbaacccacacbccbcaacbbcacacccaacccacccbcaabacaacacb"],"cacccaacccac"],
+        [[{"$rep":"a","n":1000000}],{"$rep":"a","n":1000000}],
+        [[{"$rep":"ab","n":500000}],{"$concat":[{"$rep":"ab","n":499999},"a"]}],
+        [[{"$concat":[{"$rep":"a","n":400000},"b",{"$rep":"a","n":500000}]}],{"$concat":[{"$rep":"a","n":400000},"b",{"$rep":"a","n":400000}]}]
+      ] },
     solution: {
       approach: `<p>Manacher’s algorithm: one left-to-right pass over the padded string, reusing mirror radii inside the current rightmost palindrome. O(N).</p>`,
       code: `
@@ -2595,7 +4847,39 @@ class Solution:
                 c, r = i, i + k
         i = max(range(m), key=p.__getitem__)
         start = (i - p[i]) // 2
-        return s[start:start + p[i]]` }],
+        return s[start:start + p[i]]` }, { lang: 'js', code: `
+function longestPalindrome(s) {
+  const m = 2 * s.length + 1;
+  const at = (i) => (i % 2 === 0 ? 35 : s.charCodeAt(i >> 1));   // "#a#b#..." without building it
+  const p = new Int32Array(m);
+  let c = 0, r = -1, best = 0, center = 0;
+  for (let i = 0; i < m; i++) {
+    let k = i > r ? 0 : Math.min(p[2 * c - i], r - i);
+    while (i - k - 1 >= 0 && i + k + 1 < m && at(i - k - 1) === at(i + k + 1)) k++;
+    p[i] = k;
+    if (i + k > r) { c = i; r = i + k; }
+    if (k > best) { best = k; center = i; }
+  }
+  const start = (center - best) >> 1;
+  return s.substring(start, start + best);
+}` }, { lang: 'cpp', code: `
+class Solution {
+public:
+    string longestPalindrome(const string& s) {
+        string t = "#";
+        for (char ch : s) { t += ch; t += '#'; }
+        int m = t.size(), c = 0, r = -1, best = 0, center = 0;
+        vector<int> p(m, 0);
+        for (int i = 0; i < m; i++) {
+            int k = (i > r) ? 0 : min(p[2 * c - i], r - i);
+            while (i - k - 1 >= 0 && i + k + 1 < m && t[i - k - 1] == t[i + k + 1]) k++;
+            p[i] = k;
+            if (i + k > r) { c = i; r = i + k; }
+            if (k > best) { best = k; center = i; }
+        }
+        return s.substr((center - best) / 2, best);
+    }
+};` }],
       dry: { head: ['i', 't[i]', 'P[i]', 'best'], rows: [['1', 'c', '1', '1'], ['3', 'b', '1', '1'], ['4', '#', '2', H.c('g', '2 → "bb"')], ['5', 'b', '1', '2']] },
       complexity: `<p>O(N) time, O(N) space.</p>`,
       followUps: ['Return the longest palindromic substring of every prefix.', 'Longest palindromic <b>subsequence</b> — that is DP, not Manacher (DSA 17).']
@@ -2607,7 +4891,7 @@ class Solution:
     statement: `<p>DNA is a string over <code>A, C, G, T</code>. Return all 10-letter-long sequences that occur more than once (any order).</p>`,
     constraints: `1 ≤ |s| ≤ 10<sup>5</sup> (LeetCode 187)`,
     example: `<p><code>"AAAAACCCCCAAAAACCCCCCAAAAAGGGTTT"</code> → <b>["AAAAACCCCC", "CCCCCAAAAA"]</b>. <code>"AAAAAAAAAAAAA"</code> → <b>["AAAAAAAAAA"]</b> (reported once even though it appears 4 times).</p>`,
-    brute: { why: `<p>Put every 10-letter <code>substring</code> into a HashMap&lt;String, Integer&gt;: correct, but creates 10<sup>5</sup> String objects and hashes 10 chars each time. Works, yet wastes memory and time; the alphabet has only 4 letters, so 10 letters fit in <b>20 bits</b>.</p>`, code: `
+    brute: { why: `<p>Put every 10-letter <code>substring</code> into a hash map of substring to count: correct, but creates 10<sup>5</sup> string objects and hashes 10 chars each time. Works, yet wastes memory and time; the alphabet has only 4 letters, so 10 letters fit in <b>20 bits</b>.</p>`, code: `
       class Brute {
           List<String> findRepeatedDnaSequences(String s) {
               Map<String, Integer> cnt = new HashMap<>();
@@ -2621,6 +4905,22 @@ class Solution:
       }` },
     mcq: { q: 'Why can this rolling hash never collide?', options: ['Because the modulus is prime', 'Because 2 bits per letter × 10 letters = 20 bits encode the window exactly (injective)', 'Because DNA is random', 'It can collide'], answer: 1, explain: 'With base 4 and no modulus overflow (4<sup>10</sup> = 2<sup>20</sup> fits in an int), the hash is just the window written in base 4 — a perfect encoding.' },
     hints: [`<p>Map A, C, G, T to 0..3. A window of 10 letters is a 20-bit number.</p>`, `<p>Roll with <code>mask = ((mask &lt;&lt; 2) | code) &amp; ((1 &lt;&lt; 20) − 1)</code>. Keep a seen-set and an added-set of ints.</p>`, `<p>Report a window when it is seen for the second time only. Strings shorter than 10 → empty list.</p>`],
+    tests: { sig: 'string -> list<string>', fn: 'findRepeatedDnaSequences', cmp: 'set', names: { python: 'findRepeatedDnaSequences' }, cases: [
+        [["AAAAACCCCCAAAAACCCCCCAAAAAGGGTTT"],["AAAAACCCCC","CCCCCAAAAA"]],
+        [["AAAAAAAAAAAAA"],["AAAAAAAAAA"]],
+        [["ACGT"],[]],
+        [["AAAAAAAAAA"],[]],
+        [["ACGTACGTAC"],[]],
+        [["AAAAAAAAAAA"],["AAAAAAAAAA"]],
+        [["ACGTACGTACGT"],[]],
+        [["GGGGGGGGGGGGGGGGGGGG"],["GGGGGGGGGG"]],
+        [["ACGTTGCAACACGTTGCAAC"],["ACGTTGCAAC"]],
+        [["ACCCCCAAACCAAACACACCCCCCAACCCAAAAAAAAACACCACAAAAAAACCCCAAAACCACAACAACCAACACACCAACCACCAACAAAACCCCCACAACAACCCCCCACAACCCACAAACCCACACACAAAACACCAAACAAAAAAACAACACCCACAACAACACCACCCACCAACCCAACCCCAACACCAAAAACC"],["ACAAAAAAAC","CCACAACAAC","CACAACAACC","CCCCCACAAC","CCCACAACAA"]],
+        [["CAAGAATACAACCCATCGGGGCGGCGAAGTCCTTGTCGTGACCTCCACTGACGGCATCCCCGCTACCCTTAACGCGCAATTAATTGTGCCAGGATAAATTAACGCCCCAGAGTAGCATCTACCTCCTAAGCGGACTTGGTACACTATTATCCGATCGGCACAGCTAAGCGGTCGGAAATCATGCGCGCCTAAATGTGTTCATAGACCGACGACGAGCAACGTGAGCTAATCCAGCCTAGCCATGTACGATTCCAAACCATTACGTACAGGATGCTGGTCGCGAACGAGGATGGCATCCGCGGTCGCTGCCCGAGTGAGAGTGTTAGTCAGTGGCCCCCGATTCGGAGCCCCGCAGTGCAGAATTATATTCAAACCCGCAACACAAATCAGACCTGAGGAGTAAACCTTCTTATCAACCGGACACCCGGTGTTCGGGACCCTAAGCGTCGTATATGAGACTTAACACAAAGGTCGGAGCTTCAAGTCCTTCCGACTACGAA"],[]],
+        [[{"$rep":"ACGTTGCAAC","n":10000}],["ACGTTGCAAC","CGTTGCAACA","GTTGCAACAC","TTGCAACACG","TGCAACACGT","GCAACACGTT","CAACACGTTG","AACACGTTGC","ACACGTTGCA","CACGTTGCAA"]],
+        [[{"$rep":"A","n":100000}],["AAAAAAAAAA"]],
+        [[{"$concat":[{"$rep":"AACCGGTTAC","n":5000},{"$rep":"ACGTTGCAAC","n":5000}]}],["AACCGGTTAC","ACCGGTTACA","CCGGTTACAA","CGGTTACAAC","GGTTACAACC","GTTACAACCG","TTACAACCGG","TACAACCGGT","ACAACCGGTT","CAACCGGTTA","ACACGTTGCA","CACGTTGCAA","ACGTTGCAAC","CGTTGCAACA","GTTGCAACAC","TTGCAACACG","TGCAACACGT","GCAACACGTT","CAACACGTTG","AACACGTTGC"]]
+      ] },
     solution: {
       approach: `<p>Base-4 rolling hash with no modulus = exact encoding. One pass, O(1) per step, ints instead of Strings.</p>`,
       code: `
@@ -2651,7 +4951,42 @@ class Solution:
                 if mask in seen:
                     out.add(s[i - 9:i + 1])
                 seen.add(mask)
-        return list(out)` }],
+        return list(out)` }, { lang: 'js', code: `
+function findRepeatedDnaSequences(s) {
+  const n = s.length, res = [];
+  if (n < 10) return res;
+  const code = { A: 0, C: 1, G: 2, T: 3 };
+  const seen = new Set(), added = new Set();
+  const full = (1 << 20) - 1;
+  let mask = 0;
+  for (let i = 0; i < n; i++) {
+    mask = ((mask << 2) | code[s[i]]) & full;                   // slide: drop 2 old bits, add 2 new
+    if (i >= 9) {
+      if (seen.has(mask) && !added.has(mask)) { added.add(mask); res.push(s.substring(i - 9, i + 1)); }
+      seen.add(mask);
+    }
+  }
+  return res;
+}` }, { lang: 'cpp', code: `
+class Solution {
+public:
+    vector<string> findRepeatedDnaSequences(const string& s) {
+        vector<string> res;
+        int n = s.size();
+        if (n < 10) return res;
+        auto code = [](char ch) { return ch == 'A' ? 0 : ch == 'C' ? 1 : ch == 'G' ? 2 : 3; };
+        vector<char> state(1 << 20, 0);                         // 0 = unseen, 1 = seen once, 2 = reported
+        int mask = 0, full = (1 << 20) - 1;
+        for (int i = 0; i < n; i++) {
+            mask = ((mask << 2) | code(s[i])) & full;            // slide: drop 2 old bits, add 2 new
+            if (i >= 9) {
+                if (state[mask] == 1) { state[mask] = 2; res.push_back(s.substr(i - 9, 10)); }
+                else if (state[mask] == 0) state[mask] = 1;
+            }
+        }
+        return res;
+    }
+};` }],
       dry: { head: ['i', 'window', 'mask seen before?', 'action'], rows: [['9', 'AAAAACCCCC', 'no', 'add to seen'], ['14', 'CCCCCAAAAA', 'no', 'add to seen'], ['19', 'AAAAACCCCC', H.c('g', 'yes'), 'report'], ['25', 'CCCCCAAAAA', H.c('g', 'yes'), 'report']] },
       complexity: `<p>O(N) time, O(N) space (ints).</p>`,
       followUps: ['Window length k = 32 → 64-bit masks; k = 40 → need a real modular hash or two longs.', 'Return each sequence with its count.']
@@ -2674,6 +5009,25 @@ class Solution:
       }` },
     mcq: { q: 'How do you extend the SUFFIX hash from length L−1 to L (new char z = s[n−L] is added on the LEFT)?', options: ['suf = suf·B + z', 'suf = z·B<sup>L−1</sup> + suf', 'suf = suf + z', 'suf = (suf − z)/B'], answer: 1, explain: 'The new leftmost char is the most significant digit of the length-L suffix, so it is multiplied by B<sup>L−1</sup>.' },
     hints: [`<p>Grow the prefix hash on the right (×B + c) and the suffix hash on the left (c·B<sup>L−1</sup> + old) at the same time.</p>`, `<p>Whenever both hashes agree (two moduli, random bases), remember L. The last such L is the answer.</p>`, `<p>Deterministic alternative: π[n−1] from the prefix function is exactly the answer length.</p>`],
+    tests: { sig: 'string -> string', fn: 'longestPrefix', names: { python: 'longestPrefix' }, cases: [
+        [["level"],"l"],
+        [["ababab"],"abab"],
+        [["a"],""],
+        [["ab"],""],
+        [["aaaa"],"aaa"],
+        [["abcabc"],"abc"],
+        [["leetcodeleet"],"leet"],
+        [["aabaaab"],"aab"],
+        [["abcdef"],""],
+        [["aa"],"a"],
+        [["bababbbbabaabbabaaaabaabaaaaab"],"b"],
+        [["abbbbbbbb"],""],
+        [["aabaaaababbbaaabaabaabbb"],""],
+        [[{"$rep":"a","n":100000}],{"$rep":"a","n":99999}],
+        [[{"$rep":"ab","n":50000}],{"$rep":"ab","n":49999}],
+        [[{"$concat":[{"$rep":"a","n":99999},"b"]}],""],
+        [[{"$concat":["b",{"$rep":"a","n":99998},"b"]}],"b"]
+      ] },
     solution: {
       approach: `<p>Simultaneous prefix/suffix double hashing in one pass; O(N). The prefix function gives the same answer deterministically and is worth mentioning.</p>`,
       code: `
@@ -2706,7 +5060,32 @@ class Solution:
             if s[i] == s[k]:
                 k += 1
             pi[i] = k
-        return s[:pi[-1]]` }],
+        return s[:pi[-1]]` }, { lang: 'js', code: `
+function longestPrefix(s) {
+  const n = s.length;
+  const pi = new Int32Array(n);                                // KMP prefix function: pi[n-1] = longest border
+  for (let i = 1; i < n; i++) {
+    let k = pi[i - 1];
+    while (k > 0 && s[i] !== s[k]) k = pi[k - 1];
+    if (s[i] === s[k]) k++;
+    pi[i] = k;
+  }
+  return s.substring(0, pi[n - 1]);
+}` }, { lang: 'cpp', code: `
+class Solution {
+public:
+    string longestPrefix(const string& s) {
+        int n = s.size();
+        vector<int> pi(n, 0);                                  // KMP prefix function: pi[n-1] = longest border
+        for (int i = 1; i < n; i++) {
+            int k = pi[i - 1];
+            while (k > 0 && s[i] != s[k]) k = pi[k - 1];
+            if (s[i] == s[k]) k++;
+            pi[i] = k;
+        }
+        return s.substr(0, pi[n - 1]);
+    }
+};` }],
       dry: { head: ['L', 'prefix', 'suffix', 'equal?', 'best'], rows: [['1', 'a', 'b', 'no', '0'], ['2', 'ab', 'ab', 'yes', '2'], ['3', 'aba', 'bab', 'no', '2'], ['4', 'abab', 'abab', 'yes', H.c('g', '4')], ['5', 'ababa', 'babab', 'no', '4']] },
       complexity: `<p>O(N) time, O(1) extra space.</p>`,
       followUps: ['Count all happy prefixes (all borders) — follow the π chain.', 'Longest prefix that is also a suffix of a <b>different</b> string t.']
@@ -2732,6 +5111,19 @@ class Solution:
       }` },
     mcq: { q: 'Which index of the #-padded P array decides query [l, r]?', options: ['l + r', 'l + r + 1', '2l + 1', '(l + r) / 2'], answer: 1, explain: 's[k] sits at t[2k + 1], so the center of s[l..r] in t is (2l + 1 + 2r + 1)/2 = l + r + 1.' },
     hints: [`<p>Run Manacher once. Every query is about a fixed center in the padded string.</p>`, `<p>s[l..r] is a palindrome ⇔ the maximal palindrome at its center is at least as long: P[l + r + 1] ≥ r − l + 1.</p>`, `<p>Use fast I/O for 10<sup>6</sup> queries. Single-character queries are always true (P ≥ 1 at letter cells).</p>`],
+    tests: { sig: 'string int[][] -> bool[]', fn: 'answer', cases: [
+        [["abacaba",[[0,6],[1,5],[0,1],[2,4]]],[true,true,false,true]],
+        [["a",[[0,0]]],[true]],
+        [["ab",[[0,0],[1,1],[0,1]]],[true,true,false]],
+        [["aaaa",[[0,3],[1,2],[0,2],[3,3]]],[true,true,true,true]],
+        [["abcd",[[0,3],[1,2],[2,2]]],[false,false,true]],
+        [["abba",[[0,3],[1,2],[0,2],[1,3]]],[true,true,false,false]],
+        [["aaabaaaabaaabababaabbabbababb",[[1,1],[6,20],[9,24],[18,24],[7,17],[16,24],[13,22],[11,17],[28,28],[10,25],[27,28],[0,22],[1,7],[21,28],[20,25],[20,22],[27,27],[15,25],[19,24],[11,25]]],[true,false,false,true,false,false,false,true,true,false,true,false,false,false,true,true,true,false,false,false]],
+        [["ababbaaabaabaaaaaababbabbaa",[[2,9],[9,19],[26,26],[25,26],[12,14],[25,26],[4,11],[8,16],[2,8],[22,26],[13,16],[23,26],[13,26],[13,23],[5,13],[13,22],[12,14],[16,23],[7,16],[25,26]]],[false,false,true,true,true,true,false,false,false,false,true,false,false,false,false,false,true,false,false,true]],
+        [["abbaaaabbabbbbbab",[[5,8],[4,13],[9,13],[10,12],[5,10],[12,16],[9,13],[4,13],[9,13],[4,5],[14,15],[3,8],[11,11],[3,16],[10,10],[9,9],[5,8],[0,0],[4,13],[14,16]]],[false,false,false,true,false,false,false,false,false,true,false,false,true,false,true,true,false,true,false,true]],
+        [[{"$rep":"a","n":1000000},{"$rep":[0,999999],"n":1000000}],{"$rep":true,"n":1000000}],
+        [[{"$rep":"ab","n":500000},[[0,999998],[1,999999],[0,999999],[4,4],[3,6],[2,998]]],[true,true,false,true,false,true]]
+      ] },
     solution: {
       approach: `<p>Precompute all radii with Manacher in O(N); answer each query with one comparison.</p>`,
       code: `
@@ -2755,6 +5147,51 @@ class Solution:
                 return res;
             }
         }`,
+      alt: [{ lang: 'python', code: `
+def answer(s, queries):
+    t = '#' + '#'.join(s) + '#'
+    m = len(t)
+    p = [0] * m
+    c, r = 0, -1                                  # center and right edge of the furthest palindrome
+    for i in range(m):
+        k = 0 if i > r else min(p[2 * c - i], r - i)
+        while i - k - 1 >= 0 and i + k + 1 < m and t[i - k - 1] == t[i + k + 1]:
+            k += 1
+        p[i] = k
+        if i + k > r:
+            c, r = i, i + k
+    return [p[l + r + 1] >= r - l + 1 for l, r in queries]   # O(1) per query` }, { lang: 'js', code: `
+function answer(s, queries) {
+  const m = 2 * s.length + 1;
+  const at = (i) => (i % 2 === 0 ? 35 : s.charCodeAt(i >> 1));   // "#a#b#..." without building it
+  const p = new Int32Array(m);
+  for (let i = 0, c = 0, r = -1; i < m; i++) {
+    let k = i > r ? 0 : Math.min(p[2 * c - i], r - i);
+    while (i - k - 1 >= 0 && i + k + 1 < m && at(i - k - 1) === at(i + k + 1)) k++;
+    p[i] = k;
+    if (i + k > r) { c = i; r = i + k; }
+  }
+  return queries.map(([l, r]) => p[l + r + 1] >= r - l + 1);     // O(1) per query
+}` }, { lang: 'cpp', code: `
+class Solution {
+public:
+    vector<bool> answer(const string& s, const vector<vector<int>>& queries) {
+        string t = "#";
+        for (char ch : s) { t += ch; t += '#'; }
+        int m = t.size();
+        vector<int> p(m, 0);
+        for (int i = 0, c = 0, r = -1; i < m; i++) {
+            int k = (i > r) ? 0 : min(p[2 * c - i], r - i);
+            while (i - k - 1 >= 0 && i + k + 1 < m && t[i - k - 1] == t[i + k + 1]) k++;
+            p[i] = k;
+            if (i + k > r) { c = i; r = i + k; }
+        }
+        vector<bool> res;
+        res.reserve(queries.size());
+        for (const auto& q : queries) res.push_back(p[q[0] + q[1] + 1] >= q[1] - q[0] + 1);   // O(1) per query
+        return res;
+    }
+};` }],
       dry: { head: ['query', 'center l+r+1', 'P[center]', 'needed', 'answer'], rows: [['[0,6]', '7', '7', '7', H.c('g', 'true')], ['[1,5]', '7', '7', '5', H.c('g', 'true')], ['[0,1]', '2', '0', '2', H.c('r', 'false')], ['[2,4]', '7', '7', '3', H.c('g', 'true')]] },
       complexity: `<p>O(N + Q) time, O(N) space.</p>`,
       followUps: ['Count palindromic substrings inside s[l..r] (offline, much harder).', 'Updates to s between queries → segment tree of forward/backward hashes.']
@@ -2779,6 +5216,27 @@ class Solution:
       }` },
     mcq: { q: 'Candidates i and j agree on k letters and then s[i+k] &gt; s[j+k]. Which starts can you discard?', options: ['only i', 'i, i+1, …, i+k', 'j..j+k', 'none'], answer: 1, explain: 'For any d ≤ k, rotation i+d is beaten by rotation j+d (they share the same next letters until the bigger letter). So i jumps to i + k + 1.' },
     hints: [`<p>SA view: the answer is the smallest suffix of <code>s + s</code> that starts before |s|. But there is a simpler O(N) two-pointer trick.</p>`, `<p>Keep two candidates i &lt; j and a match length k. Compare s[(i+k) mod n] and s[(j+k) mod n]; on a mismatch, the loser jumps past the compared block.</p>`, `<p>If i == j after a jump, move j forward. Stop when any of i, j, k reaches n; answer starts at min(i, j).</p>`],
+    tests: { sig: 'string -> string', fn: 'minRotation', names: { python: 'minRotation' }, cases: [
+        [["bca"],"abc"],
+        [["baabaa"],"aabaab"],
+        [["a"],"a"],
+        [["aaaa"],"aaaa"],
+        [["ba"],"ab"],
+        [["abab"],"abab"],
+        [["cba"],"acb"],
+        [["abc"],"abc"],
+        [["zzzy"],"yzzz"],
+        [["bbaabbaa"],"aabbaabb"],
+        [["cabcab"],"abcabc"],
+        [["bbaabaaab"],"aaabbbaab"],
+        [["aaaababb"],"aaaababb"],
+        [["baababa"],"aababab"],
+        [["abcbacbabcccccacaacbacbaacabbaacaacbcbaa"],"aaabcbacbabcccccacaacbacbaacabbaacaacbcb"],
+        [[{"$concat":[{"$rep":"a","n":999999},"b"]}],{"$concat":[{"$rep":"a","n":999999},"b"]}],
+        [[{"$concat":["b",{"$rep":"a","n":999999}]}],{"$concat":[{"$rep":"a","n":999999},"b"]}],
+        [[{"$rep":"ba","n":500000}],{"$rep":"ab","n":500000}],
+        [[{"$rep":"a","n":1000000}],{"$rep":"a","n":1000000}]
+      ] },
     solution: {
       approach: `<p>The “minimum expression” two-pointer algorithm: each mismatch discards k + 1 starting positions, so i + j + k only grows and the total work is O(N). (Booth’s algorithm and SA of s + s also work.)</p>`,
       code: `
@@ -2814,7 +5272,37 @@ class Solution:
                 j += 1
             k = 0
         st = min(i, j)
-        return s[st:] + s[:st]` }],
+        return s[st:] + s[:st]` }, { lang: 'js', code: `
+function minRotation(s) {
+  const n = s.length;
+  let i = 0, j = 1, k = 0;
+  while (i < n && j < n && k < n) {
+    const a = s.charCodeAt((i + k) % n), b = s.charCodeAt((j + k) % n);
+    if (a === b) { k++; continue; }
+    if (a > b) i += k + 1;                                     // starts i..i+k all lose
+    else j += k + 1;                                           // starts j..j+k all lose
+    if (i === j) j++;
+    k = 0;
+  }
+  const start = Math.min(i, j);
+  return s.substring(start) + s.substring(0, start);
+}` }, { lang: 'cpp', code: `
+class Solution {
+public:
+    string minRotation(const string& s) {
+        int n = s.size(), i = 0, j = 1, k = 0;
+        while (i < n && j < n && k < n) {
+            char a = s[(i + k) % n], b = s[(j + k) % n];
+            if (a == b) { k++; continue; }
+            if (a > b) i += k + 1;                             // starts i..i+k all lose
+            else j += k + 1;                                   // starts j..j+k all lose
+            if (i == j) j++;
+            k = 0;
+        }
+        int start = min(i, j);
+        return s.substr(start) + s.substr(0, start);
+    }
+};` }],
       dry: { head: ['i', 'j', 'k', 'compare', 'action'], rows: [['0', '1', '0', 'b vs c', 'j = 2'], ['0', '2', '0', 'b vs a', 'i = 1'], ['1', '2', '0', 'c vs a', 'i = 2 → i == j → j = 3 = n'], ['stop', '', '', 'start = min(2, 3) = 2', H.c('g', '"abc"')]] },
       complexity: `<p>O(N) time, O(1) extra space (besides the output).</p>`,
       followUps: ['Group strings that are rotations of each other (canonical form as the map key).', 'Minimal rotation of a <b>circular array of ints</b> — same algorithm.']
@@ -2843,6 +5331,24 @@ class Solution:
       }` },
     mcq: { q: 'In the padded Manacher array, a palindrome centered at i is a PREFIX of s when…', options: ['i + P[i] == 2n', 'i − P[i] == 0', 'P[i] == n', 'i is even'], answer: 1, explain: 'The palindrome spans t[i − P[i] .. i + P[i]]; it starts at the very beginning when i − P[i] = 0.' },
     hints: [`<p>The answer is reverse(s[L..]) + s where L is the length of the <b>longest palindromic prefix</b>.</p>`, `<p>Manacher gives every center’s radius. A center i yields a palindromic prefix of length P[i] exactly when i − P[i] == 0.</p>`, `<p>Take the maximum such P[i] (at least 1 when s is non-empty). Alternative: prefix function of s + "#" + reverse(s). Empty s → "".</p>`],
+    tests: { sig: 'string -> string', fn: 'shortestPalindrome', names: { python: 'shortestPalindrome' }, cases: [
+        [["aacecaaa"],"aaacecaaa"],
+        [["abcd"],"dcbabcd"],
+        [[""],""],
+        [["a"],"a"],
+        [["aa"],"aa"],
+        [["ab"],"bab"],
+        [["abb"],"bbabb"],
+        [["abcba"],"abcba"],
+        [["aabba"],"abbaabba"],
+        [["baab"],"baab"],
+        [["aabbabbaa"],"aabbabbaa"],
+        [["aabbbaaaaa"],"aaaaabbbaaaaa"],
+        [["aaaaaaaaaa"],"aaaaaaaaaa"],
+        [[{"$rep":"a","n":50000}],{"$rep":"a","n":50000}],
+        [[{"$concat":[{"$rep":"a","n":49999},"b"]}],{"$concat":["b",{"$rep":"a","n":49999},"b"]}],
+        [[{"$rep":"ab","n":25000}],{"$concat":["b",{"$rep":"ab","n":25000}]}]
+      ] },
     solution: {
       approach: `<p>Find the longest palindromic prefix with Manacher (O(N)), then prepend the reverse of the remaining suffix.</p>`,
       code: `
@@ -2878,7 +5384,38 @@ class Solution:
                 k += 1
             pi[i] = k
         L = pi[-1] if s else 0
-        return s[L:][::-1] + s` }],
+        return s[L:][::-1] + s` }, { lang: 'js', code: `
+function shortestPalindrome(s) {
+  // prefix function of s + '#' + reverse(s): its last value = longest palindromic prefix of s
+  const t = s + '#' + [...s].reverse().join('');
+  const pi = new Int32Array(t.length);
+  for (let i = 1; i < t.length; i++) {
+    let k = pi[i - 1];
+    while (k > 0 && t[i] !== t[k]) k = pi[k - 1];
+    if (t[i] === t[k]) k++;
+    pi[i] = k;
+  }
+  const keep = s.length ? pi[t.length - 1] : 0;
+  return [...s.substring(keep)].reverse().join('') + s;
+}` }, { lang: 'cpp', code: `
+class Solution {
+public:
+    string shortestPalindrome(const string& s) {
+        // prefix function of s + '#' + reverse(s): its last value = longest palindromic prefix of s
+        string t = s + "#" + string(s.rbegin(), s.rend());
+        vector<int> pi(t.size(), 0);
+        for (size_t i = 1; i < t.size(); i++) {
+            int k = pi[i - 1];
+            while (k > 0 && t[i] != t[k]) k = pi[k - 1];
+            if (t[i] == t[k]) k++;
+            pi[i] = k;
+        }
+        int keep = s.empty() ? 0 : pi.back();
+        string rest = s.substr(keep);
+        reverse(rest.begin(), rest.end());
+        return rest + s;
+    }
+};` }],
       dry: { head: ['center i', 'P[i]', 'i − P[i]', 'prefix palindrome?', 'best'], rows: [['1', '1', '0', 'yes "a"', '1'], ['2', '2', '0', 'yes "aa"', '2'], ['7', '7', '0', 'yes "aacecaa"', H.c('g', '7')], ['others', '…', '&gt; 0', 'no', '7']] },
       complexity: `<p>O(N) time and space.</p>`,
       followUps: ['Characters may be added at the <b>end</b> instead (longest palindromic suffix).', 'Minimum insertions anywhere → DP (DSA 17), not Manacher.']
@@ -2904,6 +5441,58 @@ class Solution:
       }` },
     mcq: { q: 'After building the Aho–Corasick automaton, what is the extra work per query?', options: ['O(number of words)', 'O(max word length)', 'O(1): one transition + one boolean lookup', 'O(log N)'], answer: 2, explain: 'With the complete goto table and “ends a word somewhere on my fail chain” precomputed as a boolean, each letter is one table lookup.' },
     hints: [`<p>The question “does a suffix of the stream equal a word?” is exactly what an Aho–Corasick state answers: the state is the longest suffix of the stream that is a trie prefix.</p>`, `<p>Precompute <code>term[v] = isWordEnd[v] || term[fail[v]]</code> in BFS order, so you never walk the fail chain at query time.</p>`, `<p>Alternative (shorter to code): a trie of <b>reversed</b> words and walk the last ≤ 200 letters backwards each query — O(maxLen) per query.</p>`],
+    tests: { sig: 'string[] string -> long[]', fn: 'runStream', names: { python: 'runStream' }, harness: {
+        java: `class Check {
+    // returns [how many queries were true, sum of their positions, first ten true positions]
+    static long[] runStream(String[] words, String stream) {
+        StreamChecker sc = new StreamChecker(words);
+        long count = 0, sum = 0;
+        List<Long> first = new ArrayList<>();
+        for (int i = 0; i < stream.length(); i++)
+            if (sc.query(stream.charAt(i))) { count++; sum += i; if (first.size() < 10) first.add((long) i); }
+        long[] out = new long[2 + first.size()];
+        out[0] = count; out[1] = sum;
+        for (int i = 0; i < first.size(); i++) out[2 + i] = first.get(i);
+        return out;
+    }
+}`,
+        python: `# returns [how many queries were true, sum of their positions, first ten true positions]
+def runStream(words, stream):
+    sc = StreamChecker(words)
+    pos = [i for i, ch in enumerate(stream) if sc.query(ch)]
+    return [len(pos), sum(pos)] + pos[:10]`,
+        js: `// returns [how many queries were true, sum of their positions, first ten true positions]
+function runStream(words, stream) {
+  const sc = new StreamChecker(words);
+  const pos = [];
+  for (let i = 0; i < stream.length; i++) if (sc.query(stream[i])) pos.push(i);
+  return [pos.length, pos.reduce((a, b) => a + b, 0), ...pos.slice(0, 10)];
+}`,
+        cpp: `// returns [how many queries were true, sum of their positions, first ten true positions]
+vector<long long> runStream(vector<string> words, string stream) {
+    StreamChecker sc(words);
+    long long count = 0, sum = 0;
+    vector<long long> first;
+    for (int i = 0; i < (int)stream.size(); i++)
+        if (sc.query(stream[i])) { count++; sum += i; if (first.size() < 10) first.push_back(i); }
+    vector<long long> out = {count, sum};
+    out.insert(out.end(), first.begin(), first.end());
+    return out;
+}` }, cases: [
+        [[["cd","f","kl"],"abcdefghijkl"],[3,19,3,5,11]],
+        [[["a"],"aaaa"],[4,6,0,1,2,3]],
+        [[["ab","b"],"abab"],[2,4,1,3]],
+        [[["abc","bc","c"],"xabcx"],[1,3,3]],
+        [[["aaa"],"aaaaa"],[3,9,2,3,4]],
+        [[["z"],"abc"],[0,0]],
+        [[["he","she","his","hers"],"ahishers"],[3,15,3,5,7]],
+        [[["ab","ab","ba"],"ababab"],[5,15,1,2,3,4,5]],
+        [[["bbab","ba","aa","abaa","aa"],"aabbaababbababbaabbabaaababbbb"],[15,211,1,4,5,7,10,11,12,15,16,19]],
+        [[["a","aab","aab","bab","ab"],"ababbabbababaabbbaabaaaaabbbab"],[24,340,0,1,2,3,5,6,8,9,10,11]],
+        [[["aab","b","b","b","baab"],"ababbbbbbabaabaaaaabbbbaabbabb"],[17,247,1,3,4,5,6,7,8,10,13,19]],
+        [[["ababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaa","baababaababa","aababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaabab","babaababaababaababaa","ababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaaba","baababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaab","abaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaabab","aababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaa","baababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaabab","aababaababaababaababaababaababaababaababaababaababaababaababaababaab","abaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababa","ababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaab","abaababaababaababaababaababaababaababaababaababaababaababaa","baababaababaababaababaababaabab","baababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaabab","abaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababa","baababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaab","babaababaababaababaababaababaababaababaababaababaababaaba","abaababaababaababaababaababaab","baababaababaababaababaababaab","aababaababaababaababaababaababaababaa","baababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaa","babaababaababaababaababaababaababaababaaba","aababaababaababaa","abaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababa","babaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababa","babaababaababaababaababaababaababaababaababaababaababaababaababaabab","abaababaababaabab","babaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababa","baababaababaababa","baababaababaababaababaababaababaababaababaababaababaababaaba","babaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaaba","babaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaaba","aababaababaababaababaababaababaababaababaababaababaababaaba","aababaababaababaababaababaababaababaababaababaababaababaababaa","ababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaa","aababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaab","aababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaa","abaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaabab","baababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaa","babaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaabab","baababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaa","ababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababa","ababaababaababaababaababaababaababaababaababaababaababaababaababaab","babaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaab","abaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababa","babaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaabab","babaababaababaababaababaababaababaababaababaababaababaababaababaababaababa","aababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaaba","abaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababa","baababaababaababaababaababaababaababaababaababaababaababaab","baababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababa","babaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaabab","babaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababa","baababaababaababaababaababaababaababaababaababaababaababaababaababaababaaba","babaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaab","ababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaa","baababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaaba","aababaababaababaab","ababaababaababaababaababaababaababaababa","abaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaabab","baababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaaba","aababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababa","aababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababa","abaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaaba","aababaababaababaababaababaababaababaababaababaababaababaababaababaab","baababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababa","abaababaababaababaababaababaababaababaababaababaababaababaa","baababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaaba","ababa","abaababaababaababaababaababaababaababaababaababaababaababaabab","abaababaababaababaababaababaababaababaababaababaababaababaababaaba","baababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaabab","abaababaababaababaababaababaababaababaababaababaababaababaababaababaaba","abaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaaba","aababaababaababaababaababaaba","babaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaabab","baababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaaba","abaababaababaababaababaababaababaababaababaababaababaababaa","ababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaabab","aababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaabab","aababaababaababaababaababaababaababaababaababaaba","baababaababaababaababaababaababaabab","ababaababaaba","baababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaa","aababaababaababaababaababaababaababaababaababa","aababaababaababaababaaba","baa","ababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababa","abaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaabab","ababaababaababaababaababaababaababaababaababaababaababaababaababaa","ababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaab","aababaababaaba","baababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababa","abaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaaba","babaababaababaababaababaababaababaababaababaababaababaababaababaababaaba","abaababaababaababaababaababaababaa","aababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababa","aababaababaababaababaababaababaababaababaababaababaababaabab","ababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababaababa","bbbaabbbabaabbaabababbbaabbbaabbabaaaabaabbabababaababaababbabaabaabbbaabababbabaababababaaabbabaaaaaaaaaaabaaba","ab","aaabbbabbabaaaabababbabbaaabbaababaabbbbbbbaabaaabbbbabbbbabaabaaaabbababaaaaabbbbbaababbaabbbbbaaabababababbababbaabaabbaabaabaaaabbaabbab","aba","aabbaaabaabaabbbabbaababababbaaaaaaababbbaaaaaaabaabbaababbbbbaaabaabbabababaabaabbbbabbbbabbbaabaabbaabbaaaabbaabbbabbbbbabbbbbbabbaaaaabbababbababbbaabaabba","bbaabbbaabbaabaabaaaaababbbbbbbbbaaaaabbaaaabaabbbbaabababbbbaaabbabbaaabbabaaababaabababbabaaaaaabaaaabbabababbbbbaab","bbaabbabbaaababaabababbbaaaabaaababaaaabbabbbbbbbabbbbbbabababbaabaabbbaaaabaaaabaababa","aaabbaaabbaabababbabaaabbabaabaaabbbaaaaaaabbaabababbabbabaaabaaabbbbabaabbabbaaabbbbbbabaabaaaaaababbb","abaaabaabbababaabbbbb","babababaabaabbabaaababaaabbaabaaabbbabbababbabbbaaaababaaaabbbbaabbaabaaababbaababbbbabbabbbbabbababbabaabbbbabbabbbaaaaabbbbababbabaabaabbbaabaababbbabaaabaabaaaaababababababaab","ababaabbaabbaabaabaaababaabaaaabaabaaabbaaabaaabbbbabaabbbbabaaabaabbaaaaabbaaababbaaaaaabaaaaaaba","babbaabbabaaaababaabababbabbbbaabbaaabbabaaabaaaababbabbbbbbabbabababaa","abbbabababbbaaabbaaabbbabbbabaaabaabbabaaabaabbbbabaaababbbaababaabbababbaaabbaaba","bbabbbaaaabbbaabaaababbbbbabbbbbaabbbaaabababaaaabbbba","aaaaababbaaaabaabaaaaaaaabbbbaabb","babbabbabaabaaabbbabaabbabababbbababbaaaaabababbabaaaaabbbaaabbaabababbbbaaaabbabababbbbbaabaaabaaabbaabbbababababbaabbbaabababaaabaaababaabbabaabbabaaa","bbabbbaaaabbaabbbaabaabbbbaabb","aaabbabbabbbabbabaabbabbbabababaaababbabaaaabaaaabbbbaababaaaabbbabaababbbababbbbaabaaaaaaabaabaabababbaabbaaaababa","babbaaaaaabbaaaabaaababbaaabaaabbababbbbaababbaaaaaabbbaabbbaabbbbabbbbbabbaababaabaabaababbabbaabbbbaabbababbabbbaaaaabaaabbaab","babaabbababbbbbbaabaaaabaaaaaaabaaaaabbbbbbabbabaaabaabbabbbabbbbaaabaaabaaaababaaabbaabaabaabbbbabaabbbabaaababaaabbababbbbaaaabbababaaaaaaabbabbbbaaabaabaaaaaaababababbbbabaabaaabbaabbab","baaaaabbabbababbbbababbbbaaabaababbbbababaabbbbbbaababbbbabbabaabaababbaabbababbaaaabaaabaabbaabbaabbbabbbbabaaaaabbbbbbabbbbaab","babbaabbaabbbbaabaaaabbbaabbbaaaabbbbbaaaaabbaaaaabbaabbabaabbaaaaaaabbbaaaabaabaabaaaaabbbabbabbaababbbbabaaaabaabbaababaaababbbbbaaba","abbaaaabbbbbbaabbabaabaaaaaaabbbbbaabbbaababaaabbabaaaaaabbabaaaabaabbbaabbaabbaaabbaabbaabbbaabbbbbbbbabbbbabbabbbbaaabbabbaaabbaabbbbaabbaabbbbabbbaab","bbaabbaaabbaaabaaabbbbbbabbbabaaabbaabbbbb","abaaababaabaab","bbaaaababaabbbaaaabaababbaabbbaabaabaabbbbabbbbbabbbaaaababbababaaabaaabbbbabbaaaabaaababba","ababaabaabbbaabbababaabaaabbabbbbaaabaaabbbabbabaaabbabbaabbbbaaabaabbaabbaaabbbbabbabbbbbabbabbbabbaababababbaaabbbabbaaabaaabbaaabbbaaaabbabaabaabaaaaaaa","abbbbbabbaaabbbbbababbabbbaabbbabbbbaaabaaabababbbbbbbabaaaabbaaabbabbbabbbabaabaaaabbbaaabbbbabaaaaaaaaaabaabaabbbbaababaaabaaabbaabbaaaaabaabbaabbabbbbbbabbaaabababbabbbaaaaaabb","baabababbabbabbabaaaabaaaababaabbaaaaabbbabbbaababbaaaabbbbaaaaabbabbbababaabbaaabbbabbaaaababaabaaaababaaababbaaabbabab","abaabaaaabbaaabaabbbabbaabaaabbabaabaaababbabbaabbbabaabbbabbabaabaabaaabaabaabbbbaaabbabbabbaaaabbabbbbababbabaaaaaabaaabaabaabaabbbababaaaa","babbbaabbabababaababbabaabbaabaaabbaabaaaaaaabbbbabbaaaaabaababaabababababbabababbabababaabaabababaabaaaaaabaaaabbbbabaabaaababbabbaaabbabaabaababaabba","bbaabaaaabaaababbabaabbbbababbbbbabaaababaabbabaaaababbabaababbbbabbabbabbaabbbbabaaabbabbbbabbabbbabbabbabbabbababbababbaaabbabbaabaabbbbaaabababaababbab","abababbbaaabbbaaaabbbbbaabbbabbbbaaabbbbaaaaabbbbbbaababbbbbabababbababbbbabaaaabaaaabaaabbabbaabababbbabbabaaababaaabaa","abbabaaaabaabaaababababbbabbbbbabaabbaababbabaaabbabaabbaababbaabbbabaabaaaabbababbbabababbabbbabbbbbbbbabaababbbbaaabbaabbbbbaabbbababbaabbbabaabbabbbbabaababababaabbaabaaba","baababa","aabaaaaaaaabbaaaaaaabbbbabaaaabbbbaabbbabaabaaaabbbbbbaababbaabbbbbaabbabbaabbbbbabbbbaabbbbbbabbaaaaababbbbbbbbabbbabbaababbbaabbbabaabbaaaaaaaabaaabbaaabbaabaaabbbaabbba","bababababbbabaabbbabbaabbbaababaababaaababaabbbabaaaaabababaaabbaaaabbbbbbbbbbabaabbbbabaaaabbbbabbbbaaaabbbbbbaaaabaaaaabababbbabababbbababaa","bbbbabbbabaabbbaaabaaabaaaabbabbbaaaa","bbbaabbbbaabababbbaabaabbbaaabbabaaabaaaabbbbaaabaaabaaabbabbbaabbbaaabbbbbbaaabababbbabbaaaababbbbbbabbbaaaaabaaaabbbbbbabbababaabbbaabbabbbbbabbbabbbababaabaaaaaabbbbaababbabaabbaaaabbab","aabaabbaaaabbabbabaabaaaaaabbaabbbbbabaababbbaaaaabbbaabbbbbbbbabbbabbabaaaaabababaaabbaabababaaababbaababbaaabbbaaabab","bbbaabbbbabababbaabbaabaaaabbbbaababbaabbbbaaabaabaaababbbbabbbbbbabbbbabbaabbbaabbabbaabbaabaaabbababbbababbaabbabbbaabaabaabbbbbbaabbbaabbabbbaaaaababbbbaabbaabaaaaaaaaaaba","abababaaaaaaababbaaaabababbbbabaaaaaaaabaababbabaaabbaaaabaaaababababbaaababbaaaaaabbaaaabaaabbbaabaabbbbbaabbbababbabbbaabbaaabaabaababbabbabababbbaabbbaabbaabbbababbbbaaabaaaaaabaabaaa","aaaaaaaaabaababbbabbbbbbbbaaaaaaababbabbbabbaabbbbaabbababbaabbaababbababaabbaabbbaabbbaaababbbabbabbbaabbbabb","bbbabbabbbabaabbbbabaaaabbaaaabbbaaaabaaaabaaaabaababbababbabababbabbbbaaaaaaabbbaabbabababbbbaabaaabaabaabbbaaabbabababbbabababababbaabbbabbbbaabababbbabaaaaabaaaabaaabababbaababaa","bbababbbbaabbbabbaabbabaaaabbbabababbaaaaababaabaaababaaaaababbbbbaabaababaabbababbbbabbbaaabaaaabababaabaaababbaaabaaaba","abbbaaababbbbaaabaaaababbababaaabaaaaaaabbabbabbaabbbbbbaababbbaabaabbbabababbaababbabbbbbaaaabbababab","bbaabbbbbaabbabbabababaaabbbbbbaaaabab","bbaababbbbababbabbabbabaaaabbbbbaaaaaaaaaabaaabaaabbaaabbaaabbaababbaaabb","aaababbababaaaaabababbabaababbbbbabaaabbababbaabbaaaabaabaabaabbaababaa","babbbaaabbabaababaababbbbbbaaaaaabbaabbabbbbbaaabaaaaababbabbabbabbbababbaaaababbababbaaababbbaababaabaabaabbbaabbaaababbbbabba"],{"$rep":"abaab","n":8000}],[39999,799980000,1,2,3,4,5,6,7,8,9,10]],
+        [[["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],{"$rep":"a","n":40000}],[39820,799963890,180,181,182,183,184,185,186,187,188,189]]
+      ] },
     solution: {
       approach: `<p>Aho–Corasick with a complete transition table. Keep one current state across queries. O(Σ|words|·26) build, O(1) per query.</p>`,
       code: `
@@ -2954,7 +5543,9 @@ class Solution:
 class StreamChecker:
     # reversed-trie version: simple, O(max word length) per query
     def __init__(self, words):
-        self.root, self.maxlen, self.stream = {}, max(map(len, words)), []
+        self.root = {}
+        self.maxlen = max(map(len, words))
+        self.stream = []
         for w in words:
             node = self.root
             for ch in reversed(w):
@@ -2970,7 +5561,93 @@ class StreamChecker:
             node = node[ch]
             if '$' in node:
                 return True
-        return False` }],
+        return False` }, { lang: 'js', code: `
+class StreamChecker {
+  // Aho-Corasick: one automaton state, one table lookup per letter
+  constructor(words) {
+    let cap = 1;
+    for (const w of words) cap += w.length;
+    this.go = new Int32Array(cap * 26).fill(-1);
+    this.term = new Uint8Array(cap);          // some word ends here or on the fail chain
+    const fail = new Int32Array(cap);
+    let nodes = 1;
+    for (const w of words) {
+      let v = 0;
+      for (let i = 0; i < w.length; i++) {
+        const c = w.charCodeAt(i) - 97;
+        if (this.go[v * 26 + c] === -1) this.go[v * 26 + c] = nodes++;
+        v = this.go[v * 26 + c];
+      }
+      this.term[v] = 1;
+    }
+    const queue = [];
+    for (let c = 0; c < 26; c++) {
+      const u = this.go[c];
+      if (u === -1) this.go[c] = 0; else { fail[u] = 0; queue.push(u); }
+    }
+    for (let head = 0; head < queue.length; head++) {
+      const v = queue[head];
+      this.term[v] |= this.term[fail[v]];     // fail[v] is shallower, so already final
+      for (let c = 0; c < 26; c++) {
+        const u = this.go[v * 26 + c];
+        if (u === -1) this.go[v * 26 + c] = this.go[fail[v] * 26 + c];
+        else { fail[u] = this.go[fail[v] * 26 + c]; queue.push(u); }
+      }
+    }
+    this.state = 0;
+  }
+
+  query(letter) {
+    this.state = this.go[this.state * 26 + letter.charCodeAt(0) - 97];
+    return this.term[this.state] === 1;
+  }
+}` }, { lang: 'cpp', code: `
+class StreamChecker {
+    // Aho-Corasick: one automaton state, one table lookup per letter
+    vector<array<int, 26>> go;
+    vector<bool> term;                              // some word ends here or on the fail chain
+    int state = 0;
+
+public:
+    StreamChecker(vector<string> words) {
+        go.emplace_back();
+        go[0].fill(-1);
+        term.push_back(false);
+        for (const string& w : words) {
+            int v = 0;
+            for (char ch : w) {
+                int c = ch - 'a';
+                if (go[v][c] == -1) {
+                    go[v][c] = go.size();
+                    go.emplace_back();
+                    go.back().fill(-1);
+                    term.push_back(false);
+                }
+                v = go[v][c];
+            }
+            term[v] = true;
+        }
+        vector<int> fail(go.size(), 0), queue;
+        for (int c = 0; c < 26; c++) {
+            int u = go[0][c];
+            if (u == -1) go[0][c] = 0; else queue.push_back(u);
+        }
+        for (size_t head = 0; head < queue.size(); head++) {
+            int v = queue[head];
+            if (term[fail[v]]) term[v] = true;       // fail[v] is shallower, so already final
+            for (int c = 0; c < 26; c++) {
+                int u = go[v][c];
+                if (u == -1) go[v][c] = go[fail[v]][c];
+                else { fail[u] = go[fail[v]][c]; queue.push_back(u); }
+            }
+        }
+    }
+
+    bool query(char letter) {
+        state = go[state][letter - 'a'];
+        return term[state];
+    }
+};` }],
       dry: { head: ['letter', 'state', 'term?', 'answer'], rows: [['a', 'root', 'no', 'false'], ['c', 'c', 'no', 'false'], ['d', 'cd', 'yes', H.c('g', 'true')], ['f', 'f', 'yes', H.c('g', 'true')], ['k', 'k', 'no', 'false'], ['l', 'kl', 'yes', H.c('g', 'true')]] },
       complexity: `<p>Build O(M·26) time/memory (M = Σ|words| ≤ 4·10<sup>5</sup>); query O(1).</p>`,
       followUps: ['Return <b>which</b> words matched (dictionary links).', 'Words can be added between queries — rebuild lazily or use a reversed trie.']
@@ -3000,7 +5677,25 @@ class StreamChecker:
           }
       }` },
     mcq: { q: 'At one target position, how many different words can END there (following dictionary links)?', options: ['Up to the number of words (5·10<sup>4</sup>)', 'At most the number of DISTINCT word lengths, which is O(√Σ|words|) ≈ 316', 'Always 1', 'O(log n)'], answer: 1, explain: 'Words ending at the same position are suffixes of each other, so they have distinct lengths; distinct lengths ℓ<sub>1</sub> &lt; ℓ<sub>2</sub> &lt; … need Σ ≥ 1 + 2 + … ⇒ at most ~√(2·5·10<sup>4</sup>).' },
-    hints: [`<p>dp[i] = min over words w that END at position i of dp[i − |w|] + cost(w). Aho–Corasick lists exactly the words ending at each position.</p>`, `<p>Duplicate words: keep the minimum cost at the trie node. Use dictionary links (nearest word-ending node on the fail chain) to enumerate matches without walking empty nodes.</p>`, `<p>Each enumerated node has a distinct depth, so ≤ ~316 per position → ~1.6·10<sup>7</sup> steps. Use long for dp, return −1 if dp[n] is infinite.</p>`],
+    hints: [`<p>dp[i] = min over words w that END at position i of dp[i − |w|] + cost(w). Aho–Corasick lists exactly the words ending at each position.</p>`, `<p>Duplicate words: keep the minimum cost at the trie node. Use dictionary links (nearest word-ending node on the fail chain) to enumerate matches without walking empty nodes.</p>`, `<p>Each enumerated node has a distinct depth, so ≤ ~316 per position → ~1.6·10<sup>7</sup> steps. Use 64-bit integers for dp, return −1 if dp[n] is infinite.</p>`],
+    tests: { sig: 'string string[] int[] -> int', fn: 'minimumCost', cases: [
+        [["abcdef",["abdef","abc","d","def","ef"],[100,1,1,10,5]],7],
+        [["aaaa",["z","zz","zzz"],[1,10,5]],-1],
+        [["a",["a"],[7]],7],
+        [["a",["b"],[7]],-1],
+        [["ab",["a","b","ab"],[3,3,5]],5],
+        [["ab",["ab","ab"],[9,4]],4],
+        [["aaa",["a","aa","aaa"],[5,6,20]],11],
+        [["abab",["ab","aba","b","bab"],[4,1,1,1]],2],
+        [["abc",["abcd"],[1]],-1],
+        [["abaabaaaaabaa",["bbba","bbb","aa","a","babb","ba"],[6,8,2,2,7,16]],58],
+        [["aaaaaaba",["a","bb","a","ba","a","aba"],[8,7,15,7,5,7]],32],
+        [["bbaaaaabbbaaa",["bbb","ba","aab","baa","aaba","aaab"],[13,10,7,11,5,5]],-1],
+        [["abbabaaaa",["bba","b","ba","b","aaba","aaab"],[13,2,16,14,18,9]],-1],
+        [[{"$rep":"a","n":50000},["a","aa","aaa","aaaa","aaaaa","aaaaaa","aaaaaaa","aaaaaaaa","aaaaaaaaa","aaaaaaaaaa","aaaaaaaaaaa","aaaaaaaaaaaa","aaaaaaaaaaaaa","aaaaaaaaaaaaaa","aaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],[10000,9970,9940,9910,9880,9850,9820,9790,9760,9730,9700,9670,9640,9610,9580,9550,9520,9490,9460,9430,9400,9370,9340,9310,9280,9250,9220,9190,9160,9130,9100,9070,9040,9010,8980,8950,8920,8890,8860,8830,8800,8770,8740,8710,8680,8650,8620,8590,8560,8530,8500,8470,8440,8410,8380,8350,8320,8290,8260,8230,8200,8170,8140,8110,8080,8050,8020,7990,7960,7930,7900,7870,7840,7810,7780,7750,7720,7690,7660,7630,7600,7570,7540,7510,7480,7450,7420,7390,7360,7330,7300,7270,7240,7210,7180,7150,7120,7090,7060,7030]],3515000],
+        [[{"$rep":"a","n":50000},{"$rep":"a","n":50000},{"$concat":[{"$rep":10000,"n":49999},[3]]}],150000],
+        [[{"$rep":"ab","n":25000},["ab","a","b"],[10000,10000,10000]],250000000]
+      ] },
     solution: {
       approach: `<p>Build Aho–Corasick over the words (min cost per end node, depth = word length, dictionary links). Scan target; at each position walk the dictionary chain and relax dp. O(|target|·√M + M·26).</p>`,
       code: `
@@ -3054,6 +5749,155 @@ class StreamChecker:
                 return dp[n] >= INF ? -1 : (int) dp[n];
             }
         }`,
+      alt: [{ lang: 'python', code: `
+from collections import deque
+
+
+def minimum_cost(target, words, costs):
+    INF = float('inf')
+    go, fail, best, depth, dic = [[-1] * 26], [0], [INF], [0], [-1]
+    for w, cost in zip(words, costs):                 # trie, cheapest cost per word
+        v = 0
+        for ch in w:
+            c = ord(ch) - 97
+            if go[v][c] == -1:
+                go[v][c] = len(go)
+                go.append([-1] * 26)
+                fail.append(0)
+                best.append(INF)
+                depth.append(depth[v] + 1)
+                dic.append(-1)
+            v = go[v][c]
+        best[v] = min(best[v], cost)
+    queue = deque()
+    for c in range(26):
+        u = go[0][c]
+        if u == -1:
+            go[0][c] = 0
+        else:
+            queue.append(u)
+    while queue:                                      # BFS: fail links and dictionary links
+        v = queue.popleft()
+        for c in range(26):
+            u = go[v][c]
+            if u == -1:
+                go[v][c] = go[fail[v]][c]
+            else:
+                f = go[fail[v]][c]
+                fail[u] = f
+                dic[u] = f if best[f] < INF else dic[f]   # nearest word end on the fail chain
+                queue.append(u)
+    n = len(target)
+    dp = [INF] * (n + 1)
+    dp[0] = 0
+    v = 0
+    for i in range(1, n + 1):
+        v = go[v][ord(target[i - 1]) - 97]
+        u = v if best[v] < INF else dic[v]
+        while u != -1:                                # every word ending at position i
+            if dp[i - depth[u]] + best[u] < dp[i]:
+                dp[i] = dp[i - depth[u]] + best[u]
+            u = dic[u]
+    return -1 if dp[n] == INF else dp[n]` }, { lang: 'js', code: `
+function minimumCost(target, words, costs) {
+  let cap = 1;
+  for (const w of words) cap += w.length;
+  const NONE = 1 << 30;
+  const go = new Int32Array(cap * 26).fill(-1);
+  const fail = new Int32Array(cap), depth = new Int32Array(cap), dict = new Int32Array(cap).fill(-1);
+  const best = new Int32Array(cap).fill(NONE);
+  let nodes = 1;
+  words.forEach((w, k) => {                                   // trie, cheapest cost per word
+    let v = 0;
+    for (let i = 0; i < w.length; i++) {
+      const c = w.charCodeAt(i) - 97;
+      if (go[v * 26 + c] === -1) { go[v * 26 + c] = nodes; depth[nodes] = depth[v] + 1; nodes++; }
+      v = go[v * 26 + c];
+    }
+    best[v] = Math.min(best[v], costs[k]);
+  });
+  const queue = [];
+  for (let c = 0; c < 26; c++) {
+    const u = go[c];
+    if (u === -1) go[c] = 0; else queue.push(u);
+  }
+  for (let head = 0; head < queue.length; head++) {          // BFS: fail links and dictionary links
+    const v = queue[head];
+    for (let c = 0; c < 26; c++) {
+      const u = go[v * 26 + c];
+      if (u === -1) { go[v * 26 + c] = go[fail[v] * 26 + c]; continue; }
+      const f = go[fail[v] * 26 + c];
+      fail[u] = f;
+      dict[u] = best[f] !== NONE ? f : dict[f];               // nearest word end on the fail chain
+      queue.push(u);
+    }
+  }
+  const n = target.length, INF = Infinity;
+  const dp = new Array(n + 1).fill(INF);
+  dp[0] = 0;
+  let v = 0;
+  for (let i = 1; i <= n; i++) {
+    v = go[v * 26 + target.charCodeAt(i - 1) - 97];
+    for (let u = best[v] !== NONE ? v : dict[v]; u !== -1; u = dict[u]) {   // every word ending at i
+      const cand = dp[i - depth[u]] + best[u];
+      if (cand < dp[i]) dp[i] = cand;
+    }
+  }
+  return dp[n] === INF ? -1 : dp[n];
+}` }, { lang: 'cpp', code: `
+class Solution {
+public:
+    int minimumCost(string target, vector<string> words, vector<int> costs) {
+        const int NONE = INT_MAX;
+        const long long INF = LLONG_MAX / 4;
+        vector<array<int, 26>> go(1);
+        go[0].fill(-1);
+        vector<int> fail(1, 0), best(1, NONE), depth(1, 0), dict(1, -1);
+        for (size_t k = 0; k < words.size(); k++) {            // trie, cheapest cost per word
+            int v = 0;
+            for (char ch : words[k]) {
+                int c = ch - 'a';
+                if (go[v][c] == -1) {
+                    go[v][c] = go.size();
+                    int d = depth[v] + 1;
+                    go.emplace_back();
+                    go.back().fill(-1);
+                    fail.push_back(0); best.push_back(NONE); depth.push_back(d); dict.push_back(-1);
+                }
+                v = go[v][c];
+            }
+            best[v] = min(best[v], costs[k]);
+        }
+        vector<int> queue;
+        for (int c = 0; c < 26; c++) {
+            int u = go[0][c];
+            if (u == -1) go[0][c] = 0; else queue.push_back(u);
+        }
+        for (size_t head = 0; head < queue.size(); head++) {   // BFS: fail links and dictionary links
+            int v = queue[head];
+            for (int c = 0; c < 26; c++) {
+                int u = go[v][c];
+                if (u == -1) { go[v][c] = go[fail[v]][c]; continue; }
+                int f = go[fail[v]][c];
+                fail[u] = f;
+                dict[u] = best[f] != NONE ? f : dict[f];       // nearest word end on the fail chain
+                queue.push_back(u);
+            }
+        }
+        int n = target.size();
+        vector<long long> dp(n + 1, INF);
+        dp[0] = 0;
+        int v = 0;
+        for (int i = 1; i <= n; i++) {
+            v = go[v][target[i - 1] - 'a'];
+            for (int u = best[v] != NONE ? v : dict[v]; u != -1; u = dict[u]) {   // every word ending at i
+                long long prev = dp[i - depth[u]];
+                if (prev != INF) dp[i] = min(dp[i], prev + best[u]);
+            }
+        }
+        return dp[n] >= INF ? -1 : (int)dp[n];
+    }
+};` }],
       dry: { head: ['i', 'char', 'words ending here', 'dp[i]'], rows: [['0', '', '', '0'], ['3', 'c', 'abc (1)', '0 + 1 = 1'], ['4', 'd', 'd (1)', '1 + 1 = 2'], ['5', 'e', 'none (state “de”)', '∞'], ['6', 'f', 'def (10), ef (5)', 'min(1 + 10, 2 + 5) = <b>7</b>']] },
       complexity: `<p>Build O(M·26), scan O(|target|·√M) ≈ 1.6·10<sup>7</sup>, space O(M·26 + |target|).</p>`,
       followUps: ['Return the actual sequence of words (store argmin).', 'Words may be used at most once each — becomes much harder (set cover flavour).']
@@ -3065,7 +5909,7 @@ class StreamChecker:
     statement: `<p>Given <code>s</code> and an integer <code>k</code>, return the length of the longest substring that occurs at least <code>k</code> times in <code>s</code> (occurrences may overlap). Return 0 if none.</p>`,
     constraints: `1 ≤ |s| ≤ 10<sup>5</sup>, 1 ≤ k ≤ |s|, lowercase letters`,
     example: `<p>s = <code>"banana"</code>: k = 2 → <b>3</b> (${H.c('g', 'ana')}); k = 3 → <b>1</b> (${H.c('g', 'a')}). s = <code>"aaaa"</code>, k = 3 → <b>2</b> (aa at 0, 1, 2).</p>`,
-    brute: { why: `<p>For each length L (from long to short), count all substrings of length L in a HashMap&lt;String, Integer&gt;: O(N) lengths × O(N) substrings × O(N) hashing = O(N<sup>3</sup>). Binary search on L + rolling hash makes it O(N log N) expected — but SA gives a clean deterministic O(N log N).</p>`, code: `
+    brute: { why: `<p>For each length L (from long to short), count all substrings of length L in a hash map (<code>HashMap</code> / <code>dict</code> / <code>Map</code> / <code>unordered_map</code>): O(N) lengths × O(N) substrings × O(N) hashing = O(N<sup>3</sup>). Binary search on L + rolling hash makes it O(N log N) expected — but SA gives a clean deterministic O(N log N).</p>`, code: `
       class Brute {
           int longestKRepeat(String s, int k) {
               int n = s.length();
@@ -3079,6 +5923,28 @@ class StreamChecker:
       }` },
     mcq: { q: 'A substring w occurs ≥ k times ⇔ in SA order there are k consecutive suffixes that…', options: ['all have length ≥ |w|', 'pairwise share a prefix of length ≥ |w| (min of the k−1 lcp values ≥ |w|)', 'have increasing SA values', 'are all distinct'], answer: 1, explain: 'All suffixes starting with w form one contiguous SA block; the common prefix of a block equals the minimum lcp inside it.' },
     hints: [`<p>Suffixes sharing a prefix w sit together in SA. A block of k consecutive ranks shares exactly min(lcp[r+1..r+k−1]) letters.</p>`, `<p>Slide a window of k − 1 consecutive lcp values; answer = max over windows of the window minimum. A monotonic deque gives each minimum in amortised O(1) (DSA 13).</p>`, `<p>k = 1 → whole string (length N). k &gt; N → 0. Recipe: SA → Kasai → sliding-window minimum over lcp[1..N−1] with width k − 1 → max.</p>`],
+    tests: { sig: 'string int -> int', fn: 'longestKRepeat', cases: [
+        [["banana",2],3],
+        [["banana",3],1],
+        [["aaaa",3],2],
+        [["banana",1],6],
+        [["abcd",2],0],
+        [["a",1],1],
+        [["aa",2],1],
+        [["abab",2],2],
+        [["mississippi",2],4],
+        [["mississippi",4],1],
+        [["aaaaa",5],1],
+        [["abbaababaaaabaaaaababbbabb",4],3],
+        [["bbaababaaababaaaaabaabbbb",5],3],
+        [["aabbbbbbbbb",2],8],
+        [["baababbbaabba",5],1],
+        [[{"$rep":"a","n":100000},2],99999],
+        [[{"$rep":"a","n":100000},50000],50001],
+        [[{"$rep":"a","n":100000},100000],1],
+        [[{"$rep":"ab","n":50000},3],99996],
+        [[{"$rep":"ab","n":50000},40000],20002]
+      ] },
     solution: {
       approach: `<p>SA + LCP + sliding-window minimum. The window minimum is the longest prefix shared by k consecutive suffixes, i.e. the longest substring with ≥ k occurrences inside that block.</p>`,
       code: `
@@ -3134,6 +6000,170 @@ class StreamChecker:
                 return res;
             }
         }`,
+      alt: [{ lang: 'python', code: `
+from collections import deque
+
+
+def build_sa(s):
+    # prefix doubling: sort by (rank[i], rank[i + k]) packed into one integer key
+    n = len(s)
+    rank = [ord(ch) for ch in s]
+    sa = list(range(n))
+    base = max(n, 128) + 2
+    k = 1
+    while True:
+        key = [rank[i] * base + (rank[i + k] + 1 if i + k < n else 0) for i in range(n)]
+        sa.sort(key=key.__getitem__)
+        rank = [0] * n
+        r = 0
+        for j in range(1, n):
+            if key[sa[j]] != key[sa[j - 1]]:
+                r += 1
+            rank[sa[j]] = r
+        if r == n - 1:
+            return sa
+        k <<= 1
+
+
+def kasai(s, sa):
+    # lcp[r] = common prefix of the suffixes at ranks r - 1 and r; h drops by at most 1 per step
+    n = len(s)
+    rank = [0] * n
+    for r, i in enumerate(sa):
+        rank[i] = r
+    lcp = [0] * n
+    h = 0
+    for i in range(n):
+        if rank[i] == 0:
+            h = 0
+            continue
+        j = sa[rank[i] - 1]
+        while i + h < n and j + h < n and s[i + h] == s[j + h]:
+            h += 1
+        lcp[rank[i]] = h
+        if h > 0:
+            h -= 1
+    return lcp
+
+
+def longest_k_repeat(s, k):
+    n = len(s)
+    if k <= 1:
+        return n
+    if k > n:
+        return 0
+    lcp = kasai(s, build_sa(s))
+    w, best = k - 1, 0                       # window of k - 1 consecutive lcp values
+    dq = deque()                             # indices with increasing lcp
+    for i in range(1, n):
+        while dq and lcp[dq[-1]] >= lcp[i]:
+            dq.pop()
+        dq.append(i)
+        if dq[0] <= i - w:
+            dq.popleft()
+        if i >= w:
+            best = max(best, lcp[dq[0]])
+    return best` }, { lang: 'js', code: `
+function buildSA(s) {
+  // prefix doubling: sort by (rank[i], rank[i + k]) packed into one number
+  const n = s.length;
+  let rank = new Int32Array(n);
+  for (let i = 0; i < n; i++) rank[i] = s.charCodeAt(i);
+  const sa = Array.from({ length: n }, (_, i) => i);
+  const key = new Float64Array(n);
+  const base = Math.max(n, 128) + 2;
+  for (let k = 1; ; k <<= 1) {
+    for (let i = 0; i < n; i++) key[i] = rank[i] * base + (i + k < n ? rank[i + k] + 1 : 0);
+    sa.sort((a, b) => key[a] - key[b]);
+    const next = new Int32Array(n);
+    for (let j = 1; j < n; j++) next[sa[j]] = next[sa[j - 1]] + (key[sa[j]] !== key[sa[j - 1]] ? 1 : 0);
+    rank = next;
+    if (rank[sa[n - 1]] === n - 1) return sa;
+  }
+}
+
+function kasai(s, sa) {
+  // lcp[r] = common prefix of the suffixes at ranks r - 1 and r; h drops by at most 1 per step
+  const n = s.length, rank = new Int32Array(n), lcp = new Int32Array(n);
+  for (let r = 0; r < n; r++) rank[sa[r]] = r;
+  let h = 0;
+  for (let i = 0; i < n; i++) {
+    if (rank[i] === 0) { h = 0; continue; }
+    const j = sa[rank[i] - 1];
+    while (i + h < n && j + h < n && s[i + h] === s[j + h]) h++;
+    lcp[rank[i]] = h;
+    if (h > 0) h--;
+  }
+  return lcp;
+}
+
+function longestKRepeat(s, k) {
+  const n = s.length;
+  if (k <= 1) return n;
+  if (k > n) return 0;
+  const lcp = kasai(s, buildSA(s));
+  const w = k - 1;
+  let best = 0, head = 0;
+  const dq = [];                                // indices with increasing lcp; head = front
+  for (let i = 1; i < n; i++) {                 // window of k - 1 consecutive lcp values
+    while (dq.length > head && lcp[dq[dq.length - 1]] >= lcp[i]) dq.pop();
+    dq.push(i);
+    if (dq[head] <= i - w) head++;
+    if (i >= w) best = Math.max(best, lcp[dq[head]]);
+  }
+  return best;
+}` }, { lang: 'cpp', code: `
+class Solution {
+    vector<int> buildSA(const string& s) {
+        int n = s.size();
+        vector<int> sa(n), rank(n), next(n);
+        vector<long long> key(n);
+        iota(sa.begin(), sa.end(), 0);
+        for (int i = 0; i < n; i++) rank[i] = s[i];
+        long long base = max(n, 128) + 2;
+        for (int k = 1;; k <<= 1) {                     // prefix doubling with packed keys
+            for (int i = 0; i < n; i++) key[i] = rank[i] * base + (i + k < n ? rank[i + k] + 1 : 0);
+            sort(sa.begin(), sa.end(), [&](int a, int b) { return key[a] < key[b]; });
+            next[sa[0]] = 0;
+            for (int j = 1; j < n; j++) next[sa[j]] = next[sa[j - 1]] + (key[sa[j]] != key[sa[j - 1]]);
+            rank = next;
+            if (rank[sa[n - 1]] == n - 1) break;
+        }
+        return sa;
+    }
+
+    vector<int> kasai(const string& s, const vector<int>& sa) {
+        // lcp[r] = common prefix of the suffixes at ranks r - 1 and r; h drops by at most 1 per step
+        int n = s.size(), h = 0;
+        vector<int> rank(n), lcp(n, 0);
+        for (int r = 0; r < n; r++) rank[sa[r]] = r;
+        for (int i = 0; i < n; i++) {
+            if (rank[i] == 0) { h = 0; continue; }
+            int j = sa[rank[i] - 1];
+            while (i + h < n && j + h < n && s[i + h] == s[j + h]) h++;
+            lcp[rank[i]] = h;
+            if (h > 0) h--;
+        }
+        return lcp;
+    }
+
+public:
+    int longestKRepeat(string s, int k) {
+        int n = s.size();
+        if (k <= 1) return n;
+        if (k > n) return 0;
+        vector<int> lcp = kasai(s, buildSA(s));
+        int w = k - 1, best = 0;                        // window of k - 1 consecutive lcp values
+        deque<int> dq;                                  // indices with increasing lcp
+        for (int i = 1; i < n; i++) {
+            while (!dq.empty() && lcp[dq.back()] >= lcp[i]) dq.pop_back();
+            dq.push_back(i);
+            if (dq.front() <= i - w) dq.pop_front();
+            if (i >= w) best = max(best, lcp[dq.front()]);
+        }
+        return best;
+    }
+};` }],
       dry: { head: ['window (ranks)', 'suffixes', 'lcp values inside', 'min', 'best'], rows: [['0–1', 'a, ana', '1', '1', '1'], ['1–2', 'ana, anana', '3', '3', '3'], ['2–3', 'anana, banana', '0', '0', '3'], ['3–4', 'banana, na', '0', '0', '3'], ['4–5', 'na, nana', '2', '2', H.c('g', '<b>3</b> (k = 2)')]] },
       complexity: `<p>O(N log<sup>2</sup> N) for the SA, O(N) for Kasai and the deque.</p>`,
       followUps: ['Return the substring (remember SA[r] of the best window).', 'Require the k occurrences to be pairwise non-overlapping.', 'Maximise length × occurrences (largest rectangle in the LCP histogram).']
@@ -3143,7 +6173,7 @@ class StreamChecker:
   practice.push({
     title: 'K-th Lexicographically Smallest Distinct Substring', level: 'Hard', tags: ['suffix array', 'lcp', 'counting'], companies: ['Google', 'SPOJ SUBLEX'],
     statement: `<p>List all <b>distinct</b> non-empty substrings of <code>s</code> in lexicographic order. Return the k-th one (1-based), or <code>""</code> if there are fewer than k.</p>`,
-    constraints: `1 ≤ |s| ≤ 10<sup>5</sup>, 1 ≤ k ≤ 10<sup>10</sup> (use long)`,
+    constraints: `1 ≤ |s| ≤ 10<sup>5</sup>, 1 ≤ k ≤ 10<sup>10</sup> (needs a 64-bit integer)`,
     example: `<p>s = <code>"banana"</code>: sorted distinct substrings are a, an, ana, anan, anana, b, ba, ban, … → k = 4 → <b>"anan"</b>; k = 6 → <b>"b"</b>; k = 16 → <b>""</b> (only 15 exist).</p>`,
     brute: { why: `<p>Put all substrings into a TreeSet&lt;String&gt; and walk to the k-th: O(N<sup>2</sup>) strings of length up to N → O(N<sup>3</sup>) memory and time. The waste: we materialise ~5·10<sup>9</sup> strings just to count them.</p>`, code: `
       class Brute {
@@ -3156,7 +6186,40 @@ class StreamChecker:
           }
       }` },
     mcq: { q: 'Walking ranks in SA order, the new substrings of rank r are its prefixes of lengths lcp[r]+1 … |suffix|. In which order do they appear in the global sorted list?', options: ['Reverse order', 'Exactly in increasing length, right after everything from earlier ranks', 'Random', 'Interleaved with later ranks'], answer: 1, explain: 'A shorter prefix is smaller than a longer one with the same start, and all of rank r’s new prefixes are larger than earlier ranks’ substrings and smaller than later ranks’ new ones.' },
-    hints: [`<p>Group the sorted distinct substrings by the first SA rank that owns them (topic 7): rank r owns (n − SA[r]) − lcp[r] consecutive entries.</p>`, `<p>Skip whole ranks while k is larger than their count (subtract). Inside the right rank, the answer is the prefix of length lcp[r] + k.</p>`, `<p>Use long for k. If k survives all ranks, return "". Multiple queries: prefix sums over rank counts + binary search.</p>`],
+    hints: [`<p>Group the sorted distinct substrings by the first SA rank that owns them (topic 7): rank r owns (n − SA[r]) − lcp[r] consecutive entries.</p>`, `<p>Skip whole ranks while k is larger than their count (subtract). Inside the right rank, the answer is the prefix of length lcp[r] + k.</p>`, `<p>Use a 64-bit integer for k. If k survives all ranks, return "". Multiple queries: prefix sums over rank counts + binary search.</p>`],
+    tests: { sig: 'string long -> string', fn: 'kth', cases: [
+        [["banana",4],"anan"],
+        [["banana",6],"b"],
+        [["banana",16],""],
+        [["banana",1],"a"],
+        [["banana",15],"nana"],
+        [["a",1],"a"],
+        [["a",2],""],
+        [["aaaa",4],"aaaa"],
+        [["aaaa",5],""],
+        [["abab",3],"aba"],
+        [["abcabc",10],"bcab"],
+        [["aaabbbb",4],"aaab"],
+        [["babaaaaabbbaa",8],"aaaaabbb"],
+        [["abaabaabba",18],"abaabaabb"],
+        [["baaaabbbba",1],"a"],
+        [["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",1],"a"],
+        [["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",30],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+        [["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",31],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaab"],
+        [["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",500],"aaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbb"],
+        [["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",930],"abbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
+        [["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",931],"b"],
+        [["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",960],"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
+        [[{"$rep":"a","n":100000},100000],{"$rep":"a","n":100000}],
+        [[{"$rep":"a","n":100000},100001],""],
+        [[{"$rep":"ab","n":50000},100000],{"$rep":"ab","n":50000}],
+        [[{"$rep":"ab","n":50000},100001],"b"],
+        [[{"$rep":"ab","n":50000},199999],{"$concat":[{"$rep":"ba","n":49999},"b"]}],
+        [[{"$rep":"ab","n":50000},200000],""],
+        [[{"$concat":[{"$rep":"a","n":50000},{"$rep":"b","n":50000}]},2500100000],{"$rep":"b","n":50000}],
+        [[{"$concat":[{"$rep":"a","n":50000},{"$rep":"b","n":50000}]},2500100001],""],
+        [[{"$concat":[{"$rep":"a","n":50000},{"$rep":"b","n":50000}]},1],"a"]
+      ] },
     solution: {
       approach: `<p>SA + LCP. Ranks contribute contiguous, already-sorted blocks of new substrings; skip blocks by count, then index inside the right block. O(N log<sup>2</sup> N) build, O(N) per query (O(log N) with prefix sums).</p>`,
       code: `
@@ -3207,6 +6270,147 @@ class StreamChecker:
                 return res;
             }
         }`,
+      alt: [{ lang: 'python', code: `
+def build_sa(s):
+    # prefix doubling: sort by (rank[i], rank[i + k]) packed into one integer key
+    n = len(s)
+    rank = [ord(ch) for ch in s]
+    sa = list(range(n))
+    base = max(n, 128) + 2
+    k = 1
+    while True:
+        key = [rank[i] * base + (rank[i + k] + 1 if i + k < n else 0) for i in range(n)]
+        sa.sort(key=key.__getitem__)
+        rank = [0] * n
+        r = 0
+        for j in range(1, n):
+            if key[sa[j]] != key[sa[j - 1]]:
+                r += 1
+            rank[sa[j]] = r
+        if r == n - 1:
+            return sa
+        k <<= 1
+
+
+def kasai(s, sa):
+    # lcp[r] = common prefix of the suffixes at ranks r - 1 and r; h drops by at most 1 per step
+    n = len(s)
+    rank = [0] * n
+    for r, i in enumerate(sa):
+        rank[i] = r
+    lcp = [0] * n
+    h = 0
+    for i in range(n):
+        if rank[i] == 0:
+            h = 0
+            continue
+        j = sa[rank[i] - 1]
+        while i + h < n and j + h < n and s[i + h] == s[j + h]:
+            h += 1
+        lcp[rank[i]] = h
+        if h > 0:
+            h -= 1
+    return lcp
+
+
+def kth(s, k):
+    n = len(s)
+    sa = build_sa(s)
+    lcp = kasai(s, sa)
+    for r in range(n):
+        fresh = (n - sa[r]) - lcp[r]         # new substrings owned by rank r
+        if k <= fresh:
+            return s[sa[r]:sa[r] + lcp[r] + k]
+        k -= fresh
+    return ""` }, { lang: 'js', code: `
+function buildSA(s) {
+  // prefix doubling: sort by (rank[i], rank[i + k]) packed into one number
+  const n = s.length;
+  let rank = new Int32Array(n);
+  for (let i = 0; i < n; i++) rank[i] = s.charCodeAt(i);
+  const sa = Array.from({ length: n }, (_, i) => i);
+  const key = new Float64Array(n);
+  const base = Math.max(n, 128) + 2;
+  for (let k = 1; ; k <<= 1) {
+    for (let i = 0; i < n; i++) key[i] = rank[i] * base + (i + k < n ? rank[i + k] + 1 : 0);
+    sa.sort((a, b) => key[a] - key[b]);
+    const next = new Int32Array(n);
+    for (let j = 1; j < n; j++) next[sa[j]] = next[sa[j - 1]] + (key[sa[j]] !== key[sa[j - 1]] ? 1 : 0);
+    rank = next;
+    if (rank[sa[n - 1]] === n - 1) return sa;
+  }
+}
+
+function kasai(s, sa) {
+  // lcp[r] = common prefix of the suffixes at ranks r - 1 and r; h drops by at most 1 per step
+  const n = s.length, rank = new Int32Array(n), lcp = new Int32Array(n);
+  for (let r = 0; r < n; r++) rank[sa[r]] = r;
+  let h = 0;
+  for (let i = 0; i < n; i++) {
+    if (rank[i] === 0) { h = 0; continue; }
+    const j = sa[rank[i] - 1];
+    while (i + h < n && j + h < n && s[i + h] === s[j + h]) h++;
+    lcp[rank[i]] = h;
+    if (h > 0) h--;
+  }
+  return lcp;
+}
+
+function kth(s, k) {
+  const n = s.length, sa = buildSA(s), lcp = kasai(s, sa);
+  for (let r = 0; r < n; r++) {
+    const fresh = (n - sa[r]) - lcp[r];         // new substrings owned by rank r
+    if (k <= fresh) return s.substring(sa[r], sa[r] + lcp[r] + k);
+    k -= fresh;
+  }
+  return '';
+}` }, { lang: 'cpp', code: `
+class Solution {
+    vector<int> buildSA(const string& s) {
+        int n = s.size();
+        vector<int> sa(n), rank(n), next(n);
+        vector<long long> key(n);
+        iota(sa.begin(), sa.end(), 0);
+        for (int i = 0; i < n; i++) rank[i] = s[i];
+        long long base = max(n, 128) + 2;
+        for (int k = 1;; k <<= 1) {                     // prefix doubling with packed keys
+            for (int i = 0; i < n; i++) key[i] = rank[i] * base + (i + k < n ? rank[i + k] + 1 : 0);
+            sort(sa.begin(), sa.end(), [&](int a, int b) { return key[a] < key[b]; });
+            next[sa[0]] = 0;
+            for (int j = 1; j < n; j++) next[sa[j]] = next[sa[j - 1]] + (key[sa[j]] != key[sa[j - 1]]);
+            rank = next;
+            if (rank[sa[n - 1]] == n - 1) break;
+        }
+        return sa;
+    }
+
+    vector<int> kasai(const string& s, const vector<int>& sa) {
+        // lcp[r] = common prefix of the suffixes at ranks r - 1 and r; h drops by at most 1 per step
+        int n = s.size(), h = 0;
+        vector<int> rank(n), lcp(n, 0);
+        for (int r = 0; r < n; r++) rank[sa[r]] = r;
+        for (int i = 0; i < n; i++) {
+            if (rank[i] == 0) { h = 0; continue; }
+            int j = sa[rank[i] - 1];
+            while (i + h < n && j + h < n && s[i + h] == s[j + h]) h++;
+            lcp[rank[i]] = h;
+            if (h > 0) h--;
+        }
+        return lcp;
+    }
+
+public:
+    string kth(string s, long long k) {
+        int n = s.size();
+        vector<int> sa = buildSA(s), lcp = kasai(s, sa);
+        for (int r = 0; r < n; r++) {
+            long long fresh = (n - sa[r]) - lcp[r];     // new substrings owned by rank r
+            if (k <= fresh) return s.substr(sa[r], lcp[r] + (int)k);
+            k -= fresh;
+        }
+        return "";
+    }
+};` }],
       dry: { head: ['rank', 'suffix', 'lcp', 'owns', 'k before → after'], rows: [['0', 'a', '0', '1 (a)', '4 → 3'], ['1', 'ana', '1', '2 (an, ana)', '3 → 1'], ['2', 'anana', '3', '2 (anan, anana)', H.c('g', 'k = 1 ≤ 2 → prefix of length 3 + 1 = "anan"')]] },
       complexity: `<p>O(N log<sup>2</sup> N) preprocessing, O(N) per query (or O(log N) with prefix sums).</p>`,
       followUps: ['Count <b>all</b> substrings (with repeats) instead of distinct ones — then SAM path counting with occurrence weights is easier.', 'Q queries with different k — prefix sums of “owns” + binary search.']
@@ -3242,11 +6446,11 @@ class StreamChecker:
     { q: 'How do you find the longest repeated substring? What changes if occurrences must not overlap?', level: 'A', a: `<p>Overlap allowed: build SA + LCP; the answer is the maximum lcp value, starting at SA[r] (any repeated substring is a common prefix of two suffixes and the best pair is adjacent in sorted order). Alternatively binary search on length with a rolling hash: O(N log N) expected.</p><p>No overlap: the predicate “a non-overlapping repeat of length L exists” is monotone, so binary search on L. For a fixed L, split SA into maximal blocks where consecutive lcp ≥ L; a block works if max(SA) − min(SA) ≥ L inside it. That is O(N log N) after the SA. With a suffix automaton you can instead track the first and last end positions per state.</p>`, followUps: ['How about “occurs at least k times”?', 'Can you do it deterministically without a suffix array?', 'What is the answer for "aaaa" in both variants?'] },
     { q: 'Compare Aho–Corasick with running KMP once per pattern.', level: 'A', a: `<p>KMP per pattern costs O(N + m<sub>i</sub>) each, so O(k·N + M) for k patterns of total length M — the text is re-read k times. Aho–Corasick builds one trie of all patterns plus failure links (longest proper suffix that is also a trie node) and dictionary links, then reads the text once: O(M·σ) build with a complete goto table, O(N) scanning, plus O(Z) to report Z matches.</p><p>If you only need per-pattern counts, avoid enumerating matches (Z can be Θ(N·k) with nested patterns): count visits per state and push counts up the fail tree in reverse BFS order. Trade-offs: the complete table uses σ ints per node — compress or use maps for large alphabets.</p>`, followUps: ['Why BFS order for failure links?', 'How would you support adding patterns dynamically?', 'How does a DP over automaton states count strings avoiding all patterns?'] },
     { q: 'Design a profanity/keyword filter for a chat service with 50,000 banned phrases and messages streamed token by token.', level: 'E', a: `<p>Normalise text first (case folding, Unicode NFKC, optional leetspeak mapping), then compile the 50k phrases into an Aho–Corasick automaton once per deploy (or per list update) and ship it to every chat server as an immutable, versioned artefact. Each conversation keeps one integer state; each incoming character costs one table lookup, and a precomputed “ends a phrase on the fail chain” flag (or dictionary link) reports matches immediately — perfect for streaming.</p><p>Engineering: use a compact DFA (alphabet compression, byte-level transitions), hot-reload new automata atomically, measure p99 latency, and log matched phrase IDs rather than message text for privacy. For fuzzy evasion (spaces, look-alike characters) add normalisation rules or a second-stage ML classifier; Aho–Corasick handles the exact high-volume part cheaply.</p>`, followUps: ['How do you handle word boundaries (“class” contains “ass”)?', 'How big is the automaton in memory?', 'How would you A/B test a list change?'] },
-    { q: 'How likely is a collision with polynomial hashing, and when do you need double hashing?', level: 'A', a: `<p>For two fixed different strings of length n and a uniformly random base modulo a prime M, the difference is a non-zero polynomial of degree &lt; n, so the collision probability is ≤ (n − 1)/M. When you compare many hashes against each other (put K hashes in a set), the birthday bound applies: about K<sup>2</sup>/(2M) colliding pairs.</p><p>With M ≈ 10<sup>9</sup> and K = 10<sup>5</sup> that is ~5 collisions — too many. Two independent moduli (≈ 10<sup>18</sup>) or a single 2<sup>61</sup> − 1 modulus brings it to ~10<sup>−8</sup>. Always use random bases, map characters to non-zero values, and verify candidates when a false positive would give a wrong answer.</p>`, followUps: ['Why must the modulus be prime for this argument?', 'How do you multiply mod 2^61 − 1 in Java?', 'When is a single modulus enough?'] },
+    { q: 'How likely is a collision with polynomial hashing, and when do you need double hashing?', level: 'A', a: `<p>For two fixed different strings of length n and a uniformly random base modulo a prime M, the difference is a non-zero polynomial of degree &lt; n, so the collision probability is ≤ (n − 1)/M. When you compare many hashes against each other (put K hashes in a set), the birthday bound applies: about K<sup>2</sup>/(2M) colliding pairs.</p><p>With M ≈ 10<sup>9</sup> and K = 10<sup>5</sup> that is ~5 collisions — too many. Two independent moduli (≈ 10<sup>18</sup>) or a single 2<sup>61</sup> − 1 modulus brings it to ~10<sup>−8</sup>. Always use random bases, map characters to non-zero values, and verify candidates when a false positive would give a wrong answer.</p>`, followUps: ['Why must the modulus be prime for this argument?', 'How do you multiply mod 2^61 − 1 in Java, C++ and JavaScript?', 'When is a single modulus enough?'] },
     { q: 'What is an anti-hash test and how do you defend against it?', level: 'E', a: `<p>An anti-hash test is input crafted to make a specific hash function collide. Classic examples: Thue–Morse strings, which collide for any odd base when hashing mod 2<sup>64</sup> (unsigned overflow), because the hash difference accumulates k(k+1)/2 factors of two; birthday or lattice-reduction (LLL) searches that find collisions for a fixed, known base and prime; and hash-flooding attacks on Java’s fixed <code>String.hashCode</code> (“Aa” and “BB” both hash to 2112).</p><p>Defences: prime modulus (not 2<sup>64</sup>), base chosen randomly at runtime and never exposed, large total range (two moduli or 2<sup>61</sup> − 1), verification of matches when correctness matters. Production hash tables use keyed hashes like SipHash with a per-process random key; Java mitigates flooding by turning long buckets into balanced trees.</p>`, followUps: ['Why does a random base defeat precomputed collisions?', 'Can an attacker learn your base from timing?', 'How does Java 8 HashMap limit the damage?'] },
     { q: 'What does a state in a suffix automaton represent, and why do we need clones?', level: 'E', a: `<p>A state is an equivalence class of substrings with the same endpos set (the set of positions where they end). Within a state, the strings are suffixes of each other with lengths in (len(link), len]; the suffix link points to the class of the longest shorter suffix, which ends in strictly more places. Following transitions from the root spells exactly the substrings of s.</p><p>When appending c, we walk suffix links from the last state adding c-edges until a state p already has a c-edge to q. If len(p) + 1 == len(q), q is exactly the class of the new suffix. Otherwise q contains longer strings whose endpos did not gain the new position, so the class must split: clone q with len(p) + 1, copy its edges and link, redirect p’s chain of c-edges to the clone, and link q and cur to it. Cloning keeps the total ≤ 2N − 1 states.</p>`, followUps: ['How do you count occurrences of each substring with a SAM?', 'How is the SAM’s link tree related to the suffix tree of the reversed string?', 'What is the memory cost per character?'] },
     { q: 'Suffix array vs suffix tree vs suffix automaton: when would you pick each?', level: 'E', a: `<p><b>Suffix array (+ LCP):</b> offline, compact (≈ 8N bytes with LCP), simple to build in O(N log N) or O(N); great for pattern counting by binary search, distinct/repeated/common substrings, k-th substring; the default in contests and in large-scale text indexing (with BWT/FM-index for compression).</p><p><b>Suffix tree:</b> explicit tree of all suffixes; elegant algorithms (LCA-based queries) but heavy memory (often 20N+ bytes) and Ukkonen’s construction is tricky — rarely implemented by hand today. <b>Suffix automaton:</b> online, O(N) states, very convenient for “after each appended character” questions, longest common substring with another string, occurrence counts; costs σ transitions per state (heavier for big alphabets). In an interview, SA + LCP is usually the easiest to explain; mention SAM when the input is streamed.</p>`, followUps: ['How can SA + LCP simulate a suffix-tree traversal?', 'Which would you use for a 3-billion-letter genome?', 'What is an FM-index?'] },
-    { q: 'Give three ways to count distinct substrings and their complexities.', level: 'A', a: `<p>(1) Brute force: insert all O(N<sup>2</sup>) substrings into a set — O(N<sup>3</sup>) time/memory; fine for N ≤ 300. (2) Hashing: O(N<sup>2</sup>) substring hashes (double hash, grouped by length) in a set — O(N<sup>2</sup>) expected, probabilistic; N ≤ 5000.</p><p>(3) Suffix array + LCP: N(N+1)/2 − Σlcp in O(N log N), deterministic. (4) Suffix automaton: Σ over states of len(v) − len(link(v)) in O(N), and it can report the count after every prefix online. The SA proof: each suffix in sorted order owns exactly its prefixes longer than its LCP with the previous suffix, so each distinct substring is counted once.</p>`, followUps: ['Count distinct substrings of each length.', 'Count distinct substrings that occur at least twice.', 'What changes for a 10^6-character string in Java memory?'] },
+    { q: 'Give three ways to count distinct substrings and their complexities.', level: 'A', a: `<p>(1) Brute force: insert all O(N<sup>2</sup>) substrings into a set — O(N<sup>3</sup>) time/memory; fine for N ≤ 300. (2) Hashing: O(N<sup>2</sup>) substring hashes (double hash, grouped by length) in a set — O(N<sup>2</sup>) expected, probabilistic; N ≤ 5000.</p><p>(3) Suffix array + LCP: N(N+1)/2 − Σlcp in O(N log N), deterministic. (4) Suffix automaton: Σ over states of len(v) − len(link(v)) in O(N), and it can report the count after every prefix online. The SA proof: each suffix in sorted order owns exactly its prefixes longer than its LCP with the previous suffix, so each distinct substring is counted once.</p>`, followUps: ['Count distinct substrings of each length.', 'Count distinct substrings that occur at least twice.', 'What changes for a 10^6-character string in memory (Java, Python, C++)?'] },
     { q: 'Find the longest common substring of two strings of length 10<sup>6</sup> each.', level: 'E', a: `<p>The O(nm) DP is 10<sup>12</sup> — impossible. Option 1: suffix automaton of s (O(|s|)), then walk t keeping (state, current length); on a missing edge follow suffix links and set length = len(state); track the max. O(|s| + |t|) time, ~σ·2|s| ints of memory.</p><p>Option 2: suffix array of s + '#' + t with a separator absent from both; build LCP; the answer is the maximum lcp[r] where ranks r − 1 and r come from different strings — O(N log N) and leaner memory. Option 3: binary search on length + double hashing of all windows of s into a set, then probe t’s windows — O(N log N) expected but probabilistic. I would pick SA + LCP for memory or SAM for simplicity of the walk.</p>`, followUps: ['Extend to k strings.', 'Return the substring, not just the length.', 'What if the alphabet is all of Unicode?'] },
     { q: 'How are suffix arrays and string algorithms used in modern LLM / data pipelines?', level: 'E', a: `<p>Exact-substring deduplication of training corpora builds suffix arrays over huge token sequences (Lee et al., 2021) to find every span repeated beyond a length threshold, then removes duplicates — reducing memorisation and improving model quality. The same index answers “does this model output appear verbatim in the training data?” by counting occurrences with two binary searches; infini-gram (2024) uses suffix arrays to compute n-gram statistics over trillions of tokens.</p><p>Elsewhere: Aho–Corasick for stop-sequence detection, special-token splitting and block lists; rolling hashes / content-defined chunking for dataset sharding and dedup at file level; MinHash for near-duplicates where exact matching is too strict. The skill is choosing exact (SA, AC) versus approximate (MinHash, embeddings) tools based on the requirement.</p>`, followUps: ['Why tokens instead of characters for these suffix arrays?', 'How would you shard a suffix array that does not fit in RAM?', 'Exact vs near-duplicate: which matters more for code data?'] },
     { q: 'An interviewer gives you “count occurrences of each of 10<sup>5</sup> dictionary words in a 10<sup>6</sup>-character text”. Talk through your options.', level: 'I', a: `<p>Naive indexOf per word is O(k·N) = 10<sup>11</sup>. Hashing per distinct word length: for each distinct length L, roll a hash over the text and look up a hash map of words of that length — O(N · #distinct lengths) with #lengths ≤ √(2·Σ|words|), randomised.</p><p>Aho–Corasick: build the automaton over all words (O(M·26)), scan the text once counting visits per state, then propagate counts up the fail tree in reverse BFS order; each word’s count is the value at its end node. That is O(N + M·26), deterministic, independent of the number of matches. A suffix array of the text would also work (two binary searches per word, O(Σ|w| log N)) and is better if the dictionary changes often but the text is fixed.</p>`, followUps: ['Which option if the text changes every request but the dictionary is fixed?', 'How do duplicates in the dictionary affect each method?', 'What is the memory for the AC automaton?'] }
@@ -3256,7 +6460,7 @@ class StreamChecker:
     id: 'dsa24',
     title: 'Advanced String Algorithms',
     intro: `<p>In DSA 9 you learned to find <b>one</b> pattern in <b>one</b> text with KMP, Z and Rabin–Karp. This expert module is about the questions those tools cannot answer fast: <i>every</i> palindrome at once, <i>thousands</i> of patterns in one pass, <i>all</i> substrings sorted, counted or compared — and hashing that cannot be broken on purpose.</p>
-      <p>You will build each structure by hand with tiny examples and step-through visualizers: <b>Manacher</b> (mirror boxes for palindromes), <b>suffix arrays</b> (sorting every ending by doubling), <b>LCP with Kasai</b> (the bookmark that only slips back one step), <b>Aho–Corasick</b> (a trie with “plan B” arrows), <b>double hashing and anti-hash tests</b> (why <code>long</code> overflow is not a hash), and an intro to the <b>suffix automaton</b> (a tiny machine that knows every substring). The last topic turns all of it into a playbook — distinct substrings, longest repeats, and how to pick the right tool from the wording of a question.</p>
+      <p>You will build each structure by hand with tiny examples and step-through visualizers: <b>Manacher</b> (mirror boxes for palindromes), <b>suffix arrays</b> (sorting every ending by doubling), <b>LCP with Kasai</b> (the bookmark that only slips back one step), <b>Aho–Corasick</b> (a trie with “plan B” arrows), <b>double hashing and anti-hash tests</b> (why 64-bit integer overflow is not a hash), and an intro to the <b>suffix automaton</b> (a tiny machine that knows every substring). The last topic turns all of it into a playbook — distinct substrings, longest repeats, and how to pick the right tool from the wording of a question.</p>
       <p>These are also the algorithms behind real systems in the AI era: exact deduplication of LLM training data, verbatim-memorisation checks, stop-sequence and block-list matching, genome indexes and code search.</p>`,
     goals: [
       'Run <b>Manacher</b> by hand and use its radius array to answer longest / count / “is s[l..r] a palindrome?” questions in O(N) and O(1)',
@@ -3269,6 +6473,12 @@ class StreamChecker:
     ],
     prereqs: `DSA 9 (String Algorithms: KMP prefix function, Z-algorithm, Rabin–Karp), DSA 10 (Binary Search), DSA 13 (Stacks &amp; Queues — monotonic deque), DSA 15 (Heaps &amp; Tries), and DSA 21 (Range Query Data Structures — sparse table for LCP queries). Comfort with modular arithmetic from DSA 3 helps for hashing.`,
     hours: 18,
+    langNotes: {
+      java: `<p><b>Java:</b> counts such as N(N+1)/2 for N = 10<sup>6</sup> reach 5·10<sup>11</sup>, so use <code>long</code>; an <code>int</code> overflows silently at N ≈ 65,536. Sorting with a comparator needs boxed <code>Integer[]</code>, which is the slow part of a sort-based suffix array; the counting-sort version works on <code>int[]</code> and is several times faster. Never build strings with <code>+=</code> in a loop (use <code>StringBuilder</code>), and avoid <code>substring</code> inside comparators or hash loops because it copies. <code>String.hashCode</code> is fixed, so an attacker can flood a <code>HashMap</code>: for substring hashes use your own double hash with a <code>Random</code> base, and <code>Math.multiplyHigh</code> for the 2<sup>61</sup> − 1 modulus. Every algorithm in this module is iterative, so the default stack (about 10k frames) is never an issue.</p>`,
+      python: `<p><b>Python:</b> integers never overflow, so counts and the 2<sup>61</sup> − 1 modulus need no tricks, but a 64-bit wrap-around hash must be simulated with <code>&amp; ((1 &lt;&lt; 64) - 1)</code>. Speed is the real limit: a prefix-doubling sort with tuple keys is O(N log<sup>2</sup> N) and takes seconds near N = 10<sup>6</sup>, and per-state dicts or 26-element lists make an automaton memory-hungry; keep inputs near the stated limits and prefer flat lists. Slices (<code>s[i:j]</code>) copy, so compare with indices or compare hashes. Use <code>collections.deque</code> for BFS queues (<code>list.pop(0)</code> is O(n)). The default recursion limit is 1000 frames, which is why these solutions are iterative; do not write a recursive trie walk for long words without raising it.</p>`,
+      js: `<p><b>JavaScript:</b> <code>Number</code> is exact only up to 2<sup>53</sup>, so a product of two values near 10<sup>9</sup> (double hashing) or 2<sup>61</sup> needs <code>BigInt</code> (slower, but correct), and 64-bit wrap-around is <code>BigInt.asUintN(64, x)</code>; <code>|0</code> and <code>Math.imul</code> only give 32 bits. Counts like 5·10<sup>11</sup> are still exact in a <code>Number</code>. <code>Array.prototype.sort()</code> without a comparator sorts as strings, so always pass <code>(a, b) =&gt; a - b</code> or a key comparator. <code>queue.shift()</code> is O(n): walk the array with a head index in BFS. Strings index UTF-16 code units, and <code>charCodeAt</code> is faster than building one-character strings. The default stack is about 10k frames; all solutions here are iterative.</p>`,
+      cpp: `<p><b>C++:</b> signed overflow is undefined behaviour: use <code>long long</code> for counts and <code>unsigned long long</code> when you rely on wrap-around (a hash mod 2<sup>64</sup> is exactly what the Thue–Morse test breaks). <code>unsigned __int128</code> gives the 2<sup>61</sup> − 1 product in one line (GCC and Clang). <code>char</code> may be signed, so cast with <code>(unsigned char)</code> before turning a character into an index or rank. A <code>std::sort</code> with a lambda over indices handles the log<sup>2</sup> suffix array comfortably for N around 10<sup>5</sup>; near 10<sup>6</sup> use the counting-sort version and compile with optimisation. <code>substr</code> copies, so pass <code>const string&amp;</code> and compare by index. <code>std::map</code> is O(log n) while <code>unordered_map</code> is O(1) on average but can be flooded with crafted keys. Automaton tables as <code>vector&lt;array&lt;int, 26&gt;&gt;</code> are contiguous and cache-friendly; the 8 MB stack is never at risk because nothing here recurses deeply.</p>`
+    },
     topics: topics,
     practice: practice,
     quiz: quiz,

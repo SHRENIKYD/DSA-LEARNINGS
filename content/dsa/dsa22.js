@@ -121,7 +121,7 @@
       '<b>2-SAT</b> ("each variable true/false, clauses of two literals") → implication graph + SCC.',
       '<code>V, E ≤ 10<sup>5</sup>–10<sup>6</sup></code> on a directed graph → only O(V + E) works: Kosaraju or Tarjan, never "BFS from every node" (O(V·(V+E))).'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       class Kosaraju {
           // Returns comp[v] = id of v's strongly connected component (0, 1, 2, ...).
           // Component ids come out in TOPOLOGICAL order of the condensation DAG.
@@ -157,7 +157,109 @@
               comp[v] = c;
               for (int w : radj.get(v)) if (comp[w] == -1) dfs2(w, radj, comp, c);
           }
-      }`, {
+      }`, alt: [{ lang: 'python', code: `def kosaraju(n, adj):
+    # Returns comp[v] = id of v's strongly connected component (0, 1, 2, ...).
+    # Component ids come out in TOPOLOGICAL order of the condensation DAG.
+    # Recursive, so only for small graphs (see the iterative version below).
+    seen = [False] * n
+    order = []                              # finish order: the node finished LAST is at the end
+
+    def dfs1(v):
+        seen[v] = True
+        for w in adj[v]:
+            if not seen[w]:
+                dfs1(w)
+        order.append(v)                     # v finished: all it can reach is done
+
+    for v in range(n):                      # pass 1: plain DFS on the original graph
+        if not seen[v]:
+            dfs1(v)
+
+    radj = [[] for _ in range(n)]           # transpose: every edge u->v becomes v->u
+    for u in range(n):
+        for v in adj[u]:
+            radj[v].append(u)
+
+    comp = [-1] * n
+
+    def dfs2(v, c):
+        comp[v] = c
+        for w in radj[v]:
+            if comp[w] == -1:
+                dfs2(w, c)
+
+    c = 0
+    for v in reversed(order):               # pass 2: decreasing finish time, DFS on the transpose
+        if comp[v] == -1:
+            dfs2(v, c)                      # one DFS tree = one SCC
+            c += 1
+    return comp
+` }, { lang: 'js', code: `// Returns comp[v] = id of v's strongly connected component (0, 1, 2, ...).
+// Component ids come out in TOPOLOGICAL order of the condensation DAG.
+// Recursive, so only for small graphs (see the iterative version below).
+function kosaraju(n, adj) {
+  const seen = new Array(n).fill(false);
+  const order = [];                         // finish order: the node finished LAST is at the end
+
+  function dfs1(v) {
+    seen[v] = true;
+    for (const w of adj[v]) if (!seen[w]) dfs1(w);
+    order.push(v);                          // v finished: all it can reach is done
+  }
+  for (let v = 0; v < n; v++) if (!seen[v]) dfs1(v);     // pass 1: plain DFS on the original graph
+
+  const radj = Array.from({ length: n }, () => []);      // transpose: every edge u->v becomes v->u
+  for (let u = 0; u < n; u++) for (const v of adj[u]) radj[v].push(u);
+
+  const comp = new Array(n).fill(-1);
+  function dfs2(v, c) {
+    comp[v] = c;
+    for (const w of radj[v]) if (comp[w] === -1) dfs2(w, c);
+  }
+  let c = 0;
+  for (let k = n - 1; k >= 0; k--) {        // pass 2: decreasing finish time, DFS on the transpose
+    const v = order[k];
+    if (comp[v] === -1) dfs2(v, c++);       // one DFS tree = one SCC
+  }
+  return comp;
+}
+` }, { lang: 'cpp', code: `class Kosaraju {
+    // Returns comp[v] = id of v's strongly connected component (0, 1, 2, ...).
+    // Component ids come out in TOPOLOGICAL order of the condensation DAG.
+public:
+    static vector<int> scc(int n, const vector<vector<int>>& adj) {
+        // ---- Pass 1: plain DFS on the original graph, remember finish order ----
+        vector<char> seen(n, 0);
+        vector<int> order;                              // the node finished LAST is at the end
+        for (int v = 0; v < n; v++) if (!seen[v]) dfs1(v, adj, seen, order);
+
+        // ---- Build the transpose: every edge u->v becomes v->u ----
+        vector<vector<int>> radj(n);
+        for (int u = 0; u < n; u++) for (int v : adj[u]) radj[v].push_back(u);
+
+        // ---- Pass 2: decreasing finish time, DFS on the transpose ----
+        vector<int> comp(n, -1);
+        int c = 0;
+        for (int k = n - 1; k >= 0; k--) {
+            int v = order[k];
+            if (comp[v] == -1) dfs2(v, radj, comp, c++);   // one DFS tree = one SCC
+        }
+        return comp;
+    }
+
+private:
+    static void dfs1(int v, const vector<vector<int>>& adj, vector<char>& seen, vector<int>& order) {
+        seen[v] = 1;
+        for (int w : adj[v]) if (!seen[w]) dfs1(w, adj, seen, order);
+        order.push_back(v);                              // v finished: all it can reach is done
+    }
+
+    static void dfs2(int v, const vector<vector<int>>& radj, vector<int>& comp, int c) {
+        comp[v] = c;
+        for (int w : radj[v]) if (comp[w] == -1) dfs2(w, radj, comp, c);
+    }
+};
+` }] }, {
       lang: 'python', run: true, title: 'Iterative Kosaraju in Python (no recursion limit problems) — runnable',
       code: `def kosaraju(n, edges):
     adj = [[] for _ in range(n)]
@@ -212,7 +314,7 @@ for c in sorted(groups):
     print("component", c, "->", groups[c])
 `
     }],
-    codeTitle: ['Kosaraju in Java (recursive, clearest form)', 'Kosaraju in Python (iterative)'],
+    codeTitle: ['Kosaraju (recursive, clearest form)', 'Kosaraju in Python (iterative)'],
     viz: {
       title: 'Kosaraju live: finish-order DFS, flip every edge, peel off one SCC at a time',
       input: '0>1 1>2 2>0 2>3 3>4 4>5 5>3 6>5 6>7 7>6',
@@ -287,8 +389,8 @@ for c in sorted(groups):
       { title: 'Counting reachable sets with the condensation', html: `<p>"How many nodes can each node reach?" On a raw graph that is O(V·(V+E)). Condense first: inside one SCC everybody reaches the same set. Then on the DAG, process components in <b>reverse</b> topological order and combine children (with bitsets for exact counts). The SCC step turns a messy cyclic problem into a clean DAG DP.</p>` }
     ],
     deepDive: `<p><b>Proof sketch.</b> Let <code>f(C)</code> = the latest finish time of any node in component C (from pass 1). <b>Lemma:</b> if the condensation has an edge C → D, then <code>f(C) &gt; f(D)</code>. Case 1: DFS enters C first — it will explore all of D before C's first node finishes. Case 2: DFS enters D first — it cannot reach C (otherwise C and D would merge), so all of D finishes before C is even touched. Hence the global last-finisher is in a source component; on the transpose that component is a sink, and DFS from it stays inside. Induction on the remaining graph finishes the proof.</p>
-      <p><b>Recursion depth is the real production bug.</b> A path graph with 10<sup>5</sup> nodes makes recursive DFS 10<sup>5</sup> frames deep → <code>StackOverflowError</code> in Java (default thread stack ≈ 512 KB–1 MB). Fixes: (1) iterative DFS with an explicit stack of (node, next-edge-index) pairs, like the Python version above; (2) run the solver in <code>new Thread(null, task, "dfs", 1 &lt;&lt; 27)</code> to get a 128 MB stack — a standard competitive-programming trick.</p>
-      <p><b>Memory and cache.</b> <code>List&lt;List&lt;Integer&gt;&gt;</code> boxes every integer; for 10<sup>6</sup> edges prefer CSR arrays (<code>int[] start, int[] to</code>) — 3–5× faster. Kosaraju also needs the transpose (double memory), which is the main reason people prefer <b>Tarjan</b> (one pass, no transpose) for huge graphs.</p>
+      <p><b>Recursion depth is the real production bug.</b> A path graph with 10<sup>5</sup> nodes makes recursive DFS 10<sup>5</sup> frames deep → a stack overflow in most languages (Java <code>StackOverflowError</code> with a default thread stack of ≈ 512 KB–1 MB, JavaScript <code>RangeError</code> after about 10<sup>4</sup> frames, Python <code>RecursionError</code> after 1000). Fixes: (1) iterative DFS with an explicit stack of (node, next-edge-index) pairs, like the Python version above; (2) give the solver a bigger stack: a Java <code>new Thread(null, task, "dfs", 1 &lt;&lt; 27)</code> for 128 MB, <code>threading.stack_size</code> in Python, a larger stack limit for C++ — a standard competitive-programming trick.</p>
+      <p><b>Memory and cache.</b> A list of lists of boxed integers (Java <code>List&lt;List&lt;Integer&gt;&gt;</code>, or a Python list of lists) costs far more than flat arrays; for 10<sup>6</sup> edges prefer CSR arrays (<code>start[]</code> and <code>to[]</code> of plain ints) — typically 3–5× faster. Kosaraju also needs the transpose (double memory), which is the main reason people prefer <b>Tarjan</b> (one pass, no transpose) for huge graphs.</p>
       <p><b>Where SCCs show up in real systems:</b> detecting circular imports in build tools (Bazel/Gradle report "cycle in dependency graph" — that cycle is an SCC), deadlock detection in wait-for graphs, finding "link farms" in web graphs, simplifying state machines and model checking (an infinite run must stay in one SCC), and the classic <b>2-SAT</b> solver used in scheduling and configuration problems.</p>`,
     aiEra: `<p><b>What AI changes:</b> any assistant will produce a Kosaraju or Tarjan implementation in seconds, and networkx / JGraphT have <code>strongly_connected_components</code> built in. Writing the code from memory is no longer the hard part.</p>
       <p><b>Use AI as a partner:</b> ask it <code>"Generate 6 tricky directed graphs for SCC testing: self-loops, a single node, two cycles joined one way, a 10^5-node path"</code>, then run your code on them. Ask it to convert your recursive DFS into an iterative one and check that both agree on random graphs.</p>
@@ -334,6 +436,92 @@ for c in sorted(groups):
         `<p>Hint 2: Finish times from one DFS tell you which component is a "source" in the component DAG. Flip all edges to turn sources into dead-ends (sinks).</p>`,
         `<p>Hint 3: Recipe — DFS #1 pushes nodes on finish; build the transpose; pop nodes, and each pop of an unlabelled node starts DFS #2 on the transpose = one new SCC. Use an iterative DFS (or a big thread stack) because V = 10<sup>5</sup> can be a single long path.</p>`
       ],
+      tests: { sig: "string int int[][] -> int", fn: "scc", cases: [
+          [["",5,[[1,0],[0,2],[2,1],[0,3],[3,4]]],3],
+          [["",1,[]],1],
+          [["",4,[]],4],
+          [["",2,[[0,0],[0,1],[0,1]]],2],
+          [["",4,[[0,1],[1,0],[1,2],[2,3],[3,2]]],2],
+          [["",6,[[0,1],[1,2],[2,3],[3,4],[4,5],[5,0]]],1],
+          [["",3,[[2,1],[1,0]]],3],
+          [["",6,[]],6],
+          [["",5,[[4,1],[3,3],[2,4],[2,2],[0,2],[1,0],[2,0],[1,3],[1,0],[0,2],[2,3],[1,1]]],2],
+          [["",6,[[4,1],[4,2],[4,5],[1,4],[0,1],[2,1],[0,4]]],4],
+          [["",5,[[1,0]]],5],
+          [["",5,[[1,4],[3,2],[1,3],[4,4],[3,4],[4,4],[0,0],[4,1],[4,2],[4,3],[0,3]]],3],
+          [["",8,[[7,1]]],8],
+          [["",4,[[1,1]]],4],
+          [["",6,[[3,0],[4,5],[1,0],[1,5],[1,0],[3,3]]],6],
+          [["chain",100000,[]],100000],
+          [["cycle",100000,[]],1],
+          [["chords",100000,[]],1],
+          [["twoCycles",100000,[]],2],
+          [["outStar",100000,[]],100000]
+        ], harness: { java: `class Check {
+  static int[][] gen(String kind, int n) {
+    List<int[]> e = new ArrayList<>();
+    if (kind.equals("chain")) { for (int i = 0; i + 1 < n; i++) e.add(new int[]{i, i + 1}); }
+    else if (kind.equals("outStar")) { for (int i = 1; i < n; i++) e.add(new int[]{0, i}); }
+    else if (kind.equals("twoCycles")) {
+      int h = n / 2;
+      for (int i = 0; i < n; i++) { int b = i < h ? 0 : h, len = i < h ? h : n - h; e.add(new int[]{i, b + (i - b + 1) % len}); }
+      e.add(new int[]{0, h});
+    } else {
+      for (int i = 0; i < n; i++) { e.add(new int[]{i, (i + 1) % n}); if (kind.equals("chords")) e.add(new int[]{i, (i + 2) % n}); }
+    }
+    return e.toArray(new int[0][]);
+  }
+  static int scc(String kind, int V, int[][] edges) {
+    return new Solution().countSCC(V, kind.isEmpty() ? edges : gen(kind, V));
+  }
+}`, python: `def _gen(kind, n):
+    if kind == 'chain':
+        return [[i, i + 1] for i in range(n - 1)]
+    if kind == 'outStar':
+        return [[0, i] for i in range(1, n)]
+    if kind == 'twoCycles':
+        h = n // 2
+        e = [[i, (i + 1) % h] for i in range(h)] + [[h + i, h + (i + 1) % (n - h)] for i in range(n - h)]
+        return e + [[0, h]]
+    e = [[i, (i + 1) % n] for i in range(n)]
+    if kind == 'chords':
+        e += [[i, (i + 2) % n] for i in range(n)]
+    return e
+
+
+def scc(kind, V, edges):
+    return count_scc(V, edges if kind == '' else _gen(kind, V))`, js: `function _gen(kind, n) {
+  const e = [];
+  if (kind === 'chain') { for (let i = 0; i + 1 < n; i++) e.push([i, i + 1]); }
+  else if (kind === 'outStar') { for (let i = 1; i < n; i++) e.push([0, i]); }
+  else if (kind === 'twoCycles') {
+    const h = Math.floor(n / 2);
+    for (let i = 0; i < h; i++) e.push([i, (i + 1) % h]);
+    for (let i = 0; i < n - h; i++) e.push([h + i, h + (i + 1) % (n - h)]);
+    e.push([0, h]);
+  } else {
+    for (let i = 0; i < n; i++) { e.push([i, (i + 1) % n]); if (kind === 'chords') e.push([i, (i + 2) % n]); }
+  }
+  return e;
+}
+function scc(kind, V, edges) { return countSCC(V, kind === '' ? edges : _gen(kind, V)); }`, cpp: `vector<vector<int>> _gen(const string& kind, int n) {
+  vector<vector<int>> e;
+  if (kind == "chain") { for (int i = 0; i + 1 < n; i++) e.push_back({i, i + 1}); }
+  else if (kind == "outStar") { for (int i = 1; i < n; i++) e.push_back({0, i}); }
+  else if (kind == "twoCycles") {
+    int h = n / 2;
+    for (int i = 0; i < h; i++) e.push_back({i, (i + 1) % h});
+    for (int i = 0; i < n - h; i++) e.push_back({h + i, h + (i + 1) % (n - h)});
+    e.push_back({0, h});
+  } else {
+    for (int i = 0; i < n; i++) { e.push_back({i, (i + 1) % n}); if (kind == "chords") e.push_back({i, (i + 2) % n}); }
+  }
+  return e;
+}
+int scc(string kind, int V, vector<vector<int>> edges) {
+  if (!kind.empty()) edges = _gen(kind, V);
+  return Solution().countSCC(V, edges);
+}` } },
       solution: {
         approach: `<p>Kosaraju with iterative DFS so a 10<sup>5</sup>-long chain cannot overflow the call stack. Each node and edge is touched a constant number of times in each pass.</p>`,
         code: `class Solution {
@@ -382,6 +570,131 @@ for c in sorted(groups):
         return count;
     }
 }`,
+      alt: [{ lang: 'python', code: `def count_scc(V, edges):
+    adj = [[] for _ in range(V)]
+    radj = [[] for _ in range(V)]
+    for u, v in edges:
+        adj[u].append(v)
+        radj[v].append(u)
+
+    # Pass 1: iterative DFS, record the finish order
+    seen = [False] * V
+    order = []
+    for s in range(V):
+        if seen[s]:
+            continue
+        seen[s] = True
+        stack = [(s, iter(adj[s]))]
+        while stack:
+            v, it = stack[-1]
+            for w in it:
+                if not seen[w]:
+                    seen[w] = True
+                    stack.append((w, iter(adj[w])))
+                    break
+            else:                       # no neighbour left: v is finished
+                stack.pop()
+                order.append(v)
+
+    # Pass 2: decreasing finish time, DFS on the transpose
+    comp = [-1] * V
+    count = 0
+    for s in reversed(order):
+        if comp[s] != -1:
+            continue
+        comp[s] = count
+        stack = [s]
+        while stack:
+            v = stack.pop()
+            for w in radj[v]:
+                if comp[w] == -1:
+                    comp[w] = count
+                    stack.append(w)
+        count += 1
+    return count
+` }, { lang: 'js', code: `function countSCC(V, edges) {
+  const adj = Array.from({ length: V }, () => []);
+  const radj = Array.from({ length: V }, () => []);
+  for (const [u, v] of edges) { adj[u].push(v); radj[v].push(u); }
+
+  // Pass 1: iterative DFS, record the finish order
+  const seen = new Uint8Array(V), next = new Int32Array(V), order = [];
+  for (let s = 0; s < V; s++) {
+    if (seen[s]) continue;
+    seen[s] = 1;
+    const stack = [s];
+    while (stack.length) {
+      const v = stack[stack.length - 1];
+      if (next[v] < adj[v].length) {
+        const w = adj[v][next[v]++];
+        if (!seen[w]) { seen[w] = 1; stack.push(w); }
+      } else {
+        stack.pop();
+        order.push(v);                 // v finished
+      }
+    }
+  }
+
+  // Pass 2: decreasing finish time, DFS on the transpose
+  const comp = new Int32Array(V).fill(-1);
+  let count = 0;
+  for (let k = V - 1; k >= 0; k--) {
+    const s = order[k];
+    if (comp[s] !== -1) continue;
+    comp[s] = count;
+    const stack = [s];
+    while (stack.length) {
+      const v = stack.pop();
+      for (const w of radj[v]) if (comp[w] === -1) { comp[w] = count; stack.push(w); }
+    }
+    count++;
+  }
+  return count;
+}
+` }, { lang: 'cpp', code: `class Solution {
+public:
+    int countSCC(int V, vector<vector<int>>& edges) {
+        vector<vector<int>> adj(V), radj(V);
+        for (auto& e : edges) { adj[e[0]].push_back(e[1]); radj[e[1]].push_back(e[0]); }
+
+        // Pass 1: iterative DFS, record the finish order
+        vector<char> seen(V, 0);
+        vector<int> next(V, 0), order;
+        order.reserve(V);
+        for (int s = 0; s < V; s++) {
+            if (seen[s]) continue;
+            seen[s] = 1;
+            vector<int> st{s};
+            while (!st.empty()) {
+                int v = st.back();
+                if (next[v] < (int)adj[v].size()) {
+                    int w = adj[v][next[v]++];
+                    if (!seen[w]) { seen[w] = 1; st.push_back(w); }
+                } else {
+                    st.pop_back();
+                    order.push_back(v);              // v finished
+                }
+            }
+        }
+
+        // Pass 2: decreasing finish time, DFS on the transpose
+        vector<int> comp(V, -1);
+        int count = 0;
+        for (int k = V - 1; k >= 0; k--) {
+            int s = order[k];
+            if (comp[s] != -1) continue;
+            comp[s] = count;
+            vector<int> st{s};
+            while (!st.empty()) {
+                int v = st.back(); st.pop_back();
+                for (int w : radj[v]) if (comp[w] == -1) { comp[w] = count; st.push_back(w); }
+            }
+            count++;
+        }
+        return count;
+    }
+};
+` }],
         dry: {
           head: ['step', 'action', 'stack / order', 'result'],
           rows: [
@@ -443,7 +756,7 @@ for c in sorted(groups):
       '"Can every city reach the capital and come back?" / "is this graph strongly connected?" → one SCC check (or BFS from 0 on graph + transpose).',
       '<code>N ≤ 10<sup>5</sup></code> directed edges + cycles + "longest path / max coins" → Tarjan, condense, then DP on the DAG.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       class TarjanSCC {
           private final List<List<Integer>> adj;
           private final int[] disc, low;
@@ -486,7 +799,123 @@ for c in sorted(groups):
           }
 
           List<List<Integer>> components() { return sccs; }
-      }`, {
+      }`, alt: [{ lang: 'python', code: `class TarjanSCC:
+    # Recursive form: clear, but see the iterative version below for deep graphs.
+    def __init__(self, n, adj):
+        self.adj = adj
+        self.disc = [-1] * n                    # -1 = not visited yet
+        self.low = [0] * n
+        self.on_stack = [False] * n
+        self.stack = []
+        self.sccs = []                          # components come out in reverse topological order
+        self.timer = 0
+        for v in range(n):
+            if self.disc[v] == -1:
+                self._dfs(v)
+
+    def _dfs(self, v):
+        self.disc[v] = self.low[v] = self.timer     # arrival time; low starts as itself
+        self.timer += 1
+        self.stack.append(v)
+        self.on_stack[v] = True
+        for w in self.adj[v]:
+            if self.disc[w] == -1:                  # tree edge: explore the child first
+                self._dfs(w)
+                self.low[v] = min(self.low[v], self.low[w])    # if my child can climb up, so can I
+            elif self.on_stack[w]:                  # edge into a still-OPEN component
+                self.low[v] = min(self.low[v], self.disc[w])
+            # else: w's SCC is closed -> ignore
+        if self.low[v] == self.disc[v]:             # v is the root of its SCC
+            comp = []
+            while True:
+                w = self.stack.pop()
+                self.on_stack[w] = False
+                comp.append(w)
+                if w == v:
+                    break
+            self.sccs.append(comp)
+
+    def components(self):
+        return self.sccs
+` }, { lang: 'js', code: `class TarjanSCC {
+  // Recursive form: clear, but use an explicit stack for graphs deeper than ~10^4.
+  constructor(n, adj) {
+    this.adj = adj;
+    this.disc = new Array(n).fill(-1);          // -1 = not visited yet
+    this.low = new Array(n).fill(0);
+    this.onStack = new Array(n).fill(false);
+    this.stack = [];
+    this.sccs = [];                             // components come out in reverse topological order
+    this.timer = 0;
+    for (let v = 0; v < n; v++) if (this.disc[v] === -1) this.dfs(v);
+  }
+
+  dfs(v) {
+    this.disc[v] = this.low[v] = this.timer++;  // arrival time; low starts as itself
+    this.stack.push(v);
+    this.onStack[v] = true;
+    for (const w of this.adj[v]) {
+      if (this.disc[w] === -1) {                // tree edge: explore the child first
+        this.dfs(w);
+        this.low[v] = Math.min(this.low[v], this.low[w]);   // if my child can climb up, so can I
+      } else if (this.onStack[w]) {             // edge into a still-OPEN component
+        this.low[v] = Math.min(this.low[v], this.disc[w]);
+      }                                         // else: w's SCC is closed -> ignore
+    }
+    if (this.low[v] === this.disc[v]) {         // v is the root of its SCC
+      const comp = [];
+      let w;
+      do {
+        w = this.stack.pop();
+        this.onStack[w] = false;
+        comp.push(w);
+      } while (w !== v);
+      this.sccs.push(comp);
+    }
+  }
+
+  components() { return this.sccs; }
+}
+` }, { lang: 'cpp', code: `class TarjanSCC {
+    const vector<vector<int>>& adj;
+    vector<int> disc, low, stk;
+    vector<char> onStack;
+    vector<vector<int>> sccs;                   // components come out in reverse topological order
+    int timer = 0;
+
+    void dfs(int v) {
+        disc[v] = low[v] = timer++;             // arrival time; low starts as itself
+        stk.push_back(v);
+        onStack[v] = 1;
+        for (int w : adj[v]) {
+            if (disc[w] == -1) {                // tree edge: explore the child first
+                dfs(w);
+                low[v] = min(low[v], low[w]);   // if my child can climb up, so can I
+            } else if (onStack[w]) {            // edge into a still-OPEN component
+                low[v] = min(low[v], disc[w]);
+            }                                   // else: w's SCC is closed -> ignore
+        }
+        if (low[v] == disc[v]) {                // v is the root of its SCC
+            vector<int> comp;
+            int w;
+            do {
+                w = stk.back();
+                stk.pop_back();
+                onStack[w] = 0;
+                comp.push_back(w);
+            } while (w != v);
+            sccs.push_back(comp);
+        }
+    }
+
+public:
+    TarjanSCC(int n, const vector<vector<int>>& adj) : adj(adj), disc(n, -1), low(n, 0), onStack(n, 0) {
+        for (int v = 0; v < n; v++) if (disc[v] == -1) dfs(v);
+    }
+
+    const vector<vector<int>>& components() const { return sccs; }
+};
+` }] }, {
       lang: 'python', run: true, title: 'Iterative Tarjan in Python — runnable',
       code: `def tarjan(n, adj):
     disc = [-1] * n
@@ -541,7 +970,7 @@ for comp in tarjan(len(names), adj):
     print(sorted(names[v] for v in comp))
 `
     }],
-    codeTitle: ['Tarjan in Java (recursive)', 'Tarjan in Python (iterative, safe for deep graphs)'],
+    codeTitle: ['Tarjan (recursive)', 'Tarjan in Python (iterative, safe for deep graphs)'],
     viz: {
       title: 'Tarjan live: watch disc/low tags, the stack, and SCCs popping off',
       input: 'A>B B>C C>A B>D D>E E>F F>D E>G',
@@ -678,6 +1107,98 @@ for comp in tarjan(len(names), adj):
         `<p>Hint 2: In the DAG, a <b>source</b> component needs a new incoming edge and a <b>sink</b> component needs a new outgoing edge. One added edge can fix one sink and one source at the same time.</p>`,
         `<p>Hint 3: Recipe — run Tarjan (iterative for V = 10<sup>5</sup>), mark for each component whether it has an incoming / outgoing edge from another component, count sources S and sinks T. If there is only one SCC answer 0, else max(S, T). Edge case: a single node → 0.</p>`
       ],
+      tests: { sig: "string int int[][] -> int", fn: "minE", cases: [
+          [["",5,[[0,1],[1,2],[2,0],[2,3],[4,3]]],2],
+          [["",1,[]],0],
+          [["",1,[[0,0]]],0],
+          [["",2,[]],2],
+          [["",3,[[0,1],[1,2],[2,0]]],0],
+          [["",3,[[0,1],[1,2]]],1],
+          [["",4,[[0,1],[0,2],[0,3]]],3],
+          [["",4,[[1,2],[3,2]]],3],
+          [["",3,[[2,0],[2,0]]],2],
+          [["",3,[[1,0],[2,1],[2,0],[2,0],[0,0],[0,2]]],0],
+          [["",3,[[2,0],[1,1],[0,1],[0,0],[2,2]]],1],
+          [["",2,[[0,1],[1,0],[1,0],[1,1],[1,0],[1,0],[1,1]]],0],
+          [["",5,[[2,0],[4,4],[2,1],[4,4],[2,1]]],4],
+          [["",2,[[0,0],[1,1],[1,0],[0,1],[1,1],[1,0],[0,0]]],0],
+          [["",4,[]],4],
+          [["",3,[[0,2],[1,1],[1,2],[1,2],[0,0],[2,0]]],1],
+          [["",4,[[2,1],[1,2],[0,0],[2,3],[2,0],[2,3]]],2],
+          [["",6,[[0,2],[1,2],[3,4],[3,5]]],3],
+          [["",6,[[0,1],[1,2],[2,0],[3,4],[4,5],[5,3]]],2],
+          [["",6,[[0,2],[1,2],[2,3],[3,4],[3,5]]],2],
+          [["",100000,[]],100000],
+          [["chain",100000,[]],1],
+          [["cycle",100000,[]],0],
+          [["chords",100000,[]],0],
+          [["twoCycles",100000,[]],1],
+          [["outStar",100000,[]],99999]
+        ], harness: { java: `class Check {
+  static int[][] gen(String kind, int n) {
+    List<int[]> e = new ArrayList<>();
+    if (kind.equals("chain")) { for (int i = 0; i + 1 < n; i++) e.add(new int[]{i, i + 1}); }
+    else if (kind.equals("outStar")) { for (int i = 1; i < n; i++) e.add(new int[]{0, i}); }
+    else if (kind.equals("twoCycles")) {
+      int h = n / 2;
+      for (int i = 0; i < n; i++) { int b = i < h ? 0 : h, len = i < h ? h : n - h; e.add(new int[]{i, b + (i - b + 1) % len}); }
+      e.add(new int[]{0, h});
+    } else {
+      for (int i = 0; i < n; i++) { e.add(new int[]{i, (i + 1) % n}); if (kind.equals("chords")) e.add(new int[]{i, (i + 2) % n}); }
+    }
+    return e.toArray(new int[0][]);
+  }
+  static int minE(String kind, int V, int[][] edges) {
+    return new Solution().minEdgesToStronglyConnect(V, kind.isEmpty() ? edges : gen(kind, V));
+  }
+}`, python: `def _gen(kind, n):
+    if kind == 'chain':
+        return [[i, i + 1] for i in range(n - 1)]
+    if kind == 'outStar':
+        return [[0, i] for i in range(1, n)]
+    if kind == 'twoCycles':
+        h = n // 2
+        e = [[i, (i + 1) % h] for i in range(h)] + [[h + i, h + (i + 1) % (n - h)] for i in range(n - h)]
+        return e + [[0, h]]
+    e = [[i, (i + 1) % n] for i in range(n)]
+    if kind == 'chords':
+        e += [[i, (i + 2) % n] for i in range(n)]
+    return e
+
+
+def min_e(kind, V, edges):
+    return min_edges_to_strongly_connect(V, edges if kind == '' else _gen(kind, V))`, js: `function _gen(kind, n) {
+  const e = [];
+  if (kind === 'chain') { for (let i = 0; i + 1 < n; i++) e.push([i, i + 1]); }
+  else if (kind === 'outStar') { for (let i = 1; i < n; i++) e.push([0, i]); }
+  else if (kind === 'twoCycles') {
+    const h = Math.floor(n / 2);
+    for (let i = 0; i < h; i++) e.push([i, (i + 1) % h]);
+    for (let i = 0; i < n - h; i++) e.push([h + i, h + (i + 1) % (n - h)]);
+    e.push([0, h]);
+  } else {
+    for (let i = 0; i < n; i++) { e.push([i, (i + 1) % n]); if (kind === 'chords') e.push([i, (i + 2) % n]); }
+  }
+  return e;
+}
+function minE(kind, V, edges) { return minEdgesToStronglyConnect(V, kind === '' ? edges : _gen(kind, V)); }`, cpp: `vector<vector<int>> _gen(const string& kind, int n) {
+  vector<vector<int>> e;
+  if (kind == "chain") { for (int i = 0; i + 1 < n; i++) e.push_back({i, i + 1}); }
+  else if (kind == "outStar") { for (int i = 1; i < n; i++) e.push_back({0, i}); }
+  else if (kind == "twoCycles") {
+    int h = n / 2;
+    for (int i = 0; i < h; i++) e.push_back({i, (i + 1) % h});
+    for (int i = 0; i < n - h; i++) e.push_back({h + i, h + (i + 1) % (n - h)});
+    e.push_back({0, h});
+  } else {
+    for (int i = 0; i < n; i++) { e.push_back({i, (i + 1) % n}); if (kind == "chords") e.push_back({i, (i + 2) % n}); }
+  }
+  return e;
+}
+int minE(string kind, int V, vector<vector<int>> edges) {
+  if (!kind.empty()) edges = _gen(kind, V);
+  return Solution().minEdgesToStronglyConnect(V, edges);
+}` } },
       solution: {
         approach: `<p>Iterative Tarjan labels each node with its component. One pass over edges marks hasIn / hasOut for components (ignoring edges inside a component). The lower bound max(S, T) is achievable — the classic Eswaran–Tarjan result (1976) — by linking sinks to sources in a ring-like pattern.</p>`,
         code: `class Solution {
@@ -732,6 +1253,174 @@ for comp in tarjan(len(names), adj):
         return Math.max(sources, sinks);
     }
 }`,
+      alt: [{ lang: 'python', code: `def min_edges_to_strongly_connect(V, edges):
+    adj = [[] for _ in range(V)]
+    for u, v in edges:
+        adj[u].append(v)
+
+    disc = [-1] * V
+    low = [0] * V
+    comp = [-1] * V
+    nxt = [0] * V                        # next neighbour index to try, per node
+    on_stack = [False] * V
+    tarjan = []                          # Tarjan's stack of open nodes
+    timer = comps = 0
+
+    for root in range(V):
+        if disc[root] != -1:
+            continue
+        disc[root] = low[root] = timer
+        timer += 1
+        tarjan.append(root)
+        on_stack[root] = True
+        work = [root]                    # our own call stack
+        while work:
+            v = work[-1]
+            if nxt[v] < len(adj[v]):
+                w = adj[v][nxt[v]]
+                nxt[v] += 1
+                if disc[w] == -1:
+                    disc[w] = low[w] = timer
+                    timer += 1
+                    tarjan.append(w)
+                    on_stack[w] = True
+                    work.append(w)
+                elif on_stack[w]:
+                    low[v] = min(low[v], disc[w])
+            else:
+                work.pop()
+                if work:
+                    p = work[-1]
+                    low[p] = min(low[p], low[v])
+                if low[v] == disc[v]:    # v is the root of an SCC
+                    while True:
+                        x = tarjan.pop()
+                        on_stack[x] = False
+                        comp[x] = comps
+                        if x == v:
+                            break
+                    comps += 1
+
+    if comps == 1:
+        return 0
+    has_in = [False] * comps
+    has_out = [False] * comps
+    for u, v in edges:
+        a, b = comp[u], comp[v]
+        if a != b:
+            has_out[a] = True
+            has_in[b] = True
+    return max(has_in.count(False), has_out.count(False))   # sources, sinks
+` }, { lang: 'js', code: `function minEdgesToStronglyConnect(V, edges) {
+  const adj = Array.from({ length: V }, () => []);
+  for (const [u, v] of edges) adj[u].push(v);
+
+  const disc = new Int32Array(V).fill(-1), low = new Int32Array(V), comp = new Int32Array(V);
+  const nxt = new Int32Array(V), onStack = new Uint8Array(V);
+  const tarjan = [];
+  let timer = 0, comps = 0;
+
+  for (let root = 0; root < V; root++) {
+    if (disc[root] !== -1) continue;
+    disc[root] = low[root] = timer++;
+    tarjan.push(root);
+    onStack[root] = 1;
+    const work = [root];                     // our own call stack
+    while (work.length) {
+      const v = work[work.length - 1];
+      if (nxt[v] < adj[v].length) {
+        const w = adj[v][nxt[v]++];
+        if (disc[w] === -1) {
+          disc[w] = low[w] = timer++;
+          tarjan.push(w);
+          onStack[w] = 1;
+          work.push(w);
+        } else if (onStack[w]) {
+          low[v] = Math.min(low[v], disc[w]);
+        }
+      } else {
+        work.pop();
+        if (work.length) {
+          const p = work[work.length - 1];
+          low[p] = Math.min(low[p], low[v]);
+        }
+        if (low[v] === disc[v]) {            // v is the root of an SCC
+          let x;
+          do { x = tarjan.pop(); onStack[x] = 0; comp[x] = comps; } while (x !== v);
+          comps++;
+        }
+      }
+    }
+  }
+
+  if (comps === 1) return 0;
+  const hasIn = new Uint8Array(comps), hasOut = new Uint8Array(comps);
+  for (const [u, v] of edges) {
+    const a = comp[u], b = comp[v];
+    if (a !== b) { hasOut[a] = 1; hasIn[b] = 1; }
+  }
+  let sources = 0, sinks = 0;
+  for (let c = 0; c < comps; c++) {
+    if (!hasIn[c]) sources++;
+    if (!hasOut[c]) sinks++;
+  }
+  return Math.max(sources, sinks);
+}
+` }, { lang: 'cpp', code: `class Solution {
+public:
+    int minEdgesToStronglyConnect(int V, vector<vector<int>>& edges) {
+        vector<vector<int>> adj(V);
+        for (auto& e : edges) adj[e[0]].push_back(e[1]);
+
+        vector<int> disc(V, -1), low(V, 0), comp(V, -1), nxt(V, 0), tarjan, work;
+        vector<char> onStack(V, 0);
+        int timer = 0, comps = 0;
+
+        for (int root = 0; root < V; root++) {
+            if (disc[root] != -1) continue;
+            disc[root] = low[root] = timer++;
+            tarjan.push_back(root);
+            onStack[root] = 1;
+            work.push_back(root);                 // our own call stack
+            while (!work.empty()) {
+                int v = work.back();
+                if (nxt[v] < (int)adj[v].size()) {
+                    int w = adj[v][nxt[v]++];
+                    if (disc[w] == -1) {
+                        disc[w] = low[w] = timer++;
+                        tarjan.push_back(w);
+                        onStack[w] = 1;
+                        work.push_back(w);
+                    } else if (onStack[w]) {
+                        low[v] = min(low[v], disc[w]);
+                    }
+                } else {
+                    work.pop_back();
+                    if (!work.empty()) low[work.back()] = min(low[work.back()], low[v]);
+                    if (low[v] == disc[v]) {      // v is the root of an SCC
+                        int x;
+                        do { x = tarjan.back(); tarjan.pop_back(); onStack[x] = 0; comp[x] = comps; } while (x != v);
+                        comps++;
+                    }
+                }
+            }
+        }
+
+        if (comps == 1) return 0;
+        vector<char> hasIn(comps, 0), hasOut(comps, 0);
+        for (auto& e : edges) {
+            int a = comp[e[0]], b = comp[e[1]];
+            if (a != b) { hasOut[a] = 1; hasIn[b] = 1; }
+        }
+        int sources = 0, sinks = 0;
+        for (int c = 0; c < comps; c++) {
+            if (!hasIn[c]) sources++;
+            if (!hasOut[c]) sinks++;
+        }
+        return max(sources, sinks);
+    }
+};
+` }],
         dry: {
           head: ['step', 'event', 'disc/low', 'stack', 'SCC'],
           rows: [
@@ -789,7 +1478,7 @@ for comp in tarjan(len(names), adj):
       '<b>Undirected</b> graph with <code>V, E ≤ 10<sup>5</sup></code> and "remove one edge/vertex" → do NOT remove-and-BFS each one (O(E·(V+E))); one low-link DFS is O(V + E).',
       '"Make the graph survive any single link failure with minimum new edges" → build the bridge tree, answer ⌈leaves / 2⌉.'
     ],
-    code: `
+    code: { lang: 'java', code: `
       class BridgesAndCutVertices {
           final List<List<int[]>> adj = new ArrayList<>();   // adj[u] holds {neighbour, edgeId}
           final int[] disc, low;
@@ -828,8 +1517,113 @@ for comp in tarjan(len(names), adj):
               }
               if (parentEdge == -1 && children >= 2) isCut[v] = true;              // special root rule
           }
-      }`,
-    codeTitle: 'Bridges + articulation points in one DFS (Java)',
+      }`, alt: [{ lang: 'python', code: `class BridgesAndCutVertices:
+    # Recursive form: clear, but deep graphs need an explicit stack in Python.
+    def __init__(self, n, edges):
+        self.adj = [[] for _ in range(n)]       # adj[u] holds (neighbour, edge id)
+        for eid, (u, v) in enumerate(edges):
+            self.adj[u].append((v, eid))
+            self.adj[v].append((u, eid))
+        self.disc = [-1] * n
+        self.low = [0] * n
+        self.is_cut = [False] * n
+        self.bridges = []
+        self.timer = 0
+        for v in range(n):
+            if self.disc[v] == -1:
+                self._dfs(v, -1)
+
+    def _dfs(self, v, parent_edge):
+        self.disc[v] = self.low[v] = self.timer
+        self.timer += 1
+        children = 0
+        for w, eid in self.adj[v]:
+            if eid == parent_edge:              # skip ONLY the edge we came in on
+                continue
+            if self.disc[w] == -1:              # tree edge
+                children += 1
+                self._dfs(w, eid)
+                self.low[v] = min(self.low[v], self.low[w])
+                if self.low[w] > self.disc[v]:                      # subtree cannot reach v
+                    self.bridges.append((v, w))
+                if parent_edge != -1 and self.low[w] >= self.disc[v]:   # subtree cannot pass v
+                    self.is_cut[v] = True
+            else:                               # back edge to an ancestor (or a done descendant)
+                self.low[v] = min(self.low[v], self.disc[w])
+        if parent_edge == -1 and children >= 2:     # special root rule
+            self.is_cut[v] = True
+` }, { lang: 'js', code: `class BridgesAndCutVertices {
+  // Recursive form: clear, but very deep graphs need an explicit stack in JavaScript.
+  constructor(n, edges) {
+    this.adj = Array.from({ length: n }, () => []);    // adj[u] holds [neighbour, edge id]
+    edges.forEach(([u, v], id) => {
+      this.adj[u].push([v, id]);
+      this.adj[v].push([u, id]);
+    });
+    this.disc = new Array(n).fill(-1);
+    this.low = new Array(n).fill(0);
+    this.isCut = new Array(n).fill(false);
+    this.bridges = [];
+    this.timer = 0;
+    for (let v = 0; v < n; v++) if (this.disc[v] === -1) this.dfs(v, -1);
+  }
+
+  dfs(v, parentEdge) {
+    this.disc[v] = this.low[v] = this.timer++;
+    let children = 0;
+    for (const [w, id] of this.adj[v]) {
+      if (id === parentEdge) continue;                  // skip ONLY the edge we came in on
+      if (this.disc[w] === -1) {                        // tree edge
+        children++;
+        this.dfs(w, id);
+        this.low[v] = Math.min(this.low[v], this.low[w]);
+        if (this.low[w] > this.disc[v]) this.bridges.push([v, w]);                    // subtree cannot reach v
+        if (parentEdge !== -1 && this.low[w] >= this.disc[v]) this.isCut[v] = true;   // subtree cannot pass v
+      } else {                                          // back edge to an ancestor (or a done descendant)
+        this.low[v] = Math.min(this.low[v], this.disc[w]);
+      }
+    }
+    if (parentEdge === -1 && children >= 2) this.isCut[v] = true;                     // special root rule
+  }
+}
+` }, { lang: 'cpp', code: `class BridgesAndCutVertices {
+public:
+    vector<vector<pair<int, int>>> adj;         // adj[u] holds {neighbour, edgeId}
+    vector<int> disc, low;
+    vector<char> isCut;
+    vector<pair<int, int>> bridges;
+    int timer = 0;
+
+    BridgesAndCutVertices(int n, const vector<vector<int>>& edges)
+        : adj(n), disc(n, -1), low(n, 0), isCut(n, 0) {
+        for (int id = 0; id < (int)edges.size(); id++) {
+            adj[edges[id][0]].push_back({edges[id][1], id});
+            adj[edges[id][1]].push_back({edges[id][0], id});
+        }
+        for (int v = 0; v < n; v++) if (disc[v] == -1) dfs(v, -1);
+    }
+
+private:
+    void dfs(int v, int parentEdge) {
+        disc[v] = low[v] = timer++;
+        int children = 0;
+        for (auto [w, id] : adj[v]) {
+            if (id == parentEdge) continue;              // skip ONLY the edge we came in on
+            if (disc[w] == -1) {                         // tree edge
+                children++;
+                dfs(w, id);
+                low[v] = min(low[v], low[w]);
+                if (low[w] > disc[v]) bridges.push_back({v, w});                 // subtree cannot reach v
+                if (parentEdge != -1 && low[w] >= disc[v]) isCut[v] = 1;         // subtree cannot pass v
+            } else {                                     // back edge to an ancestor (or a done descendant)
+                low[v] = min(low[v], disc[w]);
+            }
+        }
+        if (parentEdge == -1 && children >= 2) isCut[v] = 1;                     // special root rule
+    }
+};
+` }] },
+    codeTitle: 'Bridges + articulation points in one DFS',
     viz: {
       title: 'Low-link DFS: disc/low tags, bridges turn red, cut vertices turn purple',
       input: '0-1 1-2 2-0 1-3 3-4 4-5 5-3 4-6',
@@ -902,7 +1696,7 @@ for comp in tarjan(len(names), adj):
         <li><b>2-edge-connected components</b>: delete all bridges; the remaining connected pieces are the components. Contract them → the <b>bridge tree</b> (always a tree/forest). Adding ⌈leaves/2⌉ edges makes the graph bridgeless.</li>
         <li><b>Biconnected components (blocks)</b>: push <b>edges</b> on a stack during DFS; when <code>low[w] ≥ disc[v]</code>, pop edges down to (v, w) — that is one block. Blocks + cut vertices form the <b>block-cut tree</b>, used for "is there a path from a to b avoiding vertex x?" queries.</li>
       </ul>
-      <p><b>Production reality:</b> network engineers call bridges "single points of failure"; tools that audit data-centre topologies, power grids, and road networks run exactly this DFS. Recursion depth is again the trap — LeetCode 1192 has n = 10<sup>5</sup>, and a long path makes the recursion 10<sup>5</sup> deep. Java's default stack often survives ~10<sup>4</sup>–10<sup>5</sup> small frames, but not reliably; Python definitely does not without <code>sys.setrecursionlimit</code> and a bigger thread stack. Write the iterative version for production.</p>`,
+      <p><b>Production reality:</b> network engineers call bridges "single points of failure"; tools that audit data-centre topologies, power grids, and road networks run exactly this DFS. Recursion depth is again the trap — LeetCode 1192 has n = 10<sup>5</sup>, and a long path makes the recursion 10<sup>5</sup> deep. A Java or C++ stack often survives ~10<sup>4</sup>–10<sup>5</sup> small frames, but not reliably; JavaScript overflows near 10<sup>4</sup>, and Python does not survive without <code>sys.setrecursionlimit</code> and a bigger thread stack. Write the iterative version for production.</p>`,
     aiEra: `<p><b>What AI changes:</b> "find critical connections" is one of the most-memorised LeetCode Hards, and assistants reproduce it perfectly. Interviewers know that, so they twist it: parallel edges, "return articulation points instead", "do it iteratively", "now the graph changes over time".</p>
       <p><b>Use AI as a partner:</b> have it generate random small graphs and a brute-force oracle (remove each edge/vertex, count components) so you can fuzz your low-link code. Ask it to explain the root rule in its own words — then check it against the proof above.</p>
       <p><b>Where AI goes wrong:</b> skipping the parent <b>vertex</b> instead of the parent <b>edge</b> (breaks on parallel edges), using <code>&gt;=</code> for bridges or <code>&gt;</code> for cut vertices, forgetting the root rule, adding a vertex to the answer list twice (once per child), and recursion overflow on path-shaped inputs.</p>
@@ -948,44 +1742,260 @@ for comp in tarjan(len(names), adj):
         `<p>Hint 2: Keep <code>disc[v]</code> and <code>low[v]</code>. After returning from child w, tree edge v—w is a bridge iff <code>low[w] &gt; disc[v]</code>.</p>`,
         `<p>Hint 3: Recipe — store (neighbour, edgeId) pairs; skip only the edge id you arrived by; low[v] = min over children's low and over back edges' disc. Edge case: the graph is connected, but still loop over all nodes to be safe.</p>`
       ],
+      tests: { sig: "string int list<list<int>> -> list<list<int>>", fn: "bridges", check: `(args, out, exp) => {
+  const norm = (l) => l.map((p) => (p[0] < p[1] ? p : [p[1], p[0]])).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  let want = exp;
+  if (typeof exp === 'string') {
+    const n = args[1], h = Math.floor(n / 2);
+    want = [];
+    if (exp === 'path') for (let i = 0; i + 1 < n; i++) want.push([i, i + 1]);
+    else if (exp === 'star') for (let i = 1; i < n; i++) want.push([0, i]);
+    else for (let i = h - 1; i + 1 < n; i++) want.push([i, i + 1]);
+  }
+  const a = norm(out), b = norm(want);
+  return a.length === b.length && a.every((p, i) => p[0] === b[i][0] && p[1] === b[i][1]);
+}`, cases: [
+          [["",4,[[0,1],[1,2],[2,0],[1,3]]],[[1,3]]],
+          [["",2,[[0,1]]],[[0,1]]],
+          [["",3,[[0,1],[1,2],[2,0]]],[]],
+          [["",5,[[0,1],[1,2],[2,3],[3,4]]],[[0,1],[1,2],[2,3],[3,4]]],
+          [["",6,[[0,1],[1,2],[2,0],[2,3],[3,4],[4,5],[5,3]]],[[2,3]]],
+          [["",4,[[0,1],[0,2],[0,3]]],[[0,1],[0,2],[0,3]]],
+          [["",7,[[0,1],[1,2],[2,3],[3,4],[4,5],[5,0],[5,6]]],[[5,6]]],
+          [["",7,[[1,0],[0,2],[2,4],[5,6],[3,1],[5,2],[4,0],[0,6]]],[[1,0],[3,1]]],
+          [["",2,[[0,1]]],[[0,1]]],
+          [["",6,[[2,0],[1,5],[3,4],[5,4],[1,0],[5,2],[1,3]]],[]],
+          [["",8,[[1,0],[5,7],[2,0],[2,4],[3,6],[4,5],[6,7],[2,3]]],[[1,0],[2,0]]],
+          [["",6,[[1,0],[0,2],[1,3],[2,4],[5,0]]],[[1,0],[0,2],[1,3],[2,4],[5,0]]],
+          [["",4,[[3,1],[1,0],[2,0],[2,1]]],[[3,1]]],
+          [["",2,[[1,0]]],[[1,0]]],
+          [["",5,[[1,3],[3,4],[2,1],[1,0]]],[[1,3],[3,4],[2,1],[1,0]]],
+          [["",4,[[1,2],[1,0],[0,3]]],[[1,2],[1,0],[0,3]]],
+          [["",6,[[1,2],[2,3],[1,4],[0,1],[4,5]]],[[1,2],[2,3],[1,4],[0,1],[4,5]]],
+          [["path",100000,[]],"path"],
+          [["star",100000,[]],"star"],
+          [["cycle",100000,[]],[]],
+          [["cycleTail",100000,[]],"cycleTail"]
+        ], harness: { java: `class Check {
+  static List<List<Integer>> bridges(String kind, int n, List<List<Integer>> conns) {
+    if (!kind.isEmpty()) {
+      conns = new ArrayList<>();
+      int h = n / 2;
+      if (kind.equals("path")) { for (int i = 0; i + 1 < n; i++) conns.add(Arrays.asList(i, i + 1)); }
+      else if (kind.equals("star")) { for (int i = 1; i < n; i++) conns.add(Arrays.asList(0, i)); }
+      else {
+        int c = kind.equals("cycle") ? n : h;
+        for (int i = 0; i < c; i++) conns.add(Arrays.asList(i, (i + 1) % c));
+        if (kind.equals("cycleTail")) for (int i = h - 1; i + 1 < n; i++) conns.add(Arrays.asList(i, i + 1));
+      }
+    }
+    return new Solution().criticalConnections(n, conns);
+  }
+}`, python: `def bridges(kind, n, conns):
+    if kind != '':
+        h = n // 2
+        if kind == 'path':
+            conns = [[i, i + 1] for i in range(n - 1)]
+        elif kind == 'star':
+            conns = [[0, i] for i in range(1, n)]
+        else:
+            c = n if kind == 'cycle' else h
+            conns = [[i, (i + 1) % c] for i in range(c)]
+            if kind == 'cycleTail':
+                conns += [[i, i + 1] for i in range(h - 1, n - 1)]
+    return critical_connections(n, conns)`, js: `function bridges(kind, n, conns) {
+  if (kind !== '') {
+    const h = Math.floor(n / 2);
+    conns = [];
+    if (kind === 'path') { for (let i = 0; i + 1 < n; i++) conns.push([i, i + 1]); }
+    else if (kind === 'star') { for (let i = 1; i < n; i++) conns.push([0, i]); }
+    else {
+      const c = kind === 'cycle' ? n : h;
+      for (let i = 0; i < c; i++) conns.push([i, (i + 1) % c]);
+      if (kind === 'cycleTail') for (let i = h - 1; i + 1 < n; i++) conns.push([i, i + 1]);
+    }
+  }
+  return criticalConnections(n, conns);
+}`, cpp: `vector<vector<int>> bridges(string kind, int n, vector<vector<int>> conns) {
+  if (!kind.empty()) {
+    conns.clear();
+    int h = n / 2;
+    if (kind == "path") { for (int i = 0; i + 1 < n; i++) conns.push_back({i, i + 1}); }
+    else if (kind == "star") { for (int i = 1; i < n; i++) conns.push_back({0, i}); }
+    else {
+      int c = kind == "cycle" ? n : h;
+      for (int i = 0; i < c; i++) conns.push_back({i, (i + 1) % c});
+      if (kind == "cycleTail") for (int i = h - 1; i + 1 < n; i++) conns.push_back({i, i + 1});
+    }
+  }
+  return Solution().criticalConnections(n, conns);
+}` } },
       solution: {
         approach: `<p>One DFS with disc/low (Tarjan's bridge-finding algorithm). Each edge is examined twice (once from each side), so the whole thing is linear.</p>`,
         code: `class Solution {
-    private List<List<int[]>> adj;
-    private int[] disc, low;
-    private int timer = 0;
-    private final List<List<Integer>> result = new ArrayList<>();
-
     public List<List<Integer>> criticalConnections(int n, List<List<Integer>> connections) {
-        adj = new ArrayList<>();
+        List<List<int[]>> adj = new ArrayList<>();
         for (int i = 0; i < n; i++) adj.add(new ArrayList<>());
         for (int id = 0; id < connections.size(); id++) {
             int a = connections.get(id).get(0), b = connections.get(id).get(1);
             adj.get(a).add(new int[]{b, id});
             adj.get(b).add(new int[]{a, id});
         }
-        disc = new int[n];
-        low = new int[n];
+        int[] disc = new int[n], low = new int[n], next = new int[n], parentEdge = new int[n];
         Arrays.fill(disc, -1);
-        for (int v = 0; v < n; v++) if (disc[v] == -1) dfs(v, -1);
-        return result;
-    }
-
-    private void dfs(int v, int parentEdge) {
-        disc[v] = low[v] = timer++;
-        for (int[] e : adj.get(v)) {
-            int w = e[0], id = e[1];
-            if (id == parentEdge) continue;                  // do not reuse the edge we came in on
-            if (disc[w] == -1) {
-                dfs(w, id);
-                low[v] = Math.min(low[v], low[w]);
-                if (low[w] > disc[v]) result.add(Arrays.asList(v, w));   // no way back above v
-            } else {
-                low[v] = Math.min(low[v], disc[w]);          // back edge closes a cycle
+        int[] stack = new int[n];                              // our own DFS stack: no deep recursion
+        int timer = 0;
+        List<List<Integer>> result = new ArrayList<>();
+        for (int root = 0; root < n; root++) {
+            if (disc[root] != -1) continue;
+            int sp = 0;
+            stack[sp++] = root;
+            parentEdge[root] = -1;
+            disc[root] = low[root] = timer++;
+            while (sp > 0) {
+                int v = stack[sp - 1];
+                if (next[v] < adj.get(v).size()) {
+                    int[] e = adj.get(v).get(next[v]++);
+                    int w = e[0], id = e[1];
+                    if (id == parentEdge[v]) continue;         // do not reuse the edge we came in on
+                    if (disc[w] == -1) {                       // "recursive call" into w
+                        parentEdge[w] = id;
+                        disc[w] = low[w] = timer++;
+                        stack[sp++] = w;
+                    } else {
+                        low[v] = Math.min(low[v], disc[w]);    // back edge closes a cycle
+                    }
+                } else {                                       // "return" from v
+                    sp--;
+                    if (sp > 0) {
+                        int p = stack[sp - 1];
+                        low[p] = Math.min(low[p], low[v]);
+                        if (low[v] > disc[p]) result.add(Arrays.asList(p, v));   // no way back above p
+                    }
+                }
             }
         }
+        return result;
     }
 }`,
+      alt: [{ lang: 'python', code: `def critical_connections(n, connections):
+    adj = [[] for _ in range(n)]
+    for eid, (a, b) in enumerate(connections):
+        adj[a].append((b, eid))
+        adj[b].append((a, eid))
+
+    disc = [-1] * n
+    low = [0] * n
+    nxt = [0] * n                        # next neighbour index to try, per node
+    parent_edge = [-1] * n
+    timer = 0
+    result = []
+    for root in range(n):
+        if disc[root] != -1:
+            continue
+        disc[root] = low[root] = timer
+        timer += 1
+        stack = [root]                   # our own DFS stack: no recursion limit
+        while stack:
+            v = stack[-1]
+            if nxt[v] < len(adj[v]):
+                w, eid = adj[v][nxt[v]]
+                nxt[v] += 1
+                if eid == parent_edge[v]:        # do not reuse the edge we came in on
+                    continue
+                if disc[w] == -1:
+                    parent_edge[w] = eid
+                    disc[w] = low[w] = timer
+                    timer += 1
+                    stack.append(w)
+                else:
+                    low[v] = min(low[v], disc[w])   # back edge closes a cycle
+            else:
+                stack.pop()
+                if stack:
+                    p = stack[-1]
+                    low[p] = min(low[p], low[v])
+                    if low[v] > disc[p]:            # no way back above p
+                        result.append([p, v])
+    return result
+` }, { lang: 'js', code: `function criticalConnections(n, connections) {
+  const adj = Array.from({ length: n }, () => []);
+  connections.forEach(([a, b], id) => { adj[a].push([b, id]); adj[b].push([a, id]); });
+
+  const disc = new Int32Array(n).fill(-1), low = new Int32Array(n), next = new Int32Array(n);
+  const parentEdge = new Int32Array(n).fill(-1);
+  let timer = 0;
+  const result = [];
+  for (let root = 0; root < n; root++) {
+    if (disc[root] !== -1) continue;
+    disc[root] = low[root] = timer++;
+    const stack = [root];                      // our own DFS stack: no stack overflow
+    while (stack.length) {
+      const v = stack[stack.length - 1];
+      if (next[v] < adj[v].length) {
+        const [w, id] = adj[v][next[v]++];
+        if (id === parentEdge[v]) continue;    // do not reuse the edge we came in on
+        if (disc[w] === -1) {
+          parentEdge[w] = id;
+          disc[w] = low[w] = timer++;
+          stack.push(w);
+        } else {
+          low[v] = Math.min(low[v], disc[w]);  // back edge closes a cycle
+        }
+      } else {
+        stack.pop();
+        if (stack.length) {
+          const p = stack[stack.length - 1];
+          low[p] = Math.min(low[p], low[v]);
+          if (low[v] > disc[p]) result.push([p, v]);   // no way back above p
+        }
+      }
+    }
+  }
+  return result;
+}
+` }, { lang: 'cpp', code: `class Solution {
+public:
+    vector<vector<int>> criticalConnections(int n, vector<vector<int>>& connections) {
+        vector<vector<pair<int, int>>> adj(n);             // (neighbour, edge id)
+        for (int id = 0; id < (int)connections.size(); id++) {
+            int a = connections[id][0], b = connections[id][1];
+            adj[a].push_back({b, id});
+            adj[b].push_back({a, id});
+        }
+        vector<int> disc(n, -1), low(n, 0), next(n, 0), parentEdge(n, -1);
+        int timer = 0;
+        vector<vector<int>> result;
+        for (int root = 0; root < n; root++) {
+            if (disc[root] != -1) continue;
+            disc[root] = low[root] = timer++;
+            vector<int> stack{root};                       // our own DFS stack
+            while (!stack.empty()) {
+                int v = stack.back();
+                if (next[v] < (int)adj[v].size()) {
+                    auto [w, id] = adj[v][next[v]++];
+                    if (id == parentEdge[v]) continue;     // do not reuse the edge we came in on
+                    if (disc[w] == -1) {
+                        parentEdge[w] = id;
+                        disc[w] = low[w] = timer++;
+                        stack.push_back(w);
+                    } else {
+                        low[v] = min(low[v], disc[w]);     // back edge closes a cycle
+                    }
+                } else {
+                    stack.pop_back();
+                    if (!stack.empty()) {
+                        int p = stack.back();
+                        low[p] = min(low[p], low[v]);
+                        if (low[v] > disc[p]) result.push_back({p, v});   // no way back above p
+                    }
+                }
+            }
+        }
+        return result;
+    }
+};
+` }],
         dry: {
           head: ['step', 'event', 'disc/low after', 'bridge?'],
           rows: [
@@ -1042,7 +2052,7 @@ for comp in tarjan(len(names), adj):
       '"<b>Lexicographically smallest</b> itinerary" (LC 332) → Hierholzer that always takes the smallest unused edge (min-heap / sorted lists).',
       '"Minimum total length to walk every road at least once" → Chinese Postman: Euler + pairing up odd-degree vertices.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       class Hierholzer {
           // Directed graph with n nodes. Returns an Euler path/circuit as a vertex list, or an empty list.
           static List<Integer> eulerPath(int n, int[][] edges) {
@@ -1082,7 +2092,115 @@ for comp in tarjan(len(names), adj):
               // 3) Connectivity check: a real Euler path uses ALL edges
               return path.size() == edges.length + 1 ? path : List.of();
           }
-      }`, `
+      }`, alt: [{ lang: 'python', code: `def euler_path(n, edges):
+    # Directed graph with n nodes. Returns an Euler path/circuit as a vertex list, or [].
+    adj = [[] for _ in range(n)]
+    out = [0] * n
+    inn = [0] * n
+    for u, v in edges:
+        adj[u].append(v)
+        out[u] += 1
+        inn[v] += 1
+
+    # 1) Degree check + choose the start vertex
+    start, plus, minus = -1, 0, 0
+    for v in range(n):
+        d = out[v] - inn[v]
+        if d == 1:
+            plus += 1
+            start = v
+        elif d == -1:
+            minus += 1
+        elif d != 0:
+            return []                           # |out - in| >= 2: impossible
+    if not ((plus == 0 and minus == 0) or (plus == 1 and minus == 1)):
+        return []
+    if start == -1:                             # circuit: any vertex with an edge
+        start = next((v for v in range(n) if out[v] > 0), -1)
+        if start == -1:
+            return []                           # no edges at all
+
+    # 2) Hierholzer with an explicit stack; ptr[v] = index of v's next unused edge
+    ptr = [0] * n
+    stack = [start]
+    path = []
+    while stack:
+        v = stack[-1]
+        if ptr[v] < len(adj[v]):
+            stack.append(adj[v][ptr[v]])        # walk along an unused edge
+            ptr[v] += 1
+        else:
+            path.append(stack.pop())            # stuck: v is final at this position
+    path.reverse()
+
+    # 3) Connectivity check: a real Euler path uses ALL edges
+    return path if len(path) == len(edges) + 1 else []
+` }, { lang: 'js', code: `// Directed graph with n nodes. Returns an Euler path/circuit as a vertex list, or [].
+function eulerPath(n, edges) {
+  const adj = Array.from({ length: n }, () => []);
+  const out = new Array(n).fill(0), inn = new Array(n).fill(0);
+  for (const [u, v] of edges) { adj[u].push(v); out[u]++; inn[v]++; }
+
+  // 1) Degree check + choose the start vertex
+  let start = -1, plus = 0, minus = 0;
+  for (let v = 0; v < n; v++) {
+    const d = out[v] - inn[v];
+    if (d === 1) { plus++; start = v; }
+    else if (d === -1) minus++;
+    else if (d !== 0) return [];                // |out - in| >= 2: impossible
+  }
+  if (!((plus === 0 && minus === 0) || (plus === 1 && minus === 1))) return [];
+  if (start === -1) {                           // circuit: any vertex with an edge
+    start = out.findIndex((d) => d > 0);
+    if (start === -1) return [];                // no edges at all
+  }
+
+  // 2) Hierholzer with an explicit stack; ptr[v] = index of v's next unused edge
+  const ptr = new Array(n).fill(0);
+  const stack = [start], path = [];
+  while (stack.length) {
+    const v = stack[stack.length - 1];
+    if (ptr[v] < adj[v].length) stack.push(adj[v][ptr[v]++]);   // walk along an unused edge
+    else path.push(stack.pop());                                // stuck: v is final at this position
+  }
+  path.reverse();
+
+  // 3) Connectivity check: a real Euler path uses ALL edges
+  return path.length === edges.length + 1 ? path : [];
+}
+` }, { lang: 'cpp', code: `// Directed graph with n nodes. Returns an Euler path/circuit as a vertex list, or an empty vector.
+vector<int> eulerPath(int n, const vector<vector<int>>& edges) {
+    vector<vector<int>> adj(n);
+    vector<int> out(n, 0), in(n, 0);
+    for (auto& e : edges) { adj[e[0]].push_back(e[1]); out[e[0]]++; in[e[1]]++; }
+
+    // 1) Degree check + choose the start vertex
+    int start = -1, plus = 0, minus = 0;
+    for (int v = 0; v < n; v++) {
+        int d = out[v] - in[v];
+        if (d == 1) { plus++; start = v; }
+        else if (d == -1) minus++;
+        else if (d != 0) return {};                          // |out - in| >= 2: impossible
+    }
+    if (!((plus == 0 && minus == 0) || (plus == 1 && minus == 1))) return {};
+    if (start == -1) {                                       // circuit: any vertex with an edge
+        for (int v = 0; v < n; v++) if (out[v] > 0) { start = v; break; }
+        if (start == -1) return {};                          // no edges at all
+    }
+
+    // 2) Hierholzer with an explicit stack; ptr[v] = index of v's next unused edge
+    vector<int> ptr(n, 0), stack{start}, path;
+    while (!stack.empty()) {
+        int v = stack.back();
+        if (ptr[v] < (int)adj[v].size()) stack.push_back(adj[v][ptr[v]++]);   // walk along an unused edge
+        else { path.push_back(v); stack.pop_back(); }                          // stuck: v is final here
+    }
+    reverse(path.begin(), path.end());
+
+    // 3) Connectivity check: a real Euler path uses ALL edges
+    return path.size() == edges.size() + 1 ? path : vector<int>{};
+}
+` }] }, { lang: 'java', code: `
       class EulerUndirected {
           // Undirected version: each edge appears in both lists, so mark edges used by id.
           static List<Integer> euler(int n, int[][] edges) {
@@ -1121,8 +2239,111 @@ for comp in tarjan(len(names), adj):
               }
               return path.size() == edges.length + 1 ? path : List.of();
           }
-      }`],
-    codeTitle: ['Directed Euler path/circuit (Java)', 'Undirected Euler path/circuit (Java)'],
+      }`, alt: [{ lang: 'python', code: `def euler_undirected(n, edges):
+    # Undirected version: each edge appears in both lists, so mark edges used by id.
+    adj = [[] for _ in range(n)]                # (neighbour, edge id)
+    deg = [0] * n
+    for eid, (u, v) in enumerate(edges):
+        adj[u].append((v, eid))
+        adj[v].append((u, eid))
+        deg[u] += 1
+        deg[v] += 1
+    odd = [v for v in range(n) if deg[v] % 2 == 1]
+    if len(odd) not in (0, 2):
+        return []
+    start = odd[0] if odd else next((v for v in range(n) if deg[v] > 0), -1)
+    if start == -1:
+        return []
+
+    used = [False] * len(edges)
+    ptr = [0] * n
+    stack = [start]
+    path = []
+    while stack:
+        v = stack[-1]
+        # skip edges that were already walked from the other end
+        while ptr[v] < len(adj[v]) and used[adj[v][ptr[v]][1]]:
+            ptr[v] += 1
+        if ptr[v] == len(adj[v]):
+            path.append(stack.pop())
+        else:
+            w, eid = adj[v][ptr[v]]
+            ptr[v] += 1
+            used[eid] = True
+            stack.append(w)
+    path.reverse()
+    return path if len(path) == len(edges) + 1 else []
+` }, { lang: 'js', code: `// Undirected version: each edge appears in both lists, so mark edges used by id.
+function eulerUndirected(n, edges) {
+  const adj = Array.from({ length: n }, () => []);      // [neighbour, edge id]
+  const deg = new Array(n).fill(0);
+  edges.forEach(([u, v], id) => {
+    adj[u].push([v, id]);
+    adj[v].push([u, id]);
+    deg[u]++;
+    deg[v]++;
+  });
+  const odd = [];
+  for (let v = 0; v < n; v++) if (deg[v] % 2 === 1) odd.push(v);
+  if (odd.length !== 0 && odd.length !== 2) return [];
+  const start = odd.length ? odd[0] : deg.findIndex((d) => d > 0);
+  if (start === -1) return [];
+
+  const used = new Array(edges.length).fill(false);
+  const ptr = new Array(n).fill(0);
+  const stack = [start], path = [];
+  while (stack.length) {
+    const v = stack[stack.length - 1];
+    // skip edges that were already walked from the other end
+    while (ptr[v] < adj[v].length && used[adj[v][ptr[v]][1]]) ptr[v]++;
+    if (ptr[v] === adj[v].length) {
+      path.push(stack.pop());
+    } else {
+      const [w, id] = adj[v][ptr[v]++];
+      used[id] = true;
+      stack.push(w);
+    }
+  }
+  path.reverse();
+  return path.length === edges.length + 1 ? path : [];
+}
+` }, { lang: 'cpp', code: `// Undirected version: each edge appears in both lists, so mark edges used by id.
+vector<int> eulerUndirected(int n, const vector<vector<int>>& edges) {
+    vector<vector<pair<int, int>>> adj(n);                   // {neighbour, edgeId}
+    vector<int> deg(n, 0);
+    for (int id = 0; id < (int)edges.size(); id++) {
+        int u = edges[id][0], v = edges[id][1];
+        adj[u].push_back({v, id});
+        adj[v].push_back({u, id});
+        deg[u]++;
+        deg[v]++;
+    }
+    int odd = 0, start = -1;
+    for (int v = 0; v < n; v++) if (deg[v] % 2 == 1) { odd++; if (start == -1) start = v; }
+    if (odd != 0 && odd != 2) return {};
+    if (start == -1) for (int v = 0; v < n; v++) if (deg[v] > 0) { start = v; break; }
+    if (start == -1) return {};
+
+    vector<char> used(edges.size(), 0);
+    vector<int> ptr(n, 0), stack{start}, path;
+    while (!stack.empty()) {
+        int v = stack.back();
+        // skip edges that were already walked from the other end
+        while (ptr[v] < (int)adj[v].size() && used[adj[v][ptr[v]].second]) ptr[v]++;
+        if (ptr[v] == (int)adj[v].size()) {
+            path.push_back(v);
+            stack.pop_back();
+        } else {
+            auto [w, id] = adj[v][ptr[v]++];
+            used[id] = 1;
+            stack.push_back(w);
+        }
+    }
+    reverse(path.begin(), path.end());
+    return path.size() == edges.size() + 1 ? path : vector<int>{};
+}
+` }] }],
+    codeTitle: ['Directed Euler path/circuit', 'Undirected Euler path/circuit'],
     viz: {
       title: 'Hierholzer live: walk until stuck, pop into the answer, detours splice themselves in',
       input: 'A>B B>C C>A C>D D>E E>C',
@@ -1182,8 +2403,14 @@ for comp in tarjan(len(names), adj):
     examples: [
       { title: 'The Seven Bridges of Königsberg (1736)', html: `<p>Euler's original puzzle: 4 land masses, 7 bridges. Degrees were 5, 3, 3, 3 — <b>four</b> odd vertices. A path allows at most two, so no walk crosses each bridge once. This was the birth of graph theory.</p>${H.arr([5, 3, 3, 3], { label: 'degrees (all odd)', hl: { 0: 'r', 1: 'r', 2: 'r', 3: 'r' } })}` },
       { title: 'The "house" drawing puzzle', html: `<p>A square with an X inside and a roof triangle: the two bottom corners have degree 3 (odd), every other corner is even. Exactly two odd vertices → an Euler <b>path</b> exists, and it <b>must start at one bottom corner and end at the other</b>. Start anywhere else and you will always get stuck.</p>` },
-      { title: 'Greedy walking fails, Hierholzer does not', html: `<p>Edges <code>A→B, A→C, C→A</code> starting at A (out−in = +1). A naive walker taking A→B first is stuck at B with A→C, C→A unused. Hierholzer: push A, walk A→B, B stuck → answer [B]; back at A, walk A→C→A, A now stuck → [A, B], C → [C, A, B], A → <b>[A, C, A, B]</b>. ${H.c('g', 'The detour was spliced in front of B.')}</p>`, code: `int[][] edges = {{0, 1}, {0, 2}, {2, 0}};   // A=0, B=1, C=2
-// Hierholzer.eulerPath(3, edges) returns [0, 2, 0, 1]  i.e.  A C A B` },
+      { title: 'Greedy walking fails, Hierholzer does not', html: `<p>Edges <code>A→B, A→C, C→A</code> starting at A (out−in = +1). A naive walker taking A→B first is stuck at B with A→C, C→A unused. Hierholzer: push A, walk A→B, B stuck → answer [B]; back at A, walk A→C→A, A now stuck → [A, B], C → [C, A, B], A → <b>[A, C, A, B]</b>. ${H.c('g', 'The detour was spliced in front of B.')}</p>`, code: { lang: 'java', code: `int[][] edges = {{0, 1}, {0, 2}, {2, 0}};   // A=0, B=1, C=2
+// Hierholzer.eulerPath(3, edges) returns [0, 2, 0, 1]  i.e.  A C A B`, alt: [{ lang: 'python', code: `edges = [[0, 1], [0, 2], [2, 0]]   # A=0, B=1, C=2
+# euler_path(3, edges) returns [0, 2, 0, 1]  i.e.  A C A B
+` }, { lang: 'js', code: `const edges = [[0, 1], [0, 2], [2, 0]];   // A=0, B=1, C=2
+// eulerPath(3, edges) returns [0, 2, 0, 1]  i.e.  A C A B
+` }, { lang: 'cpp', code: `vector<vector<int>> edges = {{0, 1}, {0, 2}, {2, 0}};   // A=0, B=1, C=2
+// eulerPath(3, edges) returns {0, 2, 0, 1}  i.e.  A C A B
+` }] } },
       { title: 'Degrees fine but still impossible', html: `<p>Two separate triangles <code>A→B→C→A</code> and <code>D→E→F→D</code>: every vertex is balanced, yet no single walk covers both. That is why the code checks <code>path.size() == E + 1</code> at the end — it is the cheapest connectivity test.</p>` }
     ],
     deepDive: `<p><b>Why "pop into the front of the answer" is correct.</b> A vertex is popped only when all its edges are used. In the directed case with balanced degrees, the first time the walk gets stuck it must be at the start vertex (every other vertex we enter still has an unused out-edge, because in = out). So the first walk is a closed loop. Backing up, we find a vertex with unused edges, walk another closed loop from it (same argument), and so on. The reverse pop order exactly splices each loop into the place where it branches off. This is just <b>reverse post-order of a DFS over edges</b>.</p>
@@ -1231,9 +2458,29 @@ for comp in tarjan(len(names), adj):
       mcq: { q: 'Why does Hierholzer prepend a vertex to the answer when it gets stuck?', options: ['A stuck vertex must be the end of the remaining route, so it belongs after everything still on the stack', 'Because the stack is reversed by mistake', 'To sort the answer lexicographically', 'It does not matter where it is inserted'], answer: 0, explain: 'All edges of that vertex are used, so nothing can follow it; everything still on the stack comes before it.' },
       hints: [
         `<p>Hint 1: Airports are vertices, tickets are directed edges, and "use every ticket once" is an Euler path starting at JFK.</p>`,
-        `<p>Hint 2: Keep each airport's destinations in a <code>PriorityQueue&lt;String&gt;</code>, so you always take the smallest unused ticket.</p>`,
+        `<p>Hint 2: Keep each airport's destinations in a min-heap (<code>PriorityQueue</code> / <code>heapq</code> / a hand-written heap in JavaScript / <code>priority_queue</code> with <code>greater</code>) or a sorted list, so you always take the smallest unused ticket.</p>`,
         `<p>Hint 3: Recipe — stack = [JFK]; while stack not empty: if top has tickets, poll the smallest and push it; else pop and add to the <b>front</b> of the route. Dead ends (like KUL) get popped first and end up at the end of the itinerary.</p>`
       ],
+      tests: { sig: "list<list<string>> -> list<string>", fn: "findItinerary", cases: [
+          [[[["JFK","KUL"],["JFK","NRT"],["NRT","JFK"]]],["JFK","NRT","JFK","KUL"]],
+          [[[["JFK","SFO"],["JFK","ATL"],["SFO","ATL"],["ATL","JFK"],["ATL","SFO"]]],["JFK","ATL","JFK","SFO","ATL","SFO"]],
+          [[[["JFK","AAA"]]],["JFK","AAA"]],
+          [[[["JFK","AAA"],["JFK","AAA"],["AAA","JFK"]]],["JFK","AAA","JFK","AAA"]],
+          [[[["JFK","JFK"]]],["JFK","JFK"]],
+          [[[["JFK","BBB"],["BBB","AAA"],["AAA","CCC"]]],["JFK","BBB","AAA","CCC"]],
+          [[[["JFK","AAA"],["JFK","BBB"],["BBB","JFK"]]],["JFK","BBB","JFK","AAA"]],
+          [[[["JFK","BBB"],["JFK","DDD"],["BBB","BBB"],["CCC","AAA"],["DDD","DDD"],["BBB","AAA"],["BBB","CCC"],["AAA","BBB"],["AAA","JFK"]]],["JFK","BBB","AAA","BBB","BBB","CCC","AAA","JFK","DDD","DDD"]],
+          [[[["AAA","CCC"],["CCC","AAA"],["CCC","CCC"],["CCC","DDD"],["JFK","CCC"]]],["JFK","CCC","AAA","CCC","CCC","DDD"]],
+          [[[["JFK","AAA"],["JFK","JFK"],["JFK","BBB"],["JFK","JFK"],["AAA","JFK"],["BBB","AAA"]]],["JFK","AAA","JFK","JFK","JFK","BBB","AAA"]],
+          [[[["CCC","DDD"],["JFK","BBB"],["DDD","BBB"],["CCC","DDD"],["BBB","CCC"],["BBB","DDD"],["DDD","AAA"],["AAA","BBB"],["BBB","CCC"]]],["JFK","BBB","CCC","DDD","AAA","BBB","CCC","DDD","BBB","DDD"]],
+          [[[["JFK","DDD"],["DDD","AAA"],["AAA","JFK"]]],["JFK","DDD","AAA","JFK"]],
+          [[[["JFK","BBB"],["BBB","DDD"],["DDD","JFK"],["JFK","BBB"],["BBB","DDD"]]],["JFK","BBB","DDD","JFK","BBB","DDD"]],
+          [[[["JFK","AAA"],["AAA","DDD"],["BBB","DDD"],["DDD","BBB"],["JFK","AAA"],["DDD","JFK"],["AAA","BBB"]]],["JFK","AAA","BBB","DDD","JFK","AAA","DDD","BBB"]],
+          [[[["DDD","BBB"],["BBB","JFK"],["JFK","JFK"],["BBB","BBB"],["CCC","DDD"],["JFK","CCC"]]],["JFK","CCC","DDD","BBB","BBB","JFK","JFK"]],
+          [[[["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"],["JFK","AAA"],["AAA","JFK"]]],["JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK","AAA","JFK"]],
+          [[[["EAZ","JFK"],["BYZ","JFK"],["BBZ","JFK"],["ASZ","JFK"],["JFK","AOZ"],["AAZ","JFK"],["AGZ","JFK"],["JFK","ACZ"],["JFK","AGZ"],["JFK","ATZ"],["JFK","AAZ"],["AOZ","JFK"],["CAZ","JFK"],["JFK","BVZ"],["AUZ","JFK"],["JFK","CFZ"],["JFK","CBZ"],["JFK","ASZ"],["AEZ","JFK"],["CCZ","JFK"],["AFZ","JFK"],["CFZ","JFK"],["JFK","AYZ"],["CNZ","JFK"],["JFK","AVZ"],["CHZ","JFK"],["ALZ","JFK"],["BGZ","JFK"],["BNZ","JFK"],["JFK","BOZ"],["JFK","ADZ"],["JFK","BIZ"],["JFK","CXZ"],["CLZ","JFK"],["AIZ","JFK"],["CMZ","JFK"],["JFK","FEZ"],["ELZ","JFK"],["BQZ","JFK"],["CDZ","JFK"],["EVZ","JFK"],["CQZ","JFK"],["DWZ","JFK"],["JFK","CEZ"],["JFK","ENZ"],["JFK","BNZ"],["JFK","EPZ"],["ERZ","JFK"],["JFK","FCZ"],["BSZ","JFK"],["JFK","ESZ"],["JFK","CYZ"],["FCZ","JFK"],["JFK","AFZ"],["CYZ","JFK"],["JFK","EWZ"],["JFK","ELZ"],["ACZ","JFK"],["EHZ","JFK"],["JFK","DSZ"],["JFK","DJZ"],["EYZ","JFK"],["JFK","EMZ"],["BLZ","JFK"],["ETZ","JFK"],["FGZ","JFK"],["JFK","EAZ"],["DAZ","JFK"],["CVZ","JFK"],["JFK","AHZ"],["DGZ","JFK"],["JFK","AZZ"],["JFK","CZZ"],["EKZ","JFK"],["FEZ","JFK"],["JFK","DZZ"],["BWZ","JFK"],["EZZ","JFK"],["BRZ","JFK"],["JFK","CJZ"],["ADZ","JFK"],["EGZ","JFK"],["JFK","CGZ"],["JFK","FIZ"],["FPZ","JFK"],["EMZ","JFK"],["AHZ","JFK"],["JFK","AQZ"],["JFK","BCZ"],["JFK","EJZ"],["JFK","EDZ"],["JFK","DIZ"],["JFK","CNZ"],["JFK","BBZ"],["ESZ","JFK"],["CZZ","JFK"],["ENZ","JFK"],["JFK","BAZ"],["BMZ","JFK"],["JFK","ABZ"],["JFK","CMZ"],["DRZ","JFK"],["JFK","DUZ"],["FTZ","JFK"],["DJZ","JFK"],["JFK","CWZ"],["JFK","EUZ"],["DSZ","JFK"],["CWZ","JFK"],["JFK","CRZ"],["JFK","FOZ"],["JFK","DXZ"],["JFK","DKZ"],["JFK","BRZ"],["JFK","FQZ"],["CRZ","JFK"],["JFK","AEZ"],["JFK","BXZ"],["EBZ","JFK"],["FHZ","JFK"],["JFK","DBZ"],["JFK","DRZ"],["DUZ","JFK"],["FQZ","JFK"],["DFZ","JFK"],["EXZ","JFK"],["JFK","DTZ"],["JFK","AIZ"],["CPZ","JFK"],["EIZ","JFK"],["DYZ","JFK"],["FFZ","JFK"],["FBZ","JFK"],["JFK","DGZ"],["JFK","EKZ"],["JFK","CQZ"],["JFK","EIZ"],["JFK","BFZ"],["JFK","EYZ"],["DVZ","JFK"],["JFK","APZ"],["JFK","EZZ"],["JFK","ETZ"],["FSZ","JFK"],["ABZ","JFK"],["JFK","BHZ"],["FRZ","JFK"],["JFK","AMZ"],["EFZ","JFK"],["ATZ","JFK"],["DBZ","JFK"],["JFK","DWZ"],["ANZ","JFK"],["FAZ","JFK"],["JFK","CKZ"],["AJZ","JFK"],["AKZ","JFK"],["JFK","BDZ"],["EOZ","JFK"],["AQZ","JFK"],["JFK","CPZ"],["JFK","DVZ"],["APZ","JFK"],["JFK","BYZ"],["JFK","AJZ"],["JFK","EOZ"],["JFK","DMZ"],["JFK","FFZ"],["JFK","ALZ"],["CIZ","JFK"],["DPZ","JFK"],["JFK","DPZ"],["AYZ","JFK"],["JFK","ECZ"],["FJZ","JFK"],["BOZ","JFK"],["JFK","EHZ"],["JFK","AKZ"],["EUZ","JFK"],["JFK","DEZ"],["FMZ","JFK"],["JFK","CAZ"],["JFK","BWZ"],["AMZ","JFK"],["JFK","ERZ"],["BKZ","JFK"],["JFK","ANZ"],["JFK","FMZ"],["JFK","BMZ"],["EWZ","JFK"],["CBZ","JFK"],["DKZ","JFK"],["JFK","EFZ"],["JFK","EVZ"],["JFK","FNZ"],["JFK","CIZ"],["JFK","FBZ"],["DCZ","JFK"],["JFK","AUZ"],["JFK","AWZ"],["DHZ","JFK"],["BXZ","JFK"],["EDZ","JFK"],["JFK","CUZ"],["DTZ","JFK"],["JFK","CSZ"],["JFK","BJZ"],["FLZ","JFK"],["JFK","CVZ"],["JFK","FRZ"],["JFK","ARZ"],["CUZ","JFK"],["CKZ","JFK"],["EEZ","JFK"],["JFK","EGZ"],["JFK","FSZ"],["FOZ","JFK"],["DXZ","JFK"],["JFK","BSZ"],["JFK","DQZ"],["JFK","DYZ"],["JFK","AXZ"],["EJZ","JFK"],["JFK","FDZ"],["JFK","EEZ"],["JFK","BUZ"],["BPZ","JFK"],["ECZ","JFK"],["DQZ","JFK"],["ARZ","JFK"],["JFK","DOZ"],["BEZ","JFK"],["AWZ","JFK"],["EPZ","JFK"],["BJZ","JFK"],["JFK","FJZ"],["FKZ","JFK"],["JFK","BEZ"],["BUZ","JFK"],["JFK","CLZ"],["JFK","CHZ"],["JFK","EBZ"],["JFK","FAZ"],["JFK","DLZ"],["CGZ","JFK"],["DZZ","JFK"],["JFK","DAZ"],["BVZ","JFK"],["JFK","DHZ"],["JFK","EQZ"],["DOZ","JFK"],["JFK","BKZ"],["CTZ","JFK"],["JFK","BTZ"],["FIZ","JFK"],["JFK","EXZ"],["BDZ","JFK"],["JFK","FPZ"],["JFK","BLZ"],["JFK","BGZ"],["JFK","CTZ"],["AZZ","JFK"],["CXZ","JFK"],["JFK","BPZ"],["BAZ","JFK"],["JFK","FKZ"],["BTZ","JFK"],["DLZ","JFK"],["DNZ","JFK"],["FNZ","JFK"],["JFK","FLZ"],["COZ","JFK"],["JFK","DCZ"],["CSZ","JFK"],["CJZ","JFK"],["JFK","FHZ"],["CEZ","JFK"],["DEZ","JFK"],["DDZ","JFK"],["EQZ","JFK"],["JFK","FGZ"],["DMZ","JFK"],["BIZ","JFK"],["BFZ","JFK"],["AVZ","JFK"],["JFK","FTZ"],["JFK","DFZ"],["JFK","BZZ"],["JFK","CDZ"],["JFK","DDZ"],["AXZ","JFK"],["DIZ","JFK"],["JFK","DNZ"],["FDZ","JFK"],["BCZ","JFK"],["BHZ","JFK"],["JFK","COZ"],["BZZ","JFK"],["JFK","BQZ"],["JFK","CCZ"]]],["JFK","AAZ","JFK","ABZ","JFK","ACZ","JFK","ADZ","JFK","AEZ","JFK","AFZ","JFK","AGZ","JFK","AHZ","JFK","AIZ","JFK","AJZ","JFK","AKZ","JFK","ALZ","JFK","AMZ","JFK","ANZ","JFK","AOZ","JFK","APZ","JFK","AQZ","JFK","ARZ","JFK","ASZ","JFK","ATZ","JFK","AUZ","JFK","AVZ","JFK","AWZ","JFK","AXZ","JFK","AYZ","JFK","AZZ","JFK","BAZ","JFK","BBZ","JFK","BCZ","JFK","BDZ","JFK","BEZ","JFK","BFZ","JFK","BGZ","JFK","BHZ","JFK","BIZ","JFK","BJZ","JFK","BKZ","JFK","BLZ","JFK","BMZ","JFK","BNZ","JFK","BOZ","JFK","BPZ","JFK","BQZ","JFK","BRZ","JFK","BSZ","JFK","BTZ","JFK","BUZ","JFK","BVZ","JFK","BWZ","JFK","BXZ","JFK","BYZ","JFK","BZZ","JFK","CAZ","JFK","CBZ","JFK","CCZ","JFK","CDZ","JFK","CEZ","JFK","CFZ","JFK","CGZ","JFK","CHZ","JFK","CIZ","JFK","CJZ","JFK","CKZ","JFK","CLZ","JFK","CMZ","JFK","CNZ","JFK","COZ","JFK","CPZ","JFK","CQZ","JFK","CRZ","JFK","CSZ","JFK","CTZ","JFK","CUZ","JFK","CVZ","JFK","CWZ","JFK","CXZ","JFK","CYZ","JFK","CZZ","JFK","DAZ","JFK","DBZ","JFK","DCZ","JFK","DDZ","JFK","DEZ","JFK","DFZ","JFK","DGZ","JFK","DHZ","JFK","DIZ","JFK","DJZ","JFK","DKZ","JFK","DLZ","JFK","DMZ","JFK","DNZ","JFK","DOZ","JFK","DPZ","JFK","DQZ","JFK","DRZ","JFK","DSZ","JFK","DTZ","JFK","DUZ","JFK","DVZ","JFK","DWZ","JFK","DXZ","JFK","DYZ","JFK","DZZ","JFK","EAZ","JFK","EBZ","JFK","ECZ","JFK","EDZ","JFK","EEZ","JFK","EFZ","JFK","EGZ","JFK","EHZ","JFK","EIZ","JFK","EJZ","JFK","EKZ","JFK","ELZ","JFK","EMZ","JFK","ENZ","JFK","EOZ","JFK","EPZ","JFK","EQZ","JFK","ERZ","JFK","ESZ","JFK","ETZ","JFK","EUZ","JFK","EVZ","JFK","EWZ","JFK","EXZ","JFK","EYZ","JFK","EZZ","JFK","FAZ","JFK","FBZ","JFK","FCZ","JFK","FDZ","JFK","FEZ","JFK","FFZ","JFK","FGZ","JFK","FHZ","JFK","FIZ","JFK","FJZ","JFK","FKZ","JFK","FLZ","JFK","FMZ","JFK","FNZ","JFK","FOZ","JFK","FPZ","JFK","FQZ","JFK","FRZ","JFK","FSZ","JFK","FTZ","JFK"]],
+          [[[["DQQ","DRQ"],["IXQ","IYQ"],["JFK","AAQ"],["CAQ","CBQ"],["AAQ","ABQ"],["BOQ","BPQ"],["ATQ","AUQ"],["CVQ","CWQ"],["CHQ","CIQ"],["BXQ","BYQ"],["CNQ","COQ"],["FOQ","FPQ"],["DBQ","DCQ"],["AKQ","ALQ"],["EJQ","EKQ"],["BSQ","BTQ"],["EFQ","EGQ"],["BHQ","BIQ"],["CSQ","CTQ"],["EXQ","EYQ"],["FDQ","FEQ"],["CZQ","DAQ"],["EQQ","ERQ"],["DSQ","DTQ"],["EDQ","EEQ"],["ARQ","ASQ"],["EKQ","ELQ"],["AVQ","AWQ"],["ANQ","AOQ"],["ELQ","EMQ"],["BRQ","BSQ"],["FNQ","FOQ"],["FKQ","FLQ"],["DIQ","DJQ"],["AYQ","AZQ"],["CUQ","CVQ"],["KUQ","KVQ"],["CMQ","CNQ"],["AWQ","AXQ"],["BAQ","BBQ"],["JXQ","JYQ"],["EUQ","EVQ"],["CGQ","CHQ"],["FLQ","FMQ"],["BLQ","BMQ"],["IWQ","IXQ"],["JPQ","JQQ"],["KAQ","KBQ"],["BWQ","BXQ"],["AIQ","AJQ"],["JLQ","JMQ"],["JEQ","JFQ"],["DZQ","EAQ"],["JZQ","KAQ"],["GHQ","GIQ"],["JSQ","JTQ"],["DXQ","DYQ"],["HFQ","HGQ"],["HBQ","HCQ"],["AGQ","AHQ"],["FBQ","FCQ"],["BKQ","BLQ"],["AQQ","ARQ"],["AOQ","APQ"],["GXQ","GYQ"],["GZQ","HAQ"],["HTQ","HUQ"],["IMQ","INQ"],["JMQ","JNQ"],["BTQ","BUQ"],["IOQ","IPQ"],["JDQ","JEQ"],["BFQ","BGQ"],["JRQ","JSQ"],["HLQ","HMQ"],["AEQ","AFQ"],["HKQ","HLQ"],["APQ","AQQ"],["HSQ","HTQ"],["CRQ","CSQ"],["CBQ","CCQ"],["GOQ","GPQ"],["JNQ","JOQ"],["KCQ","KDQ"],["FCQ","FDQ"],["IJQ","IKQ"],["DLQ","DMQ"],["GQQ","GRQ"],["GKQ","GLQ"],["GPQ","GQQ"],["HVQ","HWQ"],["JQQ","JRQ"],["HOQ","HPQ"],["HCQ","HDQ"],["JKQ","JLQ"],["HXQ","HYQ"],["IIQ","IJQ"],["JWQ","JXQ"],["EZQ","FAQ"],["AUQ","AVQ"],["ENQ","EOQ"],["BJQ","BKQ"],["EVQ","EWQ"],["GVQ","GWQ"],["CTQ","CUQ"],["CEQ","CFQ"],["KBQ","KCQ"],["JJQ","JKQ"],["FHQ","FIQ"],["DFQ","DGQ"],["HYQ","HZQ"],["JTQ","JUQ"],["ECQ","EDQ"],["ACQ","ADQ"],["FQQ","FRQ"],["JYQ","JZQ"],["GTQ","GUQ"],["LFQ","LGQ"],["EMQ","ENQ"],["FVQ","FWQ"],["GEQ","GFQ"],["HWQ","HXQ"],["JVQ","JWQ"],["KEQ","KFQ"],["GIQ","GJQ"],["KXQ","KYQ"],["IEQ","IFQ"],["HNQ","HOQ"],["FYQ","FZQ"],["AZQ","BAQ"],["IKQ","ILQ"],["EIQ","EJQ"],["KFQ","KGQ"],["LLQ","LMQ"],["FPQ","FQQ"],["BVQ","BWQ"],["CJQ","CKQ"],["ERQ","ESQ"],["FGQ","FHQ"],["IPQ","IQQ"],["LGQ","LHQ"],["DCQ","DDQ"],["IVQ","IWQ"],["DDQ","DEQ"],["CXQ","CYQ"],["JFQ","JGQ"],["ADQ","AEQ"],["HMQ","HNQ"],["ASQ","ATQ"],["CYQ","CZQ"],["ALQ","AMQ"],["KYQ","KZQ"],["CIQ","CJQ"],["LHQ","LIQ"],["DTQ","DUQ"],["IBQ","ICQ"],["HQQ","HRQ"],["KIQ","KJQ"],["CLQ","CMQ"],["AXQ","AYQ"],["HUQ","HVQ"],["HRQ","HSQ"],["HAQ","HBQ"],["DNQ","DOQ"],["IRQ","ISQ"],["BQQ","BRQ"],["KTQ","KUQ"],["DMQ","DNQ"],["HGQ","HHQ"],["EYQ","EZQ"],["IUQ","IVQ"],["EPQ","EQQ"],["KDQ","KEQ"],["JOQ","JPQ"],["ISQ","ITQ"],["ICQ","IDQ"],["DGQ","DHQ"],["GBQ","GCQ"],["AHQ","AIQ"],["LIQ","LJQ"],["ABQ","ACQ"],["IQQ","IRQ"],["CDQ","CEQ"],["CCQ","CDQ"],["DRQ","DSQ"],["KJQ","KKQ"],["FFQ","FGQ"],["FMQ","FNQ"],["KVQ","KWQ"],["BMQ","BNQ"],["LBQ","LCQ"],["KOQ","KPQ"],["CWQ","CXQ"],["KZQ","LAQ"],["IDQ","IEQ"],["BNQ","BOQ"],["BGQ","BHQ"],["GGQ","GHQ"],["DHQ","DIQ"],["DYQ","DZQ"],["JUQ","JVQ"],["KWQ","KXQ"],["HJQ","HKQ"],["EBQ","ECQ"],["HPQ","HQQ"],["DAQ","DBQ"],["KLQ","KMQ"],["DUQ","DVQ"],["HIQ","HJQ"],["AJQ","AKQ"],["GRQ","GSQ"],["IHQ","IIQ"],["JIQ","JJQ"],["FUQ","FVQ"],["GAQ","GBQ"],["AMQ","ANQ"],["BPQ","BQQ"],["DEQ","DFQ"],["EHQ","EIQ"],["CFQ","CGQ"],["HZQ","IAQ"],["EAQ","EBQ"],["JGQ","JHQ"],["IYQ","IZQ"],["LAQ","LBQ"],["GYQ","GZQ"],["JCQ","JDQ"],["EEQ","EFQ"],["DWQ","DXQ"],["KQQ","KRQ"],["BCQ","BDQ"],["KMQ","KNQ"],["HDQ","HEQ"],["LEQ","LFQ"],["JHQ","JIQ"],["AFQ","AGQ"],["KGQ","KHQ"],["FRQ","FSQ"],["IFQ","IGQ"],["IZQ","JAQ"],["ILQ","IMQ"],["KHQ","KIQ"],["LCQ","LDQ"],["DKQ","DLQ"],["FWQ","FXQ"],["EOQ","EPQ"],["JAQ","JBQ"],["FTQ","FUQ"],["DOQ","DPQ"],["DPQ","DQQ"],["FXQ","FYQ"],["CPQ","CQQ"],["BBQ","BCQ"],["IGQ","IHQ"],["FAQ","FBQ"],["BUQ","BVQ"],["IAQ","IBQ"],["HHQ","HIQ"],["INQ","IOQ"],["ETQ","EUQ"],["FZQ","GAQ"],["GCQ","GDQ"],["DJQ","DKQ"],["FSQ","FTQ"],["BZQ","CAQ"],["FEQ","FFQ"],["GNQ","GOQ"],["FIQ","FJQ"],["FJQ","FKQ"],["KNQ","KOQ"],["GDQ","GEQ"],["BIQ","BJQ"],["GUQ","GVQ"],["GWQ","GXQ"],["LJQ","LKQ"],["KPQ","KQQ"],["CQQ","CRQ"],["HEQ","HFQ"],["GFQ","GGQ"],["DVQ","DWQ"],["ESQ","ETQ"],["GMQ","GNQ"],["ITQ","IUQ"],["KSQ","KTQ"],["BDQ","BEQ"],["KKQ","KLQ"],["LDQ","LEQ"],["GLQ","GMQ"],["BYQ","BZQ"],["EWQ","EXQ"],["GJQ","GKQ"],["KRQ","KSQ"],["COQ","CPQ"],["CKQ","CLQ"],["BEQ","BFQ"],["GSQ","GTQ"],["LMQ","LNQ"],["LKQ","LLQ"],["JBQ","JCQ"],["EGQ","EHQ"]]],["JFK","AAQ","ABQ","ACQ","ADQ","AEQ","AFQ","AGQ","AHQ","AIQ","AJQ","AKQ","ALQ","AMQ","ANQ","AOQ","APQ","AQQ","ARQ","ASQ","ATQ","AUQ","AVQ","AWQ","AXQ","AYQ","AZQ","BAQ","BBQ","BCQ","BDQ","BEQ","BFQ","BGQ","BHQ","BIQ","BJQ","BKQ","BLQ","BMQ","BNQ","BOQ","BPQ","BQQ","BRQ","BSQ","BTQ","BUQ","BVQ","BWQ","BXQ","BYQ","BZQ","CAQ","CBQ","CCQ","CDQ","CEQ","CFQ","CGQ","CHQ","CIQ","CJQ","CKQ","CLQ","CMQ","CNQ","COQ","CPQ","CQQ","CRQ","CSQ","CTQ","CUQ","CVQ","CWQ","CXQ","CYQ","CZQ","DAQ","DBQ","DCQ","DDQ","DEQ","DFQ","DGQ","DHQ","DIQ","DJQ","DKQ","DLQ","DMQ","DNQ","DOQ","DPQ","DQQ","DRQ","DSQ","DTQ","DUQ","DVQ","DWQ","DXQ","DYQ","DZQ","EAQ","EBQ","ECQ","EDQ","EEQ","EFQ","EGQ","EHQ","EIQ","EJQ","EKQ","ELQ","EMQ","ENQ","EOQ","EPQ","EQQ","ERQ","ESQ","ETQ","EUQ","EVQ","EWQ","EXQ","EYQ","EZQ","FAQ","FBQ","FCQ","FDQ","FEQ","FFQ","FGQ","FHQ","FIQ","FJQ","FKQ","FLQ","FMQ","FNQ","FOQ","FPQ","FQQ","FRQ","FSQ","FTQ","FUQ","FVQ","FWQ","FXQ","FYQ","FZQ","GAQ","GBQ","GCQ","GDQ","GEQ","GFQ","GGQ","GHQ","GIQ","GJQ","GKQ","GLQ","GMQ","GNQ","GOQ","GPQ","GQQ","GRQ","GSQ","GTQ","GUQ","GVQ","GWQ","GXQ","GYQ","GZQ","HAQ","HBQ","HCQ","HDQ","HEQ","HFQ","HGQ","HHQ","HIQ","HJQ","HKQ","HLQ","HMQ","HNQ","HOQ","HPQ","HQQ","HRQ","HSQ","HTQ","HUQ","HVQ","HWQ","HXQ","HYQ","HZQ","IAQ","IBQ","ICQ","IDQ","IEQ","IFQ","IGQ","IHQ","IIQ","IJQ","IKQ","ILQ","IMQ","INQ","IOQ","IPQ","IQQ","IRQ","ISQ","ITQ","IUQ","IVQ","IWQ","IXQ","IYQ","IZQ","JAQ","JBQ","JCQ","JDQ","JEQ","JFQ","JGQ","JHQ","JIQ","JJQ","JKQ","JLQ","JMQ","JNQ","JOQ","JPQ","JQQ","JRQ","JSQ","JTQ","JUQ","JVQ","JWQ","JXQ","JYQ","JZQ","KAQ","KBQ","KCQ","KDQ","KEQ","KFQ","KGQ","KHQ","KIQ","KJQ","KKQ","KLQ","KMQ","KNQ","KOQ","KPQ","KQQ","KRQ","KSQ","KTQ","KUQ","KVQ","KWQ","KXQ","KYQ","KZQ","LAQ","LBQ","LCQ","LDQ","LEQ","LFQ","LGQ","LHQ","LIQ","LJQ","LKQ","LLQ","LMQ","LNQ"]]
+        ] },
       solution: {
         approach: `<p>Hierholzer with min-heaps. Popping a dead-end airport first means it lands at the end of the itinerary, which is exactly where a dead end must go.</p>`,
         code: `class Solution {
@@ -1254,6 +2501,60 @@ for comp in tarjan(len(names), adj):
         return route;
     }
 }`,
+      alt: [{ lang: 'python', code: `import heapq
+from collections import defaultdict
+
+
+def find_itinerary(tickets):
+    graph = defaultdict(list)                 # airport -> min-heap of destinations
+    for src, dst in tickets:
+        heapq.heappush(graph[src], dst)
+    route = []
+    stack = ['JFK']
+    while stack:
+        heap = graph[stack[-1]]
+        if heap:
+            stack.append(heapq.heappop(heap))     # use the smallest unused ticket
+        else:
+            route.append(stack.pop())             # stuck: this airport is final here
+    return route[::-1]
+` }, { lang: 'js', code: `function findItinerary(tickets) {
+  const graph = new Map();                       // airport -> destinations, largest first
+  for (const [from, to] of tickets) {
+    if (!graph.has(from)) graph.set(from, []);
+    graph.get(from).push(to);
+  }
+  for (const list of graph.values()) list.sort().reverse();   // so pop() gives the smallest
+  const route = [], stack = ['JFK'];
+  while (stack.length) {
+    const list = graph.get(stack[stack.length - 1]);
+    if (list && list.length) stack.push(list.pop());   // use the smallest unused ticket
+    else route.push(stack.pop());                      // stuck: this airport is final here
+  }
+  return route.reverse();
+}
+` }, { lang: 'cpp', code: `class Solution {
+public:
+    vector<string> findItinerary(vector<vector<string>>& tickets) {
+        unordered_map<string, priority_queue<string, vector<string>, greater<string>>> g;
+        for (auto& t : tickets) g[t[0]].push(t[1]);
+        vector<string> route, stack{"JFK"};
+        while (!stack.empty()) {
+            auto& pq = g[stack.back()];
+            if (!pq.empty()) {
+                string next = pq.top();           // use the smallest unused ticket
+                pq.pop();
+                stack.push_back(next);
+            } else {
+                route.push_back(stack.back());    // stuck: this airport is final here
+                stack.pop_back();
+            }
+        }
+        reverse(route.begin(), route.end());
+        return route;
+    }
+};
+` }],
         dry: {
           head: ['stack (bottom → top)', 'action', 'route'],
           rows: [
@@ -1307,7 +2608,7 @@ for comp in tarjan(len(names), adj):
       '"Where are you after <b>k = 10<sup>18</sup> moves</b>" in a graph where every node has exactly one next node (functional graph) → binary lifting with LOG = 60.',
       '"Is u an ancestor of v?" for many pairs → LCA, or simpler Euler-tour entry/exit times.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       class BinaryLifting {
           final int LOG;
           final int[][] up;        // up[k][v] = 2^k-th ancestor of v (the root's ancestor is the root itself)
@@ -1347,7 +2648,128 @@ for comp in tarjan(len(names), adj):
           }
 
           int distance(int u, int v) { return depth[u] + depth[v] - 2 * depth[lca(u, v)]; }
-      }`, `
+      }`, alt: [{ lang: 'python', code: `from collections import deque
+
+
+class BinaryLifting:
+    def __init__(self, n, children, root):
+        self.log = 1
+        while (1 << self.log) < n:
+            self.log += 1                       # 2^LOG >= n: any depth difference fits in LOG bits
+        self.depth = [0] * n
+        up0 = [0] * n                           # up[k][v] = 2^k-th ancestor of v (the root's ancestor is the root)
+        up0[root] = root
+        queue = deque([root])                   # BFS: parents are processed before children
+        while queue:
+            v = queue.popleft()
+            for c in children[v]:
+                self.depth[c] = self.depth[v] + 1
+                up0[c] = v
+                queue.append(c)
+        self.up = [up0]
+        for k in range(1, self.log):
+            prev = self.up[k - 1]
+            self.up.append([prev[prev[v]] for v in range(n)])   # 2^k steps = 2^(k-1) steps twice
+
+    def kth_ancestor(self, v, k):               # -1 if the tree is not that tall
+        if k > self.depth[v]:
+            return -1
+        for b in range(self.log):
+            if k >> b & 1:
+                v = self.up[b][v]
+        return v
+
+    def lca(self, u, v):
+        if self.depth[u] < self.depth[v]:
+            u, v = v, u
+        u = self.kth_ancestor(u, self.depth[u] - self.depth[v])    # 1) same depth
+        if u == v:                                                  # 2) v was an ancestor of u
+            return u
+        for k in range(self.log - 1, -1, -1):                       # 3) biggest jumps that keep them apart
+            if self.up[k][u] != self.up[k][v]:
+                u, v = self.up[k][u], self.up[k][v]
+        return self.up[0][u]                                        # they are now children of the LCA
+
+    def distance(self, u, v):
+        return self.depth[u] + self.depth[v] - 2 * self.depth[self.lca(u, v)]
+` }, { lang: 'js', code: `class BinaryLifting {
+  constructor(n, children, root) {
+    let log = 1;
+    while ((1 << log) < n) log++;               // 2^LOG >= n: any depth difference fits in LOG bits
+    this.LOG = log;
+    this.depth = new Array(n).fill(0);
+    const up0 = new Array(n).fill(0);           // up[k][v] = 2^k-th ancestor of v (the root's ancestor is the root)
+    up0[root] = root;
+    const queue = [root];                       // BFS: parents are processed before children
+    for (let h = 0; h < queue.length; h++) {
+      const v = queue[h];
+      for (const c of children[v]) { this.depth[c] = this.depth[v] + 1; up0[c] = v; queue.push(c); }
+    }
+    this.up = [up0];
+    for (let k = 1; k < log; k++) {
+      const prev = this.up[k - 1];
+      this.up.push(prev.map((mid) => prev[mid]));            // 2^k steps = 2^(k-1) steps twice
+    }
+  }
+
+  kthAncestor(v, k) {                           // -1 if the tree is not that tall
+    if (k > this.depth[v]) return -1;
+    for (let b = 0; b < this.LOG; b++) if ((k >> b) & 1) v = this.up[b][v];
+    return v;
+  }
+
+  lca(u, v) {
+    if (this.depth[u] < this.depth[v]) [u, v] = [v, u];
+    u = this.kthAncestor(u, this.depth[u] - this.depth[v]);  // 1) same depth
+    if (u === v) return u;                                    // 2) v was an ancestor of u
+    for (let k = this.LOG - 1; k >= 0; k--)                   // 3) biggest jumps that keep them apart
+      if (this.up[k][u] !== this.up[k][v]) { u = this.up[k][u]; v = this.up[k][v]; }
+    return this.up[0][u];                                     // they are now children of the LCA
+  }
+
+  distance(u, v) { return this.depth[u] + this.depth[v] - 2 * this.depth[this.lca(u, v)]; }
+}
+` }, { lang: 'cpp', code: `class BinaryLifting {
+    int LOG;
+    vector<vector<int>> up;     // up[k][v] = 2^k-th ancestor of v (the root's ancestor is the root itself)
+    vector<int> depth;
+
+public:
+    BinaryLifting(int n, const vector<vector<int>>& children, int root) : depth(n, 0) {
+        LOG = 1;
+        while ((1 << LOG) < n) LOG++;           // 2^LOG >= n: any depth difference fits in LOG bits
+        up.assign(LOG, vector<int>(n, 0));
+        queue<int> q;                           // BFS: parents are processed before children
+        q.push(root);
+        up[0][root] = root;
+        while (!q.empty()) {
+            int v = q.front();
+            q.pop();
+            for (int c : children[v]) { depth[c] = depth[v] + 1; up[0][c] = v; q.push(c); }
+        }
+        for (int k = 1; k < LOG; k++)
+            for (int v = 0; v < n; v++)
+                up[k][v] = up[k - 1][up[k - 1][v]];   // 2^k steps = 2^(k-1) steps twice
+    }
+
+    int kthAncestor(int v, int k) const {       // -1 if the tree is not that tall
+        if (k > depth[v]) return -1;
+        for (int b = 0; b < LOG; b++) if (k >> b & 1) v = up[b][v];
+        return v;
+    }
+
+    int lca(int u, int v) const {
+        if (depth[u] < depth[v]) swap(u, v);
+        u = kthAncestor(u, depth[u] - depth[v]);  // 1) same depth
+        if (u == v) return u;                     // 2) v was an ancestor of u
+        for (int k = LOG - 1; k >= 0; k--)        // 3) biggest jumps that keep them apart
+            if (up[k][u] != up[k][v]) { u = up[k][u]; v = up[k][v]; }
+        return up[0][u];                          // they are now children of the LCA
+    }
+
+    int distance(int u, int v) const { return depth[u] + depth[v] - 2 * depth[lca(u, v)]; }
+};
+` }] }, { lang: 'java', code: `
       class LcaEulerTour {
           // O(N log N) build, O(1) query: LCA = shallowest node between the first visits of u and v.
           final int[] first, euler, depthAt, lg;
@@ -1395,8 +2817,146 @@ for comp in tarjan(len(names), adj):
               int a = sparse[k][l], b = sparse[k][r - (1 << k) + 1];   // two overlapping blocks
               return euler[depthAt[a] <= depthAt[b] ? a : b];
           }
-      }`],
-    codeTitle: ['Binary lifting: k-th ancestor, LCA, distance (Java)', 'Alternative: Euler tour + sparse table, O(1) per query (Java)'],
+      }`, alt: [{ lang: 'python', code: `class LcaEulerTour:
+    # O(N log N) build, O(1) query: LCA = shallowest node between the first visits of u and v.
+    def __init__(self, n, children, root):
+        self.first = [0] * n
+        self.euler = [root]
+        self.depth_at = [0]
+        depth = [0] * n
+        it = [0] * n
+        stack = [root]
+        while stack:                            # write v on entry and after each child
+            v = stack[-1]
+            if it[v] < len(children[v]):
+                c = children[v][it[v]]
+                it[v] += 1
+                depth[c] = depth[v] + 1
+                self.first[c] = len(self.euler)
+                self.euler.append(c)
+                self.depth_at.append(depth[c])
+                stack.append(c)
+            else:
+                stack.pop()
+                if stack:
+                    p = stack[-1]
+                    self.euler.append(p)
+                    self.depth_at.append(depth[p])
+        length = len(self.euler)
+        self.lg = [0] * (length + 1)
+        for i in range(2, length + 1):
+            self.lg[i] = self.lg[i // 2] + 1
+        # sparse[k][i] = position of the min depth in tour[i .. i + 2^k)
+        self.sparse = [list(range(length))]
+        k = 1
+        while (1 << k) <= length:
+            prev, half = self.sparse[-1], 1 << (k - 1)
+            row = []
+            for i in range(length - (1 << k) + 1):
+                a, b = prev[i], prev[i + half]
+                row.append(a if self.depth_at[a] <= self.depth_at[b] else b)
+            self.sparse.append(row)
+            k += 1
+
+    def lca(self, u, v):
+        l, r = sorted((self.first[u], self.first[v]))
+        k = self.lg[r - l + 1]
+        a = self.sparse[k][l]                    # two overlapping blocks
+        b = self.sparse[k][r - (1 << k) + 1]
+        return self.euler[a if self.depth_at[a] <= self.depth_at[b] else b]
+` }, { lang: 'js', code: `class LcaEulerTour {
+  // O(N log N) build, O(1) query: LCA = shallowest node between the first visits of u and v.
+  constructor(n, children, root) {
+    this.first = new Array(n).fill(0);
+    this.euler = [root];
+    this.depthAt = [0];
+    const depth = new Array(n).fill(0), it = new Array(n).fill(0);
+    const stack = [root];
+    while (stack.length) {                      // write v on entry and after each child
+      const v = stack[stack.length - 1];
+      if (it[v] < children[v].length) {
+        const c = children[v][it[v]++];
+        depth[c] = depth[v] + 1;
+        this.first[c] = this.euler.length;
+        this.euler.push(c);
+        this.depthAt.push(depth[c]);
+        stack.push(c);
+      } else {
+        stack.pop();
+        if (stack.length) {
+          const p = stack[stack.length - 1];
+          this.euler.push(p);
+          this.depthAt.push(depth[p]);
+        }
+      }
+    }
+    const len = this.euler.length;
+    this.lg = new Array(len + 1).fill(0);
+    for (let i = 2; i <= len; i++) this.lg[i] = this.lg[i >> 1] + 1;
+    // sparse[k][i] = position of the min depth in tour[i .. i + 2^k)
+    this.sparse = [Array.from({ length: len }, (_, i) => i)];
+    for (let k = 1; (1 << k) <= len; k++) {
+      const prev = this.sparse[k - 1], half = 1 << (k - 1), row = [];
+      for (let i = 0; i + (1 << k) <= len; i++) {
+        const a = prev[i], b = prev[i + half];
+        row.push(this.depthAt[a] <= this.depthAt[b] ? a : b);
+      }
+      this.sparse.push(row);
+    }
+  }
+
+  lca(u, v) {
+    const l = Math.min(this.first[u], this.first[v]), r = Math.max(this.first[u], this.first[v]);
+    const k = this.lg[r - l + 1];
+    const a = this.sparse[k][l], b = this.sparse[k][r - (1 << k) + 1];   // two overlapping blocks
+    return this.euler[this.depthAt[a] <= this.depthAt[b] ? a : b];
+  }
+}
+` }, { lang: 'cpp', code: `class LcaEulerTour {
+    // O(N log N) build, O(1) query: LCA = shallowest node between the first visits of u and v.
+    vector<int> first, euler, depthAt, lg;
+    vector<vector<int>> sparse;     // sparse[k][i] = position of the min depth in tour[i .. i + 2^k)
+
+public:
+    LcaEulerTour(int n, const vector<vector<int>>& children, int root) : first(n, 0) {
+        vector<int> depth(n, 0), it(n, 0), stack{root};
+        euler.push_back(root);
+        depthAt.push_back(0);
+        while (!stack.empty()) {                // write v on entry and after each child
+            int v = stack.back();
+            if (it[v] < (int)children[v].size()) {
+                int c = children[v][it[v]++];
+                depth[c] = depth[v] + 1;
+                first[c] = euler.size();
+                euler.push_back(c);
+                depthAt.push_back(depth[c]);
+                stack.push_back(c);
+            } else {
+                stack.pop_back();
+                if (!stack.empty()) { int p = stack.back(); euler.push_back(p); depthAt.push_back(depth[p]); }
+            }
+        }
+        int len = euler.size();
+        lg.assign(len + 1, 0);
+        for (int i = 2; i <= len; i++) lg[i] = lg[i / 2] + 1;
+        sparse.assign(lg[len] + 1, vector<int>(len, 0));
+        for (int i = 0; i < len; i++) sparse[0][i] = i;
+        for (int k = 1; k <= lg[len]; k++)
+            for (int i = 0; i + (1 << k) <= len; i++) {
+                int a = sparse[k - 1][i], b = sparse[k - 1][i + (1 << (k - 1))];
+                sparse[k][i] = depthAt[a] <= depthAt[b] ? a : b;
+            }
+    }
+
+    int lca(int u, int v) const {
+        int l = min(first[u], first[v]), r = max(first[u], first[v]);
+        int k = lg[r - l + 1];
+        int a = sparse[k][l], b = sparse[k][r - (1 << k) + 1];   // two overlapping blocks
+        return euler[depthAt[a] <= depthAt[b] ? a : b];
+    }
+};
+` }] }],
+    codeTitle: ['Binary lifting: k-th ancestor, LCA, distance', 'Alternative: Euler tour + sparse table, O(1) per query'],
     viz: {
       title: 'Binary lifting: build the 2^k jump table, then answer LCA(u, v) with big jumps',
       input: '-1 0 0 1 1 2 2 3 3 4 6 7 | 11 9',
@@ -1487,11 +3047,28 @@ for comp in tarjan(len(names), adj):
       { title: 'Building one column of the table by hand', html: `<p>Chain 0 ← 1 ← 2 ← 3 ← 4 ← 5 (0 is the root). For node 5:</p>${H.table(['k', 'jump size', 'up[k][5]', 'how'], [['0', '1', '4', 'parent'], ['1', '2', '3', 'up[0][up[0][5]] = up[0][4] = 3'], ['2', '4', '1', 'up[1][up[1][5]] = up[1][3] = 1']])}<p>Jumping 5 levels from node 5 = jump 4 (→ 1) then jump 1 (→ 0). Two lookups instead of five steps.</p>` },
       { title: 'One node is the ancestor of the other', html: `<p>LCA(5, 2) in the chain above: depth 5 vs 2, diff 3 = 011<sub>2</sub> → jump 1 (5 → 4), jump 2 (4 → 2). Now u == v == 2 → answer <b>2</b>. Forgetting the <code>if (u == v) return u;</code> check makes the final loop return the parent of 2 — ${H.c('r', 'a classic bug')}.</p>` },
       { title: 'Distance query', html: `<p>Tree with depths: LCA(11, 9) in the visualizer's default tree is 1. depth[11] = 4, depth[9] = 3, depth[1] = 1 → distance = 4 + 3 − 2·1 = <b>5</b> edges (11 → 7 → 3 → 1 → 4 → 9). ${H.c('g', 'Matches counting by hand.')}</p>` },
-      { title: 'k-th ancestor (LC 1483) in O(log k)', html: `<p>k = 6 = 110<sub>2</sub>: apply up[1] then up[2]. Order of the jumps does not matter — 2 + 4 = 4 + 2. If k &gt; depth[v], return −1 instead of silently sticking at the root.</p>`, code: `int kth(int[][] up, int[] depth, int v, int k) {
+      { title: 'k-th ancestor (LC 1483) in O(log k)', html: `<p>k = 6 = 110<sub>2</sub>: apply up[1] then up[2]. Order of the jumps does not matter — 2 + 4 = 4 + 2. If k &gt; depth[v], return −1 instead of silently sticking at the root.</p>`, code: { lang: 'java', code: `int kth(int[][] up, int[] depth, int v, int k) {
     if (k > depth[v]) return -1;
     for (int b = 0; b < up.length; b++) if ((k >> b & 1) == 1) v = up[b][v];
     return v;
-}` }
+}`, alt: [{ lang: 'python', code: `def kth(up, depth, v, k):
+    if k > depth[v]:
+        return -1
+    for b in range(len(up)):
+        if k >> b & 1:
+            v = up[b][v]
+    return v
+` }, { lang: 'js', code: `function kth(up, depth, v, k) {
+  if (k > depth[v]) return -1;
+  for (let b = 0; b < up.length; b++) if ((k >> b) & 1) v = up[b][v];
+  return v;
+}
+` }, { lang: 'cpp', code: `int kth(const vector<vector<int>>& up, const vector<int>& depth, int v, int k) {
+    if (k > depth[v]) return -1;
+    for (int b = 0; b < (int)up.size(); b++) if (k >> b & 1) v = up[b][v];
+    return v;
+}
+` }] } }
     ],
     deepDive: `<p><b>Why the "jump while different" loop is correct.</b> Let L = LCA. For every k, <code>up[k][u] == up[k][v]</code> exactly when 2<sup>k</sup> ≥ depth[u] − depth[L] (the jump reaches L or above). Going from large k to small k greedily builds the binary representation of <code>depth[u] − depth[L] − 1</code> — the largest climb that keeps them apart. After the loop both are exactly one step below L.</p>
       <p><b>Choosing an LCA method:</b></p>
@@ -1512,7 +3089,7 @@ for comp in tarjan(len(names), adj):
       title: 'Weighted Tree Distance Queries',
       level: 'Medium', tags: ['lca', 'binary lifting', 'tree'], companies: ['Google', 'Amazon', 'Directi'],
       statement: `<p>A weighted tree has <code>n</code> nodes (0 … n−1), given as <code>edges[i] = [u, v, w]</code>. Answer <code>q</code> queries <code>[a, b]</code>: the total weight of the unique path between a and b.</p>`,
-      constraints: `<p>1 ≤ n, q ≤ 10<sup>5</sup>, 1 ≤ w ≤ 10<sup>9</sup> (use <code>long</code>).</p>`,
+      constraints: `<p>1 ≤ n, q ≤ 10<sup>5</sup>, 1 ≤ w ≤ 10<sup>9</sup> (distance sums need 64-bit integers).</p>`,
       example: `<p>n = 6, edges <code>(0,1,3) (0,2,2) (1,3,4) (1,4,1) (2,5,7)</code>, queries <code>(3,4) (3,5) (4,1)</code> → <b>${H.c('g', '[5, 16, 1]')}</b>.</p><p>Why: dist from root = [0, 3, 2, 7, 4, 9]. (3,4): LCA = 1 → 7 + 4 − 2·3 = 5. (3,5): LCA = 0 → 7 + 9 − 0 = 16. (4,1): LCA = 1 → 4 + 3 − 6 = 1.</p>`,
       brute: {
         why: `<p>For each query, climb parent pointers from both nodes until they meet, adding edge weights. On a chain each query costs O(n) → O(n·q) = 10<sup>10</sup>. The waste: we re-climb the same long stretches for every query.</p>`,
@@ -1550,8 +3127,50 @@ for comp in tarjan(len(names), adj):
       hints: [
         `<p>Hint 1: Root the tree at 0 and store dist[v] = weight from the root. The path a → b goes up to LCA(a, b) and back down, so its weight is dist[a] + dist[b] − 2·dist[LCA].</p>`,
         `<p>Hint 2: Many queries → precompute up[k][v] with one BFS plus doubling, then each LCA costs O(log n).</p>`,
-        `<p>Hint 3: Recipe — BFS from 0 fills up[0], depth, dist (no recursion). Build up[k] for k = 1..LOG−1. For each query: equalise depths by the bits of the difference, return early if equal, else jump both while different, LCA = parent. Use long for dist.</p>`
+        `<p>Hint 3: Recipe — BFS from 0 fills up[0], depth, dist (no recursion). Build up[k] for k = 1..LOG−1. For each query: equalise depths by the bits of the difference, return early if equal, else jump both while different, LCA = parent. Keep dist in a 64-bit integer.</p>`
       ],
+      tests: { sig: "string int int[][] int[][] -> long[]", fn: "dist", cases: [
+          [["",6,[[0,1,3],[0,2,2],[1,3,4],[1,4,1],[2,5,7]],[[3,4],[3,5],[4,1]]],[5,16,1]],
+          [["",1,[],[[0,0]]],[0]],
+          [["",2,[[1,0,1000000000]],[[0,1],[1,0],[1,1]]],[1000000000,1000000000,0]],
+          [["",5,[[0,1,1],[1,2,1],[2,3,1],[3,4,1]],[[0,4],[4,0],[1,3],[2,2]]],[4,4,2,0]],
+          [["",5,[[0,1,5],[0,2,5],[0,3,5],[0,4,5]],[[1,2],[3,4],[0,4],[4,0]]],[10,10,5,5]],
+          [["",4,[[3,2,7],[2,1,6],[1,0,5]],[[3,0],[2,0],[3,1]]],[18,11,13]],
+          [["",9,[[0,7,1],[3,0,6],[1,7,20],[4,7,17],[5,0,20],[8,0,5],[8,2,18],[4,6,13]],[[1,5],[5,2],[7,5],[0,8],[3,3],[7,2]]],[41,43,21,5,0,24]],
+          [["",3,[[1,0,16],[0,2,2]],[[0,2],[1,0],[2,0],[2,2],[0,1],[2,2]]],[2,16,2,0,16,0]],
+          [["",8,[[0,6,20],[6,5,15],[6,1,19],[4,5,8],[2,5,9],[7,2,16],[6,3,3]],[[4,6],[1,4],[0,2],[5,2],[5,1],[2,7]]],[23,42,44,9,34,16]],
+          [["",9,[[8,4,16],[1,8,18],[1,2,4],[8,3,6],[8,7,1],[2,0,6],[8,5,17],[3,6,14]],[[3,5],[1,0],[3,4],[0,5],[4,4],[3,4]]],[23,10,22,45,0,22]],
+          [["",5,[[1,2,14],[4,2,20],[2,3,8],[0,2,20]],[[1,0],[3,3],[3,2],[1,0],[4,4],[2,0]]],[34,0,8,34,0,20]],
+          [["",9,[[3,4,12],[2,4,14],[8,2,8],[5,4,17],[2,1,20],[8,6,2],[4,7,11],[5,0,9]],[[0,5],[8,0],[1,3],[7,8],[7,4],[0,6]]],[9,48,46,33,11,50]],
+          [["",5,[[0,1,12],[2,1,12],[1,4,12],[3,1,8]],[[1,0],[1,1],[3,2],[1,1],[3,1],[4,2]]],[12,0,20,0,8,24]],
+          [["",3,[[0,1,12],[1,2,8]],[[2,1],[0,0],[0,0],[2,1],[1,0],[2,0]]],[8,0,0,8,12,20]],
+          [["chain",100000,[],[[0,99999],[99999,0],[50000,99999],[7,7]]],[99999000000000,99999000000000,49999000000000,0]],
+          [["chain",100000,[],{"$rep":[0,99999],"n":100000}],{"$rep":99999000000000,"n":100000}],
+          [["binary",100000,[],[[99999,99998],[99999,1],[2,99999],[65535,65536],[0,99999],[5,5]]],[12000000000,17000000000,15000000000,2000000000,16000000000,0]]
+        ], harness: { java: `class Check {
+  static long[] dist(String kind, int n, int[][] edges, int[][] queries) {
+    if (!kind.isEmpty()) {
+      edges = new int[n - 1][];
+      for (int i = 1; i < n; i++) edges[i - 1] = kind.equals("chain") ? new int[]{i - 1, i, 1000000000} : new int[]{(i - 1) / 2, i, 1000000000};
+    }
+    return new Solution().treeDistances(n, edges, queries);
+  }
+}`, python: `def dist(kind, n, edges, queries):
+    if kind != '':
+        edges = [[i - 1 if kind == 'chain' else (i - 1) // 2, i, 10 ** 9] for i in range(1, n)]
+    return tree_distances(n, edges, queries)`, js: `function dist(kind, n, edges, queries) {
+  if (kind !== '') {
+    edges = [];
+    for (let i = 1; i < n; i++) edges.push([kind === 'chain' ? i - 1 : (i - 1) >> 1, i, 1000000000]);
+  }
+  return treeDistances(n, edges, queries);
+}`, cpp: `vector<long long> dist(string kind, int n, vector<vector<int>> edges, vector<vector<int>> queries) {
+  if (!kind.empty()) {
+    edges.clear();
+    for (int i = 1; i < n; i++) edges.push_back({kind == "chain" ? i - 1 : (i - 1) / 2, i, 1000000000});
+  }
+  return Solution().treeDistances(n, edges, queries);
+}` } },
       solution: {
         approach: `<p>Binary lifting for LCA plus root distances. Building is O(n log n); every query O(log n).</p>`,
         code: `class Solution {
@@ -1601,6 +3220,138 @@ for comp in tarjan(len(names), adj):
         return up[0][u];
     }
 }`,
+      alt: [{ lang: 'python', code: `from collections import deque
+
+
+def tree_distances(n, edges, queries):
+    adj = [[] for _ in range(n)]
+    for u, v, w in edges:
+        adj[u].append((v, w))
+        adj[v].append((u, w))
+
+    LOG = max(1, (n - 1).bit_length())            # 2^LOG >= n
+    up = [[0] * n for _ in range(LOG)]            # up[k][v] = 2^k-th ancestor (the root points to itself)
+    depth = [0] * n
+    dist = [0] * n                                # weighted distance from the root
+    seen = [False] * n
+    seen[0] = True
+    queue = deque([0])
+    while queue:                                  # BFS: no recursion
+        v = queue.popleft()
+        for w, c in adj[v]:
+            if not seen[w]:
+                seen[w] = True
+                up[0][w] = v
+                depth[w] = depth[v] + 1
+                dist[w] = dist[v] + c
+                queue.append(w)
+    for k in range(1, LOG):
+        prev, cur = up[k - 1], up[k]
+        for v in range(n):
+            cur[v] = prev[prev[v]]
+
+    def lca(u, v):
+        if depth[u] < depth[v]:
+            u, v = v, u
+        diff = depth[u] - depth[v]
+        for k in range(LOG):
+            if diff >> k & 1:
+                u = up[k][u]
+        if u == v:
+            return u
+        for k in range(LOG - 1, -1, -1):
+            if up[k][u] != up[k][v]:
+                u, v = up[k][u], up[k][v]
+        return up[0][u]
+
+    return [dist[a] + dist[b] - 2 * dist[lca(a, b)] for a, b in queries]
+` }, { lang: 'js', code: `function treeDistances(n, edges, queries) {
+  const adj = Array.from({ length: n }, () => []);
+  for (const [u, v, w] of edges) { adj[u].push([v, w]); adj[v].push([u, w]); }
+
+  let LOG = 1;
+  while ((1 << LOG) < n) LOG++;
+  const up = Array.from({ length: LOG }, () => new Int32Array(n));   // the root points to itself
+  const depth = new Int32Array(n);
+  const dist = new Float64Array(n);          // weights sum to at most 1e14, exact in a double
+  const seen = new Uint8Array(n);
+  const queue = [0];
+  seen[0] = 1;
+  for (let head = 0; head < queue.length; head++) {      // BFS with an index, not shift()
+    const v = queue[head];
+    for (const [w, c] of adj[v]) {
+      if (seen[w]) continue;
+      seen[w] = 1;
+      up[0][w] = v;
+      depth[w] = depth[v] + 1;
+      dist[w] = dist[v] + c;
+      queue.push(w);
+    }
+  }
+  for (let k = 1; k < LOG; k++)
+    for (let v = 0; v < n; v++) up[k][v] = up[k - 1][up[k - 1][v]];
+
+  const lca = (u, v) => {
+    if (depth[u] < depth[v]) [u, v] = [v, u];
+    const diff = depth[u] - depth[v];
+    for (let k = 0; k < LOG; k++) if ((diff >> k) & 1) u = up[k][u];
+    if (u === v) return u;
+    for (let k = LOG - 1; k >= 0; k--)
+      if (up[k][u] !== up[k][v]) { u = up[k][u]; v = up[k][v]; }
+    return up[0][u];
+  };
+  return queries.map(([a, b]) => dist[a] + dist[b] - 2 * dist[lca(a, b)]);
+}
+` }, { lang: 'cpp', code: `class Solution {
+public:
+    vector<long long> treeDistances(int n, vector<vector<int>>& edges, vector<vector<int>>& queries) {
+        vector<vector<pair<int, int>>> adj(n);
+        for (auto& e : edges) {
+            adj[e[0]].push_back({e[1], e[2]});
+            adj[e[1]].push_back({e[0], e[2]});
+        }
+        int LOG = 1;
+        while ((1 << LOG) < n) LOG++;
+        vector<vector<int>> up(LOG, vector<int>(n, 0));   // the root points to itself
+        vector<int> depth(n, 0);
+        vector<long long> dist(n, 0);                     // long long: up to 1e5 * 1e9
+        vector<char> seen(n, 0);
+        queue<int> q;
+        q.push(0);
+        seen[0] = 1;
+        while (!q.empty()) {
+            int v = q.front(); q.pop();
+            for (auto [w, c] : adj[v]) {
+                if (seen[w]) continue;
+                seen[w] = 1;
+                up[0][w] = v;
+                depth[w] = depth[v] + 1;
+                dist[w] = dist[v] + c;
+                q.push(w);
+            }
+        }
+        for (int k = 1; k < LOG; k++)
+            for (int v = 0; v < n; v++) up[k][v] = up[k - 1][up[k - 1][v]];
+
+        auto lca = [&](int u, int v) {
+            if (depth[u] < depth[v]) swap(u, v);
+            int diff = depth[u] - depth[v];
+            for (int k = 0; k < LOG; k++) if (diff >> k & 1) u = up[k][u];
+            if (u == v) return u;
+            for (int k = LOG - 1; k >= 0; k--)
+                if (up[k][u] != up[k][v]) { u = up[k][u]; v = up[k][v]; }
+            return up[0][u];
+        };
+        vector<long long> ans;
+        ans.reserve(queries.size());
+        for (auto& qu : queries) {
+            int a = qu[0], b = qu[1];
+            ans.push_back(dist[a] + dist[b] - 2 * dist[lca(a, b)]);
+        }
+        return ans;
+    }
+};
+` }],
         dry: {
           head: ['query', 'equalise', 'jumps (k = 2, 1, 0)', 'LCA', 'answer'],
           rows: [
@@ -1715,7 +3466,7 @@ for comp in tarjan(len(names), adj):
       'Small V (≤ 500) and E (≤ 5000) in a "flow / assignment / routing" story → Edmonds-Karp is enough; bigger → Dinic.',
       'You see the phrases "<b>residual</b>", "<b>augmenting path</b>", "bottleneck" in a hint → flow family.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       class EdmondsKarp {
           private final int n;
           private final List<List<Integer>> g = new ArrayList<>();   // g[v] = ids of edges leaving v
@@ -1759,7 +3510,131 @@ for comp in tarjan(len(names), adj):
                   flow += push;
               }
           }
-      }`, `
+      }`, alt: [{ lang: 'python', code: `from collections import deque
+
+
+class EdmondsKarp:
+    def __init__(self, n):
+        self.n = n
+        self.g = [[] for _ in range(n)]         # g[v] = ids of edges leaving v
+        self.to = []
+        self.cap = []                           # RESIDUAL capacity of each edge
+
+    def add_edge(self, u, v, c):
+        self.g[u].append(len(self.to)); self.to.append(v); self.cap.append(c)   # forward edge: even id
+        self.g[v].append(len(self.to)); self.to.append(u); self.cap.append(0)   # reverse edge: id ^ 1, starts at 0
+
+    def max_flow(self, s, t):
+        flow = 0
+        while True:
+            via = [-1] * self.n                 # edge used to reach each node
+            seen = [False] * self.n
+            seen[s] = True
+            q = deque([s])
+            while q and not seen[t]:            # BFS = shortest augmenting path
+                v = q.popleft()
+                for eid in self.g[v]:
+                    w = self.to[eid]
+                    if not seen[w] and self.cap[eid] > 0:
+                        seen[w] = True
+                        via[w] = eid
+                        q.append(w)
+            if not seen[t]:
+                return flow                     # no path left: flow is maximum
+            push = float('inf')                 # bottleneck along the path
+            v = t
+            while v != s:
+                push = min(push, self.cap[via[v]])
+                v = self.to[via[v] ^ 1]
+            v = t
+            while v != s:
+                eid = via[v]
+                self.cap[eid] -= push           # use forward room
+                self.cap[eid ^ 1] += push       # create "undo" room
+                v = self.to[eid ^ 1]
+            flow += push
+` }, { lang: 'js', code: `class EdmondsKarp {
+  constructor(n) {
+    this.n = n;
+    this.g = Array.from({ length: n }, () => []);   // g[v] = ids of edges leaving v
+    this.to = [];
+    this.cap = [];                                  // RESIDUAL capacity of each edge
+  }
+
+  addEdge(u, v, c) {
+    this.g[u].push(this.to.length); this.to.push(v); this.cap.push(c);   // forward edge: even id
+    this.g[v].push(this.to.length); this.to.push(u); this.cap.push(0);   // reverse edge: id ^ 1, starts at 0
+  }
+
+  maxFlow(s, t) {
+    let flow = 0;
+    for (;;) {
+      const via = new Array(this.n).fill(-1);       // edge used to reach each node
+      const seen = new Array(this.n).fill(false);
+      seen[s] = true;
+      const q = [s];
+      for (let h = 0; h < q.length && !seen[t]; h++) {   // BFS = shortest augmenting path
+        const v = q[h];
+        for (const id of this.g[v]) {
+          const w = this.to[id];
+          if (!seen[w] && this.cap[id] > 0) { seen[w] = true; via[w] = id; q.push(w); }
+        }
+      }
+      if (!seen[t]) return flow;                    // no path left: flow is maximum
+      let push = Infinity;                          // bottleneck along the path
+      for (let v = t; v !== s; v = this.to[via[v] ^ 1]) push = Math.min(push, this.cap[via[v]]);
+      for (let v = t; v !== s; v = this.to[via[v] ^ 1]) {
+        const id = via[v];
+        this.cap[id] -= push;                       // use forward room
+        this.cap[id ^ 1] += push;                   // create "undo" room
+      }
+      flow += push;
+    }
+  }
+}
+` }, { lang: 'cpp', code: `class EdmondsKarp {
+    int n;
+    vector<vector<int>> g;      // g[v] = ids of edges leaving v
+    vector<int> to;
+    vector<long long> cap;      // RESIDUAL capacity of each edge
+
+public:
+    explicit EdmondsKarp(int n) : n(n), g(n) {}
+
+    void addEdge(int u, int v, long long c) {
+        g[u].push_back(to.size()); to.push_back(v); cap.push_back(c);   // forward edge: even id
+        g[v].push_back(to.size()); to.push_back(u); cap.push_back(0);   // reverse edge: id ^ 1, starts at 0
+    }
+
+    long long maxFlow(int s, int t) {
+        long long flow = 0;
+        while (true) {
+            vector<int> via(n, -1);                     // edge used to reach each node
+            vector<char> seen(n, 0);
+            queue<int> q;
+            q.push(s);
+            seen[s] = 1;
+            while (!q.empty() && !seen[t]) {            // BFS = shortest augmenting path
+                int v = q.front();
+                q.pop();
+                for (int id : g[v]) {
+                    int w = to[id];
+                    if (!seen[w] && cap[id] > 0) { seen[w] = 1; via[w] = id; q.push(w); }
+                }
+            }
+            if (!seen[t]) return flow;                  // no path left: flow is maximum
+            long long push = LLONG_MAX;                 // bottleneck along the path
+            for (int v = t; v != s; v = to[via[v] ^ 1]) push = min(push, cap[via[v]]);
+            for (int v = t; v != s; v = to[via[v] ^ 1]) {
+                int id = via[v];
+                cap[id] -= push;                        // use forward room
+                cap[id ^ 1] += push;                    // create "undo" room
+            }
+            flow += push;
+        }
+    }
+};
+` }] }, { lang: 'java', code: `
       class FordFulkersonMatrix {
           // Plain Ford-Fulkerson with DFS on a capacity matrix: O(E * maxFlow). Small integer capacities only.
           static int maxFlow(int[][] cap, int s, int t) {
@@ -1785,8 +3660,78 @@ for comp in tarjan(len(names), adj):
               }
               return 0;
           }
-      }`],
-    codeTitle: ['Edmonds-Karp (BFS augmenting paths) in Java', 'Ford-Fulkerson with DFS on a matrix (simplest, small inputs)'],
+      }`, alt: [{ lang: 'python', code: `def max_flow(cap, s, t):
+    # Plain Ford-Fulkerson with DFS on a capacity matrix: O(E * maxFlow). Small integer capacities only.
+    n = len(cap)
+    r = [row[:] for row in cap]                 # residual = capacity at the start
+
+    def dfs(v, f, seen):
+        if v == t:
+            return f
+        seen[v] = True
+        for w in range(n):
+            if not seen[w] and r[v][w] > 0:
+                d = dfs(w, min(f, r[v][w]), seen)
+                if d > 0:
+                    r[v][w] -= d
+                    r[w][v] += d                # r[w][v] is the undo room
+                    return d
+        return 0
+
+    flow = 0
+    while True:
+        pushed = dfs(s, float('inf'), [False] * n)
+        if pushed == 0:
+            return flow
+        flow += pushed
+` }, { lang: 'js', code: `// Plain Ford-Fulkerson with DFS on a capacity matrix: O(E * maxFlow). Small integer capacities only.
+function maxFlow(cap, s, t) {
+  const n = cap.length;
+  const r = cap.map((row) => row.slice());      // residual = capacity at the start
+
+  function dfs(v, f, seen) {
+    if (v === t) return f;
+    seen[v] = true;
+    for (let w = 0; w < n; w++) {
+      if (!seen[w] && r[v][w] > 0) {
+        const d = dfs(w, Math.min(f, r[v][w]), seen);
+        if (d > 0) { r[v][w] -= d; r[w][v] += d; return d; }   // r[w][v] is the undo room
+      }
+    }
+    return 0;
+  }
+
+  let flow = 0;
+  for (;;) {
+    const pushed = dfs(s, Infinity, new Array(n).fill(false));
+    if (pushed === 0) return flow;
+    flow += pushed;
+  }
+}
+` }, { lang: 'cpp', code: `// Plain Ford-Fulkerson with DFS on a capacity matrix: O(E * maxFlow). Small integer capacities only.
+int fordFulkersonDfs(vector<vector<int>>& r, int v, int t, int f, vector<char>& seen) {
+    if (v == t) return f;
+    seen[v] = 1;
+    for (int w = 0; w < (int)r.size(); w++) {
+        if (!seen[w] && r[v][w] > 0) {
+            int d = fordFulkersonDfs(r, w, t, min(f, r[v][w]), seen);
+            if (d > 0) { r[v][w] -= d; r[w][v] += d; return d; }   // r[w][v] is the undo room
+        }
+    }
+    return 0;
+}
+
+int maxFlow(vector<vector<int>> cap, int s, int t) {   // cap is copied: residual = capacity at the start
+    int flow = 0;
+    while (true) {
+        vector<char> seen(cap.size(), 0);
+        int pushed = fordFulkersonDfs(cap, s, t, INT_MAX, seen);
+        if (pushed == 0) return flow;
+        flow += pushed;
+    }
+}
+` }] }],
+    codeTitle: ['Edmonds-Karp (BFS augmenting paths)', 'Ford-Fulkerson with DFS on a matrix (simplest, small inputs)'],
     viz: {
       title: 'Augmenting paths live: bottleneck, push, and the reverse-edge "undo"',
       input: 'dfs | S>A:3 S>B:2 A>B:2 A>T:2 B>T:3',
@@ -1802,7 +3747,7 @@ for comp in tarjan(len(names), adj):
     deepDive: `<p><b>Why Edmonds-Karp is O(V·E²).</b> Two facts. (1) With BFS augmentation, the shortest-path distance from S to every node in the residual graph <b>never decreases</b>. (2) Every augmentation saturates at least one <b>critical</b> edge (u, v) on the path; before (u, v) can be critical again, flow must go back along (v, u), which forces dist(u) to grow by at least 2. Distances are at most V, so each edge is critical O(V) times → O(V·E) augmentations, each a BFS of O(E) → <b>O(V·E²)</b>.</p>
       <p><b>Integrality theorem:</b> if all capacities are integers, Ford-Fulkerson produces an integer max flow (every bottleneck is an integer). This is why flow solves <b>combinatorial</b> problems like matching: "1 unit of flow on an edge" can be read as "this pair is chosen".</p>
       <p><b>Irrational capacities:</b> plain Ford-Fulkerson with a bad path choice may never terminate and may even converge to the wrong value (Zwick's example with the golden ratio). With BFS it always terminates — another reason to never use "any DFS" in production.</p>
-      <p><b>Implementation details that matter:</b> store edges in arrays with the reverse at <code>id ^ 1</code> (edges 0/1, 2/3, …), so pushing flow is two array writes. Use <code>long</code> when capacities × paths can exceed 2<sup>31</sup>. Parallel edges are fine (they just add capacity). In real systems, max flow appears in network bandwidth planning, airline crew and baseball elimination problems, image segmentation, and as a building block for min-cost flow (used in ride-hailing and logistics assignment).</p>`,
+      <p><b>Implementation details that matter:</b> store edges in arrays with the reverse at <code>id ^ 1</code> (edges 0/1, 2/3, …), so pushing flow is two array writes. Use a 64-bit integer (<code>long</code> / <code>long long</code>) when capacities × paths can exceed 2<sup>31</sup>; Python integers never overflow, and JavaScript numbers are exact up to 2<sup>53</sup>. Parallel edges are fine (they just add capacity). In real systems, max flow appears in network bandwidth planning, airline crew and baseball elimination problems, image segmentation, and as a building block for min-cost flow (used in ride-hailing and logistics assignment).</p>`,
     aiEra: `<p><b>What AI changes:</b> an AI writes Edmonds-Karp or calls <code>networkx.maximum_flow</code> / OR-Tools <code>SimpleMaxFlow</code> instantly. The scarce skill is the <b>modelling</b>: what are the nodes, what does one unit of flow mean, where do the capacities come from, and which constraints need node splitting or a super source.</p>
       <p><b>Use AI as a partner:</b> describe the business problem in words and ask for 2–3 alternative flow models; then prove to yourself which one is correct by checking that every valid real-world plan maps to a flow and back. Ask it for adversarial tests like the 10<sup>9</sup>-capacity example to show why DFS is unsafe.</p>
       <p><b>Where AI goes wrong:</b> forgetting reverse edges (code "works" on simple tests and fails on the diamond), using <code>int</code> for sums of 10<sup>9</sup> capacities, modelling an undirected edge as one directed edge, and confusing "max flow" with "widest path" (maximum bottleneck of a single path — a Dijkstra variant, not flow).</p>
@@ -1841,8 +3786,82 @@ for comp in tarjan(len(names), adj):
       hints: [
         `<p>Hint 1: Greedy "push along any path and never look back" can get stuck below the optimum. You need reverse (undo) edges with residual = current flow.</p>`,
         `<p>Hint 2: Store each edge and its reverse as a pair (ids 2i and 2i+1) so <code>id ^ 1</code> finds the partner. Find paths with BFS (Edmonds-Karp) to bound the number of rounds.</p>`,
-        `<p>Hint 3: Recipe — loop: BFS from 0 over edges with residual &gt; 0, remembering the edge used to reach each node; if n−1 is unreached, stop; walk back from n−1 to find the bottleneck; subtract it on path edges and add it on their partners; add to the answer. Use long.</p>`
+        `<p>Hint 3: Recipe — loop: BFS from 0 over edges with residual &gt; 0, remembering the edge used to reach each node; if n−1 is unreached, stop; walk back from n−1 to find the bottleneck; subtract it on path edges and add it on their partners; add to the answer. Use a 64-bit integer for the flow.</p>`
       ],
+      tests: { sig: "string int int[][] -> long", fn: "flow", cases: [
+          [["",4,[[0,1,3],[0,2,2],[1,2,2],[1,3,2],[2,3,3]]],5],
+          [["",2,[[0,1,7]]],7],
+          [["",3,[[0,1,5]]],0],
+          [["",3,[[0,1,4],[0,1,6],[1,2,9]]],9],
+          [["",4,[[0,1,10],[1,0,10],[1,2,3],[2,1,3],[2,3,10],[3,0,5]]],3],
+          [["",6,[[0,1,16],[0,2,13],[1,2,10],[2,1,4],[1,3,12],[3,2,9],[2,4,14],[4,3,7],[3,5,20],[4,5,4]]],23],
+          [["",5,[[3,1,5]]],0],
+          [["",2,[[1,0,2]]],0],
+          [["",8,[[0,1,5],[6,5,5],[3,1,9],[7,2,9],[6,7,7],[7,0,9]]],0],
+          [["",3,[[0,1,2],[2,1,6],[1,2,6],[2,0,6],[0,2,8],[0,1,4],[1,0,3],[0,1,3]]],14],
+          [["",3,[[0,1,1],[2,1,2],[1,2,1],[1,2,3],[0,2,2],[0,1,7]]],6],
+          [["",7,[[1,4,4],[5,1,2],[5,0,1],[4,2,7],[3,6,7],[1,2,5],[2,3,2],[0,1,4],[1,5,7],[0,4,1],[6,2,8],[5,6,4],[4,0,4]]],5],
+          [["",8,[[5,0,4],[0,1,7],[4,5,3]]],0],
+          [["",8,[[4,5,7],[2,3,4],[4,5,8],[0,2,8],[0,1,7],[4,7,1],[7,2,5],[3,2,3],[3,2,4],[4,5,9],[3,7,9],[6,0,5],[3,5,4],[1,7,1]]],5],
+          [["",2,[[1,0,6],[1,0,4],[0,1,4],[1,0,5],[1,0,9],[0,1,1],[0,1,6]]],11],
+          [["",8,[[3,4,4],[6,7,6]]],0],
+          [["",3,{"$concat":[{"$rep":[0,1,1000000000],"n":2500},{"$rep":[1,2,1000000000],"n":2500}]}],2500000000000],
+          [["",3,{"$concat":[{"$rep":[0,1,1000000000],"n":4000},{"$rep":[1,2,1000000000],"n":1000}]}],1000000000000],
+          [["fan",500,[]],498000000000],
+          [["chain",500,[]],1000000000],
+          [["complete",140,[]],69000000000]
+        ], harness: { java: `class Check {
+  static long flow(String kind, int n, int[][] edges) {
+    if (!kind.isEmpty()) {
+      List<int[]> e = new ArrayList<>();
+      int B = 1000000000;
+      if (kind.equals("fan")) { for (int i = 1; i < n - 1; i++) { e.add(new int[]{0, i, B}); e.add(new int[]{i, n - 1, B}); } }
+      else if (kind.equals("chain")) { for (int i = 0; i + 1 < n; i++) e.add(new int[]{i, i + 1, B}); }
+      else {
+        int k = (n - 2) / 2;
+        for (int a = 1; a <= k; a++) { e.add(new int[]{0, a, B}); e.add(new int[]{k + a, n - 1, B}); for (int b = 1; b <= k; b++) e.add(new int[]{a, k + b, B}); }
+      }
+      edges = e.toArray(new int[0][]);
+    }
+    return new Solution().maxFlow(n, edges);
+  }
+}`, python: `def flow(kind, n, edges):
+    B = 10 ** 9
+    if kind == 'fan':
+        edges = [[0, i, B] for i in range(1, n - 1)] + [[i, n - 1, B] for i in range(1, n - 1)]
+    elif kind == 'chain':
+        edges = [[i, i + 1, B] for i in range(n - 1)]
+    elif kind == 'complete':
+        k = (n - 2) // 2
+        edges = [[0, a, B] for a in range(1, k + 1)] + [[k + a, n - 1, B] for a in range(1, k + 1)]
+        edges += [[a, k + b, B] for a in range(1, k + 1) for b in range(1, k + 1)]
+    return max_flow(n, edges)`, js: `function flow(kind, n, edges) {
+  const B = 1000000000;
+  if (kind === 'fan') { edges = []; for (let i = 1; i < n - 1; i++) { edges.push([0, i, B]); edges.push([i, n - 1, B]); } }
+  else if (kind === 'chain') { edges = []; for (let i = 0; i + 1 < n; i++) edges.push([i, i + 1, B]); }
+  else if (kind === 'complete') {
+    edges = [];
+    const k = (n - 2) / 2;
+    for (let a = 1; a <= k; a++) {
+      edges.push([0, a, B]); edges.push([k + a, n - 1, B]);
+      for (let b = 1; b <= k; b++) edges.push([a, k + b, B]);
+    }
+  }
+  return maxFlow(n, edges);
+}`, cpp: `long long flow(string kind, int n, vector<vector<int>> edges) {
+  int B = 1000000000;
+  if (kind == "fan") { edges.clear(); for (int i = 1; i < n - 1; i++) { edges.push_back({0, i, B}); edges.push_back({i, n - 1, B}); } }
+  else if (kind == "chain") { edges.clear(); for (int i = 0; i + 1 < n; i++) edges.push_back({i, i + 1, B}); }
+  else if (kind == "complete") {
+    edges.clear();
+    int k = (n - 2) / 2;
+    for (int a = 1; a <= k; a++) {
+      edges.push_back({0, a, B}); edges.push_back({k + a, n - 1, B});
+      for (int b = 1; b <= k; b++) edges.push_back({a, k + b, B});
+    }
+  }
+  return Solution().maxFlow(n, edges);
+}` } },
       solution: {
         approach: `<p>Edmonds-Karp on an array-based edge list (forward-star): <code>head[v]</code> points to v's latest edge and <code>next[e]</code> to the one before. Arrays avoid boxing and are several times faster than lists of objects.</p>`,
         code: `class Solution {
@@ -1878,6 +3897,100 @@ for comp in tarjan(len(names), adj):
         }
     }
 }`,
+      alt: [{ lang: 'python', code: `from collections import deque
+
+
+def max_flow(n, edges):
+    to, cap = [], []                       # edge 2i is forward, 2i + 1 is its undo edge
+    g = [[] for _ in range(n)]
+    for u, v, c in edges:
+        g[u].append(len(to)); to.append(v); cap.append(c)
+        g[v].append(len(to)); to.append(u); cap.append(0)
+    s, t = 0, n - 1
+    flow = 0
+    while True:
+        via = [-1] * n                     # via[v] = edge used to reach v; -2 marks the source
+        via[s] = -2
+        queue = deque([s])
+        while queue and via[t] == -1:      # BFS for the shortest augmenting path
+            v = queue.popleft()
+            for e in g[v]:
+                if cap[e] > 0 and via[to[e]] == -1:
+                    via[to[e]] = e
+                    queue.append(to[e])
+        if via[t] == -1:                   # sink unreachable: done
+            return flow
+        path = []
+        v = t
+        while v != s:
+            path.append(via[v])
+            v = to[via[v] ^ 1]
+        push = min(cap[e] for e in path)   # bottleneck
+        for e in path:
+            cap[e] -= push
+            cap[e ^ 1] += push
+        flow += push
+` }, { lang: 'js', code: `function maxFlow(n, edges) {
+  const m = edges.length;
+  const to = new Int32Array(2 * m), cap = new Float64Array(2 * m);   // edge 2i forward, 2i + 1 its undo edge
+  const g = Array.from({ length: n }, () => []);
+  edges.forEach(([u, v, c], i) => {
+    to[2 * i] = v; cap[2 * i] = c; g[u].push(2 * i);
+    to[2 * i + 1] = u; cap[2 * i + 1] = 0; g[v].push(2 * i + 1);
+  });
+  const s = 0, t = n - 1;
+  let flow = 0;
+  const via = new Int32Array(n), queue = new Int32Array(n);
+  for (;;) {
+    via.fill(-1);
+    via[s] = -2;                             // mark the source as visited
+    let head = 0, tail = 0;
+    queue[tail++] = s;
+    while (head < tail && via[t] === -1) {   // BFS for the shortest augmenting path
+      const v = queue[head++];
+      for (const e of g[v]) {
+        if (cap[e] > 0 && via[to[e]] === -1) { via[to[e]] = e; queue[tail++] = to[e]; }
+      }
+    }
+    if (via[t] === -1) return flow;          // sink unreachable: done
+    let push = Infinity;
+    for (let v = t; v !== s; v = to[via[v] ^ 1]) push = Math.min(push, cap[via[v]]);
+    for (let v = t; v !== s; v = to[via[v] ^ 1]) { cap[via[v]] -= push; cap[via[v] ^ 1] += push; }
+    flow += push;
+  }
+}
+` }, { lang: 'cpp', code: `class Solution {
+public:
+    long long maxFlow(int n, vector<vector<int>>& edges) {
+        vector<int> to;
+        vector<long long> cap;                       // edge 2i forward, 2i + 1 its undo edge
+        vector<vector<int>> g(n);
+        for (auto& e : edges) {
+            g[e[0]].push_back(to.size()); to.push_back(e[1]); cap.push_back(e[2]);
+            g[e[1]].push_back(to.size()); to.push_back(e[0]); cap.push_back(0);
+        }
+        int s = 0, t = n - 1;
+        long long flow = 0;
+        vector<int> via(n);
+        while (true) {
+            fill(via.begin(), via.end(), -1);
+            via[s] = -2;                             // mark the source as visited
+            queue<int> q;
+            q.push(s);
+            while (!q.empty() && via[t] == -1) {     // BFS for the shortest augmenting path
+                int v = q.front(); q.pop();
+                for (int e : g[v])
+                    if (cap[e] > 0 && via[to[e]] == -1) { via[to[e]] = e; q.push(to[e]); }
+            }
+            if (via[t] == -1) return flow;           // sink unreachable: done
+            long long push = LLONG_MAX;
+            for (int v = t; v != s; v = to[via[v] ^ 1]) push = min(push, cap[via[v]]);
+            for (int v = t; v != s; v = to[via[v] ^ 1]) { cap[via[v]] -= push; cap[via[v] ^ 1] += push; }
+            flow += push;
+        }
+    }
+};
+` }],
         dry: {
           head: ['round', 'BFS path (head order = latest edge first)', 'bottleneck', 'total'],
           rows: [
@@ -1921,7 +4034,7 @@ for comp in tarjan(len(names), adj):
       'Any flow model built by you (super source, node splitting, project selection) in a contest → write Dinic once and reuse it.',
       'Hints mentioning "<b>level graph</b>", "<b>blocking flow</b>", or "<b>current arc</b>" → Dinic.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       class Dinic {
           private final int n;
           private final int[] head, level, it;
@@ -1980,7 +4093,157 @@ for comp in tarjan(len(names), adj):
               }
               return flow;
           }
-      }`, {
+      }`, alt: [{ lang: 'python', code: `from collections import deque
+
+
+class Dinic:
+    def __init__(self, n):
+        self.n = n
+        self.g = [[] for _ in range(n)]         # g[v] = ids of edges leaving v; edge e's partner is e ^ 1
+        self.to = []
+        self.cap = []                           # residual capacities
+
+    def add_edge(self, u, v, c):
+        self.g[u].append(len(self.to)); self.to.append(v); self.cap.append(c)
+        self.g[v].append(len(self.to)); self.to.append(u); self.cap.append(0)
+
+    def _bfs(self, s, t):                       # build levels; True if t reachable
+        self.level = [-1] * self.n
+        self.level[s] = 0
+        q = deque([s])
+        while q:
+            v = q.popleft()
+            for e in self.g[v]:
+                w = self.to[e]
+                if self.cap[e] > 0 and self.level[w] < 0:
+                    self.level[w] = self.level[v] + 1
+                    q.append(w)
+        return self.level[t] >= 0
+
+    def _dfs(self, v, t, f):                    # one augmenting path in the level graph (recursive)
+        if v == t:
+            return f
+        while self.it[v] < len(self.g[v]):      # it[v]: never retry a useless edge this phase
+            e = self.g[v][self.it[v]]
+            w = self.to[e]
+            if self.cap[e] > 0 and self.level[w] == self.level[v] + 1:
+                d = self._dfs(w, t, min(f, self.cap[e]))
+                if d > 0:
+                    self.cap[e] -= d
+                    self.cap[e ^ 1] += d
+                    return d
+            self.it[v] += 1
+        return 0                                # v is a dead end for this phase
+
+    def max_flow(self, s, t):
+        flow = 0
+        while self._bfs(s, t):                  # at most V - 1 phases
+            self.it = [0] * self.n              # reset current-edge pointers
+            while True:
+                f = self._dfs(s, t, float('inf'))   # blocking flow
+                if f == 0:
+                    break
+                flow += f
+        return flow
+` }, { lang: 'js', code: `class Dinic {
+  constructor(n) {
+    this.n = n;
+    this.g = Array.from({ length: n }, () => []);   // g[v] = ids of edges leaving v; edge e's partner is e ^ 1
+    this.to = [];
+    this.cap = [];                                  // residual capacities
+  }
+
+  addEdge(u, v, c) {
+    this.g[u].push(this.to.length); this.to.push(v); this.cap.push(c);
+    this.g[v].push(this.to.length); this.to.push(u); this.cap.push(0);
+  }
+
+  bfs(s, t) {                                       // build levels; true if t reachable
+    this.level = new Array(this.n).fill(-1);
+    this.level[s] = 0;
+    const q = [s];
+    for (let h = 0; h < q.length; h++) {
+      const v = q[h];
+      for (const e of this.g[v]) {
+        const w = this.to[e];
+        if (this.cap[e] > 0 && this.level[w] < 0) { this.level[w] = this.level[v] + 1; q.push(w); }
+      }
+    }
+    return this.level[t] >= 0;
+  }
+
+  dfs(v, t, f) {                                    // one augmenting path in the level graph
+    if (v === t) return f;
+    for (; this.it[v] < this.g[v].length; this.it[v]++) {   // it[v]: never retry a useless edge this phase
+      const e = this.g[v][this.it[v]], w = this.to[e];
+      if (this.cap[e] > 0 && this.level[w] === this.level[v] + 1) {
+        const d = this.dfs(w, t, Math.min(f, this.cap[e]));
+        if (d > 0) { this.cap[e] -= d; this.cap[e ^ 1] += d; return d; }
+      }
+    }
+    return 0;                                       // v is a dead end for this phase
+  }
+
+  maxFlow(s, t) {
+    let flow = 0;
+    while (this.bfs(s, t)) {                        // at most V - 1 phases
+      this.it = new Array(this.n).fill(0);          // reset current-edge pointers
+      let f;
+      while ((f = this.dfs(s, t, Infinity)) > 0) flow += f;   // blocking flow
+    }
+    return flow;
+  }
+}
+` }, { lang: 'cpp', code: `class Dinic {
+    int n;
+    vector<int> head, level, it;    // head[v] = first edge of v; it = current-edge pointers
+    vector<int> nxt, to;            // forward-star edge storage; edge e's partner is e ^ 1
+    vector<long long> cap;          // residual capacities
+
+    bool bfs(int s, int t) {                            // build levels; true if t reachable
+        fill(level.begin(), level.end(), -1);
+        queue<int> q;
+        level[s] = 0;
+        q.push(s);
+        while (!q.empty()) {
+            int v = q.front();
+            q.pop();
+            for (int e = head[v]; e != -1; e = nxt[e])
+                if (cap[e] > 0 && level[to[e]] < 0) { level[to[e]] = level[v] + 1; q.push(to[e]); }
+        }
+        return level[t] >= 0;
+    }
+
+    long long dfs(int v, int t, long long f) {          // one augmenting path in the level graph
+        if (v == t) return f;
+        for (int& e = it[v]; e != -1; e = nxt[e]) {     // it[v]: never retry a useless edge this phase
+            int w = to[e];
+            if (cap[e] > 0 && level[w] == level[v] + 1) {
+                long long d = dfs(w, t, min(f, cap[e]));
+                if (d > 0) { cap[e] -= d; cap[e ^ 1] += d; return d; }
+            }
+        }
+        return 0;                                       // v is a dead end for this phase
+    }
+
+public:
+    explicit Dinic(int n) : n(n), head(n, -1), level(n, -1), it(n, -1) {}
+
+    void addEdge(int u, int v, long long c) {
+        to.push_back(v); cap.push_back(c); nxt.push_back(head[u]); head[u] = to.size() - 1;
+        to.push_back(u); cap.push_back(0); nxt.push_back(head[v]); head[v] = to.size() - 1;
+    }
+
+    long long maxFlow(int s, int t) {
+        long long flow = 0;
+        while (bfs(s, t)) {                             // at most V - 1 phases
+            it = head;                                  // reset current-edge pointers
+            while (long long f = dfs(s, t, LLONG_MAX)) flow += f;   // blocking flow
+        }
+        return flow;
+    }
+};
+` }] }, {
       lang: 'python', run: true, title: 'Dinic in Python on the CLRS network (answer 23) — runnable',
       code: `from collections import deque
 
@@ -2044,7 +4307,7 @@ flow, phases = d.max_flow(0, 5)
 print("max flow =", flow, "found in", phases, "phases")
 `
     }],
-    codeTitle: ['Dinic in Java (forward-star arrays, current-edge pointers)', 'Dinic in Python'],
+    codeTitle: ['Dinic (forward-star arrays, current-edge pointers)', 'Dinic in Python'],
     viz: {
       title: 'Dinic live: BFS levels (tags), level-graph edges (blue), blocking flow, dead-end pruning',
       input: 'S>A:10 S>C:10 A>B:4 A>C:2 A>D:8 C>D:9 D>B:6 B>T:10 D>T:10',
@@ -2119,7 +4382,7 @@ print("max flow =", flow, "found in", phases, "phases")
       { title: 'Python check on the CLRS network', html: `<p>The runnable Python above prints <code>max flow = 23</code> for the textbook network (Cormen et al., Figure 26.1). The number of phases is small (a handful) even though Edmonds-Karp would need more separate BFS rounds — each Dinic phase pushes several paths.</p>` }
     ],
     deepDive: `<p><b>Proof that phases ≤ V − 1.</b> After a blocking flow, every shortest S→T path in the old level graph contains a saturated edge. New residual edges created by pushing go from level L+1 back to level L (reverse edges), which cannot create a path of the same length. So the new shortest distance is strictly larger. Distances are at most V − 1 → at most V − 1 phases.</p>
-      <p><b>Recursion depth:</b> the DFS goes at most level[t] ≤ V deep, so for V ≤ 10<sup>4</sup> recursion is fine in Java; for huge V write it iteratively or raise the thread stack.</p>
+      <p><b>Recursion depth:</b> the DFS goes at most level[t] ≤ V deep, so for V ≤ 10<sup>4</sup> recursion is fine in Java, C++ and JavaScript; Python needs the iterative form (see the Python version above) or a raised recursion limit. For huge V write it iteratively or raise the stack.</p>
       <p><b>Engineering tricks used in fast implementations:</b></p>
       <ul>
         <li><b>Multi-push DFS</b>: instead of returning after one path, let <code>dfs(v, f)</code> keep pushing through other edges until f is used up — fewer recursive calls.</li>
@@ -2130,7 +4393,7 @@ print("max flow =", flow, "found in", phases, "phases")
       <p><b>Real-world use:</b> OR-Tools, LEMON and Boost all ship push-relabel and related solvers; image-segmentation graph cuts use the Boykov–Kolmogorov algorithm, which is tuned for grid-like graphs.</p>`,
     aiEra: `<p><b>What AI changes:</b> a Dinic template is easy to paste. Competitive programmers have done that for decades; AI just makes it universal. What still separates people is <b>modelling</b> (turning a story into a network) and <b>debugging</b> a wrong model.</p>
       <p><b>Use AI as a partner:</b> keep one trusted Dinic and ask AI to build random networks plus a slow Edmonds-Karp to cross-check. Ask it "<i>Which edges of this flow model have capacity infinity and why?</i>" — making it explain your own model is a great sanity check.</p>
-      <p><b>Where AI goes wrong:</b> forgetting to reset <code>it[]</code> at the start of each phase, resetting it inside the inner loop (back to O(V·E²)), checking <code>level[w] &gt; level[v]</code> instead of <code>== level[v] + 1</code>, and using <code>Integer.MAX_VALUE</code> as "infinity" while summing capacities in <code>int</code> (overflow).</p>
+      <p><b>Where AI goes wrong:</b> forgetting to reset <code>it[]</code> at the start of each phase, resetting it inside the inner loop (back to O(V·E²)), checking <code>level[w] &gt; level[v]</code> instead of <code>== level[v] + 1</code>, and using the 32-bit maximum as "infinity" while summing capacities in a 32-bit <code>int</code> (overflow).</p>
       <p><b>What you must still own:</b> knowing the complexity bounds well enough to choose Edmonds-Karp vs Dinic vs push-relabel from the constraints, and the unit-capacity special cases that make Dinic dramatically faster.</p>`,
     problems: [{
       title: 'Maximum Number of Edge-Disjoint Paths',
@@ -2172,35 +4435,161 @@ print("max flow =", flow, "found in", phases, "phases")
         `<p>Hint 2: Greedy path deletion fails; flow fixes it with reverse edges. With unit capacities Dinic needs only O(√E) phases.</p>`,
         `<p>Hint 3: Recipe — build Dinic with cap 1 per road, run maxFlow(s, t). To list the paths, repeatedly walk from s along edges with flow 1, clearing them as you go.</p>`
       ],
+      tests: { sig: "string int int[][] int int -> int", fn: "paths", cases: [
+          [["",6,[[0,1],[1,4],[1,2],[2,5],[0,3],[3,4],[4,5]],0,5],2],
+          [["",2,[[0,1]],0,1],1],
+          [["",2,[[1,0]],0,1],0],
+          [["",3,[[0,1],[0,1],[0,1],[1,2],[1,2]],0,2],2],
+          [["",4,[[0,1],[1,2],[2,3],[3,0],[1,3]],2,0],1],
+          [["",5,[[3,4],[4,1],[3,2],[2,1],[3,1],[1,3]],3,1],3],
+          [["",2,[[1,0]],1,0],1],
+          [["",5,[[2,3],[1,0],[3,2],[0,1]],1,2],0],
+          [["",4,[[0,3],[0,1],[0,1],[2,3],[0,3],[2,3],[2,3],[2,3],[3,0],[0,1],[1,0],[0,3],[1,2],[1,3],[2,3],[1,2]],0,1],3],
+          [["",9,[[1,5],[3,0],[6,8],[4,7],[5,8],[1,4]],5,8],1],
+          [["",9,[[5,8],[8,4],[7,0],[4,2],[6,4],[6,8],[5,7],[3,5],[6,4],[2,3],[0,1],[8,7],[5,0],[5,6]],6,8],2],
+          [["",4,[[2,3],[2,3],[0,3],[2,3],[0,1],[0,3],[3,2],[2,3],[2,3],[3,1],[0,2],[3,0],[0,2],[1,2],[0,1],[1,2]],0,1],3],
+          [["",3,[[0,2]],2,0],0],
+          [["",3,[[1,2],[1,2],[2,0],[2,1],[2,1],[1,0],[1,2]],0,1],0],
+          [["",8,[[6,3],[2,7],[2,3],[3,6],[3,7],[4,3],[2,4],[2,7],[4,7],[6,3],[3,5],[7,4],[5,1],[5,3]],4,6],1],
+          [["",5,[[0,3],[3,4],[1,2],[0,3],[4,3]],4,0],0],
+          [["chain",10000,[],0,9999],1],
+          [["chainTwice",10000,[],0,9999],2],
+          [["multi",9992,[],0,1],10],
+          [["fan",10000,[],0,9999],9998],
+          [["bip",632,[],0,631],315]
+        ], harness: { java: `class Check {
+  static int paths(String kind, int n, int[][] edges, int s, int t) {
+    if (!kind.isEmpty()) {
+      List<int[]> e = new ArrayList<>();
+      if (kind.equals("chain") || kind.equals("chainTwice")) {
+        for (int i = 0; i + 1 < n; i++) { e.add(new int[]{i, i + 1}); if (kind.equals("chainTwice")) e.add(new int[]{i, i + 1}); }
+      } else if (kind.equals("multi")) {
+        for (int j = 0; j < 10; j++) {
+          int first = 2 + j * 999, last = first + 998;
+          e.add(new int[]{0, first});
+          for (int v = first; v < last; v++) e.add(new int[]{v, v + 1});
+          e.add(new int[]{last, 1});
+        }
+      } else if (kind.equals("fan")) {
+        for (int i = 1; i < n - 1; i++) { e.add(new int[]{0, i}); e.add(new int[]{i, n - 1}); }
+      } else {
+        int k = (n - 2) / 2;
+        for (int a = 1; a <= k; a++) { e.add(new int[]{0, a}); e.add(new int[]{k + a, n - 1}); for (int b = 1; b <= k; b++) e.add(new int[]{a, k + b}); }
+      }
+      edges = e.toArray(new int[0][]);
+    }
+    return new Solution().edgeDisjointPaths(n, edges, s, t);
+  }
+}`, python: `def paths(kind, n, edges, s, t):
+    if kind in ('chain', 'chainTwice'):
+        edges = [[i, i + 1] for i in range(n - 1)] * (2 if kind == 'chainTwice' else 1)
+    elif kind == 'multi':
+        edges = []
+        for j in range(10):
+            first = 2 + j * 999
+            last = first + 998
+            edges.append([0, first])
+            edges += [[v, v + 1] for v in range(first, last)]
+            edges.append([last, 1])
+    elif kind == 'fan':
+        edges = [[0, i] for i in range(1, n - 1)] + [[i, n - 1] for i in range(1, n - 1)]
+    elif kind == 'bip':
+        k = (n - 2) // 2
+        edges = [[0, a] for a in range(1, k + 1)] + [[k + a, n - 1] for a in range(1, k + 1)]
+        edges += [[a, k + b] for a in range(1, k + 1) for b in range(1, k + 1)]
+    return edge_disjoint_paths(n, edges, s, t)`, js: `function paths(kind, n, edges, s, t) {
+  if (kind === 'chain' || kind === 'chainTwice') {
+    edges = [];
+    for (let i = 0; i + 1 < n; i++) { edges.push([i, i + 1]); if (kind === 'chainTwice') edges.push([i, i + 1]); }
+  } else if (kind === 'multi') {
+    edges = [];
+    for (let j = 0; j < 10; j++) {
+      const first = 2 + j * 999, last = first + 998;
+      edges.push([0, first]);
+      for (let v = first; v < last; v++) edges.push([v, v + 1]);
+      edges.push([last, 1]);
+    }
+  } else if (kind === 'fan') {
+    edges = [];
+    for (let i = 1; i < n - 1; i++) { edges.push([0, i]); edges.push([i, n - 1]); }
+  } else if (kind === 'bip') {
+    edges = [];
+    const k = (n - 2) / 2;
+    for (let a = 1; a <= k; a++) {
+      edges.push([0, a]); edges.push([k + a, n - 1]);
+      for (let b = 1; b <= k; b++) edges.push([a, k + b]);
+    }
+  }
+  return edgeDisjointPaths(n, edges, s, t);
+}`, cpp: `int paths(string kind, int n, vector<vector<int>> edges, int s, int t) {
+  if (kind == "chain" || kind == "chainTwice") {
+    edges.clear();
+    for (int i = 0; i + 1 < n; i++) { edges.push_back({i, i + 1}); if (kind == "chainTwice") edges.push_back({i, i + 1}); }
+  } else if (kind == "multi") {
+    edges.clear();
+    for (int j = 0; j < 10; j++) {
+      int first = 2 + j * 999, last = first + 998;
+      edges.push_back({0, first});
+      for (int v = first; v < last; v++) edges.push_back({v, v + 1});
+      edges.push_back({last, 1});
+    }
+  } else if (kind == "fan") {
+    edges.clear();
+    for (int i = 1; i < n - 1; i++) { edges.push_back({0, i}); edges.push_back({i, n - 1}); }
+  } else if (kind == "bip") {
+    edges.clear();
+    int k = (n - 2) / 2;
+    for (int a = 1; a <= k; a++) {
+      edges.push_back({0, a}); edges.push_back({k + a, n - 1});
+      for (int b = 1; b <= k; b++) edges.push_back({a, k + b});
+    }
+  }
+  return Solution().edgeDisjointPaths(n, edges, s, t);
+}` } },
       solution: {
         approach: `<p>Unit-capacity network + Dinic. Adjacency lists keep edges in input order so the dry run matches. Phase 2 of the example shows the reverse edge 4→1 rerouting the first path.</p>`,
         code: `class Solution {
-    private int[] to, cap, level, it;
-    private List<List<Integer>> g;
-
     int edgeDisjointPaths(int n, int[][] edges, int s, int t) {
         int m = edges.length;
-        to = new int[2 * m];
-        cap = new int[2 * m];
-        g = new ArrayList<>();
+        int[] to = new int[2 * m], cap = new int[2 * m];
+        List<List<Integer>> g = new ArrayList<>();
         for (int i = 0; i < n; i++) g.add(new ArrayList<>());
         for (int i = 0; i < m; i++) {
             int u = edges[i][0], v = edges[i][1];
             to[2 * i] = v;     cap[2 * i] = 1;     g.get(u).add(2 * i);       // each road usable once
             to[2 * i + 1] = u; cap[2 * i + 1] = 0; g.get(v).add(2 * i + 1);   // undo edge
         }
-        level = new int[n];
-        it = new int[n];
+        int[] level = new int[n], it = new int[n], path = new int[n];
         int paths = 0;
-        while (bfs(s, t, n)) {
+        while (bfs(g, to, cap, level, s, t)) {
             Arrays.fill(it, 0);
-            int f;
-            while ((f = dfs(s, t, Integer.MAX_VALUE)) > 0) paths += f;
+            int len = 0, v = s;                    // path[0 .. len) = roads on the walk from s to v
+            while (true) {
+                if (v == t) {                      // found a path: use every road on it, start again
+                    for (int i = 0; i < len; i++) { cap[path[i]]--; cap[path[i] ^ 1]++; }
+                    paths++;
+                    len = 0;
+                    v = s;
+                    continue;
+                }
+                boolean moved = false;
+                List<Integer> out = g.get(v);
+                while (it[v] < out.size()) {
+                    int e = out.get(it[v]);
+                    if (cap[e] > 0 && level[to[e]] == level[v] + 1) { path[len++] = e; v = to[e]; moved = true; break; }
+                    it[v]++;
+                }
+                if (!moved) {
+                    if (v == s) break;             // nothing left in this level graph
+                    v = to[path[--len] ^ 1];       // dead end: step back and skip that road
+                    it[v]++;
+                }
+            }
         }
         return paths;
     }
 
-    private boolean bfs(int s, int t, int n) {
+    private boolean bfs(List<List<Integer>> g, int[] to, int[] cap, int[] level, int s, int t) {
         Arrays.fill(level, -1);
         level[s] = 0;
         Deque<Integer> q = new ArrayDeque<>();
@@ -2211,19 +4600,148 @@ print("max flow =", flow, "found in", phases, "phases")
         }
         return level[t] >= 0;
     }
+}`,
+      alt: [{ lang: 'python', code: `from collections import deque
 
-    private int dfs(int v, int t, int f) {
+
+def edge_disjoint_paths(n, edges, s, t):
+    to, cap = [], []                       # edge 2i is the road, 2i + 1 its undo edge
+    g = [[] for _ in range(n)]
+    for u, v in edges:
+        g[u].append(len(to)); to.append(v); cap.append(1)      # each road usable once
+        g[v].append(len(to)); to.append(u); cap.append(0)
+    paths = 0
+    while True:
+        level = [-1] * n                   # Dinic phase: BFS levels
+        level[s] = 0
+        queue = deque([s])
+        while queue:
+            v = queue.popleft()
+            for e in g[v]:
+                if cap[e] > 0 and level[to[e]] < 0:
+                    level[to[e]] = level[v] + 1
+                    queue.append(to[e])
+        if level[t] < 0:
+            return paths
+        it = [0] * n                       # current-edge pointers
+        path = []                          # edges of the path we are walking (an explicit stack)
+        v = s
+        while True:
+            if v == t:                     # found a path: use every road on it, start again
+                for e in path:
+                    cap[e] -= 1
+                    cap[e ^ 1] += 1
+                paths += 1
+                path.clear()
+                v = s
+                continue
+            moved = False
+            while it[v] < len(g[v]):
+                e = g[v][it[v]]
+                if cap[e] > 0 and level[to[e]] == level[v] + 1:
+                    path.append(e)
+                    v = to[e]
+                    moved = True
+                    break
+                it[v] += 1
+            if not moved:
+                if v == s:                 # nothing left in this level graph
+                    break
+                v = to[path.pop() ^ 1]     # dead end: step back and skip that road
+                it[v] += 1
+` }, { lang: 'js', code: `function edgeDisjointPaths(n, edges, s, t) {
+  const m = edges.length;
+  const to = new Int32Array(2 * m), cap = new Int32Array(2 * m);   // edge 2i is the road, 2i + 1 its undo edge
+  const g = Array.from({ length: n }, () => []);
+  edges.forEach(([u, v], i) => {
+    to[2 * i] = v; cap[2 * i] = 1; g[u].push(2 * i);        // each road usable once
+    to[2 * i + 1] = u; g[v].push(2 * i + 1);
+  });
+  const level = new Int32Array(n), it = new Int32Array(n), queue = new Int32Array(n);
+  let paths = 0;
+  for (;;) {
+    level.fill(-1);                          // Dinic phase: BFS levels
+    level[s] = 0;
+    let head = 0, tail = 0;
+    queue[tail++] = s;
+    while (head < tail) {
+      const v = queue[head++];
+      for (const e of g[v]) if (cap[e] > 0 && level[to[e]] < 0) { level[to[e]] = level[v] + 1; queue[tail++] = to[e]; }
+    }
+    if (level[t] < 0) return paths;
+    it.fill(0);                              // current-edge pointers
+    const path = [];                         // edges of the path we are walking (an explicit stack)
+    let v = s;
+    for (;;) {
+      if (v === t) {                         // found a path: use every road on it, start again
+        for (const e of path) { cap[e]--; cap[e ^ 1]++; }
+        paths++;
+        path.length = 0;
+        v = s;
+        continue;
+      }
+      let moved = false;
+      while (it[v] < g[v].length) {
+        const e = g[v][it[v]];
+        if (cap[e] > 0 && level[to[e]] === level[v] + 1) { path.push(e); v = to[e]; moved = true; break; }
+        it[v]++;
+      }
+      if (!moved) {
+        if (v === s) break;                  // nothing left in this level graph
+        v = to[path.pop() ^ 1];              // dead end: step back and skip that road
+        it[v]++;
+      }
+    }
+  }
+}
+` }, { lang: 'cpp', code: `class Solution {
+    vector<int> to, cap, level, it;
+    vector<vector<int>> g;
+
+    bool bfs(int s, int t) {
+        fill(level.begin(), level.end(), -1);
+        level[s] = 0;
+        queue<int> q;
+        q.push(s);
+        while (!q.empty()) {
+            int v = q.front(); q.pop();
+            for (int e : g[v])
+                if (cap[e] > 0 && level[to[e]] < 0) { level[to[e]] = level[v] + 1; q.push(to[e]); }
+        }
+        return level[t] >= 0;
+    }
+
+    int dfs(int v, int t, int f) {
         if (v == t) return f;
-        for (; it[v] < g.get(v).size(); it[v]++) {
-            int e = g.get(v).get(it[v]), w = to[e];
-            if (cap[e] > 0 && level[w] == level[v] + 1) {
-                int d = dfs(w, t, Math.min(f, cap[e]));
+        for (int& i = it[v]; i < (int)g[v].size(); i++) {
+            int e = g[v][i];
+            if (cap[e] > 0 && level[to[e]] == level[v] + 1) {
+                int d = dfs(to[e], t, min(f, cap[e]));
                 if (d > 0) { cap[e] -= d; cap[e ^ 1] += d; return d; }
             }
         }
         return 0;
     }
-}`,
+
+public:
+    int edgeDisjointPaths(int n, vector<vector<int>>& edges, int s, int t) {
+        g.assign(n, {});
+        to.clear(); cap.clear();
+        for (auto& e : edges) {
+            g[e[0]].push_back(to.size()); to.push_back(e[1]); cap.push_back(1);   // each road usable once
+            g[e[1]].push_back(to.size()); to.push_back(e[0]); cap.push_back(0);   // undo edge
+        }
+        level.assign(n, -1);
+        int paths = 0;
+        while (bfs(s, t)) {
+            it.assign(n, 0);
+            int f;
+            while ((f = dfs(s, t, INT_MAX)) > 0) paths += f;
+        }
+        return paths;
+    }
+};
+` }],
         dry: {
           head: ['phase', 'levels', 'DFS result', 'paths'],
           rows: [
@@ -2274,7 +4792,7 @@ print("max flow =", flow, "found in", phases, "phases")
       '"Can team X still win the league?" (baseball elimination) → flow network; X is eliminated iff max flow &lt; total remaining games.',
       'The answer equals a max flow, but the question asks "<b>which edges</b>" → residual BFS from S after max flow.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       class MinCut {
           // Capacity-matrix version (n up to a few hundred). Returns the cut edges {u, v}.
           static List<int[]> minCut(int[][] capacity, int s, int t) {
@@ -2308,7 +4826,108 @@ print("max flow =", flow, "found in", phases, "phases")
               }
               return t >= 0 && parent[t] != -1;
           }
-      }`, `
+      }`, alt: [{ lang: 'python', code: `from collections import deque
+
+
+def min_cut(capacity, s, t):
+    # Capacity-matrix version (n up to a few hundred). Returns the cut edges (u, v).
+    n = len(capacity)
+    r = [row[:] for row in capacity]            # residual capacities
+
+    def bfs(target):                            # parent[v] == -1 means "not reached" (parent[s] = s)
+        parent = [-1] * n
+        parent[s] = s
+        q = deque([s])
+        while q:
+            u = q.popleft()
+            for v in range(n):
+                if parent[v] == -1 and r[u][v] > 0:
+                    parent[v] = u
+                    q.append(v)
+        return parent if target < 0 or parent[target] != -1 else None
+
+    while True:                                 # Edmonds-Karp
+        parent = bfs(t)
+        if parent is None:
+            break
+        push = float('inf')
+        v = t
+        while v != s:
+            push = min(push, r[parent[v]][v])
+            v = parent[v]
+        v = t
+        while v != s:
+            r[parent[v]][v] -= push
+            r[v][parent[v]] += push
+            v = parent[v]
+    reach = bfs(-1)                             # who is still reachable?
+    return [(u, v) for u in range(n) for v in range(n)
+            if reach[u] != -1 and reach[v] == -1 and capacity[u][v] > 0]
+` }, { lang: 'js', code: `// Capacity-matrix version (n up to a few hundred). Returns the cut edges [u, v].
+function minCut(capacity, s, t) {
+  const n = capacity.length;
+  const r = capacity.map((row) => row.slice());          // residual capacities
+
+  // BFS over residual edges. parent[v] === -1 means "not reached" (parent[s] = s).
+  function bfs() {
+    const parent = new Array(n).fill(-1);
+    parent[s] = s;
+    const q = [s];
+    for (let h = 0; h < q.length; h++) {
+      const u = q[h];
+      for (let v = 0; v < n; v++) if (parent[v] === -1 && r[u][v] > 0) { parent[v] = u; q.push(v); }
+    }
+    return parent;
+  }
+
+  for (;;) {                                             // Edmonds-Karp
+    const parent = bfs();
+    if (parent[t] === -1) break;
+    let push = Infinity;
+    for (let v = t; v !== s; v = parent[v]) push = Math.min(push, r[parent[v]][v]);
+    for (let v = t; v !== s; v = parent[v]) { r[parent[v]][v] -= push; r[v][parent[v]] += push; }
+  }
+  const reach = bfs();                                   // who is still reachable?
+  const cut = [];
+  for (let u = 0; u < n; u++)
+    for (let v = 0; v < n; v++)
+      if (reach[u] !== -1 && reach[v] === -1 && capacity[u][v] > 0) cut.push([u, v]);
+  return cut;
+}
+` }, { lang: 'cpp', code: `// Capacity-matrix version (n up to a few hundred). Returns the cut edges {u, v}.
+// BFS over residual edges. parent[v] == -1 means "not reached" (parent[s] = s).
+void residualBfs(const vector<vector<int>>& r, int s, vector<int>& parent) {
+    parent.assign(r.size(), -1);
+    parent[s] = s;
+    queue<int> q;
+    q.push(s);
+    while (!q.empty()) {
+        int u = q.front();
+        q.pop();
+        for (int v = 0; v < (int)r.size(); v++)
+            if (parent[v] == -1 && r[u][v] > 0) { parent[v] = u; q.push(v); }
+    }
+}
+
+vector<pair<int, int>> minCut(const vector<vector<int>>& capacity, int s, int t) {
+    int n = capacity.size();
+    vector<vector<int>> r = capacity;                    // residual capacities
+    vector<int> parent;
+    while (true) {                                       // Edmonds-Karp
+        residualBfs(r, s, parent);
+        if (parent[t] == -1) break;
+        int push = INT_MAX;
+        for (int v = t; v != s; v = parent[v]) push = min(push, r[parent[v]][v]);
+        for (int v = t; v != s; v = parent[v]) { r[parent[v]][v] -= push; r[v][parent[v]] += push; }
+    }
+    residualBfs(r, s, parent);                           // who is still reachable?
+    vector<pair<int, int>> cut;
+    for (int u = 0; u < n; u++)
+        for (int v = 0; v < n; v++)
+            if (parent[u] != -1 && parent[v] == -1 && capacity[u][v] > 0) cut.push_back({u, v});
+    return cut;
+}
+` }] }, { lang: 'java', code: `
       class ProjectSelection {
           // profit[i] > 0: project earns money; profit[i] < 0: it is a cost (e.g. buying a tool).
           // need[i] = list of items that must also be chosen if i is chosen.
@@ -2341,8 +4960,116 @@ print("max flow =", flow, "found in", phases, "phases")
               }
               return positive - flow;
           }
-      }`],
-    codeTitle: ['Max flow, then residual BFS → the cut edges (Java)', 'Min cut as a modelling tool: project selection / max-weight closure (Java)'],
+      }`, alt: [{ lang: 'python', code: `from collections import deque
+
+
+def max_profit(profit, need):
+    # profit[i] > 0: project earns money; profit[i] < 0: it is a cost (e.g. buying a tool).
+    # need[i] = list of items that must also be chosen if i is chosen.
+    # Answer = sum of positive profits - min cut.  (Edmonds-Karp on a matrix.)
+    n = len(profit)
+    s, t = n, n + 1
+    INF = 1 << 60
+    r = [[0] * (n + 2) for _ in range(n + 2)]
+    positive = 0
+    for i in range(n):
+        if profit[i] > 0:
+            r[s][i] = profit[i]                  # lose it if NOT chosen
+            positive += profit[i]
+        else:
+            r[i][t] = -profit[i]                 # pay it if chosen
+        for j in need[i]:
+            r[i][j] = INF                        # cannot cut a dependency
+    flow = 0
+    while True:
+        parent = [-1] * (n + 2)
+        parent[s] = s
+        q = deque([s])
+        while q and parent[t] == -1:
+            u = q.popleft()
+            for v in range(n + 2):
+                if parent[v] == -1 and r[u][v] > 0:
+                    parent[v] = u
+                    q.append(v)
+        if parent[t] == -1:
+            break
+        push = INF
+        v = t
+        while v != s:
+            push = min(push, r[parent[v]][v])
+            v = parent[v]
+        v = t
+        while v != s:
+            r[parent[v]][v] -= push
+            r[v][parent[v]] += push
+            v = parent[v]
+        flow += push
+    return positive - flow
+` }, { lang: 'js', code: `// profit[i] > 0: project earns money; profit[i] < 0: it is a cost (e.g. buying a tool).
+// need[i] = list of items that must also be chosen if i is chosen.
+// Answer = sum of positive profits - min cut.  (Edmonds-Karp on a matrix.)
+function maxProfit(profit, need) {
+  const n = profit.length, s = n, t = n + 1;
+  const INF = 1e15;                              // above any possible flow, and exact in a double
+  const r = Array.from({ length: n + 2 }, () => new Array(n + 2).fill(0));
+  let positive = 0;
+  for (let i = 0; i < n; i++) {
+    if (profit[i] > 0) { r[s][i] = profit[i]; positive += profit[i]; }   // lose it if NOT chosen
+    else r[i][t] = -profit[i];                                          // pay it if chosen
+    for (const j of need[i]) r[i][j] = INF;                             // cannot cut a dependency
+  }
+  let flow = 0;
+  for (;;) {
+    const parent = new Array(n + 2).fill(-1);
+    parent[s] = s;
+    const q = [s];
+    for (let h = 0; h < q.length && parent[t] === -1; h++) {
+      const u = q[h];
+      for (let v = 0; v < n + 2; v++) if (parent[v] === -1 && r[u][v] > 0) { parent[v] = u; q.push(v); }
+    }
+    if (parent[t] === -1) break;
+    let push = INF;
+    for (let v = t; v !== s; v = parent[v]) push = Math.min(push, r[parent[v]][v]);
+    for (let v = t; v !== s; v = parent[v]) { r[parent[v]][v] -= push; r[v][parent[v]] += push; }
+    flow += push;
+  }
+  return positive - flow;
+}
+` }, { lang: 'cpp', code: `// profit[i] > 0: project earns money; profit[i] < 0: it is a cost (e.g. buying a tool).
+// need[i] = list of items that must also be chosen if i is chosen.
+// Answer = sum of positive profits - min cut.  (Edmonds-Karp on a matrix.)
+long long maxProfit(const vector<long long>& profit, const vector<vector<int>>& need) {
+    int n = profit.size(), s = n, t = n + 1;
+    const long long INF = LLONG_MAX / 4;
+    long long positive = 0;
+    vector<vector<long long>> r(n + 2, vector<long long>(n + 2, 0));
+    for (int i = 0; i < n; i++) {
+        if (profit[i] > 0) { r[s][i] = profit[i]; positive += profit[i]; }   // lose it if NOT chosen
+        else r[i][t] = -profit[i];                                          // pay it if chosen
+        for (int j : need[i]) r[i][j] = INF;                                // cannot cut a dependency
+    }
+    long long flow = 0;
+    vector<int> parent(n + 2);
+    while (true) {
+        fill(parent.begin(), parent.end(), -1);
+        parent[s] = s;
+        queue<int> q;
+        q.push(s);
+        while (!q.empty() && parent[t] == -1) {
+            int u = q.front();
+            q.pop();
+            for (int v = 0; v < n + 2; v++) if (parent[v] == -1 && r[u][v] > 0) { parent[v] = u; q.push(v); }
+        }
+        if (parent[t] == -1) break;
+        long long push = INF;
+        for (int v = t; v != s; v = parent[v]) push = min(push, r[parent[v]][v]);
+        for (int v = t; v != s; v = parent[v]) { r[parent[v]][v] -= push; r[v][parent[v]] += push; }
+        flow += push;
+    }
+    return positive - flow;
+}
+` }] }],
+    codeTitle: ['Max flow, then residual BFS → the cut edges', 'Min cut as a modelling tool: project selection / max-weight closure'],
     viz: {
       title: 'From max flow to min cut: run the flow, BFS the residual graph, read off the full edges',
       input: 'S>A:16 S>C:13 C>A:4 A>B:12 B>C:9 C>D:14 D>B:7 B>T:20 D>T:4',
@@ -2395,19 +5122,28 @@ print("max flow =", flow, "found in", phases, "phases")
     },
     examples: [
       { title: 'Min vertex cut by node splitting', html: `<p>"Remove the fewest routers so A cannot reach B." Replace every router v (except A and B) by two nodes <code>v_in → v_out</code> with capacity <b>1</b>; every original link u→v becomes <code>u_out → v_in</code> with capacity <b>∞</b> (so cutting links is never cheaper). Now any finite cut must cut some <code>v_in → v_out</code> edges — i.e. remove routers — and max flow = minimum routers to remove.</p>` },
-      { title: 'Project selection in numbers', html: `<p>Projects P1 (+10), P2 (+7); tools T1 (−6), T2 (−9). P1 needs T1; P2 needs T1 and T2. Network: S→P1:10, S→P2:7, T1→T:6, T2→T:9, P1→T1:∞, P2→T1:∞, P2→T2:∞. Min cut = 13 (cut S→P2 = 7 and T1→T = 6). Profit = 17 − 13 = <b>4</b>: do P1 with T1 (10 − 6), skip P2 (7 − 6 − 9 &lt; 0 extra).</p>`, code: `long[] profit = {10, 7, -6, -9};          // P1, P2, T1, T2
+      { title: 'Project selection in numbers', html: `<p>Projects P1 (+10), P2 (+7); tools T1 (−6), T2 (−9). P1 needs T1; P2 needs T1 and T2. Network: S→P1:10, S→P2:7, T1→T:6, T2→T:9, P1→T1:∞, P2→T1:∞, P2→T2:∞. Min cut = 13 (cut S→P2 = 7 and T1→T = 6). Profit = 17 − 13 = <b>4</b>: do P1 with T1 (10 − 6), skip P2 (7 − 6 − 9 &lt; 0 extra).</p>`, code: { lang: 'java', code: `long[] profit = {10, 7, -6, -9};          // P1, P2, T1, T2
 int[][] need = {{2}, {2, 3}, {}, {}};       // P1 needs T1; P2 needs T1 and T2
-// ProjectSelection.maxProfit(profit, need) == 4` },
+// ProjectSelection.maxProfit(profit, need) == 4`, alt: [{ lang: 'python', code: `profit = [10, 7, -6, -9]                 # P1, P2, T1, T2
+need = [[2], [2, 3], [], []]             # P1 needs T1; P2 needs T1 and T2
+# max_profit(profit, need) == 4
+` }, { lang: 'js', code: `const profit = [10, 7, -6, -9];          // P1, P2, T1, T2
+const need = [[2], [2, 3], [], []];      // P1 needs T1; P2 needs T1 and T2
+// maxProfit(profit, need) === 4
+` }, { lang: 'cpp', code: `vector<long long> profit = {10, 7, -6, -9};          // P1, P2, T1, T2
+vector<vector<int>> need = {{2}, {2, 3}, {}, {}};    // P1 needs T1; P2 needs T1 and T2
+// maxProfit(profit, need) == 4
+` }] } },
       { title: 'Several minimum cuts can exist', html: `<p>With S→A:3, S→B:2, A→B:2, A→T:2, B→T:3, both {S} and {S, A, B} have capacity 5. The residual BFS from S always returns the <b>smallest</b> S-side (the min cut closest to S). BFS backwards from T in the residual graph gives the min cut closest to T. Edges that appear in <b>every</b> min cut are the truly critical ones.</p>` },
       { title: 'Global min cut (no fixed S and T)', html: `<p>"Fewest edges to disconnect the graph at all" has no S and T. Options: fix S and try all T (V − 1 max flows), <b>Stoer–Wagner</b> O(V·E + V² log V) deterministic, or <b>Karger</b>'s random edge contraction (repeat O(V² log V) times for high success probability). Interviews mostly ask about S-T cuts; know the names for the global version.</p>` }
     ],
     deepDive: `<p><b>Full proof of the theorem (the 3 equivalent statements):</b> for a flow f, these are equivalent: (1) f is maximum; (2) the residual graph has no S→T path; (3) some cut has capacity equal to |f|. (1 ⇒ 2): an augmenting path would increase f. (2 ⇒ 3): let X = nodes reachable from S in the residual graph. For every edge from X to outside, residual is 0 → it is full; for every edge from outside into X, its reverse residual is 0 → it carries 0. So the net flow across the cut equals its capacity. (3 ⇒ 1): no flow can exceed any cut. ∎</p>
       <p><b>Max-flow min-cut is LP duality.</b> Max flow is a linear program; its dual assigns each node a 0/1 "side" and each edge a 0/1 "cut" variable — the min-cut LP — and it has integral optimal solutions. This is why so many combinatorial min-max theorems (König, Menger, Hall, Dilworth) are special cases of max-flow min-cut.</p>
       <p><b>Modelling patterns with ∞ edges:</b> an edge of capacity ∞ from u to v says "if u is on the S-side then v must be on the S-side too" (otherwise the cut would be infinite). That one rule encodes dependencies (project selection), "must choose together" constraints, and closure problems. For binary labelling (image segmentation, Boykov–Kolmogorov), costs to label i as "foreground"/"background" become edges S→i and i→T, and smoothness penalties become edges between neighbouring pixels; this exactly minimises energies that are <b>submodular</b>.</p>
-      <p><b>Production notes:</b> graph cuts powered image segmentation and stereo vision for a decade (GrabCut in OpenCV is still a min-cut). Network reliability teams compute min cuts between data centres to know how many fibre cuts they can survive. Use <code>long</code> and a large finite INF (e.g. <code>Long.MAX_VALUE / 4</code>) so adding two INF edges does not overflow.</p>`,
+      <p><b>Production notes:</b> graph cuts powered image segmentation and stereo vision for a decade (GrabCut in OpenCV is still a min-cut). Network reliability teams compute min cuts between data centres to know how many fibre cuts they can survive. Use 64-bit integers and a large finite INF (e.g. a quarter of the 64-bit maximum, <code>Long.MAX_VALUE / 4</code> in Java) so adding two INF edges does not overflow; in JavaScript use an INF such as 10<sup>15</sup> that stays below 2<sup>53</sup>.</p>`,
     aiEra: `<p><b>What AI changes:</b> AI can compute a min cut with networkx (<code>nx.minimum_cut</code>) in one line. What it cannot do reliably is <b>invent the right network</b> for an unusual "minimum cost to separate / choose" story, especially with ∞ dependency edges and node splitting.</p>
       <p><b>Use AI as a partner:</b> state your model ("each project is a node, S→project with its profit, tool→T with its cost, project→tool with ∞") and ask the AI to find a counterexample where a valid choice does not correspond to a finite cut. Ask it to brute-force small instances (all 2<sup>n</sup> choices) and compare with your flow answer.</p>
-      <p><b>Where AI goes wrong:</b> counting backward edges in the cut capacity, reporting edges between "S-reachable in the original graph" instead of the <b>residual</b> graph, putting the ∞ dependency edge in the wrong direction, and overflowing with <code>Long.MAX_VALUE</code> as INF.</p>
+      <p><b>Where AI goes wrong:</b> counting backward edges in the cut capacity, reporting edges between "S-reachable in the original graph" instead of the <b>residual</b> graph, putting the ∞ dependency edge in the wrong direction, and overflowing with the 64-bit maximum as INF.</p>
       <p><b>What you must still own:</b> the proof sketch (interviewers ask "how do you know it is optimal?"), the residual-BFS recipe, and the modelling patterns: node splitting, ∞ edges, super source/sink, and "profit = positives − min cut".</p>`,
     problems: [{
       title: 'Cheapest Roads to Block',
@@ -2449,6 +5185,41 @@ int[][] need = {{2}, {2, 3}, {}, {}};       // P1 needs T1; P2 needs T1 and T2
         `<p>Hint 2: Run max flow (Edmonds-Karp is enough for 5000 edges), then BFS from s using edges with residual &gt; 0.</p>`,
         `<p>Hint 3: Recipe — answer = indices i with reach[u_i] = true and reach[v_i] = false. Do not report every saturated road: some saturated roads lie entirely inside one side.</p>`
       ],
+      tests: { sig: "int int[][] int int -> list<int>", fn: "cheapestBlock", check: `(args, out, exp) => {
+  const roads = args[1], n = args[0], s = args[2], t = args[3];
+  if (!Array.isArray(out)) return false;
+  for (let i = 0; i < out.length; i++) if (!Number.isInteger(out[i]) || out[i] < 0 || out[i] >= roads.length || (i > 0 && out[i] <= out[i - 1])) return false;   // sorted, distinct, valid
+  const cut = new Set(out);
+  let cost = 0;
+  out.forEach((i) => { cost += roads[i][2]; });
+  if (cost !== exp) return false;                                                                 // must be the cheapest
+  const adj = Array.from({ length: n }, () => []);
+  roads.forEach((e, i) => { if (!cut.has(i)) adj[e[0]].push(e[1]); });
+  const seen = new Array(n).fill(false); seen[s] = true; const st = [s];
+  while (st.length) { const v = st.pop(); for (const w of adj[v]) if (!seen[w]) { seen[w] = true; st.push(w); } }
+  return !seen[t];                                                                                // and t must really be cut off
+}`, cases: [
+          [[4,[[0,1,10],[0,2,10],[1,3,2],[2,3,3],[1,2,1]],0,3],5],
+          [[2,[[0,1,7]],0,1],7],
+          [[2,[[0,1,3],[0,1,4],[1,0,100]],0,1],7],
+          [[5,[[0,1,1],[1,2,1],[2,3,1],[3,4,1]],0,4],1],
+          [[4,[[3,2,5],[2,1,4],[1,0,6],[3,0,100]],3,0],104],
+          [[4,[[0,1,5],[1,2,5],[2,1,5],[1,3,1],[2,3,1],[0,3,9]],0,3],11],
+          [[3,[[0,2,6],[1,2,3],[1,0,5],[0,1,2],[0,2,7],[0,1,1],[1,2,7],[2,0,5],[1,2,3]],1,0],10],
+          [[3,[[0,1,5],[0,1,2],[0,2,8],[0,1,9],[1,2,4],[1,0,4],[0,2,1],[2,1,3],[2,0,8],[1,2,9],[0,1,6],[1,2,9],[0,1,3]],2,1],11],
+          [[4,[[2,3,8],[1,2,9],[0,1,7],[1,3,1],[2,1,7],[0,1,3],[3,0,1],[2,1,6],[1,2,5],[1,0,5],[0,2,1]],0,2],11],
+          [[2,[[1,0,4],[1,0,2],[1,0,9],[0,1,8],[1,0,6],[0,1,6],[1,0,3]],0,1],14],
+          [[3,[[0,1,1],[1,0,3],[2,0,1],[1,2,7],[2,0,3],[0,1,6],[2,0,4],[2,0,1],[1,2,6],[1,2,9],[1,0,2],[2,0,2],[0,1,8]],1,2],22],
+          [[5,[[1,4,7],[1,2,9],[0,1,1],[1,2,2],[1,2,7],[4,2,7],[4,1,1],[3,2,3]],0,1],1],
+          [[5,[[4,2,2],[1,4,7],[3,4,1],[3,0,7],[3,0,3],[0,1,8],[2,4,4],[2,3,6],[0,1,5],[2,0,9],[0,3,5]],3,1],11],
+          [[3,[[0,1,5],[2,0,9],[0,1,6],[1,2,3],[0,2,7],[0,2,8],[2,0,1],[1,2,7],[0,2,5],[0,2,8],[1,0,6]],2,0],10],
+          [[7,[[6,3,5],[5,3,6],[4,1,1],[5,1,5],[4,3,8],[6,2,2],[1,5,7],[3,6,4],[4,0,6],[3,0,1],[0,1,3],[4,6,3],[3,5,8],[0,5,2]],1,0],1],
+          [[5,[[1,3,1],[3,4,8],[1,4,3],[3,4,5],[4,1,6],[1,2,1],[1,3,2],[0,1,1],[4,0,5],[4,2,7]],4,0],5],
+          [[6,[[3,1,1],[2,1,5],[2,4,3],[5,4,4],[0,5,4],[5,2,1]],5,2],1],
+          [[6,[[5,3,8],[5,1,7],[2,5,7],[5,2,7],[0,2,1],[4,2,6],[0,5,6]],2,3],7],
+          [[2,{"$rep":[0,1,1000000],"n":5000},0,1],5000000000],
+          [[3,{"$concat":[{"$rep":[0,1,1000000],"n":2500},{"$rep":[1,2,999999],"n":2500}]},0,2],2499997500]
+        ] },
       solution: {
         approach: `<p>Edmonds-Karp with paired edge ids (road i → ids 2i, 2i+1). After the flow, one BFS over residual edges marks the S-side; the crossing original roads are an optimal blocking set.</p>`,
         code: `class Solution {
@@ -2488,6 +5259,111 @@ int[][] need = {{2}, {2, 3}, {}, {}};       // P1 needs T1; P2 needs T1 and T2
         return true;
     }
 }`,
+      alt: [{ lang: 'python', code: `from collections import deque
+
+
+def cheapest_block(n, roads, s, t):
+    to, cap = [], []                       # edge 2i is road i, 2i + 1 its undo edge
+    g = [[] for _ in range(n)]
+    for u, v, cost in roads:
+        g[u].append(len(to)); to.append(v); cap.append(cost)
+        g[v].append(len(to)); to.append(u); cap.append(0)
+
+    def bfs():                             # via[v] = edge used to reach v, -1 = unreached, -2 = source
+        via = [-1] * n
+        via[s] = -2
+        queue = deque([s])
+        while queue:
+            v = queue.popleft()
+            for e in g[v]:
+                if cap[e] > 0 and via[to[e]] == -1:
+                    via[to[e]] = e
+                    queue.append(to[e])
+        return via
+
+    via = bfs()
+    while via[t] != -1:                    # Edmonds-Karp rounds
+        path = []
+        v = t
+        while v != s:
+            path.append(via[v])
+            v = to[via[v] ^ 1]
+        push = min(cap[e] for e in path)
+        for e in path:
+            cap[e] -= push
+            cap[e ^ 1] += push
+        via = bfs()
+    # via now marks the S side of the cut: roads from reached to unreached are full
+    return [i for i, (u, v, _) in enumerate(roads) if via[u] != -1 and via[v] == -1]
+` }, { lang: 'js', code: `function cheapestBlock(n, roads, s, t) {
+  const m = roads.length;
+  const to = new Int32Array(2 * m), cap = new Float64Array(2 * m);   // edge 2i is road i, 2i + 1 its undo edge
+  const g = Array.from({ length: n }, () => []);
+  roads.forEach(([u, v, cost], i) => {
+    to[2 * i] = v; cap[2 * i] = cost; g[u].push(2 * i);
+    to[2 * i + 1] = u; g[v].push(2 * i + 1);
+  });
+  const via = new Int32Array(n), queue = new Int32Array(n);
+  // BFS over residual edges; via[v] = edge used to reach v, -1 = unreached, -2 = the source
+  const bfs = () => {
+    via.fill(-1);
+    via[s] = -2;
+    let head = 0, tail = 0;
+    queue[tail++] = s;
+    while (head < tail) {
+      const v = queue[head++];
+      for (const e of g[v]) if (cap[e] > 0 && via[to[e]] === -1) { via[to[e]] = e; queue[tail++] = to[e]; }
+    }
+  };
+  bfs();
+  while (via[t] !== -1) {                    // Edmonds-Karp rounds
+    let push = Infinity;
+    for (let v = t; v !== s; v = to[via[v] ^ 1]) push = Math.min(push, cap[via[v]]);
+    for (let v = t; v !== s; v = to[via[v] ^ 1]) { cap[via[v]] -= push; cap[via[v] ^ 1] += push; }
+    bfs();
+  }
+  // via now marks the S side of the cut: roads from reached to unreached are full
+  const ans = [];
+  roads.forEach(([u, v], i) => { if (via[u] !== -1 && via[v] === -1) ans.push(i); });
+  return ans;
+}
+` }, { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> cheapestBlock(int n, vector<vector<int>>& roads, int s, int t) {
+        int m = roads.size();
+        vector<int> to(2 * m), via(n);
+        vector<long long> cap(2 * m);                    // edge 2i is road i, 2i + 1 its undo edge
+        vector<vector<int>> g(n);
+        for (int i = 0; i < m; i++) {
+            to[2 * i] = roads[i][1];     cap[2 * i] = roads[i][2]; g[roads[i][0]].push_back(2 * i);
+            to[2 * i + 1] = roads[i][0]; cap[2 * i + 1] = 0;       g[roads[i][1]].push_back(2 * i + 1);
+        }
+        // BFS over residual edges; via[v] = edge used to reach v, -1 = unreached, -2 = the source
+        auto bfs = [&]() {
+            fill(via.begin(), via.end(), -1);
+            via[s] = -2;
+            queue<int> q;
+            q.push(s);
+            while (!q.empty()) {
+                int v = q.front(); q.pop();
+                for (int e : g[v]) if (cap[e] > 0 && via[to[e]] == -1) { via[to[e]] = e; q.push(to[e]); }
+            }
+        };
+        bfs();
+        while (via[t] != -1) {                           // Edmonds-Karp rounds
+            long long push = LLONG_MAX;
+            for (int v = t; v != s; v = to[via[v] ^ 1]) push = min(push, cap[via[v]]);
+            for (int v = t; v != s; v = to[via[v] ^ 1]) { cap[via[v]] -= push; cap[via[v] ^ 1] += push; }
+            bfs();
+        }
+        // via now marks the S side of the cut: roads from reached to unreached are full
+        vector<int> ans;
+        for (int i = 0; i < m; i++)
+            if (via[roads[i][0]] != -1 && via[roads[i][1]] == -1) ans.push_back(i);
+        return ans;
+    }
+};
+` }],
         dry: {
           head: ['step', 'what happens', 'flow / reach'],
           rows: [
@@ -2535,7 +5411,7 @@ int[][] need = {{2}, {2, 3}, {}, {}};       // P1 needs T1; P2 needs T1 and T2
       '"Minimum number of <b>paths/chains</b> to cover all nodes of a DAG" (each node on exactly one path) → n − max matching.',
       '"Assign with <b>costs</b>, minimise total" → weighted matching: Hungarian algorithm O(n³) or min-cost flow — plain matching is not enough.'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
       class Kuhn {
           private final List<List<Integer>> adj;   // adj[left] = right vertices it may pair with
           private final int[] matchR;              // matchR[right] = left partner, or -1
@@ -2568,7 +5444,88 @@ int[][] need = {{2}, {2, 3}, {}, {}};       // P1 needs T1; P2 needs T1 and T2
               }
               return result;
           }
-      }`, `
+      }`, alt: [{ lang: 'python', code: `class Kuhn:
+    def __init__(self, n_right, adj):
+        self.adj = adj                          # adj[left] = right vertices it may pair with
+        self.match_r = [-1] * n_right           # match_r[right] = left partner, or -1
+
+    # Find a partner for left vertex u, possibly by asking current owners to move.
+    def _try_kuhn(self, u):
+        for r in self.adj[u]:
+            if self.visited[r]:
+                continue
+            self.visited[r] = True
+            if self.match_r[r] == -1 or self._try_kuhn(self.match_r[r]):   # free, or its owner found another
+                self.match_r[r] = u
+                return True
+        return False
+
+    def max_matching(self):
+        result = 0
+        for u in range(len(self.adj)):
+            self.visited = [False] * len(self.match_r)    # fresh for every left vertex
+            if self._try_kuhn(u):
+                result += 1
+        return result
+` }, { lang: 'js', code: `class Kuhn {
+  constructor(nRight, adj) {
+    this.adj = adj;                             // adj[left] = right vertices it may pair with
+    this.matchR = new Array(nRight).fill(-1);   // matchR[right] = left partner, or -1
+  }
+
+  // Find a partner for left vertex u, possibly by asking current owners to move.
+  tryKuhn(u) {
+    for (const r of this.adj[u]) {
+      if (this.visited[r]) continue;
+      this.visited[r] = true;
+      if (this.matchR[r] === -1 || this.tryKuhn(this.matchR[r])) {   // free, or its owner found another
+        this.matchR[r] = u;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  maxMatching() {
+    let result = 0;
+    for (let u = 0; u < this.adj.length; u++) {
+      this.visited = new Array(this.matchR.length).fill(false);      // fresh for every left vertex
+      if (this.tryKuhn(u)) result++;
+    }
+    return result;
+  }
+}
+` }, { lang: 'cpp', code: `class Kuhn {
+    const vector<vector<int>>& adj;   // adj[left] = right vertices it may pair with
+    vector<int> matchR;               // matchR[right] = left partner, or -1
+    vector<char> visited;             // right vertices tried in the CURRENT attempt
+
+    // Find a partner for left vertex u, possibly by asking current owners to move.
+    bool tryKuhn(int u) {
+        for (int r : adj[u]) {
+            if (visited[r]) continue;
+            visited[r] = 1;
+            if (matchR[r] == -1 || tryKuhn(matchR[r])) {   // free, or its owner found another
+                matchR[r] = u;
+                return true;
+            }
+        }
+        return false;
+    }
+
+public:
+    Kuhn(int nRight, const vector<vector<int>>& adj) : adj(adj), matchR(nRight, -1) {}
+
+    int maxMatching() {
+        int result = 0;
+        for (int u = 0; u < (int)adj.size(); u++) {
+            visited.assign(matchR.size(), 0);              // fresh for every left vertex
+            if (tryKuhn(u)) result++;
+        }
+        return result;
+    }
+};
+` }] }, { lang: 'java', code: `
       class HopcroftKarp {
           private final int nL;
           private final List<List<Integer>> adj;
@@ -2624,8 +5581,160 @@ int[][] need = {{2}, {2, 3}, {}, {}};       // P1 needs T1; P2 needs T1 and T2
                       if (matchL[u] == -1 && dfs(u)) result++;
               return result;
           }
-      }`],
-    codeTitle: ['Kuhn\'s algorithm, O(V·E) — short and interview-friendly (Java)', 'Hopcroft-Karp, O(E·√V) — for 10^5 edges (Java)'],
+      }`, alt: [{ lang: 'python', code: `from collections import deque
+
+INF = float('inf')
+
+
+class HopcroftKarp:
+    def __init__(self, n_left, n_right, adj):
+        self.n_left = n_left
+        self.adj = adj
+        self.match_l = [-1] * n_left
+        self.match_r = [-1] * n_right
+        self.dist = [0] * n_left
+
+    # BFS from ALL free left vertices at once: layers of the shortest augmenting paths.
+    def _bfs(self):
+        q = deque()
+        for u in range(self.n_left):
+            if self.match_l[u] == -1:
+                self.dist[u] = 0
+                q.append(u)
+            else:
+                self.dist[u] = INF
+        found_free = False
+        while q:
+            u = q.popleft()
+            for r in self.adj[u]:
+                w = self.match_r[r]
+                if w == -1:
+                    found_free = True            # a path can end here
+                elif self.dist[w] == INF:
+                    self.dist[w] = self.dist[u] + 1
+                    q.append(w)
+        return found_free
+
+    # DFS only along the BFS layers; many vertex-disjoint paths per phase.
+    def _dfs(self, u):
+        for r in self.adj[u]:
+            w = self.match_r[r]
+            if w == -1 or (self.dist[w] == self.dist[u] + 1 and self._dfs(w)):
+                self.match_l[u] = r
+                self.match_r[r] = u
+                return True
+        self.dist[u] = INF                       # dead end this phase
+        return False
+
+    def max_matching(self):
+        result = 0
+        while self._bfs():                       # O(sqrt V) phases
+            for u in range(self.n_left):
+                if self.match_l[u] == -1 and self._dfs(u):
+                    result += 1
+        return result
+` }, { lang: 'js', code: `class HopcroftKarp {
+  constructor(nL, nR, adj) {
+    this.nL = nL;
+    this.adj = adj;
+    this.matchL = new Array(nL).fill(-1);
+    this.matchR = new Array(nR).fill(-1);
+    this.dist = new Array(nL).fill(0);
+  }
+
+  // BFS from ALL free left vertices at once: layers of the shortest augmenting paths.
+  bfs() {
+    const q = [];
+    for (let u = 0; u < this.nL; u++) {
+      if (this.matchL[u] === -1) { this.dist[u] = 0; q.push(u); } else this.dist[u] = Infinity;
+    }
+    let foundFree = false;
+    for (let h = 0; h < q.length; h++) {
+      const u = q[h];
+      for (const r of this.adj[u]) {
+        const w = this.matchR[r];
+        if (w === -1) foundFree = true;                         // a path can end here
+        else if (this.dist[w] === Infinity) { this.dist[w] = this.dist[u] + 1; q.push(w); }
+      }
+    }
+    return foundFree;
+  }
+
+  // DFS only along the BFS layers; many vertex-disjoint paths per phase.
+  dfs(u) {
+    for (const r of this.adj[u]) {
+      const w = this.matchR[r];
+      if (w === -1 || (this.dist[w] === this.dist[u] + 1 && this.dfs(w))) {
+        this.matchL[u] = r;
+        this.matchR[r] = u;
+        return true;
+      }
+    }
+    this.dist[u] = Infinity;                                    // dead end this phase
+    return false;
+  }
+
+  maxMatching() {
+    let result = 0;
+    while (this.bfs())                                          // O(sqrt V) phases
+      for (let u = 0; u < this.nL; u++)
+        if (this.matchL[u] === -1 && this.dfs(u)) result++;
+    return result;
+  }
+}
+` }, { lang: 'cpp', code: `class HopcroftKarp {
+    int nL;
+    const vector<vector<int>>& adj;
+    vector<int> matchL, matchR, dist;
+    static constexpr int INF = INT_MAX;
+
+    // BFS from ALL free left vertices at once: layers of the shortest augmenting paths.
+    bool bfs() {
+        queue<int> q;
+        for (int u = 0; u < nL; u++) {
+            if (matchL[u] == -1) { dist[u] = 0; q.push(u); } else dist[u] = INF;
+        }
+        bool foundFree = false;
+        while (!q.empty()) {
+            int u = q.front();
+            q.pop();
+            for (int r : adj[u]) {
+                int w = matchR[r];
+                if (w == -1) foundFree = true;                       // a path can end here
+                else if (dist[w] == INF) { dist[w] = dist[u] + 1; q.push(w); }
+            }
+        }
+        return foundFree;
+    }
+
+    // DFS only along the BFS layers; many vertex-disjoint paths per phase.
+    bool dfs(int u) {
+        for (int r : adj[u]) {
+            int w = matchR[r];
+            if (w == -1 || (dist[w] == dist[u] + 1 && dfs(w))) {
+                matchL[u] = r;
+                matchR[r] = u;
+                return true;
+            }
+        }
+        dist[u] = INF;                                               // dead end this phase
+        return false;
+    }
+
+public:
+    HopcroftKarp(int nL, int nR, const vector<vector<int>>& adj)
+        : nL(nL), adj(adj), matchL(nL, -1), matchR(nR, -1), dist(nL, 0) {}
+
+    int maxMatching() {
+        int result = 0;
+        while (bfs())                                                // O(sqrt V) phases
+            for (int u = 0; u < nL; u++)
+                if (matchL[u] == -1 && dfs(u)) result++;
+        return result;
+    }
+};
+` }] }],
+    codeTitle: ['Kuhn\'s algorithm, O(V·E) — short and interview-friendly', 'Hopcroft-Karp, O(E·√V) — for 10^5 edges'],
     viz: {
       title: 'Kuhn live: chains of "can you move?" requests become augmenting paths',
       input: 'A-1 A-2 B-1 C-2 C-3 D-3',
@@ -2690,18 +5799,33 @@ int[][] need = {{2}, {2, 3}, {}, {}};       // P1 needs T1; P2 needs T1 and T2
       { title: 'Why visited[] is per round', html: `<p>Inside one round, if right node r already failed to help, asking again cannot succeed (nothing changed) — and without the mark the DFS could loop forever (A asks 1, its owner B asks 2, its owner A asks 1, …). Between rounds the matching changes, so the marks must be cleared: forgetting to reset gives too-small answers.</p>` },
       { title: 'König in action: cover the marked cells', html: `<p>Marked cells (0,0), (0,2), (1,1), (2,1). Rows are the left side, columns the right side, one edge per marked cell: r0–c0, r0–c2, r1–c1, r2–c1. Kuhn finds r0–c0 and r1–c1; r2 only likes c1, whose owner r1 has no other option → maximum matching = <b>2</b>. Minimum cover: <b>row 0 + column 1</b> touch all four cells → 2 lines. ${H.c('g', 'Matching = cover = 2, exactly as König promises.')}</p>` },
       { title: 'Minimum path cover of a DAG', html: `<p>DAG 1→2, 2→3, 1→4. Split each node into out-copy (left) and in-copy (right); edge u→v becomes u_out–v_in. Max matching: 1–2, 2–3 (size 2). Paths = n − matching = 4 − 2 = <b>2</b>: 1→2→3 and 4. Each matched edge "glues" two nodes into the same path.</p>` },
-      { title: 'Flow model of matching', html: `<p>Build S→each left (cap 1), left→right edges (cap 1), each right→T (cap 1). The integer max flow picks a set of left→right edges with flow 1 — no left node can send 2 (its in-capacity is 1), no right node can receive 2 (its out-capacity is 1). So flow = matching. Change the S→left capacity to k and a worker can take k jobs — that is the main advantage of the flow view.</p>`, code: `// Flow model sizes for nL left and nR right vertices:
+      { title: 'Flow model of matching', html: `<p>Build S→each left (cap 1), left→right edges (cap 1), each right→T (cap 1). The integer max flow picks a set of left→right edges with flow 1 — no left node can send 2 (its in-capacity is 1), no right node can receive 2 (its out-capacity is 1). So flow = matching. Change the S→left capacity to k and a worker can take k jobs — that is the main advantage of the flow view.</p>`, code: { lang: 'java', code: `// Flow model sizes for nL left and nR right vertices:
 int nL = 4, nR = 3;
 int nodes = nL + nR + 2;          // + source + sink
 int source = nL + nR, sink = nL + nR + 1;
-System.out.println(nodes + " nodes, source " + source + ", sink " + sink);` }
+System.out.println(nodes + " nodes, source " + source + ", sink " + sink);`, alt: [{ lang: 'python', code: `# Flow model sizes for n_left left and n_right right vertices:
+n_left, n_right = 4, 3
+nodes = n_left + n_right + 2             # + source + sink
+source, sink = n_left + n_right, n_left + n_right + 1
+print(f"{nodes} nodes, source {source}, sink {sink}")
+` }, { lang: 'js', code: `// Flow model sizes for nL left and nR right vertices:
+const nL = 4, nR = 3;
+const nodes = nL + nR + 2;               // + source + sink
+const source = nL + nR, sink = nL + nR + 1;
+console.log(\`\${nodes} nodes, source \${source}, sink \${sink}\`);
+` }, { lang: 'cpp', code: `// Flow model sizes for nL left and nR right vertices:
+int nL = 4, nR = 3;
+int nodes = nL + nR + 2;                 // + source + sink
+int source = nL + nR, sink = nL + nR + 1;
+cout << nodes << " nodes, source " << source << ", sink " << sink << "\\n";
+` }] } }
     ],
     deepDive: `<p><b>Why Kuhn is correct.</b> If a left vertex u finds no augmenting path in its round, then it never will later: later augmentations only change the matching along alternating paths, and one can show the set of vertices reachable from u by alternating paths does not gain a free right vertex. So processing each left vertex once suffices (Berge + this lemma). Complexity: each round is one DFS O(V + E) → <b>O(V·E)</b>. Heuristic speed-ups: start with a greedy matching, and randomise the order of left vertices.</p>
       <p><b>Hopcroft-Karp</b> runs in phases like Dinic: BFS from all free left vertices builds layers, then DFS finds a maximal set of vertex-disjoint <b>shortest</b> augmenting paths. After √V phases the shortest augmenting path is longer than √V, which leaves at most √V more augmentations → <b>O(E·√V)</b>. For E = 10<sup>5</sup>, V = 10<sup>5</sup> that is about 3·10<sup>7</sup> steps.</p>
       <p><b>König and the vertex cover recipe:</b> after a maximum matching, run alternating BFS/DFS from all free left vertices (non-matching edges L→R, matching edges R→L). Let Z be everything reached. Then <b>(L \\ Z) ∪ (R ∩ Z)</b> is a minimum vertex cover. Its complement is a maximum independent set.</p>
       <p><b>Hall's marriage theorem:</b> a matching that saturates every left vertex exists iff every subset X of the left side has at least |X| neighbours. Useful for proofs ("show a perfect assignment always exists").</p>
       <p><b>Beyond bipartite:</b> general graphs need <b>Edmonds' blossom algorithm</b> (odd cycles break the simple alternating search). Weighted bipartite matching uses the <b>Hungarian algorithm</b> (O(n³)) or <b>min-cost max-flow</b>; online assignment in ride-hailing and ad allocation uses these plus approximations. Stable matching (Gale–Shapley) is a different problem — preferences instead of compatibility, used in medical residency placement.</p>`,
-    aiEra: `<p><b>What AI changes:</b> asking for "maximum bipartite matching in Java" gives working Kuhn instantly, and SciPy offers <code>linear_sum_assignment</code> (Hungarian) and <code>maximum_bipartite_matching</code>. The hard part left for you is noticing the <b>bipartite structure</b> (rows vs columns, chessboard colours, time slots vs tasks, out-copies vs in-copies) and choosing plain matching vs weighted vs stable matching.</p>
+    aiEra: `<p><b>What AI changes:</b> asking for "maximum bipartite matching" in your language gives working Kuhn instantly, and SciPy offers <code>linear_sum_assignment</code> (Hungarian) and <code>maximum_bipartite_matching</code>. The hard part left for you is noticing the <b>bipartite structure</b> (rows vs columns, chessboard colours, time slots vs tasks, out-copies vs in-copies) and choosing plain matching vs weighted vs stable matching.</p>
       <p><b>Use AI as a partner:</b> ask it to brute-force all matchings for tiny random graphs and compare with your Kuhn; ask for the König cover construction and verify that the cover really touches every edge.</p>
       <p><b>Where AI goes wrong:</b> not resetting <code>visited</code> per round, resetting it inside the recursion (infinite recursion), using Kuhn on a non-bipartite graph (wrong answers on odd cycles), confusing "maximum matching" with "maximum-weight matching", and applying König to general graphs where it does not hold.</p>
       <p><b>What you must still own:</b> the augmenting-path idea (it is the same idea as max flow, which interviewers love to connect), the reductions (vertex cover, path cover, independent set), and complexity choices between Kuhn, Hopcroft-Karp and Dinic.</p>`,
@@ -2740,6 +5864,59 @@ System.out.println(nodes + " nodes, source " + source + ", sink " + sink);` }
         `<p>Hint 2: Write <code>tryAssign(a, seen)</code>: for each job j applicant a likes and not yet seen this round, mark it, and succeed if j is free or <code>tryAssign(owner[j], seen)</code> succeeds.</p>`,
         `<p>Hint 3: Recipe — owner[] = −1; for each applicant: fresh seen[], if tryAssign succeeds, count++. Answer = count. O(M · M·N) with a matrix.</p>`
       ],
+      tests: { sig: "string int[][] -> int", fn: "match", cases: [
+          [["",[[1,1,0],[1,0,0],[0,1,1],[0,0,1]]],3],
+          [["",[[0]]],0],
+          [["",[[1]]],1],
+          [["",[[0,0,0],[0,0,0],[0,0,0]]],0],
+          [["",[[1,1],[1,0]]],2],
+          [["",[[1,1,1,1,1]]],1],
+          [["",[[1],[1],[1],[1],[1]]],1],
+          [["",[[1,0,0,0],[1,1,0,0],[0,1,1,0],[0,0,1,1]]],4],
+          [["",[[1,1,0,0,0],[1,1,0,0,0],[1,1,0,0,0],[0,0,1,0,0]]],3],
+          [["",[[1,0,0,0,1,0],[1,0,0,0,1,0]]],2],
+          [["",[[0,1,0,0,0],[0,0,1,0,1]]],2],
+          [["",[[1,0,0,1,0,0]]],1],
+          [["",[[0],[1]]],1],
+          [["",[[0,0],[0,1],[0,1],[0,0]]],1],
+          [["",[[0,0,0,1],[0,0,0,0],[0,0,0,1],[0,1,0,0]]],2],
+          [["",[[0,0,1,0,0],[1,0,0,0,1],[0,1,0,0,1],[0,0,1,0,1],[0,1,0,0,0],[0,0,1,1,0]]],5],
+          [["",[[1,0],[0,1],[0,1],[1,1],[1,1]]],2],
+          [["",[[1,0,0,0,1],[0,0,0,0,0]]],1],
+          [["",[[0,1,1,1,0,0],[0,0,0,0,0,1]]],2],
+          [["",{"$rep":[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],"n":100}],100],
+          [["",{"$rep":[1],"n":100}],1],
+          [["",[[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]]],1],
+          [["identity",[]],100],
+          [["upper",[]],100],
+          [["hall",[]],50]
+        ], harness: { java: `class Check {
+  static int match(String kind, int[][] G) {
+    if (!kind.isEmpty()) {
+      G = new int[100][100];
+      for (int i = 0; i < 100; i++) for (int j = 0; j < 100; j++)
+        G[i][j] = kind.equals("identity") ? (i == j ? 1 : 0) : kind.equals("upper") ? (j >= i ? 1 : 0) : (j < 50 ? 1 : 0);
+    }
+    return new Solution().maximumMatch(G);
+  }
+}`, python: `def match(kind, G):
+    if kind != '':
+        G = [[(i == j) if kind == 'identity' else (j >= i) if kind == 'upper' else (j < 50) for j in range(100)] for i in range(100)]
+        G = [[int(x) for x in row] for row in G]
+    return maximum_match(G)`, js: `function match(kind, G) {
+  if (kind !== '') {
+    G = Array.from({ length: 100 }, (_, i) => Array.from({ length: 100 }, (_, j) =>
+      kind === 'identity' ? (i === j ? 1 : 0) : kind === 'upper' ? (j >= i ? 1 : 0) : (j < 50 ? 1 : 0)));
+  }
+  return maximumMatch(G);
+}`, cpp: `int match(string kind, vector<vector<int>> G) {
+  if (!kind.empty()) {
+    G.assign(100, vector<int>(100, 0));
+    for (int i = 0; i < 100; i++) for (int j = 0; j < 100; j++)
+      G[i][j] = kind == "identity" ? (i == j) : kind == "upper" ? (j >= i) : (j < 50);
+  }
+  return Solution().maximumMatch(G);
+}` } },
       solution: {
         approach: `<p>Kuhn's augmenting-path algorithm on the adjacency matrix. Each successful call flips one alternating chain and grows the matching by one.</p>`,
         code: `class Solution {
@@ -2765,6 +5942,66 @@ System.out.println(nodes + " nodes, source " + source + ", sink " + sink);` }
         return false;
     }
 }`,
+      alt: [{ lang: 'python', code: `def maximum_match(G):
+    m = len(G)
+    n = len(G[0]) if m else 0
+    owner = [-1] * n                      # owner[j] = applicant holding job j, or -1
+
+    def try_assign(a, seen):
+        for j in range(n):
+            if G[a][j] and not seen[j]:
+                seen[j] = True
+                if owner[j] == -1 or try_assign(owner[j], seen):
+                    owner[j] = a          # a takes j (the old owner already moved)
+                    return True
+        return False
+
+    return sum(try_assign(a, [False] * n) for a in range(m))
+` }, { lang: 'js', code: `function maximumMatch(G) {
+  const m = G.length, n = m ? G[0].length : 0;
+  const owner = new Array(n).fill(-1);    // owner[j] = applicant holding job j, or -1
+
+  const tryAssign = (a, seen) => {
+    for (let j = 0; j < n; j++) {
+      if (!G[a][j] || seen[j]) continue;
+      seen[j] = true;
+      if (owner[j] === -1 || tryAssign(owner[j], seen)) {
+        owner[j] = a;                     // a takes j (the old owner already moved)
+        return true;
+      }
+    }
+    return false;
+  };
+
+  let result = 0;
+  for (let a = 0; a < m; a++) if (tryAssign(a, new Array(n).fill(false))) result++;
+  return result;
+}
+` }, { lang: 'cpp', code: `class Solution {
+    bool tryAssign(const vector<vector<int>>& G, int a, vector<char>& seen, vector<int>& owner) {
+        for (int j = 0; j < (int)owner.size(); j++) {
+            if (!G[a][j] || seen[j]) continue;
+            seen[j] = 1;
+            if (owner[j] == -1 || tryAssign(G, owner[j], seen, owner)) {
+                owner[j] = a;              // a takes j (the old owner already moved)
+                return true;
+            }
+        }
+        return false;
+    }
+
+public:
+    int maximumMatch(vector<vector<int>>& G) {
+        int m = G.size(), n = m ? G[0].size() : 0, result = 0;
+        vector<int> owner(n, -1);          // owner[j] = applicant holding job j, or -1
+        for (int a = 0; a < m; a++) {
+            vector<char> seen(n, 0);
+            if (tryAssign(G, a, seen, owner)) result++;
+        }
+        return result;
+    }
+};
+` }],
         dry: {
           head: ['applicant', 'search', 'owner[] after (jobs 0, 1, 2)', 'count'],
           rows: [
@@ -2815,6 +6052,91 @@ System.out.println(nodes + " nodes, source " + source + ", sink " + sink);` }
       `<p>Hint 2: The vertex that finishes last in a full DFS sweep lives in a source component (Kosaraju's lemma). Test only that vertex with one more DFS.</p>`,
       `<p>Hint 3: For the smallest index: every mother vertex is in the same SCC as the candidate, i.e. it can reach the candidate. DFS on the reversed graph from the candidate and return the smallest reached index.</p>`
     ],
+    tests: { sig: "string int list<list<int>> -> int", fn: "mother", cases: [
+        [["",5,[[2,3],[0],[1],[4],[]]],0],
+        [["",1,[[]]],0],
+        [["",2,[[],[]]],-1],
+        [["",1,[[0]]],0],
+        [["",3,[[1],[2],[0]]],0],
+        [["",3,[[],[0],[1]]],2],
+        [["",3,[[1],[],[1]]],-1],
+        [["",4,[[1],[0],[3],[2]]],-1],
+        [["",4,[[0,1,1],[2],[0,3],[]]],0],
+        [["",4,[[0,3],[1,1,3,3,2],[3],[0,0]]],1],
+        [["",4,[[2,0,0],[1,2],[],[]]],-1],
+        [["",1,[[0]]],0],
+        [["",3,[[2],[2,2,0],[0,0]]],1],
+        [["",6,[[2],[4,0],[0],[4,2],[],[2]]],-1],
+        [["",7,[[1],[],[6],[],[],[],[6,3]]],-1],
+        [["",1,[[0,0]]],0],
+        [["",6,[[],[1],[],[],[4],[5]]],-1],
+        [["",4,[[1],[],[1,3],[0]]],2],
+        [["",6,[[5],[1,4],[4],[],[],[2]]],-1],
+        [["",5,[[0],[1,2,3],[3],[],[2]]],-1],
+        [["",2,[[1,1,1,0,1,0],[1,1]]],0],
+        [["chain",100000,[]],0],
+        [["revChain",100000,[]],99999],
+        [["cycle",100000,[]],0],
+        [["chords",100000,[]],0],
+        [["twoChains",100000,[]],-1]
+      ], harness: { java: `class Check {
+  static int mother(String kind, int V, List<List<Integer>> adj) {
+    if (!kind.isEmpty()) {
+      adj = new ArrayList<>();
+      for (int i = 0; i < V; i++) adj.add(new ArrayList<>());
+      int h = V / 2;
+      for (int i = 0; i < V; i++) {
+        if (kind.equals("chain") && i + 1 < V) adj.get(i).add(i + 1);
+        if (kind.equals("revChain") && i + 1 < V) adj.get(i + 1).add(i);
+        if (kind.equals("twoChains") && i + 1 < V && i + 1 != h) adj.get(i).add(i + 1);
+        if (kind.equals("cycle") || kind.equals("chords")) adj.get(i).add((i + 1) % V);
+        if (kind.equals("chords")) adj.get(i).add((i + 2) % V);
+      }
+    }
+    return new Solution().findMotherVertex(V, adj);
+  }
+}`, python: `def mother(kind, V, adj):
+    if kind != '':
+        adj = [[] for _ in range(V)]
+        h = V // 2
+        for i in range(V):
+            if kind == 'chain' and i + 1 < V:
+                adj[i].append(i + 1)
+            if kind == 'revChain' and i + 1 < V:
+                adj[i + 1].append(i)
+            if kind == 'twoChains' and i + 1 < V and i + 1 != h:
+                adj[i].append(i + 1)
+            if kind in ('cycle', 'chords'):
+                adj[i].append((i + 1) % V)
+            if kind == 'chords':
+                adj[i].append((i + 2) % V)
+    return find_mother_vertex(V, adj)`, js: `function mother(kind, V, adj) {
+  if (kind !== '') {
+    adj = Array.from({ length: V }, () => []);
+    const h = Math.floor(V / 2);
+    for (let i = 0; i < V; i++) {
+      if (kind === 'chain' && i + 1 < V) adj[i].push(i + 1);
+      if (kind === 'revChain' && i + 1 < V) adj[i + 1].push(i);
+      if (kind === 'twoChains' && i + 1 < V && i + 1 !== h) adj[i].push(i + 1);
+      if (kind === 'cycle' || kind === 'chords') adj[i].push((i + 1) % V);
+      if (kind === 'chords') adj[i].push((i + 2) % V);
+    }
+  }
+  return findMotherVertex(V, adj);
+}`, cpp: `int mother(string kind, int V, vector<vector<int>> adj) {
+  if (!kind.empty()) {
+    adj.assign(V, {});
+    int h = V / 2;
+    for (int i = 0; i < V; i++) {
+      if (kind == "chain" && i + 1 < V) adj[i].push_back(i + 1);
+      if (kind == "revChain" && i + 1 < V) adj[i + 1].push_back(i);
+      if (kind == "twoChains" && i + 1 < V && i + 1 != h) adj[i].push_back(i + 1);
+      if (kind == "cycle" || kind == "chords") adj[i].push_back((i + 1) % V);
+      if (kind == "chords") adj[i].push_back((i + 2) % V);
+    }
+  }
+  return Solution().findMotherVertex(V, adj);
+}` } },
     solution: {
       approach: `<p>Three linear passes: (1) DFS sweep, remember the root of the last DFS tree; (2) verify it reaches all vertices; (3) reverse DFS from it to collect its SCC-mates and return the smallest. Iterative DFS avoids stack overflow.</p>`,
       code: `class Solution {
@@ -2845,6 +6167,84 @@ System.out.println(nodes + " nodes, source " + source + ", sink " + sink);` }
         }
     }
 }`,
+      alt: [{ lang: 'python', code: `def find_mother_vertex(V, adj):
+    def dfs(s, graph, seen):              # iterative: a path of 10^5 vertices must not overflow
+        seen[s] = True
+        stack = [s]
+        while stack:
+            u = stack.pop()
+            for w in graph[u]:
+                if not seen[w]:
+                    seen[w] = True
+                    stack.append(w)
+
+    seen = [False] * V
+    last = -1
+    for v in range(V):
+        if not seen[v]:
+            dfs(v, adj, seen)
+            last = v                      # root of the last DFS tree finishes last
+    seen = [False] * V
+    dfs(last, adj, seen)
+    if not all(seen):
+        return -1                         # candidate fails -> nobody succeeds
+    radj = [[] for _ in range(V)]
+    for u in range(V):
+        for w in adj[u]:
+            radj[w].append(u)
+    reaches_last = [False] * V
+    dfs(last, radj, reaches_last)         # all mother vertices = can reach 'last'
+    return reaches_last.index(True)
+` }, { lang: 'js', code: `function findMotherVertex(V, adj) {
+  const dfs = (s, graph, seen) => {       // iterative: a path of 10^5 vertices must not overflow
+    seen[s] = 1;
+    const stack = [s];
+    while (stack.length) {
+      const u = stack.pop();
+      for (const w of graph[u]) if (!seen[w]) { seen[w] = 1; stack.push(w); }
+    }
+  };
+
+  let seen = new Uint8Array(V), last = -1;
+  for (let v = 0; v < V; v++) {
+    if (!seen[v]) { dfs(v, adj, seen); last = v; }    // root of the last DFS tree finishes last
+  }
+  seen = new Uint8Array(V);
+  dfs(last, adj, seen);
+  if (seen.includes(0)) return -1;        // candidate fails -> nobody succeeds
+  const radj = Array.from({ length: V }, () => []);
+  for (let u = 0; u < V; u++) for (const w of adj[u]) radj[w].push(u);
+  const reachesLast = new Uint8Array(V);
+  dfs(last, radj, reachesLast);           // all mother vertices = can reach 'last'
+  return reachesLast.indexOf(1);
+}
+` }, { lang: 'cpp', code: `class Solution {
+    void dfs(int s, const vector<vector<int>>& graph, vector<char>& seen) {   // iterative
+        seen[s] = 1;
+        vector<int> st{s};
+        while (!st.empty()) {
+            int u = st.back(); st.pop_back();
+            for (int w : graph[u]) if (!seen[w]) { seen[w] = 1; st.push_back(w); }
+        }
+    }
+
+public:
+    int findMotherVertex(int V, vector<vector<int>>& adj) {
+        vector<char> seen(V, 0);
+        int last = -1;
+        for (int v = 0; v < V; v++)
+            if (!seen[v]) { dfs(v, adj, seen); last = v; }    // root of the last DFS tree finishes last
+        fill(seen.begin(), seen.end(), 0);
+        dfs(last, adj, seen);
+        if (find(seen.begin(), seen.end(), 0) != seen.end()) return -1;   // candidate fails -> nobody succeeds
+        vector<vector<int>> radj(V);
+        for (int u = 0; u < V; u++) for (int w : adj[u]) radj[w].push_back(u);
+        vector<char> reachesLast(V, 0);
+        dfs(last, radj, reachesLast);                         // all mother vertices = can reach 'last'
+        return int(find(reachesLast.begin(), reachesLast.end(), 1) - reachesLast.begin());
+    }
+};
+` }],
       complexity: `<p>Time <b>O(V + E)</b>, space <b>O(V + E)</b> (reverse graph).</p>`,
       followUps: ['Return ALL mother vertices.', 'How many edges must be added so a mother vertex exists? (Number of source SCCs − 1.)']
     }
@@ -2895,6 +6295,104 @@ System.out.println(nodes + " nodes, source " + source + ", sink " + sink);` }
       `<p>Hint 2: Count odd-degree vertices: 0 → circuit, 2 → path, otherwise none. Degrees alone are not enough — check connectivity too.</p>`,
       `<p>Hint 3: Recipe — find any vertex with an edge, DFS from it, and make sure every vertex that has an edge was visited (isolated vertices are fine). Then apply the odd-count rule.</p>`
     ],
+    tests: { sig: "string int list<list<int>> -> int", fn: "euler", cases: [
+        [["",4,[[1,2,3],[0,2],[1,0],[0]]],1],
+        [["",1,[[]]],2],
+        [["",3,[[],[],[]]],2],
+        [["",2,[[1],[0]]],1],
+        [["",3,[[1,2],[0,2],[1,0]]],2],
+        [["",5,[[1,2],[0,2],[1,0],[4,4],[3,3]]],0],
+        [["",7,[[1,2],[0,2],[1,0],[],[],[],[]]],2],
+        [["",5,[[1,2,3,4],[0],[0],[0],[0]]],0],
+        [["",4,[[1,2,3],[0,2,3],[0,1,3],[0,1,2]]],0],
+        [["",2,[[1,1],[0,0]]],2],
+        [["",6,[[1],[0,2],[1,3],[2,4],[3,5],[4]]],1],
+        [["",7,[[1,6],[0,2],[1,3],[2,4],[3,5],[4,6],[5,0]]],2],
+        [["",5,[[1,2,3,4],[0,2,3,4],[0,1,3,4],[0,1,2,4],[0,1,2,3]]],2],
+        [["",5,[[2],[],[3,4,0,3,4],[2,2],[2,2]]],1],
+        [["",4,[[2,1,2],[0,2,3],[0,1,0,3],[2,1]]],1],
+        [["",6,[[1,1,5],[3,0,0],[4],[1,4],[5,2,3],[4,0]]],0],
+        [["",7,[[2,5,5,4],[3],[0],[4,1,4],[3,0,3],[0,0],[]]],0],
+        [["",7,[[5],[],[3,5,3],[2,2],[],[0,2],[]]],1],
+        [["",4,[[1,1],[0,0,3,3,2],[3,3,1],[2,1,2,1]]],1],
+        [["",3,[[2,1,1,1],[0,0,2,0],[0,1]]],2],
+        [["",5,[[4,3],[],[3,3],[2,2,0,4],[0,3]]],2],
+        [["",6,[[3],[],[5],[0],[],[2]]],0],
+        [["",7,[[2],[4],[0],[4],[5,3,1],[4],[]]],0],
+        [["",6,[[3],[2],[1],[0],[5],[4]]],0],
+        [["",6,[[],[],[5],[],[],[2]]],1],
+        [["cycle",100000,[]],2],
+        [["path",100000,[]],1],
+        [["twoCycles",100000,[]],0],
+        [["chords",100000,[]],2],
+        [["star",100000,[]],0]
+      ], harness: { java: `class Check {
+  static int euler(String kind, int V, List<List<Integer>> adj) {
+    if (!kind.isEmpty()) {
+      adj = new ArrayList<>();
+      for (int i = 0; i < V; i++) adj.add(new ArrayList<>());
+      int h = V / 2;
+      for (int i = 0; i < V; i++) {
+        int[] to = new int[0];
+        if (kind.equals("cycle")) to = new int[]{(i + 1) % V};
+        else if (kind.equals("path")) to = i + 1 < V ? new int[]{i + 1} : new int[0];
+        else if (kind.equals("chords")) to = new int[]{(i + 1) % V, (i + 2) % V};
+        else if (kind.equals("star")) to = i == 0 ? new int[0] : new int[]{0};
+        else if (kind.equals("twoCycles")) to = new int[]{i < h ? (i + 1) % h : h + (i - h + 1) % (V - h)};
+        for (int w : to) { adj.get(i).add(w); adj.get(w).add(i); }
+      }
+    }
+    return new Solution().isEulerian(V, adj);
+  }
+}`, python: `def euler(kind, V, adj):
+    if kind != '':
+        adj = [[] for _ in range(V)]
+        h = V // 2
+        for i in range(V):
+            if kind == 'cycle':
+                to = [(i + 1) % V]
+            elif kind == 'path':
+                to = [i + 1] if i + 1 < V else []
+            elif kind == 'chords':
+                to = [(i + 1) % V, (i + 2) % V]
+            elif kind == 'star':
+                to = [0] if i else []
+            else:
+                to = [(i + 1) % h if i < h else h + (i - h + 1) % (V - h)]
+            for w in to:
+                adj[i].append(w)
+                adj[w].append(i)
+    return is_eulerian(V, adj)`, js: `function euler(kind, V, adj) {
+  if (kind !== '') {
+    adj = Array.from({ length: V }, () => []);
+    const h = Math.floor(V / 2);
+    for (let i = 0; i < V; i++) {
+      let to = [];
+      if (kind === 'cycle') to = [(i + 1) % V];
+      else if (kind === 'path') to = i + 1 < V ? [i + 1] : [];
+      else if (kind === 'chords') to = [(i + 1) % V, (i + 2) % V];
+      else if (kind === 'star') to = i === 0 ? [] : [0];
+      else to = [i < h ? (i + 1) % h : h + (i - h + 1) % (V - h)];
+      for (const w of to) { adj[i].push(w); adj[w].push(i); }
+    }
+  }
+  return isEulerian(V, adj);
+}`, cpp: `int euler(string kind, int V, vector<vector<int>> adj) {
+  if (!kind.empty()) {
+    adj.assign(V, {});
+    int h = V / 2;
+    for (int i = 0; i < V; i++) {
+      vector<int> to;
+      if (kind == "cycle") to = {(i + 1) % V};
+      else if (kind == "path") { if (i + 1 < V) to = {i + 1}; }
+      else if (kind == "chords") to = {(i + 1) % V, (i + 2) % V};
+      else if (kind == "star") { if (i) to = {0}; }
+      else to = {i < h ? (i + 1) % h : h + (i - h + 1) % (V - h)};
+      for (int w : to) { adj[i].push_back(w); adj[w].push_back(i); }
+    }
+  }
+  return Solution().isEulerian(V, adj);
+}` } },
     solution: {
       approach: `<p>Degree parity + one DFS for connectivity among non-isolated vertices.</p>`,
       code: `class Solution {
@@ -2919,6 +6417,66 @@ System.out.println(nodes + " nodes, source " + source + ", sink " + sink);` }
         return odd == 2 ? 1 : 0;
     }
 }`,
+      alt: [{ lang: 'python', code: `def is_eulerian(V, adj):
+    odd = sum(len(a) % 2 for a in adj)                  # vertices with odd degree
+    start = next((v for v in range(V) if adj[v]), -1)
+    if start == -1:
+        return 2                                        # no edges at all
+    seen = [False] * V
+    seen[start] = True
+    stack = [start]
+    while stack:
+        u = stack.pop()
+        for w in adj[u]:
+            if not seen[w]:
+                seen[w] = True
+                stack.append(w)
+    if any(adj[v] and not seen[v] for v in range(V)):
+        return 0                                        # edges live in two separate pieces
+    if odd == 0:
+        return 2
+    return 1 if odd == 2 else 0
+` }, { lang: 'js', code: `function isEulerian(V, adj) {
+  let odd = 0, start = -1;
+  for (let v = 0; v < V; v++) {
+    if (adj[v].length % 2 === 1) odd++;
+    if (start === -1 && adj[v].length > 0) start = v;
+  }
+  if (start === -1) return 2;                           // no edges at all
+  const seen = new Uint8Array(V);
+  seen[start] = 1;
+  const stack = [start];
+  while (stack.length) {
+    const u = stack.pop();
+    for (const w of adj[u]) if (!seen[w]) { seen[w] = 1; stack.push(w); }
+  }
+  for (let v = 0; v < V; v++) if (adj[v].length > 0 && !seen[v]) return 0;   // two separate pieces
+  if (odd === 0) return 2;
+  return odd === 2 ? 1 : 0;
+}
+` }, { lang: 'cpp', code: `class Solution {
+public:
+    int isEulerian(int V, vector<vector<int>>& adj) {
+        int odd = 0, start = -1;
+        for (int v = 0; v < V; v++) {
+            if (adj[v].size() % 2 == 1) odd++;
+            if (start == -1 && !adj[v].empty()) start = v;
+        }
+        if (start == -1) return 2;                      // no edges at all
+        vector<char> seen(V, 0);
+        seen[start] = 1;
+        vector<int> st{start};
+        while (!st.empty()) {
+            int u = st.back(); st.pop_back();
+            for (int w : adj[u]) if (!seen[w]) { seen[w] = 1; st.push_back(w); }
+        }
+        for (int v = 0; v < V; v++)
+            if (!adj[v].empty() && !seen[v]) return 0;  // edges live in two separate pieces
+        if (odd == 0) return 2;
+        return odd == 2 ? 1 : 0;
+    }
+};
+` }],
       complexity: `<p>Time <b>O(V + E)</b>, space <b>O(V)</b>.</p>`,
       followUps: ['Directed version (in/out degrees).', 'Actually print the path with Hierholzer.']
     }
@@ -2960,43 +6518,288 @@ System.out.println(nodes + " nodes, source " + source + ", sink " + sink);` }
       `<p>Hint 2: Non-root v is a cut vertex if some child w has <code>low[w] ≥ disc[v]</code>; the root is one if it has ≥ 2 DFS children.</p>`,
       `<p>Hint 3: Recipe — DFS(0, −1) computing disc/low and a flag; after it, if any disc is still −1 return false; else return !flag. For n = 10<sup>5</sup> chains consider an iterative DFS.</p>`
     ],
+    tests: { sig: "string int int[][] -> bool", fn: "biconn", cases: [
+        [["",4,[[0,1],[1,2],[2,3],[3,0]]],true],
+        [["",5,[[0,1],[1,2],[2,3],[3,0],[3,4]]],false],
+        [["",2,[[0,1]]],true],
+        [["",3,[[0,1],[1,2]]],false],
+        [["",3,[[0,1],[1,2],[2,0]]],true],
+        [["",4,[[0,1],[2,3]]],false],
+        [["",3,[[0,1]]],false],
+        [["",5,[[0,1],[1,2],[2,0],[2,3],[3,4],[4,2]]],false],
+        [["",4,[[0,1],[0,2],[0,3],[1,2],[1,3],[2,3]]],true],
+        [["",5,[[0,1],[1,2],[2,3],[3,4],[4,0],[0,2]]],true],
+        [["",3,[[0,1],[0,1],[1,2],[2,0]]],true],
+        [["",4,[[2,3]]],false],
+        [["",3,[[2,1]]],false],
+        [["",5,[[0,4],[1,2],[3,4],[2,3],[4,1],[1,4],[1,2],[1,0],[1,0]]],true],
+        [["",3,[[0,1],[1,2],[0,1],[1,0]]],false],
+        [["",4,[[0,1],[2,3],[0,1],[2,1],[0,1],[1,3],[0,2],[1,0],[1,0]]],true],
+        [["",7,[[0,4]]],false],
+        [["",5,[[2,0],[0,2],[2,4],[3,1],[2,3]]],false],
+        [["",4,[[0,3],[0,3],[0,1],[3,0],[1,2],[2,1],[2,0],[3,2],[3,0],[0,1],[2,0]]],true],
+        [["",7,[[0,2],[4,5],[3,1]]],false],
+        [["",3,[[2,0]]],false],
+        [["",5,[[0,3],[1,2],[3,2],[3,1],[0,2]]],false],
+        [["",2,[[1,0],[0,1],[0,1],[1,0],[0,1]]],true],
+        [["path",100000,[]],false],
+        [["cycle",100000,[]],true],
+        [["chords",100000,[]],true],
+        [["bowtie",100000,[]],false],
+        [["twoCycles",100000,[]],false],
+        [["cycleTail",100000,[]],false]
+      ], harness: { java: `class Check {
+  static int[][] ugen(String kind, int n) {
+    List<int[]> e = new ArrayList<>();
+    int h = n / 2;
+    if (kind.equals("path")) { for (int i = 0; i + 1 < n; i++) e.add(new int[]{i, i + 1}); }
+    else if (kind.equals("star")) { for (int i = 1; i < n; i++) e.add(new int[]{0, i}); }
+    else if (kind.equals("cycleTail")) {
+      for (int i = 0; i < h; i++) e.add(new int[]{i, (i + 1) % h});
+      for (int i = h - 1; i + 1 < n; i++) e.add(new int[]{i, i + 1});
+    } else if (kind.equals("bowtie")) {
+      for (int i = 0; i < h; i++) e.add(new int[]{i, (i + 1) % h});
+      int k = n - h + 1;                                  // second cycle: 0, h, h+1, ..., n-1
+      for (int j = 0; j < k; j++) {
+        int a = j == 0 ? 0 : h + j - 1, jn = (j + 1) % k, b = jn == 0 ? 0 : h + jn - 1;
+        e.add(new int[]{a, b});
+      }
+    } else if (kind.equals("twoCycles")) {
+      for (int i = 0; i < h; i++) e.add(new int[]{i, (i + 1) % h});
+      for (int i = 0; i < n - h; i++) e.add(new int[]{h + i, h + (i + 1) % (n - h)});
+    } else {
+      for (int i = 0; i < n; i++) { e.add(new int[]{i, (i + 1) % n}); if (kind.equals("chords")) e.add(new int[]{i, (i + 2) % n}); }
+    }
+    return e.toArray(new int[0][]);
+  }
+  static boolean biconn(String kind, int n, int[][] edges) {
+    return new Solution().isBiconnected(n, kind.isEmpty() ? edges : ugen(kind, n));
+  }
+}`, python: `def _ugen(kind, n):
+    h = n // 2
+    if kind == 'path':
+        return [[i, i + 1] for i in range(n - 1)]
+    if kind == 'star':
+        return [[0, i] for i in range(1, n)]
+    if kind == 'cycleTail':
+        return [[i, (i + 1) % h] for i in range(h)] + [[i, i + 1] for i in range(h - 1, n - 1)]
+    if kind == 'bowtie':
+        w = [0] + list(range(h, n))                      # second cycle: 0, h, h+1, ..., n-1
+        return [[i, (i + 1) % h] for i in range(h)] + [[w[j], w[(j + 1) % len(w)]] for j in range(len(w))]
+    if kind == 'twoCycles':
+        return [[i, (i + 1) % h] for i in range(h)] + [[h + i, h + (i + 1) % (n - h)] for i in range(n - h)]
+    e = [[i, (i + 1) % n] for i in range(n)]
+    if kind == 'chords':
+        e += [[i, (i + 2) % n] for i in range(n)]
+    return e
+
+
+def biconn(kind, n, edges):
+    return is_biconnected(n, edges if kind == '' else _ugen(kind, n))`, js: `function _ugen(kind, n) {
+  const e = [], h = Math.floor(n / 2);
+  if (kind === 'path') { for (let i = 0; i + 1 < n; i++) e.push([i, i + 1]); }
+  else if (kind === 'star') { for (let i = 1; i < n; i++) e.push([0, i]); }
+  else if (kind === 'cycleTail') {
+    for (let i = 0; i < h; i++) e.push([i, (i + 1) % h]);
+    for (let i = h - 1; i + 1 < n; i++) e.push([i, i + 1]);
+  } else if (kind === 'bowtie') {
+    for (let i = 0; i < h; i++) e.push([i, (i + 1) % h]);
+    const w = [0]; for (let i = h; i < n; i++) w.push(i);   // second cycle: 0, h, h+1, ..., n-1
+    for (let j = 0; j < w.length; j++) e.push([w[j], w[(j + 1) % w.length]]);
+  } else if (kind === 'twoCycles') {
+    for (let i = 0; i < h; i++) e.push([i, (i + 1) % h]);
+    for (let i = 0; i < n - h; i++) e.push([h + i, h + (i + 1) % (n - h)]);
+  } else {
+    for (let i = 0; i < n; i++) { e.push([i, (i + 1) % n]); if (kind === 'chords') e.push([i, (i + 2) % n]); }
+  }
+  return e;
+}
+function biconn(kind, n, edges) { return isBiconnected(n, kind === '' ? edges : _ugen(kind, n)); }`, cpp: `vector<vector<int>> _ugen(const string& kind, int n) {
+  vector<vector<int>> e;
+  int h = n / 2;
+  if (kind == "path") { for (int i = 0; i + 1 < n; i++) e.push_back({i, i + 1}); }
+  else if (kind == "star") { for (int i = 1; i < n; i++) e.push_back({0, i}); }
+  else if (kind == "cycleTail") {
+    for (int i = 0; i < h; i++) e.push_back({i, (i + 1) % h});
+    for (int i = h - 1; i + 1 < n; i++) e.push_back({i, i + 1});
+  } else if (kind == "bowtie") {
+    for (int i = 0; i < h; i++) e.push_back({i, (i + 1) % h});
+    vector<int> w{0}; for (int i = h; i < n; i++) w.push_back(i);   // second cycle: 0, h, h+1, ..., n-1
+    for (size_t j = 0; j < w.size(); j++) e.push_back({w[j], w[(j + 1) % w.size()]});
+  } else if (kind == "twoCycles") {
+    for (int i = 0; i < h; i++) e.push_back({i, (i + 1) % h});
+    for (int i = 0; i < n - h; i++) e.push_back({h + i, h + (i + 1) % (n - h)});
+  } else {
+    for (int i = 0; i < n; i++) { e.push_back({i, (i + 1) % n}); if (kind == "chords") e.push_back({i, (i + 2) % n}); }
+  }
+  return e;
+}
+bool biconn(string kind, int n, vector<vector<int>> edges) {
+  if (!kind.empty()) edges = _ugen(kind, n);
+  return Solution().isBiconnected(n, edges);
+}` } },
     solution: {
       approach: `<p>Low-link DFS from vertex 0 with the two articulation-point rules, plus a visited check for connectivity.</p>`,
       code: `class Solution {
-    private List<List<Integer>> adj;
-    private int[] disc, low;
-    private int timer = 0;
-    private boolean hasCut = false;
-
     boolean isBiconnected(int n, int[][] edges) {
-        adj = new ArrayList<>();
+        List<List<Integer>> adj = new ArrayList<>();
         for (int i = 0; i < n; i++) adj.add(new ArrayList<>());
         for (int[] e : edges) { adj.get(e[0]).add(e[1]); adj.get(e[1]).add(e[0]); }
-        disc = new int[n];
-        low = new int[n];
+        int[] disc = new int[n], low = new int[n], next = new int[n], parent = new int[n], children = new int[n];
         Arrays.fill(disc, -1);
-        dfs(0, -1);
+        int[] stack = new int[n];                              // our own DFS stack: no deep recursion
+        int sp = 0, timer = 0;
+        boolean hasCut = false;
+        stack[sp++] = 0;
+        parent[0] = -1;
+        disc[0] = low[0] = timer++;
+        while (sp > 0) {
+            int v = stack[sp - 1];
+            if (next[v] < adj.get(v).size()) {
+                int w = adj.get(v).get(next[v]++);
+                if (w == parent[v]) continue;
+                if (disc[w] == -1) {                           // "recursive call" into w
+                    children[v]++;
+                    parent[w] = v;
+                    disc[w] = low[w] = timer++;
+                    stack[sp++] = w;
+                } else {
+                    low[v] = Math.min(low[v], disc[w]);
+                }
+            } else {                                           // "return" from v
+                sp--;
+                int p = parent[v];
+                if (p != -1) {
+                    low[p] = Math.min(low[p], low[v]);
+                    if (parent[p] != -1 && low[v] >= disc[p]) hasCut = true;   // p is not the root
+                } else if (children[v] > 1) {
+                    hasCut = true;                             // the root with two or more children
+                }
+            }
+        }
         for (int v = 0; v < n; v++) if (disc[v] == -1) return false;   // not even connected
         return !hasCut;
     }
+}`,
+      alt: [{ lang: 'python', code: `def is_biconnected(n, edges):
+    adj = [[] for _ in range(n)]
+    for a, b in edges:
+        adj[a].append(b)
+        adj[b].append(a)
 
-    private void dfs(int v, int parent) {
-        disc[v] = low[v] = timer++;
-        int children = 0;
-        for (int w : adj.get(v)) {
-            if (w == parent) continue;
-            if (disc[w] == -1) {
-                children++;
-                dfs(w, v);
-                low[v] = Math.min(low[v], low[w]);
-                if (parent != -1 && low[w] >= disc[v]) hasCut = true;
+    disc = [-1] * n
+    low = [0] * n
+    nxt = [0] * n                        # next neighbour index to try, per node
+    parent = [-1] * n
+    children = [0] * n
+    timer = 0
+    has_cut = False
+    disc[0] = low[0] = timer
+    timer += 1
+    stack = [0]                          # our own DFS stack: no recursion limit
+    while stack:
+        v = stack[-1]
+        if nxt[v] < len(adj[v]):
+            w = adj[v][nxt[v]]
+            nxt[v] += 1
+            if w == parent[v]:
+                continue
+            if disc[w] == -1:
+                children[v] += 1
+                parent[w] = v
+                disc[w] = low[w] = timer
+                timer += 1
+                stack.append(w)
+            else:
+                low[v] = min(low[v], disc[w])
+        else:
+            stack.pop()
+            p = parent[v]
+            if p != -1:
+                low[p] = min(low[p], low[v])
+                if parent[p] != -1 and low[v] >= disc[p]:   # p is not the root
+                    has_cut = True
+            elif children[v] > 1:                           # the root with two or more children
+                has_cut = True
+    if -1 in disc:
+        return False                     # not even connected
+    return not has_cut
+` }, { lang: 'js', code: `function isBiconnected(n, edges) {
+  const adj = Array.from({ length: n }, () => []);
+  for (const [a, b] of edges) { adj[a].push(b); adj[b].push(a); }
+
+  const disc = new Int32Array(n).fill(-1), low = new Int32Array(n), next = new Int32Array(n);
+  const parent = new Int32Array(n).fill(-1), children = new Int32Array(n);
+  let timer = 0, hasCut = false;
+  disc[0] = low[0] = timer++;
+  const stack = [0];                     // our own DFS stack: no stack overflow
+  while (stack.length) {
+    const v = stack[stack.length - 1];
+    if (next[v] < adj[v].length) {
+      const w = adj[v][next[v]++];
+      if (w === parent[v]) continue;
+      if (disc[w] === -1) {
+        children[v]++;
+        parent[w] = v;
+        disc[w] = low[w] = timer++;
+        stack.push(w);
+      } else {
+        low[v] = Math.min(low[v], disc[w]);
+      }
+    } else {
+      stack.pop();
+      const p = parent[v];
+      if (p !== -1) {
+        low[p] = Math.min(low[p], low[v]);
+        if (parent[p] !== -1 && low[v] >= disc[p]) hasCut = true;   // p is not the root
+      } else if (children[v] > 1) {
+        hasCut = true;                   // the root with two or more children
+      }
+    }
+  }
+  if (disc.includes(-1)) return false;   // not even connected
+  return !hasCut;
+}
+` }, { lang: 'cpp', code: `class Solution {
+public:
+    bool isBiconnected(int n, vector<vector<int>>& edges) {
+        vector<vector<int>> adj(n);
+        for (auto& e : edges) { adj[e[0]].push_back(e[1]); adj[e[1]].push_back(e[0]); }
+
+        vector<int> disc(n, -1), low(n, 0), next(n, 0), parent(n, -1), children(n, 0);
+        int timer = 0;
+        bool hasCut = false;
+        disc[0] = low[0] = timer++;
+        vector<int> stack{0};                           // our own DFS stack
+        while (!stack.empty()) {
+            int v = stack.back();
+            if (next[v] < (int)adj[v].size()) {
+                int w = adj[v][next[v]++];
+                if (w == parent[v]) continue;
+                if (disc[w] == -1) {
+                    children[v]++;
+                    parent[w] = v;
+                    disc[w] = low[w] = timer++;
+                    stack.push_back(w);
+                } else {
+                    low[v] = min(low[v], disc[w]);
+                }
             } else {
-                low[v] = Math.min(low[v], disc[w]);
+                stack.pop_back();
+                int p = parent[v];
+                if (p != -1) {
+                    low[p] = min(low[p], low[v]);
+                    if (parent[p] != -1 && low[v] >= disc[p]) hasCut = true;   // p is not the root
+                } else if (children[v] > 1) {
+                    hasCut = true;                      // the root with two or more children
+                }
             }
         }
-        if (parent == -1 && children > 1) hasCut = true;
+        if (find(disc.begin(), disc.end(), -1) != disc.end()) return false;   // not even connected
+        return !hasCut;
     }
-}`,
+};
+` }],
       complexity: `<p>Time <b>O(V + E)</b>, space <b>O(V + E)</b>.</p>`,
       followUps: ['Is the graph 2-edge-connected (no bridges)?', 'List the biconnected components (edge stack).']
     }
@@ -3046,46 +6849,307 @@ System.out.println(nodes + " nodes, source " + source + ", sink " + sink);` }
       `<p>Hint 2: Non-root v: cut vertex iff some child w has <code>low[w] ≥ disc[v]</code>. Root: cut vertex iff ≥ 2 DFS children.</p>`,
       `<p>Hint 3: Use a boolean array, not a list, so a vertex with several qualifying children is reported once; collect in index order at the end for sorted output.</p>`
     ],
+    tests: { sig: "string int int[][] -> list<int>", fn: "cuts", cases: [
+        [["",5,[[0,1],[1,4],[4,2],[4,3],[3,2]]],[1,4]],
+        [["",1,[]],[-1]],
+        [["",2,[[0,1]]],[-1]],
+        [["",3,[]],[-1]],
+        [["",3,[[0,1],[1,2]]],[1]],
+        [["",3,[[0,1],[1,2],[2,0]]],[-1]],
+        [["",5,[[0,1],[0,2],[0,3],[0,4]]],[0]],
+        [["",5,[[0,1],[1,2],[2,0],[2,3],[3,4],[4,2]]],[2]],
+        [["",8,[[0,1],[1,2],[3,4],[4,5],[5,3],[6,7]]],[1]],
+        [["",4,[[0,1],[0,1],[1,2],[2,3],[2,3]]],[1,2]],
+        [["",7,[[0,1],[1,2],[2,3],[3,4],[4,5],[5,6],[6,0]]],[-1]],
+        [["",6,[[0,1],[1,2],[2,0],[2,3],[3,4],[4,5],[5,3]]],[2,3]],
+        [["",6,[[0,1],[0,1],[0,2],[3,5]]],[0]],
+        [["",6,[[1,0],[3,2],[3,4],[0,3],[2,3],[2,0],[4,2],[0,1],[0,1]]],[0]],
+        [["",3,[[1,2],[0,1],[0,2],[0,1],[0,1],[1,0],[0,1],[2,0],[0,2],[0,1]]],[-1]],
+        [["",3,[[2,0],[0,1],[0,2],[0,1],[0,2],[2,0],[1,2],[2,0],[1,2],[2,0]]],[-1]],
+        [["",5,[[2,4],[1,3],[1,2],[3,2],[0,1],[3,0],[4,3],[1,4],[4,0]]],[-1]],
+        [["",4,[[1,2]]],[-1]],
+        [["",4,[[2,3],[1,3]]],[3]],
+        [["",9,[[0,1],[4,1],[7,5],[7,6],[7,8],[0,7]]],[0,1,7]],
+        [["",7,[]],[-1]],
+        [["",2,[]],[-1]],
+        [["",8,[[2,1]]],[-1]],
+        [["",4,[[2,3]]],[-1]],
+        [["path",100000,[]],{"$range":[1,99999]}],
+        [["cycle",100000,[]],[-1]],
+        [["star",100000,[]],[0]],
+        [["bowtie",100000,[]],[0]],
+        [["cycleTail",100000,[]],{"$range":[49999,99999]}],
+        [["chords",100000,[]],[-1]],
+        [["twoCycles",100000,[]],[-1]]
+      ], harness: { java: `class Check {
+  static int[][] ugen(String kind, int n) {
+    List<int[]> e = new ArrayList<>();
+    int h = n / 2;
+    if (kind.equals("path")) { for (int i = 0; i + 1 < n; i++) e.add(new int[]{i, i + 1}); }
+    else if (kind.equals("star")) { for (int i = 1; i < n; i++) e.add(new int[]{0, i}); }
+    else if (kind.equals("cycleTail")) {
+      for (int i = 0; i < h; i++) e.add(new int[]{i, (i + 1) % h});
+      for (int i = h - 1; i + 1 < n; i++) e.add(new int[]{i, i + 1});
+    } else if (kind.equals("bowtie")) {
+      for (int i = 0; i < h; i++) e.add(new int[]{i, (i + 1) % h});
+      int k = n - h + 1;                                  // second cycle: 0, h, h+1, ..., n-1
+      for (int j = 0; j < k; j++) {
+        int a = j == 0 ? 0 : h + j - 1, jn = (j + 1) % k, b = jn == 0 ? 0 : h + jn - 1;
+        e.add(new int[]{a, b});
+      }
+    } else if (kind.equals("twoCycles")) {
+      for (int i = 0; i < h; i++) e.add(new int[]{i, (i + 1) % h});
+      for (int i = 0; i < n - h; i++) e.add(new int[]{h + i, h + (i + 1) % (n - h)});
+    } else {
+      for (int i = 0; i < n; i++) { e.add(new int[]{i, (i + 1) % n}); if (kind.equals("chords")) e.add(new int[]{i, (i + 2) % n}); }
+    }
+    return e.toArray(new int[0][]);
+  }
+  static List<Integer> cuts(String kind, int n, int[][] edges) {
+    return new Solution().articulationPoints(n, kind.isEmpty() ? edges : ugen(kind, n));
+  }
+}`, python: `def _ugen(kind, n):
+    h = n // 2
+    if kind == 'path':
+        return [[i, i + 1] for i in range(n - 1)]
+    if kind == 'star':
+        return [[0, i] for i in range(1, n)]
+    if kind == 'cycleTail':
+        return [[i, (i + 1) % h] for i in range(h)] + [[i, i + 1] for i in range(h - 1, n - 1)]
+    if kind == 'bowtie':
+        w = [0] + list(range(h, n))                      # second cycle: 0, h, h+1, ..., n-1
+        return [[i, (i + 1) % h] for i in range(h)] + [[w[j], w[(j + 1) % len(w)]] for j in range(len(w))]
+    if kind == 'twoCycles':
+        return [[i, (i + 1) % h] for i in range(h)] + [[h + i, h + (i + 1) % (n - h)] for i in range(n - h)]
+    e = [[i, (i + 1) % n] for i in range(n)]
+    if kind == 'chords':
+        e += [[i, (i + 2) % n] for i in range(n)]
+    return e
+
+
+def cuts(kind, n, edges):
+    return articulation_points(n, edges if kind == '' else _ugen(kind, n))`, js: `function _ugen(kind, n) {
+  const e = [], h = Math.floor(n / 2);
+  if (kind === 'path') { for (let i = 0; i + 1 < n; i++) e.push([i, i + 1]); }
+  else if (kind === 'star') { for (let i = 1; i < n; i++) e.push([0, i]); }
+  else if (kind === 'cycleTail') {
+    for (let i = 0; i < h; i++) e.push([i, (i + 1) % h]);
+    for (let i = h - 1; i + 1 < n; i++) e.push([i, i + 1]);
+  } else if (kind === 'bowtie') {
+    for (let i = 0; i < h; i++) e.push([i, (i + 1) % h]);
+    const w = [0]; for (let i = h; i < n; i++) w.push(i);   // second cycle: 0, h, h+1, ..., n-1
+    for (let j = 0; j < w.length; j++) e.push([w[j], w[(j + 1) % w.length]]);
+  } else if (kind === 'twoCycles') {
+    for (let i = 0; i < h; i++) e.push([i, (i + 1) % h]);
+    for (let i = 0; i < n - h; i++) e.push([h + i, h + (i + 1) % (n - h)]);
+  } else {
+    for (let i = 0; i < n; i++) { e.push([i, (i + 1) % n]); if (kind === 'chords') e.push([i, (i + 2) % n]); }
+  }
+  return e;
+}
+function cuts(kind, n, edges) { return articulationPoints(n, kind === '' ? edges : _ugen(kind, n)); }`, cpp: `vector<vector<int>> _ugen(const string& kind, int n) {
+  vector<vector<int>> e;
+  int h = n / 2;
+  if (kind == "path") { for (int i = 0; i + 1 < n; i++) e.push_back({i, i + 1}); }
+  else if (kind == "star") { for (int i = 1; i < n; i++) e.push_back({0, i}); }
+  else if (kind == "cycleTail") {
+    for (int i = 0; i < h; i++) e.push_back({i, (i + 1) % h});
+    for (int i = h - 1; i + 1 < n; i++) e.push_back({i, i + 1});
+  } else if (kind == "bowtie") {
+    for (int i = 0; i < h; i++) e.push_back({i, (i + 1) % h});
+    vector<int> w{0}; for (int i = h; i < n; i++) w.push_back(i);   // second cycle: 0, h, h+1, ..., n-1
+    for (size_t j = 0; j < w.size(); j++) e.push_back({w[j], w[(j + 1) % w.size()]});
+  } else if (kind == "twoCycles") {
+    for (int i = 0; i < h; i++) e.push_back({i, (i + 1) % h});
+    for (int i = 0; i < n - h; i++) e.push_back({h + i, h + (i + 1) % (n - h)});
+  } else {
+    for (int i = 0; i < n; i++) { e.push_back({i, (i + 1) % n}); if (kind == "chords") e.push_back({i, (i + 2) % n}); }
+  }
+  return e;
+}
+vector<int> cuts(string kind, int n, vector<vector<int>> edges) {
+  if (!kind.empty()) edges = _ugen(kind, n);
+  return Solution().articulationPoints(n, edges);
+}` } },
     solution: {
       approach: `<p>Standard low-link DFS (Tarjan/Hopcroft 1973) over every component, marking cut vertices in a boolean array.</p>`,
       code: `class Solution {
-    private List<List<Integer>> adj;
-    private int[] disc, low;
-    private boolean[] cut;
-    private int timer = 0;
-
     List<Integer> articulationPoints(int V, int[][] edges) {
-        adj = new ArrayList<>();
+        List<List<Integer>> adj = new ArrayList<>();
         for (int i = 0; i < V; i++) adj.add(new ArrayList<>());
         for (int[] e : edges) { adj.get(e[0]).add(e[1]); adj.get(e[1]).add(e[0]); }
-        disc = new int[V];
-        low = new int[V];
-        cut = new boolean[V];
+        int[] disc = new int[V], low = new int[V], next = new int[V], parent = new int[V], children = new int[V];
+        boolean[] cut = new boolean[V];
         Arrays.fill(disc, -1);
-        for (int v = 0; v < V; v++) if (disc[v] == -1) dfs(v, -1);
+        int[] stack = new int[V];                              // our own DFS stack: no deep recursion
+        int timer = 0;
+        for (int root = 0; root < V; root++) {
+            if (disc[root] != -1) continue;
+            int sp = 0;
+            stack[sp++] = root;
+            parent[root] = -1;
+            disc[root] = low[root] = timer++;
+            while (sp > 0) {
+                int v = stack[sp - 1];
+                if (next[v] < adj.get(v).size()) {
+                    int w = adj.get(v).get(next[v]++);
+                    if (w == parent[v]) continue;
+                    if (disc[w] == -1) {                       // "recursive call" into w
+                        children[v]++;
+                        parent[w] = v;
+                        disc[w] = low[w] = timer++;
+                        stack[sp++] = w;
+                    } else {
+                        low[v] = Math.min(low[v], disc[w]);    // must be disc[w], not low[w]
+                    }
+                } else {                                       // "return" from v
+                    sp--;
+                    int p = parent[v];
+                    if (p != -1) {
+                        low[p] = Math.min(low[p], low[v]);
+                        if (parent[p] != -1 && low[v] >= disc[p]) cut[p] = true;   // p is not the root
+                    } else if (children[v] > 1) {
+                        cut[v] = true;                         // the root with two or more children
+                    }
+                }
+            }
+        }
         List<Integer> ans = new ArrayList<>();
         for (int v = 0; v < V; v++) if (cut[v]) ans.add(v);
         if (ans.isEmpty()) ans.add(-1);
         return ans;
     }
+}`,
+      alt: [{ lang: 'python', code: `def articulation_points(V, edges):
+    adj = [[] for _ in range(V)]
+    for a, b in edges:
+        adj[a].append(b)
+        adj[b].append(a)
 
-    private void dfs(int v, int parent) {
-        disc[v] = low[v] = timer++;
-        int children = 0;
-        for (int w : adj.get(v)) {
-            if (w == parent) continue;
-            if (disc[w] == -1) {
-                children++;
-                dfs(w, v);
-                low[v] = Math.min(low[v], low[w]);
-                if (parent != -1 && low[w] >= disc[v]) cut[v] = true;
-            } else {
-                low[v] = Math.min(low[v], disc[w]);   // must be disc[w], not low[w]
+    disc = [-1] * V
+    low = [0] * V
+    nxt = [0] * V                        # next neighbour index to try, per node
+    parent = [-1] * V
+    children = [0] * V
+    cut = [False] * V
+    timer = 0
+    for root in range(V):
+        if disc[root] != -1:
+            continue
+        disc[root] = low[root] = timer
+        timer += 1
+        stack = [root]                   # our own DFS stack: no recursion limit
+        while stack:
+            v = stack[-1]
+            if nxt[v] < len(adj[v]):
+                w = adj[v][nxt[v]]
+                nxt[v] += 1
+                if w == parent[v]:
+                    continue
+                if disc[w] == -1:
+                    children[v] += 1
+                    parent[w] = v
+                    disc[w] = low[w] = timer
+                    timer += 1
+                    stack.append(w)
+                else:
+                    low[v] = min(low[v], disc[w])      # must be disc[w], not low[w]
+            else:
+                stack.pop()
+                p = parent[v]
+                if p != -1:
+                    low[p] = min(low[p], low[v])
+                    if parent[p] != -1 and low[v] >= disc[p]:   # p is not the root
+                        cut[p] = True
+                elif children[v] > 1:                           # the root with two or more children
+                    cut[v] = True
+    ans = [v for v in range(V) if cut[v]]
+    return ans or [-1]
+` }, { lang: 'js', code: `function articulationPoints(V, edges) {
+  const adj = Array.from({ length: V }, () => []);
+  for (const [a, b] of edges) { adj[a].push(b); adj[b].push(a); }
+
+  const disc = new Int32Array(V).fill(-1), low = new Int32Array(V), next = new Int32Array(V);
+  const parent = new Int32Array(V).fill(-1), children = new Int32Array(V), cut = new Uint8Array(V);
+  let timer = 0;
+  for (let root = 0; root < V; root++) {
+    if (disc[root] !== -1) continue;
+    disc[root] = low[root] = timer++;
+    const stack = [root];                // our own DFS stack: no stack overflow
+    while (stack.length) {
+      const v = stack[stack.length - 1];
+      if (next[v] < adj[v].length) {
+        const w = adj[v][next[v]++];
+        if (w === parent[v]) continue;
+        if (disc[w] === -1) {
+          children[v]++;
+          parent[w] = v;
+          disc[w] = low[w] = timer++;
+          stack.push(w);
+        } else {
+          low[v] = Math.min(low[v], disc[w]);   // must be disc[w], not low[w]
+        }
+      } else {
+        stack.pop();
+        const p = parent[v];
+        if (p !== -1) {
+          low[p] = Math.min(low[p], low[v]);
+          if (parent[p] !== -1 && low[v] >= disc[p]) cut[p] = 1;   // p is not the root
+        } else if (children[v] > 1) {
+          cut[v] = 1;                    // the root with two or more children
+        }
+      }
+    }
+  }
+  const ans = [];
+  for (let v = 0; v < V; v++) if (cut[v]) ans.push(v);
+  return ans.length ? ans : [-1];
+}
+` }, { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> articulationPoints(int V, vector<vector<int>>& edges) {
+        vector<vector<int>> adj(V);
+        for (auto& e : edges) { adj[e[0]].push_back(e[1]); adj[e[1]].push_back(e[0]); }
+
+        vector<int> disc(V, -1), low(V, 0), next(V, 0), parent(V, -1), children(V, 0);
+        vector<char> cut(V, 0);
+        int timer = 0;
+        for (int root = 0; root < V; root++) {
+            if (disc[root] != -1) continue;
+            disc[root] = low[root] = timer++;
+            vector<int> stack{root};                    // our own DFS stack
+            while (!stack.empty()) {
+                int v = stack.back();
+                if (next[v] < (int)adj[v].size()) {
+                    int w = adj[v][next[v]++];
+                    if (w == parent[v]) continue;
+                    if (disc[w] == -1) {
+                        children[v]++;
+                        parent[w] = v;
+                        disc[w] = low[w] = timer++;
+                        stack.push_back(w);
+                    } else {
+                        low[v] = min(low[v], disc[w]);  // must be disc[w], not low[w]
+                    }
+                } else {
+                    stack.pop_back();
+                    int p = parent[v];
+                    if (p != -1) {
+                        low[p] = min(low[p], low[v]);
+                        if (parent[p] != -1 && low[v] >= disc[p]) cut[p] = 1;   // p is not the root
+                    } else if (children[v] > 1) {
+                        cut[v] = 1;                     // the root with two or more children
+                    }
+                }
             }
         }
-        if (parent == -1 && children > 1) cut[v] = true;
+        vector<int> ans;
+        for (int v = 0; v < V; v++) if (cut[v]) ans.push_back(v);
+        if (ans.empty()) ans.push_back(-1);
+        return ans;
     }
-}`,
+};
+` }],
       dry: {
         head: ['vertex', 'disc', 'low', 'decision'],
         rows: [
@@ -3126,6 +7190,23 @@ System.out.println(nodes + " nodes, source " + source + ", sink " + sink);` }
       `<p>Hint 2: up[j][v] = up[j−1][ up[j−1][v] ], with −1 propagating: once you fall off the root you stay at −1.</p>`,
       `<p>Hint 3: Recipe — LOG = 16 covers k ≤ 5·10<sup>4</sup>. Query: for each set bit j of k, node = up[j][node]; stop early if node becomes −1.</p>`
     ],
+    tests: { cls: "TreeAncestor", sigs: { TreeAncestor: "int int[]", getKthAncestor: "int int -> int" }, cases: [
+        {"ops":["TreeAncestor","getKthAncestor","getKthAncestor","getKthAncestor"],"args":[[7,[-1,0,0,1,1,2,2]],[3,1],[5,2],[6,3]],"out":[null,1,0,-1]},
+        {"ops":["TreeAncestor","getKthAncestor"],"args":[[1,[-1]],[0,1]],"out":[null,-1]},
+        {"ops":["TreeAncestor","getKthAncestor","getKthAncestor","getKthAncestor"],"args":[[2,[-1,0]],[1,1],[1,2],[0,1]],"out":[null,0,-1,-1]},
+        {"ops":["TreeAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor"],"args":[[6,[-1,0,1,2,3,4]],[5,1],[5,5],[5,4],[5,6],[2,2],[2,3]],"out":[null,4,0,1,-1,0,-1]},
+        {"ops":["TreeAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor"],"args":[[4,[-1,3,0,0]],[1,1],[1,2],[1,3],[2,1],[3,1]],"out":[null,3,0,-1,0,0]},
+        {"ops":["TreeAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor"],"args":[[7,[-1,2,4,0,0,0,3]],[0,5],[1,6],[2,7],[4,7],[1,2],[0,5],[1,2],[4,3]],"out":[null,-1,-1,-1,-1,4,-1,4,-1]},
+        {"ops":["TreeAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor"],"args":[[1,[-1]],[0,1],[0,1],[0,1],[0,1],[0,1],[0,1],[0,1],[0,1]],"out":[null,-1,-1,-1,-1,-1,-1,-1,-1]},
+        {"ops":["TreeAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor"],"args":[[1,[-1]],[0,1],[0,1],[0,1],[0,1],[0,1],[0,1],[0,1],[0,1]],"out":[null,-1,-1,-1,-1,-1,-1,-1,-1]},
+        {"ops":["TreeAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor"],"args":[[11,[-1,0,1,1,1,0,4,3,0,3,0]],[0,8],[9,9],[3,11],[5,7],[9,2],[2,10],[5,11],[7,1]],"out":[null,-1,-1,-1,-1,1,-1,-1,3]},
+        {"ops":["TreeAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor"],"args":[[3,[-1,0,1]],[1,1],[1,2],[1,1],[2,2],[2,3],[2,1],[0,2],[1,3]],"out":[null,0,-1,0,0,-1,1,-1,-1]},
+        {"ops":["TreeAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor"],"args":[[14,[-1,2,0,0,6,6,2,0,1,2,11,1,8,8]],[9,5],[7,5],[1,1],[4,13],[2,11],[13,1],[9,13],[5,7]],"out":[null,-1,-1,2,-1,-1,8,-1,-1]},
+        {"ops":["TreeAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor"],"args":[[13,[-1,10,8,0,0,3,3,3,11,8,4,0,0]],[10,11],[12,7],[12,13],[6,8],[3,6],[11,7],[10,3],[11,6]],"out":[null,-1,-1,-1,-1,-1,-1,-1,-1]},
+        {"ops":["TreeAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor"],"args":[[1,[-1]],[0,1],[0,1],[0,1],[0,1],[0,1],[0,1],[0,1],[0,1]],"out":[null,-1,-1,-1,-1,-1,-1,-1,-1]},
+        {"ops":["TreeAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor"],"args":[[50000,{"$range":[-1,49999]}],[49999,1],[49999,49999],[49999,50000],[49999,32768],[49999,32769],[40000,16384],[40000,40000],[40000,40001],[123,123],[123,124],[0,1],[49999,50000],[30000,29999],[30000,30000],[1,1],[2,1]],"out":[null,49998,0,-1,17231,17230,23616,0,-1,0,-1,-1,-1,1,0,0,1]},
+        {"ops":["TreeAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor","getKthAncestor"],"args":[[50000,{"$concat":[[-1],{"$rep":0,"n":49999}]}],[49999,1],[49999,2],[1,1],[1,2],[0,1],[25000,50000]],"out":[null,0,-1,0,-1,-1,-1]}
+      ] },
     solution: {
       approach: `<p>Binary lifting with −1 as the "fell off the tree" sentinel. Build loops k outer, v inner, so row k−1 is complete before row k (works even if parents have larger indices than children).</p>`,
       code: `class TreeAncestor {
@@ -3150,6 +7231,64 @@ System.out.println(nodes + " nodes, source " + source + ", sink " + sink);` }
         return node;
     }
 }`,
+      alt: [{ lang: 'python', code: `class TreeAncestor:
+    LOG = 16                                  # 2^16 = 65536 > 5 * 10^4
+
+    def __init__(self, n, parent):
+        # up[j][v] = the 2^j-th ancestor of v, or -1 if it does not exist
+        self.up = [list(parent)]
+        for _ in range(1, self.LOG):
+            prev = self.up[-1]
+            self.up.append([-1 if mid == -1 else prev[mid] for mid in prev])
+
+    def getKthAncestor(self, node, k):
+        for j in range(self.LOG):
+            if node == -1:
+                break
+            if k >> j & 1:                    # jump 2^j steps for every set bit of k
+                node = self.up[j][node]
+        return node
+` }, { lang: 'js', code: `class TreeAncestor {
+  constructor(n, parent) {
+    this.LOG = 16;                            // 2^16 = 65536 > 5 * 10^4
+    // up[j][v] = the 2^j-th ancestor of v, or -1 if it does not exist
+    this.up = [Int32Array.from(parent)];
+    for (let j = 1; j < this.LOG; j++) {
+      const prev = this.up[j - 1], cur = new Int32Array(n);
+      for (let v = 0; v < n; v++) cur[v] = prev[v] === -1 ? -1 : prev[prev[v]];
+      this.up.push(cur);
+    }
+  }
+
+  getKthAncestor(node, k) {
+    for (let j = 0; j < this.LOG && node !== -1; j++)
+      if ((k >> j) & 1) node = this.up[j][node];   // jump 2^j steps for every set bit of k
+    return node;
+  }
+}
+` }, { lang: 'cpp', code: `class TreeAncestor {
+    static const int LOG = 16;                // 2^16 = 65536 > 5 * 10^4
+    vector<vector<int>> up;                   // up[j][v] = the 2^j-th ancestor of v, or -1
+
+public:
+    TreeAncestor(int n, vector<int>& parent) : up(LOG) {
+        up[0] = parent;
+        for (int j = 1; j < LOG; j++) {
+            up[j].assign(n, -1);
+            for (int v = 0; v < n; v++) {
+                int mid = up[j - 1][v];
+                up[j][v] = mid == -1 ? -1 : up[j - 1][mid];
+            }
+        }
+    }
+
+    int getKthAncestor(int node, int k) {
+        for (int j = 0; j < LOG && node != -1; j++)
+            if (k >> j & 1) node = up[j][node];   // jump 2^j steps for every set bit of k
+        return node;
+    }
+};
+` }],
       complexity: `<p>Build <b>O(n log n)</b>, query <b>O(log k)</b>, memory <b>O(n log n)</b> ≈ 3.2 MB here.</p>`,
       followUps: ['Answer each query in O(1) after O(n) preprocessing (ladder decomposition / long-path).', 'Support adding a new leaf online (its up-row is computable from its parent\'s rows).']
     }
@@ -3198,6 +7337,34 @@ System.out.println(nodes + " nodes, source " + source + ", sink " + sink);` }
       `<p>Hint 2: Cells with even (r + c) form the left side, odd the right side; every neighbour pair is left–right.</p>`,
       `<p>Hint 3: Recipe — number cells r·C + c; for each usable even cell try Kuhn over its up to 4 usable neighbours. 1600 cells × ~6400 edges is tiny for Kuhn.</p>`
     ],
+    tests: { sig: "string[] -> int", fn: "maxDominoes", cases: [
+        [[["..#","...","#.."]],3],
+        [[["."]],0],
+        [[["#"]],0],
+        [[[".."]],1],
+        [[["..."]],1],
+        [[[".",".",".","."]],2],
+        [[[".#.","#.#",".#."]],0],
+        [[["....","....","....","...."]],8],
+        [[[".#.","...",".#."]],2],
+        [[["#.#","...","#.#"]],1],
+        [[["..#","..."]],2],
+        [[[".."]],1],
+        [[["###."]],0],
+        [[[".#.#.","#.#..","..#..","###..","...#."]],5],
+        [[[".","."]],1],
+        [[["..#..",".#..#"]],3],
+        [[["..#.#","....."]],3],
+        [[["...","...",".#.","#..","#.."]],5],
+        [[["##","##","#.",".."]],1],
+        [[[".","#"]],0],
+        [[{"$rep":"........................................","n":40}],800],
+        [[{"$rep":"########################################","n":40}],0],
+        [[{"$concat":[["#......................................."],{"$rep":"........................................","n":38},[".......................................#"]]}],798],
+        [[{"$concat":[["#......................................."],{"$rep":"........................................","n":39}]}],799],
+        [[{"$rep":"........................................","n":1}],20],
+        [[{"$concat":[{"$rep":"########################################","n":39},["........................................"]]}],20]
+      ] },
     solution: {
       approach: `<p>Chessboard colouring + Kuhn's algorithm. The matching size is the domino count.</p>`,
       code: `class Solution {
@@ -3238,6 +7405,98 @@ System.out.println(nodes + " nodes, source " + source + ", sink " + sink);` }
         return false;
     }
 }`,
+      alt: [{ lang: 'python', code: `import sys
+
+
+def max_dominoes(board):
+    sys.setrecursionlimit(10000)          # a path can reach R * C / 2 = 800 cells: near the default limit of 1000
+    R, C = len(board), len(board[0])
+    owner = [-1] * (R * C)                # owner[oddCell] = even cell matched to it, or -1
+
+    def try_cell(r, c, seen):
+        for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            nr, nc = r + dr, c + dc
+            if 0 <= nr < R and 0 <= nc < C and board[nr][nc] == '.':
+                nid = nr * C + nc
+                if nid in seen:
+                    continue
+                seen.add(nid)
+                if owner[nid] == -1 or try_cell(owner[nid] // C, owner[nid] % C, seen):
+                    owner[nid] = r * C + c
+                    return True
+        return False
+
+    count = 0
+    for r in range(R):
+        for c in range(C):
+            if (r + c) % 2 == 0 and board[r][c] == '.' and try_cell(r, c, set()):
+                count += 1
+    return count
+` }, { lang: 'js', code: `function maxDominoes(board) {
+  const R = board.length, C = board[0].length;
+  const owner = new Int32Array(R * C).fill(-1);      // owner[oddCell] = even cell matched to it, or -1
+  const dr = [1, -1, 0, 0], dc = [0, 0, 1, -1];
+
+  const tryCell = (r, c, seen) => {
+    for (let d = 0; d < 4; d++) {
+      const nr = r + dr[d], nc = c + dc[d];
+      if (nr < 0 || nc < 0 || nr >= R || nc >= C || board[nr][nc] !== '.') continue;
+      const id = nr * C + nc;
+      if (seen[id]) continue;
+      seen[id] = 1;
+      if (owner[id] === -1 || tryCell(Math.floor(owner[id] / C), owner[id] % C, seen)) {
+        owner[id] = r * C + c;
+        return true;
+      }
+    }
+    return false;
+  };
+
+  let count = 0;
+  for (let r = 0; r < R; r++)
+    for (let c = 0; c < C; c++)
+      if ((r + c) % 2 === 0 && board[r][c] === '.' && tryCell(r, c, new Uint8Array(R * C))) count++;
+  return count;
+}
+` }, { lang: 'cpp', code: `class Solution {
+    int R, C;
+    vector<string> b;
+    vector<int> owner;                       // owner[oddCell] = even cell matched to it, or -1
+    vector<char> seen;
+
+    bool tryCell(int r, int c) {
+        static const int dr[] = {1, -1, 0, 0}, dc[] = {0, 0, 1, -1};
+        for (int d = 0; d < 4; d++) {
+            int nr = r + dr[d], nc = c + dc[d];
+            if (nr < 0 || nc < 0 || nr >= R || nc >= C || b[nr][nc] != '.') continue;
+            int id = nr * C + nc;
+            if (seen[id]) continue;
+            seen[id] = 1;
+            if (owner[id] == -1 || tryCell(owner[id] / C, owner[id] % C)) {
+                owner[id] = r * C + c;
+                return true;
+            }
+        }
+        return false;
+    }
+
+public:
+    int maxDominoes(vector<string>& board) {
+        b = board;
+        R = b.size();
+        C = b[0].size();
+        owner.assign(R * C, -1);
+        int count = 0;
+        for (int r = 0; r < R; r++)
+            for (int c = 0; c < C; c++)
+                if ((r + c) % 2 == 0 && b[r][c] == '.') {
+                    seen.assign(R * C, 0);
+                    if (tryCell(r, c)) count++;
+                }
+        return count;
+    }
+};
+` }],
       complexity: `<p>Kuhn: O(V·E) = 1600 × 6400 ≈ 10<sup>7</sup> in the worst case. Space O(R·C).</p>`,
       followUps: ['Count the number of ways to tile the full board (that is a DP over profiles / FKT algorithm, not matching).', 'Large boards (10<sup>3</sup> × 10<sup>3</sup>) → Hopcroft-Karp.']
     }
@@ -3273,6 +7532,56 @@ System.out.println(nodes + " nodes, source " + source + ", sink " + sink);` }
       `<p>Hint 2: Choosing lines that cover all cells = choosing vertices that touch all edges = minimum vertex cover. In bipartite graphs that equals the maximum matching (König).</p>`,
       `<p>Hint 3: Recipe — Kuhn from every row over the columns with a 1. Answer = matching size. To output the lines, run the alternating search from unmatched rows and take (unvisited rows) ∪ (visited columns).</p>`
     ],
+    tests: { sig: "string int[][] -> int", fn: "lines", cases: [
+        [["",[[1,0,1],[0,1,0],[0,1,0]]],2],
+        [["",[[0]]],0],
+        [["",[[1]]],1],
+        [["",[[0,0],[0,0]]],0],
+        [["",[[1,1,1,1]]],1],
+        [["",[[1],[1],[1]]],1],
+        [["",[[1,1,1],[1,1,1]]],2],
+        [["",[[1,1],[1,1],[1,1]]],2],
+        [["",[[1,0,0],[0,1,0],[0,0,1]]],3],
+        [["",[[0,1,0,0],[1,1,1,1],[0,1,0,0]]],2],
+        [["",[[0],[0],[1],[1]]],1],
+        [["",[[1,0,0,1],[1,0,0,0],[1,0,0,1],[0,1,0,0],[0,0,0,0],[1,1,0,1]]],3],
+        [["",[[0,0,0,0],[0,0,0,0],[0,0,1,1],[0,0,1,1],[1,1,0,1],[0,1,1,0]]],4],
+        [["",[[0,1,1,0],[1,0,0,0]]],2],
+        [["",[[1,0,0,1],[0,0,1,0],[0,0,1,0],[0,0,1,1],[0,0,0,1],[0,0,0,1]]],3],
+        [["",[[1,1,0,0,1,0]]],1],
+        [["",[[1,0,0,0,0,1],[0,0,0,0,1,1]]],2],
+        [["",[[0,1],[0,0]]],1],
+        [["",[[0,1,0,1,1],[0,0,1,0,1],[0,0,0,0,0],[0,0,0,0,0]]],2],
+        [["",[[0,0,1,0,1],[0,0,0,0,0],[0,1,0,1,0]]],2],
+        [["",{"$rep":{"$rep":1,"n":300},"n":300}],300],
+        [["",{"$rep":{"$concat":[{"$rep":1,"n":150},{"$rep":0,"n":150}]},"n":300}],150],
+        [["",{"$rep":{"$concat":[{"$rep":0,"n":299},[1]]},"n":300}],1],
+        [["identity",[]],300],
+        [["upper",[]],300],
+        [["",{"$rep":{"$rep":0,"n":300},"n":300}],0]
+      ], harness: { java: `class Check {
+  static int lines(String kind, int[][] grid) {
+    if (!kind.isEmpty()) {
+      grid = new int[300][300];
+      for (int i = 0; i < 300; i++) for (int j = 0; j < 300; j++) grid[i][j] = kind.equals("identity") ? (i == j ? 1 : 0) : (j >= i ? 1 : 0);
+    }
+    return new Solution().minLines(grid);
+  }
+}`, python: `def lines(kind, grid):
+    if kind != '':
+        grid = [[int(i == j) if kind == 'identity' else int(j >= i) for j in range(300)] for i in range(300)]
+    return min_lines(grid)`, js: `function lines(kind, grid) {
+  if (kind !== '') {
+    grid = Array.from({ length: 300 }, (_, i) => Array.from({ length: 300 }, (_, j) => (kind === 'identity' ? (i === j ? 1 : 0) : (j >= i ? 1 : 0))));
+  }
+  return minLines(grid);
+}`, cpp: `int lines(string kind, vector<vector<int>> grid) {
+  if (!kind.empty()) {
+    grid.assign(300, vector<int>(300, 0));
+    for (int i = 0; i < 300; i++) for (int j = 0; j < 300; j++) grid[i][j] = kind == "identity" ? (i == j) : (j >= i);
+  }
+  return Solution().minLines(grid);
+}` } },
     solution: {
       approach: `<p>König's theorem: min vertex cover = max matching. Kuhn on rows → columns.</p>`,
       code: `class Solution {
@@ -3301,6 +7610,65 @@ System.out.println(nodes + " nodes, source " + source + ", sink " + sink);` }
         return false;
     }
 }`,
+      alt: [{ lang: 'python', code: `def min_lines(grid):
+    R, C = len(grid), len(grid[0])
+    owner = [-1] * C                      # owner[col] = row matched to it, or -1
+
+    def try_row(r, seen):
+        for c in range(C):
+            if grid[r][c] and not seen[c]:
+                seen[c] = True
+                if owner[c] == -1 or try_row(owner[c], seen):
+                    owner[c] = r
+                    return True
+        return False
+
+    # maximum matching = minimum vertex cover (Konig) = fewest lines
+    return sum(try_row(r, [False] * C) for r in range(R))
+` }, { lang: 'js', code: `function minLines(grid) {
+  const R = grid.length, C = grid[0].length;
+  const owner = new Array(C).fill(-1);    // owner[col] = row matched to it, or -1
+
+  const tryRow = (r, seen) => {
+    for (let c = 0; c < C; c++) {
+      if (!grid[r][c] || seen[c]) continue;
+      seen[c] = true;
+      if (owner[c] === -1 || tryRow(owner[c], seen)) { owner[c] = r; return true; }
+    }
+    return false;
+  };
+
+  let matching = 0;                       // = minimum vertex cover (Konig) = fewest lines
+  for (let r = 0; r < R; r++) if (tryRow(r, new Array(C).fill(false))) matching++;
+  return matching;
+}
+` }, { lang: 'cpp', code: `class Solution {
+    vector<vector<int>> g;
+    vector<int> owner;                    // owner[col] = row matched to it, or -1
+    vector<char> seen;
+
+    bool tryRow(int r) {
+        for (int c = 0; c < (int)g[r].size(); c++) {
+            if (!g[r][c] || seen[c]) continue;
+            seen[c] = 1;
+            if (owner[c] == -1 || tryRow(owner[c])) { owner[c] = r; return true; }
+        }
+        return false;
+    }
+
+public:
+    int minLines(vector<vector<int>>& grid) {
+        g = grid;
+        int R = g.size(), C = g[0].size(), matching = 0;
+        owner.assign(C, -1);
+        for (int r = 0; r < R; r++) {
+            seen.assign(C, 0);
+            if (tryRow(r)) matching++;    // matching = minimum vertex cover (Konig) = fewest lines
+        }
+        return matching;
+    }
+};
+` }],
       complexity: `<p>O(R · R · C) = 2.7·10<sup>7</sup> worst case; space O(C).</p>`,
       followUps: ['Output which rows and columns to choose.', 'Each row and column has a different cost (weighted vertex cover → min cut).']
     }
@@ -3350,6 +7718,34 @@ System.out.println(nodes + " nodes, source " + source + ", sink " + sink);` }
       `<p>Hint 2: Make each (n−1)-digit string a vertex; appending digit d to vertex v moves to (v·k + d) mod k<sup>n−1</sup>. Every vertex has in = out = k → an Euler circuit exists.</p>`,
       `<p>Hint 3: Recipe — iterative Hierholzer from vertex 0 (n−1 zeros) recording the digit of each edge when it is popped; reverse the digits and prepend n−1 zeros.</p>`
     ],
+    tests: { sig: "int int -> string", fn: "crackSafe", check: `(args, out, exp) => {
+  const n = args[0], k = args[1];
+  if (typeof out !== 'string' || out.length !== exp) return false;
+  for (const ch of out) if (ch < '0' || ch > String(k - 1)) return false;
+  const seen = new Set();
+  for (let i = 0; i + n <= out.length; i++) seen.add(out.substr(i, n));
+  return seen.size === Math.pow(k, n);
+}`, cases: [
+        [[1,1],1],
+        [[1,2],2],
+        [[2,2],5],
+        [[1,10],10],
+        [[2,3],10],
+        [[3,2],10],
+        [[3,3],29],
+        [[4,2],19],
+        [[2,10],101],
+        [[4,1],4],
+        [[3,1],3],
+        [[3,10],1002],
+        [[4,3],84],
+        [[4,5],628],
+        [[4,6],1299],
+        [[4,7],2404],
+        [[4,8],4099],
+        [[2,7],50],
+        [[3,7],345]
+      ] },
     solution: {
       approach: `<p>Hierholzer on the de Bruijn graph with an explicit stack of (vertex, digit used to enter it). Post-order digits reversed = the Euler circuit's edge labels.</p>`,
       code: `class Solution {
@@ -3379,6 +7775,72 @@ System.out.println(nodes + " nodes, source " + source + ", sink " + sink);` }
         return ans.append(digits).toString();
     }
 }`,
+      alt: [{ lang: 'python', code: `def crack_safe(n, k):
+    nodes = k ** (n - 1)                       # vertices: every (n-1)-digit string
+    ptr = [0] * nodes                          # next digit to try from each vertex
+    node_stack, digit_stack = [0], [-1]        # nothing led into the start vertex
+    digits = []
+    while node_stack:
+        v = node_stack[-1]
+        if ptr[v] < k:
+            d = ptr[v]
+            ptr[v] += 1
+            node_stack.append((v * k + d) % nodes)   # drop the oldest digit, append d
+            digit_stack.append(d)
+        else:
+            node_stack.pop()
+            d = digit_stack.pop()
+            if d >= 0:
+                digits.append(d)               # post-order edge label
+    digits.reverse()
+    return '0' * (n - 1) + ''.join(map(str, digits))   # the start vertex, then the digits
+` }, { lang: 'js', code: `function crackSafe(n, k) {
+  let nodes = 1;
+  for (let i = 0; i < n - 1; i++) nodes *= k;          // k^(n-1) vertices
+  const ptr = new Int32Array(nodes);                   // next digit to try from each vertex
+  const nodeStack = [0], digitStack = [-1];            // nothing led into the start vertex
+  const digits = [];
+  while (nodeStack.length) {
+    const v = nodeStack[nodeStack.length - 1];
+    if (ptr[v] < k) {
+      const d = ptr[v]++;
+      nodeStack.push((v * k + d) % nodes);             // drop the oldest digit, append d
+      digitStack.push(d);
+    } else {
+      nodeStack.pop();
+      const d = digitStack.pop();
+      if (d >= 0) digits.push(d);                      // post-order edge label
+    }
+  }
+  digits.reverse();
+  return '0'.repeat(n - 1) + digits.join('');          // the start vertex, then the digits
+}
+` }, { lang: 'cpp', code: `class Solution {
+public:
+    string crackSafe(int n, int k) {
+        int nodes = 1;
+        for (int i = 0; i < n - 1; i++) nodes *= k;    // k^(n-1) vertices
+        vector<int> ptr(nodes, 0);                     // next digit to try from each vertex
+        vector<int> nodeStack{0}, digitStack{-1};      // nothing led into the start vertex
+        string digits;
+        while (!nodeStack.empty()) {
+            int v = nodeStack.back();
+            if (ptr[v] < k) {
+                int d = ptr[v]++;
+                nodeStack.push_back((v * k + d) % nodes);   // drop the oldest digit, append d
+                digitStack.push_back(d);
+            } else {
+                nodeStack.pop_back();
+                int d = digitStack.back();
+                digitStack.pop_back();
+                if (d >= 0) digits.push_back('0' + d);      // post-order edge label
+            }
+        }
+        reverse(digits.begin(), digits.end());
+        return string(n - 1, '0') + digits;            // the start vertex, then the digits
+    }
+};
+` }],
       complexity: `<p>Time and space <b>O(k<sup>n</sup>)</b> — one push and pop per password.</p>`,
       followUps: ['Prove the length k<sup>n</sup> + n − 1 is optimal.', 'Genome assembly uses the same graph on k-mers — what breaks with sequencing errors?']
     }
@@ -3422,9 +7884,95 @@ System.out.println(nodes + " nodes, source " + source + ", sink " + sink);` }
     mcq: { q: 'All values are balanced (out = in). Where can the arrangement start?', options: ['At any start value that has an outgoing pair — it is an Euler circuit', 'Only at the smallest value', 'Nowhere — no arrangement exists', 'Only at pairs[0][1]'], answer: 0, explain: 'Balanced degrees + connectivity → Euler circuit, which can start anywhere on it.' },
     hints: [
       `<p>Hint 1: Values are vertices, pairs are directed edges, and "use every pair once, end of one = start of next" is an Euler path.</p>`,
-      `<p>Hint 2: Values go up to 10<sup>9</sup> → adjacency in a HashMap. Start at the value with out − in = +1, or at pairs[0][0] if all are balanced.</p>`,
+      `<p>Hint 2: Values go up to 10<sup>9</sup> → adjacency in a hash map (<code>HashMap</code> / <code>dict</code> / <code>Map</code> / <code>unordered_map</code>). Start at the value with out − in = +1, or at pairs[0][0] if all are balanced.</p>`,
       `<p>Hint 3: Recipe — iterative Hierholzer: push start; while stack: if top has an unused out-edge, push its target; else pop into a list. Reverse the list (vertices) and turn consecutive vertices into pairs.</p>`
     ],
+    tests: { sig: "string int[][] -> int[][]", fn: "arrange", check: `(args, out, exp) => {
+  let pairs = args[1];
+  const kind = args[0], N = 100000;
+  if (kind !== '') {
+    pairs = [];
+    if (kind === 'chain') for (let i = 0; i < N; i++) { const j = (i * 7919) % N; pairs.push([j * 10000, (j + 1) * 10000]); }
+    else if (kind === 'cycle') for (let i = 0; i < N; i++) { const j = (i * 7919) % N; pairs.push([j * 10000, ((j + 1) % N) * 10000]); }
+    else for (let i = 0; i < N / 2; i++) { const a = (((i * 7919) % (N / 2)) + 1) * 1000; pairs.push([0, a], [a, 0]); }
+  }
+  if (!Array.isArray(out) || out.length !== pairs.length) return false;
+  for (let i = 1; i < out.length; i++) if (out[i - 1][1] !== out[i][0]) return false;      // each pair starts where the last ended
+  const key = (p) => p[0] + ',' + p[1];
+  const a = out.map(key).sort(), b = pairs.map(key).sort();                                   // same pairs, none lost or invented
+  return a.every((x, i) => x === b[i]);
+}`, cases: [
+        [["",[[5,1],[4,5],[11,9],[9,4]]],[[11,9],[9,4],[4,5],[5,1]]],
+        [["",[[5,6]]],[[5,6]]],
+        [["",[[1,2],[2,1]]],[[1,2],[2,1]]],
+        [["",[[3,1],[2,3],[1,2]]],[[3,1],[1,2],[2,3]]],
+        [["",[[1,2],[2,3],[3,1],[1,4],[4,1]]],[[1,2],[2,3],[3,1],[1,4],[4,1]]],
+        [["",[[1000000000,0],[0,1000000000]]],[[1000000000,0],[0,1000000000]]],
+        [["",[[4,5],[3,4],[2,3],[1,2],[0,1]]],[[0,1],[1,2],[2,3],[3,4],[4,5]]],
+        [["",[[2,2],[3,2],[0,3],[2,0],[2,1]]],[[2,2],[2,0],[0,3],[3,2],[2,1]]],
+        [["",[[0,0],[0,2],[2,0],[3,0],[0,3]]],[[0,0],[0,2],[2,0],[0,3],[3,0]]],
+        [["",[[0,1],[3,1],[3,2],[2,3],[2,1],[1,2],[2,0],[1,3]]],[[2,3],[3,1],[1,2],[2,1],[1,3],[3,2],[2,0],[0,1]]],
+        [["",[[1,0],[1,2],[2,3],[0,0],[3,2],[2,1],[1,3],[3,3],[3,1]]],[[1,2],[2,3],[3,2],[2,1],[1,3],[3,3],[3,1],[1,0],[0,0]]],
+        [["",[[2,3],[3,1],[2,2],[2,0],[0,2]]],[[2,2],[2,0],[0,2],[2,3],[3,1]]],
+        [["",[[1,0],[0,1],[1,2],[2,2],[2,3],[3,3]]],[[1,0],[0,1],[1,2],[2,2],[2,3],[3,3]]],
+        [["",[[0,0],[3,0],[0,3]]],[[0,0],[0,3],[3,0]]],
+        [["",[[3,0],[1,1],[0,1],[1,3],[1,0]]],[[1,1],[1,3],[3,0],[0,1],[1,0]]],
+        [["",[[2,3],[3,2],[2,0],[2,2],[0,3],[3,1],[1,2]]],[[2,3],[3,2],[2,0],[0,3],[3,1],[1,2],[2,2]]],
+        [["",[[1,0],[0,3],[0,0],[3,0],[1,3],[3,1]]],[[1,0],[0,3],[3,1],[1,3],[3,0],[0,0]]],
+        [["chain",[]],null],
+        [["cycle",[]],null],
+        [["flower",[]],null]
+      ], harness: { java: `class Check {
+  static int[][] arrange(String kind, int[][] pairs) {
+    if (!kind.isEmpty()) {
+      int N = 100000;
+      pairs = new int[N][];
+      for (int i = 0; i < N; i++) {
+        long j = (long) i * 7919 % N;
+        if (kind.equals("chain")) pairs[i] = new int[]{(int) j * 10000, (int) (j + 1) * 10000};
+        else if (kind.equals("cycle")) pairs[i] = new int[]{(int) j * 10000, (int) ((j + 1) % N) * 10000};
+        else { int a = (int) (((long) (i / 2) * 7919 % (N / 2)) + 1) * 1000; pairs[i] = i % 2 == 0 ? new int[]{0, a} : new int[]{a, 0}; }
+      }
+    }
+    return new Solution().validArrangement(pairs);
+  }
+}`, python: `def arrange(kind, pairs):
+    if kind != '':
+        N = 100000
+        if kind == 'chain':
+            pairs = [[(i * 7919 % N) * 10000, (i * 7919 % N + 1) * 10000] for i in range(N)]
+        elif kind == 'cycle':
+            pairs = [[(i * 7919 % N) * 10000, ((i * 7919 % N + 1) % N) * 10000] for i in range(N)]
+        else:
+            pairs = []
+            for i in range(N // 2):
+                a = (i * 7919 % (N // 2) + 1) * 1000
+                pairs += [[0, a], [a, 0]]
+    return valid_arrangement(pairs)`, js: `function arrange(kind, pairs) {
+  if (kind !== '') {
+    const N = 100000;
+    pairs = [];
+    for (let i = 0; i < N; i++) {
+      const j = (i * 7919) % N;
+      if (kind === 'chain') pairs.push([j * 10000, (j + 1) * 10000]);
+      else if (kind === 'cycle') pairs.push([j * 10000, ((j + 1) % N) * 10000]);
+      else if (i < N / 2) { const a = ((i * 7919) % (N / 2) + 1) * 1000; pairs.push([0, a], [a, 0]); }
+    }
+  }
+  return validArrangement(pairs);
+}`, cpp: `vector<vector<int>> arrange(string kind, vector<vector<int>> pairs) {
+  if (!kind.empty()) {
+    const long long N = 100000;
+    pairs.clear();
+    for (long long i = 0; i < N; i++) {
+      long long j = i * 7919 % N;
+      if (kind == "chain") pairs.push_back({(int)(j * 10000), (int)((j + 1) * 10000)});
+      else if (kind == "cycle") pairs.push_back({(int)(j * 10000), (int)((j + 1) % N * 10000)});
+      else if (i < N / 2) { int a = (int)((i * 7919 % (N / 2) + 1) * 1000); pairs.push_back({0, a}); pairs.push_back({a, 0}); }
+    }
+  }
+  return Solution().validArrangement(pairs);
+}` } },
     solution: {
       approach: `<p>Directed Euler path with Hierholzer on a hash-map graph.</p>`,
       code: `class Solution {
@@ -3453,6 +8001,87 @@ System.out.println(nodes + " nodes, source " + source + ", sink " + sink);` }
         return ans;
     }
 }`,
+      alt: [{ lang: 'python', code: `from collections import defaultdict
+
+
+def valid_arrangement(pairs):
+    graph = defaultdict(list)             # vertex -> unused out-neighbours
+    balance = defaultdict(int)            # out-degree minus in-degree
+    for a, b in pairs:
+        graph[a].append(b)
+        balance[a] += 1
+        balance[b] -= 1
+    start = pairs[0][0]
+    for v, bal in balance.items():
+        if bal == 1:                      # the chain must begin where out - in = +1
+            start = v
+            break
+    stack = [start]
+    order = []                            # vertices in reverse Euler order
+    while stack:
+        out = graph[stack[-1]]
+        if out:
+            stack.append(out.pop())
+        else:
+            order.append(stack.pop())
+    order.reverse()
+    return [[order[i], order[i + 1]] for i in range(len(pairs))]
+` }, { lang: 'js', code: `function validArrangement(pairs) {
+  const graph = new Map();                // vertex -> unused out-neighbours
+  const balance = new Map();              // out-degree minus in-degree
+  for (const [a, b] of pairs) {
+    if (!graph.has(a)) graph.set(a, []);
+    graph.get(a).push(b);
+    balance.set(a, (balance.get(a) || 0) + 1);
+    balance.set(b, (balance.get(b) || 0) - 1);
+  }
+  let start = pairs[0][0];
+  for (const [v, bal] of balance) {
+    if (bal === 1) { start = v; break; }  // the chain must begin where out - in = +1
+  }
+  const stack = [start], order = [];      // order = vertices in reverse Euler order
+  while (stack.length) {
+    const out = graph.get(stack[stack.length - 1]);
+    if (out && out.length) stack.push(out.pop());
+    else order.push(stack.pop());
+  }
+  order.reverse();
+  const ans = [];
+  for (let i = 0; i < pairs.length; i++) ans.push([order[i], order[i + 1]]);
+  return ans;
+}
+` }, { lang: 'cpp', code: `class Solution {
+public:
+    vector<vector<int>> validArrangement(vector<vector<int>>& pairs) {
+        unordered_map<int, vector<int>> graph;     // vertex -> unused out-neighbours
+        unordered_map<int, int> balance;           // out-degree minus in-degree
+        for (auto& p : pairs) {
+            graph[p[0]].push_back(p[1]);
+            balance[p[0]]++;
+            balance[p[1]]--;
+        }
+        int start = pairs[0][0];
+        for (auto& [v, bal] : balance)
+            if (bal == 1) { start = v; break; }    // the chain must begin where out - in = +1
+        vector<int> stack{start}, order;           // order = vertices in reverse Euler order
+        while (!stack.empty()) {
+            auto& out = graph[stack.back()];
+            if (!out.empty()) {
+                int next = out.back();
+                out.pop_back();
+                stack.push_back(next);
+            } else {
+                order.push_back(stack.back());
+                stack.pop_back();
+            }
+        }
+        reverse(order.begin(), order.end());
+        vector<vector<int>> ans;
+        for (size_t i = 0; i < pairs.size(); i++) ans.push_back({order[i], order[i + 1]});
+        return ans;
+    }
+};
+` }],
       complexity: `<p>Time <b>O(n)</b> expected (hashing), space <b>O(n)</b>.</p>`,
       followUps: ['What if no arrangement is guaranteed? Add the degree and E + 1 length checks.', 'Lexicographically smallest arrangement.']
     }
@@ -3494,6 +8123,93 @@ System.out.println(nodes + " nodes, source " + source + ", sink " + sink);` }
       `<p>Hint 2: If x and ¬x are in the same SCC, x ⇒ ¬x and ¬x ⇒ x — contradiction, unsatisfiable. Otherwise a solution exists.</p>`,
       `<p>Hint 3: Recipe — Kosaraju (iterative) numbers components in topological order. Set x<sub>i</sub> = true iff comp[x<sub>i</sub>] &gt; comp[¬x<sub>i</sub>] (choose the literal that comes later, so nothing it implies can force a contradiction).</p>`
     ],
+    tests: { sig: "string int int[][] -> bool", fn: "sat", cases: [
+        [["",2,[[1,2],[-1,2],[-2,1]]],true],
+        [["",2,[[1,2],[-1,2],[-2,1],[-1,-2]]],false],
+        [["",1,[[1,1]]],true],
+        [["",1,[[1,1],[-1,-1]]],false],
+        [["",1,[[1,-1]]],true],
+        [["",3,[[1,2],[-1,-2],[2,3],[-2,-3],[1,3],[-1,-3]]],false],
+        [["",3,[[1,2],[-1,3],[-2,-3]]],true],
+        [["",4,[[-1,2],[-2,3],[-3,4],[-4,-1],[1,4]]],true],
+        [["",4,[[-1,2],[3,-2],[-1,-2],[1,-3],[4,2],[-1,-3],[-2,3]]],true],
+        [["",5,[[-2,-1],[5,-4],[-5,-5],[4,-3],[4,-3],[-5,1],[-4,-1],[4,2],[4,-1]]],true],
+        [["",4,[[-1,3],[-3,-2],[1,2],[1,-2],[1,4],[-1,-2]]],true],
+        [["",6,[[6,-6],[-1,1],[-2,6],[3,-2],[-6,2],[1,3],[-2,4],[2,3],[-5,5],[-4,1],[1,4],[2,-4],[-1,-4]]],true],
+        [["",4,[[-1,1],[-2,1],[4,3],[4,3],[-2,-2],[4,-3],[3,4]]],true],
+        [["",4,[[-3,3],[-3,-2],[-4,2],[-4,3],[4,2],[-1,3],[1,-2],[-1,1],[1,1],[-2,-3],[-4,3],[-2,3]]],false],
+        [["",4,[[1,-3],[-1,1],[-4,2],[-4,-4],[3,-4],[2,3],[-4,2]]],true],
+        [["",4,[[3,4],[3,2],[-4,-2],[-1,-2],[-2,4],[-4,-4],[-2,1]]],true],
+        [["chain",0,[]],true],
+        [["chainunsat",0,[]],false],
+        [["alternate",0,[]],true]
+      ], harness: { java: `class Check {
+  static boolean sat(String kind, int n, int[][] cl) {
+    if (!kind.isEmpty()) {
+      n = 100000;
+      if (kind.equals("chain")) {
+        cl = new int[n - 1][];
+        for (int i = 1; i < n; i++) cl[i - 1] = new int[]{-i, i + 1};
+      } else if (kind.equals("chainunsat")) {
+        cl = new int[n + 1][];
+        for (int i = 1; i < n; i++) cl[i - 1] = new int[]{-i, i + 1};
+        cl[n - 1] = new int[]{1, 1};
+        cl[n] = new int[]{-n, -n};
+      } else {
+        cl = new int[2 * (n - 1)][];
+        for (int i = 1; i < n; i++) { cl[2 * (i - 1)] = new int[]{i, i + 1}; cl[2 * (i - 1) + 1] = new int[]{-i, -(i + 1)}; }
+      }
+    }
+    boolean[] v = new Solution().solve2SAT(n, cl);
+    if (v == null || v.length != n + 1) return false;
+    for (int[] c : cl) {
+      boolean a = c[0] > 0 ? v[c[0]] : !v[-c[0]], b = c[1] > 0 ? v[c[1]] : !v[-c[1]];
+      if (!a && !b) return false;
+    }
+    return true;
+  }
+}`, python: `def sat(kind, n, cl):
+    if kind != '':
+        n = 100000
+        if kind == 'chain':
+            cl = [[-i, i + 1] for i in range(1, n)]
+        elif kind == 'chainunsat':
+            cl = [[-i, i + 1] for i in range(1, n)] + [[1, 1], [-n, -n]]
+        else:
+            cl = [c for i in range(1, n) for c in ([i, i + 1], [-i, -(i + 1)])]
+    v = solve_2sat(n, cl)
+    if v is None or len(v) != n + 1:
+        return False
+    return all(v[abs(a)] == (a > 0) or v[abs(b)] == (b > 0) for a, b in cl)`, js: `function sat(kind, n, cl) {
+  if (kind !== '') {
+    n = 100000;
+    cl = [];
+    for (let i = 1; i < n; i++) {
+      if (kind === 'alternate') cl.push([i, i + 1], [-i, -(i + 1)]);
+      else cl.push([-i, i + 1]);
+    }
+    if (kind === 'chainunsat') cl.push([1, 1], [-n, -n]);
+  }
+  const v = solve2SAT(n, cl);
+  if (v === null || v.length !== n + 1) return false;
+  const val = (l) => (l > 0 ? v[l] : !v[-l]);
+  return cl.every(([a, b]) => val(a) || val(b));
+}`, cpp: `bool sat(string kind, int n, vector<vector<int>> cl) {
+  if (!kind.empty()) {
+    n = 100000;
+    cl.clear();
+    for (int i = 1; i < n; i++) {
+      if (kind == "alternate") { cl.push_back({i, i + 1}); cl.push_back({-i, -(i + 1)}); }
+      else cl.push_back({-i, i + 1});
+    }
+    if (kind == "chainunsat") { cl.push_back({1, 1}); cl.push_back({-n, -n}); }
+  }
+  vector<bool> v = Solution().solve2SAT(n, cl);
+  if (v.size() != (size_t)n + 1) return false;
+  auto val = [&](int l) { return l > 0 ? (bool)v[l] : !v[-l]; };
+  for (auto& c : cl) if (!val(c[0]) && !val(c[1])) return false;
+  return true;
+}` } },
     solution: {
       approach: `<p>Implication graph + iterative Kosaraju. Node 2(i−1) is x<sub>i</sub>, node 2(i−1)+1 is ¬x<sub>i</sub>, so negation is <code>^ 1</code>.</p>`,
       code: `class Solution {
@@ -3550,6 +8266,160 @@ System.out.println(nodes + " nodes, source " + source + ", sink " + sink);` }
 
     private int node(int lit) { return lit > 0 ? 2 * (lit - 1) : 2 * (-lit - 1) + 1; }
 }`,
+      alt: [{ lang: 'python', code: `def solve_2sat(n, clauses):
+    size = 2 * n                              # node 2(i-1) = x_i, node 2(i-1)+1 = NOT x_i
+    g = [[] for _ in range(size)]
+    rg = [[] for _ in range(size)]
+
+    def node(lit):
+        return 2 * (lit - 1) if lit > 0 else 2 * (-lit - 1) + 1
+
+    for x, y in clauses:
+        a, b = node(x), node(y)
+        g[a ^ 1].append(b)                    # NOT a -> b
+        rg[b].append(a ^ 1)
+        g[b ^ 1].append(a)                    # NOT b -> a
+        rg[a].append(b ^ 1)
+    seen = [False] * size
+    order = []
+    for s in range(size):                     # pass 1: finish order (iterative DFS)
+        if seen[s]:
+            continue
+        seen[s] = True
+        stack = [(s, 0)]
+        while stack:
+            v, i = stack[-1]
+            if i < len(g[v]):
+                stack[-1] = (v, i + 1)
+                w = g[v][i]
+                if not seen[w]:
+                    seen[w] = True
+                    stack.append((w, 0))
+            else:
+                stack.pop()
+                order.append(v)
+    comp = [-1] * size
+    c = 0
+    for s in reversed(order):                 # pass 2: topological component ids
+        if comp[s] != -1:
+            continue
+        comp[s] = c
+        pending = [s]
+        while pending:
+            v = pending.pop()
+            for w in rg[v]:
+                if comp[w] == -1:
+                    comp[w] = c
+                    pending.append(w)
+        c += 1
+    value = [False] * (n + 1)
+    for i in range(1, n + 1):
+        x = 2 * (i - 1)
+        if comp[x] == comp[x ^ 1]:            # x <=> NOT x
+            return None
+        value[i] = comp[x] > comp[x ^ 1]      # later in topological order wins
+    return value
+` }, { lang: 'js', code: `function solve2SAT(n, clauses) {
+  const size = 2 * n;                         // node 2(i-1) = x_i, node 2(i-1)+1 = NOT x_i
+  const g = Array.from({ length: size }, () => []);
+  const rg = Array.from({ length: size }, () => []);
+  const node = (lit) => (lit > 0 ? 2 * (lit - 1) : 2 * (-lit - 1) + 1);
+  for (const [x, y] of clauses) {
+    const a = node(x), b = node(y);
+    g[a ^ 1].push(b); rg[b].push(a ^ 1);      // NOT a -> b
+    g[b ^ 1].push(a); rg[a].push(b ^ 1);      // NOT b -> a
+  }
+  const seen = new Uint8Array(size), it = new Int32Array(size);
+  const order = [];
+  for (let s = 0; s < size; s++) {            // pass 1: finish order
+    if (seen[s]) continue;
+    seen[s] = 1;
+    const stack = [s];
+    while (stack.length) {
+      const v = stack[stack.length - 1];
+      if (it[v] < g[v].length) {
+        const w = g[v][it[v]++];
+        if (!seen[w]) { seen[w] = 1; stack.push(w); }
+      } else {
+        stack.pop();
+        order.push(v);
+      }
+    }
+  }
+  const comp = new Int32Array(size).fill(-1);
+  let c = 0;
+  for (let k = size - 1; k >= 0; k--) {       // pass 2: topological component ids
+    const s = order[k];
+    if (comp[s] !== -1) continue;
+    comp[s] = c;
+    const pending = [s];
+    while (pending.length) {
+      const v = pending.pop();
+      for (const w of rg[v]) if (comp[w] === -1) { comp[w] = c; pending.push(w); }
+    }
+    c++;
+  }
+  const value = new Array(n + 1).fill(false);
+  for (let i = 1; i <= n; i++) {
+    const x = 2 * (i - 1);
+    if (comp[x] === comp[x ^ 1]) return null; // x <=> NOT x
+    value[i] = comp[x] > comp[x ^ 1];         // later in topological order wins
+  }
+  return value;
+}
+` }, { lang: 'cpp', code: `class Solution {
+public:
+    // Returns n + 1 entries (index 0 unused), or an empty vector when the clauses cannot all hold.
+    vector<bool> solve2SAT(int n, vector<vector<int>>& clauses) {
+        int size = 2 * n;                              // node 2(i-1) = x_i, node 2(i-1)+1 = NOT x_i
+        vector<vector<int>> g(size), rg(size);
+        auto node = [](int lit) { return lit > 0 ? 2 * (lit - 1) : 2 * (-lit - 1) + 1; };
+        for (auto& c : clauses) {
+            int a = node(c[0]), b = node(c[1]);
+            g[a ^ 1].push_back(b); rg[b].push_back(a ^ 1);   // NOT a -> b
+            g[b ^ 1].push_back(a); rg[a].push_back(b ^ 1);   // NOT b -> a
+        }
+        vector<int> order, it(size, 0);
+        vector<char> seen(size, 0);
+        for (int s = 0; s < size; s++) {               // pass 1: finish order
+            if (seen[s]) continue;
+            seen[s] = 1;
+            vector<int> st{s};
+            while (!st.empty()) {
+                int v = st.back();
+                if (it[v] < (int)g[v].size()) {
+                    int w = g[v][it[v]++];
+                    if (!seen[w]) { seen[w] = 1; st.push_back(w); }
+                } else {
+                    st.pop_back();
+                    order.push_back(v);
+                }
+            }
+        }
+        vector<int> comp(size, -1);
+        int c = 0;
+        for (int k = size - 1; k >= 0; k--) {          // pass 2: topological component ids
+            int s = order[k];
+            if (comp[s] != -1) continue;
+            comp[s] = c;
+            vector<int> pending{s};
+            while (!pending.empty()) {
+                int v = pending.back();
+                pending.pop_back();
+                for (int w : rg[v]) if (comp[w] == -1) { comp[w] = c; pending.push_back(w); }
+            }
+            c++;
+        }
+        vector<bool> value(n + 1, false);
+        for (int i = 1; i <= n; i++) {
+            int x = 2 * (i - 1);
+            if (comp[x] == comp[x ^ 1]) return {};     // x <=> NOT x
+            value[i] = comp[x] > comp[x ^ 1];          // later in topological order wins
+        }
+        return value;
+    }
+};
+` }],
       complexity: `<p>Time <b>O(n + m)</b>, space <b>O(n + m)</b>.</p>`,
       followUps: ['Why does 3-SAT not have such an algorithm? (NP-complete.)', 'Model "exactly one of a, b" and "a implies b" as 2-SAT clauses.']
     }
@@ -3590,8 +8460,81 @@ System.out.println(nodes + " nodes, source " + source + ", sink " + sink);` }
     hints: [
       `<p>Hint 1: Flow algorithms only limit edges. Turn each router into an edge.</p>`,
       `<p>Hint 2: v becomes v_in (id v) and v_out (id v + n) with edge v_in → v_out of capacity limit[v] (∞ for s and t). Link u → v becomes u_out → v_in.</p>`,
-      `<p>Hint 3: Recipe — build the 2n-node network, run Dinic from s_in to t_out, use long and INF = Long.MAX_VALUE / 4.</p>`
+      `<p>Hint 3: Recipe — build the 2n-node network, run Dinic from s_in to t_out, use 64-bit integers and a large finite INF (a quarter of the 64-bit maximum).</p>`
     ],
+    tests: { sig: "string int int[][] long[] int int -> long", fn: "flow", cases: [
+        [["",4,[[0,1,10],[0,2,10],[1,3,10],[2,3,10]],[1000000000,4,7,1000000000],0,3],11],
+        [["",2,[[0,1,5]],[0,0],0,1],5],
+        [["",3,[[0,1,5]],[0,0,0],0,2],0],
+        [["",3,[[0,1,3],[0,1,4],[1,2,100]],[0,6,0],0,2],6],
+        [["",3,[[0,1,3],[0,1,4],[1,2,100]],[0,5,0],0,2],5],
+        [["",5,[[0,1,10],[1,2,10],[2,1,10],[1,3,4],[2,3,5],[3,4,100],[0,2,2]],[0,9,3,50,0],0,4],7],
+        [["",4,[[3,0,7],[0,1,2],[1,2,9],[2,3,4],[0,3,1]],[1,1,1,1],3,2],1],
+        [["",4,[[0,1,1000000000],[0,2,1000000000],[1,3,1000000000],[2,3,1000000000]],[0,1000000000,1000000000,0],0,3],2000000000],
+        [["",3,[[1,0,4],[2,1,11],[1,2,3],[2,1,9]],[3,9,3],1,2],3],
+        [["",6,[[5,1,7],[5,3,9],[3,2,4],[5,4,5],[5,2,10],[0,4,4],[1,2,8],[2,0,10],[5,1,6]],[6,5,2,2,0,8],4,5],0],
+        [["",5,[[1,4,12],[1,3,3],[0,2,9],[2,0,1]],[2,7,5,2,7],1,4],12],
+        [["",3,[[1,0,8],[2,0,12],[1,2,8],[2,1,6]],[5,3,2],2,0],15],
+        [["",7,[[2,0,1],[6,4,9],[3,5,6],[3,6,12]],[1,3,6,4,0,9,5],4,6],0],
+        [["",5,[[2,3,9],[2,4,2],[1,3,1]],[6,1,5,9,0],3,4],0],
+        [["star",0,[],[],0,0],"1398601997001"],
+        [["chain",0,[],[],0,0],999998002]
+      ], harness: { java: `class Check {
+  static long flow(String kind, int n, int[][] links, long[] limit, int s, int t) {
+    if (!kind.isEmpty()) {
+      n = 2000; s = 0; t = n - 1;
+      limit = new long[n];
+      if (kind.equals("star")) {
+        links = new int[2 * (n - 2)][];
+        for (int v = 1; v <= n - 2; v++) {
+          limit[v] = 700000000L + v;
+          links[2 * (v - 1)] = new int[]{0, v, 1000000000};
+          links[2 * (v - 1) + 1] = new int[]{v, t, 1000000000};
+        }
+      } else {
+        links = new int[n - 1][];
+        for (int v = 0; v < n - 1; v++) links[v] = new int[]{v, v + 1, 1000000000};
+        for (int v = 1; v < n - 1; v++) limit[v] = 1000000000L - v;
+      }
+    }
+    return new Solution().maxThroughput(n, links, limit, s, t);
+  }
+}`, python: `def flow(kind, n, links, limit, s, t):
+    if kind != '':
+        n = 2000
+        s, t = 0, n - 1
+        if kind == 'star':
+            links = [l for v in range(1, n - 1) for l in ([0, v, 10**9], [v, t, 10**9])]
+            limit = [0] + [700000000 + v for v in range(1, n - 1)] + [0]
+        else:
+            links = [[v, v + 1, 10**9] for v in range(n - 1)]
+            limit = [0] + [10**9 - v for v in range(1, n - 1)] + [0]
+    return max_throughput(n, links, limit, s, t)`, js: `function flow(kind, n, links, limit, s, t) {
+  if (kind !== '') {
+    n = 2000; s = 0; t = n - 1;
+    links = []; limit = new Array(n).fill(0);
+    if (kind === 'star') {
+      for (let v = 1; v < n - 1; v++) { limit[v] = 700000000 + v; links.push([0, v, 1e9], [v, t, 1e9]); }
+    } else {
+      for (let v = 0; v < n - 1; v++) links.push([v, v + 1, 1e9]);
+      for (let v = 1; v < n - 1; v++) limit[v] = 1e9 - v;
+    }
+  }
+  return maxThroughput(n, links, limit, s, t);
+}`, cpp: `long long flow(string kind, int n, vector<vector<int>> links, vector<long long> limit, int s, int t) {
+  if (!kind.empty()) {
+    n = 2000; s = 0; t = n - 1;
+    links.clear();
+    limit.assign(n, 0);
+    if (kind == "star") {
+      for (int v = 1; v < n - 1; v++) { limit[v] = 700000000LL + v; links.push_back({0, v, 1000000000}); links.push_back({v, t, 1000000000}); }
+    } else {
+      for (int v = 0; v < n - 1; v++) links.push_back({v, v + 1, 1000000000});
+      for (int v = 1; v < n - 1; v++) limit[v] = 1000000000LL - v;
+    }
+  }
+  return Solution().maxThroughput(n, links, limit, s, t);
+}` } },
     solution: {
       approach: `<p>Node splitting + Dinic (forward-star arrays).</p>`,
       code: `class Solution {
@@ -3651,6 +8594,169 @@ System.out.println(nodes + " nodes, source " + source + ", sink " + sink);` }
         return 0;
     }
 }`,
+      alt: [{ lang: 'python', code: `from collections import deque
+
+
+def max_throughput(n, links, limit, s, t):
+    INF = 1 << 60
+    size = 2 * n                              # v_in = v, v_out = v + n
+    g = [[] for _ in range(size)]
+    to, cap = [], []
+
+    def add(u, v, c):
+        g[u].append(len(to)); to.append(v); cap.append(c)
+        g[v].append(len(to)); to.append(u); cap.append(0)
+
+    for v in range(n):
+        add(v, v + n, INF if v in (s, t) else limit[v])    # v_in -> v_out
+    for u, v, c in links:
+        add(u + n, v, c)                                   # u_out -> v_in
+    src, sink = s, t + n
+    flow = 0
+    while True:
+        level = [-1] * size
+        level[src] = 0
+        q = deque([src])
+        while q:
+            v = q.popleft()
+            for e in g[v]:
+                if cap[e] > 0 and level[to[e]] < 0:
+                    level[to[e]] = level[v] + 1
+                    q.append(to[e])
+        if level[sink] < 0:
+            return flow
+        it = [0] * size                        # current-edge pointers for this phase
+        path = []                              # edge ids from src to the current node
+        v = src
+        while True:                            # iterative DFS: paths can be 2n edges long
+            if v == sink:
+                push = min(cap[e] for e in path)
+                for e in path:
+                    cap[e] -= push
+                    cap[e ^ 1] += push
+                flow += push
+                path.clear()
+                v = src
+                continue
+            while it[v] < len(g[v]):
+                e = g[v][it[v]]
+                if cap[e] > 0 and level[to[e]] == level[v] + 1:
+                    break
+                it[v] += 1
+            if it[v] < len(g[v]):
+                path.append(g[v][it[v]])
+                v = to[g[v][it[v]]]
+            elif v == src:
+                break
+            else:                              # dead end: back up and skip that edge
+                e = path.pop()
+                v = to[e ^ 1]
+                it[v] += 1
+` }, { lang: 'js', code: `function maxThroughput(n, links, limit, s, t) {
+  const INF = 1e15;                           // above any possible flow (at most 10^4 * 10^9)
+  const size = 2 * n;                         // v_in = v, v_out = v + n
+  const g = Array.from({ length: size }, () => []);
+  const to = [], cap = [];
+  const add = (u, v, c) => {
+    g[u].push(to.length); to.push(v); cap.push(c);
+    g[v].push(to.length); to.push(u); cap.push(0);
+  };
+  for (let v = 0; v < n; v++) add(v, v + n, v === s || v === t ? INF : limit[v]);   // v_in -> v_out
+  for (const [u, v, c] of links) add(u + n, v, c);                                   // u_out -> v_in
+  const src = s, sink = t + n;
+  let flow = 0;
+  for (;;) {
+    const level = new Int32Array(size).fill(-1);
+    level[src] = 0;
+    const q = [src];
+    for (let h = 0; h < q.length; h++) {
+      const v = q[h];
+      for (const e of g[v]) if (cap[e] > 0 && level[to[e]] < 0) { level[to[e]] = level[v] + 1; q.push(to[e]); }
+    }
+    if (level[sink] < 0) return flow;
+    const it = new Int32Array(size);          // current-edge pointers for this phase
+    const path = [];                          // edge ids from src to the current node
+    let v = src;
+    for (;;) {                                // iterative DFS: paths can be 2n edges long
+      if (v === sink) {
+        let push = Infinity;
+        for (const e of path) push = Math.min(push, cap[e]);
+        for (const e of path) { cap[e] -= push; cap[e ^ 1] += push; }
+        flow += push;
+        path.length = 0;
+        v = src;
+        continue;
+      }
+      while (it[v] < g[v].length) {
+        const e = g[v][it[v]];
+        if (cap[e] > 0 && level[to[e]] === level[v] + 1) break;
+        it[v]++;
+      }
+      if (it[v] < g[v].length) {
+        const e = g[v][it[v]];
+        path.push(e);
+        v = to[e];
+      } else if (v === src) {
+        break;
+      } else {                                // dead end: back up and skip that edge
+        const e = path.pop();
+        v = to[e ^ 1];
+        it[v]++;
+      }
+    }
+  }
+}
+` }, { lang: 'cpp', code: `class Solution {
+    vector<int> head, nxt, to, level, it;
+    vector<long long> cap;
+
+    void add(int u, int v, long long c) {
+        to.push_back(v); cap.push_back(c); nxt.push_back(head[u]); head[u] = (int)to.size() - 1;
+        to.push_back(u); cap.push_back(0); nxt.push_back(head[v]); head[v] = (int)to.size() - 1;
+    }
+
+    bool bfs(int s, int t) {
+        fill(level.begin(), level.end(), -1);
+        queue<int> q;
+        level[s] = 0;
+        q.push(s);
+        while (!q.empty()) {
+            int v = q.front();
+            q.pop();
+            for (int e = head[v]; e != -1; e = nxt[e])
+                if (cap[e] > 0 && level[to[e]] < 0) { level[to[e]] = level[v] + 1; q.push(to[e]); }
+        }
+        return level[t] >= 0;
+    }
+
+    long long dfs(int v, int t, long long f) {
+        if (v == t) return f;
+        for (int& e = it[v]; e != -1; e = nxt[e]) {      // never retry a useless edge this phase
+            if (cap[e] > 0 && level[to[e]] == level[v] + 1) {
+                long long d = dfs(to[e], t, min(f, cap[e]));
+                if (d > 0) { cap[e] -= d; cap[e ^ 1] += d; return d; }
+            }
+        }
+        return 0;
+    }
+
+public:
+    long long maxThroughput(int n, vector<vector<int>>& links, vector<long long>& limit, int s, int t) {
+        const long long INF = LLONG_MAX / 4;
+        int size = 2 * n;                                // v_in = v, v_out = v + n
+        head.assign(size, -1);
+        level.assign(size, -1);
+        for (int v = 0; v < n; v++) add(v, v + n, (v == s || v == t) ? INF : limit[v]);   // v_in -> v_out
+        for (auto& l : links) add(l[0] + n, l[1], l[2]);                                   // u_out -> v_in
+        long long flow = 0;
+        while (bfs(s, t + n)) {
+            it = head;
+            while (long long f = dfs(s, t + n, INF)) flow += f;
+        }
+        return flow;
+    }
+};
+` }],
       complexity: `<p>Dinic O(V²·E) on 2n nodes and n + E edges; in practice very fast. Space O(n + E).</p>`,
       followUps: ['Minimum number of routers to remove to disconnect s and t (all limits = 1, then min cut).', 'Undirected links.']
     }
@@ -3687,6 +8793,28 @@ System.out.println(nodes + " nodes, source " + source + ", sink " + sink);` }
       `<p>Hint 2: S → i with capacity val[i] for profits (cut = not chosen, profit lost); i → T with capacity −val[i] for costs (cut = chosen, cost paid); a → b with ∞ for each requirement.</p>`,
       `<p>Hint 3: Recipe — answer = (sum of positive values) − maxflow(S, T). The chosen set = nodes reachable from S in the residual graph.</p>`
     ],
+    tests: { sig: "long[] int[][] -> long", fn: "maxProfit", cases: [
+        [[[10,7,-6,-9],[[0,2],[1,2],[1,3]]],4],
+        [[[5],[]],5],
+        [[[-5],[]],0],
+        [[[-3,-4],[]],0],
+        [[[3,4],[]],7],
+        [[[5,-8],[[0,1]]],0],
+        [[[8,-5],[[0,1]]],3],
+        [[[1000000,-1000000,1000000,-999999],[[0,1],[2,3]]],1],
+        [[[4,-2,-2,6,-7],[[0,1],[0,2],[3,4],[3,1]]],0],
+        [[[2,2,-3],[[0,2],[1,2]]],1],
+        [[[3,-1,-1,-1,5],[[0,1],[1,2],[2,3],[3,4],[4,0]]],5],
+        [[[0,-6,8,-4],[[3,1],[2,3],[1,3]]],0],
+        [[[-4,-7,-9,-6],[[2,3],[3,2]]],0],
+        [[[-1,2,0,-7,8,6,-2,-5],[[2,1],[4,5],[0,7],[7,3],[0,3]]],16],
+        [[[0,-8,-9,6],[[2,1]]],6],
+        [[[-2,2,4],[[0,1]]],6],
+        [[[1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999,-999999],[[0,250],[1,251],[2,252],[3,253],[4,254],[5,255],[6,256],[7,257],[8,258],[9,259],[10,260],[11,261],[12,262],[13,263],[14,264],[15,265],[16,266],[17,267],[18,268],[19,269],[20,270],[21,271],[22,272],[23,273],[24,274],[25,275],[26,276],[27,277],[28,278],[29,279],[30,280],[31,281],[32,282],[33,283],[34,284],[35,285],[36,286],[37,287],[38,288],[39,289],[40,290],[41,291],[42,292],[43,293],[44,294],[45,295],[46,296],[47,297],[48,298],[49,299],[50,300],[51,301],[52,302],[53,303],[54,304],[55,305],[56,306],[57,307],[58,308],[59,309],[60,310],[61,311],[62,312],[63,313],[64,314],[65,315],[66,316],[67,317],[68,318],[69,319],[70,320],[71,321],[72,322],[73,323],[74,324],[75,325],[76,326],[77,327],[78,328],[79,329],[80,330],[81,331],[82,332],[83,333],[84,334],[85,335],[86,336],[87,337],[88,338],[89,339],[90,340],[91,341],[92,342],[93,343],[94,344],[95,345],[96,346],[97,347],[98,348],[99,349],[100,350],[101,351],[102,352],[103,353],[104,354],[105,355],[106,356],[107,357],[108,358],[109,359],[110,360],[111,361],[112,362],[113,363],[114,364],[115,365],[116,366],[117,367],[118,368],[119,369],[120,370],[121,371],[122,372],[123,373],[124,374],[125,375],[126,376],[127,377],[128,378],[129,379],[130,380],[131,381],[132,382],[133,383],[134,384],[135,385],[136,386],[137,387],[138,388],[139,389],[140,390],[141,391],[142,392],[143,393],[144,394],[145,395],[146,396],[147,397],[148,398],[149,399],[150,400],[151,401],[152,402],[153,403],[154,404],[155,405],[156,406],[157,407],[158,408],[159,409],[160,410],[161,411],[162,412],[163,413],[164,414],[165,415],[166,416],[167,417],[168,418],[169,419],[170,420],[171,421],[172,422],[173,423],[174,424],[175,425],[176,426],[177,427],[178,428],[179,429],[180,430],[181,431],[182,432],[183,433],[184,434],[185,435],[186,436],[187,437],[188,438],[189,439],[190,440],[191,441],[192,442],[193,443],[194,444],[195,445],[196,446],[197,447],[198,448],[199,449],[200,450],[201,451],[202,452],[203,453],[204,454],[205,455],[206,456],[207,457],[208,458],[209,459],[210,460],[211,461],[212,462],[213,463],[214,464],[215,465],[216,466],[217,467],[218,468],[219,469],[220,470],[221,471],[222,472],[223,473],[224,474],[225,475],[226,476],[227,477],[228,478],[229,479],[230,480],[231,481],[232,482],[233,483],[234,484],[235,485],[236,486],[237,487],[238,488],[239,489],[240,490],[241,491],[242,492],[243,493],[244,494],[245,495],[246,496],[247,497],[248,498],[249,499]]],250],
+        [[[1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000,1000000],[[0,1],[1,2],[2,3],[3,4],[4,5],[5,6],[6,7],[7,8],[8,9],[9,10],[10,11],[11,12],[12,13],[13,14],[14,15],[15,16],[16,17],[17,18],[18,19],[19,20],[20,21],[21,22],[22,23],[23,24],[24,25],[25,26],[26,27],[27,28],[28,29],[29,30],[30,31],[31,32],[32,33],[33,34],[34,35],[35,36],[36,37],[37,38],[38,39],[39,40],[40,41],[41,42],[42,43],[43,44],[44,45],[45,46],[46,47],[47,48],[48,49],[49,50],[50,51],[51,52],[52,53],[53,54],[54,55],[55,56],[56,57],[57,58],[58,59],[59,60],[60,61],[61,62],[62,63],[63,64],[64,65],[65,66],[66,67],[67,68],[68,69],[69,70],[70,71],[71,72],[72,73],[73,74],[74,75],[75,76],[76,77],[77,78],[78,79],[79,80],[80,81],[81,82],[82,83],[83,84],[84,85],[85,86],[86,87],[87,88],[88,89],[89,90],[90,91],[91,92],[92,93],[93,94],[94,95],[95,96],[96,97],[97,98],[98,99],[99,100],[100,101],[101,102],[102,103],[103,104],[104,105],[105,106],[106,107],[107,108],[108,109],[109,110],[110,111],[111,112],[112,113],[113,114],[114,115],[115,116],[116,117],[117,118],[118,119],[119,120],[120,121],[121,122],[122,123],[123,124],[124,125],[125,126],[126,127],[127,128],[128,129],[129,130],[130,131],[131,132],[132,133],[133,134],[134,135],[135,136],[136,137],[137,138],[138,139],[139,140],[140,141],[141,142],[142,143],[143,144],[144,145],[145,146],[146,147],[147,148],[148,149],[149,150],[150,151],[151,152],[152,153],[153,154],[154,155],[155,156],[156,157],[157,158],[158,159],[159,160],[160,161],[161,162],[162,163],[163,164],[164,165],[165,166],[166,167],[167,168],[168,169],[169,170],[170,171],[171,172],[172,173],[173,174],[174,175],[175,176],[176,177],[177,178],[178,179],[179,180],[180,181],[181,182],[182,183],[183,184],[184,185],[185,186],[186,187],[187,188],[188,189],[189,190],[190,191],[191,192],[192,193],[193,194],[194,195],[195,196],[196,197],[197,198],[198,199],[199,200],[200,201],[201,202],[202,203],[203,204],[204,205],[205,206],[206,207],[207,208],[208,209],[209,210],[210,211],[211,212],[212,213],[213,214],[214,215],[215,216],[216,217],[217,218],[218,219],[219,220],[220,221],[221,222],[222,223],[223,224],[224,225],[225,226],[226,227],[227,228],[228,229],[229,230],[230,231],[231,232],[232,233],[233,234],[234,235],[235,236],[236,237],[237,238],[238,239],[239,240],[240,241],[241,242],[242,243],[243,244],[244,245],[245,246],[246,247],[247,248],[248,249],[249,250],[250,251],[251,252],[252,253],[253,254],[254,255],[255,256],[256,257],[257,258],[258,259],[259,260],[260,261],[261,262],[262,263],[263,264],[264,265],[265,266],[266,267],[267,268],[268,269],[269,270],[270,271],[271,272],[272,273],[273,274],[274,275],[275,276],[276,277],[277,278],[278,279],[279,280],[280,281],[281,282],[282,283],[283,284],[284,285],[285,286],[286,287],[287,288],[288,289],[289,290],[290,291],[291,292],[292,293],[293,294],[294,295],[295,296],[296,297],[297,298],[298,299],[299,300],[300,301],[301,302],[302,303],[303,304],[304,305],[305,306],[306,307],[307,308],[308,309],[309,310],[310,311],[311,312],[312,313],[313,314],[314,315],[315,316],[316,317],[317,318],[318,319],[319,320],[320,321],[321,322],[322,323],[323,324],[324,325],[325,326],[326,327],[327,328],[328,329],[329,330],[330,331],[331,332],[332,333],[333,334],[334,335],[335,336],[336,337],[337,338],[338,339],[339,340],[340,341],[341,342],[342,343],[343,344],[344,345],[345,346],[346,347],[347,348],[348,349],[349,350],[350,351],[351,352],[352,353],[353,354],[354,355],[355,356],[356,357],[357,358],[358,359],[359,360],[360,361],[361,362],[362,363],[363,364],[364,365],[365,366],[366,367],[367,368],[368,369],[369,370],[370,371],[371,372],[372,373],[373,374],[374,375],[375,376],[376,377],[377,378],[378,379],[379,380],[380,381],[381,382],[382,383],[383,384],[384,385],[385,386],[386,387],[387,388],[388,389],[389,390],[390,391],[391,392],[392,393],[393,394],[394,395],[395,396],[396,397],[397,398],[398,399],[399,400],[400,401],[401,402],[402,403],[403,404],[404,405],[405,406],[406,407],[407,408],[408,409],[409,410],[410,411],[411,412],[412,413],[413,414],[414,415],[415,416],[416,417],[417,418],[418,419],[419,420],[420,421],[421,422],[422,423],[423,424],[424,425],[425,426],[426,427],[427,428],[428,429],[429,430],[430,431],[431,432],[432,433],[433,434],[434,435],[435,436],[436,437],[437,438],[438,439],[439,440],[440,441],[441,442],[442,443],[443,444],[444,445],[445,446],[446,447],[447,448],[448,449],[449,450],[450,451],[451,452],[452,453],[453,454],[454,455],[455,456],[456,457],[457,458],[458,459],[459,460],[460,461],[461,462],[462,463],[463,464],[464,465],[465,466],[466,467],[467,468],[468,469],[469,470],[470,471],[471,472],[472,473],[473,474],[474,475],[475,476],[476,477],[477,478],[478,479],[479,480],[480,481],[481,482],[482,483],[483,484],[484,485],[485,486],[486,487],[487,488],[488,489],[489,490],[490,491],[491,492],[492,493],[493,494],[494,495],[495,496],[496,497],[497,498],[498,499]]],500000000],
+        [[[-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000,-1000000],[[0,1],[1,2],[2,3],[3,4],[4,5],[5,6],[6,7],[7,8],[8,9],[9,10],[10,11],[11,12],[12,13],[13,14],[14,15],[15,16],[16,17],[17,18],[18,19],[19,20],[20,21],[21,22],[22,23],[23,24],[24,25],[25,26],[26,27],[27,28],[28,29],[29,30],[30,31],[31,32],[32,33],[33,34],[34,35],[35,36],[36,37],[37,38],[38,39],[39,40],[40,41],[41,42],[42,43],[43,44],[44,45],[45,46],[46,47],[47,48],[48,49],[49,50],[50,51],[51,52],[52,53],[53,54],[54,55],[55,56],[56,57],[57,58],[58,59],[59,60],[60,61],[61,62],[62,63],[63,64],[64,65],[65,66],[66,67],[67,68],[68,69],[69,70],[70,71],[71,72],[72,73],[73,74],[74,75],[75,76],[76,77],[77,78],[78,79],[79,80],[80,81],[81,82],[82,83],[83,84],[84,85],[85,86],[86,87],[87,88],[88,89],[89,90],[90,91],[91,92],[92,93],[93,94],[94,95],[95,96],[96,97],[97,98],[98,99],[99,100],[100,101],[101,102],[102,103],[103,104],[104,105],[105,106],[106,107],[107,108],[108,109],[109,110],[110,111],[111,112],[112,113],[113,114],[114,115],[115,116],[116,117],[117,118],[118,119],[119,120],[120,121],[121,122],[122,123],[123,124],[124,125],[125,126],[126,127],[127,128],[128,129],[129,130],[130,131],[131,132],[132,133],[133,134],[134,135],[135,136],[136,137],[137,138],[138,139],[139,140],[140,141],[141,142],[142,143],[143,144],[144,145],[145,146],[146,147],[147,148],[148,149],[149,150],[150,151],[151,152],[152,153],[153,154],[154,155],[155,156],[156,157],[157,158],[158,159],[159,160],[160,161],[161,162],[162,163],[163,164],[164,165],[165,166],[166,167],[167,168],[168,169],[169,170],[170,171],[171,172],[172,173],[173,174],[174,175],[175,176],[176,177],[177,178],[178,179],[179,180],[180,181],[181,182],[182,183],[183,184],[184,185],[185,186],[186,187],[187,188],[188,189],[189,190],[190,191],[191,192],[192,193],[193,194],[194,195],[195,196],[196,197],[197,198],[198,199],[199,200],[200,201],[201,202],[202,203],[203,204],[204,205],[205,206],[206,207],[207,208],[208,209],[209,210],[210,211],[211,212],[212,213],[213,214],[214,215],[215,216],[216,217],[217,218],[218,219],[219,220],[220,221],[221,222],[222,223],[223,224],[224,225],[225,226],[226,227],[227,228],[228,229],[229,230],[230,231],[231,232],[232,233],[233,234],[234,235],[235,236],[236,237],[237,238],[238,239],[239,240],[240,241],[241,242],[242,243],[243,244],[244,245],[245,246],[246,247],[247,248],[248,249],[249,250],[250,251],[251,252],[252,253],[253,254],[254,255],[255,256],[256,257],[257,258],[258,259],[259,260],[260,261],[261,262],[262,263],[263,264],[264,265],[265,266],[266,267],[267,268],[268,269],[269,270],[270,271],[271,272],[272,273],[273,274],[274,275],[275,276],[276,277],[277,278],[278,279],[279,280],[280,281],[281,282],[282,283],[283,284],[284,285],[285,286],[286,287],[287,288],[288,289],[289,290],[290,291],[291,292],[292,293],[293,294],[294,295],[295,296],[296,297],[297,298],[298,299],[299,300],[300,301],[301,302],[302,303],[303,304],[304,305],[305,306],[306,307],[307,308],[308,309],[309,310],[310,311],[311,312],[312,313],[313,314],[314,315],[315,316],[316,317],[317,318],[318,319],[319,320],[320,321],[321,322],[322,323],[323,324],[324,325],[325,326],[326,327],[327,328],[328,329],[329,330],[330,331],[331,332],[332,333],[333,334],[334,335],[335,336],[336,337],[337,338],[338,339],[339,340],[340,341],[341,342],[342,343],[343,344],[344,345],[345,346],[346,347],[347,348],[348,349],[349,350],[350,351],[351,352],[352,353],[353,354],[354,355],[355,356],[356,357],[357,358],[358,359],[359,360],[360,361],[361,362],[362,363],[363,364],[364,365],[365,366],[366,367],[367,368],[368,369],[369,370],[370,371],[371,372],[372,373],[373,374],[374,375],[375,376],[376,377],[377,378],[378,379],[379,380],[380,381],[381,382],[382,383],[383,384],[384,385],[385,386],[386,387],[387,388],[388,389],[389,390],[390,391],[391,392],[392,393],[393,394],[394,395],[395,396],[396,397],[397,398],[398,399],[399,400],[400,401],[401,402],[402,403],[403,404],[404,405],[405,406],[406,407],[407,408],[408,409],[409,410],[410,411],[411,412],[412,413],[413,414],[414,415],[415,416],[416,417],[417,418],[418,419],[419,420],[420,421],[421,422],[422,423],[423,424],[424,425],[425,426],[426,427],[427,428],[428,429],[429,430],[430,431],[431,432],[432,433],[433,434],[434,435],[435,436],[436,437],[437,438],[438,439],[439,440],[440,441],[441,442],[442,443],[443,444],[444,445],[445,446],[446,447],[447,448],[448,449],[449,450],[450,451],[451,452],[452,453],[453,454],[454,455],[455,456],[456,457],[457,458],[458,459],[459,460],[460,461],[461,462],[462,463],[463,464],[464,465],[465,466],[466,467],[467,468],[468,469],[469,470],[470,471],[471,472],[472,473],[473,474],[474,475],[475,476],[476,477],[477,478],[478,479],[479,480],[480,481],[481,482],[482,483],[483,484],[484,485],[485,486],[486,487],[487,488],[488,489],[489,490],[490,491],[491,492],[492,493],[493,494],[494,495],[495,496],[496,497],[497,498],[498,499]]],0],
+        [[[1000000,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999,-1999],[[0,1],[0,2],[0,3],[0,4],[0,5],[0,6],[0,7],[0,8],[0,9],[0,10],[0,11],[0,12],[0,13],[0,14],[0,15],[0,16],[0,17],[0,18],[0,19],[0,20],[0,21],[0,22],[0,23],[0,24],[0,25],[0,26],[0,27],[0,28],[0,29],[0,30],[0,31],[0,32],[0,33],[0,34],[0,35],[0,36],[0,37],[0,38],[0,39],[0,40],[0,41],[0,42],[0,43],[0,44],[0,45],[0,46],[0,47],[0,48],[0,49],[0,50],[0,51],[0,52],[0,53],[0,54],[0,55],[0,56],[0,57],[0,58],[0,59],[0,60],[0,61],[0,62],[0,63],[0,64],[0,65],[0,66],[0,67],[0,68],[0,69],[0,70],[0,71],[0,72],[0,73],[0,74],[0,75],[0,76],[0,77],[0,78],[0,79],[0,80],[0,81],[0,82],[0,83],[0,84],[0,85],[0,86],[0,87],[0,88],[0,89],[0,90],[0,91],[0,92],[0,93],[0,94],[0,95],[0,96],[0,97],[0,98],[0,99],[0,100],[0,101],[0,102],[0,103],[0,104],[0,105],[0,106],[0,107],[0,108],[0,109],[0,110],[0,111],[0,112],[0,113],[0,114],[0,115],[0,116],[0,117],[0,118],[0,119],[0,120],[0,121],[0,122],[0,123],[0,124],[0,125],[0,126],[0,127],[0,128],[0,129],[0,130],[0,131],[0,132],[0,133],[0,134],[0,135],[0,136],[0,137],[0,138],[0,139],[0,140],[0,141],[0,142],[0,143],[0,144],[0,145],[0,146],[0,147],[0,148],[0,149],[0,150],[0,151],[0,152],[0,153],[0,154],[0,155],[0,156],[0,157],[0,158],[0,159],[0,160],[0,161],[0,162],[0,163],[0,164],[0,165],[0,166],[0,167],[0,168],[0,169],[0,170],[0,171],[0,172],[0,173],[0,174],[0,175],[0,176],[0,177],[0,178],[0,179],[0,180],[0,181],[0,182],[0,183],[0,184],[0,185],[0,186],[0,187],[0,188],[0,189],[0,190],[0,191],[0,192],[0,193],[0,194],[0,195],[0,196],[0,197],[0,198],[0,199],[0,200],[0,201],[0,202],[0,203],[0,204],[0,205],[0,206],[0,207],[0,208],[0,209],[0,210],[0,211],[0,212],[0,213],[0,214],[0,215],[0,216],[0,217],[0,218],[0,219],[0,220],[0,221],[0,222],[0,223],[0,224],[0,225],[0,226],[0,227],[0,228],[0,229],[0,230],[0,231],[0,232],[0,233],[0,234],[0,235],[0,236],[0,237],[0,238],[0,239],[0,240],[0,241],[0,242],[0,243],[0,244],[0,245],[0,246],[0,247],[0,248],[0,249],[0,250],[0,251],[0,252],[0,253],[0,254],[0,255],[0,256],[0,257],[0,258],[0,259],[0,260],[0,261],[0,262],[0,263],[0,264],[0,265],[0,266],[0,267],[0,268],[0,269],[0,270],[0,271],[0,272],[0,273],[0,274],[0,275],[0,276],[0,277],[0,278],[0,279],[0,280],[0,281],[0,282],[0,283],[0,284],[0,285],[0,286],[0,287],[0,288],[0,289],[0,290],[0,291],[0,292],[0,293],[0,294],[0,295],[0,296],[0,297],[0,298],[0,299],[0,300],[0,301],[0,302],[0,303],[0,304],[0,305],[0,306],[0,307],[0,308],[0,309],[0,310],[0,311],[0,312],[0,313],[0,314],[0,315],[0,316],[0,317],[0,318],[0,319],[0,320],[0,321],[0,322],[0,323],[0,324],[0,325],[0,326],[0,327],[0,328],[0,329],[0,330],[0,331],[0,332],[0,333],[0,334],[0,335],[0,336],[0,337],[0,338],[0,339],[0,340],[0,341],[0,342],[0,343],[0,344],[0,345],[0,346],[0,347],[0,348],[0,349],[0,350],[0,351],[0,352],[0,353],[0,354],[0,355],[0,356],[0,357],[0,358],[0,359],[0,360],[0,361],[0,362],[0,363],[0,364],[0,365],[0,366],[0,367],[0,368],[0,369],[0,370],[0,371],[0,372],[0,373],[0,374],[0,375],[0,376],[0,377],[0,378],[0,379],[0,380],[0,381],[0,382],[0,383],[0,384],[0,385],[0,386],[0,387],[0,388],[0,389],[0,390],[0,391],[0,392],[0,393],[0,394],[0,395],[0,396],[0,397],[0,398],[0,399],[0,400],[0,401],[0,402],[0,403],[0,404],[0,405],[0,406],[0,407],[0,408],[0,409],[0,410],[0,411],[0,412],[0,413],[0,414],[0,415],[0,416],[0,417],[0,418],[0,419],[0,420],[0,421],[0,422],[0,423],[0,424],[0,425],[0,426],[0,427],[0,428],[0,429],[0,430],[0,431],[0,432],[0,433],[0,434],[0,435],[0,436],[0,437],[0,438],[0,439],[0,440],[0,441],[0,442],[0,443],[0,444],[0,445],[0,446],[0,447],[0,448],[0,449],[0,450],[0,451],[0,452],[0,453],[0,454],[0,455],[0,456],[0,457],[0,458],[0,459],[0,460],[0,461],[0,462],[0,463],[0,464],[0,465],[0,466],[0,467],[0,468],[0,469],[0,470],[0,471],[0,472],[0,473],[0,474],[0,475],[0,476],[0,477],[0,478],[0,479],[0,480],[0,481],[0,482],[0,483],[0,484],[0,485],[0,486],[0,487],[0,488],[0,489],[0,490],[0,491],[0,492],[0,493],[0,494],[0,495],[0,496],[0,497],[0,498],[0,499]]],2499]
+      ] },
     solution: {
       approach: `<p>Max-weight closure via min cut (Picard 1976). Every finite cut ↔ a closed set; cut capacity = lost profits + paid costs.</p>`,
       code: `class Solution {
@@ -3759,6 +8887,182 @@ System.out.println(nodes + " nodes, source " + source + ", sink " + sink);` }
           ['total', 'positives 17', 'min cut 13 → profit <b>4</b>']
         ]
       },
+      alt: [{ lang: 'python', code: `from collections import deque
+
+
+def max_profit(val, req):
+    n = len(val)
+    S, T = n, n + 1
+    INF = 1 << 60
+    g = [[] for _ in range(n + 2)]
+    to, cap = [], []
+
+    def add(u, v, c):
+        g[u].append(len(to)); to.append(v); cap.append(c)
+        g[v].append(len(to)); to.append(u); cap.append(0)
+
+    positive = 0
+    for i, x in enumerate(val):
+        if x > 0:
+            add(S, i, x)                       # cut = give up this profit
+            positive += x
+        else:
+            add(i, T, -x)                      # cut = pay this cost
+    for a, b in req:
+        add(a, b, INF)                         # a chosen => b chosen
+    flow = 0
+    while True:
+        level = [-1] * (n + 2)
+        level[S] = 0
+        q = deque([S])
+        while q:
+            v = q.popleft()
+            for e in g[v]:
+                if cap[e] > 0 and level[to[e]] < 0:
+                    level[to[e]] = level[v] + 1
+                    q.append(to[e])
+        if level[T] < 0:
+            return positive - flow
+        it = [0] * (n + 2)
+        path = []
+        v = S
+        while True:                            # iterative DFS keeps Python clear of its recursion limit
+            if v == T:
+                push = min(cap[e] for e in path)
+                for e in path:
+                    cap[e] -= push
+                    cap[e ^ 1] += push
+                flow += push
+                path.clear()
+                v = S
+                continue
+            while it[v] < len(g[v]):
+                e = g[v][it[v]]
+                if cap[e] > 0 and level[to[e]] == level[v] + 1:
+                    break
+                it[v] += 1
+            if it[v] < len(g[v]):
+                e = g[v][it[v]]
+                path.append(e)
+                v = to[e]
+            elif v == S:
+                break
+            else:
+                e = path.pop()
+                v = to[e ^ 1]
+                it[v] += 1
+` }, { lang: 'js', code: `function maxProfit(val, req) {
+  const n = val.length, S = n, T = n + 1, size = n + 2;
+  const INF = 1e15;                           // above any possible flow (at most 500 * 10^6)
+  const g = Array.from({ length: size }, () => []);
+  const to = [], cap = [];
+  const add = (u, v, c) => {
+    g[u].push(to.length); to.push(v); cap.push(c);
+    g[v].push(to.length); to.push(u); cap.push(0);
+  };
+  let positive = 0;
+  for (let i = 0; i < n; i++) {
+    if (val[i] > 0) { add(S, i, val[i]); positive += val[i]; }   // cut = give up this profit
+    else add(i, T, -val[i]);                                     // cut = pay this cost
+  }
+  for (const [a, b] of req) add(a, b, INF);                      // a chosen => b chosen
+  let flow = 0;
+  for (;;) {
+    const level = new Int32Array(size).fill(-1);
+    level[S] = 0;
+    const q = [S];
+    for (let h = 0; h < q.length; h++) {
+      const v = q[h];
+      for (const e of g[v]) if (cap[e] > 0 && level[to[e]] < 0) { level[to[e]] = level[v] + 1; q.push(to[e]); }
+    }
+    if (level[T] < 0) return positive - flow;
+    const it = new Int32Array(size);
+    const path = [];
+    let v = S;
+    for (;;) {
+      if (v === T) {
+        let push = Infinity;
+        for (const e of path) push = Math.min(push, cap[e]);
+        for (const e of path) { cap[e] -= push; cap[e ^ 1] += push; }
+        flow += push;
+        path.length = 0;
+        v = S;
+        continue;
+      }
+      while (it[v] < g[v].length) {
+        const e = g[v][it[v]];
+        if (cap[e] > 0 && level[to[e]] === level[v] + 1) break;
+        it[v]++;
+      }
+      if (it[v] < g[v].length) {
+        const e = g[v][it[v]];
+        path.push(e);
+        v = to[e];
+      } else if (v === S) {
+        break;
+      } else {
+        const e = path.pop();
+        v = to[e ^ 1];
+        it[v]++;
+      }
+    }
+  }
+}
+` }, { lang: 'cpp', code: `class Solution {
+    vector<int> head, nxt, to, level, it;
+    vector<long long> cap;
+
+    void add(int u, int v, long long c) {
+        to.push_back(v); cap.push_back(c); nxt.push_back(head[u]); head[u] = (int)to.size() - 1;
+        to.push_back(u); cap.push_back(0); nxt.push_back(head[v]); head[v] = (int)to.size() - 1;
+    }
+
+    bool bfs(int s, int t) {
+        fill(level.begin(), level.end(), -1);
+        queue<int> q;
+        level[s] = 0;
+        q.push(s);
+        while (!q.empty()) {
+            int v = q.front();
+            q.pop();
+            for (int e = head[v]; e != -1; e = nxt[e])
+                if (cap[e] > 0 && level[to[e]] < 0) { level[to[e]] = level[v] + 1; q.push(to[e]); }
+        }
+        return level[t] >= 0;
+    }
+
+    long long dfs(int v, int t, long long f) {
+        if (v == t) return f;
+        for (int& e = it[v]; e != -1; e = nxt[e]) {
+            if (cap[e] > 0 && level[to[e]] == level[v] + 1) {
+                long long d = dfs(to[e], t, min(f, cap[e]));
+                if (d > 0) { cap[e] -= d; cap[e ^ 1] += d; return d; }
+            }
+        }
+        return 0;
+    }
+
+public:
+    long long maxProfit(vector<long long>& val, vector<vector<int>>& req) {
+        int n = val.size(), S = n, T = n + 1;
+        const long long INF = LLONG_MAX / 4;
+        head.assign(n + 2, -1);
+        level.assign(n + 2, -1);
+        long long positive = 0;
+        for (int i = 0; i < n; i++) {
+            if (val[i] > 0) { add(S, i, val[i]); positive += val[i]; }   // cut = give up this profit
+            else add(i, T, -val[i]);                                     // cut = pay this cost
+        }
+        for (auto& r : req) add(r[0], r[1], INF);                         // a chosen => b chosen
+        long long flow = 0;
+        while (bfs(S, T)) {
+            it = head;
+            while (long long f = dfs(S, T, INF)) flow += f;
+        }
+        return positive - flow;
+    }
+};
+` }],
       complexity: `<p>Dinic on n + 2 nodes and n + req edges: O(V²·E) worst case, fast in practice.</p>`,
       followUps: ['Return the chosen items (residual reachability from S).', 'Image segmentation is the same pattern with pixel-neighbour penalty edges.']
     }
@@ -3801,6 +9105,73 @@ System.out.println(nodes + " nodes, source " + source + ", sink " + sink);` }
       `<p>Hint 2: Left copy = "u as predecessor", right copy = "v as successor", edge u–v for each DAG edge. A matching = a valid set of links.</p>`,
       `<p>Hint 3: Recipe — Kuhn over the split graph; answer = n − matching. (If workers may share tasks / paths may overlap, first take the transitive closure.)</p>`
     ],
+    tests: { sig: "string int int[][] -> int", fn: "cover", cases: [
+        [["",5,[[0,1],[1,2],[0,3],[3,4],[2,4]]],2],
+        [["",1,[]],1],
+        [["",5,[]],5],
+        [["",4,[[0,1],[0,2],[0,3]]],3],
+        [["",4,[[0,1],[0,2],[1,3],[2,3]]],2],
+        [["",4,[[1,0],[2,0],[3,0]]],3],
+        [["",6,[[0,1],[1,2],[2,3],[3,4],[4,5]]],1],
+        [["",6,[[0,3],[1,3],[2,3],[3,4],[3,5]]],4],
+        [["",2,[[0,1]]],1],
+        [["",9,[[6,1],[1,8],[1,7],[4,2],[4,0],[2,0],[2,8],[2,5],[0,8],[5,3],[7,3]]],3],
+        [["",6,[[3,5],[3,0],[3,1],[2,0],[0,1]]],3],
+        [["",7,[[3,2],[3,6],[1,5],[0,6]]],4],
+        [["",6,[[5,4],[0,2],[2,3]]],3],
+        [["",9,[[1,2],[7,6],[7,4],[3,4],[5,8],[5,6],[5,2],[8,6],[8,2],[8,4]]],5],
+        [["chain",0,[]],1],
+        [["band",0,[]],1],
+        [["bip",0,[]],250],
+        [["none",0,[]],500]
+      ], harness: { java: `class Check {
+  static int cover(String kind, int n, int[][] edges) {
+    if (!kind.isEmpty()) {
+      n = 500;
+      List<int[]> e = new ArrayList<>();
+      for (int i = 0; i < n; i++) {
+        if (kind.equals("chain") && i + 1 < n) e.add(new int[]{i, i + 1});
+        if (kind.equals("band")) for (int d = 1; d <= 20 && i + d < n; d++) e.add(new int[]{i, i + d});
+        if (kind.equals("bip") && i < 250) for (int k = 0; k < 40; k++) e.add(new int[]{i, 250 + (i + k) % 250});
+      }
+      edges = e.toArray(new int[0][]);
+    }
+    return new Solution().minWorkers(n, edges);
+  }
+}`, python: `def cover(kind, n, edges):
+    if kind != '':
+        n = 500
+        edges = []
+        for i in range(n):
+            if kind == 'chain' and i + 1 < n:
+                edges.append([i, i + 1])
+            if kind == 'band':
+                edges += [[i, i + d] for d in range(1, 21) if i + d < n]
+            if kind == 'bip' and i < 250:
+                edges += [[i, 250 + (i + k) % 250] for k in range(40)]
+    return min_workers(n, edges)`, js: `function cover(kind, n, edges) {
+  if (kind !== '') {
+    n = 500;
+    edges = [];
+    for (let i = 0; i < n; i++) {
+      if (kind === 'chain' && i + 1 < n) edges.push([i, i + 1]);
+      if (kind === 'band') for (let d = 1; d <= 20 && i + d < n; d++) edges.push([i, i + d]);
+      if (kind === 'bip' && i < 250) for (let k = 0; k < 40; k++) edges.push([i, 250 + ((i + k) % 250)]);
+    }
+  }
+  return minWorkers(n, edges);
+}`, cpp: `int cover(string kind, int n, vector<vector<int>> edges) {
+  if (!kind.empty()) {
+    n = 500;
+    edges.clear();
+    for (int i = 0; i < n; i++) {
+      if (kind == "chain" && i + 1 < n) edges.push_back({i, i + 1});
+      if (kind == "band") for (int d = 1; d <= 20 && i + d < n; d++) edges.push_back({i, i + d});
+      if (kind == "bip" && i < 250) for (int k = 0; k < 40; k++) edges.push_back({i, 250 + (i + k) % 250});
+    }
+  }
+  return Solution().minWorkers(n, edges);
+}` } },
     solution: {
       approach: `<p>Reduce to maximum bipartite matching (Fulkerson's/Dilworth-style reduction) and use Kuhn.</p>`,
       code: `class Solution {
@@ -3831,6 +9202,72 @@ System.out.println(nodes + " nodes, source " + source + ", sink " + sink);` }
         return false;
     }
 }`,
+      alt: [{ lang: 'python', code: `def min_workers(n, edges):
+    adj = [[] for _ in range(n)]
+    for u, v in edges:
+        adj[u].append(v)
+    pred = [-1] * n                            # pred[v] = task linked right before v, or -1
+
+    def link(u, seen):                         # give u a successor (depth <= n)
+        for v in adj[u]:
+            if v in seen:
+                continue
+            seen.add(v)
+            if pred[v] == -1 or link(pred[v], seen):
+                pred[v] = u
+                return True
+        return False
+
+    links = sum(1 for u in range(n) if link(u, set()))
+    return n - links
+` }, { lang: 'js', code: `function minWorkers(n, edges) {
+  const adj = Array.from({ length: n }, () => []);
+  for (const [u, v] of edges) adj[u].push(v);
+  const pred = new Int32Array(n).fill(-1);    // pred[v] = task linked right before v, or -1
+  let seen;
+  const link = (u) => {                       // give u a successor (depth <= n)
+    for (const v of adj[u]) {
+      if (seen[v]) continue;
+      seen[v] = 1;
+      if (pred[v] === -1 || link(pred[v])) { pred[v] = u; return true; }
+    }
+    return false;
+  };
+  let links = 0;
+  for (let u = 0; u < n; u++) {
+    seen = new Uint8Array(n);
+    if (link(u)) links++;
+  }
+  return n - links;
+}
+` }, { lang: 'cpp', code: `class Solution {
+    vector<vector<int>> adj;
+    vector<int> pred;                          // pred[v] = task linked right before v, or -1
+    vector<char> seen;
+
+    bool link(int u) {                         // give u a successor
+        for (int v : adj[u]) {
+            if (seen[v]) continue;
+            seen[v] = 1;
+            if (pred[v] == -1 || link(pred[v])) { pred[v] = u; return true; }
+        }
+        return false;
+    }
+
+public:
+    int minWorkers(int n, vector<vector<int>>& edges) {
+        adj.assign(n, {});
+        for (auto& e : edges) adj[e[0]].push_back(e[1]);
+        pred.assign(n, -1);
+        int links = 0;
+        for (int u = 0; u < n; u++) {
+            seen.assign(n, 0);
+            if (link(u)) links++;
+        }
+        return n - links;
+    }
+};
+` }],
       complexity: `<p>Kuhn O(V·E) = 5·10<sup>6</sup>; space O(V + E).</p>`,
       followUps: ['Paths may share vertices (Dilworth: minimum chain cover of a partial order).', 'Print the chains.']
     }
@@ -3878,6 +9315,89 @@ System.out.println(nodes + " nodes, source " + source + ", sink " + sink);` }
       `<p>Hint 2: mx[0][v] = weight of edge (v, parent). mx[k][v] = max(mx[k−1][v], mx[k−1][up[k−1][v]]).</p>`,
       `<p>Hint 3: Recipe — run the usual LCA lifting, and every time you jump u (or v) by 2<sup>k</sup>, fold mx[k][u] (or mx[k][v]) into the answer. In the last step add the two final parent edges.</p>`
     ],
+    tests: { sig: "string int int[][] int[][] -> long[]", fn: "heavy", check: `(args, out, exp) => {
+  const kind = args[0];
+  if (kind === '') return Array.isArray(out) && out.length === exp.length && out.every((x, i) => Number(x) === exp[i]);
+  const n = 100000, w = (i) => ((i * 7919) % 999983) + 1;
+  const qs = [];
+  if (kind === 'chain') qs.push([0, n - 1], [n - 1, 0], [5, 10], [n - 1, n - 1], [50000, 50001], [99990, 3]);
+  else for (let i = 0; i < 100000; i++) qs.push([(i * 7919) % n, (i * 104729 + 13) % n]);
+  if (!Array.isArray(out) || out.length !== qs.length) return false;
+  return qs.every(([u, v], i) => {
+    let best = 0;
+    if (kind === 'chain') { for (let x = Math.min(u, v) + 1; x <= Math.max(u, v); x++) best = Math.max(best, w(x)); }
+    else while (u !== v) { if (u > v) { best = Math.max(best, w(u)); u = (u - 1) >> 1; } else { best = Math.max(best, w(v)); v = (v - 1) >> 1; } }
+    return Number(out[i]) === best;
+  });
+}`, cases: [
+        [["",5,[[0,1,4],[1,2,9],[1,3,2],[0,4,7]],[[2,3],[3,4],[2,2]]],[9,7,0]],
+        [["",1,[],[[0,0]]],[0]],
+        [["",2,[[1,0,1000000000]],[[0,1],[1,0],[0,0]]],[1000000000,1000000000,0]],
+        [["",4,[[0,1,5],[1,2,5],[2,3,5]],[[0,3],[3,0],[1,2]]],[5,5,5]],
+        [["",6,[[0,1,3],[0,2,8],[1,3,6],[1,4,1],[2,5,2]],[[3,4],[3,5],[4,5],[0,5],[2,1]]],[6,8,8,8,8]],
+        [["",7,[[3,0,1],[3,1,2],[3,2,3],[0,4,9],[1,5,8],[2,6,7]],[[4,5],[5,6],[4,6],[3,3],[6,3]]],[9,8,9,0,7]],
+        [["",7,[[3,4,33],[3,2,38],[2,1,8],[2,6,3],[1,0,22],[4,5,6]],[[4,4],[5,5],[1,0],[4,1],[2,2],[1,2]]],[0,0,22,38,0,8]],
+        [["",12,[[3,1,4],[1,8,23],[1,0,15],[8,11,23],[11,7,26],[7,4,18],[1,5,20],[0,6,4],[11,2,19],[1,10,41],[8,9,41]],[[2,10],[8,7],[3,4],[0,2],[8,11],[0,1]]],[41,26,26,23,23,15]],
+        [["",8,[[4,0,6],[4,3,26],[0,6,18],[6,7,7],[0,5,49],[7,2,18],[6,1,20]],[[6,4],[6,0],[1,7],[1,5],[4,2],[2,3]]],[18,18,20,49,18,26]],
+        [["",8,[[4,1,3],[1,0,27],[4,6,38],[6,2,40],[6,3,11],[0,5,33],[4,7,15]],[[3,6],[2,7],[1,6],[6,3],[7,7],[0,4]]],[11,40,38,11,0,27]],
+        [["chain",0,[],[]],null],
+        [["heap",0,[],[]],null]
+      ], harness: { java: `class Check {
+  static long[] heavy(String kind, int n, int[][] edges, int[][] queries) {
+    if (!kind.isEmpty()) {
+      n = 100000;
+      edges = new int[n - 1][];
+      for (int i = 1; i < n; i++) {
+        int w = (int) ((long) i * 7919 % 999983) + 1;
+        edges[i - 1] = new int[]{kind.equals("chain") ? i - 1 : (i - 1) / 2, i, w};
+      }
+      if (kind.equals("chain")) {
+        queries = new int[][]{{0, n - 1}, {n - 1, 0}, {5, 10}, {n - 1, n - 1}, {50000, 50001}, {99990, 3}};
+      } else {
+        queries = new int[100000][];
+        for (int i = 0; i < queries.length; i++)
+          queries[i] = new int[]{(int) ((long) i * 7919 % n), (int) (((long) i * 104729 + 13) % n)};
+      }
+    }
+    return new Solution().maxEdge(n, edges, queries);
+  }
+}`, python: `def heavy(kind, n, edges, queries):
+    if kind != '':
+        n = 100000
+        w = lambda i: i * 7919 % 999983 + 1
+        if kind == 'chain':
+            edges = [[i - 1, i, w(i)] for i in range(1, n)]
+            queries = [[0, n - 1], [n - 1, 0], [5, 10], [n - 1, n - 1], [50000, 50001], [99990, 3]]
+        else:
+            edges = [[(i - 1) // 2, i, w(i)] for i in range(1, n)]
+            queries = [[i * 7919 % n, (i * 104729 + 13) % n] for i in range(100000)]
+    return max_edge(n, edges, queries)`, js: `function heavy(kind, n, edges, queries) {
+  if (kind !== '') {
+    n = 100000;
+    edges = [];
+    for (let i = 1; i < n; i++) edges.push([kind === 'chain' ? i - 1 : (i - 1) >> 1, i, (i * 7919) % 999983 + 1]);
+    if (kind === 'chain') {
+      queries = [[0, n - 1], [n - 1, 0], [5, 10], [n - 1, n - 1], [50000, 50001], [99990, 3]];
+    } else {
+      queries = [];
+      for (let i = 0; i < 100000; i++) queries.push([(i * 7919) % n, (i * 104729 + 13) % n]);
+    }
+  }
+  return maxEdge(n, edges, queries);
+}`, cpp: `vector<long long> heavy(string kind, int n, vector<vector<int>> edges, vector<vector<int>> queries) {
+  if (!kind.empty()) {
+    n = 100000;
+    edges.clear();
+    queries.clear();
+    for (long long i = 1; i < n; i++) edges.push_back({(int)(kind == "chain" ? i - 1 : (i - 1) / 2), (int)i, (int)(i * 7919 % 999983 + 1)});
+    if (kind == "chain") {
+      queries = {{0, n - 1}, {n - 1, 0}, {5, 10}, {n - 1, n - 1}, {50000, 50001}, {99990, 3}};
+    } else {
+      for (long long i = 0; i < 100000; i++) queries.push_back({(int)(i * 7919 % n), (int)((i * 104729 + 13) % n)});
+    }
+  }
+  return Solution().maxEdge(n, edges, queries);
+}` } },
     solution: {
       approach: `<p>Binary lifting with an aggregate table alongside the ancestor table. O(log n) per query.</p>`,
       code: `class Solution {
@@ -3928,6 +9448,146 @@ System.out.println(nodes + " nodes, source " + source + ", sink " + sink);` }
         return ans;
     }
 }`,
+      alt: [{ lang: 'python', code: `from collections import deque
+
+
+def max_edge(n, edges, queries):
+    adj = [[] for _ in range(n)]
+    for u, v, w in edges:
+        adj[u].append((v, w))
+        adj[v].append((u, w))
+    LOG = max(1, (n - 1).bit_length())         # 2^LOG >= n: any depth difference fits in LOG bits
+    up = [[0] * n]                             # up[k][v] = 2^k-th ancestor (the root points to itself)
+    mx = [[0] * n]                             # mx[k][v] = heaviest edge on those 2^k steps
+    depth = [0] * n
+    seen = [False] * n
+    seen[0] = True
+    queue = deque([0])
+    while queue:
+        v = queue.popleft()
+        for w, c in adj[v]:
+            if not seen[w]:
+                seen[w] = True
+                up[0][w], mx[0][w], depth[w] = v, c, depth[v] + 1
+                queue.append(w)
+    for k in range(1, LOG):
+        pu, pm = up[k - 1], mx[k - 1]
+        up.append([pu[pu[v]] for v in range(n)])
+        mx.append([max(pm[v], pm[pu[v]]) for v in range(n)])
+    ans = []
+    for a, b in queries:
+        best = 0
+        if depth[a] < depth[b]:
+            a, b = b, a
+        diff = depth[a] - depth[b]
+        for k in range(LOG):                   # lift a to b's depth
+            if diff >> k & 1:
+                best = max(best, mx[k][a])
+                a = up[k][a]
+        if a != b:
+            for k in range(LOG - 1, -1, -1):   # biggest jumps that keep them apart
+                if up[k][a] != up[k][b]:
+                    best = max(best, mx[k][a], mx[k][b])
+                    a, b = up[k][a], up[k][b]
+            best = max(best, mx[0][a], mx[0][b])   # the two edges into the LCA
+        ans.append(best)
+    return ans
+` }, { lang: 'js', code: `function maxEdge(n, edges, queries) {
+  const adj = Array.from({ length: n }, () => []);
+  for (const [u, v, w] of edges) { adj[u].push([v, w]); adj[v].push([u, w]); }
+  let LOG = 1;
+  while ((1 << LOG) < n) LOG++;               // 2^LOG >= n: any depth difference fits in LOG bits
+  const up = Array.from({ length: LOG }, () => new Int32Array(n));   // root points to itself
+  const mx = Array.from({ length: LOG }, () => new Float64Array(n)); // heaviest edge on those 2^k steps
+  const depth = new Int32Array(n), seen = new Uint8Array(n);
+  seen[0] = 1;
+  const queue = [0];
+  for (let h = 0; h < queue.length; h++) {
+    const v = queue[h];
+    for (const [w, c] of adj[v]) {
+      if (seen[w]) continue;
+      seen[w] = 1;
+      up[0][w] = v; mx[0][w] = c; depth[w] = depth[v] + 1;
+      queue.push(w);
+    }
+  }
+  for (let k = 1; k < LOG; k++)
+    for (let v = 0; v < n; v++) {
+      const mid = up[k - 1][v];
+      up[k][v] = up[k - 1][mid];
+      mx[k][v] = Math.max(mx[k - 1][v], mx[k - 1][mid]);
+    }
+  return queries.map(([a, b]) => {
+    let best = 0;
+    if (depth[a] < depth[b]) [a, b] = [b, a];
+    const diff = depth[a] - depth[b];
+    for (let k = 0; k < LOG; k++)             // lift a to b's depth
+      if ((diff >> k) & 1) { best = Math.max(best, mx[k][a]); a = up[k][a]; }
+    if (a !== b) {
+      for (let k = LOG - 1; k >= 0; k--)      // biggest jumps that keep them apart
+        if (up[k][a] !== up[k][b]) {
+          best = Math.max(best, mx[k][a], mx[k][b]);
+          a = up[k][a]; b = up[k][b];
+        }
+      best = Math.max(best, mx[0][a], mx[0][b]);   // the two edges into the LCA
+    }
+    return best;
+  });
+}
+` }, { lang: 'cpp', code: `class Solution {
+public:
+    vector<long long> maxEdge(int n, vector<vector<int>>& edges, vector<vector<int>>& queries) {
+        vector<vector<pair<int, int>>> adj(n);
+        for (auto& e : edges) {
+            adj[e[0]].push_back({e[1], e[2]});
+            adj[e[1]].push_back({e[0], e[2]});
+        }
+        int LOG = 1;
+        while ((1 << LOG) < n) LOG++;                       // 2^LOG >= n: any depth difference fits in LOG bits
+        vector<vector<int>> up(LOG, vector<int>(n, 0));     // root points to itself
+        vector<vector<int>> mx(LOG, vector<int>(n, 0));     // heaviest edge on those 2^k steps
+        vector<int> depth(n, 0);
+        vector<char> seen(n, 0);
+        queue<int> q;
+        q.push(0);
+        seen[0] = 1;
+        while (!q.empty()) {
+            int v = q.front();
+            q.pop();
+            for (auto [w, c] : adj[v]) {
+                if (seen[w]) continue;
+                seen[w] = 1;
+                up[0][w] = v; mx[0][w] = c; depth[w] = depth[v] + 1;
+                q.push(w);
+            }
+        }
+        for (int k = 1; k < LOG; k++)
+            for (int v = 0; v < n; v++) {
+                int mid = up[k - 1][v];
+                up[k][v] = up[k - 1][mid];
+                mx[k][v] = max(mx[k - 1][v], mx[k - 1][mid]);
+            }
+        vector<long long> ans;
+        for (auto& qu : queries) {
+            int a = qu[0], b = qu[1], best = 0;
+            if (depth[a] < depth[b]) swap(a, b);
+            int diff = depth[a] - depth[b];
+            for (int k = 0; k < LOG; k++)                    // lift a to b's depth
+                if (diff >> k & 1) { best = max(best, mx[k][a]); a = up[k][a]; }
+            if (a != b) {
+                for (int k = LOG - 1; k >= 0; k--)           // biggest jumps that keep them apart
+                    if (up[k][a] != up[k][b]) {
+                        best = max({best, mx[k][a], mx[k][b]});
+                        a = up[k][a]; b = up[k][b];
+                    }
+                best = max({best, mx[0][a], mx[0][b]});      // the two edges into the LCA
+            }
+            ans.push_back(best);
+        }
+        return ans;
+    }
+};
+` }],
       complexity: `<p>Build <b>O(n log n)</b>, each query <b>O(log n)</b>, memory O(n log n).</p>`,
       followUps: ['Minimum spanning tree "second best" problems use exactly this query.', 'Edges change weight → Heavy-Light Decomposition + segment tree.']
     }
@@ -3961,7 +9621,7 @@ System.out.println(nodes + " nodes, source " + source + ", sink " + sink);` }
       a: `<p>In a <b>directed</b> graph, an SCC is a maximal set of nodes where every node can reach every other. Squashing each SCC into one node gives the <b>condensation</b>, which is always a <b>DAG</b> — if two components could reach each other they would be the same component. That is the useful part: once the graph is a DAG, I can use topological order, DP along it, and reason about sources/sinks. Examples: "minimum edges to make the graph strongly connected" = max(#sources, #sinks) in the condensation; "maximum coins collected when you may revisit nodes" = DAG DP where each SCC's coins are summed; 2-SAT checks whether x and ¬x share an SCC.</p>`,
       followUps: ['How many sources/sinks can a condensation have?', 'How would you find the longest path that may revisit nodes?'] },
     { q: 'Kosaraju or Tarjan — which would you implement and why?', level: 'A',
-      a: `<p>Both are O(V + E). <b>Kosaraju</b> is two DFS passes (finish order, then DFS on the transpose in decreasing finish time). It is easier to explain and naturally gives components in <b>topological</b> order, but it needs the transposed graph (roughly double memory). <b>Tarjan</b> is a single DFS with <code>disc</code>, <code>low</code>, an <code>onStack</code> flag and a stack; components pop out in <b>reverse topological</b> order, no transpose. In an interview I pick whichever I can write bug-free and explain — usually Kosaraju for clarity — and mention Tarjan if memory matters. For 10<sup>5</sup>+ nodes in Java or Python I make the DFS iterative to avoid stack overflow.</p>`,
+      a: `<p>Both are O(V + E). <b>Kosaraju</b> is two DFS passes (finish order, then DFS on the transpose in decreasing finish time). It is easier to explain and naturally gives components in <b>topological</b> order, but it needs the transposed graph (roughly double memory). <b>Tarjan</b> is a single DFS with <code>disc</code>, <code>low</code>, an <code>onStack</code> flag and a stack; components pop out in <b>reverse topological</b> order, no transpose. In an interview I pick whichever I can write bug-free and explain — usually Kosaraju for clarity — and mention Tarjan if memory matters. For 10<sup>5</sup>+ nodes I make the DFS iterative to avoid stack overflow (Python and JavaScript fail first, then Java and C++).</p>`,
       followUps: ['Which one is easier to make iterative?', 'What order do you need for a 2-SAT assignment?'] },
     { q: 'Explain low-link values and the exact conditions for bridges and articulation points.', level: 'A',
       a: `<p>Run a DFS on an undirected graph. <code>disc[v]</code> is the visit time; <code>low[v]</code> is the smallest disc reachable from v's DFS subtree using tree edges downward and at most one back edge, never re-using the edge to the parent. For a tree edge v–w (w child): it is a <b>bridge</b> iff <code>low[w] &gt; disc[v]</code> — the subtree cannot even get back to v. A <b>non-root</b> v is an <b>articulation point</b> iff some child has <code>low[w] ≥ disc[v]</code> — the subtree can reach v but nothing older. The <b>root</b> is an articulation point iff it has at least two DFS children. Back edges update with <code>disc[w]</code>, not <code>low[w]</code>.</p>`,
@@ -3997,7 +9657,7 @@ System.out.println(nodes + " nodes, source " + source + ", sink " + sink);` }
       a: `<p>Each variable x gets two nodes: x and ¬x. Each clause (a ∨ b) is equivalent to two implications ¬a → b and ¬b → a; add both edges. If x and ¬x are in the same SCC, then x ⇒ ¬x and ¬x ⇒ x — a contradiction, so unsatisfiable. Otherwise a solution exists: compute SCCs, and for each variable choose the literal whose component comes <b>later</b> in topological order (with Kosaraju's numbering: x = true iff comp[x] &gt; comp[¬x]; with Tarjan's reverse-topological numbering the inequality flips). Choosing the later one never forces anything false downstream. Total O(n + m). Real uses: scheduling with pairwise constraints, placing labels on maps, configuration problems.</p>`,
       followUps: ['Encode "exactly one of a, b".', 'Why does this not extend to 3-SAT?'] },
     { q: 'Recursive DFS works on small tests but crashes on the judge. What is happening and how do you fix it?', level: 'I',
-      a: `<p>Graph algorithms like Tarjan, bridges, Kosaraju or Kuhn recurse once per vertex on a path. A 10<sup>5</sup>-node chain makes 10<sup>5</sup> nested calls; Java's default thread stack (often 512 KB–1 MB) and Python's recursion limit (1000) cannot hold that → <code>StackOverflowError</code> / <code>RecursionError</code>. Fixes: (1) convert to an <b>iterative DFS</b> with an explicit stack of (vertex, next-edge index) pairs, and handle the "return" work (like low[parent] = min(low[parent], low[v])) when popping; (2) in Java, run the solver inside <code>new Thread(null, runnable, "main", 1 &lt;&lt; 27)</code> to get a 128 MB stack; (3) in Python, raise the limit and run in a thread with <code>threading.stack_size</code>, but iterative is safer.</p>`,
+      a: `<p>Graph algorithms like Tarjan, bridges, Kosaraju or Kuhn recurse once per vertex on a path. A 10<sup>5</sup>-node chain makes 10<sup>5</sup> nested calls; Java's default thread stack (often 512 KB–1 MB), JavaScript's ~10<sup>4</sup>-frame limit and Python's recursion limit (1000) cannot hold that → <code>StackOverflowError</code> / <code>RangeError</code> / <code>RecursionError</code>. Fixes: (1) convert to an <b>iterative DFS</b> with an explicit stack of (vertex, next-edge index) pairs, and handle the "return" work (like low[parent] = min(low[parent], low[v])) when popping; (2) give the solver a bigger stack: in Java run it inside <code>new Thread(null, runnable, "main", 1 &lt;&lt; 27)</code> for 128 MB, in C++ raise the stack limit (<code>ulimit -s</code>); (3) in Python, raise the limit and run in a thread with <code>threading.stack_size</code>; iterative is safer in every language.</p>`,
       followUps: ['Rewrite Tarjan SCC iteratively.', 'Which algorithms in this module are naturally iterative?'] }
   );
 
@@ -4020,6 +9680,12 @@ System.out.println(nodes + " nodes, source " + source + ", sink " + sink);` }
     ],
     prereqs: `<p>DSA 19 (Graphs I: BFS, DFS, topological sort, DSU) and DSA 20 (Graphs II: shortest paths, MST). Comfort with recursion (DSA 11) and bit manipulation (DSA 4) helps for binary lifting.</p>`,
     hours: 24,
+    langNotes: {
+      java: `<p><b>Java:</b> a recursive DFS uses one stack frame per vertex, and the default thread stack holds roughly 10,000 simple frames, so a 10<sup>5</sup>-node path graph throws <code>StackOverflowError</code> in recursive Kosaraju, Tarjan, bridges or Kuhn. The solutions here use explicit stacks (iterative Kosaraju, Hierholzer, binary lifting built by BFS), and the Dinic and Kuhn recursions stay as deep as the level graph or the augmenting path, which is at most the vertex count of the stated limits. Flow values overflow <code>int</code> quickly (10<sup>4</sup> edges of capacity 10<sup>9</sup>), so use <code>long</code> for capacities and totals, and use <code>Long.MAX_VALUE / 4</code> as INF so that adding two of them cannot wrap. <code>PriorityQueue</code> is a min-heap (Reconstruct Itinerary), and <code>List&lt;List&lt;Integer&gt;&gt;</code> boxes every integer, so flat arrays win on large graphs.</p>`,
+      python: `<p><b>Python:</b> recursion stops at <b>1,000 frames</b> by default (<code>RecursionError</code>), far below a 10<sup>5</sup>-deep DFS. Every Python solution here that must survive deep graphs (SCC, Tarjan, bridges, Euler paths, Dinic, 2-SAT) keeps its own stack of (node, next-edge) pairs, or an edge path in Dinic. The recursive Kuhn matchings are only as deep as the augmenting path (at most 500 here), and the dominoes board raises the limit with <code>sys.setrecursionlimit</code> because a path stays under 800 cells; for deeper work combine <code>sys.setrecursionlimit</code> with <code>threading.stack_size</code>. Integers never overflow, so flow sums and INF = <code>1 &lt;&lt; 60</code> need no care. Use <code>collections.deque</code> for BFS (<code>list.pop(0)</code> is O(n)), <code>heapq</code> for the min-heap in Reconstruct Itinerary (it is min-only; negate values for a max-heap), and a dict of lists for sparse graphs.</p>`,
+      js: `<p><b>JavaScript:</b> the call stack holds about 10,000 simple frames before <code>RangeError: Maximum call stack size exceeded</code>, so deep DFS must use an array as an explicit stack, as the solutions here do. <code>Number</code> is exact only up to 2<sup>53</sup>: flow totals stay far below that, but INF must be finite and small enough (the solutions use 10<sup>15</sup>, not <code>Number.MAX_SAFE_INTEGER</code> sums or <code>Infinity</code> arithmetic on capacities), and anything beyond 2<sup>53</sup> needs <code>BigInt</code>. Bit tricks such as <code>x ^ 1</code> and <code>k &gt;&gt; b</code> work on 32-bit values. For BFS never <code>shift()</code> (O(n)); keep a read index into the array. <code>sort()</code> compares strings unless you pass a comparator, which is fine for airport names (Reconstruct Itinerary sorts descending and pops, so no heap is needed). <code>Map</code> and <code>Set</code> are hash tables; JavaScript has no built-in heap, so write a small <code>MinHeap</code> when you need one.</p>`,
+      cpp: `<p><b>C++:</b> the default stack is about 8 MB, so a recursive DFS on a 10<sup>5</sup>-deep path usually survives but is not guaranteed (large frames or sanitizers shrink it); the solutions here use an explicit <code>vector</code> stack for the deep ones, while Dinic and Kuhn recurse only as deep as the level graph or augmenting path. Signed overflow is undefined behaviour, so use <code>long long</code> for capacities, flows and INF (<code>LLONG_MAX / 4</code>, so that adding two INF values stays valid). <code>priority_queue</code> is a <b>max</b>-heap: pass <code>greater&lt;&gt;</code> for the smallest-first order Reconstruct Itinerary needs. <code>unordered_map</code> is O(1) on average and <code>map</code> is O(log n) but ordered; use <code>vector&lt;vector&lt;int&gt;&gt;</code> or flat forward-star arrays for adjacency, and <code>queue</code> or a vector with a head index for BFS.</p>`
+    },
     topics: topics,
     practice: practice,
     quiz: quiz,

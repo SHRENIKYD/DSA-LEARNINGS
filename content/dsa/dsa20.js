@@ -115,7 +115,7 @@
       ])}
       <p><b>Why it works:</b> all weights are ≥ 0, so a path can only get longer as you add edges. When the smallest tentative distance comes out of the queue, no other route can sneak in later and beat it.</p>
       <p><b>Cost:</b> each improvement pushes once → at most E pushes; each push/poll is O(log E). Total <b>O((V + E) log V)</b>. Space O(V + E).</p>
-      <p><b>Java detail:</b> <code>PriorityQueue</code> has no "decrease-key". So instead of changing an entry we just push a new, better one and ignore old ones when they pop — this is called <b>lazy deletion</b>.</p>`,
+      <p><b>Library detail:</b> the standard priority queues (<code>PriorityQueue</code> / <code>heapq</code> / <code>priority_queue</code>; JS has none built in) have no "decrease-key". So instead of changing an entry we just push a new, better one and ignore old ones when they pop — this is called <b>lazy deletion</b>.</p>`,
     clues: [
       '"<b>minimum time / cost / distance</b> from a source" with <b>non-negative</b> weights → Dijkstra',
       '"network delay", "signal reaches all nodes", "cheapest route", "fastest delivery"',
@@ -124,7 +124,7 @@
       '"return the path itself" → keep a <code>parent[]</code> array while relaxing',
       '"probability of success" / "max of product" → Dijkstra with a max-heap (multiplying numbers ≤ 1 never increases)'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
 // Dijkstra with lazy deletion + path reconstruction. Graph: 0..n-1, edges {u, v, w}, undirected.
 import java.util.*;
 
@@ -181,7 +181,175 @@ class Dijkstra {
         System.out.println(Arrays.toString(dist));   // [0, 3, 1, 4, 6, 8]
         System.out.println(path(5));                 // [0, 2, 4, 5]  = A -> C -> E -> F
     }
-}`, {
+}`,
+      alt: [{ lang: 'python', run: true, code: `import heapq
+
+# Dijkstra with lazy deletion + path reconstruction. Graph: 0..n-1, edges (u, v, w), undirected.
+def dijkstra(n, edges, src):
+    # 1) adjacency list: g[u] = [(neighbour, weight), ...]
+    g = [[] for _ in range(n)]
+    for u, v, w in edges:
+        g[u].append((v, w))
+        g[v].append((u, w))              # remove this line for a directed graph
+    # 2) dist = infinity everywhere except the source (Python ints never overflow)
+    dist = [float('inf')] * n
+    parent = [-1] * n
+    dist[src] = 0
+    # 3) min-heap ordered by distance: entries are (distance, node)
+    pq = [(0, src)]
+    while pq:
+        d, u = heapq.heappop(pq)
+        if d > dist[u]:                  # stale entry -> lazy deletion
+            continue
+        for v, w in g[u]:                # u is final: relax its edges
+            if d + w < dist[v]:
+                dist[v] = d + w
+                parent[v] = u
+                heapq.heappush(pq, (dist[v], v))   # push a NEW entry instead of decrease-key
+    return dist, parent
+
+def path(parent, dist, target):          # walk parents back from target
+    if dist[target] == float('inf'):
+        return []                        # unreachable
+    p, v = [], target
+    while v != -1:
+        p.append(v)
+        v = parent[v]
+    return p[::-1]
+
+# A=0 B=1 C=2 D=3 E=4 F=5 (same graph as the visualizer)
+edges = [(0, 1, 4), (0, 2, 1), (2, 1, 2), (1, 3, 1), (2, 4, 5), (3, 4, 3), (3, 5, 6), (4, 5, 2)]
+dist, parent = dijkstra(6, edges, 0)
+print(dist)                              # [0, 3, 1, 4, 6, 8]
+print(path(parent, dist, 5))             # [0, 2, 4, 5]  = A -> C -> E -> F` }, { lang: 'js', run: true, code: `// JS has no built-in heap, so this is a small binary min-heap with a comparator.
+class MinHeap {
+  constructor(cmp) { this.a = []; this.cmp = cmp; }
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (this.cmp(a[i], a[p]) >= 0) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.cmp(a[l], a[m]) < 0) m = l;
+        if (r < a.length && this.cmp(a[r], a[m]) < 0) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+// Dijkstra with lazy deletion + path reconstruction. Graph: 0..n-1, edges [u, v, w], undirected.
+function dijkstra(n, edges, src) {
+  // 1) adjacency list: g[u] = [[neighbour, weight], ...]
+  const g = Array.from({ length: n }, () => []);
+  for (const [u, v, w] of edges) {
+    g[u].push([v, w]);
+    g[v].push([u, w]);                   // remove this line for a directed graph
+  }
+  // 2) dist = Infinity everywhere except the source
+  const dist = new Array(n).fill(Infinity);
+  const parent = new Array(n).fill(-1);
+  dist[src] = 0;
+  // 3) min-heap ordered by distance: entries are [distance, node]
+  const pq = new MinHeap((a, b) => a[0] - b[0]);
+  pq.push([0, src]);
+  while (pq.size() > 0) {
+    const [d, u] = pq.pop();
+    if (d > dist[u]) continue;           // stale entry -> lazy deletion
+    for (const [v, w] of g[u]) {         // u is final: relax its edges
+      if (d + w < dist[v]) {
+        dist[v] = d + w;
+        parent[v] = u;
+        pq.push([dist[v], v]);           // push a NEW entry instead of decrease-key
+      }
+    }
+  }
+  return { dist, parent };
+}
+
+function path(parent, dist, target) {    // walk parents back from target
+  if (dist[target] === Infinity) return []; // unreachable
+  const p = [];
+  for (let v = target; v !== -1; v = parent[v]) p.push(v);
+  return p.reverse();
+}
+
+// A=0 B=1 C=2 D=3 E=4 F=5 (same graph as the visualizer)
+const edges = [[0, 1, 4], [0, 2, 1], [2, 1, 2], [1, 3, 1], [2, 4, 5], [3, 4, 3], [3, 5, 6], [4, 5, 2]];
+const { dist, parent } = dijkstra(6, edges, 0);
+console.log(dist);                       // [ 0, 3, 1, 4, 6, 8 ]
+console.log(path(parent, dist, 5));      // [ 0, 2, 4, 5 ]  = A -> C -> E -> F` }, { lang: 'cpp', code: `#include <bits/stdc++.h>
+using namespace std;
+
+// Dijkstra with lazy deletion + path reconstruction. Graph: 0..n-1, edges {u, v, w}, undirected.
+const long long INF = LLONG_MAX;
+vector<long long> dist;
+vector<int> parent;
+
+void run(int n, const vector<array<int, 3>>& edges, int src) {
+    // 1) adjacency list: g[u] = list of {neighbour, weight}
+    vector<vector<pair<int, int>>> g(n);
+    for (auto& e : edges) {
+        g[e[0]].push_back({e[1], e[2]});
+        g[e[1]].push_back({e[0], e[2]});      // remove this line for a directed graph
+    }
+    // 2) dist = infinity everywhere except the source; long long avoids overflow on big sums
+    dist.assign(n, INF);
+    parent.assign(n, -1);
+    dist[src] = 0;
+    // 3) min-heap ordered by distance (priority_queue is a MAX-heap, so use greater<>)
+    priority_queue<pair<long long, int>, vector<pair<long long, int>>, greater<>> pq;
+    pq.push({0, src});
+    while (!pq.empty()) {
+        auto [d, u] = pq.top();
+        pq.pop();
+        if (d > dist[u]) continue;            // stale entry -> lazy deletion
+        for (auto [v, w] : g[u]) {            // u is final: relax its edges
+            if (d + w < dist[v]) {
+                dist[v] = d + w;
+                parent[v] = u;
+                pq.push({dist[v], v});        // push a NEW entry instead of decrease-key
+            }
+        }
+    }
+}
+
+vector<int> path(int target) {                // walk parents back from target
+    vector<int> p;
+    if (dist[target] == INF) return p;        // unreachable
+    for (int v = target; v != -1; v = parent[v]) p.push_back(v);
+    reverse(p.begin(), p.end());
+    return p;
+}
+
+int main() {
+    // A=0 B=1 C=2 D=3 E=4 F=5 (same graph as the visualizer)
+    vector<array<int, 3>> edges = {{0,1,4},{0,2,1},{2,1,2},{1,3,1},{2,4,5},{3,4,3},{3,5,6},{4,5,2}};
+    run(6, edges, 0);
+    for (long long d : dist) cout << d << " ";
+    cout << "\\n";                             // 0 3 1 4 6 8
+    for (int v : path(5)) cout << v << " ";
+    cout << "\\n";                             // 0 2 4 5  = A -> C -> E -> F
+    return 0;
+}` }] }, {
       lang: 'python', run: true, title: 'Same algorithm in Python with heapq (runnable)', code: `import heapq
 
 def dijkstra(n, edges, src):
@@ -215,7 +383,7 @@ for v in range(6):
 ` }],
     codeTitle: ['Dijkstra template (Java)', 'Python version'],
     viz: {
-      title: 'Dijkstra step by step: dist tags on nodes + PriorityQueue contents',
+      title: 'Dijkstra step by step: dist tags on nodes + priority queue contents',
       input: 'A B 4, A C 1, C B 2, B D 1, C E 5, D E 3, D F 6, E F 2',
       inputLabel: 'Undirected edges "from to weight", comma separated (source = first node). Weights ≥ 0, ≤ 8 nodes.',
       gen: function (input) {
@@ -237,7 +405,7 @@ for v in range(6):
           return e;
         }
         function pqPart(hlFront) {
-          return { type: 'queue', label: 'PriorityQueue (sorted: the front is polled next)', items: pq.map(function (x) { return '(' + x[0] + ',' + x[1] + ')'; }), hl: hlFront ? { 0: 'cur' } : {}, frontLabel: 'poll', backLabel: 'largest' };
+          return { type: 'queue', label: 'Priority queue (sorted: the front is polled next)', items: pq.map(function (x) { return '(' + x[0] + ',' + x[1] + ')'; }), hl: hlFront ? { 0: 'cur' } : {}, frontLabel: 'poll', backLabel: 'largest' };
         }
         function frame(narr, nodeHl, ehl, dHl, front) {
           frames.push({ narr: narr, parts: [
@@ -286,7 +454,7 @@ for v in range(6):
     examples: [
       { title: 'BFS gives the wrong answer on weighted edges', html: `<p>Edges: A–D (10), A–B (1), B–C (1), C–D (1). BFS reaches D in 1 hop and stops caring. Dijkstra polls A(0) → B(1) → C(2) → D(3): ${H.c('g', 'D = 3')} instead of ${H.c('r', '10')}. Lesson: "fewest edges" and "cheapest path" are different questions.</p>` },
       { title: 'A negative edge breaks Dijkstra', html: `<p>Directed edges: A→B (2), A→C (3), C→B (−2). Dijkstra polls B at distance 2 and marks it final. Later C(3) relaxes C→B: 3 + (−2) = ${H.c('g', '1')} — smaller than the "final" 2! Dijkstra's promise "the first pop is the best" only holds when weights are ≥ 0. Use Bellman-Ford here.</p>` },
-      { title: 'Stop early when you only need one target', html: `<p>If the question asks for the distance to a single node T, you can <b>return as soon as T is polled</b> (not when it is first pushed). The first poll of T is final; the first push might still be improved.</p>`, code: `
+      { title: 'Stop early when you only need one target', html: `<p>If the question asks for the distance to a single node T, you can <b>return as soon as T is polled</b> (not when it is first pushed). The first poll of T is final; the first push might still be improved.</p>`, code: { lang: 'java', code: `
 static long distTo(List<List<int[]>> g, int src, int target) {
     long[] dist = new long[g.size()];
     Arrays.fill(dist, Long.MAX_VALUE);
@@ -303,13 +471,58 @@ static long distTo(List<List<int[]>> g, int src, int target) {
             if (d + e[1] < dist[e[0]]) { dist[e[0]] = d + e[1]; pq.add(new long[]{dist[e[0]], e[0]}); }
     }
     return -1;                                  // unreachable
-}` },
+}`,
+      alt: [{ lang: 'python', code: `import heapq
+
+def dist_to(g, src, target):
+    dist = [float('inf')] * len(g)
+    dist[src] = 0
+    pq = [(0, src)]
+    while pq:
+        d, u = heapq.heappop(pq)
+        if d > dist[u]:
+            continue                              # stale
+        if u == target:
+            return d                              # first POLL of target is the answer
+        for v, w in g[u]:
+            if d + w < dist[v]:
+                dist[v] = d + w
+                heapq.heappush(pq, (dist[v], v))
+    return -1                                     # unreachable` }, { lang: 'js', code: `// uses the MinHeap class from the Dijkstra template (JS has no built-in heap)
+function distTo(g, src, target) {
+  const dist = new Array(g.length).fill(Infinity);
+  dist[src] = 0;
+  const pq = new MinHeap((a, b) => a[0] - b[0]);
+  pq.push([0, src]);
+  while (pq.size() > 0) {
+    const [d, u] = pq.pop();
+    if (d > dist[u]) continue;                    // stale
+    if (u === target) return d;                   // first POLL of target is the answer
+    for (const [v, w] of g[u])
+      if (d + w < dist[v]) { dist[v] = d + w; pq.push([dist[v], v]); }
+  }
+  return -1;                                      // unreachable
+}` }, { lang: 'cpp', code: `long long distTo(const vector<vector<pair<int, int>>>& g, int src, int target) {
+    vector<long long> dist(g.size(), LLONG_MAX);
+    dist[src] = 0;
+    priority_queue<pair<long long, int>, vector<pair<long long, int>>, greater<>> pq;
+    pq.push({0, src});
+    while (!pq.empty()) {
+        auto [d, u] = pq.top();
+        pq.pop();
+        if (d > dist[u]) continue;                // stale
+        if (u == target) return d;                // first POLL of target is the answer
+        for (auto [v, w] : g[u])
+            if (d + w < dist[v]) { dist[v] = d + w; pq.push({dist[v], v}); }
+    }
+    return -1;                                    // unreachable
+}` }] } },
       { title: 'Counting the work', html: `<p>V = 10<sup>5</sup>, E = 2·10<sup>5</sup>: heap holds at most E + 1 entries, log₂(2·10<sup>5</sup>) ≈ 18, so ≈ (V + E) · 18 ≈ 5.4·10<sup>6</sup> heap steps. Comfortably fast. Bellman-Ford would need V·E = 2·10<sup>10</sup> steps — far too slow.</p>` }
     ],
     deepDive: `<p><b>Proof sketch (why the first poll is final).</b> Suppose u is polled with distance d but a true shorter path P exists. P starts in the "final" set and must leave it through some edge x → y where y is not final. y's tentative distance ≤ length of P's prefix ≤ length of P &lt; d (weights ≥ 0 means the rest of P adds nothing negative). So y would have been polled before u — contradiction. With one negative edge, "the rest of P adds nothing negative" fails, and so does the proof.</p>
       <p><b>Heap variants.</b> Lazy deletion: O(E log E) = O(E log V) since E ≤ V². An <i>indexed</i> heap with decrease-key keeps at most V entries (less memory). A Fibonacci heap gives O(E + V log V) in theory but is slow in practice due to pointer chasing. For <b>dense graphs</b> (E ≈ V²) the simple O(V²) version — scan an array for the minimum unfinished node, no heap — is actually faster.</p>
-      <p><b>Overflow.</b> 10<sup>5</sup> edges × weight 10<sup>9</sup> overflows <code>int</code>. Use <code>long</code> distances, and never compare with <code>Integer.MAX_VALUE + w</code>.</p>
-      <p><b>Performance in Java.</b> <code>PriorityQueue&lt;int[]&gt;</code> allocates one small array per push; for 10<sup>6</sup> edges, packing (dist, node) into one <code>long</code> (<code>dist &lt;&lt; 20 | node</code>) and using a primitive heap can be 2–3× faster. A CSR adjacency (two flat int arrays) beats <code>List&lt;List&lt;int[]&gt;&gt;</code> on cache misses.</p>
+      <p><b>Overflow.</b> 10<sup>5</sup> edges × weight 10<sup>9</sup> overflows a 32-bit <code>int</code> (Java, C++). Use 64-bit distances (<code>long</code> / <code>long long</code>); Python ints never overflow, and JS numbers are exact up to 2<sup>53</sup>. Never add to an "infinity" like <code>INT_MAX + w</code>.</p>
+      <p><b>Performance.</b> In Java, <code>PriorityQueue&lt;int[]&gt;</code> allocates one small array per push; for 10<sup>6</sup> edges, packing (dist, node) into one 64-bit integer (<code>dist &lt;&lt; 20 | node</code>) and using a primitive heap can be 2–3× faster, and the same trick speeds up C++ too. A CSR adjacency (two flat int arrays) beats a list of lists of pairs on cache misses. In Python, tuples in <code>heapq</code> are fine up to a few 10<sup>5</sup> edges.</p>
       <p><b>Production reality.</b> Internet routing (OSPF, IS-IS) runs Dijkstra on each router. Map apps do not run plain Dijkstra over a continent: they use <b>bidirectional search</b>, <b>A*</b> (Dijkstra + an admissible heuristic such as straight-line distance) and preprocessing like <b>contraction hierarchies</b> to answer in milliseconds.</p>`,
     aiEra: `<p><b>What AI changes:</b> any assistant writes a Dijkstra template in seconds, so interviewers now push on <i>why</i>: the stale check, overflow, negative edges, the right state for variants.</p>
       <p><b>Use AI as a partner:</b> ask <code>Give me 3 small graphs where Dijkstra without the stale-entry check still gives correct output, and one where it becomes slow</code>, or <code>Generate a random graph test harness comparing my Dijkstra against Bellman-Ford</code>. A brute-force cross-check is the fastest way to trust your code.</p>
@@ -345,6 +558,61 @@ class Solution {
 }` },
       mcq: { q: 'All shortest arrival times are known. What is the answer?', options: ['The maximum of them (or -1 if any is ∞)', 'Their sum', 'The minimum of them', 'The arrival time at node n'], answer: 0, explain: 'Every node must receive the signal; the network is "done" when the slowest one does — the max of the shortest distances.' },
       hints: [`<p>"Time for a signal to reach a node" = shortest path from k, with non-negative times. One run of single-source shortest path gives every node's arrival time.</p>`, `<p>Directed adjacency list + Dijkstra with a min-heap of {time, node}. Skip stale entries.</p>`, `<p>Edge cases: an unreachable node (dist stays ∞ → return -1); nodes are 1-indexed, so size arrays n + 1. Recipe: build graph → Dijkstra from k → answer = max dist, or -1.</p>`],
+      tests: { sig: "int[][] int int -> int", fn: "delayRun", harness: {
+        java: `class Check {
+    static int delayRun(int[][] times, int n, int k) {
+        if (times[0][0] == -1) {                  // marker row [-1, d]: ring graph with d out-edges per node
+            int d = times[0][1];
+            times = new int[n * d][];
+            int p = 0;
+            for (int i = 0; i < n; i++)
+                for (int s = 1; s <= d; s++)
+                    times[p++] = new int[]{i + 1, (i + s) % n + 1, (i * 31 + s * 17) % 101};
+        }
+        return new Solution().networkDelayTime(times, n, k);
+    }
+}`,
+        python: `def delay_run(times, n, k):
+    if times[0][0] == -1:
+        d = times[0][1]
+        times = [[i + 1, (i + s) % n + 1, (i * 31 + s * 17) % 101] for i in range(n) for s in range(1, d + 1)]
+    return Solution().network_delay_time(times, n, k)`,
+        js: `function delayRun(times, n, k) {
+  if (times[0][0] === -1) {
+    const d = times[0][1];
+    times = [];
+    for (let i = 0; i < n; i++)
+      for (let s = 1; s <= d; s++) times.push([i + 1, (i + s) % n + 1, (i * 31 + s * 17) % 101]);
+  }
+  return networkDelayTime(times, n, k);
+}`,
+        cpp: `int delayRun(vector<vector<int>> times, int n, int k) {
+    if (times[0][0] == -1) {
+        int d = times[0][1];
+        times.clear();
+        for (int i = 0; i < n; i++)
+            for (int s = 1; s <= d; s++) times.push_back({i + 1, (i + s) % n + 1, (i * 31 + s * 17) % 101});
+    }
+    return Solution().networkDelayTime(times, n, k);
+}`
+      }, cases: [
+        [[[[2,1,1],[2,3,1],[3,4,1]],4,2],2],
+        [[[[1,2,1]],2,1],1],
+        [[[[1,2,1]],2,2],-1],
+        [[[[1,2,0],[2,3,0]],3,1],0],
+        [[[[1,2,10],[1,3,1],[3,2,1]],3,1],2],
+        [[[[1,2,1],[3,4,1]],4,1],-1],
+        [[[[1,1,5]],1,1],0],
+        [[[[1,2,4],[1,3,1],[3,2,2],[2,4,1],[3,4,6],[4,5,100],[1,5,200]],5,1],104],
+        [[[[1,2,1],[2,3,2],[3,1,3]],3,3],4],
+        [[[[1,2,100],[2,3,100],[3,4,100],[4,5,100]],5,1],400],
+        [[[[6,3,12],[1,2,17],[2,6,18],[1,4,1],[2,7,13],[2,4,2],[7,1,18],[1,7,1],[4,1,17],[3,5,13],[3,2,18],[5,3,3],[4,6,3],[2,1,19]],8,4],-1],
+        [[[[8,7,10],[6,5,7],[3,4,2],[5,8,10],[8,5,19],[7,3,10],[3,8,13],[1,2,17],[6,8,18],[8,2,2],[2,1,9],[7,6,0],[8,6,5],[2,8,1]],8,4],-1],
+        [[[[5,3,7],[8,2,5],[8,7,17],[7,5,13],[6,7,7],[3,2,5],[3,4,7],[1,8,18],[3,5,9],[1,3,13],[3,1,14],[2,8,20],[7,1,6],[2,4,14]],8,3],-1],
+        [[[[-1,60]],100,1],11],
+        [[[[-1,1]],100,1],4907],
+        [[[[-1,60]],100,37],17]
+      ] },
       solution: {
         approach: `<p>Run Dijkstra from k on the directed graph. The answer is the largest finite distance; if any node is still ∞, return -1.</p>`,
         code: `
@@ -376,24 +644,106 @@ class Solution {
     }
 }`,
         alt: [{ lang: 'python', code: `import heapq
-from collections import defaultdict
 
 class Solution:
-    def networkDelayTime(self, times, n, k):
-        g = defaultdict(list)
+    def network_delay_time(self, times, n, k):
+        g = [[] for _ in range(n + 1)]
         for u, v, w in times:
             g[u].append((v, w))
-        dist = {}
+        dist = [float('inf')] * (n + 1)
+        dist[k] = 0
         pq = [(0, k)]
         while pq:
             d, u = heapq.heappop(pq)
-            if u in dist:          # first pop is final
+            if d > dist[u]:              # stale entry
                 continue
-            dist[u] = d
             for v, w in g[u]:
-                if v not in dist:
+                if d + w < dist[v]:
+                    dist[v] = d + w
                     heapq.heappush(pq, (d + w, v))
-        return max(dist.values()) if len(dist) == n else -1` }],
+        ans = max(dist[1:])
+        return -1 if ans == float('inf') else ans` }, { lang: 'js', code: `class MinHeap {
+  constructor(cmp) { this.a = []; this.cmp = cmp; }
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (this.cmp(a[i], a[p]) >= 0) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.cmp(a[l], a[m]) < 0) m = l;
+        if (r < a.length && this.cmp(a[r], a[m]) < 0) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+function networkDelayTime(times, n, k) {
+  const g = Array.from({ length: n + 1 }, () => []);
+  for (const [u, v, w] of times) g[u].push([v, w]);
+  const dist = new Array(n + 1).fill(Infinity);
+  dist[k] = 0;
+  const pq = new MinHeap((a, b) => a[0] - b[0]);
+  pq.push([0, k]);
+  while (pq.size() > 0) {
+    const [d, u] = pq.pop();
+    if (d > dist[u]) continue;           // stale entry
+    for (const [v, w] of g[u]) {
+      if (d + w < dist[v]) {
+        dist[v] = d + w;
+        pq.push([d + w, v]);
+      }
+    }
+  }
+  let ans = 0;
+  for (let i = 1; i <= n; i++) ans = Math.max(ans, dist[i]);
+  return ans === Infinity ? -1 : ans;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int networkDelayTime(const vector<vector<int>>& times, int n, int k) {
+        vector<vector<pair<int, int>>> g(n + 1);
+        for (auto& t : times) g[t[0]].push_back({t[1], t[2]});
+        vector<int> dist(n + 1, INT_MAX);
+        dist[k] = 0;
+        priority_queue<pair<int, int>, vector<pair<int, int>>, greater<>> pq;   // min-heap
+        pq.push({0, k});
+        while (!pq.empty()) {
+            auto [d, u] = pq.top();
+            pq.pop();
+            if (d > dist[u]) continue;       // stale entry
+            for (auto [v, w] : g[u]) {
+                if (d + w < dist[v]) {
+                    dist[v] = d + w;
+                    pq.push({dist[v], v});
+                }
+            }
+        }
+        int ans = 0;
+        for (int i = 1; i <= n; i++) {
+            if (dist[i] == INT_MAX) return -1;
+            ans = max(ans, dist[i]);
+        }
+        return ans;
+    }
+};` }],
         dry: { head: ['poll', 'final dist', 'relax', 'PQ after'], rows: [
           ['(0,2)', '2 → 0', '1: 1, 3: 1', '(1,1) (1,3)'],
           ['(1,1)', '1 → 1', 'no out-edges', '(1,3)'],
@@ -435,7 +785,7 @@ class Solution:
       '"minimum edges to reverse so a path exists from 1 to N" → original edge 0, reversed edge 1',
       'weights in {0, 1} (or {0, k} — then multiply/divide out k)'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
 // 0-1 BFS on an adjacency list. g[u] = list of {v, w} with w in {0, 1}.
 import java.util.*;
 
@@ -470,7 +820,100 @@ class ZeroOneBfs {
         for (int[] e : edges) { g.get(e[0]).add(new int[]{e[1], e[2]}); g.get(e[1]).add(new int[]{e[0], e[2]}); }
         System.out.println(Arrays.toString(shortest(g, 0)));  // [0, 0, 0, 1, 1, 1]
     }
-}`, {
+}`,
+      alt: [{ lang: 'python', run: true, code: `from collections import deque
+
+# 0-1 BFS on an adjacency list. g[u] = list of (v, w) with w in {0, 1}.
+def shortest(g, src):
+    n = len(g)
+    dist = [float('inf')] * n
+    dist[src] = 0
+    dq = deque([src])
+    while dq:
+        u = dq.popleft()                     # front always has the smallest distance
+        for v, w in g[u]:
+            if dist[u] + w < dist[v]:
+                dist[v] = dist[u] + w
+                if w == 0:
+                    dq.appendleft(v)         # free move: same distance, goes to the FRONT
+                else:
+                    dq.append(v)             # paid move: distance + 1, goes to the BACK
+    return dist
+
+# A=0 B=1 C=2 D=3 E=4 F=5, undirected (same as the visualizer)
+n = 6
+edges = [(0, 1, 1), (0, 2, 0), (2, 1, 0), (1, 3, 1), (2, 4, 1), (3, 5, 0), (4, 5, 1), (4, 3, 0)]
+g = [[] for _ in range(n)]
+for u, v, w in edges:
+    g[u].append((v, w))
+    g[v].append((u, w))
+print(shortest(g, 0))                        # [0, 0, 0, 1, 1, 1]` }, { lang: 'js', run: true, code: `// 0-1 BFS on an adjacency list. g[u] = list of [v, w] with w in {0, 1}.
+// JS has no deque, so work level by level: "cur" holds distance d, "next" holds distance d + 1.
+function shortest(g, src) {
+  const n = g.length;
+  const dist = new Array(n).fill(Infinity);
+  dist[src] = 0;
+  let cur = [src], d = 0;
+  while (cur.length > 0) {
+    const next = [];
+    for (let i = 0; i < cur.length; i++) {   // cur grows while we follow free moves
+      const u = cur[i];
+      if (dist[u] !== d) continue;           // already settled at a smaller distance
+      for (const [v, w] of g[u]) {
+        if (d + w < dist[v]) {
+          dist[v] = d + w;
+          (w === 0 ? cur : next).push(v);    // free move: same level; paid move: next level
+        }
+      }
+    }
+    cur = next;
+    d++;
+  }
+  return dist;
+}
+
+// A=0 B=1 C=2 D=3 E=4 F=5, undirected (same as the visualizer)
+const n = 6;
+const edges = [[0, 1, 1], [0, 2, 0], [2, 1, 0], [1, 3, 1], [2, 4, 1], [3, 5, 0], [4, 5, 1], [4, 3, 0]];
+const g = Array.from({ length: n }, () => []);
+for (const [u, v, w] of edges) { g[u].push([v, w]); g[v].push([u, w]); }
+console.log(shortest(g, 0));                 // [ 0, 0, 0, 1, 1, 1 ]` }, { lang: 'cpp', code: `#include <bits/stdc++.h>
+using namespace std;
+
+// 0-1 BFS on an adjacency list. g[u] = list of {v, w} with w in {0, 1}.
+vector<int> shortest(const vector<vector<pair<int, int>>>& g, int src) {
+    int n = g.size();
+    vector<int> dist(n, INT_MAX);
+    dist[src] = 0;
+    deque<int> dq;
+    dq.push_front(src);
+    while (!dq.empty()) {
+        int u = dq.front();                   // front always has the smallest distance
+        dq.pop_front();
+        for (auto [v, w] : g[u]) {
+            if (dist[u] + w < dist[v]) {
+                dist[v] = dist[u] + w;
+                if (w == 0) dq.push_front(v); // free move: same distance, goes to the FRONT
+                else dq.push_back(v);         // paid move: distance + 1, goes to the BACK
+            }
+        }
+    }
+    return dist;
+}
+
+int main() {
+    // A=0 B=1 C=2 D=3 E=4 F=5, undirected (same as the visualizer)
+    int n = 6;
+    vector<array<int, 3>> edges = {{0,1,1},{0,2,0},{2,1,0},{1,3,1},{2,4,1},{3,5,0},{4,5,1},{4,3,0}};
+    vector<vector<pair<int, int>>> g(n);
+    for (auto& e : edges) {
+        g[e[0]].push_back({e[1], e[2]});
+        g[e[1]].push_back({e[0], e[2]});
+    }
+    for (int d : shortest(g, 0)) cout << d << " ";
+    cout << "\\n";                             // 0 0 0 1 1 1
+    return 0;
+}` }] }, {
       lang: 'python', run: true, title: 'Grid 0-1 BFS: minimum walls to break (runnable)', code: `from collections import deque
 
 def min_walls(grid):
@@ -608,7 +1051,60 @@ class Solution {
     }
 }` },
       mcq: { q: 'Moving from a cell in the direction its sign points costs…', options: ['0 — push the neighbour to the front of the deque', '1 — push to the back', '0 — push to the back', 'It depends on the neighbour\'s sign'], answer: 0, explain: 'Following the existing sign is free (weight 0 → addFirst). Any other direction means changing this cell\'s sign: weight 1 → addLast.' },
-      hints: [`<p>Think of each cell as a node with 4 outgoing edges. The edge in the sign's direction costs 0; the other three cost 1 (you would change the sign).</p>`, `<p>Weights are only 0 and 1 → 0-1 BFS with an <code>ArrayDeque</code>: 0-edges addFirst, 1-edges addLast.</p>`, `<p>Directions must match sign numbering: index 0 = right (sign 1), 1 = left (2), 2 = down (3), 3 = up (4). Answer = dist[m−1][n−1]. A 1×1 grid answers 0.</p>`],
+      hints: [`<p>Think of each cell as a node with 4 outgoing edges. The edge in the sign's direction costs 0; the other three cost 1 (you would change the sign).</p>`, `<p>Weights are only 0 and 1 → 0-1 BFS with a deque (<code>ArrayDeque</code> / <code>collections.deque</code> / <code>std::deque</code>; in JS use two arrays, one per cost level): 0-edges go to the front, 1-edges to the back.</p>`, `<p>Directions must match sign numbering: index 0 = right (sign 1), 1 = left (2), 2 = down (3), 3 = up (4). Answer = dist[m−1][n−1]. A 1×1 grid answers 0.</p>`],
+      tests: { sig: "int[][] -> int", fn: "signRun", harness: {
+        java: `class Check {
+    static int signRun(int[][] grid) {
+        if (grid[0][0] == -1) {                   // marker row [-1, m, n, a, b, c]
+            int m = grid[0][1], n = grid[0][2], a = grid[0][3], b = grid[0][4], c = grid[0][5];
+            grid = new int[m][n];
+            for (int i = 0; i < m; i++)
+                for (int j = 0; j < n; j++) grid[i][j] = (i * a + j * b + i * j * c) % 4 + 1;
+        }
+        return new Solution().minCost(grid);
+    }
+}`,
+        python: `def sign_run(grid):
+    if grid[0][0] == -1:
+        _, m, n, a, b, c = grid[0]
+        grid = [[(i * a + j * b + i * j * c) % 4 + 1 for j in range(n)] for i in range(m)]
+    return Solution().min_cost(grid)`,
+        js: `function signRun(grid) {
+  if (grid[0][0] === -1) {
+    const [, m, n, a, b, c] = grid[0];
+    grid = Array.from({ length: m }, (_, i) => Array.from({ length: n }, (_, j) => (i * a + j * b + i * j * c) % 4 + 1));
+  }
+  return minCost(grid);
+}`,
+        cpp: `int signRun(vector<vector<int>> grid) {
+    if (grid[0][0] == -1) {
+        int m = grid[0][1], n = grid[0][2], a = grid[0][3], b = grid[0][4], c = grid[0][5];
+        grid.assign(m, vector<int>(n));
+        for (int i = 0; i < m; i++)
+            for (int j = 0; j < n; j++) grid[i][j] = (i * a + j * b + i * j * c) % 4 + 1;
+    }
+    return Solution().minCost(grid);
+}`
+      }, cases: [
+        [[[[1,2],[4,3]]],1],
+        [[[[1,1,3],[3,2,2],[1,1,4]]],0],
+        [[[[1,1,1,1],[2,2,2,2],[1,1,1,1],[2,2,2,2]]],3],
+        [[[[2,2,2],[2,2,2]]],3],
+        [[[[4]]],0],
+        [[[[1,1,1,1]]],0],
+        [[[[3],[3],[3]]],0],
+        [[[[2],[2],[2]]],2],
+        [[[[4,4,4],[4,4,4],[4,4,4]]],4],
+        [[[[1,3,1],[4,1,2],[3,3,1]]],1],
+        [[[[1,1,1,2],[1,3,1,1]]],1],
+        [[[[4,2,3,3,3,4],[1,1,4,4,4,4],[3,1,2,1,3,3]]],4],
+        [[[[1,2,3],[2,1,3],[1,3,3],[2,3,2],[3,2,2]]],2],
+        [[[[-1,100,100,1,1,0]]],99],
+        [[[[-1,100,100,0,0,0]]],99],
+        [[[[-1,100,100,3,1,1]]],99],
+        [[[[-1,100,100,2,3,5]]],26],
+        [[[[-1,100,100,1,0,0]]],74]
+      ] },
       solution: {
         approach: `<p>0-1 BFS from (0,0). For each popped cell, try all 4 directions; cost = 0 if it matches the cell's sign, else 1. Improve → addFirst for 0, addLast for 1.</p>`,
         code: `
@@ -641,9 +1137,9 @@ class Solution {
         alt: [{ lang: 'python', code: `from collections import deque
 
 class Solution:
-    def minCost(self, grid):
+    def min_cost(self, grid):
         m, n = len(grid), len(grid[0])
-        dirs = [(0, 1), (0, -1), (1, 0), (-1, 0)]
+        dirs = [(0, 1), (0, -1), (1, 0), (-1, 0)]      # signs 1..4
         INF = float('inf')
         dist = [[INF] * n for _ in range(m)]
         dist[0][0] = 0
@@ -660,7 +1156,57 @@ class Solution:
                             dq.appendleft((nr, nc))
                         else:
                             dq.append((nr, nc))
-        return dist[m - 1][n - 1]` }],
+        return dist[m - 1][n - 1]` }, { lang: 'js', code: `// JS has no deque, so 0-1 BFS runs level by level: free moves stay in "cur", cost-1 moves go to "next".
+function minCost(grid) {
+  const m = grid.length, n = grid[0].length;
+  const dirs = [[0, 1], [0, -1], [1, 0], [-1, 0]];   // signs 1..4
+  const dist = Array.from({ length: m }, () => new Array(n).fill(Infinity));
+  dist[0][0] = 0;
+  let cur = [[0, 0]], cost = 0;
+  while (cur.length > 0) {
+    const next = [];
+    for (let i = 0; i < cur.length; i++) {           // cur grows while we follow free moves
+      const [r, c] = cur[i];
+      if (dist[r][c] !== cost) continue;             // already settled at a cheaper level
+      for (let k = 0; k < 4; k++) {
+        const nr = r + dirs[k][0], nc = c + dirs[k][1];
+        if (nr < 0 || nc < 0 || nr >= m || nc >= n) continue;
+        const w = grid[r][c] === k + 1 ? 0 : 1;
+        if (cost + w < dist[nr][nc]) {
+          dist[nr][nc] = cost + w;
+          (w === 0 ? cur : next).push([nr, nc]);
+        }
+      }
+    }
+    cur = next;
+    cost++;
+  }
+  return dist[m - 1][n - 1];
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int minCost(const vector<vector<int>>& grid) {
+        int m = grid.size(), n = grid[0].size();
+        const int dr[] = {0, 0, 1, -1}, dc[] = {1, -1, 0, 0};   // signs 1..4
+        vector<vector<int>> dist(m, vector<int>(n, INT_MAX));
+        deque<pair<int, int>> dq;
+        dist[0][0] = 0;
+        dq.push_front({0, 0});
+        while (!dq.empty()) {
+            auto [r, c] = dq.front();
+            dq.pop_front();
+            for (int k = 0; k < 4; k++) {
+                int nr = r + dr[k], nc = c + dc[k];
+                if (nr < 0 || nc < 0 || nr >= m || nc >= n) continue;
+                int w = grid[r][c] == k + 1 ? 0 : 1;
+                if (dist[r][c] + w < dist[nr][nc]) {
+                    dist[nr][nc] = dist[r][c] + w;
+                    if (w == 0) dq.push_front({nr, nc}); else dq.push_back({nr, nc});
+                }
+            }
+        }
+        return dist[m - 1][n - 1];
+    }
+};` }],
         dry: { head: ['pop', 'dist', 'moves tried', 'deque after'], rows: [
           ['(0,0)', '0', 'right (0,1) w0 → 0 front; down (1,0) w1 → 1 back', '[(0,1), (1,0)]'],
           ['(0,1)', '0', 'left (0,0) no gain; down (1,1) w1 → 1 back', '[(1,0), (1,1)]'],
@@ -693,7 +1239,7 @@ repeat V - 1 times:
       ${H.table(['cycle', 'total', 'meaning'], [['A → B (1), B → C (−2), C → A (0)', H.c('r', '−1'), 'go round again and again: −1, −2, −3, … no shortest path exists'], ['A → B (2), B → A (−1)', H.c('g', '+1'), 'fine: going round only costs more']])}
       <p><b>Early stop:</b> if a whole round changes nothing, later rounds will not change anything either — stop early. On many inputs this makes it much faster than the worst case.</p>
       <p><b>Cost:</b> O(V · E) time, O(V) space. Only use it when you need it: negative edges, negative-cycle detection, or "at most K edges" (next topics).</p>
-      <p><b>The <code>dist[u] != ∞</code> check matters:</b> without it, "∞ + (−5)" looks smaller than ∞ and garbage spreads from unreachable nodes. In Java with <code>Integer.MAX_VALUE</code> it also overflows.</p>`,
+      <p><b>The <code>dist[u] != ∞</code> check matters:</b> without it, "∞ + (−5)" looks smaller than ∞ and garbage spreads from unreachable nodes. In Java or C++ with <code>INT_MAX</code> as the infinity it also overflows.</p>`,
     clues: [
       '"weights can be <b>negative</b>" (refunds, discounts, energy gained) → not Dijkstra',
       '"detect whether a <b>negative cycle</b> exists", "infinite profit", "arbitrage"',
@@ -702,7 +1248,7 @@ repeat V - 1 times:
       'edge list given directly as <code>edges[i] = [u, v, w]</code> — Bellman-Ford needs nothing else',
       '"system of difference constraints x<sub>j</sub> − x<sub>i</sub> ≤ c" → edges i → j with weight c, then Bellman-Ford'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
 // Bellman-Ford with early stop, negative-cycle detection and cycle extraction.
 import java.util.*;
 
@@ -764,7 +1310,163 @@ class BellmanFord {
         int[][] bad = {{0,1,1},{1,2,-2},{2,0,0},{2,3,4}};
         System.out.println(findNegativeCycle(4, bad));                // a rotation of [0, 1, 2, 0]
     }
-}`, {
+}`,
+      alt: [{ lang: 'python', run: true, code: `# Bellman-Ford with early stop, negative-cycle detection and cycle extraction.
+INF = float('inf')
+
+# returns None if a negative cycle is reachable from src, else the dist list
+def shortest(n, edges, src):
+    dist = [INF] * n
+    dist[src] = 0
+    for _ in range(n - 1):
+        changed = False
+        for u, v, w in edges:
+            if dist[u] != INF and dist[u] + w < dist[v]:   # skip unreachable u
+                dist[v] = dist[u] + w
+                changed = True
+        if not changed:
+            break                                          # early stop: already stable
+    for u, v, w in edges:                                  # the V-th round = detector
+        if dist[u] != INF and dist[u] + w < dist[v]:
+            return None
+    return dist
+
+# returns the nodes of one negative cycle (in order), or an empty list
+def find_negative_cycle(n, edges):
+    dist = [0] * n                       # all 0 = a virtual source connected to everyone
+    parent = [-1] * n
+    last = -1
+    for _ in range(n):
+        last = -1
+        for u, v, w in edges:
+            if dist[u] + w < dist[v]:
+                dist[v] = dist[u] + w
+                parent[v] = u
+                last = v
+    if last == -1:
+        return []                        # n-th round changed nothing
+    x = last
+    for _ in range(n):
+        x = parent[x]                    # step back n times: now surely ON the cycle
+    cycle = [x]
+    v = parent[x]
+    while v != x:
+        cycle.append(v)
+        v = parent[v]
+    cycle.append(x)
+    return cycle[::-1]
+
+edges = [(0, 1, 4), (3, 4, 3), (1, 3, -2), (2, 1, -3), (0, 2, 5), (4, 5, 2), (2, 4, 6)]
+print(shortest(6, edges, 0))                       # [0, 2, 5, 0, 3, 5]
+bad = [(0, 1, 1), (1, 2, -2), (2, 0, 0), (2, 3, 4)]
+print(find_negative_cycle(4, bad))                 # a rotation of [0, 1, 2, 0]` }, { lang: 'js', run: true, code: `// Bellman-Ford with early stop, negative-cycle detection and cycle extraction.
+// returns null if a negative cycle is reachable from src, else the dist array
+function shortest(n, edges, src) {
+  const dist = new Array(n).fill(Infinity);
+  dist[src] = 0;
+  for (let round = 1; round <= n - 1; round++) {
+    let changed = false;
+    for (const [u, v, w] of edges) {
+      if (dist[u] !== Infinity && dist[u] + w < dist[v]) {   // skip unreachable u
+        dist[v] = dist[u] + w;
+        changed = true;
+      }
+    }
+    if (!changed) break;                                     // early stop: already stable
+  }
+  for (const [u, v, w] of edges)                             // the V-th round = detector
+    if (dist[u] !== Infinity && dist[u] + w < dist[v]) return null;
+  return dist;
+}
+
+// returns the nodes of one negative cycle (in order), or an empty array
+function findNegativeCycle(n, edges) {
+  const dist = new Array(n).fill(0);     // all 0 = a virtual source connected to everyone
+  const parent = new Array(n).fill(-1);
+  let last = -1;
+  for (let round = 1; round <= n; round++) {
+    last = -1;
+    for (const [u, v, w] of edges) {
+      if (dist[u] + w < dist[v]) {
+        dist[v] = dist[u] + w;
+        parent[v] = u;
+        last = v;
+      }
+    }
+  }
+  if (last === -1) return [];            // n-th round changed nothing
+  let x = last;
+  for (let i = 0; i < n; i++) x = parent[x];   // step back n times: now surely ON the cycle
+  const cycle = [x];
+  for (let v = parent[x]; v !== x; v = parent[v]) cycle.push(v);
+  cycle.push(x);
+  return cycle.reverse();
+}
+
+const edges = [[0, 1, 4], [3, 4, 3], [1, 3, -2], [2, 1, -3], [0, 2, 5], [4, 5, 2], [2, 4, 6]];
+console.log(shortest(6, edges, 0));                  // [ 0, 2, 5, 0, 3, 5 ]
+const bad = [[0, 1, 1], [1, 2, -2], [2, 0, 0], [2, 3, 4]];
+console.log(findNegativeCycle(4, bad));              // a rotation of [ 0, 1, 2, 0 ]` }, { lang: 'cpp', code: `#include <bits/stdc++.h>
+using namespace std;
+
+// Bellman-Ford with early stop, negative-cycle detection and cycle extraction.
+const long long INF = LLONG_MAX / 4;
+
+// returns false if a negative cycle is reachable from src, else fills dist
+bool shortest(int n, const vector<array<int, 3>>& edges, int src, vector<long long>& dist) {
+    dist.assign(n, INF);
+    dist[src] = 0;
+    for (int round = 1; round <= n - 1; round++) {
+        bool changed = false;
+        for (auto& [u, v, w] : edges) {
+            if (dist[u] != INF && dist[u] + w < dist[v]) {   // skip unreachable u
+                dist[v] = dist[u] + w;
+                changed = true;
+            }
+        }
+        if (!changed) break;                                 // early stop: already stable
+    }
+    for (auto& [u, v, w] : edges)                            // the V-th round = detector
+        if (dist[u] != INF && dist[u] + w < dist[v]) return false;
+    return true;
+}
+
+// returns the nodes of one negative cycle (in order), or an empty vector
+vector<int> findNegativeCycle(int n, const vector<array<int, 3>>& edges) {
+    vector<long long> dist(n, 0);            // all 0 = a virtual source connected to everyone
+    vector<int> parent(n, -1);
+    int last = -1;
+    for (int round = 1; round <= n; round++) {
+        last = -1;
+        for (auto& [u, v, w] : edges) {
+            if (dist[u] + w < dist[v]) {
+                dist[v] = dist[u] + w;
+                parent[v] = u;
+                last = v;
+            }
+        }
+    }
+    if (last == -1) return {};               // n-th round changed nothing
+    int x = last;
+    for (int i = 0; i < n; i++) x = parent[x];   // step back n times: now surely ON the cycle
+    vector<int> cycle = {x};
+    for (int v = parent[x]; v != x; v = parent[v]) cycle.push_back(v);
+    cycle.push_back(x);
+    reverse(cycle.begin(), cycle.end());
+    return cycle;
+}
+
+int main() {
+    vector<array<int, 3>> edges = {{0,1,4},{3,4,3},{1,3,-2},{2,1,-3},{0,2,5},{4,5,2},{2,4,6}};
+    vector<long long> dist;
+    if (shortest(6, edges, 0, dist))
+        for (long long d : dist) cout << d << " ";
+    cout << "\\n";                             // 0 2 5 0 3 5
+    vector<array<int, 3>> bad = {{0,1,1},{1,2,-2},{2,0,0},{2,3,4}};
+    for (int v : findNegativeCycle(4, bad)) cout << v << " ";
+    cout << "\\n";                             // a rotation of 0 1 2 0
+    return 0;
+}` }] }, {
       lang: 'python', run: true, title: 'Currency arbitrage = negative cycle (runnable)', code: `import math
 
 def has_arbitrage(rates):
@@ -864,7 +1566,7 @@ print("arbitrage?", has_arbitrage(fair))            # False
       <p><b>Real world:</b> distance-vector routing (RIP) is distributed Bellman-Ford — each router only talks to neighbours. Its famous bug, "count to infinity", is the distributed version of the slow convergence you see here when a link breaks.</p>`,
     aiEra: `<p><b>What AI changes:</b> generating Bellman-Ford is trivial for an assistant; the interview signal is whether <i>you</i> know when it is required and what the V-th round means.</p>
       <p><b>Use AI as a partner:</b> <code>Give me 5 tricky inputs for Bellman-Ford: unreachable negative cycle, cycle only reachable through a negative edge, parallel edges, and V=1</code>. Then predict the outputs yourself before running.</p>
-      <p><b>Where AI goes wrong:</b> forgets the <code>dist[u] != ∞</code> guard (garbage "∞ − 5" values), reports a negative cycle that is not reachable from the source when the problem only asks about reachable ones, or uses <code>Integer.MAX_VALUE</code> and overflows.</p>
+      <p><b>Where AI goes wrong:</b> forgets the <code>dist[u] != ∞</code> guard (garbage "∞ − 5" values), reports a negative cycle that is not reachable from the source when the problem only asks about reachable ones, or uses <code>INT_MAX</code> (<code>Integer.MAX_VALUE</code>) as the infinity and overflows.</p>
       <p><b>What you must still own:</b> the induction argument for V − 1 rounds, the difference between "a negative edge" (fine) and "a negative cycle" (no answer), and the modelling trick (−log for products, difference constraints).</p>`,
     problems: [{
       title: 'Bellman-Ford: Distances or Negative Cycle (GfG classic)', level: 'Medium', tags: ['bellman-ford', 'negative cycle'], companies: ['Amazon', 'Microsoft', 'Flipkart'],
@@ -902,7 +1604,104 @@ class Solution {
     }
 }` },
       mcq: { q: 'After V − 1 rounds you do one more pass and edge (u, v) still relaxes. What does that prove?', options: ['A negative cycle is reachable from the source', 'The graph has a negative edge', 'Node v is unreachable', 'You needed V + 1 rounds'], answer: 0, explain: 'Without a reachable negative cycle, V − 1 rounds always reach a fixed point. Further improvement means some distance can fall forever.' },
-      hints: [`<p>Shortest paths without cycles have at most V − 1 edges, so relaxing every edge V − 1 times is enough.</p>`, `<p>Plain edge list + <code>int[] dist</code> filled with 10<sup>8</sup>. Guard <code>dist[u] != INF</code> before relaxing. Stop early if a round changes nothing.</p>`, `<p>After the rounds, scan all edges once more: any improvement → return [-1]. Recipe: init → (V−1) × relax all → one detection pass → return dist.</p>`],
+      hints: [`<p>Shortest paths without cycles have at most V − 1 edges, so relaxing every edge V − 1 times is enough.</p>`, `<p>Plain edge list + an integer <code>dist</code> array filled with 10<sup>8</sup>. Guard <code>dist[u] != INF</code> before relaxing. Stop early if a round changes nothing.</p>`, `<p>After the rounds, scan all edges once more: any improvement → return [-1]. Recipe: init → (V−1) × relax all → one detection pass → return dist.</p>`],
+      tests: { sig: "int int[][] int -> int[]", fn: "bfRun", harness: {
+        java: `class Check {
+    static int[] bfRun(int V, int[][] edges, int src) {
+        boolean big = edges[0][0] == -1;          // marker row [-1, d, mode]
+        if (big) {
+            int d = edges[0][1], mode = edges[0][2];
+            edges = new int[V * d][];
+            int p = 0;
+            for (int u = 0; u < V; u++)
+                for (int s = 1; s <= d; s++) {
+                    int v = (u + s) % V;
+                    int w = 1 + (u * 7 + s * 13) % 50 + (u * 13) % 101 - (v * 13) % 101;
+                    if (mode == 1 && s == 1) w = -1;
+                    edges[p++] = new int[]{u, v, w};
+                }
+        }
+        int[] r = Solution.bellmanFord(V, edges, src);
+        if (!big || r.length == 1) return r;
+        long sum = 0;
+        for (int i = 0; i < V; i++) sum += (long) r[i] * (i % 7 + 1);
+        return new int[]{(int) sum};
+    }
+}`,
+        python: `def bf_run(V, edges, src):
+    big = edges[0][0] == -1
+    if big:
+        _, d, mode = edges[0]
+        edges = []
+        for u in range(V):
+            for s in range(1, d + 1):
+                v = (u + s) % V
+                w = 1 + (u * 7 + s * 13) % 50 + (u * 13) % 101 - (v * 13) % 101
+                if mode == 1 and s == 1:
+                    w = -1
+                edges.append([u, v, w])
+    r = Solution().bellman_ford(V, edges, src)
+    if not big or len(r) == 1:
+        return r
+    return [sum(r[i] * (i % 7 + 1) for i in range(V))]`,
+        js: `function bfRun(V, edges, src) {
+  const big = edges[0][0] === -1;
+  if (big) {
+    const d = edges[0][1], mode = edges[0][2];
+    edges = [];
+    for (let u = 0; u < V; u++)
+      for (let s = 1; s <= d; s++) {
+        const v = (u + s) % V;
+        let w = 1 + (u * 7 + s * 13) % 50 + (u * 13) % 101 - (v * 13) % 101;
+        if (mode === 1 && s === 1) w = -1;
+        edges.push([u, v, w]);
+      }
+  }
+  const r = bellmanFord(V, edges, src);
+  if (!big || r.length === 1) return r;
+  let sum = 0;
+  for (let i = 0; i < V; i++) sum += r[i] * (i % 7 + 1);
+  return [sum];
+}`,
+        cpp: `vector<int> bfRun(int V, vector<vector<int>> edges, int src) {
+    bool big = edges[0][0] == -1;
+    if (big) {
+        int d = edges[0][1], mode = edges[0][2];
+        edges.clear();
+        for (int u = 0; u < V; u++)
+            for (int s = 1; s <= d; s++) {
+                int v = (u + s) % V;
+                int w = 1 + (u * 7 + s * 13) % 50 + (u * 13) % 101 - (v * 13) % 101;
+                if (mode == 1 && s == 1) w = -1;
+                edges.push_back({u, v, w});
+            }
+    }
+    vector<int> r = Solution().bellmanFord(V, edges, src);
+    if (!big || r.size() == 1) return r;
+    long long sum = 0;
+    for (int i = 0; i < V; i++) sum += (long long)r[i] * (i % 7 + 1);
+    return {(int)sum};
+}`
+      }, cases: [
+        [[5,[[1,3,2],[4,3,-1],[2,4,1],[1,2,1],[0,1,5]],0],[0,5,6,6,7]],
+        [[1,[[0,0,0]],0],[0]],
+        [[3,[[0,1,4]],0],[0,4,100000000]],
+        [[3,[[0,1,4]],2],[100000000,100000000,0]],
+        [[4,[[0,1,1],[1,2,-1],[2,1,-1],[2,3,1]],0],[-1]],
+        [[4,[[1,2,-1],[2,3,-1],[3,1,-1],[0,1,5]],0],[-1]],
+        [[4,[[1,2,-1],[2,3,-1],[3,1,-1],[0,1,5]],1],[-1]],
+        [[4,[[1,2,-1],[2,3,-1],[3,1,-1],[0,3,5]],0],[-1]],
+        [[4,[[1,2,-1],[2,3,-1],[3,1,-1]],0],[0,100000000,100000000,100000000]],
+        [[3,[[0,1,-5],[1,2,3],[0,2,1]],0],[0,-5,-2]],
+        [[6,[[0,1,2],[1,2,2],[2,3,2],[3,4,2],[4,5,2],[0,5,100]],0],[0,2,4,6,8,10]],
+        [[6,[[4,5,-1000],[3,4,-1000],[2,3,-1000],[1,2,-1000],[0,1,-1000]],0],[0,-1000,-2000,-3000,-4000,-5000]],
+        [[4,[[3,2,8],[2,3,1],[1,2,4],[0,1,-2]],0],[0,-2,2,3]],
+        [[4,[[1,2,0],[3,0,4],[2,0,7],[0,3,9],[1,3,-1],[3,2,-2]],0],[0,100000000,7,9]],
+        [[6,[[0,5,-1],[0,1,6],[3,5,-1],[3,5,2],[1,4,5],[1,0,-3],[0,4,8],[1,3,0]],0],[0,6,100000000,6,8,-1]],
+        [[500,[[-1,100,0]],0],[-85469]],
+        [[500,[[-1,100,0]],250],[-49612]],
+        [[500,[[-1,20,1]],0],[-1]]
+      ] },
       solution: {
         approach: `<p>Standard Bellman-Ford with early stop, then one detection pass.</p>`,
         code: `
@@ -930,8 +1729,8 @@ class Solution {
     }
 }`,
         alt: [{ lang: 'python', code: `class Solution:
-    def bellmanFord(self, V, edges, src):
-        INF = 10**8
+    def bellman_ford(self, V, edges, src):
+        INF = 10 ** 8
         dist = [INF] * V
         dist[src] = 0
         for _ in range(V - 1):
@@ -942,10 +1741,48 @@ class Solution {
                     changed = True
             if not changed:
                 break
-        for u, v, w in edges:
-            if dist[u] != INF and dist[u] + w < dist[v]:
-                return [-1]
-        return dist` }],
+        if any(dist[u] != INF and dist[u] + w < dist[v] for u, v, w in edges):
+            return [-1]                  # still improving: negative cycle
+        return dist` }, { lang: 'js', code: `function bellmanFord(V, edges, src) {
+  const INF = 100000000;
+  const dist = new Array(V).fill(INF);
+  dist[src] = 0;
+  for (let i = 0; i < V - 1; i++) {
+    let changed = false;
+    for (const [u, v, w] of edges) {
+      if (dist[u] !== INF && dist[u] + w < dist[v]) {
+        dist[v] = dist[u] + w;
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  for (const [u, v, w] of edges) {
+    if (dist[u] !== INF && dist[u] + w < dist[v]) return [-1];   // negative cycle
+  }
+  return dist;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> bellmanFord(int V, const vector<vector<int>>& edges, int src) {
+        const int INF = 100000000;
+        vector<int> dist(V, INF);
+        dist[src] = 0;
+        for (int i = 0; i < V - 1; i++) {
+            bool changed = false;
+            for (auto& e : edges) {
+                int u = e[0], v = e[1], w = e[2];
+                if (dist[u] != INF && dist[u] + w < dist[v]) {
+                    dist[v] = dist[u] + w;
+                    changed = true;
+                }
+            }
+            if (!changed) break;
+        }
+        for (auto& e : edges)
+            if (dist[e[0]] != INF && dist[e[0]] + e[2] < dist[e[1]]) return {-1};   // negative cycle
+        return dist;
+    }
+};` }],
         dry: { head: ['round', 'edges that relax (in list order)', 'dist after round'], rows: [
           ['1', '0→1: 5 (others start from ∞)', '[0, 5, ∞, ∞, ∞]'],
           ['2', '1→3: 7, 1→2: 6', '[0, 5, 6, 7, ∞]'],
@@ -992,7 +1829,7 @@ for k in 0..V-1:          // allow k as a middle stop
       '"city with the smallest number of reachable cities within distance T"',
       'negative edges allowed and you need all pairs → Floyd-Warshall (or Johnson for sparse graphs)'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
 // Floyd-Warshall with path reconstruction and negative-cycle check.
 import java.util.*;
 
@@ -1047,7 +1884,137 @@ class FloydWarshall {
         System.out.println("A->D path: " + path(0, 3));   // [0, 1, 2, 3]
         System.out.println("negative cycle? " + hasNegativeCycle());
     }
-}`, {
+}`,
+      alt: [{ lang: 'python', run: true, code: `# Floyd-Warshall with path reconstruction and negative-cycle check.
+INF = float('inf')
+
+def run(n, edges):
+    d = [[0 if i == j else INF for j in range(n)] for i in range(n)]
+    nxt = [[i if i == j else -1 for j in range(n)] for i in range(n)]   # first step on the best i -> j path
+    for u, v, w in edges:                    # directed; keep the cheapest parallel edge
+        if w < d[u][v]:
+            d[u][v] = w
+            nxt[u][v] = v
+    for k in range(n):                       # k = the newly allowed middle stop (OUTER loop!)
+        for i in range(n):
+            if d[i][k] == INF:
+                continue                     # small speed-up: i cannot reach k
+            for j in range(n):
+                if d[k][j] == INF:
+                    continue
+                if d[i][k] + d[k][j] < d[i][j]:
+                    d[i][j] = d[i][k] + d[k][j]
+                    nxt[i][j] = nxt[i][k]    # first go towards k
+    return d, nxt
+
+def has_negative_cycle(d):
+    return any(d[i][i] < 0 for i in range(len(d)))
+
+def path(nxt, i, j):
+    if nxt[i][j] == -1:
+        return []                            # unreachable
+    p = [i]
+    while i != j:
+        i = nxt[i][j]
+        p.append(i)
+    return p
+
+# A=0 B=1 C=2 D=3 (same as the visualizer)
+edges = [(0, 1, 3), (0, 3, 7), (1, 0, 8), (1, 2, 2), (2, 0, 5), (2, 3, 1), (3, 0, 2)]
+d, nxt = run(4, edges)
+for row in d:
+    print(row)
+print("A->D path:", path(nxt, 0, 3))         # [0, 1, 2, 3]
+print("negative cycle?", has_negative_cycle(d))` }, { lang: 'js', run: true, code: `// Floyd-Warshall with path reconstruction and negative-cycle check.
+function run(n, edges) {
+  const d = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => (i === j ? 0 : Infinity)));
+  const nxt = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => (i === j ? i : -1)));   // first step on the best i -> j path
+  for (const [u, v, w] of edges) {           // directed; keep the cheapest parallel edge
+    if (w < d[u][v]) { d[u][v] = w; nxt[u][v] = v; }
+  }
+  for (let k = 0; k < n; k++)                // k = the newly allowed middle stop (OUTER loop!)
+    for (let i = 0; i < n; i++) {
+      if (d[i][k] === Infinity) continue;    // small speed-up: i cannot reach k
+      for (let j = 0; j < n; j++) {
+        if (d[k][j] === Infinity) continue;
+        if (d[i][k] + d[k][j] < d[i][j]) {
+          d[i][j] = d[i][k] + d[k][j];
+          nxt[i][j] = nxt[i][k];             // first go towards k
+        }
+      }
+    }
+  return { d, nxt };
+}
+
+function hasNegativeCycle(d) {
+  return d.some((row, i) => row[i] < 0);
+}
+
+function path(nxt, i, j) {
+  if (nxt[i][j] === -1) return [];           // unreachable
+  const p = [i];
+  while (i !== j) { i = nxt[i][j]; p.push(i); }
+  return p;
+}
+
+// A=0 B=1 C=2 D=3 (same as the visualizer)
+const edges = [[0, 1, 3], [0, 3, 7], [1, 0, 8], [1, 2, 2], [2, 0, 5], [2, 3, 1], [3, 0, 2]];
+const { d, nxt } = run(4, edges);
+for (const row of d) console.log(row.join(' '));
+console.log('A->D path:', path(nxt, 0, 3).join(' '));   // 0 1 2 3
+console.log('negative cycle?', hasNegativeCycle(d));` }, { lang: 'cpp', code: `#include <bits/stdc++.h>
+using namespace std;
+
+// Floyd-Warshall with path reconstruction and negative-cycle check.
+const long long INF = LLONG_MAX / 4;        // big, but INF + INF does not overflow
+vector<vector<long long>> d;
+vector<vector<int>> nxt;                    // nxt[i][j] = first step on the best i -> j path
+
+void run(int n, const vector<array<int, 3>>& edges) {
+    d.assign(n, vector<long long>(n, INF));
+    nxt.assign(n, vector<int>(n, -1));
+    for (int i = 0; i < n; i++) { d[i][i] = 0; nxt[i][i] = i; }
+    for (auto& e : edges)                   // directed; keep the cheapest parallel edge
+        if (e[2] < d[e[0]][e[1]]) { d[e[0]][e[1]] = e[2]; nxt[e[0]][e[1]] = e[1]; }
+    for (int k = 0; k < n; k++)             // k = the newly allowed middle stop (OUTER loop!)
+        for (int i = 0; i < n; i++) {
+            if (d[i][k] == INF) continue;   // small speed-up: i cannot reach k
+            for (int j = 0; j < n; j++) {
+                if (d[k][j] == INF) continue;
+                if (d[i][k] + d[k][j] < d[i][j]) {
+                    d[i][j] = d[i][k] + d[k][j];
+                    nxt[i][j] = nxt[i][k];  // first go towards k
+                }
+            }
+        }
+}
+
+bool hasNegativeCycle() {
+    for (int i = 0; i < (int)d.size(); i++) if (d[i][i] < 0) return true;
+    return false;
+}
+
+vector<int> path(int i, int j) {
+    vector<int> p;
+    if (nxt[i][j] == -1) return p;          // unreachable
+    p.push_back(i);
+    while (i != j) { i = nxt[i][j]; p.push_back(i); }
+    return p;
+}
+
+int main() {
+    // A=0 B=1 C=2 D=3 (same as the visualizer)
+    vector<array<int, 3>> edges = {{0,1,3},{0,3,7},{1,0,8},{1,2,2},{2,0,5},{2,3,1},{3,0,2}};
+    run(4, edges);
+    for (auto& row : d) {
+        for (long long x : row) cout << x << " ";
+        cout << "\\n";
+    }
+    cout << "A->D path: ";
+    for (int v : path(0, 3)) cout << v << " ";   // 0 1 2 3
+    cout << "\\nnegative cycle? " << boolalpha << hasNegativeCycle() << "\\n";
+    return 0;
+}` }] }, {
       lang: 'python', run: true, title: 'Floyd-Warshall in Python (runnable)', code: `INF = float('inf')
 
 def floyd_warshall(n, edges):
@@ -1123,7 +2090,7 @@ for i in range(4):
     },
     examples: [
       { title: 'The loop-order bug', html: `<p>Writing <code>for i … for j … for k …</code> (k innermost) looks harmless but is <b>wrong</b>: when d[i][j] is computed, d[i][k] and d[k][j] may not be final yet. On a path A → B → C → D the answer for A → D can stay ∞. Always: <b>k outermost</b>.</p>` },
-      { title: 'Transitive closure (Course Schedule IV)', html: `<p>reach[i][j] = true if a direct prerequisite edge exists. Then <code>reach[i][j] |= reach[i][k] &amp;&amp; reach[k][j]</code> with the same three loops. With 100 courses that is 10<sup>6</sup> steps, then every query is O(1).</p>`, code: `
+      { title: 'Transitive closure (Course Schedule IV)', html: `<p>reach[i][j] = true if a direct prerequisite edge exists. Then <code>reach[i][j] |= reach[i][k] &amp;&amp; reach[k][j]</code> with the same three loops. With 100 courses that is 10<sup>6</sup> steps, then every query is O(1).</p>`, code: { lang: 'java', code: `
 static void transitiveClosure(boolean[][] reach) {
     int n = reach.length;
     for (int k = 0; k < n; k++)
@@ -1131,19 +2098,41 @@ static void transitiveClosure(boolean[][] reach) {
             if (reach[i][k])
                 for (int j = 0; j < n; j++)
                     if (reach[k][j]) reach[i][j] = true;   // i -> k -> j
-}` },
+}`,
+      alt: [{ lang: 'python', code: `def transitive_closure(reach):
+    n = len(reach)
+    for k in range(n):
+        for i in range(n):
+            if reach[i][k]:
+                for j in range(n):
+                    if reach[k][j]:
+                        reach[i][j] = True       # i -> k -> j` }, { lang: 'js', code: `function transitiveClosure(reach) {
+  const n = reach.length;
+  for (let k = 0; k < n; k++)
+    for (let i = 0; i < n; i++)
+      if (reach[i][k])
+        for (let j = 0; j < n; j++)
+          if (reach[k][j]) reach[i][j] = true;   // i -> k -> j
+}` }, { lang: 'cpp', code: `void transitiveClosure(vector<vector<bool>>& reach) {
+    int n = reach.size();
+    for (int k = 0; k < n; k++)
+        for (int i = 0; i < n; i++)
+            if (reach[i][k])
+                for (int j = 0; j < n; j++)
+                    if (reach[k][j]) reach[i][j] = true;   // i -> k -> j
+}` }] } },
       { title: 'Graph diameter / best meeting city', html: `<p>After Floyd-Warshall, the <b>eccentricity</b> of i is max<sub>j</sub> d[i][j]. The graph centre (best place for a warehouse) is the i with the smallest eccentricity; the diameter is the largest d[i][j] overall.</p>` },
       { title: 'Floyd-Warshall vs V × Dijkstra', html: `<p>V = 300, E = 1000: FW = 2.7·10<sup>7</sup>; V × Dijkstra ≈ 300 × 1300 × 10 ≈ 3.9·10<sup>6</sup>. Dijkstra wins on sparse graphs, but FW is 6 lines, handles negative edges and is cache-friendly. For V ≤ 400, FW is the pragmatic interview pick.</p>` }
     ],
     deepDive: `<p><b>Why in-place updates are safe.</b> The textbook DP has a 3D table d<sub>k</sub>[i][j]. During round k, the values d[i][k] and d[k][j] do not change (d[i][k] would become d[i][k] + d[k][k] = d[i][k] + 0). So one 2D array suffices — O(V²) memory instead of O(V³).</p>
-      <p><b>Overflow & ∞.</b> With <code>Integer.MAX_VALUE</code> as ∞, ∞ + 5 overflows to a negative number and "improves" everything. Use a large sentinel like 10<sup>9</sup> with <code>long</code> sums, or skip when either half is ∞ (as in the template).</p>
+      <p><b>Overflow & ∞.</b> With <code>INT_MAX</code> (<code>Integer.MAX_VALUE</code>) as ∞, ∞ + 5 overflows to a negative number and "improves" everything (in C++ it is even undefined behaviour). Use a large sentinel like 10<sup>9</sup> with 64-bit sums, or skip when either half is ∞ (as in the template).</p>
       <p><b>Negative cycles.</b> With a negative cycle, values can shrink exponentially (repeated doubling of the cycle) and overflow for big V. If negative cycles are possible, check d[i][i] &lt; 0 and mark every pair (i, j) with d[i][k] &lt; ∞, d[k][k] &lt; 0, d[k][j] &lt; ∞ as −∞.</p>
       <p><b>Path reconstruction:</b> store <code>nxt[i][j]</code> (first hop) — when d[i][j] improves through k, set nxt[i][j] = nxt[i][k]. Routers store exactly this kind of "next hop" table.</p>
       <p><b>Performance:</b> the j-loop scans rows d[i][·] and d[k][·] contiguously, so it is very cache-friendly and auto-vectorises in C++/Java. Hoisting <code>d[i][k]</code> and the row references out of the inner loop (as in the Python version) is a real speed-up. Theoretically it is the (min, +) matrix product; sub-cubic algorithms exist but are not practical.</p>
       <p><b>Dynamic updates:</b> if one edge u→v gets cheaper to w, update all pairs in O(V²): d[i][j] = min(d[i][j], d[i][u] + w + d[v][j]) — a common follow-up.</p>`,
     aiEra: `<p><b>What AI changes:</b> the 3 loops are memorised by every model; what matters is choosing it (V small, many queries) and explaining the DP meaning of k.</p>
-      <p><b>Use AI as a partner:</b> <code>Explain d_k[i][j] for Floyd-Warshall with a 4-node example table per k</code>, or <code>Benchmark FW vs N×Dijkstra in Java for V=300 sparse and dense</code> — let the tool do the measurement; you interpret it.</p>
-      <p><b>Where AI goes wrong:</b> puts k in the inner loop when "optimising", uses Integer.MAX_VALUE for ∞ (overflow), forgets that undirected edges must be set in both directions, or keeps the last parallel edge instead of the cheapest.</p>
+      <p><b>Use AI as a partner:</b> <code>Explain d_k[i][j] for Floyd-Warshall with a 4-node example table per k</code>, or <code>Benchmark FW vs N×Dijkstra in my language for V=300 sparse and dense</code> — let the tool do the measurement; you interpret it.</p>
+      <p><b>Where AI goes wrong:</b> puts k in the inner loop when "optimising", uses INT_MAX / Integer.MAX_VALUE for ∞ (overflow), forgets that undirected edges must be set in both directions, or keeps the last parallel edge instead of the cheapest.</p>
       <p><b>What you must still own:</b> the recurrence and why k is outermost, the V-bound decision (V³ vs V·E log V), and the negative-cycle diagonal test.</p>`,
     problems: [{
       title: 'Find the City With the Smallest Number of Neighbors at a Threshold Distance (LeetCode 1334)', level: 'Medium', tags: ['floyd-warshall', 'all pairs'], companies: ['Uber', 'Amazon'],
@@ -1172,6 +2161,64 @@ class Solution {
 }` },
       mcq: { q: 'n ≤ 100 and we need distances between ALL pairs. Best first choice?', options: ['Floyd-Warshall, 10<sup>6</sup> steps', 'One Dijkstra from city 0', 'BFS from each city', 'Kruskal\'s MST'], answer: 0, explain: 'All pairs + tiny n → Floyd-Warshall. One Dijkstra gives only one row; BFS ignores weights; an MST does not preserve shortest paths.' },
       hints: [`<p>You need every city's distances to every other city — an all-pairs table.</p>`, `<p>Floyd-Warshall on an n × n matrix; roads are undirected, so set both d[u][v] and d[v][u].</p>`, `<p>Count with <code>j != i &amp;&amp; d[i][j] ≤ T</code>. Loop i from 0 up and use <code>&lt;=</code> when comparing counts so ties go to the larger index. Use a safe INF (10<sup>9</sup>) and skip when d[i][k] is INF.</p>`],
+      tests: { sig: "int int[][] int -> int", fn: "cityRun", harness: {
+        java: `class Check {
+    static int cityRun(int n, int[][] edges, int thr) {
+        if (edges[0][0] == -1) {                  // marker row [-1, s]: pairs with (i + j) % s != 0 (all pairs if s = 0)
+            int s = edges[0][1];
+            List<int[]> list = new ArrayList<>();
+            for (int i = 0; i < n; i++)
+                for (int j = i + 1; j < n; j++)
+                    if (s == 0 || (i + j) % s != 0) list.add(new int[]{i, j, 1 + (i * i * 7 + j * 13 + i * j) % 97});
+            edges = list.toArray(new int[0][]);
+        }
+        return new Solution().findTheCity(n, edges, thr);
+    }
+}`,
+        python: `def city_run(n, edges, thr):
+    if edges[0][0] == -1:
+        s = edges[0][1]
+        edges = [[i, j, 1 + (i * i * 7 + j * 13 + i * j) % 97] for i in range(n) for j in range(i + 1, n) if s == 0 or (i + j) % s != 0]
+    return Solution().find_the_city(n, edges, thr)`,
+        js: `function cityRun(n, edges, thr) {
+  if (edges[0][0] === -1) {
+    const s = edges[0][1];
+    edges = [];
+    for (let i = 0; i < n; i++)
+      for (let j = i + 1; j < n; j++)
+        if (s === 0 || (i + j) % s !== 0) edges.push([i, j, 1 + (i * i * 7 + j * 13 + i * j) % 97]);
+  }
+  return findTheCity(n, edges, thr);
+}`,
+        cpp: `int cityRun(int n, vector<vector<int>> edges, int thr) {
+    if (edges[0][0] == -1) {
+        int s = edges[0][1];
+        edges.clear();
+        for (int i = 0; i < n; i++)
+            for (int j = i + 1; j < n; j++)
+                if (s == 0 || (i + j) % s != 0) edges.push_back({i, j, 1 + (i * i * 7 + j * 13 + i * j) % 97});
+    }
+    return Solution().findTheCity(n, edges, thr);
+}`
+      }, cases: [
+        [[4,[[0,1,3],[1,2,1],[1,3,4],[2,3,1]],4],3],
+        [[5,[[0,1,2],[0,4,8],[1,2,3],[1,4,2],[2,3,1],[3,4,1]],2],0],
+        [[2,[[0,1,5]],4],1],
+        [[2,[[0,1,5]],5],1],
+        [[3,[[0,1,1],[1,2,1],[0,2,1]],1],2],
+        [[4,[[0,1,1],[2,3,1]],1],3],
+        [[4,[[0,1,10000],[1,2,10000],[2,3,10000]],10000],3],
+        [[4,[[0,1,10000],[1,2,10000],[2,3,10000]],9999],3],
+        [[5,[[0,1,1],[1,2,1],[2,3,1],[3,4,1],[0,4,1]],2],4],
+        [[3,[[0,1,2],[0,1,1],[1,2,1]],2],2],
+        [[5,[[0,1,4],[0,2,4],[0,4,9],[1,2,3],[1,3,6]],10],4],
+        [[5,[[0,3,8],[1,4,3],[2,3,2],[3,4,9]],10],1],
+        [[8,[[0,1,2],[0,3,4],[0,4,2],[1,3,9],[1,5,5],[1,6,9],[2,4,9],[2,7,9],[3,5,8],[3,6,2],[3,7,6],[4,5,4],[4,6,4],[6,7,6]],4],7],
+        [[100,[[-1,0]],50],99],
+        [[100,[[-1,0]],10],19],
+        [[100,[[-1,0]],200],99],
+        [[100,[[-1,7]],60],99]
+      ] },
       solution: {
         approach: `<p>Build the matrix, run Floyd-Warshall, then count reachable cities per row.</p>`,
         code: `
@@ -1200,25 +2247,72 @@ class Solution {
     }
 }`,
         alt: [{ lang: 'python', code: `class Solution:
-    def findTheCity(self, n, edges, distanceThreshold):
+    def find_the_city(self, n, edges, distanceThreshold):
         INF = float('inf')
         d = [[0 if i == j else INF for j in range(n)] for i in range(n)]
         for u, v, w in edges:
             d[u][v] = min(d[u][v], w)
             d[v][u] = min(d[v][u], w)
         for k in range(n):
+            dk = d[k]
             for i in range(n):
-                if d[i][k] == INF:
+                dik = d[i][k]
+                if dik == INF:
                     continue
+                di = d[i]
                 for j in range(n):
-                    if d[i][k] + d[k][j] < d[i][j]:
-                        d[i][j] = d[i][k] + d[k][j]
+                    if dik + dk[j] < di[j]:
+                        di[j] = dik + dk[j]
         best, best_cnt = -1, INF
         for i in range(n):
             cnt = sum(1 for j in range(n) if j != i and d[i][j] <= distanceThreshold)
-            if cnt <= best_cnt:
+            if cnt <= best_cnt:              # tie -> larger index wins
                 best, best_cnt = i, cnt
-        return best` }],
+        return best` }, { lang: 'js', code: `function findTheCity(n, edges, distanceThreshold) {
+  const INF = 1e9;
+  const d = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => (i === j ? 0 : INF)));
+  for (const [u, v, w] of edges) {
+    d[u][v] = Math.min(d[u][v], w);
+    d[v][u] = Math.min(d[v][u], w);
+  }
+  for (let k = 0; k < n; k++)
+    for (let i = 0; i < n; i++) {
+      if (d[i][k] === INF) continue;
+      for (let j = 0; j < n; j++)
+        if (d[i][k] + d[k][j] < d[i][j]) d[i][j] = d[i][k] + d[k][j];
+    }
+  let best = -1, bestCnt = Infinity;
+  for (let i = 0; i < n; i++) {
+    let cnt = 0;
+    for (let j = 0; j < n; j++) if (i !== j && d[i][j] <= distanceThreshold) cnt++;
+    if (cnt <= bestCnt) { bestCnt = cnt; best = i; }   // tie -> larger index wins
+  }
+  return best;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int findTheCity(int n, const vector<vector<int>>& edges, int distanceThreshold) {
+        const int INF = 1000000000;
+        vector<vector<int>> d(n, vector<int>(n, INF));
+        for (int i = 0; i < n; i++) d[i][i] = 0;
+        for (auto& e : edges) {
+            d[e[0]][e[1]] = min(d[e[0]][e[1]], e[2]);
+            d[e[1]][e[0]] = min(d[e[1]][e[0]], e[2]);
+        }
+        for (int k = 0; k < n; k++)
+            for (int i = 0; i < n; i++) {
+                if (d[i][k] == INF) continue;
+                for (int j = 0; j < n; j++)
+                    d[i][j] = min(d[i][j], d[i][k] + d[k][j]);
+            }
+        int best = -1, bestCnt = INT_MAX;
+        for (int i = 0; i < n; i++) {
+            int cnt = 0;
+            for (int j = 0; j < n; j++) if (i != j && d[i][j] <= distanceThreshold) cnt++;
+            if (cnt <= bestCnt) { bestCnt = cnt; best = i; }   // tie -> larger index wins
+        }
+        return best;
+    }
+};` }],
         dry: { head: ['k', 'updates', 'row 0 after', 'row 3 after'], rows: [
           ['start', 'direct roads only', '[0, 3, ∞, ∞]', '[∞, 4, 1, 0]'],
           ['0', 'none (0 only touches 1)', '[0, 3, ∞, ∞]', '[∞, 4, 1, 0]'],
@@ -1270,7 +2364,7 @@ class Solution {
       '"remove edges to keep it connected while minimising cost" → MST',
       'answer must use exactly V − 1 edges / "no redundant connections"'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
 // Lazy Prim with a PriorityQueue. Undirected graph 0..n-1. Returns total MST weight, or -1 if disconnected.
 import java.util.*;
 
@@ -1309,7 +2403,141 @@ class Prim {
         System.out.println("MST weight = " + mst(6, edges, chosen));   // 13
         for (int[] c : chosen) System.out.println(c[0] + " - " + c[1] + " (" + c[2] + ")");
     }
-}`, {
+}`,
+      alt: [{ lang: 'python', run: true, code: `import heapq
+
+# Lazy Prim with a heap. Undirected graph 0..n-1. Returns (total MST weight, chosen edges), or (-1, ...) if disconnected.
+def mst(n, edges):
+    g = [[] for _ in range(n)]
+    for u, v, w in edges:
+        g[u].append((v, w))
+        g[v].append((u, w))
+    in_tree = [False] * n
+    # heap entries: (weight, node, from_node); ordered by weight first
+    pq = [(0, 0, -1)]                       # start anywhere: node 0 with a free "edge"
+    total, count, chosen = 0, 0, []
+    while pq and count < n:
+        w, u, frm = heapq.heappop(pq)
+        if in_tree[u]:
+            continue                        # would close a cycle -> skip
+        in_tree[u] = True
+        total += w
+        count += 1
+        if frm != -1:
+            chosen.append((frm, u, w))
+        for v, wt in g[u]:
+            if not in_tree[v]:
+                heapq.heappush(pq, (wt, v, u))   # key = edge weight only
+    return (total if count == n else -1), chosen   # fewer than n nodes -> graph not connected
+
+# A=0 B=1 C=2 D=3 E=4 F=5 (same as the visualizer)
+edges = [(0, 1, 4), (0, 2, 3), (1, 2, 1), (1, 3, 2), (2, 4, 4), (3, 4, 5), (3, 5, 3), (4, 5, 6)]
+total, chosen = mst(6, edges)
+print("MST weight =", total)                # 13
+for a, b, w in chosen:
+    print(f"{a} - {b} ({w})")` }, { lang: 'js', run: true, code: `// JS has no built-in heap, so this is a small binary min-heap with a comparator.
+class MinHeap {
+  constructor(cmp) { this.a = []; this.cmp = cmp; }
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (this.cmp(a[i], a[p]) >= 0) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.cmp(a[l], a[m]) < 0) m = l;
+        if (r < a.length && this.cmp(a[r], a[m]) < 0) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+// Lazy Prim with a heap. Undirected graph 0..n-1. Returns { total, chosen }; total is -1 if disconnected.
+function mst(n, edges) {
+  const g = Array.from({ length: n }, () => []);
+  for (const [u, v, w] of edges) {
+    g[u].push([v, w]);
+    g[v].push([u, w]);
+  }
+  const inTree = new Array(n).fill(false);
+  // heap entries: [weight, node, fromNode]; ordered by weight only
+  const pq = new MinHeap((a, b) => a[0] - b[0]);
+  pq.push([0, 0, -1]);                      // start anywhere: node 0 with a free "edge"
+  let total = 0, count = 0;
+  const chosen = [];
+  while (pq.size() > 0 && count < n) {
+    const [w, u, from] = pq.pop();
+    if (inTree[u]) continue;                // would close a cycle -> skip
+    inTree[u] = true;
+    total += w;
+    count++;
+    if (from !== -1) chosen.push([from, u, w]);
+    for (const [v, wt] of g[u])
+      if (!inTree[v]) pq.push([wt, v, u]);  // key = edge weight only
+  }
+  return { total: count === n ? total : -1, chosen };   // fewer than n nodes -> graph not connected
+}
+
+// A=0 B=1 C=2 D=3 E=4 F=5 (same as the visualizer)
+const edges = [[0, 1, 4], [0, 2, 3], [1, 2, 1], [1, 3, 2], [2, 4, 4], [3, 4, 5], [3, 5, 3], [4, 5, 6]];
+const { total, chosen } = mst(6, edges);
+console.log('MST weight =', total);          // 13
+for (const [a, b, w] of chosen) console.log(a + ' - ' + b + ' (' + w + ')');` }, { lang: 'cpp', code: `#include <bits/stdc++.h>
+using namespace std;
+
+// Lazy Prim with a priority_queue. Undirected graph 0..n-1. Returns total MST weight, or -1 if disconnected.
+long long mst(int n, const vector<array<int, 3>>& edges, vector<array<int, 3>>& chosen) {
+    vector<vector<pair<int, int>>> g(n);
+    for (auto& e : edges) {
+        g[e[0]].push_back({e[1], e[2]});
+        g[e[1]].push_back({e[0], e[2]});
+    }
+    vector<bool> inTree(n, false);
+    // heap entries: {weight, node, fromNode}; min-heap ordered by weight first
+    priority_queue<array<int, 3>, vector<array<int, 3>>, greater<>> pq;
+    pq.push({0, 0, -1});                    // start anywhere: node 0 with a free "edge"
+    long long total = 0;
+    int count = 0;
+    while (!pq.empty() && count < n) {
+        auto [w, u, from] = pq.top();
+        pq.pop();
+        if (inTree[u]) continue;            // would close a cycle -> skip
+        inTree[u] = true;
+        total += w;
+        count++;
+        if (from != -1) chosen.push_back({from, u, w});
+        for (auto [v, wt] : g[u])
+            if (!inTree[v]) pq.push({wt, v, u});   // key = edge weight first
+    }
+    return count == n ? total : -1;         // fewer than n nodes -> graph not connected
+}
+
+int main() {
+    // A=0 B=1 C=2 D=3 E=4 F=5 (same as the visualizer)
+    vector<array<int, 3>> edges = {{0,1,4},{0,2,3},{1,2,1},{1,3,2},{2,4,4},{3,4,5},{3,5,3},{4,5,6}};
+    vector<array<int, 3>> chosen;
+    cout << "MST weight = " << mst(6, edges, chosen) << "\\n";   // 13
+    for (auto& c : chosen) cout << c[0] << " - " << c[1] << " (" << c[2] << ")\\n";
+    return 0;
+}` }] }, {
       lang: 'python', run: true, title: 'Prim in Python with heapq (runnable)', code: `import heapq
 
 def prim(n, edges):
@@ -1384,7 +2612,9 @@ for p, u, w in chosen:
       { title: 'MST is NOT the shortest-path tree', html: `<p>Triangle A–B (2), B–C (2), A–C (3). MST = {A–B, B–C}, weight 4. But the shortest path A → C is the direct edge (3), not A→B→C (4). An MST minimises the <b>total</b> wire, not each route.</p>` },
       { title: 'Dense Prim for "connect all points"', html: `<p>1000 points, every pair is an edge (≈ 500,000 edges). Heap Prim: ~E log V ≈ 10<sup>7</sup> plus big memory. Array Prim: keep <code>best[v]</code> = cheapest edge from tree to v, pick the min by scanning, update in O(V): total V² = 10<sup>6</sup>, no edge list stored at all.</p>` },
       { title: 'Disconnected input', html: `<p>Edges A–B (1), C–D (2). Prim from A adds B and then the heap is empty with 2 of 4 nodes. Return -1 ("impossible"), or run Prim from every unvisited node to build a <b>minimum spanning forest</b>.</p>` },
-      { title: 'Maximum spanning tree', html: `<p>Want the most reliable network where weight = bandwidth? Use a <b>max</b>-heap (or negate weights). Everything else stays the same — the cut property works for maximum too.</p>`, code: `PriorityQueue<int[]> pq = new PriorityQueue<>((a, b) -> Integer.compare(b[0], a[0])); // max-heap` }
+      { title: 'Maximum spanning tree', html: `<p>Want the most reliable network where weight = bandwidth? Use a <b>max</b>-heap (or negate weights). Everything else stays the same — the cut property works for maximum too.</p>`, code: { lang: 'java', code: `PriorityQueue<int[]> pq = new PriorityQueue<>((a, b) -> Integer.compare(b[0], a[0])); // max-heap`,
+      alt: [{ lang: 'python', code: `pq = []                                   # heapq is a min-heap: push (-weight, node) for a max-heap` }, { lang: 'js', code: `// uses the MinHeap class from the Dijkstra template (JS has no built-in heap)
+const pq = new MinHeap((a, b) => b[0] - a[0]);   // flip the comparator for a max-heap` }, { lang: 'cpp', code: `priority_queue<array<int, 3>> pq;   // already a max-heap by default` }] } }
     ],
     deepDive: `<p><b>Proof of the cut property (exchange argument).</b> Let e be the cheapest edge across cut (S, V∖S) and T an MST without e. Adding e to T creates a cycle; that cycle crosses the cut at least twice, so it contains another crossing edge f with w(f) ≥ w(e). T − f + e is still a spanning tree and weighs no more. So some MST contains e. Prim applies this with S = current tree at every step.</p>
       <p><b>Cycle property</b> (the mirror rule): the most expensive edge on any cycle (if strictly heaviest) is in <b>no</b> MST. Used to update an MST when a new edge arrives: add it, find the max edge on the created cycle, remove it.</p>
@@ -1424,7 +2654,57 @@ class Solution {
     }
 }` },
       mcq: { q: 'The graph is complete (n² edges). Which Prim version fits best?', options: ['Array Prim: best[v] + linear scan, O(n²)', 'Heap Prim over all n² edges, O(n² log n)', 'Dijkstra from point 0', 'Floyd-Warshall'], answer: 0, explain: 'In a dense graph E ≈ V², so the O(V²) array version is optimal and needs no edge list. Dijkstra/FW answer different questions.' },
-      hints: [`<p>"Connect all points with minimum total cost, one path between any two" = minimum spanning tree on the complete graph.</p>`, `<p>Keep <code>best[v]</code> = cheapest cost to connect v to the current tree. Each round: pick the outside v with the smallest best[v], add it, then update every outside point's best using the new node.</p>`, `<p>Start with best[0] = 0, others ∞. n rounds × (O(n) scan + O(n) update) = O(n²) = 10<sup>6</sup>. Each distance is ≤ 4·10<sup>6</sup>, but 999 of them could sum past the int limit in theory — keep the running total in a <code>long</code> as a safe habit.</p>`],
+      hints: [`<p>"Connect all points with minimum total cost, one path between any two" = minimum spanning tree on the complete graph.</p>`, `<p>Keep <code>best[v]</code> = cheapest cost to connect v to the current tree. Each round: pick the outside v with the smallest best[v], add it, then update every outside point's best using the new node.</p>`, `<p>Start with best[0] = 0, others ∞. n rounds × (O(n) scan + O(n) update) = O(n²) = 10<sup>6</sup>. Each distance is ≤ 4·10<sup>6</sup>, but 999 of them could sum past the int limit in theory — keep the running total in a 64-bit integer (<code>long</code> / <code>long long</code>) as a safe habit.</p>`],
+      tests: { sig: "int[][] -> int", fn: "ptsRun", harness: {
+        java: `class Check {
+    static int ptsRun(int[][] pts) {
+        if (pts[0][0] == -1 && pts[0].length == 4) {      // marker row [-1, n, a, b]
+            int n = pts[0][1];
+            long a = pts[0][2], b = pts[0][3];
+            pts = new int[n][];
+            for (int i = 0; i < n; i++) pts[i] = new int[]{(int) ((i * a) % 2000001) - 1000000, (int) ((i * b) % 2000001) - 1000000};
+        }
+        return new Solution().minCostConnectPoints(pts);
+    }
+}`,
+        python: `def pts_run(pts):
+    if pts[0][0] == -1 and len(pts[0]) == 4:
+        _, n, a, b = pts[0]
+        pts = [[(i * a) % 2000001 - 1000000, (i * b) % 2000001 - 1000000] for i in range(n)]
+    return Solution().min_cost_connect_points(pts)`,
+        js: `function ptsRun(pts) {
+  if (pts[0][0] === -1 && pts[0].length === 4) {
+    const [, n, a, b] = pts[0];
+    pts = Array.from({ length: n }, (_, i) => [(i * a) % 2000001 - 1000000, (i * b) % 2000001 - 1000000]);
+  }
+  return minCostConnectPoints(pts);
+}`,
+        cpp: `int ptsRun(vector<vector<int>> pts) {
+    if (pts[0][0] == -1 && pts[0].size() == 4) {
+        int n = pts[0][1];
+        long long a = pts[0][2], b = pts[0][3];
+        pts.clear();
+        for (int i = 0; i < n; i++) pts.push_back({(int)((i * a) % 2000001) - 1000000, (int)((i * b) % 2000001) - 1000000});
+    }
+    return Solution().minCostConnectPoints(pts);
+}`
+      }, cases: [
+        [[[[0,0],[2,2],[3,10],[5,2],[7,0]]],20],
+        [[[[3,12],[-2,5],[-4,1]]],18],
+        [[[[0,0]]],0],
+        [[[[0,0],[1,1]]],2],
+        [[[[0,0],[0,1],[0,2],[0,3]]],3],
+        [[[[-1000000,-1000000],[1000000,1000000]]],4000000],
+        [[[[-1000000,-1000000],[1000000,1000000],[-1000000,1000000],[1000000,-1000000]]],6000000],
+        [[[[0,0],[1,0],[0,1],[1,1],[5,5]]],11],
+        [[[[2,-3],[-7,4],[5,5],[-1,-1],[9,0],[0,9]]],44],
+        [[[[-10,-6],[-12,9],[2,0],[7,12],[1,6],[-14,5]]],56],
+        [[[[-6,-14],[-19,1],[-4,-3],[12,-16],[8,-19],[1,13]]],79],
+        [[[[-17,-9],[0,-15],[-3,-12],[-16,-3],[14,12],[-4,5]]],73],
+        [[[[-1,1000,7919,104729]]],64727094],
+        [[[[-1,1000,1,1]]],1998],
+        [[[[-1,1000,2000,1999]]],3995001]
+      ] },
       solution: {
         approach: `<p>Dense (array) Prim: no heap, no edge list. O(n²) time, O(n) memory.</p>`,
         code: `
@@ -1452,15 +2732,15 @@ class Solution {
     }
 }`,
         alt: [{ lang: 'python', code: `class Solution:
-    def minCostConnectPoints(self, points):
+    def min_cost_connect_points(self, points):
         n = len(points)
         INF = float('inf')
-        best = [INF] * n
+        best = [INF] * n                 # cheapest link from the tree to each point
         best[0] = 0
         in_tree = [False] * n
         total = 0
         for _ in range(n):
-            u = min((v for v in range(n) if not in_tree[v]), key=lambda v: best[v])
+            u = min((v for v in range(n) if not in_tree[v]), key=best.__getitem__)
             in_tree[u] = True
             total += best[u]
             ux, uy = points[u]
@@ -1469,7 +2749,48 @@ class Solution {
                     w = abs(ux - points[v][0]) + abs(uy - points[v][1])
                     if w < best[v]:
                         best[v] = w
-        return total` }],
+        return total` }, { lang: 'js', code: `function minCostConnectPoints(points) {
+  const n = points.length;
+  const best = new Array(n).fill(Infinity);   // cheapest link from the tree to each point
+  const inTree = new Array(n).fill(false);
+  best[0] = 0;
+  let total = 0;
+  for (let it = 0; it < n; it++) {
+    let u = -1;
+    for (let v = 0; v < n; v++)
+      if (!inTree[v] && (u === -1 || best[v] < best[u])) u = v;
+    inTree[u] = true;
+    total += best[u];
+    for (let v = 0; v < n; v++) {
+      if (inTree[v]) continue;
+      const w = Math.abs(points[u][0] - points[v][0]) + Math.abs(points[u][1] - points[v][1]);
+      if (w < best[v]) best[v] = w;
+    }
+  }
+  return total;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int minCostConnectPoints(const vector<vector<int>>& points) {
+        int n = points.size();
+        vector<int> best(n, INT_MAX);     // cheapest link from the tree to each point
+        vector<bool> inTree(n, false);
+        best[0] = 0;
+        long long total = 0;
+        for (int it = 0; it < n; it++) {
+            int u = -1;
+            for (int v = 0; v < n; v++)
+                if (!inTree[v] && (u == -1 || best[v] < best[u])) u = v;
+            inTree[u] = true;
+            total += best[u];
+            for (int v = 0; v < n; v++) {
+                if (inTree[v]) continue;
+                int w = abs(points[u][0] - points[v][0]) + abs(points[u][1] - points[v][1]);
+                best[v] = min(best[v], w);
+            }
+        }
+        return (int)total;
+    }
+};` }],
         dry: { head: ['pick', 'cost added', 'total', 'best[] after update (p0..p4)'], rows: [
           ['p0 (0,0)', '0', '0', '[–, 4, 13, 7, 7]'],
           ['p1 (2,2)', '4', '4', '[–, –, 9, 3, 7]'],
@@ -1521,7 +2842,7 @@ class Solution {
       '"group into k clusters maximising the minimum gap" → Kruskal stopped at k components',
       'online connectivity questions while edges arrive → DSU'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
 // Kruskal's MST with DSU (path compression + union by rank).
 import java.util.*;
 
@@ -1566,7 +2887,125 @@ class Kruskal {
         System.out.println("MST weight = " + mst(6, edges, chosen));   // 13
         for (int[] e : chosen) System.out.println(e[0] + " - " + e[1] + " (" + e[2] + ")");
     }
-}`, {
+}`,
+      alt: [{ lang: 'python', run: true, code: `# Kruskal's MST with DSU (path compression + union by rank).
+parent, rnk = [], []
+
+def find(x):
+    if parent[x] != x:
+        parent[x] = find(parent[x])         # path compression
+    return parent[x]
+
+def union(a, b):
+    ra, rb = find(a), find(b)
+    if ra == rb:
+        return False                        # same group -> edge would form a cycle
+    if rnk[ra] < rnk[rb]:
+        ra, rb = rb, ra
+    parent[rb] = ra                         # hang the shorter tree under the taller
+    if rnk[ra] == rnk[rb]:
+        rnk[ra] += 1
+    return True
+
+# edges: (u, v, w). Returns (MST weight, chosen edges); the weight is -1 if the graph is disconnected.
+def mst(n, edges):
+    global parent, rnk
+    parent = list(range(n))
+    rnk = [0] * n
+    total, chosen = 0, []
+    for e in sorted(edges, key=lambda e: e[2]):    # cheapest first
+        if union(e[0], e[1]):
+            total += e[2]
+            chosen.append(e)
+            if len(chosen) == n - 1:        # a spanning tree has n-1 edges
+                break
+    return (total if len(chosen) == n - 1 else -1), chosen
+
+edges = [(0, 1, 4), (0, 2, 3), (1, 2, 1), (1, 3, 2), (2, 4, 4), (3, 4, 5), (3, 5, 3), (4, 5, 6)]
+total, chosen = mst(6, edges)
+print("MST weight =", total)                # 13
+for u, v, w in chosen:
+    print(f"{u} - {v} ({w})")` }, { lang: 'js', run: true, code: `// Kruskal's MST with DSU (path compression + union by rank).
+let parent = [], rnk = [];
+
+function find(x) {
+  if (parent[x] !== x) parent[x] = find(parent[x]);   // path compression
+  return parent[x];
+}
+
+function union(a, b) {
+  let ra = find(a), rb = find(b);
+  if (ra === rb) return false;              // same group -> edge would form a cycle
+  if (rnk[ra] < rnk[rb]) [ra, rb] = [rb, ra];
+  parent[rb] = ra;                          // hang the shorter tree under the taller
+  if (rnk[ra] === rnk[rb]) rnk[ra]++;
+  return true;
+}
+
+// edges: [u, v, w]. Returns { total, chosen }; total is -1 if the graph is disconnected.
+function mst(n, edges) {
+  parent = Array.from({ length: n }, (_, i) => i);
+  rnk = new Array(n).fill(0);
+  const sorted = [...edges].sort((a, b) => a[2] - b[2]);   // cheapest first
+  let total = 0;
+  const chosen = [];
+  for (const e of sorted) {
+    if (union(e[0], e[1])) {
+      total += e[2];
+      chosen.push(e);
+      if (chosen.length === n - 1) break;   // a spanning tree has n-1 edges
+    }
+  }
+  return { total: chosen.length === n - 1 ? total : -1, chosen };
+}
+
+const edges = [[0, 1, 4], [0, 2, 3], [1, 2, 1], [1, 3, 2], [2, 4, 4], [3, 4, 5], [3, 5, 3], [4, 5, 6]];
+const { total, chosen } = mst(6, edges);
+console.log('MST weight =', total);         // 13
+for (const [u, v, w] of chosen) console.log(u + ' - ' + v + ' (' + w + ')');` }, { lang: 'cpp', code: `#include <bits/stdc++.h>
+using namespace std;
+
+// Kruskal's MST with DSU (path compression + union by rank).
+vector<int> parent, rnk;
+
+int find(int x) {
+    if (parent[x] != x) parent[x] = find(parent[x]);   // path compression
+    return parent[x];
+}
+
+bool unite(int a, int b) {
+    int ra = find(a), rb = find(b);
+    if (ra == rb) return false;                         // same group -> edge would form a cycle
+    if (rnk[ra] < rnk[rb]) swap(ra, rb);
+    parent[rb] = ra;                                    // hang the shorter tree under the taller
+    if (rnk[ra] == rnk[rb]) rnk[ra]++;
+    return true;
+}
+
+// edges: {u, v, w}. Returns MST weight, or -1 if the graph is disconnected.
+long long mst(int n, vector<array<int, 3>> edges, vector<array<int, 3>>& chosen) {
+    parent.resize(n);
+    iota(parent.begin(), parent.end(), 0);
+    rnk.assign(n, 0);
+    sort(edges.begin(), edges.end(), [](const auto& a, const auto& b) { return a[2] < b[2]; });   // cheapest first
+    long long total = 0;
+    for (auto& e : edges) {
+        if (unite(e[0], e[1])) {
+            total += e[2];
+            chosen.push_back(e);
+            if ((int)chosen.size() == n - 1) break;     // a spanning tree has n-1 edges
+        }
+    }
+    return (int)chosen.size() == n - 1 ? total : -1;
+}
+
+int main() {
+    vector<array<int, 3>> edges = {{0,1,4},{0,2,3},{1,2,1},{1,3,2},{2,4,4},{3,4,5},{3,5,3},{4,5,6}};
+    vector<array<int, 3>> chosen;
+    cout << "MST weight = " << mst(6, edges, chosen) << "\\n";   // 13
+    for (auto& e : chosen) cout << e[0] << " - " << e[1] << " (" << e[2] << ")\\n";
+    return 0;
+}` }] }, {
       lang: 'python', run: true, title: 'Kruskal in Python + clustering by stopping early (runnable)', code: `def kruskal(n, edges, stop_at_components=1):
     parent = list(range(n))
     rank = [0] * n
@@ -1674,7 +3113,7 @@ print("2 clusters:", list(groups.values()))
       { title: 'Path compression in action', html: `<p>Chain parent: D → C → B → A (A is root). <code>find(D)</code> walks 3 steps, then sets parent[D] = parent[C] = A. Next <code>find(D)</code> is 1 step. ${H.arr(['A', 'A', 'B', 'C'], { label: 'before (A B C D)' })}${H.arr(['A', 'A', 'A', 'A'], { label: 'after find(D)', hl: { 2: 'g', 3: 'g' } })}</p>` },
       { title: 'Optimize Water Distribution (virtual node trick)', html: `<p>Each house can dig its own well (cost well[i]) or connect by pipe. Add a <b>virtual node 0</b> = "the ground water", with edge 0–i of weight well[i]. Now it is a plain MST over n + 1 nodes: Kruskal decides automatically which houses dig wells.</p>` },
       { title: 'Clustering (single linkage)', html: `<p>Want k = 2 groups with the biggest possible gap between groups? Run Kruskal but <b>stop when 2 components remain</b>. The next edge Kruskal would take is exactly the maximum possible minimum gap. The runnable Python shows the 2 clusters for the default graph.</p>` },
-      { title: 'Minimum bottleneck path', html: `<p>"Find a path from s to t that minimises the <b>largest</b> edge on it." Add edges in increasing order (Kruskal style) until s and t share a root — the last edge added is the answer. Every MST path is a minimum bottleneck path.</p>`, code: `
+      { title: 'Minimum bottleneck path', html: `<p>"Find a path from s to t that minimises the <b>largest</b> edge on it." Add edges in increasing order (Kruskal style) until s and t share a root — the last edge added is the answer. Every MST path is a minimum bottleneck path.</p>`, code: { lang: 'java', code: `
 static int bottleneck(int n, int[][] edges, int s, int t) {
     int[] parent = new int[n];
     for (int i = 0; i < n; i++) parent[i] = i;
@@ -1689,10 +3128,50 @@ static int bottleneck(int n, int[][] edges, int s, int t) {
 static int root(int[] p, int x) {
     while (p[x] != x) { p[x] = p[p[x]]; x = p[x]; }
     return x;
-}` }
+}`,
+      alt: [{ lang: 'python', code: `def bottleneck(n, edges, s, t):
+    parent = list(range(n))
+
+    def root(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for u, v, w in sorted(edges, key=lambda e: e[2]):
+        parent[root(u)] = root(v)
+        if root(s) == root(t):
+            return w                            # the bottleneck
+    return -1                                   # never connected` }, { lang: 'js', code: `function bottleneck(n, edges, s, t) {
+  const parent = Array.from({ length: n }, (_, i) => i);
+  const root = (x) => {
+    while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; }
+    return x;
+  };
+  const sorted = [...edges].sort((a, b) => a[2] - b[2]);
+  for (const [u, v, w] of sorted) {
+    parent[root(u)] = root(v);
+    if (root(s) === root(t)) return w;          // the bottleneck
+  }
+  return -1;                                    // never connected
+}` }, { lang: 'cpp', code: `int root(vector<int>& p, int x) {
+    while (p[x] != x) { p[x] = p[p[x]]; x = p[x]; }
+    return x;
+}
+
+int bottleneck(int n, vector<array<int, 3>> edges, int s, int t) {
+    vector<int> parent(n);
+    iota(parent.begin(), parent.end(), 0);
+    sort(edges.begin(), edges.end(), [](const auto& a, const auto& b) { return a[2] < b[2]; });
+    for (auto& e : edges) {
+        parent[root(parent, e[0])] = root(parent, e[1]);
+        if (root(parent, s) == root(parent, t)) return e[2];   // the bottleneck
+    }
+    return -1;                                                 // never connected
+}` }] } }
     ],
     deepDive: `<p><b>Exact complexity.</b> Sorting O(E log E) = O(E log V). DSU with both path compression and union by rank: O(α(V)) amortised per operation (Tarjan 1975); with only one of them, O(log V). If weights are small integers, counting/radix sort makes Kruskal nearly linear.</p>
-      <p><b>Recursion depth.</b> Recursive <code>find</code> on a long chain (before compression) can overflow the Java stack around 10<sup>4</sup>–10<sup>5</sup> deep. With union by rank the depth stays ≤ log V, or use the iterative two-pass / path-halving find.</p>
+      <p><b>Recursion depth.</b> Recursive <code>find</code> on a long chain (before compression) can overflow the call stack (about 10<sup>3</sup> frames in Python, 10<sup>4</sup> in Java and JS) when it is 10<sup>4</sup>–10<sup>5</sup> deep. With union by rank the depth stays ≤ log V, or use the iterative two-pass / path-halving find.</p>
       <p><b>Critical vs pseudo-critical edges (LC 1489).</b> Edge e is <i>critical</i> if removing it increases the MST weight (or disconnects); <i>pseudo-critical</i> if forcing it in still gives the optimal weight. Run Kruskal E times with "skip e" / "force e": O(E² α). Faster: within each group of equal weights, find bridges in the component graph.</p>
       <p><b>Second-best MST:</b> for each non-tree edge (u, v, w), adding it creates a cycle; remove the max tree edge on the u–v tree path. With LCA + binary lifting that max is O(log V) per query → O(E log V) total.</p>
       <p><b>Borůvka's algorithm</b> (1926, the oldest MST algorithm): every component picks its cheapest outgoing edge at once; components at least halve each round → O(E log V). It parallelises beautifully, which is why GPU and distributed MST (e.g. on Spark) use it.</p>
@@ -1734,6 +3213,69 @@ class Solution {
 }` },
       mcq: { q: 'While scanning sorted edges, find(x) == find(y). What do you do?', options: ['Skip the edge — it would close a cycle', 'Take it — it is cheap', 'Stop the algorithm', 'Swap the two roots'], answer: 0, explain: 'Same root = already connected. Adding the edge only adds cost and creates a cycle; a tree never needs it.' },
       hints: [`<p>"Connect every pair, minimum total cost" = MST. The input is already an edge list — perfect for Kruskal.</p>`, `<p>Sort by cost, DSU over 1..n (size n + 1). Take an edge only when <code>union</code> returns true.</p>`, `<p>Count taken edges; when it hits n − 1, return the total. If the loop ends earlier → -1. Edge case n = 1 → 0 (no edges needed).</p>`],
+      tests: { sig: "int int[][] -> int", fn: "connRun", harness: {
+        java: `class Check {
+    static int connRun(int n, int[][] c) {
+        if (c[0][0] == -1) {                      // marker row [-1, mode]: a chain of n cities
+            int mode = c[0][1];
+            List<int[]> list = new ArrayList<>();
+            for (int i = 1; i < n; i++) {
+                if (mode == 1 && i == 5000) continue;
+                list.add(new int[]{i, i + 1, mode == 2 ? 100000 : (i * 37) % 100001});
+            }
+            if (mode != 1) list.add(new int[]{n, 1, mode == 2 ? 100000 : (n * 37) % 100001});
+            c = list.toArray(new int[0][]);
+        }
+        return new Solution().minimumCost(n, c);
+    }
+}`,
+        python: `def conn_run(n, c):
+    if c[0][0] == -1:
+        mode = c[0][1]
+        c = [[i, i + 1, 100000 if mode == 2 else (i * 37) % 100001] for i in range(1, n) if not (mode == 1 and i == 5000)]
+        if mode != 1:
+            c.append([n, 1, 100000 if mode == 2 else (n * 37) % 100001])
+    return Solution().minimum_cost(n, c)`,
+        js: `function connRun(n, c) {
+  if (c[0][0] === -1) {
+    const mode = c[0][1];
+    c = [];
+    for (let i = 1; i < n; i++) {
+      if (mode === 1 && i === 5000) continue;
+      c.push([i, i + 1, mode === 2 ? 100000 : (i * 37) % 100001]);
+    }
+    if (mode !== 1) c.push([n, 1, mode === 2 ? 100000 : (n * 37) % 100001]);
+  }
+  return minimumCost(n, c);
+}`,
+        cpp: `int connRun(int n, vector<vector<int>> c) {
+    if (c[0][0] == -1) {
+        int mode = c[0][1];
+        c.clear();
+        for (int i = 1; i < n; i++) {
+            if (mode == 1 && i == 5000) continue;
+            c.push_back({i, i + 1, mode == 2 ? 100000 : (i * 37) % 100001});
+        }
+        if (mode != 1) c.push_back({n, 1, mode == 2 ? 100000 : (n * 37) % 100001});
+    }
+    return Solution().minimumCost(n, c);
+}`
+      }, cases: [
+        [[3,[[1,2,5],[1,3,6],[2,3,1]]],6],
+        [[4,[[1,2,3],[3,4,4]]],-1],
+        [[1,[[1,1,7]]],0],
+        [[2,[[1,2,0]]],0],
+        [[2,[[1,2,3],[1,2,1],[2,1,2]]],1],
+        [[5,[[1,2,1],[2,3,1],[3,1,0],[4,5,2]]],-1],
+        [[4,[[1,2,10],[2,3,10],[3,4,10],[1,4,1],[1,3,1]]],12],
+        [[3,[[1,2,100000],[2,3,100000]]],200000],
+        [[9,[[5,2,19],[4,2,8],[2,8,0],[6,9,13],[5,3,1],[9,4,3],[3,5,1],[3,4,9],[5,9,6]]],-1],
+        [[6,[[5,6,5],[3,1,0],[1,6,16],[5,2,16],[4,2,14],[1,6,20],[4,6,15],[5,4,16],[3,6,6],[2,3,6]]],31],
+        [[5,[[3,1,4],[3,4,5],[5,3,19],[2,3,1],[4,2,5]]],29],
+        [[10000,[[-1,0]]],471571221],
+        [[10000,[[-1,1]]],-1],
+        [[10000,[[-1,2]]],999900000]
+      ] },
       solution: {
         approach: `<p>Kruskal with DSU (path compression + union by rank). Stop as soon as n − 1 edges are taken.</p>`,
         code: `
@@ -1774,15 +3316,17 @@ class Solution {
     }
 }`,
         alt: [{ lang: 'python', code: `class Solution:
-    def minimumCost(self, n, connections):
+    def minimum_cost(self, n, connections):
         parent = list(range(n + 1))
 
         def find(x):
             while parent[x] != x:
-                parent[x] = parent[parent[x]]
+                parent[x] = parent[parent[x]]    # path halving
                 x = parent[x]
             return x
 
+        if n == 1:
+            return 0
         total = used = 0
         for x, y, c in sorted(connections, key=lambda e: e[2]):
             rx, ry = find(x), find(y)
@@ -1792,7 +3336,54 @@ class Solution {
                 used += 1
                 if used == n - 1:
                     return total
-        return 0 if n == 1 else -1` }],
+        return -1` }, { lang: 'js', code: `function minimumCost(n, connections) {
+  if (n === 1) return 0;
+  const parent = Array.from({ length: n + 1 }, (_, i) => i);
+  const find = (x) => {
+    while (parent[x] !== x) {
+      parent[x] = parent[parent[x]];       // path halving
+      x = parent[x];
+    }
+    return x;
+  };
+  const sorted = [...connections].sort((a, b) => a[2] - b[2]);
+  let total = 0, used = 0;
+  for (const [x, y, c] of sorted) {
+    const rx = find(x), ry = find(y);
+    if (rx !== ry) {
+      parent[ry] = rx;
+      total += c;
+      if (++used === n - 1) return total;
+    }
+  }
+  return -1;
+}` }, { lang: 'cpp', code: `class Solution {
+    vector<int> parent;
+    int find(int x) {
+        while (parent[x] != x) {
+            parent[x] = parent[parent[x]];   // path halving
+            x = parent[x];
+        }
+        return x;
+    }
+public:
+    int minimumCost(int n, vector<vector<int>> connections) {
+        if (n == 1) return 0;
+        parent.resize(n + 1);
+        iota(parent.begin(), parent.end(), 0);
+        sort(connections.begin(), connections.end(),
+             [](const vector<int>& a, const vector<int>& b) { return a[2] < b[2]; });
+        int total = 0, used = 0;
+        for (auto& c : connections) {
+            int a = find(c[0]), b = find(c[1]);
+            if (a == b) continue;
+            parent[b] = a;
+            total += c[2];
+            if (++used == n - 1) return total;
+        }
+        return -1;
+    }
+};` }],
         dry: { head: ['edge (sorted)', 'roots', 'action', 'used / total'], rows: [
           ['2–3 (1)', '2 ≠ 3', 'union', '1 / 1'],
           ['1–2 (5)', '1 ≠ 2', 'union', '2 / 6 → used = n − 1 → return <span class="c-g">6</span>'],
@@ -1835,7 +3426,7 @@ class Solution {
       '"<b>number of ways</b> to arrive in the shortest time" → dist[] + ways[] together (mod 10<sup>9</sup>+7)',
       '"you may use <b>one coupon / k free edges</b>" → state (node, couponsUsed), layered graph'
     ],
-    code: [`
+    code: [{ lang: 'java', code: `
 // Template: Dijkstra over an EXPANDED state (node, extra) with a custom combine.
 // Example: cheapest price from src to dst using at most k stops, via states (city, flightsUsed).
 import java.util.*;
@@ -1897,7 +3488,199 @@ class StateDijkstra {
         System.out.println(cheapest(4, flights, 0, 3, 2));            // 400
         System.out.println(minEffort(new int[][]{{1,2,2},{3,8,2},{5,3,5}}));   // 2
     }
-}`, {
+}`,
+      alt: [{ lang: 'python', run: true, code: `import heapq
+
+# Template: Dijkstra over an EXPANDED state (node, extra) with a custom combine.
+# Example: cheapest price from src to dst using at most k stops, via states (city, flightsUsed).
+def cheapest(n, flights, src, dst, k):
+    g = [[] for _ in range(n)]
+    for u, v, w in flights:
+        g[u].append((v, w))
+    max_edges = k + 1
+    INF = float('inf')
+    best = [[INF] * (max_edges + 1) for _ in range(n)]    # best[city][edges_used]
+    best[src][0] = 0
+    pq = [(0, src, 0)]                                    # (cost, city, edges_used)
+    while pq:
+        cost, u, used = heapq.heappop(pq)
+        if u == dst:
+            return cost                                   # first time dst is polled = cheapest valid
+        if cost > best[u][used] or used == max_edges:
+            continue
+        for v, w in g[u]:
+            if cost + w < best[v][used + 1]:
+                best[v][used + 1] = cost + w
+                heapq.heappush(pq, (cost + w, v, used + 1))
+    return -1
+
+# Minimum effort: same skeleton, combine = max instead of +.
+def min_effort(h):
+    R, C = len(h), len(h[0])
+    eff = [[float('inf')] * C for _ in range(R)]
+    eff[0][0] = 0
+    pq = [(0, 0, 0)]
+    while pq:
+        e, r, c = heapq.heappop(pq)
+        if r == R - 1 and c == C - 1:
+            return e
+        if e > eff[r][c]:
+            continue
+        for nr, nc in ((r + 1, c), (r - 1, c), (r, c + 1), (r, c - 1)):
+            if 0 <= nr < R and 0 <= nc < C:
+                ne = max(e, abs(h[nr][nc] - h[r][c]))     # <- the only change
+                if ne < eff[nr][nc]:
+                    eff[nr][nc] = ne
+                    heapq.heappush(pq, (ne, nr, nc))
+    return 0
+
+flights = [(0, 1, 100), (1, 2, 100), (2, 0, 100), (1, 3, 600), (2, 3, 200)]
+print(cheapest(4, flights, 0, 3, 1))                      # 700
+print(cheapest(4, flights, 0, 3, 2))                      # 400
+print(min_effort([[1, 2, 2], [3, 8, 2], [5, 3, 5]]))      # 2` }, { lang: 'js', run: true, code: `// JS has no built-in heap, so this is a small binary min-heap with a comparator.
+class MinHeap {
+  constructor(cmp) { this.a = []; this.cmp = cmp; }
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (this.cmp(a[i], a[p]) >= 0) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.cmp(a[l], a[m]) < 0) m = l;
+        if (r < a.length && this.cmp(a[r], a[m]) < 0) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+// Template: Dijkstra over an EXPANDED state (node, extra) with a custom combine.
+// Example: cheapest price from src to dst using at most k stops, via states (city, flightsUsed).
+function cheapest(n, flights, src, dst, k) {
+  const g = Array.from({ length: n }, () => []);
+  for (const [u, v, w] of flights) g[u].push([v, w]);
+  const maxEdges = k + 1;
+  const best = Array.from({ length: n }, () => new Array(maxEdges + 1).fill(Infinity));   // best[city][edgesUsed]
+  best[src][0] = 0;
+  const pq = new MinHeap((a, b) => a[0] - b[0]);
+  pq.push([0, src, 0]);                                   // [cost, city, edgesUsed]
+  while (pq.size() > 0) {
+    const [cost, u, used] = pq.pop();
+    if (u === dst) return cost;                           // first time dst is polled = cheapest valid
+    if (cost > best[u][used] || used === maxEdges) continue;
+    for (const [v, w] of g[u]) {
+      if (cost + w < best[v][used + 1]) {
+        best[v][used + 1] = cost + w;
+        pq.push([cost + w, v, used + 1]);
+      }
+    }
+  }
+  return -1;
+}
+
+// Minimum effort: same skeleton, combine = max instead of +.
+function minEffort(h) {
+  const R = h.length, C = h[0].length;
+  const eff = Array.from({ length: R }, () => new Array(C).fill(Infinity));
+  eff[0][0] = 0;
+  const pq = new MinHeap((a, b) => a[0] - b[0]);
+  pq.push([0, 0, 0]);
+  const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  while (pq.size() > 0) {
+    const [e, r, c] = pq.pop();
+    if (r === R - 1 && c === C - 1) return e;
+    if (e > eff[r][c]) continue;
+    for (const [dr, dc] of dirs) {
+      const nr = r + dr, nc = c + dc;
+      if (nr < 0 || nc < 0 || nr >= R || nc >= C) continue;
+      const ne = Math.max(e, Math.abs(h[nr][nc] - h[r][c]));   // <- the only change
+      if (ne < eff[nr][nc]) { eff[nr][nc] = ne; pq.push([ne, nr, nc]); }
+    }
+  }
+  return 0;
+}
+
+const flights = [[0, 1, 100], [1, 2, 100], [2, 0, 100], [1, 3, 600], [2, 3, 200]];
+console.log(cheapest(4, flights, 0, 3, 1));               // 700
+console.log(cheapest(4, flights, 0, 3, 2));               // 400
+console.log(minEffort([[1, 2, 2], [3, 8, 2], [5, 3, 5]])); // 2` }, { lang: 'cpp', code: `#include <bits/stdc++.h>
+using namespace std;
+
+// Template: Dijkstra over an EXPANDED state (node, extra) with a custom combine.
+// Example: cheapest price from src to dst using at most k stops, via states (city, flightsUsed).
+int cheapest(int n, const vector<array<int, 3>>& flights, int src, int dst, int k) {
+    vector<vector<pair<int, int>>> g(n);
+    for (auto& f : flights) g[f[0]].push_back({f[1], f[2]});
+    int maxEdges = k + 1;
+    vector<vector<int>> best(n, vector<int>(maxEdges + 1, INT_MAX));   // best[city][edgesUsed]
+    best[src][0] = 0;
+    using State = array<int, 3>;                          // {cost, city, edgesUsed}
+    priority_queue<State, vector<State>, greater<>> pq;
+    pq.push({0, src, 0});
+    while (!pq.empty()) {
+        auto [cost, u, used] = pq.top();
+        pq.pop();
+        if (u == dst) return cost;                        // first time dst is polled = cheapest valid
+        if (cost > best[u][used] || used == maxEdges) continue;
+        for (auto [v, w] : g[u]) {
+            if (cost + w < best[v][used + 1]) {
+                best[v][used + 1] = cost + w;
+                pq.push({cost + w, v, used + 1});
+            }
+        }
+    }
+    return -1;
+}
+
+// Minimum effort: same skeleton, combine = max instead of +.
+int minEffort(const vector<vector<int>>& h) {
+    int R = h.size(), C = h[0].size();
+    vector<vector<int>> eff(R, vector<int>(C, INT_MAX));
+    eff[0][0] = 0;
+    using State = array<int, 3>;
+    priority_queue<State, vector<State>, greater<>> pq;
+    pq.push({0, 0, 0});
+    const int dr[] = {1, -1, 0, 0}, dc[] = {0, 0, 1, -1};
+    while (!pq.empty()) {
+        auto [e, r, c] = pq.top();
+        pq.pop();
+        if (r == R - 1 && c == C - 1) return e;
+        if (e > eff[r][c]) continue;
+        for (int k = 0; k < 4; k++) {
+            int nr = r + dr[k], nc = c + dc[k];
+            if (nr < 0 || nc < 0 || nr >= R || nc >= C) continue;
+            int ne = max(e, abs(h[nr][nc] - h[r][c]));    // <- the only change
+            if (ne < eff[nr][nc]) { eff[nr][nc] = ne; pq.push({ne, nr, nc}); }
+        }
+    }
+    return 0;
+}
+
+int main() {
+    vector<array<int, 3>> flights = {{0,1,100},{1,2,100},{2,0,100},{1,3,600},{2,3,200}};
+    cout << cheapest(4, flights, 0, 3, 1) << "\\n";        // 700
+    cout << cheapest(4, flights, 0, 3, 2) << "\\n";        // 400
+    cout << minEffort({{1,2,2},{3,8,2},{5,3,5}}) << "\\n"; // 2
+    return 0;
+}` }] }, {
       lang: 'python', run: true, title: 'Counting shortest paths + lexicographic tie-break (runnable)', code: `import heapq
 
 MOD = 10**9 + 7
@@ -2058,7 +3841,12 @@ print("(cost, time) to node 3:", cheapest_then_fastest(4, edges, 0, 3))  # (10, 
     }],
     examples: [
       { title: 'Why plain Dijkstra fails with a stop limit', html: `<p>Flights A→B 100, B→C 100, C→D 100, A→C 500, K = 1 (≤ 2 flights). Plain Dijkstra finalises C at 200 (via B, 2 flights), then reaches D at 300 using <b>3</b> flights — invalid. The valid answer is A→C→D = ${H.c('g', '600')}. The cheap state "C after 2 flights" must not block "C after 1 flight at 500". Expanded state (city, flights) or K + 1 rounds fixes it.</p>` },
-      { title: 'Path With Maximum Probability (LC 1514)', html: `<p>Combine = multiply, goal = maximise. Probabilities are ≤ 1, so extending a path never <b>increases</b> it — the mirror of "never decreases". Use a <b>max</b>-heap and <code>prob[u] * p</code>. (Alternatively take −log(p) to turn it into a normal sum-Dijkstra.)</p>`, code: `PriorityQueue<double[]> pq = new PriorityQueue<>((a, b) -> Double.compare(b[0], a[0])); // max-heap\n// relax: if (prob[u] * p > prob[v]) { prob[v] = prob[u] * p; pq.add(new double[]{prob[v], v}); }` },
+      { title: 'Path With Maximum Probability (LC 1514)', html: `<p>Combine = multiply, goal = maximise. Probabilities are ≤ 1, so extending a path never <b>increases</b> it — the mirror of "never decreases". Use a <b>max</b>-heap and <code>prob[u] * p</code>. (Alternatively take −log(p) to turn it into a normal sum-Dijkstra.)</p>`, code: { lang: 'java', code: `PriorityQueue<double[]> pq = new PriorityQueue<>((a, b) -> Double.compare(b[0], a[0])); // max-heap\n// relax: if (prob[u] * p > prob[v]) { prob[v] = prob[u] * p; pq.add(new double[]{prob[v], v}); }`,
+      alt: [{ lang: 'python', code: `pq = []                                   # max-heap: push (-prob, node) onto a heapq
+# relax: if prob[u] * p > prob[v]: prob[v] = prob[u] * p; heapq.heappush(pq, (-prob[v], v))` }, { lang: 'js', code: `// uses the MinHeap class from the Dijkstra template (JS has no built-in heap)
+const pq = new MinHeap((a, b) => b[0] - a[0]);   // max-heap
+// relax: if (prob[u] * p > prob[v]) { prob[v] = prob[u] * p; pq.push([prob[v], v]); }` }, { lang: 'cpp', code: `priority_queue<pair<double, int>> pq;   // max-heap by default
+// relax: if (prob[u] * p > prob[v]) { prob[v] = prob[u] * p; pq.push({prob[v], v}); }` }] } },
       { title: 'Minimum effort three ways', html: `<p>Grid [[1,2,2],[3,8,2],[5,3,5]] → ${H.c('g', '2')}. (1) Dijkstra with max (visualizer). (2) Binary search the answer X in 0..10<sup>6</sup>, BFS using only jumps ≤ X: O(RC log 10<sup>6</sup>). (3) Sort all neighbour edges by jump, union cells with DSU until start and end connect; the last jump is the answer (Kruskal-style).</p>` },
       { title: 'Layered graph for "k free edges"', html: `<p>"You may skip the cost of up to k roads." Make k + 1 copies of the graph (layers 0..k). Normal edges stay in a layer; a free edge goes from layer j to layer j + 1 with cost 0. Dijkstra on V·(k + 1) nodes; answer = min over layers at the target. This is the state (node, freeUsed) drawn as a picture.</p>` }
     ],
@@ -2094,8 +3882,75 @@ class Solution {
         for (int[] e : g.get(u)) dfs(e[0], dst, flightsLeft - 1, cost + e[1]);
     }
 }` },
-      mcq: { q: 'In the K + 1 rounds of Bellman-Ford, why read from a copy of the previous round?', options: ['So one round cannot chain two flights and exceed the stop limit', 'To avoid negative cycles', 'Because Java arrays are immutable', 'It is only an optimisation'], answer: 0, explain: 'Updating in place lets a value written earlier in the same round be used again in that round — the path gains two edges in one round, breaking the "≤ r edges after round r" meaning.' },
+      mcq: { q: 'In the K + 1 rounds of Bellman-Ford, why read from a copy of the previous round?', options: ['So one round cannot chain two flights and exceed the stop limit', 'To avoid negative cycles', 'Because arrays cannot be changed once created', 'It is only an optimisation'], answer: 0, explain: 'Updating in place lets a value written earlier in the same round be used again in that round — the path gains two edges in one round, breaking the "≤ r edges after round r" meaning.' },
       hints: [`<p>"At most k stops" = at most k + 1 edges. Which algorithm naturally grows paths one edge per round?</p>`, `<p>Bellman-Ford for exactly k + 1 rounds. Each round: <code>cur = prev.clone()</code>, relax every flight reading <b>prev</b>, writing <b>cur</b>.</p>`, `<p>Guard prev[u] != INF. After k + 1 rounds, answer = prev[dst] or -1. Alternative: Dijkstra on (city, stops) — never use a plain visited[] on cities.</p>`],
+      tests: { sig: "int int[][] int int int -> int", fn: "flightRun", harness: {
+        java: `class Check {
+    static int flightRun(int n, int[][] fl, int src, int dst, int k) {
+        if (fl.length > 0 && fl[0][0] == -1) {    // marker row [-1, 0]: one flight for every pair of cities
+            List<int[]> list = new ArrayList<>();
+            for (int i = 0; i < n; i++)
+                for (int j = i + 1; j < n; j++) {
+                    int price = 1 + (i * 17 + j * 31 + i * j) % 10000;
+                    list.add((i + j) % 3 == 0 ? new int[]{j, i, price} : new int[]{i, j, price});
+                }
+            fl = list.toArray(new int[0][]);
+        }
+        return new Solution().findCheapestPrice(n, fl, src, dst, k);
+    }
+}`,
+        python: `def flight_run(n, fl, src, dst, k):
+    if fl and fl[0][0] == -1:
+        fl = []
+        for i in range(n):
+            for j in range(i + 1, n):
+                price = 1 + (i * 17 + j * 31 + i * j) % 10000
+                fl.append([j, i, price] if (i + j) % 3 == 0 else [i, j, price])
+    return Solution().find_cheapest_price(n, fl, src, dst, k)`,
+        js: `function flightRun(n, fl, src, dst, k) {
+  if (fl.length > 0 && fl[0][0] === -1) {
+    fl = [];
+    for (let i = 0; i < n; i++)
+      for (let j = i + 1; j < n; j++) {
+        const price = 1 + (i * 17 + j * 31 + i * j) % 10000;
+        fl.push((i + j) % 3 === 0 ? [j, i, price] : [i, j, price]);
+      }
+  }
+  return findCheapestPrice(n, fl, src, dst, k);
+}`,
+        cpp: `int flightRun(int n, vector<vector<int>> fl, int src, int dst, int k) {
+    if (!fl.empty() && fl[0][0] == -1) {
+        fl.clear();
+        for (int i = 0; i < n; i++)
+            for (int j = i + 1; j < n; j++) {
+                int price = 1 + (i * 17 + j * 31 + i * j) % 10000;
+                if ((i + j) % 3 == 0) fl.push_back({j, i, price}); else fl.push_back({i, j, price});
+            }
+    }
+    return Solution().findCheapestPrice(n, fl, src, dst, k);
+}`
+      }, cases: [
+        [[4,[[0,1,100],[1,2,100],[2,0,100],[1,3,600],[2,3,200]],0,3,1],700],
+        [[3,[[0,1,100],[1,2,100],[0,2,500]],0,2,1],200],
+        [[3,[[0,1,100],[1,2,100],[0,2,500]],0,2,0],500],
+        [[3,[[0,1,100],[1,2,100],[0,2,500]],0,2,2],200],
+        [[2,[],0,1,0],-1],
+        [[1,[],0,0,0],0],
+        [[4,[[0,1,1],[1,2,1],[2,3,1]],0,3,1],-1],
+        [[4,[[0,1,1],[1,2,1],[2,3,1]],0,3,2],3],
+        [[4,[[0,1,1],[1,2,1],[2,3,1]],3,0,3],-1],
+        [[5,[[0,1,5],[1,2,5],[2,3,5],[3,4,5],[0,4,100],[0,2,50]],0,4,1],100],
+        [[5,[[0,1,5],[1,2,5],[2,3,5],[3,4,5],[0,4,100],[0,2,50]],0,4,3],20],
+        [[3,[[0,1,10000],[1,2,10000]],0,2,1],20000],
+        [[6,[[0,2,11],[0,5,10],[1,0,6],[1,2,13],[1,3,9],[1,5,17],[2,1,3],[2,3,19],[2,4,1],[2,5,8],[3,0,17],[3,2,20],[3,5,16],[4,0,20],[4,2,17],[5,1,17]],0,5,0],10],
+        [[5,[[0,1,2],[0,2,12],[1,2,1],[2,1,3],[3,2,16],[3,4,3],[4,1,7],[4,2,15]],0,4,3],-1],
+        [[4,[[1,3,5],[2,0,10],[2,3,16],[3,0,9],[3,2,7]],0,3,3],-1],
+        [[100,[[-1,0]],0,99,0],-1],
+        [[100,[[-1,0]],0,99,1],2038],
+        [[100,[[-1,0]],0,99,2],2038],
+        [[100,[[-1,0]],0,99,5],2038],
+        [[100,[[-1,0]],0,99,98],2038]
+      ] },
       solution: {
         approach: `<p>Bounded Bellman-Ford: k + 1 rounds with a fresh copy each round. O(k · E).</p>`,
         code: `
@@ -2117,17 +3972,44 @@ class Solution {
     }
 }`,
         alt: [{ lang: 'python', code: `class Solution:
-    def findCheapestPrice(self, n, flights, src, dst, k):
+    def find_cheapest_price(self, n, flights, src, dst, k):
         INF = float('inf')
         prev = [INF] * n
         prev[src] = 0
-        for _ in range(k + 1):
-            cur = prev[:]
+        for _ in range(k + 1):               # at most k + 1 flights
+            cur = prev[:]                    # write to cur, read from prev
             for u, v, w in flights:
-                if prev[u] != INF and prev[u] + w < cur[v]:
+                if prev[u] + w < cur[v]:
                     cur[v] = prev[u] + w
             prev = cur
-        return -1 if prev[dst] == INF else prev[dst]` }],
+        return -1 if prev[dst] == INF else prev[dst]` }, { lang: 'js', code: `function findCheapestPrice(n, flights, src, dst, k) {
+  let prev = new Array(n).fill(Infinity);
+  prev[src] = 0;
+  for (let round = 0; round <= k; round++) {   // at most k + 1 flights
+    const cur = prev.slice();                  // write to cur, read from prev
+    for (const [u, v, w] of flights) {
+      if (prev[u] + w < cur[v]) cur[v] = prev[u] + w;
+    }
+    prev = cur;
+  }
+  return prev[dst] === Infinity ? -1 : prev[dst];
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int findCheapestPrice(int n, const vector<vector<int>>& flights, int src, int dst, int k) {
+        const int INF = INT_MAX;
+        vector<int> prev(n, INF);
+        prev[src] = 0;
+        for (int round = 0; round <= k; round++) {   // at most k + 1 flights
+            vector<int> cur = prev;                  // write to cur, read from prev
+            for (auto& f : flights) {
+                int u = f[0], v = f[1], w = f[2];
+                if (prev[u] != INF && prev[u] + w < cur[v]) cur[v] = prev[u] + w;
+            }
+            prev = cur;
+        }
+        return prev[dst] == INF ? -1 : prev[dst];
+    }
+};` }],
         dry: { head: ['round (≤ flights)', 'relaxations (reading prev)', 'prev after round [0,1,2,3]'], rows: [
           ['start', '—', '[0, ∞, ∞, ∞]'],
           ['1 (≤ 1)', '0→1: 100', '[0, 100, ∞, ∞]'],
@@ -2167,8 +4049,78 @@ class Solution {
         return res;
     }
 }` },
-    mcq: { q: 'You poll (7, v) but dist[v] is already 5. What now?', options: ['Skip it — it is a stale entry', 'Update dist[v] to 7', 'Re-relax all of v\'s edges with 7', 'Throw an error'], answer: 0, explain: 'Java\'s PriorityQueue has no decrease-key, so outdated entries stay inside. Lazy deletion = ignore them when they come out.' },
-    hints: [`<p>Non-negative weights + one source → Dijkstra. Build an adjacency list first, adding each edge in both directions.</p>`, `<p>Min-heap of {dist, node}. Poll; if dist &gt; dist[node] skip; else relax neighbours and push improvements.</p>`, `<p>Return the dist array as an ArrayList. Since the graph is connected, no ∞ remains. Complexity O((V + E) log V).</p>`],
+    mcq: { q: 'You poll (7, v) but dist[v] is already 5. What now?', options: ['Skip it — it is a stale entry', 'Update dist[v] to 7', 'Re-relax all of v\'s edges with 7', 'Throw an error'], answer: 0, explain: 'Standard priority queues (Java PriorityQueue, Python heapq, C++ priority_queue) have no decrease-key, so outdated entries stay inside. Lazy deletion = ignore them when they come out.' },
+    hints: [`<p>Non-negative weights + one source → Dijkstra. Build an adjacency list first, adding each edge in both directions.</p>`, `<p>Min-heap of {dist, node}. Poll; if dist &gt; dist[node] skip; else relax neighbours and push improvements.</p>`, `<p>Return the dist array as a list (Java: an <code>ArrayList&lt;Integer&gt;</code>). Since the graph is connected, no ∞ remains. Complexity O((V + E) log V).</p>`],
+    tests: { sig: "int int[][] int -> list<int>", fn: "dijRun", harness: {
+      java: `class Check {
+    static List<Integer> dijRun(int V, int[][] edges, int src) {
+        if (edges[0][0] != -1) return new Solution().dijkstra(V, edges, src);
+        int mode = edges[0][1];                   // marker row [-1, mode]: a tree plus one long edge, V edges in all
+        int[][] es = new int[V][];
+        for (int i = 1; i < V; i++) {
+            int p = mode == 0 ? i - 1 : i - 1 - ((i * 13) % Math.min(i, 50));
+            es[i - 1] = new int[]{p, i, (i * 7) % 1001};
+        }
+        es[V - 1] = new int[]{0, V - 1, 1000};
+        List<Integer> d = new Solution().dijkstra(V, es, src);
+        long sum = 0;
+        for (int i = 0; i < V; i++) sum += (long) d.get(i) * (i % 7 + 1);
+        return new ArrayList<>(List.of((int) (sum % 1000000007L)));
+    }
+}`,
+      python: `def dij_run(V, edges, src):
+    if edges[0][0] != -1:
+        return Solution().dijkstra(V, edges, src)
+    mode = edges[0][1]
+    es = [[i - 1 if mode == 0 else i - 1 - ((i * 13) % min(i, 50)), i, (i * 7) % 1001] for i in range(1, V)]
+    es.append([0, V - 1, 1000])
+    d = Solution().dijkstra(V, es, src)
+    return [sum(x * (i % 7 + 1) for i, x in enumerate(d)) % 1000000007]`,
+      js: `function dijRun(V, edges, src) {
+  if (edges[0][0] !== -1) return dijkstra(V, edges, src);
+  const mode = edges[0][1];
+  const es = [];
+  for (let i = 1; i < V; i++) {
+    const p = mode === 0 ? i - 1 : i - 1 - ((i * 13) % Math.min(i, 50));
+    es.push([p, i, (i * 7) % 1001]);
+  }
+  es.push([0, V - 1, 1000]);
+  const d = dijkstra(V, es, src);
+  let sum = 0;
+  for (let i = 0; i < V; i++) sum += d[i] * (i % 7 + 1);
+  return [sum % 1000000007];
+}`,
+      cpp: `vector<int> dijRun(int V, vector<vector<int>> edges, int src) {
+    if (edges[0][0] != -1) return Solution().dijkstra(V, edges, src);
+    int mode = edges[0][1];
+    vector<vector<int>> es;
+    for (int i = 1; i < V; i++) {
+        int p = mode == 0 ? i - 1 : i - 1 - ((i * 13) % min(i, 50));
+        es.push_back({p, i, (i * 7) % 1001});
+    }
+    es.push_back({0, V - 1, 1000});
+    vector<int> d = Solution().dijkstra(V, es, src);
+    long long sum = 0;
+    for (int i = 0; i < V; i++) sum += (long long)d[i] * (i % 7 + 1);
+    return {(int)(sum % 1000000007LL)};
+}`
+    }, cases: [
+      [[3,[[0,1,1],[1,2,3],[0,2,6]],2],[4,3,0]],
+      [[3,[[0,1,1],[1,2,3],[0,2,6]],0],[0,1,4]],
+      [[1,[[0,0,5]],0],[0]],
+      [[2,[[0,1,0]],1],[0,0]],
+      [[4,[[0,1,0],[1,2,0],[2,3,0]],3],[0,0,0,0]],
+      [[5,[[0,1,2],[0,2,4],[1,2,1],[1,3,7],[2,4,3],[3,4,1]],0],[0,2,3,7,6]],
+      [[5,[[0,1,1000],[1,2,1000],[2,3,1000],[3,4,1000]],0],[0,1000,2000,3000,4000]],
+      [[6,[[0,1,7],[0,2,9],[0,5,14],[1,2,10],[1,3,15],[2,3,11],[2,5,2],[3,4,6],[4,5,9]],0],[0,7,9,20,20,11]],
+      [[6,[[1,0,14],[2,1,14],[3,0,17],[4,1,9],[5,0,15],[2,3,2]],4],[23,9,23,25,0,38]],
+      [[7,[[1,0,12],[2,0,6],[3,0,18],[4,0,4],[5,4,8],[6,2,4],[0,5,11],[1,3,15],[3,0,5]],0],[0,12,6,5,4,11,10]],
+      [[7,[[1,0,12],[2,1,4],[3,1,11],[4,3,10],[5,0,10],[6,0,10],[6,3,3],[1,5,0],[5,2,8]],2],[14,4,0,15,25,4,18]],
+      [[10000,[[-1,0]],0],[626844155]],
+      [[10000,[[-1,1]],0],[882802560]],
+      [[10000,[[-1,0]],9999],[626838505]],
+      [[10000,[[-1,1]],4321],[932695665]]
+    ] },
     solution: {
       approach: `<p>Standard Dijkstra with lazy deletion.</p>`,
       code: `
@@ -2202,6 +4154,106 @@ class Solution {
     }
 }`,
       dry: { head: ['poll', 'relax', 'dist [0,1,2]'], rows: [['(0,2)', '1 ← 3, 0 ← 6', '[6, 3, 0]'], ['(3,1)', '0 ← 3 + 1 = 4 &lt; 6', '[4, 3, 0]'], ['(4,0)', 'nothing better', '[4, 3, 0]'], ['(6,0)', 'stale → skip', '<span class="c-g">[4, 3, 0]</span>']] },
+      alt: [{ lang: 'python', code: `import heapq
+
+class Solution:
+    def dijkstra(self, V, edges, src):
+        g = [[] for _ in range(V)]
+        for u, v, w in edges:
+            g[u].append((v, w))
+            g[v].append((u, w))
+        dist = [float('inf')] * V
+        dist[src] = 0
+        pq = [(0, src)]
+        while pq:
+            d, u = heapq.heappop(pq)
+            if d > dist[u]:
+                continue
+            for v, w in g[u]:
+                if d + w < dist[v]:
+                    dist[v] = d + w
+                    heapq.heappush(pq, (dist[v], v))
+        return dist` }, { lang: 'js', code: `class MinHeap {
+  constructor(cmp) { this.a = []; this.cmp = cmp; }
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (this.cmp(a[i], a[p]) >= 0) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.cmp(a[l], a[m]) < 0) m = l;
+        if (r < a.length && this.cmp(a[r], a[m]) < 0) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+function dijkstra(V, edges, src) {
+  const g = Array.from({ length: V }, () => []);
+  for (const [u, v, w] of edges) {
+    g[u].push([v, w]);
+    g[v].push([u, w]);
+  }
+  const dist = new Array(V).fill(Infinity);
+  dist[src] = 0;
+  const pq = new MinHeap((a, b) => a[0] - b[0]);
+  pq.push([0, src]);
+  while (pq.size() > 0) {
+    const [d, u] = pq.pop();
+    if (d > dist[u]) continue;
+    for (const [v, w] of g[u]) {
+      if (d + w < dist[v]) {
+        dist[v] = d + w;
+        pq.push([dist[v], v]);
+      }
+    }
+  }
+  return dist;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> dijkstra(int V, const vector<vector<int>>& edges, int src) {
+        vector<vector<pair<int, int>>> g(V);
+        for (auto& e : edges) {
+            g[e[0]].push_back({e[1], e[2]});
+            g[e[1]].push_back({e[0], e[2]});
+        }
+        vector<int> dist(V, INT_MAX);
+        dist[src] = 0;
+        priority_queue<pair<int, int>, vector<pair<int, int>>, greater<>> pq;
+        pq.push({0, src});
+        while (!pq.empty()) {
+            auto [d, u] = pq.top();
+            pq.pop();
+            if (d > dist[u]) continue;
+            for (auto [v, w] : g[u]) {
+                if (d + w < dist[v]) {
+                    dist[v] = d + w;
+                    pq.push({dist[v], v});
+                }
+            }
+        }
+        return dist;
+    }
+};` }],
       complexity: `<p>Time O((V + E) log V); space O(V + E).</p>`,
       followUps: ['Print the path to each vertex', 'Which nodes are on at least one shortest path from src to t?']
     }
@@ -2234,6 +4286,61 @@ class Solution {
 }` },
     mcq: { q: 'Kruskal processes edges in which order?', options: ['Increasing weight', 'Decreasing weight', 'Input order', 'BFS order from node 0'], answer: 0, explain: 'Cheapest first; each edge joining two different components is safe by the cut property.' },
     hints: [`<p>The input is an edge list — Kruskal is the shortest code: sort edges, add the ones that join different groups.</p>`, `<p>DSU with path compression + union by rank tells you instantly whether two vertices are already connected.</p>`, `<p>Stop after V − 1 edges. Recipe: sort by w → for each edge if union(u, v) then total += w.</p>`],
+    tests: { sig: "int int[][] -> int", fn: "mstRun", harness: {
+      java: `class Check {
+    static int mstRun(int V, int[][] edges) {
+        if (edges[0][0] == -1) {                  // marker row [-1, k]: chain edges plus pair (i, j) when (i*j + i + j) % k == 0
+            int k = edges[0][1];
+            List<int[]> list = new ArrayList<>();
+            for (int i = 0; i < V; i++)
+                for (int j = i + 1; j < V; j++)
+                    if (j == i + 1 || (i * j + i + j) % k == 0) list.add(new int[]{i, j, 1 + (i * i + 31 * j + i * j) % 1000});
+            edges = list.toArray(new int[0][]);
+        }
+        return Solution.spanningTree(V, edges);
+    }
+}`,
+      python: `def mst_run(V, edges):
+    if edges[0][0] == -1:
+        k = edges[0][1]
+        edges = [[i, j, 1 + (i * i + 31 * j + i * j) % 1000] for i in range(V) for j in range(i + 1, V) if j == i + 1 or (i * j + i + j) % k == 0]
+    return Solution().spanning_tree(V, edges)`,
+      js: `function mstRun(V, edges) {
+  if (edges[0][0] === -1) {
+    const k = edges[0][1];
+    edges = [];
+    for (let i = 0; i < V; i++)
+      for (let j = i + 1; j < V; j++)
+        if (j === i + 1 || (i * j + i + j) % k === 0) edges.push([i, j, 1 + (i * i + 31 * j + i * j) % 1000]);
+  }
+  return spanningTree(V, edges);
+}`,
+      cpp: `int mstRun(int V, vector<vector<int>> edges) {
+    if (edges[0][0] == -1) {
+        int k = edges[0][1];
+        edges.clear();
+        for (int i = 0; i < V; i++)
+            for (int j = i + 1; j < V; j++)
+                if (j == i + 1 || (i * j + i + j) % k == 0) edges.push_back({i, j, 1 + (i * i + 31 * j + i * j) % 1000});
+    }
+    return Solution().spanningTree(V, edges);
+}`
+    }, cases: [
+      [[3,[[0,1,5],[1,2,3],[0,2,1]]],4],
+      [[2,[[0,1,1000]]],1000],
+      [[2,[[0,1,1],[0,1,2]]],1],
+      [[4,[[0,1,1],[1,2,1],[2,3,1],[3,0,1]]],3],
+      [[4,[[0,1,10],[0,2,6],[0,3,5],[1,3,15],[2,3,4]]],19],
+      [[5,[[0,1,2],[1,2,2],[2,3,2],[3,4,2],[0,4,1],[1,3,1]]],6],
+      [[6,[[0,1,1],[2,3,1],[4,5,1],[1,2,9],[3,4,8],[0,5,2]]],13],
+      [[3,[[2,1,7],[1,0,7],[2,0,7]]],14],
+      [[4,[[2,0,6],[0,2,11],[2,1,13],[2,3,9],[1,0,7],[0,2,2],[3,1,13]]],18],
+      [[9,[[5,2,8],[6,1,3],[7,8,11],[5,4,5],[6,3,5],[1,0,1],[2,1,8],[8,7,9],[3,2,13],[7,4,3],[2,1,4],[6,0,15],[8,2,8],[4,1,11]]],37],
+      [[6,[[4,0,12],[3,2,4],[5,4,9],[5,4,4],[2,1,13],[1,0,6],[4,2,3],[5,3,7],[2,1,7],[0,3,5],[5,1,2],[3,2,6]]],18],
+      [[1000,[[-1,1]]],1969],
+      [[1000,[[-1,7]]],56411],
+      [[1000,[[-1,40]]],250218]
+    ] },
     solution: {
       approach: `<p>Kruskal + DSU.</p>`,
       code: `
@@ -2262,20 +4369,69 @@ class Solution {
     }
 }`,
       alt: [{ lang: 'python', code: `class Solution:
-    def spanningTree(self, V, edges):
+    def spanning_tree(self, V, edges):
         parent = list(range(V))
+
         def find(x):
             while parent[x] != x:
                 parent[x] = parent[parent[x]]
                 x = parent[x]
             return x
-        total = 0
+
+        total = used = 0
         for u, v, w in sorted(edges, key=lambda e: e[2]):
             a, b = find(u), find(v)
-            if a != b:
+            if a != b:                       # skip edges that would close a cycle
                 parent[a] = b
                 total += w
-        return total` }],
+                used += 1
+                if used == V - 1:
+                    break
+        return total` }, { lang: 'js', code: `function spanningTree(V, edges) {
+  const parent = Array.from({ length: V }, (_, i) => i);
+  const find = (x) => {
+    while (parent[x] !== x) {
+      parent[x] = parent[parent[x]];
+      x = parent[x];
+    }
+    return x;
+  };
+  const es = [...edges].sort((a, b) => a[2] - b[2]);
+  let total = 0, used = 0;
+  for (const [u, v, w] of es) {
+    const a = find(u), b = find(v);
+    if (a === b) continue;                 // would close a cycle
+    parent[a] = b;
+    total += w;
+    if (++used === V - 1) break;
+  }
+  return total;
+}` }, { lang: 'cpp', code: `class Solution {
+    vector<int> parent;
+    int find(int x) {
+        while (parent[x] != x) {
+            parent[x] = parent[parent[x]];
+            x = parent[x];
+        }
+        return x;
+    }
+public:
+    int spanningTree(int V, vector<vector<int>> edges) {
+        parent.resize(V);
+        iota(parent.begin(), parent.end(), 0);
+        sort(edges.begin(), edges.end(),
+             [](const vector<int>& a, const vector<int>& b) { return a[2] < b[2]; });
+        int total = 0, used = 0;
+        for (auto& e : edges) {
+            int a = find(e[0]), b = find(e[1]);
+            if (a == b) continue;            // would close a cycle
+            parent[a] = b;
+            total += e[2];
+            if (++used == V - 1) break;
+        }
+        return total;
+    }
+};` }],
       complexity: `<p>Time O(E log E); space O(V).</p>`,
       followUps: ['Return the edges of the MST', 'Is the MST unique? (Check for equal-weight alternatives)']
     }
@@ -2304,8 +4460,93 @@ class Solution {
         for (int i = 0; i < n; i++) dist[i] = res[i];
     }
 }` },
-    mcq: { q: 'Why check dist[i][k] != 10<sup>8</sup> before adding?', options: ['10<sup>8</sup> means "no path"; adding a negative weight to it would look like a real path', 'To avoid integer overflow only', 'It is not needed', 'Because Java requires it'], answer: 0, explain: '10<sup>8</sup> + (−5) = 99999995 &lt; 10<sup>8</sup> would wrongly turn "unreachable" into a fake distance when negative weights exist.' },
+    mcq: { q: 'Why check dist[i][k] != 10<sup>8</sup> before adding?', options: ['10<sup>8</sup> means "no path"; adding a negative weight to it would look like a real path', 'To avoid integer overflow only', 'It is not needed', 'Because the language requires it'], answer: 0, explain: '10<sup>8</sup> + (−5) = 99999995 &lt; 10<sup>8</sup> would wrongly turn "unreachable" into a fake distance when negative weights exist.' },
     hints: [`<p>All pairs + n ≤ 100 → the classic triple loop with k outermost.</p>`, `<p>For each k, i, j: if both halves are reachable and d[i][k] + d[k][j] &lt; d[i][j], update.</p>`, `<p>Skip when either half equals 10<sup>8</sup>. No extra matrix needed — in-place is correct because row k and column k do not change during round k.</p>`],
+    tests: { sig: "int[][] -> int[][]", fn: "floydRun", harness: {
+      java: `class Check {
+    static int[][] floydRun(int[][] dist) {
+        if (dist[0][0] != -1) {                   // normal input: change it in place and hand it back
+            new Solution().floydWarshall(dist);
+            return dist;
+        }
+        int n = dist[0][1], mode = dist[0][2], mod = mode == 0 ? 3 : 5;   // marker row [-1, n, mode]
+        int[][] d = new int[n][n];
+        for (int i = 0; i < n; i++)
+            for (int j = 0; j < n; j++) {
+                d[i][j] = i == j ? 0 : 100000000;
+                if (i != j && (i * j + i + 2 * j) % mod == 0) d[i][j] = 1 + (i * 5 + j * 11) % 40 + (i * 7) % 53 - (j * 7) % 53;
+            }
+        new Solution().floydWarshall(d);
+        long sum = 0;
+        for (int i = 0; i < n; i++)
+            for (int j = 0; j < n; j++) sum += (long) (d[i][j] + 10000) * ((i * 3 + j) % 11 + 1);
+        return new int[][]{{(int) (sum % 1000000007L)}};
+    }
+}`,
+      python: `def floyd_run(dist):
+    if dist[0][0] != -1:
+        Solution().floyd_warshall(dist)
+        return dist
+    _, n, mode = dist[0]
+    mod = 3 if mode == 0 else 5
+    d = [[0 if i == j else 100000000 for j in range(n)] for i in range(n)]
+    for i in range(n):
+        for j in range(n):
+            if i != j and (i * j + i + 2 * j) % mod == 0:
+                d[i][j] = 1 + (i * 5 + j * 11) % 40 + (i * 7) % 53 - (j * 7) % 53
+    Solution().floyd_warshall(d)
+    s = sum((d[i][j] + 10000) * ((i * 3 + j) % 11 + 1) for i in range(n) for j in range(n))
+    return [[s % 1000000007]]`,
+      js: `function floydRun(dist) {
+  if (dist[0][0] !== -1) {
+    floydWarshall(dist);
+    return dist;
+  }
+  const [, n, mode] = dist[0], mod = mode === 0 ? 3 : 5;
+  const d = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => (i === j ? 0 : 100000000)));
+  for (let i = 0; i < n; i++)
+    for (let j = 0; j < n; j++)
+      if (i !== j && (i * j + i + 2 * j) % mod === 0) d[i][j] = 1 + (i * 5 + j * 11) % 40 + (i * 7) % 53 - (j * 7) % 53;
+  floydWarshall(d);
+  let s = 0;
+  for (let i = 0; i < n; i++)
+    for (let j = 0; j < n; j++) s += (d[i][j] + 10000) * ((i * 3 + j) % 11 + 1);
+  return [[s % 1000000007]];
+}`,
+      cpp: `vector<vector<int>> floydRun(vector<vector<int>> dist) {
+    if (dist[0][0] != -1) {
+        Solution().floydWarshall(dist);
+        return dist;
+    }
+    int n = dist[0][1], mode = dist[0][2], mod = mode == 0 ? 3 : 5;
+    vector<vector<int>> d(n, vector<int>(n, 100000000));
+    for (int i = 0; i < n; i++) {
+        d[i][i] = 0;
+        for (int j = 0; j < n; j++)
+            if (i != j && (i * j + i + 2 * j) % mod == 0) d[i][j] = 1 + (i * 5 + j * 11) % 40 + (i * 7) % 53 - (j * 7) % 53;
+    }
+    Solution().floydWarshall(d);
+    long long s = 0;
+    for (int i = 0; i < n; i++)
+        for (int j = 0; j < n; j++) s += (long long)(d[i][j] + 10000) * ((i * 3 + j) % 11 + 1);
+    return {{(int)(s % 1000000007LL)}};
+}`
+    }, cases: [
+      [[[[0,4,100000000,5,100000000],[100000000,0,1,100000000,6],[2,100000000,0,3,100000000],[100000000,100000000,1,0,2],[1,100000000,100000000,4,0]]],[[0,4,5,5,7],[3,0,1,4,6],[2,6,0,3,5],[3,7,1,0,2],[1,5,5,4,0]]],
+      [[[[0]]],[[0]]],
+      [[[[0,100000000],[100000000,0]]],[[0,100000000],[100000000,0]]],
+      [[[[0,3],[100000000,0]]],[[0,3],[100000000,0]]],
+      [[[[0,-2,100000000],[100000000,0,-3],[100000000,100000000,0]]],[[0,-2,-5],[100000000,0,-3],[100000000,100000000,0]]],
+      [[[[0,5,100000000,100000000],[100000000,0,-3,100000000],[100000000,100000000,0,2],[4,100000000,100000000,0]]],[[0,5,2,4],[3,0,-3,-1],[6,11,0,2],[4,9,6,0]]],
+      [[[[0,1000,100000000],[100000000,0,-1000],[100000000,100000000,0]]],[[0,1000,0],[100000000,0,-1000],[100000000,100000000,0]]],
+      [[[[0,1,1,1],[1,0,1,1],[1,1,0,1],[1,1,1,0]]],[[0,1,1,1],[1,0,1,1],[1,1,0,1],[1,1,1,0]]],
+      [[[[0,100000000,100000000],[100000000,0,100000000],[100000000,100000000,0]]],[[0,100000000,100000000],[100000000,0,100000000],[100000000,100000000,0]]],
+      [[[[0,1,-3,100000000,100000000,100000000],[100000000,0,100000000,100000000,3,100000000],[9,6,0,100000000,2,100000000],[100000000,9,7,0,100000000,100000000],[11,100000000,10,7,0,6],[100000000,100000000,5,100000000,7,0]]],[[0,1,-3,6,-1,5],[14,0,11,10,3,9],[9,6,0,9,2,8],[16,9,7,0,9,15],[11,12,8,7,0,6],[14,11,5,14,7,0]]],
+      [[[[0,4,100000000,100000000,-5],[100000000,0,100000000,0,-1],[100000000,100000000,0,0,1],[11,12,12,0,100000000],[100000000,7,100000000,6,0]]],[[0,2,13,1,-5],[11,0,12,0,-1],[11,8,0,0,1],[11,12,12,0,6],[17,7,18,6,0]]],
+      [[[[0,4,100000000],[5,0,100000000],[100000000,100000000,0]]],[[0,4,100000000],[5,0,100000000],[100000000,100000000,0]]],
+      [[[[-1,100,0]]],[[104927]]],
+      [[[[-1,100,1]]],[[200132692]]]
+    ] },
     solution: {
       approach: `<p>Floyd-Warshall in place with the "unreachable" guard.</p>`,
       code: `
@@ -2322,6 +4563,44 @@ class Solution {
             }
     }
 }`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def floyd_warshall(self, dist):
+        n = len(dist)
+        INF = 10 ** 8
+        for k in range(n):
+            dk = dist[k]
+            for i in range(n):
+                dik = dist[i][k]
+                if dik == INF:
+                    continue
+                di = dist[i]
+                for j in range(n):
+                    if dk[j] != INF and dik + dk[j] < di[j]:
+                        di[j] = dik + dk[j]` }, { lang: 'js', code: `function floydWarshall(dist) {
+  const n = dist.length, INF = 100000000;
+  for (let k = 0; k < n; k++)
+    for (let i = 0; i < n; i++) {
+      if (dist[i][k] === INF) continue;
+      for (let j = 0; j < n; j++) {
+        if (dist[k][j] === INF) continue;
+        if (dist[i][k] + dist[k][j] < dist[i][j]) dist[i][j] = dist[i][k] + dist[k][j];
+      }
+    }
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    void floydWarshall(vector<vector<int>>& dist) {
+        int n = dist.size();
+        const int INF = 100000000;
+        for (int k = 0; k < n; k++)
+            for (int i = 0; i < n; i++) {
+                if (dist[i][k] == INF) continue;
+                for (int j = 0; j < n; j++) {
+                    if (dist[k][j] == INF) continue;
+                    dist[i][j] = min(dist[i][j], dist[i][k] + dist[k][j]);
+                }
+            }
+    }
+};` }],
       complexity: `<p>Time O(n³); space O(1) extra.</p>`,
       followUps: ['Detect a negative cycle from the result', 'Reconstruct the path i → j with a next[][] matrix']
     }
@@ -2349,6 +4628,93 @@ class Solution {
 }` },
     mcq: { q: 'How do you catch a negative cycle that is NOT reachable from vertex 0?', options: ['Start with dist[v] = 0 for every v (a virtual source joined to all)', 'Run Dijkstra instead', 'Only check edges out of vertex 0', 'It cannot be done'], answer: 0, explain: 'Initialising every distance to 0 is the same as adding a virtual source with 0-weight edges to all vertices — every cycle becomes reachable.' },
     hints: [`<p>Bellman-Ford's extra V-th round detects negative cycles — but only those reachable from the source.</p>`, `<p>Make every vertex a "source": set all distances to 0 initially (a virtual source).</p>`, `<p>Relax all edges n − 1 times, then one more pass: any relaxation → return 1. Otherwise 0.</p>`],
+    tests: { sig: "int int[][] -> int", fn: "negRun", harness: {
+      java: `class Check {
+    static int negRun(int n, int[][] edges) {
+        if (edges[0][0] == -1) {                  // marker row [-1, mode]: dense graph, mode 1 and 2 hide a negative cycle
+            int mode = edges[0][1];
+            List<int[]> list = new ArrayList<>();
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++) {
+                    if (i == j) continue;
+                    if (mode == 1 && i == 60 && j == 61) list.add(new int[]{i, j, 5});
+                    else if (mode == 1 && i == 61 && j == 62) list.add(new int[]{i, j, 5});
+                    else if (mode == 1 && i == 62 && j == 60) list.add(new int[]{i, j, -100});
+                    else if (mode == 2 && i == 10 && j == 11) list.add(new int[]{i, j, -3});
+                    else if (mode == 2 && i == 11 && j == 10) list.add(new int[]{i, j, 2});
+                    else if ((i * j + i + 2 * j) % 3 == 0) list.add(new int[]{i, j, 1 + (i * 5 + j * 11) % 40 + (i * 7) % 53 - (j * 7) % 53});
+                }
+            edges = list.toArray(new int[0][]);
+        }
+        return new Solution().isNegativeWeightCycle(n, edges);
+    }
+}`,
+      python: `def neg_run(n, edges):
+    if edges[0][0] == -1:
+        mode = edges[0][1]
+        special = {0: {}, 1: {(60, 61): 5, (61, 62): 5, (62, 60): -100}, 2: {(10, 11): -3, (11, 10): 2}}[mode]
+        edges = []
+        for i in range(n):
+            for j in range(n):
+                if i == j:
+                    continue
+                if (i, j) in special:
+                    edges.append([i, j, special[(i, j)]])
+                elif (i * j + i + 2 * j) % 3 == 0:
+                    edges.append([i, j, 1 + (i * 5 + j * 11) % 40 + (i * 7) % 53 - (j * 7) % 53])
+    return Solution().is_negative_weight_cycle(n, edges)`,
+      js: `function negRun(n, edges) {
+  if (edges[0][0] === -1) {
+    const mode = edges[0][1];
+    const special = [{}, { '60,61': 5, '61,62': 5, '62,60': -100 }, { '10,11': -3, '11,10': 2 }][mode];
+    edges = [];
+    for (let i = 0; i < n; i++)
+      for (let j = 0; j < n; j++) {
+        if (i === j) continue;
+        const key = i + ',' + j;
+        if (key in special) edges.push([i, j, special[key]]);
+        else if ((i * j + i + 2 * j) % 3 === 0) edges.push([i, j, 1 + (i * 5 + j * 11) % 40 + (i * 7) % 53 - (j * 7) % 53]);
+      }
+  }
+  return isNegativeWeightCycle(n, edges);
+}`,
+      cpp: `int negRun(int n, vector<vector<int>> edges) {
+    if (edges[0][0] == -1) {
+        int mode = edges[0][1];
+        map<pair<int, int>, int> special;
+        if (mode == 1) special = {{{60, 61}, 5}, {{61, 62}, 5}, {{62, 60}, -100}};
+        if (mode == 2) special = {{{10, 11}, -3}, {{11, 10}, 2}};
+        edges.clear();
+        for (int i = 0; i < n; i++)
+            for (int j = 0; j < n; j++) {
+                if (i == j) continue;
+                auto it = special.find({i, j});
+                if (it != special.end()) edges.push_back({i, j, it->second});
+                else if ((i * j + i + 2 * j) % 3 == 0) edges.push_back({i, j, 1 + (i * 5 + j * 11) % 40 + (i * 7) % 53 - (j * 7) % 53});
+            }
+    }
+    return Solution().isNegativeWeightCycle(n, edges);
+}`
+    }, cases: [
+      [[3,[[0,1,-1],[1,2,-2],[2,0,-3]]],1],
+      [[3,[[0,1,-1],[1,2,-2],[0,2,-5]]],0],
+      [[2,[[0,1,-1],[1,0,1]]],0],
+      [[2,[[0,1,-1],[1,0,0]]],1],
+      [[2,[[0,1,5],[1,0,5]]],0],
+      [[4,[[0,1,1],[1,2,1],[2,3,1],[3,0,-4]]],1],
+      [[4,[[0,1,1],[1,2,1],[2,3,1],[3,0,-3]]],0],
+      [[5,[[0,1,1],[1,0,1],[2,3,-1],[3,4,-1],[4,2,-1]]],1],
+      [[5,[[0,1,-1000],[1,2,-1000],[2,3,-1000],[3,4,1000]]],0],
+      [[3,[[1,2,-1000],[2,1,999]]],1],
+      [[3,[[1,2,-1000],[2,1,1000]]],0],
+      [[3,[[1,0,-2],[2,1,-4],[1,2,7]]],0],
+      [[6,[[3,1,-3],[2,0,1],[3,0,4],[1,3,1],[2,3,-3],[0,5,3],[1,2,4],[3,1,1],[2,5,10],[3,0,6]]],1],
+      [[6,[[5,3,-4],[3,0,3],[2,1,7],[0,4,1],[2,4,-4]]],0],
+      [[5,[[2,0,7],[4,0,-4],[1,0,3],[2,3,9],[3,1,10],[3,1,-4],[2,1,5],[1,2,9]]],0],
+      [[100,[[-1,0]]],0],
+      [[100,[[-1,1]]],1],
+      [[100,[[-1,2]]],1]
+    ] },
     solution: {
       approach: `<p>Bellman-Ford from a virtual source (all dist = 0).</p>`,
       code: `
@@ -2367,6 +4733,50 @@ class Solution {
     }
 }`,
       dry: { head: ['round', 'dist [0,1,2]'], rows: [['start', '[0, 0, 0]'], ['1', '[−3, −1, −3]'], ['2', '[−9, −4, −6]'], ['check', 'still relaxes → <span class="c-r">1</span>']] },
+      alt: [{ lang: 'python', code: `class Solution:
+    def is_negative_weight_cycle(self, n, edges):
+        dist = [0] * n                       # all 0 = a virtual source linked to every vertex
+        for _ in range(n - 1):
+            changed = False
+            for u, v, w in edges:
+                if dist[u] + w < dist[v]:
+                    dist[v] = dist[u] + w
+                    changed = True
+            if not changed:
+                return 0
+        return 1 if any(dist[u] + w < dist[v] for u, v, w in edges) else 0` }, { lang: 'js', code: `function isNegativeWeightCycle(n, edges) {
+  const dist = new Array(n).fill(0);       // all 0 = a virtual source linked to every vertex
+  for (let r = 0; r < n - 1; r++) {
+    let changed = false;
+    for (const [u, v, w] of edges) {
+      if (dist[u] + w < dist[v]) {
+        dist[v] = dist[u] + w;
+        changed = true;
+      }
+    }
+    if (!changed) return 0;
+  }
+  for (const [u, v, w] of edges) if (dist[u] + w < dist[v]) return 1;
+  return 0;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int isNegativeWeightCycle(int n, const vector<vector<int>>& edges) {
+        vector<long long> dist(n, 0);        // all 0 = a virtual source linked to every vertex
+        for (int r = 0; r < n - 1; r++) {
+            bool changed = false;
+            for (auto& e : edges) {
+                if (dist[e[0]] + e[2] < dist[e[1]]) {
+                    dist[e[1]] = dist[e[0]] + e[2];
+                    changed = true;
+                }
+            }
+            if (!changed) return 0;
+        }
+        for (auto& e : edges)
+            if (dist[e[0]] + e[2] < dist[e[1]]) return 1;
+        return 0;
+    }
+};` }],
       complexity: `<p>Time O(n · E); space O(n).</p>`,
       followUps: ['Print one negative cycle', 'Currency arbitrage: rates instead of weights']
     }
@@ -2407,6 +4817,58 @@ class Solution {
 }` },
     mcq: { q: 'In Dijkstra for minimum effort, the new value for a neighbour is…', options: ['max(effort so far, |jump|)', 'effort so far + |jump|', 'min(effort so far, |jump|)', '|jump| only'], answer: 0, explain: 'Effort is the largest jump on the route, so extending the route takes the max. max never decreases, which keeps Dijkstra correct.' },
     hints: [`<p>The cost of a path is a <b>max</b>, not a sum — but it still never decreases as the path grows.</p>`, `<p>Dijkstra on cells with <code>ne = max(e, |h[n] − h[c]|)</code>; min-heap of {effort, r, c}.</p>`, `<p>Return when the bottom-right cell is polled. 1 × 1 grid → 0. Alternatives: binary search + BFS, or DSU over edges sorted by jump.</p>`],
+    tests: { sig: "int[][] -> int", fn: "effortRun", harness: {
+      java: `class Check {
+    static int effortRun(int[][] h) {
+        if (h[0][0] == -1) {                      // marker row [-1, R, C, a]
+            int R = h[0][1], C = h[0][2], a = h[0][3];
+            h = new int[R][C];
+            for (int i = 0; i < R; i++)
+                for (int j = 0; j < C; j++) h[i][j] = 1 + (i * i * 31 + j * j * 17 + i * j * a) % 1000000;
+        }
+        return new Solution().minimumEffortPath(h);
+    }
+}`,
+      python: `def effort_run(h):
+    if h[0][0] == -1:
+        _, R, C, a = h[0]
+        h = [[1 + (i * i * 31 + j * j * 17 + i * j * a) % 1000000 for j in range(C)] for i in range(R)]
+    return Solution().minimum_effort_path(h)`,
+      js: `function effortRun(h) {
+  if (h[0][0] === -1) {
+    const [, R, C, a] = h[0];
+    h = Array.from({ length: R }, (_, i) => Array.from({ length: C }, (_, j) => 1 + (i * i * 31 + j * j * 17 + i * j * a) % 1000000));
+  }
+  return minimumEffortPath(h);
+}`,
+      cpp: `int effortRun(vector<vector<int>> h) {
+    if (h[0][0] == -1) {
+        int R = h[0][1], C = h[0][2], a = h[0][3];
+        h.assign(R, vector<int>(C));
+        for (int i = 0; i < R; i++)
+            for (int j = 0; j < C; j++) h[i][j] = 1 + (i * i * 31 + j * j * 17 + i * j * a) % 1000000;
+    }
+    return Solution().minimumEffortPath(h);
+}`
+    }, cases: [
+      [[[[1,2,2],[3,8,2],[5,3,5]]],2],
+      [[[[1,2,3],[3,8,4],[5,3,5]]],1],
+      [[[[1,2,1,1,1],[1,2,1,2,1],[1,2,1,2,1],[1,2,1,2,1],[1,1,1,2,1]]],0],
+      [[[[7]]],0],
+      [[[[1,1000000]]],999999],
+      [[[[1],[1000000],[1]]],999999],
+      [[[[1,1000000],[1000000,1]]],999999],
+      [[[[5,5,5],[5,5,5]]],0],
+      [[[[1,10,6,7,9,10,4,9]]],9],
+      [[[[10,8],[3,9]]],2],
+      [[[[12,26,26,20,3],[17,7,13,25,6],[8,14,3,21,2],[16,18,18,11,6]]],9],
+      [[[[3,9],[20,3],[7,4],[14,16],[23,15]]],7],
+      [[[[5,14,15],[20,29,22],[8,24,18]]],9],
+      [[[[-1,100,100,7]]],6107],
+      [[[[-1,100,100,0]]],6107],
+      [[[[-1,1,100,3]]],3349],
+      [[[[-1,100,1,3]]],6107]
+    ] },
     solution: {
       approach: `<p>Minimax Dijkstra.</p>`,
       code: `
@@ -2434,6 +4896,110 @@ class Solution {
         return 0;
     }
 }`,
+      alt: [{ lang: 'python', code: `import heapq
+
+class Solution:
+    def minimum_effort_path(self, heights):
+        R, C = len(heights), len(heights[0])
+        eff = [[float('inf')] * C for _ in range(R)]
+        eff[0][0] = 0
+        pq = [(0, 0, 0)]
+        while pq:
+            e, r, c = heapq.heappop(pq)
+            if r == R - 1 and c == C - 1:
+                return e
+            if e > eff[r][c]:
+                continue
+            for nr, nc in ((r + 1, c), (r - 1, c), (r, c + 1), (r, c - 1)):
+                if 0 <= nr < R and 0 <= nc < C:
+                    ne = max(e, abs(heights[nr][nc] - heights[r][c]))
+                    if ne < eff[nr][nc]:
+                        eff[nr][nc] = ne
+                        heapq.heappush(pq, (ne, nr, nc))
+        return 0` }, { lang: 'js', code: `class MinHeap {
+  constructor(cmp) { this.a = []; this.cmp = cmp; }
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (this.cmp(a[i], a[p]) >= 0) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.cmp(a[l], a[m]) < 0) m = l;
+        if (r < a.length && this.cmp(a[r], a[m]) < 0) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+function minimumEffortPath(heights) {
+  const R = heights.length, C = heights[0].length;
+  const eff = Array.from({ length: R }, () => new Array(C).fill(Infinity));
+  eff[0][0] = 0;
+  const pq = new MinHeap((a, b) => a[0] - b[0]);
+  pq.push([0, 0, 0]);
+  const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  while (pq.size() > 0) {
+    const [e, r, c] = pq.pop();
+    if (r === R - 1 && c === C - 1) return e;
+    if (e > eff[r][c]) continue;
+    for (const [dr, dc] of dirs) {
+      const nr = r + dr, nc = c + dc;
+      if (nr < 0 || nc < 0 || nr >= R || nc >= C) continue;
+      const ne = Math.max(e, Math.abs(heights[nr][nc] - heights[r][c]));
+      if (ne < eff[nr][nc]) {
+        eff[nr][nc] = ne;
+        pq.push([ne, nr, nc]);
+      }
+    }
+  }
+  return 0;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int minimumEffortPath(const vector<vector<int>>& h) {
+        int R = h.size(), C = h[0].size();
+        vector<vector<int>> eff(R, vector<int>(C, INT_MAX));
+        eff[0][0] = 0;
+        using T = tuple<int, int, int>;
+        priority_queue<T, vector<T>, greater<>> pq;
+        pq.push({0, 0, 0});
+        const int dr[] = {1, -1, 0, 0}, dc[] = {0, 0, 1, -1};
+        while (!pq.empty()) {
+            auto [e, r, c] = pq.top();
+            pq.pop();
+            if (r == R - 1 && c == C - 1) return e;
+            if (e > eff[r][c]) continue;
+            for (int k = 0; k < 4; k++) {
+                int nr = r + dr[k], nc = c + dc[k];
+                if (nr < 0 || nc < 0 || nr >= R || nc >= C) continue;
+                int ne = max(e, abs(h[nr][nc] - h[r][c]));
+                if (ne < eff[nr][nc]) {
+                    eff[nr][nc] = ne;
+                    pq.push({ne, nr, nc});
+                }
+            }
+        }
+        return 0;
+    }
+};` }],
       complexity: `<p>Time O(RC log(RC)); space O(RC).</p>`,
       followUps: ['Solve with binary search + BFS and compare', 'Solve with DSU (Kruskal style)', 'Swim in Rising Water is the same idea on cell values']
     }
@@ -2464,6 +5030,89 @@ class Solution {
 }` },
     mcq: { q: 'Why does Dijkstra still work with multiplication here?', options: ['All probabilities are ≤ 1, so extending a path never increases its value (use a max-heap)', 'Multiplication is commutative', 'Probabilities are positive', 'It does not work — use Bellman-Ford'], answer: 0, explain: 'The mirror of "non-negative weights": multiplying by a number in [0, 1] can only keep or reduce the value. The first time the target is polled from a max-heap it is optimal.' },
     hints: [`<p>"Maximum product" with factors ≤ 1 behaves like "minimum sum" with weights ≥ 0. (Or use −log(p) as weights.)</p>`, `<p>Max-heap of {prob, node}; relax with <code>prob[u] * p &gt; prob[v]</code>.</p>`, `<p>Return as soon as end is polled; if the heap empties, return 0. Skip stale entries with <code>prob &lt; best[u]</code>.</p>`],
+    tests: { sig: "int int[][] double[] int int -> double", fn: "probRun", cmp: "float", harness: {
+      java: `class Check {
+    static double probRun(int n, int[][] edges, double[] p, int s, int t) {
+        if (edges.length > 0 && edges[0][0] == -1) {   // marker row [-1, mode]: a long chain, plus skip edges in mode 0
+            int mode = edges[0][1];
+            int m = mode == 0 ? 2 * n - 3 : n - 1;
+            edges = new int[m][];
+            p = new double[m];
+            for (int i = 0; i < n - 1; i++) {
+                edges[i] = new int[]{i, i + 1};
+                p[i] = 0.99995 - 0.00001 * (i % 5);
+            }
+            if (mode == 0)
+                for (int i = 0; i < n - 2; i++) {
+                    edges[n - 1 + i] = new int[]{i, i + 2};
+                    p[n - 1 + i] = 0.9999 - 0.00001 * ((i * 7) % 9);
+                }
+        }
+        return new Solution().maxProbability(n, edges, p, s, t);
+    }
+}`,
+      python: `def prob_run(n, edges, p, s, t):
+    if edges and edges[0][0] == -1:
+        mode = edges[0][1]
+        edges = [[i, i + 1] for i in range(n - 1)]
+        p = [0.99995 - 0.00001 * (i % 5) for i in range(n - 1)]
+        if mode == 0:
+            edges += [[i, i + 2] for i in range(n - 2)]
+            p += [0.9999 - 0.00001 * ((i * 7) % 9) for i in range(n - 2)]
+    return Solution().max_probability(n, edges, p, s, t)`,
+      js: `function probRun(n, edges, p, s, t) {
+  if (edges.length > 0 && edges[0][0] === -1) {
+    const mode = edges[0][1];
+    edges = [];
+    p = [];
+    for (let i = 0; i < n - 1; i++) {
+      edges.push([i, i + 1]);
+      p.push(0.99995 - 0.00001 * (i % 5));
+    }
+    if (mode === 0)
+      for (let i = 0; i < n - 2; i++) {
+        edges.push([i, i + 2]);
+        p.push(0.9999 - 0.00001 * ((i * 7) % 9));
+      }
+  }
+  return maxProbability(n, edges, p, s, t);
+}`,
+      cpp: `double probRun(int n, vector<vector<int>> edges, vector<double> p, int s, int t) {
+    if (!edges.empty() && edges[0][0] == -1) {
+        int mode = edges[0][1];
+        edges.clear();
+        p.clear();
+        for (int i = 0; i < n - 1; i++) {
+            edges.push_back({i, i + 1});
+            p.push_back(0.99995 - 0.00001 * (i % 5));
+        }
+        if (mode == 0)
+            for (int i = 0; i < n - 2; i++) {
+                edges.push_back({i, i + 2});
+                p.push_back(0.9999 - 0.00001 * ((i * 7) % 9));
+            }
+    }
+    return Solution().maxProbability(n, edges, p, s, t);
+}`
+    }, cases: [
+      [[3,[[0,1],[1,2],[0,2]],[0.5,0.5,0.2],0,2],0.25],
+      [[3,[[0,1],[1,2],[0,2]],[0.5,0.5,0.3],0,2],0.3],
+      [[3,[[0,1]],[0.5],0,2],0],
+      [[2,[[0,1]],[0],0,1],0],
+      [[2,[],[],0,1],0],
+      [[4,[[0,1],[1,2],[2,3]],[1,1,1],0,3],1],
+      [[4,[[0,1],[1,2],[2,3],[0,3]],[0.9,0.9,0.9,0.7],3,0],0.7290000000000001],
+      [[5,[[0,1],[1,2],[2,3],[3,4],[0,4]],[0.99,0.99,0.99,0.99,0.95],0,4],0.96059601],
+      [[5,[[0,1],[1,2],[2,3],[3,4],[0,4]],[0.99,0.99,0.99,0.99,0.96],0,4],0.96059601],
+      [[3,[[0,1],[1,2]],[0.5,0],0,2],0],
+      [[4,[[1,0],[2,1],[3,2],[3,1],[2,1]],[0.29,0.37,0.26,0.19,0.33],0,3],0.055099999999999996],
+      [[7,[[1,0],[2,0],[3,0],[4,0],[5,3],[6,1],[2,0],[1,0],[4,6]],[0.99,0.65,0.65,0.1,0.88,0.84,0.88,0.05,0.58],0,6],0.8316],
+      [[4,[[1,0],[2,0],[3,1],[2,1],[2,1]],[0.51,0.45,0.77,0.04,0.04],0,3],0.3927],
+      [[10000,[[-1,0]],[],0,9999],0.546391993293777],
+      [[10000,[[-1,1]],[],0,9999],0.49661733595058066],
+      [[10000,[[-1,0]],[],9999,0],0.5463919932937771],
+      [[10000,[[-1,0]],[],2000,7000],0.7391574585511335]
+    ] },
     solution: {
       approach: `<p>Dijkstra with a max-heap and multiplication.</p>`,
       code: `
@@ -2494,6 +5143,111 @@ class Solution {
         return 0.0;
     }
 }`,
+      alt: [{ lang: 'python', code: `import heapq
+
+class Solution:
+    def max_probability(self, n, edges, succ_prob, start_node, end_node):
+        g = [[] for _ in range(n)]
+        for (a, b), p in zip(edges, succ_prob):
+            g[a].append((b, p))
+            g[b].append((a, p))
+        best = [0.0] * n
+        best[start_node] = 1.0
+        pq = [(-1.0, start_node)]            # heapq is a min-heap, so store -probability
+        while pq:
+            negp, u = heapq.heappop(pq)
+            p = -negp
+            if u == end_node:
+                return p
+            if p < best[u]:                  # stale entry
+                continue
+            for v, q in g[u]:
+                if p * q > best[v]:
+                    best[v] = p * q
+                    heapq.heappush(pq, (-best[v], v))
+        return 0.0` }, { lang: 'js', code: `class MinHeap {
+  constructor(cmp) { this.a = []; this.cmp = cmp; }
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (this.cmp(a[i], a[p]) >= 0) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.cmp(a[l], a[m]) < 0) m = l;
+        if (r < a.length && this.cmp(a[r], a[m]) < 0) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+function maxProbability(n, edges, succProb, startNode, endNode) {
+  const g = Array.from({ length: n }, () => []);
+  edges.forEach(([a, b], i) => {
+    g[a].push([b, succProb[i]]);
+    g[b].push([a, succProb[i]]);
+  });
+  const best = new Array(n).fill(0);
+  best[startNode] = 1;
+  const pq = new MinHeap((x, y) => y[0] - x[0]);   // biggest probability first
+  pq.push([1, startNode]);
+  while (pq.size() > 0) {
+    const [p, u] = pq.pop();
+    if (u === endNode) return p;
+    if (p < best[u]) continue;                     // stale entry
+    for (const [v, q] of g[u]) {
+      if (p * q > best[v]) {
+        best[v] = p * q;
+        pq.push([best[v], v]);
+      }
+    }
+  }
+  return 0;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    double maxProbability(int n, const vector<vector<int>>& edges, const vector<double>& succProb, int start_node, int end_node) {
+        vector<vector<pair<int, double>>> g(n);
+        for (size_t i = 0; i < edges.size(); i++) {
+            g[edges[i][0]].push_back({edges[i][1], succProb[i]});
+            g[edges[i][1]].push_back({edges[i][0], succProb[i]});
+        }
+        vector<double> best(n, 0.0);
+        best[start_node] = 1.0;
+        priority_queue<pair<double, int>> pq;      // max-heap by default
+        pq.push({1.0, start_node});
+        while (!pq.empty()) {
+            auto [p, u] = pq.top();
+            pq.pop();
+            if (u == end_node) return p;
+            if (p < best[u]) continue;             // stale entry
+            for (auto [v, q] : g[u]) {
+                if (p * q > best[v]) {
+                    best[v] = p * q;
+                    pq.push({best[v], v});
+                }
+            }
+        }
+        return 0.0;
+    }
+};` }],
       complexity: `<p>Time O(E log V); space O(V + E).</p>`,
       followUps: ['Use −log(p) and a normal min-heap Dijkstra', 'What breaks if some "probabilities" could be &gt; 1?']
     }
@@ -2527,7 +5281,91 @@ class Solution {
     }
 }` },
     mcq: { q: 'Relaxing u → v gives exactly dist[v] (a tie). What happens to ways[v]?', options: ['ways[v] += ways[u]', 'ways[v] = ways[u]', 'ways[v]++', 'Nothing'], answer: 0, explain: 'Every shortest way to u extends to a new shortest way to v. On a strict improvement you reset ways[v] = ways[u].' },
-    hints: [`<p>Dijkstra finalises nodes in time order, so when u is polled its number of shortest ways is complete.</p>`, `<p>Keep <code>long[] dist</code> and <code>long[] ways</code>. Strictly better → dist = nd, ways = ways[u]; equal → ways += ways[u] (mod).</p>`, `<p>Times up to 10<sup>9</sup> × 200 → long. Only relax from non-stale pops, or ties get counted twice.</p>`],
+    hints: [`<p>Dijkstra finalises nodes in time order, so when u is polled its number of shortest ways is complete.</p>`, `<p>Keep 64-bit <code>dist</code> and <code>ways</code> arrays (<code>long[]</code> in Java, <code>long long</code> in C++). Strictly better → dist = nd, ways = ways[u]; equal → ways += ways[u] (mod).</p>`, `<p>Times up to 10<sup>9</sup> × 200 → 64-bit integers. Only relax from non-stale pops, or ties get counted twice.</p>`],
+    tests: { sig: "int int[][] -> int", fn: "waysRun", harness: {
+      java: `class Check {
+    static int waysRun(int n, int[][] roads) {
+        if (roads.length > 0 && roads[0][0] == -1) {   // marker row [-1, mode]
+            List<int[]> list = new ArrayList<>();
+            if (roads[0][1] == 0) {                    // chain of (n - 1) / 3 diamonds, each road 10^9
+                for (int s = 1; 3 * s < n; s++) {
+                    int j0 = 3 * s - 3, a = 3 * s - 2, b = 3 * s - 1, j = 3 * s;
+                    list.add(new int[]{j0, a, 1000000000});
+                    list.add(new int[]{j0, b, 1000000000});
+                    list.add(new int[]{a, j, 1000000000});
+                    list.add(new int[]{b, j, 1000000000});
+                }
+            } else {                                   // every pair of intersections has a road
+                for (int i = 0; i < n; i++)
+                    for (int j = i + 1; j < n; j++) list.add(new int[]{i, j, 1 + (i * j + i + j) % 5});
+            }
+            roads = list.toArray(new int[0][]);
+        }
+        return new Solution().countPaths(n, roads);
+    }
+}`,
+      python: `def ways_run(n, roads):
+    if roads and roads[0][0] == -1:
+        if roads[0][1] == 0:
+            roads = []
+            for s in range(1, (n - 1) // 3 + 1):
+                j0, a, b, j = 3 * s - 3, 3 * s - 2, 3 * s - 1, 3 * s
+                roads += [[j0, a, 10 ** 9], [j0, b, 10 ** 9], [a, j, 10 ** 9], [b, j, 10 ** 9]]
+        else:
+            roads = [[i, j, 1 + (i * j + i + j) % 5] for i in range(n) for j in range(i + 1, n)]
+    return Solution().count_paths(n, roads)`,
+      js: `function waysRun(n, roads) {
+  if (roads.length > 0 && roads[0][0] === -1) {
+    const mode = roads[0][1];
+    roads = [];
+    if (mode === 0) {
+      for (let s = 1; 3 * s < n; s++) {
+        const j0 = 3 * s - 3, a = 3 * s - 2, b = 3 * s - 1, j = 3 * s;
+        roads.push([j0, a, 1e9], [j0, b, 1e9], [a, j, 1e9], [b, j, 1e9]);
+      }
+    } else {
+      for (let i = 0; i < n; i++)
+        for (let j = i + 1; j < n; j++) roads.push([i, j, 1 + (i * j + i + j) % 5]);
+    }
+  }
+  return countPaths(n, roads);
+}`,
+      cpp: `int waysRun(int n, vector<vector<int>> roads) {
+    if (!roads.empty() && roads[0][0] == -1) {
+        int mode = roads[0][1];
+        roads.clear();
+        if (mode == 0) {
+            for (int s = 1; 3 * s < n; s++) {
+                int j0 = 3 * s - 3, a = 3 * s - 2, b = 3 * s - 1, j = 3 * s;
+                roads.push_back({j0, a, 1000000000});
+                roads.push_back({j0, b, 1000000000});
+                roads.push_back({a, j, 1000000000});
+                roads.push_back({b, j, 1000000000});
+            }
+        } else {
+            for (int i = 0; i < n; i++)
+                for (int j = i + 1; j < n; j++) roads.push_back({i, j, 1 + (i * j + i + j) % 5});
+        }
+    }
+    return Solution().countPaths(n, roads);
+}`
+    }, cases: [
+      [[7,[[0,6,7],[0,1,2],[1,2,3],[1,3,3],[6,3,3],[3,5,1],[6,5,1],[2,5,1],[0,4,5],[4,6,2]]],4],
+      [[2,[[0,1,1]]],1],
+      [[1,[]],1],
+      [[3,[[0,1,1],[1,2,1],[0,2,2]]],2],
+      [[3,[[0,1,1],[1,2,1],[0,2,3]]],1],
+      [[4,[[0,1,1000000000],[0,2,1000000000],[1,3,1000000000],[2,3,1000000000]]],2],
+      [[10,[[0,1,1000000000],[0,2,1000000000],[1,3,1000000000],[2,3,1000000000],[3,4,1000000000],[3,5,1000000000],[4,6,1000000000],[5,6,1000000000],[6,7,1000000000],[6,8,1000000000],[7,9,1000000000],[8,9,1000000000]]],8],
+      [[13,[[0,1,1000000000],[0,2,1000000000],[1,3,1000000000],[2,3,1000000000],[3,4,1000000000],[3,5,1000000000],[4,6,1000000000],[5,6,1000000000],[6,7,1000000000],[6,8,1000000000],[7,9,1000000000],[8,9,1000000000],[9,10,1000000000],[9,11,1000000000],[10,12,1000000000],[11,12,1000000000]]],16],
+      [[5,[[0,1,5],[1,4,5],[0,2,3],[2,3,3],[3,4,4],[0,4,10]]],3],
+      [[6,[[1,0,2],[2,0,3],[3,1,3],[4,1,3],[5,0,2],[3,4,4]]],1],
+      [[4,[[1,0,1],[2,1,2],[3,2,1]]],1],
+      [[6,[[1,0,1],[2,1,3],[3,1,4],[4,0,3],[5,1,4],[3,0,1],[3,4,3]]],1],
+      [[7,[[1,0,2],[2,0,1],[3,2,2],[4,3,1],[5,4,3],[6,5,2],[1,4,2]]],2],
+      [[199,[[-1,0]]],329376018],
+      [[200,[[-1,1]]],1]
+    ] },
     solution: {
       approach: `<p>Dijkstra carrying a ways[] array.</p>`,
       code: `
@@ -2564,6 +5402,125 @@ class Solution {
         return (int) (ways[n - 1] % MOD);
     }
 }`,
+      alt: [{ lang: 'python', code: `import heapq
+
+class Solution:
+    def count_paths(self, n, roads):
+        MOD = 10 ** 9 + 7
+        g = [[] for _ in range(n)]
+        for u, v, t in roads:
+            g[u].append((v, t))
+            g[v].append((u, t))
+        dist = [float('inf')] * n
+        ways = [0] * n
+        dist[0], ways[0] = 0, 1
+        pq = [(0, 0)]
+        while pq:
+            d, u = heapq.heappop(pq)
+            if d > dist[u]:                  # stale: do not count again
+                continue
+            for v, t in g[u]:
+                nd = d + t
+                if nd < dist[v]:
+                    dist[v] = nd
+                    ways[v] = ways[u]
+                    heapq.heappush(pq, (nd, v))
+                elif nd == dist[v]:
+                    ways[v] = (ways[v] + ways[u]) % MOD
+        return ways[n - 1] % MOD` }, { lang: 'js', code: `class MinHeap {
+  constructor(cmp) { this.a = []; this.cmp = cmp; }
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (this.cmp(a[i], a[p]) >= 0) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.cmp(a[l], a[m]) < 0) m = l;
+        if (r < a.length && this.cmp(a[r], a[m]) < 0) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+function countPaths(n, roads) {
+  const MOD = 1000000007;
+  const g = Array.from({ length: n }, () => []);
+  for (const [u, v, t] of roads) {
+    g[u].push([v, t]);
+    g[v].push([u, t]);
+  }
+  const dist = new Array(n).fill(Infinity);
+  const ways = new Array(n).fill(0);
+  dist[0] = 0;
+  ways[0] = 1;
+  const pq = new MinHeap((a, b) => a[0] - b[0]);
+  pq.push([0, 0]);
+  while (pq.size() > 0) {
+    const [d, u] = pq.pop();
+    if (d > dist[u]) continue;             // stale: do not count again
+    for (const [v, t] of g[u]) {
+      const nd = d + t;                    // up to about 2e11: exact in a double
+      if (nd < dist[v]) {
+        dist[v] = nd;
+        ways[v] = ways[u];
+        pq.push([nd, v]);
+      } else if (nd === dist[v]) {
+        ways[v] = (ways[v] + ways[u]) % MOD;
+      }
+    }
+  }
+  return ways[n - 1] % MOD;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int countPaths(int n, const vector<vector<int>>& roads) {
+        const long long MOD = 1000000007LL;
+        vector<vector<pair<int, int>>> g(n);
+        for (auto& r : roads) {
+            g[r[0]].push_back({r[1], r[2]});
+            g[r[1]].push_back({r[0], r[2]});
+        }
+        vector<long long> dist(n, LLONG_MAX), ways(n, 0);
+        dist[0] = 0;
+        ways[0] = 1;
+        priority_queue<pair<long long, int>, vector<pair<long long, int>>, greater<>> pq;
+        pq.push({0, 0});
+        while (!pq.empty()) {
+            auto [d, u] = pq.top();
+            pq.pop();
+            if (d > dist[u]) continue;       // stale: do not count again
+            for (auto [v, t] : g[u]) {
+                long long nd = d + t;
+                if (nd < dist[v]) {
+                    dist[v] = nd;
+                    ways[v] = ways[u];
+                    pq.push({nd, v});
+                } else if (nd == dist[v]) {
+                    ways[v] = (ways[v] + ways[u]) % MOD;
+                }
+            }
+        }
+        return (int)(ways[n - 1] % MOD);
+    }
+};` }],
       complexity: `<p>Time O(E log V); space O(V + E).</p>`,
       followUps: ['Count shortest paths in an unweighted graph (BFS version)', 'Which edges lie on at least one shortest path?']
     }
@@ -2593,7 +5550,64 @@ class Solution {
     }
 }` },
     mcq: { q: 'How do you model "reversing" an edge u → v?', options: ['Keep u → v with cost 0 and add v → u with cost 1', 'Delete the edge', 'Add v → u with cost 0', 'Double every weight'], answer: 0, explain: 'Using the edge as given is free; travelling against it means one reversal. Now it is a 0-1 shortest-path problem.' },
-    hints: [`<p>Every original edge gives two moves: forward (free) and backward (costs one reversal).</p>`, `<p>Weights 0/1 → 0-1 BFS with an ArrayDeque: cost 0 → addFirst, cost 1 → addLast.</p>`, `<p>Vertices are 1-indexed → arrays of size n + 1. If dst stays ∞ return -1; if src == dst return 0.</p>`],
+    hints: [`<p>Every original edge gives two moves: forward (free) and backward (costs one reversal).</p>`, `<p>Weights 0/1 → 0-1 BFS with a deque (in JS, two arrays by cost level): cost 0 → front, cost 1 → back.</p>`, `<p>Vertices are 1-indexed → arrays of size n + 1. If dst stays ∞ return -1; if src == dst return 0.</p>`],
+    tests: { sig: "int[][] int int int -> int", fn: "revRun", harness: {
+      java: `class Check {
+    static int revRun(int[][] edges, int n, int src, int dst) {
+        if (edges[0][0] == -1) {                  // marker row [-1, mode]: a chain whose every third edge points backwards
+            int mode = edges[0][1];
+            edges = new int[mode == 1 ? n : n - 1][];
+            for (int i = 1; i < n; i++) edges[i - 1] = i % 3 == 0 ? new int[]{i + 1, i} : new int[]{i, i + 1};
+            if (mode == 1) edges[n - 1] = new int[]{n, 1};
+        }
+        return new Solution().minimumEdgeReversal(edges, n, src, dst);
+    }
+}`,
+      python: `def rev_run(edges, n, src, dst):
+    if edges[0][0] == -1:
+        mode = edges[0][1]
+        edges = [[i + 1, i] if i % 3 == 0 else [i, i + 1] for i in range(1, n)]
+        if mode == 1:
+            edges.append([n, 1])
+    return Solution().minimum_edge_reversal(edges, n, src, dst)`,
+      js: `function revRun(edges, n, src, dst) {
+  if (edges[0][0] === -1) {
+    const mode = edges[0][1];
+    edges = [];
+    for (let i = 1; i < n; i++) edges.push(i % 3 === 0 ? [i + 1, i] : [i, i + 1]);
+    if (mode === 1) edges.push([n, 1]);
+  }
+  return minimumEdgeReversal(edges, n, src, dst);
+}`,
+      cpp: `int revRun(vector<vector<int>> edges, int n, int src, int dst) {
+    if (edges[0][0] == -1) {
+        int mode = edges[0][1];
+        edges.clear();
+        for (int i = 1; i < n; i++) edges.push_back(i % 3 == 0 ? vector<int>{i + 1, i} : vector<int>{i, i + 1});
+        if (mode == 1) edges.push_back({n, 1});
+    }
+    return Solution().minimumEdgeReversal(edges, n, src, dst);
+}`
+    }, cases: [
+      [[[[1,2],[3,2]],3,1,3],1],
+      [[[[1,2],[2,3],[3,4]],4,4,1],3],
+      [[[[1,2],[2,3],[3,4]],4,1,4],0],
+      [[[[1,2]],4,1,4],-1],
+      [[[[1,2]],2,2,2],0],
+      [[[[1,2],[2,1]],2,1,2],0],
+      [[[[2,1],[3,2],[4,3],[5,4]],5,1,5],4],
+      [[[[1,2],[1,3],[1,4],[5,4]],5,2,5],2],
+      [[[[1,2],[2,3],[3,1],[4,3]],4,1,4],1],
+      [[[[1,2],[2,3],[3,4],[1,4]],4,4,1],1],
+      [[[[1,2]],3,1,1],0],
+      [[[[1,5],[6,4],[1,6],[5,6],[2,6],[2,5],[4,5],[2,4],[2,5],[2,1]],6,4,5],0],
+      [[[[3,1],[2,1],[1,3],[1,4],[4,3]],4,4,3],0],
+      [[[[6,3],[4,5],[4,2],[5,4],[4,2],[4,7],[5,7]],7,7,4],1],
+      [[[[-1,0]],100000,1,100000],33333],
+      [[[[-1,0]],100000,100000,1],66666],
+      [[[[-1,1]],100000,1,100000],1],
+      [[[[-1,1]],100000,100000,1],0]
+    ] },
     solution: {
       approach: `<p>Build the 0/1 graph, run 0-1 BFS.</p>`,
       code: `
@@ -2624,6 +5638,77 @@ class Solution {
     }
 }`,
       dry: { head: ['pop', 'moves', 'deque'], rows: [['1 (0)', '1→2 free: dist 2 = 0 (front)', '[2]'], ['2 (0)', '2→1 back costs 1: no gain; 2→3 against 3→2: dist 3 = 1 (back)', '[3]'], ['3 (1)', 'nothing better', 'answer <span class="c-g">1</span>']] },
+      alt: [{ lang: 'python', code: `from collections import deque
+
+class Solution:
+    def minimum_edge_reversal(self, edges, n, src, dst):
+        g = [[] for _ in range(n + 1)]
+        for u, v in edges:
+            g[u].append((v, 0))              # along the arrow: free
+            g[v].append((u, 1))              # against the arrow: one reversal
+        INF = float('inf')
+        dist = [INF] * (n + 1)
+        dist[src] = 0
+        dq = deque([src])
+        while dq:
+            u = dq.popleft()
+            for v, w in g[u]:
+                if dist[u] + w < dist[v]:
+                    dist[v] = dist[u] + w
+                    if w == 0:
+                        dq.appendleft(v)
+                    else:
+                        dq.append(v)
+        return -1 if dist[dst] == INF else dist[dst]` }, { lang: 'js', code: `// 0-1 BFS level by level: cost-0 moves extend "cur", cost-1 moves go to "next".
+function minimumEdgeReversal(edges, n, src, dst) {
+  const g = Array.from({ length: n + 1 }, () => []);
+  for (const [u, v] of edges) {
+    g[u].push([v, 0]);                     // along the arrow: free
+    g[v].push([u, 1]);                     // against the arrow: one reversal
+  }
+  const dist = new Array(n + 1).fill(Infinity);
+  dist[src] = 0;
+  let cur = [src], cost = 0;
+  while (cur.length > 0) {
+    const next = [];
+    for (let i = 0; i < cur.length; i++) {
+      const u = cur[i];
+      if (dist[u] !== cost) continue;      // already settled cheaper
+      for (const [v, w] of g[u]) {
+        if (cost + w < dist[v]) {
+          dist[v] = cost + w;
+          (w === 0 ? cur : next).push(v);
+        }
+      }
+    }
+    cur = next;
+    cost++;
+  }
+  return dist[dst] === Infinity ? -1 : dist[dst];
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int minimumEdgeReversal(const vector<vector<int>>& edges, int n, int src, int dst) {
+        vector<vector<pair<int, int>>> g(n + 1);
+        for (auto& e : edges) {
+            g[e[0]].push_back({e[1], 0});    // along the arrow: free
+            g[e[1]].push_back({e[0], 1});    // against the arrow: one reversal
+        }
+        vector<int> dist(n + 1, INT_MAX);
+        dist[src] = 0;
+        deque<int> dq{src};
+        while (!dq.empty()) {
+            int u = dq.front();
+            dq.pop_front();
+            for (auto [v, w] : g[u]) {
+                if (dist[u] + w < dist[v]) {
+                    dist[v] = dist[u] + w;
+                    if (w == 0) dq.push_front(v); else dq.push_back(v);
+                }
+            }
+        }
+        return dist[dst] == INT_MAX ? -1 : dist[dst];
+    }
+};` }],
       complexity: `<p>Time O(n + E); space O(n + E).</p>`,
       followUps: ['Return which edges to reverse', 'What if reversing edge i costs c<sub>i</sub>? (Dijkstra)']
     }
@@ -2650,6 +5735,79 @@ class Solution {
 }` },
     mcq: { q: 'Why does one pass in topological order suffice?', options: ['When u is processed, every edge INTO u has already been relaxed, so dist[u] is final', 'Because DAGs have no negative weights', 'Because the heap is sorted', 'It does not — you still need V − 1 passes'], answer: 0, explain: 'All predecessors of u come before u in topological order, so every path into u has been considered before u relaxes its out-edges.' },
     hints: [`<p>No cycles → there is a topological order where every edge goes left to right.</p>`, `<p>Kahn's algorithm (in-degrees + queue) gives the order; then relax each node's out-edges in that order.</p>`, `<p>Skip nodes whose dist is still ∞. Works with negative weights. Turn ∞ into −1 at the end. Same trick with max gives the <b>longest</b> path in a DAG.</p>`],
+    tests: { sig: "int int int[][] -> int[]", fn: "dagRun", harness: {
+      java: `class Check {
+    static int[] dagRun(int V, int E, int[][] edges) {
+        if (edges[0][0] != -1) return new Solution().shortestPath(V, E, edges);
+        int mode = edges[0][1];                   // marker row [-1, mode]: 4000 forward edges; mode 1 relabels the vertices
+        List<int[]> list = new ArrayList<>();
+        for (int i = 0; i < V && list.size() < 4000; i++)
+            for (int j = i + 1; j < V && list.size() < 4000; j++)
+                if ((i * j + i) % 11 != 0) list.add(new int[]{i, j, (i * 13 + j * 7) % 101});
+        if (mode == 1) for (int[] e : list) { e[0] = e[0] * 37 % V; e[1] = e[1] * 37 % V; }
+        int[][] es = list.toArray(new int[0][]);
+        int[] d = new Solution().shortestPath(V, es.length, es);
+        int sum = 0;
+        for (int i = 0; i < V; i++) sum += d[i] * (i % 7 + 1);
+        return new int[]{sum};
+    }
+}`,
+      python: `def dag_run(V, E, edges):
+    if edges[0][0] != -1:
+        return Solution().shortest_path(V, E, edges)
+    mode = edges[0][1]
+    es = []
+    for i in range(V):
+        for j in range(i + 1, V):
+            if (i * j + i) % 11 != 0 and len(es) < 4000:
+                es.append([i, j, (i * 13 + j * 7) % 101])
+    if mode == 1:
+        es = [[u * 37 % V, v * 37 % V, w] for u, v, w in es]
+    d = Solution().shortest_path(V, len(es), es)
+    return [sum(x * (i % 7 + 1) for i, x in enumerate(d))]`,
+      js: `function dagRun(V, E, edges) {
+  if (edges[0][0] !== -1) return shortestPath(V, E, edges);
+  const mode = edges[0][1];
+  const es = [];
+  for (let i = 0; i < V && es.length < 4000; i++)
+    for (let j = i + 1; j < V && es.length < 4000; j++)
+      if ((i * j + i) % 11 !== 0) es.push([i, j, (i * 13 + j * 7) % 101]);
+  if (mode === 1) for (const e of es) { e[0] = e[0] * 37 % V; e[1] = e[1] * 37 % V; }
+  const d = shortestPath(V, es.length, es);
+  let sum = 0;
+  for (let i = 0; i < V; i++) sum += d[i] * (i % 7 + 1);
+  return [sum];
+}`,
+      cpp: `vector<int> dagRun(int V, int E, vector<vector<int>> edges) {
+    if (edges[0][0] != -1) return Solution().shortestPath(V, E, edges);
+    int mode = edges[0][1];
+    vector<vector<int>> es;
+    for (int i = 0; i < V && es.size() < 4000; i++)
+        for (int j = i + 1; j < V && es.size() < 4000; j++)
+            if ((i * j + i) % 11 != 0) es.push_back({i, j, (i * 13 + j * 7) % 101});
+    if (mode == 1) for (auto& e : es) { e[0] = e[0] * 37 % V; e[1] = e[1] * 37 % V; }
+    vector<int> d = Solution().shortestPath(V, es.size(), es);
+    int sum = 0;
+    for (int i = 0; i < V; i++) sum += d[i] * (i % 7 + 1);
+    return {sum};
+}`
+    }, cases: [
+      [[6,7,[[0,1,2],[0,4,1],[4,5,4],[4,2,2],[1,2,3],[2,3,6],[5,3,1]]],[0,2,3,6,1,5]],
+      [[2,1,[[0,1,5]]],[0,5]],
+      [[3,1,[[0,1,2]]],[0,2,-1]],
+      [[4,3,[[0,3,1],[3,2,1],[2,1,1]]],[0,3,2,1]],
+      [[3,3,[[0,1,-5],[1,2,3],[0,2,1]]],[0,-5,-2]],
+      [[3,2,[[1,0,1],[0,2,2]]],[0,-1,2]],
+      [[4,4,[[0,1,0],[1,2,0],[2,3,0],[0,3,0]]],[0,0,0,0]],
+      [[5,4,[[3,4,100],[0,1,100],[1,2,100],[2,3,100]]],[0,100,200,300,400]],
+      [[5,5,[[0,4,7],[0,3,2],[3,4,1],[3,2,1],[2,4,1]]],[0,-1,3,2,3]],
+      [[5,5,[[0,3,11],[0,2,14],[3,2,4],[3,4,10],[2,4,16]]],[0,-1,14,11,21]],
+      [[7,10,[[0,5,15],[0,3,5],[0,2,11],[5,3,10],[5,1,14],[5,2,16],[3,6,11],[4,1,5],[1,2,10],[2,6,8]]],[0,29,11,5,-1,15,16]],
+      [[4,2,[[0,1,14],[1,3,17]]],[0,14,-1,31]],
+      [[7,8,[[0,4,2],[0,5,1],[0,3,16],[0,6,20],[4,5,9],[2,6,7],[5,6,1],[3,6,11]]],[0,-1,-1,16,2,1,2]],
+      [[100,0,[[-1,0]]],[-394]],
+      [[100,0,[[-1,1]]],[-394]]
+    ] },
     solution: {
       approach: `<p>Topological sort, then relax edges in that order — O(V + E).</p>`,
       code: `
@@ -2679,6 +5837,81 @@ class Solution {
         return d;
     }
 }`,
+      alt: [{ lang: 'python', code: `from collections import deque
+
+class Solution:
+    def shortest_path(self, V, E, edges):
+        g = [[] for _ in range(V)]
+        indeg = [0] * V
+        for u, v, w in edges:
+            g[u].append((v, w))
+            indeg[v] += 1
+        q = deque(i for i in range(V) if indeg[i] == 0)     # Kahn's algorithm
+        order = []
+        while q:
+            u = q.popleft()
+            order.append(u)
+            for v, _ in g[u]:
+                indeg[v] -= 1
+                if indeg[v] == 0:
+                    q.append(v)
+        INF = float('inf')
+        d = [INF] * V
+        d[0] = 0
+        for u in order:
+            if d[u] == INF:
+                continue                     # not reachable from 0
+            for v, w in g[u]:
+                if d[u] + w < d[v]:
+                    d[v] = d[u] + w
+        return [-1 if x == INF else x for x in d]` }, { lang: 'js', code: `function shortestPath(V, E, edges) {
+  const g = Array.from({ length: V }, () => []);
+  const indeg = new Array(V).fill(0);
+  for (const [u, v, w] of edges) {
+    g[u].push([v, w]);
+    indeg[v]++;
+  }
+  const order = [];                        // Kahn's algorithm (the array doubles as the queue)
+  for (let i = 0; i < V; i++) if (indeg[i] === 0) order.push(i);
+  for (let h = 0; h < order.length; h++) {
+    for (const [v] of g[order[h]]) if (--indeg[v] === 0) order.push(v);
+  }
+  const d = new Array(V).fill(Infinity);
+  d[0] = 0;
+  for (const u of order) {
+    if (d[u] === Infinity) continue;       // not reachable from 0
+    for (const [v, w] of g[u]) if (d[u] + w < d[v]) d[v] = d[u] + w;
+  }
+  return d.map((x) => (x === Infinity ? -1 : x));
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    vector<int> shortestPath(int V, int E, const vector<vector<int>>& edges) {
+        vector<vector<pair<int, int>>> g(V);
+        vector<int> indeg(V, 0);
+        for (auto& e : edges) {
+            g[e[0]].push_back({e[1], e[2]});
+            indeg[e[1]]++;
+        }
+        queue<int> q;                        // Kahn's algorithm
+        for (int i = 0; i < V; i++) if (indeg[i] == 0) q.push(i);
+        vector<int> order;
+        while (!q.empty()) {
+            int u = q.front();
+            q.pop();
+            order.push_back(u);
+            for (auto [v, w] : g[u]) if (--indeg[v] == 0) q.push(v);
+        }
+        const int INF = INT_MAX;
+        vector<int> d(V, INF);
+        d[0] = 0;
+        for (int u : order) {
+            if (d[u] == INF) continue;       // not reachable from 0
+            for (auto [v, w] : g[u]) d[v] = min(d[v], d[u] + w);
+        }
+        for (int& x : d) if (x == INF) x = -1;
+        return d;
+    }
+};` }],
       complexity: `<p>Time O(V + E); space O(V + E).</p>`,
       followUps: ['Longest path in a DAG (critical path in project scheduling)', 'Count the number of shortest paths in a DAG']
     }
@@ -2716,6 +5949,72 @@ class Solution {
 }` },
     mcq: { q: 'Entering a cell costs its value (0 or 1). Best algorithm for 10<sup>5</sup> cells?', options: ['0-1 BFS with a deque, O(cells)', 'Plain BFS', 'Floyd-Warshall', 'Kruskal'], answer: 0, explain: 'Two possible costs → deque keeps the frontier sorted without a heap. Plain BFS would treat obstacles and empty cells the same.' },
     hints: [`<p>Think of moving into a cell as an edge whose weight is that cell's value: 0 or 1.</p>`, `<p>0-1 BFS: pollFirst; neighbour cost 0 → addFirst, cost 1 → addLast; only push on improvement.</p>`, `<p>Use one flat dist array of size m·n (index r·n + c) to save memory. Answer = dist of the bottom-right cell.</p>`],
+    tests: { sig: "int[][] -> int", fn: "obstRun", harness: {
+      java: `class Check {
+    static int obstRun(int[][] grid) {
+        if (grid[0][0] == -1) {                   // marker row [-1, m, n, mode]
+            int m = grid[0][1], n = grid[0][2], mode = grid[0][3];
+            grid = new int[m][n];
+            for (int i = 0; i < m; i++)
+                for (int j = 0; j < n; j++)
+                    grid[i][j] = mode == 0 ? ((i * 7 + j * 3 + i * j) % 5 == 0 ? 1 : 0) : ((i * 5 + j * 11 + (i / 3) * (j / 3)) % 3 == 0 ? 1 : 0);
+            grid[0][0] = 0;
+            grid[m - 1][n - 1] = 0;
+        }
+        return new Solution().minimumObstacles(grid);
+    }
+}`,
+      python: `def obst_run(grid):
+    if grid[0][0] == -1:
+        _, m, n, mode = grid[0]
+        grid = [[(1 if (i * 7 + j * 3 + i * j) % 5 == 0 else 0) if mode == 0 else (1 if (i * 5 + j * 11 + (i // 3) * (j // 3)) % 3 == 0 else 0)
+                 for j in range(n)] for i in range(m)]
+        grid[0][0] = 0
+        grid[m - 1][n - 1] = 0
+    return Solution().minimum_obstacles(grid)`,
+      js: `function obstRun(grid) {
+  if (grid[0][0] === -1) {
+    const [, m, n, mode] = grid[0];
+    grid = Array.from({ length: m }, (_, i) => Array.from({ length: n }, (_, j) =>
+      mode === 0 ? ((i * 7 + j * 3 + i * j) % 5 === 0 ? 1 : 0) : ((i * 5 + j * 11 + Math.floor(i / 3) * Math.floor(j / 3)) % 3 === 0 ? 1 : 0)));
+    grid[0][0] = 0;
+    grid[m - 1][n - 1] = 0;
+  }
+  return minimumObstacles(grid);
+}`,
+      cpp: `int obstRun(vector<vector<int>> grid) {
+    if (grid[0][0] == -1) {
+        int m = grid[0][1], n = grid[0][2], mode = grid[0][3];
+        grid.assign(m, vector<int>(n));
+        for (int i = 0; i < m; i++)
+            for (int j = 0; j < n; j++)
+                grid[i][j] = mode == 0 ? ((i * 7 + j * 3 + i * j) % 5 == 0 ? 1 : 0) : ((i * 5 + j * 11 + (i / 3) * (j / 3)) % 3 == 0 ? 1 : 0);
+        grid[0][0] = 0;
+        grid[m - 1][n - 1] = 0;
+    }
+    return Solution().minimumObstacles(grid);
+}`
+    }, cases: [
+      [[[[0,1,1],[1,1,0],[1,1,0]]],2],
+      [[[[0,1,0,0,0],[0,1,0,1,0],[0,0,0,1,0]]],0],
+      [[[[0,0],[0,0]]],0],
+      [[[[0,0]]],0],
+      [[[[0,1,0]]],1],
+      [[[[0],[1],[0]]],1],
+      [[[[0,1,1,1,0]]],3],
+      [[[[0,1,1],[1,1,1],[1,1,0]]],3],
+      [[[[0,1,0,1,0],[1,1,1,1,1],[0,1,0,1,0],[1,1,1,1,0]]],3],
+      [[[[0,0],[1,1],[1,1],[0,0]]],2],
+      [[[[0,0,1],[1,0,0]]],0],
+      [[[[0,0],[0,0],[0,0],[0,0]]],0],
+      [[[[-1,316,316,0]]],0],
+      [[[[-1,316,316,1]]],71],
+      [[[[-1,1,100000,0]]],19999],
+      [[[[-1,100000,1,0]]],19999],
+      [[[[-1,2,50000,1]]],16666],
+      [[[[-1,50000,2,0]]],9999],
+      [[[[-1,250,400,1]]],74]
+    ] },
     solution: {
       approach: `<p>0-1 BFS where the weight of an edge is the value of the cell you step into.</p>`,
       code: `
@@ -2743,6 +6042,78 @@ class Solution {
         return dist[m * n - 1];
     }
 }`,
+      alt: [{ lang: 'python', code: `from collections import deque
+
+class Solution:
+    def minimum_obstacles(self, grid):
+        m, n = len(grid), len(grid[0])
+        INF = float('inf')
+        dist = [[INF] * n for _ in range(m)]
+        dist[0][0] = 0
+        dq = deque([(0, 0)])
+        while dq:
+            r, c = dq.popleft()
+            for nr, nc in ((r + 1, c), (r - 1, c), (r, c + 1), (r, c - 1)):
+                if 0 <= nr < m and 0 <= nc < n:
+                    w = grid[nr][nc]         # entering an obstacle costs 1
+                    if dist[r][c] + w < dist[nr][nc]:
+                        dist[nr][nc] = dist[r][c] + w
+                        if w == 0:
+                            dq.appendleft((nr, nc))
+                        else:
+                            dq.append((nr, nc))
+        return dist[m - 1][n - 1]` }, { lang: 'js', code: `// 0-1 BFS level by level: empty cells extend "cur", obstacle cells go to "next".
+function minimumObstacles(grid) {
+  const m = grid.length, n = grid[0].length;
+  const dist = new Int32Array(m * n).fill(1 << 30);
+  dist[0] = 0;
+  let cur = [0], cost = 0;
+  const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  while (cur.length > 0) {
+    const next = [];
+    for (let i = 0; i < cur.length; i++) {
+      const id = cur[i];
+      if (dist[id] !== cost) continue;
+      const r = Math.floor(id / n), c = id % n;
+      for (const [dr, dc] of dirs) {
+        const nr = r + dr, nc = c + dc;
+        if (nr < 0 || nc < 0 || nr >= m || nc >= n) continue;
+        const w = grid[nr][nc], nid = nr * n + nc;
+        if (cost + w < dist[nid]) {
+          dist[nid] = cost + w;
+          (w === 0 ? cur : next).push(nid);
+        }
+      }
+    }
+    cur = next;
+    cost++;
+  }
+  return dist[m * n - 1];
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int minimumObstacles(const vector<vector<int>>& grid) {
+        int m = grid.size(), n = grid[0].size();
+        vector<int> dist(m * n, INT_MAX);
+        dist[0] = 0;
+        deque<int> dq{0};
+        const int dr[] = {1, -1, 0, 0}, dc[] = {0, 0, 1, -1};
+        while (!dq.empty()) {
+            int id = dq.front();
+            dq.pop_front();
+            int r = id / n, c = id % n;
+            for (int k = 0; k < 4; k++) {
+                int nr = r + dr[k], nc = c + dc[k];
+                if (nr < 0 || nc < 0 || nr >= m || nc >= n) continue;
+                int w = grid[nr][nc], nid = nr * n + nc;
+                if (dist[id] + w < dist[nid]) {
+                    dist[nid] = dist[id] + w;
+                    if (w == 0) dq.push_front(nid); else dq.push_back(nid);
+                }
+            }
+        }
+        return dist[m * n - 1];
+    }
+};` }],
       complexity: `<p>Time O(m·n); space O(m·n).</p>`,
       followUps: ['Return the cells to remove', 'Each obstacle has its own removal cost → Dijkstra']
     }
@@ -2781,6 +6152,59 @@ class Solution {
 }` },
     mcq: { q: 'Cost of a route = the highest elevation on it. Which combine rule does Dijkstra use?', options: ['max(time so far, cell elevation)', 'time so far + elevation', 'min(time so far, elevation)', 'elevation of the start cell'], answer: 0, explain: 'You must wait until the water covers the highest cell on your route. Max is monotone, so Dijkstra works.' },
     hints: [`<p>The answer is the minimum over routes of the <b>maximum</b> cell value on the route (a minimax path).</p>`, `<p>Dijkstra: min-heap of {time, r, c}, neighbour time = max(time, grid[nr][nc]). Because the cost lives on cells, you may mark cells seen when pushing.</p>`, `<p>Return when (n−1, n−1) is polled. Alternatives: binary search t + BFS (O(n² log n²)), or add cells in increasing elevation with DSU until corners connect.</p>`],
+    tests: { sig: "int[][] -> int", fn: "swimRun", harness: {
+      java: `class Check {
+    static int swimRun(int[][] grid) {
+        if (grid[0][0] == -1 && grid[0].length == 3) {   // marker row [-1, n, k]: value (i*n + j) * k mod n*n
+            int n = grid[0][1], k = grid[0][2];
+            grid = new int[n][n];
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++) grid[i][j] = (i * n + j) * k % (n * n);
+        }
+        return new Solution().swimInWater(grid);
+    }
+}`,
+      python: `def swim_run(grid):
+    if grid[0][0] == -1 and len(grid[0]) == 3:
+        _, n, k = grid[0]
+        grid = [[(i * n + j) * k % (n * n) for j in range(n)] for i in range(n)]
+    return Solution().swim_in_water(grid)`,
+      js: `function swimRun(grid) {
+  if (grid[0][0] === -1 && grid[0].length === 3) {
+    const [, n, k] = grid[0];
+    grid = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => (i * n + j) * k % (n * n)));
+  }
+  return swimInWater(grid);
+}`,
+      cpp: `int swimRun(vector<vector<int>> grid) {
+    if (grid[0][0] == -1 && grid[0].size() == 3) {
+        int n = grid[0][1], k = grid[0][2];
+        grid.assign(n, vector<int>(n));
+        for (int i = 0; i < n; i++)
+            for (int j = 0; j < n; j++) grid[i][j] = (i * n + j) * k % (n * n);
+    }
+    return Solution().swimInWater(grid);
+}`
+    }, cases: [
+      [[[[0,2],[1,3]]],3],
+      [[[[0,1,2,3,4],[24,23,22,21,5],[12,13,14,15,16],[11,17,18,19,20],[10,9,8,7,6]]],16],
+      [[[[0]]],0],
+      [[[[3,2],[0,1]]],3],
+      [[[[0,3],[2,1]]],2],
+      [[[[1,0],[2,3]]],3],
+      [[[[0,1,2],[3,4,5],[6,7,8]]],8],
+      [[[[8,7,6],[5,4,3],[2,1,0]]],8],
+      [[[[0,8,7],[1,6,5],[2,3,4]]],4],
+      [[[[1,2,5],[3,6,4],[7,8,0]]],5],
+      [[[[2,3,6],[7,5,4],[8,1,0]]],5],
+      [[[[3,5,0],[2,1,4],[7,6,8]]],8],
+      [[[[10,11,8,9,22],[6,7,5,19,20],[18,4,24,3,16],[21,2,14,13,12],[0,17,15,23,1]]],14],
+      [[[[-1,50,37]]],2463],
+      [[[[-1,50,3]]],2497],
+      [[[[-1,50,1]]],2499],
+      [[[[-1,50,1249]]],1298],
+      [[[[-1,50,2499]]],2450]
+    ] },
     solution: {
       approach: `<p>Minimax Dijkstra on cells.</p>`,
       code: `
@@ -2807,6 +6231,98 @@ class Solution {
         return -1;
     }
 }`,
+      alt: [{ lang: 'python', code: `import heapq
+
+class Solution:
+    def swim_in_water(self, grid):
+        n = len(grid)
+        seen = [[False] * n for _ in range(n)]
+        seen[0][0] = True
+        pq = [(grid[0][0], 0, 0)]
+        while pq:
+            t, r, c = heapq.heappop(pq)
+            if r == n - 1 and c == n - 1:
+                return t
+            for nr, nc in ((r + 1, c), (r - 1, c), (r, c + 1), (r, c - 1)):
+                if 0 <= nr < n and 0 <= nc < n and not seen[nr][nc]:
+                    seen[nr][nc] = True      # pops come out in non-decreasing time
+                    heapq.heappush(pq, (max(t, grid[nr][nc]), nr, nc))
+        return -1` }, { lang: 'js', code: `class MinHeap {
+  constructor(cmp) { this.a = []; this.cmp = cmp; }
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (this.cmp(a[i], a[p]) >= 0) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.cmp(a[l], a[m]) < 0) m = l;
+        if (r < a.length && this.cmp(a[r], a[m]) < 0) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+function swimInWater(grid) {
+  const n = grid.length;
+  const seen = Array.from({ length: n }, () => new Array(n).fill(false));
+  const pq = new MinHeap((a, b) => a[0] - b[0]);
+  pq.push([grid[0][0], 0, 0]);
+  seen[0][0] = true;
+  const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  while (pq.size() > 0) {
+    const [time, r, c] = pq.pop();
+    if (r === n - 1 && c === n - 1) return time;
+    for (const [dr, dc] of dirs) {
+      const nr = r + dr, nc = c + dc;
+      if (nr < 0 || nc < 0 || nr >= n || nc >= n || seen[nr][nc]) continue;
+      seen[nr][nc] = true;                 // pops come out in non-decreasing time
+      pq.push([Math.max(time, grid[nr][nc]), nr, nc]);
+    }
+  }
+  return -1;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int swimInWater(const vector<vector<int>>& grid) {
+        int n = grid.size();
+        vector<vector<bool>> seen(n, vector<bool>(n, false));
+        using T = tuple<int, int, int>;
+        priority_queue<T, vector<T>, greater<>> pq;
+        pq.push({grid[0][0], 0, 0});
+        seen[0][0] = true;
+        const int dr[] = {1, -1, 0, 0}, dc[] = {0, 0, 1, -1};
+        while (!pq.empty()) {
+            auto [time, r, c] = pq.top();
+            pq.pop();
+            if (r == n - 1 && c == n - 1) return time;
+            for (int k = 0; k < 4; k++) {
+                int nr = r + dr[k], nc = c + dc[k];
+                if (nr < 0 || nc < 0 || nr >= n || nc >= n || seen[nr][nc]) continue;
+                seen[nr][nc] = true;         // pops come out in non-decreasing time
+                pq.push({max(time, grid[nr][nc]), nr, nc});
+            }
+        }
+        return -1;
+    }
+};` }],
       complexity: `<p>Time O(n² log n); space O(n²).</p>`,
       followUps: ['Solve with DSU by sorting cells', 'Path With Minimum Effort is the edge-weighted cousin']
     }
@@ -2863,6 +6379,80 @@ class Solution {
 }` },
     mcq: { q: 'How do you test if edge e is pseudo-critical (given it is not critical)?', options: ['Force e into the tree first, run Kruskal; if the weight equals the true MST weight, e is pseudo-critical', 'Remove e and check connectivity', 'Check if e is the lightest edge', 'Check if e is on a cycle'], answer: 0, explain: 'Forcing e and still reaching the optimal weight proves some MST contains it. Being non-critical means some MST avoids it.' },
     hints: [`<p>First compute the true MST weight W with Kruskal (sort once, keep original indices).</p>`, `<p>For each edge i: Kruskal <b>skipping</b> i — weight &gt; W (or disconnected) → critical. Else Kruskal <b>forcing</b> i first — weight == W → pseudo-critical.</p>`, `<p>E ≤ 200 → E Kruskal runs × E edges = 4·10<sup>4</sup> DSU ops — tiny. Return "disconnected" as +∞ so it counts as critical.</p>`],
+    tests: { sig: "int int[][] -> list<list<int>>", fn: "critRun", check: "(args, out, exp) => { const norm = (r) => JSON.stringify(r.map((x) => x.slice().sort((p, q) => p - q))); return norm(out) === norm(exp); }", harness: {
+      java: `class Check {
+    static List<List<Integer>> critRun(int n, int[][] edges) {
+        if (edges[0][0] == -1) {                  // marker row [-1, mode]: 100 vertices, up to 200 edges
+            int mode = edges[0][1];
+            List<int[]> list = new ArrayList<>();
+            if (mode == 2) {
+                for (int i = 0; i < n - 1; i++) list.add(new int[]{i, i + 1, 1});
+            } else {
+                for (int i = 0; i < n; i++) list.add(new int[]{i, (i + 1) % n, mode == 0 ? 1 + (i * 7) % 5 : 1});
+                if (mode != 3)
+                    for (int i = 0; i < n; i++) list.add(new int[]{i, (i + 2 + (i * 7) % 40) % n, mode == 0 ? 1 + (i * i * 3 + 5 * i) % 7 : 1});
+            }
+            edges = list.toArray(new int[0][]);
+        }
+        return new Solution().findCriticalAndPseudoCriticalEdges(n, edges);
+    }
+}`,
+      python: `def crit_run(n, edges):
+    if edges[0][0] == -1:
+        mode = edges[0][1]
+        if mode == 2:
+            edges = [[i, i + 1, 1] for i in range(n - 1)]
+        else:
+            edges = [[i, (i + 1) % n, 1 + (i * 7) % 5 if mode == 0 else 1] for i in range(n)]
+            if mode != 3:
+                edges += [[i, (i + 2 + (i * 7) % 40) % n, 1 + (i * i * 3 + 5 * i) % 7 if mode == 0 else 1] for i in range(n)]
+    return Solution().find_critical_and_pseudo_critical_edges(n, edges)`,
+      js: `function critRun(n, edges) {
+  if (edges[0][0] === -1) {
+    const mode = edges[0][1];
+    edges = [];
+    if (mode === 2) {
+      for (let i = 0; i < n - 1; i++) edges.push([i, i + 1, 1]);
+    } else {
+      for (let i = 0; i < n; i++) edges.push([i, (i + 1) % n, mode === 0 ? 1 + (i * 7) % 5 : 1]);
+      if (mode !== 3)
+        for (let i = 0; i < n; i++) edges.push([i, (i + 2 + (i * 7) % 40) % n, mode === 0 ? 1 + (i * i * 3 + 5 * i) % 7 : 1]);
+    }
+  }
+  return findCriticalAndPseudoCriticalEdges(n, edges);
+}`,
+      cpp: `vector<vector<int>> critRun(int n, vector<vector<int>> edges) {
+    if (edges[0][0] == -1) {
+        int mode = edges[0][1];
+        edges.clear();
+        if (mode == 2) {
+            for (int i = 0; i < n - 1; i++) edges.push_back({i, i + 1, 1});
+        } else {
+            for (int i = 0; i < n; i++) edges.push_back({i, (i + 1) % n, mode == 0 ? 1 + (i * 7) % 5 : 1});
+            if (mode != 3)
+                for (int i = 0; i < n; i++) edges.push_back({i, (i + 2 + (i * 7) % 40) % n, mode == 0 ? 1 + (i * i * 3 + 5 * i) % 7 : 1});
+        }
+    }
+    return Solution().findCriticalAndPseudoCriticalEdges(n, edges);
+}`
+    }, cases: [
+      [[5,[[0,1,1],[1,2,1],[2,3,2],[0,3,2],[0,4,3],[3,4,3],[1,4,6]]],[[0,1],[2,3,4,5]]],
+      [[4,[[0,1,1],[1,2,1],[2,3,1],[0,3,1]]],[[],[0,1,2,3]]],
+      [[2,[[0,1,5]]],[[0],[]]],
+      [[3,[[0,1,1],[1,2,1],[0,2,2]]],[[0,1],[]]],
+      [[3,[[0,1,1],[1,2,1],[0,2,1]]],[[],[0,1,2]]],
+      [[4,[[0,1,1],[1,2,2],[2,3,3]]],[[0,1,2],[]]],
+      [[6,[[0,1,1],[1,2,1],[0,2,1],[2,3,5],[3,4,1],[4,5,1],[3,5,1]]],[[3],[0,1,2,4,5,6]]],
+      [[4,[[0,1,2],[1,2,2],[2,3,2],[0,3,1],[0,2,2]]],[[3],[0,1,2,4]]],
+      [[3,[[2,1,7],[1,0,7],[2,0,7]]],[[],[0,1,2]]],
+      [[6,[[0,1,2],[0,2,1],[2,3,1],[1,4,2],[1,5,3],[5,2,1]]],[[0,1,2,3,5],[]]],
+      [[6,[[0,1,2],[1,2,2],[2,3,3],[0,4,1],[3,5,3],[1,4,2],[1,3,3]]],[[1,3,4],[0,2,5,6]]],
+      [[6,[[0,1,1],[0,2,1],[0,3,1],[1,4,2],[1,5,3],[0,5,1]]],[[0,1,2,3,5],[]]],
+      [[100,[[-1,0]]],[[0,3,5,10,13,15,18,20,25,26,30,31,33,35,38,40,45,48,50,53,55,60,61,65,66,68,70,75,80,83,85,88,90,95,96,100,101,102,103,107,110,114,117,121,124,128,131,135,137,138,142,145,149,152,154,156,157,159,161,163,166,168,170,172,173,177,180,184,187,189,191,192,194,196,198],[8,11,23,28,41,43,46,58,63,73,76,78,93,98,108,109,112,115,116,122,123,129,130,136,140,143,144,147,150,158,164,165,171,175,178,179,185,186,193,199]]],
+      [[100,[[-1,1]]],[[],[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199]]],
+      [[100,[[-1,2]]],[[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98],[]]],
+      [[100,[[-1,3]]],[[],[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99]]]
+    ] },
     solution: {
       approach: `<p>Kruskal with skip/force per edge.</p>`,
       code: `
@@ -2906,6 +6496,122 @@ class Solution {
         return Arrays.asList(crit, pseudo);
     }
 }`,
+      alt: [{ lang: 'python', code: `class Solution:
+    def find_critical_and_pseudo_critical_edges(self, n, edges):
+        es = sorted(((w, a, b, i) for i, (a, b, w) in enumerate(edges)))
+
+        def mst(skip=-1, force=-1):
+            parent = list(range(n))
+
+            def find(x):
+                while parent[x] != x:
+                    parent[x] = parent[parent[x]]
+                    x = parent[x]
+                return x
+
+            total = used = 0
+            if force != -1:
+                w, a, b, _ = es[force]
+                parent[find(a)] = find(b)
+                total += w
+                used += 1
+            for pos, (w, a, b, _) in enumerate(es):
+                if pos == skip or pos == force:
+                    continue
+                ra, rb = find(a), find(b)
+                if ra != rb:
+                    parent[ra] = rb
+                    total += w
+                    used += 1
+            return total if used == n - 1 else float('inf')
+
+        base = mst()
+        critical, pseudo = [], []
+        for pos, (_, _, _, idx) in enumerate(es):
+            if mst(skip=pos) > base:
+                critical.append(idx)         # removing it makes the MST heavier
+            elif mst(force=pos) == base:
+                pseudo.append(idx)           # some MST can include it
+        return [critical, pseudo]` }, { lang: 'js', code: `function findCriticalAndPseudoCriticalEdges(n, edges) {
+  const es = edges.map(([a, b, w], i) => [a, b, w, i]).sort((x, y) => x[2] - y[2]);
+  // skip / force are positions in es (or -1)
+  const mst = (skip, force) => {
+    const parent = Array.from({ length: n }, (_, i) => i);
+    const find = (x) => {
+      while (parent[x] !== x) {
+        parent[x] = parent[parent[x]];
+        x = parent[x];
+      }
+      return x;
+    };
+    let total = 0, used = 0;
+    if (force !== -1) {
+      parent[find(es[force][0])] = find(es[force][1]);
+      total += es[force][2];
+      used++;
+    }
+    for (let i = 0; i < es.length; i++) {
+      if (i === skip || i === force) continue;
+      const a = find(es[i][0]), b = find(es[i][1]);
+      if (a !== b) {
+        parent[a] = b;
+        total += es[i][2];
+        used++;
+      }
+    }
+    return used === n - 1 ? total : Infinity;
+  };
+  const base = mst(-1, -1);
+  const critical = [], pseudo = [];
+  for (let i = 0; i < es.length; i++) {
+    if (mst(i, -1) > base) critical.push(es[i][3]);
+    else if (mst(-1, i) === base) pseudo.push(es[i][3]);
+  }
+  return [critical, pseudo];
+}` }, { lang: 'cpp', code: `class Solution {
+    vector<int> parent;
+    int find(int x) {
+        while (parent[x] != x) {
+            parent[x] = parent[parent[x]];
+            x = parent[x];
+        }
+        return x;
+    }
+    // es is sorted by weight; skip / force are positions in es (or -1)
+    int mst(int n, const vector<array<int, 4>>& es, int skip, int force) {
+        parent.assign(n, 0);
+        iota(parent.begin(), parent.end(), 0);
+        int total = 0, used = 0;
+        if (force != -1) {
+            parent[find(es[force][0])] = find(es[force][1]);
+            total += es[force][2];
+            used++;
+        }
+        for (int i = 0; i < (int)es.size(); i++) {
+            if (i == skip || i == force) continue;
+            int a = find(es[i][0]), b = find(es[i][1]);
+            if (a != b) {
+                parent[a] = b;
+                total += es[i][2];
+                used++;
+            }
+        }
+        return used == n - 1 ? total : INT_MAX;   // disconnected -> "infinite"
+    }
+public:
+    vector<vector<int>> findCriticalAndPseudoCriticalEdges(int n, const vector<vector<int>>& edges) {
+        vector<array<int, 4>> es;
+        for (int i = 0; i < (int)edges.size(); i++) es.push_back({edges[i][0], edges[i][1], edges[i][2], i});
+        sort(es.begin(), es.end(), [](const auto& x, const auto& y) { return x[2] < y[2]; });
+        int base = mst(n, es, -1, -1);
+        vector<int> critical, pseudo;
+        for (int i = 0; i < (int)es.size(); i++) {
+            if (mst(n, es, i, -1) > base) critical.push_back(es[i][3]);
+            else if (mst(n, es, -1, i) == base) pseudo.push_back(es[i][3]);
+        }
+        return {critical, pseudo};
+    }
+};` }],
       complexity: `<p>Time O(E² · α(V)) after one O(E log E) sort; space O(V + E).</p>`,
       followUps: ['Faster: group equal weights and find bridges in the contracted graph (Tarjan)', 'Second-best MST weight']
     }
@@ -2941,6 +6647,73 @@ class Solution {
 }` },
     mcq: { q: 'Popping states in cost order, when should you push a new state (v, newTime)?', options: ['Only if newTime is smaller than the best time seen at v so far', 'Always', 'Only if v was never visited', 'Only if the cost is smaller than before'], answer: 0, explain: 'Every earlier state at v costs no more (pops are in cost order). A new state is useful only if it is faster — otherwise it is dominated.' },
     hints: [`<p>Two criteria: minimise fees, but time is a hard limit. A plain "visited" per city is wrong — a pricier but faster arrival may be needed.</p>`, `<p>Dijkstra on fees with states {cost, time, city}. Keep minTime[city]; push only when the new time beats it (dominance pruning).</p>`, `<p>Start cost = passingFees[0]. Skip moves with time &gt; maxTime. First time city n−1 is polled → answer. Alternative: DP dp[t][v] = min cost to be at v at time t, O(maxTime · E).</p>`],
+    tests: { sig: "int int[][] int[] -> int", fn: "timeRun", harness: {
+      java: `class Check {
+    static int timeRun(int maxTime, int[][] edges, int[] fees) {
+        if (edges[0][0] == -1) {                  // marker row [-1, mode]: chain of n cities with shortcuts (mode 0) or one long road (mode 1)
+            int mode = edges[0][1], n = fees.length;
+            List<int[]> list = new ArrayList<>();
+            for (int i = 0; i < n - 1; i++) list.add(new int[]{i, i + 1, mode == 1 ? 1 : 1 + (i * 7) % 5});
+            if (mode == 1) list.add(new int[]{0, n - 1, 999});
+            else for (int i = 0; i < n - 1; i++) list.add(new int[]{i, Math.min(i + 2 + (i % 5), n - 1), 1 + (i * 3) % 7});
+            edges = list.toArray(new int[0][]);
+        }
+        return new Solution().minCost(maxTime, edges, fees);
+    }
+}`,
+      python: `def time_run(max_time, edges, fees):
+    if edges[0][0] == -1:
+        mode, n = edges[0][1], len(fees)
+        edges = [[i, i + 1, 1 if mode == 1 else 1 + (i * 7) % 5] for i in range(n - 1)]
+        if mode == 1:
+            edges.append([0, n - 1, 999])
+        else:
+            edges += [[i, min(i + 2 + (i % 5), n - 1), 1 + (i * 3) % 7] for i in range(n - 1)]
+    return Solution().min_cost(max_time, edges, fees)`,
+      js: `function timeRun(maxTime, edges, fees) {
+  if (edges[0][0] === -1) {
+    const mode = edges[0][1], n = fees.length;
+    edges = [];
+    for (let i = 0; i < n - 1; i++) edges.push([i, i + 1, mode === 1 ? 1 : 1 + (i * 7) % 5]);
+    if (mode === 1) edges.push([0, n - 1, 999]);
+    else for (let i = 0; i < n - 1; i++) edges.push([i, Math.min(i + 2 + (i % 5), n - 1), 1 + (i * 3) % 7]);
+  }
+  return minCost(maxTime, edges, fees);
+}`,
+      cpp: `int timeRun(int maxTime, vector<vector<int>> edges, vector<int> fees) {
+    if (edges[0][0] == -1) {
+        int mode = edges[0][1], n = fees.size();
+        edges.clear();
+        for (int i = 0; i < n - 1; i++) edges.push_back({i, i + 1, mode == 1 ? 1 : 1 + (i * 7) % 5});
+        if (mode == 1) edges.push_back({0, n - 1, 999});
+        else for (int i = 0; i < n - 1; i++) edges.push_back({i, min(i + 2 + (i % 5), n - 1), 1 + (i * 3) % 7});
+    }
+    return Solution().minCost(maxTime, edges, fees);
+}`
+    }, cases: [
+      [[30,[[0,1,10],[1,2,10],[2,5,10],[0,3,1],[3,4,10],[4,5,15]],[5,1,2,20,20,3]],11],
+      [[29,[[0,1,10],[1,2,10],[2,5,10],[0,3,1],[3,4,10],[4,5,15]],[5,1,2,20,20,3]],48],
+      [[25,[[0,1,10],[1,2,10],[2,5,10],[0,3,1],[3,4,10],[4,5,15]],[5,1,2,20,20,3]],-1],
+      [[1,[[0,1,1]],[1,1]],2],
+      [[5,[[0,1,6]],[1,1]],-1],
+      [[10,[[0,1,5],[0,1,3],[1,2,4]],[2,9,4]],15],
+      [[10,[[0,1,5],[0,1,3],[1,2,4]],[2,1,4]],7],
+      [[6,[[0,1,2],[1,0,1],[1,2,2]],[1,1000,1]],1002],
+      [[1000,[[0,1,1],[1,2,1],[2,3,1]],[1000,1000,1000,1000]],4000],
+      [[3,[[0,1,1],[1,2,1],[2,3,1]],[1000,1,1,1]],1003],
+      [[2,[[0,1,1],[1,2,1],[2,3,1]],[1,1,1,1]],-1],
+      [[9,[[1,0,5],[2,1,2],[0,2,4]],[7,4,2]],9],
+      [[13,[[1,0,6],[2,1,4],[0,2,2]],[14,9,1]],15],
+      [[4,[[1,0,3],[2,0,6],[3,1,3],[4,3,3],[4,0,4],[0,3,5],[0,2,4]],[18,19,7,3,19]],37],
+      [[1000,[[-1,0]],{"$range":[500,0,-1]}],25949],
+      [[300,[[-1,0]],{"$range":[500,0,-1]}],-1],
+      [[150,[[-1,0]],{"$range":[500,0,-1]}],-1],
+      [[60,[[-1,0]],{"$range":[500,0,-1]}],-1],
+      [[200,[[-1,0]],{"$concat":[{"$rep":1000,"n":250},{"$range":[1,251]}]}],-1],
+      [[1000,[[-1,1]],{"$range":[1,1001]}],1001],
+      [[999,[[-1,1]],{"$range":[1,1001]}],1001],
+      [[998,[[-1,1]],{"$range":[1,1001]}],-1]
+    ] },
     solution: {
       approach: `<p>Cost-ordered Dijkstra with time-dominance pruning.</p>`,
       code: `
@@ -2974,22 +6747,117 @@ class Solution {
         return -1;
     }
 }`,
-      alt: [{ lang: 'python', code: `class Solution:
-    def minCost(self, maxTime, edges, passingFees):
-        # DP over time: dp[t][v] = min fees to stand at v after exactly t minutes
+      alt: [{ lang: 'python', code: `import heapq
+
+class Solution:
+    def min_cost(self, maxTime, edges, passingFees):
         n = len(passingFees)
-        INF = float('inf')
-        dp = [[INF] * n for _ in range(maxTime + 1)]
-        dp[0][0] = passingFees[0]
-        for t in range(1, maxTime + 1):
-            for x, y, w in edges:
-                if w <= t:
-                    if dp[t - w][x] + passingFees[y] < dp[t][y]:
-                        dp[t][y] = dp[t - w][x] + passingFees[y]
-                    if dp[t - w][y] + passingFees[x] < dp[t][x]:
-                        dp[t][x] = dp[t - w][y] + passingFees[x]
-        ans = min(dp[t][n - 1] for t in range(maxTime + 1))
-        return -1 if ans == INF else ans` }],
+        g = [[] for _ in range(n)]
+        for x, y, t in edges:
+            g[x].append((y, t))
+            g[y].append((x, t))
+        min_time = [float('inf')] * n
+        min_time[0] = 0
+        pq = [(passingFees[0], 0, 0)]        # (cost, time, city)
+        while pq:
+            cost, time, u = heapq.heappop(pq)
+            if u == n - 1:
+                return cost                  # cheapest valid arrival
+            for v, t in g[u]:
+                nt = time + t
+                if nt > maxTime:
+                    continue
+                if nt < min_time[v]:         # otherwise an earlier, cheaper visit dominates
+                    min_time[v] = nt
+                    heapq.heappush(pq, (cost + passingFees[v], nt, v))
+        return -1` }, { lang: 'js', code: `class MinHeap {
+  constructor(cmp) { this.a = []; this.cmp = cmp; }
+  size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) {
+    const a = this.a;
+    a.push(x);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (this.cmp(a[i], a[p]) >= 0) break;
+      [a[i], a[p]] = [a[p], a[i]];
+      i = p;
+    }
+  }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.cmp(a[l], a[m]) < 0) m = l;
+        if (r < a.length && this.cmp(a[r], a[m]) < 0) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+function minCost(maxTime, edges, passingFees) {
+  const n = passingFees.length;
+  const g = Array.from({ length: n }, () => []);
+  for (const [x, y, t] of edges) {
+    g[x].push([y, t]);
+    g[y].push([x, t]);
+  }
+  const minTime = new Array(n).fill(Infinity);
+  minTime[0] = 0;
+  const pq = new MinHeap((a, b) => a[0] - b[0]);
+  pq.push([passingFees[0], 0, 0]);         // [cost, time, city]
+  while (pq.size() > 0) {
+    const [cost, time, u] = pq.pop();
+    if (u === n - 1) return cost;          // cheapest valid arrival
+    for (const [v, t] of g[u]) {
+      const nt = time + t;
+      if (nt > maxTime) continue;
+      if (nt < minTime[v]) {               // otherwise an earlier, cheaper visit dominates
+        minTime[v] = nt;
+        pq.push([cost + passingFees[v], nt, v]);
+      }
+    }
+  }
+  return -1;
+}` }, { lang: 'cpp', code: `class Solution {
+public:
+    int minCost(int maxTime, const vector<vector<int>>& edges, const vector<int>& passingFees) {
+        int n = passingFees.size();
+        vector<vector<pair<int, int>>> g(n);
+        for (auto& e : edges) {
+            g[e[0]].push_back({e[1], e[2]});
+            g[e[1]].push_back({e[0], e[2]});
+        }
+        vector<int> minTime(n, INT_MAX);
+        minTime[0] = 0;
+        using T = tuple<int, int, int>;      // cost, time, city
+        priority_queue<T, vector<T>, greater<>> pq;
+        pq.push({passingFees[0], 0, 0});
+        while (!pq.empty()) {
+            auto [cost, time, u] = pq.top();
+            pq.pop();
+            if (u == n - 1) return cost;     // cheapest valid arrival
+            for (auto [v, t] : g[u]) {
+                int nt = time + t;
+                if (nt > maxTime) continue;
+                if (nt < minTime[v]) {       // otherwise an earlier, cheaper visit dominates
+                    minTime[v] = nt;
+                    pq.push({cost + passingFees[v], nt, v});
+                }
+            }
+        }
+        return -1;
+    }
+};` }],
       complexity: `<p>Dijkstra with pruning: each push needs a strictly smaller time, so at most maxTime pushes per city → O(maxTime · E log(...)) worst case, fast in practice. DP: O(maxTime · E) = 10<sup>6</sup>.</p>`,
       followUps: ['Return the route', 'Two limits (time and fuel) — what is the state now?', 'Pareto front: list all non-dominated (cost, time) pairs at the target']
     }
@@ -3029,6 +6897,59 @@ class Solution {
 }` },
     mcq: { q: 'How do you turn "build a well at house i for cost c" into a graph edge?', options: ['Edge between a virtual node 0 (water source) and house i with weight c', 'A self-loop on house i', 'Add c to every pipe of house i', 'Ignore wells and add them afterwards'], answer: 0, explain: 'A virtual source node makes "own well" just another way to connect to water. The MST over n + 1 nodes then chooses wells and pipes together.' },
     hints: [`<p>Every house must be connected to "water". Invent a node 0 that IS the water.</p>`, `<p>Edges: (0, i, wells[i−1]) for each house, plus all pipes. Now it is a plain MST on n + 1 nodes.</p>`, `<p>Kruskal + DSU over n + 1 nodes; stop after n edges. At least one well is always chosen because node 0 must be connected.</p>`],
+    tests: { sig: "int int[] int[][] -> int", fn: "waterRun", harness: {
+      java: `class Check {
+    static int waterRun(int n, int[] wells, int[][] pipes) {
+        if (pipes[0][0] == -1) {                  // marker row [-1, mode]: a chain of pipes plus one link from house 1 to house n
+            int mode = pipes[0][1];
+            pipes = new int[n][];
+            for (int i = 1; i < n; i++) pipes[i - 1] = new int[]{i, i + 1, mode == 1 ? 100000 : (i * 91) % 100001};
+            pipes[n - 1] = new int[]{1, n, mode == 1 ? 100000 : 500};
+        }
+        return new Solution().minCostToSupplyWater(n, wells, pipes);
+    }
+}`,
+      python: `def water_run(n, wells, pipes):
+    if pipes[0][0] == -1:
+        mode = pipes[0][1]
+        pipes = [[i, i + 1, 100000 if mode == 1 else (i * 91) % 100001] for i in range(1, n)]
+        pipes.append([1, n, 100000 if mode == 1 else 500])
+    return Solution().min_cost_to_supply_water(n, wells, pipes)`,
+      js: `function waterRun(n, wells, pipes) {
+  if (pipes[0][0] === -1) {
+    const mode = pipes[0][1];
+    pipes = [];
+    for (let i = 1; i < n; i++) pipes.push([i, i + 1, mode === 1 ? 100000 : (i * 91) % 100001]);
+    pipes.push([1, n, mode === 1 ? 100000 : 500]);
+  }
+  return minCostToSupplyWater(n, wells, pipes);
+}`,
+      cpp: `int waterRun(int n, vector<int> wells, vector<vector<int>> pipes) {
+    if (pipes[0][0] == -1) {
+        int mode = pipes[0][1];
+        pipes.clear();
+        for (int i = 1; i < n; i++) pipes.push_back({i, i + 1, mode == 1 ? 100000 : (i * 91) % 100001});
+        pipes.push_back({1, n, mode == 1 ? 100000 : 500});
+    }
+    return Solution().minCostToSupplyWater(n, wells, pipes);
+}`
+    }, cases: [
+      [[3,[1,2,2],[[1,2,1],[2,3,1]]],3],
+      [[2,[1,1],[[1,2,1],[1,2,2]]],2],
+      [[2,[1,2],[[1,2,1]]],2],
+      [[2,[5,5],[[1,2,0]]],5],
+      [[2,[100000,100000],[[1,2,100000]]],200000],
+      [[3,[4,4,4],[[1,2,5],[2,3,5]]],12],
+      [[4,[10,1,10,10],[[1,2,2],[2,3,2],[3,4,2],[1,4,1]]],6],
+      [[3,[0,0,0],[[1,2,0],[2,3,0]]],0],
+      [[5,[9,9,9,9,1],[[1,2,1],[2,3,1],[3,4,1],[4,5,1]]],5],
+      [[5,[5,7,1,7,11],[[1,2,6],[1,3,8],[1,4,4],[1,5,0]]],16],
+      [[4,[2,4,3,11],[[1,2,9],[2,3,8],[2,4,9]]],18],
+      [[4,[12,11,8,12],[[1,2,2],[1,3,10],[1,4,7]]],27],
+      [[10000,{"$range":[100000,0,-10]},[[-1,0]]],324062365],
+      [[10000,{"$rep":100000,"n":10000},[[-1,1]]],1000000000],
+      [[10000,{"$concat":[{"$rep":7,"n":5000},{"$range":[5000,0,-1]}]},[[-1,0]]],12327400]
+    ] },
     solution: {
       approach: `<p>Virtual node + Kruskal.</p>`,
       code: `
@@ -3059,6 +6980,80 @@ class Solution {
     }
 }`,
       dry: { head: ['edge (sorted)', 'decision', 'total'], rows: [['0–1 (1)', 'take (well at 1)', '1'], ['1–2 (1)', 'take (pipe)', '2'], ['2–3 (1)', 'take (pipe) → 3 edges = n', '<span class="c-g">3</span>'], ['0–2, 0–3 (2)', 'not needed', '—']] },
+      alt: [{ lang: 'python', code: `class Solution:
+    def min_cost_to_supply_water(self, n, wells, pipes):
+        # node 0 is a virtual "water source": a well at house i is an edge 0 - i
+        edges = [(w, 0, i + 1) for i, w in enumerate(wells)]
+        edges += [(c, a, b) for a, b, c in pipes]
+        edges.sort()
+        parent = list(range(n + 1))
+
+        def find(x):
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+
+        total = used = 0
+        for c, a, b in edges:
+            ra, rb = find(a), find(b)
+            if ra != rb:
+                parent[ra] = rb
+                total += c
+                used += 1
+                if used == n:                # n + 1 nodes -> n edges
+                    break
+        return total` }, { lang: 'js', code: `function minCostToSupplyWater(n, wells, pipes) {
+  // node 0 is a virtual "water source": a well at house i is an edge 0 - i
+  const edges = wells.map((w, i) => [0, i + 1, w]);
+  for (const p of pipes) edges.push(p);
+  edges.sort((a, b) => a[2] - b[2]);
+  const parent = Array.from({ length: n + 1 }, (_, i) => i);
+  const find = (x) => {
+    while (parent[x] !== x) {
+      parent[x] = parent[parent[x]];
+      x = parent[x];
+    }
+    return x;
+  };
+  let total = 0, used = 0;
+  for (const [a, b, c] of edges) {
+    const ra = find(a), rb = find(b);
+    if (ra === rb) continue;
+    parent[ra] = rb;
+    total += c;
+    if (++used === n) break;               // n + 1 nodes -> n edges
+  }
+  return total;
+}` }, { lang: 'cpp', code: `class Solution {
+    vector<int> parent;
+    int find(int x) {
+        while (parent[x] != x) {
+            parent[x] = parent[parent[x]];
+            x = parent[x];
+        }
+        return x;
+    }
+public:
+    int minCostToSupplyWater(int n, const vector<int>& wells, const vector<vector<int>>& pipes) {
+        // node 0 is a virtual "water source": a well at house i is an edge 0 - i
+        vector<array<int, 3>> edges;
+        for (int i = 0; i < n; i++) edges.push_back({wells[i], 0, i + 1});
+        for (auto& p : pipes) edges.push_back({p[2], p[0], p[1]});
+        sort(edges.begin(), edges.end());
+        parent.resize(n + 1);
+        iota(parent.begin(), parent.end(), 0);
+        int total = 0, used = 0;
+        for (auto& [c, a, b] : edges) {
+            int ra = find(a), rb = find(b);
+            if (ra == rb) continue;
+            parent[ra] = rb;
+            total += c;
+            if (++used == n) break;          // n + 1 nodes -> n edges
+        }
+        return total;
+    }
+};` }],
       complexity: `<p>Time O((n + P) log(n + P)); space O(n + P).</p>`,
       followUps: ['Prim from node 0 instead', 'Each house needs water from at least 2 sources (much harder — not an MST any more)']
     }
@@ -3067,7 +7062,7 @@ class Solution {
   // ================= QUIZ =================
   quiz.push(
     { q: 'Which algorithm should you pick for single-source shortest paths with V = 10<sup>5</sup>, E = 2·10<sup>5</sup> and all weights ≥ 0?', options: ['Dijkstra with a priority queue', 'Bellman-Ford', 'Floyd-Warshall', 'Kruskal'], answer: 0, explain: 'O(E log V) ≈ 4·10<sup>6</sup> operations. Bellman-Ford would be 2·10<sup>10</sup>, Floyd-Warshall 10<sup>15</sup>; Kruskal builds an MST, not shortest paths.' },
-    { q: 'In lazy-deletion Dijkstra you poll (9, v) while dist[v] = 6. What does that mean?', options: ['A stale entry: v was already improved — skip it', 'A bug: the heap is corrupted', 'v must be relaxed again with 9', 'A negative cycle exists'], answer: 0, explain: 'Java\'s PriorityQueue has no decrease-key, so we push a new entry on every improvement and ignore the older, larger ones when they surface.' },
+    { q: 'In lazy-deletion Dijkstra you poll (9, v) while dist[v] = 6. What does that mean?', options: ['A stale entry: v was already improved — skip it', 'A bug: the heap is corrupted', 'v must be relaxed again with 9', 'A negative cycle exists'], answer: 0, explain: 'Standard priority queues (Java PriorityQueue, Python heapq, C++ priority_queue) have no decrease-key, so we push a new entry on every improvement and ignore the older, larger ones when they surface.' },
     { q: 'Why does Dijkstra fail with a negative edge (no negative cycle)?', options: ['A node marked final might later be reached more cheaply through the negative edge', 'The heap cannot store negative numbers', 'It loops forever', 'It always returns ∞'], answer: 0, explain: 'The greedy proof needs "extending a path never makes it cheaper". A negative edge breaks that, so the first pop is not guaranteed optimal.' },
     { q: 'In 0-1 BFS, a relaxation through a weight-0 edge puts the node…', options: ['at the FRONT of the deque', 'at the BACK of the deque', 'into a separate heap', 'nowhere — 0 edges are ignored'], answer: 0, explain: 'Its distance equals the current node\'s, which is the smallest in the deque, so it belongs at the front. Weight-1 edges go to the back.' },
     { q: 'Bellman-Ford relaxes every edge V − 1 times because…', options: ['a shortest simple path has at most V − 1 edges, and round k fixes all paths with ≤ k edges', 'there are V − 1 negative edges at most', 'the heap needs V − 1 operations', 'it is a convention with no reason'], answer: 0, explain: 'Induction: after round k every path with ≤ k edges is correct. Without negative cycles a shortest path never needs more than V − 1 edges.' },
@@ -3092,7 +7087,7 @@ class Solution {
     { q: 'Prim vs Kruskal — how do you choose?', level: 'I', a: `<p>Both give an MST. Kruskal sorts edges and uses DSU: O(E log E), ideal when you are handed an edge list or the graph is sparse; it also extends naturally to clustering (stop at k components) and forced/skipped edges. Prim grows one tree from a start vertex: O(E log V) with a heap, or O(V²) with an array — the array version wins on dense or complete graphs (e.g. points in the plane). In parallel/distributed settings, Borůvka is preferred.</p>`, followUps: ['Which handles a disconnected graph more naturally?', 'Which one would you use for 10<sup>5</sup> points with Euclidean distances?'] },
     { q: 'Explain DSU with path compression and union by rank. What is its complexity?', level: 'I', a: `<p>Each set is a tree; parent[x] points upward and the root represents the set. find(x) follows parents to the root; path compression re-points every node on that path directly to the root. union(a, b) links the root of the shorter tree under the root of the taller one (by rank or size). Together they give amortised O(α(n)) per operation, where α is the inverse Ackermann function — at most 4 for any practical n. Either optimisation alone gives O(log n).</p>`, followUps: ['Why might recursive find overflow the stack?', 'How do you support "undo" (rollback DSU)?', 'How do you count components?'] },
     { q: 'Cheapest Flights Within K Stops: why does plain Dijkstra fail and what do you do?', level: 'A', a: `<p>With a stop limit, a cheap route that uses many stops can finalise a city first and block a pricier route that still has stops left, so the visited-per-city logic is wrong. Fixes: (1) Bellman-Ford limited to K + 1 rounds, reading from the previous round's copy each time — O(K·E); (2) Dijkstra over states (city, stopsUsed), keeping best[city][stops] — O(E·K log(VK)); (3) BFS by levels with pruning. I would code (1): short, clearly correct, and fast for n ≤ 100.</p>`, followUps: ['Why must each round use a copy?', 'Return the actual route', 'What if flights also have durations and a time limit?'] },
-    { q: 'How do you count the number of shortest paths between two nodes?', level: 'A', a: `<p>Run Dijkstra with ways[] next to dist[]. ways[src] = 1. When relaxing u → v: if dist[u] + w &lt; dist[v], set dist[v] and ways[v] = ways[u]; if equal, ways[v] += ways[u] (mod if needed). This is correct because nodes are finalised in distance order, so ways[u] is complete when u relaxes its edges. Pitfalls: relax only from non-stale pops (else you double count), and use long for distances when weights are large.</p>`, followUps: ['Unweighted version with BFS', 'Which edges lie on at least one shortest path?'] },
+    { q: 'How do you count the number of shortest paths between two nodes?', level: 'A', a: `<p>Run Dijkstra with ways[] next to dist[]. ways[src] = 1. When relaxing u → v: if dist[u] + w &lt; dist[v], set dist[v] and ways[v] = ways[u]; if equal, ways[v] += ways[u] (mod if needed). This is correct because nodes are finalised in distance order, so ways[u] is complete when u relaxes its edges. Pitfalls: relax only from non-stale pops (else you double count), and use 64-bit integers for distances when weights are large.</p>`, followUps: ['Unweighted version with BFS', 'Which edges lie on at least one shortest path?'] },
     { q: 'Generalise: when does Dijkstra work for costs that are not sums?', level: 'E', a: `<p>You need a path cost that is monotone (extending a path never makes it better) and consistent with extension (if cost(P) ≤ cost(Q) then cost(P + e) ≤ cost(Q + e)). Max-of-edges (minimum effort, swim in rising water), product of probabilities in [0, 1] with a max-heap, bottleneck capacity (maximise the minimum) and lexicographic tuples (cost, then time) all qualify. Constraints that are not captured by the ordering (hop limits, time budgets) must go into the state, which can make the problem pseudo-polynomial or even NP-hard in general.</p>`, followUps: ['Give a cost function where Dijkstra fails', 'What is a Pareto front in multi-criteria routing?'] },
     { q: 'How do real map services compute routes so fast if Dijkstra is O(E log V)?', level: 'E', a: `<p>Continental road graphs have tens of millions of nodes, so plain Dijkstra per query is too slow. Production systems combine bidirectional search, A* with admissible heuristics (straight-line distance or landmark-based ALT bounds), and heavy preprocessing such as contraction hierarchies, hub labels or customizable route planning that add shortcut edges so a query touches only a few thousand nodes. Live traffic is handled by re-customising weights in a separate fast phase. Public transit uses specialised algorithms (RAPTOR, connection scan) with multi-criteria labels.</p>`, followUps: ['What makes an A* heuristic admissible and consistent?', 'Why does bidirectional Dijkstra roughly halve the work?'] },
     { q: 'A graph has 400 nodes and you get 10<sup>5</sup> distance queries. What do you do?', level: 'I', a: `<p>Precompute all pairs once, then answer each query in O(1). With V = 400, Floyd-Warshall is 6.4·10<sup>7</sup> simple operations — well under a second — and handles negative edges. If the graph were sparse and larger (say V = 5000, E = 2·10<sup>4</sup>), I would run Dijkstra from every node (V·E log V) or only from the distinct query sources, caching results. Memory for the table is V² longs = 1.3 MB here.</p>`, followUps: ['What if edges are updated between queries?', 'What if V = 10<sup>5</sup> but queries all share one source?'] },
@@ -3118,7 +7113,7 @@ class Solution {
       ])}`,
     goals: [
       'Pick the right shortest-path algorithm (Dijkstra, 0-1 BFS, Bellman-Ford, Floyd-Warshall) from the weights, the number of sources and the constraints',
-      'Write Dijkstra with a Java PriorityQueue and lazy deletion, reconstruct the path, and explain why negative edges break it',
+      'Write Dijkstra with a priority queue (min-heap) and lazy deletion, reconstruct the path, and explain why negative edges break it',
       'Detect and extract a negative cycle with Bellman-Ford, and run bounded Bellman-Ford for "at most K edges"',
       'Build an MST with Prim (heap and O(V²) array versions) and Kruskal + DSU, and prove the cut property',
       'Solve variants by expanding the state (node, stops / time) or changing the combine rule (max, product, tuple) — K stops, minimum effort, max probability, counting shortest paths',
@@ -3126,6 +7121,12 @@ class Solution {
     ],
     prereqs: `<p>DSA 19 (Graphs I: BFS, DFS, topological sort and DSU) and DSA 15 (Heaps / PriorityQueue). Comfort with Java collections (ArrayList, ArrayDeque, PriorityQueue with comparators) and DSA 17 (DP basics) for the Floyd-Warshall recurrence.</p>`,
     hours: 16,
+    langNotes: {
+      java: `<p><b>Java:</b> <code>PriorityQueue</code> is a <b>min</b>-heap and has no decrease-key, so push a new entry on every improvement and skip stale ones (lazy deletion). Order entries with <code>Integer.compare(a[0], b[0])</code> or <code>Long.compare</code>, never <code>a[0] - b[0]</code>, which overflows. For 0-1 BFS use <code>ArrayDeque</code> (<code>addFirst</code> for cost 0, <code>addLast</code> for cost 1). <code>int</code> overflow wraps silently: <code>Integer.MAX_VALUE + w</code> turns negative, so skip unreachable nodes before adding, and use <code>long</code> for distances, path counts and MST totals when weights reach 10<sup>9</sup>. Sort edge lists with a comparator such as <code>Arrays.sort(edges, (a, b) -&gt; Integer.compare(a[2], b[2]))</code>. A recursive DSU <code>find</code> is safe with union by rank (depth stays about log V); a plain recursion deeper than about 10<sup>4</sup> frames throws <code>StackOverflowError</code>, so keep the graph searches here iterative. Use <code>Double.compare</code> for a probability max-heap.</p>`,
+      python: `<p><b>Python:</b> <code>heapq</code> is a <b>min</b>-heap of tuples, compared field by field, so push <code>(dist, node)</code> and for a max-heap push <code>(-prob, node)</code>. There is no decrease-key either, so skip stale entries. For 0-1 BFS use <code>collections.deque</code> (<code>appendleft</code>, <code>popleft</code>): <code>list.pop(0)</code> is O(n). Ints never overflow, so <code>float('inf')</code> or <code>10**18</code> are safe infinities (a float <code>inf</code> that leaks into an answer prints as <code>inf</code>, so convert it to <code>-1</code> yourself). Build grids with <code>[[INF] * n for _ in range(m)]</code>, never <code>[[INF] * n] * m</code>, which shares one row. Sort edges with <code>sorted(edges, key=lambda e: e[2])</code>. Recursion stops at about 1000 frames, so write <code>find</code> as a loop (path halving) and keep graph walks iterative. Floyd-Warshall is V<sup>3</sup> pure-Python steps: fine for V = 100, slow for V = 400 unless you hoist rows (<code>di = d[i]</code>) out of the inner loop.</p>`,
+      js: `<p><b>JavaScript:</b> there is <b>no built-in heap</b>, so every solution here carries a small <code>MinHeap</code> class (<code>push</code>, <code>pop</code>, <code>peek</code>, <code>size</code>, with a comparator). For a max-heap flip the comparator. There is no deque either, and <code>shift()</code> is O(n): run 0-1 BFS level by level with two arrays ("current cost" and "cost + 1"), or use an array with a <code>head</code> index. <code>Infinity</code> is a safe infinity (<code>Infinity + w</code> stays <code>Infinity</code>, no overflow). <code>Number</code> is exact up to 2<sup>53</sup>, which covers distances like 2 &middot; 10<sup>11</sup>; past that use <code>BigInt</code>. <code>sort()</code> compares as strings unless you pass <code>(a, b) =&gt; a[2] - b[2]</code>. <code>Math.max(...arr)</code> on a huge array can overflow the call stack, so use a loop. Recursion depth is about 10<sup>4</sup> frames, so write <code>find</code> as a loop. Copy a row with <code>slice()</code> or <code>[...row]</code>, and build grids with <code>Array.from</code>, not <code>new Array(m).fill([])</code>, which shares one row.</p>`,
+      cpp: `<p><b>C++:</b> <code>priority_queue</code> is a <b>max</b>-heap: for Dijkstra and Prim use <code>priority_queue&lt;T, vector&lt;T&gt;, greater&lt;&gt;&gt;</code> (or push negated keys). It has no decrease-key, so push again and skip stale entries. <code>pair</code>, <code>tuple</code> and <code>array</code> compare field by field. For 0-1 BFS use <code>std::deque</code> (<code>push_front</code> / <code>push_back</code>). Signed overflow is undefined behaviour: <code>INT_MAX + w</code> is a bug, so guard unreachable nodes and use <code>long long</code> for distances, counts and totals when weights reach 10<sup>9</sup> (and a <code>LLONG_MAX / 4</code> infinity so that INF + INF still fits). Sort edges with a lambda: <code>sort(e.begin(), e.end(), [](auto&amp; a, auto&amp; b) { return a[2] &lt; b[2]; })</code>. Pass big containers as <code>const vector&lt;vector&lt;int&gt;&gt;&amp;</code>. <code>map</code> is O(log n) and <code>unordered_map</code> O(1) on average. The default stack is about 8 MB, so a recursive DSU <code>find</code> with union by rank is safe, but prefer loops for deep graph walks. Remember <code>vector&lt;bool&gt;</code> is a packed bitset: fine for visited flags, but you cannot take a reference to an element.</p>`
+    },
     topics: topics,
     practice: practice,
     quiz: quiz,

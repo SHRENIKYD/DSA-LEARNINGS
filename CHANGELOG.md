@@ -4,6 +4,29 @@ Versions follow [Semantic Versioning](https://semver.org): MAJOR for breaking ch
 
 From 1.7.0 the website and the mobile app have separate versions. This file is the website's: its version is `version` in `package.json`, it is shown in the home page footer, and the Pages workflow tags each new one as `web-vX.Y.Z` on `main`. The app's version is `appVersion` in `package.json`, with its own history in [CHANGELOG-APP.md](CHANGELOG-APP.md). Up to 1.6.1 both shared one version, tagged `vX.Y.Z`.
 
+## [1.9.0] — 2026-10-19 · Phase 2 of 3
+
+Full release notes: [docs/RELEASE_PHASE2.md](docs/RELEASE_PHASE2.md).
+
+### Added
+- DSA 18–28 in Java, Python, JavaScript and C++. All 28 DSA modules (665 problems) are now tested in four languages, with lesson tabs and language notes.
+- Low-Level Design 1–12 in Python, TypeScript and C++ alongside Java: 248 design programs that print identical output in every language, with tests that check it.
+- Cloud & DevOps 13–18 (Kubernetes, Helm and day-2 operations, observability, DevSecOps, advanced cloud architecture, and SRE practice with a capstone). The track is complete at 18 modules.
+- JavaScript heap lesson: a new final topic in JS 2 that builds a priority queue, plus two practice problems.
+
+### Fixed
+- More than 40 faults found by testing every solution at its full stated size, in four languages, with normal stack limits. They include:
+  - overflow and stack crashes in DSA;
+  - wrong results in money, booking, quota and allocation designs;
+  - hangs in the concurrency designs;
+  - unclear crashes on unknown input;
+  - underspecified hash functions in two statements.
+- The Git module's environment-variable example now has Python, Java and C++ versions.
+- The browser "Run" button no longer wraps every JavaScript example in a block, which had broken the `var`/`function` hoisting demos in JS 4. It now wraps only code that declares a name the browser reserves, such as `top`.
+
+### Changed
+- The test checker runs each language with its default limits, supports richer generated inputs and test-only helpers, and gives compiles their own time limit.
+
 ## [1.8.0] — 2026-10-19 · Phase 1 of 3
 
 Full release notes: [docs/RELEASE_PHASE1.md](docs/RELEASE_PHASE1.md).
